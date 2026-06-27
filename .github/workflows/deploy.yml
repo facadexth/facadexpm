@@ -24,12 +24,19 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
-      - name: Deploy via SCP
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: dist/*
-          target: /home/facadex/public_html/app
-          strip_components: 1
+      - name: Push dist to deploy branch
+        run: |
+          cd dist
+          cat > .cpanel.yml << 'EOF'
+          ---
+          deployment:
+            tasks:
+              - export DEPLOYPATH=/home/facadex/public_html/app
+              - /bin/cp -rf . $DEPLOYPATH/
+          EOF
+          git init
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "deploy: $(date +'%Y-%m-%d %H:%M')"
+          git push -f https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/facadexth/facadexpm.git HEAD:deploy
