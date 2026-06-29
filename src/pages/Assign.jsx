@@ -102,6 +102,8 @@ export default function Assign({ navState }) {
   const [asgSite,   setAsgSite]   = useState(navState?.siteId || '')
   const [asgDate,   setAsgDate]   = useState(format(new Date(), 'yyyy-MM-dd'))
   const [asgNotes,  setAsgNotes]  = useState('')
+  const [asgType,    setAsgType]    = useState('site')
+  const [asgOtHours, setAsgOtHours] = useState(0)
 
   const { data: workers, refetch: refetchWorkers } = useWorkers()
   const { data: assignments, refetch: refetchAssign } = useAssignments(month, year)
@@ -113,12 +115,12 @@ export default function Assign({ navState }) {
   const dayHeaders  = Array.from({ length: daysInMonth }, (_, i) => i + 1)
 
   const matrix = useMemo(() => {
-    // map[worker_id][day] = site_number
+    // map[worker_id][day] = { type, site, ot }
     const m = {}
     ;(assignments || []).forEach(a => {
       if (!m[a.worker_id]) m[a.worker_id] = {}
       const day = parseInt(a.date?.slice(8, 10))
-      m[a.worker_id][day] = a.sites?.site_number || a.site_id
+      m[a.worker_id][day] = { type: a.type || 'site', site: a.sites?.site_number || '', ot: a.ot_hours || 0 }
     })
     return m
   }, [assignments])
@@ -161,12 +163,13 @@ export default function Assign({ navState }) {
   }
 
   const handleSaveAssignment = async () => {
-    if (!asgWorker || !asgSite || !asgDate) return alert('กรุณากรอกข้อมูลให้ครบ')
+    if (!asgWorker || !asgDate) return alert('กรุณาเลือกช่างและวันที่')
+    if ((asgType === 'site') && !asgSite) return alert('กรุณาเลือกไซท์งาน')
     setSaving(true)
     try {
       // Upsert (worker_id + date unique)
       const { error } = await supabase.from('worker_assignments').upsert(
-        { worker_id: asgWorker, site_id: asgSite, date: asgDate, notes: asgNotes || null },
+        { worker_id: asgWorker, site_id: (asgType === 'site' || asgType === 'subcontract') ? asgSite || null : null, date: asgDate, type: asgType, ot_hours: parseFloat(asgOtHours) || 0, notes: asgNotes || null },
         { onConflict: 'worker_id,date' }
       )
       if (error) throw error
@@ -183,6 +186,15 @@ export default function Assign({ navState }) {
   }
 
   const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
+
+  const TYPE_COLOR = {
+    site:        { bg: 'rgba(108,99,255,0.25)', color: 'var(--accent)' },
+    office:      { bg: 'rgba(78,205,196,0.25)', color: 'var(--blue)' },
+    leave:       { bg: 'rgba(255,107,107,0.25)', color: 'var(--red)' },
+    holiday:     { bg: 'rgba(94,97,128,0.25)',  color: 'var(--text3)' },
+    subcontract: { bg: 'rgba(255,209,102,0.25)', color: 'var(--yellow)' },
+  }
+  const TYPE_LABEL = { site: '', office: 'OF', leave: 'LA', holiday: 'HO', subcontract: 'SC' }
 
   return (
     <div>
@@ -203,6 +215,13 @@ export default function Assign({ navState }) {
       <div style={{ marginBottom: 8, color: 'var(--text3)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>
         ตาราง Assign — {MONTHS[month-1]} {year + 543}
       </div>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+        {Object.entries(TYPE_COLOR).map(([t, c]) => (
+          <span key={t} style={{ fontSize: 11, background: c.bg, color: c.color, padding: '2px 8px', borderRadius: 10 }}>
+            {t === 'site' ? '🏗️ ไซท์' : t === 'office' ? '🏢 ออฟฟิศ' : t === 'leave' ? '🏖️ ลา' : t === 'holiday' ? '🎌 หยุด' : '🔧 Sub'}
+          </span>
+        ))}
+      </div>
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="table-wrap" style={{ overflowX: 'auto' }}>
           <table style={{ minWidth: 900 }}>
@@ -218,7 +237,8 @@ export default function Assign({ navState }) {
             <tbody>
               {(workers || []).map(w => {
                 const row = matrix[w.id] || {}
-                const totalDays = Object.keys(row).length
+                const totalDays = Object.values(row).filter(c => c.type === 'site' || c.type === 'subcontract').length
+                const leaveDays = Object.values(row).filter(c => c.type === 'leave').length
                 return (
                   <tr key={w.id}>
                     <td style={{ position: 'sticky', left: 0, background: 'var(--bg3)', zIndex: 5, whiteSpace: 'nowrap' }}>
@@ -227,15 +247,24 @@ export default function Assign({ navState }) {
                     </td>
                     {dayHeaders.map(d => (
                       <td key={d} style={{ padding: '2px', textAlign: 'center' }}>
-                        {row[d]
-                          ? <span style={{ fontSize: 8, background: 'rgba(108,99,255,0.25)', color: 'var(--accent)', borderRadius: 3, padding: '1px 2px', display: 'inline-block', maxWidth: 28, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                              title={row[d]}>{row[d]}</span>
-                          : <span style={{ color: 'var(--bg4)', fontSize: 8 }}>·</span>
-                        }
+                        {row[d] ? (() => {
+                          const cell = row[d]
+                          const tc = TYPE_COLOR[cell.type] || TYPE_COLOR.site
+                          const label = TYPE_LABEL[cell.type] || cell.site
+                          return (
+                            <span style={{ fontSize: 8, background: tc.bg, color: tc.color, borderRadius: 3, padding: '1px 3px', display: 'inline-block', maxWidth: 30, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                              title={`${cell.type}${cell.site ? ' · '+cell.site : ''}${cell.ot > 0 ? ' OT'+cell.ot+'h' : ''}`}>
+                              {label || cell.site}
+                              {cell.ot > 0 && <span style={{ fontSize: 7 }}>⚡</span>}
+                            </span>
+                          )
+                        })() : <span style={{ color: 'var(--bg4)', fontSize: 8 }}>·</span>}
                       </td>
                     ))}
-                    <td style={{ textAlign: 'right', fontWeight: 700, color: totalDays > 0 ? 'var(--green)' : 'var(--text3)', fontSize: 13 }}>
-                      {totalDays}
+                    <td style={{ textAlign: 'right', fontSize: 11, whiteSpace: 'nowrap' }}>
+                      {totalDays > 0 && <span style={{ color: 'var(--green)', fontWeight: 700 }}>{totalDays}วัน</span>}
+                      {leaveDays > 0 && <span style={{ color: 'var(--red)', marginLeft: 4 }}>LA{leaveDays}</span>}
+                      {totalDays === 0 && leaveDays === 0 && <span style={{ color: 'var(--text3)' }}>0</span>}
                     </td>
                   </tr>
                 )
@@ -336,12 +365,31 @@ export default function Assign({ navState }) {
               </select>
             </div>
             <div>
-              <label className="label">ไซท์งาน ★</label>
-              <select className="select" value={asgSite} onChange={e => setAsgSite(e.target.value)}>
-                <option value="">— เลือกไซท์ —</option>
-                {(sites || []).filter(s => s.status === 'Ongoing').map(s => <option key={s.id} value={s.id}>{s.site_number} · {s.name}</option>)}
+              <label className="label">ประเภท ★</label>
+              <select className="select" value={asgType} onChange={e => setAsgType(e.target.value)}>
+                <option value="site">🏗️ ทำงานที่ไซท์</option>
+                <option value="office">🏢 งานออฟฟิศ</option>
+                <option value="leave">🏖️ ลา</option>
+                <option value="holiday">🎌 หยุด</option>
+                <option value="subcontract">🔧 Sub-contract</option>
               </select>
             </div>
+            {(asgType === 'site' || asgType === 'subcontract') && (
+              <div>
+                <label className="label">ไซท์งาน {asgType === 'site' ? '★' : ''}</label>
+                <select className="select" value={asgSite} onChange={e => setAsgSite(e.target.value)}>
+                  <option value="">— เลือกไซท์ —</option>
+                  {(sites || []).filter(s => s.status === 'Ongoing').map(s => <option key={s.id} value={s.id}>{s.site_number} · {s.name}</option>)}
+                </select>
+              </div>
+            )}
+            {asgType === 'site' && (
+              <div>
+                <label className="label">OT (ชั่วโมง)</label>
+                <input type="number" className="input" min="0" step="0.5" value={asgOtHours}
+                  onChange={e => setAsgOtHours(parseFloat(e.target.value) || 0)} placeholder="0 = ไม่มี OT" />
+              </div>
+            )}
             <div>
               <label className="label">วันที่ ★</label>
               <input type="date" className="input" value={asgDate} onChange={e => setAsgDate(e.target.value)} />

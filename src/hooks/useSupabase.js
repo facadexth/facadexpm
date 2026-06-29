@@ -128,7 +128,7 @@ export function useAssignments(month, year) {
     const to   = new Date(year, month, 0).toISOString().slice(0,10)
     const { data, error } = await supabase
       .from('worker_assignments')
-      .select('*, workers(name, nickname, position, monthly_salary), sites(name, site_number)')
+      .select('*, workers(name, nickname, position, monthly_salary, monthly_contribution, has_social_security), sites(name, site_number)')
       .gte('date', from)
       .lte('date', to)
       .order('date')
