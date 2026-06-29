@@ -281,50 +281,54 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
               <table>
                 <thead>
                   <tr>
-                    {type === 'expense'
-                      ? <>
-                          <th>วันที่</th><th>รายละเอียด</th>
-                          <th>ไซท์</th><th>หมวด</th>
-                          <th>มูลค่า</th><th>สถานะ</th>
-                        </>
-                      : <>
-                          <th>เลขใบแจ้งหนี้</th><th>วันที่</th>
-                          <th>ไซท์</th><th>ลูกค้า</th>
-                          <th>ยอดรับจริง</th>
-                        </>
-                    }
+                    {type === 'expense' ? <>
+                      <th>วันที่</th><th>รายละเอียด</th><th>ไซท์</th><th>หมวด</th><th>มูลค่า</th><th>สถานะ</th>
+                    </> : type === 'income' ? <>
+                      <th>เลขใบแจ้งหนี้</th><th>วันที่</th><th>ไซท์</th><th>ลูกค้า</th><th>ยอดรับจริง</th>
+                    </> : type === 'site' ? <>
+                      <th>ชื่อไซท์งาน</th><th>ลูกค้า</th><th>สถานะ</th><th>มูลค่าสัญญา</th><th>วันจบงาน</th>
+                    </> : type === 'client' ? <>
+                      <th>ชื่อลูกค้า / บริษัท</th><th>ผู้ติดต่อ</th><th>เบอร์โทร</th><th>อีเมล</th><th>จังหวัด</th>
+                    </> : <>
+                      <th>ชื่อ Supplier</th><th>หมวดสินค้า</th><th>ผู้ติดต่อ</th><th>เบอร์โทร</th><th>เงื่อนไขชำระ</th>
+                    </>}
                   </tr>
                 </thead>
                 <tbody>
                   {preview.slice(0, 50).map((r, i) => (
                     <tr key={i}>
-                      {type === 'expense'
-                        ? <>
-                            <td>{r.date}</td>
-                            <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description}</td>
-                            <td style={{ color: r.site_id ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>
-                              {r.site_id ? '✓' : '⚠️ ไม่พบไซท์'}
-                            </td>
-                            <td style={{ color: r.category_id ? 'var(--text2)' : 'var(--yellow)', fontSize: 11 }}>
-                              {r.category_id ? '✓' : '⚠️ ไม่พบหมวด'}
-                            </td>
-                            <td style={{ color: 'var(--red)', fontWeight: 600 }}>
-                              {Number(r.amount).toLocaleString('th-TH')}
-                            </td>
-                            <td><span className={`badge badge-${r.status}`}>{r.status}</span></td>
-                          </>
-                        : <>
-                            <td style={{ fontSize: 11, color: 'var(--accent)' }}>{r.invoice_no || '(auto)'}</td>
-                            <td>{r.date}</td>
-                            <td style={{ color: r.site_id ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>
-                              {r.site_id ? '✓' : '⚠️'}
-                            </td>
-                            <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.client_name}</td>
-                            <td style={{ color: 'var(--green)', fontWeight: 600 }}>
-                              {Number(r.received_amount).toLocaleString('th-TH')}
-                            </td>
-                          </>
-                      }
+                      {type === 'expense' ? <>
+                        <td>{r.date}</td>
+                        <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description}</td>
+                        <td style={{ color: r.site_id ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{r.site_id ? '✓' : '⚠️ ไม่พบไซท์'}</td>
+                        <td style={{ color: r.category_id ? 'var(--text2)' : 'var(--yellow)', fontSize: 11 }}>{r.category_id ? '✓' : '⚠️ ไม่พบหมวด'}</td>
+                        <td style={{ color: 'var(--red)', fontWeight: 600 }}>{Number(r.amount).toLocaleString('th-TH')}</td>
+                        <td><span className={`badge badge-${r.status}`}>{r.status}</span></td>
+                      </> : type === 'income' ? <>
+                        <td style={{ fontSize: 11, color: 'var(--accent)' }}>{r.invoice_no || '(auto)'}</td>
+                        <td>{r.date}</td>
+                        <td style={{ color: r.site_id ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{r.site_id ? '✓' : '⚠️'}</td>
+                        <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.client_name}</td>
+                        <td style={{ color: 'var(--green)', fontWeight: 600 }}>{Number(r.received_amount).toLocaleString('th-TH')}</td>
+                      </> : type === 'site' ? <>
+                        <td style={{ fontWeight: 600 }}>{r.name}</td>
+                        <td style={{ fontSize: 11, color: r.client_id ? 'var(--green)' : 'var(--text3)' }}>{r.client_id ? '✓ linked' : r.client_name || '—'}</td>
+                        <td><span className="badge">{r.status || 'Ongoing'}</span></td>
+                        <td style={{ color: 'var(--text2)', fontVariantNumeric: 'tabular-nums' }}>{r.contract_value ? Number(r.contract_value).toLocaleString('th-TH') : '—'}</td>
+                        <td style={{ fontSize: 12 }}>{r.end_date || '—'}</td>
+                      </> : type === 'client' ? <>
+                        <td style={{ fontWeight: 600 }}>{r.name}</td>
+                        <td>{r.contact_person || '—'}</td>
+                        <td style={{ fontSize: 12 }}>{r.phone || '—'}</td>
+                        <td style={{ fontSize: 12 }}>{r.email || '—'}</td>
+                        <td style={{ fontSize: 12 }}>{r.province || '—'}</td>
+                      </> : <>
+                        <td style={{ fontWeight: 600 }}>{r.name}</td>
+                        <td><span className="badge">{r.category || '—'}</span></td>
+                        <td>{r.contact_person || '—'}</td>
+                        <td style={{ fontSize: 12 }}>{r.phone || '—'}</td>
+                        <td style={{ fontSize: 12 }}>{r.payment_terms || '—'}</td>
+                      </>}
                     </tr>
                   ))}
                   {preview.length > 50 && (
