@@ -10,21 +10,23 @@ import Sites       from './pages/Sites.jsx'
 import Assign      from './pages/Assign.jsx'
 import Expenses    from './pages/Expenses.jsx'
 import Income      from './pages/Income.jsx'
-import Payroll     from './pages/Payroll.jsx'
+import HR                from './pages/HR.jsx'
+import LaborContractors  from './pages/LaborContractors.jsx'
 import Categories  from './pages/Categories.jsx'
 import Clients   from './pages/Clients.jsx'
 import Suppliers from './pages/Suppliers.jsx'
 
 const TABS = [
-  { id: 'dashboard', label: '📊 ภาพรวม' },
-  { id: 'sites',     label: '🏗️ ไซท์งาน' },
-  { id: 'assign',    label: '👷 Assign ช่าง' },
-  { id: 'expenses',  label: '💸 รายจ่าย' },
-  { id: 'income',    label: '💰 รายรับ' },
-  { id: 'payroll',   label: '💼 เงินเดือน' },
-  { id: 'categories',label: '🏷️ หมวดหมู่' },
-  { id: 'clients',   label: '🏢 ลูกค้า' },
-  { id: 'suppliers', label: '🏭 Supplier' },
+  { id: 'dashboard',         label: '📊 ภาพรวม' },
+  { id: 'sites',             label: '🏗️ ไซท์งาน' },
+  { id: 'assign',            label: '📋 Assign ช่าง' },
+  { id: 'expenses',          label: '💸 รายจ่าย' },
+  { id: 'income',            label: '💰 รายรับ' },
+  { id: 'hr',                label: '👷 HR' },
+  { id: 'categories',        label: '🏷️ หมวดหมู่' },
+  { id: 'clients',           label: '🏢 ลูกค้า' },
+  { id: 'suppliers',         label: '🏭 Supplier' },
+  { id: 'labor_contractors', label: '🔧 ผู้รับเหมาค่าแรง' },
 ]
 
 export default function App() {
@@ -50,11 +52,12 @@ export default function App() {
       case 'sites':      return <Sites      {...props} />
       case 'assign':     return <Assign     {...props} />
       case 'expenses':   return <Expenses   {...props} />
-      case 'income':     return <Income     {...props} />
-      case 'payroll':    return <Payroll    {...props} />
-      case 'categories': return <Categories {...props} />
-      case 'clients':   return <Clients   {...props} />
-      case 'suppliers': return <Suppliers {...props} />
+      case 'income':            return <Income           {...props} />
+      case 'hr':                return <HR               {...props} />
+      case 'labor_contractors': return <LaborContractors {...props} />
+      case 'categories':        return <Categories       {...props} />
+      case 'clients':           return <Clients          {...props} />
+      case 'suppliers':         return <Suppliers        {...props} />
       default:           return <Dashboard  {...props} />
     }
   }

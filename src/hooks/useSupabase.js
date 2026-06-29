@@ -199,3 +199,18 @@ export function useSuppliers() {
     return data
   })
 }
+
+// ── Audit Logs ────────────────────────────────────────────────
+export function useAuditLogs(tableName, limit = 50) {
+  return useQuery(async () => {
+    let q = supabase
+      .from('audit_logs')
+      .select('*')
+      .order('changed_at', { ascending: false })
+      .limit(limit)
+    if (tableName) q = q.eq('table_name', tableName)
+    const { data, error } = await q
+    if (error) throw error
+    return data
+  }, [tableName, limit])
+}
