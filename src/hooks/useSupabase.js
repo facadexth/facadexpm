@@ -214,3 +214,50 @@ export function useAuditLogs(tableName, limit = 50) {
     return data
   }, [tableName, limit])
 }
+
+// ── Labor Subcontractors ──────────────────────────────────────
+export function useLaborSubcontractors() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('labor_subcontractors').select('*').order('subcontractor_number')
+    if (error) throw error
+    return data
+  })
+}
+
+export function useLaborContracts(filters = {}) {
+  return useQuery(async () => {
+    let q = supabase.from('labor_contract_summary').select('*').order('subcontractor_number')
+    if (filters.siteId)          q = q.eq('site_id', filters.siteId)
+    if (filters.subcontractorId) q = q.eq('subcontractor_id', filters.subcontractorId)
+    if (filters.status)          q = q.eq('status', filters.status)
+    const { data, error } = await q
+    if (error) throw error
+    return data
+  }, [JSON.stringify(filters)])
+}
+
+export function useLaborPayments(contractId) {
+  return useQuery(async () => {
+    if (!contractId) return []
+    const { data, error } = await supabase
+      .from('labor_payments').select('*')
+      .eq('contract_id', contractId)
+      .order('payment_date', { ascending: false })
+    if (error) throw error
+    return data
+  }, [contractId])
+}
+
+export function useAllLaborPayments(filters = {}) {
+  return useQuery(async () => {
+    let q = supabase
+      .from('labor_payments')
+      .select('*, labor_contracts(work_description, contract_amount, labor_subcontractors(name, subcontractor_number), sites(name, site_number))')
+      .order('payment_date', { ascending: false })
+    if (filters.status) q = q.eq('status', filters.status)
+    const { data, error } = await q
+    if (error) throw error
+    return data
+  }, [JSON.stringify(filters)])
+}
