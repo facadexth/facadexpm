@@ -165,6 +165,49 @@ export default function Assign({ navState }) {
         </div>
       </div>
 
+      {/* ── OT Summary ── */}
+      <div style={{ marginBottom: 8, color: 'var(--text3)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>
+        สรุป OT (Overtime)
+      </div>
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ช่าง</th>
+                <th style={{ textAlign: 'center' }}>รวม OT (ชั่วโมง)</th>
+                <th style={{ textAlign: 'left' }}>รายละเอียด OT</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(workers || []).map(w => {
+                const row = matrix[w.id] || {}
+                const otEntries = Object.entries(row)
+                  .filter(([_, cell]) => cell.ot > 0)
+                  .map(([day, cell]) => ({ day: parseInt(day), ot: cell.ot, site: cell.site }))
+                const totalOt = otEntries.reduce((sum, e) => sum + e.ot, 0)
+                return totalOt > 0 ? (
+                  <tr key={w.id}>
+                    <td style={{ fontWeight: 600 }}>{w.nickname || w.name}</td>
+                    <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--yellow)', fontSize: 14 }}>{totalOt}h</td>
+                    <td style={{ fontSize: 12, color: 'var(--text2)' }}>
+                      {otEntries.map((e, i) => (
+                        <span key={i} style={{ display: 'inline-block', marginRight: 12 }}>
+                          <strong>{e.day}/{month}</strong> {e.ot}h {e.site && <span style={{ color: 'var(--text3)' }}>@ {e.site}</span>}
+                        </span>
+                      ))}
+                    </td>
+                  </tr>
+                ) : null
+              })}
+              {!Object.values(matrix).some(row => Object.values(row).some(cell => cell.ot > 0)) && (
+                <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text3)', padding: 16 }}>ไม่มี OT ในเดือนนี้</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* ── Labor Cost per Site ── */}
       <div style={{ marginBottom: 8, color: 'var(--text3)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>
         ค่าแรงช่างบริษัท ต่อไซท์งาน (ทุกช่วงเวลา)
