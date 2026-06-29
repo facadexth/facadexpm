@@ -3,21 +3,45 @@
 // ✅ Auto-number SP-YYYY-NNN
 // ✅ Add/Edit/Delete CRUD
 // ✅ Filter ตามหมวดสินค้า
+// ✅ Multi-category (JSONB array) with checkboxes
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useSuppliers, useCategories } from '../hooks/useSupabase.js'
+import { useSuppliers } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 
+const SUPPLIER_TYPES = [
+  'อลูมิเนียม', 'เหล็ก', 'อุปกรณ์', 'กระจก',
+  'ซิลิโคน/ยาง', 'วัสดุสิ้นเปลือง', 'อลูมิเนียมคอมโพสิต', 'ฝ้ายิปซั่ม', 'สี'
+]
+
 const EMPTY_FORM = {
   name: '', contact_person: '', phone: '', email: '',
-  category: '', payment_terms: '', address: '', notes: ''
+  category: [], payment_terms: '', address: '', notes: ''
 }
 
-function SupplierForm({ initial = EMPTY_FORM, categories = [], onSave, onCancel, loading }) {
-  const [form, setForm] = useState({ ...EMPTY_FORM, ...initial })
+function normCategory(raw) {
+  // Normalize category to array regardless of what comes from DB
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'string') return raw ? [raw] : []
+  return []
+}
+
+function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
+  const [form, setForm] = useState({ ...EMPTY_FORM, ...initial, category: normCategory(initial.category) })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const toggleType = (type) => {
+    setForm(f => {
+      const cats = Array.isArray(f.category) ? f.category : []
+      return {
+        ...f,
+        category: cats.includes(type) ? cats.filter(c => c !== type) : [...cats, type]
+      }
+    })
+  }
 
   return (
     <form onSubmit={e => { e.preventDefault(); onSave(form) }}>
@@ -34,11 +58,31 @@ function SupplierForm({ initial = EMPTY_FORM, categories = [], onSave, onCancel,
         </div>
         <div className="form-grid-2">
           <div>
-            <label className="label">หมวดสินค้า</label>
-            <select className="select" value={form.category} onChange={e => set('category', e.target.value)}>
-              <option value="">— เลือกหมวด —</option>
-              {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-            </select>
+            <label className="label">ประเภทสินค้า (เลือกได้หลายอย่าง)</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+              {SUPPLIER_TYPES.map(type => {
+                const checked = (Array.isArray(form.category) ? form.category : []).includes(type)
+                return (
+                  <label key={type} style={{
+                    display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer',
+                    padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 500,
+                    background: checked ? 'var(--accent)' : 'var(--bg3)',
+                    color: checked ? '#fff' : 'var(--text2)',
+                    border: `1px solid ${checked ? 'var(--accent)' : 'var(--border)'}`,
+                    transition: 'all 0.15s',
+                    userSelect: 'none',
+                  }}>
+                    <input
+                      type="checkbox"
+                      style={{ display: 'none' }}
+                      checked={checked}
+                      onChange={() => toggleType(type)}
+                    />
+                    {checked ? '✓ ' : ''}{type}
+                  </label>
+                )
+              })}
+            </div>
           </div>
           <div>
             <label className="label">เงื่อนไขการชำระ</label>
@@ -76,7 +120,6 @@ function SupplierForm({ initial = EMPTY_FORM, categories = [], onSave, onCancel,
 
 export default function Suppliers() {
   const { data: suppliers, refetch } = useSuppliers()
-  const { data: categories } = useCategories()
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
@@ -87,20 +130,23 @@ export default function Suppliers() {
   const [catFilter,  setCatFilter]  = useState('')
 
   const filtered = useMemo(() =>
-    (suppliers || []).filter(s =>
-      (!catFilter || s.category === catFilter) &&
-      (!search || s.name?.toLowerCase().includes(search.toLowerCase()) ||
-        s.supplier_number?.toLowerCase().includes(search.toLowerCase()))
-    )
+    (suppliers || []).filter(s => {
+      const cats = normCategory(s.category)
+      return (!catFilter || cats.includes(catFilter)) &&
+        (!search || s.name?.toLowerCase().includes(search.toLowerCase()) ||
+          s.supplier_number?.toLowerCase().includes(search.toLowerCase()))
+    })
   , [suppliers, search, catFilter])
 
   const handleSave = async (form) => {
     setSaving(true)
     try {
+      const cats = normCategory(form.category)
       const payload = {
         name: form.name, contact_person: form.contact_person || null,
         phone: form.phone || null, email: form.email || null,
-        category: form.category || null, payment_terms: form.payment_terms || null,
+        category: cats.length ? cats : null,
+        payment_terms: form.payment_terms || null,
         address: form.address || null, notes: form.notes || null,
       }
       if (editItem) {
@@ -133,8 +179,8 @@ export default function Suppliers() {
           placeholder="ค้นหาชื่อ / รหัส..."
           value={search} onChange={e => setSearch(e.target.value)} />
         <select className="select input-sm" style={{ width: 160 }} value={catFilter} onChange={e => setCatFilter(e.target.value)}>
-          <option value="">ทุกหมวด</option>
-          {(categories || []).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+          <option value="">ทุกประเภท</option>
+          {SUPPLIER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
         <span style={{ color: 'var(--text3)', fontSize: 13 }}>{filtered.length} รายการ</span>
       </div>
@@ -170,7 +216,14 @@ export default function Suppliers() {
                     <div style={{ fontWeight: 600 }}>{s.name}</div>
                     {s.address && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{s.address}</div>}
                   </td>
-                  <td><span className="badge">{s.category || '—'}</span></td>
+                  <td>
+                    {normCategory(s.category).length
+                      ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {normCategory(s.category).map(c => <span key={c} className="badge" style={{ fontSize: 11 }}>{c}</span>)}
+                        </div>
+                      : <span style={{ color: 'var(--text3)' }}>—</span>
+                    }
+                  </td>
                   <td style={{ fontSize: 12 }}>{s.contact_person || '—'}</td>
                   <td style={{ fontSize: 12 }}>{s.phone || '—'}</td>
                   <td style={{ fontSize: 12 }}>{s.payment_terms || '—'}</td>
@@ -190,7 +243,7 @@ export default function Suppliers() {
 
       {showForm && (
         <Modal title={editItem ? `แก้ไข ${editItem.supplier_number}` : 'เพิ่ม Supplier ใหม่'} onClose={() => { setShowForm(false); setEditItem(null) }} maxWidth={600}>
-          <SupplierForm initial={editItem || EMPTY_FORM} categories={categories || []} onSave={handleSave} onCancel={() => { setShowForm(false); setEditItem(null) }} loading={saving} />
+          <SupplierForm initial={editItem || EMPTY_FORM} onSave={handleSave} onCancel={() => { setShowForm(false); setEditItem(null) }} loading={saving} />
         </Modal>
       )}
 

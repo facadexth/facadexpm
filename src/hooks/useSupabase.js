@@ -176,6 +176,22 @@ export function useSalary(month, year) {
   }, [month, year])
 }
 
+/** เดือนก่อนหน้า — ใช้สำหรับ copy previous month ใน payroll */
+export function usePreviousMonthSalaries(month, year) {
+  const prevMonth = month === 1 ? 12 : month - 1
+  const prevYear  = month === 1 ? year - 1 : year
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('salary_records')
+      .select('*, workers(id, name, nickname, position, monthly_salary, monthly_contribution, has_social_security)')
+      .eq('month', prevMonth)
+      .eq('year', prevYear)
+      .order('workers(name)')
+    if (error) throw error
+    return data
+  }, [month, year])
+}
+
 // ── Clients ──────────────────────────────────────────────────
 export function useClients() {
   return useQuery(async () => {

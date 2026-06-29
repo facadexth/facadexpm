@@ -6,7 +6,7 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useWorkers, useSalary, useAuditLogs } from '../hooks/useSupabase.js'
+import { useWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { auditLog } from '../lib/audit.js'
@@ -201,11 +201,13 @@ export default function HR() {
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear]   = useState(now.getFullYear())
   const { data: records, refetch: refetchSalary } = useSalary(month, year)
+  const { data: prevMonthRecords } = usePreviousMonthSalaries(month, year)
   const [showSalaryForm, setShowSalaryForm] = useState(false)
   const [editSalary, setEditSalary] = useState(null)
   const [savingSalary, setSavingSalary] = useState(false)
   const [calcLoading, setCalcLoading] = useState(false)
   const [calcPreview, setCalcPreview] = useState(null)
+  const [calcPreviewMode, setCalcPreviewMode] = useState('assign') // 'assign' | 'copy'
 
   // Audit state
   const [auditTable, setAuditTable] = useState('')
@@ -288,6 +290,47 @@ export default function HR() {
     refetchSalary()
   }
 
+  const handleCopyPrevMonth = () => {
+    if (!prevMonthRecords?.length) {
+      alert('ไม่พบข้อมูลเงินเดือนเดือนที่แล้ว')
+      return
+    }
+    const preview = prevMonthRecords.map(r => ({
+      worker_id: r.worker_id,
+      name: r.workers?.name || '—',
+      nickname: r.workers?.nickname || '',
+      base_salary: r.base_salary,
+      contribution: r.contribution,
+      phone_allowance: r.phone_allowance,
+      social_security_ded: r.social_security_ded,
+      special_allowance: r.special_allowance,
+      // reset variable fields
+      ot_amount: 0,
+      advance_deduction: 0,
+      loan_deduction: 0,
+      leave_deduction: 0,
+      leave_days: 0,
+      ot_hours: 0,
+      net_pay: parseFloat(
+        ((r.base_salary||0) + (r.phone_allowance||0) + (r.special_allowance||0) - (r.social_security_ded||0))
+        .toFixed(2)
+      ),
+    }))
+    setCalcPreviewMode('copy')
+    setCalcPreview(preview)
+  }
+
+  const handleClearPayroll = async () => {
+    if (!window.confirm(`ล้างข้อมูลเงินเดือนทั้งหมดของ ${MONTHS[month-1]} ${year+543}?`)) return
+    const ids = (records || []).map(r => r.id)
+    if (!ids.length) return
+    for (const id of ids) {
+      await supabase.from('salary_records').delete().eq('id', id)
+      await auditLog('salary_records', id, 'DELETE', null, null)
+    }
+    refetchSalary()
+  }
+
   const handleCalcFromAssign = async () => {
     setCalcLoading(true)
     try {
@@ -320,6 +363,7 @@ export default function HR() {
         }
       })
       if (!results.length) { alert('ไม่พบ assignment ในเดือนนี้'); return }
+      setCalcPreviewMode('assign')
       setCalcPreview(results)
     } catch (e) { alert('Error: ' + e.message) }
     finally { setCalcLoading(false) }
@@ -417,6 +461,14 @@ export default function HR() {
             <button className="btn btn-ghost" onClick={handleCalcFromAssign} disabled={calcLoading}>
               {calcLoading ? '⏳...' : '🔄 คำนวณจาก Assign'}
             </button>
+            <button className="btn btn-ghost" onClick={handleCopyPrevMonth} title="คัดลอกพนักงาน+ค่าแรงจากเดือนก่อน (OT และวันลาจะถูกรีเซ็ต)">
+              📋 ใช้ข้อมูลเดือนที่แล้ว
+            </button>
+            {(records||[]).length > 0 && (
+              <button className="btn btn-ghost" style={{ color: 'var(--red)' }} onClick={handleClearPayroll}>
+                🗑️ Clear
+              </button>
+            )}
             <div style={{ flex: 1 }} />
             <select className="select select-sm" value={month} onChange={e => setMonth(parseInt(e.target.value))}>
               {MONTHS.map((m,i) => <option key={i+1} value={i+1}>{m}</option>)}
@@ -553,10 +605,16 @@ export default function HR() {
       )}
 
       {calcPreview && (
-        <Modal title={`คำนวณจาก Assign — ${MONTHS[month-1]} ${year+543}`}
+        <Modal title={calcPreviewMode === 'copy'
+            ? `คัดลอกจากเดือนที่แล้ว → ${MONTHS[month-1]} ${year+543}`
+            : `คำนวณจาก Assign — ${MONTHS[month-1]} ${year+543}`}
           onClose={() => setCalcPreview(null)} maxWidth={700}>
           <div className="modal-body">
-            <div className="alert alert-info" style={{ marginBottom: 12 }}>ระบบจะ upsert salary_records ตามข้อมูล assignment</div>
+            <div className="alert alert-info" style={{ marginBottom: 12 }}>
+              {calcPreviewMode === 'copy'
+                ? 'คัดลอกพนักงานและเงินเดือนจากเดือนที่แล้ว (OT, วันลา, เบิกล่วงหน้า จะถูก reset เป็น 0)'
+                : 'ระบบจะ upsert salary_records ตามข้อมูล assignment'}
+            </div>
             <div className="table-wrap" style={{ maxHeight: 320 }}>
               <table>
                 <thead><tr><th>พนักงาน</th><th>เงินเดือน</th><th>วันลา</th><th>หักลา</th><th>OT ชม.</th><th>OT บาท</th><th>SSO</th><th>สุทธิ</th></tr></thead>
