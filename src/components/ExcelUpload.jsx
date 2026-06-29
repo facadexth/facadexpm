@@ -150,9 +150,7 @@ async function parseClientSheet(ws) {
       position:       row[2] || null,
       phone:          row[3] ? String(row[3]) : null,
       email:          row[4] || null,
-      address:        row[5] || null,
-      province:       row[6] || null,
-      notes:          row[7] || null,
+      client_type:    row[5] || null,
     })
   }
   return records
@@ -288,7 +286,7 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                     </> : type === 'site' ? <>
                       <th>ชื่อไซท์งาน</th><th>ลูกค้า</th><th>สถานะ</th><th>มูลค่าสัญญา</th><th>วันจบงาน</th>
                     </> : type === 'client' ? <>
-                      <th>ชื่อลูกค้า / บริษัท</th><th>ผู้ติดต่อ</th><th>เบอร์โทร</th><th>อีเมล</th><th>จังหวัด</th>
+                      <th>ชื่อลูกค้า / บริษัท</th><th>ผู้ติดต่อ</th><th>ตำแหน่ง</th><th>เบอร์โทร</th><th>ประเภท</th>
                     </> : <>
                       <th>ชื่อ Supplier</th><th>หมวดสินค้า</th><th>ผู้ติดต่อ</th><th>เบอร์โทร</th><th>เงื่อนไขชำระ</th>
                     </>}
@@ -319,9 +317,9 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                       </> : type === 'client' ? <>
                         <td style={{ fontWeight: 600 }}>{r.name}</td>
                         <td>{r.contact_person || '—'}</td>
+                        <td style={{ fontSize: 12 }}>{r.position || '—'}</td>
                         <td style={{ fontSize: 12 }}>{r.phone || '—'}</td>
-                        <td style={{ fontSize: 12 }}>{r.email || '—'}</td>
-                        <td style={{ fontSize: 12 }}>{r.province || '—'}</td>
+                        <td style={{ fontSize: 11 }}>{r.client_type || '—'}</td>
                       </> : <>
                         <td style={{ fontWeight: 600 }}>{r.name}</td>
                         <td><span className="badge">{r.category || '—'}</span></td>
