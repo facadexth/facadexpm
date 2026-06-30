@@ -32,7 +32,8 @@ export function useUserRole() {
       .eq('user_email', session.user.email)
       .single()
 
-    setRole(data?.role ?? null)
+    // Default to WORKER if no role found
+    setRole(data?.role ?? 'WORKER')
     setLoading(false)
   }, [])
 
