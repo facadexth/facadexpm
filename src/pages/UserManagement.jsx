@@ -16,7 +16,7 @@ export default function UserManagement() {
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
 
-  const [form, setForm] = useState({ email: '', role: 'ADMIN' })
+  const [form, setForm] = useState({ email: '', password: '', role: 'ADMIN' })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   // Fetch users
@@ -42,13 +42,14 @@ export default function UserManagement() {
 
   const handleOpen = (item) => {
     setEditItem(item || null)
-    setForm(item ? { email: item.user_email, role: item.role } : { email: '', role: 'ADMIN' })
+    setForm(item ? { email: item.user_email, password: '', role: item.role } : { email: '', password: '', role: 'ADMIN' })
     setShowForm(true)
   }
 
   const handleSave = async (e) => {
     e.preventDefault()
     if (!form.email) return alert('กรุณากรอก email')
+    if (!editItem && !form.password) return alert('กรุณากรอก password')
     setSaving(true)
     try {
       if (editItem) {
@@ -58,10 +59,25 @@ export default function UserManagement() {
           .eq('id', editItem.id)
         if (error) throw error
       } else {
-        const { error } = await supabase
-          .from('user_roles')
-          .insert({ user_email: form.email, role: form.role })
-        if (error) throw error
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        if (!token) throw new Error('Not authenticated')
+
+        const res = await fetch('https://yyzbgdmgyvvypfcjuhtr.functions.supabase.co/create-user', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            email: form.email,
+            password: form.password,
+            role: form.role
+          })
+        })
+
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Failed to create user')
       }
       setShowForm(false)
       fetchUsers()
@@ -201,6 +217,19 @@ export default function UserManagement() {
                   placeholder="user@example.com"
                 />
               </div>
+              {!editItem && (
+                <div>
+                  <label className="label">Password ★</label>
+                  <input
+                    className="input"
+                    type="password"
+                    required
+                    value={form.password}
+                    onChange={e => set('password', e.target.value)}
+                    placeholder="กรุณากรอก password"
+                  />
+                </div>
+              )}
               <div>
                 <label className="label">Role ★</label>
                 <select
