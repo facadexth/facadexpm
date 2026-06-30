@@ -8,6 +8,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useIncomes, useSites } from '../hooks/useSupabase.js'
+import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
@@ -103,6 +104,8 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading }) 
 }
 
 export default function Income({ navigateTo, navState }) {
+  const { isAtLeast } = useUserRole()
+  const canEdit = isAtLeast('ADMIN')
   const today  = new Date()
   const ytdFrom = format(startOfYear(today), 'yyyy-MM-dd')
   const ytdTo   = format(endOfYear(today),   'yyyy-MM-dd')
@@ -176,8 +179,8 @@ export default function Income({ navigateTo, navState }) {
 
       {/* ── Toolbar ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button className="btn btn-success" onClick={() => { setEditRow(null); setShowAdd(true) }}>+ เพิ่มรายรับ</button>
-        <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>
+        {canEdit && <button className="btn btn-success" onClick={() => { setEditRow(null); setShowAdd(true) }}>+ เพิ่มรายรับ</button>}
+        {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
         <a className="btn btn-ghost" href="/templates/TEMPLATE_รายรับ.xlsx" download>📄 Template</a>
         <div style={{ flex: 1 }} />
         <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหา..." value={search} onChange={e => setSearch(e.target.value)} />
@@ -249,8 +252,12 @@ export default function Income({ navigateTo, navState }) {
                   <td className="font-mono" style={{ color: 'var(--yellow)', fontSize: 11 }}>{i.retention > 0 ? fmt(i.retention) : '—'}</td>
                   <td className="font-mono" style={{ color: 'var(--green)', fontWeight: 700 }}>{fmt(i.received_amount)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(i); setShowAdd(true) }}>✏️</button>
-                    <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(i.id)}>🗑️</button>
+                    {canEdit && (
+                      <>
+                        <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(i); setShowAdd(true) }}>✏️</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(i.id)}>🗑️</button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}

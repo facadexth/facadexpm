@@ -10,6 +10,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useExpenses, useSites, useCategories, useSuppliers } from '../hooks/useSupabase.js'
+import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
@@ -125,6 +126,8 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
 }
 
 export default function Expenses({ navigateTo, navState }) {
+  const { isAtLeast } = useUserRole()
+  const canEdit = isAtLeast('ADMIN')
   const today = new Date()
   const ytdFrom = format(startOfYear(today), 'yyyy-MM-dd')
   const ytdTo   = format(endOfYear(today),   'yyyy-MM-dd')
@@ -214,8 +217,8 @@ export default function Expenses({ navigateTo, navState }) {
 
       {/* ── Toolbar ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button className="btn btn-primary" onClick={() => { setEditRow(null); setShowAdd(true) }}>+ เพิ่มรายจ่าย</button>
-        <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>
+        {canEdit && <button className="btn btn-primary" onClick={() => { setEditRow(null); setShowAdd(true) }}>+ เพิ่มรายจ่าย</button>}
+        {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
         <a className="btn btn-ghost" href="/templates/TEMPLATE_รายจ่าย.xlsx" download>📄 Template</a>
         <div style={{ flex: 1 }} />
         <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหารายละเอียด..." value={search} onChange={e => setSearch(e.target.value)} />
@@ -310,8 +313,12 @@ export default function Expenses({ navigateTo, navState }) {
                     </button>
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(e); setShowAdd(true) }}>✏️</button>
-                    <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(e.id)}>🗑️</button>
+                    {canEdit && (
+                      <>
+                        <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(e); setShowAdd(true) }}>✏️</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(e.id)}>🗑️</button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}

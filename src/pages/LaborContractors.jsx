@@ -14,10 +14,13 @@ import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { auditLog } from '../lib/audit.js'
 import { downloadPDF } from '../lib/pdf.js'
+import { useUserRole } from '../hooks/useUserRole.js'
 
 // ── Sub-tab 1: ผู้รับเหมา ─────────────────────────────────────
 
 function SubcontractorTab() {
+  const { isAtLeast } = useUserRole()
+  const canEdit = isAtLeast('ADMIN')
   const { data: subs, refetch } = useLaborSubcontractors()
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState(null)
@@ -70,7 +73,7 @@ function SubcontractorTab() {
   return (
     <div>
       <div style={{ display:'flex', gap:10, marginBottom:16, alignItems:'center' }}>
-        <button className="btn btn-primary" onClick={() => handleOpen(null)}>+ เพิ่มผู้รับเหมา</button>
+        {canEdit && <button className="btn btn-primary" onClick={() => handleOpen(null)}>+ เพิ่มผู้รับเหมา</button>}
         <input className="input input-sm" style={{ width:220 }} placeholder="ค้นหาชื่อ / รหัส..."
           value={search} onChange={e => setSearch(e.target.value)} />
         <span style={{ color:'var(--text3)', fontSize:13 }}>{filtered.length} รายการ</span>
@@ -88,8 +91,12 @@ function SubcontractorTab() {
                   <td style={{ fontSize:12 }}>{s.phone||'—'}</td>
                   <td style={{ fontSize:12 }}>{s.email||'—'}</td>
                   <td style={{ whiteSpace:'nowrap' }}>
-                    <button className="btn btn-sm btn-ghost" onClick={() => handleOpen(s)}>แก้ไข</button>
-                    <button className="btn btn-sm btn-ghost" style={{ color:'var(--red)' }} onClick={() => setDeleteId(s.id)}>ลบ</button>
+                    {canEdit && (
+                      <>
+                        <button className="btn btn-sm btn-ghost" onClick={() => handleOpen(s)}>แก้ไข</button>
+                        <button className="btn btn-sm btn-ghost" style={{ color:'var(--red)' }} onClick={() => setDeleteId(s.id)}>ลบ</button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -136,6 +143,8 @@ function SubcontractorTab() {
 // ── Sub-tab 2: สัญญา ──────────────────────────────────────────
 
 function ContractsTab() {
+  const { isAtLeast } = useUserRole()
+  const canEdit = isAtLeast('ADMIN')
   const [siteFilter, setSiteFilter] = useState('')
   const [subFilter,  setSubFilter]  = useState('')
   const [statusFilter, setStatusFilter] = useState('active')
@@ -178,7 +187,7 @@ function ContractsTab() {
   return (
     <div>
       <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
-        <button className="btn btn-primary" onClick={() => handleOpen(null)}>+ เพิ่มสัญญา</button>
+        {canEdit && <button className="btn btn-primary" onClick={() => handleOpen(null)}>+ เพิ่มสัญญา</button>}
         <select className="select input-sm" style={{ width:200 }} value={siteFilter} onChange={e => setSiteFilter(e.target.value)}>
           <option value="">ทุกไซท์</option>
           {(sites||[]).map(s => <option key={s.id} value={s.id}>{s.site_number} · {s.name}</option>)}
@@ -240,15 +249,17 @@ function ContractsTab() {
                 <div><div style={{ color:'var(--text3)', fontSize:10 }}>โอนสุทธิแล้ว</div><div className="font-mono">{fmt(c.total_paid_net)}</div></div>
               </div>
 
-              <div style={{ display:'flex', gap:6 }}>
-                <button className="btn btn-sm btn-primary" onClick={() => setShowPayModal(c)}>เบิกเงิน</button>
-                {c.retention_releasable && netRetention > 0 && (
-                  <button className="btn btn-sm btn-warning" onClick={() => setShowPayModal({ ...c, _isRetentionRelease: true })}>
-                    คืนประกัน
-                  </button>
-                )}
-                <button className="btn btn-sm btn-ghost" onClick={() => handleOpen(c)}>แก้ไข</button>
-              </div>
+              {canEdit && (
+                <div style={{ display:'flex', gap:6 }}>
+                  <button className="btn btn-sm btn-primary" onClick={() => setShowPayModal(c)}>เบิกเงิน</button>
+                  {c.retention_releasable && netRetention > 0 && (
+                    <button className="btn btn-sm btn-warning" onClick={() => setShowPayModal({ ...c, _isRetentionRelease: true })}>
+                      คืนประกัน
+                    </button>
+                  )}
+                  <button className="btn btn-sm btn-ghost" onClick={() => handleOpen(c)}>แก้ไข</button>
+                </div>
+              )}
               {c.site_note && <div style={{ marginTop:8, fontSize:11, color:'var(--text3)' }}>📝 {c.site_note}</div>}
             </div>
           )
@@ -457,6 +468,8 @@ function PaymentModal({ contract, onClose }) {
 // ── Sub-tab 3: การเบิก ────────────────────────────────────────
 
 function PaymentsTab() {
+  const { isAtLeast } = useUserRole()
+  const canEdit = isAtLeast('ADMIN')
   const [statusFilter, setStatusFilter] = useState('')
   const { data: payments, refetch } = useAllLaborPayments({ status: statusFilter||undefined })
 
@@ -508,7 +521,7 @@ function PaymentsTab() {
                     <span className={`badge ${p.status==='paid'?'badge-paid':'badge-pending'}`}>{p.status==='paid'?'✅ จ่ายแล้ว':'⏳ ค้างจ่าย'}</span>
                   </td>
                   <td style={{ whiteSpace:'nowrap' }}>
-                    {p.status==='pending' && (
+                    {canEdit && p.status==='pending' && (
                       <button className="btn btn-sm btn-success" onClick={() => handleMarkPaid(p.id)}>จ่ายแล้ว</button>
                     )}
                   </td>

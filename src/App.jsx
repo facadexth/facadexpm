@@ -4,6 +4,8 @@
 // ============================================================
 import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase.js'
+import { useUserRole } from './hooks/useUserRole.js'
+import { ProtectedPage } from './components/ProtectedPage.jsx'
 import Login      from './pages/Login.jsx'
 import Dashboard   from './pages/Dashboard.jsx'
 import Sites       from './pages/Sites.jsx'
@@ -17,28 +19,38 @@ import Clients   from './pages/Clients.jsx'
 import Suppliers from './pages/Suppliers.jsx'
 
 const TABS = [
-  { id: 'dashboard',         label: '📊 ภาพรวม' },
-  { id: 'sites',             label: '🏗️ ไซท์งาน' },
-  { id: 'assign',            label: '📋 Assign ช่าง' },
-  { id: 'expenses',          label: '💸 รายจ่าย' },
-  { id: 'income',            label: '💰 รายรับ' },
-  { id: 'hr',                label: '👷 HR' },
-  { id: 'categories',        label: '🏷️ หมวดหมู่' },
-  { id: 'clients',           label: '🏢 ลูกค้า' },
-  { id: 'suppliers',         label: '🏭 Supplier' },
-  { id: 'labor_contractors', label: '🔧 ผู้รับเหมาค่าแรง' },
+  { id: 'dashboard',         label: '📊 ภาพรวม',              minRole: 'WORKER' },
+  { id: 'sites',             label: '🏗️ ไซท์งาน',            minRole: 'ADMIN'  },
+  { id: 'assign',            label: '📋 Assign ช่าง',          minRole: 'WORKER' },
+  { id: 'expenses',          label: '💸 รายจ่าย',              minRole: 'ADMIN'  },
+  { id: 'income',            label: '💰 รายรับ',               minRole: 'ADMIN'  },
+  { id: 'hr',                label: '👷 HR',                   minRole: 'WORKER' },
+  { id: 'categories',        label: '🏷️ หมวดหมู่',            minRole: 'ADMIN'  },
+  { id: 'clients',           label: '🏢 ลูกค้า',              minRole: 'ADMIN'  },
+  { id: 'suppliers',         label: '🏭 Supplier',             minRole: 'ADMIN'  },
+  { id: 'labor_contractors', label: '🔧 ผู้รับเหมาค่าแรง',    minRole: 'ADMIN'  },
 ]
 
 export default function App() {
   const [session,  setSession]  = useState(undefined) // undefined = loading
   const [activeTab, setActiveTab] = useState('dashboard')
   const [navState, setNavState] = useState({})
+  const { isAtLeast, loading: roleLoading } = useUserRole()
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
     return () => subscription.unsubscribe()
   }, [])
+
+  // After role loads, redirect WORKER away from ADMIN-only tabs
+  useEffect(() => {
+    if (roleLoading || !session) return
+    const current = TABS.find(t => t.id === activeTab)
+    if (current && !isAtLeast(current.minRole)) {
+      setActiveTab(isAtLeast('ADMIN') ? 'dashboard' : 'assign')
+    }
+  }, [roleLoading, session, activeTab, isAtLeast])
 
   const navigateTo = (tab, state = {}) => {
     setNavState(state)
@@ -48,21 +60,21 @@ export default function App() {
   const renderPage = () => {
     const props = { navigateTo, navState }
     switch (activeTab) {
-      case 'dashboard':  return <Dashboard  {...props} />
-      case 'sites':      return <Sites      {...props} />
-      case 'assign':     return <Assign     {...props} />
-      case 'expenses':   return <Expenses   {...props} />
-      case 'income':            return <Income           {...props} />
-      case 'hr':                return <HR               {...props} />
-      case 'labor_contractors': return <LaborContractors {...props} />
-      case 'categories':        return <Categories       {...props} />
-      case 'clients':           return <Clients          {...props} />
-      case 'suppliers':         return <Suppliers        {...props} />
-      default:           return <Dashboard  {...props} />
+      case 'dashboard':  return <ProtectedPage minRole="WORKER"><Dashboard  {...props} /></ProtectedPage>
+      case 'sites':      return <ProtectedPage minRole="ADMIN"><Sites      {...props} /></ProtectedPage>
+      case 'assign':     return <ProtectedPage minRole="WORKER"><Assign     {...props} /></ProtectedPage>
+      case 'expenses':   return <ProtectedPage minRole="ADMIN"><Expenses   {...props} /></ProtectedPage>
+      case 'income':     return <ProtectedPage minRole="ADMIN"><Income     {...props} /></ProtectedPage>
+      case 'hr':         return <ProtectedPage minRole="WORKER"><HR        {...props} /></ProtectedPage>
+      case 'labor_contractors': return <ProtectedPage minRole="ADMIN"><LaborContractors {...props} /></ProtectedPage>
+      case 'categories': return <ProtectedPage minRole="ADMIN"><Categories {...props} /></ProtectedPage>
+      case 'clients':    return <ProtectedPage minRole="ADMIN"><Clients    {...props} /></ProtectedPage>
+      case 'suppliers':  return <ProtectedPage minRole="ADMIN"><Suppliers  {...props} /></ProtectedPage>
+      default:           return <ProtectedPage minRole="WORKER"><Dashboard  {...props} /></ProtectedPage>
     }
   }
 
-  // Loading
+  // Loading auth
   if (session === undefined) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
       <div style={{ color: 'var(--text3)', fontSize: 14 }}>กำลังโหลด...</div>
@@ -71,6 +83,8 @@ export default function App() {
 
   // Not logged in
   if (!session) return <Login />
+
+  const visibleTabs = TABS.filter(tab => isAtLeast(tab.minRole))
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -109,7 +123,7 @@ export default function App() {
         background: 'var(--bg2)', borderBottom: '1px solid var(--border)',
         padding: '0 20px', display: 'flex', gap: 2, overflowX: 'auto'
       }}>
-        {TABS.map(tab => (
+        {visibleTabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => { setNavState({}); setActiveTab(tab.id) }}

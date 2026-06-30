@@ -5,6 +5,7 @@
 // ✅ Audit log viewer
 // ============================================================
 import { useState, useMemo } from 'react'
+import { useUserRole } from '../hooks/useUserRole.js'
 import { supabase } from '../lib/supabase.js'
 import { useWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
@@ -188,6 +189,8 @@ function SalaryForm({ initial = EMPTY_SALARY, workers, onSave, onCancel, loading
 // ── HR Main Component ─────────────────────────────────────────
 export default function HR() {
   const now = new Date()
+  const { role, user, isAtLeast } = useUserRole()
+  const canEdit = isAtLeast('ADMIN')
   const [innerTab, setInnerTab] = useState('workers')
 
   // Workers state
@@ -389,15 +392,24 @@ export default function HR() {
     finally { setSavingSalary(false) }
   }
 
-  const totalBase = useMemo(() => (records||[]).reduce((s,r)=>s+(r.base_salary||0),0),[records])
-  const totalNet  = useMemo(() => (records||[]).reduce((s,r)=>s+(r.net_pay||0),0),[records])
-  const totalOT   = useMemo(() => (records||[]).reduce((s,r)=>s+(r.ot_amount||0),0),[records])
-  const totalSSO  = useMemo(() => (records||[]).reduce((s,r)=>s+(r.social_security_ded||0),0),[records])
+  // WORKER: filter payroll to only show records matching their own email
+  const visibleRecords = useMemo(() => {
+    if (canEdit) return records || []
+    const email = user?.email
+    if (!email) return []
+    return (records || []).filter(r => r.workers?.email === email)
+  }, [records, canEdit, user])
+
+  const totalBase = useMemo(() => visibleRecords.reduce((s,r)=>s+(r.base_salary||0),0),[visibleRecords])
+  const totalNet  = useMemo(() => visibleRecords.reduce((s,r)=>s+(r.net_pay||0),0),[visibleRecords])
+  const totalOT   = useMemo(() => visibleRecords.reduce((s,r)=>s+(r.ot_amount||0),0),[visibleRecords])
+  const totalSSO  = useMemo(() => visibleRecords.reduce((s,r)=>s+(r.social_security_ded||0),0),[visibleRecords])
 
   const INNER_TABS = [
     { id: 'workers',  label: '👷 ข้อมูลช่าง' },
     { id: 'payroll',  label: '💼 เงินเดือน' },
-    { id: 'audit',    label: '📋 ประวัติการแก้ไข' },
+    // Audit log only visible to ADMIN and OWNER
+    ...(canEdit ? [{ id: 'audit', label: '📋 ประวัติการแก้ไข' }] : []),
   ]
 
   return (
@@ -414,7 +426,9 @@ export default function HR() {
       {innerTab === 'workers' && (
         <div>
           <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' }}>
-            <button className="btn btn-primary" onClick={() => { setEditWorker(null); setShowWorkerForm(true) }}>+ เพิ่มช่าง</button>
+            {canEdit && (
+              <button className="btn btn-primary" onClick={() => { setEditWorker(null); setShowWorkerForm(true) }}>+ เพิ่มช่าง</button>
+            )}
           </div>
           <div className="card">
             <div className="table-wrap">
@@ -438,8 +452,12 @@ export default function HR() {
                       <td style={{ textAlign: 'center' }}>{w.annual_leave_days}</td>
                       <td><span className={`badge ${w.status==='active'?'badge-paid':'badge-pending'}`}>{w.status}</span></td>
                       <td style={{ whiteSpace: 'nowrap' }}>
-                        <button className="btn btn-sm btn-ghost" onClick={() => { setEditWorker(w); setShowWorkerForm(true) }}>✏️</button>
-                        <button className="btn btn-sm btn-danger" onClick={() => setDeleteWorkerId(w.id)}>🗑️</button>
+                        {canEdit && (
+                          <>
+                            <button className="btn btn-sm btn-ghost" onClick={() => { setEditWorker(w); setShowWorkerForm(true) }}>✏️</button>
+                            <button className="btn btn-sm btn-danger" onClick={() => setDeleteWorkerId(w.id)}>🗑️</button>
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -457,17 +475,21 @@ export default function HR() {
       {innerTab === 'payroll' && (
         <div>
           <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-            <button className="btn btn-primary" onClick={() => { setEditSalary(null); setShowSalaryForm(true) }}>+ เพิ่มรายการ</button>
-            <button className="btn btn-ghost" onClick={handleCalcFromAssign} disabled={calcLoading}>
-              {calcLoading ? '⏳...' : '🔄 คำนวณจาก Assign'}
-            </button>
-            <button className="btn btn-ghost" onClick={handleCopyPrevMonth} title="คัดลอกพนักงาน+ค่าแรงจากเดือนก่อน (OT และวันลาจะถูกรีเซ็ต)">
-              📋 ใช้ข้อมูลเดือนที่แล้ว
-            </button>
-            {(records||[]).length > 0 && (
-              <button className="btn btn-ghost" style={{ color: 'var(--red)' }} onClick={handleClearPayroll}>
-                🗑️ Clear
-              </button>
+            {canEdit && (
+              <>
+                <button className="btn btn-primary" onClick={() => { setEditSalary(null); setShowSalaryForm(true) }}>+ เพิ่มรายการ</button>
+                <button className="btn btn-ghost" onClick={handleCalcFromAssign} disabled={calcLoading}>
+                  {calcLoading ? '⏳...' : '🔄 คำนวณจาก Assign'}
+                </button>
+                <button className="btn btn-ghost" onClick={handleCopyPrevMonth} title="คัดลอกพนักงาน+ค่าแรงจากเดือนก่อน (OT และวันลาจะถูกรีเซ็ต)">
+                  📋 ใช้ข้อมูลเดือนที่แล้ว
+                </button>
+                {(records||[]).length > 0 && (
+                  <button className="btn btn-ghost" style={{ color: 'var(--red)' }} onClick={handleClearPayroll}>
+                    🗑️ Clear
+                  </button>
+                )}
+              </>
             )}
             <div style={{ flex: 1 }} />
             <select className="select select-sm" value={month} onChange={e => setMonth(parseInt(e.target.value))}>
@@ -494,7 +516,7 @@ export default function HR() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(records||[]).map(r => (
+                  {visibleRecords.map(r => (
                     <tr key={r.id}>
                       <td><div style={{ fontWeight: 600 }}>{r.workers?.name||'—'}</div><div style={{ fontSize: 11, color: 'var(--text3)' }}>{r.workers?.position}</div></td>
                       <td className="font-mono">{fmt(r.base_salary)}</td>
@@ -505,18 +527,22 @@ export default function HR() {
                       <td className="font-mono" style={{ color: 'var(--green)', fontWeight: 700, fontSize: 15 }}>{fmt(r.net_pay)}</td>
                       <td style={{ fontSize: 11 }}>{r.paid_date?new Date(r.paid_date).toLocaleDateString('th-TH'):'—'}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
-                        <button className="btn btn-sm btn-ghost" onClick={() => { setEditSalary(r); setShowSalaryForm(true) }}>✏️</button>
-                        <button className="btn btn-sm btn-danger" onClick={() => handleDeleteSalary(r.id)}>🗑️</button>
+                        {canEdit && (
+                          <>
+                            <button className="btn btn-sm btn-ghost" onClick={() => { setEditSalary(r); setShowSalaryForm(true) }}>✏️</button>
+                            <button className="btn btn-sm btn-danger" onClick={() => handleDeleteSalary(r.id)}>🗑️</button>
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))}
-                  {!(records||[]).length && (
+                  {!visibleRecords.length && (
                     <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>
                       ยังไม่มีข้อมูลเงินเดือน {MONTHS[month-1]} {year+543}
                     </td></tr>
                   )}
                 </tbody>
-                {(records||[]).length > 0 && (
+                {visibleRecords.length > 0 && (
                   <tfoot>
                     <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700 }}>
                       <td style={{ color: 'var(--text3)', fontSize: 12 }}>รวม</td>

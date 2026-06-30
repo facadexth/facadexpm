@@ -7,11 +7,14 @@
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useWorkers, useAssignments, useLaborCost, useSites } from '../hooks/useSupabase.js'
+import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal } from '../components/Modal.jsx'
 import { format, getDaysInMonth } from 'date-fns'
 
 export default function Assign({ navState }) {
+  const { isAtLeast } = useUserRole()
+  const canEdit = isAtLeast('ADMIN')
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year,  setYear]  = useState(now.getFullYear())
@@ -89,7 +92,7 @@ export default function Assign({ navState }) {
     <div>
       {/* ── Toolbar ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button className="btn btn-ghost" onClick={() => setShowAssignForm(true)}>+ Assign งาน</button>
+        {canEdit && <button className="btn btn-ghost" onClick={() => setShowAssignForm(true)}>+ Assign งาน</button>}
         <div style={{ flex: 1 }} />
         <select className="select select-sm" value={month} onChange={e => setMonth(parseInt(e.target.value))}>
           {MONTHS.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}

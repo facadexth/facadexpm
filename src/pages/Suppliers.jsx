@@ -8,6 +8,7 @@
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useSuppliers } from '../hooks/useSupabase.js'
+import { useUserRole } from '../hooks/useUserRole.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 
@@ -119,6 +120,8 @@ function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
 }
 
 export default function Suppliers() {
+  const { isAtLeast } = useUserRole()
+  const canEdit = isAtLeast('ADMIN')
   const { data: suppliers, refetch } = useSuppliers()
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState(null)
@@ -172,8 +175,8 @@ export default function Suppliers() {
     <div>
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button className="btn btn-primary" onClick={() => { setEditItem(null); setShowForm(true) }}>+ เพิ่ม Supplier</button>
-        <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>
+        {canEdit && <button className="btn btn-primary" onClick={() => { setEditItem(null); setShowForm(true) }}>+ เพิ่ม Supplier</button>}
+        {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
         <a className="btn btn-ghost" href="/templates/TEMPLATE_Supplier.xlsx" download>📄 Template</a>
         <input className="input input-sm" style={{ width: 200 }}
           placeholder="ค้นหาชื่อ / รหัส..."
@@ -228,8 +231,12 @@ export default function Suppliers() {
                   <td style={{ fontSize: 12 }}>{s.phone || '—'}</td>
                   <td style={{ fontSize: 12 }}>{s.payment_terms || '—'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <button className="btn btn-sm btn-ghost" onClick={() => { setEditItem(s); setShowForm(true) }}>แก้ไข</button>
-                    <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => setDeleteId(s.id)}>ลบ</button>
+                    {canEdit && (
+                      <>
+                        <button className="btn btn-sm btn-ghost" onClick={() => { setEditItem(s); setShowForm(true) }}>แก้ไข</button>
+                        <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => setDeleteId(s.id)}>ลบ</button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}

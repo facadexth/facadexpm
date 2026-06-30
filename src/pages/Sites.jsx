@@ -10,6 +10,7 @@
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useSites, useLaborCost, useClients } from '../hooks/useSupabase.js'
+import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt, fmtDate, countdown } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
@@ -122,6 +123,8 @@ function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loadin
 }
 
 export default function Sites({ navigateTo }) {
+  const { isAtLeast } = useUserRole()
+  const canEdit = isAtLeast('ADMIN')
   const { data: sites, refetch } = useSites()
   const { data: laborData } = useLaborCost()
   const { data: clients }   = useClients()
@@ -215,8 +218,8 @@ export default function Sites({ navigateTo }) {
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
       {/* ── Toolbar ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button className="btn btn-primary" onClick={() => { setEditSite(null); setShowForm(true) }}>+ เพิ่มไซท์งาน</button>
-        <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>
+        {canEdit && <button className="btn btn-primary" onClick={() => { setEditSite(null); setShowForm(true) }}>+ เพิ่มไซท์งาน</button>}
+        {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
         <a className="btn btn-ghost" href="/templates/TEMPLATE_ไซท์งาน.xlsx" download>📄 Template</a>
         <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อ / รหัส..." value={search} onChange={e => setSearch(e.target.value)} />
         <div style={{ display: 'flex', gap: 4 }}>
@@ -332,11 +335,15 @@ export default function Sites({ navigateTo }) {
                       ) : <span style={{ color: 'var(--text3)' }}>—</span>}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn btn-sm btn-ghost" style={{ marginRight: 4 }} onClick={() => { setEditSite(s); setShowForm(true) }}>✏️</button>
-                      {s.status === 'Ongoing' && (
-                        <button className="btn btn-sm btn-warning" style={{ marginRight: 4 }} onClick={() => setCompleteId(s.id)} title="จบไซท์งาน">✅ จบงาน</button>
+                      {canEdit && (
+                        <>
+                          <button className="btn btn-sm btn-ghost" style={{ marginRight: 4 }} onClick={() => { setEditSite(s); setShowForm(true) }}>✏️</button>
+                          {s.status === 'Ongoing' && (
+                            <button className="btn btn-sm btn-warning" style={{ marginRight: 4 }} onClick={() => setCompleteId(s.id)} title="จบไซท์งาน">✅ จบงาน</button>
+                          )}
+                          <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(s.id)} title="ลบ">🗑️</button>
+                        </>
                       )}
-                      <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(s.id)} title="ลบ">🗑️</button>
                     </td>
                   </tr>
                 )
