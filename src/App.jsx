@@ -14,9 +14,10 @@ import Expenses    from './pages/Expenses.jsx'
 import Income      from './pages/Income.jsx'
 import HR                from './pages/HR.jsx'
 import LaborContractors  from './pages/LaborContractors.jsx'
-import Categories  from './pages/Categories.jsx'
-import Clients   from './pages/Clients.jsx'
-import Suppliers from './pages/Suppliers.jsx'
+import Categories      from './pages/Categories.jsx'
+import Clients        from './pages/Clients.jsx'
+import Suppliers      from './pages/Suppliers.jsx'
+import UserManagement from './pages/UserManagement.jsx'
 
 const TABS = [
   { id: 'dashboard',         label: '📊 ภาพรวม',              minRole: 'WORKER' },
@@ -29,6 +30,7 @@ const TABS = [
   { id: 'clients',           label: '🏢 ลูกค้า',              minRole: 'ADMIN'  },
   { id: 'suppliers',         label: '🏭 Supplier',             minRole: 'ADMIN'  },
   { id: 'labor_contractors', label: '🔧 ผู้รับเหมาค่าแรง',    minRole: 'ADMIN'  },
+  { id: 'user_management',   label: '👤 ผู้ใช้งาน',           minRole: 'OWNER'  },
 ]
 
 export default function App() {
@@ -69,8 +71,9 @@ export default function App() {
       case 'labor_contractors': return <ProtectedPage minRole="ADMIN"><LaborContractors {...props} /></ProtectedPage>
       case 'categories': return <ProtectedPage minRole="ADMIN"><Categories {...props} /></ProtectedPage>
       case 'clients':    return <ProtectedPage minRole="ADMIN"><Clients    {...props} /></ProtectedPage>
-      case 'suppliers':  return <ProtectedPage minRole="ADMIN"><Suppliers  {...props} /></ProtectedPage>
-      default:           return <ProtectedPage minRole="WORKER"><Dashboard  {...props} /></ProtectedPage>
+      case 'suppliers':      return <ProtectedPage minRole="ADMIN"><Suppliers      {...props} /></ProtectedPage>
+      case 'user_management': return <ProtectedPage minRole="OWNER"><UserManagement {...props} /></ProtectedPage>
+      default:               return <ProtectedPage minRole="WORKER"><Dashboard      {...props} /></ProtectedPage>
     }
   }
 
