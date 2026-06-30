@@ -30,6 +30,19 @@ export default function Signup({ onSignupSuccess }) {
 
     setLoading(true)
     try {
+      // Check if email already exists
+      const { data: existing } = await supabase
+        .from('user_roles')
+        .select('id')
+        .eq('user_email', email)
+        .single()
+
+      if (existing) {
+        setError('อีเมลนี้ลงทะเบียนแล้ว กรุณา Login')
+        setLoading(false)
+        return
+      }
+
       const { data, error: signupError } = await supabase.auth.signUp({
         email,
         password
@@ -59,7 +72,16 @@ export default function Signup({ onSignupSuccess }) {
         onSignupSuccess?.()
       }, 2000)
     } catch (e) {
-      setError(e.message || 'Error creating account')
+      let errorMsg = e.message || 'Error creating account'
+
+      // Better error messages
+      if (errorMsg.includes('rate limit') || errorMsg.includes('rate_limit')) {
+        errorMsg = 'ส่งคำขอสูงเกินไป กรุณารอ 1 นาทีแล้วลองใหม่'
+      } else if (errorMsg.includes('already exists') || errorMsg.includes('user already')) {
+        errorMsg = 'อีเมลนี้ลงทะเบียนแล้ว กรุณา Login หรือใช้อีเมลอื่น'
+      }
+
+      setError(errorMsg)
     } finally {
       setLoading(false)
     }
@@ -103,9 +125,13 @@ export default function Signup({ onSignupSuccess }) {
       alignItems: 'center',
       justifyContent: 'center',
       background: 'var(--bg)',
-      padding: 20
+      padding: '20px'
     }}>
-      <div className="card" style={{ maxWidth: 400 }}>
+      <div className="card" style={{
+        width: '100%',
+        maxWidth: 400,
+        boxSizing: 'border-box'
+      }}>
         <div style={{ marginBottom: 24 }}>
           <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 8, color: 'var(--accent)' }}>
             FACADE X
