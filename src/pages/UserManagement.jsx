@@ -1,7 +1,7 @@
 // ============================================================
 // User Management — จัดการ Users & Roles (OWNER only)
 // ============================================================
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 
@@ -30,7 +30,7 @@ export default function UserManagement() {
     setLoading(false)
   }
 
-  React.useEffect(() => {
+  useEffect(() => {
     fetchUsers()
   }, [])
 
