@@ -21,16 +21,16 @@ import UserManagement from './pages/UserManagement.jsx'
 
 const TABS = [
   { id: 'dashboard',         label: '📊 ภาพรวม',              minRole: 'WORKER' },
-  { id: 'sites',             label: '🏗️ ไซท์งาน',            minRole: 'ADMIN'  },
+  { id: 'sites',             label: '🏗️ ไซท์งาน',            minRole: 'WORKER' },
   { id: 'assign',            label: '📋 Assign ช่าง',          minRole: 'WORKER' },
-  { id: 'expenses',          label: '💸 รายจ่าย',              minRole: 'ADMIN'  },
-  { id: 'income',            label: '💰 รายรับ',               minRole: 'ADMIN'  },
+  { id: 'expenses',          label: '💸 รายจ่าย',              minRole: 'WORKER' },
+  { id: 'income',            label: '💰 รายรับ',               minRole: 'WORKER' },
   { id: 'hr',                label: '👷 HR',                   minRole: 'WORKER' },
-  { id: 'categories',        label: '🏷️ หมวดหมู่',            minRole: 'ADMIN'  },
-  { id: 'clients',           label: '🏢 ลูกค้า',              minRole: 'ADMIN'  },
-  { id: 'suppliers',         label: '🏭 Supplier',             minRole: 'ADMIN'  },
-  { id: 'labor_contractors', label: '🔧 ผู้รับเหมาค่าแรง',    minRole: 'ADMIN'  },
-  { id: 'user_management',   label: '👤 ผู้ใช้งาน',           minRole: 'OWNER'  },
+  { id: 'categories',        label: '🏷️ หมวดหมู่',            minRole: 'WORKER' },
+  { id: 'clients',           label: '🏢 ลูกค้า',              minRole: 'WORKER' },
+  { id: 'suppliers',         label: '🏭 Supplier',             minRole: 'WORKER' },
+  { id: 'labor_contractors', label: '🔧 ผู้รับเหมาค่าแรง',    minRole: 'WORKER' },
+  { id: 'user_management',   label: '👤 ผู้ใช้งาน',           minRole: 'WORKER' },
 ]
 
 export default function App() {
@@ -63,16 +63,16 @@ export default function App() {
     const props = { navigateTo, navState }
     switch (activeTab) {
       case 'dashboard':  return <ProtectedPage minRole="WORKER"><Dashboard  {...props} /></ProtectedPage>
-      case 'sites':      return <ProtectedPage minRole="ADMIN"><Sites      {...props} /></ProtectedPage>
+      case 'sites':      return <ProtectedPage minRole="WORKER"><Sites      {...props} /></ProtectedPage>
       case 'assign':     return <ProtectedPage minRole="WORKER"><Assign     {...props} /></ProtectedPage>
-      case 'expenses':   return <ProtectedPage minRole="ADMIN"><Expenses   {...props} /></ProtectedPage>
-      case 'income':     return <ProtectedPage minRole="ADMIN"><Income     {...props} /></ProtectedPage>
+      case 'expenses':   return <ProtectedPage minRole="WORKER"><Expenses   {...props} /></ProtectedPage>
+      case 'income':     return <ProtectedPage minRole="WORKER"><Income     {...props} /></ProtectedPage>
       case 'hr':         return <ProtectedPage minRole="WORKER"><HR        {...props} /></ProtectedPage>
-      case 'labor_contractors': return <ProtectedPage minRole="ADMIN"><LaborContractors {...props} /></ProtectedPage>
-      case 'categories': return <ProtectedPage minRole="ADMIN"><Categories {...props} /></ProtectedPage>
-      case 'clients':    return <ProtectedPage minRole="ADMIN"><Clients    {...props} /></ProtectedPage>
-      case 'suppliers':      return <ProtectedPage minRole="ADMIN"><Suppliers      {...props} /></ProtectedPage>
-      case 'user_management': return <ProtectedPage minRole="OWNER"><UserManagement {...props} /></ProtectedPage>
+      case 'labor_contractors': return <ProtectedPage minRole="WORKER"><LaborContractors {...props} /></ProtectedPage>
+      case 'categories': return <ProtectedPage minRole="WORKER"><Categories {...props} /></ProtectedPage>
+      case 'clients':    return <ProtectedPage minRole="WORKER"><Clients    {...props} /></ProtectedPage>
+      case 'suppliers':      return <ProtectedPage minRole="WORKER"><Suppliers      {...props} /></ProtectedPage>
+      case 'user_management': return <ProtectedPage minRole="WORKER"><UserManagement {...props} /></ProtectedPage>
       default:               return <ProtectedPage minRole="WORKER"><Dashboard      {...props} /></ProtectedPage>
     }
   }
