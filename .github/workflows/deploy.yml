@@ -33,7 +33,7 @@ jobs:
           ---
           deployment:
             tasks:
-              - export DEPLOYPATH=/home/facadex/public_html/pm
+              - export DEPLOYPATH=/home/zxdybpsz/public_html/pm.facadex.co.th
               - /bin/cp -rf . $DEPLOYPATH/
           EOF
           git init
