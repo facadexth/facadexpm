@@ -15,11 +15,13 @@ export default function UserManagement() {
   const [deleteId, setDeleteId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
+  const [approvingId, setApprovingId] = useState(null)
+  const [approveRole, setApproveRole] = useState('ADMIN')
 
   const [form, setForm] = useState({ email: '', password: '', role: 'ADMIN' })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  // Fetch users
+  // Fetch users (approved + pending)
   const fetchUsers = async () => {
     setLoading(true)
     const { data, error } = await supabase
@@ -28,6 +30,20 @@ export default function UserManagement() {
       .order('created_at', { ascending: false })
     if (!error) setUsers(data || [])
     setLoading(false)
+  }
+
+  // Approve pending user
+  const handleApprovePending = async (id, role) => {
+    try {
+      const { error } = await supabase
+        .from('user_roles')
+        .update({ status: 'approved', role })
+        .eq('id', id)
+      if (error) throw error
+      fetchUsers()
+    } catch (e) {
+      alert('Error: ' + e.message)
+    }
   }
 
   useEffect(() => {
@@ -39,6 +55,14 @@ export default function UserManagement() {
       !search || u.user_email.toLowerCase().includes(search.toLowerCase())
     )
   , [users, search])
+
+  const pendingUsers = useMemo(() =>
+    filtered.filter(u => u.status === 'pending')
+  , [filtered])
+
+  const approvedUsers = useMemo(() =>
+    filtered.filter(u => u.status === 'approved' || !u.status)
+  , [filtered])
 
   const handleOpen = (item) => {
     setEditItem(item || null)
@@ -106,10 +130,7 @@ export default function UserManagement() {
     <div>
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ marginBottom: 16, fontSize: 18, fontWeight: 700 }}>👥 จัดการ Users & Roles</h2>
-        <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' }}>
-          <button className="btn btn-primary" onClick={() => handleOpen(null)}>
-            + เพิ่ม User
-          </button>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             className="input input-sm"
             style={{ width: 220 }}
@@ -118,7 +139,9 @@ export default function UserManagement() {
             onChange={e => setSearch(e.target.value)}
           />
           <span style={{ color: 'var(--text3)', fontSize: 13 }}>
-            {filtered.length} รายการ
+            {pendingUsers.length > 0 && `🔔 ${pendingUsers.length} รอคอนเฟิร์ม`}
+            {pendingUsers.length > 0 && approvedUsers.length > 0 && ' • '}
+            {approvedUsers.length > 0 && `✅ ${approvedUsers.length} อนุมัติแล้ว`}
           </span>
         </div>
       </div>
@@ -128,72 +151,136 @@ export default function UserManagement() {
           กำลังโหลด...
         </div>
       ) : (
-        <div className="card">
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>เพิ่มเมื่อ</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(u => (
-                  <tr key={u.id}>
-                    <td style={{ fontWeight: 600 }}>{u.user_email}</td>
-                    <td>
-                      <span
-                        className="badge"
-                        style={{
-                          background:
-                            u.role === 'OWNER'
-                              ? 'rgba(255,107,107,0.2)'
-                              : u.role === 'ADMIN'
-                              ? 'rgba(108,99,255,0.2)'
-                              : 'rgba(0,212,170,0.2)',
-                          color:
-                            u.role === 'OWNER'
-                              ? 'var(--red)'
-                              : u.role === 'ADMIN'
-                              ? 'var(--accent)'
-                              : 'var(--green)',
-                        }}
-                      >
-                        {u.role}
-                      </span>
-                    </td>
-                    <td style={{ fontSize: 12, color: 'var(--text3)' }}>
-                      {new Date(u.created_at).toLocaleDateString('th-TH')}
-                    </td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <button
-                        className="btn btn-sm btn-ghost"
-                        onClick={() => handleOpen(u)}
-                      >
-                        แก้ไข
-                      </button>
-                      <button
-                        className="btn btn-sm btn-ghost"
-                        style={{ color: 'var(--red)' }}
-                        onClick={() => setDeleteId(u.id)}
-                      >
-                        ลบ
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {!filtered.length && (
-                  <tr>
-                    <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>
-                      ไม่พบ user
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+        <div style={{ display: 'grid', gap: 20 }}>
+          {/* Pending Users */}
+          {pendingUsers.length > 0 && (
+            <div className="card" style={{ borderTop: '3px solid var(--red)' }}>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, color: 'var(--red)' }}>
+                🔔 รอการยืนยัน ({pendingUsers.length})
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Email</th>
+                      <th style={{ width: 120 }}>Role</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingUsers.map(u => (
+                      <tr key={u.id}>
+                        <td style={{ fontWeight: 600 }}>{u.user_email}</td>
+                        <td>
+                          <select
+                            className="select select-sm"
+                            value={approvingId === u.id ? approveRole : 'ADMIN'}
+                            onChange={e => {
+                              setApprovingId(u.id)
+                              setApproveRole(e.target.value)
+                            }}
+                            style={{ minWidth: 100 }}
+                          >
+                            {ROLES.map(r => (
+                              <option key={r} value={r}>{r}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                          <button
+                            className="btn btn-sm btn-primary"
+                            onClick={() => handleApprovePending(u.id, approvingId === u.id ? approveRole : 'ADMIN')}
+                          >
+                            ✓ ยืนยัน
+                          </button>
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            style={{ color: 'var(--red)' }}
+                            onClick={() => setDeleteId(u.id)}
+                          >
+                            ลบ
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Approved Users */}
+          {approvedUsers.length > 0 && (
+            <div className="card">
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, color: 'var(--text2)' }}>
+                ✅ อนุมัติแล้ว ({approvedUsers.length})
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Email</th>
+                      <th>Role</th>
+                      <th>เพิ่มเมื่อ</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {approvedUsers.map(u => (
+                      <tr key={u.id}>
+                        <td style={{ fontWeight: 600 }}>{u.user_email}</td>
+                        <td>
+                          <span
+                            className="badge"
+                            style={{
+                              background:
+                                u.role === 'OWNER'
+                                  ? 'rgba(255,107,107,0.2)'
+                                  : u.role === 'ADMIN'
+                                  ? 'rgba(108,99,255,0.2)'
+                                  : 'rgba(0,212,170,0.2)',
+                              color:
+                                u.role === 'OWNER'
+                                  ? 'var(--red)'
+                                  : u.role === 'ADMIN'
+                                  ? 'var(--accent)'
+                                  : 'var(--green)',
+                            }}
+                          >
+                            {u.role}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 12, color: 'var(--text3)' }}>
+                          {new Date(u.created_at).toLocaleDateString('th-TH')}
+                        </td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            onClick={() => handleOpen(u)}
+                          >
+                            แก้ไข
+                          </button>
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            style={{ color: 'var(--red)' }}
+                            onClick={() => setDeleteId(u.id)}
+                          >
+                            ลบ
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {!filtered.length && (
+            <div style={{ textAlign: 'center', color: 'var(--text3)', padding: 40 }}>
+              ไม่พบ user
+            </div>
+          )}
         </div>
       )}
 
