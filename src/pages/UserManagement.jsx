@@ -236,33 +236,32 @@ export default function UserManagement() {
           <form onSubmit={handleSave}>
             <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
               <div>
-                <label className="label">Email {isCreating && '★'}</label>
+                <label className="label">Email {editItem === null && '★'}</label>
                 <input
                   className="input"
                   type="email"
-                  required={isCreating}
-                  disabled={!isCreating}
+                  required={editItem === null}
+                  disabled={editItem !== null}
                   value={form.email}
                   onChange={e => set('email', e.target.value)}
                   placeholder="user@example.com"
                 />
               </div>
-              {isCreating && (
-                <div>
-                  <label className="label">Password ★</label>
-                  <input
-                    className="input"
-                    type="password"
-                    required
-                    value={form.password}
-                    onChange={e => set('password', e.target.value)}
-                    placeholder="อย่างน้อย 6 ตัวอักษร"
-                  />
-                </div>
-              )}
-              {!isCreating && (
+              <div>
+                <label className="label">Password {editItem === null && '★'}</label>
+                <input
+                  className="input"
+                  type="password"
+                  required={editItem === null}
+                  disabled={editItem !== null}
+                  value={form.password}
+                  onChange={e => set('password', e.target.value)}
+                  placeholder={editItem ? '(ไม่ใช้เมื่อแก้ไข)' : '(อย่างน้อย 6 ตัวอักษร)'}
+                />
+              </div>
+              {editItem !== null && (
                 <div style={{ fontSize: 12, color: 'var(--text3)', background: 'rgba(108,99,255,0.1)', padding: 8, borderRadius: 6 }}>
-                  💡 แก้ password ไป Supabase Dashboard → Authentication → Users → เลือก user → Reset Password
+                  💡 แก้ password ไป Supabase Dashboard
                 </div>
               )}
               <div>
