@@ -8,9 +8,7 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 const ROLES = ['OWNER', 'ADMIN', 'WORKER']
 
 export default function UserManagement() {
-  // ⚠️ IMPORTANT: editItem controls create/edit mode
-  // editItem === null → CREATE mode (show password)
-  // editItem !== null → EDIT mode (hide password)
+  // editItem === null → CREATE mode | editItem !== null → EDIT mode
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -20,9 +18,6 @@ export default function UserManagement() {
   const [search, setSearch] = useState('')
   const [form, setForm] = useState({ email: '', password: '', role: 'ADMIN' })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-
-  // Derive mode from editItem to avoid sync issues
-  const isCreating = editItem === null && showForm
 
   const fetchUsers = async () => {
     setLoading(true)
@@ -44,23 +39,22 @@ export default function UserManagement() {
     )
   , [users, search])
 
-  const handleOpen = (item) => {
-    console.log('handleOpen called with item:', item)
-    // Force reset everything first
+  const handleCreate = () => {
     setEditItem(null)
     setForm({ email: '', password: '', role: 'ADMIN' })
+    setShowForm(true)
+  }
 
-    // Then set edit mode if item exists
-    setTimeout(() => {
-      if (item) {
-        console.log('Setting edit mode for:', item.user_email)
-        setEditItem(item)
-        setForm({ email: item.user_email, password: '', role: item.role })
-      } else {
-        console.log('Setting create mode - empty form')
-      }
-      setShowForm(true)
-    }, 0)
+  const handleEdit = (item) => {
+    setEditItem(item)
+    setForm({ email: item.user_email, password: '', role: item.role })
+    setShowForm(true)
+  }
+
+  const handleClose = () => {
+    setShowForm(false)
+    setEditItem(null)
+    setForm({ email: '', password: '', role: 'ADMIN' })
   }
 
   const handleSave = async (e) => {
@@ -146,7 +140,7 @@ export default function UserManagement() {
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ marginBottom: 16, fontSize: 18, fontWeight: 700 }}>👥 จัดการ Users & Roles</h2>
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button className="btn btn-primary" onClick={handleOpen}>
+          <button className="btn btn-primary" onClick={handleCreate}>
             + สร้าง User ใหม่
           </button>
           <input
@@ -209,7 +203,7 @@ export default function UserManagement() {
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button
                         className="btn btn-sm btn-ghost"
-                        onClick={() => handleOpen(u)}
+                        onClick={() => handleEdit(u)}
                       >
                         แก้ไข
                       </button>
@@ -238,12 +232,8 @@ export default function UserManagement() {
 
       {showForm && (
         <Modal
-          title={isCreating ? 'สร้าง User ใหม่' : 'แก้ไข User'}
-          onClose={() => {
-            setShowForm(false)
-            setEditItem(null)
-            setForm({ email: '', password: '', role: 'ADMIN' })
-          }}
+          title={editItem ? 'แก้ไข User' : 'สร้าง User ใหม่'}
+          onClose={handleClose}
           maxWidth={400}
         >
           <form onSubmit={handleSave}>
@@ -254,25 +244,26 @@ export default function UserManagement() {
                   className="input"
                   type="email"
                   required
-                  disabled={false}
-                  value={editItem ? form.email : ''}
+                  disabled={!!editItem}
+                  value={form.email}
                   onChange={e => set('email', e.target.value)}
                   placeholder="user@example.com"
                 />
               </div>
-              <div>
-                <label className="label">Password ★</label>
-                <input
-                  className="input"
-                  type="password"
-                  required
-                  disabled={false}
-                  value={editItem ? form.password : ''}
-                  onChange={e => set('password', e.target.value)}
-                  placeholder="อย่างน้อย 6 ตัวอักษร"
-                />
-              </div>
-              {editItem !== null && (
+              {!editItem && (
+                <div>
+                  <label className="label">Password ★</label>
+                  <input
+                    className="input"
+                    type="password"
+                    required
+                    value={form.password}
+                    onChange={e => set('password', e.target.value)}
+                    placeholder="อย่างน้อย 6 ตัวอักษร"
+                  />
+                </div>
+              )}
+              {editItem && (
                 <div style={{ fontSize: 12, color: 'var(--text3)', background: 'rgba(108,99,255,0.1)', padding: 8, borderRadius: 6 }}>
                   💡 แก้ password ไป Supabase Dashboard
                 </div>
@@ -310,11 +301,7 @@ export default function UserManagement() {
               <button
                 type="button"
                 className="btn btn-ghost"
-                onClick={() => {
-                  setShowForm(false)
-                  setEditItem(null)
-                  setForm({ email: '', password: '', role: 'ADMIN' })
-                }}
+                onClick={handleClose}
               >
                 ยกเลิก
               </button>
