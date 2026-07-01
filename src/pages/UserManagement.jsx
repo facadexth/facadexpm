@@ -236,27 +236,27 @@ export default function UserManagement() {
           <form onSubmit={handleSave}>
             <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
               <div>
-                <label className="label">Email {editItem === null && '★'}</label>
+                <label className="label">Email ★</label>
                 <input
                   className="input"
                   type="email"
-                  required={editItem === null}
-                  disabled={editItem !== null}
+                  required
+                  disabled={false}
                   value={form.email}
                   onChange={e => set('email', e.target.value)}
                   placeholder="user@example.com"
                 />
               </div>
               <div>
-                <label className="label">Password {editItem === null && '★'}</label>
+                <label className="label">Password ★</label>
                 <input
                   className="input"
                   type="password"
-                  required={editItem === null}
-                  disabled={editItem !== null}
+                  required
+                  disabled={false}
                   value={form.password}
                   onChange={e => set('password', e.target.value)}
-                  placeholder={editItem ? '(ไม่ใช้เมื่อแก้ไข)' : '(อย่างน้อย 6 ตัวอักษร)'}
+                  placeholder="อย่างน้อย 6 ตัวอักษร"
                 />
               </div>
               {editItem !== null && (
