@@ -167,7 +167,7 @@ export function useSalary(month, year) {
   return useQuery(async () => {
     const { data, error } = await supabase
       .from('salary_records')
-      .select('*, workers(name, nickname, position)')
+      .select('*, workers(name, nickname, position, email)')
       .eq('month', month)
       .eq('year', year)
       .order('workers(name)')
