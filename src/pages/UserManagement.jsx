@@ -251,7 +251,7 @@ export default function UserManagement() {
                   type="email"
                   required
                   disabled={false}
-                  value={form.email}
+                  value={editItem ? form.email : ''}
                   onChange={e => set('email', e.target.value)}
                   placeholder="user@example.com"
                 />
@@ -263,7 +263,7 @@ export default function UserManagement() {
                   type="password"
                   required
                   disabled={false}
-                  value={form.password}
+                  value={editItem ? form.password : ''}
                   onChange={e => set('password', e.target.value)}
                   placeholder="อย่างน้อย 6 ตัวอักษร"
                 />
