@@ -45,13 +45,18 @@ export default function UserManagement() {
   , [users, search])
 
   const handleOpen = (item) => {
-    setEditItem(item || null)
-    if (item) {
-      setForm({ email: item.user_email, password: '', role: item.role })
-    } else {
-      setForm({ email: '', password: '', role: 'ADMIN' })
-    }
-    setShowForm(true)
+    // Force reset everything first
+    setEditItem(null)
+    setForm({ email: '', password: '', role: 'ADMIN' })
+
+    // Then set edit mode if item exists
+    setTimeout(() => {
+      if (item) {
+        setEditItem(item)
+        setForm({ email: item.user_email, password: '', role: item.role })
+      }
+      setShowForm(true)
+    }, 0)
   }
 
   const handleSave = async (e) => {
