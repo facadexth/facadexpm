@@ -39,7 +39,7 @@ export default function App() {
   const [session,  setSession]  = useState(undefined) // undefined = loading
   const [activeTab, setActiveTab] = useState('dashboard')
   const [navState, setNavState] = useState({})
-  const { isAtLeast, loading: roleLoading } = useUserRole()
+  const { role, isAtLeast, loading: roleLoading } = useUserRole()
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
