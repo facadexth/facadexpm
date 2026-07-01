@@ -90,7 +90,29 @@ export default function App() {
   // Not logged in
   if (!session) return <Login />
 
-  const visibleTabs = TABS.filter(tab => isAtLeast(tab.minRole))
+  // Get saved permissions from localStorage
+  const getSavedPermissions = () => {
+    try {
+      const saved = localStorage.getItem('role_permissions')
+      return saved ? JSON.parse(saved) : null
+    } catch (e) {
+      return null
+    }
+  }
+
+  const visibleTabs = TABS.filter(tab => {
+    // First check role-based access
+    if (!isAtLeast(tab.minRole)) return false
+
+    // Then check saved permissions (if any)
+    const savedPermissions = getSavedPermissions()
+    if (savedPermissions && role) {
+      const pageKey = tab.id
+      return savedPermissions[role]?.[pageKey] !== false
+    }
+
+    return true
+  })
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>

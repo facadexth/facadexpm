@@ -1,41 +1,124 @@
+import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase.js'
+
+const DEFAULT_PERMISSIONS = {
+  WORKER: {
+    dashboard: true,
+    assign: true,
+    hr: true,
+    sites: false,
+    expenses: false,
+    income: false,
+    categories: false,
+    clients: false,
+    suppliers: false,
+    labor_contractors: false,
+    user_management: false,
+    settings: false,
+  },
+  ADMIN: {
+    dashboard: true,
+    assign: true,
+    hr: true,
+    sites: true,
+    expenses: true,
+    income: true,
+    categories: true,
+    clients: true,
+    suppliers: true,
+    labor_contractors: true,
+    user_management: false,
+    settings: false,
+  },
+  OWNER: {
+    dashboard: true,
+    assign: true,
+    hr: true,
+    sites: true,
+    expenses: true,
+    income: true,
+    categories: true,
+    clients: true,
+    suppliers: true,
+    labor_contractors: true,
+    user_management: true,
+    settings: true,
+  },
+}
+
+const PAGE_LABELS = {
+  dashboard: '📊 Dashboard',
+  assign: '📋 Assign ช่าง',
+  hr: '👷 HR',
+  sites: '🏗️ Sites',
+  expenses: '💸 Expenses',
+  income: '💰 Income',
+  categories: '🏷️ Categories',
+  clients: '🏢 Clients',
+  suppliers: '🏭 Suppliers',
+  labor_contractors: '🔧 Labor Contractors',
+  user_management: '👤 User Management',
+  settings: '⚙️ Settings',
+}
+
 export default function Settings() {
-  const permissions = {
-    WORKER: [
-      { page: 'Dashboard', icon: '📊' },
-      { page: 'Assign ช่าง', icon: '📋' },
-      { page: 'HR', icon: '👷' },
-    ],
-    ADMIN: [
-      { page: 'ทุกอย่างของ WORKER +', icon: '⭐' },
-      { page: 'Sites', icon: '🏗️' },
-      { page: 'Expenses', icon: '💸' },
-      { page: 'Income', icon: '💰' },
-      { page: 'Categories', icon: '🏷️' },
-      { page: 'Clients', icon: '🏢' },
-      { page: 'Suppliers', icon: '🏭' },
-      { page: 'Labor Contractors', icon: '🔧' },
-    ],
-    OWNER: [
-      { page: 'ทุกอย่างของ ADMIN +', icon: '⭐' },
-      { page: 'User Management', icon: '👤' },
-      { page: 'Settings', icon: '⚙️' },
-    ],
+  const [permissions, setPermissions] = useState(DEFAULT_PERMISSIONS)
+  const [saving, setSaving] = useState(false)
+
+  // Load permissions from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('role_permissions')
+    if (saved) {
+      try {
+        setPermissions(JSON.parse(saved))
+      } catch (e) {
+        console.error('Failed to load permissions:', e)
+      }
+    }
+  }, [])
+
+  const toggle = (role, page) => {
+    setPermissions(prev => ({
+      ...prev,
+      [role]: {
+        ...prev[role],
+        [page]: !prev[role][page]
+      }
+    }))
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      // Save to localStorage (could also save to Supabase if needed)
+      localStorage.setItem('role_permissions', JSON.stringify(permissions))
+      alert('✅ บันทึกตั้งค่าสำเร็จ')
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleReset = () => {
+    if (confirm('รีเซ็ตเป็นค่าเริ่มต้น?')) {
+      setPermissions(DEFAULT_PERMISSIONS)
+    }
   }
 
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ marginBottom: 8, fontSize: 18, fontWeight: 700 }}>⚙️ ตั้งค่าระบบ</h2>
+        <h2 style={{ marginBottom: 8, fontSize: 18, fontWeight: 700 }}>⚙️ ตั้งค่าสิทธิ์เข้าใช้งาน</h2>
         <p style={{ fontSize: 13, color: 'var(--text3)' }}>
-          กำหนดสิทธิ์เข้าใช้งานสำหรับแต่ละ Role
+          เลือกหน้าที่แต่ละ Role สามารถเข้าใช้งานได้
         </p>
       </div>
 
-      <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))' }}>
-        {Object.entries(permissions).map(([role, pages]) => (
+      <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))' }}>
+        {['WORKER', 'ADMIN', 'OWNER'].map(role => (
           <div key={role} className="card" style={{
             borderTop: role === 'OWNER' ? '3px solid var(--red)' : role === 'ADMIN' ? '3px solid var(--accent)' : '3px solid var(--green)',
-            overflow: 'hidden'
           }}>
             <div style={{
               padding: '12px 16px',
@@ -53,37 +136,48 @@ export default function Settings() {
             </div>
 
             <div style={{ padding: '16px' }}>
-              <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none' }}>
-                {pages.map((item, idx) => (
-                  <li key={idx} style={{
-                    padding: '10px 0',
-                    borderBottom: idx < pages.length - 1 ? '1px solid var(--border)' : 'none',
+              <div style={{ display: 'grid', gap: 10 }}>
+                {Object.entries(permissions[role]).map(([page, allowed]) => (
+                  <label key={page} style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: 10,
-                    fontSize: 13,
-                  }}>
-                    <span style={{ fontSize: 18 }}>{item.icon}</span>
-                    <span style={{ color: 'var(--text2)', fontWeight: item.page.includes('+') ? 600 : 400 }}>
-                      {item.page}
+                    cursor: 'pointer',
+                    padding: '8px',
+                    borderRadius: 6,
+                    transition: 'background 0.2s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={allowed}
+                      onChange={() => toggle(role, page)}
+                      style={{ cursor: 'pointer', width: 18, height: 18 }}
+                    />
+                    <span style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 500 }}>
+                      {PAGE_LABELS[page]}
                     </span>
-                  </li>
+                  </label>
                 ))}
-              </ul>
+              </div>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="card" style={{ marginTop: 24 }}>
-        <div style={{ padding: 16 }}>
-          <h3 style={{ marginTop: 0, marginBottom: 12, fontSize: 14, fontWeight: 700 }}>📌 หมายเหตุ</h3>
-          <ul style={{ margin: '8px 0', paddingLeft: 20, fontSize: 13, color: 'var(--text3)', lineHeight: 1.6 }}>
-            <li><strong>WORKER:</strong> ดูเฉพาะข้อมูลของตัวเอง (Assign งานกับ HR)</li>
-            <li><strong>ADMIN:</strong> เพิ่ม/แก้/ลบข้อมูลโครงการ ลูกค้า ซัพพลายเออร์ ค่าใช้จ่าย ฯลฯ</li>
-            <li><strong>OWNER:</strong> จัดการ Users และเข้าถึงทุกหน้า</li>
-          </ul>
-        </div>
+      <div style={{ display: 'flex', gap: 10, marginTop: 24, justifyContent: 'flex-end' }}>
+        <button className="btn btn-ghost" onClick={handleReset}>
+          🔄 รีเซ็ตค่าเริ่มต้น
+        </button>
+        <button
+          className="btn btn-primary"
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving ? '⏳ กำลังบันทึก...' : '✅ บันทึกตั้งค่า'}
+        </button>
       </div>
     </div>
   )
