@@ -232,10 +232,11 @@ export default function UserManagement() {
           <form onSubmit={handleSave}>
             <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
               <div>
-                <label className="label">Email</label>
+                <label className="label">Email {!editItem && '★'}</label>
                 <input
                   className="input"
                   type="email"
+                  required={!editItem}
                   disabled={!!editItem}
                   value={form.email}
                   onChange={e => set('email', e.target.value)}
