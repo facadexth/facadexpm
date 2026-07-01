@@ -230,7 +230,11 @@ export default function UserManagement() {
       {showForm && (
         <Modal
           title={isCreating ? 'สร้าง User ใหม่' : 'แก้ไข User'}
-          onClose={() => setShowForm(false)}
+          onClose={() => {
+            setShowForm(false)
+            setEditItem(null)
+            setForm({ email: '', password: '', role: 'ADMIN' })
+          }}
           maxWidth={400}
         >
           <form onSubmit={handleSave}>
@@ -297,7 +301,11 @@ export default function UserManagement() {
               <button
                 type="button"
                 className="btn btn-ghost"
-                onClick={() => setShowForm(false)}
+                onClick={() => {
+                  setShowForm(false)
+                  setEditItem(null)
+                  setForm({ email: '', password: '', role: 'ADMIN' })
+                }}
               >
                 ยกเลิก
               </button>
