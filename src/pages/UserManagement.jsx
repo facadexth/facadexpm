@@ -8,17 +8,21 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 const ROLES = ['OWNER', 'ADMIN', 'WORKER']
 
 export default function UserManagement() {
+  // ⚠️ IMPORTANT: editItem controls create/edit mode
+  // editItem === null → CREATE mode (show password)
+  // editItem !== null → EDIT mode (hide password)
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [isCreating, setIsCreating] = useState(false)
   const [editItem, setEditItem] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
-
   const [form, setForm] = useState({ email: '', password: '', role: 'ADMIN' })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // Derive mode from editItem to avoid sync issues
+  const isCreating = editItem === null && showForm
 
   const fetchUsers = async () => {
     setLoading(true)
@@ -41,13 +45,10 @@ export default function UserManagement() {
   , [users, search])
 
   const handleOpen = (item) => {
+    setEditItem(item || null)
     if (item) {
-      setIsCreating(false)
-      setEditItem(item)
       setForm({ email: item.user_email, password: '', role: item.role })
     } else {
-      setIsCreating(true)
-      setEditItem(null)
       setForm({ email: '', password: '', role: 'ADMIN' })
     }
     setShowForm(true)
