@@ -3,10 +3,8 @@
 // ============================================================
 import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
-import Signup from './Signup.jsx'
 
 export default function Login() {
-  const [showSignup, setShowSignup] = useState(false)
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
   const [loading,  setLoading]  = useState(false)
@@ -19,10 +17,6 @@ export default function Login() {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) setError(error.message)
     setLoading(false)
-  }
-
-  if (showSignup) {
-    return <Signup onSignupSuccess={() => setShowSignup(false)} />
   }
 
   return (
@@ -84,15 +78,7 @@ export default function Login() {
         </form>
 
         <div style={{ marginTop: 24, textAlign: 'center', fontSize: 12, color: 'var(--text3)' }}>
-          ยังไม่มีบัญชี?{' '}
-          <button
-            type="button"
-            className="link"
-            onClick={() => setShowSignup(true)}
-            style={{ color: 'var(--accent)', fontWeight: 600, cursor: 'pointer' }}
-          >
-            สมัครสมาชิก
-          </button>
+          ติดต่อ Owner เพื่อขอสร้างบัญชี
         </div>
       </div>
     </div>

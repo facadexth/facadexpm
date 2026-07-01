@@ -30,38 +30,22 @@ export default function Signup({ onSignupSuccess }) {
 
     setLoading(true)
     try {
-      // Check if email already exists
-      const { data: existing } = await supabase
-        .from('user_roles')
-        .select('id')
-        .eq('user_email', email)
-        .single()
-
-      if (existing) {
-        setError('อีเมลนี้ลงทะเบียนแล้ว กรุณา Login')
-        setLoading(false)
-        return
-      }
-
-      const { data, error: signupError } = await supabase.auth.signUp({
-        email,
-        password
+      // Call signup Edge Function (bypasses rate limiting)
+      const res = await fetch('https://yyzbgdmgyvvypfcjuhtr.functions.supabase.co/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
       })
 
-      if (signupError) throw signupError
+      const data = await res.json()
 
-      if (!data.user) throw new Error('Failed to create user')
-
-      // Create pending role record
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({
-          user_email: email,
-          role: 'WORKER',
-          status: 'pending'
-        })
-
-      if (roleError) throw roleError
+      if (!res.ok) {
+        let errorMsg = data.error || 'Signup failed'
+        if (errorMsg.includes('already')) {
+          errorMsg = 'อีเมลนี้ลงทะเบียนแล้ว กรุณา Login'
+        }
+        throw new Error(errorMsg)
+      }
 
       setSuccess(true)
       setEmail('')
@@ -72,16 +56,7 @@ export default function Signup({ onSignupSuccess }) {
         onSignupSuccess?.()
       }, 2000)
     } catch (e) {
-      let errorMsg = e.message || 'Error creating account'
-
-      // Better error messages
-      if (errorMsg.includes('rate limit') || errorMsg.includes('rate_limit')) {
-        errorMsg = 'ส่งคำขอสูงเกินไป กรุณารอ 1 นาทีแล้วลองใหม่'
-      } else if (errorMsg.includes('already exists') || errorMsg.includes('user already')) {
-        errorMsg = 'อีเมลนี้ลงทะเบียนแล้ว กรุณา Login หรือใช้อีเมลอื่น'
-      }
-
-      setError(errorMsg)
+      setError(e.message || 'Error creating account')
     } finally {
       setLoading(false)
     }

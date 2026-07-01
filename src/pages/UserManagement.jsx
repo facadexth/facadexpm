@@ -11,17 +11,13 @@ export default function UserManagement() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [editItem, setEditItem] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
-  const [approvingId, setApprovingId] = useState(null)
-  const [approveRole, setApproveRole] = useState('ADMIN')
 
   const [form, setForm] = useState({ email: '', password: '', role: 'ADMIN' })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  // Fetch users (approved + pending)
   const fetchUsers = async () => {
     setLoading(true)
     const { data, error } = await supabase
@@ -30,20 +26,6 @@ export default function UserManagement() {
       .order('created_at', { ascending: false })
     if (!error) setUsers(data || [])
     setLoading(false)
-  }
-
-  // Approve pending user
-  const handleApprovePending = async (id, role) => {
-    try {
-      const { error } = await supabase
-        .from('user_roles')
-        .update({ status: 'approved', role })
-        .eq('id', id)
-      if (error) throw error
-      fetchUsers()
-    } catch (e) {
-      alert('Error: ' + e.message)
-    }
   }
 
   useEffect(() => {
@@ -56,55 +38,54 @@ export default function UserManagement() {
     )
   , [users, search])
 
-  const pendingUsers = useMemo(() =>
-    filtered.filter(u => u.status === 'pending')
-  , [filtered])
-
-  const approvedUsers = useMemo(() =>
-    filtered.filter(u => u.status === 'approved' || !u.status)
-  , [filtered])
-
-  const handleOpen = (item) => {
-    setEditItem(item || null)
-    setForm(item ? { email: item.user_email, password: '', role: item.role } : { email: '', password: '', role: 'ADMIN' })
+  const handleOpen = () => {
+    setForm({ email: '', password: '', role: 'ADMIN' })
     setShowForm(true)
   }
 
   const handleSave = async (e) => {
     e.preventDefault()
-    if (!form.email) return alert('กรุณากรอก email')
-    if (!editItem && !form.password) return alert('กรุณากรอก password')
+    if (!form.email || !form.password) return alert('กรุณากรอกอีเมลและรหัสผ่าน')
+    if (form.password.length < 6) return alert('รหัสผ่านต้องอย่างน้อย 6 ตัว')
+
     setSaving(true)
     try {
-      if (editItem) {
-        const { error } = await supabase
-          .from('user_roles')
-          .update({ role: form.role })
-          .eq('id', editItem.id)
-        if (error) throw error
-      } else {
-        const { data: { session } } = await supabase.auth.getSession()
-        const token = session?.access_token
-        if (!token) throw new Error('Not authenticated')
+      // Check if email exists
+      const { data: existing } = await supabase
+        .from('user_roles')
+        .select('id')
+        .eq('user_email', form.email)
+        .single()
 
-        const res = await fetch('https://yyzbgdmgyvvypfcjuhtr.functions.supabase.co/create-user', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            email: form.email,
-            password: form.password,
-            role: form.role
-          })
+      if (existing) {
+        alert('อีเมลนี้ลงทะเบียนแล้ว')
+        setSaving(false)
+        return
+      }
+
+      // Create auth user
+      const { data, error: authError } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password
+      })
+
+      if (authError) throw authError
+      if (!data.user) throw new Error('Failed to create auth user')
+
+      // Add to user_roles
+      const { error: roleError } = await supabase
+        .from('user_roles')
+        .insert({
+          user_email: form.email,
+          role: form.role
         })
 
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error || 'Failed to create user')
-      }
+      if (roleError) throw roleError
+
       setShowForm(false)
+      setForm({ email: '', password: '', role: 'ADMIN' })
       fetchUsers()
+      alert('✅ สร้าง user สำเร็จ')
     } catch (e) {
       alert('Error: ' + e.message)
     } finally {
@@ -131,6 +112,9 @@ export default function UserManagement() {
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ marginBottom: 16, fontSize: 18, fontWeight: 700 }}>👥 จัดการ Users & Roles</h2>
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={handleOpen}>
+            + สร้าง User ใหม่
+          </button>
           <input
             className="input input-sm"
             style={{ width: 220 }}
@@ -139,9 +123,7 @@ export default function UserManagement() {
             onChange={e => setSearch(e.target.value)}
           />
           <span style={{ color: 'var(--text3)', fontSize: 13 }}>
-            {pendingUsers.length > 0 && `🔔 ${pendingUsers.length} รอคอนเฟิร์ม`}
-            {pendingUsers.length > 0 && approvedUsers.length > 0 && ' • '}
-            {approvedUsers.length > 0 && `✅ ${approvedUsers.length} อนุมัติแล้ว`}
+            {filtered.length} รายการ
           </span>
         </div>
       </div>
@@ -151,142 +133,72 @@ export default function UserManagement() {
           กำลังโหลด...
         </div>
       ) : (
-        <div style={{ display: 'grid', gap: 20 }}>
-          {/* Pending Users */}
-          {pendingUsers.length > 0 && (
-            <div className="card" style={{ borderTop: '3px solid var(--red)' }}>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, color: 'var(--red)' }}>
-                🔔 รอการยืนยัน ({pendingUsers.length})
-              </div>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Email</th>
-                      <th style={{ width: 120 }}>Role</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pendingUsers.map(u => (
-                      <tr key={u.id}>
-                        <td style={{ fontWeight: 600 }}>{u.user_email}</td>
-                        <td>
-                          <select
-                            className="select select-sm"
-                            value={approvingId === u.id ? approveRole : 'ADMIN'}
-                            onChange={e => {
-                              setApprovingId(u.id)
-                              setApproveRole(e.target.value)
-                            }}
-                            style={{ minWidth: 100 }}
-                          >
-                            {ROLES.map(r => (
-                              <option key={r} value={r}>{r}</option>
-                            ))}
-                          </select>
-                        </td>
-                        <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
-                          <button
-                            className="btn btn-sm btn-primary"
-                            onClick={() => handleApprovePending(u.id, approvingId === u.id ? approveRole : 'ADMIN')}
-                          >
-                            ✓ ยืนยัน
-                          </button>
-                          <button
-                            className="btn btn-sm btn-ghost"
-                            style={{ color: 'var(--red)' }}
-                            onClick={() => setDeleteId(u.id)}
-                          >
-                            ลบ
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Approved Users */}
-          {approvedUsers.length > 0 && (
-            <div className="card">
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, color: 'var(--text2)' }}>
-                ✅ อนุมัติแล้ว ({approvedUsers.length})
-              </div>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Email</th>
-                      <th>Role</th>
-                      <th>เพิ่มเมื่อ</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {approvedUsers.map(u => (
-                      <tr key={u.id}>
-                        <td style={{ fontWeight: 600 }}>{u.user_email}</td>
-                        <td>
-                          <span
-                            className="badge"
-                            style={{
-                              background:
-                                u.role === 'OWNER'
-                                  ? 'rgba(255,107,107,0.2)'
-                                  : u.role === 'ADMIN'
-                                  ? 'rgba(108,99,255,0.2)'
-                                  : 'rgba(0,212,170,0.2)',
-                              color:
-                                u.role === 'OWNER'
-                                  ? 'var(--red)'
-                                  : u.role === 'ADMIN'
-                                  ? 'var(--accent)'
-                                  : 'var(--green)',
-                            }}
-                          >
-                            {u.role}
-                          </span>
-                        </td>
-                        <td style={{ fontSize: 12, color: 'var(--text3)' }}>
-                          {new Date(u.created_at).toLocaleDateString('th-TH')}
-                        </td>
-                        <td style={{ whiteSpace: 'nowrap' }}>
-                          <button
-                            className="btn btn-sm btn-ghost"
-                            onClick={() => handleOpen(u)}
-                          >
-                            แก้ไข
-                          </button>
-                          <button
-                            className="btn btn-sm btn-ghost"
-                            style={{ color: 'var(--red)' }}
-                            onClick={() => setDeleteId(u.id)}
-                          >
-                            ลบ
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {!filtered.length && (
-            <div style={{ textAlign: 'center', color: 'var(--text3)', padding: 40 }}>
-              ไม่พบ user
-            </div>
-          )}
+        <div className="card">
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>เพิ่มเมื่อ</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(u => (
+                  <tr key={u.id}>
+                    <td style={{ fontWeight: 600 }}>{u.user_email}</td>
+                    <td>
+                      <span
+                        className="badge"
+                        style={{
+                          background:
+                            u.role === 'OWNER'
+                              ? 'rgba(255,107,107,0.2)'
+                              : u.role === 'ADMIN'
+                              ? 'rgba(108,99,255,0.2)'
+                              : 'rgba(0,212,170,0.2)',
+                          color:
+                            u.role === 'OWNER'
+                              ? 'var(--red)'
+                              : u.role === 'ADMIN'
+                              ? 'var(--accent)'
+                              : 'var(--green)',
+                        }}
+                      >
+                        {u.role}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 12, color: 'var(--text3)' }}>
+                      {new Date(u.created_at).toLocaleDateString('th-TH')}
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button
+                        className="btn btn-sm btn-ghost"
+                        style={{ color: 'var(--red)' }}
+                        onClick={() => setDeleteId(u.id)}
+                      >
+                        ลบ
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!filtered.length && (
+                  <tr>
+                    <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>
+                      ไม่พบ user
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {showForm && (
         <Modal
-          title={editItem ? 'แก้ไข User' : 'เพิ่ม User ใหม่'}
+          title="สร้าง User ใหม่"
           onClose={() => setShowForm(false)}
           maxWidth={400}
         >
@@ -298,25 +210,22 @@ export default function UserManagement() {
                   className="input"
                   type="email"
                   required
-                  disabled={!!editItem}
                   value={form.email}
                   onChange={e => set('email', e.target.value)}
                   placeholder="user@example.com"
                 />
               </div>
-              {!editItem && (
-                <div>
-                  <label className="label">Password ★</label>
-                  <input
-                    className="input"
-                    type="password"
-                    required
-                    value={form.password}
-                    onChange={e => set('password', e.target.value)}
-                    placeholder="กรุณากรอก password"
-                  />
-                </div>
-              )}
+              <div>
+                <label className="label">Password ★</label>
+                <input
+                  className="input"
+                  type="password"
+                  required
+                  value={form.password}
+                  onChange={e => set('password', e.target.value)}
+                  placeholder="อย่างน้อย 6 ตัวอักษร"
+                />
+              </div>
               <div>
                 <label className="label">Role ★</label>
                 <select
@@ -359,7 +268,7 @@ export default function UserManagement() {
                 className="btn btn-primary"
                 disabled={saving}
               >
-                {saving ? '⏳...' : '✅ บันทึก'}
+                {saving ? '⏳...' : '✅ สร้าง'}
               </button>
             </div>
           </form>
