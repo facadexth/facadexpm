@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase.js'
 import { useUserRole } from './hooks/useUserRole.js'
 import { ProtectedPage } from './components/ProtectedPage.jsx'
+import ChangePassword from './components/ChangePassword.jsx'
 import Login      from './pages/Login.jsx'
 import Dashboard   from './pages/Dashboard.jsx'
 import Sites       from './pages/Sites.jsx'
@@ -39,6 +40,7 @@ export default function App() {
   const [session,  setSession]  = useState(undefined) // undefined = loading
   const [activeTab, setActiveTab] = useState('dashboard')
   const [navState, setNavState] = useState({})
+  const [showChangePassword, setShowChangePassword] = useState(false)
   const { role, isAtLeast, loading: roleLoading } = useUserRole()
 
   useEffect(() => {
@@ -139,6 +141,13 @@ export default function App() {
           <button
             className="btn btn-ghost btn-sm"
             style={{ fontSize: 12 }}
+            onClick={() => setShowChangePassword(true)}
+          >
+            🔑 เปลี่ยนรหัสผ่าน
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ fontSize: 12 }}
             onClick={() => supabase.auth.signOut()}
           >
             ออกจากระบบ
@@ -172,6 +181,10 @@ export default function App() {
       <main style={{ flex: 1, padding: '20px 24px', maxWidth: 1440, margin: '0 auto', width: '100%' }}>
         {renderPage()}
       </main>
+
+      {showChangePassword && (
+        <ChangePassword onClose={() => setShowChangePassword(false)} />
+      )}
     </div>
   )
 }
