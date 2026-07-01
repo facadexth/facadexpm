@@ -11,6 +11,7 @@ export default function UserManagement() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
   const [editItem, setEditItem] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -41,9 +42,11 @@ export default function UserManagement() {
 
   const handleOpen = (item) => {
     if (item) {
+      setIsCreating(false)
       setEditItem(item)
       setForm({ email: item.user_email, password: '', role: item.role })
     } else {
+      setIsCreating(true)
       setEditItem(null)
       setForm({ email: '', password: '', role: 'ADMIN' })
     }
@@ -225,25 +228,25 @@ export default function UserManagement() {
 
       {showForm && (
         <Modal
-          title={editItem ? 'แก้ไข User' : 'สร้าง User ใหม่'}
+          title={isCreating ? 'สร้าง User ใหม่' : 'แก้ไข User'}
           onClose={() => setShowForm(false)}
           maxWidth={400}
         >
           <form onSubmit={handleSave}>
             <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
               <div>
-                <label className="label">Email {!editItem && '★'}</label>
+                <label className="label">Email {isCreating && '★'}</label>
                 <input
                   className="input"
                   type="email"
-                  required={!editItem}
-                  disabled={!!editItem}
+                  required={isCreating}
+                  disabled={!isCreating}
                   value={form.email}
                   onChange={e => set('email', e.target.value)}
                   placeholder="user@example.com"
                 />
               </div>
-              {!editItem && (
+              {isCreating && (
                 <div>
                   <label className="label">Password ★</label>
                   <input
@@ -256,7 +259,7 @@ export default function UserManagement() {
                   />
                 </div>
               )}
-              {editItem && (
+              {!isCreating && (
                 <div style={{ fontSize: 12, color: 'var(--text3)', background: 'rgba(108,99,255,0.1)', padding: 8, borderRadius: 6 }}>
                   💡 แก้ password ไป Supabase Dashboard → Authentication → Users → เลือก user → Reset Password
                 </div>
