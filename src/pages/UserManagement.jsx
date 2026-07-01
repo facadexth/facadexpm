@@ -98,13 +98,13 @@ export default function UserManagement() {
         if (authError) throw authError
         if (!data.user) throw new Error('Failed to create auth user')
 
-        // Add to user_roles
+        // Upsert role (DB trigger may have already inserted WORKER row)
         const { error: roleError } = await supabase
           .from('user_roles')
-          .insert({
-            user_email: form.email,
-            role: form.role
-          })
+          .upsert(
+            { user_email: form.email, role: form.role },
+            { onConflict: 'user_email' }
+          )
 
         if (roleError) throw roleError
         alert('✅ สร้าง user สำเร็จ')
@@ -236,7 +236,10 @@ export default function UserManagement() {
           onClose={handleClose}
           maxWidth={400}
         >
-          <form onSubmit={handleSave}>
+          <form onSubmit={handleSave} autoComplete="off">
+            {/* Dummy fields to absorb browser autofill */}
+            <input type="text" name="username" autoComplete="username" style={{ display: 'none' }} />
+            <input type="password" name="password" autoComplete="current-password" style={{ display: 'none' }} />
             <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
               <div>
                 <label className="label">Email ★</label>
@@ -248,6 +251,7 @@ export default function UserManagement() {
                   value={form.email}
                   onChange={e => set('email', e.target.value)}
                   placeholder="user@example.com"
+                  autoComplete="off"
                 />
               </div>
               {!editItem && (
@@ -260,6 +264,7 @@ export default function UserManagement() {
                     value={form.password}
                     onChange={e => set('password', e.target.value)}
                     placeholder="อย่างน้อย 6 ตัวอักษร"
+                    autoComplete="new-password"
                   />
                 </div>
               )}
