@@ -11,6 +11,7 @@ export default function UserManagement() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [editItem, setEditItem] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
@@ -38,54 +39,74 @@ export default function UserManagement() {
     )
   , [users, search])
 
-  const handleOpen = () => {
-    setForm({ email: '', password: '', role: 'ADMIN' })
+  const handleOpen = (item) => {
+    if (item) {
+      setEditItem(item)
+      setForm({ email: item.user_email, password: '', role: item.role })
+    } else {
+      setEditItem(null)
+      setForm({ email: '', password: '', role: 'ADMIN' })
+    }
     setShowForm(true)
   }
 
   const handleSave = async (e) => {
     e.preventDefault()
-    if (!form.email || !form.password) return alert('กรุณากรอกอีเมลและรหัสผ่าน')
-    if (form.password.length < 6) return alert('รหัสผ่านต้องอย่างน้อย 6 ตัว')
 
     setSaving(true)
     try {
-      // Check if email exists
-      const { data: existing } = await supabase
-        .from('user_roles')
-        .select('id')
-        .eq('user_email', form.email)
-        .single()
+      if (editItem) {
+        // Edit mode: update role (password requires Supabase dashboard)
+        const { error } = await supabase
+          .from('user_roles')
+          .update({ role: form.role })
+          .eq('id', editItem.id)
 
-      if (existing) {
-        alert('อีเมลนี้ลงทะเบียนแล้ว')
-        setSaving(false)
-        return
-      }
+        if (error) throw error
+        alert('✅ อัปเดต role สำเร็จ')
+      } else {
+        // Create mode
+        if (!form.email || !form.password) return alert('กรุณากรอกอีเมลและรหัสผ่าน')
+        if (form.password.length < 6) return alert('รหัสผ่านต้องอย่างน้อย 6 ตัว')
 
-      // Create auth user
-      const { data, error: authError } = await supabase.auth.signUp({
-        email: form.email,
-        password: form.password
-      })
+        // Check if email exists
+        const { data: existing } = await supabase
+          .from('user_roles')
+          .select('id')
+          .eq('user_email', form.email)
+          .single()
 
-      if (authError) throw authError
-      if (!data.user) throw new Error('Failed to create auth user')
+        if (existing) {
+          alert('อีเมลนี้ลงทะเบียนแล้ว')
+          setSaving(false)
+          return
+        }
 
-      // Add to user_roles
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({
-          user_email: form.email,
-          role: form.role
+        // Create auth user
+        const { data, error: authError } = await supabase.auth.signUp({
+          email: form.email,
+          password: form.password
         })
 
-      if (roleError) throw roleError
+        if (authError) throw authError
+        if (!data.user) throw new Error('Failed to create auth user')
+
+        // Add to user_roles
+        const { error: roleError } = await supabase
+          .from('user_roles')
+          .insert({
+            user_email: form.email,
+            role: form.role
+          })
+
+        if (roleError) throw roleError
+        alert('✅ สร้าง user สำเร็จ')
+      }
 
       setShowForm(false)
+      setEditItem(null)
       setForm({ email: '', password: '', role: 'ADMIN' })
       fetchUsers()
-      alert('✅ สร้าง user สำเร็จ')
     } catch (e) {
       alert('Error: ' + e.message)
     } finally {
@@ -175,6 +196,12 @@ export default function UserManagement() {
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button
                         className="btn btn-sm btn-ghost"
+                        onClick={() => handleOpen(u)}
+                      >
+                        แก้ไข
+                      </button>
+                      <button
+                        className="btn btn-sm btn-ghost"
                         style={{ color: 'var(--red)' }}
                         onClick={() => setDeleteId(u.id)}
                       >
@@ -198,34 +225,41 @@ export default function UserManagement() {
 
       {showForm && (
         <Modal
-          title="สร้าง User ใหม่"
+          title={editItem ? 'แก้ไข User' : 'สร้าง User ใหม่'}
           onClose={() => setShowForm(false)}
           maxWidth={400}
         >
           <form onSubmit={handleSave}>
             <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
               <div>
-                <label className="label">Email ★</label>
+                <label className="label">Email</label>
                 <input
                   className="input"
                   type="email"
-                  required
+                  disabled={!!editItem}
                   value={form.email}
                   onChange={e => set('email', e.target.value)}
                   placeholder="user@example.com"
                 />
               </div>
-              <div>
-                <label className="label">Password ★</label>
-                <input
-                  className="input"
-                  type="password"
-                  required
-                  value={form.password}
-                  onChange={e => set('password', e.target.value)}
-                  placeholder="อย่างน้อย 6 ตัวอักษร"
-                />
-              </div>
+              {!editItem && (
+                <div>
+                  <label className="label">Password ★</label>
+                  <input
+                    className="input"
+                    type="password"
+                    required
+                    value={form.password}
+                    onChange={e => set('password', e.target.value)}
+                    placeholder="อย่างน้อย 6 ตัวอักษร"
+                  />
+                </div>
+              )}
+              {editItem && (
+                <div style={{ fontSize: 12, color: 'var(--text3)', background: 'rgba(108,99,255,0.1)', padding: 8, borderRadius: 6 }}>
+                  💡 แก้ password ไป Supabase Dashboard → Authentication → Users → เลือก user → Reset Password
+                </div>
+              )}
               <div>
                 <label className="label">Role ★</label>
                 <select
@@ -268,7 +302,7 @@ export default function UserManagement() {
                 className="btn btn-primary"
                 disabled={saving}
               >
-                {saving ? '⏳...' : '✅ สร้าง'}
+                {saving ? '⏳...' : editItem ? '✅ อัปเดต' : '✅ สร้าง'}
               </button>
             </div>
           </form>
