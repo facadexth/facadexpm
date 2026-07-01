@@ -45,6 +45,7 @@ export default function UserManagement() {
   , [users, search])
 
   const handleOpen = (item) => {
+    console.log('handleOpen called with item:', item)
     // Force reset everything first
     setEditItem(null)
     setForm({ email: '', password: '', role: 'ADMIN' })
@@ -52,8 +53,11 @@ export default function UserManagement() {
     // Then set edit mode if item exists
     setTimeout(() => {
       if (item) {
+        console.log('Setting edit mode for:', item.user_email)
         setEditItem(item)
         setForm({ email: item.user_email, password: '', role: item.role })
+      } else {
+        console.log('Setting create mode - empty form')
       }
       setShowForm(true)
     }, 0)
