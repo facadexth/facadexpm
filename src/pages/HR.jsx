@@ -376,7 +376,7 @@ export default function HR() {
       ;(assigns||[]).forEach(a => {
         const w = a.workers; if (!w) return
         if (!wmap[a.worker_id]) wmap[a.worker_id] = { worker: w, leave: 0, ot_hours: 0 }
-        if (a.type === 'leave') wmap[a.worker_id].leave++
+        if (a.type === 'leave') wmap[a.worker_id].leave += 0.5  // 1 กะ = 0.5 วัน (เช้า+เย็น = 1 วัน)
         if (a.type === 'site')  wmap[a.worker_id].ot_hours += (a.ot_hours||0)
       })
       const results = Object.entries(wmap).map(([worker_id, d]) => {

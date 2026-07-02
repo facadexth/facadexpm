@@ -1,6 +1,11 @@
 -- ================================================================
 -- FACADE X — Supabase Database Schema
 -- Run this in: Supabase Dashboard > SQL Editor > New Query
+--
+-- ⚠️ This file has drifted from the live DB in places. For changes made
+-- on/after 2026-07-02, the authoritative record is supabase/migrations/*.sql.
+-- The worker_assignments / labor_cost_by_site definitions below and the
+-- app_settings / site_travel_cost objects reflect the 2026-07-02 redesign.
 -- ================================================================
 
 -- Enable UUID extension
@@ -19,6 +24,8 @@ CREATE TABLE sites (
   start_date    DATE,
   end_date      DATE,
   contract_value DECIMAL(15,2) DEFAULT 0,       -- มูลค่างานรวม
+  distance_km    NUMERIC,                        -- ระยะทางเที่ยวเดียวจากโรงงาน (คิดค่าเดินทาง)
+  map_url        TEXT,                           -- ลิงก์ Google Maps
 
   -- แผนต้นทุน (plan_type = 'value' หรือ 'percent')
   plan_type     TEXT DEFAULT 'value' CHECK (plan_type IN ('value','percent')),
@@ -183,12 +190,15 @@ CREATE TABLE worker_assignments (
   worker_id   UUID NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
   site_id     UUID REFERENCES sites(id) ON DELETE SET NULL,
   date        DATE NOT NULL,
-  -- type: site = ทำงานที่ไซท์, leave = ลา, office = งานออฟฟิศ, holiday = หยุด
+  -- type: site=ที่ไซท์, factory=ผลิตที่โรงงานให้ไซท์, leave=ลา, office=ออฟฟิศ, holiday=หยุด, subcontract
   type        TEXT DEFAULT 'site'
-              CHECK (type IN ('site','leave','office','holiday','subcontract')),
+              CHECK (type IN ('site','leave','office','holiday','subcontract','factory')),
+  -- shift: morning/evening — 1 กะ = 0.5 วัน (เช้า+เย็น = เต็มวัน)
+  shift       TEXT NOT NULL DEFAULT 'morning' CHECK (shift IN ('morning','evening')),
+  ot_hours    NUMERIC DEFAULT 0,
   notes       TEXT,
   created_at  TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE (worker_id, date)  -- 1 คน 1 วัน 1 assignment
+  UNIQUE (worker_id, date, shift)  -- 1 คน 1 วัน 1 กะ
 );
 
 
@@ -281,6 +291,7 @@ GROUP BY 1, 4, 5
 ORDER BY 1;
 
 -- ค่าแรงช่างต่อไซท์ (จาก assignments × daily_rate)
+-- half-day counting (each shift row = 0.5 day); includes factory production
 CREATE OR REPLACE VIEW labor_cost_by_site AS
 SELECT
   wa.site_id,
@@ -289,13 +300,30 @@ SELECT
   wa.worker_id,
   w.name        AS worker_name,
   w.nickname,
-  COUNT(*)      AS days_worked,
-  ROUND(w.monthly_salary / 26 * COUNT(*), 2) AS labor_cost
+  COUNT(*) * 0.5 AS days_worked,
+  ROUND(w.monthly_salary / 26 * (COUNT(*) * 0.5), 2) AS labor_cost
 FROM worker_assignments wa
 JOIN workers w ON wa.worker_id = w.id
 JOIN sites s ON wa.site_id = s.id
-WHERE wa.type = 'site'
+WHERE wa.type IN ('site','factory')
 GROUP BY wa.site_id, s.name, s.site_number, wa.worker_id, w.name, w.nickname, w.monthly_salary;
+
+-- travel cost per site: distance x 2 (round trip) x rate, once per distinct 'site' workday
+CREATE OR REPLACE VIEW site_travel_cost AS
+SELECT wa.site_id,
+       COUNT(DISTINCT wa.date) AS travel_days,
+       s.distance_km,
+       ROUND(COUNT(DISTINCT wa.date) * COALESCE(s.distance_km,0) * 2
+             * (SELECT value::numeric FROM app_settings WHERE key='travel_rate_per_km'), 2) AS travel_cost
+FROM worker_assignments wa
+JOIN sites s ON wa.site_id = s.id
+WHERE wa.type = 'site'
+GROUP BY wa.site_id, s.distance_km;
+
+-- app-wide settings (key/value). Seeded: travel_rate_per_km = 20
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
 
 -- ----------------------------------------------------------------
