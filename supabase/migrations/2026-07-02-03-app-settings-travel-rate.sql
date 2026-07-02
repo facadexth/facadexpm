@@ -9,3 +9,6 @@ CREATE TABLE IF NOT EXISTS app_settings (
 
 INSERT INTO app_settings (key, value) VALUES ('travel_rate_per_km','20')
 ON CONFLICT (key) DO NOTHING;
+
+-- app connects as authenticated (Supabase Auth); RLS left off like other tables
+GRANT SELECT, INSERT, UPDATE ON app_settings TO anon, authenticated;

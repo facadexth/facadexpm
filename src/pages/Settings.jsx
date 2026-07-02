@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { useAppSetting, saveAppSetting } from '../hooks/useSupabase.js'
 
 const DEFAULT_PERMISSIONS = {
   WORKER: {
@@ -65,6 +66,25 @@ export default function Settings() {
   const [permissions, setPermissions] = useState(DEFAULT_PERMISSIONS)
   const [saving, setSaving] = useState(false)
 
+  // Travel rate (baht/km) — stored in app_settings
+  const { data: travelRateVal, refetch: refetchRate } = useAppSetting('travel_rate_per_km', '20')
+  const [travelRate, setTravelRate] = useState('')
+  const [savingRate, setSavingRate] = useState(false)
+  useEffect(() => { if (travelRateVal != null) setTravelRate(String(travelRateVal)) }, [travelRateVal])
+
+  const handleSaveRate = async () => {
+    setSavingRate(true)
+    try {
+      await saveAppSetting('travel_rate_per_km', parseFloat(travelRate) || 0)
+      refetchRate()
+      alert('✅ บันทึกค่าเดินทางแล้ว')
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setSavingRate(false)
+    }
+  }
+
   // Load permissions from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('role_permissions')
@@ -108,6 +128,24 @@ export default function Settings() {
 
   return (
     <div>
+      {/* ── ค่าเดินทาง ── */}
+      <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
+        <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🚗 ค่าเดินทางต่อไซท์</h2>
+        <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
+          ใช้คิดค่าเดินทาง = ระยะทางไซท์ (กม.) × 2 (ไป-กลับ) × เรทนี้ ต่อวันที่มีงานที่ไซท์
+        </p>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div>
+            <label className="label">เรทค่าเดินทาง (บาท/กม.)</label>
+            <input type="number" className="input" min="0" step="0.5" style={{ width: 160 }}
+              value={travelRate} onChange={e => setTravelRate(e.target.value)} />
+          </div>
+          <button className="btn btn-primary" onClick={handleSaveRate} disabled={savingRate}>
+            {savingRate ? '⏳ กำลังบันทึก...' : '✅ บันทึกเรท'}
+          </button>
+        </div>
+      </div>
+
       <div style={{ marginBottom: 24 }}>
         <h2 style={{ marginBottom: 8, fontSize: 18, fontWeight: 700 }}>⚙️ ตั้งค่าสิทธิ์เข้าใช้งาน</h2>
         <p style={{ fontSize: 13, color: 'var(--text3)' }}>

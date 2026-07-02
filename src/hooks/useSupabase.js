@@ -148,6 +148,32 @@ export function useLaborCost(siteId) {
   }, [siteId])
 }
 
+// ── App Settings (key/value) ──────────────────────────────────
+
+export function useAppSetting(key, fallback = '') {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('app_settings').select('value').eq('key', key).maybeSingle()
+    if (error) throw error
+    return data?.value ?? fallback
+  }, [key])
+}
+
+export async function saveAppSetting(key, value) {
+  const { error } = await supabase.from('app_settings')
+    .upsert({ key, value: String(value), updated_at: new Date().toISOString() }, { onConflict: 'key' })
+  if (error) throw error
+}
+
+/** ค่าเดินทางต่อไซท์ (distance × 2 × rate ต่อวันที่มีงานไซท์) */
+export function useSiteTravelCost() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.from('site_travel_cost').select('*')
+    if (error) throw error
+    return data
+  })
+}
+
 // ── Expense Categories ────────────────────────────────────────
 
 export function useCategories() {
