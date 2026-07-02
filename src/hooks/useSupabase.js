@@ -137,6 +137,21 @@ export function useAssignments(month, year) {
   }, [month, year])
 }
 
+/** Assignments ในช่วงวันที่ (รวม shift) — ใช้กับมุมมอง Day/Week/Month */
+export function useAssignmentsRange(from, to) {
+  return useQuery(async () => {
+    if (!from || !to) return []
+    const { data, error } = await supabase
+      .from('worker_assignments')
+      .select('id, worker_id, site_id, date, type, shift, ot_hours, notes, workers(name, nickname, monthly_salary), sites(name, site_number)')
+      .gte('date', from)
+      .lte('date', to)
+      .order('date')
+    if (error) throw error
+    return data
+  }, [from, to])
+}
+
 /** ค่าแรงช่างต่อไซท์ */
 export function useLaborCost(siteId) {
   return useQuery(async () => {
