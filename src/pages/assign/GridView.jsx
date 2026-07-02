@@ -1,28 +1,30 @@
 // ============================================================
 // GridView — workers × days matrix (used by Month & Week views)
+// Fills full width: day columns share the space equally (equal gaps),
+// cells stretch to fill their column so no dead space on the right.
 // ============================================================
 import { fmt } from '../../lib/supabase.js'
 import AssignCell from './AssignCell.jsx'
 import { DOW_TH, SITE_TYPES } from './constants.js'
 
-export default function GridView({ days, workers, cellLookup, onEditHalf, cellW = 30, cellH = 30 }) {
+export default function GridView({ days, workers, cellLookup, onEditHalf, cellH = 32, variant = 'week' }) {
   return (
     <div className="card" style={{ marginBottom: 20 }}>
       <div className="table-wrap" style={{ overflowX: 'auto' }}>
-        <table style={{ width: 'max-content', minWidth: 0 }}>
+        <table style={{ width: '100%', tableLayout: 'fixed' }}>
           <thead>
             <tr>
-              <th style={{ minWidth: 100, position: 'sticky', left: 0, background: 'var(--bg3)', zIndex: 10 }}>ช่าง</th>
+              <th style={{ width: 150, position: 'sticky', left: 0, background: 'var(--bg3)', zIndex: 10 }}>ช่าง</th>
               {days.map(d => (
                 <th key={d.iso} style={{
-                  minWidth: cellW, padding: '6px 2px', textAlign: 'center', fontSize: 10,
+                  padding: '6px 2px', textAlign: 'center', fontSize: 10,
                   color: d.isSunday ? 'var(--text3)' : 'var(--text2)', opacity: d.isSunday ? 0.45 : 1,
                 }}>
                   <div style={{ fontSize: 9 }}>{DOW_TH[d.dow]}</div>
                   <div>{d.date.getDate()}</div>
                 </th>
               ))}
-              <th style={{ minWidth: 50, textAlign: 'right' }}>รวมวัน</th>
+              <th style={{ width: 60, textAlign: 'right' }}>รวมวัน</th>
             </tr>
           </thead>
           <tbody>
@@ -36,7 +38,7 @@ export default function GridView({ days, workers, cellLookup, onEditHalf, cellW 
               })
               return (
                 <tr key={w.id}>
-                  <td style={{ position: 'sticky', left: 0, background: 'var(--bg3)', zIndex: 5, whiteSpace: 'nowrap' }}>
+                  <td style={{ position: 'sticky', left: 0, background: 'var(--bg3)', zIndex: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{w.nickname || w.name}</div>
                     <div style={{ fontSize: 10, color: 'var(--text3)' }}>{fmt(Math.round((w.monthly_salary || 0) / 26))} บ/วัน</div>
                   </td>
@@ -44,7 +46,7 @@ export default function GridView({ days, workers, cellLookup, onEditHalf, cellW 
                     <td key={d.iso} style={{ padding: 2, textAlign: 'center', opacity: d.isSunday ? 0.5 : 1 }}>
                       <AssignCell
                         cell={row[d.iso] || {}}
-                        w={cellW} h={cellH}
+                        w="100%" h={cellH} variant={variant}
                         onEdit={(shift) => !d.isSunday && onEditHalf(w, d.iso, shift)}
                       />
                     </td>

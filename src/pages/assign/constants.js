@@ -32,3 +32,32 @@ export const SHIFTS = [
 ]
 
 export const DOW_TH = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']  // index by getDay() (0=Sun)
+
+// ── per-site colours (so different sites are visually distinct in the grid) ──
+const SITE_PALETTE = [
+  { bg: 'rgba(108,99,255,0.30)',  color: '#c2bdff' },
+  { bg: 'rgba(0,212,170,0.30)',   color: '#5fe6ca' },
+  { bg: 'rgba(255,209,102,0.30)', color: '#ffd980' },
+  { bg: 'rgba(78,205,196,0.30)',  color: '#6fd8d0' },
+  { bg: 'rgba(255,107,107,0.30)', color: '#ff9d9d' },
+  { bg: 'rgba(186,104,255,0.30)', color: '#d8b0ff' },
+  { bg: 'rgba(120,190,255,0.30)', color: '#9dd2ff' },
+  { bg: 'rgba(255,159,67,0.30)',  color: '#ffbd80' },
+  { bg: 'rgba(150,220,120,0.30)', color: '#b6e89a' },
+  { bg: 'rgba(255,140,190,0.30)', color: '#ffb3d4' },
+]
+
+export function siteColor(siteId) {
+  if (!siteId) return SITE_PALETTE[0]
+  let h = 0
+  for (let i = 0; i < siteId.length; i++) h = (h * 31 + siteId.charCodeAt(i)) >>> 0
+  return SITE_PALETTE[h % SITE_PALETTE.length]
+}
+
+/** ตัวย่อชื่อไซท์สำหรับ month view (หลายคำ = อักษรแรกของแต่ละคำ, คำเดียว = 4 ตัวแรก) */
+export function siteAbbrev(name) {
+  if (!name) return '—'
+  const words = name.trim().split(/\s+/)
+  if (words.length >= 2) return words.slice(0, 3).map(w => w[0]).join('').toUpperCase()
+  return name.trim().slice(0, 4)
+}

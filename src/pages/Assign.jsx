@@ -49,7 +49,7 @@ export default function Assign({ navState }) {
     ;(assignments || []).forEach(a => {
       const w = m[a.worker_id] || (m[a.worker_id] = {})
       const c = w[a.date] || (w[a.date] = {})
-      c[a.shift] = { id: a.id, type: a.type || 'site', site_id: a.site_id, site_number: a.sites?.site_number, ot: a.ot_hours || 0 }
+      c[a.shift] = { id: a.id, type: a.type || 'site', site_id: a.site_id, site_number: a.sites?.site_number, site_name: a.sites?.name, ot: a.ot_hours || 0 }
     })
     return m
   }, [assignments])
@@ -132,7 +132,7 @@ export default function Assign({ navState }) {
     setCellTarget({ worker, date, shift, existing })
   }
 
-  const cellSize = view === 'month' ? { w: 26, h: 30 } : { w: 46, h: 34 }
+  const cellH = view === 'month' ? 30 : 38
 
   return (
     <div>
@@ -154,7 +154,7 @@ export default function Assign({ navState }) {
       {view === 'day' ? (
         <DayView dayIso={from} assignments={assignments} sites={sites} travelRate={travelRate} onEditHalf={openCell} />
       ) : (
-        <GridView days={days} workers={workers} cellLookup={cellLookup} onEditHalf={openCell} cellW={cellSize.w} cellH={cellSize.h} />
+        <GridView days={days} workers={workers} cellLookup={cellLookup} onEditHalf={openCell} cellH={cellH} variant={view} />
       )}
 
       {/* ── Labor + Travel cost per site ── */}
