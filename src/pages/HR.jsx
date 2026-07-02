@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase.js'
 import { useWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
+import SearchableSelect from '../components/SearchableSelect.jsx'
 import { auditLog } from '../lib/audit.js'
 
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
@@ -140,13 +141,16 @@ function SalaryForm({ initial = EMPTY_SALARY, workers, onSave, onCancel, loading
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
         <div>
           <label className="label">ช่าง / พนักงาน ★</label>
-          <select className="select" required value={form.worker_id} onChange={e => {
-            const w = (workers||[]).find(x => x.id === e.target.value)
-            if (w) prefill(w); else set('worker_id', e.target.value)
-          }}>
-            <option value="">— เลือก —</option>
-            {(workers||[]).map(w => <option key={w.id} value={w.id}>{w.name}{w.nickname ? ` (${w.nickname})` : ''}</option>)}
-          </select>
+          <SearchableSelect
+            required
+            value={form.worker_id}
+            onChange={id => {
+              const w = (workers||[]).find(x => x.id === id)
+              if (w) prefill(w); else set('worker_id', id)
+            }}
+            placeholder="— เลือก —"
+            options={(workers||[]).map(w => ({ value: w.id, label: `${w.name}${w.nickname ? ` (${w.nickname})` : ''}`, keywords: `${w.name} ${w.nickname || ''}` }))}
+          />
         </div>
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1 }}>รายรับ</div>
         <div className="form-grid-3">

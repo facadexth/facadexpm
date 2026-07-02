@@ -14,7 +14,16 @@ import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
+import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
+
+const siteOpts = (sites) => (sites || []).map(s => ({
+  value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
+}))
+const catOpts = (categories) => (categories || []).map(c => ({ value: c.id, label: c.name, keywords: c.name }))
+const supplierOpts = (suppliers) => (suppliers || []).map(s => ({
+  value: s.id, label: `${s.supplier_number} · ${s.name}`, keywords: `${s.supplier_number} ${s.name}`,
+}))
 
 const PAYMENT_METHODS = ['transfer', 'check', 'cash']
 const STATUSES = ['paid', 'pending', 'check_issued', 'check_cleared']
@@ -50,31 +59,39 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
         <div className="form-grid-2">
           <div>
             <label className="label">ไซท์งาน ★</label>
-            <select className="select" required value={form.site_id} onChange={e => set('site_id', e.target.value)}>
-              <option value="">— เลือกไซท์ —</option>
-              {(sites || []).map(s => <option key={s.id} value={s.id}>{s.site_number} · {s.name}</option>)}
-            </select>
+            <SearchableSelect
+              required
+              value={form.site_id}
+              onChange={id => set('site_id', id)}
+              placeholder="— เลือกไซท์ —"
+              options={siteOpts(sites)}
+            />
           </div>
           <div>
             <label className="label">หมวดค่าใช้จ่าย ★</label>
-            <select className="select" required value={form.category_id} onChange={e => set('category_id', e.target.value)}>
-              <option value="">— เลือกหมวด —</option>
-              {(categories || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <SearchableSelect
+              required
+              value={form.category_id}
+              onChange={id => set('category_id', id)}
+              placeholder="— เลือกหมวด —"
+              options={catOpts(categories)}
+            />
           </div>
         </div>
         <div className="form-grid-2">
           <div>
             <label className="label">Supplier</label>
-            <select className="select" value={form.supplier_id} onChange={e => {
-              const sup = suppliers.find(s => s.id === e.target.value)
-              set('supplier_id', e.target.value)
-              if (sup) set('supplier', sup.name)
-              else if (!e.target.value) set('supplier', '')
-            }}>
-              <option value="">— เลือก Supplier —</option>
-              {suppliers.map(s => <option key={s.id} value={s.id}>{s.supplier_number} · {s.name}</option>)}
-            </select>
+            <SearchableSelect
+              value={form.supplier_id}
+              onChange={id => {
+                const sup = suppliers.find(s => s.id === id)
+                set('supplier_id', id)
+                if (sup) set('supplier', sup.name)
+                else if (!id) set('supplier', '')
+              }}
+              placeholder="— เลือก Supplier —"
+              options={supplierOpts(suppliers)}
+            />
           </div>
           <div>
             <label className="label">มูลค่า (บาท) ★</label>
@@ -236,14 +253,12 @@ export default function Expenses({ navigateTo, navState }) {
 
       {/* ── Sub-filters ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select className="select select-sm" value={siteId} onChange={e => setSiteId(e.target.value)} style={{ minWidth: 180 }}>
-          <option value="">ทุกไซท์งาน</option>
-          {(sites || []).map(s => <option key={s.id} value={s.id}>{s.site_number} · {s.name}</option>)}
-        </select>
-        <select className="select select-sm" value={catId} onChange={e => setCatId(e.target.value)} style={{ minWidth: 150 }}>
-          <option value="">ทุกหมวด</option>
-          {(categories || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        <div style={{ minWidth: 200 }}>
+          <SearchableSelect value={siteId} onChange={setSiteId} placeholder="ทุกไซท์งาน" options={siteOpts(sites)} />
+        </div>
+        <div style={{ minWidth: 170 }}>
+          <SearchableSelect value={catId} onChange={setCatId} placeholder="ทุกหมวด" options={catOpts(categories)} />
+        </div>
         <select className="select select-sm" value={status} onChange={e => setStatus(e.target.value)}>
           <option value="">ทุกสถานะ</option>
           {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}

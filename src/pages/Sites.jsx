@@ -14,6 +14,7 @@ import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt, fmtDate, countdown } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
+import SearchableSelect from '../components/SearchableSelect.jsx'
 
 const STATUS_OPTS = ['Ongoing', 'Completed', 'On Hold', 'Cancelled']
 
@@ -49,10 +50,16 @@ function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loadin
           </div>
           <div>
             <label className="label">ลูกค้า / เจ้าของงาน</label>
-            <select className="select" value={form.client_id} onChange={e => set('client_id', e.target.value)}>
-              <option value="">— เลือกลูกค้า —</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.client_number} · {c.name}</option>)}
-            </select>
+            <SearchableSelect
+              value={form.client_id}
+              onChange={id => set('client_id', id)}
+              placeholder="— เลือกลูกค้า —"
+              options={clients.map(c => ({
+                value: c.id,
+                label: `${c.client_number} · ${c.name}`,
+                keywords: `${c.client_number} ${c.name}`,
+              }))}
+            />
           </div>
         </div>
         <div>

@@ -10,6 +10,7 @@ import { useWorkers, useAssignments, useLaborCost, useSites } from '../hooks/use
 import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal } from '../components/Modal.jsx'
+import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, getDaysInMonth } from 'date-fns'
 
 export default function Assign({ navState }) {
@@ -247,10 +248,12 @@ export default function Assign({ navState }) {
           <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
             <div>
               <label className="label">ช่าง ★</label>
-              <select className="select" value={asgWorker} onChange={e => setAsgWorker(e.target.value)}>
-                <option value="">— เลือกช่าง —</option>
-                {(workers || []).map(w => <option key={w.id} value={w.id}>{w.name} ({w.nickname})</option>)}
-              </select>
+              <SearchableSelect
+                value={asgWorker}
+                onChange={setAsgWorker}
+                placeholder="— เลือกช่าง —"
+                options={(workers || []).map(w => ({ value: w.id, label: `${w.name} (${w.nickname})`, keywords: `${w.name} ${w.nickname}` }))}
+              />
             </div>
             <div>
               <label className="label">ประเภท ★</label>
@@ -265,10 +268,12 @@ export default function Assign({ navState }) {
             {(asgType === 'site' || asgType === 'subcontract') && (
               <div>
                 <label className="label">ไซท์งาน {asgType === 'site' ? '★' : ''}</label>
-                <select className="select" value={asgSite} onChange={e => setAsgSite(e.target.value)}>
-                  <option value="">— เลือกไซท์ —</option>
-                  {(sites || []).filter(s => s.status === 'Ongoing').map(s => <option key={s.id} value={s.id}>{s.site_number} · {s.name}</option>)}
-                </select>
+                <SearchableSelect
+                  value={asgSite}
+                  onChange={setAsgSite}
+                  placeholder="— เลือกไซท์ —"
+                  options={(sites || []).filter(s => s.status === 'Ongoing').map(s => ({ value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}` }))}
+                />
               </div>
             )}
             {asgType === 'site' && (

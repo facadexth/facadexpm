@@ -12,6 +12,14 @@ import {
 } from '../hooks/useSupabase.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
+import SearchableSelect from '../components/SearchableSelect.jsx'
+
+const scSiteOpts = (sites) => (sites || []).map(s => ({
+  value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
+}))
+const scSubOpts = (subs) => (subs || []).map(s => ({
+  value: s.id, label: `${s.subcontractor_number} · ${s.name}`, keywords: `${s.subcontractor_number} ${s.name}`,
+}))
 import { auditLog } from '../lib/audit.js'
 import { downloadPDF } from '../lib/pdf.js'
 import { useUserRole } from '../hooks/useUserRole.js'
@@ -188,14 +196,12 @@ function ContractsTab() {
     <div>
       <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => handleOpen(null)}>+ เพิ่มสัญญา</button>}
-        <select className="select input-sm" style={{ width:200 }} value={siteFilter} onChange={e => setSiteFilter(e.target.value)}>
-          <option value="">ทุกไซท์</option>
-          {(sites||[]).map(s => <option key={s.id} value={s.id}>{s.site_number} · {s.name}</option>)}
-        </select>
-        <select className="select input-sm" style={{ width:200 }} value={subFilter} onChange={e => setSubFilter(e.target.value)}>
-          <option value="">ทุกผู้รับเหมา</option>
-          {(subs||[]).map(s => <option key={s.id} value={s.id}>{s.subcontractor_number} · {s.name}</option>)}
-        </select>
+        <div style={{ width:200 }}>
+          <SearchableSelect value={siteFilter} onChange={setSiteFilter} placeholder="ทุกไซท์" options={scSiteOpts(sites)} />
+        </div>
+        <div style={{ width:200 }}>
+          <SearchableSelect value={subFilter} onChange={setSubFilter} placeholder="ทุกผู้รับเหมา" options={scSubOpts(subs)} />
+        </div>
         {['active','completed','cancelled',''].map(s => (
           <button key={s} className={`btn btn-sm ${statusFilter===s?'btn-primary':'btn-ghost'}`} onClick={() => setStatusFilter(s)}>
             {s||'ทั้งหมด'}
@@ -273,15 +279,11 @@ function ContractsTab() {
             <div className="modal-body" style={{ display:'grid', gap:12 }}>
               <div className="form-grid-2">
                 <div><label className="label">ผู้รับเหมา ★</label>
-                  <select className="select" required value={form.subcontractor_id} onChange={e => set('subcontractor_id',e.target.value)}>
-                    <option value="">— เลือก —</option>
-                    {(subs||[]).map(s => <option key={s.id} value={s.id}>{s.subcontractor_number} · {s.name}</option>)}
-                  </select></div>
+                  <SearchableSelect required value={form.subcontractor_id} onChange={id => set('subcontractor_id', id)}
+                    placeholder="— เลือก —" options={scSubOpts(subs)} /></div>
                 <div><label className="label">ไซท์งาน ★</label>
-                  <select className="select" required value={form.site_id} onChange={e => set('site_id',e.target.value)}>
-                    <option value="">— เลือก —</option>
-                    {(sites||[]).map(s => <option key={s.id} value={s.id}>{s.site_number} · {s.name}</option>)}
-                  </select></div>
+                  <SearchableSelect required value={form.site_id} onChange={id => set('site_id', id)}
+                    placeholder="— เลือก —" options={scSiteOpts(sites)} /></div>
               </div>
               <div><label className="label">ประเภทงาน ★</label>
                 <input className="input" required value={form.work_description} onChange={e => set('work_description',e.target.value)} placeholder="เช่น ติดตั้งอลูมิเนียม" /></div>

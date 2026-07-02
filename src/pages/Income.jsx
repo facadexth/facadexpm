@@ -12,7 +12,12 @@ import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
+import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
+
+const siteOpts = (sites) => (sites || []).map(s => ({
+  value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
+}))
 
 const EMPTY_FORM = {
   invoice_no: '', date: '', site_id: '', client_name: '', description: '',
@@ -48,10 +53,13 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading }) 
         <div className="form-grid-2">
           <div>
             <label className="label">ไซท์งาน ★</label>
-            <select className="select" required value={form.site_id} onChange={e => set('site_id', e.target.value)}>
-              <option value="">— เลือกไซท์ —</option>
-              {(sites || []).map(s => <option key={s.id} value={s.id}>{s.site_number} · {s.name}</option>)}
-            </select>
+            <SearchableSelect
+              required
+              value={form.site_id}
+              onChange={id => set('site_id', id)}
+              placeholder="— เลือกไซท์ —"
+              options={siteOpts(sites)}
+            />
           </div>
           <div>
             <label className="label">ชื่อลูกค้า ★</label>
@@ -198,10 +206,14 @@ export default function Income({ navigateTo, navState }) {
 
       {/* ── Site filter ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select className="select select-sm" value={siteId} onChange={e => setSiteId(e.target.value)} style={{ minWidth: 200 }}>
-          <option value="">ทุกไซท์งาน</option>
-          {(sites || []).map(s => <option key={s.id} value={s.id}>{s.site_number} · {s.name}</option>)}
-        </select>
+        <div style={{ minWidth: 220 }}>
+          <SearchableSelect
+            value={siteId}
+            onChange={setSiteId}
+            placeholder="ทุกไซท์งาน"
+            options={siteOpts(sites)}
+          />
+        </div>
         {navState?.siteName && (
           <span className="badge" style={{ background: 'rgba(0,212,170,0.15)', color: 'var(--green)' }}>
             🔍 {navState.siteName}
