@@ -9,7 +9,7 @@ export default function GridView({ days, workers, cellLookup, onEditHalf, cellW 
   return (
     <div className="card" style={{ marginBottom: 20 }}>
       <div className="table-wrap" style={{ overflowX: 'auto' }}>
-        <table style={{ minWidth: Math.max(600, days.length * (cellW + 6) + 160) }}>
+        <table style={{ width: 'max-content', minWidth: 0 }}>
           <thead>
             <tr>
               <th style={{ minWidth: 100, position: 'sticky', left: 0, background: 'var(--bg3)', zIndex: 10 }}>ช่าง</th>
