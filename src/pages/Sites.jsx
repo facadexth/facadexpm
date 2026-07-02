@@ -29,6 +29,7 @@ const COST_TYPES = [
 
 const EMPTY_FORM = {
   name: '', client_id: '', location: '',
+  distance_km: '', map_url: '',
   status: 'Ongoing', start_date: '', end_date: '',
   contract_value: '', notes: '',
   ...Object.fromEntries(COST_TYPES.map(t => [t.key, '']))
@@ -65,6 +66,17 @@ function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loadin
         <div>
           <label className="label">ที่ตั้งโครงการ</label>
           <input className="input" value={form.location} onChange={e => set('location', e.target.value)} placeholder="จังหวัด / ที่อยู่" />
+        </div>
+        <div className="form-grid-2">
+          <div>
+            <label className="label">ระยะทางจากโรงงาน (กม.)</label>
+            <input type="number" className="input" min="0" step="0.1" value={form.distance_km}
+              onChange={e => set('distance_km', e.target.value)} placeholder="เที่ยวเดียว — ใช้คิดค่าเดินทาง (×2)" />
+          </div>
+          <div>
+            <label className="label">ลิงก์ Google Maps</label>
+            <input className="input" type="url" value={form.map_url} onChange={e => set('map_url', e.target.value)} placeholder="วางลิงก์แผนที่..." />
+          </div>
         </div>
         <div className="form-grid-3">
           <div>
@@ -184,6 +196,8 @@ export default function Sites({ navigateTo }) {
         name:           form.name,
         client_id:      form.client_id || null,
         location:       form.location || null,
+        distance_km:    parseFloat(form.distance_km) || null,
+        map_url:        form.map_url || null,
         status:         form.status,
         start_date:     form.start_date || null,
         end_date:       form.end_date || null,
@@ -276,7 +290,13 @@ export default function Sites({ navigateTo }) {
                   <tr key={s.id}>
                     <td style={{ color: 'var(--accent)', fontSize: 11, whiteSpace: 'nowrap' }}>{s.site_number}</td>
                     <td>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
+                      <div style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {s.name}
+                        {s.map_url && (
+                          <a href={s.map_url} target="_blank" rel="noreferrer" title="เปิดแผนที่ Google Maps"
+                            style={{ textDecoration: 'none', fontSize: 13 }} onClick={e => e.stopPropagation()}>📍</a>
+                        )}
+                      </div>
                       {(s.client_display_name || s.client_name) && (
                         <div style={{ fontSize: 11, color: 'var(--text3)' }}>
                           {s.client_number && <span style={{ color: 'var(--accent)' }}>{s.client_number} · </span>}
