@@ -13,9 +13,9 @@ export function Modal({ title, onClose, children, maxWidth = 600 }) {
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth }}>
+      <div className="modal" style={{ maxWidth: `min(${maxWidth}px, 94vw)` }}>
         <div className="modal-header">
-          <span className="modal-title">{title}</span>
+          <span className="modal-title" title={typeof title === 'string' ? title : undefined}>{title}</span>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         {children}
