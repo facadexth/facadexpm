@@ -7,7 +7,7 @@
 // ✅ กดตัวเลขรายรับ/รายจ่าย → navigate พร้อม filter ไซท์
 // ✅ Labor cost แยกช่างบริษัท vs sub-contract
 // ============================================================
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useSites, useLaborCost, useClients, useSitePhases } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
@@ -188,6 +188,14 @@ export default function Sites({ navigateTo }) {
       return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
     })
   }, [sites, statusFilter, search, sortCol, sortDir])
+
+  // Clear selectedSiteId if it drops out of the filtered list (filter/search change,
+  // or the site otherwise disappears) so SCurveChart never receives an undefined site.
+  useEffect(() => {
+    if (selectedSiteId && !filtered.some((s) => s.id === selectedSiteId)) {
+      setSelectedSiteId(null)
+    }
+  }, [selectedSiteId, filtered])
 
   const toggleSort = (col) => {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -405,8 +413,9 @@ export default function Sites({ navigateTo }) {
             onManagePhases={(site) => setManagePhasesSite(site)}
             selectedSiteId={selectedSiteId}
             onSelectSite={setSelectedSiteId}
+            canEdit={canEdit}
           />
-          {selectedSiteId && (
+          {selectedSiteId && filtered.some((s) => s.id === selectedSiteId) && (
             <div style={{ marginTop: 16 }}>
               <SCurveChart site={filtered.find((s) => s.id === selectedSiteId)} phases={allPhases} />
             </div>
@@ -414,7 +423,7 @@ export default function Sites({ navigateTo }) {
         </>
       )}
 
-      {managePhasesSite && (
+      {managePhasesSite && canEdit && (
         <PhaseManageModal
           site={managePhasesSite}
           phases={(allPhases || []).filter((p) => p.site_id === managePhasesSite.id)}

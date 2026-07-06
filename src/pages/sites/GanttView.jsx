@@ -4,7 +4,7 @@
 import { useMemo } from 'react'
 import { computeTimelineRange, barStyle, STATUS_COLOR } from './ganttTimeline.js'
 
-export default function GanttView({ sites, phases, navigateTo, onManagePhases, selectedSiteId, onSelectSite }) {
+export default function GanttView({ sites, phases, navigateTo, onManagePhases, selectedSiteId, onSelectSite, canEdit }) {
   const phasesBySite = useMemo(() => {
     const m = {}
     ;(phases || []).forEach((p) => {
@@ -74,13 +74,15 @@ export default function GanttView({ sites, phases, navigateTo, onManagePhases, s
                 )
               })}
             </div>
-            <button
-              className="btn btn-sm btn-ghost"
-              style={{ flexShrink: 0 }}
-              onClick={(e) => { e.stopPropagation(); onManagePhases(site) }}
-            >
-              📋 จัดการขั้นตอน
-            </button>
+            {canEdit && (
+              <button
+                className="btn btn-sm btn-ghost"
+                style={{ flexShrink: 0 }}
+                onClick={(e) => { e.stopPropagation(); onManagePhases(site) }}
+              >
+                📋 จัดการขั้นตอน
+              </button>
+            )}
           </div>
         )
       })}
