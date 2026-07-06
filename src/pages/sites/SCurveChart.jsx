@@ -3,22 +3,21 @@
 // ============================================================
 import { useMemo } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { useSitePhases, useIncomes, useExpenses } from '../../hooks/useSupabase.js'
+import { useIncomes, useExpenses } from '../../hooks/useSupabase.js'
 import { buildPlanSeries, buildActualSeries, buildCostSeries, mergeCumulativeSeries } from './scurveCalc.js'
 import { fmt } from '../../lib/supabase.js'
 
-export default function SCurveChart({ site }) {
-  const { data: allPhases } = useSitePhases()
+export default function SCurveChart({ site, phases }) {
   const { data: incomes } = useIncomes({ siteId: site.id })
   const { data: expenses } = useExpenses({ siteId: site.id })
 
   const chartData = useMemo(() => {
-    const phasesForSite = (allPhases || []).filter((p) => p.site_id === site.id)
+    const phasesForSite = (phases || []).filter((p) => p.site_id === site.id)
     const plan = buildPlanSeries(phasesForSite, site.contract_value)
     const actual = buildActualSeries(incomes || [])
     const cost = buildCostSeries(expenses || [])
     return mergeCumulativeSeries({ plan, actual, cost })
-  }, [allPhases, incomes, expenses, site.id, site.contract_value])
+  }, [phases, incomes, expenses, site.id, site.contract_value])
 
   if (!chartData.length) {
     return (

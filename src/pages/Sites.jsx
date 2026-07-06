@@ -400,6 +400,7 @@ export default function Sites({ navigateTo }) {
         <>
           <GanttView
             sites={filtered}
+            phases={allPhases}
             navigateTo={navigateTo}
             onManagePhases={(site) => setManagePhasesSite(site)}
             selectedSiteId={selectedSiteId}
@@ -407,7 +408,7 @@ export default function Sites({ navigateTo }) {
           />
           {selectedSiteId && (
             <div style={{ marginTop: 16 }}>
-              <SCurveChart site={filtered.find((s) => s.id === selectedSiteId)} />
+              <SCurveChart site={filtered.find((s) => s.id === selectedSiteId)} phases={allPhases} />
             </div>
           )}
         </>

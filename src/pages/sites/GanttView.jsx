@@ -2,20 +2,17 @@
 // GanttView — 1 แถวต่อไซท์ แสดงแท่งขั้นตอนงานตามช่วงเวลา
 // ============================================================
 import { useMemo } from 'react'
-import { useSitePhases } from '../../hooks/useSupabase.js'
 import { computeTimelineRange, barStyle, STATUS_COLOR } from './ganttTimeline.js'
 
-export default function GanttView({ sites, navigateTo, onManagePhases, selectedSiteId, onSelectSite }) {
-  const { data: allPhases } = useSitePhases()
-
+export default function GanttView({ sites, phases, navigateTo, onManagePhases, selectedSiteId, onSelectSite }) {
   const phasesBySite = useMemo(() => {
     const m = {}
-    ;(allPhases || []).forEach((p) => {
+    ;(phases || []).forEach((p) => {
       if (!m[p.site_id]) m[p.site_id] = []
       m[p.site_id].push(p)
     })
     return m
-  }, [allPhases])
+  }, [phases])
 
   const range = useMemo(() => computeTimelineRange(sites, phasesBySite), [sites, phasesBySite])
 
