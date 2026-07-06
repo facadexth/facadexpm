@@ -9,12 +9,15 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useSites, useLaborCost, useClients } from '../hooks/useSupabase.js'
+import { useSites, useLaborCost, useClients, useSitePhases } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt, fmtDate, countdown } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
+import GanttView from './sites/GanttView.jsx'
+import PhaseManageModal from './sites/PhaseManageModal.jsx'
+import SCurveChart from './sites/SCurveChart.jsx'
 
 const STATUS_OPTS = ['Ongoing', 'Completed', 'On Hold', 'Cancelled']
 
@@ -159,6 +162,10 @@ export default function Sites({ navigateTo }) {
   const [search,      setSearch]      = useState('')
   const [sortCol,     setSortCol]     = useState('site_number')
   const [sortDir,     setSortDir]     = useState('asc')
+  const [viewMode,      setViewMode]      = useState('table') // 'table' | 'gantt'
+  const [selectedSiteId, setSelectedSiteId] = useState(null)
+  const [managePhasesSite, setManagePhasesSite] = useState(null) // site object or null
+  const { data: allPhases, refetch: refetchPhases } = useSitePhases()
 
   // Labor cost lookup
   const laborBysite = useMemo(() => {
@@ -244,6 +251,10 @@ export default function Sites({ navigateTo }) {
         <a className="btn btn-ghost" href="/templates/TEMPLATE_ไซท์งาน.xlsx" download>📄 Template</a>
         <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อ / รหัส..." value={search} onChange={e => setSearch(e.target.value)} />
         <div style={{ display: 'flex', gap: 4 }}>
+          <button className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('table')}>📋 ตาราง</button>
+          <button className={`btn btn-sm ${viewMode === 'gantt' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('gantt')}>📊 Gantt</button>
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
           {['All', ...STATUS_OPTS].map(s => (
             <button key={s}
               className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-ghost'}`}
@@ -263,6 +274,7 @@ export default function Sites({ navigateTo }) {
       )}
 
       {/* ── Table ── */}
+      {viewMode === 'table' && (
       <div className="card">
         <div className="table-wrap">
           <table>
@@ -382,6 +394,33 @@ export default function Sites({ navigateTo }) {
           </table>
         </div>
       </div>
+      )}
+
+      {viewMode === 'gantt' && (
+        <>
+          <GanttView
+            sites={filtered}
+            navigateTo={navigateTo}
+            onManagePhases={(site) => setManagePhasesSite(site)}
+            selectedSiteId={selectedSiteId}
+            onSelectSite={setSelectedSiteId}
+          />
+          {selectedSiteId && (
+            <div style={{ marginTop: 16 }}>
+              <SCurveChart site={filtered.find((s) => s.id === selectedSiteId)} />
+            </div>
+          )}
+        </>
+      )}
+
+      {managePhasesSite && (
+        <PhaseManageModal
+          site={managePhasesSite}
+          phases={(allPhases || []).filter((p) => p.site_id === managePhasesSite.id)}
+          onClose={() => setManagePhasesSite(null)}
+          onSaved={refetchPhases}
+        />
+      )}
 
       {/* ── Add/Edit Modal ── */}
       {showForm && (
