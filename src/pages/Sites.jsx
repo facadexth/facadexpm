@@ -7,14 +7,17 @@
 // ✅ กดตัวเลขรายรับ/รายจ่าย → navigate พร้อม filter ไซท์
 // ✅ Labor cost แยกช่างบริษัท vs sub-contract
 // ============================================================
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useSites, useLaborCost, useClients } from '../hooks/useSupabase.js'
+import { useSites, useLaborCost, useClients, useSitePhases } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt, fmtDate, countdown } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
+import GanttView from './sites/GanttView.jsx'
+import PhaseManageModal from './sites/PhaseManageModal.jsx'
+import SCurveChart from './sites/SCurveChart.jsx'
 
 const STATUS_OPTS = ['Ongoing', 'Completed', 'On Hold', 'Cancelled']
 
@@ -159,6 +162,10 @@ export default function Sites({ navigateTo }) {
   const [search,      setSearch]      = useState('')
   const [sortCol,     setSortCol]     = useState('site_number')
   const [sortDir,     setSortDir]     = useState('asc')
+  const [viewMode,      setViewMode]      = useState('table') // 'table' | 'gantt'
+  const [selectedSiteId, setSelectedSiteId] = useState(null)
+  const [managePhasesSite, setManagePhasesSite] = useState(null) // site object or null
+  const { data: allPhases, refetch: refetchPhases } = useSitePhases()
 
   // Labor cost lookup
   const laborBysite = useMemo(() => {
@@ -181,6 +188,14 @@ export default function Sites({ navigateTo }) {
       return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
     })
   }, [sites, statusFilter, search, sortCol, sortDir])
+
+  // Clear selectedSiteId if it drops out of the filtered list (filter/search change,
+  // or the site otherwise disappears) so SCurveChart never receives an undefined site.
+  useEffect(() => {
+    if (selectedSiteId && !filtered.some((s) => s.id === selectedSiteId)) {
+      setSelectedSiteId(null)
+    }
+  }, [selectedSiteId, filtered])
 
   const toggleSort = (col) => {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -244,6 +259,10 @@ export default function Sites({ navigateTo }) {
         <a className="btn btn-ghost" href="/templates/TEMPLATE_ไซท์งาน.xlsx" download>📄 Template</a>
         <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อ / รหัส..." value={search} onChange={e => setSearch(e.target.value)} />
         <div style={{ display: 'flex', gap: 4 }}>
+          <button className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('table')}>📋 ตาราง</button>
+          <button className={`btn btn-sm ${viewMode === 'gantt' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('gantt')}>📊 Gantt</button>
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
           {['All', ...STATUS_OPTS].map(s => (
             <button key={s}
               className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-ghost'}`}
@@ -263,6 +282,7 @@ export default function Sites({ navigateTo }) {
       )}
 
       {/* ── Table ── */}
+      {viewMode === 'table' && (
       <div className="card">
         <div className="table-wrap">
           <table>
@@ -382,6 +402,35 @@ export default function Sites({ navigateTo }) {
           </table>
         </div>
       </div>
+      )}
+
+      {viewMode === 'gantt' && (
+        <>
+          <GanttView
+            sites={filtered}
+            phases={allPhases}
+            navigateTo={navigateTo}
+            onManagePhases={(site) => setManagePhasesSite(site)}
+            selectedSiteId={selectedSiteId}
+            onSelectSite={setSelectedSiteId}
+            canEdit={canEdit}
+          />
+          {selectedSiteId && filtered.some((s) => s.id === selectedSiteId) && (
+            <div style={{ marginTop: 16 }}>
+              <SCurveChart site={filtered.find((s) => s.id === selectedSiteId)} phases={allPhases} />
+            </div>
+          )}
+        </>
+      )}
+
+      {managePhasesSite && canEdit && (
+        <PhaseManageModal
+          site={managePhasesSite}
+          phases={(allPhases || []).filter((p) => p.site_id === managePhasesSite.id)}
+          onClose={() => setManagePhasesSite(null)}
+          onSaved={refetchPhases}
+        />
+      )}
 
       {/* ── Add/Edit Modal ── */}
       {showForm && (
