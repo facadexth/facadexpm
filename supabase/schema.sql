@@ -46,7 +46,8 @@ DECLARE
   year_part TEXT := TO_CHAR(NOW(), 'YYYY');
   seq_num   INT;
 BEGIN
-  SELECT COUNT(*) + 1 INTO seq_num
+  SELECT COALESCE(MAX(SUBSTRING(site_number FROM 'FX-\d{4}-(\d+)$')::INT), 0) + 1
+  INTO seq_num
   FROM sites
   WHERE site_number LIKE 'FX-' || year_part || '-%';
   NEW.site_number := 'FX-' || year_part || '-' || LPAD(seq_num::TEXT, 3, '0');
