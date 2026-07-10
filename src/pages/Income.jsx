@@ -7,12 +7,13 @@
 // ============================================================
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useIncomes, useSites } from '../hooks/useSupabase.js'
+import { useIncomes, useSites, useClients } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
+import { useDraftForm } from '../hooks/useDraftForm.js'
 import { format, startOfYear, endOfYear } from 'date-fns'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
@@ -21,24 +22,44 @@ const siteOpts = (sites) => (sites || []).map(s => ({
 
 const EMPTY_FORM = {
   invoice_no: '', date: '', site_id: '', client_name: '', description: '',
-  amount_no_vat: '', vat: '', tax_withheld: '', retention: '', received_amount: ''
+  amount_no_vat: '', vat_pct: '7', tax_pct: '3', retention_pct: '', received_amount: ''
 }
 
-function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading }) {
-  const [form, setForm] = useState({ ...EMPTY_FORM, ...initial })
+function IncomeForm({ initial = EMPTY_FORM, sites, clients, onSave, onCancel, loading }) {
+  const isAdd = !initial?.id
+  const [form, setForm, clearFormDraft] = useDraftForm('income-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  // คำนวณ received_amount อัตโนมัติ
-  const calcReceived = () => {
-    const noVat   = parseFloat(form.amount_no_vat) || 0
-    const vat     = parseFloat(form.vat)           || 0
-    const tax     = parseFloat(form.tax_withheld)  || 0
-    const ret     = parseFloat(form.retention)     || 0
-    return noVat + vat - tax - ret
-  }
+  // ลูกค้าที่มีอยู่แล้วในระบบ + เผื่อ client_name เดิม (แก้ไข) ที่ไม่ตรงกับรายชื่อลูกค้าปัจจุบัน
+  const clientOpts = useMemo(() => {
+    const opts = (clients || []).map(c => ({
+      value: c.name, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
+    }))
+    if (form.client_name && !opts.some(o => o.value === form.client_name)) {
+      opts.unshift({ value: form.client_name, label: form.client_name })
+    }
+    return opts
+  }, [clients, form.client_name])
+
+  // คำนวณ VAT / Tax ถูกหัก / Retention อัตโนมัติจาก % ของมูลค่าก่อน VAT
+  const noVat       = parseFloat(form.amount_no_vat) || 0
+  const vatAmt       = noVat * (parseFloat(form.vat_pct)       || 0) / 100
+  const taxAmt        = noVat * (parseFloat(form.tax_pct)       || 0) / 100
+  const retentionAmt = noVat * (parseFloat(form.retention_pct) || 0) / 100
+  const calcReceived = () => noVat + vatAmt - taxAmt - retentionAmt
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onSave({ ...form, received_amount: form.received_amount || calcReceived() }) }}>
+    <form onSubmit={e => {
+      e.preventDefault()
+      clearFormDraft()
+      onSave({
+        ...form,
+        vat: vatAmt.toFixed(2),
+        tax_withheld: taxAmt.toFixed(2),
+        retention: retentionAmt.toFixed(2),
+        received_amount: form.received_amount || calcReceived(),
+      })
+    }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
         <div className="form-grid-2">
           <div>
@@ -63,7 +84,13 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading }) 
           </div>
           <div>
             <label className="label">ชื่อลูกค้า ★</label>
-            <input className="input" required value={form.client_name} onChange={e => set('client_name', e.target.value)} />
+            <SearchableSelect
+              required
+              value={form.client_name}
+              onChange={name => set('client_name', name)}
+              placeholder="— เลือกลูกค้า —"
+              options={clientOpts}
+            />
           </div>
         </div>
         <div>
@@ -77,19 +104,22 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading }) 
               onChange={e => set('amount_no_vat', e.target.value)} />
           </div>
           <div>
-            <label className="label">VAT</label>
-            <input type="number" className="input" min="0" step="0.01" value={form.vat}
-              onChange={e => set('vat', e.target.value)} placeholder="7%" />
+            <label className="label">VAT (%)</label>
+            <input type="number" className="input" min="0" step="0.01" value={form.vat_pct}
+              onChange={e => set('vat_pct', e.target.value)} placeholder="7" />
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{fmt(vatAmt)} บาท</div>
           </div>
           <div>
-            <label className="label">Tax ถูกหัก</label>
-            <input type="number" className="input" min="0" step="0.01" value={form.tax_withheld}
-              onChange={e => set('tax_withheld', e.target.value)} placeholder="3%" />
+            <label className="label">Tax ถูกหัก (%)</label>
+            <input type="number" className="input" min="0" step="0.01" value={form.tax_pct}
+              onChange={e => set('tax_pct', e.target.value)} placeholder="3" />
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{fmt(taxAmt)} บาท</div>
           </div>
           <div>
-            <label className="label">Retention</label>
-            <input type="number" className="input" min="0" step="0.01" value={form.retention}
-              onChange={e => set('retention', e.target.value)} />
+            <label className="label">Retention (%)</label>
+            <input type="number" className="input" min="0" step="0.01" value={form.retention_pct}
+              onChange={e => set('retention_pct', e.target.value)} />
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{fmt(retentionAmt)} บาท</div>
           </div>
         </div>
         <div style={{ background: 'rgba(0,212,170,0.08)', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -136,6 +166,7 @@ export default function Income({ navigateTo, navState }) {
   const filters = { from: dateFrom, to: dateTo, siteId, search }
   const { data: incomes, refetch } = useIncomes(filters)
   const { data: sites } = useSites()
+  const { data: clients } = useClients()
 
   const totalReceived   = useMemo(() => (incomes || []).reduce((s, i) => s + (i.received_amount || 0), 0), [incomes])
   const totalNoVat      = useMemo(() => (incomes || []).reduce((s, i) => s + (i.amount_no_vat || 0), 0), [incomes])
@@ -298,8 +329,14 @@ export default function Income({ navigateTo, navState }) {
       {showAdd && (
         <Modal title={editRow ? 'แก้ไขรายรับ' : 'เพิ่มรายรับ'} onClose={() => { setShowAdd(false); setEditRow(null) }} maxWidth={660}>
           <IncomeForm
-            initial={editRow || { ...EMPTY_FORM, site_id: siteId }}
+            initial={editRow ? {
+              ...editRow,
+              vat_pct:       editRow.amount_no_vat ? +((editRow.vat||0)           / editRow.amount_no_vat * 100).toFixed(2) : '',
+              tax_pct:       editRow.amount_no_vat ? +((editRow.tax_withheld||0)  / editRow.amount_no_vat * 100).toFixed(2) : '',
+              retention_pct: editRow.amount_no_vat ? +((editRow.retention||0)     / editRow.amount_no_vat * 100).toFixed(2) : '',
+            } : { ...EMPTY_FORM, site_id: siteId }}
             sites={sites}
+            clients={clients}
             onSave={handleSave}
             onCancel={() => { setShowAdd(false); setEditRow(null) }}
             loading={saving}
