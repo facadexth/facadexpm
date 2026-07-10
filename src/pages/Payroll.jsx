@@ -10,6 +10,7 @@ import { useSalary, useWorkers } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
+import { useDraftForm } from '../hooks/useDraftForm.js'
 
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
@@ -32,7 +33,8 @@ function calcNet(form) {
 }
 
 function SalaryForm({ initial = EMPTY_FORM, workers, onSave, onCancel, loading }) {
-  const [form, setForm] = useState({ ...EMPTY_FORM, ...initial })
+  const isAdd = !initial?.id
+  const [form, setForm, clearDraft] = useDraftForm('payroll-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const prefill = (w) => {
@@ -47,7 +49,7 @@ function SalaryForm({ initial = EMPTY_FORM, workers, onSave, onCancel, loading }
   const netCalc = calcNet(form)
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onSave({ ...form, net_pay: form.net_pay || netCalc }) }}>
+    <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave({ ...form, net_pay: form.net_pay || netCalc }) }}>
       <div className="modal-body" style={{ display: 'grid', gap: 14 }}>
         <div>
           <label className="label">ช่าง / พนักงาน ★</label>
@@ -137,7 +139,7 @@ function SalaryForm({ initial = EMPTY_FORM, workers, onSave, onCancel, loading }
         </div>
       </div>
       <div className="modal-footer">
-        <button type="button" className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>
+        <button type="button" className="btn btn-ghost" onClick={() => { clearDraft(); onCancel() }}>ยกเลิก</button>
         <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? '⏳...' : '✅ บันทึก'}</button>
       </div>
     </form>
