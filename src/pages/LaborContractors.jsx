@@ -4,7 +4,7 @@
 // Sub-tab 2: สัญญา (contract per site, progress comparison)
 // Sub-tab 3: การเบิก (payment requests + PDF)
 // ============================================================
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import {
   useLaborSubcontractors, useLaborContracts,
@@ -23,6 +23,7 @@ const scSubOpts = (subs) => (subs || []).map(s => ({
 import { auditLog } from '../lib/audit.js'
 import { downloadPDF } from '../lib/pdf.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { readDraft, saveDraft, clearDraft, useDraftForm } from '../hooks/useDraftForm.js'
 
 // ── Sub-tab 1: ผู้รับเหมา ─────────────────────────────────────
 
@@ -44,17 +45,23 @@ function SubcontractorTab() {
   , [subs, search])
 
   const EMPTY = { name:'', contact_person:'', phone:'', email:'', notes:'' }
-  const [form, setForm] = useState(EMPTY)
+  const [form, setForm] = useState(() => readDraft('labor-contractors-subcontractor-form') || EMPTY)
   const set = (k,v) => setForm(f => ({...f, [k]:v}))
+
+  useEffect(() => {
+    if (!editItem) saveDraft('labor-contractors-subcontractor-form', form)
+  }, [form, editItem])
 
   const handleOpen = (item) => {
     setEditItem(item||null)
-    setForm(item ? { name:item.name, contact_person:item.contact_person||'', phone:item.phone||'', email:item.email||'', notes:item.notes||'' } : EMPTY)
+    setForm(item ? { name:item.name, contact_person:item.contact_person||'', phone:item.phone||'', email:item.email||'', notes:item.notes||'' } : (readDraft('labor-contractors-subcontractor-form') || EMPTY))
     setShowForm(true)
   }
 
   const handleSave = async (e) => {
-    e.preventDefault(); setSaving(true)
+    e.preventDefault()
+    if (!editItem) clearDraft('labor-contractors-subcontractor-form')
+    setSaving(true)
     try {
       const payload = { name:form.name, contact_person:form.contact_person||null, phone:form.phone||null, email:form.email||null, notes:form.notes||null }
       if (editItem) {
@@ -133,7 +140,7 @@ function SubcontractorTab() {
                 <textarea className="textarea" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} /></div>
             </div>
             <div className="modal-footer">
-              <button type="button" className="btn btn-ghost" onClick={() => setShowForm(false)}>ยกเลิก</button>
+              <button type="button" className="btn btn-ghost" onClick={() => { if (!editItem) clearDraft('labor-contractors-subcontractor-form'); setShowForm(false) }}>ยกเลิก</button>
               <button type="submit" className="btn btn-primary" disabled={saving}>{saving?'⏳...':'✅ บันทึก'}</button>
             </div>
           </form>
@@ -165,17 +172,23 @@ function ContractsTab() {
   const [showPayModal, setShowPayModal] = useState(null)
 
   const EMPTY_C = { subcontractor_id:'', site_id:'', work_description:'', contract_amount:'', retention_pct:'5', withholding_tax_pct:'3', site_note:'', start_date:'' }
-  const [form, setForm] = useState(EMPTY_C)
+  const [form, setForm] = useState(() => readDraft('labor-contractors-contract-form') || EMPTY_C)
   const set = (k,v) => setForm(f => ({...f,[k]:v}))
+
+  useEffect(() => {
+    if (!editItem) saveDraft('labor-contractors-contract-form', form)
+  }, [form, editItem])
 
   const handleOpen = (item) => {
     setEditItem(item||null)
-    setForm(item ? { subcontractor_id:item.subcontractor_id, site_id:item.site_id, work_description:item.work_description||'', contract_amount:item.contract_amount||'', retention_pct:item.retention_pct||5, withholding_tax_pct:item.withholding_tax_pct||3, site_note:item.site_note||'', start_date:item.start_date||'' } : EMPTY_C)
+    setForm(item ? { subcontractor_id:item.subcontractor_id, site_id:item.site_id, work_description:item.work_description||'', contract_amount:item.contract_amount||'', retention_pct:item.retention_pct||5, withholding_tax_pct:item.withholding_tax_pct||3, site_note:item.site_note||'', start_date:item.start_date||'' } : (readDraft('labor-contractors-contract-form') || EMPTY_C))
     setShowForm(true)
   }
 
   const handleSave = async (e) => {
-    e.preventDefault(); setSaving(true)
+    e.preventDefault()
+    if (!editItem) clearDraft('labor-contractors-contract-form')
+    setSaving(true)
     try {
       const payload = { subcontractor_id:form.subcontractor_id, site_id:form.site_id, work_description:form.work_description, contract_amount:parseFloat(form.contract_amount)||0, retention_pct:parseFloat(form.retention_pct)||5, withholding_tax_pct:parseFloat(form.withholding_tax_pct)||3, site_note:form.site_note||null, start_date:form.start_date||null }
       if (editItem) {
@@ -301,7 +314,7 @@ function ContractsTab() {
                 <textarea className="textarea" rows={2} value={form.site_note} onChange={e => set('site_note',e.target.value)} /></div>
             </div>
             <div className="modal-footer">
-              <button type="button" className="btn btn-ghost" onClick={() => setShowForm(false)}>ยกเลิก</button>
+              <button type="button" className="btn btn-ghost" onClick={() => { if (!editItem) clearDraft('labor-contractors-contract-form'); setShowForm(false) }}>ยกเลิก</button>
               <button type="submit" className="btn btn-primary" disabled={saving}>{saving?'⏳...':'✅ บันทึก'}</button>
             </div>
           </form>
@@ -324,7 +337,7 @@ function PaymentModal({ contract, onClose }) {
 
   const netRetention = (contract.total_retention_held||0) - (contract.retention_released||0)
 
-  const [form, setForm] = useState({
+  const [form, setForm, clearDraft] = useDraftForm('labor-contractors-payment-form', {
     payment_date: new Date().toISOString().slice(0,10),
     work_description: isRetentionRelease ? 'คืนประกันผลงาน' : '',
     progress_pct: '',
@@ -345,6 +358,7 @@ function PaymentModal({ contract, onClose }) {
 
   const handleSave = async () => {
     if (!form.gross_amount || gross <= 0) return alert('กรุณากรอกยอดเบิก')
+    clearDraft()
     setSaving(true)
     try {
       const payload = {
@@ -458,7 +472,7 @@ function PaymentModal({ contract, onClose }) {
           <input className="input" value={form.notes} onChange={e => set('notes',e.target.value)} /></div>
       </div>
       <div className="modal-footer">
-        <button className="btn btn-ghost" onClick={onClose}>ยกเลิก</button>
+        <button className="btn btn-ghost" onClick={() => { clearDraft(); onClose() }}>ยกเลิก</button>
         <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
           {saving?'⏳...':'✅ บันทึกและดู PDF'}
         </button>
