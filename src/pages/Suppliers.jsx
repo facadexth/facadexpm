@@ -11,6 +11,7 @@ import { useSuppliers } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
+import { useDraftForm } from '../hooks/useDraftForm.js'
 
 const SUPPLIER_TYPES = [
   'อลูมิเนียม', 'เหล็ก', 'อุปกรณ์', 'กระจก',
@@ -31,7 +32,12 @@ function normCategory(raw) {
 }
 
 function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
-  const [form, setForm] = useState({ ...EMPTY_FORM, ...initial, category: normCategory(initial.category) })
+  const isAdd = !initial?.id
+  const [form, setForm, clearDraft] = useDraftForm(
+    'suppliers-form',
+    { ...EMPTY_FORM, ...initial, category: normCategory(initial.category) },
+    isAdd
+  )
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const toggleType = (type) => {
@@ -45,7 +51,7 @@ function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
   }
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onSave(form) }}>
+    <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave(form) }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
         <div className="form-grid-2">
           <div>
@@ -110,7 +116,7 @@ function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
         </div>
       </div>
       <div className="modal-footer">
-        <button type="button" className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>
+        <button type="button" className="btn btn-ghost" onClick={() => { clearDraft(); onCancel() }}>ยกเลิก</button>
         <button type="submit" className="btn btn-primary" disabled={loading}>
           {loading ? '⏳ กำลังบันทึก...' : '✅ บันทึก'}
         </button>
