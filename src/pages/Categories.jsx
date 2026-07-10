@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useCategories } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
+import { useDraftForm } from '../hooks/useDraftForm.js'
 
 const PRESET_COLORS = [
   '#6c63ff','#00d4aa','#ff6b6b','#ffd166','#4ecdc4',
@@ -17,10 +18,11 @@ const PRESET_COLORS = [
 const EMPTY_FORM = { name: '', color: '#6c63ff', sort_order: 99 }
 
 function CatForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
-  const [form, setForm] = useState({ ...EMPTY_FORM, ...initial })
+  const isAdd = !initial?.id
+  const [form, setForm, clearDraft] = useDraftForm('categories-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   return (
-    <form onSubmit={e => { e.preventDefault(); onSave(form) }}>
+    <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave(form) }}>
       <div className="modal-body" style={{ display: 'grid', gap: 14 }}>
         <div>
           <label className="label">ชื่อหมวด ★</label>
@@ -44,7 +46,7 @@ function CatForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
         </div>
       </div>
       <div className="modal-footer">
-        <button type="button" className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>
+        <button type="button" className="btn btn-ghost" onClick={() => { clearDraft(); onCancel() }}>ยกเลิก</button>
         <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? '⏳...' : '✅ บันทึก'}</button>
       </div>
     </form>
