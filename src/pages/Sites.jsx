@@ -15,6 +15,7 @@ import { fmt, fmtDate, countdown } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
+import { useDraftForm } from '../hooks/useDraftForm.js'
 
 const STATUS_OPTS = ['Ongoing', 'Completed', 'On Hold', 'Cancelled']
 
@@ -36,13 +37,14 @@ const EMPTY_FORM = {
 }
 
 function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading }) {
-  const [form, setForm] = useState({ ...EMPTY_FORM, ...initial })
+  const isAdd = !initial?.id
+  const [form, setForm, clearDraft] = useDraftForm('sites-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const totalCostBreakdown = COST_TYPES.reduce((s, t) => s + (parseFloat(form[t.key]) || 0), 0)
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onSave(form) }}>
+    <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave(form) }}>
       <div className="modal-body" style={{ display: 'grid', gap: 14 }}>
         <div className="form-grid-2">
           <div>
@@ -132,7 +134,7 @@ function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loadin
         </div>
       </div>
       <div className="modal-footer">
-        <button type="button" className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>
+        <button type="button" className="btn btn-ghost" onClick={() => { clearDraft(); onCancel() }}>ยกเลิก</button>
         <button type="submit" className="btn btn-primary" disabled={loading}>
           {loading ? '⏳ กำลังบันทึก...' : '✅ บันทึก'}
         </button>
