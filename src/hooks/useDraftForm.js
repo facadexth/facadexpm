@@ -82,7 +82,7 @@ export function useDraftForm(key, initialForm, enabled = true) {
     saveDraft(key, form)
   }, [form, enabled, key])
 
-  const clear = () => clearDraft(key)
+  const clear = () => { if (enabled) clearDraft(key) }
 
   return [form, setForm, clear]
 }

@@ -337,7 +337,7 @@ function PaymentModal({ contract, onClose }) {
 
   const netRetention = (contract.total_retention_held||0) - (contract.retention_released||0)
 
-  const [form, setForm, clearDraft] = useDraftForm('labor-contractors-payment-form', {
+  const [form, setForm, clearDraft] = useDraftForm(`labor-contractors-payment-form:${contract.id}`, {
     payment_date: new Date().toISOString().slice(0,10),
     work_description: isRetentionRelease ? 'คืนประกันผลงาน' : '',
     progress_pct: '',
