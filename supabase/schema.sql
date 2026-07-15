@@ -99,8 +99,10 @@ CREATE TABLE expenses (
 
   -- การชำระเงิน
   payment_method  TEXT DEFAULT 'transfer'
-                  CHECK (payment_method IN ('transfer','check','cash')),
+                  CHECK (payment_method IN ('transfer','check','cash','credit')),
   check_date      DATE,                         -- วันที่ชำระ/วันที่บนเช็ค
+  billing_date    DATE,                         -- วันวางบิล (credit)
+  due_date        DATE,                         -- วันครบกำหนด (credit)
   status          TEXT DEFAULT 'pending'
                   CHECK (status IN ('paid','pending','check_issued','check_cleared')),
   payer           TEXT,                         -- ผู้จ่าย

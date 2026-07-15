@@ -31,13 +31,33 @@ const STATUS_LABELS = { paid: '✅ จ่ายแล้ว', pending: '⏳ ค�
 
 const EMPTY_FORM = {
   date: '', description: '', site_id: '', category_id: '', supplier: '', supplier_id: '',
-  amount: '', payment_method: 'transfer', check_date: '',
+  amount: '', payment_method: 'transfer', check_date: '', billing_date: '', due_date: '',
   status: 'pending', payer: '', notes: '', invoice_no: ''
 }
 
 function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], onSave, onCancel, loading }) {
   const [form, setForm] = useState({ ...EMPTY_FORM, ...initial })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // เครดิตเทอมของ Supplier ที่เลือก (วัน) — ใช้คำนวณวันครบกำหนดจากวันวางบิล
+  const selectedSupplier = suppliers.find(s => s.id === form.supplier_id)
+  const creditTermDays = (() => {
+    const days = parseInt(selectedSupplier?.payment_terms, 10)
+    return isNaN(days) ? null : days
+  })()
+
+  // วันวางบิล → คำนวณวันครบกำหนดให้อัตโนมัติ (เฉพาะตอนที่ยังไม่ได้กรอกวันครบกำหนดเอง)
+  const setBillingDate = (val) => {
+    setForm(f => {
+      const next = { ...f, billing_date: val }
+      if (!f.due_date && val && creditTermDays != null) {
+        const d = new Date(val)
+        d.setDate(d.getDate() + creditTermDays)
+        next.due_date = d.toISOString().slice(0, 10)
+      }
+      return next
+    })
+  }
 
   return (
     <form onSubmit={e => { e.preventDefault(); onSave(form) }}>
@@ -106,6 +126,7 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
               <option value="transfer">โอนเงิน</option>
               <option value="check">เช็ค</option>
               <option value="cash">เงินสด</option>
+              <option value="credit">เครดิต</option>
             </select>
           </div>
           {form.payment_method === 'check' && (
@@ -121,6 +142,21 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
             </select>
           </div>
         </div>
+        {form.payment_method === 'credit' && (
+          <div className="form-grid-2">
+            <div>
+              <label className="label">วันวางบิล</label>
+              <input type="date" className="input" value={form.billing_date} onChange={e => setBillingDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">วันครบกำหนด (due date)</label>
+              <input type="date" className="input" value={form.due_date} onChange={e => set('due_date', e.target.value)} />
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                {creditTermDays != null ? `คำนวณจากเครดิตเทอมของ Supplier (${creditTermDays} วัน) — แก้ไขเองได้` : 'ไม่พบเครดิตเทอมของ Supplier — กรอกวันครบกำหนดเอง'}
+              </div>
+            </div>
+          </div>
+        )}
         <div className="form-grid-2">
           <div>
             <label className="label">ผู้จ่าย</label>
@@ -194,6 +230,8 @@ export default function Expenses({ navigateTo, navState }) {
         amount:         parseFloat(form.amount) || 0,
         payment_method: form.payment_method,
         check_date:     form.check_date || null,
+        billing_date:   form.billing_date || null,
+        due_date:       form.due_date || null,
         status:         form.status,
         payer:          form.payer || null,
         notes:          form.notes || null,
