@@ -44,14 +44,14 @@ function formatDayBlock(dateIso, dayAssignments, siteMeta) {
     if (meta.contact_person) lines.push(`👤 ผู้ติดต่อ: ${meta.contact_person}${meta.phone ? ` (${meta.phone})` : ''}`)
     if (meta.map_url) lines.push(`📍 ${meta.map_url}`)
     lines.push(`🌅 เช้า: ${g.morning.length ? g.morning.map(workerLabel).join(', ') : '— ว่าง —'}`)
-    lines.push(`🌆 เย็น: ${g.evening.length ? g.evening.map(workerLabel).join(', ') : '— ว่าง —'}`)
+    lines.push(`🌆 บ่าย: ${g.evening.length ? g.evening.map(workerLabel).join(', ') : '— ว่าง —'}`)
   })
   if (others.length) {
     lines.push('')
     lines.push('🏢 ลา / ออฟฟิศ / หยุด')
     others.forEach(a => {
       const label = OTHER_TYPE_LABEL[a.type] || a.type
-      const shift = a.shift === 'morning' ? 'เช้า' : 'เย็น'
+      const shift = a.shift === 'morning' ? 'เช้า' : 'บ่าย'
       lines.push(`- ${workerLabel(a)} — ${label} (${shift})`)
     })
   }

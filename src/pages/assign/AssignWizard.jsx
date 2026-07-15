@@ -38,7 +38,7 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
         if (sh.pm) rows.push({ worker_id, date, shift: 'evening', site_id: siteId, type, notes: notes || null })
       }
     }
-    if (!rows.length) return alert('ทุกช่างถูกปิดกะทั้งเช้าและเย็น')
+    if (!rows.length) return alert('ทุกช่างถูกปิดกะทั้งเช้าและบ่าย')
     onSubmit(rows)
   }
 
@@ -74,7 +74,7 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
 
         {/* 4. workers */}
         <div>
-          <div className="label" style={{ marginBottom: 6 }}>4 · ช่าง (เลือกหลายคน · ค่าเริ่มต้นเช้า+เย็น)</div>
+          <div className="label" style={{ marginBottom: 6 }}>4 · ช่าง (เลือกหลายคน · ค่าเริ่มต้นเช้า+บ่าย)</div>
           <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 4 }}>
             {(workers || []).map(w => {
               const on = !!sel[w.id]
@@ -90,7 +90,7 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
                   </label>
                   {on && (
                     <div style={{ display: 'flex', gap: 4 }}>
-                      {[{ k: 'am', l: 'เช้า' }, { k: 'pm', l: 'เย็น' }].map(s => (
+                      {[{ k: 'am', l: 'เช้า' }, { k: 'pm', l: 'บ่าย' }].map(s => (
                         <button key={s.k} type="button" onClick={() => toggleShift(w.id, s.k)}
                           className={`btn btn-sm ${sel[w.id][s.k] ? 'btn-primary' : 'btn-ghost'}`}
                           style={{ fontSize: 11, padding: '2px 8px' }}>{s.l}</button>

@@ -1,8 +1,8 @@
 // ============================================================
 // Assign — Assign ช่างต่อไซท์งาน
 // ✅ มุมมอง Day / Week / Month (สัปดาห์เริ่มวันจันทร์)
-// ✅ Wizard: เลือกหลายวัน → ประเภท → ไซท์ → ช่างหลายคน + กะเช้า/เย็น
-// ✅ กะเช้า-เย็น (1 กะ = 0.5 วัน) · คลิกช่องแก้รายกะ
+// ✅ Wizard: เลือกหลายวัน → ประเภท → ไซท์ → ช่างหลายคน + กะเช้า/บ่าย
+// ✅ กะเช้า-บ่าย (1 กะ = 0.5 วัน) · คลิกช่องแก้รายกะ
 // ✅ ค่าแรง + ค่าเดินทางต่อไซท์
 // ============================================================
 import { useState, useMemo } from 'react'
@@ -97,7 +97,7 @@ export default function Assign({ navState }) {
       const conflicts = rows.filter(r => exMap.has(k(r))).map(r => exMap.get(k(r)))
       if (conflicts.length) {
         const lines = conflicts.slice(0, 8).map(c =>
-          `• ${c.workers?.nickname || c.workers?.name} — ${c.date} (${c.shift === 'morning' ? 'เช้า' : 'เย็น'}) มีงาน ${c.sites?.site_number || c.type} อยู่แล้ว`)
+          `• ${c.workers?.nickname || c.workers?.name} — ${c.date} (${c.shift === 'morning' ? 'เช้า' : 'บ่าย'}) มีงาน ${c.sites?.site_number || c.type} อยู่แล้ว`)
         setPendingRows(rows)
         setConflictMsg(`พบ ${conflicts.length} กะที่มีงานอยู่แล้ว:\n${lines.join('\n')}${conflicts.length > 8 ? '\n…' : ''}\n\nยืนยันจะเขียนทับตามนี้ไหม?`)
         setSaving(false)

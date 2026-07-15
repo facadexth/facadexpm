@@ -28,7 +28,7 @@ export const SITE_TYPES = ['site', 'factory']
 
 export const SHIFTS = [
   { key: 'morning', label: 'เช้า', emoji: '🌅' },
-  { key: 'evening', label: 'เย็น', emoji: '🌆' },
+  { key: 'evening', label: 'บ่าย', emoji: '🌆' },
 ]
 
 export const DOW_TH = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']  // index by getDay() (0=Sun)

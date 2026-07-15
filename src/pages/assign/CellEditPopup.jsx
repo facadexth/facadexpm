@@ -35,7 +35,7 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
   }
 
   return (
-    <Modal title={`${worker.nickname || worker.name} · ${date} · ${shift === 'morning' ? 'เช้า' : 'เย็น'}`} onClose={onClose} maxWidth={420}>
+    <Modal title={`${worker.nickname || worker.name} · ${date} · ${shift === 'morning' ? 'เช้า' : 'บ่าย'}`} onClose={onClose} maxWidth={420}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
         <div>
           <label className="label">ประเภท</label>

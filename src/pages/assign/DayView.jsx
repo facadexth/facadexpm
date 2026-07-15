@@ -72,7 +72,7 @@ export default function DayView({ dayIso, assignments, sites, travelRate, onEdit
                   {g.morning.length ? g.morning.map(a => <Chip key={a.id} a={a} />) : <span style={{ fontSize: 11, color: 'var(--text3)' }}>— ว่าง —</span>}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--yellow)', marginBottom: 4 }}>🌆 เย็น</div>
+                  <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--yellow)', marginBottom: 4 }}>🌆 บ่าย</div>
                   {g.evening.length ? g.evening.map(a => <Chip key={a.id} a={a} />) : <span style={{ fontSize: 11, color: 'var(--text3)' }}>— ว่าง —</span>}
                 </div>
               </div>
@@ -90,7 +90,7 @@ export default function DayView({ dayIso, assignments, sites, travelRate, onEdit
             return (
               <span key={a.id} onClick={() => onEditHalf({ id: a.worker_id, name: a.workers?.name, nickname: a.workers?.nickname }, a.date, a.shift)}
                 style={{ background: tc.bg, color: tc.color, borderRadius: 5, padding: '3px 8px', margin: 2, fontSize: 11, cursor: 'pointer', display: 'inline-block' }}>
-                {a.workers?.nickname || a.workers?.name} · {TYPE_LABEL[a.type] || a.type} ({a.shift === 'morning' ? 'เช้า' : 'เย็น'})
+                {a.workers?.nickname || a.workers?.name} · {TYPE_LABEL[a.type] || a.type} ({a.shift === 'morning' ? 'เช้า' : 'บ่าย'})
               </span>
             )
           })}
