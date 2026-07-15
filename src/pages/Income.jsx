@@ -7,7 +7,7 @@
 // ============================================================
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useIncomes, useSites, useClients } from '../hooks/useSupabase.js'
+import { useIncomes, useSites } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
@@ -25,21 +25,10 @@ const EMPTY_FORM = {
   amount_no_vat: '', vat_pct: '7', tax_pct: '3', retention_pct: '', received_amount: ''
 }
 
-function IncomeForm({ initial = EMPTY_FORM, sites, clients, onSave, onCancel, loading }) {
+function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('income-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-
-  // ลูกค้าที่มีอยู่แล้วในระบบ + เผื่อ client_name เดิม (แก้ไข) ที่ไม่ตรงกับรายชื่อลูกค้าปัจจุบัน
-  const clientOpts = useMemo(() => {
-    const opts = (clients || []).map(c => ({
-      value: c.name, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
-    }))
-    if (form.client_name && !opts.some(o => o.value === form.client_name)) {
-      opts.unshift({ value: form.client_name, label: form.client_name })
-    }
-    return opts
-  }, [clients, form.client_name])
 
   // คำนวณ VAT / Tax ถูกหัก / Retention อัตโนมัติจาก % ของมูลค่าก่อน VAT
   const noVat       = parseFloat(form.amount_no_vat) || 0
@@ -77,20 +66,19 @@ function IncomeForm({ initial = EMPTY_FORM, sites, clients, onSave, onCancel, lo
             <SearchableSelect
               required
               value={form.site_id}
-              onChange={id => set('site_id', id)}
+              onChange={id => {
+                const site = (sites || []).find(s => s.id === id)
+                setForm(f => ({ ...f, site_id: id, client_name: site?.client_display_name || site?.client_name || f.client_name }))
+              }}
               placeholder="— เลือกไซท์ —"
               options={siteOpts(sites)}
             />
           </div>
           <div>
-            <label className="label">ชื่อลูกค้า ★</label>
-            <SearchableSelect
-              required
-              value={form.client_name}
-              onChange={name => set('client_name', name)}
-              placeholder="— เลือกลูกค้า —"
-              options={clientOpts}
-            />
+            <label className="label">ลูกค้า</label>
+            <div className="input" style={{ display: 'flex', alignItems: 'center', color: form.client_name ? 'var(--text)' : 'var(--text3)' }}>
+              {form.client_name || '(เลือกไซท์งานก่อน — ลูกค้าจะขึ้นอัตโนมัติ)'}
+            </div>
           </div>
         </div>
         <div>
@@ -166,7 +154,6 @@ export default function Income({ navigateTo, navState }) {
   const filters = { from: dateFrom, to: dateTo, siteId, search }
   const { data: incomes, refetch } = useIncomes(filters)
   const { data: sites } = useSites()
-  const { data: clients } = useClients()
 
   const totalReceived   = useMemo(() => (incomes || []).reduce((s, i) => s + (i.received_amount || 0), 0), [incomes])
   const totalNoVat      = useMemo(() => (incomes || []).reduce((s, i) => s + (i.amount_no_vat || 0), 0), [incomes])
@@ -336,7 +323,6 @@ export default function Income({ navigateTo, navState }) {
               retention_pct: editRow.amount_no_vat ? +((editRow.retention||0)     / editRow.amount_no_vat * 100).toFixed(2) : '',
             } : { ...EMPTY_FORM, site_id: siteId }}
             sites={sites}
-            clients={clients}
             onSave={handleSave}
             onCancel={() => { setShowAdd(false); setEditRow(null) }}
             loading={saving}
