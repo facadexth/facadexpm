@@ -18,6 +18,7 @@ import AssignWizard from './assign/AssignWizard.jsx'
 import CellEditPopup from './assign/CellEditPopup.jsx'
 import { computeRange } from './assign/useAssignRange.js'
 import { TYPE_LEGEND, TYPE_COLOR } from './assign/constants.js'
+import { buildLineText } from './assign/lineExport.js'
 
 export default function Assign({ navState }) {
   const { isAtLeast } = useUserRole()
@@ -30,6 +31,7 @@ export default function Assign({ navState }) {
   const [saving, setSaving] = useState(false)
   const [pendingRows, setPendingRows] = useState(null) // rows waiting for conflict confirm
   const [conflictMsg, setConflictMsg] = useState('')
+  const [copied, setCopied] = useState(false)
 
   const { from, to, days } = useMemo(() => computeRange(view, anchor), [view, anchor])
 
@@ -132,6 +134,15 @@ export default function Assign({ navState }) {
     setCellTarget({ worker, date, shift, existing })
   }
 
+  const handleCopyLine = async () => {
+    const text = buildLineText(days, assignments, sites)
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (e) { alert('คัดลอกไม่สำเร็จ: ' + e.message) }
+  }
+
   const cellH = view === 'month' ? 30 : 38
 
   return (
@@ -139,6 +150,9 @@ export default function Assign({ navState }) {
       {/* ── Toolbar ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => setWizardOpen(true)}>+ Assign งาน</button>}
+        {(view === 'day' || view === 'week') && (
+          <button className="btn btn-ghost" onClick={handleCopyLine}>{copied ? '✅ คัดลอกแล้ว!' : '📋 คัดลอกสำหรับ LINE'}</button>
+        )}
         <div style={{ flex: 1 }} />
         <ViewToggle view={view} onView={setView} anchor={anchor} onAnchor={setAnchor} />
       </div>
