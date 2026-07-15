@@ -274,11 +274,17 @@ SELECT
     ELSE NULL
   END AS billing_pct,
   -- ยอดค้างจ่าย (pending + check_issued)
-  COALESCE(SUM(CASE WHEN e.status IN ('pending','check_issued') THEN e.amount ELSE 0 END), 0) AS outstanding_expense
+  COALESCE(SUM(CASE WHEN e.status IN ('pending','check_issued') THEN e.amount ELSE 0 END), 0) AS outstanding_expense,
+  s.distance_km,
+  s.map_url,
+  c.contact_person AS client_contact_person,  -- ผู้ติดต่อของลูกค้าที่ผูกกับไซท์นี้
+  c.phone          AS client_phone
 FROM sites s
+LEFT JOIN clients c ON s.client_id = c.id
 LEFT JOIN expenses e ON e.site_id = s.id
 LEFT JOIN incomes i ON i.site_id = s.id
-GROUP BY s.id, s.site_number, s.name, s.status, s.start_date, s.end_date, s.contract_value;
+GROUP BY s.id, s.site_number, s.name, s.status, s.start_date, s.end_date, s.contract_value,
+  s.distance_km, s.map_url, c.contact_person, c.phone;
 
 -- ยอดที่ต้องชำระตามช่วงเวลา (สำหรับ Dashboard cash forecast)
 CREATE OR REPLACE VIEW payment_forecast AS

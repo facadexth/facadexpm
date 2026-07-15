@@ -11,7 +11,10 @@ const OTHER_TYPE_LABEL = { office: 'ออฟฟิศ', leave: 'ลา', holida
 
 function workerLabel(a) {
   const name = a.workers?.nickname || a.workers?.name || '—'
-  return a.ot_hours > 0 ? `${name} (OT ${a.ot_hours}ชม.)` : name
+  const extras = []
+  if (a.ot_hours > 0) extras.push(`OT ${a.ot_hours}ชม.`)
+  if (a.notes) extras.push(a.notes)
+  return extras.length ? `${name} (${extras.join(', ')})` : name
 }
 
 function formatDayBlock(dateIso, dayAssignments, siteMeta) {
@@ -38,6 +41,8 @@ function formatDayBlock(dateIso, dayAssignments, siteMeta) {
     const meta = siteMeta[sid] || {}
     lines.push('')
     lines.push(`🏗️ ${meta.site_number || ''} ${meta.name || ''}`.trim())
+    if (meta.contact_person) lines.push(`👤 ผู้ติดต่อ: ${meta.contact_person}${meta.phone ? ` (${meta.phone})` : ''}`)
+    if (meta.map_url) lines.push(`📍 ${meta.map_url}`)
     lines.push(`🌅 เช้า: ${g.morning.length ? g.morning.map(workerLabel).join(', ') : '— ว่าง —'}`)
     lines.push(`🌆 เย็น: ${g.evening.length ? g.evening.map(workerLabel).join(', ') : '— ว่าง —'}`)
   })
@@ -61,7 +66,12 @@ function formatDayBlock(dateIso, dayAssignments, siteMeta) {
  */
 export function buildLineText(days, assignments, sites) {
   const siteMeta = {}
-  ;(sites || []).forEach(s => { siteMeta[s.id] = { name: s.name, site_number: s.site_number } })
+  ;(sites || []).forEach(s => {
+    siteMeta[s.id] = {
+      name: s.name, site_number: s.site_number, map_url: s.map_url,
+      contact_person: s.client_contact_person, phone: s.client_phone,
+    }
+  })
 
   const byDate = {}
   ;(assignments || []).forEach(a => { (byDate[a.date] ||= []).push(a) })

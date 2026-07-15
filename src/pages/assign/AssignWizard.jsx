@@ -12,6 +12,7 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
   const [type, setType]     = useState('site')          // 'site' | 'factory'
   const [siteId, setSiteId] = useState(initialSiteId)
   const [sel, setSel]       = useState({})              // worker_id -> { am, pm }
+  const [notes, setNotes]   = useState('')              // applied to every row in this batch
 
   const toggleWorker = (id) => setSel(s => {
     const n = { ...s }
@@ -33,8 +34,8 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
     const rows = []
     for (const date of days) {
       for (const [worker_id, sh] of Object.entries(sel)) {
-        if (sh.am) rows.push({ worker_id, date, shift: 'morning', site_id: siteId, type })
-        if (sh.pm) rows.push({ worker_id, date, shift: 'evening', site_id: siteId, type })
+        if (sh.am) rows.push({ worker_id, date, shift: 'morning', site_id: siteId, type, notes: notes || null })
+        if (sh.pm) rows.push({ worker_id, date, shift: 'evening', site_id: siteId, type, notes: notes || null })
       }
     }
     if (!rows.length) return alert('ทุกช่างถูกปิดกะทั้งเช้าและเย็น')
@@ -101,6 +102,12 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
             })}
             {!(workers || []).length && <div style={{ fontSize: 12, color: 'var(--text3)' }}>ยังไม่มีช่าง</div>}
           </div>
+        </div>
+
+        {/* 5. notes */}
+        <div>
+          <div className="label" style={{ marginBottom: 6 }}>5 · รายละเอียดเพิ่มเติม (ถ้ามี — ใช้ร่วมกันทุกวัน/ทุกคนที่เลือก)</div>
+          <textarea className="textarea" rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="เช่น เอาบันไดมาด้วย" />
         </div>
       </div>
       <div className="modal-footer">

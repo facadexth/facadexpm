@@ -45,13 +45,13 @@ export default function Assign({ navState }) {
 
   const ongoingSites = useMemo(() => (sites || []).filter(s => s.status === 'Ongoing'), [sites])
 
-  // cellLookup[worker_id][iso] = { morning?, evening? } each { id, type, site_id, site_number, ot }
+  // cellLookup[worker_id][iso] = { morning?, evening? } each { id, type, site_id, site_number, ot, notes }
   const cellLookup = useMemo(() => {
     const m = {}
     ;(assignments || []).forEach(a => {
       const w = m[a.worker_id] || (m[a.worker_id] = {})
       const c = w[a.date] || (w[a.date] = {})
-      c[a.shift] = { id: a.id, type: a.type || 'site', site_id: a.site_id, site_number: a.sites?.site_number, site_name: a.sites?.name, ot: a.ot_hours || 0 }
+      c[a.shift] = { id: a.id, type: a.type || 'site', site_id: a.site_id, site_number: a.sites?.site_number, site_name: a.sites?.name, ot: a.ot_hours || 0, notes: a.notes || '' }
     })
     return m
   }, [assignments])

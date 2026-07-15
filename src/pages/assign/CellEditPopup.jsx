@@ -20,6 +20,7 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
   const [type, setType]     = useState(existing?.type || 'site')
   const [siteId, setSiteId] = useState(existing?.site_id || '')
   const [ot, setOt]         = useState(existing?.ot || 0)
+  const [notes, setNotes]   = useState(existing?.notes || '')
 
   const needsSite = SITE_TYPES.includes(type)
 
@@ -29,6 +30,7 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
       worker_id: worker.id, date, shift,
       type, site_id: needsSite ? siteId : null,
       ot_hours: parseFloat(ot) || 0,
+      notes: notes || null,
     })
   }
 
@@ -60,6 +62,10 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
               onChange={e => setOt(e.target.value)} placeholder="0 = ไม่มี OT" />
           </div>
         )}
+        <div>
+          <label className="label">รายละเอียดเพิ่มเติม</label>
+          <textarea className="textarea" rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="เช่น เอาบันไดมาด้วย" />
+        </div>
       </div>
       <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
         <div>
