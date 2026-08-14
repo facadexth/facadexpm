@@ -37,14 +37,19 @@ function Half({ info, onClick, h, fontSize }) {
   )
 }
 
-export default function AssignCell({ cell = {}, hasOT = false, onEdit, w = '100%', h = 32, variant = 'week' }) {
+export default function AssignCell({ cell = {}, ot = null, onEdit, w = '100%', h = 32, variant = 'week' }) {
   const { morning, evening } = cell
   const same = morning && evening
     && morning.site_id === evening.site_id && morning.type === evening.type
   const fontSize = variant === 'month' ? 8 : 11
 
-  const otBadge = hasOT && (
-    <span title="มี OT" style={{
+  const otTitle = ot && [
+    ot.site_name || ot.site_number || '',
+    `${ot.start_time?.slice(0, 5)}-${ot.end_time?.slice(0, 5)}${ot.is_overnight ? ' (ข้ามคืน)' : ''}`,
+    `${ot.ot_hours} ชม.`,
+  ].filter(Boolean).join(' · ')
+  const otBadge = ot && (
+    <span title={otTitle} style={{
       position: 'absolute', top: -2, right: -2, fontSize: 9, lineHeight: 1,
       background: 'var(--bg)', borderRadius: '50%', padding: 1,
     }}>⚡</span>

@@ -15,6 +15,7 @@ import ViewToggle from './assign/ViewToggle.jsx'
 import GridView from './assign/GridView.jsx'
 import DayView from './assign/DayView.jsx'
 import AssignWizard from './assign/AssignWizard.jsx'
+import AssignOTWizard from './assign/AssignOTWizard.jsx'
 import CellEditPopup from './assign/CellEditPopup.jsx'
 import { computeRange } from './assign/useAssignRange.js'
 import { TYPE_LEGEND, TYPE_COLOR } from './assign/constants.js'
@@ -27,6 +28,7 @@ export default function Assign({ navState }) {
   const [view, setView]     = useState('week')
   const [anchor, setAnchor] = useState(new Date())
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [otWizardOpen, setOtWizardOpen] = useState(false)
   const [cellTarget, setCellTarget] = useState(null)   // { worker, date, shift, existing }
   const [saving, setSaving] = useState(false)
   const [pendingRows, setPendingRows] = useState(null) // rows waiting for conflict confirm
@@ -168,6 +170,17 @@ export default function Assign({ navState }) {
     finally { setSaving(false) }
   }
 
+  const handleOTWizardSubmit = async (rows) => {
+    setSaving(true)
+    try {
+      const { error } = await supabase.from('worker_ot')
+        .upsert(rows, { onConflict: 'worker_id,date' })
+      if (error) throw error
+      setOtWizardOpen(false); refetchOT()
+    } catch (e) { alert('Error: ' + e.message) }
+    finally { setSaving(false) }
+  }
+
   const openCell = (worker, date, shift) => {
     const existing = cellLookup[worker.id]?.[date]?.[shift] || null
     const existingOT = otLookup[worker.id]?.[date] || null
@@ -190,6 +203,7 @@ export default function Assign({ navState }) {
       {/* ── Toolbar ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => setWizardOpen(true)}>+ Assign งาน</button>}
+        {canEdit && <button className="btn btn-ghost" onClick={() => setOtWizardOpen(true)}>⚡ Assign OT</button>}
         {(view === 'day' || view === 'week') && (
           <button className="btn btn-ghost" onClick={handleCopyLine}>{copied ? '✅ คัดลอกแล้ว!' : '📋 คัดลอกสำหรับ LINE'}</button>
         )}
@@ -250,6 +264,19 @@ export default function Assign({ navState }) {
           initialSiteId={navState?.siteId || ''}
           onSubmit={handleWizardSubmit}
           onClose={() => setWizardOpen(false)}
+          saving={saving}
+        />
+      )}
+
+      {/* ── OT Wizard ── */}
+      {otWizardOpen && (
+        <AssignOTWizard
+          workers={workers || []}
+          sites={ongoingSites}
+          initialSiteId={navState?.siteId || ''}
+          initialDate={new Date().toISOString().slice(0, 10)}
+          onSubmit={handleOTWizardSubmit}
+          onClose={() => setOtWizardOpen(false)}
           saving={saving}
         />
       )}

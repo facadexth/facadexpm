@@ -49,7 +49,7 @@ export default function GridView({ days, workers, cellLookup, otLookup, onEditHa
                     <td key={d.iso} style={{ padding: 2, textAlign: 'center', opacity: d.isSunday ? 0.5 : 1 }}>
                       <AssignCell
                         cell={row[d.iso] || {}}
-                        hasOT={!!otLookup?.[w.id]?.[d.iso]}
+                        ot={otLookup?.[w.id]?.[d.iso] || null}
                         w="100%" h={cellH} variant={variant}
                         onEdit={(shift) => !d.isSunday && onEditHalf(w, d.iso, shift)}
                       />
