@@ -14,7 +14,7 @@ export const TYPE_COLOR = {
 }
 
 // short badge label shown in a cell (site/factory show the site number instead)
-export const TYPE_LABEL = { site: '', factory: 'รง', office: 'OF', leave: 'LA', leave_sick: 'LS', leave_personal: 'LP', holiday: 'HO', subcontract: 'SC' }
+export const TYPE_LABEL = { site: '', factory: 'รง', office: 'OF', leave: 'LA', leave_sick: 'ลาป่วย', leave_personal: 'ลากิจ', holiday: 'HO', subcontract: 'SC' }
 
 export const TYPE_LEGEND = [
   { type: 'site',            label: '🏗️ ไซท์' },
