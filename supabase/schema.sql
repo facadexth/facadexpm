@@ -226,6 +226,18 @@ CREATE INDEX idx_worker_ot_site ON worker_ot(site_id);
 CREATE INDEX idx_worker_ot_date ON worker_ot(date);
 
 -- ----------------------------------------------------------------
+-- COMPANY_HOLIDAYS — ปฏิทินวันหยุดบริษัท (ไม่ auto-mark worker_assignments)
+-- ----------------------------------------------------------------
+CREATE TABLE company_holidays (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  date       DATE NOT NULL UNIQUE,
+  name       TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_company_holidays_date ON company_holidays(date);
+
+-- ----------------------------------------------------------------
 -- SALARY_RECORDS — เงินเดือนรายเดือน
 -- ----------------------------------------------------------------
 CREATE TABLE salary_records (
@@ -369,6 +381,9 @@ GROUP BY wa.site_id, s.distance_km;
 CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- default holiday pay multiplier
+INSERT INTO app_settings (key, value) VALUES ('holiday_pay_multiplier', '1.5') ON CONFLICT (key) DO NOTHING;
 
 
 -- ----------------------------------------------------------------
