@@ -32,20 +32,31 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
   const needsSite = SITE_TYPES.includes(type)
   const otHours = computeOTHours(otStart, otEnd)
   const otStarted = otSiteId || otStart || otEnd  // user has begun filling in OT
+  // True once the user has any actual shift intent: editing something that
+  // already exists, or having changed the shift form away from its blank
+  // default. False for a truly empty cell where only OT is being entered —
+  // in that case we must NOT create a phantom shift row just to satisfy
+  // needsSite validation, since that would silently add a half-day of
+  // labor cost the worker never actually worked (the exact bug OT
+  // decoupling was built to eliminate).
+  const wantsShiftSave = !!existing || !!siteId || !!notes || type !== 'site'
 
   const save = () => {
-    if (needsSite && !siteId) return alert('เลือกไซท์งาน')
+    if (wantsShiftSave && needsSite && !siteId) return alert('เลือกไซท์งาน')
     if (otStarted && (!otSiteId || !otStart || !otEnd)) {
       return alert('กรอกไซท์งาน เวลาเริ่ม และเวลาจบของ OT ให้ครบ')
     }
     if (otStart && otEnd && otHours == null) {
       return alert('เวลาจบ OT ต้องอยู่หลังเวลาเริ่ม')
     }
-    onSave({
-      worker_id: worker.id, date, shift,
-      type, site_id: needsSite ? siteId : null,
-      notes: notes || null,
-    })
+    if (!wantsShiftSave && !otStarted) return alert('กรุณากรอกข้อมูลกะ หรือ OT อย่างน้อยหนึ่งอย่าง')
+    if (wantsShiftSave) {
+      onSave({
+        worker_id: worker.id, date, shift,
+        type, site_id: needsSite ? siteId : null,
+        notes: notes || null,
+      })
+    }
     if (otStarted && otHours != null) {
       onSaveOT({
         worker_id: worker.id, date,
