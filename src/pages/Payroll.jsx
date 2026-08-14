@@ -218,14 +218,17 @@ export default function Payroll() {
         .lte('date', to)
       if (error) throw error
 
-      // Group by worker
+      // Group by worker. Legacy 'leave' rows (created before the sick/
+      // personal split) are treated as leave_personal so recalculating a
+      // historical month doesn't silently change an already-paid deduction.
       const wmap = {}
       ;(assigns || []).forEach(a => {
         const w = a.workers
         if (!w) return
-        if (!wmap[a.worker_id]) wmap[a.worker_id] = { worker: w, leave: 0, ot_hours: 0 }
-        if (a.type === 'leave')  wmap[a.worker_id].leave += 0.5  // 1 กะ = 0.5 วัน (เช้า+บ่าย = 1 วัน)
-        if (a.type === 'site')   wmap[a.worker_id].ot_hours += (a.ot_hours || 0)  // legacy OT stored on the shift row
+        if (!wmap[a.worker_id]) wmap[a.worker_id] = { worker: w, leave_sick: 0, leave_personal: 0, ot_hours: 0 }
+        if (a.type === 'leave_sick')                          wmap[a.worker_id].leave_sick += 0.5
+        if (a.type === 'leave_personal' || a.type === 'leave') wmap[a.worker_id].leave_personal += 0.5  // 1 กะ = 0.5 วัน (เช้า+บ่าย = 1 วัน)
+        if (a.type === 'site')                                 wmap[a.worker_id].ot_hours += (a.ot_hours || 0)  // legacy OT stored on the shift row
       })
 
       const otRows = await fetchWorkerOTForRange(from, to)
@@ -244,7 +247,7 @@ export default function Payroll() {
 
       const results = Object.entries(wmap).map(([worker_id, d]) => {
         const daily_rate     = (d.worker.monthly_salary || 0) / 26
-        const leave_ded      = parseFloat((d.leave * daily_rate).toFixed(2))
+        const leave_ded      = parseFloat((d.leave_personal * daily_rate).toFixed(2))
         const ot_amt         = parseFloat((d.ot_hours * daily_rate / 8 * 1.5).toFixed(2))
         const holiday_bonus  = parseFloat(((d.holiday_shifts || 0) * daily_rate * 0.5 * holidayMultiplier).toFixed(2))
         const sso            = d.worker.has_social_security
@@ -260,7 +263,8 @@ export default function Payroll() {
           base_salary:     d.worker.monthly_salary || 0,
           contribution:    d.worker.monthly_contribution || 0,
           social_security_ded: sso,
-          leave_days:      d.leave,
+          leave_sick_days:     d.leave_sick,
+          leave_personal_days: d.leave_personal,
           leave_deduction: leave_ded,
           ot_hours:        d.ot_hours,
           ot_amount:       ot_amt,
@@ -403,7 +407,7 @@ export default function Payroll() {
                 <thead>
                   <tr>
                     <th>พนักงาน</th><th>เงินเดือน</th>
-                    <th>วันลา</th><th>หักลา</th>
+                    <th>ลาป่วย</th><th>ลากิจ</th><th>หักลา</th>
                     <th>OT (ชม.)</th><th>OT (บาท)</th>
                     <th>กะวันหยุด</th><th>โบนัสวันหยุด</th>
                     <th>ประกันสังคม</th><th>รับสุทธิ</th>
@@ -414,7 +418,8 @@ export default function Payroll() {
                     <tr key={i}>
                       <td style={{ fontWeight: 600 }}>{r.name}{r.nickname ? ` (${r.nickname})` : ''}</td>
                       <td className="font-mono">{fmt(r.base_salary)}</td>
-                      <td style={{ textAlign: 'center', color: r.leave_days > 0 ? 'var(--red)' : 'var(--text3)' }}>{r.leave_days || '—'}</td>
+                      <td style={{ textAlign: 'center', color: r.leave_sick_days > 0 ? 'var(--yellow)' : 'var(--text3)' }}>{r.leave_sick_days || '—'}</td>
+                      <td style={{ textAlign: 'center', color: r.leave_personal_days > 0 ? 'var(--red)' : 'var(--text3)' }}>{r.leave_personal_days || '—'}</td>
                       <td className="font-mono" style={{ color: 'var(--red)' }}>{r.leave_deduction > 0 ? `(${fmt(r.leave_deduction)})` : '—'}</td>
                       <td style={{ textAlign: 'center', color: r.ot_hours > 0 ? 'var(--yellow)' : 'var(--text3)' }}>{r.ot_hours || '—'}</td>
                       <td className="font-mono" style={{ color: 'var(--yellow)' }}>{r.ot_amount > 0 ? fmt(r.ot_amount) : '—'}</td>
