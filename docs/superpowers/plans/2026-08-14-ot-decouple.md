@@ -775,7 +775,13 @@ with:
 - [ ] **Step 8: Verify build**
 
 Run: `npm run build`
-Expected: built, no errors — this will fail if `DayView`/`GridView` prop signatures aren't updated yet; that happens in Tasks 7–8. If this build fails only on those two components not yet accepting the new props, that's expected at this point — confirm the failure is *only* about `DayView`/`GridView`, not a syntax error in `Assign.jsx` itself, by reading the error output.
+Expected: built, no errors. This project's JSX has no compile-time prop
+validation (no TypeScript, no PropTypes), so passing `otEntries`/`otLookup`
+to `DayView`/`GridView` here — before Tasks 7–8 add those components'
+matching prop destructuring — does not fail the build; the extra props are
+just inert until those components read them. A build failure at this step
+means a real syntax/import error in `Assign.jsx` itself, not a missing prop
+downstream.
 
 - [ ] **Step 9: Commit**
 
