@@ -7,7 +7,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { supabase } from '../lib/supabase.js'
-import { useWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs, fetchWorkerOTForRange } from '../hooks/useSupabase.js'
+import { useWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs, fetchWorkerOTForRange, useCompanyHolidays, saveCompanyHoliday, deleteCompanyHoliday, useAppSetting, saveAppSetting, fetchCompanyHolidaysForRange } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -206,6 +206,30 @@ function SalaryForm({ initial = EMPTY_SALARY, workers, onSave, onCancel, loading
   )
 }
 
+// ── Holiday Form ───────────────────────────────────────────────
+function HolidayForm({ onSave, onCancel, loading }) {
+  const [date, setDate] = useState('')
+  const [name, setName] = useState('')
+  return (
+    <form onSubmit={e => { e.preventDefault(); onSave({ date, name }) }}>
+      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        <div>
+          <label className="label">วันที่ ★</label>
+          <input type="date" className="input" required value={date} onChange={e => setDate(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">ชื่อวันหยุด ★</label>
+          <input className="input" required value={name} onChange={e => setName(e.target.value)} placeholder="เช่น วันแรงงาน" />
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button type="button" className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>
+        <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? '⏳...' : '✅ บันทึก'}</button>
+      </div>
+    </form>
+  )
+}
+
 // ── HR Main Component ─────────────────────────────────────────
 export default function HR() {
   const now = new Date()
@@ -244,6 +268,16 @@ export default function HR() {
   const [auditTable, setAuditTable] = useState('')
   const { data: logs } = useAuditLogs(auditTable || null, 100)
 
+  // Holiday calendar state
+  const { data: holidays, refetch: refetchHolidays } = useCompanyHolidays()
+  const [showHolidayForm, setShowHolidayForm] = useState(false)
+  const [savingHoliday, setSavingHoliday] = useState(false)
+  const [deleteHolidayId, setDeleteHolidayId] = useState(null)
+  const { data: multiplierVal, refetch: refetchMultiplier } = useAppSetting('holiday_pay_multiplier', '1.5')
+  const [multiplierInput, setMultiplierInput] = useState('')
+  const [savingMultiplier, setSavingMultiplier] = useState(false)
+  useEffect(() => { if (multiplierVal != null) setMultiplierInput(String(multiplierVal)) }, [multiplierVal])
+
   // ── Worker handlers ──
   const handleSaveWorker = async (form) => {
     setSavingWorker(true)
@@ -281,6 +315,34 @@ export default function HR() {
       await auditLog('workers', deleteWorkerId, 'DELETE', old, null)
       setDeleteWorkerId(null); refetchWorkers()
     } else alert('Error: ' + error.message)
+  }
+
+  // ── Holiday handlers ──
+  const handleSaveHoliday = async (form) => {
+    setSavingHoliday(true)
+    try {
+      await saveCompanyHoliday(form)
+      setShowHolidayForm(false); refetchHolidays()
+    } catch (e) { alert('Error: ' + e.message) }
+    finally { setSavingHoliday(false) }
+  }
+
+  const handleDeleteHoliday = async () => {
+    if (!deleteHolidayId) return
+    try {
+      await deleteCompanyHoliday(deleteHolidayId)
+      setDeleteHolidayId(null); refetchHolidays()
+    } catch (e) { alert('Error: ' + e.message) }
+  }
+
+  const handleSaveMultiplier = async () => {
+    setSavingMultiplier(true)
+    try {
+      await saveAppSetting('holiday_pay_multiplier', parseFloat(multiplierInput) || 1.5)
+      refetchMultiplier()
+      alert('✅ บันทึกตัวคูณโบนัสวันหยุดแล้ว')
+    } catch (e) { alert('Error: ' + e.message) }
+    finally { setSavingMultiplier(false) }
   }
 
   // ── Salary handlers ──
@@ -509,6 +571,46 @@ export default function HR() {
               </table>
             </div>
           </div>
+
+          <div style={{ marginTop: 24 }}>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                🎌 วันหยุดประจำปี
+              </div>
+              {canEdit && <button className="btn btn-sm btn-primary" onClick={() => setShowHolidayForm(true)}>+ เพิ่มวันหยุด</button>}
+            </div>
+            {canEdit && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                <label className="label" style={{ marginBottom: 0 }}>ตัวคูณโบนัสวันหยุด (ค่าเริ่มต้น 1.5)</label>
+                <input type="number" className="input input-sm" style={{ width: 90 }} min="1" step="0.1"
+                  value={multiplierInput} onChange={e => setMultiplierInput(e.target.value)} />
+                <button className="btn btn-sm btn-ghost" onClick={handleSaveMultiplier} disabled={savingMultiplier}>
+                  {savingMultiplier ? '⏳...' : '💾 บันทึก'}
+                </button>
+              </div>
+            )}
+            <div className="card">
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>วันที่</th><th>ชื่อวันหยุด</th><th></th></tr></thead>
+                  <tbody>
+                    {(holidays || []).map(h => (
+                      <tr key={h.id}>
+                        <td style={{ fontSize: 12 }}>{new Date(h.date).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
+                        <td style={{ fontWeight: 600 }}>{h.name}</td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          {canEdit && <button className="btn btn-sm btn-danger" onClick={() => setDeleteHolidayId(h.id)}>🗑️</button>}
+                        </td>
+                      </tr>
+                    ))}
+                    {!(holidays || []).length && (
+                      <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีวันหยุดที่กำหนด</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -662,6 +764,17 @@ export default function HR() {
       {deleteWorkerId && (
         <ConfirmDialog title="ลบช่าง" message="ยืนยันการลบช่างคนนี้? ข้อมูล assignment ทั้งหมดจะถูกลบด้วย"
           onConfirm={handleDeleteWorker} onCancel={() => setDeleteWorkerId(null)} danger />
+      )}
+
+      {showHolidayForm && (
+        <Modal title="เพิ่มวันหยุดประจำปี" onClose={() => setShowHolidayForm(false)} maxWidth={420}>
+          <HolidayForm onSave={handleSaveHoliday} onCancel={() => setShowHolidayForm(false)} loading={savingHoliday} />
+        </Modal>
+      )}
+
+      {deleteHolidayId && (
+        <ConfirmDialog title="ลบวันหยุด" message="ยืนยันการลบวันหยุดนี้?"
+          onConfirm={handleDeleteHoliday} onCancel={() => setDeleteHolidayId(null)} danger />
       )}
 
       {showSalaryForm && (
