@@ -2,10 +2,11 @@
 // ExcelUpload — Drag & Drop Excel → Parse → Insert to Supabase
 // รองรับ template รายจ่าย และ รายรับ
 // ============================================================
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabase.js'
 import { Modal } from './Modal.jsx'
+import SearchableSelect from './SearchableSelect.jsx'
 
 /**
  * parseExpenseSheet — แปลง rows จาก template รายจ่าย เป็น array of objects
@@ -184,7 +185,16 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
   const [preview, setPreview] = useState(null)   // parsed rows before insert
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [sites, setSites] = useState([])         // for the site-correction dropdown (expense/income only)
   const fileRef = useRef()
+
+  const siteOpts = useMemo(() => sites.map(s => ({
+    value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
+  })), [sites])
+
+  const updateRowSite = (i, siteId) => {
+    setPreview(prev => prev.map((r, idx) => idx === i ? { ...r, site_id: siteId } : r))
+  }
 
   const processFile = async (file) => {
     setError(null)
@@ -193,6 +203,15 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
       const wb  = XLSX.read(buf, { type: 'array', cellDates: false })
       const sheetName = wb.SheetNames[0]
       const ws = wb.Sheets[sheetName]
+
+      // Excel site names/codes are typed offline and often don't match the
+      // system exactly (typos, abbreviation variants like MFPK/MFDK/MFKP) —
+      // fetch the site list so unmatched rows can be corrected by hand in
+      // the preview instead of silently importing with no site.
+      if (type === 'expense' || type === 'income') {
+        const { data: sitesData } = await supabase.from('sites').select('id, site_number, name').order('site_number')
+        setSites(sitesData || [])
+      }
 
       const records =
         type === 'expense'  ? await parseExpenseSheet(ws)  :
@@ -298,14 +317,24 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                       {type === 'expense' ? <>
                         <td>{r.date}</td>
                         <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description}</td>
-                        <td style={{ color: r.site_id ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{r.site_id ? '✓' : '⚠️ ไม่พบไซท์'}</td>
+                        <td style={{ minWidth: 160 }}>
+                          {r.site_id ? <span style={{ color: 'var(--green)', fontSize: 11 }}>✓</span> : (
+                            <SearchableSelect value={r.site_id} onChange={id => updateRowSite(i, id)}
+                              placeholder="⚠️ ไม่พบไซท์ — เลือกเอง" options={siteOpts} />
+                          )}
+                        </td>
                         <td style={{ color: r.category_id ? 'var(--text2)' : 'var(--yellow)', fontSize: 11 }}>{r.category_id ? '✓' : '⚠️ ไม่พบหมวด'}</td>
                         <td style={{ color: 'var(--red)', fontWeight: 600 }}>{Number(r.amount).toLocaleString('th-TH')}</td>
                         <td><span className={`badge badge-${r.status}`}>{r.status}</span></td>
                       </> : type === 'income' ? <>
                         <td style={{ fontSize: 11, color: 'var(--accent)' }}>{r.invoice_no || '(auto)'}</td>
                         <td>{r.date}</td>
-                        <td style={{ color: r.site_id ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{r.site_id ? '✓' : '⚠️'}</td>
+                        <td style={{ minWidth: 160 }}>
+                          {r.site_id ? <span style={{ color: 'var(--green)', fontSize: 11 }}>✓</span> : (
+                            <SearchableSelect value={r.site_id} onChange={id => updateRowSite(i, id)}
+                              placeholder="⚠️ ไม่พบไซท์ — เลือกเอง" options={siteOpts} />
+                          )}
+                        </td>
                         <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.client_name}</td>
                         <td style={{ color: 'var(--green)', fontWeight: 600 }}>{Number(r.received_amount).toLocaleString('th-TH')}</td>
                       </> : type === 'site' ? <>
