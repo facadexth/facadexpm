@@ -34,6 +34,12 @@ export default function DayView({ dayIso, assignments, otEntries, sites, travelR
     }
   })
 
+  // Sites with OT but no regular assignment that day still need a card,
+  // otherwise their OT silently disappears from the view.
+  Object.keys(otBySite).forEach(sid => {
+    if (!bySite[sid]) bySite[sid] = { morning: [], evening: [], hasSiteType: false, labor: 0 }
+  })
+
   const siteIds = Object.keys(bySite)
 
   const Chip = ({ a }) => {
