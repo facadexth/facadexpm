@@ -4,10 +4,11 @@
 import { useMemo } from 'react'
 import { fmt } from '../../lib/supabase.js'
 import { TYPE_COLOR, TYPE_LABEL, SITE_TYPES } from './constants.js'
+import { otCost } from './otMath.js'
 
 const dayRate = (w) => Math.round((w?.monthly_salary || 0) / 26)
 
-export default function DayView({ dayIso, assignments, sites, travelRate, onEditHalf }) {
+export default function DayView({ dayIso, assignments, otEntries, sites, travelRate, onEditHalf }) {
   const siteMeta = useMemo(() => {
     const m = {}
     ;(sites || []).forEach(s => { m[s.id] = { name: s.name, site_number: s.site_number, distance_km: s.distance_km } })
@@ -15,6 +16,9 @@ export default function DayView({ dayIso, assignments, sites, travelRate, onEdit
   }, [sites])
 
   const rows = (assignments || []).filter(a => a.date === dayIso)
+  const dayOT = (otEntries || []).filter(o => o.date === dayIso)
+  const otBySite = {}
+  dayOT.forEach(o => { (otBySite[o.site_id] ||= []).push(o) })
 
   // group site/factory/subcontract by site; keep others separately
   const bySite = {}
@@ -50,7 +54,9 @@ export default function DayView({ dayIso, assignments, sites, travelRate, onEdit
           const g = bySite[sid]
           const meta = siteMeta[sid] || {}
           const travel = g.hasSiteType ? (meta.distance_km || 0) * 2 * (travelRate || 0) : 0
-          const total = g.labor + travel
+          const siteOT = otBySite[sid] || []
+          const otTotal = siteOT.reduce((s, o) => s + otCost(o.workers?.monthly_salary, o.ot_hours), 0)
+          const total = g.labor + travel + otTotal
           return (
             <div key={sid} className="card card-body" style={{ padding: '14px 16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, gap: 8 }}>
@@ -62,7 +68,7 @@ export default function DayView({ dayIso, assignments, sites, travelRate, onEdit
                   <div style={{ fontSize: 10, color: 'var(--text3)' }}>รวมวันนี้</div>
                   <div style={{ color: 'var(--yellow)', fontWeight: 800, fontSize: 16 }}>{fmt(total)}</div>
                   <div style={{ fontSize: 10, color: 'var(--text3)' }}>
-                    แรง {fmt(g.labor)}{travel > 0 && <> · เดินทาง {fmt(travel)}</>}
+                    แรง {fmt(g.labor)}{travel > 0 && <> · เดินทาง {fmt(travel)}</>}{otTotal > 0 && <> · OT {fmt(otTotal)}</>}
                   </div>
                 </div>
               </div>
@@ -76,6 +82,18 @@ export default function DayView({ dayIso, assignments, sites, travelRate, onEdit
                   {g.evening.length ? g.evening.map(a => <Chip key={a.id} a={a} />) : <span style={{ fontSize: 11, color: 'var(--text3)' }}>— ว่าง —</span>}
                 </div>
               </div>
+              {siteOT.length > 0 && (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--yellow)', marginBottom: 4 }}>⚡ OT</div>
+                  {siteOT.map(o => (
+                    <span key={o.id} onClick={() => onEditHalf({ id: o.worker_id, name: o.workers?.name, nickname: o.workers?.nickname }, o.date, 'morning')}
+                      title={`${o.workers?.name || ''} · ${o.start_time?.slice(0,5)}-${o.end_time?.slice(0,5)}`}
+                      style={{ background: 'rgba(255,209,102,0.25)', color: 'var(--yellow)', borderRadius: 5, padding: '3px 8px', margin: 2, fontSize: 11, cursor: 'pointer', display: 'inline-block' }}>
+                      {o.workers?.nickname || o.workers?.name} ({o.start_time?.slice(0,5)}-{o.end_time?.slice(0,5)})
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )
         })}
