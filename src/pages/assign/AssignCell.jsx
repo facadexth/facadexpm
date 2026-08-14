@@ -37,33 +37,46 @@ function Half({ info, onClick, h, fontSize }) {
   )
 }
 
-export default function AssignCell({ cell = {}, onEdit, w = '100%', h = 32, variant = 'week' }) {
+export default function AssignCell({ cell = {}, hasOT = false, onEdit, w = '100%', h = 32, variant = 'week' }) {
   const { morning, evening } = cell
   const same = morning && evening
     && morning.site_id === evening.site_id && morning.type === evening.type
   const fontSize = variant === 'month' ? 8 : 11
 
+  const otBadge = hasOT && (
+    <span title="มี OT" style={{
+      position: 'absolute', top: -2, right: -2, fontSize: 9, lineHeight: 1,
+      background: 'var(--bg)', borderRadius: '50%', padding: 1,
+    }}>⚡</span>
+  )
+
   // full-day block (both shifts identical)
   if (same) {
     const info = segInfo(morning, variant)
     return (
-      <div onClick={() => onEdit('morning')} title={info.title}
-        style={{
-          width: w, height: h, borderRadius: 4, display: 'flex', alignItems: 'center',
-          justifyContent: 'center', cursor: 'pointer', fontSize, fontWeight: 700,
-          background: info.bg, color: info.color, overflow: 'hidden', padding: '0 4px',
-          whiteSpace: 'nowrap',
-        }}>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{info.label}</span>
+      <div style={{ position: 'relative', width: w, height: h }}>
+        <div onClick={() => onEdit('morning')} title={info.title}
+          style={{
+            width: '100%', height: '100%', borderRadius: 4, display: 'flex', alignItems: 'center',
+            justifyContent: 'center', cursor: 'pointer', fontSize, fontWeight: 700,
+            background: info.bg, color: info.color, overflow: 'hidden', padding: '0 4px',
+            whiteSpace: 'nowrap',
+          }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{info.label}</span>
+        </div>
+        {otBadge}
       </div>
     )
   }
 
   // split (or partially empty)
   return (
-    <div style={{ width: w, height: h, borderRadius: 4, overflow: 'hidden', background: 'rgba(255,255,255,.03)' }}>
-      <Half info={segInfo(morning, variant)} h={h / 2} fontSize={Math.max(8, fontSize - 1)} onClick={() => onEdit('morning')} />
-      <Half info={segInfo(evening, variant)} h={h / 2} fontSize={Math.max(8, fontSize - 1)} onClick={() => onEdit('evening')} />
+    <div style={{ position: 'relative', width: w, height: h }}>
+      <div style={{ width: '100%', height: '100%', borderRadius: 4, overflow: 'hidden', background: 'rgba(255,255,255,.03)' }}>
+        <Half info={segInfo(morning, variant)} h={h / 2} fontSize={Math.max(8, fontSize - 1)} onClick={() => onEdit('morning')} />
+        <Half info={segInfo(evening, variant)} h={h / 2} fontSize={Math.max(8, fontSize - 1)} onClick={() => onEdit('evening')} />
+      </div>
+      {otBadge}
     </div>
   )
 }

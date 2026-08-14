@@ -7,7 +7,7 @@ import { fmt } from '../../lib/supabase.js'
 import AssignCell from './AssignCell.jsx'
 import { DOW_TH, SITE_TYPES } from './constants.js'
 
-export default function GridView({ days, workers, cellLookup, onEditHalf, cellH = 32, variant = 'week' }) {
+export default function GridView({ days, workers, cellLookup, otLookup, onEditHalf, cellH = 32, variant = 'week' }) {
   return (
     <div className="card" style={{ marginBottom: 20 }}>
       <div className="table-wrap" style={{ overflowX: 'auto' }}>
@@ -46,6 +46,7 @@ export default function GridView({ days, workers, cellLookup, onEditHalf, cellH 
                     <td key={d.iso} style={{ padding: 2, textAlign: 'center', opacity: d.isSunday ? 0.5 : 1 }}>
                       <AssignCell
                         cell={row[d.iso] || {}}
+                        hasOT={!!otLookup?.[w.id]?.[d.iso]}
                         w="100%" h={cellH} variant={variant}
                         onEdit={(shift) => !d.isSunday && onEditHalf(w, d.iso, shift)}
                       />
