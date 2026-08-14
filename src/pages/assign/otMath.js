@@ -15,15 +15,22 @@ function toMinutes(t) {
 
 /**
  * Compute OT hours from start/end time-of-day strings, rounded to the
- * nearest 0.5 hour. Returns null if either time is missing/invalid or
- * end is not after start (no overnight OT support).
+ * nearest 0.5 hour. Returns null if either time is missing/invalid.
+ *
+ * By default end must be after start (same-day OT) or null is returned —
+ * this catches a data-entry typo (end before start) as an error rather
+ * than silently producing a nonsense negative duration. Pass
+ * isOvernight=true when the OT genuinely crosses midnight (e.g.
+ * 22:00-03:30 next day); in that mode end is not required to be after
+ * start, and hours are computed as time-to-midnight plus time-from-midnight.
  */
-export function computeOTHours(start, end) {
+export function computeOTHours(start, end, isOvernight = false) {
   const startMin = toMinutes(start)
   const endMin = toMinutes(end)
-  if (startMin == null || endMin == null || endMin <= startMin) return null
-  const hours = (endMin - startMin) / 60
-  return Math.round(hours * 2) / 2
+  if (startMin == null || endMin == null) return null
+  if (!isOvernight && endMin <= startMin) return null
+  const minutes = isOvernight ? (24 * 60 - startMin) + endMin : endMin - startMin
+  return Math.round(minutes / 60 * 2) / 2
 }
 
 /** OT pay for a given monthly salary and OT hours, rounded to 2 decimals. */

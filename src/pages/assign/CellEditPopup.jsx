@@ -27,10 +27,11 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
   const [otSiteId, setOtSiteId] = useState(existingOT?.site_id || existing?.site_id || '')
   const [otStart, setOtStart]   = useState(existingOT?.start_time?.slice(0, 5) || '')
   const [otEnd, setOtEnd]       = useState(existingOT?.end_time?.slice(0, 5) || '')
+  const [otOvernight, setOtOvernight] = useState(existingOT?.is_overnight || false)
   const [otNotes, setOtNotes]   = useState(existingOT?.notes || '')
 
   const needsSite = SITE_TYPES.includes(type)
-  const otHours = computeOTHours(otStart, otEnd)
+  const otHours = computeOTHours(otStart, otEnd, otOvernight)
   const otStarted = otSiteId || otStart || otEnd  // user has begun filling in OT
   // True once the user has any actual shift intent: editing something that
   // already exists, or having changed the shift form away from its blank
@@ -47,7 +48,7 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
       return alert('กรอกไซท์งาน เวลาเริ่ม และเวลาจบของ OT ให้ครบ')
     }
     if (otStart && otEnd && otHours == null) {
-      return alert('เวลาจบ OT ต้องอยู่หลังเวลาเริ่ม')
+      return alert('เวลาจบ OT ต้องอยู่หลังเวลาเริ่ม (ถ้าทำงานข้ามคืน ให้ติ๊ก "ทำงานข้ามคืน" ด้านล่าง)')
     }
     if (!wantsShiftSave && !otStarted) return alert('กรุณากรอกข้อมูลกะ หรือ OT อย่างน้อยหนึ่งอย่าง')
     if (wantsShiftSave) {
@@ -61,7 +62,7 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
       onSaveOT({
         worker_id: worker.id, date,
         site_id: otSiteId, start_time: otStart, end_time: otEnd,
-        ot_hours: otHours, notes: otNotes || null,
+        ot_hours: otHours, is_overnight: otOvernight, notes: otNotes || null,
       })
     }
   }
@@ -112,9 +113,13 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
               <input type="time" className="input" value={otEnd} onChange={e => setOtEnd(e.target.value)} />
             </div>
           </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 12, cursor: 'pointer' }}>
+            <input type="checkbox" checked={otOvernight} onChange={e => setOtOvernight(e.target.checked)} style={{ width: 14, height: 14 }} />
+            🌙 ทำงานข้ามคืน (เลิกงานหลังเที่ยงคืน)
+          </label>
           {otStart && otEnd && (
             <div style={{ fontSize: 12, color: otHours != null ? 'var(--yellow)' : 'var(--red)', marginBottom: 6 }}>
-              {otHours != null ? `= ${otHours} ชม.` : 'เวลาจบต้องอยู่หลังเวลาเริ่ม'}
+              {otHours != null ? `= ${otHours} ชม.` : 'เวลาจบต้องอยู่หลังเวลาเริ่ม (หรือติ๊ก "ทำงานข้ามคืน")'}
             </div>
           )}
           <input className="input" style={{ marginBottom: 6 }} value={otNotes} onChange={e => setOtNotes(e.target.value)} placeholder="หมายเหตุ OT (ถ้ามี)" />

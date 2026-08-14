@@ -25,6 +25,7 @@ export default function GridView({ days, workers, cellLookup, otLookup, onEditHa
                 </th>
               ))}
               <th style={{ width: 60, textAlign: 'right' }}>รวมวัน</th>
+              <th style={{ width: 60, textAlign: 'right' }}>OT รวม</th>
             </tr>
           </thead>
           <tbody>
@@ -36,6 +37,8 @@ export default function GridView({ days, workers, cellLookup, otLookup, onEditHa
                 if (c?.morning && SITE_TYPES.includes(c.morning.type)) workDays += 0.5
                 if (c?.evening && SITE_TYPES.includes(c.evening.type)) workDays += 0.5
               })
+              let otTotal = 0
+              days.forEach(d => { otTotal += otLookup?.[w.id]?.[d.iso]?.ot_hours || 0 })
               return (
                 <tr key={w.id}>
                   <td style={{ position: 'sticky', left: 0, background: 'var(--bg3)', zIndex: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -55,11 +58,14 @@ export default function GridView({ days, workers, cellLookup, otLookup, onEditHa
                   <td style={{ textAlign: 'right', fontSize: 11, whiteSpace: 'nowrap', color: workDays > 0 ? 'var(--green)' : 'var(--text3)', fontWeight: 700 }}>
                     {workDays > 0 ? `${workDays}` : '0'}
                   </td>
+                  <td style={{ textAlign: 'right', fontSize: 11, whiteSpace: 'nowrap', color: otTotal > 0 ? 'var(--yellow)' : 'var(--text3)', fontWeight: 700 }}>
+                    {otTotal > 0 ? `${otTotal}` : '—'}
+                  </td>
                 </tr>
               )
             })}
             {!(workers || []).length && (
-              <tr><td colSpan={days.length + 2} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีช่าง</td></tr>
+              <tr><td colSpan={days.length + 3} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีช่าง</td></tr>
             )}
           </tbody>
         </table>

@@ -169,7 +169,7 @@ export function useWorkerOTRange(from, to) {
     if (!from || !to) return []
     const { data, error } = await supabase
       .from('worker_ot')
-      .select('id, worker_id, site_id, date, start_time, end_time, ot_hours, notes, workers(name, nickname, monthly_salary), sites(name, site_number)')
+      .select('id, worker_id, site_id, date, start_time, end_time, ot_hours, is_overnight, notes, workers(name, nickname, monthly_salary), sites(name, site_number)')
       .gte('date', from)
       .lte('date', to)
       .order('date')

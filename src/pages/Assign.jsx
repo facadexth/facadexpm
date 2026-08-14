@@ -58,12 +58,12 @@ export default function Assign({ navState }) {
     return m
   }, [assignments])
 
-  // otLookup[worker_id][iso] = { id, site_id, site_number, site_name, start_time, end_time, ot_hours, notes }
+  // otLookup[worker_id][iso] = { id, site_id, site_number, site_name, start_time, end_time, ot_hours, is_overnight, notes }
   const otLookup = useMemo(() => {
     const m = {}
     ;(otEntries || []).forEach(o => {
       const w = m[o.worker_id] || (m[o.worker_id] = {})
-      w[o.date] = { id: o.id, site_id: o.site_id, site_number: o.sites?.site_number, site_name: o.sites?.name, start_time: o.start_time, end_time: o.end_time, ot_hours: o.ot_hours || 0, notes: o.notes || '' }
+      w[o.date] = { id: o.id, site_id: o.site_id, site_number: o.sites?.site_number, site_name: o.sites?.name, start_time: o.start_time, end_time: o.end_time, ot_hours: o.ot_hours || 0, is_overnight: o.is_overnight || false, notes: o.notes || '' }
     })
     return m
   }, [otEntries])

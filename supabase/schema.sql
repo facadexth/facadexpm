@@ -208,17 +208,18 @@ CREATE TABLE worker_assignments (
 -- WORKER_OT — OT รายวัน (แยกจาก shift เช้า/บ่าย)
 -- ----------------------------------------------------------------
 CREATE TABLE worker_ot (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  worker_id   UUID NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
-  site_id     UUID NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
-  date        DATE NOT NULL,
-  start_time  TIME NOT NULL,
-  end_time    TIME NOT NULL,
-  ot_hours    NUMERIC NOT NULL,
-  notes       TEXT,
-  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  worker_id     UUID NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
+  site_id       UUID NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  date          DATE NOT NULL,
+  start_time    TIME NOT NULL,
+  end_time      TIME NOT NULL,
+  ot_hours      NUMERIC NOT NULL,
+  is_overnight  BOOLEAN NOT NULL DEFAULT false,  -- end_time falls on date+1 when true
+  notes         TEXT,
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (worker_id, date),
-  CHECK (end_time > start_time)
+  CHECK (is_overnight OR end_time > start_time)
 );
 
 CREATE INDEX idx_worker_ot_site ON worker_ot(site_id);
