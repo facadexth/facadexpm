@@ -7,11 +7,12 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { supabase } from '../lib/supabase.js'
-import { useWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs } from '../hooks/useSupabase.js'
+import { useWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs, fetchWorkerOTForRange } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { auditLog } from '../lib/audit.js'
+import { mergeWorkerOT } from '../lib/otMerge.js'
 
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
@@ -377,8 +378,12 @@ export default function HR() {
         const w = a.workers; if (!w) return
         if (!wmap[a.worker_id]) wmap[a.worker_id] = { worker: w, leave: 0, ot_hours: 0 }
         if (a.type === 'leave') wmap[a.worker_id].leave += 0.5  // 1 กะ = 0.5 วัน (เช้า+บ่าย = 1 วัน)
-        if (a.type === 'site')  wmap[a.worker_id].ot_hours += (a.ot_hours||0)
+        if (a.type === 'site')  wmap[a.worker_id].ot_hours += (a.ot_hours||0)  // legacy OT stored on the shift row
       })
+
+      const otRows = await fetchWorkerOTForRange(from, to)
+      mergeWorkerOT(wmap, otRows)  // adds worker_ot's decoupled OT entries on top
+
       const results = Object.entries(wmap).map(([worker_id, d]) => {
         const dr  = (d.worker.monthly_salary||0) / 26
         const lv  = parseFloat((d.leave * dr).toFixed(2))

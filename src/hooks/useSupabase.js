@@ -163,6 +163,41 @@ export function useLaborCost(siteId) {
   }, [siteId])
 }
 
+/** OT entries ในช่วงวันที่ — ใช้กับมุมมอง Day/Week/Month และ copy-for-LINE */
+export function useWorkerOTRange(from, to) {
+  return useQuery(async () => {
+    if (!from || !to) return []
+    const { data, error } = await supabase
+      .from('worker_ot')
+      .select('id, worker_id, site_id, date, start_time, end_time, ot_hours, notes, workers(name, nickname, monthly_salary), sites(name, site_number)')
+      .gte('date', from)
+      .lte('date', to)
+      .order('date')
+    if (error) throw error
+    return data
+  }, [from, to])
+}
+
+/** เหมือน useWorkerOTRange แต่เรียกแบบ imperative (ไม่ใช่ hook) — ใช้ใน Payroll/HR handleCalcFromAssign */
+export async function fetchWorkerOTForRange(from, to) {
+  const { data, error } = await supabase
+    .from('worker_ot')
+    .select('worker_id, ot_hours, workers(id, name, nickname, monthly_salary, monthly_contribution, has_social_security)')
+    .gte('date', from)
+    .lte('date', to)
+  if (error) throw error
+  return data
+}
+
+/** ต้นทุน OT ต่อไซท์ (all-time) */
+export function useOTCostBySite() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.from('ot_cost_by_site').select('*')
+    if (error) throw error
+    return data
+  })
+}
+
 // ── App Settings (key/value) ──────────────────────────────────
 
 export function useAppSetting(key, fallback = '') {

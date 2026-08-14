@@ -7,7 +7,7 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useWorkers, useSites, useAssignmentsRange, useLaborCost, useSiteTravelCost, useAppSetting } from '../hooks/useSupabase.js'
+import { useWorkers, useSites, useAssignmentsRange, useLaborCost, useSiteTravelCost, useAppSetting, useWorkerOTRange, useOTCostBySite } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt } from '../lib/supabase.js'
 import { ConfirmDialog } from '../components/Modal.jsx'
@@ -40,6 +40,8 @@ export default function Assign({ navState }) {
   const { data: assignments, refetch } = useAssignmentsRange(from, to)
   const { data: laborData } = useLaborCost()
   const { data: travelData } = useSiteTravelCost()
+  const { data: otEntries, refetch: refetchOT } = useWorkerOTRange(from, to)
+  const { data: otCostData } = useOTCostBySite()
   const { data: travelRateVal } = useAppSetting('travel_rate_per_km', '20')
   const travelRate = parseFloat(travelRateVal) || 0
 
@@ -56,20 +58,34 @@ export default function Assign({ navState }) {
     return m
   }, [assignments])
 
-  // labor + travel cost per site (all-time)
+  // otLookup[worker_id][iso] = { id, site_id, site_number, site_name, start_time, end_time, ot_hours, notes }
+  const otLookup = useMemo(() => {
+    const m = {}
+    ;(otEntries || []).forEach(o => {
+      const w = m[o.worker_id] || (m[o.worker_id] = {})
+      w[o.date] = { id: o.id, site_id: o.site_id, site_number: o.sites?.site_number, site_name: o.sites?.name, start_time: o.start_time, end_time: o.end_time, ot_hours: o.ot_hours || 0, notes: o.notes || '' }
+    })
+    return m
+  }, [otEntries])
+
+  // labor + travel + OT cost per site (all-time)
   const costBySite = useMemo(() => {
     const m = {}
     ;(laborData || []).forEach(l => {
-      const g = m[l.site_id] || (m[l.site_id] = { site_number: l.site_number, site_name: l.site_name, labor: 0, travel: 0, workers: [] })
+      const g = m[l.site_id] || (m[l.site_id] = { site_number: l.site_number, site_name: l.site_name, labor: 0, travel: 0, ot: 0, workers: [] })
       g.labor += l.labor_cost || 0
       g.workers.push({ name: l.worker_name, days: l.days_worked, cost: l.labor_cost })
     })
     ;(travelData || []).forEach(t => {
-      const g = m[t.site_id] || (m[t.site_id] = { site_number: '', site_name: '', labor: 0, travel: 0, workers: [] })
+      const g = m[t.site_id] || (m[t.site_id] = { site_number: '', site_name: '', labor: 0, travel: 0, ot: 0, workers: [] })
       g.travel += t.travel_cost || 0
     })
-    return Object.values(m).sort((a, b) => (b.labor + b.travel) - (a.labor + a.travel))
-  }, [laborData, travelData])
+    ;(otCostData || []).forEach(o => {
+      const g = m[o.site_id] || (m[o.site_id] = { site_number: o.site_number, site_name: o.site_name, labor: 0, travel: 0, ot: 0, workers: [] })
+      g.ot += o.ot_cost || 0
+    })
+    return Object.values(m).sort((a, b) => (b.labor + b.travel + b.ot) - (a.labor + a.travel + a.ot))
+  }, [laborData, travelData, otCostData])
 
   // ── save helpers ──
   const doUpsert = async (rows) => {
@@ -129,13 +145,37 @@ export default function Assign({ navState }) {
     finally { setSaving(false) }
   }
 
+  const handleOTSave = async (row) => {
+    setSaving(true)
+    try {
+      const { error } = await supabase.from('worker_ot')
+        .upsert(row, { onConflict: 'worker_id,date' })
+      if (error) throw error
+      refetchOT()
+    } catch (e) { alert('Error: ' + e.message) }
+    finally { setSaving(false) }
+  }
+
+  const handleOTDelete = async () => {
+    if (!cellTarget?.existingOT?.id) return
+    setSaving(true)
+    try {
+      const { error } = await supabase.from('worker_ot').delete().eq('id', cellTarget.existingOT.id)
+      if (error) throw error
+      setCellTarget(t => t ? { ...t, existingOT: null } : t)
+      refetchOT()
+    } catch (e) { alert('Error: ' + e.message) }
+    finally { setSaving(false) }
+  }
+
   const openCell = (worker, date, shift) => {
     const existing = cellLookup[worker.id]?.[date]?.[shift] || null
-    setCellTarget({ worker, date, shift, existing })
+    const existingOT = otLookup[worker.id]?.[date] || null
+    setCellTarget({ worker, date, shift, existing, existingOT })
   }
 
   const handleCopyLine = async () => {
-    const text = buildLineText(days, assignments, sites)
+    const text = buildLineText(days, assignments, sites, otEntries)
     try {
       await navigator.clipboard.writeText(text)
       setCopied(true)
@@ -166,9 +206,9 @@ export default function Assign({ navState }) {
 
       {/* ── View ── */}
       {view === 'day' ? (
-        <DayView dayIso={from} assignments={assignments} sites={sites} travelRate={travelRate} onEditHalf={openCell} />
+        <DayView dayIso={from} assignments={assignments} otEntries={otEntries} sites={sites} travelRate={travelRate} onEditHalf={openCell} />
       ) : (
-        <GridView days={days} workers={workers} cellLookup={cellLookup} onEditHalf={openCell} cellH={cellH} variant={view} />
+        <GridView days={days} workers={workers} cellLookup={cellLookup} otLookup={otLookup} onEditHalf={openCell} cellH={cellH} variant={view} />
       )}
 
       {/* ── Labor + Travel cost per site ── */}
@@ -185,8 +225,8 @@ export default function Assign({ navState }) {
               </div>
               <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                 <div style={{ fontSize: 10, color: 'var(--text3)' }}>รวม</div>
-                <div style={{ color: 'var(--yellow)', fontWeight: 800, fontSize: 18 }}>{fmt(s.labor + s.travel)}</div>
-                <div style={{ fontSize: 10, color: 'var(--text3)' }}>แรง {fmt(s.labor)}{s.travel > 0 && <> · เดินทาง {fmt(s.travel)}</>}</div>
+                <div style={{ color: 'var(--yellow)', fontWeight: 800, fontSize: 18 }}>{fmt(s.labor + s.travel + s.ot)}</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)' }}>แรง {fmt(s.labor)}{s.travel > 0 && <> · เดินทาง {fmt(s.travel)}</>}{s.ot > 0 && <> · OT {fmt(s.ot)}</>}</div>
               </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -231,6 +271,8 @@ export default function Assign({ navState }) {
           sites={ongoingSites}
           onSave={handleCellSave}
           onDelete={handleCellDelete}
+          onSaveOT={handleOTSave}
+          onDeleteOT={handleOTDelete}
           onClose={() => setCellTarget(null)}
           saving={saving}
         />

@@ -17,7 +17,12 @@ function workerLabel(a) {
   return extras.length ? `${name} (${extras.join(', ')})` : name
 }
 
-function formatDayBlock(dateIso, dayAssignments, siteMeta) {
+function otLabel(o) {
+  const name = o.workers?.nickname || o.workers?.name || '—'
+  return `${name} (${o.start_time?.slice(0, 5)}-${o.end_time?.slice(0, 5)})`
+}
+
+function formatDayBlock(dateIso, dayAssignments, dayOT, siteMeta) {
   const dow = DOW_TH[new Date(dateIso).getDay()]
   const header = `📅 ${fmtDate(dateIso)} (${dow})`
 
@@ -30,6 +35,12 @@ function formatDayBlock(dateIso, dayAssignments, siteMeta) {
     } else {
       others.push(a)
     }
+  })
+
+  const otBySite = {}
+  dayOT.forEach(o => {
+    (otBySite[o.site_id] ||= []).push(o)
+    if (!bySite[o.site_id]) bySite[o.site_id] = { morning: [], evening: [] }  // OT-only site still gets a card
   })
 
   const siteIds = Object.keys(bySite)
@@ -45,6 +56,8 @@ function formatDayBlock(dateIso, dayAssignments, siteMeta) {
     if (meta.map_url) lines.push(`📍 ${meta.map_url}`)
     lines.push(`🌅 เช้า: ${g.morning.length ? g.morning.map(workerLabel).join(', ') : '— ว่าง —'}`)
     lines.push(`🌆 บ่าย: ${g.evening.length ? g.evening.map(workerLabel).join(', ') : '— ว่าง —'}`)
+    const siteOT = otBySite[sid] || []
+    if (siteOT.length) lines.push(`⚡ OT: ${siteOT.map(otLabel).join(', ')}`)
   })
   if (others.length) {
     lines.push('')
@@ -62,9 +75,10 @@ function formatDayBlock(dateIso, dayAssignments, siteMeta) {
  * @param {{iso:string}[]} days - one entry for day view, seven for week view
  * @param {Array} assignments - rows already scoped to the same date range as `days`
  * @param {Array} sites
+ * @param {Array} otEntries - rows already scoped to the same date range as `days` (useWorkerOTRange shape)
  * @returns {string} plain text ready to paste into LINE
  */
-export function buildLineText(days, assignments, sites) {
+export function buildLineText(days, assignments, sites, otEntries) {
   const siteMeta = {}
   ;(sites || []).forEach(s => {
     siteMeta[s.id] = {
@@ -76,7 +90,10 @@ export function buildLineText(days, assignments, sites) {
   const byDate = {}
   ;(assignments || []).forEach(a => { (byDate[a.date] ||= []).push(a) })
 
+  const otByDate = {}
+  ;(otEntries || []).forEach(o => { (otByDate[o.date] ||= []).push(o) })
+
   return (days || [])
-    .map(d => formatDayBlock(d.iso, byDate[d.iso] || [], siteMeta))
+    .map(d => formatDayBlock(d.iso, byDate[d.iso] || [], otByDate[d.iso] || [], siteMeta))
     .join('\n\n' + '─'.repeat(20) + '\n\n')
 }

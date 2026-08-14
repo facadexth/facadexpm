@@ -204,6 +204,25 @@ CREATE TABLE worker_assignments (
   UNIQUE (worker_id, date, shift)  -- 1 คน 1 วัน 1 กะ
 );
 
+-- ----------------------------------------------------------------
+-- WORKER_OT — OT รายวัน (แยกจาก shift เช้า/บ่าย)
+-- ----------------------------------------------------------------
+CREATE TABLE worker_ot (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  worker_id   UUID NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
+  site_id     UUID NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  date        DATE NOT NULL,
+  start_time  TIME NOT NULL,
+  end_time    TIME NOT NULL,
+  ot_hours    NUMERIC NOT NULL,
+  notes       TEXT,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (worker_id, date),
+  CHECK (end_time > start_time)
+);
+
+CREATE INDEX idx_worker_ot_site ON worker_ot(site_id);
+CREATE INDEX idx_worker_ot_date ON worker_ot(date);
 
 -- ----------------------------------------------------------------
 -- SALARY_RECORDS — เงินเดือนรายเดือน
@@ -316,6 +335,22 @@ JOIN workers w ON wa.worker_id = w.id
 JOIN sites s ON wa.site_id = s.id
 WHERE wa.type IN ('site','factory')
 GROUP BY wa.site_id, s.name, s.site_number, wa.worker_id, w.name, w.nickname, w.monthly_salary;
+
+-- ต้นทุน OT ต่อไซท์ (all-time) — mirrors labor_cost_by_site's shape/grouping
+CREATE VIEW ot_cost_by_site AS
+SELECT
+  o.site_id,
+  s.name AS site_name,
+  s.site_number,
+  o.worker_id,
+  w.name AS worker_name,
+  w.nickname,
+  SUM(o.ot_hours) AS ot_hours,
+  ROUND(SUM(o.ot_hours * (w.monthly_salary / 26 / 8) * 1.5), 2) AS ot_cost
+FROM worker_ot o
+JOIN workers w ON o.worker_id = w.id
+JOIN sites s ON o.site_id = s.id
+GROUP BY o.site_id, s.name, s.site_number, o.worker_id, w.name, w.nickname;
 
 -- travel cost per site: distance x 2 (round trip) x rate, once per distinct 'site' workday
 CREATE OR REPLACE VIEW site_travel_cost AS
