@@ -17,7 +17,7 @@ function labelFor(view, anchor) {
   return `${TH_MONTHS[anchor.getMonth()]} ${anchor.getFullYear() + 543}`
 }
 
-export default function ViewToggle({ view, onView, anchor, onAnchor }) {
+export default function ViewToggle({ view, onView, anchor, onAnchor, holidayDates }) {
   const step = (dir) => {
     if (view === 'day')  onAnchor(addDays(anchor, dir))
     else if (view === 'week') onAnchor(addWeeks(anchor, dir))
@@ -37,7 +37,10 @@ export default function ViewToggle({ view, onView, anchor, onAnchor }) {
         <button className="btn btn-sm btn-ghost" onClick={() => onAnchor(new Date())}>วันนี้</button>
         <button className="btn btn-sm btn-ghost" onClick={() => step(1)}>›</button>
       </div>
-      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)' }}>{labelFor(view, anchor)}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)' }}>
+        {labelFor(view, anchor)}
+        {view === 'day' && holidayDates?.has(format(anchor, 'yyyy-MM-dd')) && ' 🎌'}
+      </div>
     </div>
   )
 }

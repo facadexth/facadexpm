@@ -7,7 +7,7 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useWorkers, useSites, useAssignmentsRange, useLaborCost, useSiteTravelCost, useAppSetting, useWorkerOTRange, useOTCostBySite } from '../hooks/useSupabase.js'
+import { useWorkers, useSites, useAssignmentsRange, useLaborCost, useSiteTravelCost, useAppSetting, useWorkerOTRange, useOTCostBySite, useCompanyHolidaysRange } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt } from '../lib/supabase.js'
 import { ConfirmDialog } from '../components/Modal.jsx'
@@ -44,6 +44,8 @@ export default function Assign({ navState }) {
   const { data: travelData } = useSiteTravelCost()
   const { data: otEntries, refetch: refetchOT } = useWorkerOTRange(from, to)
   const { data: otCostData } = useOTCostBySite()
+  const { data: holidaysInRange } = useCompanyHolidaysRange(from, to)
+  const holidayDates = useMemo(() => new Set((holidaysInRange || []).map(h => h.date)), [holidaysInRange])
   const { data: travelRateVal } = useAppSetting('travel_rate_per_km', '20')
   const travelRate = parseFloat(travelRateVal) || 0
 
@@ -208,7 +210,7 @@ export default function Assign({ navState }) {
           <button className="btn btn-ghost" onClick={handleCopyLine}>{copied ? '✅ คัดลอกแล้ว!' : '📋 คัดลอกสำหรับ LINE'}</button>
         )}
         <div style={{ flex: 1 }} />
-        <ViewToggle view={view} onView={setView} anchor={anchor} onAnchor={setAnchor} />
+        <ViewToggle view={view} onView={setView} anchor={anchor} onAnchor={setAnchor} holidayDates={holidayDates} />
       </div>
 
       {/* ── Legend ── */}
@@ -222,7 +224,7 @@ export default function Assign({ navState }) {
       {view === 'day' ? (
         <DayView dayIso={from} assignments={assignments} otEntries={otEntries} sites={sites} travelRate={travelRate} onEditHalf={openCell} />
       ) : (
-        <GridView days={days} workers={workers} cellLookup={cellLookup} otLookup={otLookup} onEditHalf={openCell} cellH={cellH} variant={view} />
+        <GridView days={days} workers={workers} cellLookup={cellLookup} otLookup={otLookup} holidayDates={holidayDates} onEditHalf={openCell} cellH={cellH} variant={view} />
       )}
 
       {/* ── Labor + Travel cost per site ── */}

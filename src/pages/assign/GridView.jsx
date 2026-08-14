@@ -7,7 +7,7 @@ import { fmt } from '../../lib/supabase.js'
 import AssignCell from './AssignCell.jsx'
 import { DOW_TH, SITE_TYPES } from './constants.js'
 
-export default function GridView({ days, workers, cellLookup, otLookup, onEditHalf, cellH = 32, variant = 'week' }) {
+export default function GridView({ days, workers, cellLookup, otLookup, holidayDates, onEditHalf, cellH = 32, variant = 'week' }) {
   return (
     <div className="card" style={{ marginBottom: 20 }}>
       <div className="table-wrap" style={{ overflowX: 'auto' }}>
@@ -16,12 +16,12 @@ export default function GridView({ days, workers, cellLookup, otLookup, onEditHa
             <tr>
               <th style={{ width: 150, position: 'sticky', left: 0, background: 'var(--bg3)', zIndex: 10 }}>ช่าง</th>
               {days.map(d => (
-                <th key={d.iso} style={{
+                <th key={d.iso} title={holidayDates?.has(d.iso) ? 'วันหยุดบริษัท' : undefined} style={{
                   padding: '6px 2px', textAlign: 'center', fontSize: 10,
                   color: d.isSunday ? 'var(--text3)' : 'var(--text2)', opacity: d.isSunday ? 0.45 : 1,
                 }}>
                   <div style={{ fontSize: 9 }}>{DOW_TH[d.dow]}</div>
-                  <div>{d.date.getDate()}</div>
+                  <div>{d.date.getDate()}{holidayDates?.has(d.iso) && ' 🎌'}</div>
                 </th>
               ))}
               <th style={{ width: 60, textAlign: 'right' }}>รวมวัน</th>
