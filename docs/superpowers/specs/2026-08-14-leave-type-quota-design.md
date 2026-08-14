@@ -9,25 +9,22 @@ enforces it — it's stored and displayed, never checked against actual
 usage. The request: split leave into two types, and make personal leave
 consume the quota while sick leave does not.
 
-## OPEN QUESTION — needs your confirmation before implementation
+## Pay Deduction Rule (confirmed)
 
-The existing payroll formula deducts pay for **any** leave day:
-`leave_deduction = leave_days × (monthly_salary / 26)`, regardless of
-reason. You asked for sick leave to not deduct from the **quota** — but
-quota (a day-count limit) and **pay deduction** (money taken off net_pay)
-are two different things, and you didn't say whether sick leave should
-also stop reducing pay.
+Sick leave (ลาป่วย) is **paid leave** — matching Thai labor law (paid sick
+leave, up to the legal cap) — so it does **not** deduct pay. Personal leave
+(ลากิจ) keeps the existing deduction behavior. The two leave types now
+diverge on both axes:
 
-This design currently assumes: **the pay deduction formula stays exactly
-as it is today for both leave types — only quota tracking changes.**
-Sick leave and personal leave both still reduce `net_pay` by
-`leave_days × (monthly_salary / 26)`, same as now. Only personal leave
-additionally counts against `annual_leave_days`.
+| | Deducts pay? | Counts against quota? |
+|---|---|---|
+| `leave_sick` | No | No |
+| `leave_personal` | Yes (`leave_days × monthly_salary/26`) | Yes (`annual_leave_days`) |
 
-If sick leave should actually be **paid leave** (no pay deduction, only
-personal leave deducts pay), say so before this gets implemented — that
-changes the payroll formula, not just the quota-tracking logic, and I did
-not want to guess on a change that affects real payroll amounts.
+This replaces the single `leave_deduction` accumulator in
+`Payroll.jsx`/`HR.jsx` with logic that only sums `leave_personal` days into
+the deduction — `leave_sick` days are counted (for display / record-
+keeping) but excluded from the money formula entirely.
 
 ## Data Model Changes
 
@@ -70,12 +67,15 @@ current calendar year.
   described above. Sick leave is not counted against the quota, so it
   doesn't appear in this column (no cap to display it against).
 - **`Payroll.jsx` / `HR.jsx`**: `handleCalcFromAssign`'s leave counting
-  splits into two accumulators (`leave_sick`, `leave_personal`) instead of
-  one `leave`. Under the current assumption above, both still feed the
-  same `leave_deduction` formula — the split only matters for the
-  HR-tab quota display, not for this specific calculation. If the "sick
-  leave shouldn't deduct pay" question above resolves differently, this
-  is the formula that changes.
+  splits into two accumulators, `leave_sick_days` and
+  `leave_personal_days`, instead of one `leave`. Only
+  `leave_personal_days` feeds `leave_deduction`
+  (`leave_personal_days × monthly_salary/26`); `leave_sick_days` is
+  carried through to the results row for display (e.g. a "ลาป่วย (จ่าย
+  เต็ม)" column) but excluded from any deduction math. `net_pay` formula
+  becomes `base_salary − social_security − leave_deduction + ot_amount
+  + holiday_bonus` (holiday_bonus from the companion company-holidays
+  design).
 
 ## Data Flow
 
