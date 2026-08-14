@@ -6,11 +6,12 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useSalary, useWorkers } from '../hooks/useSupabase.js'
+import { useSalary, useWorkers, fetchWorkerOTForRange } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
+import { mergeWorkerOT } from '../lib/otMerge.js'
 
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
@@ -222,8 +223,11 @@ export default function Payroll() {
         if (!w) return
         if (!wmap[a.worker_id]) wmap[a.worker_id] = { worker: w, leave: 0, ot_hours: 0 }
         if (a.type === 'leave')  wmap[a.worker_id].leave += 0.5  // 1 กะ = 0.5 วัน (เช้า+บ่าย = 1 วัน)
-        if (a.type === 'site')   wmap[a.worker_id].ot_hours += (a.ot_hours || 0)
+        if (a.type === 'site')   wmap[a.worker_id].ot_hours += (a.ot_hours || 0)  // legacy OT stored on the shift row
       })
+
+      const otRows = await fetchWorkerOTForRange(from, to)
+      mergeWorkerOT(wmap, otRows)  // adds worker_ot's decoupled OT entries on top
 
       const results = Object.entries(wmap).map(([worker_id, d]) => {
         const daily_rate     = (d.worker.monthly_salary || 0) / 26
