@@ -248,6 +248,25 @@ export async function deleteCompanyHoliday(id) {
   if (error) throw error
 }
 
+// ── Leave Quota ────────────────────────────────────────────────
+
+/** วันลากิจที่ใช้ไปแล้วในปีนั้นๆ ต่อคน (ลาป่วยไม่หักโควต้าจึงไม่นับ) */
+export function useLeaveQuotaUsage(year) {
+  return useQuery(async () => {
+    const from = `${year}-01-01`
+    const to   = `${year}-12-31`
+    const { data, error } = await supabase
+      .from('worker_assignments')
+      .select('worker_id')
+      .eq('type', 'leave_personal')
+      .gte('date', from).lte('date', to)
+    if (error) throw error
+    const used = {}
+    ;(data || []).forEach(r => { used[r.worker_id] = (used[r.worker_id] || 0) + 0.5 })
+    return used
+  }, [year])
+}
+
 // ── App Settings (key/value) ──────────────────────────────────
 
 export function useAppSetting(key, fallback = '') {
