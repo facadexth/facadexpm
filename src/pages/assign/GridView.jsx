@@ -15,15 +15,22 @@ export default function GridView({ days, workers, cellLookup, otLookup, holidayD
           <thead>
             <tr>
               <th style={{ width: 150, position: 'sticky', left: 0, background: 'var(--bg3)', zIndex: 10 }}>ช่าง</th>
-              {days.map(d => (
-                <th key={d.iso} title={holidayDates?.has(d.iso) ? 'วันหยุดบริษัท' : undefined} style={{
-                  padding: '6px 2px', textAlign: 'center', fontSize: 10,
-                  color: d.isSunday ? 'var(--text3)' : 'var(--text2)', opacity: d.isSunday ? 0.45 : 1,
-                }}>
-                  <div style={{ fontSize: 9 }}>{DOW_TH[d.dow]}</div>
-                  <div>{d.date.getDate()}{holidayDates?.has(d.iso) && ' 🎌'}</div>
-                </th>
-              ))}
+              {days.map(d => {
+                const holidayName = holidayDates?.get(d.iso)
+                return (
+                  <th key={d.iso} title={holidayName || undefined} style={{
+                    padding: '6px 2px', textAlign: 'center', fontSize: 10, color: 'var(--text2)',
+                  }}>
+                    <div style={{ fontSize: 9 }}>{DOW_TH[d.dow]}</div>
+                    <div>{d.date.getDate()}</div>
+                    {holidayName && (
+                      <div style={{ fontSize: 8, color: 'var(--red)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {holidayName}
+                      </div>
+                    )}
+                  </th>
+                )
+              })}
               <th style={{ width: 60, textAlign: 'right' }}>รวมวัน</th>
               <th style={{ width: 60, textAlign: 'right' }}>OT รวม</th>
             </tr>
@@ -46,12 +53,12 @@ export default function GridView({ days, workers, cellLookup, otLookup, holidayD
                     <div style={{ fontSize: 10, color: 'var(--text3)' }}>{fmt(Math.round((w.monthly_salary || 0) / 26))} บ/วัน</div>
                   </td>
                   {days.map(d => (
-                    <td key={d.iso} style={{ padding: 2, textAlign: 'center', opacity: d.isSunday ? 0.5 : 1 }}>
+                    <td key={d.iso} style={{ padding: 2, textAlign: 'center' }}>
                       <AssignCell
                         cell={row[d.iso] || {}}
                         ot={otLookup?.[w.id]?.[d.iso] || null}
                         w="100%" h={cellH} variant={variant}
-                        onEdit={(shift) => !d.isSunday && onEditHalf(w, d.iso, shift)}
+                        onEdit={(shift) => onEditHalf(w, d.iso, shift)}
                       />
                     </td>
                   ))}

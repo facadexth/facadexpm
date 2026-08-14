@@ -453,13 +453,15 @@ export default function HR() {
       const otRows = await fetchWorkerOTForRange(from, to)
       mergeWorkerOT(wmap, otRows)  // adds worker_ot's decoupled OT entries on top
 
-      // Count each worker's site/factory shifts that fall on a company holiday.
+      // Count each worker's site/factory shifts that fall on a company
+      // holiday OR a Sunday — both pay at the same holiday-rate premium.
       const holidayRows = await fetchCompanyHolidaysForRange(from, to)
       const holidaySet = new Set(holidayRows.map(h => h.date))
       const holidayMultiplier = parseFloat(multiplierVal) || 1.5
       ;(assigns||[]).forEach(a => {
         if (!wmap[a.worker_id]) return
-        if (SITE_TYPES.includes(a.type) && holidaySet.has(a.date)) {
+        const isHolidayRateDay = holidaySet.has(a.date) || new Date(a.date).getDay() === 0
+        if (SITE_TYPES.includes(a.type) && isHolidayRateDay) {
           wmap[a.worker_id].holiday_shifts = (wmap[a.worker_id].holiday_shifts || 0) + 1
         }
       })

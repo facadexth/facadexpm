@@ -1,5 +1,5 @@
 // ============================================================
-// MultiDayPicker — pick multiple days (Monday-start, Sundays disabled)
+// MultiDayPicker — pick multiple days (Monday-start)
 // value: Set<'yyyy-MM-dd'> ; onChange(nextSet)
 // ============================================================
 import { useState } from 'react'
@@ -35,13 +35,13 @@ export default function MultiDayPicker({ value, onChange }) {
           const dim = !isSameMonth(d, month)
           const sel = value.has(iso)
           return (
-            <button key={i} type="button" disabled={sunday}
+            <button key={i} type="button"
               onClick={() => toggle(iso)}
+              title={sunday ? 'วันอาทิตย์ (จ่ายอัตราวันหยุด)' : undefined}
               style={{
-                padding: '6px 0', borderRadius: 6, border: 'none', fontSize: 12,
-                cursor: sunday ? 'not-allowed' : 'pointer',
-                background: sel ? 'var(--accent)' : sunday ? 'rgba(255,80,80,.06)' : 'rgba(255,255,255,.05)',
-                color: sel ? '#fff' : sunday ? 'var(--text3)' : dim ? 'var(--text3)' : 'var(--text)',
+                padding: '6px 0', borderRadius: 6, border: 'none', fontSize: 12, cursor: 'pointer',
+                background: sel ? 'var(--accent)' : 'rgba(255,255,255,.05)',
+                color: sel ? '#fff' : sunday ? 'var(--red)' : dim ? 'var(--text3)' : 'var(--text)',
                 opacity: dim && !sel ? 0.4 : 1, fontWeight: sel ? 700 : 400,
               }}>
               {d.getDate()}
@@ -50,7 +50,7 @@ export default function MultiDayPicker({ value, onChange }) {
         })}
       </div>
       <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text3)' }}>
-        เลือกแล้ว <strong style={{ color: 'var(--accent)' }}>{value.size}</strong> วัน (คลิกวันเพื่อเพิ่ม/เอาออก · วันอาทิตย์เลือกไม่ได้)
+        เลือกแล้ว <strong style={{ color: 'var(--accent)' }}>{value.size}</strong> วัน (คลิกวันเพื่อเพิ่ม/เอาออก · วันอาทิตย์จ่ายอัตราวันหยุด)
       </div>
     </div>
   )

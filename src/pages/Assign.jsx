@@ -45,7 +45,11 @@ export default function Assign({ navState }) {
   const { data: otEntries, refetch: refetchOT } = useWorkerOTRange(from, to)
   const { data: otCostData } = useOTCostBySite()
   const { data: holidaysInRange } = useCompanyHolidaysRange(from, to)
-  const holidayDates = useMemo(() => new Set((holidaysInRange || []).map(h => h.date)), [holidaysInRange])
+  const holidayDates = useMemo(() => {
+    const m = new Map()
+    ;(holidaysInRange || []).forEach(h => m.set(h.date, h.name))
+    return m
+  }, [holidaysInRange])
   const { data: travelRateVal } = useAppSetting('travel_rate_per_km', '20')
   const travelRate = parseFloat(travelRateVal) || 0
 

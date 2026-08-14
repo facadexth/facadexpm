@@ -39,7 +39,9 @@ export default function ViewToggle({ view, onView, anchor, onAnchor, holidayDate
       </div>
       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)' }}>
         {labelFor(view, anchor)}
-        {view === 'day' && holidayDates?.has(format(anchor, 'yyyy-MM-dd')) && ' 🎌'}
+        {view === 'day' && holidayDates?.get(format(anchor, 'yyyy-MM-dd')) && (
+          <span style={{ color: 'var(--red)', fontWeight: 400 }}> — {holidayDates.get(format(anchor, 'yyyy-MM-dd'))}</span>
+        )}
       </div>
     </div>
   )
