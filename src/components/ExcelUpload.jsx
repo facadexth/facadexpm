@@ -108,6 +108,17 @@ async function parseIncomeSheet(ws) {
   return records
 }
 
+// sites.status has a DB CHECK constraint allowing only these exact strings
+// (same list as Sites.jsx's STATUS_OPTS) — free-text Excel input rarely
+// matches exactly (case, Thai wording, extra spaces), so normalize on
+// import instead of passing the raw cell straight to insert.
+const SITE_STATUS_OPTS = ['Ongoing', 'Completed', 'On Hold', 'Cancelled']
+function normalizeSiteStatus(raw) {
+  const s = String(raw || '').trim().toLowerCase()
+  const match = SITE_STATUS_OPTS.find(opt => opt.toLowerCase() === s)
+  return match || 'Ongoing'
+}
+
 async function parseSiteSheet(ws) {
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null })
   const headerRowIdx = rows.findIndex(r => r.some(c => typeof c === 'string' && c.includes('ชื่อไซท์งาน')))
@@ -123,7 +134,7 @@ async function parseSiteSheet(ws) {
       name:           String(row[0]),
       client_id:      clientMap[row[1]] || null,
       location:       row[2] || null,
-      status:         row[3] || 'Ongoing',
+      status:         normalizeSiteStatus(row[3]),
       start_date:     row[4] ? String(row[4]).slice(0,10) : null,
       end_date:       row[5] ? String(row[5]).slice(0,10) : null,
       contract_value: parseFloat(row[6]) || null,
@@ -194,6 +205,10 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
 
   const updateRowSite = (i, siteId) => {
     setPreview(prev => prev.map((r, idx) => idx === i ? { ...r, site_id: siteId } : r))
+  }
+
+  const updateRowField = (i, key, value) => {
+    setPreview(prev => prev.map((r, idx) => idx === i ? { ...r, [key]: value } : r))
   }
 
   const processFile = async (file) => {
@@ -340,7 +355,12 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                       </> : type === 'site' ? <>
                         <td style={{ fontWeight: 600 }}>{r.name}</td>
                         <td style={{ fontSize: 11, color: r.client_id ? 'var(--green)' : 'var(--text3)' }}>{r.client_id ? '✓ linked' : r.client_name || '—'}</td>
-                        <td><span className="badge">{r.status || 'Ongoing'}</span></td>
+                        <td>
+                          <select className="select" style={{ fontSize: 12, padding: '2px 6px' }}
+                            value={r.status || 'Ongoing'} onChange={e => updateRowField(i, 'status', e.target.value)}>
+                            {SITE_STATUS_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </td>
                         <td style={{ color: 'var(--text2)', fontVariantNumeric: 'tabular-nums' }}>{r.contract_value ? Number(r.contract_value).toLocaleString('th-TH') : '—'}</td>
                         <td style={{ fontSize: 12 }}>{r.end_date || '—'}</td>
                       </> : type === 'client' ? <>
