@@ -405,7 +405,8 @@ export default function HR() {
       advance_deduction: 0,
       loan_deduction: 0,
       leave_deduction: 0,
-      leave_days: 0,
+      leave_sick_days: 0,
+      leave_personal_days: 0,
       ot_hours: 0,
       net_pay: parseFloat(
         ((r.base_salary||0) + (r.phone_allowance||0) + (r.special_allowance||0) - (r.social_security_ded||0))
@@ -437,12 +438,16 @@ export default function HR() {
         .select('worker_id, type, ot_hours, date, workers(id, name, nickname, monthly_salary, monthly_contribution, has_social_security)')
         .gte('date', from).lte('date', to)
       if (error) throw error
+      // Legacy 'leave' rows (created before the sick/personal split) are
+      // treated as leave_personal so recalculating a historical month
+      // doesn't silently change an already-paid deduction.
       const wmap = {}
       ;(assigns||[]).forEach(a => {
         const w = a.workers; if (!w) return
-        if (!wmap[a.worker_id]) wmap[a.worker_id] = { worker: w, leave: 0, ot_hours: 0 }
-        if (a.type === 'leave') wmap[a.worker_id].leave += 0.5  // 1 กะ = 0.5 วัน (เช้า+บ่าย = 1 วัน)
-        if (a.type === 'site')  wmap[a.worker_id].ot_hours += (a.ot_hours||0)  // legacy OT stored on the shift row
+        if (!wmap[a.worker_id]) wmap[a.worker_id] = { worker: w, leave_sick: 0, leave_personal: 0, ot_hours: 0 }
+        if (a.type === 'leave_sick')                          wmap[a.worker_id].leave_sick += 0.5
+        if (a.type === 'leave_personal' || a.type === 'leave') wmap[a.worker_id].leave_personal += 0.5  // 1 กะ = 0.5 วัน (เช้า+บ่าย = 1 วัน)
+        if (a.type === 'site')                                 wmap[a.worker_id].ot_hours += (a.ot_hours||0)  // legacy OT stored on the shift row
       })
 
       const otRows = await fetchWorkerOTForRange(from, to)
@@ -461,7 +466,7 @@ export default function HR() {
 
       const results = Object.entries(wmap).map(([worker_id, d]) => {
         const dr  = (d.worker.monthly_salary||0) / 26
-        const lv  = parseFloat((d.leave * dr).toFixed(2))
+        const lv  = parseFloat((d.leave_personal * dr).toFixed(2))
         const ot  = parseFloat((d.ot_hours * dr / 8 * 1.5).toFixed(2))
         const hb  = parseFloat(((d.holiday_shifts||0) * dr * 0.5 * holidayMultiplier).toFixed(2))
         const sso = d.worker.has_social_security ? parseFloat(Math.min(750,(d.worker.monthly_salary||0)*0.05).toFixed(2)) : 0
@@ -469,7 +474,8 @@ export default function HR() {
           worker_id, name: d.worker.name, nickname: d.worker.nickname,
           base_salary: d.worker.monthly_salary||0,
           contribution: d.worker.monthly_contribution||0,
-          social_security_ded: sso, leave_days: d.leave,
+          social_security_ded: sso,
+          leave_sick_days: d.leave_sick, leave_personal_days: d.leave_personal,
           leave_deduction: lv, ot_hours: d.ot_hours, ot_amount: ot,
           holiday_shifts: d.holiday_shifts||0, holiday_bonus: hb,
           net_pay: parseFloat(((d.worker.monthly_salary||0) - sso - lv + ot + hb).toFixed(2)),
@@ -819,13 +825,14 @@ export default function HR() {
             </div>
             <div className="table-wrap" style={{ maxHeight: 320 }}>
               <table>
-                <thead><tr><th>พนักงาน</th><th>เงินเดือน</th><th>วันลา</th><th>หักลา</th><th>OT ชม.</th><th>OT บาท</th><th>กะวันหยุด</th><th>โบนัสวันหยุด</th><th>SSO</th><th>สุทธิ</th></tr></thead>
+                <thead><tr><th>พนักงาน</th><th>เงินเดือน</th><th>ลาป่วย</th><th>ลากิจ</th><th>หักลา</th><th>OT ชม.</th><th>OT บาท</th><th>กะวันหยุด</th><th>โบนัสวันหยุด</th><th>SSO</th><th>สุทธิ</th></tr></thead>
                 <tbody>
                   {calcPreview.map((r,i) => (
                     <tr key={i}>
                       <td style={{ fontWeight: 600 }}>{r.name}{r.nickname?` (${r.nickname})`:''}</td>
                       <td className="font-mono">{fmt(r.base_salary)}</td>
-                      <td style={{ textAlign: 'center', color: r.leave_days>0?'var(--red)':'var(--text3)' }}>{r.leave_days||'—'}</td>
+                      <td style={{ textAlign: 'center', color: r.leave_sick_days>0?'var(--yellow)':'var(--text3)' }}>{r.leave_sick_days||'—'}</td>
+                      <td style={{ textAlign: 'center', color: r.leave_personal_days>0?'var(--red)':'var(--text3)' }}>{r.leave_personal_days||'—'}</td>
                       <td className="font-mono" style={{ color: 'var(--red)' }}>{r.leave_deduction>0?`(${fmt(r.leave_deduction)})`:'—'}</td>
                       <td style={{ textAlign: 'center', color: r.ot_hours>0?'var(--yellow)':'var(--text3)' }}>{r.ot_hours||'—'}</td>
                       <td className="font-mono" style={{ color: 'var(--yellow)' }}>{r.ot_amount>0?fmt(r.ot_amount):'—'}</td>
