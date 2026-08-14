@@ -12,6 +12,7 @@ import { Modal } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { mergeWorkerOT } from '../lib/otMerge.js'
+import { SITE_TYPES } from './assign/constants.js'
 
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
@@ -236,7 +237,7 @@ export default function Payroll() {
       const holidayMultiplier = parseFloat(holidayMultiplierVal) || 1.5
       ;(assigns || []).forEach(a => {
         if (!wmap[a.worker_id]) return
-        if (a.type === 'site' && holidaySet.has(a.date)) {
+        if (SITE_TYPES.includes(a.type) && holidaySet.has(a.date)) {
           wmap[a.worker_id].holiday_shifts = (wmap[a.worker_id].holiday_shifts || 0) + 1
         }
       })
