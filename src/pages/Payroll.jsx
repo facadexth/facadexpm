@@ -6,7 +6,7 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useSalary, useWorkers, fetchWorkerOTForRange } from '../hooks/useSupabase.js'
+import { useSalary, useWorkers, fetchWorkerOTForRange, fetchCompanyHolidaysForRange, useAppSetting } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -159,6 +159,7 @@ export default function Payroll() {
 
   const { data: records, refetch } = useSalary(month, year)
   const { data: workers } = useWorkers()
+  const { data: holidayMultiplierVal } = useAppSetting('holiday_pay_multiplier', '1.5')
 
   const totalBase = useMemo(() => (records||[]).reduce((s,r) => s+(r.base_salary||0), 0), [records])
   const totalNet  = useMemo(() => (records||[]).reduce((s,r) => s+(r.net_pay||0), 0), [records])
@@ -211,7 +212,7 @@ export default function Payroll() {
 
       const { data: assigns, error } = await supabase
         .from('worker_assignments')
-        .select('worker_id, type, ot_hours, workers(id, name, nickname, monthly_salary, monthly_contribution, has_social_security)')
+        .select('worker_id, type, ot_hours, date, workers(id, name, nickname, monthly_salary, monthly_contribution, has_social_security)')
         .gte('date', from)
         .lte('date', to)
       if (error) throw error
@@ -229,15 +230,27 @@ export default function Payroll() {
       const otRows = await fetchWorkerOTForRange(from, to)
       mergeWorkerOT(wmap, otRows)  // adds worker_ot's decoupled OT entries on top
 
+      // Count each worker's site/factory shifts that fall on a company holiday.
+      const holidayRows = await fetchCompanyHolidaysForRange(from, to)
+      const holidaySet = new Set(holidayRows.map(h => h.date))
+      const holidayMultiplier = parseFloat(holidayMultiplierVal) || 1.5
+      ;(assigns || []).forEach(a => {
+        if (!wmap[a.worker_id]) return
+        if (a.type === 'site' && holidaySet.has(a.date)) {
+          wmap[a.worker_id].holiday_shifts = (wmap[a.worker_id].holiday_shifts || 0) + 1
+        }
+      })
+
       const results = Object.entries(wmap).map(([worker_id, d]) => {
         const daily_rate     = (d.worker.monthly_salary || 0) / 26
         const leave_ded      = parseFloat((d.leave * daily_rate).toFixed(2))
         const ot_amt         = parseFloat((d.ot_hours * daily_rate / 8 * 1.5).toFixed(2))
+        const holiday_bonus  = parseFloat(((d.holiday_shifts || 0) * daily_rate * 0.5 * holidayMultiplier).toFixed(2))
         const sso            = d.worker.has_social_security
           ? parseFloat(Math.min(750, (d.worker.monthly_salary||0) * 0.05).toFixed(2)) : 0
         const net = parseFloat((
           (d.worker.monthly_salary||0)
-          - sso - leave_ded + ot_amt
+          - sso - leave_ded + ot_amt + holiday_bonus
         ).toFixed(2))
         return {
           worker_id,
@@ -250,6 +263,8 @@ export default function Payroll() {
           leave_deduction: leave_ded,
           ot_hours:        d.ot_hours,
           ot_amount:       ot_amt,
+          holiday_shifts:  d.holiday_shifts || 0,
+          holiday_bonus,
           net_pay:         net,
         }
       })
@@ -273,7 +288,7 @@ export default function Payroll() {
           month, year,
           base_salary:         r.base_salary,
           contribution:        r.contribution,
-          ot_amount:           r.ot_amount,
+          ot_amount:           r.ot_amount + (r.holiday_bonus || 0),
           social_security_ded: r.social_security_ded,
           leave_deduction:     r.leave_deduction,
           net_pay:             r.net_pay,
@@ -389,6 +404,7 @@ export default function Payroll() {
                     <th>พนักงาน</th><th>เงินเดือน</th>
                     <th>วันลา</th><th>หักลา</th>
                     <th>OT (ชม.)</th><th>OT (บาท)</th>
+                    <th>กะวันหยุด</th><th>โบนัสวันหยุด</th>
                     <th>ประกันสังคม</th><th>รับสุทธิ</th>
                   </tr>
                 </thead>
@@ -401,6 +417,8 @@ export default function Payroll() {
                       <td className="font-mono" style={{ color: 'var(--red)' }}>{r.leave_deduction > 0 ? `(${fmt(r.leave_deduction)})` : '—'}</td>
                       <td style={{ textAlign: 'center', color: r.ot_hours > 0 ? 'var(--yellow)' : 'var(--text3)' }}>{r.ot_hours || '—'}</td>
                       <td className="font-mono" style={{ color: 'var(--yellow)' }}>{r.ot_amount > 0 ? fmt(r.ot_amount) : '—'}</td>
+                      <td style={{ textAlign: 'center', color: r.holiday_shifts > 0 ? 'var(--accent)' : 'var(--text3)' }}>{r.holiday_shifts || '—'}</td>
+                      <td className="font-mono" style={{ color: 'var(--accent)' }}>{r.holiday_bonus > 0 ? fmt(r.holiday_bonus) : '—'}</td>
                       <td className="font-mono" style={{ color: 'var(--red)', fontSize: 12 }}>{r.social_security_ded > 0 ? `(${fmt(r.social_security_ded)})` : '—'}</td>
                       <td className="font-mono" style={{ color: 'var(--green)', fontWeight: 700 }}>{fmt(r.net_pay)}</td>
                     </tr>
