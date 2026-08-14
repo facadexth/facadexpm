@@ -67,6 +67,17 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
     }
   }
 
+  // otSiteId/otStart/otEnd/etc. are only seeded from existingOT once, at
+  // mount (useState initializers don't re-run on prop changes). Deleting
+  // OT doesn't close this popup, so without clearing these explicitly the
+  // time inputs keep showing the just-deleted values — and clicking
+  // "บันทึก" afterward (e.g. to save an unrelated shift edit) would
+  // silently re-create the OT entry that was just deleted.
+  const deleteOT = async () => {
+    await onDeleteOT()
+    setOtSiteId(''); setOtStart(''); setOtEnd(''); setOtOvernight(false); setOtNotes('')
+  }
+
   const siteOptions = sites.map(s => ({ value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}` }))
 
   return (
@@ -124,7 +135,7 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
           )}
           <input className="input" style={{ marginBottom: 6 }} value={otNotes} onChange={e => setOtNotes(e.target.value)} placeholder="หมายเหตุ OT (ถ้ามี)" />
           {existingOT && (
-            <button type="button" className="btn btn-sm btn-danger" onClick={onDeleteOT} disabled={saving}>🗑️ ลบ OT</button>
+            <button type="button" className="btn btn-sm btn-danger" onClick={deleteOT} disabled={saving}>🗑️ ลบ OT</button>
           )}
         </div>
       </div>
