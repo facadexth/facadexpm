@@ -544,6 +544,12 @@ In `src/pages/Payroll.jsx`, update the import line (currently `import { useSalar
 import { useSalary, useWorkers, fetchWorkerOTForRange, fetchCompanyHolidaysForRange, useAppSetting } from '../hooks/useSupabase.js'
 ```
 
+Also add an import for `SITE_TYPES` — the holiday-shift counting in Step 3 must match the plan's own Global Constraints formula (`type IN ('site','factory')`, not `'site'` alone):
+
+```js
+import { SITE_TYPES } from './assign/constants.js'
+```
+
 - [ ] **Step 2: Read the multiplier setting in the component**
 
 Immediately after the line `const { data: workers } = useWorkers()`, add:
@@ -598,7 +604,7 @@ Replace it with:
       const holidayMultiplier = parseFloat(holidayMultiplierVal) || 1.5
       ;(assigns || []).forEach(a => {
         if (!wmap[a.worker_id]) return
-        if (a.type === 'site' && holidaySet.has(a.date)) {
+        if (SITE_TYPES.includes(a.type) && holidaySet.has(a.date)) {
           wmap[a.worker_id].holiday_shifts = (wmap[a.worker_id].holiday_shifts || 0) + 1
         }
       })
@@ -753,9 +759,15 @@ git commit -m "Add holiday work bonus to Payroll's Assign-based calculation"
 - Modify: `src/pages/HR.jsx`
 
 **Interfaces:**
-- Consumes: `fetchCompanyHolidaysForRange`, `useAppSetting` (already imported into this file in Task 3).
+- Consumes: `fetchCompanyHolidaysForRange`, `useAppSetting` (already imported into this file in Task 3), `SITE_TYPES` (added by this task).
 
-- [ ] **Step 1: Read the multiplier setting**
+- [ ] **Step 1: Import `SITE_TYPES` and read the multiplier setting**
+
+Add an import for `SITE_TYPES` — the holiday-shift counting in Step 2 must match the plan's own Global Constraints formula (`type IN ('site','factory')`, not `'site'` alone). Add this new import line to `src/pages/HR.jsx` (this file does not currently import from `assign/constants.js`):
+
+```js
+import { SITE_TYPES } from './assign/constants.js'
+```
 
 `useAppSetting('holiday_pay_multiplier', '1.5')` is already called in this file from Task 3 (as `multiplierVal`, used for the HR-tab editor). Reuse that same value here — do not call `useAppSetting` a second time with a different variable name. Confirm the existing declaration reads:
 
@@ -801,7 +813,7 @@ Replace with:
       const holidayMultiplier = parseFloat(multiplierVal) || 1.5
       ;(assigns||[]).forEach(a => {
         if (!wmap[a.worker_id]) return
-        if (a.type === 'site' && holidaySet.has(a.date)) {
+        if (SITE_TYPES.includes(a.type) && holidaySet.has(a.date)) {
           wmap[a.worker_id].holiday_shifts = (wmap[a.worker_id].holiday_shifts || 0) + 1
         }
       })
