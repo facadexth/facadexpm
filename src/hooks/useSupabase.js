@@ -198,6 +198,56 @@ export function useOTCostBySite() {
   })
 }
 
+// ── Company Holidays ──────────────────────────────────────────
+
+/** ปฏิทินวันหยุดบริษัททั้งหมด — ใช้ในแท็บ HR */
+export function useCompanyHolidays() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('company_holidays')
+      .select('id, date, name')
+      .order('date')
+    if (error) throw error
+    return data
+  })
+}
+
+/** วันหยุดในช่วงวันที่ — ใช้กับหัวตาราง Assign (week/month/day) */
+export function useCompanyHolidaysRange(from, to) {
+  return useQuery(async () => {
+    if (!from || !to) return []
+    const { data, error } = await supabase
+      .from('company_holidays')
+      .select('id, date, name')
+      .gte('date', from)
+      .lte('date', to)
+      .order('date')
+    if (error) throw error
+    return data
+  }, [from, to])
+}
+
+/** เหมือน useCompanyHolidaysRange แต่เรียกแบบ imperative — ใช้ใน Payroll/HR handleCalcFromAssign */
+export async function fetchCompanyHolidaysForRange(from, to) {
+  const { data, error } = await supabase
+    .from('company_holidays')
+    .select('date, name')
+    .gte('date', from)
+    .lte('date', to)
+  if (error) throw error
+  return data
+}
+
+export async function saveCompanyHoliday({ date, name }) {
+  const { error } = await supabase.from('company_holidays').insert({ date, name })
+  if (error) throw error
+}
+
+export async function deleteCompanyHoliday(id) {
+  const { error } = await supabase.from('company_holidays').delete().eq('id', id)
+  if (error) throw error
+}
+
 // ── App Settings (key/value) ──────────────────────────────────
 
 export function useAppSetting(key, fallback = '') {
