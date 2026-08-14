@@ -4,14 +4,13 @@
 // monthly OT total counts both the legacy per-shift ot_hours
 // (worker_assignments) and the new decoupled worker_ot entries.
 //
-// Callers' wmap entries may use the legacy shape { leave, ot_hours }
-// (HR.jsx, pre leave-split) or the newer shape
-// { leave_sick, leave_personal, ot_hours } (Payroll.jsx, post leave-split).
-// During the transition, some callers may carry both. The fallback entry
-// created below (for workers with worker_ot rows but no worker_assignments
-// rows) includes all of these fields so it's a safe superset regardless of
-// which shape the caller uses — each caller only reads the fields it cares
-// about, so the extra unused fields are harmless.
+// Callers key their wmap entries off worker_assignments' leave fields —
+// Payroll.jsx and HR.jsx both use { leave_sick, leave_personal, ot_hours }
+// (the old singular `leave` field is retained only for historical rows
+// that predate the sick/personal split). The fallback entry created below
+// (for workers with worker_ot rows but no worker_assignments rows) is a
+// superset of every field any caller might read, so it stays safe even if
+// a future caller's accumulator shape diverges again.
 // ============================================================
 
 /**
