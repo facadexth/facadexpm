@@ -7,7 +7,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { supabase } from '../lib/supabase.js'
-import { useWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs, fetchWorkerOTForRange, useCompanyHolidays, saveCompanyHoliday, deleteCompanyHoliday, useAppSetting, saveAppSetting, fetchCompanyHolidaysForRange } from '../hooks/useSupabase.js'
+import { useWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs, fetchWorkerOTForRange, useCompanyHolidays, saveCompanyHoliday, deleteCompanyHoliday, useAppSetting, saveAppSetting, fetchCompanyHolidaysForRange, useLeaveQuotaUsage } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -240,6 +240,7 @@ export default function HR() {
 
   // Workers state
   const { data: workers, refetch: refetchWorkers } = useWorkers()
+  const { data: leaveUsed } = useLeaveQuotaUsage(now.getFullYear())
   const [showWorkerForm, setShowWorkerForm] = useState(false)
   const [editWorker, setEditWorker] = useState(null)
   const [deleteWorkerId, setDeleteWorkerId] = useState(null)
@@ -554,11 +555,14 @@ export default function HR() {
                   <tr>
                     <th>ชื่อ</th><th>ชื่อเล่น</th><th>ตำแหน่ง</th>
                     <th>เงินเดือน</th><th>ค่าแรง/วัน</th>
-                    <th>SSO</th><th>วันลา/ปี</th><th>สถานะ</th><th></th>
+                    <th>SSO</th><th>วันลา/ปี</th><th>ใช้ไปแล้ว (ปีนี้)</th><th>คงเหลือ</th><th>สถานะ</th><th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleWorkers.map(w => (
+                  {visibleWorkers.map(w => {
+                    const used = leaveUsed?.[w.id] || 0
+                    const remaining = (w.annual_leave_days || 0) - used
+                    return (
                     <tr key={w.id}>
                       <td style={{ fontWeight: 600 }}>{w.name}</td>
                       <td style={{ color: 'var(--text2)' }}>{w.nickname||'—'}</td>
@@ -567,6 +571,8 @@ export default function HR() {
                       <td className="font-mono" style={{ color: 'var(--yellow)' }}>{fmt(w.daily_rate)}</td>
                       <td>{w.has_social_security ? <span className="badge badge-paid">✓ มี</span> : <span style={{ color: 'var(--text3)', fontSize: 11 }}>—</span>}</td>
                       <td style={{ textAlign: 'center' }}>{w.annual_leave_days}</td>
+                      <td style={{ textAlign: 'center', color: used > 0 ? 'var(--red)' : 'var(--text3)' }}>{used || '—'}</td>
+                      <td style={{ textAlign: 'center', fontWeight: 600, color: remaining < 0 ? 'var(--red)' : 'var(--text2)' }}>{remaining}</td>
                       <td><span className={`badge ${w.status==='active'?'badge-paid':'badge-pending'}`}>{w.status}</span></td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         {canEdit && (
@@ -577,9 +583,10 @@ export default function HR() {
                         )}
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                   {!visibleWorkers.length && (
-                    <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีช่าง</td></tr>
+                    <tr><td colSpan={11} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีช่าง</td></tr>
                   )}
                 </tbody>
               </table>
