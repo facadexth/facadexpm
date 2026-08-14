@@ -1,11 +1,14 @@
 // ============================================================
-// CellEditPopup — edit one worker×date×shift assignment
-// onSave(row), onDelete(), onClose
+// CellEditPopup — edit one worker×date×shift assignment, plus an
+// optional OT entry for that worker+date (independent of shift;
+// see docs/superpowers/specs/2026-08-14-ot-decouple-design.md).
+// onSave(row), onDelete(), onSaveOT(row), onDeleteOT(), onClose
 // ============================================================
 import { useState } from 'react'
 import { Modal } from '../../components/Modal.jsx'
 import SearchableSelect from '../../components/SearchableSelect.jsx'
 import { SITE_TYPES } from './constants.js'
+import { computeOTHours } from './otMath.js'
 
 const TYPE_OPTS = [
   { k: 'site',    l: '🏗️ งานไซท์' },
@@ -15,24 +18,44 @@ const TYPE_OPTS = [
   { k: 'holiday', l: '🎌 หยุด' },
 ]
 
-export default function CellEditPopup({ target, sites = [], onSave, onDelete, onClose, saving }) {
-  const { worker, date, shift, existing } = target
+export default function CellEditPopup({ target, sites = [], onSave, onDelete, onSaveOT, onDeleteOT, onClose, saving }) {
+  const { worker, date, shift, existing, existingOT } = target
   const [type, setType]     = useState(existing?.type || 'site')
   const [siteId, setSiteId] = useState(existing?.site_id || '')
-  const [ot, setOt]         = useState(existing?.ot || 0)
   const [notes, setNotes]   = useState(existing?.notes || '')
 
+  const [otSiteId, setOtSiteId] = useState(existingOT?.site_id || existing?.site_id || '')
+  const [otStart, setOtStart]   = useState(existingOT?.start_time?.slice(0, 5) || '')
+  const [otEnd, setOtEnd]       = useState(existingOT?.end_time?.slice(0, 5) || '')
+  const [otNotes, setOtNotes]   = useState(existingOT?.notes || '')
+
   const needsSite = SITE_TYPES.includes(type)
+  const otHours = computeOTHours(otStart, otEnd)
+  const otStarted = otSiteId || otStart || otEnd  // user has begun filling in OT
 
   const save = () => {
     if (needsSite && !siteId) return alert('เลือกไซท์งาน')
+    if (otStarted && (!otSiteId || !otStart || !otEnd)) {
+      return alert('กรอกไซท์งาน เวลาเริ่ม และเวลาจบของ OT ให้ครบ')
+    }
+    if (otStart && otEnd && otHours == null) {
+      return alert('เวลาจบ OT ต้องอยู่หลังเวลาเริ่ม')
+    }
     onSave({
       worker_id: worker.id, date, shift,
       type, site_id: needsSite ? siteId : null,
-      ot_hours: parseFloat(ot) || 0,
       notes: notes || null,
     })
+    if (otStarted && otHours != null) {
+      onSaveOT({
+        worker_id: worker.id, date,
+        site_id: otSiteId, start_time: otStart, end_time: otEnd,
+        ot_hours: otHours, notes: otNotes || null,
+      })
+    }
   }
+
+  const siteOptions = sites.map(s => ({ value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}` }))
 
   return (
     <Modal title={`${worker.nickname || worker.name} · ${date} · ${shift === 'morning' ? 'เช้า' : 'บ่าย'}`} onClose={onClose} maxWidth={420}>
@@ -51,20 +74,42 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
             <label className="label">ไซท์งาน</label>
             <SearchableSelect
               value={siteId} onChange={setSiteId} placeholder="— เลือกไซท์ —"
-              options={sites.map(s => ({ value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}` }))}
+              options={siteOptions}
             />
-          </div>
-        )}
-        {type === 'site' && (
-          <div>
-            <label className="label">OT (ชั่วโมง)</label>
-            <input type="number" className="input" min="0" step="0.5" value={ot}
-              onChange={e => setOt(e.target.value)} placeholder="0 = ไม่มี OT" />
           </div>
         )}
         <div>
           <label className="label">รายละเอียดเพิ่มเติม</label>
           <textarea className="textarea" rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="เช่น เอาบันไดมาด้วย" />
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+          <label className="label">⚡ OT (ไม่ผูกกับกะเช้า/บ่าย — สูงสุด 1 ช่วง/คน/วัน)</label>
+          <div style={{ marginBottom: 8 }}>
+            <SearchableSelect
+              value={otSiteId} onChange={setOtSiteId} placeholder="— เลือกไซท์งาน OT —"
+              options={siteOptions}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+            <div style={{ flex: 1 }}>
+              <label className="label" style={{ fontSize: 11 }}>เวลาเริ่ม</label>
+              <input type="time" className="input" value={otStart} onChange={e => setOtStart(e.target.value)} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="label" style={{ fontSize: 11 }}>เวลาจบ</label>
+              <input type="time" className="input" value={otEnd} onChange={e => setOtEnd(e.target.value)} />
+            </div>
+          </div>
+          {otStart && otEnd && (
+            <div style={{ fontSize: 12, color: otHours != null ? 'var(--yellow)' : 'var(--red)', marginBottom: 6 }}>
+              {otHours != null ? `= ${otHours} ชม.` : 'เวลาจบต้องอยู่หลังเวลาเริ่ม'}
+            </div>
+          )}
+          <input className="input" style={{ marginBottom: 6 }} value={otNotes} onChange={e => setOtNotes(e.target.value)} placeholder="หมายเหตุ OT (ถ้ามี)" />
+          {existingOT && (
+            <button type="button" className="btn btn-sm btn-danger" onClick={onDeleteOT} disabled={saving}>🗑️ ลบ OT</button>
+          )}
         </div>
       </div>
       <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
