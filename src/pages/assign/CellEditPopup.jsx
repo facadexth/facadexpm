@@ -11,16 +11,23 @@ import { SITE_TYPES } from './constants.js'
 import { computeOTHours } from './otMath.js'
 
 const TYPE_OPTS = [
-  { k: 'site',    l: '🏗️ งานไซท์' },
-  { k: 'factory', l: '🏭 โรงงาน' },
-  { k: 'office',  l: '🏢 ออฟฟิศ' },
-  { k: 'leave',   l: '🏖️ ลา' },
-  { k: 'holiday', l: '🎌 หยุด' },
+  { k: 'site',            l: '🏗️ งานไซท์' },
+  { k: 'factory',         l: '🏭 โรงงาน' },
+  { k: 'office',          l: '🏢 ออฟฟิศ' },
+  { k: 'leave_sick',      l: '🤒 ลาป่วย' },
+  { k: 'leave_personal',  l: '🏖️ ลากิจ' },
+  { k: 'holiday',         l: '🎌 หยุด' },
 ]
 
 export default function CellEditPopup({ target, sites = [], onSave, onDelete, onSaveOT, onDeleteOT, onClose, saving }) {
   const { worker, date, shift, existing, existingOT } = target
-  const [type, setType]     = useState(existing?.type || 'site')
+  // Historical rows may still carry the old undifferentiated 'leave' type
+  // (no longer offered in TYPE_OPTS going forward). Falling back to 'site'
+  // for it here would silently reclassify the row as a work day the
+  // instant someone reopens and saves it without touching the type
+  // buttons — treat it as leave_personal instead, matching how
+  // handleCalcFromAssign already treats legacy 'leave' rows for payroll.
+  const [type, setType]     = useState(existing?.type === 'leave' ? 'leave_personal' : (existing?.type || 'site'))
   const [siteId, setSiteId] = useState(existing?.site_id || '')
   const [notes, setNotes]   = useState(existing?.notes || '')
 
