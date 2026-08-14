@@ -13,6 +13,7 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { auditLog } from '../lib/audit.js'
 import { mergeWorkerOT } from '../lib/otMerge.js'
+import { SITE_TYPES } from './assign/constants.js'
 
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
@@ -432,7 +433,7 @@ export default function HR() {
       const to   = new Date(year, month, 0).toISOString().slice(0,10)
       const { data: assigns, error } = await supabase
         .from('worker_assignments')
-        .select('worker_id, type, ot_hours, workers(id, name, nickname, monthly_salary, monthly_contribution, has_social_security)')
+        .select('worker_id, type, ot_hours, date, workers(id, name, nickname, monthly_salary, monthly_contribution, has_social_security)')
         .gte('date', from).lte('date', to)
       if (error) throw error
       const wmap = {}
@@ -446,10 +447,22 @@ export default function HR() {
       const otRows = await fetchWorkerOTForRange(from, to)
       mergeWorkerOT(wmap, otRows)  // adds worker_ot's decoupled OT entries on top
 
+      // Count each worker's site/factory shifts that fall on a company holiday.
+      const holidayRows = await fetchCompanyHolidaysForRange(from, to)
+      const holidaySet = new Set(holidayRows.map(h => h.date))
+      const holidayMultiplier = parseFloat(multiplierVal) || 1.5
+      ;(assigns||[]).forEach(a => {
+        if (!wmap[a.worker_id]) return
+        if (SITE_TYPES.includes(a.type) && holidaySet.has(a.date)) {
+          wmap[a.worker_id].holiday_shifts = (wmap[a.worker_id].holiday_shifts || 0) + 1
+        }
+      })
+
       const results = Object.entries(wmap).map(([worker_id, d]) => {
         const dr  = (d.worker.monthly_salary||0) / 26
         const lv  = parseFloat((d.leave * dr).toFixed(2))
         const ot  = parseFloat((d.ot_hours * dr / 8 * 1.5).toFixed(2))
+        const hb  = parseFloat(((d.holiday_shifts||0) * dr * 0.5 * holidayMultiplier).toFixed(2))
         const sso = d.worker.has_social_security ? parseFloat(Math.min(750,(d.worker.monthly_salary||0)*0.05).toFixed(2)) : 0
         return {
           worker_id, name: d.worker.name, nickname: d.worker.nickname,
@@ -457,7 +470,8 @@ export default function HR() {
           contribution: d.worker.monthly_contribution||0,
           social_security_ded: sso, leave_days: d.leave,
           leave_deduction: lv, ot_hours: d.ot_hours, ot_amount: ot,
-          net_pay: parseFloat(((d.worker.monthly_salary||0) - sso - lv + ot).toFixed(2)),
+          holiday_shifts: d.holiday_shifts||0, holiday_bonus: hb,
+          net_pay: parseFloat(((d.worker.monthly_salary||0) - sso - lv + ot + hb).toFixed(2)),
         }
       })
       if (!results.length) { alert('ไม่พบ assignment ในเดือนนี้'); return }
@@ -475,7 +489,7 @@ export default function HR() {
         const payload = {
           worker_id: r.worker_id, month, year,
           base_salary: r.base_salary, contribution: r.contribution,
-          ot_amount: r.ot_amount, social_security_ded: r.social_security_ded,
+          ot_amount: r.ot_amount + (r.holiday_bonus || 0), social_security_ded: r.social_security_ded,
           leave_deduction: r.leave_deduction, net_pay: r.net_pay,
         }
         const { data } = await supabase.from('salary_records')
@@ -798,7 +812,7 @@ export default function HR() {
             </div>
             <div className="table-wrap" style={{ maxHeight: 320 }}>
               <table>
-                <thead><tr><th>พนักงาน</th><th>เงินเดือน</th><th>วันลา</th><th>หักลา</th><th>OT ชม.</th><th>OT บาท</th><th>SSO</th><th>สุทธิ</th></tr></thead>
+                <thead><tr><th>พนักงาน</th><th>เงินเดือน</th><th>วันลา</th><th>หักลา</th><th>OT ชม.</th><th>OT บาท</th><th>กะวันหยุด</th><th>โบนัสวันหยุด</th><th>SSO</th><th>สุทธิ</th></tr></thead>
                 <tbody>
                   {calcPreview.map((r,i) => (
                     <tr key={i}>
@@ -808,6 +822,8 @@ export default function HR() {
                       <td className="font-mono" style={{ color: 'var(--red)' }}>{r.leave_deduction>0?`(${fmt(r.leave_deduction)})`:'—'}</td>
                       <td style={{ textAlign: 'center', color: r.ot_hours>0?'var(--yellow)':'var(--text3)' }}>{r.ot_hours||'—'}</td>
                       <td className="font-mono" style={{ color: 'var(--yellow)' }}>{r.ot_amount>0?fmt(r.ot_amount):'—'}</td>
+                      <td style={{ textAlign: 'center', color: r.holiday_shifts>0?'var(--accent)':'var(--text3)' }}>{r.holiday_shifts||'—'}</td>
+                      <td className="font-mono" style={{ color: 'var(--accent)' }}>{r.holiday_bonus>0?fmt(r.holiday_bonus):'—'}</td>
                       <td className="font-mono" style={{ color: 'var(--red)', fontSize: 12 }}>{r.social_security_ded>0?`(${fmt(r.social_security_ded)})`:'—'}</td>
                       <td className="font-mono" style={{ color: 'var(--green)', fontWeight: 700 }}>{fmt(r.net_pay)}</td>
                     </tr>
