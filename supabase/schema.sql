@@ -195,7 +195,7 @@ CREATE TABLE worker_assignments (
   date        DATE NOT NULL,
   -- type: site=ที่ไซท์, factory=ผลิตที่โรงงานให้ไซท์, leave=ลา, office=ออฟฟิศ, holiday=หยุด, subcontract
   type        TEXT DEFAULT 'site'
-              CHECK (type IN ('site','leave','office','holiday','subcontract','factory')),
+              CHECK (type IN ('site','leave','office','holiday','subcontract','factory','leave_sick','leave_personal')),
   -- shift: morning/evening — 1 กะ = 0.5 วัน (เช้า+เย็น = เต็มวัน)
   shift       TEXT NOT NULL DEFAULT 'morning' CHECK (shift IN ('morning','evening')),
   ot_hours    NUMERIC DEFAULT 0,
