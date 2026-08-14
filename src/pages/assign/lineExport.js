@@ -7,7 +7,7 @@ import { fmtDate } from '../../lib/supabase.js'
 import { SITE_TYPES } from './constants.js'
 
 const DOW_TH = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
-const OTHER_TYPE_LABEL = { office: 'ออฟฟิศ', leave: 'ลา', holiday: 'หยุด' }
+const OTHER_TYPE_LABEL = { office: 'ออฟฟิศ', leave: 'ลา', leave_sick: 'ลาป่วย', leave_personal: 'ลากิจ', holiday: 'หยุด' }
 
 function workerLabel(a) {
   const name = a.workers?.nickname || a.workers?.name || '—'

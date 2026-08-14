@@ -3,24 +3,27 @@
 // ============================================================
 
 export const TYPE_COLOR = {
-  site:        { bg: 'rgba(108,99,255,0.25)', color: 'var(--accent)' },
-  factory:     { bg: 'rgba(0,212,170,0.25)',  color: 'var(--green)' },
-  office:      { bg: 'rgba(78,205,196,0.25)',  color: 'var(--blue)' },
-  leave:       { bg: 'rgba(255,107,107,0.25)', color: 'var(--red)' },
-  holiday:     { bg: 'rgba(94,97,128,0.25)',   color: 'var(--text3)' },
-  subcontract: { bg: 'rgba(255,209,102,0.25)', color: 'var(--yellow)' },
+  site:            { bg: 'rgba(108,99,255,0.25)', color: 'var(--accent)' },
+  factory:         { bg: 'rgba(0,212,170,0.25)',  color: 'var(--green)' },
+  office:          { bg: 'rgba(78,205,196,0.25)',  color: 'var(--blue)' },
+  leave:           { bg: 'rgba(255,107,107,0.25)', color: 'var(--red)' },
+  leave_sick:      { bg: 'rgba(255,159,67,0.25)',  color: '#ff9f43' },
+  leave_personal:  { bg: 'rgba(255,71,87,0.25)',   color: '#ff4757' },
+  holiday:         { bg: 'rgba(94,97,128,0.25)',   color: 'var(--text3)' },
+  subcontract:     { bg: 'rgba(255,209,102,0.25)', color: 'var(--yellow)' },
 }
 
 // short badge label shown in a cell (site/factory show the site number instead)
-export const TYPE_LABEL = { site: '', factory: 'รง', office: 'OF', leave: 'LA', holiday: 'HO', subcontract: 'SC' }
+export const TYPE_LABEL = { site: '', factory: 'รง', office: 'OF', leave: 'LA', leave_sick: 'LS', leave_personal: 'LP', holiday: 'HO', subcontract: 'SC' }
 
 export const TYPE_LEGEND = [
-  { type: 'site',        label: '🏗️ ไซท์' },
-  { type: 'factory',     label: '🏭 โรงงาน' },
-  { type: 'subcontract', label: '🔧 Sub' },
-  { type: 'office',      label: '🏢 ออฟฟิศ' },
-  { type: 'leave',       label: '🏖️ ลา' },
-  { type: 'holiday',     label: '🎌 หยุด' },
+  { type: 'site',            label: '🏗️ ไซท์' },
+  { type: 'factory',         label: '🏭 โรงงาน' },
+  { type: 'subcontract',     label: '🔧 Sub' },
+  { type: 'office',          label: '🏢 ออฟฟิศ' },
+  { type: 'leave_sick',      label: '🤒 ลาป่วย' },
+  { type: 'leave_personal',  label: '🏖️ ลากิจ' },
+  { type: 'holiday',         label: '🎌 หยุด' },
 ]
 
 // types that attribute labor cost to a site (and therefore need a site chosen)
