@@ -41,9 +41,9 @@ function normalizePaymentStatus(raw) {
  * ค่าแรงช่างเหมาไปเข้าหน้า "ผู้รับเหมาช่วง" แทน) เป็น array of objects
  * ต้องตรงกับ TEMPLATE_รายจ่าย.xlsx (header อยู่ row 4, data เริ่ม row 6)
  *
- * Column order: วันที่สั่งสินค้า, หมวดหมู่สินค้า, รายละเอียด, รหัสไซท์งาน,
- * ชื่อ Supplier, VAT/NO VAT, มูลค่าก่อน VAT, มูลค่ารวม VAT, วิธีชำระ,
- * วันที่ชำระ, สถานะจ่าย
+ * Column order: Invoice no., วันที่สั่งสินค้า, หมวดหมู่สินค้า, รายละเอียด,
+ * รหัสไซท์งาน, ชื่อ Supplier, VAT/NO VAT, มูลค่าก่อน VAT, มูลค่ารวม VAT,
+ * วิธีชำระ, วันที่ชำระ, สถานะจ่าย
  */
 async function parseExpenseSheet(ws) {
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null })
@@ -71,14 +71,15 @@ async function parseExpenseSheet(ws) {
 
   const records = []
   for (const row of dataRows) {
-    const dateCell   = row[0]
-    const catName    = row[1]
-    const description = row[2]
-    const siteCode   = row[3]
-    const supplierName = row[4] ? String(row[4]).trim() : ''
-    const vatFlag    = String(row[5] || '').trim().toLowerCase()
-    const priceBeforeVat = row[6] != null ? parseFloat(row[6]) : null
-    const priceAfterVat  = row[7] != null ? parseFloat(row[7]) : null
+    const invoiceNo  = row[0]
+    const dateCell   = row[1]
+    const catName    = row[2]
+    const description = row[3]
+    const siteCode   = row[4]
+    const supplierName = row[5] ? String(row[5]).trim() : ''
+    const vatFlag    = String(row[6] || '').trim().toLowerCase()
+    const priceBeforeVat = row[7] != null ? parseFloat(row[7]) : null
+    const priceAfterVat  = row[8] != null ? parseFloat(row[8]) : null
     if (!dateCell && priceAfterVat == null && priceBeforeVat == null) continue // skip empty rows
 
     // amount (VAT-inclusive) is the ground truth for what was actually
@@ -103,6 +104,7 @@ async function parseExpenseSheet(ws) {
     const vat = parseFloat((amount - amountNoVat).toFixed(2))
 
     records.push({
+      invoice_no:      invoiceNo || '',
       date:            excelDate(dateCell),
       description:     description || '',
       site_id:         siteMap[siteCode] || null,
@@ -113,9 +115,9 @@ async function parseExpenseSheet(ws) {
       amount,
       amount_no_vat:   amountNoVat,
       vat,
-      payment_method:  normalizePaymentMethod(row[8]),
-      check_date:      excelDate(row[9]),
-      status:          normalizePaymentStatus(row[10]),
+      payment_method:  normalizePaymentMethod(row[9]),
+      check_date:      excelDate(row[10]),
+      status:          normalizePaymentStatus(row[11]),
     })
   }
   return records
@@ -422,7 +424,7 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                 <thead>
                   <tr>
                     {type === 'expense' ? <>
-                      <th>วันที่</th><th>รายละเอียด</th><th>ไซท์</th><th>หมวด</th><th>Supplier</th><th>มูลค่า (รวม VAT)</th><th>สถานะ</th>
+                      <th>Invoice no.</th><th>วันที่</th><th>รายละเอียด</th><th>ไซท์</th><th>หมวด</th><th>Supplier</th><th>มูลค่า (รวม VAT)</th><th>สถานะ</th>
                     </> : type === 'income' ? <>
                       <th>เลขใบแจ้งหนี้</th><th>วันที่</th><th>ไซท์</th><th>ลูกค้า</th><th>ยอดรับจริง</th>
                     </> : type === 'site' ? <>
@@ -438,6 +440,7 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                   {preview.slice(0, 50).map((r, i) => (
                     <tr key={i}>
                       {type === 'expense' ? <>
+                        <td style={{ fontSize: 11, color: 'var(--accent)' }}>{r.invoice_no || '—'}</td>
                         <td>{r.date}</td>
                         <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description}</td>
                         <td style={{ minWidth: 150 }}>
@@ -506,7 +509,7 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                     </tr>
                   ))}
                   {preview.length > 50 && (
-                    <tr><td colSpan={type === 'expense' ? 7 : 5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 8 }}>
+                    <tr><td colSpan={type === 'expense' ? 8 : 5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 8 }}>
                       ... และอีก {preview.length - 50} รายการ
                     </td></tr>
                   )}
