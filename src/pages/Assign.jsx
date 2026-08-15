@@ -227,7 +227,7 @@ export default function Assign({ navState }) {
 
       {/* ── View ── */}
       {!canEdit ? (
-        <MySchedule from={from} to={to} days={days} />
+        <MySchedule from={from} to={to} days={days} view={view} />
       ) : view === 'day' ? (
         <DayView dayIso={from} assignments={assignments} otEntries={otEntries} sites={sites} travelRate={travelRate} onEditHalf={openCell} />
       ) : (

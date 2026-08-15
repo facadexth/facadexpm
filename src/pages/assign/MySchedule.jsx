@@ -3,15 +3,21 @@
 // own days/shifts/OT for the current range, plus their leave quota.
 // No team grid, no cost figures — RLS also enforces this at the
 // database level, this component is the matching restricted UI.
+// Day/week views render a linear day list; month view renders a real
+// calendar grid (reusing AssignCell so it matches ADMIN's month grid
+// visually — same site colors/abbreviations, same OT badge).
 // ============================================================
 import { useMemo } from 'react'
 import { useUserRole } from '../../hooks/useUserRole.js'
 import { useWorkers, useAssignmentsRange, useWorkerOTRange, useSitesProgress, useLeaveQuotaUsage } from '../../hooks/useSupabase.js'
 import { DOW_TH } from './constants.js'
+import AssignCell from './AssignCell.jsx'
 
 const OTHER_TYPE_LABEL = { office: 'ออฟฟิศ', leave: 'ลา', leave_sick: 'ลาป่วย', leave_personal: 'ลากิจ', holiday: 'หยุด' }
+const DOW_MON_START = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา']
+const noop = () => {}
 
-export default function MySchedule({ from, to, days }) {
+export default function MySchedule({ from, to, days, view }) {
   const { user } = useUserRole()
   const { data: workers } = useWorkers()
   const { data: assignments } = useAssignmentsRange(from, to)
@@ -46,6 +52,33 @@ export default function MySchedule({ from, to, days }) {
     return m
   }, [otEntries, me])
 
+  // AssignCell-compatible cell for one date: { morning, evening } segments,
+  // each carrying site_name/site_number resolved via sites_progress (not
+  // the assignment row's own nested `sites` join, which RLS blocks for
+  // WORKER once Task 6 goes live since it touches the base sites table).
+  const cellFor = (iso) => {
+    const dayAssignments = myAssignmentsByDate[iso] || []
+    const toSeg = (a) => a && {
+      type: a.type, site_id: a.site_id,
+      site_name: siteById[a.site_id]?.name, site_number: siteById[a.site_id]?.site_number,
+    }
+    return {
+      morning: toSeg(dayAssignments.find(a => a.shift === 'morning')),
+      evening: toSeg(dayAssignments.find(a => a.shift === 'evening')),
+    }
+  }
+
+  // Pad `days` (which only contains real days-in-month, no adjacent-month
+  // filler) out to a Monday-start 7-column grid.
+  const monthGrid = useMemo(() => {
+    if (view !== 'month' || !days.length) return []
+    const firstDow = (days[0].date.getDay() + 6) % 7 // 0=Mon..6=Sun
+    const leading = Array.from({ length: firstDow }, () => null)
+    const cells = [...leading, ...days]
+    const trailing = (7 - (cells.length % 7)) % 7
+    return [...cells, ...Array.from({ length: trailing }, () => null)]
+  }, [view, days])
+
   if (!me) {
     return <div style={{ color: 'var(--text3)', fontSize: 13 }}>ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้</div>
   }
@@ -66,6 +99,32 @@ export default function MySchedule({ from, to, days }) {
         </div>
       </div>
 
+      {view === 'month' ? (
+        <div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
+            {DOW_MON_START.map(d => (
+              <div key={d} style={{ textAlign: 'center', fontSize: 10.5, color: 'var(--text3)', fontWeight: 700 }}>{d}</div>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+            {monthGrid.map((d, i) => {
+              if (!d) return <div key={`blank-${i}`} />
+              const ot = myOtByDate[d.iso]
+              const isToday = d.iso === new Date().toISOString().slice(0, 10)
+              return (
+                <div key={d.iso} style={{
+                  border: `1px solid ${isToday ? 'var(--accent)' : 'transparent'}`, borderRadius: 6, padding: 2,
+                }}>
+                  <div style={{ fontSize: 10, color: d.isSunday ? 'var(--text3)' : 'var(--text2)', textAlign: 'center', marginBottom: 2 }}>
+                    {d.date.getDate()}
+                  </div>
+                  <AssignCell cell={cellFor(d.iso)} ot={ot} onEdit={noop} h={54} variant="month" />
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ) : (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {days.map(d => {
           const dayAssignments = myAssignmentsByDate[d.iso] || []
@@ -111,6 +170,7 @@ export default function MySchedule({ from, to, days }) {
           )
         })}
       </div>
+      )}
     </div>
   )
 }
