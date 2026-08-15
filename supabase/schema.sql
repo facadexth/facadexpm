@@ -701,17 +701,28 @@ GROUP BY s.id, s.site_number, s.name, s.status, s.start_date, s.end_date, s.cont
   s.cost_rubber, s.cost_labor, s.cost_other, c.name, c.client_number,
   s.distance_km, s.map_url, c.contact_person, c.phone;
 
--- WORKER-safe site info — billing_pct as a progress proxy, no money columns
+-- WORKER-safe site info — billing_pct as a progress proxy, no money columns.
+-- Computes billing_pct directly from sites+incomes (base tables), not via
+-- site_financial_summary (a security_invoker=true view) -- going through
+-- an invoker-rights view breaks this view's own owner-rights RLS bypass,
+-- since security_invoker checks the ORIGINAL session's privileges, not
+-- whichever role an enclosing owner-rights view is impersonating. See
+-- supabase/migrations/2026-08-15-04-fix-sites-progress-invoker-chain.sql.
 CREATE OR REPLACE VIEW sites_progress AS
 SELECT
-  id,
-  site_number,
-  name,
-  status,
-  start_date,
-  end_date,
-  billing_pct
-FROM site_financial_summary;
+  s.id,
+  s.site_number,
+  s.name,
+  s.status,
+  s.start_date,
+  s.end_date,
+  CASE WHEN s.contract_value > 0
+    THEN ROUND(COALESCE(SUM(i.received_amount), 0) / s.contract_value * 100, 1)
+    ELSE NULL
+  END AS billing_pct
+FROM sites s
+LEFT JOIN incomes i ON i.site_id = s.id
+GROUP BY s.id, s.site_number, s.name, s.status, s.start_date, s.end_date, s.contract_value;
 
 CREATE OR REPLACE VIEW payment_forecast WITH (security_invoker = true) AS
 SELECT
