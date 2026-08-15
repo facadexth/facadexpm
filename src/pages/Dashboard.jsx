@@ -8,7 +8,8 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { useSites, useExpenses, useIncomes, usePaymentForecast } from '../hooks/useSupabase.js'
+import { useSites, useExpenses, useIncomes, usePaymentForecast, useSitesProgress } from '../hooks/useSupabase.js'
+import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt, fmtShort, fmtDate } from '../lib/supabase.js'
 import { startOfYear, endOfYear, startOfMonth, endOfMonth, addMonths, format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
@@ -43,7 +44,45 @@ function Kpi({ label, value, sub, color = 'var(--accent)', cls = '' }) {
   )
 }
 
+function WorkerSiteProgress() {
+  const { data: sites } = useSitesProgress()
+  const ongoing = (sites || []).filter(s => s.status === 'Ongoing')
+
+  return (
+    <div>
+      <div style={{ color: 'var(--text3)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
+        ไซท์งาน Ongoing ({ongoing.length} ไซท์)
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 12 }}>
+        {ongoing.map(s => (
+          <div key={s.id} className="card card-body" style={{ padding: '14px 16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 10.5, color: 'var(--accent)', fontWeight: 700, marginBottom: 2 }}>{s.site_number}</div>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>{s.name}</div>
+              </div>
+              <span className="badge badge-paid">{s.status}</span>
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text2)', marginBottom: 5 }}>
+                <span>ความคืบหน้างาน</span>
+                <strong style={{ color: 'var(--blue)' }}>{s.billing_pct != null ? `${s.billing_pct.toFixed(1)}%` : '—'}</strong>
+              </div>
+              <div style={{ height: 6, borderRadius: 999, background: 'var(--bg4)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', borderRadius: 999, background: 'linear-gradient(90deg, var(--accent), var(--blue))', width: `${Math.min(100, s.billing_pct || 0)}%` }} />
+              </div>
+            </div>
+          </div>
+        ))}
+        {!ongoing.length && <div style={{ color: 'var(--text3)', fontSize: 13 }}>ไม่มีไซท์งาน Ongoing</div>}
+      </div>
+    </div>
+  )
+}
+
 export default function Dashboard({ navigateTo }) {
+  const { isAtLeast } = useUserRole()
+  const canSeeFinancials = isAtLeast('ADMIN')
   const [period, setPeriod] = useState('ytd')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo,   setCustomTo]   = useState('')
@@ -117,6 +156,10 @@ export default function Dashboard({ navigateTo }) {
   }
 
   const sortIcon = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+
+  if (!canSeeFinancials) {
+    return <WorkerSiteProgress />
+  }
 
   return (
     <div>
