@@ -513,7 +513,7 @@ git commit -m "Show MySchedule instead of team grid + cost breakdown for non-ADM
 - Modify: `supabase/migrations/2026-08-15-01-enable-rls.sql` (already exists on `main` as a draft, carried into this branch)
 
 **Interfaces:**
-- Produces: the final, ready-to-apply RLS policy SQL. This task only edits the file — **do not run `apply_migration` in this task**, that happens in Task 7 after the human has reviewed the frontend changes from Tasks 1-5 running against real data.
+- Produces: the final, ready-to-apply RLS policy SQL. This task only edits the file — **do not run `apply_migration` in this task**, that happens in Task 8 after the human has reviewed the frontend changes from Tasks 1-5 running against real data.
 
 - [ ] **Step 1: Read the current draft**
 
