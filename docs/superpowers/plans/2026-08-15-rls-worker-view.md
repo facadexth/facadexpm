@@ -599,12 +599,7 @@ Update the comment block at the top of the file (the one starting `-- Enable Row
 
 - [ ] **Step 5: Verify the SQL is syntactically sound**
 
-This cannot be applied yet (see Task 7), but sanity-check it: count `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` occurrences — expect exactly 18 (one per previously-unprotected table: sites, expense_categories, expenses, incomes, app_settings, company_holidays, workers, worker_assignments, worker_ot, clients, suppliers, labor_subcontractors, labor_contracts, labor_payments, calendar_sync, site_phases, audit_logs, salary_records — `user_roles` already has RLS enabled from before, this migration only replaces its policies, not its `ENABLE ROW LEVEL SECURITY` statement).
-
-```bash
-grep -c "ENABLE ROW LEVEL SECURITY" supabase/migrations/2026-08-15-01-enable-rls.sql
-```
-Expected: `18`.
+This cannot be applied yet (see Task 8), but sanity-check it. **Note:** a plain `grep -c` undercounts, because several `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` statements are generated inside `DO $$ ... FOREACH t IN ARRAY [...] LOOP ... END LOOP; END $$;` blocks, where the literal string appears once per loop regardless of how many tables that loop covers. Verify correctly by manually enumerating every `FOREACH ... ARRAY[...]` list plus every standalone `ALTER TABLE` statement in the file and counting the distinct table names — expect exactly 18 (one per previously-unprotected table: sites, expense_categories, expenses, incomes, app_settings, company_holidays, workers, worker_assignments, worker_ot, clients, suppliers, labor_subcontractors, labor_contracts, labor_payments, calendar_sync, site_phases, audit_logs, salary_records — `user_roles` already has RLS enabled from before, this migration only replaces its policies, not its `ENABLE ROW LEVEL SECURITY` statement). A raw `grep -c` on this file will show `8` (one per loop/standalone-statement, not per table) — that is expected and not a sign of missing coverage.
 
 - [ ] **Step 6: Commit**
 
@@ -615,7 +610,87 @@ git commit -m "Refine RLS draft: workers/assignments/OT read-own for WORKER, fin
 
 ---
 
-### Task 7: Manual verification, then apply RLS to production
+### Task 7: Fix RLS-bypassing views (security_invoker)
+
+**Files:**
+- Create: `supabase/migrations/2026-08-15-03-view-security-invoker.sql`
+- Modify: `supabase/schema.sql`
+
+**Interfaces:**
+- Depends on: Task 6 (the base-table RLS policies these views must now respect).
+- Produces: 9 views that respect RLS on their underlying base tables. Does NOT touch `sites_progress` (Task 1), which must keep its owner-rights bypass by design.
+
+**Why this task exists (discovered by the whole-branch review, not anticipated when Tasks 1-6 were written):** Postgres views default to running with the view *owner's* privileges (`security_invoker = false`), not the querying user's — this has been true since views existed, and Postgres 15+ added the `security_invoker` reloption to opt out of it, defaulting to off for backward compatibility. This project's Supabase instance runs Postgres 17. None of the 10 pre-existing views in this schema set `security_invoker`, so RLS on a base table (e.g. `workers`, from Task 6) is **completely invisible** to any query that goes through a view built on that table instead of the table directly — and `src/hooks/useSupabase.js`'s `useWorkers()` queries `workers_with_rate` (a view), not `workers` (the base table). Since `MySchedule.jsx` (Task 4) calls `useWorkers()` on the WORKER-reachable Assign page, every WORKER's browser would still download every colleague's `monthly_salary`, `daily_rate`, and `social_security_amount` even after Task 6's RLS goes live — Task 6's core security guarantee would be silently defeated by this one hook, and the same gap exists for every other financial view (`site_financial_summary`, `expenses_view`, `incomes_view`, `labor_cost_by_site`, `ot_cost_by_site`, `site_travel_cost`, `payment_forecast`, `labor_contract_summary`), all directly queryable via the anon key regardless of what the current frontend happens to call.
+
+The fix is `security_invoker = true` on each of those 9 views, which makes Postgres re-check the *querying user's own* privileges (and therefore RLS) against the view's underlying tables, instead of the view owner's. This requires **zero frontend code changes** — `useWorkers()` keeps querying `workers_with_rate` exactly as before; the view itself now correctly inherits `workers`' RLS.
+
+**`sites_progress` must NOT get this flag.** It's built as `SELECT ... FROM site_financial_summary`, and WORKER has zero base-table RLS access to `site_financial_summary`'s own sources (`sites`, `expenses`, `incomes`). `sites_progress` deliberately relies on running as its owner (which bypasses RLS) so a WORKER session can read it at all — that's exactly what makes Task 3's restricted Dashboard work. Postgres resolves this correctly: `security_invoker` is checked independently at each view layer using whatever the *current effective role* is at that point in the plan. Since `sites_progress` stays at the default (`security_invoker = false`), everything it internally touches — including `site_financial_summary`, even after `site_financial_summary` itself gets `security_invoker = true` — is evaluated as `sites_progress`'s own owner, not as the original human user, because `sites_progress` never delegates back to the invoking session. Only a *direct* top-level query against `site_financial_summary` (bypassing `sites_progress`) will actually re-check the querying user's own RLS.
+
+- [ ] **Step 1: Write the migration**
+
+`supabase/migrations/2026-08-15-03-view-security-invoker.sql`:
+
+```sql
+-- Make every financial/salary view respect RLS on its underlying base
+-- tables, by re-checking the QUERYING user's own privileges instead of
+-- the view owner's (Postgres views default to owner-rights, which is
+-- why Task 6's base-table RLS alone doesn't actually protect anything
+-- queried through these views — see Task 7 of
+-- docs/superpowers/plans/2026-08-15-rls-worker-view.md for the full
+-- explanation).
+--
+-- sites_progress is DELIBERATELY EXCLUDED — it must keep owner-rights
+-- so WORKER (who has zero base-table access to sites/expenses/incomes)
+-- can still read it. Do not add security_invoker to that view.
+ALTER VIEW expenses_view          SET (security_invoker = true);
+ALTER VIEW incomes_view           SET (security_invoker = true);
+ALTER VIEW site_financial_summary SET (security_invoker = true);
+ALTER VIEW payment_forecast       SET (security_invoker = true);
+ALTER VIEW labor_cost_by_site     SET (security_invoker = true);
+ALTER VIEW ot_cost_by_site        SET (security_invoker = true);
+ALTER VIEW site_travel_cost       SET (security_invoker = true);
+ALTER VIEW workers_with_rate      SET (security_invoker = true);
+ALTER VIEW labor_contract_summary SET (security_invoker = true);
+```
+
+- [ ] **Step 2: Apply the migration**
+
+Use `mcp__plugin_supabase_supabase__apply_migration` with `project_id: yyzbgdmgyvvypfcjuhtr`, `name: view_security_invoker`, and the full SQL from Step 1 as `query`. This is safe to apply immediately regardless of whether Task 6's RLS is live yet — `security_invoker = true` on a view whose underlying tables have NO RLS enabled (the current state, since Task 6 hasn't been applied) has no observable effect at all (there's no RLS to newly respect), so applying this now is inert and low-risk, and removes one variable from Task 8's live-RLS-apply step.
+
+- [ ] **Step 3: Verify the flag is set correctly on all 9, and NOT on `sites_progress`**
+
+Run via `execute_sql`:
+```sql
+SELECT c.relname, c.reloptions
+FROM pg_class c
+WHERE c.relkind = 'v' AND c.relnamespace = 'public'::regnamespace
+ORDER BY c.relname;
+```
+Expected: `expenses_view`, `incomes_view`, `site_financial_summary`, `payment_forecast`, `labor_cost_by_site`, `ot_cost_by_site`, `site_travel_cost`, `workers_with_rate`, `labor_contract_summary` each show `{security_invoker=true}` in `reloptions`. `sites_progress` must show `reloptions` as `NULL` (or otherwise absent the flag) — if `sites_progress` shows `security_invoker=true`, STOP: that means Task 3's Dashboard will break once Task 6's RLS goes live, and this migration must be corrected before proceeding.
+
+- [ ] **Step 4: Functional check — this migration alone should change nothing yet**
+
+Since Task 6's RLS isn't live yet, confirm the app still works exactly as before for every role (quick spot check, not the full Task 8 checklist):
+```sql
+SELECT count(*) FROM workers_with_rate;
+SELECT count(*) FROM site_financial_summary;
+```
+Expected: same row counts as before this migration (12 and however many sites exist) — `security_invoker` with no RLS on the underlying tables yet is a no-op, this just confirms the `ALTER VIEW` didn't break the view definitions themselves.
+
+- [ ] **Step 5: Add the same flags to `supabase/schema.sql`**
+
+For each of the 9 views, change `CREATE OR REPLACE VIEW <name> AS` to `CREATE OR REPLACE VIEW <name> WITH (security_invoker = true) AS` in `supabase/schema.sql` (search for each `CREATE OR REPLACE VIEW` statement — they're all in the `-- VIEWS` section). Leave `sites_progress`'s `CREATE OR REPLACE VIEW sites_progress AS` unchanged (no `WITH (...)` clause).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add supabase/migrations/2026-08-15-03-view-security-invoker.sql supabase/schema.sql
+git commit -m "Set security_invoker on financial views so base-table RLS actually applies"
+```
+
+---
+
+### Task 8: Manual verification, then apply RLS to production
 
 **Files:** none (verification + one live database action)
 
@@ -647,14 +722,24 @@ Only after Steps 2-4 all pass. Use `mcp__plugin_supabase_supabase__apply_migrati
 
 - [ ] **Step 6: Re-verify immediately after applying**
 
-Repeat Steps 2-4 exactly. Also spot-check that anon (logged-out) access is now blocked:
+Repeat Steps 2-4 exactly. Also spot-check that anon (logged-out) access is now blocked — both on the base tables AND on the views (Task 7 made the views respect RLS; this confirms it actually held once RLS is live, not just when the views were inert):
 ```sql
 SET ROLE anon;
 SELECT * FROM sites LIMIT 1;
 SELECT * FROM salary_records LIMIT 1;
+SELECT * FROM workers_with_rate LIMIT 1;
+SELECT * FROM site_financial_summary LIMIT 1;
 RESET ROLE;
 ```
-Expected: both return 0 rows (not an error — RLS silently filters, it doesn't throw).
+Expected: all four return 0 rows (not an error — RLS silently filters, it doesn't throw).
+
+Then confirm `sites_progress` is the one deliberate exception — it must still return rows even as `anon` (this is what makes the WORKER Dashboard work at all):
+```sql
+SET ROLE anon;
+SELECT count(*) FROM sites_progress;
+RESET ROLE;
+```
+Expected: a nonzero count (or at least no error) — if this returns 0 rows or errors, Task 3's Dashboard will show an empty state for every WORKER; check that `sites_progress` genuinely was excluded from Task 7's `security_invoker` migration.
 
 If anything in Step 6 breaks that worked in Step 2-4, roll back immediately for the specific table:
 ```sql
