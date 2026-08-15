@@ -649,7 +649,7 @@ CREATE TRIGGER trg_payment_number
 -- VIEWS
 -- ----------------------------------------------------------------
 
-CREATE OR REPLACE VIEW expenses_view AS
+CREATE OR REPLACE VIEW expenses_view WITH (security_invoker = true) AS
 SELECT
   e.*,
   s.name              AS site_name,
@@ -665,7 +665,7 @@ LEFT JOIN sites s ON e.site_id = s.id
 LEFT JOIN expense_categories ec ON e.category_id = ec.id
 LEFT JOIN suppliers sup ON e.supplier_id = sup.id;
 
-CREATE OR REPLACE VIEW incomes_view AS
+CREATE OR REPLACE VIEW incomes_view WITH (security_invoker = true) AS
 SELECT
   i.*,
   s.name        AS site_name,
@@ -673,7 +673,7 @@ SELECT
 FROM incomes i
 LEFT JOIN sites s ON i.site_id = s.id;
 
-CREATE OR REPLACE VIEW site_financial_summary AS
+CREATE OR REPLACE VIEW site_financial_summary WITH (security_invoker = true) AS
 SELECT
   s.id, s.site_number, s.name, s.status, s.start_date, s.end_date, s.contract_value,
   s.client_id, s.client_name, s.location,
@@ -713,7 +713,7 @@ SELECT
   billing_pct
 FROM site_financial_summary;
 
-CREATE OR REPLACE VIEW payment_forecast AS
+CREATE OR REPLACE VIEW payment_forecast WITH (security_invoker = true) AS
 SELECT
   DATE_TRUNC('month', COALESCE(check_date, date)) AS forecast_month,
   SUM(amount)                                      AS total_due,
@@ -726,7 +726,7 @@ GROUP BY 1, 4, 5
 ORDER BY 1;
 
 -- half-day counting (each shift row = 0.5 day); includes factory production
-CREATE OR REPLACE VIEW labor_cost_by_site AS
+CREATE OR REPLACE VIEW labor_cost_by_site WITH (security_invoker = true) AS
 SELECT
   wa.site_id,
   s.name        AS site_name,
@@ -743,7 +743,7 @@ WHERE wa.type IN ('site','factory')
 GROUP BY wa.site_id, s.name, s.site_number, wa.worker_id, w.name, w.nickname, w.monthly_salary;
 
 -- ต้นทุน OT ต่อไซท์ (all-time) — mirrors labor_cost_by_site's shape/grouping
-CREATE OR REPLACE VIEW ot_cost_by_site AS
+CREATE OR REPLACE VIEW ot_cost_by_site WITH (security_invoker = true) AS
 SELECT
   o.site_id,
   s.name AS site_name,
@@ -759,7 +759,7 @@ JOIN sites s ON o.site_id = s.id
 GROUP BY o.site_id, s.name, s.site_number, o.worker_id, w.name, w.nickname;
 
 -- travel cost per site: distance x 2 (round trip) x rate, once per distinct 'site' workday
-CREATE OR REPLACE VIEW site_travel_cost AS
+CREATE OR REPLACE VIEW site_travel_cost WITH (security_invoker = true) AS
 SELECT wa.site_id,
        COUNT(DISTINCT wa.date) AS travel_days,
        s.distance_km,
@@ -770,7 +770,7 @@ JOIN sites s ON wa.site_id = s.id
 WHERE wa.type = 'site'
 GROUP BY wa.site_id, s.distance_km;
 
-CREATE OR REPLACE VIEW workers_with_rate AS
+CREATE OR REPLACE VIEW workers_with_rate WITH (security_invoker = true) AS
 SELECT
   id, name, nickname, position, monthly_salary, has_social_security,
   annual_leave_days, monthly_contribution, status, created_at, updated_at,
@@ -780,7 +780,7 @@ SELECT
 FROM workers;
 
 -- สรุปสัญญาผู้รับเหมาช่วง: บิลแล้ว/จ่ายแล้ว/retention คงเหลือ/% ความคืบหน้า
-CREATE OR REPLACE VIEW labor_contract_summary AS
+CREATE OR REPLACE VIEW labor_contract_summary WITH (security_invoker = true) AS
 SELECT
   lc.id, lc.subcontractor_id, lc.site_id, lc.work_description, lc.contract_amount,
   lc.retention_pct, lc.withholding_tax_pct, lc.site_note, lc.status, lc.start_date,
