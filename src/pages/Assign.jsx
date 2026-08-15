@@ -14,6 +14,7 @@ import { ConfirmDialog } from '../components/Modal.jsx'
 import ViewToggle from './assign/ViewToggle.jsx'
 import GridView from './assign/GridView.jsx'
 import DayView from './assign/DayView.jsx'
+import MySchedule from './assign/MySchedule.jsx'
 import AssignWizard from './assign/AssignWizard.jsx'
 import AssignOTWizard from './assign/AssignOTWizard.jsx'
 import CellEditPopup from './assign/CellEditPopup.jsx'
@@ -225,13 +226,17 @@ export default function Assign({ navState }) {
       </div>
 
       {/* ── View ── */}
-      {view === 'day' ? (
+      {!canEdit ? (
+        <MySchedule from={from} to={to} days={days} />
+      ) : view === 'day' ? (
         <DayView dayIso={from} assignments={assignments} otEntries={otEntries} sites={sites} travelRate={travelRate} onEditHalf={openCell} />
       ) : (
         <GridView days={days} workers={workers} cellLookup={cellLookup} otLookup={otLookup} holidayDates={holidayDates} onEditHalf={openCell} cellH={cellH} variant={view} />
       )}
 
-      {/* ── Labor + Travel cost per site ── */}
+      {/* ── Labor + Travel cost per site (ADMIN+ only — reveals per-worker cost) ── */}
+      {canEdit && (
+      <>
       <div style={{ marginBottom: 8, color: 'var(--text3)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>
         ค่าแรง + ค่าเดินทาง ต่อไซท์งาน (ทุกช่วงเวลา)
       </div>
@@ -261,6 +266,8 @@ export default function Assign({ navState }) {
         ))}
         {!costBySite.length && <div style={{ color: 'var(--text3)', fontSize: 13 }}>ยังไม่มีข้อมูล assignment</div>}
       </div>
+      </>
+      )}
 
       {/* ── Wizard ── */}
       {wizardOpen && (
