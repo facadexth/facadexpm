@@ -2,65 +2,27 @@
 -- FACADE X — Supabase Database Schema
 -- Run this in: Supabase Dashboard > SQL Editor > New Query
 --
--- ⚠️ This file has drifted from the live DB in places. For changes made
--- on/after 2026-07-02, the authoritative record is supabase/migrations/*.sql.
--- The worker_assignments / labor_cost_by_site definitions below and the
--- app_settings / site_travel_cost objects reflect the 2026-07-02 redesign.
+-- Regenerated 2026-08-15 directly from the live production database
+-- (yyzbgdmgyvvypfcjuhtr) via introspection — every table, column,
+-- constraint, trigger, function, view, and index below was read back
+-- from Postgres system catalogs (information_schema / pg_catalog),
+-- not hand-maintained. The previous version of this file had drifted
+-- significantly from production (wrong column names on `sites`, an
+-- unfixed number-generator bug on `incomes`, and 9 entire tables —
+-- auth/roles, clients, suppliers, subcontractor billing, audit log —
+-- missing outright). Keep this file in sync going forward by
+-- introspecting the live DB again rather than hand-editing guesses.
+--
+-- ⚠️ Row Level Security is NOT included below. As of this regeneration,
+-- 18 of these 19 tables have RLS disabled — the anon key can read/write
+-- them directly, bypassing the app's role checks entirely. This is a
+-- separate, deliberate design decision that needs real policies (see
+-- project README §7-8) — do not blindly enable RLS on these tables
+-- without policies, or every query (including the app's own) will start
+-- failing.
 -- ================================================================
 
--- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
--- ----------------------------------------------------------------
--- SITES — ไซท์งานทั้งหมด
--- ----------------------------------------------------------------
-CREATE TABLE sites (
-  id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  site_number   TEXT UNIQUE NOT NULL,          -- AUTO: FX-2026-001
-  name          TEXT NOT NULL,
-  note          TEXT,                           -- ชื่อย่อ / หมายเหตุ
-  status        TEXT DEFAULT 'Ongoing'
-                CHECK (status IN ('Ongoing','Finished','On Hold')),
-  start_date    DATE,
-  end_date      DATE,
-  contract_value DECIMAL(15,2) DEFAULT 0,       -- มูลค่างานรวม
-  distance_km    NUMERIC,                        -- ระยะทางเที่ยวเดียวจากโรงงาน (คิดค่าเดินทาง)
-  map_url        TEXT,                           -- ลิงก์ Google Maps
-
-  -- แผนต้นทุน (plan_type = 'value' หรือ 'percent')
-  plan_type     TEXT DEFAULT 'value' CHECK (plan_type IN ('value','percent')),
-  plan_aluminum  DECIMAL(15,2) DEFAULT 0,       -- ค่าอลูมิเนียม/เหล็ก
-  plan_glass     DECIMAL(15,2) DEFAULT 0,       -- ค่ากระจก
-  plan_equipment DECIMAL(15,2) DEFAULT 0,       -- ค่าอุปกรณ์
-  plan_rubber    DECIMAL(15,2) DEFAULT 0,       -- ยางและซิลิโคน
-  plan_labor     DECIMAL(15,2) DEFAULT 0,       -- ค่าแรง (sub-contract)
-
-  created_at    TIMESTAMPTZ DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Auto-generate site_number: FX-YYYY-NNN
-CREATE OR REPLACE FUNCTION generate_site_number()
-RETURNS TRIGGER AS $$
-DECLARE
-  year_part TEXT := TO_CHAR(NOW(), 'YYYY');
-  seq_num   INT;
-BEGIN
-  SELECT COALESCE(MAX(SUBSTRING(site_number FROM 'FX-\d{4}-(\d+)$')::INT), 0) + 1
-  INTO seq_num
-  FROM sites
-  WHERE site_number LIKE 'FX-' || year_part || '-%';
-  NEW.site_number := 'FX-' || year_part || '-' || LPAD(seq_num::TEXT, 3, '0');
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_site_number
-  BEFORE INSERT ON sites
-  FOR EACH ROW
-  WHEN (NEW.site_number IS NULL OR NEW.site_number = '')
-  EXECUTE FUNCTION generate_site_number();
-
 
 -- ----------------------------------------------------------------
 -- EXPENSE_CATEGORIES — หมวดค่าใช้จ่าย (แก้ไข/เพิ่ม/ลบได้)
@@ -73,7 +35,9 @@ CREATE TABLE expense_categories (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Default categories
+-- Starter categories — adjust to the business before going live with a
+-- new company; these 8 are FacadeX's own (production currently has 12,
+-- 4 more were added later through the UI).
 INSERT INTO expense_categories (name, color, sort_order) VALUES
   ('ค่ากระจก',             '#4ecdc4', 1),
   ('ค่าอลูมิเนียม/เหล็ก', '#6c63ff', 2),
@@ -84,6 +48,79 @@ INSERT INTO expense_categories (name, color, sort_order) VALUES
   ('เบ็ดเตล็ด',            '#9e9ec8', 7),
   ('ค่าของ',               '#fd79a8', 8);
 
+-- ----------------------------------------------------------------
+-- CLIENTS — ผู้ว่าจ้าง / ลูกค้า
+-- ----------------------------------------------------------------
+CREATE TABLE clients (
+  id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  client_number   TEXT NOT NULL UNIQUE DEFAULT '',    -- AUTO: CL-2026-001
+  name            TEXT NOT NULL,
+  contact_person  TEXT,
+  position        TEXT,
+  phone           TEXT,
+  email           TEXT,
+  address         TEXT,
+  province        TEXT,
+  notes           TEXT,
+  client_type     TEXT CHECK (client_type IN ('DEVELOPER','ENDUSER','ผู้รับเหมา')),
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_clients_name ON clients(name);
+
+-- ----------------------------------------------------------------
+-- SUPPLIERS — ผู้จำหน่ายวัสดุ
+-- ----------------------------------------------------------------
+CREATE TABLE suppliers (
+  id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  supplier_number TEXT NOT NULL UNIQUE DEFAULT '',    -- AUTO: SP-2026-001
+  name            TEXT NOT NULL,
+  contact_person  TEXT,
+  phone           TEXT,
+  email           TEXT,
+  category        JSONB,                              -- e.g. ["กระจก","อลูมิเนียม"]
+  payment_terms   TEXT,                                -- ใช้ auto-suggest billing/due date สำหรับ credit expense
+  address         TEXT,
+  notes           TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_suppliers_name ON suppliers(name);
+
+-- ----------------------------------------------------------------
+-- SITES — ไซท์งานทั้งหมด
+-- ----------------------------------------------------------------
+CREATE TABLE sites (
+  id             UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  site_number    TEXT UNIQUE NOT NULL,          -- AUTO: FX-2026-001
+  name           TEXT NOT NULL,
+  notes          TEXT,
+  status         TEXT DEFAULT 'Ongoing'
+                 CHECK (status IN ('Ongoing','Completed','On Hold','Cancelled')),
+  start_date     DATE,
+  end_date       DATE,
+  contract_value NUMERIC DEFAULT 0,             -- มูลค่างานรวม
+  plan_type      TEXT DEFAULT 'value' CHECK (plan_type IN ('value','percent')),
+
+  -- แผนต้นทุน
+  cost_aluminum  NUMERIC DEFAULT 0,
+  cost_glass     NUMERIC DEFAULT 0,
+  cost_equipment NUMERIC DEFAULT 0,
+  cost_rubber    NUMERIC DEFAULT 0,
+  cost_labor     NUMERIC DEFAULT 0,
+  cost_other     NUMERIC DEFAULT 0,
+
+  client_id      UUID REFERENCES clients(id),
+  client_name    TEXT,                          -- legacy free-text (predates clients table)
+  location       TEXT,
+  distance_km    NUMERIC,                       -- ระยะทางเที่ยวเดียวจากโรงงาน (คิดค่าเดินทาง)
+  map_url        TEXT,                          -- ลิงก์ Google Maps
+
+  created_at     TIMESTAMPTZ DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ DEFAULT NOW()
+);
 
 -- ----------------------------------------------------------------
 -- EXPENSES — รายจ่าย
@@ -91,31 +128,33 @@ INSERT INTO expense_categories (name, color, sort_order) VALUES
 CREATE TABLE expenses (
   id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   date            DATE NOT NULL,                -- วันที่สั่งซื้อ/วางบิล
-  description     TEXT,                         -- รายละเอียด
+  description     TEXT,
   site_id         UUID REFERENCES sites(id) ON DELETE SET NULL,
   category_id     UUID REFERENCES expense_categories(id) ON DELETE SET NULL,
-  supplier        TEXT,                         -- บริษัทผู้จำหน่าย
-  amount          DECIMAL(15,2) NOT NULL DEFAULT 0, -- มูลค่า (รวม VAT)
+  supplier        TEXT,                         -- ชื่อผู้จำหน่าย (free text, legacy)
+  supplier_id     UUID REFERENCES suppliers(id),
+  amount          NUMERIC NOT NULL DEFAULT 0,    -- มูลค่า (รวม VAT)
 
-  -- การชำระเงิน
   payment_method  TEXT DEFAULT 'transfer'
                   CHECK (payment_method IN ('transfer','check','cash','credit')),
-  check_date      DATE,                         -- วันที่ชำระ/วันที่บนเช็ค
+  check_date      DATE,
   billing_date    DATE,                         -- วันวางบิล (credit)
   due_date        DATE,                         -- วันครบกำหนด (credit)
   status          TEXT DEFAULT 'pending'
                   CHECK (status IN ('paid','pending','check_issued','check_cleared')),
-  payer           TEXT,                         -- ผู้จ่าย
-  invoice_no      TEXT,                         -- เลขที่ใบกำกับ
+  payer           TEXT,
+  invoice_no      TEXT,
   notes           TEXT,
-
-  -- Sub-contract labor tracking
   is_subcontract  BOOLEAN DEFAULT FALSE,        -- TRUE = ค่าแรงช่างภายนอก
 
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE INDEX idx_expenses_site_id    ON expenses(site_id);
+CREATE INDEX idx_expenses_date       ON expenses(date);
+CREATE INDEX idx_expenses_status     ON expenses(status);
+CREATE INDEX idx_expenses_check_date ON expenses(check_date);
 
 -- ----------------------------------------------------------------
 -- INCOMES — รายรับ
@@ -123,40 +162,22 @@ CREATE TABLE expenses (
 CREATE TABLE incomes (
   id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   invoice_no      TEXT,                         -- เลขที่ใบแจ้งหนี้ (auto ถ้าเว้นว่าง)
-  date            DATE NOT NULL,                -- วันที่รับเงิน
+  date            DATE NOT NULL,
   site_id         UUID REFERENCES sites(id) ON DELETE SET NULL,
-  client_name     TEXT,                         -- ชื่อลูกค้า/บริษัท
-  description     TEXT,                         -- รายละเอียด/งวดที่เบิก
-  amount_no_vat   DECIMAL(15,2) DEFAULT 0,      -- มูลค่าก่อน VAT
-  vat             DECIMAL(15,2) DEFAULT 0,      -- VAT
-  tax_withheld    DECIMAL(15,2) DEFAULT 0,      -- ภาษีถูกหัก ณ ที่จ่าย
-  retention       DECIMAL(15,2) DEFAULT 0,      -- เงิน retention
-  received_amount DECIMAL(15,2) DEFAULT 0,      -- ยอดที่ได้รับจริง
+  client_name     TEXT,
+  description     TEXT,
+  amount_no_vat   NUMERIC DEFAULT 0,
+  vat             NUMERIC DEFAULT 0,
+  tax_withheld    NUMERIC DEFAULT 0,
+  retention       NUMERIC DEFAULT 0,
+  received_amount NUMERIC DEFAULT 0,
 
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Auto-generate invoice_no: IV-YYMM-NNN
-CREATE OR REPLACE FUNCTION generate_invoice_no()
-RETURNS TRIGGER AS $$
-DECLARE
-  prefix TEXT := 'IV' || TO_CHAR(NOW(), 'YYMM') || '-';
-  seq_num INT;
-BEGIN
-  IF NEW.invoice_no IS NULL OR NEW.invoice_no = '' THEN
-    SELECT COUNT(*) + 1 INTO seq_num
-    FROM incomes WHERE invoice_no LIKE prefix || '%';
-    NEW.invoice_no := prefix || LPAD(seq_num::TEXT, 3, '0');
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_invoice_no
-  BEFORE INSERT ON incomes
-  FOR EACH ROW EXECUTE FUNCTION generate_invoice_no();
-
+CREATE INDEX idx_incomes_site_id ON incomes(site_id);
+CREATE INDEX idx_incomes_date    ON incomes(date);
 
 -- ----------------------------------------------------------------
 -- WORKERS — ช่างและพนักงาน
@@ -165,25 +186,16 @@ CREATE TABLE workers (
   id                    UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   name                  TEXT NOT NULL,
   nickname              TEXT,
-  position              TEXT,                   -- ตำแหน่ง: หัวหน้าช่าง, ช่างฝีมือ, ฯลฯ
-  monthly_salary        DECIMAL(15,2) DEFAULT 0,
-  -- daily_rate คำนวณจาก monthly_salary / 26 (วันทำงานต่อเดือน)
+  position              TEXT,
+  monthly_salary        NUMERIC DEFAULT 0,
   has_social_security   BOOLEAN DEFAULT TRUE,
-  annual_leave_days     INT DEFAULT 6,           -- วันลาที่ได้รับต่อปี
-  monthly_contribution  DECIMAL(15,2) DEFAULT 0, -- เงินสมทบ
-  status                TEXT DEFAULT 'active'
-                        CHECK (status IN ('active','inactive')),
+  annual_leave_days     INT DEFAULT 6,           -- วันลากิจที่ได้รับต่อปี (โควต้า leave_personal)
+  monthly_contribution  NUMERIC DEFAULT 0,
+  status                TEXT DEFAULT 'active' CHECK (status IN ('active','inactive')),
+  email                 TEXT,                    -- ผูกกับ user_roles.user_email (login account)
   created_at            TIMESTAMPTZ DEFAULT NOW(),
   updated_at            TIMESTAMPTZ DEFAULT NOW()
 );
-
--- Computed view for daily rate
-CREATE OR REPLACE VIEW workers_with_rate AS
-SELECT *,
-  ROUND(monthly_salary / 26, 2) AS daily_rate,
-  ROUND(monthly_salary * 0.05 / 100 * 750, 0) AS social_security_amount
-FROM workers;
-
 
 -- ----------------------------------------------------------------
 -- WORKER_ASSIGNMENTS — Assign ช่างรายวัน
@@ -193,19 +205,26 @@ CREATE TABLE worker_assignments (
   worker_id   UUID NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
   site_id     UUID REFERENCES sites(id) ON DELETE SET NULL,
   date        DATE NOT NULL,
-  -- type: site=ที่ไซท์, factory=ผลิตที่โรงงานให้ไซท์, leave=ลา, office=ออฟฟิศ, holiday=หยุด, subcontract
+  -- site=ที่ไซท์, factory=ผลิตที่โรงงานให้ไซท์, office=ออฟฟิศ, holiday=หยุด,
+  -- subcontract, leave=ลา (legacy, pre sick/personal split — kept for
+  -- historical rows only, UI no longer creates new 'leave' rows),
+  -- leave_sick=ลาป่วย (ไม่หักเงิน/โควต้า), leave_personal=ลากิจ (หักทั้งคู่)
   type        TEXT DEFAULT 'site'
               CHECK (type IN ('site','leave','office','holiday','subcontract','factory','leave_sick','leave_personal')),
-  -- shift: morning/evening — 1 กะ = 0.5 วัน (เช้า+เย็น = เต็มวัน)
+  -- shift: morning/evening — 1 กะ = 0.5 วัน (เช้า+บ่าย = เต็มวัน)
   shift       TEXT NOT NULL DEFAULT 'morning' CHECK (shift IN ('morning','evening')),
-  ot_hours    NUMERIC DEFAULT 0,
+  ot_hours    NUMERIC DEFAULT 0,                 -- legacy field, superseded by worker_ot table
   notes       TEXT,
   created_at  TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE (worker_id, date, shift)  -- 1 คน 1 วัน 1 กะ
+  UNIQUE (worker_id, date, shift)                -- 1 คน 1 วัน 1 กะ
 );
 
+CREATE INDEX idx_assignments_worker ON worker_assignments(worker_id);
+CREATE INDEX idx_assignments_site   ON worker_assignments(site_id);
+CREATE INDEX idx_assignments_date   ON worker_assignments(date);
+
 -- ----------------------------------------------------------------
--- WORKER_OT — OT รายวัน (แยกจาก shift เช้า/บ่าย)
+-- WORKER_OT — OT รายวัน (แยกจาก shift เช้า/บ่าย, สูงสุด 1 ช่วง/คน/วัน)
 -- ----------------------------------------------------------------
 CREATE TABLE worker_ot (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -226,7 +245,8 @@ CREATE INDEX idx_worker_ot_site ON worker_ot(site_id);
 CREATE INDEX idx_worker_ot_date ON worker_ot(date);
 
 -- ----------------------------------------------------------------
--- COMPANY_HOLIDAYS — ปฏิทินวันหยุดบริษัท (ไม่ auto-mark worker_assignments)
+-- COMPANY_HOLIDAYS — ปฏิทินวันหยุดบริษัท (ไม่ auto-mark worker_assignments;
+-- Sunday shifts also pay this rate but are computed inline, not stored here)
 -- ----------------------------------------------------------------
 CREATE TABLE company_holidays (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -245,59 +265,421 @@ CREATE TABLE salary_records (
   worker_id             UUID NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
   month                 INT NOT NULL CHECK (month BETWEEN 1 AND 12),
   year                  INT NOT NULL,
-  base_salary           DECIMAL(15,2) DEFAULT 0,
-  contribution          DECIMAL(15,2) DEFAULT 0,  -- เงินสมทบ
-  phone_allowance       DECIMAL(15,2) DEFAULT 0,
-  ot_amount             DECIMAL(15,2) DEFAULT 0,
-  special_allowance     DECIMAL(15,2) DEFAULT 0,  -- เงินพิเศษ/ค่าจอดรถ
-  advance_deduction     DECIMAL(15,2) DEFAULT 0,  -- เบิกล่วงหน้า
-  social_security_ded   DECIMAL(15,2) DEFAULT 0,  -- ประกันสังคม
-  leave_deduction       DECIMAL(15,2) DEFAULT 0,  -- หักวันลา
-  loan_deduction        DECIMAL(15,2) DEFAULT 0,  -- หักเงินกู้
-  net_pay               DECIMAL(15,2) DEFAULT 0,
+  base_salary           NUMERIC DEFAULT 0,
+  contribution          NUMERIC DEFAULT 0,
+  phone_allowance       NUMERIC DEFAULT 0,
+  ot_amount             NUMERIC DEFAULT 0,       -- also carries the holiday-work bonus (no dedicated column)
+  special_allowance     NUMERIC DEFAULT 0,
+  advance_deduction     NUMERIC DEFAULT 0,
+  social_security_ded   NUMERIC DEFAULT 0,
+  leave_deduction       NUMERIC DEFAULT 0,       -- leave_personal only; leave_sick never deducts
+  loan_deduction        NUMERIC DEFAULT 0,
+  net_pay               NUMERIC DEFAULT 0,
   paid_date             DATE,
   notes                 TEXT,
   created_at            TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (worker_id, month, year)
 );
 
+-- ----------------------------------------------------------------
+-- LABOR_SUBCONTRACTORS — ผู้รับเหมาช่วง (ทีมงานภายนอก)
+-- ----------------------------------------------------------------
+CREATE TABLE labor_subcontractors (
+  id                    UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  subcontractor_number  TEXT NOT NULL UNIQUE DEFAULT '',   -- AUTO: LC-2026-001
+  name                  TEXT NOT NULL,
+  contact_person        TEXT,
+  phone                 TEXT,
+  email                 TEXT,
+  notes                 TEXT,
+  created_at            TIMESTAMPTZ DEFAULT NOW(),
+  updated_at            TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_labor_sub_name ON labor_subcontractors(name);
 
 -- ----------------------------------------------------------------
--- VIEWS — สำหรับ Dashboard
+-- LABOR_CONTRACTS — สัญญาผู้รับเหมาช่วงต่อไซท์
+-- ----------------------------------------------------------------
+CREATE TABLE labor_contracts (
+  id                    UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  subcontractor_id      UUID NOT NULL REFERENCES labor_subcontractors(id),
+  site_id               UUID NOT NULL REFERENCES sites(id),
+  work_description      TEXT NOT NULL,
+  contract_amount       NUMERIC NOT NULL,
+  retention_pct         NUMERIC DEFAULT 5,
+  withholding_tax_pct   NUMERIC DEFAULT 3,
+  site_note             TEXT,
+  status                TEXT DEFAULT 'active' CHECK (status IN ('active','completed','cancelled')),
+  start_date            DATE,
+  created_at            TIMESTAMPTZ DEFAULT NOW(),
+  updated_at            TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (subcontractor_id, site_id)
+);
+
+CREATE INDEX idx_labor_contract_site ON labor_contracts(site_id);
+CREATE INDEX idx_labor_contract_sub  ON labor_contracts(subcontractor_id);
+
+-- ----------------------------------------------------------------
+-- LABOR_PAYMENTS — งวดจ่ายผู้รับเหมาช่วง (รวมการคืน retention)
+-- ----------------------------------------------------------------
+CREATE TABLE labor_payments (
+  id                    UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  contract_id           UUID NOT NULL REFERENCES labor_contracts(id),
+  payment_number        TEXT NOT NULL UNIQUE DEFAULT '',   -- AUTO: PY2608-001
+  payment_date          DATE NOT NULL,
+  work_description      TEXT,
+  progress_pct          NUMERIC,
+  gross_amount          NUMERIC NOT NULL,
+  withholding_tax       NUMERIC DEFAULT 0,
+  retention_amount      NUMERIC DEFAULT 0,
+  net_amount            NUMERIC NOT NULL,
+  is_retention_release  BOOLEAN DEFAULT FALSE,   -- TRUE = งวดนี้คือการคืนเงิน retention ที่ถูกหักไว้ก่อนหน้า
+  status                TEXT DEFAULT 'pending' CHECK (status IN ('pending','paid')),
+  paid_date             DATE,
+  notes                 TEXT,
+  created_at            TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_labor_payment_contract ON labor_payments(contract_id);
+CREATE INDEX idx_labor_payment_date     ON labor_payments(payment_date);
+
+-- ----------------------------------------------------------------
+-- AUDIT_LOGS — ประวัติการแก้ไขข้อมูล (INSERT/UPDATE/DELETE)
+-- ----------------------------------------------------------------
+CREATE TABLE audit_logs (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  table_name  TEXT NOT NULL,
+  record_id   UUID,
+  action      TEXT NOT NULL CHECK (action IN ('INSERT','UPDATE','DELETE')),
+  user_email  TEXT,
+  changed_at  TIMESTAMPTZ DEFAULT NOW(),
+  old_values  JSONB,
+  new_values  JSONB
+);
+
+CREATE INDEX idx_audit_record ON audit_logs(record_id);
+CREATE INDEX idx_audit_table  ON audit_logs(table_name);
+CREATE INDEX idx_audit_time   ON audit_logs(changed_at DESC);
+
+-- ----------------------------------------------------------------
+-- USER_ROLES — สิทธิ์การใช้งาน ผูกกับ Supabase Auth ผ่าน user_email
+-- ⚠️ RLS เปิดอยู่บนตารางนี้ แต่ policy ปัจจุบันคือ qual=true สำหรับทุก
+-- authenticated user — คือแค่กันคนที่ไม่ login เข้ามาแตะ ไม่ได้แยกสิทธิ์
+-- ตาม role จริง (WORKER ที่ login แล้วสามารถ promote ตัวเองเป็น OWNER
+-- ผ่าน Supabase client ได้ตรงๆ ในตอนนี้) — ดู README §8 ก่อนแก้
+-- ----------------------------------------------------------------
+CREATE TABLE user_roles (
+  id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_email TEXT NOT NULL UNIQUE,
+  role       TEXT NOT NULL CHECK (role IN ('OWNER','ADMIN','WORKER')),
+  status     VARCHAR DEFAULT 'approved' CHECK (status IN ('pending','approved')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY read_all_roles  ON user_roles FOR SELECT TO authenticated USING (true);
+CREATE POLICY insert_user_role ON user_roles FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY owner_can_update ON user_roles FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY owner_can_delete ON user_roles FOR DELETE TO authenticated USING (true);
+
+-- New Supabase Auth signups default to WORKER/approved automatically.
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+AS $$
+BEGIN
+  INSERT INTO public.user_roles (user_email, role, status)
+  VALUES (new.email, 'WORKER', 'approved')
+  ON CONFLICT (user_email) DO NOTHING;
+  RETURN new;
+END;
+$$;
+
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
+-- Deleting the auth account removes the role row, and vice versa —
+-- kept in sync both directions.
+CREATE OR REPLACE FUNCTION handle_auth_user_deleted()
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+AS $$
+BEGIN
+  DELETE FROM public.user_roles WHERE user_email = OLD.email;
+  RETURN OLD;
+END;
+$$;
+
+CREATE TRIGGER on_auth_user_deleted
+  AFTER DELETE ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_auth_user_deleted();
+
+CREATE OR REPLACE FUNCTION handle_user_role_deleted()
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+AS $$
+BEGIN
+  DELETE FROM auth.users WHERE email = OLD.user_email;
+  RETURN OLD;
+END;
+$$;
+
+CREATE TRIGGER on_user_role_deleted
+  AFTER DELETE ON user_roles
+  FOR EACH ROW EXECUTE FUNCTION handle_user_role_deleted();
+
+-- Bootstrap: after creating the very first account through the app's
+-- Signup page, promote it to OWNER manually (the in-app User Management
+-- page itself requires OWNER to access, so the first account can't do
+-- this through the UI):
+--   UPDATE user_roles SET role = 'OWNER' WHERE user_email = 'you@example.com';
+
+-- ----------------------------------------------------------------
+-- APP_SETTINGS — ค่าตั้งค่าระบบ (key/value)
+-- ----------------------------------------------------------------
+CREATE TABLE app_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+INSERT INTO app_settings (key, value) VALUES ('travel_rate_per_km', '20') ON CONFLICT (key) DO NOTHING;
+INSERT INTO app_settings (key, value) VALUES ('holiday_pay_multiplier', '1.5') ON CONFLICT (key) DO NOTHING;
+
+-- ----------------------------------------------------------------
+-- CALENDAR_SYNC — mapping ระหว่าง assignment วันที่/ไซท์ กับ Google
+-- Calendar event (สำหรับฟีเจอร์ sync อัตโนมัติที่ยังไม่เปิดใช้งานจริง)
+-- ----------------------------------------------------------------
+CREATE TABLE calendar_sync (
+  site_id          UUID NOT NULL REFERENCES sites(id),
+  assignment_date  DATE NOT NULL,
+  google_event_id  TEXT NOT NULL,
+  updated_at       TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (site_id, assignment_date)
+);
+
+-- ----------------------------------------------------------------
+-- SITE_PHASES — เฟสงานต่อไซท์ (Gantt / S-curve), auto-seed 7 เฟส
+-- มาตรฐานทุกครั้งที่สร้างไซท์ใหม่
+-- ----------------------------------------------------------------
+CREATE TABLE site_phases (
+  id                  UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  site_id             UUID NOT NULL REFERENCES sites(id),
+  name                TEXT NOT NULL,
+  sort_order          INT NOT NULL DEFAULT 0,
+  start_date          DATE,
+  end_date            DATE,
+  status              TEXT NOT NULL DEFAULT 'not_started'
+                      CHECK (status IN ('not_started','in_progress','done')),
+  billing_weight_pct  NUMERIC NOT NULL DEFAULT 0,   -- น้ำหนักเฟสนี้ต่อมูลค่างานรวม (รวมกัน 100%)
+  depends_on_phase_id UUID REFERENCES site_phases(id),
+  created_at          TIMESTAMPTZ DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_site_phases_site_id ON site_phases(site_id);
+
+CREATE OR REPLACE FUNCTION seed_site_phases()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  INSERT INTO site_phases (site_id, name, sort_order, billing_weight_pct) VALUES
+    (NEW.id, 'ทำแบบเพื่อขออนุมัติ', 1, 5),
+    (NEW.id, 'สั่งวัสดุ', 2, 15),
+    (NEW.id, 'วัดหน้างานเพื่อผลิต', 3, 5),
+    (NEW.id, 'ผลิต', 4, 30),
+    (NEW.id, 'ติดตั้ง', 5, 30),
+    (NEW.id, 'เก็บงานรอบสุดท้าย', 6, 10),
+    (NEW.id, 'ส่งมอบงาน', 7, 5);
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_seed_site_phases
+  AFTER INSERT ON sites
+  FOR EACH ROW EXECUTE FUNCTION seed_site_phases();
+
+-- ----------------------------------------------------------------
+-- NUMBER GENERATORS — auto-assign เลขที่ให้ sites/clients/suppliers/
+-- labor_subcontractors/incomes/labor_payments ตอน INSERT ถ้ายังว่าง
+-- ทุกฟังก์ชันใช้ MAX(existing suffix)+1 (ไม่ใช่ COUNT(*)+1 ซึ่งพังถ้ามี
+-- แถวถูกลบไปแล้วเลขที่ชนกัน — บั๊กนี้เคยเกิดจริงและถูกแก้แล้วทุกจุด)
+-- ----------------------------------------------------------------
+CREATE OR REPLACE FUNCTION generate_site_number()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  year_part TEXT := TO_CHAR(NOW(), 'YYYY');
+  seq_num   INT;
+BEGIN
+  SELECT COALESCE(MAX(SUBSTRING(site_number FROM 'FX-\d{4}-(\d+)$')::INT), 0) + 1
+  INTO seq_num
+  FROM sites
+  WHERE site_number LIKE 'FX-' || year_part || '-%';
+  NEW.site_number := 'FX-' || year_part || '-' || LPAD(seq_num::TEXT, 3, '0');
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_site_number
+  BEFORE INSERT ON sites
+  FOR EACH ROW
+  WHEN (NEW.site_number IS NULL OR NEW.site_number = '')
+  EXECUTE FUNCTION generate_site_number();
+
+CREATE OR REPLACE FUNCTION generate_client_number()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  year_part TEXT := TO_CHAR(NOW(), 'YYYY');
+  seq_num   INT;
+BEGIN
+  SELECT COALESCE(MAX(SUBSTRING(client_number FROM 'CL-\d{4}-(\d+)$')::INT), 0) + 1
+  INTO seq_num
+  FROM clients
+  WHERE client_number LIKE 'CL-' || year_part || '-%';
+  NEW.client_number := 'CL-' || year_part || '-' || LPAD(seq_num::TEXT, 3, '0');
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_client_number
+  BEFORE INSERT ON clients
+  FOR EACH ROW
+  WHEN (NEW.client_number IS NULL OR NEW.client_number = '')
+  EXECUTE FUNCTION generate_client_number();
+
+CREATE OR REPLACE FUNCTION generate_supplier_number()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  year_part TEXT := TO_CHAR(NOW(), 'YYYY');
+  seq_num   INT;
+BEGIN
+  SELECT COALESCE(MAX(SUBSTRING(supplier_number FROM 'SP-\d{4}-(\d+)$')::INT), 0) + 1
+  INTO seq_num
+  FROM suppliers
+  WHERE supplier_number LIKE 'SP-' || year_part || '-%';
+  NEW.supplier_number := 'SP-' || year_part || '-' || LPAD(seq_num::TEXT, 3, '0');
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_supplier_number
+  BEFORE INSERT ON suppliers
+  FOR EACH ROW
+  WHEN (NEW.supplier_number IS NULL OR NEW.supplier_number = '')
+  EXECUTE FUNCTION generate_supplier_number();
+
+CREATE OR REPLACE FUNCTION generate_subcontractor_number()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  year_part TEXT := TO_CHAR(NOW(), 'YYYY');
+  seq_num   INT;
+BEGIN
+  SELECT COALESCE(MAX(SUBSTRING(subcontractor_number FROM 'LC-\d{4}-(\d+)$')::INT), 0) + 1
+  INTO seq_num
+  FROM labor_subcontractors
+  WHERE subcontractor_number LIKE 'LC-' || year_part || '-%';
+  NEW.subcontractor_number := 'LC-' || year_part || '-' || LPAD(seq_num::TEXT, 3, '0');
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_subcontractor_number
+  BEFORE INSERT ON labor_subcontractors
+  FOR EACH ROW
+  WHEN (NEW.subcontractor_number IS NULL OR NEW.subcontractor_number = '')
+  EXECUTE FUNCTION generate_subcontractor_number();
+
+CREATE OR REPLACE FUNCTION generate_invoice_no()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  prefix  TEXT := 'IV' || TO_CHAR(NOW(), 'YYMM') || '-';
+  seq_num INT;
+BEGIN
+  IF NEW.invoice_no IS NULL OR NEW.invoice_no = '' THEN
+    SELECT COALESCE(MAX(SUBSTRING(invoice_no FROM 'IV\d{4}-(\d+)$')::INT), 0) + 1
+    INTO seq_num
+    FROM incomes WHERE invoice_no LIKE prefix || '%';
+    NEW.invoice_no := prefix || LPAD(seq_num::TEXT, 3, '0');
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_invoice_no
+  BEFORE INSERT ON incomes
+  FOR EACH ROW EXECUTE FUNCTION generate_invoice_no();
+
+CREATE OR REPLACE FUNCTION generate_payment_number()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  prefix  TEXT := 'PY' || TO_CHAR(NOW(), 'YYMM') || '-';
+  seq_num INT;
+BEGIN
+  IF NEW.payment_number IS NULL OR NEW.payment_number = '' THEN
+    SELECT COALESCE(MAX(SUBSTRING(payment_number FROM 'PY\d{4}-(\d+)$')::INT), 0) + 1
+    INTO seq_num
+    FROM labor_payments WHERE payment_number LIKE prefix || '%';
+    NEW.payment_number := prefix || LPAD(seq_num::TEXT, 3, '0');
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_payment_number
+  BEFORE INSERT ON labor_payments
+  FOR EACH ROW EXECUTE FUNCTION generate_payment_number();
+
+-- ----------------------------------------------------------------
+-- VIEWS
 -- ----------------------------------------------------------------
 
--- รายจ่ายพร้อมชื่อไซท์และหมวด
 CREATE OR REPLACE VIEW expenses_view AS
 SELECT
   e.*,
-  s.name        AS site_name,
-  s.site_number AS site_number,
-  s.status      AS site_status,
-  ec.name       AS category_name,
-  ec.color      AS category_color
+  s.name              AS site_name,
+  s.site_number,
+  s.status            AS site_status,
+  ec.name             AS category_name,
+  ec.color            AS category_color,
+  sup.name            AS supplier_name,
+  sup.supplier_number,
+  sup.category        AS supplier_category
 FROM expenses e
 LEFT JOIN sites s ON e.site_id = s.id
-LEFT JOIN expense_categories ec ON e.category_id = ec.id;
+LEFT JOIN expense_categories ec ON e.category_id = ec.id
+LEFT JOIN suppliers sup ON e.supplier_id = sup.id;
 
--- รายรับพร้อมชื่อไซท์
 CREATE OR REPLACE VIEW incomes_view AS
 SELECT
   i.*,
   s.name        AS site_name,
-  s.site_number AS site_number
+  s.site_number
 FROM incomes i
 LEFT JOIN sites s ON i.site_id = s.id;
 
--- สรุปต้นทุนและรายรับต่อไซท์
 CREATE OR REPLACE VIEW site_financial_summary AS
 SELECT
-  s.id,
-  s.site_number,
-  s.name,
-  s.status,
-  s.start_date,
-  s.end_date,
-  s.contract_value,
+  s.id, s.site_number, s.name, s.status, s.start_date, s.end_date, s.contract_value,
+  s.client_id, s.client_name, s.location,
+  s.cost_aluminum, s.cost_glass, s.cost_equipment, s.cost_rubber, s.cost_labor, s.cost_other,
+  c.name            AS client_display_name,
+  c.client_number,
   COALESCE(SUM(e.amount), 0)          AS total_expense,
   COALESCE(SUM(i.received_amount), 0) AS total_income,
   COALESCE(SUM(i.received_amount), 0) - COALESCE(SUM(e.amount), 0) AS gross_profit,
@@ -305,20 +687,20 @@ SELECT
     THEN ROUND(COALESCE(SUM(i.received_amount), 0) / s.contract_value * 100, 1)
     ELSE NULL
   END AS billing_pct,
-  -- ยอดค้างจ่าย (pending + check_issued)
   COALESCE(SUM(CASE WHEN e.status IN ('pending','check_issued') THEN e.amount ELSE 0 END), 0) AS outstanding_expense,
   s.distance_km,
   s.map_url,
-  c.contact_person AS client_contact_person,  -- ผู้ติดต่อของลูกค้าที่ผูกกับไซท์นี้
+  c.contact_person AS client_contact_person,
   c.phone          AS client_phone
 FROM sites s
 LEFT JOIN clients c ON s.client_id = c.id
 LEFT JOIN expenses e ON e.site_id = s.id
 LEFT JOIN incomes i ON i.site_id = s.id
 GROUP BY s.id, s.site_number, s.name, s.status, s.start_date, s.end_date, s.contract_value,
+  s.client_id, s.client_name, s.location, s.cost_aluminum, s.cost_glass, s.cost_equipment,
+  s.cost_rubber, s.cost_labor, s.cost_other, c.name, c.client_number,
   s.distance_km, s.map_url, c.contact_person, c.phone;
 
--- ยอดที่ต้องชำระตามช่วงเวลา (สำหรับ Dashboard cash forecast)
 CREATE OR REPLACE VIEW payment_forecast AS
 SELECT
   DATE_TRUNC('month', COALESCE(check_date, date)) AS forecast_month,
@@ -331,7 +713,6 @@ WHERE status IN ('pending','check_issued')
 GROUP BY 1, 4, 5
 ORDER BY 1;
 
--- ค่าแรงช่างต่อไซท์ (จาก assignments × daily_rate)
 -- half-day counting (each shift row = 0.5 day); includes factory production
 CREATE OR REPLACE VIEW labor_cost_by_site AS
 SELECT
@@ -350,7 +731,7 @@ WHERE wa.type IN ('site','factory')
 GROUP BY wa.site_id, s.name, s.site_number, wa.worker_id, w.name, w.nickname, w.monthly_salary;
 
 -- ต้นทุน OT ต่อไซท์ (all-time) — mirrors labor_cost_by_site's shape/grouping
-CREATE VIEW ot_cost_by_site AS
+CREATE OR REPLACE VIEW ot_cost_by_site AS
 SELECT
   o.site_id,
   s.name AS site_name,
@@ -370,44 +751,49 @@ CREATE OR REPLACE VIEW site_travel_cost AS
 SELECT wa.site_id,
        COUNT(DISTINCT wa.date) AS travel_days,
        s.distance_km,
-       ROUND(COUNT(DISTINCT wa.date) * COALESCE(s.distance_km,0) * 2
-             * (SELECT value::numeric FROM app_settings WHERE key='travel_rate_per_km'), 2) AS travel_cost
+       ROUND(COUNT(DISTINCT wa.date) * COALESCE(s.distance_km, 0) * 2
+             * (SELECT value::numeric FROM app_settings WHERE key = 'travel_rate_per_km'), 2) AS travel_cost
 FROM worker_assignments wa
 JOIN sites s ON wa.site_id = s.id
 WHERE wa.type = 'site'
 GROUP BY wa.site_id, s.distance_km;
 
--- app-wide settings (key/value). Seeded: travel_rate_per_km = 20
-CREATE TABLE IF NOT EXISTS app_settings (
-  key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+CREATE OR REPLACE VIEW workers_with_rate AS
+SELECT
+  id, name, nickname, position, monthly_salary, has_social_security,
+  annual_leave_days, monthly_contribution, status, created_at, updated_at,
+  ROUND(monthly_salary / 26, 2) AS daily_rate,
+  ROUND(monthly_salary * 0.05 / 100 * 750, 0) AS social_security_amount,
+  email
+FROM workers;
 
--- default holiday pay multiplier
-INSERT INTO app_settings (key, value) VALUES ('holiday_pay_multiplier', '1.5') ON CONFLICT (key) DO NOTHING;
-
-
--- ----------------------------------------------------------------
--- ROW LEVEL SECURITY (เปิดเมื่อใช้ Supabase Auth)
--- ----------------------------------------------------------------
--- ALTER TABLE sites         ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE expenses      ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE incomes       ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE workers       ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE worker_assignments ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE salary_records     ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE expense_categories ENABLE ROW LEVEL SECURITY;
--- (เพิ่ม policies ตาม use case: anon read / authenticated full access)
-
-
--- ----------------------------------------------------------------
--- INDEXES — เพิ่ม performance
--- ----------------------------------------------------------------
-CREATE INDEX idx_expenses_site_id    ON expenses(site_id);
-CREATE INDEX idx_expenses_date       ON expenses(date);
-CREATE INDEX idx_expenses_status     ON expenses(status);
-CREATE INDEX idx_expenses_check_date ON expenses(check_date);
-CREATE INDEX idx_incomes_site_id     ON incomes(site_id);
-CREATE INDEX idx_incomes_date        ON incomes(date);
-CREATE INDEX idx_assignments_worker  ON worker_assignments(worker_id);
-CREATE INDEX idx_assignments_site    ON worker_assignments(site_id);
-CREATE INDEX idx_assignments_date    ON worker_assignments(date);
+-- สรุปสัญญาผู้รับเหมาช่วง: บิลแล้ว/จ่ายแล้ว/retention คงเหลือ/% ความคืบหน้า
+CREATE OR REPLACE VIEW labor_contract_summary AS
+SELECT
+  lc.id, lc.subcontractor_id, lc.site_id, lc.work_description, lc.contract_amount,
+  lc.retention_pct, lc.withholding_tax_pct, lc.site_note, lc.status, lc.start_date,
+  ls.name AS subcontractor_name,
+  ls.subcontractor_number,
+  s.name AS site_name,
+  s.site_number,
+  s.status AS site_status,
+  s.end_date AS site_end_date,
+  s.contract_value AS site_contract_value,
+  COALESCE(SUM(lp.gross_amount) FILTER (WHERE NOT lp.is_retention_release), 0)     AS total_billed_gross,
+  COALESCE(SUM(lp.retention_amount) FILTER (WHERE NOT lp.is_retention_release), 0) AS total_retention_held,
+  COALESCE(SUM(lp.net_amount) FILTER (WHERE NOT lp.is_retention_release), 0)       AS total_paid_net,
+  COALESCE(SUM(lp.net_amount) FILTER (WHERE lp.is_retention_release AND lp.status = 'paid'), 0) AS retention_released,
+  CASE WHEN lc.contract_amount > 0
+    THEN ROUND(COALESCE(SUM(lp.gross_amount) FILTER (WHERE NOT lp.is_retention_release), 0) / lc.contract_amount * 100, 1)
+    ELSE 0
+  END AS contractor_billing_pct,
+  s.end_date + INTERVAL '6 months' AS retention_release_date,
+  (s.end_date IS NOT NULL AND NOW() >= s.end_date + INTERVAL '6 months') AS retention_releasable,
+  lc.contract_amount - COALESCE(SUM(lp.gross_amount) FILTER (WHERE NOT lp.is_retention_release), 0) AS remaining_amount
+FROM labor_contracts lc
+JOIN labor_subcontractors ls ON lc.subcontractor_id = ls.id
+JOIN sites s ON lc.site_id = s.id
+LEFT JOIN labor_payments lp ON lp.contract_id = lc.id
+GROUP BY lc.id, lc.subcontractor_id, lc.site_id, lc.work_description, lc.contract_amount,
+  lc.retention_pct, lc.withholding_tax_pct, lc.site_note, lc.status, lc.start_date,
+  ls.name, ls.subcontractor_number, s.name, s.site_number, s.status, s.end_date, s.contract_value;
