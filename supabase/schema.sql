@@ -701,6 +701,18 @@ GROUP BY s.id, s.site_number, s.name, s.status, s.start_date, s.end_date, s.cont
   s.cost_rubber, s.cost_labor, s.cost_other, c.name, c.client_number,
   s.distance_km, s.map_url, c.contact_person, c.phone;
 
+-- WORKER-safe site info — billing_pct as a progress proxy, no money columns
+CREATE OR REPLACE VIEW sites_progress AS
+SELECT
+  id,
+  site_number,
+  name,
+  status,
+  start_date,
+  end_date,
+  billing_pct
+FROM site_financial_summary;
+
 CREATE OR REPLACE VIEW payment_forecast AS
 SELECT
   DATE_TRUNC('month', COALESCE(check_date, date)) AS forecast_month,
