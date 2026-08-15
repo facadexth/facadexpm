@@ -3,9 +3,11 @@
 -- tables, with policies matching the app's own existing role model
 -- (OWNER > ADMIN > WORKER, from user_roles + useUserRole.js).
 --
--- ⚠️ NOT YET APPLIED. This is a draft for review before running
--- against production — see README §7-8 / the accompanying chat
--- explanation for the reasoning and the open judgment calls.
+-- ✅ APPLIED to production 2026-08-15. See also
+-- 2026-08-15-03-view-security-invoker.sql (required for this migration's
+-- protection to actually reach views like workers_with_rate) and
+-- 2026-08-15-04-fix-sites-progress-invoker-chain.sql (a live fix needed
+-- immediately after applying this one).
 --
 -- Design principle (refined): WORKER gets NO access to financial data
 -- at all — no sites, expenses, incomes, expense_categories, app_settings,
