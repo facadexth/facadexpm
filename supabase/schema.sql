@@ -134,6 +134,8 @@ CREATE TABLE expenses (
   supplier        TEXT,                         -- ชื่อผู้จำหน่าย (free text, legacy)
   supplier_id     UUID REFERENCES suppliers(id),
   amount          NUMERIC NOT NULL DEFAULT 0,    -- มูลค่า (รวม VAT)
+  amount_no_vat   NUMERIC,                       -- มูลค่าก่อน VAT (nullable — เฉพาะที่มาจาก Excel import ใหม่)
+  vat             NUMERIC,                       -- มูลค่า VAT (nullable, เดียวกัน)
 
   payment_method  TEXT DEFAULT 'transfer'
                   CHECK (payment_method IN ('transfer','check','cash','credit')),

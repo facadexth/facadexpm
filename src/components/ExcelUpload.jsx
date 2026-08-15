@@ -8,58 +8,114 @@ import { supabase } from '../lib/supabase.js'
 import { Modal } from './Modal.jsx'
 import SearchableSelect from './SearchableSelect.jsx'
 
+function excelDate(v) {
+  if (v == null || v === '') return null
+  if (typeof v === 'number') {
+    const d = XLSX.SSF.parse_date_code(v)
+    return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
+  }
+  return String(v).slice(0, 10)
+}
+
+const PAYMENT_METHOD_OPTS = ['transfer', 'check', 'cash', 'credit']
+function normalizePaymentMethod(raw) {
+  const s = String(raw || '').trim().toLowerCase()
+  if (s.includes('cash') || s.includes('เงินสด')) return 'cash'
+  if (s.includes('credit') || s.includes('เครดิต')) return 'credit'
+  if (s.includes('check') || s.includes('เช็ค') || s.includes('เชค')) return 'check'
+  if (s.includes('transfer') || s.includes('โอน')) return 'transfer'
+  return PAYMENT_METHOD_OPTS.includes(s) ? s : 'transfer'
+}
+
+const PAYMENT_STATUS_OPTS = ['paid', 'pending', 'check_issued', 'check_cleared']
+function normalizePaymentStatus(raw) {
+  const s = String(raw || '').trim().toLowerCase()
+  if (s.includes('paid') || s.includes('จ่ายแล้ว') || s.includes('ชำระแล้ว')) return 'paid'
+  if (s.includes('check_cleared') || s.includes('เช็คขึ้นแล้ว')) return 'check_cleared'
+  if (s.includes('check_issued') || s.includes('ออกเช็ค')) return 'check_issued'
+  return PAYMENT_STATUS_OPTS.includes(s) ? s : 'pending'
+}
+
 /**
- * parseExpenseSheet — แปลง rows จาก template รายจ่าย เป็น array of objects
+ * parseExpenseSheet — แปลง rows จาก template รายจ่าย (ค่าของ/วัสดุ เท่านั้น —
+ * ค่าแรงช่างเหมาไปเข้าหน้า "ผู้รับเหมาช่วง" แทน) เป็น array of objects
  * ต้องตรงกับ TEMPLATE_รายจ่าย.xlsx (header อยู่ row 4, data เริ่ม row 6)
+ *
+ * Column order: วันที่สั่งสินค้า, หมวดหมู่สินค้า, รายละเอียด, รหัสไซท์งาน,
+ * ชื่อ Supplier, VAT/NO VAT, มูลค่าก่อน VAT, มูลค่ารวม VAT, วิธีชำระ,
+ * วันที่ชำระ, สถานะจ่าย
  */
 async function parseExpenseSheet(ws) {
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null })
-  // หาแถว header (มีคำว่า "วันที่" หรือ "รายละเอียด")
   const headerRowIdx = rows.findIndex(r => r.some(c => typeof c === 'string' && c.includes('วันที่')))
   if (headerRowIdx < 0) throw new Error('ไม่พบแถว header ในชีท รายจ่าย')
 
   const dataRows = rows.slice(headerRowIdx + 2) // ข้าม header + hint row
 
-  // ดึง site_id จาก site_number
   const { data: sitesData } = await supabase.from('sites').select('id, site_number, name')
   const siteMap = {}
   sitesData?.forEach(s => { siteMap[s.site_number] = s.id; siteMap[s.name] = s.id })
 
-  // ดึง category_id จากชื่อ
   const { data: catsData } = await supabase.from('expense_categories').select('id, name')
   const catMap = {}
   catsData?.forEach(c => { catMap[c.name] = c.id })
 
+  // Suppliers: exact-match by name. Unmatched rows are NOT blocked like
+  // site/category — per spec, a new supplier gets auto-created at import
+  // time (see handleImport). Preview still lets the user redirect an
+  // unmatched row to an existing supplier first, in case it's just a
+  // spelling variant of one that already exists.
+  const { data: suppliersData } = await supabase.from('suppliers').select('id, name')
+  const supplierMap = {}
+  suppliersData?.forEach(s => { supplierMap[s.name] = s.id })
+
   const records = []
   for (const row of dataRows) {
-    if (!row[0] && !row[5]) continue // skip empty rows
-    const siteCode = row[2]
-    const catName  = row[3]
-    const amt      = parseFloat(row[5]) || 0
-    if (amt === 0) continue
+    const dateCell   = row[0]
+    const catName    = row[1]
+    const description = row[2]
+    const siteCode   = row[3]
+    const supplierName = row[4] ? String(row[4]).trim() : ''
+    const vatFlag    = String(row[5] || '').trim().toLowerCase()
+    const priceBeforeVat = row[6] != null ? parseFloat(row[6]) : null
+    const priceAfterVat  = row[7] != null ? parseFloat(row[7]) : null
+    if (!dateCell && priceAfterVat == null && priceBeforeVat == null) continue // skip empty rows
 
-    // Convert Excel date serial if needed
-    let dateVal = row[0]
-    if (typeof dateVal === 'number') {
-      dateVal = XLSX.SSF.parse_date_code(dateVal)
-      dateVal = `${dateVal.y}-${String(dateVal.m).padStart(2,'0')}-${String(dateVal.d).padStart(2,'0')}`
-    } else if (dateVal) {
-      dateVal = String(dateVal).slice(0, 10)
+    // amount (VAT-inclusive) is the ground truth for what was actually
+    // paid; amount_no_vat/vat are derived from whichever of the two price
+    // columns is present. The VAT/NO VAT column is a hint, not the source
+    // of truth, so a row still imports sensibly even if it disagrees with
+    // the numbers (e.g. marked "NO VAT" but only "มูลค่ารวม VAT" filled in).
+    let amount, amountNoVat
+    if (priceAfterVat != null && priceBeforeVat != null) {
+      amount = priceAfterVat
+      amountNoVat = priceBeforeVat
+    } else if (priceAfterVat != null) {
+      amount = priceAfterVat
+      amountNoVat = vatFlag.includes('no') ? priceAfterVat : priceAfterVat
+    } else if (priceBeforeVat != null) {
+      amount = priceBeforeVat
+      amountNoVat = priceBeforeVat
+    } else {
+      continue // no usable amount at all
     }
+    if (!amount) continue
+    const vat = parseFloat((amount - amountNoVat).toFixed(2))
 
     records.push({
-      date:            dateVal,
-      description:     row[1] || '',
+      date:            excelDate(dateCell),
+      description:     description || '',
       site_id:         siteMap[siteCode] || null,
       category_id:     catMap[catName] || null,
-      supplier:        row[4] || '',
-      amount:          amt,
-      payment_method:  row[6] || 'transfer',
-      check_date:      row[7] ? String(row[7]).slice(0,10) : null,
-      status:          row[8] || 'pending',
-      payer:           row[9] || '',
-      notes:           row[10] || '',
-      invoice_no:      row[11] || '',
+      supplier:        supplierName,
+      supplier_id:     supplierMap[supplierName] || null,
+      _newSupplierName: !supplierMap[supplierName] && supplierName ? supplierName : null,
+      amount,
+      amount_no_vat:   amountNoVat,
+      vat,
+      payment_method:  normalizePaymentMethod(row[8]),
+      check_date:      excelDate(row[9]),
+      status:          normalizePaymentStatus(row[10]),
     })
   }
   return records
@@ -197,14 +253,35 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [sites, setSites] = useState([])         // for the site-correction dropdown (expense/income only)
+  const [categories, setCategories] = useState([]) // for the category-correction dropdown (expense only)
+  const [suppliers, setSuppliers] = useState([])   // for the supplier-redirect dropdown (expense only)
   const fileRef = useRef()
 
   const siteOpts = useMemo(() => sites.map(s => ({
     value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
   })), [sites])
 
+  const categoryOpts = useMemo(() => categories.map(c => ({
+    value: c.id, label: c.name, keywords: c.name,
+  })), [categories])
+
+  const supplierOpts = useMemo(() => suppliers.map(s => ({
+    value: s.id, label: s.name, keywords: s.name,
+  })), [suppliers])
+
   const updateRowSite = (i, siteId) => {
     setPreview(prev => prev.map((r, idx) => idx === i ? { ...r, site_id: siteId } : r))
+  }
+
+  const updateRowCategory = (i, categoryId) => {
+    setPreview(prev => prev.map((r, idx) => idx === i ? { ...r, category_id: categoryId } : r))
+  }
+
+  // picking an existing supplier from the dropdown means this row is no
+  // longer a "create new" candidate — clear the marker so handleImport
+  // doesn't also create a duplicate.
+  const updateRowSupplier = (i, supplierId) => {
+    setPreview(prev => prev.map((r, idx) => idx === i ? { ...r, supplier_id: supplierId, _newSupplierName: null } : r))
   }
 
   const updateRowField = (i, key, value) => {
@@ -226,6 +303,12 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
       if (type === 'expense' || type === 'income') {
         const { data: sitesData } = await supabase.from('sites').select('id, site_number, name').order('site_number')
         setSites(sitesData || [])
+      }
+      if (type === 'expense') {
+        const { data: catsData } = await supabase.from('expense_categories').select('id, name').order('sort_order')
+        setCategories(catsData || [])
+        const { data: supData } = await supabase.from('suppliers').select('id, name').order('name')
+        setSuppliers(supData || [])
       }
 
       const records =
@@ -252,16 +335,41 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
     if (!preview?.length) return
     setLoading(true)
     try {
+      let rows = preview
+
+      if (type === 'expense') {
+        // Rows still marked _newSupplierName (the user didn't redirect them
+        // to an existing supplier in the preview) get a brand-new supplier
+        // row created now, right before the expenses themselves are
+        // inserted — not at parse time, so cancelling the import creates
+        // nothing. One insert per distinct new name, even if several rows
+        // share it, so we don't create duplicate suppliers for the same
+        // name appearing on multiple expense rows.
+        const newNames = [...new Set(rows.filter(r => r._newSupplierName).map(r => r._newSupplierName))]
+        if (newNames.length) {
+          const { data: created, error: supErr } = await supabase
+            .from('suppliers').insert(newNames.map(name => ({ name }))).select('id, name')
+          if (supErr) throw supErr
+          const createdMap = {}
+          created.forEach(s => { createdMap[s.name] = s.id })
+          rows = rows.map(r => r._newSupplierName
+            ? { ...r, supplier_id: createdMap[r._newSupplierName] || r.supplier_id }
+            : r)
+        }
+        // _newSupplierName is a preview-only marker, not a real expenses column
+        rows = rows.map(({ _newSupplierName, ...rest }) => rest)
+      }
+
       const table =
         type === 'expense'  ? 'expenses'  :
         type === 'income'   ? 'incomes'   :
         type === 'site'     ? 'sites'     :
         type === 'client'   ? 'clients'   :
                               'suppliers'
-      const { error } = await supabase.from(table).insert(preview)
+      const { error } = await supabase.from(table).insert(rows)
       if (error) throw error
       setPreview(null)
-      onSuccess?.(`นำเข้าสำเร็จ ${preview.length} รายการ`)
+      onSuccess?.(`นำเข้าสำเร็จ ${rows.length} รายการ`)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -314,7 +422,7 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                 <thead>
                   <tr>
                     {type === 'expense' ? <>
-                      <th>วันที่</th><th>รายละเอียด</th><th>ไซท์</th><th>หมวด</th><th>มูลค่า</th><th>สถานะ</th>
+                      <th>วันที่</th><th>รายละเอียด</th><th>ไซท์</th><th>หมวด</th><th>Supplier</th><th>มูลค่า (รวม VAT)</th><th>สถานะ</th>
                     </> : type === 'income' ? <>
                       <th>เลขใบแจ้งหนี้</th><th>วันที่</th><th>ไซท์</th><th>ลูกค้า</th><th>ยอดรับจริง</th>
                     </> : type === 'site' ? <>
@@ -331,15 +439,34 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                     <tr key={i}>
                       {type === 'expense' ? <>
                         <td>{r.date}</td>
-                        <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description}</td>
-                        <td style={{ minWidth: 160 }}>
+                        <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description}</td>
+                        <td style={{ minWidth: 150 }}>
                           {r.site_id ? <span style={{ color: 'var(--green)', fontSize: 11 }}>✓</span> : (
                             <SearchableSelect value={r.site_id} onChange={id => updateRowSite(i, id)}
                               placeholder="⚠️ ไม่พบไซท์ — เลือกเอง" options={siteOpts} />
                           )}
                         </td>
-                        <td style={{ color: r.category_id ? 'var(--text2)' : 'var(--yellow)', fontSize: 11 }}>{r.category_id ? '✓' : '⚠️ ไม่พบหมวด'}</td>
-                        <td style={{ color: 'var(--red)', fontWeight: 600 }}>{Number(r.amount).toLocaleString('th-TH')}</td>
+                        <td style={{ minWidth: 150 }}>
+                          {r.category_id ? <span style={{ color: 'var(--green)', fontSize: 11 }}>✓</span> : (
+                            <SearchableSelect value={r.category_id} onChange={id => updateRowCategory(i, id)}
+                              placeholder="⚠️ ไม่พบหมวด — เลือกเอง" options={categoryOpts} />
+                          )}
+                        </td>
+                        <td style={{ minWidth: 150 }}>
+                          {r.supplier_id ? (
+                            <span style={{ color: 'var(--green)', fontSize: 11 }}>✓ {r.supplier}</span>
+                          ) : r._newSupplierName ? (
+                            <div>
+                              <div style={{ color: 'var(--yellow)', fontSize: 11, marginBottom: 3 }}>🆕 จะสร้างใหม่: {r._newSupplierName}</div>
+                              <SearchableSelect value={null} onChange={id => updateRowSupplier(i, id)}
+                                placeholder="หรือเลือก Supplier ที่มีอยู่แล้ว" options={supplierOpts} />
+                            </div>
+                          ) : <span style={{ color: 'var(--text3)', fontSize: 11 }}>— ไม่ระบุ —</span>}
+                        </td>
+                        <td style={{ color: 'var(--red)', fontWeight: 600 }}>
+                          {Number(r.amount).toLocaleString('th-TH')}
+                          {r.vat > 0 && <div style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 400 }}>VAT {Number(r.vat).toLocaleString('th-TH')}</div>}
+                        </td>
                         <td><span className={`badge badge-${r.status}`}>{r.status}</span></td>
                       </> : type === 'income' ? <>
                         <td style={{ fontSize: 11, color: 'var(--accent)' }}>{r.invoice_no || '(auto)'}</td>
@@ -379,7 +506,7 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                     </tr>
                   ))}
                   {preview.length > 50 && (
-                    <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 8 }}>
+                    <tr><td colSpan={type === 'expense' ? 7 : 5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 8 }}>
                       ... และอีก {preview.length - 50} รายการ
                     </td></tr>
                   )}
