@@ -14,6 +14,7 @@ import SearchableSelect from '../components/SearchableSelect.jsx'
 import { auditLog } from '../lib/audit.js'
 import { mergeWorkerOT } from '../lib/otMerge.js'
 import { SITE_TYPES } from './assign/constants.js'
+import { downloadPDF } from '../lib/pdf.js'
 
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
@@ -231,6 +232,70 @@ function HolidayForm({ onSave, onCancel, loading }) {
   )
 }
 
+// ── Salary Slip (payslip PDF) ─────────────────────────────────
+function SalarySlipModal({ record, month, year, onClose }) {
+  const handleDownload = () => {
+    const label = (record.workers?.nickname || record.workers?.name || 'slip').replace(/\s+/g, '_')
+    downloadPDF('salary-slip-preview', `สลิปเงินเดือน_${label}_${MONTHS[month-1]}${year+543}.pdf`)
+  }
+
+  const row = (label, value, negative = false) => value > 0 && (
+    <tr>
+      <td style={{ padding: '6px 0', borderBottom: '1px solid #ddd' }}>{label}</td>
+      <td style={{ textAlign: 'right', padding: '6px 0', borderBottom: '1px solid #ddd', color: negative ? '#c00' : undefined }}>
+        {negative ? `(${fmt(value)})` : fmt(value)}
+      </td>
+    </tr>
+  )
+
+  return (
+    <Modal title={`สลิปเงินเดือน — ${record.workers?.name || ''}`} onClose={onClose} maxWidth={520}>
+      <div className="modal-body">
+        <div id="salary-slip-preview" style={{ fontFamily: 'Sarabun,sans-serif', padding: '20px 24px', background: '#fff', color: '#111' }}>
+          <div style={{ textAlign: 'center', marginBottom: 16 }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>FACADE X</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>สลิปเงินเดือน — {MONTHS[month-1]} {year+543}</div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12, fontSize: 13 }}>
+            <div><strong>ชื่อ-สกุล:</strong> {record.workers?.name || '—'}</div>
+            <div><strong>ชื่อเล่น:</strong> {record.workers?.nickname || '—'}</div>
+            <div><strong>ตำแหน่ง:</strong> {record.workers?.position || '—'}</div>
+            <div><strong>วันที่จ่าย:</strong> {record.paid_date ? new Date(record.paid_date).toLocaleDateString('th-TH') : '—'}</div>
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginTop: 8, marginBottom: 4 }}>รายรับ</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <tbody>
+              {row('เงินเดือน', record.base_salary)}
+              {row('เงินสมทบนายจ้าง', record.contribution)}
+              {row('ค่าโทรศัพท์', record.phone_allowance)}
+              {row('OT', record.ot_amount)}
+              {row('เงินพิเศษ/ค่าจอดรถ', record.special_allowance)}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginTop: 14, marginBottom: 4 }}>รายหัก</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <tbody>
+              {row('ประกันสังคม', record.social_security_ded, true)}
+              {row('หักวันลา', record.leave_deduction, true)}
+              {row('เบิกล่วงหน้า', record.advance_deduction, true)}
+              {row('กยศ/เงินกู้', record.loan_deduction, true)}
+              <tr style={{ fontWeight: 700, fontSize: 16 }}>
+                <td style={{ padding: '10px 0 0' }}>รับสุทธิ</td>
+                <td style={{ textAlign: 'right', padding: '10px 0 0', borderTop: '2px solid #111' }}>{fmt(record.net_pay)} บาท</td>
+              </tr>
+            </tbody>
+          </table>
+          {record.notes && <div style={{ marginTop: 12, fontSize: 12, color: '#555' }}><strong>หมายเหตุ:</strong> {record.notes}</div>}
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
+        <button className="btn btn-primary" onClick={handleDownload}>📄 Download PDF</button>
+      </div>
+    </Modal>
+  )
+}
+
 // ── HR Main Component ─────────────────────────────────────────
 export default function HR() {
   const now = new Date()
@@ -265,6 +330,7 @@ export default function HR() {
   const [calcLoading, setCalcLoading] = useState(false)
   const [calcPreview, setCalcPreview] = useState(null)
   const [calcPreviewMode, setCalcPreviewMode] = useState('assign') // 'assign' | 'copy'
+  const [slipRecord, setSlipRecord] = useState(null)
 
   // Audit state
   const [auditTable, setAuditTable] = useState('')
@@ -699,6 +765,7 @@ export default function HR() {
                       <td className="font-mono" style={{ color: 'var(--green)', fontWeight: 700, fontSize: 15 }}>{fmt(r.net_pay)}</td>
                       <td style={{ fontSize: 11 }}>{r.paid_date?new Date(r.paid_date).toLocaleDateString('th-TH'):'—'}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
+                        <button className="btn btn-sm btn-ghost" onClick={() => setSlipRecord(r)} title="Download สลิปเงินเดือน">📄</button>
                         {canEdit && (
                           <>
                             <button className="btn btn-sm btn-ghost" onClick={() => { setEditSalary(r); setShowSalaryForm(true) }}>✏️</button>
@@ -812,6 +879,10 @@ export default function HR() {
           <SalaryForm initial={editSalary||EMPTY_SALARY} workers={workers}
             onSave={handleSaveSalary} onCancel={() => { setShowSalaryForm(false); setEditSalary(null) }} loading={savingSalary} />
         </Modal>
+      )}
+
+      {slipRecord && (
+        <SalarySlipModal record={slipRecord} month={month} year={year} onClose={() => setSlipRecord(null)} />
       )}
 
       {calcPreview && (
