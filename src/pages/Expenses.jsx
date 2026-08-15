@@ -342,7 +342,7 @@ export default function Expenses({ navigateTo, navState }) {
                     <div style={{ fontWeight: 500, fontSize: 13 }}>{e.description}</div>
                     {e.invoice_no && <div style={{ fontSize: 10, color: 'var(--text3)' }}>#{e.invoice_no}</div>}
                   </td>
-                  <td style={{ fontSize: 11, color: 'var(--accent)' }}>{e.site_number || '—'}</td>
+                  <td style={{ fontSize: 11, color: 'var(--accent)' }} title={e.site_number || undefined}>{e.site_name || '—'}</td>
                   <td style={{ fontSize: 11 }}>
                     {e.category_name
                       ? <span className="badge" style={{ background: 'rgba(108,99,255,0.15)', color: 'var(--accent)' }}>{e.category_name}</span>
