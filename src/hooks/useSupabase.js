@@ -267,6 +267,20 @@ export function useLeaveQuotaUsage(year) {
   }, [year])
 }
 
+// ── Sites Progress (WORKER-safe) ──────────────────────────────
+
+/** ข้อมูลไซท์งานแบบไม่มีตัวเลขการเงิน (สำหรับ WORKER) — site_number, name, status, billing_pct */
+export function useSitesProgress() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('sites_progress')
+      .select('id, site_number, name, status, start_date, end_date, billing_pct')
+      .order('site_number')
+    if (error) throw error
+    return data
+  })
+}
+
 // ── App Settings (key/value) ──────────────────────────────────
 
 export function useAppSetting(key, fallback = '') {
