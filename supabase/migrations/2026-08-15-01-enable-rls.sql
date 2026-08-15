@@ -7,15 +7,23 @@
 -- against production — see README §7-8 / the accompanying chat
 -- explanation for the reasoning and the open judgment calls.
 --
--- Design principle: WORKER already sees company-wide financial data
--- (Dashboard) and every colleague's schedule + daily wage (Assign grid)
--- today — this migration does NOT restrict anything a logged-in staff
--- member currently sees. It only blocks the anon key from reading/
--- writing data without being logged in at all, and closes the one real
--- gap: salary_records (a WORKER can currently query every worker's
--- salary_records row directly via the API even though the UI hides it)
--- and user_roles (a WORKER can currently promote themselves to OWNER
--- directly via the API even though the UI hides that button).
+-- Design principle (refined): WORKER gets NO access to financial data
+-- at all — no sites, expenses, incomes, expense_categories, app_settings,
+-- or the Tier 2/3 admin tables. WORKER's Dashboard instead reads the
+-- separate, additive sites_progress view (see the migration for Task 1
+-- of the implementation plan, not touched here), which exposes only
+-- non-financial progress fields. For workers/worker_assignments/
+-- worker_ot/salary_records, WORKER can read ONLY their own row(s)
+-- (matched via workers.email = auth.email()), with no write access to
+-- any of the three — ADMIN+ owns all writes. WORKER retains read-all
+-- access to company_holidays (a shared calendar, not financial data)
+-- and user_roles (just email+role pairs, needed for UI pairing lookups
+-- and harmless to read). This migration also closes two real gaps the
+-- previous draft still had: salary_records (a WORKER could previously
+-- query every worker's salary_records row directly via the API even
+-- though the UI hid it) and user_roles (a WORKER could previously
+-- promote themselves to OWNER directly via the API even though the UI
+-- hid that button).
 --
 -- Apply and verify ONE TABLE AT A TIME, not as a single blind run —
 -- see the verification block after each ALTER TABLE. If anything
@@ -47,19 +55,47 @@ AS $$
   SELECT COALESCE(current_user_role() = 'OWNER', false);
 $$;
 
--- ── Tier 1: any authenticated staff member reads + writes freely ──
--- (matches current behavior exactly — see design principle above)
--- sites, expense_categories, expenses, incomes, workers,
--- worker_assignments, worker_ot, company_holidays, app_settings
+-- ── ADMIN+ only: financial base tables (WORKER reads sites_progress
+-- view instead — see Task 1/2/3 of the implementation plan) ──
+-- sites, expense_categories, expenses, incomes, app_settings
 DO $$
 DECLARE t TEXT;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['sites','expense_categories','expenses','incomes',
-                            'workers','worker_assignments','worker_ot',
-                            'company_holidays','app_settings']
+  FOREACH t IN ARRAY ARRAY['sites','expense_categories','expenses','incomes','app_settings']
   LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
-    EXECUTE format('CREATE POLICY staff_full_access ON %I FOR ALL TO authenticated USING (true) WITH CHECK (true)', t);
+    EXECUTE format('CREATE POLICY admin_full_access ON %I FOR ALL TO authenticated USING (is_admin_or_owner()) WITH CHECK (is_admin_or_owner())', t);
+  END LOOP;
+END $$;
+
+-- ── company_holidays: any staff member reads; only ADMIN+ writes ──
+ALTER TABLE company_holidays ENABLE ROW LEVEL SECURITY;
+CREATE POLICY staff_reads ON company_holidays FOR SELECT TO authenticated USING (true);
+CREATE POLICY admin_writes_holidays ON company_holidays FOR INSERT TO authenticated WITH CHECK (is_admin_or_owner());
+CREATE POLICY admin_updates_holidays ON company_holidays FOR UPDATE TO authenticated USING (is_admin_or_owner()) WITH CHECK (is_admin_or_owner());
+CREATE POLICY admin_deletes_holidays ON company_holidays FOR DELETE TO authenticated USING (is_admin_or_owner());
+
+-- ── workers: WORKER reads only their own row; ADMIN+ reads/writes all ──
+ALTER TABLE workers ENABLE ROW LEVEL SECURITY;
+CREATE POLICY worker_reads_own_profile ON workers FOR SELECT TO authenticated
+  USING (is_admin_or_owner() OR email = auth.email());
+CREATE POLICY admin_writes_workers ON workers FOR INSERT TO authenticated WITH CHECK (is_admin_or_owner());
+CREATE POLICY admin_updates_workers ON workers FOR UPDATE TO authenticated USING (is_admin_or_owner()) WITH CHECK (is_admin_or_owner());
+CREATE POLICY admin_deletes_workers ON workers FOR DELETE TO authenticated USING (is_admin_or_owner());
+
+-- ── worker_assignments / worker_ot: WORKER reads only their own rows,
+-- cannot self-assign (INSERT/UPDATE/DELETE ADMIN+ only) ──
+DO $$
+DECLARE t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['worker_assignments','worker_ot']
+  LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format($p$CREATE POLICY worker_reads_own ON %I FOR SELECT TO authenticated
+      USING (is_admin_or_owner() OR worker_id IN (SELECT id FROM workers WHERE email = auth.email()))$p$, t);
+    EXECUTE format('CREATE POLICY admin_inserts ON %I FOR INSERT TO authenticated WITH CHECK (is_admin_or_owner())', t);
+    EXECUTE format('CREATE POLICY admin_updates ON %I FOR UPDATE TO authenticated USING (is_admin_or_owner()) WITH CHECK (is_admin_or_owner())', t);
+    EXECUTE format('CREATE POLICY admin_deletes ON %I FOR DELETE TO authenticated USING (is_admin_or_owner())', t);
   END LOOP;
 END $$;
 
