@@ -32,9 +32,11 @@ const EMPTY_FORM = {
   name: '', client_id: '', location: '',
   distance_km: '', map_url: '',
   status: 'Ongoing', start_date: '', end_date: '',
-  contract_value: '', notes: '',
+  has_vat: true, contract_value_no_vat: '', notes: '',
   ...Object.fromEntries(COST_TYPES.map(t => [t.key, '']))
 }
+
+const VAT_RATE = 0.07
 
 function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading }) {
   const isAdd = !initial?.id
@@ -42,6 +44,10 @@ function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loadin
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const totalCostBreakdown = COST_TYPES.reduce((s, t) => s + (parseFloat(form[t.key]) || 0), 0)
+
+  const noVatValue = parseFloat(form.contract_value_no_vat) || 0
+  const vatAmount = form.has_vat ? Math.round(noVatValue * VAT_RATE * 100) / 100 : 0
+  const contractValueTotal = Math.round((noVatValue + vatAmount) * 100) / 100
 
   return (
     <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave(form) }}>
@@ -97,9 +103,34 @@ function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loadin
           </div>
         </div>
         <div>
-          <label className="label">มูลค่าสัญญา (บาท)</label>
-          <input type="number" className="input" min="0" step="0.01" value={form.contract_value}
-            onChange={e => set('contract_value', e.target.value)} placeholder="มูลค่ารวม VAT / ตามสัญญา" />
+          <label className="label">มูลค่าสัญญา</label>
+          <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+              <input type="radio" name="has_vat" checked={form.has_vat === true} onChange={() => set('has_vat', true)} />
+              มี VAT
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+              <input type="radio" name="has_vat" checked={form.has_vat === false} onChange={() => set('has_vat', false)} />
+              ไม่มี VAT
+            </label>
+          </div>
+          <div className="form-grid-2">
+            <div>
+              <label className="label">มูลค่าก่อน VAT (บาท)</label>
+              <input type="number" className="input" min="0" step="0.01" value={form.contract_value_no_vat}
+                onChange={e => set('contract_value_no_vat', e.target.value)} placeholder="ตามสัญญา" />
+            </div>
+            <div>
+              <label className="label">รวม VAT (คำนวณอัตโนมัติ)</label>
+              <input className="input" disabled value={fmt(contractValueTotal)}
+                style={{ opacity: 0.7, cursor: 'not-allowed' }} />
+            </div>
+          </div>
+          {form.has_vat && noVatValue > 0 && (
+            <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text3)' }}>
+              VAT 7%: {fmt(vatAmount)} บาท
+            </div>
+          )}
         </div>
 
         {/* Cost Breakdown */}
@@ -119,9 +150,9 @@ function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loadin
           {totalCostBreakdown > 0 && (
             <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text3)' }}>
               รวมต้นทุนที่ระบุ: <strong style={{ color: 'var(--yellow)' }}>{fmt(totalCostBreakdown)} บาท</strong>
-              {form.contract_value && (
+              {contractValueTotal > 0 && (
                 <span style={{ marginLeft: 8 }}>
-                  ({((totalCostBreakdown / parseFloat(form.contract_value)) * 100).toFixed(1)}% ของมูลค่าสัญญา)
+                  ({((totalCostBreakdown / contractValueTotal) * 100).toFixed(1)}% ของมูลค่าสัญญา)
                 </span>
               )}
             </div>
@@ -194,6 +225,9 @@ export default function Sites({ navigateTo }) {
   const handleSave = async (form) => {
     setSaving(true)
     try {
+      const noVatValue = parseFloat(form.contract_value_no_vat) || 0
+      const vatAmount = form.has_vat ? Math.round(noVatValue * VAT_RATE * 100) / 100 : 0
+      const contractValueTotal = Math.round((noVatValue + vatAmount) * 100) / 100
       const payload = {
         name:           form.name,
         client_id:      form.client_id || null,
@@ -203,7 +237,9 @@ export default function Sites({ navigateTo }) {
         status:         form.status,
         start_date:     form.start_date || null,
         end_date:       form.end_date || null,
-        contract_value: parseFloat(form.contract_value) || null,
+        has_vat:              form.has_vat,
+        contract_value_no_vat: noVatValue || null,
+        contract_value:        contractValueTotal || null,
         notes:          form.notes || null,
         ...Object.fromEntries(COST_TYPES.map(t => [t.key, parseFloat(form[t.key]) || null]))
       }
@@ -310,7 +346,14 @@ export default function Sites({ navigateTo }) {
                       <span className={`badge badge-status-${s.status?.toLowerCase().replace(' ','-')}`}>{s.status}</span>
                     </td>
                     <td className="font-mono" style={{ color: 'var(--text2)' }}>
-                      {s.contract_value > 0 ? fmt(s.contract_value) : <span style={{ color: 'var(--text3)' }}>—</span>}
+                      {s.contract_value > 0
+                        ? <>
+                            {fmt(s.contract_value)}
+                            <div style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'inherit' }}>
+                              {s.has_vat ? 'รวม VAT' : 'ไม่มี VAT'}
+                            </div>
+                          </>
+                        : <span style={{ color: 'var(--text3)' }}>—</span>}
                     </td>
                     {/* รายรับ — คลิกไปหน้า Income */}
                     <td

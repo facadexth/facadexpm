@@ -104,7 +104,9 @@ CREATE TABLE sites (
                  CHECK (status IN ('Ongoing','Completed','On Hold','Cancelled')),
   start_date     DATE,
   end_date       DATE,
-  contract_value NUMERIC DEFAULT 0,             -- มูลค่างานรวม
+  contract_value NUMERIC DEFAULT 0,             -- มูลค่างานรวม (VAT-inclusive ground truth, used in billing_pct)
+  has_vat        BOOLEAN DEFAULT true,          -- ผู้ใช้กรอก contract_value_no_vat + เลือกนี้; contract_value ถูกคำนวณ
+  contract_value_no_vat NUMERIC,                -- มูลค่าก่อน VAT ที่ผู้ใช้กรอก
   plan_type      TEXT DEFAULT 'value' CHECK (plan_type IN ('value','percent')),
 
   -- แผนต้นทุน
