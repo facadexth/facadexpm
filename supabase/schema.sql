@@ -677,11 +677,28 @@ CREATE TABLE tenant_modules (
   PRIMARY KEY (tenant_id, module_key)
 );
 
+-- Bootstrap seed (supabase/migrations/2026-08-16-14-seed-bootstrap-tenant-modules.sql):
+-- the FacadeX bootstrap tenant (see the tenants comment above) has
+-- plan='active' but an expired trial, so it needs explicit tenant_modules
+-- rows to keep Payroll/HR/Assign and labor subcontractors unlocked —
+-- ON CONFLICT DO NOTHING, safe to replay.
+--   INSERT INTO tenant_modules (tenant_id, module_key)
+--   SELECT id, 'payroll' FROM tenants WHERE company_name = 'Facade X'
+--   UNION ALL
+--   SELECT id, 'labor_subcontractors' FROM tenants WHERE company_name = 'Facade X'
+--   ON CONFLICT (tenant_id, module_key) DO NOTHING;
+
 -- has_module_access(): true for every module during an active trial
 -- (trial_ends_at > now()), regardless of tenant_modules contents;
 -- once the trial ends, true only for modules explicitly enabled in
 -- tenant_modules. SECURITY DEFINER so it can read tenants/tenant_modules
 -- regardless of the caller's own RLS visibility into those tables.
+-- NOTE: plan='active' alone does NOT grant module access — modules are
+-- paid add-ons on top of the base plan, not automatically included when
+-- a plan is active. A future billing/plan-upgrade flow converting a
+-- trial to a paid plan with modules must also write the corresponding
+-- tenant_modules rows, or it will silently lock out functionality (see
+-- 2026-08-16-14-seed-bootstrap-tenant-modules.sql for exactly this bug).
 CREATE OR REPLACE FUNCTION has_module_access(p_module_key TEXT)
 RETURNS BOOLEAN
 LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public
@@ -790,11 +807,20 @@ CREATE POLICY owner_deletes ON user_roles FOR DELETE TO authenticated
 -- Two signup paths share this trigger:
 --   1. Self-serve company signup (Login.jsx signup mode) —
 --      raw_user_meta_data has NO invited_tenant_id → create a new
---      tenant with a 14-day trial, caller becomes its OWNER.
+--      tenant with a 14-day trial, caller becomes its OWNER. Also seeds
+--      that new tenant's app_settings (travel_rate_per_km,
+--      holiday_pay_multiplier) with the same defaults as the global seed
+--      below (2026-08-16-15-signup-seeds-app-settings.sql) — app_settings
+--      became per-tenant (PK (tenant_id, key)) and a brand-new trial
+--      tenant can use the payroll module immediately, so without this
+--      seed travel-cost/holiday-pay calculations would silently read
+--      missing rows instead of failing loudly.
 --   2. Admin-invited teammate (UserManagement.jsx) — passes
 --      invited_tenant_id in auth.signUp's options.data → joins that
 --      existing tenant as WORKER (UserManagement.jsx's own follow-up
---      upsert then sets the actually-chosen role, same as today).
+--      upsert then sets the actually-chosen role, same as today). Does
+--      NOT seed app_settings — it's joining a tenant that should already
+--      have its own settings.
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER
 LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
@@ -814,6 +840,11 @@ BEGIN
       new.id, 'trial', now() + interval '14 days'
     )
     RETURNING id INTO v_tenant_id;
+
+    INSERT INTO app_settings (tenant_id, key, value) VALUES
+      (v_tenant_id, 'travel_rate_per_km', '20'),
+      (v_tenant_id, 'holiday_pay_multiplier', '1.5')
+    ON CONFLICT (tenant_id, key) DO NOTHING;
   END IF;
 
   INSERT INTO public.user_roles (user_email, role, status, tenant_id)
