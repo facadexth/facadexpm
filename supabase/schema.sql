@@ -13,13 +13,19 @@
 -- missing outright). Keep this file in sync going forward by
 -- introspecting the live DB again rather than hand-editing guesses.
 --
--- ⚠️ Row Level Security is NOT included below. As of this regeneration,
--- 18 of these 19 tables have RLS disabled — the anon key can read/write
--- them directly, bypassing the app's role checks entirely. This is a
--- separate, deliberate design decision that needs real policies (see
--- project README §7-8) — do not blindly enable RLS on these tables
--- without policies, or every query (including the app's own) will start
--- failing.
+-- ⚠️ STALE: this file predates 2026-08-15's RLS rollout. RLS is now
+-- ENABLED on all 19 tables in production, with policies matching the
+-- app's OWNER > ADMIN > WORKER role model. The section below (which only
+-- shows RLS on `user_roles`) does NOT reflect this — the authoritative,
+-- currently-accurate source for every policy is:
+--   supabase/migrations/2026-08-15-01-enable-rls.sql       (base rollout)
+--   supabase/migrations/2026-08-16-05-security-advisor-fixes.sql (4 policy
+--     tweaks: workers.worker_reads_own_profile, and worker_reads_own on
+--     worker_assignments/worker_ot/salary_records, wrapped auth.email()
+--     in a subquery for RLS init-plan performance)
+-- TODO: introspect pg_policies for all 19 tables and replace this section
+-- with the real, current policy set rather than relying on the migration
+-- files as the source of truth.
 -- ================================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -132,6 +138,8 @@ CREATE TABLE sites (
   updated_at     TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE INDEX idx_sites_client_id ON sites(client_id);
+
 -- ----------------------------------------------------------------
 -- EXPENSES — รายจ่าย
 -- ----------------------------------------------------------------
@@ -167,6 +175,8 @@ CREATE INDEX idx_expenses_site_id    ON expenses(site_id);
 CREATE INDEX idx_expenses_date       ON expenses(date);
 CREATE INDEX idx_expenses_status     ON expenses(status);
 CREATE INDEX idx_expenses_check_date ON expenses(check_date);
+CREATE INDEX idx_expenses_category_id ON expenses(category_id);
+CREATE INDEX idx_expenses_supplier_id ON expenses(supplier_id);
 
 -- ----------------------------------------------------------------
 -- INCOMES — รายรับ
@@ -443,6 +453,17 @@ CREATE TRIGGER on_user_role_deleted
   AFTER DELETE ON user_roles
   FOR EACH ROW EXECUTE FUNCTION handle_user_role_deleted();
 
+-- These three are only ever invoked by Postgres's own trigger machinery
+-- (which runs as the function owner regardless of EXECUTE grants) — no
+-- role needs direct EXECUTE to call them via /rest/v1/rpc/*. Supabase's
+-- project bootstrap grants EXECUTE directly to anon/authenticated
+-- (separately from PUBLIC, and re-applied to new functions via ALTER
+-- DEFAULT PRIVILEGES), so both must be revoked explicitly — REVOKE ...
+-- FROM PUBLIC alone does not touch those grants.
+REVOKE EXECUTE ON FUNCTION handle_new_user() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION handle_auth_user_deleted() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION handle_user_role_deleted() FROM PUBLIC, anon, authenticated;
+
 -- Bootstrap: after creating the very first account through the app's
 -- Signup page, promote it to OWNER manually (the in-app User Management
 -- page itself requires OWNER to access, so the first account can't do
@@ -493,10 +514,12 @@ CREATE TABLE site_phases (
 );
 
 CREATE INDEX idx_site_phases_site_id ON site_phases(site_id);
+CREATE INDEX idx_site_phases_depends_on ON site_phases(depends_on_phase_id);
 
 CREATE OR REPLACE FUNCTION seed_site_phases()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 BEGIN
   INSERT INTO site_phases (site_id, name, sort_order, billing_weight_pct) VALUES
@@ -524,6 +547,7 @@ CREATE TRIGGER trg_seed_site_phases
 CREATE OR REPLACE FUNCTION generate_site_number()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 DECLARE
   year_part TEXT := TO_CHAR(NOW(), 'YYYY');
@@ -547,6 +571,7 @@ CREATE TRIGGER trg_site_number
 CREATE OR REPLACE FUNCTION generate_client_number()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 DECLARE
   year_part TEXT := TO_CHAR(NOW(), 'YYYY');
@@ -570,6 +595,7 @@ CREATE TRIGGER trg_client_number
 CREATE OR REPLACE FUNCTION generate_supplier_number()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 DECLARE
   year_part TEXT := TO_CHAR(NOW(), 'YYYY');
@@ -600,6 +626,7 @@ CREATE TRIGGER trg_supplier_number
 CREATE OR REPLACE FUNCTION propagate_supplier_payment_method()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 BEGIN
   IF (NEW.default_payment_method IS DISTINCT FROM OLD.default_payment_method)
@@ -627,6 +654,7 @@ EXECUTE FUNCTION propagate_supplier_payment_method();
 CREATE OR REPLACE FUNCTION generate_subcontractor_number()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 DECLARE
   year_part TEXT := TO_CHAR(NOW(), 'YYYY');
@@ -650,6 +678,7 @@ CREATE TRIGGER trg_subcontractor_number
 CREATE OR REPLACE FUNCTION generate_invoice_no()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 DECLARE
   prefix  TEXT := 'IV' || TO_CHAR(NOW(), 'YYMM') || '-';
@@ -672,6 +701,7 @@ CREATE TRIGGER trg_invoice_no
 CREATE OR REPLACE FUNCTION generate_payment_number()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 DECLARE
   prefix  TEXT := 'PY' || TO_CHAR(NOW(), 'YYMM') || '-';
