@@ -22,7 +22,7 @@ const siteOpts = (sites) => (sites || []).map(s => ({
 
 const EMPTY_FORM = {
   invoice_no: '', date: '', site_id: '', client_name: '', description: '',
-  amount_no_vat: '', vat_pct: '7', tax_pct: '3', retention_pct: '', received_amount: ''
+  amount_no_vat: '', vat_pct: '', tax_pct: '', retention_pct: '', received_amount: ''
 }
 
 function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading }) {
@@ -68,7 +68,14 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading }) 
               value={form.site_id}
               onChange={id => {
                 const site = (sites || []).find(s => s.id === id)
-                setForm(f => ({ ...f, site_id: id, client_name: site?.client_display_name || site?.client_name || f.client_name }))
+                setForm(f => ({
+                  ...f,
+                  site_id: id,
+                  client_name: site?.client_display_name || site?.client_name || f.client_name,
+                  vat_pct:       site?.default_vat_pct          ?? f.vat_pct,
+                  tax_pct:       site?.default_tax_withheld_pct ?? f.tax_pct,
+                  retention_pct: site?.default_retention_pct    ?? f.retention_pct,
+                }))
               }}
               placeholder="— เลือกไซท์ —"
               options={siteOpts(sites)}
@@ -321,7 +328,17 @@ export default function Income({ navigateTo, navState }) {
               vat_pct:       editRow.amount_no_vat ? +((editRow.vat||0)           / editRow.amount_no_vat * 100).toFixed(2) : '',
               tax_pct:       editRow.amount_no_vat ? +((editRow.tax_withheld||0)  / editRow.amount_no_vat * 100).toFixed(2) : '',
               retention_pct: editRow.amount_no_vat ? +((editRow.retention||0)     / editRow.amount_no_vat * 100).toFixed(2) : '',
-            } : { ...EMPTY_FORM, site_id: siteId }}
+            } : (() => {
+              const site = (sites || []).find(s => s.id === siteId)
+              return {
+                ...EMPTY_FORM,
+                site_id: siteId,
+                client_name: site?.client_display_name || site?.client_name || '',
+                vat_pct:       site?.default_vat_pct          ?? EMPTY_FORM.vat_pct,
+                tax_pct:       site?.default_tax_withheld_pct ?? EMPTY_FORM.tax_pct,
+                retention_pct: site?.default_retention_pct    ?? EMPTY_FORM.retention_pct,
+              }
+            })()}
             sites={sites}
             onSave={handleSave}
             onCancel={() => { setShowAdd(false); setEditRow(null) }}

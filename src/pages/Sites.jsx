@@ -33,6 +33,7 @@ const EMPTY_FORM = {
   distance_km: '', map_url: '',
   status: 'Ongoing', start_date: '', end_date: '',
   has_vat: true, contract_value_no_vat: '', notes: '',
+  default_vat_pct: 7, default_tax_withheld_pct: 3, default_retention_pct: 0,
   ...Object.fromEntries(COST_TYPES.map(t => [t.key, '']))
 }
 
@@ -159,6 +160,30 @@ function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loadin
           )}
         </div>
 
+        {/* Income defaults */}
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+            ค่าเริ่มต้นสำหรับรายรับ (ใช้ auto-fill ตอนเพิ่มรายรับของไซท์นี้)
+          </div>
+          <div className="form-grid-3">
+            <div>
+              <label className="label">VAT (%)</label>
+              <input type="number" className="input input-sm" min="0" step="0.01"
+                value={form.default_vat_pct} onChange={e => set('default_vat_pct', e.target.value)} placeholder="7" />
+            </div>
+            <div>
+              <label className="label">Tax ถูกหัก (%)</label>
+              <input type="number" className="input input-sm" min="0" step="0.01"
+                value={form.default_tax_withheld_pct} onChange={e => set('default_tax_withheld_pct', e.target.value)} placeholder="3" />
+            </div>
+            <div>
+              <label className="label">Retention (%)</label>
+              <input type="number" className="input input-sm" min="0" step="0.01"
+                value={form.default_retention_pct} onChange={e => set('default_retention_pct', e.target.value)} placeholder="0" />
+            </div>
+          </div>
+        </div>
+
         <div>
           <label className="label">หมายเหตุ</label>
           <textarea className="textarea" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
@@ -240,6 +265,9 @@ export default function Sites({ navigateTo }) {
         has_vat:              form.has_vat,
         contract_value_no_vat: noVatValue || null,
         contract_value:        contractValueTotal || null,
+        default_vat_pct:           form.default_vat_pct === '' ? null : parseFloat(form.default_vat_pct),
+        default_tax_withheld_pct:  form.default_tax_withheld_pct === '' ? null : parseFloat(form.default_tax_withheld_pct),
+        default_retention_pct:     form.default_retention_pct === '' ? null : parseFloat(form.default_retention_pct),
         notes:          form.notes || null,
         ...Object.fromEntries(COST_TYPES.map(t => [t.key, parseFloat(form[t.key]) || null]))
       }

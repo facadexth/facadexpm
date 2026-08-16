@@ -109,6 +109,11 @@ CREATE TABLE sites (
   contract_value_no_vat NUMERIC,                -- มูลค่าก่อน VAT ที่ผู้ใช้กรอก
   plan_type      TEXT DEFAULT 'value' CHECK (plan_type IN ('value','percent')),
 
+  -- ค่าเริ่มต้นสำหรับรายรับของไซท์นี้ — ใช้ auto-fill ฟอร์มเพิ่มรายรับ (Income.jsx)
+  default_vat_pct           NUMERIC DEFAULT 7,
+  default_tax_withheld_pct  NUMERIC DEFAULT 3,
+  default_retention_pct     NUMERIC DEFAULT 0,
+
   -- แผนต้นทุน
   cost_aluminum  NUMERIC DEFAULT 0,
   cost_glass     NUMERIC DEFAULT 0,
@@ -738,7 +743,9 @@ SELECT
   s.distance_km,
   s.map_url,
   c.contact_person AS client_contact_person,
-  c.phone          AS client_phone
+  c.phone          AS client_phone,
+  s.has_vat, s.contract_value_no_vat,
+  s.default_vat_pct, s.default_tax_withheld_pct, s.default_retention_pct
 FROM sites s
 LEFT JOIN clients c ON s.client_id = c.id
 LEFT JOIN (
