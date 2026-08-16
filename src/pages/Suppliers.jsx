@@ -20,8 +20,8 @@ const SUPPLIER_TYPES = [
 
 const EMPTY_FORM = {
   name: '', contact_person: '', phone: '', email: '',
-  category: [], payment_terms: '', address: '', notes: '',
-  default_payment_method: 'transfer', credit_days: ''
+  category: [], address: '', notes: '',
+  payment_mode: 'transfer_cash', credit_days: ''
 }
 
 const PAYMENT_MODES = [
@@ -54,7 +54,11 @@ function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
   const isAdd = !initial?.id
   const [form, setForm, clearDraft] = useDraftForm(
     'suppliers-form',
-    { ...EMPTY_FORM, ...initial, category: normCategory(initial.category) },
+    {
+      ...EMPTY_FORM, ...initial, category: normCategory(initial.category),
+      payment_mode: modeFromSupplier(initial.default_payment_method ?? 'transfer', initial.credit_days),
+      credit_days: initial.credit_days ?? '',
+    },
     isAdd
   )
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -69,15 +73,7 @@ function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
     })
   }
 
-  const mode = modeFromSupplier(form.default_payment_method, form.credit_days)
-  const setMode = (key) => {
-    const found = PAYMENT_MODES.find(m => m.key === key)
-    setForm(f => ({
-      ...f,
-      default_payment_method: key === 'check_credit' ? 'check' : 'transfer',
-      credit_days: found.hasDays ? f.credit_days : ''
-    }))
-  }
+  const isCash = form.payment_mode === 'transfer_cash'
 
   return (
     <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave(form) }}>
@@ -92,37 +88,31 @@ function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
             <input className="input" value={form.contact_person} onChange={e => set('contact_person', e.target.value)} />
           </div>
         </div>
-        <div className="form-grid-2">
-          <div>
-            <label className="label">ประเภทสินค้า (เลือกได้หลายอย่าง)</label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
-              {SUPPLIER_TYPES.map(type => {
-                const checked = (Array.isArray(form.category) ? form.category : []).includes(type)
-                return (
-                  <label key={type} style={{
-                    display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer',
-                    padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 500,
-                    background: checked ? 'var(--accent)' : 'var(--bg3)',
-                    color: checked ? '#fff' : 'var(--text2)',
-                    border: `1px solid ${checked ? 'var(--accent)' : 'var(--border)'}`,
-                    transition: 'all 0.15s',
-                    userSelect: 'none',
-                  }}>
-                    <input
-                      type="checkbox"
-                      style={{ display: 'none' }}
-                      checked={checked}
-                      onChange={() => toggleType(type)}
-                    />
-                    {checked ? '✓ ' : ''}{type}
-                  </label>
-                )
-              })}
-            </div>
-          </div>
-          <div>
-            <label className="label">เงื่อนไขการชำระ (หมายเหตุ)</label>
-            <input className="input" value={form.payment_terms} onChange={e => set('payment_terms', e.target.value)} placeholder="เช่น 30 วัน / เงินสด" />
+        <div>
+          <label className="label">ประเภทสินค้า (เลือกได้หลายอย่าง)</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+            {SUPPLIER_TYPES.map(type => {
+              const checked = (Array.isArray(form.category) ? form.category : []).includes(type)
+              return (
+                <label key={type} style={{
+                  display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer',
+                  padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 500,
+                  background: checked ? 'var(--accent)' : 'var(--bg3)',
+                  color: checked ? '#fff' : 'var(--text2)',
+                  border: `1px solid ${checked ? 'var(--accent)' : 'var(--border)'}`,
+                  transition: 'all 0.15s',
+                  userSelect: 'none',
+                }}>
+                  <input
+                    type="checkbox"
+                    style={{ display: 'none' }}
+                    checked={checked}
+                    onChange={() => toggleType(type)}
+                  />
+                  {checked ? '✓ ' : ''}{type}
+                </label>
+              )
+            })}
           </div>
         </div>
         <div>
@@ -130,22 +120,23 @@ function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 6 }}>
             {PAYMENT_MODES.map(m => (
               <label key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
-                <input type="radio" name="payment_mode" checked={mode === m.key} onChange={() => setMode(m.key)} />
+                <input type="radio" name="payment_mode" checked={form.payment_mode === m.key} onChange={() => set('payment_mode', m.key)} />
                 {m.label}
               </label>
             ))}
           </div>
-          {PAYMENT_MODES.find(m => m.key === mode)?.hasDays && (
-            <div style={{ marginTop: 8, maxWidth: 200 }}>
-              <label className="label">จำนวนวันเครดิต (วันวางบิล → วันครบกำหนด) ★</label>
-              <input
-                type="number" min="0" className="input" required
-                value={form.credit_days}
-                onChange={e => set('credit_days', e.target.value)}
-                placeholder="เช่น 30"
-              />
-            </div>
-          )}
+          <div style={{ marginTop: 8, maxWidth: 200 }}>
+            <label className="label">จำนวนวันเครดิต (วันวางบิล → วันครบกำหนด)</label>
+            <input
+              type="number" min="0" className="input"
+              disabled={isCash}
+              required={!isCash}
+              value={isCash ? 0 : form.credit_days}
+              onChange={e => set('credit_days', e.target.value)}
+              placeholder="เช่น 30"
+              style={isCash ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+            />
+          </div>
           {initial?.id && (
             <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>
               การเปลี่ยนวิธีชำระเงินจะปรับปรุงรายจ่ายที่ยังไม่ได้ชำระ (ไม่รวมรายการที่จ่ายแล้ว) ให้ตรงกันอัตโนมัติ
@@ -207,14 +198,14 @@ export default function Suppliers() {
     setSaving(true)
     try {
       const cats = normCategory(form.category)
+      const isCash = form.payment_mode === 'transfer_cash'
       const payload = {
         name: form.name, contact_person: form.contact_person || null,
         phone: form.phone || null, email: form.email || null,
         category: cats.length ? cats : null,
-        payment_terms: form.payment_terms || null,
         address: form.address || null, notes: form.notes || null,
-        default_payment_method: form.default_payment_method || 'transfer',
-        credit_days: form.credit_days === '' ? null : parseInt(form.credit_days, 10),
+        default_payment_method: form.payment_mode === 'check_credit' ? 'check' : 'transfer',
+        credit_days: isCash || form.credit_days === '' ? null : parseInt(form.credit_days, 10),
       }
       if (editItem) {
         const { error } = await supabase.from('suppliers').update(payload).eq('id', editItem.id)
