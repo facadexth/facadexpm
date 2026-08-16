@@ -5,8 +5,10 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase.js'
 import { useUserRole } from './hooks/useUserRole.js'
+import { useTenant } from './hooks/useTenant.js'
 import { ProtectedPage } from './components/ProtectedPage.jsx'
 import ChangePassword from './components/ChangePassword.jsx'
+import TrialBanner from './components/TrialBanner.jsx'
 import Login      from './pages/Login.jsx'
 import Dashboard   from './pages/Dashboard.jsx'
 import Sites       from './pages/Sites.jsx'
@@ -22,18 +24,18 @@ import UserManagement from './pages/UserManagement.jsx'
 import Settings       from './pages/Settings.jsx'
 
 const TABS = [
-  { id: 'dashboard',         label: '📊 ภาพรวม',              minRole: 'WORKER' },
-  { id: 'assign',            label: '📋 Assign ช่าง',          minRole: 'WORKER' },
-  { id: 'hr',                label: '👷 HR',                   minRole: 'WORKER' },
-  { id: 'sites',             label: '🏗️ ไซท์งาน',            minRole: 'ADMIN' },
-  { id: 'expenses',          label: '💸 รายจ่าย',              minRole: 'ADMIN' },
-  { id: 'income',            label: '💰 รายรับ',               minRole: 'ADMIN' },
-  { id: 'categories',        label: '🏷️ หมวดหมู่',            minRole: 'ADMIN' },
-  { id: 'clients',           label: '🏢 ลูกค้า',              minRole: 'ADMIN' },
-  { id: 'suppliers',         label: '🏭 Supplier',             minRole: 'ADMIN' },
-  { id: 'labor_contractors', label: '🔧 ผู้รับเหมาค่าแรง',    minRole: 'ADMIN' },
-  { id: 'user_management',   label: '👤 ผู้ใช้งาน',           minRole: 'OWNER' },
-  { id: 'settings',          label: '⚙️ ตั้งค่า',             minRole: 'OWNER' },
+  { id: 'dashboard',         label: '📊 ภาพรวม',              minRole: 'WORKER', module: null },
+  { id: 'assign',            label: '📋 Assign ช่าง',          minRole: 'WORKER', module: 'payroll' },
+  { id: 'hr',                label: '👷 HR',                   minRole: 'WORKER', module: 'payroll' },
+  { id: 'sites',             label: '🏗️ ไซท์งาน',            minRole: 'ADMIN',  module: null },
+  { id: 'expenses',          label: '💸 รายจ่าย',              minRole: 'ADMIN',  module: null },
+  { id: 'income',            label: '💰 รายรับ',               minRole: 'ADMIN',  module: null },
+  { id: 'categories',        label: '🏷️ หมวดหมู่',            minRole: 'ADMIN',  module: null },
+  { id: 'clients',           label: '🏢 ลูกค้า',              minRole: 'ADMIN',  module: null },
+  { id: 'suppliers',         label: '🏭 Supplier',             minRole: 'ADMIN',  module: null },
+  { id: 'labor_contractors', label: '🔧 ผู้รับเหมาค่าแรง',    minRole: 'ADMIN',  module: 'labor_subcontractors' },
+  { id: 'user_management',   label: '👤 ผู้ใช้งาน',           minRole: 'OWNER',  module: null },
+  { id: 'settings',          label: '⚙️ ตั้งค่า',             minRole: 'OWNER',  module: null },
 ]
 
 export default function App() {
@@ -42,6 +44,7 @@ export default function App() {
   const [navState, setNavState] = useState({})
   const [showChangePassword, setShowChangePassword] = useState(false)
   const { role, isAtLeast, loading: roleLoading } = useUserRole()
+  const { tenant, isTrialActive, trialDaysRemaining, hasModuleAccess } = useTenant()
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -106,6 +109,9 @@ export default function App() {
     // First check role-based access
     if (!isAtLeast(tab.minRole)) return false
 
+    // Then check module entitlement
+    if (!hasModuleAccess(tab.module)) return false
+
     // Then check saved permissions (if any)
     const savedPermissions = getSavedPermissions()
     if (savedPermissions && role) {
@@ -118,6 +124,7 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <TrialBanner tenant={tenant} isTrialActive={isTrialActive} trialDaysRemaining={trialDaysRemaining} />
       {/* ── Header ── */}
       <header style={{
         background: 'var(--bg2)', borderBottom: '1px solid var(--border)',
