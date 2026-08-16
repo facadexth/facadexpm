@@ -807,7 +807,7 @@ CREATE POLICY admin_deletes ON calendar_sync FOR DELETE TO authenticated
 -- ----------------------------------------------------------------
 CREATE TABLE site_phases (
   id                  UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  site_id             UUID NOT NULL REFERENCES sites(id),
+  site_id             UUID NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
   name                TEXT NOT NULL,
   sort_order          INT NOT NULL DEFAULT 0,
   start_date          DATE,
@@ -815,7 +815,7 @@ CREATE TABLE site_phases (
   status              TEXT NOT NULL DEFAULT 'not_started'
                       CHECK (status IN ('not_started','in_progress','done')),
   billing_weight_pct  NUMERIC NOT NULL DEFAULT 0,   -- น้ำหนักเฟสนี้ต่อมูลค่างานรวม (รวมกัน 100%)
-  depends_on_phase_id UUID REFERENCES site_phases(id),
+  depends_on_phase_id UUID REFERENCES site_phases(id) ON DELETE SET NULL,
   created_at          TIMESTAMPTZ DEFAULT NOW(),
   updated_at          TIMESTAMPTZ DEFAULT NOW(),
   tenant_id           UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
