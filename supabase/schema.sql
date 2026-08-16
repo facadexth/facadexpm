@@ -874,6 +874,17 @@ REVOKE EXECUTE ON FUNCTION handle_new_user() FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION handle_auth_user_deleted() FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION handle_user_role_deleted() FROM PUBLIC, anon, authenticated;
 
+-- Same pattern for the tenant-entitlement helper functions: used inside
+-- RLS policies (which need `authenticated` to retain EXECUTE for policy
+-- evaluation to work), but anon has no legitimate reason to call them
+-- directly via /rest/v1/rpc/*.
+REVOKE EXECUTE ON FUNCTION current_tenant_id() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION has_module_access(TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION tenant_can_write() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION current_tenant_id() TO authenticated;
+GRANT EXECUTE ON FUNCTION has_module_access(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION tenant_can_write() TO authenticated;
+
 -- Bootstrap: after creating the very first account through the app's
 -- Signup page, promote it to OWNER manually (the in-app User Management
 -- page itself requires OWNER to access, so the first account can't do
