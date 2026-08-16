@@ -385,6 +385,28 @@ CREATE INDEX idx_audit_table  ON audit_logs(table_name);
 CREATE INDEX idx_audit_time   ON audit_logs(changed_at DESC);
 
 -- ----------------------------------------------------------------
+-- TENANTS — แบ่งแยกข้อมูล SaaS (บริษัท/องค์กรในระบบ)
+-- ----------------------------------------------------------------
+CREATE TABLE tenants (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_name  TEXT NOT NULL,
+  owner_user_id UUID NOT NULL REFERENCES auth.users(id),
+  plan          TEXT NOT NULL DEFAULT 'trial' CHECK (plan IN ('trial','active','expired')),
+  trial_ends_at TIMESTAMPTZ NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ----------------------------------------------------------------
+-- TENANT_MODULES — รูปแบบ/โมดูลที่เปิดใช้งานต่อบริษัท
+-- ----------------------------------------------------------------
+CREATE TABLE tenant_modules (
+  tenant_id  UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  module_key TEXT NOT NULL CHECK (module_key IN ('payroll','labor_subcontractors')),
+  enabled_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id, module_key)
+);
+
+-- ----------------------------------------------------------------
 -- USER_ROLES — สิทธิ์การใช้งาน ผูกกับ Supabase Auth ผ่าน user_email
 -- ⚠️ RLS เปิดอยู่บนตารางนี้ แต่ policy ปัจจุบันคือ qual=true สำหรับทุก
 -- authenticated user — คือแค่กันคนที่ไม่ login เข้ามาแตะ ไม่ได้แยกสิทธิ์
