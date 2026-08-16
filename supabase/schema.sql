@@ -15,26 +15,22 @@
 --
 -- ⚠️ PARTIALLY STALE: RLS is ENABLED on all 19 tables in production, with
 -- policies matching the app's OWNER > ADMIN > WORKER role model. As of
--- 2026-08-16, the 12 core (non-module) tables below — expense_categories,
--- clients, suppliers, sites, expenses, incomes, company_holidays,
--- audit_logs, user_roles, app_settings, calendar_sync, site_phases —
--- carry accurate, tenant-scoped policy definitions inline. The remaining
--- 7 module tables (workers, worker_assignments, worker_ot, salary_records,
--- labor_subcontractors, labor_contracts, labor_payments) are NOT yet
--- reflected here — the authoritative source for those until Task 5 lands is:
---   supabase/migrations/2026-08-15-01-enable-rls.sql       (base rollout)
---   supabase/migrations/2026-08-16-05-security-advisor-fixes.sql (4 policy
---     tweaks: workers.worker_reads_own_profile, and worker_reads_own on
---     worker_assignments/worker_ot/salary_records, wrapped auth.email()
---     in a subquery for RLS init-plan performance)
---   supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql (this
---     task: tenant-scopes the 12 core tables' reads, additionally gates
---     their writes on tenant_can_write(), and fixes a real cross-tenant
---     leak on user_roles' read_all_roles policy, previously USING (true))
--- TODO: introspect pg_policies for the remaining 7 module tables and
--- replace their section with the real, current policy set once Task 5
--- (module-gated RLS) lands, rather than relying on the migration files
--- as the source of truth.
+-- 2026-08-16, all 19 tables below carry accurate, tenant-scoped policy
+-- definitions inline:
+--   - 12 core tables — expense_categories, clients, suppliers, sites,
+--     expenses, incomes, company_holidays, audit_logs, user_roles,
+--     app_settings, calendar_sync, site_phases — tenant-scope reads,
+--     gate writes on tenant_can_write() (read-only lockout on an
+--     expired trial, not a full block). See
+--     supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql.
+--   - 7 module-gated tables — workers, worker_assignments, worker_ot,
+--     salary_records (payroll module), labor_subcontractors,
+--     labor_contracts, labor_payments (labor_subcontractors module) —
+--     tenant-scope AND module-gate both reads and writes via
+--     has_module_access() (a full block when the module isn't
+--     purchased/trialing, deliberately not the read/write split used
+--     on the 12 core tables above). See
+--     supabase/migrations/2026-08-16-10-tenant-scoped-rls-modules.sql.
 --
 -- ⚠️ NOT RUNNABLE TOP-TO-BOTTOM as of 2026-08-16: tenant_id columns below
 -- use DEFAULT current_tenant_id(), but that function (defined near
@@ -337,6 +333,27 @@ CREATE TABLE workers (
 
 CREATE INDEX idx_workers_tenant_id ON workers(tenant_id);
 
+-- Payroll-module RLS (see supabase/migrations/2026-08-16-10-tenant-scoped-rls-modules.sql):
+-- tenant-scoped AND gated on has_module_access('payroll') for both reads
+-- and writes (a full block when the module isn't purchased/trialing —
+-- unlike the core tables' read/write split above). ADMIN+ sees all
+-- workers in the tenant; a WORKER account sees only their own row
+-- (matched via workers.email = auth.email()).
+ALTER TABLE workers ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY worker_reads_own_profile ON workers FOR SELECT TO authenticated
+  USING (
+    tenant_id = current_tenant_id() AND has_module_access('payroll')
+    AND (is_admin_or_owner() OR email = auth.email())
+  );
+CREATE POLICY admin_writes_workers ON workers FOR INSERT TO authenticated
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('payroll'));
+CREATE POLICY admin_updates_workers ON workers FOR UPDATE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('payroll'))
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('payroll'));
+CREATE POLICY admin_deletes_workers ON workers FOR DELETE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('payroll'));
+
 -- ----------------------------------------------------------------
 -- WORKER_ASSIGNMENTS — Assign ช่างรายวัน
 -- ----------------------------------------------------------------
@@ -365,6 +382,24 @@ CREATE INDEX idx_assignments_site   ON worker_assignments(site_id);
 CREATE INDEX idx_assignments_date   ON worker_assignments(date);
 CREATE INDEX idx_worker_assignments_tenant_id ON worker_assignments(tenant_id);
 
+-- Payroll-module RLS (see supabase/migrations/2026-08-16-10-tenant-scoped-rls-modules.sql):
+-- same shape as workers above — tenant-scoped AND gated on
+-- has_module_access('payroll'); a WORKER sees only their own assignments.
+ALTER TABLE worker_assignments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY worker_reads_own ON worker_assignments FOR SELECT TO authenticated
+  USING (
+    tenant_id = current_tenant_id() AND has_module_access('payroll')
+    AND (is_admin_or_owner() OR worker_id IN (SELECT id FROM workers WHERE email = auth.email()))
+  );
+CREATE POLICY admin_inserts ON worker_assignments FOR INSERT TO authenticated
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('payroll'));
+CREATE POLICY admin_updates ON worker_assignments FOR UPDATE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('payroll'))
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('payroll'));
+CREATE POLICY admin_deletes ON worker_assignments FOR DELETE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('payroll'));
+
 -- ----------------------------------------------------------------
 -- WORKER_OT — OT รายวัน (แยกจาก shift เช้า/บ่าย, สูงสุด 1 ช่วง/คน/วัน)
 -- ----------------------------------------------------------------
@@ -387,6 +422,24 @@ CREATE TABLE worker_ot (
 CREATE INDEX idx_worker_ot_site ON worker_ot(site_id);
 CREATE INDEX idx_worker_ot_date ON worker_ot(date);
 CREATE INDEX idx_worker_ot_tenant_id ON worker_ot(tenant_id);
+
+-- Payroll-module RLS (see supabase/migrations/2026-08-16-10-tenant-scoped-rls-modules.sql):
+-- same shape as workers/worker_assignments above — tenant-scoped AND
+-- gated on has_module_access('payroll'); a WORKER sees only their own OT.
+ALTER TABLE worker_ot ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY worker_reads_own ON worker_ot FOR SELECT TO authenticated
+  USING (
+    tenant_id = current_tenant_id() AND has_module_access('payroll')
+    AND (is_admin_or_owner() OR worker_id IN (SELECT id FROM workers WHERE email = auth.email()))
+  );
+CREATE POLICY admin_inserts ON worker_ot FOR INSERT TO authenticated
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('payroll'));
+CREATE POLICY admin_updates ON worker_ot FOR UPDATE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('payroll'))
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('payroll'));
+CREATE POLICY admin_deletes ON worker_ot FOR DELETE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('payroll'));
 
 -- ----------------------------------------------------------------
 -- COMPANY_HOLIDAYS — ปฏิทินวันหยุดบริษัท (ไม่ auto-mark worker_assignments;
@@ -445,6 +498,25 @@ CREATE TABLE salary_records (
 
 CREATE INDEX idx_salary_records_tenant_id ON salary_records(tenant_id);
 
+-- Payroll-module RLS (see supabase/migrations/2026-08-16-10-tenant-scoped-rls-modules.sql):
+-- same shape as workers/worker_assignments/worker_ot above — tenant-scoped
+-- AND gated on has_module_access('payroll'); a WORKER sees only their own
+-- salary records.
+ALTER TABLE salary_records ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY worker_reads_own ON salary_records FOR SELECT TO authenticated
+  USING (
+    tenant_id = current_tenant_id() AND has_module_access('payroll')
+    AND (is_admin_or_owner() OR worker_id IN (SELECT id FROM workers WHERE email = auth.email()))
+  );
+CREATE POLICY admin_writes ON salary_records FOR INSERT TO authenticated
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('payroll'));
+CREATE POLICY admin_updates ON salary_records FOR UPDATE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('payroll'))
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('payroll'));
+CREATE POLICY admin_deletes ON salary_records FOR DELETE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('payroll'));
+
 -- ----------------------------------------------------------------
 -- LABOR_SUBCONTRACTORS — ผู้รับเหมาช่วง (ทีมงานภายนอก)
 -- ----------------------------------------------------------------
@@ -463,6 +535,17 @@ CREATE TABLE labor_subcontractors (
 
 CREATE INDEX idx_labor_sub_name ON labor_subcontractors(name);
 CREATE INDEX idx_labor_subcontractors_tenant_id ON labor_subcontractors(tenant_id);
+
+-- labor_subcontractors-module RLS (see
+-- supabase/migrations/2026-08-16-10-tenant-scoped-rls-modules.sql):
+-- single ADMIN+-only full-access policy, tenant-scoped AND gated on
+-- has_module_access('labor_subcontractors') for both reads and writes
+-- (a full block when the module isn't purchased/trialing).
+ALTER TABLE labor_subcontractors ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_full_access ON labor_subcontractors FOR ALL TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('labor_subcontractors'))
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('labor_subcontractors'));
 
 -- ----------------------------------------------------------------
 -- LABOR_CONTRACTS — สัญญาผู้รับเหมาช่วงต่อไซท์
@@ -487,6 +570,15 @@ CREATE TABLE labor_contracts (
 CREATE INDEX idx_labor_contract_site ON labor_contracts(site_id);
 CREATE INDEX idx_labor_contract_sub  ON labor_contracts(subcontractor_id);
 CREATE INDEX idx_labor_contracts_tenant_id ON labor_contracts(tenant_id);
+
+-- labor_subcontractors-module RLS (see
+-- supabase/migrations/2026-08-16-10-tenant-scoped-rls-modules.sql): same
+-- admin_full_access shape as labor_subcontractors above.
+ALTER TABLE labor_contracts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_full_access ON labor_contracts FOR ALL TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('labor_subcontractors'))
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('labor_subcontractors'));
 
 -- ----------------------------------------------------------------
 -- LABOR_PAYMENTS — งวดจ่ายผู้รับเหมาช่วง (รวมการคืน retention)
@@ -513,6 +605,15 @@ CREATE TABLE labor_payments (
 CREATE INDEX idx_labor_payment_contract ON labor_payments(contract_id);
 CREATE INDEX idx_labor_payment_date     ON labor_payments(payment_date);
 CREATE INDEX idx_labor_payments_tenant_id ON labor_payments(tenant_id);
+
+-- labor_subcontractors-module RLS (see
+-- supabase/migrations/2026-08-16-10-tenant-scoped-rls-modules.sql): same
+-- admin_full_access shape as labor_subcontractors/labor_contracts above.
+ALTER TABLE labor_payments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_full_access ON labor_payments FOR ALL TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('labor_subcontractors'))
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('labor_subcontractors'));
 
 -- ----------------------------------------------------------------
 -- AUDIT_LOGS — ประวัติการแก้ไขข้อมูล (INSERT/UPDATE/DELETE)

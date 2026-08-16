@@ -257,3 +257,44 @@ BEGIN
 
   RAISE NOTICE 'Test 4 (tenant_can_write core read-only lockout): TEST PASSED';
 END $$;
+
+-- ── Test 5: workers table (payroll module) blocks a tenant with an
+-- expired trial and no payroll purchase, even for an ADMIN who passes
+-- every other check. ──
+DO $$
+DECLARE
+  tenant_id_expired UUID;
+  real_user_id UUID;
+  worker_row_id UUID;
+  visible_workers INT;
+BEGIN
+  -- tenants.owner_user_id is NOT NULL REFERENCES auth.users(id) — a
+  -- fabricated gen_random_uuid() violates the FK. Borrow a real user's id.
+  SELECT id INTO real_user_id FROM auth.users ORDER BY created_at ASC LIMIT 1;
+
+  INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at)
+  VALUES ('__TEST TENANT no payroll__', real_user_id, 'expired', now() - interval '1 day')
+  RETURNING id INTO tenant_id_expired;
+
+  INSERT INTO user_roles (user_email, role, status, tenant_id)
+  VALUES ('__test_no_payroll__@example.com', 'ADMIN', 'approved', tenant_id_expired);
+
+  INSERT INTO workers (name, monthly_salary, tenant_id)
+  VALUES ('__TEST WORKER blocked__', 20000, tenant_id_expired)
+  RETURNING id INTO worker_row_id;
+
+  SET LOCAL role = 'authenticated';
+  SET LOCAL request.jwt.claims = '{"email":"__test_no_payroll__@example.com"}';
+
+  SELECT count(*) INTO visible_workers FROM workers WHERE id = worker_row_id;
+  IF visible_workers != 0 THEN
+    RAISE EXCEPTION 'workers module-gate REGRESSION: expired tenant without payroll module should see 0 rows, got %', visible_workers;
+  END IF;
+
+  RESET role;
+  DELETE FROM workers WHERE id = worker_row_id;
+  DELETE FROM user_roles WHERE user_email = '__test_no_payroll__@example.com';
+  DELETE FROM tenants WHERE id = tenant_id_expired;
+
+  RAISE NOTICE 'Test 5 (module-gated RLS blocks unpaid module): TEST PASSED';
+END $$;
