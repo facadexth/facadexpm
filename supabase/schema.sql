@@ -80,9 +80,12 @@ CREATE TABLE suppliers (
   phone           TEXT,
   email           TEXT,
   category        JSONB,                              -- e.g. ["กระจก","อลูมิเนียม"]
-  payment_terms   TEXT,                                -- ใช้ auto-suggest billing/due date สำหรับ credit expense
+  payment_terms   TEXT,                                -- legacy free-text note, not used for propagation
   address         TEXT,
   notes           TEXT,
+  default_payment_method TEXT DEFAULT 'transfer'
+                  CHECK (default_payment_method IN ('transfer','check')),
+  credit_days     INTEGER,                             -- NULL = no credit terms (immediate/cash-like)
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -579,6 +582,40 @@ CREATE TRIGGER trg_supplier_number
   FOR EACH ROW
   WHEN (NEW.supplier_number IS NULL OR NEW.supplier_number = '')
   EXECUTE FUNCTION generate_supplier_number();
+
+-- When a supplier's default payment method or credit days changes, propagate
+-- to that supplier's still-unpaid expenses only — rows already marked 'paid'
+-- are a settled financial record and must not be silently rewritten.
+-- billing_date is backfilled from the expense's order date if not already
+-- set, then due_date is recomputed from the new credit_days (or cleared if
+-- the supplier no longer has credit terms). See
+-- 2026-08-16-02-supplier-payment-method.sql.
+CREATE OR REPLACE FUNCTION propagate_supplier_payment_method()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF (NEW.default_payment_method IS DISTINCT FROM OLD.default_payment_method)
+     OR (NEW.credit_days IS DISTINCT FROM OLD.credit_days) THEN
+    UPDATE expenses
+    SET payment_method = NEW.default_payment_method,
+        billing_date = COALESCE(billing_date, date),
+        due_date = CASE
+          WHEN NEW.credit_days IS NOT NULL THEN COALESCE(billing_date, date) + NEW.credit_days
+          ELSE NULL
+        END,
+        updated_at = NOW()
+    WHERE supplier_id = NEW.id
+      AND status <> 'paid';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_propagate_supplier_payment_method
+AFTER UPDATE ON suppliers
+FOR EACH ROW
+EXECUTE FUNCTION propagate_supplier_payment_method();
 
 CREATE OR REPLACE FUNCTION generate_subcontractor_number()
 RETURNS TRIGGER

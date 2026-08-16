@@ -20,7 +20,26 @@ const SUPPLIER_TYPES = [
 
 const EMPTY_FORM = {
   name: '', contact_person: '', phone: '', email: '',
-  category: [], payment_terms: '', address: '', notes: ''
+  category: [], payment_terms: '', address: '', notes: '',
+  default_payment_method: 'transfer', credit_days: ''
+}
+
+const PAYMENT_MODES = [
+  { key: 'transfer_cash',   label: 'โอน (เงินสด)',            hasDays: false },
+  { key: 'check_credit',    label: 'จ่ายเช็ค (เครดิต)',        hasDays: true  },
+  { key: 'transfer_credit', label: 'มีเครดิต แต่ใช้เป็นโอน',   hasDays: true  },
+]
+
+function modeFromSupplier(default_payment_method, credit_days) {
+  if (credit_days) return default_payment_method === 'check' ? 'check_credit' : 'transfer_credit'
+  return 'transfer_cash'
+}
+
+function formatPaymentMode(s) {
+  const mode = modeFromSupplier(s.default_payment_method, s.credit_days)
+  const found = PAYMENT_MODES.find(m => m.key === mode)
+  if (!found) return '—'
+  return found.hasDays ? `${found.label} ${s.credit_days} วัน` : found.label
 }
 
 function normCategory(raw) {
@@ -48,6 +67,16 @@ function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
         category: cats.includes(type) ? cats.filter(c => c !== type) : [...cats, type]
       }
     })
+  }
+
+  const mode = modeFromSupplier(form.default_payment_method, form.credit_days)
+  const setMode = (key) => {
+    const found = PAYMENT_MODES.find(m => m.key === key)
+    setForm(f => ({
+      ...f,
+      default_payment_method: key === 'check_credit' ? 'check' : 'transfer',
+      credit_days: found.hasDays ? f.credit_days : ''
+    }))
   }
 
   return (
@@ -92,9 +121,36 @@ function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
             </div>
           </div>
           <div>
-            <label className="label">เงื่อนไขการชำระ</label>
+            <label className="label">เงื่อนไขการชำระ (หมายเหตุ)</label>
             <input className="input" value={form.payment_terms} onChange={e => set('payment_terms', e.target.value)} placeholder="เช่น 30 วัน / เงินสด" />
           </div>
+        </div>
+        <div>
+          <label className="label">วิธีชำระเงิน (Default) ★</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 6 }}>
+            {PAYMENT_MODES.map(m => (
+              <label key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+                <input type="radio" name="payment_mode" checked={mode === m.key} onChange={() => setMode(m.key)} />
+                {m.label}
+              </label>
+            ))}
+          </div>
+          {PAYMENT_MODES.find(m => m.key === mode)?.hasDays && (
+            <div style={{ marginTop: 8, maxWidth: 200 }}>
+              <label className="label">จำนวนวันเครดิต (วันวางบิล → วันครบกำหนด) ★</label>
+              <input
+                type="number" min="0" className="input" required
+                value={form.credit_days}
+                onChange={e => set('credit_days', e.target.value)}
+                placeholder="เช่น 30"
+              />
+            </div>
+          )}
+          {initial?.id && (
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>
+              การเปลี่ยนวิธีชำระเงินจะปรับปรุงรายจ่ายที่ยังไม่ได้ชำระ (ไม่รวมรายการที่จ่ายแล้ว) ให้ตรงกันอัตโนมัติ
+            </div>
+          )}
         </div>
         <div className="form-grid-2">
           <div>
@@ -157,6 +213,8 @@ export default function Suppliers() {
         category: cats.length ? cats : null,
         payment_terms: form.payment_terms || null,
         address: form.address || null, notes: form.notes || null,
+        default_payment_method: form.default_payment_method || 'transfer',
+        credit_days: form.credit_days === '' ? null : parseInt(form.credit_days, 10),
       }
       if (editItem) {
         const { error } = await supabase.from('suppliers').update(payload).eq('id', editItem.id)
@@ -214,6 +272,7 @@ export default function Suppliers() {
                 <th>ผู้ติดต่อ</th>
                 <th>เบอร์โทร</th>
                 <th>เงื่อนไขชำระ</th>
+                <th>วิธีชำระเงิน</th>
                 <th></th>
               </tr>
             </thead>
@@ -236,6 +295,7 @@ export default function Suppliers() {
                   <td style={{ fontSize: 12 }}>{s.contact_person || '—'}</td>
                   <td style={{ fontSize: 12 }}>{s.phone || '—'}</td>
                   <td style={{ fontSize: 12 }}>{s.payment_terms || '—'}</td>
+                  <td style={{ fontSize: 12 }}>{formatPaymentMode(s)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {canEdit && (
                       <>
@@ -247,7 +307,7 @@ export default function Suppliers() {
                 </tr>
               ))}
               {!filtered.length && (
-                <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีข้อมูล Supplier</td></tr>
+                <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีข้อมูล Supplier</td></tr>
               )}
             </tbody>
           </table>
