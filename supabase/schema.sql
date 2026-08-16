@@ -651,10 +651,17 @@ CREATE POLICY system_insert ON audit_logs FOR INSERT TO authenticated
 -- ----------------------------------------------------------------
 -- TENANTS — แบ่งแยกข้อมูล SaaS (บริษัท/องค์กรในระบบ)
 -- ----------------------------------------------------------------
+-- owner_user_id is bookkeeping only (who created the tenant) — never read
+-- by any RLS policy or app query. Nullable with ON DELETE SET NULL: a
+-- pre-existing trigger (handle_user_role_deleted) auto-deletes a user's
+-- auth.users row whenever their user_roles row is deleted, which would
+-- otherwise fail with an FK violation whenever that user happens to be a
+-- still-existing tenant's owner_user_id (e.g. via UserManagement.jsx's
+-- "delete user" action on the tenant's founding OWNER).
 CREATE TABLE tenants (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_name  TEXT NOT NULL,
-  owner_user_id UUID NOT NULL REFERENCES auth.users(id),
+  owner_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   plan          TEXT NOT NULL DEFAULT 'trial' CHECK (plan IN ('trial','active','expired')),
   trial_ends_at TIMESTAMPTZ NOT NULL,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
