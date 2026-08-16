@@ -89,10 +89,19 @@ export default function UserManagement() {
           return
         }
 
-        // Create auth user
+        // Create auth user, tagged with our own tenant so the trigger
+        // joins them to it instead of spinning up a new one
+        const { data: { session } } = await supabase.auth.getSession()
+        const { data: ownRole } = await supabase
+          .from('user_roles')
+          .select('tenant_id')
+          .eq('user_email', session.user.email)
+          .single()
+
         const { data, error: authError } = await supabase.auth.signUp({
           email: form.email,
-          password: form.password
+          password: form.password,
+          options: { data: { invited_tenant_id: ownRole.tenant_id } }
         })
 
         if (authError) throw authError
