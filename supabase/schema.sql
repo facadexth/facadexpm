@@ -26,6 +26,18 @@
 -- TODO: introspect pg_policies for all 19 tables and replace this section
 -- with the real, current policy set rather than relying on the migration
 -- files as the source of truth.
+--
+-- ⚠️ NOT RUNNABLE TOP-TO-BOTTOM as of 2026-08-16: tenant_id columns below
+-- use DEFAULT current_tenant_id(), but that function (defined near
+-- user_roles, further down this file) depends on user_roles.tenant_id,
+-- which in turn depends on the tenants table. In production this
+-- ordering is handled correctly via the three-pass migration
+-- supabase/migrations/2026-08-16-07-tenant-id-backfill.sql (tenants →
+-- add/backfill tenant_id everywhere → create current_tenant_id() → set
+-- it as DEFAULT). This file was NOT reordered to match, to keep this
+-- change reviewable as a column-by-column diff; treat it as
+-- documentation of the current shape, not a from-scratch bootstrap
+-- script, until someone does that reorder.
 -- ================================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -38,8 +50,11 @@ CREATE TABLE expense_categories (
   name       TEXT NOT NULL UNIQUE,
   color      TEXT DEFAULT '#6c63ff',
   sort_order INT DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id  UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
 );
+
+CREATE INDEX idx_expense_categories_tenant_id ON expense_categories(tenant_id);
 
 -- Starter categories — adjust to the business before going live with a
 -- new company; these 8 are FacadeX's own (production currently has 12,
@@ -70,10 +85,12 @@ CREATE TABLE clients (
   notes           TEXT,
   client_type     TEXT CHECK (client_type IN ('DEVELOPER','ENDUSER','ผู้รับเหมา')),
   created_at      TIMESTAMPTZ DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ DEFAULT NOW()
+  updated_at      TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id       UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
 );
 
 CREATE INDEX idx_clients_name ON clients(name);
+CREATE INDEX idx_clients_tenant_id ON clients(tenant_id);
 
 -- ----------------------------------------------------------------
 -- SUPPLIERS — ผู้จำหน่ายวัสดุ
@@ -93,10 +110,12 @@ CREATE TABLE suppliers (
                   CHECK (default_payment_method IN ('transfer','check')),
   credit_days     INTEGER,                             -- NULL = no credit terms (immediate/cash-like)
   created_at      TIMESTAMPTZ DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ DEFAULT NOW()
+  updated_at      TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id       UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
 );
 
 CREATE INDEX idx_suppliers_name ON suppliers(name);
+CREATE INDEX idx_suppliers_tenant_id ON suppliers(tenant_id);
 
 -- ----------------------------------------------------------------
 -- SITES — ไซท์งานทั้งหมด
@@ -135,10 +154,12 @@ CREATE TABLE sites (
   map_url        TEXT,                          -- ลิงก์ Google Maps
 
   created_at     TIMESTAMPTZ DEFAULT NOW(),
-  updated_at     TIMESTAMPTZ DEFAULT NOW()
+  updated_at     TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id      UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
 );
 
 CREATE INDEX idx_sites_client_id ON sites(client_id);
+CREATE INDEX idx_sites_tenant_id ON sites(tenant_id);
 
 -- ----------------------------------------------------------------
 -- EXPENSES — รายจ่าย
@@ -168,7 +189,8 @@ CREATE TABLE expenses (
   is_subcontract  BOOLEAN DEFAULT FALSE,        -- TRUE = ค่าแรงช่างภายนอก
 
   created_at      TIMESTAMPTZ DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ DEFAULT NOW()
+  updated_at      TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id       UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
 );
 
 CREATE INDEX idx_expenses_site_id    ON expenses(site_id);
@@ -177,6 +199,7 @@ CREATE INDEX idx_expenses_status     ON expenses(status);
 CREATE INDEX idx_expenses_check_date ON expenses(check_date);
 CREATE INDEX idx_expenses_category_id ON expenses(category_id);
 CREATE INDEX idx_expenses_supplier_id ON expenses(supplier_id);
+CREATE INDEX idx_expenses_tenant_id ON expenses(tenant_id);
 
 -- ----------------------------------------------------------------
 -- INCOMES — รายรับ
@@ -195,11 +218,13 @@ CREATE TABLE incomes (
   received_amount NUMERIC DEFAULT 0,
 
   created_at      TIMESTAMPTZ DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ DEFAULT NOW()
+  updated_at      TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id       UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
 );
 
 CREATE INDEX idx_incomes_site_id ON incomes(site_id);
 CREATE INDEX idx_incomes_date    ON incomes(date);
+CREATE INDEX idx_incomes_tenant_id ON incomes(tenant_id);
 
 -- ----------------------------------------------------------------
 -- WORKERS — ช่างและพนักงาน
@@ -216,8 +241,11 @@ CREATE TABLE workers (
   status                TEXT DEFAULT 'active' CHECK (status IN ('active','inactive')),
   email                 TEXT,                    -- ผูกกับ user_roles.user_email (login account)
   created_at            TIMESTAMPTZ DEFAULT NOW(),
-  updated_at            TIMESTAMPTZ DEFAULT NOW()
+  updated_at            TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id             UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
 );
+
+CREATE INDEX idx_workers_tenant_id ON workers(tenant_id);
 
 -- ----------------------------------------------------------------
 -- WORKER_ASSIGNMENTS — Assign ช่างรายวัน
@@ -238,12 +266,14 @@ CREATE TABLE worker_assignments (
   ot_hours    NUMERIC DEFAULT 0,                 -- legacy field, superseded by worker_ot table
   notes       TEXT,
   created_at  TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id   UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
   UNIQUE (worker_id, date, shift)                -- 1 คน 1 วัน 1 กะ
 );
 
 CREATE INDEX idx_assignments_worker ON worker_assignments(worker_id);
 CREATE INDEX idx_assignments_site   ON worker_assignments(site_id);
 CREATE INDEX idx_assignments_date   ON worker_assignments(date);
+CREATE INDEX idx_worker_assignments_tenant_id ON worker_assignments(tenant_id);
 
 -- ----------------------------------------------------------------
 -- WORKER_OT — OT รายวัน (แยกจาก shift เช้า/บ่าย, สูงสุด 1 ช่วง/คน/วัน)
@@ -259,12 +289,14 @@ CREATE TABLE worker_ot (
   is_overnight  BOOLEAN NOT NULL DEFAULT false,  -- end_time falls on date+1 when true
   notes         TEXT,
   created_at    TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id     UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
   UNIQUE (worker_id, date),
   CHECK (is_overnight OR end_time > start_time)
 );
 
 CREATE INDEX idx_worker_ot_site ON worker_ot(site_id);
 CREATE INDEX idx_worker_ot_date ON worker_ot(date);
+CREATE INDEX idx_worker_ot_tenant_id ON worker_ot(tenant_id);
 
 -- ----------------------------------------------------------------
 -- COMPANY_HOLIDAYS — ปฏิทินวันหยุดบริษัท (ไม่ auto-mark worker_assignments;
@@ -274,10 +306,12 @@ CREATE TABLE company_holidays (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   date       DATE NOT NULL UNIQUE,
   name       TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id  UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
 );
 
 CREATE INDEX idx_company_holidays_date ON company_holidays(date);
+CREATE INDEX idx_company_holidays_tenant_id ON company_holidays(tenant_id);
 
 -- ----------------------------------------------------------------
 -- SALARY_RECORDS — เงินเดือนรายเดือน
@@ -300,8 +334,11 @@ CREATE TABLE salary_records (
   paid_date             DATE,
   notes                 TEXT,
   created_at            TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id             UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
   UNIQUE (worker_id, month, year)
 );
+
+CREATE INDEX idx_salary_records_tenant_id ON salary_records(tenant_id);
 
 -- ----------------------------------------------------------------
 -- LABOR_SUBCONTRACTORS — ผู้รับเหมาช่วง (ทีมงานภายนอก)
@@ -315,10 +352,12 @@ CREATE TABLE labor_subcontractors (
   email                 TEXT,
   notes                 TEXT,
   created_at            TIMESTAMPTZ DEFAULT NOW(),
-  updated_at            TIMESTAMPTZ DEFAULT NOW()
+  updated_at            TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id             UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
 );
 
 CREATE INDEX idx_labor_sub_name ON labor_subcontractors(name);
+CREATE INDEX idx_labor_subcontractors_tenant_id ON labor_subcontractors(tenant_id);
 
 -- ----------------------------------------------------------------
 -- LABOR_CONTRACTS — สัญญาผู้รับเหมาช่วงต่อไซท์
@@ -336,11 +375,13 @@ CREATE TABLE labor_contracts (
   start_date            DATE,
   created_at            TIMESTAMPTZ DEFAULT NOW(),
   updated_at            TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id             UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
   UNIQUE (subcontractor_id, site_id)
 );
 
 CREATE INDEX idx_labor_contract_site ON labor_contracts(site_id);
 CREATE INDEX idx_labor_contract_sub  ON labor_contracts(subcontractor_id);
+CREATE INDEX idx_labor_contracts_tenant_id ON labor_contracts(tenant_id);
 
 -- ----------------------------------------------------------------
 -- LABOR_PAYMENTS — งวดจ่ายผู้รับเหมาช่วง (รวมการคืน retention)
@@ -360,11 +401,13 @@ CREATE TABLE labor_payments (
   status                TEXT DEFAULT 'pending' CHECK (status IN ('pending','paid')),
   paid_date             DATE,
   notes                 TEXT,
-  created_at            TIMESTAMPTZ DEFAULT NOW()
+  created_at            TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id             UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
 );
 
 CREATE INDEX idx_labor_payment_contract ON labor_payments(contract_id);
 CREATE INDEX idx_labor_payment_date     ON labor_payments(payment_date);
+CREATE INDEX idx_labor_payments_tenant_id ON labor_payments(tenant_id);
 
 -- ----------------------------------------------------------------
 -- AUDIT_LOGS — ประวัติการแก้ไขข้อมูล (INSERT/UPDATE/DELETE)
@@ -377,12 +420,14 @@ CREATE TABLE audit_logs (
   user_email  TEXT,
   changed_at  TIMESTAMPTZ DEFAULT NOW(),
   old_values  JSONB,
-  new_values  JSONB
+  new_values  JSONB,
+  tenant_id   UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
 );
 
 CREATE INDEX idx_audit_record ON audit_logs(record_id);
 CREATE INDEX idx_audit_table  ON audit_logs(table_name);
 CREATE INDEX idx_audit_time   ON audit_logs(changed_at DESC);
+CREATE INDEX idx_audit_logs_tenant_id ON audit_logs(tenant_id);
 
 -- ----------------------------------------------------------------
 -- TENANTS — แบ่งแยกข้อมูล SaaS (บริษัท/องค์กรในระบบ)
@@ -418,8 +463,29 @@ CREATE TABLE user_roles (
   user_email TEXT NOT NULL UNIQUE,
   role       TEXT NOT NULL CHECK (role IN ('OWNER','ADMIN','WORKER')),
   status     VARCHAR DEFAULT 'approved' CHECK (status IN ('pending','approved')),
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  -- No DEFAULT current_tenant_id() here (unlike every other table): a
+  -- brand-new signup has no user_roles row yet, so current_tenant_id()
+  -- would resolve to NULL at exactly the moment the signup trigger needs
+  -- to create this first row — it must set tenant_id explicitly instead
+  -- (see the tenant-aware signup trigger).
+  tenant_id  UUID NOT NULL REFERENCES tenants(id)
 );
+
+CREATE INDEX idx_user_roles_tenant_id ON user_roles(tenant_id);
+
+-- current_tenant_id() resolves the calling session's tenant via
+-- user_roles.user_email = auth.email(). SECURITY DEFINER so it can read
+-- user_roles regardless of the caller's own RLS visibility into that
+-- table; STABLE since it only depends on the current row/session, not
+-- on statement-level mutations. Used as DEFAULT on every tenant-scoped
+-- table below except user_roles itself (see note on that column).
+CREATE OR REPLACE FUNCTION current_tenant_id()
+RETURNS UUID
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+  SELECT tenant_id FROM user_roles WHERE user_email = auth.email();
+$$;
 
 ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
 
@@ -495,14 +561,20 @@ REVOKE EXECUTE ON FUNCTION handle_user_role_deleted() FROM PUBLIC, anon, authent
 -- ----------------------------------------------------------------
 -- APP_SETTINGS — ค่าตั้งค่าระบบ (key/value)
 -- ----------------------------------------------------------------
+-- key was PRIMARY KEY alone before multi-tenancy; each tenant now needs
+-- its own travel_rate_per_km etc., so the PK became (tenant_id, key).
 CREATE TABLE app_settings (
-  key        TEXT PRIMARY KEY,
+  key        TEXT NOT NULL,
   value      TEXT NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id  UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  PRIMARY KEY (tenant_id, key)
 );
 
-INSERT INTO app_settings (key, value) VALUES ('travel_rate_per_km', '20') ON CONFLICT (key) DO NOTHING;
-INSERT INTO app_settings (key, value) VALUES ('holiday_pay_multiplier', '1.5') ON CONFLICT (key) DO NOTHING;
+CREATE INDEX idx_app_settings_tenant_id ON app_settings(tenant_id);
+
+INSERT INTO app_settings (key, value) VALUES ('travel_rate_per_km', '20') ON CONFLICT (tenant_id, key) DO NOTHING;
+INSERT INTO app_settings (key, value) VALUES ('holiday_pay_multiplier', '1.5') ON CONFLICT (tenant_id, key) DO NOTHING;
 
 -- ----------------------------------------------------------------
 -- CALENDAR_SYNC — mapping ระหว่าง assignment วันที่/ไซท์ กับ Google
@@ -513,8 +585,11 @@ CREATE TABLE calendar_sync (
   assignment_date  DATE NOT NULL,
   google_event_id  TEXT NOT NULL,
   updated_at       TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id        UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
   PRIMARY KEY (site_id, assignment_date)
 );
+
+CREATE INDEX idx_calendar_sync_tenant_id ON calendar_sync(tenant_id);
 
 -- ----------------------------------------------------------------
 -- SITE_PHASES — เฟสงานต่อไซท์ (Gantt / S-curve), auto-seed 7 เฟส
@@ -532,11 +607,13 @@ CREATE TABLE site_phases (
   billing_weight_pct  NUMERIC NOT NULL DEFAULT 0,   -- น้ำหนักเฟสนี้ต่อมูลค่างานรวม (รวมกัน 100%)
   depends_on_phase_id UUID REFERENCES site_phases(id),
   created_at          TIMESTAMPTZ DEFAULT NOW(),
-  updated_at          TIMESTAMPTZ DEFAULT NOW()
+  updated_at          TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id           UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
 );
 
 CREATE INDEX idx_site_phases_site_id ON site_phases(site_id);
 CREATE INDEX idx_site_phases_depends_on ON site_phases(depends_on_phase_id);
+CREATE INDEX idx_site_phases_tenant_id ON site_phases(tenant_id);
 
 CREATE OR REPLACE FUNCTION seed_site_phases()
 RETURNS TRIGGER
