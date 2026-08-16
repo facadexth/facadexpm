@@ -675,6 +675,12 @@ SELECT
 FROM incomes i
 LEFT JOIN sites s ON i.site_id = s.id;
 
+-- total_expense/total_income are pre-aggregated in their own subqueries
+-- before joining — joining expenses and incomes directly in one query (both
+-- one-to-many from sites) produces a cartesian product per site, multiplying
+-- each sum by the other table's row count for that site. Discovered live on
+-- FX-2026-001: total_income showed ฿394,395,518 (real ฿3,585,414 × 110
+-- expense rows), see 2026-08-16-01-fix-site-financial-summary-fanout.sql.
 CREATE OR REPLACE VIEW site_financial_summary WITH (security_invoker = true) AS
 SELECT
   s.id, s.site_number, s.name, s.status, s.start_date, s.end_date, s.contract_value,
@@ -682,26 +688,32 @@ SELECT
   s.cost_aluminum, s.cost_glass, s.cost_equipment, s.cost_rubber, s.cost_labor, s.cost_other,
   c.name            AS client_display_name,
   c.client_number,
-  COALESCE(SUM(e.amount), 0)          AS total_expense,
-  COALESCE(SUM(i.received_amount), 0) AS total_income,
-  COALESCE(SUM(i.received_amount), 0) - COALESCE(SUM(e.amount), 0) AS gross_profit,
+  COALESCE(exp.total_expense, 0)                                    AS total_expense,
+  COALESCE(inc.total_income, 0)                                     AS total_income,
+  COALESCE(inc.total_income, 0) - COALESCE(exp.total_expense, 0)    AS gross_profit,
   CASE WHEN s.contract_value > 0
-    THEN ROUND(COALESCE(SUM(i.received_amount), 0) / s.contract_value * 100, 1)
+    THEN ROUND(COALESCE(inc.total_income, 0) / s.contract_value * 100, 1)
     ELSE NULL
   END AS billing_pct,
-  COALESCE(SUM(CASE WHEN e.status IN ('pending','check_issued') THEN e.amount ELSE 0 END), 0) AS outstanding_expense,
+  COALESCE(exp.outstanding_expense, 0) AS outstanding_expense,
   s.distance_km,
   s.map_url,
   c.contact_person AS client_contact_person,
   c.phone          AS client_phone
 FROM sites s
 LEFT JOIN clients c ON s.client_id = c.id
-LEFT JOIN expenses e ON e.site_id = s.id
-LEFT JOIN incomes i ON i.site_id = s.id
-GROUP BY s.id, s.site_number, s.name, s.status, s.start_date, s.end_date, s.contract_value,
-  s.client_id, s.client_name, s.location, s.cost_aluminum, s.cost_glass, s.cost_equipment,
-  s.cost_rubber, s.cost_labor, s.cost_other, c.name, c.client_number,
-  s.distance_km, s.map_url, c.contact_person, c.phone;
+LEFT JOIN (
+  SELECT site_id,
+         SUM(amount) AS total_expense,
+         SUM(CASE WHEN status IN ('pending','check_issued') THEN amount ELSE 0 END) AS outstanding_expense
+  FROM expenses
+  GROUP BY site_id
+) exp ON exp.site_id = s.id
+LEFT JOIN (
+  SELECT site_id, SUM(received_amount) AS total_income
+  FROM incomes
+  GROUP BY site_id
+) inc ON inc.site_id = s.id;
 
 -- WORKER-safe site info — billing_pct as a progress proxy, no money columns.
 -- Computes billing_pct directly from sites+incomes (base tables), not via
