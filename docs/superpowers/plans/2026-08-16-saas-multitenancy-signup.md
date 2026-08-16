@@ -245,11 +245,17 @@ Create `supabase/tests/tenant_scoping_test.sql`:
 DO $$
 DECLARE
   test_tenant_id UUID;
-  test_owner_id UUID := gen_random_uuid();
+  test_owner_id UUID;
   resolved_tenant_id UUID;
   inserted_site_tenant_id UUID;
   test_site_id UUID;
 BEGIN
+  -- tenants.owner_user_id is NOT NULL REFERENCES auth.users(id), so a
+  -- fabricated gen_random_uuid() would violate the FK. Borrow a real
+  -- user's id instead — owner_user_id has no uniqueness constraint, so
+  -- this has no side effects on that user's own data.
+  SELECT id INTO test_owner_id FROM auth.users ORDER BY created_at ASC LIMIT 1;
+
   INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at)
   VALUES ('__TEST TENANT scoping__', test_owner_id, 'trial', now() + interval '14 days')
   RETURNING id INTO test_tenant_id;
@@ -386,17 +392,21 @@ DO $$
 DECLARE
   trial_tenant_id UUID;
   expired_tenant_id UUID;
-  owner_id_a UUID := gen_random_uuid();
-  owner_id_b UUID := gen_random_uuid();
+  real_user_id UUID;
   result BOOLEAN;
   visible_count INT;
 BEGIN
+  -- tenants.owner_user_id is NOT NULL REFERENCES auth.users(id) — a
+  -- fabricated gen_random_uuid() violates the FK. Borrow one real user's
+  -- id for both test tenants (owner_user_id has no uniqueness constraint).
+  SELECT id INTO real_user_id FROM auth.users ORDER BY created_at ASC LIMIT 1;
+
   INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at)
-  VALUES ('__TEST TENANT trial__', owner_id_a, 'trial', now() + interval '14 days')
+  VALUES ('__TEST TENANT trial__', real_user_id, 'trial', now() + interval '14 days')
   RETURNING id INTO trial_tenant_id;
 
   INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at)
-  VALUES ('__TEST TENANT expired__', owner_id_b, 'expired', now() - interval '1 day')
+  VALUES ('__TEST TENANT expired__', real_user_id, 'expired', now() - interval '1 day')
   RETURNING id INTO expired_tenant_id;
 
   INSERT INTO tenant_modules (tenant_id, module_key) VALUES (expired_tenant_id, 'payroll');
@@ -575,16 +585,22 @@ DO $$
 DECLARE
   tenant_a UUID;
   tenant_b UUID;
+  real_user_id UUID;
   site_a UUID;
   site_b UUID;
   visible_sites INT;
   visible_roles INT;
 BEGIN
+  -- tenants.owner_user_id is NOT NULL REFERENCES auth.users(id) — a
+  -- fabricated gen_random_uuid() violates the FK. Borrow one real user's
+  -- id for both test tenants (owner_user_id has no uniqueness constraint).
+  SELECT id INTO real_user_id FROM auth.users ORDER BY created_at ASC LIMIT 1;
+
   INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at)
-  VALUES ('__TEST TENANT A__', gen_random_uuid(), 'active', now() + interval '365 days')
+  VALUES ('__TEST TENANT A__', real_user_id, 'active', now() + interval '365 days')
   RETURNING id INTO tenant_a;
   INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at)
-  VALUES ('__TEST TENANT B__', gen_random_uuid(), 'active', now() + interval '365 days')
+  VALUES ('__TEST TENANT B__', real_user_id, 'active', now() + interval '365 days')
   RETURNING id INTO tenant_b;
 
   INSERT INTO user_roles (user_email, role, status, tenant_id) VALUES
@@ -624,12 +640,17 @@ END $$;
 DO $$
 DECLARE
   tenant_id_expired UUID;
+  real_user_id UUID;
   site_row_id UUID;
   visible_sites INT;
   insert_failed BOOLEAN := false;
 BEGIN
+  -- tenants.owner_user_id is NOT NULL REFERENCES auth.users(id) — a
+  -- fabricated gen_random_uuid() violates the FK. Borrow a real user's id.
+  SELECT id INTO real_user_id FROM auth.users ORDER BY created_at ASC LIMIT 1;
+
   INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at)
-  VALUES ('__TEST TENANT expired writes__', gen_random_uuid(), 'expired', now() - interval '1 day')
+  VALUES ('__TEST TENANT expired writes__', real_user_id, 'expired', now() - interval '1 day')
   RETURNING id INTO tenant_id_expired;
 
   INSERT INTO user_roles (user_email, role, status, tenant_id)
@@ -812,11 +833,16 @@ Append to `supabase/tests/tenant_scoping_test.sql`:
 DO $$
 DECLARE
   tenant_id_expired UUID;
+  real_user_id UUID;
   worker_row_id UUID;
   visible_workers INT;
 BEGIN
+  -- tenants.owner_user_id is NOT NULL REFERENCES auth.users(id) — a
+  -- fabricated gen_random_uuid() violates the FK. Borrow a real user's id.
+  SELECT id INTO real_user_id FROM auth.users ORDER BY created_at ASC LIMIT 1;
+
   INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at)
-  VALUES ('__TEST TENANT no payroll__', gen_random_uuid(), 'expired', now() - interval '1 day')
+  VALUES ('__TEST TENANT no payroll__', real_user_id, 'expired', now() - interval '1 day')
   RETURNING id INTO tenant_id_expired;
 
   INSERT INTO user_roles (user_email, role, status, tenant_id)
