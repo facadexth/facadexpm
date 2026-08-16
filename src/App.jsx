@@ -121,21 +121,22 @@ export default function App() {
       {/* ── Header ── */}
       <header style={{
         background: 'var(--bg2)', borderBottom: '1px solid var(--border)',
-        padding: '0 24px', height: 56, display: 'flex',
+        padding: '0 24px', minHeight: 56, display: 'flex',
         alignItems: 'center', justifyContent: 'space-between',
-        position: 'sticky', top: 0, zIndex: 100
+        position: 'sticky', top: 0, zIndex: 100,
+        flexWrap: 'wrap', gap: 8, rowGap: 4,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
           <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent)', letterSpacing: 1 }}>
             FACADE X
           </span>
-          <span style={{ color: 'var(--text3)', fontSize: 13 }}>Construction Dashboard</span>
+          <span className="header-subtitle" style={{ color: 'var(--text3)', fontSize: 13 }}>Construction Dashboard</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <span style={{ color: 'var(--text3)', fontSize: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', padding: '8px 0' }}>
+          <span className="header-email" style={{ color: 'var(--text3)', fontSize: 12, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {session.user.email}
           </span>
-          <span style={{ color: 'var(--text3)', fontSize: 12 }}>
+          <span className="header-date" style={{ color: 'var(--text3)', fontSize: 12, whiteSpace: 'nowrap' }}>
             {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
           </span>
           <button
@@ -178,7 +179,7 @@ export default function App() {
       </nav>
 
       {/* ── Page Content ── */}
-      <main style={{ flex: 1, padding: '20px 24px', maxWidth: 1440, margin: '0 auto', width: '100%' }}>
+      <main className="app-main" style={{ flex: 1, padding: '20px 24px', maxWidth: 1440, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
         {renderPage()}
       </main>
 
