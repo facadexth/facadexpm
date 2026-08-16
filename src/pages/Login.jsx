@@ -73,6 +73,7 @@ export default function Login() {
             </div>
             <button
               type="button" className="btn btn-primary"
+              disabled={loading}
               style={{ height: 44, fontSize: 14, fontWeight: 700, width: '100%' }}
               onClick={() => switchMode('login')}
             >
@@ -80,7 +81,7 @@ export default function Login() {
             </button>
           </div>
         ) : (
-          <form onSubmit={mode === 'login' ? handleLogin : handleSignup} style={{ display: 'grid', gap: 16 }}>
+          <form key={mode} onSubmit={mode === 'login' ? handleLogin : handleSignup} style={{ display: 'grid', gap: 16 }}>
             {mode === 'signup' && (
               <div>
                 <label className="label">ชื่อบริษัท</label>
@@ -134,9 +135,17 @@ export default function Login() {
         {!signupDone && (
           <div style={{ marginTop: 24, textAlign: 'center', fontSize: 12, color: 'var(--text3)' }}>
             {mode === 'login' ? (
-              <>ยังไม่มีบัญชี? <a href="#" onClick={e => { e.preventDefault(); switchMode('signup') }} style={{ color: 'var(--accent)' }}>สร้างบัญชีใหม่ฟรี</a></>
+              <>ยังไม่มีบัญชี? <a
+                href="#" aria-disabled={loading}
+                onClick={e => { e.preventDefault(); if (!loading) switchMode('signup') }}
+                style={{ color: 'var(--accent)', pointerEvents: loading ? 'none' : 'auto', opacity: loading ? 0.5 : 1 }}
+              >สร้างบัญชีใหม่ฟรี</a></>
             ) : (
-              <>มีบัญชีอยู่แล้ว? <a href="#" onClick={e => { e.preventDefault(); switchMode('login') }} style={{ color: 'var(--accent)' }}>เข้าสู่ระบบ</a></>
+              <>มีบัญชีอยู่แล้ว? <a
+                href="#" aria-disabled={loading}
+                onClick={e => { e.preventDefault(); if (!loading) switchMode('login') }}
+                style={{ color: 'var(--accent)', pointerEvents: loading ? 'none' : 'auto', opacity: loading ? 0.5 : 1 }}
+              >เข้าสู่ระบบ</a></>
             )}
           </div>
         )}
