@@ -13,19 +13,28 @@
 -- missing outright). Keep this file in sync going forward by
 -- introspecting the live DB again rather than hand-editing guesses.
 --
--- ⚠️ STALE: this file predates 2026-08-15's RLS rollout. RLS is now
--- ENABLED on all 19 tables in production, with policies matching the
--- app's OWNER > ADMIN > WORKER role model. The section below (which only
--- shows RLS on `user_roles`) does NOT reflect this — the authoritative,
--- currently-accurate source for every policy is:
+-- ⚠️ PARTIALLY STALE: RLS is ENABLED on all 19 tables in production, with
+-- policies matching the app's OWNER > ADMIN > WORKER role model. As of
+-- 2026-08-16, the 12 core (non-module) tables below — expense_categories,
+-- clients, suppliers, sites, expenses, incomes, company_holidays,
+-- audit_logs, user_roles, app_settings, calendar_sync, site_phases —
+-- carry accurate, tenant-scoped policy definitions inline. The remaining
+-- 7 module tables (workers, worker_assignments, worker_ot, salary_records,
+-- labor_subcontractors, labor_contracts, labor_payments) are NOT yet
+-- reflected here — the authoritative source for those until Task 5 lands is:
 --   supabase/migrations/2026-08-15-01-enable-rls.sql       (base rollout)
 --   supabase/migrations/2026-08-16-05-security-advisor-fixes.sql (4 policy
 --     tweaks: workers.worker_reads_own_profile, and worker_reads_own on
 --     worker_assignments/worker_ot/salary_records, wrapped auth.email()
 --     in a subquery for RLS init-plan performance)
--- TODO: introspect pg_policies for all 19 tables and replace this section
--- with the real, current policy set rather than relying on the migration
--- files as the source of truth.
+--   supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql (this
+--     task: tenant-scopes the 12 core tables' reads, additionally gates
+--     their writes on tenant_can_write(), and fixes a real cross-tenant
+--     leak on user_roles' read_all_roles policy, previously USING (true))
+-- TODO: introspect pg_policies for the remaining 7 module tables and
+-- replace their section with the real, current policy set once Task 5
+-- (module-gated RLS) lands, rather than relying on the migration files
+-- as the source of truth.
 --
 -- ⚠️ NOT RUNNABLE TOP-TO-BOTTOM as of 2026-08-16: tenant_id columns below
 -- use DEFAULT current_tenant_id(), but that function (defined near
@@ -55,6 +64,22 @@ CREATE TABLE expense_categories (
 );
 
 CREATE INDEX idx_expense_categories_tenant_id ON expense_categories(tenant_id);
+
+-- Group A core-table RLS (see supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql):
+-- reads are ADMIN+ and tenant-scoped only (an expired trial can still view
+-- its own data, per spec §4); writes are additionally gated by
+-- tenant_can_write(), hence 4 single-command policies instead of FOR ALL.
+ALTER TABLE expense_categories ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_reads ON expense_categories FOR SELECT TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id());
+CREATE POLICY admin_inserts ON expense_categories FOR INSERT TO authenticated
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_updates ON expense_categories FOR UPDATE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write())
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_deletes ON expense_categories FOR DELETE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
 
 -- Starter categories — adjust to the business before going live with a
 -- new company; these 8 are FacadeX's own (production currently has 12,
@@ -92,6 +117,19 @@ CREATE TABLE clients (
 CREATE INDEX idx_clients_name ON clients(name);
 CREATE INDEX idx_clients_tenant_id ON clients(tenant_id);
 
+-- Group A core-table RLS (see supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql).
+ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_reads ON clients FOR SELECT TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id());
+CREATE POLICY admin_inserts ON clients FOR INSERT TO authenticated
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_updates ON clients FOR UPDATE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write())
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_deletes ON clients FOR DELETE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+
 -- ----------------------------------------------------------------
 -- SUPPLIERS — ผู้จำหน่ายวัสดุ
 -- ----------------------------------------------------------------
@@ -116,6 +154,19 @@ CREATE TABLE suppliers (
 
 CREATE INDEX idx_suppliers_name ON suppliers(name);
 CREATE INDEX idx_suppliers_tenant_id ON suppliers(tenant_id);
+
+-- Group A core-table RLS (see supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql).
+ALTER TABLE suppliers ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_reads ON suppliers FOR SELECT TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id());
+CREATE POLICY admin_inserts ON suppliers FOR INSERT TO authenticated
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_updates ON suppliers FOR UPDATE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write())
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_deletes ON suppliers FOR DELETE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
 
 -- ----------------------------------------------------------------
 -- SITES — ไซท์งานทั้งหมด
@@ -161,6 +212,19 @@ CREATE TABLE sites (
 CREATE INDEX idx_sites_client_id ON sites(client_id);
 CREATE INDEX idx_sites_tenant_id ON sites(tenant_id);
 
+-- Group A core-table RLS (see supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql).
+ALTER TABLE sites ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_reads ON sites FOR SELECT TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id());
+CREATE POLICY admin_inserts ON sites FOR INSERT TO authenticated
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_updates ON sites FOR UPDATE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write())
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_deletes ON sites FOR DELETE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+
 -- ----------------------------------------------------------------
 -- EXPENSES — รายจ่าย
 -- ----------------------------------------------------------------
@@ -201,6 +265,19 @@ CREATE INDEX idx_expenses_category_id ON expenses(category_id);
 CREATE INDEX idx_expenses_supplier_id ON expenses(supplier_id);
 CREATE INDEX idx_expenses_tenant_id ON expenses(tenant_id);
 
+-- Group A core-table RLS (see supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql).
+ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_reads ON expenses FOR SELECT TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id());
+CREATE POLICY admin_inserts ON expenses FOR INSERT TO authenticated
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_updates ON expenses FOR UPDATE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write())
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_deletes ON expenses FOR DELETE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+
 -- ----------------------------------------------------------------
 -- INCOMES — รายรับ
 -- ----------------------------------------------------------------
@@ -225,6 +302,19 @@ CREATE TABLE incomes (
 CREATE INDEX idx_incomes_site_id ON incomes(site_id);
 CREATE INDEX idx_incomes_date    ON incomes(date);
 CREATE INDEX idx_incomes_tenant_id ON incomes(tenant_id);
+
+-- Group A core-table RLS (see supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql).
+ALTER TABLE incomes ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_reads ON incomes FOR SELECT TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id());
+CREATE POLICY admin_inserts ON incomes FOR INSERT TO authenticated
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_updates ON incomes FOR UPDATE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write())
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_deletes ON incomes FOR DELETE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
 
 -- ----------------------------------------------------------------
 -- WORKERS — ช่างและพนักงาน
@@ -312,6 +402,21 @@ CREATE TABLE company_holidays (
 
 CREATE INDEX idx_company_holidays_date ON company_holidays(date);
 CREATE INDEX idx_company_holidays_tenant_id ON company_holidays(tenant_id);
+
+-- Group B core-table RLS (see supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql):
+-- any staff member of the tenant reads (shared calendar, not financial
+-- data); only ADMIN+ writes, additionally gated by tenant_can_write().
+ALTER TABLE company_holidays ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY staff_reads ON company_holidays FOR SELECT TO authenticated
+  USING (tenant_id = current_tenant_id());
+CREATE POLICY admin_writes_holidays ON company_holidays FOR INSERT TO authenticated
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_updates_holidays ON company_holidays FOR UPDATE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write())
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_deletes_holidays ON company_holidays FOR DELETE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
 
 -- ----------------------------------------------------------------
 -- SALARY_RECORDS — เงินเดือนรายเดือน
@@ -429,6 +534,19 @@ CREATE INDEX idx_audit_table  ON audit_logs(table_name);
 CREATE INDEX idx_audit_time   ON audit_logs(changed_at DESC);
 CREATE INDEX idx_audit_logs_tenant_id ON audit_logs(tenant_id);
 
+-- Group C core-table RLS (see supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql):
+-- ADMIN+ reads their own tenant's rows; any authenticated write within
+-- the tenant is logged automatically (system_insert), still gated by
+-- tenant_can_write() since a write-locked tenant can't mutate anything
+-- to log in the first place. No UPDATE/DELETE policy for anyone —
+-- audit log rows are append-only by design.
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_read ON audit_logs FOR SELECT TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id());
+CREATE POLICY system_insert ON audit_logs FOR INSERT TO authenticated
+  WITH CHECK (tenant_id = current_tenant_id() AND tenant_can_write());
+
 -- ----------------------------------------------------------------
 -- TENANTS — แบ่งแยกข้อมูล SaaS (บริษัท/องค์กรในระบบ)
 -- ----------------------------------------------------------------
@@ -511,10 +629,12 @@ CREATE POLICY member_reads_own_modules ON tenant_modules FOR SELECT TO authentic
 
 -- ----------------------------------------------------------------
 -- USER_ROLES — สิทธิ์การใช้งาน ผูกกับ Supabase Auth ผ่าน user_email
--- ⚠️ RLS เปิดอยู่บนตารางนี้ แต่ policy ปัจจุบันคือ qual=true สำหรับทุก
--- authenticated user — คือแค่กันคนที่ไม่ login เข้ามาแตะ ไม่ได้แยกสิทธิ์
--- ตาม role จริง (WORKER ที่ login แล้วสามารถ promote ตัวเองเป็น OWNER
--- ผ่าน Supabase client ได้ตรงๆ ในตอนนี้) — ดู README §8 ก่อนแก้
+-- RLS: read is scoped to the caller's own tenant (2026-08-16 — the
+-- previous read_all_roles policy was USING (true), leaking every
+-- tenant's email+role roster to every authenticated user under
+-- multi-tenancy; fixed by
+-- supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql). Only
+-- OWNER can write, additionally gated by tenant_can_write().
 -- ----------------------------------------------------------------
 CREATE TABLE user_roles (
   id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -547,10 +667,16 @@ $$;
 
 ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY read_all_roles  ON user_roles FOR SELECT TO authenticated USING (true);
-CREATE POLICY insert_user_role ON user_roles FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY owner_can_update ON user_roles FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY owner_can_delete ON user_roles FOR DELETE TO authenticated USING (true);
+-- Group D core-table RLS (see supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql).
+CREATE POLICY read_all_roles ON user_roles FOR SELECT TO authenticated
+  USING (tenant_id = current_tenant_id());
+CREATE POLICY owner_inserts ON user_roles FOR INSERT TO authenticated
+  WITH CHECK (is_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY owner_updates ON user_roles FOR UPDATE TO authenticated
+  USING (is_owner() AND tenant_id = current_tenant_id() AND tenant_can_write())
+  WITH CHECK (is_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY owner_deletes ON user_roles FOR DELETE TO authenticated
+  USING (is_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
 
 -- New Supabase Auth signups default to WORKER/approved automatically.
 CREATE OR REPLACE FUNCTION handle_new_user()
@@ -631,6 +757,19 @@ CREATE TABLE app_settings (
 
 CREATE INDEX idx_app_settings_tenant_id ON app_settings(tenant_id);
 
+-- Group A core-table RLS (see supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql).
+ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_reads ON app_settings FOR SELECT TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id());
+CREATE POLICY admin_inserts ON app_settings FOR INSERT TO authenticated
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_updates ON app_settings FOR UPDATE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write())
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_deletes ON app_settings FOR DELETE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+
 INSERT INTO app_settings (key, value) VALUES ('travel_rate_per_km', '20') ON CONFLICT (tenant_id, key) DO NOTHING;
 INSERT INTO app_settings (key, value) VALUES ('holiday_pay_multiplier', '1.5') ON CONFLICT (tenant_id, key) DO NOTHING;
 
@@ -648,6 +787,19 @@ CREATE TABLE calendar_sync (
 );
 
 CREATE INDEX idx_calendar_sync_tenant_id ON calendar_sync(tenant_id);
+
+-- Group A core-table RLS (see supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql).
+ALTER TABLE calendar_sync ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_reads ON calendar_sync FOR SELECT TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id());
+CREATE POLICY admin_inserts ON calendar_sync FOR INSERT TO authenticated
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_updates ON calendar_sync FOR UPDATE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write())
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_deletes ON calendar_sync FOR DELETE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
 
 -- ----------------------------------------------------------------
 -- SITE_PHASES — เฟสงานต่อไซท์ (Gantt / S-curve), auto-seed 7 เฟส
@@ -672,6 +824,19 @@ CREATE TABLE site_phases (
 CREATE INDEX idx_site_phases_site_id ON site_phases(site_id);
 CREATE INDEX idx_site_phases_depends_on ON site_phases(depends_on_phase_id);
 CREATE INDEX idx_site_phases_tenant_id ON site_phases(tenant_id);
+
+-- Group A core-table RLS (see supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql).
+ALTER TABLE site_phases ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_reads ON site_phases FOR SELECT TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id());
+CREATE POLICY admin_inserts ON site_phases FOR INSERT TO authenticated
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_updates ON site_phases FOR UPDATE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write())
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+CREATE POLICY admin_deletes ON site_phases FOR DELETE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
 
 CREATE OR REPLACE FUNCTION seed_site_phases()
 RETURNS TRIGGER
