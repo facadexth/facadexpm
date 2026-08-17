@@ -790,6 +790,41 @@ AS $$
   SELECT tenant_id FROM user_roles WHERE user_email = auth.email();
 $$;
 
+-- current_user_role()/is_admin_or_owner()/is_owner() — the original
+-- (pre-multi-tenancy) RLS-helper functions from the 2026-08-15 rollout,
+-- reused unchanged by every policy above and below that checks role.
+-- Same SECURITY DEFINER + fixed search_path shape as current_tenant_id().
+CREATE OR REPLACE FUNCTION current_user_role()
+RETURNS TEXT
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+  SELECT role FROM user_roles WHERE user_email = auth.email();
+$$;
+
+CREATE OR REPLACE FUNCTION is_admin_or_owner()
+RETURNS BOOLEAN
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+  SELECT COALESCE(current_user_role() IN ('ADMIN','OWNER'), false);
+$$;
+
+CREATE OR REPLACE FUNCTION is_owner()
+RETURNS BOOLEAN
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+  SELECT COALESCE(current_user_role() = 'OWNER', false);
+$$;
+
+-- Locked down to `authenticated` only (anon has no legitimate reason to
+-- call these directly via /rest/v1/rpc/*) — see
+-- 2026-08-16-05-security-advisor-fixes.sql.
+REVOKE EXECUTE ON FUNCTION current_user_role() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION is_admin_or_owner() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION is_owner() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION current_user_role() TO authenticated;
+GRANT EXECUTE ON FUNCTION is_admin_or_owner() TO authenticated;
+GRANT EXECUTE ON FUNCTION is_owner() TO authenticated;
+
 ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
 
 -- Group D core-table RLS (see supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql).
