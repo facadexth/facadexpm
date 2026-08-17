@@ -172,6 +172,12 @@ CREATE POLICY admin_deletes ON suppliers FOR DELETE TO authenticated
 -- Not tenant-scoped — every tenant reads the same rows once, at signup,
 -- to seed their own expense_categories/suppliers (above). See
 -- supabase/migrations/2026-08-17-07-contractor-type-templates.sql.
+-- Row-level seed content (10 contractor types × their material/labor
+-- categories × one default supplier per material category) lives in
+-- supabase/migrations/2026-08-17-08-seed-contractor-type-content.sql,
+-- not duplicated here — schema.sql documents structure, not bulk seed
+-- data (compare the expense_categories starter rows above, which are
+-- few enough to inline; these 61 rows are not).
 -- ----------------------------------------------------------------
 CREATE TABLE contractor_types (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

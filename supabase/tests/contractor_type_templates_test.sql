@@ -73,3 +73,36 @@ BEGIN
 
   RAISE NOTICE 'Test 2 (labor category has no supplier row): TEST PASSED';
 END $$;
+
+-- ── Test 3: every seeded contractor type has at least one category,
+-- and every category with a name NOT containing 'แรง' (the labor-cost
+-- naming convention used throughout this seed and the rest of the app)
+-- has exactly one supplier — catches a mistyped type_key or
+-- category_name in the VALUES lists silently producing an orphaned
+-- row that the JOIN in Task 2's migration would have dropped. ──
+DO $$
+DECLARE
+  types_without_categories INT;
+  material_categories_without_supplier INT;
+BEGIN
+  SELECT count(*) INTO types_without_categories
+  FROM contractor_types ct
+  WHERE NOT EXISTS (SELECT 1 FROM contractor_type_categories cc WHERE cc.contractor_type_id = ct.id)
+    AND ct.key NOT LIKE '\_\_test%';
+
+  IF types_without_categories != 0 THEN
+    RAISE EXCEPTION 'CONTENT REGRESSION: % contractor type(s) have zero categories (a type_key typo in the seed VALUES list silently drops the JOIN)', types_without_categories;
+  END IF;
+
+  SELECT count(*) INTO material_categories_without_supplier
+  FROM contractor_type_categories cc
+  WHERE cc.name NOT LIKE '%แรง%'
+    AND NOT EXISTS (SELECT 1 FROM contractor_type_category_suppliers s WHERE s.category_template_id = cc.id)
+    AND cc.name NOT LIKE '\_\_TEST%';
+
+  IF material_categories_without_supplier != 0 THEN
+    RAISE EXCEPTION 'CONTENT REGRESSION: % non-labor categor(y/ies) have zero suppliers (a category_name typo in the seed VALUES list silently drops the JOIN)', material_categories_without_supplier;
+  END IF;
+
+  RAISE NOTICE 'Test 3 (seed content integrity): TEST PASSED';
+END $$;
