@@ -13,6 +13,7 @@ import { useExpenses, useSites, useCategories, useSuppliers } from '../hooks/use
 import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
+import { auditLog } from '../lib/audit.js'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
@@ -468,13 +469,17 @@ export default function Expenses({ navigateTo, navState }) {
           </div>
           <div className="modal-footer">
             <button className="btn btn-ghost" onClick={async () => {
-              const { error } = await supabase.from('purchase_orders').update({ status: 'ordered', received_date: null, expense_id: null }).eq('id', reconcilePoId)
+              const update = { status: 'ordered', received_date: null, expense_id: null }
+              const { error } = await supabase.from('purchase_orders').update(update).eq('id', reconcilePoId)
               if (error) { alert('Error: ' + error.message); return }
+              await auditLog('purchase_orders', reconcilePoId, 'UPDATE', null, update)
               setReconcilePoId(null)
             }}>กลับไปเป็นยังไม่รับของ</button>
             <button className="btn btn-danger" onClick={async () => {
-              const { error } = await supabase.from('purchase_orders').update({ status: 'cancelled' }).eq('id', reconcilePoId)
+              const update = { status: 'cancelled' }
+              const { error } = await supabase.from('purchase_orders').update(update).eq('id', reconcilePoId)
               if (error) { alert('Error: ' + error.message); return }
+              await auditLog('purchase_orders', reconcilePoId, 'UPDATE', null, update)
               setReconcilePoId(null)
             }}>ยกเลิกใบสั่งซื้อ</button>
           </div>
