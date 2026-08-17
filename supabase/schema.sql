@@ -50,13 +50,19 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- ----------------------------------------------------------------
 -- EXPENSE_CATEGORIES — หมวดค่าใช้จ่าย (แก้ไข/เพิ่ม/ลบได้)
 -- ----------------------------------------------------------------
+-- name uniqueness is scoped per tenant, not global (see
+-- 2026-08-17-10-fix-expense-categories-global-unique-name.sql) — the
+-- contractor-type starter-template seed gives every tenant of the same
+-- trade identical category names, which a global UNIQUE(name) would
+-- have rejected on the second such signup.
 CREATE TABLE expense_categories (
   id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  name       TEXT NOT NULL UNIQUE,
+  name       TEXT NOT NULL,
   color      TEXT DEFAULT '#6c63ff',
   sort_order INT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  tenant_id  UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+  tenant_id  UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  UNIQUE (tenant_id, name)
 );
 
 CREATE INDEX idx_expense_categories_tenant_id ON expense_categories(tenant_id);
