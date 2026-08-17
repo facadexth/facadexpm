@@ -239,6 +239,7 @@ export default function Expenses({ navigateTo, navState }) {
   const totalAmount = useMemo(() => (expenses || []).reduce((s, e) => s + (e.amount || 0), 0), [expenses])
   const totalPaid   = useMemo(() => (expenses || []).filter(e => e.status === 'paid' || e.status === 'check_cleared').reduce((s, e) => s + (e.amount || 0), 0), [expenses])
   const totalPending = useMemo(() => (expenses || []).filter(e => e.status === 'pending' || e.status === 'check_issued').reduce((s, e) => s + (e.amount || 0), 0), [expenses])
+  const totalAwaitingBilling = useMemo(() => (expenses || []).filter(e => e.status === 'awaiting_billing').reduce((s, e) => s + (e.amount || 0), 0), [expenses])
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
@@ -346,6 +347,7 @@ export default function Expenses({ navigateTo, navState }) {
         <div className="kpi-card kpi-sm red"><div className="kpi-label">รายจ่ายรวม</div><div className="kpi-value" style={{color:'var(--red)'}}>{fmt(totalAmount)}</div></div>
         <div className="kpi-card kpi-sm green"><div className="kpi-label">จ่ายแล้ว</div><div className="kpi-value" style={{color:'var(--green)'}}>{fmt(totalPaid)}</div></div>
         <div className="kpi-card kpi-sm yellow"><div className="kpi-label">ค้างจ่าย</div><div className="kpi-value" style={{color:'var(--yellow)'}}>{fmt(totalPending)}</div></div>
+        <div className="kpi-card kpi-sm yellow"><div className="kpi-label">รอวางบิล</div><div className="kpi-value" style={{color:'var(--yellow)'}}>{fmt(totalAwaitingBilling)}</div></div>
         <div className="kpi-card kpi-sm"><div className="kpi-label">จำนวนรายการ</div><div className="kpi-value">{(expenses||[]).length} รายการ</div></div>
       </div>
 
