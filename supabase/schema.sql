@@ -605,6 +605,35 @@ CREATE POLICY admin_full_access ON purchase_order_items FOR ALL TO authenticated
   WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
 
 -- ----------------------------------------------------------------
+-- PURCHASE_ORDER_ATTACHMENTS — เอกสารแนบใบสั่งซื้อ (ใบเสนอราคา, รูปสินค้า)
+-- ----------------------------------------------------------------
+-- Reference-only files (supplier quotations, product photos) — never
+-- parsed, just stored for viewing/downloading. See
+-- supabase/migrations/2026-08-17-06-purchase-order-attachments.sql.
+CREATE TABLE purchase_order_attachments (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  po_id       UUID NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+  file_path   TEXT NOT NULL,
+  file_name   TEXT NOT NULL,
+  uploaded_at TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id   UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+);
+
+CREATE INDEX idx_po_attachments_po_id ON purchase_order_attachments(po_id);
+CREATE INDEX idx_po_attachments_tenant_id ON purchase_order_attachments(tenant_id);
+
+ALTER TABLE purchase_order_attachments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY admin_full_access ON purchase_order_attachments FOR ALL TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'))
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
+
+-- Storage: files live in the private `po-attachments` bucket (public =
+-- false) under a tenant-prefixed path ({tenant_id}/{po_id}/...). Bucket
+-- creation and its RLS policy (po_attachments_tenant_access on
+-- storage.objects) are infrastructure DDL, not part of this table-by-
+-- table narrative — see the migration above for the full definition.
+
+-- ----------------------------------------------------------------
 -- LABOR_SUBCONTRACTORS — ผู้รับเหมาช่วง (ทีมงานภายนอก)
 -- ----------------------------------------------------------------
 CREATE TABLE labor_subcontractors (
