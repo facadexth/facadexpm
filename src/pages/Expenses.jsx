@@ -16,6 +16,10 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
+import {
+  creditTermDays as computeCreditTermDays, paymentMethodOptions, billingDueTargetField,
+  calcDueDate, resolvePaymentMethodOnSupplierChange,
+} from '../lib/supplierCredit.js'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -47,21 +51,17 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
 
   // เครดิตเทอมของ Supplier ที่เลือก (วัน) — ใช้คำนวณวันครบกำหนดจากวันวางบิล
   const selectedSupplier = suppliers.find(s => s.id === form.supplier_id)
-  const creditTermDays = selectedSupplier?.credit_days ?? null
-
-  const supplierHasCredit = !selectedSupplier || selectedSupplier.credit_days != null
-  const methodOptions = supplierHasCredit ? ['transfer', 'check', 'cash', 'credit'] : ['transfer', 'cash']
+  const creditTermDays = computeCreditTermDays(selectedSupplier)
+  const methodOptions = paymentMethodOptions(selectedSupplier)
 
   // วันวางบิล → คำนวณวันครบกำหนดให้อัตโนมัติ
   // เช็ค: เขียนลง check_date · เครดิต: เขียนลง due_date — เฉพาะตอนที่ยังไม่ได้กรอกวันครบกำหนดเอง
   const setBillingDate = (val) => {
     setForm(f => {
       const next = { ...f, billing_date: val }
-      const targetField = f.payment_method === 'check' ? 'check_date' : 'due_date'
+      const targetField = billingDueTargetField(f.payment_method)
       if (!f[targetField] && val && creditTermDays != null) {
-        const d = new Date(val)
-        d.setDate(d.getDate() + creditTermDays)
-        next[targetField] = d.toISOString().slice(0, 10)
+        next[targetField] = calcDueDate(val, creditTermDays)
       }
       return next
     })
@@ -118,8 +118,7 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
                   ...f,
                   supplier_id: id,
                   supplier: sup ? sup.name : (id ? f.supplier : ''),
-                  payment_method: (!hasCredit && (f.payment_method === 'check' || f.payment_method === 'credit'))
-                    ? 'transfer' : f.payment_method,
+                  payment_method: resolvePaymentMethodOnSupplierChange(f.payment_method, hasCredit),
                 }))
               }}
               placeholder="— เลือก Supplier —"
