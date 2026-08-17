@@ -307,14 +307,14 @@ export default function Expenses({ navigateTo, navState }) {
         <a className="btn btn-ghost" href="/templates/TEMPLATE_รายจ่าย.xlsx" download>📄 Template</a>
         <div style={{ flex: 1 }} />
         <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหารายละเอียด..." value={search} onChange={e => setSearch(e.target.value)} />
-        <select className="select select-sm" value={dateField} onChange={e => setDateField(e.target.value)}>
+        <select className="select select-sm" style={{ width: 190 }} value={dateField} onChange={e => setDateField(e.target.value)}>
           <option value="date">วันที่สั่งซื้อ</option>
           <option value="billing_date">วันวางบิล</option>
           <option value="due">วันครบกำหนด (เช็ค/เครดิต)</option>
         </select>
-        <input type="date" className="input input-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+        <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <span style={{ color: 'var(--text3)' }}>—</span>
-        <input type="date" className="input input-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+        <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
       </div>
 
       {/* ── Import Zone ── */}
@@ -335,7 +335,7 @@ export default function Expenses({ navigateTo, navState }) {
         <div style={{ minWidth: 190 }}>
           <SearchableSelect value={supplierId} onChange={setSupplierId} placeholder="ทุก Supplier" options={supplierOpts(suppliers)} />
         </div>
-        <select className="select select-sm" value={status} onChange={e => setStatus(e.target.value)}>
+        <select className="select select-sm" style={{ width: 190 }} value={status} onChange={e => setStatus(e.target.value)}>
           <option value="">ทุกสถานะ</option>
           {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
         </select>

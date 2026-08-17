@@ -217,9 +217,9 @@ export default function Income({ navigateTo, navState }) {
         <a className="btn btn-ghost" href="/templates/TEMPLATE_รายรับ.xlsx" download>📄 Template</a>
         <div style={{ flex: 1 }} />
         <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหา..." value={search} onChange={e => setSearch(e.target.value)} />
-        <input type="date" className="input input-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+        <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <span style={{ color: 'var(--text3)' }}>—</span>
-        <input type="date" className="input input-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+        <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
       </div>
 
       {/* ── Import ── */}

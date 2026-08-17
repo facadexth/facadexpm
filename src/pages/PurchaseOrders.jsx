@@ -412,9 +412,9 @@ export default function PurchaseOrders({ navigateTo, navState }) {
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => { setEditRow(null); setShowAdd(true) }}>+ เพิ่มใบสั่งซื้อ</button>}
         <div style={{ flex: 1 }} />
-        <input type="date" className="input input-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+        <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <span style={{ color: 'var(--text3)' }}>—</span>
-        <input type="date" className="input input-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+        <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -424,7 +424,7 @@ export default function PurchaseOrders({ navigateTo, navState }) {
         <div style={{ minWidth: 190 }}>
           <SearchableSelect value={supplierId} onChange={setSupplierId} placeholder="ทุก Supplier" options={supplierOpts(suppliers)} />
         </div>
-        <select className="select select-sm" value={status} onChange={e => setStatus(e.target.value)}>
+        <select className="select select-sm" style={{ width: 190 }} value={status} onChange={e => setStatus(e.target.value)}>
           <option value="">ทุกสถานะ</option>
           {PO_STATUSES.map(s => <option key={s} value={s}>{PO_STATUS_LABELS[s]}</option>)}
         </select>
