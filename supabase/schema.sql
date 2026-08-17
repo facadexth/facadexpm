@@ -756,7 +756,7 @@ CREATE TABLE tenants (
 -- ----------------------------------------------------------------
 CREATE TABLE tenant_modules (
   tenant_id  UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  module_key TEXT NOT NULL CHECK (module_key IN ('payroll','labor_subcontractors')),
+  module_key TEXT NOT NULL CHECK (module_key IN ('payroll','labor_subcontractors','purchase_orders')),
   enabled_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (tenant_id, module_key)
 );
@@ -770,6 +770,12 @@ CREATE TABLE tenant_modules (
 --   SELECT id, 'payroll' FROM tenants WHERE company_name = 'Facade X'
 --   UNION ALL
 --   SELECT id, 'labor_subcontractors' FROM tenants WHERE company_name = 'Facade X'
+--   ON CONFLICT (tenant_id, module_key) DO NOTHING;
+--
+-- purchase_orders bootstrap seed (supabase/migrations/2026-08-17-03-purchase-orders-module-key.sql):
+-- same reasoning, same tenant, new module.
+--   INSERT INTO tenant_modules (tenant_id, module_key)
+--   SELECT id, 'purchase_orders' FROM tenants WHERE company_name = 'Facade X'
 --   ON CONFLICT (tenant_id, module_key) DO NOTHING;
 
 -- has_module_access(): true for every module during an active trial
