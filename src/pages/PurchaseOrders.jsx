@@ -147,7 +147,8 @@ export default function PurchaseOrders({ navigateTo, navState }) {
       if (editRow) {
         const { error } = await supabase.from('purchase_orders').update(poPayload).eq('id', editRow.id)
         if (error) throw error
-        await supabase.from('purchase_order_items').delete().eq('po_id', editRow.id)
+        const { error: delError } = await supabase.from('purchase_order_items').delete().eq('po_id', editRow.id)
+        if (delError) throw delError
         await auditLog('purchase_orders', editRow.id, 'UPDATE', editRow, poPayload)
       } else {
         const { data, error } = await supabase.from('purchase_orders').insert(poPayload).select().single()
