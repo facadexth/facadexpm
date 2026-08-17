@@ -221,6 +221,7 @@ export default function Expenses({ navigateTo, navState }) {
   const [toggleRow,setToggleRow]= useState(null)  // { id, currentStatus }
   const [newStatus, setNewStatus] = useState('')
   const [deleteId, setDeleteId] = useState(null)
+  const [reconcilePoId, setReconcilePoId] = useState(null)
   const [saving,   setSaving]   = useState(false)
   const [toast,    setToast]    = useState(null)
   const [showImport, setShowImport] = useState(false)
@@ -287,9 +288,11 @@ export default function Expenses({ navigateTo, navState }) {
 
   const handleDelete = async () => {
     if (!deleteId) return
+    const row = (expenses || []).find(e => e.id === deleteId)
     const { error } = await supabase.from('expenses').delete().eq('id', deleteId)
-    if (!error) { setDeleteId(null); refetch(); showToast('ลบแล้ว') }
-    else alert('Error: ' + error.message)
+    if (error) { alert('Error: ' + error.message); return }
+    setDeleteId(null); refetch(); showToast('ลบแล้ว')
+    if (row?.po_id) setReconcilePoId(row.po_id)
   }
 
   return (
@@ -455,6 +458,25 @@ export default function Expenses({ navigateTo, navState }) {
       {/* ── Delete Confirm ── */}
       {deleteId && (
         <ConfirmDialog title="ลบรายจ่าย" message="ยืนยันการลบรายการนี้?" onConfirm={handleDelete} onCancel={() => setDeleteId(null)} danger />
+      )}
+
+      {/* ── PO Reconciliation Dialog ── */}
+      {reconcilePoId && (
+        <Modal title="ใบสั่งซื้ออ้างอิงยังอยู่" onClose={() => setReconcilePoId(null)} maxWidth={420}>
+          <div className="modal-body">
+            <p style={{ color: 'var(--text2)' }}>รายจ่ายที่ลบไปมาจากใบสั่งซื้อนี้ — ต้องการปรับสถานะใบสั่งซื้ออย่างไร?</p>
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-ghost" onClick={async () => {
+              await supabase.from('purchase_orders').update({ status: 'ordered', received_date: null, expense_id: null }).eq('id', reconcilePoId)
+              setReconcilePoId(null)
+            }}>กลับไปเป็นยังไม่รับของ</button>
+            <button className="btn btn-danger" onClick={async () => {
+              await supabase.from('purchase_orders').update({ status: 'cancelled' }).eq('id', reconcilePoId)
+              setReconcilePoId(null)
+            }}>ยกเลิกใบสั่งซื้อ</button>
+          </div>
+        </Modal>
       )}
     </div>
   )
