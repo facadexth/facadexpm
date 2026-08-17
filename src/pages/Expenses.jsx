@@ -207,6 +207,7 @@ export default function Expenses({ navigateTo, navState }) {
 
   const [dateFrom, setDateFrom] = useState(ytdFrom)
   const [dateTo,   setDateTo]   = useState(ytdTo)
+  const [dateField, setDateField] = useState('date')
   const [siteId,   setSiteId]   = useState(navState?.siteId || '')
   const [catId,    setCatId]    = useState('')
   const [supplierId, setSupplierId] = useState('')
@@ -226,7 +227,7 @@ export default function Expenses({ navigateTo, navState }) {
     if (navState?.siteId) setSiteId(navState.siteId)
   }, [navState])
 
-  const filters = { from: dateFrom, to: dateTo, siteId, categoryId: catId, supplierId, status, search }
+  const filters = { from: dateFrom, to: dateTo, dateField, siteId, categoryId: catId, supplierId, status, search }
   const { data: expenses, refetch } = useExpenses(filters)
   const { data: sites }      = useSites()
   const { data: categories } = useCategories()
@@ -298,6 +299,11 @@ export default function Expenses({ navigateTo, navState }) {
         <a className="btn btn-ghost" href="/templates/TEMPLATE_รายจ่าย.xlsx" download>📄 Template</a>
         <div style={{ flex: 1 }} />
         <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหารายละเอียด..." value={search} onChange={e => setSearch(e.target.value)} />
+        <select className="select select-sm" value={dateField} onChange={e => setDateField(e.target.value)}>
+          <option value="date">วันที่สั่งซื้อ</option>
+          <option value="billing_date">วันวางบิล</option>
+          <option value="due">วันครบกำหนด / วันโอน</option>
+        </select>
         <input type="date" className="input input-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <span style={{ color: 'var(--text3)' }}>—</span>
         <input type="date" className="input input-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} />

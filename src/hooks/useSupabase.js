@@ -65,9 +65,18 @@ export function useExpenses(filters = {}) {
     if (filters.categoryId) q = q.eq('category_id', filters.categoryId)
     if (filters.supplierId) q = q.eq('supplier_id', filters.supplierId)
     if (filters.status)   q = q.eq('status', filters.status)
-    if (filters.from)     q = q.gte('date', filters.from)
-    if (filters.to)       q = q.lte('date', filters.to)
     if (filters.search)   q = q.ilike('description', `%${filters.search}%`)
+
+    // dateField: 'date' (วันที่สั่งซื้อ, default) | 'billing_date' (วันวางบิล)
+    // | 'due' (วันครบกำหนด/วันโอน — due_date for credit rows, check_date for cheque rows)
+    const field = filters.dateField || 'date'
+    if (field === 'due') {
+      if (filters.from) q = q.or(`due_date.gte.${filters.from},check_date.gte.${filters.from}`)
+      if (filters.to)   q = q.or(`due_date.lte.${filters.to},check_date.lte.${filters.to}`)
+    } else {
+      if (filters.from) q = q.gte(field, filters.from)
+      if (filters.to)   q = q.lte(field, filters.to)
+    }
 
     const { data, error } = await q
     if (error) throw error
