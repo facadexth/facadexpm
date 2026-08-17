@@ -231,7 +231,12 @@ function AttachmentsSection({ poId, tenantId }) {
       const { error: upErr } = await supabase.storage.from('po-attachments').upload(filePath, file)
       if (upErr) throw upErr
       const { error: dbErr } = await supabase.from('purchase_order_attachments').insert({ po_id: poId, file_path: filePath, file_name: file.name })
-      if (dbErr) throw dbErr
+      if (dbErr) {
+        // Uploaded file has no DB row yet — remove it so it doesn't become
+        // an orphan invisible to this UI (no other path can find/delete it).
+        await supabase.storage.from('po-attachments').remove([filePath])
+        throw dbErr
+      }
       await load()
     } catch (err) {
       alert('Error: ' + err.message)
@@ -248,9 +253,15 @@ function AttachmentsSection({ poId, tenantId }) {
   }
 
   const handleRemove = async (att) => {
-    await supabase.storage.from('po-attachments').remove([att.file_path])
-    await supabase.from('purchase_order_attachments').delete().eq('id', att.id)
-    await load()
+    try {
+      const { error: rmErr } = await supabase.storage.from('po-attachments').remove([att.file_path])
+      if (rmErr) throw rmErr
+      const { error: dbErr } = await supabase.from('purchase_order_attachments').delete().eq('id', att.id)
+      if (dbErr) throw dbErr
+      await load()
+    } catch (err) {
+      alert('Error: ' + err.message)
+    }
   }
 
   return (
