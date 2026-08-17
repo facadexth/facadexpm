@@ -197,6 +197,10 @@ function PODocumentModal({ po, onClose }) {
               </tr>
             </tfoot>
           </table>
+          <div style={{ marginTop: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, textAlign: 'center', fontSize: 12 }}>
+            <div style={{ borderTop: '1px solid #999', paddingTop: 6 }}>ลายเซ็นผู้จัดทำ</div>
+            <div style={{ borderTop: '1px solid #999', paddingTop: 6 }}>ลายเซ็นผู้อนุมัติ</div>
+          </div>
         </div>
       </div>
       <div className="modal-footer">
