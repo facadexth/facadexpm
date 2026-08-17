@@ -63,6 +63,7 @@ export function useExpenses(filters = {}) {
 
     if (filters.siteId)   q = q.eq('site_id', filters.siteId)
     if (filters.categoryId) q = q.eq('category_id', filters.categoryId)
+    if (filters.supplierId) q = q.eq('supplier_id', filters.supplierId)
     if (filters.status)   q = q.eq('status', filters.status)
     if (filters.from)     q = q.gte('date', filters.from)
     if (filters.to)       q = q.lte('date', filters.to)

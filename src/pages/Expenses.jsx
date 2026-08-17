@@ -189,6 +189,7 @@ export default function Expenses({ navigateTo, navState }) {
   const [dateTo,   setDateTo]   = useState(ytdTo)
   const [siteId,   setSiteId]   = useState(navState?.siteId || '')
   const [catId,    setCatId]    = useState('')
+  const [supplierId, setSupplierId] = useState('')
   const [status,   setStatus]   = useState('')
   const [search,   setSearch]   = useState('')
   const [showAdd,  setShowAdd]  = useState(false)
@@ -205,7 +206,7 @@ export default function Expenses({ navigateTo, navState }) {
     if (navState?.siteId) setSiteId(navState.siteId)
   }, [navState])
 
-  const filters = { from: dateFrom, to: dateTo, siteId, categoryId: catId, status, search }
+  const filters = { from: dateFrom, to: dateTo, siteId, categoryId: catId, supplierId, status, search }
   const { data: expenses, refetch } = useExpenses(filters)
   const { data: sites }      = useSites()
   const { data: categories } = useCategories()
