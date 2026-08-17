@@ -14,6 +14,7 @@ import Dashboard   from './pages/Dashboard.jsx'
 import Sites       from './pages/Sites.jsx'
 import Assign      from './pages/Assign.jsx'
 import Expenses    from './pages/Expenses.jsx'
+import PurchaseOrders from './pages/PurchaseOrders.jsx'
 import Income      from './pages/Income.jsx'
 import HR                from './pages/HR.jsx'
 import LaborContractors  from './pages/LaborContractors.jsx'
@@ -29,6 +30,7 @@ const TABS = [
   { id: 'hr',                label: '👷 HR',                   minRole: 'WORKER', module: 'payroll' },
   { id: 'sites',             label: '🏗️ ไซท์งาน',            minRole: 'ADMIN',  module: null },
   { id: 'expenses',          label: '💸 รายจ่าย',              minRole: 'ADMIN',  module: null },
+  { id: 'purchase_orders',   label: '🧾 ใบสั่งซื้อ',           minRole: 'ADMIN',  module: 'purchase_orders' },
   { id: 'income',            label: '💰 รายรับ',               minRole: 'ADMIN',  module: null },
   { id: 'categories',        label: '🏷️ หมวดหมู่',            minRole: 'ADMIN',  module: null },
   { id: 'clients',           label: '🏢 ลูกค้า',              minRole: 'ADMIN',  module: null },
@@ -74,6 +76,7 @@ export default function App() {
       case 'hr':         return <ProtectedPage minRole="WORKER"><HR        {...props} /></ProtectedPage>
       case 'sites':      return <ProtectedPage minRole="ADMIN"><Sites      {...props} /></ProtectedPage>
       case 'expenses':   return <ProtectedPage minRole="ADMIN"><Expenses   {...props} /></ProtectedPage>
+      case 'purchase_orders': return <ProtectedPage minRole="ADMIN"><PurchaseOrders {...props} /></ProtectedPage>
       case 'income':     return <ProtectedPage minRole="ADMIN"><Income     {...props} /></ProtectedPage>
       case 'categories': return <ProtectedPage minRole="ADMIN"><Categories {...props} /></ProtectedPage>
       case 'clients':    return <ProtectedPage minRole="ADMIN"><Clients    {...props} /></ProtectedPage>
