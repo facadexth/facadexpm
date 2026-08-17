@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAppSetting, saveAppSetting } from '../hooks/useSupabase.js'
+import { useAppSetting, saveAppSetting, useContractorTypes } from '../hooks/useSupabase.js'
+import { useTenant } from '../hooks/useTenant.js'
 
 const DEFAULT_PERMISSIONS = {
   WORKER: {
@@ -85,6 +86,30 @@ export default function Settings() {
     }
   }
 
+  // Contractor type — stored on tenants.contractor_type_id
+  const { tenant, refetch: refetchTenant } = useTenant()
+  const { data: contractorTypes } = useContractorTypes()
+  const [contractorTypeId, setContractorTypeId] = useState('')
+  const [savingType, setSavingType] = useState(false)
+  useEffect(() => { if (tenant) setContractorTypeId(tenant.contractor_type_id || '') }, [tenant])
+
+  const handleSaveContractorType = async () => {
+    setSavingType(true)
+    try {
+      const { error } = await supabase
+        .from('tenants')
+        .update({ contractor_type_id: contractorTypeId || null })
+        .eq('id', tenant.id)
+      if (error) throw error
+      refetchTenant()
+      alert('✅ บันทึกประเภทผู้รับเหมาแล้ว')
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setSavingType(false)
+    }
+  }
+
   // Load permissions from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('role_permissions')
@@ -142,6 +167,31 @@ export default function Settings() {
           </div>
           <button className="btn btn-primary" onClick={handleSaveRate} disabled={savingRate}>
             {savingRate ? '⏳ กำลังบันทึก...' : '✅ บันทึกเรท'}
+          </button>
+        </div>
+      </div>
+
+      {/* ── ประเภทผู้รับเหมา ── */}
+      <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
+        <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🏗️ ประเภทผู้รับเหมา</h2>
+        <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
+          เปลี่ยนได้ตลอด — ไม่กระทบหมวดค่าใช้จ่ายหรือ supplier ที่มีอยู่แล้ว
+        </p>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div>
+            <label className="label">ประเภทผู้รับเหมา</label>
+            <select
+              className="input" style={{ width: 240 }}
+              value={contractorTypeId} onChange={e => setContractorTypeId(e.target.value)}
+            >
+              <option value="">— ไม่ระบุ —</option>
+              {(contractorTypes || []).map(t => (
+                <option key={t.id} value={t.id}>{t.label_th}</option>
+              ))}
+            </select>
+          </div>
+          <button className="btn btn-primary" onClick={handleSaveContractorType} disabled={savingType || !tenant}>
+            {savingType ? '⏳ กำลังบันทึก...' : '✅ บันทึก'}
           </button>
         </div>
       </div>
