@@ -468,11 +468,13 @@ export default function Expenses({ navigateTo, navState }) {
           </div>
           <div className="modal-footer">
             <button className="btn btn-ghost" onClick={async () => {
-              await supabase.from('purchase_orders').update({ status: 'ordered', received_date: null, expense_id: null }).eq('id', reconcilePoId)
+              const { error } = await supabase.from('purchase_orders').update({ status: 'ordered', received_date: null, expense_id: null }).eq('id', reconcilePoId)
+              if (error) { alert('Error: ' + error.message); return }
               setReconcilePoId(null)
             }}>กลับไปเป็นยังไม่รับของ</button>
             <button className="btn btn-danger" onClick={async () => {
-              await supabase.from('purchase_orders').update({ status: 'cancelled' }).eq('id', reconcilePoId)
+              const { error } = await supabase.from('purchase_orders').update({ status: 'cancelled' }).eq('id', reconcilePoId)
+              if (error) { alert('Error: ' + error.message); return }
               setReconcilePoId(null)
             }}>ยกเลิกใบสั่งซื้อ</button>
           </div>
