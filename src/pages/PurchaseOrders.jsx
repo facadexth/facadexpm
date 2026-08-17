@@ -183,6 +183,7 @@ export default function PurchaseOrders({ navigateTo, navState }) {
   const [deleteId, setDeleteId] = useState(null)
   const [docRow, setDocRow] = useState(null)
   const [receiveRow, setReceiveRow] = useState(null)
+  const [receiving, setReceiving] = useState(false)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState(null)
 
@@ -243,7 +244,8 @@ export default function PurchaseOrders({ navigateTo, navState }) {
   }
 
   const handleReceive = async () => {
-    if (!receiveRow) return
+    if (!receiveRow || receiving) return
+    setReceiving(true)
     const total = (receiveRow.purchase_order_items || []).reduce((s, it) => s + (it.line_total || 0), 0)
     try {
       const expensePayload = {
@@ -271,6 +273,8 @@ export default function PurchaseOrders({ navigateTo, navState }) {
       setReceiveRow(null); refetch(); showToast('รับของแล้ว สร้างรายจ่ายอัตโนมัติ')
     } catch (e) {
       alert('Error: ' + e.message + ' — หากสร้างรายจ่ายไปแล้วแต่ใบสั่งซื้อยังไม่อัปเดต ให้ตรวจสอบหน้ารายจ่ายและอัปเดตใบสั่งซื้อด้วยตนเอง')
+    } finally {
+      setReceiving(false)
     }
   }
 
