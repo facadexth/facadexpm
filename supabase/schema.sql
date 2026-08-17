@@ -219,13 +219,23 @@ CREATE TABLE contractor_type_category_suppliers (
   sort_order             INT NOT NULL DEFAULT 0
 );
 
--- Shared reference data: any authenticated user can read it (needed by
--- the signup form's dropdown, before the caller even has a tenant_id
--- yet — so this must NOT be tenant_can_write()/current_tenant_id()
--- gated). No write policy for authenticated — content is maintained
--- directly via SQL.
+-- Shared reference data: readable pre-tenant, since it's needed by the
+-- signup form's dropdown — so this must NOT be
+-- tenant_can_write()/current_tenant_id() gated. No write policy — content
+-- is maintained directly via SQL.
+--
+-- contractor_types specifically must also be readable by the `anon` role
+-- (see 2026-08-17-12-contractor-types-anon-readable.sql): the signup
+-- form's dropdown fetches this BEFORE the visitor is authenticated, so
+-- supabase-js is using the anon API key and PostgREST evaluates RLS as
+-- `anon`, not `authenticated`, at that point — a policy scoped to
+-- `authenticated` only left the dropdown seeing zero rows for every real
+-- signup visitor. contractor_type_categories/
+-- contractor_type_category_suppliers don't need this: the signup trigger
+-- itself runs SECURITY DEFINER and bypasses RLS entirely, and the only
+-- other reader (Settings.jsx) always has a session.
 ALTER TABLE contractor_types ENABLE ROW LEVEL SECURITY;
-CREATE POLICY anyone_reads_contractor_types ON contractor_types FOR SELECT TO authenticated USING (true);
+CREATE POLICY anyone_reads_contractor_types ON contractor_types FOR SELECT TO anon, authenticated USING (true);
 
 ALTER TABLE contractor_type_categories ENABLE ROW LEVEL SECURITY;
 CREATE POLICY anyone_reads_contractor_type_categories ON contractor_type_categories FOR SELECT TO authenticated USING (true);
