@@ -13,6 +13,7 @@ import { auditLog } from '../lib/audit.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
+import { downloadPDF } from '../lib/pdf.js'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -110,6 +111,61 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
   )
 }
 
+function PODocumentModal({ po, onClose }) {
+  const items = po.purchase_order_items || []
+  const total = items.reduce((s, it) => s + (it.line_total || 0), 0)
+
+  return (
+    <Modal title={`ใบสั่งซื้อ ${po.po_number}`} onClose={onClose} maxWidth={640}>
+      <div className="modal-body">
+        <div id={`po-doc-${po.id}`} style={{ fontFamily: 'Sarabun,sans-serif', padding: '20px 24px', background: '#fff', color: '#111' }}>
+          <div style={{ textAlign: 'center', marginBottom: 16 }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>FACADE X</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>ใบสั่งซื้อ</div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12, fontSize: 13 }}>
+            <div><strong>เลขที่:</strong> {po.po_number}</div>
+            <div><strong>วันที่:</strong> {new Date(po.date).toLocaleDateString('th-TH')}</div>
+            <div><strong>ไซท์งาน:</strong> {po.sites?.name} ({po.sites?.site_number})</div>
+            <div><strong>Supplier:</strong> {po.suppliers?.name}</div>
+          </div>
+          {po.notes && <div style={{ fontSize: 13, marginBottom: 12 }}><strong>หมายเหตุ:</strong> {po.notes}</div>}
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #111' }}>
+                <th style={{ textAlign: 'left', padding: '6px 4px' }}>รายการ</th>
+                <th style={{ textAlign: 'right', padding: '6px 4px' }}>จำนวน</th>
+                <th style={{ textAlign: 'right', padding: '6px 4px' }}>ราคา/หน่วย</th>
+                <th style={{ textAlign: 'right', padding: '6px 4px' }}>รวม</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(it => (
+                <tr key={it.id} style={{ borderBottom: '1px solid #ddd' }}>
+                  <td style={{ padding: '6px 4px' }}>{it.description}</td>
+                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{it.quantity} {it.unit || ''}</td>
+                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(it.unit_price)}</td>
+                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(it.line_total)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr style={{ fontWeight: 700, fontSize: 15 }}>
+                <td colSpan={3} style={{ padding: '8px 4px', borderTop: '2px solid #111' }}>รวมทั้งสิ้น</td>
+                <td style={{ textAlign: 'right', padding: '8px 4px', borderTop: '2px solid #111' }}>{fmt(total)} บาท</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
+        <button className="btn btn-primary" onClick={() => downloadPDF(`po-doc-${po.id}`, `${po.po_number}.pdf`)}>📄 ดาวน์โหลด PDF</button>
+      </div>
+    </Modal>
+  )
+}
+
 export default function PurchaseOrders({ navigateTo, navState }) {
   const { isAtLeast } = useUserRole()
   const canEdit = isAtLeast('ADMIN')
@@ -125,6 +181,7 @@ export default function PurchaseOrders({ navigateTo, navState }) {
   const [showAdd, setShowAdd] = useState(false)
   const [editRow, setEditRow] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
+  const [docRow, setDocRow] = useState(null)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState(null)
 
@@ -240,6 +297,7 @@ export default function PurchaseOrders({ navigateTo, navState }) {
                     <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(total)}</td>
                     <td><span className={`badge badge-po-${po.status}`}>{PO_STATUS_LABELS[po.status] || po.status}</span></td>
                     <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(po)}>📄</button>
                       {canEdit && po.status === 'ordered' && (
                         <>
                           <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(po); setShowAdd(true) }}>✏️</button>
@@ -271,6 +329,8 @@ export default function PurchaseOrders({ navigateTo, navState }) {
       {deleteId && (
         <ConfirmDialog title="ยกเลิกใบสั่งซื้อ" message="ยืนยันการยกเลิกใบสั่งซื้อนี้?" onConfirm={handleCancel} onCancel={() => setDeleteId(null)} danger />
       )}
+
+      {docRow && <PODocumentModal po={docRow} onClose={() => setDocRow(null)} />}
     </div>
   )
 }
