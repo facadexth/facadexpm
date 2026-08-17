@@ -1045,16 +1045,19 @@ AS $$
 DECLARE
   v_tenant_id UUID;
   v_invited_tenant_id UUID;
+  v_contractor_type_id UUID;
 BEGIN
   v_invited_tenant_id := (new.raw_user_meta_data->>'invited_tenant_id')::UUID;
 
   IF v_invited_tenant_id IS NOT NULL THEN
     v_tenant_id := v_invited_tenant_id;
   ELSE
-    INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at)
+    v_contractor_type_id := (new.raw_user_meta_data->>'contractor_type_id')::UUID;
+
+    INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at, contractor_type_id)
     VALUES (
       COALESCE(new.raw_user_meta_data->>'company_name', new.email),
-      new.id, 'trial', now() + interval '14 days'
+      new.id, 'trial', now() + interval '14 days', v_contractor_type_id
     )
     RETURNING id INTO v_tenant_id;
 
@@ -1062,6 +1065,26 @@ BEGIN
       (v_tenant_id, 'travel_rate_per_km', '20'),
       (v_tenant_id, 'holiday_pay_multiplier', '1.5')
     ON CONFLICT (tenant_id, key) DO NOTHING;
+
+    -- Seed expense_categories + suppliers from the chosen contractor
+    -- type's shared template rows (contractor_type_categories /
+    -- contractor_type_category_suppliers). Only the newly-created tenant
+    -- branch seeds — same reasoning as the app_settings seed above.
+    -- Skipped entirely when contractor_type_id is absent/NULL (old
+    -- client code or Task 4's dropdown not yet shipped): the tenant
+    -- starts blank, exactly as it did before this change.
+    IF v_contractor_type_id IS NOT NULL THEN
+      INSERT INTO expense_categories (name, color, sort_order, tenant_id)
+      SELECT name, color, sort_order, v_tenant_id
+      FROM contractor_type_categories
+      WHERE contractor_type_id = v_contractor_type_id;
+
+      INSERT INTO suppliers (name, tenant_id)
+      SELECT s.supplier_name, v_tenant_id
+      FROM contractor_type_category_suppliers s
+      JOIN contractor_type_categories c ON c.id = s.category_template_id
+      WHERE c.contractor_type_id = v_contractor_type_id;
+    END IF;
   END IF;
 
   INSERT INTO public.user_roles (user_email, role, status, tenant_id)

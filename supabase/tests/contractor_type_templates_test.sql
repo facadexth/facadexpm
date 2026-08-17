@@ -106,3 +106,42 @@ BEGIN
 
   RAISE NOTICE 'Test 3 (seed content integrity): TEST PASSED';
 END $$;
+
+-- ── Test 4: a new signup with contractor_type_id='painting' gets
+-- exactly 3 seeded categories and 2 seeded suppliers (the labor
+-- category gets none). Run inside an explicit transaction that's
+-- rolled back, not committed — the established pattern for testing
+-- auth.users triggers without leaving artifacts. Run this block as its
+-- OWN execute_sql call, separate from Tests 1–3: its ROLLBACK would
+-- otherwise discard Tests 1–3's inserts if they shared the same
+-- implicit transaction. ──
+BEGIN;
+DO $$
+DECLARE
+  v_painting_type_id UUID;
+  v_tenant_id UUID;
+  v_category_count INT;
+  v_supplier_count INT;
+BEGIN
+  SELECT id INTO v_painting_type_id FROM contractor_types WHERE key = 'painting';
+
+  INSERT INTO auth.users (id, email, raw_user_meta_data)
+  VALUES (
+    gen_random_uuid(), '__test_contractor_seed__@example.com',
+    jsonb_build_object('company_name', 'Test Painting Co', 'contractor_type_id', v_painting_type_id::text)
+  );
+
+  SELECT tenant_id INTO v_tenant_id FROM user_roles WHERE user_email = '__test_contractor_seed__@example.com';
+  SELECT count(*) INTO v_category_count FROM expense_categories WHERE tenant_id = v_tenant_id;
+  SELECT count(*) INTO v_supplier_count FROM suppliers WHERE tenant_id = v_tenant_id;
+
+  IF v_category_count != 3 THEN
+    RAISE EXCEPTION 'Test 4 REGRESSION: expected 3 seeded categories for painting, got %', v_category_count;
+  END IF;
+  IF v_supplier_count != 2 THEN
+    RAISE EXCEPTION 'Test 4 REGRESSION: expected 2 seeded suppliers for painting, got %', v_supplier_count;
+  END IF;
+
+  RAISE NOTICE 'Test 4 (signup trigger seeds categories + suppliers): TEST PASSED';
+END $$;
+ROLLBACK;
