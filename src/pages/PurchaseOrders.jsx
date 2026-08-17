@@ -4,10 +4,11 @@
 // ✅ Auto-number PO-YYYY-NNN
 // ✅ Status: ordered -> received (auto-creates expense) | cancelled
 // ============================================================
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { usePurchaseOrders, useSites, useSuppliers, useCategories } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { useTenant } from '../hooks/useTenant.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { auditLog } from '../lib/audit.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
@@ -211,9 +212,67 @@ function PODocumentModal({ po, onClose }) {
   )
 }
 
+function AttachmentsSection({ poId, tenantId }) {
+  const [attachments, setAttachments] = useState([])
+  const [uploading, setUploading] = useState(false)
+
+  const load = async () => {
+    const { data } = await supabase.from('purchase_order_attachments').select('*').eq('po_id', poId).order('uploaded_at')
+    setAttachments(data || [])
+  }
+  useEffect(() => { load() }, [poId])
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const filePath = `${tenantId}/${poId}/${Date.now()}-${file.name}`
+      const { error: upErr } = await supabase.storage.from('po-attachments').upload(filePath, file)
+      if (upErr) throw upErr
+      const { error: dbErr } = await supabase.from('purchase_order_attachments').insert({ po_id: poId, file_path: filePath, file_name: file.name })
+      if (dbErr) throw dbErr
+      await load()
+    } catch (err) {
+      alert('Error: ' + err.message)
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleDownload = async (att) => {
+    const { data, error } = await supabase.storage.from('po-attachments').createSignedUrl(att.file_path, 60)
+    if (error) { alert('Error: ' + error.message); return }
+    window.open(data.signedUrl, '_blank')
+  }
+
+  const handleRemove = async (att) => {
+    await supabase.storage.from('po-attachments').remove([att.file_path])
+    await supabase.from('purchase_order_attachments').delete().eq('id', att.id)
+    await load()
+  }
+
+  return (
+    <div>
+      <label className="label">ไฟล์แนบ</label>
+      <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
+        {attachments.map(att => (
+          <div key={att.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => handleDownload(att)}>📎 {att.file_name}</button>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => handleRemove(att)}>✕</button>
+          </div>
+        ))}
+      </div>
+      <input type="file" onChange={handleUpload} disabled={uploading} accept=".pdf,.xlsx,.xls,.jpg,.jpeg,.png" />
+    </div>
+  )
+}
+
 export default function PurchaseOrders({ navigateTo, navState }) {
   const { isAtLeast } = useUserRole()
   const canEdit = isAtLeast('ADMIN')
+  const { tenant } = useTenant()
   const today = new Date()
   const ytdFrom = format(startOfYear(today), 'yyyy-MM-dd')
   const ytdTo   = format(endOfYear(today),   'yyyy-MM-dd')
@@ -408,6 +467,16 @@ export default function PurchaseOrders({ navigateTo, navState }) {
             sites={sites} categories={categories} suppliers={suppliers || []}
             onSave={handleSave} onCancel={() => { setShowAdd(false); setEditRow(null) }} loading={saving}
           />
+          {editRow && tenant?.id && (
+            <div className="modal-body" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+              <AttachmentsSection poId={editRow.id} tenantId={tenant.id} />
+            </div>
+          )}
+          {!editRow && (
+            <div className="modal-body" style={{ fontSize: 12, color: 'var(--text3)', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+              บันทึกใบสั่งซื้อก่อน จึงจะแนบไฟล์ได้
+            </div>
+          )}
         </Modal>
       )}
 
