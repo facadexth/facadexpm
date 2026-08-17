@@ -531,6 +531,7 @@ CREATE TABLE purchase_orders (
   date            DATE NOT NULL,
   status          TEXT NOT NULL DEFAULT 'ordered'
                   CHECK (status IN ('ordered','received','cancelled')),
+  has_vat         BOOLEAN NOT NULL DEFAULT true,
   notes           TEXT,
   received_date   DATE,
   expense_id      UUID REFERENCES expenses(id) ON DELETE SET NULL,
