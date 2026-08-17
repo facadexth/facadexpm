@@ -47,10 +47,7 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
 
   // เครดิตเทอมของ Supplier ที่เลือก (วัน) — ใช้คำนวณวันครบกำหนดจากวันวางบิล
   const selectedSupplier = suppliers.find(s => s.id === form.supplier_id)
-  const creditTermDays = (() => {
-    const days = parseInt(selectedSupplier?.payment_terms, 10)
-    return isNaN(days) ? null : days
-  })()
+  const creditTermDays = selectedSupplier?.credit_days ?? null
 
   // วันวางบิล → คำนวณวันครบกำหนดให้อัตโนมัติ (เฉพาะตอนที่ยังไม่ได้กรอกวันครบกำหนดเอง)
   const setBillingDate = (val) => {
