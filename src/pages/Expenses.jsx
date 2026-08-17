@@ -26,8 +26,14 @@ const supplierOpts = (suppliers) => (suppliers || []).map(s => ({
 }))
 
 const PAYMENT_METHODS = ['transfer', 'check', 'cash']
-const STATUSES = ['paid', 'pending', 'check_issued', 'check_cleared']
-const STATUS_LABELS = { paid: '✅ จ่ายแล้ว', pending: '⏳ ค้างจ่าย', check_issued: '📄 ออกเช็ค', check_cleared: '🏦 เช็คผ่าน' }
+const STATUSES = ['awaiting_billing', 'pending', 'check_issued', 'check_cleared', 'paid']
+const STATUS_LABELS = {
+  awaiting_billing: '🧾 รอวางบิล',
+  pending: '⏳ ค้างจ่าย',
+  check_issued: '📄 ออกเช็ค',
+  check_cleared: '🏦 เช็คผ่าน',
+  paid: '✅ จ่ายแล้ว',
+}
 
 const EMPTY_FORM = {
   date: '', description: '', site_id: '', category_id: '', supplier: '', supplier_id: '',
