@@ -318,6 +318,9 @@ export default function Expenses({ navigateTo, navState }) {
         <div style={{ minWidth: 170 }}>
           <SearchableSelect value={catId} onChange={setCatId} placeholder="ทุกหมวด" options={catOpts(categories)} />
         </div>
+        <div style={{ minWidth: 190 }}>
+          <SearchableSelect value={supplierId} onChange={setSupplierId} placeholder="ทุก Supplier" options={supplierOpts(suppliers)} />
+        </div>
         <select className="select select-sm" value={status} onChange={e => setStatus(e.target.value)}>
           <option value="">ทุกสถานะ</option>
           {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
