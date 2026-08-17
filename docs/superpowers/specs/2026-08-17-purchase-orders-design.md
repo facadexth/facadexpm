@@ -17,10 +17,13 @@ A Purchase Order (ใบสั่งซื้อ) entity that: captures what's b
 - **Multi-line-item POs.** A single PO can contain several line items (e.g. glass + silicone in one order to one supplier), each with its own description/quantity/unit/unit price — not a single lump-sum field.
 - **Receipt collapses to one lump-sum expense.** When a PO is marked received, exactly one expense row is created with `amount = SUM(line_total)` across its items. The itemized breakdown is not duplicated onto the expense — it stays on the PO, which the expense links back to for reference. This matches how `expenses` already works today (single `amount` field, no line items) and avoids a schema change to that table.
 - **Phase 2 (out of scope here):** requesting quotes from multiple suppliers to compare before choosing, including a public (no-login) link suppliers fill in themselves. That's a materially different, larger shape (one request fanning out to several supplier responses, plus a new kind of unauthenticated-write surface this app doesn't have today) and will get its own design once this phase is built and in use. Nothing in this design should make Phase 2 harder to add later, but nothing here builds toward it either — no speculative columns or tables.
+- **Purchase Orders is a gated paid module, not a core feature.** This app is multi-tenant SaaS: every tab in `App.jsx`'s `TABS` array declares a `module` key that's either `null` (core, always available) or a string checked against `has_module_access(module_key)` — true during a tenant's trial regardless of `tenant_modules` contents, false after the trial ends unless the tenant has an explicit `tenant_modules` row for that key (see `payroll`/`labor_subcontractors`, the two existing gated modules). Purchase Orders follows the same pattern with its own key, `'purchase_orders'`, gated identically at both the frontend (`TABS` entry) and the database (RLS policies use `has_module_access('purchase_orders')`, matching how `labor_subcontractors`/`labor_contracts`/`labor_payments` each independently check `has_module_access('labor_subcontractors')` in their own RLS, not just via a parent-table join) — RLS is the real enforcement boundary; the frontend gate is just UX.
 
 ## Data Model
 
-Two new tables, following this project's existing conventions: auto-numbering like `sites`/`clients`/`suppliers`, and tenant-scoped RLS on every table (including child tables — see `site_phases` for the established pattern of child tables carrying their own `tenant_id` rather than relying solely on a parent join).
+Two new tables, following this project's existing conventions: auto-numbering like `sites`/`clients`/`suppliers`, tenant-scoped RLS on every table (including child tables — see `site_phases` for the established pattern of child tables carrying their own `tenant_id` rather than relying solely on a parent join), and module-gated RLS matching the `labor_subcontractors` family of tables (a single `admin_full_access` policy per table, `FOR ALL TO authenticated`, `USING`/`WITH CHECK` both requiring `is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders')`).
+
+`tenant_modules.module_key` currently has `CHECK (module_key IN ('payroll','labor_subcontractors'))` — this needs a migration widening it to include `'purchase_orders'` before any `tenant_modules` row for the new key can be inserted.
 
 ```sql
 CREATE TABLE purchase_orders (
@@ -102,9 +105,15 @@ Note: this requires adding `po_id UUID REFERENCES purchase_orders(id) ON DELETE 
 
 `po_number` follows the exact pattern already used for `sites`/`clients`/`suppliers` (`FX-YYYY-NNN`/`CL-YYYY-NNN`/`SP-YYYY-NNN`): format `PO-YYYY-NNN`, generated the same way those are (check the current auto-numbering trigger/function used for those tables and reuse the identical mechanism for `purchase_orders`, rather than inventing a new numbering approach).
 
-## Permissions
+## Permissions & Module Gating
 
-Same as Expenses/Sites: `minRole: 'ADMIN'` to view/create/edit/receive/cancel POs. WORKER role has no access (consistent with the existing `TABS` gating in `App.jsx`, where financial-record tabs are all ADMIN+).
+`minRole: 'ADMIN'` to view/create/edit/receive/cancel POs — WORKER role has no access, same as Expenses/Sites.
+
+Unlike Expenses/Sites, the tab is a **gated module**, not core: `App.jsx`'s `TABS` entry gets `module: 'purchase_orders'` instead of `null`, and every RLS policy on `purchase_orders`/`purchase_order_items` requires `has_module_access('purchase_orders')` (see Data Model). Practical effects:
+
+- A tenant on an active trial sees and can use the tab immediately (all modules are open during trial), with no `tenant_modules` row needed yet.
+- Once a tenant's trial ends, the tab and its data become inaccessible unless a `tenant_modules` row for `'purchase_orders'` exists for that tenant — same as an expired-trial tenant losing Payroll/HR/labor-subcontractor access today.
+- **The existing FacadeX bootstrap tenant needs an explicit seed.** It already has `plan = 'active'` but an *expired* trial (see `2026-08-16-14-seed-bootstrap-tenant-modules.sql`'s comment: `plan='active'` alone does not grant module access — modules are paid add-ons layered on top of the base plan). Without a seed migration inserting `('purchase_orders')` into `tenant_modules` for that tenant, deploying this feature would immediately lock the real, currently-operating company out of it — the exact bug the payroll/labor_subcontractors bootstrap-seed migration was written to fix. This plan must include the equivalent migration for `purchase_orders`.
 
 ## Out of Scope
 
