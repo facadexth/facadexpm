@@ -182,6 +182,7 @@ export default function PurchaseOrders({ navigateTo, navState }) {
   const [editRow, setEditRow] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
   const [docRow, setDocRow] = useState(null)
+  const [receiveRow, setReceiveRow] = useState(null)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState(null)
 
@@ -239,6 +240,38 @@ export default function PurchaseOrders({ navigateTo, navState }) {
     const { error } = await supabase.from('purchase_orders').update({ status: 'cancelled' }).eq('id', deleteId)
     if (!error) { await auditLog('purchase_orders', deleteId, 'UPDATE', null, { status: 'cancelled' }); setDeleteId(null); refetch(); showToast('ยกเลิกแล้ว') }
     else alert('Error: ' + error.message)
+  }
+
+  const handleReceive = async () => {
+    if (!receiveRow) return
+    const total = (receiveRow.purchase_order_items || []).reduce((s, it) => s + (it.line_total || 0), 0)
+    try {
+      const expensePayload = {
+        date: new Date().toISOString().slice(0, 10),
+        description: `จากใบสั่งซื้อ ${receiveRow.po_number}`,
+        site_id: receiveRow.site_id,
+        category_id: receiveRow.category_id,
+        supplier_id: receiveRow.supplier_id,
+        supplier: receiveRow.suppliers?.name || null,
+        amount: total,
+        payment_method: 'transfer',
+        status: 'pending',
+        notes: `จาก ใบสั่งซื้อ ${receiveRow.po_number}`,
+        po_id: receiveRow.id,
+      }
+      const { data: expense, error: expError } = await supabase.from('expenses').insert(expensePayload).select().single()
+      if (expError) throw expError
+      await auditLog('expenses', expense.id, 'INSERT', null, expensePayload)
+
+      const poUpdate = { status: 'received', received_date: expensePayload.date, expense_id: expense.id }
+      const { error: poError } = await supabase.from('purchase_orders').update(poUpdate).eq('id', receiveRow.id)
+      if (poError) throw poError
+      await auditLog('purchase_orders', receiveRow.id, 'UPDATE', null, poUpdate)
+
+      setReceiveRow(null); refetch(); showToast('รับของแล้ว สร้างรายจ่ายอัตโนมัติ')
+    } catch (e) {
+      alert('Error: ' + e.message + ' — หากสร้างรายจ่ายไปแล้วแต่ใบสั่งซื้อยังไม่อัปเดต ให้ตรวจสอบหน้ารายจ่ายและอัปเดตใบสั่งซื้อด้วยตนเอง')
+    }
   }
 
   const editFormInitial = useMemo(() => {
@@ -300,6 +333,7 @@ export default function PurchaseOrders({ navigateTo, navState }) {
                       <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(po)}>📄</button>
                       {canEdit && po.status === 'ordered' && (
                         <>
+                          <button className="btn btn-sm btn-primary" onClick={() => setReceiveRow(po)}>✅ รับของแล้ว</button>
                           <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(po); setShowAdd(true) }}>✏️</button>
                           <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(po.id)}>✕</button>
                         </>
@@ -331,6 +365,15 @@ export default function PurchaseOrders({ navigateTo, navState }) {
       )}
 
       {docRow && <PODocumentModal po={docRow} onClose={() => setDocRow(null)} />}
+
+      {receiveRow && (
+        <ConfirmDialog
+          title="ยืนยันรับของ"
+          message={`สร้างรายจ่ายอัตโนมัติจากใบสั่งซื้อ ${receiveRow.po_number} ยอดรวม ${fmt((receiveRow.purchase_order_items || []).reduce((s, it) => s + (it.line_total || 0), 0))} บาท?`}
+          onConfirm={handleReceive}
+          onCancel={() => setReceiveRow(null)}
+        />
+      )}
     </div>
   )
 }
