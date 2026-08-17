@@ -138,6 +138,7 @@ tbody tr:last-child td { border-bottom: none; }
 .badge-ongoing { background: rgba(0,212,170,0.15); color: var(--green); }
 .badge-finished { background: rgba(94,97,128,0.25); color: var(--text3); }
 .badge-onhold { background: rgba(255,209,102,0.15); color: var(--yellow); }
+.badge-awaiting_billing { background: rgba(255,209,102,0.1); color: var(--yellow); }
 .badge-paid { background: rgba(0,212,170,0.15); color: var(--green); }
 .badge-pending { background: rgba(255,209,102,0.15); color: var(--yellow); }
 .badge-check_issued { background: rgba(108,99,255,0.15); color: var(--accent); }
@@ -261,6 +262,7 @@ th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
 th.sortable:hover { color: var(--accent); }
 
 /* Badge status variants */
+.badge-awaiting_billing { background: rgba(255,209,102,0.1); color: var(--yellow); }
 .badge-paid         { background: rgba(0,212,170,0.15); color: var(--green); }
 .badge-pending      { background: rgba(255,209,102,0.15); color: var(--yellow); }
 .badge-check_issued { background: rgba(78,205,196,0.15); color: var(--blue); }

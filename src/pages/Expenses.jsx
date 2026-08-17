@@ -16,6 +16,10 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
+import {
+  creditTermDays as computeCreditTermDays, paymentMethodOptions, billingDueTargetField,
+  calcDueDate, resolvePaymentMethodOnSupplierChange,
+} from '../lib/supplierCredit.js'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -26,8 +30,14 @@ const supplierOpts = (suppliers) => (suppliers || []).map(s => ({
 }))
 
 const PAYMENT_METHODS = ['transfer', 'check', 'cash']
-const STATUSES = ['paid', 'pending', 'check_issued', 'check_cleared']
-const STATUS_LABELS = { paid: '✅ จ่ายแล้ว', pending: '⏳ ค้างจ่าย', check_issued: '📄 ออกเช็ค', check_cleared: '🏦 เช็คผ่าน' }
+const STATUSES = ['awaiting_billing', 'pending', 'check_issued', 'check_cleared', 'paid']
+const STATUS_LABELS = {
+  awaiting_billing: '🧾 รอวางบิล',
+  pending: '⏳ ค้างจ่าย',
+  check_issued: '📄 ออกเช็ค',
+  check_cleared: '🏦 เช็คผ่าน',
+  paid: '✅ จ่ายแล้ว',
+}
 
 const EMPTY_FORM = {
   date: '', description: '', site_id: '', category_id: '', supplier: '', supplier_id: '',
@@ -41,19 +51,17 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
 
   // เครดิตเทอมของ Supplier ที่เลือก (วัน) — ใช้คำนวณวันครบกำหนดจากวันวางบิล
   const selectedSupplier = suppliers.find(s => s.id === form.supplier_id)
-  const creditTermDays = (() => {
-    const days = parseInt(selectedSupplier?.payment_terms, 10)
-    return isNaN(days) ? null : days
-  })()
+  const creditTermDays = computeCreditTermDays(selectedSupplier)
+  const methodOptions = paymentMethodOptions(selectedSupplier)
 
-  // วันวางบิล → คำนวณวันครบกำหนดให้อัตโนมัติ (เฉพาะตอนที่ยังไม่ได้กรอกวันครบกำหนดเอง)
+  // วันวางบิล → คำนวณวันครบกำหนดให้อัตโนมัติ
+  // เช็ค: เขียนลง check_date · เครดิต: เขียนลง due_date — เฉพาะตอนที่ยังไม่ได้กรอกวันครบกำหนดเอง
   const setBillingDate = (val) => {
     setForm(f => {
       const next = { ...f, billing_date: val }
-      if (!f.due_date && val && creditTermDays != null) {
-        const d = new Date(val)
-        d.setDate(d.getDate() + creditTermDays)
-        next.due_date = d.toISOString().slice(0, 10)
+      const targetField = billingDueTargetField(f.payment_method)
+      if (!f[targetField] && val && creditTermDays != null) {
+        next[targetField] = calcDueDate(val, creditTermDays)
       }
       return next
     })
@@ -105,9 +113,13 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
               value={form.supplier_id}
               onChange={id => {
                 const sup = suppliers.find(s => s.id === id)
-                set('supplier_id', id)
-                if (sup) set('supplier', sup.name)
-                else if (!id) set('supplier', '')
+                const hasCredit = !sup || sup.credit_days != null
+                setForm(f => ({
+                  ...f,
+                  supplier_id: id,
+                  supplier: sup ? sup.name : (id ? f.supplier : ''),
+                  payment_method: resolvePaymentMethodOnSupplierChange(f.payment_method, hasCredit),
+                }))
               }}
               placeholder="— เลือก Supplier —"
               options={supplierOpts(suppliers)}
@@ -123,10 +135,10 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
           <div>
             <label className="label">วิธีชำระ ★</label>
             <select className="select" value={form.payment_method} onChange={e => set('payment_method', e.target.value)}>
-              <option value="transfer">โอนเงิน</option>
-              <option value="check">เช็ค</option>
-              <option value="cash">เงินสด</option>
-              <option value="credit">เครดิต</option>
+              {methodOptions.includes('transfer') && <option value="transfer">โอนเงิน</option>}
+              {methodOptions.includes('check') && <option value="check">เช็ค</option>}
+              {methodOptions.includes('cash') && <option value="cash">เงินสด</option>}
+              {methodOptions.includes('credit') && <option value="credit">เครดิต</option>}
             </select>
           </div>
           {form.payment_method === 'check' && (
@@ -142,19 +154,26 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
             </select>
           </div>
         </div>
-        {form.payment_method === 'credit' && (
+        {(form.payment_method === 'check' || form.payment_method === 'credit') && (
           <div className="form-grid-2">
             <div>
               <label className="label">วันวางบิล</label>
               <input type="date" className="input" value={form.billing_date} onChange={e => setBillingDate(e.target.value)} />
             </div>
-            <div>
-              <label className="label">วันครบกำหนด (due date)</label>
-              <input type="date" className="input" value={form.due_date} onChange={e => set('due_date', e.target.value)} />
-              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-                {creditTermDays != null ? `คำนวณจากเครดิตเทอมของ Supplier (${creditTermDays} วัน) — แก้ไขเองได้` : 'ไม่พบเครดิตเทอมของ Supplier — กรอกวันครบกำหนดเอง'}
+            {form.payment_method === 'credit' && (
+              <div>
+                <label className="label">วันครบกำหนด (due date)</label>
+                <input type="date" className="input" value={form.due_date} onChange={e => set('due_date', e.target.value)} />
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                  {creditTermDays != null ? `คำนวณจากเครดิตเทอมของ Supplier (${creditTermDays} วัน) — แก้ไขเองได้` : 'ไม่พบเครดิตเทอมของ Supplier — กรอกวันครบกำหนดเอง'}
+                </div>
               </div>
-            </div>
+            )}
+            {form.payment_method === 'check' && (
+              <div style={{ fontSize: 11, color: 'var(--text3)', alignSelf: 'end', paddingBottom: 8 }}>
+                {creditTermDays != null ? `วันที่เช็คด้านบนคำนวณจากเครดิตเทอมของ Supplier (${creditTermDays} วัน) — แก้ไขเองได้` : 'ไม่พบเครดิตเทอมของ Supplier — กรอกวันที่เช็คเอง'}
+              </div>
+            )}
           </div>
         )}
         <div className="form-grid-2">
@@ -187,8 +206,10 @@ export default function Expenses({ navigateTo, navState }) {
 
   const [dateFrom, setDateFrom] = useState(ytdFrom)
   const [dateTo,   setDateTo]   = useState(ytdTo)
+  const [dateField, setDateField] = useState('date')
   const [siteId,   setSiteId]   = useState(navState?.siteId || '')
   const [catId,    setCatId]    = useState('')
+  const [supplierId, setSupplierId] = useState('')
   const [status,   setStatus]   = useState('')
   const [search,   setSearch]   = useState('')
   const [showAdd,  setShowAdd]  = useState(false)
@@ -205,7 +226,7 @@ export default function Expenses({ navigateTo, navState }) {
     if (navState?.siteId) setSiteId(navState.siteId)
   }, [navState])
 
-  const filters = { from: dateFrom, to: dateTo, siteId, categoryId: catId, status, search }
+  const filters = { from: dateFrom, to: dateTo, dateField, siteId, categoryId: catId, supplierId, status, search }
   const { data: expenses, refetch } = useExpenses(filters)
   const { data: sites }      = useSites()
   const { data: categories } = useCategories()
@@ -277,6 +298,11 @@ export default function Expenses({ navigateTo, navState }) {
         <a className="btn btn-ghost" href="/templates/TEMPLATE_รายจ่าย.xlsx" download>📄 Template</a>
         <div style={{ flex: 1 }} />
         <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหารายละเอียด..." value={search} onChange={e => setSearch(e.target.value)} />
+        <select className="select select-sm" value={dateField} onChange={e => setDateField(e.target.value)}>
+          <option value="date">วันที่สั่งซื้อ</option>
+          <option value="billing_date">วันวางบิล</option>
+          <option value="due">วันครบกำหนด (เช็ค/เครดิต)</option>
+        </select>
         <input type="date" className="input input-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <span style={{ color: 'var(--text3)' }}>—</span>
         <input type="date" className="input input-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} />
@@ -296,6 +322,9 @@ export default function Expenses({ navigateTo, navState }) {
         </div>
         <div style={{ minWidth: 170 }}>
           <SearchableSelect value={catId} onChange={setCatId} placeholder="ทุกหมวด" options={catOpts(categories)} />
+        </div>
+        <div style={{ minWidth: 190 }}>
+          <SearchableSelect value={supplierId} onChange={setSupplierId} placeholder="ทุก Supplier" options={supplierOpts(suppliers)} />
         </div>
         <select className="select select-sm" value={status} onChange={e => setStatus(e.target.value)}>
           <option value="">ทุกสถานะ</option>

@@ -4,6 +4,7 @@
 // ============================================================
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { applyDateFilter } from '../lib/expenseFilters.js'
 
 /** Generic fetch hook */
 export function useQuery(queryFn, deps = []) {
@@ -63,10 +64,13 @@ export function useExpenses(filters = {}) {
 
     if (filters.siteId)   q = q.eq('site_id', filters.siteId)
     if (filters.categoryId) q = q.eq('category_id', filters.categoryId)
+    if (filters.supplierId) q = q.eq('supplier_id', filters.supplierId)
     if (filters.status)   q = q.eq('status', filters.status)
-    if (filters.from)     q = q.gte('date', filters.from)
-    if (filters.to)       q = q.lte('date', filters.to)
     if (filters.search)   q = q.ilike('description', `%${filters.search}%`)
+
+    // dateField: 'date' (วันที่สั่งซื้อ, default) | 'billing_date' (วันวางบิล)
+    // | 'due' (วันครบกำหนด — due_date for credit rows, check_date for cheque rows)
+    q = applyDateFilter(q, filters.dateField || 'date', filters.from, filters.to)
 
     const { data, error } = await q
     if (error) throw error
