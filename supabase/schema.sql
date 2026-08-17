@@ -192,12 +192,19 @@ CREATE TABLE contractor_types (
   sort_order  INT NOT NULL DEFAULT 0
 );
 
+-- UNIQUE(contractor_type_id, name): the signup trigger seeds every
+-- matching row into a new tenant's expense_categories, which itself has
+-- UNIQUE(tenant_id, name) — a duplicate name within one contractor type
+-- here would make signup fail for every tenant of that type. Enforced
+-- here so a bad hand-edit to this reference data fails immediately
+-- (admin-only, safe) instead of at a real customer's signup.
 CREATE TABLE contractor_type_categories (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   contractor_type_id  UUID NOT NULL REFERENCES contractor_types(id) ON DELETE CASCADE,
   name                TEXT NOT NULL,
   color               TEXT NOT NULL DEFAULT '#6c63ff',
-  sort_order          INT NOT NULL DEFAULT 0
+  sort_order          INT NOT NULL DEFAULT 0,
+  UNIQUE (contractor_type_id, name)
 );
 
 -- Kept as its own table (rather than a supplier_name column on
