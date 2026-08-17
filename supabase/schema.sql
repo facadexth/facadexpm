@@ -242,7 +242,7 @@ CREATE TABLE expenses (
   billing_date    DATE,                         -- วันวางบิล (credit)
   due_date        DATE,                         -- วันครบกำหนด (credit)
   status          TEXT DEFAULT 'pending'
-                  CHECK (status IN ('paid','pending','check_issued','check_cleared')),
+                  CHECK (status IN ('awaiting_billing','paid','pending','check_issued','check_cleared')),
   payer           TEXT,
   invoice_no      TEXT,
   notes           TEXT,
