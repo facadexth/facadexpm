@@ -255,10 +255,14 @@ export function useLeaveQuotaUsage(year) {
   return useQuery(async () => {
     const from = `${year}-01-01`
     const to   = `${year}-12-31`
+    // Legacy 'leave' rows (predating the sick/personal split) count as
+    // leave_personal here too — must match the same rule Payroll.jsx/
+    // HR.jsx use for the pay deduction, or quota-used and pay-deducted
+    // silently disagree for any worker with pre-split assignment rows.
     const { data, error } = await supabase
       .from('worker_assignments')
       .select('worker_id')
-      .eq('type', 'leave_personal')
+      .in('type', ['leave_personal', 'leave'])
       .gte('date', from).lte('date', to)
     if (error) throw error
     const used = {}
