@@ -82,7 +82,7 @@ export function usePurchaseOrders(filters = {}) {
   return useQuery(async () => {
     let q = supabase
       .from('purchase_orders')
-      .select('*, sites(name, site_number), suppliers(name, supplier_number, credit_days), expense_categories(name), purchase_order_items(id, description, quantity, unit, unit_price, line_total)')
+      .select('*, sites(name, site_number), suppliers(name, supplier_number, credit_days), expense_categories(name), purchase_order_items(id, description, quantity, unit, unit_price, line_total), purchase_order_attachments(id)')
       .order('date', { ascending: false })
 
     if (filters.siteId)     q = q.eq('site_id', filters.siteId)

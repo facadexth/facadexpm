@@ -489,7 +489,10 @@ export default function PurchaseOrders({ navigateTo, navState }) {
                 const { total } = calcPoTotals(po.purchase_order_items, po.has_vat)
                 return (
                   <tr key={po.id}>
-                    <td className="font-mono" style={{ fontSize: 12 }}>{po.po_number}</td>
+                    <td className="font-mono" style={{ fontSize: 12 }}>
+                      {po.po_number}
+                      {po.purchase_order_attachments?.length > 0 && <span title="มีไฟล์แนบ" style={{ marginLeft: 4 }}>📎</span>}
+                    </td>
                     <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDate(po.date)}</td>
                     <td style={{ fontSize: 11, color: 'var(--accent)' }}>{po.sites?.name || '—'}</td>
                     <td style={{ fontSize: 12 }}>{po.suppliers?.name || '—'}</td>
