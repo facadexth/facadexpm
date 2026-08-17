@@ -373,8 +373,8 @@ export default function PurchaseOrders({ navigateTo, navState }) {
         amount_no_vat: subtotal,
         vat: vat,
         amount: total,
-        payment_method: 'transfer',
-        status: 'pending',
+        payment_method: receiveRow.suppliers?.credit_days != null ? 'check' : 'transfer',
+        status: receiveRow.suppliers?.credit_days != null ? 'awaiting_billing' : 'pending',
         notes: `จาก ใบสั่งซื้อ ${receiveRow.po_number}`,
         po_id: receiveRow.id,
       }

@@ -114,12 +114,16 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
               onChange={id => {
                 const sup = suppliers.find(s => s.id === id)
                 const hasCredit = !sup || sup.credit_days != null
-                setForm(f => ({
-                  ...f,
-                  supplier_id: id,
-                  supplier: sup ? sup.name : (id ? f.supplier : ''),
-                  payment_method: resolvePaymentMethodOnSupplierChange(f.payment_method, hasCredit),
-                }))
+                setForm(f => {
+                  const downgraded = resolvePaymentMethodOnSupplierChange(f.payment_method, hasCredit)
+                  const upgraded = (hasCredit && sup && f.payment_method === 'transfer') ? 'check' : downgraded
+                  return {
+                    ...f,
+                    supplier_id: id,
+                    supplier: sup ? sup.name : (id ? f.supplier : ''),
+                    payment_method: upgraded,
+                  }
+                })
               }}
               placeholder="— เลือก Supplier —"
               options={supplierOpts(suppliers)}
