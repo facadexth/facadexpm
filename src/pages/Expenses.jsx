@@ -302,7 +302,7 @@ export default function Expenses({ navigateTo, navState }) {
         <select className="select select-sm" value={dateField} onChange={e => setDateField(e.target.value)}>
           <option value="date">วันที่สั่งซื้อ</option>
           <option value="billing_date">วันวางบิล</option>
-          <option value="due">วันครบกำหนด / วันโอน</option>
+          <option value="due">วันครบกำหนด (เช็ค/เครดิต)</option>
         </select>
         <input type="date" className="input input-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <span style={{ color: 'var(--text3)' }}>—</span>
