@@ -78,6 +78,25 @@ export function useExpenses(filters = {}) {
   }, [JSON.stringify(filters)])
 }
 
+export function usePurchaseOrders(filters = {}) {
+  return useQuery(async () => {
+    let q = supabase
+      .from('purchase_orders')
+      .select('*, sites(name, site_number), suppliers(name, supplier_number), expense_categories(name), purchase_order_items(id, description, quantity, unit, unit_price, line_total)')
+      .order('date', { ascending: false })
+
+    if (filters.siteId)     q = q.eq('site_id', filters.siteId)
+    if (filters.supplierId) q = q.eq('supplier_id', filters.supplierId)
+    if (filters.status)     q = q.eq('status', filters.status)
+    if (filters.from)       q = q.gte('date', filters.from)
+    if (filters.to)         q = q.lte('date', filters.to)
+
+    const { data, error } = await q
+    if (error) throw error
+    return data
+  }, [JSON.stringify(filters)])
+}
+
 /** ยอดที่ต้องชำระรายเดือน (สำหรับ cash forecast) */
 export function usePaymentForecast() {
   return useQuery(async () => {

@@ -274,6 +274,9 @@ th.sortable:hover { color: var(--accent); }
 .badge-method-transfer  { background: rgba(78,205,196,0.15); color: var(--blue); }
 .badge-method-check     { background: rgba(255,209,102,0.15); color: var(--yellow); }
 .badge-method-cash      { background: rgba(0,212,170,0.15); color: var(--green); }
+.badge-po-ordered   { background: rgba(108,99,255,0.15); color: var(--accent); }
+.badge-po-received  { background: rgba(0,212,170,0.15); color: var(--green); }
+.badge-po-cancelled { background: rgba(94,97,128,0.25); color: var(--text3); }
 
 /* Input sm/select sm */
 .input-sm  { padding: 6px 10px; font-size: 12px; }
