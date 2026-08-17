@@ -232,6 +232,7 @@ CREATE TABLE expenses (
   category_id     UUID REFERENCES expense_categories(id) ON DELETE SET NULL,
   supplier        TEXT,                         -- ชื่อผู้จำหน่าย (free text, legacy)
   supplier_id     UUID REFERENCES suppliers(id),
+  po_id           UUID REFERENCES purchase_orders(id) ON DELETE SET NULL, -- FK to purchase_orders — set only by the PO receive flow
   amount          NUMERIC NOT NULL DEFAULT 0,    -- มูลค่า (รวม VAT)
   amount_no_vat   NUMERIC,                       -- มูลค่าก่อน VAT (nullable — เฉพาะที่มาจาก Excel import ใหม่)
   vat             NUMERIC,                       -- มูลค่า VAT (nullable, เดียวกัน)
@@ -260,6 +261,7 @@ CREATE INDEX idx_expenses_check_date ON expenses(check_date);
 CREATE INDEX idx_expenses_category_id ON expenses(category_id);
 CREATE INDEX idx_expenses_supplier_id ON expenses(supplier_id);
 CREATE INDEX idx_expenses_tenant_id ON expenses(tenant_id);
+CREATE INDEX idx_expenses_po_id ON expenses(po_id);
 
 -- Group A core-table RLS (see supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql).
 ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
