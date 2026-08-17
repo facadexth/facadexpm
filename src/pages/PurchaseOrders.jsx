@@ -143,6 +143,51 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
   )
 }
 
+function PODetailModal({ po, tenantId, onClose }) {
+  const items = po.purchase_order_items || []
+  const { subtotal, vat, total } = calcPoTotals(items, po.has_vat)
+
+  return (
+    <Modal title={`ใบสั่งซื้อ ${po.po_number}`} onClose={onClose} maxWidth={700}>
+      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span className={`badge badge-po-${po.status}`}>{PO_STATUS_LABELS[po.status] || po.status}</span>
+          <span style={{ fontSize: 12, color: 'var(--text3)' }}>{fmtDate(po.date)}</span>
+        </div>
+        <div className="form-grid-2" style={{ fontSize: 13 }}>
+          <div><strong>ไซท์งาน:</strong> {po.sites?.name || '—'}</div>
+          <div><strong>Supplier:</strong> {po.suppliers?.name || '—'}</div>
+        </div>
+        {po.notes && <div style={{ fontSize: 13 }}><strong>หมายเหตุ:</strong> {po.notes}</div>}
+        <div>
+          <label className="label">รายการสินค้า</label>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {items.map(it => (
+              <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
+                <span>{it.description} ({it.quantity} {it.unit || ''})</span>
+                <span className="font-mono">{fmt(it.line_total)}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 8, textAlign: 'right', fontSize: 13 }}>
+            <div>รวมก่อน VAT: <span className="font-mono">{fmt(subtotal)}</span></div>
+            {po.has_vat && <div>VAT (7%): <span className="font-mono">{fmt(vat)}</span></div>}
+            <div style={{ fontWeight: 700 }}>รวมสุทธิ: <span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(total)}</span></div>
+          </div>
+        </div>
+        {tenantId && (
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <AttachmentsSection poId={po.id} tenantId={tenantId} />
+          </div>
+        )}
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
+      </div>
+    </Modal>
+  )
+}
+
 function PODocumentModal({ po, onClose }) {
   const items = po.purchase_order_items || []
   const { subtotal, vat, total } = calcPoTotals(items, po.has_vat)
@@ -297,6 +342,7 @@ export default function PurchaseOrders({ navigateTo, navState }) {
   const [editRow, setEditRow] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
   const [docRow, setDocRow] = useState(null)
+  const [detailRow, setDetailRow] = useState(null)
   const [receiveRow, setReceiveRow] = useState(null)
   const [receiving, setReceiving] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -451,6 +497,7 @@ export default function PurchaseOrders({ navigateTo, navState }) {
                     <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(total)}</td>
                     <td><span className={`badge badge-po-${po.status}`}>{PO_STATUS_LABELS[po.status] || po.status}</span></td>
                     <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="btn btn-sm btn-ghost" onClick={() => setDetailRow(po)}>👁️</button>
                       <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(po)}>📄</button>
                       {canEdit && po.status === 'ordered' && (
                         <>
@@ -496,6 +543,8 @@ export default function PurchaseOrders({ navigateTo, navState }) {
       )}
 
       {docRow && <PODocumentModal po={docRow} onClose={() => setDocRow(null)} />}
+
+      {detailRow && <PODetailModal po={detailRow} tenantId={tenant?.id} onClose={() => setDetailRow(null)} />}
 
       {receiveRow && (
         <ConfirmDialog
