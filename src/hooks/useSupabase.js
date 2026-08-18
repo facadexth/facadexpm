@@ -30,6 +30,26 @@ export function useQuery(queryFn, deps = []) {
   return { data, loading, error, refetch: fetch }
 }
 
+/**
+ * Supabase/PostgREST caps a single response at 1000 rows by default.
+ * This walks `.range()` pages until a short page signals the end, so
+ * list hooks return every matching row instead of silently truncating
+ * past row 1000. `buildQuery` must return a fresh query each call
+ * (query builders can't be re-awaited after their first request).
+ */
+async function fetchAllRows(buildQuery, pageSize = 1000) {
+  let allRows = []
+  let from = 0
+  while (true) {
+    const { data, error } = await buildQuery().range(from, from + pageSize - 1)
+    if (error) throw error
+    allRows = allRows.concat(data)
+    if (!data || data.length < pageSize) break
+    from += pageSize
+  }
+  return allRows
+}
+
 // ── Sites ────────────────────────────────────────────────────
 
 export function useSites() {
@@ -57,43 +77,47 @@ export function useSite(id) {
 
 export function useExpenses(filters = {}) {
   return useQuery(async () => {
-    let q = supabase
-      .from('expenses_view')
-      .select('*')
-      .order('date', { ascending: false })
+    const buildQuery = () => {
+      let q = supabase
+        .from('expenses_view')
+        .select('*')
+        .order('date', { ascending: false })
+        .order('id', { ascending: false })
 
-    if (filters.siteId)   q = q.eq('site_id', filters.siteId)
-    if (filters.categoryId) q = q.eq('category_id', filters.categoryId)
-    if (filters.supplierId) q = q.eq('supplier_id', filters.supplierId)
-    if (filters.status)   q = q.eq('status', filters.status)
-    if (filters.search)   q = q.ilike('description', `%${filters.search}%`)
+      if (filters.siteId)   q = q.eq('site_id', filters.siteId)
+      if (filters.categoryId) q = q.eq('category_id', filters.categoryId)
+      if (filters.supplierId) q = q.eq('supplier_id', filters.supplierId)
+      if (filters.status)   q = q.eq('status', filters.status)
+      if (filters.search)   q = q.ilike('description', `%${filters.search}%`)
 
-    // dateField: 'date' (วันที่สั่งซื้อ, default) | 'billing_date' (วันวางบิล)
-    // | 'due' (วันครบกำหนด — due_date for credit rows, check_date for cheque rows)
-    q = applyDateFilter(q, filters.dateField || 'date', filters.from, filters.to)
+      // dateField: 'date' (วันที่สั่งซื้อ, default) | 'billing_date' (วันวางบิล)
+      // | 'due' (วันครบกำหนด — due_date for credit rows, check_date for cheque rows)
+      q = applyDateFilter(q, filters.dateField || 'date', filters.from, filters.to)
+      return q
+    }
 
-    const { data, error } = await q
-    if (error) throw error
-    return data
+    return fetchAllRows(buildQuery)
   }, [JSON.stringify(filters)])
 }
 
 export function usePurchaseOrders(filters = {}) {
   return useQuery(async () => {
-    let q = supabase
-      .from('purchase_orders')
-      .select('*, sites(name, site_number), suppliers(name, supplier_number, credit_days), expense_categories(name), purchase_order_items(id, description, quantity, unit, unit_price, line_total), purchase_order_attachments(id)')
-      .order('date', { ascending: false })
+    const buildQuery = () => {
+      let q = supabase
+        .from('purchase_orders')
+        .select('*, sites(name, site_number), suppliers(name, supplier_number, credit_days), expense_categories(name), purchase_order_items(id, description, quantity, unit, unit_price, line_total), purchase_order_attachments(id)')
+        .order('date', { ascending: false })
+        .order('id', { ascending: false })
 
-    if (filters.siteId)     q = q.eq('site_id', filters.siteId)
-    if (filters.supplierId) q = q.eq('supplier_id', filters.supplierId)
-    if (filters.status)     q = q.eq('status', filters.status)
-    if (filters.from)       q = q.gte('date', filters.from)
-    if (filters.to)         q = q.lte('date', filters.to)
+      if (filters.siteId)     q = q.eq('site_id', filters.siteId)
+      if (filters.supplierId) q = q.eq('supplier_id', filters.supplierId)
+      if (filters.status)     q = q.eq('status', filters.status)
+      if (filters.from)       q = q.gte('date', filters.from)
+      if (filters.to)         q = q.lte('date', filters.to)
+      return q
+    }
 
-    const { data, error } = await q
-    if (error) throw error
-    return data
+    return fetchAllRows(buildQuery)
   }, [JSON.stringify(filters)])
 }
 
@@ -112,19 +136,21 @@ export function usePaymentForecast() {
 
 export function useIncomes(filters = {}) {
   return useQuery(async () => {
-    let q = supabase
-      .from('incomes_view')
-      .select('*')
-      .order('date', { ascending: false })
+    const buildQuery = () => {
+      let q = supabase
+        .from('incomes_view')
+        .select('*')
+        .order('date', { ascending: false })
+        .order('id', { ascending: false })
 
-    if (filters.siteId) q = q.eq('site_id', filters.siteId)
-    if (filters.from)   q = q.gte('date', filters.from)
-    if (filters.to)     q = q.lte('date', filters.to)
-    if (filters.search) q = q.ilike('description', `%${filters.search}%`)
+      if (filters.siteId) q = q.eq('site_id', filters.siteId)
+      if (filters.from)   q = q.gte('date', filters.from)
+      if (filters.to)     q = q.lte('date', filters.to)
+      if (filters.search) q = q.ilike('description', `%${filters.search}%`)
+      return q
+    }
 
-    const { data, error } = await q
-    if (error) throw error
-    return data
+    return fetchAllRows(buildQuery)
   }, [JSON.stringify(filters)])
 }
 
