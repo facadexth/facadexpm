@@ -532,6 +532,7 @@ CREATE TABLE purchase_orders (
   status          TEXT NOT NULL DEFAULT 'ordered'
                   CHECK (status IN ('ordered','received','cancelled')),
   has_vat         BOOLEAN NOT NULL DEFAULT true,
+  price_includes_vat BOOLEAN NOT NULL DEFAULT false,  -- entered unit_price already includes VAT; only meaningful when has_vat
   notes           TEXT,
   received_date   DATE,
   expense_id      UUID REFERENCES expenses(id) ON DELETE SET NULL,

@@ -28,7 +28,7 @@ const PO_STATUSES = ['ordered', 'received', 'cancelled']
 const PO_STATUS_LABELS = { ordered: '📦 สั่งแล้ว', received: '✅ รับของแล้ว', cancelled: '✕ ยกเลิก' }
 
 const EMPTY_ITEM = { description: '', quantity: '1', unit: '', unit_price: '' }
-const EMPTY_FORM = { site_id: '', supplier_id: '', category_id: '', date: '', has_vat: true, notes: '', items: [{ ...EMPTY_ITEM }] }
+const EMPTY_FORM = { site_id: '', supplier_id: '', category_id: '', date: '', has_vat: true, price_includes_vat: false, notes: '', items: [{ ...EMPTY_ITEM }] }
 
 function lineTotal(item) {
   return (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)
@@ -36,9 +36,23 @@ function lineTotal(item) {
 
 const VAT_RATE = 0.07
 
-function calcPoTotals(items, hasVat) {
-  const subtotal = (items || []).reduce((s, it) => s + (it.line_total != null ? it.line_total : lineTotal(it)), 0)
-  const vat = hasVat ? Math.round(subtotal * VAT_RATE * 100) / 100 : 0
+/**
+ * priceIncludesVat: some suppliers quote a unit price that already
+ * includes VAT. When true, the entered line-item prices ARE the grand
+ * total — subtotal/VAT are backed out of it (subtotal = total / 1.07)
+ * instead of VAT being added on top of the raw item sum.
+ */
+function calcPoTotals(items, hasVat, priceIncludesVat) {
+  const rawTotal = (items || []).reduce((s, it) => s + (it.line_total != null ? it.line_total : lineTotal(it)), 0)
+  if (!hasVat) return { subtotal: rawTotal, vat: 0, total: rawTotal }
+  if (priceIncludesVat) {
+    const total = Math.round(rawTotal * 100) / 100
+    const subtotal = Math.round((total / (1 + VAT_RATE)) * 100) / 100
+    const vat = Math.round((total - subtotal) * 100) / 100
+    return { subtotal, vat, total }
+  }
+  const subtotal = rawTotal
+  const vat = Math.round(subtotal * VAT_RATE * 100) / 100
   const total = Math.round((subtotal + vat) * 100) / 100
   return { subtotal, vat, total }
 }
@@ -117,8 +131,20 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
               ไม่มี VAT
             </label>
           </div>
+          {form.has_vat && (
+            <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+                <input type="radio" name="po-price-includes-vat" checked={form.price_includes_vat === false} onChange={() => set('price_includes_vat', false)} />
+                ราคา/หน่วยยังไม่รวม VAT
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+                <input type="radio" name="po-price-includes-vat" checked={form.price_includes_vat === true} onChange={() => set('price_includes_vat', true)} />
+                ราคา/หน่วยรวม VAT แล้ว
+              </label>
+            </div>
+          )}
           {(() => {
-            const { subtotal, vat, total } = calcPoTotals(form.items, form.has_vat)
+            const { subtotal, vat, total } = calcPoTotals(form.items, form.has_vat, form.price_includes_vat)
             return (
               <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '10px 14px', fontSize: 13 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมก่อน VAT</span><span className="font-mono">{fmt(subtotal)}</span></div>
@@ -145,7 +171,7 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
 
 function PODetailModal({ po, tenantId, onClose }) {
   const items = po.purchase_order_items || []
-  const { subtotal, vat, total } = calcPoTotals(items, po.has_vat)
+  const { subtotal, vat, total } = calcPoTotals(items, po.has_vat, po.price_includes_vat)
 
   return (
     <Modal title={`ใบสั่งซื้อ ${po.po_number}`} onClose={onClose} maxWidth={700}>
@@ -190,7 +216,7 @@ function PODetailModal({ po, tenantId, onClose }) {
 
 function PODocumentModal({ po, onClose }) {
   const items = po.purchase_order_items || []
-  const { subtotal, vat, total } = calcPoTotals(items, po.has_vat)
+  const { subtotal, vat, total } = calcPoTotals(items, po.has_vat, po.price_includes_vat)
 
   return (
     <Modal title={`ใบสั่งซื้อ ${po.po_number}`} onClose={onClose} maxWidth={640}>
@@ -361,7 +387,9 @@ export default function PurchaseOrders({ navigateTo, navState }) {
     try {
       const poPayload = {
         site_id: form.site_id, supplier_id: form.supplier_id, category_id: form.category_id,
-        date: form.date, has_vat: form.has_vat, notes: form.notes || null,
+        date: form.date, has_vat: form.has_vat,
+        price_includes_vat: form.has_vat ? form.price_includes_vat : false,
+        notes: form.notes || null,
       }
       let poId = editRow?.id
       if (editRow) {
@@ -407,7 +435,7 @@ export default function PurchaseOrders({ navigateTo, navState }) {
   const handleReceive = async () => {
     if (!receiveRow || receiving) return
     setReceiving(true)
-    const { subtotal, vat, total } = calcPoTotals(receiveRow.purchase_order_items, receiveRow.has_vat)
+    const { subtotal, vat, total } = calcPoTotals(receiveRow.purchase_order_items, receiveRow.has_vat, receiveRow.price_includes_vat)
     try {
       const expensePayload = {
         date: new Date().toISOString().slice(0, 10),
@@ -445,7 +473,7 @@ export default function PurchaseOrders({ navigateTo, navState }) {
     if (!editRow) return null
     return {
       site_id: editRow.site_id, supplier_id: editRow.supplier_id, category_id: editRow.category_id,
-      date: editRow.date, has_vat: editRow.has_vat, notes: editRow.notes || '',
+      date: editRow.date, has_vat: editRow.has_vat, price_includes_vat: editRow.price_includes_vat || false, notes: editRow.notes || '',
       items: (editRow.purchase_order_items?.length ? editRow.purchase_order_items : [{ ...EMPTY_ITEM }])
         .map(it => ({ description: it.description, quantity: String(it.quantity), unit: it.unit || '', unit_price: String(it.unit_price) })),
     }
@@ -486,7 +514,7 @@ export default function PurchaseOrders({ navigateTo, navState }) {
             </thead>
             <tbody>
               {(pos || []).map(po => {
-                const { total } = calcPoTotals(po.purchase_order_items, po.has_vat)
+                const { total } = calcPoTotals(po.purchase_order_items, po.has_vat, po.price_includes_vat)
                 return (
                   <tr key={po.id}>
                     <td className="font-mono" style={{ fontSize: 12 }}>
@@ -552,7 +580,7 @@ export default function PurchaseOrders({ navigateTo, navState }) {
       {receiveRow && (
         <ConfirmDialog
           title="ยืนยันรับของ"
-          message={`สร้างรายจ่ายอัตโนมัติจากใบสั่งซื้อ ${receiveRow.po_number} ยอดรวม ${fmt(calcPoTotals(receiveRow.purchase_order_items, receiveRow.has_vat).total)} บาท?`}
+          message={`สร้างรายจ่ายอัตโนมัติจากใบสั่งซื้อ ${receiveRow.po_number} ยอดรวม ${fmt(calcPoTotals(receiveRow.purchase_order_items, receiveRow.has_vat, receiveRow.price_includes_vat).total)} บาท?`}
           onConfirm={handleReceive}
           onCancel={() => setReceiveRow(null)}
         />
