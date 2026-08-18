@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase.js'
 import { usePurchaseOrders, useSites, useSuppliers, useCategories } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
+import { useDraftForm } from '../hooks/useDraftForm.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { auditLog } from '../lib/audit.js'
@@ -91,11 +92,12 @@ function ItemsEditor({ items, onChange }) {
 }
 
 function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories, onSave, onCancel, loading }) {
-  const [form, setForm] = useState({ ...EMPTY_FORM, ...initial })
+  const isAdd = !initial?.id
+  const [form, setForm, clearFormDraft] = useDraftForm('purchase-order-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onSave(form) }}>
+    <form onSubmit={e => { e.preventDefault(); clearFormDraft(); onSave(form) }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
         <div className="form-grid-2">
           <div>
@@ -488,6 +490,7 @@ export default function PurchaseOrders({ navigateTo, navState }) {
   const editFormInitial = useMemo(() => {
     if (!editRow) return null
     return {
+      id: editRow.id,
       site_id: editRow.site_id, supplier_id: editRow.supplier_id, category_id: editRow.category_id,
       date: editRow.date, has_vat: editRow.has_vat, price_includes_vat: editRow.price_includes_vat || false, notes: editRow.notes || '',
       items: (editRow.purchase_order_items?.length ? editRow.purchase_order_items : [{ ...EMPTY_ITEM }])

@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabase.js'
 import { useExpenses, useSites, useCategories, useSuppliers } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
+import { useDraftForm } from '../hooks/useDraftForm.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { auditLog } from '../lib/audit.js'
@@ -48,7 +49,8 @@ const EMPTY_FORM = {
 }
 
 function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], onSave, onCancel, loading }) {
-  const [form, setForm] = useState({ ...EMPTY_FORM, ...initial })
+  const isAdd = !initial?.id
+  const [form, setForm, clearFormDraft] = useDraftForm('expense-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   // เครดิตเทอมของ Supplier ที่เลือก (วัน) — ใช้คำนวณวันครบกำหนดจากวันวางบิล
@@ -70,7 +72,7 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
   }
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onSave(form) }}>
+    <form onSubmit={e => { e.preventDefault(); clearFormDraft(); onSave(form) }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
         <div className="form-grid-2">
           <div>
