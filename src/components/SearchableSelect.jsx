@@ -3,9 +3,19 @@
 // ✅ พิมพ์กรองรายการแบบ real-time (ตาม label + keywords)
 // ✅ คลิกเลือก → ส่งค่า value กลับผ่าน onChange
 // ✅ ปุ่มล้าง (×) + ปิด dropdown เมื่อคลิกนอกช่อง
+// ✅ dropdown menu renders via portal to document.body, positioned by the
+//    trigger's viewport rect — otherwise, opened inside a scrollable modal
+//    (position: absolute + the modal's own overflow:auto/max-height:90vh),
+//    a long list gets silently clipped by the modal's boundary with no way
+//    to scroll it into view (reported live: categories were all there, just
+//    clipped — see SearchableSelect commit on 2026-08-18)
 // options: [{ value, label, keywords? }]
 // ============================================================
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react'
+import { createPortal } from 'react-dom'
+
+const MENU_MAX_HEIGHT = 320
+const MENU_MARGIN = 4
 
 export default function SearchableSelect({
   value,
@@ -18,7 +28,9 @@ export default function SearchableSelect({
 }) {
   const [open, setOpen]   = useState(false)
   const [query, setQuery] = useState('')
-  const boxRef = useRef(null)
+  const [menuStyle, setMenuStyle] = useState(null)
+  const triggerRef = useRef(null)
+  const menuRef = useRef(null)
 
   const selected = useMemo(
     () => options.find(o => String(o.value) === String(value)) || null,
@@ -34,11 +46,52 @@ export default function SearchableSelect({
     )
   }, [options, query])
 
-  // ปิด dropdown เมื่อคลิกนอกช่อง
+  // คำนวณตำแหน่ง menu จาก viewport rect ของ trigger — ให้พอดีจอ ไม่ล้นขอบล่าง
+  const reposition = () => {
+    const el = triggerRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    const spaceAbove = rect.top
+    const openUp = spaceBelow < MENU_MAX_HEIGHT && spaceAbove > spaceBelow
+    const maxHeight = Math.min(MENU_MAX_HEIGHT, (openUp ? spaceAbove : spaceBelow) - MENU_MARGIN * 2)
+
+    setMenuStyle({
+      position: 'fixed',
+      left: rect.left,
+      width: rect.width,
+      maxHeight: Math.max(maxHeight, 120),
+      ...(openUp
+        ? { bottom: window.innerHeight - rect.top + MENU_MARGIN }
+        : { top: rect.bottom + MENU_MARGIN }),
+    })
+  }
+
+  useLayoutEffect(() => {
+    if (!open) return
+    reposition()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, filtered.length])
+
+  useEffect(() => {
+    if (!open) return
+    const onScrollOrResize = () => reposition()
+    window.addEventListener('resize', onScrollOrResize)
+    window.addEventListener('scroll', onScrollOrResize, true) // capture — catches scroll on modal/any ancestor
+    return () => {
+      window.removeEventListener('resize', onScrollOrResize)
+      window.removeEventListener('scroll', onScrollOrResize, true)
+    }
+  }, [open])
+
+  // ปิด dropdown เมื่อคลิกนอกช่อง (ทั้ง trigger และ menu ที่ portal ออกไป)
   useEffect(() => {
     if (!open) return
     const onDocClick = (e) => {
-      if (boxRef.current && !boxRef.current.contains(e.target)) {
+      if (
+        triggerRef.current && !triggerRef.current.contains(e.target) &&
+        menuRef.current && !menuRef.current.contains(e.target)
+      ) {
         setOpen(false); setQuery('')
       }
     }
@@ -52,7 +105,7 @@ export default function SearchableSelect({
   }
 
   return (
-    <div ref={boxRef} style={{ position: 'relative' }}>
+    <div ref={triggerRef} style={{ position: 'relative' }}>
       {/* hidden field so native "required" form validation ยังทำงาน */}
       {required && (
         <input
@@ -99,11 +152,12 @@ export default function SearchableSelect({
         </button>
       )}
 
-      {open && (
+      {open && menuStyle && createPortal(
         <div
+          ref={menuRef}
           style={{
-            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-            marginTop: 4, maxHeight: 'min(420px, 60vh)', overflowY: 'auto',
+            ...menuStyle,
+            zIndex: 9999, overflowY: 'auto',
             background: 'var(--bg2, #1a1a1a)', border: '1px solid var(--border, #333)',
             borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.4)',
           }}
@@ -134,7 +188,8 @@ export default function SearchableSelect({
               {emptyLabel}
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
