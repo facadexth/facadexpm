@@ -1451,13 +1451,21 @@ LEFT JOIN (
 ) inc ON inc.site_id = s.id;
 
 -- WORKER-safe site info — billing_pct as a progress proxy, no money columns.
--- Computes billing_pct directly from sites+incomes (base tables), not via
--- site_financial_summary (a security_invoker=true view) -- going through
--- an invoker-rights view breaks this view's own owner-rights RLS bypass,
--- since security_invoker checks the ORIGINAL session's privileges, not
--- whichever role an enclosing owner-rights view is impersonating. See
--- supabase/migrations/2026-08-15-04-fix-sites-progress-invoker-chain.sql.
-CREATE OR REPLACE VIEW sites_progress AS
+--
+-- security_invoker = true (2026-08-18-01): the 2026-08-15-04 migration
+-- (whose rationale used to live in this comment) computed billing_pct
+-- directly from sites+incomes specifically to restore this view's
+-- owner-rights RLS bypass after site_financial_summary went
+-- invoker-rights — chasing a misdiagnosed symptom (`SET ROLE anon;
+-- SELECT * FROM sites_progress;` returning 0 rows, which is actually
+-- correct: anon has no tenant and should see nothing). The real effect
+-- was every AUTHENTICATED user, from ANY tenant, could see every OTHER
+-- tenant's sites through this view, since owner-rights bypasses RLS for
+-- authenticated callers too. This view is only ever queried from inside
+-- the authenticated Dashboard (behind login) — it was never meant to be
+-- world-readable. See
+-- supabase/migrations/2026-08-18-01-fix-sites-progress-cross-tenant-leak.sql.
+CREATE OR REPLACE VIEW sites_progress WITH (security_invoker = true) AS
 SELECT
   s.id,
   s.site_number,
