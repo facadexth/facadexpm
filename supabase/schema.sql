@@ -229,7 +229,7 @@ CREATE TABLE expenses (
   date            DATE NOT NULL,                -- วันที่สั่งซื้อ/วางบิล
   description     TEXT,
   site_id         UUID REFERENCES sites(id) ON DELETE SET NULL,
-  category_id     UUID REFERENCES expense_categories(id) ON DELETE SET NULL,
+  category_id     UUID REFERENCES expense_categories(id) ON DELETE RESTRICT,  -- was SET NULL; silently orphaned expenses on category delete despite Categories.jsx's UI promising deletion would be blocked instead — see 2026-08-18-03
   supplier        TEXT,                         -- ชื่อผู้จำหน่าย (free text, legacy)
   supplier_id     UUID REFERENCES suppliers(id),
   po_id           UUID REFERENCES purchase_orders(id) ON DELETE SET NULL, -- FK to purchase_orders — set only by the PO receive flow
