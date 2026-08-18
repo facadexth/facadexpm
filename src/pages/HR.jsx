@@ -6,6 +6,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { canEditPage } from '../lib/permissions.js'
 import { supabase } from '../lib/supabase.js'
 import { useWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs, fetchWorkerOTForRange, useCompanyHolidays, saveCompanyHoliday, deleteCompanyHoliday, useAppSetting, saveAppSetting, fetchCompanyHolidaysForRange, useLeaveQuotaUsage } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
@@ -300,7 +301,7 @@ function SalarySlipModal({ record, month, year, onClose }) {
 export default function HR() {
   const now = new Date()
   const { role, user, isAtLeast } = useUserRole()
-  const canEdit = isAtLeast('ADMIN')
+  const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'hr')
   const [innerTab, setInnerTab] = useState('workers')
 
   // Workers state

@@ -7,6 +7,7 @@ import { supabase } from './lib/supabase.js'
 import { useUserRole } from './hooks/useUserRole.js'
 import { useTenant } from './hooks/useTenant.js'
 import { ProtectedPage } from './components/ProtectedPage.jsx'
+import { canViewPage } from './lib/permissions.js'
 import ChangePassword from './components/ChangePassword.jsx'
 import TrialBanner from './components/TrialBanner.jsx'
 import Login      from './pages/Login.jsx'
@@ -98,16 +99,6 @@ export default function App() {
   // Not logged in
   if (!session) return <Login />
 
-  // Get saved permissions from localStorage
-  const getSavedPermissions = () => {
-    try {
-      const saved = localStorage.getItem('role_permissions')
-      return saved ? JSON.parse(saved) : null
-    } catch (e) {
-      return null
-    }
-  }
-
   const visibleTabs = TABS.filter(tab => {
     // First check role-based access
     if (!isAtLeast(tab.minRole)) return false
@@ -115,12 +106,10 @@ export default function App() {
     // Then check module entitlement
     if (!hasModuleAccess(tab.module)) return false
 
-    // Then check saved permissions (if any)
-    const savedPermissions = getSavedPermissions()
-    if (savedPermissions && role) {
-      const pageKey = tab.id
-      return savedPermissions[role]?.[pageKey] !== false
-    }
+    // Then check saved per-role permission level ('none' hides the tab;
+    // 'view'/'edit' both keep it visible — the view/edit distinction is
+    // enforced inside each page's own canEdit, not here)
+    if (role && !canViewPage(role, tab.id)) return false
 
     return true
   })

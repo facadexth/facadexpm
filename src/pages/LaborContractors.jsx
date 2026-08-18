@@ -23,13 +23,14 @@ const scSubOpts = (subs) => (subs || []).map(s => ({
 import { auditLog } from '../lib/audit.js'
 import { downloadPDF } from '../lib/pdf.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { canEditPage } from '../lib/permissions.js'
 import { readDraft, saveDraft, clearDraft, useDraftForm } from '../hooks/useDraftForm.js'
 
 // ── Sub-tab 1: ผู้รับเหมา ─────────────────────────────────────
 
 function SubcontractorTab() {
-  const { isAtLeast } = useUserRole()
-  const canEdit = isAtLeast('ADMIN')
+  const { isAtLeast, role } = useUserRole()
+  const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'labor_contractors')
   const { data: subs, refetch } = useLaborSubcontractors()
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState(null)
@@ -158,8 +159,8 @@ function SubcontractorTab() {
 // ── Sub-tab 2: สัญญา ──────────────────────────────────────────
 
 function ContractsTab() {
-  const { isAtLeast } = useUserRole()
-  const canEdit = isAtLeast('ADMIN')
+  const { isAtLeast, role } = useUserRole()
+  const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'labor_contractors')
   const [siteFilter, setSiteFilter] = useState('')
   const [subFilter,  setSubFilter]  = useState('')
   const [statusFilter, setStatusFilter] = useState('active')
@@ -484,8 +485,8 @@ function PaymentModal({ contract, onClose }) {
 // ── Sub-tab 3: การเบิก ────────────────────────────────────────
 
 function PaymentsTab() {
-  const { isAtLeast } = useUserRole()
-  const canEdit = isAtLeast('ADMIN')
+  const { isAtLeast, role } = useUserRole()
+  const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'labor_contractors')
   const [statusFilter, setStatusFilter] = useState('')
   const { data: payments, refetch } = useAllLaborPayments({ status: statusFilter||undefined })
 

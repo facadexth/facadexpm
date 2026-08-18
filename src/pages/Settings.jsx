@@ -1,66 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useAppSetting, saveAppSetting } from '../hooks/useSupabase.js'
+import { PAGE_LABELS, DEFAULT_PERMISSIONS, loadPermissions, savePermissions } from '../lib/permissions.js'
 
-const DEFAULT_PERMISSIONS = {
-  WORKER: {
-    dashboard: true,
-    assign: true,
-    hr: true,
-    sites: false,
-    expenses: false,
-    income: false,
-    categories: false,
-    clients: false,
-    suppliers: false,
-    labor_contractors: false,
-    user_management: false,
-    settings: false,
-  },
-  ADMIN: {
-    dashboard: true,
-    assign: true,
-    hr: true,
-    sites: true,
-    expenses: true,
-    income: true,
-    categories: true,
-    clients: true,
-    suppliers: true,
-    labor_contractors: true,
-    user_management: false,
-    settings: false,
-  },
-  OWNER: {
-    dashboard: true,
-    assign: true,
-    hr: true,
-    sites: true,
-    expenses: true,
-    income: true,
-    categories: true,
-    clients: true,
-    suppliers: true,
-    labor_contractors: true,
-    user_management: true,
-    settings: true,
-  },
-}
-
-const PAGE_LABELS = {
-  dashboard: '📊 Dashboard',
-  assign: '📋 Assign ช่าง',
-  hr: '👷 HR',
-  sites: '🏗️ Sites',
-  expenses: '💸 Expenses',
-  income: '💰 Income',
-  categories: '🏷️ Categories',
-  clients: '🏢 Clients',
-  suppliers: '🏭 Suppliers',
-  labor_contractors: '🔧 Labor Contractors',
-  user_management: '👤 User Management',
-  settings: '⚙️ Settings',
-}
+const LEVEL_LABELS = { none: '🚫 ซ่อน', view: '👁️ ดูอย่างเดียว', edit: '✏️ แก้ไขได้' }
 
 export default function Settings() {
   const [permissions, setPermissions] = useState(DEFAULT_PERMISSIONS)
@@ -85,24 +28,17 @@ export default function Settings() {
     }
   }
 
-  // Load permissions from localStorage
+  // Load permissions from localStorage (auto-upgrades legacy boolean format)
   useEffect(() => {
-    const saved = localStorage.getItem('role_permissions')
-    if (saved) {
-      try {
-        setPermissions(JSON.parse(saved))
-      } catch (e) {
-        console.error('Failed to load permissions:', e)
-      }
-    }
+    setPermissions(loadPermissions())
   }, [])
 
-  const toggle = (role, page) => {
+  const setLevel = (role, page, level) => {
     setPermissions(prev => ({
       ...prev,
       [role]: {
         ...prev[role],
-        [page]: !prev[role][page]
+        [page]: level,
       }
     }))
   }
@@ -111,7 +47,7 @@ export default function Settings() {
     setSaving(true)
     try {
       // Save to localStorage (could also save to Supabase if needed)
-      localStorage.setItem('role_permissions', JSON.stringify(permissions))
+      savePermissions(permissions)
       alert('✅ บันทึกตั้งค่าสำเร็จ')
     } catch (e) {
       alert('Error: ' + e.message)
@@ -149,7 +85,7 @@ export default function Settings() {
       <div style={{ marginBottom: 24 }}>
         <h2 style={{ marginBottom: 8, fontSize: 18, fontWeight: 700 }}>⚙️ ตั้งค่าสิทธิ์เข้าใช้งาน</h2>
         <p style={{ fontSize: 13, color: 'var(--text3)' }}>
-          เลือกหน้าที่แต่ละ Role สามารถเข้าใช้งานได้
+          เลือกระดับการเข้าใช้งานแต่ละหน้าต่อ Role — ซ่อน / ดูอย่างเดียว (เข้าดูได้แต่แก้ไข-เพิ่มไม่ได้) / แก้ไขได้เต็มสิทธิ์
         </p>
       </div>
 
@@ -175,29 +111,29 @@ export default function Settings() {
 
             <div style={{ padding: '16px' }}>
               <div style={{ display: 'grid', gap: 10 }}>
-                {Object.entries(permissions[role]).map(([page, allowed]) => (
-                  <label key={page} style={{
+                {Object.entries(permissions[role]).map(([page, level]) => (
+                  <div key={page} style={{
                     display: 'flex',
                     alignItems: 'center',
+                    justifyContent: 'space-between',
                     gap: 10,
-                    cursor: 'pointer',
                     padding: '8px',
                     borderRadius: 6,
-                    transition: 'background 0.2s',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={allowed}
-                      onChange={() => toggle(role, page)}
-                      style={{ cursor: 'pointer', width: 18, height: 18 }}
-                    />
+                  }}>
                     <span style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 500 }}>
                       {PAGE_LABELS[page]}
                     </span>
-                  </label>
+                    <select
+                      className="select select-sm"
+                      style={{ width: 150 }}
+                      value={level}
+                      onChange={e => setLevel(role, page, e.target.value)}
+                    >
+                      {Object.entries(LEVEL_LABELS).map(([val, lbl]) => (
+                        <option key={val} value={val}>{lbl}</option>
+                      ))}
+                    </select>
+                  </div>
                 ))}
               </div>
             </div>

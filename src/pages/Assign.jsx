@@ -9,6 +9,7 @@ import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useWorkers, useSites, useAssignmentsRange, useLaborCost, useSiteTravelCost, useAppSetting, useWorkerOTRange, useOTCostBySite, useCompanyHolidaysRange } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
 import { ConfirmDialog } from '../components/Modal.jsx'
 import ViewToggle from './assign/ViewToggle.jsx'
@@ -23,8 +24,8 @@ import { TYPE_LEGEND, TYPE_COLOR } from './assign/constants.js'
 import { buildLineText } from './assign/lineExport.js'
 
 export default function Assign({ navState }) {
-  const { isAtLeast } = useUserRole()
-  const canEdit = isAtLeast('ADMIN')
+  const { isAtLeast, role } = useUserRole()
+  const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'assign')
 
   const [view, setView]     = useState('week')
   const [anchor, setAnchor] = useState(new Date())

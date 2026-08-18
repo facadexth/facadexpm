@@ -9,6 +9,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useIncomes, useSites } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { canEditPage } from '../lib/permissions.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
@@ -137,8 +138,8 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading }) 
 }
 
 export default function Income({ navigateTo, navState }) {
-  const { isAtLeast } = useUserRole()
-  const canEdit = isAtLeast('ADMIN')
+  const { isAtLeast, role } = useUserRole()
+  const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'income')
   const today  = new Date()
   const ytdFrom = format(startOfYear(today), 'yyyy-MM-dd')
   const ytdTo   = format(endOfYear(today),   'yyyy-MM-dd')

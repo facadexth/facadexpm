@@ -8,6 +8,7 @@ import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useClients } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { canEditPage } from '../lib/permissions.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
@@ -85,8 +86,8 @@ function ClientForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
 }
 
 export default function Clients() {
-  const { isAtLeast } = useUserRole()
-  const canEdit = isAtLeast('ADMIN')
+  const { isAtLeast, role } = useUserRole()
+  const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'clients')
   const { data: clients, refetch } = useClients()
   const [showForm,   setShowForm]   = useState(false)
   const [editItem,   setEditItem]   = useState(null)

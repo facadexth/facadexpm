@@ -11,6 +11,7 @@ import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useSites, useLaborCost, useClients } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { canEditPage } from '../lib/permissions.js'
 import { fmt, fmtDate, countdown } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
@@ -200,8 +201,8 @@ function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loadin
 }
 
 export default function Sites({ navigateTo }) {
-  const { isAtLeast } = useUserRole()
-  const canEdit = isAtLeast('ADMIN')
+  const { isAtLeast, role } = useUserRole()
+  const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'sites')
   const { data: sites, refetch } = useSites()
   const { data: laborData } = useLaborCost()
   const { data: clients }   = useClients()

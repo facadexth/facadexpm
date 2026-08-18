@@ -11,6 +11,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useExpenses, useSites, useCategories, useSuppliers } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { canEditPage } from '../lib/permissions.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { auditLog } from '../lib/audit.js'
@@ -203,8 +204,8 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
 }
 
 export default function Expenses({ navigateTo, navState }) {
-  const { isAtLeast } = useUserRole()
-  const canEdit = isAtLeast('ADMIN')
+  const { isAtLeast, role } = useUserRole()
+  const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'expenses')
   const today = new Date()
   const ytdFrom = format(startOfYear(today), 'yyyy-MM-dd')
   const ytdTo   = format(endOfYear(today),   'yyyy-MM-dd')

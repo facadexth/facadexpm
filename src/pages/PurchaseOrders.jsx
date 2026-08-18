@@ -8,6 +8,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { usePurchaseOrders, useSites, useSuppliers, useCategories } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { canEditPage } from '../lib/permissions.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { auditLog } from '../lib/audit.js'
@@ -352,8 +353,8 @@ function AttachmentsSection({ poId, tenantId }) {
 }
 
 export default function PurchaseOrders({ navigateTo, navState }) {
-  const { isAtLeast } = useUserRole()
-  const canEdit = isAtLeast('ADMIN')
+  const { isAtLeast, role } = useUserRole()
+  const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'purchase_orders')
   const { tenant } = useTenant()
   const today = new Date()
   const ytdFrom = format(startOfYear(today), 'yyyy-MM-dd')
