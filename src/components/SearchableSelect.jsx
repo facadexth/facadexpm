@@ -103,7 +103,7 @@ export default function SearchableSelect({
         <div
           style={{
             position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-            marginTop: 4, maxHeight: 240, overflowY: 'auto',
+            marginTop: 4, maxHeight: 'min(420px, 60vh)', overflowY: 'auto',
             background: 'var(--bg2, #1a1a1a)', border: '1px solid var(--border, #333)',
             borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.4)',
           }}

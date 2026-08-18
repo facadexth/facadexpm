@@ -15,7 +15,7 @@ import { auditLog } from '../lib/audit.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
-import { downloadPDF } from '../lib/pdf.js'
+import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -278,6 +278,7 @@ function PODocumentModal({ po, onClose }) {
       </div>
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
+        <button className="btn btn-ghost" onClick={() => downloadJPG(`po-doc-${po.id}`, `${po.po_number}.jpg`)}>🖼️ ดาวน์โหลด JPG</button>
         <button className="btn btn-primary" onClick={() => downloadPDF(`po-doc-${po.id}`, `${po.po_number}.pdf`)}>📄 ดาวน์โหลด PDF</button>
       </div>
     </Modal>
@@ -382,6 +383,20 @@ export default function PurchaseOrders({ navigateTo, navState }) {
   const { data: suppliers }  = useSuppliers()
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
+
+  // Arrived via "จาก PO" click from Expenses — the PO might be outside the
+  // default YTD range, so drop the date filter entirely to make sure it's
+  // findable, then open its detail once the (now wider) list has loaded.
+  useEffect(() => {
+    if (navState?.poId) { setDateFrom(''); setDateTo('') }
+  }, [navState?.poId])
+
+  useEffect(() => {
+    if (navState?.poId && pos) {
+      const match = pos.find(p => p.id === navState.poId)
+      if (match) setDetailRow(match)
+    }
+  }, [navState?.poId, pos])
 
   const handleSave = async (form) => {
     setSaving(true)

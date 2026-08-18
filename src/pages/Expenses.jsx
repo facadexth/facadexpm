@@ -349,10 +349,10 @@ export default function Expenses({ navigateTo, navState }) {
 
       {/* ── KPI Row ── */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-        <div className="kpi-card kpi-sm red"><div className="kpi-label">รายจ่ายรวม</div><div className="kpi-value" style={{color:'var(--red)'}}>{fmt(totalAmount)}</div></div>
-        <div className="kpi-card kpi-sm green"><div className="kpi-label">จ่ายแล้ว</div><div className="kpi-value" style={{color:'var(--green)'}}>{fmt(totalPaid)}</div></div>
-        <div className="kpi-card kpi-sm yellow"><div className="kpi-label">ค้างจ่าย</div><div className="kpi-value" style={{color:'var(--yellow)'}}>{fmt(totalPending)}</div></div>
-        <div className="kpi-card kpi-sm yellow"><div className="kpi-label">รอวางบิล</div><div className="kpi-value" style={{color:'var(--yellow)'}}>{fmt(totalAwaitingBilling)}</div></div>
+        <div className="kpi-card kpi-sm red"><div className="kpi-label">รายจ่ายรวม</div><div className="kpi-value" style={{color:'var(--red)'}}>{fmt(totalAmount)} บาท</div></div>
+        <div className="kpi-card kpi-sm green"><div className="kpi-label">จ่ายแล้ว</div><div className="kpi-value" style={{color:'var(--green)'}}>{fmt(totalPaid)} บาท</div></div>
+        <div className="kpi-card kpi-sm yellow"><div className="kpi-label">ค้างจ่าย</div><div className="kpi-value" style={{color:'var(--yellow)'}}>{fmt(totalPending)} บาท</div></div>
+        <div className="kpi-card kpi-sm yellow"><div className="kpi-label">ยอดรอวางบิล</div><div className="kpi-value" style={{color:'var(--yellow)'}}>{fmt(totalAwaitingBilling)} บาท</div></div>
         <div className="kpi-card kpi-sm"><div className="kpi-label">จำนวนรายการ</div><div className="kpi-value">{(expenses||[]).length} รายการ</div></div>
       </div>
 
@@ -381,7 +381,16 @@ export default function Expenses({ navigateTo, navState }) {
                   <td style={{ maxWidth: 220 }}>
                     <div style={{ fontWeight: 500, fontSize: 13 }}>{e.description}</div>
                     {e.invoice_no && <div style={{ fontSize: 10, color: 'var(--text3)' }}>#{e.invoice_no}</div>}
-                    {e.po_id && <span className="badge" style={{ background: 'rgba(108,99,255,0.15)', color: 'var(--accent)', fontSize: 10, marginTop: 2 }}>🧾 จาก PO</span>}
+                    {e.po_id && (
+                      <button
+                        type="button"
+                        className="badge"
+                        style={{ background: 'rgba(108,99,255,0.15)', color: 'var(--accent)', fontSize: 10, marginTop: 2, border: 'none', cursor: 'pointer' }}
+                        onClick={() => navigateTo('purchase_orders', { poId: e.po_id })}
+                      >
+                        🧾 จาก PO
+                      </button>
+                    )}
                   </td>
                   <td style={{ fontSize: 11, color: 'var(--accent)' }} title={e.site_number || undefined}>{e.site_name || '—'}</td>
                   <td style={{ fontSize: 11 }}>
