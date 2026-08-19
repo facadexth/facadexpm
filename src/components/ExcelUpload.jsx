@@ -4,7 +4,7 @@
 // ============================================================
 import { useState, useRef, useMemo } from 'react'
 import * as XLSX from 'xlsx'
-import { supabase } from '../lib/supabase.js'
+import { supabase, fmt } from '../lib/supabase.js'
 import { Modal } from './Modal.jsx'
 import SearchableSelect from './SearchableSelect.jsx'
 
@@ -467,8 +467,8 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                           ) : <span style={{ color: 'var(--text3)', fontSize: 11 }}>— ไม่ระบุ —</span>}
                         </td>
                         <td style={{ color: 'var(--red)', fontWeight: 600 }}>
-                          {Number(r.amount).toLocaleString('th-TH')}
-                          {r.vat > 0 && <div style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 400 }}>VAT {Number(r.vat).toLocaleString('th-TH')}</div>}
+                          {fmt(r.amount)}
+                          {r.vat > 0 && <div style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 400 }}>VAT {fmt(r.vat)}</div>}
                         </td>
                         <td><span className={`badge badge-${r.status}`}>{r.status}</span></td>
                       </> : type === 'income' ? <>
@@ -481,7 +481,7 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                           )}
                         </td>
                         <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.client_name}</td>
-                        <td style={{ color: 'var(--green)', fontWeight: 600 }}>{Number(r.received_amount).toLocaleString('th-TH')}</td>
+                        <td style={{ color: 'var(--green)', fontWeight: 600 }}>{fmt(r.received_amount)}</td>
                       </> : type === 'site' ? <>
                         <td style={{ fontWeight: 600 }}>{r.name}</td>
                         <td style={{ fontSize: 11, color: r.client_id ? 'var(--green)' : 'var(--text3)' }}>{r.client_id ? '✓ linked' : r.client_name || '—'}</td>
@@ -491,7 +491,7 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                             {SITE_STATUS_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
                         </td>
-                        <td style={{ color: 'var(--text2)', fontVariantNumeric: 'tabular-nums' }}>{r.contract_value ? Number(r.contract_value).toLocaleString('th-TH') : '—'}</td>
+                        <td style={{ color: 'var(--text2)', fontVariantNumeric: 'tabular-nums' }}>{r.contract_value ? fmt(r.contract_value) : '—'}</td>
                         <td style={{ fontSize: 12 }}>{r.end_date || '—'}</td>
                       </> : type === 'client' ? <>
                         <td style={{ fontWeight: 600 }}>{r.name}</td>

@@ -14,8 +14,8 @@ export const supabase = createClient(URL, KEY)
 
 // ── Helpers ──────────────────────────────────────────────────
 
-/** Format number เป็น Thai locale */
-export const fmt = (n, decimals = 0) => {
+/** Format number เป็น Thai locale — ทศนิยม 2 ตำแหน่งเป็นค่า default สำหรับตัวเลขการเงิน */
+export const fmt = (n, decimals = 2) => {
   if (n == null || isNaN(n)) return '—'
   return Number(n).toLocaleString('th-TH', {
     minimumFractionDigits: decimals,
