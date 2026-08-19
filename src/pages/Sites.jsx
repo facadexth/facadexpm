@@ -37,6 +37,7 @@ const EMPTY_FORM = {
   status: 'Ongoing', start_date: '', end_date: '',
   has_vat: true, contract_value_no_vat: '', notes: '',
   default_vat_pct: 7, default_tax_withheld_pct: 3, default_retention_pct: 0,
+  default_retention_period_days: '',
   ...Object.fromEntries(COST_TYPES.map(t => [t.key, '']))
 }
 
@@ -168,7 +169,7 @@ function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loadin
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
             ค่าเริ่มต้นสำหรับรายรับ (ใช้ auto-fill ตอนเพิ่มรายรับของไซท์นี้)
           </div>
-          <div className="form-grid-3">
+          <div className="form-grid-4">
             <div>
               <label className="label">VAT (%)</label>
               <input type="number" className="input input-sm" min="0" step="0.01"
@@ -183,6 +184,11 @@ function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loadin
               <label className="label">Retention (%)</label>
               <input type="number" className="input input-sm" min="0" step="0.01"
                 value={form.default_retention_pct} onChange={e => set('default_retention_pct', e.target.value)} placeholder="0" />
+            </div>
+            <div>
+              <label className="label">ระยะเวลา retention (วัน)</label>
+              <input type="number" className="input input-sm" min="0" step="1"
+                value={form.default_retention_period_days} onChange={e => set('default_retention_period_days', e.target.value)} placeholder="เช่น 90" />
             </div>
           </div>
         </div>
@@ -272,6 +278,7 @@ export default function Sites({ navigateTo }) {
         default_vat_pct:           form.default_vat_pct === '' ? null : parseFloat(form.default_vat_pct),
         default_tax_withheld_pct:  form.default_tax_withheld_pct === '' ? null : parseFloat(form.default_tax_withheld_pct),
         default_retention_pct:     form.default_retention_pct === '' ? null : parseFloat(form.default_retention_pct),
+        default_retention_period_days: form.default_retention_period_days === '' ? null : parseInt(form.default_retention_period_days, 10),
         notes:          form.notes || null,
         ...Object.fromEntries(COST_TYPES.map(t => [t.key, parseFloat(form[t.key]) || null]))
       }
