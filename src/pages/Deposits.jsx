@@ -7,7 +7,7 @@ import { useSiteDepositSummary } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
 import { depositStatusFor } from '../lib/depositCalc.js'
 
-export default function Deposits() {
+export default function Deposits({ openSiteOverview }) {
   const { data: rows } = useSiteDepositSummary()
 
   const visible = (rows || []).filter(r => r.total_deposit > 0)
@@ -39,7 +39,7 @@ export default function Deposits() {
                 const status = depositStatusFor(row)
                 return (
                   <tr key={row.site_id}>
-                    <td style={{ fontWeight: 600, fontSize: 13 }}>{row.name}</td>
+                    <td style={{ fontWeight: 600, fontSize: 13, cursor: 'pointer' }} onClick={() => openSiteOverview(row.site_id)}>{row.name}</td>
                     <td className="font-mono" style={{ fontSize: 12, color: 'var(--text2)' }}>{row.default_deposit_pct ?? 0}%</td>
                     <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(row.total_deposit)}</td>
                     <td className="font-mono" style={{ color: 'var(--yellow)' }}>{fmt(row.total_deducted)}</td>

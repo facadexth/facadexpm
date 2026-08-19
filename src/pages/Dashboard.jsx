@@ -84,7 +84,7 @@ function WorkerSiteProgress() {
   )
 }
 
-export default function Dashboard({ navigateTo }) {
+export default function Dashboard({ navigateTo, openSiteOverview }) {
   const { isAtLeast } = useUserRole()
   const canSeeFinancials = isAtLeast('ADMIN')
   const [period, setPeriod] = useState('ytd')
@@ -289,7 +289,7 @@ export default function Dashboard({ navigateTo }) {
                 return (
                   <tr key={s.id}>
                     <td style={{ color: 'var(--accent)', fontSize: 11 }}>{s.site_number}</td>
-                    <td><strong style={{ fontSize: 12 }}>{s.name}</strong></td>
+                    <td style={{ cursor: 'pointer' }} onClick={() => openSiteOverview(s.id)}><strong style={{ fontSize: 12 }}>{s.name}</strong></td>
                     <td className="font-mono" style={{ color: 'var(--text2)' }}>
                       {s.contract_value > 0 ? fmt(s.contract_value) : <span style={{ color: 'var(--text3)' }}>—</span>}
                     </td>

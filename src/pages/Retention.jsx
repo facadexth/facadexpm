@@ -42,7 +42,7 @@ function ReleaseDialog({ row, onClose, onSaved }) {
   )
 }
 
-export default function Retention() {
+export default function Retention({ openSiteOverview }) {
   const { data: rows, refetch } = useSiteRetentionSummary()
   const [releaseRow, setReleaseRow] = useState(null)
 
@@ -75,7 +75,7 @@ export default function Retention() {
                 const status = retentionStatusFor(row)
                 return (
                   <tr key={row.site_id}>
-                    <td style={{ fontWeight: 600, fontSize: 13 }}>{row.name}</td>
+                    <td style={{ fontWeight: 600, fontSize: 13, cursor: 'pointer' }} onClick={() => openSiteOverview(row.site_id)}>{row.name}</td>
                     <td style={{ fontSize: 12 }}>{row.end_date ? fmtDate(row.end_date) : 'รอจบงาน'}</td>
                     <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(row.total_retention)}</td>
                     <td style={{ fontSize: 12 }}>{!row.end_date ? 'รอจบงาน' : (row.due_date ? fmtDate(row.due_date) : '—')}</td>
