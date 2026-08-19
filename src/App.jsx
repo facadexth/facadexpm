@@ -64,26 +64,50 @@ const ALL_TAB_ENTRIES = TABS.flatMap(t => t.children ?? [t])
 // so an absolutely-positioned child gets clipped by the nav's scroll box
 // instead of floating over the page. A portal sidesteps this: it's no
 // longer a descendant of the clipping ancestor at all.
+// ✅ ทำงานได้ทั้ง hover (desktop) และแตะ 1 ครั้งเพื่อเปิด/ปิด (มือถือ -- ไม่มี
+//    hover ให้ใช้) พร้อมปิดเมื่อแตะนอกพื้นที่ trigger/dropdown
 function NavGroup({ tab, activeTab, onNavigate }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState(null)
   const triggerRef = useRef(null)
+  const groupRef = useRef(null)
+  const dropdownRef = useRef(null)
 
-  const handleEnter = () => {
+  const updatePos = () => {
     const rect = triggerRef.current?.getBoundingClientRect()
     if (rect) setPos({ top: rect.bottom, left: rect.left })
-    setOpen(true)
   }
+  const handleEnter = () => { updatePos(); setOpen(true) }
   const handleLeave = () => setOpen(false)
+  const handleTriggerClick = () => {
+    if (open) { setOpen(false); return }
+    updatePos(); setOpen(true)
+  }
+
+  // dropdown ถูก portal ไปที่ document.body จึงไม่ใช่ DOM descendant ของ
+  // groupRef -- ต้องเช็ค dropdownRef แยกด้วย ไม่งั้น pointerdown บนตัวเลือกใน
+  // dropdown เองจะถูกนับเป็น "แตะนอก" แล้วปิด/unmount dropdown ก่อนที่ click
+  // (ซึ่งเป็นตัวเรียก onNavigate จริงๆ, เกิดทีหลัง pointerdown) จะไปถึงปุ่มได้
+  useEffect(() => {
+    if (!open) return
+    const handleOutside = (e) => {
+      if (groupRef.current?.contains(e.target)) return
+      if (dropdownRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
+    document.addEventListener('pointerdown', handleOutside)
+    return () => document.removeEventListener('pointerdown', handleOutside)
+  }, [open])
 
   const isActive = tab.children.some(c => c.id === activeTab)
 
   return (
-    <div onMouseEnter={handleEnter} onMouseLeave={handleLeave} style={{ display: 'inline-block' }}>
+    <div ref={groupRef} onMouseEnter={handleEnter} onMouseLeave={handleLeave} style={{ display: 'inline-block' }}>
       <span
         ref={triggerRef}
+        onClick={handleTriggerClick}
         style={{
-          padding: '13px 18px', display: 'inline-block', cursor: 'default',
+          padding: '13px 18px', display: 'inline-block', cursor: 'pointer',
           borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
           color: isActive ? 'var(--accent)' : 'var(--text2)',
           fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', transition: 'all 0.2s'
@@ -93,6 +117,7 @@ function NavGroup({ tab, activeTab, onNavigate }) {
       </span>
       {open && pos && createPortal(
         <div
+          ref={dropdownRef}
           onMouseEnter={handleEnter}
           onMouseLeave={handleLeave}
           style={{
