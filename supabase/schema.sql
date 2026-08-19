@@ -185,6 +185,9 @@ CREATE TABLE sites (
   default_vat_pct           NUMERIC DEFAULT 7,
   default_tax_withheld_pct  NUMERIC DEFAULT 3,
   default_retention_pct     NUMERIC DEFAULT 0,
+  default_retention_period_days INTEGER,               -- client retention due date = end_date + this many days; NULL until set explicitly
+  retention_released         BOOLEAN NOT NULL DEFAULT false,
+  retention_released_date    DATE,
 
   -- แผนต้นทุน
   cost_aluminum  NUMERIC DEFAULT 0,
@@ -1474,6 +1477,30 @@ LEFT JOIN (
   FROM incomes
   GROUP BY site_id
 ) inc ON inc.site_id = s.id;
+
+-- Client retention due-date tracking -- see
+-- 2026-08-19-02-site-retention-tracking.sql. Deliberately separate from
+-- the labor subcontractor retention system (contractor_summary), which
+-- hardcodes site.end_date + 6 months and is untouched by this feature.
+CREATE VIEW site_retention_summary WITH (security_invoker = true) AS
+SELECT
+  s.id AS site_id,
+  s.site_number,
+  s.name,
+  s.end_date,
+  s.default_retention_period_days,
+  s.retention_released,
+  s.retention_released_date,
+  COALESCE(SUM(i.retention), 0) AS total_retention,
+  CASE
+    WHEN s.end_date IS NOT NULL AND s.default_retention_period_days IS NOT NULL
+    THEN (s.end_date + (s.default_retention_period_days || ' days')::INTERVAL)::DATE
+    ELSE NULL
+  END AS due_date
+FROM sites s
+LEFT JOIN incomes i ON i.site_id = s.id
+GROUP BY s.id, s.site_number, s.name, s.end_date, s.default_retention_period_days,
+         s.retention_released, s.retention_released_date;
 
 -- WORKER-safe site info — billing_pct as a progress proxy, no money columns.
 --

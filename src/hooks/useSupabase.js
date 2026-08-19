@@ -73,6 +73,26 @@ export function useSite(id) {
   }, [id])
 }
 
+/**
+ * site_retention_summary: one row per site with end_date/
+ * default_retention_period_days/retention_released state and the summed
+ * retention amount held. Sorted unreleased-first (retention_released
+ * ascending puts false before true), then soonest due date first within
+ * each group (nulls last, since a site with no period set has nothing
+ * useful to sort by).
+ */
+export function useSiteRetentionSummary() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('site_retention_summary')
+      .select('*')
+      .order('retention_released', { ascending: true })
+      .order('due_date', { ascending: true, nullsFirst: false })
+    if (error) throw error
+    return data
+  })
+}
+
 // ── Expenses ─────────────────────────────────────────────────
 
 export function useExpenses(filters = {}) {
