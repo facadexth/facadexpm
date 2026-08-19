@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 // One-time PWA icon generator. Not run as part of `npm run build` --
-// the source (an emoji on a solid color) never changes without a
+// the source (a text wordmark on a solid color) never changes without a
 // deliberate edit to this script, so the output PNGs are committed
 // like any other static asset, not regenerated on every build.
+//
+// Originally rendered the 🏗️ emoji, but this environment's SVG
+// rasterizer has no color-emoji font (produced a monochrome
+// silhouette instead) -- fell back to a plain "FX" text wordmark per
+// the plan's documented contingency for this exact failure mode.
 const sharp = require('sharp')
 const fs = require('fs')
 
@@ -20,12 +25,12 @@ function iconSvg(fontSize, textY) {
 `
 }
 
-// Full-bleed: emoji fills most of the canvas, used for the plain
+// Full-bleed: text fills most of the canvas, used for the plain
 // (non-maskable) icons.
 const FULL_BLEED_SVG = iconSvg(280, 330)
 
 // Maskable: Android's adaptive-icon system can crop up to ~20% off each
-// edge (a circle inscribed in the icon), so keep the emoji smaller and
+// edge (a circle inscribed in the icon), so keep the text smaller and
 // centered within that safe zone.
 const MASKABLE_SVG = iconSvg(200, 300)
 
