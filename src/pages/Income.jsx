@@ -143,13 +143,15 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading, ha
               onChange={e => set('retention_pct', e.target.value)} />
             <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{fmt(retentionAmt)} บาท</div>
           </div>
-          {hasModuleAccess('client_deposits') && !isDepositRow && (
+          {hasModuleAccess('client_deposits') && (
             <div>
-              <label className="label">หักมัดจำ (%)</label>
+              <label className="label">{isDepositRow ? '% มัดจำ (ตั้ง default ของไซท์)' : 'หักมัดจำ (%)'}</label>
               <input type="number" className="input" min="0" step="0.01" value={form.deposit_pct}
                 onChange={e => set('deposit_pct', e.target.value)} />
               <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-                {fmt(depositAmt)} บาท (คงเหลือมัดจำ {fmt(remainingBalance)})
+                {isDepositRow
+                  ? 'บันทึกแล้วจะตั้งเป็น % มัดจำ default ของไซท์นี้ เพื่อหักอัตโนมัติในรายรับงวดถัดไป'
+                  : `${fmt(depositAmt)} บาท (คงเหลือมัดจำ ${fmt(remainingBalance)})`}
               </div>
             </div>
           )}
@@ -230,6 +232,14 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
         if (error) throw error
       } else {
         const { error } = await supabase.from('incomes').insert(payload)
+        if (error) throw error
+      }
+      // บันทึกรายการ 'มัดจำ' พร้อมระบุ % มา -- ตั้งเป็น default_deposit_pct ของไซท์
+      // ทันที เพื่อให้รายรับ 'ปกติ' งวดถัดไปหักมัดจำอัตโนมัติโดยไม่ต้องไปตั้งที่หน้าไซท์งานซ้ำ
+      if (payload.income_type === 'มัดจำ' && form.deposit_pct !== '' && payload.site_id) {
+        const { error } = await supabase.from('sites')
+          .update({ default_deposit_pct: parseFloat(form.deposit_pct) })
+          .eq('id', payload.site_id)
         if (error) throw error
       }
       setShowAdd(false); setEditRow(null); refetch(); showToast('บันทึกสำเร็จ')

@@ -133,12 +133,12 @@ export default function SearchableSelect({
           className="input"
           disabled={disabled}
           onClick={() => setOpen(true)}
-          style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
+          style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}
         >
-          <span style={{ color: selected ? 'var(--text)' : 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+          <span style={{ color: selected ? 'var(--text)' : 'var(--text3)', whiteSpace: 'normal', wordBreak: 'break-word', minWidth: 0 }}>
             {selected ? selected.label : placeholder}
           </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
             {selected && (
               <span
                 role="button"
