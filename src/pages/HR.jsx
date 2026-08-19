@@ -7,6 +7,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
+import { useDraftForm } from '../hooks/useDraftForm.js'
 import { supabase } from '../lib/supabase.js'
 import { useWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs, fetchWorkerOTForRange, useCompanyHolidays, saveCompanyHoliday, deleteCompanyHoliday, useAppSetting, saveAppSetting, fetchCompanyHolidaysForRange, useLeaveQuotaUsage } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
@@ -27,12 +28,13 @@ const EMPTY_WORKER = {
 }
 
 function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerUsers = [] }) {
-  const [form, setForm] = useState({ ...EMPTY_WORKER, ...initial })
+  const isAdd = !initial?.id
+  const [form, setForm, clearFormDraft] = useDraftForm('worker-form', { ...EMPTY_WORKER, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const dailyRate = form.monthly_salary ? (parseFloat(form.monthly_salary) / 26).toFixed(2) : '—'
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onSave(form) }}>
+    <form onSubmit={e => { e.preventDefault(); clearFormDraft(); onSave(form) }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
         <div className="form-grid-2">
           <div>
@@ -128,7 +130,8 @@ function calcNet(form) {
 }
 
 function SalaryForm({ initial = EMPTY_SALARY, workers, onSave, onCancel, loading }) {
-  const [form, setForm] = useState({ ...EMPTY_SALARY, ...initial })
+  const isAdd = !initial?.id
+  const [form, setForm, clearFormDraft] = useDraftForm('salary-form', { ...EMPTY_SALARY, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const prefill = (w) => {
@@ -141,7 +144,7 @@ function SalaryForm({ initial = EMPTY_SALARY, workers, onSave, onCancel, loading
   }
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onSave({ ...form, net_pay: form.net_pay || calcNet(form) }) }}>
+    <form onSubmit={e => { e.preventDefault(); clearFormDraft(); onSave({ ...form, net_pay: form.net_pay || calcNet(form) }) }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
         <div>
           <label className="label">ช่าง / พนักงาน ★</label>
