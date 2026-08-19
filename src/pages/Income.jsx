@@ -7,8 +7,10 @@
 // ============================================================
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useIncomes, useSites } from '../hooks/useSupabase.js'
+import { useIncomes, useSites, useSiteDepositBalance } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { useTenant } from '../hooks/useTenant.js'
+import { calcDepositDeduction, remainingBalanceForEdit } from '../lib/depositCalc.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
@@ -23,10 +25,11 @@ const siteOpts = (sites) => (sites || []).map(s => ({
 
 const EMPTY_FORM = {
   invoice_no: '', date: '', site_id: '', client_name: '', description: '',
-  amount_no_vat: '', vat_pct: '', tax_pct: '', retention_pct: '', received_amount: ''
+  amount_no_vat: '', vat_pct: '', tax_pct: '', retention_pct: '', received_amount: '',
+  income_type: 'ปกติ', deposit_pct: '',
 }
 
-function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading }) {
+function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading, hasModuleAccess = () => false }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('income-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -36,7 +39,19 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading }) 
   const vatAmt       = noVat * (parseFloat(form.vat_pct)       || 0) / 100
   const taxAmt        = noVat * (parseFloat(form.tax_pct)       || 0) / 100
   const retentionAmt = noVat * (parseFloat(form.retention_pct) || 0) / 100
-  const calcReceived = () => noVat + vatAmt - taxAmt - retentionAmt
+
+  const isDepositRow = form.income_type === 'มัดจำ'
+  const depositModuleOn = hasModuleAccess('client_deposits')
+  const { data: depositBalance } = useSiteDepositBalance(depositModuleOn ? form.site_id : null)
+  // `initial` (not `form`) on purpose -- this must stay the value this row
+  // had BEFORE this edit session started, not drift as the user edits
+  // other fields. See remainingBalanceForEdit's doc comment.
+  const remainingBalance = remainingBalanceForEdit(depositBalance?.remaining_balance, initial?.deposit_deduction)
+  const depositAmt = (depositModuleOn && !isDepositRow)
+    ? calcDepositDeduction(noVat, parseFloat(form.deposit_pct) || 0, remainingBalance)
+    : 0
+
+  const calcReceived = () => noVat + vatAmt - taxAmt - retentionAmt - depositAmt
 
   return (
     <form onSubmit={e => {
@@ -47,6 +62,7 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading }) 
         vat: vatAmt.toFixed(2),
         tax_withheld: taxAmt.toFixed(2),
         retention: retentionAmt.toFixed(2),
+        deposit_deduction: depositAmt.toFixed(2),
         received_amount: form.received_amount || calcReceived(),
       })
     }}>
@@ -76,6 +92,7 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading }) 
                   vat_pct:       site?.default_vat_pct          ?? f.vat_pct,
                   tax_pct:       site?.default_tax_withheld_pct ?? f.tax_pct,
                   retention_pct: site?.default_retention_pct    ?? f.retention_pct,
+                  deposit_pct:   site?.default_deposit_pct      ?? f.deposit_pct,
                 }))
               }}
               placeholder="— เลือกไซท์ —"
@@ -93,6 +110,15 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading }) 
           <label className="label">รายละเอียด ★</label>
           <input className="input" required value={form.description} onChange={e => set('description', e.target.value)} />
         </div>
+        {hasModuleAccess('client_deposits') && (
+          <div>
+            <label className="label">ประเภทรายรับ</label>
+            <select className="select" value={form.income_type} onChange={e => set('income_type', e.target.value)}>
+              <option value="ปกติ">ปกติ</option>
+              <option value="มัดจำ">มัดจำ</option>
+            </select>
+          </div>
+        )}
         <div className="form-grid-4">
           <div>
             <label className="label">มูลค่าก่อน VAT ★</label>
@@ -117,6 +143,16 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading }) 
               onChange={e => set('retention_pct', e.target.value)} />
             <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{fmt(retentionAmt)} บาท</div>
           </div>
+          {hasModuleAccess('client_deposits') && !isDepositRow && (
+            <div>
+              <label className="label">หักมัดจำ (%)</label>
+              <input type="number" className="input" min="0" step="0.01" value={form.deposit_pct}
+                onChange={e => set('deposit_pct', e.target.value)} />
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                {fmt(depositAmt)} บาท (คงเหลือมัดจำ {fmt(remainingBalance)})
+              </div>
+            </div>
+          )}
         </div>
         <div style={{ background: 'rgba(0,212,170,0.08)', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ color: 'var(--text2)', fontSize: 13 }}>ยอดที่ได้รับจริง:</span>
@@ -139,6 +175,7 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading }) 
 
 export default function Income({ navigateTo, navState }) {
   const { isAtLeast, role } = useUserRole()
+  const { hasModuleAccess } = useTenant()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'income')
   const today  = new Date()
   const ytdFrom = format(startOfYear(today), 'yyyy-MM-dd')
@@ -167,6 +204,7 @@ export default function Income({ navigateTo, navState }) {
   const totalNoVat      = useMemo(() => (incomes || []).reduce((s, i) => s + (i.amount_no_vat || 0), 0), [incomes])
   const totalTax        = useMemo(() => (incomes || []).reduce((s, i) => s + (i.tax_withheld || 0), 0), [incomes])
   const totalRetention  = useMemo(() => (incomes || []).reduce((s, i) => s + (i.retention || 0), 0), [incomes])
+  const totalDeposit    = useMemo(() => (incomes || []).reduce((s, i) => s + (i.deposit_deduction || 0), 0), [incomes])
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
@@ -183,6 +221,8 @@ export default function Income({ navigateTo, navState }) {
         vat:            parseFloat(form.vat) || 0,
         tax_withheld:   parseFloat(form.tax_withheld) || 0,
         retention:      parseFloat(form.retention) || 0,
+        income_type:     form.income_type || 'ปกติ',
+        deposit_deduction: parseFloat(form.deposit_deduction) || 0,
         received_amount: parseFloat(form.received_amount) || 0,
       }
       if (editRow) {
@@ -272,6 +312,7 @@ export default function Income({ navigateTo, navState }) {
                 <th>VAT</th>
                 <th>Tax หัก</th>
                 <th>Retention</th>
+                <th>หักมัดจำ</th>
                 <th>ยอดรับจริง</th>
                 <th></th>
               </tr>
@@ -288,6 +329,7 @@ export default function Income({ navigateTo, navState }) {
                   <td className="font-mono" style={{ color: 'var(--text3)', fontSize: 11 }}>{i.vat > 0 ? fmt(i.vat) : '—'}</td>
                   <td className="font-mono" style={{ color: 'var(--yellow)', fontSize: 11 }}>{i.tax_withheld > 0 ? fmt(i.tax_withheld) : '—'}</td>
                   <td className="font-mono" style={{ color: 'var(--yellow)', fontSize: 11 }}>{i.retention > 0 ? fmt(i.retention) : '—'}</td>
+                  <td className="font-mono" style={{ color: 'var(--yellow)', fontSize: 11 }}>{i.deposit_deduction > 0 ? fmt(i.deposit_deduction) : '—'}</td>
                   <td className="font-mono" style={{ color: 'var(--green)', fontWeight: 700 }}>{fmt(i.received_amount)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {canEdit && (
@@ -300,7 +342,7 @@ export default function Income({ navigateTo, navState }) {
                 </tr>
               ))}
               {!(incomes||[]).length && (
-                <tr><td colSpan={11} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบรายรับในช่วงเวลานี้</td></tr>
+                <tr><td colSpan={12} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบรายรับในช่วงเวลานี้</td></tr>
               )}
             </tbody>
             {(incomes||[]).length > 0 && (
@@ -311,6 +353,7 @@ export default function Income({ navigateTo, navState }) {
                   <td />
                   <td className="font-mono" style={{ color: 'var(--yellow)' }}>{fmt(totalTax)}</td>
                   <td className="font-mono" style={{ color: 'var(--yellow)' }}>{fmt(totalRetention)}</td>
+                  <td className="font-mono" style={{ color: 'var(--yellow)' }}>{fmt(totalDeposit)}</td>
                   <td className="font-mono" style={{ color: 'var(--green)' }}>{fmt(totalReceived)}</td>
                   <td />
                 </tr>
@@ -329,6 +372,8 @@ export default function Income({ navigateTo, navState }) {
               vat_pct:       editRow.amount_no_vat ? +((editRow.vat||0)           / editRow.amount_no_vat * 100).toFixed(2) : '',
               tax_pct:       editRow.amount_no_vat ? +((editRow.tax_withheld||0)  / editRow.amount_no_vat * 100).toFixed(2) : '',
               retention_pct: editRow.amount_no_vat ? +((editRow.retention||0)     / editRow.amount_no_vat * 100).toFixed(2) : '',
+              income_type:   editRow.income_type || 'ปกติ',
+              deposit_pct:   editRow.amount_no_vat ? +((editRow.deposit_deduction||0) / editRow.amount_no_vat * 100).toFixed(2) : '',
             } : (() => {
               const site = (sites || []).find(s => s.id === siteId)
               return {
@@ -338,12 +383,14 @@ export default function Income({ navigateTo, navState }) {
                 vat_pct:       site?.default_vat_pct          ?? EMPTY_FORM.vat_pct,
                 tax_pct:       site?.default_tax_withheld_pct ?? EMPTY_FORM.tax_pct,
                 retention_pct: site?.default_retention_pct    ?? EMPTY_FORM.retention_pct,
+                deposit_pct:   site?.default_deposit_pct      ?? EMPTY_FORM.deposit_pct,
               }
             })()}
             sites={sites}
             onSave={handleSave}
             onCancel={() => { setShowAdd(false); setEditRow(null) }}
             loading={saving}
+            hasModuleAccess={hasModuleAccess}
           />
         </Modal>
       )}
