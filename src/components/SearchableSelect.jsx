@@ -135,7 +135,7 @@ export default function SearchableSelect({
           onClick={() => setOpen(true)}
           style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
         >
-          <span style={{ color: selected ? 'var(--text)' : 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ color: selected ? 'var(--text)' : 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
             {selected ? selected.label : placeholder}
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

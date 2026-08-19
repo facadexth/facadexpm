@@ -111,7 +111,10 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
               placeholder="— เลือกหมวด —" options={catOpts(categories)} />
           </div>
         </div>
-        <div className="form-grid-2">
+        {/* Site/supplier names can run long (full project names, company names) —
+            stacked full-width rows instead of side-by-side so the name has room
+            to breathe, on both desktop and mobile. */}
+        <div style={{ display: 'grid', gap: 12 }}>
           <div>
             <label className="label">ไซท์งาน ★</label>
             <SearchableSelect required value={form.site_id} onChange={id => set('site_id', id)}
