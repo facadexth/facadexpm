@@ -82,16 +82,16 @@ export default function Assign({ navState, openSiteOverview }) {
   const costBySite = useMemo(() => {
     const m = {}
     ;(laborData || []).forEach(l => {
-      const g = m[l.site_id] || (m[l.site_id] = { site_number: l.site_number, site_name: l.site_name, labor: 0, travel: 0, ot: 0, workers: [] })
+      const g = m[l.site_id] || (m[l.site_id] = { site_id: l.site_id, site_number: l.site_number, site_name: l.site_name, labor: 0, travel: 0, ot: 0, workers: [] })
       g.labor += l.labor_cost || 0
       g.workers.push({ name: l.worker_name, days: l.days_worked, cost: l.labor_cost })
     })
     ;(travelData || []).forEach(t => {
-      const g = m[t.site_id] || (m[t.site_id] = { site_number: '', site_name: '', labor: 0, travel: 0, ot: 0, workers: [] })
+      const g = m[t.site_id] || (m[t.site_id] = { site_id: t.site_id, site_number: '', site_name: '', labor: 0, travel: 0, ot: 0, workers: [] })
       g.travel += t.travel_cost || 0
     })
     ;(otCostData || []).forEach(o => {
-      const g = m[o.site_id] || (m[o.site_id] = { site_number: o.site_number, site_name: o.site_name, labor: 0, travel: 0, ot: 0, workers: [] })
+      const g = m[o.site_id] || (m[o.site_id] = { site_id: o.site_id, site_number: o.site_number, site_name: o.site_name, labor: 0, travel: 0, ot: 0, workers: [] })
       g.ot += o.ot_cost || 0
     })
     return Object.values(m).sort((a, b) => (b.labor + b.travel + b.ot) - (a.labor + a.travel + a.ot))
