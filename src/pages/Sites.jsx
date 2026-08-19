@@ -215,7 +215,7 @@ function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loadin
   )
 }
 
-export default function Sites({ navigateTo }) {
+export default function Sites({ navigateTo, openSiteOverview }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'sites')
   const { tenant, hasModuleAccess } = useTenant()
@@ -375,7 +375,10 @@ export default function Sites({ navigateTo }) {
                   <tr key={s.id}>
                     <td style={{ color: 'var(--accent)', fontSize: 11, whiteSpace: 'nowrap' }}>{s.site_number}</td>
                     <td>
-                      <div style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div
+                        style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+                        onClick={() => openSiteOverview(s.id)}
+                      >
                         {s.name}
                         {s.map_url && (
                           <a href={s.map_url} target="_blank" rel="noreferrer" title="เปิดแผนที่ Google Maps"

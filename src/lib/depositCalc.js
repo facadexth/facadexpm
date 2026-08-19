@@ -37,3 +37,8 @@ export function calcDepositDeduction(noVat, depositPct, remainingBalance) {
 export function remainingBalanceForEdit(siteRemainingBalance, rowPriorDeduction) {
   return (siteRemainingBalance || 0) + (rowPriorDeduction || 0)
 }
+
+export function depositStatusFor(row) {
+  if (row.remaining_balance > 0) return { label: 'คงเหลือ', cls: 'badge-paid' }
+  return { label: 'หักครบแล้ว', cls: 'badge-finished' }
+}

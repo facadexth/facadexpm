@@ -10,6 +10,7 @@ import { useTenant } from './hooks/useTenant.js'
 import { ProtectedPage } from './components/ProtectedPage.jsx'
 import { canViewPage } from './lib/permissions.js'
 import ChangePassword from './components/ChangePassword.jsx'
+import SiteOverviewModal from './components/SiteOverviewModal.jsx'
 import TrialBanner from './components/TrialBanner.jsx'
 import ChunkErrorBoundary from './components/ChunkErrorBoundary.jsx'
 import Login      from './pages/Login.jsx'
@@ -134,6 +135,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [navState, setNavState] = useState({})
   const [showChangePassword, setShowChangePassword] = useState(false)
+  const [overviewSiteId, setOverviewSiteId] = useState(null)
   const { role, isAtLeast, loading: roleLoading } = useUserRole()
   const { tenant, isTrialActive, trialDaysRemaining, hasModuleAccess } = useTenant()
 
@@ -181,7 +183,7 @@ export default function App() {
   }
 
   const renderPage = () => {
-    const props = { navigateTo, navState }
+    const props = { navigateTo, navState, openSiteOverview: setOverviewSiteId }
     switch (activeTab) {
       case 'dashboard':  return <ProtectedPage minRole="WORKER"><Dashboard  {...props} /></ProtectedPage>
       case 'assign':     return <ProtectedPage minRole="WORKER"><Assign     {...props} /></ProtectedPage>
@@ -306,6 +308,10 @@ export default function App() {
 
       {showChangePassword && (
         <ChangePassword onClose={() => setShowChangePassword(false)} />
+      )}
+
+      {overviewSiteId && (
+        <SiteOverviewModal siteId={overviewSiteId} onClose={() => setOverviewSiteId(null)} />
       )}
     </div>
   )

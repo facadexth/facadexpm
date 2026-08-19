@@ -117,6 +117,27 @@ export function useSiteDepositBalance(siteId) {
   }, [siteId])
 }
 
+/**
+ * useSiteOverview: one site's full picture for the Site Overview modal --
+ * merges site_financial_summary (contract/income/expense/profit) with
+ * nested .deposit (site_deposit_summary row) and .retention
+ * (site_retention_summary row) for the same site, fetched in parallel.
+ */
+export function useSiteOverview(siteId) {
+  return useQuery(async () => {
+    if (!siteId) return null
+    const [siteRes, depositRes, retentionRes] = await Promise.all([
+      supabase.from('site_financial_summary').select('*').eq('id', siteId).single(),
+      supabase.from('site_deposit_summary').select('*').eq('site_id', siteId).single(),
+      supabase.from('site_retention_summary').select('*').eq('site_id', siteId).single(),
+    ])
+    if (siteRes.error) throw siteRes.error
+    if (depositRes.error) throw depositRes.error
+    if (retentionRes.error) throw retentionRes.error
+    return { ...siteRes.data, deposit: depositRes.data, retention: retentionRes.data }
+  }, [siteId])
+}
+
 // ── Expenses ─────────────────────────────────────────────────
 
 export function useExpenses(filters = {}) {

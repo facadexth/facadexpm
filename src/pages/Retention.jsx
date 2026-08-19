@@ -8,18 +8,7 @@ import { supabase } from '../lib/supabase.js'
 import { useSiteRetentionSummary } from '../hooks/useSupabase.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal } from '../components/Modal.jsx'
-
-function statusFor(row) {
-  if (row.retention_released) return { label: 'คืนแล้ว', cls: 'badge-paid' }
-  if (!row.end_date) return { label: 'รอจบงาน', cls: 'badge-pending' }
-  if (!row.due_date) return { label: 'ยังไม่ได้ตั้งระยะเวลา', cls: 'badge-pending' }
-  const today = new Date().toISOString().slice(0, 10)
-  if (row.due_date < today) return { label: 'เกินกำหนด', cls: 'badge-status-cancelled' }
-  const in30 = new Date()
-  in30.setDate(in30.getDate() + 30)
-  if (row.due_date <= in30.toISOString().slice(0, 10)) return { label: 'ใกล้ครบกำหนด', cls: 'badge-po-ordered' }
-  return { label: 'รอครบกำหนด', cls: 'badge-pending' }
-}
+import { retentionStatusFor } from '../lib/retentionStatus.js'
 
 function ReleaseDialog({ row, onClose, onSaved }) {
   const [releaseDate, setReleaseDate] = useState(new Date().toISOString().slice(0, 10))
@@ -83,7 +72,7 @@ export default function Retention() {
             </thead>
             <tbody>
               {visible.map(row => {
-                const status = statusFor(row)
+                const status = retentionStatusFor(row)
                 return (
                   <tr key={row.site_id}>
                     <td style={{ fontWeight: 600, fontSize: 13 }}>{row.name}</td>

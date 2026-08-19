@@ -5,11 +5,7 @@
 // ============================================================
 import { useSiteDepositSummary } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
-
-function statusFor(row) {
-  if (row.remaining_balance > 0) return { label: 'คงเหลือ', cls: 'badge-paid' }
-  return { label: 'หักครบแล้ว', cls: 'badge-finished' }
-}
+import { depositStatusFor } from '../lib/depositCalc.js'
 
 export default function Deposits() {
   const { data: rows } = useSiteDepositSummary()
@@ -40,7 +36,7 @@ export default function Deposits() {
             </thead>
             <tbody>
               {visible.map(row => {
-                const status = statusFor(row)
+                const status = depositStatusFor(row)
                 return (
                   <tr key={row.site_id}>
                     <td style={{ fontWeight: 600, fontSize: 13 }}>{row.name}</td>
