@@ -205,7 +205,7 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
   )
 }
 
-export default function Expenses({ navigateTo, navState }) {
+export default function Expenses({ navigateTo, navState, openSiteOverview }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'expenses')
   const today = new Date()
@@ -394,7 +394,8 @@ export default function Expenses({ navigateTo, navState }) {
                       </button>
                     )}
                   </td>
-                  <td style={{ fontSize: 11, color: 'var(--accent)' }} title={e.site_number || undefined}>{e.site_name || '—'}</td>
+                  <td style={{ fontSize: 11, color: 'var(--accent)', cursor: e.site_id ? 'pointer' : 'default' }} title={e.site_number || undefined}
+                    onClick={() => e.site_id && openSiteOverview(e.site_id)}>{e.site_name || '—'}</td>
                   <td style={{ fontSize: 11 }}>
                     {e.category_name
                       ? <span className="badge" style={{ background: 'rgba(108,99,255,0.15)', color: 'var(--accent)' }}>{e.category_name}</span>

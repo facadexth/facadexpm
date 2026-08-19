@@ -291,7 +291,7 @@ function PODocumentModal({ po, onClose }) {
   )
 }
 
-export default function PurchaseOrders({ navigateTo, navState }) {
+export default function PurchaseOrders({ navigateTo, navState, openSiteOverview }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'purchase_orders')
   const { tenant } = useTenant()
@@ -477,7 +477,8 @@ export default function PurchaseOrders({ navigateTo, navState }) {
                       {po.purchase_order_attachments?.length > 0 && <span title="มีไฟล์แนบ" style={{ marginLeft: 4 }}>📎</span>}
                     </td>
                     <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDate(po.date)}</td>
-                    <td style={{ fontSize: 11, color: 'var(--accent)' }}>{po.sites?.name || '—'}</td>
+                    <td style={{ fontSize: 11, color: 'var(--accent)', cursor: po.site_id ? 'pointer' : 'default' }}
+                      onClick={() => po.site_id && openSiteOverview(po.site_id)}>{po.sites?.name || '—'}</td>
                     <td style={{ fontSize: 12 }}>{po.suppliers?.name || '—'}</td>
                     <td style={{ fontSize: 11, color: 'var(--text3)' }}>{(po.purchase_order_items || []).length} รายการ</td>
                     <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(total)}</td>
