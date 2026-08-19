@@ -15,6 +15,7 @@ import { fmt, fmtDate } from '../lib/supabase.js'
 import { auditLog } from '../lib/audit.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
+import AttachmentsSection from '../components/AttachmentsSection.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 
@@ -206,7 +207,7 @@ function PODetailModal({ po, tenantId, onClose }) {
         </div>
         {tenantId && (
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-            <AttachmentsSection poId={po.id} tenantId={tenantId} />
+            <AttachmentsSection table="purchase_order_attachments" bucket="po-attachments" foreignKey="po_id" entityId={po.id} tenantId={tenantId} />
           </div>
         )}
       </div>
@@ -284,74 +285,6 @@ function PODocumentModal({ po, onClose }) {
         <button className="btn btn-primary" onClick={() => downloadPDF(`po-doc-${po.id}`, `${po.po_number}.pdf`)}>📄 ดาวน์โหลด PDF</button>
       </div>
     </Modal>
-  )
-}
-
-function AttachmentsSection({ poId, tenantId }) {
-  const [attachments, setAttachments] = useState([])
-  const [uploading, setUploading] = useState(false)
-
-  const load = async () => {
-    const { data } = await supabase.from('purchase_order_attachments').select('*').eq('po_id', poId).order('uploaded_at')
-    setAttachments(data || [])
-  }
-  useEffect(() => { load() }, [poId])
-
-  const handleUpload = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true)
-    try {
-      const filePath = `${tenantId}/${poId}/${Date.now()}-${file.name}`
-      const { error: upErr } = await supabase.storage.from('po-attachments').upload(filePath, file)
-      if (upErr) throw upErr
-      const { error: dbErr } = await supabase.from('purchase_order_attachments').insert({ po_id: poId, file_path: filePath, file_name: file.name })
-      if (dbErr) {
-        // Uploaded file has no DB row yet — remove it so it doesn't become
-        // an orphan invisible to this UI (no other path can find/delete it).
-        await supabase.storage.from('po-attachments').remove([filePath])
-        throw dbErr
-      }
-      await load()
-    } catch (err) {
-      alert('Error: ' + err.message)
-    } finally {
-      setUploading(false)
-      e.target.value = ''
-    }
-  }
-
-  const handleDownload = async (att) => {
-    const { data, error } = await supabase.storage.from('po-attachments').createSignedUrl(att.file_path, 60)
-    if (error) { alert('Error: ' + error.message); return }
-    window.open(data.signedUrl, '_blank')
-  }
-
-  const handleRemove = async (att) => {
-    try {
-      const { error: rmErr } = await supabase.storage.from('po-attachments').remove([att.file_path])
-      if (rmErr) throw rmErr
-      const { error: dbErr } = await supabase.from('purchase_order_attachments').delete().eq('id', att.id)
-      if (dbErr) throw dbErr
-      await load()
-    } catch (err) {
-      alert('Error: ' + err.message)
-    }
-  }
-
-  return (
-    <div>
-      <label className="label">ไฟล์แนบ</label>
-      <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
-        {attachments.map(att => (
-          <div key={att.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-            <button type="button" className="btn btn-sm btn-ghost" onClick={() => handleDownload(att)}>📎 {att.file_name}</button>
-            <button type="button" className="btn btn-sm btn-ghost" onClick={() => handleRemove(att)}>✕</button>
-          </div>
-        ))}
-      </div>
-      <input type="file" onChange={handleUpload} disabled={uploading} accept=".pdf,.xlsx,.xls,.jpg,.jpeg,.png" />
-    </div>
   )
 }
 
@@ -577,7 +510,7 @@ export default function PurchaseOrders({ navigateTo, navState }) {
           />
           {editRow && tenant?.id && (
             <div className="modal-body" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-              <AttachmentsSection poId={editRow.id} tenantId={tenant.id} />
+              <AttachmentsSection table="purchase_order_attachments" bucket="po-attachments" foreignKey="po_id" entityId={editRow.id} tenantId={tenant.id} />
             </div>
           )}
           {!editRow && (

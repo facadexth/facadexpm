@@ -12,6 +12,8 @@ import { supabase } from '../lib/supabase.js'
 import { useSites, useLaborCost, useClients } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
+import { useTenant } from '../hooks/useTenant.js'
+import AttachmentsSection from '../components/AttachmentsSection.jsx'
 import { fmt, fmtDate, countdown } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
@@ -203,6 +205,7 @@ function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loadin
 export default function Sites({ navigateTo }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'sites')
+  const { tenant } = useTenant()
   const { data: sites, refetch } = useSites()
   const { data: laborData } = useLaborCost()
   const { data: clients }   = useClients()
@@ -471,6 +474,16 @@ export default function Sites({ navigateTo }) {
             onCancel={() => { setShowForm(false); setEditSite(null) }}
             loading={saving}
           />
+          {editSite && tenant?.id && (
+            <div className="modal-body" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+              <AttachmentsSection table="site_attachments" bucket="site-attachments" foreignKey="site_id" entityId={editSite.id} tenantId={tenant.id} />
+            </div>
+          )}
+          {!editSite && (
+            <div className="modal-body" style={{ fontSize: 12, color: 'var(--text3)', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+              บันทึกไซท์งานก่อน จึงจะแนบไฟล์ได้
+            </div>
+          )}
         </Modal>
       )}
 

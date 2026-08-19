@@ -634,6 +634,30 @@ CREATE POLICY admin_full_access ON purchase_order_attachments FOR ALL TO authent
 -- storage.objects) are infrastructure DDL, not part of this table-by-
 -- table narrative — see the migration above for the full definition.
 
+-- Same pattern for sites — see 2026-08-19-01-site-attachments.sql. Unlike
+-- PO attachments, sites is a core (non-gated) feature, so no
+-- has_module_access() check on either the table or bucket policy.
+CREATE TABLE site_attachments (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  site_id     UUID NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  file_path   TEXT NOT NULL,
+  file_name   TEXT NOT NULL,
+  uploaded_at TIMESTAMPTZ DEFAULT NOW(),
+  tenant_id   UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+);
+
+CREATE INDEX idx_site_attachments_site_id ON site_attachments(site_id);
+CREATE INDEX idx_site_attachments_tenant_id ON site_attachments(tenant_id);
+
+ALTER TABLE site_attachments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY admin_full_access ON site_attachments FOR ALL TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id())
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id());
+
+-- Storage: private `site-attachments` bucket, tenant-prefixed path
+-- ({tenant_id}/{site_id}/...), bucket RLS (site_attachments_tenant_access)
+-- — see the migration above for the full definition.
+
 -- ----------------------------------------------------------------
 -- LABOR_SUBCONTRACTORS — ผู้รับเหมาช่วง (ทีมงานภายนอก)
 -- ----------------------------------------------------------------
