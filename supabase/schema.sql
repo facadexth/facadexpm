@@ -186,6 +186,7 @@ CREATE TABLE sites (
   default_tax_withheld_pct  NUMERIC DEFAULT 3,
   default_retention_pct     NUMERIC DEFAULT 0,
   default_retention_period_days INTEGER,               -- client retention due date = end_date + this many days; NULL until set explicitly
+  default_deposit_pct       NUMERIC DEFAULT 0,          -- see site_deposit_summary; 0 = no deposit tracked for this site
   retention_released         BOOLEAN NOT NULL DEFAULT false,
   retention_released_date    DATE,
 
@@ -293,6 +294,8 @@ CREATE TABLE incomes (
   vat             NUMERIC DEFAULT 0,
   tax_withheld    NUMERIC DEFAULT 0,
   retention       NUMERIC DEFAULT 0,
+  income_type     TEXT NOT NULL DEFAULT 'ปกติ' CHECK (income_type IN ('ปกติ', 'มัดจำ')),
+  deposit_deduction NUMERIC DEFAULT 0,
   received_amount NUMERIC DEFAULT 0,
 
   created_at      TIMESTAMPTZ DEFAULT NOW(),
@@ -816,7 +819,7 @@ CREATE TABLE tenants (
 -- ----------------------------------------------------------------
 CREATE TABLE tenant_modules (
   tenant_id  UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  module_key TEXT NOT NULL CHECK (module_key IN ('payroll','labor_subcontractors','purchase_orders')),
+  module_key TEXT NOT NULL CHECK (module_key IN ('payroll','labor_subcontractors','purchase_orders','client_deposits')),
   enabled_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (tenant_id, module_key)
 );
@@ -1462,7 +1465,8 @@ SELECT
   c.contact_person AS client_contact_person,
   c.phone          AS client_phone,
   s.has_vat, s.contract_value_no_vat,
-  s.default_vat_pct, s.default_tax_withheld_pct, s.default_retention_pct
+  s.default_vat_pct, s.default_tax_withheld_pct, s.default_retention_pct,
+  s.default_retention_period_days, s.default_deposit_pct
 FROM sites s
 LEFT JOIN clients c ON s.client_id = c.id
 LEFT JOIN (
@@ -1501,6 +1505,25 @@ FROM sites s
 LEFT JOIN incomes i ON i.site_id = s.id
 GROUP BY s.id, s.site_number, s.name, s.end_date, s.default_retention_period_days,
          s.retention_released, s.retention_released_date;
+
+-- Client deposit (มัดจำ) tracking -- see
+-- 2026-08-19-03-client-deposit-tracking.sql. Separate money flow from
+-- site_retention_summary above -- a deposit is collected once upfront and
+-- progressively deducted from later income, retention is withheld from
+-- every income and returned once at project close.
+CREATE VIEW site_deposit_summary WITH (security_invoker = true) AS
+SELECT
+  s.id AS site_id,
+  s.site_number,
+  s.name,
+  s.default_deposit_pct,
+  COALESCE(SUM(i.amount_no_vat) FILTER (WHERE i.income_type = 'มัดจำ'), 0) AS total_deposit,
+  COALESCE(SUM(i.deposit_deduction), 0)                                    AS total_deducted,
+  COALESCE(SUM(i.amount_no_vat) FILTER (WHERE i.income_type = 'มัดจำ'), 0)
+    - COALESCE(SUM(i.deposit_deduction), 0)                                AS remaining_balance
+FROM sites s
+LEFT JOIN incomes i ON i.site_id = s.id
+GROUP BY s.id, s.site_number, s.name, s.default_deposit_pct;
 
 -- WORKER-safe site info — billing_pct as a progress proxy, no money columns.
 --

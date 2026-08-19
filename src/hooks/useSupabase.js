@@ -93,6 +93,30 @@ export function useSiteRetentionSummary() {
   })
 }
 
+export function useSiteDepositSummary() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('site_deposit_summary')
+      .select('*')
+      .order('name')
+    if (error) throw error
+    return data
+  })
+}
+
+export function useSiteDepositBalance(siteId) {
+  return useQuery(async () => {
+    if (!siteId) return null
+    const { data, error } = await supabase
+      .from('site_deposit_summary')
+      .select('*')
+      .eq('site_id', siteId)
+      .single()
+    if (error) throw error
+    return data
+  }, [siteId])
+}
+
 // ── Expenses ─────────────────────────────────────────────────
 
 export function useExpenses(filters = {}) {
