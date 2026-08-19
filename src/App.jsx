@@ -2,7 +2,8 @@
 // FACADE X Dashboard — Main App
 // Router: แต่ละ tab คือ page แยกกัน ไม่ต้อง reload หน้า
 // ============================================================
-import { useState, useEffect, lazy, Suspense } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from './lib/supabase.js'
 import { useUserRole } from './hooks/useUserRole.js'
 import { useTenant } from './hooks/useTenant.js'
@@ -54,6 +55,71 @@ const TABS = [
 // flattens both shapes into one list of plain tabs, so lookups by id don't
 // need to know which shape produced them.
 const ALL_TAB_ENTRIES = TABS.flatMap(t => t.children ?? [t])
+
+// Hover-triggered dropdown for a TABS group entry (e.g. "ไซท์งาน"). Portaled
+// to document.body instead of position:absolute inside <nav>, because the
+// nav has overflow-x:auto -- per the CSS Overflow spec, a non-visible
+// overflow-x forces the default-visible overflow-y to compute as auto too,
+// so an absolutely-positioned child gets clipped by the nav's scroll box
+// instead of floating over the page. A portal sidesteps this: it's no
+// longer a descendant of the clipping ancestor at all.
+function NavGroup({ tab, activeTab, onNavigate }) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState(null)
+  const triggerRef = useRef(null)
+
+  const handleEnter = () => {
+    const rect = triggerRef.current?.getBoundingClientRect()
+    if (rect) setPos({ top: rect.bottom, left: rect.left })
+    setOpen(true)
+  }
+  const handleLeave = () => setOpen(false)
+
+  const isActive = tab.children.some(c => c.id === activeTab)
+
+  return (
+    <div onMouseEnter={handleEnter} onMouseLeave={handleLeave} style={{ display: 'inline-block' }}>
+      <span
+        ref={triggerRef}
+        style={{
+          padding: '13px 18px', display: 'inline-block', cursor: 'default',
+          borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+          color: isActive ? 'var(--accent)' : 'var(--text2)',
+          fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', transition: 'all 0.2s'
+        }}
+      >
+        {tab.label}
+      </span>
+      {open && pos && createPortal(
+        <div
+          onMouseEnter={handleEnter}
+          onMouseLeave={handleLeave}
+          style={{
+            position: 'fixed', top: pos.top, left: pos.left,
+            background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.25)', padding: 4, minWidth: 160, zIndex: 200
+          }}
+        >
+          {tab.children.map(child => (
+            <button
+              key={child.id}
+              onClick={() => { onNavigate(child); setOpen(false) }}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left',
+                padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer',
+                color: activeTab === child.id ? 'var(--accent)' : 'var(--text2)',
+                fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap'
+              }}
+            >
+              {child.label}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  )
+}
 
 function PageLoadingFallback() {
   return (
@@ -206,35 +272,12 @@ export default function App() {
         padding: '0 20px', display: 'flex', gap: 2, overflowX: 'auto'
       }}>
         {visibleTabs.map(tab => tab.children ? (
-          <div key={tab.label} className="nav-group">
-            <span
-              className="nav-group-trigger"
-              style={{
-                padding: '13px 18px', display: 'inline-block',
-                borderBottom: tab.children.some(c => c.id === activeTab) ? '2px solid var(--accent)' : '2px solid transparent',
-                color: tab.children.some(c => c.id === activeTab) ? 'var(--accent)' : 'var(--text2)',
-                fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', transition: 'all 0.2s'
-              }}
-            >
-              {tab.label}
-            </span>
-            <div className="nav-group-dropdown">
-              {tab.children.map(child => (
-                <button
-                  key={child.id}
-                  onClick={() => { sessionStorage.removeItem('chunk-reload-attempted'); setNavState({}); setActiveTab(child.id) }}
-                  style={{
-                    display: 'block', width: '100%', textAlign: 'left',
-                    padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer',
-                    color: activeTab === child.id ? 'var(--accent)' : 'var(--text2)',
-                    fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap'
-                  }}
-                >
-                  {child.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <NavGroup
+            key={tab.label}
+            tab={tab}
+            activeTab={activeTab}
+            onNavigate={child => { sessionStorage.removeItem('chunk-reload-attempted'); setNavState({}); setActiveTab(child.id) }}
+          />
         ) : (
           <button
             key={tab.id}
