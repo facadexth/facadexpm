@@ -8,7 +8,7 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { useSites, useExpenses, useIncomes, usePaymentForecast, useSitesProgress } from '../hooks/useSupabase.js'
+import { useSites, useExpenses, useIncomes, usePaymentForecast, useSitesProgress, useSiteRetentionSummary } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt, fmtShort, fmtDate } from '../lib/supabase.js'
 import { startOfYear, endOfYear, startOfMonth, endOfMonth, addMonths, format, parseISO } from 'date-fns'
@@ -34,9 +34,13 @@ function getPeriodRange(period) {
   return {}
 }
 
-function Kpi({ label, value, sub, color = 'var(--accent)', cls = '' }) {
+function Kpi({ label, value, sub, color = 'var(--accent)', cls = '', onClick }) {
   return (
-    <div className={`kpi-card ${cls}`}>
+    <div
+      className={`kpi-card ${cls}`}
+      onClick={onClick}
+      style={onClick ? { cursor: 'pointer' } : undefined}
+    >
       <div className="kpi-label">{label}</div>
       <div className="kpi-value" style={{ color }}>{value}</div>
       {sub && <div className="kpi-sub">{sub}</div>}
@@ -99,6 +103,24 @@ export default function Dashboard({ navigateTo }) {
   const { data: expenses } = useExpenses(range)
   const { data: incomes }  = useIncomes(range)
   const { data: forecast } = usePaymentForecast()
+  const { data: retentionSummary } = useSiteRetentionSummary()
+
+  const retentionDueSoon = useMemo(() => {
+    const in30Days = new Date()
+    in30Days.setDate(in30Days.getDate() + 30)
+    const todayIso = new Date().toISOString().slice(0, 10)
+    const in30IsoDate = in30Days.toISOString().slice(0, 10)
+    const matching = (retentionSummary || []).filter(r =>
+      r.total_retention > 0 &&
+      !r.retention_released &&
+      r.due_date != null &&
+      r.due_date <= in30IsoDate
+    )
+    return {
+      count: matching.length,
+      total: matching.reduce((sum, r) => sum + r.total_retention, 0),
+    }
+  }, [retentionSummary])
 
   // ── KPI Calculations ──
   const totalIncome  = useMemo(() => (incomes  || []).reduce((s, i) => s + (i.received_amount || 0), 0), [incomes])
@@ -188,7 +210,7 @@ export default function Dashboard({ navigateTo }) {
       </div>
 
       {/* ── KPI Cards ── */}
-      <div className="kpi-grid kpi-grid-5" style={{ marginBottom: 20 }}>
+      <div className="kpi-grid kpi-grid-6" style={{ marginBottom: 20 }}>
         <Kpi label="รายรับรวม"       value={fmtShort(totalIncome)}  sub={`${fmt(totalIncome)} บาท`}   cls="green" color="var(--green)" />
         <Kpi label="รายจ่ายรวม"      value={fmtShort(totalExpense)} sub={`${fmt(totalExpense)} บาท`}  cls="red"   color="var(--red)" />
         <Kpi label="กำไรเบื้องต้น"   value={fmtShort(profit)}       sub={profit >= 0 ? `+${(profit/totalIncome*100).toFixed(1)}%` : 'ขาดทุน'} cls={profit>=0?'green':'red'} color={profit>=0?'var(--green)':'var(--red)'} />
@@ -196,6 +218,11 @@ export default function Dashboard({ navigateTo }) {
              value={fmtShort(dueThisMonth)} sub="ยอดค้างจ่ายเดือนนี้" cls="yellow" color="var(--yellow)" />
         <Kpi label={`ต้องชำระ ${format(addMonths(new Date(),1), 'MMM yy', {locale:th})}`}
              value={fmtShort(dueNextMonth)} sub="ยอดค้างจ่ายเดือนหน้า" cls="blue" color="var(--blue)" />
+        <Kpi label="Retention ใกล้ครบกำหนด"
+             value={String(retentionDueSoon.count)}
+             sub={retentionDueSoon.count > 0 ? `${fmt(retentionDueSoon.total)} บาท ภายใน 30 วัน` : 'ไม่มีรายการ'}
+             cls="blue" color="var(--blue)"
+             onClick={() => navigateTo('retention')} />
       </div>
 
       {/* ── Charts ── */}
