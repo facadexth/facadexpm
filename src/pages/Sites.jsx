@@ -37,13 +37,13 @@ const EMPTY_FORM = {
   status: 'Ongoing', start_date: '', end_date: '',
   has_vat: true, contract_value_no_vat: '', notes: '',
   default_vat_pct: 7, default_tax_withheld_pct: 3, default_retention_pct: 0,
-  default_retention_period_days: '',
+  default_retention_period_days: '', default_deposit_pct: 0,
   ...Object.fromEntries(COST_TYPES.map(t => [t.key, '']))
 }
 
 const VAT_RATE = 0.07
 
-function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading }) {
+function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading, hasModuleAccess = () => false }) {
   const isAdd = !initial?.id
   const [form, setForm, clearDraft] = useDraftForm('sites-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -190,6 +190,13 @@ function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loadin
               <input type="number" className="input input-sm" min="0" step="1"
                 value={form.default_retention_period_days} onChange={e => set('default_retention_period_days', e.target.value)} placeholder="เช่น 90" />
             </div>
+            {hasModuleAccess('client_deposits') && (
+              <div>
+                <label className="label">มัดจำ (%)</label>
+                <input type="number" className="input input-sm" min="0" step="0.01"
+                  value={form.default_deposit_pct} onChange={e => set('default_deposit_pct', e.target.value)} placeholder="0" />
+              </div>
+            )}
           </div>
         </div>
 
@@ -211,7 +218,7 @@ function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loadin
 export default function Sites({ navigateTo }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'sites')
-  const { tenant } = useTenant()
+  const { tenant, hasModuleAccess } = useTenant()
   const { data: sites, refetch } = useSites()
   const { data: laborData } = useLaborCost()
   const { data: clients }   = useClients()
@@ -279,6 +286,7 @@ export default function Sites({ navigateTo }) {
         default_tax_withheld_pct:  form.default_tax_withheld_pct === '' ? null : parseFloat(form.default_tax_withheld_pct),
         default_retention_pct:     form.default_retention_pct === '' ? null : parseFloat(form.default_retention_pct),
         default_retention_period_days: form.default_retention_period_days === '' ? null : parseInt(form.default_retention_period_days, 10),
+        default_deposit_pct:       form.default_deposit_pct === '' ? null : parseFloat(form.default_deposit_pct),
         notes:          form.notes || null,
         ...Object.fromEntries(COST_TYPES.map(t => [t.key, parseFloat(form[t.key]) || null]))
       }
@@ -480,6 +488,7 @@ export default function Sites({ navigateTo }) {
             onSave={handleSave}
             onCancel={() => { setShowForm(false); setEditSite(null) }}
             loading={saving}
+            hasModuleAccess={hasModuleAccess}
           />
           {editSite && tenant?.id && (
             <div className="modal-body" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
