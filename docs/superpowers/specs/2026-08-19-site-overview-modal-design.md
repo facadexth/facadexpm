@@ -18,6 +18,10 @@ This was originally scoped during the client-deposit-tracking brainstorm as "Sub
 - No cost breakdown (`cost_aluminum`/`cost_glass`/etc.), no attachments, no edit capability inside the modal — it is read-only summary, matching the user's explicit "สรุปเต็มที่ + มัดจำ/retention" choice over the alternative "everything the Sites edit form has."
 - No new database views or columns — this reads three existing views (`site_financial_summary`, `site_deposit_summary`, `site_retention_summary`) that already carry everything the modal needs; nothing here required a schema change.
 
+## Access Control
+
+**WORKER role must never reach this modal.** The three views it reads all carry money figures (contract value, income, expense, profit, deposit, retention) that WORKER has never been shown anywhere else in this app — `sites_progress`, the one site view WORKER can query, deliberately excludes every money column. Since `Dashboard.jsx` is the one page WORKER *does* see, and it displays site names in a WORKER-facing card grid (`WorkerSiteProgress`), that component must NOT get the click wiring — only Dashboard's separate ADMIN-only site table does. All other 8 pages are already ADMIN+-gated end to end, so no extra check is needed there.
+
 ## Design
 
 **1. Data layer.** A new hook, `useSiteOverview(siteId)`, added to `src/hooks/useSupabase.js`. It fetches one row from each of the three existing views in parallel (`Promise.all`, each filtered `.eq('id'|'site_id', siteId).single()`) and merges them into one object: the flat `site_financial_summary` columns, plus a nested `.deposit` (the `site_deposit_summary` row) and `.retention` (the `site_retention_summary` row). Returns `null` when `siteId` is falsy, matching the existing `useSite(id)`/`useSiteDepositBalance(siteId)` convention in the same file.
