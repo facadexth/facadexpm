@@ -2,7 +2,7 @@
 // FACADE X Dashboard — Main App
 // Router: แต่ละ tab คือ page แยกกัน ไม่ต้อง reload หน้า
 // ============================================================
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { supabase } from './lib/supabase.js'
 import { useUserRole } from './hooks/useUserRole.js'
 import { useTenant } from './hooks/useTenant.js'
@@ -12,18 +12,19 @@ import ChangePassword from './components/ChangePassword.jsx'
 import TrialBanner from './components/TrialBanner.jsx'
 import Login      from './pages/Login.jsx'
 import Dashboard   from './pages/Dashboard.jsx'
-import Sites       from './pages/Sites.jsx'
-import Assign      from './pages/Assign.jsx'
-import Expenses    from './pages/Expenses.jsx'
-import PurchaseOrders from './pages/PurchaseOrders.jsx'
-import Income      from './pages/Income.jsx'
-import HR                from './pages/HR.jsx'
-import LaborContractors  from './pages/LaborContractors.jsx'
-import Categories      from './pages/Categories.jsx'
-import Clients        from './pages/Clients.jsx'
-import Suppliers      from './pages/Suppliers.jsx'
-import UserManagement from './pages/UserManagement.jsx'
-import Settings       from './pages/Settings.jsx'
+
+const Sites             = lazy(() => import('./pages/Sites.jsx'))
+const Assign             = lazy(() => import('./pages/Assign.jsx'))
+const Expenses           = lazy(() => import('./pages/Expenses.jsx'))
+const PurchaseOrders     = lazy(() => import('./pages/PurchaseOrders.jsx'))
+const Income             = lazy(() => import('./pages/Income.jsx'))
+const HR                 = lazy(() => import('./pages/HR.jsx'))
+const LaborContractors   = lazy(() => import('./pages/LaborContractors.jsx'))
+const Categories         = lazy(() => import('./pages/Categories.jsx'))
+const Clients            = lazy(() => import('./pages/Clients.jsx'))
+const Suppliers          = lazy(() => import('./pages/Suppliers.jsx'))
+const UserManagement     = lazy(() => import('./pages/UserManagement.jsx'))
+const Settings           = lazy(() => import('./pages/Settings.jsx'))
 
 const TABS = [
   { id: 'dashboard',         label: '📊 ภาพรวม',              minRole: 'WORKER', module: null },
@@ -40,6 +41,14 @@ const TABS = [
   { id: 'user_management',   label: '👤 ผู้ใช้งาน',           minRole: 'OWNER',  module: null },
   { id: 'settings',          label: '⚙️ ตั้งค่า',             minRole: 'OWNER',  module: null },
 ]
+
+function PageLoadingFallback() {
+  return (
+    <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ color: 'var(--text3)', fontSize: 14 }}>กำลังโหลด...</div>
+    </div>
+  )
+}
 
 export default function App() {
   const [session,  setSession]  = useState(undefined) // undefined = loading
@@ -179,7 +188,9 @@ export default function App() {
 
       {/* ── Page Content ── */}
       <main className="app-main" style={{ flex: 1, padding: '20px 24px', maxWidth: 1440, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-        {renderPage()}
+        <Suspense fallback={<PageLoadingFallback />}>
+          {renderPage()}
+        </Suspense>
       </main>
 
       {showChangePassword && (
