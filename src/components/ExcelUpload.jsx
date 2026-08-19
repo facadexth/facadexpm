@@ -123,8 +123,28 @@ async function parseExpenseSheet(ws) {
   return records
 }
 
+const round2 = (n) => Math.round(n * 100) / 100
+
 /**
- * parseIncomeSheet — แปลง rows จาก template รายรับ
+ * calcIncomeAmounts — VAT / withholding tax / retention are never entered
+ * per-row; they're derived from whichever site the row belongs to, same
+ * as the manual "เพิ่มรายรับ" form's auto-fill (Income.jsx: site.default_
+ * vat_pct/default_tax_withheld_pct/default_retention_pct). Exported here
+ * so both the initial parse and a later site correction in the preview
+ * (updateRowSite) can recompute identically.
+ */
+function calcIncomeAmounts(noVat, site) {
+  const vat            = round2(noVat * (site?.default_vat_pct ?? 0) / 100)
+  const taxWithheld     = round2(noVat * (site?.default_tax_withheld_pct ?? 0) / 100)
+  const retention       = round2(noVat * (site?.default_retention_pct ?? 0) / 100)
+  const receivedAmount = round2(noVat + vat - taxWithheld - retention)
+  return { vat, taxWithheld, retention, receivedAmount }
+}
+
+/**
+ * parseIncomeSheet — แปลง rows จาก template รายรับ. Only มูลค่าก่อน VAT is
+ * entered per-row; VAT/tax/retention/ยอดที่ได้รับจริง are all calculated
+ * from the matched site's own default percentages (calcIncomeAmounts).
  */
 async function parseIncomeSheet(ws) {
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null })
@@ -133,34 +153,32 @@ async function parseIncomeSheet(ws) {
 
   const dataRows = rows.slice(headerRowIdx + 2)
 
-  const { data: sitesData } = await supabase.from('sites').select('id, site_number')
+  const { data: sitesData } = await supabase.from('sites')
+    .select('id, site_number, name, default_vat_pct, default_tax_withheld_pct, default_retention_pct')
   const siteMap = {}
-  sitesData?.forEach(s => { siteMap[s.site_number] = s.id })
+  sitesData?.forEach(s => { siteMap[s.site_number] = s; siteMap[s.name] = s })
 
   const records = []
   for (const row of dataRows) {
     if (!row[1]) continue
-    let dateVal = row[1]
-    if (typeof dateVal === 'number') {
-      dateVal = XLSX.SSF.parse_date_code(dateVal)
-      dateVal = `${dateVal.y}-${String(dateVal.m).padStart(2,'0')}-${String(dateVal.d).padStart(2,'0')}`
-    } else {
-      dateVal = String(dateVal).slice(0, 10)
-    }
+    const dateVal = excelDate(row[1])
     const noVat = parseFloat(row[5]) || 0
     if (noVat === 0) continue
+
+    const site = siteMap[row[2]] || null
+    const { vat, taxWithheld, retention, receivedAmount } = calcIncomeAmounts(noVat, site)
 
     records.push({
       invoice_no:      row[0] || '',
       date:            dateVal,
-      site_id:         siteMap[row[2]] || null,
+      site_id:         site?.id || null,
       client_name:     row[3] || '',
       description:     row[4] || '',
       amount_no_vat:   noVat,
-      vat:             parseFloat(row[6]) || 0,
-      tax_withheld:    parseFloat(row[7]) || 0,
-      retention:       parseFloat(row[8]) || 0,
-      received_amount: parseFloat(row[9]) || (noVat + (parseFloat(row[6]) || 0)),
+      vat,
+      tax_withheld:    taxWithheld,
+      retention,
+      received_amount: receivedAmount,
     })
   }
   return records
@@ -272,7 +290,19 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
   })), [suppliers])
 
   const updateRowSite = (i, siteId) => {
-    setPreview(prev => prev.map((r, idx) => idx === i ? { ...r, site_id: siteId } : r))
+    setPreview(prev => prev.map((r, idx) => {
+      if (idx !== i) return r
+      if (type === 'income') {
+        // VAT/tax/retention depend on the site's own percentages -- redo
+        // the calc so correcting an unmatched site also fixes these,
+        // instead of leaving them stuck at whatever (usually zero) the
+        // initial parse computed before a site was known.
+        const site = sites.find(s => s.id === siteId)
+        const { vat, taxWithheld, retention, receivedAmount } = calcIncomeAmounts(r.amount_no_vat, site)
+        return { ...r, site_id: siteId, vat, tax_withheld: taxWithheld, retention, received_amount: receivedAmount }
+      }
+      return { ...r, site_id: siteId }
+    }))
   }
 
   const updateRowCategory = (i, categoryId) => {
@@ -303,7 +333,9 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
       // fetch the site list so unmatched rows can be corrected by hand in
       // the preview instead of silently importing with no site.
       if (type === 'expense' || type === 'income') {
-        const { data: sitesData } = await supabase.from('sites').select('id, site_number, name').order('site_number')
+        const { data: sitesData } = await supabase.from('sites')
+          .select('id, site_number, name, default_vat_pct, default_tax_withheld_pct, default_retention_pct')
+          .order('site_number')
         setSites(sitesData || [])
       }
       if (type === 'expense') {
@@ -481,7 +513,12 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                           )}
                         </td>
                         <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.client_name}</td>
-                        <td style={{ color: 'var(--green)', fontWeight: 600 }}>{fmt(r.received_amount)}</td>
+                        <td style={{ color: 'var(--green)', fontWeight: 600 }}>
+                          {fmt(r.received_amount)}
+                          <div style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 400 }}>
+                            VAT {fmt(r.vat)} · หัก ณ ที่จ่าย {fmt(r.tax_withheld)} · Retention {fmt(r.retention)}
+                          </div>
+                        </td>
                       </> : type === 'site' ? <>
                         <td style={{ fontWeight: 600 }}>{r.name}</td>
                         <td style={{ fontSize: 11, color: r.client_id ? 'var(--green)' : 'var(--text3)' }}>{r.client_id ? '✓ linked' : r.client_name || '—'}</td>
