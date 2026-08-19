@@ -484,7 +484,7 @@ function PaymentModal({ contract, onClose }) {
 
 // ── Sub-tab 3: การเบิก ────────────────────────────────────────
 
-function PaymentsTab() {
+function PaymentsTab({ openSiteOverview }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'labor_contractors')
   const [statusFilter, setStatusFilter] = useState('')
@@ -527,7 +527,9 @@ function PaymentsTab() {
                   </td>
                   <td style={{ fontSize:12 }}>{new Date(p.payment_date).toLocaleDateString('th-TH')}</td>
                   <td style={{ fontSize:12 }}>{p.labor_contracts?.labor_subcontractors?.name||'—'}</td>
-                  <td style={{ fontSize:11, color:'var(--text3)' }} title={p.labor_contracts?.sites?.site_number || undefined}>{p.labor_contracts?.sites?.name || '—'}</td>
+                  <td style={{ fontSize:11, color:'var(--text3)', cursor: p.labor_contracts?.sites?.id ? 'pointer' : 'default' }}
+                    title={p.labor_contracts?.sites?.site_number || undefined}
+                    onClick={() => p.labor_contracts?.sites?.id && openSiteOverview(p.labor_contracts.sites.id)}>{p.labor_contracts?.sites?.name || '—'}</td>
                   <td style={{ fontSize:11, color:'var(--text3)', maxWidth:150, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.work_description||'—'}</td>
                   <td style={{ textAlign:'center', color:'var(--text3)', fontSize:12 }}>{p.progress_pct!=null?`${p.progress_pct}%`:'—'}</td>
                   <td className="font-mono">{fmt(p.gross_amount)}</td>
@@ -557,7 +559,7 @@ function PaymentsTab() {
 
 // ── Main LaborContractors Component ──────────────────────────
 
-export default function LaborContractors() {
+export default function LaborContractors({ openSiteOverview }) {
   const [innerTab, setInnerTab] = useState('subcontractors')
   const INNER_TABS = [
     { id:'subcontractors', label:'🏢 ผู้รับเหมา' },
@@ -574,7 +576,7 @@ export default function LaborContractors() {
       </div>
       {innerTab==='subcontractors' && <SubcontractorTab />}
       {innerTab==='contracts'      && <ContractsTab />}
-      {innerTab==='payments'       && <PaymentsTab />}
+      {innerTab==='payments'       && <PaymentsTab openSiteOverview={openSiteOverview} />}
     </div>
   )
 }

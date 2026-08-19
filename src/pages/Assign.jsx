@@ -23,7 +23,7 @@ import { computeRange } from './assign/useAssignRange.js'
 import { TYPE_LEGEND, TYPE_COLOR } from './assign/constants.js'
 import { buildLineText } from './assign/lineExport.js'
 
-export default function Assign({ navState }) {
+export default function Assign({ navState, openSiteOverview }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'assign')
 
@@ -245,7 +245,7 @@ export default function Assign({ navState }) {
         {costBySite.map((s, i) => (
           <div key={i} className="card card-body" style={{ padding: '14px 16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, gap: 8 }}>
-              <div style={{ minWidth: 0 }}>
+              <div style={{ minWidth: 0, cursor: s.site_id ? 'pointer' : 'default' }} onClick={() => s.site_id && openSiteOverview(s.site_id)}>
                 <div style={{ fontSize: 11, color: 'var(--accent)' }}>{s.site_number}</div>
                 <div style={{ fontWeight: 700, fontSize: 14, overflowWrap: 'anywhere' }}>{s.site_name}</div>
               </div>
