@@ -10,6 +10,7 @@ import { ProtectedPage } from './components/ProtectedPage.jsx'
 import { canViewPage } from './lib/permissions.js'
 import ChangePassword from './components/ChangePassword.jsx'
 import TrialBanner from './components/TrialBanner.jsx'
+import ChunkErrorBoundary from './components/ChunkErrorBoundary.jsx'
 import Login      from './pages/Login.jsx'
 import Dashboard   from './pages/Dashboard.jsx'
 
@@ -62,6 +63,15 @@ export default function App() {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
     return () => subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    const pending = sessionStorage.getItem('pendingTab')
+    if (pending) {
+      sessionStorage.removeItem('pendingTab')
+      sessionStorage.removeItem('chunk-reload-attempted')
+      setActiveTab(pending)
+    }
   }, [])
 
   // After role loads, redirect WORKER away from ADMIN-only tabs
@@ -188,9 +198,11 @@ export default function App() {
 
       {/* ── Page Content ── */}
       <main className="app-main" style={{ flex: 1, padding: '20px 24px', maxWidth: 1440, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-        <Suspense fallback={<PageLoadingFallback />}>
-          {renderPage()}
-        </Suspense>
+        <ChunkErrorBoundary pendingTab={activeTab}>
+          <Suspense fallback={<PageLoadingFallback />}>
+            {renderPage()}
+          </Suspense>
+        </ChunkErrorBoundary>
       </main>
 
       {showChangePassword && (
