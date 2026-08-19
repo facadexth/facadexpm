@@ -45,6 +45,19 @@ export default class ChunkErrorBoundary extends Component {
     window.location.reload()
   }
 
+  componentDidUpdate(prevProps) {
+    // Once tripped, this boundary has no other way to recover -- render()
+    // permanently returns null for the rest of the session otherwise, even
+    // for tabs that have nothing to do with the failure (a persistent
+    // failure on one tab would silently take down every tab, not just the
+    // broken one). Navigating to a different tab is a real signal the user
+    // wants a fresh attempt, so give the new tab's content an honest chance
+    // to render instead of staying permanently blank.
+    if (this.state.hasError && prevProps.pendingTab !== this.props.pendingTab) {
+      this.setState({ hasError: false, isChunkLoadError: false, error: null })
+    }
+  }
+
   render() {
     if (this.state.hasError) {
       if (!this.state.isChunkLoadError) {
