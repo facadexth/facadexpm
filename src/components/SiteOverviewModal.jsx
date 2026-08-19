@@ -9,14 +9,21 @@ import { fmt, fmtDate } from '../lib/supabase.js'
 import { depositStatusFor } from '../lib/depositCalc.js'
 import { retentionStatusFor } from '../lib/retentionStatus.js'
 import { Modal } from './Modal.jsx'
+import { useUserRole } from '../hooks/useUserRole.js'
 
 export default function SiteOverviewModal({ siteId, onClose }) {
-  const { data: site } = useSiteOverview(siteId)
+  const { isAtLeast } = useUserRole()
+  const isAdmin = isAtLeast('ADMIN')
+  const { data: site, error } = useSiteOverview(isAdmin ? siteId : null)
+
+  if (!isAdmin) return null
 
   return (
     <Modal title={site ? `${site.site_number} · ${site.name}` : 'ไซท์งาน'} onClose={onClose} maxWidth={560}>
       <div className="modal-body" style={{ display: 'grid', gap: 16 }}>
-        {!site ? (
+        {error ? (
+          <div style={{ color: 'var(--red)', fontSize: 13 }}>โหลดข้อมูลไม่สำเร็จ: {error}</div>
+        ) : !site ? (
           <div style={{ color: 'var(--text3)', fontSize: 13 }}>กำลังโหลด...</div>
         ) : (
           <>
