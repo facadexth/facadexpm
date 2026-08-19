@@ -13,6 +13,7 @@ import { useUserRole } from '../hooks/useUserRole.js'
 import { fmt, fmtShort, fmtDate } from '../lib/supabase.js'
 import { startOfYear, endOfYear, startOfMonth, endOfMonth, addMonths, format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
+import { getEffectiveTheme } from '../lib/theme.js'
 
 const PERIOD_OPTIONS = [
   { label: 'ปีนี้ (ทั้งปี)',    value: 'ytd' },
@@ -161,6 +162,14 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
     }))
   }, [expenses, incomes])
 
+  const isDarkChart = getEffectiveTheme() === 'dark'
+  const chartColors = {
+    grid: isDarkChart ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)',
+    tick: isDarkChart ? '#9e9ec8' : '#565a7a',
+    tooltipBg: isDarkChart ? '#252840' : '#ffffff',
+    tooltipBorder: isDarkChart ? '1px solid rgba(108,99,255,0.3)' : '1px solid rgba(108,99,255,0.25)',
+  }
+
   // ── Ongoing sites table ──
   const ongoingSites = useMemo(() => {
     const rows = (sites || []).filter(s => s.status === 'Ongoing')
@@ -231,11 +240,11 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
           <div className="card-title" style={{ marginBottom: 16 }}>รายรับ vs รายจ่าย รายเดือน</div>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={monthlyData} margin={{ top: 0, right: 10, bottom: 0, left: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="label" tick={{ fill: '#9e9ec8', fontSize: 11 }} />
-              <YAxis tickFormatter={fmtShort} tick={{ fill: '#9e9ec8', fontSize: 10 }} />
-              <Tooltip formatter={(v) => `${fmt(v)} บาท`} contentStyle={{ background: '#252840', border: '1px solid rgba(108,99,255,0.3)', borderRadius: 8 }} />
-              <Legend wrapperStyle={{ fontSize: 12, color: '#9e9ec8' }} />
+              <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+              <XAxis dataKey="label" tick={{ fill: chartColors.tick, fontSize: 11 }} />
+              <YAxis tickFormatter={fmtShort} tick={{ fill: chartColors.tick, fontSize: 10 }} />
+              <Tooltip formatter={(v) => `${fmt(v)} บาท`} contentStyle={{ background: chartColors.tooltipBg, border: chartColors.tooltipBorder, borderRadius: 8 }} />
+              <Legend wrapperStyle={{ fontSize: 12, color: chartColors.tick }} />
               <Bar dataKey="income"  name="รายรับ"  fill="#00d4aa" radius={[3,3,0,0]} />
               <Bar dataKey="expense" name="รายจ่าย" fill="#ff6b6b" radius={[3,3,0,0]} />
             </BarChart>
