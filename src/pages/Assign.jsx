@@ -115,7 +115,7 @@ export default function Assign({ navState }) {
       const workerIds = [...new Set(rows.map(r => r.worker_id))]
       const dates     = [...new Set(rows.map(r => r.date))]
       const { data: existing, error } = await supabase.from('worker_assignments')
-        .select('worker_id, date, shift, type, workers(nickname, name), sites(site_number)')
+        .select('worker_id, date, shift, type, workers(nickname, name), sites(name)')
         .in('worker_id', workerIds).in('date', dates)
       if (error) throw error
       const k = (r) => `${r.worker_id}|${r.date}|${r.shift}`
@@ -123,7 +123,7 @@ export default function Assign({ navState }) {
       const conflicts = rows.filter(r => exMap.has(k(r))).map(r => exMap.get(k(r)))
       if (conflicts.length) {
         const lines = conflicts.slice(0, 8).map(c =>
-          `• ${c.workers?.nickname || c.workers?.name} — ${c.date} (${c.shift === 'morning' ? 'เช้า' : 'บ่าย'}) มีงาน ${c.sites?.site_number || c.type} อยู่แล้ว`)
+          `• ${c.workers?.nickname || c.workers?.name} — ${c.date} (${c.shift === 'morning' ? 'เช้า' : 'บ่าย'}) มีงาน ${c.sites?.name || c.type} อยู่แล้ว`)
         setPendingRows(rows)
         setConflictMsg(`พบ ${conflicts.length} กะที่มีงานอยู่แล้ว:\n${lines.join('\n')}${conflicts.length > 8 ? '\n…' : ''}\n\nยืนยันจะเขียนทับตามนี้ไหม?`)
         setSaving(false)

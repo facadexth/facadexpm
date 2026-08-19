@@ -527,7 +527,7 @@ function PaymentsTab() {
                   </td>
                   <td style={{ fontSize:12 }}>{new Date(p.payment_date).toLocaleDateString('th-TH')}</td>
                   <td style={{ fontSize:12 }}>{p.labor_contracts?.labor_subcontractors?.name||'—'}</td>
-                  <td style={{ fontSize:11, color:'var(--text3)' }}>{p.labor_contracts?.sites?.site_number}</td>
+                  <td style={{ fontSize:11, color:'var(--text3)' }} title={p.labor_contracts?.sites?.site_number || undefined}>{p.labor_contracts?.sites?.name || '—'}</td>
                   <td style={{ fontSize:11, color:'var(--text3)', maxWidth:150, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.work_description||'—'}</td>
                   <td style={{ textAlign:'center', color:'var(--text3)', fontSize:12 }}>{p.progress_pct!=null?`${p.progress_pct}%`:'—'}</td>
                   <td className="font-mono">{fmt(p.gross_amount)}</td>

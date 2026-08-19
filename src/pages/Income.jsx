@@ -281,7 +281,7 @@ export default function Income({ navigateTo, navState }) {
                 <tr key={i.id}>
                   <td style={{ color: 'var(--accent)', fontSize: 11, whiteSpace: 'nowrap' }}>{i.invoice_no || '—'}</td>
                   <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: 'var(--text2)' }}>{fmtDate(i.date)}</td>
-                  <td style={{ fontSize: 11, color: 'var(--accent)' }}>{i.site_number || '—'}</td>
+                  <td style={{ fontSize: 11, color: 'var(--accent)' }} title={i.site_number || undefined}>{i.site_name || '—'}</td>
                   <td style={{ fontSize: 12 }}>{i.client_name}</td>
                   <td style={{ maxWidth: 200, fontSize: 12 }}>{i.description}</td>
                   <td className="font-mono" style={{ color: 'var(--text2)' }}>{fmt(i.amount_no_vat)}</td>
