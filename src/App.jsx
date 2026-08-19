@@ -27,6 +27,7 @@ const Suppliers          = lazy(() => import('./pages/Suppliers.jsx'))
 const UserManagement     = lazy(() => import('./pages/UserManagement.jsx'))
 const Settings           = lazy(() => import('./pages/Settings.jsx'))
 const Retention           = lazy(() => import('./pages/Retention.jsx'))
+const Deposits             = lazy(() => import('./pages/Deposits.jsx'))
 
 const TABS = [
   { id: 'dashboard',         label: '📊 ภาพรวม',              minRole: 'WORKER', module: null },
@@ -37,6 +38,7 @@ const TABS = [
   { id: 'purchase_orders',   label: '🧾 ใบสั่งซื้อ',           minRole: 'ADMIN',  module: 'purchase_orders' },
   { id: 'income',            label: '💰 รายรับ',               minRole: 'ADMIN',  module: null },
   { id: 'retention',         label: '🔒 Retention',            minRole: 'ADMIN',  module: null },
+  { id: 'deposits',          label: '💰 มัดจำ',                minRole: 'ADMIN',  module: 'client_deposits' },
   { id: 'categories',        label: '🏷️ หมวดหมู่',            minRole: 'ADMIN',  module: null },
   { id: 'clients',           label: '🏢 ลูกค้า',              minRole: 'ADMIN',  module: null },
   { id: 'suppliers',         label: '🏭 Supplier',             minRole: 'ADMIN',  module: null },
@@ -115,6 +117,7 @@ export default function App() {
       case 'purchase_orders': return <ProtectedPage minRole="ADMIN"><PurchaseOrders {...props} /></ProtectedPage>
       case 'income':     return <ProtectedPage minRole="ADMIN"><Income     {...props} /></ProtectedPage>
       case 'retention':  return <ProtectedPage minRole="ADMIN"><Retention  {...props} /></ProtectedPage>
+      case 'deposits':   return <ProtectedPage minRole="ADMIN"><Deposits   {...props} /></ProtectedPage>
       case 'categories': return <ProtectedPage minRole="ADMIN"><Categories {...props} /></ProtectedPage>
       case 'clients':    return <ProtectedPage minRole="ADMIN"><Clients    {...props} /></ProtectedPage>
       case 'suppliers':  return <ProtectedPage minRole="ADMIN"><Suppliers  {...props} /></ProtectedPage>
