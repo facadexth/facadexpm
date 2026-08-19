@@ -11,6 +11,7 @@ import { Modal } from '../components/Modal.jsx'
 
 function statusFor(row) {
   if (row.retention_released) return { label: 'คืนแล้ว', cls: 'badge-paid' }
+  if (!row.end_date) return { label: 'รอจบงาน', cls: 'badge-pending' }
   if (!row.due_date) return { label: 'ยังไม่ได้ตั้งระยะเวลา', cls: 'badge-pending' }
   const today = new Date().toISOString().slice(0, 10)
   if (row.due_date < today) return { label: 'เกินกำหนด', cls: 'badge-status-cancelled' }
@@ -86,9 +87,9 @@ export default function Retention() {
                 return (
                   <tr key={row.site_id}>
                     <td style={{ fontWeight: 600, fontSize: 13 }}>{row.name}</td>
-                    <td style={{ fontSize: 12 }}>{row.end_date ? fmtDate(row.end_date) : '—'}</td>
+                    <td style={{ fontSize: 12 }}>{row.end_date ? fmtDate(row.end_date) : 'รอจบงาน'}</td>
                     <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(row.total_retention)}</td>
-                    <td style={{ fontSize: 12 }}>{row.due_date ? fmtDate(row.due_date) : '—'}</td>
+                    <td style={{ fontSize: 12 }}>{!row.end_date ? 'รอจบงาน' : (row.due_date ? fmtDate(row.due_date) : '—')}</td>
                     <td><span className={`badge ${status.cls}`}>{status.label}</span></td>
                     <td>
                       {row.retention_released ? (
