@@ -46,8 +46,20 @@ export default class ChunkErrorBoundary extends Component {
   }
 
   render() {
-    if (this.state.hasError && !this.state.isChunkLoadError) {
-      throw this.state.error // re-throw non-chunk errors -- don't swallow real bugs
+    if (this.state.hasError) {
+      if (!this.state.isChunkLoadError) {
+        throw this.state.error // re-throw non-chunk errors -- don't swallow real bugs
+      }
+      // Do NOT fall through to this.props.children here -- children is the
+      // same Suspense/lazy tree that just failed. Rendering it again
+      // immediately re-triggers the same rejected import, which throws
+      // again before React ever completes a commit -- and componentDidCatch
+      // (where the actual reload happens) only runs after a commit. Verified
+      // live: without this, componentDidCatch never fires at all (confirmed
+      // via an isolated Chromium+WebKit test against a real deleted chunk
+      // file -- getDerivedStateFromError fired repeatedly, componentDidCatch
+      // never did, no reload ever occurred).
+      return null
     }
     return this.props.children
   }
