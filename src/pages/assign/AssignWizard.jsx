@@ -2,43 +2,49 @@
 // AssignWizard — single-panel: days → type → site → workers(+shift)
 // onSubmit(rows) with rows = { worker_id, date, shift, site_id, type }
 // ============================================================
-import { useState } from 'react'
+import { useMemo } from 'react'
 import { Modal } from '../../components/Modal.jsx'
 import SearchableSelect from '../../components/SearchableSelect.jsx'
 import MultiDayPicker from './MultiDayPicker.jsx'
+import { useDraftForm } from '../../hooks/useDraftForm.js'
+
+const EMPTY_FORM = { days: [], type: 'site', siteId: '', sel: {}, notes: '' }
 
 export default function AssignWizard({ workers = [], sites = [], initialSiteId = '', onSubmit, onClose, saving }) {
-  const [days, setDays]     = useState(new Set())
-  const [type, setType]     = useState('site')          // 'site' | 'factory'
-  const [siteId, setSiteId] = useState(initialSiteId)
-  const [sel, setSel]       = useState({})              // worker_id -> { am, pm }
-  const [notes, setNotes]   = useState('')              // applied to every row in this batch
+  // days persists as a plain array (localStorage-safe) and is only a Set
+  // at the edges, where MultiDayPicker requires one.
+  const [form, setForm, clearFormDraft] = useDraftForm('assign-wizard', { ...EMPTY_FORM, siteId: initialSiteId })
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const toggleWorker = (id) => setSel(s => {
-    const n = { ...s }
+  const days = useMemo(() => new Set(form.days), [form.days])
+  const setDays = (nextSet) => set('days', Array.from(nextSet))
+
+  const toggleWorker = (id) => setForm(f => {
+    const n = { ...f.sel }
     if (n[id]) delete n[id]
     else n[id] = { am: true, pm: true }
-    return n
+    return { ...f, sel: n }
   })
-  const toggleShift = (id, k) => setSel(s => {
-    if (!s[id]) return s
-    return { ...s, [id]: { ...s[id], [k]: !s[id][k] } }
+  const toggleShift = (id, k) => setForm(f => {
+    if (!f.sel[id]) return f
+    return { ...f, sel: { ...f.sel, [id]: { ...f.sel[id], [k]: !f.sel[id][k] } } }
   })
 
-  const selCount = Object.keys(sel).length
+  const selCount = Object.keys(form.sel).length
 
   const submit = () => {
-    if (!days.size) return alert('เลือกวันอย่างน้อย 1 วัน')
-    if (!siteId)    return alert('เลือกไซท์งาน')
-    if (!selCount)  return alert('เลือกช่างอย่างน้อย 1 คน')
+    if (!days.size)        return alert('เลือกวันอย่างน้อย 1 วัน')
+    if (!form.siteId)      return alert('เลือกไซท์งาน')
+    if (!selCount)         return alert('เลือกช่างอย่างน้อย 1 คน')
     const rows = []
     for (const date of days) {
-      for (const [worker_id, sh] of Object.entries(sel)) {
-        if (sh.am) rows.push({ worker_id, date, shift: 'morning', site_id: siteId, type, notes: notes || null })
-        if (sh.pm) rows.push({ worker_id, date, shift: 'evening', site_id: siteId, type, notes: notes || null })
+      for (const [worker_id, sh] of Object.entries(form.sel)) {
+        if (sh.am) rows.push({ worker_id, date, shift: 'morning', site_id: form.siteId, type: form.type, notes: form.notes || null })
+        if (sh.pm) rows.push({ worker_id, date, shift: 'evening', site_id: form.siteId, type: form.type, notes: form.notes || null })
       }
     }
     if (!rows.length) return alert('ทุกช่างถูกปิดกะทั้งเช้าและบ่าย')
+    clearFormDraft()
     onSubmit(rows)
   }
 
@@ -56,18 +62,18 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
           <div className="label" style={{ marginBottom: 6 }}>2 · ประเภทงาน</div>
           <div style={{ display: 'flex', gap: 8 }}>
             {[{ k: 'site', l: '🏗️ งานไซท์' }, { k: 'factory', l: '🏭 ผลิตที่โรงงาน' }].map(o => (
-              <button key={o.k} type="button" onClick={() => setType(o.k)}
-                className={`btn btn-sm ${type === o.k ? 'btn-primary' : 'btn-ghost'}`} style={{ flex: 1 }}>{o.l}</button>
+              <button key={o.k} type="button" onClick={() => set('type', o.k)}
+                className={`btn btn-sm ${form.type === o.k ? 'btn-primary' : 'btn-ghost'}`} style={{ flex: 1 }}>{o.l}</button>
             ))}
           </div>
-          {type === 'factory' && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>ผลิตที่โรงงานให้ไซท์นี้ — ลงค่าแรงให้ไซท์ แต่ไม่มีค่าเดินทาง</div>}
+          {form.type === 'factory' && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>ผลิตที่โรงงานให้ไซท์นี้ — ลงค่าแรงให้ไซท์ แต่ไม่มีค่าเดินทาง</div>}
         </div>
 
         {/* 3. site */}
         <div>
           <div className="label" style={{ marginBottom: 6 }}>3 · ไซท์งาน</div>
           <SearchableSelect
-            value={siteId} onChange={setSiteId} placeholder="— เลือกไซท์ —"
+            value={form.siteId} onChange={id => set('siteId', id)} placeholder="— เลือกไซท์ —"
             options={sites.map(s => ({ value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}` }))}
           />
         </div>
@@ -77,7 +83,7 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
           <div className="label" style={{ marginBottom: 6 }}>4 · ช่าง (เลือกหลายคน · ค่าเริ่มต้นเช้า+บ่าย)</div>
           <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 4 }}>
             {(workers || []).map(w => {
-              const on = !!sel[w.id]
+              const on = !!form.sel[w.id]
               return (
                 <div key={w.id} style={{
                   display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 6,
@@ -92,7 +98,7 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
                     <div style={{ display: 'flex', gap: 4 }}>
                       {[{ k: 'am', l: 'เช้า' }, { k: 'pm', l: 'บ่าย' }].map(s => (
                         <button key={s.k} type="button" onClick={() => toggleShift(w.id, s.k)}
-                          className={`btn btn-sm ${sel[w.id][s.k] ? 'btn-primary' : 'btn-ghost'}`}
+                          className={`btn btn-sm ${form.sel[w.id][s.k] ? 'btn-primary' : 'btn-ghost'}`}
                           style={{ fontSize: 11, padding: '2px 8px' }}>{s.l}</button>
                       ))}
                     </div>
@@ -107,7 +113,7 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
         {/* 5. notes */}
         <div>
           <div className="label" style={{ marginBottom: 6 }}>5 · รายละเอียดเพิ่มเติม (ถ้ามี — ใช้ร่วมกันทุกวัน/ทุกคนที่เลือก)</div>
-          <textarea className="textarea" rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="เช่น เอาบันไดมาด้วย" />
+          <textarea className="textarea" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="เช่น เอาบันไดมาด้วย" />
         </div>
       </div>
       <div className="modal-footer">
