@@ -312,3 +312,21 @@ th.sortable:hover { color: var(--accent); }
 @media (max-width: 420px) {
   .header-email { display: none; }
 }
+
+/* ── Hover-dropdown nav group (e.g. "ไซท์งาน" → Overview/มัดจำ/Retention) ── */
+.nav-group { position: relative; }
+.nav-group-trigger { cursor: default; }
+.nav-group-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  padding: 4px;
+  min-width: 160px;
+  z-index: 200;
+}
+.nav-group:hover .nav-group-dropdown { display: block; }

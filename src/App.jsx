@@ -33,12 +33,14 @@ const TABS = [
   { id: 'dashboard',         label: '📊 ภาพรวม',              minRole: 'WORKER', module: null },
   { id: 'assign',            label: '📋 Assign ช่าง',          minRole: 'WORKER', module: 'payroll' },
   { id: 'hr',                label: '👷 HR',                   minRole: 'WORKER', module: 'payroll' },
-  { id: 'sites',             label: '🏗️ ไซท์งาน',            minRole: 'ADMIN',  module: null },
+  { label: '🏗️ ไซท์งาน', children: [
+    { id: 'sites',     label: 'Overview',  minRole: 'ADMIN', module: null },
+    { id: 'deposits',  label: '💰 มัดจำ',   minRole: 'ADMIN', module: 'client_deposits' },
+    { id: 'retention', label: '🔒 Retention', minRole: 'ADMIN', module: null },
+  ] },
   { id: 'expenses',          label: '💸 รายจ่าย',              minRole: 'ADMIN',  module: null },
   { id: 'purchase_orders',   label: '🧾 ใบสั่งซื้อ',           minRole: 'ADMIN',  module: 'purchase_orders' },
   { id: 'income',            label: '💰 รายรับ',               minRole: 'ADMIN',  module: null },
-  { id: 'retention',         label: '🔒 Retention',            minRole: 'ADMIN',  module: null },
-  { id: 'deposits',          label: '💰 มัดจำ',                minRole: 'ADMIN',  module: 'client_deposits' },
   { id: 'categories',        label: '🏷️ หมวดหมู่',            minRole: 'ADMIN',  module: null },
   { id: 'clients',           label: '🏢 ลูกค้า',              minRole: 'ADMIN',  module: null },
   { id: 'suppliers',         label: '🏭 Supplier',             minRole: 'ADMIN',  module: null },
@@ -46,6 +48,12 @@ const TABS = [
   { id: 'user_management',   label: '👤 ผู้ใช้งาน',           minRole: 'OWNER',  module: null },
   { id: 'settings',          label: '⚙️ ตั้งค่า',             minRole: 'OWNER',  module: null },
 ]
+
+// TABS entries are either a plain tab ({id, label, minRole, module}) or a
+// group ({label, children: [...plain tabs]}) for the hover dropdown. This
+// flattens both shapes into one list of plain tabs, so lookups by id don't
+// need to know which shape produced them.
+const ALL_TAB_ENTRIES = TABS.flatMap(t => t.children ?? [t])
 
 function PageLoadingFallback() {
   return (
@@ -91,7 +99,7 @@ export default function App() {
   // After role loads, redirect WORKER away from ADMIN-only tabs
   useEffect(() => {
     if (roleLoading || !session) return
-    const current = TABS.find(t => t.id === activeTab)
+    const current = ALL_TAB_ENTRIES.find(t => t.id === activeTab)
     if (current && !isAtLeast(current.minRole)) {
       setActiveTab(isAtLeast('ADMIN') ? 'dashboard' : 'assign')
     }
@@ -138,20 +146,18 @@ export default function App() {
   // Not logged in
   if (!session) return <Login />
 
-  const visibleTabs = TABS.filter(tab => {
-    // First check role-based access
-    if (!isAtLeast(tab.minRole)) return false
+  // Same three checks every tab (plain or a group's child) has always had:
+  // role floor, module entitlement, then per-role view/edit override. Used
+  // for both plain tabs and group children so a "ไซท์งาน" child is gated
+  // identically to how it was gated as a standalone tab before this change.
+  const passesGates = (tab) =>
+    isAtLeast(tab.minRole) &&
+    hasModuleAccess(tab.module) &&
+    (!role || canViewPage(role, tab.id))
 
-    // Then check module entitlement
-    if (!hasModuleAccess(tab.module)) return false
-
-    // Then check saved per-role permission level ('none' hides the tab;
-    // 'view'/'edit' both keep it visible — the view/edit distinction is
-    // enforced inside each page's own canEdit, not here)
-    if (role && !canViewPage(role, tab.id)) return false
-
-    return true
-  })
+  const visibleTabs = TABS
+    .map(tab => tab.children ? { ...tab, children: tab.children.filter(passesGates) } : tab)
+    .filter(tab => tab.children ? tab.children.length > 0 : passesGates(tab))
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -199,7 +205,37 @@ export default function App() {
         background: 'var(--bg2)', borderBottom: '1px solid var(--border)',
         padding: '0 20px', display: 'flex', gap: 2, overflowX: 'auto'
       }}>
-        {visibleTabs.map(tab => (
+        {visibleTabs.map(tab => tab.children ? (
+          <div key={tab.label} className="nav-group">
+            <span
+              className="nav-group-trigger"
+              style={{
+                padding: '13px 18px', display: 'inline-block',
+                borderBottom: tab.children.some(c => c.id === activeTab) ? '2px solid var(--accent)' : '2px solid transparent',
+                color: tab.children.some(c => c.id === activeTab) ? 'var(--accent)' : 'var(--text2)',
+                fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', transition: 'all 0.2s'
+              }}
+            >
+              {tab.label}
+            </span>
+            <div className="nav-group-dropdown">
+              {tab.children.map(child => (
+                <button
+                  key={child.id}
+                  onClick={() => { sessionStorage.removeItem('chunk-reload-attempted'); setNavState({}); setActiveTab(child.id) }}
+                  style={{
+                    display: 'block', width: '100%', textAlign: 'left',
+                    padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer',
+                    color: activeTab === child.id ? 'var(--accent)' : 'var(--text2)',
+                    fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap'
+                  }}
+                >
+                  {child.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
           <button
             key={tab.id}
             onClick={() => { sessionStorage.removeItem('chunk-reload-attempted'); setNavState({}); setActiveTab(tab.id) }}
