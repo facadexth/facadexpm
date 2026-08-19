@@ -65,11 +65,21 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Restores the tab a chunk-load-failure reload was trying to reach (see
+  // ChunkErrorBoundary). Deliberately does NOT clear the 'chunk-reload-
+  // attempted' guard here -- this effect runs on every boot, including the
+  // boot immediately after the automatic reload it's recovering from. If it
+  // cleared the guard, a persistent failure (not just a transient blip --
+  // e.g. a cached stale index.html, or a real outage) would reload forever:
+  // reload -> boot -> guard cleared -> same chunk fails again -> reload ->
+  // loop. The guard is only meant to survive exactly the one recovery
+  // attempt it was set for; it's cleared instead on explicit user
+  // navigation (tab click / navigateTo below), which is a real signal of
+  // fresh intent distinct from "the page just reloaded on its own."
   useEffect(() => {
     const pending = sessionStorage.getItem('pendingTab')
     if (pending) {
       sessionStorage.removeItem('pendingTab')
-      sessionStorage.removeItem('chunk-reload-attempted')
       setActiveTab(pending)
     }
   }, [])
@@ -84,6 +94,10 @@ export default function App() {
   }, [roleLoading, session, activeTab, isAtLeast])
 
   const navigateTo = (tab, state = {}) => {
+    // Explicit navigation is fresh user intent -- safe to let a future
+    // chunk-load failure trigger its own automatic reload again, unlike
+    // the pendingTab restore effect above (which must NOT clear this).
+    sessionStorage.removeItem('chunk-reload-attempted')
     setNavState(state)
     setActiveTab(tab)
   }
@@ -182,7 +196,7 @@ export default function App() {
         {visibleTabs.map(tab => (
           <button
             key={tab.id}
-            onClick={() => { setNavState({}); setActiveTab(tab.id) }}
+            onClick={() => { sessionStorage.removeItem('chunk-reload-attempted'); setNavState({}); setActiveTab(tab.id) }}
             style={{
               padding: '13px 18px', background: 'none', border: 'none',
               borderBottom: activeTab === tab.id ? '2px solid var(--accent)' : '2px solid transparent',
