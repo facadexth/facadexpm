@@ -1,6 +1,7 @@
 // ============================================================
 // Assign — shared type colors / labels / options
 // ============================================================
+import { getEffectiveTheme } from '../../lib/theme.js'
 
 export const TYPE_COLOR = {
   site:            { bg: 'rgba(108,99,255,0.25)', color: 'var(--accent)' },
@@ -37,7 +38,12 @@ export const SHIFTS = [
 export const DOW_TH = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']  // index by getDay() (0=Sun)
 
 // ── per-site colours (so different sites are visually distinct in the grid) ──
-const SITE_PALETTE = [
+// Two palettes, same hues -- the dark one uses light pastel text (readable
+// on the app's dark cards), the light one uses darkened versions of the
+// same hues (a light-mode pastel would wash out to near-invisible on a
+// white background). siteColor() picks between them at call time so it
+// stays correct across a theme toggle without a page reload.
+const SITE_PALETTE_DARK = [
   { bg: 'rgba(108,99,255,0.30)',  color: '#c2bdff' },
   { bg: 'rgba(0,212,170,0.30)',   color: '#5fe6ca' },
   { bg: 'rgba(255,209,102,0.30)', color: '#ffd980' },
@@ -50,11 +56,25 @@ const SITE_PALETTE = [
   { bg: 'rgba(255,140,190,0.30)', color: '#ffb3d4' },
 ]
 
+const SITE_PALETTE_LIGHT = [
+  { bg: 'rgba(108,99,255,0.12)',  color: '#4a3fd9' },
+  { bg: 'rgba(0,212,170,0.12)',   color: '#00815f' },
+  { bg: 'rgba(255,209,102,0.18)', color: '#8a6400' },
+  { bg: 'rgba(78,205,196,0.14)',  color: '#1f7d75' },
+  { bg: 'rgba(255,107,107,0.14)', color: '#c23636' },
+  { bg: 'rgba(186,104,255,0.14)', color: '#7a2ecc' },
+  { bg: 'rgba(120,190,255,0.14)', color: '#1f6fb8' },
+  { bg: 'rgba(255,159,67,0.16)',  color: '#b35900' },
+  { bg: 'rgba(150,220,120,0.18)', color: '#4d8a2e' },
+  { bg: 'rgba(255,140,190,0.14)', color: '#c23d76' },
+]
+
 export function siteColor(siteId) {
-  if (!siteId) return SITE_PALETTE[0]
+  const palette = getEffectiveTheme() === 'dark' ? SITE_PALETTE_DARK : SITE_PALETTE_LIGHT
+  if (!siteId) return palette[0]
   let h = 0
   for (let i = 0; i < siteId.length; i++) h = (h * 31 + siteId.charCodeAt(i)) >>> 0
-  return SITE_PALETTE[h % SITE_PALETTE.length]
+  return palette[h % palette.length]
 }
 
 /** ตัวย่อชื่อไซท์สำหรับ month view (หลายคำ = อักษรแรกของแต่ละคำ, คำเดียว = 4 ตัวแรก) */
