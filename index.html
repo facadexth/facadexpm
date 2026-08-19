@@ -1,6 +1,17 @@
 <!DOCTYPE html>
 <html lang="th">
   <head>
+    <script>
+      // ตั้ง data-theme ก่อน paint ครั้งแรก กัน flash ของธีมผิด --
+      // ถ้ายังไม่เคยเลือกเอง ปล่อยให้ @media (prefers-color-scheme) ใน
+      // index.css จัดการแทน (ไม่ตั้ง attribute อะไรเลย)
+      (function () {
+        var saved = localStorage.getItem('theme')
+        if (saved === 'light' || saved === 'dark') {
+          document.documentElement.setAttribute('data-theme', saved)
+        }
+      })()
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FACADE X — Dashboard</title>

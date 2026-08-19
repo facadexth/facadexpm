@@ -19,6 +19,45 @@
   --shadow: 0 4px 24px rgba(0,0,0,0.3);
 }
 
+/* Light palette: applied automatically if the OS prefers light and the
+   user hasn't explicitly chosen a theme yet on this device. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f5f6fa;
+    --bg2: #ffffff;
+    --bg3: #eef0f7;
+    --bg4: #e4e7f2;
+    --text: #1a1d2e;
+    --text2: #565a7a;
+    --text3: #9296b8;
+    --border: rgba(108, 99, 255, 0.15);
+  }
+}
+
+/* Explicit theme choice (data-theme set by src/lib/theme.js) always wins
+   over the media query above, in both directions. */
+:root[data-theme="dark"] {
+  --bg: #0f1117;
+  --bg2: #1a1d2e;
+  --bg3: #252840;
+  --bg4: #2e3250;
+  --text: #e8eaf6;
+  --text2: #9e9ec8;
+  --text3: #5c5f80;
+  --border: rgba(108, 99, 255, 0.2);
+}
+
+:root[data-theme="light"] {
+  --bg: #f5f6fa;
+  --bg2: #ffffff;
+  --bg3: #eef0f7;
+  --bg4: #e4e7f2;
+  --text: #1a1d2e;
+  --text2: #565a7a;
+  --text3: #9296b8;
+  --border: rgba(108, 99, 255, 0.15);
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {

@@ -9,6 +9,7 @@ import { useUserRole } from './hooks/useUserRole.js'
 import { useTenant } from './hooks/useTenant.js'
 import { ProtectedPage } from './components/ProtectedPage.jsx'
 import { canViewPage } from './lib/permissions.js'
+import { getEffectiveTheme, toggleTheme } from './lib/theme.js'
 import ChangePassword from './components/ChangePassword.jsx'
 import SiteOverviewModal from './components/SiteOverviewModal.jsx'
 import TrialBanner from './components/TrialBanner.jsx'
@@ -161,6 +162,7 @@ export default function App() {
   const [navState, setNavState] = useState({})
   const [showChangePassword, setShowChangePassword] = useState(false)
   const [overviewSiteId, setOverviewSiteId] = useState(null)
+  const [theme, setTheme] = useState(getEffectiveTheme)
   const { role, isAtLeast, loading: roleLoading } = useUserRole()
   const { tenant, isTrialActive, trialDaysRemaining, hasModuleAccess } = useTenant()
 
@@ -276,6 +278,14 @@ export default function App() {
           <span className="header-date" style={{ color: 'var(--text3)', fontSize: 12, whiteSpace: 'nowrap' }}>
             {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
           </span>
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ fontSize: 12 }}
+            onClick={() => setTheme(toggleTheme())}
+            title="สลับธีมสว่าง/มืด"
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
           <button
             className="btn btn-ghost btn-sm"
             style={{ fontSize: 12 }}
