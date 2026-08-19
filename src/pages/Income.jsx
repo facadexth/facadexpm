@@ -10,7 +10,7 @@ import { supabase } from '../lib/supabase.js'
 import { useIncomes, useSites, useSiteDepositBalance } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
-import { calcDepositDeduction, remainingBalanceForEdit } from '../lib/depositCalc.js'
+import { calcDepositDeduction, remainingBalanceForEdit, round2 } from '../lib/depositCalc.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
@@ -147,10 +147,24 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading, ha
             <div>
               <label className="label">{isDepositRow ? '% มัดจำ (ตั้ง default ของไซท์)' : 'หักมัดจำ (%)'}</label>
               <input type="number" className="input" min="0" step="0.01" value={form.deposit_pct}
-                onChange={e => set('deposit_pct', e.target.value)} />
+                onChange={e => {
+                  const pct = e.target.value
+                  setForm(f => {
+                    const next = { ...f, deposit_pct: pct }
+                    // มัดจำ คำนวณจาก % ของมูลค่าสัญญา (ก่อน VAT) ของไซท์ ไม่ใช่หักจากตัวเอง --
+                    // ใส่ % แล้วให้เด้งไปคำนวณมูลค่าก่อน VAT ให้อัตโนมัติ ผู้ใช้แก้เองทีหลังได้
+                    if (isDepositRow) {
+                      const site = (sites || []).find(s => s.id === f.site_id)
+                      if (site?.contract_value_no_vat) {
+                        next.amount_no_vat = round2(site.contract_value_no_vat * (parseFloat(pct) || 0) / 100) || ''
+                      }
+                    }
+                    return next
+                  })
+                }} />
               <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
                 {isDepositRow
-                  ? 'บันทึกแล้วจะตั้งเป็น % มัดจำ default ของไซท์นี้ เพื่อหักอัตโนมัติในรายรับงวดถัดไป'
+                  ? 'คำนวณมูลค่าก่อน VAT ให้อัตโนมัติจาก % ของมูลค่าสัญญา และบันทึกแล้วจะตั้งเป็น % มัดจำ default ของไซท์นี้ เพื่อหักอัตโนมัติในรายรับงวดถัดไป'
                   : `${fmt(depositAmt)} บาท (คงเหลือมัดจำ ${fmt(remainingBalance)})`}
               </div>
             </div>
