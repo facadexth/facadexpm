@@ -498,6 +498,8 @@ CREATE TABLE salary_records (
   social_security_ded   NUMERIC DEFAULT 0,
   leave_deduction       NUMERIC DEFAULT 0,       -- leave_personal only; leave_sick never deducts
   loan_deduction        NUMERIC DEFAULT 0,
+  office_days           NUMERIC DEFAULT 0,       -- informational only -- never affects net_pay, never written to expenses
+  office_cost           NUMERIC DEFAULT 0,       -- monthly_salary/26 * office_days, same formula as labor_cost_by_site
   net_pay               NUMERIC DEFAULT 0,
   paid_date             DATE,
   notes                 TEXT,
