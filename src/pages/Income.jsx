@@ -15,6 +15,7 @@ import { canEditPage } from '../lib/permissions.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
+import { exportToExcel } from '../lib/exportExcel.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { format, startOfYear, endOfYear } from 'date-fns'
@@ -224,6 +225,23 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
+  const handleExport = () => {
+    const columns = [
+      { header: 'เลขใบแจ้งหนี้', accessor: i => i.invoice_no || '' },
+      { header: 'วันที่', accessor: i => new Date(i.date) },
+      { header: 'ไซท์งาน', accessor: i => i.site_name || '' },
+      { header: 'ลูกค้า', accessor: i => i.client_name || '' },
+      { header: 'รายละเอียด', accessor: i => i.description || '' },
+      { header: 'ก่อน VAT', accessor: i => i.amount_no_vat || 0 },
+      { header: 'VAT', accessor: i => i.vat || 0 },
+      { header: 'Tax หัก', accessor: i => i.tax_withheld || 0 },
+      { header: 'Retention', accessor: i => i.retention || 0 },
+      { header: 'หักมัดจำ', accessor: i => i.deposit_deduction || 0 },
+      { header: 'ยอดรับจริง', accessor: i => i.received_amount || 0 },
+    ]
+    exportToExcel(incomes || [], columns, `รายรับ_${dateFrom}_ถึง_${dateTo}`)
+  }
+
   const handleSave = async (form) => {
     setSaving(true)
     try {
@@ -280,6 +298,7 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
         {canEdit && <button className="btn btn-success" onClick={() => { setEditRow(null); setShowAdd(true) }}>+ เพิ่มรายรับ</button>}
         {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
         <a className="btn btn-ghost" href="/templates/TEMPLATE_รายรับ.xlsx" download>📄 Template</a>
+        <button className="btn btn-ghost" onClick={handleExport}>📤 Export Excel</button>
         <div style={{ flex: 1 }} />
         <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหา..." value={search} onChange={e => setSearch(e.target.value)} />
         <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
