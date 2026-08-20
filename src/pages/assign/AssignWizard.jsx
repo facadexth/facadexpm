@@ -67,6 +67,7 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
             {[
               { k: 'site', l: '🏗️ งานไซท์' },
               { k: 'factory', l: '🏭 ผลิตที่โรงงาน' },
+              { k: 'office', l: '🏢 ออฟฟิศ' },
               { k: 'leave_sick', l: '🤒 ลาป่วย' },
               { k: 'leave_personal', l: '🏖️ ลากิจ' },
             ].map(o => (
