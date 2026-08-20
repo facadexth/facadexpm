@@ -490,6 +490,8 @@ export default function HR() {
       leave_deduction: 0,
       leave_sick_days: 0,
       leave_personal_days: 0,
+      office_days: 0,
+      office_cost: 0,
       ot_hours: 0,
       net_pay: parseFloat(
         ((r.base_salary||0) + (r.phone_allowance||0) + (r.special_allowance||0) - (r.social_security_ded||0))
@@ -527,9 +529,10 @@ export default function HR() {
       const wmap = {}
       ;(assigns||[]).forEach(a => {
         const w = a.workers; if (!w) return
-        if (!wmap[a.worker_id]) wmap[a.worker_id] = { worker: w, leave_sick: 0, leave_personal: 0, ot_hours: 0 }
+        if (!wmap[a.worker_id]) wmap[a.worker_id] = { worker: w, leave_sick: 0, leave_personal: 0, office: 0, ot_hours: 0 }
         if (a.type === 'leave_sick')                          wmap[a.worker_id].leave_sick += 0.5
         if (a.type === 'leave_personal' || a.type === 'leave') wmap[a.worker_id].leave_personal += 0.5  // 1 กะ = 0.5 วัน (เช้า+บ่าย = 1 วัน)
+        if (a.type === 'office')                               wmap[a.worker_id].office += 0.5  // 1 กะ = 0.5 วัน, เหมือน leave
         if (a.type === 'site')                                 wmap[a.worker_id].ot_hours += (a.ot_hours||0)  // legacy OT stored on the shift row
       })
 
@@ -554,6 +557,7 @@ export default function HR() {
         const lv  = parseFloat((d.leave_personal * dr).toFixed(2))
         const ot  = parseFloat((d.ot_hours * dr / 8 * 1.5).toFixed(2))
         const hb  = parseFloat(((d.holiday_shifts||0) * dr * 0.5 * holidayMultiplier).toFixed(2))
+        const oc  = parseFloat((d.office * dr).toFixed(2))
         const sso = d.worker.has_social_security ? parseFloat(Math.min(750,(d.worker.monthly_salary||0)*0.05).toFixed(2)) : 0
         return {
           worker_id, name: d.worker.name, nickname: d.worker.nickname,
@@ -563,6 +567,7 @@ export default function HR() {
           leave_sick_days: d.leave_sick, leave_personal_days: d.leave_personal,
           leave_deduction: lv, ot_hours: d.ot_hours, ot_amount: ot,
           holiday_shifts: d.holiday_shifts||0, holiday_bonus: hb,
+          office_days: d.office, office_cost: oc,
           net_pay: parseFloat(((d.worker.monthly_salary||0) - sso - lv + ot + hb).toFixed(2)),
         }
       })
@@ -583,6 +588,7 @@ export default function HR() {
           base_salary: r.base_salary, contribution: r.contribution,
           ot_amount: r.ot_amount + (r.holiday_bonus || 0), social_security_ded: r.social_security_ded,
           leave_deduction: r.leave_deduction, net_pay: r.net_pay,
+          office_days: r.office_days || 0, office_cost: r.office_cost || 0,
         }
         const { data } = await supabase.from('salary_records')
           .upsert(payload, { onConflict: 'worker_id,month,year' }).select().single()
@@ -613,6 +619,7 @@ export default function HR() {
   const totalNet  = useMemo(() => visibleRecords.reduce((s,r)=>s+(r.net_pay||0),0),[visibleRecords])
   const totalOT   = useMemo(() => visibleRecords.reduce((s,r)=>s+(r.ot_amount||0),0),[visibleRecords])
   const totalSSO  = useMemo(() => visibleRecords.reduce((s,r)=>s+(r.social_security_ded||0),0),[visibleRecords])
+  const totalOfficeCost = useMemo(() => visibleRecords.reduce((s,r)=>s+(r.office_cost||0),0),[visibleRecords])
 
   const INNER_TABS = [
     { id: 'workers',  label: '👷 ข้อมูลช่าง' },
@@ -766,6 +773,7 @@ export default function HR() {
             <div className="kpi-card kpi-sm"><div className="kpi-label">เงินเดือนรวม</div><div className="kpi-value">{fmt(totalBase)}</div></div>
             <div className="kpi-card kpi-sm"><div className="kpi-label">OT</div><div className="kpi-value" style={{ color: 'var(--yellow)' }}>{fmt(totalOT)}</div></div>
             <div className="kpi-card kpi-sm"><div className="kpi-label">ประกันสังคม</div><div className="kpi-value">{fmt(totalSSO)}</div></div>
+            <div className="kpi-card kpi-sm blue"><div className="kpi-label">ค่าใช้จ่ายส่วนกลางรวม</div><div className="kpi-value" style={{ color: 'var(--blue)' }}>{fmt(totalOfficeCost)}</div></div>
             <div className="kpi-card kpi-sm green"><div className="kpi-label">จ่ายสุทธิรวม</div><div className="kpi-value" style={{ color: 'var(--green)' }}>{fmt(totalNet)}</div></div>
           </div>
           <div className="card">
@@ -773,7 +781,7 @@ export default function HR() {
               <table>
                 <thead>
                   <tr>
-                    <th>พนักงาน</th><th>เงินเดือน</th><th>OT</th>
+                    <th>พนักงาน</th><th>เงินเดือน</th><th>วันออฟฟิศ</th><th>ค่าใช้จ่ายส่วนกลาง</th><th>OT</th>
                     <th>ประกันสังคม</th><th>หักลา</th><th>เบิกล่วงหน้า</th>
                     <th>จ่ายสุทธิ</th><th>วันจ่าย</th><th></th>
                   </tr>
@@ -783,6 +791,8 @@ export default function HR() {
                     <tr key={r.id}>
                       <td><div style={{ fontWeight: 600 }}>{r.workers?.name||'—'}</div><div style={{ fontSize: 11, color: 'var(--text3)' }}>{r.workers?.position}</div></td>
                       <td className="font-mono">{fmt(r.base_salary)}</td>
+                      <td style={{ textAlign: 'center', color: r.office_days>0?'var(--blue)':'var(--text3)' }}>{r.office_days||'—'}</td>
+                      <td className="font-mono" style={{ color: r.office_cost>0?'var(--blue)':'var(--text3)' }}>{r.office_cost>0?fmt(r.office_cost):'—'}</td>
                       <td className="font-mono" style={{ color: r.ot_amount>0?'var(--yellow)':'var(--text3)' }}>{r.ot_amount>0?fmt(r.ot_amount):'—'}</td>
                       <td className="font-mono" style={{ color: 'var(--red)', fontSize: 12 }}>{r.social_security_ded>0?`(${fmt(r.social_security_ded)})`:'—'}</td>
                       <td className="font-mono" style={{ color: 'var(--red)', fontSize: 12 }}>{r.leave_deduction>0?`(${fmt(r.leave_deduction)})`:'—'}</td>
@@ -801,7 +811,7 @@ export default function HR() {
                     </tr>
                   ))}
                   {!visibleRecords.length && (
-                    <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>
+                    <tr><td colSpan={11} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>
                       ยังไม่มีข้อมูลเงินเดือน {MONTHS[month-1]} {year+543}
                     </td></tr>
                   )}
@@ -811,9 +821,11 @@ export default function HR() {
                     <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700 }}>
                       <td style={{ color: 'var(--text3)', fontSize: 12 }}>รวม</td>
                       <td className="font-mono">{fmt(totalBase)}</td>
+                      <td />
+                      <td className="font-mono" style={{ color: 'var(--blue)' }}>{fmt(totalOfficeCost)}</td>
                       <td className="font-mono" style={{ color: 'var(--yellow)' }}>{fmt(totalOT)}</td>
                       <td className="font-mono" style={{ color: 'var(--red)' }}>{fmt(totalSSO)}</td>
-                      <td colSpan={3} />
+                      <td colSpan={2} />
                       <td className="font-mono" style={{ color: 'var(--green)' }}>{fmt(totalNet)}</td>
                       <td colSpan={2} />
                     </tr>
@@ -923,7 +935,7 @@ export default function HR() {
             </div>
             <div className="table-wrap" style={{ maxHeight: 320 }}>
               <table>
-                <thead><tr><th>พนักงาน</th><th>เงินเดือน</th><th>ลาป่วย</th><th>ลากิจ</th><th>หักลา</th><th>OT ชม.</th><th>OT บาท</th><th>กะวันหยุด</th><th>โบนัสวันหยุด</th><th>SSO</th><th>สุทธิ</th></tr></thead>
+                <thead><tr><th>พนักงาน</th><th>เงินเดือน</th><th>ลาป่วย</th><th>ลากิจ</th><th>หักลา</th><th>OT ชม.</th><th>OT บาท</th><th>กะวันหยุด</th><th>โบนัสวันหยุด</th><th>วันออฟฟิศ</th><th>ค่าใช้จ่ายส่วนกลาง</th><th>SSO</th><th>สุทธิ</th></tr></thead>
                 <tbody>
                   {calcPreview.map((r,i) => (
                     <tr key={i}>
@@ -936,6 +948,8 @@ export default function HR() {
                       <td className="font-mono" style={{ color: 'var(--yellow)' }}>{r.ot_amount>0?fmt(r.ot_amount):'—'}</td>
                       <td style={{ textAlign: 'center', color: r.holiday_shifts>0?'var(--accent)':'var(--text3)' }}>{r.holiday_shifts||'—'}</td>
                       <td className="font-mono" style={{ color: 'var(--accent)' }}>{r.holiday_bonus>0?fmt(r.holiday_bonus):'—'}</td>
+                      <td style={{ textAlign: 'center', color: r.office_days>0?'var(--blue)':'var(--text3)' }}>{r.office_days||'—'}</td>
+                      <td className="font-mono" style={{ color: 'var(--blue)' }}>{r.office_cost>0?fmt(r.office_cost):'—'}</td>
                       <td className="font-mono" style={{ color: 'var(--red)', fontSize: 12 }}>{r.social_security_ded>0?`(${fmt(r.social_security_ded)})`:'—'}</td>
                       <td className="font-mono" style={{ color: 'var(--green)', fontWeight: 700 }}>{fmt(r.net_pay)}</td>
                     </tr>
