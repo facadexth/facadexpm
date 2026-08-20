@@ -227,6 +227,22 @@ export function useWorkers() {
       .from('workers_with_rate')
       .select('*')
       .eq('status', 'active')
+      .eq('show_in_assign', true)
+      .order('name')
+    if (error) throw error
+    return data
+  })
+}
+
+// Same as useWorkers() but WITHOUT the show_in_assign filter -- used by
+// MySchedule.jsx, which must let a worker find and manage their own
+// schedule even if an admin has hidden them from the Assign roster.
+export function useAllActiveWorkers() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('workers_with_rate')
+      .select('*')
+      .eq('status', 'active')
       .order('name')
     if (error) throw error
     return data
