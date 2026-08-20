@@ -335,6 +335,7 @@ CREATE TABLE workers (
   status                TEXT DEFAULT 'active' CHECK (status IN ('active','inactive')),
   email                 TEXT,                    -- ผูกกับ user_roles.user_email (login account)
   show_in_assign        BOOLEAN NOT NULL DEFAULT true, -- ซ่อนจาก roster ของ Assign โดยไม่กระทบข้อมูล assignment เดิม
+  annual_sick_leave_days INT NOT NULL DEFAULT 30, -- วันลาป่วยที่ได้รับต่อปี (โควต้า leave_sick)
   created_at            TIMESTAMPTZ DEFAULT NOW(),
   updated_at            TIMESTAMPTZ DEFAULT NOW(),
   tenant_id             UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
@@ -1620,7 +1621,7 @@ SELECT
   annual_leave_days, monthly_contribution, status, created_at, updated_at,
   ROUND(monthly_salary / 26, 2) AS daily_rate,
   ROUND(monthly_salary * 0.05 / 100 * 750, 0) AS social_security_amount,
-  email, show_in_assign
+  email, show_in_assign, annual_sick_leave_days
 FROM workers;
 
 -- สรุปสัญญาผู้รับเหมาช่วง: บิลแล้ว/จ่ายแล้ว/retention คงเหลือ/% ความคืบหน้า

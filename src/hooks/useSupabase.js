@@ -401,6 +401,24 @@ export function useLeaveQuotaUsage(year) {
   }, [year])
 }
 
+/** ลาป่วยที่ใช้ไปแล้วในปีนั้น (แยกจาก useLeaveQuotaUsage ซึ่งนับเฉพาะลากิจ) --
+ * ไม่มี legacy 'leave' rows ให้นับรวมด้วย เพราะแยก type ตั้งแต่แรกที่มี leave_sick */
+export function useSickLeaveQuotaUsage(year) {
+  return useQuery(async () => {
+    const from = `${year}-01-01`
+    const to   = `${year}-12-31`
+    const { data, error } = await supabase
+      .from('worker_assignments')
+      .select('worker_id')
+      .eq('type', 'leave_sick')
+      .gte('date', from).lte('date', to)
+    if (error) throw error
+    const used = {}
+    ;(data || []).forEach(r => { used[r.worker_id] = (used[r.worker_id] || 0) + 0.5 })
+    return used
+  }, [year])
+}
+
 // ── Sites Progress (WORKER-safe) ──────────────────────────────
 
 /** ข้อมูลไซท์งานแบบไม่มีตัวเลขการเงิน (สำหรับ WORKER) — site_number, name, status, billing_pct */

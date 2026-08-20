@@ -9,7 +9,7 @@ import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { supabase } from '../lib/supabase.js'
-import { useAllActiveWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs, fetchWorkerOTForRange, useCompanyHolidays, saveCompanyHoliday, deleteCompanyHoliday, useAppSetting, saveAppSetting, fetchCompanyHolidaysForRange, useLeaveQuotaUsage } from '../hooks/useSupabase.js'
+import { useAllActiveWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs, fetchWorkerOTForRange, useCompanyHolidays, saveCompanyHoliday, deleteCompanyHoliday, useAppSetting, saveAppSetting, fetchCompanyHolidaysForRange, useLeaveQuotaUsage, useSickLeaveQuotaUsage } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -24,7 +24,7 @@ const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','�
 const EMPTY_WORKER = {
   name: '', nickname: '', position: '',
   monthly_salary: '', status: 'active',
-  has_social_security: true, annual_leave_days: 6, monthly_contribution: '', email: '',
+  has_social_security: true, annual_leave_days: 6, annual_sick_leave_days: 30, monthly_contribution: '', email: '',
   show_in_assign: true,
 }
 
@@ -81,15 +81,20 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
             </select>
           </div>
           <div>
-            <label className="label">วันลาต่อปี</label>
+            <label className="label">ลากิจต่อปี</label>
             <input type="number" className="input" min="0" value={form.annual_leave_days}
               onChange={e => set('annual_leave_days', parseInt(e.target.value) || 0)} />
           </div>
           <div>
-            <label className="label">เงินสมทบ/เดือน</label>
-            <input type="number" className="input" min="0" step="0.01" value={form.monthly_contribution}
-              onChange={e => set('monthly_contribution', e.target.value)} placeholder="บาท" />
+            <label className="label">ลาป่วยต่อปี</label>
+            <input type="number" className="input" min="0" value={form.annual_sick_leave_days}
+              onChange={e => set('annual_sick_leave_days', parseInt(e.target.value) || 0)} />
           </div>
+        </div>
+        <div>
+          <label className="label">เงินสมทบ/เดือน</label>
+          <input type="number" className="input" min="0" step="0.01" value={form.monthly_contribution}
+            onChange={e => set('monthly_contribution', e.target.value)} placeholder="บาท" />
         </div>
         <div>
           <label className="label">ผูกกับ User Account (Login)</label>
@@ -315,6 +320,7 @@ export default function HR() {
   // Workers state
   const { data: workers, refetch: refetchWorkers } = useAllActiveWorkers()
   const { data: leaveUsed } = useLeaveQuotaUsage(now.getFullYear())
+  const { data: sickLeaveUsed } = useSickLeaveQuotaUsage(now.getFullYear())
   const [showWorkerForm, setShowWorkerForm] = useState(false)
   const [editWorker, setEditWorker] = useState(null)
   const [deleteWorkerId, setDeleteWorkerId] = useState(null)
@@ -366,6 +372,7 @@ export default function HR() {
         status: form.status,
         has_social_security: form.has_social_security,
         annual_leave_days: parseInt(form.annual_leave_days) || 0,
+        annual_sick_leave_days: parseInt(form.annual_sick_leave_days) || 0,
         monthly_contribution: parseFloat(form.monthly_contribution) || null,
         email: form.email || null,
         show_in_assign: form.show_in_assign,
@@ -639,13 +646,18 @@ export default function HR() {
                   <tr>
                     <th>ชื่อ</th><th>ชื่อเล่น</th><th>ตำแหน่ง</th>
                     <th>เงินเดือน</th><th>ค่าแรง/วัน</th>
-                    <th>SSO</th><th>วันลา/ปี</th><th>ใช้ไปแล้ว (ปีนี้)</th><th>คงเหลือ</th><th>สถานะ</th><th></th>
+                    <th>SSO</th>
+                    <th>ลากิจ/ปี</th><th>ใช้แล้ว</th><th>คงเหลือ</th>
+                    <th>ลาป่วย/ปี</th><th>ใช้แล้ว</th><th>คงเหลือ</th>
+                    <th>สถานะ</th><th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {visibleWorkers.map(w => {
                     const used = leaveUsed?.[w.id] || 0
                     const remaining = (w.annual_leave_days || 0) - used
+                    const sickUsed = sickLeaveUsed?.[w.id] || 0
+                    const sickRemaining = (w.annual_sick_leave_days || 0) - sickUsed
                     return (
                     <tr key={w.id}>
                       <td style={{ fontWeight: 600 }}>{w.name}</td>
@@ -657,6 +669,9 @@ export default function HR() {
                       <td style={{ textAlign: 'center' }}>{w.annual_leave_days}</td>
                       <td style={{ textAlign: 'center', color: used > 0 ? 'var(--red)' : 'var(--text3)' }}>{used || '—'}</td>
                       <td style={{ textAlign: 'center', fontWeight: 600, color: remaining < 0 ? 'var(--red)' : 'var(--text2)' }}>{remaining}</td>
+                      <td style={{ textAlign: 'center' }}>{w.annual_sick_leave_days}</td>
+                      <td style={{ textAlign: 'center', color: sickUsed > 0 ? 'var(--red)' : 'var(--text3)' }}>{sickUsed || '—'}</td>
+                      <td style={{ textAlign: 'center', fontWeight: 600, color: sickRemaining < 0 ? 'var(--red)' : 'var(--text2)' }}>{sickRemaining}</td>
                       <td><span className={`badge ${w.status==='active'?'badge-paid':'badge-pending'}`}>{w.status}</span></td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         {canEdit && (
