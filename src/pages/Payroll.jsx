@@ -6,7 +6,7 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useSalary, useWorkers, fetchWorkerOTForRange, fetchCompanyHolidaysForRange, useAppSetting } from '../hooks/useSupabase.js'
+import { useSalary, useAllActiveWorkers, fetchWorkerOTForRange, fetchCompanyHolidaysForRange, useAppSetting } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -159,7 +159,7 @@ export default function Payroll() {
   const [calcPreview, setCalcPreview] = useState(null) // modal preview
 
   const { data: records, refetch } = useSalary(month, year)
-  const { data: workers } = useWorkers()
+  const { data: workers } = useAllActiveWorkers()
   const { data: holidayMultiplierVal } = useAppSetting('holiday_pay_multiplier', '1.5')
 
   const totalBase = useMemo(() => (records||[]).reduce((s,r) => s+(r.base_salary||0), 0), [records])

@@ -9,7 +9,7 @@ import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { supabase } from '../lib/supabase.js'
-import { useWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs, fetchWorkerOTForRange, useCompanyHolidays, saveCompanyHoliday, deleteCompanyHoliday, useAppSetting, saveAppSetting, fetchCompanyHolidaysForRange, useLeaveQuotaUsage } from '../hooks/useSupabase.js'
+import { useAllActiveWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs, fetchWorkerOTForRange, useCompanyHolidays, saveCompanyHoliday, deleteCompanyHoliday, useAppSetting, saveAppSetting, fetchCompanyHolidaysForRange, useLeaveQuotaUsage } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -313,7 +313,7 @@ export default function HR() {
   const [innerTab, setInnerTab] = useState('workers')
 
   // Workers state
-  const { data: workers, refetch: refetchWorkers } = useWorkers()
+  const { data: workers, refetch: refetchWorkers } = useAllActiveWorkers()
   const { data: leaveUsed } = useLeaveQuotaUsage(now.getFullYear())
   const [showWorkerForm, setShowWorkerForm] = useState(false)
   const [editWorker, setEditWorker] = useState(null)
