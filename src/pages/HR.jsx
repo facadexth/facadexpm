@@ -24,7 +24,8 @@ const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','�
 const EMPTY_WORKER = {
   name: '', nickname: '', position: '',
   monthly_salary: '', status: 'active',
-  has_social_security: true, annual_leave_days: 6, monthly_contribution: '', email: ''
+  has_social_security: true, annual_leave_days: 6, monthly_contribution: '', email: '',
+  show_in_assign: true,
 }
 
 function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerUsers = [] }) {
@@ -59,6 +60,10 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
             </select>
           </div>
         </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+          <input type="checkbox" checked={form.show_in_assign} onChange={e => set('show_in_assign', e.target.checked)} style={{ width: 16, height: 16 }} />
+          แสดงในตาราง Assign (ปิดสำหรับพนักงานที่ไม่ต้อง assign วันทำงาน เช่น ออฟฟิศ)
+        </label>
         <div>
           <label className="label">เงินเดือน (บาท) ★</label>
           <input type="number" className="input" required min="0" step="0.01" value={form.monthly_salary}
@@ -363,6 +368,7 @@ export default function HR() {
         annual_leave_days: parseInt(form.annual_leave_days) || 0,
         monthly_contribution: parseFloat(form.monthly_contribution) || null,
         email: form.email || null,
+        show_in_assign: form.show_in_assign,
       }
       if (editWorker) {
         const { data: old } = await supabase.from('workers').select('*').eq('id', editWorker.id).single()

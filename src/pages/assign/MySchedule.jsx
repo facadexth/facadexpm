@@ -9,7 +9,7 @@
 // ============================================================
 import { useMemo } from 'react'
 import { useUserRole } from '../../hooks/useUserRole.js'
-import { useWorkers, useAssignmentsRange, useWorkerOTRange, useSitesProgress, useLeaveQuotaUsage } from '../../hooks/useSupabase.js'
+import { useAllActiveWorkers, useAssignmentsRange, useWorkerOTRange, useSitesProgress, useLeaveQuotaUsage } from '../../hooks/useSupabase.js'
 import { DOW_TH } from './constants.js'
 import AssignCell from './AssignCell.jsx'
 
@@ -19,7 +19,7 @@ const noop = () => {}
 
 export default function MySchedule({ from, to, days, view }) {
   const { user } = useUserRole()
-  const { data: workers } = useWorkers()
+  const { data: workers } = useAllActiveWorkers()
   const { data: assignments } = useAssignmentsRange(from, to)
   const { data: otEntries } = useWorkerOTRange(from, to)
   const { data: sites } = useSitesProgress()
