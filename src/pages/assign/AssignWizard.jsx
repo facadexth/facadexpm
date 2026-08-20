@@ -7,6 +7,7 @@ import { Modal } from '../../components/Modal.jsx'
 import SearchableSelect from '../../components/SearchableSelect.jsx'
 import MultiDayPicker from './MultiDayPicker.jsx'
 import { useDraftForm } from '../../hooks/useDraftForm.js'
+import { SITE_TYPES } from './constants.js'
 
 const EMPTY_FORM = { days: [], type: 'site', siteId: '', sel: {}, notes: '' }
 
@@ -33,14 +34,16 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
   const selCount = Object.keys(form.sel).length
 
   const submit = () => {
-    if (!days.size)        return alert('เลือกวันอย่างน้อย 1 วัน')
-    if (!form.siteId)      return alert('เลือกไซท์งาน')
-    if (!selCount)         return alert('เลือกช่างอย่างน้อย 1 คน')
+    const needsSite = SITE_TYPES.includes(form.type)
+    if (!days.size)          return alert('เลือกวันอย่างน้อย 1 วัน')
+    if (needsSite && !form.siteId) return alert('เลือกไซท์งาน')
+    if (!selCount)           return alert('เลือกช่างอย่างน้อย 1 คน')
+    const siteId = needsSite ? form.siteId : null
     const rows = []
     for (const date of days) {
       for (const [worker_id, sh] of Object.entries(form.sel)) {
-        if (sh.am) rows.push({ worker_id, date, shift: 'morning', site_id: form.siteId, type: form.type, notes: form.notes || null })
-        if (sh.pm) rows.push({ worker_id, date, shift: 'evening', site_id: form.siteId, type: form.type, notes: form.notes || null })
+        if (sh.am) rows.push({ worker_id, date, shift: 'morning', site_id: siteId, type: form.type, notes: form.notes || null })
+        if (sh.pm) rows.push({ worker_id, date, shift: 'evening', site_id: siteId, type: form.type, notes: form.notes || null })
       }
     }
     if (!rows.length) return alert('ทุกช่างถูกปิดกะทั้งเช้าและบ่าย')
@@ -60,27 +63,34 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
         {/* 2. type */}
         <div>
           <div className="label" style={{ marginBottom: 6 }}>2 · ประเภทงาน</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {[{ k: 'site', l: '🏗️ งานไซท์' }, { k: 'factory', l: '🏭 ผลิตที่โรงงาน' }].map(o => (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {[
+              { k: 'site', l: '🏗️ งานไซท์' },
+              { k: 'factory', l: '🏭 ผลิตที่โรงงาน' },
+              { k: 'leave_sick', l: '🤒 ลาป่วย' },
+              { k: 'leave_personal', l: '🏖️ ลากิจ' },
+            ].map(o => (
               <button key={o.k} type="button" onClick={() => set('type', o.k)}
-                className={`btn btn-sm ${form.type === o.k ? 'btn-primary' : 'btn-ghost'}`} style={{ flex: 1 }}>{o.l}</button>
+                className={`btn btn-sm ${form.type === o.k ? 'btn-primary' : 'btn-ghost'}`} style={{ flex: '1 1 45%' }}>{o.l}</button>
             ))}
           </div>
           {form.type === 'factory' && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>ผลิตที่โรงงานให้ไซท์นี้ — ลงค่าแรงให้ไซท์ แต่ไม่มีค่าเดินทาง</div>}
         </div>
 
-        {/* 3. site */}
-        <div>
-          <div className="label" style={{ marginBottom: 6 }}>3 · ไซท์งาน</div>
-          <SearchableSelect
-            value={form.siteId} onChange={id => set('siteId', id)} placeholder="— เลือกไซท์ —"
-            options={sites.map(s => ({ value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}` }))}
-          />
-        </div>
+        {/* 3. site (leave types don't need one) */}
+        {SITE_TYPES.includes(form.type) && (
+          <div>
+            <div className="label" style={{ marginBottom: 6 }}>3 · ไซท์งาน</div>
+            <SearchableSelect
+              value={form.siteId} onChange={id => set('siteId', id)} placeholder="— เลือกไซท์ —"
+              options={sites.map(s => ({ value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}` }))}
+            />
+          </div>
+        )}
 
         {/* 4. workers */}
         <div>
-          <div className="label" style={{ marginBottom: 6 }}>4 · ช่าง (เลือกหลายคน · ค่าเริ่มต้นเช้า+บ่าย)</div>
+          <div className="label" style={{ marginBottom: 6 }}>{SITE_TYPES.includes(form.type) ? '4' : '3'} · ช่าง (เลือกหลายคน · ค่าเริ่มต้นเช้า+บ่าย)</div>
           <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 4 }}>
             {(workers || []).map(w => {
               const on = !!form.sel[w.id]
@@ -112,7 +122,7 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
 
         {/* 5. notes */}
         <div>
-          <div className="label" style={{ marginBottom: 6 }}>5 · รายละเอียดเพิ่มเติม (ถ้ามี — ใช้ร่วมกันทุกวัน/ทุกคนที่เลือก)</div>
+          <div className="label" style={{ marginBottom: 6 }}>{SITE_TYPES.includes(form.type) ? '5' : '4'} · รายละเอียดเพิ่มเติม (ถ้ามี — ใช้ร่วมกันทุกวัน/ทุกคนที่เลือก)</div>
           <textarea className="textarea" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="เช่น เอาบันไดมาด้วย" />
         </div>
       </div>
