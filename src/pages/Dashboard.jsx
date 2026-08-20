@@ -140,6 +140,19 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
     (forecast || []).filter(f => f.forecast_month?.startsWith(nextMonth))
                     .reduce((s, f) => s + (f.total_due || 0), 0)
   , [forecast, nextMonth])
+  // payment_forecast (the view) is grouped by (month, payment_method,
+  // status), so the same month can appear as several rows -- collapse to
+  // one total per month before showing the "ยอดที่ต้องชำระ (รายเดือน)" list.
+  const monthlyForecast = useMemo(() => {
+    const map = {}
+    ;(forecast || []).forEach(f => {
+      if (!f.forecast_month) return
+      map[f.forecast_month] = (map[f.forecast_month] || 0) + (f.total_due || 0)
+    })
+    return Object.entries(map)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([forecast_month, total_due]) => ({ forecast_month, total_due }))
+  }, [forecast])
 
   // ── Monthly trend ──
   const monthlyData = useMemo(() => {
@@ -255,10 +268,10 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
         <div className="card card-body">
           <div className="card-title" style={{ marginBottom: 16 }}>ยอดที่ต้องชำระ (รายเดือน)</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {(forecast || []).slice(0, 6).map((f, i) => {
+            {monthlyForecast.slice(0, 6).map((f) => {
               const month = f.forecast_month ? format(parseISO(f.forecast_month), 'MMM yy', { locale: th }) : '—'
               return (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div key={f.forecast_month} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: 'var(--text2)', fontSize: 12 }}>{month}</span>
                   <span style={{ color: 'var(--yellow)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
                     {fmt(f.total_due)} บาท
@@ -266,7 +279,7 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
                 </div>
               )
             })}
-            {!forecast?.length && <div style={{ color: 'var(--text3)', fontSize: 12 }}>ไม่มียอดค้างจ่าย</div>}
+            {!monthlyForecast.length && <div style={{ color: 'var(--text3)', fontSize: 12 }}>ไม่มียอดค้างจ่าย</div>}
           </div>
         </div>
       </div>
