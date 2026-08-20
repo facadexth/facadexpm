@@ -41,15 +41,19 @@ const TABS = [
     { id: 'deposits',  label: '💰 มัดจำ',   minRole: 'ADMIN', module: 'client_deposits' },
     { id: 'retention', label: '🔒 Retention', minRole: 'ADMIN', module: null },
   ] },
-  { id: 'expenses',          label: '💸 รายจ่าย',              minRole: 'ADMIN',  module: null },
-  { id: 'purchase_orders',   label: '🧾 ใบสั่งซื้อ',           minRole: 'ADMIN',  module: 'purchase_orders' },
+  { label: '💸 รายจ่าย', children: [
+    { id: 'expenses',        label: 'Overview',       minRole: 'ADMIN', module: null },
+    { id: 'purchase_orders', label: '🧾 ใบสั่งซื้อ',   minRole: 'ADMIN', module: 'purchase_orders' },
+  ] },
   { id: 'income',            label: '💰 รายรับ',               minRole: 'ADMIN',  module: null },
-  { id: 'categories',        label: '🏷️ หมวดหมู่',            minRole: 'ADMIN',  module: null },
-  { id: 'clients',           label: '🏢 ลูกค้า',              minRole: 'ADMIN',  module: null },
-  { id: 'suppliers',         label: '🏭 Supplier',             minRole: 'ADMIN',  module: null },
   { id: 'labor_contractors', label: '🔧 ผู้รับเหมาค่าแรง',    minRole: 'ADMIN',  module: 'labor_subcontractors' },
-  { id: 'user_management',   label: '👤 ผู้ใช้งาน',           minRole: 'OWNER',  module: null },
-  { id: 'settings',          label: '⚙️ ตั้งค่า',             minRole: 'OWNER',  module: null },
+  { label: '⚙️ ตั้งค่า', children: [
+    { id: 'settings',        label: 'ทั่วไป',          minRole: 'OWNER', module: null },
+    { id: 'categories',      label: '🏷️ หมวดหมู่',    minRole: 'ADMIN', module: null },
+    { id: 'clients',         label: '🏢 ลูกค้า',      minRole: 'ADMIN', module: null },
+    { id: 'suppliers',       label: '🏭 Supplier',     minRole: 'ADMIN', module: null },
+    { id: 'user_management', label: '👤 ผู้ใช้งาน',    minRole: 'OWNER', module: null },
+  ] },
 ]
 
 // TABS entries are either a plain tab ({id, label, minRole, module}) or a
