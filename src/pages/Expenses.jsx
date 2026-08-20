@@ -17,6 +17,7 @@ import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { auditLog } from '../lib/audit.js'
 import ExcelUpload from '../components/ExcelUpload.jsx'
+import { exportToExcel } from '../lib/exportExcel.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import {
@@ -299,6 +300,22 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
     if (row?.po_id) setReconcilePoId(row.po_id)
   }
 
+  const handleExport = () => {
+    const PAYMENT_METHOD_LABEL = { transfer: 'โอน', check: 'เช็ค', cash: 'เงินสด' }
+    const columns = [
+      { header: 'วันที่', accessor: e => new Date(e.date) },
+      { header: 'รายละเอียด', accessor: e => e.description || '' },
+      { header: 'ไซท์งาน', accessor: e => e.site_name || '' },
+      { header: 'หมวด', accessor: e => e.category_name || '' },
+      { header: 'ผู้จำหน่าย', accessor: e => e.supplier || '' },
+      { header: 'มูลค่า', accessor: e => e.amount || 0 },
+      { header: 'วิธีชำระ', accessor: e => PAYMENT_METHOD_LABEL[e.payment_method] || e.payment_method || '' },
+      { header: 'วันเช็ค', accessor: e => e.check_date ? new Date(e.check_date) : '' },
+      { header: 'สถานะ', accessor: e => STATUS_LABELS[e.status] || e.status || '' },
+    ]
+    exportToExcel(expenses || [], columns, `รายจ่าย_${dateFrom}_ถึง_${dateTo}`)
+  }
+
   return (
     <div>
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
@@ -308,6 +325,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
         {canEdit && <button className="btn btn-primary" onClick={() => { setEditRow(null); setShowAdd(true) }}>+ เพิ่มรายจ่าย</button>}
         {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
         <a className="btn btn-ghost" href="/templates/TEMPLATE_รายจ่าย.xlsx" download>📄 Template</a>
+        <button className="btn btn-ghost" onClick={handleExport}>📤 Export Excel</button>
         <div style={{ flex: 1 }} />
         <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหารายละเอียด..." value={search} onChange={e => setSearch(e.target.value)} />
         <select className="select select-sm" style={{ width: 190 }} value={dateField} onChange={e => setDateField(e.target.value)}>
