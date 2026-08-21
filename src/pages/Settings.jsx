@@ -53,6 +53,57 @@ export default function Settings() {
     }
   }
 
+  // Company profile — for the Quotation PDF letterhead (and future
+  // Invoice). See docs/superpowers/specs/2026-08-22-quotation-module-design.md.
+  const [profile, setProfile] = useState({
+    address: '', tax_id: '', phone: '', bank_name: '', bank_account_name: '', bank_account_no: '',
+  })
+  const [savingProfile, setSavingProfile] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  useEffect(() => {
+    if (tenant) {
+      setProfile({
+        address: tenant.address || '', tax_id: tenant.tax_id || '', phone: tenant.phone || '',
+        bank_name: tenant.bank_name || '', bank_account_name: tenant.bank_account_name || '', bank_account_no: tenant.bank_account_no || '',
+      })
+    }
+  }, [tenant])
+  const setProfileField = (k, v) => setProfile(p => ({ ...p, [k]: v }))
+
+  const handleSaveProfile = async () => {
+    setSavingProfile(true)
+    try {
+      const { error } = await supabase.from('tenants').update(profile).eq('id', tenant.id)
+      if (error) throw error
+      refetchTenant()
+      alert('✅ บันทึกข้อมูลบริษัทแล้ว')
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setSavingProfile(false)
+    }
+  }
+
+  const handleUploadLogo = async (file) => {
+    if (!file || !tenant) return
+    setUploadingLogo(true)
+    try {
+      const ext = file.name.split('.').pop()
+      const path = `${tenant.id}/logo.${ext}`
+      const { error: uploadError } = await supabase.storage.from('tenant-logos').upload(path, file, { upsert: true })
+      if (uploadError) throw uploadError
+      const { data: urlData } = supabase.storage.from('tenant-logos').getPublicUrl(path)
+      const { error: updateError } = await supabase.from('tenants').update({ logo_url: urlData.publicUrl }).eq('id', tenant.id)
+      if (updateError) throw updateError
+      refetchTenant()
+      alert('✅ อัปโหลดโลโก้แล้ว')
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
   // Load permissions from localStorage (auto-upgrades legacy boolean format)
   useEffect(() => {
     setPermissions(loadPermissions())
@@ -129,6 +180,53 @@ export default function Settings() {
           <button className="btn btn-primary" onClick={handleSaveContractorType} disabled={savingType || !tenant}>
             {savingType ? '⏳ กำลังบันทึก...' : '✅ บันทึก'}
           </button>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-header"><div className="card-title">🏢 ข้อมูลบริษัท (สำหรับใบเสนอราคา)</div></div>
+        <div className="card-body" style={{ display: 'grid', gap: 12 }}>
+          <div>
+            <label className="label">โลโก้บริษัท</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {tenant?.logo_url && <img src={tenant.logo_url} alt="" style={{ height: 40 }} />}
+              <input type="file" accept="image/*" disabled={uploadingLogo} onChange={e => handleUploadLogo(e.target.files?.[0])} />
+              {uploadingLogo && <span style={{ fontSize: 12, color: 'var(--text3)' }}>⏳ กำลังอัปโหลด...</span>}
+            </div>
+          </div>
+          <div className="form-grid-2">
+            <div>
+              <label className="label">ที่อยู่บริษัท</label>
+              <input className="input" value={profile.address} onChange={e => setProfileField('address', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">เลขประจำตัวผู้เสียภาษี</label>
+              <input className="input" value={profile.tax_id} onChange={e => setProfileField('tax_id', e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <label className="label">เบอร์โทร</label>
+            <input className="input" style={{ maxWidth: 240 }} value={profile.phone} onChange={e => setProfileField('phone', e.target.value)} />
+          </div>
+          <div className="form-grid-2">
+            <div>
+              <label className="label">ธนาคาร</label>
+              <input className="input" value={profile.bank_name} onChange={e => setProfileField('bank_name', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">ชื่อบัญชี</label>
+              <input className="input" value={profile.bank_account_name} onChange={e => setProfileField('bank_account_name', e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <label className="label">เลขที่บัญชี</label>
+            <input className="input" style={{ maxWidth: 240 }} value={profile.bank_account_no} onChange={e => setProfileField('bank_account_no', e.target.value)} />
+          </div>
+          <div>
+            <button className="btn btn-primary" onClick={handleSaveProfile} disabled={savingProfile}>
+              {savingProfile ? '⏳...' : '✅ บันทึกข้อมูลบริษัท'}
+            </button>
+          </div>
         </div>
       </div>
 
