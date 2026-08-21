@@ -695,6 +695,131 @@ CREATE POLICY admin_full_access ON purchase_order_items FOR ALL TO authenticated
   WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
 
 -- ----------------------------------------------------------------
+-- CATALOG_ITEMS — รายการสินค้า/บริการสำหรับใบเสนอราคา (sell-side price list)
+-- ----------------------------------------------------------------
+-- Sell-side price list only — no cost price, no per-item VAT, no stock
+-- quantity. See "Non-Goals" in the design spec for why: the user's
+-- buy-side materials and sell-side deliverables are different kinds of
+-- things with no 1:1 mapping, so a unified buy/sell catalog with margin
+-- tracking would model a business shape that doesn't match how this
+-- company actually works. Added by
+-- supabase/migrations/2026-08-22-03-catalog-items.sql.
+CREATE TABLE catalog_items (
+  id                 UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name               TEXT NOT NULL,
+  unit               TEXT,
+  default_unit_price NUMERIC NOT NULL DEFAULT 0,
+  active             BOOLEAN NOT NULL DEFAULT true,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  tenant_id          UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+);
+
+CREATE INDEX idx_catalog_items_tenant_id ON catalog_items(tenant_id);
+
+ALTER TABLE catalog_items ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_full_access ON catalog_items FOR ALL TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('quotations'))
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('quotations'));
+
+-- ----------------------------------------------------------------
+-- QUOTATIONS — ใบเสนอราคา
+-- ----------------------------------------------------------------
+-- Quotation header. status lifecycle: draft/sent/accepted/rejected/
+-- expired. has_vat + price_includes_vat mirror purchase_orders' shape
+-- exactly. Added by supabase/migrations/2026-08-22-04-quotations.sql.
+CREATE TABLE quotations (
+  id                  UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  quotation_number    TEXT NOT NULL UNIQUE DEFAULT '',   -- AUTO: QT-2026-001
+  client_id           UUID NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
+  site_id             UUID REFERENCES sites(id) ON DELETE SET NULL,
+  date                DATE NOT NULL,
+  valid_until         DATE,
+  status              TEXT NOT NULL DEFAULT 'draft'
+                      CHECK (status IN ('draft','sent','accepted','rejected','expired')),
+  has_vat             BOOLEAN NOT NULL DEFAULT true,
+  price_includes_vat  BOOLEAN NOT NULL DEFAULT false,
+  discount_amount     NUMERIC,
+  discount_pct        NUMERIC,
+  payment_terms       TEXT,
+  notes               TEXT,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  tenant_id           UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+);
+
+CREATE INDEX idx_quotations_client_id ON quotations(client_id);
+CREATE INDEX idx_quotations_site_id ON quotations(site_id);
+CREATE INDEX idx_quotations_status ON quotations(status);
+CREATE INDEX idx_quotations_tenant_id ON quotations(tenant_id);
+
+-- Auto-numbering: identical pattern to generate_po_number()
+-- (search this file for "generate_po_number") — QT- + year +
+-- zero-padded per-year sequence.
+CREATE OR REPLACE FUNCTION generate_quotation_number()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  year_part TEXT := TO_CHAR(NOW(), 'YYYY');
+  seq_num   INT;
+BEGIN
+  SELECT COALESCE(MAX(SUBSTRING(quotation_number FROM 'QT-\d{4}-(\d+)$')::INT), 0) + 1
+  INTO seq_num
+  FROM quotations
+  WHERE quotation_number LIKE 'QT-' || year_part || '-%';
+  NEW.quotation_number := 'QT-' || year_part || '-' || LPAD(seq_num::TEXT, 3, '0');
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_quotation_number
+  BEFORE INSERT ON quotations
+  FOR EACH ROW
+  WHEN (NEW.quotation_number IS NULL OR NEW.quotation_number = '')
+  EXECUTE FUNCTION generate_quotation_number();
+
+-- quotations-module RLS: single ADMIN+-only full-access policy,
+-- tenant-scoped AND gated on has_module_access('quotations') for both
+-- reads and writes — same shape as purchase_orders.
+ALTER TABLE quotations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_full_access ON quotations FOR ALL TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('quotations'))
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('quotations'));
+
+-- ----------------------------------------------------------------
+-- QUOTATION_ITEMS — รายการในใบเสนอราคา
+-- ----------------------------------------------------------------
+-- Same shape as purchase_order_items, plus an optional catalog_item_id
+-- back-reference to the sell-side price list (ON DELETE SET NULL:
+-- deleting a catalog item must never take a historical quotation line
+-- with it). Added by supabase/migrations/2026-08-22-05-quotation-items.sql.
+CREATE TABLE quotation_items (
+  id               UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  quotation_id     UUID NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,
+  catalog_item_id  UUID REFERENCES catalog_items(id) ON DELETE SET NULL,
+  description      TEXT NOT NULL,
+  unit             TEXT,
+  quantity         NUMERIC NOT NULL DEFAULT 1,
+  unit_price       NUMERIC NOT NULL DEFAULT 0,
+  line_total       NUMERIC NOT NULL DEFAULT 0,
+  sort_order       INT NOT NULL DEFAULT 0,
+  tenant_id        UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+);
+
+CREATE INDEX idx_quotation_items_quotation_id ON quotation_items(quotation_id);
+CREATE INDEX idx_quotation_items_tenant_id ON quotation_items(tenant_id);
+
+ALTER TABLE quotation_items ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_full_access ON quotation_items FOR ALL TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('quotations'))
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('quotations'));
+
+-- ----------------------------------------------------------------
 -- PURCHASE_ORDER_ATTACHMENTS — เอกสารแนบใบสั่งซื้อ (ใบเสนอราคา, รูปสินค้า)
 -- ----------------------------------------------------------------
 -- Reference-only files (supplier quotations, product photos) — never
@@ -921,7 +1046,7 @@ ALTER TABLE tenants
 -- ----------------------------------------------------------------
 CREATE TABLE tenant_modules (
   tenant_id  UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  module_key TEXT NOT NULL CHECK (module_key IN ('payroll','labor_subcontractors','purchase_orders','client_deposits')),
+  module_key TEXT NOT NULL CHECK (module_key IN ('payroll','labor_subcontractors','purchase_orders','client_deposits','quotations')),
   enabled_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (tenant_id, module_key)
 );
