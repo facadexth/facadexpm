@@ -43,7 +43,7 @@ const EMPTY_FORM = {
 
 const VAT_RATE = 0.07
 
-function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading, hasModuleAccess = () => false }) {
+export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading, hasModuleAccess = () => false }) {
   const isAdd = !initial?.id
   const [form, setForm, clearDraft] = useDraftForm('sites-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
