@@ -138,6 +138,19 @@ export function useSiteOverview(siteId) {
   }, [siteId])
 }
 
+/** ค่าใช้จ่ายทั้งหมด (all-time) ของไซท์นี้ พร้อม category_name -- ใช้ทำ pie chart ใน SiteOverviewModal */
+export function useSiteExpensesByCategory(siteId) {
+  return useQuery(async () => {
+    if (!siteId) return []
+    const { data, error } = await supabase
+      .from('expenses_view')
+      .select('category_name, amount')
+      .eq('site_id', siteId)
+    if (error) throw error
+    return data
+  }, [siteId])
+}
+
 // ── Expenses ─────────────────────────────────────────────────
 
 export function useExpenses(filters = {}) {

@@ -3,7 +3,7 @@
 // ✅ Excel drag-drop import (ใช้ ExcelUpload component)
 // ✅ Add/Edit form (วันที่, รายละเอียด, ไซท์, หมวด, ผู้จำหน่าย, มูลค่า, วิธีชำระ, สถานะ)
 // ✅ Toggle สถานะ inline พร้อม confirm dialog
-// ✅ Date range filter (ค่าเริ่มต้น YTD)
+// ✅ Date range filter (ค่าเริ่มต้นเดือนนี้)
 // ✅ Filter ตามไซท์, หมวด, สถานะ, ค้นหา
 // ✅ Cross-tab navigation: รับ navState.siteId มา pre-filter ได้
 // ============================================================
@@ -19,7 +19,9 @@ import { auditLog } from '../lib/audit.js'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import { exportToExcel } from '../lib/exportExcel.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
-import { format, startOfYear, endOfYear } from 'date-fns'
+import { format, startOfMonth, endOfMonth } from 'date-fns'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
+import { CATEGORY_PALETTE, OTHER_LABEL, OTHER_COLOR, categoryBreakdown, groupSmallSlices } from '../lib/expenseChart.js'
 import {
   creditTermDays as computeCreditTermDays, paymentMethodOptions, billingDueTargetField,
   calcDueDate, resolvePaymentMethodOnSupplierChange,
@@ -210,12 +212,13 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'expenses')
   const today = new Date()
-  const ytdFrom = format(startOfYear(today), 'yyyy-MM-dd')
-  const ytdTo   = format(endOfYear(today),   'yyyy-MM-dd')
+  const monthFrom = format(startOfMonth(today), 'yyyy-MM-dd')
+  const monthTo   = format(endOfMonth(today),   'yyyy-MM-dd')
 
-  const [dateFrom, setDateFrom] = useState(ytdFrom)
-  const [dateTo,   setDateTo]   = useState(ytdTo)
+  const [dateFrom, setDateFrom] = useState(monthFrom)
+  const [dateTo,   setDateTo]   = useState(monthTo)
   const [dateField, setDateField] = useState('date')
+  const [allTime,  setAllTime]  = useState(false)
   const [siteId,   setSiteId]   = useState(navState?.siteId || '')
   const [catId,    setCatId]    = useState('')
   const [supplierId, setSupplierId] = useState('')
@@ -236,7 +239,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
     if (navState?.siteId) setSiteId(navState.siteId)
   }, [navState])
 
-  const filters = { from: dateFrom, to: dateTo, dateField, siteId, categoryId: catId, supplierId, status, search }
+  const filters = { from: allTime ? null : dateFrom, to: allTime ? null : dateTo, dateField, siteId, categoryId: catId, supplierId, status, search }
   const { data: expenses, refetch } = useExpenses(filters)
   const { data: sites }      = useSites()
   const { data: categories } = useCategories()
@@ -246,8 +249,20 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
   const totalPaid   = useMemo(() => (expenses || []).filter(e => e.status === 'paid' || e.status === 'check_cleared').reduce((s, e) => s + (e.amount || 0), 0), [expenses])
   const totalPending = useMemo(() => (expenses || []).filter(e => e.status === 'pending' || e.status === 'check_issued').reduce((s, e) => s + (e.amount || 0), 0), [expenses])
   const totalAwaitingBilling = useMemo(() => (expenses || []).filter(e => e.status === 'awaiting_billing').reduce((s, e) => s + (e.amount || 0), 0), [expenses])
+  const categoryData = useMemo(() => groupSmallSlices(categoryBreakdown(expenses)), [expenses])
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
+
+  const resetFilters = () => {
+    setSiteId(''); setCatId(''); setSupplierId(''); setStatus(''); setSearch('')
+    setDateField('date'); setDateFrom(monthFrom); setDateTo(monthTo); setAllTime(false)
+  }
+
+  const handleCategorySliceClick = (entry) => {
+    if (!entry || entry.name === OTHER_LABEL) return
+    const cat = (categories || []).find(c => c.name === entry.name)
+    if (cat) setCatId(cat.id)
+  }
 
   const handleSave = async (form) => {
     setSaving(true)
@@ -313,29 +328,19 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
       { header: 'วันเช็ค', accessor: e => e.check_date ? new Date(e.check_date) : '' },
       { header: 'สถานะ', accessor: e => STATUS_LABELS[e.status] || e.status || '' },
     ]
-    exportToExcel(expenses || [], columns, `รายจ่าย_${dateFrom}_ถึง_${dateTo}`)
+    exportToExcel(expenses || [], columns, allTime ? 'รายจ่าย_ทั้งโปรเจกต์' : `รายจ่าย_${dateFrom}_ถึง_${dateTo}`)
   }
 
   return (
     <div>
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
 
-      {/* ── Toolbar ── */}
+      {/* ── Toolbar (actions only) ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => { setEditRow(null); setShowAdd(true) }}>+ เพิ่มรายจ่าย</button>}
         {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
         <a className="btn btn-ghost" href="/templates/TEMPLATE_รายจ่าย.xlsx" download>📄 Template</a>
         <button className="btn btn-ghost" onClick={handleExport}>📤 Export Excel</button>
-        <div style={{ flex: 1 }} />
-        <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหารายละเอียด..." value={search} onChange={e => setSearch(e.target.value)} />
-        <select className="select select-sm" style={{ width: 190 }} value={dateField} onChange={e => setDateField(e.target.value)}>
-          <option value="date">วันที่สั่งซื้อ</option>
-          <option value="billing_date">วันวางบิล</option>
-          <option value="due">วันครบกำหนด (เช็ค/เครดิต)</option>
-        </select>
-        <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-        <span style={{ color: 'var(--text3)' }}>—</span>
-        <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
       </div>
 
       {/* ── Import Zone ── */}
@@ -345,35 +350,97 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
         </div>
       )}
 
-      {/* ── Sub-filters ── */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ minWidth: 200 }}>
-          <SearchableSelect value={siteId} onChange={setSiteId} placeholder="ทุกไซท์งาน" options={siteOpts(sites)} />
+      {/* ── Filters (search, date range, site/category/supplier/status) ── */}
+      <div className="card" style={{ padding: 14, marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input className="input input-sm" style={{ flex: '1 1 180px' }} placeholder="ค้นหารายละเอียด..." value={search} onChange={e => setSearch(e.target.value)} />
+          <select className="select select-sm" style={{ width: 190 }} value={dateField} onChange={e => setDateField(e.target.value)}>
+            <option value="date">วันที่สั่งซื้อ</option>
+            <option value="billing_date">วันวางบิล</option>
+            <option value="due">วันครบกำหนด (เช็ค/เครดิต)</option>
+          </select>
+          <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} disabled={allTime} onChange={e => setDateFrom(e.target.value)} />
+          <span style={{ color: 'var(--text3)' }}>—</span>
+          <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} disabled={allTime} onChange={e => setDateTo(e.target.value)} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text2)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <input type="checkbox" checked={allTime} onChange={e => setAllTime(e.target.checked)} />
+            ทั้งโปรเจกต์ตั้งแต่เริ่มต้น
+          </label>
         </div>
-        <div style={{ minWidth: 170 }}>
-          <SearchableSelect value={catId} onChange={setCatId} placeholder="ทุกหมวด" options={catOpts(categories)} />
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
+          <div style={{ minWidth: 200 }}>
+            <SearchableSelect value={siteId} onChange={setSiteId} placeholder="ทุกไซท์งาน" options={siteOpts(sites)} />
+          </div>
+          <div style={{ minWidth: 170 }}>
+            <SearchableSelect value={catId} onChange={setCatId} placeholder="ทุกหมวด" options={catOpts(categories)} />
+          </div>
+          <div style={{ minWidth: 190 }}>
+            <SearchableSelect value={supplierId} onChange={setSupplierId} placeholder="ทุก Supplier" options={supplierOpts(suppliers)} />
+          </div>
+          <select className="select select-sm" style={{ width: 190 }} value={status} onChange={e => setStatus(e.target.value)}>
+            <option value="">ทุกสถานะ</option>
+            {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+          </select>
+          <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={resetFilters}>🔄 ล้างตัวกรอง</button>
+          {navState?.siteName && (
+            <span className="badge" style={{ background: 'rgba(108,99,255,0.2)', color: 'var(--accent)' }}>
+              🔍 {navState.siteName} <button style={{ background:'none',border:'none',cursor:'pointer',color:'inherit',marginLeft:4 }} onClick={() => setSiteId('')}>✕</button>
+            </span>
+          )}
         </div>
-        <div style={{ minWidth: 190 }}>
-          <SearchableSelect value={supplierId} onChange={setSupplierId} placeholder="ทุก Supplier" options={supplierOpts(suppliers)} />
-        </div>
-        <select className="select select-sm" style={{ width: 190 }} value={status} onChange={e => setStatus(e.target.value)}>
-          <option value="">ทุกสถานะ</option>
-          {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
-        </select>
-        {navState?.siteName && (
-          <span className="badge" style={{ background: 'rgba(108,99,255,0.2)', color: 'var(--accent)' }}>
-            🔍 {navState.siteName} <button style={{ background:'none',border:'none',cursor:'pointer',color:'inherit',marginLeft:4 }} onClick={() => setSiteId('')}>✕</button>
-          </span>
-        )}
       </div>
 
-      {/* ── KPI Row ── */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-        <div className="kpi-card kpi-sm red"><div className="kpi-label">รายจ่ายรวม</div><div className="kpi-value" style={{color:'var(--red)'}}>{fmt(totalAmount)} บาท</div></div>
-        <div className="kpi-card kpi-sm green"><div className="kpi-label">จ่ายแล้ว</div><div className="kpi-value" style={{color:'var(--green)'}}>{fmt(totalPaid)} บาท</div></div>
-        <div className="kpi-card kpi-sm yellow"><div className="kpi-label">ค้างจ่าย</div><div className="kpi-value" style={{color:'var(--yellow)'}}>{fmt(totalPending)} บาท</div></div>
-        <div className="kpi-card kpi-sm yellow"><div className="kpi-label">ยอดรอวางบิล</div><div className="kpi-value" style={{color:'var(--yellow)'}}>{fmt(totalAwaitingBilling)} บาท</div></div>
-        <div className="kpi-card kpi-sm"><div className="kpi-label">จำนวนรายการ</div><div className="kpi-value">{(expenses||[]).length} รายการ</div></div>
+      {/* ── Summary: KPI grid + category breakdown, bottom-aligned ── */}
+      <div style={{ display: 'flex', gap: 14, marginBottom: 14, alignItems: 'stretch', flexWrap: 'wrap' }}>
+        <div style={{
+          flex: '1 1 480px', display: 'grid', gap: 10,
+          gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr 1fr',
+          gridTemplateAreas: '"a b" "c d" "e e"',
+        }}>
+          <div className="kpi-card kpi-sm red" style={{ gridArea: 'a', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div className="kpi-label">รายจ่ายรวม</div><div className="kpi-value" style={{color:'var(--red)'}}>{fmt(totalAmount)} บาท</div>
+          </div>
+          <div className="kpi-card kpi-sm green" style={{ gridArea: 'b', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div className="kpi-label">จ่ายแล้ว</div><div className="kpi-value" style={{color:'var(--green)'}}>{fmt(totalPaid)} บาท</div>
+          </div>
+          <div className="kpi-card kpi-sm yellow" style={{ gridArea: 'c', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div className="kpi-label">ค้างจ่าย</div><div className="kpi-value" style={{color:'var(--yellow)'}}>{fmt(totalPending)} บาท</div>
+          </div>
+          <div className="kpi-card kpi-sm yellow" style={{ gridArea: 'd', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div className="kpi-label">ยอดรอวางบิล</div><div className="kpi-value" style={{color:'var(--yellow)'}}>{fmt(totalAwaitingBilling)} บาท</div>
+          </div>
+          <div className="kpi-card kpi-sm" style={{ gridArea: 'e', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div className="kpi-label" style={{ marginBottom: 0 }}>จำนวนรายการ</div><div className="kpi-value">{(expenses||[]).length} รายการ</div>
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 16, flex: '0 0 380px' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>
+            📊 สัดส่วนรายจ่ายตามหมวด
+          </div>
+          {categoryData.length ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie
+                  data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={65}
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  onClick={handleCategorySliceClick}
+                >
+                  {categoryData.map((d, i) => (
+                    <Cell
+                      key={i}
+                      fill={d.name === OTHER_LABEL ? OTHER_COLOR : CATEGORY_PALETTE[i % CATEGORY_PALETTE.length]}
+                      style={{ cursor: d.name === OTHER_LABEL ? 'default' : 'pointer' }}
+                    />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value, name) => [`${fmt(value)} บาท`, name]} />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ textAlign: 'center', color: 'var(--text3)', padding: 24, fontSize: 13 }}>ไม่มีข้อมูล</div>
+          )}
+        </div>
       </div>
 
       {/* ── Table ── */}

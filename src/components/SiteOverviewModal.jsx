@@ -4,17 +4,22 @@
 // the app. Read-only; no edit actions. ADMIN+ only -- see App.jsx, this
 // is never wired into WORKER-visible site-name displays.
 // ============================================================
-import { useSiteOverview } from '../hooks/useSupabase.js'
+import { useMemo } from 'react'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
+import { useSiteOverview, useSiteExpensesByCategory } from '../hooks/useSupabase.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { depositStatusFor } from '../lib/depositCalc.js'
 import { retentionStatusFor } from '../lib/retentionStatus.js'
 import { Modal } from './Modal.jsx'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { CATEGORY_PALETTE, OTHER_LABEL, OTHER_COLOR, categoryBreakdown, groupSmallSlices } from '../lib/expenseChart.js'
 
 export default function SiteOverviewModal({ siteId, onClose }) {
   const { isAtLeast } = useUserRole()
   const isAdmin = isAtLeast('ADMIN')
   const { data: site, error } = useSiteOverview(isAdmin ? siteId : null)
+  const { data: siteExpenses } = useSiteExpensesByCategory(isAdmin ? siteId : null)
+  const categoryData = useMemo(() => groupSmallSlices(categoryBreakdown(siteExpenses)), [siteExpenses])
 
   if (!isAdmin) return null
 
@@ -102,6 +107,22 @@ export default function SiteOverviewModal({ siteId, onClose }) {
                     <span className={`badge ${retentionStatusFor(site.retention).cls}`}>{retentionStatusFor(site.retention).label}</span>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {categoryData.length > 0 && (
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  📊 ค่าใช้จ่ายตามหมวด
+                </div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                      {categoryData.map((d, i) => <Cell key={i} fill={d.name === OTHER_LABEL ? OTHER_COLOR : CATEGORY_PALETTE[i % CATEGORY_PALETTE.length]} />)}
+                    </Pie>
+                    <Tooltip formatter={(value, name) => [`${fmt(value)} บาท`, name]} />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
             )}
           </>
