@@ -4,15 +4,18 @@
 // ============================================================
 import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { useContractorTypes } from '../hooks/useSupabase.js'
 
 export default function Login() {
   const [mode,     setMode]     = useState('login') // 'login' | 'signup'
   const [companyName, setCompanyName] = useState('')
+  const [contractorTypeId, setContractorTypeId] = useState('')
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState(null)
   const [signupDone, setSignupDone] = useState(false)
+  const { data: contractorTypes } = useContractorTypes()
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -29,7 +32,7 @@ export default function Login() {
     setError(null)
     const { error } = await supabase.auth.signUp({
       email, password,
-      options: { data: { company_name: companyName } }
+      options: { data: { company_name: companyName, contractor_type_id: contractorTypeId } }
     })
     if (error) {
       setError(error.message)
@@ -90,6 +93,20 @@ export default function Login() {
                   value={companyName} onChange={e => setCompanyName(e.target.value)}
                   placeholder="บริษัท ตัวอย่าง จำกัด"
                 />
+              </div>
+            )}
+            {mode === 'signup' && (
+              <div>
+                <label className="label">ประเภทผู้รับเหมา</label>
+                <select
+                  className="input" required
+                  value={contractorTypeId} onChange={e => setContractorTypeId(e.target.value)}
+                >
+                  <option value="" disabled>เลือกประเภทผู้รับเหมา</option>
+                  {(contractorTypes || []).map(t => (
+                    <option key={t.id} value={t.id}>{t.label_th}</option>
+                  ))}
+                </select>
               </div>
             )}
             <div>

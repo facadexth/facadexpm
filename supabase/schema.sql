@@ -50,13 +50,19 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- ----------------------------------------------------------------
 -- EXPENSE_CATEGORIES — หมวดค่าใช้จ่าย (แก้ไข/เพิ่ม/ลบได้)
 -- ----------------------------------------------------------------
+-- name uniqueness is scoped per tenant, not global (see
+-- 2026-08-17-10-fix-expense-categories-global-unique-name.sql) — the
+-- contractor-type starter-template seed gives every tenant of the same
+-- trade identical category names, which a global UNIQUE(name) would
+-- have rejected on the second such signup.
 CREATE TABLE expense_categories (
   id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  name       TEXT NOT NULL UNIQUE,
+  name       TEXT NOT NULL,
   color      TEXT DEFAULT '#6c63ff',
   sort_order INT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  tenant_id  UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+  tenant_id  UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  UNIQUE (tenant_id, name)
 );
 
 CREATE INDEX idx_expense_categories_tenant_id ON expense_categories(tenant_id);
@@ -163,6 +169,79 @@ CREATE POLICY admin_updates ON suppliers FOR UPDATE TO authenticated
   WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
 CREATE POLICY admin_deletes ON suppliers FOR DELETE TO authenticated
   USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
+
+-- ----------------------------------------------------------------
+-- CONTRACTOR_TYPES / CONTRACTOR_TYPE_CATEGORIES /
+-- CONTRACTOR_TYPE_CATEGORY_SUPPLIERS — shared reference data for
+-- contractor-type starter templates (see
+-- docs/superpowers/specs/2026-08-17-contractor-type-starter-templates-design.md).
+-- Not tenant-scoped — every tenant reads the same rows once, at signup,
+-- to seed their own expense_categories/suppliers (above). See
+-- supabase/migrations/2026-08-17-07-contractor-type-templates.sql.
+-- Row-level seed content (10 contractor types × their material/labor
+-- categories × one default supplier per material category) lives in
+-- supabase/migrations/2026-08-17-08-seed-contractor-type-content.sql,
+-- not duplicated here — schema.sql documents structure, not bulk seed
+-- data (compare the expense_categories starter rows above, which are
+-- few enough to inline; these 61 rows are not).
+-- ----------------------------------------------------------------
+CREATE TABLE contractor_types (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  key         TEXT NOT NULL UNIQUE,
+  label_th    TEXT NOT NULL,
+  sort_order  INT NOT NULL DEFAULT 0
+);
+
+-- UNIQUE(contractor_type_id, name): the signup trigger seeds every
+-- matching row into a new tenant's expense_categories, which itself has
+-- UNIQUE(tenant_id, name) — a duplicate name within one contractor type
+-- here would make signup fail for every tenant of that type. Enforced
+-- here so a bad hand-edit to this reference data fails immediately
+-- (admin-only, safe) instead of at a real customer's signup.
+CREATE TABLE contractor_type_categories (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contractor_type_id  UUID NOT NULL REFERENCES contractor_types(id) ON DELETE CASCADE,
+  name                TEXT NOT NULL,
+  color               TEXT NOT NULL DEFAULT '#6c63ff',
+  sort_order          INT NOT NULL DEFAULT 0,
+  UNIQUE (contractor_type_id, name)
+);
+
+-- Kept as its own table (rather than a supplier_name column on
+-- contractor_type_categories) so a category can carry more than one
+-- candidate supplier later without a schema change — v1 only ever
+-- inserts one row per material category, and zero rows for a labor
+-- category (that absence is what marks it as labor — no separate flag).
+CREATE TABLE contractor_type_category_suppliers (
+  id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  category_template_id  UUID NOT NULL REFERENCES contractor_type_categories(id) ON DELETE CASCADE,
+  supplier_name          TEXT NOT NULL,
+  sort_order             INT NOT NULL DEFAULT 0
+);
+
+-- Shared reference data: readable pre-tenant, since it's needed by the
+-- signup form's dropdown — so this must NOT be
+-- tenant_can_write()/current_tenant_id() gated. No write policy — content
+-- is maintained directly via SQL.
+--
+-- contractor_types specifically must also be readable by the `anon` role
+-- (see 2026-08-17-12-contractor-types-anon-readable.sql): the signup
+-- form's dropdown fetches this BEFORE the visitor is authenticated, so
+-- supabase-js is using the anon API key and PostgREST evaluates RLS as
+-- `anon`, not `authenticated`, at that point — a policy scoped to
+-- `authenticated` only left the dropdown seeing zero rows for every real
+-- signup visitor. contractor_type_categories/
+-- contractor_type_category_suppliers don't need this: the signup trigger
+-- itself runs SECURITY DEFINER and bypasses RLS entirely, and the only
+-- other reader (Settings.jsx) always has a session.
+ALTER TABLE contractor_types ENABLE ROW LEVEL SECURITY;
+CREATE POLICY anyone_reads_contractor_types ON contractor_types FOR SELECT TO anon, authenticated USING (true);
+
+ALTER TABLE contractor_type_categories ENABLE ROW LEVEL SECURITY;
+CREATE POLICY anyone_reads_contractor_type_categories ON contractor_type_categories FOR SELECT TO authenticated USING (true);
+
+ALTER TABLE contractor_type_category_suppliers ENABLE ROW LEVEL SECURITY;
+CREATE POLICY anyone_reads_contractor_type_category_suppliers ON contractor_type_category_suppliers FOR SELECT TO authenticated USING (true);
 
 -- ----------------------------------------------------------------
 -- SITES — ไซท์งานทั้งหมด
@@ -810,12 +889,16 @@ CREATE POLICY system_insert ON audit_logs FOR INSERT TO authenticated
 -- still-existing tenant's owner_user_id (e.g. via UserManagement.jsx's
 -- "delete user" action on the tenant's founding OWNER).
 CREATE TABLE tenants (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  company_name  TEXT NOT NULL,
-  owner_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  plan          TEXT NOT NULL DEFAULT 'trial' CHECK (plan IN ('trial','active','expired')),
-  trial_ends_at TIMESTAMPTZ NOT NULL,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_name        TEXT NOT NULL,
+  owner_user_id       UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  plan                TEXT NOT NULL DEFAULT 'trial' CHECK (plan IN ('trial','active','expired')),
+  trial_ends_at       TIMESTAMPTZ NOT NULL,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Nullable: existing tenants (including FacadeX's own bootstrap tenant)
+  -- have no contractor type set — nothing back-assigns one. Added by
+  -- supabase/migrations/2026-08-17-07-contractor-type-templates.sql.
+  contractor_type_id  UUID REFERENCES contractor_types(id)
 );
 
 -- ----------------------------------------------------------------
@@ -1020,16 +1103,19 @@ AS $$
 DECLARE
   v_tenant_id UUID;
   v_invited_tenant_id UUID;
+  v_contractor_type_id UUID;
 BEGIN
   v_invited_tenant_id := (new.raw_user_meta_data->>'invited_tenant_id')::UUID;
 
   IF v_invited_tenant_id IS NOT NULL THEN
     v_tenant_id := v_invited_tenant_id;
   ELSE
-    INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at)
+    v_contractor_type_id := (new.raw_user_meta_data->>'contractor_type_id')::UUID;
+
+    INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at, contractor_type_id)
     VALUES (
       COALESCE(new.raw_user_meta_data->>'company_name', new.email),
-      new.id, 'trial', now() + interval '14 days'
+      new.id, 'trial', now() + interval '14 days', v_contractor_type_id
     )
     RETURNING id INTO v_tenant_id;
 
@@ -1037,6 +1123,26 @@ BEGIN
       (v_tenant_id, 'travel_rate_per_km', '20'),
       (v_tenant_id, 'holiday_pay_multiplier', '1.5')
     ON CONFLICT (tenant_id, key) DO NOTHING;
+
+    -- Seed expense_categories + suppliers from the chosen contractor
+    -- type's shared template rows (contractor_type_categories /
+    -- contractor_type_category_suppliers). Only the newly-created tenant
+    -- branch seeds — same reasoning as the app_settings seed above.
+    -- Skipped entirely when contractor_type_id is absent/NULL (old
+    -- client code or Task 4's dropdown not yet shipped): the tenant
+    -- starts blank, exactly as it did before this change.
+    IF v_contractor_type_id IS NOT NULL THEN
+      INSERT INTO expense_categories (name, color, sort_order, tenant_id)
+      SELECT name, color, sort_order, v_tenant_id
+      FROM contractor_type_categories
+      WHERE contractor_type_id = v_contractor_type_id;
+
+      INSERT INTO suppliers (name, tenant_id)
+      SELECT s.supplier_name, v_tenant_id
+      FROM contractor_type_category_suppliers s
+      JOIN contractor_type_categories c ON c.id = s.category_template_id
+      WHERE c.contractor_type_id = v_contractor_type_id;
+    END IF;
   END IF;
 
   INSERT INTO public.user_roles (user_email, role, status, tenant_id)

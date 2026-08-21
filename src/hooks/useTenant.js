@@ -1,6 +1,6 @@
 // ============================================================
 // useTenant — fetch current user's tenant + enabled modules
-// Returns: { tenant, enabledModules, loading, isTrialActive, trialDaysRemaining, hasModuleAccess }
+// Returns: { tenant, enabledModules, loading, isTrialActive, trialDaysRemaining, hasModuleAccess, refetch }
 // ============================================================
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase.js'
@@ -67,5 +67,5 @@ export function useTenant() {
     return enabledModules.includes(moduleKey)
   }
 
-  return { tenant, enabledModules, loading, isTrialActive, trialDaysRemaining, hasModuleAccess }
+  return { tenant, enabledModules, loading, isTrialActive, trialDaysRemaining, hasModuleAccess, refetch: fetchTenant }
 }
