@@ -199,6 +199,26 @@ export function usePurchaseOrders(filters = {}) {
   }, [JSON.stringify(filters)])
 }
 
+export function useQuotations(filters = {}) {
+  return useQuery(async () => {
+    const buildQuery = () => {
+      let q = supabase
+        .from('quotations')
+        .select('*, clients(name, client_number), sites(name, site_number), quotation_items(id, catalog_item_id, description, unit, quantity, unit_price, line_total, sort_order)')
+        .order('date', { ascending: false })
+        .order('id', { ascending: false })
+
+      if (filters.clientId) q = q.eq('client_id', filters.clientId)
+      if (filters.status)   q = q.eq('status', filters.status)
+      if (filters.from)     q = q.gte('date', filters.from)
+      if (filters.to)       q = q.lte('date', filters.to)
+      return q
+    }
+
+    return fetchAllRows(buildQuery)
+  }, [JSON.stringify(filters)])
+}
+
 /** ยอดที่ต้องชำระรายเดือน (สำหรับ cash forecast) */
 export function usePaymentForecast() {
   return useQuery(async () => {
@@ -549,6 +569,17 @@ export function useSuppliers() {
       .from('suppliers')
       .select('*')
       .order('supplier_number')
+    if (error) throw error
+    return data
+  })
+}
+
+export function useCatalogItems() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('catalog_items')
+      .select('*')
+      .order('name')
     if (error) throw error
     return data
   })
