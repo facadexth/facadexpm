@@ -11,6 +11,7 @@ import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useQuotations, useCatalogItems, useClients, useSites } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
@@ -19,6 +20,7 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { lineTotal, calcQuotationTotals } from '../lib/quotationCalc.js'
+import { SiteForm } from './Sites.jsx'
 
 const clientOpts = (clients) => (clients || []).map(c => ({
   value: c.id, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
@@ -186,6 +188,57 @@ function QuotationForm({ initial = EMPTY_FORM, clients, catalogItems, onSave, on
   )
 }
 
+function AcceptQuotationModal({ quotation, totals, clients, sites, hasModuleAccess, onLinkExisting, onCreateNew, onClose, loading }) {
+  const [mode, setMode] = useState('create') // 'create' | 'existing'
+  const [existingSiteId, setExistingSiteId] = useState('')
+
+  const siteFormInitial = {
+    name: quotation.clients?.name ? `${quotation.clients.name} — ${quotation.quotation_number}` : quotation.quotation_number,
+    client_id: quotation.client_id,
+    has_vat: quotation.has_vat,
+    contract_value_no_vat: String(totals.subtotal),
+  }
+
+  return (
+    <Modal title={`รับใบเสนอราคา ${quotation.quotation_number}`} onClose={onClose} maxWidth={700}>
+      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        <p style={{ color: 'var(--text2)', fontSize: 13 }}>
+          ใบเสนอราคานี้ยังไม่ผูกกับไซท์งาน — สร้างไซท์งานใหม่จากใบเสนอราคานี้ หรือเลือกไซท์งานที่มีอยู่แล้ว
+        </p>
+        <div style={{ display: 'flex', gap: 16 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+            <input type="radio" name="accept-mode" checked={mode === 'create'} onChange={() => setMode('create')} />
+            สร้างไซท์งานใหม่
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+            <input type="radio" name="accept-mode" checked={mode === 'existing'} onChange={() => setMode('existing')} />
+            เลือกไซท์งานที่มีอยู่แล้ว
+          </label>
+        </div>
+      </div>
+      {mode === 'existing' ? (
+        <>
+          <div className="modal-body">
+            <label className="label">ไซท์งาน ★</label>
+            <SearchableSelect
+              value={existingSiteId} onChange={setExistingSiteId} placeholder="— เลือกไซท์งาน —"
+              options={(sites || []).map(s => ({ value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}` }))}
+            />
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-ghost" onClick={onClose}>ยกเลิก</button>
+            <button type="button" className="btn btn-primary" disabled={loading || !existingSiteId} onClick={() => onLinkExisting(existingSiteId)}>
+              {loading ? '⏳...' : '✅ ผูกกับไซท์งานนี้'}
+            </button>
+          </div>
+        </>
+      ) : (
+        <SiteForm initial={siteFormInitial} clients={clients} hasModuleAccess={hasModuleAccess} onSave={onCreateNew} onCancel={onClose} loading={loading} />
+      )}
+    </Modal>
+  )
+}
+
 export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'quotations')
@@ -267,6 +320,61 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
     else alert('Error: ' + error.message)
   }
 
+  const [acceptRow, setAcceptRow] = useState(null)
+  const [accepting, setAccepting] = useState(false)
+  const { hasModuleAccess } = useTenant()
+
+  const handleSetStatus = async (id, newStatus) => {
+    const { error } = await supabase.from('quotations').update({ status: newStatus }).eq('id', id)
+    if (!error) { await auditLog('quotations', id, 'UPDATE', null, { status: newStatus }); refetch(); showToast('อัปเดตสถานะแล้ว') }
+    else alert('Error: ' + error.message)
+  }
+
+  const handleLinkExistingSite = async (siteId) => {
+    if (!acceptRow) return
+    setAccepting(true)
+    try {
+      const update = { status: 'accepted', site_id: siteId }
+      const { error } = await supabase.from('quotations').update(update).eq('id', acceptRow.id)
+      if (error) throw error
+      await auditLog('quotations', acceptRow.id, 'UPDATE', null, update)
+      setAcceptRow(null); refetch(); showToast('รับใบเสนอราคาและผูกไซท์งานแล้ว')
+    } catch (e) { alert('Error: ' + e.message) }
+    finally { setAccepting(false) }
+  }
+
+  const handleCreateSiteFromQuotation = async (siteForm) => {
+    if (!acceptRow) return
+    setAccepting(true)
+    try {
+      const noVatValue = parseFloat(siteForm.contract_value_no_vat) || 0
+      const vatAmount = siteForm.has_vat ? Math.round(noVatValue * 0.07 * 100) / 100 : 0
+      const sitePayload = {
+        name: siteForm.name,
+        client_id: siteForm.client_id || null,
+        status: 'Ongoing',
+        has_vat: siteForm.has_vat,
+        contract_value_no_vat: noVatValue || null,
+        contract_value: Math.round((noVatValue + vatAmount) * 100) / 100 || null,
+        default_vat_pct: siteForm.default_vat_pct === '' ? null : parseFloat(siteForm.default_vat_pct),
+        default_tax_withheld_pct: siteForm.default_tax_withheld_pct === '' ? null : parseFloat(siteForm.default_tax_withheld_pct),
+        default_retention_pct: siteForm.default_retention_pct === '' ? null : parseFloat(siteForm.default_retention_pct),
+        default_deposit_pct: siteForm.default_deposit_pct === '' ? null : parseFloat(siteForm.default_deposit_pct),
+      }
+      const { data: newSite, error: siteError } = await supabase.from('sites').insert(sitePayload).select().single()
+      if (siteError) throw siteError
+      await auditLog('sites', newSite.id, 'INSERT', null, sitePayload)
+
+      const qtUpdate = { status: 'accepted', site_id: newSite.id }
+      const { error: qtError } = await supabase.from('quotations').update(qtUpdate).eq('id', acceptRow.id)
+      if (qtError) throw qtError
+      await auditLog('quotations', acceptRow.id, 'UPDATE', null, qtUpdate)
+
+      setAcceptRow(null); refetch(); showToast('สร้างไซท์งานและรับใบเสนอราคาแล้ว')
+    } catch (e) { alert('Error: ' + e.message) }
+    finally { setAccepting(false) }
+  }
+
   const editFormInitial = useMemo(() => {
     if (!editRow) return null
     return {
@@ -331,8 +439,16 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {canEdit && qt.status === 'draft' && (
                         <>
+                          <button className="btn btn-sm btn-primary" onClick={() => handleSetStatus(qt.id, 'sent')}>📤 ส่ง</button>
                           <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(qt); setShowAdd(true) }}>✏️</button>
                           <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(qt.id)}>✕</button>
+                        </>
+                      )}
+                      {canEdit && qt.status === 'sent' && (
+                        <>
+                          <button className="btn btn-sm btn-primary" onClick={() => setAcceptRow(qt)}>✅ ยอมรับ</button>
+                          <button className="btn btn-sm btn-ghost" onClick={() => handleSetStatus(qt.id, 'rejected')}>ปฏิเสธ</button>
+                          <button className="btn btn-sm btn-ghost" onClick={() => handleSetStatus(qt.id, 'expired')}>หมดอายุ</button>
                         </>
                       )}
                     </td>
@@ -359,6 +475,16 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
 
       {deleteId && (
         <ConfirmDialog title="ลบใบเสนอราคา" message="ยืนยันการลบใบเสนอราคานี้?" onConfirm={handleDelete} onCancel={() => setDeleteId(null)} danger />
+      )}
+
+      {acceptRow && (
+        <AcceptQuotationModal
+          quotation={acceptRow}
+          totals={calcQuotationTotals(acceptRow.quotation_items, { hasVat: acceptRow.has_vat, priceIncludesVat: acceptRow.price_includes_vat, discountAmount: acceptRow.discount_amount, discountPct: acceptRow.discount_pct })}
+          clients={clients} sites={sites} hasModuleAccess={hasModuleAccess}
+          onLinkExisting={handleLinkExistingSite} onCreateNew={handleCreateSiteFromQuotation}
+          onClose={() => setAcceptRow(null)} loading={accepting}
+        />
       )}
     </div>
   )
