@@ -1,0 +1,365 @@
+// src/pages/Quotations.jsx
+// ============================================================
+// Quotations — ใบเสนอราคา
+// ✅ Itemized, client-required, site optional until accepted
+// ✅ Auto-number QT-YYYY-NNN
+// ✅ Status: draft -> sent -> accepted (creates/links a Site) | rejected | expired
+// ✅ Items optionally drawn from the catalog_items price list, always
+//    freely editable afterward (autofill, not enforce)
+// ============================================================
+import { useState, useMemo } from 'react'
+import { supabase } from '../lib/supabase.js'
+import { useQuotations, useCatalogItems, useClients, useSites } from '../hooks/useSupabase.js'
+import { useUserRole } from '../hooks/useUserRole.js'
+import { canEditPage } from '../lib/permissions.js'
+import { useDraftForm } from '../hooks/useDraftForm.js'
+import { fmt, fmtDate } from '../lib/supabase.js'
+import { auditLog } from '../lib/audit.js'
+import { Modal, ConfirmDialog } from '../components/Modal.jsx'
+import SearchableSelect from '../components/SearchableSelect.jsx'
+import { format, startOfYear, endOfYear } from 'date-fns'
+import { lineTotal, calcQuotationTotals } from '../lib/quotationCalc.js'
+
+const clientOpts = (clients) => (clients || []).map(c => ({
+  value: c.id, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
+}))
+const catalogOpts = (items) => (items || []).filter(i => i.active).map(i => ({
+  value: i.id, label: i.unit ? `${i.name} (${i.unit})` : i.name, keywords: i.name,
+}))
+
+const QT_STATUSES = ['draft', 'sent', 'accepted', 'rejected', 'expired']
+const QT_STATUS_LABELS = {
+  draft: '✏️ ร่าง', sent: '📤 ส่งแล้ว', accepted: '✅ ยอมรับ', rejected: '✕ ปฏิเสธ', expired: '⏰ หมดอายุ',
+}
+
+const EMPTY_ITEM = { catalog_item_id: null, description: '', quantity: '1', unit: '', unit_price: '' }
+const EMPTY_FORM = {
+  client_id: '', date: '', valid_until: '', has_vat: true, price_includes_vat: false,
+  discount_mode: 'none', discount_amount: '', discount_pct: '',
+  payment_terms: '', notes: '', items: [{ ...EMPTY_ITEM }],
+}
+
+function QuotationItemsEditor({ items, onChange, catalogItems }) {
+  const set = (i, k, v) => onChange(items.map((it, idx) => idx === i ? { ...it, [k]: v } : it))
+  const add = () => onChange([...items, { ...EMPTY_ITEM }])
+  const remove = (i) => onChange(items.length > 1 ? items.filter((_, idx) => idx !== i) : items)
+  const addFromCatalog = (catalogId) => {
+    const found = (catalogItems || []).find(c => c.id === catalogId)
+    if (!found) return
+    onChange([...items, {
+      catalog_item_id: found.id, description: found.name, unit: found.unit || '',
+      quantity: '1', unit_price: String(found.default_unit_price),
+    }])
+  }
+  const grandTotal = items.reduce((sum, it) => sum + lineTotal(it), 0)
+
+  return (
+    <div>
+      <label className="label">รายการ ★</label>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {items.map((it, i) => (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px 32px', gap: 6, alignItems: 'center' }}>
+            <input className="input input-sm" placeholder="รายละเอียดรายการ" required
+              value={it.description} onChange={e => set(i, 'description', e.target.value)} />
+            <input className="input input-sm" type="number" min="0" step="0.01" placeholder="จำนวน"
+              value={it.quantity} onChange={e => set(i, 'quantity', e.target.value)} />
+            <input className="input input-sm" placeholder="หน่วย"
+              value={it.unit} onChange={e => set(i, 'unit', e.target.value)} />
+            <input className="input input-sm" type="number" min="0" step="0.01" placeholder="ราคา/หน่วย"
+              value={it.unit_price} onChange={e => set(i, 'unit_price', e.target.value)} />
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={add}>+ เพิ่มรายการว่าง</button>
+        <div style={{ minWidth: 220 }}>
+          <SearchableSelect value={null} onChange={addFromCatalog} placeholder="+ เพิ่มจากรายการสินค้า" options={catalogOpts(catalogItems)} />
+        </div>
+      </div>
+      <div style={{ marginTop: 10, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+        รวม: <span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(grandTotal)}</span> บาท
+      </div>
+    </div>
+  )
+}
+
+function QuotationForm({ initial = EMPTY_FORM, clients, catalogItems, onSave, onCancel, loading }) {
+  const isAdd = !initial?.id
+  const [form, setForm, clearFormDraft] = useDraftForm('quotation-form', { ...EMPTY_FORM, ...initial }, isAdd)
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const totals = calcQuotationTotals(form.items, {
+    hasVat: form.has_vat, priceIncludesVat: form.price_includes_vat,
+    discountAmount: form.discount_mode === 'amount' ? form.discount_amount : 0,
+    discountPct: form.discount_mode === 'pct' ? form.discount_pct : 0,
+  })
+
+  return (
+    <form onSubmit={e => { e.preventDefault(); clearFormDraft(); onSave(form) }}>
+      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        <div className="form-grid-2">
+          <div>
+            <label className="label">วันที่ ★</label>
+            <input type="date" className="input" required value={form.date} onChange={e => set('date', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">ราคานี้มีผลถึงวันที่</label>
+            <input type="date" className="input" value={form.valid_until} onChange={e => set('valid_until', e.target.value)} />
+          </div>
+        </div>
+        <div>
+          <label className="label">ลูกค้า ★</label>
+          <SearchableSelect required value={form.client_id} onChange={id => set('client_id', id)}
+            placeholder="— เลือกลูกค้า —" options={clientOpts(clients)} />
+        </div>
+        <QuotationItemsEditor items={form.items} onChange={items => set('items', items)} catalogItems={catalogItems} />
+        <div>
+          <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+              <input type="radio" name="qt-has-vat" checked={form.has_vat === true} onChange={() => set('has_vat', true)} />
+              รวม VAT
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+              <input type="radio" name="qt-has-vat" checked={form.has_vat === false} onChange={() => set('has_vat', false)} />
+              ไม่มี VAT
+            </label>
+          </div>
+          {form.has_vat && (
+            <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+                <input type="radio" name="qt-price-includes-vat" checked={form.price_includes_vat === false} onChange={() => set('price_includes_vat', false)} />
+                ราคา/หน่วยยังไม่รวม VAT
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+                <input type="radio" name="qt-price-includes-vat" checked={form.price_includes_vat === true} onChange={() => set('price_includes_vat', true)} />
+                ราคา/หน่วยรวม VAT แล้ว
+              </label>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 16, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+              <input type="radio" name="qt-discount-mode" checked={form.discount_mode === 'none'} onChange={() => set('discount_mode', 'none')} />
+              ไม่มีส่วนลด
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+              <input type="radio" name="qt-discount-mode" checked={form.discount_mode === 'amount'} onChange={() => set('discount_mode', 'amount')} />
+              ส่วนลด (บาท)
+            </label>
+            {form.discount_mode === 'amount' && (
+              <input type="number" min="0" step="0.01" className="input input-sm" style={{ width: 120 }}
+                value={form.discount_amount} onChange={e => set('discount_amount', e.target.value)} />
+            )}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+              <input type="radio" name="qt-discount-mode" checked={form.discount_mode === 'pct'} onChange={() => set('discount_mode', 'pct')} />
+              ส่วนลด (%)
+            </label>
+            {form.discount_mode === 'pct' && (
+              <input type="number" min="0" max="100" step="0.01" className="input input-sm" style={{ width: 100 }}
+                value={form.discount_pct} onChange={e => set('discount_pct', e.target.value)} />
+            )}
+          </div>
+          <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '10px 14px', fontSize: 13 }}>
+            {totals.discount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>ก่อนหักส่วนลด</span><span className="font-mono">{fmt(totals.rawTotal)}</span></div>}
+            {totals.discount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>ส่วนลด</span><span className="font-mono">-{fmt(totals.discount)}</span></div>}
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมก่อน VAT</span><span className="font-mono">{fmt(totals.subtotal)}</span></div>
+            {form.has_vat && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>VAT (7%)</span><span className="font-mono">{fmt(totals.vat)}</span></div>}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}><span>รวมสุทธิ</span><span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totals.total)}</span></div>
+          </div>
+        </div>
+        <div>
+          <label className="label">เงื่อนไขการชำระเงิน</label>
+          <textarea className="textarea" rows={2} value={form.payment_terms} onChange={e => set('payment_terms', e.target.value)} placeholder="เช่น มัดจำ 30% เมื่อเซ็นสัญญา ส่วนที่เหลือแบ่งจ่ายตามงวดงาน" />
+        </div>
+        <div>
+          <label className="label">หมายเหตุ</label>
+          <input className="input" value={form.notes} onChange={e => set('notes', e.target.value)} />
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button type="button" className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>
+        <button type="submit" className="btn btn-primary" disabled={loading}>
+          {loading ? '⏳...' : '✅ บันทึกใบเสนอราคา'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+export default function Quotations({ navigateTo, navState, openSiteOverview }) {
+  const { isAtLeast, role } = useUserRole()
+  const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'quotations')
+  const today = new Date()
+  const ytdFrom = format(startOfYear(today), 'yyyy-MM-dd')
+  const ytdTo   = format(endOfYear(today),   'yyyy-MM-dd')
+
+  const [dateFrom, setDateFrom] = useState(ytdFrom)
+  const [dateTo,   setDateTo]   = useState(ytdTo)
+  const [clientId, setClientId] = useState('')
+  const [status,   setStatus]   = useState('')
+  const [showAdd,  setShowAdd]  = useState(false)
+  const [editRow,  setEditRow]  = useState(null)
+  const [deleteId, setDeleteId] = useState(null)
+  const [saving,   setSaving]   = useState(false)
+  const [toast,    setToast]    = useState(null)
+
+  const filters = { from: dateFrom, to: dateTo, clientId, status }
+  const { data: quotations, refetch } = useQuotations(filters)
+  const { data: clients }      = useClients()
+  const { data: sites }        = useSites()
+  const { data: catalogItems } = useCatalogItems()
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
+
+  const handleSave = async (form) => {
+    setSaving(true)
+    try {
+      const qtPayload = {
+        client_id: form.client_id,
+        date: form.date,
+        valid_until: form.valid_until || null,
+        has_vat: form.has_vat,
+        price_includes_vat: form.has_vat ? form.price_includes_vat : false,
+        discount_amount: form.discount_mode === 'amount' ? (parseFloat(form.discount_amount) || null) : null,
+        discount_pct: form.discount_mode === 'pct' ? (parseFloat(form.discount_pct) || null) : null,
+        payment_terms: form.payment_terms || null,
+        notes: form.notes || null,
+      }
+      let quotationId = editRow?.id
+      if (editRow) {
+        const { error } = await supabase.from('quotations').update(qtPayload).eq('id', editRow.id)
+        if (error) throw error
+        const { error: delError } = await supabase.from('quotation_items').delete().eq('quotation_id', editRow.id)
+        if (delError) throw delError
+        await auditLog('quotations', editRow.id, 'UPDATE', editRow, qtPayload)
+      } else {
+        const { data, error } = await supabase.from('quotations').insert(qtPayload).select().single()
+        if (error) throw error
+        quotationId = data.id
+        await auditLog('quotations', quotationId, 'INSERT', null, qtPayload)
+      }
+
+      const itemsPayload = form.items
+        .filter(it => it.description.trim())
+        .map((it, i) => ({
+          quotation_id: quotationId, catalog_item_id: it.catalog_item_id || null,
+          description: it.description, quantity: parseFloat(it.quantity) || 0,
+          unit: it.unit || null, unit_price: parseFloat(it.unit_price) || 0,
+          line_total: lineTotal(it), sort_order: i,
+        }))
+      if (itemsPayload.length) {
+        const { error } = await supabase.from('quotation_items').insert(itemsPayload)
+        if (error) throw error
+      }
+
+      setShowAdd(false); setEditRow(null); refetch(); showToast('บันทึกสำเร็จ')
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deleteId) return
+    const { error } = await supabase.from('quotations').delete().eq('id', deleteId)
+    if (!error) { setDeleteId(null); refetch(); showToast('ลบแล้ว') }
+    else alert('Error: ' + error.message)
+  }
+
+  const editFormInitial = useMemo(() => {
+    if (!editRow) return null
+    return {
+      id: editRow.id, client_id: editRow.client_id,
+      date: editRow.date, valid_until: editRow.valid_until || '',
+      has_vat: editRow.has_vat, price_includes_vat: editRow.price_includes_vat || false,
+      discount_mode: editRow.discount_pct != null ? 'pct' : editRow.discount_amount != null ? 'amount' : 'none',
+      discount_amount: editRow.discount_amount != null ? String(editRow.discount_amount) : '',
+      discount_pct: editRow.discount_pct != null ? String(editRow.discount_pct) : '',
+      payment_terms: editRow.payment_terms || '', notes: editRow.notes || '',
+      items: (editRow.quotation_items?.length ? editRow.quotation_items : [{ ...EMPTY_ITEM }])
+        .map(it => ({ catalog_item_id: it.catalog_item_id, description: it.description, quantity: String(it.quantity), unit: it.unit || '', unit_price: String(it.unit_price) })),
+    }
+  }, [editRow])
+
+  return (
+    <div>
+      {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
+
+      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        {canEdit && <button className="btn btn-primary" onClick={() => { setEditRow(null); setShowAdd(true) }}>+ เพิ่มใบเสนอราคา</button>}
+        <div style={{ flex: 1 }} />
+        <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+        <span style={{ color: 'var(--text3)' }}>—</span>
+        <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ minWidth: 200 }}>
+          <SearchableSelect value={clientId} onChange={setClientId} placeholder="ทุกลูกค้า" options={clientOpts(clients)} />
+        </div>
+        <select className="select select-sm" style={{ width: 160 }} value={status} onChange={e => setStatus(e.target.value)}>
+          <option value="">ทุกสถานะ</option>
+          {QT_STATUSES.map(s => <option key={s} value={s}>{QT_STATUS_LABELS[s]}</option>)}
+        </select>
+      </div>
+
+      <div className="card">
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>เลขที่</th><th>วันที่</th><th>ลูกค้า</th><th>ไซท์งาน</th><th>รายการ</th><th>ยอดรวม</th><th>สถานะ</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {(quotations || []).map(qt => {
+                const totals = calcQuotationTotals(qt.quotation_items, {
+                  hasVat: qt.has_vat, priceIncludesVat: qt.price_includes_vat,
+                  discountAmount: qt.discount_amount, discountPct: qt.discount_pct,
+                })
+                return (
+                  <tr key={qt.id}>
+                    <td className="font-mono" style={{ fontSize: 12 }}>{qt.quotation_number}</td>
+                    <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDate(qt.date)}</td>
+                    <td style={{ fontSize: 12 }}>{qt.clients?.name || '—'}</td>
+                    <td style={{ fontSize: 11, color: 'var(--accent)', cursor: qt.site_id ? 'pointer' : 'default' }}
+                      onClick={() => qt.site_id && openSiteOverview(qt.site_id)}>{qt.sites?.name || '—'}</td>
+                    <td style={{ fontSize: 11, color: 'var(--text3)' }}>{(qt.quotation_items || []).length} รายการ</td>
+                    <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(totals.total)}</td>
+                    <td><span className={`badge badge-${qt.status}`}>{QT_STATUS_LABELS[qt.status] || qt.status}</span></td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {canEdit && qt.status === 'draft' && (
+                        <>
+                          <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(qt); setShowAdd(true) }}>✏️</button>
+                          <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(qt.id)}>✕</button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+              {!(quotations || []).length && (
+                <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบใบเสนอราคาในช่วงเวลานี้</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {showAdd && (
+        <Modal title={editRow ? 'แก้ไขใบเสนอราคา' : 'เพิ่มใบเสนอราคา'} onClose={() => { setShowAdd(false); setEditRow(null) }} maxWidth={700}>
+          <QuotationForm
+            initial={editFormInitial || EMPTY_FORM}
+            clients={clients} catalogItems={catalogItems}
+            onSave={handleSave} onCancel={() => { setShowAdd(false); setEditRow(null) }} loading={saving}
+          />
+        </Modal>
+      )}
+
+      {deleteId && (
+        <ConfirmDialog title="ลบใบเสนอราคา" message="ยืนยันการลบใบเสนอราคานี้?" onConfirm={handleDelete} onCancel={() => setDeleteId(null)} danger />
+      )}
+    </div>
+  )
+}
