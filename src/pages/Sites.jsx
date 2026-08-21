@@ -43,9 +43,41 @@ const EMPTY_FORM = {
 
 const VAT_RATE = 0.07
 
-export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading, hasModuleAccess = () => false }) {
+/**
+ * Build the `sites` insert/update payload from a SiteForm form object.
+ * Shared by Sites.jsx's own add/edit flow and Quotations.jsx's
+ * "accept quotation → create new site" flow, so both write the exact
+ * same full set of fields (no silently-dropped fields in either place).
+ */
+export function siteFormToPayload(form) {
+  const noVatValue = parseFloat(form.contract_value_no_vat) || 0
+  const vatAmount = form.has_vat ? Math.round(noVatValue * VAT_RATE * 100) / 100 : 0
+  const contractValueTotal = Math.round((noVatValue + vatAmount) * 100) / 100
+  return {
+    name:           form.name,
+    client_id:      form.client_id || null,
+    location:       form.location || null,
+    distance_km:    parseFloat(form.distance_km) || null,
+    map_url:        form.map_url || null,
+    status:         form.status,
+    start_date:     form.start_date || null,
+    end_date:       form.end_date || null,
+    has_vat:              form.has_vat,
+    contract_value_no_vat: noVatValue || null,
+    contract_value:        contractValueTotal || null,
+    default_vat_pct:           form.default_vat_pct === '' ? null : parseFloat(form.default_vat_pct),
+    default_tax_withheld_pct:  form.default_tax_withheld_pct === '' ? null : parseFloat(form.default_tax_withheld_pct),
+    default_retention_pct:     form.default_retention_pct === '' ? null : parseFloat(form.default_retention_pct),
+    default_retention_period_days: form.default_retention_period_days === '' ? null : parseInt(form.default_retention_period_days, 10),
+    default_deposit_pct:       form.default_deposit_pct === '' ? null : parseFloat(form.default_deposit_pct),
+    notes:          form.notes || null,
+    ...Object.fromEntries(COST_TYPES.map(t => [t.key, parseFloat(form[t.key]) || null]))
+  }
+}
+
+export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading, hasModuleAccess = () => false, draftKey = 'sites-form' }) {
   const isAdd = !initial?.id
-  const [form, setForm, clearDraft] = useDraftForm('sites-form', { ...EMPTY_FORM, ...initial }, isAdd)
+  const [form, setForm, clearDraft] = useDraftForm(draftKey, { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const totalCostBreakdown = COST_TYPES.reduce((s, t) => s + (parseFloat(form[t.key]) || 0), 0)
@@ -267,29 +299,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
   const handleSave = async (form) => {
     setSaving(true)
     try {
-      const noVatValue = parseFloat(form.contract_value_no_vat) || 0
-      const vatAmount = form.has_vat ? Math.round(noVatValue * VAT_RATE * 100) / 100 : 0
-      const contractValueTotal = Math.round((noVatValue + vatAmount) * 100) / 100
-      const payload = {
-        name:           form.name,
-        client_id:      form.client_id || null,
-        location:       form.location || null,
-        distance_km:    parseFloat(form.distance_km) || null,
-        map_url:        form.map_url || null,
-        status:         form.status,
-        start_date:     form.start_date || null,
-        end_date:       form.end_date || null,
-        has_vat:              form.has_vat,
-        contract_value_no_vat: noVatValue || null,
-        contract_value:        contractValueTotal || null,
-        default_vat_pct:           form.default_vat_pct === '' ? null : parseFloat(form.default_vat_pct),
-        default_tax_withheld_pct:  form.default_tax_withheld_pct === '' ? null : parseFloat(form.default_tax_withheld_pct),
-        default_retention_pct:     form.default_retention_pct === '' ? null : parseFloat(form.default_retention_pct),
-        default_retention_period_days: form.default_retention_period_days === '' ? null : parseInt(form.default_retention_period_days, 10),
-        default_deposit_pct:       form.default_deposit_pct === '' ? null : parseFloat(form.default_deposit_pct),
-        notes:          form.notes || null,
-        ...Object.fromEntries(COST_TYPES.map(t => [t.key, parseFloat(form[t.key]) || null]))
-      }
+      const payload = siteFormToPayload(form)
       if (editSite) {
         const { error } = await supabase.from('sites').update(payload).eq('id', editSite.id)
         if (error) throw error

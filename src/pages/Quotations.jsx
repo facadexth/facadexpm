@@ -20,7 +20,7 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { lineTotal, calcQuotationTotals } from '../lib/quotationCalc.js'
-import { SiteForm } from './Sites.jsx'
+import { SiteForm, siteFormToPayload } from './Sites.jsx'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 
 const clientOpts = (clients) => (clients || []).map(c => ({
@@ -234,7 +234,7 @@ function AcceptQuotationModal({ quotation, totals, clients, sites, hasModuleAcce
           </div>
         </>
       ) : (
-        <SiteForm initial={siteFormInitial} clients={clients} hasModuleAccess={hasModuleAccess} onSave={onCreateNew} onCancel={onClose} loading={loading} />
+        <SiteForm initial={siteFormInitial} clients={clients} hasModuleAccess={hasModuleAccess} onSave={onCreateNew} onCancel={onClose} loading={loading} draftKey="quotation-accept-site-form" />
       )}
     </Modal>
   )
@@ -311,7 +311,7 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
           )}
           {(tenant?.bank_name || tenant?.bank_account_no) && (
             <div style={{ fontSize: 12, marginTop: 8 }}>
-              <strong>ชำระเงินไปที่:</strong> {tenant.bank_name} {tenant.bank_account_name ? `ชื่อบัญชี ${tenant.bank_account_name}` : ''} {tenant.bank_account_no ? `เลขที่ ${tenant.bank_account_no}` : ''}
+              <strong>ชำระเงินไปที่:</strong> {tenant?.bank_name} {tenant?.bank_account_name ? `ชื่อบัญชี ${tenant.bank_account_name}` : ''} {tenant?.bank_account_no ? `เลขที่ ${tenant.bank_account_no}` : ''}
             </div>
           )}
           <div style={{ marginTop: 56, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, textAlign: 'center', fontSize: 12 }}>
@@ -438,20 +438,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
     if (!acceptRow) return
     setAccepting(true)
     try {
-      const noVatValue = parseFloat(siteForm.contract_value_no_vat) || 0
-      const vatAmount = siteForm.has_vat ? Math.round(noVatValue * 0.07 * 100) / 100 : 0
-      const sitePayload = {
-        name: siteForm.name,
-        client_id: siteForm.client_id || null,
-        status: 'Ongoing',
-        has_vat: siteForm.has_vat,
-        contract_value_no_vat: noVatValue || null,
-        contract_value: Math.round((noVatValue + vatAmount) * 100) / 100 || null,
-        default_vat_pct: siteForm.default_vat_pct === '' ? null : parseFloat(siteForm.default_vat_pct),
-        default_tax_withheld_pct: siteForm.default_tax_withheld_pct === '' ? null : parseFloat(siteForm.default_tax_withheld_pct),
-        default_retention_pct: siteForm.default_retention_pct === '' ? null : parseFloat(siteForm.default_retention_pct),
-        default_deposit_pct: siteForm.default_deposit_pct === '' ? null : parseFloat(siteForm.default_deposit_pct),
-      }
+      const sitePayload = siteFormToPayload(siteForm)
       const { data: newSite, error: siteError } = await supabase.from('sites').insert(sitePayload).select().single()
       if (siteError) throw siteError
       await auditLog('sites', newSite.id, 'INSERT', null, sitePayload)
