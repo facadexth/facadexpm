@@ -21,6 +21,7 @@ import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { lineTotal, calcQuotationTotals } from '../lib/quotationCalc.js'
 import { SiteForm } from './Sites.jsx'
+import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 
 const clientOpts = (clients) => (clients || []).map(c => ({
   value: c.id, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
@@ -239,6 +240,95 @@ function AcceptQuotationModal({ quotation, totals, clients, sites, hasModuleAcce
   )
 }
 
+function QuotationDocumentModal({ qt, tenant, onClose }) {
+  const items = qt.quotation_items || []
+  const totals = calcQuotationTotals(items, { hasVat: qt.has_vat, priceIncludesVat: qt.price_includes_vat, discountAmount: qt.discount_amount, discountPct: qt.discount_pct })
+
+  return (
+    <Modal title={`ใบเสนอราคา ${qt.quotation_number}`} onClose={onClose} maxWidth={640}>
+      <div className="modal-body">
+        <div id={`qt-doc-${qt.id}`} style={{ fontFamily: 'Sarabun,sans-serif', padding: '20px 24px', background: '#fff', color: '#111' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12 }}>
+            <div>
+              {tenant?.logo_url && <img src={tenant.logo_url} alt="" style={{ maxHeight: 48, marginBottom: 6 }} crossOrigin="anonymous" />}
+              <div style={{ fontSize: 16, fontWeight: 800 }}>{tenant?.company_name}</div>
+              {tenant?.address && <div style={{ fontSize: 11 }}>{tenant.address}</div>}
+              {tenant?.tax_id && <div style={{ fontSize: 11 }}>เลขประจำตัวผู้เสียภาษี: {tenant.tax_id}</div>}
+              {tenant?.phone && <div style={{ fontSize: 11 }}>โทร: {tenant.phone}</div>}
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>ใบเสนอราคา</div>
+              <div style={{ fontSize: 12 }}>เลขที่: {qt.quotation_number}</div>
+              <div style={{ fontSize: 12 }}>วันที่: {new Date(qt.date).toLocaleDateString('th-TH')}</div>
+              {qt.valid_until && <div style={{ fontSize: 12 }}>มีผลถึง: {new Date(qt.valid_until).toLocaleDateString('th-TH')}</div>}
+            </div>
+          </div>
+          <div style={{ fontSize: 13, marginBottom: 12 }}><strong>ลูกค้า:</strong> {qt.clients?.name}</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #111' }}>
+                <th style={{ textAlign: 'left', padding: '6px 4px' }}>รายการ</th>
+                <th style={{ textAlign: 'right', padding: '6px 4px' }}>จำนวน</th>
+                <th style={{ textAlign: 'right', padding: '6px 4px' }}>ราคา/หน่วย</th>
+                <th style={{ textAlign: 'right', padding: '6px 4px' }}>รวม</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(it => (
+                <tr key={it.id} style={{ borderBottom: '1px solid #ddd' }}>
+                  <td style={{ padding: '6px 4px' }}>{it.description}</td>
+                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{it.quantity} {it.unit || ''}</td>
+                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(it.unit_price)}</td>
+                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(it.line_total)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              {totals.discount > 0 && (
+                <tr>
+                  <td colSpan={3} style={{ padding: '6px 4px', borderTop: '2px solid #111' }}>ส่วนลด</td>
+                  <td style={{ textAlign: 'right', padding: '6px 4px', borderTop: '2px solid #111' }}>-{fmt(totals.discount)}</td>
+                </tr>
+              )}
+              <tr>
+                <td colSpan={3} style={{ padding: '6px 4px', borderTop: totals.discount > 0 ? undefined : '2px solid #111' }}>รวมก่อน VAT</td>
+                <td style={{ textAlign: 'right', padding: '6px 4px', borderTop: totals.discount > 0 ? undefined : '2px solid #111' }}>{fmt(totals.subtotal)}</td>
+              </tr>
+              {qt.has_vat && (
+                <tr>
+                  <td colSpan={3} style={{ padding: '6px 4px' }}>VAT (7%)</td>
+                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(totals.vat)}</td>
+                </tr>
+              )}
+              <tr style={{ fontWeight: 700, fontSize: 15 }}>
+                <td colSpan={3} style={{ padding: '8px 4px', borderTop: '1px solid #111' }}>รวมทั้งสิ้น</td>
+                <td style={{ textAlign: 'right', padding: '8px 4px', borderTop: '1px solid #111' }}>{fmt(totals.total)} บาท</td>
+              </tr>
+            </tfoot>
+          </table>
+          {qt.payment_terms && (
+            <div style={{ fontSize: 12, marginTop: 16 }}><strong>เงื่อนไขการชำระเงิน:</strong> {qt.payment_terms}</div>
+          )}
+          {(tenant?.bank_name || tenant?.bank_account_no) && (
+            <div style={{ fontSize: 12, marginTop: 8 }}>
+              <strong>ชำระเงินไปที่:</strong> {tenant.bank_name} {tenant.bank_account_name ? `ชื่อบัญชี ${tenant.bank_account_name}` : ''} {tenant.bank_account_no ? `เลขที่ ${tenant.bank_account_no}` : ''}
+            </div>
+          )}
+          <div style={{ marginTop: 56, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, textAlign: 'center', fontSize: 12 }}>
+            <div style={{ borderTop: '1px solid #999', paddingTop: 6 }}>ลายเซ็นผู้เสนอราคา</div>
+            <div style={{ borderTop: '1px solid #999', paddingTop: 6 }}>ลายเซ็นผู้ยอมรับ (ลูกค้า)</div>
+          </div>
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
+        <button className="btn btn-ghost" onClick={() => downloadJPG(`qt-doc-${qt.id}`, `${qt.quotation_number}.jpg`)}>🖼️ ดาวน์โหลด JPG</button>
+        <button className="btn btn-primary" onClick={() => downloadPDF(`qt-doc-${qt.id}`, `${qt.quotation_number}.pdf`)}>📄 ดาวน์โหลด PDF</button>
+      </div>
+    </Modal>
+  )
+}
+
 export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'quotations')
@@ -322,7 +412,8 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
 
   const [acceptRow, setAcceptRow] = useState(null)
   const [accepting, setAccepting] = useState(false)
-  const { hasModuleAccess } = useTenant()
+  const [docRow, setDocRow] = useState(null)
+  const { hasModuleAccess, tenant } = useTenant()
 
   const handleSetStatus = async (id, newStatus) => {
     const { error } = await supabase.from('quotations').update({ status: newStatus }).eq('id', id)
@@ -437,6 +528,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                     <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(totals.total)}</td>
                     <td><span className={`badge badge-${qt.status}`}>{QT_STATUS_LABELS[qt.status] || qt.status}</span></td>
                     <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(qt)}>📄</button>
                       {canEdit && qt.status === 'draft' && (
                         <>
                           <button className="btn btn-sm btn-primary" onClick={() => handleSetStatus(qt.id, 'sent')}>📤 ส่ง</button>
@@ -486,6 +578,8 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
           onClose={() => setAcceptRow(null)} loading={accepting}
         />
       )}
+
+      {docRow && <QuotationDocumentModal qt={docRow} tenant={tenant} onClose={() => setDocRow(null)} />}
     </div>
   )
 }
