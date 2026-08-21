@@ -31,6 +31,8 @@ const UserManagement     = lazy(() => import('./pages/UserManagement.jsx'))
 const Settings           = lazy(() => import('./pages/Settings.jsx'))
 const Retention           = lazy(() => import('./pages/Retention.jsx'))
 const Deposits             = lazy(() => import('./pages/Deposits.jsx'))
+const Quotations   = lazy(() => import('./pages/Quotations.jsx'))
+const CatalogItems = lazy(() => import('./pages/CatalogItems.jsx'))
 
 const TABS = [
   { id: 'dashboard',         label: '📊 ภาพรวม',              minRole: 'WORKER', module: null },
@@ -47,11 +49,13 @@ const TABS = [
   ] },
   { id: 'income',            label: '💰 รายรับ',               minRole: 'ADMIN',  module: null },
   { id: 'labor_contractors', label: '🔧 ผู้รับเหมาค่าแรง',    minRole: 'ADMIN',  module: 'labor_subcontractors' },
+  { id: 'quotations',        label: '📋 ใบเสนอราคา',          minRole: 'ADMIN', module: 'quotations' },
   { label: '⚙️ ตั้งค่า', children: [
     { id: 'settings',        label: 'ทั่วไป',          minRole: 'OWNER', module: null },
     { id: 'categories',      label: '🏷️ หมวดหมู่',    minRole: 'ADMIN', module: null },
     { id: 'clients',         label: '🏢 ลูกค้า',      minRole: 'ADMIN', module: null },
     { id: 'suppliers',       label: '🏭 Supplier',     minRole: 'ADMIN', module: null },
+    { id: 'catalog_items',   label: '📦 รายการสินค้า', minRole: 'ADMIN', module: 'quotations' },
     { id: 'user_management', label: '👤 ผู้ใช้งาน',    minRole: 'OWNER', module: null },
   ] },
 ]
@@ -229,6 +233,8 @@ export default function App() {
       case 'clients':    return <ProtectedPage minRole="ADMIN"><Clients    {...props} /></ProtectedPage>
       case 'suppliers':  return <ProtectedPage minRole="ADMIN"><Suppliers  {...props} /></ProtectedPage>
       case 'labor_contractors': return <ProtectedPage minRole="ADMIN"><LaborContractors {...props} /></ProtectedPage>
+      case 'quotations':    return <ProtectedPage minRole="ADMIN"><Quotations   {...props} /></ProtectedPage>
+      case 'catalog_items': return <ProtectedPage minRole="ADMIN"><CatalogItems {...props} /></ProtectedPage>
       case 'user_management': return <ProtectedPage minRole="OWNER"><UserManagement {...props} /></ProtectedPage>
       case 'settings':   return <ProtectedPage minRole="OWNER"><Settings   {...props} /></ProtectedPage>
       default:           return <ProtectedPage minRole="WORKER"><Dashboard  {...props} /></ProtectedPage>
