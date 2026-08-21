@@ -901,6 +901,21 @@ CREATE TABLE tenants (
   contractor_type_id  UUID REFERENCES contractor_types(id)
 );
 
+-- Company profile for client-facing document letterheads (Quotation now,
+-- Invoice later). All nullable — existing tenants simply have an incomplete
+-- letterhead until an OWNER fills these in via Settings. Covered by tenants'
+-- EXISTING RLS (member_reads_own_tenant / owner_updates_own_tenant) — no new
+-- policy needed for plain columns. Added by
+-- supabase/migrations/2026-08-22-01-tenant-company-profile.sql.
+ALTER TABLE tenants
+  ADD COLUMN address           TEXT,
+  ADD COLUMN tax_id            TEXT,
+  ADD COLUMN phone             TEXT,
+  ADD COLUMN logo_url          TEXT,
+  ADD COLUMN bank_name         TEXT,
+  ADD COLUMN bank_account_name TEXT,
+  ADD COLUMN bank_account_no   TEXT;
+
 -- ----------------------------------------------------------------
 -- TENANT_MODULES — รูปแบบ/โมดูลที่เปิดใช้งานต่อบริษัท
 -- ----------------------------------------------------------------
@@ -1762,3 +1777,42 @@ LEFT JOIN labor_payments lp ON lp.contract_id = lc.id
 GROUP BY lc.id, lc.subcontractor_id, lc.site_id, lc.work_description, lc.contract_amount,
   lc.retention_pct, lc.withholding_tax_pct, lc.site_note, lc.status, lc.start_date,
   ls.name, ls.subcontractor_number, s.name, s.site_number, s.status, s.end_date, s.contract_value;
+
+-- ================================================================
+-- STORAGE: tenant-logos bucket — company logos for branded PDFs
+-- ================================================================
+-- Logo bucket: PUBLIC (unlike po-attachments/site-attachments, which are
+-- private) — a company logo isn't sensitive, it's meant to be shown to
+-- clients on the PDF, and html2canvas needs to load it directly in the
+-- browser without a signed-URL round trip. Public buckets serve reads
+-- without going through storage.objects RLS at all, so only
+-- INSERT/UPDATE/DELETE need policies here. Added by
+-- supabase/migrations/2026-08-22-01-tenant-company-profile.sql.
+INSERT INTO storage.buckets (id, name, public) VALUES ('tenant-logos', 'tenant-logos', true)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY tenant_logos_owner_insert ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (
+    bucket_id = 'tenant-logos'
+    AND is_owner()
+    AND (storage.foldername(name))[1] = current_tenant_id()::text
+  );
+
+CREATE POLICY tenant_logos_owner_update ON storage.objects FOR UPDATE TO authenticated
+  USING (
+    bucket_id = 'tenant-logos'
+    AND is_owner()
+    AND (storage.foldername(name))[1] = current_tenant_id()::text
+  )
+  WITH CHECK (
+    bucket_id = 'tenant-logos'
+    AND is_owner()
+    AND (storage.foldername(name))[1] = current_tenant_id()::text
+  );
+
+CREATE POLICY tenant_logos_owner_delete ON storage.objects FOR DELETE TO authenticated
+  USING (
+    bucket_id = 'tenant-logos'
+    AND is_owner()
+    AND (storage.foldername(name))[1] = current_tenant_id()::text
+  );
