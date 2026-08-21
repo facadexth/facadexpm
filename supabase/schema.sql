@@ -1041,6 +1041,14 @@ ALTER TABLE tenants
   ADD COLUMN bank_account_name TEXT,
   ADD COLUMN bank_account_no   TEXT;
 
+-- Default boilerplate text for new quotations' "เงื่อนไขการชำระเงิน" and
+-- "หมายเหตุ" — set once per tenant in Settings, pre-fills every new
+-- quotation, editable per document same as today. Added by
+-- supabase/migrations/2026-08-22-06-quotation-default-templates.sql.
+ALTER TABLE tenants
+  ADD COLUMN default_payment_terms TEXT,
+  ADD COLUMN default_notes         TEXT;
+
 -- ----------------------------------------------------------------
 -- TENANT_MODULES — รูปแบบ/โมดูลที่เปิดใช้งานต่อบริษัท
 -- ----------------------------------------------------------------

@@ -57,6 +57,7 @@ export default function Settings() {
   // Invoice). See docs/superpowers/specs/2026-08-22-quotation-module-design.md.
   const [profile, setProfile] = useState({
     address: '', tax_id: '', phone: '', bank_name: '', bank_account_name: '', bank_account_no: '',
+    default_payment_terms: '', default_notes: '',
   })
   const [savingProfile, setSavingProfile] = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
@@ -65,6 +66,7 @@ export default function Settings() {
       setProfile({
         address: tenant.address || '', tax_id: tenant.tax_id || '', phone: tenant.phone || '',
         bank_name: tenant.bank_name || '', bank_account_name: tenant.bank_account_name || '', bank_account_no: tenant.bank_account_no || '',
+        default_payment_terms: tenant.default_payment_terms || '', default_notes: tenant.default_notes || '',
       })
     }
   }, [tenant])
@@ -221,6 +223,18 @@ export default function Settings() {
           <div>
             <label className="label">เลขที่บัญชี</label>
             <input className="input" style={{ maxWidth: 240 }} value={profile.bank_account_no} onChange={e => setProfileField('bank_account_no', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">เงื่อนไขการชำระเงิน (ค่าเริ่มต้นสำหรับใบเสนอราคาใหม่)</label>
+            <textarea className="textarea" rows={4} value={profile.default_payment_terms}
+              onChange={e => setProfileField('default_payment_terms', e.target.value)}
+              placeholder={'เช่น\n1. มัดจำก่อนเริ่มงาน 30%\n2. ส่วนที่เหลือแบ่งจ่ายตาม Progress งาน\n3. ราคานี้รวมค่าวัสดุ ค่าแรง และค่าทำความสะอาดสุดท้าย 1 รอบ'} />
+          </div>
+          <div>
+            <label className="label">หมายเหตุ (ค่าเริ่มต้นสำหรับใบเสนอราคาใหม่)</label>
+            <textarea className="textarea" rows={4} value={profile.default_notes}
+              onChange={e => setProfileField('default_notes', e.target.value)}
+              placeholder={'เช่น\n1. ไม่รวมนั่งร้าน\n2. รับประกันสินค้าที่เสียหาย 1 ปี นับจากวันส่งมอบ\n3. กำหนดยืนราคา 60 วัน'} />
           </div>
           <div>
             <button className="btn btn-primary" onClick={handleSaveProfile} disabled={savingProfile}>

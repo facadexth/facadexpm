@@ -468,6 +468,15 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
     }
   }, [editRow])
 
+  // Pre-fills a brand-new quotation's payment_terms/notes from the tenant's
+  // saved defaults (Settings → company profile) — existing quotations are
+  // untouched, this only applies when editFormInitial is null (add mode).
+  const newQuotationInitial = useMemo(() => ({
+    ...EMPTY_FORM,
+    payment_terms: tenant?.default_payment_terms || '',
+    notes: tenant?.default_notes || '',
+  }), [tenant])
+
   return (
     <div>
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
@@ -545,7 +554,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       {showAdd && (
         <Modal title={editRow ? 'แก้ไขใบเสนอราคา' : 'เพิ่มใบเสนอราคา'} onClose={() => { setShowAdd(false); setEditRow(null) }} maxWidth={700}>
           <QuotationForm
-            initial={editFormInitial || EMPTY_FORM}
+            initial={editFormInitial || newQuotationInitial}
             clients={clients} catalogItems={catalogItems}
             onSave={handleSave} onCancel={() => { setShowAdd(false); setEditRow(null) }} loading={saving}
           />
