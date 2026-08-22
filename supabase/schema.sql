@@ -744,6 +744,7 @@ CREATE TABLE quotations (
   discount_pct        NUMERIC,
   payment_terms       TEXT,
   notes               TEXT,
+  revision            INTEGER NOT NULL DEFAULT 1, -- bumped on every edit save; counter only, no snapshot history — added by supabase/migrations/2026-08-22-07-quotation-revision-tracking.sql
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   tenant_id           UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)

@@ -240,83 +240,118 @@ function AcceptQuotationModal({ quotation, totals, clients, sites, hasModuleAcce
   )
 }
 
+// Shared "professional" document look (design option A) — logo/company
+// block left, bordered doc-info box + ต้นฉบับ tag right, light-purple
+// table header, boxed notes/terms, purple-accented (unfilled) grand total.
+// Intended to become the one letterhead pattern every printable document
+// in the app uses (Quotation now; PurchaseOrders' own PODocumentModal is
+// a separate file and not migrated to this shape yet — a follow-up, not
+// part of this change).
 function QuotationDocumentModal({ qt, tenant, onClose }) {
   const items = qt.quotation_items || []
   const totals = calcQuotationTotals(items, { hasVat: qt.has_vat, priceIncludesVat: qt.price_includes_vat, discountAmount: qt.discount_amount, discountPct: qt.discount_pct })
 
   return (
-    <Modal title={`ใบเสนอราคา ${qt.quotation_number}`} onClose={onClose} maxWidth={640}>
+    <Modal title={`ใบเสนอราคา ${qt.quotation_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body">
-        <div id={`qt-doc-${qt.id}`} style={{ fontFamily: 'Sarabun,sans-serif', padding: '20px 24px', background: '#fff', color: '#111' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12 }}>
-            <div>
-              {tenant?.logo_url && <img src={tenant.logo_url} alt="" style={{ maxHeight: 48, marginBottom: 6 }} crossOrigin="anonymous" />}
-              <div style={{ fontSize: 16, fontWeight: 800 }}>{tenant?.company_name}</div>
-              {tenant?.address && <div style={{ fontSize: 11 }}>{tenant.address}</div>}
-              {tenant?.tax_id && <div style={{ fontSize: 11 }}>เลขประจำตัวผู้เสียภาษี: {tenant.tax_id}</div>}
-              {tenant?.phone && <div style={{ fontSize: 11 }}>โทร: {tenant.phone}</div>}
+        <div id={`qt-doc-${qt.id}`} style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              {tenant?.logo_url
+                ? <img src={tenant.logo_url} alt="" style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }} crossOrigin="anonymous" />
+                : <div style={{ width: 40, height: 40, borderRadius: 8, background: '#6c63ff', flexShrink: 0 }} />}
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 800 }}>{tenant?.company_name}</div>
+                <div style={{ fontSize: 11, color: '#6a6f85', lineHeight: 1.6, marginTop: 2 }}>
+                  {tenant?.address}
+                  {tenant?.address && <br />}
+                  {tenant?.tax_id && `เลขผู้เสียภาษี ${tenant.tax_id}`}
+                  {tenant?.tax_id && tenant?.phone && ' · '}
+                  {tenant?.phone && `โทร ${tenant.phone}`}
+                </div>
+              </div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>ใบเสนอราคา</div>
-              <div style={{ fontSize: 12 }}>เลขที่: {qt.quotation_number}</div>
-              <div style={{ fontSize: 12 }}>วันที่: {new Date(qt.date).toLocaleDateString('th-TH')}</div>
-              {qt.valid_until && <div style={{ fontSize: 12 }}>มีผลถึง: {new Date(qt.valid_until).toLocaleDateString('th-TH')}</div>}
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#6c63ff', border: '1px solid #6c63ff', borderRadius: 4, padding: '2px 8px', display: 'inline-block', marginBottom: 6 }}>ต้นฉบับ</div>
+              <div style={{ fontSize: 22, fontWeight: 800 }}>ใบเสนอราคา</div>
             </div>
           </div>
-          <div style={{ fontSize: 13, marginBottom: 12 }}><strong>ลูกค้า:</strong> {qt.clients?.name}</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+
+          <div style={{ marginTop: 20, border: '1px solid #e4e6ef', borderRadius: 8, padding: '14px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: 12 }}>
+            <div><span style={{ color: '#6a6f85' }}>เลขที่เอกสาร</span><br />{qt.quotation_number}</div>
+            <div><span style={{ color: '#6a6f85' }}>วันที่ออก</span><br />{new Date(qt.date).toLocaleDateString('th-TH')}</div>
+            <div><span style={{ color: '#6a6f85' }}>ใช้ได้ถึง</span><br />{qt.valid_until ? new Date(qt.valid_until).toLocaleDateString('th-TH') : '—'}</div>
+            <div><span style={{ color: '#6a6f85' }}>แก้ไขครั้งที่</span><br />{qt.revision || 1}</div>
+          </div>
+
+          <div style={{ marginTop: 16, fontSize: 12.5, lineHeight: 1.8 }}>
+            <strong style={{ fontSize: 13 }}>ลูกค้า:</strong> {qt.clients?.name}
+          </div>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 18 }}>
             <thead>
-              <tr style={{ borderBottom: '2px solid #111' }}>
-                <th style={{ textAlign: 'left', padding: '6px 4px' }}>รายการ</th>
-                <th style={{ textAlign: 'right', padding: '6px 4px' }}>จำนวน</th>
-                <th style={{ textAlign: 'right', padding: '6px 4px' }}>ราคา/หน่วย</th>
-                <th style={{ textAlign: 'right', padding: '6px 4px' }}>รวม</th>
+              <tr>
+                <th style={{ textAlign: 'left', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>รายการ</th>
+                <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>จำนวน</th>
+                <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>ราคา/หน่วย</th>
+                <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>รวม</th>
               </tr>
             </thead>
             <tbody>
               {items.map(it => (
-                <tr key={it.id} style={{ borderBottom: '1px solid #ddd' }}>
-                  <td style={{ padding: '6px 4px' }}>{it.description}</td>
-                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{it.quantity} {it.unit || ''}</td>
-                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(it.unit_price)}</td>
-                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(it.line_total)}</td>
+                <tr key={it.id}>
+                  <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.description}</td>
+                  <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.quantity} {it.unit || ''}</td>
+                  <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
+                  <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.line_total)}</td>
                 </tr>
               ))}
             </tbody>
-            <tfoot>
-              {totals.discount > 0 && (
-                <tr>
-                  <td colSpan={3} style={{ padding: '6px 4px', borderTop: '2px solid #111' }}>ส่วนลด</td>
-                  <td style={{ textAlign: 'right', padding: '6px 4px', borderTop: '2px solid #111' }}>-{fmt(totals.discount)}</td>
-                </tr>
-              )}
-              <tr>
-                <td colSpan={3} style={{ padding: '6px 4px', borderTop: totals.discount > 0 ? undefined : '2px solid #111' }}>รวมก่อน VAT</td>
-                <td style={{ textAlign: 'right', padding: '6px 4px', borderTop: totals.discount > 0 ? undefined : '2px solid #111' }}>{fmt(totals.subtotal)}</td>
-              </tr>
-              {qt.has_vat && (
-                <tr>
-                  <td colSpan={3} style={{ padding: '6px 4px' }}>VAT (7%)</td>
-                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(totals.vat)}</td>
-                </tr>
-              )}
-              <tr style={{ fontWeight: 700, fontSize: 15 }}>
-                <td colSpan={3} style={{ padding: '8px 4px', borderTop: '1px solid #111' }}>รวมทั้งสิ้น</td>
-                <td style={{ textAlign: 'right', padding: '8px 4px', borderTop: '1px solid #111' }}>{fmt(totals.total)} บาท</td>
-              </tr>
-            </tfoot>
           </table>
-          {qt.payment_terms && (
-            <div style={{ fontSize: 12, marginTop: 16 }}><strong>เงื่อนไขการชำระเงิน:</strong> {qt.payment_terms}</div>
-          )}
-          {(tenant?.bank_name || tenant?.bank_account_no) && (
-            <div style={{ fontSize: 12, marginTop: 8 }}>
-              <strong>ชำระเงินไปที่:</strong> {tenant?.bank_name} {tenant?.bank_account_name ? `ชื่อบัญชี ${tenant.bank_account_name}` : ''} {tenant?.bank_account_no ? `เลขที่ ${tenant.bank_account_no}` : ''}
+
+          <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+            <table style={{ width: 260, fontSize: 12.5 }}>
+              <tbody>
+                {totals.discount > 0 && (
+                  <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>ส่วนลด</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>-{fmt(totals.discount)}</td></tr>
+                )}
+                <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมก่อน VAT</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(totals.subtotal)}</td></tr>
+                {qt.has_vat && (
+                  <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>VAT (7%)</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(totals.vat)}</td></tr>
+                )}
+                <tr>
+                  <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: '#6c63ff', borderTop: '2px solid #6c63ff' }}>รวมทั้งสิ้น</td>
+                  <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: '#6c63ff', borderTop: '2px solid #6c63ff' }}>{fmt(totals.total)} บาท</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {(qt.payment_terms || qt.notes || tenant?.bank_name || tenant?.bank_account_no) && (
+            <div style={{ marginTop: 20, fontSize: 11.5, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
+              {qt.payment_terms && (
+                <>
+                  <strong style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>เงื่อนไขการชำระเงิน</strong>
+                  <div style={{ marginBottom: qt.notes ? 10 : 0, whiteSpace: 'pre-line' }}>{qt.payment_terms}</div>
+                </>
+              )}
+              {qt.notes && (
+                <>
+                  <strong style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>หมายเหตุ</strong>
+                  <div style={{ whiteSpace: 'pre-line' }}>{qt.notes}</div>
+                </>
+              )}
+              {(tenant?.bank_name || tenant?.bank_account_no) && (
+                <div style={{ marginTop: 10 }}>
+                  <strong>ชำระเงินไปที่:</strong> {tenant?.bank_name} {tenant?.bank_account_name ? `ชื่อบัญชี ${tenant.bank_account_name}` : ''} {tenant?.bank_account_no ? `เลขที่ ${tenant.bank_account_no}` : ''}
+                </div>
+              )}
             </div>
           )}
-          <div style={{ marginTop: 56, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, textAlign: 'center', fontSize: 12 }}>
-            <div style={{ borderTop: '1px solid #999', paddingTop: 6 }}>ลายเซ็นผู้เสนอราคา</div>
-            <div style={{ borderTop: '1px solid #999', paddingTop: 6 }}>ลายเซ็นผู้ยอมรับ (ลูกค้า)</div>
+
+          <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
+            <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้เสนอราคา</div>
+            <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้ยอมรับ (ลูกค้า)</div>
           </div>
         </div>
       </div>
@@ -370,7 +405,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       }
       let quotationId = editRow?.id
       if (editRow) {
-        const { error } = await supabase.from('quotations').update(qtPayload).eq('id', editRow.id)
+        const { error } = await supabase.from('quotations').update({ ...qtPayload, revision: (editRow.revision || 1) + 1 }).eq('id', editRow.id)
         if (error) throw error
         const { error: delError } = await supabase.from('quotation_items').delete().eq('quotation_id', editRow.id)
         if (delError) throw delError
