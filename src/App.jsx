@@ -47,9 +47,11 @@ const TABS = [
     { id: 'expenses',        label: 'Overview',       minRole: 'ADMIN', module: null },
     { id: 'purchase_orders', label: '🧾 ใบสั่งซื้อ',   minRole: 'ADMIN', module: 'purchase_orders' },
   ] },
-  { id: 'income',            label: '💰 รายรับ',               minRole: 'ADMIN',  module: null },
+  { label: '💰 รายรับ', children: [
+    { id: 'income',      label: 'Overview',       minRole: 'ADMIN', module: null },
+    { id: 'quotations',  label: '📋 ใบเสนอราคา',  minRole: 'ADMIN', module: 'quotations' },
+  ] },
   { id: 'labor_contractors', label: '🔧 ผู้รับเหมาค่าแรง',    minRole: 'ADMIN',  module: 'labor_subcontractors' },
-  { id: 'quotations',        label: '📋 ใบเสนอราคา',          minRole: 'ADMIN', module: 'quotations' },
   { label: '⚙️ ตั้งค่า', children: [
     { id: 'settings',        label: 'ทั่วไป',          minRole: 'OWNER', module: null },
     { id: 'categories',      label: '🏷️ หมวดหมู่',    minRole: 'ADMIN', module: null },
