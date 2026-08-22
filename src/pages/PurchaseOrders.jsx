@@ -221,64 +221,92 @@ function PODetailModal({ po, tenantId, onClose }) {
   )
 }
 
-function PODocumentModal({ po, onClose }) {
+// Same letterhead pattern as QuotationDocumentModal (src/pages/Quotations.jsx)
+// — logo/company block, bordered doc-info box + ต้นฉบับ tag, light-purple
+// table header, boxed notes, purple-accented (unfilled) grand total.
+function PODocumentModal({ po, tenant, onClose }) {
   const items = po.purchase_order_items || []
   const { subtotal, vat, total } = calcPoTotals(items, po.has_vat, po.price_includes_vat)
 
   return (
-    <Modal title={`ใบสั่งซื้อ ${po.po_number}`} onClose={onClose} maxWidth={640}>
+    <Modal title={`ใบสั่งซื้อ ${po.po_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body">
-        <div id={`po-doc-${po.id}`} style={{ fontFamily: 'Sarabun,sans-serif', padding: '20px 24px', background: '#fff', color: '#111' }}>
-          <div style={{ textAlign: 'center', marginBottom: 16 }}>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>FACADE X</div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>ใบสั่งซื้อ</div>
+        <div id={`po-doc-${po.id}`} style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              {tenant?.logo_url
+                ? <img src={tenant.logo_url} alt="" style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }} crossOrigin="anonymous" />
+                : <div style={{ width: 40, height: 40, borderRadius: 8, background: '#6c63ff', flexShrink: 0 }} />}
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 800 }}>{tenant?.company_name}</div>
+                <div style={{ fontSize: 11, color: '#6a6f85', lineHeight: 1.6, marginTop: 2 }}>
+                  {tenant?.address}
+                  {tenant?.address && <br />}
+                  {tenant?.tax_id && `เลขผู้เสียภาษี ${tenant.tax_id}`}
+                  {tenant?.tax_id && tenant?.phone && ' · '}
+                  {tenant?.phone && `โทร ${tenant.phone}`}
+                </div>
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#6c63ff', border: '1px solid #6c63ff', borderRadius: 4, padding: '2px 8px', display: 'inline-block', marginBottom: 6 }}>ต้นฉบับ</div>
+              <div style={{ fontSize: 22, fontWeight: 800 }}>ใบสั่งซื้อ</div>
+            </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12, fontSize: 13 }}>
-            <div><strong>เลขที่:</strong> {po.po_number}</div>
-            <div><strong>วันที่:</strong> {new Date(po.date).toLocaleDateString('th-TH')}</div>
-            <div><strong>ไซท์งาน:</strong> {po.sites?.name} ({po.sites?.site_number})</div>
-            <div><strong>Supplier:</strong> {po.suppliers?.name}</div>
+
+          <div style={{ marginTop: 20, border: '1px solid #e4e6ef', borderRadius: 8, padding: '14px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: 12 }}>
+            <div><span style={{ color: '#6a6f85' }}>เลขที่เอกสาร</span><br />{po.po_number}</div>
+            <div><span style={{ color: '#6a6f85' }}>วันที่สั่งซื้อ</span><br />{new Date(po.date).toLocaleDateString('th-TH')}</div>
+            <div><span style={{ color: '#6a6f85' }}>ไซท์งาน</span><br />{po.sites?.name} ({po.sites?.site_number})</div>
+            <div><span style={{ color: '#6a6f85' }}>Supplier</span><br />{po.suppliers?.name}</div>
           </div>
-          {po.notes && <div style={{ fontSize: 13, marginBottom: 12 }}><strong>หมายเหตุ:</strong> {po.notes}</div>}
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 18 }}>
             <thead>
-              <tr style={{ borderBottom: '2px solid #111' }}>
-                <th style={{ textAlign: 'left', padding: '6px 4px' }}>รายการ</th>
-                <th style={{ textAlign: 'right', padding: '6px 4px' }}>จำนวน</th>
-                <th style={{ textAlign: 'right', padding: '6px 4px' }}>ราคา/หน่วย</th>
-                <th style={{ textAlign: 'right', padding: '6px 4px' }}>รวม</th>
+              <tr>
+                <th style={{ textAlign: 'left', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>รายการ</th>
+                <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>จำนวน</th>
+                <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>ราคา/หน่วย</th>
+                <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>รวม</th>
               </tr>
             </thead>
             <tbody>
               {items.map(it => (
-                <tr key={it.id} style={{ borderBottom: '1px solid #ddd' }}>
-                  <td style={{ padding: '6px 4px' }}>{it.description}</td>
-                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{it.quantity} {it.unit || ''}</td>
-                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(it.unit_price)}</td>
-                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(it.line_total)}</td>
+                <tr key={it.id}>
+                  <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.description}</td>
+                  <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.quantity} {it.unit || ''}</td>
+                  <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
+                  <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.line_total)}</td>
                 </tr>
               ))}
             </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={3} style={{ padding: '6px 4px', borderTop: '2px solid #111' }}>รวมก่อน VAT</td>
-                <td style={{ textAlign: 'right', padding: '6px 4px', borderTop: '2px solid #111' }}>{fmt(subtotal)}</td>
-              </tr>
-              {po.has_vat && (
-                <tr>
-                  <td colSpan={3} style={{ padding: '6px 4px' }}>VAT (7%)</td>
-                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(vat)}</td>
-                </tr>
-              )}
-              <tr style={{ fontWeight: 700, fontSize: 15 }}>
-                <td colSpan={3} style={{ padding: '8px 4px', borderTop: '1px solid #111' }}>รวมทั้งสิ้น</td>
-                <td style={{ textAlign: 'right', padding: '8px 4px', borderTop: '1px solid #111' }}>{fmt(total)} บาท</td>
-              </tr>
-            </tfoot>
           </table>
-          <div style={{ marginTop: 56, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, textAlign: 'center', fontSize: 12 }}>
-            <div style={{ borderTop: '1px solid #999', paddingTop: 6 }}>ลายเซ็นผู้จัดทำ</div>
-            <div style={{ borderTop: '1px solid #999', paddingTop: 6 }}>ลายเซ็นผู้อนุมัติ</div>
+
+          <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+            <table style={{ width: 260, fontSize: 12.5 }}>
+              <tbody>
+                <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมก่อน VAT</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(subtotal)}</td></tr>
+                {po.has_vat && (
+                  <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>VAT (7%)</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(vat)}</td></tr>
+                )}
+                <tr>
+                  <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: '#6c63ff', borderTop: '2px solid #6c63ff' }}>รวมทั้งสิ้น</td>
+                  <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: '#6c63ff', borderTop: '2px solid #6c63ff' }}>{fmt(total)} บาท</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {po.notes && (
+            <div style={{ marginTop: 20, fontSize: 11.5, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
+              <strong style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>หมายเหตุ</strong>
+              <div style={{ whiteSpace: 'pre-line' }}>{po.notes}</div>
+            </div>
+          )}
+
+          <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
+            <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้จัดทำ</div>
+            <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้อนุมัติ</div>
           </div>
         </div>
       </div>
@@ -529,7 +557,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
         <ConfirmDialog title="ยกเลิกใบสั่งซื้อ" message="ยืนยันการยกเลิกใบสั่งซื้อนี้?" onConfirm={handleCancel} onCancel={() => setDeleteId(null)} danger />
       )}
 
-      {docRow && <PODocumentModal po={docRow} onClose={() => setDocRow(null)} />}
+      {docRow && <PODocumentModal po={docRow} tenant={tenant} onClose={() => setDocRow(null)} />}
 
       {detailRow && <PODetailModal po={detailRow} tenantId={tenant?.id} onClose={() => setDetailRow(null)} />}
 
