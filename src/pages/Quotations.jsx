@@ -42,7 +42,7 @@ const EMPTY_FORM = {
   payment_terms: '', notes: '', items: [{ ...EMPTY_ITEM }],
 }
 
-function QuotationItemsEditor({ items, onChange, catalogItems }) {
+function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch }) {
   const set = (i, k, v) => onChange(items.map((it, idx) => idx === i ? { ...it, [k]: v } : it))
   const add = () => onChange([...items, { ...EMPTY_ITEM }])
   const remove = (i) => onChange(items.length > 1 ? items.filter((_, idx) => idx !== i) : items)
@@ -54,6 +54,20 @@ function QuotationItemsEditor({ items, onChange, catalogItems }) {
       quantity: '1', unit_price: String(found.default_unit_price),
     }])
   }
+  // Lets a free-typed line become a reusable catalog entry without leaving
+  // the quotation — inserts it, then links this row to the new entry the
+  // same way picking from the catalog does (so it won't offer to save
+  // twice), and refetches so the picker dropdown includes it right away.
+  const saveToCatalog = async (i) => {
+    const it = items[i]
+    if (!it.description.trim()) return
+    const { data, error } = await supabase.from('catalog_items').insert({
+      name: it.description, unit: it.unit || null, default_unit_price: parseFloat(it.unit_price) || 0,
+    }).select().single()
+    if (error) { alert('Error: ' + error.message); return }
+    set(i, 'catalog_item_id', data.id)
+    onCatalogRefetch?.()
+  }
   const grandTotal = items.reduce((sum, it) => sum + lineTotal(it), 0)
 
   return (
@@ -61,7 +75,7 @@ function QuotationItemsEditor({ items, onChange, catalogItems }) {
       <label className="label">รายการ ★</label>
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((it, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px 32px', gap: 6, alignItems: 'center' }}>
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px 32px 32px', gap: 6, alignItems: 'center' }}>
             <input className="input input-sm" placeholder="รายละเอียดรายการ" required
               value={it.description} onChange={e => set(i, 'description', e.target.value)} />
             <input className="input input-sm" type="number" min="0" step="0.01" placeholder="จำนวน"
@@ -70,6 +84,9 @@ function QuotationItemsEditor({ items, onChange, catalogItems }) {
               value={it.unit} onChange={e => set(i, 'unit', e.target.value)} />
             <input className="input input-sm" type="number" min="0" step="0.01" placeholder="ราคา/หน่วย"
               value={it.unit_price} onChange={e => set(i, 'unit_price', e.target.value)} />
+            {!it.catalog_item_id && it.description.trim()
+              ? <button type="button" className="btn btn-sm btn-ghost" title="บันทึกเป็นรายการสินค้าใหม่" onClick={() => saveToCatalog(i)}>💾</button>
+              : <span title={it.catalog_item_id ? 'อยู่ในรายการสินค้าแล้ว' : undefined} style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>{it.catalog_item_id ? '📦' : ''}</span>}
             <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
           </div>
         ))}
@@ -87,7 +104,7 @@ function QuotationItemsEditor({ items, onChange, catalogItems }) {
   )
 }
 
-function QuotationForm({ initial = EMPTY_FORM, clients, catalogItems, onSave, onCancel, loading }) {
+function QuotationForm({ initial = EMPTY_FORM, clients, catalogItems, onCatalogRefetch, onSave, onCancel, loading }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('quotation-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -116,7 +133,7 @@ function QuotationForm({ initial = EMPTY_FORM, clients, catalogItems, onSave, on
           <SearchableSelect required value={form.client_id} onChange={id => set('client_id', id)}
             placeholder="— เลือกลูกค้า —" options={clientOpts(clients)} />
         </div>
-        <QuotationItemsEditor items={form.items} onChange={items => set('items', items)} catalogItems={catalogItems} />
+        <QuotationItemsEditor items={form.items} onChange={items => set('items', items)} catalogItems={catalogItems} onCatalogRefetch={onCatalogRefetch} />
         <div>
           <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
@@ -385,7 +402,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   const { data: quotations, refetch } = useQuotations(filters)
   const { data: clients }      = useClients()
   const { data: sites }        = useSites()
-  const { data: catalogItems } = useCatalogItems()
+  const { data: catalogItems, refetch: refetchCatalogItems } = useCatalogItems()
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
@@ -590,7 +607,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
         <Modal title={editRow ? 'แก้ไขใบเสนอราคา' : 'เพิ่มใบเสนอราคา'} onClose={() => { setShowAdd(false); setEditRow(null) }} maxWidth={700}>
           <QuotationForm
             initial={editFormInitial || newQuotationInitial}
-            clients={clients} catalogItems={catalogItems}
+            clients={clients} catalogItems={catalogItems} onCatalogRefetch={refetchCatalogItems}
             onSave={handleSave} onCancel={() => { setShowAdd(false); setEditRow(null) }} loading={saving}
           />
         </Modal>
