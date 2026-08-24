@@ -89,32 +89,61 @@ Find the existing `CREATE TABLE tenant_modules` block (search `module_key IN`) a
 
 -- ── Test 1: quotation_item_units is invisible and unwritable without the
 -- 'invoices' module enabled, even for a tenant that DOES have 'quotations'
--- -- confirming the two modules gate independently. ──
+-- -- confirming the two modules gate independently.
+--
+-- Fixture/structure mirrors supabase/tests/quotation_module_test.sql's
+-- Test 2 exactly (that file's comment block documents why): tenant_modules
+-- has no 'enabled' column -- module access is presence-of-row, checked via
+-- EXISTS, and a tenant on an active-trial gets blanket access regardless
+-- of tenant_modules rows, so the negative-path fixture must be a
+-- trial-expired, paid-plan tenant instead. The insert is attempted as the
+-- 'authenticated' role under a real admin/owner's JWT claims (without that
+-- switch the statement runs as the superuser connection and RLS never
+-- applies at all), and the REGRESSION check sits outside the
+-- BEGIN/EXCEPTION block so it can't catch its own raised exception. ──
 DO $$
 DECLARE
   test_tenant_id UUID;
   test_quotation_item_id UUID;
+  test_admin_email TEXT;
+  new_unit_id UUID;
+  insert_succeeded BOOLEAN := false;
 BEGIN
-  SELECT qi.id INTO test_quotation_item_id
+  SELECT qi.id, q.tenant_id INTO test_quotation_item_id, test_tenant_id
   FROM quotation_items qi
   JOIN quotations q ON q.id = qi.quotation_id
-  JOIN tenants t ON t.id = q.tenant_id
-  WHERE NOT EXISTS (
-    SELECT 1 FROM tenant_modules tm
-    WHERE tm.tenant_id = t.id AND tm.module_key = 'invoices' AND tm.enabled = true
-  )
+  JOIN tenants t ON t.id = q.tenant_id AND t.trial_ends_at < now() AND t.plan = 'active'
+  WHERE EXISTS (SELECT 1 FROM tenant_modules tm WHERE tm.tenant_id = t.id AND tm.module_key = 'quotations')
+    AND NOT EXISTS (SELECT 1 FROM tenant_modules tm WHERE tm.tenant_id = t.id AND tm.module_key = 'invoices')
   LIMIT 1;
 
   IF test_quotation_item_id IS NULL THEN
-    RAISE NOTICE 'Test 1 (quotation_item_units module gating): SKIPPED — no quotation_item fixture on a tenant without the invoices module';
+    RAISE NOTICE 'Test 1 (quotation_item_units module gating): SKIPPED — no quotation_item fixture on a trial-expired/paid tenant with quotations but not invoices';
   ELSE
-    BEGIN
-      INSERT INTO quotation_item_units (quotation_item_id, unit_index, unit_qty)
-      VALUES (test_quotation_item_id, 0, 1);
-      RAISE EXCEPTION 'quotation_item_units RLS REGRESSION: insert succeeded without the invoices module enabled';
-    EXCEPTION WHEN insufficient_privilege OR others THEN
-      RAISE NOTICE 'Test 1 (quotation_item_units module gating blocks writes without invoices module): TEST PASSED';
-    END;
+    SELECT user_email INTO test_admin_email FROM user_roles
+      WHERE tenant_id = test_tenant_id AND role IN ('OWNER','ADMIN') AND status = 'approved' LIMIT 1;
+
+    IF test_admin_email IS NULL THEN
+      RAISE NOTICE 'Test 1 (quotation_item_units module gating): SKIPPED — no admin/owner fixture for that tenant';
+    ELSE
+      SET LOCAL role = 'authenticated';
+      SET LOCAL request.jwt.claims = '{"email":"' || test_admin_email || '"}';
+      BEGIN
+        INSERT INTO quotation_item_units (quotation_item_id, unit_index, unit_qty)
+          VALUES (test_quotation_item_id, 0, 1) RETURNING id INTO new_unit_id;
+        insert_succeeded := true;
+      EXCEPTION WHEN insufficient_privilege OR others THEN
+        insert_succeeded := false;
+      END;
+      RESET role;
+
+      IF insert_succeeded THEN
+        DELETE FROM quotation_item_units WHERE id = new_unit_id;
+        RAISE EXCEPTION 'quotation_item_units RLS REGRESSION: insert succeeded without the invoices module enabled';
+      ELSE
+        RAISE NOTICE 'Test 1 (quotation_item_units module gating blocks writes without invoices module): TEST PASSED';
+      END IF;
+    END IF;
   END IF;
 END $$;
 ```
@@ -289,14 +318,18 @@ DECLARE
   first_id UUID;
   second_id UUID;
 BEGIN
+  -- An active-trial tenant has full module access implicitly (matches
+  -- has_module_access()'s own logic and quotation_module_test.sql's Test 3
+  -- fixture-selection pattern) -- no tenant_modules join needed, and
+  -- tenant_modules has no 'enabled' column to join on in the first place.
   SELECT q.id, q.tenant_id, q.site_id INTO test_quotation_id, test_tenant_id, test_site_id
   FROM quotations q
-  JOIN tenant_modules tm ON tm.tenant_id = q.tenant_id AND tm.module_key = 'invoices' AND tm.enabled = true
+  JOIN tenants t ON t.id = q.tenant_id AND t.trial_ends_at > now()
   WHERE q.site_id IS NOT NULL
   LIMIT 1;
 
   IF test_quotation_id IS NULL THEN
-    RAISE NOTICE 'Test 2 (invoice auto-numbering): SKIPPED — no accepted quotation with a site on a tenant with the invoices module enabled';
+    RAISE NOTICE 'Test 2 (invoice auto-numbering): SKIPPED — no accepted quotation with a site on an active-trial tenant';
   ELSE
     INSERT INTO invoices (quotation_id, site_id, date, has_vat, price_includes_vat, tenant_id)
       VALUES (test_quotation_id, test_site_id, CURRENT_DATE, true, false, test_tenant_id)
@@ -1642,7 +1675,9 @@ Inside `export default function Invoices(...)`, add (note: `tenant` comes from t
   const { data: receipts } = useReceipts((invoices || []).map(i => i.id))
 ```
 
-In the table row's action `<td>` (Task 8), add the document buttons alongside the status-action buttons:
+The table row's action `<td>` currently ends (after Task 8's fix round) with the mark-paid/void buttons inside a `canEdit && invoice.status !== 'unpaid' ... return` guard and a `ConfirmDialog`-gated void — read the CURRENT on-disk `src/pages/Invoices.jsx` before editing, don't assume exact line numbers from this brief, since Task 8 went through a fix round after this brief was written.
+
+The document buttons must sit **outside** whatever conditional wraps the status-action buttons — the 📄 button needs to stay visible on every invoice regardless of status (viewing/printing doesn't require edit rights or an unpaid status), and the 🧾 button only ever applies to paid ones, never unpaid. Nesting either inside the status-action conditional would make them disappear for paid/void invoices, which defeats their purpose — viewing a paid invoice's PDF or its receipt is exactly when you need those buttons. Add them as siblings, after whatever status-action JSX Task 8 left in place, inside the same `<td>`:
 
 ```jsx
                     <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(inv)}>📄</button>
