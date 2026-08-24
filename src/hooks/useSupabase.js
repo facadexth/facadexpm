@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { applyDateFilter } from '../lib/expenseFilters.js'
+import { buildUnitSeedRows } from '../lib/invoiceCalc.js'
 
 /** Generic fetch hook */
 export function useQuery(queryFn, deps = []) {
@@ -217,6 +218,82 @@ export function useQuotations(filters = {}) {
 
     return fetchAllRows(buildQuery)
   }, [JSON.stringify(filters)])
+}
+
+// Idempotent: only inserts rows for quotation_items that don't have any
+// quotation_item_units yet. Safe to call every time the invoice
+// item-selection screen opens for a quotation.
+export async function ensureQuotationItemUnits(quotationItems) {
+  const ids = (quotationItems || []).map(qi => qi.id)
+  if (!ids.length) return
+
+  const { data: existing, error: fetchError } = await supabase
+    .from('quotation_item_units')
+    .select('quotation_item_id')
+    .in('quotation_item_id', ids)
+  if (fetchError) throw fetchError
+
+  const alreadySeeded = new Set((existing || []).map(r => r.quotation_item_id))
+  const toSeed = quotationItems.filter(qi => !alreadySeeded.has(qi.id))
+  if (!toSeed.length) return
+
+  const rows = toSeed.flatMap(buildUnitSeedRows)
+  const { error: insertError } = await supabase.from('quotation_item_units').insert(rows)
+  if (insertError) throw insertError
+}
+
+export function useQuotationItemUnits(quotationId, quotationItems) {
+  return useQuery(async () => {
+    if (!quotationId || !(quotationItems || []).length) return {}
+    await ensureQuotationItemUnits(quotationItems)
+
+    const { data, error } = await supabase
+      .from('quotation_item_units')
+      .select('*')
+      .in('quotation_item_id', quotationItems.map(qi => qi.id))
+      .order('unit_index')
+    if (error) throw error
+
+    const byQuotationItem = {}
+    for (const row of data) {
+      if (!byQuotationItem[row.quotation_item_id]) byQuotationItem[row.quotation_item_id] = []
+      byQuotationItem[row.quotation_item_id].push(row)
+    }
+    return byQuotationItem
+  }, [quotationId, JSON.stringify((quotationItems || []).map(qi => qi.id))])
+}
+
+export function useInvoices(filters = {}) {
+  return useQuery(async () => {
+    const buildQuery = () => {
+      let q = supabase
+        .from('invoices')
+        .select('*, quotations(quotation_number, client_id, clients(name)), sites(name, site_number), invoice_items(id, quotation_item_id, description, unit, unit_price, draw_qty, line_total, sort_order)')
+        .order('date', { ascending: false })
+        .order('id', { ascending: false })
+
+      if (filters.siteId) q = q.eq('site_id', filters.siteId)
+      if (filters.status) q = q.eq('status', filters.status)
+      if (filters.from)   q = q.gte('date', filters.from)
+      if (filters.to)     q = q.lte('date', filters.to)
+      return q
+    }
+
+    return fetchAllRows(buildQuery)
+  }, [JSON.stringify(filters)])
+}
+
+export function useReceipts(invoiceIds) {
+  return useQuery(async () => {
+    const ids = (invoiceIds || []).filter(Boolean)
+    if (!ids.length) return []
+    const { data, error } = await supabase
+      .from('receipts')
+      .select('*')
+      .in('invoice_id', ids)
+    if (error) throw error
+    return data
+  }, [JSON.stringify(invoiceIds || [])])
 }
 
 /** ยอดที่ต้องชำระรายเดือน (สำหรับ cash forecast) */
