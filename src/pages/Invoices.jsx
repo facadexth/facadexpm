@@ -12,7 +12,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useInvoices, useQuotationItemUnits, useQuotations, useSites } from '../hooks/useSupabase.js'
+import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { calcDepositDeduction, round2 } from '../lib/depositCalc.js'
@@ -23,6 +23,7 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals } from '../lib/invoiceCalc.js'
+import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -283,6 +284,126 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
   )
 }
 
+function InvoiceDocumentModal({ invoice, tenant, onClose }) {
+  const items = invoice.invoice_items || []
+  return (
+    <Modal title={`ใบแจ้งหนี้ ${invoice.invoice_number}`} onClose={onClose} maxWidth={640}>
+      <div className="modal-body">
+        <div id={`inv-doc-${invoice.id}`} style={{ fontFamily: 'Sarabun,sans-serif', padding: '20px 24px', background: '#fff', color: '#111' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12 }}>
+            <div>
+              {tenant?.logo_url && <img src={tenant.logo_url} alt="" style={{ maxHeight: 48, marginBottom: 6 }} crossOrigin="anonymous" />}
+              <div style={{ fontSize: 16, fontWeight: 800 }}>{tenant?.company_name}</div>
+              {tenant?.address && <div style={{ fontSize: 11 }}>{tenant.address}</div>}
+              {tenant?.tax_id && <div style={{ fontSize: 11 }}>เลขประจำตัวผู้เสียภาษี: {tenant.tax_id}</div>}
+              {tenant?.phone && <div style={{ fontSize: 11 }}>โทร: {tenant.phone}</div>}
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>ใบแจ้งหนี้</div>
+              <div style={{ fontSize: 12 }}>เลขที่: {invoice.invoice_number}</div>
+              <div style={{ fontSize: 12 }}>วันที่: {new Date(invoice.date).toLocaleDateString('th-TH')}</div>
+              <div style={{ fontSize: 12 }}>อ้างอิงใบเสนอราคา: {invoice.quotations?.quotation_number}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 13, marginBottom: 12 }}><strong>ลูกค้า:</strong> {invoice.quotations?.clients?.name}</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #111' }}>
+                <th style={{ textAlign: 'left', padding: '6px 4px' }}>รายการ</th>
+                <th style={{ textAlign: 'right', padding: '6px 4px' }}>งวดนี้</th>
+                <th style={{ textAlign: 'right', padding: '6px 4px' }}>ราคา/หน่วย</th>
+                <th style={{ textAlign: 'right', padding: '6px 4px' }}>รวม</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(it => (
+                <tr key={it.id} style={{ borderBottom: '1px solid #ddd' }}>
+                  <td style={{ padding: '6px 4px' }}>{it.description}</td>
+                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(it.draw_qty)} {it.unit || ''}</td>
+                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(it.unit_price)}</td>
+                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(it.line_total)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={3} style={{ padding: '6px 4px', borderTop: '2px solid #111' }}>รวมก่อน VAT</td>
+                <td style={{ textAlign: 'right', padding: '6px 4px', borderTop: '2px solid #111' }}>{fmt(invoice.subtotal)}</td>
+              </tr>
+              {invoice.has_vat && (
+                <tr>
+                  <td colSpan={3} style={{ padding: '6px 4px' }}>VAT (7%)</td>
+                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(invoice.vat)}</td>
+                </tr>
+              )}
+              <tr style={{ fontWeight: 700, fontSize: 15 }}>
+                <td colSpan={3} style={{ padding: '8px 4px', borderTop: '1px solid #111' }}>รวมทั้งสิ้น</td>
+                <td style={{ textAlign: 'right', padding: '8px 4px', borderTop: '1px solid #111' }}>{fmt(invoice.total)} บาท</td>
+              </tr>
+            </tfoot>
+          </table>
+          {(tenant?.bank_name || tenant?.bank_account_no) && (
+            <div style={{ fontSize: 12, marginTop: 16 }}>
+              <strong>ชำระเงินไปที่:</strong> {tenant.bank_name} {tenant.bank_account_name ? `ชื่อบัญชี ${tenant.bank_account_name}` : ''} {tenant.bank_account_no ? `เลขที่ ${tenant.bank_account_no}` : ''}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={() => downloadPDF(`inv-doc-${invoice.id}`, invoice.invoice_number)}>📄 PDF</button>
+        <button className="btn btn-ghost" onClick={() => downloadJPG(`inv-doc-${invoice.id}`, invoice.invoice_number)}>🖼️ JPG</button>
+        <button className="btn btn-primary" onClick={onClose}>ปิด</button>
+      </div>
+    </Modal>
+  )
+}
+
+function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
+  return (
+    <Modal title={`ใบเสร็จรับเงิน/ใบกำกับภาษี ${receipt.receipt_number}`} onClose={onClose} maxWidth={640}>
+      <div className="modal-body">
+        <div id={`rcp-doc-${receipt.id}`} style={{ fontFamily: 'Sarabun,sans-serif', padding: '20px 24px', background: '#fff', color: '#111' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12 }}>
+            <div>
+              {tenant?.logo_url && <img src={tenant.logo_url} alt="" style={{ maxHeight: 48, marginBottom: 6 }} crossOrigin="anonymous" />}
+              <div style={{ fontSize: 16, fontWeight: 800 }}>{tenant?.company_name}</div>
+              {tenant?.address && <div style={{ fontSize: 11 }}>{tenant.address}</div>}
+              {tenant?.tax_id && <div style={{ fontSize: 11 }}>เลขประจำตัวผู้เสียภาษี: {tenant.tax_id}</div>}
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>ใบเสร็จรับเงิน / ใบกำกับภาษี</div>
+              <div style={{ fontSize: 12 }}>เลขที่ใบเสร็จ: {receipt.receipt_number}</div>
+              <div style={{ fontSize: 12 }}>เลขที่ใบกำกับภาษี: {receipt.tax_invoice_number}</div>
+              <div style={{ fontSize: 12 }}>วันที่: {new Date(receipt.date).toLocaleDateString('th-TH')}</div>
+              <div style={{ fontSize: 12 }}>อ้างอิงใบแจ้งหนี้: {invoice.invoice_number}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 13, marginBottom: 12 }}><strong>ลูกค้า:</strong> {invoice.quotations?.clients?.name}</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <tbody>
+              <tr style={{ borderBottom: '2px solid #111' }}>
+                <td style={{ padding: '8px 4px' }}>ชำระเงินตามใบแจ้งหนี้ {invoice.invoice_number}</td>
+                <td style={{ textAlign: 'right', padding: '8px 4px' }}>{fmt(receipt.amount)} บาท</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr style={{ fontWeight: 700, fontSize: 15 }}>
+                <td style={{ padding: '8px 4px', borderTop: '1px solid #111' }}>รวมรับชำระ</td>
+                <td style={{ textAlign: 'right', padding: '8px 4px', borderTop: '1px solid #111' }}>{fmt(receipt.amount)} บาท</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={() => downloadPDF(`rcp-doc-${receipt.id}`, receipt.receipt_number)}>📄 PDF</button>
+        <button className="btn btn-ghost" onClick={() => downloadJPG(`rcp-doc-${receipt.id}`, receipt.receipt_number)}>🖼️ JPG</button>
+        <button className="btn btn-primary" onClick={onClose}>ปิด</button>
+      </div>
+    </Modal>
+  )
+}
+
 export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'invoices')
@@ -309,7 +430,11 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   const [payingId, setPayingId] = useState(null)
   const [voidingId, setVoidingId] = useState(null)
   const [voidRow, setVoidRow] = useState(null)
-  const { hasModuleAccess } = useTenant()
+  const { tenant, hasModuleAccess } = useTenant()
+
+  const [docRow, setDocRow] = useState(null)
+  const [receiptRow, setReceiptRow] = useState(null)
+  const { data: receipts } = useReceipts((invoices || []).map(i => i.id))
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
@@ -489,6 +614,10 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
                         </button>
                       </>
                     )}
+                    <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(inv)}>📄</button>
+                    {inv.status === 'paid' && (
+                      <button className="btn btn-sm btn-ghost" onClick={() => setReceiptRow(inv)}>🧾</button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -529,6 +658,16 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
           onConfirm={() => handleVoid(voidRow)}
           onCancel={() => setVoidRow(null)}
           danger
+        />
+      )}
+
+      {docRow && <InvoiceDocumentModal invoice={docRow} tenant={tenant} onClose={() => setDocRow(null)} />}
+      {receiptRow && (
+        <ReceiptDocumentModal
+          invoice={receiptRow}
+          receipt={(receipts || []).find(r => r.invoice_id === receiptRow.id)}
+          tenant={tenant}
+          onClose={() => setReceiptRow(null)}
         />
       )}
     </div>
