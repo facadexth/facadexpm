@@ -1939,3 +1939,30 @@ GROUP BY lc.id, lc.subcontractor_id, lc.site_id, lc.work_description, lc.contrac
 -- writes, tenant-prefixed path ({tenant_id}/logo.<ext>) — see
 -- supabase/migrations/2026-08-22-01-tenant-company-profile.sql for the
 -- full bucket + policy definitions.
+
+-- Flat "what have we actually sold" report — every line item from an
+-- ACCEPTED quotation only, joined to client/site names. Added by
+-- supabase/migrations/2026-08-24-02-sales-report-view.sql.
+CREATE VIEW sales_report_view WITH (security_invoker = true) AS
+SELECT
+  qi.id,
+  qi.quotation_id,
+  q.quotation_number,
+  q.date,
+  q.client_id,
+  c.name AS client_name,
+  q.site_id,
+  s.name AS site_name,
+  s.site_number,
+  qi.catalog_item_id,
+  qi.description,
+  qi.unit,
+  qi.quantity,
+  qi.unit_price,
+  qi.line_total,
+  qi.tenant_id
+FROM quotation_items qi
+JOIN quotations q ON q.id = qi.quotation_id
+LEFT JOIN clients c ON c.id = q.client_id
+LEFT JOIN sites s ON s.id = q.site_id
+WHERE q.status = 'accepted';

@@ -585,6 +585,28 @@ export function useCatalogItems() {
   })
 }
 
+/** Every sold line item (accepted quotations only), for lookup/analysis. */
+export function useSalesReport(filters = {}) {
+  return useQuery(async () => {
+    const buildQuery = () => {
+      let q = supabase
+        .from('sales_report_view')
+        .select('*')
+        .order('date', { ascending: false })
+        .order('id', { ascending: false })
+
+      if (filters.siteId)   q = q.eq('site_id', filters.siteId)
+      if (filters.clientId) q = q.eq('client_id', filters.clientId)
+      if (filters.from)     q = q.gte('date', filters.from)
+      if (filters.to)       q = q.lte('date', filters.to)
+      if (filters.search)   q = q.ilike('description', `%${filters.search}%`)
+      return q
+    }
+
+    return fetchAllRows(buildQuery)
+  }, [JSON.stringify(filters)])
+}
+
 /** Past snapshots of a quotation, newest revision first. Empty until the
  *  quotation has been edited at least once (revision 1 has no snapshot —
  *  the live row itself IS revision 1 until an edit bumps it forward). */
