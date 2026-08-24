@@ -1939,7 +1939,33 @@ LEFT JOIN sites s ON i.site_id = s.id;
 -- each sum by the other table's row count for that site. Discovered live on
 -- FX-2026-001: total_income showed ฿394,395,518 (real ฿3,585,414 × 110
 -- expense rows), see 2026-08-16-01-fix-site-financial-summary-fanout.sql.
+--
+-- invoiced_amount must be comparable to sites.contract_value, which is
+-- VAT-INCLUSIVE, and must respect the quotation's header-level discount
+-- (quotation_items.unit_price / line_total are stored UNDISCOUNTED) --
+-- see 2026-08-25-01-invoiced-amount-discount-vat-fix.sql. Without both
+-- corrections a fully-billed site read as ~93.5% and any discounted
+-- quotation read higher still.
 CREATE OR REPLACE VIEW site_financial_summary WITH (security_invoker = true) AS
+WITH quotation_discount AS (
+  -- Mirrors quotationCalc.js's calcQuotationTotals discount math exactly:
+  -- discount_pct takes precedence over discount_amount if both are set,
+  -- and the multiplier is clamped so a discount larger than the raw total
+  -- can never produce a negative price.
+  SELECT q.id AS quotation_id,
+         CASE
+           WHEN COALESCE(q.discount_pct, 0) <> 0 THEN GREATEST(0, 1 - q.discount_pct / 100)
+           WHEN q.discount_amount IS NOT NULL AND COALESCE(qt.raw_total, 0) > 0
+             THEN GREATEST(0, (qt.raw_total - q.discount_amount) / qt.raw_total)
+           ELSE 1
+         END AS price_multiplier
+  FROM quotations q
+  LEFT JOIN (
+    SELECT quotation_id, SUM(line_total) AS raw_total
+    FROM quotation_items
+    GROUP BY quotation_id
+  ) qt ON qt.quotation_id = q.id
+)
 SELECT
   s.id, s.site_number, s.name, s.status, s.start_date, s.end_date, s.contract_value,
   s.client_id, s.client_name, s.location,
@@ -1982,10 +2008,15 @@ LEFT JOIN (
 ) inc ON inc.site_id = s.id
 LEFT JOIN (
   SELECT q.site_id,
-         SUM(qiu.cumulative_pct / 100 * qiu.unit_qty * qi.unit_price) AS invoiced_amount
+         SUM(
+           qiu.cumulative_pct / 100 * qiu.unit_qty * qi.unit_price
+           * COALESCE(qd.price_multiplier, 1)
+           * CASE WHEN q.has_vat AND NOT q.price_includes_vat THEN 1.07 ELSE 1 END
+         ) AS invoiced_amount
   FROM quotation_item_units qiu
   JOIN quotation_items qi ON qi.id = qiu.quotation_item_id
   JOIN quotations q ON q.id = qi.quotation_id
+  LEFT JOIN quotation_discount qd ON qd.quotation_id = q.id
   WHERE q.site_id IS NOT NULL
   GROUP BY q.site_id
 ) inv ON inv.site_id = s.id;

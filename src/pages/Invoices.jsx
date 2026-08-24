@@ -23,6 +23,7 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals } from '../lib/invoiceCalc.js'
+import { calcQuotationTotals } from '../lib/quotationCalc.js'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
@@ -35,7 +36,7 @@ const INV_STATUS_LABELS = { unpaid: '🕓 ยังไม่ชำระ', paid:
 // One entry per quotation_item: { quotationItemId, description, unit,
 // unitPrice, totalQty, units: [{ id, unitIndex, unitQty, cumulativePct,
 // target }] }. `checked` (โหมดง่าย full-remaining lock) lives per entry.
-function buildLineState(quotationItems, unitsByQuotationItem) {
+function buildLineState(quotationItems, unitsByQuotationItem, priceMultiplier) {
   return (quotationItems || []).map(qi => {
     const rawUnits = unitsByQuotationItem[qi.id] || []
     const units = rawUnits.map(u => ({
@@ -44,17 +45,54 @@ function buildLineState(quotationItems, unitsByQuotationItem) {
     }))
     return {
       quotationItemId: qi.id, description: qi.description, unit: qi.unit,
-      unitPrice: qi.unit_price, totalQty: qi.quantity, checked: true, units,
+      unitPrice: qi.unit_price * priceMultiplier, totalQty: qi.quantity, checked: true, units,
     }
   })
 }
 
+// The quotation's discount lives only at the header level (quotationCalc.js
+// applies it to rawTotal, but quotation_items.line_total is stored
+// UNDISCOUNTED) -- so invoicing must derive a per-quotation price
+// multiplier and apply it to every line's unit price, or invoices bill the
+// full undiscounted amount regardless of any discount the client agreed to.
+// Reuses calcQuotationTotals (not reimplemented) so this stays exactly in
+// sync with how the quotation's own printed total is computed.
+function discountMultiplier(quotation) {
+  const items = quotation.quotation_items || []
+  const rawTotal = items.reduce((s, it) => s + (it.line_total || 0), 0)
+  if (rawTotal <= 0) return 1
+  const totals = calcQuotationTotals(items, {
+    hasVat: false, // hasVat:false makes `subtotal` equal the discounted raw total exactly, before any VAT math -- that's the ratio we need
+    discountAmount: quotation.discount_amount,
+    discountPct: quotation.discount_pct,
+  })
+  return totals.subtotal / rawTotal
+}
+
 function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
+  // Raw in-progress text for the two number inputs below, keyed by line
+  // (qty) and by `lineId:unitIndex` (per-unit %). Both inputs otherwise
+  // display a value re-derived from the unit ledger on every render, which
+  // clobbers a half-typed decimal: after typing "12." the ledger still
+  // reads 12, so React would rewrite the field back to "12" and the user
+  // could never type past the decimal point. The draft wins while an edit
+  // is in progress and is dropped on blur, so the ledger stays the single
+  // source of truth everywhere else.
+  const [qtyDrafts, setQtyDrafts] = useState({})
+  const [pctDrafts, setPctDrafts] = useState({})
+  // Any programmatic change to the ledger (ticking a box) invalidates every
+  // in-progress draft -- keeping one around would show a stale number after
+  // the box is unticked again.
+  const clearDrafts = () => { setQtyDrafts({}); setPctDrafts({}) }
+
   const setLine = (qiId, updater) => onChange(lines.map(l => l.quotationItemId === qiId ? updater(l) : l))
 
-  const toggleChecked = (qiId, checked) => setLine(qiId, l => ({
-    ...l, checked, units: checked ? waterfall(l.units, openQty(l.units)) : l.units,
-  }))
+  const toggleChecked = (qiId, checked) => {
+    clearDrafts()
+    setLine(qiId, l => ({
+      ...l, checked, units: checked ? waterfall(l.units, openQty(l.units)) : l.units,
+    }))
+  }
   const setQty = (qiId, qty) => setLine(qiId, l => {
     const max = openQty(l.units)
     const clamped = Math.max(0, Math.min(max, qty))
@@ -70,10 +108,13 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
   const billableLines = lines.filter(l => openQty(l.units) > 0)
   const allChecked = billableLines.length > 0 && billableLines.every(l => l.checked)
 
-  const toggleAll = (checked) => onChange(lines.map(l => {
-    if (openQty(l.units) <= 0) return l
-    return { ...l, checked, units: checked ? waterfall(l.units, openQty(l.units)) : l.units }
-  }))
+  const toggleAll = (checked) => {
+    clearDrafts()
+    onChange(lines.map(l => {
+      if (openQty(l.units) <= 0) return l
+      return { ...l, checked, units: checked ? waterfall(l.units, openQty(l.units)) : l.units }
+    }))
+  }
 
   const subtotal = lines.reduce((s, l) => s + drawAmount(l.units, l.unitPrice), 0)
 
@@ -126,14 +167,19 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
                 ) : (
                   <input type="number" min="0" max={remaining} step="1" className="input input-sm"
                     style={{ textAlign: 'right' }}
-                    value={drawQty(l.units)}
+                    value={qtyDrafts[l.quotationItemId] ?? String(drawQty(l.units))}
                     disabled={l.checked}
                     onChange={e => {
-                      let v = parseFloat(e.target.value)
-                      if (isNaN(v) || v < 0) v = 0
-                      if (v > remaining) v = remaining
-                      setQty(l.quotationItemId, v)
-                    }} />
+                      const raw = e.target.value
+                      setQtyDrafts(d => ({ ...d, [l.quotationItemId]: raw }))
+                      const v = parseFloat(raw)
+                      if (!isNaN(v)) setQty(l.quotationItemId, Math.max(0, Math.min(remaining, v)))
+                    }}
+                    onBlur={() => setQtyDrafts(d => {
+                      const next = { ...d }
+                      delete next[l.quotationItemId]
+                      return next
+                    })} />
                 )}
                 <span className="font-mono" style={{ fontWeight: 700, textAlign: 'right', color: l.checked ? 'var(--accent)' : undefined }}>{fmt(lineAmount)}</span>
               </div>
@@ -162,13 +208,18 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifySelf: 'end' }}>
                           <input type="number" min={u.cumulativePct} max="100" step="1" className="input input-sm"
                             style={{ width: 60, textAlign: 'right' }}
-                            value={u.target}
+                            value={pctDrafts[`${l.quotationItemId}:${u.unitIndex}`] ?? String(u.target)}
                             onChange={e => {
-                              let v = parseFloat(e.target.value)
-                              if (isNaN(v) || v < u.cumulativePct) v = u.cumulativePct
-                              if (v > 100) v = 100
-                              setUnitTarget(l.quotationItemId, u.unitIndex, v)
-                            }} />
+                              const raw = e.target.value
+                              setPctDrafts(d => ({ ...d, [`${l.quotationItemId}:${u.unitIndex}`]: raw }))
+                              const v = parseFloat(raw)
+                              if (!isNaN(v)) setUnitTarget(l.quotationItemId, u.unitIndex, Math.max(u.cumulativePct, Math.min(100, v)))
+                            }}
+                            onBlur={() => setPctDrafts(d => {
+                              const next = { ...d }
+                              delete next[`${l.quotationItemId}:${u.unitIndex}`]
+                              return next
+                            })} />
                           <span style={{ fontSize: 11, color: 'var(--text3)' }}>%</span>
                         </div>
                         <span className="font-mono" style={{ textAlign: 'right', color: amount === 0 ? 'var(--text3)' : 'var(--accent)' }}>{amount === 0 ? '—' : fmt(amount)}</span>
@@ -198,7 +249,7 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
 
   useEffect(() => {
     if (unitsByQuotationItem && !lines) {
-      setLines(buildLineState(items, unitsByQuotationItem))
+      setLines(buildLineState(items, unitsByQuotationItem, discountMultiplier(quotation)))
     }
   }, [unitsByQuotationItem]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -210,12 +261,20 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
   }
 
   const billedLines = lines.filter(l => drawQty(l.units) > 1e-9)
-  const invoiceItemsForTotals = billedLines.map(l => ({ line_total: drawAmount(l.units, l.unitPrice) }))
+  // round2 here for the same reason handleSave rounds before persisting
+  // (Fix 7): the header subtotal must equal the SUM of the line_totals
+  // actually stored, or a printed invoice's line items visibly fail to add
+  // up to its own total by a satang.
+  const invoiceItemsForTotals = billedLines.map(l => ({ line_total: round2(drawAmount(l.units, l.unitPrice)) }))
   const totals = calcInvoiceTotals(invoiceItemsForTotals, { hasVat: quotation.has_vat, priceIncludesVat: quotation.price_includes_vat })
 
   const handleSave = async () => {
     if (!billedLines.length) { alert('กรุณาเลือกอย่างน้อย 1 รายการ'); return }
     setSaving(true)
+    // Captured so the catch below can name the orphan: the invoices row is
+    // written before its items/draws, so a mid-loop failure leaves a real,
+    // partially-populated invoice the user has to void before retrying.
+    let createdInvoiceNumber = null
     try {
       const { data: invoice, error: invError } = await supabase.from('invoices').insert({
         quotation_id: quotation.id, site_id: quotation.site_id, date: format(new Date(), 'yyyy-MM-dd'),
@@ -223,11 +282,16 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
         subtotal: totals.subtotal, vat: totals.vat, total: totals.total,
       }).select().single()
       if (invError) throw invError
+      createdInvoiceNumber = invoice.invoice_number
       await auditLog('invoices', invoice.id, 'INSERT', null, { quotation_id: quotation.id, total: totals.total })
 
       for (const [sortOrder, l] of billedLines.entries()) {
         const lineDrawQty = drawQty(l.units)
-        const lineAmount = drawAmount(l.units, l.unitPrice)
+        // Waterfall-derived floats, unlike a user-typed decimal, are not
+        // guaranteed to land on a clean 2-decimal value -- round before
+        // persisting so the stored line/draw amounts can't drift from the
+        // invoice's own already-rounded subtotal.
+        const lineAmount = round2(drawAmount(l.units, l.unitPrice))
         const { data: invoiceItem, error: itemError } = await supabase.from('invoice_items').insert({
           invoice_id: invoice.id, quotation_item_id: l.quotationItemId,
           description: l.description, unit: l.unit, unit_price: l.unitPrice,
@@ -237,7 +301,7 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
 
         for (const u of l.units) {
           if (u.target === u.cumulativePct) continue
-          const drawAmt = (u.target - u.cumulativePct) / 100 * u.unitQty * l.unitPrice
+          const drawAmt = round2((u.target - u.cumulativePct) / 100 * u.unitQty * l.unitPrice)
           const { error: drawError } = await supabase.from('invoice_item_draws').insert({
             invoice_item_id: invoiceItem.id, quotation_item_unit_id: u.id,
             prior_pct: u.cumulativePct, target_pct: u.target, amount: drawAmt,
@@ -258,7 +322,10 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
 
       onSaved()
     } catch (e) {
-      alert('บันทึกไม่สำเร็จ: ' + e.message)
+      const recovery = createdInvoiceNumber
+        ? ` ระบบได้สร้างใบแจ้งหนี้เลขที่ ${createdInvoiceNumber} ไปบางส่วนแล้ว กรุณายกเลิก (ยกเลิก) ใบแจ้งหนี้นี้แล้วลองสร้างใหม่อีกครั้ง`
+        : ''
+      alert('บันทึกไม่สำเร็จ: ' + e.message + recovery)
     } finally {
       setSaving(false)
     }
@@ -430,6 +497,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   const [payingId, setPayingId] = useState(null)
   const [voidingId, setVoidingId] = useState(null)
   const [voidRow, setVoidRow] = useState(null)
+  const [payRow, setPayRow] = useState(null)
   const { tenant, hasModuleAccess } = useTenant()
 
   const [docRow, setDocRow] = useState(null)
@@ -465,52 +533,73 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
         await auditLog('receipts', receipt.id, 'INSERT', null, { invoice_id: invoice.id, amount: invoice.total })
       }
 
-      const { data: site, error: siteError } = await supabase
-        .from('sites')
-        .select('default_tax_withheld_pct, default_retention_pct, default_deposit_pct')
-        .eq('id', invoice.site_id)
-        .single()
-      if (siteError) throw siteError
+      // incomes.invoice_no has no UNIQUE constraint at the DB level -- guard
+      // duplication in app code the same way the receipt reuse above does.
+      // Deliberately NOT .maybeSingle(): that errors out on a non-unique
+      // column the moment more than one row already matches, and a
+      // swallowed error here would insert yet another duplicate -- the very
+      // thing this block exists to prevent. limit(1) reuses the oldest
+      // match whether there are 0, 1 or many, and a genuine query failure
+      // throws instead of falling through to an insert.
+      let income
+      const { data: existingIncomes, error: existingIncomeError } = await supabase
+        .from('incomes').select('*').eq('invoice_no', invoice.invoice_number)
+        .order('created_at', { ascending: true }).limit(1)
+      if (existingIncomeError) throw existingIncomeError
+      if (existingIncomes && existingIncomes.length) {
+        income = existingIncomes[0]
+      } else {
+        const { data: site, error: siteError } = await supabase
+          .from('sites')
+          .select('default_tax_withheld_pct, default_retention_pct, default_deposit_pct')
+          .eq('id', invoice.site_id)
+          .single()
+        if (siteError) throw siteError
 
-      const noVat = invoice.subtotal
-      const taxAmt = noVat * (site.default_tax_withheld_pct || 0) / 100
-      const retentionAmt = noVat * (site.default_retention_pct || 0) / 100
+        const noVat = invoice.subtotal
+        const taxAmt = noVat * (site.default_tax_withheld_pct || 0) / 100
+        const retentionAmt = noVat * (site.default_retention_pct || 0) / 100
 
-      let depositAmt = 0
-      if (hasModuleAccess('client_deposits')) {
-        const { data: depositBalance } = await supabase
-          .from('site_deposit_summary')
-          .select('remaining_balance')
-          .eq('site_id', invoice.site_id)
-          .maybeSingle()
-        if (depositBalance) {
-          depositAmt = calcDepositDeduction(noVat, site.default_deposit_pct || 0, depositBalance.remaining_balance)
+        let depositAmt = 0
+        if (hasModuleAccess('client_deposits')) {
+          const { data: depositBalance } = await supabase
+            .from('site_deposit_summary')
+            .select('remaining_balance')
+            .eq('site_id', invoice.site_id)
+            .maybeSingle()
+          if (depositBalance) {
+            depositAmt = calcDepositDeduction(noVat, site.default_deposit_pct || 0, depositBalance.remaining_balance)
+          }
         }
-      }
 
-      const receivedAmount = round2(noVat + invoice.vat - taxAmt - retentionAmt - depositAmt)
+        const receivedAmount = round2(noVat + invoice.vat - taxAmt - retentionAmt - depositAmt)
 
-      const incomePayload = {
-        invoice_no: invoice.invoice_number,
-        date: format(new Date(), 'yyyy-MM-dd'),
-        site_id: invoice.site_id,
-        client_name: invoice.quotations?.clients?.name || null,
-        description: `${invoice.invoice_number} — ${invoice.quotations?.quotation_number || ''}`,
-        amount_no_vat: noVat,
-        vat: invoice.vat,
-        tax_withheld: round2(taxAmt),
-        retention: round2(retentionAmt),
-        income_type: 'ปกติ',
-        deposit_deduction: round2(depositAmt),
-        received_amount: receivedAmount,
+        const incomePayload = {
+          invoice_no: invoice.invoice_number,
+          date: format(new Date(), 'yyyy-MM-dd'),
+          site_id: invoice.site_id,
+          client_name: invoice.quotations?.clients?.name || null,
+          description: `${invoice.invoice_number} — ${invoice.quotations?.quotation_number || ''}`,
+          amount_no_vat: noVat,
+          vat: invoice.vat,
+          tax_withheld: round2(taxAmt),
+          retention: round2(retentionAmt),
+          income_type: 'ปกติ',
+          deposit_deduction: round2(depositAmt),
+          received_amount: receivedAmount,
+        }
+        const { data: newIncome, error: incomeError } = await supabase.from('incomes').insert(incomePayload).select().single()
+        if (incomeError) throw incomeError
+        income = newIncome
+        await auditLog('incomes', income.id, 'INSERT', null, incomePayload)
       }
-      const { data: income, error: incomeError } = await supabase.from('incomes').insert(incomePayload).select().single()
-      if (incomeError) throw incomeError
-      await auditLog('incomes', income.id, 'INSERT', null, incomePayload)
 
       const invUpdate = { status: 'paid', paid_date: format(new Date(), 'yyyy-MM-dd'), income_id: income.id }
-      const { error: invError } = await supabase.from('invoices').update(invUpdate).eq('id', invoice.id).eq('status', 'unpaid')
+      const { data: updateResult, error: invError } = await supabase.from('invoices').update(invUpdate).eq('id', invoice.id).eq('status', 'unpaid').select('id')
       if (invError) throw invError
+      if (!updateResult || updateResult.length === 0) {
+        throw new Error('ใบแจ้งหนี้นี้ถูกทำเครื่องหมายว่าชำระแล้วโดยผู้ใช้อื่นไปแล้ว กรุณารีเฟรชหน้าจอ')
+      }
       await auditLog('invoices', invoice.id, 'UPDATE', null, invUpdate)
 
       refetch(); refetchReceipts(); showToast('ทำเครื่องหมายว่าชำระแล้ว')
@@ -552,8 +641,11 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
         }
       }
 
-      const { error: voidError } = await supabase.from('invoices').update({ status: 'void' }).eq('id', invoice.id).eq('status', 'unpaid')
+      const { data: voidResult, error: voidError } = await supabase.from('invoices').update({ status: 'void' }).eq('id', invoice.id).eq('status', 'unpaid').select('id')
       if (voidError) throw voidError
+      if (!voidResult || voidResult.length === 0) {
+        throw new Error('ใบแจ้งหนี้นี้ถูกเปลี่ยนสถานะโดยผู้ใช้อื่นไปแล้ว กรุณารีเฟรชหน้าจอ')
+      }
       await auditLog('invoices', invoice.id, 'UPDATE', null, { status: 'void' })
 
       setVoidRow(null); refetch(); showToast('ยกเลิกใบแจ้งหนี้แล้ว')
@@ -606,7 +698,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {canEdit && inv.status === 'unpaid' && (
                       <>
-                        <button className="btn btn-sm btn-primary" disabled={payingId === inv.id} onClick={() => handleMarkPaid(inv)}>
+                        <button className="btn btn-sm btn-primary" disabled={payingId === inv.id} onClick={() => setPayRow(inv)}>
                           {payingId === inv.id ? '⏳...' : '✅ ชำระแล้ว'}
                         </button>
                         <button className="btn btn-sm btn-danger" disabled={voidingId === inv.id} onClick={() => setVoidRow(inv)}>
@@ -658,6 +750,15 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
           onConfirm={() => handleVoid(voidRow)}
           onCancel={() => setVoidRow(null)}
           danger
+        />
+      )}
+
+      {payRow && (
+        <ConfirmDialog
+          title="ทำเครื่องหมายว่าชำระแล้ว"
+          message={`ยืนยันว่าได้รับชำระเงินตามใบแจ้งหนี้ ${payRow.invoice_number} แล้ว? ระบบจะออกใบเสร็จรับเงิน/ใบกำกับภาษีให้อัตโนมัติ`}
+          onConfirm={() => { handleMarkPaid(payRow); setPayRow(null) }}
+          onCancel={() => setPayRow(null)}
         />
       )}
 
