@@ -187,6 +187,9 @@ tbody tr:last-child td { border-bottom: none; }
 .badge-accepted  { background: rgba(0,212,170,0.15); color: var(--green); }
 .badge-rejected  { background: rgba(255,107,107,0.15); color: var(--red); }
 .badge-expired   { background: rgba(94,97,128,0.25); color: var(--text3); }
+.badge-unpaid    { background: rgba(255,209,102,0.15); color: var(--yellow); }
+.badge-void      { background: rgba(94,97,128,0.25); color: var(--text3); }
+/* .badge-paid already defined above (line 181) with identical rgba/color values -- reused as-is for invoice status, not redefined here */
 
 /* Progress bars */
 .progress { background: var(--bg4); border-radius: 4px; height: 6px; overflow: hidden; }
