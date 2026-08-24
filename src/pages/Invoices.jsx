@@ -45,7 +45,7 @@ function buildLineState(quotationItems, unitsByQuotationItem, priceMultiplier) {
     }))
     return {
       quotationItemId: qi.id, description: qi.description, unit: qi.unit,
-      unitPrice: qi.unit_price * priceMultiplier, totalQty: qi.quantity, checked: true, units,
+      unitPrice: round2(qi.unit_price * priceMultiplier), totalQty: qi.quantity, checked: true, units,
     }
   })
 }
@@ -323,7 +323,7 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
       onSaved()
     } catch (e) {
       const recovery = createdInvoiceNumber
-        ? ` ระบบได้สร้างใบแจ้งหนี้เลขที่ ${createdInvoiceNumber} ไปบางส่วนแล้ว กรุณายกเลิก (ยกเลิก) ใบแจ้งหนี้นี้แล้วลองสร้างใหม่อีกครั้ง`
+        ? ` ระบบได้สร้างใบแจ้งหนี้เลขที่ ${createdInvoiceNumber} ไปบางส่วนแล้ว กรุณากดปุ่ม "✕ ยกเลิก" ใบแจ้งหนี้นี้แล้วลองสร้างใหม่อีกครั้ง`
         : ''
       alert('บันทึกไม่สำเร็จ: ' + e.message + recovery)
     } finally {
