@@ -260,175 +260,193 @@ function AcceptQuotationModal({ quotation, totals, clients, sites, hasModuleAcce
 // Shared "professional" document look (design option A) — logo/company
 // block left, bordered doc-info box + ต้นฉบับ tag right, light-purple
 // table header, boxed notes/terms, purple-accented (unfilled) grand total.
-// Intended to become the one letterhead pattern every printable document
-// in the app uses (Quotation now; PurchaseOrders' own PODocumentModal is
-// a separate file and not migrated to this shape yet — a follow-up, not
-// part of this change).
-function QuotationDocumentModal({ qt, tenant, onClose }) {
-  const items = qt.quotation_items || []
-  const totals = calcQuotationTotals(items, { hasVat: qt.has_vat, priceIncludesVat: qt.price_includes_vat, discountAmount: qt.discount_amount, discountPct: qt.discount_pct })
+// Extracted so a past revision's snapshot can render through the exact
+// same markup as the live document, not a separate summary — the only
+// difference is which data feeds it and the doc-info tag.
+function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, clientName, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes }) {
+  const totals = calcQuotationTotals(items, { hasVat, priceIncludesVat, discountAmount, discountPct })
 
+  return (
+    <div id={elementId} style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          {tenant?.logo_url
+            ? <img src={tenant.logo_url} alt="" style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }} crossOrigin="anonymous" />
+            : <div style={{ width: 40, height: 40, borderRadius: 8, background: '#6c63ff', flexShrink: 0 }} />}
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 800 }}>{tenant?.company_name}</div>
+            <div style={{ fontSize: 11, color: '#6a6f85', lineHeight: 1.6, marginTop: 2 }}>
+              {tenant?.address}
+              {tenant?.address && <br />}
+              {tenant?.tax_id && `เลขผู้เสียภาษี ${tenant.tax_id}`}
+              {tenant?.tax_id && tenant?.phone && ' · '}
+              {tenant?.phone && `โทร ${tenant.phone}`}
+            </div>
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#6c63ff', border: '1px solid #6c63ff', borderRadius: 4, padding: '2px 8px', display: 'inline-block', marginBottom: 6 }}>{tag || 'ต้นฉบับ'}</div>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>ใบเสนอราคา</div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 20, border: '1px solid #e4e6ef', borderRadius: 8, padding: '14px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: 12 }}>
+        <div><span style={{ color: '#6a6f85' }}>เลขที่เอกสาร</span><br />{quotationNumber}</div>
+        <div><span style={{ color: '#6a6f85' }}>วันที่ออก</span><br />{date ? new Date(date).toLocaleDateString('th-TH') : '—'}</div>
+        <div><span style={{ color: '#6a6f85' }}>ใช้ได้ถึง</span><br />{validUntil ? new Date(validUntil).toLocaleDateString('th-TH') : '—'}</div>
+        <div><span style={{ color: '#6a6f85' }}>แก้ไขครั้งที่</span><br />{revision || 1}</div>
+      </div>
+
+      <div style={{ marginTop: 16, fontSize: 12.5, lineHeight: 1.8 }}>
+        <strong style={{ fontSize: 13 }}>ลูกค้า:</strong> {clientName}
+      </div>
+
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 18 }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: 'left', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>รายการ</th>
+            <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>จำนวน</th>
+            <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>ราคา/หน่วย</th>
+            <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>รวม</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((it, i) => (
+            <tr key={it.id || i}>
+              <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.description}</td>
+              <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.quantity} {it.unit || ''}</td>
+              <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
+              <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.line_total)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+        <table style={{ width: 260, fontSize: 12.5 }}>
+          <tbody>
+            {totals.discount > 0 && (
+              <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>ส่วนลด</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>-{fmt(totals.discount)}</td></tr>
+            )}
+            <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมก่อน VAT</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(totals.subtotal)}</td></tr>
+            {hasVat && (
+              <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>VAT (7%)</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(totals.vat)}</td></tr>
+            )}
+            <tr>
+              <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: '#6c63ff', borderTop: '2px solid #6c63ff' }}>รวมทั้งสิ้น</td>
+              <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: '#6c63ff', borderTop: '2px solid #6c63ff' }}>{fmt(totals.total)} บาท</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {(paymentTerms || notes || tenant?.bank_name || tenant?.bank_account_no) && (
+        <div style={{ marginTop: 20, fontSize: 11.5, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
+          {paymentTerms && (
+            <>
+              <strong style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>เงื่อนไขการชำระเงิน</strong>
+              <div style={{ marginBottom: notes ? 10 : 0, whiteSpace: 'pre-line' }}>{paymentTerms}</div>
+            </>
+          )}
+          {notes && (
+            <>
+              <strong style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>หมายเหตุ</strong>
+              <div style={{ whiteSpace: 'pre-line' }}>{notes}</div>
+            </>
+          )}
+          {(tenant?.bank_name || tenant?.bank_account_no) && (
+            <div style={{ marginTop: 10 }}>
+              <strong>ชำระเงินไปที่:</strong> {tenant?.bank_name} {tenant?.bank_account_name ? `ชื่อบัญชี ${tenant.bank_account_name}` : ''} {tenant?.bank_account_no ? `เลขที่ ${tenant.bank_account_no}` : ''}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
+        <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้เสนอราคา</div>
+        <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้ยอมรับ (ลูกค้า)</div>
+      </div>
+    </div>
+  )
+}
+
+function QuotationDocumentModal({ qt, tenant, onClose }) {
+  const elementId = `qt-doc-${qt.id}`
   return (
     <Modal title={`ใบเสนอราคา ${qt.quotation_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body">
-        <div id={`qt-doc-${qt.id}`} style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-              {tenant?.logo_url
-                ? <img src={tenant.logo_url} alt="" style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }} crossOrigin="anonymous" />
-                : <div style={{ width: 40, height: 40, borderRadius: 8, background: '#6c63ff', flexShrink: 0 }} />}
-              <div>
-                <div style={{ fontSize: 17, fontWeight: 800 }}>{tenant?.company_name}</div>
-                <div style={{ fontSize: 11, color: '#6a6f85', lineHeight: 1.6, marginTop: 2 }}>
-                  {tenant?.address}
-                  {tenant?.address && <br />}
-                  {tenant?.tax_id && `เลขผู้เสียภาษี ${tenant.tax_id}`}
-                  {tenant?.tax_id && tenant?.phone && ' · '}
-                  {tenant?.phone && `โทร ${tenant.phone}`}
-                </div>
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#6c63ff', border: '1px solid #6c63ff', borderRadius: 4, padding: '2px 8px', display: 'inline-block', marginBottom: 6 }}>ต้นฉบับ</div>
-              <div style={{ fontSize: 22, fontWeight: 800 }}>ใบเสนอราคา</div>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 20, border: '1px solid #e4e6ef', borderRadius: 8, padding: '14px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: 12 }}>
-            <div><span style={{ color: '#6a6f85' }}>เลขที่เอกสาร</span><br />{qt.quotation_number}</div>
-            <div><span style={{ color: '#6a6f85' }}>วันที่ออก</span><br />{new Date(qt.date).toLocaleDateString('th-TH')}</div>
-            <div><span style={{ color: '#6a6f85' }}>ใช้ได้ถึง</span><br />{qt.valid_until ? new Date(qt.valid_until).toLocaleDateString('th-TH') : '—'}</div>
-            <div><span style={{ color: '#6a6f85' }}>แก้ไขครั้งที่</span><br />{qt.revision || 1}</div>
-          </div>
-
-          <div style={{ marginTop: 16, fontSize: 12.5, lineHeight: 1.8 }}>
-            <strong style={{ fontSize: 13 }}>ลูกค้า:</strong> {qt.clients?.name}
-          </div>
-
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 18 }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: 'left', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>รายการ</th>
-                <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>จำนวน</th>
-                <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>ราคา/หน่วย</th>
-                <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>รวม</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(it => (
-                <tr key={it.id}>
-                  <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.description}</td>
-                  <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.quantity} {it.unit || ''}</td>
-                  <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
-                  <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.line_total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
-            <table style={{ width: 260, fontSize: 12.5 }}>
-              <tbody>
-                {totals.discount > 0 && (
-                  <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>ส่วนลด</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>-{fmt(totals.discount)}</td></tr>
-                )}
-                <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมก่อน VAT</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(totals.subtotal)}</td></tr>
-                {qt.has_vat && (
-                  <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>VAT (7%)</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(totals.vat)}</td></tr>
-                )}
-                <tr>
-                  <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: '#6c63ff', borderTop: '2px solid #6c63ff' }}>รวมทั้งสิ้น</td>
-                  <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: '#6c63ff', borderTop: '2px solid #6c63ff' }}>{fmt(totals.total)} บาท</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          {(qt.payment_terms || qt.notes || tenant?.bank_name || tenant?.bank_account_no) && (
-            <div style={{ marginTop: 20, fontSize: 11.5, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
-              {qt.payment_terms && (
-                <>
-                  <strong style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>เงื่อนไขการชำระเงิน</strong>
-                  <div style={{ marginBottom: qt.notes ? 10 : 0, whiteSpace: 'pre-line' }}>{qt.payment_terms}</div>
-                </>
-              )}
-              {qt.notes && (
-                <>
-                  <strong style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>หมายเหตุ</strong>
-                  <div style={{ whiteSpace: 'pre-line' }}>{qt.notes}</div>
-                </>
-              )}
-              {(tenant?.bank_name || tenant?.bank_account_no) && (
-                <div style={{ marginTop: 10 }}>
-                  <strong>ชำระเงินไปที่:</strong> {tenant?.bank_name} {tenant?.bank_account_name ? `ชื่อบัญชี ${tenant.bank_account_name}` : ''} {tenant?.bank_account_no ? `เลขที่ ${tenant.bank_account_no}` : ''}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
-            <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้เสนอราคา</div>
-            <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้ยอมรับ (ลูกค้า)</div>
-          </div>
-        </div>
+        <QuotationPaper
+          elementId={elementId} tenant={tenant} quotationNumber={qt.quotation_number}
+          date={qt.date} validUntil={qt.valid_until} revision={qt.revision || 1}
+          clientName={qt.clients?.name} items={qt.quotation_items || []}
+          hasVat={qt.has_vat} priceIncludesVat={qt.price_includes_vat}
+          discountAmount={qt.discount_amount} discountPct={qt.discount_pct}
+          paymentTerms={qt.payment_terms} notes={qt.notes}
+        />
       </div>
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
-        <button className="btn btn-ghost" onClick={() => downloadJPG(`qt-doc-${qt.id}`, `${qt.quotation_number}.jpg`)}>🖼️ ดาวน์โหลด JPG</button>
-        <button className="btn btn-primary" onClick={() => downloadPDF(`qt-doc-${qt.id}`, `${qt.quotation_number}.pdf`)}>📄 ดาวน์โหลด PDF</button>
+        <button className="btn btn-ghost" onClick={() => downloadJPG(elementId, `${qt.quotation_number}.jpg`)}>🖼️ ดาวน์โหลด JPG</button>
+        <button className="btn btn-primary" onClick={() => downloadPDF(elementId, `${qt.quotation_number}.pdf`)}>📄 ดาวน์โหลด PDF</button>
       </div>
     </Modal>
   )
 }
 
-function QuotationHistoryModal({ quotation, onClose }) {
+// Shows a past revision as the real document (via QuotationPaper), not a
+// content list — a compact picker across the top switches which revision
+// is rendered, and it's downloadable the same way the live document is.
+function QuotationHistoryModal({ quotation, tenant, onClose }) {
   const { data: revisions } = useQuotationRevisions(quotation.id)
-  const [openId, setOpenId] = useState(null)
+  const [selectedId, setSelectedId] = useState(null)
+  const selected = (revisions || []).find(r => r.id === selectedId) || revisions?.[0]
+  const elementId = selected ? `qt-hist-doc-${selected.id}` : null
+  const s = selected?.snapshot
 
   return (
-    <Modal title={`ประวัติการแก้ไข ${quotation.quotation_number}`} onClose={onClose} maxWidth={640}>
-      <div className="modal-body" style={{ display: 'grid', gap: 10 }}>
+    <Modal title={`ประวัติการแก้ไข ${quotation.quotation_number}`} onClose={onClose} maxWidth={760}>
+      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
         <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-          ฉบับปัจจุบันคือแก้ไขครั้งที่ {quotation.revision || 1} — รายการด้านล่างคือฉบับก่อนหน้าที่เคยบันทึกไว้
+          ฉบับปัจจุบันคือแก้ไขครั้งที่ {quotation.revision || 1} — เลือกฉบับก่อนหน้าด้านล่างเพื่อดูเอกสารตอนนั้น
         </div>
         {!revisions?.length && (
           <div style={{ color: 'var(--text3)', fontSize: 13, padding: 16, textAlign: 'center' }}>ยังไม่มีประวัติ</div>
         )}
-        {(revisions || []).map(rev => {
-          const s = rev.snapshot
-          const totals = calcQuotationTotals(s.items, { hasVat: s.has_vat, priceIncludesVat: s.price_includes_vat, discountAmount: s.discount_amount, discountPct: s.discount_pct })
-          const open = openId === rev.id
-          return (
-            <div key={rev.id} className="card" style={{ padding: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setOpenId(open ? null : rev.id)}>
-                <div>
-                  <strong>แก้ไขครั้งที่ {rev.revision}</strong>
-                  <span style={{ color: 'var(--text3)', fontSize: 12, marginLeft: 8 }}>{fmtDate(rev.created_at)}</span>
-                </div>
-                <span style={{ color: 'var(--text3)', fontSize: 12 }}>{open ? '▲ ซ่อน' : '▼ ดูรายละเอียด'}</span>
-              </div>
-              {open && (
-                <div style={{ marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 10, fontSize: 12.5 }}>
-                  <div style={{ marginBottom: 6 }}><strong>ลูกค้า:</strong> {s.client_name || '—'}</div>
-                  <div style={{ display: 'grid', gap: 4, marginBottom: 8 }}>
-                    {(s.items || []).map((it, i) => (
-                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                        <span>{it.description} ({it.quantity} {it.unit || ''})</span>
-                        <span className="font-mono" style={{ whiteSpace: 'nowrap' }}>{fmt(it.line_total)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ textAlign: 'right', fontWeight: 700 }}>รวมทั้งสิ้น: {fmt(totals.total)} บาท</div>
-                  {s.payment_terms && <div style={{ marginTop: 8 }}><strong>เงื่อนไขการชำระเงิน:</strong> {s.payment_terms}</div>}
-                  {s.notes && <div style={{ marginTop: 4 }}><strong>หมายเหตุ:</strong> {s.notes}</div>}
-                </div>
-              )}
-            </div>
-          )
-        })}
+        {revisions?.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {revisions.map(rev => (
+              <button
+                key={rev.id} type="button"
+                className={`btn btn-sm ${rev.id === selected?.id ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setSelectedId(rev.id)}
+              >
+                แก้ไขครั้งที่ {rev.revision} · {fmtDate(rev.created_at)}
+              </button>
+            ))}
+          </div>
+        )}
+        {selected && (
+          <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+            <QuotationPaper
+              elementId={elementId} tenant={tenant} quotationNumber={quotation.quotation_number}
+              tag={`ฉบับแก้ไขครั้งที่ ${selected.revision} (ประวัติ)`}
+              date={s.date} validUntil={s.valid_until} revision={selected.revision}
+              clientName={s.client_name} items={s.items || []}
+              hasVat={s.has_vat} priceIncludesVat={s.price_includes_vat}
+              discountAmount={s.discount_amount} discountPct={s.discount_pct}
+              paymentTerms={s.payment_terms} notes={s.notes}
+            />
+          </div>
+        )}
       </div>
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
+        {selected && (
+          <>
+            <button className="btn btn-ghost" onClick={() => downloadJPG(elementId, `${quotation.quotation_number}-rev${selected.revision}.jpg`)}>🖼️ ดาวน์โหลด JPG</button>
+            <button className="btn btn-primary" onClick={() => downloadPDF(elementId, `${quotation.quotation_number}-rev${selected.revision}.pdf`)}>📄 ดาวน์โหลด PDF</button>
+          </>
+        )}
       </div>
     </Modal>
   )
@@ -581,7 +599,11 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
     if (!editRow) return null
     return {
       id: editRow.id, client_id: editRow.client_id,
-      date: editRow.date, valid_until: editRow.valid_until || '',
+      // Defaults to today, not the original/last-saved date — each saved
+      // edit is a new revision, so the document's issue date should read
+      // as the day *this* revision was produced. Still editable if a
+      // specific backdate is genuinely needed.
+      date: format(new Date(), 'yyyy-MM-dd'), valid_until: editRow.valid_until || '',
       has_vat: editRow.has_vat, price_includes_vat: editRow.price_includes_vat || false,
       discount_mode: editRow.discount_pct != null ? 'pct' : editRow.discount_amount != null ? 'amount' : 'none',
       discount_amount: editRow.discount_amount != null ? String(editRow.discount_amount) : '',
@@ -704,7 +726,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
 
       {docRow && <QuotationDocumentModal qt={docRow} tenant={tenant} onClose={() => setDocRow(null)} />}
 
-      {historyRow && <QuotationHistoryModal quotation={historyRow} onClose={() => setHistoryRow(null)} />}
+      {historyRow && <QuotationHistoryModal quotation={historyRow} tenant={tenant} onClose={() => setHistoryRow(null)} />}
     </div>
   )
 }
