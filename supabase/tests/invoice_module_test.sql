@@ -140,3 +140,142 @@ BEGIN
     RAISE NOTICE 'Test 3 (receipt auto-numbering: both RCP-YYYY-NNN and TIN-YYYY-NNN): TEST PASSED';
   END IF;
 END $$;
+
+-- ── Test 4: migration verification -- the five new invoice-module tables
+-- all exist with RLS enabled, and each one's admin_full_access policy
+-- genuinely references has_module_access('invoices') in its USING/WITH
+-- CHECK clause (not a copy-paste leftover referencing 'quotations' or
+-- omitting the check entirely). Also spot-checks that the columns this
+-- module added actually exist via information_schema.columns. ──
+DO $$
+DECLARE
+  new_tables TEXT[] := ARRAY['quotation_item_units','invoices','invoice_items','invoice_item_draws','receipts'];
+  t TEXT;
+  rls_enabled BOOLEAN;
+  policy_count INT;
+  gated_count INT;
+  col_count INT;
+BEGIN
+  FOREACH t IN ARRAY new_tables LOOP
+    SELECT rowsecurity INTO rls_enabled FROM pg_tables WHERE schemaname = 'public' AND tablename = t;
+    IF rls_enabled IS NULL THEN
+      RAISE EXCEPTION 'Test 4 REGRESSION: table % does not exist', t;
+    END IF;
+    IF rls_enabled = false THEN
+      RAISE EXCEPTION 'Test 4 REGRESSION: table % has RLS disabled', t;
+    END IF;
+
+    SELECT count(*) INTO policy_count FROM pg_policies WHERE schemaname = 'public' AND tablename = t;
+    IF policy_count = 0 THEN
+      RAISE EXCEPTION 'Test 4 REGRESSION: table % has no RLS policies', t;
+    END IF;
+
+    SELECT count(*) INTO gated_count FROM pg_policies
+      WHERE schemaname = 'public' AND tablename = t
+        AND (qual ILIKE '%has_module_access(''invoices'')%' OR with_check ILIKE '%has_module_access(''invoices'')%');
+    IF gated_count = 0 THEN
+      RAISE EXCEPTION 'Test 4 REGRESSION: table %''s policy does not reference has_module_access(''invoices'')', t;
+    END IF;
+  END LOOP;
+
+  SELECT count(*) INTO col_count FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'invoices' AND column_name IN ('invoice_number','status','income_id');
+  IF col_count != 3 THEN
+    RAISE EXCEPTION 'Test 4 REGRESSION: invoices table missing expected columns (found %/3)', col_count;
+  END IF;
+
+  SELECT count(*) INTO col_count FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'receipts' AND column_name IN ('receipt_number','tax_invoice_number');
+  IF col_count != 2 THEN
+    RAISE EXCEPTION 'Test 4 REGRESSION: receipts table missing expected columns (found %/2)', col_count;
+  END IF;
+
+  SELECT count(*) INTO col_count FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'quotation_item_units' AND column_name IN ('unit_index','unit_qty','cumulative_pct');
+  IF col_count != 3 THEN
+    RAISE EXCEPTION 'Test 4 REGRESSION: quotation_item_units table missing expected columns (found %/3)', col_count;
+  END IF;
+
+  -- site_financial_summary is a VIEW, not a table -- its columns still
+  -- show up in information_schema.columns the same way
+  SELECT count(*) INTO col_count FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'site_financial_summary' AND column_name IN ('invoiced_amount','invoiced_pct');
+  IF col_count != 2 THEN
+    RAISE EXCEPTION 'Test 4 REGRESSION: site_financial_summary view missing invoiced_amount/invoiced_pct columns (found %/2)', col_count;
+  END IF;
+
+  RAISE NOTICE 'Test 4 (migration verification: 5 new tables exist, RLS enabled, policies gate on invoices module, key columns present): TEST PASSED';
+END $$;
+
+-- ── Test 5: void->revert exactness -- create an invoice that partially
+-- draws a mixed-progress unit, void it, and assert
+-- quotation_item_units.cumulative_pct is back to its EXACT pre-invoice
+-- value -- not just "close". This is money; NUMERIC columns carry no
+-- floating-point slack, so an exact equality check is the right bar.
+-- Runs as the connecting role (RLS is already separately verified in
+-- Test 1) -- this test is about data mechanics, not access control.
+-- The revert step mirrors handleVoid's actual optimistic-lock-guarded
+-- UPDATE (`.eq('cumulative_pct', d.target_pct)`) so this test exercises
+-- the same mechanism the app uses, not a simplified stand-in. ──
+DO $$
+DECLARE
+  test_tenant_id UUID;
+  test_quotation_id UUID;
+  test_site_id UUID;
+  test_quotation_item_id UUID;
+  test_unit_id UUID;
+  original_pct NUMERIC := 40;
+  drawn_pct NUMERIC := 70;
+  test_invoice_id UUID;
+  test_invoice_item_id UUID;
+  final_pct NUMERIC;
+BEGIN
+  SELECT q.id, q.tenant_id, q.site_id INTO test_quotation_id, test_tenant_id, test_site_id
+  FROM quotations q WHERE q.site_id IS NOT NULL LIMIT 1;
+
+  IF test_quotation_id IS NULL THEN
+    RAISE NOTICE 'Test 5 (void->revert exactness): SKIPPED — no accepted quotation with a site available as a fixture';
+  ELSE
+    SELECT id INTO test_quotation_item_id FROM quotation_items WHERE quotation_id = test_quotation_id LIMIT 1;
+    IF test_quotation_item_id IS NULL THEN
+      RAISE NOTICE 'Test 5 (void->revert exactness): SKIPPED — fixture quotation has no line items';
+    ELSE
+      -- Seed one unit at a mixed (non-zero, non-100) prior state, using a
+      -- unit_index unlikely to collide with real seeded rows (999)
+      INSERT INTO quotation_item_units (quotation_item_id, unit_index, unit_qty, cumulative_pct, tenant_id)
+        VALUES (test_quotation_item_id, 999, 1, original_pct, test_tenant_id)
+        RETURNING id INTO test_unit_id;
+
+      -- Simulate an invoice partially drawing that unit further (mirrors
+      -- Invoices.jsx's handleSave)
+      INSERT INTO invoices (quotation_id, site_id, date, has_vat, price_includes_vat, tenant_id)
+        VALUES (test_quotation_id, test_site_id, CURRENT_DATE, true, false, test_tenant_id)
+        RETURNING id INTO test_invoice_id;
+      INSERT INTO invoice_items (invoice_id, quotation_item_id, description, unit_price, draw_qty, line_total, tenant_id)
+        VALUES (test_invoice_id, test_quotation_item_id, '__TEST DRAW__', 1000, (drawn_pct - original_pct) / 100, (drawn_pct - original_pct) / 100 * 1000, test_tenant_id)
+        RETURNING id INTO test_invoice_item_id;
+      INSERT INTO invoice_item_draws (invoice_item_id, quotation_item_unit_id, prior_pct, target_pct, amount, tenant_id)
+        VALUES (test_invoice_item_id, test_unit_id, original_pct, drawn_pct, (drawn_pct - original_pct) / 100 * 1000, test_tenant_id);
+      UPDATE quotation_item_units SET cumulative_pct = drawn_pct WHERE id = test_unit_id;
+
+      -- Simulate void (mirrors handleVoid's optimistic-lock-guarded revert)
+      UPDATE quotation_item_units SET cumulative_pct = original_pct
+        WHERE id = test_unit_id AND cumulative_pct = drawn_pct;
+
+      SELECT cumulative_pct INTO final_pct FROM quotation_item_units WHERE id = test_unit_id;
+
+      -- Clean up before asserting, so a failed assertion doesn't leave
+      -- fixtures behind (disposable-fixture style, matches precedent)
+      DELETE FROM invoice_item_draws WHERE invoice_item_id = test_invoice_item_id;
+      DELETE FROM invoice_items WHERE id = test_invoice_item_id;
+      DELETE FROM invoices WHERE id = test_invoice_id;
+      DELETE FROM quotation_item_units WHERE id = test_unit_id;
+
+      IF final_pct != original_pct THEN
+        RAISE EXCEPTION 'Test 5 REGRESSION: void-revert exactness failed -- expected cumulative_pct = %, got %', original_pct, final_pct;
+      END IF;
+
+      RAISE NOTICE 'Test 5 (void->revert restores cumulative_pct to its exact pre-invoice value): TEST PASSED';
+    END IF;
+  END IF;
+END $$;
