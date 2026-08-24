@@ -434,7 +434,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
 
   const [docRow, setDocRow] = useState(null)
   const [receiptRow, setReceiptRow] = useState(null)
-  const { data: receipts } = useReceipts((invoices || []).map(i => i.id))
+  const { data: receipts, refetch: refetchReceipts } = useReceipts((invoices || []).map(i => i.id))
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
@@ -513,7 +513,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
       if (invError) throw invError
       await auditLog('invoices', invoice.id, 'UPDATE', null, invUpdate)
 
-      refetch(); showToast('ทำเครื่องหมายว่าชำระแล้ว')
+      refetch(); refetchReceipts(); showToast('ทำเครื่องหมายว่าชำระแล้ว')
     } catch (e) {
       alert('เกิดข้อผิดพลาด (โปรดตรวจสอบและกระทบยอดด้วยตนเองหากมีการบันทึกไปแล้วบางส่วน): ' + e.message)
     } finally {
@@ -662,7 +662,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
       )}
 
       {docRow && <InvoiceDocumentModal invoice={docRow} tenant={tenant} onClose={() => setDocRow(null)} />}
-      {receiptRow && (
+      {receiptRow && (receipts || []).find(r => r.invoice_id === receiptRow.id) && (
         <ReceiptDocumentModal
           invoice={receiptRow}
           receipt={(receipts || []).find(r => r.invoice_id === receiptRow.id)}
