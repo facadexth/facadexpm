@@ -172,7 +172,7 @@ BEGIN
 
     SELECT count(*) INTO gated_count FROM pg_policies
       WHERE schemaname = 'public' AND tablename = t
-        AND (qual ILIKE '%has_module_access(''invoices'')%' OR with_check ILIKE '%has_module_access(''invoices'')%');
+        AND (qual ILIKE '%has_module_access(''invoices''%' OR with_check ILIKE '%has_module_access(''invoices''%');
     IF gated_count = 0 THEN
       RAISE EXCEPTION 'Test 4 REGRESSION: table %''s policy does not reference has_module_access(''invoices'')', t;
     END IF;
