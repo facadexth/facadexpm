@@ -62,3 +62,47 @@ BEGIN
     END IF;
   END IF;
 END $$;
+
+-- ── Test 2: invoice auto-numbering produces INV-<year>-NNN, sequential
+-- within the year, matching generate_quotation_number()'s behavior. ──
+DO $$
+DECLARE
+  test_tenant_id UUID;
+  test_quotation_id UUID;
+  test_site_id UUID;
+  first_number TEXT;
+  second_number TEXT;
+  first_id UUID;
+  second_id UUID;
+BEGIN
+  -- An active-trial tenant has full module access implicitly (matches
+  -- has_module_access()'s own logic and quotation_module_test.sql's Test 3
+  -- fixture-selection pattern) -- no tenant_modules join needed, and
+  -- tenant_modules has no 'enabled' column to join on in the first place.
+  SELECT q.id, q.tenant_id, q.site_id INTO test_quotation_id, test_tenant_id, test_site_id
+  FROM quotations q
+  JOIN tenants t ON t.id = q.tenant_id AND t.trial_ends_at > now()
+  WHERE q.site_id IS NOT NULL
+  LIMIT 1;
+
+  IF test_quotation_id IS NULL THEN
+    RAISE NOTICE 'Test 2 (invoice auto-numbering): SKIPPED — no accepted quotation with a site on an active-trial tenant';
+  ELSE
+    INSERT INTO invoices (quotation_id, site_id, date, has_vat, price_includes_vat, tenant_id)
+      VALUES (test_quotation_id, test_site_id, CURRENT_DATE, true, false, test_tenant_id)
+      RETURNING id, invoice_number INTO first_id, first_number;
+    INSERT INTO invoices (quotation_id, site_id, date, has_vat, price_includes_vat, tenant_id)
+      VALUES (test_quotation_id, test_site_id, CURRENT_DATE, true, false, test_tenant_id)
+      RETURNING id, invoice_number INTO second_id, second_number;
+
+    IF first_number !~ '^INV-\d{4}-\d{3}$' OR second_number !~ '^INV-\d{4}-\d{3}$' THEN
+      RAISE EXCEPTION 'invoice_number REGRESSION: expected INV-YYYY-NNN format, got % and %', first_number, second_number;
+    END IF;
+    IF SUBSTRING(second_number FROM 'INV-\d{4}-(\d+)$')::INT != SUBSTRING(first_number FROM 'INV-\d{4}-(\d+)$')::INT + 1 THEN
+      RAISE EXCEPTION 'invoice_number REGRESSION: expected sequential numbers, got % then %', first_number, second_number;
+    END IF;
+
+    DELETE FROM invoices WHERE id IN (first_id, second_id);
+    RAISE NOTICE 'Test 2 (invoice auto-numbering INV-YYYY-NNN, sequential): TEST PASSED';
+  END IF;
+END $$;
