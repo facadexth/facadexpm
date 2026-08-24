@@ -33,6 +33,7 @@ const Retention           = lazy(() => import('./pages/Retention.jsx'))
 const Deposits             = lazy(() => import('./pages/Deposits.jsx'))
 const Quotations   = lazy(() => import('./pages/Quotations.jsx'))
 const SalesReport  = lazy(() => import('./pages/SalesReport.jsx'))
+const Invoices     = lazy(() => import('./pages/Invoices.jsx'))
 const CatalogItems = lazy(() => import('./pages/CatalogItems.jsx'))
 
 const TABS = [
@@ -52,6 +53,7 @@ const TABS = [
     { id: 'income',        label: 'Overview',           minRole: 'ADMIN', module: null },
     { id: 'sales_report',  label: '📊 รายงานการขาย',    minRole: 'ADMIN', module: 'quotations' },
     { id: 'quotations',    label: '📋 ใบเสนอราคา',      minRole: 'ADMIN', module: 'quotations' },
+    { id: 'invoices', label: '🧾 ใบแจ้งหนี้', minRole: 'ADMIN', module: 'invoices' },
   ] },
   { id: 'labor_contractors', label: '🔧 ผู้รับเหมาค่าแรง',    minRole: 'ADMIN',  module: 'labor_subcontractors' },
   { label: '⚙️ ตั้งค่า', children: [
@@ -239,6 +241,7 @@ export default function App() {
       case 'labor_contractors': return <ProtectedPage minRole="ADMIN"><LaborContractors {...props} /></ProtectedPage>
       case 'sales_report':  return <ProtectedPage minRole="ADMIN"><SalesReport  {...props} /></ProtectedPage>
       case 'quotations':    return <ProtectedPage minRole="ADMIN"><Quotations   {...props} /></ProtectedPage>
+      case 'invoices':      return <ProtectedPage minRole="ADMIN"><Invoices     {...props} /></ProtectedPage>
       case 'catalog_items': return <ProtectedPage minRole="ADMIN"><CatalogItems {...props} /></ProtectedPage>
       case 'user_management': return <ProtectedPage minRole="OWNER"><UserManagement {...props} /></ProtectedPage>
       case 'settings':   return <ProtectedPage minRole="OWNER"><Settings   {...props} /></ProtectedPage>
