@@ -820,6 +820,29 @@ CREATE POLICY admin_full_access ON quotation_items FOR ALL TO authenticated
   USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('quotations'))
   WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('quotations'));
 
+-- Full snapshot history — every edit of an existing quotation writes its
+-- pre-edit state (header + items, as JSONB) here tagged with the revision
+-- it was at. The live quotations/quotation_items rows are always the
+-- current revision; only past ones live here. Added by
+-- supabase/migrations/2026-08-24-01-quotation-revision-history.sql.
+CREATE TABLE quotation_revisions (
+  id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  quotation_id  UUID NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,
+  revision      INTEGER NOT NULL,
+  snapshot      JSONB NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  tenant_id     UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+);
+
+CREATE INDEX idx_quotation_revisions_quotation_id ON quotation_revisions(quotation_id);
+CREATE INDEX idx_quotation_revisions_tenant_id ON quotation_revisions(tenant_id);
+
+ALTER TABLE quotation_revisions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_full_access ON quotation_revisions FOR ALL TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('quotations'))
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('quotations'));
+
 -- ----------------------------------------------------------------
 -- PURCHASE_ORDER_ATTACHMENTS — เอกสารแนบใบสั่งซื้อ (ใบเสนอราคา, รูปสินค้า)
 -- ----------------------------------------------------------------

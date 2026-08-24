@@ -585,6 +585,22 @@ export function useCatalogItems() {
   })
 }
 
+/** Past snapshots of a quotation, newest revision first. Empty until the
+ *  quotation has been edited at least once (revision 1 has no snapshot —
+ *  the live row itself IS revision 1 until an edit bumps it forward). */
+export function useQuotationRevisions(quotationId) {
+  return useQuery(async () => {
+    if (!quotationId) return []
+    const { data, error } = await supabase
+      .from('quotation_revisions')
+      .select('*')
+      .eq('quotation_id', quotationId)
+      .order('revision', { ascending: false })
+    if (error) throw error
+    return data
+  }, [quotationId])
+}
+
 // ── Audit Logs ────────────────────────────────────────────────
 export function useAuditLogs(tableName, limit = 50) {
   return useQuery(async () => {

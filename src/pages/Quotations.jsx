@@ -9,7 +9,7 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useQuotations, useCatalogItems, useClients, useSites } from '../hooks/useSupabase.js'
+import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -381,6 +381,59 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
   )
 }
 
+function QuotationHistoryModal({ quotation, onClose }) {
+  const { data: revisions } = useQuotationRevisions(quotation.id)
+  const [openId, setOpenId] = useState(null)
+
+  return (
+    <Modal title={`ประวัติการแก้ไข ${quotation.quotation_number}`} onClose={onClose} maxWidth={640}>
+      <div className="modal-body" style={{ display: 'grid', gap: 10 }}>
+        <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+          ฉบับปัจจุบันคือแก้ไขครั้งที่ {quotation.revision || 1} — รายการด้านล่างคือฉบับก่อนหน้าที่เคยบันทึกไว้
+        </div>
+        {!revisions?.length && (
+          <div style={{ color: 'var(--text3)', fontSize: 13, padding: 16, textAlign: 'center' }}>ยังไม่มีประวัติ</div>
+        )}
+        {(revisions || []).map(rev => {
+          const s = rev.snapshot
+          const totals = calcQuotationTotals(s.items, { hasVat: s.has_vat, priceIncludesVat: s.price_includes_vat, discountAmount: s.discount_amount, discountPct: s.discount_pct })
+          const open = openId === rev.id
+          return (
+            <div key={rev.id} className="card" style={{ padding: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setOpenId(open ? null : rev.id)}>
+                <div>
+                  <strong>แก้ไขครั้งที่ {rev.revision}</strong>
+                  <span style={{ color: 'var(--text3)', fontSize: 12, marginLeft: 8 }}>{fmtDate(rev.created_at)}</span>
+                </div>
+                <span style={{ color: 'var(--text3)', fontSize: 12 }}>{open ? '▲ ซ่อน' : '▼ ดูรายละเอียด'}</span>
+              </div>
+              {open && (
+                <div style={{ marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 10, fontSize: 12.5 }}>
+                  <div style={{ marginBottom: 6 }}><strong>ลูกค้า:</strong> {s.client_name || '—'}</div>
+                  <div style={{ display: 'grid', gap: 4, marginBottom: 8 }}>
+                    {(s.items || []).map((it, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <span>{it.description} ({it.quantity} {it.unit || ''})</span>
+                        <span className="font-mono" style={{ whiteSpace: 'nowrap' }}>{fmt(it.line_total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ textAlign: 'right', fontWeight: 700 }}>รวมทั้งสิ้น: {fmt(totals.total)} บาท</div>
+                  {s.payment_terms && <div style={{ marginTop: 8 }}><strong>เงื่อนไขการชำระเงิน:</strong> {s.payment_terms}</div>}
+                  {s.notes && <div style={{ marginTop: 4 }}><strong>หมายเหตุ:</strong> {s.notes}</div>}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
+      </div>
+    </Modal>
+  )
+}
+
 export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'quotations')
@@ -422,6 +475,24 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       }
       let quotationId = editRow?.id
       if (editRow) {
+        // Snapshot the pre-edit state (this revision's content) before
+        // overwriting it — editRow.quotation_items is what's still live
+        // at this point, so it's the accurate "before" picture.
+        const snapshot = {
+          client_id: editRow.client_id, client_name: editRow.clients?.name || null,
+          date: editRow.date, valid_until: editRow.valid_until,
+          has_vat: editRow.has_vat, price_includes_vat: editRow.price_includes_vat,
+          discount_amount: editRow.discount_amount, discount_pct: editRow.discount_pct,
+          payment_terms: editRow.payment_terms, notes: editRow.notes,
+          items: (editRow.quotation_items || []).map(it => ({
+            description: it.description, unit: it.unit, quantity: it.quantity, unit_price: it.unit_price, line_total: it.line_total,
+          })),
+        }
+        const { error: snapError } = await supabase.from('quotation_revisions').insert({
+          quotation_id: editRow.id, revision: editRow.revision || 1, snapshot,
+        })
+        if (snapError) throw snapError
+
         const { error } = await supabase.from('quotations').update({ ...qtPayload, revision: (editRow.revision || 1) + 1 }).eq('id', editRow.id)
         if (error) throw error
         const { error: delError } = await supabase.from('quotation_items').delete().eq('quotation_id', editRow.id)
@@ -465,6 +536,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   const [acceptRow, setAcceptRow] = useState(null)
   const [accepting, setAccepting] = useState(false)
   const [docRow, setDocRow] = useState(null)
+  const [historyRow, setHistoryRow] = useState(null)
   const { hasModuleAccess, tenant } = useTenant()
 
   const handleSetStatus = async (id, newStatus) => {
@@ -577,6 +649,9 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                     <td><span className={`badge badge-${qt.status}`}>{QT_STATUS_LABELS[qt.status] || qt.status}</span></td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(qt)}>📄</button>
+                      {(qt.revision || 1) > 1 && (
+                        <button className="btn btn-sm btn-ghost" title="ประวัติการแก้ไข" onClick={() => setHistoryRow(qt)}>🕓</button>
+                      )}
                       {canEdit && qt.status === 'draft' && (
                         <>
                           <button className="btn btn-sm btn-primary" onClick={() => handleSetStatus(qt.id, 'sent')}>📤 ส่ง</button>
@@ -628,6 +703,8 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       )}
 
       {docRow && <QuotationDocumentModal qt={docRow} tenant={tenant} onClose={() => setDocRow(null)} />}
+
+      {historyRow && <QuotationHistoryModal quotation={historyRow} onClose={() => setHistoryRow(null)} />}
     </div>
   )
 }
