@@ -308,7 +308,8 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
 
   const [payingId, setPayingId] = useState(null)
   const [voidingId, setVoidingId] = useState(null)
-  const { tenant, hasModuleAccess } = useTenant()
+  const [voidRow, setVoidRow] = useState(null)
+  const { hasModuleAccess } = useTenant()
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
@@ -319,13 +320,25 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   // has left, and only applied at all if the client_deposits module is on
   // (matches IncomeForm's `depositModuleOn` gate).
   const handleMarkPaid = async (invoice) => {
+    if (invoice.status !== 'unpaid' || payingId || voidingId) return
     setPayingId(invoice.id)
     try {
-      const { data: receipt, error: receiptError } = await supabase.from('receipts').insert({
-        invoice_id: invoice.id, date: format(new Date(), 'yyyy-MM-dd'), amount: invoice.total,
-      }).select().single()
-      if (receiptError) throw receiptError
-      await auditLog('receipts', receipt.id, 'INSERT', null, { invoice_id: invoice.id, amount: invoice.total })
+      // `receipts.invoice_id` is UNIQUE -- if an earlier attempt inserted the
+      // receipt but failed on a later step, reuse it on retry instead of
+      // blowing up on a unique-constraint violation (which would otherwise
+      // leave this invoice permanently stuck unable to reach paid).
+      let receipt
+      const { data: existingReceipt } = await supabase.from('receipts').select('*').eq('invoice_id', invoice.id).maybeSingle()
+      if (existingReceipt) {
+        receipt = existingReceipt
+      } else {
+        const { data: newReceipt, error: receiptError } = await supabase.from('receipts').insert({
+          invoice_id: invoice.id, date: format(new Date(), 'yyyy-MM-dd'), amount: invoice.total,
+        }).select().single()
+        if (receiptError) throw receiptError
+        receipt = newReceipt
+        await auditLog('receipts', receipt.id, 'INSERT', null, { invoice_id: invoice.id, amount: invoice.total })
+      }
 
       const { data: site, error: siteError } = await supabase
         .from('sites')
@@ -371,7 +384,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
       await auditLog('incomes', income.id, 'INSERT', null, incomePayload)
 
       const invUpdate = { status: 'paid', paid_date: format(new Date(), 'yyyy-MM-dd'), income_id: income.id }
-      const { error: invError } = await supabase.from('invoices').update(invUpdate).eq('id', invoice.id)
+      const { error: invError } = await supabase.from('invoices').update(invUpdate).eq('id', invoice.id).eq('status', 'unpaid')
       if (invError) throw invError
       await auditLog('invoices', invoice.id, 'UPDATE', null, invUpdate)
 
@@ -384,6 +397,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   }
 
   const handleVoid = async (invoice) => {
+    if (invoice.status !== 'unpaid' || payingId || voidingId) return
     setVoidingId(invoice.id)
     try {
       const { data: invoiceItems, error: itemsError } = await supabase
@@ -391,22 +405,33 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
       if (itemsError) throw itemsError
 
       const { data: draws, error: drawsError } = await supabase
-        .from('invoice_item_draws').select('quotation_item_unit_id, prior_pct')
+        .from('invoice_item_draws').select('quotation_item_unit_id, prior_pct, target_pct')
         .in('invoice_item_id', invoiceItems.map(it => it.id))
+        .order('prior_pct')
       if (drawsError) throw drawsError
 
+      // Same optimistic lock Task 7's create flow uses when writing forward:
+      // only revert a unit if it still sits at the pct THIS draw left it at.
+      // If another (still-unpaid) invoice has since drawn further progress
+      // on the same unit, reverting unconditionally would silently erase
+      // that other invoice's billed work.
       for (const d of draws) {
-        const { error } = await supabase.from('quotation_item_units')
+        const { data: revertResult, error } = await supabase.from('quotation_item_units')
           .update({ cumulative_pct: d.prior_pct, updated_at: new Date().toISOString() })
           .eq('id', d.quotation_item_unit_id)
+          .eq('cumulative_pct', d.target_pct)
+          .select('id')
         if (error) throw error
+        if (!revertResult || revertResult.length === 0) {
+          throw new Error('ไม่สามารถยกเลิกได้ เนื่องจากมีการเรียกเก็บเงินเพิ่มเติมกับรายการนี้ในใบแจ้งหนี้อื่นแล้ว')
+        }
       }
 
-      const { error: voidError } = await supabase.from('invoices').update({ status: 'void' }).eq('id', invoice.id)
+      const { error: voidError } = await supabase.from('invoices').update({ status: 'void' }).eq('id', invoice.id).eq('status', 'unpaid')
       if (voidError) throw voidError
       await auditLog('invoices', invoice.id, 'UPDATE', null, { status: 'void' })
 
-      refetch(); showToast('ยกเลิกใบแจ้งหนี้แล้ว')
+      setVoidRow(null); refetch(); showToast('ยกเลิกใบแจ้งหนี้แล้ว')
     } catch (e) {
       alert('ยกเลิกไม่สำเร็จ: ' + e.message)
     } finally {
@@ -459,7 +484,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
                         <button className="btn btn-sm btn-primary" disabled={payingId === inv.id} onClick={() => handleMarkPaid(inv)}>
                           {payingId === inv.id ? '⏳...' : '✅ ชำระแล้ว'}
                         </button>
-                        <button className="btn btn-sm btn-danger" disabled={voidingId === inv.id} onClick={() => handleVoid(inv)}>
+                        <button className="btn btn-sm btn-danger" disabled={voidingId === inv.id} onClick={() => setVoidRow(inv)}>
                           {voidingId === inv.id ? '⏳...' : '✕ ยกเลิก'}
                         </button>
                       </>
@@ -494,6 +519,16 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
           quotation={createFor}
           onClose={() => setCreateFor(null)}
           onSaved={() => { setCreateFor(null); refetch(); showToast('สร้างใบแจ้งหนี้สำเร็จ') }}
+        />
+      )}
+
+      {voidRow && (
+        <ConfirmDialog
+          title="ยกเลิกใบแจ้งหนี้"
+          message={`ยืนยันการยกเลิกใบแจ้งหนี้ ${voidRow.invoice_number}? การกระทำนี้ไม่สามารถย้อนกลับได้`}
+          onConfirm={() => handleVoid(voidRow)}
+          onCancel={() => setVoidRow(null)}
+          danger
         />
       )}
     </div>
