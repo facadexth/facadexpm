@@ -957,6 +957,81 @@ CREATE POLICY admin_full_access ON invoice_item_draws FOR ALL TO authenticated
   USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('invoices'))
   WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('invoices'));
 
+-- ----------------------------------------------------------------
+-- RECEIPTS — ใบเสร็จรับเงิน/ใบกำกับภาษี (combined document, dual numbering)
+-- ----------------------------------------------------------------
+-- One physical document (ใบเสร็จรับเงิน/ใบกำกับภาษี combined), printed with
+-- two independently-sequential numbers -- Thai tax practice expects the tax
+-- invoice series to be its own unbroken sequence even when printed on the
+-- same page as the receipt. invoice_id is UNIQUE because payment is
+-- single-shot -- at most one receipt can ever exist per invoice.
+CREATE TABLE receipts (
+  id                  UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  receipt_number      TEXT NOT NULL UNIQUE DEFAULT '',
+  tax_invoice_number  TEXT NOT NULL UNIQUE DEFAULT '',
+  invoice_id          UUID NOT NULL UNIQUE REFERENCES invoices(id) ON DELETE RESTRICT,
+  date                DATE NOT NULL,
+  amount              NUMERIC NOT NULL,
+  tenant_id           UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+);
+
+CREATE INDEX idx_receipts_invoice_id ON receipts(invoice_id);
+CREATE INDEX idx_receipts_tenant_id ON receipts(tenant_id);
+
+CREATE OR REPLACE FUNCTION generate_receipt_number()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  year_part TEXT := TO_CHAR(NOW(), 'YYYY');
+  seq_num   INT;
+BEGIN
+  SELECT COALESCE(MAX(SUBSTRING(receipt_number FROM 'RCP-\d{4}-(\d+)$')::INT), 0) + 1
+  INTO seq_num
+  FROM receipts
+  WHERE receipt_number LIKE 'RCP-' || year_part || '-%';
+  NEW.receipt_number := 'RCP-' || year_part || '-' || LPAD(seq_num::TEXT, 3, '0');
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_receipt_number
+  BEFORE INSERT ON receipts
+  FOR EACH ROW
+  WHEN (NEW.receipt_number IS NULL OR NEW.receipt_number = '')
+  EXECUTE FUNCTION generate_receipt_number();
+
+CREATE OR REPLACE FUNCTION generate_tax_invoice_number()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  year_part TEXT := TO_CHAR(NOW(), 'YYYY');
+  seq_num   INT;
+BEGIN
+  SELECT COALESCE(MAX(SUBSTRING(tax_invoice_number FROM 'TIN-\d{4}-(\d+)$')::INT), 0) + 1
+  INTO seq_num
+  FROM receipts
+  WHERE tax_invoice_number LIKE 'TIN-' || year_part || '-%';
+  NEW.tax_invoice_number := 'TIN-' || year_part || '-' || LPAD(seq_num::TEXT, 3, '0');
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_tax_invoice_number
+  BEFORE INSERT ON receipts
+  FOR EACH ROW
+  WHEN (NEW.tax_invoice_number IS NULL OR NEW.tax_invoice_number = '')
+  EXECUTE FUNCTION generate_tax_invoice_number();
+
+ALTER TABLE receipts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_full_access ON receipts FOR ALL TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('invoices'))
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('invoices'));
+
 -- Full snapshot history — every edit of an existing quotation writes its
 -- pre-edit state (header + items, as JSONB) here tagged with the revision
 -- it was at. The live quotations/quotation_items rows are always the
@@ -1885,7 +1960,12 @@ SELECT
   c.phone          AS client_phone,
   s.has_vat, s.contract_value_no_vat,
   s.default_vat_pct, s.default_tax_withheld_pct, s.default_retention_pct,
-  s.default_retention_period_days, s.default_deposit_pct
+  s.default_retention_period_days, s.default_deposit_pct,
+  COALESCE(inv.invoiced_amount, 0) AS invoiced_amount,
+  CASE WHEN s.contract_value > 0
+    THEN ROUND(COALESCE(inv.invoiced_amount, 0) / s.contract_value * 100, 1)
+    ELSE NULL
+  END AS invoiced_pct
 FROM sites s
 LEFT JOIN clients c ON s.client_id = c.id
 LEFT JOIN (
@@ -1899,7 +1979,16 @@ LEFT JOIN (
   SELECT site_id, SUM(received_amount) AS total_income
   FROM incomes
   GROUP BY site_id
-) inc ON inc.site_id = s.id;
+) inc ON inc.site_id = s.id
+LEFT JOIN (
+  SELECT q.site_id,
+         SUM(qiu.cumulative_pct / 100 * qiu.unit_qty * qi.unit_price) AS invoiced_amount
+  FROM quotation_item_units qiu
+  JOIN quotation_items qi ON qi.id = qiu.quotation_item_id
+  JOIN quotations q ON q.id = qi.quotation_id
+  WHERE q.site_id IS NOT NULL
+  GROUP BY q.site_id
+) inv ON inv.site_id = s.id;
 
 -- Client retention due-date tracking -- see
 -- 2026-08-19-02-site-retention-tracking.sql. Deliberately separate from

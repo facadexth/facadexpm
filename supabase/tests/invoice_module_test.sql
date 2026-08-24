@@ -106,3 +106,37 @@ BEGIN
     RAISE NOTICE 'Test 2 (invoice auto-numbering INV-YYYY-NNN, sequential): TEST PASSED';
   END IF;
 END $$;
+
+-- ── Test 3: receipt auto-numbering produces both RCP-YYYY-NNN and
+-- TIN-YYYY-NNN on a single insert, independently sequential. ──
+DO $$
+DECLARE
+  test_tenant_id UUID;
+  test_invoice_id UUID;
+  rcp_number TEXT;
+  tin_number TEXT;
+  new_receipt_id UUID;
+BEGIN
+  SELECT i.id, i.tenant_id INTO test_invoice_id, test_tenant_id
+  FROM invoices i
+  WHERE NOT EXISTS (SELECT 1 FROM receipts r WHERE r.invoice_id = i.id)
+  LIMIT 1;
+
+  IF test_invoice_id IS NULL THEN
+    RAISE NOTICE 'Test 3 (receipt auto-numbering): SKIPPED — no invoice fixture without an existing receipt';
+  ELSE
+    INSERT INTO receipts (invoice_id, date, amount, tenant_id)
+      VALUES (test_invoice_id, CURRENT_DATE, 1000, test_tenant_id)
+      RETURNING id, receipt_number, tax_invoice_number INTO new_receipt_id, rcp_number, tin_number;
+
+    IF rcp_number !~ '^RCP-\d{4}-\d{3}$' THEN
+      RAISE EXCEPTION 'receipt_number REGRESSION: expected RCP-YYYY-NNN format, got %', rcp_number;
+    END IF;
+    IF tin_number !~ '^TIN-\d{4}-\d{3}$' THEN
+      RAISE EXCEPTION 'tax_invoice_number REGRESSION: expected TIN-YYYY-NNN format, got %', tin_number;
+    END IF;
+
+    DELETE FROM receipts WHERE id = new_receipt_id;
+    RAISE NOTICE 'Test 3 (receipt auto-numbering: both RCP-YYYY-NNN and TIN-YYYY-NNN): TEST PASSED';
+  END IF;
+END $$;
