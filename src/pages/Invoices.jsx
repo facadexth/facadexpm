@@ -188,7 +188,7 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
 
 function CreateInvoiceModal({ quotation, onClose, onSaved }) {
   const items = quotation.quotation_items || []
-  const { data: unitsByQuotationItem, loading: unitsLoading } = useQuotationItemUnits(quotation.id, items)
+  const { data: unitsByQuotationItem, loading: unitsLoading, error: unitsError } = useQuotationItemUnits(quotation.id, items)
   const [lines, setLines] = useState(null)
   const [mode, setMode] = useState('easy')
   const [saving, setSaving] = useState(false)
@@ -199,6 +199,9 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
     }
   }, [unitsByQuotationItem]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  if (unitsError) {
+    return <Modal title={`สร้างใบแจ้งหนี้ — ${quotation.quotation_number}`} onClose={onClose} maxWidth={760}><div className="modal-body">เกิดข้อผิดพลาดในการโหลดข้อมูล: {unitsError}</div></Modal>
+  }
   if (unitsLoading || !lines) {
     return <Modal title={`สร้างใบแจ้งหนี้ — ${quotation.quotation_number}`} onClose={onClose} maxWidth={760}><div className="modal-body">⏳ กำลังโหลด...</div></Modal>
   }
@@ -238,10 +241,15 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
           })
           if (drawError) throw drawError
 
-          const { error: updateError } = await supabase.from('quotation_item_units')
+          const { data: updateResult, error: updateError } = await supabase.from('quotation_item_units')
             .update({ cumulative_pct: u.target, updated_at: new Date().toISOString() })
             .eq('id', u.id)
+            .eq('cumulative_pct', u.cumulativePct)
+            .select('id')
           if (updateError) throw updateError
+          if (!updateResult || updateResult.length === 0) {
+            throw new Error('รายการนี้ถูกแก้ไขโดยผู้ใช้อื่นระหว่างที่คุณกำลังสร้างใบแจ้งหนี้ กรุณาปิดหน้าต่างนี้แล้วลองใหม่')
+          }
         }
       }
 

@@ -43,7 +43,14 @@ describe('waterfall', () => {
     const units = [{ unitQty: 1, cumulativePct: 40 }, { unitQty: 1, cumulativePct: 0 }, { unitQty: 1, cumulativePct: 0 }]
     const result = waterfall(units, 2)
     // finishes unit 0 (needs 0.6 more), fully fills unit 1 (needs 1), leaves 0.4 for unit 2
-    expect(result.map(u => u.target)).toEqual([100, 100, 40])
+    // target is no longer round2()'d (see waterfall()'s comment / invoice-module task-7-report.md
+    // Fix 1) -- unit 2's target is now an exact float carrying IEEE754 accumulation error from the
+    // two prior subtractions (budget -= 0.6; budget -= 1), landing at 39.99999999999999 instead of
+    // an exact 40. That epsilon (~1e-14 relative) is irrelevant to money -- toBeCloseTo tolerates it
+    // instead of demanding bit-exact equality that floating point can't provide.
+    expect(result[0].target).toBe(100)
+    expect(result[1].target).toBe(100)
+    expect(result[2].target).toBeCloseTo(40, 9)
   })
   it('already-complete units are skipped and their target mirrors cumulativePct', () => {
     const units = [{ unitQty: 1, cumulativePct: 100 }, { unitQty: 1, cumulativePct: 0 }]

@@ -49,7 +49,7 @@ export function waterfall(units, qty) {
       budget -= capacity
       return { ...u, target: 100 }
     }
-    const target = round2(u.cumulativePct + (budget / u.unitQty) * 100)
+    const target = u.cumulativePct + (budget / u.unitQty) * 100
     budget = 0
     return { ...u, target }
   })
