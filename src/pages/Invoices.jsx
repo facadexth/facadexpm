@@ -14,6 +14,8 @@ import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useInvoices, useQuotationItemUnits, useQuotations, useSites } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { useTenant } from '../hooks/useTenant.js'
+import { calcDepositDeduction, round2 } from '../lib/depositCalc.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { auditLog } from '../lib/audit.js'
@@ -304,7 +306,113 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   const billableQuotations = useMemo(() =>
     (acceptedQuotations || []).filter(q => q.site_id), [acceptedQuotations])
 
+  const [payingId, setPayingId] = useState(null)
+  const [voidingId, setVoidingId] = useState(null)
+  const { tenant, hasModuleAccess } = useTenant()
+
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
+
+  // Computes retention/deposit_deduction/received_amount the exact same
+  // way IncomeForm does today (src/pages/Income.jsx): site default %s
+  // applied to the pre-VAT amount, deposit deduction additionally capped
+  // by calcDepositDeduction() against whatever deposit balance the site
+  // has left, and only applied at all if the client_deposits module is on
+  // (matches IncomeForm's `depositModuleOn` gate).
+  const handleMarkPaid = async (invoice) => {
+    setPayingId(invoice.id)
+    try {
+      const { data: receipt, error: receiptError } = await supabase.from('receipts').insert({
+        invoice_id: invoice.id, date: format(new Date(), 'yyyy-MM-dd'), amount: invoice.total,
+      }).select().single()
+      if (receiptError) throw receiptError
+      await auditLog('receipts', receipt.id, 'INSERT', null, { invoice_id: invoice.id, amount: invoice.total })
+
+      const { data: site, error: siteError } = await supabase
+        .from('sites')
+        .select('default_tax_withheld_pct, default_retention_pct, default_deposit_pct')
+        .eq('id', invoice.site_id)
+        .single()
+      if (siteError) throw siteError
+
+      const noVat = invoice.subtotal
+      const taxAmt = noVat * (site.default_tax_withheld_pct || 0) / 100
+      const retentionAmt = noVat * (site.default_retention_pct || 0) / 100
+
+      let depositAmt = 0
+      if (hasModuleAccess('client_deposits')) {
+        const { data: depositBalance } = await supabase
+          .from('site_deposit_summary')
+          .select('remaining_balance')
+          .eq('site_id', invoice.site_id)
+          .maybeSingle()
+        if (depositBalance) {
+          depositAmt = calcDepositDeduction(noVat, site.default_deposit_pct || 0, depositBalance.remaining_balance)
+        }
+      }
+
+      const receivedAmount = round2(noVat + invoice.vat - taxAmt - retentionAmt - depositAmt)
+
+      const incomePayload = {
+        invoice_no: invoice.invoice_number,
+        date: format(new Date(), 'yyyy-MM-dd'),
+        site_id: invoice.site_id,
+        client_name: invoice.quotations?.clients?.name || null,
+        description: `${invoice.invoice_number} — ${invoice.quotations?.quotation_number || ''}`,
+        amount_no_vat: noVat,
+        vat: invoice.vat,
+        tax_withheld: round2(taxAmt),
+        retention: round2(retentionAmt),
+        income_type: 'ปกติ',
+        deposit_deduction: round2(depositAmt),
+        received_amount: receivedAmount,
+      }
+      const { data: income, error: incomeError } = await supabase.from('incomes').insert(incomePayload).select().single()
+      if (incomeError) throw incomeError
+      await auditLog('incomes', income.id, 'INSERT', null, incomePayload)
+
+      const invUpdate = { status: 'paid', paid_date: format(new Date(), 'yyyy-MM-dd'), income_id: income.id }
+      const { error: invError } = await supabase.from('invoices').update(invUpdate).eq('id', invoice.id)
+      if (invError) throw invError
+      await auditLog('invoices', invoice.id, 'UPDATE', null, invUpdate)
+
+      refetch(); showToast('ทำเครื่องหมายว่าชำระแล้ว')
+    } catch (e) {
+      alert('เกิดข้อผิดพลาด (โปรดตรวจสอบและกระทบยอดด้วยตนเองหากมีการบันทึกไปแล้วบางส่วน): ' + e.message)
+    } finally {
+      setPayingId(null)
+    }
+  }
+
+  const handleVoid = async (invoice) => {
+    setVoidingId(invoice.id)
+    try {
+      const { data: invoiceItems, error: itemsError } = await supabase
+        .from('invoice_items').select('id').eq('invoice_id', invoice.id)
+      if (itemsError) throw itemsError
+
+      const { data: draws, error: drawsError } = await supabase
+        .from('invoice_item_draws').select('quotation_item_unit_id, prior_pct')
+        .in('invoice_item_id', invoiceItems.map(it => it.id))
+      if (drawsError) throw drawsError
+
+      for (const d of draws) {
+        const { error } = await supabase.from('quotation_item_units')
+          .update({ cumulative_pct: d.prior_pct, updated_at: new Date().toISOString() })
+          .eq('id', d.quotation_item_unit_id)
+        if (error) throw error
+      }
+
+      const { error: voidError } = await supabase.from('invoices').update({ status: 'void' }).eq('id', invoice.id)
+      if (voidError) throw voidError
+      await auditLog('invoices', invoice.id, 'UPDATE', null, { status: 'void' })
+
+      refetch(); showToast('ยกเลิกใบแจ้งหนี้แล้ว')
+    } catch (e) {
+      alert('ยกเลิกไม่สำเร็จ: ' + e.message)
+    } finally {
+      setVoidingId(null)
+    }
+  }
 
   return (
     <div>
@@ -345,7 +453,18 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
                   <td style={{ fontSize: 11, color: 'var(--text3)' }}>{(inv.invoice_items || []).length} รายการ</td>
                   <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(inv.total)}</td>
                   <td><span className={`badge badge-${inv.status}`}>{INV_STATUS_LABELS[inv.status] || inv.status}</span></td>
-                  <td></td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {canEdit && inv.status === 'unpaid' && (
+                      <>
+                        <button className="btn btn-sm btn-primary" disabled={payingId === inv.id} onClick={() => handleMarkPaid(inv)}>
+                          {payingId === inv.id ? '⏳...' : '✅ ชำระแล้ว'}
+                        </button>
+                        <button className="btn btn-sm btn-danger" disabled={voidingId === inv.id} onClick={() => handleVoid(inv)}>
+                          {voidingId === inv.id ? '⏳...' : '✕ ยกเลิก'}
+                        </button>
+                      </>
+                    )}
+                  </td>
                 </tr>
               ))}
               {!(invoices || []).length && (
