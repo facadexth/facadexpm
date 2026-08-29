@@ -4,8 +4,15 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
+import { useSeatStatus } from '../hooks/useSupabase.js'
 
 const ROLES = ['OWNER', 'ADMIN', 'WORKER']
+
+const friendlyError = (e) => {
+  if (e.message?.includes('row-level security policy'))
+    return 'บันทึกไม่สำเร็จ: อาจเกินจำนวน Admin ที่ package ปัจจุบันอนุญาต กรุณาติดต่อผู้ดูแลระบบเพื่ออัปเกรด package'
+  return 'Error: ' + e.message
+}
 
 export default function UserManagement() {
   // editItem === null → CREATE mode | editItem !== null → EDIT mode
@@ -18,6 +25,7 @@ export default function UserManagement() {
   const [search, setSearch] = useState('')
   const [form, setForm] = useState({ email: '', password: '', role: 'ADMIN' })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const { data: seat, refetch: refetchSeat } = useSeatStatus()
 
   const fetchUsers = async () => {
     setLoading(true)
@@ -123,12 +131,20 @@ export default function UserManagement() {
       setEditItem(null)
       setForm({ email: '', password: '', role: 'ADMIN' })
       fetchUsers()
+      refetchSeat()
     } catch (e) {
-      alert('Error: ' + e.message)
+      alert(friendlyError(e))
     } finally {
       setSaving(false)
     }
   }
+
+  // เตือนก่อนกดบันทึกถ้ากำลังจะเพิ่ม Admin/Owner คนใหม่ขณะเต็ม quota แล้ว
+  // (การบังคับจริงอยู่ที่ RLS -- นี่แค่กันเสียเวลากรอกฟอร์มแล้วโดน error)
+  const isPromotingToAdmin =
+    ['OWNER', 'ADMIN'].includes(form.role) && (!editItem || !['OWNER', 'ADMIN'].includes(editItem.role))
+  const adminsFull = seat?.admins?.max != null && seat.admins.used >= seat.admins.max
+  const showAdminLimitWarning = isPromotingToAdmin && adminsFull
 
   const handleDelete = async () => {
     if (!deleteId) return
@@ -139,6 +155,7 @@ export default function UserManagement() {
     if (!error) {
       setDeleteId(null)
       fetchUsers()
+      refetchSeat()
     } else {
       alert('Error: ' + error.message)
     }
@@ -296,6 +313,12 @@ export default function UserManagement() {
                   ))}
                 </select>
               </div>
+              {showAdminLimitWarning && (
+                <div className="alert alert-warning" style={{ fontSize: 12 }}>
+                  ⚠️ Package ปัจจุบันอนุญาต Admin/Owner สูงสุด {seat.admins.max} คน (ใช้ไปแล้ว {seat.admins.used})
+                  หากบันทึกอาจไม่สำเร็จ — ติดต่อผู้ดูแลระบบเพื่ออัปเกรด package
+                </div>
+              )}
               <div style={{ fontSize: 12, color: 'var(--text3)' }}>
                 <strong>Role:</strong>
                 <ul style={{ margin: '8px 0 0 0', paddingLeft: 16 }}>

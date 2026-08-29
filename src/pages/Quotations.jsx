@@ -626,7 +626,11 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       await recalcSiteContractValue(newSite.id)
 
       setAcceptRow(null); refetch(); showToast('สร้างไซท์งานและรับใบเสนอราคาแล้ว')
-    } catch (e) { alert('Error: ' + e.message) }
+    } catch (e) {
+      alert(e.message?.includes('row-level security policy')
+        ? 'สร้างไซท์งานไม่สำเร็จ: อาจเกินจำนวนไซท์งานที่ package ปัจจุบันอนุญาต กรุณาติดต่อผู้ดูแลระบบเพื่ออัปเกรด package'
+        : 'Error: ' + e.message)
+    }
     finally { setAccepting(false) }
   }
 

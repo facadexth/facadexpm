@@ -9,7 +9,7 @@ import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { supabase } from '../lib/supabase.js'
-import { useAllActiveWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs, fetchWorkerOTForRange, useCompanyHolidays, saveCompanyHoliday, deleteCompanyHoliday, useAppSetting, saveAppSetting, fetchCompanyHolidaysForRange, useLeaveQuotaUsage, useSickLeaveQuotaUsage } from '../hooks/useSupabase.js'
+import { useAllActiveWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs, fetchWorkerOTForRange, useCompanyHolidays, saveCompanyHoliday, deleteCompanyHoliday, useAppSetting, saveAppSetting, fetchCompanyHolidaysForRange, useLeaveQuotaUsage, useSickLeaveQuotaUsage, useSeatStatus } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -28,15 +28,22 @@ const EMPTY_WORKER = {
   show_in_assign: true,
 }
 
-function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerUsers = [] }) {
+function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerUsers = [], seat }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('worker-form', { ...EMPTY_WORKER, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const dailyRate = form.monthly_salary ? (parseFloat(form.monthly_salary) / 26).toFixed(2) : '—'
+  const workersFull = isAdd && seat?.workers?.max != null && seat.workers.used >= seat.workers.max
 
   return (
     <form onSubmit={e => { e.preventDefault(); clearFormDraft(); onSave(form) }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        {workersFull && (
+          <div className="alert alert-warning" style={{ fontSize: 12 }}>
+            ⚠️ Package ปัจจุบันอนุญาตพนักงานสูงสุด {seat.workers.max} คน (ใช้ไปแล้ว {seat.workers.used})
+            หากบันทึกอาจไม่สำเร็จ — ติดต่อผู้ดูแลระบบเพื่ออัปเกรด package
+          </div>
+        )}
         <div className="form-grid-2">
           <div>
             <label className="label">ชื่อ ★</label>
@@ -319,6 +326,7 @@ export default function HR() {
 
   // Workers state
   const { data: workers, refetch: refetchWorkers } = useAllActiveWorkers()
+  const { data: seat, refetch: refetchSeat } = useSeatStatus()
   const { data: leaveUsed } = useLeaveQuotaUsage(now.getFullYear())
   const { data: sickLeaveUsed } = useSickLeaveQuotaUsage(now.getFullYear())
   const [showWorkerForm, setShowWorkerForm] = useState(false)
@@ -387,8 +395,12 @@ export default function HR() {
         if (error) throw error
         await auditLog('workers', data.id, 'INSERT', null, payload)
       }
-      setShowWorkerForm(false); setEditWorker(null); refetchWorkers()
-    } catch (e) { alert('Error: ' + e.message) }
+      setShowWorkerForm(false); setEditWorker(null); refetchWorkers(); refetchSeat()
+    } catch (e) {
+      alert(e.message?.includes('row-level security policy')
+        ? 'บันทึกไม่สำเร็จ: อาจเกินจำนวนพนักงานที่ package ปัจจุบันอนุญาต กรุณาติดต่อผู้ดูแลระบบเพื่ออัปเกรด package'
+        : 'Error: ' + e.message)
+    }
     finally { setSavingWorker(false) }
   }
 
@@ -890,7 +902,7 @@ export default function HR() {
           onClose={() => { setShowWorkerForm(false); setEditWorker(null) }} maxWidth={560}>
           <WorkerForm initial={editWorker||EMPTY_WORKER} onSave={handleSaveWorker}
             onCancel={() => { setShowWorkerForm(false); setEditWorker(null) }} loading={savingWorker}
-            workerUsers={workerUsers} />
+            workerUsers={workerUsers} seat={seat} />
         </Modal>
       )}
 

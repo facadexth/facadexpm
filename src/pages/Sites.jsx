@@ -9,7 +9,7 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useSites, useLaborCost, useClients } from '../hooks/useSupabase.js'
+import { useSites, useLaborCost, useClients, useSeatStatus } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { useTenant } from '../hooks/useTenant.js'
@@ -79,10 +79,11 @@ export function siteFormToPayload(form) {
   }
 }
 
-export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading, hasModuleAccess = () => false, draftKey = 'sites-form' }) {
+export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading, hasModuleAccess = () => false, draftKey = 'sites-form', seat }) {
   const isAdd = !initial?.id
   const [form, setForm, clearDraft] = useDraftForm(draftKey, { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const sitesFull = isAdd && form.status === 'Ongoing' && seat?.sites?.max != null && seat.sites.used >= seat.sites.max
 
   const totalCostBreakdown = COST_TYPES.reduce((s, t) => s + (parseFloat(form[t.key]) || 0), 0)
 
@@ -133,6 +134,12 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
             <select className="select" value={form.status} onChange={e => set('status', e.target.value)}>
               {STATUS_OPTS.map(s => <option key={s}>{s}</option>)}
             </select>
+            {sitesFull && (
+              <div className="alert alert-warning" style={{ fontSize: 12, marginTop: 6 }}>
+                ⚠️ Package ปัจจุบันอนุญาตไซท์งาน "กำลังดำเนินการ" สูงสุด {seat.sites.max} ไซท์ (ใช้ไปแล้ว {seat.sites.used})
+                หากบันทึกอาจไม่สำเร็จ — ติดต่อผู้ดูแลระบบเพื่ออัปเกรด package
+              </div>
+            )}
           </div>
           <div>
             <label className="label">วันเริ่มต้น</label>
@@ -258,6 +265,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
   const { data: sites, refetch } = useSites()
   const { data: laborData } = useLaborCost()
   const { data: clients }   = useClients()
+  const { data: seat, refetch: refetchSeat } = useSeatStatus()
 
   const [showForm,    setShowForm]    = useState(false)
   const [editSite,    setEditSite]    = useState(null)     // site object to edit
@@ -311,9 +319,11 @@ export default function Sites({ navigateTo, openSiteOverview }) {
         const { error } = await supabase.from('sites').insert(payload)
         if (error) throw error
       }
-      setShowForm(false); setEditSite(null); refetch()
+      setShowForm(false); setEditSite(null); refetch(); refetchSeat()
     } catch (e) {
-      alert('บันทึกไม่สำเร็จ: ' + e.message)
+      alert(e.message?.includes('row-level security policy')
+        ? 'บันทึกไม่สำเร็จ: อาจเกินจำนวนไซท์งานที่ package ปัจจุบันอนุญาต กรุณาติดต่อผู้ดูแลระบบเพื่ออัปเกรด package'
+        : 'บันทึกไม่สำเร็จ: ' + e.message)
     } finally {
       setSaving(false)
     }
@@ -506,6 +516,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
             onCancel={() => { setShowForm(false); setEditSite(null) }}
             loading={saving}
             hasModuleAccess={hasModuleAccess}
+            seat={seat}
           />
           {editSite && tenant?.id && (
             <div className="modal-body" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>

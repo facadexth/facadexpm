@@ -830,3 +830,19 @@ export function useTenantStatusLog(tenantId) {
     return data
   }, [tenantId])
 }
+
+/**
+ * seat/site usage vs package limit ของ tenant ตัวเอง -- ใช้เตือนก่อนกดบันทึก
+ * ใน UserManagement/HR/Sites (บังคับจริงอยู่ที่ RLS, นี่แค่ UI warning)
+ * คืนค่าเป็น { admins: {used, max}, workers: {used, max}, sites: {used, max} }
+ * max === null คือไม่จำกัด
+ */
+export function useSeatStatus() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.rpc('tenant_seat_status')
+    if (error) throw error
+    const out = {}
+    for (const row of data || []) out[row.kind] = { used: row.used, max: row.max_allowed }
+    return out
+  }, [])
+}

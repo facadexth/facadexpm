@@ -1445,6 +1445,146 @@ CREATE POLICY platform_admin_full_access ON package_modules FOR ALL TO authentic
   USING (EXISTS (SELECT 1 FROM platform_admins WHERE user_email = auth.email()))
   WITH CHECK (EXISTS (SELECT 1 FROM platform_admins WHERE user_email = auth.email()));
 
+-- Seat/site limits per package tier (2026-08-29-14-package-seat-limits.sql).
+-- Scoped to totals only (Admins/Workers/Sites), NOT monthly document-count
+-- limits (e.g. "10 ใบเสนอราคา/เดือน") -- a rolling time-window count,
+-- meaningfully harder, left for later.
+--
+-- "Admin" = user_roles rows with role IN ('OWNER','ADMIN'). "Worker" = the
+-- `workers` HR/payroll table -- a completely separate concept from a
+-- WORKER-role login account (uncounted here). "Site" = sites with
+-- status='Ongoing' only -- completed/cancelled projects don't count
+-- against the limit forever.
+ALTER TABLE packages ADD COLUMN max_admins  INT; -- NULL = unlimited
+ALTER TABLE packages ADD COLUMN max_workers INT;
+ALTER TABLE packages ADD COLUMN max_sites   INT;
+
+UPDATE packages SET max_admins = 1,  max_workers = 5,    max_sites = 1  WHERE name = 'Free';
+UPDATE packages SET max_admins = 3,  max_workers = 20,   max_sites = 3  WHERE name = 'Solo';
+UPDATE packages SET max_admins = 10, max_workers = NULL, max_sites = 10 WHERE name = 'Pro Team';
+UPDATE packages SET max_admins = 25, max_workers = NULL, max_sites = NULL WHERE name = 'Business';
+UPDATE packages SET max_admins = NULL, max_workers = NULL, max_sites = NULL WHERE name = 'Enterprise';
+
+-- A tenant with no package assigned (package_id IS NULL, e.g. still on
+-- trial before ever picking one) gets no limit -- the LEFT JOIN makes
+-- v_limit NULL for them, same as an explicitly-unlimited tier.
+CREATE OR REPLACE FUNCTION tenant_under_seat_limit(p_kind TEXT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+DECLARE
+  v_tenant_id UUID := current_tenant_id();
+  v_limit NUMERIC;
+  v_count NUMERIC;
+BEGIN
+  SELECT CASE p_kind
+    WHEN 'admins'  THEN p.max_admins
+    WHEN 'workers' THEN p.max_workers
+    WHEN 'sites'   THEN p.max_sites
+  END INTO v_limit
+  FROM tenants t
+  LEFT JOIN packages p ON p.id = t.package_id
+  WHERE t.id = v_tenant_id;
+
+  IF v_limit IS NULL THEN
+    RETURN true;
+  END IF;
+
+  CASE p_kind
+    WHEN 'admins' THEN
+      SELECT count(*) INTO v_count FROM user_roles
+      WHERE tenant_id = v_tenant_id AND role IN ('OWNER','ADMIN');
+    WHEN 'workers' THEN
+      SELECT count(*) INTO v_count FROM workers WHERE tenant_id = v_tenant_id;
+    WHEN 'sites' THEN
+      SELECT count(*) INTO v_count FROM sites
+      WHERE tenant_id = v_tenant_id AND status = 'Ongoing';
+  END CASE;
+
+  RETURN v_count < v_limit;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION tenant_under_seat_limit(TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION tenant_under_seat_limit(TEXT) TO authenticated;
+
+-- Read-only seat usage/limits for the caller's own tenant, callable by any
+-- authenticated tenant member (not just OWNER/ADMIN) -- lets
+-- UserManagement.jsx/HR.jsx/Sites.jsx render a friendly pre-submit warning
+-- without exposing the `packages` table itself (platform-admin-only).
+CREATE OR REPLACE FUNCTION tenant_seat_status()
+RETURNS TABLE(kind TEXT, used BIGINT, max_allowed INT)
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+DECLARE
+  v_tenant_id UUID := current_tenant_id();
+  v_max_admins INT;
+  v_max_workers INT;
+  v_max_sites INT;
+BEGIN
+  SELECT p.max_admins, p.max_workers, p.max_sites
+  INTO v_max_admins, v_max_workers, v_max_sites
+  FROM tenants t LEFT JOIN packages p ON p.id = t.package_id
+  WHERE t.id = v_tenant_id;
+
+  RETURN QUERY SELECT 'admins'::TEXT,
+    (SELECT count(*) FROM user_roles WHERE tenant_id = v_tenant_id AND role IN ('OWNER','ADMIN')), v_max_admins
+  UNION ALL SELECT 'workers'::TEXT,
+    (SELECT count(*) FROM workers WHERE tenant_id = v_tenant_id), v_max_workers
+  UNION ALL SELECT 'sites'::TEXT,
+    (SELECT count(*) FROM sites WHERE tenant_id = v_tenant_id AND status = 'Ongoing'), v_max_sites;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION tenant_seat_status() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION tenant_seat_status() TO authenticated;
+
+-- Redefined here (not inline on user_roles/workers/sites' own CREATE POLICY
+-- above) because tenant_under_seat_limit() is defined after those tables in
+-- this file. Admin-seat limit only applies when the new row is itself an
+-- OWNER/ADMIN invite -- a WORKER-role login account isn't an "Admin" here.
+DROP POLICY owner_inserts ON user_roles;
+CREATE POLICY owner_inserts ON user_roles FOR INSERT TO authenticated
+  WITH CHECK (
+    is_owner() AND tenant_id = current_tenant_id() AND tenant_can_write()
+    AND (role NOT IN ('OWNER','ADMIN') OR tenant_under_seat_limit('admins'))
+  );
+
+DROP POLICY admin_writes_workers ON workers;
+CREATE POLICY admin_writes_workers ON workers FOR INSERT TO authenticated
+  WITH CHECK (
+    is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('payroll')
+    AND tenant_under_seat_limit('workers')
+  );
+
+DROP POLICY admin_inserts ON sites;
+CREATE POLICY admin_inserts ON sites FOR INSERT TO authenticated
+  WITH CHECK (
+    is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write()
+    AND tenant_under_seat_limit('sites')
+  );
+
+-- The real admin-invite flow (UserManagement.jsx) never hits owner_inserts
+-- above: handle_new_user() (SECURITY DEFINER, bypasses RLS) always creates
+-- the user_roles row as WORKER first, then the app's own
+-- upsert(onConflict: user_email) resolves as an UPDATE since the row
+-- already exists. This is the actual enforcement point for promotion
+-- (WORKER -> ADMIN/OWNER). "old.id = user_roles.id" must stay qualified
+-- with the outer table name -- an unqualified "id" on the right resolves
+-- to the subquery's own "old" alias (innermost scope wins), making the
+-- EXISTS always true regardless of which row is being updated.
+DROP POLICY owner_updates ON user_roles;
+CREATE POLICY owner_updates ON user_roles FOR UPDATE TO authenticated
+  USING (is_owner() AND tenant_id = current_tenant_id() AND tenant_can_write())
+  WITH CHECK (
+    is_owner() AND tenant_id = current_tenant_id() AND tenant_can_write()
+    AND (
+      role NOT IN ('OWNER','ADMIN')
+      OR EXISTS (SELECT 1 FROM user_roles old WHERE old.id = user_roles.id AND old.role IN ('OWNER','ADMIN'))
+      OR tenant_under_seat_limit('admins')
+    )
+  );
+
 -- Every RLS policy in this file scopes reads/writes to the caller's own
 -- tenant via current_tenant_id() -- these two functions are the only
 -- place a caller can ever see or touch another tenant's row, and only
