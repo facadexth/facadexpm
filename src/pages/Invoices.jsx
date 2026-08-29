@@ -78,6 +78,13 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
   // could never type past the decimal point. The draft wins while an edit
   // is in progress and is dropped on blur, so the ledger stays the single
   // source of truth everywhere else.
+  //
+  // Both inputs also need step="any", not step="1" -- an integer step on
+  // type="number" makes some browsers (confirmed: this exact symptom,
+  // typing stopping dead right after the decimal point) reject or discard
+  // the "." keystroke at the native control level, before it ever reaches
+  // this component's onChange. The draft-state fix above can't help with
+  // that: it never sees a keystroke the browser itself swallowed.
   const [qtyDrafts, setQtyDrafts] = useState({})
   const [pctDrafts, setPctDrafts] = useState({})
   // Any programmatic change to the ledger (ticking a box) invalidates every
@@ -165,7 +172,7 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
                 {showAdvanced ? (
                   <span style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic', textAlign: 'right' }}>{fmt(drawQty(l.units))} {l.unit}</span>
                 ) : (
-                  <input type="number" min="0" max={remaining} step="1" className="input input-sm"
+                  <input type="number" min="0" max={remaining} step="any" className="input input-sm"
                     style={{ textAlign: 'right' }}
                     value={qtyDrafts[l.quotationItemId] ?? String(drawQty(l.units))}
                     disabled={l.checked}
@@ -206,7 +213,7 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
                         <span style={{ color: 'var(--text3)' }}>{label}</span>
                         <span style={{ color: 'var(--text3)' }}>{u.cumulativePct > 0 ? `เดิม ${u.cumulativePct}%` : 'ยังไม่เริ่ม'}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifySelf: 'end' }}>
-                          <input type="number" min={u.cumulativePct} max="100" step="1" className="input input-sm"
+                          <input type="number" min={u.cumulativePct} max="100" step="any" className="input input-sm"
                             style={{ width: 60, textAlign: 'right' }}
                             value={pctDrafts[`${l.quotationItemId}:${u.unitIndex}`] ?? String(u.target)}
                             onChange={e => {
