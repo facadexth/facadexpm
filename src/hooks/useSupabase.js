@@ -814,3 +814,19 @@ export function usePackages() {
     return data
   }, [])
 }
+
+/**
+ * ประวัติการเปลี่ยนสถานะ/หมดอายุ ของ tenant หนึ่งราย -- ไม่ต้องผ่าน
+ * SECURITY DEFINER wrapper เพราะ tenant_status_log ไม่ได้ scope ด้วย
+ * current_tenant_id() (เหมือน packages) อ่านตรงได้เลยถ้าเป็น platform admin
+ */
+export function useTenantStatusLog(tenantId) {
+  return useQuery(async () => {
+    if (!tenantId) return []
+    const { data, error } = await supabase
+      .from('tenant_status_log').select('*').eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return data
+  }, [tenantId])
+}

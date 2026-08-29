@@ -21,10 +21,14 @@ at-a-time-by-hand workflow. It corresponds to "sub-project 4" in
 `2026-08-16-saas-multitenancy-signup-design.md`'s roadmap, which
 explicitly deferred tenant admin as future work.
 
-**Phase 2** (paid status, subscription duration, payment history) is
-explicitly out of scope here and will get its own spec later — confirmed
-with the user this can be built as a pure addition on top of Phase 1's
-data model, with no rework.
+**Phase 2** (paid status, subscription duration) was originally scoped
+as out-of-scope/future work, deferred to a separate spec. It ended up
+small enough to build the same day instead — see the addendum at the
+end of this doc for what actually shipped. No payment amount/channel
+tracking exists (deliberately not built — confirmed with the user this
+is a manual toggle, not a payment ledger). Building it as a pure
+addition on top of Phase 1's data model, with no rework, is exactly
+what happened.
 
 ## Goals
 
@@ -205,3 +209,29 @@ Phase 2's "paid status" work).
   `package_id = NULL` tenant keeps working exactly as today
   (`tenant_modules` unaffected) until a platform admin explicitly picks
   a package for it on the new page.
+
+## Phase 2 Addendum — Paid Status (built same day)
+
+Turned out small enough not to need a fully separate spec file. Same
+`platform_admins` trust model as Phase 1, one more guarded function:
+
+- `tenants.plan_expires_at` (new nullable column) — the paid-period
+  expiry date, distinct from `trial_ends_at` (trial-specific, pre-existing).
+- `tenant_status_log` — append-only audit trail (`tenant_id, plan,
+  plan_expires_at, changed_by, created_at`). No amount or
+  payment-channel tracking — confirmed with the user: this is purely
+  "who changed what, when," not a payment ledger, since no payment
+  gateway exists and everything is a manual admin toggle.
+- `platform_set_tenant_status(tenant_id, plan, plan_expires_at)` —
+  new `SECURITY DEFINER` function, same shape as
+  `platform_set_tenant_package`: re-checks `platform_admins`
+  membership internally, updates `tenants`, writes one
+  `tenant_status_log` row per call.
+- `platform_list_tenants()` extended to also return `plan_expires_at`
+  (required a `DROP FUNCTION` + recreate, since `CREATE OR REPLACE`
+  cannot change a function's return columns).
+- UI: a "จัดการสถานะ" button per tenant row opens a small modal —
+  plan dropdown, expiry date picker with +1 เดือน/+1 ปี quick-add
+  buttons, and that tenant's status-change history inline below the
+  form (read directly from `tenant_status_log`, no wrapper function
+  needed since that table isn't scoped by `current_tenant_id()`).

@@ -1425,14 +1425,41 @@ CREATE POLICY platform_admin_full_access ON package_modules FOR ALL TO authentic
 -- when they're in platform_admins (re-checked inside the function body,
 -- not just assumed from the caller's own role, since SECURITY DEFINER
 -- bypasses tenants/tenant_modules RLS entirely for these two calls).
+-- plan_expires_at / tenant_status_log -- Phase 2 (paid status). No
+-- payment gateway exists, so this is purely a manual admin toggle +
+-- expiry date; tenant_status_log is a "who changed what, when" audit
+-- trail only, no amount/payment-channel tracking (confirmed with the
+-- user). tenant_status_log has no current_tenant_id() scoping (it's
+-- platform-admin meta-data, not tenant-owned data), so unlike
+-- tenants/tenant_modules it's readable directly by any platform admin --
+-- no SECURITY DEFINER wrapper needed for reads, same shape as
+-- packages/package_modules above.
+ALTER TABLE tenants ADD COLUMN plan_expires_at TIMESTAMPTZ;
+
+CREATE TABLE tenant_status_log (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  plan             TEXT NOT NULL CHECK (plan IN ('trial','active','expired')),
+  plan_expires_at  TIMESTAMPTZ,
+  changed_by       TEXT NOT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE tenant_status_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY platform_admin_full_access ON tenant_status_log FOR ALL TO authenticated
+  USING (EXISTS (SELECT 1 FROM platform_admins WHERE user_email = auth.email()))
+  WITH CHECK (EXISTS (SELECT 1 FROM platform_admins WHERE user_email = auth.email()));
+
+CREATE INDEX idx_tenant_status_log_tenant_id ON tenant_status_log(tenant_id);
+
 CREATE FUNCTION platform_list_tenants()
 RETURNS TABLE (
-  id UUID, company_name TEXT, plan TEXT, trial_ends_at TIMESTAMPTZ,
+  id UUID, company_name TEXT, plan TEXT, trial_ends_at TIMESTAMPTZ, plan_expires_at TIMESTAMPTZ,
   package_id UUID, package_name TEXT, created_at TIMESTAMPTZ
 )
 LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public
 AS $$
-  SELECT t.id, t.company_name, t.plan, t.trial_ends_at, t.package_id, p.name, t.created_at
+  SELECT t.id, t.company_name, t.plan, t.trial_ends_at, t.plan_expires_at, t.package_id, p.name, t.created_at
   FROM tenants t
   LEFT JOIN packages p ON p.id = t.package_id
   WHERE EXISTS (SELECT 1 FROM platform_admins WHERE user_email = auth.email())
@@ -1460,10 +1487,28 @@ BEGIN
 END;
 $$;
 
+CREATE FUNCTION platform_set_tenant_status(p_tenant_id UUID, p_plan TEXT, p_plan_expires_at TIMESTAMPTZ)
+RETURNS VOID
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM platform_admins WHERE user_email = auth.email()) THEN
+    RAISE EXCEPTION 'not a platform admin';
+  END IF;
+
+  UPDATE tenants SET plan = p_plan, plan_expires_at = p_plan_expires_at WHERE id = p_tenant_id;
+
+  INSERT INTO tenant_status_log (tenant_id, plan, plan_expires_at, changed_by)
+  VALUES (p_tenant_id, p_plan, p_plan_expires_at, auth.email());
+END;
+$$;
+
 REVOKE EXECUTE ON FUNCTION platform_list_tenants() FROM PUBLIC, anon;
 REVOKE EXECUTE ON FUNCTION platform_set_tenant_package(UUID, UUID) FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION platform_set_tenant_status(UUID, TEXT, TIMESTAMPTZ) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION platform_list_tenants() TO authenticated;
 GRANT EXECUTE ON FUNCTION platform_set_tenant_package(UUID, UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION platform_set_tenant_status(UUID, TEXT, TIMESTAMPTZ) TO authenticated;
 
 -- has_module_access(): true for every module during an active trial
 -- (trial_ends_at > now()), regardless of tenant_modules contents;
