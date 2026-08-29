@@ -842,6 +842,36 @@ CREATE TABLE quotation_item_units (
 CREATE INDEX idx_quotation_item_units_quotation_item_id ON quotation_item_units(quotation_item_id);
 CREATE INDEX idx_quotation_item_units_tenant_id ON quotation_item_units(tenant_id);
 
+-- Guards against a real bug hit in production: a direct-SQL write (e.g. a
+-- data-migration backfill) computing cumulative_pct via raw Postgres
+-- NUMERIC division can produce ~20 decimal digits, which does not
+-- round-trip exactly through a JS float64 -- the browser's optimistic
+-- lock (`.eq('cumulative_pct', valueItReadEarlier)`) then permanently
+-- fails to match, since the value JS sends back is never bit-identical
+-- to what's actually stored. The app's own JS code (waterfall() in
+-- invoiceCalc.js) never produces this on its own -- float64 arithmetic
+-- self-limits to ~17 significant digits, which always round-trips fine.
+-- Rounding to 9 decimal places is still vastly more precision than
+-- money math needs (a difference of 0.000000001% of even a
+-- 100M-baht contract is a fraction of a millisatang) while guaranteeing
+-- every stored value fits exactly in a float64.
+-- See 2026-08-29-10-fix-cumulative-pct-precision.sql.
+CREATE OR REPLACE FUNCTION round_quotation_item_units_cumulative_pct()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  NEW.cumulative_pct := ROUND(NEW.cumulative_pct, 9);
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_round_cumulative_pct
+  BEFORE INSERT OR UPDATE ON quotation_item_units
+  FOR EACH ROW
+  EXECUTE FUNCTION round_quotation_item_units_cumulative_pct();
+
 ALTER TABLE quotation_item_units ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY admin_full_access ON quotation_item_units FOR ALL TO authenticated
