@@ -490,11 +490,70 @@ function PaymentsTab({ openSiteOverview }) {
   const [statusFilter, setStatusFilter] = useState('')
   const { data: payments, refetch } = useAllLaborPayments({ status: statusFilter||undefined })
 
-  const handleMarkPaid = async (id) => {
+  // Marking a subcontractor payment paid also records it as a real
+  // `expenses` row (site cost should reflect cash actually paid, not just
+  // billed) -- see site_financial_summary's subcontractor_labor_cost,
+  // which now sums expenses.is_subcontract rows instead of accrual
+  // labor_contract_summary.total_billed_gross. Guarded by invoice_no
+  // (payment_number, unique on labor_payments) the same way Invoices.jsx's
+  // handleMarkPaid guards its income-row reuse -- see that file's comment
+  // for why this is a lookup-and-reuse, not a DB unique constraint.
+  const recordSubcontractorExpense = async (p, siteId, today) => {
+    const { data: existingExpenses, error: existingExpError } = await supabase
+      .from('expenses').select('id').eq('invoice_no', p.payment_number)
+      .order('created_at', { ascending: true }).limit(1)
+    if (existingExpError) throw existingExpError
+    if (existingExpenses && existingExpenses.length) return
+
+    const { data: existingCategories, error: catError } = await supabase
+      .from('expense_categories').select('id').eq('name', 'ค่าแรง')
+      .order('created_at', { ascending: true }).limit(1)
+    if (catError) throw catError
+    let categoryId
+    if (existingCategories && existingCategories.length) {
+      categoryId = existingCategories[0].id
+    } else {
+      const { data: newCategory, error: newCatError } = await supabase
+        .from('expense_categories').insert({ name: 'ค่าแรง' }).select('id').single()
+      if (newCatError) throw newCatError
+      categoryId = newCategory.id
+      await auditLog('expense_categories', categoryId, 'INSERT', null, { name: 'ค่าแรง' })
+    }
+
+    const subcontractorName = p.labor_contracts?.labor_subcontractors?.name || ''
+    const expensePayload = {
+      date: p.payment_date || today,
+      description: `ค่าแรง Sub-contract — ${subcontractorName}${p.work_description ? ` (${p.work_description})` : ''}`,
+      site_id: siteId,
+      category_id: categoryId,
+      supplier: subcontractorName || null,
+      // gross_amount minus retention_amount: retention is withheld, not
+      // paid out yet, so it isn't a real cash expense on this payment.
+      amount: Math.round(((p.gross_amount || 0) - (p.retention_amount || 0)) * 100) / 100,
+      status: 'paid',
+      is_subcontract: true,
+      invoice_no: p.payment_number,
+    }
+    const { data: newExpense, error: expenseError } = await supabase.from('expenses').insert(expensePayload).select().single()
+    if (expenseError) throw expenseError
+    await auditLog('expenses', newExpense.id, 'INSERT', null, expensePayload)
+  }
+
+  const handleMarkPaid = async (p) => {
     const today = new Date().toISOString().slice(0,10)
-    const { error } = await supabase.from('labor_payments').update({ status:'paid', paid_date: today }).eq('id', id)
-    if (!error) { await auditLog('labor_payments', id, 'UPDATE', null, { status:'paid', paid_date:today }); refetch() }
-    else alert('Error: ' + error.message)
+    const { error } = await supabase.from('labor_payments').update({ status:'paid', paid_date: today }).eq('id', p.id)
+    if (error) { alert('Error: ' + error.message); return }
+    await auditLog('labor_payments', p.id, 'UPDATE', null, { status:'paid', paid_date:today })
+
+    const siteId = p.labor_contracts?.sites?.id
+    if (siteId) {
+      try {
+        await recordSubcontractorExpense(p, siteId, today)
+      } catch (expErr) {
+        alert('เบิกจ่ายสำเร็จ แต่บันทึกรายจ่ายไม่สำเร็จ: ' + expErr.message)
+      }
+    }
+    refetch()
   }
 
   return (
@@ -541,7 +600,7 @@ function PaymentsTab({ openSiteOverview }) {
                   </td>
                   <td style={{ whiteSpace:'nowrap' }}>
                     {canEdit && p.status==='pending' && (
-                      <button className="btn btn-sm btn-success" onClick={() => handleMarkPaid(p.id)}>จ่ายแล้ว</button>
+                      <button className="btn btn-sm btn-success" onClick={() => handleMarkPaid(p)}>จ่ายแล้ว</button>
                     )}
                   </td>
                 </tr>

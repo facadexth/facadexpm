@@ -1967,11 +1967,17 @@ WITH quotation_discount AS (
   ) qt ON qt.quotation_id = q.id
 ),
 -- Real, already-tracked labor cost -- see
--- 2026-08-29-01-site-labor-cost-in-financial-summary.sql. Worker cost is
--- accrual by days/hours worked (labor_cost_by_site + ot_cost_by_site);
--- subcontractor cost uses labor_contract_summary.total_billed_gross (same
--- accrual basis, not total_paid_net). sites.cost_labor is no longer read
--- here -- superseded by these two real numbers.
+-- 2026-08-29-01-site-labor-cost-in-financial-summary.sql and
+-- 2026-08-29-02-subcontractor-labor-cost-from-real-expenses.sql. Worker
+-- cost is accrual by days/hours worked (labor_cost_by_site +
+-- ot_cost_by_site) -- no real `expenses` row is ever created for it, so
+-- it's added on top of exp.total_expense below. Subcontractor cost is
+-- real, actually-paid `expenses` rows (is_subcontract = true, written by
+-- LaborContractors.jsx's handleMarkPaid) -- those rows are already
+-- counted inside exp.total_expense, so subcontractor_labor_cost is NOT
+-- added again; it's exposed only as a labeled subset for display.
+-- sites.cost_labor is no longer read here -- superseded by these two real
+-- numbers.
 worker_cost AS (
   SELECT site_id, SUM(labor_cost) AS labor_cost
   FROM labor_cost_by_site
@@ -1983,8 +1989,9 @@ worker_ot AS (
   GROUP BY site_id
 ),
 subcontractor_cost AS (
-  SELECT site_id, SUM(total_billed_gross) AS subcontractor_labor_cost
-  FROM labor_contract_summary
+  SELECT site_id, SUM(amount) AS subcontractor_labor_cost
+  FROM expenses
+  WHERE is_subcontract = true
   GROUP BY site_id
 )
 SELECT
@@ -1994,13 +2001,11 @@ SELECT
   c.name            AS client_display_name,
   c.client_number,
   COALESCE(exp.total_expense, 0)
-    + COALESCE(wc.labor_cost, 0) + COALESCE(wo.ot_cost, 0)
-    + COALESCE(sc.subcontractor_labor_cost, 0)                        AS total_expense,
+    + COALESCE(wc.labor_cost, 0) + COALESCE(wo.ot_cost, 0)             AS total_expense,
   COALESCE(inc.total_income, 0)                                       AS total_income,
   COALESCE(inc.total_income, 0)
     - (COALESCE(exp.total_expense, 0)
-       + COALESCE(wc.labor_cost, 0) + COALESCE(wo.ot_cost, 0)
-       + COALESCE(sc.subcontractor_labor_cost, 0))                    AS gross_profit,
+       + COALESCE(wc.labor_cost, 0) + COALESCE(wo.ot_cost, 0))         AS gross_profit,
   CASE WHEN s.contract_value > 0
     THEN ROUND(COALESCE(inc.total_income, 0) / s.contract_value * 100, 1)
     ELSE NULL

@@ -141,26 +141,27 @@ export function useSiteOverview(siteId) {
 
 /**
  * ค่าใช้จ่ายทั้งหมด (all-time) ของไซท์นี้ พร้อม category_name -- ใช้ทำ pie
- * chart ใน SiteOverviewModal. Appends real worker/subcontractor labor cost
- * (site_financial_summary.worker_labor_cost/subcontractor_labor_cost) as
- * two synthetic categories so the pie's total always matches the site's
- * real total_expense, which now folds both in too.
+ * chart ใน SiteOverviewModal. Appends real company-worker labor cost
+ * (site_financial_summary.worker_labor_cost) as one synthetic category so
+ * the pie's total matches total_expense, which folds worker cost in too.
+ * Subcontractor labor cost is NOT synthesized here -- since
+ * 2026-08-29-02-subcontractor-labor-cost-from-real-expenses.sql it's a
+ * real `expenses` row (category "ค่าแรง", is_subcontract = true) created
+ * when a payment is marked paid, so it already comes through
+ * expenses_view like any other expense.
  */
 export function useSiteExpensesByCategory(siteId) {
   return useQuery(async () => {
     if (!siteId) return []
     const [expensesRes, summaryRes] = await Promise.all([
       supabase.from('expenses_view').select('category_name, amount').eq('site_id', siteId),
-      supabase.from('site_financial_summary').select('worker_labor_cost, subcontractor_labor_cost').eq('id', siteId).single(),
+      supabase.from('site_financial_summary').select('worker_labor_cost').eq('id', siteId).single(),
     ])
     if (expensesRes.error) throw expensesRes.error
     if (summaryRes.error) throw summaryRes.error
     const rows = [...expensesRes.data]
     if (summaryRes.data?.worker_labor_cost > 0) {
       rows.push({ category_name: 'ค่าแรงพนักงาน', amount: summaryRes.data.worker_labor_cost })
-    }
-    if (summaryRes.data?.subcontractor_labor_cost > 0) {
-      rows.push({ category_name: 'ค่าแรง Sub-contract', amount: summaryRes.data.subcontractor_labor_cost })
     }
     return rows
   }, [siteId])

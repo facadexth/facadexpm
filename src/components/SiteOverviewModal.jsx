@@ -98,6 +98,10 @@ export default function SiteOverviewModal({ siteId, onClose }) {
                 <div className="font-mono" style={{ fontWeight: 700, color: (site.gross_profit || 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmt(site.gross_profit)}</div>
               </div>
               <div>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>ค่าแรงพนักงาน</div>
+                <div className="font-mono" style={{ fontWeight: 700 }}>{fmt(site.worker_labor_cost)}</div>
+              </div>
+              <div>
                 <div style={{ fontSize: 11, color: 'var(--text3)' }}>% เบิก</div>
                 <div className="font-mono" style={{ fontWeight: 700 }}>{site.billing_pct != null ? `${site.billing_pct.toFixed(1)}%` : '—'}</div>
               </div>
