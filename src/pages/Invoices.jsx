@@ -351,74 +351,127 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
   )
 }
 
-function InvoiceDocumentModal({ invoice, tenant, onClose }) {
-  const items = invoice.invoice_items || []
+// Design A letterhead -- same pattern as QuotationPaper (Quotations.jsx)
+// and PODocumentModal: logo-or-colored-box header, tag+title top right,
+// bordered info-fields grid, client block, #f4f3ff table header, #6c63ff
+// totals rule, #f9f9fc notes box, signature lines. Shared between
+// InvoiceDocumentModal and ReceiptDocumentModal specifically (they're the
+// same billing family, one combined document per the spec) -- unlike
+// Quotation/PO, which stay separate top-level document types and keep
+// their own independent copy of this JSX per existing precedent.
+function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, clientName, clientAddress, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, notesBlock, signatures }) {
   return (
-    <Modal title={`ใบแจ้งหนี้ ${invoice.invoice_number}`} onClose={onClose} maxWidth={640}>
-      <div className="modal-body">
-        <div id={`inv-doc-${invoice.id}`} style={{ fontFamily: 'Sarabun,sans-serif', padding: '20px 24px', background: '#fff', color: '#111' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12 }}>
-            <div>
-              {tenant?.logo_url && <img src={tenant.logo_url} alt="" style={{ maxHeight: 48, marginBottom: 6 }} crossOrigin="anonymous" />}
-              <div style={{ fontSize: 16, fontWeight: 800 }}>{tenant?.company_name}</div>
-              {tenant?.address && <div style={{ fontSize: 11 }}>{tenant.address}</div>}
-              {tenant?.tax_id && <div style={{ fontSize: 11 }}>เลขประจำตัวผู้เสียภาษี: {tenant.tax_id}</div>}
-              {tenant?.phone && <div style={{ fontSize: 11 }}>โทร: {tenant.phone}</div>}
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>ใบแจ้งหนี้</div>
-              <div style={{ fontSize: 12 }}>เลขที่: {invoice.invoice_number}</div>
-              <div style={{ fontSize: 12 }}>วันที่: {new Date(invoice.date).toLocaleDateString('th-TH')}</div>
-              <div style={{ fontSize: 12 }}>อ้างอิงใบเสนอราคา: {invoice.quotations?.quotation_number}</div>
+    <div id={elementId} style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          {tenant?.logo_url
+            ? <img src={tenant.logo_url} alt="" style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }} crossOrigin="anonymous" />
+            : <div style={{ width: 40, height: 40, borderRadius: 8, background: '#6c63ff', flexShrink: 0 }} />}
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 800 }}>{tenant?.company_name}</div>
+            <div style={{ fontSize: 11, color: '#6a6f85', lineHeight: 1.6, marginTop: 2 }}>
+              {tenant?.address}
+              {tenant?.address && <br />}
+              {tenant?.tax_id && `เลขผู้เสียภาษี ${tenant.tax_id}`}
+              {tenant?.tax_id && tenant?.phone && ' · '}
+              {tenant?.phone && `โทร ${tenant.phone}`}
             </div>
           </div>
-          <div style={{ fontSize: 13, marginBottom: 12 }}><strong>ลูกค้า:</strong> {invoice.quotations?.clients?.name}</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid #111' }}>
-                <th style={{ textAlign: 'left', padding: '6px 4px' }}>รายการ</th>
-                <th style={{ textAlign: 'right', padding: '6px 4px' }}>งวดนี้</th>
-                <th style={{ textAlign: 'right', padding: '6px 4px' }}>ราคา/หน่วย</th>
-                <th style={{ textAlign: 'right', padding: '6px 4px' }}>รวม</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(it => (
-                <tr key={it.id} style={{ borderBottom: '1px solid #ddd' }}>
-                  <td style={{ padding: '6px 4px' }}>{it.description}</td>
-                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(it.draw_qty)} {it.unit || ''}</td>
-                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(it.unit_price)}</td>
-                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(it.line_total)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={3} style={{ padding: '6px 4px', borderTop: '2px solid #111' }}>รวมก่อน VAT</td>
-                <td style={{ textAlign: 'right', padding: '6px 4px', borderTop: '2px solid #111' }}>{fmt(invoice.subtotal)}</td>
-              </tr>
-              {invoice.has_vat && (
-                <tr>
-                  <td colSpan={3} style={{ padding: '6px 4px' }}>VAT (7%)</td>
-                  <td style={{ textAlign: 'right', padding: '6px 4px' }}>{fmt(invoice.vat)}</td>
-                </tr>
-              )}
-              <tr style={{ fontWeight: 700, fontSize: 15 }}>
-                <td colSpan={3} style={{ padding: '8px 4px', borderTop: '1px solid #111' }}>รวมทั้งสิ้น</td>
-                <td style={{ textAlign: 'right', padding: '8px 4px', borderTop: '1px solid #111' }}>{fmt(invoice.total)} บาท</td>
-              </tr>
-            </tfoot>
-          </table>
-          {(tenant?.bank_name || tenant?.bank_account_no) && (
-            <div style={{ fontSize: 12, marginTop: 16 }}>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#6c63ff', border: '1px solid #6c63ff', borderRadius: 4, padding: '2px 8px', display: 'inline-block', marginBottom: 6 }}>ต้นฉบับ</div>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>{title}</div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 20, border: '1px solid #e4e6ef', borderRadius: 8, padding: '14px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: 12 }}>
+        {infoFields.map(f => (
+          <div key={f.label}><span style={{ color: '#6a6f85' }}>{f.label}</span><br />{f.value}</div>
+        ))}
+      </div>
+
+      <div style={{ marginTop: 16, fontSize: 12.5, lineHeight: 1.9, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 10px' }}>
+        <span style={{ color: '#6a6f85' }}>ไซท์งาน</span><strong>{siteName || '—'}</strong>
+        <span style={{ color: '#6a6f85' }}>ลูกค้า</span><strong>{clientName || '—'}</strong>
+        {clientAddress && <><span style={{ color: '#6a6f85' }}>ที่อยู่</span><span>{clientAddress}</span></>}
+      </div>
+
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 18 }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: 'left', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>รายการ</th>
+            <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>จำนวน</th>
+            <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>ราคา/หน่วย</th>
+            <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>รวม</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((it, i) => (
+            <tr key={it.id || i}>
+              <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.description}</td>
+              <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.draw_qty).replace(/\.00$/, '')} {it.unit || ''}</td>
+              <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
+              <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.line_total)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+        <table style={{ width: 260, fontSize: 12.5 }}>
+          <tbody>
+            {subtotal != null && (
+              <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมก่อน VAT</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(subtotal)}</td></tr>
+            )}
+            {hasVat && vat != null && (
+              <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>VAT (7%)</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(vat)}</td></tr>
+            )}
+            <tr>
+              <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: '#6c63ff', borderTop: '2px solid #6c63ff' }}>{totalsLabel}</td>
+              <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: '#6c63ff', borderTop: '2px solid #6c63ff' }}>{fmt(totalsAmount)} บาท</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {notesBlock}
+
+      <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
+        <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>{signatures[0]}</div>
+        <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>{signatures[1]}</div>
+      </div>
+    </div>
+  )
+}
+
+function InvoiceDocumentModal({ invoice, tenant, onClose }) {
+  const elementId = `inv-doc-${invoice.id}`
+  const items = invoice.invoice_items || []
+  const client = invoice.quotations?.clients
+  return (
+    <Modal title={`ใบแจ้งหนี้ ${invoice.invoice_number}`} onClose={onClose} maxWidth={720}>
+      <div className="modal-body">
+        <DocumentPaper
+          elementId={elementId} tenant={tenant} title="ใบแจ้งหนี้/ใบส่งมอบงาน"
+          infoFields={[
+            { label: 'เลขที่เอกสาร', value: invoice.invoice_number },
+            { label: 'วันที่ออก', value: new Date(invoice.date).toLocaleDateString('th-TH') },
+            { label: 'อ้างอิงใบเสนอราคา', value: invoice.quotations?.quotation_number },
+          ]}
+          siteName={invoice.sites?.name} clientName={client?.name} clientAddress={client?.address}
+          items={items} totalsLabel="รวมทั้งสิ้น" totalsAmount={invoice.total}
+          subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
+          notesBlock={(tenant?.bank_name || tenant?.bank_account_no) && (
+            <div style={{ marginTop: 20, fontSize: 11.5, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
               <strong>ชำระเงินไปที่:</strong> {tenant.bank_name} {tenant.bank_account_name ? `ชื่อบัญชี ${tenant.bank_account_name}` : ''} {tenant.bank_account_no ? `เลขที่ ${tenant.bank_account_no}` : ''}
             </div>
           )}
-        </div>
+          signatures={['ผู้ออกใบแจ้งหนี้', 'ผู้รับเอกสาร']}
+        />
       </div>
       <div className="modal-footer">
-        <button className="btn btn-ghost" onClick={() => downloadPDF(`inv-doc-${invoice.id}`, invoice.invoice_number)}>📄 PDF</button>
-        <button className="btn btn-ghost" onClick={() => downloadJPG(`inv-doc-${invoice.id}`, invoice.invoice_number)}>🖼️ JPG</button>
+        <button className="btn btn-ghost" onClick={() => downloadPDF(elementId, invoice.invoice_number)}>📄 PDF</button>
+        <button className="btn btn-ghost" onClick={() => downloadJPG(elementId, invoice.invoice_number)}>🖼️ JPG</button>
         <button className="btn btn-primary" onClick={onClose}>ปิด</button>
       </div>
     </Modal>
@@ -426,45 +479,30 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
 }
 
 function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
+  const elementId = `rcp-doc-${receipt.id}`
+  const items = invoice.invoice_items || []
+  const client = invoice.quotations?.clients
   return (
-    <Modal title={`ใบเสร็จรับเงิน/ใบกำกับภาษี ${receipt.receipt_number}`} onClose={onClose} maxWidth={640}>
+    <Modal title={`ใบเสร็จรับเงิน/ใบกำกับภาษี ${receipt.receipt_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body">
-        <div id={`rcp-doc-${receipt.id}`} style={{ fontFamily: 'Sarabun,sans-serif', padding: '20px 24px', background: '#fff', color: '#111' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12 }}>
-            <div>
-              {tenant?.logo_url && <img src={tenant.logo_url} alt="" style={{ maxHeight: 48, marginBottom: 6 }} crossOrigin="anonymous" />}
-              <div style={{ fontSize: 16, fontWeight: 800 }}>{tenant?.company_name}</div>
-              {tenant?.address && <div style={{ fontSize: 11 }}>{tenant.address}</div>}
-              {tenant?.tax_id && <div style={{ fontSize: 11 }}>เลขประจำตัวผู้เสียภาษี: {tenant.tax_id}</div>}
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>ใบเสร็จรับเงิน / ใบกำกับภาษี</div>
-              <div style={{ fontSize: 12 }}>เลขที่ใบเสร็จ: {receipt.receipt_number}</div>
-              <div style={{ fontSize: 12 }}>เลขที่ใบกำกับภาษี: {receipt.tax_invoice_number}</div>
-              <div style={{ fontSize: 12 }}>วันที่: {new Date(receipt.date).toLocaleDateString('th-TH')}</div>
-              <div style={{ fontSize: 12 }}>อ้างอิงใบแจ้งหนี้: {invoice.invoice_number}</div>
-            </div>
-          </div>
-          <div style={{ fontSize: 13, marginBottom: 12 }}><strong>ลูกค้า:</strong> {invoice.quotations?.clients?.name}</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <tbody>
-              <tr style={{ borderBottom: '2px solid #111' }}>
-                <td style={{ padding: '8px 4px' }}>ชำระเงินตามใบแจ้งหนี้ {invoice.invoice_number}</td>
-                <td style={{ textAlign: 'right', padding: '8px 4px' }}>{fmt(receipt.amount)} บาท</td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr style={{ fontWeight: 700, fontSize: 15 }}>
-                <td style={{ padding: '8px 4px', borderTop: '1px solid #111' }}>รวมรับชำระ</td>
-                <td style={{ textAlign: 'right', padding: '8px 4px', borderTop: '1px solid #111' }}>{fmt(receipt.amount)} บาท</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        <DocumentPaper
+          elementId={elementId} tenant={tenant} title="ใบเสร็จรับเงิน / ใบกำกับภาษี"
+          infoFields={[
+            { label: 'เลขที่ใบเสร็จ', value: receipt.receipt_number },
+            { label: 'เลขที่ใบกำกับภาษี', value: receipt.tax_invoice_number },
+            { label: 'วันที่', value: new Date(receipt.date).toLocaleDateString('th-TH') },
+            { label: 'อ้างอิงใบแจ้งหนี้', value: invoice.invoice_number },
+          ]}
+          siteName={invoice.sites?.name} clientName={client?.name} clientAddress={client?.address}
+          items={items} totalsLabel="รวมรับชำระ" totalsAmount={receipt.amount}
+          subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
+          notesBlock={null}
+          signatures={['ผู้รับเงิน', 'ผู้จ่ายเงิน']}
+        />
       </div>
       <div className="modal-footer">
-        <button className="btn btn-ghost" onClick={() => downloadPDF(`rcp-doc-${receipt.id}`, receipt.receipt_number)}>📄 PDF</button>
-        <button className="btn btn-ghost" onClick={() => downloadJPG(`rcp-doc-${receipt.id}`, receipt.receipt_number)}>🖼️ JPG</button>
+        <button className="btn btn-ghost" onClick={() => downloadPDF(elementId, receipt.receipt_number)}>📄 PDF</button>
+        <button className="btn btn-ghost" onClick={() => downloadJPG(elementId, receipt.receipt_number)}>🖼️ JPG</button>
         <button className="btn btn-primary" onClick={onClose}>ปิด</button>
       </div>
     </Modal>

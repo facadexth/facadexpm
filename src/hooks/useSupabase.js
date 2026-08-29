@@ -284,7 +284,7 @@ export function useInvoices(filters = {}) {
     const buildQuery = () => {
       let q = supabase
         .from('invoices')
-        .select('*, quotations(quotation_number, client_id, clients(name)), sites(name, site_number), invoice_items(id, quotation_item_id, description, unit, unit_price, draw_qty, line_total, sort_order)')
+        .select('*, quotations(quotation_number, client_id, clients(name, address)), sites(name, site_number), invoice_items(id, quotation_item_id, description, unit, unit_price, draw_qty, line_total, sort_order)')
         .order('date', { ascending: false })
         .order('id', { ascending: false })
 
