@@ -74,6 +74,16 @@ function ClientForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
             <input type="email" className="input" value={form.email} onChange={e => set('email', e.target.value)} />
           </div>
         </div>
+        <div className="form-grid-2">
+          <div>
+            <label className="label">ที่อยู่</label>
+            <input className="input" value={form.address} onChange={e => set('address', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">จังหวัด</label>
+            <input className="input" value={form.province} onChange={e => set('province', e.target.value)} />
+          </div>
+        </div>
         <div>
           <label className="label">หมายเหตุ</label>
           <textarea className="textarea" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
