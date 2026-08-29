@@ -24,7 +24,7 @@ const TYPE_STYLE = {
 const EMPTY_FORM = {
   name: '', contact_person: '', position: '',
   phone: '', email: '', client_type: '',
-  address: '', province: '', notes: ''
+  address: '', province: '', notes: '', tax_id: ''
 }
 
 function ClientForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
@@ -48,6 +48,10 @@ function ClientForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
               {CLIENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
+        </div>
+        <div>
+          <label className="label">เลขประจำตัวผู้เสียภาษี</label>
+          <input className="input" style={{ maxWidth: 240 }} value={form.tax_id} onChange={e => set('tax_id', e.target.value)} placeholder="เช่น 0105564000001" />
         </div>
         <div className="form-grid-2">
           <div>
@@ -121,6 +125,7 @@ export default function Clients() {
         address:        form.address || null,
         province:       form.province || null,
         notes:          form.notes || null,
+        tax_id:         form.tax_id || null,
       }
       if (editItem) {
         const { error } = await supabase.from('clients').update(payload).eq('id', editItem.id)

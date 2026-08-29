@@ -56,7 +56,7 @@ export default function Settings() {
   // Company profile — for the Quotation PDF letterhead (and future
   // Invoice). See docs/superpowers/specs/2026-08-22-quotation-module-design.md.
   const [profile, setProfile] = useState({
-    address: '', tax_id: '', phone: '', bank_name: '', bank_account_name: '', bank_account_no: '',
+    company_name: '', address: '', tax_id: '', phone: '', bank_name: '', bank_account_name: '', bank_account_no: '',
     default_payment_terms: '', default_notes: '',
   })
   const [savingProfile, setSavingProfile] = useState(false)
@@ -64,7 +64,7 @@ export default function Settings() {
   useEffect(() => {
     if (tenant) {
       setProfile({
-        address: tenant.address || '', tax_id: tenant.tax_id || '', phone: tenant.phone || '',
+        company_name: tenant.company_name || '', address: tenant.address || '', tax_id: tenant.tax_id || '', phone: tenant.phone || '',
         bank_name: tenant.bank_name || '', bank_account_name: tenant.bank_account_name || '', bank_account_no: tenant.bank_account_no || '',
         default_payment_terms: tenant.default_payment_terms || '', default_notes: tenant.default_notes || '',
       })
@@ -188,6 +188,10 @@ export default function Settings() {
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-header"><div className="card-title">🏢 ข้อมูลบริษัท (สำหรับใบเสนอราคา)</div></div>
         <div className="card-body" style={{ display: 'grid', gap: 12 }}>
+          <div>
+            <label className="label">ชื่อบริษัท ★</label>
+            <input className="input" required value={profile.company_name} onChange={e => setProfileField('company_name', e.target.value)} />
+          </div>
           <div>
             <label className="label">โลโก้บริษัท</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

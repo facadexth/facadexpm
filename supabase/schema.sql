@@ -110,6 +110,7 @@ CREATE TABLE clients (
   address         TEXT,
   province        TEXT,
   notes           TEXT,
+  tax_id          TEXT,
   client_type     TEXT CHECK (client_type IN ('DEVELOPER','ENDUSER','ผู้รับเหมา')),
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW(),

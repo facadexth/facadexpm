@@ -359,7 +359,7 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
 // same billing family, one combined document per the spec) -- unlike
 // Quotation/PO, which stay separate top-level document types and keep
 // their own independent copy of this JSX per existing precedent.
-function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, clientName, clientAddress, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, notesBlock, signatures }) {
+function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, notesBlock, signatures }) {
   return (
     <div id={elementId} style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
@@ -393,6 +393,7 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, cl
       <div style={{ marginTop: 16, fontSize: 12.5, lineHeight: 1.9, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 10px' }}>
         <span style={{ color: '#6a6f85' }}>ไซท์งาน</span><strong>{siteName || '—'}</strong>
         <span style={{ color: '#6a6f85' }}>ลูกค้า</span><strong>{clientName || '—'}</strong>
+        {clientTaxId && <><span style={{ color: '#6a6f85' }}>เลขประจำตัวผู้เสียภาษี</span><span>{clientTaxId}</span></>}
         {clientAddress && <><span style={{ color: '#6a6f85' }}>ที่อยู่</span><span>{clientAddress}</span></>}
       </div>
 
@@ -458,7 +459,7 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
             { label: 'วันที่ออก', value: new Date(invoice.date).toLocaleDateString('th-TH') },
             { label: 'อ้างอิงใบเสนอราคา', value: invoice.quotations?.quotation_number },
           ]}
-          siteName={invoice.sites?.name} clientName={client?.name} clientAddress={client?.address}
+          siteName={invoice.sites?.name} clientName={client?.name} clientAddress={client?.address} clientTaxId={client?.tax_id}
           items={items} totalsLabel="รวมทั้งสิ้น" totalsAmount={invoice.total}
           subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
           notesBlock={(tenant?.bank_name || tenant?.bank_account_no) && (
@@ -493,7 +494,7 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
             { label: 'วันที่', value: new Date(receipt.date).toLocaleDateString('th-TH') },
             { label: 'อ้างอิงใบแจ้งหนี้', value: invoice.invoice_number },
           ]}
-          siteName={invoice.sites?.name} clientName={client?.name} clientAddress={client?.address}
+          siteName={invoice.sites?.name} clientName={client?.name} clientAddress={client?.address} clientTaxId={client?.tax_id}
           items={items} totalsLabel="รวมรับชำระ" totalsAmount={receipt.amount}
           subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
           notesBlock={null}
