@@ -210,6 +210,7 @@ export function useQuotations(filters = {}) {
         .order('id', { ascending: false })
 
       if (filters.clientId) q = q.eq('client_id', filters.clientId)
+      if (filters.siteId)   q = q.eq('site_id', filters.siteId)
       if (filters.status)   q = q.eq('status', filters.status)
       if (filters.from)     q = q.gte('date', filters.from)
       if (filters.to)       q = q.lte('date', filters.to)

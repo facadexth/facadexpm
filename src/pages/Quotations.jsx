@@ -563,6 +563,36 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
     else alert('Error: ' + error.message)
   }
 
+  // Recomputes sites.contract_value/contract_value_no_vat as the sum of
+  // every accepted quotation attached to this site -- not a one-time set,
+  // so the site stays correct as more quotations attach later (e.g. a
+  // change order accepted into an existing site). Reuses each quotation's
+  // own calcQuotationTotals (already VAT/discount-branched per quotation)
+  // rather than re-deriving VAT from a blended no-vat figure, so mixed VAT
+  // settings across attached quotations still sum correctly.
+  const recalcSiteContractValue = async (siteId) => {
+    const { data: siteQuotations, error } = await supabase
+      .from('quotations')
+      .select('has_vat, price_includes_vat, discount_amount, discount_pct, quotation_items(line_total, quantity, unit_price)')
+      .eq('site_id', siteId)
+      .eq('status', 'accepted')
+    if (error) throw error
+
+    const sums = (siteQuotations || []).reduce((acc, q) => {
+      const totals = calcQuotationTotals(q.quotation_items, {
+        hasVat: q.has_vat, priceIncludesVat: q.price_includes_vat,
+        discountAmount: q.discount_amount, discountPct: q.discount_pct,
+      })
+      return { noVat: acc.noVat + totals.subtotal, total: acc.total + totals.total }
+    }, { noVat: 0, total: 0 })
+
+    const { error: updateError } = await supabase.from('sites').update({
+      contract_value_no_vat: Math.round(sums.noVat * 100) / 100,
+      contract_value: Math.round(sums.total * 100) / 100,
+    }).eq('id', siteId)
+    if (updateError) throw updateError
+  }
+
   const handleLinkExistingSite = async (siteId) => {
     if (!acceptRow) return
     setAccepting(true)
@@ -571,7 +601,8 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       const { error } = await supabase.from('quotations').update(update).eq('id', acceptRow.id)
       if (error) throw error
       await auditLog('quotations', acceptRow.id, 'UPDATE', null, update)
-      setAcceptRow(null); refetch(); showToast('รับใบเสนอราคาและผูกไซท์งานแล้ว')
+      await recalcSiteContractValue(siteId)
+      setAcceptRow(null); refetch(); showToast('รับใบเสนอราคาและผูกไซท์งานแล้ว (มูลค่าสัญญาของไซท์งานอัปเดตแล้ว)')
     } catch (e) { alert('Error: ' + e.message) }
     finally { setAccepting(false) }
   }
@@ -589,6 +620,10 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       const { error: qtError } = await supabase.from('quotations').update(qtUpdate).eq('id', acceptRow.id)
       if (qtError) throw qtError
       await auditLog('quotations', acceptRow.id, 'UPDATE', null, qtUpdate)
+      // Recompute rather than trust sitePayload's one-time contract_value --
+      // keeps this path and the existing-site path on the exact same source
+      // of truth, so a site is never wrong even if more quotations attach later.
+      await recalcSiteContractValue(newSite.id)
 
       setAcceptRow(null); refetch(); showToast('สร้างไซท์งานและรับใบเสนอราคาแล้ว')
     } catch (e) { alert('Error: ' + e.message) }

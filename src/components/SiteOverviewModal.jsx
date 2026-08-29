@@ -4,9 +4,10 @@
 // the app. Read-only; no edit actions. ADMIN+ only -- see App.jsx, this
 // is never wired into WORKER-visible site-name displays.
 // ============================================================
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
-import { useSiteOverview, useSiteExpensesByCategory } from '../hooks/useSupabase.js'
+import { useSiteOverview, useSiteExpensesByCategory, useQuotations } from '../hooks/useSupabase.js'
+import { calcQuotationTotals } from '../lib/quotationCalc.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { depositStatusFor } from '../lib/depositCalc.js'
 import { retentionStatusFor } from '../lib/retentionStatus.js'
@@ -20,6 +21,23 @@ export default function SiteOverviewModal({ siteId, onClose }) {
   const { data: site, error } = useSiteOverview(isAdmin ? siteId : null)
   const { data: siteExpenses } = useSiteExpensesByCategory(isAdmin ? siteId : null)
   const categoryData = useMemo(() => groupSmallSlices(categoryBreakdown(siteExpenses)), [siteExpenses])
+
+  // Only a real query once the site is actually loaded -- '__none__' is not
+  // a real status, so it cheaply returns nothing while site is still
+  // loading rather than briefly fetching every accepted quotation tenant-wide.
+  const [showContractBreakdown, setShowContractBreakdown] = useState(false)
+  const { data: siteQuotations } = useQuotations(
+    isAdmin && site?.id ? { siteId: site.id, status: 'accepted' } : { status: '__none__' }
+  )
+  const contractBreakdown = useMemo(() => (siteQuotations || [])
+    .map(q => ({
+      id: q.id, quotation_number: q.quotation_number, date: q.date,
+      total: calcQuotationTotals(q.quotation_items, {
+        hasVat: q.has_vat, priceIncludesVat: q.price_includes_vat,
+        discountAmount: q.discount_amount, discountPct: q.discount_pct,
+      }).total,
+    }))
+    .sort((a, b) => (a.date || '').localeCompare(b.date || '')), [siteQuotations])
 
   if (!isAdmin) return null
 
@@ -40,6 +58,32 @@ export default function SiteOverviewModal({ siteId, onClose }) {
               <div>
                 <div style={{ fontSize: 11, color: 'var(--text3)' }}>มูลค่าสัญญา</div>
                 <div className="font-mono" style={{ fontWeight: 700 }}>{fmt(site.contract_value)}</div>
+                {contractBreakdown.length > 1 && (
+                  <>
+                    <button type="button" onClick={() => setShowContractBreakdown(v => !v)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--accent)', cursor: 'pointer', background: 'none', border: 'none', padding: 0, marginTop: 5, fontFamily: 'inherit' }}>
+                      ดูรายละเอียด ({contractBreakdown.length} ใบเสนอราคา)
+                      <span style={{ display: 'inline-block', transition: 'transform .15s', transform: showContractBreakdown ? 'rotate(180deg)' : 'none' }}>▾</span>
+                    </button>
+                    {showContractBreakdown && (
+                      <div style={{ marginTop: 8, display: 'grid', gap: 5 }}>
+                        {contractBreakdown.map(q => (
+                          <div key={q.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'center', background: 'var(--bg3)', borderRadius: 7, padding: '7px 10px', fontSize: 12 }}>
+                            <div>
+                              <div style={{ fontWeight: 600 }}>{q.quotation_number}</div>
+                              <div style={{ fontSize: 10, color: 'var(--text3)' }}>รับเข้าไซท์งาน {fmtDate(q.date)}</div>
+                            </div>
+                            <div className="font-mono" style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{fmt(q.total)}</div>
+                          </div>
+                        ))}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, borderTop: '1px dashed var(--border)', paddingTop: 8, marginTop: 2 }}>
+                          <div style={{ color: 'var(--accent)', fontWeight: 800, fontSize: 12.5 }}>รวม</div>
+                          <div className="font-mono" style={{ color: 'var(--accent)', fontWeight: 800, fontSize: 13.5 }}>{fmt(site.contract_value)}</div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
               <div>
                 <div style={{ fontSize: 11, color: 'var(--text3)' }}>รายรับ</div>
