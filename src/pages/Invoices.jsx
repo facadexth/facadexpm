@@ -253,6 +253,9 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
   const [lines, setLines] = useState(null)
   const [mode, setMode] = useState('easy')
   const [saving, setSaving] = useState(false)
+  // วันออกเอกสาร -- separate from วันที่รับเงิน, which only gets set later
+  // when the invoice is actually marked paid (see MarkPaidModal).
+  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'))
 
   useEffect(() => {
     if (unitsByQuotationItem && !lines) {
@@ -284,7 +287,7 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
     let createdInvoiceNumber = null
     try {
       const { data: invoice, error: invError } = await supabase.from('invoices').insert({
-        quotation_id: quotation.id, site_id: quotation.site_id, date: format(new Date(), 'yyyy-MM-dd'),
+        quotation_id: quotation.id, site_id: quotation.site_id, date,
         has_vat: quotation.has_vat, price_includes_vat: quotation.price_includes_vat,
         subtotal: totals.subtotal, vat: totals.vat, total: totals.total,
       }).select().single()
@@ -341,6 +344,10 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
   return (
     <Modal title={`สร้างใบแจ้งหนี้ — ${quotation.quotation_number}`} onClose={onClose} maxWidth={760}>
       <div className="modal-body">
+        <div style={{ marginBottom: 12 }}>
+          <label className="label">วันที่ออกเอกสาร</label>
+          <input type="date" className="input" style={{ maxWidth: 200 }} value={date} onChange={e => setDate(e.target.value)} />
+        </div>
         <InvoiceItemsEditor lines={lines} onChange={setLines} mode={mode} onModeChange={setMode} />
         <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมงวดนี้ (ก่อน VAT)</span><span className="font-mono">{fmt(totals.subtotal)}</span></div>
@@ -517,6 +524,32 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
   )
 }
 
+// วันที่รับเงิน (paid_date/receipt.date/income.date) is its own field,
+// separate from the invoice's own `date` (document issue date, set once
+// at creation) -- defaults to today since that's when payment is usually
+// actually confirmed, but editable for recording a payment a few days
+// after it actually arrived.
+function MarkPaidModal({ invoice, onConfirm, onCancel }) {
+  const [paidDate, setPaidDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+  return (
+    <Modal title="ทำเครื่องหมายว่าชำระแล้ว" onClose={onCancel} maxWidth={420}>
+      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        <p style={{ color: 'var(--text2)', lineHeight: 1.6, margin: 0 }}>
+          ยืนยันว่าได้รับชำระเงินตามใบแจ้งหนี้ {invoice.invoice_number} แล้ว? ระบบจะออกใบเสร็จรับเงิน/ใบกำกับภาษีให้อัตโนมัติ
+        </p>
+        <div>
+          <label className="label">วันที่รับเงิน</label>
+          <input type="date" className="input" value={paidDate} onChange={e => setPaidDate(e.target.value)} />
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>
+        <button className="btn btn-primary" onClick={() => onConfirm(paidDate)}>ยืนยัน</button>
+      </div>
+    </Modal>
+  )
+}
+
 export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'invoices')
@@ -558,7 +591,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   // by calcDepositDeduction() against whatever deposit balance the site
   // has left, and only applied at all if the client_deposits module is on
   // (matches IncomeForm's `depositModuleOn` gate).
-  const handleMarkPaid = async (invoice) => {
+  const handleMarkPaid = async (invoice, paidDate) => {
     if (invoice.status !== 'unpaid' || payingId || voidingId) return
     setPayingId(invoice.id)
     try {
@@ -572,7 +605,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
         receipt = existingReceipt
       } else {
         const { data: newReceipt, error: receiptError } = await supabase.from('receipts').insert({
-          invoice_id: invoice.id, date: format(new Date(), 'yyyy-MM-dd'), amount: invoice.total,
+          invoice_id: invoice.id, date: paidDate, amount: invoice.total,
         }).select().single()
         if (receiptError) throw receiptError
         receipt = newReceipt
@@ -622,7 +655,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
         const incomePayload = {
           invoice_no: invoice.invoice_number,
           source_invoice_id: invoice.id,
-          date: format(new Date(), 'yyyy-MM-dd'),
+          date: paidDate,
           site_id: invoice.site_id,
           client_name: invoice.quotations?.clients?.name || null,
           description: `${invoice.invoice_number} — ${invoice.quotations?.quotation_number || ''}`,
@@ -640,7 +673,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
         await auditLog('incomes', income.id, 'INSERT', null, incomePayload)
       }
 
-      const invUpdate = { status: 'paid', paid_date: format(new Date(), 'yyyy-MM-dd'), income_id: income.id }
+      const invUpdate = { status: 'paid', paid_date: paidDate, income_id: income.id }
       const { data: updateResult, error: invError } = await supabase.from('invoices').update(invUpdate).eq('id', invoice.id).eq('status', 'unpaid').select('id')
       if (invError) throw invError
       if (!updateResult || updateResult.length === 0) {
@@ -826,10 +859,9 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
       )}
 
       {payRow && (
-        <ConfirmDialog
-          title="ทำเครื่องหมายว่าชำระแล้ว"
-          message={`ยืนยันว่าได้รับชำระเงินตามใบแจ้งหนี้ ${payRow.invoice_number} แล้ว? ระบบจะออกใบเสร็จรับเงิน/ใบกำกับภาษีให้อัตโนมัติ`}
-          onConfirm={() => { handleMarkPaid(payRow); setPayRow(null) }}
+        <MarkPaidModal
+          invoice={payRow}
+          onConfirm={(paidDate) => { handleMarkPaid(payRow, paidDate); setPayRow(null) }}
           onCancel={() => setPayRow(null)}
         />
       )}
