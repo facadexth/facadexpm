@@ -83,7 +83,11 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
   const isAdd = !initial?.id
   const [form, setForm, clearDraft] = useDraftForm(draftKey, { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const sitesFull = isAdd && form.status === 'Ongoing' && seat?.sites?.max != null && seat.sites.used >= seat.sites.max
+  // เตือนทั้งตอนสร้างไซท์ใหม่ และตอนเปลี่ยนสถานะไซท์เดิมกลับเป็น "กำลังดำเนินการ"
+  // (initial.status มาจากค่าก่อนแก้ไข -- ถ้าเดิมเป็น Ongoing อยู่แล้วไม่ถือว่าใช้โควตาเพิ่ม)
+  const reopening = !isAdd && initial.status !== 'Ongoing' && form.status === 'Ongoing'
+  const sitesFull = (isAdd || reopening) && form.status === 'Ongoing'
+    && seat?.sites?.max != null && seat.sites.used >= seat.sites.max
 
   const totalCostBreakdown = COST_TYPES.reduce((s, t) => s + (parseFloat(form[t.key]) || 0), 0)
 

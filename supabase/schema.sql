@@ -1585,6 +1585,24 @@ CREATE POLICY owner_updates ON user_roles FOR UPDATE TO authenticated
     )
   );
 
+-- Closes a loophole in the ongoing-site limit: since tenant_under_seat_limit
+-- only counts status='Ongoing' sites, a tenant at the cap could mark an
+-- Ongoing site Completed (frees a "slot"), create a new Ongoing site, then
+-- flip the Completed one back to Ongoing via UPDATE -- ungated by the
+-- INSERT-only policy above. Same no-op exemption: only blocks when status
+-- is actually transitioning INTO Ongoing from something else.
+DROP POLICY admin_updates ON sites;
+CREATE POLICY admin_updates ON sites FOR UPDATE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write())
+  WITH CHECK (
+    is_admin_or_owner() AND tenant_id = current_tenant_id() AND tenant_can_write()
+    AND (
+      status IS DISTINCT FROM 'Ongoing'
+      OR EXISTS (SELECT 1 FROM sites old WHERE old.id = sites.id AND old.status = 'Ongoing')
+      OR tenant_under_seat_limit('sites')
+    )
+  );
+
 -- Every RLS policy in this file scopes reads/writes to the caller's own
 -- tenant via current_tenant_id() -- these two functions are the only
 -- place a caller can ever see or touch another tenant's row, and only
