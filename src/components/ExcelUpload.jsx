@@ -404,7 +404,11 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
       setPreview(null)
       onSuccess?.(`นำเข้าสำเร็จ ${rows.length} รายการ`)
     } catch (e) {
-      setError(e.message)
+      setError(
+        e.message?.includes('limit exceeded for this tenant')
+          ? 'นำเข้าไม่สำเร็จ: จำนวนไซท์งานที่นำเข้าเกินโควตาที่ package ปัจจุบันอนุญาต กรุณาลดจำนวนแถวหรือติดต่อผู้ดูแลระบบเพื่ออัปเกรด package'
+          : e.message
+      )
     } finally {
       setLoading(false)
     }

@@ -1603,6 +1603,38 @@ CREATE POLICY admin_updates ON sites FOR UPDATE TO authenticated
     )
   );
 
+-- Closes a batch-insert/batch-update bypass: RLS WITH CHECK is evaluated
+-- per-row against a per-statement snapshot, so sibling rows within the SAME
+-- multi-row INSERT/UPDATE never see each other's pending changes -- e.g. a
+-- single 3-row batch insert of new Ongoing sites can all pass a max_sites=1
+-- cap independently, each seeing the same pre-statement count of 0.
+-- Directly reachable via ExcelUpload.jsx's bulk .insert(rows), not just a
+-- crafted API call. Fixed with an AFTER ... FOR EACH STATEMENT trigger that
+-- re-validates the aggregate once after the whole batch lands -- if it
+-- fails, the entire statement (all rows) rolls back. Reuses
+-- tenant_under_seat_limit() unchanged.
+CREATE OR REPLACE FUNCTION check_seat_limit_after_statement()
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+  v_kind TEXT := TG_ARGV[0];
+BEGIN
+  IF NOT tenant_under_seat_limit(v_kind) THEN
+    RAISE EXCEPTION 'Package % limit exceeded for this tenant', v_kind
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER trg_seat_limit_sites AFTER INSERT OR UPDATE ON sites
+  FOR EACH STATEMENT EXECUTE FUNCTION check_seat_limit_after_statement('sites');
+CREATE TRIGGER trg_seat_limit_user_roles AFTER INSERT OR UPDATE ON user_roles
+  FOR EACH STATEMENT EXECUTE FUNCTION check_seat_limit_after_statement('admins');
+CREATE TRIGGER trg_seat_limit_workers AFTER INSERT ON workers
+  FOR EACH STATEMENT EXECUTE FUNCTION check_seat_limit_after_statement('workers');
+
 -- Every RLS policy in this file scopes reads/writes to the caller's own
 -- tenant via current_tenant_id() -- these two functions are the only
 -- place a caller can ever see or touch another tenant's row, and only
