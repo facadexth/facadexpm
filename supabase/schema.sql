@@ -1376,10 +1376,12 @@ CREATE POLICY platform_admins_read_own ON platform_admins FOR SELECT TO authenti
   USING (user_email = auth.email());
 
 CREATE TABLE packages (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name        TEXT NOT NULL UNIQUE,
-  sort_order  INT NOT NULL DEFAULT 0,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name           TEXT NOT NULL UNIQUE,
+  sort_order     INT NOT NULL DEFAULT 0,
+  price_monthly  NUMERIC, -- NULL = "Custom / contact us" (Enterprise)
+  price_yearly   NUMERIC, -- total annual price, not a monthly-equivalent
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE package_modules (
@@ -1393,22 +1395,46 @@ CREATE TABLE package_modules (
 -- references packages, defined after tenants in this file.
 ALTER TABLE tenants ADD COLUMN package_id UUID REFERENCES packages(id) ON DELETE SET NULL;
 
--- Starter tiers, exact supersets of each other (Basic ⊂ Standard ⊂ Full).
-INSERT INTO packages (name, sort_order) VALUES
-  ('Basic', 1), ('Standard', 2), ('Full', 3);
+-- 5-tier pricing (2026-08-29-13-package-pricing-5-tier.sql), exact
+-- supersets of each other (Free ⊂ Solo ⊂ Pro Team ⊂ Business =
+-- Enterprise -- Enterprise has the same modules as Business today; no
+-- more module keys exist to differentiate it further, its real
+-- distinction would be seat limits/custom terms which aren't built).
+-- Real prices, but scope-limited to what's actually enforceable: this
+-- app has zero seat/usage-limit infrastructure (no admin/worker/site
+-- counting, no per-month quotation caps) despite an external pricing
+-- deck describing such limits -- not promised here. Retention also
+-- stays ungated (module: null in App.jsx, unchanged) even though that
+-- deck shows it as Business-and-up, since paywalling something
+-- currently free for the one real tenant was never explicitly decided.
+INSERT INTO packages (name, sort_order, price_monthly, price_yearly) VALUES
+  ('Free', 1, 0, 0),
+  ('Solo', 2, 990, 9480),
+  ('Pro Team', 3, 2990, 28680),
+  ('Business', 4, 6990, 67080),
+  ('Enterprise', 5, NULL, NULL);
 
 INSERT INTO package_modules (package_id, module_key)
-SELECT id, 'quotations' FROM packages WHERE name = 'Basic'
-UNION ALL SELECT id, 'invoices' FROM packages WHERE name = 'Basic';
+SELECT id, 'quotations' FROM packages WHERE name = 'Free';
 
 INSERT INTO package_modules (package_id, module_key)
-SELECT id, m FROM packages, unnest(ARRAY['quotations','invoices','purchase_orders','client_deposits']) m
-WHERE name = 'Standard';
+SELECT id, m FROM packages, unnest(ARRAY['quotations','invoices']) m
+WHERE name = 'Solo';
+
+INSERT INTO package_modules (package_id, module_key)
+SELECT id, m FROM packages,
+  unnest(ARRAY['quotations','invoices','purchase_orders','client_deposits']) m
+WHERE name = 'Pro Team';
 
 INSERT INTO package_modules (package_id, module_key)
 SELECT id, m FROM packages,
   unnest(ARRAY['quotations','invoices','purchase_orders','client_deposits','payroll','labor_subcontractors']) m
-WHERE name = 'Full';
+WHERE name = 'Business';
+
+INSERT INTO package_modules (package_id, module_key)
+SELECT id, m FROM packages,
+  unnest(ARRAY['quotations','invoices','purchase_orders','client_deposits','payroll','labor_subcontractors']) m
+WHERE name = 'Enterprise';
 
 ALTER TABLE packages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE package_modules ENABLE ROW LEVEL SECURITY;

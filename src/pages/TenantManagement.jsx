@@ -9,7 +9,10 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { usePlatformTenants, usePackages, useTenantStatusLog } from '../hooks/useSupabase.js'
 import { Modal } from '../components/Modal.jsx'
-import { fmtDate } from '../lib/supabase.js'
+import { fmt, fmtDate } from '../lib/supabase.js'
+
+const packagePriceLabel = (p) =>
+  p.price_monthly == null ? 'Custom' : p.price_monthly === 0 ? 'ฟรี' : `${fmt(p.price_monthly, 0)}/ด.`
 
 const PLAN_LABELS = { trial: '🕓 Trial', active: '✅ Active', expired: '⛔ Expired' }
 const PLAN_OPTS = ['trial', 'active', 'expired']
@@ -139,7 +142,7 @@ export default function TenantManagement() {
                       value={t.package_id || ''} disabled={savingId === t.id}
                       onChange={e => handlePackageChange(t.id, e.target.value)}>
                       <option value="">— ไม่มี —</option>
-                      {(packages || []).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      {(packages || []).map(p => <option key={p.id} value={p.id}>{p.name} · {packagePriceLabel(p)}</option>)}
                     </select>
                   </td>
                   <td>{PLAN_LABELS[t.plan] || t.plan}</td>
