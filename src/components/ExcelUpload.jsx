@@ -218,7 +218,6 @@ async function parseSiteSheet(ws) {
       cost_aluminum:  parseFloat(row[8]) || null,
       cost_equipment: parseFloat(row[9]) || null,
       cost_rubber:    parseFloat(row[10]) || null,
-      cost_labor:     parseFloat(row[11]) || null,
     })
   }
   return records

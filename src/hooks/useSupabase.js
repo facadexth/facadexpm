@@ -139,16 +139,30 @@ export function useSiteOverview(siteId) {
   }, [siteId])
 }
 
-/** ค่าใช้จ่ายทั้งหมด (all-time) ของไซท์นี้ พร้อม category_name -- ใช้ทำ pie chart ใน SiteOverviewModal */
+/**
+ * ค่าใช้จ่ายทั้งหมด (all-time) ของไซท์นี้ พร้อม category_name -- ใช้ทำ pie
+ * chart ใน SiteOverviewModal. Appends real worker/subcontractor labor cost
+ * (site_financial_summary.worker_labor_cost/subcontractor_labor_cost) as
+ * two synthetic categories so the pie's total always matches the site's
+ * real total_expense, which now folds both in too.
+ */
 export function useSiteExpensesByCategory(siteId) {
   return useQuery(async () => {
     if (!siteId) return []
-    const { data, error } = await supabase
-      .from('expenses_view')
-      .select('category_name, amount')
-      .eq('site_id', siteId)
-    if (error) throw error
-    return data
+    const [expensesRes, summaryRes] = await Promise.all([
+      supabase.from('expenses_view').select('category_name, amount').eq('site_id', siteId),
+      supabase.from('site_financial_summary').select('worker_labor_cost, subcontractor_labor_cost').eq('id', siteId).single(),
+    ])
+    if (expensesRes.error) throw expensesRes.error
+    if (summaryRes.error) throw summaryRes.error
+    const rows = [...expensesRes.data]
+    if (summaryRes.data?.worker_labor_cost > 0) {
+      rows.push({ category_name: 'ค่าแรงพนักงาน', amount: summaryRes.data.worker_labor_cost })
+    }
+    if (summaryRes.data?.subcontractor_labor_cost > 0) {
+      rows.push({ category_name: 'ค่าแรง Sub-contract', amount: summaryRes.data.subcontractor_labor_cost })
+    }
+    return rows
   }, [siteId])
 }
 

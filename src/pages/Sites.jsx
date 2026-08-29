@@ -22,12 +22,16 @@ import { useDraftForm } from '../hooks/useDraftForm.js'
 
 const STATUS_OPTS = ['Ongoing', 'Completed', 'On Hold', 'Cancelled']
 
+// cost_labor is intentionally absent here -- it's superseded by real,
+// auto-computed labor cost (site_financial_summary.worker_labor_cost /
+// subcontractor_labor_cost, shown in SiteOverviewModal's pie chart and no
+// longer a manual estimate). The sites.cost_labor column itself is left
+// untouched so no historical estimate data is lost.
 const COST_TYPES = [
   { key: 'cost_aluminum',   label: 'อลูมิเนียม/เหล็ก' },
   { key: 'cost_glass',      label: 'กระจก' },
   { key: 'cost_equipment',  label: 'อุปกรณ์' },
   { key: 'cost_rubber',     label: 'ซิลิโคน/ยาง' },
-  { key: 'cost_labor',      label: 'ค่าแรง Sub-contract' },
   { key: 'cost_other',      label: 'เบ็ดเตล็ด' },
 ]
 

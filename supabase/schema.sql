@@ -1965,6 +1965,27 @@ WITH quotation_discount AS (
     FROM quotation_items
     GROUP BY quotation_id
   ) qt ON qt.quotation_id = q.id
+),
+-- Real, already-tracked labor cost -- see
+-- 2026-08-29-01-site-labor-cost-in-financial-summary.sql. Worker cost is
+-- accrual by days/hours worked (labor_cost_by_site + ot_cost_by_site);
+-- subcontractor cost uses labor_contract_summary.total_billed_gross (same
+-- accrual basis, not total_paid_net). sites.cost_labor is no longer read
+-- here -- superseded by these two real numbers.
+worker_cost AS (
+  SELECT site_id, SUM(labor_cost) AS labor_cost
+  FROM labor_cost_by_site
+  GROUP BY site_id
+),
+worker_ot AS (
+  SELECT site_id, SUM(ot_cost) AS ot_cost
+  FROM ot_cost_by_site
+  GROUP BY site_id
+),
+subcontractor_cost AS (
+  SELECT site_id, SUM(total_billed_gross) AS subcontractor_labor_cost
+  FROM labor_contract_summary
+  GROUP BY site_id
 )
 SELECT
   s.id, s.site_number, s.name, s.status, s.start_date, s.end_date, s.contract_value,
@@ -1972,9 +1993,14 @@ SELECT
   s.cost_aluminum, s.cost_glass, s.cost_equipment, s.cost_rubber, s.cost_labor, s.cost_other,
   c.name            AS client_display_name,
   c.client_number,
-  COALESCE(exp.total_expense, 0)                                    AS total_expense,
-  COALESCE(inc.total_income, 0)                                     AS total_income,
-  COALESCE(inc.total_income, 0) - COALESCE(exp.total_expense, 0)    AS gross_profit,
+  COALESCE(exp.total_expense, 0)
+    + COALESCE(wc.labor_cost, 0) + COALESCE(wo.ot_cost, 0)
+    + COALESCE(sc.subcontractor_labor_cost, 0)                        AS total_expense,
+  COALESCE(inc.total_income, 0)                                       AS total_income,
+  COALESCE(inc.total_income, 0)
+    - (COALESCE(exp.total_expense, 0)
+       + COALESCE(wc.labor_cost, 0) + COALESCE(wo.ot_cost, 0)
+       + COALESCE(sc.subcontractor_labor_cost, 0))                    AS gross_profit,
   CASE WHEN s.contract_value > 0
     THEN ROUND(COALESCE(inc.total_income, 0) / s.contract_value * 100, 1)
     ELSE NULL
@@ -1991,7 +2017,11 @@ SELECT
   CASE WHEN s.contract_value > 0
     THEN ROUND(COALESCE(inv.invoiced_amount, 0) / s.contract_value * 100, 1)
     ELSE NULL
-  END AS invoiced_pct
+  END AS invoiced_pct,
+  -- Appended at the end: CREATE OR REPLACE VIEW requires existing column
+  -- name/position to stay stable, so new columns must land last.
+  COALESCE(wc.labor_cost, 0) + COALESCE(wo.ot_cost, 0) AS worker_labor_cost,
+  COALESCE(sc.subcontractor_labor_cost, 0)             AS subcontractor_labor_cost
 FROM sites s
 LEFT JOIN clients c ON s.client_id = c.id
 LEFT JOIN (
@@ -2006,6 +2036,9 @@ LEFT JOIN (
   FROM incomes
   GROUP BY site_id
 ) inc ON inc.site_id = s.id
+LEFT JOIN worker_cost wc ON wc.site_id = s.id
+LEFT JOIN worker_ot wo ON wo.site_id = s.id
+LEFT JOIN subcontractor_cost sc ON sc.site_id = s.id
 LEFT JOIN (
   SELECT q.site_id,
          SUM(
