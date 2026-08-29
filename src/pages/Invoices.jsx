@@ -728,7 +728,15 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
               value={null}
               onChange={id => { const q = billableQuotations.find(x => x.id === id); setPickQuotation(false); setCreateFor(q) }}
               placeholder="— เลือกใบเสนอราคา —"
-              options={billableQuotations.map(q => ({ value: q.id, label: `${q.quotation_number} · ${q.clients?.name || ''}`, keywords: `${q.quotation_number} ${q.clients?.name || ''}` }))}
+              options={billableQuotations.map(q => ({
+                // Post-acceptance, the site name is the live identity (renameable,
+                // reflects reality on the ground) -- the quotation_number is only
+                // a fixed reference kept for traceability. Never fall back to the
+                // client name here: once a quotation is accepted, sites.name always
+                // exists (Quotations.jsx's accept-flow requires it).
+                value: q.id, label: `${q.sites?.name || q.quotation_number} · ${q.quotation_number}`,
+                keywords: `${q.sites?.name || ''} ${q.quotation_number} ${q.clients?.name || ''}`,
+              }))}
             />
             {!billableQuotations.length && <p style={{ color: 'var(--text3)', fontSize: 12, marginTop: 8 }}>ไม่มีใบเสนอราคาที่ยอมรับแล้วและมีไซท์งานผูกอยู่</p>}
           </div>
