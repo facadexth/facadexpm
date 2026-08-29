@@ -879,6 +879,18 @@ CREATE INDEX idx_invoices_site_id ON invoices(site_id);
 CREATE INDEX idx_invoices_status ON invoices(status);
 CREATE INDEX idx_invoices_tenant_id ON invoices(tenant_id);
 
+-- incomes.source_invoice_id -- added here (not inline on incomes' own
+-- CREATE TABLE above) because it references invoices, which is defined
+-- after incomes in this file. See
+-- 2026-08-29-05-incomes-source-invoice-id.sql: the automated
+-- handleMarkPaid dedup key, replacing a SELECT-then-INSERT keyed on the
+-- freeform invoice_no text column (which real manual income entries can
+-- legitimately share) with a real UNIQUE constraint, matching how
+-- receipts.invoice_id already works. NULL for every manually-entered
+-- income row.
+ALTER TABLE incomes ADD COLUMN source_invoice_id UUID REFERENCES invoices(id);
+ALTER TABLE incomes ADD CONSTRAINT incomes_source_invoice_id_unique UNIQUE (source_invoice_id);
+
 -- Auto-numbering: identical pattern to generate_quotation_number()
 -- INV- + year + zero-padded per-year sequence.
 CREATE OR REPLACE FUNCTION generate_invoice_number()

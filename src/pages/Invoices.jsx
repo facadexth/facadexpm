@@ -572,21 +572,20 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
         await auditLog('receipts', receipt.id, 'INSERT', null, { invoice_id: invoice.id, amount: invoice.total })
       }
 
-      // incomes.invoice_no has no UNIQUE constraint at the DB level -- guard
-      // duplication in app code the same way the receipt reuse above does.
-      // Deliberately NOT .maybeSingle(): that errors out on a non-unique
-      // column the moment more than one row already matches, and a
-      // swallowed error here would insert yet another duplicate -- the very
-      // thing this block exists to prevent. limit(1) reuses the oldest
-      // match whether there are 0, 1 or many, and a genuine query failure
-      // throws instead of falling through to an insert.
+      // incomes.source_invoice_id IS UNIQUE at the DB level (unlike
+      // invoice_no, which src/pages/Income.jsx lets users type freely --
+      // real data already has that column legitimately shared across
+      // unrelated manual entries). .maybeSingle() is safe here specifically
+      // because the constraint guarantees at most one row can ever match;
+      // a genuine cross-tab race loses the INSERT below to a unique
+      // violation instead of silently duplicating the income row, and
+      // self-heals on retry via this same lookup.
       let income
-      const { data: existingIncomes, error: existingIncomeError } = await supabase
-        .from('incomes').select('*').eq('invoice_no', invoice.invoice_number)
-        .order('created_at', { ascending: true }).limit(1)
+      const { data: existingIncome, error: existingIncomeError } = await supabase
+        .from('incomes').select('*').eq('source_invoice_id', invoice.id).maybeSingle()
       if (existingIncomeError) throw existingIncomeError
-      if (existingIncomes && existingIncomes.length) {
-        income = existingIncomes[0]
+      if (existingIncome) {
+        income = existingIncome
       } else {
         const { data: site, error: siteError } = await supabase
           .from('sites')
@@ -615,6 +614,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
 
         const incomePayload = {
           invoice_no: invoice.invoice_number,
+          source_invoice_id: invoice.id,
           date: format(new Date(), 'yyyy-MM-dd'),
           site_id: invoice.site_id,
           client_name: invoice.quotations?.clients?.name || null,
@@ -668,6 +668,17 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
       // If another (still-unpaid) invoice has since drawn further progress
       // on the same unit, reverting unconditionally would silently erase
       // that other invoice's billed work.
+      //
+      // A 0-row result has two possible causes, and they must be told
+      // apart: (a) a genuine conflict as above, or (b) THIS invoice's own
+      // create flow never actually finished writing this unit -- it wrote
+      // the invoice_item_draws row but failed (network drop, tab closed)
+      // before the matching quotation_item_units update below it, leaving
+      // the unit still sitting at prior_pct. (b) was previously
+      // misreported as (a), permanently blocking void on a half-written
+      // invoice with no way to retry creating it either. Checking the
+      // unit's current value distinguishes them: still at prior_pct means
+      // the forward write never happened, so there's nothing to revert.
       for (const d of draws) {
         const { data: revertResult, error } = await supabase.from('quotation_item_units')
           .update({ cumulative_pct: d.prior_pct, updated_at: new Date().toISOString() })
@@ -676,7 +687,14 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
           .select('id')
         if (error) throw error
         if (!revertResult || revertResult.length === 0) {
-          throw new Error('ไม่สามารถยกเลิกได้ เนื่องจากมีการเรียกเก็บเงินเพิ่มเติมกับรายการนี้ในใบแจ้งหนี้อื่นแล้ว')
+          const { data: current, error: checkError } = await supabase
+            .from('quotation_item_units').select('cumulative_pct').eq('id', d.quotation_item_unit_id).single()
+          if (checkError) throw checkError
+          if (current.cumulative_pct !== d.prior_pct) {
+            throw new Error('ไม่สามารถยกเลิกได้ เนื่องจากมีการเรียกเก็บเงินเพิ่มเติมกับรายการนี้ในใบแจ้งหนี้อื่นแล้ว')
+          }
+          // else: already at prior_pct -- this draw's forward write never
+          // completed, so it's already correct. Nothing to revert.
         }
       }
 
