@@ -2,9 +2,13 @@
 
 ## Overview
 
-FacadeXPM is genuinely multi-tenant in production (12+ tenants today),
-but there has never been any way for FacadeX (the company operating this
-software) to see or manage data across tenants. Every RLS policy in the
+FacadeXPM's data model is genuinely multi-tenant, but in practice only
+one real tenant exists in production today (the FacadeX bootstrap
+tenant itself). Confirmed with the user: build this now anyway, so the
+next real customer tenant has a management path from day one instead of
+another round of by-hand SQL. There has never been any way for FacadeX
+(the company operating this software) to see or manage data across
+tenants. Every RLS policy in the
 schema scopes strictly to the caller's own tenant via
 `current_tenant_id()`, and even `tenant_modules` writes are
 service-role-only — enabling a module for a tenant has always meant

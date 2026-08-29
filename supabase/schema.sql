@@ -1355,6 +1355,116 @@ CREATE TABLE tenant_modules (
 --   SELECT id, 'purchase_orders' FROM tenants WHERE company_name = 'Facade X'
 --   ON CONFLICT (tenant_id, module_key) DO NOTHING;
 
+-- Tenant management Phase 1 -- see
+-- docs/superpowers/specs/2026-08-29-tenant-management-page-design.md and
+-- 2026-08-29-11-tenant-management-packages.sql. platform_admins is a
+-- flat allowlist (no role/tenant scoping -- it's the root of trust for
+-- everything below it). packages/package_modules are just named,
+-- reusable module bundles over the existing tenant_modules module_key
+-- values -- assigning a tenant to a package syncs tenant_modules to
+-- match, so has_module_access() below is completely unaffected by any
+-- of this; packages are a management convenience, not a parallel
+-- access-control system.
+CREATE TABLE platform_admins (
+  user_email  TEXT PRIMARY KEY,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO platform_admins (user_email) VALUES ('contact@facadex.co.th');
+
+ALTER TABLE platform_admins ENABLE ROW LEVEL SECURITY;
+CREATE POLICY platform_admins_read_own ON platform_admins FOR SELECT TO authenticated
+  USING (user_email = auth.email());
+
+CREATE TABLE packages (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        TEXT NOT NULL UNIQUE,
+  sort_order  INT NOT NULL DEFAULT 0,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE package_modules (
+  package_id  UUID NOT NULL REFERENCES packages(id) ON DELETE CASCADE,
+  module_key  TEXT NOT NULL CHECK (module_key IN
+    ('payroll','labor_subcontractors','purchase_orders','client_deposits','quotations','invoices')),
+  PRIMARY KEY (package_id, module_key)
+);
+
+-- Added here (not inline on tenants' own CREATE TABLE above) because it
+-- references packages, defined after tenants in this file.
+ALTER TABLE tenants ADD COLUMN package_id UUID REFERENCES packages(id) ON DELETE SET NULL;
+
+-- Starter tiers, exact supersets of each other (Basic ⊂ Standard ⊂ Full).
+INSERT INTO packages (name, sort_order) VALUES
+  ('Basic', 1), ('Standard', 2), ('Full', 3);
+
+INSERT INTO package_modules (package_id, module_key)
+SELECT id, 'quotations' FROM packages WHERE name = 'Basic'
+UNION ALL SELECT id, 'invoices' FROM packages WHERE name = 'Basic';
+
+INSERT INTO package_modules (package_id, module_key)
+SELECT id, m FROM packages, unnest(ARRAY['quotations','invoices','purchase_orders','client_deposits']) m
+WHERE name = 'Standard';
+
+INSERT INTO package_modules (package_id, module_key)
+SELECT id, m FROM packages,
+  unnest(ARRAY['quotations','invoices','purchase_orders','client_deposits','payroll','labor_subcontractors']) m
+WHERE name = 'Full';
+
+ALTER TABLE packages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE package_modules ENABLE ROW LEVEL SECURITY;
+CREATE POLICY platform_admin_full_access ON packages FOR ALL TO authenticated
+  USING (EXISTS (SELECT 1 FROM platform_admins WHERE user_email = auth.email()))
+  WITH CHECK (EXISTS (SELECT 1 FROM platform_admins WHERE user_email = auth.email()));
+CREATE POLICY platform_admin_full_access ON package_modules FOR ALL TO authenticated
+  USING (EXISTS (SELECT 1 FROM platform_admins WHERE user_email = auth.email()))
+  WITH CHECK (EXISTS (SELECT 1 FROM platform_admins WHERE user_email = auth.email()));
+
+-- Every RLS policy in this file scopes reads/writes to the caller's own
+-- tenant via current_tenant_id() -- these two functions are the only
+-- place a caller can ever see or touch another tenant's row, and only
+-- when they're in platform_admins (re-checked inside the function body,
+-- not just assumed from the caller's own role, since SECURITY DEFINER
+-- bypasses tenants/tenant_modules RLS entirely for these two calls).
+CREATE FUNCTION platform_list_tenants()
+RETURNS TABLE (
+  id UUID, company_name TEXT, plan TEXT, trial_ends_at TIMESTAMPTZ,
+  package_id UUID, package_name TEXT, created_at TIMESTAMPTZ
+)
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+  SELECT t.id, t.company_name, t.plan, t.trial_ends_at, t.package_id, p.name, t.created_at
+  FROM tenants t
+  LEFT JOIN packages p ON p.id = t.package_id
+  WHERE EXISTS (SELECT 1 FROM platform_admins WHERE user_email = auth.email())
+  ORDER BY t.company_name;
+$$;
+
+CREATE FUNCTION platform_set_tenant_package(p_tenant_id UUID, p_package_id UUID)
+RETURNS VOID
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM platform_admins WHERE user_email = auth.email()) THEN
+    RAISE EXCEPTION 'not a platform admin';
+  END IF;
+
+  UPDATE tenants SET package_id = p_package_id WHERE id = p_tenant_id;
+
+  DELETE FROM tenant_modules
+  WHERE tenant_id = p_tenant_id
+    AND module_key NOT IN (SELECT module_key FROM package_modules WHERE package_id = p_package_id);
+
+  INSERT INTO tenant_modules (tenant_id, module_key)
+  SELECT p_tenant_id, module_key FROM package_modules WHERE package_id = p_package_id
+  ON CONFLICT (tenant_id, module_key) DO NOTHING;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION platform_list_tenants() FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION platform_set_tenant_package(UUID, UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION platform_list_tenants() TO authenticated;
+GRANT EXECUTE ON FUNCTION platform_set_tenant_package(UUID, UUID) TO authenticated;
+
 -- has_module_access(): true for every module during an active trial
 -- (trial_ends_at > now()), regardless of tenant_modules contents;
 -- once the trial ends, true only for modules explicitly enabled in

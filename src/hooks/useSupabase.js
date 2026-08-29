@@ -777,3 +777,40 @@ export function useAllLaborPayments(filters = {}) {
     return data
   }, [JSON.stringify(filters)])
 }
+
+// ── Tenant management (platform admin only) ─────────────────────
+
+/**
+ * Whether the logged-in user is a platform admin -- checked directly
+ * against platform_admins (readable by any authenticated user for their
+ * own row only, per that table's RLS), not by probing platform_list_tenants()
+ * for a non-empty result. Used purely for nav-item visibility: the real
+ * security boundary is the platform_admins check inside
+ * platform_list_tenants()/platform_set_tenant_package() themselves.
+ */
+export function usePlatformAdmin() {
+  return useQuery(async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user?.email) return false
+    const { data, error } = await supabase
+      .from('platform_admins').select('user_email').eq('user_email', user.email).maybeSingle()
+    if (error) throw error
+    return !!data
+  }, [])
+}
+
+export function usePlatformTenants() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.rpc('platform_list_tenants')
+    if (error) throw error
+    return data
+  }, [])
+}
+
+export function usePackages() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.from('packages').select('*').order('sort_order')
+    if (error) throw error
+    return data
+  }, [])
+}

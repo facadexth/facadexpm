@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom'
 import { supabase } from './lib/supabase.js'
 import { useUserRole } from './hooks/useUserRole.js'
 import { useTenant } from './hooks/useTenant.js'
+import { usePlatformAdmin } from './hooks/useSupabase.js'
 import { ProtectedPage } from './components/ProtectedPage.jsx'
 import { canViewPage } from './lib/permissions.js'
 import { getEffectiveTheme, toggleTheme } from './lib/theme.js'
@@ -35,6 +36,7 @@ const Quotations   = lazy(() => import('./pages/Quotations.jsx'))
 const SalesReport  = lazy(() => import('./pages/SalesReport.jsx'))
 const Invoices     = lazy(() => import('./pages/Invoices.jsx'))
 const CatalogItems = lazy(() => import('./pages/CatalogItems.jsx'))
+const TenantManagement = lazy(() => import('./pages/TenantManagement.jsx'))
 
 const TABS = [
   { id: 'dashboard',         label: '📊 ภาพรวม',              minRole: 'WORKER', module: null },
@@ -64,6 +66,7 @@ const TABS = [
     { id: 'catalog_items',   label: '📦 รายการสินค้า', minRole: 'ADMIN', module: 'quotations' },
     { id: 'user_management', label: '👤 ผู้ใช้งาน',    minRole: 'OWNER', module: null },
   ] },
+  { id: 'tenant_management', label: '🏢 Platform Admin', minRole: 'WORKER', module: null, platformAdminOnly: true },
 ]
 
 // TABS entries are either a plain tab ({id, label, minRole, module}) or a
@@ -179,6 +182,7 @@ export default function App() {
   const [theme, setTheme] = useState(getEffectiveTheme)
   const { role, isAtLeast, loading: roleLoading } = useUserRole()
   const { tenant, isTrialActive, trialDaysRemaining, hasModuleAccess } = useTenant()
+  const { data: isPlatformAdmin } = usePlatformAdmin()
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -245,6 +249,7 @@ export default function App() {
       case 'catalog_items': return <ProtectedPage minRole="ADMIN"><CatalogItems {...props} /></ProtectedPage>
       case 'user_management': return <ProtectedPage minRole="OWNER"><UserManagement {...props} /></ProtectedPage>
       case 'settings':   return <ProtectedPage minRole="OWNER"><Settings   {...props} /></ProtectedPage>
+      case 'tenant_management': return <ProtectedPage minRole="WORKER"><TenantManagement {...props} /></ProtectedPage>
       default:           return <ProtectedPage minRole="WORKER"><Dashboard  {...props} /></ProtectedPage>
     }
   }
@@ -266,7 +271,8 @@ export default function App() {
   const passesGates = (tab) =>
     isAtLeast(tab.minRole) &&
     hasModuleAccess(tab.module) &&
-    (!role || canViewPage(role, tab.id))
+    (!role || canViewPage(role, tab.id)) &&
+    (!tab.platformAdminOnly || isPlatformAdmin)
 
   const visibleTabs = TABS
     .map(tab => tab.children ? { ...tab, children: tab.children.filter(passesGates) } : tab)
