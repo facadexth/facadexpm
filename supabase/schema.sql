@@ -1644,6 +1644,16 @@ CREATE TRIGGER trg_seat_limit_user_roles AFTER INSERT OR UPDATE ON user_roles
 CREATE TRIGGER trg_seat_limit_workers AFTER INSERT ON workers
   FOR EACH STATEMENT EXECUTE FUNCTION check_seat_limit_after_statement('workers');
 
+-- check_seat_limit_after_statement() is a trigger function (RETURNS
+-- TRIGGER), never meant to be called directly -- Postgres itself already
+-- blocks invoking it outside a trigger context, so this isn't exploitable,
+-- but every other SECURITY DEFINER function added this session got an
+-- explicit REVOKE/GRANT and this one was missed. Closes a security-advisor
+-- warning and matches the established pattern. Verified live: trigger
+-- firing is unaffected (it doesn't go through the caller's own EXECUTE
+-- grant), both a legitimate insert and the batch-bypass block still work.
+REVOKE EXECUTE ON FUNCTION check_seat_limit_after_statement() FROM PUBLIC, anon, authenticated;
+
 -- Every RLS policy in this file scopes reads/writes to the caller's own
 -- tenant via current_tenant_id() -- these two functions are the only
 -- place a caller can ever see or touch another tenant's row, and only
