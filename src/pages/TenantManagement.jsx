@@ -4,6 +4,7 @@
 // See docs/superpowers/specs/2026-08-29-tenant-management-page-design.md.
 // ✅ Phase 1: package assignment
 // ✅ Phase 2: paid status + expiry (manual -- no payment gateway exists)
+// ✅ Phase 3: edit seat/site quota per package tier
 // ============================================================
 import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
@@ -14,8 +15,65 @@ import { fmt, fmtDate } from '../lib/supabase.js'
 const packagePriceLabel = (p) =>
   p.price_monthly == null ? 'Custom' : p.price_monthly === 0 ? 'ฟรี' : `${fmt(p.price_monthly, 0)}/ด.`
 
+const quotaLabel = (n) => n == null ? 'ไม่จำกัด' : n
+
 const PLAN_LABELS = { trial: '🕓 Trial', active: '✅ Active', expired: '⛔ Expired' }
 const PLAN_OPTS = ['trial', 'active', 'expired']
+
+// เว้นว่าง = ไม่จำกัด (max_* เป็น NULL ในฐานข้อมูล) -- บังคับจริงอยู่ที่
+// tenant_under_seat_limit() ฝั่ง DB, แก้ที่นี่แค่ปรับตัวเลข limit ต่อ tier
+function QuotaModal({ pkg, onClose, onSaved }) {
+  const [maxAdmins, setMaxAdmins] = useState(pkg.max_admins ?? '')
+  const [maxWorkers, setMaxWorkers] = useState(pkg.max_workers ?? '')
+  const [maxSites, setMaxSites] = useState(pkg.max_sites ?? '')
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const { error } = await supabase.from('packages').update({
+        max_admins: maxAdmins === '' ? null : parseInt(maxAdmins, 10),
+        max_workers: maxWorkers === '' ? null : parseInt(maxWorkers, 10),
+        max_sites: maxSites === '' ? null : parseInt(maxSites, 10),
+      }).eq('id', pkg.id)
+      if (error) throw error
+      onSaved()
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title={`Quota — ${pkg.name}`} onClose={onClose} maxWidth={420}>
+      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        <div style={{ fontSize: 12, color: 'var(--text3)' }}>เว้นว่างไว้ = ไม่จำกัด</div>
+        <div>
+          <label className="label">Admin/Owner สูงสุด</label>
+          <input type="number" min="0" className="input" placeholder="ไม่จำกัด"
+            value={maxAdmins} onChange={e => setMaxAdmins(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">พนักงาน (Workers) สูงสุด</label>
+          <input type="number" min="0" className="input" placeholder="ไม่จำกัด"
+            value={maxWorkers} onChange={e => setMaxWorkers(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">ไซท์งาน "กำลังดำเนินการ" สูงสุด</label>
+          <input type="number" min="0" className="input" placeholder="ไม่จำกัด"
+            value={maxSites} onChange={e => setMaxSites(e.target.value)} />
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={onClose}>ยกเลิก</button>
+        <button className="btn btn-primary" disabled={saving} onClick={handleSave}>
+          {saving ? '⏳...' : '✅ บันทึก'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
 
 function addMonths(dateStr, months) {
   const d = dateStr ? new Date(dateStr) : new Date()
@@ -94,9 +152,10 @@ function StatusModal({ tenant, onClose, onSaved }) {
 
 export default function TenantManagement() {
   const { data: tenants, refetch } = usePlatformTenants()
-  const { data: packages } = usePackages()
+  const { data: packages, refetch: refetchPackages } = usePackages()
   const [savingId, setSavingId] = useState(null)
   const [statusTenant, setStatusTenant] = useState(null)
+  const [quotaPkg, setQuotaPkg] = useState(null)
   const [toast, setToast] = useState(null)
 
   const handlePackageChange = async (tenantId, packageId) => {
@@ -163,6 +222,50 @@ export default function TenantManagement() {
       {statusTenant && (
         <StatusModal tenant={statusTenant} onClose={() => setStatusTenant(null)}
           onSaved={() => { setStatusTenant(null); refetch(); setToast('บันทึกแล้ว'); setTimeout(() => setToast(null), 2000) }} />
+      )}
+
+      <h3 style={{ margin: '28px 0 12px', fontSize: 15, fontWeight: 700 }}>Quota ต่อ Package</h3>
+      <p style={{ color: 'var(--text3)', fontSize: 12, marginBottom: 16 }}>
+        จำกัดจำนวน Admin/Owner, พนักงาน, และไซท์งาน "กำลังดำเนินการ" ต่อ tenant ตาม package —
+        บังคับจริงที่ระดับฐานข้อมูล เปลี่ยนที่นี่มีผลทันทีกับทุก tenant ใน package นั้น
+      </p>
+      <div className="card">
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Package</th>
+                <th>ราคา</th>
+                <th>Admin/Owner</th>
+                <th>พนักงาน</th>
+                <th>ไซท์งาน (Ongoing)</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {(packages || []).map(p => (
+                <tr key={p.id}>
+                  <td style={{ fontWeight: 600 }}>{p.name}</td>
+                  <td style={{ fontSize: 12, color: 'var(--text3)' }}>{packagePriceLabel(p)}</td>
+                  <td>{quotaLabel(p.max_admins)}</td>
+                  <td>{quotaLabel(p.max_workers)}</td>
+                  <td>{quotaLabel(p.max_sites)}</td>
+                  <td>
+                    <button className="btn btn-sm btn-ghost" onClick={() => setQuotaPkg(p)}>แก้ไข Quota</button>
+                  </td>
+                </tr>
+              ))}
+              {!(packages || []).length && (
+                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีข้อมูล</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {quotaPkg && (
+        <QuotaModal pkg={quotaPkg} onClose={() => setQuotaPkg(null)}
+          onSaved={() => { setQuotaPkg(null); refetchPackages(); setToast('บันทึกแล้ว'); setTimeout(() => setToast(null), 2000) }} />
       )}
     </div>
   )

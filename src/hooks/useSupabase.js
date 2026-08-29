@@ -816,6 +816,18 @@ export function usePackages() {
 }
 
 /**
+ * ทุกแถวของ package_modules (package_id + module_key) -- ใช้คู่กับ
+ * usePackages() เพื่อสร้างตารางเปรียบเทียบว่าแต่ละ tier มี module อะไรบ้าง
+ */
+export function usePackageModules() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.from('package_modules').select('package_id, module_key')
+    if (error) throw error
+    return data
+  }, [])
+}
+
+/**
  * ประวัติการเปลี่ยนสถานะ/หมดอายุ ของ tenant หนึ่งราย -- ไม่ต้องผ่าน
  * SECURITY DEFINER wrapper เพราะ tenant_status_log ไม่ได้ scope ด้วย
  * current_tenant_id() (เหมือน packages) อ่านตรงได้เลยถ้าเป็น platform admin

@@ -1445,6 +1445,15 @@ CREATE POLICY platform_admin_full_access ON package_modules FOR ALL TO authentic
   USING (EXISTS (SELECT 1 FROM platform_admins WHERE user_email = auth.email()))
   WITH CHECK (EXISTS (SELECT 1 FROM platform_admins WHERE user_email = auth.email()));
 
+-- packages/package_modules were platform-admin-only (no SELECT for regular
+-- tenant users at all) -- needed to build a live tier-comparison view for
+-- tenants (Settings.jsx). Pricing/limits/module lists are not sensitive
+-- (equivalent to a public pricing page), so opened broadly to any
+-- authenticated user; write access stays platform-admin-only via the
+-- platform_admin_full_access (FOR ALL) policy above.
+CREATE POLICY authenticated_read ON packages FOR SELECT TO authenticated USING (true);
+CREATE POLICY authenticated_read ON package_modules FOR SELECT TO authenticated USING (true);
+
 -- Seat/site limits per package tier (2026-08-29-14-package-seat-limits.sql).
 -- Scoped to totals only (Admins/Workers/Sites), NOT monthly document-count
 -- limits (e.g. "10 ใบเสนอราคา/เดือน") -- a rolling time-window count,

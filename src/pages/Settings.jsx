@@ -1,10 +1,81 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase.js'
-import { useAppSetting, saveAppSetting, useContractorTypes } from '../hooks/useSupabase.js'
+import { supabase, fmt } from '../lib/supabase.js'
+import { useAppSetting, saveAppSetting, useContractorTypes, usePackages, usePackageModules } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { PAGE_LABELS, DEFAULT_PERMISSIONS, loadPermissions, savePermissions } from '../lib/permissions.js'
 
 const LEVEL_LABELS = { none: '🚫 ซ่อน', view: '👁️ ดูอย่างเดียว', edit: '✏️ แก้ไขได้' }
+
+const packagePriceLabel = (p) =>
+  p.price_monthly == null ? 'Custom' : p.price_monthly === 0 ? 'ฟรี' : `${fmt(p.price_monthly, 0)}/เดือน`
+const quotaLabel = (n) => n == null ? 'ไม่จำกัด' : n
+const MODULE_LABELS = {
+  quotations: '📋 ใบเสนอราคา',
+  invoices: '🧾 ใบแจ้งหนี้',
+  purchase_orders: '🧾 ใบสั่งซื้อ',
+  client_deposits: '💰 มัดจำลูกค้า',
+  payroll: '👷 Payroll / Assign ช่าง',
+  labor_subcontractors: '🔧 ผู้รับเหมาค่าแรง',
+}
+
+// ตารางเปรียบเทียบ package ทั้งหมด -- อ่านจาก packages/package_modules สด
+// (platform admin แก้ quota/ราคาที่หน้า Tenant Management มีผลที่นี่ทันที)
+function PackageComparison({ currentPackageId }) {
+  const { data: packages } = usePackages()
+  const { data: modules } = usePackageModules()
+  if (!packages?.length) return null
+
+  const modulesFor = (packageId) =>
+    new Set((modules || []).filter(m => m.package_id === packageId).map(m => m.module_key))
+
+  return (
+    <div className="card" style={{ marginBottom: 24 }}>
+      <div className="card-header"><div className="card-title">💎 เปรียบเทียบแพ็กเกจ</div></div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Package</th>
+              {packages.map(p => (
+                <th key={p.id} style={{ textAlign: 'center', color: p.id === currentPackageId ? 'var(--accent)' : undefined }}>
+                  {p.name}{p.id === currentPackageId ? ' (ปัจจุบัน)' : ''}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style={{ fontWeight: 600 }}>ราคา</td>
+              {packages.map(p => <td key={p.id} style={{ textAlign: 'center' }}>{packagePriceLabel(p)}</td>)}
+            </tr>
+            <tr>
+              <td style={{ fontWeight: 600 }}>Admin/Owner สูงสุด</td>
+              {packages.map(p => <td key={p.id} style={{ textAlign: 'center' }}>{quotaLabel(p.max_admins)}</td>)}
+            </tr>
+            <tr>
+              <td style={{ fontWeight: 600 }}>พนักงานสูงสุด</td>
+              {packages.map(p => <td key={p.id} style={{ textAlign: 'center' }}>{quotaLabel(p.max_workers)}</td>)}
+            </tr>
+            <tr>
+              <td style={{ fontWeight: 600 }}>ไซท์งาน "กำลังดำเนินการ" สูงสุด</td>
+              {packages.map(p => <td key={p.id} style={{ textAlign: 'center' }}>{quotaLabel(p.max_sites)}</td>)}
+            </tr>
+            {Object.entries(MODULE_LABELS).map(([key, label]) => (
+              <tr key={key}>
+                <td style={{ fontWeight: 600 }}>{label}</td>
+                {packages.map(p => (
+                  <td key={p.id} style={{ textAlign: 'center' }}>
+                    {modulesFor(p.id).has(key) ? '✅' : '—'}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
 
 export default function Settings() {
   const [permissions, setPermissions] = useState(DEFAULT_PERMISSIONS)
@@ -142,6 +213,8 @@ export default function Settings() {
 
   return (
     <div>
+      <PackageComparison currentPackageId={tenant?.package_id} />
+
       {/* ── ค่าเดินทาง ── */}
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🚗 ค่าเดินทางต่อไซท์</h2>
