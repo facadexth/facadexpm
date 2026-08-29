@@ -36,21 +36,25 @@ describe('groupSmallSlices', () => {
     expect(groupSmallSlices(data, 0.05)).toEqual(data)
   })
 
-  it('merges multiple small slices into a trailing "อื่นๆ" bucket', () => {
+  it('merges multiple small slices into a trailing "อื่นๆ" bucket, carrying the merged items for tooltip detail', () => {
     const data = [
       { name: 'A', value: 60 }, { name: 'B', value: 30 },
       { name: 'C', value: 4 }, { name: 'D', value: 3 }, { name: 'E', value: 3 },
     ]
     expect(groupSmallSlices(data, 0.05)).toEqual([
       { name: 'A', value: 60 }, { name: 'B', value: 30 },
-      { name: 'อื่นๆ', value: 10 },
+      { name: 'อื่นๆ', value: 10, items: [
+        { name: 'C', value: 4 }, { name: 'D', value: 3 }, { name: 'E', value: 3 },
+      ] },
     ])
   })
 
   it('respects a custom threshold', () => {
     const data = [{ name: 'A', value: 70 }, { name: 'B', value: 20 }, { name: 'C', value: 10 }]
     expect(groupSmallSlices(data, 0.25)).toEqual([
-      { name: 'A', value: 70 }, { name: 'อื่นๆ', value: 30 },
+      { name: 'A', value: 70 }, { name: 'อื่นๆ', value: 30, items: [
+        { name: 'B', value: 20 }, { name: 'C', value: 10 },
+      ] },
     ])
   })
 

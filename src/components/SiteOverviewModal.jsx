@@ -14,6 +14,7 @@ import { retentionStatusFor } from '../lib/retentionStatus.js'
 import { Modal } from './Modal.jsx'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { CATEGORY_PALETTE, OTHER_LABEL, OTHER_COLOR, categoryBreakdown, groupSmallSlices } from '../lib/expenseChart.js'
+import CategoryPieTooltip from './CategoryPieTooltip.jsx'
 
 export default function SiteOverviewModal({ siteId, onClose }) {
   const { isAtLeast } = useUserRole()
@@ -168,7 +169,7 @@ export default function SiteOverviewModal({ siteId, onClose }) {
                     <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
                       {categoryData.map((d, i) => <Cell key={i} fill={d.name === OTHER_LABEL ? OTHER_COLOR : CATEGORY_PALETTE[i % CATEGORY_PALETTE.length]} />)}
                     </Pie>
-                    <Tooltip formatter={(value, name) => [`${fmt(value)} บาท`, name]} />
+                    <Tooltip content={<CategoryPieTooltip />} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>

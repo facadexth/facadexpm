@@ -36,5 +36,8 @@ export function groupSmallSlices(breakdown, threshold = 0.05) {
   const small = breakdown.filter(d => d.value / total < threshold)
   if (small.length < 2) return breakdown
   const otherValue = small.reduce((s, d) => s + d.value, 0)
-  return [...big, { name: OTHER_LABEL, value: otherValue }]
+  // `items` carries the merged categories for CategoryPieTooltip to list
+  // on hover -- the merge above is display-only decluttering, not a real
+  // loss of detail.
+  return [...big, { name: OTHER_LABEL, value: otherValue, items: small.sort((a, b) => b.value - a.value) }]
 }

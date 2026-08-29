@@ -22,6 +22,7 @@ import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { CATEGORY_PALETTE, OTHER_LABEL, OTHER_COLOR, categoryBreakdown, groupSmallSlices } from '../lib/expenseChart.js'
+import CategoryPieTooltip from '../components/CategoryPieTooltip.jsx'
 import {
   creditTermDays as computeCreditTermDays, paymentMethodOptions, billingDueTargetField,
   calcDueDate, resolvePaymentMethodOnSupplierChange,
@@ -434,7 +435,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                     />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value, name) => [`${fmt(value)} บาท`, name]} />
+                <Tooltip content={<CategoryPieTooltip />} />
               </PieChart>
             </ResponsiveContainer>
           ) : (
