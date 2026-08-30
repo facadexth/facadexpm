@@ -182,8 +182,8 @@ export default function App() {
   const [overviewSiteId, setOverviewSiteId] = useState(null)
   const [theme, setTheme] = useState(getEffectiveTheme)
   const { role, isAtLeast, loading: roleLoading } = useUserRole()
-  const { tenant, isTrialActive, trialDaysRemaining, hasModuleAccess, refetch: refetchTenant } = useTenant()
-  const { data: isPlatformAdmin } = usePlatformAdmin()
+  const { tenant, isTrialActive, trialDaysRemaining, hasModuleAccess, loading: tenantLoading, refetch: refetchTenant } = useTenant()
+  const { data: isPlatformAdmin, loading: platformAdminLoading } = usePlatformAdmin()
 
   // Single source of truth for "can this user actually be on this tab" --
   // used both to decide what shows in the nav AND to gate the page itself
@@ -240,14 +240,23 @@ export default function App() {
   // Catches losing access to the CURRENTLY OPEN tab too (e.g. the OWNER
   // downgrades the plan or revokes a permission while someone's sitting
   // on that page) -- previously only a role change was ever re-checked.
+  //
+  // MUST also wait on tenantLoading, not just roleLoading: hasModuleAccess
+  // reads tenant/enabledModules, which start out null/[] while useTenant()
+  // is still fetching -- checking passesGates before that resolves reads
+  // "not entitled to anything yet" as final and wrongly bounces away from
+  // a tab the tenant actually has access to (reproduced: fresh login,
+  // pendingTab='quotations' on a tenant with the module -- redirected to
+  // dashboard before tenant data arrived, then never navigated back since
+  // nothing re-opens a tab once redirected away from it).
   useEffect(() => {
-    if (roleLoading || !session) return
+    if (roleLoading || tenantLoading || platformAdminLoading || !session) return
     const current = ALL_TAB_ENTRIES.find(t => t.id === activeTab)
     if (current && !passesGates(current)) {
       setActiveTab(isAtLeast('ADMIN') ? 'dashboard' : 'assign')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roleLoading, session, activeTab, isAtLeast, hasModuleAccess, role, isPlatformAdmin])
+  }, [roleLoading, tenantLoading, platformAdminLoading, session, activeTab, isAtLeast, hasModuleAccess, role, isPlatformAdmin])
 
   const navigateTo = (tab, state = {}) => {
     // Explicit navigation is fresh user intent -- safe to let a future
@@ -267,7 +276,7 @@ export default function App() {
   const renderPage = () => {
     const props = { navigateTo, navState, openSiteOverview: setOverviewSiteId, onOpenChangePassword: () => setShowChangePassword(true), onOpenChangePlan: () => setShowUpgradeModal(true) }
     const entry = ALL_TAB_ENTRIES.find(t => t.id === activeTab) ?? ALL_TAB_ENTRIES[0]
-    const gate = { minRole: entry.minRole, module: entry.module, pageKey: entry.id, platformAdminOnly: entry.platformAdminOnly, hasModuleAccess, isPlatformAdmin }
+    const gate = { minRole: entry.minRole, module: entry.module, pageKey: entry.id, platformAdminOnly: entry.platformAdminOnly, hasModuleAccess, isPlatformAdmin, tenantLoading, platformAdminLoading }
 
     const page = (() => {
       switch (activeTab) {

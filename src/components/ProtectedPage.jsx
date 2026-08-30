@@ -33,10 +33,16 @@ function Denied({ text }) {
   )
 }
 
-export function ProtectedPage({ minRole, module, pageKey, platformAdminOnly, hasModuleAccess, isPlatformAdmin, children }) {
+export function ProtectedPage({ minRole, module, pageKey, platformAdminOnly, hasModuleAccess, isPlatformAdmin, tenantLoading, platformAdminLoading, children }) {
   const { loading, isAtLeast, role } = useUserRole()
 
-  if (loading) {
+  // tenantLoading/platformAdminLoading matter here, not just the role
+  // hook's own loading: hasModuleAccess/isPlatformAdmin default to
+  // false/null while their queries are still in flight, which reads as
+  // "not entitled" if checked too early -- wait for both, or a tenant
+  // that DOES have a module would flash a false "not available" denial
+  // on every fresh load.
+  if (loading || tenantLoading || platformAdminLoading) {
     return (
       <div style={{ padding: 40, color: 'var(--text3)', textAlign: 'center', fontSize: 14 }}>
         กำลังโหลด...
