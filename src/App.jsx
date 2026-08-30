@@ -43,16 +43,16 @@ const TABS = [
   { id: 'assign',            label: '📋 จ่ายงานช่าง',          minRole: 'WORKER', module: 'payroll' },
   { id: 'hr',                label: '👷 บุคคล',                minRole: 'WORKER', module: 'payroll' },
   { label: '🏗️ ไซท์งาน', children: [
-    { id: 'sites',     label: 'ภาพรวม',  minRole: 'ADMIN', module: null },
+    { id: 'sites',     label: '📊 ภาพรวม',  minRole: 'ADMIN', module: null },
     { id: 'deposits',  label: '💰 มัดจำ',   minRole: 'ADMIN', module: 'client_deposits' },
     { id: 'retention', label: '🔒 เงินประกันผลงาน', minRole: 'ADMIN', module: null },
   ] },
   { label: '💸 รายจ่าย', children: [
-    { id: 'expenses',        label: 'ภาพรวม',       minRole: 'ADMIN', module: null },
+    { id: 'expenses',        label: '📊 ภาพรวม',       minRole: 'ADMIN', module: null },
     { id: 'purchase_orders', label: '🧾 ใบสั่งซื้อ',   minRole: 'ADMIN', module: 'purchase_orders' },
   ] },
   { label: '💰 รายรับ', children: [
-    { id: 'income',        label: 'ภาพรวม',           minRole: 'ADMIN', module: null },
+    { id: 'income',        label: '📊 ภาพรวม',           minRole: 'ADMIN', module: null },
     { id: 'sales_report',  label: '📊 รายงานการขาย',    minRole: 'ADMIN', module: 'quotations' },
     { id: 'quotations',    label: '📋 ใบเสนอราคา',      minRole: 'ADMIN', module: 'quotations' },
     { id: 'invoices', label: '🧾 ใบแจ้งหนี้', minRole: 'ADMIN', module: 'invoices' },
