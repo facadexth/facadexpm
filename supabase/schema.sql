@@ -2722,7 +2722,11 @@ CREATE TABLE payment_intents (
   omise_charge_id  TEXT UNIQUE,
   status           TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','successful','failed','expired')),
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  confirmed_at     TIMESTAMPTZ
+  confirmed_at     TIMESTAMPTZ,
+  -- Proration (2026-08-30-09): computed once at charge-creation time
+  -- (preserve billing anniversary on an upgrade, fresh +1 month otherwise)
+  -- so the webhook / zero-cost activation path just applies it verbatim.
+  target_plan_expires_at TIMESTAMPTZ
 );
 
 CREATE INDEX idx_payment_intents_tenant_id ON payment_intents(tenant_id);

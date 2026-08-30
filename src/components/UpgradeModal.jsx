@@ -16,6 +16,7 @@ export default function UpgradeModal({ tenant, onClose, onResolved }) {
   const [selectedPkg, setSelectedPkg] = useState(null)
   const [qrUrl, setQrUrl] = useState(null)
   const [paymentIntentId, setPaymentIntentId] = useState(null)
+  const [chargeAmount, setChargeAmount] = useState(null) // actual amount after proration -- may be less than the list price
   const [applyingId, setApplyingId] = useState(null)
   const [downgrading, setDowngrading] = useState(false)
   const [error, setError] = useState(null)
@@ -32,9 +33,18 @@ export default function UpgradeModal({ tenant, onClose, onResolved }) {
       })
       if (fnError) throw fnError
       if (data?.error) throw new Error(data.error)
+
+      // Proration credit fully covered the new tier -- already activated
+      // server-side, no QR/payment step needed.
+      if (data.activated_immediately) {
+        onResolved?.()
+        return
+      }
+
       setSelectedPkg(pkg)
       setQrUrl(data.qr_image_uri)
       setPaymentIntentId(data.payment_intent_id)
+      setChargeAmount(data.amount ?? pkg.price_monthly)
       setStep('pay')
 
       pollRef.current = setInterval(async () => {
