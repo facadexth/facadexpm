@@ -217,14 +217,14 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
   const monthFrom = format(startOfMonth(today), 'yyyy-MM-dd')
   const monthTo   = format(endOfMonth(today),   'yyyy-MM-dd')
 
-  const [dateFrom, setDateFrom] = useState(monthFrom)
-  const [dateTo,   setDateTo]   = useState(monthTo)
-  const [dateField, setDateField] = useState('date')
+  const [dateFrom, setDateFrom] = useState(navState?.dateFrom || monthFrom)
+  const [dateTo,   setDateTo]   = useState(navState?.dateTo || monthTo)
+  const [dateField, setDateField] = useState(navState?.dateField || 'date')
   const [allTime,  setAllTime]  = useState(false)
   const [siteId,   setSiteId]   = useState(navState?.siteId || '')
   const [catId,    setCatId]    = useState('')
   const [supplierId, setSupplierId] = useState('')
-  const [status,   setStatus]   = useState('')
+  const [status,   setStatus]   = useState(navState?.status || '')
   const [search,   setSearch]   = useState('')
   const [showAdd,  setShowAdd]  = useState(false)
   const [editRow,  setEditRow]  = useState(null)
@@ -236,9 +236,13 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
   const [toast,    setToast]    = useState(null)
   const [showImport, setShowImport] = useState(false)
 
-  // ถ้า navigate มาพร้อม siteId ให้ set filter
+  // ถ้า navigate มาพร้อม filter (เช่นจากหน้า Dashboard คลิกยอดที่ต้องชำระ) ให้ set ตาม
   useEffect(() => {
     if (navState?.siteId) setSiteId(navState.siteId)
+    if (navState?.dateFrom) setDateFrom(navState.dateFrom)
+    if (navState?.dateTo) setDateTo(navState.dateTo)
+    if (navState?.dateField) setDateField(navState.dateField)
+    if (navState?.status) setStatus(navState.status)
   }, [navState])
 
   const filters = { from: allTime ? null : dateFrom, to: allTime ? null : dateTo, dateField, siteId, categoryId: catId, supplierId, status, search }
@@ -381,6 +385,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
           </div>
           <select className="select select-sm" style={{ width: 190 }} value={status} onChange={e => setStatus(e.target.value)}>
             <option value="">ทุกสถานะ</option>
+            <option value="unpaid">🟡 ยังไม่จ่าย (ค้างจ่าย+ออกเช็ค)</option>
             {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
           </select>
           <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={resetFilters}>🔄 ล้างตัวกรอง</button>

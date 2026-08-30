@@ -181,7 +181,11 @@ export function useExpenses(filters = {}) {
       if (filters.siteId)   q = q.eq('site_id', filters.siteId)
       if (filters.categoryId) q = q.eq('category_id', filters.categoryId)
       if (filters.supplierId) q = q.eq('supplier_id', filters.supplierId)
-      if (filters.status)   q = q.eq('status', filters.status)
+      // 'unpaid' is a pseudo-status (not a real DB value) meaning "still
+      // owed" -- matches payment_forecast's own WHERE clause, so a KPI
+      // built from that view can link here with an exactly-matching filter.
+      if (filters.status === 'unpaid') q = q.in('status', ['pending', 'check_issued'])
+      else if (filters.status)         q = q.eq('status', filters.status)
       if (filters.search)   q = q.ilike('description', `%${filters.search}%`)
 
       // dateField: 'date' (วันที่สั่งซื้อ, default) | 'billing_date' (วันวางบิล)

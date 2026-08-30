@@ -269,9 +269,18 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
           <div className="card-title" style={{ marginBottom: 16 }}>ยอดที่ต้องชำระ (รายเดือน)</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {monthlyForecast.slice(0, 6).map((f) => {
-              const month = f.forecast_month ? format(parseISO(f.forecast_month), 'MMM yy', { locale: th }) : '—'
+              const monthDate = f.forecast_month ? parseISO(f.forecast_month) : null
+              const month = monthDate ? format(monthDate, 'MMM yy', { locale: th }) : '—'
               return (
-                <div key={f.forecast_month} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div key={f.forecast_month}
+                  onClick={() => monthDate && navigateTo('expenses', {
+                    dateField: 'due',
+                    dateFrom: format(startOfMonth(monthDate), 'yyyy-MM-dd'),
+                    dateTo: format(endOfMonth(monthDate), 'yyyy-MM-dd'),
+                    status: 'unpaid',
+                  })}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: monthDate ? 'pointer' : 'default' }}
+                >
                   <span style={{ color: 'var(--text2)', fontSize: 12 }}>{month}</span>
                   <span style={{ color: 'var(--yellow)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
                     {fmt(f.total_due)} บาท
