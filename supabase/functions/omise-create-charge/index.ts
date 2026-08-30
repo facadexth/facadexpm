@@ -11,6 +11,15 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
+// Called directly from the browser (UpgradeModal.jsx) -- needs CORS, or the
+// preflight OPTIONS request fails and the browser never sends the real
+// POST at all (surfaces client-side as "Failed to send a request to the
+// Edge Function", not as any error this function's own code ever runs).
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
 function omiseAuthHeader() {
   return 'Basic ' + btoa(OMISE_SECRET_KEY + ':')
 }
@@ -30,17 +39,18 @@ async function omisePost(path: string, params: Record<string, string>) {
 }
 
 Deno.serve(async (req) => {
-  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 })
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405, headers: corsHeaders })
 
   const authHeader = req.headers.get('Authorization')
   if (!authHeader) {
-    return new Response(JSON.stringify({ error: 'Missing Authorization' }), { status: 401 })
+    return new Response(JSON.stringify({ error: 'Missing Authorization' }), { status: 401, headers: corsHeaders })
   }
 
   try {
     const { package_id } = await req.json()
     if (!package_id) {
-      return new Response(JSON.stringify({ error: 'package_id required' }), { status: 400 })
+      return new Response(JSON.stringify({ error: 'package_id required' }), { status: 400, headers: corsHeaders })
     }
 
     // Bound to the CALLER's own JWT -- respects RLS, so current_tenant_id()
@@ -53,10 +63,10 @@ Deno.serve(async (req) => {
     const { data: pkg, error: pkgError } = await userClient
       .from('packages').select('id, name, price_monthly').eq('id', package_id).single()
     if (pkgError || !pkg) {
-      return new Response(JSON.stringify({ error: 'Package not found' }), { status: 404 })
+      return new Response(JSON.stringify({ error: 'Package not found' }), { status: 404, headers: corsHeaders })
     }
     if (pkg.price_monthly == null || pkg.price_monthly <= 0) {
-      return new Response(JSON.stringify({ error: 'Package has no payable monthly price (Free or Custom/Enterprise)' }), { status: 400 })
+      return new Response(JSON.stringify({ error: 'Package has no payable monthly price (Free or Custom/Enterprise)' }), { status: 400, headers: corsHeaders })
     }
 
     // INSERT goes through the caller's own RLS (admin_inserts requires
@@ -67,7 +77,7 @@ Deno.serve(async (req) => {
       .select()
       .single()
     if (intentError) {
-      return new Response(JSON.stringify({ error: intentError.message }), { status: 400 })
+      return new Response(JSON.stringify({ error: intentError.message }), { status: 400, headers: corsHeaders })
     }
 
     const amountSatang = Math.round(pkg.price_monthly * 100)
@@ -106,8 +116,8 @@ Deno.serve(async (req) => {
       charge_id: charge.id,
       status: charge.status,
       qr_image_uri: qrImageUri,
-    }), { headers: { 'Content-Type': 'application/json' } })
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch (e) {
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }), { status: 500 })
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }), { status: 500, headers: corsHeaders })
   }
 })

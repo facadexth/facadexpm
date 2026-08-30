@@ -1,7 +1,7 @@
 // ============================================================
 // TrialBanner — shows trial countdown, or an expired-trial notice
 // ============================================================
-export default function TrialBanner({ tenant, isTrialActive, trialDaysRemaining }) {
+export default function TrialBanner({ tenant, isTrialActive, trialDaysRemaining, onChoosePackage }) {
   if (!tenant) return null
 
   if (isTrialActive) {
@@ -19,9 +19,13 @@ export default function TrialBanner({ tenant, isTrialActive, trialDaysRemaining 
     return (
       <div style={{
         background: 'rgba(255,107,107,0.12)', borderBottom: '1px solid rgba(255,107,107,0.3)',
-        padding: '8px 24px', fontSize: 13, color: 'var(--red)', textAlign: 'center'
+        padding: '8px 24px', fontSize: 13, color: 'var(--red)', textAlign: 'center',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
       }}>
-        ⚠️ หมดระยะทดลองใช้แล้ว — ติดต่อเราเพื่ออัปเกรดแพ็กเกจและใช้งานต่อ
+        ⚠️ หมดระยะทดลองใช้แล้ว — เลือกแพ็กเกจเพื่อใช้งานต่อ
+        {onChoosePackage && (
+          <button className="btn btn-sm btn-danger" onClick={onChoosePackage}>เลือกแพ็กเกจ</button>
+        )}
       </div>
     )
   }

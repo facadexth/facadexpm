@@ -14,6 +14,7 @@ import { getEffectiveTheme, toggleTheme } from './lib/theme.js'
 import ChangePassword from './components/ChangePassword.jsx'
 import SiteOverviewModal from './components/SiteOverviewModal.jsx'
 import TrialBanner from './components/TrialBanner.jsx'
+import UpgradeModal from './components/UpgradeModal.jsx'
 import ChunkErrorBoundary from './components/ChunkErrorBoundary.jsx'
 import Login      from './pages/Login.jsx'
 import Dashboard   from './pages/Dashboard.jsx'
@@ -181,8 +182,14 @@ export default function App() {
   const [overviewSiteId, setOverviewSiteId] = useState(null)
   const [theme, setTheme] = useState(getEffectiveTheme)
   const { role, isAtLeast, loading: roleLoading } = useUserRole()
-  const { tenant, isTrialActive, trialDaysRemaining, hasModuleAccess } = useTenant()
+  const { tenant, isTrialActive, trialDaysRemaining, hasModuleAccess, refetch: refetchTenant } = useTenant()
   const { data: isPlatformAdmin } = usePlatformAdmin()
+  // Trial ended, no paid package chosen yet -- shown automatically, but
+  // dismissible (X) without consequence; only the modal's own explicit
+  // "ไม่ตอนนี้" button downgrades to Free. Re-shown from TrialBanner too.
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+  const trialJustEnded = !!tenant && !isTrialActive && tenant.plan !== 'active'
+  useEffect(() => { if (trialJustEnded) setShowUpgradeModal(true) }, [trialJustEnded])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -280,7 +287,8 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <TrialBanner tenant={tenant} isTrialActive={isTrialActive} trialDaysRemaining={trialDaysRemaining} />
+      <TrialBanner tenant={tenant} isTrialActive={isTrialActive} trialDaysRemaining={trialDaysRemaining}
+        onChoosePackage={() => setShowUpgradeModal(true)} />
       {/* ── Header ── */}
       <header style={{
         background: 'var(--bg2)', borderBottom: '1px solid var(--border)',
@@ -360,6 +368,14 @@ export default function App() {
 
       {showChangePassword && (
         <ChangePassword onClose={() => setShowChangePassword(false)} />
+      )}
+
+      {showUpgradeModal && (
+        <UpgradeModal
+          tenant={tenant}
+          onClose={() => setShowUpgradeModal(false)}
+          onResolved={() => { setShowUpgradeModal(false); refetchTenant() }}
+        />
       )}
 
       {overviewSiteId && (
