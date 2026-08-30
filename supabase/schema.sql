@@ -2358,11 +2358,24 @@ LEFT JOIN sites s ON e.site_id = s.id
 LEFT JOIN expense_categories ec ON e.category_id = ec.id
 LEFT JOIN suppliers sup ON e.supplier_id = sup.id;
 
+-- Explicit column list (not i.*) -- CREATE OR REPLACE VIEW freezes the
+-- output column list at (re)creation time and never picks up columns
+-- added to the base table afterward via ALTER TABLE. tenant_id/
+-- income_type/deposit_deduction/source_invoice_id were all added to
+-- `incomes` after this view's original i.* definition and were silently
+-- missing from every SELECT until 2026-08-30-05-fix-incomes-view-missing-
+-- columns.sql -- found live via the Income page's "หักมัดจำ" column
+-- always showing "-" regardless of real deposit deductions, and (more
+-- seriously) Income.jsx's edit form reading the always-undefined
+-- income_type and silently reverting any "มัดจำ" row back to "ปกติ" on
+-- save.
 CREATE OR REPLACE VIEW incomes_view WITH (security_invoker = true) AS
 SELECT
-  i.*,
-  s.name        AS site_name,
-  s.site_number
+  i.id, i.invoice_no, i.date, i.site_id, i.client_name, i.description,
+  i.amount_no_vat, i.vat, i.tax_withheld, i.retention, i.received_amount,
+  i.created_at, i.updated_at,
+  s.name AS site_name, s.site_number,
+  i.tenant_id, i.income_type, i.deposit_deduction, i.source_invoice_id
 FROM incomes i
 LEFT JOIN sites s ON i.site_id = s.id;
 
