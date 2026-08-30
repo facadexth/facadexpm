@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useCategories } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
+import { TrashIcon } from '../components/icons.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 
 const PRESET_COLORS = [
@@ -117,7 +118,7 @@ export default function Categories() {
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="btn btn-sm btn-ghost" onClick={() => { setEditCat(c); setShowForm(true) }}>✏️</button>
-                    <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(c.id)}>🗑️</button>
+                    <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(c.id)}><TrashIcon /></button>
                   </td>
                 </tr>
               ))}

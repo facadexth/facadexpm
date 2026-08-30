@@ -19,6 +19,7 @@ import { exportToExcel } from '../lib/exportExcel.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { format, startOfYear, endOfYear } from 'date-fns'
+import { TrashIcon } from '../components/icons.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -379,7 +380,7 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
                     {canEdit && (
                       <>
                         <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(i); setShowAdd(true) }}>✏️</button>
-                        <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(i.id)}>🗑️</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(i.id)}><TrashIcon /></button>
                       </>
                     )}
                   </td>

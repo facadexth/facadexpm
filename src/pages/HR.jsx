@@ -17,6 +17,7 @@ import { auditLog } from '../lib/audit.js'
 import { mergeWorkerOT } from '../lib/otMerge.js'
 import { SITE_TYPES } from './assign/constants.js'
 import { downloadPDF } from '../lib/pdf.js'
+import { TrashIcon } from '../components/icons.jsx'
 
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
@@ -696,7 +697,7 @@ export default function HR() {
                         {canEdit && (
                           <>
                             <button className="btn btn-sm btn-ghost" onClick={() => { setEditWorker(w); setShowWorkerForm(true) }}>✏️</button>
-                            <button className="btn btn-sm btn-danger" onClick={() => setDeleteWorkerId(w.id)}>🗑️</button>
+                            <button className="btn btn-sm btn-danger" onClick={() => setDeleteWorkerId(w.id)}><TrashIcon /></button>
                           </>
                         )}
                       </td>
@@ -738,7 +739,7 @@ export default function HR() {
                         <td style={{ fontSize: 12 }}>{new Date(h.date).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
                         <td style={{ fontWeight: 600 }}>{h.name}</td>
                         <td style={{ whiteSpace: 'nowrap' }}>
-                          {canEdit && <button className="btn btn-sm btn-danger" onClick={() => setDeleteHolidayId(h.id)}>🗑️</button>}
+                          {canEdit && <button className="btn btn-sm btn-danger" onClick={() => setDeleteHolidayId(h.id)}><TrashIcon /></button>}
                         </td>
                       </tr>
                     ))}
@@ -816,7 +817,7 @@ export default function HR() {
                         {canEdit && (
                           <>
                             <button className="btn btn-sm btn-ghost" onClick={() => { setEditSalary(r); setShowSalaryForm(true) }}>✏️</button>
-                            <button className="btn btn-sm btn-danger" onClick={() => handleDeleteSalary(r.id)}>🗑️</button>
+                            <button className="btn btn-sm btn-danger" onClick={() => handleDeleteSalary(r.id)}><TrashIcon /></button>
                           </>
                         )}
                       </td>

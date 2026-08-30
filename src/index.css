@@ -16,6 +16,7 @@
   --text2: #9e9ec8;
   --text3: #5c5f80;
   --border: rgba(var(--accent-rgb), 0.2);
+  --icon-danger: #000; /* bin icon on .btn-danger -- black reads better against the lighter coral --red in dark mode than white does */
   --radius: 10px;
   --shadow: 0 4px 24px rgba(0,0,0,0.3);
 }
@@ -34,6 +35,7 @@
     --text2: #5a5648;
     --text3: #928c7a;
     --border: rgba(62, 92, 70, 0.18);
+    --icon-danger: #fff;
   }
 }
 
@@ -50,6 +52,7 @@
   --text2: #9e9ec8;
   --text3: #5c5f80;
   --border: rgba(var(--accent-rgb), 0.2);
+  --icon-danger: #000;
 }
 
 :root[data-theme="light"] {
@@ -63,6 +66,7 @@
   --text2: #5a5648;
   --text3: #928c7a;
   --border: rgba(62, 92, 70, 0.18);
+  --icon-danger: #fff;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -95,6 +99,9 @@ body {
 .btn-success:hover { opacity: 0.85; }
 .btn-danger { background: var(--red); color: #fff; }
 .btn-danger:hover { opacity: 0.85; }
+/* Bin icon color follows --icon-danger, not .btn-danger's own #fff --
+   other .btn-danger content (text labels like "✕ ยกเลิก") is unaffected. */
+.icon-trash { color: var(--icon-danger); }
 .btn-ghost {
   background: var(--bg3); color: var(--text2);
   border: 1px solid var(--border);

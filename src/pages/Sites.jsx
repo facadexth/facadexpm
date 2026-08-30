@@ -19,6 +19,7 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
+import { TrashIcon } from '../components/icons.jsx'
 
 const STATUS_OPTS = ['Ongoing', 'Completed', 'On Hold', 'Cancelled']
 
@@ -491,7 +492,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                           {s.status === 'Ongoing' && (
                             <button className="btn btn-sm btn-warning" style={{ marginRight: 4 }} onClick={() => setCompleteId(s.id)} title="จบไซท์งาน">✅ จบงาน</button>
                           )}
-                          <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(s.id)} title="ลบ">🗑️</button>
+                          <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(s.id)} title="ลบ"><TrashIcon /></button>
                         </>
                       )}
                     </td>
