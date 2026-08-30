@@ -8,7 +8,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useCategories } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
-import { TrashIcon } from '../components/icons.jsx'
+import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 
 const PRESET_COLORS = [
@@ -113,12 +113,16 @@ export default function Categories() {
                   </td>
                   <td style={{ color: 'var(--text3)', textAlign: 'center' }}>{c.sort_order}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <button className="btn btn-sm btn-ghost" onClick={() => moveOrder(c, -1)} disabled={i === 0}>↑</button>
-                    <button className="btn btn-sm btn-ghost" onClick={() => moveOrder(c, 1)} disabled={i === (categories||[]).length - 1}>↓</button>
+                    <div className="actions-cell">
+                      <button className="btn btn-sm btn-ghost" onClick={() => moveOrder(c, -1)} disabled={i === 0}>↑</button>
+                      <button className="btn btn-sm btn-ghost" onClick={() => moveOrder(c, 1)} disabled={i === (categories||[]).length - 1}>↓</button>
+                    </div>
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <button className="btn btn-sm btn-ghost" onClick={() => { setEditCat(c); setShowForm(true) }}>✏️</button>
-                    <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(c.id)}><TrashIcon /></button>
+                    <div className="actions-cell">
+                      <button className="btn btn-sm btn-ghost" onClick={() => { setEditCat(c); setShowForm(true) }}><PencilIcon /></button>
+                      <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(c.id)}><TrashIcon /></button>
+                    </div>
                   </td>
                 </tr>
               ))}

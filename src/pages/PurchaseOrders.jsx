@@ -18,6 +18,7 @@ import SearchableSelect from '../components/SearchableSelect.jsx'
 import AttachmentsSection from '../components/AttachmentsSection.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
+import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -512,15 +513,17 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                     <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(total)}</td>
                     <td><span className={`badge badge-po-${po.status}`}>{PO_STATUS_LABELS[po.status] || po.status}</span></td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn btn-sm btn-ghost" onClick={() => setDetailRow(po)}>👁️</button>
-                      <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(po)}>📄</button>
-                      {canEdit && po.status === 'ordered' && (
-                        <>
-                          <button className="btn btn-sm btn-primary" onClick={() => setReceiveRow(po)}>✅ รับของแล้ว</button>
-                          <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(po); setShowAdd(true) }}>✏️</button>
-                          <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(po.id)}>✕</button>
-                        </>
-                      )}
+                      <div className="actions-cell">
+                        <button className="btn btn-sm btn-ghost" onClick={() => setDetailRow(po)}>👁️</button>
+                        <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(po)}>📄</button>
+                        {canEdit && po.status === 'ordered' && (
+                          <>
+                            <button className="btn btn-sm btn-primary" onClick={() => setReceiveRow(po)}>✅ รับของแล้ว</button>
+                            <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(po); setShowAdd(true) }}><PencilIcon /></button>
+                            <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(po.id)}><TrashIcon /></button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )

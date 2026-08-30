@@ -22,6 +22,7 @@ import { format, startOfYear, endOfYear } from 'date-fns'
 import { lineTotal, calcQuotationTotals } from '../lib/quotationCalc.js'
 import { SiteForm, siteFormToPayload } from './Sites.jsx'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
+import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 
 const clientOpts = (clients) => (clients || []).map(c => ({
   value: c.id, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
@@ -709,24 +710,26 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                     <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(totals.total)}</td>
                     <td><span className={`badge badge-${qt.status}`}>{QT_STATUS_LABELS[qt.status] || qt.status}</span></td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(qt)}>📄</button>
-                      {(qt.revision || 1) > 1 && (
-                        <button className="btn btn-sm btn-ghost" title="ประวัติการแก้ไข" onClick={() => setHistoryRow(qt)}>🕓</button>
-                      )}
-                      {canEdit && qt.status === 'draft' && (
-                        <>
-                          <button className="btn btn-sm btn-primary" onClick={() => handleSetStatus(qt.id, 'sent')}>📤 ส่ง</button>
-                          <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(qt); setShowAdd(true) }}>✏️</button>
-                          <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(qt.id)}>✕</button>
-                        </>
-                      )}
-                      {canEdit && qt.status === 'sent' && (
-                        <>
-                          <button className="btn btn-sm btn-primary" onClick={() => setAcceptRow(qt)}>✅ ยอมรับ</button>
-                          <button className="btn btn-sm btn-ghost" onClick={() => handleSetStatus(qt.id, 'rejected')}>ปฏิเสธ</button>
-                          <button className="btn btn-sm btn-ghost" onClick={() => handleSetStatus(qt.id, 'expired')}>หมดอายุ</button>
-                        </>
-                      )}
+                      <div className="actions-cell">
+                        <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(qt)}>📄</button>
+                        {(qt.revision || 1) > 1 && (
+                          <button className="btn btn-sm btn-ghost" title="ประวัติการแก้ไข" onClick={() => setHistoryRow(qt)}>🕓</button>
+                        )}
+                        {canEdit && qt.status === 'draft' && (
+                          <>
+                            <button className="btn btn-sm btn-primary" onClick={() => handleSetStatus(qt.id, 'sent')}>📤 ส่ง</button>
+                            <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(qt); setShowAdd(true) }}><PencilIcon /></button>
+                            <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(qt.id)}><TrashIcon /></button>
+                          </>
+                        )}
+                        {canEdit && qt.status === 'sent' && (
+                          <>
+                            <button className="btn btn-sm btn-primary" onClick={() => setAcceptRow(qt)}>✅ ยอมรับ</button>
+                            <button className="btn btn-sm btn-ghost" onClick={() => handleSetStatus(qt.id, 'rejected')}>ปฏิเสธ</button>
+                            <button className="btn btn-sm btn-ghost" onClick={() => handleSetStatus(qt.id, 'expired')}>หมดอายุ</button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )

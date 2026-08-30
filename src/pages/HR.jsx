@@ -17,7 +17,7 @@ import { auditLog } from '../lib/audit.js'
 import { mergeWorkerOT } from '../lib/otMerge.js'
 import { SITE_TYPES } from './assign/constants.js'
 import { downloadPDF } from '../lib/pdf.js'
-import { TrashIcon } from '../components/icons.jsx'
+import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
@@ -695,10 +695,10 @@ export default function HR() {
                       <td><span className={`badge ${w.status==='active'?'badge-paid':'badge-pending'}`}>{w.status}</span></td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         {canEdit && (
-                          <>
-                            <button className="btn btn-sm btn-ghost" onClick={() => { setEditWorker(w); setShowWorkerForm(true) }}>✏️</button>
+                          <div className="actions-cell">
+                            <button className="btn btn-sm btn-ghost" onClick={() => { setEditWorker(w); setShowWorkerForm(true) }}><PencilIcon /></button>
                             <button className="btn btn-sm btn-danger" onClick={() => setDeleteWorkerId(w.id)}><TrashIcon /></button>
-                          </>
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -813,13 +813,15 @@ export default function HR() {
                       <td className="font-mono" style={{ color: 'var(--green)', fontWeight: 700, fontSize: 15 }}>{fmt(r.net_pay)}</td>
                       <td style={{ fontSize: 11 }}>{r.paid_date?new Date(r.paid_date).toLocaleDateString('th-TH'):'—'}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
-                        <button className="btn btn-sm btn-ghost" onClick={() => setSlipRecord(r)} title="Download สลิปเงินเดือน">📄</button>
-                        {canEdit && (
-                          <>
-                            <button className="btn btn-sm btn-ghost" onClick={() => { setEditSalary(r); setShowSalaryForm(true) }}>✏️</button>
-                            <button className="btn btn-sm btn-danger" onClick={() => handleDeleteSalary(r.id)}><TrashIcon /></button>
-                          </>
-                        )}
+                        <div className="actions-cell">
+                          <button className="btn btn-sm btn-ghost" onClick={() => setSlipRecord(r)} title="Download สลิปเงินเดือน">📄</button>
+                          {canEdit && (
+                            <>
+                              <button className="btn btn-sm btn-ghost" onClick={() => { setEditSalary(r); setShowSalaryForm(true) }}><PencilIcon /></button>
+                              <button className="btn btn-sm btn-danger" onClick={() => handleDeleteSalary(r.id)}><TrashIcon /></button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

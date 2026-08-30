@@ -19,7 +19,7 @@ import { exportToExcel } from '../lib/exportExcel.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { format, startOfYear, endOfYear } from 'date-fns'
-import { TrashIcon } from '../components/icons.jsx'
+import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -378,10 +378,10 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
                   <td className="font-mono" style={{ color: 'var(--green)', fontWeight: 700 }}>{fmt(i.received_amount)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {canEdit && (
-                      <>
-                        <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(i); setShowAdd(true) }}>✏️</button>
+                      <div className="actions-cell">
+                        <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(i); setShowAdd(true) }}><PencilIcon /></button>
                         <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(i.id)}><TrashIcon /></button>
-                      </>
+                      </div>
                     )}
                   </td>
                 </tr>

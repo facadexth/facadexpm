@@ -13,7 +13,7 @@ import SearchableSelect from '../components/SearchableSelect.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { mergeWorkerOT } from '../lib/otMerge.js'
 import { SITE_TYPES } from './assign/constants.js'
-import { TrashIcon } from '../components/icons.jsx'
+import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
@@ -368,8 +368,10 @@ export default function Payroll() {
                   <td className="font-mono" style={{ color: 'var(--green)', fontWeight: 700, fontSize: 15 }}>{fmt(r.net_pay)}</td>
                   <td style={{ fontSize: 11, color: 'var(--text3)' }}>{r.paid_date ? new Date(r.paid_date).toLocaleDateString('th-TH') : '—'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(r); setShowForm(true) }}>✏️</button>
-                    <button className="btn btn-sm btn-danger" onClick={() => handleDelete(r.id)}><TrashIcon /></button>
+                    <div className="actions-cell">
+                      <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(r); setShowForm(true) }}><PencilIcon /></button>
+                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(r.id)}><TrashIcon /></button>
+                    </div>
                   </td>
                 </tr>
               ))}

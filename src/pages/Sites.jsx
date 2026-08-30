@@ -10,6 +10,7 @@
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useSites, useLaborCost, useClients, useSeatStatus } from '../hooks/useSupabase.js'
+import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { useTenant } from '../hooks/useTenant.js'
@@ -19,7 +20,6 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
-import { TrashIcon } from '../components/icons.jsx'
 
 const STATUS_OPTS = ['Ongoing', 'Completed', 'On Hold', 'Cancelled']
 
@@ -487,13 +487,13 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {canEdit && (
-                        <>
-                          <button className="btn btn-sm btn-ghost" style={{ marginRight: 4 }} onClick={() => { setEditSite(s); setShowForm(true) }}>✏️</button>
+                        <div className="actions-cell">
+                          <button className="btn btn-sm btn-ghost" onClick={() => { setEditSite(s); setShowForm(true) }}><PencilIcon /></button>
                           {s.status === 'Ongoing' && (
-                            <button className="btn btn-sm btn-warning" style={{ marginRight: 4 }} onClick={() => setCompleteId(s.id)} title="จบไซท์งาน">✅ จบงาน</button>
+                            <button className="btn btn-sm btn-warning" onClick={() => setCompleteId(s.id)} title="จบไซท์งาน">✅ จบงาน</button>
                           )}
                           <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(s.id)} title="ลบ"><TrashIcon /></button>
-                        </>
+                        </div>
                       )}
                     </td>
                   </tr>

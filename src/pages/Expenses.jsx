@@ -23,7 +23,7 @@ import { format, startOfMonth, endOfMonth } from 'date-fns'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { CATEGORY_PALETTE, OTHER_LABEL, OTHER_COLOR, categoryBreakdown, groupSmallSlices } from '../lib/expenseChart.js'
 import CategoryPieTooltip from '../components/CategoryPieTooltip.jsx'
-import { TrashIcon } from '../components/icons.jsx'
+import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import {
   creditTermDays as computeCreditTermDays, paymentMethodOptions, billingDueTargetField,
   calcDueDate, resolvePaymentMethodOnSupplierChange,
@@ -507,10 +507,10 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {canEdit && (
-                      <>
-                        <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(e); setShowAdd(true) }}>✏️</button>
+                      <div className="actions-cell">
+                        <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(e); setShowAdd(true) }}><PencilIcon /></button>
                         <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(e.id)}><TrashIcon /></button>
-                      </>
+                      </div>
                     )}
                   </td>
                 </tr>

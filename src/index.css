@@ -88,11 +88,16 @@ body {
 
 /* Buttons */
 .btn {
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   padding: 8px 16px; border-radius: 8px; border: none;
   font-size: 13px; font-weight: 600; cursor: pointer;
   transition: all 0.2s; white-space: nowrap;
 }
+
+/* Groups of row-action buttons (edit/delete/etc in a table cell) --
+   replaces ad-hoc marginRight on each button, which left them
+   baseline-aligned rather than vertically centered as a group. */
+.actions-cell { display: inline-flex; align-items: center; gap: 6px; }
 .btn-primary { background: var(--accent); color: #fff; }
 .btn-primary:hover { opacity: 0.85; }
 .btn-success { background: var(--green); color: #fff; }
