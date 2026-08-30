@@ -19,7 +19,7 @@ const MODULE_LABELS = {
   labor_subcontractors: '🔧 ผู้รับเหมาค่าแรง',
 }
 
-export default function PackageComparison({ currentPackageId, onApply, applyingId }) {
+export default function PackageComparison({ currentPackageId, onApply, applyingId, allowFreeApply }) {
   const { data: packages } = usePackages()
   const { data: modules } = usePackageModules()
   if (!packages?.length) return null
@@ -78,7 +78,7 @@ export default function PackageComparison({ currentPackageId, onApply, applyingI
                       <span style={{ fontSize: 11, color: 'var(--text3)' }}>แพ็กเกจปัจจุบัน</span>
                     ) : p.price_monthly == null ? (
                       <span style={{ fontSize: 11, color: 'var(--text3)' }}>ติดต่อเรา</span>
-                    ) : p.price_monthly === 0 ? (
+                    ) : p.price_monthly === 0 && !allowFreeApply ? (
                       <span style={{ fontSize: 11, color: 'var(--text3)' }}>ใช้ได้ฟรีทันที</span>
                     ) : (
                       <button

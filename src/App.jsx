@@ -235,7 +235,7 @@ export default function App() {
   }
 
   const renderPage = () => {
-    const props = { navigateTo, navState, openSiteOverview: setOverviewSiteId, onOpenChangePassword: () => setShowChangePassword(true) }
+    const props = { navigateTo, navState, openSiteOverview: setOverviewSiteId, onOpenChangePassword: () => setShowChangePassword(true), onOpenChangePlan: () => setShowUpgradeModal(true) }
     switch (activeTab) {
       case 'dashboard':  return <ProtectedPage minRole="WORKER"><Dashboard  {...props} /></ProtectedPage>
       case 'assign':     return <ProtectedPage minRole="WORKER"><Assign     {...props} /></ProtectedPage>
@@ -375,6 +375,7 @@ export default function App() {
           tenant={tenant}
           onClose={() => setShowUpgradeModal(false)}
           onResolved={() => { setShowUpgradeModal(false); refetchTenant() }}
+          onRefresh={refetchTenant}
         />
       )}
 

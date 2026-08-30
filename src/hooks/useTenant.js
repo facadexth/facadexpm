@@ -34,10 +34,23 @@ export function useTenant() {
       return
     }
 
-    const [{ data: tenantRow }, { data: moduleRows }] = await Promise.all([
+    let [{ data: tenantRow }, { data: moduleRows }] = await Promise.all([
       supabase.from('tenants').select('*').eq('id', roleRow.tenant_id).single(),
       supabase.from('tenant_modules').select('module_key').eq('tenant_id', roleRow.tenant_id),
     ])
+
+    // Scheduled downgrades (tenant_schedule_downgrade()) apply lazily on
+    // load rather than via a cron job -- same pattern this app already
+    // uses for trial_ends_at. A no-op unless one is actually due, so it's
+    // safe to call on every fetch; re-read the row after so the picked-up
+    // package/module change shows immediately instead of on next reload.
+    if (tenantRow?.pending_package_id && tenantRow.plan_expires_at && new Date(tenantRow.plan_expires_at) <= new Date()) {
+      await supabase.rpc('tenant_apply_pending_downgrade')
+      ;[{ data: tenantRow }, { data: moduleRows }] = await Promise.all([
+        supabase.from('tenants').select('*').eq('id', roleRow.tenant_id).single(),
+        supabase.from('tenant_modules').select('module_key').eq('tenant_id', roleRow.tenant_id),
+      ])
+    }
 
     setTenant(tenantRow ?? null)
     setEnabledModules((moduleRows || []).map(r => r.module_key))

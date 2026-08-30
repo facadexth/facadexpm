@@ -13,6 +13,15 @@
 // cycle). If the credit fully covers the new tier (charge <= 0), there's
 // nothing to collect -- skip Omise entirely and activate immediately via
 // the same activateTenantFromIntent() the webhook uses for paid charges.
+//
+// Downgrades (2026-08-30-10): this endpoint is upgrade-only. A same-or-
+// cheaper package selected while mid-cycle is REJECTED here -- charging
+// money to move to a cheaper tier (which the proration formula can do
+// late in a cycle) makes no sense, and crediting it for free would
+// switch tiers instantly with no confirmation. Downgrades go through
+// tenant_schedule_downgrade() instead: no charge, effective at the next
+// renewal, tenant explicitly warned there's no reimbursement for the
+// remaining paid days.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { activateTenantFromIntent } from './_shared/activate-tenant.ts'
 
@@ -88,17 +97,26 @@ Deno.serve(async (req) => {
     let chargeAmount = pkg.price_monthly
     let targetExpiresAt: string
 
-    const isUpgrade = !!(
+    const isActiveWithTime = !!(
       tenantRow?.plan === 'active' &&
       tenantRow.package_id &&
-      tenantRow.package_id !== package_id &&
       tenantRow.plan_expires_at &&
       new Date(tenantRow.plan_expires_at) > new Date()
     )
 
-    if (isUpgrade) {
+    let isUpgrade = false
+
+    if (isActiveWithTime) {
       const { data: currentPkg } = await userClient
         .from('packages').select('price_monthly').eq('id', tenantRow!.package_id).single()
+
+      if (currentPkg?.price_monthly != null && pkg.price_monthly <= currentPkg.price_monthly) {
+        return new Response(JSON.stringify({
+          error: 'This is not a higher-priced package. Use tenant_schedule_downgrade() to switch at your next renewal with no charge.',
+        }), { status: 400, headers: corsHeaders })
+      }
+
+      isUpgrade = true
       if (currentPkg?.price_monthly) {
         const remainingDays = Math.max(0, (new Date(tenantRow!.plan_expires_at as string).getTime() - Date.now()) / 86400000)
         const credit = currentPkg.price_monthly * (remainingDays / 30)

@@ -7,7 +7,7 @@ import PackageComparison from '../components/PackageComparison.jsx'
 
 const LEVEL_LABELS = { none: '🚫 ซ่อน', view: '👁️ ดูอย่างเดียว', edit: '✏️ แก้ไขได้' }
 
-export default function Settings({ onOpenChangePassword }) {
+export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   const [permissions, setPermissions] = useState(DEFAULT_PERMISSIONS)
   const [saving, setSaving] = useState(false)
 
@@ -150,6 +150,23 @@ export default function Settings({ onOpenChangePassword }) {
           จัดการรหัสผ่านสำหรับเข้าสู่ระบบของคุณ
         </p>
         <button className="btn btn-ghost" onClick={onOpenChangePassword}>🔑 เปลี่ยนรหัสผ่าน</button>
+      </div>
+
+      <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: tenant?.pending_package_id ? 8 : 0, flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>💎 แพ็กเกจของคุณ</h2>
+            <p style={{ fontSize: 13, color: 'var(--text3)' }}>อัปเกรด/ดาวน์เกรดแพ็กเกจปัจจุบัน</p>
+          </div>
+          {tenant?.plan === 'active' && (
+            <button className="btn btn-ghost" onClick={onOpenChangePlan}>เปลี่ยนแพ็กเกจ</button>
+          )}
+        </div>
+        {tenant?.pending_package_id && (
+          <div className="alert" style={{ fontSize: 13 }}>
+            มีการกำหนดเปลี่ยนแพ็กเกจไว้แล้ว — คลิก "เปลี่ยนแพ็กเกจ" เพื่อดูรายละเอียดหรือยกเลิก
+          </div>
+        )}
       </div>
 
       <PackageComparison currentPackageId={tenant?.package_id} />
