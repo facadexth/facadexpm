@@ -184,6 +184,23 @@ export default function App() {
   const { role, isAtLeast, loading: roleLoading } = useUserRole()
   const { tenant, isTrialActive, trialDaysRemaining, hasModuleAccess, refetch: refetchTenant } = useTenant()
   const { data: isPlatformAdmin } = usePlatformAdmin()
+
+  // Single source of truth for "can this user actually be on this tab" --
+  // used both to decide what shows in the nav AND to gate the page itself
+  // (ProtectedPage below). Previously only the nav applied module/
+  // permission/platformAdminOnly checks; the page render only checked
+  // minRole, so a role-satisfying user could still reach a page's full
+  // content via any cross-page navigateTo() call the nav itself didn't
+  // offer (e.g. Sites' "labor cost" cell linking to Assign regardless of
+  // whether the tenant's package includes the payroll module -- module-
+  // gated tables are still RLS-protected server-side, but the page shell
+  // itself rendered). Same gap let a platformAdminOnly tab's minRole:
+  // 'WORKER' float trivially past any logged-in user.
+  const passesGates = (tab) =>
+    isAtLeast(tab.minRole) &&
+    hasModuleAccess(tab.module) &&
+    (!role || canViewPage(role, tab.id)) &&
+    (!tab.platformAdminOnly || isPlatformAdmin)
   // Trial ended, no paid package chosen yet -- shown automatically, but
   // dismissible (X) without consequence; only the modal's own explicit
   // "ไม่ตอนนี้" button downgrades to Free. Re-shown from TrialBanner too.
@@ -216,14 +233,21 @@ export default function App() {
     }
   }, [])
 
-  // After role loads, redirect WORKER away from ADMIN-only tabs
+  // After role/tenant load, redirect away from a tab the user can no
+  // longer (or never could) actually use -- not just a role floor miss,
+  // but also a module the tenant's package doesn't include, a per-role
+  // permission override set to 'none', or a platform-admin-only tab.
+  // Catches losing access to the CURRENTLY OPEN tab too (e.g. the OWNER
+  // downgrades the plan or revokes a permission while someone's sitting
+  // on that page) -- previously only a role change was ever re-checked.
   useEffect(() => {
     if (roleLoading || !session) return
     const current = ALL_TAB_ENTRIES.find(t => t.id === activeTab)
-    if (current && !isAtLeast(current.minRole)) {
+    if (current && !passesGates(current)) {
       setActiveTab(isAtLeast('ADMIN') ? 'dashboard' : 'assign')
     }
-  }, [roleLoading, session, activeTab, isAtLeast])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roleLoading, session, activeTab, isAtLeast, hasModuleAccess, role, isPlatformAdmin])
 
   const navigateTo = (tab, state = {}) => {
     // Explicit navigation is fresh user intent -- safe to let a future
@@ -234,31 +258,44 @@ export default function App() {
     setActiveTab(tab)
   }
 
+  // gate is looked up from the SAME ALL_TAB_ENTRIES the nav filters
+  // against (via passesGates above), so the page can never grant more
+  // than the nav offers -- previously each case only carried a minRole
+  // literal here, independent of (and looser than) what the nav actually
+  // enforced for that tab (module entitlement, per-role permission
+  // override, platformAdminOnly).
   const renderPage = () => {
     const props = { navigateTo, navState, openSiteOverview: setOverviewSiteId, onOpenChangePassword: () => setShowChangePassword(true), onOpenChangePlan: () => setShowUpgradeModal(true) }
-    switch (activeTab) {
-      case 'dashboard':  return <ProtectedPage minRole="WORKER"><Dashboard  {...props} /></ProtectedPage>
-      case 'assign':     return <ProtectedPage minRole="WORKER"><Assign     {...props} /></ProtectedPage>
-      case 'hr':         return <ProtectedPage minRole="WORKER"><HR        {...props} /></ProtectedPage>
-      case 'sites':      return <ProtectedPage minRole="ADMIN"><Sites      {...props} /></ProtectedPage>
-      case 'expenses':   return <ProtectedPage minRole="ADMIN"><Expenses   {...props} /></ProtectedPage>
-      case 'purchase_orders': return <ProtectedPage minRole="ADMIN"><PurchaseOrders {...props} /></ProtectedPage>
-      case 'income':     return <ProtectedPage minRole="ADMIN"><Income     {...props} /></ProtectedPage>
-      case 'retention':  return <ProtectedPage minRole="ADMIN"><Retention  {...props} /></ProtectedPage>
-      case 'deposits':   return <ProtectedPage minRole="ADMIN"><Deposits   {...props} /></ProtectedPage>
-      case 'categories': return <ProtectedPage minRole="ADMIN"><Categories {...props} /></ProtectedPage>
-      case 'clients':    return <ProtectedPage minRole="ADMIN"><Clients    {...props} /></ProtectedPage>
-      case 'suppliers':  return <ProtectedPage minRole="ADMIN"><Suppliers  {...props} /></ProtectedPage>
-      case 'labor_contractors': return <ProtectedPage minRole="ADMIN"><LaborContractors {...props} /></ProtectedPage>
-      case 'sales_report':  return <ProtectedPage minRole="ADMIN"><SalesReport  {...props} /></ProtectedPage>
-      case 'quotations':    return <ProtectedPage minRole="ADMIN"><Quotations   {...props} /></ProtectedPage>
-      case 'invoices':      return <ProtectedPage minRole="ADMIN"><Invoices     {...props} /></ProtectedPage>
-      case 'catalog_items': return <ProtectedPage minRole="ADMIN"><CatalogItems {...props} /></ProtectedPage>
-      case 'user_management': return <ProtectedPage minRole="OWNER"><UserManagement {...props} /></ProtectedPage>
-      case 'settings':   return <ProtectedPage minRole="OWNER"><Settings   {...props} /></ProtectedPage>
-      case 'tenant_management': return <ProtectedPage minRole="WORKER"><TenantManagement {...props} /></ProtectedPage>
-      default:           return <ProtectedPage minRole="WORKER"><Dashboard  {...props} /></ProtectedPage>
-    }
+    const entry = ALL_TAB_ENTRIES.find(t => t.id === activeTab) ?? ALL_TAB_ENTRIES[0]
+    const gate = { minRole: entry.minRole, module: entry.module, pageKey: entry.id, platformAdminOnly: entry.platformAdminOnly, hasModuleAccess, isPlatformAdmin }
+
+    const page = (() => {
+      switch (activeTab) {
+        case 'dashboard':  return <Dashboard  {...props} />
+        case 'assign':     return <Assign     {...props} />
+        case 'hr':         return <HR        {...props} />
+        case 'sites':      return <Sites      {...props} />
+        case 'expenses':   return <Expenses   {...props} />
+        case 'purchase_orders': return <PurchaseOrders {...props} />
+        case 'income':     return <Income     {...props} />
+        case 'retention':  return <Retention  {...props} />
+        case 'deposits':   return <Deposits   {...props} />
+        case 'categories': return <Categories {...props} />
+        case 'clients':    return <Clients    {...props} />
+        case 'suppliers':  return <Suppliers  {...props} />
+        case 'labor_contractors': return <LaborContractors {...props} />
+        case 'sales_report':  return <SalesReport  {...props} />
+        case 'quotations':    return <Quotations   {...props} />
+        case 'invoices':      return <Invoices     {...props} />
+        case 'catalog_items': return <CatalogItems {...props} />
+        case 'user_management': return <UserManagement {...props} />
+        case 'settings':   return <Settings   {...props} />
+        case 'tenant_management': return <TenantManagement {...props} />
+        default:           return <Dashboard  {...props} />
+      }
+    })()
+
+    return <ProtectedPage {...gate}>{page}</ProtectedPage>
   }
 
   // Loading auth
@@ -270,16 +307,6 @@ export default function App() {
 
   // Not logged in
   if (!session) return <Login />
-
-  // Same three checks every tab (plain or a group's child) has always had:
-  // role floor, module entitlement, then per-role view/edit override. Used
-  // for both plain tabs and group children so a "ไซท์งาน" child is gated
-  // identically to how it was gated as a standalone tab before this change.
-  const passesGates = (tab) =>
-    isAtLeast(tab.minRole) &&
-    hasModuleAccess(tab.module) &&
-    (!role || canViewPage(role, tab.id)) &&
-    (!tab.platformAdminOnly || isPlatformAdmin)
 
   const visibleTabs = TABS
     .map(tab => tab.children ? { ...tab, children: tab.children.filter(passesGates) } : tab)
