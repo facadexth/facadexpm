@@ -40,19 +40,19 @@ const TenantManagement = lazy(() => import('./pages/TenantManagement.jsx'))
 
 const TABS = [
   { id: 'dashboard',         label: '📊 ภาพรวม',              minRole: 'WORKER', module: null },
-  { id: 'assign',            label: '📋 Assign ช่าง',          minRole: 'WORKER', module: 'payroll' },
-  { id: 'hr',                label: '👷 HR',                   minRole: 'WORKER', module: 'payroll' },
+  { id: 'assign',            label: '📋 จ่ายงานช่าง',          minRole: 'WORKER', module: 'payroll' },
+  { id: 'hr',                label: '👷 บุคคล',                minRole: 'WORKER', module: 'payroll' },
   { label: '🏗️ ไซท์งาน', children: [
-    { id: 'sites',     label: 'Overview',  minRole: 'ADMIN', module: null },
+    { id: 'sites',     label: 'ภาพรวม',  minRole: 'ADMIN', module: null },
     { id: 'deposits',  label: '💰 มัดจำ',   minRole: 'ADMIN', module: 'client_deposits' },
-    { id: 'retention', label: '🔒 Retention', minRole: 'ADMIN', module: null },
+    { id: 'retention', label: '🔒 เงินประกันผลงาน', minRole: 'ADMIN', module: null },
   ] },
   { label: '💸 รายจ่าย', children: [
-    { id: 'expenses',        label: 'Overview',       minRole: 'ADMIN', module: null },
+    { id: 'expenses',        label: 'ภาพรวม',       minRole: 'ADMIN', module: null },
     { id: 'purchase_orders', label: '🧾 ใบสั่งซื้อ',   minRole: 'ADMIN', module: 'purchase_orders' },
   ] },
   { label: '💰 รายรับ', children: [
-    { id: 'income',        label: 'Overview',           minRole: 'ADMIN', module: null },
+    { id: 'income',        label: 'ภาพรวม',           minRole: 'ADMIN', module: null },
     { id: 'sales_report',  label: '📊 รายงานการขาย',    minRole: 'ADMIN', module: 'quotations' },
     { id: 'quotations',    label: '📋 ใบเสนอราคา',      minRole: 'ADMIN', module: 'quotations' },
     { id: 'invoices', label: '🧾 ใบแจ้งหนี้', minRole: 'ADMIN', module: 'invoices' },
@@ -62,11 +62,11 @@ const TABS = [
     { id: 'settings',        label: 'ทั่วไป',          minRole: 'OWNER', module: null },
     { id: 'categories',      label: '🏷️ หมวดหมู่',    minRole: 'ADMIN', module: null },
     { id: 'clients',         label: '🏢 ลูกค้า',      minRole: 'ADMIN', module: null },
-    { id: 'suppliers',       label: '🏭 Supplier',     minRole: 'ADMIN', module: null },
+    { id: 'suppliers',       label: '🏭 ผู้จำหน่าย',     minRole: 'ADMIN', module: null },
     { id: 'catalog_items',   label: '📦 รายการสินค้า', minRole: 'ADMIN', module: 'quotations' },
     { id: 'user_management', label: '👤 ผู้ใช้งาน',    minRole: 'OWNER', module: null },
   ] },
-  { id: 'tenant_management', label: '🏢 Platform Admin', minRole: 'WORKER', module: null, platformAdminOnly: true },
+  { id: 'tenant_management', label: '🏢 ผู้ดูแลระบบ', minRole: 'WORKER', module: null, platformAdminOnly: true },
 ]
 
 // TABS entries are either a plain tab ({id, label, minRole, module}) or a
@@ -228,7 +228,7 @@ export default function App() {
   }
 
   const renderPage = () => {
-    const props = { navigateTo, navState, openSiteOverview: setOverviewSiteId }
+    const props = { navigateTo, navState, openSiteOverview: setOverviewSiteId, onOpenChangePassword: () => setShowChangePassword(true) }
     switch (activeTab) {
       case 'dashboard':  return <ProtectedPage minRole="WORKER"><Dashboard  {...props} /></ProtectedPage>
       case 'assign':     return <ProtectedPage minRole="WORKER"><Assign     {...props} /></ProtectedPage>
@@ -309,13 +309,6 @@ export default function App() {
             title="สลับธีมสว่าง/มืด"
           >
             {theme === 'dark' ? '☀️' : '🌙'}
-          </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            style={{ fontSize: 12 }}
-            onClick={() => setShowChangePassword(true)}
-          >
-            🔑 เปลี่ยนรหัสผ่าน
           </button>
           <button
             className="btn btn-ghost btn-sm"

@@ -17,6 +17,7 @@
   --text3: #5c5f80;
   --border: rgba(var(--accent-rgb), 0.2);
   --icon-danger: #000; /* bin icon on .btn-danger -- black reads better against the lighter coral --red in dark mode than white does */
+  --icon-edit: #000; /* pencil icon on .btn-edit -- black on --yellow reads well regardless of theme, kept as its own token to match the pattern */
   --radius: 10px;
   --shadow: 0 4px 24px rgba(0,0,0,0.3);
 }
@@ -36,6 +37,7 @@
     --text3: #928c7a;
     --border: rgba(62, 92, 70, 0.18);
     --icon-danger: #fff;
+    --icon-edit: #000;
   }
 }
 
@@ -53,6 +55,7 @@
   --text3: #5c5f80;
   --border: rgba(var(--accent-rgb), 0.2);
   --icon-danger: #000;
+  --icon-edit: #000;
 }
 
 :root[data-theme="light"] {
@@ -67,6 +70,7 @@
   --text3: #928c7a;
   --border: rgba(62, 92, 70, 0.18);
   --icon-danger: #fff;
+  --icon-edit: #000;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -107,6 +111,9 @@ body {
 /* Bin icon color follows --icon-danger, not .btn-danger's own #fff --
    other .btn-danger content (text labels like "✕ ยกเลิก") is unaffected. */
 .icon-trash { color: var(--icon-danger); }
+.btn-edit { background: var(--yellow); }
+.btn-edit:hover { opacity: 0.85; }
+.icon-pencil { color: var(--icon-edit); }
 .btn-ghost {
   background: var(--bg3); color: var(--text2);
   border: 1px solid var(--border);

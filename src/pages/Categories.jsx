@@ -120,7 +120,7 @@ export default function Categories() {
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <div className="actions-cell">
-                      <button className="btn btn-sm btn-ghost" onClick={() => { setEditCat(c); setShowForm(true) }}><PencilIcon /></button>
+                      <button className="btn btn-sm btn-edit" onClick={() => { setEditCat(c); setShowForm(true) }}><PencilIcon /></button>
                       <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(c.id)}><TrashIcon /></button>
                     </div>
                   </td>

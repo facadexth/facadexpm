@@ -10,7 +10,7 @@
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useSites, useLaborCost, useClients, useSeatStatus } from '../hooks/useSupabase.js'
-import { TrashIcon, PencilIcon } from '../components/icons.jsx'
+import { TrashIcon, PencilIcon, LinkIcon } from '../components/icons.jsx'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { useTenant } from '../hooks/useTenant.js'
@@ -408,7 +408,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                         style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
                         onClick={() => openSiteOverview(s.id)}
                       >
-                        {s.name}
+                        <LinkIcon /> {s.name}
                         {s.map_url && (
                           <a href={s.map_url} target="_blank" rel="noreferrer" title="เปิดแผนที่ Google Maps"
                             style={{ textDecoration: 'none', fontSize: 13 }} onClick={e => e.stopPropagation()}>📍</a>
@@ -488,7 +488,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {canEdit && (
                         <div className="actions-cell">
-                          <button className="btn btn-sm btn-ghost" onClick={() => { setEditSite(s); setShowForm(true) }}><PencilIcon /></button>
+                          <button className="btn btn-sm btn-edit" onClick={() => { setEditSite(s); setShowForm(true) }}><PencilIcon /></button>
                           {s.status === 'Ongoing' && (
                             <button className="btn btn-sm btn-warning" onClick={() => setCompleteId(s.id)} title="จบไซท์งาน">✅ จบงาน</button>
                           )}

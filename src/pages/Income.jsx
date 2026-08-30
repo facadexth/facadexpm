@@ -19,7 +19,7 @@ import { exportToExcel } from '../lib/exportExcel.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { format, startOfYear, endOfYear } from 'date-fns'
-import { TrashIcon, PencilIcon } from '../components/icons.jsx'
+import { TrashIcon, PencilIcon, LinkIcon } from '../components/icons.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -349,14 +349,14 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
               <tr>
                 <th>เลขใบแจ้งหนี้</th>
                 <th>วันที่</th>
-                <th>ไซท์งาน</th>
+                <th style={{ minWidth: 200 }}>ไซท์งาน</th>
                 <th>ลูกค้า</th>
                 <th>รายละเอียด</th>
                 <th>ก่อน VAT</th>
-                <th>VAT</th>
-                <th>Tax หัก</th>
-                <th>Retention</th>
-                <th>หักมัดจำ</th>
+                <th title="ชี้ค้างไว้ดูจำนวนเงิน">VAT</th>
+                <th title="ชี้ค้างไว้ดูจำนวนเงิน">Tax หัก</th>
+                <th title="ชี้ค้างไว้ดูจำนวนเงิน">Retention</th>
+                <th title="ชี้ค้างไว้ดูจำนวนเงิน">หักมัดจำ</th>
                 <th>ยอดรับจริง</th>
                 <th></th>
               </tr>
@@ -366,20 +366,22 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
                 <tr key={i.id}>
                   <td style={{ color: 'var(--accent)', fontSize: 11, whiteSpace: 'nowrap' }}>{i.invoice_no || '—'}</td>
                   <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: 'var(--text2)' }}>{fmtDate(i.date)}</td>
-                  <td style={{ fontSize: 11, color: 'var(--accent)', cursor: i.site_id ? 'pointer' : 'default' }} title={i.site_number || undefined}
-                    onClick={() => i.site_id && openSiteOverview(i.site_id)}>{i.site_name || '—'}</td>
+                  <td style={{ fontSize: 11, color: 'var(--accent)', cursor: i.site_id ? 'pointer' : 'default', minWidth: 200 }} title={i.site_number || undefined}
+                    onClick={() => i.site_id && openSiteOverview(i.site_id)}>
+                    {i.site_id && <LinkIcon />} {i.site_name || '—'}
+                  </td>
                   <td style={{ fontSize: 12 }}>{i.client_name}</td>
                   <td style={{ maxWidth: 200, fontSize: 12 }}>{i.description}</td>
                   <td className="font-mono" style={{ color: 'var(--text2)' }}>{fmt(i.amount_no_vat)}</td>
-                  <td className="font-mono" style={{ color: 'var(--text3)', fontSize: 11 }}>{i.vat > 0 ? fmt(i.vat) : '—'}</td>
-                  <td className="font-mono" style={{ color: 'var(--yellow)', fontSize: 11 }}>{i.tax_withheld > 0 ? fmt(i.tax_withheld) : '—'}</td>
-                  <td className="font-mono" style={{ color: 'var(--yellow)', fontSize: 11 }}>{i.retention > 0 ? fmt(i.retention) : '—'}</td>
-                  <td className="font-mono" style={{ color: 'var(--yellow)', fontSize: 11 }}>{i.deposit_deduction > 0 ? fmt(i.deposit_deduction) : '—'}</td>
+                  <td style={{ fontSize: 13, textAlign: 'center' }} title={i.vat > 0 ? fmt(i.vat) : undefined}>{i.vat > 0 ? '✓' : <span style={{ color: 'var(--text3)' }}>—</span>}</td>
+                  <td style={{ fontSize: 13, textAlign: 'center', color: 'var(--yellow)' }} title={i.tax_withheld > 0 ? fmt(i.tax_withheld) : undefined}>{i.tax_withheld > 0 ? '✓' : <span style={{ color: 'var(--text3)' }}>—</span>}</td>
+                  <td style={{ fontSize: 13, textAlign: 'center', color: 'var(--yellow)' }} title={i.retention > 0 ? fmt(i.retention) : undefined}>{i.retention > 0 ? '✓' : <span style={{ color: 'var(--text3)' }}>—</span>}</td>
+                  <td style={{ fontSize: 13, textAlign: 'center', color: 'var(--yellow)' }} title={i.deposit_deduction > 0 ? fmt(i.deposit_deduction) : undefined}>{i.deposit_deduction > 0 ? '✓' : <span style={{ color: 'var(--text3)' }}>—</span>}</td>
                   <td className="font-mono" style={{ color: 'var(--green)', fontWeight: 700 }}>{fmt(i.received_amount)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {canEdit && (
                       <div className="actions-cell">
-                        <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(i); setShowAdd(true) }}><PencilIcon /></button>
+                        <button className="btn btn-sm btn-edit" onClick={() => { setEditRow(i); setShowAdd(true) }}><PencilIcon /></button>
                         <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(i.id)}><TrashIcon /></button>
                       </div>
                     )}

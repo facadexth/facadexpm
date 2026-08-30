@@ -278,7 +278,7 @@ export default function Payroll() {
       })
 
       if (!results.length) {
-        alert('ไม่พบข้อมูล assignment ในเดือนนี้ กรุณา Assign ช่างก่อน')
+        alert('ไม่พบข้อมูล assignment ในเดือนนี้ กรุณาจ่ายงานช่างก่อน')
         return
       }
       setCalcPreview(results)
@@ -369,7 +369,7 @@ export default function Payroll() {
                   <td style={{ fontSize: 11, color: 'var(--text3)' }}>{r.paid_date ? new Date(r.paid_date).toLocaleDateString('th-TH') : '—'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <div className="actions-cell">
-                      <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(r); setShowForm(true) }}><PencilIcon /></button>
+                      <button className="btn btn-sm btn-edit" onClick={() => { setEditRow(r); setShowForm(true) }}><PencilIcon /></button>
                       <button className="btn btn-sm btn-danger" onClick={() => handleDelete(r.id)}><TrashIcon /></button>
                     </div>
                   </td>

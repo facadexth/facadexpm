@@ -696,7 +696,7 @@ export default function HR() {
                       <td style={{ whiteSpace: 'nowrap' }}>
                         {canEdit && (
                           <div className="actions-cell">
-                            <button className="btn btn-sm btn-ghost" onClick={() => { setEditWorker(w); setShowWorkerForm(true) }}><PencilIcon /></button>
+                            <button className="btn btn-sm btn-edit" onClick={() => { setEditWorker(w); setShowWorkerForm(true) }}><PencilIcon /></button>
                             <button className="btn btn-sm btn-danger" onClick={() => setDeleteWorkerId(w.id)}><TrashIcon /></button>
                           </div>
                         )}
@@ -817,7 +817,7 @@ export default function HR() {
                           <button className="btn btn-sm btn-ghost" onClick={() => setSlipRecord(r)} title="Download สลิปเงินเดือน">📄</button>
                           {canEdit && (
                             <>
-                              <button className="btn btn-sm btn-ghost" onClick={() => { setEditSalary(r); setShowSalaryForm(true) }}><PencilIcon /></button>
+                              <button className="btn btn-sm btn-edit" onClick={() => { setEditSalary(r); setShowSalaryForm(true) }}><PencilIcon /></button>
                               <button className="btn btn-sm btn-danger" onClick={() => handleDeleteSalary(r.id)}><TrashIcon /></button>
                             </>
                           )}

@@ -23,7 +23,7 @@ import { format, startOfMonth, endOfMonth } from 'date-fns'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { CATEGORY_PALETTE, OTHER_LABEL, OTHER_COLOR, categoryBreakdown, groupSmallSlices } from '../lib/expenseChart.js'
 import CategoryPieTooltip from '../components/CategoryPieTooltip.jsx'
-import { TrashIcon, PencilIcon } from '../components/icons.jsx'
+import { TrashIcon, PencilIcon, LinkIcon } from '../components/icons.jsx'
 import {
   creditTermDays as computeCreditTermDays, paymentMethodOptions, billingDueTargetField,
   calcDueDate, resolvePaymentMethodOnSupplierChange,
@@ -453,7 +453,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
               <tr>
                 <th>วันที่</th>
                 <th>รายละเอียด</th>
-                <th>ไซท์งาน</th>
+                <th style={{ minWidth: 200 }}>ไซท์งาน</th>
                 <th>หมวด</th>
                 <th>ผู้จำหน่าย</th>
                 <th>มูลค่า</th>
@@ -481,8 +481,10 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                       </button>
                     )}
                   </td>
-                  <td style={{ fontSize: 11, color: 'var(--accent)', cursor: e.site_id ? 'pointer' : 'default' }} title={e.site_number || undefined}
-                    onClick={() => e.site_id && openSiteOverview(e.site_id)}>{e.site_name || '—'}</td>
+                  <td style={{ fontSize: 11, color: 'var(--accent)', cursor: e.site_id ? 'pointer' : 'default', minWidth: 200 }} title={e.site_number || undefined}
+                    onClick={() => e.site_id && openSiteOverview(e.site_id)}>
+                    {e.site_id && <LinkIcon />} {e.site_name || '—'}
+                  </td>
                   <td style={{ fontSize: 11 }}>
                     {e.category_name
                       ? <span className="badge" style={{ background: 'rgba(108,99,255,0.15)', color: 'var(--accent)' }}>{e.category_name}</span>
@@ -508,7 +510,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {canEdit && (
                       <div className="actions-cell">
-                        <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(e); setShowAdd(true) }}><PencilIcon /></button>
+                        <button className="btn btn-sm btn-edit" onClick={() => { setEditRow(e); setShowAdd(true) }}><PencilIcon /></button>
                         <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(e.id)}><TrashIcon /></button>
                       </div>
                     )}

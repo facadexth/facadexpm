@@ -12,23 +12,23 @@
 // ============================================================
 
 export const PAGE_LABELS = {
-  dashboard: '📊 Dashboard',
-  assign: '📋 Assign ช่าง',
-  hr: '👷 HR',
-  sites: '🏗️ Sites',
-  expenses: '💸 Expenses',
+  dashboard: '📊 ภาพรวม',
+  assign: '📋 จ่ายงานช่าง',
+  hr: '👷 บุคคล',
+  sites: '🏗️ ไซท์งาน',
+  expenses: '💸 รายจ่าย',
   purchase_orders: '🧾 ใบสั่งซื้อ',
   quotations: '📋 ใบเสนอราคา',
   invoices: '🧾 ใบแจ้งหนี้',
   sales_report: '📊 รายงานการขาย',
-  income: '💰 Income',
-  categories: '🏷️ Categories',
-  clients: '🏢 Clients',
-  suppliers: '🏭 Suppliers',
+  income: '💰 รายรับ',
+  categories: '🏷️ หมวดหมู่',
+  clients: '🏢 ลูกค้า',
+  suppliers: '🏭 ผู้จำหน่าย',
   catalog_items: '📦 รายการสินค้า',
-  labor_contractors: '🔧 Labor Contractors',
-  user_management: '👤 User Management',
-  settings: '⚙️ Settings',
+  labor_contractors: '🔧 ผู้รับเหมาค่าแรง',
+  user_management: '👤 ผู้ใช้งาน',
+  settings: '⚙️ ตั้งค่า',
 }
 
 export const DEFAULT_PERMISSIONS = {

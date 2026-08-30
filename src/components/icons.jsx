@@ -17,10 +17,24 @@ export function TrashIcon({ size = 14 }) {
 
 export function PencilIcon({ size = 14 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    <svg className="icon-pencil" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
       <path d="M15 5l4 4" />
+    </svg>
+  )
+}
+
+// Marks a cell/label as clickable-and-navigates-elsewhere, so it doesn't
+// read as a plain static label (e.g. a site name that opens Site Overview).
+export function LinkIcon({ size = 11 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+      style={{ verticalAlign: -1, opacity: 0.7 }}>
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <path d="M15 3h6v6" />
+      <path d="M10 14L21 3" />
     </svg>
   )
 }

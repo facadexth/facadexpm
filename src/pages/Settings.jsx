@@ -14,7 +14,7 @@ const MODULE_LABELS = {
   invoices: '🧾 ใบแจ้งหนี้',
   purchase_orders: '🧾 ใบสั่งซื้อ',
   client_deposits: '💰 มัดจำลูกค้า',
-  payroll: '👷 Payroll / Assign ช่าง',
+  payroll: '👷 Payroll / จ่ายงานช่าง',
   labor_subcontractors: '🔧 ผู้รับเหมาค่าแรง',
 }
 
@@ -77,7 +77,7 @@ function PackageComparison({ currentPackageId }) {
   )
 }
 
-export default function Settings() {
+export default function Settings({ onOpenChangePassword }) {
   const [permissions, setPermissions] = useState(DEFAULT_PERMISSIONS)
   const [saving, setSaving] = useState(false)
 
@@ -213,6 +213,15 @@ export default function Settings() {
 
   return (
     <div>
+      {/* ── บัญชีผู้ใช้ ── */}
+      <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
+        <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>👤 บัญชีผู้ใช้</h2>
+        <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
+          จัดการรหัสผ่านสำหรับเข้าสู่ระบบของคุณ
+        </p>
+        <button className="btn btn-ghost" onClick={onOpenChangePassword}>🔑 เปลี่ยนรหัสผ่าน</button>
+      </div>
+
       <PackageComparison currentPackageId={tenant?.package_id} />
 
       {/* ── ค่าเดินทาง ── */}

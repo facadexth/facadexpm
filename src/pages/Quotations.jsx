@@ -718,7 +718,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                         {canEdit && qt.status === 'draft' && (
                           <>
                             <button className="btn btn-sm btn-primary" onClick={() => handleSetStatus(qt.id, 'sent')}>📤 ส่ง</button>
-                            <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(qt); setShowAdd(true) }}><PencilIcon /></button>
+                            <button className="btn btn-sm btn-edit" onClick={() => { setEditRow(qt); setShowAdd(true) }}><PencilIcon /></button>
                             <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(qt.id)}><TrashIcon /></button>
                           </>
                         )}

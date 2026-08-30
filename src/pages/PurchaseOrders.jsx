@@ -519,7 +519,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                         {canEdit && po.status === 'ordered' && (
                           <>
                             <button className="btn btn-sm btn-primary" onClick={() => setReceiveRow(po)}>✅ รับของแล้ว</button>
-                            <button className="btn btn-sm btn-ghost" onClick={() => { setEditRow(po); setShowAdd(true) }}><PencilIcon /></button>
+                            <button className="btn btn-sm btn-edit" onClick={() => { setEditRow(po); setShowAdd(true) }}><PencilIcon /></button>
                             <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(po.id)}><TrashIcon /></button>
                           </>
                         )}
