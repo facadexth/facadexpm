@@ -41,7 +41,6 @@ const TenantManagement = lazy(() => import('./pages/TenantManagement.jsx'))
 const TABS = [
   { id: 'dashboard',         label: '📊 ภาพรวม',              minRole: 'WORKER', module: null },
   { id: 'assign',            label: '📋 จ่ายงานช่าง',          minRole: 'WORKER', module: 'payroll' },
-  { id: 'hr',                label: '👷 บุคคล',                minRole: 'WORKER', module: 'payroll' },
   { label: '🏗️ ไซท์งาน', children: [
     { id: 'sites',     label: '📊 ภาพรวม',  minRole: 'ADMIN', module: null },
     { id: 'deposits',  label: '💰 มัดจำ',   minRole: 'ADMIN', module: 'client_deposits' },
@@ -60,6 +59,7 @@ const TABS = [
   { id: 'labor_contractors', label: '🔧 ผู้รับเหมาค่าแรง',    minRole: 'ADMIN',  module: 'labor_subcontractors' },
   { label: '⚙️ ตั้งค่า', children: [
     { id: 'settings',        label: 'ทั่วไป',          minRole: 'OWNER', module: null },
+    { id: 'hr',              label: '👷 บุคคล',        minRole: 'WORKER', module: 'payroll' },
     { id: 'categories',      label: '🏷️ หมวดหมู่',    minRole: 'ADMIN', module: null },
     { id: 'clients',         label: '🏢 ลูกค้า',      minRole: 'ADMIN', module: null },
     { id: 'suppliers',       label: '🏭 ผู้จำหน่าย',     minRole: 'ADMIN', module: null },
