@@ -75,6 +75,14 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Safety net: pages are full of inline-styled flex rows (filter bars,
+   toolbars) that don't all wrap on narrow screens. Without this, any
+   single one of them overflowing pushes the WHOLE page into horizontal
+   scroll instead of just that row -- this confines the damage to the
+   offending row (clipped, or scrollable if it's an overflow-x:auto
+   container like .table-wrap) while each row gets fixed individually. */
+html { overflow-x: hidden; }
+
 body {
   font-family: 'Segoe UI', 'Noto Sans Thai', sans-serif;
   background: var(--bg);
@@ -82,6 +90,8 @@ body {
   min-height: 100vh;
   font-size: 14px;
   line-height: 1.5;
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 /* Scrollbar */

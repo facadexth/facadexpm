@@ -421,7 +421,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
           </div>
         </div>
 
-        <div className="card" style={{ padding: 16, flex: '0 0 380px' }}>
+        <div className="card" style={{ padding: 16, flex: '1 1 300px', minWidth: 0, maxWidth: 380 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>
             📊 สัดส่วนรายจ่ายตามหมวด
           </div>
