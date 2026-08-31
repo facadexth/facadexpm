@@ -2613,16 +2613,23 @@ FROM sites s
 LEFT JOIN incomes i ON i.site_id = s.id
 GROUP BY s.id, s.site_number, s.name, s.status, s.start_date, s.end_date, s.contract_value;
 
--- forecast_month = COALESCE(due_date, check_date, date): credit-term rows
--- key off due_date, cheque rows off check_date, everything else off the
+-- forecast_month = COALESCE(check_date, due_date, date): cheque rows key
+-- off check_date, credit-term rows off due_date, everything else off the
 -- plain transaction date. MUST match src/lib/expenseFilters.js's 'due'
 -- dateField filter exactly, or the Dashboard's "ยอดที่ต้องชำระ" total and
 -- clicking through to Expenses filtered by that month disagree -- see
 -- 2026-09-01-01-fix-payment-forecast-coalesce-order.sql (originally
--- COALESCE(check_date, date), never consulting due_date at all).
+-- COALESCE(check_date, date), never consulting due_date at all) and
+-- 2026-09-02-05-fix-payment-forecast-check-date-priority.sql (that fix's
+-- own COALESCE(due_date, check_date, date) had the priority backwards --
+-- a cheque-linked expense can carry a stale due_date left over from
+-- before it was linked, e.g. auto-filled from a credit term while
+-- payment_method was still 'transfer' and never cleared; check_date is
+-- the one actually kept in sync with the cheque via
+-- expense_sync_check_date_from_cheque, so it must win).
 CREATE OR REPLACE VIEW payment_forecast WITH (security_invoker = true) AS
 SELECT
-  DATE_TRUNC('month', COALESCE(due_date, check_date, date)) AS forecast_month,
+  DATE_TRUNC('month', COALESCE(check_date, due_date, date)) AS forecast_month,
   SUM(amount)                                      AS total_due,
   COUNT(*)                                         AS invoice_count,
   payment_method,
