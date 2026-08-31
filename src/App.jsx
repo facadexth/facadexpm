@@ -100,7 +100,21 @@ function NavGroup({ tab, activeTab, onNavigate }) {
   }
   const handleEnter = () => { updatePos(); setOpen(true) }
   const handleLeave = () => setOpen(false)
+  // เมาส์จริง (desktop) hover เปิด dropdown ให้อยู่แล้วก่อนคลิกจะเกิดขึ้นได้เสมอ
+  // (ต้องเลื่อนเมาส์ผ่าน trigger ก่อนถึงจะคลิกได้) -- คลิกป้ายชื่อ mother tab
+  // เองตอนนั้นจึงทำหน้าที่เป็น "ไปหน้าแรกของกลุ่มนี้" ได้เลย เหมือนคลิก
+  // sub tab แรกใน dropdown ตรงๆ ส่วนมือถือ/แท็บเล็ต (ไม่มี hover) แตะครั้ง
+  // แรกยังต้องเป็นการ "กางเมนู" เหมือนเดิม ไม่งั้นแตะทีเดียวจะเด้งไปหน้าแรก
+  // ทันทีโดยไม่มีโอกาสเลือก sub tab อื่นเลย -- ต้องแยกด้วย matchMedia ไม่ใช่
+  // ใช้ state ของ open เพียงอย่างเดียว เพราะ touch ไม่ยิง mouseenter ที่จะตั้ง
+  // open=true ให้ก่อนคลิกเหมือนเมาส์จริง
   const handleTriggerClick = () => {
+    const hoverCapable = window.matchMedia('(hover: hover) and (pointer: fine)').matches
+    if (hoverCapable) {
+      onNavigate(tab.children[0])
+      setOpen(false)
+      return
+    }
     if (open) { setOpen(false); return }
     updatePos(); setOpen(true)
   }
