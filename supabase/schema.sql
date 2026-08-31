@@ -2989,7 +2989,11 @@ CREATE TABLE cheques (
   status      TEXT NOT NULL DEFAULT 'issued' CHECK (status IN ('issued','cashed')),
   cashed_at   TIMESTAMPTZ,
   notes       TEXT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- The cheque date is a property of the physical cheque, not of any one
+  -- expense it pays -- every expense linked to it must show the same
+  -- date. See the cascade triggers below (2026-09-01-04).
+  check_date  DATE
 );
 
 CREATE INDEX idx_cheques_tenant_id ON cheques(tenant_id);
@@ -3032,6 +3036,51 @@ CREATE TRIGGER trg_cheque_cascade_status
   AFTER UPDATE OF status ON cheques
   FOR EACH ROW
   EXECUTE FUNCTION cheque_cascade_status();
+
+-- cheques.check_date is the single source of truth for "when is this
+-- cheque due" -- these two triggers keep expenses.check_date (still what
+-- payment_forecast/expenseFilters read) in sync with it automatically:
+-- editing a cheque's date cascades to every expense already linked to
+-- it, and linking an expense to a cheque pulls the cheque's date onto
+-- it immediately (BEFORE trigger, so it applies even on the very same
+-- INSERT/UPDATE that sets cheque_id, before any independently-typed
+-- check_date on that row is ever written).
+CREATE OR REPLACE FUNCTION cheque_cascade_check_date()
+RETURNS TRIGGER
+LANGUAGE plpgsql SET search_path = public
+AS $$
+BEGIN
+  IF NEW.check_date IS DISTINCT FROM OLD.check_date THEN
+    UPDATE expenses SET check_date = NEW.check_date WHERE cheque_id = NEW.id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_cheque_cascade_check_date
+  AFTER UPDATE OF check_date ON cheques
+  FOR EACH ROW
+  EXECUTE FUNCTION cheque_cascade_check_date();
+
+CREATE OR REPLACE FUNCTION expense_sync_check_date_from_cheque()
+RETURNS TRIGGER
+LANGUAGE plpgsql SET search_path = public
+AS $$
+DECLARE
+  v_cheque_date DATE;
+BEGIN
+  IF NEW.cheque_id IS NOT NULL AND (TG_OP = 'INSERT' OR NEW.cheque_id IS DISTINCT FROM OLD.cheque_id) THEN
+    SELECT check_date INTO v_cheque_date FROM cheques WHERE id = NEW.cheque_id;
+    NEW.check_date := v_cheque_date;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_expense_sync_check_date
+  BEFORE INSERT OR UPDATE OF cheque_id ON expenses
+  FOR EACH ROW
+  EXECUTE FUNCTION expense_sync_check_date_from_cheque();
 
 -- Re-declares expenses_view (see the earlier, now-superseded definition
 -- above) now that cheques/expenses.cheque_id both exist -- explicit

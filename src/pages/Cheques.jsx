@@ -13,7 +13,7 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 
-const EMPTY_FORM = { cheque_no: '', bank: '', notes: '' }
+const EMPTY_FORM = { cheque_no: '', bank: '', check_date: '', notes: '' }
 
 function ChequeForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
   const isAdd = !initial?.id
@@ -29,6 +29,15 @@ function ChequeForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
         <div>
           <label className="label">ธนาคารที่ออกเช็ค ★</label>
           <input className="input" required value={form.bank} onChange={e => set('bank', e.target.value)} placeholder="เช่น กสิกรไทย, ไทยพาณิชย์" />
+        </div>
+        <div>
+          <label className="label">วันที่เช็ค ★</label>
+          <input type="date" className="input" required value={form.check_date} onChange={e => set('check_date', e.target.value)} />
+          {!isAdd && (
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+              แก้ไขวันที่นี้จะอัปเดตทุกรายจ่ายที่ผูกกับเช็คใบนี้ให้ตรงกันโดยอัตโนมัติ
+            </div>
+          )}
         </div>
         <div>
           <label className="label">หมายเหตุ</label>
@@ -69,7 +78,7 @@ export default function Cheques() {
   const handleSave = async (form) => {
     setSaving(true)
     try {
-      const payload = { cheque_no: form.cheque_no, bank: form.bank, notes: form.notes || null }
+      const payload = { cheque_no: form.cheque_no, bank: form.bank, check_date: form.check_date || null, notes: form.notes || null }
       if (editCheque) {
         const { error } = await supabase.from('cheques').update(payload).eq('id', editCheque.id)
         if (error) throw error
@@ -109,7 +118,7 @@ export default function Cheques() {
           <table>
             <thead>
               <tr>
-                <th>เลขที่เช็ค</th><th>ธนาคาร</th><th>สถานะ</th>
+                <th>เลขที่เช็ค</th><th>ธนาคาร</th><th>วันที่เช็ค</th><th>สถานะ</th>
                 <th>ยอดรวม (รายจ่ายที่ผูกไว้)</th><th>วันที่ขึ้นเงิน</th><th></th>
               </tr>
             </thead>
@@ -120,6 +129,7 @@ export default function Cheques() {
                   <tr key={c.id}>
                     <td style={{ fontWeight: 600 }}>{c.cheque_no}</td>
                     <td>{c.bank}</td>
+                    <td style={{ fontSize: 12, color: 'var(--text2)' }}>{c.check_date ? new Date(c.check_date).toLocaleDateString('th-TH') : '—'}</td>
                     <td>
                       <span className={`badge ${c.status === 'cashed' ? 'badge-check_cleared' : 'badge-check_issued'}`}>
                         {c.status === 'cashed' ? '🏦 ขึ้นเงินแล้ว' : '📄 ยังไม่ขึ้นเงิน'}
@@ -144,7 +154,7 @@ export default function Cheques() {
                 )
               })}
               {!(cheques || []).length && (
-                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีเช็ค</td></tr>
+                <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีเช็ค</td></tr>
               )}
             </tbody>
           </table>

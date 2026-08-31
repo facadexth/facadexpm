@@ -58,10 +58,39 @@ const chequeOpts = (cheques) => (cheques || []).map(c => ({
   value: c.id, label: `${c.cheque_no} · ${c.bank}${c.status === 'cashed' ? ' (ขึ้นเงินแล้ว)' : ''}`, keywords: `${c.cheque_no} ${c.bank}`,
 }))
 
-function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], cheques = [], hasChequeTracking, onSave, onCancel, loading }) {
+function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], cheques = [], hasChequeTracking, onSave, onCancel, loading, onChequeCreated }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('expense-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // เพิ่มเช็คใหม่แบบไม่ต้องออกจากฟอร์มนี้ -- insert ตรงนี้เลย (supabase import
+  // ระดับไฟล์เดียวกับ Expenses ด้านล่าง) แล้วเลือกเช็คที่เพิ่งสร้างให้อัตโนมัติ.
+  // วันที่เช็คเป็นสมบัติของเช็คใบนั้น ไม่ใช่ของรายจ่ายแต่ละตัว -- set('check_date', ...)
+  // ที่นี่แค่ให้ UI สะท้อนทันที ส่วน DB trigger (expense_sync_check_date_from_cheque)
+  // จะ enforce ค่านี้จริงตอนบันทึกอยู่แล้วไม่ว่าอะไรก็ตาม
+  const [showNewCheque, setShowNewCheque] = useState(false)
+  const [newCheque, setNewCheque] = useState({ cheque_no: '', bank: '', check_date: '' })
+  const [savingCheque, setSavingCheque] = useState(false)
+  const handleCreateCheque = async (e) => {
+    e.preventDefault()
+    setSavingCheque(true)
+    try {
+      const { data, error } = await supabase.from('cheques')
+        .insert({ cheque_no: newCheque.cheque_no, bank: newCheque.bank, check_date: newCheque.check_date || null })
+        .select().single()
+      if (error) throw error
+      setForm(f => ({ ...f, cheque_id: data.id, check_date: data.check_date || '' }))
+      setShowNewCheque(false)
+      setNewCheque({ cheque_no: '', bank: '', check_date: '' })
+      onChequeCreated?.()
+    } catch (err) { alert('Error: ' + err.message) }
+    finally { setSavingCheque(false) }
+  }
+
+  const selectCheque = (id) => {
+    const c = cheques.find(c => c.id === id)
+    setForm(f => ({ ...f, cheque_id: id, check_date: c?.check_date || f.check_date }))
+  }
 
   // เครดิตเทอมของ Supplier ที่เลือก (วัน) — ใช้คำนวณวันครบกำหนดจากวันวางบิล
   const selectedSupplier = suppliers.find(s => s.id === form.supplier_id)
@@ -162,7 +191,25 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
           {form.payment_method === 'check' && (
             <div>
               <label className="label">วันที่เช็ค / Due date</label>
-              <input type="date" className="input" value={form.check_date} onChange={e => set('check_date', e.target.value)} />
+              {/* ล็อกเฉพาะตอนที่เช็คที่ผูกไว้ "มี" วันที่จริงแล้วเท่านั้น -- ถ้า
+                  cheque_id ถูกตั้งแต่ check_date ยังว่าง (เช่นเช็คที่สร้างไว้ก่อน
+                  ฟีเจอร์นี้จะมีวันที่ ยังไม่เคยตั้งวันที่) ต้องไม่ล็อกฟิลด์ว่างไว้
+                  แบบแก้ไขไม่ได้ */}
+              <input
+                type="date" className="input" value={form.check_date}
+                disabled={!!(form.cheque_id && form.check_date)}
+                onChange={e => set('check_date', e.target.value)}
+              />
+              {form.cheque_id && form.check_date && (
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                  วันที่นี้ตามเช็คที่ผูกไว้ — แก้ไขได้ที่หน้า “เช็ค” เท่านั้น (จะอัปเดตทุกรายจ่ายที่ใช้เช็คใบนี้)
+                </div>
+              )}
+              {form.cheque_id && !form.check_date && (
+                <div style={{ fontSize: 11, color: 'var(--yellow)', marginTop: 2 }}>
+                  ⚠️ เช็คใบนี้ยังไม่มีวันที่ — ไปตั้งวันที่ที่หน้า “เช็ค” ก่อน แล้ววันที่จะเติมให้อัตโนมัติ
+                </div>
+              )}
             </div>
           )}
           <div>
@@ -176,16 +223,54 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
           <div className="form-grid-2">
             <div>
               <label className="label">ผูกกับเช็ค</label>
-              <SearchableSelect
-                value={form.cheque_id}
-                onChange={id => set('cheque_id', id)}
-                options={chequeOpts(cheques)}
-                placeholder="— ไม่ผูกกับเช็ค —"
-                emptyLabel="ยังไม่มีเช็ค — เพิ่มได้ที่หน้า “เช็ค”"
-              />
+              <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <SearchableSelect
+                    value={form.cheque_id}
+                    onChange={selectCheque}
+                    options={chequeOpts(cheques)}
+                    placeholder="— ไม่ผูกกับเช็ค —"
+                    emptyLabel="ยังไม่มีเช็ค"
+                  />
+                </div>
+                <button type="button" className="btn btn-ghost btn-sm" style={{ flexShrink: 0 }} onClick={() => setShowNewCheque(s => !s)}>
+                  + เพิ่มเช็คใหม่
+                </button>
+              </div>
               <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
                 เมื่อเช็คนี้ขึ้นเงินแล้ว รายจ่ายนี้จะเปลี่ยนเป็น "เช็คผ่าน" อัตโนมัติ
               </div>
+              {showNewCheque && (
+                <div className="card" style={{ padding: 12, marginTop: 8, display: 'grid', gap: 8 }}>
+                  <div className="form-grid-3">
+                    <div>
+                      <label className="label">เลขที่เช็ค ★</label>
+                      <input className="input input-sm" value={newCheque.cheque_no}
+                        onChange={e => setNewCheque(c => ({ ...c, cheque_no: e.target.value }))} placeholder="เช่น 0012345" />
+                    </div>
+                    <div>
+                      <label className="label">ธนาคาร ★</label>
+                      <input className="input input-sm" value={newCheque.bank}
+                        onChange={e => setNewCheque(c => ({ ...c, bank: e.target.value }))} placeholder="เช่น กสิกรไทย" />
+                    </div>
+                    <div>
+                      <label className="label">วันที่เช็ค ★</label>
+                      <input type="date" className="input input-sm" value={newCheque.check_date}
+                        onChange={e => setNewCheque(c => ({ ...c, check_date: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowNewCheque(false)}>ยกเลิก</button>
+                    <button
+                      type="button" className="btn btn-primary btn-sm"
+                      disabled={savingCheque || !newCheque.cheque_no || !newCheque.bank || !newCheque.check_date}
+                      onClick={handleCreateCheque}
+                    >
+                      {savingCheque ? '⏳...' : '✅ เพิ่มเช็ค'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -272,7 +357,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
   const { data: sites }      = useSites()
   const { data: categories } = useCategories()
   const { data: suppliers }  = useSuppliers()
-  const { data: cheques }    = useCheques()
+  const { data: cheques, refetch: refetchCheques } = useCheques()
   const { hasModuleAccess }  = useTenant()
   const hasChequeTracking = hasModuleAccess('cheque_tracking')
 
@@ -569,6 +654,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
             suppliers={suppliers || []}
             cheques={cheques || []}
             hasChequeTracking={hasChequeTracking}
+            onChequeCreated={refetchCheques}
             onSave={handleSave}
             onCancel={() => { setShowAdd(false); setEditRow(null) }}
             loading={saving}
