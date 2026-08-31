@@ -288,7 +288,12 @@ export function useInvoices(filters = {}) {
     const buildQuery = () => {
       let q = supabase
         .from('invoices')
-        .select('*, quotations(quotation_number, client_id, clients(name, address, tax_id)), sites(name, site_number), invoice_items(id, quotation_item_id, description, unit, unit_price, draw_qty, line_total, sort_order)')
+        // incomes ต้องระบุชื่อ FK ตรงๆ (invoices_income_id_fkey) เพราะระหว่าง
+        // invoices/incomes มี FK สองทาง (invoices.income_id -> incomes.id
+        // และ incomes.source_invoice_id -> invoices.id) -- ไม่งั้น PostgREST
+        // จะ error "more than one relationship was found" ทันที ทำให้ query
+        // ทั้งเส้นพังเงียบๆ (useInvoices ไม่มีใครอ่าน .error ใน Invoices.jsx เดิม)
+        .select('*, quotations(quotation_number, client_id, clients(name, address, tax_id)), sites(name, site_number, default_tax_withheld_pct), invoice_items(id, quotation_item_id, description, unit, unit_price, draw_qty, line_total, sort_order), incomes!invoices_income_id_fkey(tax_withheld, received_amount)')
         .order('date', { ascending: false })
         .order('id', { ascending: false })
 

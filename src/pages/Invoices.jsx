@@ -373,7 +373,7 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
 // same billing family, one combined document per the spec) -- unlike
 // Quotation/PO, which stay separate top-level document types and keep
 // their own independent copy of this JSX per existing precedent.
-function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, notesBlock, signatures }) {
+function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct, withholdingTaxAmount, isWithholdingEstimate, notesBlock, signatures }) {
   return (
     <div id={elementId} style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
@@ -445,6 +445,20 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, cl
               <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: '#6c63ff', borderTop: '2px solid #6c63ff' }}>{totalsLabel}</td>
               <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: '#6c63ff', borderTop: '2px solid #6c63ff' }}>{fmt(totalsAmount)} บาท</td>
             </tr>
+            {withholdingTaxAmount > 0 && (
+              <>
+                <tr>
+                  <td style={{ padding: '5px 4px', color: '#c0392b' }}>
+                    หัก ณ ที่จ่าย ({withholdingTaxPct}%){isWithholdingEstimate ? ' (ประมาณการ)' : ''}
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '5px 4px', color: '#c0392b' }}>({fmt(withholdingTaxAmount)})</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '8px 4px 4px', fontWeight: 700, fontSize: 13, borderTop: '1px solid #e4e6ef' }}>ยอดรับสุทธิ</td>
+                  <td style={{ textAlign: 'right', padding: '8px 4px 4px', fontWeight: 700, fontSize: 13, borderTop: '1px solid #e4e6ef' }}>{fmt(totalsAmount - withholdingTaxAmount)} บาท</td>
+                </tr>
+              </>
+            )}
           </tbody>
         </table>
       </div>
@@ -459,10 +473,30 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, cl
   )
 }
 
+// เมื่อชำระแล้ว ตัวเลขจริงมาจาก incomes.tax_withheld ที่ handleMarkPaid
+// คำนวณไว้แล้ว (ที่มา: sites.default_tax_withheld_pct ณ วันที่ชำระ) --
+// เชื่อถือได้กว่า เพราะบันทึกไว้ตอนชำระจริง ไม่ขยับตามถ้า default % ของไซท์
+// เปลี่ยนทีหลัง ส่วนใบแจ้งหนี้ที่ยังไม่ชำระ ยังไม่มี income row ให้อ้างอิง --
+// ประมาณการจาก default % ปัจจุบันของไซท์แทน (isEstimate: true)
+function computeWithholding(invoice) {
+  const income = invoice.incomes
+  if (income && income.tax_withheld > 0) {
+    const pct = invoice.subtotal > 0 ? round2(income.tax_withheld / invoice.subtotal * 100) : 0
+    return { amount: income.tax_withheld, pct, isEstimate: false }
+  }
+  if (invoice.status === 'void') return { amount: 0, pct: 0, isEstimate: false }
+  const defaultPct = invoice.sites?.default_tax_withheld_pct || 0
+  if (defaultPct > 0) {
+    return { amount: round2(invoice.subtotal * defaultPct / 100), pct: defaultPct, isEstimate: true }
+  }
+  return { amount: 0, pct: 0, isEstimate: false }
+}
+
 function InvoiceDocumentModal({ invoice, tenant, onClose }) {
   const elementId = `inv-doc-${invoice.id}`
   const items = invoice.invoice_items || []
   const client = invoice.quotations?.clients
+  const wht = computeWithholding(invoice)
   return (
     <Modal title={`ใบแจ้งหนี้ ${invoice.invoice_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body">
@@ -476,6 +510,7 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
           siteName={invoice.sites?.name} clientName={client?.name} clientAddress={client?.address} clientTaxId={client?.tax_id}
           items={items} totalsLabel="รวมทั้งสิ้น" totalsAmount={invoice.total}
           subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
+          withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
           notesBlock={(tenant?.bank_name || tenant?.bank_account_no) && (
             <div style={{ marginTop: 20, fontSize: 11.5, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
               <strong>ชำระเงินไปที่:</strong> {tenant.bank_name} {tenant.bank_account_name ? `ชื่อบัญชี ${tenant.bank_account_name}` : ''} {tenant.bank_account_no ? `เลขที่ ${tenant.bank_account_no}` : ''}
@@ -497,6 +532,7 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
   const elementId = `rcp-doc-${receipt.id}`
   const items = invoice.invoice_items || []
   const client = invoice.quotations?.clients
+  const wht = computeWithholding(invoice)
   return (
     <Modal title={`ใบเสร็จรับเงิน/ใบกำกับภาษี ${receipt.receipt_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body">
@@ -511,6 +547,7 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
           siteName={invoice.sites?.name} clientName={client?.name} clientAddress={client?.address} clientTaxId={client?.tax_id}
           items={items} totalsLabel="รวมรับชำระ" totalsAmount={receipt.amount}
           subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
+          withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
           notesBlock={null}
           signatures={['ผู้รับเงิน', 'ผู้จ่ายเงิน']}
         />
@@ -566,7 +603,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   const [toast, setToast] = useState(null)
 
   const filters = { from: dateFrom, to: dateTo, siteId, status }
-  const { data: invoices, refetch } = useInvoices(filters)
+  const { data: invoices, error: invoicesError, refetch } = useInvoices(filters)
   const { data: sites } = useSites()
   const { data: acceptedQuotations } = useQuotations({ status: 'accepted' })
 
@@ -790,7 +827,17 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
                     onClick={() => inv.site_id && openSiteOverview(inv.site_id)}>{inv.sites?.name || '—'}</td>
                   <td style={{ fontSize: 12 }}>{inv.quotations?.clients?.name || '—'}</td>
                   <td style={{ fontSize: 11, color: 'var(--text3)' }}>{(inv.invoice_items || []).length} รายการ</td>
-                  <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(inv.total)}</td>
+                  <td className="font-mono" style={{ fontWeight: 700 }}>
+                    {fmt(inv.total)}
+                    {(() => {
+                      const wht = computeWithholding(inv)
+                      return wht.amount > 0 ? (
+                        <div style={{ fontSize: 10, fontWeight: 400, color: 'var(--text3)' }}>
+                          สุทธิ {fmt(inv.total - wht.amount)}{wht.isEstimate ? ' (ประมาณ)' : ''}
+                        </div>
+                      ) : null
+                    })()}
+                  </td>
                   <td><span className={`badge badge-${inv.status}`}>{INV_STATUS_LABELS[inv.status] || inv.status}</span></td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {canEdit && inv.status === 'unpaid' && (
@@ -811,7 +858,9 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
                 </tr>
               ))}
               {!(invoices || []).length && (
-                <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบใบแจ้งหนี้ในช่วงเวลานี้</td></tr>
+                <tr><td colSpan={8} style={{ textAlign: 'center', color: invoicesError ? 'var(--red)' : 'var(--text3)', padding: 32 }}>
+                  {invoicesError ? `โหลดใบแจ้งหนี้ไม่สำเร็จ: ${invoicesError}` : 'ไม่พบใบแจ้งหนี้ในช่วงเวลานี้'}
+                </td></tr>
               )}
             </tbody>
           </table>
