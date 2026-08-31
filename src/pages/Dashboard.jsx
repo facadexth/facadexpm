@@ -283,9 +283,9 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
              onClick={() => navigateTo('retention')} />
         {hasChequeTracking && (
           <Kpi label="เตรียมเงินจ่ายเช็ค"
-               value={String(chequesDueSoon.count)}
+               value={fmtShort(chequesDueSoon.total)}
                sub={chequesDueSoon.count > 0
-                 ? `${fmt(chequesDueSoon.total)} บาท ภายใน ${parseInt(chequeReminderDaysVal, 10) || 0} วัน`
+                 ? `${chequesDueSoon.count} ใบ ภายใน ${parseInt(chequeReminderDaysVal, 10) || 0} วัน`
                  : 'ไม่มีรายการ'}
                cls={chequesDueSoon.count > 0 ? 'red' : 'green'} color={chequesDueSoon.count > 0 ? 'var(--red)' : 'var(--green)'}
                onClick={() => navigateTo('cheques')} />
