@@ -615,6 +615,15 @@ function computeWithholding(invoice) {
   return { amount: 0, pct: 0, isEstimate: false }
 }
 
+// เอกสารใบเดียวกัน (invoice_number, ข้อมูลเดียวกันทุกอย่าง) แค่เปลี่ยนหัวเรื่อง
+// ที่พิมพ์ตามขั้นตอนธุรกิจที่ใช้ส่งเอกสารนั้น -- ไม่ใช่เอกสารคนละใบ ไม่มีเลขที่
+// แยกต่างหาก
+const INVOICE_TITLE_OPTIONS = [
+  { value: 'billing', label: 'ใบวางบิล', title: 'ใบวางบิล' },
+  { value: 'invoice', label: 'ใบแจ้งหนี้', title: 'ใบแจ้งหนี้' },
+  { value: 'delivery', label: 'ใบส่งมอบงาน', title: 'ใบส่งมอบงาน' },
+]
+
 function InvoiceDocumentModal({ invoice, tenant, onClose }) {
   const elementId = `inv-doc-${invoice.id}`
   const items = invoice.invoice_items || []
@@ -622,6 +631,7 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
   const wht = computeWithholding(invoice)
   const { data: receipt } = useDocumentReceipt('invoice', invoice.id)
   const [signatureUrl, setSignatureUrl] = useState(null)
+  const [titleVariant, setTitleVariant] = useState('invoice')
   useEffect(() => {
     if (!receipt) { setSignatureUrl(null); return }
     let cancelled = false
@@ -629,11 +639,18 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
       .then(({ data }) => { if (!cancelled) setSignatureUrl(data?.signedUrl) })
     return () => { cancelled = true }
   }, [receipt])
+  const docTitle = INVOICE_TITLE_OPTIONS.find(o => o.value === titleVariant).title
   return (
     <Modal title={`ใบแจ้งหนี้ ${invoice.invoice_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body">
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          {INVOICE_TITLE_OPTIONS.map(o => (
+            <button key={o.value} type="button" className={`btn btn-sm ${titleVariant === o.value ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setTitleVariant(o.value)}>{o.label}</button>
+          ))}
+        </div>
         <DocumentPaper
-          elementId={elementId} tenant={tenant} title="ใบแจ้งหนี้/ใบส่งมอบงาน"
+          elementId={elementId} tenant={tenant} title={docTitle}
           infoFields={[
             { label: 'เลขที่เอกสาร', value: invoice.invoice_number },
             { label: 'วันที่ออก', value: new Date(invoice.date).toLocaleDateString('th-TH') },
@@ -653,27 +670,42 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
         />
       </div>
       <div className="modal-footer">
-        <button className="btn btn-ghost" onClick={() => downloadPDF(elementId, invoice.invoice_number)}>📄 PDF</button>
-        <button className="btn btn-ghost" onClick={() => downloadJPG(elementId, invoice.invoice_number)}>🖼️ JPG</button>
+        <button className="btn btn-ghost" onClick={() => downloadPDF(elementId, `${docTitle}-${invoice.invoice_number}`)}>📄 PDF</button>
+        <button className="btn btn-ghost" onClick={() => downloadJPG(elementId, `${docTitle}-${invoice.invoice_number}`)}>🖼️ JPG</button>
         <button className="btn btn-primary" onClick={onClose}>ปิด</button>
       </div>
     </Modal>
   )
 }
 
+// ใบเสร็จกับใบกำกับภาษีออกพร้อมกันเสมอ (receipt แถวเดียวมีทั้งสองเลขที่) --
+// นี่คือแค่เลือกว่าจะพิมพ์เป็นเอกสารไหน (บางลูกค้าขอแยก ไม่เอาแบบรวม) ไม่ใช่
+// เลือกว่าจะออกอันไหน ทั้งสองเลขที่ยังอยู่ในระบบเสมอไม่ว่าจะเลือกพิมพ์แบบไหน
+const RECEIPT_TITLE_OPTIONS = [
+  { value: 'receipt', label: 'ใบเสร็จ', title: 'ใบเสร็จรับเงิน', numberLabel: 'เลขที่ใบเสร็จ', numberField: 'receipt_number' },
+  { value: 'tax_invoice', label: 'ใบกำกับภาษี', title: 'ใบกำกับภาษี', numberLabel: 'เลขที่ใบกำกับภาษี', numberField: 'tax_invoice_number' },
+]
+
 function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
   const elementId = `rcp-doc-${receipt.id}`
   const items = invoice.invoice_items || []
   const client = invoice.quotations?.clients
   const wht = computeWithholding(invoice)
+  const [titleVariant, setTitleVariant] = useState('receipt')
+  const variant = RECEIPT_TITLE_OPTIONS.find(o => o.value === titleVariant)
   return (
     <Modal title={`ใบเสร็จรับเงิน/ใบกำกับภาษี ${receipt.receipt_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body">
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          {RECEIPT_TITLE_OPTIONS.map(o => (
+            <button key={o.value} type="button" className={`btn btn-sm ${titleVariant === o.value ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setTitleVariant(o.value)}>{o.label}</button>
+          ))}
+        </div>
         <DocumentPaper
-          elementId={elementId} tenant={tenant} title="ใบเสร็จรับเงิน / ใบกำกับภาษี"
+          elementId={elementId} tenant={tenant} title={variant.title}
           infoFields={[
-            { label: 'เลขที่ใบเสร็จ', value: receipt.receipt_number },
-            { label: 'เลขที่ใบกำกับภาษี', value: receipt.tax_invoice_number },
+            { label: variant.numberLabel, value: receipt[variant.numberField] },
             { label: 'วันที่', value: new Date(receipt.date).toLocaleDateString('th-TH') },
             { label: 'อ้างอิงใบแจ้งหนี้', value: invoice.invoice_number },
           ]}
@@ -686,8 +718,8 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
         />
       </div>
       <div className="modal-footer">
-        <button className="btn btn-ghost" onClick={() => downloadPDF(elementId, receipt.receipt_number)}>📄 PDF</button>
-        <button className="btn btn-ghost" onClick={() => downloadJPG(elementId, receipt.receipt_number)}>🖼️ JPG</button>
+        <button className="btn btn-ghost" onClick={() => downloadPDF(elementId, `${variant.title}-${receipt.receipt_number}`)}>📄 PDF</button>
+        <button className="btn btn-ghost" onClick={() => downloadJPG(elementId, `${variant.title}-${receipt.receipt_number}`)}>🖼️ JPG</button>
         <button className="btn btn-primary" onClick={onClose}>ปิด</button>
       </div>
     </Modal>
