@@ -86,11 +86,12 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
   // this component's onChange. The draft-state fix above can't help with
   // that: it never sees a keystroke the browser itself swallowed.
   const [qtyDrafts, setQtyDrafts] = useState({})
+  const [amtDrafts, setAmtDrafts] = useState({})
   const [pctDrafts, setPctDrafts] = useState({})
   // Any programmatic change to the ledger (ticking a box) invalidates every
   // in-progress draft -- keeping one around would show a stale number after
   // the box is unticked again.
-  const clearDrafts = () => { setQtyDrafts({}); setPctDrafts({}) }
+  const clearDrafts = () => { setQtyDrafts({}); setAmtDrafts({}); setPctDrafts({}) }
 
   const setLine = (qiId, updater) => onChange(lines.map(l => l.quotationItemId === qiId ? updater(l) : l))
 
@@ -102,6 +103,17 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
   }
   const setQty = (qiId, qty) => setLine(qiId, l => {
     const max = openQty(l.units)
+    const clamped = Math.max(0, Math.min(max, qty))
+    return { ...l, units: waterfall(l.units, clamped) }
+  })
+  // กรอกจำนวนเงิน (บาท) ที่ต้องการเรียกเก็บสำหรับรายการนี้โดยตรง แทนที่จะต้อง
+  // แปลงเป็นจำนวนหน่วยเอง -- ตัวเลือกนี้อยู่แยกจาก "กรอกยอดที่ต้องการเรียกเก็บ"
+  // ของทั้งใบแจ้งหนี้ (ซึ่งกระจายสัดส่วนให้ทุกรายการพร้อมกัน) เพราะเมื่อมีหลาย
+  // รายการในใบเดียว การกระจายอัตโนมัติทั้งใบดูสับสน -- ผู้ใช้อยากคุมทีละ
+  // รายการโดยตรงมากกว่า
+  const setAmount = (qiId, amount) => setLine(qiId, l => {
+    const max = openQty(l.units)
+    const qty = l.unitPrice > 0 ? amount / l.unitPrice : 0
     const clamped = Math.max(0, Math.min(max, qty))
     return { ...l, units: waterfall(l.units, clamped) }
   })
@@ -188,7 +200,26 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
                       return next
                     })} />
                 )}
-                <span className="font-mono" style={{ fontWeight: 700, textAlign: 'right', color: l.checked ? 'var(--accent)' : undefined }}>{fmt(lineAmount)}</span>
+                {showAdvanced ? (
+                  <span className="font-mono" style={{ fontWeight: 700, textAlign: 'right' }}>{fmt(lineAmount)}</span>
+                ) : (
+                  <input type="number" min="0" max={remaining * l.unitPrice} step="any"
+                    className="input input-sm font-mono" title="กรอกจำนวนเงินที่ต้องการเรียกเก็บสำหรับรายการนี้"
+                    style={{ textAlign: 'right', fontWeight: 700, color: l.checked ? 'var(--accent)' : undefined }}
+                    value={amtDrafts[l.quotationItemId] ?? String(round2(lineAmount))}
+                    disabled={l.checked}
+                    onChange={e => {
+                      const raw = e.target.value
+                      setAmtDrafts(d => ({ ...d, [l.quotationItemId]: raw }))
+                      const v = parseFloat(raw)
+                      if (!isNaN(v)) setAmount(l.quotationItemId, Math.max(0, Math.min(remaining * l.unitPrice, v)))
+                    }}
+                    onBlur={() => setAmtDrafts(d => {
+                      const next = { ...d }
+                      delete next[l.quotationItemId]
+                      return next
+                    })} />
+                )}
               </div>
               {!showAdvanced && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, marginLeft: 36, fontSize: 11, color: 'var(--text3)' }}>
