@@ -2717,10 +2717,25 @@ GROUP BY lc.id, lc.subcontractor_id, lc.site_id, lc.work_description, lc.contrac
   lc.retention_pct, lc.withholding_tax_pct, lc.site_note, lc.status, lc.start_date,
   ls.name, ls.subcontractor_number, s.name, s.site_number, s.status, s.end_date, s.contract_value;
 
--- Storage: public `tenant-logos` bucket for company-logo PDFs, owner-only
--- writes, tenant-prefixed path ({tenant_id}/logo.<ext>) — see
+-- Storage: public `tenant-logos` bucket for the company-logo PDF
+-- letterhead, owner-only writes, tenant-prefixed path
+-- ({tenant_id}/logo.<ext>) — see
 -- supabase/migrations/2026-08-22-01-tenant-company-profile.sql for the
--- full bucket + policy definitions.
+-- bucket creation. The policy below is the FIXED shape (single FOR ALL) —
+-- the original had separate INSERT/UPDATE/DELETE policies with no SELECT
+-- policy at all, reasoning that a public bucket's reads bypass RLS
+-- entirely so SELECT wasn't needed. True for the public GET/CDN read
+-- path, but NOT true for `INSERT/UPDATE ... RETURNING *` (which is what
+-- Supabase's Storage API always issues) -- that RETURNING still needs a
+-- SELECT policy to read the row back within the same statement, so every
+-- logo upload failed with a row-level-security error even for a genuine
+-- tenant OWNER. See 2026-09-02-03-fix-tenant-logos-missing-select-policy.sql.
+INSERT INTO storage.buckets (id, name, public) VALUES ('tenant-logos', 'tenant-logos', true)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY tenant_logos_owner_access ON storage.objects FOR ALL TO authenticated
+  USING (bucket_id = 'tenant-logos' AND is_owner() AND (storage.foldername(name))[1] = current_tenant_id()::text)
+  WITH CHECK (bucket_id = 'tenant-logos' AND is_owner() AND (storage.foldername(name))[1] = current_tenant_id()::text);
 
 -- Flat "what have we actually sold" report — every line item from an
 -- ACCEPTED quotation only, joined to client/site names. Added by
