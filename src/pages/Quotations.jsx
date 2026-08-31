@@ -25,6 +25,7 @@ import { SiteForm, siteFormToPayload } from './Sites.jsx'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import SignLinkModal from '../components/SignLinkModal.jsx'
+import DocumentReceiptModal from '../components/DocumentReceiptModal.jsx'
 
 const clientOpts = (clients) => (clients || []).map(c => ({
   value: c.id, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
@@ -582,7 +583,23 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   const [docRow, setDocRow] = useState(null)
   const [historyRow, setHistoryRow] = useState(null)
   const [linkTarget, setLinkTarget] = useState(null)
+  const [signTarget, setSignTarget] = useState(null)
   const { hasModuleAccess, tenant } = useTenant()
+
+  // เซ็นรับต่อหน้า (มือถือ/แท็บเล็ตของพนักงานส่งให้ลูกค้าเซ็นตรงนั้น) --
+  // เหมือนกับเซ็นผ่านลิงก์ระยะไกล (sign-link Edge Function): เซ็นก็คือ
+  // ยอมรับทันที ไม่ต้องกดยอมรับแยกอีกที ส่วนการผูกไซท์งานยังคงเป็นขั้นตอน
+  // แยกเสมอ (ต้องมีคนเลือก/สร้างไซท์งานจริง) -- ปุ่ม "🔗 ผูกไซท์งาน" ที่มีอยู่
+  // แล้วจะโผล่มาเองหลังเซ็น เพราะ status เป็น accepted แต่ site_id ยังว่าง
+  const handleQuotationSigned = async () => {
+    if (!signTarget) return
+    const { error } = await supabase.from('quotations').update({ status: 'accepted' }).eq('id', signTarget.id)
+    if (error) { alert('Error: ' + error.message); return }
+    await auditLog('quotations', signTarget.id, 'UPDATE', null, { status: 'accepted' })
+    setSignTarget(null)
+    refetch()
+    showToast('เซ็นรับและยอมรับใบเสนอราคาแล้ว')
+  }
 
   const handleSetStatus = async (id, newStatus) => {
     const { error } = await supabase.from('quotations').update({ status: newStatus }).eq('id', id)
@@ -750,7 +767,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                         )}
                         {canEdit && qt.status === 'sent' && (
                           <>
-                            <button className="btn btn-sm btn-primary" onClick={() => setAcceptRow(qt)}>✅ ยอมรับ</button>
+                            <button className="btn btn-sm btn-primary" onClick={() => setSignTarget(qt)} title="เซ็นรับต่อหน้า (ส่งอุปกรณ์ให้ลูกค้าเซ็นตรงนี้)">🖊️ เซ็นรับ</button>
                             <button className="btn btn-sm btn-ghost" onClick={() => setLinkTarget(qt)}>🔗 ลิงก์เซ็นรับ</button>
                             <button className="btn btn-sm btn-ghost" onClick={() => handleSetStatus(qt.id, 'rejected')}>ปฏิเสธ</button>
                             <button className="btn btn-sm btn-ghost" onClick={() => handleSetStatus(qt.id, 'expired')}>หมดอายุ</button>
@@ -802,6 +819,17 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
 
       {linkTarget && (
         <SignLinkModal documentType="quotation" documentId={linkTarget.id} onClose={() => setLinkTarget(null)} />
+      )}
+
+      {signTarget && (
+        <DocumentReceiptModal
+          documentType="quotation"
+          documentId={signTarget.id}
+          tenantId={tenant?.id}
+          title={`เซ็นรับใบเสนอราคา ${signTarget.quotation_number}`}
+          onClose={() => setSignTarget(null)}
+          onSaved={handleQuotationSigned}
+        />
       )}
 
       {historyRow && <QuotationHistoryModal quotation={historyRow} tenant={tenant} onClose={() => setHistoryRow(null)} />}
