@@ -1,3 +1,10 @@
+// count = จำนวนครั้งที่เคยพิมพ์เอกสารนี้มาก่อน (ไม่รวมครั้งนี้) -- ครั้งแรก
+// (count===0) คือ "ต้นฉบับ" ตัวจริง ครั้งต่อๆ ไปคือสำเนา เลขลำดับนับรวมครั้งนี้
+// ด้วย (count+1) ดู useDocumentPrintCount/logDocumentPrint ใน useSupabase.js
+export function printTagFor(count) {
+  return count > 0 ? `สำเนาที่ ${count + 1}` : 'ต้นฉบับ'
+}
+
 /**
  * สร้าง PDF จาก HTML element
  * ใช้ html2pdf.js ซึ่งรองรับ Thai font ผ่าน canvas rendering

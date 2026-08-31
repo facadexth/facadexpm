@@ -3284,6 +3284,33 @@ CREATE POLICY user_signatures_own_access ON storage.objects FOR ALL TO authentic
     AND (storage.foldername(name))[2] = auth.email()
   );
 
+-- Print/download tracking (2026-09-02-08) -- every PDF/JPG export of a
+-- quotation, invoice, or receipt logs one row here. The document's own
+-- "ต้นฉบับ" (original) badge is derived from the row count at render time
+-- (see printTagFor() in lib/pdf.js): the first export shows "ต้นฉบับ",
+-- every export after that shows "สำเนาที่ N" instead -- so a document
+-- can't be reprinted multiple times all claiming to be the one original,
+-- and there's an audit trail (who, when) if a copy count is ever
+-- questioned. Any tenant member can log/view prints (not gated to
+-- ADMIN/OWNER like document_receipts) -- printing isn't an admin-only
+-- action on these pages (canEdit gates editing, not viewing/downloading).
+CREATE TABLE document_prints (
+  id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id     UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  document_type TEXT NOT NULL CHECK (document_type IN ('quotation', 'invoice', 'receipt')),
+  document_id   UUID NOT NULL,
+  format        TEXT NOT NULL CHECK (format IN ('pdf', 'jpg')),
+  printed_by    TEXT NOT NULL,
+  printed_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_document_prints_document ON document_prints(tenant_id, document_type, document_id);
+
+ALTER TABLE document_prints ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_access ON document_prints FOR ALL TO authenticated
+  USING (tenant_id = current_tenant_id())
+  WITH CHECK (tenant_id = current_tenant_id());
+
 -- Work-completion photos attached to an invoice (2026-09-02-04), printed
 -- as their own document ("รูปประกอบการส่งงาน") -- a photo + short
 -- description per item, 6 to an A4 page. Separate from

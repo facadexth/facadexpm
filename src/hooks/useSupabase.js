@@ -399,6 +399,30 @@ export function useMySignatureUrl() {
   return signature && url ? { url } : null
 }
 
+// จำนวนครั้งที่เอกสารนี้เคยถูกพิมพ์/ดาวน์โหลดมาก่อน -- ใช้คำนวณว่าครั้งต่อไป
+// จะเป็น "ต้นฉบับ" (ครั้งแรก) หรือ "สำเนาที่ N" (ดู printTagFor ใน lib/pdf.js)
+export function useDocumentPrintCount(documentType, documentId) {
+  return useQuery(async () => {
+    if (!documentType || !documentId) return 0
+    const { count, error } = await supabase
+      .from('document_prints')
+      .select('id', { count: 'exact', head: true })
+      .eq('document_type', documentType)
+      .eq('document_id', documentId)
+    if (error) throw error
+    return count || 0
+  }, [documentType, documentId])
+}
+
+export async function logDocumentPrint(tenantId, documentType, documentId, format) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const { error } = await supabase.from('document_prints').insert({
+    tenant_id: tenantId, document_type: documentType, document_id: documentId,
+    format, printed_by: session?.user?.email || 'system',
+  })
+  if (error) throw error
+}
+
 export function useInvoicePhotos(invoiceId) {
   return useQuery(async () => {
     if (!invoiceId) return []

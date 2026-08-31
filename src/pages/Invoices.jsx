@@ -12,7 +12,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl } from '../hooks/useSupabase.js'
+import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, useDocumentPrintCount, logDocumentPrint } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { calcDepositDeduction, round2 } from '../lib/depositCalc.js'
@@ -24,7 +24,7 @@ import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, VAT_RATE } from '../lib/invoiceCalc.js'
 import { calcQuotationTotals } from '../lib/quotationCalc.js'
-import { downloadPDF, downloadJPG } from '../lib/pdf.js'
+import { downloadPDF, downloadJPG, printTagFor } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
@@ -647,6 +647,17 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
     return () => { cancelled = true }
   }, [receipt])
   const docTitle = INVOICE_TITLE_OPTIONS.find(o => o.value === titleVariant).title
+
+  const { data: priorPrints } = useDocumentPrintCount('invoice', invoice.id)
+  const [printCount, setPrintCount] = useState(0)
+  useEffect(() => { if (priorPrints != null) setPrintCount(priorPrints) }, [priorPrints])
+  const printTag = printTagFor(printCount)
+  const handleDownload = async (format, exportFn) => {
+    await logDocumentPrint(tenant?.id, 'invoice', invoice.id, format)
+    await exportFn(elementId, `${printTag}-${docTitle}-${invoice.invoice_number}`)
+    setPrintCount(c => c + 1)
+  }
+
   return (
     <Modal title={`ใบแจ้งหนี้ ${invoice.invoice_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body">
@@ -657,7 +668,7 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
           ))}
         </div>
         <DocumentPaper
-          elementId={elementId} tenant={tenant} title={docTitle}
+          elementId={elementId} tenant={tenant} title={docTitle} tag={printTag}
           infoFields={[
             { label: 'เลขที่เอกสาร', value: invoice.invoice_number },
             { label: 'วันที่ออก', value: new Date(invoice.date).toLocaleDateString('th-TH') },
@@ -677,8 +688,8 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
         />
       </div>
       <div className="modal-footer">
-        <button className="btn btn-ghost" onClick={() => downloadPDF(elementId, `${docTitle}-${invoice.invoice_number}`)}>📄 PDF</button>
-        <button className="btn btn-ghost" onClick={() => downloadJPG(elementId, `${docTitle}-${invoice.invoice_number}`)}>🖼️ JPG</button>
+        <button className="btn btn-ghost" onClick={() => handleDownload('pdf', downloadPDF)}>📄 PDF</button>
+        <button className="btn btn-ghost" onClick={() => handleDownload('jpg', downloadJPG)}>🖼️ JPG</button>
         <button className="btn btn-primary" onClick={onClose}>ปิด</button>
       </div>
     </Modal>
@@ -700,6 +711,17 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
   const wht = computeWithholding(invoice)
   const [titleVariant, setTitleVariant] = useState('receipt')
   const variant = RECEIPT_TITLE_OPTIONS.find(o => o.value === titleVariant)
+
+  const { data: priorPrints } = useDocumentPrintCount('receipt', receipt.id)
+  const [printCount, setPrintCount] = useState(0)
+  useEffect(() => { if (priorPrints != null) setPrintCount(priorPrints) }, [priorPrints])
+  const printTag = printTagFor(printCount)
+  const handleDownload = async (format, exportFn) => {
+    await logDocumentPrint(tenant?.id, 'receipt', receipt.id, format)
+    await exportFn(elementId, `${printTag}-${variant.title}-${receipt.receipt_number}`)
+    setPrintCount(c => c + 1)
+  }
+
   return (
     <Modal title={`ใบเสร็จรับเงิน/ใบกำกับภาษี ${receipt.receipt_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body">
@@ -710,7 +732,7 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
           ))}
         </div>
         <DocumentPaper
-          elementId={elementId} tenant={tenant} title={variant.title}
+          elementId={elementId} tenant={tenant} title={variant.title} tag={printTag}
           infoFields={[
             { label: variant.numberLabel, value: receipt[variant.numberField] },
             { label: 'วันที่', value: new Date(receipt.date).toLocaleDateString('th-TH') },
@@ -725,8 +747,8 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
         />
       </div>
       <div className="modal-footer">
-        <button className="btn btn-ghost" onClick={() => downloadPDF(elementId, `${variant.title}-${receipt.receipt_number}`)}>📄 PDF</button>
-        <button className="btn btn-ghost" onClick={() => downloadJPG(elementId, `${variant.title}-${receipt.receipt_number}`)}>🖼️ JPG</button>
+        <button className="btn btn-ghost" onClick={() => handleDownload('pdf', downloadPDF)}>📄 PDF</button>
+        <button className="btn btn-ghost" onClick={() => handleDownload('jpg', downloadJPG)}>🖼️ JPG</button>
         <button className="btn btn-primary" onClick={onClose}>ปิด</button>
       </div>
     </Modal>

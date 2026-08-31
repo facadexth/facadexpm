@@ -9,7 +9,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt, useMySignatureUrl } from '../hooks/useSupabase.js'
+import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt, useMySignatureUrl, useDocumentPrintCount, logDocumentPrint } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -22,7 +22,7 @@ import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { lineTotal, calcQuotationTotals } from '../lib/quotationCalc.js'
 import { SiteForm, siteFormToPayload } from './Sites.jsx'
-import { downloadPDF, downloadJPG } from '../lib/pdf.js'
+import { downloadPDF, downloadJPG, printTagFor } from '../lib/pdf.js'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import SignLinkModal from '../components/SignLinkModal.jsx'
 import DocumentReceiptModal from '../components/DocumentReceiptModal.jsx'
@@ -405,11 +405,22 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
     return () => { cancelled = true }
   }, [receipt])
 
+  const { data: priorPrints } = useDocumentPrintCount('quotation', qt.id)
+  const [printCount, setPrintCount] = useState(0)
+  useEffect(() => { if (priorPrints != null) setPrintCount(priorPrints) }, [priorPrints])
+  const printTag = printTagFor(printCount)
+
+  const handleDownload = async (format, exportFn) => {
+    await logDocumentPrint(tenant?.id, 'quotation', qt.id, format)
+    await exportFn(elementId, `${printTag}-${qt.quotation_number}`)
+    setPrintCount(c => c + 1)
+  }
+
   return (
     <Modal title={`ใบเสนอราคา ${qt.quotation_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body">
         <QuotationPaper
-          elementId={elementId} tenant={tenant} quotationNumber={qt.quotation_number}
+          elementId={elementId} tenant={tenant} quotationNumber={qt.quotation_number} tag={printTag}
           date={qt.date} validUntil={qt.valid_until} revision={qt.revision || 1}
           clientName={qt.clients?.name} items={qt.quotation_items || []}
           hasVat={qt.has_vat} priceIncludesVat={qt.price_includes_vat}
@@ -420,8 +431,8 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
       </div>
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
-        <button className="btn btn-ghost" onClick={() => downloadJPG(elementId, `${qt.quotation_number}.jpg`)}>🖼️ ดาวน์โหลด JPG</button>
-        <button className="btn btn-primary" onClick={() => downloadPDF(elementId, `${qt.quotation_number}.pdf`)}>📄 ดาวน์โหลด PDF</button>
+        <button className="btn btn-ghost" onClick={() => handleDownload('jpg', downloadJPG)}>🖼️ ดาวน์โหลด JPG</button>
+        <button className="btn btn-primary" onClick={() => handleDownload('pdf', downloadPDF)}>📄 ดาวน์โหลด PDF</button>
       </div>
     </Modal>
   )
