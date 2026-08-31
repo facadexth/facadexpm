@@ -3089,23 +3089,34 @@ CREATE TRIGGER trg_cheque_cascade_check_date
   FOR EACH ROW
   EXECUTE FUNCTION cheque_cascade_check_date();
 
+-- Also forces expenses.status to follow the linked cheque's own status
+-- (issued -> check_issued, cashed -> check_cleared) the moment cheque_id is
+-- set/changed -- same "single source of truth, no independent drift" logic
+-- as check_date, added in 2026-09-01-06-expense-status-follows-cheque.sql.
+-- Fires on EVERY update (not just "OF cheque_id") so the invariant holds no
+-- matter which code path writes status -- including a plain status-only
+-- write that never touches cheque_id at all (e.g. the quick status-toggle
+-- dialog in Expenses.jsx), closing a gap the narrower "OF cheque_id" trigger
+-- left open.
 CREATE OR REPLACE FUNCTION expense_sync_check_date_from_cheque()
 RETURNS TRIGGER
 LANGUAGE plpgsql SET search_path = public
 AS $$
 DECLARE
   v_cheque_date DATE;
+  v_cheque_status TEXT;
 BEGIN
-  IF NEW.cheque_id IS NOT NULL AND (TG_OP = 'INSERT' OR NEW.cheque_id IS DISTINCT FROM OLD.cheque_id) THEN
-    SELECT check_date INTO v_cheque_date FROM cheques WHERE id = NEW.cheque_id;
+  IF NEW.cheque_id IS NOT NULL THEN
+    SELECT check_date, status INTO v_cheque_date, v_cheque_status FROM cheques WHERE id = NEW.cheque_id;
     NEW.check_date := v_cheque_date;
+    NEW.status := CASE WHEN v_cheque_status = 'cashed' THEN 'check_cleared' ELSE 'check_issued' END;
   END IF;
   RETURN NEW;
 END;
 $$;
 
 CREATE TRIGGER trg_expense_sync_check_date
-  BEFORE INSERT OR UPDATE OF cheque_id ON expenses
+  BEFORE INSERT OR UPDATE ON expenses
   FOR EACH ROW
   EXECUTE FUNCTION expense_sync_check_date_from_cheque();
 

@@ -81,7 +81,7 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
         .insert({ cheque_no: newCheque.cheque_no, bank: newCheque.bank, check_date: newCheque.check_date || null })
         .select().single()
       if (error) throw error
-      setForm(f => ({ ...f, cheque_id: data.id, check_date: data.check_date || '' }))
+      setForm(f => ({ ...f, cheque_id: data.id, check_date: data.check_date || '', status: 'check_issued' }))
       setShowNewCheque(false)
       setNewCheque({ cheque_no: '', bank: '', check_date: '' })
       onChequeCreated?.()
@@ -91,7 +91,12 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
 
   const selectCheque = (id) => {
     const c = cheques.find(c => c.id === id)
-    setForm(f => ({ ...f, cheque_id: id, check_date: c?.check_date || f.check_date }))
+    setForm(f => ({
+      ...f,
+      cheque_id: id,
+      check_date: c?.check_date || f.check_date,
+      status: c ? (c.status === 'cashed' ? 'check_cleared' : 'check_issued') : f.status,
+    }))
   }
 
   // เครดิตเทอมของ Supplier ที่เลือก (วัน) — ใช้คำนวณวันครบกำหนดจากวันวางบิล
@@ -222,9 +227,31 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
           )}
           <div>
             <label className="label">สถานะ</label>
-            <select className="select" value={form.status} onChange={e => set('status', e.target.value)}>
-              {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
-            </select>
+            {/* ล็อกเมื่อผูกกับเช็คไว้ -- สถานะต้องอ้างอิงตามเช็คในหน้า "เช็ค"
+                เท่านั้น กันไม่ให้ตั้งสถานะเองแล้ว conflict กับสถานะเช็คจริง
+                (DB trigger expense_sync_check_date_from_cheque enforce ค่านี้
+                จริงตอนบันทึกอยู่แล้วไม่ว่าอะไรก็ตาม -- ฝั่ง UI แค่สะท้อนให้ตรง) */}
+            {(() => {
+              const linkedCheque = form.cheque_id && cheques.find(c => c.id === form.cheque_id)
+              if (linkedCheque) {
+                const derived = linkedCheque.status === 'cashed' ? 'check_cleared' : 'check_issued'
+                return (
+                  <div>
+                    <select className="select" value={derived} disabled>
+                      <option value={derived}>{STATUS_LABELS[derived]}</option>
+                    </select>
+                    <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                      สถานะนี้ตามเช็คที่ผูกไว้ — แก้ไขได้ที่หน้า “เช็ค” เท่านั้น
+                    </div>
+                  </div>
+                )
+              }
+              return (
+                <select className="select" value={form.status} onChange={e => set('status', e.target.value)}>
+                  {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+                </select>
+              )
+            })()}
           </div>
         </div>
         {form.payment_method === 'check' && hasChequeTracking && (
@@ -627,15 +654,23 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                     {e.cheque_no && <div style={{ fontSize: 10 }}>เช็ค {e.cheque_no}</div>}
                   </td>
                   <td>
-                    {/* คลิกเพื่อเปลี่ยนสถานะ */}
-                    <button
-                      className={`badge badge-${e.status}`}
-                      style={{ cursor: 'pointer', border: 'none', background: 'none', padding: 0 }}
-                      onClick={() => { setToggleRow(e); setNewStatus(e.status) }}
-                      title="คลิกเพื่อเปลี่ยนสถานะ"
-                    >
-                      {STATUS_LABELS[e.status] || e.status}
-                    </button>
+                    {/* คลิกเพื่อเปลี่ยนสถานะ -- ยกเว้นรายจ่ายที่ผูกกับเช็คไว้แล้ว
+                        (สถานะต้องตามเช็คเท่านั้น กันไม่ให้เปลี่ยนสถานะทาง
+                        shortcut นี้แล้ว conflict กับสถานะเช็คจริง) */}
+                    {e.cheque_id ? (
+                      <span className={`badge badge-${e.status}`} title={`ผูกกับเช็ค ${e.cheque_no || ''} — เปลี่ยนสถานะได้ที่หน้า "เช็ค" เท่านั้น`}>
+                        {STATUS_LABELS[e.status] || e.status}
+                      </span>
+                    ) : (
+                      <button
+                        className={`badge badge-${e.status}`}
+                        style={{ cursor: 'pointer', border: 'none', background: 'none', padding: 0 }}
+                        onClick={() => { setToggleRow(e); setNewStatus(e.status) }}
+                        title="คลิกเพื่อเปลี่ยนสถานะ"
+                      >
+                        {STATUS_LABELS[e.status] || e.status}
+                      </button>
+                    )}
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {canEdit && (
