@@ -218,6 +218,7 @@ tbody tr:last-child td { border-bottom: none; }
 .badge-pending { background: rgba(255,209,102,0.15); color: var(--yellow); }
 .badge-check_issued { background: rgba(var(--accent-rgb), 0.15); color: var(--accent); }
 .badge-check_cleared { background: rgba(78,205,196,0.15); color: var(--blue); }
+.badge-received { background: rgba(255,209,102,0.15); color: var(--yellow); }
 .badge-draft     { background: rgba(94,97,128,0.2); color: var(--text2); }
 .badge-sent      { background: rgba(255,209,102,0.15); color: var(--yellow); }
 .badge-accepted  { background: rgba(0,212,170,0.15); color: var(--green); }

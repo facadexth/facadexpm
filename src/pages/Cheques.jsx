@@ -9,7 +9,9 @@
 import { useState } from 'react'
 import { supabase, fmt } from '../lib/supabase.js'
 import { useCheques, useQuery } from '../hooks/useSupabase.js'
+import { useTenant } from '../hooks/useTenant.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
+import DocumentReceiptModal from '../components/DocumentReceiptModal.jsx'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { THAI_BANKS } from '../lib/thaiBanks.js'
@@ -60,6 +62,7 @@ function ChequeForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
 }
 
 export default function Cheques() {
+  const { tenant } = useTenant()
   const { data: cheques, refetch } = useCheques()
   // Linked-expense totals per cheque -- a lightweight aggregate query
   // rather than a dedicated view, since it's only ever needed here.
@@ -75,6 +78,39 @@ export default function Cheques() {
     map[r.cheque_id] = t
     return map
   }, {})
+
+  // ใบเซ็นรับล่าสุดต่อเช็ค -- ใช้แสดงลิงก์ "ดูใบเซ็นรับ" และรู้ว่าเช็คใบไหน
+  // เซ็นรับไปแล้วบ้าง (document_receipts เป็นตารางกลาง ใช้ document_type='cheque'
+  // กรองเอาเฉพาะของเช็ค)
+  const { data: receiptRows, refetch: refetchReceipts } = useQuery(async () => {
+    const { data, error } = await supabase.from('document_receipts').select('*').eq('document_type', 'cheque').order('signed_at', { ascending: false })
+    if (error) throw error
+    return data
+  })
+  const receiptByCheque = (receiptRows || []).reduce((map, r) => {
+    if (!map[r.document_id]) map[r.document_id] = r // แถวแรกที่เจอคือล่าสุด (เรียง signed_at DESC ไว้แล้ว)
+    return map
+  }, {})
+
+  const [signTarget, setSignTarget] = useState(null)
+  const [viewReceipt, setViewReceipt] = useState(null)
+  const [viewReceiptUrl, setViewReceiptUrl] = useState(null)
+
+  const handleSignSaved = async () => {
+    if (signTarget) {
+      await supabase.from('cheques').update({ status: 'received' }).eq('id', signTarget.id)
+    }
+    setSignTarget(null)
+    refetch()
+    refetchReceipts()
+  }
+
+  const openViewReceipt = async (receipt) => {
+    setViewReceipt(receipt)
+    setViewReceiptUrl(null)
+    const { data, error } = await supabase.storage.from('document-receipts').createSignedUrl(receipt.signature_path, 60)
+    if (!error) setViewReceiptUrl(data.signedUrl)
+  }
 
   const [showForm, setShowForm] = useState(false)
   const [editCheque, setEditCheque] = useState(null)
@@ -132,15 +168,26 @@ export default function Cheques() {
             <tbody>
               {(cheques || []).map(c => {
                 const t = totalsByCheque[c.id]
+                const receipt = receiptByCheque[c.id]
+                const statusBadge = c.status === 'cashed'
+                  ? { cls: 'badge-check_cleared', label: '🏦 ขึ้นเงินแล้ว' }
+                  : c.status === 'received'
+                    ? { cls: 'badge-received', label: '✍️ รับเช็คแล้ว' }
+                    : { cls: 'badge-check_issued', label: '📄 ยังไม่ขึ้นเงิน' }
                 return (
                   <tr key={c.id}>
                     <td style={{ fontWeight: 600 }}>{c.cheque_no}</td>
                     <td>{c.bank}</td>
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}>{c.check_date ? new Date(c.check_date).toLocaleDateString('th-TH') : '—'}</td>
                     <td>
-                      <span className={`badge ${c.status === 'cashed' ? 'badge-check_cleared' : 'badge-check_issued'}`}>
-                        {c.status === 'cashed' ? '🏦 ขึ้นเงินแล้ว' : '📄 ยังไม่ขึ้นเงิน'}
-                      </span>
+                      <span className={`badge ${statusBadge.cls}`}>{statusBadge.label}</span>
+                      {receipt && (
+                        <div>
+                          <button type="button" className="btn btn-ghost btn-sm" style={{ padding: 0, fontSize: 11 }} onClick={() => openViewReceipt(receipt)}>
+                            📝 ดูใบเซ็นรับ
+                          </button>
+                        </div>
+                      )}
                     </td>
                     <td className="font-mono">
                       {t ? `${fmt(t.total)} บาท (${t.count} รายการ)` : <span style={{ color: 'var(--text3)' }}>— ยังไม่ผูกรายจ่าย</span>}
@@ -150,6 +197,9 @@ export default function Cheques() {
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <div className="actions-cell">
+                        {c.status !== 'cashed' && (
+                          <button className="btn btn-sm btn-ghost" onClick={() => setSignTarget(c)}>🖊️ ให้เซ็นรับ</button>
+                        )}
                         {c.status !== 'cashed' && (
                           <button className="btn btn-sm btn-success" onClick={() => setCashId(c.id)}>✅ ขึ้นเงินแล้ว</button>
                         )}
@@ -185,6 +235,37 @@ export default function Cheques() {
           onConfirm={handleMarkCashed}
           onCancel={() => setCashId(null)}
         />
+      )}
+
+      {signTarget && (
+        <DocumentReceiptModal
+          documentType="cheque"
+          documentId={signTarget.id}
+          tenantId={tenant?.id}
+          title={`เซ็นรับเช็ค ${signTarget.cheque_no}`}
+          onClose={() => setSignTarget(null)}
+          onSaved={handleSignSaved}
+        />
+      )}
+
+      {viewReceipt && (
+        <Modal title="ใบเซ็นรับ" onClose={() => setViewReceipt(null)} maxWidth={420}>
+          <div className="modal-body" style={{ display: 'grid', gap: 10 }}>
+            <div><span className="label">ผู้รับ</span> {viewReceipt.signer_name}</div>
+            {viewReceipt.signer_note && <div><span className="label">หมายเหตุ</span> {viewReceipt.signer_note}</div>}
+            <div><span className="label">วันที่เซ็น</span> {new Date(viewReceipt.signed_at).toLocaleString('th-TH')}</div>
+            <div><span className="label">บันทึกโดย</span> {viewReceipt.signed_by}</div>
+            <div>
+              <label className="label">ลายเซ็น</label>
+              {viewReceiptUrl
+                ? <img src={viewReceiptUrl} alt="ลายเซ็น" style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 8, background: '#fff' }} />
+                : <div style={{ color: 'var(--text3)', fontSize: 12 }}>กำลังโหลด...</div>}
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-ghost" onClick={() => setViewReceipt(null)}>ปิด</button>
+          </div>
+        </Modal>
       )}
     </div>
   )

@@ -3013,7 +3013,9 @@ CREATE TABLE cheques (
   tenant_id   UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
   cheque_no   TEXT NOT NULL,
   bank        TEXT NOT NULL,
-  status      TEXT NOT NULL DEFAULT 'issued' CHECK (status IN ('issued','cashed')),
+  -- issued -> received (signed for, see document_receipts below) -> cashed.
+  -- "received" is optional and never gates cashing.
+  status      TEXT NOT NULL DEFAULT 'issued' CHECK (status IN ('issued','received','cashed')),
   cashed_at   TIMESTAMPTZ,
   notes       TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -3149,3 +3151,46 @@ LEFT JOIN sites s ON e.site_id = s.id
 LEFT JOIN expense_categories ec ON e.category_id = ec.id
 LEFT JOIN suppliers sup ON e.supplier_id = sup.id
 LEFT JOIN cheques c ON e.cheque_id = c.id;
+
+-- General-purpose "document receipt" system (2026-09-02-01): capture a
+-- signature (drawn on a tablet/mobile/laptop handed to the other party) as
+-- proof a document was physically received. Deliberately generic
+-- (document_type + document_id, no rigid FK to a single table) so it can be
+-- reused for other document types later (delivery notes, invoices) -- v1
+-- only wires up cheques from the UI.
+CREATE TABLE document_receipts (
+  id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id       UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  document_type   TEXT NOT NULL CHECK (document_type IN ('cheque')),
+  document_id     UUID NOT NULL,
+  signer_name     TEXT NOT NULL,
+  signer_note     TEXT,
+  signature_path  TEXT NOT NULL,
+  signed_by       TEXT NOT NULL,
+  signed_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_document_receipts_document ON document_receipts(tenant_id, document_type, document_id);
+
+ALTER TABLE document_receipts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY admin_full_access ON document_receipts FOR ALL TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id())
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id());
+
+-- Storage: private `document-receipts` bucket, tenant-prefixed path, bucket
+-- RLS independent of the table's own RLS -- same pattern as
+-- site-attachments/po-attachments.
+INSERT INTO storage.buckets (id, name, public) VALUES ('document-receipts', 'document-receipts', false)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY document_receipts_tenant_access ON storage.objects FOR ALL TO authenticated
+  USING (
+    bucket_id = 'document-receipts'
+    AND is_admin_or_owner()
+    AND (storage.foldername(name))[1] = current_tenant_id()::text
+  )
+  WITH CHECK (
+    bucket_id = 'document-receipts'
+    AND is_admin_or_owner()
+    AND (storage.foldername(name))[1] = current_tenant_id()::text
+  );
