@@ -101,7 +101,7 @@ INSERT INTO expense_categories (name, color, sort_order) VALUES
 -- ----------------------------------------------------------------
 CREATE TABLE clients (
   id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  client_number   TEXT NOT NULL UNIQUE DEFAULT '',    -- AUTO: CL-2026-001
+  client_number   TEXT NOT NULL DEFAULT '',    -- AUTO: CL-2026-001
   name            TEXT NOT NULL,
   contact_person  TEXT,
   position        TEXT,
@@ -114,7 +114,13 @@ CREATE TABLE clients (
   client_type     TEXT CHECK (client_type IN ('DEVELOPER','ENDUSER','ผู้รับเหมา')),
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW(),
-  tenant_id       UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+  tenant_id       UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  -- Per-tenant, not global -- generate_client_number()'s MAX() runs
+  -- under the caller's own RLS (tenant-scoped), so the uniqueness
+  -- constraint must match or a brand-new tenant's first-ever client
+  -- ("CL-2026-001") can collide with another tenant's. See
+  -- 2026-09-01-05-scope-document-numbers-per-tenant.sql.
+  UNIQUE (tenant_id, client_number)
 );
 
 CREATE INDEX idx_clients_name ON clients(name);
@@ -138,7 +144,7 @@ CREATE POLICY admin_deletes ON clients FOR DELETE TO authenticated
 -- ----------------------------------------------------------------
 CREATE TABLE suppliers (
   id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  supplier_number TEXT NOT NULL UNIQUE DEFAULT '',    -- AUTO: SP-2026-001
+  supplier_number TEXT NOT NULL DEFAULT '',    -- AUTO: SP-2026-001
   name            TEXT NOT NULL,
   contact_person  TEXT,
   phone           TEXT,
@@ -152,7 +158,9 @@ CREATE TABLE suppliers (
   credit_days     INTEGER,                             -- NULL = no credit terms (immediate/cash-like)
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW(),
-  tenant_id       UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+  tenant_id       UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  -- Per-tenant, not global -- see 2026-09-01-05-scope-document-numbers-per-tenant.sql.
+  UNIQUE (tenant_id, supplier_number)
 );
 
 CREATE INDEX idx_suppliers_name ON suppliers(name);
@@ -249,7 +257,7 @@ CREATE POLICY anyone_reads_contractor_type_category_suppliers ON contractor_type
 -- ----------------------------------------------------------------
 CREATE TABLE sites (
   id             UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  site_number    TEXT UNIQUE NOT NULL,          -- AUTO: FX-2026-001
+  site_number    TEXT NOT NULL,                 -- AUTO: FX-2026-001
   name           TEXT NOT NULL,
   notes          TEXT,
   status         TEXT DEFAULT 'Ongoing'
@@ -286,7 +294,9 @@ CREATE TABLE sites (
 
   created_at     TIMESTAMPTZ DEFAULT NOW(),
   updated_at     TIMESTAMPTZ DEFAULT NOW(),
-  tenant_id      UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+  tenant_id      UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  -- Per-tenant, not global -- see 2026-09-01-05-scope-document-numbers-per-tenant.sql.
+  UNIQUE (tenant_id, site_number)
 );
 
 CREATE INDEX idx_sites_client_id ON sites(client_id);
@@ -537,10 +547,14 @@ CREATE POLICY admin_deletes ON worker_ot FOR DELETE TO authenticated
 -- ----------------------------------------------------------------
 CREATE TABLE company_holidays (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  date       DATE NOT NULL UNIQUE,
+  date       DATE NOT NULL,
   name       TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  tenant_id  UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+  tenant_id  UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  -- Per-tenant, not global -- a global UNIQUE(date) meant only one
+  -- tenant across the whole platform could ever mark a given date as a
+  -- holiday. See 2026-09-01-05-scope-document-numbers-per-tenant.sql.
+  UNIQUE (tenant_id, date)
 );
 
 CREATE INDEX idx_company_holidays_date ON company_holidays(date);
@@ -614,7 +628,7 @@ CREATE POLICY admin_deletes ON salary_records FOR DELETE TO authenticated
 -- ----------------------------------------------------------------
 CREATE TABLE purchase_orders (
   id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  po_number       TEXT NOT NULL UNIQUE DEFAULT '',   -- AUTO: PO-2026-001
+  po_number       TEXT NOT NULL DEFAULT '',   -- AUTO: PO-2026-001
   site_id         UUID NOT NULL REFERENCES sites(id) ON DELETE RESTRICT,
   supplier_id     UUID NOT NULL REFERENCES suppliers(id) ON DELETE RESTRICT,
   category_id     UUID NOT NULL REFERENCES expense_categories(id) ON DELETE RESTRICT,
@@ -628,7 +642,9 @@ CREATE TABLE purchase_orders (
   expense_id      UUID REFERENCES expenses(id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW(),
-  tenant_id       UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+  tenant_id       UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  -- Per-tenant, not global -- see 2026-09-01-05-scope-document-numbers-per-tenant.sql.
+  UNIQUE (tenant_id, po_number)
 );
 
 CREATE TABLE purchase_order_items (
@@ -732,7 +748,7 @@ CREATE POLICY admin_full_access ON catalog_items FOR ALL TO authenticated
 -- exactly. Added by supabase/migrations/2026-08-22-04-quotations.sql.
 CREATE TABLE quotations (
   id                  UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  quotation_number    TEXT NOT NULL UNIQUE DEFAULT '',   -- AUTO: QT-2026-001
+  quotation_number    TEXT NOT NULL DEFAULT '',   -- AUTO: QT-2026-001
   client_id           UUID NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
   site_id             UUID REFERENCES sites(id) ON DELETE SET NULL,
   date                DATE NOT NULL,
@@ -748,7 +764,9 @@ CREATE TABLE quotations (
   revision            INTEGER NOT NULL DEFAULT 1, -- bumped on every edit save; counter only, no snapshot history — added by supabase/migrations/2026-08-22-07-quotation-revision-tracking.sql
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  tenant_id           UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+  tenant_id           UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  -- Per-tenant, not global -- see 2026-09-01-05-scope-document-numbers-per-tenant.sql.
+  UNIQUE (tenant_id, quotation_number)
 );
 
 CREATE INDEX idx_quotations_client_id ON quotations(client_id);
@@ -885,7 +903,7 @@ CREATE POLICY admin_full_access ON quotation_item_units FOR ALL TO authenticated
 -- supabase/migrations/2026-08-24-03-invoices.sql.
 CREATE TABLE invoices (
   id                  UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  invoice_number      TEXT NOT NULL UNIQUE DEFAULT '',
+  invoice_number      TEXT NOT NULL DEFAULT '',
   quotation_id        UUID NOT NULL REFERENCES quotations(id) ON DELETE RESTRICT,
   site_id             UUID NOT NULL REFERENCES sites(id) ON DELETE RESTRICT,
   date                DATE NOT NULL,
@@ -901,7 +919,9 @@ CREATE TABLE invoices (
   income_id           UUID REFERENCES incomes(id) ON DELETE SET NULL,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  tenant_id           UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+  tenant_id           UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  -- Per-tenant, not global -- see 2026-09-01-05-scope-document-numbers-per-tenant.sql.
+  UNIQUE (tenant_id, invoice_number)
 );
 
 CREATE INDEX idx_invoices_quotation_id ON invoices(quotation_id);
@@ -1010,12 +1030,15 @@ CREATE POLICY admin_full_access ON invoice_item_draws FOR ALL TO authenticated
 -- single-shot -- at most one receipt can ever exist per invoice.
 CREATE TABLE receipts (
   id                  UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  receipt_number      TEXT NOT NULL UNIQUE DEFAULT '',
-  tax_invoice_number  TEXT NOT NULL UNIQUE DEFAULT '',
+  receipt_number      TEXT NOT NULL DEFAULT '',
+  tax_invoice_number  TEXT NOT NULL DEFAULT '',
   invoice_id          UUID NOT NULL UNIQUE REFERENCES invoices(id) ON DELETE RESTRICT,
   date                DATE NOT NULL,
   amount              NUMERIC NOT NULL,
-  tenant_id           UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+  tenant_id           UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  -- Per-tenant, not global -- see 2026-09-01-05-scope-document-numbers-per-tenant.sql.
+  UNIQUE (tenant_id, receipt_number),
+  UNIQUE (tenant_id, tax_invoice_number)
 );
 
 CREATE INDEX idx_receipts_invoice_id ON receipts(invoice_id);
@@ -1156,7 +1179,7 @@ CREATE POLICY admin_full_access ON site_attachments FOR ALL TO authenticated
 -- ----------------------------------------------------------------
 CREATE TABLE labor_subcontractors (
   id                    UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  subcontractor_number  TEXT NOT NULL UNIQUE DEFAULT '',   -- AUTO: LC-2026-001
+  subcontractor_number  TEXT NOT NULL DEFAULT '',   -- AUTO: LC-2026-001
   name                  TEXT NOT NULL,
   contact_person        TEXT,
   phone                 TEXT,
@@ -1164,7 +1187,9 @@ CREATE TABLE labor_subcontractors (
   notes                 TEXT,
   created_at            TIMESTAMPTZ DEFAULT NOW(),
   updated_at            TIMESTAMPTZ DEFAULT NOW(),
-  tenant_id             UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+  tenant_id             UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  -- Per-tenant, not global -- see 2026-09-01-05-scope-document-numbers-per-tenant.sql.
+  UNIQUE (tenant_id, subcontractor_number)
 );
 
 CREATE INDEX idx_labor_sub_name ON labor_subcontractors(name);
@@ -1220,7 +1245,7 @@ CREATE POLICY admin_full_access ON labor_contracts FOR ALL TO authenticated
 CREATE TABLE labor_payments (
   id                    UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   contract_id           UUID NOT NULL REFERENCES labor_contracts(id),
-  payment_number        TEXT NOT NULL UNIQUE DEFAULT '',   -- AUTO: PY2608-001
+  payment_number        TEXT NOT NULL DEFAULT '',   -- AUTO: PY2608-001
   payment_date          DATE NOT NULL,
   work_description      TEXT,
   progress_pct          NUMERIC,
@@ -1233,7 +1258,9 @@ CREATE TABLE labor_payments (
   paid_date             DATE,
   notes                 TEXT,
   created_at            TIMESTAMPTZ DEFAULT NOW(),
-  tenant_id             UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+  tenant_id             UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  -- Per-tenant, not global -- see 2026-09-01-05-scope-document-numbers-per-tenant.sql.
+  UNIQUE (tenant_id, payment_number)
 );
 
 CREATE INDEX idx_labor_payment_contract ON labor_payments(contract_id);
