@@ -30,8 +30,28 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     }
   }
 
+  // จำนวนวันล่วงหน้าที่จะเตือนให้เตรียมเงินในบัญชีก่อนเช็คครบกำหนด --
+  // ใช้คำนวณการ์ด "เตรียมเงินจ่ายเช็ค" ในหน้าภาพรวม (Dashboard.jsx)
+  const { data: chequeReminderDaysVal, refetch: refetchChequeReminderDays } = useAppSetting('cheque_reminder_days', '3')
+  const [chequeReminderDays, setChequeReminderDays] = useState('')
+  const [savingChequeReminderDays, setSavingChequeReminderDays] = useState(false)
+  useEffect(() => { if (chequeReminderDaysVal != null) setChequeReminderDays(String(chequeReminderDaysVal)) }, [chequeReminderDaysVal])
+
+  const handleSaveChequeReminderDays = async () => {
+    setSavingChequeReminderDays(true)
+    try {
+      await saveAppSetting('cheque_reminder_days', parseInt(chequeReminderDays, 10) || 0)
+      refetchChequeReminderDays()
+      alert('✅ บันทึกการแจ้งเตือนแล้ว')
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setSavingChequeReminderDays(false)
+    }
+  }
+
   // Contractor type — stored on tenants.contractor_type_id
-  const { tenant, refetch: refetchTenant } = useTenant()
+  const { tenant, hasModuleAccess, refetch: refetchTenant } = useTenant()
   const { data: contractorTypes } = useContractorTypes()
   const [contractorTypeId, setContractorTypeId] = useState('')
   const [savingType, setSavingType] = useState(false)
@@ -188,6 +208,26 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           </button>
         </div>
       </div>
+
+      {/* ── แจ้งเตือนเช็คใกล้ครบกำหนด ── */}
+      {hasModuleAccess('cheque_tracking') && (
+        <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
+          <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🏦 แจ้งเตือนเช็คใกล้ครบกำหนด</h2>
+          <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
+            การ์ด "เตรียมเงินจ่ายเช็ค" ในหน้าภาพรวมจะขึ้นเมื่อมีเช็คที่ยังไม่ขึ้นเงิน ครบกำหนดภายในกี่วันข้างหน้า
+          </p>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div>
+              <label className="label">แจ้งเตือนล่วงหน้า (วัน)</label>
+              <input type="number" className="input" min="0" step="1" style={{ width: 160 }}
+                value={chequeReminderDays} onChange={e => setChequeReminderDays(e.target.value)} />
+            </div>
+            <button className="btn btn-primary" onClick={handleSaveChequeReminderDays} disabled={savingChequeReminderDays}>
+              {savingChequeReminderDays ? '⏳ กำลังบันทึก...' : '✅ บันทึก'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── ประเภทผู้รับเหมา ── */}
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>

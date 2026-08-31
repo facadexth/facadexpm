@@ -327,6 +327,7 @@ tbody tr:last-child td { border-bottom: none; }
 
 /* Grid layouts */
 .kpi-grid { display: grid; gap: 14px; margin-bottom: 20px; }
+.kpi-grid-7 { grid-template-columns: repeat(7, 1fr); }
 .kpi-grid-6 { grid-template-columns: repeat(6, 1fr); }
 .kpi-grid-5 { grid-template-columns: repeat(5, 1fr); }
 .kpi-grid-4 { grid-template-columns: repeat(4, 1fr); }
@@ -377,14 +378,14 @@ th.sortable:hover { color: var(--accent); }
 .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
 
 @media (max-width: 900px) {
-  .kpi-grid-6 { grid-template-columns: repeat(3, 1fr); }
+  .kpi-grid-7, .kpi-grid-6 { grid-template-columns: repeat(3, 1fr); }
   .kpi-grid-5 { grid-template-columns: repeat(3, 1fr); }
   .kpi-grid-4 { grid-template-columns: repeat(2, 1fr); }
   .chart-grid-2-1 { grid-template-columns: 1fr; }
   .form-grid-3, .form-grid-4 { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 600px) {
-  .kpi-grid-6, .kpi-grid-5, .kpi-grid-4, .kpi-grid-3 { grid-template-columns: 1fr 1fr; }
+  .kpi-grid-7, .kpi-grid-6, .kpi-grid-5, .kpi-grid-4, .kpi-grid-3 { grid-template-columns: 1fr 1fr; }
   .form-grid-2, .form-grid-3, .form-grid-4 { grid-template-columns: 1fr; }
   .modal-body { padding: 16px; }
   .modal-footer { padding: 12px 16px; }

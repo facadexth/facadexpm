@@ -8,9 +8,10 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { useSites, useExpenses, useIncomes, usePaymentForecast, useSitesProgress, useSiteRetentionSummary } from '../hooks/useSupabase.js'
+import { useSites, useExpenses, useIncomes, usePaymentForecast, useSitesProgress, useSiteRetentionSummary, useCheques, useAppSetting, useQuery } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
-import { fmt, fmtShort, fmtDate } from '../lib/supabase.js'
+import { useTenant } from '../hooks/useTenant.js'
+import { supabase, fmt, fmtShort, fmtDate } from '../lib/supabase.js'
 import { startOfYear, endOfYear, startOfMonth, endOfMonth, addMonths, format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { getEffectiveTheme } from '../lib/theme.js'
@@ -105,6 +106,21 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
   const { data: incomes }  = useIncomes(range)
   const { data: forecast } = usePaymentForecast()
   const { data: retentionSummary } = useSiteRetentionSummary()
+  const { hasModuleAccess } = useTenant()
+  const hasChequeTracking = hasModuleAccess('cheque_tracking')
+  const { data: cheques } = useCheques()
+  const { data: chequeReminderDaysVal } = useAppSetting('cheque_reminder_days', '3')
+  // cheques ไม่มีคอลัมน์ยอดเงินของตัวเอง -- ยอดมาจากรายจ่ายที่ผูกไว้
+  // (เช็คใบเดียวจ่ายได้หลายบิล) เหมือน totalsByCheque ใน Cheques.jsx
+  const { data: chequeExpenseRows } = useQuery(async () => {
+    const { data, error } = await supabase.from('expenses').select('cheque_id, amount').not('cheque_id', 'is', null)
+    if (error) throw error
+    return data
+  })
+  const chequeTotalsById = useMemo(() => (chequeExpenseRows || []).reduce((map, r) => {
+    map[r.cheque_id] = (map[r.cheque_id] || 0) + (r.amount || 0)
+    return map
+  }, {}), [chequeExpenseRows])
 
   const retentionDueSoon = useMemo(() => {
     const in30Days = new Date()
@@ -122,6 +138,26 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
       total: matching.reduce((sum, r) => sum + r.total_retention, 0),
     }
   }, [retentionSummary])
+
+  // เตรียมเงินจ่ายเช็ค -- เช็คที่ยังไม่ขึ้นเงิน (issued/received) และครบกำหนด
+  // ภายใน N วันข้างหน้า (N ตั้งค่าได้ที่หน้าตั้งค่า) รวมเช็คที่เลยกำหนดไปแล้ว
+  // แต่ยังไม่ขึ้นเงินด้วย (check_date <= เกณฑ์ ไม่ใช่ระหว่างวันนี้ถึงเกณฑ์) --
+  // อันนั้นยิ่งเร่งด่วนกว่าอีก ไม่ใช่กรณีที่ควรตกหล่นไปจากการ์ดนี้
+  const chequesDueSoon = useMemo(() => {
+    const reminderDays = parseInt(chequeReminderDaysVal, 10) || 0
+    const thresholdDate = new Date()
+    thresholdDate.setDate(thresholdDate.getDate() + reminderDays)
+    const thresholdIso = thresholdDate.toISOString().slice(0, 10)
+    const matching = (cheques || []).filter(c =>
+      c.status !== 'cashed' &&
+      c.check_date != null &&
+      c.check_date <= thresholdIso
+    )
+    return {
+      count: matching.length,
+      total: matching.reduce((sum, c) => sum + (chequeTotalsById[c.id] || 0), 0),
+    }
+  }, [cheques, chequeReminderDaysVal, chequeTotalsById])
 
   // ── KPI Calculations ──
   const totalIncome  = useMemo(() => (incomes  || []).reduce((s, i) => s + (i.received_amount || 0), 0), [incomes])
@@ -232,7 +268,7 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
       </div>
 
       {/* ── KPI Cards ── */}
-      <div className="kpi-grid kpi-grid-6" style={{ marginBottom: 20 }}>
+      <div className={`kpi-grid ${hasChequeTracking ? 'kpi-grid-7' : 'kpi-grid-6'}`} style={{ marginBottom: 20 }}>
         <Kpi label="รายรับรวม"       value={fmtShort(totalIncome)}  sub={`${fmt(totalIncome)} บาท`}   cls="green" color="var(--green)" />
         <Kpi label="รายจ่ายรวม"      value={fmtShort(totalExpense)} sub={`${fmt(totalExpense)} บาท`}  cls="red"   color="var(--red)" />
         <Kpi label="กำไรเบื้องต้น"   value={fmtShort(profit)}       sub={profit >= 0 ? `+${(profit/totalIncome*100).toFixed(1)}%` : 'ขาดทุน'} cls={profit>=0?'green':'red'} color={profit>=0?'var(--green)':'var(--red)'} />
@@ -245,6 +281,15 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
              sub={retentionDueSoon.count > 0 ? `${fmt(retentionDueSoon.total)} บาท ภายใน 30 วัน` : 'ไม่มีรายการ'}
              cls="blue" color="var(--blue)"
              onClick={() => navigateTo('retention')} />
+        {hasChequeTracking && (
+          <Kpi label="เตรียมเงินจ่ายเช็ค"
+               value={String(chequesDueSoon.count)}
+               sub={chequesDueSoon.count > 0
+                 ? `${fmt(chequesDueSoon.total)} บาท ภายใน ${parseInt(chequeReminderDaysVal, 10) || 0} วัน`
+                 : 'ไม่มีรายการ'}
+               cls={chequesDueSoon.count > 0 ? 'red' : 'green'} color={chequesDueSoon.count > 0 ? 'var(--red)' : 'var(--green)'}
+               onClick={() => navigateTo('cheques')} />
+        )}
       </div>
 
       {/* ── Charts ── */}

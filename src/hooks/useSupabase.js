@@ -589,8 +589,12 @@ export function useAppSetting(key, fallback = '') {
 }
 
 export async function saveAppSetting(key, value) {
+  // app_settings' real primary key is (tenant_id, key) -- onConflict must
+  // name that exact composite or Postgres has no matching unique
+  // constraint to resolve against and the upsert fails outright, even on
+  // a first-ever save for that key (not just a repeat one).
   const { error } = await supabase.from('app_settings')
-    .upsert({ key, value: String(value), updated_at: new Date().toISOString() }, { onConflict: 'key' })
+    .upsert({ key, value: String(value), updated_at: new Date().toISOString() }, { onConflict: 'tenant_id,key' })
   if (error) throw error
 }
 
