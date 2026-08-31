@@ -95,6 +95,28 @@ export default function Cheques() {
   const [signTarget, setSignTarget] = useState(null)
   const [viewReceipt, setViewReceipt] = useState(null)
   const [viewReceiptUrl, setViewReceiptUrl] = useState(null)
+  const [linkModal, setLinkModal] = useState(null) // { url, generating }
+
+  // ลิงก์เซ็นรับระยะไกล -- ไม่ต้องเจอหน้ากัน ส่งลิงก์นี้ผ่านช่องทางไหนก็ได้
+  // (LINE, SMS, อีเมล) ผู้รับเปิดเองแล้วเซ็นบนอุปกรณ์ของเขา หมดอายุใน 7 วัน
+  // (document_receipt_links.expires_at default) ตัวลิงก์เองไม่ทำอะไรจนกว่า
+  // จะมีคนเซ็นจริงผ่าน Edge Function sign-link -- สถานะเช็คยังคงเดิมจนกว่านั้น
+  const handleGenerateLink = async (cheque) => {
+    setLinkModal({ generating: true })
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const { data, error } = await supabase.from('document_receipt_links').insert({
+        document_type: 'cheque',
+        document_id: cheque.id,
+        created_by: session?.user?.email || 'system',
+      }).select().single()
+      if (error) throw error
+      setLinkModal({ url: `${window.location.origin}/sign/${data.id}` })
+    } catch (err) {
+      alert('Error: ' + err.message)
+      setLinkModal(null)
+    }
+  }
 
   const handleSignSaved = async () => {
     if (signTarget) {
@@ -200,6 +222,9 @@ export default function Cheques() {
                         {c.status !== 'cashed' && (
                           <button className="btn btn-sm btn-ghost" onClick={() => setSignTarget(c)}>🖊️ ให้เซ็นรับ</button>
                         )}
+                        {c.status === 'issued' && (
+                          <button className="btn btn-sm btn-ghost" onClick={() => handleGenerateLink(c)}>🔗 ลิงก์เซ็นรับ</button>
+                        )}
                         {c.status !== 'cashed' && (
                           <button className="btn btn-sm btn-success" onClick={() => setCashId(c.id)}>✅ ขึ้นเงินแล้ว</button>
                         )}
@@ -264,6 +289,35 @@ export default function Cheques() {
           </div>
           <div className="modal-footer">
             <button type="button" className="btn btn-ghost" onClick={() => setViewReceipt(null)}>ปิด</button>
+          </div>
+        </Modal>
+      )}
+
+      {linkModal && (
+        <Modal title="ลิงก์เซ็นรับระยะไกล" onClose={() => setLinkModal(null)} maxWidth={480}>
+          <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+            {linkModal.generating ? (
+              <div style={{ color: 'var(--text3)', fontSize: 13 }}>⏳ กำลังสร้างลิงก์...</div>
+            ) : (
+              <>
+                <p style={{ fontSize: 13, color: 'var(--text2)', margin: 0 }}>
+                  ส่งลิงก์นี้ให้ผู้รับผ่าน LINE, SMS, หรืออีเมล — เปิดแล้วเซ็นได้เลยบนอุปกรณ์ของเขาเอง ไม่ต้องมีบัญชี
+                  ลิงก์นี้หมดอายุใน 7 วัน
+                </p>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input className="input" readOnly value={linkModal.url} onFocus={e => e.target.select()} style={{ fontSize: 12 }} />
+                  <button
+                    type="button" className="btn btn-primary"
+                    onClick={() => { navigator.clipboard.writeText(linkModal.url); setLinkModal(m => ({ ...m, copied: true })) }}
+                  >
+                    {linkModal.copied ? '✅ คัดลอกแล้ว' : 'คัดลอก'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-ghost" onClick={() => setLinkModal(null)}>ปิด</button>
           </div>
         </Modal>
       )}
