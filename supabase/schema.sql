@@ -3178,12 +3178,12 @@ LEFT JOIN cheques c ON e.cheque_id = c.id;
 -- signature (drawn on a tablet/mobile/laptop handed to the other party) as
 -- proof a document was physically received. Deliberately generic
 -- (document_type + document_id, no rigid FK to a single table) so it can be
--- reused for other document types later (delivery notes, invoices) -- v1
--- only wires up cheques from the UI.
+-- reused for other document types later. v1 wired up cheques only;
+-- 2026-09-02-06 extended the CHECK to also allow quotation/invoice.
 CREATE TABLE document_receipts (
   id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   tenant_id       UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
-  document_type   TEXT NOT NULL CHECK (document_type IN ('cheque')),
+  document_type   TEXT NOT NULL CHECK (document_type IN ('cheque', 'quotation', 'invoice')),
   document_id     UUID NOT NULL,
   signer_name     TEXT NOT NULL,
   signer_note     TEXT,
@@ -3228,7 +3228,7 @@ CREATE POLICY document_receipts_tenant_access ON storage.objects FOR ALL TO auth
 CREATE TABLE document_receipt_links (
   id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   tenant_id       UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
-  document_type   TEXT NOT NULL CHECK (document_type IN ('cheque')),
+  document_type   TEXT NOT NULL CHECK (document_type IN ('cheque', 'quotation', 'invoice')),
   document_id     UUID NOT NULL,
   expires_at      TIMESTAMPTZ NOT NULL DEFAULT (now() + interval '7 days'),
   created_by      TEXT NOT NULL,

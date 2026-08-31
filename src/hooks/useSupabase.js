@@ -321,6 +321,27 @@ export function useReceipts(invoiceIds) {
   }, [JSON.stringify(invoiceIds || [])])
 }
 
+// ใบเซ็นรับล่าสุดของเอกสารหนึ่งชิ้น (document_receipts เป็นตารางกลาง ใช้ร่วมกัน
+// ทุกประเภทเอกสาร) -- ใช้แสดงลายเซ็นจริงในเอกสารที่พิมพ์ออกมา (ใบเสนอราคา/
+// ใบแจ้งหนี้) เมื่อลูกค้าเซ็นผ่านลิงก์ระยะไกลแล้ว เอาแค่ใบล่าสุด เพราะแต่ละ
+// เอกสารเซ็นได้ครั้งเดียวจริงๆ (ลิงก์ใช้ซ้ำไม่ได้ ดู sign-link Edge Function)
+// แต่เผื่อกรณี edge case มีมากกว่า 1 แถวไว้ก่อน
+export function useDocumentReceipt(documentType, documentId) {
+  return useQuery(async () => {
+    if (!documentType || !documentId) return null
+    const { data, error } = await supabase
+      .from('document_receipts')
+      .select('*')
+      .eq('document_type', documentType)
+      .eq('document_id', documentId)
+      .order('signed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error) throw error
+    return data
+  }, [documentType, documentId])
+}
+
 export function useInvoicePhotos(invoiceId) {
   return useQuery(async () => {
     if (!invoiceId) return []

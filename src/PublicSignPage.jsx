@@ -95,6 +95,8 @@ export default function PublicSignPage({ linkId }) {
         <div><strong>{state.document?.label}</strong></div>
         {state.document?.bank && <div style={{ color: 'var(--text2)' }}>ธนาคาร: {state.document.bank}</div>}
         {state.document?.check_date && <div style={{ color: 'var(--text2)' }}>วันที่เช็ค: {new Date(state.document.check_date).toLocaleDateString('th-TH')}</div>}
+        {state.document?.clientName && <div style={{ color: 'var(--text2)' }}>ลูกค้า: {state.document.clientName}</div>}
+        {state.document?.total != null && <div style={{ color: 'var(--text2)' }}>ยอดรวม: {Number(state.document.total).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท</div>}
       </div>
 
       <div style={{ display: 'grid', gap: 14 }}>

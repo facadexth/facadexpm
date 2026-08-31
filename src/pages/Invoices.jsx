@@ -12,7 +12,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos } from '../hooks/useSupabase.js'
+import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { calcDepositDeduction, round2 } from '../lib/depositCalc.js'
@@ -25,6 +25,7 @@ import { format, startOfYear, endOfYear } from 'date-fns'
 import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, VAT_RATE } from '../lib/invoiceCalc.js'
 import { calcQuotationTotals } from '../lib/quotationCalc.js'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
+import SignLinkModal from '../components/SignLinkModal.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -484,7 +485,7 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
 // same billing family, one combined document per the spec) -- unlike
 // Quotation/PO, which stay separate top-level document types and keep
 // their own independent copy of this JSX per existing precedent.
-function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct, withholdingTaxAmount, isWithholdingEstimate, notesBlock, signatures }) {
+function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct, withholdingTaxAmount, isWithholdingEstimate, notesBlock, signatures, recipientSignature }) {
   return (
     <div id={elementId} style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
@@ -578,7 +579,18 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, cl
 
       <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
         <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>{signatures[0]}</div>
-        <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>{signatures[1]}</div>
+        <div style={{ borderTop: '1px solid #999', paddingTop: recipientSignature ? 4 : 8 }}>
+          {recipientSignature && (
+            <img src={recipientSignature.url} alt="" crossOrigin="anonymous"
+              style={{ height: 36, display: 'block', margin: '0 auto 4px' }} />
+          )}
+          {signatures[1]}
+          {recipientSignature && (
+            <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>
+              {recipientSignature.signerName} · เซ็นเมื่อ {new Date(recipientSignature.signedAt).toLocaleDateString('th-TH')}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -608,6 +620,15 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
   const items = invoice.invoice_items || []
   const client = invoice.quotations?.clients
   const wht = computeWithholding(invoice)
+  const { data: receipt } = useDocumentReceipt('invoice', invoice.id)
+  const [signatureUrl, setSignatureUrl] = useState(null)
+  useEffect(() => {
+    if (!receipt) { setSignatureUrl(null); return }
+    let cancelled = false
+    supabase.storage.from('document-receipts').createSignedUrl(receipt.signature_path, 300)
+      .then(({ data }) => { if (!cancelled) setSignatureUrl(data?.signedUrl) })
+    return () => { cancelled = true }
+  }, [receipt])
   return (
     <Modal title={`ใบแจ้งหนี้ ${invoice.invoice_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body">
@@ -628,6 +649,7 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
             </div>
           )}
           signatures={['ผู้ออกใบแจ้งหนี้', 'ผู้รับเอกสาร']}
+          recipientSignature={receipt && signatureUrl ? { url: signatureUrl, signerName: receipt.signer_name, signedAt: receipt.signed_at } : null}
         />
       </div>
       <div className="modal-footer">
@@ -952,6 +974,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   const [docRow, setDocRow] = useState(null)
   const [receiptRow, setReceiptRow] = useState(null)
   const [photosRow, setPhotosRow] = useState(null)
+  const [linkTarget, setLinkTarget] = useState(null)
   // แยก state คนละก้อนกับ photosRow เพราะ Modal ของแอปนี้ไม่รองรับ modal
   // ซ้อน modal (ดูคอมเมนต์ใน Modal.jsx) -- คลิก "พิมพ์เอกสาร" ในโมดัลจัดการรูป
   // จึงต้องปิดโมดัลนั้นแล้วเปิดโมดัลพิมพ์แทนที่ ไม่ใช่เปิดซ้อนกัน
@@ -1195,6 +1218,9 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
                     {canEdit && (
                       <button className="btn btn-sm btn-ghost" onClick={() => setPhotosRow(inv)} title="รูปประกอบการส่งงาน">📷</button>
                     )}
+                    {canEdit && (
+                      <button className="btn btn-sm btn-ghost" onClick={() => setLinkTarget(inv)} title="ลิงก์เซ็นรับระยะไกล">🔗</button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -1277,6 +1303,9 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
           invoice={photosPrint.invoice} tenant={tenant} photos={photosPrint.photos} urls={photosPrint.urls}
           onClose={() => setPhotosPrint(null)}
         />
+      )}
+      {linkTarget && (
+        <SignLinkModal documentType="invoice" documentId={linkTarget.id} onClose={() => setLinkTarget(null)} />
       )}
     </div>
   )

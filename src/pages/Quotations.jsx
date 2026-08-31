@@ -7,9 +7,9 @@
 // ✅ Items optionally drawn from the catalog_items price list, always
 //    freely editable afterward (autofill, not enforce)
 // ============================================================
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions } from '../hooks/useSupabase.js'
+import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -24,6 +24,7 @@ import { lineTotal, calcQuotationTotals } from '../lib/quotationCalc.js'
 import { SiteForm, siteFormToPayload } from './Sites.jsx'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
+import SignLinkModal from '../components/SignLinkModal.jsx'
 
 const clientOpts = (clients) => (clients || []).map(c => ({
   value: c.id, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
@@ -266,7 +267,7 @@ function AcceptQuotationModal({ quotation, totals, clients, sites, hasModuleAcce
 // Extracted so a past revision's snapshot can render through the exact
 // same markup as the live document, not a separate summary — the only
 // difference is which data feeds it and the doc-info tag.
-function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, clientName, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes }) {
+function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, clientName, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes, clientSignature }) {
   const totals = calcQuotationTotals(items, { hasVat, priceIncludesVat, discountAmount, discountPct })
 
   return (
@@ -367,7 +368,18 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
 
       <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
         <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้เสนอราคา</div>
-        <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้ยอมรับ (ลูกค้า)</div>
+        <div style={{ borderTop: '1px solid #999', paddingTop: clientSignature ? 4 : 8 }}>
+          {clientSignature && (
+            <img src={clientSignature.url} alt="" crossOrigin="anonymous"
+              style={{ height: 36, display: 'block', margin: '0 auto 4px' }} />
+          )}
+          ผู้ยอมรับ (ลูกค้า)
+          {clientSignature && (
+            <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>
+              {clientSignature.signerName} · เซ็นเมื่อ {new Date(clientSignature.signedAt).toLocaleDateString('th-TH')}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -375,6 +387,16 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
 
 function QuotationDocumentModal({ qt, tenant, onClose }) {
   const elementId = `qt-doc-${qt.id}`
+  const { data: receipt } = useDocumentReceipt('quotation', qt.id)
+  const [signatureUrl, setSignatureUrl] = useState(null)
+  useEffect(() => {
+    if (!receipt) { setSignatureUrl(null); return }
+    let cancelled = false
+    supabase.storage.from('document-receipts').createSignedUrl(receipt.signature_path, 300)
+      .then(({ data }) => { if (!cancelled) setSignatureUrl(data?.signedUrl) })
+    return () => { cancelled = true }
+  }, [receipt])
+
   return (
     <Modal title={`ใบเสนอราคา ${qt.quotation_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body">
@@ -385,6 +407,7 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
           hasVat={qt.has_vat} priceIncludesVat={qt.price_includes_vat}
           discountAmount={qt.discount_amount} discountPct={qt.discount_pct}
           paymentTerms={qt.payment_terms} notes={qt.notes}
+          clientSignature={receipt && signatureUrl ? { url: signatureUrl, signerName: receipt.signer_name, signedAt: receipt.signed_at } : null}
         />
       </div>
       <div className="modal-footer">
@@ -558,6 +581,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   const [accepting, setAccepting] = useState(false)
   const [docRow, setDocRow] = useState(null)
   const [historyRow, setHistoryRow] = useState(null)
+  const [linkTarget, setLinkTarget] = useState(null)
   const { hasModuleAccess, tenant } = useTenant()
 
   const handleSetStatus = async (id, newStatus) => {
@@ -727,9 +751,13 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                         {canEdit && qt.status === 'sent' && (
                           <>
                             <button className="btn btn-sm btn-primary" onClick={() => setAcceptRow(qt)}>✅ ยอมรับ</button>
+                            <button className="btn btn-sm btn-ghost" onClick={() => setLinkTarget(qt)}>🔗 ลิงก์เซ็นรับ</button>
                             <button className="btn btn-sm btn-ghost" onClick={() => handleSetStatus(qt.id, 'rejected')}>ปฏิเสธ</button>
                             <button className="btn btn-sm btn-ghost" onClick={() => handleSetStatus(qt.id, 'expired')}>หมดอายุ</button>
                           </>
+                        )}
+                        {canEdit && qt.status === 'accepted' && !qt.site_id && (
+                          <button className="btn btn-sm btn-primary" onClick={() => setAcceptRow(qt)} title="ลูกค้าเซ็นรับแล้ว เหลือแค่ผูกไซท์งาน">🔗 ผูกไซท์งาน</button>
                         )}
                       </div>
                     </td>
@@ -771,6 +799,10 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       )}
 
       {docRow && <QuotationDocumentModal qt={docRow} tenant={tenant} onClose={() => setDocRow(null)} />}
+
+      {linkTarget && (
+        <SignLinkModal documentType="quotation" documentId={linkTarget.id} onClose={() => setLinkTarget(null)} />
+      )}
 
       {historyRow && <QuotationHistoryModal quotation={historyRow} tenant={tenant} onClose={() => setHistoryRow(null)} />}
     </div>

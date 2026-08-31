@@ -21,13 +21,36 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 }
 
-// Only 'cheque' exists today, but this stays a lookup table (not baked
-// into SQL) so a future document type is one entry, not a rewrite.
+// This stays a lookup table (not baked into SQL) so a future document type
+// is one entry, not a rewrite.
 const DOCUMENT_LOADERS: Record<string, (id: string) => Promise<Record<string, unknown> | null>> = {
   cheque: async (id: string) => {
     const { data } = await admin.from('cheques').select('cheque_no, bank, check_date, status, tenant_id').eq('id', id).maybeSingle()
     if (!data) return null
     return { label: `เช็ค ${data.cheque_no}`, bank: data.bank, check_date: data.check_date, status: data.status, tenant_id: data.tenant_id }
+  },
+  // Total here is display-only (rounded, VAT/discount-approximated) -- the
+  // real, authoritative total is calcQuotationTotals() in the frontend.
+  // Never persisted anywhere from this function.
+  quotation: async (id: string) => {
+    const { data } = await admin.from('quotations')
+      .select('quotation_number, status, has_vat, discount_amount, discount_pct, tenant_id, clients(name), quotation_items(line_total)')
+      .eq('id', id).maybeSingle()
+    if (!data) return null
+    const raw = (data.quotation_items ?? []).reduce((s: number, it: { line_total: number | null }) => s + (it.line_total ?? 0), 0)
+    const discount = data.discount_amount ?? (data.discount_pct ? raw * data.discount_pct / 100 : 0)
+    const subtotal = raw - discount
+    const total = data.has_vat ? subtotal * 1.07 : subtotal
+    return {
+      label: `ใบเสนอราคา ${data.quotation_number}`,
+      clientName: (data.clients as { name?: string } | null)?.name,
+      total, status: data.status, tenant_id: data.tenant_id,
+    }
+  },
+  invoice: async (id: string) => {
+    const { data } = await admin.from('invoices').select('invoice_number, status, total, tenant_id').eq('id', id).maybeSingle()
+    if (!data) return null
+    return { label: `ใบแจ้งหนี้ ${data.invoice_number}`, total: data.total, status: data.status, tenant_id: data.tenant_id }
   },
 }
 
@@ -108,6 +131,17 @@ Deno.serve(async (req) => {
 
     if (link.document_type === 'cheque') {
       await admin.from('cheques').update({ status: 'received' }).eq('id', link.document_id).eq('status', 'issued')
+    }
+    // A client's signature IS acceptance -- flips status immediately so
+    // staff see it as accepted without a manual step. Site linkage (which
+    // needs a human to pick/create a site) stays a separate follow-up: the
+    // frontend now shows "🔗 ผูกไซท์งาน" on any accepted-but-unsited
+    // quotation (see Quotations.jsx), reusing the same accept modal.
+    // Invoice signing is delivery/receipt acknowledgment only -- no status
+    // change, matching how payment already stays a separate deliberate
+    // action (MarkPaidModal).
+    if (link.document_type === 'quotation') {
+      await admin.from('quotations').update({ status: 'accepted' }).eq('id', link.document_id).eq('status', 'sent')
     }
 
     await admin.from('document_receipt_links').update({ signed_at: new Date().toISOString(), receipt_id: receipt.id }).eq('id', linkId)
