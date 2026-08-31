@@ -616,6 +616,19 @@ export function useCategories() {
   })
 }
 
+// ── Cheques ──────────────────────────────────────────────────
+
+export function useCheques() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('cheques')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return data
+  })
+}
+
 // ── Salary ───────────────────────────────────────────────────
 
 export function useSalary(month, year) {

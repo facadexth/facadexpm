@@ -14,6 +14,7 @@ const MODULE_LABELS = {
   quotations: '📋 ใบเสนอราคา',
   invoices: '🧾 ใบแจ้งหนี้',
   purchase_orders: '🧾 ใบสั่งซื้อ',
+  cheque_tracking: '🏦 จัดการเช็ค',
   client_deposits: '💰 มัดจำลูกค้า',
   payroll: '👷 Payroll / จ่ายงานช่าง',
   labor_subcontractors: '🔧 ผู้รับเหมาค่าแรง',

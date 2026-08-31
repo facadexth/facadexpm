@@ -37,6 +37,7 @@ const Quotations   = lazy(() => import('./pages/Quotations.jsx'))
 const SalesReport  = lazy(() => import('./pages/SalesReport.jsx'))
 const Invoices     = lazy(() => import('./pages/Invoices.jsx'))
 const CatalogItems = lazy(() => import('./pages/CatalogItems.jsx'))
+const Cheques       = lazy(() => import('./pages/Cheques.jsx'))
 const TenantManagement = lazy(() => import('./pages/TenantManagement.jsx'))
 
 const TABS = [
@@ -50,6 +51,7 @@ const TABS = [
   { label: '💸 รายจ่าย', children: [
     { id: 'expenses',        label: '📊 ภาพรวม',       minRole: 'ADMIN', module: null },
     { id: 'purchase_orders', label: '🧾 ใบสั่งซื้อ',   minRole: 'ADMIN', module: 'purchase_orders' },
+    { id: 'cheques',         label: '🏦 เช็ค',         minRole: 'ADMIN', module: 'cheque_tracking' },
   ] },
   { label: '💰 รายรับ', children: [
     { id: 'income',        label: '📊 ภาพรวม',           minRole: 'ADMIN', module: null },
@@ -286,6 +288,7 @@ export default function App() {
         case 'sites':      return <Sites      {...props} />
         case 'expenses':   return <Expenses   {...props} />
         case 'purchase_orders': return <PurchaseOrders {...props} />
+        case 'cheques':    return <Cheques    {...props} />
         case 'income':     return <Income     {...props} />
         case 'retention':  return <Retention  {...props} />
         case 'deposits':   return <Deposits   {...props} />

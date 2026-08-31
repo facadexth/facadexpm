@@ -1333,7 +1333,7 @@ ALTER TABLE tenants
 -- ----------------------------------------------------------------
 CREATE TABLE tenant_modules (
   tenant_id  UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  module_key TEXT NOT NULL CHECK (module_key IN ('payroll','labor_subcontractors','purchase_orders','client_deposits','quotations','invoices')),
+  module_key TEXT NOT NULL CHECK (module_key IN ('payroll','labor_subcontractors','purchase_orders','client_deposits','quotations','invoices','cheque_tracking')),
   enabled_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (tenant_id, module_key)
 );
@@ -1387,7 +1387,7 @@ CREATE TABLE packages (
 CREATE TABLE package_modules (
   package_id  UUID NOT NULL REFERENCES packages(id) ON DELETE CASCADE,
   module_key  TEXT NOT NULL CHECK (module_key IN
-    ('payroll','labor_subcontractors','purchase_orders','client_deposits','quotations','invoices')),
+    ('payroll','labor_subcontractors','purchase_orders','client_deposits','quotations','invoices','cheque_tracking')),
   PRIMARY KEY (package_id, module_key)
 );
 
@@ -1418,22 +1418,22 @@ INSERT INTO package_modules (package_id, module_key)
 SELECT id, 'quotations' FROM packages WHERE name = 'Free';
 
 INSERT INTO package_modules (package_id, module_key)
-SELECT id, m FROM packages, unnest(ARRAY['quotations','invoices']) m
+SELECT id, m FROM packages, unnest(ARRAY['quotations','invoices','cheque_tracking']) m
 WHERE name = 'Solo';
 
 INSERT INTO package_modules (package_id, module_key)
 SELECT id, m FROM packages,
-  unnest(ARRAY['quotations','invoices','purchase_orders','client_deposits']) m
+  unnest(ARRAY['quotations','invoices','purchase_orders','client_deposits','cheque_tracking']) m
 WHERE name = 'Pro Team';
 
 INSERT INTO package_modules (package_id, module_key)
 SELECT id, m FROM packages,
-  unnest(ARRAY['quotations','invoices','purchase_orders','client_deposits','payroll','labor_subcontractors']) m
+  unnest(ARRAY['quotations','invoices','purchase_orders','client_deposits','payroll','labor_subcontractors','cheque_tracking']) m
 WHERE name = 'Business';
 
 INSERT INTO package_modules (package_id, module_key)
 SELECT id, m FROM packages,
-  unnest(ARRAY['quotations','invoices','purchase_orders','client_deposits','payroll','labor_subcontractors']) m
+  unnest(ARRAY['quotations','invoices','purchase_orders','client_deposits','payroll','labor_subcontractors','cheque_tracking']) m
 WHERE name = 'Enterprise';
 
 ALTER TABLE packages ENABLE ROW LEVEL SECURITY;
@@ -2357,6 +2357,13 @@ FROM expenses e
 LEFT JOIN sites s ON e.site_id = s.id
 LEFT JOIN expense_categories ec ON e.category_id = ec.id
 LEFT JOIN suppliers sup ON e.supplier_id = sup.id;
+-- Re-declared further down (after `cheques` exists) with cheque_id and
+-- the joined cheque_no/bank/status appended -- see
+-- 2026-09-01-03-fix-expenses-view-missing-cheque-columns.sql. Left as-is
+-- here (not the final definition) because expenses.cheque_id and the
+-- cheques table itself are both only defined later in this file, and
+-- forward-referencing them here would break a fresh `psql < schema.sql`
+-- run.
 
 -- Explicit column list (not i.*) -- CREATE OR REPLACE VIEW freezes the
 -- output column list at (re)creation time and never picks up columns
@@ -2968,3 +2975,90 @@ CREATE POLICY member_reads_own ON subscription_receipts FOR SELECT TO authentica
   USING (tenant_id = current_tenant_id());
 -- No INSERT/UPDATE policy for `authenticated` -- only the webhook
 -- (service_role) ever creates these.
+
+-- Cheque tracking (2026-09-01-02): a cheque is a first-class entity that
+-- can cover several expenses (one cheque, multiple bills). Marking it
+-- cashed cascades to every linked expense still in check_issued, flipping
+-- them to check_cleared in one go. Paid-tier feature (cheque_tracking
+-- module, see package_modules above).
+CREATE TABLE cheques (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id   UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  cheque_no   TEXT NOT NULL,
+  bank        TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'issued' CHECK (status IN ('issued','cashed')),
+  cashed_at   TIMESTAMPTZ,
+  notes       TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_cheques_tenant_id ON cheques(tenant_id);
+
+-- Same shape as purchase_orders: single ADMIN+-only full-access policy,
+-- tenant-scoped and gated on has_module_access('cheque_tracking').
+ALTER TABLE cheques ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_full_access ON cheques FOR ALL TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('cheque_tracking'))
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('cheque_tracking'));
+
+-- Nullable: only set when payment_method='check'. check_date stays on
+-- expenses itself (unaffected -- still feeds payment_forecast's
+-- COALESCE(due_date, check_date, date)); cheque_id only carries identity
+-- (no., bank, cashed status), not scheduling.
+ALTER TABLE expenses ADD COLUMN cheque_id UUID REFERENCES cheques(id) ON DELETE SET NULL;
+CREATE INDEX idx_expenses_cheque_id ON expenses(cheque_id);
+
+-- Cascades a cheque's cash-in to every linked expense. Runs as the
+-- calling user (no SECURITY DEFINER) -- marking a cheque cashed is
+-- something an admin/owner could already do by hand, row by row, so this
+-- just automates it under their own existing expenses UPDATE policy
+-- (is_admin_or_owner() + tenant_can_write()), nothing it couldn't do
+-- unassisted.
+CREATE OR REPLACE FUNCTION cheque_cascade_status()
+RETURNS TRIGGER
+LANGUAGE plpgsql SET search_path = public
+AS $$
+BEGIN
+  IF NEW.status = 'cashed' AND OLD.status IS DISTINCT FROM 'cashed' THEN
+    UPDATE expenses SET status = 'check_cleared'
+    WHERE cheque_id = NEW.id AND status = 'check_issued';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_cheque_cascade_status
+  AFTER UPDATE OF status ON cheques
+  FOR EACH ROW
+  EXECUTE FUNCTION cheque_cascade_status();
+
+-- Re-declares expenses_view (see the earlier, now-superseded definition
+-- above) now that cheques/expenses.cheque_id both exist -- explicit
+-- column list (not e.*) preserving the exact prior output order (CREATE
+-- OR REPLACE VIEW cannot reorder/rename/remove existing output columns),
+-- with cheque_id and the joined cheque_no/bank/status appended at the
+-- very end. See 2026-09-01-03-fix-expenses-view-missing-cheque-columns.sql.
+CREATE OR REPLACE VIEW expenses_view WITH (security_invoker = true) AS
+SELECT
+  e.id, e.date, e.description, e.site_id, e.category_id, e.supplier, e.amount,
+  e.payment_method, e.check_date, e.status, e.payer, e.invoice_no, e.notes,
+  e.is_subcontract, e.created_at, e.updated_at, e.supplier_id, e.billing_date,
+  e.due_date, e.amount_no_vat, e.vat, e.tenant_id, e.po_id,
+  s.name              AS site_name,
+  s.site_number,
+  s.status            AS site_status,
+  ec.name             AS category_name,
+  ec.color            AS category_color,
+  sup.name            AS supplier_name,
+  sup.supplier_number,
+  sup.category        AS supplier_category,
+  e.cheque_id,
+  c.cheque_no,
+  c.bank              AS cheque_bank,
+  c.status            AS cheque_status
+FROM expenses e
+LEFT JOIN sites s ON e.site_id = s.id
+LEFT JOIN expense_categories ec ON e.category_id = ec.id
+LEFT JOIN suppliers sup ON e.supplier_id = sup.id
+LEFT JOIN cheques c ON e.cheque_id = c.id;

@@ -9,7 +9,8 @@
 // ============================================================
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useExpenses, useSites, useCategories, useSuppliers } from '../hooks/useSupabase.js'
+import { useExpenses, useSites, useCategories, useSuppliers, useCheques } from '../hooks/useSupabase.js'
+import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { useDraftForm } from '../hooks/useDraftForm.js'
@@ -50,10 +51,14 @@ const STATUS_LABELS = {
 const EMPTY_FORM = {
   date: '', description: '', site_id: '', category_id: '', supplier: '', supplier_id: '',
   amount: '', payment_method: 'transfer', check_date: '', billing_date: '', due_date: '',
-  status: 'pending', payer: '', notes: '', invoice_no: ''
+  status: 'pending', payer: '', notes: '', invoice_no: '', cheque_id: ''
 }
 
-function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], onSave, onCancel, loading }) {
+const chequeOpts = (cheques) => (cheques || []).map(c => ({
+  value: c.id, label: `${c.cheque_no} · ${c.bank}${c.status === 'cashed' ? ' (ขึ้นเงินแล้ว)' : ''}`, keywords: `${c.cheque_no} ${c.bank}`,
+}))
+
+function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], cheques = [], hasChequeTracking, onSave, onCancel, loading }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('expense-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -167,6 +172,23 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
             </select>
           </div>
         </div>
+        {form.payment_method === 'check' && hasChequeTracking && (
+          <div className="form-grid-2">
+            <div>
+              <label className="label">ผูกกับเช็ค</label>
+              <SearchableSelect
+                value={form.cheque_id}
+                onChange={id => set('cheque_id', id)}
+                options={chequeOpts(cheques)}
+                placeholder="— ไม่ผูกกับเช็ค —"
+                emptyLabel="ยังไม่มีเช็ค — เพิ่มได้ที่หน้า “เช็ค”"
+              />
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                เมื่อเช็คนี้ขึ้นเงินแล้ว รายจ่ายนี้จะเปลี่ยนเป็น "เช็คผ่าน" อัตโนมัติ
+              </div>
+            </div>
+          </div>
+        )}
         {(form.payment_method === 'check' || form.payment_method === 'credit') && (
           <div className="form-grid-2">
             <div>
@@ -250,6 +272,9 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
   const { data: sites }      = useSites()
   const { data: categories } = useCategories()
   const { data: suppliers }  = useSuppliers()
+  const { data: cheques }    = useCheques()
+  const { hasModuleAccess }  = useTenant()
+  const hasChequeTracking = hasModuleAccess('cheque_tracking')
 
   const totalAmount = useMemo(() => (expenses || []).reduce((s, e) => s + (e.amount || 0), 0), [expenses])
   const totalPaid   = useMemo(() => (expenses || []).filter(e => e.status === 'paid' || e.status === 'check_cleared').reduce((s, e) => s + (e.amount || 0), 0), [expenses])
@@ -283,6 +308,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
         amount:         parseFloat(form.amount) || 0,
         payment_method: form.payment_method,
         check_date:     form.check_date || null,
+        cheque_id:      form.payment_method === 'check' ? (form.cheque_id || null) : null,
         billing_date:   form.billing_date || null,
         due_date:       form.due_date || null,
         status:         form.status,
@@ -500,7 +526,10 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                   <td style={{ fontSize: 11 }}>
                     <span className={`badge badge-method-${e.payment_method}`}>{e.payment_method === 'transfer' ? 'โอน' : e.payment_method === 'check' ? 'เช็ค' : 'เงินสด'}</span>
                   </td>
-                  <td style={{ fontSize: 11, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{e.check_date ? fmtDate(e.check_date) : '—'}</td>
+                  <td style={{ fontSize: 11, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
+                    {e.check_date ? fmtDate(e.check_date) : '—'}
+                    {e.cheque_no && <div style={{ fontSize: 10 }}>เช็ค {e.cheque_no}</div>}
+                  </td>
                   <td>
                     {/* คลิกเพื่อเปลี่ยนสถานะ */}
                     <button
@@ -538,6 +567,8 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
             sites={sites}
             categories={categories}
             suppliers={suppliers || []}
+            cheques={cheques || []}
+            hasChequeTracking={hasChequeTracking}
             onSave={handleSave}
             onCancel={() => { setShowAdd(false); setEditRow(null) }}
             loading={saving}
