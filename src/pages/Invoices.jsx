@@ -22,7 +22,7 @@ import { auditLog } from '../lib/audit.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
-import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals } from '../lib/invoiceCalc.js'
+import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, VAT_RATE } from '../lib/invoiceCalc.js'
 import { calcQuotationTotals } from '../lib/quotationCalc.js'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 
@@ -247,7 +247,7 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
   )
 }
 
-function CreateInvoiceModal({ quotation, onClose, onSaved }) {
+function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   const items = quotation.quotation_items || []
   const { data: unitsByQuotationItem, loading: unitsLoading, error: unitsError } = useQuotationItemUnits(quotation.id, items)
   const [lines, setLines] = useState(null)
@@ -256,6 +256,15 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
   // วันออกเอกสาร -- separate from วันที่รับเงิน, which only gets set later
   // when the invoice is actually marked paid (see MarkPaidModal).
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+
+  // "กรอกยอดที่ต้องการเรียกเก็บ" -- ผู้ใช้พิมพ์ยอดสุทธิที่อยากได้จริง (หลัง VAT
+  // และหัก ณ ที่จ่าย) แทนที่จะต้องคำนวณ % เองด้วยเครื่องคิดเลข (100000/1.04 ฯลฯ)
+  // ระบบคำนวณย้อนกลับเป็นยอดที่ต้องกดในแต่ละรายการให้ แล้วกระจายเท่าๆ กัน
+  // ตามสัดส่วนมูลค่าที่เหลือของแต่ละรายการ -- กรอกครั้งเดียว เห็นผลเป็นจำนวน/
+  // บาทจริงในแต่ละแถวเหมือนเดิม ไม่ต้องยุ่งกับ % เลย
+  const [targetNet, setTargetNet] = useState('')
+  const [includeWht, setIncludeWht] = useState(true)
+  const [whtPct, setWhtPct] = useState(site?.default_tax_withheld_pct ?? 3)
 
   useEffect(() => {
     if (unitsByQuotationItem && !lines) {
@@ -277,6 +286,33 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
   // up to its own total by a satang.
   const invoiceItemsForTotals = billedLines.map(l => ({ line_total: round2(drawAmount(l.units, l.unitPrice)) }))
   const totals = calcInvoiceTotals(invoiceItemsForTotals, { hasVat: quotation.has_vat, priceIncludesVat: quotation.price_includes_vat })
+  // ยอดสุทธิจริงที่จะได้รับ ณ ตอนนี้ (หลัง VAT ถ้ามี แล้วหักภาษี ณ ที่จ่ายถ้าติ๊กไว้)
+  // -- โชว์ไว้ให้เห็นผลจริงหลังกดเติมอัตโนมัติ หรือหลังปรับมือเองต่อ
+  const effectiveWhtPct = includeWht ? (parseFloat(whtPct) || 0) : 0
+  const achievedNet = round2(totals.total * (1 - effectiveWhtPct / 100))
+
+  // กรอกยอดสุทธิที่ต้องการ -> คำนวณย้อนกลับเป็นยอดที่ต้องกด (เทียบเท่า
+  // subtotal ก่อน VAT ถ้า hasVat && !priceIncludesVat, หรือเทียบเท่า total
+  // เลยถ้า VAT รวมในราคาอยู่แล้วหรือไม่มี VAT -- ดู calcInvoiceTotals ด้านบน
+  // สำหรับความสัมพันธ์ที่ตรงกัน) แล้วกระจายเท่าๆ กันตามสัดส่วนมูลค่าที่เหลือ
+  // ของแต่ละรายการ (ครอบที่ 100% ของยอดที่เหลือทั้งหมด ไม่มีทางเกิน)
+  const applyTargetFill = () => {
+    const net = parseFloat(targetNet)
+    if (!net || net <= 0) return
+    let target = net / (1 - effectiveWhtPct / 100)
+    if (quotation.has_vat && !quotation.price_includes_vat) target = target / (1 + VAT_RATE)
+
+    const totalOpenValue = lines.reduce((s, l) => s + openQty(l.units) * l.unitPrice, 0)
+    if (totalOpenValue <= 0) return
+    const pct = Math.min(1, target / totalOpenValue)
+
+    setMode('easy')
+    setLines(lines.map(l => {
+      const remaining = openQty(l.units)
+      if (remaining <= 0) return l
+      return { ...l, checked: false, units: waterfall(l.units, remaining * pct) }
+    }))
+  }
 
   const handleSave = async () => {
     if (!billedLines.length) { alert('กรุณาเลือกอย่างน้อย 1 รายการ'); return }
@@ -348,6 +384,34 @@ function CreateInvoiceModal({ quotation, onClose, onSaved }) {
           <label className="label">วันที่ออกเอกสาร</label>
           <input type="date" className="input" style={{ maxWidth: 200 }} value={date} onChange={e => setDate(e.target.value)} />
         </div>
+
+        <div className="card card-body" style={{ marginBottom: 14, display: 'grid', gap: 8 }}>
+          <label className="label" style={{ marginBottom: 0 }}>กรอกยอดที่ต้องการเรียกเก็บ (สุทธิ หลัง VAT และหัก ณ ที่จ่าย)</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="number" min="0" step="any" className="input input-sm" style={{ width: 160 }}
+              placeholder="เช่น 100000" value={targetNet} onChange={e => setTargetNet(e.target.value)}
+            />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text2)' }}>
+              <input type="checkbox" checked={includeWht} onChange={e => setIncludeWht(e.target.checked)} />
+              รวมหัก ณ ที่จ่าย
+            </label>
+            {includeWht && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input type="number" min="0" max="100" step="any" className="input input-sm" style={{ width: 60 }}
+                  value={whtPct} onChange={e => setWhtPct(e.target.value)} />
+                <span style={{ fontSize: 12, color: 'var(--text3)' }}>%</span>
+              </div>
+            )}
+            <button type="button" className="btn btn-sm btn-primary" onClick={applyTargetFill} disabled={!targetNet}>
+              🎯 เติมให้อัตโนมัติ
+            </button>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+            ยอดสุทธิที่จะได้จริงจากรายการที่เลือกอยู่ตอนนี้: <strong style={{ color: 'var(--accent)' }}>{fmt(achievedNet)}</strong> บาท
+          </div>
+        </div>
+
         <InvoiceItemsEditor lines={lines} onChange={setLines} mode={mode} onModeChange={setMode} />
         <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมงวดนี้ (ก่อน VAT)</span><span className="font-mono">{fmt(totals.subtotal)}</span></div>
@@ -1102,6 +1166,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
       {createFor && (
         <CreateInvoiceModal
           quotation={createFor}
+          site={(sites || []).find(s => s.id === createFor.site_id)}
           onClose={() => setCreateFor(null)}
           onSaved={() => { setCreateFor(null); refetch(); showToast('สร้างใบแจ้งหนี้สำเร็จ') }}
         />
