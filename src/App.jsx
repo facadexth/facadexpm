@@ -14,6 +14,7 @@ import { getEffectiveTheme, toggleTheme } from './lib/theme.js'
 import ChangePassword from './components/ChangePassword.jsx'
 import SiteOverviewModal from './components/SiteOverviewModal.jsx'
 import TrialBanner from './components/TrialBanner.jsx'
+import UpdatePrompt from './components/UpdatePrompt.jsx'
 import UpgradeModal from './components/UpgradeModal.jsx'
 import ChunkErrorBoundary from './components/ChunkErrorBoundary.jsx'
 import Login      from './pages/Login.jsx'
@@ -332,7 +333,7 @@ export default function App() {
   )
 
   // Not logged in
-  if (!session) return <Login />
+  if (!session) return <><UpdatePrompt /><Login /></>
 
   const visibleTabs = TABS
     .map(tab => tab.children ? { ...tab, children: tab.children.filter(passesGates) } : tab)
@@ -340,6 +341,7 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <UpdatePrompt />
       <TrialBanner tenant={tenant} isTrialActive={isTrialActive} trialDaysRemaining={trialDaysRemaining}
         onChoosePackage={() => setShowUpgradeModal(true)} />
       {/* ── Header ── */}
