@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAppSetting, saveAppSetting, useContractorTypes } from '../hooks/useSupabase.js'
+import { useAppSetting, saveAppSetting, useContractorTypes, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { PAGE_LABELS, DEFAULT_PERMISSIONS, loadPermissions, savePermissions } from '../lib/permissions.js'
 import PackageComparison from '../components/PackageComparison.jsx'
+import SignaturePad from '../components/SignaturePad.jsx'
 
 const LEVEL_LABELS = { none: '🚫 ซ่อน', view: '👁️ ดูอย่างเดียว', edit: '✏️ แก้ไขได้' }
 
@@ -74,6 +75,42 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
 
   // Contractor type — stored on tenants.contractor_type_id
   const { tenant, hasModuleAccess, refetch: refetchTenant } = useTenant()
+
+  // ลายเซ็นส่วนตัว -- วาดครั้งเดียว เอาไปแปะอัตโนมัติในช่องลายเซ็นฝั่งพนักงาน
+  // ของทุกเอกสารที่เปิดดู/พิมพ์จากบัญชีนี้ (ดู useMySignatureUrl ใน
+  // useSupabase.js) ทุก role เข้าถึงได้ ไม่ใช่แค่ ADMIN/OWNER -- เป็นลายเซ็น
+  // ของตัวเอง ไม่ใช่การกระทำแทนคนอื่น
+  const { data: mySignature, refetch: refetchMySignature } = useMySignature()
+  const mySignatureUrl = useMySignatureUrl()
+  const [signatureDraft, setSignatureDraft] = useState(null)
+  const [savingSignature, setSavingSignature] = useState(false)
+  const [signaturePadKey, setSignaturePadKey] = useState(0)
+
+  const handleSaveMySignature = async () => {
+    if (!signatureDraft || !tenant) return
+    setSavingSignature(true)
+    try {
+      await saveMySignature(tenant.id, signatureDraft)
+      setSignatureDraft(null)
+      setSignaturePadKey(k => k + 1)
+      refetchMySignature()
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setSavingSignature(false)
+    }
+  }
+
+  const handleDeleteMySignature = async () => {
+    if (!mySignature || !confirm('ลบลายเซ็นของฉัน?')) return
+    try {
+      await deleteMySignature(mySignature)
+      refetchMySignature()
+    } catch (e) {
+      alert('Error: ' + e.message)
+    }
+  }
+
   const { data: contractorTypes } = useContractorTypes()
   const [contractorTypeId, setContractorTypeId] = useState('')
   const [savingType, setSavingType] = useState(false)
@@ -272,6 +309,28 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           </div>
         </div>
       )}
+
+      {/* ── ลายเซ็นของฉัน ── */}
+      <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
+        <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🖊️ ลายเซ็นของฉัน</h2>
+        <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
+          วาดลายเซ็นเก็บไว้ครั้งเดียว ระบบจะเอาไปแปะอัตโนมัติในช่องลายเซ็นฝั่งพนักงานของทุกเอกสารที่คุณเปิดดู/พิมพ์ (เช่น ผู้เสนอราคา, ผู้ออกใบแจ้งหนี้, ผู้จัดทำ)
+        </p>
+        {mySignature && mySignatureUrl ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <img src={mySignatureUrl.url} alt="ลายเซ็นของฉัน" style={{ height: 60, background: '#fff', border: '1px solid var(--border)', borderRadius: 6, padding: 4 }} />
+            <div style={{ fontSize: 12, color: 'var(--text3)' }}>บันทึกล่าสุด {new Date(mySignature.updated_at).toLocaleDateString('th-TH')}</div>
+            <button className="btn btn-sm btn-danger" onClick={handleDeleteMySignature}>ลบลายเซ็น</button>
+          </div>
+        ) : (
+          <div style={{ maxWidth: 420 }}>
+            <SignaturePad key={signaturePadKey} onChange={setSignatureDraft} height={140} />
+            <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} disabled={!signatureDraft || savingSignature} onClick={handleSaveMySignature}>
+              {savingSignature ? '⏳ กำลังบันทึก...' : '✅ บันทึกลายเซ็น'}
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* ── ประเภทผู้รับเหมา ── */}
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>

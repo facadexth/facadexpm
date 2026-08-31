@@ -12,7 +12,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt } from '../hooks/useSupabase.js'
+import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { calcDepositDeduction, round2 } from '../lib/depositCalc.js'
@@ -486,6 +486,7 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
 // Quotation/PO, which stay separate top-level document types and keep
 // their own independent copy of this JSX per existing precedent.
 function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct, withholdingTaxAmount, isWithholdingEstimate, notesBlock, signatures, recipientSignature }) {
+  const mySignature = useMySignatureUrl()
   return (
     <div id={elementId} style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
@@ -578,7 +579,13 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, cl
       {notesBlock}
 
       <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
-        <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>{signatures[0]}</div>
+        <div style={{ borderTop: '1px solid #999', paddingTop: mySignature ? 4 : 8 }}>
+          {mySignature && (
+            <img src={mySignature.url} alt="" crossOrigin="anonymous"
+              style={{ height: 36, display: 'block', margin: '0 auto 4px' }} />
+          )}
+          {signatures[0]}
+        </div>
         <div style={{ borderTop: '1px solid #999', paddingTop: recipientSignature ? 4 : 8 }}>
           {recipientSignature && (
             <img src={recipientSignature.url} alt="" crossOrigin="anonymous"
@@ -871,6 +878,7 @@ const PAGE_HEIGHT_MM = 270
 function WorkPhotosDocumentModal({ invoice, tenant, photos, urls, onClose }) {
   const elementId = `work-photos-doc-${invoice.id}`
   const client = invoice.quotations?.clients
+  const mySignature = useMySignatureUrl()
   const pages = []
   for (let i = 0; i < photos.length; i += PHOTOS_PER_PAGE) pages.push(photos.slice(i, i + PHOTOS_PER_PAGE))
   if (!pages.length) pages.push([])
@@ -923,7 +931,13 @@ function WorkPhotosDocumentModal({ invoice, tenant, photos, urls, onClose }) {
                 {isLast && (
                   <>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6mm', textAlign: 'center', fontSize: 10 }}>
-                      <div style={{ borderTop: '1px solid #999', paddingTop: '2mm' }}>ผู้จัดทำ</div>
+                      <div style={{ borderTop: '1px solid #999', paddingTop: '2mm' }}>
+                        {mySignature && (
+                          <img src={mySignature.url} alt="" crossOrigin="anonymous"
+                            style={{ height: '8mm', display: 'block', margin: '0 auto 1mm' }} />
+                        )}
+                        ผู้จัดทำ
+                      </div>
                       <div style={{ borderTop: '1px solid #999', paddingTop: '2mm' }}>ผู้รับสินค้า/งาน</div>
                     </div>
                     <div style={{ marginTop: '4mm', textAlign: 'center', fontSize: 9.5 }}>

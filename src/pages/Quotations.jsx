@@ -9,7 +9,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt } from '../hooks/useSupabase.js'
+import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt, useMySignatureUrl } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -270,6 +270,7 @@ function AcceptQuotationModal({ quotation, totals, clients, sites, hasModuleAcce
 // difference is which data feeds it and the doc-info tag.
 function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, clientName, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes, clientSignature }) {
   const totals = calcQuotationTotals(items, { hasVat, priceIncludesVat, discountAmount, discountPct })
+  const mySignature = useMySignatureUrl()
 
   return (
     <div id={elementId} style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
@@ -368,7 +369,13 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
       )}
 
       <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
-        <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้เสนอราคา</div>
+        <div style={{ borderTop: '1px solid #999', paddingTop: mySignature ? 4 : 8 }}>
+          {mySignature && (
+            <img src={mySignature.url} alt="" crossOrigin="anonymous"
+              style={{ height: 36, display: 'block', margin: '0 auto 4px' }} />
+          )}
+          ผู้เสนอราคา
+        </div>
         <div style={{ borderTop: '1px solid #999', paddingTop: clientSignature ? 4 : 8 }}>
           {clientSignature && (
             <img src={clientSignature.url} alt="" crossOrigin="anonymous"

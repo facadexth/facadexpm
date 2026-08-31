@@ -342,6 +342,63 @@ export function useDocumentReceipt(documentType, documentId) {
   }, [documentType, documentId])
 }
 
+// ลายเซ็นส่วนตัวของผู้ใช้ที่ล็อกอินอยู่ตอนนี้ -- วาดครั้งเดียวที่หน้าตั้งค่า
+// แล้วเอาไปแปะอัตโนมัติในช่องลายเซ็นฝั่งพนักงานของทุกเอกสาร (ไม่ผูกกับ
+// เอกสารใบใดใบหนึ่ง) ดู saveMySignature ด้านล่างสำหรับการบันทึก
+export function useMySignature() {
+  return useQuery(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const email = session?.user?.email
+    if (!email) return null
+    const { data, error } = await supabase
+      .from('user_signatures')
+      .select('*')
+      .eq('user_email', email)
+      .maybeSingle()
+    if (error) throw error
+    return data
+  }, [])
+}
+
+export async function saveMySignature(tenantId, dataUrl) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const email = session?.user?.email
+  if (!email) throw new Error('ไม่พบผู้ใช้ที่ล็อกอินอยู่')
+  const blob = await (await fetch(dataUrl)).blob()
+  const filePath = `${tenantId}/${email}/signature.png`
+  const { error: upErr } = await supabase.storage.from('user-signatures').upload(filePath, blob, { contentType: 'image/png', upsert: true })
+  if (upErr) throw upErr
+  const { error: dbErr } = await supabase.from('user_signatures').upsert(
+    { tenant_id: tenantId, user_email: email, signature_path: filePath, updated_at: new Date().toISOString() },
+    { onConflict: 'tenant_id,user_email' }
+  )
+  if (dbErr) throw dbErr
+}
+
+export async function deleteMySignature(signature) {
+  const { error: rmErr } = await supabase.storage.from('user-signatures').remove([signature.signature_path])
+  if (rmErr) throw rmErr
+  const { error: delErr } = await supabase.from('user_signatures').delete().eq('id', signature.id)
+  if (delErr) throw delErr
+}
+
+// ดึงลายเซ็นส่วนตัว + แปลงเป็น signed URL พร้อมใช้แปะในเอกสาร -- ใช้ใน
+// ทุกที่ที่มีช่องลายเซ็นฝั่งพนักงาน (QuotationPaper, DocumentPaper,
+// WorkPhotosDocumentModal) จะได้ไม่ต้องเขียน useEffect + createSignedUrl
+// ซ้ำทุกที่
+export function useMySignatureUrl() {
+  const { data: signature } = useMySignature()
+  const [url, setUrl] = useState(null)
+  useEffect(() => {
+    if (!signature) { setUrl(null); return }
+    let cancelled = false
+    supabase.storage.from('user-signatures').createSignedUrl(signature.signature_path, 300)
+      .then(({ data }) => { if (!cancelled) setUrl(data?.signedUrl) })
+    return () => { cancelled = true }
+  }, [signature])
+  return signature && url ? { url } : null
+}
+
 export function useInvoicePhotos(invoiceId) {
   return useQuery(async () => {
     if (!invoiceId) return []
