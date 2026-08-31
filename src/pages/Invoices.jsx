@@ -650,6 +650,7 @@ function WorkPhotosModal({ invoice, tenant, onClose, onPrint }) {
   const { data: photos, refetch } = useInvoicePhotos(invoice.id)
   const [urls, setUrls] = useState({})
   const [uploading, setUploading] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -716,7 +717,20 @@ function WorkPhotosModal({ invoice, tenant, onClose, onPrint }) {
   return (
     <Modal title={`รูปประกอบการส่งงาน — ${invoice.invoice_number}`} onClose={onClose} maxWidth={640}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
-        <div>
+        <div
+          onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={e => {
+            e.preventDefault(); setDragOver(false)
+            handleUpload(Array.from(e.dataTransfer.files || []).filter(f => f.type.startsWith('image/')))
+          }}
+          style={{
+            border: `2px dashed ${dragOver ? 'var(--accent)' : 'var(--border)'}`,
+            borderRadius: 8, padding: 16, textAlign: 'center',
+            background: dragOver ? 'rgba(108,99,255,0.06)' : 'transparent',
+          }}
+        >
+          <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 8 }}>ลากรูปมาวางที่นี่ (เลือกได้หลายรูปพร้อมกัน) หรือ</div>
           <input
             type="file" accept="image/*" multiple disabled={uploading}
             onChange={e => { handleUpload(Array.from(e.target.files || [])); e.target.value = '' }}
@@ -748,7 +762,7 @@ function WorkPhotosModal({ invoice, tenant, onClose, onPrint }) {
       <div className="modal-footer">
         <button type="button" className="btn btn-ghost" onClick={onClose}>ปิด</button>
         <button type="button" className="btn btn-primary" disabled={!(photos || []).length} onClick={() => onPrint(photos || [], urls)}>
-          🖨️ พิมพ์เอกสาร
+          👁️ ดูตัวอย่าง
         </button>
       </div>
     </Modal>
@@ -756,10 +770,19 @@ function WorkPhotosModal({ invoice, tenant, onClose, onPrint }) {
 }
 
 // เอกสาร "รูปประกอบการส่งงาน" -- 6 รูปต่อหน้า A4 แนวตั้ง (2 คอลัมน์ × 3 แถว)
-// พร้อมคำอธิบายใต้รูป หัวเอกสาร (โลโก้/ชื่อบริษัท/อ้างอิงใบแจ้งหนี้) อยู่หน้า
-// แรกเท่านั้น ลายเซ็นผู้จัดทำ/ผู้รับสินค้า้งาน + วันที่จัดทำอยู่ท้ายหน้าสุดท้าย
-// เท่านั้น (ไม่ซ้ำทุกหน้า) -- แบ่งหน้าด้วย CSS break-after ซึ่ง html2pdf.js
-// เคารพอยู่แล้วโดย default (ไม่ต้องปรับ config ใน lib/pdf.js)
+// พร้อมคำอธิบายใต้รูป หัวเอกสาร (โลโก้/ชื่อบริษัท/อ้างอิงใบแจ้งหนี้) และเลขหน้า
+// ซ้ำทุกหน้า ลายเซ็นผู้จัดทำ/ผู้รับสินค้า้งาน + วันที่จัดทำอยู่ท้ายหน้าสุดท้าย
+// เท่านั้น แต่ละหน้าตั้ง height ตายตัวเป็น PAGE_HEIGHT_MM แล้วใช้ flex column +
+// spacer (flex:1) ดันลายเซ็น/เลขหน้าลงไปชิดขอบล่างเสมอ แทนที่จะลอยติดรูปสุดท้าย
+// -- PAGE_HEIGHT_MM ตั้งไว้ที่ 270mm ไม่ใช่เต็ม 277mm (พื้นที่พิมพ์จริงหลังหัก
+// margin 10mm รอบด้านของ downloadPDF) เพราะทดสอบจริงพบว่า html2pdf.js คำนวณ
+// ช่องว่างระหว่างหน้า (page-break padding) ด้วย modulo ของความสูง -- ถ้า div
+// สูงตรงเป๊ะเท่า page height พอดี การปัดเศษ sub-pixel เพียงเล็กน้อยจาก
+// html2canvas จะทำให้ modulo เกือบเป็น 0 แล้วมันแทรกช่องว่างเกือบเต็มหน้า
+// กลายเป็นหน้าเปล่าเพิ่มมาโดยไม่ตั้งใจ (ยืนยันจากการทดสอบจริง: 277mm พอดี ->
+// 7 รูปกลายเป็น 3 หน้าแทนที่จะเป็น 2) เผื่อ margin 7mm กันปัญหานี้
+const PAGE_HEIGHT_MM = 270
+
 function WorkPhotosDocumentModal({ invoice, tenant, photos, urls, onClose }) {
   const elementId = `work-photos-doc-${invoice.id}`
   const client = invoice.quotations?.clients
@@ -770,69 +793,66 @@ function WorkPhotosDocumentModal({ invoice, tenant, photos, urls, onClose }) {
   return (
     <Modal title="รูปประกอบการส่งงาน" onClose={onClose} maxWidth={720}>
       <div className="modal-body" style={{ maxHeight: '70vh', overflow: 'auto' }}>
-        {/* ขนาดกำหนดเป็น mm ตรงๆ (ไม่ใช่ px) ให้ตรงกับพื้นที่พิมพ์จริงของ A4 คือ
-            190×277mm (297×210mm ลบ margin 10mm รอบด้านที่ downloadPDF ตั้งไว้)
-            -- คำนวณความสูงต่อหน้าไว้ล่วงหน้าให้ "พอดี" ไม่เกินพื้นที่นี้แม้กรณี
-            ที่แย่ที่สุด (หน้าเดียว มีทั้ง header และลายเซ็น): header ~35mm +
-            กริดรูป 3 แถว (50mm รูป + 8mm คำอธิบาย + 5mm ช่องว่าง)×3 ~184mm +
-            ลายเซ็น ~30mm = 249mm < 277mm. ถ้าเผื่อไม่พอ html2pdf.js จะแทรกหน้า
-            เพิ่มเองอัตโนมัติ (ยืนยันจากการทดสอบจริงว่าตอน 200px/รูปมันเกิน)
-            เก็บ elementId ไว้บนตัว wrapper เดียว ไม่ใช่แต่ละหน้า เพราะ
-            downloadPDF อ้างอิง id เดียวมาแปลงทั้งก้อน */}
         <div id={elementId} style={{ fontFamily: 'Sarabun,sans-serif', background: '#fff', color: '#17181f', width: '190mm' }}>
-          {pages.map((pagePhotos, pageIndex) => (
-            <div
-              key={pageIndex}
-              style={{
-                padding: '6mm 8mm',
-                pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'auto',
-                breakAfter: pageIndex < pages.length - 1 ? 'page' : 'auto',
-              }}
-            >
-              {pageIndex === 0 && (
-                <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '5mm', marginBottom: '4mm' }}>
-                    <div style={{ display: 'flex', gap: '3mm', alignItems: 'flex-start' }}>
-                      {tenant?.logo_url
-                        ? <img src={tenant.logo_url} alt="" style={{ width: '10mm', height: '10mm', objectFit: 'contain', flexShrink: 0 }} crossOrigin="anonymous" />
-                        : <div style={{ width: '10mm', height: '10mm', borderRadius: 4, background: '#6c63ff', flexShrink: 0 }} />}
-                      <div style={{ fontSize: 13, fontWeight: 800 }}>{tenant?.company_name}</div>
-                    </div>
-                    <div style={{ fontSize: 15, fontWeight: 800 }}>รูปประกอบการส่งงาน</div>
+          {pages.map((pagePhotos, pageIndex) => {
+            const isLast = pageIndex === pages.length - 1
+            return (
+              <div
+                key={pageIndex}
+                style={{
+                  height: `${PAGE_HEIGHT_MM}mm`, boxSizing: 'border-box',
+                  padding: '6mm 8mm', display: 'flex', flexDirection: 'column',
+                  pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'auto',
+                  breakAfter: pageIndex < pages.length - 1 ? 'page' : 'auto',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '5mm', marginBottom: '4mm' }}>
+                  <div style={{ display: 'flex', gap: '3mm', alignItems: 'flex-start' }}>
+                    {tenant?.logo_url
+                      ? <img src={tenant.logo_url} alt="" style={{ width: '10mm', height: '10mm', objectFit: 'contain', flexShrink: 0 }} crossOrigin="anonymous" />
+                      : <div style={{ width: '10mm', height: '10mm', borderRadius: 4, background: '#6c63ff', flexShrink: 0 }} />}
+                    <div style={{ fontSize: 13, fontWeight: 800 }}>{tenant?.company_name}</div>
                   </div>
-                  <div style={{ marginBottom: '5mm', border: '1px solid #e4e6ef', borderRadius: 6, padding: '3mm 4mm', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5mm 6mm', fontSize: 10 }}>
-                    <div><span style={{ color: '#6a6f85' }}>เลขที่ใบแจ้งหนี้</span><br />{invoice.invoice_number}</div>
-                    <div><span style={{ color: '#6a6f85' }}>วันที่</span><br />{new Date(invoice.date).toLocaleDateString('th-TH')}</div>
-                    <div><span style={{ color: '#6a6f85' }}>ไซท์งาน</span><br />{invoice.sites?.name || '—'}</div>
-                    <div><span style={{ color: '#6a6f85' }}>ลูกค้า</span><br />{client?.name || '—'}</div>
-                  </div>
-                </>
-              )}
+                  <div style={{ fontSize: 15, fontWeight: 800 }}>รูปประกอบการส่งงาน</div>
+                </div>
+                <div style={{ marginBottom: '5mm', border: '1px solid #e4e6ef', borderRadius: 6, padding: '3mm 4mm', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5mm 6mm', fontSize: 10 }}>
+                  <div><span style={{ color: '#6a6f85' }}>เลขที่ใบแจ้งหนี้</span><br />{invoice.invoice_number}</div>
+                  <div><span style={{ color: '#6a6f85' }}>วันที่</span><br />{new Date(invoice.date).toLocaleDateString('th-TH')}</div>
+                  <div><span style={{ color: '#6a6f85' }}>ไซท์งาน</span><br />{invoice.sites?.name || '—'}</div>
+                  <div><span style={{ color: '#6a6f85' }}>ลูกค้า</span><br />{client?.name || '—'}</div>
+                </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4mm' }}>
-                {pagePhotos.map(p => (
-                  <div key={p.id} style={{ border: '1px solid #e4e6ef', borderRadius: 6, overflow: 'hidden' }}>
-                    <div style={{ height: '50mm', background: '#f4f3ff' }}>
-                      {urls[p.id] && <img src={urls[p.id]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} crossOrigin="anonymous" />}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4mm' }}>
+                  {pagePhotos.map(p => (
+                    <div key={p.id} style={{ border: '1px solid #e4e6ef', borderRadius: 6, overflow: 'hidden' }}>
+                      <div style={{ height: '50mm', background: '#f4f3ff' }}>
+                        {urls[p.id] && <img src={urls[p.id]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} crossOrigin="anonymous" />}
+                      </div>
+                      <div style={{ padding: '1.5mm 2.5mm', fontSize: 9.5, color: '#4a4d63', height: '8mm', overflow: 'hidden' }}>{p.description || ''}</div>
                     </div>
-                    <div style={{ padding: '1.5mm 2.5mm', fontSize: 9.5, color: '#4a4d63', height: '8mm', overflow: 'hidden' }}>{p.description || ''}</div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+
+                <div style={{ flex: 1 }} />
+
+                {isLast && (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6mm', textAlign: 'center', fontSize: 10 }}>
+                      <div style={{ borderTop: '1px solid #999', paddingTop: '2mm' }}>ผู้จัดทำ</div>
+                      <div style={{ borderTop: '1px solid #999', paddingTop: '2mm' }}>ผู้รับสินค้า/งาน</div>
+                    </div>
+                    <div style={{ marginTop: '4mm', textAlign: 'center', fontSize: 9.5 }}>
+                      วันที่จัดทำเอกสาร {new Date().toLocaleDateString('th-TH')}
+                    </div>
+                  </>
+                )}
+
+                <div style={{ marginTop: '3mm', textAlign: 'center', fontSize: 9, color: '#9296a8' }}>
+                  หน้า {pageIndex + 1} / {pages.length}
+                </div>
               </div>
-
-              {pageIndex === pages.length - 1 && (
-                <>
-                  <div style={{ marginTop: '10mm', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6mm', textAlign: 'center', fontSize: 10 }}>
-                    <div style={{ borderTop: '1px solid #999', paddingTop: '2mm' }}>ผู้จัดทำ</div>
-                    <div style={{ borderTop: '1px solid #999', paddingTop: '2mm' }}>ผู้รับสินค้า/งาน</div>
-                  </div>
-                  <div style={{ marginTop: '4mm', textAlign: 'center', fontSize: 9.5 }}>
-                    วันที่จัดทำเอกสาร {new Date().toLocaleDateString('th-TH')}
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
       <div className="modal-footer">
