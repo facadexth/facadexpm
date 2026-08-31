@@ -6,15 +6,52 @@
 // ✅ ตาราง Ongoing sites พร้อม sort ทุกคอลัมน์
 // ✅ Export/Import ถูกซ่อน → มูลค่าสัญญาอยู่ในหน้าไซท์งานแทน
 // ============================================================
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { useSites, useExpenses, useIncomes, usePaymentForecast, useSitesProgress, useSiteRetentionSummary, useCheques, useAppSetting, useQuery } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { supabase, fmt, fmtShort, fmtDate } from '../lib/supabase.js'
+import { Modal } from '../components/Modal.jsx'
 import { startOfYear, endOfYear, startOfMonth, endOfMonth, addMonths, format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { getEffectiveTheme } from '../lib/theme.js'
+
+// การ์ด KPI ทั้งหมดที่ผู้ใช้เลือกซ่อน/แสดง/จัดลำดับเองได้ (ต่อผู้ใช้แต่ละคน
+// ไม่ใช่ต่อ tenant -- เก็บใน localStorage คีย์ตามอีเมล เหมือน useDraftForm/
+// permissions ที่มีอยู่แล้วในแอปนี้ ไม่ต้องมี schema/RLS ใหม่)
+const KPI_DEFS = [
+  { id: 'income', label: 'รายรับรวม' },
+  { id: 'expense', label: 'รายจ่ายรวม' },
+  { id: 'profit', label: 'กำไรเบื้องต้น' },
+  { id: 'due_this_month', label: 'ต้องชำระเดือนนี้' },
+  { id: 'due_next_month', label: 'ต้องชำระเดือนหน้า' },
+  { id: 'retention', label: 'Retention ใกล้ครบกำหนด' },
+  { id: 'cheque_reminder', label: 'เตรียมเงินจ่ายเช็ค' },
+]
+const DEFAULT_KPI_ORDER = KPI_DEFS.map(d => d.id)
+
+function kpiPrefsKey(email) { return `dashboard-kpi-prefs:${email}` }
+
+function loadKpiPrefs(email) {
+  try {
+    const raw = localStorage.getItem(kpiPrefsKey(email))
+    if (!raw) return { order: DEFAULT_KPI_ORDER, hidden: [] }
+    const parsed = JSON.parse(raw)
+    const savedOrder = Array.isArray(parsed.order) ? parsed.order : DEFAULT_KPI_ORDER
+    // การ์ดใหม่ที่เพิ่มเข้ามาทีหลัง (เช่น cheque_reminder) จะไม่อยู่ใน order
+    // ที่เคยบันทึกไว้ -- ต่อท้ายให้อัตโนมัติ ไม่งั้นจะหายไปเงียบๆ สำหรับคนที่
+    // เคยปรับแต่งไว้ก่อนหน้านี้
+    const missing = DEFAULT_KPI_ORDER.filter(id => !savedOrder.includes(id))
+    return { order: [...savedOrder, ...missing], hidden: Array.isArray(parsed.hidden) ? parsed.hidden : [] }
+  } catch {
+    return { order: DEFAULT_KPI_ORDER, hidden: [] }
+  }
+}
+
+function saveKpiPrefs(email, prefs) {
+  localStorage.setItem(kpiPrefsKey(email), JSON.stringify(prefs))
+}
 
 const PERIOD_OPTIONS = [
   { label: 'ปีนี้ (ทั้งปี)',    value: 'ytd' },
@@ -47,6 +84,55 @@ function Kpi({ label, value, sub, color = 'var(--accent)', cls = '', onClick }) 
       <div className="kpi-value" style={{ color }}>{value}</div>
       {sub && <div className="kpi-sub">{sub}</div>}
     </div>
+  )
+}
+
+// จัดลำดับด้วยปุ่มขึ้น/ลง แทน drag-and-drop -- ไม่ต้องเพิ่ม library ใหม่ ใช้ได้ทั้ง
+// เมาส์/นิ้วแน่นอน ไม่ต้องกังวลเรื่อง touch drag บนแท็บเล็ต/มือถือ
+function KpiCustomizeModal({ availableDefs, prefs, onSave, onClose }) {
+  const [order, setOrder] = useState(prefs.order.filter(id => availableDefs.some(d => d.id === id)))
+  const [hidden, setHidden] = useState(new Set(prefs.hidden))
+
+  const move = (id, dir) => {
+    setOrder(o => {
+      const i = o.indexOf(id)
+      const j = i + dir
+      if (j < 0 || j >= o.length) return o
+      const next = [...o]
+      ;[next[i], next[j]] = [next[j], next[i]]
+      return next
+    })
+  }
+  const toggle = (id) => {
+    setHidden(h => {
+      const next = new Set(h)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  const labelById = Object.fromEntries(availableDefs.map(d => [d.id, d.label]))
+
+  return (
+    <Modal title="ปรับแต่งการ์ด" onClose={onClose} maxWidth={420}>
+      <div className="modal-body" style={{ display: 'grid', gap: 6 }}>
+        <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 4 }}>
+          ติ๊กเพื่อซ่อน/แสดง และใช้ลูกศรจัดลำดับการ์ด — บันทึกไว้เฉพาะบัญชีนี้
+        </p>
+        {order.map((id, i) => (
+          <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, background: 'var(--bg2)' }}>
+            <input type="checkbox" checked={!hidden.has(id)} onChange={() => toggle(id)} />
+            <span style={{ flex: 1, fontSize: 13, color: hidden.has(id) ? 'var(--text3)' : 'var(--text1)' }}>{labelById[id]}</span>
+            <button type="button" className="btn btn-ghost btn-sm" disabled={i === 0} onClick={() => move(id, -1)}>↑</button>
+            <button type="button" className="btn btn-ghost btn-sm" disabled={i === order.length - 1} onClick={() => move(id, 1)}>↓</button>
+          </div>
+        ))}
+      </div>
+      <div className="modal-footer">
+        <button type="button" className="btn btn-ghost" onClick={onClose}>ยกเลิก</button>
+        <button type="button" className="btn btn-primary" onClick={() => onSave({ order, hidden: [...hidden] })}>✅ บันทึก</button>
+      </div>
+    </Modal>
   )
 }
 
@@ -87,13 +173,23 @@ function WorkerSiteProgress() {
 }
 
 export default function Dashboard({ navigateTo, openSiteOverview }) {
-  const { isAtLeast } = useUserRole()
+  const { isAtLeast, user } = useUserRole()
   const canSeeFinancials = isAtLeast('ADMIN')
   const [period, setPeriod] = useState('ytd')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo,   setCustomTo]   = useState('')
   const [sortCol,    setSortCol]    = useState('total_expense')
   const [sortDir,    setSortDir]    = useState('desc')
+
+  // การ์ด KPI ที่แสดง/ซ่อน/จัดลำดับเอง -- ต่อผู้ใช้ (localStorage คีย์ตามอีเมล)
+  const [kpiPrefs, setKpiPrefs] = useState({ order: DEFAULT_KPI_ORDER, hidden: [] })
+  const [showKpiCustomize, setShowKpiCustomize] = useState(false)
+  useEffect(() => { if (user?.email) setKpiPrefs(loadKpiPrefs(user.email)) }, [user?.email])
+  const handleSaveKpiPrefs = (next) => {
+    setKpiPrefs(next)
+    if (user?.email) saveKpiPrefs(user.email, next)
+    setShowKpiCustomize(false)
+  }
 
   // Date range
   const range = useMemo(() => {
@@ -241,6 +337,37 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
     return <WorkerSiteProgress />
   }
 
+  // เตรียมการ์ดทั้งหมดที่ "มีสิทธิ์แสดง" ไว้ก่อน (cheque_reminder ต้องมี module
+  // เท่านั้น) แล้วค่อยกรอง/จัดลำดับตาม kpiPrefs ของผู้ใช้คนนี้ทับอีกที
+  const availableKpiDefs = KPI_DEFS.filter(d => d.id !== 'cheque_reminder' || hasChequeTracking)
+  const kpiRegistry = {
+    income: <Kpi key="income" label="รายรับรวม" value={fmtShort(totalIncome)} sub={`${fmt(totalIncome)} บาท`} cls="green" color="var(--green)" />,
+    expense: <Kpi key="expense" label="รายจ่ายรวม" value={fmtShort(totalExpense)} sub={`${fmt(totalExpense)} บาท`} cls="red" color="var(--red)" />,
+    profit: <Kpi key="profit" label="กำไรเบื้องต้น" value={fmtShort(profit)} sub={profit >= 0 ? `+${(profit/totalIncome*100).toFixed(1)}%` : 'ขาดทุน'} cls={profit>=0?'green':'red'} color={profit>=0?'var(--green)':'var(--red)'} />,
+    due_this_month: <Kpi key="due_this_month" label={`ต้องชำระ ${format(new Date(), 'MMM yy', {locale:th})}`} value={fmtShort(dueThisMonth)} sub="ยอดค้างจ่ายเดือนนี้" cls="yellow" color="var(--yellow)" />,
+    due_next_month: <Kpi key="due_next_month" label={`ต้องชำระ ${format(addMonths(new Date(),1), 'MMM yy', {locale:th})}`} value={fmtShort(dueNextMonth)} sub="ยอดค้างจ่ายเดือนหน้า" cls="blue" color="var(--blue)" />,
+    retention: (
+      <Kpi key="retention" label="Retention ใกล้ครบกำหนด"
+           value={String(retentionDueSoon.count)}
+           sub={retentionDueSoon.count > 0 ? `${fmt(retentionDueSoon.total)} บาท ภายใน 30 วัน` : 'ไม่มีรายการ'}
+           cls="blue" color="var(--blue)"
+           onClick={() => navigateTo('retention')} />
+    ),
+    ...(hasChequeTracking ? {
+      cheque_reminder: (
+        <Kpi key="cheque_reminder" label="เตรียมเงินจ่ายเช็ค"
+             value={fmtShort(chequesDueSoon.total)}
+             sub={chequesDueSoon.count > 0
+               ? `${chequesDueSoon.count} ใบ ภายใน ${parseInt(chequeReminderDaysVal, 10) || 0} วัน`
+               : 'ไม่มีรายการ'}
+             cls={chequesDueSoon.count > 0 ? 'red' : 'green'} color={chequesDueSoon.count > 0 ? 'var(--red)' : 'var(--green)'}
+             onClick={() => navigateTo('cheques')} />
+      ),
+    } : {}),
+  }
+  const availableKpiIds = availableKpiDefs.map(d => d.id)
+  const visibleKpiIds = kpiPrefs.order.filter(id => availableKpiIds.includes(id) && !kpiPrefs.hidden.includes(id))
+
   return (
     <div>
       {/* ── Period Selector ── */}
@@ -268,29 +395,18 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
       </div>
 
       {/* ── KPI Cards ── */}
-      <div className={`kpi-grid ${hasChequeTracking ? 'kpi-grid-7' : 'kpi-grid-6'}`} style={{ marginBottom: 20 }}>
-        <Kpi label="รายรับรวม"       value={fmtShort(totalIncome)}  sub={`${fmt(totalIncome)} บาท`}   cls="green" color="var(--green)" />
-        <Kpi label="รายจ่ายรวม"      value={fmtShort(totalExpense)} sub={`${fmt(totalExpense)} บาท`}  cls="red"   color="var(--red)" />
-        <Kpi label="กำไรเบื้องต้น"   value={fmtShort(profit)}       sub={profit >= 0 ? `+${(profit/totalIncome*100).toFixed(1)}%` : 'ขาดทุน'} cls={profit>=0?'green':'red'} color={profit>=0?'var(--green)':'var(--red)'} />
-        <Kpi label={`ต้องชำระ ${format(new Date(), 'MMM yy', {locale:th})}`}
-             value={fmtShort(dueThisMonth)} sub="ยอดค้างจ่ายเดือนนี้" cls="yellow" color="var(--yellow)" />
-        <Kpi label={`ต้องชำระ ${format(addMonths(new Date(),1), 'MMM yy', {locale:th})}`}
-             value={fmtShort(dueNextMonth)} sub="ยอดค้างจ่ายเดือนหน้า" cls="blue" color="var(--blue)" />
-        <Kpi label="Retention ใกล้ครบกำหนด"
-             value={String(retentionDueSoon.count)}
-             sub={retentionDueSoon.count > 0 ? `${fmt(retentionDueSoon.total)} บาท ภายใน 30 วัน` : 'ไม่มีรายการ'}
-             cls="blue" color="var(--blue)"
-             onClick={() => navigateTo('retention')} />
-        {hasChequeTracking && (
-          <Kpi label="เตรียมเงินจ่ายเช็ค"
-               value={fmtShort(chequesDueSoon.total)}
-               sub={chequesDueSoon.count > 0
-                 ? `${chequesDueSoon.count} ใบ ภายใน ${parseInt(chequeReminderDaysVal, 10) || 0} วัน`
-                 : 'ไม่มีรายการ'}
-               cls={chequesDueSoon.count > 0 ? 'red' : 'green'} color={chequesDueSoon.count > 0 ? 'var(--red)' : 'var(--green)'}
-               onClick={() => navigateTo('cheques')} />
-        )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button className="btn btn-ghost btn-sm" onClick={() => setShowKpiCustomize(true)}>⚙️ ปรับแต่งการ์ด</button>
       </div>
+      {visibleKpiIds.length > 0 ? (
+        <div className={`kpi-grid kpi-grid-${visibleKpiIds.length}`} style={{ marginBottom: 20 }}>
+          {visibleKpiIds.map(id => kpiRegistry[id])}
+        </div>
+      ) : (
+        <div className="card card-body" style={{ marginBottom: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+          ซ่อนการ์ดทั้งหมดไว้ — กด "ปรับแต่งการ์ด" เพื่อแสดงกลับมา
+        </div>
+      )}
 
       {/* ── Charts ── */}
       <div className="chart-grid-2-1" style={{ marginBottom: 20 }}>
@@ -423,6 +539,15 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
           </table>
         </div>
       </div>
+
+      {showKpiCustomize && (
+        <KpiCustomizeModal
+          availableDefs={availableKpiDefs}
+          prefs={kpiPrefs}
+          onSave={handleSaveKpiPrefs}
+          onClose={() => setShowKpiCustomize(false)}
+        />
+      )}
     </div>
   )
 }
