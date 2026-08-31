@@ -13,6 +13,7 @@ import {
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
+import QuickAddSelect from '../components/QuickAddSelect.jsx'
 
 const scSiteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -166,7 +167,7 @@ function ContractsTab() {
   const [statusFilter, setStatusFilter] = useState('active')
   const { data: contracts, refetch } = useLaborContracts({ siteId: siteFilter||undefined, subcontractorId: subFilter||undefined, status: statusFilter||undefined })
   const { data: subs  } = useLaborSubcontractors()
-  const { data: sites } = useSites()
+  const { data: sites, refetch: refetchSites } = useSites()
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -296,8 +297,9 @@ function ContractsTab() {
                   <SearchableSelect required value={form.subcontractor_id} onChange={id => set('subcontractor_id', id)}
                     placeholder="— เลือก —" options={scSubOpts(subs)} /></div>
                 <div><label className="label">ไซท์งาน ★</label>
-                  <SearchableSelect required value={form.site_id} onChange={id => set('site_id', id)}
-                    placeholder="— เลือก —" options={scSiteOpts(sites)} /></div>
+                  <QuickAddSelect required value={form.site_id} onChange={id => set('site_id', id)}
+                    placeholder="— เลือก —" options={scSiteOpts(sites)}
+                    table="sites" namePlaceholder="ชื่อไซท์งานใหม่" onCreated={refetchSites} /></div>
               </div>
               <div><label className="label">ประเภทงาน ★</label>
                 <input className="input" required value={form.work_description} onChange={e => set('work_description',e.target.value)} placeholder="เช่น ติดตั้งอลูมิเนียม" /></div>

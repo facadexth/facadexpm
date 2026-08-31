@@ -20,6 +20,7 @@ import { auditLog } from '../lib/audit.js'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import { exportToExcel } from '../lib/exportExcel.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
+import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { CATEGORY_PALETTE, OTHER_LABEL, OTHER_COLOR, categoryBreakdown, groupSmallSlices } from '../lib/expenseChart.js'
@@ -29,6 +30,7 @@ import {
   creditTermDays as computeCreditTermDays, paymentMethodOptions, billingDueTargetField,
   calcDueDate, resolvePaymentMethodOnSupplierChange,
 } from '../lib/supplierCredit.js'
+import { THAI_BANKS } from '../lib/thaiBanks.js'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -58,7 +60,7 @@ const chequeOpts = (cheques) => (cheques || []).map(c => ({
   value: c.id, label: `${c.cheque_no} · ${c.bank}${c.status === 'cashed' ? ' (ขึ้นเงินแล้ว)' : ''}`, keywords: `${c.cheque_no} ${c.bank}`,
 }))
 
-function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], cheques = [], hasChequeTracking, onSave, onCancel, loading, onChequeCreated }) {
+function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], cheques = [], hasChequeTracking, onSave, onCancel, loading, onChequeCreated, onSiteCreated, onSupplierCreated }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('expense-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -130,12 +132,15 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
         <div className="form-grid-2">
           <div>
             <label className="label">ไซท์งาน ★</label>
-            <SearchableSelect
+            <QuickAddSelect
               required
               value={form.site_id}
               onChange={id => set('site_id', id)}
               placeholder="— เลือกไซท์ —"
               options={siteOpts(sites)}
+              table="sites"
+              namePlaceholder="ชื่อไซท์งานใหม่"
+              onCreated={onSiteCreated}
             />
           </div>
           <div>
@@ -152,7 +157,7 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
         <div className="form-grid-2">
           <div>
             <label className="label">Supplier</label>
-            <SearchableSelect
+            <QuickAddSelect
               value={form.supplier_id}
               onChange={id => {
                 const sup = suppliers.find(s => s.id === id)
@@ -170,6 +175,9 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
               }}
               placeholder="— เลือก Supplier —"
               options={supplierOpts(suppliers)}
+              table="suppliers"
+              namePlaceholder="ชื่อ Supplier ใหม่"
+              onCreated={onSupplierCreated}
             />
           </div>
           <div>
@@ -250,8 +258,11 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
                     </div>
                     <div>
                       <label className="label">ธนาคาร ★</label>
-                      <input className="input input-sm" value={newCheque.bank}
-                        onChange={e => setNewCheque(c => ({ ...c, bank: e.target.value }))} placeholder="เช่น กสิกรไทย" />
+                      <select className="select select-sm" value={newCheque.bank}
+                        onChange={e => setNewCheque(c => ({ ...c, bank: e.target.value }))}>
+                        <option value="">— เลือกธนาคาร —</option>
+                        {THAI_BANKS.map(b => <option key={b} value={b}>{b}</option>)}
+                      </select>
                     </div>
                     <div>
                       <label className="label">วันที่เช็ค ★</label>
@@ -354,9 +365,9 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
 
   const filters = { from: allTime ? null : dateFrom, to: allTime ? null : dateTo, dateField, siteId, categoryId: catId, supplierId, status, search }
   const { data: expenses, refetch } = useExpenses(filters)
-  const { data: sites }      = useSites()
+  const { data: sites, refetch: refetchSites } = useSites()
   const { data: categories } = useCategories()
-  const { data: suppliers }  = useSuppliers()
+  const { data: suppliers, refetch: refetchSuppliers } = useSuppliers()
   const { data: cheques, refetch: refetchCheques } = useCheques()
   const { hasModuleAccess }  = useTenant()
   const hasChequeTracking = hasModuleAccess('cheque_tracking')
@@ -655,6 +666,8 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
             cheques={cheques || []}
             hasChequeTracking={hasChequeTracking}
             onChequeCreated={refetchCheques}
+            onSiteCreated={refetchSites}
+            onSupplierCreated={refetchSuppliers}
             onSave={handleSave}
             onCancel={() => { setShowAdd(false); setEditRow(null) }}
             loading={saving}

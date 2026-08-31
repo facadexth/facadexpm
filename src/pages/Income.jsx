@@ -17,6 +17,7 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import { exportToExcel } from '../lib/exportExcel.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
+import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { TrashIcon, PencilIcon, LinkIcon } from '../components/icons.jsx'
@@ -31,7 +32,7 @@ const EMPTY_FORM = {
   income_type: 'ปกติ', deposit_pct: '',
 }
 
-function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading, hasModuleAccess = () => false }) {
+function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading, hasModuleAccess = () => false, onSiteCreated }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('income-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -82,7 +83,7 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading, ha
         <div className="form-grid-2">
           <div>
             <label className="label">ไซท์งาน ★</label>
-            <SearchableSelect
+            <QuickAddSelect
               required
               value={form.site_id}
               onChange={id => {
@@ -99,6 +100,9 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading, ha
               }}
               placeholder="— เลือกไซท์ —"
               options={siteOpts(sites)}
+              table="sites"
+              namePlaceholder="ชื่อไซท์งานใหม่"
+              onCreated={onSiteCreated}
             />
           </div>
           <div>
@@ -216,7 +220,7 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
 
   const filters = { from: dateFrom, to: dateTo, siteId, search }
   const { data: incomes, refetch } = useIncomes(filters)
-  const { data: sites } = useSites()
+  const { data: sites, refetch: refetchSites } = useSites()
 
   const totalReceived   = useMemo(() => (incomes || []).reduce((s, i) => s + (i.received_amount || 0), 0), [incomes])
   const totalNoVat      = useMemo(() => (incomes || []).reduce((s, i) => s + (i.amount_no_vat || 0), 0), [incomes])
@@ -438,6 +442,7 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
             onCancel={() => { setShowAdd(false); setEditRow(null) }}
             loading={saving}
             hasModuleAccess={hasModuleAccess}
+            onSiteCreated={refetchSites}
           />
         </Modal>
       )}

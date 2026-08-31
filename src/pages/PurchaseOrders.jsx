@@ -15,6 +15,7 @@ import { fmt, fmtDate } from '../lib/supabase.js'
 import { auditLog } from '../lib/audit.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
+import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import AttachmentsSection from '../components/AttachmentsSection.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
@@ -93,7 +94,7 @@ function ItemsEditor({ items, onChange }) {
   )
 }
 
-function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories, onSave, onCancel, loading }) {
+function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories, onSave, onCancel, loading, onSiteCreated, onSupplierCreated }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('purchase-order-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -118,13 +119,15 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
         <div style={{ display: 'grid', gap: 12 }}>
           <div>
             <label className="label">ไซท์งาน ★</label>
-            <SearchableSelect required value={form.site_id} onChange={id => set('site_id', id)}
-              placeholder="— เลือกไซท์ —" options={siteOpts(sites)} />
+            <QuickAddSelect required value={form.site_id} onChange={id => set('site_id', id)}
+              placeholder="— เลือกไซท์ —" options={siteOpts(sites)}
+              table="sites" namePlaceholder="ชื่อไซท์งานใหม่" onCreated={onSiteCreated} />
           </div>
           <div>
             <label className="label">Supplier ★</label>
-            <SearchableSelect required value={form.supplier_id} onChange={id => set('supplier_id', id)}
-              placeholder="— เลือก Supplier —" options={supplierOpts(suppliers)} />
+            <QuickAddSelect required value={form.supplier_id} onChange={id => set('supplier_id', id)}
+              placeholder="— เลือก Supplier —" options={supplierOpts(suppliers)}
+              table="suppliers" namePlaceholder="ชื่อ Supplier ใหม่" onCreated={onSupplierCreated} />
           </div>
         </div>
         <ItemsEditor items={form.items} onChange={items => set('items', items)} />
@@ -345,9 +348,9 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
 
   const filters = { from: dateFrom, to: dateTo, siteId, supplierId, status }
   const { data: pos, refetch } = usePurchaseOrders(filters)
-  const { data: sites }      = useSites()
+  const { data: sites, refetch: refetchSites }      = useSites()
   const { data: categories } = useCategories()
-  const { data: suppliers }  = useSuppliers()
+  const { data: suppliers, refetch: refetchSuppliers }  = useSuppliers()
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
@@ -542,6 +545,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
             initial={editFormInitial || EMPTY_FORM}
             sites={sites} categories={categories} suppliers={suppliers || []}
             onSave={handleSave} onCancel={() => { setShowAdd(false); setEditRow(null) }} loading={saving}
+            onSiteCreated={refetchSites} onSupplierCreated={refetchSuppliers}
           />
           {editRow && tenant?.id && (
             <div className="modal-body" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>

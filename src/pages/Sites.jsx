@@ -19,6 +19,7 @@ import { fmt, fmtDate, countdown } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
+import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 
 const STATUS_OPTS = ['Ongoing', 'Completed', 'On Hold', 'Cancelled']
@@ -80,7 +81,7 @@ export function siteFormToPayload(form) {
   }
 }
 
-export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading, hasModuleAccess = () => false, draftKey = 'sites-form', seat }) {
+export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading, hasModuleAccess = () => false, draftKey = 'sites-form', seat, onClientCreated }) {
   const isAdd = !initial?.id
   const [form, setForm, clearDraft] = useDraftForm(draftKey, { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -106,7 +107,7 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
           </div>
           <div>
             <label className="label">ลูกค้า / เจ้าของงาน</label>
-            <SearchableSelect
+            <QuickAddSelect
               value={form.client_id}
               onChange={id => set('client_id', id)}
               placeholder="— เลือกลูกค้า —"
@@ -115,6 +116,9 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
                 label: `${c.client_number} · ${c.name}`,
                 keywords: `${c.client_number} ${c.name}`,
               }))}
+              table="clients"
+              namePlaceholder="ชื่อลูกค้าใหม่"
+              onCreated={onClientCreated}
             />
           </div>
         </div>
@@ -269,7 +273,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
   const { tenant, hasModuleAccess } = useTenant()
   const { data: sites, refetch } = useSites()
   const { data: laborData } = useLaborCost()
-  const { data: clients }   = useClients()
+  const { data: clients, refetch: refetchClients }   = useClients()
   const { data: seat, refetch: refetchSeat } = useSeatStatus()
 
   const [showForm,    setShowForm]    = useState(false)
@@ -520,6 +524,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
             onSave={handleSave}
             onCancel={() => { setShowForm(false); setEditSite(null) }}
             loading={saving}
+            onClientCreated={refetchClients}
             hasModuleAccess={hasModuleAccess}
             seat={seat}
           />

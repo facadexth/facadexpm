@@ -12,6 +12,7 @@ import { useCheques, useQuery } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
+import { THAI_BANKS } from '../lib/thaiBanks.js'
 
 const EMPTY_FORM = { cheque_no: '', bank: '', check_date: '', notes: '' }
 
@@ -28,7 +29,13 @@ function ChequeForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
         </div>
         <div>
           <label className="label">ธนาคารที่ออกเช็ค ★</label>
-          <input className="input" required value={form.bank} onChange={e => set('bank', e.target.value)} placeholder="เช่น กสิกรไทย, ไทยพาณิชย์" />
+          <select className="select" required value={form.bank} onChange={e => set('bank', e.target.value)}>
+            <option value="">— เลือกธนาคาร —</option>
+            {/* คงค่าที่กรอกไว้แบบข้อความอิสระ (ก่อนเปลี่ยนเป็น dropdown) ไว้เป็นตัวเลือก
+                เดิมด้วย ไม่งั้น select จะแสดงว่างเปล่าทั้งที่มีข้อมูลอยู่จริง */}
+            {form.bank && !THAI_BANKS.includes(form.bank) && <option value={form.bank}>{form.bank} (เดิม)</option>}
+            {THAI_BANKS.map(b => <option key={b} value={b}>{b}</option>)}
+          </select>
         </div>
         <div>
           <label className="label">วันที่เช็ค ★</label>

@@ -18,6 +18,7 @@ import { fmt, fmtDate } from '../lib/supabase.js'
 import { auditLog } from '../lib/audit.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
+import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { lineTotal, calcQuotationTotals } from '../lib/quotationCalc.js'
 import { SiteForm, siteFormToPayload } from './Sites.jsx'
@@ -105,7 +106,7 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch 
   )
 }
 
-function QuotationForm({ initial = EMPTY_FORM, clients, catalogItems, onCatalogRefetch, onSave, onCancel, loading }) {
+function QuotationForm({ initial = EMPTY_FORM, clients, catalogItems, onCatalogRefetch, onSave, onCancel, loading, onClientCreated }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('quotation-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -131,8 +132,9 @@ function QuotationForm({ initial = EMPTY_FORM, clients, catalogItems, onCatalogR
         </div>
         <div>
           <label className="label">ลูกค้า ★</label>
-          <SearchableSelect required value={form.client_id} onChange={id => set('client_id', id)}
-            placeholder="— เลือกลูกค้า —" options={clientOpts(clients)} />
+          <QuickAddSelect required value={form.client_id} onChange={id => set('client_id', id)}
+            placeholder="— เลือกลูกค้า —" options={clientOpts(clients)}
+            table="clients" namePlaceholder="ชื่อลูกค้าใหม่" onCreated={onClientCreated} />
         </div>
         <QuotationItemsEditor items={form.items} onChange={items => set('items', items)} catalogItems={catalogItems} onCatalogRefetch={onCatalogRefetch} />
         <div>
@@ -207,7 +209,7 @@ function QuotationForm({ initial = EMPTY_FORM, clients, catalogItems, onCatalogR
   )
 }
 
-function AcceptQuotationModal({ quotation, totals, clients, sites, hasModuleAccess, onLinkExisting, onCreateNew, onClose, loading }) {
+function AcceptQuotationModal({ quotation, totals, clients, sites, hasModuleAccess, onLinkExisting, onCreateNew, onClose, loading, onClientCreated }) {
   const [mode, setMode] = useState('create') // 'create' | 'existing'
   const [existingSiteId, setExistingSiteId] = useState('')
 
@@ -252,7 +254,7 @@ function AcceptQuotationModal({ quotation, totals, clients, sites, hasModuleAcce
           </div>
         </>
       ) : (
-        <SiteForm initial={siteFormInitial} clients={clients} hasModuleAccess={hasModuleAccess} onSave={onCreateNew} onCancel={onClose} loading={loading} draftKey="quotation-accept-site-form" />
+        <SiteForm initial={siteFormInitial} clients={clients} hasModuleAccess={hasModuleAccess} onSave={onCreateNew} onCancel={onClose} loading={loading} draftKey="quotation-accept-site-form" onClientCreated={onClientCreated} />
       )}
     </Modal>
   )
@@ -472,7 +474,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
 
   const filters = { from: dateFrom, to: dateTo, clientId, status }
   const { data: quotations, refetch } = useQuotations(filters)
-  const { data: clients }      = useClients()
+  const { data: clients, refetch: refetchClients }      = useClients()
   const { data: sites }        = useSites()
   const { data: catalogItems, refetch: refetchCatalogItems } = useCatalogItems()
 
@@ -748,6 +750,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
             initial={editFormInitial || newQuotationInitial}
             clients={clients} catalogItems={catalogItems} onCatalogRefetch={refetchCatalogItems}
             onSave={handleSave} onCancel={() => { setShowAdd(false); setEditRow(null) }} loading={saving}
+            onClientCreated={refetchClients}
           />
         </Modal>
       )}
@@ -763,6 +766,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
           clients={clients} sites={sites} hasModuleAccess={hasModuleAccess}
           onLinkExisting={handleLinkExistingSite} onCreateNew={handleCreateSiteFromQuotation}
           onClose={() => setAcceptRow(null)} loading={accepting}
+          onClientCreated={refetchClients}
         />
       )}
 
