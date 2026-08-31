@@ -288,19 +288,35 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   const totals = calcInvoiceTotals(invoiceItemsForTotals, { hasVat: quotation.has_vat, priceIncludesVat: quotation.price_includes_vat })
   // ยอดสุทธิจริงที่จะได้รับ ณ ตอนนี้ (หลัง VAT ถ้ามี แล้วหักภาษี ณ ที่จ่ายถ้าติ๊กไว้)
   // -- โชว์ไว้ให้เห็นผลจริงหลังกดเติมอัตโนมัติ หรือหลังปรับมือเองต่อ
+  //
+  // หัก ณ ที่จ่ายคิดจากมูลค่างานก่อน VAT (subtotal) เสมอ ไม่ใช่จากยอดรวมหลัง VAT
+  // -- ตามหลักจริง (WHT คิดจากค่าจ้าง/ค่าบริการ ไม่รวม VAT) ดังนั้น
+  // net = total (รวม VAT ถ้ามี) - subtotal*wht% ตัวอย่างที่ user ใช้เอง:
+  // VAT 7% หัก ณ ที่จ่าย 3% -> net = subtotal*(1.07-0.03) = subtotal*1.04
+  // (เทียบเท่ากับ 100000/1.04 ที่ user คำนวณด้วยเครื่องคิดเลขเอง)
   const effectiveWhtPct = includeWht ? (parseFloat(whtPct) || 0) : 0
-  const achievedNet = round2(totals.total * (1 - effectiveWhtPct / 100))
+  const achievedNet = round2(totals.total - totals.subtotal * effectiveWhtPct / 100)
 
-  // กรอกยอดสุทธิที่ต้องการ -> คำนวณย้อนกลับเป็นยอดที่ต้องกด (เทียบเท่า
-  // subtotal ก่อน VAT ถ้า hasVat && !priceIncludesVat, หรือเทียบเท่า total
-  // เลยถ้า VAT รวมในราคาอยู่แล้วหรือไม่มี VAT -- ดู calcInvoiceTotals ด้านบน
-  // สำหรับความสัมพันธ์ที่ตรงกัน) แล้วกระจายเท่าๆ กันตามสัดส่วนมูลค่าที่เหลือ
-  // ของแต่ละรายการ (ครอบที่ 100% ของยอดที่เหลือทั้งหมด ไม่มีทางเกิน)
+  // กรอกยอดสุทธิที่ต้องการ -> คำนวณย้อนกลับเป็นยอดที่ต้องกด โดยกลับสมการ
+  // achievedNet ด้านบนตามความสัมพันธ์ระหว่าง drawn amount (target) กับ
+  // subtotal/total ในแต่ละกรณีของ calcInvoiceTotals:
+  //   ไม่มี VAT:        target = subtotal = total  -> net = target(1-wht)
+  //   VAT รวมในราคา:    target = total             -> net = target(1 - wht/(1+VAT_RATE))
+  //   VAT แยกจากราคา:   target = subtotal          -> net = target(1+VAT_RATE-wht)
+  // แล้วกระจายเท่าๆ กันตามสัดส่วนมูลค่าที่เหลือของแต่ละรายการ
+  // (ครอบที่ 100% ของยอดที่เหลือทั้งหมด ไม่มีทางเกิน)
   const applyTargetFill = () => {
     const net = parseFloat(targetNet)
     if (!net || net <= 0) return
-    let target = net / (1 - effectiveWhtPct / 100)
-    if (quotation.has_vat && !quotation.price_includes_vat) target = target / (1 + VAT_RATE)
+    const whtFraction = effectiveWhtPct / 100
+    let target
+    if (!quotation.has_vat) {
+      target = net / (1 - whtFraction)
+    } else if (quotation.price_includes_vat) {
+      target = net / (1 - whtFraction / (1 + VAT_RATE))
+    } else {
+      target = net / (1 + VAT_RATE - whtFraction)
+    }
 
     const totalOpenValue = lines.reduce((s, l) => s + openQty(l.units) * l.unitPrice, 0)
     if (totalOpenValue <= 0) return
@@ -385,7 +401,14 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
           <input type="date" className="input" style={{ maxWidth: 200 }} value={date} onChange={e => setDate(e.target.value)} />
         </div>
 
-        <div className="card card-body" style={{ marginBottom: 14, display: 'grid', gap: 8 }}>
+        <InvoiceItemsEditor lines={lines} onChange={setLines} mode={mode} onModeChange={setMode} />
+        <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมงวดนี้ (ก่อน VAT)</span><span className="font-mono">{fmt(totals.subtotal)}</span></div>
+          {quotation.has_vat && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>VAT (7%)</span><span className="font-mono">{fmt(totals.vat)}</span></div>}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}><span>รวมเรียกเก็บงวดนี้</span><span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totals.total)}</span></div>
+        </div>
+
+        <div className="card card-body" style={{ marginTop: 12, display: 'grid', gap: 8 }}>
           <label className="label" style={{ marginBottom: 0 }}>กรอกยอดที่ต้องการเรียกเก็บ (สุทธิ หลัง VAT และหัก ณ ที่จ่าย)</label>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <input
@@ -410,13 +433,6 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
           <div style={{ fontSize: 12, color: 'var(--text3)' }}>
             ยอดสุทธิที่จะได้จริงจากรายการที่เลือกอยู่ตอนนี้: <strong style={{ color: 'var(--accent)' }}>{fmt(achievedNet)}</strong> บาท
           </div>
-        </div>
-
-        <InvoiceItemsEditor lines={lines} onChange={setLines} mode={mode} onModeChange={setMode} />
-        <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมงวดนี้ (ก่อน VAT)</span><span className="font-mono">{fmt(totals.subtotal)}</span></div>
-          {quotation.has_vat && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>VAT (7%)</span><span className="font-mono">{fmt(totals.vat)}</span></div>}
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}><span>รวมเรียกเก็บงวดนี้</span><span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totals.total)}</span></div>
         </div>
       </div>
       <div className="modal-footer">
