@@ -2579,9 +2579,16 @@ FROM sites s
 LEFT JOIN incomes i ON i.site_id = s.id
 GROUP BY s.id, s.site_number, s.name, s.status, s.start_date, s.end_date, s.contract_value;
 
+-- forecast_month = COALESCE(due_date, check_date, date): credit-term rows
+-- key off due_date, cheque rows off check_date, everything else off the
+-- plain transaction date. MUST match src/lib/expenseFilters.js's 'due'
+-- dateField filter exactly, or the Dashboard's "ยอดที่ต้องชำระ" total and
+-- clicking through to Expenses filtered by that month disagree -- see
+-- 2026-09-01-01-fix-payment-forecast-coalesce-order.sql (originally
+-- COALESCE(check_date, date), never consulting due_date at all).
 CREATE OR REPLACE VIEW payment_forecast WITH (security_invoker = true) AS
 SELECT
-  DATE_TRUNC('month', COALESCE(check_date, date)) AS forecast_month,
+  DATE_TRUNC('month', COALESCE(due_date, check_date, date)) AS forecast_month,
   SUM(amount)                                      AS total_due,
   COUNT(*)                                         AS invoice_count,
   payment_method,

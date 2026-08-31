@@ -39,18 +39,32 @@ describe('applyDateFilter — plain column fields (date, billing_date)', () => {
   })
 })
 
-describe('applyDateFilter — "due" field (OR across due_date/check_date)', () => {
-  it('ORs due_date and check_date for both from and to', () => {
+describe('applyDateFilter — "due" field (COALESCE(due_date, check_date, date), matching payment_forecast)', () => {
+  it('encodes three mutually exclusive coalesce-priority branches for both from and to', () => {
     const q = applyDateFilter(fakeQuery(), 'due', '2026-01-01', '2026-12-31')
     expect(q.calls).toEqual([
-      ['or', 'due_date.gte.2026-01-01,check_date.gte.2026-01-01'],
-      ['or', 'due_date.lte.2026-12-31,check_date.lte.2026-12-31'],
+      ['or', [
+        'and(due_date.not.is.null,due_date.gte.2026-01-01,due_date.lte.2026-12-31)',
+        'and(due_date.is.null,check_date.not.is.null,check_date.gte.2026-01-01,check_date.lte.2026-12-31)',
+        'and(due_date.is.null,check_date.is.null,date.gte.2026-01-01,date.lte.2026-12-31)',
+      ].join(',')],
     ])
   })
 
-  it('applies only the from-side OR when to is omitted', () => {
+  it('applies only the from-side bound in each branch when to is omitted', () => {
     const q = applyDateFilter(fakeQuery(), 'due', '2026-01-01', undefined)
-    expect(q.calls).toEqual([['or', 'due_date.gte.2026-01-01,check_date.gte.2026-01-01']])
+    expect(q.calls).toEqual([
+      ['or', [
+        'and(due_date.not.is.null,due_date.gte.2026-01-01)',
+        'and(due_date.is.null,check_date.not.is.null,check_date.gte.2026-01-01)',
+        'and(due_date.is.null,check_date.is.null,date.gte.2026-01-01)',
+      ].join(',')],
+    ])
+  })
+
+  it('applies no filter when neither from nor to is set', () => {
+    const q = applyDateFilter(fakeQuery(), 'due', undefined, undefined)
+    expect(q.calls).toEqual([])
   })
 
   it('never falls back to a plain gte/lte on a literal "due" column', () => {
