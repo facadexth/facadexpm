@@ -321,6 +321,19 @@ export function useReceipts(invoiceIds) {
   }, [JSON.stringify(invoiceIds || [])])
 }
 
+export function useInvoicePhotos(invoiceId) {
+  return useQuery(async () => {
+    if (!invoiceId) return []
+    const { data, error } = await supabase
+      .from('invoice_photos')
+      .select('*')
+      .eq('invoice_id', invoiceId)
+      .order('sort_order')
+    if (error) throw error
+    return data
+  }, [invoiceId])
+}
+
 /** ยอดที่ต้องชำระรายเดือน (สำหรับ cash forecast) */
 export function usePaymentForecast() {
   return useQuery(async () => {

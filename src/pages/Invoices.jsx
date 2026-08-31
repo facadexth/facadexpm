@@ -12,7 +12,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts } from '../hooks/useSupabase.js'
+import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { calcDepositDeduction, round2 } from '../lib/depositCalc.js'
@@ -561,6 +561,208 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
   )
 }
 
+const PHOTOS_PER_PAGE = 6
+
+// จัดการรูปประกอบการส่งงาน -- อัปโหลด/ใส่คำอธิบาย/จัดลำดับ/ลบ ก่อนพิมพ์เป็น
+// เอกสารจริง (WorkPhotosDocumentModal) แยกสองโมดัลเพราะการจัดการ (แก้ไขได้
+// ตลอด) กับการพิมพ์ (สแนปช็อตสิ่งที่มีอยู่ตอนนั้น) เป็นคนละงานกัน
+function WorkPhotosModal({ invoice, tenant, onClose, onPrint }) {
+  const { data: photos, refetch } = useInvoicePhotos(invoice.id)
+  const [urls, setUrls] = useState({})
+  const [uploading, setUploading] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const entries = await Promise.all((photos || []).map(async p => {
+        const { data } = await supabase.storage.from('invoice-photos').createSignedUrl(p.photo_path, 300)
+        return [p.id, data?.signedUrl]
+      }))
+      if (!cancelled) setUrls(Object.fromEntries(entries))
+    })()
+    return () => { cancelled = true }
+  }, [photos])
+
+  const handleUpload = async (files) => {
+    if (!files?.length) return
+    setUploading(true)
+    try {
+      let nextOrder = (photos || []).length
+      for (const file of files) {
+        const filePath = `${tenant.id}/${invoice.id}/${Date.now()}-${file.name}`
+        const { error: upErr } = await supabase.storage.from('invoice-photos').upload(filePath, file)
+        if (upErr) throw upErr
+        const { error: insErr } = await supabase.from('invoice_photos').insert({
+          invoice_id: invoice.id, photo_path: filePath, sort_order: nextOrder,
+        })
+        if (insErr) { await supabase.storage.from('invoice-photos').remove([filePath]); throw insErr }
+        nextOrder += 1
+      }
+      await refetch()
+    } catch (err) {
+      alert('Error: ' + err.message)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleDescriptionChange = async (photo, description) => {
+    const { error } = await supabase.from('invoice_photos').update({ description }).eq('id', photo.id)
+    if (error) alert('Error: ' + error.message)
+  }
+
+  const handleMove = async (index, dir) => {
+    const list = [...(photos || [])]
+    const j = index + dir
+    if (j < 0 || j >= list.length) return
+    const a = list[index], b = list[j]
+    const { error } = await supabase.from('invoice_photos').upsert([
+      { id: a.id, sort_order: b.sort_order },
+      { id: b.id, sort_order: a.sort_order },
+    ])
+    if (error) { alert('Error: ' + error.message); return }
+    await refetch()
+  }
+
+  const handleDelete = async (photo) => {
+    if (!confirm('ลบรูปนี้?')) return
+    const { error: rmErr } = await supabase.storage.from('invoice-photos').remove([photo.photo_path])
+    if (rmErr) { alert('Error: ' + rmErr.message); return }
+    const { error: delErr } = await supabase.from('invoice_photos').delete().eq('id', photo.id)
+    if (delErr) { alert('Error: ' + delErr.message); return }
+    await refetch()
+  }
+
+  return (
+    <Modal title={`รูปประกอบการส่งงาน — ${invoice.invoice_number}`} onClose={onClose} maxWidth={640}>
+      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        <div>
+          <input
+            type="file" accept="image/*" multiple disabled={uploading}
+            onChange={e => { handleUpload(Array.from(e.target.files || [])); e.target.value = '' }}
+          />
+          {uploading && <span style={{ fontSize: 12, color: 'var(--text3)', marginLeft: 8 }}>⏳ กำลังอัปโหลด...</span>}
+        </div>
+        <div style={{ display: 'grid', gap: 10 }}>
+          {(photos || []).map((p, i) => (
+            <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
+              {urls[p.id]
+                ? <img src={urls[p.id]} alt="" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
+                : <div style={{ width: 80, height: 80, background: 'var(--bg3)', borderRadius: 6, flexShrink: 0 }} />}
+              <div style={{ flex: 1 }}>
+                <input
+                  className="input input-sm" placeholder="คำอธิบายรูป" defaultValue={p.description || ''}
+                  onBlur={e => handleDescriptionChange(p, e.target.value)}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+                <button type="button" className="btn btn-ghost btn-sm" disabled={i === 0} onClick={() => handleMove(i, -1)}>↑</button>
+                <button type="button" className="btn btn-ghost btn-sm" disabled={i === (photos || []).length - 1} onClick={() => handleMove(i, 1)}>↓</button>
+                <button type="button" className="btn btn-danger btn-sm" onClick={() => handleDelete(p)}>✕</button>
+              </div>
+            </div>
+          ))}
+          {!(photos || []).length && <div style={{ color: 'var(--text3)', fontSize: 13 }}>ยังไม่มีรูป</div>}
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button type="button" className="btn btn-ghost" onClick={onClose}>ปิด</button>
+        <button type="button" className="btn btn-primary" disabled={!(photos || []).length} onClick={() => onPrint(photos || [], urls)}>
+          🖨️ พิมพ์เอกสาร
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+// เอกสาร "รูปประกอบการส่งงาน" -- 6 รูปต่อหน้า A4 แนวตั้ง (2 คอลัมน์ × 3 แถว)
+// พร้อมคำอธิบายใต้รูป หัวเอกสาร (โลโก้/ชื่อบริษัท/อ้างอิงใบแจ้งหนี้) อยู่หน้า
+// แรกเท่านั้น ลายเซ็นผู้จัดทำ/ผู้รับสินค้า้งาน + วันที่จัดทำอยู่ท้ายหน้าสุดท้าย
+// เท่านั้น (ไม่ซ้ำทุกหน้า) -- แบ่งหน้าด้วย CSS break-after ซึ่ง html2pdf.js
+// เคารพอยู่แล้วโดย default (ไม่ต้องปรับ config ใน lib/pdf.js)
+function WorkPhotosDocumentModal({ invoice, tenant, photos, urls, onClose }) {
+  const elementId = `work-photos-doc-${invoice.id}`
+  const client = invoice.quotations?.clients
+  const pages = []
+  for (let i = 0; i < photos.length; i += PHOTOS_PER_PAGE) pages.push(photos.slice(i, i + PHOTOS_PER_PAGE))
+  if (!pages.length) pages.push([])
+
+  return (
+    <Modal title="รูปประกอบการส่งงาน" onClose={onClose} maxWidth={720}>
+      <div className="modal-body" style={{ maxHeight: '70vh', overflow: 'auto' }}>
+        {/* ขนาดกำหนดเป็น mm ตรงๆ (ไม่ใช่ px) ให้ตรงกับพื้นที่พิมพ์จริงของ A4 คือ
+            190×277mm (297×210mm ลบ margin 10mm รอบด้านที่ downloadPDF ตั้งไว้)
+            -- คำนวณความสูงต่อหน้าไว้ล่วงหน้าให้ "พอดี" ไม่เกินพื้นที่นี้แม้กรณี
+            ที่แย่ที่สุด (หน้าเดียว มีทั้ง header และลายเซ็น): header ~35mm +
+            กริดรูป 3 แถว (50mm รูป + 8mm คำอธิบาย + 5mm ช่องว่าง)×3 ~184mm +
+            ลายเซ็น ~30mm = 249mm < 277mm. ถ้าเผื่อไม่พอ html2pdf.js จะแทรกหน้า
+            เพิ่มเองอัตโนมัติ (ยืนยันจากการทดสอบจริงว่าตอน 200px/รูปมันเกิน)
+            เก็บ elementId ไว้บนตัว wrapper เดียว ไม่ใช่แต่ละหน้า เพราะ
+            downloadPDF อ้างอิง id เดียวมาแปลงทั้งก้อน */}
+        <div id={elementId} style={{ fontFamily: 'Sarabun,sans-serif', background: '#fff', color: '#17181f', width: '190mm' }}>
+          {pages.map((pagePhotos, pageIndex) => (
+            <div
+              key={pageIndex}
+              style={{
+                padding: '6mm 8mm',
+                pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'auto',
+                breakAfter: pageIndex < pages.length - 1 ? 'page' : 'auto',
+              }}
+            >
+              {pageIndex === 0 && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '5mm', marginBottom: '4mm' }}>
+                    <div style={{ display: 'flex', gap: '3mm', alignItems: 'flex-start' }}>
+                      {tenant?.logo_url
+                        ? <img src={tenant.logo_url} alt="" style={{ width: '10mm', height: '10mm', objectFit: 'contain', flexShrink: 0 }} crossOrigin="anonymous" />
+                        : <div style={{ width: '10mm', height: '10mm', borderRadius: 4, background: '#6c63ff', flexShrink: 0 }} />}
+                      <div style={{ fontSize: 13, fontWeight: 800 }}>{tenant?.company_name}</div>
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 800 }}>รูปประกอบการส่งงาน</div>
+                  </div>
+                  <div style={{ marginBottom: '5mm', border: '1px solid #e4e6ef', borderRadius: 6, padding: '3mm 4mm', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5mm 6mm', fontSize: 10 }}>
+                    <div><span style={{ color: '#6a6f85' }}>เลขที่ใบแจ้งหนี้</span><br />{invoice.invoice_number}</div>
+                    <div><span style={{ color: '#6a6f85' }}>วันที่</span><br />{new Date(invoice.date).toLocaleDateString('th-TH')}</div>
+                    <div><span style={{ color: '#6a6f85' }}>ไซท์งาน</span><br />{invoice.sites?.name || '—'}</div>
+                    <div><span style={{ color: '#6a6f85' }}>ลูกค้า</span><br />{client?.name || '—'}</div>
+                  </div>
+                </>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4mm' }}>
+                {pagePhotos.map(p => (
+                  <div key={p.id} style={{ border: '1px solid #e4e6ef', borderRadius: 6, overflow: 'hidden' }}>
+                    <div style={{ height: '50mm', background: '#f4f3ff' }}>
+                      {urls[p.id] && <img src={urls[p.id]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} crossOrigin="anonymous" />}
+                    </div>
+                    <div style={{ padding: '1.5mm 2.5mm', fontSize: 9.5, color: '#4a4d63', height: '8mm', overflow: 'hidden' }}>{p.description || ''}</div>
+                  </div>
+                ))}
+              </div>
+
+              {pageIndex === pages.length - 1 && (
+                <>
+                  <div style={{ marginTop: '10mm', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6mm', textAlign: 'center', fontSize: 10 }}>
+                    <div style={{ borderTop: '1px solid #999', paddingTop: '2mm' }}>ผู้จัดทำ</div>
+                    <div style={{ borderTop: '1px solid #999', paddingTop: '2mm' }}>ผู้รับสินค้า/งาน</div>
+                  </div>
+                  <div style={{ marginTop: '4mm', textAlign: 'center', fontSize: 9.5 }}>
+                    วันที่จัดทำเอกสาร {new Date().toLocaleDateString('th-TH')}
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={() => downloadPDF(elementId, `รูปประกอบการส่งงาน-${invoice.invoice_number}`)}>📄 PDF</button>
+        <button className="btn btn-primary" onClick={onClose}>ปิด</button>
+      </div>
+    </Modal>
+  )
+}
+
 // วันที่รับเงิน (paid_date/receipt.date/income.date) is its own field,
 // separate from the invoice's own `date` (document issue date, set once
 // at creation) -- defaults to today since that's when payment is usually
@@ -618,6 +820,11 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
 
   const [docRow, setDocRow] = useState(null)
   const [receiptRow, setReceiptRow] = useState(null)
+  const [photosRow, setPhotosRow] = useState(null)
+  // แยก state คนละก้อนกับ photosRow เพราะ Modal ของแอปนี้ไม่รองรับ modal
+  // ซ้อน modal (ดูคอมเมนต์ใน Modal.jsx) -- คลิก "พิมพ์เอกสาร" ในโมดัลจัดการรูป
+  // จึงต้องปิดโมดัลนั้นแล้วเปิดโมดัลพิมพ์แทนที่ ไม่ใช่เปิดซ้อนกัน
+  const [photosPrint, setPhotosPrint] = useState(null) // { invoice, photos, urls }
   const { data: receipts, refetch: refetchReceipts } = useReceipts((invoices || []).map(i => i.id))
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
@@ -854,6 +1061,9 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
                     {inv.status === 'paid' && (
                       <button className="btn btn-sm btn-ghost" onClick={() => setReceiptRow(inv)}>🧾</button>
                     )}
+                    {canEdit && (
+                      <button className="btn btn-sm btn-ghost" onClick={() => setPhotosRow(inv)} title="รูปประกอบการส่งงาน">📷</button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -922,6 +1132,18 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
           receipt={(receipts || []).find(r => r.invoice_id === receiptRow.id)}
           tenant={tenant}
           onClose={() => setReceiptRow(null)}
+        />
+      )}
+      {photosRow && (
+        <WorkPhotosModal
+          invoice={photosRow} tenant={tenant} onClose={() => setPhotosRow(null)}
+          onPrint={(photos, urls) => { setPhotosRow(null); setPhotosPrint({ invoice: photosRow, photos, urls }) }}
+        />
+      )}
+      {photosPrint && (
+        <WorkPhotosDocumentModal
+          invoice={photosPrint.invoice} tenant={tenant} photos={photosPrint.photos} urls={photosPrint.urls}
+          onClose={() => setPhotosPrint(null)}
         />
       )}
     </div>
