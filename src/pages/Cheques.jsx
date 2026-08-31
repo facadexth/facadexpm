@@ -8,7 +8,7 @@
 // ============================================================
 import { useState } from 'react'
 import { supabase, fmt } from '../lib/supabase.js'
-import { useCheques, useQuery } from '../hooks/useSupabase.js'
+import { useCheques, useQuery, useAppSetting } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import DocumentReceiptModal from '../components/DocumentReceiptModal.jsx'
@@ -64,6 +64,11 @@ function ChequeForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
 export default function Cheques() {
   const { tenant } = useTenant()
   const { data: cheques, refetch } = useCheques()
+  // เปิด/ปิดวิธีเซ็นรับแต่ละแบบ -- ตั้งค่าได้ที่หน้าตั้งค่า (Settings.jsx)
+  const { data: signPhysicalVal } = useAppSetting('sign_physical_enabled', 'true')
+  const { data: signDigitalVal } = useAppSetting('sign_digital_enabled', 'true')
+  const signPhysicalEnabled = signPhysicalVal !== 'false'
+  const signDigitalEnabled = signDigitalVal !== 'false'
   // Linked-expense totals per cheque -- a lightweight aggregate query
   // rather than a dedicated view, since it's only ever needed here.
   const { data: linkRows } = useQuery(async () => {
@@ -219,10 +224,10 @@ export default function Cheques() {
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <div className="actions-cell">
-                        {c.status !== 'cashed' && (
+                        {c.status !== 'cashed' && signPhysicalEnabled && (
                           <button className="btn btn-sm btn-ghost" onClick={() => setSignTarget(c)}>🖊️ ให้เซ็นรับ</button>
                         )}
-                        {c.status === 'issued' && (
+                        {c.status === 'issued' && signDigitalEnabled && (
                           <button className="btn btn-sm btn-ghost" onClick={() => handleGenerateLink(c)}>🔗 ลิงก์เซ็นรับ</button>
                         )}
                         {c.status !== 'cashed' && (

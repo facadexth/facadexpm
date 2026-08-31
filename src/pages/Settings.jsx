@@ -50,6 +50,28 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     }
   }
 
+  // เปิด/ปิดวิธีเซ็นรับเอกสาร (เช่นเช็ค) แยกกันสองแบบ -- เซ็นต่อหน้า (ส่งต่อ
+  // อุปกรณ์ให้เซ็นเอง) กับเซ็นผ่านลิงก์ระยะไกล เก็บใน app_settings ค่า
+  // default = เปิดทั้งคู่ (ค่าที่ยังไม่เคยตั้งถือว่า "true") -- Cheques.jsx
+  // อ่านค่านี้ไปซ่อน/แสดงปุ่มแต่ละแบบ
+  const { data: signPhysicalVal, refetch: refetchSignPhysical } = useAppSetting('sign_physical_enabled', 'true')
+  const { data: signDigitalVal, refetch: refetchSignDigital } = useAppSetting('sign_digital_enabled', 'true')
+  const [savingSignMethods, setSavingSignMethods] = useState(false)
+  const signPhysicalEnabled = signPhysicalVal !== 'false'
+  const signDigitalEnabled = signDigitalVal !== 'false'
+
+  const handleToggleSignMethod = async (key, currentEnabled, refetch) => {
+    setSavingSignMethods(true)
+    try {
+      await saveAppSetting(key, String(!currentEnabled))
+      refetch()
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setSavingSignMethods(false)
+    }
+  }
+
   // Contractor type — stored on tenants.contractor_type_id
   const { tenant, hasModuleAccess, refetch: refetchTenant } = useTenant()
   const { data: contractorTypes } = useContractorTypes()
@@ -225,6 +247,28 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
             <button className="btn btn-primary" onClick={handleSaveChequeReminderDays} disabled={savingChequeReminderDays}>
               {savingChequeReminderDays ? '⏳ กำลังบันทึก...' : '✅ บันทึก'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── วิธีเซ็นรับเอกสาร ── */}
+      {hasModuleAccess('cheque_tracking') && (
+        <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
+          <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>✍️ วิธีเซ็นรับเอกสาร</h2>
+          <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
+            เลือกวิธีเซ็นรับที่จะให้ใช้ได้ในหน้าเช็ค — ปิดวิธีไหนไว้ ปุ่มนั้นจะหายไปจากหน้าเช็ค
+          </p>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+              <input type="checkbox" checked={signPhysicalEnabled} disabled={savingSignMethods}
+                onChange={() => handleToggleSignMethod('sign_physical_enabled', signPhysicalEnabled, refetchSignPhysical)} />
+              🖊️ เซ็นต่อหน้า — ส่งต่ออุปกรณ์ (มือถือ/แท็บเล็ต/แล็ปท็อป) ให้เซ็นตรงนั้นเลย
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+              <input type="checkbox" checked={signDigitalEnabled} disabled={savingSignMethods}
+                onChange={() => handleToggleSignMethod('sign_digital_enabled', signDigitalEnabled, refetchSignDigital)} />
+              🔗 เซ็นผ่านลิงก์ — ส่งลิงก์ให้เซ็นจากอุปกรณ์ของตัวเอง ไม่ต้องเจอหน้ากัน
+            </label>
           </div>
         </div>
       )}
