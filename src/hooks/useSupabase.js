@@ -523,7 +523,7 @@ export function useAssignmentsRange(from, to) {
     if (!from || !to) return []
     const { data, error } = await supabase
       .from('worker_assignments')
-      .select('id, worker_id, site_id, date, type, shift, ot_hours, notes, workers(name, nickname, monthly_salary), sites(name, site_number)')
+      .select('id, worker_id, site_id, date, type, shift, ot_hours, notes, confirmed_at, confirmed_by, workers(name, nickname, monthly_salary), sites(name, site_number)')
       .gte('date', from)
       .lte('date', to)
       .order('date')

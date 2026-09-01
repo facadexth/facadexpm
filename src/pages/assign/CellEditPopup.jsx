@@ -19,7 +19,7 @@ const TYPE_OPTS = [
   { k: 'holiday',         l: '🎌 หยุด' },
 ]
 
-export default function CellEditPopup({ target, sites = [], onSave, onDelete, onSaveOT, onDeleteOT, onClose, saving }) {
+export default function CellEditPopup({ target, sites = [], onSave, onDelete, onSaveOT, onDeleteOT, onConfirm, onClose, saving }) {
   const { worker, date, shift, existing, existingOT } = target
 
   // Draft key is specific to this exact cell — a generic key would let a
@@ -118,6 +118,21 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
               value={form.siteId} onChange={id => set('siteId', id)} placeholder="— เลือกไซท์ —"
               options={siteOptions}
             />
+          </div>
+        )}
+        {needsSite && existing && (
+          <div style={{ fontSize: 12.5 }}>
+            {existing.confirmed_at ? (
+              <span style={{ color: 'var(--green)' }}>
+                ✅ {existing.confirmed_by === 'checkin' ? 'ยืนยันแล้ว (เช็คอินจริง)' : `ยืนยันโดยแอดมิน (${existing.confirmed_by})`}
+                {' '}· {new Date(existing.confirmed_at).toLocaleString('th-TH')}
+              </span>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: 'var(--yellow)' }}>⏳ รอการยืนยัน (ยังไม่นับเป็นค่าแรง)</span>
+                <button type="button" className="btn btn-sm btn-ghost" onClick={onConfirm} disabled={saving}>ยืนยันเอง</button>
+              </div>
+            )}
           </div>
         )}
         <div>

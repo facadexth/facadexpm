@@ -24,7 +24,7 @@ import { TYPE_LEGEND, TYPE_COLOR } from './assign/constants.js'
 import { buildLineText } from './assign/lineExport.js'
 
 export default function Assign({ navState, openSiteOverview }) {
-  const { isAtLeast, role } = useUserRole()
+  const { isAtLeast, role, user } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'assign')
 
   const [view, setView]     = useState('week')
@@ -151,6 +151,20 @@ export default function Assign({ navState, openSiteOverview }) {
       const { error } = await supabase.from('worker_assignments').delete().eq('id', cellTarget.existing.id)
       if (error) throw error
       setCellTarget(null); refetch()
+    } catch (e) { alert('Error: ' + e.message) }
+    finally { setSaving(false) }
+  }
+
+  const handleConfirm = async () => {
+    if (!cellTarget?.existing?.id) return
+    setSaving(true)
+    try {
+      const { error } = await supabase.from('worker_assignments')
+        .update({ confirmed_at: new Date().toISOString(), confirmed_by: user?.email })
+        .eq('id', cellTarget.existing.id)
+      if (error) throw error
+      refetch()
+      setCellTarget(t => t && { ...t, existing: { ...t.existing, confirmed_at: new Date().toISOString(), confirmed_by: user?.email } })
     } catch (e) { alert('Error: ' + e.message) }
     finally { setSaving(false) }
   }
@@ -314,6 +328,7 @@ export default function Assign({ navState, openSiteOverview }) {
           onDelete={handleCellDelete}
           onSaveOT={handleOTSave}
           onDeleteOT={handleOTDelete}
+          onConfirm={handleConfirm}
           onClose={() => setCellTarget(null)}
           saving={saving}
         />
