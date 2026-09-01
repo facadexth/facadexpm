@@ -2069,6 +2069,23 @@ REVOKE EXECUTE ON FUNCTION perform_worker_checkout(UUID, NUMERIC, NUMERIC, TIME,
 GRANT EXECUTE ON FUNCTION perform_worker_checkin(UUID, NUMERIC, NUMERIC) TO authenticated;
 GRANT EXECUTE ON FUNCTION perform_worker_checkout(UUID, NUMERIC, NUMERIC, TIME, TIME, NUMERIC, BOOLEAN, TEXT) TO authenticated;
 
+-- Small SECURITY DEFINER getter so a WORKER-role user can read the
+-- tenant's regular_shift_end_time setting (app_settings.admin_reads
+-- requires is_admin_or_owner(), so a worker can't SELECT it directly).
+-- Task 7 (MySchedule check-in/out) needs this value client-side to
+-- decide whether checkout crosses into OT territory before deciding
+-- whether to pass p_ot_* params to perform_worker_checkout at all.
+CREATE OR REPLACE FUNCTION get_regular_shift_end_time()
+RETURNS TEXT
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT COALESCE((SELECT value FROM app_settings WHERE tenant_id = current_tenant_id() AND key = 'regular_shift_end_time'), '17:00');
+$$;
+
+GRANT EXECUTE ON FUNCTION get_regular_shift_end_time() TO authenticated;
+
 ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
 
 -- Group D core-table RLS (see supabase/migrations/2026-08-16-09-tenant-scoped-rls-core.sql).

@@ -12,6 +12,7 @@ import { useUserRole } from '../../hooks/useUserRole.js'
 import { useAllActiveWorkers, useAssignmentsRange, useWorkerOTRange, useSitesProgress, useLeaveQuotaUsage } from '../../hooks/useSupabase.js'
 import { DOW_TH } from './constants.js'
 import AssignCell from './AssignCell.jsx'
+import TodayCheckinCard from './TodayCheckinCard.jsx'
 
 const OTHER_TYPE_LABEL = { office: 'ออฟฟิศ', leave: 'ลา', leave_sick: 'ลาป่วย', leave_personal: 'ลากิจ', holiday: 'หยุด' }
 const DOW_MON_START = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา']
@@ -51,6 +52,17 @@ export default function MySchedule({ from, to, days, view }) {
     })
     return m
   }, [otEntries, me])
+
+  // Today's distinct site assignments (site-type only) -- one
+  // TodayCheckinCard per distinct site_id, since a worker can be
+  // assigned to two different sites the same day (spec edge case).
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const todaySiteAssignments = useMemo(() => {
+    const rows = (myAssignmentsByDate[todayIso] || []).filter(a => a.type === 'site')
+    const bySite = new Map()
+    rows.forEach(a => { if (!bySite.has(a.site_id)) bySite.set(a.site_id, a) })
+    return [...bySite.values()]
+  }, [myAssignmentsByDate, todayIso])
 
   // AssignCell-compatible cell for one date: { morning, evening } segments,
   // each carrying site_name/site_number resolved via sites_progress (not
@@ -135,37 +147,47 @@ export default function MySchedule({ from, to, days, view }) {
           const primary = morning || evening
 
           return (
-            <div key={d.iso} style={{
-              display: 'grid', gridTemplateColumns: '56px 1fr auto', alignItems: 'center', gap: 14,
-              background: 'var(--bg2)', border: `1px solid ${isToday ? 'var(--accent)' : 'var(--border)'}`,
-              borderRadius: 9, padding: '12px 14px',
-            }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>{DOW_TH[d.dow]}</div>
-                <div style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.1 }}>{d.date.getDate()}</div>
-              </div>
-              <div>
-                {primary ? (
-                  <>
-                    <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 3 }}>
-                      {['site', 'factory'].includes(primary.type)
-                        ? `${primary.type === 'factory' ? '🏭' : '🏗️'} ${siteById[primary.site_id]?.site_number || ''} · ${siteById[primary.site_id]?.name || '—'}`
-                        : (OTHER_TYPE_LABEL[primary.type] || primary.type)}
-                    </div>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      {morning && <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(255,209,102,.16)', color: 'var(--yellow)' }}>เช้า</span>}
-                      {evening && <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(108,99,255,.18)', color: 'var(--accent)' }}>บ่าย</span>}
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ color: 'var(--text3)' }}>— ไม่มีงาน —</div>
+            <div key={d.iso}>
+              <div style={{
+                display: 'grid', gridTemplateColumns: '56px 1fr auto', alignItems: 'center', gap: 14,
+                background: 'var(--bg2)', border: `1px solid ${isToday ? 'var(--accent)' : 'var(--border)'}`,
+                borderRadius: 9, padding: '12px 14px',
+              }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>{DOW_TH[d.dow]}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.1 }}>{d.date.getDate()}</div>
+                </div>
+                <div>
+                  {primary ? (
+                    <>
+                      <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 3 }}>
+                        {['site', 'factory'].includes(primary.type)
+                          ? `${primary.type === 'factory' ? '🏭' : '🏗️'} ${siteById[primary.site_id]?.site_number || ''} · ${siteById[primary.site_id]?.name || '—'}`
+                          : (OTHER_TYPE_LABEL[primary.type] || primary.type)}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {morning && <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(255,209,102,.16)', color: 'var(--yellow)' }}>เช้า</span>}
+                        {evening && <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(108,99,255,.18)', color: 'var(--accent)' }}>บ่าย</span>}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ color: 'var(--text3)' }}>— ไม่มีงาน —</div>
+                  )}
+                </div>
+                {ot && (
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--green)', background: 'rgba(0,212,170,.13)', borderRadius: 999, padding: '5px 10px', whiteSpace: 'nowrap' }}>
+                    ⚡ OT {ot.ot_hours} ชม.
+                  </div>
                 )}
               </div>
-              {ot && (
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--green)', background: 'rgba(0,212,170,.13)', borderRadius: 999, padding: '5px 10px', whiteSpace: 'nowrap' }}>
-                  ⚡ OT {ot.ot_hours} ชม.
-                </div>
-              )}
+              {isToday && todaySiteAssignments.map(a => (
+                <TodayCheckinCard
+                  key={a.site_id}
+                  workerId={me.id} siteId={a.site_id}
+                  siteName={siteById[a.site_id]?.name || a.site_id}
+                  date={todayIso}
+                />
+              ))}
             </div>
           )
         })}
