@@ -26,6 +26,7 @@ import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals
 import { calcQuotationTotals } from '../lib/quotationCalc.js'
 import { downloadPDF, downloadJPG, printTagFor } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
+import RowActionsMenu from '../components/RowActionsMenu.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -1270,25 +1271,17 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
                   <td><span className={`badge badge-${inv.status}`}>{INV_STATUS_LABELS[inv.status] || inv.status}</span></td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {canEdit && inv.status === 'unpaid' && (
-                      <>
-                        <button className="btn btn-sm btn-primary" disabled={payingId === inv.id} onClick={() => setPayRow(inv)}>
-                          {payingId === inv.id ? '⏳...' : '✅ ชำระแล้ว'}
-                        </button>
-                        <button className="btn btn-sm btn-danger" disabled={voidingId === inv.id} onClick={() => setVoidRow(inv)}>
-                          {voidingId === inv.id ? '⏳...' : '✕ ยกเลิก'}
-                        </button>
-                      </>
+                      <button className="btn btn-sm btn-primary" disabled={payingId === inv.id} onClick={() => setPayRow(inv)}>
+                        {payingId === inv.id ? '⏳...' : '✅ ชำระแล้ว'}
+                      </button>
                     )}
                     <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(inv)}>📄</button>
-                    {inv.status === 'paid' && (
-                      <button className="btn btn-sm btn-ghost" onClick={() => setReceiptRow(inv)}>🧾</button>
-                    )}
-                    {canEdit && (
-                      <button className="btn btn-sm btn-ghost" onClick={() => setPhotosRow(inv)} title="รูปประกอบการส่งงาน">📷</button>
-                    )}
-                    {canEdit && (
-                      <button className="btn btn-sm btn-ghost" onClick={() => setLinkTarget(inv)} title="ลิงก์เซ็นรับระยะไกล">🔗</button>
-                    )}
+                    <RowActionsMenu items={[
+                      ...(canEdit && inv.status === 'unpaid' ? [{ label: '✕ ยกเลิก', onClick: () => setVoidRow(inv), danger: true }] : []),
+                      ...(inv.status === 'paid' ? [{ label: '🧾 ใบเสร็จ', onClick: () => setReceiptRow(inv) }] : []),
+                      ...(canEdit ? [{ label: '📷 รูปประกอบการส่งงาน', onClick: () => setPhotosRow(inv) }] : []),
+                      ...(canEdit ? [{ label: '🔗 ลิงก์เซ็นรับระยะไกล', onClick: () => setLinkTarget(inv) }] : []),
+                    ]} />
                   </td>
                 </tr>
               ))}

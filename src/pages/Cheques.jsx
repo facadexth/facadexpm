@@ -13,8 +13,8 @@ import { useTenant } from '../hooks/useTenant.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import DocumentReceiptModal from '../components/DocumentReceiptModal.jsx'
 import SignLinkModal from '../components/SignLinkModal.jsx'
-import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
+import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { THAI_BANKS } from '../lib/thaiBanks.js'
 
 const EMPTY_FORM = { cheque_no: '', bank: '', check_date: '', notes: '' }
@@ -208,17 +208,15 @@ export default function Cheques() {
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <div className="actions-cell">
-                        {c.status !== 'cashed' && signPhysicalEnabled && (
-                          <button className="btn btn-sm btn-ghost" onClick={() => setSignTarget(c)}>🖊️ ให้เซ็นรับ</button>
-                        )}
-                        {c.status === 'issued' && signDigitalEnabled && (
-                          <button className="btn btn-sm btn-ghost" onClick={() => setLinkTarget(c)}>🔗 ลิงก์เซ็นรับ</button>
-                        )}
                         {c.status !== 'cashed' && (
                           <button className="btn btn-sm btn-success" onClick={() => setCashId(c.id)}>✅ ขึ้นเงินแล้ว</button>
                         )}
-                        <button className="btn btn-sm btn-edit" onClick={() => { setEditCheque(c); setShowForm(true) }}><PencilIcon /></button>
-                        <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(c.id)}><TrashIcon /></button>
+                        <RowActionsMenu items={[
+                          ...(c.status !== 'cashed' && signPhysicalEnabled ? [{ label: '🖊️ ให้เซ็นรับ', onClick: () => setSignTarget(c) }] : []),
+                          ...(c.status === 'issued' && signDigitalEnabled ? [{ label: '🔗 ลิงก์เซ็นรับ', onClick: () => setLinkTarget(c) }] : []),
+                          { label: '✏️ แก้ไข', onClick: () => { setEditCheque(c); setShowForm(true) } },
+                          { label: '🗑️ ลบ', onClick: () => setDeleteId(c.id), danger: true },
+                        ]} />
                       </div>
                     </td>
                   </tr>
