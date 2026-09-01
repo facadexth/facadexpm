@@ -198,7 +198,7 @@ function QuotationForm({ initial = EMPTY_FORM, clients, catalogItems, onCatalogR
         </div>
         <div>
           <label className="label">หมายเหตุ</label>
-          <input className="input" value={form.notes} onChange={e => set('notes', e.target.value)} />
+          <textarea className="textarea" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
         </div>
       </div>
       <div className="modal-footer">
@@ -350,16 +350,12 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
 
       {(paymentTerms || notes || tenant?.bank_name || tenant?.bank_account_no) && (
         <div style={{ marginTop: 20, fontSize: 11.5, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
-          {paymentTerms && (
-            <>
-              <strong style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>เงื่อนไขการชำระเงิน</strong>
-              <div style={{ marginBottom: notes ? 10 : 0, whiteSpace: 'pre-line' }}>{paymentTerms}</div>
-            </>
-          )}
-          {notes && (
+          {(paymentTerms || notes) && (
             <>
               <strong style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>หมายเหตุ</strong>
-              <div style={{ whiteSpace: 'pre-line' }}>{notes}</div>
+              <div style={{ marginBottom: (tenant?.bank_name || tenant?.bank_account_no) ? 10 : 0, whiteSpace: 'pre-line' }}>
+                {[paymentTerms, notes].filter(Boolean).join('\n\n')}
+              </div>
             </>
           )}
           {(tenant?.bank_name || tenant?.bank_account_no) && (
