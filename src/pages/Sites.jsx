@@ -40,7 +40,7 @@ const COST_TYPES = [
 
 const EMPTY_FORM = {
   name: '', client_id: '', location: '',
-  distance_km: '', map_url: '',
+  distance_km: '', map_url: '', lat: '', lng: '',
   status: 'Ongoing', start_date: '', end_date: '',
   has_vat: true, contract_value_no_vat: '', notes: '',
   default_vat_pct: 7, default_tax_withheld_pct: 3, default_retention_pct: 0,
@@ -66,6 +66,8 @@ export function siteFormToPayload(form) {
     location:       form.location || null,
     distance_km:    parseFloat(form.distance_km) || null,
     map_url:        form.map_url || null,
+    lat:            form.lat === '' ? null : parseFloat(form.lat),
+    lng:            form.lng === '' ? null : parseFloat(form.lng),
     status:         form.status,
     start_date:     form.start_date || null,
     end_date:       form.end_date || null,
@@ -138,6 +140,29 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
             <input className="input" type="url" value={form.map_url} onChange={e => set('map_url', e.target.value)} placeholder="วางลิงก์แผนที่..." />
           </div>
         </div>
+        <div className="form-grid-2">
+          <div>
+            <label className="label">พิกัด GPS ไซท์งาน (ละติจูด, ลองจิจูด)</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input type="number" step="any" className="input" value={form.lat}
+                onChange={e => set('lat', e.target.value)} placeholder="ละติจูด เช่น 13.756331" />
+              <input type="number" step="any" className="input" value={form.lng}
+                onChange={e => set('lng', e.target.value)} placeholder="ลองจิจูด เช่น 100.501765" />
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <button type="button" className="btn btn-ghost" onClick={() => {
+              if (!navigator.geolocation) { alert('เบราว์เซอร์นี้ไม่รองรับตำแหน่งที่ตั้ง'); return }
+              navigator.geolocation.getCurrentPosition(
+                pos => { set('lat', String(pos.coords.latitude)); set('lng', String(pos.coords.longitude)) },
+                err => alert('ไม่สามารถอ่านตำแหน่งได้: ' + err.message)
+              )
+            }}>📍 ใช้ตำแหน่งปัจจุบัน</button>
+          </div>
+        </div>
+        <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: -6, marginBottom: 12 }}>
+          ต้องตั้งพิกัดก่อน พนักงานจึงจะเช็คอินที่ไซท์นี้ได้ — ยืนที่ไซท์งานแล้วกดปุ่ม "ใช้ตำแหน่งปัจจุบัน" ง่ายที่สุด
+        </p>
         <div className="form-grid-3">
           <div>
             <label className="label">สถานะ</label>
