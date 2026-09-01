@@ -1925,6 +1925,8 @@ CREATE OR REPLACE FUNCTION haversine_distance_m(lat1 NUMERIC, lng1 NUMERIC, lat2
 RETURNS NUMERIC
 LANGUAGE sql
 IMMUTABLE
+SET search_path = public   -- required: Supabase's security advisor flags
+                           -- function_search_path_mutable otherwise (2026-09-03-07)
 AS $$
   -- Standard haversine formula, earth radius 6371000m. Returns meters.
   SELECT 6371000 * 2 * asin(sqrt(
@@ -2052,12 +2054,21 @@ BEGIN
   -- these when it does. Trust level here matches admin-typed OT today
   -- (CellEditPopup.jsx): the number isn't re-derived server-side from
   -- p_ot_start/p_ot_end, same as an admin's manual entry isn't either.
+  --
+  -- The DO UPDATE ... WHERE guard (added 2026-09-03-07) means an auto-OT entry
+  -- can only ever overwrite ANOTHER auto-OT entry, identified by the exact
+  -- sentinel note TodayCheckinCard.jsx writes. Admin-entered OT for the same
+  -- worker/day -- any other notes value, NULL included -- is left completely
+  -- alone and the insert silently no-ops; the checkout itself still succeeds.
+  -- KNOWN, DELIBERATELY PARKED: two auto entries for the same worker on the
+  -- same day (two different sites) still clobber each other.
   IF p_ot_hours IS NOT NULL THEN
     INSERT INTO worker_ot (worker_id, site_id, date, start_time, end_time, ot_hours, is_overnight, notes, tenant_id)
     VALUES (v_worker_id, p_site_id, v_today, p_ot_start, p_ot_end, p_ot_hours, p_ot_is_overnight, p_ot_notes, v_tenant_id)
     ON CONFLICT (worker_id, date) DO UPDATE
-      SET site_id = p_site_id, start_time = p_ot_start, end_time = p_ot_end,
-          ot_hours = p_ot_hours, is_overnight = p_ot_is_overnight, notes = p_ot_notes;
+      SET site_id = EXCLUDED.site_id, start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time,
+          ot_hours = EXCLUDED.ot_hours, is_overnight = EXCLUDED.is_overnight, notes = EXCLUDED.notes
+      WHERE worker_ot.notes = 'auto จากเช็คเอาท์';
   END IF;
 
   RETURN QUERY SELECT true, v_distance, v_radius, 'เช็คเอาท์สำเร็จ'::TEXT;
@@ -2860,6 +2871,11 @@ JOIN sites s ON o.site_id = s.id
 GROUP BY o.site_id, s.name, s.site_number, o.worker_id, w.name, w.nickname;
 
 -- travel cost per site: distance x 2 (round trip) x rate, once per distinct 'site' workday
+-- Gated on confirmed_at the same way labor_cost_by_site is (2026-09-03-08) --
+-- same underlying rows, same money. A site day nobody showed up for must not
+-- bill a round trip. There's no `factory` branch to preserve here: this view
+-- already counts type='site' only (factory work happens at the company's own
+-- factory, so there's no travel to pay for).
 CREATE OR REPLACE VIEW site_travel_cost WITH (security_invoker = true) AS
 SELECT wa.site_id,
        COUNT(DISTINCT wa.date) AS travel_days,
@@ -2868,7 +2884,7 @@ SELECT wa.site_id,
              * (SELECT value::numeric FROM app_settings WHERE key = 'travel_rate_per_km'), 2) AS travel_cost
 FROM worker_assignments wa
 JOIN sites s ON wa.site_id = s.id
-WHERE wa.type = 'site'
+WHERE wa.type = 'site' AND wa.confirmed_at IS NOT NULL
 GROUP BY wa.site_id, s.distance_km;
 
 CREATE OR REPLACE VIEW workers_with_rate WITH (security_invoker = true) AS
