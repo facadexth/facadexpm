@@ -388,6 +388,11 @@ th.sortable:hover { color: var(--accent); }
   .app-main { padding: 12px !important; }
   thead th, tbody td { padding: 8px 8px; }
   table { font-size: 12px; }
+  /* Least-essential columns on the widest tables (still available via the
+     card details behind each row, e.g. SiteOverviewModal) -- opt a th/td
+     pair into this class on tables where the padding/font reduction above
+     still isn't enough to avoid horizontal scroll. */
+  .hide-tablet { display: none; }
 }
 @media (max-width: 900px) {
   .kpi-grid-7, .kpi-grid-6 { grid-template-columns: repeat(3, 1fr); }

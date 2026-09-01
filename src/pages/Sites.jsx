@@ -395,8 +395,8 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                 <th className="sortable" onClick={() => toggleSort('total_expense')}>รายจ่าย{si('total_expense')}</th>
                 <th className="sortable" onClick={() => toggleSort('gross_profit')}>กำไร{si('gross_profit')}</th>
                 <th className="sortable" onClick={() => toggleSort('billing_pct')}>% เบิก{si('billing_pct')}</th>
-                <th>ค่าแรงช่าง</th>
-                <th className="sortable" onClick={() => toggleSort('end_date')}>วันจบงาน{si('end_date')}</th>
+                <th className="hide-tablet">ค่าแรงช่าง</th>
+                <th className="sortable hide-tablet" onClick={() => toggleSort('end_date')}>วันจบงาน{si('end_date')}</th>
                 <th></th>
               </tr>
             </thead>
@@ -473,14 +473,14 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                       ) : <span style={{ fontSize: 11, color: 'var(--text3)' }}>ใส่มูลค่าสัญญา</span>}
                     </td>
                     <td
-                      className="font-mono"
+                      className="font-mono hide-tablet"
                       style={{ color: laborCost > 0 ? 'var(--yellow)' : 'var(--text3)', fontSize: 12, cursor: laborCost>0?'pointer':'default', textDecoration: laborCost>0?'underline dotted':'none' }}
                       onClick={() => laborCost > 0 && navigateTo('assign', { siteId: s.id, siteName: s.name })}
                       title={laborCost > 0 ? 'ดูรายชื่อช่างของไซท์นี้' : ''}
                     >
                       {laborCost > 0 ? fmt(laborCost) : '—'}
                     </td>
-                    <td>
+                    <td className="hide-tablet">
                       {s.end_date ? (
                         <div>
                           <div style={{ fontSize: 11, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{fmtDate(s.end_date)}</div>
