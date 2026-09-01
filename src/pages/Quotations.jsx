@@ -621,6 +621,20 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
     else alert('Error: ' + error.message)
   }
 
+  // ดึงใบเสนอราคาที่ "ส่งแล้ว" กลับมาเป็น "ร่าง" เพื่อแก้ไข -- ทำทั้งสองอย่าง
+  // ในคลิกเดียว (เปลี่ยนสถานะ + เปิดฟอร์มแก้ไขทันที) แทนที่จะให้กดสองครั้ง
+  // ต้องเปลี่ยนสถานะกลับไปร่างก่อน เพราะปุ่มแก้ไข (ดินสอ) เดิมโชว์เฉพาะ
+  // status==='draft' เท่านั้น -- จำกัดไว้แค่ status==='sent' เพราะใบที่
+  // "ยอมรับ" แล้วอาจมีไซท์งาน/ใบแจ้งหนี้ผูกอยู่แล้ว ดึงกลับไม่ปลอดภัยเท่า
+  const handlePullBackToEdit = async (qt) => {
+    const { error } = await supabase.from('quotations').update({ status: 'draft' }).eq('id', qt.id)
+    if (error) { alert('Error: ' + error.message); return }
+    await auditLog('quotations', qt.id, 'UPDATE', null, { status: 'draft' })
+    setEditRow({ ...qt, status: 'draft' })
+    setShowAdd(true)
+    refetch()
+  }
+
   // Recomputes sites.contract_value/contract_value_no_vat as the sum of
   // every accepted quotation attached to this site -- not a one-time set,
   // so the site stays correct as more quotations attach later (e.g. a
@@ -783,6 +797,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                           <>
                             <button className="btn btn-sm btn-primary" onClick={() => setSignTarget(qt)} title="เซ็นรับต่อหน้า (ส่งอุปกรณ์ให้ลูกค้าเซ็นตรงนี้)">🖊️ เซ็นรับ</button>
                             <button className="btn btn-sm btn-ghost" onClick={() => setLinkTarget(qt)}>🔗 ลิงก์เซ็นรับ</button>
+                            <button className="btn btn-sm btn-edit" onClick={() => handlePullBackToEdit(qt)} title="ดึงกลับมาเป็นร่างเพื่อแก้ไข">↩️ แก้ไข</button>
                             <button className="btn btn-sm btn-ghost" onClick={() => handleSetStatus(qt.id, 'rejected')}>ปฏิเสธ</button>
                             <button className="btn btn-sm btn-ghost" onClick={() => handleSetStatus(qt.id, 'expired')}>หมดอายุ</button>
                           </>
