@@ -687,13 +687,29 @@ export function useSickLeaveQuotaUsage(year) {
 
 // ── Sites Progress (WORKER-safe) ──────────────────────────────
 
-/** ข้อมูลไซท์งานแบบไม่มีตัวเลขการเงิน (สำหรับ WORKER) — site_number, name, status, billing_pct */
+/** ข้อมูลไซท์งานแบบไม่มีตัวเลขการเงิน (สำหรับ ADMIN เท่านั้น) — site_number, name, status, billing_pct.
+ *  หมายเหตุ: ชื่อฟังก์ชันนี้ทำให้เข้าใจผิดว่า WORKER อ่านได้ -- จริงๆ แล้ว
+ *  sites_progress เป็น security_invoker=true บน sites ซึ่ง RLS อนุญาต
+ *  แค่ admin_reads เท่านั้น เรียกจาก WORKER จะได้ 0 แถวเงียบๆ ดู
+ *  useMySiteNames() ด้านล่างสำหรับ path ที่ WORKER ใช้ได้จริง */
 export function useSitesProgress() {
   return useQuery(async () => {
     const { data, error } = await supabase
       .from('sites_progress')
       .select('id, site_number, name, status, start_date, end_date, billing_pct')
       .order('site_number')
+    if (error) throw error
+    return data
+  })
+}
+
+/** ชื่อไซท์งานที่พนักงาน (WORKER) มี assignment อยู่ -- ผ่าน SECURITY DEFINER
+ *  function เพราะ sites เป็น admin/owner-read-only โดยตรง (ดูคอมเมนต์ที่
+ *  get_my_site_names() ใน schema.sql) คืนแค่ id/site_number/name เท่านั้น
+ *  ไม่มีตัวเลขการเงิน ใช้แทน useSitesProgress() ใน MySchedule.jsx */
+export function useMySiteNames() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.rpc('get_my_site_names')
     if (error) throw error
     return data
   })

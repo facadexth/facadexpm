@@ -9,7 +9,7 @@
 // ============================================================
 import { useMemo } from 'react'
 import { useUserRole } from '../../hooks/useUserRole.js'
-import { useAllActiveWorkers, useAssignmentsRange, useWorkerOTRange, useSitesProgress, useLeaveQuotaUsage } from '../../hooks/useSupabase.js'
+import { useAllActiveWorkers, useAssignmentsRange, useWorkerOTRange, useMySiteNames, useLeaveQuotaUsage } from '../../hooks/useSupabase.js'
 import { DOW_TH } from './constants.js'
 import AssignCell from './AssignCell.jsx'
 import TodayCheckinCard from './TodayCheckinCard.jsx'
@@ -23,7 +23,7 @@ export default function MySchedule({ from, to, days, view }) {
   const { data: workers } = useAllActiveWorkers()
   const { data: assignments } = useAssignmentsRange(from, to)
   const { data: otEntries } = useWorkerOTRange(from, to)
-  const { data: sites } = useSitesProgress()
+  const { data: sites } = useMySiteNames()
   const now = new Date()
   const { data: leaveUsed } = useLeaveQuotaUsage(now.getFullYear())
 
