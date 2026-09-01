@@ -1962,7 +1962,7 @@ BEGIN
 
   IF NOT EXISTS (
     SELECT 1 FROM worker_assignments
-    WHERE worker_id = v_worker_id AND site_id = p_site_id AND date = v_today AND type = 'site'
+    WHERE worker_id = v_worker_id AND site_id = p_site_id AND date = v_today AND type = 'site' AND tenant_id = v_tenant_id
   ) THEN
     RETURN QUERY SELECT false, NULL::NUMERIC, NULL::NUMERIC, 'ไม่พบตารางงานของคุณที่ไซท์นี้วันนี้ — ติดต่อสำนักงาน'::TEXT;
     RETURN;
@@ -1988,7 +1988,7 @@ BEGIN
   UPDATE worker_assignments
   SET confirmed_at = now(), confirmed_by = 'checkin'
   WHERE worker_id = v_worker_id AND site_id = p_site_id AND date = v_today
-    AND type = 'site' AND confirmed_at IS NULL;
+    AND type = 'site' AND confirmed_at IS NULL AND tenant_id = v_tenant_id;
 
   RETURN QUERY SELECT true, v_distance, v_radius, 'เช็คอินสำเร็จ'::TEXT;
 END;
@@ -2019,12 +2019,20 @@ BEGIN
     RETURN;
   END IF;
 
-  IF NOT EXISTS (SELECT 1 FROM worker_checkins WHERE worker_id = v_worker_id AND site_id = p_site_id AND date = v_today) THEN
+  IF NOT EXISTS (
+    SELECT 1 FROM worker_checkins
+    WHERE worker_id = v_worker_id AND site_id = p_site_id AND date = v_today AND tenant_id = v_tenant_id
+  ) THEN
     RETURN QUERY SELECT false, NULL::NUMERIC, NULL::NUMERIC, 'ยังไม่ได้เช็คอินวันนี้ — เช็คอินก่อนจึงจะเช็คเอาท์ได้'::TEXT;
     RETURN;
   END IF;
 
   SELECT lat, lng INTO v_site_lat, v_site_lng FROM sites WHERE id = p_site_id AND tenant_id = v_tenant_id;
+  IF v_site_lat IS NULL OR v_site_lng IS NULL THEN
+    RETURN QUERY SELECT false, NULL::NUMERIC, NULL::NUMERIC, 'ไซท์งานนี้ยังไม่ได้ตั้งพิกัด — ติดต่อสำนักงาน'::TEXT;
+    RETURN;
+  END IF;
+
   SELECT COALESCE((SELECT value::numeric FROM app_settings WHERE tenant_id = v_tenant_id AND key = 'checkin_radius_m'), 200)
     INTO v_radius;
   v_distance := haversine_distance_m(p_lat, p_lng, v_site_lat, v_site_lng);
@@ -2037,7 +2045,7 @@ BEGIN
 
   UPDATE worker_checkins
   SET checkout_at = now(), checkout_lat = p_lat, checkout_lng = p_lng, checkout_distance_m = v_distance
-  WHERE worker_id = v_worker_id AND site_id = p_site_id AND date = v_today;
+  WHERE worker_id = v_worker_id AND site_id = p_site_id AND date = v_today AND tenant_id = v_tenant_id;
 
   -- OT fields are optional -- the frontend (Task 7) decides whether the
   -- checkout time crosses the regular-shift-end setting and only passes
@@ -2056,6 +2064,8 @@ BEGIN
 END;
 $$;
 
+REVOKE EXECUTE ON FUNCTION perform_worker_checkin(UUID, NUMERIC, NUMERIC) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION perform_worker_checkout(UUID, NUMERIC, NUMERIC, TIME, TIME, NUMERIC, BOOLEAN, TEXT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION perform_worker_checkin(UUID, NUMERIC, NUMERIC) TO authenticated;
 GRANT EXECUTE ON FUNCTION perform_worker_checkout(UUID, NUMERIC, NUMERIC, TIME, TIME, NUMERIC, BOOLEAN, TEXT) TO authenticated;
 
