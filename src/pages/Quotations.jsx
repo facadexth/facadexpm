@@ -368,17 +368,15 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
 
       <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
         <div>
-          {mySignature && (
-            <img src={mySignature.url} alt="" crossOrigin="anonymous"
-              style={{ height: 36, display: 'block', margin: '0 auto 4px' }} />
-          )}
+          <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+            {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
+          </div>
           <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้เสนอราคา</div>
         </div>
         <div>
-          {clientSignature && (
-            <img src={clientSignature.url} alt="" crossOrigin="anonymous"
-              style={{ height: 36, display: 'block', margin: '0 auto 4px' }} />
-          )}
+          <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+            {clientSignature && <img src={clientSignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
+          </div>
           <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้ยอมรับ (ลูกค้า)</div>
           {clientSignature && (
             <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>

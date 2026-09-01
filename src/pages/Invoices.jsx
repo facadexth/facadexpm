@@ -580,17 +580,15 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, cl
 
       <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
         <div>
-          {mySignature && (
-            <img src={mySignature.url} alt="" crossOrigin="anonymous"
-              style={{ height: 36, display: 'block', margin: '0 auto 4px' }} />
-          )}
+          <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+            {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
+          </div>
           <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>{signatures[0]}</div>
         </div>
         <div>
-          {recipientSignature && (
-            <img src={recipientSignature.url} alt="" crossOrigin="anonymous"
-              style={{ height: 36, display: 'block', margin: '0 auto 4px' }} />
-          )}
+          <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+            {recipientSignature && <img src={recipientSignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
+          </div>
           <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>{signatures[1]}</div>
           {recipientSignature && (
             <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>
@@ -954,13 +952,15 @@ function WorkPhotosDocumentModal({ invoice, tenant, photos, urls, onClose }) {
                   <>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6mm', textAlign: 'center', fontSize: 10 }}>
                       <div>
-                        {mySignature && (
-                          <img src={mySignature.url} alt="" crossOrigin="anonymous"
-                            style={{ height: '8mm', display: 'block', margin: '0 auto 1mm' }} />
-                        )}
+                        <div style={{ height: '9mm', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                          {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: '8mm', display: 'block' }} />}
+                        </div>
                         <div style={{ borderTop: '1px solid #999', paddingTop: '2mm' }}>ผู้จัดทำ</div>
                       </div>
-                      <div style={{ borderTop: '1px solid #999', paddingTop: '2mm' }}>ผู้รับสินค้า/งาน</div>
+                      <div>
+                        <div style={{ height: '9mm' }} />
+                        <div style={{ borderTop: '1px solid #999', paddingTop: '2mm' }}>ผู้รับสินค้า/งาน</div>
+                      </div>
                     </div>
                     <div style={{ marginTop: '4mm', textAlign: 'center', fontSize: 9.5 }}>
                       วันที่จัดทำเอกสาร {new Date().toLocaleDateString('th-TH')}
