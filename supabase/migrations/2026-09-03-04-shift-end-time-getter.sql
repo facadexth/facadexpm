@@ -17,4 +17,5 @@ AS $$
   SELECT COALESCE((SELECT value FROM app_settings WHERE tenant_id = current_tenant_id() AND key = 'regular_shift_end_time'), '17:00');
 $$;
 
+REVOKE EXECUTE ON FUNCTION get_regular_shift_end_time() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION get_regular_shift_end_time() TO authenticated;
