@@ -73,6 +73,30 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     }
   }
 
+  // เช็คอิน/เช็คเอาท์ตำแหน่งที่ตั้ง -- ระยะที่ยอมให้เช็คอินได้ (เมตร) และเวลา
+  // เลิกงานปกติ (ใช้ตัดสินว่าการเช็คเอาท์หลังจากนี้นับเป็น OT หรือไม่)
+  const { data: checkinRadiusVal, refetch: refetchCheckinRadius } = useAppSetting('checkin_radius_m', '200')
+  const { data: shiftEndVal, refetch: refetchShiftEnd } = useAppSetting('regular_shift_end_time', '17:00')
+  const [checkinRadius, setCheckinRadius] = useState('')
+  const [shiftEnd, setShiftEnd] = useState('')
+  const [savingCheckin, setSavingCheckin] = useState(false)
+  useEffect(() => { if (checkinRadiusVal != null) setCheckinRadius(String(checkinRadiusVal)) }, [checkinRadiusVal])
+  useEffect(() => { if (shiftEndVal != null) setShiftEnd(String(shiftEndVal)) }, [shiftEndVal])
+
+  const handleSaveCheckinSettings = async () => {
+    setSavingCheckin(true)
+    try {
+      await saveAppSetting('checkin_radius_m', parseFloat(checkinRadius) || 200)
+      await saveAppSetting('regular_shift_end_time', shiftEnd || '17:00')
+      refetchCheckinRadius(); refetchShiftEnd()
+      alert('✅ บันทึกการตั้งค่าเช็คอินแล้ว')
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setSavingCheckin(false)
+    }
+  }
+
   // Contractor type — stored on tenants.contractor_type_id
   const { tenant, hasModuleAccess, refetch: refetchTenant } = useTenant()
 
@@ -309,6 +333,29 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           </div>
         </div>
       )}
+
+      {/* ── เช็คอินตำแหน่งที่ตั้ง ── */}
+      <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
+        <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>📍 เช็คอิน/เช็คเอาท์ตำแหน่งที่ตั้ง</h2>
+        <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
+          พนักงานต้องอยู่ในระยะที่กำหนดจากไซท์งานจึงจะเช็คอินได้ — งานปกติเช็คอินอย่างเดียวก็ยืนยันแล้ว ส่วน OT ต้องเช็คเอาท์หลังเวลาเลิกงานปกติด้วย
+        </p>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div>
+            <label className="label">ระยะที่ยอมให้เช็คอิน (เมตร)</label>
+            <input type="number" className="input" min="10" step="10" style={{ width: 160 }}
+              value={checkinRadius} onChange={e => setCheckinRadius(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">เวลาเลิกงานปกติ (ใช้ตัดสิน OT)</label>
+            <input type="time" className="input" style={{ width: 160 }}
+              value={shiftEnd} onChange={e => setShiftEnd(e.target.value)} />
+          </div>
+          <button className="btn btn-primary" onClick={handleSaveCheckinSettings} disabled={savingCheckin}>
+            {savingCheckin ? '⏳ กำลังบันทึก...' : '✅ บันทึก'}
+          </button>
+        </div>
+      </div>
 
       {/* ── ลายเซ็นของฉัน ── */}
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
