@@ -188,7 +188,7 @@ body {
 .table-wrap { overflow-x: auto; max-height: 560px; overflow-y: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 thead th {
-  padding: 10px 14px; text-align: left; background: var(--bg3);
+  padding: 10px 14px; text-align: center; background: var(--bg3);
   color: var(--text2); font-size: 11px; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.5px;
   border-bottom: 1px solid var(--border);
@@ -379,6 +379,16 @@ th.sortable:hover { color: var(--accent); }
 .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text2); }
 .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
 
+/* Tablet range (iPad portrait/landscape and similar) -- tables with many
+   columns (Sites: 11, Expenses/Assign: 10) genuinely don't fit an iPad's
+   width with the desktop cell padding; reclaim horizontal space from
+   padding first, since that's pure whitespace, before any column has to
+   be dropped or text has to truncate. */
+@media (max-width: 1024px) {
+  .app-main { padding: 12px !important; }
+  thead th, tbody td { padding: 8px 8px; }
+  table { font-size: 12px; }
+}
 @media (max-width: 900px) {
   .kpi-grid-7, .kpi-grid-6 { grid-template-columns: repeat(3, 1fr); }
   .kpi-grid-5 { grid-template-columns: repeat(3, 1fr); }

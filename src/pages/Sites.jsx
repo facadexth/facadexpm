@@ -10,7 +10,8 @@
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useSites, useLaborCost, useClients, useSeatStatus } from '../hooks/useSupabase.js'
-import { TrashIcon, PencilIcon, LinkIcon } from '../components/icons.jsx'
+import { PencilIcon, LinkIcon } from '../components/icons.jsx'
+import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { useTenant } from '../hooks/useTenant.js'
@@ -408,22 +409,24 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                   <tr key={s.id}>
                     <td style={{ color: 'var(--accent)', fontSize: 11, whiteSpace: 'nowrap' }}>{s.site_number}</td>
                     <td>
-                      <div
-                        style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
-                        onClick={() => openSiteOverview(s.id)}
-                      >
-                        <LinkIcon /> {s.name}
-                        {s.map_url && (
-                          <a href={s.map_url} target="_blank" rel="noreferrer" title="เปิดแผนที่ Google Maps"
-                            style={{ textDecoration: 'none', fontSize: 13 }} onClick={e => e.stopPropagation()}>📍</a>
+                      <div style={{ width: 130, overflowWrap: 'break-word' }}>
+                        <div
+                          style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'flex-start', gap: 6, cursor: 'pointer' }}
+                          onClick={() => openSiteOverview(s.id)}
+                        >
+                          <LinkIcon /> <span>{s.name}</span>
+                          {s.map_url && (
+                            <a href={s.map_url} target="_blank" rel="noreferrer" title="เปิดแผนที่ Google Maps"
+                              style={{ textDecoration: 'none', fontSize: 13, flexShrink: 0 }} onClick={e => e.stopPropagation()}>📍</a>
+                          )}
+                        </div>
+                        {(s.client_display_name || s.client_name) && (
+                          <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                            {s.client_number && <span style={{ color: 'var(--accent)' }}>{s.client_number} · </span>}
+                            {s.client_display_name || s.client_name}
+                          </div>
                         )}
                       </div>
-                      {(s.client_display_name || s.client_name) && (
-                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-                          {s.client_number && <span style={{ color: 'var(--accent)' }}>{s.client_number} · </span>}
-                          {s.client_display_name || s.client_name}
-                        </div>
-                      )}
                     </td>
                     <td>
                       <span className={`badge badge-status-${s.status?.toLowerCase().replace(' ','-')}`}>{s.status}</span>
@@ -493,10 +496,10 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                       {canEdit && (
                         <div className="actions-cell">
                           <button className="btn btn-sm btn-edit" onClick={() => { setEditSite(s); setShowForm(true) }}><PencilIcon /></button>
-                          {s.status === 'Ongoing' && (
-                            <button className="btn btn-sm btn-warning" onClick={() => setCompleteId(s.id)} title="จบไซท์งาน">✅ จบงาน</button>
-                          )}
-                          <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(s.id)} title="ลบ"><TrashIcon /></button>
+                          <RowActionsMenu items={[
+                            ...(s.status === 'Ongoing' ? [{ label: '✅ จบไซท์งาน', onClick: () => setCompleteId(s.id) }] : []),
+                            { label: '🗑️ ลบ', onClick: () => setDeleteId(s.id), danger: true },
+                          ]} />
                         </div>
                       )}
                     </td>
