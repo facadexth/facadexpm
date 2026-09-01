@@ -2684,7 +2684,11 @@ SELECT
   -- Appended at the end: CREATE OR REPLACE VIEW requires existing column
   -- name/position to stay stable, so new columns must land last.
   COALESCE(wc.labor_cost, 0) + COALESCE(wo.ot_cost, 0) AS worker_labor_cost,
-  COALESCE(sc.subcontractor_labor_cost, 0)             AS subcontractor_labor_cost
+  COALESCE(sc.subcontractor_labor_cost, 0)             AS subcontractor_labor_cost,
+  -- GPS check-in coordinates (added 2026-09-03-05). SiteForm's edit mode is
+  -- populated from THIS view, not from `sites` -- without these two columns
+  -- every site edit silently wrote lat/lng back as NULL.
+  s.lat, s.lng
 FROM sites s
 LEFT JOIN clients c ON s.client_id = c.id
 LEFT JOIN (
