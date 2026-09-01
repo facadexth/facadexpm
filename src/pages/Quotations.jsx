@@ -23,9 +23,9 @@ import { format, startOfYear, endOfYear } from 'date-fns'
 import { lineTotal, calcQuotationTotals } from '../lib/quotationCalc.js'
 import { SiteForm, siteFormToPayload } from './Sites.jsx'
 import { downloadPDF, downloadJPG, printTagFor } from '../lib/pdf.js'
-import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import SignLinkModal from '../components/SignLinkModal.jsx'
 import DocumentReceiptModal from '../components/DocumentReceiptModal.jsx'
+import RowActionsMenu from '../components/RowActionsMenu.jsx'
 
 const clientOpts = (clients) => (clients || []).map(c => ({
   value: c.id, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
@@ -789,17 +789,21 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                         {canEdit && qt.status === 'draft' && (
                           <>
                             <button className="btn btn-sm btn-primary" onClick={() => handleSetStatus(qt.id, 'sent')}>📤 ส่ง</button>
-                            <button className="btn btn-sm btn-edit" onClick={() => { setEditRow(qt); setShowAdd(true) }}><PencilIcon /></button>
-                            <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(qt.id)}><TrashIcon /></button>
+                            <RowActionsMenu items={[
+                              { label: '✏️ แก้ไข', onClick: () => { setEditRow(qt); setShowAdd(true) } },
+                              { label: '🗑️ ลบ', onClick: () => setDeleteId(qt.id), danger: true },
+                            ]} />
                           </>
                         )}
                         {canEdit && qt.status === 'sent' && (
                           <>
                             <button className="btn btn-sm btn-primary" onClick={() => setSignTarget(qt)} title="เซ็นรับต่อหน้า (ส่งอุปกรณ์ให้ลูกค้าเซ็นตรงนี้)">🖊️ เซ็นรับ</button>
-                            <button className="btn btn-sm btn-ghost" onClick={() => setLinkTarget(qt)}>🔗 ลิงก์เซ็นรับ</button>
-                            <button className="btn btn-sm btn-edit" onClick={() => handlePullBackToEdit(qt)} title="ดึงกลับมาเป็นร่างเพื่อแก้ไข">↩️ แก้ไข</button>
-                            <button className="btn btn-sm btn-ghost" onClick={() => handleSetStatus(qt.id, 'rejected')}>ปฏิเสธ</button>
-                            <button className="btn btn-sm btn-ghost" onClick={() => handleSetStatus(qt.id, 'expired')}>หมดอายุ</button>
+                            <RowActionsMenu items={[
+                              { label: '🔗 ลิงก์เซ็นรับ', onClick: () => setLinkTarget(qt) },
+                              { label: '↩️ แก้ไข (ดึงกลับเป็นร่าง)', onClick: () => handlePullBackToEdit(qt) },
+                              { label: 'ปฏิเสธ', onClick: () => handleSetStatus(qt.id, 'rejected') },
+                              { label: 'หมดอายุ', onClick: () => handleSetStatus(qt.id, 'expired') },
+                            ]} />
                           </>
                         )}
                         {canEdit && qt.status === 'accepted' && !qt.site_id && (
