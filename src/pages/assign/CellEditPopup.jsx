@@ -120,11 +120,16 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
             />
           </div>
         )}
-        {needsSite && existing && (
+        {/* เฉพาะ type === 'site' เท่านั้น ไม่ใช่ needsSite (ซึ่งรวม factory ด้วย):
+            แถว factory นับเป็นค่าแรง/ค่าเดินทางทันทีอยู่แล้ว และไม่มีทางได้รับ
+            การเช็คอินจริง การโชว์สถานะ "รอการยืนยัน" ตรงนั้นจึงชวนเข้าใจผิด */}
+        {form.type === 'site' && existing && (
           <div style={{ fontSize: 12.5 }}>
             {existing.confirmed_at ? (
               <span style={{ color: 'var(--green)' }}>
-                ✅ {existing.confirmed_by === 'checkin' ? 'ยืนยันแล้ว (เช็คอินจริง)' : `ยืนยันโดยแอดมิน (${existing.confirmed_by})`}
+                ✅ {existing.confirmed_by === 'checkin' ? 'ยืนยันแล้ว (เช็คอินจริง)'
+                  : existing.confirmed_by === 'legacy' ? 'ยืนยันอัตโนมัติ (ข้อมูลเดิมก่อนเริ่มระบบเช็คอิน)'
+                  : `ยืนยันโดยแอดมิน (${existing.confirmed_by})`}
                 {' '}· {new Date(existing.confirmed_at).toLocaleString('th-TH')}
               </span>
             ) : (

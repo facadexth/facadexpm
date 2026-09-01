@@ -533,7 +533,7 @@ export default function HR() {
       const to   = new Date(year, month, 0).toISOString().slice(0,10)
       const { data: assigns, error } = await supabase
         .from('worker_assignments')
-        .select('worker_id, type, ot_hours, date, workers(id, name, nickname, monthly_salary, monthly_contribution, has_social_security)')
+        .select('worker_id, type, ot_hours, date, confirmed_at, workers(id, name, nickname, monthly_salary, monthly_contribution, has_social_security)')
         .gte('date', from).lte('date', to)
       if (error) throw error
       // Legacy 'leave' rows (created before the sick/personal split) are
@@ -554,13 +554,21 @@ export default function HR() {
 
       // Count each worker's site/factory shifts that fall on a company
       // holiday OR a Sunday — both pay at the same holiday-rate premium.
+      //
+      // Same confirmation gate labor_cost_by_site applies (2026-09-03-03):
+      // a 'site' shift only earns the holiday premium once it's confirmed —
+      // a real GPS check-in, an admin override, or the pre-feature 'legacy'
+      // backfill (2026-09-03-06). 'factory' counts unconditionally: there's
+      // no site to check in at. Base monthly_salary is untouched by this —
+      // the gate applies only to the holiday-shift premium.
       const holidayRows = await fetchCompanyHolidaysForRange(from, to)
       const holidaySet = new Set(holidayRows.map(h => h.date))
       const holidayMultiplier = parseFloat(multiplierVal) || 1.5
       ;(assigns||[]).forEach(a => {
         if (!wmap[a.worker_id]) return
         const isHolidayRateDay = holidaySet.has(a.date) || new Date(a.date).getDay() === 0
-        if (SITE_TYPES.includes(a.type) && isHolidayRateDay) {
+        const countsForHoliday = SITE_TYPES.includes(a.type) && (a.type === 'factory' || !!a.confirmed_at)
+        if (countsForHoliday && isHolidayRateDay) {
           wmap[a.worker_id].holiday_shifts = (wmap[a.worker_id].holiday_shifts || 0) + 1
         }
       })

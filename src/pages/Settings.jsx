@@ -84,9 +84,17 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   useEffect(() => { if (shiftEndVal != null) setShiftEnd(String(shiftEndVal)) }, [shiftEndVal])
 
   const handleSaveCheckinSettings = async () => {
+    // ตรวจก่อนบันทึกจริง -- เดิมใช้ `parseFloat(...) || 200` ซึ่งทำให้ค่า 0
+    // (หรือค่าที่แปลงไม่ได้) กลายเป็น 200 เงียบๆ พร้อมข้อความว่าบันทึกสำเร็จ
+    // และ min="10" บน input ก็ไม่ถูกบังคับตอน submit
+    const radius = parseFloat(checkinRadius)
+    if (Number.isNaN(radius) || radius < 10) {
+      alert('ระยะต้องมีค่าอย่างน้อย 10 เมตร')
+      return
+    }
     setSavingCheckin(true)
     try {
-      await saveAppSetting('checkin_radius_m', parseFloat(checkinRadius) || 200)
+      await saveAppSetting('checkin_radius_m', radius)
       await saveAppSetting('regular_shift_end_time', shiftEnd || '17:00')
       refetchCheckinRadius(); refetchShiftEnd()
       alert('✅ บันทึกการตั้งค่าเช็คอินแล้ว')

@@ -326,22 +326,6 @@ export function useReceipts(invoiceIds) {
 // ใบแจ้งหนี้) เมื่อลูกค้าเซ็นผ่านลิงก์ระยะไกลแล้ว เอาแค่ใบล่าสุด เพราะแต่ละ
 // เอกสารเซ็นได้ครั้งเดียวจริงๆ (ลิงก์ใช้ซ้ำไม่ได้ ดู sign-link Edge Function)
 // แต่เผื่อกรณี edge case มีมากกว่า 1 แถวไว้ก่อน
-// วันนี้ พนักงานเช็คอิน/เช็คเอาท์ที่ไซท์นี้แล้วหรือยัง -- ใช้โดย
-// TodayCheckinCard (MySchedule) เพื่อตัดสินใจว่าจะโชว์ปุ่ม "เช็คอิน" /
-// "เช็คเอาท์" / เสร็จแล้ว สำหรับไซท์นั้นๆ (คนละแถวต่อไซท์ ต่อวัน)
-export function useTodayCheckin(workerId, siteId, date) {
-  return useQuery(async () => {
-    if (!workerId || !siteId || !date) return null
-    const { data, error } = await supabase
-      .from('worker_checkins')
-      .select('*')
-      .eq('worker_id', workerId).eq('site_id', siteId).eq('date', date)
-      .maybeSingle()
-    if (error) throw error
-    return data
-  }, [workerId, siteId, date])
-}
-
 export function useDocumentReceipt(documentType, documentId) {
   return useQuery(async () => {
     if (!documentType || !documentId) return null
@@ -356,6 +340,22 @@ export function useDocumentReceipt(documentType, documentId) {
     if (error) throw error
     return data
   }, [documentType, documentId])
+}
+
+// วันนี้ พนักงานเช็คอิน/เช็คเอาท์ที่ไซท์นี้แล้วหรือยัง -- ใช้โดย
+// TodayCheckinCard (MySchedule) เพื่อตัดสินใจว่าจะโชว์ปุ่ม "เช็คอิน" /
+// "เช็คเอาท์" / เสร็จแล้ว สำหรับไซท์นั้นๆ (คนละแถวต่อไซท์ ต่อวัน)
+export function useTodayCheckin(workerId, siteId, date) {
+  return useQuery(async () => {
+    if (!workerId || !siteId || !date) return null
+    const { data, error } = await supabase
+      .from('worker_checkins')
+      .select('*')
+      .eq('worker_id', workerId).eq('site_id', siteId).eq('date', date)
+      .maybeSingle()
+    if (error) throw error
+    return data
+  }, [workerId, siteId, date])
 }
 
 // ลายเซ็นส่วนตัวของผู้ใช้ที่ล็อกอินอยู่ตอนนี้ -- วาดครั้งเดียวที่หน้าตั้งค่า

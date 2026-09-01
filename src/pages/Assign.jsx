@@ -155,16 +155,30 @@ export default function Assign({ navState, openSiteOverview }) {
     finally { setSaving(false) }
   }
 
+  // ยืนยันเอง (แอดมิน override) -- first-confirmation-wins เหมือนฝั่ง SQL
+  // (perform_worker_checkin ก็มี AND confirmed_at IS NULL เหมือนกัน) ป้องกัน
+  // ไม่ให้ป๊อปอัปที่ค้างอยู่เขียนทับการเช็คอินจริงที่พนักงานเพิ่งกดไป: ถ้า
+  // .is('confirmed_at', null) ไม่แมตช์แถวไหนเลย แปลว่ามีคนยืนยันไปแล้ว --
+  // ดึงข้อมูลใหม่แทนที่จะอัปเดต state เหมือนสำเร็จ
   const handleConfirm = async () => {
     if (!cellTarget?.existing?.id) return
     setSaving(true)
     try {
-      const { error } = await supabase.from('worker_assignments')
-        .update({ confirmed_at: new Date().toISOString(), confirmed_by: user?.email })
+      const confirmedAt = new Date().toISOString()
+      const { data, error } = await supabase.from('worker_assignments')
+        .update({ confirmed_at: confirmedAt, confirmed_by: user?.email })
         .eq('id', cellTarget.existing.id)
+        .is('confirmed_at', null)
+        .select()
       if (error) throw error
+      if (!data || data.length === 0) {
+        alert('รายการนี้ถูกยืนยันไปแล้ว — กำลังรีเฟรช')
+        setCellTarget(null)
+        refetch()
+        return
+      }
       refetch()
-      setCellTarget(t => t && { ...t, existing: { ...t.existing, confirmed_at: new Date().toISOString(), confirmed_by: user?.email } })
+      setCellTarget(t => t && { ...t, existing: { ...t.existing, confirmed_at: confirmedAt, confirmed_by: user?.email } })
     } catch (e) { alert('Error: ' + e.message) }
     finally { setSaving(false) }
   }
