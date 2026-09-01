@@ -268,7 +268,7 @@ function AcceptQuotationModal({ quotation, totals, clients, sites, hasModuleAcce
 // Extracted so a past revision's snapshot can render through the exact
 // same markup as the live document, not a separate summary — the only
 // difference is which data feeds it and the doc-info tag.
-function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, clientName, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes, clientSignature }) {
+function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes, clientSignature }) {
   const totals = calcQuotationTotals(items, { hasVat, priceIncludesVat, discountAmount, discountPct })
   const mySignature = useMySignatureUrl()
 
@@ -303,8 +303,10 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
         <div><span style={{ color: '#6a6f85' }}>แก้ไขครั้งที่</span><br />{revision || 1}</div>
       </div>
 
-      <div style={{ marginTop: 16, fontSize: 12.5, lineHeight: 1.8 }}>
-        <strong style={{ fontSize: 13 }}>ลูกค้า:</strong> {clientName}
+      <div style={{ marginTop: 16, fontSize: 12.5, lineHeight: 1.9, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 10px' }}>
+        <span style={{ color: '#6a6f85' }}>ลูกค้า</span><strong>{clientName || '—'}</strong>
+        {clientTaxId && <><span style={{ color: '#6a6f85' }}>เลขประจำตัวผู้เสียภาษี</span><span>{clientTaxId}</span></>}
+        {clientAddress && <><span style={{ color: '#6a6f85' }}>ที่อยู่</span><span>{clientAddress}</span></>}
       </div>
 
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 18 }}>
@@ -422,7 +424,7 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
         <QuotationPaper
           elementId={elementId} tenant={tenant} quotationNumber={qt.quotation_number} tag={printTag}
           date={qt.date} validUntil={qt.valid_until} revision={qt.revision || 1}
-          clientName={qt.clients?.name} items={qt.quotation_items || []}
+          clientName={qt.clients?.name} clientAddress={qt.clients?.address} clientTaxId={qt.clients?.tax_id} items={qt.quotation_items || []}
           hasVat={qt.has_vat} priceIncludesVat={qt.price_includes_vat}
           discountAmount={qt.discount_amount} discountPct={qt.discount_pct}
           paymentTerms={qt.payment_terms} notes={qt.notes}
