@@ -579,19 +579,19 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, cl
       {notesBlock}
 
       <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
-        <div style={{ borderTop: '1px solid #999', paddingTop: mySignature ? 4 : 8 }}>
+        <div>
           {mySignature && (
             <img src={mySignature.url} alt="" crossOrigin="anonymous"
               style={{ height: 36, display: 'block', margin: '0 auto 4px' }} />
           )}
-          {signatures[0]}
+          <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>{signatures[0]}</div>
         </div>
-        <div style={{ borderTop: '1px solid #999', paddingTop: recipientSignature ? 4 : 8 }}>
+        <div>
           {recipientSignature && (
             <img src={recipientSignature.url} alt="" crossOrigin="anonymous"
               style={{ height: 36, display: 'block', margin: '0 auto 4px' }} />
           )}
-          {signatures[1]}
+          <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>{signatures[1]}</div>
           {recipientSignature && (
             <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>
               {recipientSignature.signerName} · เซ็นเมื่อ {new Date(recipientSignature.signedAt).toLocaleDateString('th-TH')}
@@ -953,12 +953,12 @@ function WorkPhotosDocumentModal({ invoice, tenant, photos, urls, onClose }) {
                 {isLast && (
                   <>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6mm', textAlign: 'center', fontSize: 10 }}>
-                      <div style={{ borderTop: '1px solid #999', paddingTop: '2mm' }}>
+                      <div>
                         {mySignature && (
                           <img src={mySignature.url} alt="" crossOrigin="anonymous"
                             style={{ height: '8mm', display: 'block', margin: '0 auto 1mm' }} />
                         )}
-                        ผู้จัดทำ
+                        <div style={{ borderTop: '1px solid #999', paddingTop: '2mm' }}>ผู้จัดทำ</div>
                       </div>
                       <div style={{ borderTop: '1px solid #999', paddingTop: '2mm' }}>ผู้รับสินค้า/งาน</div>
                     </div>

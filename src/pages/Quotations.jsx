@@ -367,19 +367,19 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
       )}
 
       <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
-        <div style={{ borderTop: '1px solid #999', paddingTop: mySignature ? 4 : 8 }}>
+        <div>
           {mySignature && (
             <img src={mySignature.url} alt="" crossOrigin="anonymous"
               style={{ height: 36, display: 'block', margin: '0 auto 4px' }} />
           )}
-          ผู้เสนอราคา
+          <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้เสนอราคา</div>
         </div>
-        <div style={{ borderTop: '1px solid #999', paddingTop: clientSignature ? 4 : 8 }}>
+        <div>
           {clientSignature && (
             <img src={clientSignature.url} alt="" crossOrigin="anonymous"
               style={{ height: 36, display: 'block', margin: '0 auto 4px' }} />
           )}
-          ผู้ยอมรับ (ลูกค้า)
+          <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้ยอมรับ (ลูกค้า)</div>
           {clientSignature && (
             <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>
               {clientSignature.signerName} · เซ็นเมื่อ {new Date(clientSignature.signedAt).toLocaleDateString('th-TH')}
