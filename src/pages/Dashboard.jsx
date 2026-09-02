@@ -22,6 +22,7 @@ import { getEffectiveTheme } from '../lib/theme.js'
 // permissions ที่มีอยู่แล้วในแอปนี้ ไม่ต้องมี schema/RLS ใหม่)
 const KPI_DEFS = [
   { id: 'income', label: 'รายรับรวม' },
+  { id: 'non_vat_income', label: 'รายรับไม่มี VAT' },
   { id: 'expense', label: 'รายจ่ายรวม' },
   { id: 'profit', label: 'กำไรเบื้องต้น' },
   { id: 'due_this_month', label: 'ต้องชำระเดือนนี้' },
@@ -257,6 +258,7 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
 
   // ── KPI Calculations ──
   const totalIncome  = useMemo(() => (incomes  || []).reduce((s, i) => s + (i.received_amount || 0), 0), [incomes])
+  const nonVatIncome = useMemo(() => (incomes  || []).filter(i => !i.vat).reduce((s, i) => s + (i.received_amount || 0), 0), [incomes])
   const totalExpense = useMemo(() => (expenses || []).reduce((s, e) => s + (e.amount || 0), 0), [expenses])
   const profit       = totalIncome - totalExpense
   const ongoingCount = (sites || []).filter(s => s.status === 'Ongoing').length
@@ -342,6 +344,7 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
   const availableKpiDefs = KPI_DEFS.filter(d => d.id !== 'cheque_reminder' || hasChequeTracking)
   const kpiRegistry = {
     income: <Kpi key="income" label="รายรับรวม" value={fmtShort(totalIncome)} sub={`${fmt(totalIncome)} บาท`} cls="green" color="var(--green)" />,
+    non_vat_income: <Kpi key="non_vat_income" label="รายรับไม่มี VAT" value={fmtShort(nonVatIncome)} sub={`${fmt(nonVatIncome)} บาท`} cls="green" color="var(--green)" />,
     expense: <Kpi key="expense" label="รายจ่ายรวม" value={fmtShort(totalExpense)} sub={`${fmt(totalExpense)} บาท`} cls="red" color="var(--red)" />,
     profit: <Kpi key="profit" label="กำไรเบื้องต้น" value={fmtShort(profit)} sub={profit >= 0 ? `+${(profit/totalIncome*100).toFixed(1)}%` : 'ขาดทุน'} cls={profit>=0?'green':'red'} color={profit>=0?'var(--green)':'var(--red)'} />,
     due_this_month: <Kpi key="due_this_month" label={`ต้องชำระ ${format(new Date(), 'MMM yy', {locale:th})}`} value={fmtShort(dueThisMonth)} sub="ยอดค้างจ่ายเดือนนี้" cls="yellow" color="var(--yellow)" />,
