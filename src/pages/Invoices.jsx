@@ -496,7 +496,11 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, cl
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
           {tenant?.logo_url
-            ? <img src={tenant.logo_url} alt="" style={{ height: '100%', maxHeight: 64, width: 'auto', objectFit: 'contain', flexShrink: 0 }} crossOrigin="anonymous" />
+            ? (
+              <div style={{ position: 'relative', width: 110, flexShrink: 0 }}>
+                <img src={tenant.logo_url} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'left center' }} crossOrigin="anonymous" />
+              </div>
+            )
             : <div style={{ width: 40, height: 40, borderRadius: 8, background: '#6c63ff', flexShrink: 0 }} />}
           <div>
             <div style={{ fontSize: 17, fontWeight: 800 }}>{tenant?.company_name}</div>
