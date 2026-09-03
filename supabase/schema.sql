@@ -778,6 +778,30 @@ CREATE POLICY admin_full_access ON bank_accounts FOR ALL TO authenticated
   WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id());
 
 -- ----------------------------------------------------------------
+-- UNITS — รายการหน่วยนับ (ใช้ร่วมกันทั้งฝั่งซื้อและฝั่งขาย)
+-- ----------------------------------------------------------------
+-- A per-tenant list of known unit-of-measure strings feeding a
+-- dropdown-with-inline-add reused across catalog_items, quotation_items,
+-- and purchase_order_items. Deliberately a flat name list, not tied to
+-- any conversion/base-unit system -- unit columns on those tables stay
+-- plain TEXT, this table only supplies the dropdown's known values.
+-- Added by supabase/migrations/2026-09-03-13-units.sql.
+CREATE TABLE units (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id   UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  name        TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, name)
+);
+
+CREATE INDEX idx_units_tenant_id ON units(tenant_id);
+
+ALTER TABLE units ENABLE ROW LEVEL SECURITY;
+CREATE POLICY admin_full_access ON units FOR ALL TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id())
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id());
+
+-- ----------------------------------------------------------------
 -- QUOTATIONS — ใบเสนอราคา
 -- ----------------------------------------------------------------
 -- Quotation header. status lifecycle: draft/sent/accepted/rejected/

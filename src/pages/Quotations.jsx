@@ -9,7 +9,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt, useMySignatureUrl, useBankAccounts, logDocumentPrint } from '../hooks/useSupabase.js'
+import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt, useMySignatureUrl, useBankAccounts, useUnits, logDocumentPrint } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -26,6 +26,7 @@ import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
 import DocumentReceiptModal from '../components/DocumentReceiptModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
+import UnitSelect from '../components/UnitSelect.jsx'
 
 const clientOpts = (clients) => (clients || []).map(c => ({
   value: c.id, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
@@ -55,6 +56,7 @@ const EMPTY_FORM = {
 }
 
 function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch }) {
+  const { data: units, refetch: refetchUnits } = useUnits()
   const set = (i, k, v) => onChange(items.map((it, idx) => idx === i ? { ...it, [k]: v } : it))
   const add = () => onChange([...items, { ...EMPTY_ITEM }])
   const addNote = () => onChange([...items, { ...EMPTY_NOTE }])
@@ -97,13 +99,12 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch 
               <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
             </div>
           ) : (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px 32px 32px', gap: 6, alignItems: 'center' }}>
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 150px 100px 32px 32px', gap: 6, alignItems: 'center' }}>
               <input className="input input-sm" placeholder="รายละเอียดรายการ" required
                 value={it.description} onChange={e => set(i, 'description', e.target.value)} />
               <input className="input input-sm" type="number" min="0" step="0.01" placeholder="จำนวน"
                 value={it.quantity} onChange={e => set(i, 'quantity', e.target.value)} />
-              <input className="input input-sm" placeholder="หน่วย"
-                value={it.unit} onChange={e => set(i, 'unit', e.target.value)} />
+              <UnitSelect value={it.unit} onChange={v => set(i, 'unit', v)} units={units} onUnitAdded={refetchUnits} />
               <input className="input input-sm" type="number" min="0" step="0.01" placeholder="ราคา/หน่วย"
                 value={it.unit_price} onChange={e => set(i, 'unit_price', e.target.value)} />
               {!it.catalog_item_id && it.description.trim()

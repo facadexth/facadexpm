@@ -867,6 +867,18 @@ export function useBankAccounts() {
   })
 }
 
+// ── Units ────────────────────────────────────────────────────────
+
+/** รายการหน่วยนับที่ tenant เคยใช้/เพิ่มไว้ -- ใช้ร่วมกันทั้งฝั่งซื้อ
+ *  (purchase_order_items) และฝั่งขาย (catalog_items, quotation_items) */
+export function useUnits() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.from('units').select('*').order('name')
+    if (error) throw error
+    return data
+  })
+}
+
 /** ตั้งบัญชีนี้เป็น default ของหมวด vat_category ของมันเอง -- ต้องปลด
  *  default เดิมในหมวดเดียวกันก่อน (unique index กันไว้ให้ default ได้แค่
  *  บัญชีเดียวต่อหมวดต่อ tenant) ไม่งั้น insert/update จะชนกัน */

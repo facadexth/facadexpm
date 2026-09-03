@@ -8,12 +8,13 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useCatalogItems } from '../hooks/useSupabase.js'
+import { useCatalogItems, useUnits } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
+import UnitSelect from '../components/UnitSelect.jsx'
 
 const EMPTY_FORM = { name: '', unit: '', default_unit_price: '', active: true }
 
@@ -21,6 +22,7 @@ function CatalogItemForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
   const isAdd = !initial?.id
   const [form, setForm, clearDraft] = useDraftForm('catalog-item-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const { data: units, refetch: refetchUnits } = useUnits()
 
   return (
     <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave(form) }}>
@@ -32,7 +34,7 @@ function CatalogItemForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
         <div className="form-grid-2">
           <div>
             <label className="label">หน่วย</label>
-            <input className="input" value={form.unit} onChange={e => set('unit', e.target.value)} placeholder="เช่น ชุด, ตร.ม., เมตร" />
+            <UnitSelect value={form.unit} onChange={v => set('unit', v)} units={units} onUnitAdded={refetchUnits} />
           </div>
           <div>
             <label className="label">ราคา/หน่วย (ค่าเริ่มต้น)</label>
