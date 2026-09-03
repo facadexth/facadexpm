@@ -27,7 +27,7 @@ import SignLinkModal from '../components/SignLinkModal.jsx'
 import DocumentReceiptModal from '../components/DocumentReceiptModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import UnitSelect from '../components/UnitSelect.jsx'
-import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX } from '../hooks/usePaginatedDocument.jsx'
+import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX } from '../hooks/usePaginatedDocument.jsx'
 
 const clientOpts = (clients) => (clients || []).map(c => ({
   value: c.id, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
@@ -489,6 +489,15 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
     renderTableHeader,
     renderRow,
     renderFooter,
+    // mySignature/clientSignature resolve asynchronously (a Storage
+    // signed-URL fetch), often after `items` has already settled -- without
+    // this, the hidden measurement pass can capture the footer's height
+    // BEFORE either signature image is present, under-measuring by however
+    // tall that image is right when the footer-overflow guarantee above
+    // needs that number to be accurate. Recomputed only when either URL
+    // actually changes (not every render), so this can't spin into a
+    // remeasurement loop.
+    remeasureKey: `${mySignature?.url || ''}|${clientSignature?.url || ''}`,
   })
 
   useEffect(() => { onPageCountChange?.(pageCount) }, [pageCount, onPageCountChange])
@@ -530,7 +539,7 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
           >
             <QuotationHeader {...headerProps} pageNumber={pageIndex + 1} totalPages={pages.length} />
 
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 18 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: TABLE_MARGIN_TOP_PX }}>
               <thead>{renderTableHeader()}</thead>
               <tbody>{pageItems.map(renderRow)}</tbody>
             </table>

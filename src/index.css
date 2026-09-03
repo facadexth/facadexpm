@@ -424,15 +424,20 @@ th.sortable:hover { color: var(--accent); }
   body * { visibility: hidden; }
   .printable-document, .printable-document * { visibility: visible; }
   .printable-document {
-    /* No width override here on purpose: QuotationPaper (and any future
-       consumer) renders its printable-document root at a fixed
-       PAGE_WIDTH_PX inline style, which always wins over this class rule's
-       specificity regardless of what's written here. That fixed width is
-       load-bearing -- it's the exact width usePaginatedDocument's hidden
-       measurement pass paginates against, so browser print must render at
-       the same width too, or Thai text wraps differently than what was
-       measured and rows can overflow their page (the same class of bug
-       already fixed for the PDF/JPG export paths). */
-    position: absolute; top: 0; left: 0; margin: 0; box-shadow: none;
+    /* width:100% here is NOT dead weight, even though QuotationPaper's own
+       printable-document root always overrides it with a fixed inline
+       PAGE_WIDTH_PX (inline style beats this class rule's specificity, so
+       QuotationPaper prints at exactly the same width its pagination was
+       measured against -- see usePaginatedDocument.jsx). But DocumentPaper
+       (src/pages/Invoices.jsx, backing InvoiceDocumentModal and
+       ReceiptDocumentModal) also renders className="printable-document"
+       with NO inline width of its own -- for that component, this rule is
+       the only thing making it fill the printed page instead of
+       shrink-to-fitting its content's max-content width under this block's
+       position:absolute. Both consumers coexist correctly: whichever one
+       sets its own inline width wins; the one that doesn't falls back to
+       this. Do not remove this without checking every printable-document
+       consumer, not just QuotationPaper. */
+    position: absolute; top: 0; left: 0; width: 100%; margin: 0; box-shadow: none;
   }
 }

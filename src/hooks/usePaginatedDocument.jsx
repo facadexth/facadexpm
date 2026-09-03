@@ -15,6 +15,15 @@ export const PAGE_PADDING_V_PX = 40 // top+bottom
 export const PAGE_PADDING_H_PX = 44 // left+right
 export const PAGE_PADDING_CSS = `${PAGE_PADDING_V_PX}px ${PAGE_PADDING_H_PX}px`
 
+// The real page-div's <table> (rows) sits this far below the header/
+// doc-info block -- baked in here, and subtracted from the row budget
+// below, so every page's available row space accounts for it explicitly
+// instead of silently eating into the page-div's bottom padding (which is
+// what happened before this constant existed: the gap was real in the
+// final render but invisible to the budget math, quietly eroding the
+// safety margin PAGE_HEIGHT_PX's own comment describes).
+export const TABLE_MARGIN_TOP_PX = 18
+
 // This is the CONTENT budget only (header + table-header + rows), not a
 // page-div's own outer height -- a consuming component adds its own
 // vertical padding (PAGE_PADDING_V_PX, both top and bottom) on top of this
@@ -41,18 +50,31 @@ export const PAGE_HEIGHT_PX = 900
 // optionally, renderFooter) once in a hidden measurement pass, read their
 // real rendered heights (this is what makes Thai text wrapping -- which a
 // static estimate can't predict -- measure correctly), then bucket `items`
-// into pages that fit PAGE_HEIGHT_PX minus the (measured) header and
-// table-header heights, which repeat identically on every page.
+// into pages that fit PAGE_HEIGHT_PX minus the (measured) header,
+// table-header, and TABLE_MARGIN_TOP_PX, which repeat identically on every
+// page.
 //
 // `renderFooter` is optional and describes content (e.g. totals/notes/
 // signature) that a consumer renders ONLY on the actual last page, in the
 // same page-div as the rows -- if provided, its measured height is reserved
 // out of the LAST page's budget specifically (every other page keeps the
-// full budget), and any rows that would leave the last page too short for
-// it are spilled forward onto a new trailing page instead. Without this,
-// a fixed-height last page-div has nowhere for an over-budget footer to go
-// (no shrink-to-fit safety net the way a `minHeight` div would have had).
-export function usePaginatedDocument({ items, renderHeader, renderTableHeader, renderRow, renderFooter }) {
+// full budget). Without this, a fixed-height last page-div has nowhere for
+// an over-budget footer to go (no shrink-to-fit safety net the way a
+// `minHeight` div would have had). The returned `pages` array is
+// constructed so the footer's home is ALWAYS `pages[pages.length - 1]` --
+// callers don't need to track a separate "which page has the footer" index.
+//
+// `remeasureKey` is optional: an extra value (in addition to `items`) that,
+// when it changes, triggers a fresh measurement pass. Needed because
+// `renderHeader`/`renderFooter` can depend on things that resolve
+// asynchronously AFTER `items` has already settled (e.g. a signature image
+// URL fetched from storage) -- without a way to say "remeasure now", the
+// hidden pass permanently under-measures by whatever that async content
+// contributes. Pass something that's referentially stable until the
+// async-dependent content actually changes (e.g. a signed URL string, or a
+// composite key built from a couple of them) -- do NOT pass a value that
+// changes every render, or this reruns the measurement pass every render.
+export function usePaginatedDocument({ items, renderHeader, renderTableHeader, renderRow, renderFooter, remeasureKey }) {
   const [heights, setHeights] = useState(null)
   const headerRef = useRef(null)
   const tableHeaderRef = useRef(null)
@@ -68,7 +90,7 @@ export function usePaginatedDocument({ items, renderHeader, renderTableHeader, r
     const rowHeights = rowRefs.current.map(el => (el ? el.getBoundingClientRect().height : 0))
     setHeights({ headerHeight, tableHeaderHeight, footerHeight, rowHeights })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items])
+  }, [items, remeasureKey])
 
   const measured = heights && heights.rowHeights.length === items.length
 
@@ -85,20 +107,30 @@ export function usePaginatedDocument({ items, renderHeader, renderTableHeader, r
         // to the real render's, so Thai text wraps the same way in both.
         <div style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none', top: 0, left: -99999, width: PAGE_WIDTH_PX, padding: PAGE_PADDING_CSS, boxSizing: 'border-box', zIndex: -1 }}>
           <div ref={headerRef}>{renderHeader()}</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: TABLE_MARGIN_TOP_PX }}>
             <thead ref={tableHeaderRef}>{renderTableHeader()}</thead>
             <tbody>
               {items.map((it, i) => cloneElement(renderRow(it, i), { ref: el => { rowRefs.current[i] = el } }))}
             </tbody>
           </table>
-          {renderFooter && <div ref={footerRef}>{renderFooter()}</div>}
+          {renderFooter && (
+            // display:'flow-root' establishes a new block-formatting
+            // context for this wrapper, which makes its own box capture
+            // the footer's first child's marginTop the same way the real
+            // render does (there, the footer's children are direct flex
+            // items of a column-flex container, and flex items never
+            // margin-collapse with anything). Without this, a plain <div>
+            // wrapper here lets that marginTop collapse OUT of the
+            // measured height, under-measuring the footer vs. how it
+            // really renders.
+            <div ref={footerRef} style={{ display: 'flow-root' }}>{renderFooter()}</div>
+          )}
         </div>
       ),
     }
   }
 
-  const availableRegular = PAGE_HEIGHT_PX - heights.headerHeight - heights.tableHeaderHeight
-  const availableLast = Math.max(availableRegular - heights.footerHeight, 0)
+  const availableRegular = PAGE_HEIGHT_PX - heights.headerHeight - heights.tableHeaderHeight - TABLE_MARGIN_TOP_PX
 
   const rows = items.map((it, i) => ({ it, h: heights.rowHeights[i] }))
 
@@ -117,18 +149,47 @@ export function usePaginatedDocument({ items, renderHeader, renderTableHeader, r
   pages.push(current)
 
   // The footer (e.g. totals/notes/signature) only ever renders on the true
-  // last page, so that page alone needs the smaller `availableLast` budget.
-  // If what's currently the last page is packed too tight for the footer to
-  // fit underneath it, spill its trailing row onto a fresh page (which
-  // becomes the new last page) and re-check -- repeat until it fits. Stops
-  // once the last page is down to a single row so one oversized row can't
-  // spin this into an infinite loop; that row is left to overflow rather
-  // than starve pagination entirely.
-  while (pages.length) {
-    const last = pages[pages.length - 1]
-    const lastHeight = last.reduce((sum, r) => sum + r.h, 0)
-    if (lastHeight <= availableLast || last.length <= 1) break
-    pages.push([last.pop()])
+  // last page, so that page alone needs a smaller budget -- `availableLast`
+  // -- to leave the footer room underneath it.
+  if (renderFooter) {
+    if (heights.footerHeight <= availableRegular) {
+      const availableLast = availableRegular - heights.footerHeight
+      const last = pages[pages.length - 1]
+      // Find the maximal TRAILING run of the last page's rows whose
+      // combined height still fits within availableLast -- that run is
+      // what stays on the true final (footer-bearing) page. Everything
+      // before it in this page spills backward onto a new page inserted
+      // just ahead of it, which only ever needs the regular per-page
+      // budget (guaranteed, since it's a subset of a page that already
+      // fit within availableRegular in the first pass above). This always
+      // terminates in a single pass over `last` (no unbounded looping),
+      // and always succeeds -- worst case the trailing run is empty (the
+      // footer gets a page with zero item rows of its own), which fits
+      // because we've already confirmed footerHeight <= availableRegular.
+      let keepHeight = 0
+      let splitIndex = last.length
+      for (let i = last.length - 1; i >= 0; i--) {
+        const nextHeight = keepHeight + last[i].h
+        if (nextHeight > availableLast) break
+        keepHeight = nextHeight
+        splitIndex = i
+      }
+      if (splitIndex > 0) {
+        const overflow = last.splice(0, splitIndex) // mutates `last` down to just its fitting trailing run
+        pages.splice(pages.length - 1, 0, overflow) // insert the spilled head as a new page just before it
+      }
+    } else {
+      // The footer alone is taller than a full page's regular row budget
+      // -- an extreme amount of payment-terms/notes text. No amount of
+      // row-shuffling can make room for it alongside any item row, so give
+      // it a fully dedicated trailing page (zero items). That page's own
+      // fixed height may still not be quite enough for content this
+      // long -- there's no more page to give it -- but this is the best
+      // any pagination scheme can do short of shrinking the text itself,
+      // and it's a documented, extreme-input-only residual limit rather
+      // than the routine case Critical 2 was originally about.
+      pages.push([])
+    }
   }
 
   return { pages: pages.map(p => p.map(r => r.it)), pageCount: pages.length, measurementNode: null }
