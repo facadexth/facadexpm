@@ -292,7 +292,7 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
   const mySignature = useMySignatureUrl()
 
   return (
-    <div id={elementId} style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
+    <div id={elementId} className="printable-document" style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
           {tenant?.logo_url
@@ -460,6 +460,7 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
         <RowActionsMenu
           trigger="💾 บันทึกเอกสาร ▾" triggerClassName="btn btn-primary"
           items={[
+            { label: '🖨️ พิมพ์', onClick: () => window.print() },
             { label: '📄 บันทึกเป็น PDF', onClick: () => handleDownload('pdf', downloadPDF) },
             { label: '🖼️ บันทึกเป็น JPG', onClick: () => handleDownload('jpg', downloadJPG) },
           ]}
@@ -521,6 +522,7 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
           <RowActionsMenu
             trigger="💾 บันทึกเอกสาร ▾" triggerClassName="btn btn-primary"
             items={[
+              { label: '🖨️ พิมพ์', onClick: () => window.print() },
               { label: '📄 บันทึกเป็น PDF', onClick: () => downloadPDF(elementId, `${quotation.quotation_number}-rev${selected.revision}.pdf`) },
               { label: '🖼️ บันทึกเป็น JPG', onClick: () => downloadJPG(elementId, `${quotation.quotation_number}-rev${selected.revision}.jpg`) },
             ]}

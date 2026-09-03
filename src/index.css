@@ -414,3 +414,15 @@ th.sortable:hover { color: var(--accent); }
 @media (max-width: 420px) {
   .header-email { display: none; }
 }
+
+/* Browser print (window.print()) for a printable document -- QuotationPaper
+   and any future document paper component that gives its root element
+   className="printable-document". Hides everything else on the page
+   (nav, modal chrome, backdrop) so only the document itself prints. */
+@media print {
+  body * { visibility: hidden; }
+  .printable-document, .printable-document * { visibility: visible; }
+  .printable-document {
+    position: absolute; top: 0; left: 0; width: 100%; margin: 0; box-shadow: none;
+  }
+}
