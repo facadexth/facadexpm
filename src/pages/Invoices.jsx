@@ -12,7 +12,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, useDocumentPrintCount, logDocumentPrint } from '../hooks/useSupabase.js'
+import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, logDocumentPrint } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { calcDepositDeduction, round2 } from '../lib/depositCalc.js'
@@ -24,7 +24,7 @@ import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, VAT_RATE } from '../lib/invoiceCalc.js'
 import { calcQuotationTotals } from '../lib/quotationCalc.js'
-import { downloadPDF, downloadJPG, printTagFor } from '../lib/pdf.js'
+import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 
@@ -489,7 +489,7 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
 function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct, withholdingTaxAmount, isWithholdingEstimate, notesBlock, signatures, recipientSignature }) {
   const mySignature = useMySignatureUrl()
   return (
-    <div id={elementId} style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
+    <div id={elementId} className="printable-document" style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
           {tenant?.logo_url
@@ -647,14 +647,12 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
   }, [receipt])
   const docTitle = INVOICE_TITLE_OPTIONS.find(o => o.value === titleVariant).title
 
-  const { data: priorPrints } = useDocumentPrintCount('invoice', invoice.id)
-  const [printCount, setPrintCount] = useState(0)
-  useEffect(() => { if (priorPrints != null) setPrintCount(priorPrints) }, [priorPrints])
-  const printTag = printTagFor(printCount)
+  // ผู้ใช้เลือกเองว่าจะบันทึก/พิมพ์เป็น "ต้นฉบับ" หรือ "สำเนา" -- ไม่ auto
+  // นับจากประวัติการพิมพ์อีกต่อไป (ดูเหตุผลเดียวกันใน Quotations.jsx)
+  const [printTag, setPrintTag] = useState('ต้นฉบับ')
   const handleDownload = async (format, exportFn) => {
     await logDocumentPrint(tenant?.id, 'invoice', invoice.id, format)
     await exportFn(elementId, `${printTag}-${docTitle}-${invoice.invoice_number}`)
-    setPrintCount(c => c + 1)
   }
 
   return (
@@ -686,10 +684,21 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
           recipientSignature={receipt && signatureUrl ? { url: signatureUrl, signerName: receipt.signer_name, signedAt: receipt.signed_at } : null}
         />
       </div>
-      <div className="modal-footer">
-        <button className="btn btn-ghost" onClick={() => handleDownload('pdf', downloadPDF)}>📄 PDF</button>
-        <button className="btn btn-ghost" onClick={() => handleDownload('jpg', downloadJPG)}>🖼️ JPG</button>
-        <button className="btn btn-primary" onClick={onClose}>ปิด</button>
+      <div className="modal-footer" style={{ alignItems: 'center' }}>
+        <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
+        <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
+          {['ต้นฉบับ', 'สำเนา'].map(t => (
+            <button key={t} type="button" className={`btn btn-sm ${printTag === t ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPrintTag(t)}>{t}</button>
+          ))}
+        </div>
+        <RowActionsMenu
+          trigger="💾 บันทึกเอกสาร ▾" triggerClassName="btn btn-primary"
+          items={[
+            { label: '🖨️ พิมพ์', onClick: () => window.print() },
+            { label: '📄 บันทึกเป็น PDF', onClick: () => handleDownload('pdf', downloadPDF) },
+            { label: '🖼️ บันทึกเป็น JPG', onClick: () => handleDownload('jpg', downloadJPG) },
+          ]}
+        />
       </div>
     </Modal>
   )
@@ -711,14 +720,10 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
   const [titleVariant, setTitleVariant] = useState('receipt')
   const variant = RECEIPT_TITLE_OPTIONS.find(o => o.value === titleVariant)
 
-  const { data: priorPrints } = useDocumentPrintCount('receipt', receipt.id)
-  const [printCount, setPrintCount] = useState(0)
-  useEffect(() => { if (priorPrints != null) setPrintCount(priorPrints) }, [priorPrints])
-  const printTag = printTagFor(printCount)
+  const [printTag, setPrintTag] = useState('ต้นฉบับ')
   const handleDownload = async (format, exportFn) => {
     await logDocumentPrint(tenant?.id, 'receipt', receipt.id, format)
     await exportFn(elementId, `${printTag}-${variant.title}-${receipt.receipt_number}`)
-    setPrintCount(c => c + 1)
   }
 
   return (
@@ -745,10 +750,21 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
           signatures={['ผู้รับเงิน', 'ผู้จ่ายเงิน']}
         />
       </div>
-      <div className="modal-footer">
-        <button className="btn btn-ghost" onClick={() => handleDownload('pdf', downloadPDF)}>📄 PDF</button>
-        <button className="btn btn-ghost" onClick={() => handleDownload('jpg', downloadJPG)}>🖼️ JPG</button>
-        <button className="btn btn-primary" onClick={onClose}>ปิด</button>
+      <div className="modal-footer" style={{ alignItems: 'center' }}>
+        <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
+        <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
+          {['ต้นฉบับ', 'สำเนา'].map(t => (
+            <button key={t} type="button" className={`btn btn-sm ${printTag === t ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPrintTag(t)}>{t}</button>
+          ))}
+        </div>
+        <RowActionsMenu
+          trigger="💾 บันทึกเอกสาร ▾" triggerClassName="btn btn-primary"
+          items={[
+            { label: '🖨️ พิมพ์', onClick: () => window.print() },
+            { label: '📄 บันทึกเป็น PDF', onClick: () => handleDownload('pdf', downloadPDF) },
+            { label: '🖼️ บันทึกเป็น JPG', onClick: () => handleDownload('jpg', downloadJPG) },
+          ]}
+        />
       </div>
     </Modal>
   )
