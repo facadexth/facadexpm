@@ -10,7 +10,7 @@
 // inside a scrollable table/modal, position:absolute gets clipped by
 // the ancestor's overflow boundary).
 //
-// items: [{ label, onClick, danger? }]
+// items: [{ label, onClick, danger?, disabled?, disabledTitle? }]
 // trigger/triggerClassName: override the default "⋮" ghost-icon button
 // (e.g. a labeled "💾 บันทึกเอกสาร ▾" save dropdown) -- optional, existing
 // row-menu callers are unaffected.
@@ -92,10 +92,12 @@ export default function RowActionsMenu({ items = [], trigger, triggerClassName =
           {items.map((it, i) => (
             <div
               key={i}
-              onClick={() => { setOpen(false); it.onClick() }}
+              title={it.disabled ? it.disabledTitle : undefined}
+              onClick={() => { if (it.disabled) return; setOpen(false); it.onClick() }}
               style={{
-                padding: '9px 14px', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap',
-                color: it.danger ? 'var(--red)' : 'var(--text)',
+                padding: '9px 14px', cursor: it.disabled ? 'not-allowed' : 'pointer', fontSize: 13, whiteSpace: 'nowrap',
+                color: it.disabled ? 'var(--text3, #888)' : (it.danger ? 'var(--red)' : 'var(--text)'),
+                opacity: it.disabled ? 0.55 : 1,
                 borderBottom: i < items.length - 1 ? '1px solid var(--border, #333)' : 'none',
               }}
             >
