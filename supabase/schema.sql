@@ -745,6 +745,39 @@ CREATE POLICY admin_full_access ON catalog_items FOR ALL TO authenticated
   WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('quotations'));
 
 -- ----------------------------------------------------------------
+-- BANK_ACCOUNTS — บัญชีธนาคารสำหรับรับชำระเงิน (แยก VAT/ไม่มี VAT)
+-- ----------------------------------------------------------------
+-- Multiple bank accounts per tenant, each categorized VAT or non-VAT,
+-- with at most one default per category. quotations/invoices record
+-- which account was selected (bank_account_id below), not just
+-- live-computed at print time. Added by
+-- supabase/migrations/2026-09-03-12-bank-accounts.sql, which also
+-- backfills the old single tenants.bank_name/bank_account_name/
+-- bank_account_no fields (left in place, no longer read/written by
+-- the app) into one bank_accounts row per tenant that had one set.
+CREATE TABLE bank_accounts (
+  id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id     UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  bank_name     TEXT NOT NULL,
+  account_name  TEXT NOT NULL,
+  account_no    TEXT NOT NULL,
+  vat_category  TEXT NOT NULL CHECK (vat_category IN ('vat','non_vat')),
+  is_default    BOOLEAN NOT NULL DEFAULT false,
+  active        BOOLEAN NOT NULL DEFAULT true,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_bank_accounts_tenant_id ON bank_accounts(tenant_id);
+-- At most one default account per (tenant, vat_category).
+CREATE UNIQUE INDEX idx_bank_accounts_one_default_per_category
+  ON bank_accounts(tenant_id, vat_category) WHERE is_default = true;
+
+ALTER TABLE bank_accounts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY admin_full_access ON bank_accounts FOR ALL TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id())
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id());
+
+-- ----------------------------------------------------------------
 -- QUOTATIONS — ใบเสนอราคา
 -- ----------------------------------------------------------------
 -- Quotation header. status lifecycle: draft/sent/accepted/rejected/
@@ -773,6 +806,8 @@ CREATE TABLE quotations (
   -- revision. Added by
   -- supabase/migrations/2026-09-03-11-quotation-item-description-and-ever-sent.sql.
   ever_sent           BOOLEAN NOT NULL DEFAULT false,
+  -- Added by supabase/migrations/2026-09-03-12-bank-accounts.sql.
+  bank_account_id     UUID REFERENCES bank_accounts(id) ON DELETE SET NULL,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   tenant_id           UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
@@ -939,6 +974,8 @@ CREATE TABLE invoices (
   notes               TEXT,
   paid_date           DATE,
   income_id           UUID REFERENCES incomes(id) ON DELETE SET NULL,
+  -- Added by supabase/migrations/2026-09-03-12-bank-accounts.sql.
+  bank_account_id     UUID REFERENCES bank_accounts(id) ON DELETE SET NULL,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   tenant_id           UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),

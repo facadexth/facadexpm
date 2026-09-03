@@ -1,16 +1,56 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAppSetting, saveAppSetting, useContractorTypes, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature } from '../hooks/useSupabase.js'
+import { useAppSetting, saveAppSetting, useContractorTypes, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature, useBankAccounts, setDefaultBankAccount } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { PAGE_LABELS, DEFAULT_PERMISSIONS, loadPermissions, savePermissions } from '../lib/permissions.js'
+import { THAI_BANKS } from '../lib/thaiBanks.js'
 import PackageComparison from '../components/PackageComparison.jsx'
 import SignaturePad from '../components/SignaturePad.jsx'
+
+const VAT_CATEGORY_LABELS = { vat: 'บัญชี VAT', non_vat: 'บัญชีไม่มี VAT' }
 
 const LEVEL_LABELS = { none: '🚫 ซ่อน', view: '👁️ ดูอย่างเดียว', edit: '✏️ แก้ไขได้' }
 
 export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   const [permissions, setPermissions] = useState(DEFAULT_PERMISSIONS)
   const [saving, setSaving] = useState(false)
+
+  // บัญชีธนาคาร -- แยก VAT/ไม่มี VAT ต่อบัญชี ตั้ง default ได้ต่อหมวด ใช้เลือก
+  // ในใบเสนอราคา/ใบแจ้งหนี้ (กรองตาม has_vat ของเอกสารนั้นๆ)
+  const { data: bankAccounts, refetch: refetchBankAccounts } = useBankAccounts()
+  const [addingBank, setAddingBank] = useState(false)
+  const [newBank, setNewBank] = useState({ bank_name: THAI_BANKS[0], account_name: '', account_no: '', vat_category: 'vat' })
+  const [savingBank, setSavingBank] = useState(false)
+
+  const handleAddBankAccount = async () => {
+    if (!newBank.account_name.trim() || !newBank.account_no.trim()) { alert('กรอกชื่อบัญชีและเลขที่บัญชี'); return }
+    setSavingBank(true)
+    try {
+      const isFirstInCategory = !(bankAccounts || []).some(a => a.vat_category === newBank.vat_category)
+      const { error } = await supabase.from('bank_accounts').insert({
+        tenant_id: tenant.id, ...newBank, is_default: isFirstInCategory,
+      })
+      if (error) throw error
+      setNewBank({ bank_name: THAI_BANKS[0], account_name: '', account_no: '', vat_category: 'vat' })
+      setAddingBank(false)
+      refetchBankAccounts()
+    } catch (e) { alert('Error: ' + e.message) }
+    finally { setSavingBank(false) }
+  }
+
+  const handleSetDefaultBank = async (account) => {
+    try {
+      await setDefaultBankAccount(tenant.id, account.id, account.vat_category)
+      refetchBankAccounts()
+    } catch (e) { alert('Error: ' + e.message) }
+  }
+
+  const handleDeleteBankAccount = async (id) => {
+    if (!confirm('ลบบัญชีนี้?')) return
+    const { error } = await supabase.from('bank_accounts').delete().eq('id', id)
+    if (error) { alert('Error: ' + error.message); return }
+    refetchBankAccounts()
+  }
 
   // Travel rate (baht/km) — stored in app_settings
   const { data: travelRateVal, refetch: refetchRate } = useAppSetting('travel_rate_per_km', '20')
@@ -168,7 +208,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   // Company profile — for the Quotation PDF letterhead (and future
   // Invoice). See docs/superpowers/specs/2026-08-22-quotation-module-design.md.
   const [profile, setProfile] = useState({
-    company_name: '', address: '', tax_id: '', phone: '', bank_name: '', bank_account_name: '', bank_account_no: '',
+    company_name: '', address: '', tax_id: '', phone: '',
     default_payment_terms: '', default_notes: '',
   })
   const [savingProfile, setSavingProfile] = useState(false)
@@ -177,7 +217,6 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     if (tenant) {
       setProfile({
         company_name: tenant.company_name || '', address: tenant.address || '', tax_id: tenant.tax_id || '', phone: tenant.phone || '',
-        bank_name: tenant.bank_name || '', bank_account_name: tenant.bank_account_name || '', bank_account_no: tenant.bank_account_no || '',
         default_payment_terms: tenant.default_payment_terms || '', default_notes: tenant.default_notes || '',
       })
     }
@@ -441,20 +480,6 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
             <label className="label">เบอร์โทร</label>
             <input className="input" style={{ maxWidth: 240 }} value={profile.phone} onChange={e => setProfileField('phone', e.target.value)} />
           </div>
-          <div className="form-grid-2">
-            <div>
-              <label className="label">ธนาคาร</label>
-              <input className="input" value={profile.bank_name} onChange={e => setProfileField('bank_name', e.target.value)} />
-            </div>
-            <div>
-              <label className="label">ชื่อบัญชี</label>
-              <input className="input" value={profile.bank_account_name} onChange={e => setProfileField('bank_account_name', e.target.value)} />
-            </div>
-          </div>
-          <div>
-            <label className="label">เลขที่บัญชี</label>
-            <input className="input" style={{ maxWidth: 240 }} value={profile.bank_account_no} onChange={e => setProfileField('bank_account_no', e.target.value)} />
-          </div>
           <div>
             <label className="label">เงื่อนไขการชำระเงิน (ค่าเริ่มต้นสำหรับใบเสนอราคาใหม่)</label>
             <textarea className="textarea" rows={4} value={profile.default_payment_terms}
@@ -473,6 +498,76 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* ── บัญชีธนาคาร ── */}
+      <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
+        <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🏦 บัญชีธนาคาร</h2>
+        <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
+          เพิ่มได้หลายบัญชี แยกเป็นบัญชี VAT และไม่มี VAT — ใบเสนอราคา/ใบแจ้งหนี้จะเลือกจากบัญชีที่ตรงหมวดของเอกสารนั้นๆ โดยเริ่มจากบัญชี default ของหมวดนั้น
+        </p>
+        {['vat', 'non_vat'].map(cat => (
+          <div key={cat} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text2)', marginBottom: 6 }}>{VAT_CATEGORY_LABELS[cat]}</div>
+            {(bankAccounts || []).filter(a => a.vat_category === cat).length === 0 && (
+              <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>ยังไม่มีบัญชี</div>
+            )}
+            <div style={{ display: 'grid', gap: 6 }}>
+              {(bankAccounts || []).filter(a => a.vat_category === cat).map(a => (
+                <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--bg2, rgba(0,0,0,0.15))', borderRadius: 8, fontSize: 13 }}>
+                  <div style={{ flex: 1 }}>
+                    {a.bank_name} · {a.account_name} · {a.account_no}
+                  </div>
+                  {a.is_default
+                    ? <span className="pill" style={{ fontSize: 11 }}>✅ Default</span>
+                    : <button type="button" className="btn btn-sm btn-ghost" onClick={() => handleSetDefaultBank(a)}>ตั้งเป็น default</button>}
+                  <button type="button" className="btn btn-sm btn-ghost" onClick={() => handleDeleteBankAccount(a.id)}>🗑️</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        {addingBank ? (
+          <div style={{ display: 'grid', gap: 8, padding: '10px 12px', background: 'var(--bg2, rgba(0,0,0,0.15))', borderRadius: 8 }}>
+            <div className="form-grid-2">
+              <div>
+                <label className="label">ธนาคาร</label>
+                <select className="input" value={newBank.bank_name} onChange={e => setNewBank(b => ({ ...b, bank_name: e.target.value }))}>
+                  {THAI_BANKS.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">หมวด</label>
+                <div style={{ display: 'flex', gap: 10, height: 38, alignItems: 'center' }}>
+                  {['vat', 'non_vat'].map(cat => (
+                    <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 13 }}>
+                      <input type="radio" name="new-bank-vat-category" checked={newBank.vat_category === cat} onChange={() => setNewBank(b => ({ ...b, vat_category: cat }))} />
+                      {VAT_CATEGORY_LABELS[cat]}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="form-grid-2">
+              <div>
+                <label className="label">ชื่อบัญชี</label>
+                <input className="input" value={newBank.account_name} onChange={e => setNewBank(b => ({ ...b, account_name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label">เลขที่บัญชี</label>
+                <input className="input" value={newBank.account_no} onChange={e => setNewBank(b => ({ ...b, account_no: e.target.value }))} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" className="btn btn-primary btn-sm" onClick={handleAddBankAccount} disabled={savingBank}>
+                {savingBank ? '⏳...' : '✅ บันทึก'}
+              </button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAddingBank(false)}>ยกเลิก</button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" className="btn btn-sm btn-ghost" onClick={() => setAddingBank(true)}>+ เพิ่มบัญชี</button>
+        )}
       </div>
 
       <div style={{ marginBottom: 24 }}>

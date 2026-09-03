@@ -224,7 +224,7 @@ export function useQuotations(filters = {}) {
     const buildQuery = () => {
       let q = supabase
         .from('quotations')
-        .select('*, clients(name, client_number, address, tax_id), sites(name, site_number), quotation_items(id, catalog_item_id, description, unit, quantity, unit_price, line_total, sort_order, item_type)')
+        .select('*, clients(name, client_number, address, tax_id), sites(name, site_number), bank_accounts(bank_name, account_name, account_no), quotation_items(id, catalog_item_id, description, unit, quantity, unit_price, line_total, sort_order, item_type)')
         .order('date', { ascending: false })
         .order('id', { ascending: false })
 
@@ -293,7 +293,7 @@ export function useInvoices(filters = {}) {
         // และ incomes.source_invoice_id -> invoices.id) -- ไม่งั้น PostgREST
         // จะ error "more than one relationship was found" ทันที ทำให้ query
         // ทั้งเส้นพังเงียบๆ (useInvoices ไม่มีใครอ่าน .error ใน Invoices.jsx เดิม)
-        .select('*, quotations(quotation_number, client_id, clients(name, address, tax_id)), sites(name, site_number, default_tax_withheld_pct), invoice_items(id, quotation_item_id, description, unit, unit_price, draw_qty, line_total, sort_order), incomes!invoices_income_id_fkey(tax_withheld, received_amount)')
+        .select('*, quotations(quotation_number, client_id, clients(name, address, tax_id)), sites(name, site_number, default_tax_withheld_pct), invoice_items(id, quotation_item_id, description, unit, unit_price, draw_qty, line_total, sort_order), incomes!invoices_income_id_fkey(tax_withheld, received_amount), bank_accounts(id, bank_name, account_name, account_no)')
         .order('date', { ascending: false })
         .order('id', { ascending: false })
 
@@ -849,6 +849,33 @@ export function useCatalogItems() {
     if (error) throw error
     return data
   })
+}
+
+// ── Bank Accounts ───────────────────────────────────────────────
+
+/** ทุกบัญชีธนาคารของ tenant (ทั้ง vat/non_vat, active/inactive) -- ใช้ในหน้า
+ *  ตั้งค่าและตัว dropdown เลือกบัญชีในใบเสนอราคา/ใบแจ้งหนี้ (กรองเองตาม
+ *  vat_category ที่ฝั่ง component) */
+export function useBankAccounts() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('bank_accounts')
+      .select('*')
+      .order('vat_category').order('is_default', { ascending: false }).order('bank_name')
+    if (error) throw error
+    return data
+  })
+}
+
+/** ตั้งบัญชีนี้เป็น default ของหมวด vat_category ของมันเอง -- ต้องปลด
+ *  default เดิมในหมวดเดียวกันก่อน (unique index กันไว้ให้ default ได้แค่
+ *  บัญชีเดียวต่อหมวดต่อ tenant) ไม่งั้น insert/update จะชนกัน */
+export async function setDefaultBankAccount(tenantId, accountId, vatCategory) {
+  const { error: clearError } = await supabase.from('bank_accounts')
+    .update({ is_default: false }).eq('tenant_id', tenantId).eq('vat_category', vatCategory).eq('is_default', true)
+  if (clearError) throw clearError
+  const { error } = await supabase.from('bank_accounts').update({ is_default: true }).eq('id', accountId)
+  if (error) throw error
 }
 
 /** Every sold line item (accepted quotations only), for lookup/analysis. */

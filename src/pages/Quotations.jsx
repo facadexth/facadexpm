@@ -9,7 +9,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt, useMySignatureUrl, logDocumentPrint } from '../hooks/useSupabase.js'
+import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt, useMySignatureUrl, useBankAccounts, logDocumentPrint } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -34,6 +34,7 @@ const catalogOpts = (items) => (items || []).filter(i => i.active).map(i => ({
   value: i.id, label: i.unit ? `${i.name} (${i.unit})` : i.name, keywords: i.name,
 }))
 
+const VAT_CATEGORY_LABELS = { vat: 'VAT', non_vat: 'ไม่มี VAT' }
 const QT_STATUSES = ['draft', 'sent', 'accepted', 'rejected', 'expired']
 const QT_STATUS_LABELS = {
   draft: '✏️ ร่าง', sent: '📤 ส่งแล้ว', accepted: '✅ ยอมรับ', rejected: '✕ ปฏิเสธ', expired: '⏰ หมดอายุ',
@@ -50,7 +51,7 @@ const EMPTY_ITEM_DESCRIPTION = { catalog_item_id: null, description: '', quantit
 const EMPTY_FORM = {
   client_id: '', date: '', valid_until: '', has_vat: true, price_includes_vat: false,
   discount_mode: 'none', discount_amount: '', discount_pct: '',
-  payment_terms: '', notes: '', items: [{ ...EMPTY_ITEM }],
+  payment_terms: '', notes: '', bank_account_id: null, items: [{ ...EMPTY_ITEM }],
 }
 
 function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch }) {
@@ -132,6 +133,21 @@ function QuotationForm({ initial = EMPTY_FORM, clients, catalogItems, onCatalogR
   const [form, setForm, clearFormDraft] = useDraftForm('quotation-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  // บัญชีธนาคารที่เลือกได้ต้องอยู่หมวดเดียวกับ has_vat ของเอกสารนี้เท่านั้น
+  // -- ถ้าบัญชีที่เลือกไว้ (หรือยังไม่เลือก) ไม่ตรงหมวดหลัง has_vat เปลี่ยน
+  // ให้ auto สลับไปบัญชี default ของหมวดใหม่ให้เลย
+  const { data: allBankAccounts } = useBankAccounts()
+  const bankCategory = form.has_vat ? 'vat' : 'non_vat'
+  const bankAccountsInCategory = (allBankAccounts || []).filter(a => a.vat_category === bankCategory)
+  useEffect(() => {
+    const stillValid = bankAccountsInCategory.some(a => a.id === form.bank_account_id)
+    if (!stillValid) {
+      const def = bankAccountsInCategory.find(a => a.is_default) || bankAccountsInCategory[0]
+      set('bank_account_id', def?.id || null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bankCategory, allBankAccounts])
+
   const totals = calcQuotationTotals(form.items, {
     hasVat: form.has_vat, priceIncludesVat: form.price_includes_vat,
     discountAmount: form.discount_mode === 'amount' ? form.discount_amount : 0,
@@ -212,12 +228,26 @@ function QuotationForm({ initial = EMPTY_FORM, clients, catalogItems, onCatalogR
           </div>
         </div>
         <div>
-          <label className="label">เงื่อนไขการชำระเงิน</label>
-          <textarea className="textarea" rows={2} value={form.payment_terms} onChange={e => set('payment_terms', e.target.value)} placeholder="เช่น มัดจำ 30% เมื่อเซ็นสัญญา ส่วนที่เหลือแบ่งจ่ายตามงวดงาน" />
-        </div>
-        <div>
           <label className="label">หมายเหตุ</label>
           <textarea className="textarea" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
+        </div>
+        <div className="form-grid-2">
+          <div>
+            <label className="label">บัญชีธนาคารสำหรับรับชำระเงิน ({VAT_CATEGORY_LABELS[bankCategory]})</label>
+            {bankAccountsInCategory.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>ยังไม่มีบัญชี{VAT_CATEGORY_LABELS[bankCategory]} — เพิ่มได้ที่หน้าตั้งค่า</div>
+            ) : (
+              <select className="input" value={form.bank_account_id || ''} onChange={e => set('bank_account_id', e.target.value || null)}>
+                {bankAccountsInCategory.map(a => (
+                  <option key={a.id} value={a.id}>{a.bank_name} · {a.account_name} · {a.account_no}{a.is_default ? ' (default)' : ''}</option>
+                ))}
+              </select>
+            )}
+          </div>
+          <div>
+            <label className="label">เงื่อนไขการชำระเงิน</label>
+            <textarea className="textarea" rows={2} value={form.payment_terms} onChange={e => set('payment_terms', e.target.value)} placeholder="เช่น มัดจำ 30% เมื่อเซ็นสัญญา ส่วนที่เหลือแบ่งจ่ายตามงวดงาน" />
+          </div>
         </div>
       </div>
       <div className="modal-footer">
@@ -287,7 +317,7 @@ function AcceptQuotationModal({ quotation, totals, clients, sites, hasModuleAcce
 // Extracted so a past revision's snapshot can render through the exact
 // same markup as the live document, not a separate summary — the only
 // difference is which data feeds it and the doc-info tag.
-function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes, clientSignature }) {
+function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes, bankAccount, clientSignature }) {
   const totals = calcQuotationTotals(items, { hasVat, priceIncludesVat, discountAmount, discountPct })
   const mySignature = useMySignatureUrl()
 
@@ -373,19 +403,19 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
         </table>
       </div>
 
-      {(paymentTerms || notes || tenant?.bank_name || tenant?.bank_account_no) && (
+      {(paymentTerms || notes || bankAccount) && (
         <div style={{ marginTop: 20, fontSize: 11.5, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
           {(paymentTerms || notes) && (
             <>
               <strong style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>หมายเหตุ</strong>
-              <div style={{ marginBottom: (tenant?.bank_name || tenant?.bank_account_no) ? 10 : 0, whiteSpace: 'pre-line' }}>
+              <div style={{ marginBottom: bankAccount ? 10 : 0, whiteSpace: 'pre-line' }}>
                 {[paymentTerms, notes].filter(Boolean).join('\n\n')}
               </div>
             </>
           )}
-          {(tenant?.bank_name || tenant?.bank_account_no) && (
+          {bankAccount && (
             <div style={{ marginTop: 10 }}>
-              <strong>ชำระเงินไปที่:</strong> {tenant?.bank_name} {tenant?.bank_account_name ? `ชื่อบัญชี ${tenant.bank_account_name}` : ''} {tenant?.bank_account_no ? `เลขที่ ${tenant.bank_account_no}` : ''}
+              <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
             </div>
           )}
         </div>
@@ -446,7 +476,7 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
           clientName={qt.clients?.name} clientAddress={qt.clients?.address} clientTaxId={qt.clients?.tax_id} items={qt.quotation_items || []}
           hasVat={qt.has_vat} priceIncludesVat={qt.price_includes_vat}
           discountAmount={qt.discount_amount} discountPct={qt.discount_pct}
-          paymentTerms={qt.payment_terms} notes={qt.notes}
+          paymentTerms={qt.payment_terms} notes={qt.notes} bankAccount={qt.bank_accounts}
           clientSignature={receipt && signatureUrl ? { url: signatureUrl, signerName: receipt.signer_name, signedAt: receipt.signed_at } : null}
         />
       </div>
@@ -511,7 +541,7 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
               clientName={s.client_name} items={s.items || []}
               hasVat={s.has_vat} priceIncludesVat={s.price_includes_vat}
               discountAmount={s.discount_amount} discountPct={s.discount_pct}
-              paymentTerms={s.payment_terms} notes={s.notes}
+              paymentTerms={s.payment_terms} notes={s.notes} bankAccount={s.bank_account}
             />
           </div>
         )}
@@ -571,6 +601,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
         discount_pct: form.discount_mode === 'pct' ? (parseFloat(form.discount_pct) || null) : null,
         payment_terms: form.payment_terms || null,
         notes: form.notes || null,
+        bank_account_id: form.bank_account_id || null,
       }
       let quotationId = editRow?.id
       if (editRow) {
@@ -588,6 +619,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
             has_vat: editRow.has_vat, price_includes_vat: editRow.price_includes_vat,
             discount_amount: editRow.discount_amount, discount_pct: editRow.discount_pct,
             payment_terms: editRow.payment_terms, notes: editRow.notes,
+            bank_account: editRow.bank_accounts || null,
             items: (editRow.quotation_items || []).map(it => ({
               description: it.description, unit: it.unit, quantity: it.quantity, unit_price: it.unit_price, line_total: it.line_total,
             })),
@@ -772,6 +804,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       discount_amount: editRow.discount_amount != null ? String(editRow.discount_amount) : '',
       discount_pct: editRow.discount_pct != null ? String(editRow.discount_pct) : '',
       payment_terms: editRow.payment_terms || '', notes: editRow.notes || '',
+      bank_account_id: editRow.bank_account_id || null,
       items: (editRow.quotation_items?.length ? editRow.quotation_items : [{ ...EMPTY_ITEM }])
         .map(it => ({ catalog_item_id: it.catalog_item_id, description: it.description, quantity: String(it.quantity), unit: it.unit || '', unit_price: String(it.unit_price), item_type: it.item_type || 'item' })),
     }

@@ -12,7 +12,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, logDocumentPrint } from '../hooks/useSupabase.js'
+import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, useBankAccounts, logDocumentPrint } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { calcDepositDeduction, round2 } from '../lib/depositCalc.js'
@@ -375,6 +375,9 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
         quotation_id: quotation.id, site_id: quotation.site_id, date,
         has_vat: quotation.has_vat, price_includes_vat: quotation.price_includes_vat,
         subtotal: totals.subtotal, vat: totals.vat, total: totals.total,
+        // สืบมาจากใบเสนอราคาต้นทาง (หมวด VAT ตรงกันอยู่แล้วเพราะ has_vat มาจาก
+        // quotation เดียวกัน) เปลี่ยนได้ทีหลังจากตัว InvoiceDocumentModal เอง
+        bank_account_id: quotation.bank_account_id || null,
       }).select().single()
       if (invError) throw invError
       createdInvoiceNumber = invoice.invoice_number
@@ -647,6 +650,20 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
   }, [receipt])
   const docTitle = INVOICE_TITLE_OPTIONS.find(o => o.value === titleVariant).title
 
+  // เปลี่ยนบัญชีธนาคารที่จะใช้รับชำระได้ตรงนี้เลย (ไม่มีฟอร์มแก้ไขใบแจ้งหนี้
+  // แยกต่างหากเหมือนใบเสนอราคา) เขียนลง DB ทันทีที่เปลี่ยน จำกัดตัวเลือกไว้
+  // แค่บัญชีที่อยู่หมวด VAT เดียวกับ invoice นี้เท่านั้น
+  const { data: allBankAccounts } = useBankAccounts()
+  const bankCategory = invoice.has_vat ? 'vat' : 'non_vat'
+  const bankAccountsInCategory = (allBankAccounts || []).filter(a => a.vat_category === bankCategory)
+  const [bankAccount, setBankAccount] = useState(invoice.bank_accounts || null)
+  const handleChangeBankAccount = async (accountId) => {
+    const account = bankAccountsInCategory.find(a => a.id === accountId) || null
+    setBankAccount(account)
+    const { error } = await supabase.from('invoices').update({ bank_account_id: accountId || null }).eq('id', invoice.id)
+    if (error) alert('Error: ' + error.message)
+  }
+
   // ผู้ใช้เลือกเองว่าจะบันทึก/พิมพ์เป็น "ต้นฉบับ" หรือ "สำเนา" -- ไม่ auto
   // นับจากประวัติการพิมพ์อีกต่อไป (ดูเหตุผลเดียวกันใน Quotations.jsx)
   const [printTag, setPrintTag] = useState('ต้นฉบับ')
@@ -664,6 +681,16 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
               onClick={() => setTitleVariant(o.value)}>{o.label}</button>
           ))}
         </div>
+        {bankAccountsInCategory.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <label className="label">บัญชีธนาคารสำหรับรับชำระเงิน</label>
+            <select className="input" style={{ maxWidth: 400 }} value={bankAccount?.id || ''} onChange={e => handleChangeBankAccount(e.target.value)}>
+              {bankAccountsInCategory.map(a => (
+                <option key={a.id} value={a.id}>{a.bank_name} · {a.account_name} · {a.account_no}{a.is_default ? ' (default)' : ''}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <DocumentPaper
           elementId={elementId} tenant={tenant} title={docTitle} tag={printTag}
           infoFields={[
@@ -675,9 +702,9 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
           items={items} totalsLabel="รวมทั้งสิ้น" totalsAmount={invoice.total}
           subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
           withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
-          notesBlock={(tenant?.bank_name || tenant?.bank_account_no) && (
+          notesBlock={bankAccount && (
             <div style={{ marginTop: 20, fontSize: 11.5, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
-              <strong>ชำระเงินไปที่:</strong> {tenant.bank_name} {tenant.bank_account_name ? `ชื่อบัญชี ${tenant.bank_account_name}` : ''} {tenant.bank_account_no ? `เลขที่ ${tenant.bank_account_no}` : ''}
+              <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
             </div>
           )}
           signatures={['ผู้ออกใบแจ้งหนี้', 'ผู้รับเอกสาร']}
