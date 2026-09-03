@@ -27,6 +27,7 @@ import { calcQuotationTotals } from '../lib/quotationCalc.js'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
+import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX } from '../hooks/usePaginatedDocument.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -481,78 +482,128 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   )
 }
 
-// Design A letterhead -- same pattern as QuotationPaper (Quotations.jsx)
-// and PODocumentModal: logo-or-colored-box header, tag+title top right,
-// bordered info-fields grid, client block, #f4f3ff table header, #6c63ff
-// totals rule, #f9f9fc notes box, signature lines. Shared between
-// InvoiceDocumentModal and ReceiptDocumentModal specifically (they're the
-// same billing family, one combined document per the spec) -- unlike
-// Quotation/PO, which stay separate top-level document types and keep
-// their own independent copy of this JSX per existing precedent.
-function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct, withholdingTaxAmount, isWithholdingEstimate, notesBlock, signatures, recipientSignature }) {
-  const mySignature = useMySignatureUrl()
+const ACCENT = '#6c63ff'
+
+// Both the top row (logo/contact/title) and the client-info/doc-info row
+// below it repeat identically on every page (per the spec's explicit
+// "repeat the whole header" requirement) -- kept as one component so the
+// pagination hook's renderHeader has a single, simple call.
+//
+// Hoisted OUT of DocumentPaper (rather than defined inline in its render
+// body) deliberately: a function defined inside a component's render body
+// gets a brand-new identity every render, so React treats every render as
+// a brand-new component type and unmounts/remounts the whole subtree --
+// including the <img crossOrigin> logo below -- even when nothing it reads
+// actually changed. Real props instead of closed-over variables.
+//
+// Unlike QuotationHeader (Quotations.jsx), this component takes NO
+// hardcoded quotation-specific fields (no revision suffix, no quotationNumber
+// /date/validUntil/siteName props) -- invoices/receipts have no revision
+// column, and the doc-info box stays fully caller-driven via `infoFields`,
+// exactly as it already was before this rewrite. โครงการ (site name) now
+// arrives as one more entry in that array rather than its own dedicated
+// client-info line.
+function DocumentHeader({ tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, pageNumber, totalPages }) {
   return (
-    <div id={elementId} className="printable-document" style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f', boxSizing: 'border-box', minHeight: 1000, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'stretch', gap: 25 }}>
+        <div style={{ display: 'flex', gap: 20 }}>
           {tenant?.logo_url
             ? (
               <div style={{ position: 'relative', width: 110, flexShrink: 0 }}>
                 <img src={tenant.logo_url} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'left center' }} crossOrigin="anonymous" />
               </div>
             )
-            : <div style={{ width: 40, height: 40, borderRadius: 8, background: '#6c63ff', flexShrink: 0 }} />}
+            : <div style={{ width: 40, height: 40, borderRadius: 8, background: ACCENT, flexShrink: 0 }} />}
           <div>
-            <div style={{ fontSize: 17, fontWeight: 800 }}>{tenant?.company_name}</div>
-            <div style={{ fontSize: 11, color: '#6a6f85', lineHeight: 1.6, marginTop: 2 }}>
-              {tenant?.address}
-              {tenant?.address && <br />}
-              {tenant?.tax_id && `เลขผู้เสียภาษี ${tenant.tax_id}`}
-              {tenant?.tax_id && tenant?.phone && ' · '}
-              {tenant?.phone && `โทร ${tenant.phone}`}
-            </div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{tenant?.company_name}</div>
+            {tenant?.address && <div style={{ fontSize: 12, color: '#6a6f85', lineHeight: 1.6, marginTop: 2 }}>{tenant.address}</div>}
+            {tenant?.tax_id && <div style={{ fontSize: 12, color: '#6a6f85' }}>เลขผู้เสียภาษี {tenant.tax_id}</div>}
+            {(tenant?.phone || tenant?.email || tenant?.website) && (
+              <div style={{ fontSize: 12, color: '#4a4d63', marginTop: 6 }}>
+                {tenant?.phone && <>📞&nbsp;{tenant.phone}</>}
+                {tenant?.phone && (tenant?.email || tenant?.website) && <>&nbsp;&nbsp;&nbsp;</>}
+                {tenant?.email && <>✉️&nbsp;{tenant.email}</>}
+                {tenant?.email && tenant?.website && <>&nbsp;&nbsp;&nbsp;</>}
+                {tenant?.website && <>🌐&nbsp;{tenant.website}</>}
+              </div>
+            )}
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#6c63ff', border: '1px solid #6c63ff', borderRadius: 4, padding: '2px 8px', display: 'inline-block', marginBottom: 6 }}>{tag || 'ต้นฉบับ'}</div>
-          <div style={{ fontSize: 22, fontWeight: 800 }}>{title}</div>
+          <div style={{ fontSize: 12, color: '#6a6f85', marginBottom: 4 }}>หน้า {pageNumber}/{totalPages}</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: ACCENT, border: `1px solid ${ACCENT}`, borderRadius: 4, padding: '2px 8px', display: 'inline-block', marginBottom: 6 }}>{tag || 'ต้นฉบับ'}</div>
+          <div style={{ fontSize: 28, fontWeight: 800 }}>{title}</div>
         </div>
       </div>
 
-      <div style={{ marginTop: 20, border: '1px solid #e4e6ef', borderRadius: 8, padding: '14px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: 12 }}>
-        {infoFields.map(f => (
-          <div key={f.label}><span style={{ color: '#6a6f85' }}>{f.label}</span><br />{f.value}</div>
-        ))}
-      </div>
-
-      <div style={{ marginTop: 16, fontSize: 12.5, lineHeight: 1.9, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 10px' }}>
-        <span style={{ color: '#6a6f85' }}>ไซท์งาน</span><strong>{siteName || '—'}</strong>
-        <span style={{ color: '#6a6f85' }}>ลูกค้า</span><strong>{clientName || '—'}</strong>
-        {clientTaxId && <><span style={{ color: '#6a6f85' }}>เลขประจำตัวผู้เสียภาษี</span><span>{clientTaxId}</span></>}
-        {clientAddress && <><span style={{ color: '#6a6f85' }}>ที่อยู่</span><span>{clientAddress}</span></>}
-      </div>
-
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 18 }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: 'left', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>รายการ</th>
-            <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>จำนวน</th>
-            <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>ราคา/หน่วย</th>
-            <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>รวม</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((it, i) => (
-            <tr key={it.id || i}>
-              <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.description}</td>
-              <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.draw_qty).replace(/\.00$/, '')} {it.unit || ''}</td>
-              <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
-              <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.line_total)}</td>
-            </tr>
+      <div style={{ display: 'grid', gridTemplateColumns: '66fr 34fr', gap: 20 }}>
+        <div style={{ marginTop: 17, fontSize: 12.5, lineHeight: 2 }}>
+          <div><span style={{ color: '#6a6f85' }}>ลูกค้า&nbsp;:</span> <strong>{clientName || '—'}</strong></div>
+          <div><span style={{ color: '#6a6f85' }}>ที่อยู่&nbsp;:</span> {clientAddress || '—'}</div>
+          {clientTaxId && <div><span style={{ color: '#6a6f85' }}>เลขที่ภาษี&nbsp;:</span> {clientTaxId}</div>}
+        </div>
+        <div style={{ marginTop: 17, border: '1px solid #e4e6ef', borderRadius: 8, padding: '14px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px', fontSize: 12 }}>
+          {infoFields.map(f => (
+            <div key={f.label}><span style={{ color: '#6a6f85' }}>{f.label}</span><br />{f.value}</div>
           ))}
-        </tbody>
-      </table>
+        </div>
+      </div>
+    </>
+  )
+}
 
+// Design A letterhead -- same pattern as QuotationPaper (Quotations.jsx)
+// and PODocumentModal: logo-or-colored-box header, tag+title top right,
+// bordered info-fields grid, client block, table header, totals rule,
+// notes box, signature lines. Shared between InvoiceDocumentModal and
+// ReceiptDocumentModal specifically (they're the same billing family, one
+// combined document per the spec) -- unlike Quotation/PO, which stay
+// separate top-level document types and keep their own independent copy of
+// this JSX per existing precedent.
+//
+// Real multi-page pagination via the shared usePaginatedDocument hook --
+// same treatment as QuotationPaper. Differences from QuotationPaper, all
+// deliberate: no revision suffix (invoices/receipts have no revision
+// column), `infoFields` stays a caller-supplied {label,value}[] rendered
+// generically (not hardcoded per-field like QuotationHeader), the footer
+// has a withholding-tax sub-block instead of a discount line, `notesBlock`
+// is a caller-supplied JSX prop rather than being assembled internally from
+// paymentTerms/notes/bankAccount, and there are two independently-labeled
+// signatures (signatures[0]/[1] + mySignature/recipientSignature) instead
+// of a fixed "ผู้เสนอราคา"/"ผู้ยอมรับ (ลูกค้า)" pair.
+function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct, withholdingTaxAmount, isWithholdingEstimate, notesBlock, signatures, recipientSignature, onPageCountChange }) {
+  const mySignature = useMySignatureUrl()
+  const headerProps = { tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId }
+
+  const renderRow = (it, i) => (
+    <tr key={it.id || i}>
+      <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.description}</td>
+      <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.draw_qty).replace(/\.00$/, '')} {it.unit || ''}</td>
+      <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
+      <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.line_total)}</td>
+    </tr>
+  )
+
+  const renderTableHeader = () => (
+    <tr>
+      <th style={{ textAlign: 'left', padding: '11px 8px', fontSize: 12, fontWeight: 700, color: '#4a4d63', background: '#f4f4f6', borderBottom: `2px solid ${ACCENT}` }}>รายการ</th>
+      <th style={{ textAlign: 'right', padding: '11px 8px', fontSize: 12, fontWeight: 700, color: '#4a4d63', background: '#f4f4f6', borderBottom: `2px solid ${ACCENT}` }}>จำนวน</th>
+      <th style={{ textAlign: 'right', padding: '11px 8px', fontSize: 12, fontWeight: 700, color: '#4a4d63', background: '#f4f4f6', borderBottom: `2px solid ${ACCENT}` }}>ราคา/หน่วย</th>
+      <th style={{ textAlign: 'right', padding: '11px 8px', fontSize: 12, fontWeight: 700, color: '#4a4d63', background: '#f4f4f6', borderBottom: `2px solid ${ACCENT}` }}>รวม</th>
+    </tr>
+  )
+
+  // Totals table (with withholding-tax sub-block) + caller-supplied
+  // notesBlock + signature grid -- rendered ONLY on the true last page, but
+  // also handed to usePaginatedDocument as `renderFooter` so it can measure
+  // this content's real height once and reserve that much room out of the
+  // last page's budget specifically. Without that reservation, a
+  // fixed-height page-div has nowhere for this block to go if the packed
+  // rows above it leave too little room -- it would render past the bottom
+  // of the visible page.
+  const renderFooter = () => (
+    <>
       <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
         <table style={{ width: 260, fontSize: 12.5 }}>
           <tbody>
@@ -563,8 +614,8 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, cl
               <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>VAT (7%)</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(vat)}</td></tr>
             )}
             <tr>
-              <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: '#6c63ff', borderTop: '2px solid #6c63ff' }}>{totalsLabel}</td>
-              <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: '#6c63ff', borderTop: '2px solid #6c63ff' }}>{fmt(totalsAmount)} บาท</td>
+              <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: ACCENT, borderTop: `2px solid ${ACCENT}` }}>{totalsLabel}</td>
+              <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: ACCENT, borderTop: `2px solid ${ACCENT}` }}>{fmt(totalsAmount)} บาท</td>
             </tr>
             {withholdingTaxAmount > 0 && (
               <>
@@ -607,6 +658,79 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, cl
           )}
         </div>
       </div>
+    </>
+  )
+
+  const { pages, pageCount, measurementNode } = usePaginatedDocument({
+    items,
+    renderHeader: () => <DocumentHeader {...headerProps} pageNumber={1} totalPages={1} />,
+    renderTableHeader,
+    renderRow,
+    renderFooter,
+    // mySignature/recipientSignature resolve asynchronously (a Storage
+    // signed-URL fetch), often after `items` has already settled -- without
+    // this, the hidden measurement pass can capture the footer's height
+    // BEFORE either signature image is present, under-measuring by however
+    // tall that image is right when the footer-overflow guarantee above
+    // needs that number to be accurate. Recomputed only when either URL
+    // actually changes (not every render), so this can't spin into a
+    // remeasurement loop.
+    remeasureKey: `${mySignature?.url || ''}|${recipientSignature?.url || ''}`,
+  })
+
+  useEffect(() => { onPageCountChange?.(pageCount) }, [pageCount, onPageCountChange])
+
+  // PAGE_WIDTH_PX/PAGE_PADDING_CSS/PAGE_PADDING_V_PX come from
+  // usePaginatedDocument.jsx -- the SAME constants its hidden measurement
+  // pass builds its own clone from, so the real page-div below and the
+  // hidden pass can never drift apart on content-box width (that drift --
+  // 700px measured vs a narrower real content box once padding + box-sizing
+  // were accounted for -- previously measured Thai text as wrapping to
+  // fewer lines than it really did, letting real pages come out over-full;
+  // see usePaginatedDocument.jsx's own comments for the full page-height
+  // budget math this height is calibrated against). Same fixed-width
+  // treatment as QuotationPaper -- this deliberately supersedes
+  // DocumentPaper's previous no-inline-width behaviour that the print CSS
+  // fallback rule in index.css was written around; that fallback rule is
+  // left in place (untouched) for any future printable-document consumer
+  // that still has no inline width of its own.
+  const PAGE_DIV_HEIGHT_PX = PAGE_HEIGHT_PX + PAGE_PADDING_V_PX * 2
+
+  return (
+    <div id={elementId} className="printable-document" style={{ fontFamily: 'Sarabun,sans-serif', width: PAGE_WIDTH_PX }}>
+      {pages.map((pageItems, pageIndex) => {
+        const isLast = pageIndex === pages.length - 1
+        return (
+          <div
+            key={pageIndex}
+            style={{
+              padding: PAGE_PADDING_CSS, background: '#fff', color: '#17181f', boxSizing: 'border-box',
+              // Fixed height, not minHeight -- see QuotationPaper's identical
+              // comment (Quotations.jsx) for why: a page-div allowed to grow
+              // past PAGE_DIV_HEIGHT_PX reintroduces the same
+              // overflow-past-budget bug this fixed width+height pairing
+              // exists to prevent. The footer -- rendered below only when
+              // isLast -- is guaranteed to fit inside this fixed height
+              // because usePaginatedDocument already reserved its measured
+              // height out of the last page's row budget.
+              height: PAGE_DIV_HEIGHT_PX, display: 'flex', flexDirection: 'column',
+              pageBreakAfter: isLast ? 'auto' : 'always', breakAfter: isLast ? 'auto' : 'page',
+              marginBottom: isLast ? 0 : 16,
+              boxShadow: pages.length > 1 ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
+            }}
+          >
+            <DocumentHeader {...headerProps} pageNumber={pageIndex + 1} totalPages={pages.length} />
+
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: TABLE_MARGIN_TOP_PX }}>
+              <thead>{renderTableHeader()}</thead>
+              <tbody>{pageItems.map(renderRow)}</tbody>
+            </table>
+
+            {isLast && renderFooter()}
+          </div>
+        )
+      })}
+      {measurementNode}
     </div>
   )
 }
@@ -673,6 +797,7 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
   // ผู้ใช้เลือกเองว่าจะบันทึก/พิมพ์เป็น "ต้นฉบับ" หรือ "สำเนา" -- ไม่ auto
   // นับจากประวัติการพิมพ์อีกต่อไป (ดูเหตุผลเดียวกันใน Quotations.jsx)
   const [printTag, setPrintTag] = useState('ต้นฉบับ')
+  const [pageCount, setPageCount] = useState(1)
   const handleDownload = async (format, exportFn) => {
     await logDocumentPrint(tenant?.id, 'invoice', invoice.id, format)
     await exportFn(elementId, `${printTag}-${docTitle}-${invoice.invoice_number}`)
@@ -697,25 +822,33 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
             </select>
           </div>
         )}
-        <DocumentPaper
-          elementId={elementId} tenant={tenant} title={docTitle} tag={printTag}
-          infoFields={[
-            { label: 'เลขที่เอกสาร', value: invoice.invoice_number },
-            { label: 'วันที่ออก', value: new Date(invoice.date).toLocaleDateString('th-TH') },
-            { label: 'อ้างอิงใบเสนอราคา', value: invoice.quotations?.quotation_number },
-          ]}
-          siteName={invoice.sites?.name} clientName={client?.name} clientAddress={client?.address} clientTaxId={client?.tax_id}
-          items={items} totalsLabel="รวมทั้งสิ้น" totalsAmount={invoice.total}
-          subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
-          withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
-          notesBlock={bankAccount && (
-            <div style={{ marginTop: 20, fontSize: 11.5, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
-              <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
-            </div>
-          )}
-          signatures={['ผู้ออกใบแจ้งหนี้', 'ผู้รับเอกสาร']}
-          recipientSignature={receipt && signatureUrl ? { url: signatureUrl, signerName: receipt.signer_name, signedAt: receipt.signed_at } : null}
-        />
+        {/* overflow:auto -- DocumentPaper now renders at a fixed PAGE_WIDTH_PX
+            width (see usePaginatedDocument.jsx), which can exceed this modal's
+            available inner width; scroll rather than clip, matching
+            QuotationPaper's identical fixed-width overflow handling. */}
+        <div style={{ overflow: 'auto' }}>
+          <DocumentPaper
+            elementId={elementId} tenant={tenant} title={docTitle} tag={printTag}
+            infoFields={[
+              { label: 'เลขที่เอกสาร', value: invoice.invoice_number },
+              { label: 'วันที่ออก', value: new Date(invoice.date).toLocaleDateString('th-TH') },
+              { label: 'อ้างอิงใบเสนอราคา', value: invoice.quotations?.quotation_number },
+              { label: 'โครงการ', value: invoice.sites?.name || '—' },
+            ]}
+            clientName={client?.name} clientAddress={client?.address} clientTaxId={client?.tax_id}
+            items={items} totalsLabel="รวมทั้งสิ้น" totalsAmount={invoice.total}
+            subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
+            withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
+            notesBlock={bankAccount && (
+              <div style={{ marginTop: 20, fontSize: 11.5, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
+                <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
+              </div>
+            )}
+            signatures={['ผู้ออกใบแจ้งหนี้', 'ผู้รับเอกสาร']}
+            recipientSignature={receipt && signatureUrl ? { url: signatureUrl, signerName: receipt.signer_name, signedAt: receipt.signed_at } : null}
+            onPageCountChange={setPageCount}
+          />
+        </div>
       </div>
       <div className="modal-footer" style={{ alignItems: 'center' }}>
         <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
@@ -729,7 +862,7 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
           items={[
             { label: '🖨️ พิมพ์', onClick: () => window.print() },
             { label: '📄 บันทึกเป็น PDF', onClick: () => handleDownload('pdf', downloadPDF) },
-            { label: '🖼️ บันทึกเป็น JPG', onClick: () => handleDownload('jpg', downloadJPG) },
+            { label: '🖼️ บันทึกเป็น JPG', onClick: () => handleDownload('jpg', downloadJPG), disabled: pageCount > 1, disabledTitle: 'เอกสารหลายหน้า บันทึกเป็น PDF แทน' },
           ]}
         />
       </div>
@@ -754,6 +887,7 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
   const variant = RECEIPT_TITLE_OPTIONS.find(o => o.value === titleVariant)
 
   const [printTag, setPrintTag] = useState('ต้นฉบับ')
+  const [pageCount, setPageCount] = useState(1)
   const handleDownload = async (format, exportFn) => {
     await logDocumentPrint(tenant?.id, 'receipt', receipt.id, format)
     await exportFn(elementId, `${printTag}-${variant.title}-${receipt.receipt_number}`)
@@ -768,20 +902,28 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
               onClick={() => setTitleVariant(o.value)}>{o.label}</button>
           ))}
         </div>
-        <DocumentPaper
-          elementId={elementId} tenant={tenant} title={variant.title} tag={printTag}
-          infoFields={[
-            { label: variant.numberLabel, value: receipt[variant.numberField] },
-            { label: 'วันที่', value: new Date(receipt.date).toLocaleDateString('th-TH') },
-            { label: 'อ้างอิงใบแจ้งหนี้', value: invoice.invoice_number },
-          ]}
-          siteName={invoice.sites?.name} clientName={client?.name} clientAddress={client?.address} clientTaxId={client?.tax_id}
-          items={items} totalsLabel="รวมรับชำระ" totalsAmount={receipt.amount}
-          subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
-          withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
-          notesBlock={null}
-          signatures={['ผู้รับเงิน', 'ผู้จ่ายเงิน']}
-        />
+        {/* overflow:auto -- DocumentPaper now renders at a fixed PAGE_WIDTH_PX
+            width (see usePaginatedDocument.jsx), which can exceed this modal's
+            available inner width; scroll rather than clip, matching
+            QuotationPaper's identical fixed-width overflow handling. */}
+        <div style={{ overflow: 'auto' }}>
+          <DocumentPaper
+            elementId={elementId} tenant={tenant} title={variant.title} tag={printTag}
+            infoFields={[
+              { label: variant.numberLabel, value: receipt[variant.numberField] },
+              { label: 'วันที่', value: new Date(receipt.date).toLocaleDateString('th-TH') },
+              { label: 'อ้างอิงใบแจ้งหนี้', value: invoice.invoice_number },
+              { label: 'โครงการ', value: invoice.sites?.name || '—' },
+            ]}
+            clientName={client?.name} clientAddress={client?.address} clientTaxId={client?.tax_id}
+            items={items} totalsLabel="รวมรับชำระ" totalsAmount={receipt.amount}
+            subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
+            withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
+            notesBlock={null}
+            signatures={['ผู้รับเงิน', 'ผู้จ่ายเงิน']}
+            onPageCountChange={setPageCount}
+          />
+        </div>
       </div>
       <div className="modal-footer" style={{ alignItems: 'center' }}>
         <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
@@ -795,7 +937,7 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
           items={[
             { label: '🖨️ พิมพ์', onClick: () => window.print() },
             { label: '📄 บันทึกเป็น PDF', onClick: () => handleDownload('pdf', downloadPDF) },
-            { label: '🖼️ บันทึกเป็น JPG', onClick: () => handleDownload('jpg', downloadJPG) },
+            { label: '🖼️ บันทึกเป็น JPG', onClick: () => handleDownload('jpg', downloadJPG), disabled: pageCount > 1, disabledTitle: 'เอกสารหลายหน้า บันทึกเป็น PDF แทน' },
           ]}
         />
       </div>
