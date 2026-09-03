@@ -766,6 +766,13 @@ CREATE TABLE quotations (
   payment_terms       TEXT,
   notes               TEXT,
   revision            INTEGER NOT NULL DEFAULT 1, -- bumped on every edit save; counter only, no snapshot history — added by supabase/migrations/2026-08-22-07-quotation-revision-tracking.sql
+  -- true from the first time this quotation is ever sent, and stays true
+  -- even after a pull-back-to-edit sets status back to 'draft' -- editing
+  -- a quotation that's never been sent is normal draft iteration (no
+  -- revision snapshot/bump); editing one that's ever_sent is a real
+  -- revision. Added by
+  -- supabase/migrations/2026-09-03-11-quotation-item-description-and-ever-sent.sql.
+  ever_sent           BOOLEAN NOT NULL DEFAULT false,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   tenant_id           UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
@@ -836,7 +843,13 @@ CREATE TABLE quotation_items (
   -- item -- e.g. a description sitting under a specific item, or a
   -- section separator. Added by
   -- supabase/migrations/2026-09-03-10-quotation-items-item-type.sql.
-  item_type        TEXT NOT NULL DEFAULT 'item' CHECK (item_type IN ('item','note'))
+  -- 'item_description' is a note-type row attached to the item
+  -- immediately before it (by position, not FK -- it's only ever
+  -- created glued to that item, e.g. by the catalog picker), distinct
+  -- from a standalone/section 'note'. Both render identically on the
+  -- printed document. Widened by
+  -- supabase/migrations/2026-09-03-11-quotation-item-description-and-ever-sent.sql.
+  item_type        TEXT NOT NULL DEFAULT 'item' CHECK (item_type IN ('item','note','item_description'))
 );
 
 CREATE INDEX idx_quotation_items_quotation_id ON quotation_items(quotation_id);

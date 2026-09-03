@@ -9,7 +9,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt, useMySignatureUrl, useDocumentPrintCount, logDocumentPrint } from '../hooks/useSupabase.js'
+import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt, useMySignatureUrl, logDocumentPrint } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -22,7 +22,7 @@ import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { lineTotal, calcQuotationTotals } from '../lib/quotationCalc.js'
 import { SiteForm, siteFormToPayload } from './Sites.jsx'
-import { downloadPDF, downloadJPG, printTagFor } from '../lib/pdf.js'
+import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
 import DocumentReceiptModal from '../components/DocumentReceiptModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
@@ -41,6 +41,12 @@ const QT_STATUS_LABELS = {
 
 const EMPTY_ITEM = { catalog_item_id: null, description: '', quantity: '1', unit: '', unit_price: '', item_type: 'item' }
 const EMPTY_NOTE = { catalog_item_id: null, description: '', quantity: '0', unit: '', unit_price: '0', item_type: 'note' }
+// 'item_description' is glued to the item immediately before it (by
+// position, not FK) -- only ever created via addFromCatalog below, or by
+// being reordered by the user right after some item. Distinct from
+// EMPTY_NOTE (a standalone/section note) so a future estimate system can
+// query "this item's description" cleanly.
+const EMPTY_ITEM_DESCRIPTION = { catalog_item_id: null, description: '', quantity: '0', unit: '', unit_price: '0', item_type: 'item_description' }
 const EMPTY_FORM = {
   client_id: '', date: '', valid_until: '', has_vat: true, price_includes_vat: false,
   discount_mode: 'none', discount_amount: '', discount_pct: '',
@@ -57,8 +63,8 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch 
     if (!found) return
     onChange([...items, {
       catalog_item_id: found.id, description: found.name, unit: found.unit || '',
-      quantity: '1', unit_price: String(found.default_unit_price),
-    }])
+      quantity: '1', unit_price: String(found.default_unit_price), item_type: 'item',
+    }, { ...EMPTY_ITEM_DESCRIPTION }])
   }
   // Lets a free-typed line become a reusable catalog entry without leaving
   // the quotation — inserts it, then links this row to the new entry the
@@ -81,9 +87,10 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch 
       <label className="label">รายการ ★</label>
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((it, i) => (
-          it.item_type === 'note' ? (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 32px', gap: 6, alignItems: 'center' }}>
-              <input className="input input-sm" placeholder="ข้อมูลเพิ่มเติม (ไม่มีราคา — เช่น คำอธิบายรายการ, หมายเหตุ)"
+          it.item_type === 'note' || it.item_type === 'item_description' ? (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 32px', gap: 6, alignItems: 'center', paddingLeft: it.item_type === 'item_description' ? 20 : 0 }}>
+              <input className="input input-sm"
+                placeholder={it.item_type === 'item_description' ? 'คำอธิบายรายการ (ของรายการด้านบน — ไม่มีราคา)' : 'ข้อมูลเพิ่มเติม (ไม่มีราคา — เช่น หมายเหตุ, หัวข้อคั่น)'}
                 style={{ fontStyle: 'italic' }}
                 value={it.description} onChange={e => set(i, 'description', e.target.value)} />
               <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
@@ -332,9 +339,9 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
         </thead>
         <tbody>
           {items.map((it, i) => (
-            it.item_type === 'note' ? (
+            it.item_type === 'note' || it.item_type === 'item_description' ? (
               <tr key={it.id || i}>
-                <td colSpan={4} style={{ padding: '6px 8px', borderBottom: '1px solid #eee', fontStyle: 'italic', color: '#666', whiteSpace: 'pre-line' }}>{it.description}</td>
+                <td colSpan={4} style={{ padding: `6px 8px 6px ${it.item_type === 'item_description' ? 20 : 8}px`, borderBottom: '1px solid #eee', fontStyle: 'italic', color: '#666', whiteSpace: 'pre-line' }}>{it.description}</td>
               </tr>
             ) : (
               <tr key={it.id || i}>
@@ -419,15 +426,15 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
     return () => { cancelled = true }
   }, [receipt])
 
-  const { data: priorPrints } = useDocumentPrintCount('quotation', qt.id)
-  const [printCount, setPrintCount] = useState(0)
-  useEffect(() => { if (priorPrints != null) setPrintCount(priorPrints) }, [priorPrints])
-  const printTag = printTagFor(printCount)
+  // ผู้ใช้เลือกเองว่าจะบันทึก/พิมพ์เป็น "ต้นฉบับ" หรือ "สำเนา" -- ไม่ auto
+  // นับจากประวัติการพิมพ์อีกต่อไป (เคยนับอัตโนมัติจาก document_prints แต่
+  // ผู้ใช้อยากตัดสินใจเอง) document_prints ยังบันทึกไว้เป็น audit log ว่า
+  // ใครพิมพ์ฟอร์แมตไหนเมื่อไหร่ แค่ไม่ได้ใช้มากำหนดแท็กแล้ว
+  const [printTag, setPrintTag] = useState('ต้นฉบับ')
 
   const handleDownload = async (format, exportFn) => {
     await logDocumentPrint(tenant?.id, 'quotation', qt.id, format)
     await exportFn(elementId, `${printTag}-${qt.quotation_number}`)
-    setPrintCount(c => c + 1)
   }
 
   return (
@@ -443,10 +450,20 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
           clientSignature={receipt && signatureUrl ? { url: signatureUrl, signerName: receipt.signer_name, signedAt: receipt.signed_at } : null}
         />
       </div>
-      <div className="modal-footer">
+      <div className="modal-footer" style={{ alignItems: 'center' }}>
         <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
-        <button className="btn btn-ghost" onClick={() => handleDownload('jpg', downloadJPG)}>🖼️ ดาวน์โหลด JPG</button>
-        <button className="btn btn-primary" onClick={() => handleDownload('pdf', downloadPDF)}>📄 ดาวน์โหลด PDF</button>
+        <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
+          {['ต้นฉบับ', 'สำเนา'].map(t => (
+            <button key={t} type="button" className={`btn btn-sm ${printTag === t ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPrintTag(t)}>{t}</button>
+          ))}
+        </div>
+        <RowActionsMenu
+          trigger="💾 บันทึกเอกสาร ▾" triggerClassName="btn btn-primary"
+          items={[
+            { label: '📄 บันทึกเป็น PDF', onClick: () => handleDownload('pdf', downloadPDF) },
+            { label: '🖼️ บันทึกเป็น JPG', onClick: () => handleDownload('jpg', downloadJPG) },
+          ]}
+        />
       </div>
     </Modal>
   )
@@ -501,10 +518,13 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
         {selected && (
-          <>
-            <button className="btn btn-ghost" onClick={() => downloadJPG(elementId, `${quotation.quotation_number}-rev${selected.revision}.jpg`)}>🖼️ ดาวน์โหลด JPG</button>
-            <button className="btn btn-primary" onClick={() => downloadPDF(elementId, `${quotation.quotation_number}-rev${selected.revision}.pdf`)}>📄 ดาวน์โหลด PDF</button>
-          </>
+          <RowActionsMenu
+            trigger="💾 บันทึกเอกสาร ▾" triggerClassName="btn btn-primary"
+            items={[
+              { label: '📄 บันทึกเป็น PDF', onClick: () => downloadPDF(elementId, `${quotation.quotation_number}-rev${selected.revision}.pdf`) },
+              { label: '🖼️ บันทึกเป็น JPG', onClick: () => downloadJPG(elementId, `${quotation.quotation_number}-rev${selected.revision}.jpg`) },
+            ]}
+          />
         )}
       </div>
     </Modal>
@@ -552,25 +572,32 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       }
       let quotationId = editRow?.id
       if (editRow) {
-        // Snapshot the pre-edit state (this revision's content) before
-        // overwriting it — editRow.quotation_items is what's still live
-        // at this point, so it's the accurate "before" picture.
-        const snapshot = {
-          client_id: editRow.client_id, client_name: editRow.clients?.name || null,
-          date: editRow.date, valid_until: editRow.valid_until,
-          has_vat: editRow.has_vat, price_includes_vat: editRow.price_includes_vat,
-          discount_amount: editRow.discount_amount, discount_pct: editRow.discount_pct,
-          payment_terms: editRow.payment_terms, notes: editRow.notes,
-          items: (editRow.quotation_items || []).map(it => ({
-            description: it.description, unit: it.unit, quantity: it.quantity, unit_price: it.unit_price, line_total: it.line_total,
-          })),
+        // Only a document that's been sent at least once (ever_sent —
+        // stays true even after a pull-back-to-edit) gets a revision
+        // snapshot + counter bump. Editing a quotation that's never been
+        // sent is normal draft iteration, not a revision.
+        if (editRow.ever_sent) {
+          // Snapshot the pre-edit state (this revision's content) before
+          // overwriting it — editRow.quotation_items is what's still live
+          // at this point, so it's the accurate "before" picture.
+          const snapshot = {
+            client_id: editRow.client_id, client_name: editRow.clients?.name || null,
+            date: editRow.date, valid_until: editRow.valid_until,
+            has_vat: editRow.has_vat, price_includes_vat: editRow.price_includes_vat,
+            discount_amount: editRow.discount_amount, discount_pct: editRow.discount_pct,
+            payment_terms: editRow.payment_terms, notes: editRow.notes,
+            items: (editRow.quotation_items || []).map(it => ({
+              description: it.description, unit: it.unit, quantity: it.quantity, unit_price: it.unit_price, line_total: it.line_total,
+            })),
+          }
+          const { error: snapError } = await supabase.from('quotation_revisions').insert({
+            quotation_id: editRow.id, revision: editRow.revision || 1, snapshot,
+          })
+          if (snapError) throw snapError
         }
-        const { error: snapError } = await supabase.from('quotation_revisions').insert({
-          quotation_id: editRow.id, revision: editRow.revision || 1, snapshot,
-        })
-        if (snapError) throw snapError
 
-        const { error } = await supabase.from('quotations').update({ ...qtPayload, revision: (editRow.revision || 1) + 1 }).eq('id', editRow.id)
+        const revisionUpdate = editRow.ever_sent ? { revision: (editRow.revision || 1) + 1 } : {}
+        const { error } = await supabase.from('quotations').update({ ...qtPayload, ...revisionUpdate }).eq('id', editRow.id)
         if (error) throw error
         const { error: delError } = await supabase.from('quotation_items').delete().eq('quotation_id', editRow.id)
         if (delError) throw delError
@@ -634,8 +661,13 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   }
 
   const handleSetStatus = async (id, newStatus) => {
-    const { error } = await supabase.from('quotations').update({ status: newStatus }).eq('id', id)
-    if (!error) { await auditLog('quotations', id, 'UPDATE', null, { status: newStatus }); refetch(); showToast('อัปเดตสถานะแล้ว') }
+    // ever_sent ติดค้างเป็น true ตลอดไปตั้งแต่ครั้งแรกที่กด "ส่ง" -- ไม่รีเซ็ต
+    // แม้ดึงกลับเป็นร่างทีหลัง (handlePullBackToEdit) ใช้แยกว่าการแก้ไข
+    // ครั้งต่อไปควรนับเป็น revision จริงหรือแค่แก้ร่างธรรมดา (ดูจุดบันทึก
+    // ด้านล่าง)
+    const payload = newStatus === 'sent' ? { status: newStatus, ever_sent: true } : { status: newStatus }
+    const { error } = await supabase.from('quotations').update(payload).eq('id', id)
+    if (!error) { await auditLog('quotations', id, 'UPDATE', null, payload); refetch(); showToast('อัปเดตสถานะแล้ว') }
     else alert('Error: ' + error.message)
   }
 

@@ -11,13 +11,16 @@
 // the ancestor's overflow boundary).
 //
 // items: [{ label, onClick, danger? }]
+// trigger/triggerClassName: override the default "⋮" ghost-icon button
+// (e.g. a labeled "💾 บันทึกเอกสาร ▾" save dropdown) -- optional, existing
+// row-menu callers are unaffected.
 // ============================================================
 import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 
 const MENU_MARGIN = 4
 
-export default function RowActionsMenu({ items = [] }) {
+export default function RowActionsMenu({ items = [], trigger, triggerClassName = 'btn btn-sm btn-ghost' }) {
   const [open, setOpen] = useState(false)
   const [menuStyle, setMenuStyle] = useState(null)
   const triggerRef = useRef(null)
@@ -75,7 +78,7 @@ export default function RowActionsMenu({ items = [] }) {
 
   return (
     <div ref={triggerRef} style={{ display: 'inline-block' }}>
-      <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(o => !o)} title="เพิ่มเติม">⋮</button>
+      <button type="button" className={triggerClassName} onClick={() => setOpen(o => !o)} title="เพิ่มเติม">{trigger || '⋮'}</button>
       {open && menuStyle && createPortal(
         <div
           ref={menuRef}
