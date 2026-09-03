@@ -492,11 +492,11 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
 function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct, withholdingTaxAmount, isWithholdingEstimate, notesBlock, signatures, recipientSignature }) {
   const mySignature = useMySignatureUrl()
   return (
-    <div id={elementId} className="printable-document" style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
+    <div id={elementId} className="printable-document" style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f', boxSizing: 'border-box', minHeight: 1000, display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
           {tenant?.logo_url
-            ? <img src={tenant.logo_url} alt="" style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }} crossOrigin="anonymous" />
+            ? <img src={tenant.logo_url} alt="" style={{ height: '100%', maxHeight: 64, width: 'auto', objectFit: 'contain', flexShrink: 0 }} crossOrigin="anonymous" />
             : <div style={{ width: 40, height: 40, borderRadius: 8, background: '#6c63ff', flexShrink: 0 }} />}
           <div>
             <div style={{ fontSize: 17, fontWeight: 800 }}>{tenant?.company_name}</div>
@@ -581,6 +581,8 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, siteName, cl
       </div>
 
       {notesBlock}
+
+      <div style={{ flex: 1 }} />
 
       <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
         <div>
@@ -964,9 +966,9 @@ function WorkPhotosDocumentModal({ invoice, tenant, photos, urls, onClose }) {
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '5mm', marginBottom: '4mm' }}>
-                  <div style={{ display: 'flex', gap: '3mm', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', gap: '3mm', alignItems: 'stretch' }}>
                     {tenant?.logo_url
-                      ? <img src={tenant.logo_url} alt="" style={{ width: '10mm', height: '10mm', objectFit: 'contain', flexShrink: 0 }} crossOrigin="anonymous" />
+                      ? <img src={tenant.logo_url} alt="" style={{ height: '100%', maxHeight: '16mm', width: 'auto', objectFit: 'contain', flexShrink: 0 }} crossOrigin="anonymous" />
                       : <div style={{ width: '10mm', height: '10mm', borderRadius: 4, background: '#6c63ff', flexShrink: 0 }} />}
                     <div style={{ fontSize: 13, fontWeight: 800 }}>{tenant?.company_name}</div>
                   </div>

@@ -323,11 +323,11 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
   const mySignature = useMySignatureUrl()
 
   return (
-    <div id={elementId} className="printable-document" style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
+    <div id={elementId} className="printable-document" style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f', boxSizing: 'border-box', minHeight: 1000, display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
           {tenant?.logo_url
-            ? <img src={tenant.logo_url} alt="" style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }} crossOrigin="anonymous" />
+            ? <img src={tenant.logo_url} alt="" style={{ height: '100%', maxHeight: 64, width: 'auto', objectFit: 'contain', flexShrink: 0 }} crossOrigin="anonymous" />
             : <div style={{ width: 40, height: 40, borderRadius: 8, background: '#6c63ff', flexShrink: 0 }} />}
           <div>
             <div style={{ fontSize: 17, fontWeight: 800 }}>{tenant?.company_name}</div>
@@ -421,6 +421,8 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
           )}
         </div>
       )}
+
+      <div style={{ flex: 1 }} />
 
       <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
         <div>
