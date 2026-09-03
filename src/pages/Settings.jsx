@@ -208,7 +208,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   // Company profile — for the Quotation PDF letterhead (and future
   // Invoice). See docs/superpowers/specs/2026-08-22-quotation-module-design.md.
   const [profile, setProfile] = useState({
-    company_name: '', address: '', tax_id: '', phone: '',
+    company_name: '', address: '', tax_id: '', phone: '', email: '', website: '',
     default_payment_terms: '', default_notes: '',
   })
   const [savingProfile, setSavingProfile] = useState(false)
@@ -216,7 +216,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   useEffect(() => {
     if (tenant) {
       setProfile({
-        company_name: tenant.company_name || '', address: tenant.address || '', tax_id: tenant.tax_id || '', phone: tenant.phone || '',
+        company_name: tenant.company_name || '', address: tenant.address || '', tax_id: tenant.tax_id || '', phone: tenant.phone || '', email: tenant.email || '', website: tenant.website || '',
         default_payment_terms: tenant.default_payment_terms || '', default_notes: tenant.default_notes || '',
       })
     }
@@ -479,6 +479,16 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           <div>
             <label className="label">เบอร์โทร</label>
             <input className="input" style={{ maxWidth: 240 }} value={profile.phone} onChange={e => setProfileField('phone', e.target.value)} />
+          </div>
+          <div className="form-grid-2">
+            <div>
+              <label className="label">อีเมล</label>
+              <input className="input" type="email" value={profile.email} onChange={e => setProfileField('email', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">เว็บไซต์</label>
+              <input className="input" value={profile.website} onChange={e => setProfileField('website', e.target.value)} placeholder="www.example.com" />
+            </div>
           </div>
           <div>
             <label className="label">เงื่อนไขการชำระเงิน (ค่าเริ่มต้นสำหรับใบเสนอราคาใหม่)</label>
