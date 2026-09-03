@@ -831,7 +831,12 @@ CREATE TABLE quotation_items (
   unit_price       NUMERIC NOT NULL DEFAULT 0,
   line_total       NUMERIC NOT NULL DEFAULT 0,
   sort_order       INT NOT NULL DEFAULT 0,
-  tenant_id        UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+  tenant_id        UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  -- 'note' rows are a free-text "additional info" line, not a priced
+  -- item -- e.g. a description sitting under a specific item, or a
+  -- section separator. Added by
+  -- supabase/migrations/2026-09-03-10-quotation-items-item-type.sql.
+  item_type        TEXT NOT NULL DEFAULT 'item' CHECK (item_type IN ('item','note'))
 );
 
 CREATE INDEX idx_quotation_items_quotation_id ON quotation_items(quotation_id);

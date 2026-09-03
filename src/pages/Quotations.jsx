@@ -39,7 +39,8 @@ const QT_STATUS_LABELS = {
   draft: '✏️ ร่าง', sent: '📤 ส่งแล้ว', accepted: '✅ ยอมรับ', rejected: '✕ ปฏิเสธ', expired: '⏰ หมดอายุ',
 }
 
-const EMPTY_ITEM = { catalog_item_id: null, description: '', quantity: '1', unit: '', unit_price: '' }
+const EMPTY_ITEM = { catalog_item_id: null, description: '', quantity: '1', unit: '', unit_price: '', item_type: 'item' }
+const EMPTY_NOTE = { catalog_item_id: null, description: '', quantity: '0', unit: '', unit_price: '0', item_type: 'note' }
 const EMPTY_FORM = {
   client_id: '', date: '', valid_until: '', has_vat: true, price_includes_vat: false,
   discount_mode: 'none', discount_amount: '', discount_pct: '',
@@ -49,6 +50,7 @@ const EMPTY_FORM = {
 function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch }) {
   const set = (i, k, v) => onChange(items.map((it, idx) => idx === i ? { ...it, [k]: v } : it))
   const add = () => onChange([...items, { ...EMPTY_ITEM }])
+  const addNote = () => onChange([...items, { ...EMPTY_NOTE }])
   const remove = (i) => onChange(items.length > 1 ? items.filter((_, idx) => idx !== i) : items)
   const addFromCatalog = (catalogId) => {
     const found = (catalogItems || []).find(c => c.id === catalogId)
@@ -79,24 +81,34 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch 
       <label className="label">รายการ ★</label>
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((it, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px 32px 32px', gap: 6, alignItems: 'center' }}>
-            <input className="input input-sm" placeholder="รายละเอียดรายการ" required
-              value={it.description} onChange={e => set(i, 'description', e.target.value)} />
-            <input className="input input-sm" type="number" min="0" step="0.01" placeholder="จำนวน"
-              value={it.quantity} onChange={e => set(i, 'quantity', e.target.value)} />
-            <input className="input input-sm" placeholder="หน่วย"
-              value={it.unit} onChange={e => set(i, 'unit', e.target.value)} />
-            <input className="input input-sm" type="number" min="0" step="0.01" placeholder="ราคา/หน่วย"
-              value={it.unit_price} onChange={e => set(i, 'unit_price', e.target.value)} />
-            {!it.catalog_item_id && it.description.trim()
-              ? <button type="button" className="btn btn-sm btn-ghost" title="บันทึกเป็นรายการสินค้าใหม่" onClick={() => saveToCatalog(i)}>💾</button>
-              : <span title={it.catalog_item_id ? 'อยู่ในรายการสินค้าแล้ว' : undefined} style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>{it.catalog_item_id ? '📦' : ''}</span>}
-            <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
-          </div>
+          it.item_type === 'note' ? (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 32px', gap: 6, alignItems: 'center' }}>
+              <input className="input input-sm" placeholder="ข้อมูลเพิ่มเติม (ไม่มีราคา — เช่น คำอธิบายรายการ, หมายเหตุ)"
+                style={{ fontStyle: 'italic' }}
+                value={it.description} onChange={e => set(i, 'description', e.target.value)} />
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
+            </div>
+          ) : (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px 32px 32px', gap: 6, alignItems: 'center' }}>
+              <input className="input input-sm" placeholder="รายละเอียดรายการ" required
+                value={it.description} onChange={e => set(i, 'description', e.target.value)} />
+              <input className="input input-sm" type="number" min="0" step="0.01" placeholder="จำนวน"
+                value={it.quantity} onChange={e => set(i, 'quantity', e.target.value)} />
+              <input className="input input-sm" placeholder="หน่วย"
+                value={it.unit} onChange={e => set(i, 'unit', e.target.value)} />
+              <input className="input input-sm" type="number" min="0" step="0.01" placeholder="ราคา/หน่วย"
+                value={it.unit_price} onChange={e => set(i, 'unit_price', e.target.value)} />
+              {!it.catalog_item_id && it.description.trim()
+                ? <button type="button" className="btn btn-sm btn-ghost" title="บันทึกเป็นรายการสินค้าใหม่" onClick={() => saveToCatalog(i)}>💾</button>
+                : <span title={it.catalog_item_id ? 'อยู่ในรายการสินค้าแล้ว' : undefined} style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>{it.catalog_item_id ? '📦' : ''}</span>}
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
+            </div>
+          )
         ))}
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button type="button" className="btn btn-sm btn-ghost" onClick={add}>+ เพิ่มรายการว่าง</button>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={addNote}>+ เพิ่มข้อมูลเพิ่มเติม</button>
         <div style={{ minWidth: 220 }}>
           <SearchableSelect value={null} onChange={addFromCatalog} placeholder="+ เพิ่มจากรายการสินค้า" options={catalogOpts(catalogItems)} />
         </div>
@@ -320,12 +332,18 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
         </thead>
         <tbody>
           {items.map((it, i) => (
-            <tr key={it.id || i}>
-              <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.description}</td>
-              <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.quantity} {it.unit || ''}</td>
-              <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
-              <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.line_total)}</td>
-            </tr>
+            it.item_type === 'note' ? (
+              <tr key={it.id || i}>
+                <td colSpan={4} style={{ padding: '6px 8px', borderBottom: '1px solid #eee', fontStyle: 'italic', color: '#666', whiteSpace: 'pre-line' }}>{it.description}</td>
+              </tr>
+            ) : (
+              <tr key={it.id || i}>
+                <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.description}</td>
+                <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.quantity} {it.unit || ''}</td>
+                <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
+                <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.line_total)}</td>
+              </tr>
+            )
           ))}
         </tbody>
       </table>
@@ -570,7 +588,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
           quotation_id: quotationId, catalog_item_id: it.catalog_item_id || null,
           description: it.description, quantity: parseFloat(it.quantity) || 0,
           unit: it.unit || null, unit_price: parseFloat(it.unit_price) || 0,
-          line_total: lineTotal(it), sort_order: i,
+          line_total: lineTotal(it), sort_order: i, item_type: it.item_type || 'item',
         }))
       if (itemsPayload.length) {
         const { error } = await supabase.from('quotation_items').insert(itemsPayload)
@@ -721,7 +739,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       discount_pct: editRow.discount_pct != null ? String(editRow.discount_pct) : '',
       payment_terms: editRow.payment_terms || '', notes: editRow.notes || '',
       items: (editRow.quotation_items?.length ? editRow.quotation_items : [{ ...EMPTY_ITEM }])
-        .map(it => ({ catalog_item_id: it.catalog_item_id, description: it.description, quantity: String(it.quantity), unit: it.unit || '', unit_price: String(it.unit_price) })),
+        .map(it => ({ catalog_item_id: it.catalog_item_id, description: it.description, quantity: String(it.quantity), unit: it.unit || '', unit_price: String(it.unit_price), item_type: it.item_type || 'item' })),
     }
   }, [editRow])
 
