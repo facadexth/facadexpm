@@ -1,11 +1,25 @@
 import { useState, useLayoutEffect, useRef, cloneElement } from 'react'
 
-// Deliberately shorter than the shipped single-page minHeight (1000px, from
-// commits dbfec30/901293a) -- mirrors WorkPhotosDocumentModal's own
-// 270mm-vs-277mm safety margin against an html2pdf.js page-break modulo bug
-// (a page div whose height exactly matches the physical page height can
-// trigger a spurious blank page).
-export const PAGE_HEIGHT_PX = 960
+// This is the CONTENT budget only (header + table-header + rows), not a
+// page-div's own outer height -- a consuming component adds its own
+// vertical padding on top (see QuotationPaper's PAGE_DIV_HEIGHT_PX).
+//
+// Calibrated against html2pdf.js's real per-page pixel budget, not picked
+// arbitrarily: downloadPDF (src/lib/pdf.js) renders A4 with 10mm top+bottom
+// margins, and html2pdf.js's own page-break math (dist/html2pdf.js,
+// toContainer_pagebreak) compares live DOM getBoundingClientRect() values
+// in CSS reference px (96dpi, independent of html2canvas `scale` or the
+// container's rendered width) against that page's content-height budget --
+// (297mm - 2*10mm) * 96/25.4 ≈ 1046px. A page-div whose own rendered
+// height lands close to that number reproduces the exact modulo/rounding
+// "spurious blank/extra page" bug WorkPhotosDocumentModal's PAGE_HEIGHT_MM
+// comment already diagnosed for its own 277mm-vs-270mm case (confirmed by
+// this task's own live testing: a 2-logical-page quotation exported as 4
+// PDF pages because its ~1040px-tall page-divs left only ~6px of margin
+// below the 1046px real budget). Consumers must leave a comparable safety
+// margin below 1046px for their *total* page-div height (content budget +
+// their own padding), not just this content-only number.
+export const PAGE_HEIGHT_PX = 900
 
 // Two-pass pagination: mount renderHeader/renderTableHeader/renderRow once
 // in a hidden measurement pass, read their real rendered heights (this is
@@ -38,6 +52,11 @@ export function usePaginatedDocument({ items, renderHeader, renderTableHeader, r
       pages: [items],
       pageCount: 1,
       measurementNode: (
+        // width:700 must match the real (final-render) document's own
+        // fixed width exactly -- Thai text wraps differently at different
+        // widths, so a mismatch here measures the wrong row heights and
+        // silently reintroduces the same page-height overflow this hook
+        // exists to prevent. See QuotationPaper's own width:700 container.
         <div style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none', top: 0, left: -99999, width: 700, zIndex: -1 }}>
           <div ref={headerRef}>{renderHeader()}</div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>

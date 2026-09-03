@@ -27,6 +27,7 @@ import SignLinkModal from '../components/SignLinkModal.jsx'
 import DocumentReceiptModal from '../components/DocumentReceiptModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import UnitSelect from '../components/UnitSelect.jsx'
+import { usePaginatedDocument, PAGE_HEIGHT_PX } from '../hooks/usePaginatedDocument.jsx'
 
 const clientOpts = (clients) => (clients || []).map(c => ({
   value: c.id, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
@@ -318,135 +319,208 @@ function AcceptQuotationModal({ quotation, totals, clients, sites, hasModuleAcce
 // Extracted so a past revision's snapshot can render through the exact
 // same markup as the live document, not a separate summary — the only
 // difference is which data feeds it and the doc-info tag.
-function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes, bankAccount, clientSignature }) {
+function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange }) {
   const totals = calcQuotationTotals(items, { hasVat, priceIncludesVat, discountAmount, discountPct })
   const mySignature = useMySignatureUrl()
+  const ACCENT = '#6c63ff'
 
-  return (
-    <div id={elementId} className="printable-document" style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f', boxSizing: 'border-box', minHeight: 1000, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
+  const revisionSuffix = revision > 1 ? `-R${revision}` : ''
+
+  // Both the top row (logo/contact/title) and the client-info/doc-info row
+  // below it repeat identically on every page (per the spec's explicit
+  // "repeat the whole header" requirement) -- kept as one Header component
+  // so the pagination hook's renderHeader has a single, simple call.
+  const Header = ({ pageNumber, totalPages }) => (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'stretch', gap: 25 }}>
+        <div style={{ display: 'flex', gap: 20 }}>
           {tenant?.logo_url
             ? (
               <div style={{ position: 'relative', width: 110, flexShrink: 0 }}>
                 <img src={tenant.logo_url} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'left center' }} crossOrigin="anonymous" />
               </div>
             )
-            : <div style={{ width: 40, height: 40, borderRadius: 8, background: '#6c63ff', flexShrink: 0 }} />}
+            : <div style={{ width: 40, height: 40, borderRadius: 8, background: ACCENT, flexShrink: 0 }} />}
           <div>
-            <div style={{ fontSize: 17, fontWeight: 800 }}>{tenant?.company_name}</div>
-            <div style={{ fontSize: 11, color: '#6a6f85', lineHeight: 1.6, marginTop: 2 }}>
-              {tenant?.address}
-              {tenant?.address && <br />}
-              {tenant?.tax_id && `เลขผู้เสียภาษี ${tenant.tax_id}`}
-              {tenant?.tax_id && tenant?.phone && ' · '}
-              {tenant?.phone && `โทร ${tenant.phone}`}
-            </div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{tenant?.company_name}</div>
+            {tenant?.address && <div style={{ fontSize: 12, color: '#6a6f85', lineHeight: 1.6, marginTop: 2 }}>{tenant.address}</div>}
+            {tenant?.tax_id && <div style={{ fontSize: 12, color: '#6a6f85' }}>เลขผู้เสียภาษี {tenant.tax_id}</div>}
+            {(tenant?.phone || tenant?.email || tenant?.website) && (
+              <div style={{ fontSize: 12, color: '#4a4d63', marginTop: 6 }}>
+                {tenant?.phone && <>📞&nbsp;{tenant.phone}</>}
+                {tenant?.phone && (tenant?.email || tenant?.website) && '   '}
+                {tenant?.email && <>✉️&nbsp;{tenant.email}</>}
+                {tenant?.email && tenant?.website && '   '}
+                {tenant?.website && <>🌐&nbsp;{tenant.website}</>}
+              </div>
+            )}
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#6c63ff', border: '1px solid #6c63ff', borderRadius: 4, padding: '2px 8px', display: 'inline-block', marginBottom: 6 }}>{tag || 'ต้นฉบับ'}</div>
-          <div style={{ fontSize: 22, fontWeight: 800 }}>ใบเสนอราคา</div>
+          <div style={{ fontSize: 12, color: '#6a6f85', marginBottom: 4 }}>หน้า {pageNumber}/{totalPages}</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: ACCENT, border: `1px solid ${ACCENT}`, borderRadius: 4, padding: '2px 8px', display: 'inline-block', marginBottom: 6 }}>{tag || 'ต้นฉบับ'}</div>
+          <div style={{ fontSize: 28, fontWeight: 800 }}>ใบเสนอราคา</div>
         </div>
       </div>
 
-      <div style={{ marginTop: 20, border: '1px solid #e4e6ef', borderRadius: 8, padding: '14px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: 12 }}>
-        <div><span style={{ color: '#6a6f85' }}>เลขที่เอกสาร</span><br />{quotationNumber}</div>
-        <div><span style={{ color: '#6a6f85' }}>วันที่ออก</span><br />{date ? new Date(date).toLocaleDateString('th-TH') : '—'}</div>
-        <div><span style={{ color: '#6a6f85' }}>ใช้ได้ถึง</span><br />{validUntil ? new Date(validUntil).toLocaleDateString('th-TH') : '—'}</div>
-        <div><span style={{ color: '#6a6f85' }}>แก้ไขครั้งที่</span><br />{revision || 1}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '66fr 34fr', gap: 20 }}>
+        <div style={{ marginTop: 17, fontSize: 12.5, lineHeight: 2 }}>
+          <div><span style={{ color: '#6a6f85' }}>ลูกค้า&nbsp;:</span> <strong>{clientName || '—'}</strong></div>
+          <div><span style={{ color: '#6a6f85' }}>ที่อยู่&nbsp;:</span> {clientAddress || '—'}</div>
+          {clientTaxId && <div><span style={{ color: '#6a6f85' }}>เลขที่ภาษี&nbsp;:</span> {clientTaxId}</div>}
+        </div>
+        <div style={{ marginTop: 17, border: '1px solid #e4e6ef', borderRadius: 8, padding: '14px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px', fontSize: 12 }}>
+          <div><span style={{ color: '#6a6f85' }}>เลขที่เอกสาร</span><br /><strong>{quotationNumber}{revisionSuffix}</strong></div>
+          <div><span style={{ color: '#6a6f85' }}>วันที่ออก</span><br />{date ? new Date(date).toLocaleDateString('th-TH') : '—'}</div>
+          <div><span style={{ color: '#6a6f85' }}>ใช้ได้ถึง</span><br />{validUntil ? new Date(validUntil).toLocaleDateString('th-TH') : '—'}</div>
+          <div><span style={{ color: '#6a6f85' }}>โครงการ</span><br />{siteName || '—'}</div>
+        </div>
       </div>
+    </>
+  )
 
-      <div style={{ marginTop: 16, fontSize: 12.5, lineHeight: 1.9, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 10px' }}>
-        <span style={{ color: '#6a6f85' }}>ลูกค้า</span><strong>{clientName || '—'}</strong>
-        {clientTaxId && <><span style={{ color: '#6a6f85' }}>เลขประจำตัวผู้เสียภาษี</span><span>{clientTaxId}</span></>}
-        {clientAddress && <><span style={{ color: '#6a6f85' }}>ที่อยู่</span><span>{clientAddress}</span></>}
-      </div>
+  const renderRow = (it, i) => (
+    it.item_type === 'note' || it.item_type === 'item_description' ? (
+      <tr key={it.id || i}>
+        <td colSpan={4} style={{ padding: `6px 8px 6px ${it.item_type === 'item_description' ? 20 : 8}px`, borderBottom: '1px solid #eee', fontStyle: 'italic', color: '#666', whiteSpace: 'pre-line' }}>{it.description}</td>
+      </tr>
+    ) : (
+      <tr key={it.id || i}>
+        <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.description}</td>
+        <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.quantity} {it.unit || ''}</td>
+        <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
+        <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.line_total)}</td>
+      </tr>
+    )
+  )
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 18 }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: 'left', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>รายการ</th>
-            <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>จำนวน</th>
-            <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>ราคา/หน่วย</th>
-            <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>รวม</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((it, i) => (
-            it.item_type === 'note' || it.item_type === 'item_description' ? (
-              <tr key={it.id || i}>
-                <td colSpan={4} style={{ padding: `6px 8px 6px ${it.item_type === 'item_description' ? 20 : 8}px`, borderBottom: '1px solid #eee', fontStyle: 'italic', color: '#666', whiteSpace: 'pre-line' }}>{it.description}</td>
-              </tr>
-            ) : (
-              <tr key={it.id || i}>
-                <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.description}</td>
-                <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.quantity} {it.unit || ''}</td>
-                <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
-                <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.line_total)}</td>
-              </tr>
-            )
-          ))}
-        </tbody>
-      </table>
+  const renderTableHeader = () => (
+    <tr>
+      <th style={{ textAlign: 'left', padding: '11px 8px', fontSize: 12, fontWeight: 700, color: '#4a4d63', background: '#f4f4f6', borderBottom: `2px solid ${ACCENT}` }}>รายการ</th>
+      <th style={{ textAlign: 'right', padding: '11px 8px', fontSize: 12, fontWeight: 700, color: '#4a4d63', background: '#f4f4f6', borderBottom: `2px solid ${ACCENT}` }}>จำนวน</th>
+      <th style={{ textAlign: 'right', padding: '11px 8px', fontSize: 12, fontWeight: 700, color: '#4a4d63', background: '#f4f4f6', borderBottom: `2px solid ${ACCENT}` }}>ราคา/หน่วย</th>
+      <th style={{ textAlign: 'right', padding: '11px 8px', fontSize: 12, fontWeight: 700, color: '#4a4d63', background: '#f4f4f6', borderBottom: `2px solid ${ACCENT}` }}>รวม</th>
+    </tr>
+  )
 
-      <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
-        <table style={{ width: 260, fontSize: 12.5 }}>
-          <tbody>
-            {totals.discount > 0 && (
-              <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>ส่วนลด</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>-{fmt(totals.discount)}</td></tr>
+  const { pages, pageCount, measurementNode } = usePaginatedDocument({
+    items,
+    renderHeader: () => <Header pageNumber={1} totalPages={1} />,
+    renderTableHeader,
+    renderRow,
+  })
+
+  useEffect(() => { onPageCountChange?.(pageCount) }, [pageCount, onPageCountChange])
+
+  // Fixed, not fluid -- must exactly match usePaginatedDocument's hidden
+  // measurement clone (also width:700) so Thai text wraps identically in
+  // both passes; a mismatch here measures the wrong row heights and lets
+  // real content quietly overflow PAGE_DIV_HEIGHT_PX below. A fluid width
+  // (this component's original single-page version, and the modal it sits
+  // in) is exactly what broke this on first attempt: this modal renders it
+  // narrower than 700px, so real rows measured taller than the hidden
+  // pass predicted, pushing each page-div's true height past html2pdf.js's
+  // real per-page budget and splitting one logical page into two physical
+  // PDF pages. See usePaginatedDocument.jsx's PAGE_HEIGHT_PX comment for
+  // the full page-height budget math.
+  const DOC_WIDTH_PX = 700
+  // 40px top + 40px bottom padding on every page-div, added on top of
+  // usePaginatedDocument's own content-only PAGE_HEIGHT_PX budget.
+  const PAGE_DIV_HEIGHT_PX = PAGE_HEIGHT_PX + 80
+
+  return (
+    <div id={elementId} className="printable-document" style={{ fontFamily: 'Sarabun,sans-serif', width: DOC_WIDTH_PX }}>
+      {pages.map((pageItems, pageIndex) => {
+        const isLast = pageIndex === pages.length - 1
+        return (
+          <div
+            key={pageIndex}
+            style={{
+              padding: '40px 44px', background: '#fff', color: '#17181f', boxSizing: 'border-box',
+              // Fixed height, not minHeight -- a page-div that's allowed to
+              // grow past PAGE_DIV_HEIGHT_PX (e.g. from a measurement/
+              // render drift) reintroduces the same overflow-past-budget
+              // bug this fixed width+height pairing exists to prevent.
+              // Matches WorkPhotosDocumentModal's own proven fixed-height
+              // (not minHeight) page-div pattern.
+              height: PAGE_DIV_HEIGHT_PX, display: 'flex', flexDirection: 'column',
+              pageBreakAfter: isLast ? 'auto' : 'always', breakAfter: isLast ? 'auto' : 'page',
+              marginBottom: isLast ? 0 : 16,
+              boxShadow: pages.length > 1 ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
+            }}
+          >
+            <Header pageNumber={pageIndex + 1} totalPages={pages.length} />
+
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 18 }}>
+              <thead>{renderTableHeader()}</thead>
+              <tbody>{pageItems.map(renderRow)}</tbody>
+            </table>
+
+            {isLast && (
+              <>
+                <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+                  <table style={{ width: 260, fontSize: 12.5 }}>
+                    <tbody>
+                      {totals.discount > 0 && (
+                        <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>ส่วนลด</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>-{fmt(totals.discount)}</td></tr>
+                      )}
+                      <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมก่อน VAT</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(totals.subtotal)}</td></tr>
+                      {hasVat && (
+                        <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>VAT (7%)</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(totals.vat)}</td></tr>
+                      )}
+                      <tr>
+                        <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: ACCENT, borderTop: `2px solid ${ACCENT}` }}>รวมทั้งสิ้น</td>
+                        <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: ACCENT, borderTop: `2px solid ${ACCENT}` }}>{fmt(totals.total)} บาท</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {(paymentTerms || notes || bankAccount) && (
+                  <div style={{ marginTop: 20, fontSize: 11.5, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
+                    {(paymentTerms || notes) && (
+                      <>
+                        <strong style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>หมายเหตุ</strong>
+                        <div style={{ marginBottom: bankAccount ? 10 : 0, whiteSpace: 'pre-line' }}>
+                          {[paymentTerms, notes].filter(Boolean).join('\n\n')}
+                        </div>
+                      </>
+                    )}
+                    {bankAccount && (
+                      <div style={{ marginTop: 10 }}>
+                        <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ flex: 1 }} />
+
+                <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
+                  <div>
+                    <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                      {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
+                    </div>
+                    <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้เสนอราคา</div>
+                  </div>
+                  <div>
+                    <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                      {clientSignature && <img src={clientSignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
+                    </div>
+                    <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้ยอมรับ (ลูกค้า)</div>
+                    {clientSignature && (
+                      <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>
+                        {clientSignature.signerName} · เซ็นเมื่อ {new Date(clientSignature.signedAt).toLocaleDateString('th-TH')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
             )}
-            <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมก่อน VAT</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(totals.subtotal)}</td></tr>
-            {hasVat && (
-              <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>VAT (7%)</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(totals.vat)}</td></tr>
-            )}
-            <tr>
-              <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: '#6c63ff', borderTop: '2px solid #6c63ff' }}>รวมทั้งสิ้น</td>
-              <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: '#6c63ff', borderTop: '2px solid #6c63ff' }}>{fmt(totals.total)} บาท</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      {(paymentTerms || notes || bankAccount) && (
-        <div style={{ marginTop: 20, fontSize: 11.5, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
-          {(paymentTerms || notes) && (
-            <>
-              <strong style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>หมายเหตุ</strong>
-              <div style={{ marginBottom: bankAccount ? 10 : 0, whiteSpace: 'pre-line' }}>
-                {[paymentTerms, notes].filter(Boolean).join('\n\n')}
-              </div>
-            </>
-          )}
-          {bankAccount && (
-            <div style={{ marginTop: 10 }}>
-              <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
-            </div>
-          )}
-        </div>
-      )}
-
-      <div style={{ flex: 1 }} />
-
-      <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
-        <div>
-          <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-            {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
           </div>
-          <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้เสนอราคา</div>
-        </div>
-        <div>
-          <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-            {clientSignature && <img src={clientSignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
-          </div>
-          <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้ยอมรับ (ลูกค้า)</div>
-          {clientSignature && (
-            <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>
-              {clientSignature.signerName} · เซ็นเมื่อ {new Date(clientSignature.signedAt).toLocaleDateString('th-TH')}
-            </div>
-          )}
-        </div>
-      </div>
+        )
+      })}
+      {measurementNode}
     </div>
   )
 }
@@ -468,6 +542,7 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
   // ผู้ใช้อยากตัดสินใจเอง) document_prints ยังบันทึกไว้เป็น audit log ว่า
   // ใครพิมพ์ฟอร์แมตไหนเมื่อไหร่ แค่ไม่ได้ใช้มากำหนดแท็กแล้ว
   const [printTag, setPrintTag] = useState('ต้นฉบับ')
+  const [pageCount, setPageCount] = useState(1)
 
   const handleDownload = async (format, exportFn) => {
     await logDocumentPrint(tenant?.id, 'quotation', qt.id, format)
@@ -476,15 +551,20 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
 
   return (
     <Modal title={`ใบเสนอราคา ${qt.quotation_number}`} onClose={onClose} maxWidth={720}>
-      <div className="modal-body">
+      {/* overflow:auto -- QuotationPaper renders at a fixed 700px width
+          (see its own DOC_WIDTH_PX comment), which can exceed this modal's
+          available inner width; scroll rather than clip, matching
+          WorkPhotosDocumentModal's identical fixed-width overflow handling. */}
+      <div className="modal-body" style={{ overflow: 'auto' }}>
         <QuotationPaper
           elementId={elementId} tenant={tenant} quotationNumber={qt.quotation_number} tag={printTag}
-          date={qt.date} validUntil={qt.valid_until} revision={qt.revision || 1}
+          date={qt.date} validUntil={qt.valid_until} revision={qt.revision || 1} siteName={qt.sites?.name}
           clientName={qt.clients?.name} clientAddress={qt.clients?.address} clientTaxId={qt.clients?.tax_id} items={qt.quotation_items || []}
           hasVat={qt.has_vat} priceIncludesVat={qt.price_includes_vat}
           discountAmount={qt.discount_amount} discountPct={qt.discount_pct}
           paymentTerms={qt.payment_terms} notes={qt.notes} bankAccount={qt.bank_accounts}
           clientSignature={receipt && signatureUrl ? { url: signatureUrl, signerName: receipt.signer_name, signedAt: receipt.signed_at } : null}
+          onPageCountChange={setPageCount}
         />
       </div>
       <div className="modal-footer" style={{ alignItems: 'center' }}>
@@ -499,7 +579,7 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
           items={[
             { label: '🖨️ พิมพ์', onClick: () => window.print() },
             { label: '📄 บันทึกเป็น PDF', onClick: () => handleDownload('pdf', downloadPDF) },
-            { label: '🖼️ บันทึกเป็น JPG', onClick: () => handleDownload('jpg', downloadJPG) },
+            { label: '🖼️ บันทึกเป็น JPG', onClick: () => handleDownload('jpg', downloadJPG), disabled: pageCount > 1, disabledTitle: 'เอกสารหลายหน้า บันทึกเป็น PDF แทน' },
           ]}
         />
       </div>
@@ -516,6 +596,7 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
   const selected = (revisions || []).find(r => r.id === selectedId) || revisions?.[0]
   const elementId = selected ? `qt-hist-doc-${selected.id}` : null
   const s = selected?.snapshot
+  const [historyPageCount, setHistoryPageCount] = useState(1)
 
   return (
     <Modal title={`ประวัติการแก้ไข ${quotation.quotation_number}`} onClose={onClose} maxWidth={760}>
@@ -540,15 +621,22 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
           </div>
         )}
         {selected && (
-          <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+          // overflow:auto (not 'hidden') -- QuotationPaper's printable
+          // document renders at a fixed 700px width (see its own
+          // DOC_WIDTH_PX comment), which can exceed this box's available
+          // width inside a narrower modal; scroll rather than clip,
+          // matching WorkPhotosDocumentModal's identical fixed-width
+          // overflow handling.
+          <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'auto' }}>
             <QuotationPaper
               elementId={elementId} tenant={tenant} quotationNumber={quotation.quotation_number}
               tag={`ฉบับแก้ไขครั้งที่ ${selected.revision} (ประวัติ)`}
-              date={s.date} validUntil={s.valid_until} revision={selected.revision}
+              date={s.date} validUntil={s.valid_until} revision={selected.revision} siteName={null}
               clientName={s.client_name} items={s.items || []}
               hasVat={s.has_vat} priceIncludesVat={s.price_includes_vat}
               discountAmount={s.discount_amount} discountPct={s.discount_pct}
               paymentTerms={s.payment_terms} notes={s.notes} bankAccount={s.bank_account}
+              onPageCountChange={setHistoryPageCount}
             />
           </div>
         )}
@@ -561,7 +649,7 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
             items={[
               { label: '🖨️ พิมพ์', onClick: () => window.print() },
               { label: '📄 บันทึกเป็น PDF', onClick: () => downloadPDF(elementId, `${quotation.quotation_number}-rev${selected.revision}.pdf`) },
-              { label: '🖼️ บันทึกเป็น JPG', onClick: () => downloadJPG(elementId, `${quotation.quotation_number}-rev${selected.revision}.jpg`) },
+              { label: '🖼️ บันทึกเป็น JPG', onClick: () => downloadJPG(elementId, `${quotation.quotation_number}-rev${selected.revision}.jpg`), disabled: historyPageCount > 1, disabledTitle: 'เอกสารหลายหน้า บันทึกเป็น PDF แทน' },
             ]}
           />
         )}
