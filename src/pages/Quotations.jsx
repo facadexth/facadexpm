@@ -27,7 +27,7 @@ import SignLinkModal from '../components/SignLinkModal.jsx'
 import DocumentReceiptModal from '../components/DocumentReceiptModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import UnitSelect from '../components/UnitSelect.jsx'
-import { usePaginatedDocument, PAGE_HEIGHT_PX } from '../hooks/usePaginatedDocument.jsx'
+import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX } from '../hooks/usePaginatedDocument.jsx'
 
 const clientOpts = (clients) => (clients || []).map(c => ({
   value: c.id, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
@@ -313,24 +313,21 @@ function AcceptQuotationModal({ quotation, totals, clients, sites, hasModuleAcce
   )
 }
 
-// Shared "professional" document look (design option A) — logo/company
-// block left, bordered doc-info box + ต้นฉบับ tag right, light-purple
-// table header, boxed notes/terms, purple-accented (unfilled) grand total.
-// Extracted so a past revision's snapshot can render through the exact
-// same markup as the live document, not a separate summary — the only
-// difference is which data feeds it and the doc-info tag.
-function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange }) {
-  const totals = calcQuotationTotals(items, { hasVat, priceIncludesVat, discountAmount, discountPct })
-  const mySignature = useMySignatureUrl()
-  const ACCENT = '#6c63ff'
+const ACCENT = '#6c63ff'
 
-  const revisionSuffix = revision > 1 ? `-R${revision}` : ''
-
-  // Both the top row (logo/contact/title) and the client-info/doc-info row
-  // below it repeat identically on every page (per the spec's explicit
-  // "repeat the whole header" requirement) -- kept as one Header component
-  // so the pagination hook's renderHeader has a single, simple call.
-  const Header = ({ pageNumber, totalPages }) => (
+// Both the top row (logo/contact/title) and the client-info/doc-info row
+// below it repeat identically on every page (per the spec's explicit
+// "repeat the whole header" requirement) -- kept as one component so the
+// pagination hook's renderHeader has a single, simple call.
+//
+// Hoisted OUT of QuotationPaper (rather than defined inline in its render
+// body) deliberately: a function defined inside a component's render body
+// gets a brand-new identity every render, so React treats every render as
+// a brand-new component type and unmounts/remounts the whole subtree --
+// including the <img crossOrigin> logo below -- even when nothing it reads
+// actually changed. Real props instead of closed-over variables.
+function QuotationHeader({ tenant, tag, revisionSuffix, quotationNumber, date, validUntil, siteName, clientName, clientAddress, clientTaxId, pageNumber, totalPages }) {
+  return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'stretch', gap: 25 }}>
         <div style={{ display: 'flex', gap: 20 }}>
@@ -348,9 +345,9 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
             {(tenant?.phone || tenant?.email || tenant?.website) && (
               <div style={{ fontSize: 12, color: '#4a4d63', marginTop: 6 }}>
                 {tenant?.phone && <>📞&nbsp;{tenant.phone}</>}
-                {tenant?.phone && (tenant?.email || tenant?.website) && '   '}
+                {tenant?.phone && (tenant?.email || tenant?.website) && <>&nbsp;&nbsp;&nbsp;</>}
                 {tenant?.email && <>✉️&nbsp;{tenant.email}</>}
-                {tenant?.email && tenant?.website && '   '}
+                {tenant?.email && tenant?.website && <>&nbsp;&nbsp;&nbsp;</>}
                 {tenant?.website && <>🌐&nbsp;{tenant.website}</>}
               </div>
             )}
@@ -378,6 +375,20 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
       </div>
     </>
   )
+}
+
+// Shared "professional" document look (design option A) — logo/company
+// block left, bordered doc-info box + ต้นฉบับ tag right, light-purple
+// table header, boxed notes/terms, purple-accented (unfilled) grand total.
+// Extracted so a past revision's snapshot can render through the exact
+// same markup as the live document, not a separate summary — the only
+// difference is which data feeds it and the doc-info tag.
+function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange }) {
+  const totals = calcQuotationTotals(items, { hasVat, priceIncludesVat, discountAmount, discountPct })
+  const mySignature = useMySignatureUrl()
+
+  const revisionSuffix = revision > 1 ? `-R${revision}` : ''
+  const headerProps = { tenant, tag, revisionSuffix, quotationNumber, date, validUntil, siteName, clientName, clientAddress, clientTaxId }
 
   const renderRow = (it, i) => (
     it.item_type === 'note' || it.item_type === 'item_description' ? (
@@ -403,120 +414,128 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
     </tr>
   )
 
+  // Totals table + notes/payment-terms/bank box + signature grid -- rendered
+  // ONLY on the true last page (see below), but also handed to
+  // usePaginatedDocument as `renderFooter` so it can measure this content's
+  // real height once and reserve that much room out of the last page's
+  // budget specifically. Without that reservation, a fixed-height page-div
+  // has nowhere for this block to go if the packed rows above it leave too
+  // little room -- it would render past the bottom of the visible page.
+  const renderFooter = () => (
+    <>
+      <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+        <table style={{ width: 260, fontSize: 12.5 }}>
+          <tbody>
+            {totals.discount > 0 && (
+              <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>ส่วนลด</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>-{fmt(totals.discount)}</td></tr>
+            )}
+            <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมก่อน VAT</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(totals.subtotal)}</td></tr>
+            {hasVat && (
+              <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>VAT (7%)</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(totals.vat)}</td></tr>
+            )}
+            <tr>
+              <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: ACCENT, borderTop: `2px solid ${ACCENT}` }}>รวมทั้งสิ้น</td>
+              <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: ACCENT, borderTop: `2px solid ${ACCENT}` }}>{fmt(totals.total)} บาท</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {(paymentTerms || notes || bankAccount) && (
+        <div style={{ marginTop: 20, fontSize: 11.5, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
+          {(paymentTerms || notes) && (
+            <>
+              <strong style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>หมายเหตุ</strong>
+              <div style={{ marginBottom: bankAccount ? 10 : 0, whiteSpace: 'pre-line' }}>
+                {[paymentTerms, notes].filter(Boolean).join('\n\n')}
+              </div>
+            </>
+          )}
+          {bankAccount && (
+            <div style={{ marginTop: 10 }}>
+              <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ flex: 1 }} />
+
+      <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
+        <div>
+          <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+            {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
+          </div>
+          <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้เสนอราคา</div>
+        </div>
+        <div>
+          <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+            {clientSignature && <img src={clientSignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
+          </div>
+          <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้ยอมรับ (ลูกค้า)</div>
+          {clientSignature && (
+            <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>
+              {clientSignature.signerName} · เซ็นเมื่อ {new Date(clientSignature.signedAt).toLocaleDateString('th-TH')}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  )
+
   const { pages, pageCount, measurementNode } = usePaginatedDocument({
     items,
-    renderHeader: () => <Header pageNumber={1} totalPages={1} />,
+    renderHeader: () => <QuotationHeader {...headerProps} pageNumber={1} totalPages={1} />,
     renderTableHeader,
     renderRow,
+    renderFooter,
   })
 
   useEffect(() => { onPageCountChange?.(pageCount) }, [pageCount, onPageCountChange])
 
-  // Fixed, not fluid -- must exactly match usePaginatedDocument's hidden
-  // measurement clone (also width:700) so Thai text wraps identically in
-  // both passes; a mismatch here measures the wrong row heights and lets
-  // real content quietly overflow PAGE_DIV_HEIGHT_PX below. A fluid width
-  // (this component's original single-page version, and the modal it sits
-  // in) is exactly what broke this on first attempt: this modal renders it
-  // narrower than 700px, so real rows measured taller than the hidden
-  // pass predicted, pushing each page-div's true height past html2pdf.js's
-  // real per-page budget and splitting one logical page into two physical
-  // PDF pages. See usePaginatedDocument.jsx's PAGE_HEIGHT_PX comment for
-  // the full page-height budget math.
-  const DOC_WIDTH_PX = 700
-  // 40px top + 40px bottom padding on every page-div, added on top of
-  // usePaginatedDocument's own content-only PAGE_HEIGHT_PX budget.
-  const PAGE_DIV_HEIGHT_PX = PAGE_HEIGHT_PX + 80
+  // PAGE_WIDTH_PX/PAGE_PADDING_CSS/PAGE_PADDING_V_PX come from
+  // usePaginatedDocument.jsx -- the SAME constants its hidden measurement
+  // pass builds its own clone from, so the real page-div below and the
+  // hidden pass can never drift apart on content-box width again (that
+  // drift -- 700px measured vs a narrower real content box once padding +
+  // border-box were accounted for -- previously measured Thai text as
+  // wrapping to fewer lines than it really did, letting real pages come
+  // out over-full). See usePaginatedDocument.jsx's own comments for the
+  // full page-height budget math this height is calibrated against.
+  const PAGE_DIV_HEIGHT_PX = PAGE_HEIGHT_PX + PAGE_PADDING_V_PX * 2
 
   return (
-    <div id={elementId} className="printable-document" style={{ fontFamily: 'Sarabun,sans-serif', width: DOC_WIDTH_PX }}>
+    <div id={elementId} className="printable-document" style={{ fontFamily: 'Sarabun,sans-serif', width: PAGE_WIDTH_PX }}>
       {pages.map((pageItems, pageIndex) => {
         const isLast = pageIndex === pages.length - 1
         return (
           <div
             key={pageIndex}
             style={{
-              padding: '40px 44px', background: '#fff', color: '#17181f', boxSizing: 'border-box',
+              padding: PAGE_PADDING_CSS, background: '#fff', color: '#17181f', boxSizing: 'border-box',
               // Fixed height, not minHeight -- a page-div that's allowed to
               // grow past PAGE_DIV_HEIGHT_PX (e.g. from a measurement/
               // render drift) reintroduces the same overflow-past-budget
               // bug this fixed width+height pairing exists to prevent.
               // Matches WorkPhotosDocumentModal's own proven fixed-height
-              // (not minHeight) page-div pattern.
+              // (not minHeight) page-div pattern. The footer -- rendered
+              // below only when isLast -- is guaranteed to fit inside this
+              // fixed height because usePaginatedDocument already reserved
+              // its measured height out of the last page's row budget.
               height: PAGE_DIV_HEIGHT_PX, display: 'flex', flexDirection: 'column',
               pageBreakAfter: isLast ? 'auto' : 'always', breakAfter: isLast ? 'auto' : 'page',
               marginBottom: isLast ? 0 : 16,
               boxShadow: pages.length > 1 ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
             }}
           >
-            <Header pageNumber={pageIndex + 1} totalPages={pages.length} />
+            <QuotationHeader {...headerProps} pageNumber={pageIndex + 1} totalPages={pages.length} />
 
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 18 }}>
               <thead>{renderTableHeader()}</thead>
               <tbody>{pageItems.map(renderRow)}</tbody>
             </table>
 
-            {isLast && (
-              <>
-                <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
-                  <table style={{ width: 260, fontSize: 12.5 }}>
-                    <tbody>
-                      {totals.discount > 0 && (
-                        <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>ส่วนลด</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>-{fmt(totals.discount)}</td></tr>
-                      )}
-                      <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมก่อน VAT</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(totals.subtotal)}</td></tr>
-                      {hasVat && (
-                        <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>VAT (7%)</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(totals.vat)}</td></tr>
-                      )}
-                      <tr>
-                        <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: ACCENT, borderTop: `2px solid ${ACCENT}` }}>รวมทั้งสิ้น</td>
-                        <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: ACCENT, borderTop: `2px solid ${ACCENT}` }}>{fmt(totals.total)} บาท</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                {(paymentTerms || notes || bankAccount) && (
-                  <div style={{ marginTop: 20, fontSize: 11.5, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
-                    {(paymentTerms || notes) && (
-                      <>
-                        <strong style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>หมายเหตุ</strong>
-                        <div style={{ marginBottom: bankAccount ? 10 : 0, whiteSpace: 'pre-line' }}>
-                          {[paymentTerms, notes].filter(Boolean).join('\n\n')}
-                        </div>
-                      </>
-                    )}
-                    {bankAccount && (
-                      <div style={{ marginTop: 10 }}>
-                        <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div style={{ flex: 1 }} />
-
-                <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
-                  <div>
-                    <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                      {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
-                    </div>
-                    <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้เสนอราคา</div>
-                  </div>
-                  <div>
-                    <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                      {clientSignature && <img src={clientSignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
-                    </div>
-                    <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้ยอมรับ (ลูกค้า)</div>
-                    {clientSignature && (
-                      <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>
-                        {clientSignature.signerName} · เซ็นเมื่อ {new Date(clientSignature.signedAt).toLocaleDateString('th-TH')}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
+            {isLast && renderFooter()}
           </div>
         )
       })}
@@ -551,8 +570,8 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
 
   return (
     <Modal title={`ใบเสนอราคา ${qt.quotation_number}`} onClose={onClose} maxWidth={720}>
-      {/* overflow:auto -- QuotationPaper renders at a fixed 700px width
-          (see its own DOC_WIDTH_PX comment), which can exceed this modal's
+      {/* overflow:auto -- QuotationPaper renders at a fixed PAGE_WIDTH_PX
+          width (see usePaginatedDocument.jsx), which can exceed this modal's
           available inner width; scroll rather than clip, matching
           WorkPhotosDocumentModal's identical fixed-width overflow handling. */}
       <div className="modal-body" style={{ overflow: 'auto' }}>
@@ -620,13 +639,13 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
             ))}
           </div>
         )}
+        {/* overflow:auto (not 'hidden') -- QuotationPaper's printable
+            document renders at a fixed PAGE_WIDTH_PX width (see
+            usePaginatedDocument.jsx), which can exceed this box's available
+            width inside a narrower modal; scroll rather than clip,
+            matching WorkPhotosDocumentModal's identical fixed-width
+            overflow handling. */}
         {selected && (
-          // overflow:auto (not 'hidden') -- QuotationPaper's printable
-          // document renders at a fixed 700px width (see its own
-          // DOC_WIDTH_PX comment), which can exceed this box's available
-          // width inside a narrower modal; scroll rather than clip,
-          // matching WorkPhotosDocumentModal's identical fixed-width
-          // overflow handling.
           <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'auto' }}>
             <QuotationPaper
               elementId={elementId} tenant={tenant} quotationNumber={quotation.quotation_number}

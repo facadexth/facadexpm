@@ -424,6 +424,15 @@ th.sortable:hover { color: var(--accent); }
   body * { visibility: hidden; }
   .printable-document, .printable-document * { visibility: visible; }
   .printable-document {
-    position: absolute; top: 0; left: 0; width: 100%; margin: 0; box-shadow: none;
+    /* No width override here on purpose: QuotationPaper (and any future
+       consumer) renders its printable-document root at a fixed
+       PAGE_WIDTH_PX inline style, which always wins over this class rule's
+       specificity regardless of what's written here. That fixed width is
+       load-bearing -- it's the exact width usePaginatedDocument's hidden
+       measurement pass paginates against, so browser print must render at
+       the same width too, or Thai text wraps differently than what was
+       measured and rows can overflow their page (the same class of bug
+       already fixed for the PDF/JPG export paths). */
+    position: absolute; top: 0; left: 0; margin: 0; box-shadow: none;
   }
 }
