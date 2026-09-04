@@ -904,6 +904,13 @@ $$;
 
 GRANT EXECUTE ON FUNCTION record_stock_movement(UUID, UUID, TEXT, NUMERIC, NUMERIC, TEXT, UUID, TEXT) TO authenticated;
 
+-- Missing REVOKE fixed in final-review fix bundle (Fix 4) -- Postgres grants
+-- EXECUTE to PUBLIC by default, so this closes that gap to match the
+-- convention every other SECURITY DEFINER function in this file follows
+-- (e.g. perform_worker_checkin()).
+REVOKE EXECUTE ON FUNCTION record_stock_movement(UUID, UUID, TEXT, NUMERIC, NUMERIC, TEXT, UUID, TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION record_stock_movement(UUID, UUID, TEXT, NUMERIC, NUMERIC, TEXT, UUID, TEXT) TO authenticated;
+
 -- ----------------------------------------------------------------
 -- CATALOG_ITEMS — รายการสินค้า/บริการสำหรับใบเสนอราคา (sell-side price list)
 -- ----------------------------------------------------------------

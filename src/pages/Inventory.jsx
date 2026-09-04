@@ -8,7 +8,7 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements } from '../hooks/useSupabase.js'
+import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
@@ -113,7 +113,11 @@ export default function Inventory() {
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'inventory')
   const [view, setView] = useState('items')
 
-  const { data: items, refetch: refetchItems } = useInventoryItems()
+  // Unfiltered (active + inactive) -- this is the item-management view's own
+  // list, so deactivating an item must not strand it with no UI path to see,
+  // edit, or reactivate it (final-review Fix 5). PurchaseOrders.jsx's picker
+  // still correctly uses the active-only useInventoryItems().
+  const { data: items, refetch: refetchItems } = useAllInventoryItems()
   const { data: factors, refetch: refetchFactors } = useInventoryItemUnitFactors()
   const { data: balances } = useStockBalances()
   const [movementItemFilter, setMovementItemFilter] = useState('')

@@ -1101,14 +1101,30 @@ export function useSeatStatus() {
 
 // ── Inventory ────────────────────────────────────────────────
 
-/** Every active inventory item, for link-pickers on PO lines and the
- *  Inventory page. */
+/** Every active inventory item, for link-pickers on PO lines (a picker
+ *  should only offer active items -- do NOT use this for a management
+ *  list, since a deactivated item would vanish and become unreachable;
+ *  use useAllInventoryItems() there instead). */
 export function useInventoryItems() {
   return useQuery(async () => {
     const { data, error } = await supabase
       .from('inventory_items')
       .select('*')
       .eq('active', true)
+      .order('name')
+    if (error) throw error
+    return data
+  })
+}
+
+/** Every inventory item regardless of active flag, for the Inventory
+ *  page's own item-management list -- so deactivating an item doesn't
+ *  strand it with no UI path to view/edit/reactivate it. */
+export function useAllInventoryItems() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('inventory_items')
+      .select('*')
       .order('name')
     if (error) throw error
     return data

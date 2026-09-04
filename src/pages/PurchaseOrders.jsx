@@ -451,7 +451,15 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
         const invItem = (inventoryItems || []).find(i => i.id === it.inventory_item_id)
         const factor = (unitFactors || []).find(f => f.inventory_item_id === it.inventory_item_id && f.unit_name === it.unit)
         const baseQty = factor ? convertToBaseUnit(it.quantity, factor.factor_to_base) : it.quantity
-        const unitCostPerBase = baseQty > 0 ? (it.quantity * it.unit_price) / baseQty : it.unit_price
+        let unitCostPerBase = baseQty > 0 ? (it.quantity * it.unit_price) / baseQty : it.unit_price
+        // The expense is posted ex-VAT (calcPoTotals backs VAT out of a
+        // VAT-inclusive price via subtotal = total / 1.07). Stock must be
+        // capitalized at the same ex-VAT cost, or every VAT-inclusive PO
+        // overvalues inventory by ~7% and folds recoverable input VAT into
+        // COGS (final-review Fix 3).
+        if (po.has_vat && po.price_includes_vat) {
+          unitCostPerBase = unitCostPerBase / (1 + VAT_RATE)
+        }
         return { inventoryItemId: it.inventory_item_id, name: invItem?.name || it.description, baseUnit: invItem?.base_unit || it.unit, baseQty, unitCostPerBase }
       })
   }
@@ -497,7 +505,20 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
 
       setReceiveRow(null); refetch(); showToast('รับของแล้ว สร้างรายจ่ายอัตโนมัติ')
     } catch (e) {
-      alert('Error: ' + e.message + ' — หากสร้างรายจ่ายไปแล้วแต่ใบสั่งซื้อยังไม่อัปเดต ให้ตรวจสอบหน้ารายจ่ายและอัปเดตใบสั่งซื้อด้วยตนเอง')
+      // Close the dialog so a stray click can't re-run this whole function
+      // (same stale closure/ConfirmDialog) and re-post a second expense +
+      // duplicate stock movements for whatever already succeeded before the
+      // failure (final-review Fix 2). The expense insert and PO status
+      // update run BEFORE the stock-posting loop, so by the time any error
+      // reaches here those two may already be committed — tell the admin to
+      // check the actual ledger rather than inviting a blind retry.
+      setReceiveRow(null)
+      alert(
+        'Error: ' + e.message +
+        ' — รายจ่ายและสถานะใบสั่งซื้ออาจถูกบันทึกไปแล้วก่อนเกิดข้อผิดพลาดนี้ ' +
+        'กรุณาตรวจสอบหน้ารายจ่าย และตรวจสอบประวัติการเคลื่อนไหวสต็อกที่หน้าคลังสินค้า (คลังสินค้า → ประวัติการเคลื่อนไหว) ' +
+        'ว่ามีการบันทึกเข้าสต็อกไปแล้วเท่าใด ก่อนแก้ไขข้อมูลด้วยตนเอง — อย่ากดรับของซ้ำโดยไม่ตรวจสอบก่อน'
+      )
     } finally {
       setReceiving(false)
     }

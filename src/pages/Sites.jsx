@@ -305,23 +305,27 @@ function SiteCompleteModal({ site, onClose, onDone }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
+  const loadRows = async () => {
+    const { data, error: err } = await supabase
+      .from('inventory_stock_balances')
+      .select('inventory_item_id, quantity_on_hand, inventory_items(name, base_unit)')
+      .eq('site_id', site.id)
+      .gt('quantity_on_hand', 0)
+    if (err) { setError(err.message); return }
+    setRows((data || []).map(r => ({
+      inventory_item_id: r.inventory_item_id,
+      name: r.inventory_items?.name,
+      base_unit: r.inventory_items?.base_unit,
+      quantity_on_hand: r.quantity_on_hand,
+      leftover: String(r.quantity_on_hand),
+    })))
+  }
+
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const { data, error: err } = await supabase
-        .from('inventory_stock_balances')
-        .select('inventory_item_id, quantity_on_hand, inventory_items(name, base_unit)')
-        .eq('site_id', site.id)
-        .gt('quantity_on_hand', 0)
+      await loadRows()
       if (cancelled) return
-      if (err) { setError(err.message); setLoading(false); return }
-      setRows((data || []).map(r => ({
-        inventory_item_id: r.inventory_item_id,
-        name: r.inventory_items?.name,
-        base_unit: r.inventory_items?.base_unit,
-        quantity_on_hand: r.quantity_on_hand,
-        leftover: String(r.quantity_on_hand),
-      })))
       setLoading(false)
     })()
     return () => { cancelled = true }
@@ -360,7 +364,14 @@ function SiteCompleteModal({ site, onClose, onDone }) {
         .update({ status: 'Completed', end_date: new Date().toISOString().slice(0, 10) }).eq('id', site.id)
       if (siteErr) throw siteErr
       onDone()
-    } catch (e) { setError(e.message) }
+    } catch (e) {
+      // Refresh rows from the live DB before surfacing the error: any item
+      // whose transfer_out/transfer_in already succeeded this attempt now has
+      // less/zero balance at this site, so a retry only reprocesses what's
+      // actually still on hand (see final-review Fix 1).
+      await loadRows()
+      setError(e.message)
+    }
     finally { setSaving(false) }
   }
 
