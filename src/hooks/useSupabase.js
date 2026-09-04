@@ -1098,3 +1098,61 @@ export function useSeatStatus() {
     return out
   }, [])
 }
+
+// ── Inventory ────────────────────────────────────────────────
+
+/** Every active inventory item, for link-pickers on PO lines and the
+ *  Inventory page. */
+export function useInventoryItems() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('inventory_items')
+      .select('*')
+      .eq('active', true)
+      .order('name')
+    if (error) throw error
+    return data
+  })
+}
+
+/** All fixed unit-conversion factors across every inventory item --
+ *  a small table, fetched whole and filtered client-side by
+ *  (inventory_item_id, unit_name) rather than one query per item. */
+export function useInventoryItemUnitFactors() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('inventory_item_unit_factors')
+      .select('*')
+    if (error) throw error
+    return data
+  })
+}
+
+/** Current stock balance per (item, site) -- the valuation report and
+ *  the PO receive-preview both read this. */
+export function useStockBalances() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('inventory_stock_balances')
+      .select('*, inventory_items(name, base_unit), sites(name, site_number)')
+      .order('inventory_item_id')
+    if (error) throw error
+    return data
+  })
+}
+
+/** Append-only stock ledger, newest first -- the stock card. */
+export function useStockMovements(filters = {}) {
+  return useQuery(async () => {
+    const buildQuery = () => {
+      let q = supabase
+        .from('stock_movements')
+        .select('*, inventory_items(name, base_unit), sites(name, site_number)')
+        .order('created_at', { ascending: false })
+      if (filters.inventoryItemId) q = q.eq('inventory_item_id', filters.inventoryItemId)
+      if (filters.siteId) q = q.eq('site_id', filters.siteId)
+      return q
+    }
+    return fetchAllRows(buildQuery)
+  }, [JSON.stringify(filters)])
+}
