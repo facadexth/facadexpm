@@ -655,15 +655,19 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
               <input type="range" min="12" max="30" value={docStyle.nameSize} onChange={e => setDocStyleField('nameSize', Number(e.target.value))} style={{ width: '100%' }} />
             </div>
             <div>
-              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ที่อยู่/ติดต่อ</span><span>{docStyle.addressSize}px</span></label>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ที่อยู่/เลขผู้เสียภาษี</span><span>{docStyle.addressSize}px</span></label>
               <input type="range" min="8" max="16" value={docStyle.addressSize} onChange={e => setDocStyleField('addressSize', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ข้อมูลติดต่อ (โทร/อีเมล/เว็บไซต์)</span><span>{docStyle.contactSize}px</span></label>
+              <input type="range" min="8" max="16" value={docStyle.contactSize} onChange={e => setDocStyleField('contactSize', Number(e.target.value))} style={{ width: '100%' }} />
             </div>
             <div>
               <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>หัวเอกสาร (เช่น "ใบเสนอราคา")</span><span>{docStyle.titleSize}px</span></label>
               <input type="range" min="14" max="40" value={docStyle.titleSize} onChange={e => setDocStyleField('titleSize', Number(e.target.value))} style={{ width: '100%' }} />
             </div>
             <div>
-              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ตาราง/กล่องข้อมูล</span><span>{docStyle.infoSize}px</span></label>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>กล่องข้อมูลเอกสาร (เลขที่/วันที่/โครงการ)</span><span>{docStyle.infoSize}px</span></label>
               <input type="range" min="9" max="16" value={docStyle.infoSize} onChange={e => setDocStyleField('infoSize', Number(e.target.value))} style={{ width: '100%' }} />
             </div>
 

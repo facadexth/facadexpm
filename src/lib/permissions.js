@@ -35,8 +35,17 @@ export const PAGE_LABELS = {
 export const DEFAULT_PERMISSIONS = {
   WORKER: {
     dashboard: 'edit',
-    assign: 'edit',
-    hr: 'edit',
+    // 'view', not 'edit' -- src/pages/Assign.jsx and HR.jsx both hard-code
+    // `isAtLeast('ADMIN') && canEditPage(...)` for their own canEdit, so a
+    // WORKER's actual edit ability on these two pages is always false
+    // regardless of what this table says (by design: WORKER only ever
+    // sees their own schedule/record here, RLS enforces the same
+    // restriction at the database level -- see each page's own comments).
+    // This table previously said 'edit', which never matched real
+    // behavior; corrected to describe what actually happens, not to
+    // change it.
+    assign: 'view',
+    hr: 'view',
     sites: 'none',
     expenses: 'none',
     purchase_orders: 'none',

@@ -465,4 +465,13 @@ th.sortable:hover { color: var(--accent); }
        ones. */
     position: absolute; top: 0; left: 0; width: 100%; margin: 0; box-shadow: none;
   }
+  /* The document style customizer's live preview (Settings.jsx) is also a
+     .printable-document instance -- it exists to preview style changes,
+     not to be a real printable document, so if someone hits Ctrl+P while
+     Settings happens to be open, it would otherwise become the thing that
+     prints instead of nothing. display:none (not visibility:hidden,
+     which the .printable-document rule above already forces back to
+     visible for this exact element) removes it from the print layout
+     entirely. */
+  #doc-style-preview { display: none !important; }
 }
