@@ -663,7 +663,8 @@ CREATE TABLE purchase_order_items (
   unit_price      NUMERIC NOT NULL DEFAULT 0,
   line_total      NUMERIC NOT NULL DEFAULT 0,
   sort_order      INT NOT NULL DEFAULT 0,
-  tenant_id       UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
+  tenant_id       UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  inventory_item_id UUID REFERENCES inventory_items(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_purchase_orders_site_id ON purchase_orders(site_id);
@@ -672,6 +673,7 @@ CREATE INDEX idx_purchase_orders_status ON purchase_orders(status);
 CREATE INDEX idx_purchase_orders_tenant_id ON purchase_orders(tenant_id);
 CREATE INDEX idx_purchase_order_items_po_id ON purchase_order_items(po_id);
 CREATE INDEX idx_purchase_order_items_tenant_id ON purchase_order_items(tenant_id);
+CREATE INDEX idx_purchase_order_items_inventory_item_id ON purchase_order_items(inventory_item_id);
 
 -- Auto-numbering, same pattern as generate_site_number()/generate_supplier_number()
 -- (MAX(existing suffix)+1, not COUNT(*)+1 — see the comment above
