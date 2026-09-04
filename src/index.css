@@ -251,6 +251,19 @@ tbody tr:last-child td { border-bottom: none; }
      past max-height (the classic flexbox min-content-size trap). */
   display: flex; flex-direction: column; overflow: hidden;
 }
+/* Many modals wrap modal-body/modal-footer in a bare <form onSubmit=...>
+   (a natural pattern for anything with a submit button) -- that form sits
+   between .modal and modal-body/modal-footer with no size of its own, so
+   it rendered at full natural content height and got silently clipped by
+   .modal's overflow:hidden instead of ever handing modal-body a
+   constrained height to actually scroll within. display:contents removes
+   the form's own box from layout entirely (it has no visual box to begin
+   with anyway) without touching its DOM semantics -- onSubmit and a
+   button[type=submit] inside it still work exactly the same -- which
+   promotes modal-header/modal-body/modal-footer to true direct flex
+   children of .modal again, restoring the fix above for every modal that
+   happens to wrap its content in a form, not just ones that don't. */
+.modal > form { display: contents; }
 .modal-header {
   padding: 18px 24px; border-bottom: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
