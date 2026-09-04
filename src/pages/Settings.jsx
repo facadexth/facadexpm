@@ -6,10 +6,38 @@ import { PAGE_LABELS, DEFAULT_PERMISSIONS, loadPermissions, savePermissions } fr
 import { THAI_BANKS } from '../lib/thaiBanks.js'
 import PackageComparison from '../components/PackageComparison.jsx'
 import SignaturePad from '../components/SignaturePad.jsx'
+import { DEFAULT_DOCUMENT_STYLE, resolveDocumentStyle } from '../lib/documentStyle.js'
+import { QuotationPaper } from './Quotations.jsx'
 
 const VAT_CATEGORY_LABELS = { vat: 'บัญชี VAT', non_vat: 'บัญชีไม่มี VAT' }
 
 const LEVEL_LABELS = { none: '🚫 ซ่อน', view: '👁️ ดูอย่างเดียว', edit: '✏️ แก้ไขได้' }
+
+// Placeholder document content for the document-style live preview -- NOT
+// real tenant data. The tenant's real company_name/logo_url/etc. ARE used
+// (via the real `tenant` object passed to QuotationPaper below), but the
+// client/items/document-number are fake so the preview doesn't depend on
+// the tenant having any real quotations.
+const DOC_STYLE_PREVIEW_SAMPLE = {
+  quotationNumber: 'QT-2026-000',
+  date: new Date().toISOString().slice(0, 10),
+  validUntil: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+  revision: 1,
+  siteName: 'ตัวอย่างโครงการ',
+  clientName: 'บริษัท ตัวอย่าง จำกัด',
+  clientAddress: '123 ถนนตัวอย่าง แขวงตัวอย่าง เขตตัวอย่าง กรุงเทพมหานคร 10110',
+  clientTaxId: '0000000000000',
+  items: [
+    { id: 'preview-1', description: 'งานติดตั้งระแนงอลูมิเนียม (ตัวอย่าง)', unit: 'ตร.ม.', quantity: 50, unit_price: 850, line_total: 42500 },
+    { id: 'preview-2', description: 'งานสีกันสนิมโครงเหล็ก (ตัวอย่าง)', unit: 'ตร.ม.', quantity: 20, unit_price: 320, line_total: 6400 },
+  ],
+  hasVat: true,
+  priceIncludesVat: false,
+  paymentTerms: 'ตัวอย่างเงื่อนไขการชำระเงิน: มัดจำ 50% ก่อนเริ่มงาน ส่วนที่เหลือชำระเมื่องานเสร็จ',
+  notes: null,
+  bankAccount: null,
+  clientSignature: null,
+}
 
 export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   const [permissions, setPermissions] = useState(DEFAULT_PERMISSIONS)
@@ -147,6 +175,47 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
 
   // Contractor type — stored on tenants.contractor_type_id
   const { tenant, hasModuleAccess, refetch: refetchTenant } = useTenant()
+
+  // Document style customizer -- resolveDocumentStyle merges the tenant's
+  // sparse overrides onto DEFAULT_DOCUMENT_STYLE, so local state always
+  // starts fully populated. The useEffect re-syncs local state whenever
+  // tenant reloads (e.g. after Save calls refetchTenant()), so the panel
+  // reflects just-saved values rather than staying on stale pre-save state.
+  const [docStyle, setDocStyle] = useState(() => resolveDocumentStyle(tenant?.document_style))
+  const [savingDocStyle, setSavingDocStyle] = useState(false)
+  useEffect(() => {
+    setDocStyle(resolveDocumentStyle(tenant?.document_style))
+  }, [tenant?.document_style])
+  const setDocStyleField = (k, v) => setDocStyle(s => ({ ...s, [k]: v }))
+
+  const handleSaveDocStyle = async () => {
+    setSavingDocStyle(true)
+    try {
+      const { error } = await supabase.from('tenants').update({ document_style: docStyle }).eq('id', tenant.id)
+      if (error) throw error
+      refetchTenant()
+      alert('✅ บันทึกรูปแบบเอกสารแล้ว')
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setSavingDocStyle(false)
+    }
+  }
+
+  const handleResetDocStyle = async () => {
+    setSavingDocStyle(true)
+    try {
+      const { error } = await supabase.from('tenants').update({ document_style: null }).eq('id', tenant.id)
+      if (error) throw error
+      refetchTenant()
+      setDocStyle(DEFAULT_DOCUMENT_STYLE)
+      alert('✅ คืนค่าเริ่มต้นแล้ว')
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setSavingDocStyle(false)
+    }
+  }
 
   // ลายเซ็นส่วนตัว -- วาดครั้งเดียว เอาไปแปะอัตโนมัติในช่องลายเซ็นฝั่งพนักงาน
   // ของทุกเอกสารที่เปิดดู/พิมพ์จากบัญชีนี้ (ดู useMySignatureUrl ใน
@@ -506,6 +575,150 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
             <button className="btn btn-primary" onClick={handleSaveProfile} disabled={savingProfile}>
               {savingProfile ? '⏳...' : '✅ บันทึกข้อมูลบริษัท'}
             </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-header"><div className="card-title">🎨 รูปแบบเอกสาร (ใบเสนอราคา/ใบแจ้งหนี้/ใบเสร็จ)</div></div>
+        <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20, alignItems: 'start' }}>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <div>
+              <label className="label">สีหลัก (Accent)</label>
+              <input type="color" value={docStyle.accent} onChange={e => setDocStyleField('accent', e.target.value)} style={{ width: '100%', height: 32 }} />
+            </div>
+
+            <div className="label" style={{ marginTop: 8 }}>หน้ากระดาษ</div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ระยะขอบบน-ล่าง</span><span>{docStyle.pagePaddingV}px</span></label>
+              <input type="range" min="16" max="64" value={docStyle.pagePaddingV} onChange={e => setDocStyleField('pagePaddingV', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ระยะขอบซ้าย-ขวา</span><span>{docStyle.pagePaddingH}px</span></label>
+              <input type="range" min="16" max="64" value={docStyle.pagePaddingH} onChange={e => setDocStyleField('pagePaddingH', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+
+            <div className="label" style={{ marginTop: 8 }}>โลโก้</div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ความกว้าง</span><span>{docStyle.logoWidth}px</span></label>
+              <input type="range" min="40" max="160" value={docStyle.logoWidth} onChange={e => setDocStyleField('logoWidth', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ความสูงสูงสุด</span><span>{docStyle.logoMaxHeight}px</span></label>
+              <input type="range" min="24" max="140" value={docStyle.logoMaxHeight} onChange={e => setDocStyleField('logoMaxHeight', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ระยะห่างจากข้อความ</span><span>{docStyle.logoGap}px</span></label>
+              <input type="range" min="0" max="30" value={docStyle.logoGap} onChange={e => setDocStyleField('logoGap', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+
+            <div className="label" style={{ marginTop: 8 }}>ขนาดตัวอักษร</div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ชื่อบริษัท</span><span>{docStyle.nameSize}px</span></label>
+              <input type="range" min="12" max="30" value={docStyle.nameSize} onChange={e => setDocStyleField('nameSize', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ที่อยู่/ติดต่อ</span><span>{docStyle.addressSize}px</span></label>
+              <input type="range" min="8" max="16" value={docStyle.addressSize} onChange={e => setDocStyleField('addressSize', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>หัวเอกสาร (เช่น "ใบเสนอราคา")</span><span>{docStyle.titleSize}px</span></label>
+              <input type="range" min="14" max="40" value={docStyle.titleSize} onChange={e => setDocStyleField('titleSize', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ตาราง/กล่องข้อมูล</span><span>{docStyle.infoSize}px</span></label>
+              <input type="range" min="9" max="16" value={docStyle.infoSize} onChange={e => setDocStyleField('infoSize', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+
+            <div className="label" style={{ marginTop: 8 }}>ระยะห่าง</div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>แถวหัวเอกสาร</span><span>{docStyle.headerRowGap}px</span></label>
+              <input type="range" min="6" max="48" value={docStyle.headerRowGap} onChange={e => setDocStyleField('headerRowGap', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ที่อยู่ → ติดต่อ</span><span>{docStyle.contactLineGap}px</span></label>
+              <input type="range" min="0" max="24" value={docStyle.contactLineGap} onChange={e => setDocStyleField('contactLineGap', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>กล่องข้อมูลลูกค้า → เอกสาร</span><span>{docStyle.clientInfoOffset}px / {docStyle.docInfoBoxOffset}px</span></label>
+              <input type="range" min="0" max="48" value={docStyle.clientInfoOffset} onChange={e => setDocStyleField('clientInfoOffset', Number(e.target.value))} style={{ width: '100%' }} />
+              <input type="range" min="0" max="48" value={docStyle.docInfoBoxOffset} onChange={e => setDocStyleField('docInfoBoxOffset', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>หัวเอกสาร → ตารางรายการ</span><span>{docStyle.tableMarginTop}px</span></label>
+              <input type="range" min="6" max="48" value={docStyle.tableMarginTop} onChange={e => setDocStyleField('tableMarginTop', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>สัดส่วนคอลัมน์ (ลูกค้า)</span><span>{docStyle.splitRatioClient}%</span></label>
+              <input type="range" min="40" max="80" value={docStyle.splitRatioClient} onChange={e => setDocStyleField('splitRatioClient', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+
+            <div className="label" style={{ marginTop: 8 }}>หัวตารางรายการ</div>
+            <div>
+              <label className="label">สีพื้นหลัง</label>
+              <input type="color" value={docStyle.tableHeaderBg} onChange={e => setDocStyleField('tableHeaderBg', e.target.value)} style={{ width: '100%', height: 28 }} />
+            </div>
+            <div>
+              <label className="label">สีตัวอักษร</label>
+              <input type="color" value={docStyle.tableHeaderColor} onChange={e => setDocStyleField('tableHeaderColor', e.target.value)} style={{ width: '100%', height: 28 }} />
+            </div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ขนาดตัวอักษร</span><span>{docStyle.tableHeaderSize}px</span></label>
+              <input type="range" min="8" max="16" value={docStyle.tableHeaderSize} onChange={e => setDocStyleField('tableHeaderSize', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ระยะขอบใน</span><span>{docStyle.tableHeaderPadding}px</span></label>
+              <input type="range" min="2" max="20" value={docStyle.tableHeaderPadding} onChange={e => setDocStyleField('tableHeaderPadding', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>เส้นขอบล่าง</span><span>{docStyle.tableHeaderBorder}px</span></label>
+              <input type="range" min="0" max="6" value={docStyle.tableHeaderBorder} onChange={e => setDocStyleField('tableHeaderBorder', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input type="checkbox" checked={docStyle.tableHeaderBold} onChange={e => setDocStyleField('tableHeaderBold', e.target.checked)} />
+              ตัวหนา
+            </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+              <input type="checkbox" checked={docStyle.showContactIcons} onChange={e => setDocStyleField('showContactIcons', e.target.checked)} />
+              แสดงข้อมูลติดต่อ (โทร/อีเมล/เว็บไซต์)
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input type="checkbox" checked={docStyle.showRevisionSuffix} onChange={e => setDocStyleField('showRevisionSuffix', e.target.checked)} />
+              แสดงเลขแก้ไข (-R2) ที่เลขที่เอกสาร
+            </label>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button className="btn btn-primary" onClick={handleSaveDocStyle} disabled={savingDocStyle} style={{ flex: 1 }}>
+                {savingDocStyle ? '⏳...' : '💾 บันทึก'}
+              </button>
+              <button className="btn btn-ghost" onClick={handleResetDocStyle} disabled={savingDocStyle}>
+                ↺ คืนค่าเริ่มต้น
+              </button>
+            </div>
+          </div>
+
+          <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'auto', maxHeight: '80vh' }}>
+            <QuotationPaper
+              elementId="doc-style-preview"
+              tenant={{ ...tenant, document_style: docStyle }}
+              quotationNumber={DOC_STYLE_PREVIEW_SAMPLE.quotationNumber}
+              tag="ตัวอย่าง"
+              date={DOC_STYLE_PREVIEW_SAMPLE.date}
+              validUntil={DOC_STYLE_PREVIEW_SAMPLE.validUntil}
+              revision={DOC_STYLE_PREVIEW_SAMPLE.revision}
+              siteName={DOC_STYLE_PREVIEW_SAMPLE.siteName}
+              clientName={DOC_STYLE_PREVIEW_SAMPLE.clientName}
+              clientAddress={DOC_STYLE_PREVIEW_SAMPLE.clientAddress}
+              clientTaxId={DOC_STYLE_PREVIEW_SAMPLE.clientTaxId}
+              items={DOC_STYLE_PREVIEW_SAMPLE.items}
+              hasVat={DOC_STYLE_PREVIEW_SAMPLE.hasVat}
+              priceIncludesVat={DOC_STYLE_PREVIEW_SAMPLE.priceIncludesVat}
+              paymentTerms={DOC_STYLE_PREVIEW_SAMPLE.paymentTerms}
+              notes={DOC_STYLE_PREVIEW_SAMPLE.notes}
+              bankAccount={DOC_STYLE_PREVIEW_SAMPLE.bankAccount}
+              clientSignature={DOC_STYLE_PREVIEW_SAMPLE.clientSignature}
+            />
           </div>
         </div>
       </div>

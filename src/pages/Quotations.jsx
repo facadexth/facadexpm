@@ -382,7 +382,7 @@ function QuotationHeader({ tenant, tag, revisionSuffix, quotationNumber, date, v
 // Extracted so a past revision's snapshot can render through the exact
 // same markup as the live document, not a separate summary — the only
 // difference is which data feeds it and the doc-info tag.
-function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange, extraRemeasureKey }) {
+export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange, extraRemeasureKey }) {
   const totals = calcQuotationTotals(items, { hasVat, priceIncludesVat, discountAmount, discountPct })
   const mySignature = useMySignatureUrl()
   const style = resolveDocumentStyle(tenant?.document_style)
