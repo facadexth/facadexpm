@@ -87,7 +87,7 @@ export function ConfirmDialog({ title, message, onConfirm, onCancel, danger = fa
   return (
     <Modal title={title} onClose={onCancel} maxWidth={400}>
       <div className="modal-body">
-        <p style={{ color: 'var(--text2)', lineHeight: 1.6 }}>{message}</p>
+        <div style={{ color: 'var(--text2)', lineHeight: 1.6 }}>{message}</div>
       </div>
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>

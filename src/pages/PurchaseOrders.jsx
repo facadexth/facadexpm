@@ -6,7 +6,8 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits } from '../hooks/useSupabase.js'
+import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useInventoryItemUnitFactors, useStockBalances } from '../hooks/useSupabase.js'
+import { computeWeightedAverageCost, convertToBaseUnit } from '../lib/inventoryCost.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { useDraftForm } from '../hooks/useDraftForm.js'
@@ -33,7 +34,7 @@ const supplierOpts = (suppliers) => (suppliers || []).map(s => ({
 const PO_STATUSES = ['ordered', 'received', 'cancelled']
 const PO_STATUS_LABELS = { ordered: '📦 สั่งแล้ว', received: '✅ รับของแล้ว', cancelled: '✕ ยกเลิก' }
 
-const EMPTY_ITEM = { description: '', quantity: '1', unit: '', unit_price: '' }
+const EMPTY_ITEM = { description: '', quantity: '1', unit: '', unit_price: '', inventory_item_id: '' }
 const EMPTY_FORM = { site_id: '', supplier_id: '', category_id: '', date: '', has_vat: true, price_includes_vat: false, notes: '', items: [{ ...EMPTY_ITEM }] }
 
 function lineTotal(item) {
@@ -63,7 +64,11 @@ function calcPoTotals(items, hasVat, priceIncludesVat) {
   return { subtotal, vat, total }
 }
 
-function ItemsEditor({ items, onChange }) {
+const inventoryItemOpts = (items) => (items || []).map(it => ({
+  value: it.id, label: `${it.name} (${it.base_unit})`, keywords: it.name,
+}))
+
+function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated }) {
   const { data: units, refetch: refetchUnits } = useUnits()
   const set = (i, k, v) => onChange(items.map((it, idx) => idx === i ? { ...it, [k]: v } : it))
   const add = () => onChange([...items, { ...EMPTY_ITEM }])
@@ -75,15 +80,30 @@ function ItemsEditor({ items, onChange }) {
       <label className="label">รายการสินค้า ★</label>
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((it, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 150px 100px 32px', gap: 6, alignItems: 'center' }}>
-            <input className="input input-sm" placeholder="รายละเอียดสินค้า" required
-              value={it.description} onChange={e => set(i, 'description', e.target.value)} />
-            <input className="input input-sm" type="number" min="0" step="0.01" placeholder="จำนวน"
-              value={it.quantity} onChange={e => set(i, 'quantity', e.target.value)} />
-            <UnitSelect value={it.unit} onChange={v => set(i, 'unit', v)} units={units} onUnitAdded={refetchUnits} />
-            <input className="input input-sm" type="number" min="0" step="0.01" placeholder="ราคา/หน่วย"
-              value={it.unit_price} onChange={e => set(i, 'unit_price', e.target.value)} />
-            <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
+          <div key={i} style={{ display: 'grid', gap: 4 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 150px 100px 32px', gap: 6, alignItems: 'center' }}>
+              <input className="input input-sm" placeholder="รายละเอียดสินค้า" required
+                value={it.description} onChange={e => set(i, 'description', e.target.value)} />
+              <input className="input input-sm" type="number" min="0" step="0.01" placeholder="จำนวน"
+                value={it.quantity} onChange={e => set(i, 'quantity', e.target.value)} />
+              <UnitSelect value={it.unit} onChange={v => set(i, 'unit', v)} units={units} onUnitAdded={refetchUnits} />
+              <input className="input input-sm" type="number" min="0" step="0.01" placeholder="ราคา/หน่วย"
+                value={it.unit_price} onChange={e => set(i, 'unit_price', e.target.value)} />
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
+            </div>
+            <div style={{ marginLeft: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ color: 'var(--text3)', flexShrink: 0 }}>📦 ผูกกับสต็อก:</span>
+              <div style={{ flex: 1, maxWidth: 340 }}>
+                <QuickAddSelect
+                  value={it.inventory_item_id} onChange={v => set(i, 'inventory_item_id', v)}
+                  placeholder="— ไม่ผูกกับสต็อก —" options={inventoryItemOpts(inventoryItems)}
+                  table="inventory_items" namePlaceholder="ชื่อสินค้าคงคลังใหม่"
+                  extraPayload={{ base_unit: it.unit || 'หน่วย' }}
+                  onCreated={onInventoryItemCreated}
+                  addLabel="+ สร้างใหม่"
+                />
+              </div>
+            </div>
           </div>
         ))}
       </div>
@@ -95,7 +115,7 @@ function ItemsEditor({ items, onChange }) {
   )
 }
 
-function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories, onSave, onCancel, loading, onSiteCreated, onSupplierCreated }) {
+function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories, onSave, onCancel, loading, onSiteCreated, onSupplierCreated, inventoryItems, onInventoryItemCreated }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('purchase-order-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -131,7 +151,7 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
               table="suppliers" namePlaceholder="ชื่อ Supplier ใหม่" onCreated={onSupplierCreated} />
           </div>
         </div>
-        <ItemsEditor items={form.items} onChange={items => set('items', items)} />
+        <ItemsEditor items={form.items} onChange={items => set('items', items)} inventoryItems={inventoryItems} onInventoryItemCreated={onInventoryItemCreated} />
         <div>
           <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
@@ -352,6 +372,9 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const { data: sites, refetch: refetchSites }      = useSites()
   const { data: categories } = useCategories()
   const { data: suppliers, refetch: refetchSuppliers }  = useSuppliers()
+  const { data: inventoryItems, refetch: refetchInventoryItems } = useInventoryItems()
+  const { data: unitFactors } = useInventoryItemUnitFactors()
+  const { data: stockBalances } = useStockBalances()
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
@@ -398,6 +421,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
           po_id: poId, description: it.description,
           quantity: parseFloat(it.quantity) || 0, unit: it.unit || null,
           unit_price: parseFloat(it.unit_price) || 0, line_total: lineTotal(it), sort_order: i,
+          inventory_item_id: it.inventory_item_id || null,
         }))
       if (itemsPayload.length) {
         const { error } = await supabase.from('purchase_order_items').insert(itemsPayload)
@@ -417,6 +441,19 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     const { error } = await supabase.from('purchase_orders').update({ status: 'cancelled' }).eq('id', deleteId)
     if (!error) { await auditLog('purchase_orders', deleteId, 'UPDATE', null, { status: 'cancelled' }); setDeleteId(null); refetch(); showToast('ยกเลิกแล้ว') }
     else alert('Error: ' + error.message)
+  }
+
+  const receiveStockPlan = (po) => {
+    if (!po) return []
+    return (po.purchase_order_items || [])
+      .filter(it => it.inventory_item_id)
+      .map(it => {
+        const invItem = (inventoryItems || []).find(i => i.id === it.inventory_item_id)
+        const factor = (unitFactors || []).find(f => f.inventory_item_id === it.inventory_item_id && f.unit_name === it.unit)
+        const baseQty = factor ? convertToBaseUnit(it.quantity, factor.factor_to_base) : it.quantity
+        const unitCostPerBase = baseQty > 0 ? (it.quantity * it.unit_price) / baseQty : it.unit_price
+        return { inventoryItemId: it.inventory_item_id, name: invItem?.name || it.description, baseUnit: invItem?.base_unit || it.unit, baseQty, unitCostPerBase }
+      })
   }
 
   const handleReceive = async () => {
@@ -448,6 +485,16 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       if (poError) throw poError
       await auditLog('purchase_orders', receiveRow.id, 'UPDATE', null, poUpdate)
 
+      for (const plan of receiveStockPlan(receiveRow)) {
+        const { error: moveErr } = await supabase.rpc('record_stock_movement', {
+          p_inventory_item_id: plan.inventoryItemId, p_site_id: receiveRow.site_id, p_movement_type: 'purchase_in',
+          p_quantity: plan.baseQty, p_unit_cost: plan.unitCostPerBase,
+          p_reference_type: 'purchase_order', p_reference_id: receiveRow.id, p_notes: null,
+        })
+        if (moveErr) throw moveErr
+      }
+      refetchInventoryItems()
+
       setReceiveRow(null); refetch(); showToast('รับของแล้ว สร้างรายจ่ายอัตโนมัติ')
     } catch (e) {
       alert('Error: ' + e.message + ' — หากสร้างรายจ่ายไปแล้วแต่ใบสั่งซื้อยังไม่อัปเดต ให้ตรวจสอบหน้ารายจ่ายและอัปเดตใบสั่งซื้อด้วยตนเอง')
@@ -463,7 +510,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       site_id: editRow.site_id, supplier_id: editRow.supplier_id, category_id: editRow.category_id,
       date: editRow.date, has_vat: editRow.has_vat, price_includes_vat: editRow.price_includes_vat || false, notes: editRow.notes || '',
       items: (editRow.purchase_order_items?.length ? editRow.purchase_order_items : [{ ...EMPTY_ITEM }])
-        .map(it => ({ description: it.description, quantity: String(it.quantity), unit: it.unit || '', unit_price: String(it.unit_price) })),
+        .map(it => ({ description: it.description, quantity: String(it.quantity), unit: it.unit || '', unit_price: String(it.unit_price), inventory_item_id: it.inventory_item_id || '' })),
     }
   }, [editRow])
 
@@ -547,6 +594,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
             sites={sites} categories={categories} suppliers={suppliers || []}
             onSave={handleSave} onCancel={() => { setShowAdd(false); setEditRow(null) }} loading={saving}
             onSiteCreated={refetchSites} onSupplierCreated={refetchSuppliers}
+            inventoryItems={inventoryItems} onInventoryItemCreated={refetchInventoryItems}
           />
           {editRow && tenant?.id && (
             <div className="modal-body" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
@@ -572,7 +620,28 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       {receiveRow && (
         <ConfirmDialog
           title="ยืนยันรับของ"
-          message={`สร้างรายจ่ายอัตโนมัติจากใบสั่งซื้อ ${receiveRow.po_number} ยอดรวม ${fmt(calcPoTotals(receiveRow.purchase_order_items, receiveRow.has_vat, receiveRow.price_includes_vat).total)} บาท?`}
+          message={
+            <div>
+              <div>สร้างรายจ่ายอัตโนมัติจากใบสั่งซื้อ {receiveRow.po_number} ยอดรวม {fmt(calcPoTotals(receiveRow.purchase_order_items, receiveRow.has_vat, receiveRow.price_includes_vat).total)} บาท?</div>
+              {receiveStockPlan(receiveRow).length > 0 && (
+                <div style={{ marginTop: 10, fontSize: 12, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                  <strong>จะบันทึกเข้าสต็อก:</strong>
+                  {receiveStockPlan(receiveRow).map((plan, i) => {
+                    const bal = (stockBalances || []).find(b => b.inventory_item_id === plan.inventoryItemId && b.site_id === receiveRow.site_id)
+                    const oldQty = bal?.quantity_on_hand || 0
+                    const oldWac = bal?.weighted_average_cost || 0
+                    const newQty = oldQty + plan.baseQty
+                    const newWac = computeWeightedAverageCost(oldQty, oldWac, plan.baseQty, plan.unitCostPerBase)
+                    return (
+                      <div key={i} style={{ marginTop: 4 }}>
+                        📦 {plan.name}: +{fmt(plan.baseQty)} {plan.baseUnit} → คงเหลือ {fmt(newQty)} {plan.baseUnit} @ เฉลี่ย {fmt(newWac)}/{plan.baseUnit}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          }
           onConfirm={handleReceive}
           onCancel={() => setReceiveRow(null)}
         />
