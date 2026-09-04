@@ -1609,7 +1609,19 @@ UPDATE packages SET max_admins = NULL, max_workers = NULL, max_sites = NULL WHER
 -- A tenant with no package assigned (package_id IS NULL, e.g. still on
 -- trial before ever picking one) gets no limit -- the LEFT JOIN makes
 -- v_limit NULL for them, same as an explicitly-unlimited tier.
-CREATE OR REPLACE FUNCTION tenant_under_seat_limit(p_kind TEXT)
+-- p_inclusive distinguishes two different points in a row's lifecycle
+-- that both call this function: the RLS INSERT policies below check
+-- BEFORE the new row exists (p_inclusive=false, "<" -- count of existing
+-- rows must be strictly under the limit to allow one more), while
+-- check_seat_limit_after_statement()'s AFTER-statement trigger checks
+-- AFTER the row(s) are already committed and counted (p_inclusive=true,
+-- "<=" -- the new total may legally equal the limit). Reusing the same
+-- "<" for both (the original bug, fixed in
+-- 2026-09-05-05-fix-seat-limit-off-by-one.sql) rejected a tenant's exact
+-- LAST allowed seat on any tiered plan -- e.g. a Free-tier tenant's very
+-- first site, since Free's max_sites=1 makes "first" and "last" the same
+-- seat.
+CREATE FUNCTION tenant_under_seat_limit(p_kind TEXT, p_inclusive BOOLEAN DEFAULT false)
 RETURNS BOOLEAN
 LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public
 AS $$
@@ -1642,12 +1654,12 @@ BEGIN
       WHERE tenant_id = v_tenant_id AND status = 'Ongoing';
   END CASE;
 
-  RETURN v_count < v_limit;
+  RETURN CASE WHEN p_inclusive THEN v_count <= v_limit ELSE v_count < v_limit END;
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION tenant_under_seat_limit(TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION tenant_under_seat_limit(TEXT) TO authenticated;
+REVOKE EXECUTE ON FUNCTION tenant_under_seat_limit(TEXT, BOOLEAN) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION tenant_under_seat_limit(TEXT, BOOLEAN) TO authenticated;
 
 -- Read-only seat usage/limits for the caller's own tenant, callable by any
 -- authenticated tenant member (not just OWNER/ADMIN) -- lets
@@ -1761,7 +1773,7 @@ AS $$
 DECLARE
   v_kind TEXT := TG_ARGV[0];
 BEGIN
-  IF NOT tenant_under_seat_limit(v_kind) THEN
+  IF NOT tenant_under_seat_limit(v_kind, true) THEN
     RAISE EXCEPTION 'Package % limit exceeded for this tenant', v_kind
       USING ERRCODE = '23514';
   END IF;
