@@ -864,7 +864,13 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
             // ever changing identity -- must be part of the remeasure key
             // or a mid-session bank-account switch leaves the footer's
             // reserved height stale (see DocumentPaper's own comment).
-            extraRemeasureKey={bankAccount?.id || ''}
+            // titleVariant (ใบวางบิล/ใบแจ้งหนี้/ใบส่งมอบงาน) drives `title`,
+            // a fresh closure input to renderHeader every render -- switching
+            // to a longer variant (esp. ใบส่งมอบงาน) can wrap the 28px header
+            // title differently and shift every page's row budget, the
+            // identical failure mode as ReceiptDocumentModal's own
+            // titleVariant below.
+            extraRemeasureKey={`${bankAccount?.id || ''}|${titleVariant}`}
           />
         </div>
       </div>
