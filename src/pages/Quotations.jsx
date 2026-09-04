@@ -442,33 +442,28 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
       </div>
 
       {(paymentTerms || notes || bankAccount) && (() => {
-        // เงื่อนไขการชำระเงิน / หมายเหตุ / ชำระเงินไปที่ -- three independent
-        // optional blocks, each shown only when its own content is present.
-        // footerBankFirst reorders the whole bank-account block relative to
-        // the payment-terms+notes group; it never reorders payment terms
-        // against notes (payment terms always comes first when both are
-        // present -- it's the more actionable of the two).
-        const bankBlock = bankAccount && (
-          <div>
-            <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
-          </div>
-        )
-        const textBlocks = [
-          paymentTerms && { key: 'terms', label: 'เงื่อนไขการชำระเงิน', text: paymentTerms },
+        // Fixed order: หมายเหตุ, then เงื่อนไขการชำระเงิน, then ชำระเงินไปที่
+        // -- each shown only when its own content is present. Order itself
+        // isn't tunable (was, briefly, via a footerBankFirst toggle;
+        // replaced by this fixed order plus footerBoxOffset controlling the
+        // whole box's position instead).
+        const blocks = [
           notes && { key: 'notes', label: 'หมายเหตุ', text: notes },
+          paymentTerms && { key: 'terms', label: 'เงื่อนไขการชำระเงิน', text: paymentTerms },
         ].filter(Boolean)
-        const textNodes = textBlocks.map(({ key, label, text }, i) => (
-          <div key={key} style={{ marginBottom: i < textBlocks.length - 1 ? 10 : 0 }}>
-            <strong style={{ display: 'block', marginBottom: 4, fontSize: style.footerTextSize + 0.5 }}>{label}</strong>
-            <div style={{ whiteSpace: 'pre-line' }}>{text}</div>
-          </div>
-        ))
-        const ordered = style.footerBankFirst
-          ? [bankBlock, textNodes.length > 0 && <div style={{ marginTop: bankBlock ? 10 : 0 }}>{textNodes}</div>]
-          : [textNodes.length > 0 && <div style={{ marginBottom: bankBlock ? 10 : 0 }}>{textNodes}</div>, bankBlock]
         return (
-          <div style={{ marginTop: 20, fontSize: style.footerTextSize, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
-            {ordered.filter(Boolean)}
+          <div style={{ marginTop: style.footerBoxOffset, fontSize: style.footerTextSize, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
+            {blocks.map(({ key, label, text }, i) => (
+              <div key={key} style={{ marginBottom: i < blocks.length - 1 || bankAccount ? 10 : 0 }}>
+                <strong style={{ display: 'block', marginBottom: 4, fontSize: style.footerTextSize + 0.5 }}>{label}</strong>
+                <div style={{ whiteSpace: 'pre-line' }}>{text}</div>
+              </div>
+            ))}
+            {bankAccount && (
+              <div>
+                <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
+              </div>
+            )}
           </div>
         )
       })()}

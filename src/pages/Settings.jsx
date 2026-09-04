@@ -37,7 +37,7 @@ const DOC_STYLE_PREVIEW_SAMPLE = {
   paymentTerms: 'มัดจำ 50% ก่อนเริ่มงาน ส่วนที่เหลือชำระเมื่องานเสร็จ',
   // notes/bankAccount are non-null here (unlike quotationNumber/clientName/
   // etc., which are fake-but-plausible) so the footer section -- including
-  // the new footerTextSize/footerBankFirst controls -- is actually visible
+  // the footerTextSize/footerBoxOffset controls -- is actually visible
   // while tuning. Previously both were null, so the customizer's own
   // preview could never show what those controls affect.
   notes: 'ตัวอย่างหมายเหตุ: ไม่รวมค่านั่งร้าน',
@@ -708,15 +708,15 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
               ตัวหนา
             </label>
 
-            <div className="label" style={{ marginTop: 8 }}>ท้ายเอกสาร (เงื่อนไขการชำระเงิน/หมายเหตุ/บัญชีธนาคาร)</div>
+            <div className="label" style={{ marginTop: 8 }}>ท้ายเอกสาร (หมายเหตุ/เงื่อนไขการชำระเงิน/บัญชีธนาคาร)</div>
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ระยะห่างจากด้านบน</span><span>{docStyle.footerBoxOffset}px</span></label>
+              <input type="range" min="0" max="48" value={docStyle.footerBoxOffset} onChange={e => setDocStyleField('footerBoxOffset', Number(e.target.value))} style={{ width: '100%' }} />
+            </div>
             <div>
               <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ขนาดตัวอักษร</span><span>{docStyle.footerTextSize}px</span></label>
               <input type="range" min="9" max="16" step="0.5" value={docStyle.footerTextSize} onChange={e => setDocStyleField('footerTextSize', Number(e.target.value))} style={{ width: '100%' }} />
             </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <input type="checkbox" checked={docStyle.footerBankFirst} onChange={e => setDocStyleField('footerBankFirst', e.target.checked)} />
-              แสดงบัญชีธนาคารก่อนเงื่อนไขการชำระเงิน/หมายเหตุ
-            </label>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
               <input type="checkbox" checked={docStyle.showContactIcons} onChange={e => setDocStyleField('showContactIcons', e.target.checked)} />
