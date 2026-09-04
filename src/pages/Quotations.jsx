@@ -69,7 +69,7 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch 
     onChange([...items, {
       catalog_item_id: found.id, description: found.name, unit: found.unit || '',
       quantity: '1', unit_price: String(found.default_unit_price), item_type: 'item',
-    }, { ...EMPTY_ITEM_DESCRIPTION }])
+    }, { ...EMPTY_ITEM_DESCRIPTION, description: found.description || '' }])
   }
   // Lets a free-typed line become a reusable catalog entry without leaving
   // the quotation — inserts it, then links this row to the new entry the
@@ -78,8 +78,15 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch 
   const saveToCatalog = async (i) => {
     const it = items[i]
     if (!it.description.trim()) return
+    // The row right after an item is its item_description (glued by
+    // position, see EMPTY_ITEM_DESCRIPTION's own comment) -- carry that
+    // over as the new catalog entry's description, same field
+    // addFromCatalog reads back out when this entry is picked again later.
+    const descRow = items[i + 1]
+    const catalogDescription = descRow?.item_type === 'item_description' ? descRow.description : ''
     const { data, error } = await supabase.from('catalog_items').insert({
       name: it.description, unit: it.unit || null, default_unit_price: parseFloat(it.unit_price) || 0,
+      description: catalogDescription || null,
     }).select().single()
     if (error) { alert('Error: ' + error.message); return }
     set(i, 'catalog_item_id', data.id)
@@ -93,10 +100,10 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch 
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((it, i) => (
           it.item_type === 'note' || it.item_type === 'item_description' ? (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 32px', gap: 6, alignItems: 'center', paddingLeft: it.item_type === 'item_description' ? 20 : 0 }}>
-              <input className="input input-sm"
-                placeholder={it.item_type === 'item_description' ? 'คำอธิบายรายการ (ของรายการด้านบน — ไม่มีราคา)' : 'ข้อมูลเพิ่มเติม (ไม่มีราคา — เช่น หมายเหตุ, หัวข้อคั่น)'}
-                style={{ fontStyle: 'italic' }}
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 32px', gap: 6, alignItems: 'start', paddingLeft: it.item_type === 'item_description' ? 20 : 0 }}>
+              <textarea className="textarea input-sm" rows={2}
+                placeholder={it.item_type === 'item_description' ? 'คำอธิบายรายการ (ของรายการด้านบน — ไม่มีราคา, พิมพ์หลายบรรทัดได้)' : 'ข้อมูลเพิ่มเติม (ไม่มีราคา — เช่น หมายเหตุ, หัวข้อคั่น)'}
+                style={{ fontStyle: 'italic', resize: 'vertical' }}
                 value={it.description} onChange={e => set(i, 'description', e.target.value)} />
               <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
             </div>

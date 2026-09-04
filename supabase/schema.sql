@@ -733,6 +733,7 @@ CREATE TABLE catalog_items (
   name               TEXT NOT NULL,
   unit               TEXT,
   default_unit_price NUMERIC NOT NULL DEFAULT 0,
+  description        TEXT,
   active             BOOLEAN NOT NULL DEFAULT true,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),

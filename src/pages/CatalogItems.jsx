@@ -16,7 +16,7 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import UnitSelect from '../components/UnitSelect.jsx'
 
-const EMPTY_FORM = { name: '', unit: '', default_unit_price: '', active: true }
+const EMPTY_FORM = { name: '', unit: '', default_unit_price: '', description: '', active: true }
 
 function CatalogItemForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
   const isAdd = !initial?.id
@@ -40,6 +40,11 @@ function CatalogItemForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
             <label className="label">ราคา/หน่วย (ค่าเริ่มต้น)</label>
             <input type="number" min="0" step="0.01" className="input" value={form.default_unit_price} onChange={e => set('default_unit_price', e.target.value)} />
           </div>
+        </div>
+        <div>
+          <label className="label">รายละเอียดสินค้า</label>
+          <textarea className="textarea" rows={3} value={form.description} onChange={e => set('description', e.target.value)}
+            placeholder="คำอธิบายเพิ่มเติม (แสดงเป็นบรรทัดคำอธิบายใต้รายการนี้เมื่อเลือกใช้ในใบเสนอราคา)" />
         </div>
         {!isAdd && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
@@ -79,6 +84,7 @@ export default function CatalogItems() {
         name: form.name,
         unit: form.unit || null,
         default_unit_price: parseFloat(form.default_unit_price) || 0,
+        description: form.description || null,
         active: form.active !== false,
       }
       if (editItem) {
