@@ -1,7 +1,8 @@
 import { useState, useLayoutEffect, useRef, cloneElement } from 'react'
 
-// Shared page geometry -- exported so every consumer (today: just
-// QuotationPaper) builds its real page-div from these exact same numbers
+// Shared page geometry -- exported so every consumer (currently
+// QuotationPaper in Quotations.jsx and DocumentPaper in Invoices.jsx)
+// builds its real page-div from these exact same numbers
 // instead of hand-copying them. This is deliberate: the hidden measurement
 // pass below and the real final render MUST agree on width/padding, because
 // they're rendering the same header/rows and Thai text wraps differently at
@@ -73,7 +74,12 @@ export const PAGE_HEIGHT_PX = 900
 // contributes. Pass something that's referentially stable until the
 // async-dependent content actually changes (e.g. a signed URL string, or a
 // composite key built from a couple of them) -- do NOT pass a value that
-// changes every render, or this reruns the measurement pass every render.
+// changes every render. Since the `measured` check below compares
+// `heights.measuredKey === remeasureKey`, an unstable key doesn't just
+// waste work re-measuring -- it makes `measured` permanently false on
+// every render, which remounts the hidden measurement pass every render,
+// which fires the layout effect every render, which calls `setState`
+// every render: an unbounded render loop, not just wasted work.
 export function usePaginatedDocument({ items, renderHeader, renderTableHeader, renderRow, renderFooter, remeasureKey }) {
   const [heights, setHeights] = useState(null)
   const headerRef = useRef(null)
@@ -211,6 +217,19 @@ export function usePaginatedDocument({ items, renderHeader, renderTableHeader, r
       // than the routine case Critical 2 was originally about.
       pages.push([])
     }
+  }
+
+  // Guard against a gratuitous blank leading page: when there were never
+  // any items to begin with (items.length === 0) and the footer alone is
+  // taller than a full page's row budget, the branch above pushes a
+  // dedicated footer-only trailing page onto `pages`, which already
+  // contains the empty `current` page pushed by the first pass -- leaving
+  // `pages` as `[[], []]` (an empty first page nobody needed, then the real
+  // footer page) instead of just `[[]]`. Only drop it when items.length is
+  // actually 0 -- a legitimately empty NON-first page from the routine
+  // item-count case must never be removed.
+  if (items.length === 0 && pages.length > 1 && pages[0].length === 0) {
+    pages.shift()
   }
 
   return { pages: pages.map(p => p.map(r => r.it)), pageCount: pages.length, measurementNode: null }

@@ -733,10 +733,12 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
           >
             <DocumentHeader {...headerProps} pageNumber={pageIndex + 1} totalPages={pages.length} />
 
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: TABLE_MARGIN_TOP_PX }}>
-              <thead>{renderTableHeader()}</thead>
-              <tbody>{pageItems.map(renderRow)}</tbody>
-            </table>
+            {pageItems.length > 0 && (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: TABLE_MARGIN_TOP_PX }}>
+                <thead>{renderTableHeader()}</thead>
+                <tbody>{pageItems.map(renderRow)}</tbody>
+              </table>
+            )}
 
             {isLast && renderFooter()}
           </div>

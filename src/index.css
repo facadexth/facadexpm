@@ -417,9 +417,10 @@ th.sortable:hover { color: var(--accent); }
 }
 
 /* Browser print (window.print()) for a printable document -- QuotationPaper
-   and any future document paper component that gives its root element
-   className="printable-document". Hides everything else on the page
-   (nav, modal chrome, backdrop) so only the document itself prints. */
+   and DocumentPaper (src/pages/Invoices.jsx) today, and any future document
+   paper component that gives its root element className="printable-document".
+   Hides everything else on the page (nav, modal chrome, backdrop) so only
+   the document itself prints. */
 @media print {
   body * { visibility: hidden; }
   .printable-document, .printable-document * { visibility: visible; }

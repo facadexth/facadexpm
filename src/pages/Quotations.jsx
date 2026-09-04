@@ -383,7 +383,7 @@ function QuotationHeader({ tenant, tag, revisionSuffix, quotationNumber, date, v
 // Extracted so a past revision's snapshot can render through the exact
 // same markup as the live document, not a separate summary — the only
 // difference is which data feeds it and the doc-info tag.
-function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange }) {
+function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange, extraRemeasureKey }) {
   const totals = calcQuotationTotals(items, { hasVat, priceIncludesVat, discountAmount, discountPct })
   const mySignature = useMySignatureUrl()
 
@@ -497,7 +497,18 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
     // needs that number to be accurate. Recomputed only when either URL
     // actually changes (not every render), so this can't spin into a
     // remeasurement loop.
-    remeasureKey: `${mySignature?.url || ''}|${clientSignature?.url || ''}`,
+    //
+    // extraRemeasureKey covers mutable inputs that live in the CALLER's own
+    // state rather than in `items` -- QuotationHistoryModal renders
+    // different revisions of the same quotation through this same
+    // QuotationPaper as the user clicks between them (different notes/
+    // paymentTerms/date etc.), and when two revisions happen to share the
+    // same item count, `items.length` alone doesn't change, so nothing
+    // would otherwise trigger a remeasure -- silently reusing the PREVIOUS
+    // revision's page geometry/footer-height reservation for the new one.
+    // Matches DocumentPaper's identical extraRemeasureKey pattern
+    // (Invoices.jsx).
+    remeasureKey: `${mySignature?.url || ''}|${clientSignature?.url || ''}|${extraRemeasureKey || ''}`,
   })
 
   useEffect(() => { onPageCountChange?.(pageCount) }, [pageCount, onPageCountChange])
@@ -539,10 +550,12 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
           >
             <QuotationHeader {...headerProps} pageNumber={pageIndex + 1} totalPages={pages.length} />
 
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: TABLE_MARGIN_TOP_PX }}>
-              <thead>{renderTableHeader()}</thead>
-              <tbody>{pageItems.map(renderRow)}</tbody>
-            </table>
+            {pageItems.length > 0 && (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: TABLE_MARGIN_TOP_PX }}>
+                <thead>{renderTableHeader()}</thead>
+                <tbody>{pageItems.map(renderRow)}</tbody>
+              </table>
+            )}
 
             {isLast && renderFooter()}
           </div>
@@ -665,6 +678,12 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
               discountAmount={s.discount_amount} discountPct={s.discount_pct}
               paymentTerms={s.payment_terms} notes={s.notes} bankAccount={s.bank_account}
               onPageCountChange={setHistoryPageCount}
+              // selected.id uniquely identifies which revision is currently
+              // rendering -- without this, switching between two revisions
+              // with the same item count reuses the previous revision's
+              // stale page geometry/footer-height reservation (see
+              // QuotationPaper's remeasureKey comment).
+              extraRemeasureKey={selected.id}
             />
           </div>
         )}

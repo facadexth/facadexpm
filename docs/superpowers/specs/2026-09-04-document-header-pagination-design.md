@@ -158,6 +158,17 @@ precedent but height-driven instead of count-driven, since item rows
    the user, overriding an earlier draft that proposed a slimmer continuation
    header) minus the item-table's own header-row height (also repeats on
    every page).
+
+   > **Revised during implementation:** the 960px figure above was this
+   > design's original estimate, but the value that actually shipped is
+   > different — calibrated against real `html2pdf.js` page-break math with
+   > byte-level PDF verification, and split into a content-only
+   > `PAGE_HEIGHT_PX` constant (header + table-header + rows) plus the
+   > consuming component's own padding added separately to get the total
+   > page-div height. This was a deliberate, evidence-based revision, not a
+   > silent drift — see `PAGE_HEIGHT_PX`'s own comment in
+   > `src/hooks/usePaginatedDocument.jsx` for the current number and the
+   > full reasoning behind it.
 4. Final render is N page `<div>`s, each with the complete header (logo,
    contact block, doc-info/client-info boxes — page number in the corner
    updates per page: `หน้า 1/2`, `หน้า 2/2`, ...) followed by that page's
