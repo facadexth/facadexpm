@@ -89,6 +89,14 @@ export const PAGE_HEIGHT_PX = 900
 // every render: an unbounded render loop, not just wasted work.
 export function usePaginatedDocument({
   items, renderHeader, renderTableHeader, renderRow, renderFooter, remeasureKey,
+  // No current caller overrides pageWidth -- both consumers leave it at this
+  // default and set their real page-div's width from the same PAGE_WIDTH_PX
+  // constant directly. If a future caller ever does pass pageWidth, it must
+  // also set its own page-div's width from that same value, or the hidden
+  // measurement pass and the real render will silently measure/render at
+  // different widths again (the exact class of bug this hook exists to
+  // prevent -- see the fontSize/padding comments below for the same
+  // invariant applied to the other geometry values).
   pageWidth = PAGE_WIDTH_PX,
   pagePaddingCss = PAGE_PADDING_CSS,
   pageHeight = PAGE_HEIGHT_PX,
@@ -141,13 +149,22 @@ export function usePaginatedDocument({
       pages: [items],
       pageCount: 1,
       measurementNode: (
-        // width/padding/boxSizing here are the exact same shared constants
-        // the real page-div is built from (see PAGE_WIDTH_PX etc. above) --
-        // this is what keeps the hidden pass's content-box width identical
-        // to the real render's, so Thai text wraps the same way in both.
+        // width/padding/boxSizing here are the exact same values the real
+        // page-div is built from -- pageWidth still traces back to the
+        // shared PAGE_WIDTH_PX constant (see above), while pagePaddingCss/
+        // tableMarginTop now come from the tenant's own resolveDocumentStyle()
+        // output (see Quotations.jsx/Invoices.jsx), passed to this hook as
+        // parameters. Either way, this hidden pass and the real render below
+        // always receive the identical value from the same caller-side
+        // source, which is what keeps the hidden pass's content-box width
+        // identical to the real render's, so Thai text wraps the same way
+        // in both. fontSize: 12 below matches the real render's table
+        // (see Quotations.jsx/Invoices.jsx) -- without it this table falls
+        // back to index.css's global `table { font-size: 13px }`, silently
+        // measuring rows taller than they actually render.
         <div style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none', top: 0, left: -99999, width: pageWidth, padding: pagePaddingCss, boxSizing: 'border-box', zIndex: -1 }}>
           <div ref={headerRef}>{renderHeader()}</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: tableMarginTop }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: tableMarginTop }}>
             <thead ref={tableHeaderRef}>{renderTableHeader()}</thead>
             <tbody>
               {items.map((it, i) => cloneElement(renderRow(it, i), { ref: el => { rowRefs.current[i] = el } }))}

@@ -1,9 +1,17 @@
 // Per-tenant document header style. NULL/missing fields on a tenant's
 // document_style fall back to these defaults -- a tenant who never opens
-// the Settings customizer is unaffected by this file ever changing its
-// defaults (their documents track DEFAULT_DOCUMENT_STYLE going forward,
-// not a frozen copy), while a tenant who saved a customization keeps
-// exactly the fields they touched and nothing else.
+// the Settings customizer (document_style stays NULL) is unaffected by
+// this file ever changing its defaults, since their documents keep
+// tracking DEFAULT_DOCUMENT_STYLE going forward, not a frozen copy.
+//
+// Note: resolveDocumentStyle() below supports a sparse overrides object
+// just fine, but nothing in this codebase currently WRITES a sparse one --
+// the Settings customizer's Save button persists a complete resolved
+// snapshot (every field, not a diff). So a tenant who has saved once will
+// NOT automatically pick up a later change to a field they never touched;
+// only a tenant who has never saved (still NULL) tracks future default
+// changes. Only Reset (which writes actual NULL, not a copy of today's
+// defaults) gets a tenant back onto the always-current defaults.
 //
 // logoMaxHeight is new -- the previously-shipped header had no cap on the
 // logo's stretch-to-match-text-height sizing, which looks disproportionate

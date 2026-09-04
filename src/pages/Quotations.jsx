@@ -516,15 +516,23 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
 
   useEffect(() => { onPageCountChange?.(pageCount) }, [pageCount, onPageCountChange])
 
-  // PAGE_WIDTH_PX/PAGE_PADDING_CSS/PAGE_PADDING_V_PX come from
-  // usePaginatedDocument.jsx -- the SAME constants its hidden measurement
-  // pass builds its own clone from, so the real page-div below and the
-  // hidden pass can never drift apart on content-box width again (that
-  // drift -- 700px measured vs a narrower real content box once padding +
-  // border-box were accounted for -- previously measured Thai text as
-  // wrapping to fewer lines than it really did, letting real pages come
-  // out over-full). See usePaginatedDocument.jsx's own comments for the
-  // full page-height budget math this height is calibrated against.
+  // PAGE_WIDTH_PX still comes from usePaginatedDocument.jsx and drives both
+  // this page-div's width and the hook's own pageWidth default (neither
+  // side overrides it), so width can never drift between the hidden
+  // measurement pass and this real render. Padding no longer comes from
+  // that module's PAGE_PADDING_CSS constant on either side -- both this
+  // page-div's padding and the pagePaddingCss passed to the hook above now
+  // derive from the tenant's own `style` (resolveDocumentStyle), which is
+  // still a single source shared by both the hidden pass and this real
+  // render, just per-tenant instead of module-level. PAGE_PADDING_V_PX
+  // itself is only used below for the fixed page-height budget math, not
+  // for actual padding. This is what keeps the hidden pass and the real
+  // render from drifting apart on content-box width (that drift -- 700px
+  // measured vs a narrower real content box once padding + border-box were
+  // accounted for -- previously measured Thai text as wrapping to fewer
+  // lines than it really did, letting real pages come out over-full). See
+  // usePaginatedDocument.jsx's own comments for the full page-height
+  // budget math this height is calibrated against.
   //
   // Fixed total page-div height regardless of the tenant's chosen padding --
   // see the usePaginatedDocument call above, which derives its content

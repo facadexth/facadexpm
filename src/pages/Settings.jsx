@@ -176,16 +176,24 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   // Contractor type — stored on tenants.contractor_type_id
   const { tenant, hasModuleAccess, refetch: refetchTenant } = useTenant()
 
-  // Document style customizer -- resolveDocumentStyle merges the tenant's
-  // sparse overrides onto DEFAULT_DOCUMENT_STYLE, so local state always
-  // starts fully populated. The useEffect re-syncs local state whenever
-  // tenant reloads (e.g. after Save calls refetchTenant()), so the panel
-  // reflects just-saved values rather than staying on stale pre-save state.
+  // Document style customizer -- resolveDocumentStyle always returns a
+  // fully-populated object, so local state always starts fully populated.
+  // The useEffect below re-syncs local state when the PERSISTED value
+  // actually changes (e.g. after this card's own Save/Reset calls
+  // refetchTenant()) -- keyed on a stringified comparison, not
+  // `tenant?.document_style` object identity, because useTenant()
+  // re-parses JSON on every fetch (a new object even when the underlying
+  // value is unchanged), and OTHER saves on this same page (company
+  // profile, logo upload) also call refetchTenant(). Keying on identity
+  // would silently wipe any in-progress (unsaved) slider edits every time
+  // an OWNER saved something unrelated elsewhere on this page.
   const [docStyle, setDocStyle] = useState(() => resolveDocumentStyle(tenant?.document_style))
   const [savingDocStyle, setSavingDocStyle] = useState(false)
+  const tenantStyleKey = JSON.stringify(tenant?.document_style)
   useEffect(() => {
     setDocStyle(resolveDocumentStyle(tenant?.document_style))
-  }, [tenant?.document_style])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantStyleKey])
   const setDocStyleField = (k, v) => setDocStyle(s => ({ ...s, [k]: v }))
 
   const handleSaveDocStyle = async () => {
@@ -702,6 +710,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
             <QuotationPaper
               elementId="doc-style-preview"
               tenant={{ ...tenant, document_style: docStyle }}
+              extraRemeasureKey={JSON.stringify(docStyle)}
               quotationNumber={DOC_STYLE_PREVIEW_SAMPLE.quotationNumber}
               tag="ตัวอย่าง"
               date={DOC_STYLE_PREVIEW_SAMPLE.date}
