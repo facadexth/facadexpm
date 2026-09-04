@@ -28,6 +28,7 @@ import DocumentReceiptModal from '../components/DocumentReceiptModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import UnitSelect from '../components/UnitSelect.jsx'
 import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX } from '../hooks/usePaginatedDocument.jsx'
+import { resolveDocumentStyle } from '../lib/documentStyle.js'
 
 const clientOpts = (clients) => (clients || []).map(c => ({
   value: c.id, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
@@ -313,8 +314,6 @@ function AcceptQuotationModal({ quotation, totals, clients, sites, hasModuleAcce
   )
 }
 
-const ACCENT = '#6c63ff'
-
 // Both the top row (logo/contact/title) and the client-info/doc-info row
 // below it repeat identically on every page (per the spec's explicit
 // "repeat the whole header" requirement) -- kept as one component so the
@@ -326,24 +325,24 @@ const ACCENT = '#6c63ff'
 // a brand-new component type and unmounts/remounts the whole subtree --
 // including the <img crossOrigin> logo below -- even when nothing it reads
 // actually changed. Real props instead of closed-over variables.
-function QuotationHeader({ tenant, tag, revisionSuffix, quotationNumber, date, validUntil, siteName, clientName, clientAddress, clientTaxId, pageNumber, totalPages }) {
+function QuotationHeader({ tenant, tag, revisionSuffix, quotationNumber, date, validUntil, siteName, clientName, clientAddress, clientTaxId, pageNumber, totalPages, style }) {
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'stretch', gap: 25 }}>
-        <div style={{ display: 'flex', gap: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'stretch', gap: style.headerRowGap }}>
+        <div style={{ display: 'flex', gap: style.logoGap }}>
           {tenant?.logo_url
             ? (
-              <div style={{ position: 'relative', width: 110, flexShrink: 0 }}>
+              <div style={{ position: 'relative', width: style.logoWidth, maxHeight: style.logoMaxHeight, flexShrink: 0 }}>
                 <img src={tenant.logo_url} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'left center' }} crossOrigin="anonymous" />
               </div>
             )
-            : <div style={{ width: 40, height: 40, borderRadius: 8, background: ACCENT, flexShrink: 0 }} />}
+            : <div style={{ width: 40, height: 40, borderRadius: 8, background: style.accent, flexShrink: 0 }} />}
           <div>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>{tenant?.company_name}</div>
-            {tenant?.address && <div style={{ fontSize: 12, color: '#6a6f85', lineHeight: 1.6, marginTop: 2 }}>{tenant.address}</div>}
-            {tenant?.tax_id && <div style={{ fontSize: 12, color: '#6a6f85' }}>เลขผู้เสียภาษี {tenant.tax_id}</div>}
-            {(tenant?.phone || tenant?.email || tenant?.website) && (
-              <div style={{ fontSize: 12, color: '#4a4d63', marginTop: 6 }}>
+            <div style={{ fontSize: style.nameSize, fontWeight: 800 }}>{tenant?.company_name}</div>
+            {tenant?.address && <div style={{ fontSize: style.addressSize, color: '#6a6f85', lineHeight: 1.6, marginTop: 2 }}>{tenant.address}</div>}
+            {tenant?.tax_id && <div style={{ fontSize: style.addressSize, color: '#6a6f85' }}>เลขผู้เสียภาษี {tenant.tax_id}</div>}
+            {style.showContactIcons && (tenant?.phone || tenant?.email || tenant?.website) && (
+              <div style={{ fontSize: style.contactSize, color: '#4a4d63', marginTop: style.contactLineGap }}>
                 {tenant?.phone && <>📞&nbsp;{tenant.phone}</>}
                 {tenant?.phone && (tenant?.email || tenant?.website) && <>&nbsp;&nbsp;&nbsp;</>}
                 {tenant?.email && <>✉️&nbsp;{tenant.email}</>}
@@ -354,20 +353,20 @@ function QuotationHeader({ tenant, tag, revisionSuffix, quotationNumber, date, v
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 12, color: '#6a6f85', marginBottom: 4 }}>หน้า {pageNumber}/{totalPages}</div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: ACCENT, border: `1px solid ${ACCENT}`, borderRadius: 4, padding: '2px 8px', display: 'inline-block', marginBottom: 6 }}>{tag || 'ต้นฉบับ'}</div>
-          <div style={{ fontSize: 28, fontWeight: 800 }}>ใบเสนอราคา</div>
+          <div style={{ fontSize: style.addressSize, color: '#6a6f85', marginBottom: 4 }}>หน้า {pageNumber}/{totalPages}</div>
+          <div style={{ fontSize: style.addressSize, fontWeight: 700, color: style.accent, border: `1px solid ${style.accent}`, borderRadius: 4, padding: '2px 8px', display: 'inline-block', marginBottom: 6 }}>{tag || 'ต้นฉบับ'}</div>
+          <div style={{ fontSize: style.titleSize, fontWeight: 800 }}>ใบเสนอราคา</div>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '66fr 34fr', gap: 20 }}>
-        <div style={{ marginTop: 17, fontSize: 12.5, lineHeight: 2 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `${style.splitRatioClient}fr ${100 - style.splitRatioClient}fr`, gap: 20 }}>
+        <div style={{ marginTop: style.clientInfoOffset, fontSize: 12.5, lineHeight: 2 }}>
           <div><span style={{ color: '#6a6f85' }}>ลูกค้า&nbsp;:</span> <strong>{clientName || '—'}</strong></div>
           <div><span style={{ color: '#6a6f85' }}>ที่อยู่&nbsp;:</span> {clientAddress || '—'}</div>
           {clientTaxId && <div><span style={{ color: '#6a6f85' }}>เลขที่ภาษี&nbsp;:</span> {clientTaxId}</div>}
         </div>
-        <div style={{ marginTop: 17, border: '1px solid #e4e6ef', borderRadius: 8, padding: '14px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px', fontSize: 12 }}>
-          <div><span style={{ color: '#6a6f85' }}>เลขที่เอกสาร</span><br /><strong>{quotationNumber}{revisionSuffix}</strong></div>
+        <div style={{ marginTop: style.docInfoBoxOffset, border: '1px solid #e4e6ef', borderRadius: 8, padding: '14px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px', fontSize: style.infoSize }}>
+          <div><span style={{ color: '#6a6f85' }}>เลขที่เอกสาร</span><br /><strong>{quotationNumber}{style.showRevisionSuffix ? revisionSuffix : ''}</strong></div>
           <div><span style={{ color: '#6a6f85' }}>วันที่ออก</span><br />{date ? new Date(date).toLocaleDateString('th-TH') : '—'}</div>
           <div><span style={{ color: '#6a6f85' }}>ใช้ได้ถึง</span><br />{validUntil ? new Date(validUntil).toLocaleDateString('th-TH') : '—'}</div>
           <div><span style={{ color: '#6a6f85' }}>โครงการ</span><br />{siteName || '—'}</div>
@@ -386,9 +385,10 @@ function QuotationHeader({ tenant, tag, revisionSuffix, quotationNumber, date, v
 function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange, extraRemeasureKey }) {
   const totals = calcQuotationTotals(items, { hasVat, priceIncludesVat, discountAmount, discountPct })
   const mySignature = useMySignatureUrl()
+  const style = resolveDocumentStyle(tenant?.document_style)
 
   const revisionSuffix = revision > 1 ? `-R${revision}` : ''
-  const headerProps = { tenant, tag, revisionSuffix, quotationNumber, date, validUntil, siteName, clientName, clientAddress, clientTaxId }
+  const headerProps = { tenant, tag, revisionSuffix, quotationNumber, date, validUntil, siteName, clientName, clientAddress, clientTaxId, style }
 
   const renderRow = (it, i) => (
     it.item_type === 'note' || it.item_type === 'item_description' ? (
@@ -407,10 +407,10 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
 
   const renderTableHeader = () => (
     <tr>
-      <th style={{ textAlign: 'left', padding: '11px 8px', fontSize: 12, fontWeight: 700, color: '#4a4d63', background: '#f4f4f6', borderBottom: `2px solid ${ACCENT}` }}>รายการ</th>
-      <th style={{ textAlign: 'right', padding: '11px 8px', fontSize: 12, fontWeight: 700, color: '#4a4d63', background: '#f4f4f6', borderBottom: `2px solid ${ACCENT}` }}>จำนวน</th>
-      <th style={{ textAlign: 'right', padding: '11px 8px', fontSize: 12, fontWeight: 700, color: '#4a4d63', background: '#f4f4f6', borderBottom: `2px solid ${ACCENT}` }}>ราคา/หน่วย</th>
-      <th style={{ textAlign: 'right', padding: '11px 8px', fontSize: 12, fontWeight: 700, color: '#4a4d63', background: '#f4f4f6', borderBottom: `2px solid ${ACCENT}` }}>รวม</th>
+      <th style={{ textAlign: 'left', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }}>รายการ</th>
+      <th style={{ textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }}>จำนวน</th>
+      <th style={{ textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }}>ราคา/หน่วย</th>
+      <th style={{ textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }}>รวม</th>
     </tr>
   )
 
@@ -434,8 +434,8 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
               <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>VAT (7%)</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(totals.vat)}</td></tr>
             )}
             <tr>
-              <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: ACCENT, borderTop: `2px solid ${ACCENT}` }}>รวมทั้งสิ้น</td>
-              <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: ACCENT, borderTop: `2px solid ${ACCENT}` }}>{fmt(totals.total)} บาท</td>
+              <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: style.accent, borderTop: `2px solid ${style.accent}` }}>รวมทั้งสิ้น</td>
+              <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: style.accent, borderTop: `2px solid ${style.accent}` }}>{fmt(totals.total)} บาท</td>
             </tr>
           </tbody>
         </table>
@@ -509,6 +509,9 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
     // Matches DocumentPaper's identical extraRemeasureKey pattern
     // (Invoices.jsx).
     remeasureKey: `${mySignature?.url || ''}|${clientSignature?.url || ''}|${extraRemeasureKey || ''}`,
+    pagePaddingCss: `${style.pagePaddingV}px ${style.pagePaddingH}px`,
+    pageHeight: (PAGE_HEIGHT_PX + PAGE_PADDING_V_PX * 2) - style.pagePaddingV * 2,
+    tableMarginTop: style.tableMarginTop,
   })
 
   useEffect(() => { onPageCountChange?.(pageCount) }, [pageCount, onPageCountChange])
@@ -522,6 +525,11 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
   // wrapping to fewer lines than it really did, letting real pages come
   // out over-full). See usePaginatedDocument.jsx's own comments for the
   // full page-height budget math this height is calibrated against.
+  //
+  // Fixed total page-div height regardless of the tenant's chosen padding --
+  // see the usePaginatedDocument call above, which derives its content
+  // budget as (this fixed total) minus the tenant's tunable padding, so the
+  // physical page-div height driving the PDF/print budget never moves.
   const PAGE_DIV_HEIGHT_PX = PAGE_HEIGHT_PX + PAGE_PADDING_V_PX * 2
 
   return (
@@ -532,7 +540,7 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
           <div
             key={pageIndex}
             style={{
-              padding: PAGE_PADDING_CSS, background: '#fff', color: '#17181f', boxSizing: 'border-box',
+              padding: `${style.pagePaddingV}px ${style.pagePaddingH}px`, background: '#fff', color: '#17181f', boxSizing: 'border-box',
               // Fixed height, not minHeight -- a page-div that's allowed to
               // grow past PAGE_DIV_HEIGHT_PX (e.g. from a measurement/
               // render drift) reintroduces the same overflow-past-budget
@@ -551,7 +559,7 @@ function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUn
             <QuotationHeader {...headerProps} pageNumber={pageIndex + 1} totalPages={pages.length} />
 
             {pageItems.length > 0 && (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: TABLE_MARGIN_TOP_PX }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: style.tableMarginTop }}>
                 <thead>{renderTableHeader()}</thead>
                 <tbody>{pageItems.map(renderRow)}</tbody>
               </table>
