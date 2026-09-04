@@ -794,6 +794,10 @@ const INVOICE_TITLE_OPTIONS = [
 
 function InvoiceDocumentModal({ invoice, tenant, onClose }) {
   const elementId = `inv-doc-${invoice.id}`
+  // Only footerTextSize is used here (matching QuotationPaper's footer size
+  // for visual consistency) -- footerBankFirst doesn't apply, this block is
+  // bank-account-only, nothing to reorder it against.
+  const style = resolveDocumentStyle(tenant?.document_style)
   const items = invoice.invoice_items || []
   const client = invoice.quotations?.clients
   const wht = computeWithholding(invoice)
@@ -869,7 +873,7 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
             subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
             withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
             notesBlock={bankAccount && (
-              <div style={{ marginTop: 20, fontSize: 11.5, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
+              <div style={{ marginTop: 20, fontSize: style.footerTextSize, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
                 <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
               </div>
             )}

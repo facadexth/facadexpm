@@ -31,6 +31,15 @@ export const DEFAULT_DOCUMENT_STYLE = {
   tableHeaderBg: '#f4f4f6', tableHeaderColor: '#4a4d63', tableHeaderSize: 12,
   tableHeaderPadding: 11, tableHeaderBorder: 2, tableHeaderBold: true,
   showContactIcons: true, showRevisionSuffix: true,
+  // Footer notes/payment-terms/bank-account block. footerBankFirst only
+  // affects QuotationPaper (the only document with payment terms/notes
+  // text alongside a bank account) -- false matches the order this block
+  // always rendered in before this field existed: payment terms, then
+  // notes, then bank account. Invoices/receipts only ever show a bank
+  // account there (no payment-terms/notes concept), so footerBankFirst is
+  // a no-op for them; footerTextSize still applies to keep the block's
+  // size consistent across all three document types.
+  footerTextSize: 11.5, footerBankFirst: false,
 }
 
 // Flat shallow merge -- every DEFAULT_DOCUMENT_STYLE value is a primitive
