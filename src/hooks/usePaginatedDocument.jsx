@@ -80,7 +80,13 @@ export const PAGE_HEIGHT_PX = 900
 // every render, which remounts the hidden measurement pass every render,
 // which fires the layout effect every render, which calls `setState`
 // every render: an unbounded render loop, not just wasted work.
-export function usePaginatedDocument({ items, renderHeader, renderTableHeader, renderRow, renderFooter, remeasureKey }) {
+export function usePaginatedDocument({
+  items, renderHeader, renderTableHeader, renderRow, renderFooter, remeasureKey,
+  pageWidth = PAGE_WIDTH_PX,
+  pagePaddingCss = PAGE_PADDING_CSS,
+  pageHeight = PAGE_HEIGHT_PX,
+  tableMarginTop = TABLE_MARGIN_TOP_PX,
+}) {
   const [heights, setHeights] = useState(null)
   const headerRef = useRef(null)
   const tableHeaderRef = useRef(null)
@@ -132,9 +138,9 @@ export function usePaginatedDocument({ items, renderHeader, renderTableHeader, r
         // the real page-div is built from (see PAGE_WIDTH_PX etc. above) --
         // this is what keeps the hidden pass's content-box width identical
         // to the real render's, so Thai text wraps the same way in both.
-        <div style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none', top: 0, left: -99999, width: PAGE_WIDTH_PX, padding: PAGE_PADDING_CSS, boxSizing: 'border-box', zIndex: -1 }}>
+        <div style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none', top: 0, left: -99999, width: pageWidth, padding: pagePaddingCss, boxSizing: 'border-box', zIndex: -1 }}>
           <div ref={headerRef}>{renderHeader()}</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: TABLE_MARGIN_TOP_PX }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: tableMarginTop }}>
             <thead ref={tableHeaderRef}>{renderTableHeader()}</thead>
             <tbody>
               {items.map((it, i) => cloneElement(renderRow(it, i), { ref: el => { rowRefs.current[i] = el } }))}
@@ -157,7 +163,7 @@ export function usePaginatedDocument({ items, renderHeader, renderTableHeader, r
     }
   }
 
-  const availableRegular = PAGE_HEIGHT_PX - heights.headerHeight - heights.tableHeaderHeight - TABLE_MARGIN_TOP_PX
+  const availableRegular = pageHeight - heights.headerHeight - heights.tableHeaderHeight - tableMarginTop
 
   const rows = items.map((it, i) => ({ it, h: heights.rowHeights[i] }))
 
