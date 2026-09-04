@@ -51,7 +51,13 @@ export const DEFAULT_PERMISSIONS = {
     catalog_items: 'none',
     labor_contractors: 'none',
     user_management: 'none',
-    settings: 'none',
+    // 'edit', not 'none' -- src/pages/Settings.jsx itself now filters what
+    // a WORKER sees on this page down to just the password-change card,
+    // so the page-level gate here only needs to let them land on it at
+    // all. This tri-state can't express "edit some cards, view others" on
+    // a single shared page anyway; the real per-card restriction lives in
+    // Settings.jsx's own isAtLeast() checks, not here.
+    settings: 'edit',
   },
   ADMIN: {
     dashboard: 'edit',
@@ -71,7 +77,10 @@ export const DEFAULT_PERMISSIONS = {
     catalog_items: 'edit',
     labor_contractors: 'edit',
     user_management: 'none',
-    settings: 'none',
+    // Same reasoning as WORKER above -- Settings.jsx narrows ADMIN down to
+    // the password + signature cards; this just needs to let them reach
+    // the page.
+    settings: 'edit',
   },
   OWNER: {
     dashboard: 'edit',

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useAppSetting, saveAppSetting, useContractorTypes, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature, useBankAccounts, setDefaultBankAccount } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
+import { useUserRole } from '../hooks/useUserRole.js'
 import { PAGE_LABELS, DEFAULT_PERMISSIONS, loadPermissions, savePermissions } from '../lib/permissions.js'
 import { THAI_BANKS } from '../lib/thaiBanks.js'
 import PackageComparison from '../components/PackageComparison.jsx'
@@ -40,6 +41,16 @@ const DOC_STYLE_PREVIEW_SAMPLE = {
 }
 
 export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
+  // This tab is now reachable by every role (src/App.jsx's minRole:'WORKER'
+  // gate on 'settings') -- everything below the password card is filtered
+  // by role right here instead: WORKER sees only the password card, ADMIN
+  // additionally sees the signature card, OWNER sees the rest of the page
+  // unchanged. Nothing here is a security boundary on its own (same caveat
+  // as src/lib/permissions.js) -- the actual writes below are still bound
+  // by each table's own RLS policy (e.g. owner_updates_own_tenant), so a
+  // WORKER granted a wider view here still can't persist an OWNER-only
+  // change.
+  const { isAtLeast } = useUserRole()
   const [permissions, setPermissions] = useState(DEFAULT_PERMISSIONS)
   const [saving, setSaving] = useState(false)
 
@@ -379,6 +390,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
         <button className="btn btn-ghost" onClick={onOpenChangePassword}>🔑 เปลี่ยนรหัสผ่าน</button>
       </div>
 
+      {isAtLeast('OWNER') && <>
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: tenant?.pending_package_id ? 8 : 0, flexWrap: 'wrap', gap: 10 }}>
           <div>
@@ -480,8 +492,10 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           </button>
         </div>
       </div>
+      </>}
 
-      {/* ── ลายเซ็นของฉัน ── */}
+      {/* ── ลายเซ็นของฉัน -- ADMIN ขึ้นไป (WORKER เห็นแค่การ์ดรหัสผ่านด้านบน) ── */}
+      {isAtLeast('ADMIN') && <>
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🖊️ ลายเซ็นของฉัน</h2>
         <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
@@ -502,7 +516,9 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           </div>
         )}
       </div>
+      </>}
 
+      {isAtLeast('OWNER') && <>
       {/* ── ประเภทผู้รับเหมา ── */}
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🏗️ ประเภทผู้รับเหมา</h2>
@@ -872,6 +888,17 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
         >
           {saving ? '⏳ กำลังบันทึก...' : '✅ บันทึกตั้งค่า'}
         </button>
+      </div>
+      </>}
+
+      {/* __APP_VERSION__/__BUILD_TIME__ are injected at build time by
+          vite.config.js's `define` -- there's no other build/deploy
+          metadata (no commit hash, no CI run id) reaching the client, so
+          this is literally "when `vite build` last ran" for this bundle.
+          Shown to every role so support can ask "what version are you on"
+          without needing OWNER access. */}
+      <div style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--text3)', marginTop: 28 }}>
+        FACADE X v{__APP_VERSION__} · อัปเดตล่าสุด {new Date(__BUILD_TIME__).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
       </div>
     </div>
   )

@@ -62,7 +62,12 @@ const TABS = [
   ] },
   { id: 'labor_contractors', label: '🔧 ผู้รับเหมาค่าแรง',    minRole: 'ADMIN',  module: 'labor_subcontractors' },
   { label: '⚙️ ตั้งค่า', children: [
-    { id: 'settings',        label: 'ทั่วไป',          minRole: 'OWNER', module: null },
+    // minRole WORKER, not OWNER -- Settings.jsx itself filters which cards
+    // each role sees (password change + version info for WORKER, plus
+    // signature for ADMIN, plus everything else for OWNER only). The page
+    // is reachable by everyone; the OWNER-only content stays gated inside
+    // the page, not at this tab-routing level.
+    { id: 'settings',        label: 'ทั่วไป',          minRole: 'WORKER', module: null },
     { id: 'hr',              label: '👷 บุคคล',        minRole: 'WORKER', module: 'payroll' },
     { id: 'categories',      label: '🏷️ หมวดหมู่',    minRole: 'ADMIN', module: null },
     { id: 'clients',         label: '🏢 ลูกค้า',      minRole: 'ADMIN', module: null },
