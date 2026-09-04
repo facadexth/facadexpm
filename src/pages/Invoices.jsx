@@ -572,7 +572,7 @@ function DocumentHeader({ tenant, tag, title, infoFields, clientName, clientAddr
 // paymentTerms/notes/bankAccount, and there are two independently-labeled
 // signatures (signatures[0]/[1] + mySignature/recipientSignature) instead
 // of a fixed "ผู้เสนอราคา"/"ผู้ยอมรับ (ลูกค้า)" pair.
-function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct, withholdingTaxAmount, isWithholdingEstimate, notesBlock, signatures, recipientSignature, onPageCountChange }) {
+function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct, withholdingTaxAmount, isWithholdingEstimate, notesBlock, signatures, recipientSignature, onPageCountChange, extraRemeasureKey }) {
   const mySignature = useMySignatureUrl()
   const headerProps = { tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId }
 
@@ -675,7 +675,19 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
     // needs that number to be accurate. Recomputed only when either URL
     // actually changes (not every render), so this can't spin into a
     // remeasurement loop.
-    remeasureKey: `${mySignature?.url || ''}|${recipientSignature?.url || ''}`,
+    //
+    // extraRemeasureKey covers mutable inputs that live in the CALLER's own
+    // state rather than in `items` -- unlike QuotationPaper, where every
+    // footer input (paymentTerms/notes/bankAccount) arrives fixed with the
+    // query row, DocumentPaper's callers can change footer/header content
+    // mid-session without `items` ever changing identity:
+    // InvoiceDocumentModal's bank-account <select> changes `notesBlock`
+    // (~65-70px), and ReceiptDocumentModal's ใบเสร็จ/ใบกำกับภาษี toggle
+    // changes infoFields[0].label, which can wrap to an extra line and
+    // shift the HEADER height every page's row budget is computed from.
+    // Neither of those would otherwise trigger a remeasure, silently
+    // reopening the same footer-overflow risk Task 5's Critical 2 fixed.
+    remeasureKey: `${mySignature?.url || ''}|${recipientSignature?.url || ''}|${extraRemeasureKey || ''}`,
   })
 
   useEffect(() => { onPageCountChange?.(pageCount) }, [pageCount, onPageCountChange])
@@ -847,6 +859,12 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
             signatures={['ผู้ออกใบแจ้งหนี้', 'ผู้รับเอกสาร']}
             recipientSignature={receipt && signatureUrl ? { url: signatureUrl, signerName: receipt.signer_name, signedAt: receipt.signed_at } : null}
             onPageCountChange={setPageCount}
+            // bankAccount is local <select> state (handleChangeBankAccount)
+            // that changes notesBlock's presence/content without `items`
+            // ever changing identity -- must be part of the remeasure key
+            // or a mid-session bank-account switch leaves the footer's
+            // reserved height stale (see DocumentPaper's own comment).
+            extraRemeasureKey={bankAccount?.id || ''}
           />
         </div>
       </div>
@@ -922,6 +940,12 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
             notesBlock={null}
             signatures={['ผู้รับเงิน', 'ผู้จ่ายเงิน']}
             onPageCountChange={setPageCount}
+            // titleVariant (ใบเสร็จ <-> ใบกำกับภาษี) changes
+            // infoFields[0].label, which can wrap to an extra line and
+            // shift the HEADER height every page's row budget is computed
+            // from -- must be part of the remeasure key (see DocumentPaper's
+            // own comment).
+            extraRemeasureKey={titleVariant}
           />
         </div>
       </div>

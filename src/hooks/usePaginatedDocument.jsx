@@ -88,11 +88,32 @@ export function usePaginatedDocument({ items, renderHeader, renderTableHeader, r
     const tableHeaderHeight = tableHeaderRef.current.getBoundingClientRect().height
     const footerHeight = footerRef.current ? footerRef.current.getBoundingClientRect().height : 0
     const rowHeights = rowRefs.current.map(el => (el ? el.getBoundingClientRect().height : 0))
-    setHeights({ headerHeight, tableHeaderHeight, footerHeight, rowHeights })
+    // measuredKey records which remeasureKey this measurement was taken
+    // under -- see the `measured` check below for why this is load-bearing,
+    // not just bookkeeping.
+    setHeights({ headerHeight, tableHeaderHeight, footerHeight, rowHeights, measuredKey: remeasureKey })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, remeasureKey])
 
-  const measured = heights && heights.rowHeights.length === items.length
+  // Real bug found and fixed here: `measured` used to check ONLY
+  // `heights.rowHeights.length === items.length`, never comparing against
+  // the current `remeasureKey`. Once a first measurement had landed,
+  // `measured` stayed true forever regardless of `items.length` -- so the
+  // hidden measurementNode branch below (the only place headerRef/
+  // tableHeaderRef/footerRef/rowRefs actually mount) never rendered again,
+  // and the useLayoutEffect above early-returned every time on
+  // `!headerRef.current`. Net effect: changing `remeasureKey` after the
+  // first successful measurement was a silent no-op -- the exact opposite
+  // of this hook's documented contract (see the `remeasureKey` comment
+  // above). Comparing `heights.measuredKey` here forces `measured` back to
+  // false the instant `remeasureKey` changes, which remounts the hidden
+  // pass, re-attaches fresh refs, and lets the effect above populate a new
+  // `heights` (tagged with the new key) -- restoring the documented
+  // behavior. Caught live: a DocumentPaper footer (see Invoices.jsx) that
+  // grew ~65px after a mid-session bank-account selection rendered ~11px
+  // past its fixed-height page-div's bottom edge because the reserved
+  // footer budget never updated.
+  const measured = heights && heights.rowHeights.length === items.length && heights.measuredKey === remeasureKey
 
   if (!measured) {
     // Not measured yet -- render everything on one page as a safe fallback

@@ -424,20 +424,23 @@ th.sortable:hover { color: var(--accent); }
   body * { visibility: hidden; }
   .printable-document, .printable-document * { visibility: visible; }
   .printable-document {
-    /* width:100% here is NOT dead weight, even though QuotationPaper's own
-       printable-document root always overrides it with a fixed inline
-       PAGE_WIDTH_PX (inline style beats this class rule's specificity, so
-       QuotationPaper prints at exactly the same width its pagination was
-       measured against -- see usePaginatedDocument.jsx). But DocumentPaper
+    /* width:100% here is NOT dead weight, even though both CURRENT
+       printable-document consumers -- QuotationPaper and DocumentPaper
        (src/pages/Invoices.jsx, backing InvoiceDocumentModal and
-       ReceiptDocumentModal) also renders className="printable-document"
-       with NO inline width of its own -- for that component, this rule is
+       ReceiptDocumentModal) -- give their printable-document root a fixed
+       inline PAGE_WIDTH_PX and so always override this class rule (inline
+       style beats this rule's specificity; both print at exactly the same
+       width their pagination was measured against -- see
+       usePaginatedDocument.jsx). This rule is a FALLBACK for any future
+       printable-document consumer that renders with no inline width of its
+       own (as DocumentPaper itself used to, before it adopted
+       QuotationPaper's fixed-width pattern) -- for such a consumer, this is
        the only thing making it fill the printed page instead of
        shrink-to-fitting its content's max-content width under this block's
-       position:absolute. Both consumers coexist correctly: whichever one
-       sets its own inline width wins; the one that doesn't falls back to
-       this. Do not remove this without checking every printable-document
-       consumer, not just QuotationPaper. */
+       position:absolute. Whichever consumer sets its own inline width wins;
+       the one that doesn't falls back to this. Do not remove this without
+       checking every printable-document consumer, not just the two current
+       ones. */
     position: absolute; top: 0; left: 0; width: 100%; margin: 0; box-shadow: none;
   }
 }
