@@ -1009,7 +1009,7 @@ export function useAllLaborPayments(filters = {}) {
   return useQuery(async () => {
     let q = supabase
       .from('labor_payments')
-      .select('*, labor_contracts(work_description, contract_amount, labor_subcontractors(name, subcontractor_number), sites(id, name, site_number))')
+      .select('*, labor_contracts(work_description, contract_amount, withholding_tax_pct, labor_subcontractors(name, subcontractor_number, id_card_number, address), sites(id, name, site_number))')
       .order('payment_date', { ascending: false })
     if (filters.status) q = q.eq('status', filters.status)
     const { data, error } = await q

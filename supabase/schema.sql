@@ -1272,6 +1272,8 @@ CREATE TABLE labor_subcontractors (
   phone                 TEXT,
   email                 TEXT,
   notes                 TEXT,
+  id_card_number        TEXT,                       -- เลขประจำตัวประชาชน 13 หลัก, for the WHT certificate's payee section
+  address                TEXT,
   created_at            TIMESTAMPTZ DEFAULT NOW(),
   updated_at            TIMESTAMPTZ DEFAULT NOW(),
   tenant_id             UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
