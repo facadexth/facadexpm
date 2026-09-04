@@ -28,6 +28,7 @@ import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX } from '../hooks/usePaginatedDocument.jsx'
+import { resolveDocumentStyle } from '../lib/documentStyle.js'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -482,8 +483,6 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   )
 }
 
-const ACCENT = '#6c63ff'
-
 // Both the top row (logo/contact/title) and the client-info/doc-info row
 // below it repeat identically on every page (per the spec's explicit
 // "repeat the whole header" requirement) -- kept as one component so the
@@ -503,24 +502,24 @@ const ACCENT = '#6c63ff'
 // exactly as it already was before this rewrite. โครงการ (site name) now
 // arrives as one more entry in that array rather than its own dedicated
 // client-info line.
-function DocumentHeader({ tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, pageNumber, totalPages }) {
+function DocumentHeader({ tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, pageNumber, totalPages, style }) {
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'stretch', gap: 25 }}>
-        <div style={{ display: 'flex', gap: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'stretch', gap: style.headerRowGap }}>
+        <div style={{ display: 'flex', gap: style.logoGap }}>
           {tenant?.logo_url
             ? (
-              <div style={{ position: 'relative', width: 110, flexShrink: 0 }}>
+              <div style={{ position: 'relative', width: style.logoWidth, maxHeight: style.logoMaxHeight, flexShrink: 0 }}>
                 <img src={tenant.logo_url} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'left center' }} crossOrigin="anonymous" />
               </div>
             )
-            : <div style={{ width: 40, height: 40, borderRadius: 8, background: ACCENT, flexShrink: 0 }} />}
+            : <div style={{ width: 40, height: 40, borderRadius: 8, background: style.accent, flexShrink: 0 }} />}
           <div>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>{tenant?.company_name}</div>
-            {tenant?.address && <div style={{ fontSize: 12, color: '#6a6f85', lineHeight: 1.6, marginTop: 2 }}>{tenant.address}</div>}
-            {tenant?.tax_id && <div style={{ fontSize: 12, color: '#6a6f85' }}>เลขผู้เสียภาษี {tenant.tax_id}</div>}
-            {(tenant?.phone || tenant?.email || tenant?.website) && (
-              <div style={{ fontSize: 12, color: '#4a4d63', marginTop: 6 }}>
+            <div style={{ fontSize: style.nameSize, fontWeight: 800 }}>{tenant?.company_name}</div>
+            {tenant?.address && <div style={{ fontSize: style.addressSize, color: '#6a6f85', lineHeight: 1.6, marginTop: 2 }}>{tenant.address}</div>}
+            {tenant?.tax_id && <div style={{ fontSize: style.addressSize, color: '#6a6f85' }}>เลขผู้เสียภาษี {tenant.tax_id}</div>}
+            {style.showContactIcons && (tenant?.phone || tenant?.email || tenant?.website) && (
+              <div style={{ fontSize: style.contactSize, color: '#4a4d63', marginTop: style.contactLineGap }}>
                 {tenant?.phone && <>📞&nbsp;{tenant.phone}</>}
                 {tenant?.phone && (tenant?.email || tenant?.website) && <>&nbsp;&nbsp;&nbsp;</>}
                 {tenant?.email && <>✉️&nbsp;{tenant.email}</>}
@@ -531,19 +530,19 @@ function DocumentHeader({ tenant, tag, title, infoFields, clientName, clientAddr
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 12, color: '#6a6f85', marginBottom: 4 }}>หน้า {pageNumber}/{totalPages}</div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: ACCENT, border: `1px solid ${ACCENT}`, borderRadius: 4, padding: '2px 8px', display: 'inline-block', marginBottom: 6 }}>{tag || 'ต้นฉบับ'}</div>
-          <div style={{ fontSize: 28, fontWeight: 800 }}>{title}</div>
+          <div style={{ fontSize: style.addressSize, color: '#6a6f85', marginBottom: 4 }}>หน้า {pageNumber}/{totalPages}</div>
+          <div style={{ fontSize: style.addressSize, fontWeight: 700, color: style.accent, border: `1px solid ${style.accent}`, borderRadius: 4, padding: '2px 8px', display: 'inline-block', marginBottom: 6 }}>{tag || 'ต้นฉบับ'}</div>
+          <div style={{ fontSize: style.titleSize, fontWeight: 800 }}>{title}</div>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '66fr 34fr', gap: 20 }}>
-        <div style={{ marginTop: 17, fontSize: 12.5, lineHeight: 2 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `${style.splitRatioClient}fr ${100 - style.splitRatioClient}fr`, gap: 20 }}>
+        <div style={{ marginTop: style.clientInfoOffset, fontSize: 12.5, lineHeight: 2 }}>
           <div><span style={{ color: '#6a6f85' }}>ลูกค้า&nbsp;:</span> <strong>{clientName || '—'}</strong></div>
           <div><span style={{ color: '#6a6f85' }}>ที่อยู่&nbsp;:</span> {clientAddress || '—'}</div>
           {clientTaxId && <div><span style={{ color: '#6a6f85' }}>เลขที่ภาษี&nbsp;:</span> {clientTaxId}</div>}
         </div>
-        <div style={{ marginTop: 17, border: '1px solid #e4e6ef', borderRadius: 8, padding: '14px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px', fontSize: 12 }}>
+        <div style={{ marginTop: style.docInfoBoxOffset, border: '1px solid #e4e6ef', borderRadius: 8, padding: '14px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px', fontSize: style.infoSize }}>
           {infoFields.map(f => (
             <div key={f.label}><span style={{ color: '#6a6f85' }}>{f.label}</span><br />{f.value}</div>
           ))}
@@ -574,7 +573,8 @@ function DocumentHeader({ tenant, tag, title, infoFields, clientName, clientAddr
 // of a fixed "ผู้เสนอราคา"/"ผู้ยอมรับ (ลูกค้า)" pair.
 function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct, withholdingTaxAmount, isWithholdingEstimate, notesBlock, signatures, recipientSignature, onPageCountChange, extraRemeasureKey }) {
   const mySignature = useMySignatureUrl()
-  const headerProps = { tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId }
+  const style = resolveDocumentStyle(tenant?.document_style)
+  const headerProps = { tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, style }
 
   const renderRow = (it, i) => (
     <tr key={it.id || i}>
@@ -587,10 +587,10 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
 
   const renderTableHeader = () => (
     <tr>
-      <th style={{ textAlign: 'left', padding: '11px 8px', fontSize: 12, fontWeight: 700, color: '#4a4d63', background: '#f4f4f6', borderBottom: `2px solid ${ACCENT}` }}>รายการ</th>
-      <th style={{ textAlign: 'right', padding: '11px 8px', fontSize: 12, fontWeight: 700, color: '#4a4d63', background: '#f4f4f6', borderBottom: `2px solid ${ACCENT}` }}>จำนวน</th>
-      <th style={{ textAlign: 'right', padding: '11px 8px', fontSize: 12, fontWeight: 700, color: '#4a4d63', background: '#f4f4f6', borderBottom: `2px solid ${ACCENT}` }}>ราคา/หน่วย</th>
-      <th style={{ textAlign: 'right', padding: '11px 8px', fontSize: 12, fontWeight: 700, color: '#4a4d63', background: '#f4f4f6', borderBottom: `2px solid ${ACCENT}` }}>รวม</th>
+      <th style={{ textAlign: 'left', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }}>รายการ</th>
+      <th style={{ textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }}>จำนวน</th>
+      <th style={{ textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }}>ราคา/หน่วย</th>
+      <th style={{ textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }}>รวม</th>
     </tr>
   )
 
@@ -614,8 +614,8 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
               <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>VAT (7%)</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(vat)}</td></tr>
             )}
             <tr>
-              <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: ACCENT, borderTop: `2px solid ${ACCENT}` }}>{totalsLabel}</td>
-              <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: ACCENT, borderTop: `2px solid ${ACCENT}` }}>{fmt(totalsAmount)} บาท</td>
+              <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: style.accent, borderTop: `2px solid ${style.accent}` }}>{totalsLabel}</td>
+              <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: style.accent, borderTop: `2px solid ${style.accent}` }}>{fmt(totalsAmount)} บาท</td>
             </tr>
             {withholdingTaxAmount > 0 && (
               <>
@@ -688,6 +688,9 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
     // Neither of those would otherwise trigger a remeasure, silently
     // reopening the same footer-overflow risk Task 5's Critical 2 fixed.
     remeasureKey: `${mySignature?.url || ''}|${recipientSignature?.url || ''}|${extraRemeasureKey || ''}`,
+    pagePaddingCss: `${style.pagePaddingV}px ${style.pagePaddingH}px`,
+    pageHeight: (PAGE_HEIGHT_PX + PAGE_PADDING_V_PX * 2) - style.pagePaddingV * 2,
+    tableMarginTop: style.tableMarginTop,
   })
 
   useEffect(() => { onPageCountChange?.(pageCount) }, [pageCount, onPageCountChange])
@@ -706,6 +709,11 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
   // fallback rule in index.css was written around; that fallback rule is
   // left in place (untouched) for any future printable-document consumer
   // that still has no inline width of its own.
+  //
+  // Fixed total page-div height regardless of the tenant's chosen padding --
+  // see the usePaginatedDocument call above, which derives its content
+  // budget as (this fixed total) minus the tenant's tunable padding, so the
+  // physical page-div height driving the PDF/print budget never moves.
   const PAGE_DIV_HEIGHT_PX = PAGE_HEIGHT_PX + PAGE_PADDING_V_PX * 2
 
   return (
@@ -716,7 +724,7 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
           <div
             key={pageIndex}
             style={{
-              padding: PAGE_PADDING_CSS, background: '#fff', color: '#17181f', boxSizing: 'border-box',
+              padding: `${style.pagePaddingV}px ${style.pagePaddingH}px`, background: '#fff', color: '#17181f', boxSizing: 'border-box',
               // Fixed height, not minHeight -- see QuotationPaper's identical
               // comment (Quotations.jsx) for why: a page-div allowed to grow
               // past PAGE_DIV_HEIGHT_PX reintroduces the same
@@ -734,7 +742,7 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
             <DocumentHeader {...headerProps} pageNumber={pageIndex + 1} totalPages={pages.length} />
 
             {pageItems.length > 0 && (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: TABLE_MARGIN_TOP_PX }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: style.tableMarginTop }}>
                 <thead>{renderTableHeader()}</thead>
                 <tbody>{pageItems.map(renderRow)}</tbody>
               </table>
