@@ -1447,6 +1447,13 @@ ALTER TABLE tenants
   ADD COLUMN email   TEXT,
   ADD COLUMN website TEXT;
 
+-- Per-tenant document header style overrides (spec:
+-- docs/superpowers/specs/2026-09-04-document-style-customizer-design.md).
+-- NULL means "use DEFAULT_DOCUMENT_STYLE" (src/lib/documentStyle.js).
+-- Added by supabase/migrations/2026-09-04-02-tenant-document-style.sql.
+ALTER TABLE tenants
+  ADD COLUMN document_style JSONB;
+
 -- ----------------------------------------------------------------
 -- TENANT_MODULES — รูปแบบ/โมดูลที่เปิดใช้งานต่อบริษัท
 -- ----------------------------------------------------------------
