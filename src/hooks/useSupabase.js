@@ -415,6 +415,34 @@ export function useMySignatureUrl() {
   return signature && url ? { url } : null
 }
 
+// ชื่อพนักงานที่ผูกกับ user ที่ล็อกอินอยู่ตอนนี้ (workers.email = session
+// email, ตั้งค่าได้จากฟอร์มเพิ่ม/แก้ไขพนักงานในหน้า HR -- ช่อง "ผูกกับ User
+// Account (Login)") ใช้แสดงชื่อใต้เส้นลายเซ็นฝั่งพนักงานในเอกสาร
+// (QuotationPaper, DocumentPaper) เดียวกับที่ signerName ของลูกค้าแสดงใต้
+// เส้นลายเซ็นฝั่งลูกค้าอยู่แล้ว. null เงียบๆ ถ้าไม่ได้ผูก -- เอกสารยัง
+// แสดงป้ายบทบาท ("ผู้เสนอราคา" ฯลฯ) ได้ตามปกติโดยไม่มีชื่อกำกับ
+export function useMyWorkerName() {
+  return useQuery(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const email = session?.user?.email
+    if (!email) return null
+    // .limit(1) + array, not .maybeSingle() -- workers.email has no unique
+    // constraint (the HR form's "ผูกกับ User Account" dropdown doesn't
+    // filter out logins already linked to another worker), so two rows
+    // sharing an email is a real possibility, not just theoretical.
+    // maybeSingle() throws on 2+ rows; this instead just picks one rather
+    // than breaking every document render for the tenant until someone
+    // notices and fixes the duplicate link.
+    const { data, error } = await supabase
+      .from('workers')
+      .select('name')
+      .eq('email', email)
+      .limit(1)
+    if (error) throw error
+    return data?.[0]?.name || null
+  }, [])
+}
+
 // จำนวนครั้งที่เอกสารนี้เคยถูกพิมพ์/ดาวน์โหลดมาก่อน -- ใช้คำนวณว่าครั้งต่อไป
 // จะเป็น "ต้นฉบับ" (ครั้งแรก) หรือ "สำเนาที่ N" (ดู printTagFor ใน lib/pdf.js)
 export function useDocumentPrintCount(documentType, documentId) {

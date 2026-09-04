@@ -12,7 +12,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, useBankAccounts, logDocumentPrint } from '../hooks/useSupabase.js'
+import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, useMyWorkerName, useBankAccounts, logDocumentPrint } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { calcDepositDeduction, round2 } from '../lib/depositCalc.js'
@@ -573,6 +573,7 @@ function DocumentHeader({ tenant, tag, title, infoFields, clientName, clientAddr
 // of a fixed "ผู้เสนอราคา"/"ผู้ยอมรับ (ลูกค้า)" pair.
 function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct, withholdingTaxAmount, isWithholdingEstimate, notesBlock, signatures, recipientSignature, onPageCountChange, extraRemeasureKey }) {
   const mySignature = useMySignatureUrl()
+  const { data: myWorkerName } = useMyWorkerName()
   const style = resolveDocumentStyle(tenant?.document_style)
   const headerProps = { tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, style }
 
@@ -654,6 +655,9 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
               {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
             </div>
             <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>{signatures[0]}</div>
+            {myWorkerName && (
+              <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>{myWorkerName}</div>
+            )}
           </div>
           <div>
             <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>

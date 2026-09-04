@@ -6,6 +6,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { supabase } from '../lib/supabase.js'
@@ -26,7 +27,7 @@ const EMPTY_WORKER = {
   name: '', nickname: '', position: '',
   monthly_salary: '', status: 'active',
   has_social_security: true, annual_leave_days: 6, annual_sick_leave_days: 30, monthly_contribution: '', email: '',
-  show_in_assign: true,
+  show_in_assign: true, id_card_number: '', address: '',
 }
 
 function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerUsers = [], seat }) {
@@ -36,8 +37,25 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
   const dailyRate = form.monthly_salary ? (parseFloat(form.monthly_salary) / 26).toFixed(2) : '—'
   const workersFull = isAdd && seat?.workers?.max != null && seat.workers.used >= seat.workers.max
 
+  // Raw File, deliberately NOT part of `form` (see handleSaveWorker's own
+  // comment for why -- draft-persisted state can't survive a File object).
+  const [idCardFile, setIdCardFile] = useState(null)
+  const idCardPreviewUrl = useMemo(() => idCardFile ? URL.createObjectURL(idCardFile) : null, [idCardFile])
+  useEffect(() => () => { if (idCardPreviewUrl) URL.revokeObjectURL(idCardPreviewUrl) }, [idCardPreviewUrl])
+
+  // Existing photo (editing an already-saved worker) -- signed URL, since
+  // worker-id-cards is a private bucket.
+  const [existingIdCardUrl, setExistingIdCardUrl] = useState(null)
+  useEffect(() => {
+    if (!initial?.id_card_photo_path) { setExistingIdCardUrl(null); return }
+    let cancelled = false
+    supabase.storage.from('worker-id-cards').createSignedUrl(initial.id_card_photo_path, 300)
+      .then(({ data }) => { if (!cancelled) setExistingIdCardUrl(data?.signedUrl) })
+    return () => { cancelled = true }
+  }, [initial?.id_card_photo_path])
+
   return (
-    <form onSubmit={e => { e.preventDefault(); clearFormDraft(); onSave(form) }}>
+    <form onSubmit={e => { e.preventDefault(); clearFormDraft(); onSave(form, idCardFile) }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
         {workersFull && (
           <div className="alert alert-warning" style={{ fontSize: 12 }}>
@@ -116,8 +134,27 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
             ))}
           </select>
           <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text3)' }}>
-            เมื่อผูกแล้ว user นี้จะเห็นเฉพาะข้อมูลเงินเดือนของตัวเองในหน้า HR
+            เมื่อผูกแล้ว user นี้จะเห็นเฉพาะข้อมูลเงินเดือนของตัวเองในหน้า HR ·
+            ถ้าล็อกอินด้วยบัญชีนี้ ชื่อจะแสดงใต้เส้นลายเซ็นในเอกสารที่พิมพ์ด้วย
           </div>
+        </div>
+        <div className="form-grid-2">
+          <div>
+            <label className="label">เลขประจำตัวประชาชน</label>
+            <input className="input" inputMode="numeric" maxLength={13} value={form.id_card_number}
+              onChange={e => set('id_card_number', e.target.value.replace(/\D/g, '').slice(0, 13))} placeholder="13 หลัก" />
+          </div>
+          <div>
+            <label className="label">รูปบัตรประชาชน</label>
+            <input type="file" accept="image/*" className="input" onChange={e => setIdCardFile(e.target.files?.[0] || null)} />
+          </div>
+        </div>
+        {(idCardPreviewUrl || existingIdCardUrl) && (
+          <img src={idCardPreviewUrl || existingIdCardUrl} alt="บัตรประชาชน" style={{ maxWidth: 240, maxHeight: 160, borderRadius: 6, border: '1px solid var(--border)' }} />
+        )}
+        <div>
+          <label className="label">ที่อยู่</label>
+          <textarea className="textarea" rows={2} value={form.address} onChange={e => set('address', e.target.value)} />
         </div>
       </div>
       <div className="modal-footer">
@@ -322,6 +359,7 @@ function SalarySlipModal({ record, month, year, onClose }) {
 export default function HR() {
   const now = new Date()
   const { role, user, isAtLeast } = useUserRole()
+  const { tenant } = useTenant()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'hr')
   const [innerTab, setInnerTab] = useState('workers')
 
@@ -371,7 +409,15 @@ export default function HR() {
   useEffect(() => { if (multiplierVal != null) setMultiplierInput(String(multiplierVal)) }, [multiplierVal])
 
   // ── Worker handlers ──
-  const handleSaveWorker = async (form) => {
+  // idCardFile is a raw File, kept OUTSIDE the draft-persisted form state
+  // (WorkerForm's own local state, not routed through useDraftForm) --
+  // JSON.stringify(File) serializes to '{}' with no way back to a real
+  // File, so stuffing it into the auto-saved-to-localStorage draft would
+  // silently corrupt it on restore. A worker record needs an id before a
+  // photo can be uploaded under it (path is {tenant}/{worker_id}/...), so
+  // for a brand-new worker this uploads AFTER the insert, in a follow-up
+  // update -- editing an existing worker already has that id up front.
+  const handleSaveWorker = async (form, idCardFile) => {
     setSavingWorker(true)
     try {
       const payload = {
@@ -385,15 +431,32 @@ export default function HR() {
         monthly_contribution: parseFloat(form.monthly_contribution) || null,
         email: form.email || null,
         show_in_assign: form.show_in_assign,
+        id_card_number: form.id_card_number || null,
+        address: form.address || null,
       }
+
+      const uploadIdCardPhoto = async (workerId) => {
+        const ext = idCardFile.name.split('.').pop()
+        const path = `${tenant.id}/${workerId}/id-card.${ext}`
+        const { error: upErr } = await supabase.storage.from('worker-id-cards').upload(path, idCardFile, { upsert: true })
+        if (upErr) throw upErr
+        return path
+      }
+
       if (editWorker) {
         const { data: old } = await supabase.from('workers').select('*').eq('id', editWorker.id).single()
+        if (idCardFile) payload.id_card_photo_path = await uploadIdCardPhoto(editWorker.id)
         const { error } = await supabase.from('workers').update(payload).eq('id', editWorker.id)
         if (error) throw error
         await auditLog('workers', editWorker.id, 'UPDATE', old, payload)
       } else {
         const { data, error } = await supabase.from('workers').insert(payload).select().single()
         if (error) throw error
+        if (idCardFile) {
+          const path = await uploadIdCardPhoto(data.id)
+          const { error: photoErr } = await supabase.from('workers').update({ id_card_photo_path: path }).eq('id', data.id)
+          if (photoErr) throw photoErr
+        }
         await auditLog('workers', data.id, 'INSERT', null, payload)
       }
       setShowWorkerForm(false); setEditWorker(null); refetchWorkers(); refetchSeat()
@@ -664,7 +727,7 @@ export default function HR() {
         <div>
           <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' }}>
             {canEdit && (
-              <button className="btn btn-primary" onClick={() => { setEditWorker(null); setShowWorkerForm(true) }}>+ เพิ่มช่าง</button>
+              <button className="btn btn-primary" onClick={() => { setEditWorker(null); setShowWorkerForm(true) }}>+ เพิ่มพนักงาน</button>
             )}
           </div>
           <div className="card">
@@ -909,7 +972,7 @@ export default function HR() {
 
       {/* ── Modals ── */}
       {showWorkerForm && (
-        <Modal title={editWorker?`แก้ไข: ${editWorker.name}`:'เพิ่มช่าง / พนักงาน'}
+        <Modal title={editWorker?`แก้ไข: ${editWorker.name}`:'เพิ่มพนักงาน'}
           onClose={() => { setShowWorkerForm(false); setEditWorker(null) }} maxWidth={560}>
           <WorkerForm initial={editWorker||EMPTY_WORKER} onSave={handleSaveWorker}
             onCancel={() => { setShowWorkerForm(false); setEditWorker(null) }} loading={savingWorker}

@@ -9,7 +9,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt, useMySignatureUrl, useBankAccounts, useUnits, logDocumentPrint } from '../hooks/useSupabase.js'
+import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt, useMySignatureUrl, useMyWorkerName, useBankAccounts, useUnits, logDocumentPrint } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -385,6 +385,7 @@ function QuotationHeader({ tenant, tag, revisionSuffix, quotationNumber, date, v
 export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange, extraRemeasureKey }) {
   const totals = calcQuotationTotals(items, { hasVat, priceIncludesVat, discountAmount, discountPct })
   const mySignature = useMySignatureUrl()
+  const { data: myWorkerName } = useMyWorkerName()
   const style = resolveDocumentStyle(tenant?.document_style)
 
   const revisionSuffix = revision > 1 ? `-R${revision}` : ''
@@ -489,6 +490,9 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
               {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
             </div>
             <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้เสนอราคา</div>
+            {myWorkerName && (
+              <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>{myWorkerName}</div>
+            )}
           </div>
           <div>
             <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>

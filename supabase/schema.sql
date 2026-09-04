@@ -428,6 +428,9 @@ CREATE TABLE workers (
   email                 TEXT,                    -- ผูกกับ user_roles.user_email (login account)
   show_in_assign        BOOLEAN NOT NULL DEFAULT true, -- ซ่อนจาก roster ของ Assign โดยไม่กระทบข้อมูล assignment เดิม
   annual_sick_leave_days INT NOT NULL DEFAULT 30, -- วันลาป่วยที่ได้รับต่อปี (โควต้า leave_sick)
+  id_card_number        TEXT,                    -- เลขประจำตัวประชาชน 13 หลัก
+  address                TEXT,
+  id_card_photo_path     TEXT,                    -- storage path in worker-id-cards bucket, not a public URL
   created_at            TIMESTAMPTZ DEFAULT NOW(),
   updated_at            TIMESTAMPTZ DEFAULT NOW(),
   tenant_id             UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)
@@ -3015,7 +3018,8 @@ SELECT
   annual_leave_days, monthly_contribution, status, created_at, updated_at,
   ROUND(monthly_salary / 26, 2) AS daily_rate,
   ROUND(monthly_salary * 0.05 / 100 * 750, 0) AS social_security_amount,
-  email, show_in_assign, annual_sick_leave_days
+  email, show_in_assign, annual_sick_leave_days,
+  id_card_number, address, id_card_photo_path
 FROM workers;
 
 -- สรุปสัญญาผู้รับเหมาช่วง: บิลแล้ว/จ่ายแล้ว/retention คงเหลือ/% ความคืบหน้า
@@ -3651,6 +3655,30 @@ CREATE POLICY user_signatures_own_access ON storage.objects FOR ALL TO authentic
     bucket_id = 'user-signatures'
     AND (storage.foldername(name))[1] = current_tenant_id()::text
     AND (storage.foldername(name))[2] = auth.email()
+  );
+
+-- Path convention: {tenant_id}/{worker_id}/id-card.{ext} -- worker_id, not
+-- email, since a worker record doesn't necessarily have a linked login
+-- account. Private bucket + ADMIN/OWNER-only access, matching who can
+-- already write the workers table itself (admin_writes_workers/
+-- admin_updates_workers) -- ID card number + photo is sensitive PII, kept
+-- to the same access level as the rest of a worker's payroll record, not
+-- opened up to the worker's own login even if one exists.
+INSERT INTO storage.buckets (id, name, public) VALUES ('worker-id-cards', 'worker-id-cards', false)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY worker_id_cards_admin_access ON storage.objects FOR ALL TO authenticated
+  USING (
+    bucket_id = 'worker-id-cards'
+    AND (storage.foldername(name))[1] = current_tenant_id()::text
+    AND is_admin_or_owner()
+    AND has_module_access('payroll')
+  )
+  WITH CHECK (
+    bucket_id = 'worker-id-cards'
+    AND (storage.foldername(name))[1] = current_tenant_id()::text
+    AND is_admin_or_owner()
+    AND has_module_access('payroll')
   );
 
 -- Print/download tracking (2026-09-02-08) -- every PDF/JPG export of a
