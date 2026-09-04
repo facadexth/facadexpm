@@ -810,8 +810,18 @@ CREATE POLICY admin_full_access ON stock_movements FOR ALL TO authenticated
   USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'))
   WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
 
--- record_stock_movement(): the ONLY writer of stock_movements/inventory_stock_balances
--- see the Phase 1 plan's Ruling D on why it re-checks tenant ownership itself.
+-- record_stock_movement(): the ONLY writer of stock_movements/inventory_stock_balances.
+-- See the Phase 1 plan's Ruling D on why it re-checks tenant ownership itself.
+--
+-- Atomically posts one stock_movements row and recalculates the
+-- affected (item, site) balance's weighted-average cost, per
+-- docs/superpowers/specs/2026-09-01-inventory-module-design.md's
+-- Business Logic > Purchasing formula:
+--   new_wac = (old_qty*old_wac + moved_qty*unit_cost) / (old_qty + moved_qty)
+-- SECURITY DEFINER (like perform_worker_checkin(), schema.sql) so it
+-- must re-verify privilege AND that both FK inputs belong to the
+-- caller's own tenant before writing anything (Ruling D) -- RLS is
+-- bypassed inside this function, nothing here can be assumed safe.
 CREATE OR REPLACE FUNCTION record_stock_movement(
   p_inventory_item_id UUID,
   p_site_id UUID,
