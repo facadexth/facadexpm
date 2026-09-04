@@ -611,7 +611,15 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-header"><div className="card-title">🎨 รูปแบบเอกสาร (ใบเสนอราคา/ใบแจ้งหนี้/ใบเสร็จ)</div></div>
         <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20, alignItems: 'start' }}>
-          <div style={{ display: 'grid', gap: 10 }}>
+          {/* Capped to the same maxHeight as the preview column below, with
+              its own overflow -- previously this column had no height cap
+              at all, so scrolling down through the (long) slider list
+              scrolled the WHOLE page, taking the preview (which starts at
+              the top of this grid row) out of view along with it. Now
+              each column scrolls independently and the preview stays put
+              the whole time you're tuning any slider, footer ones
+              included. */}
+          <div style={{ display: 'grid', gap: 10, maxHeight: '80vh', overflowY: 'auto', paddingRight: 8 }}>
             <div>
               <label className="label">สีหลัก (Accent)</label>
               <input type="color" value={docStyle.accent} onChange={e => setDocStyleField('accent', e.target.value)} style={{ width: '100%', height: 32 }} />
@@ -710,8 +718,8 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
 
             <div className="label" style={{ marginTop: 8 }}>ท้ายเอกสาร (หมายเหตุ/เงื่อนไขการชำระเงิน/บัญชีธนาคาร)</div>
             <div>
-              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ระยะห่างจากด้านบน</span><span>{docStyle.footerBoxOffset}px</span></label>
-              <input type="range" min="0" max="48" value={docStyle.footerBoxOffset} onChange={e => setDocStyleField('footerBoxOffset', Number(e.target.value))} style={{ width: '100%' }} />
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ระยะห่างจากเส้นลายเซ็น</span><span>{docStyle.footerBoxOffset}px</span></label>
+              <input type="range" min="16" max="120" value={docStyle.footerBoxOffset} onChange={e => setDocStyleField('footerBoxOffset', Number(e.target.value))} style={{ width: '100%' }} />
             </div>
             <div>
               <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>ขนาดตัวอักษร</span><span>{docStyle.footerTextSize}px</span></label>

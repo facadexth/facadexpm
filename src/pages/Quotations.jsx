@@ -441,52 +441,66 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
         </table>
       </div>
 
-      {(paymentTerms || notes || bankAccount) && (() => {
-        // Fixed order: หมายเหตุ, then เงื่อนไขการชำระเงิน, then ชำระเงินไปที่
-        // -- each shown only when its own content is present. Order itself
-        // isn't tunable (was, briefly, via a footerBankFirst toggle;
-        // replaced by this fixed order plus footerBoxOffset controlling the
-        // whole box's position instead).
-        const blocks = [
-          notes && { key: 'notes', label: 'หมายเหตุ', text: notes },
-          paymentTerms && { key: 'terms', label: 'เงื่อนไขการชำระเงิน', text: paymentTerms },
-        ].filter(Boolean)
-        return (
-          <div style={{ marginTop: style.footerBoxOffset, fontSize: style.footerTextSize, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
-            {blocks.map(({ key, label, text }, i) => (
-              <div key={key} style={{ marginBottom: i < blocks.length - 1 || bankAccount ? 10 : 0 }}>
-                <strong style={{ display: 'block', marginBottom: 4, fontSize: style.footerTextSize + 0.5 }}>{label}</strong>
-                <div style={{ whiteSpace: 'pre-line' }}>{text}</div>
-              </div>
-            ))}
-            {bankAccount && (
-              <div>
-                <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
+      <div style={{ flex: 1 }} />
+
+      {/* footerBoxOffset must live INSIDE this wrapper, not on a sibling of
+          the flex:1 spacer above -- a flex:1 item's computed size already
+          absorbs every other sibling's margin (that's what "flex:1" means:
+          grow to fill whatever the rest of the column doesn't use), so a
+          margin placed on a sibling AFTER the spacer nets to zero visible
+          effect: the spacer shrinks by exactly the margin's size, leaving
+          the margin-bearing element's own final position unchanged. Putting
+          both the notes box and the signature grid inside one wrapper,
+          with the gap between them as a real margin THEY share (no
+          flex-grow item inside this wrapper to absorb it), makes the gap
+          genuinely visible while the wrapper's bottom edge -- and so the
+          signature line itself -- stays pinned to the page bottom exactly
+          as before, since the wrapper's total height is still what the
+          outer spacer sizes itself against. */}
+      <div>
+        {(paymentTerms || notes || bankAccount) && (() => {
+          // Fixed order: หมายเหตุ, then เงื่อนไขการชำระเงิน, then ชำระเงินไปที่
+          // -- each shown only when its own content is present. Order
+          // itself isn't tunable.
+          const blocks = [
+            notes && { key: 'notes', label: 'หมายเหตุ', text: notes },
+            paymentTerms && { key: 'terms', label: 'เงื่อนไขการชำระเงิน', text: paymentTerms },
+          ].filter(Boolean)
+          return (
+            <div style={{ marginTop: 20, fontSize: style.footerTextSize, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
+              {blocks.map(({ key, label, text }, i) => (
+                <div key={key} style={{ marginBottom: i < blocks.length - 1 || bankAccount ? 10 : 0 }}>
+                  <strong style={{ display: 'block', marginBottom: 4, fontSize: style.footerTextSize + 0.5 }}>{label}</strong>
+                  <div style={{ whiteSpace: 'pre-line' }}>{text}</div>
+                </div>
+              ))}
+              {bankAccount && (
+                <div>
+                  <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
+        <div style={{ marginTop: style.footerBoxOffset, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
+          <div>
+            <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+              {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
+            </div>
+            <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้เสนอราคา</div>
+          </div>
+          <div>
+            <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+              {clientSignature && <img src={clientSignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
+            </div>
+            <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้ยอมรับ (ลูกค้า)</div>
+            {clientSignature && (
+              <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>
+                {clientSignature.signerName} · เซ็นเมื่อ {new Date(clientSignature.signedAt).toLocaleDateString('th-TH')}
               </div>
             )}
           </div>
-        )
-      })()}
-
-      <div style={{ flex: 1 }} />
-
-      <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
-        <div>
-          <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-            {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
-          </div>
-          <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้เสนอราคา</div>
-        </div>
-        <div>
-          <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-            {clientSignature && <img src={clientSignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
-          </div>
-          <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้ยอมรับ (ลูกค้า)</div>
-          {clientSignature && (
-            <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>
-              {clientSignature.signerName} · เซ็นเมื่อ {new Date(clientSignature.signedAt).toLocaleDateString('th-TH')}
-            </div>
-          )}
         </div>
       </div>
     </>

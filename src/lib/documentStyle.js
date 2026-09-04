@@ -33,13 +33,15 @@ export const DEFAULT_DOCUMENT_STYLE = {
   showContactIcons: true, showRevisionSuffix: true,
   // Footer notes/payment-terms/bank-account block. Order is fixed (หมายเหตุ,
   // then เงื่อนไขการชำระเงิน, then ชำระเงินไปที่ -- see QuotationPaper's
-  // renderFooter), not tunable; footerBoxOffset/footerTextSize control the
-  // box's position (marginTop above it, was hardcoded 20) and text size
-  // (was hardcoded 11.5) instead. Invoices/receipts only ever show a bank
-  // account here (no payment-terms/notes concept there), so both fields
-  // still apply to that block for visual consistency across all three
-  // document types, but there's nothing to reorder for them.
-  footerTextSize: 11.5, footerBoxOffset: 20,
+  // renderFooter), not tunable; footerTextSize controls its text size (was
+  // hardcoded 11.5). footerBoxOffset is the gap between this box and the
+  // signature line below it (was hardcoded 44 on the signature grid's own
+  // marginTop) -- NOT the box's own top margin, which stays a fixed 20px
+  // regardless of this slider. A flex:1 spacer between the box and the
+  // signature grid always pushes the signature grid toward the bottom of
+  // the page, so this is genuinely "how far the footer box sits above the
+  // signature line," not "how far below the totals table."
+  footerTextSize: 11.5, footerBoxOffset: 44,
 }
 
 // Flat shallow merge -- every DEFAULT_DOCUMENT_STYLE value is a primitive

@@ -635,27 +635,37 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
         </table>
       </div>
 
-      {notesBlock}
-
       <div style={{ flex: 1 }} />
 
-      <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
-        <div>
-          <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-            {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
-          </div>
-          <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>{signatures[0]}</div>
-        </div>
-        <div>
-          <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-            {recipientSignature && <img src={recipientSignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
-          </div>
-          <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>{signatures[1]}</div>
-          {recipientSignature && (
-            <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>
-              {recipientSignature.signerName} · เซ็นเมื่อ {new Date(recipientSignature.signedAt).toLocaleDateString('th-TH')}
+      {/* footerBoxOffset must live INSIDE this wrapper, not as a margin on
+          a sibling of the flex:1 spacer above -- see QuotationPaper's
+          identical comment for why a margin placed after a flex:1 item
+          nets to zero visible effect (the spacer just shrinks to absorb
+          it). Grouping notesBlock + the signature grid here, with the gap
+          between them as a real margin neither fights a flex-grow sibling
+          for, makes it genuinely visible while the signature line stays
+          pinned to the page bottom exactly as before. */}
+      <div>
+        {notesBlock}
+
+        <div style={{ marginTop: style.footerBoxOffset, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
+          <div>
+            <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+              {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
             </div>
-          )}
+            <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>{signatures[0]}</div>
+          </div>
+          <div>
+            <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+              {recipientSignature && <img src={recipientSignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
+            </div>
+            <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>{signatures[1]}</div>
+            {recipientSignature && (
+              <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>
+                {recipientSignature.signerName} · เซ็นเมื่อ {new Date(recipientSignature.signedAt).toLocaleDateString('th-TH')}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </>
@@ -873,7 +883,7 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
             subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
             withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
             notesBlock={bankAccount && (
-              <div style={{ marginTop: style.footerBoxOffset, fontSize: style.footerTextSize, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
+              <div style={{ marginTop: 20, fontSize: style.footerTextSize, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
                 <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
               </div>
             )}
