@@ -11,7 +11,14 @@ import { useState, useLayoutEffect, useRef, cloneElement } from 'react'
 // makes the hidden pass measure rows shorter than they really render,
 // letting real pages come out over-full. See PAGE_HEIGHT_PX below for the
 // matching height-budget math.
-export const PAGE_WIDTH_PX = 700
+//
+// Derived from real A4 dimensions, not picked to fit a UI element: A4 is
+// 210mm wide, downloadPDF (src/lib/pdf.js) applies 10mm left+right margins,
+// so the real printable width is 190mm -- the exact same 190mm
+// WorkPhotosDocumentModal already uses. Converted at the same 96px/inch
+// (96/25.4 px per mm) reference-pixel ratio PAGE_HEIGHT_PX's own budget math
+// below uses: 190 * 96/25.4 ≈ 718.1px, rounded to 718.
+export const PAGE_WIDTH_PX = 718
 export const PAGE_PADDING_V_PX = 40 // top+bottom
 export const PAGE_PADDING_H_PX = 44 // left+right
 export const PAGE_PADDING_CSS = `${PAGE_PADDING_V_PX}px ${PAGE_PADDING_H_PX}px`
