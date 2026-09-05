@@ -1,4 +1,4 @@
-import { useState, useLayoutEffect, useRef, cloneElement } from 'react'
+import { useState, useLayoutEffect, useRef, cloneElement, forwardRef, useImperativeHandle } from 'react'
 
 // Shared page geometry -- exported so every consumer (currently
 // QuotationPaper in Quotations.jsx and DocumentPaper in Invoices.jsx)
@@ -264,3 +264,72 @@ export function usePaginatedDocument({
 
   return { pages: pages.map(p => p.map(r => r.it)), pageCount: pages.length, measurementNode: null }
 }
+
+// Visually shrinks a fixed-PAGE_WIDTH_PX page to fit a narrower container
+// (e.g. a document-preview Modal on a laptop-width browser window), without
+// changing the page-div's own layout geometry -- a plain CSS transform on an
+// ancestor, reset to `none` before any capture. QuotationDocumentModal/
+// InvoiceDocumentModal/ReceiptDocumentModal previously relied on
+// `overflow: 'auto'` alone: technically scrollable, but on any viewport
+// narrower than PAGE_WIDTH_PX + the modal's own padding, the right edge of
+// the page (including the grand-total column) rendered clipped with no
+// visible scrollbar to reveal it -- reported live as "preview bigger than
+// the popup." Downscaling instead keeps the whole page visible at once,
+// matching how a PDF viewer's "fit width" behaves.
+//
+// The exported page-div (`elementId`) is captured by downloadPDF/
+// downloadJPG/window.print() directly off the LIVE DOM (see src/lib/pdf.js
+// -- `document.getElementById(elementId)` handed straight to html2pdf.js/
+// html2canvas), which bakes in whatever an ancestor's CSS transform is doing
+// at that exact moment. If a capture ever ran while this wrapper happened to
+// be scaled down, the exported PDF/JPG/print would come out shrunk too --
+// silently corrupting the pixel-perfect PAGE_WIDTH_PX/PAGE_HEIGHT_PX
+// calibration the comments above this function exist to protect. `ref`
+// exposes `withNaturalScale(fn)` specifically so every capture call site can
+// force the transform back to `none` for the duration of its capture, no
+// matter what the user was previewing at the time.
+export const ScaleToFit = forwardRef(function ScaleToFit({ width = PAGE_WIDTH_PX, children }, ref) {
+  const outerRef = useRef(null)
+  const innerRef = useRef(null)
+  const [scale, setScale] = useState(1)
+  const [naturalHeight, setNaturalHeight] = useState(0)
+
+  useLayoutEffect(() => {
+    const update = () => {
+      const containerWidth = outerRef.current?.clientWidth || width
+      setScale(Math.min(1, containerWidth / width))
+      setNaturalHeight(innerRef.current?.offsetHeight || 0)
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    if (outerRef.current) ro.observe(outerRef.current)
+    if (innerRef.current) ro.observe(innerRef.current)
+    return () => ro.disconnect()
+  })
+
+  useImperativeHandle(ref, () => ({
+    withNaturalScale: async (fn) => {
+      const el = innerRef.current
+      const prevTransform = el?.style.transform
+      if (el) el.style.transform = 'none'
+      // Two rAFs: the first commits the style change, the second runs only
+      // after the browser has actually painted it -- a single rAF can still
+      // fire before this frame's layout/paint on some browsers, which would
+      // let html2canvas/html2pdf read the pre-restore (scaled) frame.
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      try {
+        await fn()
+      } finally {
+        if (el) el.style.transform = prevTransform
+      }
+    },
+  }))
+
+  return (
+    <div ref={outerRef} style={{ width: '100%', height: naturalHeight ? naturalHeight * scale : undefined }}>
+      <div ref={innerRef} style={{ width, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
+        {children}
+      </div>
+    </div>
+  )
+})

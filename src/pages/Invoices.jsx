@@ -10,7 +10,7 @@
 // ✅ Status: unpaid -> paid (reconciles into incomes, Task 8) | void
 //    (reverses the ledger, Task 8) -- PDF export in Task 9
 // ============================================================
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, useMyWorkerName, useBankAccounts, logDocumentPrint } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
@@ -28,7 +28,7 @@ import { calcQuotationTotals } from '../lib/quotationCalc.js'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
-import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX } from '../hooks/usePaginatedDocument.jsx'
+import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX, ScaleToFit } from '../hooks/usePaginatedDocument.jsx'
 import { resolveDocumentStyle } from '../lib/documentStyle.js'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
@@ -846,9 +846,19 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
   // นับจากประวัติการพิมพ์อีกต่อไป (ดูเหตุผลเดียวกันใน Quotations.jsx)
   const [printTag, setPrintTag] = useState('ต้นฉบับ')
   const [pageCount, setPageCount] = useState(1)
+  const scaleRef = useRef(null)
   const handleDownload = async (format, exportFn) => {
     await logDocumentPrint(tenant?.id, 'invoice', invoice.id, format)
-    await exportFn(elementId, `${printTag}-${docTitle}-${invoice.invoice_number}`)
+    await scaleRef.current?.withNaturalScale(() => exportFn(elementId, `${printTag}-${docTitle}-${invoice.invoice_number}`))
+  }
+  // See ScaleToFit's comment (usePaginatedDocument.jsx) for why print must
+  // go through the same natural-scale guard as downloadPDF/downloadJPG.
+  const handlePrint = () => {
+    scaleRef.current?.withNaturalScale(() => new Promise(resolve => {
+      window.print()
+      window.addEventListener('afterprint', resolve, { once: true })
+      setTimeout(resolve, 5000)
+    }))
   }
 
   return (
@@ -870,44 +880,52 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
             </select>
           </div>
         )}
-        {/* overflow:auto -- DocumentPaper now renders at a fixed PAGE_WIDTH_PX
-            width (see usePaginatedDocument.jsx), which can exceed this modal's
-            available inner width; scroll rather than clip, matching
-            QuotationPaper's identical fixed-width overflow handling. */}
-        <div style={{ overflow: 'auto' }}>
-          <DocumentPaper
-            elementId={elementId} tenant={tenant} title={docTitle} tag={printTag}
-            infoFields={[
-              { label: 'เลขที่เอกสาร', value: invoice.invoice_number },
-              { label: 'วันที่ออก', value: new Date(invoice.date).toLocaleDateString('th-TH') },
-              { label: 'อ้างอิงใบเสนอราคา', value: invoice.quotations?.quotation_number },
-              { label: 'โครงการ', value: invoice.sites?.name || '—' },
-            ]}
-            clientName={client?.name} clientAddress={client?.address} clientTaxId={client?.tax_id}
-            items={items} totalsLabel="รวมทั้งสิ้น" totalsAmount={invoice.total}
-            subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
-            withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
-            notesBlock={bankAccount && (
-              <div style={{ marginTop: 20, fontSize: style.footerTextSize, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
-                <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
-              </div>
-            )}
-            signatures={['ผู้ออกใบแจ้งหนี้', 'ผู้รับเอกสาร']}
-            recipientSignature={receipt && signatureUrl ? { url: signatureUrl, signerName: receipt.signer_name, signedAt: receipt.signed_at } : null}
-            onPageCountChange={setPageCount}
-            // bankAccount is local <select> state (handleChangeBankAccount)
-            // that changes notesBlock's presence/content without `items`
-            // ever changing identity -- must be part of the remeasure key
-            // or a mid-session bank-account switch leaves the footer's
-            // reserved height stale (see DocumentPaper's own comment).
-            // titleVariant (ใบวางบิล/ใบแจ้งหนี้/ใบส่งมอบงาน) drives `title`,
-            // a fresh closure input to renderHeader every render -- switching
-            // to a longer variant (esp. ใบส่งมอบงาน) can wrap the 28px header
-            // title differently and shift every page's row budget, the
-            // identical failure mode as ReceiptDocumentModal's own
-            // titleVariant below.
-            extraRemeasureKey={`${bankAccount?.id || ''}|${titleVariant}`}
-          />
+        {/* margin: '0 -24px' -- this modal-body has other sibling content
+            (title-variant buttons, bank-account selector) that still needs
+            its normal 24px side padding, so we can't zero modal-body itself
+            the way QuotationDocumentModal does; reclaiming just this
+            element's own horizontal slice of that padding via negative
+            margin gets ScaleToFit the full-width measurement it needs (see
+            usePaginatedDocument.jsx's ScaleToFit comment and
+            QuotationDocumentModal's identical fix for the full reasoning).
+            Tied to .modal-body's actual CSS padding (index.css) -- if that
+            value changes, this drifts a few px out of sync with it. */}
+        <div style={{ overflow: 'auto', margin: '0 -24px' }}>
+          <ScaleToFit ref={scaleRef} width={PAGE_WIDTH_PX}>
+            <DocumentPaper
+              elementId={elementId} tenant={tenant} title={docTitle} tag={printTag}
+              infoFields={[
+                { label: 'เลขที่เอกสาร', value: invoice.invoice_number },
+                { label: 'วันที่ออก', value: new Date(invoice.date).toLocaleDateString('th-TH') },
+                { label: 'อ้างอิงใบเสนอราคา', value: invoice.quotations?.quotation_number },
+                { label: 'โครงการ', value: invoice.sites?.name || '—' },
+              ]}
+              clientName={client?.name} clientAddress={client?.address} clientTaxId={client?.tax_id}
+              items={items} totalsLabel="รวมทั้งสิ้น" totalsAmount={invoice.total}
+              subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
+              withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
+              notesBlock={bankAccount && (
+                <div style={{ marginTop: 20, fontSize: style.footerTextSize, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
+                  <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
+                </div>
+              )}
+              signatures={['ผู้ออกใบแจ้งหนี้', 'ผู้รับเอกสาร']}
+              recipientSignature={receipt && signatureUrl ? { url: signatureUrl, signerName: receipt.signer_name, signedAt: receipt.signed_at } : null}
+              onPageCountChange={setPageCount}
+              // bankAccount is local <select> state (handleChangeBankAccount)
+              // that changes notesBlock's presence/content without `items`
+              // ever changing identity -- must be part of the remeasure key
+              // or a mid-session bank-account switch leaves the footer's
+              // reserved height stale (see DocumentPaper's own comment).
+              // titleVariant (ใบวางบิล/ใบแจ้งหนี้/ใบส่งมอบงาน) drives `title`,
+              // a fresh closure input to renderHeader every render -- switching
+              // to a longer variant (esp. ใบส่งมอบงาน) can wrap the 28px header
+              // title differently and shift every page's row budget, the
+              // identical failure mode as ReceiptDocumentModal's own
+              // titleVariant below.
+              extraRemeasureKey={`${bankAccount?.id || ''}|${titleVariant}`}
+            />
+          </ScaleToFit>
         </div>
       </div>
       <div className="modal-footer" style={{ alignItems: 'center' }}>
@@ -920,7 +938,7 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
         <RowActionsMenu
           trigger="💾 บันทึกเอกสาร ▾" triggerClassName="btn btn-primary"
           items={[
-            { label: '🖨️ พิมพ์', onClick: () => window.print() },
+            { label: '🖨️ พิมพ์', onClick: handlePrint },
             { label: '📄 บันทึกเป็น PDF', onClick: () => handleDownload('pdf', downloadPDF) },
             { label: '🖼️ บันทึกเป็น JPG', onClick: () => handleDownload('jpg', downloadJPG), disabled: pageCount > 1, disabledTitle: 'เอกสารหลายหน้า บันทึกเป็น PDF แทน' },
           ]}
@@ -948,9 +966,19 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
 
   const [printTag, setPrintTag] = useState('ต้นฉบับ')
   const [pageCount, setPageCount] = useState(1)
+  const scaleRef = useRef(null)
   const handleDownload = async (format, exportFn) => {
     await logDocumentPrint(tenant?.id, 'receipt', receipt.id, format)
-    await exportFn(elementId, `${printTag}-${variant.title}-${receipt.receipt_number}`)
+    await scaleRef.current?.withNaturalScale(() => exportFn(elementId, `${printTag}-${variant.title}-${receipt.receipt_number}`))
+  }
+  // See ScaleToFit's comment (usePaginatedDocument.jsx) for why print must
+  // go through the same natural-scale guard as downloadPDF/downloadJPG.
+  const handlePrint = () => {
+    scaleRef.current?.withNaturalScale(() => new Promise(resolve => {
+      window.print()
+      window.addEventListener('afterprint', resolve, { once: true })
+      setTimeout(resolve, 5000)
+    }))
   }
 
   return (
@@ -962,33 +990,34 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
               onClick={() => setTitleVariant(o.value)}>{o.label}</button>
           ))}
         </div>
-        {/* overflow:auto -- DocumentPaper now renders at a fixed PAGE_WIDTH_PX
-            width (see usePaginatedDocument.jsx), which can exceed this modal's
-            available inner width; scroll rather than clip, matching
-            QuotationPaper's identical fixed-width overflow handling. */}
-        <div style={{ overflow: 'auto' }}>
-          <DocumentPaper
-            elementId={elementId} tenant={tenant} title={variant.title} tag={printTag}
-            infoFields={[
-              { label: variant.numberLabel, value: receipt[variant.numberField] },
-              { label: 'วันที่', value: new Date(receipt.date).toLocaleDateString('th-TH') },
-              { label: 'อ้างอิงใบแจ้งหนี้', value: invoice.invoice_number },
-              { label: 'โครงการ', value: invoice.sites?.name || '—' },
-            ]}
-            clientName={client?.name} clientAddress={client?.address} clientTaxId={client?.tax_id}
-            items={items} totalsLabel="รวมรับชำระ" totalsAmount={receipt.amount}
-            subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
-            withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
-            notesBlock={null}
-            signatures={['ผู้รับเงิน', 'ผู้จ่ายเงิน']}
-            onPageCountChange={setPageCount}
-            // titleVariant (ใบเสร็จ <-> ใบกำกับภาษี) changes
-            // infoFields[0].label, which can wrap to an extra line and
-            // shift the HEADER height every page's row budget is computed
-            // from -- must be part of the remeasure key (see DocumentPaper's
-            // own comment).
-            extraRemeasureKey={titleVariant}
-          />
+        {/* margin: '0 -24px' -- reclaims modal-body's own horizontal padding
+            for ScaleToFit's full-width measurement, same reasoning as
+            InvoiceDocumentModal's identical wrapper above. */}
+        <div style={{ overflow: 'auto', margin: '0 -24px' }}>
+          <ScaleToFit ref={scaleRef} width={PAGE_WIDTH_PX}>
+            <DocumentPaper
+              elementId={elementId} tenant={tenant} title={variant.title} tag={printTag}
+              infoFields={[
+                { label: variant.numberLabel, value: receipt[variant.numberField] },
+                { label: 'วันที่', value: new Date(receipt.date).toLocaleDateString('th-TH') },
+                { label: 'อ้างอิงใบแจ้งหนี้', value: invoice.invoice_number },
+                { label: 'โครงการ', value: invoice.sites?.name || '—' },
+              ]}
+              clientName={client?.name} clientAddress={client?.address} clientTaxId={client?.tax_id}
+              items={items} totalsLabel="รวมรับชำระ" totalsAmount={receipt.amount}
+              subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
+              withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
+              notesBlock={null}
+              signatures={['ผู้รับเงิน', 'ผู้จ่ายเงิน']}
+              onPageCountChange={setPageCount}
+              // titleVariant (ใบเสร็จ <-> ใบกำกับภาษี) changes
+              // infoFields[0].label, which can wrap to an extra line and
+              // shift the HEADER height every page's row budget is computed
+              // from -- must be part of the remeasure key (see DocumentPaper's
+              // own comment).
+              extraRemeasureKey={titleVariant}
+            />
+          </ScaleToFit>
         </div>
       </div>
       <div className="modal-footer" style={{ alignItems: 'center' }}>
@@ -1001,7 +1030,7 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
         <RowActionsMenu
           trigger="💾 บันทึกเอกสาร ▾" triggerClassName="btn btn-primary"
           items={[
-            { label: '🖨️ พิมพ์', onClick: () => window.print() },
+            { label: '🖨️ พิมพ์', onClick: handlePrint },
             { label: '📄 บันทึกเป็น PDF', onClick: () => handleDownload('pdf', downloadPDF) },
             { label: '🖼️ บันทึกเป็น JPG', onClick: () => handleDownload('jpg', downloadJPG), disabled: pageCount > 1, disabledTitle: 'เอกสารหลายหน้า บันทึกเป็น PDF แทน' },
           ]}

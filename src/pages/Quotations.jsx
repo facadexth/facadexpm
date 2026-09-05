@@ -7,7 +7,7 @@
 // ✅ Items optionally drawn from the catalog_items price list, always
 //    freely editable afterward (autofill, not enforce)
 // ============================================================
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt, useMySignatureUrl, useMyWorkerName, useBankAccounts, useUnits, logDocumentPrint } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
@@ -27,7 +27,7 @@ import SignLinkModal from '../components/SignLinkModal.jsx'
 import DocumentReceiptModal from '../components/DocumentReceiptModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import UnitSelect from '../components/UnitSelect.jsx'
-import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX } from '../hooks/usePaginatedDocument.jsx'
+import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX, ScaleToFit } from '../hooks/usePaginatedDocument.jsx'
 import { resolveDocumentStyle } from '../lib/documentStyle.js'
 
 const clientOpts = (clients) => (clients || []).map(c => ({
@@ -634,29 +634,52 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
   // ใครพิมพ์ฟอร์แมตไหนเมื่อไหร่ แค่ไม่ได้ใช้มากำหนดแท็กแล้ว
   const [printTag, setPrintTag] = useState('ต้นฉบับ')
   const [pageCount, setPageCount] = useState(1)
+  const scaleRef = useRef(null)
 
   const handleDownload = async (format, exportFn) => {
     await logDocumentPrint(tenant?.id, 'quotation', qt.id, format)
-    await exportFn(elementId, `${printTag}-${qt.quotation_number}`)
+    await scaleRef.current?.withNaturalScale(() => exportFn(elementId, `${printTag}-${qt.quotation_number}`))
+  }
+  // window.print() renders the print dialog off the live DOM the same way
+  // downloadPDF/downloadJPG do -- must go through the same natural-scale
+  // guard (see ScaleToFit's comment). Restored on `afterprint` (fires once
+  // the print dialog closes, success or cancel) rather than immediately
+  // after the call, since window.print() itself doesn't return a promise
+  // tied to when the browser actually finishes rendering the print output.
+  const handlePrint = () => {
+    scaleRef.current?.withNaturalScale(() => new Promise(resolve => {
+      window.print()
+      window.addEventListener('afterprint', resolve, { once: true })
+      setTimeout(resolve, 5000) // fallback in case afterprint never fires
+    }))
   }
 
   return (
     <Modal title={`ใบเสนอราคา ${qt.quotation_number}`} onClose={onClose} maxWidth={720}>
-      {/* overflow:auto -- QuotationPaper renders at a fixed PAGE_WIDTH_PX
-          width (see usePaginatedDocument.jsx), which can exceed this modal's
-          available inner width; scroll rather than clip, matching
-          WorkPhotosDocumentModal's identical fixed-width overflow handling. */}
-      <div className="modal-body" style={{ overflow: 'auto' }}>
-        <QuotationPaper
-          elementId={elementId} tenant={tenant} quotationNumber={qt.quotation_number} tag={printTag}
-          date={qt.date} validUntil={qt.valid_until} revision={qt.revision || 1} siteName={qt.sites?.name}
-          clientName={qt.clients?.name} clientAddress={qt.clients?.address} clientTaxId={qt.clients?.tax_id} items={qt.quotation_items || []}
-          hasVat={qt.has_vat} priceIncludesVat={qt.price_includes_vat}
-          discountAmount={qt.discount_amount} discountPct={qt.discount_pct}
-          paymentTerms={qt.payment_terms} notes={qt.notes} bankAccount={qt.bank_accounts}
-          clientSignature={receipt && signatureUrl ? { url: signatureUrl, signerName: receipt.signer_name, signedAt: receipt.signed_at } : null}
-          onPageCountChange={setPageCount}
-        />
+      {/* padding:0 (overriding .modal-body's default 20px/24px) -- this
+          modal-body holds nothing but the paper, so there's no sibling
+          content that still needs that padding, and ScaleToFit's width:100%
+          measurement needs the FULL box (matching how the fixed-width paper
+          related to this box before ScaleToFit existed: overflow:auto's
+          scrollport is the padding box, so the old unscaled paper already
+          fit flush against it with no visible clip -- measuring against a
+          padding-reduced content box here would make ScaleToFit shrink the
+          page ~7% even on a perfectly roomy desktop window, which is what
+          happened before this comment was added). overflow:auto remains a
+          safety net for any residual vertical overflow. */}
+      <div className="modal-body" style={{ overflow: 'auto', padding: 0 }}>
+        <ScaleToFit ref={scaleRef} width={PAGE_WIDTH_PX}>
+          <QuotationPaper
+            elementId={elementId} tenant={tenant} quotationNumber={qt.quotation_number} tag={printTag}
+            date={qt.date} validUntil={qt.valid_until} revision={qt.revision || 1} siteName={qt.sites?.name}
+            clientName={qt.clients?.name} clientAddress={qt.clients?.address} clientTaxId={qt.clients?.tax_id} items={qt.quotation_items || []}
+            hasVat={qt.has_vat} priceIncludesVat={qt.price_includes_vat}
+            discountAmount={qt.discount_amount} discountPct={qt.discount_pct}
+            paymentTerms={qt.payment_terms} notes={qt.notes} bankAccount={qt.bank_accounts}
+            clientSignature={receipt && signatureUrl ? { url: signatureUrl, signerName: receipt.signer_name, signedAt: receipt.signed_at } : null}
+            onPageCountChange={setPageCount}
+          />
+        </ScaleToFit>
       </div>
       <div className="modal-footer" style={{ alignItems: 'center' }}>
         <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
@@ -668,7 +691,7 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
         <RowActionsMenu
           trigger="💾 บันทึกเอกสาร ▾" triggerClassName="btn btn-primary"
           items={[
-            { label: '🖨️ พิมพ์', onClick: () => window.print() },
+            { label: '🖨️ พิมพ์', onClick: handlePrint },
             { label: '📄 บันทึกเป็น PDF', onClick: () => handleDownload('pdf', downloadPDF) },
             { label: '🖼️ บันทึกเป็น JPG', onClick: () => handleDownload('jpg', downloadJPG), disabled: pageCount > 1, disabledTitle: 'เอกสารหลายหน้า บันทึกเป็น PDF แทน' },
           ]}
@@ -688,6 +711,16 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
   const elementId = selected ? `qt-hist-doc-${selected.id}` : null
   const s = selected?.snapshot
   const [historyPageCount, setHistoryPageCount] = useState(1)
+  const scaleRef = useRef(null)
+  const handlePrint = () => {
+    scaleRef.current?.withNaturalScale(() => new Promise(resolve => {
+      window.print()
+      window.addEventListener('afterprint', resolve, { once: true })
+      setTimeout(resolve, 5000)
+    }))
+  }
+  const handleDownloadPdf = () => scaleRef.current?.withNaturalScale(() => downloadPDF(elementId, `${quotation.quotation_number}-rev${selected.revision}.pdf`))
+  const handleDownloadJpg = () => scaleRef.current?.withNaturalScale(() => downloadJPG(elementId, `${quotation.quotation_number}-rev${selected.revision}.jpg`))
 
   return (
     <Modal title={`ประวัติการแก้ไข ${quotation.quotation_number}`} onClose={onClose} maxWidth={760}>
@@ -718,23 +751,36 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
             matching WorkPhotosDocumentModal's identical fixed-width
             overflow handling. */}
         {selected && (
-          <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'auto' }}>
-            <QuotationPaper
-              elementId={elementId} tenant={tenant} quotationNumber={quotation.quotation_number}
-              tag={`ฉบับแก้ไขครั้งที่ ${selected.revision} (ประวัติ)`}
-              date={s.date} validUntil={s.valid_until} revision={selected.revision} siteName={null}
-              clientName={s.client_name} items={s.items || []}
-              hasVat={s.has_vat} priceIncludesVat={s.price_includes_vat}
-              discountAmount={s.discount_amount} discountPct={s.discount_pct}
-              paymentTerms={s.payment_terms} notes={s.notes} bankAccount={s.bank_account}
-              onPageCountChange={setHistoryPageCount}
-              // selected.id uniquely identifies which revision is currently
-              // rendering -- without this, switching between two revisions
-              // with the same item count reuses the previous revision's
-              // stale page geometry/footer-height reservation (see
-              // QuotationPaper's remeasureKey comment).
-              extraRemeasureKey={selected.id}
-            />
+          // margin: '0 -24px' -- this modal-body has other sibling content
+          // (the revision picker) that still needs its normal 24px side
+          // padding, so unlike QuotationDocumentModal we can't zero the
+          // whole modal-body; reclaiming just this element's own horizontal
+          // slice of that padding via negative margin gets ScaleToFit the
+          // same full-width measurement (see QuotationDocumentModal's
+          // comment on why that matters) without touching the padding
+          // anything else in this modal-body relies on. Tied to
+          // .modal-body's actual CSS padding (index.css) -- if that value
+          // changes, this drifts out of sync with it (a few px of
+          // imprecision, not a functional break).
+          <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'auto', margin: '0 -24px' }}>
+            <ScaleToFit ref={scaleRef} width={PAGE_WIDTH_PX}>
+              <QuotationPaper
+                elementId={elementId} tenant={tenant} quotationNumber={quotation.quotation_number}
+                tag={`ฉบับแก้ไขครั้งที่ ${selected.revision} (ประวัติ)`}
+                date={s.date} validUntil={s.valid_until} revision={selected.revision} siteName={null}
+                clientName={s.client_name} items={s.items || []}
+                hasVat={s.has_vat} priceIncludesVat={s.price_includes_vat}
+                discountAmount={s.discount_amount} discountPct={s.discount_pct}
+                paymentTerms={s.payment_terms} notes={s.notes} bankAccount={s.bank_account}
+                onPageCountChange={setHistoryPageCount}
+                // selected.id uniquely identifies which revision is currently
+                // rendering -- without this, switching between two revisions
+                // with the same item count reuses the previous revision's
+                // stale page geometry/footer-height reservation (see
+                // QuotationPaper's remeasureKey comment).
+                extraRemeasureKey={selected.id}
+              />
+            </ScaleToFit>
           </div>
         )}
       </div>
@@ -744,9 +790,9 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
           <RowActionsMenu
             trigger="💾 บันทึกเอกสาร ▾" triggerClassName="btn btn-primary"
             items={[
-              { label: '🖨️ พิมพ์', onClick: () => window.print() },
-              { label: '📄 บันทึกเป็น PDF', onClick: () => downloadPDF(elementId, `${quotation.quotation_number}-rev${selected.revision}.pdf`) },
-              { label: '🖼️ บันทึกเป็น JPG', onClick: () => downloadJPG(elementId, `${quotation.quotation_number}-rev${selected.revision}.jpg`), disabled: historyPageCount > 1, disabledTitle: 'เอกสารหลายหน้า บันทึกเป็น PDF แทน' },
+              { label: '🖨️ พิมพ์', onClick: handlePrint },
+              { label: '📄 บันทึกเป็น PDF', onClick: handleDownloadPdf },
+              { label: '🖼️ บันทึกเป็น JPG', onClick: handleDownloadJpg, disabled: historyPageCount > 1, disabledTitle: 'เอกสารหลายหน้า บันทึกเป็น PDF แทน' },
             ]}
           />
         )}
