@@ -804,6 +804,18 @@ export async function saveAppSetting(key, value) {
 
 const INVENTORY_COGS_SETTINGS_KEY = 'inventory_cogs_ratio'
 
+/** Spec decision 6's default split, name-matched against the tenant's
+ *  actual category ids (per-tenant UUIDs) since the 4 seeded category
+ *  names are fixed and known. Used only when no settings have ever been
+ *  saved, so the feature isn't permanently unusable (all-0%, disabled
+ *  save/confirm) until someone manually re-enters the obvious defaults. */
+const DEFAULT_CATEGORY_SPLIT_BY_NAME = {
+  'อลูมิเนียม/เหล็ก': 35,
+  'กระจก': 35,
+  'อุปกรณ์': 15,
+  'ซิลิโคน/ยาง': 15,
+}
+
 /** { material_pct, category_splits: {categoryId: pct} }, with sensible
  *  defaults if the tenant has never saved this setting. */
 export function useInventoryCogsSettings() {
@@ -811,13 +823,21 @@ export function useInventoryCogsSettings() {
     const { data, error } = await supabase
       .from('app_settings').select('value').eq('key', INVENTORY_COGS_SETTINGS_KEY).maybeSingle()
     if (error) throw error
-    if (!data?.value) return { material_pct: 70, category_splits: {} }
-    try {
-      const parsed = JSON.parse(data.value)
-      return { material_pct: parsed.material_pct ?? 70, category_splits: parsed.category_splits ?? {} }
-    } catch {
-      return { material_pct: 70, category_splits: {} }
+    if (data?.value) {
+      try {
+        const parsed = JSON.parse(data.value)
+        return { material_pct: parsed.material_pct ?? 70, category_splits: parsed.category_splits ?? {} }
+      } catch {
+        // fall through to the name-matched default below
+      }
     }
+    const { data: cats, error: catErr } = await supabase.from('inventory_categories').select('id, name')
+    if (catErr) throw catErr
+    const category_splits = {}
+    for (const c of cats || []) {
+      if (DEFAULT_CATEGORY_SPLIT_BY_NAME[c.name] != null) category_splits[c.id] = DEFAULT_CATEGORY_SPLIT_BY_NAME[c.name]
+    }
+    return { material_pct: 70, category_splits }
   })
 }
 
@@ -1168,14 +1188,10 @@ export function useInventoryItems() {
  *  page's own item-management list -- so deactivating an item doesn't
  *  strand it with no UI path to view/edit/reactivate it. */
 export function useAllInventoryItems() {
-  return useQuery(async () => {
-    const { data, error } = await supabase
-      .from('inventory_items')
-      .select('*, inventory_categories(name)')
-      .order('name')
-    if (error) throw error
-    return data
-  })
+  return useQuery(async () => fetchAllRows(() => supabase
+    .from('inventory_items')
+    .select('*, inventory_categories(name)')
+    .order('name')))
 }
 
 /** Every active aluminum profile, for the PO-line profile picker (a
@@ -1234,14 +1250,10 @@ export function useInventoryItemUnitFactors() {
 /** Current stock balance per (item, site) -- the valuation report and
  *  the PO receive-preview both read this. */
 export function useStockBalances() {
-  return useQuery(async () => {
-    const { data, error } = await supabase
-      .from('inventory_stock_balances')
-      .select('*, inventory_items(name, base_unit, unit_conversion_mode, reference_area_sqm, category_id, inventory_categories(name)), sites(name, site_number)')
-      .order('inventory_item_id')
-    if (error) throw error
-    return data
-  })
+  return useQuery(async () => fetchAllRows(() => supabase
+    .from('inventory_stock_balances')
+    .select('*, inventory_items(name, base_unit, unit_conversion_mode, reference_area_sqm, category_id, inventory_categories(name)), sites(name, site_number)')
+    .order('inventory_item_id')))
 }
 
 /** Append-only stock ledger, newest first -- the stock card. */

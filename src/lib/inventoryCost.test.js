@@ -64,6 +64,12 @@ describe('computeInvoiceDeductionPlan', () => {
     { id: 'item-alu-2', category_id: CAT_ALU },
     { id: 'item-glass-1', category_id: CAT_GLASS },
     { id: 'item-uncategorized', category_id: null },
+    // Fixed-name items used by the property-based fuzz test below --
+    // `item-${cat}-a` / `item-${cat}-b` for each category.
+    { id: `item-${CAT_ALU}-a`, category_id: CAT_ALU },
+    { id: `item-${CAT_ALU}-b`, category_id: CAT_ALU },
+    { id: `item-${CAT_GLASS}-a`, category_id: CAT_GLASS },
+    { id: `item-${CAT_GLASS}-b`, category_id: CAT_GLASS },
   ]
 
   // Value-conservation invariant checked below for every case in this suite:
@@ -296,5 +302,50 @@ describe('computeInvoiceDeductionPlan', () => {
     const transferOut = result.steps.find(s => s.type === 'transfer_out')
     expect(transferOut.quantity).toBeCloseTo(240, 2)
     expectConservation(result.categoryResults)
+  })
+
+  it('never double-sources from central when the invoice site IS the central site', () => {
+    const balances = [
+      { inventory_item_id: 'item-alu-1', site_id: CENTRAL, quantity_on_hand: 10, weighted_average_cost: 100 }, // value 1,000
+    ]
+    const result = computeInvoiceDeductionPlan({
+      invoiceSubtotal: 100000, materialPct: 70, categorySplits: { [CAT_ALU]: 35 },
+      siteId: CENTRAL, centralSiteId: CENTRAL, items, balances,
+    })
+    // target = 24,500, but only 1,000 of real value exists anywhere -- must
+    // deduct exactly that much once, not twice via a central "backfill" of
+    // the same stock it just drained from the same site.
+    const cat = result.categoryResults[0]
+    expect(cat.deductedValue).toBeCloseTo(1000, 2)
+    expect(cat.shortfall).toBeCloseTo(23500, 2)
+    // exactly one sale_out step, quantity 10 -- no transfer_out/transfer_in/second sale_out
+    expect(result.steps).toHaveLength(1)
+    expect(result.steps[0]).toMatchObject({ type: 'sale_out', inventoryItemId: 'item-alu-1', siteId: CENTRAL, quantity: 10 })
+  })
+
+  it('never over-deducts, regardless of random inputs (property test)', () => {
+    const rand = (min, max) => min + Math.random() * (max - min)
+    for (let i = 0; i < 2000; i++) {
+      const siteId = Math.random() < 0.3 ? CENTRAL : SITE // sometimes site IS central -- this is what catches Finding 1's class
+      const balances = []
+      for (const cat of [CAT_ALU, CAT_GLASS]) {
+        if (Math.random() < 0.7) balances.push({ inventory_item_id: `item-${cat}-a`, site_id: siteId, quantity_on_hand: rand(0, 1000), weighted_average_cost: rand(1, 500) })
+        if (Math.random() < 0.5) balances.push({ inventory_item_id: `item-${cat}-b`, site_id: CENTRAL, quantity_on_hand: rand(0, 1000), weighted_average_cost: rand(1, 500) })
+      }
+      const categorySplits = { [CAT_ALU]: rand(0, 60), [CAT_GLASS]: rand(0, 60) }
+      const result = computeInvoiceDeductionPlan({
+        invoiceSubtotal: rand(1000, 1000000), materialPct: rand(10, 90), categorySplits,
+        siteId, centralSiteId: CENTRAL, items, balances,
+      })
+      for (const cr of result.categoryResults) {
+        expect(cr.deductedValue).toBeLessThanOrEqual(cr.targetValue + 1e-6)
+        expect(cr.deductedValue + cr.shortfall).toBeCloseTo(cr.targetValue, 6)
+      }
+      // total real value actually removed from the ledger must never exceed
+      // what existed anywhere for that category before this call
+      const totalDeducted = result.steps.filter(s => s.type === 'sale_out').reduce((s, st) => s + st.quantity * st.unitCost, 0)
+      const totalAvailable = balances.reduce((s, b) => s + b.quantity_on_hand * b.weighted_average_cost, 0)
+      expect(totalDeducted).toBeLessThanOrEqual(totalAvailable + 1e-6)
+    }
   })
 })

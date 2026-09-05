@@ -121,7 +121,7 @@ export function computeInvoiceDeductionPlan({ invoiceSubtotal, materialPct, cate
       deductedValue = siteTotalValue
       const remaining = targetValue - siteTotalValue
 
-      if (remaining > 0 && centralSiteId) {
+      if (remaining > 0 && centralSiteId && centralSiteId !== siteId) {
         const centralBalances = inCategory(centralSiteId)
         const centralTotalValue = centralBalances.reduce((s, b) => s + valueOf(b), 0)
 

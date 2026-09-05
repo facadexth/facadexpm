@@ -334,7 +334,7 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
         alert(`ตัดสต็อกสำเร็จบางส่วน — ขาดอีก ${fmt(plan.totalShortfall)} บาท (สต็อกไม่พอทั้งที่ไซท์งานและส่วนกลาง)`)
       }
       onConfirmed()
-    } catch (e) { alert('ตัดสต็อกไม่สำเร็จ: ' + e.message) }
+    } catch (e) { alert('เกิดข้อผิดพลาดระหว่างตัดสต็อก: ' + e.message + ' — บางรายการอาจถูกบันทึกไปแล้ว กรุณาตรวจสอบที่แท็บ "ประวัติการเคลื่อนไหว" ก่อนลองใหม่') }
     finally { setConfirming(false) }
   }
 
@@ -415,7 +415,6 @@ export default function Inventory() {
   const { data: cogsSettings, refetch: refetchCogsSettings } = useInventoryCogsSettings()
   const { data: unprocessedInvoices, refetch: refetchUnprocessedInvoices } = useUnprocessedInvoices()
   const [expandedInvoiceId, setExpandedInvoiceId] = useState(null)
-  const [confirmingInvoiceId, setConfirmingInvoiceId] = useState(null)
   const [itemsCategoryFilter, setItemsCategoryFilter] = useState('')
   const [savingBalance, setSavingBalance] = useState(null) // the balance-row key currently saving, or null
 
@@ -601,13 +600,19 @@ export default function Inventory() {
 
       {view === 'invoice_deduction' && (
         <>
-          <CogsSettingsPanel settings={cogsSettings} categories={categories} onSaved={refetchCogsSettings} />
+          {!categories?.length ? (
+            <div className="card" style={{ padding: 16, marginBottom: 14, color: 'var(--text3)' }}>
+              ยังไม่มีหมวดหมู่สินค้าคงคลัง — กรุณาสร้างหมวดหมู่ในแท็บ "รายการสินค้าคงคลัง" ก่อน จึงจะตั้งค่าสัดส่วนการตัดสต็อกได้
+            </div>
+          ) : (
+            <CogsSettingsPanel settings={cogsSettings} categories={categories} onSaved={refetchCogsSettings} />
+          )}
           {!centralSite && (
             <div className="alert alert-error" style={{ marginBottom: 14 }}>ไม่พบไซท์งานชื่อ "ส่วนกลาง" — การตัดสต็อกจะดึงจากไซท์งานได้อย่างเดียว ไม่มีที่มาสำรอง</div>
           )}
           {(unprocessedInvoices || []).map(inv => (
             <InvoiceDeductionRow
-              key={inv.id} invoice={inv} categories={categories} items={items} balances={balances}
+              key={`${inv.id}-${JSON.stringify(cogsSettings)}`} invoice={inv} categories={categories} items={items} balances={balances}
               centralSite={centralSite} defaultSettings={cogsSettings}
               expanded={expandedInvoiceId === inv.id}
               onToggle={() => setExpandedInvoiceId(id => id === inv.id ? null : inv.id)}
