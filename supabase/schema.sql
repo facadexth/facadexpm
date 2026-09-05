@@ -737,6 +737,7 @@ CREATE TABLE inventory_items (
   active                BOOLEAN NOT NULL DEFAULT true,
   unit_conversion_mode  TEXT NOT NULL DEFAULT 'plain' CHECK (unit_conversion_mode IN ('plain', 'aluminum_profile', 'glass_dimension')),
   reference_area_sqm    NUMERIC,
+  category_id           UUID REFERENCES inventory_categories(id) ON DELETE SET NULL,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -786,6 +787,27 @@ CREATE INDEX idx_aluminum_profiles_tenant_id ON aluminum_profiles(tenant_id);
 ALTER TABLE aluminum_profiles ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY admin_full_access ON aluminum_profiles FOR ALL TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'))
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
+
+-- ================================================================
+-- INVENTORY_CATEGORIES
+-- See docs/superpowers/plans/2026-09-05-inventory-categories-adjustment-plan.md
+-- ================================================================
+
+CREATE TABLE inventory_categories (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id   UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  name        TEXT NOT NULL,
+  sort_order  INT NOT NULL DEFAULT 0,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_inventory_categories_tenant_id ON inventory_categories(tenant_id);
+
+ALTER TABLE inventory_categories ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_full_access ON inventory_categories FOR ALL TO authenticated
   USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'))
   WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
 
@@ -875,17 +897,25 @@ DECLARE
   v_old_wac NUMERIC;
   v_new_qty NUMERIC;
   v_new_wac NUMERIC;
+  v_stored_qty NUMERIC;
+  v_stored_cost NUMERIC;
 BEGIN
   IF NOT (is_admin_or_owner() AND has_module_access('purchase_orders')) THEN
     RAISE EXCEPTION 'insufficient_privilege';
   END IF;
 
-  IF p_movement_type NOT IN ('purchase_in', 'transfer_in', 'transfer_out') THEN
+  IF p_movement_type NOT IN ('purchase_in', 'transfer_in', 'transfer_out', 'adjustment') THEN
     RAISE EXCEPTION 'unsupported_movement_type: %', p_movement_type;
   END IF;
 
-  IF p_quantity IS NULL OR p_quantity <= 0 THEN
-    RAISE EXCEPTION 'quantity must be positive';
+  IF p_movement_type = 'adjustment' THEN
+    IF p_quantity IS NULL OR p_quantity < 0 THEN
+      RAISE EXCEPTION 'adjustment quantity (new absolute count) must be zero or positive';
+    END IF;
+  ELSE
+    IF p_quantity IS NULL OR p_quantity <= 0 THEN
+      RAISE EXCEPTION 'quantity must be positive';
+    END IF;
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM inventory_items WHERE id = p_inventory_item_id AND tenant_id = v_tenant_id) THEN
@@ -895,10 +925,6 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND tenant_id = v_tenant_id) THEN
     RAISE EXCEPTION 'site not found for this tenant';
   END IF;
-
-  INSERT INTO stock_movements (tenant_id, inventory_item_id, site_id, movement_type, quantity, unit_cost, reference_type, reference_id, notes, created_by)
-  VALUES (v_tenant_id, p_inventory_item_id, p_site_id, p_movement_type, p_quantity, p_unit_cost, p_reference_type, p_reference_id, p_notes, auth.email())
-  RETURNING id INTO v_movement_id;
 
   SELECT quantity_on_hand, weighted_average_cost INTO v_old_qty, v_old_wac
   FROM inventory_stock_balances
@@ -910,17 +936,30 @@ BEGIN
     v_old_wac := 0;
   END IF;
 
-  IF p_movement_type IN ('purchase_in', 'transfer_in') THEN
+  IF p_movement_type = 'adjustment' THEN
+    v_new_qty := p_quantity;
+    v_new_wac := COALESCE(p_unit_cost, v_old_wac);
+    v_stored_qty := p_quantity - v_old_qty;
+    v_stored_cost := v_new_wac;
+  ELSIF p_movement_type IN ('purchase_in', 'transfer_in') THEN
     v_new_qty := v_old_qty + p_quantity;
     IF v_new_qty = 0 THEN
       v_new_wac := 0;
     ELSE
       v_new_wac := (v_old_qty * v_old_wac + p_quantity * COALESCE(p_unit_cost, 0)) / v_new_qty;
     END IF;
+    v_stored_qty := p_quantity;
+    v_stored_cost := p_unit_cost;
   ELSE
     v_new_qty := v_old_qty - p_quantity;
     v_new_wac := v_old_wac;
+    v_stored_qty := p_quantity;
+    v_stored_cost := p_unit_cost;
   END IF;
+
+  INSERT INTO stock_movements (tenant_id, inventory_item_id, site_id, movement_type, quantity, unit_cost, reference_type, reference_id, notes, created_by)
+  VALUES (v_tenant_id, p_inventory_item_id, p_site_id, p_movement_type, v_stored_qty, v_stored_cost, p_reference_type, p_reference_id, p_notes, auth.email())
+  RETURNING id INTO v_movement_id;
 
   INSERT INTO inventory_stock_balances (tenant_id, inventory_item_id, site_id, quantity_on_hand, weighted_average_cost, updated_at)
   VALUES (v_tenant_id, p_inventory_item_id, p_site_id, v_new_qty, v_new_wac, now())
@@ -2518,6 +2557,15 @@ BEGIN
       (v_tenant_id, 'travel_rate_per_km', '20'),
       (v_tenant_id, 'holiday_pay_multiplier', '1.5')
     ON CONFLICT (tenant_id, key) DO NOTHING;
+
+    -- Every new tenant gets these 4 default categories, matching sites'
+    -- existing cost-breakdown labels exactly (see the inventory
+    -- categories/adjustment plan).
+    INSERT INTO inventory_categories (tenant_id, name, sort_order) VALUES
+      (v_tenant_id, 'อลูมิเนียม/เหล็ก', 1),
+      (v_tenant_id, 'กระจก', 2),
+      (v_tenant_id, 'อุปกรณ์', 3),
+      (v_tenant_id, 'ซิลิโคน/ยาง', 4);
 
     -- Seed expense_categories + suppliers from the chosen contractor
     -- type's shared template rows (contractor_type_categories /
