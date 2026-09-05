@@ -35,7 +35,7 @@ const PO_STATUSES = ['ordered', 'received', 'cancelled']
 const PO_STATUS_LABELS = { ordered: '📦 สั่งแล้ว', received: '✅ รับของแล้ว', cancelled: '✕ ยกเลิก' }
 
 const EMPTY_ITEM = { description: '', quantity: '1', unit: '', unit_price: '', inventory_item_id: '', aluminum_profile_id: '', rod_length_m: '', glass_width_m: '', glass_height_m: '' }
-const EMPTY_FORM = { site_id: '', supplier_id: '', category_id: '', date: '', has_vat: true, price_includes_vat: false, notes: '', items: [{ ...EMPTY_ITEM }] }
+const EMPTY_FORM = { site_id: '', supplier_id: '', category_id: '', date: '', has_vat: true, price_includes_vat: false, ordered_by: '', notes: '', items: [{ ...EMPTY_ITEM }] }
 
 function lineTotal(item) {
   return (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)
@@ -227,9 +227,15 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
             )
           })()}
         </div>
-        <div>
-          <label className="label">หมายเหตุ</label>
-          <input className="input" value={form.notes} onChange={e => set('notes', e.target.value)} />
+        <div className="form-grid-2">
+          <div>
+            <label className="label">ชื่อผู้สั่ง</label>
+            <input className="input" value={form.ordered_by} onChange={e => set('ordered_by', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">หมายเหตุ</label>
+            <input className="input" value={form.notes} onChange={e => set('notes', e.target.value)} />
+          </div>
         </div>
       </div>
       <div className="modal-footer">
@@ -257,6 +263,7 @@ function PODetailModal({ po, tenantId, onClose }) {
           <div><strong>ไซท์งาน:</strong> {po.sites?.name || '—'}</div>
           <div><strong>Supplier:</strong> {po.suppliers?.name || '—'}</div>
         </div>
+        {po.ordered_by && <div style={{ fontSize: 13 }}><strong>ชื่อผู้สั่ง:</strong> {po.ordered_by}</div>}
         {po.notes && <div style={{ fontSize: 13 }}><strong>หมายเหตุ:</strong> {po.notes}</div>}
         <div>
           <label className="label">รายการสินค้า</label>
@@ -333,6 +340,7 @@ function PODocumentModal({ po, tenant, onClose }) {
             <div><span style={{ color: '#6a6f85' }}>วันที่สั่งซื้อ</span><br />{new Date(po.date).toLocaleDateString('th-TH')}</div>
             <div><span style={{ color: '#6a6f85' }}>ไซท์งาน</span><br />{po.sites?.name} ({po.sites?.site_number})</div>
             <div><span style={{ color: '#6a6f85' }}>Supplier</span><br />{po.suppliers?.name}</div>
+            {po.ordered_by && <div><span style={{ color: '#6a6f85' }}>ชื่อผู้สั่ง</span><br />{po.ordered_by}</div>}
           </div>
 
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 18 }}>
@@ -459,6 +467,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
         site_id: form.site_id, supplier_id: form.supplier_id, category_id: form.category_id,
         date: form.date, has_vat: form.has_vat,
         price_includes_vat: form.has_vat ? form.price_includes_vat : false,
+        ordered_by: form.ordered_by || null,
         notes: form.notes || null,
       }
       let poId = editRow?.id
@@ -619,7 +628,8 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     return {
       id: editRow.id,
       site_id: editRow.site_id, supplier_id: editRow.supplier_id, category_id: editRow.category_id,
-      date: editRow.date, has_vat: editRow.has_vat, price_includes_vat: editRow.price_includes_vat || false, notes: editRow.notes || '',
+      date: editRow.date, has_vat: editRow.has_vat, price_includes_vat: editRow.price_includes_vat || false,
+      ordered_by: editRow.ordered_by || '', notes: editRow.notes || '',
       items: (editRow.purchase_order_items?.length ? editRow.purchase_order_items : [{ ...EMPTY_ITEM }])
         .map(it => ({
           description: it.description, quantity: String(it.quantity), unit: it.unit || '', unit_price: String(it.unit_price),
