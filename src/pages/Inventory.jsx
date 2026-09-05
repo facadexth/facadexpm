@@ -8,11 +8,10 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useAllAluminumProfiles, useInventoryCategories } from '../hooks/useSupabase.js'
+import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useAllAluminumProfiles, useInventoryCategories, useSites, usePurchaseOrders } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
-import { estimateSheetCount } from '../lib/inventoryCost.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -177,6 +176,64 @@ function ProfileForm({ initial = EMPTY_PROFILE_FORM, onSave, onCancel, loading }
   )
 }
 
+function BalanceRow({ item, balance, isFirstForItem, centralSite, canEdit, savingKey, resolveSource, onSaveBalance, onEditItem, onDeleteItem }) {
+  const siteId = balance ? balance.site_id : centralSite?.id
+  const isCentralRow = !!centralSite && siteId === centralSite.id
+  const [editing, setEditing] = useState(false)
+  const [qtyDraft, setQtyDraft] = useState(String(balance?.quantity_on_hand ?? 0))
+  const [costDraft, setCostDraft] = useState(String(balance?.weighted_average_cost ?? 0))
+  const key = siteId ? `${item.id}-${siteId}` : null
+  const saving = savingKey === key
+
+  const siteName = balance ? balance.sites?.name : (centralSite?.name || 'ส่วนกลาง (ยังไม่มีไซท์นี้)')
+  const quantity = balance?.quantity_on_hand ?? 0
+  const cost = balance?.weighted_average_cost ?? 0
+
+  const save = async () => {
+    if (!siteId) { alert('ไม่พบไซท์งาน "ส่วนกลาง" — กรุณาสร้างไซท์งานชื่อนี้ก่อน'); return }
+    await onSaveBalance(item.id, siteId, qtyDraft, costDraft)
+    setEditing(false)
+  }
+
+  return (
+    <tr>
+      <td style={{ fontWeight: 600 }}>{item.name}</td>
+      <td style={{ fontSize: 12 }}>{item.inventory_categories?.name || '—'}</td>
+      <td style={{ fontSize: 12 }}>{siteName}</td>
+      <td className="font-mono">
+        {editing ? (
+          <input className="input input-sm" style={{ width: 90 }} type="number" min="0" step="0.0001" value={qtyDraft} onChange={e => setQtyDraft(e.target.value)} />
+        ) : `${fmt(quantity)} ${item.base_unit}`}
+      </td>
+      <td className="font-mono">
+        {editing ? (
+          <input className="input input-sm" style={{ width: 90 }} type="number" min="0" step="0.0001" value={costDraft} onChange={e => setCostDraft(e.target.value)} />
+        ) : fmt(cost)}
+      </td>
+      <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(quantity * cost)}</td>
+      <td style={{ fontSize: 12, color: 'var(--text3)' }}>{balance ? resolveSource(item.id, balance.site_id) : '—'}</td>
+      <td style={{ whiteSpace: 'nowrap' }}>
+        {canEdit && isCentralRow && (
+          editing ? (
+            <>
+              <button className="btn btn-sm btn-primary" disabled={saving} onClick={save}>{saving ? '⏳' : '✅ บันทึก'}</button>
+              <button className="btn btn-sm btn-ghost" onClick={() => setEditing(false)}>ยกเลิก</button>
+            </>
+          ) : (
+            <button className="btn btn-sm btn-ghost" onClick={() => setEditing(true)}>ปรับยอด</button>
+          )
+        )}
+        {canEdit && isFirstForItem && (
+          <>
+            <button className="btn btn-sm btn-ghost" onClick={onEditItem}>แก้ไข</button>
+            <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={onDeleteItem}>ลบ</button>
+          </>
+        )}
+      </td>
+    </tr>
+  )
+}
+
 export default function Inventory() {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'inventory')
@@ -189,10 +246,15 @@ export default function Inventory() {
   const { data: items, refetch: refetchItems } = useAllInventoryItems()
   const { data: categories, refetch: refetchCategories } = useInventoryCategories()
   const { data: factors, refetch: refetchFactors } = useInventoryItemUnitFactors()
-  const { data: balances } = useStockBalances()
+  const { data: balances, refetch: refetchBalances } = useStockBalances()
   const { data: profiles, refetch: refetchProfiles } = useAllAluminumProfiles()
   const [movementItemFilter, setMovementItemFilter] = useState('')
   const { data: movements } = useStockMovements({ inventoryItemId: movementItemFilter || undefined })
+  const { data: sites } = useSites()
+  const { data: allMovements } = useStockMovements({})
+  const { data: allPos } = usePurchaseOrders({})
+  const [itemsCategoryFilter, setItemsCategoryFilter] = useState('')
+  const [savingBalance, setSavingBalance] = useState(null) // the balance-row key currently saving, or null
 
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState(null)
@@ -207,6 +269,61 @@ export default function Inventory() {
 
   const totalValue = useMemo(() => (balances || []).reduce((s, b) => s + b.quantity_on_hand * b.weighted_average_cost, 0), [balances])
   const itemOpts = (items || []).map(it => ({ value: it.id, label: `${it.name} (${it.base_unit})`, keywords: it.name }))
+
+  const centralSite = (sites || []).find(s => s.name === 'ส่วนกลาง')
+
+  const resolveSource = (itemId, siteId) => {
+    const itemMovements = (allMovements || []).filter(m => m.inventory_item_id === itemId && m.site_id === siteId)
+    if (!itemMovements.length) return '—'
+    const latest = itemMovements.reduce((a, b) => new Date(a.created_at) > new Date(b.created_at) ? a : b)
+    if (latest.reference_type === 'purchase_order') {
+      const po = (allPos || []).find(p => p.id === latest.reference_id)
+      return po ? `PO ${po.po_number}` : 'ใบสั่งซื้อ'
+    }
+    if (latest.reference_type === 'site_completion') {
+      const fromSite = (sites || []).find(s => s.id === latest.reference_id)
+      return fromSite ? `โอนจาก ${fromSite.name}` : 'โอนจากไซท์งาน'
+    }
+    if (latest.reference_type === 'manual_adjustment') return 'ปรับยอด'
+    return latest.reference_type || '—'
+  }
+
+  const tableRows = useMemo(() => {
+    const filteredItems = itemsCategoryFilter
+      ? (items || []).filter(it => it.category_id === itemsCategoryFilter)
+      : (items || [])
+    const rows = []
+    for (const item of filteredItems) {
+      const itemBalances = (balances || []).filter(b => b.inventory_item_id === item.id)
+      if (!itemBalances.length) {
+        rows.push({ item, balance: null, isFirstForItem: true })
+      } else {
+        itemBalances.forEach((balance, i) => rows.push({ item, balance, isFirstForItem: i === 0 }))
+      }
+    }
+    return rows
+  }, [items, balances, itemsCategoryFilter])
+
+  const handleSaveBalance = async (itemId, siteId, quantityStr, costStr) => {
+    const quantity = parseFloat(quantityStr)
+    const cost = parseFloat(costStr)
+    if (isNaN(quantity) || quantity < 0 || isNaN(cost) || cost < 0) {
+      alert('กรุณากรอกปริมาณและราคาเป็นตัวเลขไม่ติดลบ')
+      return
+    }
+    const key = `${itemId}-${siteId}`
+    setSavingBalance(key)
+    try {
+      const { error } = await supabase.rpc('record_stock_movement', {
+        p_inventory_item_id: itemId, p_site_id: siteId, p_movement_type: 'adjustment',
+        p_quantity: quantity, p_unit_cost: cost,
+        p_reference_type: 'manual_adjustment', p_reference_id: null, p_notes: null,
+      })
+      if (error) throw error
+      refetchBalances(); refetchItems()
+    } catch (e) { alert('ปรับยอดไม่สำเร็จ: ' + e.message) }
+    finally { setSavingBalance(null) }
+  }
 
   const handleSave = async (form) => {
     setSaving(true)
@@ -268,7 +385,6 @@ export default function Inventory() {
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button className={`btn btn-sm ${view === 'items' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('items')}>📦 รายการสินค้าคงคลัง</button>
-        <button className={`btn btn-sm ${view === 'stock' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('stock')}>💰 มูลค่าสต็อก</button>
         <button className={`btn btn-sm ${view === 'movements' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('movements')}>📜 ประวัติการเคลื่อนไหว</button>
         <button className={`btn btn-sm ${view === 'profiles' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('profiles')}>🔧 หน้าตัดอลูมิเนียม</button>
       </div>
@@ -283,64 +399,33 @@ export default function Inventory() {
               <ExcelUpload type="inventory_item" onSuccess={() => { setShowImportItems(false); refetchItems() }} />
             </div>
           )}
+          <div style={{ marginBottom: 14, maxWidth: 260 }}>
+            <SearchableSelect value={itemsCategoryFilter} onChange={setItemsCategoryFilter} placeholder="ทุกหมวดหมู่"
+              options={(categories || []).map(c => ({ value: c.id, label: c.name, keywords: c.name }))} />
+          </div>
           <div className="card">
+            <div style={{ padding: '12px 16px', fontWeight: 700 }}>มูลค่าสต็อกรวม: <span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totalValue)}</span> บาท</div>
             <div className="table-wrap">
               <table>
-                <thead><tr><th>ชื่อ</th><th>หน่วยหลัก</th><th>หมวดหมู่</th><th>สถานะ</th><th></th></tr></thead>
+                <thead><tr><th>ชื่อ</th><th>หมวดหมู่</th><th>ไซท์งาน</th><th>ปริมาณ</th><th>ราคา/หน่วย</th><th>มูลค่ารวม</th><th>แหล่งที่มาล่าสุด</th><th></th></tr></thead>
                 <tbody>
-                  {(items || []).map(it => (
-                    <tr key={it.id}>
-                      <td style={{ fontWeight: 600 }}>{it.name}</td>
-                      <td style={{ fontSize: 12 }}>{it.base_unit}</td>
-                      <td style={{ fontSize: 12 }}>{it.inventory_categories?.name || '—'}</td>
-                      <td>{it.active ? <span className="badge badge-paid">ใช้งานอยู่</span> : <span className="badge badge-finished">ปิดใช้งาน</span>}</td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        {canEdit && (
-                          <>
-                            <button className="btn btn-sm btn-ghost" onClick={() => { setEditItem(it); setShowForm(true) }}>แก้ไข</button>
-                            <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => setDeleteId(it.id)}>ลบ</button>
-                          </>
-                        )}
-                      </td>
-                    </tr>
+                  {tableRows.map(({ item, balance, isFirstForItem }) => (
+                    <BalanceRow
+                      key={balance ? balance.id : `${item.id}-empty`}
+                      item={item} balance={balance} isFirstForItem={isFirstForItem}
+                      centralSite={centralSite} canEdit={canEdit} savingKey={savingBalance}
+                      resolveSource={resolveSource}
+                      onSaveBalance={handleSaveBalance}
+                      onEditItem={() => { setEditItem(item); setShowForm(true) }}
+                      onDeleteItem={() => setDeleteId(item.id)}
+                    />
                   ))}
-                  {!(items || []).length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีสินค้าคงคลัง</td></tr>}
+                  {!tableRows.length && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีสินค้าคงคลัง</td></tr>}
                 </tbody>
               </table>
             </div>
           </div>
         </>
-      )}
-
-      {view === 'stock' && (
-        <div className="card">
-          <div style={{ padding: '12px 16px', fontWeight: 700 }}>มูลค่าสต็อกรวม: <span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totalValue)}</span> บาท</div>
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>สินค้า</th><th>ไซท์งาน</th><th>คงเหลือ</th><th>ต้นทุนเฉลี่ย/หน่วย</th><th>มูลค่ารวม</th><th>จำนวนแผ่นโดยประมาณ</th></tr></thead>
-              <tbody>
-                {(balances || []).map(b => (
-                  <tr key={b.id}>
-                    <td>{b.inventory_items?.name}</td>
-                    <td style={{ fontSize: 12 }}>{b.sites?.name}</td>
-                    <td className="font-mono">{fmt(b.quantity_on_hand)} {b.inventory_items?.base_unit}</td>
-                    <td className="font-mono">{fmt(b.weighted_average_cost)}</td>
-                    <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(b.quantity_on_hand * b.weighted_average_cost)}</td>
-                    <td style={{ fontSize: 12, color: 'var(--text3)' }}>
-                      {(() => {
-                        const est = b.inventory_items?.unit_conversion_mode === 'glass_dimension'
-                          ? estimateSheetCount(b.quantity_on_hand, b.inventory_items?.reference_area_sqm)
-                          : null
-                        return est != null ? `≈ ${fmt(est)} แผ่น (อ้างอิง ${fmt(b.inventory_items.reference_area_sqm)} ตรม./แผ่น)` : '—'
-                      })()}
-                    </td>
-                  </tr>
-                ))}
-                {!(balances || []).length && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีสต็อก</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
       )}
 
       {view === 'movements' && (
