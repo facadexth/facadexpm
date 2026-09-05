@@ -1131,6 +1131,33 @@ export function useAllInventoryItems() {
   })
 }
 
+/** Every active aluminum profile, for the PO-line profile picker (a
+ *  picker should only offer active profiles). */
+export function useAluminumProfiles() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('aluminum_profiles')
+      .select('*')
+      .eq('active', true)
+      .order('name')
+    if (error) throw error
+    return data
+  })
+}
+
+/** Every aluminum profile regardless of active flag, for the Inventory
+ *  page's own profile-management list -- mirrors useAllInventoryItems(). */
+export function useAllAluminumProfiles() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('aluminum_profiles')
+      .select('*')
+      .order('name')
+    if (error) throw error
+    return data
+  })
+}
+
 /** All fixed unit-conversion factors across every inventory item --
  *  a small table, fetched whole and filtered client-side by
  *  (inventory_item_id, unit_name) rather than one query per item. */
@@ -1150,7 +1177,7 @@ export function useStockBalances() {
   return useQuery(async () => {
     const { data, error } = await supabase
       .from('inventory_stock_balances')
-      .select('*, inventory_items(name, base_unit), sites(name, site_number)')
+      .select('*, inventory_items(name, base_unit, unit_conversion_mode, reference_area_sqm), sites(name, site_number)')
       .order('inventory_item_id')
     if (error) throw error
     return data
