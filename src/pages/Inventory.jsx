@@ -8,7 +8,7 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useAllAluminumProfiles } from '../hooks/useSupabase.js'
+import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useAllAluminumProfiles, useInventoryCategories } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
@@ -16,9 +16,10 @@ import { estimateSheetCount } from '../lib/inventoryCost.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
+import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 
-const EMPTY_ITEM_FORM = { name: '', base_unit: '', unit_conversion_mode: 'plain', reference_area_sqm: '', active: true }
+const EMPTY_ITEM_FORM = { name: '', base_unit: '', unit_conversion_mode: 'plain', reference_area_sqm: '', category_id: '', active: true }
 const EMPTY_FACTOR_FORM = { unit_name: '', factor_to_base: '1' }
 
 const MOVEMENT_TYPE_LABELS = {
@@ -30,9 +31,9 @@ const MOVEMENT_TYPE_LABELS = {
   adjustment: '✏️ ปรับปรุงยอด',
 }
 
-function ItemForm({ initial = EMPTY_ITEM_FORM, onSave, onCancel, loading }) {
+function ItemForm({ initial = EMPTY_ITEM_FORM, onSave, onCancel, loading, categories, onCategoryCreated }) {
   const isAdd = !initial?.id
-  const [form, setForm, clearDraft] = useDraftForm('inventory-item-form', { ...EMPTY_ITEM_FORM, ...initial, reference_area_sqm: initial?.reference_area_sqm ?? '' }, isAdd)
+  const [form, setForm, clearDraft] = useDraftForm('inventory-item-form', { ...EMPTY_ITEM_FORM, ...initial, reference_area_sqm: initial?.reference_area_sqm ?? '', category_id: initial?.category_id ?? '' }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   return (
@@ -45,6 +46,16 @@ function ItemForm({ initial = EMPTY_ITEM_FORM, onSave, onCancel, loading }) {
         <div>
           <label className="label">หน่วยหลัก (base unit) ★</label>
           <input className="input" required value={form.base_unit} onChange={e => set('base_unit', e.target.value)} placeholder="เช่น kg, ตร.ม." />
+        </div>
+        <div>
+          <label className="label">หมวดหมู่</label>
+          <QuickAddSelect
+            value={form.category_id} onChange={v => set('category_id', v)}
+            placeholder="— ไม่มีหมวดหมู่ —" options={(categories || []).map(c => ({ value: c.id, label: c.name, keywords: c.name }))}
+            table="inventory_categories" namePlaceholder="ชื่อหมวดหมู่ใหม่"
+            onCreated={onCategoryCreated}
+            addLabel="+ สร้างใหม่"
+          />
         </div>
         <div>
           <label className="label">รูปแบบการแปลงหน่วยตอนรับของ</label>
@@ -176,6 +187,7 @@ export default function Inventory() {
   // edit, or reactivate it (final-review Fix 5). PurchaseOrders.jsx's picker
   // still correctly uses the active-only useInventoryItems().
   const { data: items, refetch: refetchItems } = useAllInventoryItems()
+  const { data: categories, refetch: refetchCategories } = useInventoryCategories()
   const { data: factors, refetch: refetchFactors } = useInventoryItemUnitFactors()
   const { data: balances } = useStockBalances()
   const { data: profiles, refetch: refetchProfiles } = useAllAluminumProfiles()
@@ -203,6 +215,7 @@ export default function Inventory() {
         name: form.name, base_unit: form.base_unit, active: form.active !== false,
         unit_conversion_mode: form.unit_conversion_mode || 'plain',
         reference_area_sqm: form.unit_conversion_mode === 'glass_dimension' && form.reference_area_sqm ? parseFloat(form.reference_area_sqm) : null,
+        category_id: form.category_id || null,
       }
       if (editItem) {
         const { error } = await supabase.from('inventory_items').update(payload).eq('id', editItem.id)
@@ -273,12 +286,13 @@ export default function Inventory() {
           <div className="card">
             <div className="table-wrap">
               <table>
-                <thead><tr><th>ชื่อ</th><th>หน่วยหลัก</th><th>สถานะ</th><th></th></tr></thead>
+                <thead><tr><th>ชื่อ</th><th>หน่วยหลัก</th><th>หมวดหมู่</th><th>สถานะ</th><th></th></tr></thead>
                 <tbody>
                   {(items || []).map(it => (
                     <tr key={it.id}>
                       <td style={{ fontWeight: 600 }}>{it.name}</td>
                       <td style={{ fontSize: 12 }}>{it.base_unit}</td>
+                      <td style={{ fontSize: 12 }}>{it.inventory_categories?.name || '—'}</td>
                       <td>{it.active ? <span className="badge badge-paid">ใช้งานอยู่</span> : <span className="badge badge-finished">ปิดใช้งาน</span>}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         {canEdit && (
@@ -290,7 +304,7 @@ export default function Inventory() {
                       </td>
                     </tr>
                   ))}
-                  {!(items || []).length && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีสินค้าคงคลัง</td></tr>}
+                  {!(items || []).length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีสินค้าคงคลัง</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -398,7 +412,7 @@ export default function Inventory() {
 
       {showForm && (
         <Modal title={editItem ? `แก้ไข ${editItem.name}` : 'เพิ่มสินค้าคงคลังใหม่'} onClose={() => { setShowForm(false); setEditItem(null) }} maxWidth={520}>
-          <ItemForm initial={editItem || EMPTY_ITEM_FORM} onSave={handleSave} onCancel={() => { setShowForm(false); setEditItem(null) }} loading={saving} />
+          <ItemForm initial={editItem || EMPTY_ITEM_FORM} onSave={handleSave} onCancel={() => { setShowForm(false); setEditItem(null) }} loading={saving} categories={categories} onCategoryCreated={refetchCategories} />
           {editItem && (
             <div className="modal-body" style={{ paddingTop: 0 }}>
               <UnitFactorsPanel item={editItem} factors={factors || []} onChanged={refetchFactors} />
