@@ -18,7 +18,7 @@ import SearchableSelect from '../components/SearchableSelect.jsx'
 import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 
-const EMPTY_ITEM_FORM = { name: '', base_unit: '', unit_conversion_mode: 'plain', reference_area_sqm: '', category_id: '', active: true }
+const EMPTY_ITEM_FORM = { code: '', name: '', base_unit: '', unit_conversion_mode: 'plain', reference_area_sqm: '', category_id: '', active: true }
 const EMPTY_FACTOR_FORM = { unit_name: '', factor_to_base: '1' }
 
 const MOVEMENT_TYPE_LABELS = {
@@ -32,12 +32,16 @@ const MOVEMENT_TYPE_LABELS = {
 
 function ItemForm({ initial = EMPTY_ITEM_FORM, onSave, onCancel, loading, categories, onCategoryCreated }) {
   const isAdd = !initial?.id
-  const [form, setForm, clearDraft] = useDraftForm('inventory-item-form', { ...EMPTY_ITEM_FORM, ...initial, reference_area_sqm: initial?.reference_area_sqm ?? '', category_id: initial?.category_id ?? '' }, isAdd)
+  const [form, setForm, clearDraft] = useDraftForm('inventory-item-form', { ...EMPTY_ITEM_FORM, ...initial, code: initial?.code ?? '', reference_area_sqm: initial?.reference_area_sqm ?? '', category_id: initial?.category_id ?? '' }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   return (
     <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave(form) }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        <div>
+          <label className="label">รหัสสินค้า</label>
+          <input className="input" value={form.code} onChange={e => set('code', e.target.value)} placeholder="เช่น ALU-6063" />
+        </div>
         <div>
           <label className="label">ชื่อสินค้าคงคลัง ★</label>
           <input className="input" required value={form.name} onChange={e => set('name', e.target.value)} placeholder="เช่น อลูมิเนียมโปรไฟล์ 6063" />
@@ -197,6 +201,7 @@ function BalanceRow({ item, balance, isFirstForItem, centralSite, canEdit, savin
 
   return (
     <tr>
+      <td style={{ fontSize: 12, color: 'var(--text3)' }}>{item.code || '—'}</td>
       <td style={{ fontWeight: 600 }}>{item.name}</td>
       <td style={{ fontSize: 12 }}>{item.inventory_categories?.name || '—'}</td>
       <td>{isFirstForItem ? (item.active ? <span className="badge badge-paid">ใช้งานอยู่</span> : <span className="badge badge-finished">ปิดใช้งาน</span>) : null}</td>
@@ -334,7 +339,7 @@ export default function Inventory() {
     setSaving(true)
     try {
       const payload = {
-        name: form.name, base_unit: form.base_unit, active: form.active !== false,
+        code: form.code || null, name: form.name, base_unit: form.base_unit, active: form.active !== false,
         unit_conversion_mode: form.unit_conversion_mode || 'plain',
         reference_area_sqm: form.unit_conversion_mode === 'glass_dimension' && form.reference_area_sqm ? parseFloat(form.reference_area_sqm) : null,
         category_id: form.category_id || null,
@@ -415,7 +420,7 @@ export default function Inventory() {
             <div style={{ padding: '12px 16px', fontWeight: 700 }}>มูลค่าสต็อกรวม: <span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totalValue)}</span> บาท</div>
             <div className="table-wrap">
               <table>
-                <thead><tr><th>ชื่อ</th><th>หมวดหมู่</th><th>สถานะ</th><th>ไซท์งาน</th><th>ปริมาณ</th><th>ราคา/หน่วย</th><th>มูลค่ารวม</th><th>แหล่งที่มาล่าสุด</th><th></th></tr></thead>
+                <thead><tr><th>รหัส</th><th>ชื่อ</th><th>หมวดหมู่</th><th>สถานะ</th><th>ไซท์งาน</th><th>ปริมาณ</th><th>ราคา/หน่วย</th><th>มูลค่ารวม</th><th>แหล่งที่มาล่าสุด</th><th></th></tr></thead>
                 <tbody>
                   {tableRows.map(({ item, balance, isFirstForItem }) => (
                     <BalanceRow
@@ -428,7 +433,7 @@ export default function Inventory() {
                       onDeleteItem={() => setDeleteId(item.id)}
                     />
                   ))}
-                  {!tableRows.length && <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีสินค้าคงคลัง</td></tr>}
+                  {!tableRows.length && <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีสินค้าคงคลัง</td></tr>}
                 </tbody>
               </table>
             </div>

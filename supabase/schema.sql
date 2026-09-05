@@ -733,6 +733,7 @@ CREATE POLICY admin_full_access ON purchase_order_items FOR ALL TO authenticated
 CREATE TABLE inventory_items (
   id                    UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   tenant_id             UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  code                  TEXT,  -- รหัสสินค้า, free text, for reference
   name                  TEXT NOT NULL,
   base_unit             TEXT NOT NULL,
   active                BOOLEAN NOT NULL DEFAULT true,
