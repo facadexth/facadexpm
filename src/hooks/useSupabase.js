@@ -240,6 +240,32 @@ export function useQuotations(filters = {}) {
   }, [JSON.stringify(filters)])
 }
 
+/** Invoices with a site and a billed status, that have no stock_movements
+ *  row yet with reference_type='invoice' pointing at them -- the queue
+ *  for the invoice-ratio COGS deduction feature. Client-side filter
+ *  (load both lists, subtract), matching this file's existing pattern for
+ *  similar lookups rather than a raw SQL view or RPC just for a list. */
+export function useUnprocessedInvoices() {
+  return useQuery(async () => {
+    const { data: invoices, error: invErr } = await supabase
+      .from('invoices')
+      .select('*, sites(name, site_number)')
+      .in('status', ['unpaid', 'paid'])
+      .not('site_id', 'is', null)
+      .order('date', { ascending: false })
+    if (invErr) throw invErr
+
+    const { data: processedRefs, error: refErr } = await supabase
+      .from('stock_movements')
+      .select('reference_id')
+      .eq('reference_type', 'invoice')
+    if (refErr) throw refErr
+
+    const processedIds = new Set((processedRefs || []).map(r => r.reference_id))
+    return (invoices || []).filter(inv => !processedIds.has(inv.id))
+  })
+}
+
 // Idempotent: only inserts rows for quotation_items that don't have any
 // quotation_item_units yet. Safe to call every time the invoice
 // item-selection screen opens for a quotation.
@@ -776,6 +802,29 @@ export async function saveAppSetting(key, value) {
   const { error } = await supabase.from('app_settings')
     .upsert({ key, value: String(value), updated_at: new Date().toISOString() }, { onConflict: 'tenant_id,key' })
   if (error) throw error
+}
+
+const INVENTORY_COGS_SETTINGS_KEY = 'inventory_cogs_ratio'
+
+/** { material_pct, category_splits: {categoryId: pct} }, with sensible
+ *  defaults if the tenant has never saved this setting. */
+export function useInventoryCogsSettings() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('app_settings').select('value').eq('key', INVENTORY_COGS_SETTINGS_KEY).maybeSingle()
+    if (error) throw error
+    if (!data?.value) return { material_pct: 70, category_splits: {} }
+    try {
+      const parsed = JSON.parse(data.value)
+      return { material_pct: parsed.material_pct ?? 70, category_splits: parsed.category_splits ?? {} }
+    } catch {
+      return { material_pct: 70, category_splits: {} }
+    }
+  })
+}
+
+export async function saveInventoryCogsSettings(materialPct, categorySplits) {
+  await saveAppSetting(INVENTORY_COGS_SETTINGS_KEY, JSON.stringify({ material_pct: materialPct, category_splits: categorySplits }))
 }
 
 /** ค่าเดินทางต่อไซท์ (distance × 2 × rate ต่อวันที่มีงานไซท์) */
