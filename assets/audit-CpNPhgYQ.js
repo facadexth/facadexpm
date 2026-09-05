@@ -1,0 +1,1 @@
+import{s}from"./index-B0Jas21f.js";async function r(t,l,o,u,i){var e;try{const{data:{session:a}}=await s.auth.getSession();await s.from("audit_logs").insert({table_name:t,record_id:l||null,action:o,user_email:((e=a==null?void 0:a.user)==null?void 0:e.email)||"system",old_values:u||null,new_values:i||null})}catch(a){console.warn("audit log failed:",a.message)}}export{r as a};

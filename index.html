@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <script>
+      // ตั้ง data-theme ก่อน paint ครั้งแรก กัน flash ของธีมผิด --
+      // ถ้ายังไม่เคยเลือกเอง ปล่อยให้ @media (prefers-color-scheme) ใน
+      // index.css จัดการแทน (ไม่ตั้ง attribute อะไรเลย)
+      (function () {
+        var saved = localStorage.getItem('theme')
+        if (saved === 'light' || saved === 'dark') {
+          document.documentElement.setAttribute('data-theme', saved)
+        }
+      })()
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FACADE X — Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#1a1d2e" />
+    <script type="module" crossorigin src="/assets/index-B0Jas21f.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DsUBtOgG.css">
+  <link rel="manifest" href="/manifest.webmanifest"></head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
