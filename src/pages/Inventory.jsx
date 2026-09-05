@@ -16,6 +16,7 @@ import { estimateSheetCount } from '../lib/inventoryCost.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
+import ExcelUpload from '../components/ExcelUpload.jsx'
 
 const EMPTY_ITEM_FORM = { name: '', base_unit: '', unit_conversion_mode: 'plain', reference_area_sqm: '', active: true }
 const EMPTY_FACTOR_FORM = { unit_name: '', factor_to_base: '1' }
@@ -189,6 +190,8 @@ export default function Inventory() {
   const [editProfile, setEditProfile] = useState(null)
   const [deleteProfileId, setDeleteProfileId] = useState(null)
   const [savingProfile, setSavingProfile] = useState(false)
+  const [showImportItems, setShowImportItems] = useState(false)
+  const [showImportProfiles, setShowImportProfiles] = useState(false)
 
   const totalValue = useMemo(() => (balances || []).reduce((s, b) => s + b.quantity_on_hand * b.weighted_average_cost, 0), [balances])
   const itemOpts = (items || []).map(it => ({ value: it.id, label: `${it.name} (${it.base_unit})`, keywords: it.name }))
@@ -260,6 +263,13 @@ export default function Inventory() {
       {view === 'items' && (
         <>
           {canEdit && <button className="btn btn-primary" style={{ marginBottom: 14 }} onClick={() => { setEditItem(null); setShowForm(true) }}>+ เพิ่มสินค้าคงคลัง</button>}
+          {canEdit && <button className="btn btn-ghost" style={{ marginBottom: 14, marginLeft: 8 }} onClick={() => setShowImportItems(v => !v)}>📥 Import Excel</button>}
+          <a className="btn btn-ghost" style={{ marginBottom: 14, marginLeft: 8 }} href="/templates/TEMPLATE_รายการสินค้าคงคลัง.xlsx" download>📄 Template</a>
+          {showImportItems && (
+            <div style={{ marginBottom: 14 }}>
+              <ExcelUpload type="inventory_item" onSuccess={() => { setShowImportItems(false); refetchItems() }} />
+            </div>
+          )}
           <div className="card">
             <div className="table-wrap">
               <table>
@@ -348,6 +358,13 @@ export default function Inventory() {
       {view === 'profiles' && (
         <>
           {canEdit && <button className="btn btn-primary" style={{ marginBottom: 14 }} onClick={() => { setEditProfile(null); setShowProfileForm(true) }}>+ เพิ่มหน้าตัด</button>}
+          {canEdit && <button className="btn btn-ghost" style={{ marginBottom: 14, marginLeft: 8 }} onClick={() => setShowImportProfiles(v => !v)}>📥 Import Excel</button>}
+          <a className="btn btn-ghost" style={{ marginBottom: 14, marginLeft: 8 }} href="/templates/TEMPLATE_หน้าตัดอลูมิเนียม.xlsx" download>📄 Template</a>
+          {showImportProfiles && (
+            <div style={{ marginBottom: 14 }}>
+              <ExcelUpload type="aluminum_profile" onSuccess={() => { setShowImportProfiles(false); refetchProfiles() }} />
+            </div>
+          )}
           <div className="card">
             <div className="table-wrap">
               <table>

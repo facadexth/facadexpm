@@ -265,6 +265,51 @@ async function parseSupplierSheet(ws) {
   return records
 }
 
+const CONVERSION_MODE_OPTS = ['plain', 'aluminum_profile', 'glass_dimension']
+function normalizeConversionMode(raw) {
+  const s = String(raw || '').trim().toLowerCase()
+  if (s.includes('อลูมิเนียม') || s.includes('aluminum') || s.includes('หน้าตัด')) return 'aluminum_profile'
+  if (s.includes('กระจก') || s.includes('glass') || s.includes('กว้าง')) return 'glass_dimension'
+  return 'plain'
+}
+
+async function parseInventoryItemSheet(ws) {
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null })
+  const headerRowIdx = rows.findIndex(r => r.some(c => typeof c === 'string' && c.includes('ชื่อสินค้าคงคลัง')))
+  if (headerRowIdx < 0) throw new Error('ไม่พบแถว header (ชื่อสินค้าคงคลัง)')
+  const dataRows = rows.slice(headerRowIdx + 2)
+  const records = []
+  for (const row of dataRows) {
+    if (!row[0]) continue
+    records.push({
+      name: String(row[0]),
+      base_unit: row[1] ? String(row[1]) : '',
+      unit_conversion_mode: normalizeConversionMode(row[2]),
+      reference_area_sqm: row[3] != null ? parseFloat(row[3]) : null,
+    })
+  }
+  return records
+}
+
+async function parseAluminumProfileSheet(ws) {
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null })
+  const headerRowIdx = rows.findIndex(r => r.some(c => typeof c === 'string' && c.includes('ชื่อหน้าตัด')))
+  if (headerRowIdx < 0) throw new Error('ไม่พบแถว header (ชื่อหน้าตัด)')
+  const dataRows = rows.slice(headerRowIdx + 2)
+  const records = []
+  for (const row of dataRows) {
+    if (!row[0]) continue
+    const linearWeight = parseFloat(row[1])
+    if (!linearWeight) continue
+    records.push({
+      name: String(row[0]),
+      linear_weight_kg_per_m: linearWeight,
+      default_length_m: row[2] != null ? parseFloat(row[2]) : 6.4,
+    })
+  }
+  return records
+}
+
 export default function ExcelUpload({ type = 'expense', onSuccess }) {
   // type: 'expense' | 'income'
   const [dragging, setDragging] = useState(false)
@@ -345,11 +390,13 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
       }
 
       const records =
-        type === 'expense'  ? await parseExpenseSheet(ws)  :
-        type === 'income'   ? await parseIncomeSheet(ws)   :
-        type === 'site'     ? await parseSiteSheet(ws)     :
-        type === 'client'   ? await parseClientSheet(ws)   :
-                              await parseSupplierSheet(ws)
+        type === 'expense'          ? await parseExpenseSheet(ws)          :
+        type === 'income'           ? await parseIncomeSheet(ws)           :
+        type === 'site'             ? await parseSiteSheet(ws)             :
+        type === 'client'           ? await parseClientSheet(ws)           :
+        type === 'inventory_item'   ? await parseInventoryItemSheet(ws)    :
+        type === 'aluminum_profile' ? await parseAluminumProfileSheet(ws)  :
+                                       await parseSupplierSheet(ws)
 
       if (!records.length) throw new Error('ไม่พบข้อมูลในไฟล์ กรุณาตรวจสอบ format')
       setPreview(records)
@@ -394,11 +441,13 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
       }
 
       const table =
-        type === 'expense'  ? 'expenses'  :
-        type === 'income'   ? 'incomes'   :
-        type === 'site'     ? 'sites'     :
-        type === 'client'   ? 'clients'   :
-                              'suppliers'
+        type === 'expense'          ? 'expenses'  :
+        type === 'income'           ? 'incomes'   :
+        type === 'site'             ? 'sites'     :
+        type === 'client'           ? 'clients'   :
+        type === 'inventory_item'   ? 'inventory_items'   :
+        type === 'aluminum_profile' ? 'aluminum_profiles' :
+                                       'suppliers'
       const { error } = await supabase.from(table).insert(rows)
       if (error) throw error
       setPreview(null)
@@ -415,11 +464,13 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
   }
 
   const label =
-    type === 'expense'  ? 'รายจ่าย'   :
-    type === 'income'   ? 'รายรับ'    :
-    type === 'site'     ? 'ไซท์งาน'  :
-    type === 'client'   ? 'ลูกค้า'   :
-                          'Supplier'
+    type === 'expense'          ? 'รายจ่าย'   :
+    type === 'income'           ? 'รายรับ'    :
+    type === 'site'             ? 'ไซท์งาน'  :
+    type === 'client'           ? 'ลูกค้า'   :
+    type === 'inventory_item'   ? 'รายการสินค้าคงคลัง' :
+    type === 'aluminum_profile' ? 'หน้าตัดอลูมิเนียม'  :
+                                   'Supplier'
 
   return (
     <>
@@ -466,6 +517,10 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                       <th>ชื่อไซท์งาน</th><th>ลูกค้า</th><th>สถานะ</th><th>มูลค่าสัญญา</th><th>วันจบงาน</th>
                     </> : type === 'client' ? <>
                       <th>ชื่อลูกค้า / บริษัท</th><th>ผู้ติดต่อ</th><th>ตำแหน่ง</th><th>เบอร์โทร</th><th>ประเภท</th>
+                    </> : type === 'inventory_item' ? <>
+                      <th>ชื่อสินค้าคงคลัง</th><th>หน่วยหลัก</th><th>รูปแบบการแปลงหน่วย</th><th>ขนาดแผ่นอ้างอิง (ตรม.)</th>
+                    </> : type === 'aluminum_profile' ? <>
+                      <th>ชื่อหน้าตัด</th><th>กก./เมตร</th><th>ความยาวมาตรฐาน (ม.)</th>
                     </> : <>
                       <th>ชื่อ Supplier</th><th>หมวดสินค้า</th><th>ผู้ติดต่อ</th><th>เบอร์โทร</th><th>เงื่อนไขชำระ</th>
                     </>}
@@ -539,6 +594,15 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                         <td style={{ fontSize: 12 }}>{r.position || '—'}</td>
                         <td style={{ fontSize: 12 }}>{r.phone || '—'}</td>
                         <td style={{ fontSize: 11 }}>{r.client_type || '—'}</td>
+                      </> : type === 'inventory_item' ? <>
+                        <td style={{ fontWeight: 600 }}>{r.name}</td>
+                        <td style={{ fontSize: 12 }}>{r.base_unit}</td>
+                        <td style={{ fontSize: 12 }}>{r.unit_conversion_mode}</td>
+                        <td className="font-mono">{r.reference_area_sqm != null ? r.reference_area_sqm : '—'}</td>
+                      </> : type === 'aluminum_profile' ? <>
+                        <td style={{ fontWeight: 600 }}>{r.name}</td>
+                        <td className="font-mono">{r.linear_weight_kg_per_m}</td>
+                        <td className="font-mono">{r.default_length_m}</td>
                       </> : <>
                         <td style={{ fontWeight: 600 }}>{r.name}</td>
                         <td><span className="badge">{r.category || '—'}</span></td>
@@ -549,7 +613,7 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                     </tr>
                   ))}
                   {preview.length > 50 && (
-                    <tr><td colSpan={type === 'expense' ? 8 : 5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 8 }}>
+                    <tr><td colSpan={{ expense: 8, income: 5, site: 5, client: 5, inventory_item: 4, aluminum_profile: 3 }[type] ?? 5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 8 }}>
                       ... และอีก {preview.length - 50} รายการ
                     </td></tr>
                   )}
