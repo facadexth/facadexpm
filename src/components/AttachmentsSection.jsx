@@ -7,6 +7,7 @@
 // ============================================================
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { sanitizeStorageFileName } from '../lib/storageKey.js'
 
 export default function AttachmentsSection({ table, bucket, foreignKey, entityId, tenantId }) {
   const [attachments, setAttachments] = useState([])
@@ -23,7 +24,7 @@ export default function AttachmentsSection({ table, bucket, foreignKey, entityId
     if (!file) return
     setUploading(true)
     try {
-      const filePath = `${tenantId}/${entityId}/${Date.now()}-${file.name}`
+      const filePath = `${tenantId}/${entityId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`
       const { error: upErr } = await supabase.storage.from(bucket).upload(filePath, file)
       if (upErr) throw upErr
       const { error: dbErr } = await supabase.from(table).insert({ [foreignKey]: entityId, file_path: filePath, file_name: file.name })

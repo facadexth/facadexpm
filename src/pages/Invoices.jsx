@@ -16,6 +16,7 @@ import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipt
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { calcDepositDeduction, round2 } from '../lib/depositCalc.js'
+import { sanitizeStorageFileName } from '../lib/storageKey.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { auditLog } from '../lib/audit.js'
@@ -1039,7 +1040,7 @@ function WorkPhotosModal({ invoice, tenant, onClose, onPrint }) {
     try {
       let nextOrder = (photos || []).length
       for (const file of files) {
-        const filePath = `${tenant.id}/${invoice.id}/${Date.now()}-${file.name}`
+        const filePath = `${tenant.id}/${invoice.id}/${Date.now()}-${sanitizeStorageFileName(file.name)}`
         const { error: upErr } = await supabase.storage.from('invoice-photos').upload(filePath, file)
         if (upErr) throw upErr
         const { error: insErr } = await supabase.from('invoice_photos').insert({
