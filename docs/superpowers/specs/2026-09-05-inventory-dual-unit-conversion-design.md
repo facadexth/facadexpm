@@ -110,6 +110,29 @@ A PO line whose sheets/rods aren't all the same size/length still fits the exist
 
 The existing "ประวัติการเคลื่อนไหว" (movement ledger) view already satisfies the Stock Card requirement as shipped in Phase 1 — it shows every movement in the item's base unit with a running effect on the balance. No changes needed there.
 
+## Excel bulk import
+
+Confirmed with the business owner: both new master-data tables need their own downloadable Excel template + drag-and-drop import, matching the exact pattern already shipped for sites/clients/suppliers/expenses/income (`src/components/ExcelUpload.jsx`'s `type`-dispatched `parse*Sheet()` functions, `public/templates/TEMPLATE_*.xlsx` files, a "📥 Import Excel" toggle + "📄 Template" download link on the owning page). Two separate templates, not one combined file — this is intentional, matching every existing import pair in this app (never one template covering two unrelated tables).
+
+### `TEMPLATE_รายการสินค้าคงคลัง.xlsx` — for `inventory_items`
+
+| Column | Maps to | Notes |
+|---|---|---|
+| ชื่อสินค้าคงคลัง | `name` | required |
+| หน่วยหลัก | `base_unit` | required, free text (e.g. "กก.", "ตรม.", "ชิ้น") |
+| รูปแบบการแปลงหน่วย | `unit_conversion_mode` | free text: "ปกติ" / "อลูมิเนียม (ตามหน้าตัด)" / "กระจก (กว้าง×ยาว)" — normalized to `plain`/`aluminum_profile`/`glass_dimension` the same way `normalizeSiteStatus()` already normalizes free-text status cells, defaulting to `plain` on no/unrecognized match |
+| ขนาดแผ่นอ้างอิง (ตรม.) | `reference_area_sqm` | optional numeric; only meaningful when the row's mode is the glass one, ignored otherwise |
+
+### `TEMPLATE_หน้าตัดอลูมิเนียม.xlsx` — for `aluminum_profiles`
+
+| Column | Maps to | Notes |
+|---|---|---|
+| ชื่อหน้าตัด | `name` | required |
+| น้ำหนัก (กก./เมตร) | `linear_weight_kg_per_m` | required numeric |
+| ความยาวมาตรฐาน (เมตร) | `default_length_m` | optional numeric, defaults to `6.4` if blank |
+
+Both follow the existing `ExcelUpload` component's shape exactly: header-row auto-detection by searching for a known Thai header string, a hint row skipped right after it, a preview modal (list of parsed rows) before any DB write, and a plain `supabase.from(table).insert(rows)` on confirm — no new import-time cross-referencing is needed for either (unlike the expense/income templates, which resolve site/category/supplier names into foreign keys, these two tables have no foreign keys to resolve at import time).
+
 ## Edge cases
 
 - **A plain item (e.g. a door handle) is unaffected end-to-end.** `unit_conversion_mode` defaults to `'plain'`; no new fields appear anywhere for it.
