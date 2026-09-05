@@ -6,8 +6,8 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useInventoryItemUnitFactors, useStockBalances } from '../hooks/useSupabase.js'
-import { computeWeightedAverageCost, convertToBaseUnit } from '../lib/inventoryCost.js'
+import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles } from '../hooks/useSupabase.js'
+import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm } from '../lib/inventoryCost.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { useDraftForm } from '../hooks/useDraftForm.js'
@@ -34,7 +34,7 @@ const supplierOpts = (suppliers) => (suppliers || []).map(s => ({
 const PO_STATUSES = ['ordered', 'received', 'cancelled']
 const PO_STATUS_LABELS = { ordered: '📦 สั่งแล้ว', received: '✅ รับของแล้ว', cancelled: '✕ ยกเลิก' }
 
-const EMPTY_ITEM = { description: '', quantity: '1', unit: '', unit_price: '', inventory_item_id: '' }
+const EMPTY_ITEM = { description: '', quantity: '1', unit: '', unit_price: '', inventory_item_id: '', aluminum_profile_id: '', rod_length_m: '', glass_width_m: '', glass_height_m: '' }
 const EMPTY_FORM = { site_id: '', supplier_id: '', category_id: '', date: '', has_vat: true, price_includes_vat: false, notes: '', items: [{ ...EMPTY_ITEM }] }
 
 function lineTotal(item) {
@@ -67,13 +67,22 @@ function calcPoTotals(items, hasVat, priceIncludesVat) {
 const inventoryItemOpts = (items) => (items || []).map(it => ({
   value: it.id, label: `${it.name} (${it.base_unit})`, keywords: it.name,
 }))
+const profileOpts = (profiles) => (profiles || []).map(p => ({
+  value: p.id, label: `${p.name} (${p.linear_weight_kg_per_m} กก./ม.)`, keywords: p.name,
+}))
 
-function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated }) {
+function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, aluminumProfiles }) {
   const { data: units, refetch: refetchUnits } = useUnits()
   const set = (i, k, v) => onChange(items.map((it, idx) => idx === i ? { ...it, [k]: v } : it))
   const add = () => onChange([...items, { ...EMPTY_ITEM }])
   const remove = (i) => onChange(items.length > 1 ? items.filter((_, idx) => idx !== i) : items)
   const grandTotal = items.reduce((sum, it) => sum + lineTotal(it), 0)
+  const selectProfile = (i, profileId) => {
+    const profile = (aluminumProfiles || []).find(p => p.id === profileId)
+    onChange(items.map((it, idx) => idx === i
+      ? { ...it, aluminum_profile_id: profileId, rod_length_m: profile ? String(profile.default_length_m) : it.rod_length_m }
+      : it))
+  }
 
   return (
     <div>
@@ -104,6 +113,38 @@ function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated }
                 />
               </div>
             </div>
+            {(() => {
+              const linkedItem = (inventoryItems || []).find(i => i.id === it.inventory_item_id)
+              const mode = linkedItem?.unit_conversion_mode
+              if (mode === 'aluminum_profile') {
+                return (
+                  <div style={{ marginLeft: 4, display: 'flex', gap: 6, alignItems: 'center', fontSize: 12 }}>
+                    <span style={{ color: 'var(--text3)', flexShrink: 0 }}>🔧 หน้าตัด:</span>
+                    <div style={{ width: 200 }}>
+                      <SearchableSelect required value={it.aluminum_profile_id} onChange={v => selectProfile(i, v)}
+                        placeholder="— เลือกหน้าตัด —" options={profileOpts(aluminumProfiles)} />
+                    </div>
+                    <span style={{ color: 'var(--text3)' }}>ยาว (ม.)</span>
+                    <input className="input input-sm" style={{ width: 80 }} type="number" min="0" step="0.01" required
+                      value={it.rod_length_m} onChange={e => set(i, 'rod_length_m', e.target.value)} />
+                  </div>
+                )
+              }
+              if (mode === 'glass_dimension') {
+                return (
+                  <div style={{ marginLeft: 4, display: 'flex', gap: 6, alignItems: 'center', fontSize: 12 }}>
+                    <span style={{ color: 'var(--text3)', flexShrink: 0 }}>📐 ขนาด:</span>
+                    <span style={{ color: 'var(--text3)' }}>กว้าง (ม.)</span>
+                    <input className="input input-sm" style={{ width: 80 }} type="number" min="0" step="0.001" required
+                      value={it.glass_width_m} onChange={e => set(i, 'glass_width_m', e.target.value)} />
+                    <span style={{ color: 'var(--text3)' }}>ยาว (ม.)</span>
+                    <input className="input input-sm" style={{ width: 80 }} type="number" min="0" step="0.001" required
+                      value={it.glass_height_m} onChange={e => set(i, 'glass_height_m', e.target.value)} />
+                  </div>
+                )
+              }
+              return null
+            })()}
           </div>
         ))}
       </div>
@@ -115,7 +156,7 @@ function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated }
   )
 }
 
-function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories, onSave, onCancel, loading, onSiteCreated, onSupplierCreated, inventoryItems, onInventoryItemCreated }) {
+function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories, onSave, onCancel, loading, onSiteCreated, onSupplierCreated, inventoryItems, onInventoryItemCreated, aluminumProfiles }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('purchase-order-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -151,7 +192,7 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
               table="suppliers" namePlaceholder="ชื่อ Supplier ใหม่" onCreated={onSupplierCreated} />
           </div>
         </div>
-        <ItemsEditor items={form.items} onChange={items => set('items', items)} inventoryItems={inventoryItems} onInventoryItemCreated={onInventoryItemCreated} />
+        <ItemsEditor items={form.items} onChange={items => set('items', items)} inventoryItems={inventoryItems} onInventoryItemCreated={onInventoryItemCreated} aluminumProfiles={aluminumProfiles} />
         <div>
           <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
@@ -375,6 +416,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const { data: inventoryItems, refetch: refetchInventoryItems } = useInventoryItems()
   const { data: unitFactors } = useInventoryItemUnitFactors()
   const { data: stockBalances } = useStockBalances()
+  const { data: aluminumProfiles } = useAluminumProfiles()
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
@@ -422,6 +464,10 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
           quantity: parseFloat(it.quantity) || 0, unit: it.unit || null,
           unit_price: parseFloat(it.unit_price) || 0, line_total: lineTotal(it), sort_order: i,
           inventory_item_id: it.inventory_item_id || null,
+          aluminum_profile_id: it.aluminum_profile_id || null,
+          rod_length_m: it.rod_length_m ? parseFloat(it.rod_length_m) : null,
+          glass_width_m: it.glass_width_m ? parseFloat(it.glass_width_m) : null,
+          glass_height_m: it.glass_height_m ? parseFloat(it.glass_height_m) : null,
         }))
       if (itemsPayload.length) {
         const { error } = await supabase.from('purchase_order_items').insert(itemsPayload)
@@ -449,17 +495,30 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       .filter(it => it.inventory_item_id)
       .map(it => {
         const invItem = (inventoryItems || []).find(i => i.id === it.inventory_item_id)
-        const factor = (unitFactors || []).find(f => f.inventory_item_id === it.inventory_item_id && f.unit_name === it.unit)
-        const baseQty = factor ? convertToBaseUnit(it.quantity, factor.factor_to_base) : it.quantity
-        let unitCostPerBase = baseQty > 0 ? (it.quantity * it.unit_price) / baseQty : it.unit_price
+        let baseQty, unitCostPerBase
+
+        if (invItem?.unit_conversion_mode === 'aluminum_profile' && it.aluminum_profile_id) {
+          const profile = (aluminumProfiles || []).find(p => p.id === it.aluminum_profile_id)
+          const length = it.rod_length_m || profile?.default_length_m || 0
+          baseQty = profile ? computeAluminumWeightKg(it.quantity, length, profile.linear_weight_kg_per_m) : it.quantity
+          unitCostPerBase = baseQty > 0 ? (it.quantity * it.unit_price) / baseQty : it.unit_price
+        } else if (invItem?.unit_conversion_mode === 'glass_dimension' && it.glass_width_m && it.glass_height_m) {
+          baseQty = computeGlassAreaSqm(it.quantity, it.glass_width_m, it.glass_height_m)
+          unitCostPerBase = baseQty > 0 ? (it.quantity * it.unit_price) / baseQty : it.unit_price
+        } else {
+          const factor = (unitFactors || []).find(f => f.inventory_item_id === it.inventory_item_id && f.unit_name === it.unit)
+          baseQty = factor ? convertToBaseUnit(it.quantity, factor.factor_to_base) : it.quantity
+          unitCostPerBase = baseQty > 0 ? (it.quantity * it.unit_price) / baseQty : it.unit_price
+        }
+
         // The expense is posted ex-VAT (calcPoTotals backs VAT out of a
         // VAT-inclusive price via subtotal = total / 1.07). Stock must be
-        // capitalized at the same ex-VAT cost, or every VAT-inclusive PO
-        // overvalues inventory by ~7% and folds recoverable input VAT into
-        // COGS (final-review Fix 3).
+        // capitalized at the same ex-VAT cost, regardless of which branch
+        // above computed it (final-review Fix 3 from the Phase 1 plan).
         if (po.has_vat && po.price_includes_vat) {
           unitCostPerBase = unitCostPerBase / (1 + VAT_RATE)
         }
+
         return { inventoryItemId: it.inventory_item_id, name: invItem?.name || it.description, baseUnit: invItem?.base_unit || it.unit, baseQty, unitCostPerBase }
       })
   }
@@ -531,7 +590,14 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       site_id: editRow.site_id, supplier_id: editRow.supplier_id, category_id: editRow.category_id,
       date: editRow.date, has_vat: editRow.has_vat, price_includes_vat: editRow.price_includes_vat || false, notes: editRow.notes || '',
       items: (editRow.purchase_order_items?.length ? editRow.purchase_order_items : [{ ...EMPTY_ITEM }])
-        .map(it => ({ description: it.description, quantity: String(it.quantity), unit: it.unit || '', unit_price: String(it.unit_price), inventory_item_id: it.inventory_item_id || '' })),
+        .map(it => ({
+          description: it.description, quantity: String(it.quantity), unit: it.unit || '', unit_price: String(it.unit_price),
+          inventory_item_id: it.inventory_item_id || '',
+          aluminum_profile_id: it.aluminum_profile_id || '',
+          rod_length_m: it.rod_length_m != null ? String(it.rod_length_m) : '',
+          glass_width_m: it.glass_width_m != null ? String(it.glass_width_m) : '',
+          glass_height_m: it.glass_height_m != null ? String(it.glass_height_m) : '',
+        })),
     }
   }, [editRow])
 
@@ -615,7 +681,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
             sites={sites} categories={categories} suppliers={suppliers || []}
             onSave={handleSave} onCancel={() => { setShowAdd(false); setEditRow(null) }} loading={saving}
             onSiteCreated={refetchSites} onSupplierCreated={refetchSuppliers}
-            inventoryItems={inventoryItems} onInventoryItemCreated={refetchInventoryItems}
+            inventoryItems={inventoryItems} onInventoryItemCreated={refetchInventoryItems} aluminumProfiles={aluminumProfiles}
           />
           {editRow && tenant?.id && (
             <div className="modal-body" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
