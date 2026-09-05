@@ -1124,7 +1124,7 @@ export function useAllInventoryItems() {
   return useQuery(async () => {
     const { data, error } = await supabase
       .from('inventory_items')
-      .select('*')
+      .select('*, inventory_categories(name)')
       .order('name')
     if (error) throw error
     return data
@@ -1158,6 +1158,19 @@ export function useAllAluminumProfiles() {
   })
 }
 
+/** Every inventory category for the tenant, for the price-list filter
+ *  and the item form's category picker. */
+export function useInventoryCategories() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('inventory_categories')
+      .select('*')
+      .order('sort_order')
+    if (error) throw error
+    return data
+  })
+}
+
 /** All fixed unit-conversion factors across every inventory item --
  *  a small table, fetched whole and filtered client-side by
  *  (inventory_item_id, unit_name) rather than one query per item. */
@@ -1177,7 +1190,7 @@ export function useStockBalances() {
   return useQuery(async () => {
     const { data, error } = await supabase
       .from('inventory_stock_balances')
-      .select('*, inventory_items(name, base_unit, unit_conversion_mode, reference_area_sqm), sites(name, site_number)')
+      .select('*, inventory_items(name, base_unit, unit_conversion_mode, reference_area_sqm, category_id, inventory_categories(name)), sites(name, site_number)')
       .order('inventory_item_id')
     if (error) throw error
     return data
