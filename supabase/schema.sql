@@ -655,16 +655,20 @@ CREATE TABLE purchase_orders (
 );
 
 CREATE TABLE purchase_order_items (
-  id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  po_id           UUID NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
-  description     TEXT NOT NULL,
-  quantity        NUMERIC NOT NULL DEFAULT 1,
-  unit            TEXT,
-  unit_price      NUMERIC NOT NULL DEFAULT 0,
-  line_total      NUMERIC NOT NULL DEFAULT 0,
-  sort_order      INT NOT NULL DEFAULT 0,
-  tenant_id       UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
-  inventory_item_id UUID REFERENCES inventory_items(id) ON DELETE SET NULL
+  id                     UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  po_id                  UUID NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+  description            TEXT NOT NULL,
+  quantity               NUMERIC NOT NULL DEFAULT 1,
+  unit                   TEXT,
+  unit_price             NUMERIC NOT NULL DEFAULT 0,
+  line_total             NUMERIC NOT NULL DEFAULT 0,
+  sort_order             INT NOT NULL DEFAULT 0,
+  tenant_id              UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  inventory_item_id      UUID REFERENCES inventory_items(id) ON DELETE SET NULL,
+  aluminum_profile_id    UUID REFERENCES aluminum_profiles(id) ON DELETE SET NULL,
+  rod_length_m           NUMERIC,
+  glass_width_m          NUMERIC,
+  glass_height_m         NUMERIC
 );
 
 CREATE INDEX idx_purchase_orders_site_id ON purchase_orders(site_id);
@@ -726,12 +730,14 @@ CREATE POLICY admin_full_access ON purchase_order_items FOR ALL TO authenticated
 -- Phase 1 buying-side module gates on 'purchase_orders', not a new module key (see the Phase 1 plan's Ruling A).
 
 CREATE TABLE inventory_items (
-  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  tenant_id   UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
-  name        TEXT NOT NULL,
-  base_unit   TEXT NOT NULL,
-  active      BOOLEAN NOT NULL DEFAULT true,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  id                    UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id             UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  name                  TEXT NOT NULL,
+  base_unit             TEXT NOT NULL,
+  active                BOOLEAN NOT NULL DEFAULT true,
+  unit_conversion_mode  TEXT NOT NULL DEFAULT 'plain' CHECK (unit_conversion_mode IN ('plain', 'aluminum_profile', 'glass_dimension')),
+  reference_area_sqm    NUMERIC,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_inventory_items_tenant_id ON inventory_items(tenant_id);
@@ -757,6 +763,29 @@ CREATE INDEX idx_inventory_item_unit_factors_item_id ON inventory_item_unit_fact
 ALTER TABLE inventory_item_unit_factors ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY admin_full_access ON inventory_item_unit_factors FOR ALL TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'))
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
+
+-- ================================================================
+-- ALUMINUM_PROFILES (for dual-unit conversion of aluminum materials)
+-- See docs/superpowers/plans/2026-09-05-inventory-dual-unit-conversion-plan.md
+-- ================================================================
+
+CREATE TABLE aluminum_profiles (
+  id                     UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id              UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  name                   TEXT NOT NULL,
+  linear_weight_kg_per_m NUMERIC NOT NULL,
+  default_length_m       NUMERIC NOT NULL DEFAULT 6.4,
+  active                 BOOLEAN NOT NULL DEFAULT true,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_aluminum_profiles_tenant_id ON aluminum_profiles(tenant_id);
+
+ALTER TABLE aluminum_profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_full_access ON aluminum_profiles FOR ALL TO authenticated
   USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'))
   WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
 
