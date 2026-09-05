@@ -280,12 +280,13 @@ async function parseInventoryItemSheet(ws) {
   const dataRows = rows.slice(headerRowIdx + 2)
   const records = []
   for (const row of dataRows) {
-    if (!row[0]) continue
+    if (!row[0] || !row[1]) continue
+    const mode = normalizeConversionMode(row[2])
     records.push({
       name: String(row[0]),
       base_unit: row[1] ? String(row[1]) : '',
-      unit_conversion_mode: normalizeConversionMode(row[2]),
-      reference_area_sqm: row[3] != null ? parseFloat(row[3]) : null,
+      unit_conversion_mode: mode,
+      reference_area_sqm: mode === 'glass_dimension' && row[3] != null ? parseFloat(row[3]) : null,
     })
   }
   return records
@@ -301,10 +302,11 @@ async function parseAluminumProfileSheet(ws) {
     if (!row[0]) continue
     const linearWeight = parseFloat(row[1])
     if (!linearWeight) continue
+    const rawLength = row[2] != null ? parseFloat(row[2]) : NaN
     records.push({
       name: String(row[0]),
       linear_weight_kg_per_m: linearWeight,
-      default_length_m: row[2] != null ? parseFloat(row[2]) : 6.4,
+      default_length_m: Number.isFinite(rawLength) && rawLength > 0 ? rawLength : 6.4,
     })
   }
   return records

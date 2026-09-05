@@ -6,7 +6,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles } from '../hooks/useSupabase.js'
+import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles } from '../hooks/useSupabase.js'
 import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm } from '../lib/inventoryCost.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -263,7 +263,15 @@ function PODetailModal({ po, tenantId, onClose }) {
           <div style={{ display: 'grid', gap: 6 }}>
             {items.map(it => (
               <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
-                <span>{it.description} ({it.quantity} {it.unit || ''})</span>
+                <span>
+                  {it.description} ({it.quantity} {it.unit || ''})
+                  {it.aluminum_profiles?.name && (
+                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>หน้าตัด {it.aluminum_profiles.name} ยาว {it.rod_length_m} ม.</div>
+                  )}
+                  {it.glass_width_m && it.glass_height_m && (
+                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>ขนาด {it.glass_width_m}×{it.glass_height_m} ม.</div>
+                  )}
+                </span>
                 <span className="font-mono">{fmt(it.line_total)}</span>
               </div>
             ))}
@@ -339,7 +347,15 @@ function PODocumentModal({ po, tenant, onClose }) {
             <tbody>
               {items.map(it => (
                 <tr key={it.id}>
-                  <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.description}</td>
+                  <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>
+                    {it.description}
+                    {it.aluminum_profiles?.name && (
+                      <div style={{ fontSize: 10, color: '#6a6f85' }}>หน้าตัด {it.aluminum_profiles.name} ยาว {it.rod_length_m} ม.</div>
+                    )}
+                    {it.glass_width_m && it.glass_height_m && (
+                      <div style={{ fontSize: 10, color: '#6a6f85' }}>ขนาด {it.glass_width_m}×{it.glass_height_m} ม.</div>
+                    )}
+                  </td>
                   <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.quantity} {it.unit || ''}</td>
                   <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
                   <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.line_total)}</td>
@@ -414,9 +430,11 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const { data: categories } = useCategories()
   const { data: suppliers, refetch: refetchSuppliers }  = useSuppliers()
   const { data: inventoryItems, refetch: refetchInventoryItems } = useInventoryItems()
+  const { data: allInventoryItems } = useAllInventoryItems()
   const { data: unitFactors } = useInventoryItemUnitFactors()
   const { data: stockBalances } = useStockBalances()
   const { data: aluminumProfiles } = useAluminumProfiles()
+  const { data: allAluminumProfiles } = useAllAluminumProfiles()
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
@@ -489,27 +507,40 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     else alert('Error: ' + error.message)
   }
 
+  // Uses allInventoryItems/allAluminumProfiles (NOT the active-only
+  // inventoryItems/aluminumProfiles used by ItemsEditor's pickers) --
+  // an item or profile deactivated after a PO was placed but before it's
+  // received must still compute correctly here (final-review Fix 1).
   const receiveStockPlan = (po) => {
     if (!po) return []
     return (po.purchase_order_items || [])
       .filter(it => it.inventory_item_id)
       .map(it => {
-        const invItem = (inventoryItems || []).find(i => i.id === it.inventory_item_id)
-        let baseQty, unitCostPerBase
+        const invItem = (allInventoryItems || []).find(i => i.id === it.inventory_item_id)
+        let baseQty, unconverted = false
 
-        if (invItem?.unit_conversion_mode === 'aluminum_profile' && it.aluminum_profile_id) {
-          const profile = (aluminumProfiles || []).find(p => p.id === it.aluminum_profile_id)
-          const length = it.rod_length_m || profile?.default_length_m || 0
-          baseQty = profile ? computeAluminumWeightKg(it.quantity, length, profile.linear_weight_kg_per_m) : it.quantity
-          unitCostPerBase = baseQty > 0 ? (it.quantity * it.unit_price) / baseQty : it.unit_price
-        } else if (invItem?.unit_conversion_mode === 'glass_dimension' && it.glass_width_m && it.glass_height_m) {
-          baseQty = computeGlassAreaSqm(it.quantity, it.glass_width_m, it.glass_height_m)
-          unitCostPerBase = baseQty > 0 ? (it.quantity * it.unit_price) / baseQty : it.unit_price
+        if (invItem?.unit_conversion_mode === 'aluminum_profile') {
+          const profile = it.aluminum_profile_id ? (allAluminumProfiles || []).find(p => p.id === it.aluminum_profile_id) : null
+          if (profile) {
+            const length = it.rod_length_m || profile.default_length_m
+            baseQty = computeAluminumWeightKg(it.quantity, length, profile.linear_weight_kg_per_m)
+          } else {
+            unconverted = true
+            baseQty = it.quantity
+          }
+        } else if (invItem?.unit_conversion_mode === 'glass_dimension') {
+          if (it.glass_width_m && it.glass_height_m) {
+            baseQty = computeGlassAreaSqm(it.quantity, it.glass_width_m, it.glass_height_m)
+          } else {
+            unconverted = true
+            baseQty = it.quantity
+          }
         } else {
           const factor = (unitFactors || []).find(f => f.inventory_item_id === it.inventory_item_id && f.unit_name === it.unit)
           baseQty = factor ? convertToBaseUnit(it.quantity, factor.factor_to_base) : it.quantity
-          unitCostPerBase = baseQty > 0 ? (it.quantity * it.unit_price) / baseQty : it.unit_price
         }
+
+        let unitCostPerBase = baseQty > 0 ? (it.quantity * it.unit_price) / baseQty : it.unit_price
 
         // The expense is posted ex-VAT (calcPoTotals backs VAT out of a
         // VAT-inclusive price via subtotal = total / 1.07). Stock must be
@@ -519,7 +550,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
           unitCostPerBase = unitCostPerBase / (1 + VAT_RATE)
         }
 
-        return { inventoryItemId: it.inventory_item_id, name: invItem?.name || it.description, baseUnit: invItem?.base_unit || it.unit, baseQty, unitCostPerBase }
+        return { inventoryItemId: it.inventory_item_id, name: invItem?.name || it.description, baseUnit: invItem?.base_unit || it.unit, baseQty, unitCostPerBase, unconverted }
       })
   }
 
@@ -714,6 +745,13 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                 <div style={{ marginTop: 10, fontSize: 12, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
                   <strong>จะบันทึกเข้าสต็อก:</strong>
                   {receiveStockPlan(receiveRow).map((plan, i) => {
+                    if (plan.unconverted) {
+                      return (
+                        <div key={i} style={{ marginTop: 4, color: 'var(--red)' }}>
+                          ⚠️ {plan.name}: ไม่พบข้อมูลหน้าตัด/ขนาดที่ต้องใช้แปลงหน่วย — จะบันทึกเป็น {fmt(plan.baseQty)} {plan.baseUnit} (อาจไม่ถูกต้อง) กรุณาตรวจสอบก่อนยืนยัน
+                        </div>
+                      )
+                    }
                     const bal = (stockBalances || []).find(b => b.inventory_item_id === plan.inventoryItemId && b.site_id === receiveRow.site_id)
                     const oldQty = bal?.quantity_on_hand || 0
                     const oldWac = bal?.weighted_average_cost || 0

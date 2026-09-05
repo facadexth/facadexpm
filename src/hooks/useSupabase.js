@@ -203,7 +203,7 @@ export function usePurchaseOrders(filters = {}) {
     const buildQuery = () => {
       let q = supabase
         .from('purchase_orders')
-        .select('*, sites(name, site_number), suppliers(name, supplier_number, credit_days), expense_categories(name), purchase_order_items(id, description, quantity, unit, unit_price, line_total, inventory_item_id, aluminum_profile_id, rod_length_m, glass_width_m, glass_height_m), purchase_order_attachments(id)')
+        .select('*, sites(name, site_number), suppliers(name, supplier_number, credit_days), expense_categories(name), purchase_order_items(id, description, quantity, unit, unit_price, line_total, inventory_item_id, aluminum_profile_id, rod_length_m, glass_width_m, glass_height_m, aluminum_profiles(name)), purchase_order_attachments(id)')
         .order('date', { ascending: false })
         .order('id', { ascending: false })
 

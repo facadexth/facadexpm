@@ -32,7 +32,7 @@ const MOVEMENT_TYPE_LABELS = {
 
 function ItemForm({ initial = EMPTY_ITEM_FORM, onSave, onCancel, loading }) {
   const isAdd = !initial?.id
-  const [form, setForm, clearDraft] = useDraftForm('inventory-item-form', { ...EMPTY_ITEM_FORM, ...initial }, isAdd)
+  const [form, setForm, clearDraft] = useDraftForm('inventory-item-form', { ...EMPTY_ITEM_FORM, ...initial, reference_area_sqm: initial?.reference_area_sqm ?? '' }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   return (
@@ -202,7 +202,7 @@ export default function Inventory() {
       const payload = {
         name: form.name, base_unit: form.base_unit, active: form.active !== false,
         unit_conversion_mode: form.unit_conversion_mode || 'plain',
-        reference_area_sqm: form.reference_area_sqm ? parseFloat(form.reference_area_sqm) : null,
+        reference_area_sqm: form.unit_conversion_mode === 'glass_dimension' && form.reference_area_sqm ? parseFloat(form.reference_area_sqm) : null,
       }
       if (editItem) {
         const { error } = await supabase.from('inventory_items').update(payload).eq('id', editItem.id)
@@ -314,7 +314,9 @@ export default function Inventory() {
                     <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(b.quantity_on_hand * b.weighted_average_cost)}</td>
                     <td style={{ fontSize: 12, color: 'var(--text3)' }}>
                       {(() => {
-                        const est = estimateSheetCount(b.quantity_on_hand, b.inventory_items?.reference_area_sqm)
+                        const est = b.inventory_items?.unit_conversion_mode === 'glass_dimension'
+                          ? estimateSheetCount(b.quantity_on_hand, b.inventory_items?.reference_area_sqm)
+                          : null
                         return est != null ? `≈ ${fmt(est)} แผ่น (อ้างอิง ${fmt(b.inventory_items.reference_area_sqm)} ตรม./แผ่น)` : '—'
                       })()}
                     </td>
