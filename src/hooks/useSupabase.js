@@ -247,19 +247,17 @@ export function useQuotations(filters = {}) {
  *  similar lookups rather than a raw SQL view or RPC just for a list. */
 export function useUnprocessedInvoices() {
   return useQuery(async () => {
-    const { data: invoices, error: invErr } = await supabase
+    const invoices = await fetchAllRows(() => supabase
       .from('invoices')
       .select('*, sites(name, site_number)')
       .in('status', ['unpaid', 'paid'])
       .not('site_id', 'is', null)
-      .order('date', { ascending: false })
-    if (invErr) throw invErr
+      .order('date', { ascending: false }))
 
-    const { data: processedRefs, error: refErr } = await supabase
+    const processedRefs = await fetchAllRows(() => supabase
       .from('stock_movements')
       .select('reference_id')
-      .eq('reference_type', 'invoice')
-    if (refErr) throw refErr
+      .eq('reference_type', 'invoice'))
 
     const processedIds = new Set((processedRefs || []).map(r => r.reference_id))
     return (invoices || []).filter(inv => !processedIds.has(inv.id))
