@@ -8,10 +8,11 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useAllAluminumProfiles, useInventoryCategories, useSites, usePurchaseOrders } from '../hooks/useSupabase.js'
+import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useAllAluminumProfiles, useInventoryCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
+import { computeInvoiceDeductionPlan } from '../lib/inventoryCost.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -240,6 +241,158 @@ function BalanceRow({ item, balance, isFirstForItem, centralSite, canEdit, savin
   )
 }
 
+function CogsSettingsPanel({ settings, categories, onSaved }) {
+  const [materialPct, setMaterialPct] = useState(String(settings?.material_pct ?? 70))
+  const [splits, setSplits] = useState(() => {
+    const initial = {}
+    for (const c of categories || []) initial[c.id] = String(settings?.category_splits?.[c.id] ?? 0)
+    return initial
+  })
+  const [saving, setSaving] = useState(false)
+
+  const sum = Object.values(splits).reduce((s, v) => s + (parseFloat(v) || 0), 0)
+  const validSum = Math.abs(sum - 100) < 0.01
+
+  const save = async () => {
+    if (!validSum) { alert('ผลรวม % ต้องเท่ากับ 100'); return }
+    const pct = parseFloat(materialPct)
+    if (isNaN(pct) || pct < 0 || pct > 100) { alert('% ต้นทุนวัสดุต้องอยู่ระหว่าง 0-100'); return }
+    setSaving(true)
+    try {
+      const numericSplits = Object.fromEntries(Object.entries(splits).map(([k, v]) => [k, parseFloat(v) || 0]))
+      await saveInventoryCogsSettings(pct, numericSplits)
+      onSaved()
+    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + e.message) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div className="card" style={{ padding: 16, marginBottom: 14, display: 'grid', gap: 10 }}>
+      <div style={{ fontWeight: 700 }}>ตั้งค่าสัดส่วนการตัดสต็อก (ค่าเริ่มต้น แก้ไขได้ทีละใบแจ้งหนี้)</div>
+      <div>
+        <label className="label">% ต้นทุนวัสดุของยอดใบแจ้งหนี้ (ก่อน VAT)</label>
+        <input className="input input-sm" style={{ width: 100 }} type="number" min="0" max="100" step="0.1" value={materialPct} onChange={e => setMaterialPct(e.target.value)} />
+      </div>
+      <div>
+        <label className="label">สัดส่วนแยกตามหมวดหมู่ (ต้องรวมเป็น 100%)</label>
+        <div style={{ display: 'grid', gap: 6 }}>
+          {(categories || []).map(c => (
+            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 160, fontSize: 13 }}>{c.name}</span>
+              <input className="input input-sm" style={{ width: 90 }} type="number" min="0" max="100" step="0.1"
+                value={splits[c.id] ?? '0'} onChange={e => setSplits(s => ({ ...s, [c.id]: e.target.value }))} />
+              <span style={{ fontSize: 12, color: 'var(--text3)' }}>%</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: 12, marginTop: 6, color: validSum ? 'var(--green)' : 'var(--red)' }}>
+          รวม {sum.toFixed(1)}% {validSum ? '✓' : '— ต้องเท่ากับ 100%'}
+        </div>
+      </div>
+      <button className="btn btn-sm btn-primary" style={{ justifySelf: 'start' }} disabled={saving || !validSum} onClick={save}>{saving ? '⏳' : '💾 บันทึกค่าเริ่มต้น'}</button>
+    </div>
+  )
+}
+
+function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite, defaultSettings, expanded, onToggle, onConfirmed }) {
+  const [materialPct, setMaterialPct] = useState(String(defaultSettings?.material_pct ?? 70))
+  const [splits, setSplits] = useState(() => {
+    const initial = {}
+    for (const c of categories || []) initial[c.id] = String(defaultSettings?.category_splits?.[c.id] ?? 0)
+    return initial
+  })
+  const [confirming, setConfirming] = useState(false)
+
+  const numericSplits = Object.fromEntries(Object.entries(splits).map(([k, v]) => [k, parseFloat(v) || 0]))
+  const plan = expanded ? computeInvoiceDeductionPlan({
+    invoiceSubtotal: invoice.subtotal, materialPct: parseFloat(materialPct) || 0, categorySplits: numericSplits,
+    siteId: invoice.site_id, centralSiteId: centralSite?.id || null, items: items || [], balances: balances || [],
+  }) : null
+
+  const sum = Object.values(splits).reduce((s, v) => s + (parseFloat(v) || 0), 0)
+  const validSum = Math.abs(sum - 100) < 0.01
+
+  const confirm = async () => {
+    if (!validSum) { alert('ผลรวม % ต้องเท่ากับ 100'); return }
+    if (!plan || !plan.steps.length) { alert('ไม่มีรายการให้ตัดสต็อก'); return }
+    setConfirming(true)
+    try {
+      const { data: existing, error: checkErr } = await supabase
+        .from('stock_movements').select('id').eq('reference_type', 'invoice').eq('reference_id', invoice.id).limit(1)
+      if (checkErr) throw checkErr
+      if (existing?.length) { alert('ใบแจ้งหนี้นี้ถูกตัดสต็อกไปแล้ว — กำลังรีเฟรชรายการ'); onConfirmed(); return }
+
+      for (const step of plan.steps) {
+        const { error } = await supabase.rpc('record_stock_movement', {
+          p_inventory_item_id: step.inventoryItemId, p_site_id: step.siteId, p_movement_type: step.type,
+          p_quantity: step.quantity, p_unit_cost: step.unitCost,
+          p_reference_type: 'invoice', p_reference_id: invoice.id, p_notes: null,
+        })
+        if (error) throw error
+      }
+      if (plan.totalShortfall > 0.01) {
+        alert(`ตัดสต็อกสำเร็จบางส่วน — ขาดอีก ${fmt(plan.totalShortfall)} บาท (สต็อกไม่พอทั้งที่ไซท์งานและส่วนกลาง)`)
+      }
+      onConfirmed()
+    } catch (e) { alert('ตัดสต็อกไม่สำเร็จ: ' + e.message) }
+    finally { setConfirming(false) }
+  }
+
+  return (
+    <div className="card" style={{ padding: 14, marginBottom: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={onToggle}>
+        <div>
+          <strong>{invoice.invoice_number}</strong>
+          <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--text3)' }}>{invoice.sites?.name} · {fmt(invoice.subtotal)} บาท (ก่อน VAT)</span>
+        </div>
+        <span>{expanded ? '▲' : '▼'}</span>
+      </div>
+      {expanded && (
+        <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+          <div>
+            <label className="label">% ต้นทุนวัสดุ (สำหรับใบนี้)</label>
+            <input className="input input-sm" style={{ width: 100 }} type="number" min="0" max="100" step="0.1" value={materialPct} onChange={e => setMaterialPct(e.target.value)} />
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {(categories || []).map(c => (
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 160, fontSize: 13 }}>{c.name}</span>
+                <input className="input input-sm" style={{ width: 90 }} type="number" min="0" max="100" step="0.1"
+                  value={splits[c.id] ?? '0'} onChange={e => setSplits(s => ({ ...s, [c.id]: e.target.value }))} />
+                <span style={{ fontSize: 12, color: 'var(--text3)' }}>%</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 12, color: validSum ? 'var(--green)' : 'var(--red)' }}>รวม {sum.toFixed(1)}% {validSum ? '✓' : '— ต้องเท่ากับ 100%'}</div>
+          {plan && (
+            <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: 12, fontSize: 13 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>ตัวอย่างการตัดสต็อก</div>
+              {plan.categoryResults.map(cr => {
+                const cat = (categories || []).find(c => c.id === cr.categoryId)
+                return (
+                  <div key={cr.categoryId} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>{cat?.name || cr.categoryId}</span>
+                    <span className="font-mono">
+                      {fmt(cr.deductedValue)} / {fmt(cr.targetValue)} บาท
+                      {cr.shortfall > 0.01 && <span style={{ color: 'var(--red)' }}> (ขาด {fmt(cr.shortfall)})</span>}
+                    </span>
+                  </div>
+                )
+              })}
+              <div style={{ fontWeight: 700, marginTop: 6, borderTop: '1px solid var(--border)', paddingTop: 6 }}>
+                รวม {fmt(plan.totalDeductedValue)} บาท{plan.totalShortfall > 0.01 && <span style={{ color: 'var(--red)' }}> — ขาด {fmt(plan.totalShortfall)} บาท</span>}
+              </div>
+            </div>
+          )}
+          <button className="btn btn-sm btn-primary" style={{ justifySelf: 'start' }} disabled={confirming || !validSum} onClick={confirm}>
+            {confirming ? '⏳' : '✅ ยืนยันตัดสต็อก'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Inventory() {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'inventory')
@@ -259,6 +412,10 @@ export default function Inventory() {
   const { data: sites } = useSites()
   const { data: allMovements, refetch: refetchAllMovements } = useStockMovements({})
   const { data: allPos } = usePurchaseOrders({})
+  const { data: cogsSettings, refetch: refetchCogsSettings } = useInventoryCogsSettings()
+  const { data: unprocessedInvoices, refetch: refetchUnprocessedInvoices } = useUnprocessedInvoices()
+  const [expandedInvoiceId, setExpandedInvoiceId] = useState(null)
+  const [confirmingInvoiceId, setConfirmingInvoiceId] = useState(null)
   const [itemsCategoryFilter, setItemsCategoryFilter] = useState('')
   const [savingBalance, setSavingBalance] = useState(null) // the balance-row key currently saving, or null
 
@@ -395,8 +552,9 @@ export default function Inventory() {
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button className={`btn btn-sm ${view === 'items' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('items')}>📦 รายการสินค้าคงคลัง</button>
-        <button className={`btn btn-sm ${view === 'movements' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('movements')}>📜 ประวัติการเคลื่อนไหว</button>
+        <button className={`btn btn-sm ${view === 'invoice_deduction' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('invoice_deduction')}>🧾 ตัดสต็อกจากใบแจ้งหนี้</button>
         <button className={`btn btn-sm ${view === 'profiles' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('profiles')}>🔧 หน้าตัดอลูมิเนียม</button>
+        <button className={`btn btn-sm ${view === 'movements' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('movements')}>📜 ประวัติการเคลื่อนไหว</button>
       </div>
 
       {view === 'items' && (
@@ -441,31 +599,24 @@ export default function Inventory() {
         </>
       )}
 
-      {view === 'movements' && (
+      {view === 'invoice_deduction' && (
         <>
-          <div style={{ marginBottom: 14, maxWidth: 320 }}>
-            <SearchableSelect value={movementItemFilter} onChange={setMovementItemFilter} placeholder="ทุกรายการสินค้า" options={itemOpts} />
-          </div>
-          <div className="card">
-            <div className="table-wrap">
-              <table>
-                <thead><tr><th>วันที่</th><th>สินค้า</th><th>ไซท์งาน</th><th>ประเภท</th><th>จำนวน</th><th>ต้นทุน/หน่วย</th></tr></thead>
-                <tbody>
-                  {(movements || []).map(m => (
-                    <tr key={m.id}>
-                      <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{new Date(m.created_at).toLocaleString('th-TH')}</td>
-                      <td>{m.inventory_items?.name}</td>
-                      <td style={{ fontSize: 12 }}>{m.sites?.name}</td>
-                      <td style={{ fontSize: 12 }}>{MOVEMENT_TYPE_LABELS[m.movement_type] || m.movement_type}</td>
-                      <td className="font-mono">{fmt(m.quantity)} {m.inventory_items?.base_unit}</td>
-                      <td className="font-mono">{m.unit_cost != null ? fmt(m.unit_cost) : '—'}</td>
-                    </tr>
-                  ))}
-                  {!(movements || []).length && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีประวัติ</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <CogsSettingsPanel settings={cogsSettings} categories={categories} onSaved={refetchCogsSettings} />
+          {!centralSite && (
+            <div className="alert alert-error" style={{ marginBottom: 14 }}>ไม่พบไซท์งานชื่อ "ส่วนกลาง" — การตัดสต็อกจะดึงจากไซท์งานได้อย่างเดียว ไม่มีที่มาสำรอง</div>
+          )}
+          {(unprocessedInvoices || []).map(inv => (
+            <InvoiceDeductionRow
+              key={inv.id} invoice={inv} categories={categories} items={items} balances={balances}
+              centralSite={centralSite} defaultSettings={cogsSettings}
+              expanded={expandedInvoiceId === inv.id}
+              onToggle={() => setExpandedInvoiceId(id => id === inv.id ? null : inv.id)}
+              onConfirmed={() => { setExpandedInvoiceId(null); refetchUnprocessedInvoices(); refetchBalances(); refetchItems() }}
+            />
+          ))}
+          {!(unprocessedInvoices || []).length && (
+            <div className="card" style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>ไม่มีใบแจ้งหนี้ที่รอตัดสต็อก</div>
+          )}
         </>
       )}
 
@@ -501,6 +652,34 @@ export default function Inventory() {
                     </tr>
                   ))}
                   {!(profiles || []).length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีหน้าตัด</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {view === 'movements' && (
+        <>
+          <div style={{ marginBottom: 14, maxWidth: 320 }}>
+            <SearchableSelect value={movementItemFilter} onChange={setMovementItemFilter} placeholder="ทุกรายการสินค้า" options={itemOpts} />
+          </div>
+          <div className="card">
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>วันที่</th><th>สินค้า</th><th>ไซท์งาน</th><th>ประเภท</th><th>จำนวน</th><th>ต้นทุน/หน่วย</th></tr></thead>
+                <tbody>
+                  {(movements || []).map(m => (
+                    <tr key={m.id}>
+                      <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{new Date(m.created_at).toLocaleString('th-TH')}</td>
+                      <td>{m.inventory_items?.name}</td>
+                      <td style={{ fontSize: 12 }}>{m.sites?.name}</td>
+                      <td style={{ fontSize: 12 }}>{MOVEMENT_TYPE_LABELS[m.movement_type] || m.movement_type}</td>
+                      <td className="font-mono">{fmt(m.quantity)} {m.inventory_items?.base_unit}</td>
+                      <td className="font-mono">{m.unit_cost != null ? fmt(m.unit_cost) : '—'}</td>
+                    </tr>
+                  ))}
+                  {!(movements || []).length && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีประวัติ</td></tr>}
                 </tbody>
               </table>
             </div>
