@@ -6,7 +6,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles } from '../hooks/useSupabase.js'
+import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName } from '../hooks/useSupabase.js'
 import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm } from '../lib/inventoryCost.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -308,6 +308,8 @@ function PODetailModal({ po, tenantId, onClose }) {
 function PODocumentModal({ po, tenant, onClose }) {
   const items = po.purchase_order_items || []
   const { subtotal, vat, total } = calcPoTotals(items, po.has_vat, po.price_includes_vat)
+  const mySignature = useMySignatureUrl()
+  const { data: myWorkerName } = useMyWorkerName()
 
   return (
     <Modal title={`ใบสั่งซื้อ ${po.po_number}`} onClose={onClose} maxWidth={720}>
@@ -395,8 +397,16 @@ function PODocumentModal({ po, tenant, onClose }) {
           )}
 
           <div style={{ marginTop: 44, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
-            <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้จัดทำ</div>
-            <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้อนุมัติ</div>
+            <div>
+              <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
+              </div>
+              <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้จัดทำ</div>
+              {myWorkerName && (
+                <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>{myWorkerName}</div>
+              )}
+            </div>
+            <div style={{ borderTop: '1px solid #999', paddingTop: 8, alignSelf: 'end' }}>ผู้อนุมัติ</div>
           </div>
         </div>
       </div>
