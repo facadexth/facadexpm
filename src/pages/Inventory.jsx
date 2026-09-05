@@ -399,6 +399,9 @@ export default function Inventory() {
               <ExcelUpload type="inventory_item" onSuccess={() => { setShowImportItems(false); refetchItems() }} />
             </div>
           )}
+          {!centralSite && (
+            <div className="alert alert-error">ไม่พบไซท์งานชื่อ "ส่วนกลาง" — กรุณาสร้างไซท์งานชื่อนี้ก่อน จึงจะปรับยอดสต็อกได้</div>
+          )}
           <div style={{ marginBottom: 14, maxWidth: 260 }}>
             <SearchableSelect value={itemsCategoryFilter} onChange={setItemsCategoryFilter} placeholder="ทุกหมวดหมู่"
               options={(categories || []).map(c => ({ value: c.id, label: c.name, keywords: c.name }))} />
