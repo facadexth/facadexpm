@@ -1,5 +1,6 @@
 node_modules/
 dist/
+facadex-deploy/
 .env
 .DS_Store
 *.local
