@@ -801,7 +801,8 @@ CREATE TABLE inventory_categories (
   tenant_id   UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
   name        TEXT NOT NULL,
   sort_order  INT NOT NULL DEFAULT 0,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, name)
 );
 
 CREATE INDEX idx_inventory_categories_tenant_id ON inventory_categories(tenant_id);

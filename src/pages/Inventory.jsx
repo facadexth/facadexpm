@@ -199,6 +199,7 @@ function BalanceRow({ item, balance, isFirstForItem, centralSite, canEdit, savin
     <tr>
       <td style={{ fontWeight: 600 }}>{item.name}</td>
       <td style={{ fontSize: 12 }}>{item.inventory_categories?.name || '—'}</td>
+      <td>{isFirstForItem ? (item.active ? <span className="badge badge-paid">ใช้งานอยู่</span> : <span className="badge badge-finished">ปิดใช้งาน</span>) : null}</td>
       <td style={{ fontSize: 12 }}>{siteName}</td>
       <td className="font-mono">
         {editing ? (
@@ -249,9 +250,9 @@ export default function Inventory() {
   const { data: balances, refetch: refetchBalances } = useStockBalances()
   const { data: profiles, refetch: refetchProfiles } = useAllAluminumProfiles()
   const [movementItemFilter, setMovementItemFilter] = useState('')
-  const { data: movements } = useStockMovements({ inventoryItemId: movementItemFilter || undefined })
+  const { data: movements, refetch: refetchMovements } = useStockMovements({ inventoryItemId: movementItemFilter || undefined })
   const { data: sites } = useSites()
-  const { data: allMovements } = useStockMovements({})
+  const { data: allMovements, refetch: refetchAllMovements } = useStockMovements({})
   const { data: allPos } = usePurchaseOrders({})
   const [itemsCategoryFilter, setItemsCategoryFilter] = useState('')
   const [savingBalance, setSavingBalance] = useState(null) // the balance-row key currently saving, or null
@@ -295,14 +296,18 @@ export default function Inventory() {
     const rows = []
     for (const item of filteredItems) {
       const itemBalances = (balances || []).filter(b => b.inventory_item_id === item.id)
+      const hasCentralBalance = centralSite && itemBalances.some(b => b.site_id === centralSite.id)
       if (!itemBalances.length) {
         rows.push({ item, balance: null, isFirstForItem: true })
       } else {
         itemBalances.forEach((balance, i) => rows.push({ item, balance, isFirstForItem: i === 0 }))
+        if (!hasCentralBalance) {
+          rows.push({ item, balance: null, isFirstForItem: false })
+        }
       }
     }
     return rows
-  }, [items, balances, itemsCategoryFilter])
+  }, [items, balances, itemsCategoryFilter, centralSite])
 
   const handleSaveBalance = async (itemId, siteId, quantityStr, costStr) => {
     const quantity = parseFloat(quantityStr)
@@ -320,7 +325,7 @@ export default function Inventory() {
         p_reference_type: 'manual_adjustment', p_reference_id: null, p_notes: null,
       })
       if (error) throw error
-      refetchBalances(); refetchItems()
+      refetchBalances(); refetchItems(); refetchAllMovements(); refetchMovements()
     } catch (e) { alert('ปรับยอดไม่สำเร็จ: ' + e.message) }
     finally { setSavingBalance(null) }
   }
@@ -410,7 +415,7 @@ export default function Inventory() {
             <div style={{ padding: '12px 16px', fontWeight: 700 }}>มูลค่าสต็อกรวม: <span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totalValue)}</span> บาท</div>
             <div className="table-wrap">
               <table>
-                <thead><tr><th>ชื่อ</th><th>หมวดหมู่</th><th>ไซท์งาน</th><th>ปริมาณ</th><th>ราคา/หน่วย</th><th>มูลค่ารวม</th><th>แหล่งที่มาล่าสุด</th><th></th></tr></thead>
+                <thead><tr><th>ชื่อ</th><th>หมวดหมู่</th><th>สถานะ</th><th>ไซท์งาน</th><th>ปริมาณ</th><th>ราคา/หน่วย</th><th>มูลค่ารวม</th><th>แหล่งที่มาล่าสุด</th><th></th></tr></thead>
                 <tbody>
                   {tableRows.map(({ item, balance, isFirstForItem }) => (
                     <BalanceRow
@@ -423,7 +428,7 @@ export default function Inventory() {
                       onDeleteItem={() => setDeleteId(item.id)}
                     />
                   ))}
-                  {!tableRows.length && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีสินค้าคงคลัง</td></tr>}
+                  {!tableRows.length && <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีสินค้าคงคลัง</td></tr>}
                 </tbody>
               </table>
             </div>
