@@ -907,7 +907,7 @@ BEGIN
     RAISE EXCEPTION 'insufficient_privilege';
   END IF;
 
-  IF p_movement_type NOT IN ('purchase_in', 'transfer_in', 'transfer_out', 'adjustment') THEN
+  IF p_movement_type NOT IN ('purchase_in', 'transfer_in', 'transfer_out', 'adjustment', 'sale_out', 'sale_reversal') THEN
     RAISE EXCEPTION 'unsupported_movement_type: %', p_movement_type;
   END IF;
 
@@ -944,7 +944,7 @@ BEGIN
     v_new_wac := COALESCE(p_unit_cost, v_old_wac);
     v_stored_qty := p_quantity - v_old_qty;
     v_stored_cost := v_new_wac;
-  ELSIF p_movement_type IN ('purchase_in', 'transfer_in') THEN
+  ELSIF p_movement_type IN ('purchase_in', 'transfer_in', 'sale_reversal') THEN
     v_new_qty := v_old_qty + p_quantity;
     IF v_new_qty = 0 THEN
       v_new_wac := 0;
@@ -953,7 +953,7 @@ BEGIN
     END IF;
     v_stored_qty := p_quantity;
     v_stored_cost := p_unit_cost;
-  ELSE
+  ELSE -- transfer_out, sale_out
     v_new_qty := v_old_qty - p_quantity;
     v_new_wac := v_old_wac;
     v_stored_qty := p_quantity;
