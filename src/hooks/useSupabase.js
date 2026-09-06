@@ -1266,8 +1266,20 @@ export function useStockMovements(filters = {}) {
         .order('created_at', { ascending: false })
       if (filters.inventoryItemId) q = q.eq('inventory_item_id', filters.inventoryItemId)
       if (filters.siteId) q = q.eq('site_id', filters.siteId)
+      if (filters.movementType) q = q.eq('movement_type', filters.movementType)
+      if (filters.dateFrom) q = q.gte('created_at', filters.dateFrom)
+      if (filters.dateTo) q = q.lte('created_at', `${filters.dateTo}T23:59:59`)
       return q
     }
     return fetchAllRows(buildQuery)
   }, [JSON.stringify(filters)])
+}
+
+/** Lightweight id+invoice_number lookup, for resolving a stock_movements
+ *  row's reference_id to a human label without useInvoices()'s much
+ *  heavier joined select (quotations, clients, invoice_items, ...). */
+export function useInvoiceNumbers() {
+  return useQuery(async () => fetchAllRows(() =>
+    supabase.from('invoices').select('id, invoice_number')
+  ), [])
 }

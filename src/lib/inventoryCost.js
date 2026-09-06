@@ -38,6 +38,28 @@ export function computeGlassAreaSqm(sheetCount, widthM, heightM) {
   return sheetCount * widthM * heightM
 }
 
+/** Resolves a stock_movements row's reference_type/reference_id into a
+ *  human-readable Thai label, given lookup arrays for the referenced
+ *  tables. Falls back to a generic type-only label when the referenced
+ *  row was deleted, and to '—' when there's no reference at all. */
+export function resolveMovementReference(movement, { pos = [], invoices = [], sites = [] } = {}) {
+  const { reference_type, reference_id } = movement
+  if (reference_type === 'purchase_order') {
+    const po = pos.find(p => p.id === reference_id)
+    return po ? `PO ${po.po_number}` : 'ใบสั่งซื้อ'
+  }
+  if (reference_type === 'invoice') {
+    const invoice = invoices.find(i => i.id === reference_id)
+    return invoice ? `ใบแจ้งหนี้ ${invoice.invoice_number}` : 'ใบแจ้งหนี้'
+  }
+  if (reference_type === 'site_completion') {
+    const site = sites.find(s => s.id === reference_id)
+    return site ? `โอนจาก ${site.name}` : 'โอนจากไซท์งาน'
+  }
+  if (reference_type === 'manual_adjustment') return 'ปรับยอด'
+  return reference_type || '—'
+}
+
 /** Approximate physical sheet count for a pooled area balance, per the
  *  same spec's decision #2 (a nominal estimate, not an exact lot count).
  *  Returns null when no reference size is configured, rather than

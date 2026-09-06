@@ -8,11 +8,12 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useAllAluminumProfiles, useInventoryCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices } from '../hooks/useSupabase.js'
+import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useAllAluminumProfiles, useInventoryCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices, useInvoiceNumbers } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
-import { computeInvoiceDeductionPlan } from '../lib/inventoryCost.js'
+import { computeInvoiceDeductionPlan, resolveMovementReference } from '../lib/inventoryCost.js'
+import { exportToExcel } from '../lib/exportExcel.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -408,10 +409,21 @@ export default function Inventory() {
   const { data: balances, refetch: refetchBalances } = useStockBalances()
   const { data: profiles, refetch: refetchProfiles } = useAllAluminumProfiles()
   const [movementItemFilter, setMovementItemFilter] = useState('')
-  const { data: movements, refetch: refetchMovements } = useStockMovements({ inventoryItemId: movementItemFilter || undefined })
+  const [movementTypeFilter, setMovementTypeFilter] = useState('')
+  const [movementSiteFilter, setMovementSiteFilter] = useState('')
+  const [movementDateFrom, setMovementDateFrom] = useState('')
+  const [movementDateTo, setMovementDateTo] = useState('')
+  const { data: movements, refetch: refetchMovements } = useStockMovements({
+    inventoryItemId: movementItemFilter || undefined,
+    movementType: movementTypeFilter || undefined,
+    siteId: movementSiteFilter || undefined,
+    dateFrom: movementDateFrom || undefined,
+    dateTo: movementDateTo || undefined,
+  })
   const { data: sites } = useSites()
   const { data: allMovements, refetch: refetchAllMovements } = useStockMovements({})
   const { data: allPos } = usePurchaseOrders({})
+  const { data: invoiceNumbers } = useInvoiceNumbers()
   const { data: cogsSettings, refetch: refetchCogsSettings } = useInventoryCogsSettings()
   const { data: unprocessedInvoices, refetch: refetchUnprocessedInvoices } = useUnprocessedInvoices()
   const [expandedInvoiceId, setExpandedInvoiceId] = useState(null)
@@ -431,6 +443,21 @@ export default function Inventory() {
 
   const totalValue = useMemo(() => (balances || []).reduce((s, b) => s + b.quantity_on_hand * b.weighted_average_cost, 0), [balances])
   const itemOpts = (items || []).map(it => ({ value: it.id, label: `${it.name} (${it.base_unit})`, keywords: it.name }))
+  const siteFilterOpts = (sites || []).map(s => ({ value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}` }))
+
+  const exportMovements = () => {
+    const columns = [
+      { header: 'วันที่', accessor: m => new Date(m.created_at) },
+      { header: 'สินค้า', accessor: m => m.inventory_items?.name || '' },
+      { header: 'ไซท์งาน', accessor: m => m.sites?.name || '' },
+      { header: 'ประเภท', accessor: m => MOVEMENT_TYPE_LABELS[m.movement_type] || m.movement_type },
+      { header: 'อ้างอิง', accessor: m => resolveMovementReference(m, { pos: allPos, invoices: invoiceNumbers, sites }) },
+      { header: 'จำนวน', accessor: m => m.quantity },
+      { header: 'หน่วย', accessor: m => m.inventory_items?.base_unit || '' },
+      { header: 'ต้นทุน/หน่วย', accessor: m => m.unit_cost ?? '' },
+    ]
+    exportToExcel(movements || [], columns, 'ประวัติการเคลื่อนไหวสต็อก')
+  }
 
   const centralSite = (sites || []).find(s => s.name === 'ส่วนกลาง')
 
@@ -438,16 +465,7 @@ export default function Inventory() {
     const itemMovements = (allMovements || []).filter(m => m.inventory_item_id === itemId && m.site_id === siteId)
     if (!itemMovements.length) return '—'
     const latest = itemMovements.reduce((a, b) => new Date(a.created_at) > new Date(b.created_at) ? a : b)
-    if (latest.reference_type === 'purchase_order') {
-      const po = (allPos || []).find(p => p.id === latest.reference_id)
-      return po ? `PO ${po.po_number}` : 'ใบสั่งซื้อ'
-    }
-    if (latest.reference_type === 'site_completion') {
-      const fromSite = (sites || []).find(s => s.id === latest.reference_id)
-      return fromSite ? `โอนจาก ${fromSite.name}` : 'โอนจากไซท์งาน'
-    }
-    if (latest.reference_type === 'manual_adjustment') return 'ปรับยอด'
-    return latest.reference_type || '—'
+    return resolveMovementReference(latest, { pos: allPos, invoices: invoiceNumbers, sites })
   }
 
   const tableRows = useMemo(() => {
@@ -666,13 +684,28 @@ export default function Inventory() {
 
       {view === 'movements' && (
         <>
-          <div style={{ marginBottom: 14, maxWidth: 320 }}>
-            <SearchableSelect value={movementItemFilter} onChange={setMovementItemFilter} placeholder="ทุกรายการสินค้า" options={itemOpts} />
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+            <div style={{ minWidth: 220 }}>
+              <SearchableSelect value={movementItemFilter} onChange={setMovementItemFilter} placeholder="ทุกรายการสินค้า" options={itemOpts} />
+            </div>
+            <div style={{ minWidth: 200 }}>
+              <SearchableSelect value={movementSiteFilter} onChange={setMovementSiteFilter} placeholder="ทุกไซท์งาน" options={siteFilterOpts} />
+            </div>
+            <select className="input" style={{ width: 'auto' }} value={movementTypeFilter} onChange={e => setMovementTypeFilter(e.target.value)}>
+              <option value="">ทุกประเภท</option>
+              {Object.entries(MOVEMENT_TYPE_LABELS).map(([type, label]) => (
+                <option key={type} value={type}>{label}</option>
+              ))}
+            </select>
+            <input type="date" className="input" style={{ width: 'auto' }} value={movementDateFrom} onChange={e => setMovementDateFrom(e.target.value)} />
+            <span style={{ color: 'var(--text3)' }}>ถึง</span>
+            <input type="date" className="input" style={{ width: 'auto' }} value={movementDateTo} onChange={e => setMovementDateTo(e.target.value)} />
+            <button className="btn btn-sm" onClick={exportMovements} disabled={!(movements || []).length}>📊 Export Excel</button>
           </div>
           <div className="card">
             <div className="table-wrap">
               <table>
-                <thead><tr><th>วันที่</th><th>สินค้า</th><th>ไซท์งาน</th><th>ประเภท</th><th>จำนวน</th><th>ต้นทุน/หน่วย</th></tr></thead>
+                <thead><tr><th>วันที่</th><th>สินค้า</th><th>ไซท์งาน</th><th>ประเภท</th><th>อ้างอิง</th><th>จำนวน</th><th>ต้นทุน/หน่วย</th></tr></thead>
                 <tbody>
                   {(movements || []).map(m => (
                     <tr key={m.id}>
@@ -680,11 +713,12 @@ export default function Inventory() {
                       <td>{m.inventory_items?.name}</td>
                       <td style={{ fontSize: 12 }}>{m.sites?.name}</td>
                       <td style={{ fontSize: 12 }}>{MOVEMENT_TYPE_LABELS[m.movement_type] || m.movement_type}</td>
+                      <td style={{ fontSize: 12 }}>{resolveMovementReference(m, { pos: allPos, invoices: invoiceNumbers, sites })}</td>
                       <td className="font-mono">{fmt(m.quantity)} {m.inventory_items?.base_unit}</td>
                       <td className="font-mono">{m.unit_cost != null ? fmt(m.unit_cost) : '—'}</td>
                     </tr>
                   ))}
-                  {!(movements || []).length && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีประวัติ</td></tr>}
+                  {!(movements || []).length && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีประวัติ</td></tr>}
                 </tbody>
               </table>
             </div>

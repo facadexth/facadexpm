@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, estimateSheetCount, computeInvoiceDeductionPlan } from './inventoryCost.js'
+import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, estimateSheetCount, computeInvoiceDeductionPlan, resolveMovementReference } from './inventoryCost.js'
 
 describe('computeWeightedAverageCost', () => {
   it('first receipt into an empty balance', () => {
@@ -347,5 +347,41 @@ describe('computeInvoiceDeductionPlan', () => {
       const totalAvailable = balances.reduce((s, b) => s + b.quantity_on_hand * b.weighted_average_cost, 0)
       expect(totalDeducted).toBeLessThanOrEqual(totalAvailable + 1e-6)
     }
+  })
+})
+
+describe('resolveMovementReference', () => {
+  const pos = [{ id: 'po-1', po_number: 'PO-2026-001' }]
+  const invoices = [{ id: 'inv-1', invoice_number: 'INV-2026-042' }]
+  const sites = [{ id: 'site-1', name: 'ไซท์ A' }]
+
+  it('resolves a purchase_order reference to its PO number', () => {
+    const label = resolveMovementReference({ reference_type: 'purchase_order', reference_id: 'po-1' }, { pos, invoices, sites })
+    expect(label).toBe('PO PO-2026-001')
+  })
+
+  it('resolves an invoice reference to its invoice number', () => {
+    const label = resolveMovementReference({ reference_type: 'invoice', reference_id: 'inv-1' }, { pos, invoices, sites })
+    expect(label).toBe('ใบแจ้งหนี้ INV-2026-042')
+  })
+
+  it('resolves a site_completion reference to the source site name', () => {
+    const label = resolveMovementReference({ reference_type: 'site_completion', reference_id: 'site-1' }, { pos, invoices, sites })
+    expect(label).toBe('โอนจาก ไซท์ A')
+  })
+
+  it('resolves a manual_adjustment reference to a fixed label', () => {
+    const label = resolveMovementReference({ reference_type: 'manual_adjustment', reference_id: null }, { pos, invoices, sites })
+    expect(label).toBe('ปรับยอด')
+  })
+
+  it('falls back to a generic label when the referenced row no longer exists', () => {
+    const label = resolveMovementReference({ reference_type: 'invoice', reference_id: 'inv-deleted' }, { pos, invoices, sites })
+    expect(label).toBe('ใบแจ้งหนี้')
+  })
+
+  it('falls back to an em dash when there is no reference at all', () => {
+    const label = resolveMovementReference({ reference_type: null, reference_id: null }, { pos, invoices, sites })
+    expect(label).toBe('—')
   })
 })
