@@ -521,17 +521,25 @@ function WithholdingCertModal({ payment, onClose }) {
     return (
       <div style={{ display: 'flex', gap: 2 }}>
         {chars.split('').map((c, i) => (
-          <div key={i} style={{ width: 16, height: 20, border: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontFamily: 'monospace' }}>{c.trim()}</div>
+          <div key={i} style={{ width: 14, height: 17, border: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontFamily: 'monospace' }}>{c.trim()}</div>
         ))}
       </div>
     )
   }
 
+  // Sizing below is deliberately dense to match the official form's own
+  // typesetting and to fit on exactly one A4 page through html2pdf's
+  // width-fit scaling (10mm margins each side -> 190x277mm content area,
+  // so the element's rendered height:width ratio must stay <= 277/190 =
+  // 1.4579). Measured via a standalone Playwright harness at this exact
+  // width (680px) with realistic content: ~800px tall, ratio ~1.17 --
+  // comfortable headroom below the 1.4579 threshold. Don't loosen this
+  // without re-measuring; there's headroom but not unlimited.
   return (
     <Modal title={`หนังสือรับรองการหักภาษี ณ ที่จ่าย — ${payment.payment_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body" style={{ overflow: 'auto' }}>
-        <div id={elementId} style={{ fontFamily: 'Sarabun,sans-serif', width: 680, padding: '24px 28px', background: '#fff', color: '#111', fontSize: 12.5, lineHeight: 1.7, border: '1px solid #ccc' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: 11 }}>
+        <div id={elementId} style={{ fontFamily: 'Sarabun,sans-serif', width: 680, padding: '24px 28px', background: '#fff', color: '#111', fontSize: 11, lineHeight: 1.5, border: '1px solid #333' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: 9 }}>
             <div>
               <div>ฉบับที่ 1 (สำหรับผู้ถูกหักภาษี ณ ที่จ่าย ใช้แนบพร้อมกับแบบแสดงรายการภาษี)</div>
               <div>ฉบับที่ 2 (สำหรับผู้ถูกหักภาษี ณ ที่จ่าย เก็บไว้เป็นหลักฐาน)</div>
@@ -541,50 +549,50 @@ function WithholdingCertModal({ payment, onClose }) {
               <div>เลขที่ {payment.payment_number}</div>
             </div>
           </div>
-          <div style={{ textAlign: 'center', margin: '8px 0 14px' }}>
-            <div style={{ fontWeight: 800, fontSize: 15 }}>หนังสือรับรองการหักภาษี ณ ที่จ่าย</div>
-            <div style={{ fontSize: 12 }}>ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร</div>
+          <div style={{ textAlign: 'center', margin: '0 0 8px' }}>
+            <div style={{ fontWeight: 800, fontSize: 13 }}>หนังสือรับรองการหักภาษี ณ ที่จ่าย</div>
+            <div style={{ fontSize: 10 }}>ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร</div>
           </div>
 
-          <div style={{ border: '1px solid #333', padding: '10px 12px', marginBottom: 10 }}>
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>ผู้มีหน้าที่หักภาษี ณ ที่จ่าย :-</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'start' }}>
+          <div style={{ border: '1px solid #333', padding: '6px 8px', marginBottom: 6 }}>
+            <div style={{ fontWeight: 700, marginBottom: 2 }}>ผู้มีหน้าที่หักภาษี ณ ที่จ่าย :-</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'start' }}>
               <div>
                 <div>ชื่อ {tenant?.company_name}</div>
-                <div style={{ fontSize: 10, color: '#777' }}>(ให้ระบุว่าเป็น บุคคล นิติบุคคล บริษัท สมาคม หรือคณะบุคคล)</div>
+                <div style={{ fontSize: 8, color: '#777' }}>(ให้ระบุว่าเป็น บุคคล นิติบุคคล บริษัท สมาคม หรือคณะบุคคล)</div>
                 <div>ที่อยู่ {tenant?.address || '—'}</div>
-                <div style={{ fontSize: 10, color: '#777' }}>(ให้ระบุชื่ออาคาร/หมู่บ้าน ห้องเลขที่ ชั้นที่ เลขที่ ตรอก/ซอย หมู่ที่ ถนน ตำบล/แขวง อำเภอ/เขต จังหวัด)</div>
+                <div style={{ fontSize: 8, color: '#777' }}>(ให้ระบุชื่ออาคาร/หมู่บ้าน ห้องเลขที่ ชั้นที่ เลขที่ ตรอก/ซอย หมู่ที่ ถนน ตำบล/แขวง อำเภอ/เขต จังหวัด)</div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 10.5, marginBottom: 2 }}>เลขประจำตัวผู้เสียภาษีอากร (13 หลัก)</div>
+                <div style={{ fontSize: 8.5, marginBottom: 2 }}>เลขประจำตัวผู้เสียภาษีอากร (13 หลัก)</div>
                 {idBoxes(tenant?.tax_id, 13)}
               </div>
             </div>
           </div>
 
-          <div style={{ border: '1px solid #333', padding: '10px 12px', marginBottom: 10 }}>
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>ผู้ถูกหักภาษี ณ ที่จ่าย :-</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'start' }}>
+          <div style={{ border: '1px solid #333', padding: '6px 8px', marginBottom: 6 }}>
+            <div style={{ fontWeight: 700, marginBottom: 2 }}>ผู้ถูกหักภาษี ณ ที่จ่าย :-</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'start' }}>
               <div>
                 <div>ชื่อ {sub?.name || '—'}</div>
-                <div style={{ fontSize: 10, color: '#777' }}>(ให้ระบุว่าเป็น บุคคล นิติบุคคล บริษัท สมาคม หรือคณะบุคคล)</div>
+                <div style={{ fontSize: 8, color: '#777' }}>(ให้ระบุว่าเป็น บุคคล นิติบุคคล บริษัท สมาคม หรือคณะบุคคล)</div>
                 <div>ที่อยู่ {sub?.address || '—'}</div>
-                <div style={{ fontSize: 10, color: '#777' }}>(ให้ระบุชื่ออาคาร/หมู่บ้าน ห้องเลขที่ ชั้นที่ เลขที่ ตรอก/ซอย หมู่ที่ ถนน ตำบล/แขวง อำเภอ/เขต จังหวัด)</div>
+                <div style={{ fontSize: 8, color: '#777' }}>(ให้ระบุชื่ออาคาร/หมู่บ้าน ห้องเลขที่ ชั้นที่ เลขที่ ตรอก/ซอย หมู่ที่ ถนน ตำบล/แขวง อำเภอ/เขต จังหวัด)</div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 10.5, marginBottom: 2 }}>เลขประจำตัวประชาชน (13 หลัก)</div>
+                <div style={{ fontSize: 8.5, marginBottom: 2 }}>เลขประจำตัวประชาชน (13 หลัก)</div>
                 {idBoxes(sub?.id_card_number, 13)}
               </div>
             </div>
           </div>
 
-          <div style={{ marginBottom: 10, fontSize: 11.5 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+          <div style={{ marginBottom: 6, fontSize: 9.5 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
               <span>ลำดับที่</span>
-              <span style={{ display: 'inline-block', width: 50, borderBottom: '1px solid #333' }}>&nbsp;</span>
+              <span style={{ display: 'inline-block', width: 40, borderBottom: '1px solid #333' }}>&nbsp;</span>
               <span>ในแบบ</span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 3 }}>
               {['(1) ภ.ง.ด.1ก', '(2) ภ.ง.ด.1ก พิเศษ', '(3) ภ.ง.ด.2', '(4) ภ.ง.ด.3'].map(l => (
                 <div key={l}>{l.startsWith('(4)') ? '☑' : '☐'} {l}</div>
               ))}
@@ -592,16 +600,16 @@ function WithholdingCertModal({ payment, onClose }) {
                 <div key={l}>☐ {l}</div>
               ))}
             </div>
-            <div style={{ fontSize: 10, color: '#777', marginTop: 2 }}>(ให้สามารถอ้างอิงหรือสอบยันกันได้ระหว่างลำดับที่ตามหนังสือรับรองฯ กับแบบยื่นรายการภาษีหักที่จ่าย)</div>
+            <div style={{ fontSize: 8, color: '#777', marginTop: 2 }}>(ให้สามารถอ้างอิงหรือสอบยันกันได้ระหว่างลำดับที่ตามหนังสือรับรองฯ กับแบบยื่นรายการภาษีหักที่จ่าย)</div>
           </div>
 
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, marginBottom: 8 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, marginBottom: 6 }}>
             <thead>
               <tr>
-                <th style={{ border: '1px solid #333', padding: '5px 6px', textAlign: 'left' }}>ประเภทเงินได้พึงประเมินที่จ่าย</th>
-                <th style={{ border: '1px solid #333', padding: '5px 6px', width: 90 }}>วันเดือนปีที่จ่าย</th>
-                <th style={{ border: '1px solid #333', padding: '5px 6px', width: 100 }}>จำนวนเงินที่จ่าย</th>
-                <th style={{ border: '1px solid #333', padding: '5px 6px', width: 100 }}>ภาษีที่หักและนำส่งไว้</th>
+                <th style={{ border: '1px solid #333', padding: '3px 4px', textAlign: 'left' }}>ประเภทเงินได้พึงประเมินที่จ่าย</th>
+                <th style={{ border: '1px solid #333', padding: '3px 4px', width: 70 }}>วันเดือนปีที่จ่าย</th>
+                <th style={{ border: '1px solid #333', padding: '3px 4px', width: 80 }}>จำนวนเงินที่จ่าย</th>
+                <th style={{ border: '1px solid #333', padding: '3px 4px', width: 80 }}>ภาษีที่หักและนำส่งไว้</th>
               </tr>
             </thead>
             <tbody>
@@ -612,71 +620,71 @@ function WithholdingCertModal({ payment, onClose }) {
                 '4. ดอกเบี้ย เงินปันผล เงินส่วนแบ่งกำไร ฯลฯ ตามมาตรา 40(4)',
               ].map(label => (
                 <tr key={label}>
-                  <td style={{ border: '1px solid #333', padding: '5px 6px' }}>{label}</td>
-                  <td style={{ border: '1px solid #333', padding: '5px 6px' }}></td>
-                  <td style={{ border: '1px solid #333', padding: '5px 6px' }}></td>
-                  <td style={{ border: '1px solid #333', padding: '5px 6px' }}></td>
+                  <td style={{ border: '1px solid #333', padding: '3px 4px' }}>{label}</td>
+                  <td style={{ border: '1px solid #333', padding: '3px 4px' }}></td>
+                  <td style={{ border: '1px solid #333', padding: '3px 4px' }}></td>
+                  <td style={{ border: '1px solid #333', padding: '3px 4px' }}></td>
                 </tr>
               ))}
               <tr>
-                <td style={{ border: '1px solid #333', padding: '5px 6px' }}>
+                <td style={{ border: '1px solid #333', padding: '3px 4px' }}>
                   5. การจ่ายเงินได้ที่ต้องหักภาษี ณ ที่จ่ายตามคำสั่งกรมสรรพากร ที่ ทป.4/2528 ฯ (ค่าจ้างทำของ)
                   {payment.work_description && <div style={{ fontStyle: 'italic', color: '#555' }}>{payment.work_description}</div>}
                 </td>
-                <td style={{ border: '1px solid #333', padding: '5px 6px', textAlign: 'center' }}>{fmtDate(payment.payment_date)}</td>
-                <td style={{ border: '1px solid #333', padding: '5px 6px', textAlign: 'right' }} className="font-mono">{fmt(payment.gross_amount)}</td>
-                <td style={{ border: '1px solid #333', padding: '5px 6px', textAlign: 'right' }} className="font-mono">{fmt(payment.withholding_tax)}</td>
+                <td style={{ border: '1px solid #333', padding: '3px 4px', textAlign: 'center' }}>{fmtDate(payment.payment_date)}</td>
+                <td style={{ border: '1px solid #333', padding: '3px 4px', textAlign: 'right' }} className="font-mono">{fmt(payment.gross_amount)}</td>
+                <td style={{ border: '1px solid #333', padding: '3px 4px', textAlign: 'right' }} className="font-mono">{fmt(payment.withholding_tax)}</td>
               </tr>
               <tr>
-                <td style={{ border: '1px solid #333', padding: '5px 6px' }}>6. อื่นๆ (ระบุ) ...........................................</td>
-                <td style={{ border: '1px solid #333', padding: '5px 6px' }}></td>
-                <td style={{ border: '1px solid #333', padding: '5px 6px' }}></td>
-                <td style={{ border: '1px solid #333', padding: '5px 6px' }}></td>
+                <td style={{ border: '1px solid #333', padding: '3px 4px' }}>6. อื่นๆ (ระบุ) ...........................................</td>
+                <td style={{ border: '1px solid #333', padding: '3px 4px' }}></td>
+                <td style={{ border: '1px solid #333', padding: '3px 4px' }}></td>
+                <td style={{ border: '1px solid #333', padding: '3px 4px' }}></td>
               </tr>
               <tr style={{ fontWeight: 700 }}>
-                <td colSpan={2} style={{ border: '1px solid #333', padding: '5px 6px', textAlign: 'right' }}>รวมเงินที่จ่ายและภาษีที่หักนำส่ง</td>
-                <td style={{ border: '1px solid #333', padding: '5px 6px', textAlign: 'right' }} className="font-mono">{fmt(payment.gross_amount)}</td>
-                <td style={{ border: '1px solid #333', padding: '5px 6px', textAlign: 'right' }} className="font-mono">{fmt(payment.withholding_tax)}</td>
+                <td colSpan={2} style={{ border: '1px solid #333', padding: '3px 4px', textAlign: 'right' }}>รวมเงินที่จ่ายและภาษีที่หักนำส่ง</td>
+                <td style={{ border: '1px solid #333', padding: '3px 4px', textAlign: 'right' }} className="font-mono">{fmt(payment.gross_amount)}</td>
+                <td style={{ border: '1px solid #333', padding: '3px 4px', textAlign: 'right' }} className="font-mono">{fmt(payment.withholding_tax)}</td>
               </tr>
             </tbody>
           </table>
 
-          <div style={{ marginBottom: 10 }}>
+          <div style={{ marginBottom: 6 }}>
             รวมเงินภาษีที่นำส่ง (ตัวอักษร) <strong>{thaiBahtText(payment.withholding_tax)}</strong>
           </div>
 
-          <div style={{ marginBottom: 10 }}>
+          <div style={{ marginBottom: 6 }}>
             ผู้จ่ายเงิน ☑ (1) หัก ณ ที่จ่าย &nbsp;&nbsp; ☐ (2) ออกให้ตลอดไป &nbsp;&nbsp; ☐ (3) ออกให้ครั้งเดียว &nbsp;&nbsp; ☐ (4) อื่นๆ (ระบุ) ..........................
           </div>
 
-          <div style={{ fontSize: 11, marginBottom: 14 }}>
+          <div style={{ marginBottom: 6 }}>
             เงินที่จ่ายเข้า กบข./กสจ./กองทุนสงเคราะห์ครูโรงเรียนเอกชน .................... บาท
             &nbsp;&nbsp;กองทุนประกันสังคม .................... บาท
             &nbsp;&nbsp;กองทุนสำรองเลี้ยงชีพ .................... บาท
           </div>
 
-          <div style={{ border: '1px solid #333', padding: '8px 10px', marginBottom: 14, fontSize: 10.5, color: '#a00' }}>
+          <div style={{ border: '1px solid #333', padding: '5px 6px', marginBottom: 8, fontSize: 8.5, color: '#a00' }}>
             <strong>คำเตือน</strong> ผู้มีหน้าที่ออกหนังสือรับรองการหักภาษี ณ ที่จ่าย ฝ่าฝืนไม่ปฏิบัติตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร ต้องระวางโทษทางอาญาตามมาตรา 35 แห่งประมวลรัษฎากร
           </div>
 
-          <div style={{ fontSize: 11, color: '#555', marginBottom: 20 }}>
+          <div style={{ fontSize: 9, color: '#555', marginBottom: 10 }}>
             ขอรับรองว่าข้อความและตัวเลขดังกล่าวข้างต้นถูกต้องตรงกับความจริงทุกประการ
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
+              <div style={{ height: 24, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 22, display: 'block' }} />}
               </div>
-              <div style={{ borderTop: '1px solid #999', paddingTop: 6 }}>ลงชื่อ ผู้จ่ายเงิน</div>
-              {myWorkerName && <div style={{ fontSize: 11, color: '#555' }}>({myWorkerName})</div>}
-              <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>
+              <div style={{ borderTop: '1px solid #999', paddingTop: 3 }}>ลงชื่อ ผู้จ่ายเงิน</div>
+              {myWorkerName && <div style={{ fontSize: 9, color: '#555' }}>({myWorkerName})</div>}
+              <div style={{ fontSize: 9, color: '#555', marginTop: 2 }}>
                 {new Date(payment.paid_date || payment.payment_date).toLocaleDateString('th-TH')} (วัน เดือน ปี ที่ออกหนังสือรับรองฯ)
               </div>
             </div>
             <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }}>
-              <div style={{ width: 70, height: 70, border: '1px dashed #999', marginBottom: 6 }} />
-              <div style={{ fontSize: 10.5, color: '#777' }}>ประทับตรานิติบุคคล (ถ้ามี)</div>
+              <div style={{ width: 50, height: 50, border: '1px dashed #999', marginBottom: 3 }} />
+              <div style={{ fontSize: 8.5, color: '#777' }}>ประทับตรานิติบุคคล (ถ้ามี)</div>
             </div>
           </div>
         </div>
