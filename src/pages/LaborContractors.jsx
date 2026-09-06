@@ -531,21 +531,29 @@ function WithholdingCertModal({ payment, onClose }) {
     <Modal title={`หนังสือรับรองการหักภาษี ณ ที่จ่าย — ${payment.payment_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body" style={{ overflow: 'auto' }}>
         <div id={elementId} style={{ fontFamily: 'Sarabun,sans-serif', width: 680, padding: '24px 28px', background: '#fff', color: '#111', fontSize: 12.5, lineHeight: 1.7, border: '1px solid #ccc' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-            <span>ฉบับที่ 1 (สำหรับผู้ถูกหักภาษี ณ ที่จ่าย ใช้แนบพร้อมกับแบบแสดงรายการภาษี)</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: 11 }}>
+            <div>
+              <div>ฉบับที่ 1 (สำหรับผู้ถูกหักภาษี ณ ที่จ่าย ใช้แนบพร้อมกับแบบแสดงรายการภาษี)</div>
+              <div>ฉบับที่ 2 (สำหรับผู้ถูกหักภาษี ณ ที่จ่าย เก็บไว้เป็นหลักฐาน)</div>
+            </div>
+            <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+              <div>เล่มที่ .....................</div>
+              <div>เลขที่ {payment.payment_number}</div>
+            </div>
           </div>
           <div style={{ textAlign: 'center', margin: '8px 0 14px' }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>หนังสือรับรองการหักภาษี ณ ที่จ่าย</div>
             <div style={{ fontSize: 12 }}>ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร</div>
           </div>
-          <div style={{ textAlign: 'right', fontSize: 11.5, marginBottom: 10 }}>เลขที่ {payment.payment_number}</div>
 
           <div style={{ border: '1px solid #333', padding: '10px 12px', marginBottom: 10 }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>ผู้มีหน้าที่หักภาษี ณ ที่จ่าย :-</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'start' }}>
               <div>
                 <div>ชื่อ {tenant?.company_name}</div>
+                <div style={{ fontSize: 10, color: '#777' }}>(ให้ระบุว่าเป็น บุคคล นิติบุคคล บริษัท สมาคม หรือคณะบุคคล)</div>
                 <div>ที่อยู่ {tenant?.address || '—'}</div>
+                <div style={{ fontSize: 10, color: '#777' }}>(ให้ระบุชื่ออาคาร/หมู่บ้าน ห้องเลขที่ ชั้นที่ เลขที่ ตรอก/ซอย หมู่ที่ ถนน ตำบล/แขวง อำเภอ/เขต จังหวัด)</div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 10.5, marginBottom: 2 }}>เลขประจำตัวผู้เสียภาษีอากร (13 หลัก)</div>
@@ -559,7 +567,9 @@ function WithholdingCertModal({ payment, onClose }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'start' }}>
               <div>
                 <div>ชื่อ {sub?.name || '—'}</div>
+                <div style={{ fontSize: 10, color: '#777' }}>(ให้ระบุว่าเป็น บุคคล นิติบุคคล บริษัท สมาคม หรือคณะบุคคล)</div>
                 <div>ที่อยู่ {sub?.address || '—'}</div>
+                <div style={{ fontSize: 10, color: '#777' }}>(ให้ระบุชื่ออาคาร/หมู่บ้าน ห้องเลขที่ ชั้นที่ เลขที่ ตรอก/ซอย หมู่ที่ ถนน ตำบล/แขวง อำเภอ/เขต จังหวัด)</div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 10.5, marginBottom: 2 }}>เลขประจำตัวประชาชน (13 หลัก)</div>
@@ -569,15 +579,20 @@ function WithholdingCertModal({ payment, onClose }) {
           </div>
 
           <div style={{ marginBottom: 10, fontSize: 11.5 }}>
-            <div style={{ marginBottom: 4 }}>ลำดับที่</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <span>ลำดับที่</span>
+              <span style={{ display: 'inline-block', width: 50, borderBottom: '1px solid #333' }}>&nbsp;</span>
+              <span>ในแบบ</span>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
-              {['(1) ภ.ง.ด.1', '(2) ภ.ง.ด.1ก พิเศษ', '(3) ภ.ง.ด.2', '(4) ภ.ง.ด.3'].map(l => (
+              {['(1) ภ.ง.ด.1ก', '(2) ภ.ง.ด.1ก พิเศษ', '(3) ภ.ง.ด.2', '(4) ภ.ง.ด.3'].map(l => (
                 <div key={l}>{l.startsWith('(4)') ? '☑' : '☐'} {l}</div>
               ))}
               {['(5) ภ.ง.ด.2ก', '(6) ภ.ง.ด.3ก', '(7) ภ.ง.ด.53'].map(l => (
                 <div key={l}>☐ {l}</div>
               ))}
             </div>
+            <div style={{ fontSize: 10, color: '#777', marginTop: 2 }}>(ให้สามารถอ้างอิงหรือสอบยันกันได้ระหว่างลำดับที่ตามหนังสือรับรองฯ กับแบบยื่นรายการภาษีหักที่จ่าย)</div>
           </div>
 
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, marginBottom: 8 }}>
@@ -630,16 +645,25 @@ function WithholdingCertModal({ payment, onClose }) {
             รวมเงินภาษีที่นำส่ง (ตัวอักษร) <strong>{thaiBahtText(payment.withholding_tax)}</strong>
           </div>
 
-          <div style={{ marginBottom: 14 }}>
-            ผู้จ่ายเงิน ☑ (1) หัก ณ ที่จ่าย &nbsp;&nbsp; ☐ (2) ออกให้ตลอดไป &nbsp;&nbsp; ☐ (3) ออกให้ครั้งเดียว &nbsp;&nbsp; ☐ (4) อื่นๆ
+          <div style={{ marginBottom: 10 }}>
+            ผู้จ่ายเงิน ☑ (1) หัก ณ ที่จ่าย &nbsp;&nbsp; ☐ (2) ออกให้ตลอดไป &nbsp;&nbsp; ☐ (3) ออกให้ครั้งเดียว &nbsp;&nbsp; ☐ (4) อื่นๆ (ระบุ) ..........................
+          </div>
+
+          <div style={{ fontSize: 11, marginBottom: 14 }}>
+            เงินที่จ่ายเข้า กบข./กสจ./กองทุนสงเคราะห์ครูโรงเรียนเอกชน .................... บาท
+            &nbsp;&nbsp;กองทุนประกันสังคม .................... บาท
+            &nbsp;&nbsp;กองทุนสำรองเลี้ยงชีพ .................... บาท
+          </div>
+
+          <div style={{ border: '1px solid #333', padding: '8px 10px', marginBottom: 14, fontSize: 10.5, color: '#a00' }}>
+            <strong>คำเตือน</strong> ผู้มีหน้าที่ออกหนังสือรับรองการหักภาษี ณ ที่จ่าย ฝ่าฝืนไม่ปฏิบัติตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร ต้องระวางโทษทางอาญาตามมาตรา 35 แห่งประมวลรัษฎากร
           </div>
 
           <div style={{ fontSize: 11, color: '#555', marginBottom: 20 }}>
             ขอรับรองว่าข้อความและตัวเลขดังกล่าวข้างต้นถูกต้องตรงกับความจริงทุกประการ
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-            <div />
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20 }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
                 {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
@@ -647,8 +671,12 @@ function WithholdingCertModal({ payment, onClose }) {
               <div style={{ borderTop: '1px solid #999', paddingTop: 6 }}>ลงชื่อ ผู้จ่ายเงิน</div>
               {myWorkerName && <div style={{ fontSize: 11, color: '#555' }}>({myWorkerName})</div>}
               <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>
-                วันที่ {new Date(payment.paid_date || payment.payment_date).toLocaleDateString('th-TH')}
+                {new Date(payment.paid_date || payment.payment_date).toLocaleDateString('th-TH')} (วัน เดือน ปี ที่ออกหนังสือรับรองฯ)
               </div>
+            </div>
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }}>
+              <div style={{ width: 70, height: 70, border: '1px dashed #999', marginBottom: 6 }} />
+              <div style={{ fontSize: 10.5, color: '#777' }}>ประทับตรานิติบุคคล (ถ้ามี)</div>
             </div>
           </div>
         </div>
