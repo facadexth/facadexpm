@@ -1269,6 +1269,8 @@ export function useStockMovements(filters = {}) {
       if (filters.movementType) q = q.eq('movement_type', filters.movementType)
       if (filters.dateFrom) q = q.gte('created_at', filters.dateFrom)
       if (filters.dateTo) q = q.lte('created_at', `${filters.dateTo}T23:59:59`)
+      if (filters.referenceType) q = q.eq('reference_type', filters.referenceType)
+      if (filters.referenceId) q = q.eq('reference_id', filters.referenceId)
       return q
     }
     return fetchAllRows(buildQuery)

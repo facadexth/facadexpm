@@ -23,6 +23,14 @@ import ExcelUpload from '../components/ExcelUpload.jsx'
 const EMPTY_ITEM_FORM = { code: '', name: '', base_unit: '', unit_conversion_mode: 'plain', reference_area_sqm: '', category_id: '', active: true }
 const EMPTY_FACTOR_FORM = { unit_name: '', factor_to_base: '1' }
 
+// Reference types whose reference_id groups multiple stock_movements rows
+// under one real-world document (an invoice's category deductions, a PO's
+// received lines) -- clicking one of these in the ledger drills down to
+// every row from that same document. site_completion/manual_adjustment
+// don't group this way (their reference_id is a site id or null), so
+// they're left as plain text.
+const DRILLABLE_REFERENCE_TYPES = ['invoice', 'purchase_order']
+
 const MOVEMENT_TYPE_LABELS = {
   purchase_in: '📥 รับเข้าจากใบสั่งซื้อ',
   transfer_in: '↩️ โอนเข้า',
@@ -413,12 +421,15 @@ export default function Inventory() {
   const [movementSiteFilter, setMovementSiteFilter] = useState('')
   const [movementDateFrom, setMovementDateFrom] = useState('')
   const [movementDateTo, setMovementDateTo] = useState('')
+  const [movementRefFilter, setMovementRefFilter] = useState(null) // { type, id, label } | null
   const { data: movements, refetch: refetchMovements } = useStockMovements({
     inventoryItemId: movementItemFilter || undefined,
     movementType: movementTypeFilter || undefined,
     siteId: movementSiteFilter || undefined,
     dateFrom: movementDateFrom || undefined,
     dateTo: movementDateTo || undefined,
+    referenceType: movementRefFilter?.type,
+    referenceId: movementRefFilter?.id,
   })
   const { data: sites } = useSites()
   const { data: allMovements, refetch: refetchAllMovements } = useStockMovements({})
@@ -449,12 +460,13 @@ export default function Inventory() {
     const columns = [
       { header: 'วันที่', accessor: m => new Date(m.created_at) },
       { header: 'สินค้า', accessor: m => m.inventory_items?.name || '' },
-      { header: 'ไซท์งาน', accessor: m => m.sites?.name || '' },
+      { header: 'คลัง', accessor: m => m.sites?.name || '' },
       { header: 'ประเภท', accessor: m => MOVEMENT_TYPE_LABELS[m.movement_type] || m.movement_type },
       { header: 'อ้างอิง', accessor: m => resolveMovementReference(m, { pos: allPos, invoices: invoiceNumbers, sites }) },
       { header: 'จำนวน', accessor: m => m.quantity },
       { header: 'หน่วย', accessor: m => m.inventory_items?.base_unit || '' },
       { header: 'ต้นทุน/หน่วย', accessor: m => m.unit_cost ?? '' },
+      { header: 'มูลค่ารวม', accessor: m => m.unit_cost != null ? m.quantity * m.unit_cost : '' },
     ]
     exportToExcel(movements || [], columns, 'ประวัติการเคลื่อนไหวสต็อก')
   }
@@ -595,7 +607,7 @@ export default function Inventory() {
             <div style={{ padding: '12px 16px', fontWeight: 700 }}>มูลค่าสต็อกรวม: <span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totalValue)}</span> บาท</div>
             <div className="table-wrap">
               <table>
-                <thead><tr><th>รหัส</th><th>ชื่อ</th><th>หมวดหมู่</th><th>สถานะ</th><th>ไซท์งาน</th><th>ปริมาณ</th><th>ราคา/หน่วย</th><th>มูลค่ารวม</th><th>แหล่งที่มาล่าสุด</th><th></th></tr></thead>
+                <thead><tr><th>รหัส</th><th>ชื่อ</th><th>หมวดหมู่</th><th>สถานะ</th><th>คลัง</th><th>ปริมาณ</th><th>ราคา/หน่วย</th><th>มูลค่ารวม</th><th>แหล่งที่มาล่าสุด</th><th></th></tr></thead>
                 <tbody>
                   {tableRows.map(({ item, balance, isFirstForItem }) => (
                     <BalanceRow
@@ -689,7 +701,7 @@ export default function Inventory() {
               <SearchableSelect value={movementItemFilter} onChange={setMovementItemFilter} placeholder="ทุกรายการสินค้า" options={itemOpts} />
             </div>
             <div style={{ minWidth: 200 }}>
-              <SearchableSelect value={movementSiteFilter} onChange={setMovementSiteFilter} placeholder="ทุกไซท์งาน" options={siteFilterOpts} />
+              <SearchableSelect value={movementSiteFilter} onChange={setMovementSiteFilter} placeholder="ทุกคลัง" options={siteFilterOpts} />
             </div>
             <select className="input" style={{ width: 'auto' }} value={movementTypeFilter} onChange={e => setMovementTypeFilter(e.target.value)}>
               <option value="">ทุกประเภท</option>
@@ -702,23 +714,47 @@ export default function Inventory() {
             <input type="date" className="input" style={{ width: 'auto' }} value={movementDateTo} onChange={e => setMovementDateTo(e.target.value)} />
             <button className="btn btn-sm" onClick={exportMovements} disabled={!(movements || []).length}>📊 Export Excel</button>
           </div>
+          {movementRefFilter && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+              <span className="badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                🔎 กำลังกรองเฉพาะ: {movementRefFilter.label}
+                <button className="btn btn-sm btn-ghost" style={{ padding: '2px 8px' }} onClick={() => setMovementRefFilter(null)}>✕ ล้าง</button>
+              </span>
+            </div>
+          )}
           <div className="card">
             <div className="table-wrap">
               <table>
-                <thead><tr><th>วันที่</th><th>สินค้า</th><th>ไซท์งาน</th><th>ประเภท</th><th>อ้างอิง</th><th>จำนวน</th><th>ต้นทุน/หน่วย</th></tr></thead>
+                <thead><tr><th>วันที่</th><th>สินค้า</th><th>คลัง</th><th>ประเภท</th><th>อ้างอิง</th><th>จำนวน</th><th>ต้นทุน/หน่วย</th><th>มูลค่ารวม</th></tr></thead>
                 <tbody>
-                  {(movements || []).map(m => (
-                    <tr key={m.id}>
-                      <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{new Date(m.created_at).toLocaleString('th-TH')}</td>
-                      <td>{m.inventory_items?.name}</td>
-                      <td style={{ fontSize: 12 }}>{m.sites?.name}</td>
-                      <td style={{ fontSize: 12 }}>{MOVEMENT_TYPE_LABELS[m.movement_type] || m.movement_type}</td>
-                      <td style={{ fontSize: 12 }}>{resolveMovementReference(m, { pos: allPos, invoices: invoiceNumbers, sites })}</td>
-                      <td className="font-mono">{fmt(m.quantity)} {m.inventory_items?.base_unit}</td>
-                      <td className="font-mono">{m.unit_cost != null ? fmt(m.unit_cost) : '—'}</td>
-                    </tr>
-                  ))}
-                  {!(movements || []).length && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีประวัติ</td></tr>}
+                  {(movements || []).map(m => {
+                    const refLabel = resolveMovementReference(m, { pos: allPos, invoices: invoiceNumbers, sites })
+                    const drillable = DRILLABLE_REFERENCE_TYPES.includes(m.reference_type) && m.reference_id
+                    const totalValue = m.unit_cost != null ? m.quantity * m.unit_cost : null
+                    return (
+                      <tr key={m.id}>
+                        <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{new Date(m.created_at).toLocaleString('th-TH')}</td>
+                        <td>{m.inventory_items?.name}</td>
+                        <td style={{ fontSize: 12 }}>{m.sites?.name}</td>
+                        <td style={{ fontSize: 12 }}>{MOVEMENT_TYPE_LABELS[m.movement_type] || m.movement_type}</td>
+                        <td style={{ fontSize: 12 }}>
+                          {drillable ? (
+                            <button
+                              className="btn-link"
+                              style={{ background: 'none', border: 'none', padding: 0, color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}
+                              onClick={() => setMovementRefFilter({ type: m.reference_type, id: m.reference_id, label: refLabel })}
+                            >
+                              {refLabel}
+                            </button>
+                          ) : refLabel}
+                        </td>
+                        <td className="font-mono">{fmt(m.quantity)} {m.inventory_items?.base_unit}</td>
+                        <td className="font-mono">{m.unit_cost != null ? fmt(m.unit_cost) : '—'}</td>
+                        <td className="font-mono">{totalValue != null ? fmt(totalValue) : '—'}</td>
+                      </tr>
+                    )
+                  })}
+                  {!(movements || []).length && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีประวัติ</td></tr>}
                 </tbody>
               </table>
             </div>
