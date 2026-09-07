@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { lineTotal, calcQuotationTotals } from './quotationCalc.js'
+import { lineTotal, calcQuotationTotals, sumMaterialLabor } from './quotationCalc.js'
 
 describe('lineTotal', () => {
   it('multiplies quantity by unit price', () => {
@@ -48,5 +48,28 @@ describe('calcQuotationTotals', () => {
   it('empty items list totals to zero', () => {
     const r = calcQuotationTotals([], { hasVat: true, priceIncludesVat: false })
     expect(r).toEqual({ rawTotal: 0, discount: 0, subtotal: 0, vat: 0, total: 0 })
+  })
+})
+
+describe('sumMaterialLabor', () => {
+  it('sums material and labor separately across item lines', () => {
+    const items = [
+      { quantity: '2', unit_price_material: '100', unit_price_labor: '30' },
+      { quantity: '3', unit_price_material: '50', unit_price_labor: '10' },
+    ]
+    expect(sumMaterialLabor(items)).toEqual({ material: 350, labor: 90 })
+  })
+
+  it('treats note/item_description rows and missing material/labor as zero', () => {
+    const items = [
+      { quantity: '1', unit_price_material: '100', unit_price_labor: '20' },
+      { item_type: 'note', description: 'หมายเหตุ' },
+      { quantity: '2', unit_price_material: '', unit_price_labor: '' },
+    ]
+    expect(sumMaterialLabor(items)).toEqual({ material: 100, labor: 20 })
+  })
+
+  it('empty items list sums to zero', () => {
+    expect(sumMaterialLabor([])).toEqual({ material: 0, labor: 0 })
   })
 })

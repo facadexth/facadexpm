@@ -224,7 +224,7 @@ export function useQuotations(filters = {}) {
     const buildQuery = () => {
       let q = supabase
         .from('quotations')
-        .select('*, clients(name, client_number, address, tax_id), sites(name, site_number), bank_accounts(bank_name, account_name, account_no), quotation_items(id, catalog_item_id, description, unit, quantity, unit_price, line_total, sort_order, item_type)')
+        .select('*, clients(name, client_number, address, tax_id), sites(name, site_number), bank_accounts(bank_name, account_name, account_no), quotation_items(id, catalog_item_id, description, unit, quantity, unit_price, unit_price_material, unit_price_labor, line_total, sort_order, item_type)')
         .order('date', { ascending: false })
         .order('id', { ascending: false })
 

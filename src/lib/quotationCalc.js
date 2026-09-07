@@ -21,6 +21,18 @@ function round2(n) {
   return Math.round(n * 100) / 100
 }
 
+/** Material/labor subtotals across item lines, for the split-pricing-mode
+ *  summary (editor + printed document). Note/item_description rows and
+ *  missing values contribute zero. */
+export function sumMaterialLabor(items) {
+  return (items || []).reduce((acc, it) => {
+    const qty = parseFloat(it.quantity) || 0
+    acc.material += qty * (parseFloat(it.unit_price_material) || 0)
+    acc.labor += qty * (parseFloat(it.unit_price_labor) || 0)
+    return acc
+  }, { material: 0, labor: 0 })
+}
+
 /**
  * @param {Array} items - quotation line items ({ line_total } or
  *   { quantity, unit_price })

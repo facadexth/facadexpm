@@ -20,7 +20,7 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
-import { lineTotal, calcQuotationTotals } from '../lib/quotationCalc.js'
+import { lineTotal, calcQuotationTotals, sumMaterialLabor } from '../lib/quotationCalc.js'
 import { SiteForm, siteFormToPayload } from './Sites.jsx'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
@@ -43,7 +43,7 @@ const QT_STATUS_LABELS = {
   draft: '✏️ ร่าง', sent: '📤 ส่งแล้ว', accepted: '✅ ยอมรับ', rejected: '✕ ปฏิเสธ', expired: '⏰ หมดอายุ',
 }
 
-const EMPTY_ITEM = { catalog_item_id: null, description: '', quantity: '1', unit: '', unit_price: '', item_type: 'item' }
+const EMPTY_ITEM = { catalog_item_id: null, description: '', quantity: '1', unit: '', unit_price: '', unit_price_material: '', unit_price_labor: '', item_type: 'item' }
 const EMPTY_NOTE = { catalog_item_id: null, description: '', quantity: '0', unit: '', unit_price: '0', item_type: 'note' }
 // 'item_description' is glued to the item immediately before it (by
 // position, not FK) -- only ever created via addFromCatalog below, or by
@@ -53,13 +53,23 @@ const EMPTY_NOTE = { catalog_item_id: null, description: '', quantity: '0', unit
 const EMPTY_ITEM_DESCRIPTION = { catalog_item_id: null, description: '', quantity: '0', unit: '', unit_price: '0', item_type: 'item_description' }
 const EMPTY_FORM = {
   client_id: '', date: '', valid_until: '', has_vat: true, price_includes_vat: false,
-  discount_mode: 'none', discount_amount: '', discount_pct: '',
+  discount_mode: 'none', discount_amount: '', discount_pct: '', pricing_mode: 'combined',
   payment_terms: '', notes: '', bank_account_id: null, items: [{ ...EMPTY_ITEM }],
 }
 
-function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch }) {
+function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch, pricingMode }) {
   const { data: units, refetch: refetchUnits } = useUnits()
-  const set = (i, k, v) => onChange(items.map((it, idx) => idx === i ? { ...it, [k]: v } : it))
+  const set = (i, k, v) => onChange(items.map((it, idx) => {
+    if (idx !== i) return it
+    const next = { ...it, [k]: v }
+    // unit_price stays the canonical total everything downstream (totals,
+    // accept-into-invoice, revision snapshots) reads -- in split mode it's
+    // derived, not directly typed.
+    if (pricingMode === 'split' && (k === 'unit_price_material' || k === 'unit_price_labor')) {
+      next.unit_price = String((parseFloat(next.unit_price_material) || 0) + (parseFloat(next.unit_price_labor) || 0))
+    }
+    return next
+  }))
   const add = () => onChange([...items, { ...EMPTY_ITEM }])
   const addNote = () => onChange([...items, { ...EMPTY_NOTE }])
   const remove = (i) => onChange(items.length > 1 ? items.filter((_, idx) => idx !== i) : items)
@@ -108,14 +118,23 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch 
               <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
             </div>
           ) : (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 150px 100px 32px 32px', gap: 6, alignItems: 'center' }}>
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: pricingMode === 'split' ? '1fr 70px 150px 100px 100px 32px 32px' : '1fr 70px 150px 100px 32px 32px', gap: 6, alignItems: 'center' }}>
               <input className="input input-sm" placeholder="รายละเอียดรายการ" required
                 value={it.description} onChange={e => set(i, 'description', e.target.value)} />
               <input className="input input-sm" type="number" min="0" step="0.01" placeholder="จำนวน"
                 value={it.quantity} onChange={e => set(i, 'quantity', e.target.value)} />
               <UnitSelect value={it.unit} onChange={v => set(i, 'unit', v)} units={units} onUnitAdded={refetchUnits} />
-              <input className="input input-sm" type="number" min="0" step="0.01" placeholder="ราคา/หน่วย"
-                value={it.unit_price} onChange={e => set(i, 'unit_price', e.target.value)} />
+              {pricingMode === 'split' ? (
+                <>
+                  <input className="input input-sm" type="number" min="0" step="0.01" placeholder="ค่าของ/หน่วย"
+                    value={it.unit_price_material} onChange={e => set(i, 'unit_price_material', e.target.value)} />
+                  <input className="input input-sm" type="number" min="0" step="0.01" placeholder="ค่าแรง/หน่วย"
+                    value={it.unit_price_labor} onChange={e => set(i, 'unit_price_labor', e.target.value)} />
+                </>
+              ) : (
+                <input className="input input-sm" type="number" min="0" step="0.01" placeholder="ราคา/หน่วย"
+                  value={it.unit_price} onChange={e => set(i, 'unit_price', e.target.value)} />
+              )}
               {!it.catalog_item_id && it.description.trim()
                 ? <button type="button" className="btn btn-sm btn-ghost" title="บันทึกเป็นรายการสินค้าใหม่" onClick={() => saveToCatalog(i)}>💾</button>
                 : <span title={it.catalog_item_id ? 'อยู่ในรายการสินค้าแล้ว' : undefined} style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>{it.catalog_item_id ? '📦' : ''}</span>}
@@ -131,7 +150,16 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch 
           <SearchableSelect value={null} onChange={addFromCatalog} placeholder="+ เพิ่มจากรายการสินค้า" options={catalogOpts(catalogItems)} />
         </div>
       </div>
-      <div style={{ marginTop: 10, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+      {pricingMode === 'split' && (() => {
+        const { material, labor } = sumMaterialLabor(items)
+        return (
+          <div style={{ marginTop: 10, textAlign: 'right', fontSize: 13, color: 'var(--text2)' }}>
+            รวมค่าของ: <span className="font-mono">{fmt(material)}</span> บาท &nbsp;·&nbsp;
+            รวมค่าแรง: <span className="font-mono">{fmt(labor)}</span> บาท
+          </div>
+        )
+      })()}
+      <div style={{ marginTop: 4, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
         รวม: <span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(grandTotal)}</span> บาท
       </div>
     </div>
@@ -183,7 +211,12 @@ function QuotationForm({ initial = EMPTY_FORM, clients, catalogItems, onCatalogR
             placeholder="— เลือกลูกค้า —" options={clientOpts(clients)}
             table="clients" namePlaceholder="ชื่อลูกค้าใหม่" onCreated={onClientCreated} />
         </div>
-        <QuotationItemsEditor items={form.items} onChange={items => set('items', items)} catalogItems={catalogItems} onCatalogRefetch={onCatalogRefetch} />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+          <input type="checkbox" checked={form.pricing_mode === 'split'}
+            onChange={e => set('pricing_mode', e.target.checked ? 'split' : 'combined')} />
+          แยกค่าของและค่าแรง (ไม่ติ๊ก = ราคารวมต่อรายการเหมือนเดิม)
+        </label>
+        <QuotationItemsEditor items={form.items} onChange={items => set('items', items)} catalogItems={catalogItems} onCatalogRefetch={onCatalogRefetch} pricingMode={form.pricing_mode} />
         <div>
           <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
@@ -389,36 +422,54 @@ function QuotationHeader({ tenant, tag, revisionSuffix, quotationNumber, date, v
 // Extracted so a past revision's snapshot can render through the exact
 // same markup as the live document, not a separate summary — the only
 // difference is which data feeds it and the doc-info tag.
-export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange, extraRemeasureKey }) {
+export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, pricingMode, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange, extraRemeasureKey }) {
   const totals = calcQuotationTotals(items, { hasVat, priceIncludesVat, discountAmount, discountPct })
+  const isSplit = pricingMode === 'split'
+  const materialLabor = isSplit ? sumMaterialLabor(items) : null
   const mySignature = useMySignatureUrl()
   const { data: myWorkerName } = useMyWorkerName()
   const style = resolveDocumentStyle(tenant?.document_style)
 
   const revisionSuffix = revision > 1 ? `-R${revision}` : ''
   const headerProps = { tenant, tag, revisionSuffix, quotationNumber, date, validUntil, siteName, clientName, clientAddress, clientTaxId, style }
+  const colCount = isSplit ? 5 : 4
 
   const renderRow = (it, i) => (
     it.item_type === 'note' || it.item_type === 'item_description' ? (
       <tr key={it.id || i}>
-        <td colSpan={4} style={{ padding: `6px 8px 6px ${it.item_type === 'item_description' ? 20 : 8}px`, borderBottom: '1px solid #eee', fontStyle: 'italic', color: '#666', whiteSpace: 'pre-line' }}>{it.description}</td>
+        <td colSpan={colCount} style={{ padding: `6px 8px 6px ${it.item_type === 'item_description' ? 20 : 8}px`, borderBottom: '1px solid #eee', fontStyle: 'italic', color: '#666', whiteSpace: 'pre-line' }}>{it.description}</td>
       </tr>
     ) : (
       <tr key={it.id || i}>
         <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.description}</td>
         <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.quantity} {it.unit || ''}</td>
-        <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
+        {isSplit ? (
+          <>
+            <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price_material)}</td>
+            <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price_labor)}</td>
+          </>
+        ) : (
+          <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
+        )}
         <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.line_total)}</td>
       </tr>
     )
   )
 
+  const thStyle = { textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }
   const renderTableHeader = () => (
     <tr>
-      <th style={{ textAlign: 'left', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }}>รายการ</th>
-      <th style={{ textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }}>จำนวน</th>
-      <th style={{ textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }}>ราคา/หน่วย</th>
-      <th style={{ textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }}>รวม</th>
+      <th style={{ ...thStyle, textAlign: 'left' }}>รายการ</th>
+      <th style={thStyle}>จำนวน</th>
+      {isSplit ? (
+        <>
+          <th style={thStyle}>ค่าของ/หน่วย</th>
+          <th style={thStyle}>ค่าแรง/หน่วย</th>
+        </>
+      ) : (
+        <th style={thStyle}>ราคา/หน่วย</th>
+      )}
+      <th style={thStyle}>รวม</th>
     </tr>
   )
 
@@ -434,6 +485,12 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
       <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
         <table style={{ width: 260, fontSize: 12.5 }}>
           <tbody>
+            {isSplit && (
+              <>
+                <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมค่าของ</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(materialLabor.material)}</td></tr>
+                <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมค่าแรง</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(materialLabor.labor)}</td></tr>
+              </>
+            )}
             {totals.discount > 0 && (
               <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>ส่วนลด</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>-{fmt(totals.discount)}</td></tr>
             )}
@@ -674,7 +731,7 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
             date={qt.date} validUntil={qt.valid_until} revision={qt.revision || 1} siteName={qt.sites?.name}
             clientName={qt.clients?.name} clientAddress={qt.clients?.address} clientTaxId={qt.clients?.tax_id} items={qt.quotation_items || []}
             hasVat={qt.has_vat} priceIncludesVat={qt.price_includes_vat}
-            discountAmount={qt.discount_amount} discountPct={qt.discount_pct}
+            discountAmount={qt.discount_amount} discountPct={qt.discount_pct} pricingMode={qt.pricing_mode}
             paymentTerms={qt.payment_terms} notes={qt.notes} bankAccount={qt.bank_accounts}
             clientSignature={receipt && signatureUrl ? { url: signatureUrl, signerName: receipt.signer_name, signedAt: receipt.signed_at } : null}
             onPageCountChange={setPageCount}
@@ -770,7 +827,7 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
                 date={s.date} validUntil={s.valid_until} revision={selected.revision} siteName={null}
                 clientName={s.client_name} items={s.items || []}
                 hasVat={s.has_vat} priceIncludesVat={s.price_includes_vat}
-                discountAmount={s.discount_amount} discountPct={s.discount_pct}
+                discountAmount={s.discount_amount} discountPct={s.discount_pct} pricingMode={s.pricing_mode}
                 paymentTerms={s.payment_terms} notes={s.notes} bankAccount={s.bank_account}
                 onPageCountChange={setHistoryPageCount}
                 // selected.id uniquely identifies which revision is currently
@@ -837,6 +894,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
         price_includes_vat: form.has_vat ? form.price_includes_vat : false,
         discount_amount: form.discount_mode === 'amount' ? (parseFloat(form.discount_amount) || null) : null,
         discount_pct: form.discount_mode === 'pct' ? (parseFloat(form.discount_pct) || null) : null,
+        pricing_mode: form.pricing_mode || 'combined',
         payment_terms: form.payment_terms || null,
         notes: form.notes || null,
         bank_account_id: form.bank_account_id || null,
@@ -856,10 +914,12 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
             date: editRow.date, valid_until: editRow.valid_until,
             has_vat: editRow.has_vat, price_includes_vat: editRow.price_includes_vat,
             discount_amount: editRow.discount_amount, discount_pct: editRow.discount_pct,
+            pricing_mode: editRow.pricing_mode || 'combined',
             payment_terms: editRow.payment_terms, notes: editRow.notes,
             bank_account: editRow.bank_accounts || null,
             items: (editRow.quotation_items || []).map(it => ({
-              description: it.description, unit: it.unit, quantity: it.quantity, unit_price: it.unit_price, line_total: it.line_total,
+              description: it.description, unit: it.unit, quantity: it.quantity, unit_price: it.unit_price,
+              unit_price_material: it.unit_price_material, unit_price_labor: it.unit_price_labor, line_total: it.line_total,
             })),
           }
           const { error: snapError } = await supabase.from('quotation_revisions').insert({
@@ -887,6 +947,8 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
           quotation_id: quotationId, catalog_item_id: it.catalog_item_id || null,
           description: it.description, quantity: parseFloat(it.quantity) || 0,
           unit: it.unit || null, unit_price: parseFloat(it.unit_price) || 0,
+          unit_price_material: form.pricing_mode === 'split' ? (parseFloat(it.unit_price_material) || 0) : null,
+          unit_price_labor: form.pricing_mode === 'split' ? (parseFloat(it.unit_price_labor) || 0) : null,
           line_total: lineTotal(it), sort_order: i, item_type: it.item_type || 'item',
         }))
       if (itemsPayload.length) {
@@ -1041,10 +1103,15 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       discount_mode: editRow.discount_pct != null ? 'pct' : editRow.discount_amount != null ? 'amount' : 'none',
       discount_amount: editRow.discount_amount != null ? String(editRow.discount_amount) : '',
       discount_pct: editRow.discount_pct != null ? String(editRow.discount_pct) : '',
+      pricing_mode: editRow.pricing_mode || 'combined',
       payment_terms: editRow.payment_terms || '', notes: editRow.notes || '',
       bank_account_id: editRow.bank_account_id || null,
       items: (editRow.quotation_items?.length ? editRow.quotation_items : [{ ...EMPTY_ITEM }])
-        .map(it => ({ catalog_item_id: it.catalog_item_id, description: it.description, quantity: String(it.quantity), unit: it.unit || '', unit_price: String(it.unit_price), item_type: it.item_type || 'item' })),
+        .map(it => ({
+          catalog_item_id: it.catalog_item_id, description: it.description, quantity: String(it.quantity), unit: it.unit || '',
+          unit_price: String(it.unit_price), unit_price_material: it.unit_price_material != null ? String(it.unit_price_material) : '',
+          unit_price_labor: it.unit_price_labor != null ? String(it.unit_price_labor) : '', item_type: it.item_type || 'item',
+        })),
     }
   }, [editRow])
 
