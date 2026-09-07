@@ -925,7 +925,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           Shown to every role so support can ask "what version are you on"
           without needing OWNER access. */}
       <div style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--text3)', marginTop: 28 }}>
-        FACADE X v{__APP_VERSION__} · อัปเดตล่าสุด {new Date(__BUILD_TIME__).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
+        {tenant?.company_name || 'Dashboard'} v{__APP_VERSION__} · อัปเดตล่าสุด {new Date(__BUILD_TIME__).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
       </div>
     </div>
   )
