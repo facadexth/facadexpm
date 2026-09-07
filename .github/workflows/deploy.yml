@@ -26,19 +26,38 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
-      - name: Push dist to deploy branch
+      - name: Check out existing deploy branch
+        uses: actions/checkout@v4
+        with:
+          ref: deploy
+          path: deploy-repo
+          fetch-depth: 1
+
+      - name: Sync built files onto deploy branch, keeping its history
         run: |
-          cd dist
-          cat > .cpanel.yml << 'EOF'
+          rsync -a --delete --exclude='.git' dist/ deploy-repo/
+
+          cat > deploy-repo/.cpanel.yml << 'EOF'
           ---
           deployment:
             tasks:
               - export DEPLOYPATH=/home/zxdybpsz/public_html/pm.facadex.co.th
               - /bin/cp -rf . $DEPLOYPATH/
           EOF
-          git init
+
+          cd deploy-repo
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add -A
-          git commit -m "deploy: $(date +'%Y-%m-%d %H:%M')"
-          git push -f https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/facadexth/facadexpm.git HEAD:deploy
+
+          if git diff --cached --quiet; then
+            echo "No changes to deploy."
+            exit 0
+          fi
+
+          git commit -m "deploy: $(date +'%Y-%m-%d %H:%M') (from ${GITHUB_SHA::7})"
+          # Normal push, on top of the branch's real history -- no -f. If this
+          # branch ever falls out of sync (someone force-pushed elsewhere, or
+          # cPanel's own tooling committed to it), this step fails loudly
+          # instead of silently overwriting history again.
+          git push origin HEAD:deploy
