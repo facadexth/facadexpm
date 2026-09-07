@@ -209,6 +209,14 @@ export default function App() {
   const { tenant, isTrialActive, trialDaysRemaining, hasModuleAccess, loading: tenantLoading, refetch: refetchTenant } = useTenant()
   const { data: isPlatformAdmin, loading: platformAdminLoading } = usePlatformAdmin()
 
+  // Browser tab title -- mirrors the header's tenant.logo_url/company_name
+  // fallback (App.jsx header block below). Static index.html default
+  // ("Construction Dashboard") covers pre-login/loading; this only
+  // overrides it once a tenant is actually known.
+  useEffect(() => {
+    document.title = tenant?.company_name ? `${tenant.company_name} — Dashboard` : 'Construction Dashboard'
+  }, [tenant?.company_name])
+
   // Single source of truth for "can this user actually be on this tab" --
   // used both to decide what shows in the nav AND to gate the page itself
   // (ProtectedPage below). Previously only the nav applied module/
