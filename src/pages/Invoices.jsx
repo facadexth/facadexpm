@@ -23,7 +23,7 @@ import { auditLog } from '../lib/audit.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
-import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, VAT_RATE } from '../lib/invoiceCalc.js'
+import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, sumMaterialLabor, VAT_RATE } from '../lib/invoiceCalc.js'
 import { calcQuotationTotals } from '../lib/quotationCalc.js'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
@@ -51,6 +51,13 @@ function buildLineState(quotationItems, unitsByQuotationItem, priceMultiplier) {
     return {
       quotationItemId: qi.id, description: qi.description, unit: qi.unit,
       unitPrice: round2(qi.unit_price * priceMultiplier), totalQty: qi.quantity, checked: true, units,
+      // Carries the source quotation item's material/labor split forward
+      // (scaled by the same discount multiplier as unitPrice) so a split
+      // quotation's invoices -- and the receipt/tax-invoice printed from
+      // the same invoice_items -- can show the same breakdown. Null on a
+      // 'combined' quotation, same marker convention as quotation_items.
+      unitPriceMaterial: qi.unit_price_material != null ? round2(qi.unit_price_material * priceMultiplier) : null,
+      unitPriceLabor: qi.unit_price_labor != null ? round2(qi.unit_price_labor * priceMultiplier) : null,
     }
   })
 }
@@ -322,6 +329,10 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   // up to its own total by a satang.
   const invoiceItemsForTotals = billedLines.map(l => ({ line_total: round2(drawAmount(l.units, l.unitPrice)) }))
   const totals = calcInvoiceTotals(invoiceItemsForTotals, { hasVat: quotation.has_vat, priceIncludesVat: quotation.price_includes_vat })
+  const isSplit = quotation.pricing_mode === 'split'
+  const materialLabor = isSplit
+    ? sumMaterialLabor(billedLines.map(l => ({ draw_qty: drawQty(l.units), unit_price_material: l.unitPriceMaterial, unit_price_labor: l.unitPriceLabor })))
+    : null
   // ยอดสุทธิจริงที่จะได้รับ ณ ตอนนี้ (หลัง VAT ถ้ามี แล้วหักภาษี ณ ที่จ่ายถ้าติ๊กไว้)
   // -- โชว์ไว้ให้เห็นผลจริงหลังกดเติมอัตโนมัติ หรือหลังปรับมือเองต่อ
   //
@@ -396,6 +407,7 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
         const { data: invoiceItem, error: itemError } = await supabase.from('invoice_items').insert({
           invoice_id: invoice.id, quotation_item_id: l.quotationItemId,
           description: l.description, unit: l.unit, unit_price: l.unitPrice,
+          unit_price_material: l.unitPriceMaterial, unit_price_labor: l.unitPriceLabor,
           draw_qty: lineDrawQty, line_total: lineAmount, sort_order: sortOrder,
         }).select().single()
         if (itemError) throw itemError
@@ -442,6 +454,12 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
 
         <InvoiceItemsEditor lines={lines} onChange={setLines} mode={mode} onModeChange={setMode} />
         <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>
+          {isSplit && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมค่าของ</span><span className="font-mono">{fmt(materialLabor.material)}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมค่าแรง</span><span className="font-mono">{fmt(materialLabor.labor)}</span></div>
+            </>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมงวดนี้ (ก่อน VAT)</span><span className="font-mono">{fmt(totals.subtotal)}</span></div>
           {quotation.has_vat && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>VAT (7%)</span><span className="font-mono">{fmt(totals.vat)}</span></div>}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}><span>รวมเรียกเก็บงวดนี้</span><span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totals.total)}</span></div>
@@ -577,22 +595,44 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
   const { data: myWorkerName } = useMyWorkerName()
   const style = resolveDocumentStyle(tenant?.document_style)
   const headerProps = { tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, style }
+  // Marker convention matches quotation_items: presence of a non-null
+  // unit_price_material means this invoice's items carry the source
+  // quotation's material/labor split forward (see buildLineState). No
+  // separate flag needed -- invoice/receipt/tax-invoice all read the same
+  // invoice_items rows through this one component.
+  const isSplit = (items || []).some(it => it.unit_price_material != null)
+  const materialLabor = isSplit ? sumMaterialLabor(items) : null
 
   const renderRow = (it, i) => (
     <tr key={it.id || i}>
       <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.description}</td>
       <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.draw_qty).replace(/\.00$/, '')} {it.unit || ''}</td>
-      <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
+      {isSplit ? (
+        <>
+          <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price_material)}</td>
+          <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price_labor)}</td>
+        </>
+      ) : (
+        <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
+      )}
       <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.line_total)}</td>
     </tr>
   )
 
+  const thStyle = { textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }
   const renderTableHeader = () => (
     <tr>
-      <th style={{ textAlign: 'left', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }}>รายการ</th>
-      <th style={{ textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }}>จำนวน</th>
-      <th style={{ textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }}>ราคา/หน่วย</th>
-      <th style={{ textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }}>รวม</th>
+      <th style={{ ...thStyle, textAlign: 'left' }}>รายการ</th>
+      <th style={thStyle}>จำนวน</th>
+      {isSplit ? (
+        <>
+          <th style={thStyle}>ค่าของ/หน่วย</th>
+          <th style={thStyle}>ค่าแรง/หน่วย</th>
+        </>
+      ) : (
+        <th style={thStyle}>ราคา/หน่วย</th>
+      )}
+      <th style={thStyle}>รวม</th>
     </tr>
   )
 
@@ -609,6 +649,12 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
       <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
         <table style={{ width: 260, fontSize: 12.5 }}>
           <tbody>
+            {isSplit && (
+              <>
+                <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมค่าของ</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(materialLabor.material)}</td></tr>
+                <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมค่าแรง</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(materialLabor.labor)}</td></tr>
+              </>
+            )}
             {subtotal != null && (
               <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมก่อน VAT</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(subtotal)}</td></tr>
             )}

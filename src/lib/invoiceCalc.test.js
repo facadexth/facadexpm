@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isCountable, buildUnitSeedRows, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals } from './invoiceCalc.js'
+import { isCountable, buildUnitSeedRows, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, sumMaterialLabor } from './invoiceCalc.js'
 
 describe('isCountable', () => {
   it('true for small whole numbers', () => {
@@ -97,5 +97,27 @@ describe('calcInvoiceTotals', () => {
   })
   it('empty items list totals to zero', () => {
     expect(calcInvoiceTotals([], { hasVat: true, priceIncludesVat: false })).toEqual({ subtotal: 0, vat: 0, total: 0 })
+  })
+})
+
+describe('sumMaterialLabor', () => {
+  it('sums material and labor separately across invoice item rows, keyed on draw_qty', () => {
+    const items = [
+      { draw_qty: '2', unit_price_material: '100', unit_price_labor: '30' },
+      { draw_qty: '3', unit_price_material: '50', unit_price_labor: '10' },
+    ]
+    expect(sumMaterialLabor(items)).toEqual({ material: 350, labor: 90 })
+  })
+
+  it('treats missing material/labor as zero (combined-pricing invoice items)', () => {
+    const items = [
+      { draw_qty: '1', unit_price_material: '100', unit_price_labor: '20' },
+      { draw_qty: '2', unit_price_material: null, unit_price_labor: null },
+    ]
+    expect(sumMaterialLabor(items)).toEqual({ material: 100, labor: 20 })
+  })
+
+  it('empty items list sums to zero', () => {
+    expect(sumMaterialLabor([])).toEqual({ material: 0, labor: 0 })
   })
 })
