@@ -361,9 +361,13 @@ export default function App() {
         flexWrap: 'wrap', gap: 8, rowGap: 4,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
-          <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent)', letterSpacing: 1 }}>
-            FACADE X
-          </span>
+          {tenant?.logo_url ? (
+            <img src={tenant.logo_url} alt={tenant.company_name || ''} style={{ height: 28, display: 'block' }} />
+          ) : (
+            <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent)', letterSpacing: 1 }}>
+              {tenant?.company_name || 'Dashboard'}
+            </span>
+          )}
           <span className="header-subtitle" style={{ color: 'var(--text3)', fontSize: 13 }}>Construction Dashboard</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', padding: '8px 0' }}>
