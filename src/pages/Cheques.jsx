@@ -6,7 +6,7 @@
 //    cheque_cascade_status, see supabase/schema.sql)
 // ✅ Shows total amount + expense count linked to each cheque
 // ============================================================
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { supabase, fmt } from '../lib/supabase.js'
 import { useCheques, useQuery, useAppSetting } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
@@ -129,6 +129,37 @@ export default function Cheques() {
   const [cashId, setCashId] = useState(null)
   const [saving, setSaving] = useState(false)
 
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [bankFilter, setBankFilter] = useState('')
+  const [sortCol, setSortCol] = useState('check_date')
+  const [sortDir, setSortDir] = useState('desc')
+
+  const bankOptions = useMemo(() =>
+    [...new Set((cheques || []).map(c => c.bank).filter(Boolean))].sort(),
+    [cheques])
+
+  const filtered = useMemo(() => {
+    const rows = (cheques || [])
+      .map(c => ({ ...c, _total: totalsByCheque[c.id]?.total ?? 0 }))
+      .filter(c => !search || c.cheque_no?.toLowerCase().includes(search.toLowerCase()))
+      .filter(c => !statusFilter || c.status === statusFilter)
+      .filter(c => !bankFilter || c.bank === bankFilter)
+    return [...rows].sort((a, b) => {
+      const va = a[sortCol] ?? ''
+      const vb = b[sortCol] ?? ''
+      if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
+      return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cheques, totalsByCheque, search, statusFilter, bankFilter, sortCol, sortDir])
+
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+
   const handleSave = async (form) => {
     setSaving(true)
     try {
@@ -163,8 +194,19 @@ export default function Cheques() {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         <button className="btn btn-primary" onClick={() => { setEditCheque(null); setShowForm(true) }}>+ เพิ่มเช็ค</button>
+        <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหาเลขที่เช็ค..." value={search} onChange={e => setSearch(e.target.value)} />
+        <select className="select select-sm" style={{ width: 160 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+          <option value="">ทุกสถานะ</option>
+          <option value="issued">📄 ยังไม่ขึ้นเงิน</option>
+          <option value="received">✍️ รับเช็คแล้ว</option>
+          <option value="cashed">🏦 ขึ้นเงินแล้ว</option>
+        </select>
+        <select className="select select-sm" style={{ width: 160 }} value={bankFilter} onChange={e => setBankFilter(e.target.value)}>
+          <option value="">ทุกธนาคาร</option>
+          {bankOptions.map(b => <option key={b} value={b}>{b}</option>)}
+        </select>
       </div>
 
       <div className="card">
@@ -172,12 +214,17 @@ export default function Cheques() {
           <table>
             <thead>
               <tr>
-                <th>เลขที่เช็ค</th><th>ธนาคาร</th><th>วันที่เช็ค</th><th>สถานะ</th>
-                <th>ยอดรวม (รายจ่ายที่ผูกไว้)</th><th>วันที่ขึ้นเงิน</th><th></th>
+                <th className="sortable" onClick={() => toggleSort('cheque_no')}>เลขที่เช็ค{si('cheque_no')}</th>
+                <th className="sortable" onClick={() => toggleSort('bank')}>ธนาคาร{si('bank')}</th>
+                <th className="sortable" onClick={() => toggleSort('check_date')}>วันที่เช็ค{si('check_date')}</th>
+                <th className="sortable" onClick={() => toggleSort('status')}>สถานะ{si('status')}</th>
+                <th className="sortable" onClick={() => toggleSort('_total')}>ยอดรวม (รายจ่ายที่ผูกไว้){si('_total')}</th>
+                <th className="sortable" onClick={() => toggleSort('cashed_at')}>วันที่ขึ้นเงิน{si('cashed_at')}</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {(cheques || []).map(c => {
+              {filtered.map(c => {
                 const t = totalsByCheque[c.id]
                 const receipt = receiptByCheque[c.id]
                 const statusBadge = c.status === 'cashed'
@@ -222,8 +269,10 @@ export default function Cheques() {
                   </tr>
                 )
               })}
-              {!(cheques || []).length && (
-                <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีเช็ค</td></tr>
+              {!filtered.length && (
+                <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>
+                  {(cheques || []).length ? 'ไม่พบเช็คที่ตรงกับตัวกรอง' : 'ยังไม่มีเช็ค'}
+                </td></tr>
               )}
             </tbody>
           </table>

@@ -52,7 +52,7 @@ const EMPTY_NOTE = { catalog_item_id: null, description: '', quantity: '0', unit
 // query "this item's description" cleanly.
 const EMPTY_ITEM_DESCRIPTION = { catalog_item_id: null, description: '', quantity: '0', unit: '', unit_price: '0', item_type: 'item_description' }
 const EMPTY_FORM = {
-  client_id: '', date: '', valid_until: '', has_vat: true, price_includes_vat: false,
+  client_id: '', site_name: '', date: '', valid_until: '', has_vat: true, price_includes_vat: false,
   discount_mode: 'none', discount_amount: '', discount_pct: '', pricing_mode: 'combined',
   payment_terms: '', notes: '', bank_account_id: null, items: [{ ...EMPTY_ITEM }],
 }
@@ -210,6 +210,11 @@ function QuotationForm({ initial = EMPTY_FORM, clients, catalogItems, onCatalogR
           <QuickAddSelect required value={form.client_id} onChange={id => set('client_id', id)}
             placeholder="— เลือกลูกค้า —" options={clientOpts(clients)}
             table="clients" namePlaceholder="ชื่อลูกค้าใหม่" onCreated={onClientCreated} />
+        </div>
+        <div>
+          <label className="label">ชื่อไซต์/โครงการ</label>
+          <input className="input" value={form.site_name} onChange={e => set('site_name', e.target.value)}
+            placeholder="เช่น บ้านคุณสมชาย — ใช้ต่อท้ายชื่อไฟล์เมื่อบันทึกเอกสาร" />
         </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
           <input type="checkbox" checked={form.pricing_mode === 'split'}
@@ -695,7 +700,8 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
 
   const handleDownload = async (format, exportFn) => {
     await logDocumentPrint(tenant?.id, 'quotation', qt.id, format)
-    await scaleRef.current?.withNaturalScale(() => exportFn(elementId, `${printTag}-${qt.quotation_number}`))
+    const suffix = `-R${qt.revision || 1}${qt.site_name ? '-' + qt.site_name : ''}`
+    await scaleRef.current?.withNaturalScale(() => exportFn(elementId, `${printTag}-${qt.quotation_number}${suffix}`))
   }
   // window.print() renders the print dialog off the live DOM the same way
   // downloadPDF/downloadJPG do -- must go through the same natural-scale
@@ -776,8 +782,9 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
       setTimeout(resolve, 5000)
     }))
   }
-  const handleDownloadPdf = () => scaleRef.current?.withNaturalScale(() => downloadPDF(elementId, `${quotation.quotation_number}-rev${selected.revision}.pdf`))
-  const handleDownloadJpg = () => scaleRef.current?.withNaturalScale(() => downloadJPG(elementId, `${quotation.quotation_number}-rev${selected.revision}.jpg`))
+  const revisionSuffix = `-R${selected?.revision}${quotation.site_name ? '-' + quotation.site_name : ''}`
+  const handleDownloadPdf = () => scaleRef.current?.withNaturalScale(() => downloadPDF(elementId, `${quotation.quotation_number}${revisionSuffix}.pdf`))
+  const handleDownloadJpg = () => scaleRef.current?.withNaturalScale(() => downloadJPG(elementId, `${quotation.quotation_number}${revisionSuffix}.jpg`))
 
   return (
     <Modal title={`ประวัติการแก้ไข ${quotation.quotation_number}`} onClose={onClose} maxWidth={760}>
@@ -888,6 +895,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
     try {
       const qtPayload = {
         client_id: form.client_id,
+        site_name: form.site_name || null,
         date: form.date,
         valid_until: form.valid_until || null,
         has_vat: form.has_vat,

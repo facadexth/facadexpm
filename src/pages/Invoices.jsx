@@ -849,7 +849,8 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
   const scaleRef = useRef(null)
   const handleDownload = async (format, exportFn) => {
     await logDocumentPrint(tenant?.id, 'invoice', invoice.id, format)
-    await scaleRef.current?.withNaturalScale(() => exportFn(elementId, `${printTag}-${docTitle}-${invoice.invoice_number}`))
+    const suffix = invoice.sites?.name ? `-${invoice.sites.name}` : ''
+    await scaleRef.current?.withNaturalScale(() => exportFn(elementId, `${printTag}-${docTitle}-${invoice.invoice_number}${suffix}`))
   }
   // See ScaleToFit's comment (usePaginatedDocument.jsx) for why print must
   // go through the same natural-scale guard as downloadPDF/downloadJPG.
@@ -969,7 +970,8 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
   const scaleRef = useRef(null)
   const handleDownload = async (format, exportFn) => {
     await logDocumentPrint(tenant?.id, 'receipt', receipt.id, format)
-    await scaleRef.current?.withNaturalScale(() => exportFn(elementId, `${printTag}-${variant.title}-${receipt.receipt_number}`))
+    const suffix = invoice.sites?.name ? `-${invoice.sites.name}` : ''
+    await scaleRef.current?.withNaturalScale(() => exportFn(elementId, `${printTag}-${variant.title}-${receipt[variant.numberField]}${suffix}`))
   }
   // See ScaleToFit's comment (usePaginatedDocument.jsx) for why print must
   // go through the same natural-scale guard as downloadPDF/downloadJPG.
@@ -1308,6 +1310,9 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   const [dateTo,   setDateTo]   = useState(ytdTo)
   const [siteId,   setSiteId]   = useState('')
   const [status,   setStatus]   = useState('')
+  const [search,   setSearch]   = useState('')
+  const [sortCol,  setSortCol]  = useState('date')
+  const [sortDir,  setSortDir]  = useState('desc')
   const [pickQuotation, setPickQuotation] = useState(false)
   const [createFor, setCreateFor] = useState(null)
   const [toast, setToast] = useState(null)
@@ -1315,6 +1320,32 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   const filters = { from: dateFrom, to: dateTo, siteId, status }
   const { data: invoices, error: invoicesError, refetch } = useInvoices(filters)
   const { data: sites } = useSites()
+
+  // เรียง/ค้นหาแบบ client-side ทับผลลัพธ์ที่กรองมาจาก server แล้ว (date/site/status)
+  // -- accessor ต่อคอลัมน์ เพราะบางคอลัมน์ (ไซท์งาน, ลูกค้า) เป็น field ที่ join มา
+  const SORT_ACCESSORS = {
+    invoice_number: inv => inv.invoice_number || '',
+    date:           inv => inv.date || '',
+    site:           inv => inv.sites?.name || '',
+    client:         inv => inv.quotations?.clients?.name || '',
+    total:          inv => inv.total || 0,
+    status:         inv => inv.status || '',
+  }
+  const sortedInvoices = useMemo(() => {
+    const rows = (invoices || [])
+      .filter(inv => !search || (inv.quotations?.clients?.name || '').toLowerCase().includes(search.toLowerCase()))
+    const acc = SORT_ACCESSORS[sortCol]
+    return [...rows].sort((a, b) => {
+      const va = acc(a), vb = acc(b)
+      if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
+      return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [invoices, search, sortCol, sortDir])
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
   const { data: acceptedQuotations } = useQuotations({ status: 'accepted' })
 
   const billableQuotations = useMemo(() =>
@@ -1526,16 +1557,26 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
           <option value="">ทุกสถานะ</option>
           {INV_STATUSES.map(s => <option key={s} value={s}>{INV_STATUS_LABELS[s]}</option>)}
         </select>
+        <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหาลูกค้า..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       <div className="card">
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>เลขที่</th><th>วันที่</th><th>ไซท์งาน</th><th>ลูกค้า</th><th>รายการ</th><th>ยอดรวม</th><th>สถานะ</th><th></th></tr>
+              <tr>
+                <th className="sortable" onClick={() => toggleSort('invoice_number')}>เลขที่{si('invoice_number')}</th>
+                <th className="sortable" onClick={() => toggleSort('date')}>วันที่{si('date')}</th>
+                <th className="sortable" onClick={() => toggleSort('site')}>ไซท์งาน{si('site')}</th>
+                <th className="sortable" onClick={() => toggleSort('client')}>ลูกค้า{si('client')}</th>
+                <th>รายการ</th>
+                <th className="sortable" onClick={() => toggleSort('total')}>ยอดรวม{si('total')}</th>
+                <th className="sortable" onClick={() => toggleSort('status')}>สถานะ{si('status')}</th>
+                <th></th>
+              </tr>
             </thead>
             <tbody>
-              {(invoices || []).map(inv => (
+              {sortedInvoices.map(inv => (
                 <tr key={inv.id}>
                   <td className="font-mono" style={{ fontSize: 12 }}>{inv.invoice_number}</td>
                   <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDate(inv.date)}</td>
@@ -1571,7 +1612,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
                   </td>
                 </tr>
               ))}
-              {!(invoices || []).length && (
+              {!sortedInvoices.length && (
                 <tr><td colSpan={8} style={{ textAlign: 'center', color: invoicesError ? 'var(--red)' : 'var(--text3)', padding: 32 }}>
                   {invoicesError ? `โหลดใบแจ้งหนี้ไม่สำเร็จ: ${invoicesError}` : 'ไม่พบใบแจ้งหนี้ในช่วงเวลานี้'}
                 </td></tr>

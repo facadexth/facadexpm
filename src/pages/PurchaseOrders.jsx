@@ -412,8 +412,8 @@ function PODocumentModal({ po, tenant, onClose }) {
       </div>
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
-        <button className="btn btn-ghost" onClick={() => downloadJPG(`po-doc-${po.id}`, `${po.po_number}.jpg`)}>🖼️ ดาวน์โหลด JPG</button>
-        <button className="btn btn-primary" onClick={() => downloadPDF(`po-doc-${po.id}`, `${po.po_number}.pdf`)}>📄 ดาวน์โหลด PDF</button>
+        <button className="btn btn-ghost" onClick={() => downloadJPG(`po-doc-${po.id}`, `${po.po_number}${po.sites?.name ? '-' + po.sites.name : ''}.jpg`)}>🖼️ ดาวน์โหลด JPG</button>
+        <button className="btn btn-primary" onClick={() => downloadPDF(`po-doc-${po.id}`, `${po.po_number}${po.sites?.name ? '-' + po.sites.name : ''}.pdf`)}>📄 ดาวน์โหลด PDF</button>
       </div>
     </Modal>
   )
