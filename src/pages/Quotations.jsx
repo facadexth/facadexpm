@@ -57,6 +57,17 @@ const EMPTY_FORM = {
   payment_terms: '', notes: '', bank_account_id: null, items: [{ ...EMPTY_ITEM }],
 }
 
+function MoveButtons({ onUp, onDown, disabledUp, disabledDown }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <button type="button" className="btn btn-ghost" style={{ padding: 0, height: 14, fontSize: 9, lineHeight: 1 }}
+        title="เลื่อนขึ้น" disabled={disabledUp} onClick={onUp}>▲</button>
+      <button type="button" className="btn btn-ghost" style={{ padding: 0, height: 14, fontSize: 9, lineHeight: 1 }}
+        title="เลื่อนลง" disabled={disabledDown} onClick={onDown}>▼</button>
+    </div>
+  )
+}
+
 function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch, pricingMode }) {
   const { data: units, refetch: refetchUnits } = useUnits()
   const set = (i, k, v) => onChange(items.map((it, idx) => {
@@ -70,7 +81,7 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
     }
     return next
   }))
-  const add = () => onChange([...items, { ...EMPTY_ITEM }])
+  const add = () => onChange([...items, { ...EMPTY_ITEM }, { ...EMPTY_ITEM_DESCRIPTION }])
   const addNote = () => onChange([...items, { ...EMPTY_NOTE }])
   const remove = (i) => onChange(items.length > 1 ? items.filter((_, idx) => idx !== i) : items)
   const addFromCatalog = (catalogId) => {
@@ -104,21 +115,62 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
   }
   const grandTotal = items.reduce((sum, it) => sum + lineTotal(it), 0)
 
+  // "บล็อก" = แถวที่ย้ายด้วยกันเป็นหน่วยเดียว -- item_description ไม่ใช่จุด
+  // เริ่มบล็อกเอง (ผูกติดกับ item ก่อนหน้าโดยตำแหน่ง ดูคอมเมนต์ EMPTY_ITEM_DESCRIPTION
+  // ด้านบน) ดังนั้นความยาวบล็อกคือ 2 ถ้าแถวถัดไปเป็น item_description ของแถวนี้
+  // ไม่งั้นคือ 1 (note หรือ item เดี่ยวๆ)
+  const blockLenAt = (i) => (items[i]?.item_type === 'item' && items[i + 1]?.item_type === 'item_description') ? 2 : 1
+  const isLastBlock = (i) => i + blockLenAt(i) >= items.length
+  const moveBlock = (i, dir) => {
+    const len = blockLenAt(i)
+    if (dir === 'up') {
+      if (i === 0) return
+      const prevStart = (i >= 2 && items[i - 1]?.item_type === 'item_description') ? i - 2 : i - 1
+      onChange([...items.slice(0, prevStart), ...items.slice(i, i + len), ...items.slice(prevStart, i), ...items.slice(i + len)])
+    } else {
+      const nextStart = i + len
+      if (nextStart >= items.length) return
+      const nextLen = blockLenAt(nextStart)
+      onChange([...items.slice(0, i), ...items.slice(nextStart, nextStart + nextLen), ...items.slice(i, i + len), ...items.slice(nextStart + nextLen)])
+    }
+  }
+
   return (
     <div>
       <label className="label">รายการ ★</label>
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((it, i) => (
-          it.item_type === 'note' || it.item_type === 'item_description' ? (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 32px', gap: 6, alignItems: 'start', paddingLeft: it.item_type === 'item_description' ? 20 : 0 }}>
+          it.item_type === 'note' ? (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '24px 1fr 32px', gap: 6, alignItems: 'start' }}>
+              <MoveButtons onUp={() => moveBlock(i, 'up')} onDown={() => moveBlock(i, 'down')} disabledUp={i === 0} disabledDown={isLastBlock(i)} />
               <textarea className="textarea input-sm" rows={2}
-                placeholder={it.item_type === 'item_description' ? 'คำอธิบายรายการ (ของรายการด้านบน — ไม่มีราคา, พิมพ์หลายบรรทัดได้)' : 'ข้อมูลเพิ่มเติม (ไม่มีราคา — เช่น หมายเหตุ, หัวข้อคั่น)'}
+                placeholder="ข้อมูลเพิ่มเติม (ไม่มีราคา — เช่น หมายเหตุ, หัวข้อคั่น)"
                 style={{ fontStyle: 'italic', resize: 'vertical' }}
                 value={it.description} onChange={e => set(i, 'description', e.target.value)} />
               <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
             </div>
+          ) : it.item_type === 'item_description' ? (
+            // Grid columns ตรงกับแถว item เป๊ะ (ไม่ใช่ 24px 1fr 32px แบบ note)
+            // เพื่อให้ช่องคำอธิบายกว้างเท่าช่องรายละเอียดรายการของ item ด้านบน
+            // พอดี -- คอลัมน์อื่นเว้นว่างไว้เฉยๆ (ไม่มีข้อมูลอะไรจะใส่)
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: pricingMode === 'split' ? '24px 1fr 70px 150px 100px 100px 32px 32px' : '24px 1fr 70px 150px 100px 32px 32px', gap: 6, alignItems: 'center' }}>
+              <span />
+              {/* .textarea's CSS class forces min-height:80px regardless of
+                  rows -- overridden here so this starts exactly as tall as
+                  the item's own input field above it (still resize:vertical,
+                  so it can be dragged taller for real multi-line text). */}
+              <textarea className="textarea input-sm" rows={1}
+                placeholder="คำอธิบายรายการ (ของรายการด้านบน — ไม่มีราคา, พิมพ์หลายบรรทัดได้)"
+                style={{ fontStyle: 'italic', resize: 'vertical', minHeight: 28 }}
+                value={it.description} onChange={e => set(i, 'description', e.target.value)} />
+              <span /><span /><span />
+              {pricingMode === 'split' && <span />}
+              <span />
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
+            </div>
           ) : (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: pricingMode === 'split' ? '1fr 70px 150px 100px 100px 32px 32px' : '1fr 70px 150px 100px 32px 32px', gap: 6, alignItems: 'center' }}>
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: pricingMode === 'split' ? '24px 1fr 70px 150px 100px 100px 32px 32px' : '24px 1fr 70px 150px 100px 32px 32px', gap: 6, alignItems: 'center' }}>
+              <MoveButtons onUp={() => moveBlock(i, 'up')} onDown={() => moveBlock(i, 'down')} disabledUp={i === 0} disabledDown={isLastBlock(i)} />
               <input className="input input-sm" placeholder="รายละเอียดรายการ" required
                 value={it.description} onChange={e => set(i, 'description', e.target.value)} />
               <input className="input input-sm" type="number" min="0" step="0.01" placeholder="จำนวน"
@@ -428,9 +480,20 @@ function QuotationHeader({ tenant, tag, revisionSuffix, quotationNumber, date, v
 // same markup as the live document, not a separate summary — the only
 // difference is which data feeds it and the doc-info tag.
 export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, pricingMode, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange, extraRemeasureKey }) {
-  const totals = calcQuotationTotals(items, { hasVat, priceIncludesVat, discountAmount, discountPct })
+  // item_description แนบเข้ากับ item ด้านบนแค่โดยตำแหน่ง ไม่มี FK จริง (ดู
+  // comment ที่ EMPTY_ITEM_DESCRIPTION) -- ถ้าไม่มีคนพิมพ์อะไรลงไปเลย (เช่น
+  // ตอน add จากรายการสินค้าที่ตัว catalog item เองไม่มี description) ไม่ควร
+  // มีแถวว่างๆ โผล่ในเอกสารจริงที่พิมพ์/ดาวน์โหลด -- ตัด item_description
+  // ที่ว่างออกก่อนเข้า pagination เลย (ไม่ใช่แค่ซ่อนด้วย CSS) กันไม่ให้มันไป
+  // กินโควต้าแถวต่อหน้าเปล่าๆ. note (จากปุ่ม "+ เพิ่มข้อมูลเพิ่มเติม") ไม่ตัด
+  // ด้วยเงื่อนไขเดียวกัน เพราะเป็นแถวที่ผู้ใช้ตั้งใจเพิ่มเองแยกต่างหาก ไม่ได้
+  // auto-generate มาจากที่ไหน
+  const printableItems = useMemo(() => (items || []).filter(it =>
+    it.item_type !== 'item_description' || it.description?.trim()
+  ), [items])
+  const totals = calcQuotationTotals(printableItems, { hasVat, priceIncludesVat, discountAmount, discountPct })
   const isSplit = pricingMode === 'split'
-  const materialLabor = isSplit ? sumMaterialLabor(items) : null
+  const materialLabor = isSplit ? sumMaterialLabor(printableItems) : null
   const mySignature = useMySignatureUrl()
   const { data: myWorkerName } = useMyWorkerName()
   const style = resolveDocumentStyle(tenant?.document_style)
@@ -446,7 +509,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
       </tr>
     ) : (
       <tr key={it.id || i}>
-        <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.description}</td>
+        <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee', whiteSpace: 'pre-line' }}>{it.description}</td>
         <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.quantity} {it.unit || ''}</td>
         {isSplit ? (
           <>
@@ -580,7 +643,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
   )
 
   const { pages, pageCount, measurementNode } = usePaginatedDocument({
-    items,
+    items: printableItems,
     renderHeader: () => <QuotationHeader {...headerProps} pageNumber={1} totalPages={1} />,
     renderTableHeader,
     renderRow,
@@ -1132,6 +1195,28 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
     notes: tenant?.default_notes || '',
   }), [tenant])
 
+  // ฟอร์มเพิ่ม/แก้ไขใบเสนอราคาแยกเป็นหน้าเต็มแทน popup เดิม (ฟอร์มยาว มีทั้ง
+  // รายการสินค้าและคำอธิบาย -- popup แคบเกินไปและเลื่อนดูลำบาก) แทนที่ทั้งหน้า
+  // list ไปเลยตอนเปิด แทนที่จะซ้อน Modal ทับ
+  if (showAdd) {
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <button className="btn btn-ghost" onClick={() => { setShowAdd(false); setEditRow(null) }}>← กลับ</button>
+          <h2 style={{ margin: 0, fontSize: 18 }}>{editRow ? 'แก้ไขใบเสนอราคา' : 'เพิ่มใบเสนอราคา'}</h2>
+        </div>
+        <div className="card" style={{ maxWidth: 960, margin: '0 auto' }}>
+          <QuotationForm
+            initial={editFormInitial || newQuotationInitial}
+            clients={clients} catalogItems={catalogItems} onCatalogRefetch={refetchCatalogItems}
+            onSave={handleSave} onCancel={() => { setShowAdd(false); setEditRow(null) }} loading={saving}
+            onClientCreated={refetchClients}
+          />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
@@ -1219,17 +1304,6 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
           </table>
         </div>
       </div>
-
-      {showAdd && (
-        <Modal title={editRow ? 'แก้ไขใบเสนอราคา' : 'เพิ่มใบเสนอราคา'} onClose={() => { setShowAdd(false); setEditRow(null) }} maxWidth={700}>
-          <QuotationForm
-            initial={editFormInitial || newQuotationInitial}
-            clients={clients} catalogItems={catalogItems} onCatalogRefetch={refetchCatalogItems}
-            onSave={handleSave} onCancel={() => { setShowAdd(false); setEditRow(null) }} loading={saving}
-            onClientCreated={refetchClients}
-          />
-        </Modal>
-      )}
 
       {deleteId && (
         <ConfirmDialog title="ลบใบเสนอราคา" message="ยืนยันการลบใบเสนอราคานี้?" onConfirm={handleDelete} onCancel={() => setDeleteId(null)} danger />

@@ -605,7 +605,7 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
 
   const renderRow = (it, i) => (
     <tr key={it.id || i}>
-      <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.description}</td>
+      <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee', whiteSpace: 'pre-line' }}>{it.description}</td>
       <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.draw_qty).replace(/\.00$/, '')} {it.unit || ''}</td>
       {isSplit ? (
         <>

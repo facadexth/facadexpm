@@ -73,7 +73,7 @@ export default function Cheques() {
   // Linked-expense totals per cheque -- a lightweight aggregate query
   // rather than a dedicated view, since it's only ever needed here.
   const { data: linkRows } = useQuery(async () => {
-    const { data, error } = await supabase.from('expenses').select('cheque_id, amount').not('cheque_id', 'is', null)
+    const { data, error } = await supabase.from('expenses').select('cheque_id, amount, suppliers(name)').not('cheque_id', 'is', null)
     if (error) throw error
     return data
   })
@@ -82,6 +82,15 @@ export default function Cheques() {
     t.total += r.amount || 0
     t.count += 1
     map[r.cheque_id] = t
+    return map
+  }, {})
+  // เช็คหนึ่งใบผูกกับหลายรายจ่ายได้ -- ปกติเป็น supplier เดียวกันหมด แต่กัน
+  // กรณีผูกข้ามซัพพลายเออร์ไว้ด้วยการรวมชื่อที่ไม่ซ้ำกันทั้งหมด
+  const suppliersByCheque = (linkRows || []).reduce((map, r) => {
+    if (!r.suppliers?.name) return map
+    const names = map[r.cheque_id] || new Set()
+    names.add(r.suppliers.name)
+    map[r.cheque_id] = names
     return map
   }, {})
 
@@ -141,7 +150,7 @@ export default function Cheques() {
 
   const filtered = useMemo(() => {
     const rows = (cheques || [])
-      .map(c => ({ ...c, _total: totalsByCheque[c.id]?.total ?? 0 }))
+      .map(c => ({ ...c, _total: totalsByCheque[c.id]?.total ?? 0, _supplier: [...(suppliersByCheque[c.id] || [])].join(', ') }))
       .filter(c => !search || c.cheque_no?.toLowerCase().includes(search.toLowerCase()))
       .filter(c => !statusFilter || c.status === statusFilter)
       .filter(c => !bankFilter || c.bank === bankFilter)
@@ -215,6 +224,7 @@ export default function Cheques() {
             <thead>
               <tr>
                 <th className="sortable" onClick={() => toggleSort('cheque_no')}>เลขที่เช็ค{si('cheque_no')}</th>
+                <th className="sortable" onClick={() => toggleSort('_supplier')}>ซัพพลายเออร์{si('_supplier')}</th>
                 <th className="sortable" onClick={() => toggleSort('bank')}>ธนาคาร{si('bank')}</th>
                 <th className="sortable" onClick={() => toggleSort('check_date')}>วันที่เช็ค{si('check_date')}</th>
                 <th className="sortable" onClick={() => toggleSort('status')}>สถานะ{si('status')}</th>
@@ -235,6 +245,7 @@ export default function Cheques() {
                 return (
                   <tr key={c.id}>
                     <td style={{ fontWeight: 600 }}>{c.cheque_no}</td>
+                    <td style={{ fontSize: 12 }}>{c._supplier || <span style={{ color: 'var(--text3)' }}>—</span>}</td>
                     <td>{c.bank}</td>
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}>{c.check_date ? new Date(c.check_date).toLocaleDateString('th-TH') : '—'}</td>
                     <td>
@@ -270,7 +281,7 @@ export default function Cheques() {
                 )
               })}
               {!filtered.length && (
-                <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>
+                <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>
                   {(cheques || []).length ? 'ไม่พบเช็คที่ตรงกับตัวกรอง' : 'ยังไม่มีเช็ค'}
                 </td></tr>
               )}
