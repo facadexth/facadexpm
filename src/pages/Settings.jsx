@@ -6,6 +6,7 @@ import { useUserRole } from '../hooks/useUserRole.js'
 import { PAGE_LABELS, DEFAULT_PERMISSIONS, loadPermissions, savePermissions } from '../lib/permissions.js'
 import { THAI_BANKS } from '../lib/thaiBanks.js'
 import PackageComparison from '../components/PackageComparison.jsx'
+import ChangelogModal from '../components/ChangelogModal.jsx'
 import SignaturePad from '../components/SignaturePad.jsx'
 import { DEFAULT_DOCUMENT_STYLE, resolveDocumentStyle } from '../lib/documentStyle.js'
 import { QuotationPaper } from './Quotations.jsx'
@@ -58,6 +59,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   const { isAtLeast } = useUserRole()
   const [permissions, setPermissions] = useState(DEFAULT_PERMISSIONS)
   const [saving, setSaving] = useState(false)
+  const [showChangelog, setShowChangelog] = useState(false)
 
   // บัญชีธนาคาร -- แยก VAT/ไม่มี VAT ต่อบัญชี ตั้ง default ได้ต่อหมวด ใช้เลือก
   // ในใบเสนอราคา/ใบแจ้งหนี้ (กรองตาม has_vat ของเอกสารนั้นๆ)
@@ -923,10 +925,16 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           metadata (no commit hash, no CI run id) reaching the client, so
           this is literally "when `vite build` last ran" for this bundle.
           Shown to every role so support can ask "what version are you on"
-          without needing OWNER access. */}
-      <div style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--text3)', marginTop: 28 }}>
-        {tenant?.company_name || 'Dashboard'} v{__APP_VERSION__} · อัปเดตล่าสุด {new Date(__BUILD_TIME__).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
+          without needing OWNER access. Clicking it opens the same
+          changelog popup UpdatePrompt shows on refresh (src/changelog.json
+          is the shared source, no onRefresh here since there's nothing to
+          refresh from a plain page view). */}
+      <div style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--text3)', marginTop: 28, cursor: 'pointer', textDecoration: 'underline dotted' }}
+        onClick={() => setShowChangelog(true)}>
+        v{__APP_VERSION__} · อัปเดตล่าสุด {new Date(__BUILD_TIME__).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
       </div>
+
+      {showChangelog && <ChangelogModal onClose={() => setShowChangelog(false)} />}
     </div>
   )
 }

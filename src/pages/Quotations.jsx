@@ -19,7 +19,7 @@ import { auditLog } from '../lib/audit.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import QuickAddSelect from '../components/QuickAddSelect.jsx'
-import { format, startOfYear, endOfYear } from 'date-fns'
+import { format, startOfYear, endOfYear, addDays, differenceInDays } from 'date-fns'
 import { lineTotal, calcQuotationTotals, sumMaterialLabor } from '../lib/quotationCalc.js'
 import { SiteForm, siteFormToPayload } from './Sites.jsx'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
@@ -52,7 +52,7 @@ const EMPTY_NOTE = { catalog_item_id: null, description: '', quantity: '0', unit
 // query "this item's description" cleanly.
 const EMPTY_ITEM_DESCRIPTION = { catalog_item_id: null, description: '', quantity: '0', unit: '', unit_price: '0', item_type: 'item_description' }
 const EMPTY_FORM = {
-  client_id: '', site_name: '', date: '', valid_until: '', has_vat: true, price_includes_vat: false,
+  client_id: '', site_name: '', date: '', valid_days: '', has_vat: true, price_includes_vat: false,
   discount_mode: 'none', discount_amount: '', discount_pct: '', pricing_mode: 'combined',
   payment_terms: '', notes: '', bank_account_id: null, items: [{ ...EMPTY_ITEM }],
 }
@@ -253,8 +253,9 @@ function QuotationForm({ initial = EMPTY_FORM, clients, catalogItems, onCatalogR
             <input type="date" className="input" required value={form.date} onChange={e => set('date', e.target.value)} />
           </div>
           <div>
-            <label className="label">ราคานี้มีผลถึงวันที่</label>
-            <input type="date" className="input" value={form.valid_until} onChange={e => set('valid_until', e.target.value)} />
+            <label className="label">ใบเสนอราคามีอายุ (วัน)</label>
+            <input type="number" min="0" step="1" className="input" placeholder="เช่น 30"
+              value={form.valid_days} onChange={e => set('valid_days', e.target.value)} />
           </div>
         </div>
         <div>
@@ -960,7 +961,13 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
         client_id: form.client_id,
         site_name: form.site_name || null,
         date: form.date,
-        valid_until: form.valid_until || null,
+        // ผู้ใช้กรอก "มีอายุกี่วัน" ไม่ใช่วันที่ตรงๆ -- แปลงเป็น valid_until
+        // จริงตอนบันทึกเท่านั้น (คอลัมน์ในตารางยังเป็น DATE เดิม ไม่ต้อง
+        // migrate) นับจาก date ของเอกสารนี้ (ถ้าแก้ไข = วันนี้ ดูคอมเมนต์ที่
+        // editFormInitial) จำนวนวันจึง "เดินตาม" ทุกครั้งที่แก้ไขเอกสารใหม่
+        valid_until: (form.date && form.valid_days !== '')
+          ? format(addDays(new Date(form.date), parseInt(form.valid_days, 10)), 'yyyy-MM-dd')
+          : null,
         has_vat: form.has_vat,
         price_includes_vat: form.has_vat ? form.price_includes_vat : false,
         discount_amount: form.discount_mode === 'amount' ? (parseFloat(form.discount_amount) || null) : null,
@@ -1169,7 +1176,14 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       // edit is a new revision, so the document's issue date should read
       // as the day *this* revision was produced. Still editable if a
       // specific backdate is genuinely needed.
-      date: format(new Date(), 'yyyy-MM-dd'), valid_until: editRow.valid_until || '',
+      date: format(new Date(), 'yyyy-MM-dd'),
+      // "อายุกี่วัน" คำนวณย้อนกลับจาก editRow.date เดิม (ไม่ใช่ date ด้านบนที่
+      // เพิ่งตั้งเป็นวันนี้) เพราะ valid_until ที่บันทึกไว้เดิมอ้างอิงตาม
+      // วันที่ออกเอกสารครั้งก่อน -- นับจาก "วันนี้" แทนจะได้จำนวนวันที่หดลง
+      // ตามเวลาที่ผ่านไปโดยไม่ได้ตั้งใจ
+      valid_days: (editRow.date && editRow.valid_until)
+        ? String(differenceInDays(new Date(editRow.valid_until), new Date(editRow.date)))
+        : '',
       has_vat: editRow.has_vat, price_includes_vat: editRow.price_includes_vat || false,
       discount_mode: editRow.discount_pct != null ? 'pct' : editRow.discount_amount != null ? 'amount' : 'none',
       discount_amount: editRow.discount_amount != null ? String(editRow.discount_amount) : '',
