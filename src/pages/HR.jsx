@@ -372,6 +372,11 @@ export default function HR() {
   const [editWorker, setEditWorker] = useState(null)
   const [deleteWorkerId, setDeleteWorkerId] = useState(null)
   const [savingWorker, setSavingWorker] = useState(false)
+  const [workerSearch, setWorkerSearch] = useState('')
+  const [workerSortCol, setWorkerSortCol] = useState('name')
+  const [workerSortDir, setWorkerSortDir] = useState('asc')
+  const [holidaySortCol, setHolidaySortCol] = useState('date')
+  const [holidaySortDir, setHolidaySortDir] = useState('asc')
 
   // User accounts (for pairing worker ↔ login)
   const [workerUsers, setWorkerUsers] = useState([])
@@ -393,10 +398,16 @@ export default function HR() {
   const [calcPreview, setCalcPreview] = useState(null)
   const [calcPreviewMode, setCalcPreviewMode] = useState('assign') // 'assign' | 'copy'
   const [slipRecord, setSlipRecord] = useState(null)
+  const [salarySortCol, setSalarySortCol] = useState('paid_date')
+  const [salarySortDir, setSalarySortDir] = useState('desc')
+  const [calcSortCol, setCalcSortCol] = useState('name')
+  const [calcSortDir, setCalcSortDir] = useState('asc')
 
   // Audit state
   const [auditTable, setAuditTable] = useState('')
   const { data: logs } = useAuditLogs(auditTable || null, 100)
+  const [auditSortCol, setAuditSortCol] = useState('changed_at')
+  const [auditSortDir, setAuditSortDir] = useState('desc')
 
   // Holiday calendar state
   const { data: holidays, refetch: refetchHolidays } = useCompanyHolidays()
@@ -699,6 +710,77 @@ export default function HR() {
     return (workers || []).filter(w => w.email === email)
   }, [workers, canEdit, user])
 
+  // ── Sorting (per-table, client-side only) ──
+  const toggleWorkerSort = (col) => {
+    if (workerSortCol === col) setWorkerSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setWorkerSortCol(col); setWorkerSortDir('asc') }
+  }
+  const wsi = (col) => workerSortCol === col ? (workerSortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+  const sortedWorkers = useMemo(() => {
+    const rows = visibleWorkers.filter(w => !workerSearch || w.name?.toLowerCase().includes(workerSearch.toLowerCase()))
+    return [...rows].sort((a, b) => {
+      const va = a[workerSortCol] ?? '', vb = b[workerSortCol] ?? ''
+      if (typeof va === 'number') return workerSortDir === 'asc' ? va - vb : vb - va
+      return workerSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [visibleWorkers, workerSearch, workerSortCol, workerSortDir])
+
+  const toggleHolidaySort = (col) => {
+    if (holidaySortCol === col) setHolidaySortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setHolidaySortCol(col); setHolidaySortDir('asc') }
+  }
+  const hsi = (col) => holidaySortCol === col ? (holidaySortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+  const sortedHolidays = useMemo(() => {
+    const rows = holidays || []
+    return [...rows].sort((a, b) => {
+      const va = a[holidaySortCol] ?? '', vb = b[holidaySortCol] ?? ''
+      if (typeof va === 'number') return holidaySortDir === 'asc' ? va - vb : vb - va
+      return holidaySortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [holidays, holidaySortCol, holidaySortDir])
+
+  const toggleSalarySort = (col) => {
+    if (salarySortCol === col) setSalarySortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSalarySortCol(col); setSalarySortDir('asc') }
+  }
+  const ssi = (col) => salarySortCol === col ? (salarySortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+  const sortedRecords = useMemo(() => {
+    const rows = visibleRecords.map(r => ({ ...r, _worker_name: r.workers?.name || '' }))
+    return [...rows].sort((a, b) => {
+      const va = a[salarySortCol] ?? '', vb = b[salarySortCol] ?? ''
+      if (typeof va === 'number') return salarySortDir === 'asc' ? va - vb : vb - va
+      return salarySortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [visibleRecords, salarySortCol, salarySortDir])
+
+  const toggleAuditSort = (col) => {
+    if (auditSortCol === col) setAuditSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setAuditSortCol(col); setAuditSortDir('asc') }
+  }
+  const asi = (col) => auditSortCol === col ? (auditSortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+  const sortedLogs = useMemo(() => {
+    const rows = logs || []
+    return [...rows].sort((a, b) => {
+      const va = a[auditSortCol] ?? '', vb = b[auditSortCol] ?? ''
+      if (typeof va === 'number') return auditSortDir === 'asc' ? va - vb : vb - va
+      return auditSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [logs, auditSortCol, auditSortDir])
+
+  const toggleCalcSort = (col) => {
+    if (calcSortCol === col) setCalcSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setCalcSortCol(col); setCalcSortDir('asc') }
+  }
+  const csi = (col) => calcSortCol === col ? (calcSortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+  const sortedCalcPreview = useMemo(() => {
+    const rows = calcPreview || []
+    return [...rows].sort((a, b) => {
+      const va = a[calcSortCol] ?? '', vb = b[calcSortCol] ?? ''
+      if (typeof va === 'number') return calcSortDir === 'asc' ? va - vb : vb - va
+      return calcSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [calcPreview, calcSortCol, calcSortDir])
+
   const totalBase = useMemo(() => visibleRecords.reduce((s,r)=>s+(r.base_salary||0),0),[visibleRecords])
   const totalNet  = useMemo(() => visibleRecords.reduce((s,r)=>s+(r.net_pay||0),0),[visibleRecords])
   const totalOT   = useMemo(() => visibleRecords.reduce((s,r)=>s+(r.ot_amount||0),0),[visibleRecords])
@@ -729,22 +811,28 @@ export default function HR() {
             {canEdit && (
               <button className="btn btn-primary" onClick={() => { setEditWorker(null); setShowWorkerForm(true) }}>+ เพิ่มพนักงาน</button>
             )}
+            <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อช่าง..." value={workerSearch} onChange={e => setWorkerSearch(e.target.value)} />
           </div>
           <div className="card">
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>ชื่อ</th><th>ชื่อเล่น</th><th>ตำแหน่ง</th>
-                    <th>เงินเดือน</th><th>ค่าแรง/วัน</th>
+                    <th className="sortable" onClick={() => toggleWorkerSort('name')}>ชื่อ{wsi('name')}</th>
+                    <th className="sortable" onClick={() => toggleWorkerSort('nickname')}>ชื่อเล่น{wsi('nickname')}</th>
+                    <th className="sortable" onClick={() => toggleWorkerSort('position')}>ตำแหน่ง{wsi('position')}</th>
+                    <th className="sortable" onClick={() => toggleWorkerSort('monthly_salary')}>เงินเดือน{wsi('monthly_salary')}</th>
+                    <th className="sortable" onClick={() => toggleWorkerSort('daily_rate')}>ค่าแรง/วัน{wsi('daily_rate')}</th>
                     <th>SSO</th>
-                    <th>ลากิจ/ปี</th><th>ใช้แล้ว</th><th>คงเหลือ</th>
-                    <th>ลาป่วย/ปี</th><th>ใช้แล้ว</th><th>คงเหลือ</th>
-                    <th>สถานะ</th><th></th>
+                    <th className="sortable" onClick={() => toggleWorkerSort('annual_leave_days')}>ลากิจ/ปี{wsi('annual_leave_days')}</th>
+                    <th>ใช้แล้ว</th><th>คงเหลือ</th>
+                    <th className="sortable" onClick={() => toggleWorkerSort('annual_sick_leave_days')}>ลาป่วย/ปี{wsi('annual_sick_leave_days')}</th>
+                    <th>ใช้แล้ว</th><th>คงเหลือ</th>
+                    <th className="sortable" onClick={() => toggleWorkerSort('status')}>สถานะ{wsi('status')}</th><th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleWorkers.map(w => {
+                  {sortedWorkers.map(w => {
                     const used = leaveUsed?.[w.id] || 0
                     const remaining = (w.annual_leave_days || 0) - used
                     const sickUsed = sickLeaveUsed?.[w.id] || 0
@@ -775,7 +863,7 @@ export default function HR() {
                     </tr>
                     )
                   })}
-                  {!visibleWorkers.length && (
+                  {!sortedWorkers.length && (
                     <tr><td colSpan={11} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีช่าง</td></tr>
                   )}
                 </tbody>
@@ -803,9 +891,13 @@ export default function HR() {
             <div className="card">
               <div className="table-wrap">
                 <table>
-                  <thead><tr><th>วันที่</th><th>ชื่อวันหยุด</th><th></th></tr></thead>
+                  <thead><tr>
+                    <th className="sortable" onClick={() => toggleHolidaySort('date')}>วันที่{hsi('date')}</th>
+                    <th className="sortable" onClick={() => toggleHolidaySort('name')}>ชื่อวันหยุด{hsi('name')}</th>
+                    <th></th>
+                  </tr></thead>
                   <tbody>
-                    {(holidays || []).map(h => (
+                    {sortedHolidays.map(h => (
                       <tr key={h.id}>
                         <td style={{ fontSize: 12 }}>{new Date(h.date).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
                         <td style={{ fontWeight: 600 }}>{h.name}</td>
@@ -814,7 +906,7 @@ export default function HR() {
                         </td>
                       </tr>
                     ))}
-                    {!(holidays || []).length && (
+                    {!sortedHolidays.length && (
                       <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีวันหยุดที่กำหนด</td></tr>
                     )}
                   </tbody>
@@ -865,13 +957,21 @@ export default function HR() {
               <table>
                 <thead>
                   <tr>
-                    <th>พนักงาน</th><th>เงินเดือน</th><th>วันออฟฟิศ</th><th>ค่าใช้จ่ายส่วนกลาง</th><th>OT</th>
-                    <th>ประกันสังคม</th><th>หักลา</th><th>เบิกล่วงหน้า</th>
-                    <th>จ่ายสุทธิ</th><th>วันจ่าย</th><th></th>
+                    <th className="sortable" onClick={() => toggleSalarySort('_worker_name')}>พนักงาน{ssi('_worker_name')}</th>
+                    <th className="sortable" onClick={() => toggleSalarySort('base_salary')}>เงินเดือน{ssi('base_salary')}</th>
+                    <th className="sortable" onClick={() => toggleSalarySort('office_days')}>วันออฟฟิศ{ssi('office_days')}</th>
+                    <th className="sortable" onClick={() => toggleSalarySort('office_cost')}>ค่าใช้จ่ายส่วนกลาง{ssi('office_cost')}</th>
+                    <th className="sortable" onClick={() => toggleSalarySort('ot_amount')}>OT{ssi('ot_amount')}</th>
+                    <th className="sortable" onClick={() => toggleSalarySort('social_security_ded')}>ประกันสังคม{ssi('social_security_ded')}</th>
+                    <th className="sortable" onClick={() => toggleSalarySort('leave_deduction')}>หักลา{ssi('leave_deduction')}</th>
+                    <th className="sortable" onClick={() => toggleSalarySort('advance_deduction')}>เบิกล่วงหน้า{ssi('advance_deduction')}</th>
+                    <th className="sortable" onClick={() => toggleSalarySort('net_pay')}>จ่ายสุทธิ{ssi('net_pay')}</th>
+                    <th className="sortable" onClick={() => toggleSalarySort('paid_date')}>วันจ่าย{ssi('paid_date')}</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleRecords.map(r => (
+                  {sortedRecords.map(r => (
                     <tr key={r.id}>
                       <td><div style={{ fontWeight: 600 }}>{r.workers?.name||'—'}</div><div style={{ fontSize: 11, color: 'var(--text3)' }}>{r.workers?.position}</div></td>
                       <td className="font-mono">{fmt(r.base_salary)}</td>
@@ -896,7 +996,7 @@ export default function HR() {
                       </td>
                     </tr>
                   ))}
-                  {!visibleRecords.length && (
+                  {!sortedRecords.length && (
                     <tr><td colSpan={11} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>
                       ยังไม่มีข้อมูลเงินเดือน {MONTHS[month-1]} {year+543}
                     </td></tr>
@@ -939,10 +1039,16 @@ export default function HR() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>เวลา</th><th>ผู้ใช้</th><th>ตาราง</th><th>Action</th><th>รายละเอียด</th></tr>
+                  <tr>
+                    <th className="sortable" onClick={() => toggleAuditSort('changed_at')}>เวลา{asi('changed_at')}</th>
+                    <th className="sortable" onClick={() => toggleAuditSort('user_email')}>ผู้ใช้{asi('user_email')}</th>
+                    <th className="sortable" onClick={() => toggleAuditSort('table_name')}>ตาราง{asi('table_name')}</th>
+                    <th className="sortable" onClick={() => toggleAuditSort('action')}>Action{asi('action')}</th>
+                    <th>รายละเอียด</th>
+                  </tr>
                 </thead>
                 <tbody>
-                  {(logs||[]).map(l => (
+                  {sortedLogs.map(l => (
                     <tr key={l.id}>
                       <td style={{ fontSize: 11, whiteSpace: 'nowrap', color: 'var(--text3)' }}>
                         {new Date(l.changed_at).toLocaleString('th-TH')}
@@ -960,7 +1066,7 @@ export default function HR() {
                       </td>
                     </tr>
                   ))}
-                  {!(logs||[]).length && (
+                  {!sortedLogs.length && (
                     <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีประวัติการแก้ไข</td></tr>
                   )}
                 </tbody>
@@ -1021,10 +1127,24 @@ export default function HR() {
             </div>
             <div className="table-wrap" style={{ maxHeight: 320 }}>
               <table>
-                <thead><tr><th>พนักงาน</th><th>เงินเดือน</th><th>ลาป่วย</th><th>ลากิจ</th><th>หักลา</th><th>OT ชม.</th><th>OT บาท</th><th>กะวันหยุด</th><th>โบนัสวันหยุด</th><th>วันออฟฟิศ</th><th>ค่าใช้จ่ายส่วนกลาง</th><th>SSO</th><th>สุทธิ</th></tr></thead>
+                <thead><tr>
+                  <th className="sortable" onClick={() => toggleCalcSort('name')}>พนักงาน{csi('name')}</th>
+                  <th className="sortable" onClick={() => toggleCalcSort('base_salary')}>เงินเดือน{csi('base_salary')}</th>
+                  <th className="sortable" onClick={() => toggleCalcSort('leave_sick_days')}>ลาป่วย{csi('leave_sick_days')}</th>
+                  <th className="sortable" onClick={() => toggleCalcSort('leave_personal_days')}>ลากิจ{csi('leave_personal_days')}</th>
+                  <th className="sortable" onClick={() => toggleCalcSort('leave_deduction')}>หักลา{csi('leave_deduction')}</th>
+                  <th className="sortable" onClick={() => toggleCalcSort('ot_hours')}>OT ชม.{csi('ot_hours')}</th>
+                  <th className="sortable" onClick={() => toggleCalcSort('ot_amount')}>OT บาท{csi('ot_amount')}</th>
+                  <th className="sortable" onClick={() => toggleCalcSort('holiday_shifts')}>กะวันหยุด{csi('holiday_shifts')}</th>
+                  <th className="sortable" onClick={() => toggleCalcSort('holiday_bonus')}>โบนัสวันหยุด{csi('holiday_bonus')}</th>
+                  <th className="sortable" onClick={() => toggleCalcSort('office_days')}>วันออฟฟิศ{csi('office_days')}</th>
+                  <th className="sortable" onClick={() => toggleCalcSort('office_cost')}>ค่าใช้จ่ายส่วนกลาง{csi('office_cost')}</th>
+                  <th className="sortable" onClick={() => toggleCalcSort('social_security_ded')}>SSO{csi('social_security_ded')}</th>
+                  <th className="sortable" onClick={() => toggleCalcSort('net_pay')}>สุทธิ{csi('net_pay')}</th>
+                </tr></thead>
                 <tbody>
-                  {calcPreview.map((r,i) => (
-                    <tr key={i}>
+                  {sortedCalcPreview.map((r,i) => (
+                    <tr key={r.worker_id || i}>
                       <td style={{ fontWeight: 600 }}>{r.name}{r.nickname?` (${r.nickname})`:''}</td>
                       <td className="font-mono">{fmt(r.base_salary)}</td>
                       <td style={{ textAlign: 'center', color: r.leave_sick_days>0?'var(--yellow)':'var(--text3)' }}>{r.leave_sick_days||'—'}</td>

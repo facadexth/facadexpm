@@ -3,14 +3,30 @@
 // ✅ อ่านอย่างเดียว -- การหักมัดจำเกิดอัตโนมัติทุกครั้งที่บันทึกรายรับ
 //    'ปกติ' ในหน้า Income ไม่มี action ใดๆ ในหน้านี้
 // ============================================================
+import { useState, useMemo } from 'react'
 import { useSiteDepositSummary } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
 import { depositStatusFor } from '../lib/depositCalc.js'
 
 export default function Deposits({ openSiteOverview }) {
   const { data: rows } = useSiteDepositSummary()
+  const [sortCol, setSortCol] = useState('name')
+  const [sortDir, setSortDir] = useState('asc')
 
   const visible = (rows || []).filter(r => r.total_deposit > 0)
+
+  const sorted = useMemo(() => [...visible].sort((a, b) => {
+    const va = sortCol === 'status' ? depositStatusFor(a).label : (a[sortCol] ?? '')
+    const vb = sortCol === 'status' ? depositStatusFor(b).label : (b[sortCol] ?? '')
+    if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
+    return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+  }), [visible, sortCol, sortDir])
+
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
   return (
     <div>
@@ -26,16 +42,16 @@ export default function Deposits({ openSiteOverview }) {
           <table>
             <thead>
               <tr>
-                <th>ไซท์งาน</th>
-                <th>% มัดจำ</th>
-                <th>ยอดมัดจำที่เก็บ</th>
-                <th>หักไปแล้ว</th>
-                <th>คงเหลือ</th>
-                <th>สถานะ</th>
+                <th className="sortable" onClick={() => toggleSort('name')}>ไซท์งาน{si('name')}</th>
+                <th className="sortable" onClick={() => toggleSort('default_deposit_pct')}>% มัดจำ{si('default_deposit_pct')}</th>
+                <th className="sortable" onClick={() => toggleSort('total_deposit')}>ยอดมัดจำที่เก็บ{si('total_deposit')}</th>
+                <th className="sortable" onClick={() => toggleSort('total_deducted')}>หักไปแล้ว{si('total_deducted')}</th>
+                <th className="sortable" onClick={() => toggleSort('remaining_balance')}>คงเหลือ{si('remaining_balance')}</th>
+                <th className="sortable" onClick={() => toggleSort('status')}>สถานะ{si('status')}</th>
               </tr>
             </thead>
             <tbody>
-              {visible.map(row => {
+              {sorted.map(row => {
                 const status = depositStatusFor(row)
                 return (
                   <tr key={row.site_id}>
@@ -48,7 +64,7 @@ export default function Deposits({ openSiteOverview }) {
                   </tr>
                 )
               })}
-              {!visible.length && (
+              {!sorted.length && (
                 <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ยังไม่มีไซท์งานที่มีมัดจำ</td></tr>
               )}
             </tbody>

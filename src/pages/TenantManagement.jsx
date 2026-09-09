@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabase.js'
 import { usePlatformTenants, usePackages, useTenantStatusLog } from '../hooks/useSupabase.js'
 import { Modal } from '../components/Modal.jsx'
 import { fmt, fmtDate } from '../lib/supabase.js'
+import changelog from '../changelog.json'
 
 const packagePriceLabel = (p) =>
   p.price_monthly == null ? 'Custom' : p.price_monthly === 0 ? 'ฟรี' : `${fmt(p.price_monthly, 0)}/ด.`
@@ -158,6 +159,34 @@ export default function TenantManagement() {
   const [quotaPkg, setQuotaPkg] = useState(null)
   const [toast, setToast] = useState(null)
 
+  // ตารางบริษัท (tenants)
+  const [tenantSortCol, setTenantSortCol] = useState('company_name')
+  const [tenantSortDir, setTenantSortDir] = useState('asc')
+  const toggleTenantSort = (col) => {
+    if (tenantSortCol === col) setTenantSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setTenantSortCol(col); setTenantSortDir('asc') }
+  }
+  const tsi = (col) => tenantSortCol === col ? (tenantSortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+  const sortedTenants = [...(tenants || [])].sort((a, b) => {
+    const va = a[tenantSortCol] ?? '', vb = b[tenantSortCol] ?? ''
+    if (typeof va === 'number') return tenantSortDir === 'asc' ? va - vb : vb - va
+    return tenantSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+  })
+
+  // ตาราง Quota ต่อ Package
+  const [pkgSortCol, setPkgSortCol] = useState('name')
+  const [pkgSortDir, setPkgSortDir] = useState('asc')
+  const togglePkgSort = (col) => {
+    if (pkgSortCol === col) setPkgSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setPkgSortCol(col); setPkgSortDir('asc') }
+  }
+  const psi = (col) => pkgSortCol === col ? (pkgSortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+  const sortedPackages = [...(packages || [])].sort((a, b) => {
+    const va = a[pkgSortCol] ?? '', vb = b[pkgSortCol] ?? ''
+    if (typeof va === 'number') return pkgSortDir === 'asc' ? va - vb : vb - va
+    return pkgSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+  })
+
   const handlePackageChange = async (tenantId, packageId) => {
     setSavingId(tenantId)
     try {
@@ -185,15 +214,15 @@ export default function TenantManagement() {
           <table>
             <thead>
               <tr>
-                <th>บริษัท</th>
-                <th>Package</th>
-                <th>สถานะ</th>
-                <th>หมดอายุ</th>
+                <th className="sortable" onClick={() => toggleTenantSort('company_name')}>บริษัท{tsi('company_name')}</th>
+                <th className="sortable" onClick={() => toggleTenantSort('package_name')}>Package{tsi('package_name')}</th>
+                <th className="sortable" onClick={() => toggleTenantSort('plan')}>สถานะ{tsi('plan')}</th>
+                <th className="sortable" onClick={() => toggleTenantSort('plan_expires_at')}>หมดอายุ{tsi('plan_expires_at')}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {(tenants || []).map(t => (
+              {sortedTenants.map(t => (
                 <tr key={t.id}>
                   <td style={{ fontWeight: 600 }}>{t.company_name}</td>
                   <td>
@@ -234,16 +263,16 @@ export default function TenantManagement() {
           <table>
             <thead>
               <tr>
-                <th>Package</th>
-                <th>ราคา</th>
-                <th>Admin/Owner</th>
-                <th>พนักงาน</th>
-                <th>ไซท์งาน (Ongoing)</th>
+                <th className="sortable" onClick={() => togglePkgSort('name')}>Package{psi('name')}</th>
+                <th className="sortable" onClick={() => togglePkgSort('price_monthly')}>ราคา{psi('price_monthly')}</th>
+                <th className="sortable" onClick={() => togglePkgSort('max_admins')}>Admin/Owner{psi('max_admins')}</th>
+                <th className="sortable" onClick={() => togglePkgSort('max_workers')}>พนักงาน{psi('max_workers')}</th>
+                <th className="sortable" onClick={() => togglePkgSort('max_sites')}>ไซท์งาน (Ongoing){psi('max_sites')}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {(packages || []).map(p => (
+              {sortedPackages.map(p => (
                 <tr key={p.id}>
                   <td style={{ fontWeight: 600 }}>{p.name}</td>
                   <td style={{ fontSize: 12, color: 'var(--text3)' }}>{packagePriceLabel(p)}</td>
@@ -267,6 +296,29 @@ export default function TenantManagement() {
         <QuotaModal pkg={quotaPkg} onClose={() => setQuotaPkg(null)}
           onSaved={() => { setQuotaPkg(null); refetchPackages(); setToast('บันทึกแล้ว'); setTimeout(() => setToast(null), 2000) }} />
       )}
+
+      {/* src/changelog.json คือ source เดียวกับ popup ที่ผู้ใช้เห็น (Settings +
+          UpdatePrompt, ดู ChangelogModal.jsx) -- ไม่แยกไฟล์ log อีกชุด เพื่อไม่ให้
+          ต้องจดสองที่ทุกครั้งที่ขึ้นเวอร์ชันใหม่ หน้านี้แค่โชว์แบบเต็ม ไม่ต้องกดเปิด */}
+      <h3 style={{ margin: '28px 0 12px', fontSize: 15, fontWeight: 700 }}>ประวัติการอัปเดตระบบ (v{__APP_VERSION__} ปัจจุบัน)</h3>
+      <div className="card" style={{ padding: '20px 24px', display: 'grid', gap: 20 }}>
+        {changelog.map(entry => (
+          <div key={entry.version}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>
+              v{entry.version}
+              <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: 12, marginLeft: 8 }}>
+                {new Date(entry.date).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
+              </span>
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 20, display: 'grid', gap: 4, fontSize: 13, color: 'var(--text2)' }}>
+              {entry.notes.map((note, i) => <li key={i}>{note}</li>)}
+            </ul>
+          </div>
+        ))}
+        {!changelog.length && (
+          <div style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีประวัติการอัปเดต</div>
+        )}
+      </div>
     </div>
   )
 }

@@ -40,13 +40,26 @@ function SubcontractorTab() {
   const [deleteId, setDeleteId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
+  const [sortCol, setSortCol] = useState('name')
+  const [sortDir, setSortDir] = useState('asc')
 
-  const filtered = useMemo(() =>
-    (subs||[]).filter(s => !search ||
+  const filtered = useMemo(() => {
+    const rows = (subs||[]).filter(s => !search ||
       s.name?.toLowerCase().includes(search.toLowerCase()) ||
       s.subcontractor_number?.toLowerCase().includes(search.toLowerCase())
     )
-  , [subs, search])
+    return [...rows].sort((a, b) => {
+      const va = a[sortCol] ?? '', vb = b[sortCol] ?? ''
+      if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
+      return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [subs, search, sortCol, sortDir])
+
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
   const EMPTY = { name:'', contact_person:'', phone:'', email:'', notes:'', id_card_number:'', address:'' }
   const [form, setForm] = useState(() => readDraft('labor-contractors-subcontractor-form') || EMPTY)
@@ -100,7 +113,13 @@ function SubcontractorTab() {
       <div className="card">
         <div className="table-wrap">
           <table>
-            <thead><tr><th>รหัส</th><th>ชื่อผู้รับเหมา</th><th>ผู้ติดต่อ</th><th>เบอร์โทร</th><th>อีเมล</th><th></th></tr></thead>
+            <thead><tr>
+              <th className="sortable" onClick={() => toggleSort('subcontractor_number')}>รหัส{si('subcontractor_number')}</th>
+              <th className="sortable" onClick={() => toggleSort('name')}>ชื่อผู้รับเหมา{si('name')}</th>
+              <th className="sortable" onClick={() => toggleSort('contact_person')}>ผู้ติดต่อ{si('contact_person')}</th>
+              <th className="sortable" onClick={() => toggleSort('phone')}>เบอร์โทร{si('phone')}</th>
+              <th className="sortable" onClick={() => toggleSort('email')}>อีเมล{si('email')}</th>
+              <th></th></tr></thead>
             <tbody>
               {filtered.map(s => (
                 <tr key={s.id}>
@@ -705,6 +724,27 @@ function PaymentsTab({ openSiteOverview }) {
   const [statusFilter, setStatusFilter] = useState('')
   const { data: payments, refetch } = useAllLaborPayments({ status: statusFilter||undefined })
   const [whtCertPayment, setWhtCertPayment] = useState(null)
+  const [sortCol, setSortCol] = useState('payment_date')
+  const [sortDir, setSortDir] = useState('desc')
+
+  const sortedPayments = useMemo(() => {
+    const rows = (payments||[]).map(p => ({
+      ...p,
+      _subcontractor: p.labor_contracts?.labor_subcontractors?.name || '',
+      _site: p.labor_contracts?.sites?.name || '',
+    }))
+    return [...rows].sort((a, b) => {
+      const va = a[sortCol] ?? '', vb = b[sortCol] ?? ''
+      if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
+      return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [payments, sortCol, sortDir])
+
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
   // Marking a subcontractor payment paid also records it as a real
   // `expenses` row (site cost should reflect cash actually paid, not just
@@ -787,14 +827,21 @@ function PaymentsTab({ openSiteOverview }) {
           <table>
             <thead>
               <tr>
-                <th>เลขที่เบิก</th><th>วันที่</th><th>ผู้รับเหมา</th><th>ไซท์</th>
-                <th>รายละเอียด</th><th>% สะสม</th>
-                <th>ยอดเบิก</th><th>หักภาษี</th><th>หักประกัน</th><th>ยอดโอน</th>
-                <th>สถานะ</th><th></th>
+                <th className="sortable" onClick={() => toggleSort('payment_number')}>เลขที่เบิก{si('payment_number')}</th>
+                <th className="sortable" onClick={() => toggleSort('payment_date')}>วันที่{si('payment_date')}</th>
+                <th className="sortable" onClick={() => toggleSort('_subcontractor')}>ผู้รับเหมา{si('_subcontractor')}</th>
+                <th className="sortable" onClick={() => toggleSort('_site')}>ไซท์{si('_site')}</th>
+                <th className="sortable" onClick={() => toggleSort('work_description')}>รายละเอียด{si('work_description')}</th>
+                <th className="sortable" onClick={() => toggleSort('progress_pct')}>% สะสม{si('progress_pct')}</th>
+                <th className="sortable" onClick={() => toggleSort('gross_amount')}>ยอดเบิก{si('gross_amount')}</th>
+                <th className="sortable" onClick={() => toggleSort('withholding_tax')}>หักภาษี{si('withholding_tax')}</th>
+                <th className="sortable" onClick={() => toggleSort('retention_amount')}>หักประกัน{si('retention_amount')}</th>
+                <th className="sortable" onClick={() => toggleSort('net_amount')}>ยอดโอน{si('net_amount')}</th>
+                <th className="sortable" onClick={() => toggleSort('status')}>สถานะ{si('status')}</th><th></th>
               </tr>
             </thead>
             <tbody>
-              {(payments||[]).map(p => (
+              {sortedPayments.map(p => (
                 <tr key={p.id}>
                   <td style={{ color:'var(--accent)', fontSize:11, fontWeight:700 }}>
                     {p.payment_number}

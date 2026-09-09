@@ -432,6 +432,9 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const [siteId,     setSiteId]     = useState('')
   const [supplierId, setSupplierId] = useState('')
   const [status,      setStatus]    = useState('')
+  const [search,  setSearch]  = useState('')
+  const [sortCol, setSortCol] = useState('date')
+  const [sortDir, setSortDir] = useState('desc')
   const [showAdd, setShowAdd] = useState(false)
   const [editRow, setEditRow] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
@@ -453,6 +456,35 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const { data: stockBalances } = useStockBalances()
   const { data: aluminumProfiles } = useAluminumProfiles()
   const { data: allAluminumProfiles } = useAllAluminumProfiles()
+
+  // เรียง/ค้นหาแบบ client-side ทับผลลัพธ์ที่กรองมาจาก server แล้ว (ช่วงวันที่/ไซท์งาน/Supplier/สถานะ)
+  // -- accessor ต่อคอลัมน์ เพราะบางคอลัมน์ (ไซท์งาน, Supplier, ยอดรวม) เป็น field ที่ join มา/คำนวณ
+  const SORT_ACCESSORS = {
+    po_number: po => po.po_number || '',
+    date:      po => po.date || '',
+    site:      po => po.sites?.name || '',
+    supplier:  po => po.suppliers?.name || '',
+    total:     po => calcPoTotals(po.purchase_order_items, po.has_vat, po.price_includes_vat).total,
+    status:    po => po.status || '',
+  }
+  const sortedPos = useMemo(() => {
+    const q = search.toLowerCase()
+    const rows = (pos || []).filter(po => !q
+      || po.po_number?.toLowerCase().includes(q)
+      || po.sites?.name?.toLowerCase().includes(q)
+      || po.suppliers?.name?.toLowerCase().includes(q))
+    const acc = SORT_ACCESSORS[sortCol]
+    return [...rows].sort((a, b) => {
+      const va = acc(a), vb = acc(b)
+      if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
+      return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [pos, search, sortCol, sortDir])
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
@@ -675,6 +707,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
           <option value="">ทุกสถานะ</option>
           {PO_STATUSES.map(s => <option key={s} value={s}>{PO_STATUS_LABELS[s]}</option>)}
         </select>
+        <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาเลขที่ / ไซท์งาน / Supplier..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       <div className="card">
@@ -682,11 +715,18 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
           <table>
             <thead>
               <tr>
-                <th>เลขที่</th><th>วันที่</th><th>ไซท์งาน</th><th>Supplier</th><th>รายการ</th><th>ยอดรวม</th><th>สถานะ</th><th></th>
+                <th className="sortable" onClick={() => toggleSort('po_number')}>เลขที่{si('po_number')}</th>
+                <th className="sortable" onClick={() => toggleSort('date')}>วันที่{si('date')}</th>
+                <th className="sortable" onClick={() => toggleSort('site')}>ไซท์งาน{si('site')}</th>
+                <th className="sortable" onClick={() => toggleSort('supplier')}>Supplier{si('supplier')}</th>
+                <th>รายการ</th>
+                <th className="sortable" onClick={() => toggleSort('total')}>ยอดรวม{si('total')}</th>
+                <th className="sortable" onClick={() => toggleSort('status')}>สถานะ{si('status')}</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {(pos || []).map(po => {
+              {sortedPos.map(po => {
                 const { total } = calcPoTotals(po.purchase_order_items, po.has_vat, po.price_includes_vat)
                 return (
                   <tr key={po.id}>
@@ -717,7 +757,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                   </tr>
                 )
               })}
-              {!(pos || []).length && (
+              {!sortedPos.length && (
                 <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบใบสั่งซื้อในช่วงเวลานี้</td></tr>
               )}
             </tbody>

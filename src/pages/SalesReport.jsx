@@ -77,6 +77,22 @@ export default function SalesReport() {
   const [view,      setView]     = useState('quotation') // 'quotation' | 'product'
   const [expanded,  setExpanded] = useState(() => new Set())
 
+  const [qSortCol, setQSortCol] = useState('total')
+  const [qSortDir, setQSortDir] = useState('desc')
+  const toggleQSort = (col) => {
+    if (qSortCol === col) setQSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setQSortCol(col); setQSortDir('asc') }
+  }
+  const qSi = (col) => qSortCol === col ? (qSortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+
+  const [pSortCol, setPSortCol] = useState('totalRevenue')
+  const [pSortDir, setPSortDir] = useState('desc')
+  const togglePSort = (col) => {
+    if (pSortCol === col) setPSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setPSortCol(col); setPSortDir('asc') }
+  }
+  const pSi = (col) => pSortCol === col ? (pSortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+
   const filters = { from: dateFrom, to: dateTo, siteId, clientId, search }
   const { data: rows } = useSalesReport(filters)
   const { data: sites }   = useSites()
@@ -85,6 +101,22 @@ export default function SalesReport() {
   const totalAmount = useMemo(() => (rows || []).reduce((s, r) => s + (r.line_total || 0), 0), [rows])
   const totalQty    = useMemo(() => (rows || []).reduce((s, r) => s + (r.quantity || 0), 0), [rows])
   const byQuotation = useMemo(() => groupByQuotation(rows), [rows])
+  const byQuotationSorted = useMemo(() => {
+    return [...byQuotation].sort((a, b) => {
+      const va = qSortCol === 'itemCount' ? a.items.length : (a[qSortCol] ?? '')
+      const vb = qSortCol === 'itemCount' ? b.items.length : (b[qSortCol] ?? '')
+      if (typeof va === 'number') return qSortDir === 'asc' ? va - vb : vb - va
+      return qSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [byQuotation, qSortCol, qSortDir])
+  const byProductSorted = useMemo(() => {
+    return [...byProduct].sort((a, b) => {
+      const va = a[pSortCol] ?? ''
+      const vb = b[pSortCol] ?? ''
+      if (typeof va === 'number') return pSortDir === 'asc' ? va - vb : vb - va
+      return pSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [byProduct, pSortCol, pSortDir])
   const byProduct   = useMemo(() => groupByProduct(rows), [rows])
 
   const toggleExpanded = (id) => setExpanded(prev => {
@@ -146,16 +178,16 @@ export default function SalesReport() {
               <thead>
                 <tr>
                   <th></th>
-                  <th>วันที่</th>
-                  <th>เลขที่ใบเสนอราคา</th>
-                  <th>ไซท์งาน</th>
-                  <th>ลูกค้า</th>
-                  <th>จำนวนรายการ</th>
-                  <th>รวม</th>
+                  <th className="sortable" onClick={() => toggleQSort('date')}>วันที่{qSi('date')}</th>
+                  <th className="sortable" onClick={() => toggleQSort('quotation_number')}>เลขที่ใบเสนอราคา{qSi('quotation_number')}</th>
+                  <th className="sortable" onClick={() => toggleQSort('site_name')}>ไซท์งาน{qSi('site_name')}</th>
+                  <th className="sortable" onClick={() => toggleQSort('client_name')}>ลูกค้า{qSi('client_name')}</th>
+                  <th className="sortable" onClick={() => toggleQSort('itemCount')}>จำนวนรายการ{qSi('itemCount')}</th>
+                  <th className="sortable" onClick={() => toggleQSort('total')}>รวม{qSi('total')}</th>
                 </tr>
               </thead>
               <tbody>
-                {byQuotation.map(g => {
+                {byQuotationSorted.map(g => {
                   const open = expanded.has(g.quotation_id)
                   return (
                     <Fragment key={g.quotation_id}>
@@ -180,7 +212,7 @@ export default function SalesReport() {
                     </Fragment>
                   )
                 })}
-                {!byQuotation.length && (
+                {!byQuotationSorted.length && (
                   <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบข้อมูลการขายในช่วงเวลานี้</td></tr>
                 )}
               </tbody>
@@ -193,15 +225,15 @@ export default function SalesReport() {
             <table>
               <thead>
                 <tr>
-                  <th>สินค้า</th>
-                  <th>จำนวนขายรวม</th>
-                  <th>ราคาเฉลี่ย/หน่วย</th>
-                  <th>จำนวนใบเสนอราคา</th>
-                  <th>ยอดขายรวม</th>
+                  <th className="sortable" onClick={() => togglePSort('name')}>สินค้า{pSi('name')}</th>
+                  <th className="sortable" onClick={() => togglePSort('totalQty')}>จำนวนขายรวม{pSi('totalQty')}</th>
+                  <th className="sortable" onClick={() => togglePSort('avgPrice')}>ราคาเฉลี่ย/หน่วย{pSi('avgPrice')}</th>
+                  <th className="sortable" onClick={() => togglePSort('quotationCount')}>จำนวนใบเสนอราคา{pSi('quotationCount')}</th>
+                  <th className="sortable" onClick={() => togglePSort('totalRevenue')}>ยอดขายรวม{pSi('totalRevenue')}</th>
                 </tr>
               </thead>
               <tbody>
-                {byProduct.map(g => (
+                {byProductSorted.map(g => (
                   <tr key={g.key}>
                     <td style={{ fontSize: 13 }}>{g.name}</td>
                     <td style={{ fontSize: 12 }}>{fmt(g.totalQty, 2)} {g.unit || ''}</td>
@@ -210,7 +242,7 @@ export default function SalesReport() {
                     <td className="font-mono" style={{ fontWeight: 700, color: 'var(--green)' }}>{fmt(g.totalRevenue)}</td>
                   </tr>
                 ))}
-                {!byProduct.length && (
+                {!byProductSorted.length && (
                   <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบข้อมูลการขายในช่วงเวลานี้</td></tr>
                 )}
               </tbody>

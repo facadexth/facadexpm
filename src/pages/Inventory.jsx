@@ -439,6 +439,14 @@ export default function Inventory() {
   const { data: unprocessedInvoices, refetch: refetchUnprocessedInvoices } = useUnprocessedInvoices()
   const [expandedInvoiceId, setExpandedInvoiceId] = useState(null)
   const [itemsCategoryFilter, setItemsCategoryFilter] = useState('')
+  const [itemsSearch, setItemsSearch] = useState('')
+  const [itemSortCol, setItemSortCol] = useState('name')
+  const [itemSortDir, setItemSortDir] = useState('asc')
+  const [movementSortCol, setMovementSortCol] = useState('created_at')
+  const [movementSortDir, setMovementSortDir] = useState('desc')
+  const [profileSearch, setProfileSearch] = useState('')
+  const [profileSortCol, setProfileSortCol] = useState('name')
+  const [profileSortDir, setProfileSortDir] = useState('asc')
   const [savingBalance, setSavingBalance] = useState(null) // the balance-row key currently saving, or null
 
   const [showForm, setShowForm] = useState(false)
@@ -471,6 +479,24 @@ export default function Inventory() {
     exportToExcel(movements || [], columns, 'ประวัติการเคลื่อนไหวสต็อก')
   }
 
+  const itemToggleSort = (col) => {
+    if (itemSortCol === col) setItemSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setItemSortCol(col); setItemSortDir('asc') }
+  }
+  const itemSi = (col) => itemSortCol === col ? (itemSortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+
+  const movementToggleSort = (col) => {
+    if (movementSortCol === col) setMovementSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setMovementSortCol(col); setMovementSortDir('asc') }
+  }
+  const movementSi = (col) => movementSortCol === col ? (movementSortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+
+  const profileToggleSort = (col) => {
+    if (profileSortCol === col) setProfileSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setProfileSortCol(col); setProfileSortDir('asc') }
+  }
+  const profileSi = (col) => profileSortCol === col ? (profileSortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+
   const centralSite = (sites || []).find(s => s.name === 'ส่วนกลาง')
 
   const resolveSource = (itemId, siteId) => {
@@ -481,9 +507,23 @@ export default function Inventory() {
   }
 
   const tableRows = useMemo(() => {
-    const filteredItems = itemsCategoryFilter
+    const q = itemsSearch.trim().toLowerCase()
+    let filteredItems = itemsCategoryFilter
       ? (items || []).filter(it => it.category_id === itemsCategoryFilter)
       : (items || [])
+    if (q) filteredItems = filteredItems.filter(it => it.name?.toLowerCase().includes(q) || it.code?.toLowerCase().includes(q))
+    // Sort at the item (group) level, not the flat balance-row level -- each
+    // item's balance rows must stay contiguous for the merged-cell display
+    // (code/name/category/status only render on isFirstForItem) to stay correct.
+    filteredItems = filteredItems
+      .map(it => ({ ...it, _category: it.inventory_categories?.name || '' }))
+      .sort((a, b) => {
+        const va = a[itemSortCol] ?? ''
+        const vb = b[itemSortCol] ?? ''
+        if (typeof va === 'number') return itemSortDir === 'asc' ? va - vb : vb - va
+        if (typeof va === 'boolean') return itemSortDir === 'asc' ? (va === vb ? 0 : va ? 1 : -1) : (va === vb ? 0 : va ? -1 : 1)
+        return itemSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+      })
     const rows = []
     for (const item of filteredItems) {
       const itemBalances = (balances || []).filter(b => b.inventory_item_id === item.id)
@@ -498,7 +538,35 @@ export default function Inventory() {
       }
     }
     return rows
-  }, [items, balances, itemsCategoryFilter, centralSite])
+  }, [items, balances, itemsCategoryFilter, itemsSearch, itemSortCol, itemSortDir, centralSite])
+
+  const sortedMovements = useMemo(() => {
+    const rows = (movements || []).map(m => ({
+      ...m,
+      _item: m.inventory_items?.name || '',
+      _site: m.sites?.name || '',
+      _typeLabel: MOVEMENT_TYPE_LABELS[m.movement_type] || m.movement_type,
+      _total: m.unit_cost != null ? m.quantity * m.unit_cost : null,
+    }))
+    return [...rows].sort((a, b) => {
+      const va = a[movementSortCol] ?? ''
+      const vb = b[movementSortCol] ?? ''
+      if (typeof va === 'number') return movementSortDir === 'asc' ? va - vb : vb - va
+      return movementSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [movements, movementSortCol, movementSortDir])
+
+  const sortedProfiles = useMemo(() => {
+    const q = profileSearch.trim().toLowerCase()
+    const rows = (profiles || []).filter(p => !q || p.name?.toLowerCase().includes(q))
+    return [...rows].sort((a, b) => {
+      const va = a[profileSortCol] ?? ''
+      const vb = b[profileSortCol] ?? ''
+      if (typeof va === 'number') return profileSortDir === 'asc' ? va - vb : vb - va
+      if (typeof va === 'boolean') return profileSortDir === 'asc' ? (va === vb ? 0 : va ? 1 : -1) : (va === vb ? 0 : va ? -1 : 1)
+      return profileSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [profiles, profileSearch, profileSortCol, profileSortDir])
 
   const handleSaveBalance = async (itemId, siteId, quantityStr, costStr) => {
     const quantity = parseFloat(quantityStr)
@@ -599,15 +667,24 @@ export default function Inventory() {
           {!centralSite && (
             <div className="alert alert-error">ไม่พบไซท์งานชื่อ "ส่วนกลาง" — กรุณาสร้างไซท์งานชื่อนี้ก่อน จึงจะปรับยอดสต็อกได้</div>
           )}
-          <div style={{ marginBottom: 14, maxWidth: 260 }}>
-            <SearchableSelect value={itemsCategoryFilter} onChange={setItemsCategoryFilter} placeholder="ทุกหมวดหมู่"
-              options={(categories || []).map(c => ({ value: c.id, label: c.name, keywords: c.name }))} />
+          <div style={{ marginBottom: 14, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ minWidth: 220, maxWidth: 260 }}>
+              <SearchableSelect value={itemsCategoryFilter} onChange={setItemsCategoryFilter} placeholder="ทุกหมวดหมู่"
+                options={(categories || []).map(c => ({ value: c.id, label: c.name, keywords: c.name }))} />
+            </div>
+            <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อ / รหัสสินค้า..." value={itemsSearch} onChange={e => setItemsSearch(e.target.value)} />
           </div>
           <div className="card">
             <div style={{ padding: '12px 16px', fontWeight: 700 }}>มูลค่าสต็อกรวม: <span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totalValue)}</span> บาท</div>
             <div className="table-wrap">
               <table>
-                <thead><tr><th>รหัส</th><th>ชื่อ</th><th>หมวดหมู่</th><th>สถานะ</th><th>คลัง</th><th>ปริมาณ</th><th>ราคา/หน่วย</th><th>มูลค่ารวม</th><th>แหล่งที่มาล่าสุด</th><th></th></tr></thead>
+                <thead><tr>
+                  <th className="sortable" onClick={() => itemToggleSort('code')}>รหัส{itemSi('code')}</th>
+                  <th className="sortable" onClick={() => itemToggleSort('name')}>ชื่อ{itemSi('name')}</th>
+                  <th className="sortable" onClick={() => itemToggleSort('_category')}>หมวดหมู่{itemSi('_category')}</th>
+                  <th className="sortable" onClick={() => itemToggleSort('active')}>สถานะ{itemSi('active')}</th>
+                  <th>คลัง</th><th>ปริมาณ</th><th>ราคา/หน่วย</th><th>มูลค่ารวม</th><th>แหล่งที่มาล่าสุด</th><th></th>
+                </tr></thead>
                 <tbody>
                   {tableRows.map(({ item, balance, isFirstForItem }) => (
                     <BalanceRow
@@ -665,12 +742,21 @@ export default function Inventory() {
               <ExcelUpload type="aluminum_profile" onSuccess={() => { setShowImportProfiles(false); refetchProfiles() }} />
             </div>
           )}
+          <div style={{ marginBottom: 14 }}>
+            <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อหน้าตัด..." value={profileSearch} onChange={e => setProfileSearch(e.target.value)} />
+          </div>
           <div className="card">
             <div className="table-wrap">
               <table>
-                <thead><tr><th>ชื่อหน้าตัด</th><th>กก./เมตร</th><th>ความยาวมาตรฐาน</th><th>สถานะ</th><th></th></tr></thead>
+                <thead><tr>
+                  <th className="sortable" onClick={() => profileToggleSort('name')}>ชื่อหน้าตัด{profileSi('name')}</th>
+                  <th className="sortable" onClick={() => profileToggleSort('linear_weight_kg_per_m')}>กก./เมตร{profileSi('linear_weight_kg_per_m')}</th>
+                  <th className="sortable" onClick={() => profileToggleSort('default_length_m')}>ความยาวมาตรฐาน{profileSi('default_length_m')}</th>
+                  <th className="sortable" onClick={() => profileToggleSort('active')}>สถานะ{profileSi('active')}</th>
+                  <th></th>
+                </tr></thead>
                 <tbody>
-                  {(profiles || []).map(p => (
+                  {sortedProfiles.map(p => (
                     <tr key={p.id}>
                       <td style={{ fontWeight: 600 }}>{p.name}</td>
                       <td className="font-mono">{fmt(p.linear_weight_kg_per_m)}</td>
@@ -686,7 +772,7 @@ export default function Inventory() {
                       </td>
                     </tr>
                   ))}
-                  {!(profiles || []).length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีหน้าตัด</td></tr>}
+                  {!sortedProfiles.length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>{profileSearch ? 'ไม่พบหน้าตัดที่ค้นหา' : 'ยังไม่มีหน้าตัด'}</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -725,9 +811,18 @@ export default function Inventory() {
           <div className="card">
             <div className="table-wrap">
               <table>
-                <thead><tr><th>วันที่</th><th>สินค้า</th><th>คลัง</th><th>ประเภท</th><th>อ้างอิง</th><th>จำนวน</th><th>ต้นทุน/หน่วย</th><th>มูลค่ารวม</th></tr></thead>
+                <thead><tr>
+                  <th className="sortable" onClick={() => movementToggleSort('created_at')}>วันที่{movementSi('created_at')}</th>
+                  <th className="sortable" onClick={() => movementToggleSort('_item')}>สินค้า{movementSi('_item')}</th>
+                  <th className="sortable" onClick={() => movementToggleSort('_site')}>คลัง{movementSi('_site')}</th>
+                  <th className="sortable" onClick={() => movementToggleSort('_typeLabel')}>ประเภท{movementSi('_typeLabel')}</th>
+                  <th>อ้างอิง</th>
+                  <th className="sortable" onClick={() => movementToggleSort('quantity')}>จำนวน{movementSi('quantity')}</th>
+                  <th className="sortable" onClick={() => movementToggleSort('unit_cost')}>ต้นทุน/หน่วย{movementSi('unit_cost')}</th>
+                  <th className="sortable" onClick={() => movementToggleSort('_total')}>มูลค่ารวม{movementSi('_total')}</th>
+                </tr></thead>
                 <tbody>
-                  {(movements || []).map(m => {
+                  {sortedMovements.map(m => {
                     const refLabel = resolveMovementReference(m, { pos: allPos, invoices: invoiceNumbers, sites })
                     const drillable = DRILLABLE_REFERENCE_TYPES.includes(m.reference_type) && m.reference_id
                     const totalValue = m.unit_cost != null ? m.quantity * m.unit_cost : null
@@ -754,7 +849,7 @@ export default function Inventory() {
                       </tr>
                     )
                   })}
-                  {!(movements || []).length && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีประวัติ</td></tr>}
+                  {!sortedMovements.length && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีประวัติ</td></tr>}
                 </tbody>
               </table>
             </div>

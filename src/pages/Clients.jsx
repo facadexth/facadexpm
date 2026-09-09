@@ -111,16 +111,29 @@ export default function Clients() {
   const [toast,      setToast]      = useState(null)
   const [search,     setSearch]     = useState('')
   const [typeFilter, setTypeFilter] = useState('')
+  const [sortCol,    setSortCol]    = useState('client_number')
+  const [sortDir,    setSortDir]    = useState('asc')
 
-  const filtered = useMemo(() =>
-    (clients || []).filter(c =>
+  const filtered = useMemo(() => {
+    const rows = (clients || []).filter(c =>
       (!typeFilter || c.client_type === typeFilter) &&
       (!search ||
         c.name?.toLowerCase().includes(search.toLowerCase()) ||
         c.client_number?.toLowerCase().includes(search.toLowerCase()) ||
         c.contact_person?.toLowerCase().includes(search.toLowerCase()))
     )
-  , [clients, search, typeFilter])
+    return [...rows].sort((a, b) => {
+      const va = a[sortCol] ?? '', vb = b[sortCol] ?? ''
+      if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
+      return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [clients, search, typeFilter, sortCol, sortDir])
+
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
   const handleSave = async (form) => {
     setSaving(true)
@@ -188,12 +201,12 @@ export default function Clients() {
           <table>
             <thead>
               <tr>
-                <th>รหัสลูกค้า</th>
-                <th>ชื่อลูกค้า / บริษัท</th>
-                <th>ประเภท</th>
-                <th>ชื่อผู้ติดต่อ / ตำแหน่ง</th>
-                <th>เบอร์โทร</th>
-                <th>อีเมล</th>
+                <th className="sortable" onClick={() => toggleSort('client_number')}>รหัสลูกค้า{si('client_number')}</th>
+                <th className="sortable" onClick={() => toggleSort('name')}>ชื่อลูกค้า / บริษัท{si('name')}</th>
+                <th className="sortable" onClick={() => toggleSort('client_type')}>ประเภท{si('client_type')}</th>
+                <th className="sortable" onClick={() => toggleSort('contact_person')}>ชื่อผู้ติดต่อ / ตำแหน่ง{si('contact_person')}</th>
+                <th className="sortable" onClick={() => toggleSort('phone')}>เบอร์โทร{si('phone')}</th>
+                <th className="sortable" onClick={() => toggleSort('email')}>อีเมล{si('email')}</th>
                 <th></th>
               </tr>
             </thead>

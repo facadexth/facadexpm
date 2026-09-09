@@ -159,6 +159,24 @@ export default function Payroll() {
   const [calcLoading, setCalcLoading] = useState(false)
   const [calcPreview, setCalcPreview] = useState(null) // modal preview
 
+  // ── Sorting — main salary table ──
+  const [sortCol, setSortCol] = useState('worker_name')
+  const [sortDir, setSortDir] = useState('asc')
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+
+  // ── Sorting — calc-from-assign preview table ──
+  const [calcSortCol, setCalcSortCol] = useState('name')
+  const [calcSortDir, setCalcSortDir] = useState('asc')
+  const toggleCalcSort = (col) => {
+    if (calcSortCol === col) setCalcSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setCalcSortCol(col); setCalcSortDir('asc') }
+  }
+  const calcSi = (col) => calcSortCol === col ? (calcSortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+
   const { data: records, refetch } = useSalary(month, year)
   const { data: workers } = useAllActiveWorkers()
   const { data: holidayMultiplierVal } = useAppSetting('holiday_pay_multiplier', '1.5')
@@ -167,6 +185,25 @@ export default function Payroll() {
   const totalNet  = useMemo(() => (records||[]).reduce((s,r) => s+(r.net_pay||0), 0), [records])
   const totalOT   = useMemo(() => (records||[]).reduce((s,r) => s+(r.ot_amount||0), 0), [records])
   const totalSSO  = useMemo(() => (records||[]).reduce((s,r) => s+(r.social_security_ded||0), 0), [records])
+
+  const sortedRecords = useMemo(() => {
+    const rows = records || []
+    return [...rows].sort((a, b) => {
+      const va = sortCol === 'worker_name' ? (a.workers?.name || '') : (a[sortCol] ?? '')
+      const vb = sortCol === 'worker_name' ? (b.workers?.name || '') : (b[sortCol] ?? '')
+      if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
+      return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [records, sortCol, sortDir])
+
+  const sortedCalcPreview = useMemo(() => {
+    const rows = calcPreview || []
+    return [...rows].sort((a, b) => {
+      const va = a[calcSortCol] ?? '', vb = b[calcSortCol] ?? ''
+      if (typeof va === 'number') return calcSortDir === 'asc' ? va - vb : vb - va
+      return calcSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [calcPreview, calcSortCol, calcSortDir])
 
   const handleSave = async (form) => {
     setSaving(true)
@@ -350,15 +387,23 @@ export default function Payroll() {
           <table>
             <thead>
               <tr>
-                <th>พนักงาน</th>
-                <th>เงินเดือน</th><th>สมทบ</th><th>โทรศัพท์</th>
-                <th>OT</th><th>เงินพิเศษ</th>
-                <th>ประกันสังคม</th><th>หักลา</th><th>เบิกล่วงหน้า</th><th>กยศ</th>
-                <th>จ่ายสุทธิ</th><th>วันจ่าย</th><th></th>
+                <th className="sortable" onClick={() => toggleSort('worker_name')}>พนักงาน{si('worker_name')}</th>
+                <th className="sortable" onClick={() => toggleSort('base_salary')}>เงินเดือน{si('base_salary')}</th>
+                <th className="sortable" onClick={() => toggleSort('contribution')}>สมทบ{si('contribution')}</th>
+                <th className="sortable" onClick={() => toggleSort('phone_allowance')}>โทรศัพท์{si('phone_allowance')}</th>
+                <th className="sortable" onClick={() => toggleSort('ot_amount')}>OT{si('ot_amount')}</th>
+                <th className="sortable" onClick={() => toggleSort('special_allowance')}>เงินพิเศษ{si('special_allowance')}</th>
+                <th className="sortable" onClick={() => toggleSort('social_security_ded')}>ประกันสังคม{si('social_security_ded')}</th>
+                <th className="sortable" onClick={() => toggleSort('leave_deduction')}>หักลา{si('leave_deduction')}</th>
+                <th className="sortable" onClick={() => toggleSort('advance_deduction')}>เบิกล่วงหน้า{si('advance_deduction')}</th>
+                <th className="sortable" onClick={() => toggleSort('loan_deduction')}>กยศ{si('loan_deduction')}</th>
+                <th className="sortable" onClick={() => toggleSort('net_pay')}>จ่ายสุทธิ{si('net_pay')}</th>
+                <th className="sortable" onClick={() => toggleSort('paid_date')}>วันจ่าย{si('paid_date')}</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {(records||[]).map(r => (
+              {sortedRecords.map(r => (
                 <tr key={r.id}>
                   <td>
                     <div style={{ fontWeight: 600 }}>{r.workers?.name || '—'}</div>
@@ -383,7 +428,7 @@ export default function Payroll() {
                   </td>
                 </tr>
               ))}
-              {!(records||[]).length && (
+              {!sortedRecords.length && (
                 <tr><td colSpan={13} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>
                   ยังไม่มีข้อมูลเงินเดือน {MONTHS[month-1]} {year+543} — กด "คำนวณจาก Assign" เพื่อสร้างอัตโนมัติ
                 </td></tr>
@@ -419,16 +464,22 @@ export default function Payroll() {
               <table>
                 <thead>
                   <tr>
-                    <th>พนักงาน</th><th>เงินเดือน</th>
-                    <th>ลาป่วย</th><th>ลากิจ</th><th>หักลา</th>
-                    <th>OT (ชม.)</th><th>OT (บาท)</th>
-                    <th>กะวันหยุด</th><th>โบนัสวันหยุด</th>
-                    <th>ประกันสังคม</th><th>รับสุทธิ</th>
+                    <th className="sortable" onClick={() => toggleCalcSort('name')}>พนักงาน{calcSi('name')}</th>
+                    <th className="sortable" onClick={() => toggleCalcSort('base_salary')}>เงินเดือน{calcSi('base_salary')}</th>
+                    <th className="sortable" onClick={() => toggleCalcSort('leave_sick_days')}>ลาป่วย{calcSi('leave_sick_days')}</th>
+                    <th className="sortable" onClick={() => toggleCalcSort('leave_personal_days')}>ลากิจ{calcSi('leave_personal_days')}</th>
+                    <th className="sortable" onClick={() => toggleCalcSort('leave_deduction')}>หักลา{calcSi('leave_deduction')}</th>
+                    <th className="sortable" onClick={() => toggleCalcSort('ot_hours')}>OT (ชม.){calcSi('ot_hours')}</th>
+                    <th className="sortable" onClick={() => toggleCalcSort('ot_amount')}>OT (บาท){calcSi('ot_amount')}</th>
+                    <th className="sortable" onClick={() => toggleCalcSort('holiday_shifts')}>กะวันหยุด{calcSi('holiday_shifts')}</th>
+                    <th className="sortable" onClick={() => toggleCalcSort('holiday_bonus')}>โบนัสวันหยุด{calcSi('holiday_bonus')}</th>
+                    <th className="sortable" onClick={() => toggleCalcSort('social_security_ded')}>ประกันสังคม{calcSi('social_security_ded')}</th>
+                    <th className="sortable" onClick={() => toggleCalcSort('net_pay')}>รับสุทธิ{calcSi('net_pay')}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {calcPreview.map((r, i) => (
-                    <tr key={i}>
+                  {sortedCalcPreview.map((r, i) => (
+                    <tr key={r.worker_id ?? i}>
                       <td style={{ fontWeight: 600 }}>{r.name}{r.nickname ? ` (${r.nickname})` : ''}</td>
                       <td className="font-mono">{fmt(r.base_salary)}</td>
                       <td style={{ textAlign: 'center', color: r.leave_sick_days > 0 ? 'var(--yellow)' : 'var(--text3)' }}>{r.leave_sick_days || '—'}</td>

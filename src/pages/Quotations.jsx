@@ -945,12 +945,43 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   const [deleteId, setDeleteId] = useState(null)
   const [saving,   setSaving]   = useState(false)
   const [toast,    setToast]    = useState(null)
+  const [sortCol,  setSortCol]  = useState('date')
+  const [sortDir,  setSortDir]  = useState('desc')
 
   const filters = { from: dateFrom, to: dateTo, clientId, status }
   const { data: quotations, refetch } = useQuotations(filters)
   const { data: clients, refetch: refetchClients }      = useClients()
   const { data: sites }        = useSites()
   const { data: catalogItems, refetch: refetchCatalogItems } = useCatalogItems()
+
+  // เรียง client-side ทับผลลัพธ์ที่กรองมาจาก server แล้ว (date/client/status) --
+  // accessor ต่อคอลัมน์ เพราะบางคอลัมน์ (ลูกค้า, ไซท์งาน, ยอดรวม) เป็น field
+  // ที่ join มาหรือคำนวณจาก quotation_items
+  const SORT_ACCESSORS = {
+    quotation_number: qt => qt.quotation_number || '',
+    date:             qt => qt.date || '',
+    client:           qt => qt.clients?.name || '',
+    site:             qt => qt.sites?.name || '',
+    total:            qt => calcQuotationTotals(qt.quotation_items, {
+      hasVat: qt.has_vat, priceIncludesVat: qt.price_includes_vat,
+      discountAmount: qt.discount_amount, discountPct: qt.discount_pct,
+    }).total,
+    status:           qt => qt.status || '',
+  }
+  const sortedQuotations = useMemo(() => {
+    const acc = SORT_ACCESSORS[sortCol]
+    return [...(quotations || [])].sort((a, b) => {
+      const va = acc(a), vb = acc(b)
+      if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
+      return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quotations, sortCol, sortDir])
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
@@ -1258,11 +1289,18 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
           <table>
             <thead>
               <tr>
-                <th>เลขที่</th><th>วันที่</th><th>ลูกค้า</th><th>ไซท์งาน</th><th>รายการ</th><th>ยอดรวม</th><th>สถานะ</th><th></th>
+                <th className="sortable" onClick={() => toggleSort('quotation_number')}>เลขที่{si('quotation_number')}</th>
+                <th className="sortable" onClick={() => toggleSort('date')}>วันที่{si('date')}</th>
+                <th className="sortable" onClick={() => toggleSort('client')}>ลูกค้า{si('client')}</th>
+                <th className="sortable" onClick={() => toggleSort('site')}>ไซท์งาน{si('site')}</th>
+                <th>รายการ</th>
+                <th className="sortable" onClick={() => toggleSort('total')}>ยอดรวม{si('total')}</th>
+                <th className="sortable" onClick={() => toggleSort('status')}>สถานะ{si('status')}</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {(quotations || []).map(qt => {
+              {sortedQuotations.map(qt => {
                 const totals = calcQuotationTotals(qt.quotation_items, {
                   hasVat: qt.has_vat, priceIncludesVat: qt.price_includes_vat,
                   discountAmount: qt.discount_amount, discountPct: qt.discount_pct,
@@ -1311,7 +1349,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                   </tr>
                 )
               })}
-              {!(quotations || []).length && (
+              {!sortedQuotations.length && (
                 <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบใบเสนอราคาในช่วงเวลานี้</td></tr>
               )}
             </tbody>

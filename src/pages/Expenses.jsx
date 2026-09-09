@@ -380,6 +380,8 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
   const [saving,   setSaving]   = useState(false)
   const [toast,    setToast]    = useState(null)
   const [showImport, setShowImport] = useState(false)
+  const [sortCol,  setSortCol]  = useState('date')
+  const [sortDir,  setSortDir]  = useState('desc')
 
   // ถ้า navigate มาพร้อม filter (เช่นจากหน้า Dashboard คลิกยอดที่ต้องชำระ) ให้ set ตาม
   useEffect(() => {
@@ -404,6 +406,33 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
   const totalPending = useMemo(() => (expenses || []).filter(e => e.status === 'pending' || e.status === 'check_issued').reduce((s, e) => s + (e.amount || 0), 0), [expenses])
   const totalAwaitingBilling = useMemo(() => (expenses || []).filter(e => e.status === 'awaiting_billing').reduce((s, e) => s + (e.amount || 0), 0), [expenses])
   const categoryData = useMemo(() => groupSmallSlices(categoryBreakdown(expenses)), [expenses])
+
+  // เรียง client-side ทับผลลัพธ์ที่กรองมาจาก server แล้ว -- accessor ต่อคอลัมน์
+  // เพราะบางคอลัมน์ (ไซท์งาน, หมวด) เป็น field ที่ join มา
+  const SORT_ACCESSORS = {
+    date:           e => e.date || '',
+    description:    e => e.description || '',
+    site:           e => e.site_name || '',
+    category:       e => e.category_name || '',
+    supplier:       e => e.supplier || '',
+    amount:         e => e.amount || 0,
+    payment_method: e => e.payment_method || '',
+    check_date:     e => e.check_date || '',
+    status:         e => e.status || '',
+  }
+  const sortedExpenses = useMemo(() => {
+    const acc = SORT_ACCESSORS[sortCol]
+    return [...(expenses || [])].sort((a, b) => {
+      const va = acc(a), vb = acc(b)
+      if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
+      return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [expenses, sortCol, sortDir])
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
@@ -605,20 +634,20 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
           <table>
             <thead>
               <tr>
-                <th>วันที่</th>
-                <th>รายละเอียด</th>
-                <th style={{ minWidth: 200 }}>ไซท์งาน</th>
-                <th>หมวด</th>
-                <th>ผู้จำหน่าย</th>
-                <th>มูลค่า</th>
-                <th>วิธีชำระ</th>
-                <th>วันเช็ค</th>
-                <th>สถานะ</th>
+                <th className="sortable" onClick={() => toggleSort('date')}>วันที่{si('date')}</th>
+                <th className="sortable" onClick={() => toggleSort('description')}>รายละเอียด{si('description')}</th>
+                <th className="sortable" style={{ minWidth: 200 }} onClick={() => toggleSort('site')}>ไซท์งาน{si('site')}</th>
+                <th className="sortable" onClick={() => toggleSort('category')}>หมวด{si('category')}</th>
+                <th className="sortable" onClick={() => toggleSort('supplier')}>ผู้จำหน่าย{si('supplier')}</th>
+                <th className="sortable" onClick={() => toggleSort('amount')}>มูลค่า{si('amount')}</th>
+                <th className="sortable" onClick={() => toggleSort('payment_method')}>วิธีชำระ{si('payment_method')}</th>
+                <th className="sortable" onClick={() => toggleSort('check_date')}>วันเช็ค{si('check_date')}</th>
+                <th className="sortable" onClick={() => toggleSort('status')}>สถานะ{si('status')}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {(expenses || []).map(e => (
+              {sortedExpenses.map(e => (
                 <tr key={e.id}>
                   <td style={{ whiteSpace: 'nowrap', color: 'var(--text2)', fontSize: 12 }}>{fmtDate(e.date)}</td>
                   <td style={{ maxWidth: 220 }}>
@@ -682,7 +711,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                   </td>
                 </tr>
               ))}
-              {!(expenses||[]).length && (
+              {!sortedExpenses.length && (
                 <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบรายจ่ายในช่วงเวลานี้</td></tr>
               )}
             </tbody>

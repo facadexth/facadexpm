@@ -72,10 +72,23 @@ export default function CatalogItems() {
   const [deleteId, setDeleteId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
+  const [sortCol, setSortCol] = useState('name')
+  const [sortDir, setSortDir] = useState('asc')
 
-  const filtered = useMemo(() =>
-    (items || []).filter(it => !search || it.name.toLowerCase().includes(search.toLowerCase()))
-  , [items, search])
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+
+  const filtered = useMemo(() => {
+    const rows = (items || []).filter(it => !search || it.name?.toLowerCase().includes(search.toLowerCase()))
+    return [...rows].sort((a, b) => {
+      const va = a[sortCol] ?? '', vb = b[sortCol] ?? ''
+      if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
+      return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [items, search, sortCol, sortDir])
 
   const handleSave = async (form) => {
     setSaving(true)
@@ -121,10 +134,10 @@ export default function CatalogItems() {
           <table>
             <thead>
               <tr>
-                <th>ชื่อสินค้า/บริการ</th>
-                <th>หน่วย</th>
-                <th>ราคา/หน่วย</th>
-                <th>สถานะ</th>
+                <th className="sortable" onClick={() => toggleSort('name')}>ชื่อสินค้า/บริการ{si('name')}</th>
+                <th className="sortable" onClick={() => toggleSort('unit')}>หน่วย{si('unit')}</th>
+                <th className="sortable" onClick={() => toggleSort('default_unit_price')}>ราคา/หน่วย{si('default_unit_price')}</th>
+                <th className="sortable" onClick={() => toggleSort('active')}>สถานะ{si('active')}</th>
                 <th></th>
               </tr>
             </thead>

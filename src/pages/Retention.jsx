@@ -3,7 +3,7 @@
 // ✅ วันครบกำหนด = sites.end_date + default_retention_period_days
 // ✅ บันทึกว่าคืนแล้ว (ทั้งก้อนต่อไซท์ ไม่แยกตามใบแจ้งหนี้)
 // ============================================================
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useSiteRetentionSummary } from '../hooks/useSupabase.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
@@ -45,8 +45,23 @@ function ReleaseDialog({ row, onClose, onSaved }) {
 export default function Retention({ openSiteOverview }) {
   const { data: rows, refetch } = useSiteRetentionSummary()
   const [releaseRow, setReleaseRow] = useState(null)
+  const [sortCol, setSortCol] = useState('name')
+  const [sortDir, setSortDir] = useState('asc')
 
   const visible = (rows || []).filter(r => r.total_retention > 0)
+
+  const sorted = useMemo(() => [...visible].sort((a, b) => {
+    const va = sortCol === 'status' ? retentionStatusFor(a).label : (a[sortCol] ?? '')
+    const vb = sortCol === 'status' ? retentionStatusFor(b).label : (b[sortCol] ?? '')
+    if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
+    return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+  }), [visible, sortCol, sortDir])
+
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
   return (
     <div>
@@ -62,16 +77,16 @@ export default function Retention({ openSiteOverview }) {
           <table>
             <thead>
               <tr>
-                <th>ไซท์งาน</th>
-                <th>วันจบงาน</th>
-                <th>ยอด Retention</th>
-                <th>วันครบกำหนด</th>
-                <th>สถานะ</th>
+                <th className="sortable" onClick={() => toggleSort('name')}>ไซท์งาน{si('name')}</th>
+                <th className="sortable" onClick={() => toggleSort('end_date')}>วันจบงาน{si('end_date')}</th>
+                <th className="sortable" onClick={() => toggleSort('total_retention')}>ยอด Retention{si('total_retention')}</th>
+                <th className="sortable" onClick={() => toggleSort('due_date')}>วันครบกำหนด{si('due_date')}</th>
+                <th className="sortable" onClick={() => toggleSort('status')}>สถานะ{si('status')}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {visible.map(row => {
+              {sorted.map(row => {
                 const status = retentionStatusFor(row)
                 return (
                   <tr key={row.site_id}>
@@ -90,7 +105,7 @@ export default function Retention({ openSiteOverview }) {
                   </tr>
                 )
               })}
-              {!visible.length && (
+              {!sorted.length && (
                 <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ยังไม่มีไซท์งานที่มี Retention</td></tr>
               )}
             </tbody>

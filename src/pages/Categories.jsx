@@ -4,7 +4,7 @@
 // ✅ ชื่อ, สี, sort_order
 // ✅ Drag-to-reorder via sort_order buttons
 // ============================================================
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useCategories } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
@@ -60,6 +60,24 @@ export default function Categories() {
   const [editCat,  setEditCat]  = useState(null)
   const [deleteId, setDeleteId] = useState(null)
   const [saving,   setSaving]   = useState(false)
+  const [search,   setSearch]   = useState('')
+  const [sortCol,  setSortCol]  = useState('sort_order')
+  const [sortDir,  setSortDir]  = useState('asc')
+
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+
+  const filtered = useMemo(() => {
+    const rows = (categories || []).filter(c => !search || c.name?.toLowerCase().includes(search.toLowerCase()))
+    return [...rows].sort((a, b) => {
+      const va = a[sortCol] ?? '', vb = b[sortCol] ?? ''
+      if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
+      return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [categories, search, sortCol, sortDir])
 
   const handleSave = async (form) => {
     setSaving(true)
@@ -92,18 +110,25 @@ export default function Categories() {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
         <button className="btn btn-primary" onClick={() => { setEditCat(null); setShowForm(true) }}>+ เพิ่มหมวดหมู่</button>
+        <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อหมวด..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       <div className="card">
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>สี</th><th>ชื่อหมวด</th><th>ลำดับ</th><th>เรียง</th><th></th></tr>
+              <tr>
+                <th>สี</th>
+                <th className="sortable" onClick={() => toggleSort('name')}>ชื่อหมวด{si('name')}</th>
+                <th className="sortable" onClick={() => toggleSort('sort_order')}>ลำดับ{si('sort_order')}</th>
+                <th>เรียง</th>
+                <th></th>
+              </tr>
             </thead>
             <tbody>
-              {(categories || []).map((c, i) => (
+              {filtered.map((c, i) => (
                 <tr key={c.id}>
                   <td>
                     <span style={{ display: 'inline-block', width: 20, height: 20, borderRadius: 4, background: c.color || '#6c63ff' }} />
@@ -114,8 +139,20 @@ export default function Categories() {
                   <td style={{ color: 'var(--text3)', textAlign: 'center' }}>{c.sort_order}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <div className="actions-cell">
-                      <button className="btn btn-sm btn-ghost" onClick={() => moveOrder(c, -1)} disabled={i === 0}>↑</button>
-                      <button className="btn btn-sm btn-ghost" onClick={() => moveOrder(c, 1)} disabled={i === (categories||[]).length - 1}>↓</button>
+                      {/* moveOrder bumps this row's own sort_order by ±1 --
+                          only makes sense (and only visually reflects) as
+                          "move up/down" when the table is actually showing
+                          ลำดับ order; sorted by name/etc. it'd silently
+                          renumber a row without moving it in the view the
+                          user is looking at, so hide the buttons then. */}
+                      {sortCol === 'sort_order' && sortDir === 'asc' ? (
+                        <>
+                          <button className="btn btn-sm btn-ghost" onClick={() => moveOrder(c, -1)} disabled={i === 0}>↑</button>
+                          <button className="btn btn-sm btn-ghost" onClick={() => moveOrder(c, 1)} disabled={i === filtered.length - 1}>↓</button>
+                        </>
+                      ) : (
+                        <span style={{ fontSize: 11, color: 'var(--text3)' }}>—</span>
+                      )}
                     </div>
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
@@ -126,7 +163,7 @@ export default function Categories() {
                   </td>
                 </tr>
               ))}
-              {!(categories||[]).length && (
+              {!filtered.length && (
                 <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีหมวดหมู่</td></tr>
               )}
             </tbody>

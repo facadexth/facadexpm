@@ -213,6 +213,8 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
   const [saving,   setSaving]   = useState(false)
   const [toast,    setToast]    = useState(null)
   const [showImport, setShowImport] = useState(false)
+  const [sortCol,  setSortCol]  = useState('date')
+  const [sortDir,  setSortDir]  = useState('desc')
 
   useEffect(() => {
     if (navState?.siteId) setSiteId(navState.siteId)
@@ -221,6 +223,21 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
   const filters = { from: dateFrom, to: dateTo, siteId, search }
   const { data: incomes, refetch } = useIncomes(filters)
   const { data: sites, refetch: refetchSites } = useSites()
+
+  const sortedIncomes = useMemo(() => {
+    return [...(incomes || [])].sort((a, b) => {
+      const va = a[sortCol] ?? ''
+      const vb = b[sortCol] ?? ''
+      if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
+      return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [incomes, sortCol, sortDir])
+
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
   const totalReceived   = useMemo(() => (incomes || []).reduce((s, i) => s + (i.received_amount || 0), 0), [incomes])
   const totalNoVat      = useMemo(() => (incomes || []).reduce((s, i) => s + (i.amount_no_vat || 0), 0), [incomes])
@@ -351,22 +368,22 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
           <table>
             <thead>
               <tr>
-                <th>เลขใบแจ้งหนี้</th>
-                <th>วันที่</th>
-                <th style={{ minWidth: 200 }}>ไซท์งาน</th>
-                <th>ลูกค้า</th>
-                <th>รายละเอียด</th>
-                <th>ก่อน VAT</th>
+                <th className="sortable" onClick={() => toggleSort('invoice_no')}>เลขใบแจ้งหนี้{si('invoice_no')}</th>
+                <th className="sortable" onClick={() => toggleSort('date')}>วันที่{si('date')}</th>
+                <th className="sortable" style={{ minWidth: 200 }} onClick={() => toggleSort('site_name')}>ไซท์งาน{si('site_name')}</th>
+                <th className="sortable" onClick={() => toggleSort('client_name')}>ลูกค้า{si('client_name')}</th>
+                <th className="sortable" onClick={() => toggleSort('description')}>รายละเอียด{si('description')}</th>
+                <th className="sortable" onClick={() => toggleSort('amount_no_vat')}>ก่อน VAT{si('amount_no_vat')}</th>
                 <th title="ชี้ค้างไว้ดูจำนวนเงิน">VAT</th>
                 <th title="ชี้ค้างไว้ดูจำนวนเงิน">Tax หัก</th>
                 <th title="ชี้ค้างไว้ดูจำนวนเงิน">Retention</th>
                 <th title="ชี้ค้างไว้ดูจำนวนเงิน">หักมัดจำ</th>
-                <th>ยอดรับจริง</th>
+                <th className="sortable" onClick={() => toggleSort('received_amount')}>ยอดรับจริง{si('received_amount')}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {(incomes || []).map(i => (
+              {sortedIncomes.map(i => (
                 <tr key={i.id}>
                   <td style={{ color: 'var(--accent)', fontSize: 11, whiteSpace: 'nowrap' }}>{i.invoice_no || '—'}</td>
                   <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: 'var(--text2)' }}>{fmtDate(i.date)}</td>

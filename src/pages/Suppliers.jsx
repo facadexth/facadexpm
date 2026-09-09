@@ -185,15 +185,28 @@ export default function Suppliers() {
   const [toast,      setToast]      = useState(null)
   const [search,     setSearch]     = useState('')
   const [catFilter,  setCatFilter]  = useState('')
+  const [sortCol,    setSortCol]    = useState('supplier_number')
+  const [sortDir,    setSortDir]    = useState('asc')
 
-  const filtered = useMemo(() =>
-    (suppliers || []).filter(s => {
+  const filtered = useMemo(() => {
+    const rows = (suppliers || []).filter(s => {
       const cats = normCategory(s.category)
       return (!catFilter || cats.includes(catFilter)) &&
         (!search || s.name?.toLowerCase().includes(search.toLowerCase()) ||
           s.supplier_number?.toLowerCase().includes(search.toLowerCase()))
     })
-  , [suppliers, search, catFilter])
+    return [...rows].sort((a, b) => {
+      const va = a[sortCol] ?? '', vb = b[sortCol] ?? ''
+      if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
+      return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [suppliers, search, catFilter, sortCol, sortDir])
+
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
   const handleSave = async (form) => {
     setSaving(true)
@@ -258,11 +271,11 @@ export default function Suppliers() {
           <table>
             <thead>
               <tr>
-                <th>รหัส Supplier</th>
-                <th>ชื่อ Supplier / บริษัท</th>
+                <th className="sortable" onClick={() => toggleSort('supplier_number')}>รหัส Supplier{si('supplier_number')}</th>
+                <th className="sortable" onClick={() => toggleSort('name')}>ชื่อ Supplier / บริษัท{si('name')}</th>
                 <th>หมวดสินค้า</th>
-                <th>ผู้ติดต่อ</th>
-                <th>เบอร์โทร</th>
+                <th className="sortable" onClick={() => toggleSort('contact_person')}>ผู้ติดต่อ{si('contact_person')}</th>
+                <th className="sortable" onClick={() => toggleSort('phone')}>เบอร์โทร{si('phone')}</th>
                 <th>เงื่อนไขชำระ</th>
                 <th>วิธีชำระเงิน</th>
                 <th></th>

@@ -26,6 +26,13 @@ export default function UserManagement() {
   const [form, setForm] = useState({ email: '', password: '', role: 'ADMIN' })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const { data: seat, refetch: refetchSeat } = useSeatStatus()
+  const [sortCol, setSortCol] = useState('user_email')
+  const [sortDir, setSortDir] = useState('asc')
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
   const fetchUsers = async () => {
     setLoading(true)
@@ -41,11 +48,16 @@ export default function UserManagement() {
     fetchUsers()
   }, [])
 
-  const filtered = useMemo(() =>
-    users.filter(u =>
+  const filtered = useMemo(() => {
+    const rows = users.filter(u =>
       !search || u.user_email.toLowerCase().includes(search.toLowerCase())
     )
-  , [users, search])
+    return [...rows].sort((a, b) => {
+      const va = a[sortCol] ?? '', vb = b[sortCol] ?? ''
+      if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
+      return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [users, search, sortCol, sortDir])
 
   const handleCreate = () => {
     setEditItem(null)
@@ -192,9 +204,9 @@ export default function UserManagement() {
             <table>
               <thead>
                 <tr>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>เพิ่มเมื่อ</th>
+                  <th className="sortable" onClick={() => toggleSort('user_email')}>Email{si('user_email')}</th>
+                  <th className="sortable" onClick={() => toggleSort('role')}>Role{si('role')}</th>
+                  <th className="sortable" onClick={() => toggleSort('created_at')}>เพิ่มเมื่อ{si('created_at')}</th>
                   <th></th>
                 </tr>
               </thead>

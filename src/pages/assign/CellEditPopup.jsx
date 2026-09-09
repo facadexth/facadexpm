@@ -51,7 +51,13 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
 
   const needsSite = SITE_TYPES.includes(form.type)
   const otHours = computeOTHours(form.otStart, form.otEnd, form.otOvernight)
-  const otStarted = form.otSiteId || form.otStart || form.otEnd  // user has begun filling in OT
+  // otSiteId alone doesn't count -- it's pre-seeded from the existing
+  // shift's site_id as a convenience default (see useDraftForm initial
+  // value above) even when the worker has no OT at all, so treating it as
+  // "user started OT" made opening/re-saving an already-assigned cell
+  // demand OT start/end times it was never given (spurious "กรอกไซท์งาน
+  // เวลาเริ่ม และเวลาจบของ OT ให้ครบ" on a plain shift save).
+  const otStarted = form.otStart || form.otEnd  // user has begun filling in OT
   // True once the user has any actual shift intent: editing something that
   // already exists, or having changed the shift form away from its blank
   // default. False for a truly empty cell where only OT is being entered —

@@ -424,8 +424,8 @@ export default function Sites({ navigateTo, openSiteOverview }) {
   const [toast,       setToast]       = useState(null)
   const [statusFilter, setStatusFilter] = useState('Ongoing')
   const [search,      setSearch]      = useState('')
-  const [sortCol,     setSortCol]     = useState('site_number')
-  const [sortDir,     setSortDir]     = useState('asc')
+  const [sortCol,     setSortCol]     = useState('last_activity_date')
+  const [sortDir,     setSortDir]     = useState('desc')
 
   // Labor cost lookup
   const laborBysite = useMemo(() => {
@@ -541,6 +541,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                 <th className="sortable" onClick={() => toggleSort('gross_profit')}>กำไร{si('gross_profit')}</th>
                 <th className="sortable" onClick={() => toggleSort('billing_pct')}>% เบิก{si('billing_pct')}</th>
                 <th className="hide-tablet">ค่าแรงช่าง</th>
+                <th className="sortable hide-tablet" onClick={() => toggleSort('last_activity_date')}>กิจกรรมล่าสุด{si('last_activity_date')}</th>
                 <th className="sortable hide-tablet" onClick={() => toggleSort('end_date')}>วันจบงาน{si('end_date')}</th>
                 <th></th>
               </tr>
@@ -625,6 +626,9 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                     >
                       {laborCost > 0 ? fmt(laborCost) : '—'}
                     </td>
+                    <td className="hide-tablet" style={{ fontSize: 11, color: 'var(--text2)', whiteSpace: 'nowrap' }}>
+                      {s.last_activity_date ? fmtDate(s.last_activity_date) : <span style={{ color: 'var(--text3)' }}>—</span>}
+                    </td>
                     <td className="hide-tablet">
                       {s.end_date ? (
                         <div>
@@ -652,7 +656,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                 )
               })}
               {!filtered.length && (
-                <tr><td colSpan={11} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบข้อมูลไซท์งาน</td></tr>
+                <tr><td colSpan={12} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบข้อมูลไซท์งาน</td></tr>
               )}
             </tbody>
           </table>
