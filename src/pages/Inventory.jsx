@@ -70,21 +70,12 @@ function ItemForm({ initial = EMPTY_ITEM_FORM, onSave, onCancel, loading, catego
             addLabel="+ สร้างใหม่"
           />
         </div>
-        <div>
-          <label className="label">รูปแบบการแปลงหน่วยตอนรับของ</label>
-          <select className="select" value={form.unit_conversion_mode} onChange={e => set('unit_conversion_mode', e.target.value)}>
-            <option value="plain">ปกติ (ใช้หน่วยแปลงคงที่ ถ้ามีตั้งไว้)</option>
-            <option value="aluminum_profile">อลูมิเนียม (เลือกหน้าตัด + ความยาว ตอนรับของ)</option>
-            <option value="glass_dimension">กระจก (กรอกกว้าง×ยาว ตอนรับของ)</option>
-          </select>
-        </div>
-        {form.unit_conversion_mode === 'glass_dimension' && (
-          <div>
-            <label className="label">ขนาดแผ่นอ้างอิง (ตรม.) — สำหรับรายงานประมาณจำนวนแผ่น</label>
-            <input className="input" type="number" min="0" step="0.01" value={form.reference_area_sqm}
-              onChange={e => set('reference_area_sqm', e.target.value)} placeholder="เช่น 2.88 (สำหรับแผ่น 1.2×2.4ม.)" />
-          </div>
-        )}
+        {/* TODO(unit-conversion-mode): the "รูปแบบการแปลงหน่วยตอนรับของ"
+            dropdown (aluminum_profile/glass_dimension special receiving
+            flows) is pulled from the UI -- not finished yet. Re-enable
+            here once complete; the underlying field/logic in
+            PurchaseOrders.jsx and the ↓ profiles subtab are untouched.
+            Every item stays on 'plain' mode until this comes back. */}
         {!isAdd && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
             <input type="checkbox" checked={form.active} onChange={e => set('active', e.target.checked)} />
@@ -672,7 +663,10 @@ export default function Inventory() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button className={`btn btn-sm ${view === 'items' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('items')}>📦 รายการสินค้าคงคลัง</button>
         <button className={`btn btn-sm ${view === 'invoice_deduction' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('invoice_deduction')}>🧾 ตัดสต็อกจากใบแจ้งหนี้</button>
-        <button className={`btn btn-sm ${view === 'profiles' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('profiles')}>🔧 หน้าตัดอลูมิเนียม</button>
+        {/* TODO(aluminum-profiles-subtab): "หน้าตัดอลูมิเนียม" pulled from
+            the UI -- not finished yet. The view/CRUD code below is left
+            intact; just re-add this button (and the ExcelUpload
+            type="aluminum_profile" entry point inside it) once ready. */}
         <button className={`btn btn-sm ${view === 'movements' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('movements')}>📜 ประวัติการเคลื่อนไหว</button>
       </div>
 
