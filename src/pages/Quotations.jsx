@@ -15,6 +15,7 @@ import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
+import { thaiBahtText } from '../lib/thaiBahtText.js'
 import { auditLog } from '../lib/audit.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -549,49 +550,51 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
   // budget specifically. Without that reservation, a fixed-height page-div
   // has nowhere for this block to go if the packed rows above it leave too
   // little room -- it would render past the bottom of the visible page.
+  // The flex:1 spacer sits FIRST, ahead of the whole totals+notes+
+  // signature group -- see DocumentPaper's identical comment
+  // (Invoices.jsx) for why: it pushes the "สรุป" box + notes + signatures
+  // down to sit flush at the page bottom as ONE unit regardless of how
+  // few item rows are on this page, instead of stranding the totals box
+  // right under a short table with a big gap underneath it. Peak
+  // Accounting's layout (the tenant's own reference) does the same, and
+  // this now matches DocumentPaper's (Invoices.jsx) invoice/receipt/
+  // tax-invoice footer for visual consistency across every document.
   const renderFooter = () => (
     <>
-      <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
-        <table style={{ width: 260, fontSize: 12.5 }}>
-          <tbody>
-            {isSplit && (
-              <>
-                <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมค่าของ</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(materialLabor.material)}</td></tr>
-                <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมค่าแรง</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(materialLabor.labor)}</td></tr>
-              </>
-            )}
-            {totals.discount > 0 && (
-              <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>ส่วนลด</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>-{fmt(totals.discount)}</td></tr>
-            )}
-            <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมก่อน VAT</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(totals.subtotal)}</td></tr>
-            {hasVat && (
-              <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>VAT (7%)</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(totals.vat)}</td></tr>
-            )}
-            <tr>
-              <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: style.accent, borderTop: `2px solid ${style.accent}` }}>รวมทั้งสิ้น</td>
-              <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: style.accent, borderTop: `2px solid ${style.accent}` }}>{fmt(totals.total)} บาท</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
       <div style={{ flex: 1 }} />
 
-      {/* footerBoxOffset must live INSIDE this wrapper, not on a sibling of
-          the flex:1 spacer above -- a flex:1 item's computed size already
-          absorbs every other sibling's margin (that's what "flex:1" means:
-          grow to fill whatever the rest of the column doesn't use), so a
-          margin placed on a sibling AFTER the spacer nets to zero visible
-          effect: the spacer shrinks by exactly the margin's size, leaving
-          the margin-bearing element's own final position unchanged. Putting
-          both the notes box and the signature grid inside one wrapper,
-          with the gap between them as a real margin THEY share (no
-          flex-grow item inside this wrapper to absorb it), makes the gap
-          genuinely visible while the wrapper's bottom edge -- and so the
-          signature line itself -- stays pinned to the page bottom exactly
-          as before, since the wrapper's total height is still what the
-          outer spacer sizes itself against. */}
       <div>
+        <div style={{ marginTop: 14, display: 'flex', gap: 24, alignItems: 'flex-start', borderTop: '1px solid #e4e6ef', paddingTop: 14 }}>
+          <div style={{ flex: 1, fontSize: 12.5, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>📄 สรุป</div>
+            <div style={{ display: 'grid', gap: 5 }}>
+              {isSplit && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>รวมค่าของ</span><span>{fmt(materialLabor.material)} บาท</span></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>รวมค่าแรง</span><span>{fmt(materialLabor.labor)} บาท</span></div>
+                </>
+              )}
+              {totals.discount > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>ส่วนลด</span><span>-{fmt(totals.discount)} บาท</span></div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>{hasVat ? 'มูลค่าที่คำนวณภาษี 7%' : 'รวมก่อน VAT'}</span><span>{fmt(totals.subtotal)} บาท</span></div>
+              {hasVat && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>ภาษีมูลค่าเพิ่ม 7%</span><span>{fmt(totals.vat)} บาท</span></div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 4, paddingTop: 6, borderTop: '1px solid #eee' }}>
+                <span style={{ color: '#6a6f85' }}>จำนวนเงินทั้งสิ้น</span>
+                <span style={{ textAlign: 'right', color: '#6a6f85', fontStyle: 'italic' }}>{thaiBahtText(totals.total)}</span>
+              </div>
+            </div>
+          </div>
+          <div style={{ width: 220, flexShrink: 0 }}>
+            <div style={{ background: `${style.accent}14`, border: `1px solid ${style.accent}55`, borderRadius: 10, padding: '10px 14px' }}>
+              <div style={{ fontSize: 11, color: '#6a6f85' }}>รวมทั้งสิ้น</div>
+              <div style={{ fontWeight: 800, fontSize: 17, color: style.accent }}>{fmt(totals.total)} บาท</div>
+            </div>
+          </div>
+        </div>
+
         {(paymentTerms || notes || bankAccount) && (() => {
           // Fixed order: หมายเหตุ, then เงื่อนไขการชำระเงิน, then ชำระเงินไปที่
           // -- each shown only when its own content is present. Order
@@ -617,7 +620,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
           )
         })()}
 
-        <div style={{ marginTop: style.footerBoxOffset, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
+        <div style={{ marginTop: style.footerBoxOffset, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20, textAlign: 'center', fontSize: 11.5 }}>
           <div>
             <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
               {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
@@ -637,6 +640,10 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
                 {clientSignature.signerName} · เซ็นเมื่อ {new Date(clientSignature.signedAt).toLocaleDateString('th-TH')}
               </div>
             )}
+          </div>
+          <div>
+            <div style={{ height: 40, border: '1px dashed #ccc', borderRadius: 6 }} />
+            <div style={{ borderTop: '1px solid #999', paddingTop: 8, marginTop: 8 }}>ตราประทับ</div>
           </div>
         </div>
       </div>

@@ -98,6 +98,38 @@ describe('calcInvoiceTotals', () => {
   it('empty items list totals to zero', () => {
     expect(calcInvoiceTotals([], { hasVat: true, priceIncludesVat: false })).toEqual({ subtotal: 0, vat: 0, total: 0 })
   })
+
+  describe('depositTaxOffset', () => {
+    // Real case this was built for: a 260,700 contract billed as a 30%
+    // deposit (78,210, VAT already charged on it) followed by one final
+    // invoice for the full remaining item value. The final invoice's item
+    // subtotal stays the full 260,700 (that's the real work delivered),
+    // but VAT is only levied on the 182,490 that hasn't been taxed yet.
+    const soapOperaItems = [{ line_total: 260700 }]
+
+    it('VAT added on top: taxes only the slice above the offset, subtotal unchanged', () => {
+      expect(calcInvoiceTotals(soapOperaItems, { hasVat: true, priceIncludesVat: false, depositTaxOffset: 78210 }))
+        .toEqual({ subtotal: 260700, vat: 12774.3, total: 273474.3 })
+    })
+    it('offset >= subtotal clamps taxable value to zero, never negative VAT', () => {
+      expect(calcInvoiceTotals(items, { hasVat: true, priceIncludesVat: false, depositTaxOffset: 5000 }))
+        .toEqual({ subtotal: 1000, vat: 0, total: 1000 })
+    })
+    it('defaults to 0 (no behavior change) when omitted', () => {
+      expect(calcInvoiceTotals(items, { hasVat: true, priceIncludesVat: false }))
+        .toEqual(calcInvoiceTotals(items, { hasVat: true, priceIncludesVat: false, depositTaxOffset: 0 }))
+    })
+    it('no VAT at all: offset is irrelevant, never applied', () => {
+      expect(calcInvoiceTotals(items, { hasVat: false, depositTaxOffset: 500 })).toEqual({ subtotal: 1000, vat: 0, total: 1000 })
+    })
+    it('price includes VAT: subtotal/total stay full value, only the VAT split shrinks', () => {
+      // 1070 total, hasVat+priceIncludesVat, 500 already taxed elsewhere:
+      // taxable slice = 1070-500 = 570; ex-VAT = 570/1.07 = 532.71 (round2);
+      // vat = 570-532.71 = 37.29; subtotal = 1070-37.29 = 1032.71; total = 1070.
+      expect(calcInvoiceTotals([{ line_total: 1070 }], { hasVat: true, priceIncludesVat: true, depositTaxOffset: 500 }))
+        .toEqual({ subtotal: 1032.71, vat: 37.29, total: 1070 })
+    })
+  })
 })
 
 describe('sumMaterialLabor', () => {

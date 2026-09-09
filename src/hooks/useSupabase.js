@@ -5,7 +5,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { applyDateFilter } from '../lib/expenseFilters.js'
-import { buildUnitSeedRows } from '../lib/invoiceCalc.js'
+import { buildUnitSeedRows, VAT_RATE } from '../lib/invoiceCalc.js'
 
 /** Generic fetch hook */
 export function useQuery(queryFn, deps = []) {
@@ -311,6 +311,63 @@ export function useQuotationItemUnits(quotationId, quotationItems) {
     }
     return byQuotationItem
   }, [quotationId, JSON.stringify((quotationItems || []).map(qi => qi.id))])
+}
+
+/** The VAT/WHT tax-base offset a progress/final invoice for this
+ *  quotation should subtract from its own subtotal before computing
+ *  VAT/WHT -- see calcInvoiceTotals' own comment for the full reasoning
+ *  (a deposit invoice already charges VAT on its value once; without
+ *  this, a later invoice covering the same underlying value taxes it
+ *  again).
+ *
+ *  Not just "total deposit subtotal": if a quotation bills across
+ *  MULTIPLE progress invoices after a deposit, only the FIRST of them
+ *  should get the full offset -- later ones must see it already
+ *  "consumed". Since the amount of offset each already-issued invoice
+ *  actually used isn't stored directly, it's reverse-engineered from
+ *  that invoice's own stored subtotal/vat (same formula
+ *  calcInvoiceTotals used forward, run backward). Invoices issued
+ *  before this feature existed reverse-engineer to 0 consumed (their
+ *  vat was computed on the full subtotal, no offset applied) -- so the
+ *  full deposit correctly remains available to the next invoice, which
+ *  is exactly the "first invoice after this shipped" case. */
+export async function getQuotationDepositTaxOffset(quotationId, hasVat, priceIncludesVat, excludeInvoiceId = null) {
+  if (!quotationId || !hasVat) return 0
+  let query = supabase
+    .from('invoices')
+    .select('is_deposit, subtotal, vat, total')
+    .eq('quotation_id', quotationId)
+    .neq('status', 'void')
+  // Exclude the invoice this offset is being computed FOR -- once it's been
+  // inserted (e.g. handleMarkPaid re-deriving the offset after create), its
+  // own already-offset VAT would otherwise get reverse-engineered as having
+  // consumed the deposit itself, zeroing the offset it's supposed to get.
+  if (excludeInvoiceId) query = query.neq('id', excludeInvoiceId)
+  const { data, error } = await query
+  if (error) throw error
+
+  let totalDeposit = 0
+  let consumed = 0
+  for (const inv of data || []) {
+    if (inv.is_deposit) {
+      totalDeposit += parseFloat(inv.subtotal) || 0
+      continue
+    }
+    const subtotal = parseFloat(inv.subtotal) || 0
+    const vat = parseFloat(inv.vat) || 0
+    const total = parseFloat(inv.total) || 0
+    const taxableUsed = priceIncludesVat ? vat * (1 + VAT_RATE) / VAT_RATE : vat / VAT_RATE
+    const rawBilled = priceIncludesVat ? total : subtotal
+    consumed += Math.max(0, rawBilled - taxableUsed)
+  }
+  return Math.max(0, totalDeposit - consumed)
+}
+
+export function useQuotationDepositTaxOffset(quotationId, hasVat, priceIncludesVat, excludeInvoiceId = null) {
+  return useQuery(
+    () => getQuotationDepositTaxOffset(quotationId, hasVat, priceIncludesVat, excludeInvoiceId),
+    [quotationId, hasVat, priceIncludesVat, excludeInvoiceId]
+  )
 }
 
 export function useInvoices(filters = {}) {

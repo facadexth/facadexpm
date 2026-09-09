@@ -12,7 +12,7 @@
 // ============================================================
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, useMyWorkerName, useBankAccounts, useSiteDepositBalance, logDocumentPrint } from '../hooks/useSupabase.js'
+import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, useMyWorkerName, useBankAccounts, useSiteDepositBalance, useQuotationDepositTaxOffset, getQuotationDepositTaxOffset, logDocumentPrint } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { calcDepositDeduction, round2 } from '../lib/depositCalc.js'
@@ -295,6 +295,11 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   const { hasModuleAccess } = useTenant()
   const items = quotation.quotation_items || []
   const { data: unitsByQuotationItem, loading: unitsLoading, error: unitsError } = useQuotationItemUnits(quotation.id, items)
+  // VAT/WHT tax-base offset -- see calcInvoiceTotals' own comment. Applies
+  // regardless of hasModuleAccess('client_deposits'): this corrects for
+  // VAT already charged on a deposit invoice's own value, which is a tax
+  // fact independent of whether the deposit-BALANCE-tracking module is on.
+  const { data: depositTaxOffset } = useQuotationDepositTaxOffset(quotation.id, quotation.has_vat, quotation.price_includes_vat)
   const [lines, setLines] = useState(null)
   const [mode, setMode] = useState('easy')
   const [saving, setSaving] = useState(false)
@@ -350,7 +355,7 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   // actually stored, or a printed invoice's line items visibly fail to add
   // up to its own total by a satang.
   const invoiceItemsForTotals = billedLines.map(l => ({ line_total: round2(drawAmount(l.units, l.unitPrice)) }))
-  const totals = calcInvoiceTotals(invoiceItemsForTotals, { hasVat: quotation.has_vat, priceIncludesVat: quotation.price_includes_vat })
+  const totals = calcInvoiceTotals(invoiceItemsForTotals, { hasVat: quotation.has_vat, priceIncludesVat: quotation.price_includes_vat, depositTaxOffset: depositTaxOffset || 0 })
   const isSplit = quotation.pricing_mode === 'split'
   const materialLabor = isSplit
     ? sumMaterialLabor(billedLines.map(l => ({ draw_qty: drawQty(l.units), unit_price_material: l.unitPriceMaterial, unit_price_labor: l.unitPriceLabor })))
@@ -490,6 +495,11 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมงวดนี้ (ก่อน VAT)</span><span className="font-mono">{fmt(totals.subtotal)}</span></div>
           {quotation.has_vat && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>VAT (7%)</span><span className="font-mono">{fmt(totals.vat)}</span></div>}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}><span>รวมเรียกเก็บงวดนี้</span><span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totals.total)}</span></div>
+          {quotation.has_vat && depositTaxOffset > 0 && (
+            <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 6, paddingTop: 6, borderTop: '1px dashed var(--border)' }}>
+              📐 หัก VAT เฉพาะส่วนที่ยังไม่เคยเสียภาษีจากใบมัดจำก่อนหน้า — คิด VAT จาก {fmt(Math.max(0, totals.subtotal - depositTaxOffset))} บาทเท่านั้น (ไม่ใช่ {fmt(totals.subtotal)} เต็มยอด) เพื่อไม่ให้ซ้ำซ้อนกับ VAT ที่เก็บไปแล้วตอนรับมัดจำ {fmt(depositTaxOffset)} บาท
+            </div>
+          )}
         </div>
 
         {/* Policy description, not a live number -- the actual amount
@@ -996,16 +1006,25 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
 // เชื่อถือได้กว่า เพราะบันทึกไว้ตอนชำระจริง ไม่ขยับตามถ้า default % ของไซท์
 // เปลี่ยนทีหลัง ส่วนใบแจ้งหนี้ที่ยังไม่ชำระ ยังไม่มี income row ให้อ้างอิง --
 // ประมาณการจาก default % ปัจจุบันของไซท์แทน (isEstimate: true)
-function computeWithholding(invoice) {
+// depositTaxOffset (default 0, backward compatible for callers that don't
+// have it handy -- e.g. the invoice list's row-level net-amount estimate,
+// where fetching it per row would be an N+1 query) -- see
+// calcInvoiceTotals' own comment for why WHT, like VAT, is levied only on
+// the slice of subtotal not already taxed via an earlier deposit invoice
+// on the same quotation. Reconstructing `pct` against the SAME adjusted
+// base recovers the real rate (e.g. 3%) instead of a diluted-looking
+// figure that would result from dividing back against the full subtotal.
+function computeWithholding(invoice, depositTaxOffset = 0) {
+  const taxableBase = Math.max(0, invoice.subtotal - depositTaxOffset)
   const income = invoice.incomes
   if (income && income.tax_withheld > 0) {
-    const pct = invoice.subtotal > 0 ? round2(income.tax_withheld / invoice.subtotal * 100) : 0
+    const pct = taxableBase > 0 ? round2(income.tax_withheld / taxableBase * 100) : 0
     return { amount: income.tax_withheld, pct, isEstimate: false }
   }
   if (invoice.status === 'void') return { amount: 0, pct: 0, isEstimate: false }
   const defaultPct = invoice.sites?.default_tax_withheld_pct || 0
   if (defaultPct > 0) {
-    return { amount: round2(invoice.subtotal * defaultPct / 100), pct: defaultPct, isEstimate: true }
+    return { amount: round2(taxableBase * defaultPct / 100), pct: defaultPct, isEstimate: true }
   }
   return { amount: 0, pct: 0, isEstimate: false }
 }
@@ -1051,8 +1070,9 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
   const style = resolveDocumentStyle(tenant?.document_style)
   const items = invoice.invoice_items || []
   const client = invoice.quotations?.clients
-  const wht = computeWithholding(invoice)
   const { hasModuleAccess } = useTenant()
+  const { data: depositTaxOffset } = useQuotationDepositTaxOffset(invoice.quotation_id, invoice.has_vat, invoice.price_includes_vat, invoice.id)
+  const wht = computeWithholding(invoice, depositTaxOffset || 0)
   const { data: depositBalance } = useSiteDepositBalance(hasModuleAccess('client_deposits') ? invoice.site_id : null)
   const deposit = computeDepositDeduction(invoice, depositBalance)
   const { data: receipt } = useDocumentReceipt('invoice', invoice.id)
@@ -1065,7 +1085,7 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
       .then(({ data }) => { if (!cancelled) setSignatureUrl(data?.signedUrl) })
     return () => { cancelled = true }
   }, [receipt])
-  const docTitle = INVOICE_TITLE_OPTIONS.find(o => o.value === titleVariant).title + (invoice.is_deposit ? ' (เงินมัดจำ)' : '')
+  const docTitle = INVOICE_TITLE_OPTIONS.find(o => o.value === titleVariant).title
 
   // เปลี่ยนบัญชีธนาคารที่จะใช้รับชำระได้ตรงนี้เลย (ไม่มีฟอร์มแก้ไขใบแจ้งหนี้
   // แยกต่างหากเหมือนใบเสนอราคา) เขียนลง DB ทันทีที่เปลี่ยน จำกัดตัวเลือกไว้
@@ -1170,7 +1190,7 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
               // footer's rendered height (adding/removing the deposit-line
               // row) after the hidden pass already measured, the reserved
               // budget goes stale unless this key changes to force a remeasure.
-              extraRemeasureKey={`${bankAccount?.id || ''}|${titleVariant}|${deposit.amount}`}
+              extraRemeasureKey={`${bankAccount?.id || ''}|${titleVariant}|${deposit.amount}|${wht.amount}`}
             />
           </ScaleToFit>
         </div>
@@ -1207,8 +1227,9 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
   const elementId = `rcp-doc-${receipt.id}`
   const items = invoice.invoice_items || []
   const client = invoice.quotations?.clients
-  const wht = computeWithholding(invoice)
   const { hasModuleAccess } = useTenant()
+  const { data: depositTaxOffset } = useQuotationDepositTaxOffset(invoice.quotation_id, invoice.has_vat, invoice.price_includes_vat, invoice.id)
+  const wht = computeWithholding(invoice, depositTaxOffset || 0)
   const { data: depositBalance } = useSiteDepositBalance(hasModuleAccess('client_deposits') ? invoice.site_id : null)
   const deposit = computeDepositDeduction(invoice, depositBalance)
   const [titleVariant, setTitleVariant] = useState('receipt')
@@ -1268,7 +1289,7 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
               // from -- must be part of the remeasure key (see DocumentPaper's
               // own comment). deposit.amount included for the same async-
               // settling reason as InvoiceDocumentModal's identical key above.
-              extraRemeasureKey={`${titleVariant}|${deposit.amount}`}
+              extraRemeasureKey={`${titleVariant}|${deposit.amount}|${wht.amount}`}
             />
           </ScaleToFit>
         </div>
@@ -1703,7 +1724,17 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
         if (siteError) throw siteError
 
         const noVat = invoice.subtotal
-        const taxAmt = noVat * (site.default_tax_withheld_pct || 0) / 100
+        // WHT (like VAT -- see calcInvoiceTotals' depositTaxOffset comment)
+        // is levied only on the slice of this invoice's value that hasn't
+        // already been taxed once via an earlier deposit invoice for the
+        // same quotation. Retention is deliberately NOT adjusted here --
+        // it's a holdback against the full delivered contract value, not
+        // a tax, so deposit timing doesn't affect its base.
+        const depositTaxOffset = invoice.is_deposit
+          ? 0
+          : await getQuotationDepositTaxOffset(invoice.quotation_id, invoice.has_vat, invoice.price_includes_vat, invoice.id)
+        const whtBase = Math.max(0, noVat - depositTaxOffset)
+        const taxAmt = whtBase * (site.default_tax_withheld_pct || 0) / 100
         const retentionAmt = noVat * (site.default_retention_pct || 0) / 100
 
         // ใบมัดจำ "เป็น" เงินมัดจำเอง ไม่ใช่การเบิกที่ต้องหักจากยอดมัดจำที่มีอยู่

@@ -90,21 +90,35 @@ export function sumMaterialLabor(items) {
   }, { material: 0, labor: 0 })
 }
 
-export function calcInvoiceTotals(invoiceItems, { hasVat, priceIncludesVat } = {}) {
+// depositTaxOffset -- pre-VAT value already taxed via an earlier deposit
+// invoice on the SAME quotation (see client-deposit-tracking design spec).
+// A deposit invoice charges VAT on its own value at receipt time; if a
+// later progress/final invoice for the same quotation then charges VAT
+// again on its FULL billed value, the deposit-covered slice gets taxed
+// twice. VAT here is levied only on the portion of THIS invoice's value
+// that hasn't already had VAT charged on it once -- the item-level
+// subtotal shown on the document stays the full billed value regardless
+// (it's a record of work delivered, not of what's newly taxable).
+export function calcInvoiceTotals(invoiceItems, { hasVat, priceIncludesVat, depositTaxOffset = 0 } = {}) {
   const subtotalRaw = (invoiceItems || []).reduce((s, it) => s + it.line_total, 0)
 
   if (!hasVat) {
     const total = round2(subtotalRaw)
     return { subtotal: total, vat: 0, total }
   }
+  const taxableSubtotal = Math.max(0, subtotalRaw - depositTaxOffset)
   if (priceIncludesVat) {
+    // subtotalRaw is VAT-inclusive across the full billed items; strip VAT
+    // only off the taxable slice, then add the (already-taxed) deposit
+    // slice back in at face value for both subtotal and total.
+    const taxablePortionExVat = round2(taxableSubtotal / (1 + VAT_RATE))
+    const vat = round2(taxableSubtotal - taxablePortionExVat)
+    const subtotal = round2(subtotalRaw - vat)
     const total = round2(subtotalRaw)
-    const subtotal = round2(total / (1 + VAT_RATE))
-    const vat = round2(total - subtotal)
     return { subtotal, vat, total }
   }
   const subtotal = round2(subtotalRaw)
-  const vat = round2(subtotal * VAT_RATE)
+  const vat = round2(taxableSubtotal * VAT_RATE)
   const total = round2(subtotal + vat)
   return { subtotal, vat, total }
 }
