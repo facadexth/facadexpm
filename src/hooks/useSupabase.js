@@ -317,7 +317,7 @@ export function useInvoices(filters = {}) {
         // และ incomes.source_invoice_id -> invoices.id) -- ไม่งั้น PostgREST
         // จะ error "more than one relationship was found" ทันที ทำให้ query
         // ทั้งเส้นพังเงียบๆ (useInvoices ไม่มีใครอ่าน .error ใน Invoices.jsx เดิม)
-        .select('*, quotations(quotation_number, client_id, clients(name, address, tax_id)), sites(name, site_number, default_tax_withheld_pct), invoice_items(id, quotation_item_id, description, unit, unit_price, draw_qty, line_total, sort_order), incomes!invoices_income_id_fkey(tax_withheld, received_amount), bank_accounts(id, bank_name, account_name, account_no)')
+        .select('*, quotations(quotation_number, client_id, clients(name, address, tax_id)), sites(name, site_number, default_tax_withheld_pct), invoice_items(id, quotation_item_id, description, unit, unit_price, unit_price_material, unit_price_labor, draw_qty, line_total, sort_order), incomes!invoices_income_id_fkey(tax_withheld, received_amount), bank_accounts(id, bank_name, account_name, account_no)')
         .order('date', { ascending: false })
         .order('id', { ascending: false })
 

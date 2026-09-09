@@ -76,6 +76,20 @@ export function drawAmount(units, unitPrice) {
   return drawQty(units) * unitPrice
 }
 
+/** Material/labor subtotals across invoice item rows, for the split-pricing
+ *  summary (create-invoice modal + printed document). Mirrors
+ *  quotationCalc.js's sumMaterialLabor, keyed on draw_qty instead of
+ *  quantity -- invoice items don't have a quantity field, only the drawn
+ *  amount for this billing round. */
+export function sumMaterialLabor(items) {
+  return (items || []).reduce((acc, it) => {
+    const qty = parseFloat(it.draw_qty) || 0
+    acc.material += qty * (parseFloat(it.unit_price_material) || 0)
+    acc.labor += qty * (parseFloat(it.unit_price_labor) || 0)
+    return acc
+  }, { material: 0, labor: 0 })
+}
+
 export function calcInvoiceTotals(invoiceItems, { hasVat, priceIncludesVat } = {}) {
   const subtotalRaw = (invoiceItems || []).reduce((s, it) => s + it.line_total, 0)
 
