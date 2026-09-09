@@ -433,7 +433,10 @@ export default function Sites({ navigateTo, openSiteOverview }) {
   const { data: laborData } = useLaborCost()
   const { data: clients, refetch: refetchClients }   = useClients()
   const { data: seat, refetch: refetchSeat } = useSeatStatus()
-  const { data: inventoryCategories } = useInventoryCategories()
+  const { data: inventoryCategoriesRaw } = useInventoryCategories()
+  // Only categories ticked "ใช้คิดต้นทุน/ตัดสต็อก" in Settings show up here --
+  // others stay usable as plain item tags in Inventory, just not for cost estimates.
+  const inventoryCategories = useMemo(() => (inventoryCategoriesRaw || []).filter(c => c.use_for_cost_deduction), [inventoryCategoriesRaw])
   const { data: siteCostEstimates, refetch: refetchSiteCostEstimates } = useSiteCostEstimates()
 
   const [showForm,    setShowForm]    = useState(false)

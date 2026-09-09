@@ -431,6 +431,9 @@ export default function Inventory() {
   // still correctly uses the active-only useInventoryItems().
   const { data: items, refetch: refetchItems } = useAllInventoryItems()
   const { data: categories, refetch: refetchCategories } = useInventoryCategories()
+  // Only categories ticked "ใช้คิดต้นทุน/ตัดสต็อก" in Settings count toward the
+  // COGS split -- others still exist as plain item tags (`categories` above).
+  const deductionCategories = useMemo(() => (categories || []).filter(c => c.use_for_cost_deduction), [categories])
   const { data: factors, refetch: refetchFactors } = useInventoryItemUnitFactors()
   const { data: balances, refetch: refetchBalances } = useStockBalances()
   const { data: profiles, refetch: refetchProfiles } = useAllAluminumProfiles()
@@ -730,15 +733,19 @@ export default function Inventory() {
             <div className="card" style={{ padding: 16, marginBottom: 14, color: 'var(--text3)' }}>
               ยังไม่มีหมวดหมู่สินค้าคงคลัง — กรุณาสร้างหมวดหมู่ในแท็บ "รายการสินค้าคงคลัง" ก่อน จึงจะตั้งค่าสัดส่วนการตัดสต็อกได้
             </div>
+          ) : !deductionCategories.length ? (
+            <div className="card" style={{ padding: 16, marginBottom: 14, color: 'var(--text3)' }}>
+              ยังไม่ได้ติ๊กหมวดหมู่ไหนไว้ใช้คิดต้นทุน/ตัดสต็อกเลย — ไปติ๊กได้ที่ ตั้งค่า → หมวดหมู่สินค้าคงคลัง
+            </div>
           ) : (
-            <CogsSettingsPanel settings={cogsSettings} categories={categories} onSaved={refetchCogsSettings} />
+            <CogsSettingsPanel settings={cogsSettings} categories={deductionCategories} onSaved={refetchCogsSettings} />
           )}
           {!centralSite && (
             <div className="alert alert-error" style={{ marginBottom: 14 }}>ไม่พบไซท์งานชื่อ "ส่วนกลาง" — การตัดสต็อกจะดึงจากไซท์งานได้อย่างเดียว ไม่มีที่มาสำรอง</div>
           )}
           {(unprocessedInvoices || []).map(inv => (
             <InvoiceDeductionRow
-              key={`${inv.id}-${JSON.stringify(cogsSettings)}`} invoice={inv} categories={categories} items={items} balances={balances}
+              key={`${inv.id}-${JSON.stringify(cogsSettings)}`} invoice={inv} categories={deductionCategories} items={items} balances={balances}
               centralSite={centralSite} defaultSettings={cogsSettings} siteCostEstimates={siteCostEstimates}
               expanded={expandedInvoiceId === inv.id}
               onToggle={() => setExpandedInvoiceId(id => id === inv.id ? null : inv.id)}

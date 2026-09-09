@@ -1234,6 +1234,17 @@ export function useInventoryCategories() {
   })
 }
 
+/** Toggle whether a category counts toward site cost estimates and the
+ *  stock-deduction % split (Settings' category checklist). It stays
+ *  usable as an item tag either way. */
+export async function setInventoryCategoryUseForDeduction(categoryId, useForDeduction) {
+  const { error } = await supabase
+    .from('inventory_categories')
+    .update({ use_for_cost_deduction: useForDeduction })
+    .eq('id', categoryId)
+  if (error) throw error
+}
+
 /** Every site's cost-breakdown estimate, keyed by real inventory
  *  categories (site_cost_estimates) -- fetched whole (small table) and
  *  filtered client-side per site_id. Replaces the old sites.cost_aluminum/
