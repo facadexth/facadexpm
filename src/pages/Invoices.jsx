@@ -502,6 +502,81 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   )
 }
 
+// สร้างใบมัดจำ -- ต่างจาก CreateInvoiceModal ตรงที่ไม่มีการเลือก/draw
+// รายการทีละบรรทัดจาก quotation_items เลย (มัดจำไม่ผูกกับความคืบหน้าของ
+// รายการใดรายการหนึ่ง) แค่กรอก % ของมูลค่างานก่อน VAT แล้วระบบสร้างใบแจ้งหนี้
+// ที่มี invoice_items แถวเดียว ("เงินมัดจำ") ใช้เลขที่เอกสารชุดเดียวกับ
+// ใบแจ้งหนี้ปกติ (IN-prefix) ตามที่ผู้ใช้ยืนยัน -- ไม่ใช่เลขชุดใหม่แยกต่างหาก
+function CreateDepositInvoiceModal({ quotation, onClose, onSaved }) {
+  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+  const [pct, setPct] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const quotationTotals = calcQuotationTotals(quotation.quotation_items, {
+    hasVat: quotation.has_vat, priceIncludesVat: quotation.price_includes_vat,
+    discountAmount: quotation.discount_amount, discountPct: quotation.discount_pct,
+  })
+  const depositBase = round2(quotationTotals.subtotal * (parseFloat(pct) || 0) / 100)
+  const totals = calcInvoiceTotals([{ line_total: depositBase }], { hasVat: quotation.has_vat, priceIncludesVat: quotation.price_includes_vat })
+
+  const handleSave = async () => {
+    const pctNum = parseFloat(pct)
+    if (!pctNum || pctNum <= 0) { alert('กรุณาระบุ % มัดจำ'); return }
+    setSaving(true)
+    try {
+      const { data: invoice, error: invError } = await supabase.from('invoices').insert({
+        quotation_id: quotation.id, site_id: quotation.site_id, date,
+        has_vat: quotation.has_vat, price_includes_vat: quotation.price_includes_vat,
+        subtotal: totals.subtotal, vat: totals.vat, total: totals.total,
+        bank_account_id: quotation.bank_account_id || null,
+        is_deposit: true, deposit_pct: pctNum,
+      }).select().single()
+      if (invError) throw invError
+      await auditLog('invoices', invoice.id, 'INSERT', null, { quotation_id: quotation.id, total: totals.total, is_deposit: true })
+
+      const { error: itemError } = await supabase.from('invoice_items').insert({
+        invoice_id: invoice.id, quotation_item_id: null,
+        description: `เงินมัดจำ ${pctNum}% ของมูลค่างาน`, unit: null, unit_price: totals.subtotal,
+        draw_qty: 1, line_total: totals.subtotal, sort_order: 0,
+      })
+      if (itemError) throw itemError
+
+      onSaved()
+    } catch (e) {
+      alert('บันทึกไม่สำเร็จ: ' + e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title={`สร้างใบมัดจำ — ${quotation.quotation_number}`} onClose={onClose} maxWidth={480}>
+      <div className="modal-body" style={{ display: 'grid', gap: 14 }}>
+        <div>
+          <label className="label">วันที่ออกเอกสาร</label>
+          <input type="date" className="input" value={date} onChange={e => setDate(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">% มัดจำ (ของมูลค่างานก่อน VAT {fmt(quotationTotals.subtotal)} บาท)</label>
+          <input type="number" min="0" max="100" step="0.01" className="input" placeholder="เช่น 30"
+            value={pct} onChange={e => setPct(e.target.value)} />
+        </div>
+        <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '10px 14px', fontSize: 13 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>เงินมัดจำ (ก่อน VAT)</span><span className="font-mono">{fmt(totals.subtotal)}</span></div>
+          {quotation.has_vat && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>VAT (7%)</span><span className="font-mono">{fmt(totals.vat)}</span></div>}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}><span>รวมเรียกเก็บ</span><span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totals.total)}</span></div>
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button type="button" className="btn btn-ghost" onClick={onClose}>ยกเลิก</button>
+        <button type="button" className="btn btn-primary" disabled={saving} onClick={handleSave}>
+          {saving ? '⏳...' : '✅ สร้างใบมัดจำ'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
 // Both the top row (logo/contact/title) and the client-info/doc-info row
 // below it repeat identically on every page (per the spec's explicit
 // "repeat the whole header" requirement) -- kept as one component so the
@@ -872,7 +947,7 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
       .then(({ data }) => { if (!cancelled) setSignatureUrl(data?.signedUrl) })
     return () => { cancelled = true }
   }, [receipt])
-  const docTitle = INVOICE_TITLE_OPTIONS.find(o => o.value === titleVariant).title
+  const docTitle = INVOICE_TITLE_OPTIONS.find(o => o.value === titleVariant).title + (invoice.is_deposit ? ' (เงินมัดจำ)' : '')
 
   // เปลี่ยนบัญชีธนาคารที่จะใช้รับชำระได้ตรงนี้เลย (ไม่มีฟอร์มแก้ไขใบแจ้งหนี้
   // แยกต่างหากเหมือนใบเสนอราคา) เขียนลง DB ทันทีที่เปลี่ยน จำกัดตัวเลือกไว้
@@ -1356,11 +1431,14 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   const [dateTo,   setDateTo]   = useState(ytdTo)
   const [siteId,   setSiteId]   = useState('')
   const [status,   setStatus]   = useState('')
+  const [hideVoid, setHideVoid] = useState(true)
   const [search,   setSearch]   = useState('')
   const [sortCol,  setSortCol]  = useState('date')
   const [sortDir,  setSortDir]  = useState('desc')
   const [pickQuotation, setPickQuotation] = useState(false)
   const [createFor, setCreateFor] = useState(null)
+  const [pickQuotationDeposit, setPickQuotationDeposit] = useState(false)
+  const [createDepositFor, setCreateDepositFor] = useState(null)
   const [toast, setToast] = useState(null)
 
   const filters = { from: dateFrom, to: dateTo, siteId, status }
@@ -1380,13 +1458,14 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   const sortedInvoices = useMemo(() => {
     const rows = (invoices || [])
       .filter(inv => !search || (inv.quotations?.clients?.name || '').toLowerCase().includes(search.toLowerCase()))
+      .filter(inv => !hideVoid || inv.status !== 'void')
     const acc = SORT_ACCESSORS[sortCol]
     return [...rows].sort((a, b) => {
       const va = acc(a), vb = acc(b)
       if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
       return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
     })
-  }, [invoices, search, sortCol, sortDir])
+  }, [invoices, search, hideVoid, sortCol, sortDir])
   const toggleSort = (col) => {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortCol(col); setSortDir('asc') }
@@ -1468,8 +1547,12 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
         const taxAmt = noVat * (site.default_tax_withheld_pct || 0) / 100
         const retentionAmt = noVat * (site.default_retention_pct || 0) / 100
 
+        // ใบมัดจำ "เป็น" เงินมัดจำเอง ไม่ใช่การเบิกที่ต้องหักจากยอดมัดจำที่มีอยู่
+        // (ดู client-deposit-tracking design spec) -- ข้ามการคำนวณ depositAmt
+        // ทั้งหมด ตั้ง deposit_deduction=0 เสมอ เหมือน income_type='มัดจำ' ที่
+        // กรอกเองในหน้า Income
         let depositAmt = 0
-        if (hasModuleAccess('client_deposits')) {
+        if (!invoice.is_deposit && hasModuleAccess('client_deposits')) {
           const { data: depositBalance } = await supabase
             .from('site_deposit_summary')
             .select('remaining_balance')
@@ -1493,13 +1576,22 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
           vat: invoice.vat,
           tax_withheld: round2(taxAmt),
           retention: round2(retentionAmt),
-          income_type: 'ปกติ',
+          income_type: invoice.is_deposit ? 'มัดจำ' : 'ปกติ',
           deposit_deduction: round2(depositAmt),
           received_amount: receivedAmount,
         }
         const { data: newIncome, error: incomeError } = await supabase.from('incomes').insert(incomePayload).select().single()
         if (incomeError) throw incomeError
         income = newIncome
+
+        // เหมือน Income.jsx: บันทึกมัดจำแล้วตั้ง default_deposit_pct ของไซท์
+        // ทันที เพื่อให้ใบแจ้งหนี้ปกติงวดถัดไปหักมัดจำอัตโนมัติโดยไม่ต้องไปตั้งซ้ำ
+        if (invoice.is_deposit && invoice.deposit_pct != null) {
+          const { error: pctError } = await supabase.from('sites')
+            .update({ default_deposit_pct: invoice.deposit_pct })
+            .eq('id', invoice.site_id)
+          if (pctError) throw pctError
+        }
         await auditLog('incomes', income.id, 'INSERT', null, incomePayload)
       }
 
@@ -1589,6 +1681,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => setPickQuotation(true)}>+ สร้างใบแจ้งหนี้</button>}
+        {canEdit && <button className="btn btn-ghost" onClick={() => setPickQuotationDeposit(true)}>+ สร้างใบมัดจำ</button>}
         <div style={{ flex: 1 }} />
         <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <span style={{ color: 'var(--text3)' }}>—</span>
@@ -1604,6 +1697,10 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
           {INV_STATUSES.map(s => <option key={s} value={s}>{INV_STATUS_LABELS[s]}</option>)}
         </select>
         <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหาลูกค้า..." value={search} onChange={e => setSearch(e.target.value)} />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          <input type="checkbox" checked={hideVoid} onChange={e => setHideVoid(e.target.checked)} />
+          ซ่อนใบที่ยกเลิก
+        </label>
       </div>
 
       <div className="card">
@@ -1624,7 +1721,10 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
             <tbody>
               {sortedInvoices.map(inv => (
                 <tr key={inv.id}>
-                  <td className="font-mono" style={{ fontSize: 12 }}>{inv.invoice_number}</td>
+                  <td className="font-mono" style={{ fontSize: 12 }}>
+                    {inv.invoice_number}
+                    {inv.is_deposit && <span className="badge" style={{ marginLeft: 6, fontSize: 10 }}>มัดจำ</span>}
+                  </td>
                   <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDate(inv.date)}</td>
                   <td style={{ fontSize: 11, color: 'var(--accent)', cursor: inv.site_id ? 'pointer' : 'default' }}
                     onClick={() => inv.site_id && openSiteOverview(inv.site_id)}>{inv.sites?.name || '—'}</td>
@@ -1688,6 +1788,31 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
             {!billableQuotations.length && <p style={{ color: 'var(--text3)', fontSize: 12, marginTop: 8 }}>ไม่มีใบเสนอราคาที่ยอมรับแล้วและมีไซท์งานผูกอยู่</p>}
           </div>
         </Modal>
+      )}
+
+      {pickQuotationDeposit && (
+        <Modal title="เลือกใบเสนอราคาที่จะออกใบมัดจำ" onClose={() => setPickQuotationDeposit(false)} maxWidth={520}>
+          <div className="modal-body">
+            <SearchableSelect
+              value={null}
+              onChange={id => { const q = billableQuotations.find(x => x.id === id); setPickQuotationDeposit(false); setCreateDepositFor(q) }}
+              placeholder="— เลือกใบเสนอราคา —"
+              options={billableQuotations.map(q => ({
+                value: q.id, label: `${q.sites?.name || q.quotation_number} · ${q.quotation_number}`,
+                keywords: `${q.sites?.name || ''} ${q.quotation_number} ${q.clients?.name || ''}`,
+              }))}
+            />
+            {!billableQuotations.length && <p style={{ color: 'var(--text3)', fontSize: 12, marginTop: 8 }}>ไม่มีใบเสนอราคาที่ยอมรับแล้วและมีไซท์งานผูกอยู่</p>}
+          </div>
+        </Modal>
+      )}
+
+      {createDepositFor && (
+        <CreateDepositInvoiceModal
+          quotation={createDepositFor}
+          onClose={() => setCreateDepositFor(null)}
+          onSaved={() => { setCreateDepositFor(null); refetch(); showToast('สร้างใบมัดจำสำเร็จ') }}
+        />
       )}
 
       {createFor && (
