@@ -88,7 +88,7 @@ export const PAGE_HEIGHT_PX = 900
 // which fires the layout effect every render, which calls `setState`
 // every render: an unbounded render loop, not just wasted work.
 export function usePaginatedDocument({
-  items, renderHeader, renderTableHeader, renderRow, renderFooter, remeasureKey,
+  items, renderHeader, renderTableHeader, renderRow, renderFooter, renderColGroup, remeasureKey,
   // No current caller overrides pageWidth -- both consumers leave it at this
   // default and set their real page-div's width from the same PAGE_WIDTH_PX
   // constant directly. If a future caller ever does pass pageWidth, it must
@@ -164,7 +164,25 @@ export function usePaginatedDocument({
         // measuring rows taller than they actually render.
         <div style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none', top: 0, left: -99999, width: pageWidth, padding: pagePaddingCss, boxSizing: 'border-box', zIndex: -1 }}>
           <div ref={headerRef}>{renderHeader()}</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: tableMarginTop }}>
+          {/* table-layout:fixed + an explicit renderColGroup (when the
+              caller supplies one) pins every column to the same width
+              regardless of which rows are present in THIS table. Without
+              it, plain auto layout sizes each column from the widest
+              content in whichever row set is currently rendered -- and
+              this hidden pass renders ALL items together while each real
+              page below renders only a subset, so auto layout computed
+              two different column widths for the same columns, which
+              wrapped text differently and threw off the row-height
+              measurement this whole pagination scheme depends on. Real bug
+              caught live: an invoice's page 1 measured its one row as
+              tall enough to fill the page (columns squeezed by wider
+              rows measured alongside it), while that same row rendered
+              much shorter once alone on the real page 1 -- stranding
+              just 1 item on page 1 with the rest spilling to page 2.
+              Callers that don't pass renderColGroup (e.g. QuotationPaper)
+              keep the previous auto-layout behavior unchanged. */}
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: tableMarginTop, tableLayout: renderColGroup ? 'fixed' : undefined }}>
+            {renderColGroup && renderColGroup()}
             <thead ref={tableHeaderRef}>{renderTableHeader()}</thead>
             <tbody>
               {items.map((it, i) => cloneElement(renderRow(it, i), { ref: el => { rowRefs.current[i] = el } }))}
@@ -246,6 +264,33 @@ export function usePaginatedDocument({
       // and it's a documented, extreme-input-only residual limit rather
       // than the routine case Critical 2 was originally about.
       pages.push([])
+    }
+  }
+
+  // Real bug found and fixed here: the footer-adjustment above spills the
+  // MINIMUM number of rows needed off the true last page's front onto a
+  // newly-inserted page just before it -- when that minimum is small (e.g.
+  // an invoice whose 10 short rows all fit on one page WITHOUT a footer,
+  // but not WITH one, spills just 1 row), that inserted page renders with
+  // one lonely row and a huge blank gap below it while the true last page
+  // right after it is packed dense. Rebalance every such adjacent pair:
+  // move rows one at a time from the START of the later (denser) page onto
+  // the END of the earlier (sparser) one, stopping the moment either the
+  // earlier page would exceed ITS OWN budget (availableRegular -- it's
+  // never the true last page, since the loop never touches the final
+  // index) or the two pages would cross past an even split. This can only
+  // ever make the earlier page fuller and the later page emptier, so
+  // neither page's already-verified budget (availableRegular for every
+  // page but the true last one, availableLast for that one) can be
+  // violated -- the later page only ever loses rows here, never gains any.
+  for (let i = 0; i < pages.length - 1; i++) {
+    while (pages[i + 1].length) {
+      const moving = pages[i + 1][0]
+      const iHeight = pages[i].reduce((s, r) => s + r.h, 0)
+      const nextHeight = pages[i + 1].reduce((s, r) => s + r.h, 0)
+      if (iHeight + moving.h > availableRegular) break
+      if (iHeight + moving.h > nextHeight - moving.h) break
+      pages[i].push(pages[i + 1].shift())
     }
   }
 

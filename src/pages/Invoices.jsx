@@ -720,6 +720,28 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
     </tr>
   )
 
+  // Pins every column to the same width in both the hidden measurement
+  // pass and every real page's table -- see usePaginatedDocument's
+  // renderColGroup comment for why auto layout (the previous behavior)
+  // measured row heights wrong. Widths must sum to 100 and match
+  // renderTableHeader/renderRow's column order+count exactly.
+  const renderColGroup = () => isSplit ? (
+    <colgroup>
+      <col style={{ width: '42%' }} />
+      <col style={{ width: '13%' }} />
+      <col style={{ width: '13%' }} />
+      <col style={{ width: '13%' }} />
+      <col style={{ width: '19%' }} />
+    </colgroup>
+  ) : (
+    <colgroup>
+      <col style={{ width: '46%' }} />
+      <col style={{ width: '17%' }} />
+      <col style={{ width: '18%' }} />
+      <col style={{ width: '19%' }} />
+    </colgroup>
+  )
+
   const thStyle = { textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }
   const renderTableHeader = () => (
     <tr>
@@ -829,6 +851,7 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
     renderTableHeader,
     renderRow,
     renderFooter,
+    renderColGroup,
     // mySignature/recipientSignature resolve asynchronously (a Storage
     // signed-URL fetch), often after `items` has already settled -- without
     // this, the hidden measurement pass can capture the footer's height
@@ -911,7 +934,8 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
             <DocumentHeader {...headerProps} pageNumber={pageIndex + 1} totalPages={pages.length} />
 
             {pageItems.length > 0 && (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: style.tableMarginTop }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: style.tableMarginTop, tableLayout: 'fixed' }}>
+                {renderColGroup()}
                 <thead>{renderTableHeader()}</thead>
                 <tbody>{pageItems.map(renderRow)}</tbody>
               </table>
