@@ -16,6 +16,7 @@ import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipt
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { calcDepositDeduction, round2 } from '../lib/depositCalc.js'
+import { thaiBahtText } from '../lib/thaiBahtText.js'
 import { sanitizeStorageFileName } from '../lib/storageKey.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
@@ -775,77 +776,87 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
     </tr>
   )
 
-  // Totals table (with withholding-tax sub-block) + caller-supplied
-  // notesBlock + signature grid -- rendered ONLY on the true last page, but
-  // also handed to usePaginatedDocument as `renderFooter` so it can measure
-  // this content's real height once and reserve that much room out of the
+  const netAmount = totalsAmount - withholdingTaxAmount - depositDeductionAmount
+  const hasDeductions = withholdingTaxAmount > 0 || depositDeductionAmount > 0
+
+  // สรุป box (totals) + caller-supplied notesBlock + signature grid --
+  // rendered ONLY on the true last page, but also handed to
+  // usePaginatedDocument as `renderFooter` so it can measure this
+  // content's real height once and reserve that much room out of the
   // last page's budget specifically. Without that reservation, a
   // fixed-height page-div has nowhere for this block to go if the packed
-  // rows above it leave too little room -- it would render past the bottom
-  // of the visible page.
+  // rows above it leave too little room -- it would render past the
+  // bottom of the visible page.
+  //
+  // The flex:1 spacer sits FIRST, ahead of this whole block (not between
+  // the totals box and the signature grid the way an earlier version had
+  // it) -- that pushes the totals+notes+signature group down as ONE unit
+  // to sit flush at the page bottom regardless of how few item rows are
+  // on this page, instead of leaving the totals box stranded right under
+  // a short item table with a big gap below it. Peak Accounting's layout
+  // (a Thai accounting SaaS the tenant referenced directly) does the
+  // same -- totals + signatures anchored to the bottom edge every time.
   const renderFooter = () => (
     <>
-      <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
-        <table style={{ width: 260, fontSize: 12.5 }}>
-          <tbody>
-            {isSplit && (
-              <>
-                <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมค่าของ</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(materialLabor.material)}</td></tr>
-                <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมค่าแรง</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(materialLabor.labor)}</td></tr>
-              </>
-            )}
-            {subtotal != null && (
-              <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>รวมก่อน VAT</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(subtotal)}</td></tr>
-            )}
-            {hasVat && vat != null && (
-              <tr><td style={{ padding: '5px 4px', color: '#6a6f85' }}>VAT (7%)</td><td style={{ textAlign: 'right', padding: '5px 4px' }}>{fmt(vat)}</td></tr>
-            )}
-            <tr>
-              <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: style.accent, borderTop: `2px solid ${style.accent}` }}>{totalsLabel}</td>
-              <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: style.accent, borderTop: `2px solid ${style.accent}` }}>{fmt(totalsAmount)} บาท</td>
-            </tr>
-            {(withholdingTaxAmount > 0 || depositDeductionAmount > 0) && (
-              <>
-                {withholdingTaxAmount > 0 && (
-                  <tr>
-                    <td style={{ padding: '5px 4px', color: '#c0392b' }}>
-                      หัก ณ ที่จ่าย ({withholdingTaxPct}%){isWithholdingEstimate ? ' (ประมาณการ)' : ''}
-                    </td>
-                    <td style={{ textAlign: 'right', padding: '5px 4px', color: '#c0392b' }}>({fmt(withholdingTaxAmount)})</td>
-                  </tr>
-                )}
-                {depositDeductionAmount > 0 && (
-                  <tr>
-                    <td style={{ padding: '5px 4px', color: '#c0392b' }}>
-                      หักเงินมัดจำ ({depositDeductionPct}%){isDepositEstimate ? ' (ประมาณการ)' : ''}
-                    </td>
-                    <td style={{ textAlign: 'right', padding: '5px 4px', color: '#c0392b' }}>({fmt(depositDeductionAmount)})</td>
-                  </tr>
-                )}
-                <tr>
-                  <td style={{ padding: '8px 4px 4px', fontWeight: 700, fontSize: 13, borderTop: '1px solid #e4e6ef' }}>ยอดรับสุทธิ</td>
-                  <td style={{ textAlign: 'right', padding: '8px 4px 4px', fontWeight: 700, fontSize: 13, borderTop: '1px solid #e4e6ef' }}>{fmt(totalsAmount - withholdingTaxAmount - depositDeductionAmount)} บาท</td>
-                </tr>
-              </>
-            )}
-          </tbody>
-        </table>
-      </div>
-
       <div style={{ flex: 1 }} />
 
-      {/* footerBoxOffset must live INSIDE this wrapper, not as a margin on
-          a sibling of the flex:1 spacer above -- see QuotationPaper's
-          identical comment for why a margin placed after a flex:1 item
-          nets to zero visible effect (the spacer just shrinks to absorb
-          it). Grouping notesBlock + the signature grid here, with the gap
-          between them as a real margin neither fights a flex-grow sibling
-          for, makes it genuinely visible while the signature line stays
-          pinned to the page bottom exactly as before. */}
       <div>
+        <div style={{ marginTop: 14, display: 'flex', gap: 24, alignItems: 'flex-start', borderTop: '1px solid #e4e6ef', paddingTop: 14 }}>
+          <div style={{ flex: 1, fontSize: 12.5, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>📄 สรุป</div>
+            <div style={{ display: 'grid', gap: 5 }}>
+              {isSplit && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>รวมค่าของ</span><span>{fmt(materialLabor.material)} บาท</span></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>รวมค่าแรง</span><span>{fmt(materialLabor.labor)} บาท</span></div>
+                </>
+              )}
+              {subtotal != null && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>มูลค่าที่คำนวณภาษี 7%</span><span>{fmt(subtotal)} บาท</span></div>
+              )}
+              {hasVat && vat != null && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>ภาษีมูลค่าเพิ่ม 7%</span><span>{fmt(vat)} บาท</span></div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 4, paddingTop: 6, borderTop: '1px solid #eee' }}>
+                <span style={{ color: '#6a6f85' }}>จำนวนเงินทั้งสิ้น</span>
+                <span style={{ textAlign: 'right', color: '#6a6f85', fontStyle: 'italic' }}>{thaiBahtText(totalsAmount)}</span>
+              </div>
+            </div>
+          </div>
+          <div style={{ width: 220, flexShrink: 0 }}>
+            <div style={{ background: `${style.accent}14`, border: `1px solid ${style.accent}55`, borderRadius: 10, padding: '10px 14px' }}>
+              <div style={{ fontSize: 11, color: '#6a6f85' }}>{totalsLabel}</div>
+              <div style={{ fontWeight: 800, fontSize: 17, color: style.accent }}>{fmt(totalsAmount)} บาท</div>
+            </div>
+            {hasDeductions && (
+              <div style={{ marginTop: 10, display: 'grid', gap: 5, fontSize: 12 }}>
+                {withholdingTaxAmount > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: '#c0392b' }}>
+                    <span>จำนวนเงินที่ถูกหัก ณ ที่จ่าย ({withholdingTaxPct}%){isWithholdingEstimate ? ' (ประมาณการ)' : ''}</span>
+                    <span>({fmt(withholdingTaxAmount)})</span>
+                  </div>
+                )}
+                {depositDeductionAmount > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: '#c0392b' }}>
+                    <span>หักเงินมัดจำ ({depositDeductionPct}%){isDepositEstimate ? ' (ประมาณการ)' : ''}</span>
+                    <span>({fmt(depositDeductionAmount)})</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontWeight: 700, borderTop: '1px solid #e4e6ef', paddingTop: 5, marginTop: 1 }}>
+                  <span>จำนวนเงินที่ชำระ</span>
+                  <span>{fmt(netAmount)} บาท</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         {notesBlock}
 
-        <div style={{ marginTop: style.footerBoxOffset, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, textAlign: 'center', fontSize: 11.5 }}>
+        {/* footerBoxOffset stays a real margin here (not fighting a
+            flex-grow sibling for it -- see the block comment above for
+            why the spacer moved to the top of this whole group instead). */}
+        <div style={{ marginTop: style.footerBoxOffset, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20, textAlign: 'center', fontSize: 11.5 }}>
           <div>
             <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
               {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
@@ -865,6 +876,10 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
                 {recipientSignature.signerName} · เซ็นเมื่อ {new Date(recipientSignature.signedAt).toLocaleDateString('th-TH')}
               </div>
             )}
+          </div>
+          <div>
+            <div style={{ height: 40, border: '1px dashed #ccc', borderRadius: 6 }} />
+            <div style={{ borderTop: '1px solid #999', paddingTop: 8, marginTop: 8 }}>ตราประทับ</div>
           </div>
         </div>
       </div>
@@ -1516,6 +1531,22 @@ function WorkPhotosDocumentModal({ invoice, tenant, photos, urls, onClose }) {
 // after it actually arrived.
 function MarkPaidModal({ invoice, onConfirm, onCancel }) {
   const [paidDate, setPaidDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+  const { hasModuleAccess } = useTenant()
+  const depositEligible = !invoice.is_deposit && hasModuleAccess('client_deposits')
+  const { data: depositBalance } = useSiteDepositBalance(depositEligible ? invoice.site_id : null)
+  const suggestedDeposit = depositBalance
+    ? calcDepositDeduction(invoice.subtotal, invoice.sites?.default_deposit_pct || 0, depositBalance.remaining_balance)
+    : 0
+  // Pre-fill once the real balance loads, then leave it alone -- a plain
+  // `value={suggestedDeposit}` would snap the user's edit back to the
+  // auto-calculated figure on every re-render (e.g. paidDate changing).
+  const [depositInput, setDepositInput] = useState(null)
+  useEffect(() => {
+    if (depositInput === null && depositBalance) setDepositInput(String(suggestedDeposit))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [depositBalance])
+  const showDeposit = depositEligible && depositBalance && depositBalance.remaining_balance > 0
+
   return (
     <Modal title="ทำเครื่องหมายว่าชำระแล้ว" onClose={onCancel} maxWidth={420}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
@@ -1526,10 +1557,23 @@ function MarkPaidModal({ invoice, onConfirm, onCancel }) {
           <label className="label">วันที่รับเงิน</label>
           <input type="date" className="input" value={paidDate} onChange={e => setPaidDate(e.target.value)} />
         </div>
+        {showDeposit && (
+          <div>
+            <label className="label">หักเงินมัดจำ (บาท) — แก้ไขได้ถ้าไม่อยากใช้ยอดที่คำนวณอัตโนมัติ</label>
+            <input
+              type="number" min="0" max={depositBalance.remaining_balance} step="any" className="input"
+              value={depositInput ?? ''} onChange={e => setDepositInput(e.target.value)}
+            />
+            <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>
+              ค่าเริ่มต้น {fmt(suggestedDeposit)} บาท ({invoice.sites?.default_deposit_pct || 0}% ของยอดก่อน VAT) — มัดจำคงเหลืออยู่ {fmt(depositBalance.remaining_balance)} บาท
+              {' '}เช่น ถ้ายอดนี้เคยถูกหัก ณ ที่จ่ายไปแล้วบางส่วนตอนรับมัดจำ จะลดยอดหักมัดจำตรงนี้ลงเพื่อไม่ให้ซ้ำซ้อนกันก็ได้
+            </div>
+          </div>
+        )}
       </div>
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>
-        <button className="btn btn-primary" onClick={() => onConfirm(paidDate)}>ยืนยัน</button>
+        <button className="btn btn-primary" onClick={() => onConfirm(paidDate, showDeposit ? (parseFloat(depositInput) || 0) : null)}>ยืนยัน</button>
       </div>
     </Modal>
   )
@@ -1615,7 +1659,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   // by calcDepositDeduction() against whatever deposit balance the site
   // has left, and only applied at all if the client_deposits module is on
   // (matches IncomeForm's `depositModuleOn` gate).
-  const handleMarkPaid = async (invoice, paidDate) => {
+  const handleMarkPaid = async (invoice, paidDate, depositOverride) => {
     if (invoice.status !== 'unpaid' || payingId || voidingId) return
     setPayingId(invoice.id)
     try {
@@ -1674,7 +1718,18 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
             .eq('site_id', invoice.site_id)
             .maybeSingle()
           if (depositBalance) {
-            depositAmt = calcDepositDeduction(noVat, site.default_deposit_pct || 0, depositBalance.remaining_balance)
+            // depositOverride comes from MarkPaidModal's editable field --
+            // lets the user correct/reduce the auto-suggested % amount for
+            // a specific invoice (e.g. avoiding a double withholding-tax
+            // deduction when this invoice's subtotal already overlaps with
+            // a portion covered by an earlier deposit invoice, which the
+            // automatic % calc has no way to know about). Still clamped to
+            // the real remaining balance -- can never deduct more than the
+            // deposit pool actually has left, override or not.
+            const balance = Math.max(0, depositBalance.remaining_balance || 0)
+            depositAmt = depositOverride != null
+              ? Math.min(Math.max(0, depositOverride), balance)
+              : calcDepositDeduction(noVat, site.default_deposit_pct || 0, depositBalance.remaining_balance)
           }
         }
 
@@ -1956,7 +2011,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
       {payRow && (
         <MarkPaidModal
           invoice={payRow}
-          onConfirm={(paidDate) => { handleMarkPaid(payRow, paidDate); setPayRow(null) }}
+          onConfirm={(paidDate, depositOverride) => { handleMarkPaid(payRow, paidDate, depositOverride); setPayRow(null) }}
           onCancel={() => setPayRow(null)}
         />
       )}
