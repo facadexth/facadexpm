@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAppSetting, saveAppSetting, useContractorTypes, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature, useBankAccounts, setDefaultBankAccount, useInventoryCategories, setInventoryCategoryUseForDeduction } from '../hooks/useSupabase.js'
+import { useAppSetting, saveAppSetting, useContractorTypes, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature, useBankAccounts, setDefaultBankAccount } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { PAGE_LABELS, DEFAULT_PERMISSIONS, loadPermissions, savePermissions } from '../lib/permissions.js'
@@ -146,23 +146,6 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   const [savingSignMethods, setSavingSignMethods] = useState(false)
   const signPhysicalEnabled = signPhysicalVal !== 'false'
   const signDigitalEnabled = signDigitalVal !== 'false'
-
-  // หมวดหมู่สินค้าคงคลังที่ติ๊กว่า "ใช้คิดต้นทุน/ตัดสต็อก" -- ใช้กรองหมวดหมู่
-  // ที่จะขึ้นในการ์ดประมาณการต้นทุนของไซท์งาน (Sites.jsx) และการตั้ง %
-  // ตัดสต็อก (Inventory.jsx) หมวดที่ไม่ติ๊กยังใช้แท็กสินค้าได้ตามปกติ
-  const { data: inventoryCategories, refetch: refetchInventoryCategories } = useInventoryCategories()
-  const [savingCategoryId, setSavingCategoryId] = useState(null)
-  const handleToggleCategoryDeduction = async (categoryId, currentEnabled) => {
-    setSavingCategoryId(categoryId)
-    try {
-      await setInventoryCategoryUseForDeduction(categoryId, !currentEnabled)
-      refetchInventoryCategories()
-    } catch (e) {
-      alert('Error: ' + e.message)
-    } finally {
-      setSavingCategoryId(null)
-    }
-  }
 
   const handleToggleSignMethod = async (key, currentEnabled, refetch) => {
     setSavingSignMethods(true)
@@ -567,30 +550,6 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           </button>
         </div>
       </div>
-
-      {/* ── หมวดหมู่สินค้าคงคลัง (ใช้คิดต้นทุน/ตัดสต็อก) ── */}
-      {hasModuleAccess('purchase_orders') && (
-        <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
-          <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>📦 หมวดหมู่สินค้าคงคลัง</h2>
-          <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
-            ติ๊กหมวดหมู่ที่จะใช้คิด "ต้นทุนประมาณการ" ในหน้าไซท์งาน และใช้ตั้งสัดส่วน % ตัดสต็อกในหน้าคลังสินค้า —
-            หมวดที่ไม่ติ๊กยังใช้แท็กสินค้าในหน้าคลังสินค้าได้ตามปกติ แค่ไม่นับรวมในต้นทุน/การตัดสต็อก
-          </p>
-          {!inventoryCategories?.length ? (
-            <div style={{ fontSize: 13, color: 'var(--text3)' }}>ยังไม่มีหมวดหมู่สินค้าคงคลัง — สร้างได้จากช่องหมวดหมู่ตอนเพิ่มสินค้าในหน้าคลังสินค้า</div>
-          ) : (
-            <div style={{ display: 'grid', gap: 10 }}>
-              {inventoryCategories.map(c => (
-                <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={c.use_for_cost_deduction} disabled={savingCategoryId === c.id}
-                    onChange={() => handleToggleCategoryDeduction(c.id, c.use_for_cost_deduction)} />
-                  {c.name}
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-header"><div className="card-title">🏢 ข้อมูลบริษัท (สำหรับใบเสนอราคา)</div></div>

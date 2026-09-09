@@ -9,7 +9,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useSites, useLaborCost, useClients, useSeatStatus, useInventoryCategories, useSiteCostEstimates, saveSiteCostEstimates } from '../hooks/useSupabase.js'
+import { useSites, useLaborCost, useClients, useSeatStatus, useCategories, useSiteCostEstimates, saveSiteCostEstimates } from '../hooks/useSupabase.js'
 import { PencilIcon, LinkIcon } from '../components/icons.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { useUserRole } from '../hooks/useUserRole.js'
@@ -433,9 +433,9 @@ export default function Sites({ navigateTo, openSiteOverview }) {
   const { data: laborData } = useLaborCost()
   const { data: clients, refetch: refetchClients }   = useClients()
   const { data: seat, refetch: refetchSeat } = useSeatStatus()
-  const { data: inventoryCategoriesRaw } = useInventoryCategories()
-  // Only categories ticked "ใช้คิดต้นทุน/ตัดสต็อก" in Settings show up here --
-  // others stay usable as plain item tags in Inventory, just not for cost estimates.
+  const { data: inventoryCategoriesRaw } = useCategories()
+  // Only categories ticked "ใช้คิดต้นทุน/ตัดสต็อก" in ตั้งค่า > หมวดหมู่ show up
+  // here -- others stay usable as plain expense/item tags, just not for cost estimates.
   const inventoryCategories = useMemo(() => (inventoryCategoriesRaw || []).filter(c => c.use_for_cost_deduction), [inventoryCategoriesRaw])
   const { data: siteCostEstimates, refetch: refetchSiteCostEstimates } = useSiteCostEstimates()
 

@@ -1,12 +1,12 @@
 // ============================================================
-// Categories — หมวดหมู่ค่าใช้จ่าย
-// ✅ Add/Edit/Delete expense categories
-// ✅ ชื่อ, สี, sort_order
-// ✅ Drag-to-reorder via sort_order buttons
+// Categories — หมวดหมู่ (รวม expense_categories + อดีต inventory_categories)
+// ✅ Add/Edit/Delete
+// ✅ ชื่อ, สี, ใช้คิดต้นทุน/ตัดสต็อก
+// ✅ จัดลำดับผ่านปุ่ม ↑/↓ เท่านั้น (ไม่มีเลข sort_order ให้กรอกตรงๆ)
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useCategories } from '../hooks/useSupabase.js'
+import { useCategories, setCategoryUseForDeduction } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
@@ -41,10 +41,6 @@ function CatForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
           </div>
           <input type="color" value={form.color} onChange={e => set('color', e.target.value)} style={{ width: 44, height: 32, borderRadius: 6, border: 'none', cursor: 'pointer', background: 'none' }} />
         </div>
-        <div>
-          <label className="label">ลำดับ (sort_order)</label>
-          <input type="number" className="input" min="0" value={form.sort_order} onChange={e => set('sort_order', parseInt(e.target.value) || 0)} />
-        </div>
       </div>
       <div className="modal-footer">
         <button type="button" className="btn btn-ghost" onClick={() => { clearDraft(); onCancel() }}>ยกเลิก</button>
@@ -63,6 +59,7 @@ export default function Categories() {
   const [search,   setSearch]   = useState('')
   const [sortCol,  setSortCol]  = useState('sort_order')
   const [sortDir,  setSortDir]  = useState('asc')
+  const [savingDeductionId, setSavingDeductionId] = useState(null)
 
   const toggleSort = (col) => {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -82,12 +79,12 @@ export default function Categories() {
   const handleSave = async (form) => {
     setSaving(true)
     try {
-      const payload = { name: form.name, color: form.color, sort_order: form.sort_order }
+      const payload = { name: form.name, color: form.color }
       if (editCat) {
         const { error } = await supabase.from('expense_categories').update(payload).eq('id', editCat.id)
         if (error) throw error
       } else {
-        const { error } = await supabase.from('expense_categories').insert(payload)
+        const { error } = await supabase.from('expense_categories').insert({ ...payload, sort_order: form.sort_order })
         if (error) throw error
       }
       setShowForm(false); setEditCat(null); refetch()
@@ -99,13 +96,22 @@ export default function Categories() {
     if (!deleteId) return
     const { error } = await supabase.from('expense_categories').delete().eq('id', deleteId)
     if (!error) { setDeleteId(null); refetch() }
-    else alert('ลบไม่ได้: อาจมีรายจ่ายที่ใช้หมวดนี้อยู่')
+    else alert('ลบไม่ได้: อาจมีรายจ่าย/สินค้าคงคลังที่ใช้หมวดนี้อยู่')
   }
 
   const moveOrder = async (cat, dir) => {
     const newOrder = cat.sort_order + dir
     await supabase.from('expense_categories').update({ sort_order: newOrder }).eq('id', cat.id)
     refetch()
+  }
+
+  const handleToggleDeduction = async (cat) => {
+    setSavingDeductionId(cat.id)
+    try {
+      await setCategoryUseForDeduction(cat.id, !cat.use_for_cost_deduction)
+      refetch()
+    } catch (e) { alert('Error: ' + e.message) }
+    finally { setSavingDeductionId(null) }
   }
 
   return (
@@ -115,6 +121,11 @@ export default function Categories() {
         <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อหมวด..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
+      <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12, maxWidth: 640 }}>
+        ติ๊ก "ใช้คิดต้นทุน/ตัดสต็อก" สำหรับหมวดที่จะใช้คิด "ต้นทุนประมาณการ" ในหน้าไซท์งาน และใช้ตั้งสัดส่วน % ตัดสต็อกในหน้าคลังสินค้า —
+        หมวดที่ไม่ติ๊กยังใช้แท็กรายจ่าย/สินค้าคงคลังได้ตามปกติ แค่ไม่นับรวมในต้นทุน/การตัดสต็อก
+      </p>
+
       <div className="card">
         <div className="table-wrap">
           <table>
@@ -122,7 +133,7 @@ export default function Categories() {
               <tr>
                 <th>สี</th>
                 <th className="sortable" onClick={() => toggleSort('name')}>ชื่อหมวด{si('name')}</th>
-                <th className="sortable" onClick={() => toggleSort('sort_order')}>ลำดับ{si('sort_order')}</th>
+                <th>ใช้คิดต้นทุน/ตัดสต็อก</th>
                 <th>เรียง</th>
                 <th></th>
               </tr>
@@ -136,13 +147,16 @@ export default function Categories() {
                   <td style={{ fontWeight: 600 }}>
                     <span className="badge" style={{ background: `${c.color}22`, color: c.color || 'var(--accent)', fontSize: 13 }}>{c.name}</span>
                   </td>
-                  <td style={{ color: 'var(--text3)', textAlign: 'center' }}>{c.sort_order}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    <input type="checkbox" checked={!!c.use_for_cost_deduction} disabled={savingDeductionId === c.id}
+                      onChange={() => handleToggleDeduction(c)} />
+                  </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <div className="actions-cell">
                       {/* moveOrder bumps this row's own sort_order by ±1 --
                           only makes sense (and only visually reflects) as
-                          "move up/down" when the table is actually showing
-                          ลำดับ order; sorted by name/etc. it'd silently
+                          "move up/down" when the table is actually sorted
+                          by sort_order; sorted by name it'd silently
                           renumber a row without moving it in the view the
                           user is looking at, so hide the buttons then. */}
                       {sortCol === 'sort_order' && sortDir === 'asc' ? (
@@ -178,7 +192,7 @@ export default function Categories() {
       )}
 
       {deleteId && (
-        <ConfirmDialog title="ลบหมวดหมู่" message="ยืนยันการลบ? (ถ้ามีรายจ่ายในหมวดนี้ ระบบจะไม่อนุญาต)" onConfirm={handleDelete} onCancel={() => setDeleteId(null)} danger />
+        <ConfirmDialog title="ลบหมวดหมู่" message="ยืนยันการลบ? (ถ้ามีรายจ่าย/สินค้าคงคลังในหมวดนี้ ระบบจะไม่อนุญาต)" onConfirm={handleDelete} onCancel={() => setDeleteId(null)} danger />
       )}
     </div>
   )

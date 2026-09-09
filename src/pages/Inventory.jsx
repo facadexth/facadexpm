@@ -8,7 +8,7 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useAllAluminumProfiles, useInventoryCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices, useInvoiceNumbers, useSiteCostEstimates } from '../hooks/useSupabase.js'
+import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useAllAluminumProfiles, useCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices, useInvoiceNumbers, useSiteCostEstimates } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
@@ -65,7 +65,7 @@ function ItemForm({ initial = EMPTY_ITEM_FORM, onSave, onCancel, loading, catego
           <QuickAddSelect
             value={form.category_id} onChange={v => set('category_id', v)}
             placeholder="— ไม่มีหมวดหมู่ —" options={(categories || []).map(c => ({ value: c.id, label: c.name, keywords: c.name }))}
-            table="inventory_categories" namePlaceholder="ชื่อหมวดหมู่ใหม่"
+            table="expense_categories" namePlaceholder="ชื่อหมวดหมู่ใหม่"
             onCreated={onCategoryCreated}
             addLabel="+ สร้างใหม่"
           />
@@ -213,7 +213,7 @@ function BalanceRow({ item, balance, isFirstForItem, centralSite, canEdit, savin
     <tr>
       <td style={{ fontSize: 12, color: 'var(--text3)' }}>{item.code || '—'}</td>
       <td style={{ fontWeight: 600 }}>{item.name}</td>
-      <td style={{ fontSize: 12 }}>{item.inventory_categories?.name || '—'}</td>
+      <td style={{ fontSize: 12 }}>{item.expense_categories?.name || '—'}</td>
       <td>{isFirstForItem ? (item.active ? <span className="badge badge-paid">ใช้งานอยู่</span> : <span className="badge badge-finished">ปิดใช้งาน</span>) : null}</td>
       <td style={{ fontSize: 12 }}>{siteName}</td>
       <td className="font-mono">
@@ -430,9 +430,9 @@ export default function Inventory() {
   // edit, or reactivate it (final-review Fix 5). PurchaseOrders.jsx's picker
   // still correctly uses the active-only useInventoryItems().
   const { data: items, refetch: refetchItems } = useAllInventoryItems()
-  const { data: categories, refetch: refetchCategories } = useInventoryCategories()
-  // Only categories ticked "ใช้คิดต้นทุน/ตัดสต็อก" in Settings count toward the
-  // COGS split -- others still exist as plain item tags (`categories` above).
+  const { data: categories, refetch: refetchCategories } = useCategories()
+  // Only categories ticked "ใช้คิดต้นทุน/ตัดสต็อก" in ตั้งค่า > หมวดหมู่ count
+  // toward the COGS split -- others still exist as plain item tags (`categories` above).
   const deductionCategories = useMemo(() => (categories || []).filter(c => c.use_for_cost_deduction), [categories])
   const { data: factors, refetch: refetchFactors } = useInventoryItemUnitFactors()
   const { data: balances, refetch: refetchBalances } = useStockBalances()
@@ -538,7 +538,7 @@ export default function Inventory() {
     // item's balance rows must stay contiguous for the merged-cell display
     // (code/name/category/status only render on isFirstForItem) to stay correct.
     filteredItems = filteredItems
-      .map(it => ({ ...it, _category: it.inventory_categories?.name || '' }))
+      .map(it => ({ ...it, _category: it.expense_categories?.name || '' }))
       .sort((a, b) => {
         const va = a[itemSortCol] ?? ''
         const vb = b[itemSortCol] ?? ''

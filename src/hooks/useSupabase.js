@@ -831,7 +831,7 @@ export function useInventoryCogsSettings() {
         // fall through to the name-matched default below
       }
     }
-    const { data: cats, error: catErr } = await supabase.from('inventory_categories').select('id, name')
+    const { data: cats, error: catErr } = await supabase.from('expense_categories').select('id, name').eq('use_for_cost_deduction', true)
     if (catErr) throw catErr
     const category_splits = {}
     for (const c of cats || []) {
@@ -865,6 +865,17 @@ export function useCategories() {
     if (error) throw error
     return data
   })
+}
+
+/** Toggle whether a category counts toward site cost estimates and the
+ *  stock-deduction % split (the หมวดหมู่ page's tick column). It stays
+ *  usable as a plain expense/item tag either way. */
+export async function setCategoryUseForDeduction(categoryId, useForDeduction) {
+  const { error } = await supabase
+    .from('expense_categories')
+    .update({ use_for_cost_deduction: useForDeduction })
+    .eq('id', categoryId)
+  if (error) throw error
 }
 
 // ── Cheques ──────────────────────────────────────────────────
@@ -1190,7 +1201,7 @@ export function useInventoryItems() {
 export function useAllInventoryItems() {
   return useQuery(async () => fetchAllRows(() => supabase
     .from('inventory_items')
-    .select('*, inventory_categories(name)')
+    .select('*, expense_categories(name)')
     .order('name')))
 }
 
@@ -1221,37 +1232,14 @@ export function useAllAluminumProfiles() {
   })
 }
 
-/** Every inventory category for the tenant, for the price-list filter
- *  and the item form's category picker. */
-export function useInventoryCategories() {
-  return useQuery(async () => {
-    const { data, error } = await supabase
-      .from('inventory_categories')
-      .select('*')
-      .order('sort_order')
-    if (error) throw error
-    return data
-  })
-}
-
-/** Toggle whether a category counts toward site cost estimates and the
- *  stock-deduction % split (Settings' category checklist). It stays
- *  usable as an item tag either way. */
-export async function setInventoryCategoryUseForDeduction(categoryId, useForDeduction) {
-  const { error } = await supabase
-    .from('inventory_categories')
-    .update({ use_for_cost_deduction: useForDeduction })
-    .eq('id', categoryId)
-  if (error) throw error
-}
-
-/** Every site's cost-breakdown estimate, keyed by real inventory
- *  categories (site_cost_estimates) -- fetched whole (small table) and
- *  filtered client-side per site_id. Replaces the old sites.cost_aluminum/
+/** Every site's cost-breakdown estimate, keyed by expense_categories
+ *  (site_cost_estimates) -- fetched whole (small table) and filtered
+ *  client-side per site_id. Replaces the old sites.cost_aluminum/
  *  cost_glass/etc fixed columns so the categories a tenant estimates
- *  against are the exact same ones they manage in the inventory module,
- *  and so each site's own ratio can feed its own stock-deduction default
- *  (see Inventory.jsx InvoiceDeductionRow). */
+ *  against are the exact same ones they manage in the หมวดหมู่ page
+ *  (filtered to use_for_cost_deduction), and so each site's own ratio
+ *  can feed its own stock-deduction default (see Inventory.jsx
+ *  InvoiceDeductionRow). */
 export function useSiteCostEstimates() {
   return useQuery(async () => {
     const { data, error } = await supabase
@@ -1298,7 +1286,7 @@ export function useInventoryItemUnitFactors() {
 export function useStockBalances() {
   return useQuery(async () => fetchAllRows(() => supabase
     .from('inventory_stock_balances')
-    .select('*, inventory_items(name, base_unit, unit_conversion_mode, reference_area_sqm, category_id, inventory_categories(name)), sites(name, site_number)')
+    .select('*, inventory_items(name, base_unit, unit_conversion_mode, reference_area_sqm, category_id, expense_categories(name)), sites(name, site_number)')
     .order('inventory_item_id')))
 }
 
