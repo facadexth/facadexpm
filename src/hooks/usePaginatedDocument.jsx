@@ -224,74 +224,32 @@ export function usePaginatedDocument({
   pages.push(current)
 
   // The footer (e.g. totals/notes/signature) only ever renders on the true
-  // last page, so that page alone needs a smaller budget -- `availableLast`
-  // -- to leave the footer room underneath it.
+  // last page. Every page above -- including this one -- already holds as
+  // many rows as fit within availableRegular, packed front-to-back the way
+  // a normal multi-page document would (page 1 full, then page 2, etc.).
+  // If the true last page's own row content still leaves room for the
+  // footer underneath it, nothing more to do. If it doesn't, give the
+  // footer a fresh trailing page of its own rather than taking any rows
+  // away from the page before it -- a prior version instead shrank the
+  // last page down to a smaller footer-aware budget and pushed its
+  // overflow onto an EARLIER inserted page, which for a document whose
+  // items all fit on one page without the footer (but not with it) meant
+  // that early page held only the handful of rows evicted from the real
+  // last page, with a large blank gap under them, while the actual dense
+  // content sat on the page after it.
+  // (This same check also covers the extreme case where the footer alone
+  // is taller than a whole page's regular budget -- an unusually long
+  // payment-terms/notes block -- since lastHeight >= 0 makes the
+  // condition trip regardless of how many rows the last page holds. That
+  // dedicated footer page's own fixed height may still not be quite
+  // enough for content this long -- there's no further page to give it --
+  // but this is the best any pagination scheme can do short of shrinking
+  // the text itself, and is a documented, extreme-input-only residual
+  // limit rather than the routine case this block otherwise handles.)
   if (renderFooter) {
-    if (heights.footerHeight <= availableRegular) {
-      const availableLast = availableRegular - heights.footerHeight
-      const last = pages[pages.length - 1]
-      // Find the maximal TRAILING run of the last page's rows whose
-      // combined height still fits within availableLast -- that run is
-      // what stays on the true final (footer-bearing) page. Everything
-      // before it in this page spills backward onto a new page inserted
-      // just ahead of it, which only ever needs the regular per-page
-      // budget (guaranteed, since it's a subset of a page that already
-      // fit within availableRegular in the first pass above). This always
-      // terminates in a single pass over `last` (no unbounded looping),
-      // and always succeeds -- worst case the trailing run is empty (the
-      // footer gets a page with zero item rows of its own), which fits
-      // because we've already confirmed footerHeight <= availableRegular.
-      let keepHeight = 0
-      let splitIndex = last.length
-      for (let i = last.length - 1; i >= 0; i--) {
-        const nextHeight = keepHeight + last[i].h
-        if (nextHeight > availableLast) break
-        keepHeight = nextHeight
-        splitIndex = i
-      }
-      if (splitIndex > 0) {
-        const overflow = last.splice(0, splitIndex) // mutates `last` down to just its fitting trailing run
-        pages.splice(pages.length - 1, 0, overflow) // insert the spilled head as a new page just before it
-      }
-    } else {
-      // The footer alone is taller than a full page's regular row budget
-      // -- an extreme amount of payment-terms/notes text. No amount of
-      // row-shuffling can make room for it alongside any item row, so give
-      // it a fully dedicated trailing page (zero items). That page's own
-      // fixed height may still not be quite enough for content this
-      // long -- there's no more page to give it -- but this is the best
-      // any pagination scheme can do short of shrinking the text itself,
-      // and it's a documented, extreme-input-only residual limit rather
-      // than the routine case Critical 2 was originally about.
-      pages.push([])
-    }
-  }
-
-  // Real bug found and fixed here: the footer-adjustment above spills the
-  // MINIMUM number of rows needed off the true last page's front onto a
-  // newly-inserted page just before it -- when that minimum is small (e.g.
-  // an invoice whose 10 short rows all fit on one page WITHOUT a footer,
-  // but not WITH one, spills just 1 row), that inserted page renders with
-  // one lonely row and a huge blank gap below it while the true last page
-  // right after it is packed dense. Rebalance every such adjacent pair:
-  // move rows one at a time from the START of the later (denser) page onto
-  // the END of the earlier (sparser) one, stopping the moment either the
-  // earlier page would exceed ITS OWN budget (availableRegular -- it's
-  // never the true last page, since the loop never touches the final
-  // index) or the two pages would cross past an even split. This can only
-  // ever make the earlier page fuller and the later page emptier, so
-  // neither page's already-verified budget (availableRegular for every
-  // page but the true last one, availableLast for that one) can be
-  // violated -- the later page only ever loses rows here, never gains any.
-  for (let i = 0; i < pages.length - 1; i++) {
-    while (pages[i + 1].length) {
-      const moving = pages[i + 1][0]
-      const iHeight = pages[i].reduce((s, r) => s + r.h, 0)
-      const nextHeight = pages[i + 1].reduce((s, r) => s + r.h, 0)
-      if (iHeight + moving.h > availableRegular) break
-      if (iHeight + moving.h > nextHeight - moving.h) break
-      pages[i].push(pages[i + 1].shift())
-    }
+    const last = pages[pages.length - 1]
+    const lastHeight = last.reduce((s, r) => s + r.h, 0)
+    if (lastHeight + heights.footerHeight > availableRegular) pages.push([])
   }
 
   // Guard against a gratuitous blank leading page: when there were never

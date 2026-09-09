@@ -12,7 +12,7 @@
 // ============================================================
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, useMyWorkerName, useBankAccounts, logDocumentPrint } from '../hooks/useSupabase.js'
+import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, useMyWorkerName, useBankAccounts, useSiteDepositBalance, logDocumentPrint } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { calcDepositDeduction, round2 } from '../lib/depositCalc.js'
@@ -291,6 +291,7 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
 }
 
 function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
+  const { hasModuleAccess } = useTenant()
   const items = quotation.quotation_items || []
   const { data: unitsByQuotationItem, loading: unitsLoading, error: unitsError } = useQuotationItemUnits(quotation.id, items)
   const [lines, setLines] = useState(null)
@@ -489,6 +490,21 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
           {quotation.has_vat && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>VAT (7%)</span><span className="font-mono">{fmt(totals.vat)}</span></div>}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}><span>รวมเรียกเก็บงวดนี้</span><span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totals.total)}</span></div>
         </div>
+
+        {/* Policy description, not a live number -- the actual amount
+            depends on the deposit balance remaining AT payment time (could
+            shift between now and then), so showing a computed figure here
+            would just go stale. State the RULE instead: % of this
+            invoice's own subtotal, capped at whatever's left in the
+            deposit. handleMarkPaid computes the real amount the same way
+            (calcDepositDeduction) when this invoice is actually marked
+            paid. */}
+        {hasModuleAccess('client_deposits') && site?.default_deposit_pct > 0 && (
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>
+            📐 ตอนกดยืนยันชำระใบแจ้งหนี้นี้ ระบบจะหักเงินมัดจำอัตโนมัติ {site.default_deposit_pct}% ของยอดก่อน VAT ของใบนี้ —
+            หรือหักเท่าที่มัดจำคงเหลืออยู่ ถ้าน้อยกว่านั้น
+          </div>
+        )}
 
         <div className="card card-body" style={{ marginTop: 12, display: 'grid', gap: 8 }}>
           <label className="label" style={{ marginBottom: 0 }}>กรอกยอดที่ต้องการเรียกเก็บ (สุทธิ หลัง VAT และหัก ณ ที่จ่าย)</label>
@@ -691,7 +707,7 @@ function DocumentHeader({ tenant, tag, title, infoFields, clientName, clientAddr
 // paymentTerms/notes/bankAccount, and there are two independently-labeled
 // signatures (signatures[0]/[1] + mySignature/recipientSignature) instead
 // of a fixed "ผู้เสนอราคา"/"ผู้ยอมรับ (ลูกค้า)" pair.
-function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct, withholdingTaxAmount, isWithholdingEstimate, notesBlock, signatures, recipientSignature, onPageCountChange, extraRemeasureKey }) {
+function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct = 0, withholdingTaxAmount = 0, isWithholdingEstimate, depositDeductionPct = 0, depositDeductionAmount = 0, isDepositEstimate, notesBlock, signatures, recipientSignature, onPageCountChange, extraRemeasureKey }) {
   const mySignature = useMySignatureUrl()
   const { data: myWorkerName } = useMyWorkerName()
   const style = resolveDocumentStyle(tenant?.document_style)
@@ -788,17 +804,27 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
               <td style={{ padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: style.accent, borderTop: `2px solid ${style.accent}` }}>{totalsLabel}</td>
               <td style={{ textAlign: 'right', padding: '10px 4px 4px', fontWeight: 800, fontSize: 15, color: style.accent, borderTop: `2px solid ${style.accent}` }}>{fmt(totalsAmount)} บาท</td>
             </tr>
-            {withholdingTaxAmount > 0 && (
+            {(withholdingTaxAmount > 0 || depositDeductionAmount > 0) && (
               <>
-                <tr>
-                  <td style={{ padding: '5px 4px', color: '#c0392b' }}>
-                    หัก ณ ที่จ่าย ({withholdingTaxPct}%){isWithholdingEstimate ? ' (ประมาณการ)' : ''}
-                  </td>
-                  <td style={{ textAlign: 'right', padding: '5px 4px', color: '#c0392b' }}>({fmt(withholdingTaxAmount)})</td>
-                </tr>
+                {withholdingTaxAmount > 0 && (
+                  <tr>
+                    <td style={{ padding: '5px 4px', color: '#c0392b' }}>
+                      หัก ณ ที่จ่าย ({withholdingTaxPct}%){isWithholdingEstimate ? ' (ประมาณการ)' : ''}
+                    </td>
+                    <td style={{ textAlign: 'right', padding: '5px 4px', color: '#c0392b' }}>({fmt(withholdingTaxAmount)})</td>
+                  </tr>
+                )}
+                {depositDeductionAmount > 0 && (
+                  <tr>
+                    <td style={{ padding: '5px 4px', color: '#c0392b' }}>
+                      หักเงินมัดจำ ({depositDeductionPct}%){isDepositEstimate ? ' (ประมาณการ)' : ''}
+                    </td>
+                    <td style={{ textAlign: 'right', padding: '5px 4px', color: '#c0392b' }}>({fmt(depositDeductionAmount)})</td>
+                  </tr>
+                )}
                 <tr>
                   <td style={{ padding: '8px 4px 4px', fontWeight: 700, fontSize: 13, borderTop: '1px solid #e4e6ef' }}>ยอดรับสุทธิ</td>
-                  <td style={{ textAlign: 'right', padding: '8px 4px 4px', fontWeight: 700, fontSize: 13, borderTop: '1px solid #e4e6ef' }}>{fmt(totalsAmount - withholdingTaxAmount)} บาท</td>
+                  <td style={{ textAlign: 'right', padding: '8px 4px 4px', fontWeight: 700, fontSize: 13, borderTop: '1px solid #e4e6ef' }}>{fmt(totalsAmount - withholdingTaxAmount - depositDeductionAmount)} บาท</td>
                 </tr>
               </>
             )}
@@ -969,6 +995,30 @@ function computeWithholding(invoice) {
   return { amount: 0, pct: 0, isEstimate: false }
 }
 
+// Same real-vs-estimate pattern as computeWithholding just above: once
+// paid, incomes.deposit_deduction is what handleMarkPaid actually deducted
+// (reliable -- doesn't drift if the site's default % or remaining balance
+// changes later). Unpaid, estimate from the site's CURRENT default % and
+// CURRENT remaining deposit balance (depositBalance, from
+// useSiteDepositBalance -- a live query, since this must reflect today's
+// balance, not a stale prop). A deposit invoice never deducts against
+// itself (see handleMarkPaid's identical comment) -- always zero.
+function computeDepositDeduction(invoice, depositBalance) {
+  if (invoice.is_deposit) return { amount: 0, pct: 0, isEstimate: false }
+  const income = invoice.incomes
+  if (income && income.deposit_deduction > 0) {
+    const pct = invoice.subtotal > 0 ? round2(income.deposit_deduction / invoice.subtotal * 100) : 0
+    return { amount: income.deposit_deduction, pct, isEstimate: false }
+  }
+  if (invoice.status === 'void') return { amount: 0, pct: 0, isEstimate: false }
+  const defaultPct = invoice.sites?.default_deposit_pct || 0
+  if (defaultPct > 0 && depositBalance?.remaining_balance > 0) {
+    const amount = calcDepositDeduction(invoice.subtotal, defaultPct, depositBalance.remaining_balance)
+    if (amount > 0) return { amount, pct: defaultPct, isEstimate: true }
+  }
+  return { amount: 0, pct: 0, isEstimate: false }
+}
+
 // เอกสารใบเดียวกัน (invoice_number, ข้อมูลเดียวกันทุกอย่าง) แค่เปลี่ยนหัวเรื่อง
 // ที่พิมพ์ตามขั้นตอนธุรกิจที่ใช้ส่งเอกสารนั้น -- ไม่ใช่เอกสารคนละใบ ไม่มีเลขที่
 // แยกต่างหาก
@@ -987,6 +1037,9 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
   const items = invoice.invoice_items || []
   const client = invoice.quotations?.clients
   const wht = computeWithholding(invoice)
+  const { hasModuleAccess } = useTenant()
+  const { data: depositBalance } = useSiteDepositBalance(hasModuleAccess('client_deposits') ? invoice.site_id : null)
+  const deposit = computeDepositDeduction(invoice, depositBalance)
   const { data: receipt } = useDocumentReceipt('invoice', invoice.id)
   const [signatureUrl, setSignatureUrl] = useState(null)
   const [titleVariant, setTitleVariant] = useState('invoice')
@@ -1076,6 +1129,7 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
               items={items} totalsLabel="รวมทั้งสิ้น" totalsAmount={invoice.total}
               subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
               withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
+              depositDeductionPct={deposit.pct} depositDeductionAmount={deposit.amount} isDepositEstimate={deposit.isEstimate}
               notesBlock={bankAccount && (
                 <div style={{ marginTop: 20, fontSize: style.footerTextSize, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
                   <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
@@ -1094,8 +1148,14 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
               // to a longer variant (esp. ใบส่งมอบงาน) can wrap the 28px header
               // title differently and shift every page's row budget, the
               // identical failure mode as ReceiptDocumentModal's own
-              // titleVariant below.
-              extraRemeasureKey={`${bankAccount?.id || ''}|${titleVariant}`}
+              // titleVariant below. deposit.amount resolves asynchronously
+              // too (useSiteDepositBalance is its own query, often settling
+              // after the first render) -- same reasoning as
+              // mySignature/recipientSignature above: if it changes the
+              // footer's rendered height (adding/removing the deposit-line
+              // row) after the hidden pass already measured, the reserved
+              // budget goes stale unless this key changes to force a remeasure.
+              extraRemeasureKey={`${bankAccount?.id || ''}|${titleVariant}|${deposit.amount}`}
             />
           </ScaleToFit>
         </div>
@@ -1133,6 +1193,9 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
   const items = invoice.invoice_items || []
   const client = invoice.quotations?.clients
   const wht = computeWithholding(invoice)
+  const { hasModuleAccess } = useTenant()
+  const { data: depositBalance } = useSiteDepositBalance(hasModuleAccess('client_deposits') ? invoice.site_id : null)
+  const deposit = computeDepositDeduction(invoice, depositBalance)
   const [titleVariant, setTitleVariant] = useState('receipt')
   const variant = RECEIPT_TITLE_OPTIONS.find(o => o.value === titleVariant)
 
@@ -1180,6 +1243,7 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
               items={items} totalsLabel="รวมรับชำระ" totalsAmount={receipt.amount}
               subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
               withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
+              depositDeductionPct={deposit.pct} depositDeductionAmount={deposit.amount} isDepositEstimate={deposit.isEstimate}
               notesBlock={null}
               signatures={['ผู้รับเงิน', 'ผู้จ่ายเงิน']}
               onPageCountChange={setPageCount}
@@ -1187,8 +1251,9 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
               // infoFields[0].label, which can wrap to an extra line and
               // shift the HEADER height every page's row budget is computed
               // from -- must be part of the remeasure key (see DocumentPaper's
-              // own comment).
-              extraRemeasureKey={titleVariant}
+              // own comment). deposit.amount included for the same async-
+              // settling reason as InvoiceDocumentModal's identical key above.
+              extraRemeasureKey={`${titleVariant}|${deposit.amount}`}
             />
           </ScaleToFit>
         </div>
