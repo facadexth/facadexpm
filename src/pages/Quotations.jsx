@@ -1171,7 +1171,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   const editFormInitial = useMemo(() => {
     if (!editRow) return null
     return {
-      id: editRow.id, client_id: editRow.client_id,
+      id: editRow.id, client_id: editRow.client_id, site_name: editRow.site_name || '',
       // Defaults to today, not the original/last-saved date — each saved
       // edit is a new revision, so the document's issue date should read
       // as the day *this* revision was produced. Still editable if a
