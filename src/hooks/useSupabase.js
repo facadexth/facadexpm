@@ -1234,6 +1234,41 @@ export function useInventoryCategories() {
   })
 }
 
+/** Every site's cost-breakdown estimate, keyed by real inventory
+ *  categories (site_cost_estimates) -- fetched whole (small table) and
+ *  filtered client-side per site_id. Replaces the old sites.cost_aluminum/
+ *  cost_glass/etc fixed columns so the categories a tenant estimates
+ *  against are the exact same ones they manage in the inventory module,
+ *  and so each site's own ratio can feed its own stock-deduction default
+ *  (see Inventory.jsx InvoiceDeductionRow). */
+export function useSiteCostEstimates() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('site_cost_estimates')
+      .select('*')
+    if (error) throw error
+    return data
+  })
+}
+
+/** Replaces (not merges) one site's full set of cost-estimate rows with
+ *  `estimatesByCategoryId` ({categoryId: amount}), dropping zero/blank
+ *  entries rather than storing them -- delete-then-insert inside one
+ *  request keeps this simple since a site never has more than a handful
+ *  of categories. */
+export async function saveSiteCostEstimates(siteId, estimatesByCategoryId) {
+  const { error: delError } = await supabase.from('site_cost_estimates').delete().eq('site_id', siteId)
+  if (delError) throw delError
+
+  const rows = Object.entries(estimatesByCategoryId)
+    .map(([categoryId, amount]) => ({ site_id: siteId, inventory_category_id: categoryId, estimated_amount: parseFloat(amount) || 0 }))
+    .filter(r => r.estimated_amount > 0)
+  if (!rows.length) return
+
+  const { error: insError } = await supabase.from('site_cost_estimates').insert(rows)
+  if (insError) throw insError
+}
+
 /** All fixed unit-conversion factors across every inventory item --
  *  a small table, fetched whole and filtered client-side by
  *  (inventory_item_id, unit_name) rather than one query per item. */

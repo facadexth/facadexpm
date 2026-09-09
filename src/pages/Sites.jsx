@@ -9,7 +9,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useSites, useLaborCost, useClients, useSeatStatus } from '../hooks/useSupabase.js'
+import { useSites, useLaborCost, useClients, useSeatStatus, useInventoryCategories, useSiteCostEstimates, saveSiteCostEstimates } from '../hooks/useSupabase.js'
 import { PencilIcon, LinkIcon } from '../components/icons.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { useUserRole } from '../hooks/useUserRole.js'
@@ -84,24 +84,36 @@ export function siteFormToPayload(form) {
   }
 }
 
-export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading, hasModuleAccess = () => false, draftKey = 'sites-form', seat, onClientCreated }) {
+export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading, hasModuleAccess = () => false, draftKey = 'sites-form', seat, onClientCreated, inventoryCategories = [], siteCostEstimates = [] }) {
   const isAdd = !initial?.id
   const [form, setForm, clearDraft] = useDraftForm(draftKey, { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // ต้นทุนประมาณการต่อไซท์ -- คีย์ด้วย inventory_categories จริง (หมวดหมู่
+  // เดียวกับที่ใช้ตั้งค่าตัดสต๊อกในหน้าคลังสินค้า) แทนคอลัมน์ cost_aluminum/
+  // cost_glass/ฯลฯ แบบตายตัวเดิม แยกออกจาก useDraftForm's `form` เพราะเก็บคน
+  // ละตารางกับ sites เอง (site_cost_estimates ผูก site_id ซึ่งไซท์ใหม่ยังไม่มี
+  // จนกว่าจะบันทึกครั้งแรก)
+  const [costEstimates, setCostEstimates] = useState(() => {
+    const initial = {}
+    for (const e of siteCostEstimates) initial[e.inventory_category_id] = String(e.estimated_amount ?? '')
+    return initial
+  })
+  const setCostEstimate = (categoryId, v) => setCostEstimates(s => ({ ...s, [categoryId]: v }))
   // เตือนทั้งตอนสร้างไซท์ใหม่ และตอนเปลี่ยนสถานะไซท์เดิมกลับเป็น "กำลังดำเนินการ"
   // (initial.status มาจากค่าก่อนแก้ไข -- ถ้าเดิมเป็น Ongoing อยู่แล้วไม่ถือว่าใช้โควตาเพิ่ม)
   const reopening = !isAdd && initial.status !== 'Ongoing' && form.status === 'Ongoing'
   const sitesFull = (isAdd || reopening) && form.status === 'Ongoing'
     && seat?.sites?.max != null && seat.sites.used >= seat.sites.max
 
-  const totalCostBreakdown = COST_TYPES.reduce((s, t) => s + (parseFloat(form[t.key]) || 0), 0)
+  const totalCostBreakdown = Object.values(costEstimates).reduce((s, v) => s + (parseFloat(v) || 0), 0)
 
   const noVatValue = parseFloat(form.contract_value_no_vat) || 0
   const vatAmount = form.has_vat ? Math.round(noVatValue * VAT_RATE * 100) / 100 : 0
   const contractValueTotal = Math.round((noVatValue + vatAmount) * 100) / 100
 
   return (
-    <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave(form) }}>
+    <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave({ ...form, cost_estimates: costEstimates }) }}>
       <div className="modal-body" style={{ display: 'grid', gap: 14 }}>
         <div className="form-grid-2">
           <div>
@@ -216,31 +228,39 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
           )}
         </div>
 
-        {/* Cost Breakdown */}
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
-            ต้นทุนประมาณการ (ระบุหรือไม่ก็ได้)
-          </div>
-          <div className="form-grid-3">
-            {COST_TYPES.map(t => (
-              <div key={t.key}>
-                <label className="label">{t.label}</label>
-                <input type="number" className="input input-sm" min="0" step="0.01"
-                  value={form[t.key]} onChange={e => set(t.key, e.target.value)} placeholder="บาท" />
-              </div>
-            ))}
-          </div>
-          {totalCostBreakdown > 0 && (
-            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text3)' }}>
-              รวมต้นทุนที่ระบุ: <strong style={{ color: 'var(--yellow)' }}>{fmt(totalCostBreakdown)} บาท</strong>
-              {contractValueTotal > 0 && (
-                <span style={{ marginLeft: 8 }}>
-                  ({((totalCostBreakdown / contractValueTotal) * 100).toFixed(1)}% ของมูลค่าสัญญา)
-                </span>
-              )}
+        {/* Cost Breakdown -- คีย์ด้วยหมวดหมู่สินค้าคงคลังจริง (หน้าคลังสินค้า)
+            แทนหมวดตายตัวเดิม ต้องมีโมดูลใบสั่งซื้อ/คลังสินค้าและมีหมวดหมู่ตั้ง
+            ไว้แล้วอย่างน้อย 1 หมวดจึงจะเห็นส่วนนี้ (ตัวเลขที่กรอกที่นี่จะถูกใช้
+            เป็นสัดส่วนตั้งต้นตอนตัดสต๊อกของไซท์นี้โดยเฉพาะ -- ดูหน้าคลังสินค้า) */}
+        {hasModuleAccess('purchase_orders') && inventoryCategories.length > 0 && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+              ต้นทุนประมาณการ ตามหมวดหมู่สินค้าคงคลัง (ระบุหรือไม่ก็ได้)
             </div>
-          )}
-        </div>
+            <div className="form-grid-3">
+              {inventoryCategories.map(c => (
+                <div key={c.id}>
+                  <label className="label">{c.name}</label>
+                  <input type="number" className="input input-sm" min="0" step="0.01"
+                    value={costEstimates[c.id] ?? ''} onChange={e => setCostEstimate(c.id, e.target.value)} placeholder="บาท" />
+                </div>
+              ))}
+            </div>
+            {totalCostBreakdown > 0 && (
+              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text3)' }}>
+                รวมต้นทุนที่ระบุ: <strong style={{ color: 'var(--yellow)' }}>{fmt(totalCostBreakdown)} บาท</strong>
+                {contractValueTotal > 0 && (
+                  <span style={{ marginLeft: 8 }}>
+                    ({((totalCostBreakdown / contractValueTotal) * 100).toFixed(1)}% ของมูลค่าสัญญา)
+                  </span>
+                )}
+              </div>
+            )}
+            <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>
+              สัดส่วนที่กรอกที่นี่ (คำนวณเป็น %) จะถูกใช้เป็นค่าเริ่มต้นตอนตัดสต๊อกของไซท์นี้แทนค่าเริ่มต้นรวมของบริษัท — แก้ทีหลังต่อใบแจ้งหนี้ได้เสมอ
+            </p>
+          </div>
+        )}
 
         {/* Income defaults */}
         <div>
@@ -413,6 +433,8 @@ export default function Sites({ navigateTo, openSiteOverview }) {
   const { data: laborData } = useLaborCost()
   const { data: clients, refetch: refetchClients }   = useClients()
   const { data: seat, refetch: refetchSeat } = useSeatStatus()
+  const { data: inventoryCategories } = useInventoryCategories()
+  const { data: siteCostEstimates, refetch: refetchSiteCostEstimates } = useSiteCostEstimates()
 
   const [showForm,    setShowForm]    = useState(false)
   const [editSite,    setEditSite]    = useState(null)     // site object to edit
@@ -460,14 +482,19 @@ export default function Sites({ navigateTo, openSiteOverview }) {
     setSaving(true)
     try {
       const payload = siteFormToPayload(form)
+      let siteId = editSite?.id
       if (editSite) {
         const { error } = await supabase.from('sites').update(payload).eq('id', editSite.id)
         if (error) throw error
       } else {
-        const { error } = await supabase.from('sites').insert(payload)
+        const { data, error } = await supabase.from('sites').insert(payload).select('id').single()
         if (error) throw error
+        siteId = data.id
       }
-      setShowForm(false); setEditSite(null); refetch(); refetchSeat()
+      if (form.cost_estimates && Object.keys(form.cost_estimates).length) {
+        await saveSiteCostEstimates(siteId, form.cost_estimates)
+      }
+      setShowForm(false); setEditSite(null); refetch(); refetchSeat(); refetchSiteCostEstimates()
     } catch (e) {
       alert(e.message?.includes('row-level security policy')
         ? 'บันทึกไม่สำเร็จ: อาจเกินจำนวนไซท์งานที่ package ปัจจุบันอนุญาต กรุณาติดต่อผู้ดูแลระบบเพื่ออัปเกรด package'
@@ -679,6 +706,8 @@ export default function Sites({ navigateTo, openSiteOverview }) {
             onClientCreated={refetchClients}
             hasModuleAccess={hasModuleAccess}
             seat={seat}
+            inventoryCategories={inventoryCategories || []}
+            siteCostEstimates={editSite ? (siteCostEstimates || []).filter(e => e.site_id === editSite.id) : []}
           />
           {editSite && tenant?.id && (
             <div className="modal-body" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>

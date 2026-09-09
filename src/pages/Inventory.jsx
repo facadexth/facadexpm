@@ -8,7 +8,7 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useAllAluminumProfiles, useInventoryCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices, useInvoiceNumbers } from '../hooks/useSupabase.js'
+import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useAllAluminumProfiles, useInventoryCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices, useInvoiceNumbers, useSiteCostEstimates } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
@@ -303,13 +303,26 @@ function CogsSettingsPanel({ settings, categories, onSaved }) {
   )
 }
 
-function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite, defaultSettings, expanded, onToggle, onConfirmed }) {
+function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite, defaultSettings, siteCostEstimates, expanded, onToggle, onConfirmed }) {
   const [materialPct, setMaterialPct] = useState(String(defaultSettings?.material_pct ?? 70))
+  // ถ้าไซท์งานของใบแจ้งหนี้นี้เคยกรอก "ต้นทุนประมาณการ" ไว้ (หน้าไซท์งาน,
+  // คีย์ด้วยหมวดหมู่สินค้าคงคลังเดียวกัน) ใช้สัดส่วนของไซท์นั้นเป็นค่าเริ่มต้น
+  // แทนค่าเริ่มต้นรวมของบริษัท -- ยังแก้ต่อได้ตามปกติก่อนกดยืนยัน
   const [splits, setSplits] = useState(() => {
+    const siteEstimates = (siteCostEstimates || []).filter(e => e.site_id === invoice.site_id)
+    const siteTotal = siteEstimates.reduce((s, e) => s + (parseFloat(e.estimated_amount) || 0), 0)
     const initial = {}
-    for (const c of categories || []) initial[c.id] = String(defaultSettings?.category_splits?.[c.id] ?? 0)
+    for (const c of categories || []) {
+      if (siteTotal > 0) {
+        const row = siteEstimates.find(e => e.inventory_category_id === c.id)
+        initial[c.id] = row ? String(((parseFloat(row.estimated_amount) || 0) / siteTotal * 100).toFixed(1)) : '0'
+      } else {
+        initial[c.id] = String(defaultSettings?.category_splits?.[c.id] ?? 0)
+      }
+    }
     return initial
   })
+  const usingSiteEstimate = (siteCostEstimates || []).some(e => e.site_id === invoice.site_id)
   const [confirming, setConfirming] = useState(false)
 
   const numericSplits = Object.fromEntries(Object.entries(splits).map(([k, v]) => [k, parseFloat(v) || 0]))
@@ -362,6 +375,11 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
             <label className="label">% ต้นทุนวัสดุ (สำหรับใบนี้)</label>
             <input className="input input-sm" style={{ width: 100 }} type="number" min="0" max="100" step="0.1" value={materialPct} onChange={e => setMaterialPct(e.target.value)} />
           </div>
+          {usingSiteEstimate && (
+            <div style={{ fontSize: 11.5, color: 'var(--accent)' }}>
+              📐 สัดส่วนเริ่มต้นนี้มาจาก "ต้นทุนประมาณการ" ที่ตั้งไว้ในหน้าไซท์งาน ({invoice.sites?.name || 'ไซท์นี้'}) ไม่ใช่ค่าเริ่มต้นรวมของบริษัท — แก้ต่อได้ตามปกติ
+            </div>
+          )}
           <div style={{ display: 'grid', gap: 6 }}>
             {(categories || []).map(c => (
               <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -436,6 +454,7 @@ export default function Inventory() {
   const { data: allPos } = usePurchaseOrders({})
   const { data: invoiceNumbers } = useInvoiceNumbers()
   const { data: cogsSettings, refetch: refetchCogsSettings } = useInventoryCogsSettings()
+  const { data: siteCostEstimates } = useSiteCostEstimates()
   const { data: unprocessedInvoices, refetch: refetchUnprocessedInvoices } = useUnprocessedInvoices()
   const [expandedInvoiceId, setExpandedInvoiceId] = useState(null)
   const [itemsCategoryFilter, setItemsCategoryFilter] = useState('')
@@ -720,7 +739,7 @@ export default function Inventory() {
           {(unprocessedInvoices || []).map(inv => (
             <InvoiceDeductionRow
               key={`${inv.id}-${JSON.stringify(cogsSettings)}`} invoice={inv} categories={categories} items={items} balances={balances}
-              centralSite={centralSite} defaultSettings={cogsSettings}
+              centralSite={centralSite} defaultSettings={cogsSettings} siteCostEstimates={siteCostEstimates}
               expanded={expandedInvoiceId === inv.id}
               onToggle={() => setExpandedInvoiceId(id => id === inv.id ? null : inv.id)}
               onConfirmed={() => { setExpandedInvoiceId(null); refetchUnprocessedInvoices(); refetchBalances(); refetchItems() }}
