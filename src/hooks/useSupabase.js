@@ -244,7 +244,12 @@ export function useQuotations(filters = {}) {
  *  row yet with reference_type='invoice' pointing at them -- the queue
  *  for the invoice-ratio COGS deduction feature. Client-side filter
  *  (load both lists, subtract), matching this file's existing pattern for
- *  similar lookups rather than a raw SQL view or RPC just for a list. */
+ *  similar lookups rather than a raw SQL view or RPC just for a list.
+ *  Deposit invoices (is_deposit=true) are excluded -- their subtotal is
+ *  only the deposit slice of the contract value, not real billed work,
+ *  and stock is already deducted from the full-value progress invoice
+ *  that later covers the same work. Including deposits here would double
+ *  (or over-)deduct stock. */
 export function useUnprocessedInvoices() {
   return useQuery(async () => {
     const invoices = await fetchAllRows(() => supabase
@@ -252,6 +257,7 @@ export function useUnprocessedInvoices() {
       .select('*, sites(name, site_number)')
       .in('status', ['unpaid', 'paid'])
       .not('site_id', 'is', null)
+      .eq('is_deposit', false)
       .order('date', { ascending: false }))
 
     const processedRefs = await fetchAllRows(() => supabase
