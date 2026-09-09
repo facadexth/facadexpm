@@ -684,6 +684,39 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     }
   }, [editRow])
 
+  // ฟอร์มเพิ่ม/แก้ไขใบสั่งซื้อแยกเป็นหน้าเต็มแทน popup เดิม (เหมือน Quotations.jsx
+  // -- ฟอร์มยาว มีทั้งรายการสินค้าและช่องแนบไฟล์ popup แคบเกินไป) แทนที่ทั้งหน้า
+  // list ไปเลยตอนเปิด แทนที่จะซ้อน Modal ทับ
+  if (showAdd) {
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <button className="btn btn-ghost" onClick={() => { setShowAdd(false); setEditRow(null) }}>← กลับ</button>
+          <h2 style={{ margin: 0, fontSize: 18 }}>{editRow ? 'แก้ไขใบสั่งซื้อ' : 'เพิ่มใบสั่งซื้อ'}</h2>
+        </div>
+        <div className="card" style={{ maxWidth: 960, margin: '0 auto' }}>
+          <PurchaseOrderForm
+            initial={editFormInitial || EMPTY_FORM}
+            sites={sites} categories={categories} suppliers={suppliers || []}
+            onSave={handleSave} onCancel={() => { setShowAdd(false); setEditRow(null) }} loading={saving}
+            onSiteCreated={refetchSites} onSupplierCreated={refetchSuppliers}
+            inventoryItems={inventoryItems} onInventoryItemCreated={refetchInventoryItems} aluminumProfiles={aluminumProfiles}
+          />
+          {editRow && tenant?.id && (
+            <div className="modal-body" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+              <AttachmentsSection table="purchase_order_attachments" bucket="po-attachments" foreignKey="po_id" entityId={editRow.id} tenantId={tenant.id} />
+            </div>
+          )}
+          {!editRow && (
+            <div className="modal-body" style={{ fontSize: 12, color: 'var(--text3)', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+              บันทึกใบสั่งซื้อก่อน จึงจะแนบไฟล์ได้
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
@@ -764,28 +797,6 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
           </table>
         </div>
       </div>
-
-      {showAdd && (
-        <Modal title={editRow ? 'แก้ไขใบสั่งซื้อ' : 'เพิ่มใบสั่งซื้อ'} onClose={() => { setShowAdd(false); setEditRow(null) }} maxWidth={700}>
-          <PurchaseOrderForm
-            initial={editFormInitial || EMPTY_FORM}
-            sites={sites} categories={categories} suppliers={suppliers || []}
-            onSave={handleSave} onCancel={() => { setShowAdd(false); setEditRow(null) }} loading={saving}
-            onSiteCreated={refetchSites} onSupplierCreated={refetchSuppliers}
-            inventoryItems={inventoryItems} onInventoryItemCreated={refetchInventoryItems} aluminumProfiles={aluminumProfiles}
-          />
-          {editRow && tenant?.id && (
-            <div className="modal-body" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-              <AttachmentsSection table="purchase_order_attachments" bucket="po-attachments" foreignKey="po_id" entityId={editRow.id} tenantId={tenant.id} />
-            </div>
-          )}
-          {!editRow && (
-            <div className="modal-body" style={{ fontSize: 12, color: 'var(--text3)', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-              บันทึกใบสั่งซื้อก่อน จึงจะแนบไฟล์ได้
-            </div>
-          )}
-        </Modal>
-      )}
 
       {deleteId && (
         <ConfirmDialog title="ยกเลิกใบสั่งซื้อ" message="ยืนยันการยกเลิกใบสั่งซื้อนี้?" onConfirm={handleCancel} onCancel={() => setDeleteId(null)} danger />

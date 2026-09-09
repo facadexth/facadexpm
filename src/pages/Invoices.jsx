@@ -316,10 +316,30 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   }, [unitsByQuotationItem]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (unitsError) {
-    return <Modal title={`สร้างใบแจ้งหนี้ — ${quotation.quotation_number}`} onClose={onClose} maxWidth={760}><div className="modal-body">เกิดข้อผิดพลาดในการโหลดข้อมูล: {unitsError}</div></Modal>
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <button className="btn btn-ghost" onClick={onClose}>← กลับ</button>
+          <h2 style={{ margin: 0, fontSize: 18 }}>สร้างใบแจ้งหนี้ — {quotation.quotation_number}</h2>
+        </div>
+        <div className="card" style={{ maxWidth: 960, margin: '0 auto' }}>
+          <div className="modal-body">เกิดข้อผิดพลาดในการโหลดข้อมูล: {unitsError}</div>
+        </div>
+      </div>
+    )
   }
   if (unitsLoading || !lines) {
-    return <Modal title={`สร้างใบแจ้งหนี้ — ${quotation.quotation_number}`} onClose={onClose} maxWidth={760}><div className="modal-body">⏳ กำลังโหลด...</div></Modal>
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <button className="btn btn-ghost" onClick={onClose}>← กลับ</button>
+          <h2 style={{ margin: 0, fontSize: 18 }}>สร้างใบแจ้งหนี้ — {quotation.quotation_number}</h2>
+        </div>
+        <div className="card" style={{ maxWidth: 960, margin: '0 auto' }}>
+          <div className="modal-body">⏳ กำลังโหลด...</div>
+        </div>
+      </div>
+    )
   }
 
   const billedLines = lines.filter(l => drawQty(l.units) > 1e-9)
@@ -445,7 +465,12 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   }
 
   return (
-    <Modal title={`สร้างใบแจ้งหนี้ — ${quotation.quotation_number}`} onClose={onClose} maxWidth={760}>
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <button className="btn btn-ghost" onClick={onClose}>← กลับ</button>
+        <h2 style={{ margin: 0, fontSize: 18 }}>สร้างใบแจ้งหนี้ — {quotation.quotation_number}</h2>
+      </div>
+      <div className="card" style={{ maxWidth: 960, margin: '0 auto' }}>
       <div className="modal-body">
         <div style={{ marginBottom: 12 }}>
           <label className="label">วันที่ออกเอกสาร</label>
@@ -498,7 +523,8 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
           {saving ? '⏳...' : '✅ สร้างใบแจ้งหนี้'}
         </button>
       </div>
-    </Modal>
+      </div>
+    </div>
   )
 }
 
@@ -1675,6 +1701,19 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
     }
   }
 
+  // สร้างใบแจ้งหนี้เป็นหน้าเต็มแทน popup (เหมือน Quotations.jsx/PurchaseOrders.jsx
+  // -- ฟอร์มยาว มีทั้งรายการงวดงานและช่องกรอกยอดที่ต้องการเรียกเก็บ)
+  if (createFor) {
+    return (
+      <CreateInvoiceModal
+        quotation={createFor}
+        site={(sites || []).find(s => s.id === createFor.site_id)}
+        onClose={() => setCreateFor(null)}
+        onSaved={() => { setCreateFor(null); refetch(); showToast('สร้างใบแจ้งหนี้สำเร็จ') }}
+      />
+    )
+  }
+
   return (
     <div>
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
@@ -1812,15 +1851,6 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
           quotation={createDepositFor}
           onClose={() => setCreateDepositFor(null)}
           onSaved={() => { setCreateDepositFor(null); refetch(); showToast('สร้างใบมัดจำสำเร็จ') }}
-        />
-      )}
-
-      {createFor && (
-        <CreateInvoiceModal
-          quotation={createFor}
-          site={(sites || []).find(s => s.id === createFor.site_id)}
-          onClose={() => setCreateFor(null)}
-          onSaved={() => { setCreateFor(null); refetch(); showToast('สร้างใบแจ้งหนี้สำเร็จ') }}
         />
       )}
 

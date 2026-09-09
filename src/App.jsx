@@ -11,6 +11,7 @@ import { usePlatformAdmin } from './hooks/useSupabase.js'
 import { ProtectedPage } from './components/ProtectedPage.jsx'
 import { canViewPage } from './lib/permissions.js'
 import { getEffectiveTheme, toggleTheme } from './lib/theme.js'
+import { manualUrlFor } from './lib/manualLinks.js'
 import ChangePassword from './components/ChangePassword.jsx'
 import SiteOverviewModal from './components/SiteOverviewModal.jsx'
 import TrialBanner from './components/TrialBanner.jsx'
@@ -385,6 +386,14 @@ export default function App() {
           <span className="header-date" style={{ color: 'var(--text3)', fontSize: 12, whiteSpace: 'nowrap' }}>
             {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
           </span>
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ fontSize: 12 }}
+            onClick={() => window.open(manualUrlFor(activeTab), '_blank', 'noopener')}
+            title="คู่มือใช้งานหน้านี้"
+          >
+            📖
+          </button>
           <button
             className="btn btn-ghost btn-sm"
             style={{ fontSize: 12 }}
