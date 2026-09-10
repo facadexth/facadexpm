@@ -7,12 +7,13 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useSuppliers } from '../hooks/useSupabase.js'
+import { useSuppliers, useSupplierDocumentExamples, saveSupplierDocumentExample, deleteSupplierDocumentExample, extractPoDocument } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
+import { fileToDownscaledBase64 } from '../lib/poDocumentExtraction.js'
 
 const SUPPLIER_TYPES = [
   'อลูมิเนียม', 'เหล็ก', 'อุปกรณ์', 'กระจก',
@@ -173,6 +174,112 @@ function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
   )
 }
 
+function SupplierDocumentTrainingModal({ supplier, onClose }) {
+  const { data: examples, refetch } = useSupplierDocumentExamples(supplier.id)
+  const [extracting, setExtracting] = useState(false)
+  const [pending, setPending] = useState(null) // { base64, mimeType, lineItems }
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setError(null)
+    setExtracting(true)
+    try {
+      const { base64, mimeType } = await fileToDownscaledBase64(file)
+      const result = await extractPoDocument(base64, mimeType, examples || [])
+      if (!result.ok) { setError(result.error); return }
+      setPending({ base64, mimeType, lineItems: result.data.line_items })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setExtracting(false)
+    }
+  }
+
+  const setLineItem = (i, key, value) => {
+    setPending(p => ({ ...p, lineItems: p.lineItems.map((it, idx) => idx === i ? { ...it, [key]: value } : it) }))
+  }
+
+  const handleSaveExample = async () => {
+    if (!pending) return
+    setSaving(true)
+    try {
+      await saveSupplierDocumentExample(supplier.id, pending.base64, pending.mimeType, { line_items: pending.lineItems })
+      setPending(null)
+      await refetch()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteExample = async (ex) => {
+    try {
+      await deleteSupplierDocumentExample(ex)
+      await refetch()
+    } catch (err) {
+      alert('ลบไม่สำเร็จ: ' + err.message)
+    }
+  }
+
+  return (
+    <Modal title={`ฝึกอ่านเอกสาร — ${supplier.name}`} onClose={onClose} maxWidth={700}>
+      <div className="modal-body" style={{ display: 'grid', gap: 14 }}>
+        <p style={{ fontSize: 13, color: 'var(--text3)' }}>
+          อัพโหลดตัวอย่างเอกสารของซัพพลายเออร์รายนี้ ตรวจ/แก้ผลลัพธ์ให้ถูกต้อง แล้วบันทึกเป็นตัวอย่าง
+          — ระบบจะใช้ตัวอย่างที่บันทึกไว้ช่วยอ่านเอกสารเดิมของซัพพลายเออร์รายนี้ได้แม่นขึ้นในครั้งถัดไป
+          (เก็บได้สูงสุด 3 ตัวอย่างต่อราย ตัวอย่างเก่าสุดจะถูกลบเมื่อบันทึกตัวที่ 4)
+        </p>
+
+        <div>
+          <label className="label">อัพโหลดตัวอย่างเอกสาร</label>
+          <input type="file" accept="image/*" onChange={handleUpload} disabled={extracting} />
+          {extracting && <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text3)' }}>⏳ กำลังอ่านเอกสาร...</span>}
+        </div>
+
+        {error && <div className="alert alert-error">{error}</div>}
+
+        {pending && (
+          <div className="card" style={{ padding: 12 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>ผลลัพธ์ที่อ่านได้ — ตรวจ/แก้ก่อนบันทึก</div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              {pending.lineItems.map((it, i) => (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 100px', gap: 6 }}>
+                  <input className="input input-sm" value={it.description} onChange={e => setLineItem(i, 'description', e.target.value)} />
+                  <input className="input input-sm" type="number" value={it.quantity} onChange={e => setLineItem(i, 'quantity', parseFloat(e.target.value) || 0)} />
+                  <input className="input input-sm" value={it.unit} onChange={e => setLineItem(i, 'unit', e.target.value)} />
+                  <input className="input input-sm" type="number" value={it.unit_price} onChange={e => setLineItem(i, 'unit_price', parseFloat(e.target.value) || 0)} />
+                </div>
+              ))}
+            </div>
+            <button type="button" className="btn btn-primary btn-sm" style={{ marginTop: 10 }} disabled={saving} onClick={handleSaveExample}>
+              {saving ? '⏳ กำลังบันทึก...' : '💾 บันทึกเป็นตัวอย่าง'}
+            </button>
+          </div>
+        )}
+
+        <div>
+          <label className="label">ตัวอย่างที่บันทึกไว้ ({(examples || []).length}/3)</label>
+          {(examples || []).length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)' }}>ยังไม่มีตัวอย่าง</div>}
+          {(examples || []).map(ex => (
+            <div key={ex.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '4px 0' }}>
+              <span>{new Date(ex.created_at).toLocaleDateString('th-TH')} — {(ex.extracted?.line_items || []).length} รายการ</span>
+              <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => handleDeleteExample(ex)}>ลบ</button>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button type="button" className="btn btn-ghost" onClick={onClose}>ปิด</button>
+      </div>
+    </Modal>
+  )
+}
+
 export default function Suppliers() {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'suppliers')
@@ -180,6 +287,7 @@ export default function Suppliers() {
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
+  const [trainingSupplier, setTrainingSupplier] = useState(null)
   const [saving,     setSaving]     = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [toast,      setToast]      = useState(null)
@@ -306,6 +414,7 @@ export default function Suppliers() {
                       <>
                         <button className="btn btn-sm btn-ghost" onClick={() => { setEditItem(s); setShowForm(true) }}>แก้ไข</button>
                         <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => setDeleteId(s.id)}>ลบ</button>
+                        <button className="btn btn-sm btn-ghost" onClick={() => setTrainingSupplier(s)}>🎓 ฝึกอ่านเอกสาร</button>
                       </>
                     )}
                   </td>
@@ -332,6 +441,10 @@ export default function Suppliers() {
           onConfirm={handleDelete}
           onCancel={() => setDeleteId(null)}
         />
+      )}
+
+      {trainingSupplier && (
+        <SupplierDocumentTrainingModal supplier={trainingSupplier} onClose={() => setTrainingSupplier(null)} />
       )}
     </div>
   )
