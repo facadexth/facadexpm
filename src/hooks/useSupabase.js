@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { applyDateFilter } from '../lib/expenseFilters.js'
 import { buildUnitSeedRows, VAT_RATE } from '../lib/invoiceCalc.js'
+import { validateExtraction, blobToBase64 } from '../lib/poDocumentExtraction.js'
 
 /** Generic fetch hook */
 export function useQuery(queryFn, deps = []) {
@@ -1381,4 +1382,96 @@ export function useInvoiceNumbers() {
   return useQuery(async () => fetchAllRows(() =>
     supabase.from('invoices').select('id, invoice_number')
   ), [])
+}
+
+// ── PO Document Scan Extraction ─────────────────────────────
+
+/** Calibration examples for one supplier's document layout, oldest
+ *  first (so saveSupplierDocumentExample's prune-the-oldest logic and
+ *  the training modal's display order agree). */
+export function useSupplierDocumentExamples(supplierId) {
+  return useQuery(async () => {
+    if (!supplierId) return []
+    const { data, error } = await supabase
+      .from('supplier_document_examples')
+      .select('*')
+      .eq('supplier_id', supplierId)
+      .order('created_at')
+    if (error) throw error
+    return data
+  }, [supplierId])
+}
+
+const MAX_SUPPLIER_DOCUMENT_EXAMPLES = 3
+
+/** Saves a newly-verified (image, corrected extraction) pair as a
+ *  calibration example for a supplier. `base64`/`mimeType` are the same
+ *  already-downscaled image the extraction call itself used. Prunes the
+ *  oldest example first if this would exceed the cap. */
+export async function saveSupplierDocumentExample(supplierId, base64, mimeType, extracted) {
+  const { data: existing, error: listError } = await supabase
+    .from('supplier_document_examples')
+    .select('id, file_path, created_at')
+    .eq('supplier_id', supplierId)
+    .order('created_at')
+  if (listError) throw listError
+
+  if ((existing || []).length >= MAX_SUPPLIER_DOCUMENT_EXAMPLES) {
+    const oldest = existing[0]
+    await supabase.storage.from('supplier-doc-examples').remove([oldest.file_path])
+    const { error: delError } = await supabase.from('supplier_document_examples').delete().eq('id', oldest.id)
+    if (delError) throw delError
+  }
+
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: roleRow } = await supabase.from('user_roles').select('tenant_id').eq('user_email', user.email).single()
+  const ext = mimeType === 'image/png' ? 'png' : 'jpg'
+  const filePath = `${roleRow.tenant_id}/${supplierId}/${Date.now()}.${ext}`
+
+  const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0))
+  const { error: upErr } = await supabase.storage.from('supplier-doc-examples').upload(filePath, bytes, { contentType: mimeType })
+  if (upErr) throw upErr
+
+  const { error: insErr } = await supabase
+    .from('supplier_document_examples')
+    .insert({ supplier_id: supplierId, file_path: filePath, extracted })
+  if (insErr) {
+    await supabase.storage.from('supplier-doc-examples').remove([filePath])
+    throw insErr
+  }
+}
+
+export async function deleteSupplierDocumentExample(example) {
+  const { error: rmErr } = await supabase.storage.from('supplier-doc-examples').remove([example.file_path])
+  if (rmErr) throw rmErr
+  const { error: delErr } = await supabase.from('supplier_document_examples').delete().eq('id', example.id)
+  if (delErr) throw delErr
+}
+
+/** Re-downloads a saved calibration example's (already-downscaled) image
+ *  and re-encodes it to base64 for inclusion in an extraction call --
+ *  examples are stored in Storage, not as base64, so this is the one
+ *  place that bridges the two. */
+async function loadExampleForPrompt(example) {
+  const { data: blob, error } = await supabase.storage.from('supplier-doc-examples').download(example.file_path)
+  if (error) throw error
+  const base64 = await blobToBase64(blob)
+  return { image_base64: base64, mime_type: blob.type || 'image/jpeg', extracted: example.extracted }
+}
+
+/** Calls the extract-po-document Edge Function with one document image
+ *  and (optionally) a supplier's saved calibration examples. Never
+ *  throws -- returns the same { ok, data|error } shape as
+ *  validateExtraction so callers have one place to handle failure. */
+export async function extractPoDocument(base64, mimeType, examples = []) {
+  try {
+    const examplesForPrompt = await Promise.all((examples || []).map(loadExampleForPrompt))
+    const { data, error } = await supabase.functions.invoke('extract-po-document', {
+      body: { image_base64: base64, mime_type: mimeType, examples: examplesForPrompt },
+    })
+    if (error) return { ok: false, error: error.message }
+    return validateExtraction(data)
+  } catch (e) {
+    return { ok: false, error: e.message }
+  }
 }
