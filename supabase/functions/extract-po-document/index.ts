@@ -129,6 +129,13 @@ Deno.serve(async (req) => {
   const { data: hasAccess, error: moduleCheckError } = await userClient.rpc('has_module_access', { p_module_key: 'purchase_orders' })
   if (moduleCheckError || !hasAccess) return json({ error: 'Unauthorized' }, 403)
 
+  // Monthly quota, tier-configurable (packages.max_document_scans_per_month,
+  // NULL = unlimited) -- checked BEFORE the Anthropic call since that's the
+  // step that actually costs money; a tenant over quota never reaches it.
+  const { data: underQuota, error: quotaCheckError } = await userClient.rpc('tenant_under_document_scan_limit')
+  if (quotaCheckError) return json({ error: 'ตรวจสอบโควต้าไม่สำเร็จ' }, 500)
+  if (!underQuota) return json({ error: 'ใช้โควต้าการสแกนเอกสารในเดือนนี้ครบแล้ว กรุณาอัพเกรดแพ็กเกจหรือรอรอบเดือนถัดไป' }, 429)
+
   const messages = buildMessages(image_base64, mime_type, Array.isArray(examples) ? examples : [])
 
   let anthropicRes: Response
@@ -155,6 +162,15 @@ Deno.serve(async (req) => {
     const errText = await anthropicRes.text()
     return json({ error: `AI API error: ${errText.slice(0, 500)}` }, 502)
   }
+
+  // Counts against the monthly quota here, not earlier -- a 200 from
+  // Anthropic means the call was actually processed (and billed) even if
+  // parsing its response below fails; a network error or a non-2xx
+  // response above never reaches this line, so it's never charged against
+  // quota. Logged best-effort: a failed insert here shouldn't block the
+  // extraction result the caller is waiting on.
+  const { error: usageLogError } = await userClient.from('document_scan_usage').insert({})
+  if (usageLogError) console.error('document_scan_usage insert failed:', usageLogError.message)
 
   const anthropicJson = await anthropicRes.json()
   // The model can return a leading `thinking` content block before its

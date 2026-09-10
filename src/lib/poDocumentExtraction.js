@@ -62,11 +62,30 @@ export function validateExtraction(raw) {
   }
 }
 
-/** Reads a browser File, downscales it via canvas, and returns a JPEG
- *  base64 payload (no data: URL prefix) ready to send to the edge
- *  function or store as a calibration example. Browser-only (Image +
- *  canvas) -- not unit tested, verified manually per Task 8. */
-export async function fileToDownscaledBase64(file, maxDim = 1600) {
+/** Decodes a File into whatever the browser gives us to draw from, plus
+ *  its natural size -- prefers createImageBitmap (decodes straight from
+ *  the Blob, no intermediate base64 string) since a raw phone-camera
+ *  photo can be 10-20MB+ and building a base64 string for the FULL-size
+ *  image before any downscaling happens is exactly the kind of peak-
+ *  memory spike that crashes the tab on a memory-constrained Android
+ *  phone even though it's fine on a higher-RAM iPad. Also passes
+ *  resizeWidth so the browser downscales *during decode* instead of
+ *  materializing the full-resolution bitmap and only shrinking it
+ *  afterward at the canvas-draw step -- a 4000px+ source bitmap being
+ *  handed to a 2D canvas draw is itself a plausible second crash point
+ *  on a memory/GPU-constrained device, not just the base64-string step.
+ *  resizeHeight is left unset so the browser preserves aspect ratio off
+ *  resizeWidth alone (spec behavior) -- for a portrait photo this can
+ *  leave height a bit over maxDim, which the caller's own
+ *  computeDownscaledSize + canvas draw catches afterward, cheaply,
+ *  since by then the source is already small. Falls back to the old
+ *  FileReader+Image path (full natural size, no resize-at-decode) only
+ *  if createImageBitmap isn't available at all. */
+async function decodeImageSource(file, maxDim) {
+  if (typeof createImageBitmap === 'function') {
+    const bitmap = await createImageBitmap(file, { resizeWidth: maxDim, resizeQuality: 'medium', imageOrientation: 'from-image' })
+    return { source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close() }
+  }
   const dataUrl = await new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result)
@@ -79,13 +98,26 @@ export async function fileToDownscaledBase64(file, maxDim = 1600) {
     image.onerror = () => reject(new Error('อ่านไฟล์รูปภาพไม่สำเร็จ'))
     image.src = dataUrl
   })
-  const { width, height } = computeDownscaledSize(img.naturalWidth, img.naturalHeight, maxDim)
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  canvas.getContext('2d').drawImage(img, 0, 0, width, height)
-  const outUrl = canvas.toDataURL('image/jpeg', 0.85)
-  return { base64: outUrl.split(',')[1], mimeType: 'image/jpeg' }
+  return { source: img, width: img.naturalWidth, height: img.naturalHeight, close: () => {} }
+}
+
+/** Reads a browser File, downscales it via canvas, and returns a JPEG
+ *  base64 payload (no data: URL prefix) ready to send to the edge
+ *  function or store as a calibration example. Browser-only (Image +
+ *  canvas) -- not unit tested, verified manually per Task 8. */
+export async function fileToDownscaledBase64(file, maxDim = 1600) {
+  const { source, width: srcWidth, height: srcHeight, close } = await decodeImageSource(file, maxDim)
+  try {
+    const { width, height } = computeDownscaledSize(srcWidth, srcHeight, maxDim)
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    canvas.getContext('2d').drawImage(source, 0, 0, width, height)
+    const outUrl = canvas.toDataURL('image/jpeg', 0.85)
+    return { base64: outUrl.split(',')[1], mimeType: 'image/jpeg' }
+  } finally {
+    close()
+  }
 }
 
 /** Converts a Blob (e.g. downloaded from Supabase Storage) to a bare
