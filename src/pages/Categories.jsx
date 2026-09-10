@@ -16,7 +16,7 @@ const PRESET_COLORS = [
   '#a29bfe','#fd79a8','#74b9ff','#55efc4','#fab1a0'
 ]
 
-const EMPTY_FORM = { name: '', color: '#6c63ff', sort_order: 99 }
+const EMPTY_FORM = { name: '', color: '#6c63ff', sort_order: 99, code_prefix: '' }
 
 function CatForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
   const isAdd = !initial?.id
@@ -28,6 +28,11 @@ function CatForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
         <div>
           <label className="label">ชื่อหมวด ★</label>
           <input className="input" required value={form.name} onChange={e => set('name', e.target.value)} placeholder="เช่น ค่ากระจก, ค่าอลูมิเนียม" />
+        </div>
+        <div>
+          <label className="label">รหัสย่อ (สำหรับตั้งรหัสสินค้าคงคลังอัตโนมัติ)</label>
+          <input className="input" value={form.code_prefix || ''} onChange={e => set('code_prefix', e.target.value.toUpperCase())} placeholder="เช่น OPK, GLS — เว้นว่างได้ถ้าไม่ต้องการ" style={{ maxWidth: 160 }} />
+          <p style={{ fontSize: 11.5, color: 'var(--text3)', margin: '4px 0 0' }}>ถ้าตั้งไว้ สินค้าคงคลังใหม่ในหมวดนี้ที่เว้นช่องรหัสว่างไว้จะได้รหัสอัตโนมัติ เช่น {form.code_prefix || 'OPK'}-001, {form.code_prefix || 'OPK'}-002 ...</p>
         </div>
         <div>
           <label className="label">สี</label>
@@ -79,7 +84,7 @@ export default function Categories() {
   const handleSave = async (form) => {
     setSaving(true)
     try {
-      const payload = { name: form.name, color: form.color }
+      const payload = { name: form.name, color: form.color, code_prefix: form.code_prefix?.trim() || null }
       if (editCat) {
         const { error } = await supabase.from('expense_categories').update(payload).eq('id', editCat.id)
         if (error) throw error
@@ -133,6 +138,7 @@ export default function Categories() {
               <tr>
                 <th>สี</th>
                 <th className="sortable" onClick={() => toggleSort('name')}>ชื่อหมวด{si('name')}</th>
+                <th>รหัสย่อ</th>
                 <th>ใช้คิดต้นทุน/ตัดสต็อก</th>
                 <th>เรียง</th>
                 <th></th>
@@ -147,6 +153,7 @@ export default function Categories() {
                   <td style={{ fontWeight: 600 }}>
                     <span className="badge" style={{ background: `${c.color}22`, color: c.color || 'var(--accent)', fontSize: 13 }}>{c.name}</span>
                   </td>
+                  <td style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--text3)' }}>{c.code_prefix || '—'}</td>
                   <td style={{ textAlign: 'center' }}>
                     <input type="checkbox" checked={!!c.use_for_cost_deduction} disabled={savingDeductionId === c.id}
                       onChange={() => handleToggleDeduction(c)} />
@@ -178,7 +185,7 @@ export default function Categories() {
                 </tr>
               ))}
               {!filtered.length && (
-                <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีหมวดหมู่</td></tr>
+                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีหมวดหมู่</td></tr>
               )}
             </tbody>
           </table>

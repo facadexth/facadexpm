@@ -44,14 +44,11 @@ function ItemForm({ initial = EMPTY_ITEM_FORM, onSave, onCancel, loading, catego
   const isAdd = !initial?.id
   const [form, setForm, clearDraft] = useDraftForm('inventory-item-form', { ...EMPTY_ITEM_FORM, ...initial, code: initial?.code ?? '', reference_area_sqm: initial?.reference_area_sqm ?? '', category_id: initial?.category_id ?? '' }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const selectedCategory = (categories || []).find(c => c.id === form.category_id)
 
   return (
     <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave(form) }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
-        <div>
-          <label className="label">รหัสสินค้า</label>
-          <input className="input" value={form.code} onChange={e => set('code', e.target.value)} placeholder="เช่น ALU-6063" />
-        </div>
         <div>
           <label className="label">ชื่อสินค้าคงคลัง ★</label>
           <input className="input" required value={form.name} onChange={e => set('name', e.target.value)} placeholder="เช่น อลูมิเนียมโปรไฟล์ 6063" />
@@ -69,6 +66,16 @@ function ItemForm({ initial = EMPTY_ITEM_FORM, onSave, onCancel, loading, catego
             onCreated={onCategoryCreated}
             addLabel="+ สร้างใหม่"
           />
+        </div>
+        <div>
+          <label className="label">รหัสสินค้า</label>
+          <input className="input" value={form.code} onChange={e => set('code', e.target.value)}
+            placeholder={isAdd && selectedCategory?.code_prefix ? `เว้นว่างไว้ = ตั้งอัตโนมัติ (${selectedCategory.code_prefix}-xxx)` : 'เช่น ALU-6063'} />
+          {isAdd && (
+            selectedCategory?.code_prefix
+              ? <p style={{ fontSize: 11.5, color: 'var(--text3)', margin: '4px 0 0' }}>เว้นว่างไว้เพื่อให้ระบบตั้งรหัสอัตโนมัติตามหมวดหมู่ "{selectedCategory.name}" ({selectedCategory.code_prefix}-xxx)</p>
+              : form.category_id && <p style={{ fontSize: 11.5, color: 'var(--text3)', margin: '4px 0 0' }}>หมวดหมู่นี้ยังไม่ได้ตั้งรหัสย่อไว้ — ตั้งได้ที่หน้า ⚙️ ตั้งค่า → หมวดหมู่ ถ้าต้องการให้ตั้งรหัสอัตโนมัติ</p>
+          )}
         </div>
         {/* TODO(unit-conversion-mode): the "รูปแบบการแปลงหน่วยตอนรับของ"
             dropdown (aluminum_profile/glass_dimension special receiving
@@ -452,6 +459,7 @@ export default function Inventory() {
   const { data: unprocessedInvoices, refetch: refetchUnprocessedInvoices } = useUnprocessedInvoices()
   const [expandedInvoiceId, setExpandedInvoiceId] = useState(null)
   const [itemsCategoryFilter, setItemsCategoryFilter] = useState('')
+  const [itemsSiteFilter, setItemsSiteFilter] = useState('')
   const [itemsSearch, setItemsSearch] = useState('')
   const [itemSortCol, setItemSortCol] = useState('name')
   const [itemSortDir, setItemSortDir] = useState('asc')
@@ -539,19 +547,47 @@ export default function Inventory() {
       })
     const rows = []
     for (const item of filteredItems) {
-      const itemBalances = (balances || []).filter(b => b.inventory_item_id === item.id)
-      const hasCentralBalance = centralSite && itemBalances.some(b => b.site_id === centralSite.id)
+      let itemBalances = (balances || []).filter(b => b.inventory_item_id === item.id)
+      if (itemsSiteFilter) {
+        // Filtering to one คลัง -- an item never stocked there has nothing
+        // to show, skip it entirely rather than falling back to the
+        // "no stock anywhere" placeholder (which defaults to ส่วนกลาง and
+        // would be misleading under an unrelated site filter).
+        itemBalances = itemBalances.filter(b => b.site_id === itemsSiteFilter)
+        if (!itemBalances.length) continue
+        itemBalances.forEach((balance, i) => rows.push({ item, balance, isFirstForItem: i === 0 }))
+        continue
+      }
       if (!itemBalances.length) {
+        // No stock anywhere yet -- still show one row (defaulting to
+        // ส่วนกลาง) so the item is listed and can be adjusted manually.
+        // Once real stock exists somewhere (the common case: received
+        // straight to a site via PO), don't also pad in a synthetic 0.00
+        // ส่วนกลาง row -- it read as a duplicate line per item for tenants
+        // that never stock centrally.
         rows.push({ item, balance: null, isFirstForItem: true })
       } else {
         itemBalances.forEach((balance, i) => rows.push({ item, balance, isFirstForItem: i === 0 }))
-        if (!hasCentralBalance) {
-          rows.push({ item, balance: null, isFirstForItem: false })
-        }
       }
     }
     return rows
-  }, [items, balances, itemsCategoryFilter, itemsSearch, itemSortCol, itemSortDir, centralSite])
+  }, [items, balances, itemsCategoryFilter, itemsSiteFilter, itemsSearch, itemSortCol, itemSortDir, centralSite])
+
+  const exportItems = () => {
+    const columns = [
+      { header: 'รหัส', accessor: r => r.item.code || '' },
+      { header: 'ชื่อ', accessor: r => r.item.name },
+      { header: 'หมวดหมู่', accessor: r => r.item._category || '' },
+      { header: 'สถานะ', accessor: r => r.item.active ? 'ใช้งานอยู่' : 'ปิดใช้งาน' },
+      { header: 'คลัง', accessor: r => r.balance ? (r.balance.sites?.name || '') : (centralSite?.name || 'ส่วนกลาง') },
+      { header: 'ปริมาณ', accessor: r => r.balance?.quantity_on_hand ?? 0 },
+      { header: 'หน่วย', accessor: r => r.item.base_unit },
+      { header: 'ราคา/หน่วย', accessor: r => r.balance?.weighted_average_cost ?? 0 },
+      { header: 'มูลค่ารวม', accessor: r => (r.balance?.quantity_on_hand ?? 0) * (r.balance?.weighted_average_cost ?? 0) },
+      { header: 'แหล่งที่มาล่าสุด', accessor: r => r.balance ? resolveSource(r.item.id, r.balance.site_id) : '' },
+    ]
+    exportToExcel(tableRows, columns, 'สินค้าคงคลัง')
+  }
 
   const sortedMovements = useMemo(() => {
     const rows = (movements || []).map(m => ({
@@ -675,6 +711,7 @@ export default function Inventory() {
           {canEdit && <button className="btn btn-primary" style={{ marginBottom: 14 }} onClick={() => { setEditItem(null); setShowForm(true) }}>+ เพิ่มสินค้าคงคลัง</button>}
           {canEdit && <button className="btn btn-ghost" style={{ marginBottom: 14, marginLeft: 8 }} onClick={() => setShowImportItems(v => !v)}>📥 Import Excel</button>}
           <a className="btn btn-ghost" style={{ marginBottom: 14, marginLeft: 8 }} href="/templates/TEMPLATE_รายการสินค้าคงคลัง.xlsx" download>📄 Template</a>
+          <button className="btn btn-ghost" style={{ marginBottom: 14, marginLeft: 8 }} onClick={exportItems}>📤 Export Excel</button>
           {showImportItems && (
             <div style={{ marginBottom: 14 }}>
               <ExcelUpload type="inventory_item" onSuccess={() => { setShowImportItems(false); refetchItems() }} />
@@ -687,6 +724,9 @@ export default function Inventory() {
             <div style={{ minWidth: 220, maxWidth: 260 }}>
               <SearchableSelect value={itemsCategoryFilter} onChange={setItemsCategoryFilter} placeholder="ทุกหมวดหมู่"
                 options={(categories || []).map(c => ({ value: c.id, label: c.name, keywords: c.name }))} />
+            </div>
+            <div style={{ minWidth: 220, maxWidth: 260 }}>
+              <SearchableSelect value={itemsSiteFilter} onChange={setItemsSiteFilter} placeholder="ทุกคลัง" options={siteFilterOpts} />
             </div>
             <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อ / รหัสสินค้า..." value={itemsSearch} onChange={e => setItemsSearch(e.target.value)} />
           </div>
