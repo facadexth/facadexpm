@@ -127,8 +127,11 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
   // One template, its components, its hardware, and its constraints save
   // together as one unit -- simplest correct approach for a form editor:
   // upsert the template row, then delete-and-reinsert every child table's
-  // rows for it. Never partially saves (children only touched after the
-  // template row itself succeeds).
+  // rows for it. The template row is written first, and children are only
+  // touched after it succeeds -- but each child table's own delete+reinsert
+  // pair is two separate network requests and is not itself atomic (same
+  // accepted tradeoff used elsewhere in this codebase, e.g.
+  // Quotations.jsx/PurchaseOrders.jsx).
   const handleSave = async () => {
     setSaving(true)
     try {
@@ -306,6 +309,13 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
         </div>
       </div>
 
+      {!isNew && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+          <input type="checkbox" disabled={!canEdit} checked={form.active} onChange={e => set('active', e.target.checked)} />
+          ใช้งานอยู่
+        </label>
+      )}
+
       {canEdit && (
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           {!isNew && <button type="button" className="btn btn-ghost" style={{ color: 'var(--red)' }} onClick={() => onDeleted(template.id)}>🗑️ ลบ Template</button>}
@@ -318,9 +328,9 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
 
 function TemplatesView({ canEdit }) {
   const { data: templates, refetch: refetchTemplates } = useBomTemplates()
-  const { data: components } = useBomTemplateComponents()
-  const { data: hardware } = useBomTemplateHardware()
-  const { data: constraints } = useBomTemplateConstraints()
+  const { data: components, refetch: refetchComponents } = useBomTemplateComponents()
+  const { data: hardware, refetch: refetchHardware } = useBomTemplateHardware()
+  const { data: constraints, refetch: refetchConstraints } = useBomTemplateConstraints()
   const { data: allProfiles } = useAluminumProfiles()
   const [selectedId, setSelectedId] = useState(null)
   const [creating, setCreating] = useState(false)
@@ -352,11 +362,11 @@ function TemplatesView({ canEdit }) {
       <div>
         {creating && (
           <TemplateEditor key="new" template={null} allProfiles={allProfiles || []} components={[]} hardware={[]} constraints={[]} canEdit={canEdit}
-            onSaved={() => { setCreating(false); refetchTemplates() }} onDeleted={() => {}} />
+            onSaved={() => { setCreating(false); refetchTemplates(); refetchComponents(); refetchHardware(); refetchConstraints() }} onDeleted={() => {}} />
         )}
         {selected && !creating && (
           <TemplateEditor key={selected.id} template={selected} allProfiles={allProfiles || []} components={components || []} hardware={hardware || []} constraints={constraints || []} canEdit={canEdit}
-            onSaved={refetchTemplates} onDeleted={(id) => setDeleteId(id)} />
+            onSaved={() => { refetchTemplates(); refetchComponents(); refetchHardware(); refetchConstraints() }} onDeleted={(id) => setDeleteId(id)} />
         )}
         {!creating && !selected && <div style={{ color: 'var(--text3)', padding: 20 }}>เลือก Template ทางซ้าย หรือสร้างใหม่</div>}
       </div>
