@@ -303,10 +303,14 @@ async function parseAluminumProfileSheet(ws) {
     const linearWeight = parseFloat(row[1])
     if (!linearWeight) continue
     const rawLength = row[2] != null ? parseFloat(row[2]) : NaN
+    const thickness = row[5] != null ? parseFloat(row[5]) : NaN
     records.push({
       name: String(row[0]),
       linear_weight_kg_per_m: linearWeight,
       default_length_m: Number.isFinite(rawLength) && rawLength > 0 ? rawLength : 6.4,
+      family: row[3] != null ? String(row[3]) : null,
+      series: row[4] != null ? String(row[4]) : null,
+      thickness_mm: Number.isFinite(thickness) ? thickness : null,
     })
   }
   return records
@@ -522,7 +526,7 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                     </> : type === 'inventory_item' ? <>
                       <th>ชื่อสินค้าคงคลัง</th><th>หน่วยหลัก</th><th>รูปแบบการแปลงหน่วย</th><th>ขนาดแผ่นอ้างอิง (ตรม.)</th>
                     </> : type === 'aluminum_profile' ? <>
-                      <th>ชื่อหน้าตัด</th><th>กก./เมตร</th><th>ความยาวมาตรฐาน (ม.)</th>
+                      <th>ชื่อหน้าตัด</th><th>กก./เมตร</th><th>ความยาวมาตรฐาน (ม.)</th><th>กลุ่ม</th><th>รุ่น</th><th>หนา (มม.)</th>
                     </> : <>
                       <th>ชื่อ Supplier</th><th>หมวดสินค้า</th><th>ผู้ติดต่อ</th><th>เบอร์โทร</th><th>เงื่อนไขชำระ</th>
                     </>}
@@ -605,6 +609,9 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                         <td style={{ fontWeight: 600 }}>{r.name}</td>
                         <td className="font-mono">{r.linear_weight_kg_per_m}</td>
                         <td className="font-mono">{r.default_length_m}</td>
+                        <td>{r.family || '—'}</td>
+                        <td>{r.series || '—'}</td>
+                        <td className="font-mono">{r.thickness_mm ?? '—'}</td>
                       </> : <>
                         <td style={{ fontWeight: 600 }}>{r.name}</td>
                         <td><span className="badge">{r.category || '—'}</span></td>
@@ -615,7 +622,7 @@ export default function ExcelUpload({ type = 'expense', onSuccess }) {
                     </tr>
                   ))}
                   {preview.length > 50 && (
-                    <tr><td colSpan={{ expense: 8, income: 5, site: 5, client: 5, inventory_item: 4, aluminum_profile: 3 }[type] ?? 5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 8 }}>
+                    <tr><td colSpan={{ expense: 8, income: 5, site: 5, client: 5, inventory_item: 4, aluminum_profile: 6 }[type] ?? 5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 8 }}>
                       ... และอีก {preview.length - 50} รายการ
                     </td></tr>
                   )}

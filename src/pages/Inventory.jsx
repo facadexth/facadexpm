@@ -147,7 +147,7 @@ function UnitFactorsPanel({ item, factors, onChanged }) {
   )
 }
 
-const EMPTY_PROFILE_FORM = { name: '', linear_weight_kg_per_m: '', default_length_m: '6.4' }
+const EMPTY_PROFILE_FORM = { name: '', family: '', series: '', thickness_mm: '', linear_weight_kg_per_m: '', default_length_m: '6.4' }
 
 function ProfileForm({ initial = EMPTY_PROFILE_FORM, onSave, onCancel, loading }) {
   const isAdd = !initial?.id
@@ -160,6 +160,18 @@ function ProfileForm({ initial = EMPTY_PROFILE_FORM, onSave, onCancel, loading }
         <div>
           <label className="label">ชื่อหน้าตัด ★</label>
           <input className="input" required value={form.name} onChange={e => set('name', e.target.value)} placeholder="เช่น หน้าตัด X" />
+        </div>
+        <div>
+          <label className="label">กลุ่มหน้าตัด (family) — สำหรับผูกกับ BOM Template</label>
+          <input className="input" value={form.family} onChange={e => set('family', e.target.value)} placeholder="เช่น กล่องร่อง" />
+        </div>
+        <div>
+          <label className="label">รุ่น/ซีรีส์ (series)</label>
+          <input className="input" value={form.series} onChange={e => set('series', e.target.value)} placeholder="เช่น ทั่วไป, ยูโร, วิสดอม" />
+        </div>
+        <div>
+          <label className="label">ความหนา (มม.)</label>
+          <input className="input" type="number" min="0" step="0.1" value={form.thickness_mm} onChange={e => set('thickness_mm', e.target.value)} placeholder="เช่น 1.2" />
         </div>
         <div>
           <label className="label">น้ำหนัก (กก./เมตร) ★</label>
@@ -671,6 +683,9 @@ export default function Inventory() {
     try {
       const payload = {
         name: form.name,
+        family: form.family || null,
+        series: form.series || null,
+        thickness_mm: form.thickness_mm ? parseFloat(form.thickness_mm) : null,
         linear_weight_kg_per_m: parseFloat(form.linear_weight_kg_per_m) || 0,
         default_length_m: form.default_length_m ? parseFloat(form.default_length_m) : 6.4,
         active: form.active !== false,
@@ -699,10 +714,7 @@ export default function Inventory() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button className={`btn btn-sm ${view === 'items' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('items')}>📦 รายการสินค้าคงคลัง</button>
         <button className={`btn btn-sm ${view === 'invoice_deduction' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('invoice_deduction')}>🧾 ตัดสต็อกจากใบแจ้งหนี้</button>
-        {/* TODO(aluminum-profiles-subtab): "หน้าตัดอลูมิเนียม" pulled from
-            the UI -- not finished yet. The view/CRUD code below is left
-            intact; just re-add this button (and the ExcelUpload
-            type="aluminum_profile" entry point inside it) once ready. */}
+        <button className={`btn btn-sm ${view === 'profiles' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('profiles')}>📐 หน้าตัดอลูมิเนียม</button>
         <button className={`btn btn-sm ${view === 'movements' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('movements')}>📜 ประวัติการเคลื่อนไหว</button>
       </div>
 
@@ -810,6 +822,9 @@ export default function Inventory() {
               <table>
                 <thead><tr>
                   <th className="sortable" onClick={() => profileToggleSort('name')}>ชื่อหน้าตัด{profileSi('name')}</th>
+                  <th className="sortable" onClick={() => profileToggleSort('family')}>กลุ่ม{profileSi('family')}</th>
+                  <th className="sortable" onClick={() => profileToggleSort('series')}>รุ่น{profileSi('series')}</th>
+                  <th className="sortable" onClick={() => profileToggleSort('thickness_mm')}>หนา (มม.){profileSi('thickness_mm')}</th>
                   <th className="sortable" onClick={() => profileToggleSort('linear_weight_kg_per_m')}>กก./เมตร{profileSi('linear_weight_kg_per_m')}</th>
                   <th className="sortable" onClick={() => profileToggleSort('default_length_m')}>ความยาวมาตรฐาน{profileSi('default_length_m')}</th>
                   <th className="sortable" onClick={() => profileToggleSort('active')}>สถานะ{profileSi('active')}</th>
@@ -819,6 +834,9 @@ export default function Inventory() {
                   {sortedProfiles.map(p => (
                     <tr key={p.id}>
                       <td style={{ fontWeight: 600 }}>{p.name}</td>
+                      <td>{p.family || '—'}</td>
+                      <td>{p.series || '—'}</td>
+                      <td className="font-mono">{p.thickness_mm ?? '—'}</td>
                       <td className="font-mono">{fmt(p.linear_weight_kg_per_m)}</td>
                       <td className="font-mono">{fmt(p.default_length_m)} ม.</td>
                       <td>{p.active ? <span className="badge badge-paid">ใช้งานอยู่</span> : <span className="badge badge-finished">ปิดใช้งาน</span>}</td>
@@ -832,7 +850,7 @@ export default function Inventory() {
                       </td>
                     </tr>
                   ))}
-                  {!sortedProfiles.length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>{profileSearch ? 'ไม่พบหน้าตัดที่ค้นหา' : 'ยังไม่มีหน้าตัด'}</td></tr>}
+                  {!sortedProfiles.length && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>{profileSearch ? 'ไม่พบหน้าตัดที่ค้นหา' : 'ยังไม่มีหน้าตัด'}</td></tr>}
                 </tbody>
               </table>
             </div>
