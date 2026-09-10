@@ -70,10 +70,10 @@ function ItemForm({ initial = EMPTY_ITEM_FORM, onSave, onCancel, loading, catego
         <div>
           <label className="label">รหัสสินค้า</label>
           <input className="input" value={form.code} onChange={e => set('code', e.target.value)}
-            placeholder={isAdd && selectedCategory?.code_prefix ? `เว้นว่างไว้ = ตั้งอัตโนมัติ (${selectedCategory.code_prefix}-xxx)` : 'เช่น ALU-6063'} />
+            placeholder={isAdd && selectedCategory?.code_prefix ? `เว้นว่างไว้ = ตั้งอัตโนมัติ (${selectedCategory.code_prefix}-xxxx)` : 'เช่น ALU-6063'} />
           {isAdd && (
             selectedCategory?.code_prefix
-              ? <p style={{ fontSize: 11.5, color: 'var(--text3)', margin: '4px 0 0' }}>เว้นว่างไว้เพื่อให้ระบบตั้งรหัสอัตโนมัติตามหมวดหมู่ "{selectedCategory.name}" ({selectedCategory.code_prefix}-xxx)</p>
+              ? <p style={{ fontSize: 11.5, color: 'var(--text3)', margin: '4px 0 0' }}>เว้นว่างไว้เพื่อให้ระบบตั้งรหัสอัตโนมัติตามหมวดหมู่ "{selectedCategory.name}" ({selectedCategory.code_prefix}-xxxx)</p>
               : form.category_id && <p style={{ fontSize: 11.5, color: 'var(--text3)', margin: '4px 0 0' }}>หมวดหมู่นี้ยังไม่ได้ตั้งรหัสย่อไว้ — ตั้งได้ที่หน้า ⚙️ ตั้งค่า → หมวดหมู่ ถ้าต้องการให้ตั้งรหัสอัตโนมัติ</p>
           )}
         </div>

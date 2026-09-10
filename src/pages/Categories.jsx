@@ -32,7 +32,7 @@ function CatForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
         <div>
           <label className="label">รหัสย่อ (สำหรับตั้งรหัสสินค้าคงคลังอัตโนมัติ)</label>
           <input className="input" value={form.code_prefix || ''} onChange={e => set('code_prefix', e.target.value.toUpperCase())} placeholder="เช่น OPK, GLS — เว้นว่างได้ถ้าไม่ต้องการ" style={{ maxWidth: 160 }} />
-          <p style={{ fontSize: 11.5, color: 'var(--text3)', margin: '4px 0 0' }}>ถ้าตั้งไว้ สินค้าคงคลังใหม่ในหมวดนี้ที่เว้นช่องรหัสว่างไว้จะได้รหัสอัตโนมัติ เช่น {form.code_prefix || 'OPK'}-001, {form.code_prefix || 'OPK'}-002 ...</p>
+          <p style={{ fontSize: 11.5, color: 'var(--text3)', margin: '4px 0 0' }}>ถ้าตั้งไว้ สินค้าคงคลังใหม่ในหมวดนี้ที่เว้นช่องรหัสว่างไว้จะได้รหัสอัตโนมัติ เช่น {form.code_prefix || 'OPK'}-0001, {form.code_prefix || 'OPK'}-0002 ...</p>
         </div>
         <div>
           <label className="label">สี</label>
