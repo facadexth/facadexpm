@@ -41,6 +41,8 @@ const SalesReport  = lazy(() => import('./pages/SalesReport.jsx'))
 const Invoices     = lazy(() => import('./pages/Invoices.jsx'))
 const CatalogItems = lazy(() => import('./pages/CatalogItems.jsx'))
 const Cheques       = lazy(() => import('./pages/Cheques.jsx'))
+const BomTemplates = lazy(() => import('./pages/BomTemplates.jsx'))
+const Estimation   = lazy(() => import('./pages/Estimation.jsx'))
 const TenantManagement = lazy(() => import('./pages/TenantManagement.jsx'))
 
 const TABS = [
@@ -62,6 +64,10 @@ const TABS = [
     { id: 'sales_report',  label: '📊 รายงานการขาย',    minRole: 'ADMIN', module: 'quotations' },
     { id: 'quotations',    label: '📋 ใบเสนอราคา',      minRole: 'ADMIN', module: 'quotations' },
     { id: 'invoices', label: '🧾 ใบแจ้งหนี้', minRole: 'ADMIN', module: 'invoices' },
+  ] },
+  { label: '🧮 ประเมินราคา', children: [
+    { id: 'estimation',    label: '📐 ประเมินราคา (BOM)', minRole: 'ADMIN', module: 'estimation' },
+    { id: 'bom_templates', label: '🧩 BOM Templates',     minRole: 'ADMIN', module: 'estimation' },
   ] },
   { id: 'labor_contractors', label: '🔧 ผู้รับเหมาค่าแรง',    minRole: 'ADMIN',  module: 'labor_subcontractors' },
   { label: '⚙️ ตั้งค่า', children: [
@@ -335,6 +341,8 @@ export default function App() {
         case 'user_management': return <UserManagement {...props} />
         case 'settings':   return <Settings   {...props} />
         case 'tenant_management': return <TenantManagement {...props} />
+        case 'estimation':    return <Estimation    {...props} />
+        case 'bom_templates': return <BomTemplates   {...props} />
         default:           return <Dashboard  {...props} />
       }
     })()
