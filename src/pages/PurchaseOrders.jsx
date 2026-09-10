@@ -72,7 +72,7 @@ const profileOpts = (profiles) => (profiles || []).map(p => ({
   value: p.id, label: `${p.name} (${p.linear_weight_kg_per_m} กก./ม.)`, keywords: p.name,
 }))
 
-function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, aluminumProfiles, units, onUnitAdded }) {
+function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, aluminumProfiles, units, onUnitAdded, categories }) {
   const set = (i, k, v) => onChange(items.map((it, idx) => idx === i ? { ...it, [k]: v } : it))
   const add = () => onChange([...items, { ...EMPTY_ITEM }])
   const remove = (i) => onChange(items.length > 1 ? items.filter((_, idx) => idx !== i) : items)
@@ -107,7 +107,9 @@ function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, 
                   value={it.inventory_item_id} onChange={v => set(i, 'inventory_item_id', v)}
                   placeholder="— ไม่ผูกกับสต็อก —" options={inventoryItemOpts(inventoryItems)}
                   table="inventory_items" namePlaceholder="ชื่อสินค้าคงคลังใหม่"
+                  initialName={it.description}
                   extraPayload={{ base_unit: it.unit || 'หน่วย' }}
+                  extraField={{ key: 'category_id', label: 'ประเภทสินค้า', options: catOpts(categories) }}
                   onCreated={onInventoryItemCreated}
                   addLabel="+ สร้างใหม่"
                 />
@@ -248,7 +250,7 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
           {scanning && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>⏳ กำลังอ่านเอกสาร...</div>}
           {scanError && <div className="alert alert-error" style={{ marginTop: 6 }}>{scanError}</div>}
         </div>
-        <ItemsEditor items={form.items} onChange={items => set('items', items)} inventoryItems={inventoryItems} onInventoryItemCreated={onInventoryItemCreated} aluminumProfiles={aluminumProfiles} units={units} onUnitAdded={refetchUnits} />
+        <ItemsEditor items={form.items} onChange={items => set('items', items)} inventoryItems={inventoryItems} onInventoryItemCreated={onInventoryItemCreated} aluminumProfiles={aluminumProfiles} units={units} onUnitAdded={refetchUnits} categories={categories} />
         <div>
           <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
