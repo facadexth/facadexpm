@@ -147,7 +147,13 @@ Deno.serve(async (req) => {
   }
 
   const anthropicJson = await anthropicRes.json()
-  const text = anthropicJson?.content?.[0]?.text
+  // The model can return a leading `thinking` content block before its
+  // actual text response (observed live with claude-sonnet-5) -- find the
+  // first text block by type rather than assuming content[0] is it.
+  const textBlock = Array.isArray(anthropicJson?.content)
+    ? anthropicJson.content.find((b: { type?: string }) => b?.type === 'text')
+    : null
+  const text = textBlock?.text
   if (typeof text !== 'string') return json({ error: 'AI ไม่ได้ตอบกลับเป็นข้อความ' }, 502)
 
   const parsed = parseModelJson(text)
