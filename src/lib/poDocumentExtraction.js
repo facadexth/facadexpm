@@ -100,3 +100,27 @@ export async function blobToBase64(blob) {
   })
   return dataUrl.split(',')[1]
 }
+
+/** Reads a browser File as a bare base64 payload with no processing --
+ *  used for PDFs, which Claude reads natively as a "document" content
+ *  block (not an image), so there's nothing to downscale and no canvas
+ *  step is possible on a PDF anyway. Browser-only (FileReader) -- not
+ *  unit tested, verified manually. */
+export async function fileToBase64(file) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+  return { base64: dataUrl.split(',')[1], mimeType: file.type || 'application/pdf' }
+}
+
+/** Single entry point both upload sites call: turns an uploaded document
+ *  (image or PDF) into the { base64, mimeType } payload the
+ *  extract-po-document edge function expects. Images get downscaled via
+ *  canvas (fileToDownscaledBase64); PDFs are sent as their raw bytes. */
+export async function fileToExtractionPayload(file, maxDim = 1600) {
+  if (file.type === 'application/pdf') return fileToBase64(file)
+  return fileToDownscaledBase64(file, maxDim)
+}

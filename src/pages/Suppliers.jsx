@@ -14,7 +14,7 @@ import { canEditPage } from '../lib/permissions.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
-import { fileToDownscaledBase64 } from '../lib/poDocumentExtraction.js'
+import { fileToExtractionPayload } from '../lib/poDocumentExtraction.js'
 
 const SUPPLIER_TYPES = [
   'อลูมิเนียม', 'เหล็ก', 'อุปกรณ์', 'กระจก',
@@ -189,7 +189,7 @@ function SupplierDocumentTrainingModal({ supplier, onClose }) {
     setError(null)
     setExtracting(true)
     try {
-      const { base64, mimeType } = await fileToDownscaledBase64(file)
+      const { base64, mimeType } = await fileToExtractionPayload(file)
       const result = await extractPoDocument(base64, mimeType, examples || [])
       if (!result.ok) { setError(result.error); return }
       setPending({ base64, mimeType, lineItems: result.data.line_items })
@@ -238,7 +238,7 @@ function SupplierDocumentTrainingModal({ supplier, onClose }) {
 
         <div>
           <label className="label">อัพโหลดตัวอย่างเอกสาร</label>
-          <input type="file" accept="image/*" onChange={handleUpload} disabled={extracting} />
+          <input type="file" accept="image/*,application/pdf" onChange={handleUpload} disabled={extracting} />
           {extracting && <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text3)' }}>⏳ กำลังอ่านเอกสาร...</span>}
         </div>
 

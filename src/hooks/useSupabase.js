@@ -1414,7 +1414,7 @@ export async function saveSupplierDocumentExample(supplierId, base64, mimeType, 
   const { data: { user } } = await supabase.auth.getUser()
   const { data: roleRow } = await supabase.from('user_roles').select('tenant_id').eq('user_email', user.email).single()
   if (!roleRow?.tenant_id) throw new Error('ไม่พบ tenant ของผู้ใช้')
-  const ext = mimeType === 'image/png' ? 'png' : 'jpg'
+  const ext = mimeType === 'application/pdf' ? 'pdf' : mimeType === 'image/png' ? 'png' : 'jpg'
   const filePath = `${roleRow.tenant_id}/${supplierId}/${Date.now()}.${ext}`
 
   const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0))

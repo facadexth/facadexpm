@@ -53,13 +53,23 @@ Rules:
 
 type ExampleInput = { image_base64: string; mime_type: string; extracted: Record<string, unknown> }
 
+// Claude reads PDFs natively as a "document" content block, distinct from
+// the "image" block used for photos -- same base64 source shape either
+// way, just a different `type` and field name for the data.
+function documentContentBlock(base64: string, mimeType: string) {
+  if (mimeType === 'application/pdf') {
+    return { type: 'document', source: { type: 'base64', media_type: mimeType, data: base64 } }
+  }
+  return { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } }
+}
+
 function buildMessages(imageBase64: string, mimeType: string, examples: ExampleInput[]) {
   const messages: Array<{ role: string; content: unknown }> = []
   for (const ex of examples) {
     messages.push({
       role: 'user',
       content: [
-        { type: 'image', source: { type: 'base64', media_type: ex.mime_type, data: ex.image_base64 } },
+        documentContentBlock(ex.image_base64, ex.mime_type),
         { type: 'text', text: 'Extract this document.' },
       ],
     })
@@ -68,7 +78,7 @@ function buildMessages(imageBase64: string, mimeType: string, examples: ExampleI
   messages.push({
     role: 'user',
     content: [
-      { type: 'image', source: { type: 'base64', media_type: mimeType, data: imageBase64 } },
+      documentContentBlock(imageBase64, mimeType),
       { type: 'text', text: 'Extract this document.' },
     ],
   })

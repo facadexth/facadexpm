@@ -7,7 +7,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument } from '../hooks/useSupabase.js'
-import { fileToDownscaledBase64 } from '../lib/poDocumentExtraction.js'
+import { fileToExtractionPayload } from '../lib/poDocumentExtraction.js'
 import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm } from '../lib/inventoryCost.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -173,7 +173,7 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
     setScanError(null)
     setScanning(true)
     try {
-      const { base64, mimeType } = await fileToDownscaledBase64(file)
+      const { base64, mimeType } = await fileToExtractionPayload(file)
       const result = await extractPoDocument(base64, mimeType, supplierExamples || [])
       if (!result.ok) { setScanError(result.error); return }
       const { document_date_guess, reference_no_guess, line_items } = result.data
@@ -243,7 +243,7 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
         </div>
         <div>
           <label className="label">📷 อัพโหลดจากใบส่งของ/ใบเสนอราคา (ไม่บังคับ)</label>
-          <input type="file" accept="image/*" onChange={handleScanUpload} disabled={!form.supplier_id || scanning} />
+          <input type="file" accept="image/*,application/pdf" onChange={handleScanUpload} disabled={!form.supplier_id || scanning} />
           {!form.supplier_id && <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>เลือก Supplier ก่อนถึงจะอัพโหลดได้</div>}
           {scanning && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>⏳ กำลังอ่านเอกสาร...</div>}
           {scanError && <div className="alert alert-error" style={{ marginTop: 6 }}>{scanError}</div>}
