@@ -303,10 +303,14 @@ async function parseAluminumProfileSheet(ws) {
     const linearWeight = parseFloat(row[1])
     if (!linearWeight) continue
     const rawLength = row[2] != null ? parseFloat(row[2]) : NaN
+    const thickness = row[5] != null ? parseFloat(row[5]) : NaN
     records.push({
       name: String(row[0]),
       linear_weight_kg_per_m: linearWeight,
       default_length_m: Number.isFinite(rawLength) && rawLength > 0 ? rawLength : 6.4,
+      family: row[3] != null ? String(row[3]) : null,
+      series: row[4] != null ? String(row[4]) : null,
+      thickness_mm: Number.isFinite(thickness) ? thickness : null,
     })
   }
   return records
