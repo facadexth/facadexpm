@@ -152,7 +152,10 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
         if (error) throw error
       }
 
-      await supabase.from('bom_template_components').delete().eq('template_id', templateId)
+      {
+        const { error } = await supabase.from('bom_template_components').delete().eq('template_id', templateId)
+        if (error) throw error
+      }
       if (rows.length) {
         const { error } = await supabase.from('bom_template_components').insert(
           rows.map((r, i) => ({ ...r, template_id: templateId, length_deduction_mm: parseFloat(r.length_deduction_mm) || 0, quantity_value: parseFloat(r.quantity_value) || 0, sort_order: i }))
@@ -160,7 +163,10 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
         if (error) throw error
       }
 
-      await supabase.from('bom_template_hardware').delete().eq('template_id', templateId)
+      {
+        const { error } = await supabase.from('bom_template_hardware').delete().eq('template_id', templateId)
+        if (error) throw error
+      }
       if (hwRows.length) {
         const { error } = await supabase.from('bom_template_hardware').insert(
           hwRows.map((h, i) => ({ ...h, template_id: templateId, reference_unit_price: parseFloat(h.reference_unit_price) || 0, quantity_value: parseFloat(h.quantity_value) || 0, sort_order: i }))
@@ -168,7 +174,10 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
         if (error) throw error
       }
 
-      await supabase.from('bom_template_constraints').delete().eq('template_id', templateId)
+      {
+        const { error } = await supabase.from('bom_template_constraints').delete().eq('template_id', templateId)
+        if (error) throw error
+      }
       if (constraintRows.length) {
         const { error } = await supabase.from('bom_template_constraints').insert(
           constraintRows.map(c => ({ ...c, template_id: templateId, value: parseFloat(c.value) || 0 }))
@@ -342,11 +351,11 @@ function TemplatesView({ canEdit }) {
       </div>
       <div>
         {creating && (
-          <TemplateEditor template={null} allProfiles={allProfiles || []} components={[]} hardware={[]} constraints={[]} canEdit={canEdit}
+          <TemplateEditor key="new" template={null} allProfiles={allProfiles || []} components={[]} hardware={[]} constraints={[]} canEdit={canEdit}
             onSaved={() => { setCreating(false); refetchTemplates() }} onDeleted={() => {}} />
         )}
         {selected && !creating && (
-          <TemplateEditor template={selected} allProfiles={allProfiles || []} components={components || []} hardware={hardware || []} constraints={constraints || []} canEdit={canEdit}
+          <TemplateEditor key={selected.id} template={selected} allProfiles={allProfiles || []} components={components || []} hardware={hardware || []} constraints={constraints || []} canEdit={canEdit}
             onSaved={refetchTemplates} onDeleted={(id) => setDeleteId(id)} />
         )}
         {!creating && !selected && <div style={{ color: 'var(--text3)', padding: 20 }}>เลือก Template ทางซ้าย หรือสร้างใหม่</div>}
