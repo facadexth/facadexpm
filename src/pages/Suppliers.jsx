@@ -248,6 +248,12 @@ function SupplierDocumentTrainingModal({ supplier, onClose }) {
           <div className="card" style={{ padding: 12 }}>
             <div style={{ fontWeight: 600, marginBottom: 8 }}>ผลลัพธ์ที่อ่านได้ — ตรวจ/แก้ก่อนบันทึก</div>
             <div style={{ display: 'grid', gap: 6 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 100px', gap: 6, fontSize: 11, color: 'var(--text3)', fontWeight: 600 }}>
+                <span>รายการ</span>
+                <span>จำนวน</span>
+                <span>หน่วย</span>
+                <span>ราคา/หน่วย</span>
+              </div>
               {pending.lineItems.map((it, i) => (
                 <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 100px', gap: 6 }}>
                   <input className="input input-sm" value={it.description} onChange={e => setLineItem(i, 'description', e.target.value)} />
