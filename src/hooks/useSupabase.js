@@ -1296,6 +1296,78 @@ export function useAllAluminumProfiles() {
   })
 }
 
+/** Every BOM template regardless of active flag -- the template editor's
+ *  own list needs to see and manage inactive ones too. */
+export function useBomTemplates() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.from('bom_templates').select('*').order('name')
+    if (error) throw error
+    return data
+  })
+}
+
+export function useBomTemplateComponents() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.from('bom_template_components').select('*').order('sort_order')
+    if (error) throw error
+    return data
+  })
+}
+
+export function useBomTemplateHardware() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.from('bom_template_hardware').select('*').order('sort_order')
+    if (error) throw error
+    return data
+  })
+}
+
+export function useBomTemplateConstraints() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.from('bom_template_constraints').select('*')
+    if (error) throw error
+    return data
+  })
+}
+
+export function useAluminumFinishes() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.from('aluminum_finishes').select('*').order('name')
+    if (error) throw error
+    return data
+  })
+}
+
+export function useBomGlassTypes() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.from('bom_glass_types').select('*').order('name')
+    if (error) throw error
+    return data
+  })
+}
+
+export function useEstimationProjects() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('estimation_projects')
+      .select('*, clients(name)')
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return data
+  })
+}
+
+export function useEstimationOpenings() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('estimation_openings')
+      .select('*, bom_templates(name, category)')
+      .order('opening_no')
+    if (error) throw error
+    return data
+  })
+}
+
 /** Every site's cost-breakdown estimate, keyed by expense_categories
  *  (site_cost_estimates) -- fetched whole (small table) and filtered
  *  client-side per site_id. Replaces the old sites.cost_aluminum/
