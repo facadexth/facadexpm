@@ -1406,25 +1406,14 @@ const MAX_SUPPLIER_DOCUMENT_EXAMPLES = 3
 
 /** Saves a newly-verified (image, corrected extraction) pair as a
  *  calibration example for a supplier. `base64`/`mimeType` are the same
- *  already-downscaled image the extraction call itself used. Prunes the
- *  oldest example first if this would exceed the cap. */
+ *  already-downscaled image the extraction call itself used. The new
+ *  example is uploaded and inserted FIRST, then older examples beyond
+ *  the cap are pruned -- never evict before the replacement is safely
+ *  stored, so a failed upload/insert never costs an existing example. */
 export async function saveSupplierDocumentExample(supplierId, base64, mimeType, extracted) {
-  const { data: existing, error: listError } = await supabase
-    .from('supplier_document_examples')
-    .select('id, file_path, created_at')
-    .eq('supplier_id', supplierId)
-    .order('created_at')
-  if (listError) throw listError
-
-  if ((existing || []).length >= MAX_SUPPLIER_DOCUMENT_EXAMPLES) {
-    const oldest = existing[0]
-    await supabase.storage.from('supplier-doc-examples').remove([oldest.file_path])
-    const { error: delError } = await supabase.from('supplier_document_examples').delete().eq('id', oldest.id)
-    if (delError) throw delError
-  }
-
   const { data: { user } } = await supabase.auth.getUser()
   const { data: roleRow } = await supabase.from('user_roles').select('tenant_id').eq('user_email', user.email).single()
+  if (!roleRow?.tenant_id) throw new Error('ไม่พบ tenant ของผู้ใช้')
   const ext = mimeType === 'image/png' ? 'png' : 'jpg'
   const filePath = `${roleRow.tenant_id}/${supplierId}/${Date.now()}.${ext}`
 
@@ -1439,24 +1428,47 @@ export async function saveSupplierDocumentExample(supplierId, base64, mimeType, 
     await supabase.storage.from('supplier-doc-examples').remove([filePath])
     throw insErr
   }
+
+  // Prune anything beyond the cap, oldest first. A while loop (not a
+  // single if) so this self-heals if the table is ever above cap for
+  // any reason, not just "exactly one over."
+  const { data: existing, error: listError } = await supabase
+    .from('supplier_document_examples')
+    .select('id, file_path, created_at')
+    .eq('supplier_id', supplierId)
+    .order('created_at')
+  if (listError) throw listError
+
+  const toEvict = (existing || []).slice(0, Math.max(0, (existing || []).length - MAX_SUPPLIER_DOCUMENT_EXAMPLES))
+  for (const old of toEvict) {
+    const { error: delErr } = await supabase.from('supplier_document_examples').delete().eq('id', old.id)
+    if (delErr) throw delErr
+    await supabase.storage.from('supplier-doc-examples').remove([old.file_path])
+  }
 }
 
 export async function deleteSupplierDocumentExample(example) {
-  const { error: rmErr } = await supabase.storage.from('supplier-doc-examples').remove([example.file_path])
-  if (rmErr) throw rmErr
   const { error: delErr } = await supabase.from('supplier_document_examples').delete().eq('id', example.id)
   if (delErr) throw delErr
+  await supabase.storage.from('supplier-doc-examples').remove([example.file_path])
 }
 
 /** Re-downloads a saved calibration example's (already-downscaled) image
  *  and re-encodes it to base64 for inclusion in an extraction call --
  *  examples are stored in Storage, not as base64, so this is the one
- *  place that bridges the two. */
+ *  place that bridges the two. Degrades gracefully: an orphaned row
+ *  (storage object gone) or any other download/encode failure returns
+ *  null instead of throwing, so one bad example never breaks every
+ *  future extraction call for a supplier. */
 async function loadExampleForPrompt(example) {
-  const { data: blob, error } = await supabase.storage.from('supplier-doc-examples').download(example.file_path)
-  if (error) throw error
-  const base64 = await blobToBase64(blob)
-  return { image_base64: base64, mime_type: blob.type || 'image/jpeg', extracted: example.extracted }
+  try {
+    const { data: blob, error } = await supabase.storage.from('supplier-doc-examples').download(example.file_path)
+    if (error) throw error
+    const base64 = await blobToBase64(blob)
+    return { image_base64: base64, mime_type: blob.type || 'image/jpeg', extracted: example.extracted }
+  } catch {
+    return null
+  }
 }
 
 /** Calls the extract-po-document Edge Function with one document image
@@ -1465,11 +1477,21 @@ async function loadExampleForPrompt(example) {
  *  validateExtraction so callers have one place to handle failure. */
 export async function extractPoDocument(base64, mimeType, examples = []) {
   try {
-    const examplesForPrompt = await Promise.all((examples || []).map(loadExampleForPrompt))
+    const loaded = await Promise.all((examples || []).map(loadExampleForPrompt))
+    const examplesForPrompt = loaded.filter(Boolean)
     const { data, error } = await supabase.functions.invoke('extract-po-document', {
       body: { image_base64: base64, mime_type: mimeType, examples: examplesForPrompt },
     })
-    if (error) return { ok: false, error: error.message }
+    if (error) {
+      let message = error.message
+      try {
+        const body = await error.context?.json()
+        if (body?.error) message = body.error
+      } catch {
+        // context unreadable/not JSON -- fall back to the generic message above
+      }
+      return { ok: false, error: message }
+    }
     return validateExtraction(data)
   } catch (e) {
     return { ok: false, error: e.message }

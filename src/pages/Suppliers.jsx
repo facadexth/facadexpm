@@ -9,6 +9,7 @@ import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useSuppliers, useSupplierDocumentExamples, saveSupplierDocumentExample, deleteSupplierDocumentExample, extractPoDocument } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
@@ -237,7 +238,7 @@ function SupplierDocumentTrainingModal({ supplier, onClose }) {
 
         <div>
           <label className="label">อัพโหลดตัวอย่างเอกสาร</label>
-          <input type="file" accept="image/*" capture="environment" onChange={handleUpload} disabled={extracting} />
+          <input type="file" accept="image/*" onChange={handleUpload} disabled={extracting} />
           {extracting && <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text3)' }}>⏳ กำลังอ่านเอกสาร...</span>}
         </div>
 
@@ -283,6 +284,7 @@ function SupplierDocumentTrainingModal({ supplier, onClose }) {
 export default function Suppliers() {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'suppliers')
+  const { hasModuleAccess } = useTenant()
   const { data: suppliers, refetch } = useSuppliers()
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState(null)
@@ -414,7 +416,9 @@ export default function Suppliers() {
                       <>
                         <button className="btn btn-sm btn-ghost" onClick={() => { setEditItem(s); setShowForm(true) }}>แก้ไข</button>
                         <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => setDeleteId(s.id)}>ลบ</button>
-                        <button className="btn btn-sm btn-ghost" onClick={() => setTrainingSupplier(s)}>🎓 ฝึกอ่านเอกสาร</button>
+                        {hasModuleAccess('purchase_orders') && (
+                          <button className="btn btn-sm btn-ghost" onClick={() => setTrainingSupplier(s)}>🎓 ฝึกอ่านเอกสาร</button>
+                        )}
                       </>
                     )}
                   </td>

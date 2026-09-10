@@ -72,8 +72,7 @@ const profileOpts = (profiles) => (profiles || []).map(p => ({
   value: p.id, label: `${p.name} (${p.linear_weight_kg_per_m} กก./ม.)`, keywords: p.name,
 }))
 
-function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, aluminumProfiles }) {
-  const { data: units, refetch: refetchUnits } = useUnits()
+function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, aluminumProfiles, units, onUnitAdded }) {
   const set = (i, k, v) => onChange(items.map((it, idx) => idx === i ? { ...it, [k]: v } : it))
   const add = () => onChange([...items, { ...EMPTY_ITEM }])
   const remove = (i) => onChange(items.length > 1 ? items.filter((_, idx) => idx !== i) : items)
@@ -96,7 +95,7 @@ function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, 
                 value={it.description} onChange={e => set(i, 'description', e.target.value)} />
               <input className="input input-sm" type="number" min="0" step="0.01" placeholder="จำนวน"
                 value={it.quantity} onChange={e => set(i, 'quantity', e.target.value)} />
-              <UnitSelect value={it.unit} onChange={v => set(i, 'unit', v)} units={units} onUnitAdded={refetchUnits} />
+              <UnitSelect value={it.unit} onChange={v => set(i, 'unit', v)} units={units} onUnitAdded={onUnitAdded} />
               <input className="input input-sm" type="number" min="0" step="0.01" placeholder="ราคา/หน่วย"
                 value={it.unit_price} onChange={e => set(i, 'unit_price', e.target.value)} />
               <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
@@ -163,6 +162,7 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const { data: supplierExamples } = useSupplierDocumentExamples(form.supplier_id || null)
+  const { data: units, refetch: refetchUnits } = useUnits()
   const [scanning, setScanning] = useState(false)
   const [scanError, setScanError] = useState(null)
 
@@ -177,6 +177,24 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
       const result = await extractPoDocument(base64, mimeType, supplierExamples || [])
       if (!result.ok) { setScanError(result.error); return }
       const { document_date_guess, reference_no_guess, line_items } = result.data
+
+      // Any extracted unit that doesn't already exist in the tenant's
+      // units list needs to be created first -- otherwise UnitSelect
+      // (exact-match only) renders the field as blank even though the
+      // real value is fine, misleading the reviewing user into "fixing"
+      // a correct extraction.
+      const knownUnitNames = new Set((units || []).map(u => u.name))
+      const missingUnitNames = [...new Set(
+        line_items.map(it => (it.unit || '').trim()).filter(name => name && !knownUnitNames.has(name))
+      )]
+      if (missingUnitNames.length) {
+        for (const name of missingUnitNames) {
+          const { error: unitErr } = await supabase.from('units').insert({ name })
+          if (unitErr) throw unitErr
+        }
+        await refetchUnits()
+      }
+
       setForm(f => ({
         ...f,
         date: document_date_guess || f.date,
@@ -225,12 +243,12 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
         </div>
         <div>
           <label className="label">📷 อัพโหลดจากใบส่งของ/ใบเสนอราคา (ไม่บังคับ)</label>
-          <input type="file" accept="image/*" capture="environment" onChange={handleScanUpload} disabled={!form.supplier_id || scanning} />
+          <input type="file" accept="image/*" onChange={handleScanUpload} disabled={!form.supplier_id || scanning} />
           {!form.supplier_id && <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>เลือก Supplier ก่อนถึงจะอัพโหลดได้</div>}
           {scanning && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>⏳ กำลังอ่านเอกสาร...</div>}
           {scanError && <div className="alert alert-error" style={{ marginTop: 6 }}>{scanError}</div>}
         </div>
-        <ItemsEditor items={form.items} onChange={items => set('items', items)} inventoryItems={inventoryItems} onInventoryItemCreated={onInventoryItemCreated} aluminumProfiles={aluminumProfiles} />
+        <ItemsEditor items={form.items} onChange={items => set('items', items)} inventoryItems={inventoryItems} onInventoryItemCreated={onInventoryItemCreated} aluminumProfiles={aluminumProfiles} units={units} onUnitAdded={refetchUnits} />
         <div>
           <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
