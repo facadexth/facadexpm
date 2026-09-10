@@ -101,7 +101,7 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
         </div>
         <div>
           <label className="label">Template ★</label>
-          <SearchableSelect required value={form.template_id} onChange={v => set('template_id', v)}
+          <SearchableSelect required disabled={!canEdit} value={form.template_id} onChange={v => set('template_id', v)}
             options={(templates || []).filter(t => t.active).map(t => ({ value: t.id, label: t.name, keywords: t.name }))} />
         </div>
       </div>
@@ -116,7 +116,7 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
         </div>
         <div>
           <label className="label">สีผิว ★</label>
-          <SearchableSelect required value={form.finish_id} onChange={v => set('finish_id', v)}
+          <SearchableSelect required disabled={!canEdit} value={form.finish_id} onChange={v => set('finish_id', v)}
             options={(finishes || []).filter(f => f.active).map(f => ({ value: f.id, label: f.name, keywords: f.name }))} />
         </div>
       </div>
@@ -139,7 +139,7 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
         </div>
         <div>
           <label className="label">ชนิดกระจก</label>
-          <SearchableSelect value={form.glass_type_id} onChange={v => set('glass_type_id', v)}
+          <SearchableSelect disabled={!canEdit} value={form.glass_type_id} onChange={v => set('glass_type_id', v)}
             options={(glassTypes || []).filter(g => g.active).map(g => ({ value: g.id, label: g.name, keywords: g.name }))} placeholder="ไม่มีกระจก" />
         </div>
       </div>
@@ -197,7 +197,7 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
 
       {canEdit && (
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button type="button" className="btn btn-primary" disabled={saving || !form.opening_no || !form.template_id} onClick={handleSave}>
+          <button type="button" className="btn btn-primary" disabled={saving || !form.opening_no || !form.template_id || !form.series || !form.thickness_mm || !form.finish_id || !form.width_m || !form.height_m} onClick={handleSave}>
             {saving ? '⏳ กำลังบันทึก...' : '💾 บันทึกช่องเปิด'}
           </button>
         </div>
@@ -278,12 +278,12 @@ export default function Estimation(props) {
             </div>
 
             {creatingOpening && (
-              <OpeningEditor opening={null} projectId={selectedProjectId} templates={templates} components={components} hardware={hardware}
+              <OpeningEditor key="new" opening={null} projectId={selectedProjectId} templates={templates} components={components} hardware={hardware}
                 constraints={constraints} profiles={profiles} finishes={finishes} glassTypes={glassTypes} canEdit={canEdit}
                 onSaved={() => { setCreatingOpening(false); refetchOpenings() }} />
             )}
             {editingOpeningId && (
-              <OpeningEditor opening={projectOpenings.find(o => o.id === editingOpeningId)} projectId={selectedProjectId} templates={templates} components={components}
+              <OpeningEditor key={editingOpeningId} opening={projectOpenings.find(o => o.id === editingOpeningId)} projectId={selectedProjectId} templates={templates} components={components}
                 hardware={hardware} constraints={constraints} profiles={profiles} finishes={finishes} glassTypes={glassTypes} canEdit={canEdit}
                 onSaved={() => { setEditingOpeningId(null); refetchOpenings() }} />
             )}
