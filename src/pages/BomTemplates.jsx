@@ -8,6 +8,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useBomTemplates, useAluminumFinishes, useBomGlassTypes } from '../hooks/useSupabase.js'
+import { useBomTemplateComponents, useBomTemplateHardware, useBomTemplateConstraints, useAluminumProfiles } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
@@ -69,6 +70,289 @@ function GlassTypeForm({ initial, onSave, onCancel, loading }) {
         <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? '⏳ กำลังบันทึก...' : '✅ บันทึก'}</button>
       </div>
     </form>
+  )
+}
+
+const LENGTH_RULE_LABELS = {
+  width: '= กว้าง (width)',
+  height: '= สูง (height)',
+  width_minus: '= กว้าง − ระยะหัก (mm)',
+  height_minus: '= สูง − ระยะหัก (mm)',
+  perimeter: '= เส้นรอบรูป',
+}
+const QUANTITY_BASIS_LABELS = { fixed: 'จำนวนคงที่', per_cell: 'ต่อช่อง (cell)' }
+const HARDWARE_BASIS_LABELS = { fixed: 'จำนวนคงที่', per_cell: 'ต่อช่อง (cell)', per_perimeter_m: 'ต่อเมตรเส้นรอบรูป' }
+const CONSTRAINT_TYPE_LABELS = { max_width_mm: 'กว้างสูงสุด (mm)', max_height_mm: 'สูงสุงสุด (mm)', max_span_mm: 'ช่วงกว้างสูงสุด (mm)', max_panel_count: 'จำนวนช่องสูงสุด' }
+
+const EMPTY_TEMPLATE_FORM = {
+  name: '', category: 'window', waste_pct: '10',
+  glass_width_deduction_mm: '0', glass_height_deduction_mm: '0',
+  grid_row_weights: [1],
+  grid_horizontal_rail_family: '', grid_vertical_mullion_family: '',
+  active: true,
+}
+
+function TemplateEditor({ template, allProfiles, components, hardware, constraints, onSaved, onDeleted, canEdit }) {
+  const isNew = !template?.id
+  const [form, setForm] = useState(() => isNew ? EMPTY_TEMPLATE_FORM : {
+    name: template.name, category: template.category, waste_pct: String(template.waste_pct),
+    glass_width_deduction_mm: String(template.glass_width_deduction_mm), glass_height_deduction_mm: String(template.glass_height_deduction_mm),
+    grid_row_weights: template.grid_row_weights, grid_horizontal_rail_family: template.grid_horizontal_rail_family || '',
+    grid_vertical_mullion_family: template.grid_vertical_mullion_family || '', active: template.active,
+  })
+  const [rows, setRows] = useState(() => isNew ? [] : components.filter(c => c.template_id === template.id).sort((a, b) => a.sort_order - b.sort_order))
+  const [hwRows, setHwRows] = useState(() => isNew ? [] : hardware.filter(h => h.template_id === template.id).sort((a, b) => a.sort_order - b.sort_order))
+  const [constraintRows, setConstraintRows] = useState(() => isNew ? [] : constraints.filter(c => c.template_id === template.id))
+  const [saving, setSaving] = useState(false)
+
+  const familyOptions = [...new Set(allProfiles.map(p => p.family).filter(Boolean))]
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const setRowWeight = (i, v) => setForm(f => ({ ...f, grid_row_weights: f.grid_row_weights.map((w, idx) => idx === i ? parseFloat(v) || 0 : w) }))
+  const addRow = () => setForm(f => ({ ...f, grid_row_weights: [...f.grid_row_weights, 1] }))
+  const removeRow = (i) => setForm(f => ({ ...f, grid_row_weights: f.grid_row_weights.filter((_, idx) => idx !== i) }))
+
+  const addComponent = () => setRows(r => [...r, { role_name: '', profile_family: '', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 1, sort_order: r.length }])
+  const setComponent = (i, k, v) => setRows(r => r.map((row, idx) => idx === i ? { ...row, [k]: v } : row))
+  const removeComponent = (i) => setRows(r => r.filter((_, idx) => idx !== i))
+
+  const addHardware = () => setHwRows(r => [...r, { name: '', reference_unit_price: 0, quantity_basis: 'fixed', quantity_value: 1, sort_order: r.length }])
+  const setHardware = (i, k, v) => setHwRows(r => r.map((row, idx) => idx === i ? { ...row, [k]: v } : row))
+  const removeHardware = (i) => setHwRows(r => r.filter((_, idx) => idx !== i))
+
+  const addConstraint = () => setConstraintRows(r => [...r, { rule_type: 'max_width_mm', value: 0, message: '' }])
+  const setConstraint = (i, k, v) => setConstraintRows(r => r.map((row, idx) => idx === i ? { ...row, [k]: v } : row))
+  const removeConstraint = (i) => setConstraintRows(r => r.filter((_, idx) => idx !== i))
+
+  // One template, its components, its hardware, and its constraints save
+  // together as one unit -- simplest correct approach for a form editor:
+  // upsert the template row, then delete-and-reinsert every child table's
+  // rows for it. Never partially saves (children only touched after the
+  // template row itself succeeds).
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const payload = {
+        name: form.name, category: form.category,
+        waste_pct: parseFloat(form.waste_pct) || 0,
+        glass_width_deduction_mm: parseFloat(form.glass_width_deduction_mm) || 0,
+        glass_height_deduction_mm: parseFloat(form.glass_height_deduction_mm) || 0,
+        grid_row_weights: form.grid_row_weights,
+        grid_horizontal_rail_family: form.grid_horizontal_rail_family || null,
+        grid_vertical_mullion_family: form.grid_vertical_mullion_family || null,
+        active: form.active !== false,
+      }
+      let templateId = template?.id
+      if (isNew) {
+        const { data, error } = await supabase.from('bom_templates').insert(payload).select('id').single()
+        if (error) throw error
+        templateId = data.id
+      } else {
+        const { error } = await supabase.from('bom_templates').update(payload).eq('id', templateId)
+        if (error) throw error
+      }
+
+      await supabase.from('bom_template_components').delete().eq('template_id', templateId)
+      if (rows.length) {
+        const { error } = await supabase.from('bom_template_components').insert(
+          rows.map((r, i) => ({ ...r, template_id: templateId, length_deduction_mm: parseFloat(r.length_deduction_mm) || 0, quantity_value: parseFloat(r.quantity_value) || 0, sort_order: i }))
+        )
+        if (error) throw error
+      }
+
+      await supabase.from('bom_template_hardware').delete().eq('template_id', templateId)
+      if (hwRows.length) {
+        const { error } = await supabase.from('bom_template_hardware').insert(
+          hwRows.map((h, i) => ({ ...h, template_id: templateId, reference_unit_price: parseFloat(h.reference_unit_price) || 0, quantity_value: parseFloat(h.quantity_value) || 0, sort_order: i }))
+        )
+        if (error) throw error
+      }
+
+      await supabase.from('bom_template_constraints').delete().eq('template_id', templateId)
+      if (constraintRows.length) {
+        const { error } = await supabase.from('bom_template_constraints').insert(
+          constraintRows.map(c => ({ ...c, template_id: templateId, value: parseFloat(c.value) || 0 }))
+        )
+        if (error) throw error
+      }
+
+      onSaved()
+    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + e.message) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div className="card" style={{ padding: 16, display: 'grid', gap: 16 }}>
+      <datalist id="profile-family-options">
+        {familyOptions.map(f => <option key={f} value={f} />)}
+      </datalist>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: 10 }}>
+        <div>
+          <label className="label">ชื่อ Template ★</label>
+          <input className="input" required disabled={!canEdit} value={form.name} onChange={e => set('name', e.target.value)} placeholder="เช่น Swing Door 2 Leaf General" />
+        </div>
+        <div>
+          <label className="label">ประเภท</label>
+          <select className="input" disabled={!canEdit} value={form.category} onChange={e => set('category', e.target.value)}>
+            <option value="door">ประตู</option>
+            <option value="window">หน้าต่าง</option>
+          </select>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+        <div>
+          <label className="label">เผื่อเสียเศษ (%)</label>
+          <input className="input" disabled={!canEdit} type="number" min="0" step="0.1" value={form.waste_pct} onChange={e => set('waste_pct', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">หักระยะกระจก กว้าง (mm)</label>
+          <input className="input" disabled={!canEdit} type="number" min="0" value={form.glass_width_deduction_mm} onChange={e => set('glass_width_deduction_mm', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">หักระยะกระจก สูง (mm)</label>
+          <input className="input" disabled={!canEdit} type="number" min="0" value={form.glass_height_deduction_mm} onChange={e => set('glass_height_deduction_mm', e.target.value)} />
+        </div>
+      </div>
+
+      <div>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>โครงสร้างภายใน (Grid)</div>
+        <div style={{ display: 'grid', gap: 6 }}>
+          {form.grid_row_weights.map((w, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: 12, color: 'var(--text3)', width: 60 }}>แถว {i + 1}</span>
+              <input className="input input-sm" style={{ width: 100 }} disabled={!canEdit} type="number" min="0" step="0.05" value={w} onChange={e => setRowWeight(i, e.target.value)} />
+              {canEdit && form.grid_row_weights.length > 1 && <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => removeRow(i)}>✕</button>}
+            </div>
+          ))}
+          {canEdit && <button type="button" className="btn btn-sm btn-ghost" style={{ justifySelf: 'start' }} onClick={addRow}>+ เพิ่มแถว</button>}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+          <div>
+            <label className="label">โปรไฟล์คานแนวนอน (ถ้ามีมากกว่า 1 แถว)</label>
+            <input className="input" disabled={!canEdit} list="profile-family-options" value={form.grid_horizontal_rail_family} onChange={e => set('grid_horizontal_rail_family', e.target.value)} placeholder="เช่น กล่องร่อง" />
+          </div>
+          <div>
+            <label className="label">โปรไฟล์เสากลาง (ถ้าจำนวนช่อง &gt; 1)</label>
+            <input className="input" disabled={!canEdit} list="profile-family-options" value={form.grid_vertical_mullion_family} onChange={e => set('grid_vertical_mullion_family', e.target.value)} placeholder="เช่น กล่องร่อง" />
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>ชิ้นส่วนอลูมิเนียม (Components)</div>
+        <div style={{ display: 'grid', gap: 6 }}>
+          {rows.map((r, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 80px 1fr 80px 32px', gap: 6, alignItems: 'center' }}>
+              <input className="input input-sm" disabled={!canEdit} placeholder="ชื่อชิ้นส่วน" value={r.role_name} onChange={e => setComponent(i, 'role_name', e.target.value)} />
+              <input className="input input-sm" disabled={!canEdit} list="profile-family-options" placeholder="กลุ่มหน้าตัด" value={r.profile_family} onChange={e => setComponent(i, 'profile_family', e.target.value)} />
+              <select className="input input-sm" disabled={!canEdit} value={r.length_rule_type} onChange={e => setComponent(i, 'length_rule_type', e.target.value)}>
+                {Object.entries(LENGTH_RULE_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+              </select>
+              <input className="input input-sm" disabled={!canEdit} type="number" min="0" placeholder="ระยะหัก mm" value={r.length_deduction_mm} onChange={e => setComponent(i, 'length_deduction_mm', e.target.value)} />
+              <select className="input input-sm" disabled={!canEdit} value={r.quantity_basis} onChange={e => setComponent(i, 'quantity_basis', e.target.value)}>
+                {Object.entries(QUANTITY_BASIS_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+              </select>
+              <input className="input input-sm" disabled={!canEdit} type="number" min="0" placeholder="จำนวน" value={r.quantity_value} onChange={e => setComponent(i, 'quantity_value', e.target.value)} />
+              {canEdit && <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => removeComponent(i)}>✕</button>}
+            </div>
+          ))}
+          {canEdit && <button type="button" className="btn btn-sm btn-ghost" style={{ justifySelf: 'start' }} onClick={addComponent}>+ เพิ่มชิ้นส่วน</button>}
+        </div>
+      </div>
+
+      <div>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>อุปกรณ์ (Hardware)</div>
+        <div style={{ display: 'grid', gap: 6 }}>
+          {hwRows.map((h, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 120px 1fr 80px 32px', gap: 6, alignItems: 'center' }}>
+              <input className="input input-sm" disabled={!canEdit} placeholder="ชื่ออุปกรณ์" value={h.name} onChange={e => setHardware(i, 'name', e.target.value)} />
+              <input className="input input-sm" disabled={!canEdit} type="number" min="0" placeholder="ราคา/ชิ้น" value={h.reference_unit_price} onChange={e => setHardware(i, 'reference_unit_price', e.target.value)} />
+              <select className="input input-sm" disabled={!canEdit} value={h.quantity_basis} onChange={e => setHardware(i, 'quantity_basis', e.target.value)}>
+                {Object.entries(HARDWARE_BASIS_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+              </select>
+              <input className="input input-sm" disabled={!canEdit} type="number" min="0" placeholder="จำนวน" value={h.quantity_value} onChange={e => setHardware(i, 'quantity_value', e.target.value)} />
+              {canEdit && <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => removeHardware(i)}>✕</button>}
+            </div>
+          ))}
+          {canEdit && <button type="button" className="btn btn-sm btn-ghost" style={{ justifySelf: 'start' }} onClick={addHardware}>+ เพิ่มอุปกรณ์</button>}
+        </div>
+      </div>
+
+      <div>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>ข้อจำกัด (แจ้งเตือนเท่านั้น ไม่บล็อกการบันทึก)</div>
+        <div style={{ display: 'grid', gap: 6 }}>
+          {constraintRows.map((c, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 120px 2fr 32px', gap: 6, alignItems: 'center' }}>
+              <select className="input input-sm" disabled={!canEdit} value={c.rule_type} onChange={e => setConstraint(i, 'rule_type', e.target.value)}>
+                {Object.entries(CONSTRAINT_TYPE_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+              </select>
+              <input className="input input-sm" disabled={!canEdit} type="number" min="0" placeholder="ค่า" value={c.value} onChange={e => setConstraint(i, 'value', e.target.value)} />
+              <input className="input input-sm" disabled={!canEdit} placeholder="ข้อความแจ้งเตือน" value={c.message} onChange={e => setConstraint(i, 'message', e.target.value)} />
+              {canEdit && <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => removeConstraint(i)}>✕</button>}
+            </div>
+          ))}
+          {canEdit && <button type="button" className="btn btn-sm btn-ghost" style={{ justifySelf: 'start' }} onClick={addConstraint}>+ เพิ่มข้อจำกัด</button>}
+        </div>
+      </div>
+
+      {canEdit && (
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          {!isNew && <button type="button" className="btn btn-ghost" style={{ color: 'var(--red)' }} onClick={() => onDeleted(template.id)}>🗑️ ลบ Template</button>}
+          <button type="button" className="btn btn-primary" disabled={saving || !form.name} onClick={handleSave}>{saving ? '⏳ กำลังบันทึก...' : '💾 บันทึก'}</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TemplatesView({ canEdit }) {
+  const { data: templates, refetch: refetchTemplates } = useBomTemplates()
+  const { data: components } = useBomTemplateComponents()
+  const { data: hardware } = useBomTemplateHardware()
+  const { data: constraints } = useBomTemplateConstraints()
+  const { data: allProfiles } = useAluminumProfiles()
+  const [selectedId, setSelectedId] = useState(null)
+  const [creating, setCreating] = useState(false)
+  const [deleteId, setDeleteId] = useState(null)
+
+  const selected = (templates || []).find(t => t.id === selectedId)
+
+  const handleDelete = async () => {
+    if (!deleteId) return
+    const { error } = await supabase.from('bom_templates').delete().eq('id', deleteId)
+    if (!error) { setDeleteId(null); setSelectedId(null); refetchTemplates() }
+    else alert('ลบไม่สำเร็จ (อาจมี opening ที่ใช้ template นี้อยู่): ' + error.message)
+  }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16 }}>
+      <div className="card" style={{ padding: 12 }}>
+        {canEdit && <button className="btn btn-primary btn-sm" style={{ marginBottom: 10, width: '100%' }} onClick={() => { setCreating(true); setSelectedId(null) }}>+ Template ใหม่</button>}
+        <div style={{ display: 'grid', gap: 4 }}>
+          {(templates || []).map(t => (
+            <button key={t.id} className={`btn btn-sm ${selectedId === t.id ? 'btn-primary' : 'btn-ghost'}`} style={{ justifyContent: 'flex-start' }}
+              onClick={() => { setSelectedId(t.id); setCreating(false) }}>
+              {t.active ? '' : '🚫 '}{t.name}
+            </button>
+          ))}
+          {!(templates || []).length && <div style={{ fontSize: 12, color: 'var(--text3)', padding: 8 }}>ยังไม่มี Template</div>}
+        </div>
+      </div>
+      <div>
+        {creating && (
+          <TemplateEditor template={null} allProfiles={allProfiles || []} components={[]} hardware={[]} constraints={[]} canEdit={canEdit}
+            onSaved={() => { setCreating(false); refetchTemplates() }} onDeleted={() => {}} />
+        )}
+        {selected && !creating && (
+          <TemplateEditor template={selected} allProfiles={allProfiles || []} components={components || []} hardware={hardware || []} constraints={constraints || []} canEdit={canEdit}
+            onSaved={refetchTemplates} onDeleted={(id) => setDeleteId(id)} />
+        )}
+        {!creating && !selected && <div style={{ color: 'var(--text3)', padding: 20 }}>เลือก Template ทางซ้าย หรือสร้างใหม่</div>}
+      </div>
+      {deleteId && <ConfirmDialog title="ลบ Template" message="ยืนยันการลบ? (ถ้ามี opening ผูกอยู่ การลบจะไม่สำเร็จ)" onConfirm={handleDelete} onCancel={() => setDeleteId(null)} />}
+    </div>
   )
 }
 
@@ -141,7 +425,7 @@ export default function BomTemplates(props) {
       </div>
 
       {view === 'templates' && (
-        <div style={{ color: 'var(--text3)' }}>Task 9 fills this in.</div>
+        <TemplatesView canEdit={canEdit} />
       )}
 
       {view === 'finishes' && (
