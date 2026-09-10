@@ -12,6 +12,19 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import SearchableSelect from './SearchableSelect.jsx'
 
+// Loose "might be the same thing" check -- bidirectional substring,
+// case-insensitive, trimmed. Not fuzzy matching; just enough to catch the
+// common near-duplicate case (typo, extra spec text, reordered words in
+// a longer name) before it becomes a second row for the same real item.
+function findPossibleDuplicates(options, typedName) {
+  const needle = typedName.trim().toLowerCase()
+  if (!needle) return []
+  return options.filter(o => {
+    const label = (o.label || '').toLowerCase()
+    return label.includes(needle) || needle.includes(label)
+  })
+}
+
 export default function QuickAddSelect({
   value, onChange, options, placeholder, required, disabled,
   table, extraPayload, onCreated,
@@ -20,9 +33,9 @@ export default function QuickAddSelect({
   const [showCreate, setShowCreate] = useState(false)
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
+  const [duplicates, setDuplicates] = useState(null) // null = not checked yet this attempt
 
-  const handleCreate = async () => {
-    if (!name.trim()) return
+  const doCreate = async () => {
     setSaving(true)
     try {
       const { data, error } = await supabase.from(table)
@@ -32,9 +45,30 @@ export default function QuickAddSelect({
       onChange(data.id)
       setShowCreate(false)
       setName('')
+      setDuplicates(null)
       onCreated?.(data)
     } catch (e) { alert('Error: ' + e.message) }
     finally { setSaving(false) }
+  }
+
+  const handleCreate = async () => {
+    if (!name.trim()) return
+    // First press: check for an existing entry that might be this same
+    // thing under a different name/typo, and surface it instead of
+    // creating right away. Second press (duplicates already shown and
+    // the user still wants to proceed) creates for real.
+    if (duplicates === null) {
+      const found = findPossibleDuplicates(options, name)
+      if (found.length) { setDuplicates(found); return }
+    }
+    await doCreate()
+  }
+
+  const useDuplicate = (opt) => {
+    onChange(opt.value)
+    setShowCreate(false)
+    setName('')
+    setDuplicates(null)
   }
 
   return (
@@ -48,16 +82,30 @@ export default function QuickAddSelect({
         </button>
       </div>
       {showCreate && (
-        <div className="card" style={{ padding: 10, marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input
-            className="input input-sm" style={{ flex: 1 }} autoFocus
-            value={name} onChange={e => setName(e.target.value)} placeholder={namePlaceholder}
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCreate() } }}
-          />
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setShowCreate(false); setName('') }}>ยกเลิก</button>
-          <button type="button" className="btn btn-primary btn-sm" disabled={saving || !name.trim()} onClick={handleCreate}>
-            {saving ? '⏳...' : '✅ เพิ่ม'}
-          </button>
+        <div className="card" style={{ padding: 10, marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              className="input input-sm" style={{ flex: 1 }} autoFocus
+              value={name} onChange={e => { setName(e.target.value); setDuplicates(null) }} placeholder={namePlaceholder}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCreate() } }}
+            />
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setShowCreate(false); setName(''); setDuplicates(null) }}>ยกเลิก</button>
+            <button type="button" className="btn btn-primary btn-sm" disabled={saving || !name.trim()} onClick={handleCreate}>
+              {saving ? '⏳...' : duplicates?.length ? '✅ สร้างใหม่จริง (ไม่ซ้ำ)' : '✅ เพิ่ม'}
+            </button>
+          </div>
+          {duplicates?.length > 0 && (
+            <div style={{ marginTop: 8, fontSize: 12.5 }}>
+              <div style={{ color: 'var(--amber, #d9a441)', marginBottom: 4 }}>⚠️ พบรายการที่ชื่อใกล้เคียงกันอยู่แล้ว — กดเลือกถ้าเป็นรายการเดียวกัน ไม่งั้นกด "สร้างใหม่จริง" อีกครั้ง</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {duplicates.map(o => (
+                  <button key={o.value} type="button" className="btn btn-sm btn-ghost" style={{ borderColor: 'var(--border)' }} onClick={() => useDuplicate(o)}>
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
