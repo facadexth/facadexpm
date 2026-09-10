@@ -10,11 +10,14 @@
 // that; this function only talks to Claude's API.
 //
 // Auth: bound to the caller's own JWT (same pattern as
-// omise-create-charge) so a plain SELECT against a purchase_orders-
-// module-gated table is enough to confirm the caller is an admin/owner
-// of a tenant with the purchase_orders module -- reusing existing RLS
-// instead of re-implementing role checks here. This gate exists because
-// every call spends real ANTHROPIC_API_KEY money.
+// omise-create-charge), gated via the existing is_admin_or_owner() and
+// has_module_access('purchase_orders') RLS helper functions -- called
+// directly over RPC rather than reimplemented here. A plain SELECT
+// against purchase_orders is NOT sufficient: RLS USING clauses filter
+// rows silently rather than erroring, so a non-admin or a
+// module-less tenant would get `{ data: [], error: null }`, not an
+// error, and slip straight through. This gate exists because every
+// call spends real ANTHROPIC_API_KEY money.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')!
@@ -100,14 +103,21 @@ Deno.serve(async (req) => {
   if (!image_base64 || typeof image_base64 !== 'string') return json({ error: 'image_base64 required' }, 400)
   if (!mime_type || typeof mime_type !== 'string') return json({ error: 'mime_type required' }, 400)
 
-  // Bound to the caller's own JWT -- respects RLS, so this SELECT only
-  // succeeds for an admin/owner whose tenant has the purchase_orders
-  // module, matching every other PO-module action in the app.
+  // Bound to the caller's own JWT. NOTE: a plain SELECT against
+  // purchase_orders is NOT a valid gate here -- RLS USING clauses filter
+  // rows silently (no error) rather than rejecting the query, so a
+  // non-admin or a tenant without the purchase_orders module would get
+  // back `{ data: [], error: null }` and sail straight through. Call the
+  // RLS helper functions directly instead: they return a real boolean
+  // (COALESCE(..., false)), so "not authorized" is unambiguous.
   const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: authHeader } },
   })
-  const { error: authCheckError } = await userClient.from('purchase_orders').select('id').limit(1)
-  if (authCheckError) return json({ error: 'Unauthorized' }, 403)
+  const { data: isAdminOrOwner, error: adminCheckError } = await userClient.rpc('is_admin_or_owner')
+  if (adminCheckError || !isAdminOrOwner) return json({ error: 'Unauthorized' }, 403)
+
+  const { data: hasAccess, error: moduleCheckError } = await userClient.rpc('has_module_access', { p_module_key: 'purchase_orders' })
+  if (moduleCheckError || !hasAccess) return json({ error: 'Unauthorized' }, 403)
 
   const messages = buildMessages(image_base64, mime_type, Array.isArray(examples) ? examples : [])
 
