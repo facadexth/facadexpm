@@ -176,8 +176,19 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
   const [scanning, setScanning] = useState(false)
   const [scanError, setScanError] = useState(null)
 
+  // TEMPORARY diagnostic -- proves whether PurchaseOrderForm itself is
+  // silently unmounting/remounting while the native picker is open
+  // (which would orphan the input the OS callback is targeting, without
+  // a full page reload the boot badge would catch). Remove once resolved.
+  useEffect(() => {
+    console.error('[FORM DEBUG] PurchaseOrderForm mounted, isAdd=' + isAdd)
+    return () => console.error('[FORM DEBUG] PurchaseOrderForm UNMOUNTING')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const handleScanUpload = async (e) => {
     const file = e.target.files?.[0]
+    console.error('[SCAN DEBUG] onChange fired. files.length=' + e.target.files?.length + ' file=' + (file ? `${file.name} type=${file.type} size=${file.size}` : 'none'))
     if (!file) return
     e.target.value = ''
     setScanError(null)

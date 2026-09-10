@@ -6,15 +6,40 @@
 import { useState } from 'react'
 
 const KEY = '__fx_debug_log'
+const BOOT_KEY = '__fx_boot_count'
+
+// sessionStorage (not localStorage) on purpose -- survives a same-tab
+// reload (what we're trying to detect: an invisible silent reload during
+// the file-picker flow) but resets on a genuinely new tab, so the number
+// only climbs when THIS tab keeps getting torn down and reloaded.
+let bootCount = 1
+try {
+  bootCount = (parseInt(sessionStorage.getItem(BOOT_KEY) || '0', 10) || 0) + 1
+  sessionStorage.setItem(BOOT_KEY, String(bootCount))
+} catch { /* private browsing etc. */ }
 
 export default function DebugLogPanel() {
   const [log, setLog] = useState(() => {
     try { return JSON.parse(localStorage.getItem(KEY) || '[]') } catch { return [] }
   })
   const [open, setOpen] = useState(true)
-  if (!log.length) return null
+
+  const bootBadge = (
+    <div style={{
+      position: 'fixed', top: 6, right: 6, zIndex: 999999,
+      background: bootCount > 1 ? '#4d1a1a' : '#1a3a1a', color: bootCount > 1 ? '#ff9a9a' : '#9affa0',
+      fontFamily: 'monospace', fontSize: 11, padding: '3px 8px', borderRadius: 6,
+      border: `1px solid ${bootCount > 1 ? '#a33' : '#3a3'}`,
+    }}>
+      🔄 boot #{bootCount}
+    </div>
+  )
+
+  if (!log.length) return bootBadge
 
   return (
+    <>
+      {bootBadge}
     <div style={{
       position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 999999,
       background: '#1a1a1a', color: '#7CFC7C', fontFamily: 'monospace', fontSize: 11,
@@ -36,6 +61,7 @@ export default function DebugLogPanel() {
           {e.stack ? `\n${e.stack}` : ''}
         </div>
       ))}
-    </div>
+      </div>
+    </>
   )
 }
