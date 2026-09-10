@@ -32,7 +32,14 @@ export default function Login() {
     setError(null)
     const { error } = await supabase.auth.signUp({
       email, password,
-      options: { data: { company_name: companyName, contractor_type_id: contractorTypeId } }
+      options: { data: {
+        company_name: companyName,
+        // 'none' (เริ่มต้นแบบว่างเปล่า) must NOT reach the DB trigger as an
+        // empty string -- casting '' to uuid there throws. Omit the key
+        // entirely so raw_user_meta_data->>'contractor_type_id' reads NULL,
+        // the trigger's already-supported "skip seeding" path.
+        ...(contractorTypeId && contractorTypeId !== 'none' ? { contractor_type_id: contractorTypeId } : {}),
+      } }
     })
     if (error) {
       setError(error.message)
@@ -103,6 +110,7 @@ export default function Login() {
                   {(contractorTypes || []).map(t => (
                     <option key={t.id} value={t.id}>{t.label_th}</option>
                   ))}
+                  <option value="none">— เริ่มต้นแบบว่างเปล่า (ไม่ใช้ preset) —</option>
                 </select>
               </div>
             )}
