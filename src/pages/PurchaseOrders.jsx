@@ -6,7 +6,8 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName } from '../hooks/useSupabase.js'
+import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument } from '../hooks/useSupabase.js'
+import { fileToDownscaledBase64 } from '../lib/poDocumentExtraction.js'
 import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm } from '../lib/inventoryCost.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -161,6 +162,36 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
   const [form, setForm, clearFormDraft] = useDraftForm('purchase-order-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  const { data: supplierExamples } = useSupplierDocumentExamples(form.supplier_id || null)
+  const [scanning, setScanning] = useState(false)
+  const [scanError, setScanError] = useState(null)
+
+  const handleScanUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setScanError(null)
+    setScanning(true)
+    try {
+      const { base64, mimeType } = await fileToDownscaledBase64(file)
+      const result = await extractPoDocument(base64, mimeType, supplierExamples || [])
+      if (!result.ok) { setScanError(result.error); return }
+      const { document_date_guess, reference_no_guess, line_items } = result.data
+      setForm(f => ({
+        ...f,
+        date: document_date_guess || f.date,
+        notes: reference_no_guess ? [f.notes, `อ้างอิง: ${reference_no_guess}`].filter(Boolean).join(' ') : f.notes,
+        items: line_items.length
+          ? line_items.map(it => ({ ...EMPTY_ITEM, description: it.description, quantity: String(it.quantity), unit: it.unit, unit_price: String(it.unit_price) }))
+          : f.items,
+      }))
+    } catch (err) {
+      setScanError(err.message)
+    } finally {
+      setScanning(false)
+    }
+  }
+
   return (
     <form onSubmit={e => { e.preventDefault(); clearFormDraft(); onSave(form) }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
@@ -191,6 +222,13 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
               placeholder="— เลือก Supplier —" options={supplierOpts(suppliers)}
               table="suppliers" namePlaceholder="ชื่อ Supplier ใหม่" onCreated={onSupplierCreated} />
           </div>
+        </div>
+        <div>
+          <label className="label">📷 อัพโหลดจากใบส่งของ/ใบเสนอราคา (ไม่บังคับ)</label>
+          <input type="file" accept="image/*" onChange={handleScanUpload} disabled={!form.supplier_id || scanning} />
+          {!form.supplier_id && <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>เลือก Supplier ก่อนถึงจะอัพโหลดได้</div>}
+          {scanning && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>⏳ กำลังอ่านเอกสาร...</div>}
+          {scanError && <div className="alert alert-error" style={{ marginTop: 6 }}>{scanError}</div>}
         </div>
         <ItemsEditor items={form.items} onChange={items => set('items', items)} inventoryItems={inventoryItems} onInventoryItemCreated={onInventoryItemCreated} aluminumProfiles={aluminumProfiles} />
         <div>
