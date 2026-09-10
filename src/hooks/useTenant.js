@@ -2,16 +2,24 @@
 // useTenant — fetch current user's tenant + enabled modules
 // Returns: { tenant, enabledModules, loading, isTrialActive, trialDaysRemaining, hasModuleAccess, refetch }
 // ============================================================
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
 
 export function useTenant() {
   const [tenant, setTenant] = useState(null)
   const [enabledModules, setEnabledModules] = useState([])
   const [loading, setLoading] = useState(true)
+  // Only the very FIRST fetch should show as "loading" -- see the matching
+  // comment in useUserRole.js. onAuthStateChange re-fires this on every
+  // tab refocus (Supabase's automatic session revalidation), and
+  // ProtectedPage unmounts its children while loading=true -- so without
+  // this guard, returning from a native file/photo picker was enough to
+  // silently tear down whatever form/page was open, losing the selection.
+  const hasLoadedOnce = useRef(false)
 
   const fetchTenant = useCallback(async () => {
-    setLoading(true)
+    if (!hasLoadedOnce.current) setLoading(true)
+    hasLoadedOnce.current = true
     const { data: { session } } = await supabase.auth.getSession()
 
     if (!session?.user) {
