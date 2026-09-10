@@ -11,7 +11,15 @@ import { fileToExtractionPayload } from '../lib/poDocumentExtraction.js'
 import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm } from '../lib/inventoryCost.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
-import { useDraftForm } from '../hooks/useDraftForm.js'
+import { useDraftForm, readDraft, saveDraft, clearDraft } from '../hooks/useDraftForm.js'
+
+// useDraftForm already survives an Android tab-discard reload for the form's
+// OWN fields (restores on next mount), but the list page's "is the add
+// modal even open" state is a separate useState that reload always resets
+// to false -- so a reload mid-scan silently drops you on the bare list with
+// an orphaned draft nobody reopens. This flag records "the add form was
+// open" alongside the draft so the list page can reopen it automatically.
+const ADD_FORM_OPEN_KEY = 'purchase-order-form-open'
 import { useTenant } from '../hooks/useTenant.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { auditLog } from '../lib/audit.js'
@@ -560,6 +568,15 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     }
   }, [navState?.poId, pos])
 
+  // Reopens the add-PO form after a reload that happened while it was open
+  // (see ADD_FORM_OPEN_KEY above) -- runs once on mount, before the user has
+  // done anything, so a mid-scan Android reload lands back in the form with
+  // the draft restored instead of on the bare list.
+  useEffect(() => {
+    if (readDraft(ADD_FORM_OPEN_KEY)) { setEditRow(null); setShowAdd(true) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const handleSave = async (form) => {
     setSaving(true)
     try {
@@ -601,6 +618,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
         if (error) throw error
       }
 
+      clearDraft(ADD_FORM_OPEN_KEY)
       setShowAdd(false); setEditRow(null); refetch(); showToast('บันทึกสำเร็จ')
     } catch (e) {
       alert('Error: ' + e.message)
@@ -749,14 +767,14 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     return (
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <button className="btn btn-ghost" onClick={() => { setShowAdd(false); setEditRow(null) }}>← กลับ</button>
+          <button className="btn btn-ghost" onClick={() => { clearDraft(ADD_FORM_OPEN_KEY); setShowAdd(false); setEditRow(null) }}>← กลับ</button>
           <h2 style={{ margin: 0, fontSize: 18 }}>{editRow ? 'แก้ไขใบสั่งซื้อ' : 'เพิ่มใบสั่งซื้อ'}</h2>
         </div>
         <div className="card" style={{ maxWidth: 960, margin: '0 auto' }}>
           <PurchaseOrderForm
             initial={editFormInitial || EMPTY_FORM}
             sites={sites} categories={categories} suppliers={suppliers || []}
-            onSave={handleSave} onCancel={() => { setShowAdd(false); setEditRow(null) }} loading={saving}
+            onSave={handleSave} onCancel={() => { clearDraft(ADD_FORM_OPEN_KEY); setShowAdd(false); setEditRow(null) }} loading={saving}
             onSiteCreated={refetchSites} onSupplierCreated={refetchSuppliers}
             inventoryItems={inventoryItems} onInventoryItemCreated={refetchInventoryItems} aluminumProfiles={aluminumProfiles}
           />
@@ -780,7 +798,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        {canEdit && <button className="btn btn-primary" onClick={() => { setEditRow(null); setShowAdd(true) }}>+ เพิ่มใบสั่งซื้อ</button>}
+        {canEdit && <button className="btn btn-primary" onClick={() => { saveDraft(ADD_FORM_OPEN_KEY, true); setEditRow(null); setShowAdd(true) }}>+ เพิ่มใบสั่งซื้อ</button>}
         <div style={{ flex: 1 }} />
         <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <span style={{ color: 'var(--text3)' }}>—</span>
@@ -839,7 +857,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                         {canEdit && po.status === 'ordered' && (
                           <>
                             <button className="btn btn-sm btn-primary" onClick={() => setReceiveRow(po)}>✅ รับของแล้ว</button>
-                            <button className="btn btn-sm btn-edit" onClick={() => { setEditRow(po); setShowAdd(true) }}><PencilIcon /></button>
+                            <button className="btn btn-sm btn-edit" onClick={() => { clearDraft(ADD_FORM_OPEN_KEY); setEditRow(po); setShowAdd(true) }}><PencilIcon /></button>
                             <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(po.id)}><TrashIcon /></button>
                           </>
                         )}
