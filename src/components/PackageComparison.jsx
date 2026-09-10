@@ -18,6 +18,7 @@ const MODULE_LABELS = {
   client_deposits: '💰 มัดจำลูกค้า',
   payroll: '👷 Payroll / จ่ายงานช่าง',
   labor_subcontractors: '🔧 ผู้รับเหมาค่าแรง',
+  estimation: '📐 ประเมินราคา (BOM)',
 }
 
 export default function PackageComparison({ currentPackageId, onApply, applyingId, allowFreeApply }) {
