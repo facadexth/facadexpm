@@ -7,3 +7,4 @@ facadex-deploy/
 *.zip
 .superpowers/
 .claude/worktrees/
+supabase/.temp/
