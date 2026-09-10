@@ -225,7 +225,7 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
         </div>
         <div>
           <label className="label">📷 อัพโหลดจากใบส่งของ/ใบเสนอราคา (ไม่บังคับ)</label>
-          <input type="file" accept="image/*" onChange={handleScanUpload} disabled={!form.supplier_id || scanning} />
+          <input type="file" accept="image/*" capture="environment" onChange={handleScanUpload} disabled={!form.supplier_id || scanning} />
           {!form.supplier_id && <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>เลือก Supplier ก่อนถึงจะอัพโหลดได้</div>}
           {scanning && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>⏳ กำลังอ่านเอกสาร...</div>}
           {scanError && <div className="alert alert-error" style={{ marginTop: 6 }}>{scanError}</div>}

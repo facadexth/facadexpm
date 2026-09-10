@@ -237,7 +237,7 @@ function SupplierDocumentTrainingModal({ supplier, onClose }) {
 
         <div>
           <label className="label">อัพโหลดตัวอย่างเอกสาร</label>
-          <input type="file" accept="image/*" onChange={handleUpload} disabled={extracting} />
+          <input type="file" accept="image/*" capture="environment" onChange={handleUpload} disabled={extracting} />
           {extracting && <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text3)' }}>⏳ กำลังอ่านเอกสาร...</span>}
         </div>
 
