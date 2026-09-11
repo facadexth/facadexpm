@@ -105,9 +105,17 @@ function AutoGrowTextarea({ value, ...props }) {
   return <textarea ref={ref} value={value} {...props} />
 }
 
-function MoveButtons({ onUp, onDown, disabledUp, disabledDown }) {
+// onInsert is optional -- when passed, stacks a small "+" above the ▲▼
+// pair in the same 24px column (no new grid column needed) so a new item
+// can be dropped in right after this row's block instead of always
+// landing at the end of the list.
+function MoveButtons({ onUp, onDown, disabledUp, disabledDown, onInsert }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      {onInsert && (
+        <button type="button" className="btn btn-ghost" style={{ padding: 0, height: 14, fontSize: 10, lineHeight: 1, fontWeight: 700 }}
+          title="แทรกรายการใหม่ต่อจากนี้" onClick={onInsert}>+</button>
+      )}
       <button type="button" className="btn btn-ghost" style={{ padding: 0, height: 14, fontSize: 9, lineHeight: 1 }}
         title="เลื่อนขึ้น" disabled={disabledUp} onClick={onUp}>▲</button>
       <button type="button" className="btn btn-ghost" style={{ padding: 0, height: 14, fontSize: 9, lineHeight: 1 }}
@@ -129,7 +137,18 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
     }
     return next
   }))
-  const add = () => onChange([...items, { ...EMPTY_ITEM }, { ...EMPTY_ITEM_DESCRIPTION }])
+  // Free typing during entry (e.g. "150." while still typing "150.5") is
+  // left alone -- only normalizes to 2 decimals once the user leaves the
+  // field, so it never fights the user's cursor mid-keystroke.
+  const roundOnBlur = (i, k) => () => {
+    const raw = items[i]?.[k]
+    if (raw === '' || raw == null) return
+    set(i, k, (Math.round((parseFloat(raw) || 0) * 100) / 100).toFixed(2))
+  }
+  // No longer auto-appends an empty item_description -- most items don't
+  // need one, and forcing an extra always-visible row per item cluttered
+  // the list. addDescriptionTo below adds one on demand instead.
+  const add = () => onChange([...items, { ...EMPTY_ITEM }])
   const addNote = () => onChange([...items, { ...EMPTY_NOTE }])
   // Deleting an 'item' row must take its glued item_description (see
   // EMPTY_ITEM_DESCRIPTION comment) with it -- plain index removal left the
@@ -140,13 +159,31 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
     if (items.length <= len) return
     onChange([...items.slice(0, i), ...items.slice(i + len)])
   }
+  // Shows the description field for item i (inserts its item_description
+  // row right after it) -- the ✕ on that row is the "hide" side of this,
+  // no separate boolean/collapsed state needed.
+  const addDescriptionTo = (i) => onChange([...items.slice(0, i + 1), { ...EMPTY_ITEM_DESCRIPTION }, ...items.slice(i + 1)])
+  // "+" on an item/note row's own MoveButtons -- drops a new empty item
+  // right after THAT row's block instead of always at the end of the list
+  // (the plain "+ เพิ่มรายการว่าง" button below still does that). Inserts
+  // after the whole block (i + blockLenAt(i)), not i + 1, so it can't land
+  // between an item and its own glued item_description.
+  const insertItemAfter = (i) => {
+    const insertAt = i + blockLenAt(i)
+    onChange([...items.slice(0, insertAt), { ...EMPTY_ITEM }, ...items.slice(insertAt)])
+  }
   const addFromCatalog = (catalogId) => {
     const found = (catalogItems || []).find(c => c.id === catalogId)
     if (!found) return
-    onChange([...items, {
+    const newItem = {
       catalog_item_id: found.id, description: found.name, unit: found.unit || '',
       quantity: '1', unit_price: String(found.default_unit_price), item_type: 'item',
-    }, { ...EMPTY_ITEM_DESCRIPTION, description: found.description || '' }])
+    }
+    // Only bring along a description row if the catalog entry actually has
+    // one to show -- an empty one would just be another row to dismiss.
+    onChange(found.description
+      ? [...items, newItem, { ...EMPTY_ITEM_DESCRIPTION, description: found.description }]
+      : [...items, newItem])
   }
   // Lets a free-typed line become a reusable catalog entry without leaving
   // the quotation — inserts it, then links this row to the new entry the
@@ -170,6 +207,22 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
     onCatalogRefetch?.()
   }
   const grandTotal = items.reduce((sum, it) => sum + lineTotal(it), 0)
+  // "รายการที่" numbering -- counts real 'item' rows only (skips notes and
+  // item_description, which aren't billable lines of their own), so it
+  // lines up with the same numbering on the printed document (QuotationPaper's
+  // printItemNumbers) for the same reason: an unambiguous way to tell which
+  // description pairs with which item.
+  const itemNumbers = (() => {
+    let n = 0
+    return items.map(it => it.item_type === 'item' ? ++n : null)
+  })()
+  // Shared by the 'item' and 'item_description' rows so their columns stay
+  // pixel-aligned (see the item_description comment below on why that
+  // matters) -- leading 28px is the number column, trailing 32px is the
+  // description show/hide toggle.
+  const itemGridCols = pricingMode === 'split'
+    ? '28px 24px 1fr 70px 150px 100px 100px 32px 32px 32px'
+    : '28px 24px 1fr 70px 150px 100px 32px 32px 32px'
 
   // "บล็อก" = แถวที่ย้ายด้วยกันเป็นหน่วยเดียว -- item_description ไม่ใช่จุด
   // เริ่มบล็อกเอง (ผูกติดกับ item ก่อนหน้าโดยตำแหน่ง ดูคอมเมนต์ EMPTY_ITEM_DESCRIPTION
@@ -202,7 +255,7 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
             // เพราะพอพิมพ์ข้อความเข้าไปแล้ว placeholder ที่เคยบอกความต่างก็
             // หายไป เหลือแค่ตำแหน่งเป็นตัวบอก ซึ่งดูไม่ออกง่ายๆ
             <div key={i} style={{ display: 'grid', gridTemplateColumns: '24px 1fr 32px', gap: 6, alignItems: 'start' }}>
-              <MoveButtons onUp={() => moveBlock(i, 'up')} onDown={() => moveBlock(i, 'down')} disabledUp={i === 0} disabledDown={isLastBlock(i)} />
+              <MoveButtons onInsert={() => insertItemAfter(i)} onUp={() => moveBlock(i, 'up')} onDown={() => moveBlock(i, 'down')} disabledUp={i === 0} disabledDown={isLastBlock(i)} />
               <textarea className="textarea input-sm" rows={2}
                 placeholder="📝 ข้อมูลเพิ่มเติม (ไม่มีราคา — เช่น หมายเหตุ, หัวข้อคั่น — แยกอิสระ ไม่ผูกกับรายการไหน)"
                 style={{ fontStyle: 'italic', resize: 'vertical', background: 'var(--bg3)', border: '1px dashed var(--border)' }}
@@ -210,10 +263,11 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
               <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
             </div>
           ) : it.item_type === 'item_description' ? (
-            // Grid columns ตรงกับแถว item เป๊ะ (ไม่ใช่ 24px 1fr 32px แบบ note)
-            // เพื่อให้ช่องคำอธิบายกว้างเท่าช่องรายละเอียดรายการของ item ด้านบน
-            // พอดี -- คอลัมน์อื่นเว้นว่างไว้เฉยๆ (ไม่มีข้อมูลอะไรจะใส่)
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: pricingMode === 'split' ? '24px 1fr 70px 150px 100px 100px 32px 32px' : '24px 1fr 70px 150px 100px 32px 32px', gap: 6, alignItems: 'start' }}>
+            // Grid columns ตรงกับแถว item เป๊ะ (itemGridCols ตัวเดียวกัน) เพื่อให้
+            // ช่องคำอธิบายกว้างเท่าช่องรายละเอียดรายการของ item ด้านบนพอดี --
+            // คอลัมน์อื่นเว้นว่างไว้เฉยๆ (ไม่มีข้อมูลอะไรจะใส่)
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: itemGridCols, gap: 6, alignItems: 'start' }}>
+              <span />
               {/* ↳ แทน MoveButtons ที่ว่างไว้เดิม -- สัญลักษณ์ถาวรว่า "ผูกกับ
                   รายการด้านบน" ต่างจาก note ที่มีลูกศรเลื่อนขึ้น/ลงแทน (ดู
                   คอมเมนต์ที่ note ด้านบน เรื่องสับสนสองแบบนี้) */}
@@ -229,12 +283,16 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
                 value={it.description} onChange={e => set(i, 'description', e.target.value)} />
               <span /><span /><span />
               {pricingMode === 'split' && <span />}
-              <span />
-              <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
+              {/* คอลัมน์ปุ่ม "เพิ่มคำอธิบาย" + คอลัมน์ 💾/📦 ของแถว item --
+                  ไม่มีอะไรจะใส่ที่นี่ (แถวนี้ตัวเองคือคำอธิบายอยู่แล้ว) แต่ต้อง
+                  เว้น span ไว้ 2 อัน ไม่งั้นคอลัมน์จะเลื่อนไม่ตรงกับแถว item */}
+              <span /><span />
+              <button type="button" className="btn btn-sm btn-ghost" title="ซ่อนคำอธิบายนี้" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
             </div>
           ) : (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: pricingMode === 'split' ? '24px 1fr 70px 150px 100px 100px 32px 32px' : '24px 1fr 70px 150px 100px 32px 32px', gap: 6, alignItems: 'center' }}>
-              <MoveButtons onUp={() => moveBlock(i, 'up')} onDown={() => moveBlock(i, 'down')} disabledUp={i === 0} disabledDown={isLastBlock(i)} />
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: itemGridCols, gap: 6, alignItems: 'center' }}>
+              <span className="font-mono" style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>{itemNumbers[i]}</span>
+              <MoveButtons onInsert={() => insertItemAfter(i)} onUp={() => moveBlock(i, 'up')} onDown={() => moveBlock(i, 'down')} disabledUp={i === 0} disabledDown={isLastBlock(i)} />
               <input className="input input-sm" placeholder="รายละเอียดรายการ" required
                 value={it.description} onChange={e => set(i, 'description', e.target.value)} />
               <input className="input input-sm" type="number" min="0" step="0.01" placeholder="จำนวน"
@@ -243,14 +301,19 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
               {pricingMode === 'split' ? (
                 <>
                   <input className="input input-sm" type="number" min="0" step="0.01" placeholder="ค่าของ/หน่วย"
-                    value={it.unit_price_material} onChange={e => set(i, 'unit_price_material', e.target.value)} />
+                    value={it.unit_price_material} onChange={e => set(i, 'unit_price_material', e.target.value)} onBlur={roundOnBlur(i, 'unit_price_material')} />
                   <input className="input input-sm" type="number" min="0" step="0.01" placeholder="ค่าแรง/หน่วย"
-                    value={it.unit_price_labor} onChange={e => set(i, 'unit_price_labor', e.target.value)} />
+                    value={it.unit_price_labor} onChange={e => set(i, 'unit_price_labor', e.target.value)} onBlur={roundOnBlur(i, 'unit_price_labor')} />
                 </>
               ) : (
                 <input className="input input-sm" type="number" min="0" step="0.01" placeholder="ราคา/หน่วย"
-                  value={it.unit_price} onChange={e => set(i, 'unit_price', e.target.value)} />
+                  value={it.unit_price} onChange={e => set(i, 'unit_price', e.target.value)} onBlur={roundOnBlur(i, 'unit_price')} />
               )}
+              {/* คงที่ทั้งสามคอลัมน์สุดท้ายเสมอ (ว่างเป็น span ถ้าไม่เข้าเงื่อนไข)
+                  ไม่งั้น grid เลื่อนไม่ตรงกับ item_description ด้านล่าง */}
+              {items[i + 1]?.item_type === 'item_description'
+                ? <span />
+                : <button type="button" className="btn btn-sm btn-ghost" title="เพิ่มคำอธิบายรายการนี้" onClick={() => addDescriptionTo(i)}>💬</button>}
               {!it.catalog_item_id && it.description.trim()
                 ? <button type="button" className="btn btn-sm btn-ghost" title="บันทึกเป็นรายการสินค้าใหม่" onClick={() => saveToCatalog(i)}>💾</button>
                 : <span title={it.catalog_item_id ? 'อยู่ในรายการสินค้าแล้ว' : undefined} style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>{it.catalog_item_id ? '📦' : ''}</span>}
@@ -556,6 +619,21 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
   const printableItems = useMemo(() => (items || []).filter(it =>
     it.item_type !== 'item_description' || it.description?.trim()
   ), [items])
+  // Numbers each real 'item' row (skipping notes/item_description, which
+  // aren't billable lines of their own) so a reader can tell which
+  // description block pairs with which item purely by the number, instead
+  // of having to infer it from stacking order -- otherwise a description
+  // sitting right above the NEXT item reads as if it belongs to that item,
+  // not the one it actually follows. Keyed by object identity (not array
+  // index) because renderRow below is called with an index local to
+  // whatever page usePaginatedDocument put this row on, not its position
+  // in printableItems as a whole.
+  const printItemNumbers = useMemo(() => {
+    const map = new Map()
+    let n = 0
+    printableItems.forEach(it => { if (it.item_type === 'item') map.set(it, ++n) })
+    return map
+  }, [printableItems])
   const totals = calcQuotationTotals(printableItems, { hasVat, priceIncludesVat, discountAmount, discountPct })
   const isSplit = pricingMode === 'split'
   const materialLabor = isSplit ? sumMaterialLabor(printableItems) : null
@@ -565,7 +643,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
 
   const revisionSuffix = revision > 1 ? `-R${revision}` : ''
   const headerProps = { tenant, tag, revisionSuffix, quotationNumber, date, validUntil, siteName, clientName, clientAddress, clientTaxId, style }
-  const colCount = isSplit ? 5 : 4
+  const colCount = (isSplit ? 5 : 4) + 1
 
   const renderRow = (it, i) => (
     it.item_type === 'note' || it.item_type === 'item_description' ? (
@@ -574,6 +652,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
       </tr>
     ) : (
       <tr key={it.id || i}>
+        <td style={{ textAlign: 'center', padding: '9px 4px', borderBottom: '1px solid #eee', color: '#6a6f85' }}>{printItemNumbers.get(it)}</td>
         <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee', whiteSpace: 'pre-line' }}>{it.description}</td>
         <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.quantity} {it.unit || ''}</td>
         {isSplit ? (
@@ -592,6 +671,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
   const thStyle = { textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }
   const renderTableHeader = () => (
     <tr>
+      <th style={{ ...thStyle, textAlign: 'center', width: 30 }}>ที่</th>
       <th style={{ ...thStyle, textAlign: 'left' }}>รายการ</th>
       <th style={thStyle}>จำนวน</th>
       {isSplit ? (
