@@ -88,6 +88,23 @@ function quotationToFormInitial(qt) {
   }
 }
 
+// Grows a textarea to fit its content instead of scrolling internally.
+// Re-measures on every value change (not just typing) via useEffect --
+// matters because moveBlock reorders items by swapping array values at
+// existing DOM positions rather than remounting them, so a mount-only or
+// onInput-only measurement would leave a reused textarea showing the
+// previous occupant's height until the user happens to type in it.
+function AutoGrowTextarea({ value, ...props }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [value])
+  return <textarea ref={ref} value={value} {...props} />
+}
+
 function MoveButtons({ onUp, onDown, disabledUp, disabledDown }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -180,11 +197,15 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((it, i) => (
           it.item_type === 'note' ? (
+            // "สมุดโน้ต" look (พื้นหลัง + เส้นประ) ตั้งใจให้ต่างจาก
+            // item_description อย่างชัดเจน -- สองแบบนี้ผู้ใช้สับสนกันบ่อย
+            // เพราะพอพิมพ์ข้อความเข้าไปแล้ว placeholder ที่เคยบอกความต่างก็
+            // หายไป เหลือแค่ตำแหน่งเป็นตัวบอก ซึ่งดูไม่ออกง่ายๆ
             <div key={i} style={{ display: 'grid', gridTemplateColumns: '24px 1fr 32px', gap: 6, alignItems: 'start' }}>
               <MoveButtons onUp={() => moveBlock(i, 'up')} onDown={() => moveBlock(i, 'down')} disabledUp={i === 0} disabledDown={isLastBlock(i)} />
               <textarea className="textarea input-sm" rows={2}
-                placeholder="ข้อมูลเพิ่มเติม (ไม่มีราคา — เช่น หมายเหตุ, หัวข้อคั่น)"
-                style={{ fontStyle: 'italic', resize: 'vertical' }}
+                placeholder="📝 ข้อมูลเพิ่มเติม (ไม่มีราคา — เช่น หมายเหตุ, หัวข้อคั่น — แยกอิสระ ไม่ผูกกับรายการไหน)"
+                style={{ fontStyle: 'italic', resize: 'vertical', background: 'var(--bg3)', border: '1px dashed var(--border)' }}
                 value={it.description} onChange={e => set(i, 'description', e.target.value)} />
               <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
             </div>
@@ -192,15 +213,19 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
             // Grid columns ตรงกับแถว item เป๊ะ (ไม่ใช่ 24px 1fr 32px แบบ note)
             // เพื่อให้ช่องคำอธิบายกว้างเท่าช่องรายละเอียดรายการของ item ด้านบน
             // พอดี -- คอลัมน์อื่นเว้นว่างไว้เฉยๆ (ไม่มีข้อมูลอะไรจะใส่)
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: pricingMode === 'split' ? '24px 1fr 70px 150px 100px 100px 32px 32px' : '24px 1fr 70px 150px 100px 32px 32px', gap: 6, alignItems: 'center' }}>
-              <span />
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: pricingMode === 'split' ? '24px 1fr 70px 150px 100px 100px 32px 32px' : '24px 1fr 70px 150px 100px 32px 32px', gap: 6, alignItems: 'start' }}>
+              {/* ↳ แทน MoveButtons ที่ว่างไว้เดิม -- สัญลักษณ์ถาวรว่า "ผูกกับ
+                  รายการด้านบน" ต่างจาก note ที่มีลูกศรเลื่อนขึ้น/ลงแทน (ดู
+                  คอมเมนต์ที่ note ด้านบน เรื่องสับสนสองแบบนี้) */}
+              <span style={{ textAlign: 'center', color: 'var(--accent)', fontSize: 14, lineHeight: '28px' }} title="คำอธิบายของรายการด้านบน (ผูกติดกัน ย้าย/ลบไปด้วยกัน)">↳</span>
               {/* .textarea's CSS class forces min-height:80px regardless of
                   rows -- overridden here so this starts exactly as tall as
-                  the item's own input field above it (still resize:vertical,
-                  so it can be dragged taller for real multi-line text). */}
-              <textarea className="textarea input-sm" rows={1}
+                  the item's own input field above it. Auto-grows with
+                  content (AutoGrowTextarea) instead of a manual resize
+                  handle -- starts compact at 1 line, expands as typed. */}
+              <AutoGrowTextarea className="textarea input-sm" rows={1}
                 placeholder="คำอธิบายรายการ (ของรายการด้านบน — ไม่มีราคา, พิมพ์หลายบรรทัดได้)"
-                style={{ fontStyle: 'italic', resize: 'vertical', minHeight: 28 }}
+                style={{ fontStyle: 'italic', resize: 'none', overflow: 'hidden', minHeight: 28, borderLeft: '2px solid var(--accent)' }}
                 value={it.description} onChange={e => set(i, 'description', e.target.value)} />
               <span /><span /><span />
               {pricingMode === 'split' && <span />}
@@ -1348,8 +1373,14 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                     <td className="font-mono" style={{ fontSize: 12 }}>{qt.quotation_number}</td>
                     <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDate(qt.date)}</td>
                     <td style={{ fontSize: 12 }}>{qt.clients?.name || '—'}</td>
-                    <td style={{ fontSize: 11, color: 'var(--accent)', cursor: qt.site_id ? 'pointer' : 'default' }}
-                      onClick={() => qt.site_id && openSiteOverview(qt.site_id)}>{qt.sites?.name || '—'}</td>
+                    {/* qt.sites?.name only exists once accepted (site_id set) --
+                        qt.site_name is the free-text project name typed into the
+                        form and saved from the very first draft, so show that as
+                        a fallback instead of leaving this blank pre-acceptance.
+                        Not clickable/accent-colored unless it's a real linked
+                        site (openSiteOverview needs a real site_id). */}
+                    <td style={{ fontSize: 11, color: qt.site_id ? 'var(--accent)' : 'var(--text3)', cursor: qt.site_id ? 'pointer' : 'default' }}
+                      onClick={() => qt.site_id && openSiteOverview(qt.site_id)}>{qt.sites?.name || qt.site_name || '—'}</td>
                     <td style={{ fontSize: 11, color: 'var(--text3)' }}>{(qt.quotation_items || []).length} รายการ</td>
                     <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(totals.total)}</td>
                     <td><span className={`badge badge-${qt.status}`}>{QT_STATUS_LABELS[qt.status] || qt.status}</span></td>
