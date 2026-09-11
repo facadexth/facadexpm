@@ -228,6 +228,11 @@ export function useQuotations(filters = {}) {
         .select('*, clients(name, client_number, address, tax_id), sites(name, site_number), bank_accounts(bank_name, account_name, account_no), quotation_items(id, catalog_item_id, description, unit, quantity, unit_price, unit_price_material, unit_price_labor, line_total, sort_order, item_type)')
         .order('date', { ascending: false })
         .order('id', { ascending: false })
+        // Embedded resources come back in an undefined order from PostgREST
+        // unless ordered explicitly -- without this, quotation_items silently
+        // drifted from sort_order (visible as descriptions landing under the
+        // wrong item both in the editor and on the printed document).
+        .order('sort_order', { foreignTable: 'quotation_items' })
 
       if (filters.clientId) q = q.eq('client_id', filters.clientId)
       if (filters.siteId)   q = q.eq('site_id', filters.siteId)

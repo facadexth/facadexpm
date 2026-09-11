@@ -58,6 +58,36 @@ const EMPTY_FORM = {
   payment_terms: '', notes: '', bank_account_id: null, items: [{ ...EMPTY_ITEM }],
 }
 
+// Maps a saved quotation row to QuotationForm's field shape -- shared by
+// "แก้ไข" (edit, which adds its own id on top so QuotationForm treats it as
+// an update) and "ทำสำเนา" (duplicate, which deliberately omits id so it
+// inserts as a brand-new quotation and gets a fresh auto-numbered
+// quotation_number from trg_quotation_number, same as any new document).
+// date defaults to today rather than the source's original date -- a
+// duplicate is a new document being issued now, not a backdated copy.
+function quotationToFormInitial(qt) {
+  return {
+    client_id: qt.client_id, site_name: qt.site_name || '',
+    date: format(new Date(), 'yyyy-MM-dd'),
+    valid_days: (qt.date && qt.valid_until)
+      ? String(differenceInDays(new Date(qt.valid_until), new Date(qt.date)))
+      : '',
+    has_vat: qt.has_vat, price_includes_vat: qt.price_includes_vat || false,
+    discount_mode: qt.discount_pct != null ? 'pct' : qt.discount_amount != null ? 'amount' : 'none',
+    discount_amount: qt.discount_amount != null ? String(qt.discount_amount) : '',
+    discount_pct: qt.discount_pct != null ? String(qt.discount_pct) : '',
+    pricing_mode: qt.pricing_mode || 'combined',
+    payment_terms: qt.payment_terms || '', notes: qt.notes || '',
+    bank_account_id: qt.bank_account_id || null,
+    items: (qt.quotation_items?.length ? qt.quotation_items : [{ ...EMPTY_ITEM }])
+      .map(it => ({
+        catalog_item_id: it.catalog_item_id, description: it.description, quantity: String(it.quantity), unit: it.unit || '',
+        unit_price: String(it.unit_price), unit_price_material: it.unit_price_material != null ? String(it.unit_price_material) : '',
+        unit_price_labor: it.unit_price_labor != null ? String(it.unit_price_labor) : '', item_type: it.item_type || 'item',
+      })),
+  }
+}
+
 function MoveButtons({ onUp, onDown, disabledUp, disabledDown }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -84,7 +114,15 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
   }))
   const add = () => onChange([...items, { ...EMPTY_ITEM }, { ...EMPTY_ITEM_DESCRIPTION }])
   const addNote = () => onChange([...items, { ...EMPTY_NOTE }])
-  const remove = (i) => onChange(items.length > 1 ? items.filter((_, idx) => idx !== i) : items)
+  // Deleting an 'item' row must take its glued item_description (see
+  // EMPTY_ITEM_DESCRIPTION comment) with it -- plain index removal left the
+  // description behind, where it would silently re-attach (by position) to
+  // whatever item ended up above it instead of disappearing with its own item.
+  const remove = (i) => {
+    const len = blockLenAt(i)
+    if (items.length <= len) return
+    onChange([...items.slice(0, i), ...items.slice(i + len)])
+  }
   const addFromCatalog = (catalogId) => {
     const found = (catalogItems || []).find(c => c.id === catalogId)
     if (!found) return
@@ -191,7 +229,7 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
               {!it.catalog_item_id && it.description.trim()
                 ? <button type="button" className="btn btn-sm btn-ghost" title="บันทึกเป็นรายการสินค้าใหม่" onClick={() => saveToCatalog(i)}>💾</button>
                 : <span title={it.catalog_item_id ? 'อยู่ในรายการสินค้าแล้ว' : undefined} style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>{it.catalog_item_id ? '📦' : ''}</span>}
-              <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length <= blockLenAt(i)}>✕</button>
             </div>
           )
         ))}
@@ -949,6 +987,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   const [status,   setStatus]   = useState('')
   const [showAdd,  setShowAdd]  = useState(false)
   const [editRow,  setEditRow]  = useState(null)
+  const [dupInitial, setDupInitial] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
   const [saving,   setSaving]   = useState(false)
   const [toast,    setToast]    = useState(null)
@@ -1072,7 +1111,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
         if (error) throw error
       }
 
-      setShowAdd(false); setEditRow(null); refetch(); showToast('บันทึกสำเร็จ')
+      setShowAdd(false); setEditRow(null); setDupInitial(null); refetch(); showToast('บันทึกสำเร็จ')
     } catch (e) {
       alert('Error: ' + e.message)
     } finally {
@@ -1133,6 +1172,19 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
     setEditRow({ ...qt, status: 'draft' })
     setShowAdd(true)
     refetch()
+  }
+
+  // Opens a brand-new quotation form pre-filled from an existing one --
+  // works on any status (including accepted/rejected/expired, which
+  // otherwise offer no way to reuse their content) because nothing about
+  // the source document is touched; this only seeds the "add" form.
+  // editRow stays null so handleSave takes its normal insert path, which
+  // is what gets this its own fresh auto-numbered quotation_number
+  // (trg_quotation_number) instead of reusing the source's number.
+  const handleDuplicate = (qt) => {
+    setEditRow(null)
+    setDupInitial(quotationToFormInitial(qt))
+    setShowAdd(true)
   }
 
   // Recomputes sites.contract_value/contract_value_no_vat as the sum of
@@ -1206,37 +1258,16 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
     finally { setAccepting(false) }
   }
 
-  const editFormInitial = useMemo(() => {
-    if (!editRow) return null
-    return {
-      id: editRow.id, client_id: editRow.client_id, site_name: editRow.site_name || '',
-      // Defaults to today, not the original/last-saved date — each saved
-      // edit is a new revision, so the document's issue date should read
-      // as the day *this* revision was produced. Still editable if a
-      // specific backdate is genuinely needed.
-      date: format(new Date(), 'yyyy-MM-dd'),
-      // "อายุกี่วัน" คำนวณย้อนกลับจาก editRow.date เดิม (ไม่ใช่ date ด้านบนที่
-      // เพิ่งตั้งเป็นวันนี้) เพราะ valid_until ที่บันทึกไว้เดิมอ้างอิงตาม
-      // วันที่ออกเอกสารครั้งก่อน -- นับจาก "วันนี้" แทนจะได้จำนวนวันที่หดลง
-      // ตามเวลาที่ผ่านไปโดยไม่ได้ตั้งใจ
-      valid_days: (editRow.date && editRow.valid_until)
-        ? String(differenceInDays(new Date(editRow.valid_until), new Date(editRow.date)))
-        : '',
-      has_vat: editRow.has_vat, price_includes_vat: editRow.price_includes_vat || false,
-      discount_mode: editRow.discount_pct != null ? 'pct' : editRow.discount_amount != null ? 'amount' : 'none',
-      discount_amount: editRow.discount_amount != null ? String(editRow.discount_amount) : '',
-      discount_pct: editRow.discount_pct != null ? String(editRow.discount_pct) : '',
-      pricing_mode: editRow.pricing_mode || 'combined',
-      payment_terms: editRow.payment_terms || '', notes: editRow.notes || '',
-      bank_account_id: editRow.bank_account_id || null,
-      items: (editRow.quotation_items?.length ? editRow.quotation_items : [{ ...EMPTY_ITEM }])
-        .map(it => ({
-          catalog_item_id: it.catalog_item_id, description: it.description, quantity: String(it.quantity), unit: it.unit || '',
-          unit_price: String(it.unit_price), unit_price_material: it.unit_price_material != null ? String(it.unit_price_material) : '',
-          unit_price_labor: it.unit_price_labor != null ? String(it.unit_price_labor) : '', item_type: it.item_type || 'item',
-        })),
-    }
-  }, [editRow])
+  // date defaults to today, not the original/last-saved date, here too --
+  // each saved edit is a new revision, so the document's issue date should
+  // read as the day *this* revision was produced. Still editable if a
+  // specific backdate is genuinely needed. (valid_days is still computed
+  // from editRow's own original date/valid_until, not today, so the
+  // remaining validity window doesn't quietly shrink just because time
+  // passed before this edit was made.)
+  const editFormInitial = useMemo(() => (
+    editRow ? { id: editRow.id, ...quotationToFormInitial(editRow) } : null
+  ), [editRow])
 
   // Pre-fills a brand-new quotation's payment_terms/notes from the tenant's
   // saved defaults (Settings → company profile) — existing quotations are
@@ -1254,14 +1285,14 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
     return (
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <button className="btn btn-ghost" onClick={() => { setShowAdd(false); setEditRow(null) }}>← กลับ</button>
-          <h2 style={{ margin: 0, fontSize: 18 }}>{editRow ? 'แก้ไขใบเสนอราคา' : 'เพิ่มใบเสนอราคา'}</h2>
+          <button className="btn btn-ghost" onClick={() => { setShowAdd(false); setEditRow(null); setDupInitial(null) }}>← กลับ</button>
+          <h2 style={{ margin: 0, fontSize: 18 }}>{editRow ? 'แก้ไขใบเสนอราคา' : dupInitial ? 'ทำสำเนาใบเสนอราคา' : 'เพิ่มใบเสนอราคา'}</h2>
         </div>
         <div className="card" style={{ maxWidth: 960, margin: '0 auto' }}>
           <QuotationForm
-            initial={editFormInitial || newQuotationInitial}
+            initial={editFormInitial || dupInitial || newQuotationInitial}
             clients={clients} catalogItems={catalogItems} onCatalogRefetch={refetchCatalogItems}
-            onSave={handleSave} onCancel={() => { setShowAdd(false); setEditRow(null) }} loading={saving}
+            onSave={handleSave} onCancel={() => { setShowAdd(false); setEditRow(null); setDupInitial(null) }} loading={saving}
             onClientCreated={refetchClients}
           />
         </div>
@@ -1274,7 +1305,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        {canEdit && <button className="btn btn-primary" onClick={() => { setEditRow(null); setShowAdd(true) }}>+ เพิ่มใบเสนอราคา</button>}
+        {canEdit && <button className="btn btn-primary" onClick={() => { setEditRow(null); setDupInitial(null); setShowAdd(true) }}>+ เพิ่มใบเสนอราคา</button>}
         <div style={{ flex: 1 }} />
         <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <span style={{ color: 'var(--text3)' }}>—</span>
@@ -1327,6 +1358,12 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                         <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(qt)}>📄</button>
                         {(qt.revision || 1) > 1 && (
                           <button className="btn btn-sm btn-ghost" title="ประวัติการแก้ไข" onClick={() => setHistoryRow(qt)}>🕓</button>
+                        )}
+                        {/* Available regardless of status (including accepted/rejected/
+                            expired, which otherwise have no other action here) -- it
+                            never touches the source document, only seeds a new one. */}
+                        {canEdit && (
+                          <button className="btn btn-sm btn-ghost" title="ทำสำเนาเป็นใบใหม่ (เลขที่ใหม่)" onClick={() => handleDuplicate(qt)}>📋</button>
                         )}
                         {canEdit && qt.status === 'draft' && (
                           <>
