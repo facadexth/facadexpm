@@ -20,6 +20,13 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'prompt',
+      // The self-hosted user manual (public/manual/index.html, ~3MB with
+      // its embedded screenshots) is fetched on demand when someone opens
+      // it (see ManualModal.jsx) -- it has no reason to be force-downloaded
+      // into every user's offline app-shell cache on install/update.
+      workbox: {
+        globIgnores: ['manual/**'],
+      },
       manifest: {
         name: 'FACADE X Construction Dashboard',
         short_name: 'FACADE X',

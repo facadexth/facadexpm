@@ -17,6 +17,7 @@ import SiteOverviewModal from './components/SiteOverviewModal.jsx'
 import TrialBanner from './components/TrialBanner.jsx'
 import UpdatePrompt from './components/UpdatePrompt.jsx'
 import UpgradeModal from './components/UpgradeModal.jsx'
+import ManualModal from './components/ManualModal.jsx'
 import ChunkErrorBoundary from './components/ChunkErrorBoundary.jsx'
 import Login      from './pages/Login.jsx'
 import Dashboard   from './pages/Dashboard.jsx'
@@ -244,6 +245,7 @@ export default function App() {
   // dismissible (X) without consequence; only the modal's own explicit
   // "ไม่ตอนนี้" button downgrades to Free. Re-shown from TrialBanner too.
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+  const [showManual, setShowManual] = useState(false)
   const trialJustEnded = !!tenant && !isTrialActive && tenant.plan !== 'active'
   useEffect(() => { if (trialJustEnded) setShowUpgradeModal(true) }, [trialJustEnded])
 
@@ -397,7 +399,7 @@ export default function App() {
           <button
             className="btn btn-ghost btn-sm"
             style={{ fontSize: 12 }}
-            onClick={() => window.open(manualUrlFor(activeTab), '_blank', 'noopener')}
+            onClick={() => setShowManual(true)}
             title="คู่มือใช้งานหน้านี้"
           >
             📖
@@ -473,6 +475,10 @@ export default function App() {
 
       {overviewSiteId && (
         <SiteOverviewModal siteId={overviewSiteId} onClose={() => setOverviewSiteId(null)} />
+      )}
+
+      {showManual && (
+        <ManualModal url={manualUrlFor(activeTab, role, isPlatformAdmin, theme)} onClose={() => setShowManual(false)} />
       )}
     </div>
   )

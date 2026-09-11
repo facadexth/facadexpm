@@ -1,10 +1,15 @@
 // ============================================================
-// คู่มือ FacadeX (Artifact ภายนอก) -- ปุ่ม 📖 ในเฮดเดอร์ (App.jsx) เปิดหัวข้อ
-// ที่ตรงกับหน้าที่ผู้ใช้กำลังดูอยู่ (activeTab) โดยตรง แทนที่จะเปิดหน้าแรกทุกครั้ง
-// -- อัปเดต MANUAL_ANCHORS ตามหัวข้อ id ในตัวคู่มือเอง (id="..." ของแต่ละ
-// section/article) ถ้าโครงสร้างคู่มือเปลี่ยน
+// คู่มือ FacadeX -- self-hosted at public/manual/index.html (moved off
+// the external Claude artifact so it's served from FacadeX's own domain
+// and can carry the viewer's role for in-manual filtering). ปุ่ม 📖 ใน
+// เฮดเดอร์ (App.jsx) เปิดหัวข้อที่ตรงกับหน้าที่ผู้ใช้กำลังดูอยู่ (activeTab)
+// โดยตรง แทนที่จะเปิดหน้าแรกทุกครั้ง -- อัปเดต MANUAL_ANCHORS ตามหัวข้อ
+// id ในตัวคู่มือเอง (id="..." ของแต่ละ section/article) ถ้าโครงสร้างคู่มือ
+// เปลี่ยน. Role filtering itself lives in public/manual/index.html's own
+// script (ANCHOR_ACCESS table there) -- keep it in sync with TABS'
+// minRole/platformAdminOnly in App.jsx by hand if either changes.
 // ============================================================
-export const MANUAL_URL = 'https://claude.ai/code/artifact/f6b3d1c0-2d49-4d9c-b793-fa1645a5b883'
+export const MANUAL_URL = '/manual/index.html'
 
 export const MANUAL_ANCHORS = {
   dashboard:          'page-dashboard',
@@ -31,7 +36,16 @@ export const MANUAL_ANCHORS = {
   tenant_management:   'page-tenant',
 }
 
-export function manualUrlFor(pageKey) {
+// role/isPlatformAdmin/theme are all optional -- omitted (e.g. a plain
+// share link), the manual's own script fails open (shows everything) and
+// just follows the visitor's own OS light/dark preference, same as before
+// any of this existed.
+export function manualUrlFor(pageKey, role, isPlatformAdmin, theme) {
   const anchor = MANUAL_ANCHORS[pageKey]
-  return anchor ? `${MANUAL_URL}#${anchor}` : MANUAL_URL
+  const params = new URLSearchParams()
+  if (role) params.set('role', role)
+  if (isPlatformAdmin) params.set('platformAdmin', '1')
+  if (theme === 'light' || theme === 'dark') params.set('theme', theme)
+  const query = params.toString() ? `?${params.toString()}` : ''
+  return anchor ? `${MANUAL_URL}${query}#${anchor}` : `${MANUAL_URL}${query}`
 }
