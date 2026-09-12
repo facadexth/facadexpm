@@ -89,6 +89,14 @@ export const PAGE_HEIGHT_PX = 900
 // every render: an unbounded render loop, not just wasted work.
 export function usePaginatedDocument({
   items, renderHeader, renderTableHeader, renderRow, renderFooter, renderColGroup, remeasureKey,
+  // Optional, parallel to `items`: keepWithNext[i] === true means row i must
+  // never land on a different page than row i+1 -- e.g. an item glued to its
+  // own item_description (QuotationPaper), which otherwise could measure as
+  // "fits" independently while landing on opposite sides of a page break,
+  // stranding the description with no item above it to visually pair with
+  // (the whole point of numbering item rows, defeated). Defaults to
+  // all-false (today's behavior, unchanged) when a caller doesn't pass it --
+  // Invoices.jsx's DocumentPaper has no equivalent glued-row concept.
   // No current caller overrides pageWidth -- both consumers leave it at this
   // default and set their real page-div's width from the same PAGE_WIDTH_PX
   // constant directly. If a future caller ever does pass pageWidth, it must
@@ -101,6 +109,7 @@ export function usePaginatedDocument({
   pagePaddingCss = PAGE_PADDING_CSS,
   pageHeight = PAGE_HEIGHT_PX,
   tableMarginTop = TABLE_MARGIN_TOP_PX,
+  keepWithNext,
 }) {
   const [heights, setHeights] = useState(null)
   const headerRef = useRef(null)
@@ -212,15 +221,26 @@ export function usePaginatedDocument({
   const pages = []
   let current = []
   let currentHeight = 0
-  rows.forEach(({ it, h }) => {
-    if (current.length && currentHeight + h > availableRegular) {
+  // Packs whole keepWithNext-glued runs as one atomic unit -- a block never
+  // splits itself across the check below, it either fits entirely on the
+  // current page or moves entirely to a fresh one. Reduces to the previous
+  // one-row-at-a-time behavior when keepWithNext is absent/all-false (every
+  // block is just its one row).
+  let i = 0
+  while (i < rows.length) {
+    let blockEnd = i
+    while (keepWithNext?.[blockEnd] && blockEnd + 1 < rows.length) blockEnd++
+    const block = rows.slice(i, blockEnd + 1)
+    const blockHeight = block.reduce((sum, r) => sum + r.h, 0)
+    if (current.length && currentHeight + blockHeight > availableRegular) {
       pages.push(current)
       current = []
       currentHeight = 0
     }
-    current.push({ it, h })
-    currentHeight += h
-  })
+    current.push(...block)
+    currentHeight += blockHeight
+    i = blockEnd + 1
+  }
   pages.push(current)
 
   // The footer (e.g. totals/notes/signature) only ever renders on the true

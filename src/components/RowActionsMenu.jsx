@@ -13,14 +13,17 @@
 // items: [{ label, onClick, danger?, disabled?, disabledTitle? }]
 // trigger/triggerClassName: override the default "⋮" ghost-icon button
 // (e.g. a labeled "💾 บันทึกเอกสาร ▾" save dropdown) -- optional, existing
-// row-menu callers are unaffected.
+// row-menu callers are unaffected. triggerStyle: inline style merged onto
+// the trigger button, for callers that need to match a specific compact
+// size a className alone can't express (e.g. a 14px-tall button stacked
+// among other same-height buttons).
 // ============================================================
 import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 
 const MENU_MARGIN = 4
 
-export default function RowActionsMenu({ items = [], trigger, triggerClassName = 'btn btn-sm btn-ghost' }) {
+export default function RowActionsMenu({ items = [], trigger, triggerClassName = 'btn btn-sm btn-ghost', triggerStyle }) {
   const [open, setOpen] = useState(false)
   const [menuStyle, setMenuStyle] = useState(null)
   const triggerRef = useRef(null)
@@ -78,7 +81,7 @@ export default function RowActionsMenu({ items = [], trigger, triggerClassName =
 
   return (
     <div ref={triggerRef} style={{ display: 'inline-block' }}>
-      <button type="button" className={triggerClassName} onClick={() => setOpen(o => !o)} title="เพิ่มเติม">{trigger || '⋮'}</button>
+      <button type="button" className={triggerClassName} style={triggerStyle} onClick={() => setOpen(o => !o)} title="เพิ่มเติม">{trigger || '⋮'}</button>
       {open && menuStyle && createPortal(
         <div
           ref={menuRef}

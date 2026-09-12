@@ -7,7 +7,7 @@
 // ✅ Items optionally drawn from the catalog_items price list, always
 //    freely editable afterward (autofill, not enforce)
 // ============================================================
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, Fragment } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt, useMySignatureUrl, useMyWorkerName, useBankAccounts, useUnits, logDocumentPrint } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
@@ -105,16 +105,26 @@ function AutoGrowTextarea({ value, ...props }) {
   return <textarea ref={ref} value={value} {...props} />
 }
 
-// onInsert is optional -- when passed, stacks a small "+" above the ▲▼
-// pair in the same 24px column (no new grid column needed) so a new item
-// can be dropped in right after this row's block instead of always
-// landing at the end of the list.
-function MoveButtons({ onUp, onDown, disabledUp, disabledDown, onInsert }) {
+// onInsertItem/onInsertNote/onInsertCatalog are each optional -- whichever
+// are passed become choices in a small "+" menu stacked above the ▲▼ pair
+// in the same 24px column (no new grid column needed), so a new item, a
+// new note, or a catalog pick can be dropped in right after this row's
+// block instead of always landing at the end of the list via the buttons
+// below the table.
+function MoveButtons({ onUp, onDown, disabledUp, disabledDown, onInsertItem, onInsertNote, onInsertCatalog }) {
+  const insertChoices = [
+    onInsertItem && { label: '+ รายการใหม่', onClick: onInsertItem },
+    onInsertCatalog && { label: '+ จากรายการสินค้า', onClick: onInsertCatalog },
+    onInsertNote && { label: '+ ข้อมูลเพิ่มเติม', onClick: onInsertNote },
+  ].filter(Boolean)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      {onInsert && (
-        <button type="button" className="btn btn-ghost" style={{ padding: 0, height: 14, fontSize: 10, lineHeight: 1, fontWeight: 700 }}
-          title="แทรกรายการใหม่ต่อจากนี้" onClick={onInsert}>+</button>
+      {insertChoices.length > 0 && (
+        <RowActionsMenu
+          trigger="+" triggerClassName="btn btn-ghost"
+          triggerStyle={{ padding: 0, height: 14, fontSize: 10, lineHeight: 1, fontWeight: 700 }}
+          items={insertChoices}
+        />
       )}
       <button type="button" className="btn btn-ghost" style={{ padding: 0, height: 14, fontSize: 9, lineHeight: 1 }}
         title="เลื่อนขึ้น" disabled={disabledUp} onClick={onUp}>▲</button>
@@ -172,18 +182,40 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
     const insertAt = i + blockLenAt(i)
     onChange([...items.slice(0, insertAt), { ...EMPTY_ITEM }, ...items.slice(insertAt)])
   }
-  const addFromCatalog = (catalogId) => {
-    const found = (catalogItems || []).find(c => c.id === catalogId)
-    if (!found) return
+  // Same idea as insertItemAfter, for a note instead of an item -- the
+  // "+" menu on each row offers both (see MoveButtons).
+  const insertNoteAfter = (i) => {
+    const insertAt = i + blockLenAt(i)
+    onChange([...items.slice(0, insertAt), { ...EMPTY_NOTE }, ...items.slice(insertAt)])
+  }
+  // Shared by addFromCatalog (appends at the end) and insertCatalogAfter
+  // (drops in at a specific position) so the two don't drift on what a
+  // catalog pick actually produces. Only brings along a description row if
+  // the catalog entry actually has one to show -- an empty one would just
+  // be another row to dismiss.
+  const buildCatalogRows = (found) => {
     const newItem = {
       catalog_item_id: found.id, description: found.name, unit: found.unit || '',
       quantity: '1', unit_price: String(found.default_unit_price), item_type: 'item',
     }
-    // Only bring along a description row if the catalog entry actually has
-    // one to show -- an empty one would just be another row to dismiss.
-    onChange(found.description
-      ? [...items, newItem, { ...EMPTY_ITEM_DESCRIPTION, description: found.description }]
-      : [...items, newItem])
+    return found.description ? [newItem, { ...EMPTY_ITEM_DESCRIPTION, description: found.description }] : [newItem]
+  }
+  const addFromCatalog = (catalogId) => {
+    const found = (catalogItems || []).find(c => c.id === catalogId)
+    if (!found) return
+    onChange([...items, ...buildCatalogRows(found)])
+  }
+  // "+" menu's "จากรายการสินค้า" choice -- opens catalogInsertAt's inline
+  // picker (rendered below, right after row i's own block) instead of a
+  // free-typed empty item, then drops the picked catalog entry in at that
+  // exact position once chosen.
+  const [catalogInsertAt, setCatalogInsertAt] = useState(null)
+  const insertCatalogAfter = (i, catalogId) => {
+    const found = (catalogItems || []).find(c => c.id === catalogId)
+    setCatalogInsertAt(null)
+    if (!found) return
+    const insertAt = i + blockLenAt(i)
+    onChange([...items.slice(0, insertAt), ...buildCatalogRows(found), ...items.slice(insertAt)])
   }
   // Lets a free-typed line become a reusable catalog entry without leaving
   // the quotation — inserts it, then links this row to the new entry the
@@ -230,6 +262,12 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
   // ไม่งั้นคือ 1 (note หรือ item เดี่ยวๆ)
   const blockLenAt = (i) => (items[i]?.item_type === 'item' && items[i + 1]?.item_type === 'item_description') ? 2 : 1
   const isLastBlock = (i) => i + blockLenAt(i) >= items.length
+  // The inline catalog picker must render after catalogInsertAt's WHOLE
+  // block (matching where insertCatalogAfter actually inserts), not right
+  // after the clicked row itself -- for an item with an item_description,
+  // "right after row i" would land the picker between the item and its own
+  // description instead of after the pair.
+  const catalogPickerAt = catalogInsertAt != null ? catalogInsertAt + blockLenAt(catalogInsertAt) - 1 : null
   const moveBlock = (i, dir) => {
     const len = blockLenAt(i)
     if (dir === 'up') {
@@ -249,13 +287,14 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
       <label className="label">รายการ ★</label>
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((it, i) => (
-          it.item_type === 'note' ? (
+          <Fragment key={i}>
+          {it.item_type === 'note' ? (
             // "สมุดโน้ต" look (พื้นหลัง + เส้นประ) ตั้งใจให้ต่างจาก
             // item_description อย่างชัดเจน -- สองแบบนี้ผู้ใช้สับสนกันบ่อย
             // เพราะพอพิมพ์ข้อความเข้าไปแล้ว placeholder ที่เคยบอกความต่างก็
             // หายไป เหลือแค่ตำแหน่งเป็นตัวบอก ซึ่งดูไม่ออกง่ายๆ
             <div key={i} style={{ display: 'grid', gridTemplateColumns: '24px 1fr 32px', gap: 6, alignItems: 'start' }}>
-              <MoveButtons onInsert={() => insertItemAfter(i)} onUp={() => moveBlock(i, 'up')} onDown={() => moveBlock(i, 'down')} disabledUp={i === 0} disabledDown={isLastBlock(i)} />
+              <MoveButtons onInsertItem={() => insertItemAfter(i)} onInsertCatalog={() => setCatalogInsertAt(i)} onInsertNote={() => insertNoteAfter(i)} onUp={() => moveBlock(i, 'up')} onDown={() => moveBlock(i, 'down')} disabledUp={i === 0} disabledDown={isLastBlock(i)} />
               <textarea className="textarea input-sm" rows={2}
                 placeholder="📝 ข้อมูลเพิ่มเติม (ไม่มีราคา — เช่น หมายเหตุ, หัวข้อคั่น — แยกอิสระ ไม่ผูกกับรายการไหน)"
                 style={{ fontStyle: 'italic', resize: 'vertical', background: 'var(--bg3)', border: '1px dashed var(--border)' }}
@@ -292,7 +331,7 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
           ) : (
             <div key={i} style={{ display: 'grid', gridTemplateColumns: itemGridCols, gap: 6, alignItems: 'center' }}>
               <span className="font-mono" style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>{itemNumbers[i]}</span>
-              <MoveButtons onInsert={() => insertItemAfter(i)} onUp={() => moveBlock(i, 'up')} onDown={() => moveBlock(i, 'down')} disabledUp={i === 0} disabledDown={isLastBlock(i)} />
+              <MoveButtons onInsertItem={() => insertItemAfter(i)} onInsertCatalog={() => setCatalogInsertAt(i)} onInsertNote={() => insertNoteAfter(i)} onUp={() => moveBlock(i, 'up')} onDown={() => moveBlock(i, 'down')} disabledUp={i === 0} disabledDown={isLastBlock(i)} />
               <input className="input input-sm" placeholder="รายละเอียดรายการ" required
                 value={it.description} onChange={e => set(i, 'description', e.target.value)} />
               <input className="input input-sm" type="number" min="0" step="0.01" placeholder="จำนวน"
@@ -319,7 +358,16 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
                 : <span title={it.catalog_item_id ? 'อยู่ในรายการสินค้าแล้ว' : undefined} style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>{it.catalog_item_id ? '📦' : ''}</span>}
               <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length <= blockLenAt(i)}>✕</button>
             </div>
-          )
+          )}
+          {catalogPickerAt === i && (
+            <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 32px', gap: 6, alignItems: 'center' }}>
+              <span />
+              <SearchableSelect value={null} onChange={(catalogId) => insertCatalogAfter(catalogInsertAt, catalogId)}
+                placeholder="เลือกรายการสินค้าที่จะแทรก..." options={catalogOpts(catalogItems)} />
+              <button type="button" className="btn btn-sm btn-ghost" title="ยกเลิก" onClick={() => setCatalogInsertAt(null)}>✕</button>
+            </div>
+          )}
+          </Fragment>
         ))}
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -634,6 +682,27 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
     printableItems.forEach(it => { if (it.item_type === 'item') map.set(it, ++n) })
     return map
   }, [printableItems])
+  // Parallel to printableItems, for usePaginatedDocument -- an 'item' row
+  // immediately followed by its own item_description must never land on
+  // opposite sides of a page break (the description would strand on the
+  // next page with no numbered item above it to pair with -- exactly the
+  // ambiguity printItemNumbers above exists to remove).
+  const printKeepWithNext = useMemo(() => printableItems.map((it, i) =>
+    it.item_type === 'item' && printableItems[i + 1]?.item_type === 'item_description'
+  ), [printableItems])
+  // Same underlying fact as printKeepWithNext, as an identity-keyed Set
+  // instead of an index-parallel array -- renderRow below is called with an
+  // index local to whatever page usePaginatedDocument put this row on, not
+  // its position in printableItems, so it can't index into printKeepWithNext
+  // directly. Used to drop the row-separator border between an item and its
+  // own description (the pairing signal is spacing, not a line -- see the
+  // item_description branch below), without touching it when the next row
+  // is unrelated (a note, or nothing).
+  const printHasOwnDescription = useMemo(() => {
+    const set = new Set()
+    printableItems.forEach((it, i) => { if (printKeepWithNext[i]) set.add(it) })
+    return set
+  }, [printableItems, printKeepWithNext])
   const totals = calcQuotationTotals(printableItems, { hasVat, priceIncludesVat, discountAmount, discountPct })
   const isSplit = pricingMode === 'split'
   const materialLabor = isSplit ? sumMaterialLabor(printableItems) : null
@@ -645,27 +714,48 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
   const headerProps = { tenant, tag, revisionSuffix, quotationNumber, date, validUntil, siteName, clientName, clientAddress, clientTaxId, style }
   const colCount = (isSplit ? 5 : 4) + 1
 
+  // Item <-> item_description pairing reads from spacing alone, no line or
+  // color: the item's own bottom border is dropped when it has one (so it
+  // doesn't look sealed off right above its own description), the
+  // description sits close beneath with extra padding-bottom before
+  // whatever comes next, and the real separator border lands on the
+  // description's own row instead -- chosen over earlier line/tag-based
+  // mockups (see the "Document Row Pairing" artifact from this session).
+  // A general note only differs by a muted color pair, no box/border/label
+  // of its own, matching the artifact's chosen combination.
   const renderRow = (it, i) => (
-    it.item_type === 'note' || it.item_type === 'item_description' ? (
+    it.item_type === 'note' ? (
       <tr key={it.id || i}>
-        <td colSpan={colCount} style={{ padding: `6px 8px 6px ${it.item_type === 'item_description' ? 20 : 8}px`, borderBottom: '1px solid #eee', fontStyle: 'italic', color: '#666', whiteSpace: 'pre-line' }}>{it.description}</td>
+        <td colSpan={colCount} style={{ padding: '10px 8px', borderBottom: '1px solid #eee', fontStyle: 'italic', color: '#6B4E1E', background: '#FFFDF7', whiteSpace: 'pre-line' }}>{it.description}</td>
       </tr>
-    ) : (
+    ) : it.item_type === 'item_description' ? (
       <tr key={it.id || i}>
-        <td style={{ textAlign: 'center', padding: '9px 4px', borderBottom: '1px solid #eee', color: '#6a6f85' }}>{printItemNumbers.get(it)}</td>
-        <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee', whiteSpace: 'pre-line' }}>{it.description}</td>
-        <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.quantity} {it.unit || ''}</td>
-        {isSplit ? (
-          <>
-            <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price_material)}</td>
-            <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price_labor)}</td>
-          </>
-        ) : (
-          <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
-        )}
-        <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.line_total)}</td>
+        <td colSpan={colCount} style={{ padding: '0 8px 16px 22px', borderBottom: '1px solid #eee', fontStyle: 'italic', color: '#666', whiteSpace: 'pre-line' }}>{it.description}</td>
       </tr>
-    )
+    ) : (() => {
+      // Tighter bottom padding + no border when this item has its own
+      // description right below it -- the pair reads as one unit through
+      // that closeness; an item with nothing glued to it keeps the normal
+      // symmetric padding and its own separator border, same as before.
+      const glued = printHasOwnDescription.has(it)
+      const cellStyle = { padding: glued ? '9px 8px 2px' : '9px 8px', borderBottom: glued ? 'none' : '1px solid #eee' }
+      return (
+        <tr key={it.id || i}>
+          <td style={{ ...cellStyle, textAlign: 'center', padding: glued ? '9px 4px 2px' : '9px 4px', color: '#6a6f85' }}>{printItemNumbers.get(it)}</td>
+          <td style={{ ...cellStyle, whiteSpace: 'pre-line' }}>{it.description}</td>
+          <td style={{ ...cellStyle, textAlign: 'right' }}>{it.quantity} {it.unit || ''}</td>
+          {isSplit ? (
+            <>
+              <td style={{ ...cellStyle, textAlign: 'right' }}>{fmt(it.unit_price_material)}</td>
+              <td style={{ ...cellStyle, textAlign: 'right' }}>{fmt(it.unit_price_labor)}</td>
+            </>
+          ) : (
+            <td style={{ ...cellStyle, textAlign: 'right' }}>{fmt(it.unit_price)}</td>
+          )}
+          <td style={{ ...cellStyle, textAlign: 'right' }}>{fmt(it.line_total)}</td>
+        </tr>
+      )
+    })()
   )
 
   const thStyle = { textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }
@@ -795,6 +885,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
 
   const { pages, pageCount, measurementNode } = usePaginatedDocument({
     items: printableItems,
+    keepWithNext: printKeepWithNext,
     renderHeader: () => <QuotationHeader {...headerProps} pageNumber={1} totalPages={1} />,
     renderTableHeader,
     renderRow,
@@ -1461,7 +1552,13 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                         site (openSiteOverview needs a real site_id). */}
                     <td style={{ fontSize: 11, color: qt.site_id ? 'var(--accent)' : 'var(--text3)', cursor: qt.site_id ? 'pointer' : 'default' }}
                       onClick={() => qt.site_id && openSiteOverview(qt.site_id)}>{qt.sites?.name || qt.site_name || '—'}</td>
-                    <td style={{ fontSize: 11, color: 'var(--text3)' }}>{(qt.quotation_items || []).length} รายการ</td>
+                    {/* Counts real 'item' rows only -- quotation_items also holds
+                        each item's attached item_description plus any general
+                        notes, which aren't billable lines of their own and would
+                        otherwise inflate this into a meaningless number (e.g. a
+                        17-item quote with a description on every line and a few
+                        notes showing "51 รายการ"). */}
+                    <td style={{ fontSize: 11, color: 'var(--text3)' }}>{(qt.quotation_items || []).filter(it => it.item_type === 'item').length} รายการ</td>
                     <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(totals.total)}</td>
                     <td><span className={`badge badge-${qt.status}`}>{QT_STATUS_LABELS[qt.status] || qt.status}</span></td>
                     <td style={{ whiteSpace: 'nowrap' }}>
@@ -1470,17 +1567,12 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                         {(qt.revision || 1) > 1 && (
                           <button className="btn btn-sm btn-ghost" title="ประวัติการแก้ไข" onClick={() => setHistoryRow(qt)}>🕓</button>
                         )}
-                        {/* Available regardless of status (including accepted/rejected/
-                            expired, which otherwise have no other action here) -- it
-                            never touches the source document, only seeds a new one. */}
-                        {canEdit && (
-                          <button className="btn btn-sm btn-ghost" title="ทำสำเนาเป็นใบใหม่ (เลขที่ใหม่)" onClick={() => handleDuplicate(qt)}>📋</button>
-                        )}
                         {canEdit && qt.status === 'draft' && (
                           <>
                             <button className="btn btn-sm btn-primary" onClick={() => handleSetStatus(qt.id, 'sent')}>📤 ส่ง</button>
                             <RowActionsMenu items={[
                               { label: '✏️ แก้ไข', onClick: () => { setEditRow(qt); setShowAdd(true) } },
+                              { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
                               { label: '🗑️ ลบ', onClick: () => setDeleteId(qt.id), danger: true },
                             ]} />
                           </>
@@ -1491,13 +1583,28 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                             <RowActionsMenu items={[
                               { label: '🔗 ลิงก์เซ็นรับ', onClick: () => setLinkTarget(qt) },
                               { label: '↩️ แก้ไข (ดึงกลับเป็นร่าง)', onClick: () => handlePullBackToEdit(qt) },
+                              { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
                               { label: 'ปฏิเสธ', onClick: () => handleSetStatus(qt.id, 'rejected') },
                               { label: 'หมดอายุ', onClick: () => handleSetStatus(qt.id, 'expired') },
                             ]} />
                           </>
                         )}
                         {canEdit && qt.status === 'accepted' && !qt.site_id && (
-                          <button className="btn btn-sm btn-primary" onClick={() => setAcceptRow(qt)} title="ลูกค้าเซ็นรับแล้ว เหลือแค่ผูกไซท์งาน">🔗 ผูกไซท์งาน</button>
+                          <>
+                            <button className="btn btn-sm btn-primary" onClick={() => setAcceptRow(qt)} title="ลูกค้าเซ็นรับแล้ว เหลือแค่ผูกไซท์งาน">🔗 ผูกไซท์งาน</button>
+                            <RowActionsMenu items={[
+                              { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
+                            ]} />
+                          </>
+                        )}
+                        {/* accepted+linked / rejected / expired otherwise have no
+                            other action here -- duplicate works regardless of
+                            status (it never touches the source document, only
+                            seeds a new one), so it still gets a menu of its own. */}
+                        {canEdit && !(qt.status === 'draft' || qt.status === 'sent' || (qt.status === 'accepted' && !qt.site_id)) && (
+                          <RowActionsMenu items={[
+                            { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
+                          ]} />
                         )}
                       </div>
                     </td>
