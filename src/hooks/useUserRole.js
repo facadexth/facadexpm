@@ -8,6 +8,34 @@ import { supabase } from '../lib/supabase.js'
 // Role hierarchy: higher number = more access
 const HIERARCHY = { OWNER: 3, ADMIN: 2, WORKER: 1 }
 
+// User-scoped bootstrap cache for the last known-good role. A failed
+// user_roles fetch (network blip, proxy/CDN error page, expired JWT,
+// rate limit -- see fetchRole below) must never be treated as "no role
+// row exists": that silently downgrades an ADMIN/OWNER to WORKER and
+// hides every tab App.jsx gates behind minRole: 'ADMIN' (Quotations,
+// Invoices, Sites, Expenses...). Serving the cache instead keeps the
+// user's real role across a transient failure. onAuthStateChange
+// revalidates in the background on every tab refocus/token refresh, so
+// any blip -- not just true offline -- is enough to hit this path.
+const ROLE_BOOTSTRAP_PREFIX = 'role-bootstrap:'
+
+function readRoleCache(userEmail) {
+  try {
+    const raw = localStorage.getItem(ROLE_BOOTSTRAP_PREFIX + userEmail)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function writeRoleCache(userEmail, role) {
+  try {
+    localStorage.setItem(ROLE_BOOTSTRAP_PREFIX + userEmail, JSON.stringify({ role }))
+  } catch {
+    // Private-mode/quota failure -- caching is best-effort, never fatal.
+  }
+}
+
 export function useUserRole() {
   const [role, setRole]       = useState(null)
   const [user, setUser]       = useState(null)
@@ -26,28 +54,58 @@ export function useUserRole() {
 
   const fetchRole = useCallback(async () => {
     if (!hasLoadedOnce.current) setLoading(true)
-    const { data: { session } } = await supabase.auth.getSession()
+    hasLoadedOnce.current = true
 
-    if (!session?.user) {
-      setUser(null)
-      setRole(null)
+    let session = null
+    const applyCachedFallback = () => {
+      const cached = session?.user?.email ? readRoleCache(session.user.email) : null
+      if (cached) setRole(cached.role)
       setLoading(false)
-      hasLoadedOnce.current = true
-      return
     }
 
-    setUser(session.user)
+    try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      session = sessionData?.session ?? null
 
-    const { data } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_email', session.user.email)
-      .single()
+      if (!session?.user) {
+        setUser(null)
+        setRole(null)
+        setLoading(false)
+        return
+      }
 
-    // Default to WORKER if no role found
-    setRole(data?.role ?? 'WORKER')
-    setLoading(false)
-    hasLoadedOnce.current = true
+      setUser(session.user)
+
+      const res = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_email', session.user.email)
+        .single()
+
+      // postgrest-js resolves rather than throws for most failures (a
+      // network blip, a proxy/CDN error page, an expired JWT, a rate
+      // limit), so a failed fetch can't be told apart from "no role row"
+      // just by checking `!data`. The ONLY shape that genuinely proves
+      // "this user has no role row" is PostgREST's own .single()-found-
+      // zero-rows signal, PGRST116. Anything else means we don't know,
+      // so fall back to the cache instead of guessing WORKER and
+      // durably persisting that guess.
+      const noRoleRowExists = !res.error || res.error.code === 'PGRST116'
+      if (noRoleRowExists) {
+        const resolvedRole = res.data?.role ?? 'WORKER'
+        setRole(resolvedRole)
+        writeRoleCache(session.user.email, resolvedRole)
+        setLoading(false)
+      } else {
+        applyCachedFallback()
+      }
+    } catch {
+      // Belt-and-braces for the paths that do still throw (an aborted
+      // request, or auth-js calls like getSession()). Same fail-safe:
+      // never guess, serve the cache, and always resolve loading so the
+      // UI can't hang forever on ProtectedPage's spinner.
+      applyCachedFallback()
+    }
   }, [])
 
   useEffect(() => {
