@@ -1603,6 +1603,12 @@ function MarkPaidModal({ invoice, onConfirm, onCancel }) {
 export default function Invoices({ navigateTo, navState, openSiteOverview }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'invoices')
+  // Hard-gated to OWNER, not routed through the customizable per-role
+  // permissions.js system like canEdit -- unlike voiding an unpaid draft,
+  // unmarking a paid invoice deletes a real income record that may already
+  // be reflected in reports/reconciliation. Same pattern Settings.jsx uses
+  // for its OWNER-only document style customizer.
+  const isOwner = isAtLeast('OWNER')
   const today = new Date()
   const ytdFrom = format(startOfYear(today), 'yyyy-MM-dd')
   const ytdTo   = format(endOfYear(today),   'yyyy-MM-dd')
@@ -1658,8 +1664,10 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
 
   const [payingId, setPayingId] = useState(null)
   const [voidingId, setVoidingId] = useState(null)
+  const [unmarkingPaidId, setUnmarkingPaidId] = useState(null)
   const [voidRow, setVoidRow] = useState(null)
   const [payRow, setPayRow] = useState(null)
+  const [unmarkPaidRow, setUnmarkPaidRow] = useState(null)
   const { tenant, hasModuleAccess } = useTenant()
 
   const [docRow, setDocRow] = useState(null)
@@ -1809,6 +1817,53 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
       alert('เกิดข้อผิดพลาด (โปรดตรวจสอบและกระทบยอดด้วยตนเองหากมีการบันทึกไปแล้วบางส่วน): ' + e.message)
     } finally {
       setPayingId(null)
+    }
+  }
+
+  // OWNER-only: reverses a paid invoice back to unpaid by deleting its
+  // linked income + receipt. Deliberately does NOT touch billed line-item
+  // progress (quotation_item_units.cumulative_pct) -- that stays exactly
+  // where handleMarkPaid last drew it. Once this invoice is unpaid again,
+  // the existing "✕ ยกเลิก" void action (already visible to canEdit on any
+  // unpaid invoice) becomes available and handles reverting that progress
+  // itself, the same way it does for a plain unpaid draft. This two-step
+  // split keeps the risky "delete a real income record" action separate
+  // from the already-reviewed void logic instead of duplicating it.
+  const handleUnmarkPaid = async (invoice) => {
+    if (invoice.status !== 'paid' || payingId || voidingId || unmarkingPaidId) return
+    setUnmarkingPaidId(invoice.id)
+    try {
+      const receipt = (receipts || []).find(r => r.invoice_id === invoice.id)
+      const { data: income, error: incomeFetchError } = await supabase
+        .from('incomes').select('*').eq('id', invoice.income_id).maybeSingle()
+      if (incomeFetchError) throw incomeFetchError
+
+      if (receipt) {
+        const { error: receiptDeleteError } = await supabase.from('receipts').delete().eq('id', receipt.id)
+        if (receiptDeleteError) throw receiptDeleteError
+        await auditLog('receipts', receipt.id, 'DELETE', receipt, null)
+      }
+      if (income) {
+        const { error: incomeDeleteError } = await supabase.from('incomes').delete().eq('id', income.id)
+        if (incomeDeleteError) throw incomeDeleteError
+        await auditLog('incomes', income.id, 'DELETE', income, null)
+      }
+
+      const oldValues = { status: invoice.status, income_id: invoice.income_id, paid_date: invoice.paid_date }
+      const { data: updateResult, error: updateError } = await supabase.from('invoices')
+        .update({ status: 'unpaid', paid_date: null, income_id: null })
+        .eq('id', invoice.id).eq('status', 'paid').select('id')
+      if (updateError) throw updateError
+      if (!updateResult || updateResult.length === 0) {
+        throw new Error('ใบแจ้งหนี้นี้ถูกเปลี่ยนสถานะโดยผู้ใช้อื่นไปแล้ว กรุณารีเฟรชหน้าจอ')
+      }
+      await auditLog('invoices', invoice.id, 'UPDATE', oldValues, { status: 'unpaid', income_id: null, paid_date: null })
+
+      refetch(); refetchReceipts(); showToast('ยกเลิกการชำระเงินแล้ว')
+    } catch (e) {
+      alert('ยกเลิกการชำระเงินไม่สำเร็จ (โปรดตรวจสอบและกระทบยอดด้วยตนเองหากมีการบันทึกไปแล้วบางส่วน): ' + e.message)
+    } finally {
+      setUnmarkingPaidId(null)
     }
   }
 
@@ -1965,6 +2020,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
                     <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(inv)}>📄</button>
                     <RowActionsMenu items={[
                       ...(canEdit && inv.status === 'unpaid' ? [{ label: '✕ ยกเลิก', onClick: () => setVoidRow(inv), danger: true }] : []),
+                      ...(isOwner && inv.status === 'paid' ? [{ label: '↩️ ยกเลิกการชำระเงิน', onClick: () => setUnmarkPaidRow(inv), danger: true }] : []),
                       ...(inv.status === 'paid' ? [{ label: '🧾 ใบเสร็จ', onClick: () => setReceiptRow(inv) }] : []),
                       ...(canEdit ? [{ label: '📷 รูปประกอบการส่งงาน', onClick: () => setPhotosRow(inv) }] : []),
                       ...(canEdit ? [{ label: '🔗 ลิงก์เซ็นรับระยะไกล', onClick: () => setLinkTarget(inv) }] : []),
@@ -2035,6 +2091,16 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
           message={`ยืนยันการยกเลิกใบแจ้งหนี้ ${voidRow.invoice_number}? การกระทำนี้ไม่สามารถย้อนกลับได้`}
           onConfirm={() => handleVoid(voidRow)}
           onCancel={() => setVoidRow(null)}
+          danger
+        />
+      )}
+
+      {unmarkPaidRow && (
+        <ConfirmDialog
+          title="ยกเลิกการชำระเงิน"
+          message={`ยืนยันการยกเลิกการชำระเงินของใบแจ้งหนี้ ${unmarkPaidRow.invoice_number}? ระบบจะลบรายรับที่บันทึกไว้ (฿${fmt(unmarkPaidRow.total)}) และใบเสร็จที่ออกไปแล้ว แล้วเปลี่ยนสถานะกลับเป็น "ยังไม่ชำระ" — การกระทำนี้ไม่สามารถย้อนกลับได้ หลังจากนี้คุณจะสามารถกด "✕ ยกเลิก" เพื่อยกเลิกใบแจ้งหนี้ต่อได้ตามปกติ`}
+          onConfirm={() => { handleUnmarkPaid(unmarkPaidRow); setUnmarkPaidRow(null) }}
+          onCancel={() => setUnmarkPaidRow(null)}
           danger
         />
       )}
