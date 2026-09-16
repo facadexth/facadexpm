@@ -680,6 +680,19 @@ export function useLaborCost(siteId) {
   }, [siteId])
 }
 
+/** ขั้นตอนงาน (Gantt) ทุกไซท์ — group ฝั่ง client ด้วย site_id */
+export function useSitePhases() {
+  return useQuery(async () => {
+    const { data, error } = await supabase
+      .from('site_phases')
+      .select('*')
+      .order('site_id', { ascending: true })
+      .order('sort_order', { ascending: true })
+    if (error) throw error
+    return data
+  })
+}
+
 /** OT entries ในช่วงวันที่ — ใช้กับมุมมอง Day/Week/Month และ copy-for-LINE */
 export function useWorkerOTRange(from, to) {
   return useQuery(async () => {
