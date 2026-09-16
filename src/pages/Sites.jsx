@@ -458,6 +458,11 @@ export default function Sites({ navigateTo, openSiteOverview }) {
   const [selectedSiteId, setSelectedSiteId] = useState(null)
   const [managePhasesSite, setManagePhasesSite] = useState(null) // site object or null
   const { data: allPhases, refetch: refetchPhases } = useSitePhases()
+  // GanttView/SCurveChart each fetch phases via their own useSitePhases() call (not shared
+  // cache), so refetchPhases() above only updates this component's copy. Bump this to remount
+  // both children (via `key`) after a phase save so their bars/curve reflect it immediately
+  // instead of only after a full page reload.
+  const [phasesRefreshKey, setPhasesRefreshKey] = useState(0)
 
   // Labor cost lookup
   const laborBysite = useMemo(() => {
@@ -709,6 +714,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
       {viewMode === 'gantt' && (
         <>
           <GanttView
+            key={phasesRefreshKey}
             sites={filtered}
             navigateTo={navigateTo}
             onManagePhases={(site) => setManagePhasesSite(site)}
@@ -717,7 +723,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
           />
           {selectedSiteId && (
             <div style={{ marginTop: 16 }}>
-              <SCurveChart site={filtered.find((s) => s.id === selectedSiteId)} />
+              <SCurveChart key={phasesRefreshKey} site={filtered.find((s) => s.id === selectedSiteId)} />
             </div>
           )}
         </>
@@ -728,7 +734,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
           site={managePhasesSite}
           phases={(allPhases || []).filter((p) => p.site_id === managePhasesSite.id)}
           onClose={() => setManagePhasesSite(null)}
-          onSaved={refetchPhases}
+          onSaved={() => { refetchPhases(); setPhasesRefreshKey((k) => k + 1) }}
         />
       )}
 
