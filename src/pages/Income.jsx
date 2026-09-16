@@ -315,56 +315,61 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
     <div>
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
 
-      {/* ── Toolbar ── */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        {canEdit && <button className="btn btn-success" onClick={() => { setEditRow(null); setShowAdd(true) }}>+ เพิ่มรายรับ</button>}
-        {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
-        <a className="btn btn-ghost" href="/templates/TEMPLATE_รายรับ.xlsx" download>📄 Template</a>
-        <button className="btn btn-ghost" onClick={handleExport}>📤 Export Excel</button>
-        <div style={{ flex: 1 }} />
-        <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหา..." value={search} onChange={e => setSearch(e.target.value)} />
-        <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-        <span style={{ color: 'var(--text3)' }}>—</span>
-        <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
-      </div>
-
-      {/* ── Import ── */}
-      {showImport && (
-        <div style={{ marginBottom: 16 }}>
-          <ExcelUpload type="income" onSuccess={(msg) => { showToast(msg); setShowImport(false); refetch() }} />
+      {/* ── Toolbar + filters + KPI, capped so this region alone can't push
+          the table out of usable view on a short monitor -- see
+          .page-toolbar-scroll in index.css. ── */}
+      <div className="page-toolbar-scroll">
+        {/* ── Toolbar ── */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          {canEdit && <button className="btn btn-success" onClick={() => { setEditRow(null); setShowAdd(true) }}>+ เพิ่มรายรับ</button>}
+          {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
+          <a className="btn btn-ghost" href="/templates/TEMPLATE_รายรับ.xlsx" download>📄 Template</a>
+          <button className="btn btn-ghost" onClick={handleExport}>📤 Export Excel</button>
+          <div style={{ flex: 1 }} />
+          <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหา..." value={search} onChange={e => setSearch(e.target.value)} />
+          <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          <span style={{ color: 'var(--text3)' }}>—</span>
+          <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
         </div>
-      )}
 
-      {/* ── Site filter ── */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ minWidth: 220 }}>
-          <SearchableSelect
-            value={siteId}
-            onChange={setSiteId}
-            placeholder="ทุกไซท์งาน"
-            options={siteOpts(sites)}
-          />
-        </div>
-        {navState?.siteName && (
-          <span className="badge" style={{ background: 'rgba(0,212,170,0.15)', color: 'var(--green)' }}>
-            🔍 {navState.siteName}
-            <button style={{ background:'none',border:'none',cursor:'pointer',color:'inherit',marginLeft:4 }} onClick={() => setSiteId('')}>✕</button>
-          </span>
+        {/* ── Import ── */}
+        {showImport && (
+          <div style={{ marginBottom: 16 }}>
+            <ExcelUpload type="income" onSuccess={(msg) => { showToast(msg); setShowImport(false); refetch() }} />
+          </div>
         )}
-      </div>
 
-      {/* ── KPI ── */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-        <div className="kpi-card kpi-sm green"><div className="kpi-label">ยอดรับจริง</div><div className="kpi-value" style={{color:'var(--green)'}}>{fmt(totalReceived)}</div></div>
-        <div className="kpi-card kpi-sm"><div className="kpi-label">ก่อน VAT</div><div className="kpi-value">{fmt(totalNoVat)}</div></div>
-        <div className="kpi-card kpi-sm yellow"><div className="kpi-label">Tax ถูกหัก</div><div className="kpi-value" style={{color:'var(--yellow)'}}>{fmt(totalTax)}</div></div>
-        <div className="kpi-card kpi-sm"><div className="kpi-label">Retention ค้าง</div><div className="kpi-value">{fmt(totalRetention)}</div></div>
-        <div className="kpi-card kpi-sm"><div className="kpi-label">จำนวนรายการ</div><div className="kpi-value">{(incomes||[]).length} ใบ</div></div>
+        {/* ── Site filter ── */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ minWidth: 220 }}>
+            <SearchableSelect
+              value={siteId}
+              onChange={setSiteId}
+              placeholder="ทุกไซท์งาน"
+              options={siteOpts(sites)}
+            />
+          </div>
+          {navState?.siteName && (
+            <span className="badge" style={{ background: 'rgba(0,212,170,0.15)', color: 'var(--green)' }}>
+              🔍 {navState.siteName}
+              <button style={{ background:'none',border:'none',cursor:'pointer',color:'inherit',marginLeft:4 }} onClick={() => setSiteId('')}>✕</button>
+            </span>
+          )}
+        </div>
+
+        {/* ── KPI ── */}
+        <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+          <div className="kpi-card kpi-sm green"><div className="kpi-label">ยอดรับจริง</div><div className="kpi-value" style={{color:'var(--green)'}}>{fmt(totalReceived)}</div></div>
+          <div className="kpi-card kpi-sm"><div className="kpi-label">ก่อน VAT</div><div className="kpi-value">{fmt(totalNoVat)}</div></div>
+          <div className="kpi-card kpi-sm yellow"><div className="kpi-label">Tax ถูกหัก</div><div className="kpi-value" style={{color:'var(--yellow)'}}>{fmt(totalTax)}</div></div>
+          <div className="kpi-card kpi-sm"><div className="kpi-label">Retention ค้าง</div><div className="kpi-value">{fmt(totalRetention)}</div></div>
+          <div className="kpi-card kpi-sm"><div className="kpi-label">จำนวนรายการ</div><div className="kpi-value">{(incomes||[]).length} ใบ</div></div>
+        </div>
       </div>
 
       {/* ── Table ── */}
       <div className="card">
-        <div className="table-wrap">
+        <div className="table-wrap table-wrap-fill">
           <table>
             <thead>
               <tr>

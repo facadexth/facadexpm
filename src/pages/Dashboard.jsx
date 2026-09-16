@@ -373,43 +373,49 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
 
   return (
     <div>
-      {/* ── Period Selector ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
-        <span className="label" style={{ marginBottom: 0 }}>ช่วงเวลา:</span>
-        {PERIOD_OPTIONS.map(opt => (
-          <button
-            key={opt.value}
-            className={`btn btn-sm ${period === opt.value ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={() => setPeriod(opt.value)}
-          >
-            {opt.label}
+      {/* ── Period selector + KPI cards, capped so this region alone can't
+          push the table below it out of usable view on a short monitor
+          -- see .page-toolbar-scroll in index.css. Charts stay outside
+          this cap (unaffected), matching how they were requested. ── */}
+      <div className="page-toolbar-scroll">
+        {/* ── Period Selector ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+          <span className="label" style={{ marginBottom: 0 }}>ช่วงเวลา:</span>
+          {PERIOD_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              className={`btn btn-sm ${period === opt.value ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setPeriod(opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
+          <button className={`btn btn-sm ${period === 'custom' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPeriod('custom')}>
+            กำหนดเอง
           </button>
-        ))}
-        <button className={`btn btn-sm ${period === 'custom' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPeriod('custom')}>
-          กำหนดเอง
-        </button>
-        {period === 'custom' && (
-          <>
-            <input type="date" className="input input-sm" style={{ width: 140 }} value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
-            <span style={{ color: 'var(--text3)' }}>ถึง</span>
-            <input type="date" className="input input-sm" style={{ width: 140 }} value={customTo} onChange={e => setCustomTo(e.target.value)} />
-          </>
+          {period === 'custom' && (
+            <>
+              <input type="date" className="input input-sm" style={{ width: 140 }} value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
+              <span style={{ color: 'var(--text3)' }}>ถึง</span>
+              <input type="date" className="input input-sm" style={{ width: 140 }} value={customTo} onChange={e => setCustomTo(e.target.value)} />
+            </>
+          )}
+        </div>
+
+        {/* ── KPI Cards ── */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowKpiCustomize(true)}>⚙️ ปรับแต่งการ์ด</button>
+        </div>
+        {visibleKpiIds.length > 0 ? (
+          <div className={`kpi-grid kpi-grid-${visibleKpiIds.length}`} style={{ marginBottom: 20 }}>
+            {visibleKpiIds.map(id => kpiRegistry[id])}
+          </div>
+        ) : (
+          <div className="card card-body" style={{ marginBottom: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+            ซ่อนการ์ดทั้งหมดไว้ — กด "ปรับแต่งการ์ด" เพื่อแสดงกลับมา
+          </div>
         )}
       </div>
-
-      {/* ── KPI Cards ── */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <button className="btn btn-ghost btn-sm" onClick={() => setShowKpiCustomize(true)}>⚙️ ปรับแต่งการ์ด</button>
-      </div>
-      {visibleKpiIds.length > 0 ? (
-        <div className={`kpi-grid kpi-grid-${visibleKpiIds.length}`} style={{ marginBottom: 20 }}>
-          {visibleKpiIds.map(id => kpiRegistry[id])}
-        </div>
-      ) : (
-        <div className="card card-body" style={{ marginBottom: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
-          ซ่อนการ์ดทั้งหมดไว้ — กด "ปรับแต่งการ์ด" เพื่อแสดงกลับมา
-        </div>
-      )}
 
       {/* ── Charts ── */}
       <div className="chart-grid-2-1" style={{ marginBottom: 20 }}>
@@ -462,7 +468,7 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
         ไซท์งาน Ongoing ({ongoingCount} ไซท์) — กดหัวตารางเพื่อเรียง | กดตัวเลขเพื่อดูรายละเอียด
       </div>
       <div className="card">
-        <div className="table-wrap">
+        <div className="table-wrap table-wrap-fill">
           <table>
             <thead>
               <tr>

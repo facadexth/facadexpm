@@ -519,6 +519,10 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
     <div>
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
 
+      {/* ── Toolbar + filters + summary, capped so this region alone can't
+          push the table out of usable view on a short monitor -- see
+          .page-toolbar-scroll in index.css. ── */}
+      <div className="page-toolbar-scroll">
       {/* ── Toolbar (actions only) ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => { setEditRow(null); setShowAdd(true) }}>+ เพิ่มรายจ่าย</button>}
@@ -627,10 +631,11 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
           )}
         </div>
       </div>
+      </div>
 
       {/* ── Table ── */}
       <div className="card">
-        <div className="table-wrap">
+        <div className="table-wrap table-wrap-fill">
           <table>
             <thead>
               <tr>
