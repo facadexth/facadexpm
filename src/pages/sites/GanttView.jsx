@@ -4,9 +4,16 @@
 import { useMemo } from 'react'
 import { useSitePhases } from '../../hooks/useSupabase.js'
 import { computeTimelineRange, barStyle, computeDependencyArrows, STATUS_COLOR } from './ganttTimeline.js'
+import { getEffectiveTheme } from '../../lib/theme.js'
 
-export default function GanttView({ sites, navigateTo, onManagePhases, selectedSiteId, onSelectSite }) {
+export default function GanttView({ sites, navigateTo, onManagePhases, selectedSiteId, onSelectSite, canEdit }) {
   const { data: allPhases } = useSitePhases()
+
+  // SVG presentation attributes (stroke=...) don't resolve CSS var() --
+  // only real CSS property values do -- so derive a literal hex color here
+  // instead, following Dashboard.jsx's chartColors pattern.
+  const isDarkChart = getEffectiveTheme() === 'dark'
+  const arrowColor = isDarkChart ? '#5c5f80' : '#928c7a'
 
   const phasesBySite = useMemo(() => {
     const m = {}
@@ -86,19 +93,21 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                     <line
                       key={i}
                       x1={a.fromX} y1={14} x2={a.toX} y2={14}
-                      stroke="var(--text3)" strokeWidth="0.6" strokeDasharray="1.5 1"
+                      stroke={arrowColor} strokeWidth="0.6" strokeDasharray="1.5 1"
                     />
                   ))}
                 </svg>
               )}
             </div>
-            <button
-              className="btn btn-sm btn-ghost"
-              style={{ flexShrink: 0 }}
-              onClick={(e) => { e.stopPropagation(); onManagePhases(site) }}
-            >
-              📋 จัดการขั้นตอน
-            </button>
+            {canEdit && (
+              <button
+                className="btn btn-sm btn-ghost"
+                style={{ flexShrink: 0 }}
+                onClick={(e) => { e.stopPropagation(); onManagePhases(site) }}
+              >
+                📋 จัดการขั้นตอน
+              </button>
+            )}
           </div>
         )
       })}

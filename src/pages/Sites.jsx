@@ -720,6 +720,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
             onManagePhases={(site) => setManagePhasesSite(site)}
             selectedSiteId={selectedSiteId}
             onSelectSite={setSelectedSiteId}
+            canEdit={canEdit}
           />
           {(() => {
             const selectedSite = filtered.find((s) => s.id === selectedSiteId)

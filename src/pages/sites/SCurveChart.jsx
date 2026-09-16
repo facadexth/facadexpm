@@ -6,11 +6,23 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { useSitePhases, useIncomes, useExpenses } from '../../hooks/useSupabase.js'
 import { buildPlanSeries, buildActualSeries, buildCostSeries, mergeCumulativeSeries } from './scurveCalc.js'
 import { fmt } from '../../lib/supabase.js'
+import { getEffectiveTheme } from '../../lib/theme.js'
 
 export default function SCurveChart({ site }) {
   const { data: allPhases } = useSitePhases()
   const { data: incomes } = useIncomes({ siteId: site.id })
   const { data: expenses } = useExpenses({ siteId: site.id })
+
+  // SVG presentation attributes (stroke=...) don't resolve CSS var() --
+  // only real CSS property values do -- so derive literal hex colors here
+  // instead, following Dashboard.jsx's chartColors pattern.
+  const isDarkChart = getEffectiveTheme() === 'dark'
+  const chartColors = {
+    accent: isDarkChart ? '#6c63ff' : '#3e5c46',
+    green: '#00d4aa',
+    red: '#ff6b6b',
+    border: isDarkChart ? 'rgba(108,99,255,0.2)' : 'rgba(62,92,70,0.18)',
+  }
 
   const chartData = useMemo(() => {
     const phasesForSite = (allPhases || []).filter((p) => p.site_id === site.id)
@@ -33,14 +45,14 @@ export default function SCurveChart({ site }) {
       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>S-curve: {site.name}</div>
       <ResponsiveContainer width="100%" height={280}>
         <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+          <CartesianGrid strokeDasharray="3 3" stroke={chartColors.border} />
           <XAxis dataKey="date" tick={{ fontSize: 11 }} />
           <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmt(v)} />
           <Tooltip formatter={(v) => fmt(v)} />
           <Legend />
-          <Line type="monotone" dataKey="plan" name="แผนเบิกเงิน" stroke="var(--accent)" dot={false} />
-          <Line type="monotone" dataKey="actual" name="เบิกจริง" stroke="var(--green)" dot={false} />
-          <Line type="monotone" dataKey="cost" name="ต้นทุนเรา" stroke="var(--red)" dot={false} />
+          <Line type="monotone" dataKey="plan" name="แผนเบิกเงิน" stroke={chartColors.accent} dot={false} />
+          <Line type="monotone" dataKey="actual" name="เบิกจริง" stroke={chartColors.green} dot={false} />
+          <Line type="monotone" dataKey="cost" name="ต้นทุนเรา" stroke={chartColors.red} dot={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>
