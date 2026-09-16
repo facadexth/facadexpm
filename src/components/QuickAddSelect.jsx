@@ -117,10 +117,16 @@ export default function QuickAddSelect({
         </button>
       </div>
       {showCreate && (
-        <div className="card" style={{ padding: 10, marginTop: 8, display: 'grid', gap: 8 }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="card" style={{ padding: 10, marginTop: 8, display: 'grid', gap: 8, maxWidth: '100%', boxSizing: 'border-box' }}>
+          {/* flexWrap so the cancel/create buttons drop to their own line
+              instead of forcing this row past a narrow parent (e.g. the
+              340px stock-binding column in PurchaseOrders.jsx) -- minWidth
+              on the input lets it actually shrink there too, since a flex
+              item's default min-width is its content's intrinsic width,
+              not 0. */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
             <input
-              className="input input-sm" style={{ flex: 1 }} autoFocus
+              className="input input-sm" style={{ flex: 1, minWidth: 100 }} autoFocus
               value={name} onChange={e => { setName(e.target.value); setDuplicates(null) }} placeholder={namePlaceholder}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCreate() } }}
             />
@@ -139,11 +145,20 @@ export default function QuickAddSelect({
             </div>
           )}
           {duplicates?.length > 0 && (
-            <div style={{ marginTop: 8, fontSize: 12.5 }}>
+            <div style={{ marginTop: 8, fontSize: 12.5, maxWidth: '100%' }}>
               <div style={{ color: 'var(--amber, #d9a441)', marginBottom: 4 }}>⚠️ พบรายการที่ชื่อใกล้เคียงกันอยู่แล้ว — กดเลือกถ้าเป็นรายการเดียวกัน ไม่งั้นกด "สร้างใหม่จริง" อีกครั้ง</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {/* Full-width stacked rows, not inline pills -- these are
+                  often long product names (real bug: a long label as an
+                  inline-flex pill doesn't wrap, so it overflowed straight
+                  past a narrow parent like the 340px stock-binding column
+                  in PurchaseOrders.jsx instead of wrapping onto a second
+                  line). whiteSpace/wordBreak let the label itself wrap
+                  inside the button instead of forcing single-line width. */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {duplicates.map(o => (
-                  <button key={o.value} type="button" className="btn btn-sm btn-ghost" style={{ borderColor: 'var(--border)' }} onClick={() => useDuplicate(o)}>
+                  <button key={o.value} type="button" className="btn btn-sm btn-ghost"
+                    style={{ borderColor: 'var(--border)', width: '100%', textAlign: 'left', whiteSpace: 'normal', wordBreak: 'break-word', boxSizing: 'border-box' }}
+                    onClick={() => useDuplicate(o)}>
                     {o.label}
                   </button>
                 ))}
