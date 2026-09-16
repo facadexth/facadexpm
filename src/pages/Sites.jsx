@@ -721,11 +721,14 @@ export default function Sites({ navigateTo, openSiteOverview }) {
             selectedSiteId={selectedSiteId}
             onSelectSite={setSelectedSiteId}
           />
-          {selectedSiteId && (
-            <div style={{ marginTop: 16 }}>
-              <SCurveChart key={phasesRefreshKey} site={filtered.find((s) => s.id === selectedSiteId)} />
-            </div>
-          )}
+          {(() => {
+            const selectedSite = filtered.find((s) => s.id === selectedSiteId)
+            return selectedSite && (
+              <div style={{ marginTop: 16 }}>
+                <SCurveChart key={phasesRefreshKey} site={selectedSite} />
+              </div>
+            )
+          })()}
         </>
       )}
 
