@@ -9,7 +9,10 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useSites, useLaborCost, useClients, useSeatStatus, useCategories, useSiteCostEstimates, saveSiteCostEstimates } from '../hooks/useSupabase.js'
+import { useSites, useLaborCost, useClients, useSeatStatus, useCategories, useSiteCostEstimates, saveSiteCostEstimates, useSitePhases } from '../hooks/useSupabase.js'
+import GanttView from './sites/GanttView.jsx'
+import PhaseManageModal from './sites/PhaseManageModal.jsx'
+import SCurveChart from './sites/SCurveChart.jsx'
 import { PencilIcon, LinkIcon } from '../components/icons.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { useUserRole } from '../hooks/useUserRole.js'
@@ -451,6 +454,10 @@ export default function Sites({ navigateTo, openSiteOverview }) {
   const [search,      setSearch]      = useState('')
   const [sortCol,     setSortCol]     = useState('last_activity_date')
   const [sortDir,     setSortDir]     = useState('desc')
+  const [viewMode,      setViewMode]      = useState('table') // 'table' | 'gantt'
+  const [selectedSiteId, setSelectedSiteId] = useState(null)
+  const [managePhasesSite, setManagePhasesSite] = useState(null) // site object or null
+  const { data: allPhases, refetch: refetchPhases } = useSitePhases()
 
   // Labor cost lookup
   const laborBysite = useMemo(() => {
@@ -544,6 +551,10 @@ export default function Sites({ navigateTo, openSiteOverview }) {
               onClick={() => setStatusFilter(s)}>{s}</button>
           ))}
         </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('table')}>📋 ตาราง</button>
+          <button className={`btn btn-sm ${viewMode === 'gantt' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('gantt')}>📊 Gantt</button>
+        </div>
       </div>
 
       {/* ── Import Zone ── */}
@@ -557,6 +568,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
       )}
 
       {/* ── Table ── */}
+      {viewMode === 'table' && (
       <div className="card">
         <div className="table-wrap">
           <table>
@@ -692,6 +704,33 @@ export default function Sites({ navigateTo, openSiteOverview }) {
           </table>
         </div>
       </div>
+      )}
+
+      {viewMode === 'gantt' && (
+        <>
+          <GanttView
+            sites={filtered}
+            navigateTo={navigateTo}
+            onManagePhases={(site) => setManagePhasesSite(site)}
+            selectedSiteId={selectedSiteId}
+            onSelectSite={setSelectedSiteId}
+          />
+          {selectedSiteId && (
+            <div style={{ marginTop: 16 }}>
+              <SCurveChart site={filtered.find((s) => s.id === selectedSiteId)} />
+            </div>
+          )}
+        </>
+      )}
+
+      {managePhasesSite && (
+        <PhaseManageModal
+          site={managePhasesSite}
+          phases={(allPhases || []).filter((p) => p.site_id === managePhasesSite.id)}
+          onClose={() => setManagePhasesSite(null)}
+          onSaved={refetchPhases}
+        />
+      )}
 
       {/* ── Add/Edit Modal ── */}
       {showForm && (
