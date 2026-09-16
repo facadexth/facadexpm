@@ -24,7 +24,7 @@ export default function PhaseManageModal({ site, phases, onClose, onSaved }) {
   const setRow = (id, patch) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)))
   const addRow = () => setRows((rs) => [
     ...rs,
-    { id: nextTempId(), site_id: site.id, name: '', sort_order: rs.length + 1, start_date: '', end_date: '', status: 'not_started', billing_weight_pct: 0, depends_on_phase_id: '' },
+    { id: nextTempId(), isNew: true, site_id: site.id, name: '', sort_order: rs.length + 1, start_date: '', end_date: '', status: 'not_started', billing_weight_pct: 0, depends_on_phase_id: '' },
   ])
   const removeRow = (id) => setRows((rs) => rs.filter((r) => r.id !== id))
 
@@ -43,9 +43,9 @@ export default function PhaseManageModal({ site, phases, onClose, onSaved }) {
         billing_weight_pct: parseFloat(r.billing_weight_pct) || 0,
         depends_on_phase_id: r.depends_on_phase_id || null,
       })
-      const toUpdate = rows.filter((r) => r.id > 0).map((r) => ({ id: r.id, ...clean(r) }))
-      const toInsert = rows.filter((r) => r.id < 0).map((r) => clean(r))
-      const keptIds = rows.filter((r) => r.id > 0).map((r) => r.id)
+      const toUpdate = rows.filter((r) => !r.isNew).map((r) => ({ id: r.id, ...clean(r) }))
+      const toInsert = rows.filter((r) => r.isNew).map((r) => clean(r))
+      const keptIds = rows.filter((r) => !r.isNew).map((r) => r.id)
       const deletedIds = originalIds.filter((id) => !keptIds.includes(id))
 
       if (toUpdate.length) {
@@ -84,7 +84,7 @@ export default function PhaseManageModal({ site, phases, onClose, onSaved }) {
               onChange={(e) => setRow(r.id, { billing_weight_pct: e.target.value })} placeholder="%" />
             <select className="select" value={r.depends_on_phase_id || ''} onChange={(e) => setRow(r.id, { depends_on_phase_id: e.target.value })}>
               <option value="">— ไม่ขึ้นกับขั้นตอนอื่น —</option>
-              {rows.filter((other) => other.id !== r.id && other.id > 0).map((other) => (
+              {rows.filter((other) => other.id !== r.id && !other.isNew).map((other) => (
                 <option key={other.id} value={other.id}>{other.name || '(ยังไม่ตั้งชื่อ)'}</option>
               ))}
             </select>
