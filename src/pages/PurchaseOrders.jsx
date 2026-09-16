@@ -80,7 +80,7 @@ const profileOpts = (profiles) => (profiles || []).map(p => ({
   value: p.id, label: `${p.name} (${p.linear_weight_kg_per_m} กก./ม.)`, keywords: p.name,
 }))
 
-function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, aluminumProfiles, units, onUnitAdded, categories }) {
+function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, aluminumProfiles, units, onUnitAdded, categories, defaultCategoryId }) {
   const set = (i, k, v) => onChange(items.map((it, idx) => idx === i ? { ...it, [k]: v } : it))
   const add = () => onChange([...items, { ...EMPTY_ITEM }])
   const remove = (i) => onChange(items.length > 1 ? items.filter((_, idx) => idx !== i) : items)
@@ -118,6 +118,7 @@ function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, 
                   initialName={it.description}
                   extraPayload={{ base_unit: it.unit || 'หน่วย' }}
                   extraField={{ key: 'category_id', label: 'ประเภทสินค้า', options: catOpts(categories) }}
+                  initialExtraValue={defaultCategoryId}
                   onCreated={onInventoryItemCreated}
                   addLabel="+ สร้างใหม่"
                 />
@@ -269,7 +270,7 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
           {scanning && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>⏳ กำลังอ่านเอกสาร...</div>}
           {scanError && <div className="alert alert-error" style={{ marginTop: 6 }}>{scanError}</div>}
         </div>
-        <ItemsEditor items={form.items} onChange={items => set('items', items)} inventoryItems={inventoryItems} onInventoryItemCreated={onInventoryItemCreated} aluminumProfiles={aluminumProfiles} units={units} onUnitAdded={refetchUnits} categories={categories} />
+        <ItemsEditor items={form.items} onChange={items => set('items', items)} inventoryItems={inventoryItems} onInventoryItemCreated={onInventoryItemCreated} aluminumProfiles={aluminumProfiles} units={units} onUnitAdded={refetchUnits} categories={categories} defaultCategoryId={form.category_id} />
         <div>
           <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>

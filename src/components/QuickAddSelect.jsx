@@ -41,10 +41,19 @@ export default function QuickAddSelect({
   // column left at its default (e.g. no category), same as before this
   // prop existed.
   extraField,
+  // Pre-fills extraField's value when the create box opens (e.g. a new
+  // inventory item quick-added from the PO form starts on the PO's own
+  // already-selected category, instead of always starting unset) -- the
+  // user can still change it before saving. Same "re-seed from the
+  // current prop on open" rule as initialName below: a plain
+  // useState(initialExtraValue) would only capture the prop's value at
+  // mount, missing a category picked after this component first
+  // rendered.
+  initialExtraValue = '',
 }) {
   const [showCreate, setShowCreate] = useState(false)
   const [name, setName] = useState(initialName)
-  const [extraValue, setExtraValue] = useState('')
+  const [extraValue, setExtraValue] = useState(initialExtraValue)
   const [saving, setSaving] = useState(false)
   const [duplicates, setDuplicates] = useState(null) // null = not checked yet this attempt
 
@@ -93,7 +102,7 @@ export default function QuickAddSelect({
   // the create box (React's classic "initial value" trap).
   const toggleCreate = () => setShowCreate(s => {
     const next = !s
-    if (next) { setName(initialName); setExtraValue(''); setDuplicates(null) }
+    if (next) { setName(initialName); setExtraValue(initialExtraValue); setDuplicates(null) }
     return next
   })
 
