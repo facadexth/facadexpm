@@ -357,33 +357,38 @@ export default function Payroll() {
 
   return (
     <div>
-      {/* ── Toolbar ── */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button className="btn btn-primary" onClick={() => { setEditRow(null); setShowForm(true) }}>+ เพิ่มรายการ</button>
-        <button className="btn btn-ghost" onClick={handleCalcFromAssign} disabled={calcLoading}>
-          {calcLoading ? '⏳...' : '🔄 คำนวณจาก Assign'}
-        </button>
-        <div style={{ flex: 1 }} />
-        <select className="select select-sm" value={month} onChange={e => setMonth(parseInt(e.target.value))}>
-          {MONTHS.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
-        </select>
-        <select className="select select-sm" value={year} onChange={e => setYear(parseInt(e.target.value))}>
-          {[2024,2025,2026,2027].map(y => <option key={y}>{y}</option>)}
-        </select>
-        <span style={{ color: 'var(--text3)', fontSize: 12 }}>{(records||[]).length} คน</span>
-      </div>
+      {/* ── Toolbar + KPIs, capped so this region alone can't push the table
+          out of usable view on a short monitor -- see .page-toolbar-scroll
+          in index.css. ── */}
+      <div className="page-toolbar-scroll">
+        {/* ── Toolbar ── */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button className="btn btn-primary" onClick={() => { setEditRow(null); setShowForm(true) }}>+ เพิ่มรายการ</button>
+          <button className="btn btn-ghost" onClick={handleCalcFromAssign} disabled={calcLoading}>
+            {calcLoading ? '⏳...' : '🔄 คำนวณจาก Assign'}
+          </button>
+          <div style={{ flex: 1 }} />
+          <select className="select select-sm" value={month} onChange={e => setMonth(parseInt(e.target.value))}>
+            {MONTHS.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+          </select>
+          <select className="select select-sm" value={year} onChange={e => setYear(parseInt(e.target.value))}>
+            {[2024,2025,2026,2027].map(y => <option key={y}>{y}</option>)}
+          </select>
+          <span style={{ color: 'var(--text3)', fontSize: 12 }}>{(records||[]).length} คน</span>
+        </div>
 
-      {/* ── KPIs ── */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-        <div className="kpi-card kpi-sm"><div className="kpi-label">เงินเดือนรวม</div><div className="kpi-value">{fmt(totalBase)}</div></div>
-        <div className="kpi-card kpi-sm" style={{ '--accent': 'var(--yellow)' }}><div className="kpi-label">OT รวม</div><div className="kpi-value" style={{ color: 'var(--yellow)' }}>{fmt(totalOT)}</div></div>
-        <div className="kpi-card kpi-sm"><div className="kpi-label">ประกันสังคม</div><div className="kpi-value">{fmt(totalSSO)}</div></div>
-        <div className="kpi-card kpi-sm green"><div className="kpi-label">จ่ายสุทธิรวม</div><div className="kpi-value" style={{ color: 'var(--green)' }}>{fmt(totalNet)}</div></div>
+        {/* ── KPIs ── */}
+        <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+          <div className="kpi-card kpi-sm"><div className="kpi-label">เงินเดือนรวม</div><div className="kpi-value">{fmt(totalBase)}</div></div>
+          <div className="kpi-card kpi-sm" style={{ '--accent': 'var(--yellow)' }}><div className="kpi-label">OT รวม</div><div className="kpi-value" style={{ color: 'var(--yellow)' }}>{fmt(totalOT)}</div></div>
+          <div className="kpi-card kpi-sm"><div className="kpi-label">ประกันสังคม</div><div className="kpi-value">{fmt(totalSSO)}</div></div>
+          <div className="kpi-card kpi-sm green"><div className="kpi-label">จ่ายสุทธิรวม</div><div className="kpi-value" style={{ color: 'var(--green)' }}>{fmt(totalNet)}</div></div>
+        </div>
       </div>
 
       {/* ── Table ── */}
       <div className="card">
-        <div className="table-wrap">
+        <div className="table-wrap table-wrap-fill">
           <table>
             <thead>
               <tr>

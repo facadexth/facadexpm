@@ -920,40 +920,45 @@ export default function HR() {
       {/* ── Payroll Tab ── */}
       {innerTab === 'payroll' && (
         <div>
-          <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-            {canEdit && (
-              <>
-                <button className="btn btn-primary" onClick={() => { setEditSalary(null); setShowSalaryForm(true) }}>+ เพิ่มรายการ</button>
-                <button className="btn btn-ghost" onClick={handleCalcFromAssign} disabled={calcLoading}>
-                  {calcLoading ? '⏳...' : '🔄 คำนวณจาก Assign'}
-                </button>
-                <button className="btn btn-ghost" onClick={handleCopyPrevMonth} title="คัดลอกพนักงาน+ค่าแรงจากเดือนก่อน (OT และวันลาจะถูกรีเซ็ต)">
-                  📋 ใช้ข้อมูลเดือนที่แล้ว
-                </button>
-                {(records||[]).length > 0 && (
-                  <button className="btn btn-ghost" style={{ color: 'var(--red)' }} onClick={handleClearPayroll}>
-                    🗑️ Clear
+          {/* Toolbar + KPI, capped so this region alone can't push the
+              table out of usable view on a short monitor -- see
+              .page-toolbar-scroll in index.css. */}
+          <div className="page-toolbar-scroll">
+            <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+              {canEdit && (
+                <>
+                  <button className="btn btn-primary" onClick={() => { setEditSalary(null); setShowSalaryForm(true) }}>+ เพิ่มรายการ</button>
+                  <button className="btn btn-ghost" onClick={handleCalcFromAssign} disabled={calcLoading}>
+                    {calcLoading ? '⏳...' : '🔄 คำนวณจาก Assign'}
                   </button>
-                )}
-              </>
-            )}
-            <div style={{ flex: 1 }} />
-            <select className="select select-sm" value={month} onChange={e => setMonth(parseInt(e.target.value))}>
-              {MONTHS.map((m,i) => <option key={i+1} value={i+1}>{m}</option>)}
-            </select>
-            <select className="select select-sm" value={year} onChange={e => setYear(parseInt(e.target.value))}>
-              {[2024,2025,2026,2027].map(y => <option key={y}>{y}</option>)}
-            </select>
-          </div>
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-            <div className="kpi-card kpi-sm"><div className="kpi-label">เงินเดือนรวม</div><div className="kpi-value">{fmt(totalBase)}</div></div>
-            <div className="kpi-card kpi-sm"><div className="kpi-label">OT</div><div className="kpi-value" style={{ color: 'var(--yellow)' }}>{fmt(totalOT)}</div></div>
-            <div className="kpi-card kpi-sm"><div className="kpi-label">ประกันสังคม</div><div className="kpi-value">{fmt(totalSSO)}</div></div>
-            <div className="kpi-card kpi-sm blue"><div className="kpi-label">ค่าใช้จ่ายส่วนกลางรวม</div><div className="kpi-value" style={{ color: 'var(--blue)' }}>{fmt(totalOfficeCost)}</div></div>
-            <div className="kpi-card kpi-sm green"><div className="kpi-label">จ่ายสุทธิรวม</div><div className="kpi-value" style={{ color: 'var(--green)' }}>{fmt(totalNet)}</div></div>
+                  <button className="btn btn-ghost" onClick={handleCopyPrevMonth} title="คัดลอกพนักงาน+ค่าแรงจากเดือนก่อน (OT และวันลาจะถูกรีเซ็ต)">
+                    📋 ใช้ข้อมูลเดือนที่แล้ว
+                  </button>
+                  {(records||[]).length > 0 && (
+                    <button className="btn btn-ghost" style={{ color: 'var(--red)' }} onClick={handleClearPayroll}>
+                      🗑️ Clear
+                    </button>
+                  )}
+                </>
+              )}
+              <div style={{ flex: 1 }} />
+              <select className="select select-sm" value={month} onChange={e => setMonth(parseInt(e.target.value))}>
+                {MONTHS.map((m,i) => <option key={i+1} value={i+1}>{m}</option>)}
+              </select>
+              <select className="select select-sm" value={year} onChange={e => setYear(parseInt(e.target.value))}>
+                {[2024,2025,2026,2027].map(y => <option key={y}>{y}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+              <div className="kpi-card kpi-sm"><div className="kpi-label">เงินเดือนรวม</div><div className="kpi-value">{fmt(totalBase)}</div></div>
+              <div className="kpi-card kpi-sm"><div className="kpi-label">OT</div><div className="kpi-value" style={{ color: 'var(--yellow)' }}>{fmt(totalOT)}</div></div>
+              <div className="kpi-card kpi-sm"><div className="kpi-label">ประกันสังคม</div><div className="kpi-value">{fmt(totalSSO)}</div></div>
+              <div className="kpi-card kpi-sm blue"><div className="kpi-label">ค่าใช้จ่ายส่วนกลางรวม</div><div className="kpi-value" style={{ color: 'var(--blue)' }}>{fmt(totalOfficeCost)}</div></div>
+              <div className="kpi-card kpi-sm green"><div className="kpi-label">จ่ายสุทธิรวม</div><div className="kpi-value" style={{ color: 'var(--green)' }}>{fmt(totalNet)}</div></div>
+            </div>
           </div>
           <div className="card">
-            <div className="table-wrap">
+            <div className="table-wrap table-wrap-fill">
               <table>
                 <thead>
                   <tr>
@@ -1036,7 +1041,7 @@ export default function HR() {
             <span style={{ color: 'var(--text3)', fontSize: 12 }}>{(logs||[]).length} รายการล่าสุด</span>
           </div>
           <div className="card">
-            <div className="table-wrap">
+            <div className="table-wrap table-wrap-fill">
               <table>
                 <thead>
                   <tr>

@@ -109,6 +109,7 @@ export default function SalesReport() {
       return qSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
     })
   }, [byQuotation, qSortCol, qSortDir])
+  const byProduct   = useMemo(() => groupByProduct(rows), [rows])
   const byProductSorted = useMemo(() => {
     return [...byProduct].sort((a, b) => {
       const va = a[pSortCol] ?? ''
@@ -117,7 +118,6 @@ export default function SalesReport() {
       return pSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
     })
   }, [byProduct, pSortCol, pSortDir])
-  const byProduct   = useMemo(() => groupByProduct(rows), [rows])
 
   const toggleExpanded = (id) => setExpanded(prev => {
     const next = new Set(prev)
@@ -142,28 +142,33 @@ export default function SalesReport() {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button className="btn btn-ghost" onClick={handleExport}>📤 Export Excel</button>
-        <div style={{ flex: 1 }} />
-        <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหารายการ..." value={search} onChange={e => setSearch(e.target.value)} />
-        <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-        <span style={{ color: 'var(--text3)' }}>—</span>
-        <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ minWidth: 200 }}>
-          <SearchableSelect value={siteId} onChange={setSiteId} placeholder="ทุกไซท์งาน" options={siteOpts(sites)} />
+      {/* ── Toolbar + filters + KPI, capped so this region alone can't push
+          the table out of usable view on a short monitor -- see
+          .page-toolbar-scroll in index.css. ── */}
+      <div className="page-toolbar-scroll">
+        <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button className="btn btn-ghost" onClick={handleExport}>📤 Export Excel</button>
+          <div style={{ flex: 1 }} />
+          <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหารายการ..." value={search} onChange={e => setSearch(e.target.value)} />
+          <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          <span style={{ color: 'var(--text3)' }}>—</span>
+          <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
         </div>
-        <div style={{ minWidth: 200 }}>
-          <SearchableSelect value={clientId} onChange={setClientId} placeholder="ทุกลูกค้า" options={clientOpts(clients)} />
-        </div>
-      </div>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-        <div className="kpi-card kpi-sm green"><div className="kpi-label">ยอดขายรวม</div><div className="kpi-value" style={{ color: 'var(--green)' }}>{fmt(totalAmount)} บาท</div></div>
-        <div className="kpi-card kpi-sm"><div className="kpi-label">จำนวนรายการ</div><div className="kpi-value">{(rows || []).length} รายการ</div></div>
-        <div className="kpi-card kpi-sm"><div className="kpi-label">จำนวนหน่วยรวม</div><div className="kpi-value">{fmt(totalQty, 2)}</div></div>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ minWidth: 200 }}>
+            <SearchableSelect value={siteId} onChange={setSiteId} placeholder="ทุกไซท์งาน" options={siteOpts(sites)} />
+          </div>
+          <div style={{ minWidth: 200 }}>
+            <SearchableSelect value={clientId} onChange={setClientId} placeholder="ทุกลูกค้า" options={clientOpts(clients)} />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+          <div className="kpi-card kpi-sm green"><div className="kpi-label">ยอดขายรวม</div><div className="kpi-value" style={{ color: 'var(--green)' }}>{fmt(totalAmount)} บาท</div></div>
+          <div className="kpi-card kpi-sm"><div className="kpi-label">จำนวนรายการ</div><div className="kpi-value">{(rows || []).length} รายการ</div></div>
+          <div className="kpi-card kpi-sm"><div className="kpi-label">จำนวนหน่วยรวม</div><div className="kpi-value">{fmt(totalQty, 2)}</div></div>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
@@ -173,7 +178,7 @@ export default function SalesReport() {
 
       {view === 'quotation' ? (
         <div className="card">
-          <div className="table-wrap">
+          <div className="table-wrap table-wrap-fill">
             <table>
               <thead>
                 <tr>
@@ -221,7 +226,7 @@ export default function SalesReport() {
         </div>
       ) : (
         <div className="card">
-          <div className="table-wrap">
+          <div className="table-wrap table-wrap-fill">
             <table>
               <thead>
                 <tr>
