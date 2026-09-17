@@ -1,14 +1,39 @@
 // ============================================================
 // DayView — single day grouped by site, morning/evening columns + cost
+// + mini task board of the site's active Kanban phase (if it has one)
 // ============================================================
 import { useMemo } from 'react'
 import { fmt } from '../../lib/supabase.js'
 import { TYPE_COLOR, TYPE_LABEL, SITE_TYPES } from './constants.js'
 import { otCost } from './otMath.js'
+import { useSitePhases, usePhaseTasks } from '../../hooks/useSupabase.js'
+import { pickActivePhase } from '../sites/phaseTasksCalc.js'
+import { STATUS_COLOR } from '../sites/ganttTimeline.js'
 
 const dayRate = (w) => Math.round((w?.monthly_salary || 0) / 26)
 
+const MINI_COLUMNS = [
+  { status: 'not_started', label: 'ยังไม่เริ่ม' },
+  { status: 'in_progress', label: 'กำลังทำ' },
+  { status: 'done', label: 'เสร็จแล้ว' },
+]
+
 export default function DayView({ dayIso, assignments, otEntries, sites, travelRate, onEditHalf }) {
+  const { data: allPhases } = useSitePhases()
+  const { data: allTasks } = usePhaseTasks()
+
+  const phasesBySite = useMemo(() => {
+    const m = {}
+    ;(allPhases || []).forEach((p) => { (m[p.site_id] ||= []).push(p) })
+    return m
+  }, [allPhases])
+
+  const tasksByPhaseId = useMemo(() => {
+    const m = {}
+    ;(allTasks || []).forEach((t) => { (m[t.phase_id] ||= []).push(t) })
+    return m
+  }, [allTasks])
+
   const siteMeta = useMemo(() => {
     const m = {}
     ;(sites || []).forEach(s => { m[s.id] = { name: s.name, site_number: s.site_number, distance_km: s.distance_km } })
@@ -63,6 +88,9 @@ export default function DayView({ dayIso, assignments, otEntries, sites, travelR
           const siteOT = otBySite[sid] || []
           const otTotal = siteOT.reduce((s, o) => s + otCost(o.workers?.monthly_salary, o.ot_hours), 0)
           const total = g.labor + travel + otTotal
+          const sitePhases = (phasesBySite[sid] || []).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+          const activePhase = pickActivePhase(sitePhases, tasksByPhaseId)
+          const activeTasks = activePhase ? (tasksByPhaseId[activePhase.id] || []) : []
           return (
             <div key={sid} className="card card-body" style={{ padding: '14px 16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, gap: 8 }}>
@@ -98,6 +126,25 @@ export default function DayView({ dayIso, assignments, otEntries, sites, travelR
                       {o.workers?.nickname || o.workers?.name} ({o.start_time?.slice(0,5)}-{o.end_time?.slice(0,5)})
                     </span>
                   ))}
+                </div>
+              )}
+              {activePhase && (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--accent)', marginBottom: 6 }}>
+                    🗂 {activePhase.name}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                    {MINI_COLUMNS.map((col) => (
+                      <div key={col.status}>
+                        <div style={{ color: 'var(--text3)', fontSize: 9.5, marginBottom: 4, fontWeight: 700 }}>{col.label}</div>
+                        {activeTasks.filter((t) => t.status === col.status).map((t) => (
+                          <div key={t.id} style={{ background: 'var(--bg3)', borderRadius: 6, padding: '4px 7px', marginBottom: 4, fontSize: 10.5, borderLeft: `3px solid ${STATUS_COLOR[col.status]}` }}>
+                            {t.name}{t.zone ? ` ${t.zone}` : ''}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
