@@ -9,10 +9,8 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useSites, useLaborCost, useClients, useSeatStatus, useCategories, useSiteCostEstimates, saveSiteCostEstimates, useSitePhases } from '../hooks/useSupabase.js'
+import { useSites, useLaborCost, useClients, useSeatStatus, useCategories, useSiteCostEstimates, saveSiteCostEstimates } from '../hooks/useSupabase.js'
 import GanttView from './sites/GanttView.jsx'
-import PhaseManageModal from './sites/PhaseManageModal.jsx'
-import SCurveChart from './sites/SCurveChart.jsx'
 import { PencilIcon, LinkIcon } from '../components/icons.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { useUserRole } from '../hooks/useUserRole.js'
@@ -455,14 +453,6 @@ export default function Sites({ navigateTo, openSiteOverview }) {
   const [sortCol,     setSortCol]     = useState('last_activity_date')
   const [sortDir,     setSortDir]     = useState('desc')
   const [viewMode,      setViewMode]      = useState('table') // 'table' | 'gantt'
-  const [selectedSiteId, setSelectedSiteId] = useState(null)
-  const [managePhasesSite, setManagePhasesSite] = useState(null) // site object or null
-  const { data: allPhases, refetch: refetchPhases } = useSitePhases()
-  // GanttView/SCurveChart each fetch phases via their own useSitePhases() call (not shared
-  // cache), so refetchPhases() above only updates this component's copy. Bump this to remount
-  // both children (via `key`) after a phase save so their bars/curve reflect it immediately
-  // instead of only after a full page reload.
-  const [phasesRefreshKey, setPhasesRefreshKey] = useState(0)
 
   // Labor cost lookup
   const laborBysite = useMemo(() => {
@@ -605,7 +595,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                       <div style={{ width: 130, overflowWrap: 'break-word' }}>
                         <div
                           style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'flex-start', gap: 6, cursor: 'pointer' }}
-                          onClick={() => openSiteOverview(s.id)}
+                          onClick={() => navigateTo('site_detail', { siteId: s.id, siteName: s.name })}
                         >
                           <LinkIcon /> <span>{s.name}</span>
                           {s.map_url && (
@@ -712,33 +702,13 @@ export default function Sites({ navigateTo, openSiteOverview }) {
       )}
 
       {viewMode === 'gantt' && (
-        <>
-          <GanttView
-            key={phasesRefreshKey}
-            sites={filtered}
-            navigateTo={navigateTo}
-            onManagePhases={(site) => setManagePhasesSite(site)}
-            selectedSiteId={selectedSiteId}
-            onSelectSite={setSelectedSiteId}
-            canEdit={canEdit}
-          />
-          {(() => {
-            const selectedSite = filtered.find((s) => s.id === selectedSiteId)
-            return selectedSite && (
-              <div style={{ marginTop: 16 }}>
-                <SCurveChart key={phasesRefreshKey} site={selectedSite} />
-              </div>
-            )
-          })()}
-        </>
-      )}
-
-      {managePhasesSite && (
-        <PhaseManageModal
-          site={managePhasesSite}
-          phases={(allPhases || []).filter((p) => p.site_id === managePhasesSite.id)}
-          onClose={() => setManagePhasesSite(null)}
-          onSaved={() => { refetchPhases(); setPhasesRefreshKey((k) => k + 1) }}
+        <GanttView
+          sites={filtered}
+          navigateTo={navigateTo}
+          onManagePhases={(site) => navigateTo('site_detail', { siteId: site.id, siteName: site.name })}
+          selectedSiteId={null}
+          onSelectSite={() => {}}
+          canEdit={false}
         />
       )}
 
