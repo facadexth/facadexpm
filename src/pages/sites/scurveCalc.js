@@ -45,9 +45,17 @@ export function buildCostSeries(expenses) {
  * Merges the three cumulative series onto one shared, sorted date axis,
  * forward-filling each series' last known value at every date point so
  * recharts can draw continuous step lines without gaps.
+ *
+ * "actual" (เบิกจริง) and "cost" (ต้นทุนเรา) are real, already-happened
+ * money -- they must never be drawn past today, since there's no real data
+ * for the future there (unlike "plan", which is a legitimate projection
+ * that's supposed to keep climbing into future phase end-dates). Dates
+ * after todayISO get `null` for actual/cost so recharts' default
+ * connectNulls={false} simply stops drawing those two lines at today,
+ * instead of forward-filling them flat across the whole future range.
  */
-export function mergeCumulativeSeries({ plan, actual, cost }) {
-  const allDates = [...new Set([...plan, ...actual, ...cost].map((p) => p.date))].sort()
+export function mergeCumulativeSeries({ plan, actual, cost }, todayISO = new Date().toISOString().slice(0, 10)) {
+  const allDates = [...new Set([...plan, ...actual, ...cost].map((p) => p.date).concat(todayISO))].sort()
 
   const forwardFill = (series) => {
     let idx = 0
@@ -70,7 +78,7 @@ export function mergeCumulativeSeries({ plan, actual, cost }) {
   return allDates.map((date) => ({
     date,
     plan: planMap[date],
-    actual: actualMap[date],
-    cost: costMap[date],
+    actual: date > todayISO ? null : actualMap[date],
+    cost: date > todayISO ? null : costMap[date],
   }))
 }

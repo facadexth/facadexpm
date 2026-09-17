@@ -8,11 +8,12 @@ import { useMemo } from 'react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { useSitePhases } from '../../hooks/useSupabase.js'
-import { computeTimelineRange, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, STATUS_COLOR } from './ganttTimeline.js'
+import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, STATUS_COLOR } from './ganttTimeline.js'
 import { getEffectiveTheme } from '../../lib/theme.js'
 
 const ROW_H = 34
 const LABEL_W = 170
+const TODAY_ISO = new Date().toISOString().slice(0, 10)
 
 export default function GanttView({ sites, navigateTo, onManagePhases, selectedSiteId, onSelectSite, canEdit }) {
   const { data: allPhases } = useSitePhases()
@@ -52,6 +53,11 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     const doneCount = phases.filter((p) => p.status === 'done').length
     const inProgressCount = phases.filter((p) => p.status === 'in_progress').length
     const overallPct = phases.length ? Math.round((doneCount / phases.length) * 100) : 0
+    // Same reasoning as SCurveChart's todayInRange guard: only draw "today"
+    // when it actually falls inside this site's own timeline, otherwise a
+    // clamped line at 0%/100% would falsely read as "today = start/end".
+    const todayInRange = range.start <= new Date(TODAY_ISO) && new Date(TODAY_ISO) <= range.end
+    const todayX = todayInRange ? positionPercent(TODAY_ISO, range) : null
 
     return (
       <>
@@ -121,6 +127,14 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                       />
                     ))}
                   </svg>
+                )}
+                {todayX != null && (
+                  <div style={{ position: 'absolute', top: 0, left: LABEL_W, right: 0, bottom: 0, pointerEvents: 'none' }}>
+                    <div style={{ position: 'absolute', top: -16, left: `${todayX}%`, transform: 'translateX(-50%)', fontSize: 9.5, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
+                      วันนี้
+                    </div>
+                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${todayX}%`, borderLeft: '1px dashed var(--text3)' }} />
+                  </div>
                 )}
               </div>
               <div className="legend" style={{ display: 'flex', gap: 16, marginTop: 14, fontSize: 11.5, color: 'var(--text2)' }}>
