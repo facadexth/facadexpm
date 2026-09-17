@@ -9,7 +9,7 @@ import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { useSitePhases, useIncomes, useExpenses } from '../../hooks/useSupabase.js'
 import { buildPlanSeries, buildActualSeries, buildCostSeries, mergeCumulativeSeries } from './scurveCalc.js'
-import { computeTimelineRange, computeMonthTicks } from './ganttTimeline.js'
+import { computeTimelineRange, computeMonthTicks, expandRangeForTransactions } from './ganttTimeline.js'
 import { fmt } from '../../lib/supabase.js'
 import { getEffectiveTheme } from '../../lib/theme.js'
 
@@ -36,7 +36,18 @@ export default function SCurveChart({ site }) {
 
   // Same function GanttView uses for its own timeline -- same site, same
   // phases, so this always produces the identical range GanttView shows.
-  const range = useMemo(() => computeTimelineRange([site], { [site.id]: phasesForSite }), [site, phasesForSite])
+  const baseRange = useMemo(() => computeTimelineRange([site], { [site.id]: phasesForSite }), [site, phasesForSite])
+
+  // Widen it to also cover real income/expense dates -- a site can have
+  // costs recorded before/after its formally dated phases (e.g. an early
+  // deposit or expense before the first phase starts), and GanttView
+  // widens by this exact same amount (same incomes/expenses, same
+  // function) so the two charts' timelines never drift apart.
+  const transactionDates = useMemo(() => [
+    ...(incomes || []).map((i) => i.date),
+    ...(expenses || []).map((e) => e.date),
+  ], [incomes, expenses])
+  const range = useMemo(() => expandRangeForTransactions(baseRange, transactionDates), [baseRange, transactionDates])
 
   const chartData = useMemo(() => {
     const plan = buildPlanSeries(phasesForSite, site.contract_value)

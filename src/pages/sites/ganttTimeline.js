@@ -140,3 +140,25 @@ export function computeMonthTicks(range) {
   }
   return ticks
 }
+
+/**
+ * Widens a phase-based range to also cover real transaction dates
+ * (income/expense) for the site, so a site's timeline reflects when
+ * money actually started moving even if that's before/after its
+ * formally dated phases -- and so GanttView and SCurveChart, which both
+ * call this with the same site's incomes/expenses, always end up with
+ * pixel-identical timelines (same "today" position, same month ticks)
+ * instead of silently drifting apart when a site has early/late costs
+ * outside its own phase dates.
+ */
+export function expandRangeForTransactions(range, transactionDates) {
+  const valid = transactionDates.map((d) => new Date(d)).filter((d) => !isNaN(d))
+  if (!valid.length) return range
+  const minD = new Date(Math.min(...valid))
+  const maxD = new Date(Math.max(...valid))
+  if (!range) return { start: minD, end: maxD }
+  return {
+    start: minD < range.start ? minD : range.start,
+    end: maxD > range.end ? maxD : range.end,
+  }
+}

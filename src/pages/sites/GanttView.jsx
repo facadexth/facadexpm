@@ -9,10 +9,10 @@
 import { useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
-import { useSitePhases, usePhaseTasks } from '../../hooks/useSupabase.js'
+import { useSitePhases, usePhaseTasks, useIncomes, useExpenses } from '../../hooks/useSupabase.js'
 import { supabase } from '../../lib/supabase.js'
 import { ConfirmDialog } from '../../components/Modal.jsx'
-import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, STATUS_COLOR, PHASE_TEMPLATE } from './ganttTimeline.js'
+import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, STATUS_COLOR, PHASE_TEMPLATE, expandRangeForTransactions } from './ganttTimeline.js'
 import { computePhaseTaskStats } from './phaseTasksCalc.js'
 import { getEffectiveTheme } from '../../lib/theme.js'
 
@@ -20,6 +20,10 @@ const ROW_H = 34
 const EDIT_H = 320
 const LABEL_W = 170
 const TODAY_ISO = new Date().toISOString().slice(0, 10)
+// สำหรับมุมมองหลายไซท์ (portfolio) ไม่ต้องขยาย timeline ตามรายรับ/รายจ่าย
+// ของไซท์ใดไซท์หนึ่ง -- ใช้ UUID ปลอมนี้เป็น siteId filter เพื่อให้ hook ดึงมา
+// 0 แถวเสมอ (ยังคงเรียก hook เดิมแบบไม่มีเงื่อนไข ตาม Rules of Hooks)
+const NIL_SITE_ID = '00000000-0000-0000-0000-000000000000'
 
 const STATUS_OPTS = [
   { value: 'not_started', label: 'ยังไม่เริ่ม' },
@@ -35,6 +39,9 @@ const emptyDraft = (site, phases) => ({
 export default function GanttView({ sites, navigateTo, onManagePhases, selectedSiteId, onSelectSite, canEdit, onPhasesChanged }) {
   const { data: allPhases, refetch } = useSitePhases()
   const { data: allTasks } = usePhaseTasks()
+  const singleSiteId = sites.length === 1 ? sites[0].id : NIL_SITE_ID
+  const { data: incomesForRange } = useIncomes({ siteId: singleSiteId })
+  const { data: expensesForRange } = useExpenses({ siteId: singleSiteId })
 
   // แก้ไข/เพิ่ม/ลบขั้นตอนแบบ inline (ใช้เฉพาะมุมมองไซท์เดียว) -- hooks ต้อง
   // อยู่บนสุดเสมอ ไม่ผูกกับ branch ไหน
@@ -68,7 +75,18 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     return m
   }, [allTasks])
 
-  const range = useMemo(() => computeTimelineRange(sites, phasesBySite), [sites, phasesBySite])
+  const baseRange = useMemo(() => computeTimelineRange(sites, phasesBySite), [sites, phasesBySite])
+
+  // ขยาย range ให้ครอบคลุมวันที่รายรับ/รายจ่ายจริงด้วย (ไม่ใช่แค่วันที่ตั้งไว้
+  // ในขั้นตอน) -- ใช้ฟังก์ชันเดียวกับ SCurveChart.jsx กับรายรับ/รายจ่ายชุด
+  // เดียวกัน ให้สองกราฟได้ timeline เดียวกันเป๊ะๆ เสมอ ไม่มีทางเพี้ยนต่างกัน
+  // (ในมุมมองหลายไซท์ singleSiteId เป็น UUID ปลอม ทำให้ incomesForRange/
+  // expensesForRange ว่างเสมอ ฟังก์ชันนี้จึงคืนค่า baseRange เดิมโดยไม่ขยาย)
+  const transactionDatesForRange = useMemo(() => [
+    ...(incomesForRange || []).map((i) => i.date),
+    ...(expensesForRange || []).map((e) => e.date),
+  ], [incomesForRange, expensesForRange])
+  const range = useMemo(() => expandRangeForTransactions(baseRange, transactionDatesForRange), [baseRange, transactionDatesForRange])
 
   const afterWrite = async () => {
     await refetch()
