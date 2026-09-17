@@ -6,12 +6,19 @@
 // fallback ที่ใช้ได้ทุกอุปกรณ์รวมถึงทัช). สถานะของขั้นตอนแม่บน Gantt
 // คำนวณสดจาก phase_tasks นี้เอง (ดู GanttView.jsx) ไม่ได้เขียนกลับ
 // site_phases.status ตรงๆ จากที่นี่
+//
+// ค่าเริ่มต้นคือ "ทั้งหมด" (ALL_PHASES) -- รวมทุกขั้นตอนที่มีงานย่อยไว้ในหน้า
+// เดียว (บอร์ด 3 คอลัมน์แยกต่อขั้นตอน ไม่ปนกันเป็นกองเดียว เพื่อไม่ให้งง)
+// เลือกขั้นตอนใดขั้นตอนหนึ่งจาก chip เพื่อโฟกัสดูเฉพาะขั้นตอนนั้น (มีตัวกรอง
+// ชั้น/โซนเพิ่มด้วยในโหมดนี้)
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { ConfirmDialog } from '../../components/Modal.jsx'
 import { useSitePhases, usePhaseTasks, useWorkers } from '../../hooks/useSupabase.js'
 import { STATUS_COLOR } from './ganttTimeline.js'
+
+const ALL_PHASES = '__all__'
 
 const COLUMNS = [
   { status: 'not_started', label: 'ยังไม่เริ่ม' },
@@ -28,13 +35,13 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
   const { data: allTasks, refetch } = usePhaseTasks()
   const { data: workers } = useWorkers()
 
-  const [selectedPhaseId, setSelectedPhaseId] = useState(null)
+  const [selectedPhaseId, setSelectedPhaseId] = useState(ALL_PHASES)
   const [selectedZone, setSelectedZone] = useState('all')
-  const [editingId, setEditingId] = useState(null) // task.id หรือ '__new__:<status>'
+  const [editingId, setEditingId] = useState(null) // task.id หรือ '__new__:<phaseId>:<status>'
   const [draft, setDraft] = useState(null)
   const [saving, setSaving] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
-  const [dragOverStatus, setDragOverStatus] = useState(null)
+  const [dragOverKey, setDragOverKey] = useState(null) // `${phaseId}:${status}` -- บอร์ดหลายอันโชว์พร้อมกันได้ในโหมด "ทั้งหมด"
 
   const phases = useMemo(() => (allPhases || [])
     .filter((p) => p.site_id === site.id)
@@ -52,12 +59,18 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
     return m
   }, [workers])
 
-  const activePhaseId = selectedPhaseId ?? phases.find((p) => (tasksByPhaseId[p.id] || []).length > 0)?.id ?? phases[0]?.id ?? null
-  const phaseTasks = tasksByPhaseId[activePhaseId] || []
+  const isAllPhases = selectedPhaseId === ALL_PHASES
+  const activePhaseId = isAllPhases ? null : selectedPhaseId
+  const phaseTasks = activePhaseId ? (tasksByPhaseId[activePhaseId] || []) : []
 
   const zones = useMemo(() => [...new Set(phaseTasks.map((t) => t.zone).filter(Boolean))].sort(), [phaseTasks])
   const effectiveZone = zones.includes(selectedZone) ? selectedZone : 'all'
   const visibleTasks = phaseTasks.filter((t) => effectiveZone === 'all' || t.zone === effectiveZone)
+
+  // โหมด "ทั้งหมด" โชว์เฉพาะขั้นตอนที่มีงานย่อยแล้ว (ข้ามขั้นตอนว่างเปล่า
+  // เพื่อไม่ให้หน้าโหลดบอร์ดเปล่าๆ 7 อันจนงง) -- ขั้นตอนที่ยังไม่มีงานเลย
+  // ให้เข้าไปเพิ่มงานแรกผ่านการเลือก chip ขั้นตอนนั้นโดยตรง
+  const phasesWithTasks = useMemo(() => phases.filter((p) => (tasksByPhaseId[p.id] || []).length > 0), [phases, tasksByPhaseId])
 
   const afterWrite = async () => {
     await refetch()
@@ -72,11 +85,11 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
       assigneeIds: (task.phase_task_workers || []).map((r) => r.worker_id),
     })
   }
-  const startAdd = (status) => {
-    if (!activePhaseId) return
-    const sortOrder = phaseTasks.length ? Math.max(...phaseTasks.map((t) => t.sort_order || 0)) + 1 : 1
-    setEditingId(`__new__:${status}`)
-    setDraft(emptyDraft(activePhaseId, status, sortOrder))
+  const startAdd = (phaseId, status) => {
+    const tasks = tasksByPhaseId[phaseId] || []
+    const sortOrder = tasks.length ? Math.max(...tasks.map((t) => t.sort_order || 0)) + 1 : 1
+    setEditingId(`__new__:${phaseId}:${status}`)
+    setDraft(emptyDraft(phaseId, status, sortOrder))
   }
   const cancelEdit = () => { setEditingId(null); setDraft(null) }
 
@@ -156,10 +169,25 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
     return <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text3)' }}>ไซท์นี้ยังไม่มีขั้นตอนงาน — เพิ่มขั้นตอนก่อนในแท็บ Gantt</div>
   }
 
+  const boardProps = {
+    canEdit, workers: workers || [], workerById, editingId, draft, setDraft,
+    onToggleAssignee: toggleAssignee, onStartEdit: startEdit, onStartAdd: startAdd,
+    onCancelEdit: cancelEdit, onSaveDraft: saveDraft, onDeleteRequest: setConfirmDeleteId,
+    onQuickMove: quickMove, saving, dragOverKey, setDragOverKey,
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--text2)' }}>
         เฟส:
+        <span onClick={() => setSelectedPhaseId(ALL_PHASES)}
+          style={{
+            border: '1px solid var(--border)', borderRadius: 20, padding: '5px 13px', fontWeight: 600, cursor: 'pointer',
+            background: isAllPhases ? 'var(--accent)' : 'transparent',
+            color: isAllPhases ? '#fff' : 'var(--text2)',
+          }}>
+          🗂 ทั้งหมด
+        </span>
         {phases.map((p) => (
           <span key={p.id} onClick={() => { setSelectedPhaseId(p.id); setSelectedZone('all') }}
             style={{
@@ -171,94 +199,40 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
           </span>
         ))}
       </div>
-      {zones.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--text2)' }}>
-          ชั้น:
-          {['all', ...zones].map((z) => (
-            <span key={z} onClick={() => setSelectedZone(z)}
-              style={{
-                border: '1px solid var(--border)', borderRadius: 20, padding: '5px 13px', fontWeight: 600, cursor: 'pointer',
-                background: effectiveZone === z ? 'var(--accent)' : 'transparent',
-                color: effectiveZone === z ? '#fff' : 'var(--text2)',
-              }}>
-              {z === 'all' ? 'ทุกชั้น' : z}
-            </span>
-          ))}
-        </div>
-      )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-        {COLUMNS.map((col) => {
-          const colTasks = visibleTasks.filter((t) => t.status === col.status)
-          const isNewHere = editingId === `__new__:${col.status}`
-          return (
-            <div key={col.status}
-              onDragOver={canEdit ? (e) => { e.preventDefault(); setDragOverStatus(col.status) } : undefined}
-              onDragLeave={canEdit ? () => setDragOverStatus((s) => (s === col.status ? null : s)) : undefined}
-              onDrop={canEdit ? (e) => {
-                e.preventDefault()
-                setDragOverStatus(null)
-                const taskId = e.dataTransfer.getData('text/plain')
-                if (taskId) quickMove(taskId, col.status)
-              } : undefined}
-              style={{
-                background: dragOverStatus === col.status ? 'var(--bg3)' : 'transparent',
-                borderRadius: 9, padding: 4, transition: 'background .1s',
-              }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', marginBottom: 10, display: 'flex', justifyContent: 'space-between' }}>
-                <span>{col.label}</span>
-                <span style={{ background: 'var(--bg3)', borderRadius: 20, padding: '1px 8px', fontSize: 11, color: 'var(--text3)' }}>{colTasks.length}</span>
-              </div>
-
-              {colTasks.map((task) => {
-                const assignees = (task.phase_task_workers || []).map((r) => workerById[r.worker_id]).filter(Boolean)
-                if (editingId === task.id) {
-                  return (
-                    <TaskEditPanel key={task.id} draft={draft} setDraft={setDraft} workers={workers || []}
-                      onToggleAssignee={toggleAssignee} onCancel={cancelEdit} onSave={saveDraft}
-                      onDelete={() => setConfirmDeleteId(task.id)} saving={saving} />
-                  )
-                }
-                return (
-                  <div key={task.id}
-                    draggable={canEdit}
-                    onDragStart={canEdit ? (e) => e.dataTransfer.setData('text/plain', task.id) : undefined}
-                    onClick={canEdit ? () => startEdit(task) : undefined}
-                    style={{
-                      background: 'var(--bg2)', border: '1px solid var(--border)', borderLeft: `3px solid ${STATUS_COLOR[task.status] || STATUS_COLOR.not_started}`,
-                      borderRadius: 9, padding: '11px 13px', marginBottom: 10, boxShadow: 'var(--shadow)', cursor: canEdit ? 'pointer' : 'default',
-                    }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{task.name}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                      {task.zone
-                        ? <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--blue)', background: 'rgba(78,205,196,.14)', borderRadius: 20, padding: '2px 9px' }}>{task.zone}</span>
-                        : <span />}
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        {assignees.length
-                          ? assignees.map((w) => (
-                            <span key={w.id} title={w.nickname || w.name} style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--accent)', color: '#fff', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              {(w.nickname || w.name || '?').slice(0, 2)}
-                            </span>
-                          ))
-                          : <span style={{ fontSize: 10.5, color: 'var(--text3)' }}>ยังไม่มอบหมาย</span>}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-
-              {isNewHere && (
-                <TaskEditPanel draft={draft} setDraft={setDraft} workers={workers || []}
-                  onToggleAssignee={toggleAssignee} onCancel={cancelEdit} onSave={saveDraft} saving={saving} isNew />
-              )}
-
-              {canEdit && !editingId && (
-                <button type="button" className="btn btn-ghost btn-sm" style={{ width: '100%' }} onClick={() => startAdd(col.status)}>+ เพิ่มงาน</button>
-              )}
+      {isAllPhases ? (
+        phasesWithTasks.length ? (
+          phasesWithTasks.map((phase, i) => (
+            <div key={phase.id} style={{ marginTop: i > 0 ? 28 : 0, paddingTop: i > 0 ? 20 : 0, borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 12 }}>{phase.name}</div>
+              <PhaseBoard phaseId={phase.id} tasks={tasksByPhaseId[phase.id] || []} {...boardProps} />
             </div>
-          )
-        })}
-      </div>
+          ))
+        ) : (
+          <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text3)' }}>
+            ไซท์นี้ยังไม่มีงานย่อยเลย — เลือกขั้นตอนด้านบนแล้วกด "+ เพิ่มงาน" เพื่อเริ่ม
+          </div>
+        )
+      ) : (
+        <>
+          {zones.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--text2)' }}>
+              ชั้น:
+              {['all', ...zones].map((z) => (
+                <span key={z} onClick={() => setSelectedZone(z)}
+                  style={{
+                    border: '1px solid var(--border)', borderRadius: 20, padding: '5px 13px', fontWeight: 600, cursor: 'pointer',
+                    background: effectiveZone === z ? 'var(--accent)' : 'transparent',
+                    color: effectiveZone === z ? '#fff' : 'var(--text2)',
+                  }}>
+                  {z === 'all' ? 'ทุกชั้น' : z}
+                </span>
+              ))}
+            </div>
+          )}
+          <PhaseBoard phaseId={activePhaseId} tasks={visibleTasks} {...boardProps} />
+        </>
+      )}
 
       {confirmDeleteId && (
         <ConfirmDialog
@@ -269,6 +243,88 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
           onConfirm={() => doDelete(confirmDeleteId)}
         />
       )}
+    </div>
+  )
+}
+
+function PhaseBoard({
+  phaseId, tasks, canEdit, workers, workerById, editingId, draft, setDraft, onToggleAssignee,
+  onStartEdit, onStartAdd, onCancelEdit, onSaveDraft, onDeleteRequest, onQuickMove, saving,
+  dragOverKey, setDragOverKey,
+}) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+      {COLUMNS.map((col) => {
+        const key = `${phaseId}:${col.status}`
+        const colTasks = tasks.filter((t) => t.status === col.status)
+        const isNewHere = editingId === `__new__:${key}`
+        return (
+          <div key={col.status}
+            onDragOver={canEdit ? (e) => { e.preventDefault(); setDragOverKey(key) } : undefined}
+            onDragLeave={canEdit ? () => setDragOverKey((k) => (k === key ? null : k)) : undefined}
+            onDrop={canEdit ? (e) => {
+              e.preventDefault()
+              setDragOverKey(null)
+              const taskId = e.dataTransfer.getData('text/plain')
+              if (taskId) onQuickMove(taskId, col.status)
+            } : undefined}
+            style={{
+              background: dragOverKey === key ? 'var(--bg3)' : 'transparent',
+              borderRadius: 9, padding: 4, transition: 'background .1s',
+            }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', marginBottom: 10, display: 'flex', justifyContent: 'space-between' }}>
+              <span>{col.label}</span>
+              <span style={{ background: 'var(--bg3)', borderRadius: 20, padding: '1px 8px', fontSize: 11, color: 'var(--text3)' }}>{colTasks.length}</span>
+            </div>
+
+            {colTasks.map((task) => {
+              const assignees = (task.phase_task_workers || []).map((r) => workerById[r.worker_id]).filter(Boolean)
+              if (editingId === task.id) {
+                return (
+                  <TaskEditPanel key={task.id} draft={draft} setDraft={setDraft} workers={workers}
+                    onToggleAssignee={onToggleAssignee} onCancel={onCancelEdit} onSave={onSaveDraft}
+                    onDelete={() => onDeleteRequest(task.id)} saving={saving} />
+                )
+              }
+              return (
+                <div key={task.id}
+                  draggable={canEdit}
+                  onDragStart={canEdit ? (e) => e.dataTransfer.setData('text/plain', task.id) : undefined}
+                  onClick={canEdit ? () => onStartEdit(task) : undefined}
+                  style={{
+                    background: 'var(--bg2)', border: '1px solid var(--border)', borderLeft: `3px solid ${STATUS_COLOR[task.status] || STATUS_COLOR.not_started}`,
+                    borderRadius: 9, padding: '11px 13px', marginBottom: 10, boxShadow: 'var(--shadow)', cursor: canEdit ? 'pointer' : 'default',
+                  }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{task.name}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                    {task.zone
+                      ? <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--blue)', background: 'rgba(78,205,196,.14)', borderRadius: 20, padding: '2px 9px' }}>{task.zone}</span>
+                      : <span />}
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {assignees.length
+                        ? assignees.map((w) => (
+                          <span key={w.id} title={w.nickname || w.name} style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--accent)', color: '#fff', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {(w.nickname || w.name || '?').slice(0, 2)}
+                          </span>
+                        ))
+                        : <span style={{ fontSize: 10.5, color: 'var(--text3)' }}>ยังไม่มอบหมาย</span>}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+
+            {isNewHere && (
+              <TaskEditPanel draft={draft} setDraft={setDraft} workers={workers}
+                onToggleAssignee={onToggleAssignee} onCancel={onCancelEdit} onSave={onSaveDraft} saving={saving} isNew />
+            )}
+
+            {canEdit && !editingId && (
+              <button type="button" className="btn btn-ghost btn-sm" style={{ width: '100%' }} onClick={() => onStartAdd(phaseId, col.status)}>+ เพิ่มงาน</button>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
