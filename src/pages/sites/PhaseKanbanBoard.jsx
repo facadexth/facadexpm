@@ -98,13 +98,15 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
         const { error } = await supabase.from('phase_tasks').update(payload).eq('id', editingId)
         if (error) throw error
       }
-      const { error: delErr } = await supabase.from('phase_task_workers').delete().eq('task_id', taskId)
-      if (delErr) throw delErr
       if (draft.assigneeIds.length) {
         const { error: insErr } = await supabase.from('phase_task_workers')
-          .insert(draft.assigneeIds.map((worker_id) => ({ task_id: taskId, worker_id })))
+          .upsert(draft.assigneeIds.map((worker_id) => ({ task_id: taskId, worker_id })), { onConflict: 'task_id,worker_id', ignoreDuplicates: true })
         if (insErr) throw insErr
       }
+      let delQuery = supabase.from('phase_task_workers').delete().eq('task_id', taskId)
+      if (draft.assigneeIds.length) delQuery = delQuery.not('worker_id', 'in', `(${draft.assigneeIds.join(',')})`)
+      const { error: delErr } = await delQuery
+      if (delErr) throw delErr
       await afterWrite()
       cancelEdit()
     } catch (e) {
