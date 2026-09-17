@@ -689,6 +689,16 @@ export function useSitePhases() {
     .order('sort_order', { ascending: true })))
 }
 
+/** งานย่อยของขั้นตอน (Kanban) ทุกไซท์ — group ฝั่ง client ด้วย phase_id/
+ *  site_id. phase_task_workers ฝังมาด้วย (embed) เป็น [{worker_id}] ต่อแถว. */
+export function usePhaseTasks() {
+  return useQuery(async () => fetchAllRows(() => supabase
+    .from('phase_tasks')
+    .select('*, phase_task_workers(worker_id)')
+    .order('site_id', { ascending: true })
+    .order('sort_order', { ascending: true })))
+}
+
 /** OT entries ในช่วงวันที่ — ใช้กับมุมมอง Day/Week/Month และ copy-for-LINE */
 export function useWorkerOTRange(from, to) {
   return useQuery(async () => {
@@ -840,6 +850,16 @@ export function useSitesProgress() {
 export function useMySiteNames() {
   return useQuery(async () => {
     const { data, error } = await supabase.rpc('get_my_site_names')
+    if (error) throw error
+    return data
+  })
+}
+
+/** ชื่อ+ชื่อเล่นเพื่อนร่วมทีมที่ลงไซท์เดียวกันวันเดียวกับตัวเองวันนี้ (รวมตัวเอง)
+ *  ผ่าน SECURITY DEFINER (WORKER อ่าน worker_assignments ของคนอื่นตรงๆ ไม่ได้) */
+export function useMyTeamToday() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.rpc('get_my_team_today')
     if (error) throw error
     return data
   })
