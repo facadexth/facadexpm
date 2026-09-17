@@ -6,7 +6,7 @@
 // เทมเพลตขั้นตอนงานแบบเพิ่มเมื่อต้องการ (ไม่ auto-seed ทุกไซท์แล้ว) +
 // สถานะขั้นตอนที่มี phase_tasks (Kanban) คำนวณสดจากงานย่อย ไม่ใช่ตั้งเอง
 // ============================================================
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { useSitePhases, usePhaseTasks, useIncomes, useExpenses } from '../../hooks/useSupabase.js'
@@ -87,6 +87,21 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     ...(expensesForRange || []).map((e) => e.date),
   ], [incomesForRange, expensesForRange])
   const range = useMemo(() => expandRangeForTransactions(baseRange, transactionDatesForRange), [baseRange, transactionDatesForRange])
+
+  // ไซท์เดียว + แก้ไขได้: เก็บ sites.start_date/end_date ให้ตรงกับ timeline
+  // ที่ Gantt แสดงจริงเสมอ (ช่วงที่ขยายแล้ว รวมวันที่รายรับ/รายจ่ายด้วย) --
+  // ใช้เป็นค่า "วันเริ่ม/วันจบงาน" ที่แสดงในหน้าภาพรวมไซท์ และวันครบกำหนด
+  // เงินประกันผลงานคำนวณต่อจาก end_date นี้ ไม่ต้องแก้ไขเองแยกที่หน้าอื่น
+  // อีกต่อไป -- เขียนเฉพาะตอนค่าจริงต่างจากที่คำนวณได้ เพื่อไม่ยิง UPDATE ซ้ำ
+  useEffect(() => {
+    if (sites.length !== 1 || !canEdit || !range) return
+    const site = sites[0]
+    const newStart = range.start.toISOString().slice(0, 10)
+    const newEnd = range.end.toISOString().slice(0, 10)
+    if (site.start_date === newStart && site.end_date === newEnd) return
+    supabase.from('sites').update({ start_date: newStart, end_date: newEnd }).eq('id', site.id)
+      .then(({ error }) => { if (error) console.error('sync site start/end date failed:', error.message) })
+  }, [sites, canEdit, range])
 
   const afterWrite = async () => {
     await refetch()
