@@ -1,21 +1,30 @@
 // ============================================================
 // MySchedule — WORKER's personal view of the Assign page: their
-// own days/shifts/OT for the current range, plus their leave quota.
-// No team grid, no cost figures — RLS also enforces this at the
-// database level, this component is the matching restricted UI.
+// own days/shifts/OT for the current range, plus their leave quota,
+// today's team roster, and today's assigned Kanban tasks.
+// No team grid beyond "who's with me today", no cost figures — RLS
+// also enforces this at the database level, this component is the
+// matching restricted UI.
 // Day/week views render a linear day list; month view renders a real
 // calendar grid (reusing AssignCell so it matches ADMIN's month grid
 // visually — same site colors/abbreviations, same OT badge).
 // ============================================================
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useUserRole } from '../../hooks/useUserRole.js'
-import { useAllActiveWorkers, useAssignmentsRange, useWorkerOTRange, useMySiteNames, useLeaveQuotaUsage } from '../../hooks/useSupabase.js'
+import { useAllActiveWorkers, useAssignmentsRange, useWorkerOTRange, useMySiteNames, useLeaveQuotaUsage, usePhaseTasks, useMyTeamToday } from '../../hooks/useSupabase.js'
+import { supabase } from '../../lib/supabase.js'
+import { isTaskOverdue } from '../sites/phaseTasksCalc.js'
 import { DOW_TH } from './constants.js'
 import AssignCell from './AssignCell.jsx'
 import TodayCheckinCard from './TodayCheckinCard.jsx'
 
 const OTHER_TYPE_LABEL = { office: 'ออฟฟิศ', leave: 'ลา', leave_sick: 'ลาป่วย', leave_personal: 'ลากิจ', holiday: 'หยุด' }
 const DOW_MON_START = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา']
+const TASK_STATUS_OPTS = [
+  { value: 'not_started', label: 'ยังไม่เริ่ม' },
+  { value: 'in_progress', label: 'กำลังทำ' },
+  { value: 'done', label: 'เสร็จแล้ว' },
+]
 const noop = () => {}
 
 export default function MySchedule({ from, to, days, view }) {
@@ -24,8 +33,12 @@ export default function MySchedule({ from, to, days, view }) {
   const { data: assignments } = useAssignmentsRange(from, to)
   const { data: otEntries } = useWorkerOTRange(from, to)
   const { data: sites } = useMySiteNames()
-  const now = new Date()
-  const { data: leaveUsed } = useLeaveQuotaUsage(now.getFullYear())
+  const { data: leaveUsed } = useLeaveQuotaUsage(new Date().getFullYear())
+  const { data: myTasksRaw, refetch: refetchTasks } = usePhaseTasks()
+  const { data: teamToday } = useMyTeamToday()
+
+  const [openStatusMenuId, setOpenStatusMenuId] = useState(null)
+  const [savingTaskId, setSavingTaskId] = useState(null)
 
   const me = useMemo(() => (workers || []).find(w => w.email === user?.email), [workers, user])
 
@@ -53,10 +66,42 @@ export default function MySchedule({ from, to, days, view }) {
     return m
   }, [otEntries, me])
 
+  const todayIso = new Date().toISOString().slice(0, 10)
+
+  // งานที่มอบหมายให้ตัวเองและยังไม่เสร็จ -- RLS บน phase_tasks จำกัดผลลัพธ์
+  // ของ usePhaseTasks() ไว้อยู่แล้วเฉพาะงานที่ตัวเองเป็น assignee (ดู
+  // worker_reads_own policy) แต่ยังกรองซ้ำฝั่ง client ด้วย เผื่อกรณี role
+  // สูงกว่า WORKER เปิดหน้านี้ (canEdit=false แต่ไม่ใช่ WORKER จริง) ให้
+  // ตรงกับ pattern เดิมของไฟล์นี้ (myAssignmentsByDate/myOtByDate ก็กรองซ้ำ
+  // ฝั่ง client เหมือนกันแม้ RLS จะจำกัดไว้แล้ว
+  const myTasks = useMemo(() => {
+    const mine = (myTasksRaw || []).filter((t) =>
+      t.status !== 'done' && (t.phase_task_workers || []).some((r) => r.worker_id === me?.id))
+    return mine.sort((a, b) => {
+      const aOver = isTaskOverdue(a, todayIso), bOver = isTaskOverdue(b, todayIso)
+      if (aOver !== bOver) return aOver ? -1 : 1
+      const order = { in_progress: 0, not_started: 1 }
+      return (order[a.status] ?? 2) - (order[b.status] ?? 2)
+    })
+  }, [myTasksRaw, me, todayIso])
+
+  const updateTaskStatus = async (taskId, status) => {
+    setSavingTaskId(taskId)
+    try {
+      const { error } = await supabase.from('phase_tasks').update({ status }).eq('id', taskId)
+      if (error) throw error
+      await refetchTasks()
+      setOpenStatusMenuId(null)
+    } catch (e) {
+      alert('อัปเดตไม่สำเร็จ: ' + e.message)
+    } finally {
+      setSavingTaskId(null)
+    }
+  }
+
   // Today's distinct site assignments (site-type only) -- one
   // TodayCheckinCard per distinct site_id, since a worker can be
   // assigned to two different sites the same day (spec edge case).
-  const todayIso = new Date().toISOString().slice(0, 10)
   const todaySiteAssignments = useMemo(() => {
     const rows = (myAssignmentsByDate[todayIso] || []).filter(a => a.type === 'site')
     const bySite = new Map()
@@ -110,6 +155,65 @@ export default function MySchedule({ from, to, days, view }) {
           <div className="kpi-value" style={{ color: remaining < 0 ? 'var(--red)' : 'var(--green)' }}>{remaining}</div>
         </div>
       </div>
+
+      {teamToday && teamToday.length > 0 && (
+        <div className="card" style={{ marginBottom: 14, padding: 14 }}>
+          <div className="card-title" style={{ marginBottom: 10 }}>ทีมของคุณวันนี้</div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {teamToday.map((w) => (
+              <span key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ width: 20, height: 20, borderRadius: '50%', background: w.id === me.id ? 'var(--blue)' : 'var(--accent)', color: '#fff', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {(w.nickname || w.name || '?').slice(0, 2)}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--text2)' }}>{w.nickname || w.name}{w.id === me.id ? ' (คุณ)' : ''}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text2)', marginBottom: 8 }}>งานของคุณวันนี้</div>
+      {myTasks.length ? (
+        <div style={{ marginBottom: 18 }}>
+          {myTasks.map((t) => {
+            const overdue = isTaskOverdue(t, todayIso)
+            const borderColor = overdue ? 'var(--red)' : t.status === 'in_progress' ? 'var(--yellow)' : 'var(--text3)'
+            const isOpen = openStatusMenuId === t.id
+            return (
+              <div key={t.id} style={{ marginBottom: 8 }}>
+                <div onClick={() => setOpenStatusMenuId(isOpen ? null : t.id)}
+                  style={{
+                    background: 'var(--bg2)', border: '1px solid var(--border)', borderLeft: `3px solid ${borderColor}`,
+                    borderRadius: 9, padding: '11px 13px', cursor: 'pointer',
+                  }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                    {overdue && '⚠️ '}{t.name}
+                    {overdue && <span style={{ fontWeight: 400, color: 'var(--red)', fontSize: 11 }}> เลยกำหนด</span>}
+                    {!overdue && t.status === 'in_progress' && <span style={{ fontWeight: 400, color: 'var(--yellow)', fontSize: 11 }}> กำลังทำ</span>}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text3)' }}>
+                    <span>{siteById[t.site_id]?.site_number || ''}{t.zone ? ` · ${t.zone}` : ''}</span>
+                    <span>แตะเพื่ออัปเดต</span>
+                  </div>
+                </div>
+                {isOpen && (
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                    {TASK_STATUS_OPTS.map((s) => (
+                      <button key={s.value} type="button" className={`btn btn-sm ${t.status === s.value ? 'btn-primary' : 'btn-ghost'}`}
+                        disabled={savingTaskId === t.id} style={{ flex: 1, fontSize: 11 }}
+                        onClick={() => updateTaskStatus(t.id, s.value)}>
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div style={{ color: 'var(--text3)', fontSize: 12.5, marginBottom: 18 }}>ไม่มีงานที่มอบหมายวันนี้</div>
+      )}
 
       {view === 'month' ? (
         <div>
