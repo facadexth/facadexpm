@@ -9,22 +9,18 @@ import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import SiteOverviewContent from '../components/SiteOverviewContent.jsx'
 import GanttView from './sites/GanttView.jsx'
-import PhaseManageModal from './sites/PhaseManageModal.jsx'
 import SCurveChart from './sites/SCurveChart.jsx'
-import { useSitePhases } from '../hooks/useSupabase.js'
 
 export default function SiteDetail({ navState, navigateTo }) {
   const siteId = navState?.siteId
   const siteName = navState?.siteName
   const [tab, setTab] = useState('overview') // 'overview' | 'gantt'
-  const [showManageModal, setShowManageModal] = useState(false)
   const [phasesRefreshKey, setPhasesRefreshKey] = useState(0)
 
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'sites')
 
   const { data: site, error: siteError } = useSiteOverview(siteId)
-  const { data: allPhases, refetch: refetchPhases } = useSitePhases()
 
   if (!siteId) {
     return (
@@ -67,25 +63,16 @@ export default function SiteDetail({ navState, navigateTo }) {
               key={phasesRefreshKey}
               sites={[site]}
               navigateTo={navigateTo}
-              onManagePhases={() => setShowManageModal(true)}
               selectedSiteId={site.id}
               onSelectSite={() => {}}
               canEdit={canEdit}
+              onPhasesChanged={() => setPhasesRefreshKey((k) => k + 1)}
             />
             <div style={{ marginTop: 16 }}>
               <SCurveChart key={phasesRefreshKey} site={site} />
             </div>
           </>
         )
-      )}
-
-      {showManageModal && site && (
-        <PhaseManageModal
-          site={site}
-          phases={(allPhases || []).filter((p) => p.site_id === site.id)}
-          onClose={() => setShowManageModal(false)}
-          onSaved={() => { refetchPhases(); setPhasesRefreshKey((k) => k + 1) }}
-        />
       )}
     </div>
   )

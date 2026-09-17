@@ -15,6 +15,23 @@ export const STATUS_COLOR = {
 }
 
 /**
+ * The 7-phase template every site used to get auto-seeded on creation
+ * (via the now-removed trg_seed_site_phases DB trigger -- see
+ * supabase/migrations/2026-09-17-02-drop-seed-site-phases-trigger.sql).
+ * Kept here so a site can apply the same template on demand instead,
+ * from a button on its own Gantt tab. Values match the trigger exactly.
+ */
+export const PHASE_TEMPLATE = [
+  { name: 'ทำแบบเพื่อขออนุมัติ', sort_order: 1, billing_weight_pct: 5 },
+  { name: 'สั่งวัสดุ', sort_order: 2, billing_weight_pct: 15 },
+  { name: 'วัดหน้างานเพื่อผลิต', sort_order: 3, billing_weight_pct: 5 },
+  { name: 'ผลิต', sort_order: 4, billing_weight_pct: 30 },
+  { name: 'ติดตั้ง', sort_order: 5, billing_weight_pct: 30 },
+  { name: 'เก็บงานรอบสุดท้าย', sort_order: 6, billing_weight_pct: 10 },
+  { name: 'ส่งมอบงาน', sort_order: 7, billing_weight_pct: 5 },
+]
+
+/**
  * Spans every site's phase dates (falling back to the site's own
  * start_date/end_date when it has no dated phases yet).
  */
