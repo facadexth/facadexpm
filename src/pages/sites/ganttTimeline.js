@@ -81,3 +81,45 @@ export function computeDependencyArrows(phases, range) {
   })
   return arrows
 }
+
+/**
+ * Same as computeDependencyArrows, but for the one-phase-per-row layout
+ * (single-site detail view): also carries which row each endpoint sits on
+ * (index into the SAME `phases` array the caller renders rows from), so an
+ * arrow between two different phases can be drawn as a line spanning
+ * multiple stacked rows instead of a single shared track.
+ */
+export function computeDependencyArrowsByRow(phases, range) {
+  const byId = {}
+  const rowById = {}
+  phases.forEach((p, i) => { byId[p.id] = p; rowById[p.id] = i })
+  const arrows = []
+  phases.forEach((p, row) => {
+    if (!p.depends_on_phase_id) return
+    const dep = byId[p.depends_on_phase_id]
+    if (!dep) return
+    const depBar = barStyle(dep, range)
+    const thisBar = barStyle(p, range)
+    if (!depBar || !thisBar) return
+    const fromX = parseFloat(depBar.left) + parseFloat(depBar.width)
+    const toX = parseFloat(thisBar.left)
+    arrows.push({ fromX, toX, fromRow: rowById[p.depends_on_phase_id], toRow: row })
+  })
+  return arrows
+}
+
+/**
+ * Month-boundary tick labels within [range.start, range.end], positioned
+ * as 0-100 x-coordinates, for a header row above a per-phase-row Gantt.
+ */
+export function computeMonthTicks(range) {
+  if (!range) return []
+  const ticks = []
+  let cursor = new Date(range.start.getFullYear(), range.start.getMonth(), 1)
+  const end = range.end
+  while (cursor <= end) {
+    ticks.push({ date: new Date(cursor), x: positionPercent(cursor.toISOString().slice(0, 10), range) })
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)
+  }
+  return ticks
+}
