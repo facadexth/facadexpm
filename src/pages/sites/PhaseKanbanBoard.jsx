@@ -56,7 +56,8 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
   const phaseTasks = tasksByPhaseId[activePhaseId] || []
 
   const zones = useMemo(() => [...new Set(phaseTasks.map((t) => t.zone).filter(Boolean))].sort(), [phaseTasks])
-  const visibleTasks = phaseTasks.filter((t) => selectedZone === 'all' || t.zone === selectedZone)
+  const effectiveZone = zones.includes(selectedZone) ? selectedZone : 'all'
+  const visibleTasks = phaseTasks.filter((t) => effectiveZone === 'all' || t.zone === effectiveZone)
 
   const afterWrite = async () => {
     await refetch()
@@ -177,8 +178,8 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
             <span key={z} onClick={() => setSelectedZone(z)}
               style={{
                 border: '1px solid var(--border)', borderRadius: 20, padding: '5px 13px', fontWeight: 600, cursor: 'pointer',
-                background: selectedZone === z ? 'var(--accent)' : 'transparent',
-                color: selectedZone === z ? '#fff' : 'var(--text2)',
+                background: effectiveZone === z ? 'var(--accent)' : 'transparent',
+                color: effectiveZone === z ? '#fff' : 'var(--text2)',
               }}>
               {z === 'all' ? 'ทุกชั้น' : z}
             </span>

@@ -87,10 +87,8 @@ export default function SiteDetail({ navState, navigateTo }) {
           <div className="card" style={{ padding: 24, color: 'var(--text3)', fontSize: 13 }}>กำลังโหลด...</div>
         ) : (
           <PhaseKanbanBoard
-            key={phasesRefreshKey}
             site={site}
             canEdit={canEdit}
-            onTasksChanged={() => setPhasesRefreshKey((k) => k + 1)}
           />
         )
       )}

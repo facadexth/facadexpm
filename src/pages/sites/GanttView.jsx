@@ -24,7 +24,7 @@ const TODAY_ISO = new Date().toISOString().slice(0, 10)
 const STATUS_OPTS = [
   { value: 'not_started', label: 'ยังไม่เริ่ม' },
   { value: 'in_progress', label: 'กำลังทำ' },
-  { value: 'done', label: 'เสร็จ' },
+  { value: 'done', label: 'เสร็จแล้ว' },
 ]
 
 const emptyDraft = (site, phases) => ({
