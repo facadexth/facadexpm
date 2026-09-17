@@ -98,7 +98,13 @@ const TABS = [
 // ALL_TAB_ENTRIES.find(...) ?? ALL_TAB_ENTRIES[0] fallback would silently
 // grant them Dashboard's (WORKER-level) gate instead of their own.
 const HIDDEN_TAB_ENTRIES = [
-  { id: 'site_detail', minRole: 'ADMIN', module: null },
+  // permKey: hidden routes inherit their parent page's OWNER-configurable
+  // permission instead of defaulting to 'edit' (permissions.js's
+  // getPageLevel falls back to 'edit' for any pageKey not registered in
+  // PAGE_LABELS/DEFAULT_PERMISSIONS) -- do NOT add 'site_detail' itself to
+  // that registry, since it's not meant to be separately configurable in
+  // Settings, only to inherit its parent page's setting.
+  { id: 'site_detail', minRole: 'ADMIN', module: null, permKey: 'sites' },
 ]
 const ALL_TAB_ENTRIES = TABS.flatMap(t => t.children ?? [t]).concat(HIDDEN_TAB_ENTRIES)
 
@@ -247,7 +253,7 @@ export default function App() {
   const passesGates = (tab) =>
     isAtLeast(tab.minRole) &&
     hasModuleAccess(tab.module) &&
-    (!role || canViewPage(role, tab.id)) &&
+    (!role || canViewPage(role, tab.permKey ?? tab.id)) &&
     (!tab.platformAdminOnly || isPlatformAdmin)
   // Trial ended, no paid package chosen yet -- shown automatically, but
   // dismissible (X) without consequence; only the modal's own explicit
@@ -325,7 +331,7 @@ export default function App() {
   const renderPage = () => {
     const props = { navigateTo, navState, openSiteOverview: setOverviewSiteId, onOpenChangePassword: () => setShowChangePassword(true), onOpenChangePlan: () => setShowUpgradeModal(true) }
     const entry = ALL_TAB_ENTRIES.find(t => t.id === activeTab) ?? ALL_TAB_ENTRIES[0]
-    const gate = { minRole: entry.minRole, module: entry.module, pageKey: entry.id, platformAdminOnly: entry.platformAdminOnly, hasModuleAccess, isPlatformAdmin, tenantLoading, platformAdminLoading }
+    const gate = { minRole: entry.minRole, module: entry.module, pageKey: entry.permKey ?? entry.id, platformAdminOnly: entry.platformAdminOnly, hasModuleAccess, isPlatformAdmin, tenantLoading, platformAdminLoading }
 
     const page = (() => {
       switch (activeTab) {

@@ -23,7 +23,7 @@ export default function SiteDetail({ navState, navigateTo }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'sites')
 
-  const { data: site } = useSiteOverview(siteId)
+  const { data: site, error: siteError } = useSiteOverview(siteId)
   const { data: allPhases, refetch: refetchPhases } = useSitePhases()
 
   if (!siteId) {
@@ -56,21 +56,27 @@ export default function SiteDetail({ navState, navigateTo }) {
 
       {tab === 'overview' && <SiteOverviewContent siteId={siteId} />}
 
-      {tab === 'gantt' && site && (
-        <>
-          <GanttView
-            key={phasesRefreshKey}
-            sites={[site]}
-            navigateTo={navigateTo}
-            onManagePhases={() => setShowManageModal(true)}
-            selectedSiteId={site.id}
-            onSelectSite={() => {}}
-            canEdit={canEdit}
-          />
-          <div style={{ marginTop: 16 }}>
-            <SCurveChart key={phasesRefreshKey} site={site} />
-          </div>
-        </>
+      {tab === 'gantt' && (
+        siteError ? (
+          <div className="card" style={{ padding: 24, color: 'var(--red)', fontSize: 13 }}>โหลดข้อมูลไม่สำเร็จ: {siteError}</div>
+        ) : !site ? (
+          <div className="card" style={{ padding: 24, color: 'var(--text3)', fontSize: 13 }}>กำลังโหลด...</div>
+        ) : (
+          <>
+            <GanttView
+              key={phasesRefreshKey}
+              sites={[site]}
+              navigateTo={navigateTo}
+              onManagePhases={() => setShowManageModal(true)}
+              selectedSiteId={site.id}
+              onSelectSite={() => {}}
+              canEdit={canEdit}
+            />
+            <div style={{ marginTop: 16 }}>
+              <SCurveChart key={phasesRefreshKey} site={site} />
+            </div>
+          </>
+        )
       )}
 
       {showManageModal && site && (
