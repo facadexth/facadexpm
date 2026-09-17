@@ -23,6 +23,7 @@ import Login      from './pages/Login.jsx'
 import Dashboard   from './pages/Dashboard.jsx'
 
 const Sites             = lazy(() => import('./pages/Sites.jsx'))
+const SiteDetail          = lazy(() => import('./pages/SiteDetail.jsx'))
 const Assign             = lazy(() => import('./pages/Assign.jsx'))
 const Expenses           = lazy(() => import('./pages/Expenses.jsx'))
 const PurchaseOrders     = lazy(() => import('./pages/PurchaseOrders.jsx'))
@@ -92,7 +93,14 @@ const TABS = [
 // group ({label, children: [...plain tabs]}) for the hover dropdown. This
 // flattens both shapes into one list of plain tabs, so lookups by id don't
 // need to know which shape produced them.
-const ALL_TAB_ENTRIES = TABS.flatMap(t => t.children ?? [t])
+// Hidden routes: reachable only via navigateTo(), never shown in the nav
+// bar (not in TABS), but still need a real gate here or renderPage's
+// ALL_TAB_ENTRIES.find(...) ?? ALL_TAB_ENTRIES[0] fallback would silently
+// grant them Dashboard's (WORKER-level) gate instead of their own.
+const HIDDEN_TAB_ENTRIES = [
+  { id: 'site_detail', minRole: 'ADMIN', module: null },
+]
+const ALL_TAB_ENTRIES = TABS.flatMap(t => t.children ?? [t]).concat(HIDDEN_TAB_ENTRIES)
 
 // Hover-triggered dropdown for a TABS group entry (e.g. "ไซท์งาน"). Portaled
 // to document.body instead of position:absolute inside <nav>, because the
@@ -325,6 +333,7 @@ export default function App() {
         case 'assign':     return <Assign     {...props} />
         case 'hr':         return <HR        {...props} />
         case 'sites':      return <Sites      {...props} />
+        case 'site_detail': return <SiteDetail {...props} />
         case 'expenses':   return <Expenses   {...props} />
         case 'purchase_orders': return <PurchaseOrders {...props} />
         case 'inventory':  return <Inventory  {...props} />
