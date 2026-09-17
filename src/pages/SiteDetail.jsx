@@ -1,7 +1,7 @@
 // ============================================================
-// SiteDetail -- per-site page (ภาพรวม / Gantt tabs). Reached via
-// navigateTo('site_detail', { siteId, siteName }) from Sites.jsx's site
-// name click. Not a visible nav tab -- see App.jsx's ALL_TAB_ENTRIES.
+// SiteDetail -- per-site page (ภาพรวม / Gantt / Kanban tabs). Reached
+// via navigateTo('site_detail', { siteId, siteName }) from Sites.jsx's
+// site name click. Not a visible nav tab -- see App.jsx's ALL_TAB_ENTRIES.
 // ============================================================
 import { useState } from 'react'
 import { useSiteOverview } from '../hooks/useSupabase.js'
@@ -10,11 +10,12 @@ import { canEditPage } from '../lib/permissions.js'
 import SiteOverviewContent from '../components/SiteOverviewContent.jsx'
 import GanttView from './sites/GanttView.jsx'
 import SCurveChart from './sites/SCurveChart.jsx'
+import PhaseKanbanBoard from './sites/PhaseKanbanBoard.jsx'
 
 export default function SiteDetail({ navState, navigateTo }) {
   const siteId = navState?.siteId
   const siteName = navState?.siteName
-  const [tab, setTab] = useState('overview') // 'overview' | 'gantt'
+  const [tab, setTab] = useState('overview') // 'overview' | 'gantt' | 'kanban'
   const [phasesRefreshKey, setPhasesRefreshKey] = useState(0)
 
   const { isAtLeast, role } = useUserRole()
@@ -48,6 +49,10 @@ export default function SiteDetail({ navState, navigateTo }) {
           className={`btn btn-sm ${tab === 'gantt' ? 'btn-primary' : 'btn-ghost'}`}
           onClick={() => setTab('gantt')}
         >📅 Gantt</button>
+        <button
+          className={`btn btn-sm ${tab === 'kanban' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => setTab('kanban')}
+        >🗂 Kanban</button>
       </div>
 
       {tab === 'overview' && <SiteOverviewContent siteId={siteId} />}
@@ -72,6 +77,21 @@ export default function SiteDetail({ navState, navigateTo }) {
               <SCurveChart key={phasesRefreshKey} site={site} />
             </div>
           </>
+        )
+      )}
+
+      {tab === 'kanban' && (
+        siteError ? (
+          <div className="card" style={{ padding: 24, color: 'var(--red)', fontSize: 13 }}>โหลดข้อมูลไม่สำเร็จ: {siteError}</div>
+        ) : !site ? (
+          <div className="card" style={{ padding: 24, color: 'var(--text3)', fontSize: 13 }}>กำลังโหลด...</div>
+        ) : (
+          <PhaseKanbanBoard
+            key={phasesRefreshKey}
+            site={site}
+            canEdit={canEdit}
+            onTasksChanged={() => setPhasesRefreshKey((k) => k + 1)}
+          />
         )
       )}
     </div>
