@@ -3,15 +3,17 @@
 // ในหน้ารายการไซท์แบบภาพรวม) กับไซท์เดียว (1 แถวต่อขั้นตอน พร้อมแกนเดือน,
 // ใช้ในหน้า SiteDetail — sites.length === 1 สลับโหมดอัตโนมัติ)
 // + ลูกศร dependency (soft) + แก้ไขขั้นตอนได้ในหน้านี้เลย (ไซท์เดียว) +
-// เทมเพลตขั้นตอนงานแบบเพิ่มเมื่อต้องการ (ไม่ auto-seed ทุกไซท์แล้ว)
+// เทมเพลตขั้นตอนงานแบบเพิ่มเมื่อต้องการ (ไม่ auto-seed ทุกไซท์แล้ว) +
+// สถานะขั้นตอนที่มี phase_tasks (Kanban) คำนวณสดจากงานย่อย ไม่ใช่ตั้งเอง
 // ============================================================
 import { useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
-import { useSitePhases } from '../../hooks/useSupabase.js'
+import { useSitePhases, usePhaseTasks } from '../../hooks/useSupabase.js'
 import { supabase } from '../../lib/supabase.js'
 import { ConfirmDialog } from '../../components/Modal.jsx'
 import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, STATUS_COLOR, PHASE_TEMPLATE } from './ganttTimeline.js'
+import { computePhaseTaskStats } from './phaseTasksCalc.js'
 import { getEffectiveTheme } from '../../lib/theme.js'
 
 const ROW_H = 34
@@ -32,6 +34,7 @@ const emptyDraft = (site, phases) => ({
 
 export default function GanttView({ sites, navigateTo, onManagePhases, selectedSiteId, onSelectSite, canEdit, onPhasesChanged }) {
   const { data: allPhases, refetch } = useSitePhases()
+  const { data: allTasks } = usePhaseTasks()
 
   // แก้ไข/เพิ่ม/ลบขั้นตอนแบบ inline (ใช้เฉพาะมุมมองไซท์เดียว) -- hooks ต้อง
   // อยู่บนสุดเสมอ ไม่ผูกกับ branch ไหน
@@ -55,6 +58,15 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     })
     return m
   }, [allPhases])
+
+  const tasksByPhaseId = useMemo(() => {
+    const m = {}
+    ;(allTasks || []).forEach((t) => {
+      if (!m[t.phase_id]) m[t.phase_id] = []
+      m[t.phase_id].push(t)
+    })
+    return m
+  }, [allTasks])
 
   const range = useMemo(() => computeTimelineRange(sites, phasesBySite), [sites, phasesBySite])
 
@@ -132,6 +144,15 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     const isAdding = editingId === '__new__'
     const rows = isAdding ? [...phases, { id: '__new__', isNew: true }] : phases
 
+    // สถานะที่ "แสดงจริง" ต่อขั้นตอน: ถ้ามี phase_tasks (Kanban) แล้ว คำนวณสด
+    // จาก done/total แทนค่า status ที่ตั้งเอง -- ขั้นตอนที่ไม่มี task เลย
+    // ยังใช้ status ที่ตั้งเองเหมือนเดิมทุกประการ (ไม่มี regression)
+    const phaseStatsById = {}
+    phases.forEach((p) => {
+      const stats = computePhaseTaskStats(tasksByPhaseId[p.id] || [])
+      phaseStatsById[p.id] = { stats, displayStatus: stats.total > 0 ? stats.derivedStatus : p.status }
+    })
+
     if (!phases.length && !isAdding) {
       return (
         <div className="card" style={{ padding: 32, textAlign: 'center' }}>
@@ -150,8 +171,8 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
 
     const monthTicks = range ? computeMonthTicks(range) : []
     const arrows = editingId ? [] : computeDependencyArrowsByRow(phases, range)
-    const doneCount = phases.filter((p) => p.status === 'done').length
-    const inProgressCount = phases.filter((p) => p.status === 'in_progress').length
+    const doneCount = phases.filter((p) => phaseStatsById[p.id].displayStatus === 'done').length
+    const inProgressCount = phases.filter((p) => phaseStatsById[p.id].displayStatus === 'in_progress').length
     const overallPct = phases.length ? Math.round((doneCount / phases.length) * 100) : 0
     // Same reasoning as SCurveChart's todayInRange guard: only draw "today"
     // when it actually falls inside this site's own timeline, otherwise a
@@ -203,6 +224,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
               const top = rowTops[i]
               const isEditingThis = editingId && phase.id === editingId
               const style = phase.isNew ? null : barStyle(phase, range)
+              const ps = phaseStatsById[phase.id]
 
               if (isEditingThis) {
                 return (
@@ -230,10 +252,16 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                         <label style={{ fontSize: 11, color: 'var(--text3)' }}>
                           สถานะ
-                          <select className="select" style={{ width: '100%', marginTop: 2 }}
-                            value={draft.status} onChange={(e) => setDraft((d) => ({ ...d, status: e.target.value }))}>
-                            {STATUS_OPTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                          </select>
+                          {ps && ps.stats.total > 0 ? (
+                            <div style={{ marginTop: 2, fontSize: 12, color: 'var(--text2)', padding: '6px 8px', background: 'var(--bg3)', borderRadius: 6 }}>
+                              คำนวณอัตโนมัติจากงานย่อย ({ps.stats.done}/{ps.stats.total} เสร็จ)
+                            </div>
+                          ) : (
+                            <select className="select" style={{ width: '100%', marginTop: 2 }}
+                              value={draft.status} onChange={(e) => setDraft((d) => ({ ...d, status: e.target.value }))}>
+                              {STATUS_OPTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                            </select>
+                          )}
                         </label>
                         <label style={{ fontSize: 11, color: 'var(--text3)' }}>
                           % เบิกเงิน
@@ -266,6 +294,12 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                 )
               }
 
+              const displayStatus = ps ? ps.displayStatus : phase.status
+              const label = displayStatus === 'done' ? '✓'
+                : displayStatus === 'in_progress' ? (ps && ps.stats.total > 0 ? `${ps.stats.pct}%` : 'กำลังทำ')
+                : ''
+              const titleSuffix = ps && ps.stats.total > 0 ? ` (${ps.stats.done}/${ps.stats.total} งานย่อยเสร็จ)` : ''
+
               return (
                 <div key={phase.id} style={{ position: 'absolute', top, left: 0, right: 0, height: ROW_H, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div style={{ width: LABEL_W, flexShrink: 0, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={phase.name}>
@@ -274,16 +308,16 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                   <div style={{ position: 'relative', flex: 1, height: 20, background: 'var(--bg3)', borderRadius: 5 }}>
                     {style && (
                       <div
-                        title={`${phase.name}\n${phase.start_date} → ${phase.end_date}\nสถานะ: ${phase.status}`}
+                        title={`${phase.name}\n${phase.start_date} → ${phase.end_date}\nสถานะ: ${displayStatus}${titleSuffix}`}
                         style={{
                           position: 'absolute', top: 2, bottom: 2, left: style.left, width: style.width,
-                          background: STATUS_COLOR[phase.status] || STATUS_COLOR.not_started, borderRadius: 5,
+                          background: STATUS_COLOR[displayStatus] || STATUS_COLOR.not_started, borderRadius: 5,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 10, fontWeight: 700, color: phase.status === 'not_started' ? 'var(--text3)' : '#fff',
+                          fontSize: 10, fontWeight: 700, color: displayStatus === 'not_started' ? 'var(--text3)' : '#fff',
                           overflow: 'hidden', whiteSpace: 'nowrap',
                         }}
                       >
-                        {phase.status === 'done' ? '✓' : phase.status === 'in_progress' ? 'กำลังทำ' : ''}
+                        {label}
                       </div>
                     )}
                   </div>
