@@ -53,9 +53,17 @@ export function buildCostSeries(expenses) {
  * after todayISO get `null` for actual/cost so recharts' default
  * connectNulls={false} simply stops drawing those two lines at today,
  * instead of forward-filling them flat across the whole future range.
+ *
+ * `extraDates` guarantees a real (forward-filled) data point exists at
+ * dates that might otherwise have no transaction/phase-end landing on
+ * them -- in particular GanttView's own timeline range.start/range.end,
+ * so recharts' <Line> actually starts drawing at the same left edge the
+ * Gantt chart's axis does, instead of wherever the first real transaction
+ * happens to fall (which can be well inside the domain, leaving an
+ * unexplained gap between the axis edge and where the line begins).
  */
-export function mergeCumulativeSeries({ plan, actual, cost }, todayISO = new Date().toISOString().slice(0, 10)) {
-  const allDates = [...new Set([...plan, ...actual, ...cost].map((p) => p.date).concat(todayISO))].sort()
+export function mergeCumulativeSeries({ plan, actual, cost }, todayISO = new Date().toISOString().slice(0, 10), extraDates = []) {
+  const allDates = [...new Set([...plan, ...actual, ...cost].map((p) => p.date).concat(todayISO, extraDates))].sort()
 
   const forwardFill = (series) => {
     let idx = 0

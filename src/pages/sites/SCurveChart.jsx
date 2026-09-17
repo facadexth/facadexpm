@@ -42,8 +42,13 @@ export default function SCurveChart({ site }) {
     const plan = buildPlanSeries(phasesForSite, site.contract_value)
     const actual = buildActualSeries(incomes || [])
     const cost = buildCostSeries(expenses || [])
-    return mergeCumulativeSeries({ plan, actual, cost }, TODAY_ISO).map((row) => ({ ...row, ts: new Date(row.date).getTime() }))
-  }, [phasesForSite, incomes, expenses, site.contract_value])
+    // Anchor the line data at the same range.start/range.end GanttView's
+    // own timeline uses, so the plotted lines actually reach both edges
+    // of the axis instead of starting/stopping wherever a real
+    // transaction or phase end-date happens to land.
+    const extraDates = range ? [range.start.toISOString().slice(0, 10), range.end.toISOString().slice(0, 10)] : []
+    return mergeCumulativeSeries({ plan, actual, cost }, TODAY_ISO, extraDates).map((row) => ({ ...row, ts: new Date(row.date).getTime() }))
+  }, [phasesForSite, incomes, expenses, site.contract_value, range])
 
   if (!chartData.length) {
     return (
