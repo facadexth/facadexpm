@@ -549,7 +549,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                     {node.name}
                   </div>
                   <div
-                    style={{ position: 'relative', flex: 1, height: 20, background: 'var(--bg3)', borderRadius: 5, cursor: hasChildren || (!isPhase && nodeIsLeaf) ? 'pointer' : 'default' }}
+                    style={{ position: 'relative', flex: 1, height: 20, background: 'var(--bg3)', borderRadius: 5, cursor: hasChildren || nodeIsLeaf ? 'pointer' : 'default' }}
                     onClick={() => {
                       if (node.isNew) return
                       if (hasChildren) toggleExpanded(node.id)

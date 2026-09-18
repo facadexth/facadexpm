@@ -17,6 +17,7 @@ export default function SiteDetail({ navState, navigateTo }) {
   const siteName = navState?.siteName
   const [tab, setTab] = useState('overview') // 'overview' | 'gantt' | 'kanban'
   const [phasesRefreshKey, setPhasesRefreshKey] = useState(0)
+  const [kanbanInitialLeafId, setKanbanInitialLeafId] = useState(null) // ตั้งค่าเมื่อคลิก leaf บนแท็บ Gantt เพื่อ deep-link ไปยัง chip ที่ตรงกันในแท็บ Kanban
 
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'sites')
@@ -72,6 +73,7 @@ export default function SiteDetail({ navState, navigateTo }) {
               onSelectSite={() => {}}
               canEdit={canEdit}
               onPhasesChanged={() => setPhasesRefreshKey((k) => k + 1)}
+              onOpenKanban={(_site, leafNode) => { setKanbanInitialLeafId(leafNode.id); setTab('kanban') }}
             />
             <div style={{ marginTop: 16 }}>
               <SCurveChart key={phasesRefreshKey} site={site} />
@@ -89,6 +91,7 @@ export default function SiteDetail({ navState, navigateTo }) {
           <PhaseKanbanBoard
             site={site}
             canEdit={canEdit}
+            initialLeafId={kanbanInitialLeafId}
           />
         )
       )}

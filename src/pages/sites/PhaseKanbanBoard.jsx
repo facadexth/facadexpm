@@ -8,15 +8,20 @@
 // site_phases.status ตรงๆ จากที่นี่
 //
 // ค่าเริ่มต้นคือ "ทั้งหมด" (ALL_PHASES) -- รวมทุกขั้นตอนที่มีงานย่อยไว้ในหน้า
-// เดียว (บอร์ด 3 คอลัมน์แยกต่อขั้นตอน ไม่ปนกันเป็นกองเดียว เพื่อไม่ให้งง)
-// เลือกขั้นตอนใดขั้นตอนหนึ่งจาก chip เพื่อโฟกัสดูเฉพาะขั้นตอนนั้น (มีตัวกรอง
-// ชั้น/โซนเพิ่มด้วยในโหมดนี้)
+// เดียว (บอร์ด 3 คอลัมน์แยกต่อขั้นตอน ไม่ปนกันเป็นกองเดียว เพื่อไม่ให้งง --
+// ดูเฉพาะขั้นตอนที่เป็น leaf เองเท่านั้น ขั้นตอนที่มีขั้นตอนย่อยข้างในจะไม่
+// โชว์อะไรในโหมดนี้ ข้อจำกัดที่รับทราบแล้ว) เลือกขั้นตอนใดขั้นตอนหนึ่งจาก chip
+// เพื่อโฟกัสดูเฉพาะขั้นตอนนั้น (มีตัวกรองชั้น/โซนเพิ่มด้วยในโหมดนี้) -- ถ้า
+// ขั้นตอนที่เลือกมีขั้นตอนย่อย จะงอก chip แถวใหม่ต่อท้ายให้เลือกลึกลงไปอีกชั้น
+// ไปเรื่อยๆ จนถึง leaf (ดู selectedChain ด้านล่าง) -- คลิกแท่ง leaf บนแท็บ
+// Gantt ก็จะ deep-link มาที่นี่พร้อม chip เลือกไว้ให้ทั้งเส้นผ่าน initialLeafId
 // ============================================================
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { ConfirmDialog } from '../../components/Modal.jsx'
-import { useSitePhases, usePhaseTasks, useWorkers } from '../../hooks/useSupabase.js'
+import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks } from '../../hooks/useSupabase.js'
 import { STATUS_COLOR } from './ganttTimeline.js'
+import { groupSubtasksByParent, isLeaf } from './subtaskCalc.js'
 
 const ALL_PHASES = '__all__'
 
@@ -30,12 +35,16 @@ const emptyDraft = (phaseId, status, sortOrder) => ({
   phase_id: phaseId, name: '', zone: '', status, due_date: '', sort_order: sortOrder, assigneeIds: [], leadWorkerId: null,
 })
 
-export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
+export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initialLeafId }) {
   const { data: allPhases } = useSitePhases()
   const { data: allTasks, refetch } = usePhaseTasks()
   const { data: workers } = useWorkers()
+  const { data: allSubtasks } = useSubtasks()
 
-  const [selectedPhaseId, setSelectedPhaseId] = useState(ALL_PHASES)
+  // เชนของ id ที่เลือกไว้ต่อชั้น: selectedChain[0] = phase (หรือ ALL_PHASES),
+  // selectedChain[1] = subtask ชั้น 1 ที่เลือกใต้ phase นั้น, [2] = ชั้น 2, ...
+  // ยาวเท่าที่ลึกจนถึง leaf ที่กำลังโฟกัสอยู่
+  const [selectedChain, setSelectedChain] = useState(() => [ALL_PHASES])
   const [selectedZone, setSelectedZone] = useState('all')
   const [editingId, setEditingId] = useState(null) // task.id หรือ '__new__:<phaseId>:<status>'
   const [draft, setDraft] = useState(null)
@@ -47,11 +56,24 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
     .filter((p) => p.site_id === site.id)
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)), [allPhases, site.id])
 
-  const tasksByPhaseId = useMemo(() => {
+  // งานย่อย (Kanban) group ตาม "โหนดแม่" ที่แท้จริง -- ติดกับ subtask_id
+  // ถ้ามี (แปลว่าติดอยู่กับ subtask ที่เป็น leaf) ไม่งั้นติดกับ phase_id ตรงๆ
+  // (โหนดแม่คนละใบไม่มีทางชนกัน id เพราะมาจากคนละตาราง) -- โครงเดียวกับ
+  // GanttView.jsx's microtasksByNodeId เป๊ะๆ (ก็อปมาเพราะไฟล์นี้แยกอิสระจากกัน)
+  const microtasksByNodeId = useMemo(() => {
     const m = {}
-    ;(allTasks || []).forEach((t) => { (m[t.phase_id] ||= []).push(t) })
+    ;(allTasks || []).forEach((t) => { const key = t.subtask_id || t.phase_id; (m[key] ||= []).push(t) })
     return m
   }, [allTasks])
+
+  const subtasksByParent = useMemo(() => groupSubtasksByParent((allSubtasks || []).filter((s) => s.site_id === site.id)), [allSubtasks, site.id])
+
+  // subtask id -> ตัวโหนดเอง (ใช้หา .phase_id ของ subtask ตอนสร้าง phase_tasks ใหม่)
+  const byNodeId = useMemo(() => {
+    const m = {}
+    ;(allSubtasks || []).forEach((s) => { m[s.id] = s })
+    return m
+  }, [allSubtasks])
 
   const workerById = useMemo(() => {
     const m = {}
@@ -59,18 +81,37 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
     return m
   }, [workers])
 
-  const isAllPhases = selectedPhaseId === ALL_PHASES
-  const activePhaseId = isAllPhases ? null : selectedPhaseId
-  const phaseTasks = activePhaseId ? (tasksByPhaseId[activePhaseId] || []) : []
+  // เดินตาม chain ทีละชั้น หยุดที่ node สุดท้ายที่ระบุไว้จริง (ชั้นที่ยังไม่
+  // ได้เลือกอะไรก็หยุดตรงนั้น) -- activeLeafId คือโหนดที่บอร์ดกำลังโฟกัส
+  const isAllPhases = selectedChain[0] === ALL_PHASES
+  const activeLeafId = isAllPhases ? null : selectedChain[selectedChain.length - 1]
+  const activeLeafIsLeaf = activeLeafId ? isLeaf(activeLeafId, subtasksByParent) : false
+  const leafMicrotasks = activeLeafId ? (microtasksByNodeId[activeLeafId] || []) : []
 
-  const zones = useMemo(() => [...new Set(phaseTasks.map((t) => t.zone).filter(Boolean))].sort(), [phaseTasks])
+  useEffect(() => {
+    if (!initialLeafId || !allSubtasks) return
+    // เดินจาก leaf ย้อนกลับขึ้นไปหา phase เพื่อสร้าง chain ทั้งเส้น
+    const chain = [initialLeafId]
+    let cur = (allSubtasks || []).find((s) => s.id === initialLeafId)
+    while (cur && cur.parent_subtask_id) {
+      chain.unshift(cur.parent_subtask_id)
+      cur = allSubtasks.find((s) => s.id === cur.parent_subtask_id)
+    }
+    const phaseId = cur ? cur.phase_id : initialLeafId
+    setSelectedChain([phaseId, ...chain.filter((id) => id !== phaseId)])
+  }, [initialLeafId, allSubtasks])
+
+  const zones = useMemo(() => [...new Set(leafMicrotasks.map((t) => t.zone).filter(Boolean))].sort(), [leafMicrotasks])
   const effectiveZone = zones.includes(selectedZone) ? selectedZone : 'all'
-  const visibleTasks = phaseTasks.filter((t) => effectiveZone === 'all' || t.zone === effectiveZone)
+  const visibleTasks = leafMicrotasks.filter((t) => effectiveZone === 'all' || t.zone === effectiveZone)
 
-  // โหมด "ทั้งหมด" โชว์เฉพาะขั้นตอนที่มีงานย่อยแล้ว (ข้ามขั้นตอนว่างเปล่า
-  // เพื่อไม่ให้หน้าโหลดบอร์ดเปล่าๆ 7 อันจนงง) -- ขั้นตอนที่ยังไม่มีงานเลย
+  // โหมด "ทั้งหมด" โชว์เฉพาะขั้นตอนที่มีงานย่อยติดอยู่กับตัวมันเองโดยตรง (ข้าม
+  // ขั้นตอนว่างเปล่า เพื่อไม่ให้หน้าโหลดบอร์ดเปล่าๆ 7 อันจนงง) -- ขั้นตอนที่มี
+  // ขั้นตอนย่อยข้างใน (งานย่อยไปติดอยู่กับ subtask ที่เป็น leaf แทน) จะไม่โชว์
+  // อะไรเลยในโหมดนี้ (ข้อจำกัดที่รับทราบแล้ว -- เข้าไปดูผ่านการเลือก chip
+  // ขั้นตอนนั้นแล้วไล่ chip ขั้นตอนย่อยลงไปแทน) -- ขั้นตอนที่ยังไม่มีงานเลย
   // ให้เข้าไปเพิ่มงานแรกผ่านการเลือก chip ขั้นตอนนั้นโดยตรง
-  const phasesWithTasks = useMemo(() => phases.filter((p) => (tasksByPhaseId[p.id] || []).length > 0), [phases, tasksByPhaseId])
+  const phasesWithTasks = useMemo(() => phases.filter((p) => (microtasksByNodeId[p.id] || []).length > 0), [phases, microtasksByNodeId])
 
   const afterWrite = async () => {
     await refetch()
@@ -81,17 +122,19 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
     setEditingId(task.id)
     const workerRows = task.phase_task_workers || []
     setDraft({
-      phase_id: task.phase_id, name: task.name, zone: task.zone || '', status: task.status,
+      // phase_id ที่เก็บใน draft คือ "โหนดเป้าหมาย" จริงๆ (phase หรือ leaf
+      // subtask) ไม่ใช่ phase บรรพบุรุษเสมอไปอีกต่อไป -- ใช้ subtask_id ถ้ามี
+      phase_id: task.subtask_id || task.phase_id, name: task.name, zone: task.zone || '', status: task.status,
       due_date: task.due_date || '', sort_order: task.sort_order,
       assigneeIds: workerRows.map((r) => r.worker_id),
       leadWorkerId: workerRows.find((r) => r.is_lead)?.worker_id || null,
     })
   }
-  const startAdd = (phaseId, status) => {
-    const tasks = tasksByPhaseId[phaseId] || []
+  const startAdd = (nodeId, status) => {
+    const tasks = microtasksByNodeId[nodeId] || []
     const sortOrder = tasks.length ? Math.max(...tasks.map((t) => t.sort_order || 0)) + 1 : 1
-    setEditingId(`__new__:${phaseId}:${status}`)
-    setDraft(emptyDraft(phaseId, status, sortOrder))
+    setEditingId(`__new__:${nodeId}:${status}`)
+    setDraft(emptyDraft(nodeId, status, sortOrder))
   }
   const cancelEdit = () => { setEditingId(null); setDraft(null) }
 
@@ -105,8 +148,17 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
       }
       let taskId = editingId
       if (String(editingId).startsWith('__new__')) {
+        // draft.phase_id คือโหนดเป้าหมายจริง (phase หรือ leaf subtask) --
+        // phase_tasks ต้องได้ phase_id เป็น phase บรรพบุรุษสูงสุดเสมอ และ
+        // subtask_id เฉพาะตอนเป้าหมายเป็น subtask จริงๆ (คอนเวนชันเดียวกับ
+        // ที่ GanttView.jsx ใช้ตอนสร้าง phase_subtasks ใหม่)
+        const isTargetPhase = phases.some((p) => p.id === draft.phase_id)
         const { data, error } = await supabase.from('phase_tasks')
-          .insert({ phase_id: draft.phase_id, site_id: site.id, ...payload })
+          .insert({
+            phase_id: isTargetPhase ? draft.phase_id : byNodeId[draft.phase_id].phase_id,
+            subtask_id: isTargetPhase ? null : draft.phase_id,
+            site_id: site.id, ...payload,
+          })
           .select().single()
         if (error) throw error
         taskId = data.id
@@ -206,34 +258,42 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--text2)' }}>
-        เฟส:
-        <span onClick={() => setSelectedPhaseId(ALL_PHASES)}
-          style={{
-            border: '1px solid var(--border)', borderRadius: 20, padding: '5px 13px', fontWeight: 600, cursor: 'pointer',
-            background: isAllPhases ? 'var(--accent)' : 'transparent',
-            color: isAllPhases ? '#fff' : 'var(--text2)',
-          }}>
-          🗂 ทั้งหมด
-        </span>
-        {phases.map((p) => (
-          <span key={p.id} onClick={() => { setSelectedPhaseId(p.id); setSelectedZone('all') }}
-            style={{
-              border: '1px solid var(--border)', borderRadius: 20, padding: '5px 13px', fontWeight: 600, cursor: 'pointer',
-              background: activePhaseId === p.id ? 'var(--accent)' : 'transparent',
-              color: activePhaseId === p.id ? '#fff' : 'var(--text2)',
-            }}>
-            {p.name}
-          </span>
-        ))}
-      </div>
+      {/* ยาว selectedChain.length + 1 เสมอ -- ชั้นสุดท้าย "พิเศษ" (ยังไม่มี
+          ใน selectedChain) คือชั้นที่ให้เลือกลูกของโหนดที่เพิ่งเลือกไปหมาดๆ
+          (ถ้ามีลูก) เพื่อให้กด chip แถวนั้นแล้วลึกลงไปได้เรื่อยๆ -- ไม่งั้น
+          เลือกเฟสที่มีขั้นตอนย่อยแล้วจะตันทันที ไม่มีทางกด chip ขั้นตอนย่อย
+          ชั้นแรกได้เลย (แถวนั้นยังไม่เคยมีอยู่ใน selectedChain มาก่อน) */}
+      {Array.from({ length: selectedChain.length + 1 }, (_, tier) => {
+        const selectedAtThisTier = selectedChain[tier]
+        const parentId = tier === 0 ? null : selectedChain[tier - 1]
+        const options = tier === 0 ? phases : (subtasksByParent[parentId] || [])
+        if (tier > 0 && options.length === 0) return null // พ่อแม่ชั้นก่อนไม่มีลูกแล้ว ไม่ต้องโชว์แถวนี้
+        return (
+          <div key={tier} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--text2)' }}>
+            {tier === 0 ? 'เฟส:' : 'ขั้นตอนย่อย:'}
+            {tier === 0 && (
+              <span onClick={() => setSelectedChain([ALL_PHASES])}
+                style={{ border: '1px solid var(--border)', borderRadius: 20, padding: '5px 13px', fontWeight: 600, cursor: 'pointer', background: isAllPhases ? 'var(--accent)' : 'transparent', color: isAllPhases ? '#fff' : 'var(--text2)' }}>
+                🗂 ทั้งหมด
+              </span>
+            )}
+            {options.map((n) => (
+              <span key={n.id}
+                onClick={() => setSelectedChain([...selectedChain.slice(0, tier), n.id])}
+                style={{ border: '1px solid var(--border)', borderRadius: 20, padding: '5px 13px', fontWeight: 600, cursor: 'pointer', background: selectedAtThisTier === n.id ? 'var(--accent)' : 'transparent', color: selectedAtThisTier === n.id ? '#fff' : 'var(--text2)' }}>
+                {n.name}
+              </span>
+            ))}
+          </div>
+        )
+      })}
 
       {isAllPhases ? (
         phasesWithTasks.length ? (
           phasesWithTasks.map((phase, i) => (
             <div key={phase.id} style={{ marginTop: i > 0 ? 28 : 0, paddingTop: i > 0 ? 20 : 0, borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
               <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 12 }}>{phase.name}</div>
-              <PhaseBoard phaseId={phase.id} tasks={tasksByPhaseId[phase.id] || []} {...boardProps} />
+              <PhaseBoard phaseId={phase.id} tasks={microtasksByNodeId[phase.id] || []} {...boardProps} />
             </div>
           ))
         ) : (
@@ -241,6 +301,10 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
             ไซท์นี้ยังไม่มีงานย่อยเลย — เลือกขั้นตอนด้านบนแล้วกด "+ เพิ่มงาน" เพื่อเริ่ม
           </div>
         )
+      ) : !activeLeafIsLeaf ? (
+        <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text3)' }}>
+          ขั้นตอนนี้มีขั้นตอนย่อยอยู่ข้างใน — เลือกขั้นตอนย่อยจาก chip ด้านบนต่อไปเรื่อยๆ จนถึงขั้นตอนย่อยสุดท้าย เพื่อดูหรือเพิ่มงานย่อย (Kanban)
+        </div>
       ) : (
         <>
           {zones.length > 0 && (
@@ -258,7 +322,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
               ))}
             </div>
           )}
-          <PhaseBoard phaseId={activePhaseId} tasks={visibleTasks} {...boardProps} />
+          <PhaseBoard phaseId={activeLeafId} tasks={visibleTasks} {...boardProps} />
         </>
       )}
 
