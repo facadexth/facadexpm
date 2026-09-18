@@ -210,16 +210,22 @@ subtasks get the finer-grained ramp, and the deeper the tree goes, the
 finer it gets automatically (no extra work needed to "support" deeper
 nesting here — flattening to leaves handles any depth uniformly).
 
-## Open Question — carried forward to planning, not resolved here
+## Resolved: a leaf's existing microtasks when it gains its first child
 
-**What happens when a leaf that already has microtasks gains its first
-child subtask?** Its microtasks can no longer live there (only leaves
-carry microtasks) but deleting or silently reassigning them is
-destructive. Candidate answer to validate during planning: block the
-"add subtask under me" action inline with an explicit message ("ย้าย/ปิด
-งานย่อยที่มีอยู่ก่อนเพิ่มขั้นตอนย่อยใหม่ภายใต้นี้") until the node's
-existing microtasks are manually cleared or moved elsewhere by the user,
-rather than the app silently deciding for them.
+**Decided:** when a phase or subtask that already has microtasks
+("board contained") gets its first child subtask added under it, that
+new subtask **automatically inherits the parent's existing microtasks**
+— their `subtask_id` is updated to point at the newly created subtask
+(and `phase_id` stays whatever it already was, unchanged) in the same
+write that creates the subtask. Nothing is blocked, nothing is deleted;
+the old leaf's board simply becomes the new subtask's board, and the old
+leaf is no longer itself a leaf (it now has this one child, so it
+switches to derived status/billing like any other non-leaf node).
+
+This only fires the **first** time a formerly-microtask-holding node
+gains a child — every subsequent "add another subtask here" goes through
+the normal empty-subtask path, since by then the node's own microtasks
+have already moved and it holds none directly any more.
 
 ## Out of scope for this spec
 
