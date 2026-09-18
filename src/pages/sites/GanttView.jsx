@@ -10,10 +10,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { useSitePhases, usePhaseTasks, useSubtasks, useIncomes, useExpenses } from '../../hooks/useSupabase.js'
+import { useTenant } from '../../hooks/useTenant.js'
 import { supabase } from '../../lib/supabase.js'
 import { ConfirmDialog } from '../../components/Modal.jsx'
 import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, STATUS_COLOR, PHASE_TEMPLATE, expandRangeForTransactions } from './ganttTimeline.js'
-import { groupSubtasksByParent, computeNodeStats, isLeaf, flattenVisibleRows } from './subtaskCalc.js'
+import { groupSubtasksByParent, computeNodeStats, isLeaf, flattenVisibleRows, siblingWeightSum } from './subtaskCalc.js'
 import { getEffectiveTheme } from '../../lib/theme.js'
 
 const ROW_H = 34
@@ -33,25 +34,49 @@ const STATUS_OPTS = [
   { value: 'done', label: 'เสร็จแล้ว' },
 ]
 
-const emptyDraft = (site, phases) => ({
+// editingId แทนด้วย string เข้ารหัสไว้ (ไม่ใช้ object) เพื่อคง pattern
+// `editingId === someId` แบบเดิมของไฟล์นี้ให้มากที่สุด:
+//   "phase:<id>"                      -- แก้ไข phase เดิม
+//   "subtask:<id>"                    -- แก้ไข subtask เดิม
+//   "new-phase"                       -- เพิ่ม phase ใหม่ระดับบนสุด
+//   "new-subtask:<parentKind>:<parentId>" -- เพิ่ม subtask ใหม่ ใต้ parentKind
+//                                         ('phase' หรือ 'subtask') id=parentId
+const parseEditingId = (editingId) => {
+  if (!editingId) return null
+  if (editingId === 'new-phase') return { kind: 'phase', isNew: true }
+  if (editingId.startsWith('new-subtask:')) {
+    const [, parentKind, parentId] = editingId.split(':')
+    return { kind: 'subtask', isNew: true, parentKind, parentId }
+  }
+  const [kind, id] = editingId.split(':')
+  return { kind, id, isNew: false }
+}
+
+const emptyDraft = (sortOrder) => ({
   name: '', start_date: '', end_date: '', status: 'not_started',
-  billing_weight_pct: 0, depends_on_phase_id: '', sort_order: phases.length + 1,
+  billing_weight_pct: 0, depends_on_id: '', sort_order: sortOrder,
 })
 
 export default function GanttView({ sites, navigateTo, onManagePhases, selectedSiteId, onSelectSite, canEdit, onPhasesChanged, onOpenKanban }) {
-  const { data: allPhases, refetch } = useSitePhases()
-  const { data: allTasks } = usePhaseTasks()
-  const { data: allSubtasks } = useSubtasks()
+  const { data: allPhases, refetch: refetchPhases } = useSitePhases()
+  const { data: allTasks, refetch: refetchTasks } = usePhaseTasks()
+  const { data: allSubtasks, refetch: refetchSubtasks } = useSubtasks()
   const singleSiteId = sites.length === 1 ? sites[0].id : NIL_SITE_ID
   const { data: incomesForRange } = useIncomes({ siteId: singleSiteId })
   const { data: expensesForRange } = useExpenses({ siteId: singleSiteId })
+  // ต้องใช้ tenant_id ตอน insert phase_subtasks ใหม่ (ต่างจาก site_phases/
+  // phase_tasks ที่ column นี้มี DEFAULT current_tenant_id() ในฐานข้อมูล --
+  // phase_subtasks ไม่มี default นี้) -- `site` ที่ component รับมาจาก
+  // site_financial_summary view ซึ่งไม่มีคอลัมน์ tenant_id เลย ต้องดึงจาก
+  // useTenant() เหมือน pattern ที่ใช้ทั่วทั้งแอป (เช่น Sites.jsx)
+  const { tenant } = useTenant()
 
   // แก้ไข/เพิ่ม/ลบขั้นตอนแบบ inline (ใช้เฉพาะมุมมองไซท์เดียว) -- hooks ต้อง
   // อยู่บนสุดเสมอ ไม่ผูกกับ branch ไหน
-  const [editingId, setEditingId] = useState(null) // phase.id ที่กำลังแก้ หรือ '__new__'
+  const [editingId, setEditingId] = useState(null) // ดู parseEditingId ด้านบนสำหรับรูปแบบ string ที่ใช้
   const [draft, setDraft] = useState(null)
   const [saving, setSaving] = useState(false)
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null) // { kind: 'phase'|'subtask', id }
   const [applyingTemplate, setApplyingTemplate] = useState(false)
 
   // id ของ phase/subtask ที่กางลูกอยู่ (Set รวม id ทั้งสองตารางในที่เดียว
@@ -102,6 +127,18 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   // แล้วใช้ซ้ำในทุกไซท์แทนการคำนวณใหม่ต่อไซท์
   const subtasksByParent = useMemo(() => groupSubtasksByParent(allSubtasks || []), [allSubtasks])
 
+  // phase หรือ subtask id (คนละตาราง ไม่มีทางชนกัน) -> ตัวโหนดเอง, ครอบคลุม
+  // ทุกไซท์ (เหมือน subtasksByParent ด้านบน) -- ต้องอยู่ระดับบนสุดของ
+  // component เพราะ saveDraft (ก็อยู่ระดับบนสุดเช่นกัน, เรียกจาก onClick ใน
+  // มุมมองไซท์เดียวด้านล่าง) ต้องใช้หา parentPhaseId ตอนเพิ่ม subtask ใหม่
+  // ใต้ subtask อีกอันหนึ่ง
+  const byNodeId = useMemo(() => {
+    const m = {}
+    ;(allPhases || []).forEach((p) => { m[p.id] = p })
+    ;(allSubtasks || []).forEach((s) => { m[s.id] = s })
+    return m
+  }, [allPhases, allSubtasks])
+
   const baseRange = useMemo(() => computeTimelineRange(sites, phasesBySite), [sites, phasesBySite])
 
   // ขยาย range ให้ครอบคลุมวันที่รายรับ/รายจ่ายจริงด้วย (ไม่ใช่แค่วันที่ตั้งไว้
@@ -130,34 +167,111 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
       .then(({ error }) => { if (error) console.error('sync site start/end date failed:', error.message) })
   }, [sites, canEdit, range])
 
+  // ทุกจุดเขียนในไฟล์นี้อาจแตะ site_phases, phase_subtasks และ (ตอนย้าย
+  // "Kanban เก่า") phase_tasks พร้อมกัน -- useQuery แต่ละตัวเป็น state
+  // อิสระ ไม่มี cache กลาง ต้อง refetch ครบทั้งสามตารางเสมอ ไม่งั้นข้อมูล
+  // ที่แสดงในไฟล์นี้ (subtasksByParent, byNodeId, microtasksByNodeId) จะ
+  // ค้างจนกว่าจะมีอย่างอื่นมา trigger refetch
   const afterWrite = async () => {
-    await refetch()
+    await Promise.all([refetchPhases(), refetchSubtasks(), refetchTasks()])
     onPhasesChanged?.()
   }
 
-  const startEdit = (phase) => { setEditingId(phase.id); setDraft({ ...phase, depends_on_phase_id: phase.depends_on_phase_id || '' }) }
-  const startAdd = (site, phases) => { setEditingId('__new__'); setDraft(emptyDraft(site, phases)) }
+  const startEdit = (kind, node) => {
+    setEditingId(`${kind}:${node.id}`)
+    setDraft({
+      ...node,
+      depends_on_id: kind === 'phase' ? (node.depends_on_phase_id || '') : (node.depends_on_subtask_id || ''),
+    })
+  }
+  const startAdd = (parentKind, parentId, sortOrder) => {
+    setEditingId(parentKind ? `new-subtask:${parentKind}:${parentId}` : 'new-phase')
+    setDraft(emptyDraft(sortOrder))
+    // กางโหนดแม่ให้อัตโนมัติ เพื่อให้เห็นแถวฟอร์ม "เพิ่มขั้นตอนย่อย" ที่กำลัง
+    // จะโผล่ขึ้นมาใต้มันทันที (ไม่งั้นถ้าโหนดแม่ยังหุบอยู่ ผู้ใช้จะไม่เห็น
+    // ฟอร์มเลยแม้จะ splice เข้าไปใน visibleRows ถูกตำแหน่งแล้วก็ตาม)
+    if (parentId) setExpandedIds((prev) => (prev.has(parentId) ? prev : new Set(prev).add(parentId)))
+  }
   const cancelEdit = () => { setEditingId(null); setDraft(null) }
 
   const saveDraft = async (site) => {
     if (!draft.name.trim()) { alert('กรุณาตั้งชื่อขั้นตอน'); return }
+    const parsed = parseEditingId(editingId)
+    const isSubtask = parsed.kind === 'subtask'
+
+    // hard-block: ผลรวม % เบิกเงินของ "พี่น้อง" ใต้พ่อแม่เดียวกันต้องไม่เกิน
+    // 100 -- ตรวจก่อนเขียนเสมอ ทั้งตอนแก้ subtask เดิมและเพิ่มใหม่ (นี่คือ
+    // ข้อยกเว้นเจตนาจาก convention ปกติของแอปนี้ที่ "เตือนแต่ยังให้บันทึก
+    // ได้" -- ค่านี้เป็นผลรวมที่ของอื่นต้องพึ่งพา จึงบล็อกจริง ไม่ใช่แค่เตือน)
+    if (isSubtask) {
+      const parentId = parsed.isNew ? parsed.parentId : (draft.parent_subtask_id || draft.phase_id)
+      const excludeId = parsed.isNew ? null : parsed.id
+      const already = siblingWeightSum(parentId, subtasksByParent, excludeId)
+      const thisWeight = parseFloat(draft.billing_weight_pct) || 0
+      if (already + thisWeight > 100) {
+        alert(`% เบิกเงินรวมของขั้นตอนย่อยใต้พ่อแม่เดียวกันเกิน 100% (มีอยู่แล้ว ${already}% + ${thisWeight}% ที่กำลังบันทึก) — กรุณาปรับตัวเลข`)
+        return
+      }
+    }
+
     setSaving(true)
     try {
-      const payload = {
-        name: draft.name.trim(),
-        start_date: draft.start_date || null,
-        end_date: draft.end_date || null,
-        status: draft.status,
-        billing_weight_pct: parseFloat(draft.billing_weight_pct) || 0,
-        depends_on_phase_id: draft.depends_on_phase_id || null,
-        sort_order: draft.sort_order,
-      }
-      if (editingId === '__new__') {
-        const { error } = await supabase.from('site_phases').insert({ site_id: site.id, ...payload })
-        if (error) throw error
+      if (!isSubtask) {
+        // ── Phase (site_phases) -- เหมือนเดิมทุกประการ ──
+        const payload = {
+          name: draft.name.trim(), start_date: draft.start_date || null, end_date: draft.end_date || null,
+          status: draft.status, billing_weight_pct: parseFloat(draft.billing_weight_pct) || 0,
+          depends_on_phase_id: draft.depends_on_id || null, sort_order: draft.sort_order,
+        }
+        if (parsed.isNew) {
+          const { error } = await supabase.from('site_phases').insert({ site_id: site.id, ...payload })
+          if (error) throw error
+        } else {
+          const { error } = await supabase.from('site_phases').update(payload).eq('id', parsed.id)
+          if (error) throw error
+        }
       } else {
-        const { error } = await supabase.from('site_phases').update(payload).eq('id', editingId)
-        if (error) throw error
+        // ── Subtask (phase_subtasks) ──
+        const parentId = parsed.isNew ? parsed.parentId : (draft.parent_subtask_id || draft.phase_id)
+        const parentKind = parsed.isNew ? parsed.parentKind : (draft.parent_subtask_id ? 'subtask' : 'phase')
+        const parentPhaseId = parentKind === 'phase' ? parentId : byNodeId[parentId].phase_id
+        const payload = {
+          name: draft.name.trim(), start_date: draft.start_date || null, end_date: draft.end_date || null,
+          status: draft.status, billing_weight_pct: parseFloat(draft.billing_weight_pct) || 0,
+          depends_on_subtask_id: draft.depends_on_id || null, sort_order: draft.sort_order,
+        }
+        if (parsed.isNew) {
+          const { error } = await supabase.from('phase_subtasks').insert({
+            site_id: site.id, tenant_id: tenant?.id, phase_id: parentPhaseId,
+            parent_subtask_id: parentKind === 'subtask' ? parentId : null,
+            ...payload,
+          })
+          if (error) throw error
+
+          // โหนดแม่มีงานย่อย (Kanban) ติดอยู่โดยตรงอยู่แล้ว และนี่คือลูกใบ
+          // แรกที่เพิ่มให้มัน -- ย้ายงานย่อยเดิมไปไว้ใน subtask ใหม่ชื่อ
+          // "Kanban เก่า" (สร้างแยกจาก subtask ที่ผู้ใช้กำลังตั้งชื่อ ไม่ปน
+          // กัน) แทนที่จะบล็อกหรือทำหาย -- สร้างที่เก็บใหม่ก่อน ค่อย repoint
+          // ของเดิมเข้าไป (ปลอดภัยถ้า step หลังพลาด ของเดิมก็แค่ยังอยู่ที่เดิม)
+          const existingMicrotasks = microtasksByNodeId[parentId] || []
+          const wasFirstChild = (subtasksByParent[parentId] || []).length === 0
+          if (existingMicrotasks.length > 0 && wasFirstChild) {
+            const { data: oldHolder, error: holderErr } = await supabase.from('phase_subtasks').insert({
+              site_id: site.id, tenant_id: tenant?.id, phase_id: parentPhaseId,
+              parent_subtask_id: parentKind === 'subtask' ? parentId : null,
+              name: 'Kanban เก่า', start_date: null, end_date: null, billing_weight_pct: 0,
+              status: 'not_started', sort_order: (draft.sort_order || 0) + 1,
+            }).select().single()
+            if (holderErr) throw holderErr
+            const { error: moveErr } = await supabase.from('phase_tasks')
+              .update({ subtask_id: oldHolder.id })
+              .in('id', existingMicrotasks.map((t) => t.id))
+            if (moveErr) throw moveErr
+          }
+        } else {
+          const { error } = await supabase.from('phase_subtasks').update(payload).eq('id', parsed.id)
+          if (error) throw error
+        }
       }
       await afterWrite()
       cancelEdit()
@@ -168,13 +282,14 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     }
   }
 
-  const doDelete = async (id) => {
+  const doDelete = async (kind, id) => {
     setSaving(true)
     try {
-      const { error } = await supabase.from('site_phases').delete().eq('id', id)
+      const table = kind === 'phase' ? 'site_phases' : 'phase_subtasks'
+      const { error } = await supabase.from(table).delete().eq('id', id)
       if (error) throw error
       await afterWrite()
-      if (editingId === id) cancelEdit()
+      if (editingId === `${kind}:${id}`) cancelEdit()
     } catch (e) {
       alert('ลบไม่สำเร็จ: ' + e.message)
     } finally {
@@ -201,17 +316,28 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   if (sites.length === 1) {
     const site = sites[0]
     const phases = phasesBySite[site.id] || []
-    const isAdding = editingId === '__new__'
+    const parsed = parseEditingId(editingId)
     // ต้นไม้ที่มองเห็นได้จริง (phase + subtask ที่กางอยู่ ลึกเท่าไหร่ก็ได้) +
-    // แถว "เพิ่มขั้นตอนใหม่" ต่อท้ายเหมือนเดิมตอนกำลังเพิ่ม (ตำแหน่งเดิมเป๊ะ
-    // กับพฤติกรรมเดิมก่อน task นี้)
+    // แถว "กำลังเพิ่ม" (ถ้ามี) แทรกเข้าไปในตำแหน่งที่ถูกต้อง:
+    //   - เพิ่ม phase ใหม่ (parsed.parentId ว่าง) -> ต่อท้ายสุด เหมือนเดิม
+    //   - เพิ่ม subtask ใหม่ใต้โหนดใดโหนดหนึ่ง -> แทรกทันทีหลังลูกๆ ที่
+    //     มองเห็นอยู่แล้วของโหนดแม่นั้น (หรือทันทีหลังตัวโหนดแม่เอง ถ้ายังไม่
+    //     มีลูกที่มองเห็น) ที่ depth ของแม่ + 1 -- โหนดแม่ต้องมองเห็นอยู่แล้ว
+    //     เสมอเพราะปุ่ม "+" ต่อแถว (startAdd) และ dropdown "เพิ่มภายใต้" (ทั้ง
+    //     สองจุดที่ตั้ง editingId แบบนี้) เลือกได้เฉพาะโหนดที่กำลังแสดงอยู่
+    //     เท่านั้น
     const visibleRows = flattenVisibleRows(phases, subtasksByParent, expandedIds)
-    if (isAdding) visibleRows.push({ node: { id: '__new__', isNew: true }, depth: 0, isPhase: true })
-
-    const subtasks = subtasksBySite[site.id] || []
-    const byNodeId = {} // phase or subtask id -> the object itself, for O(1) lookup by id
-    phases.forEach((p) => { byNodeId[p.id] = p })
-    subtasks.forEach((s) => { byNodeId[s.id] = s })
+    if (parsed?.isNew) {
+      if (!parsed.parentId) {
+        visibleRows.push({ node: { id: 'new-phase', isNew: true }, depth: 0, isPhase: true })
+      } else {
+        const parentIdx = visibleRows.findIndex((r) => r.node.id === parsed.parentId)
+        const parentDepth = parentIdx >= 0 ? visibleRows[parentIdx].depth : 0
+        let insertAt = parentIdx >= 0 ? parentIdx + 1 : visibleRows.length
+        while (insertAt < visibleRows.length && visibleRows[insertAt].depth > parentDepth) insertAt++
+        visibleRows.splice(insertAt, 0, { node: { id: 'new-subtask', isNew: true }, depth: parentDepth + 1, isPhase: false })
+      }
+    }
 
     // สถานะ/% เบิกเงินที่ "แสดงจริง" ต่อโหนด (phase หรือ subtask ชั้นไหนก็ได้):
     // มี subtask ลูก -> คำนวณสดจากลูก (ซ้ำไปเรื่อยๆ); ไม่มีลูกแต่มี
@@ -227,7 +353,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     }
     phases.forEach(collectStats)
 
-    if (!phases.length && !isAdding) {
+    if (!phases.length && !editingId) {
       return (
         <div className="card" style={{ padding: 32, textAlign: 'center' }}>
           <div style={{ color: 'var(--text3)', marginBottom: 14 }}>ไซท์นี้ยังไม่มีขั้นตอนงาน</div>
@@ -236,7 +362,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
               <button type="button" className="btn btn-primary btn-sm" disabled={applyingTemplate} onClick={() => applyTemplate(site)}>
                 {applyingTemplate ? '⏳ กำลังเพิ่ม...' : '+ เริ่มใช้ Gantt (เทมเพลตขั้นตอนงาน)'}
               </button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => startAdd(site, phases)}>+ เพิ่มขั้นตอนเอง</button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => startAdd(null, null, phases.length + 1)}>+ เพิ่มขั้นตอนเอง</button>
             </div>
           )}
         </div>
@@ -266,9 +392,10 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     // ยอดสะสมตามแนวตั้ง: แถวที่กำลังแก้ไข/เพิ่ม จะสูงกว่าแถวปกติ เพื่อดัน
     // แถวถัดไปลงแทนที่จะซ้อนทับ (เดิมใช้ i*ROW_H คงที่ ตอนนี้ต้องคำนวณสะสม)
     let cursor = 0
-    const rowTops = visibleRows.map(({ node }) => {
+    const rowTops = visibleRows.map(({ node, isPhase }) => {
       const top = cursor
-      cursor += (editingId && (node.id === editingId || (isAdding && node.id === '__new__'))) ? ROW_H + EDIT_H : ROW_H
+      const isEditingThis = node.isNew || (!!editingId && editingId === `${isPhase ? 'phase' : 'subtask'}:${node.id}`)
+      cursor += isEditingThis ? ROW_H + EDIT_H : ROW_H
       return top
     })
     const bodyHeight = Math.max(cursor, ROW_H)
@@ -290,7 +417,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <div className="card-title">ไทม์ไลน์เฟสงาน</div>
             {canEdit && !editingId && (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => startAdd(site, phases)}>+ เพิ่มขั้นตอน</button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => startAdd(null, null, phases.length + 1)}>+ เพิ่มขั้นตอน</button>
             )}
           </div>
           {monthTicks.length > 0 && (
@@ -312,7 +439,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
             )}
             {visibleRows.map(({ node, depth, isPhase }, i) => {
               const top = rowTops[i]
-              const isEditingThis = editingId === node.id
+              const isEditingThis = node.isNew || (!!editingId && editingId === `${isPhase ? 'phase' : 'subtask'}:${node.id}`)
               const style = node.isNew ? null : barStyle(node, range)
               const ns = nodeStatsById[node.id]
               const nodeIsLeaf = isLeaf(node.id, subtasksByParent)
@@ -330,6 +457,26 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                       />
                     </div>
                     <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, padding: 10, marginTop: 4, display: 'grid', gap: 8 }}>
+                      {parsed.isNew && (
+                        <label style={{ fontSize: 11, color: 'var(--text3)' }}>
+                          เพิ่มภายใต้
+                          <select className="select" style={{ width: '100%', marginTop: 2 }}
+                            value={parsed.parentKind ? `${parsed.parentKind}:${parsed.parentId}` : ''}
+                            onChange={(e) => {
+                              const v = e.target.value
+                              if (!v) { setEditingId('new-phase'); return }
+                              const [pk, pid] = v.split(':')
+                              setEditingId(`new-subtask:${pk}:${pid}`)
+                            }}>
+                            <option value="">— ไม่มี (ขั้นตอนใหม่ระดับบนสุด) —</option>
+                            {visibleRows.filter((r) => !r.node.isNew).map(({ node: n, isPhase: nIsPhase, depth: nDepth }) => (
+                              <option key={n.id} value={`${nIsPhase ? 'phase' : 'subtask'}:${n.id}`}>
+                                {'　'.repeat(nDepth)}{n.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                         <label style={{ fontSize: 11, color: 'var(--text3)' }}>
                           เริ่ม
@@ -365,17 +512,20 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                       <label style={{ fontSize: 11, color: 'var(--text3)' }}>
                         ขึ้นอยู่กับขั้นตอน
                         <select className="select" style={{ width: '100%', marginTop: 2 }}
-                          value={draft.depends_on_phase_id || ''} onChange={(e) => setDraft((d) => ({ ...d, depends_on_phase_id: e.target.value }))}>
+                          value={draft.depends_on_id || ''} onChange={(e) => setDraft((d) => ({ ...d, depends_on_id: e.target.value }))}>
                           <option value="">— ไม่ขึ้นกับขั้นตอนอื่น —</option>
-                          {phases.filter((p) => p.id !== editingId).map((p) => (
-                            <option key={p.id} value={p.id}>{p.name || '(ยังไม่ตั้งชื่อ)'}</option>
+                          {(parsed.kind === 'phase'
+                            ? phases.filter((p) => p.id !== parsed.id)
+                            : (subtasksByParent[parsed.isNew ? parsed.parentId : (draft.parent_subtask_id || draft.phase_id)] || []).filter((s) => s.id !== parsed.id)
+                          ).map((n) => (
+                            <option key={n.id} value={n.id}>{n.name || '(ยังไม่ตั้งชื่อ)'}</option>
                           ))}
                         </select>
                       </label>
                       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 2 }}>
                         {!phase.isNew && (
                           <button type="button" className="btn btn-sm btn-danger" style={{ marginRight: 'auto' }}
-                            disabled={saving} onClick={() => setConfirmDeleteId(editingId)}>🗑 ลบ</button>
+                            disabled={saving} onClick={() => setConfirmDeleteId({ kind: parsed.kind, id: parsed.id })}>🗑 ลบ</button>
                         )}
                         <button type="button" className="btn btn-sm btn-ghost" disabled={saving} onClick={cancelEdit}>ยกเลิก</button>
                         <button type="button" className="btn btn-sm btn-primary" disabled={saving} onClick={() => saveDraft(site)}>
@@ -424,16 +574,25 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                         a flex slot next to it -- so the track's own width
                         always matches trackLeft/trackRight (no per-row
                         canEdit-dependent shrinkage the header/grid/arrows
-                        would have to separately account for). Edit button
-                        scoped to phase rows only in this task -- subtask
-                        edit/add is Task 5's job. */}
-                    {canEdit && !editingId && isPhase && (
+                        would have to separately account for). ✎ edit and +
+                        add-subtask buttons both apply to every row (phase or
+                        subtask) now -- + sits to the left of ✎ so they never
+                        overlap. */}
+                    {canEdit && !editingId && (
                       <button type="button" className="btn btn-sm btn-ghost"
                         style={{
                           position: 'absolute', top: '50%', right: 2, transform: 'translateY(-50%)',
                           width: EDIT_BTN_W, padding: '2px 0', opacity: 0.85,
                         }}
-                        onClick={(e) => { e.stopPropagation(); startEdit(node) }}>✎</button>
+                        onClick={(e) => { e.stopPropagation(); startEdit(isPhase ? 'phase' : 'subtask', node) }}>✎</button>
+                    )}
+                    {canEdit && !editingId && (
+                      <button type="button" className="btn btn-sm btn-ghost"
+                        style={{ position: 'absolute', top: '50%', right: EDIT_BTN_W + 6, transform: 'translateY(-50%)', width: EDIT_BTN_W, padding: '2px 0', opacity: 0.85 }}
+                        title="เพิ่มขั้นตอนย่อยใต้นี้"
+                        onClick={(e) => { e.stopPropagation(); startAdd(isPhase ? 'phase' : 'subtask', node.id, ((subtasksByParent[node.id] || []).length) + 1) }}>
+                        +
+                      </button>
                     )}
                   </div>
                 </div>
@@ -490,7 +649,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
             message="ต้องการลบขั้นตอนนี้ใช่หรือไม่? การลบไม่สามารถย้อนกลับได้"
             danger
             onCancel={() => setConfirmDeleteId(null)}
-            onConfirm={() => doDelete(confirmDeleteId)}
+            onConfirm={() => doDelete(confirmDeleteId.kind, confirmDeleteId.id)}
           />
         )}
       </>
