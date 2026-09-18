@@ -689,8 +689,22 @@ export function useSitePhases() {
     .order('sort_order', { ascending: true })))
 }
 
+/** ขั้นตอนย่อย (Subtask) ทุกไซท์ ทุกชั้น -- ซ้อนกันได้ไม่จำกัดชั้นผ่าน
+ *  parent_subtask_id (null = ลูกตรงของ phase_id) -- group/จัดชั้นฝั่ง
+ *  client ด้วย src/pages/sites/subtaskCalc.js's groupSubtasksByParent. */
+export function useSubtasks() {
+  return useQuery(async () => fetchAllRows(() => supabase
+    .from('phase_subtasks')
+    .select('*')
+    .order('site_id', { ascending: true })
+    .order('sort_order', { ascending: true })))
+}
+
 /** งานย่อยของขั้นตอน (Kanban) ทุกไซท์ — group ฝั่ง client ด้วย phase_id/
- *  site_id. phase_task_workers ฝังมาด้วย (embed) เป็น [{worker_id}] ต่อแถว. */
+ *  subtask_id/site_id. phase_task_workers ฝังมาด้วย (embed) เป็น
+ *  [{worker_id}] ต่อแถว. subtask_id เป็น null เมื่อการ์ดนี้ติดอยู่กับ
+ *  phase โดยตรง (ยังไม่มีขั้นตอนย่อย) หรือมีค่าเมื่อติดอยู่กับ subtask
+ *  ที่เป็น leaf. */
 export function usePhaseTasks() {
   return useQuery(async () => fetchAllRows(() => supabase
     .from('phase_tasks')
