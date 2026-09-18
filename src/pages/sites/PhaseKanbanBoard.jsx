@@ -290,12 +290,27 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
 
       {isAllPhases ? (
         phasesWithTasks.length ? (
-          phasesWithTasks.map((phase, i) => (
-            <div key={phase.id} style={{ marginTop: i > 0 ? 28 : 0, paddingTop: i > 0 ? 20 : 0, borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
-              <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 12 }}>{phase.name}</div>
-              <PhaseBoard phaseId={phase.id} tasks={microtasksByNodeId[phase.id] || []} {...boardProps} />
-            </div>
-          ))
+          phasesWithTasks.map((phase, i) => {
+            // ปกติขั้นตอนที่มี child subtask แล้ว งานย่อยของมันควรถูกย้ายไปติด
+            // subtask ที่เป็น leaf หมดแล้ว (ดู GanttView.jsx's "Kanban เก่า"
+            // auto-move) แต่ถ้า step ที่สองของการย้ายนั้นพลาดไปครั้งใด หรือมี
+            // การแก้ไขพร้อมกัน (race) ขั้นตอนนี้จะมีทั้งงานย่อยตรงๆ (subtask_id
+            // NULL) และ child subtask ในเวลาเดียวกัน -- ไม่ใช่ leaf แต่ก็มี
+            // งานย่อยติดอยู่ ยังต้องโชว์ให้จัดการได้ (ไม่ซ่อน ไม่ย้ายให้เอง)
+            // แค่เตือนและห้ามเพิ่มงานใหม่ที่ผิดที่นี่อีก
+            const phaseIsLeaf = isLeaf(phase.id, subtasksByParent)
+            return (
+              <div key={phase.id} style={{ marginTop: i > 0 ? 28 : 0, paddingTop: i > 0 ? 20 : 0, borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 12 }}>{phase.name}</div>
+                {!phaseIsLeaf && (
+                  <div style={{ color: 'var(--amber, #d9a441)', fontSize: 12, marginBottom: 10 }}>
+                    ⚠️ พบงานย่อยที่ไม่ได้อยู่ใต้ขั้นตอนย่อยใดๆ — อาจเกิดจากข้อผิดพลาดระหว่างการย้ายข้อมูล (แก้ไข/ย้ายงานเหล่านี้ได้ตามปกติ แต่เพิ่มงานใหม่ที่นี่ไม่ได้แล้ว — เลือกขั้นตอนย่อยจาก chip ด้านบนแทน)
+                  </div>
+                )}
+                <PhaseBoard phaseId={phase.id} tasks={microtasksByNodeId[phase.id] || []} disableAdd={!phaseIsLeaf} {...boardProps} />
+              </div>
+            )
+          })
         ) : (
           <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text3)' }}>
             ไซท์นี้ยังไม่มีงานย่อยเลย — เลือกขั้นตอนด้านบนแล้วกด "+ เพิ่มงาน" เพื่อเริ่ม
@@ -342,7 +357,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
 function PhaseBoard({
   phaseId, tasks, canEdit, workers, workerById, editingId, draft, setDraft, onToggleAssignee, onSetLead,
   onStartEdit, onStartAdd, onCancelEdit, onSaveDraft, onDeleteRequest, onQuickMove, saving,
-  dragOverKey, setDragOverKey,
+  dragOverKey, setDragOverKey, disableAdd,
 }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
@@ -423,7 +438,10 @@ function PhaseBoard({
             )}
 
             {canEdit && !editingId && (
-              <button type="button" className="btn btn-ghost btn-sm" style={{ width: '100%' }} onClick={() => onStartAdd(phaseId, col.status)}>+ เพิ่มงาน</button>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ width: '100%' }}
+                disabled={disableAdd}
+                title={disableAdd ? 'ขั้นตอนนี้มีขั้นตอนย่อยแล้ว — เพิ่มงานผ่านขั้นตอนย่อย (chip ด้านบน) แทน' : undefined}
+                onClick={() => onStartAdd(phaseId, col.status)}>+ เพิ่มงาน</button>
             )}
           </div>
         )
