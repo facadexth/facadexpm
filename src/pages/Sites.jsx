@@ -539,13 +539,9 @@ export default function Sites({ navigateTo, openSiteOverview }) {
         {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
         <a className="btn btn-ghost" href="/templates/TEMPLATE_ไซท์งาน.xlsx" download>📄 Template</a>
         <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อ / รหัส..." value={search} onChange={e => setSearch(e.target.value)} />
-        <div style={{ display: 'flex', gap: 4 }}>
-          {['All', ...STATUS_OPTS].map(s => (
-            <button key={s}
-              className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-ghost'}`}
-              onClick={() => setStatusFilter(s)}>{s}</button>
-          ))}
-        </div>
+        <select className="select select-sm" style={{ width: 140 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+          {['All', ...STATUS_OPTS].map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
         <div style={{ display: 'flex', gap: 4 }}>
           <button className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('table')}>📋 ตาราง</button>
           <button className={`btn btn-sm ${viewMode === 'gantt' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('gantt')}>📊 Gantt</button>
