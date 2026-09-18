@@ -10,7 +10,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { useSitePhases, usePhaseTasks, useSubtasks, useIncomes, useExpenses } from '../../hooks/useSupabase.js'
-import { useTenant } from '../../hooks/useTenant.js'
 import { supabase } from '../../lib/supabase.js'
 import { ConfirmDialog } from '../../components/Modal.jsx'
 import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, STATUS_COLOR, PHASE_TEMPLATE, expandRangeForTransactions } from './ganttTimeline.js'
@@ -64,12 +63,6 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   const singleSiteId = sites.length === 1 ? sites[0].id : NIL_SITE_ID
   const { data: incomesForRange } = useIncomes({ siteId: singleSiteId })
   const { data: expensesForRange } = useExpenses({ siteId: singleSiteId })
-  // ต้องใช้ tenant_id ตอน insert phase_subtasks ใหม่ (ต่างจาก site_phases/
-  // phase_tasks ที่ column นี้มี DEFAULT current_tenant_id() ในฐานข้อมูล --
-  // phase_subtasks ไม่มี default นี้) -- `site` ที่ component รับมาจาก
-  // site_financial_summary view ซึ่งไม่มีคอลัมน์ tenant_id เลย ต้องดึงจาก
-  // useTenant() เหมือน pattern ที่ใช้ทั่วทั้งแอป (เช่น Sites.jsx)
-  const { tenant } = useTenant()
 
   // แก้ไข/เพิ่ม/ลบขั้นตอนแบบ inline (ใช้เฉพาะมุมมองไซท์เดียว) -- hooks ต้อง
   // อยู่บนสุดเสมอ ไม่ผูกกับ branch ไหน
@@ -242,7 +235,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
         }
         if (parsed.isNew) {
           const { error } = await supabase.from('phase_subtasks').insert({
-            site_id: site.id, tenant_id: tenant?.id, phase_id: parentPhaseId,
+            site_id: site.id, phase_id: parentPhaseId,
             parent_subtask_id: parentKind === 'subtask' ? parentId : null,
             ...payload,
           })
@@ -257,7 +250,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
           const wasFirstChild = (subtasksByParent[parentId] || []).length === 0
           if (existingMicrotasks.length > 0 && wasFirstChild) {
             const { data: oldHolder, error: holderErr } = await supabase.from('phase_subtasks').insert({
-              site_id: site.id, tenant_id: tenant?.id, phase_id: parentPhaseId,
+              site_id: site.id, phase_id: parentPhaseId,
               parent_subtask_id: parentKind === 'subtask' ? parentId : null,
               name: 'Kanban เก่า', start_date: null, end_date: null, billing_weight_pct: 0,
               status: 'not_started', sort_order: (draft.sort_order || 0) + 1,
