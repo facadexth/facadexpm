@@ -9,11 +9,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
-import { useSitePhases, usePhaseTasks, useIncomes, useExpenses } from '../../hooks/useSupabase.js'
+import { useSitePhases, usePhaseTasks, useSubtasks, useIncomes, useExpenses } from '../../hooks/useSupabase.js'
 import { supabase } from '../../lib/supabase.js'
 import { ConfirmDialog } from '../../components/Modal.jsx'
 import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, STATUS_COLOR, PHASE_TEMPLATE, expandRangeForTransactions } from './ganttTimeline.js'
-import { computePhaseTaskStats } from './phaseTasksCalc.js'
+import { groupSubtasksByParent, computeNodeStats, isLeaf, flattenVisibleRows } from './subtaskCalc.js'
 import { getEffectiveTheme } from '../../lib/theme.js'
 
 const ROW_H = 34
@@ -38,9 +38,10 @@ const emptyDraft = (site, phases) => ({
   billing_weight_pct: 0, depends_on_phase_id: '', sort_order: phases.length + 1,
 })
 
-export default function GanttView({ sites, navigateTo, onManagePhases, selectedSiteId, onSelectSite, canEdit, onPhasesChanged }) {
+export default function GanttView({ sites, navigateTo, onManagePhases, selectedSiteId, onSelectSite, canEdit, onPhasesChanged, onOpenKanban }) {
   const { data: allPhases, refetch } = useSitePhases()
   const { data: allTasks } = usePhaseTasks()
+  const { data: allSubtasks } = useSubtasks()
   const singleSiteId = sites.length === 1 ? sites[0].id : NIL_SITE_ID
   const { data: incomesForRange } = useIncomes({ siteId: singleSiteId })
   const { data: expensesForRange } = useExpenses({ siteId: singleSiteId })
@@ -52,6 +53,15 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   const [saving, setSaving] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [applyingTemplate, setApplyingTemplate] = useState(false)
+
+  // id ของ phase/subtask ที่กางลูกอยู่ (Set รวม id ทั้งสองตารางในที่เดียว
+  // เพราะไม่มีทางชนกัน -- ดู subtaskCalc.js's groupSubtasksByParent)
+  const [expandedIds, setExpandedIds] = useState(() => new Set())
+  const toggleExpanded = (nodeId) => setExpandedIds((prev) => {
+    const next = new Set(prev)
+    if (next.has(nodeId)) next.delete(nodeId); else next.add(nodeId)
+    return next
+  })
 
   // SVG presentation attributes (stroke=...) don't resolve CSS var() --
   // only real CSS property values do -- so derive a literal hex color here
@@ -68,14 +78,29 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     return m
   }, [allPhases])
 
-  const tasksByPhaseId = useMemo(() => {
+  // งานย่อย (Kanban) group ตาม "โหนดแม่" ที่แท้จริง -- ติดกับ subtask_id
+  // ถ้ามี (แปลว่าติดอยู่กับ subtask ที่เป็น leaf) ไม่งั้นติดกับ phase_id ตรงๆ
+  // (โหนดแม่คนละใบไม่มีทางชนกัน id เพราะมาจากคนละตาราง)
+  const microtasksByNodeId = useMemo(() => {
     const m = {}
     ;(allTasks || []).forEach((t) => {
-      if (!m[t.phase_id]) m[t.phase_id] = []
-      m[t.phase_id].push(t)
+      const key = t.subtask_id || t.phase_id
+      ;(m[key] ||= []).push(t)
     })
     return m
   }, [allTasks])
+
+  // subtask ทุกไซท์ -- filter เฉพาะของไซท์นี้ในมุมมองไซท์เดียวด้านล่าง
+  const subtasksBySite = useMemo(() => {
+    const m = {}
+    ;(allSubtasks || []).forEach((s) => { (m[s.site_id] ||= []).push(s) })
+    return m
+  }, [allSubtasks])
+
+  // ทุก subtask ทุกไซท์ group ตาม parent id เดียว (phase หรือ subtask) --
+  // คำนวณครั้งเดียวทั้งระบบ (ข้อมูลเล็ก, รูปแบบเดียวกับ phasesBySite ด้านบน)
+  // แล้วใช้ซ้ำในทุกไซท์แทนการคำนวณใหม่ต่อไซท์
+  const subtasksByParent = useMemo(() => groupSubtasksByParent(allSubtasks || []), [allSubtasks])
 
   const baseRange = useMemo(() => computeTimelineRange(sites, phasesBySite), [sites, phasesBySite])
 
@@ -177,16 +202,30 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     const site = sites[0]
     const phases = phasesBySite[site.id] || []
     const isAdding = editingId === '__new__'
-    const rows = isAdding ? [...phases, { id: '__new__', isNew: true }] : phases
+    // ต้นไม้ที่มองเห็นได้จริง (phase + subtask ที่กางอยู่ ลึกเท่าไหร่ก็ได้) +
+    // แถว "เพิ่มขั้นตอนใหม่" ต่อท้ายเหมือนเดิมตอนกำลังเพิ่ม (ตำแหน่งเดิมเป๊ะ
+    // กับพฤติกรรมเดิมก่อน task นี้)
+    const visibleRows = flattenVisibleRows(phases, subtasksByParent, expandedIds)
+    if (isAdding) visibleRows.push({ node: { id: '__new__', isNew: true }, depth: 0, isPhase: true })
 
-    // สถานะที่ "แสดงจริง" ต่อขั้นตอน: ถ้ามี phase_tasks (Kanban) แล้ว คำนวณสด
-    // จาก done/total แทนค่า status ที่ตั้งเอง -- ขั้นตอนที่ไม่มี task เลย
-    // ยังใช้ status ที่ตั้งเองเหมือนเดิมทุกประการ (ไม่มี regression)
-    const phaseStatsById = {}
-    phases.forEach((p) => {
-      const stats = computePhaseTaskStats(tasksByPhaseId[p.id] || [])
-      phaseStatsById[p.id] = { stats, displayStatus: stats.total > 0 ? stats.derivedStatus : p.status }
-    })
+    const subtasks = subtasksBySite[site.id] || []
+    const byNodeId = {} // phase or subtask id -> the object itself, for O(1) lookup by id
+    phases.forEach((p) => { byNodeId[p.id] = p })
+    subtasks.forEach((s) => { byNodeId[s.id] = s })
+
+    // สถานะ/% เบิกเงินที่ "แสดงจริง" ต่อโหนด (phase หรือ subtask ชั้นไหนก็ได้):
+    // มี subtask ลูก -> คำนวณสดจากลูก (ซ้ำไปเรื่อยๆ); ไม่มีลูกแต่มี
+    // phase_tasks (Kanban) -> คำนวณสดจากงานย่อย; ไม่มีทั้งคู่ -> ใช้ค่าที่
+    // ตั้งเอง (ไม่มี regression กับ node ที่ยังไม่มี subtask เลย)
+    const nodeStatsById = {}
+    const collectStats = (node) => {
+      const stats = computeNodeStats(node.id, subtasksByParent, microtasksByNodeId)
+      const displayStatus = stats.derivedStatus != null ? stats.derivedStatus : node.status
+      const displayWeight = stats.billingWeightPct != null ? stats.billingWeightPct : node.billing_weight_pct
+      nodeStatsById[node.id] = { stats, displayStatus, displayWeight }
+      ;(subtasksByParent[node.id] || []).forEach(collectStats)
+    }
+    phases.forEach(collectStats)
 
     if (!phases.length && !isAdding) {
       return (
@@ -215,8 +254,8 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     // apart again.
     const trackLeft = LABEL_W + GAP
     const trackRight = 0
-    const doneCount = phases.filter((p) => phaseStatsById[p.id].displayStatus === 'done').length
-    const inProgressCount = phases.filter((p) => phaseStatsById[p.id].displayStatus === 'in_progress').length
+    const doneCount = phases.filter((p) => nodeStatsById[p.id].displayStatus === 'done').length
+    const inProgressCount = phases.filter((p) => nodeStatsById[p.id].displayStatus === 'in_progress').length
     const overallPct = phases.length ? Math.round((doneCount / phases.length) * 100) : 0
     // Same reasoning as SCurveChart's todayInRange guard: only draw "today"
     // when it actually falls inside this site's own timeline, otherwise a
@@ -227,9 +266,9 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     // ยอดสะสมตามแนวตั้ง: แถวที่กำลังแก้ไข/เพิ่ม จะสูงกว่าแถวปกติ เพื่อดัน
     // แถวถัดไปลงแทนที่จะซ้อนทับ (เดิมใช้ i*ROW_H คงที่ ตอนนี้ต้องคำนวณสะสม)
     let cursor = 0
-    const rowTops = rows.map((r) => {
+    const rowTops = visibleRows.map(({ node }) => {
       const top = cursor
-      cursor += (editingId && (r.id === editingId || (isAdding && r.id === '__new__'))) ? ROW_H + EDIT_H : ROW_H
+      cursor += (editingId && (node.id === editingId || (isAdding && node.id === '__new__'))) ? ROW_H + EDIT_H : ROW_H
       return top
     })
     const bodyHeight = Math.max(cursor, ROW_H)
@@ -271,15 +310,18 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                 ))}
               </div>
             )}
-            {rows.map((phase, i) => {
+            {visibleRows.map(({ node, depth, isPhase }, i) => {
               const top = rowTops[i]
-              const isEditingThis = editingId && phase.id === editingId
-              const style = phase.isNew ? null : barStyle(phase, range)
-              const ps = phaseStatsById[phase.id]
+              const isEditingThis = editingId === node.id
+              const style = node.isNew ? null : barStyle(node, range)
+              const ns = nodeStatsById[node.id]
+              const nodeIsLeaf = isLeaf(node.id, subtasksByParent)
+              const hasChildren = !node.isNew && !nodeIsLeaf
 
               if (isEditingThis) {
+                const phase = node
                 return (
-                  <div key={phase.id} style={{ position: 'absolute', top, left: 0, right: 0 }}>
+                  <div key={node.id} style={{ position: 'absolute', top, left: 0, right: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', height: ROW_H, gap: 8 }}>
                       <input
                         className="input input-sm" style={{ flex: 1, fontWeight: 600 }}
@@ -303,9 +345,9 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                         <label style={{ fontSize: 11, color: 'var(--text3)' }}>
                           สถานะ
-                          {ps && ps.stats.total > 0 ? (
+                          {ns && ns.stats.total > 0 ? (
                             <div style={{ marginTop: 2, fontSize: 12, color: 'var(--text2)', padding: '6px 8px', background: 'var(--bg3)', borderRadius: 6 }}>
-                              คำนวณอัตโนมัติจากงานย่อย ({ps.stats.done}/{ps.stats.total} เสร็จ)
+                              คำนวณอัตโนมัติจากงานย่อย ({ns.stats.done}/{ns.stats.total} เสร็จ)
                             </div>
                           ) : (
                             <select className="select" style={{ width: '100%', marginTop: 2 }}
@@ -345,21 +387,28 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                 )
               }
 
-              const displayStatus = ps ? ps.displayStatus : phase.status
+              const displayStatus = ns ? ns.displayStatus : node.status
               const label = displayStatus === 'done' ? '✓'
-                : displayStatus === 'in_progress' ? (ps && ps.stats.total > 0 ? `${ps.stats.pct}%` : 'กำลังทำ')
+                : displayStatus === 'in_progress' ? (ns && ns.stats.total > 0 ? `${ns.stats.pct}%` : 'กำลังทำ')
                 : ''
-              const titleSuffix = ps && ps.stats.total > 0 ? ` (${ps.stats.done}/${ps.stats.total} งานย่อยเสร็จ)` : ''
+              const titleSuffix = ns && ns.stats.total > 0 ? ` (${ns.stats.done}/${ns.stats.total} ${ns.stats.source === 'subtasks' ? 'ขั้นตอนย่อยเสร็จ' : 'งานย่อยเสร็จ'})` : ''
 
               return (
-                <div key={phase.id} style={{ position: 'absolute', top, left: 0, right: 0, height: ROW_H, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ width: LABEL_W, flexShrink: 0, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={phase.name}>
-                    {phase.name}
+                <div key={node.id} style={{ position: 'absolute', top, left: 0, right: 0, height: ROW_H, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: LABEL_W, flexShrink: 0, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: depth * 16 }} title={node.name}>
+                    {node.name}
                   </div>
-                  <div style={{ position: 'relative', flex: 1, height: 20, background: 'var(--bg3)', borderRadius: 5 }}>
+                  <div
+                    style={{ position: 'relative', flex: 1, height: 20, background: 'var(--bg3)', borderRadius: 5, cursor: hasChildren || (!isPhase && nodeIsLeaf) ? 'pointer' : 'default' }}
+                    onClick={() => {
+                      if (node.isNew) return
+                      if (hasChildren) toggleExpanded(node.id)
+                      else if (nodeIsLeaf) onOpenKanban?.(site, node, isPhase)
+                    }}
+                  >
                     {style && (
                       <div
-                        title={`${phase.name}\n${phase.start_date} → ${phase.end_date}\nสถานะ: ${displayStatus}${titleSuffix}`}
+                        title={`${node.name}\n${node.start_date} → ${node.end_date}\nสถานะ: ${displayStatus}${titleSuffix}`}
                         style={{
                           position: 'absolute', top: 2, bottom: 2, left: style.left, width: style.width,
                           background: STATUS_COLOR[displayStatus] || STATUS_COLOR.not_started, borderRadius: 5,
@@ -368,21 +417,23 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                           overflow: 'hidden', whiteSpace: 'nowrap',
                         }}
                       >
-                        {label}
+                        {hasChildren ? (expandedIds.has(node.id) ? '▾ ' : '▸ ') : ''}{label}
                       </div>
                     )}
                     {/* Floats over the track's right edge instead of taking
                         a flex slot next to it -- so the track's own width
                         always matches trackLeft/trackRight (no per-row
                         canEdit-dependent shrinkage the header/grid/arrows
-                        would have to separately account for). */}
-                    {canEdit && !editingId && (
+                        would have to separately account for). Edit button
+                        scoped to phase rows only in this task -- subtask
+                        edit/add is Task 5's job. */}
+                    {canEdit && !editingId && isPhase && (
                       <button type="button" className="btn btn-sm btn-ghost"
                         style={{
                           position: 'absolute', top: '50%', right: 2, transform: 'translateY(-50%)',
                           width: EDIT_BTN_W, padding: '2px 0', opacity: 0.85,
                         }}
-                        onClick={() => startEdit(phase)}>✎</button>
+                        onClick={(e) => { e.stopPropagation(); startEdit(node) }}>✎</button>
                     )}
                   </div>
                 </div>
