@@ -694,7 +694,7 @@ export function useSitePhases() {
 export function usePhaseTasks() {
   return useQuery(async () => fetchAllRows(() => supabase
     .from('phase_tasks')
-    .select('*, phase_task_workers(worker_id)')
+    .select('*, phase_task_workers(worker_id, is_lead)')
     .order('site_id', { ascending: true })
     .order('sort_order', { ascending: true })))
 }

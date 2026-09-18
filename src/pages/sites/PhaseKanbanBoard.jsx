@@ -27,7 +27,7 @@ const COLUMNS = [
 ]
 
 const emptyDraft = (phaseId, status, sortOrder) => ({
-  phase_id: phaseId, name: '', zone: '', status, due_date: '', sort_order: sortOrder, assigneeIds: [],
+  phase_id: phaseId, name: '', zone: '', status, due_date: '', sort_order: sortOrder, assigneeIds: [], leadWorkerId: null,
 })
 
 export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
@@ -79,10 +79,12 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
 
   const startEdit = (task) => {
     setEditingId(task.id)
+    const workerRows = task.phase_task_workers || []
     setDraft({
       phase_id: task.phase_id, name: task.name, zone: task.zone || '', status: task.status,
       due_date: task.due_date || '', sort_order: task.sort_order,
-      assigneeIds: (task.phase_task_workers || []).map((r) => r.worker_id),
+      assigneeIds: workerRows.map((r) => r.worker_id),
+      leadWorkerId: workerRows.find((r) => r.is_lead)?.worker_id || null,
     })
   }
   const startAdd = (phaseId, status) => {
@@ -113,9 +115,28 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
         if (error) throw error
       }
       if (draft.assigneeIds.length) {
+        // upsert(ignoreDuplicates) adds anyone newly checked (with the
+        // right is_lead already set) without touching rows that already
+        // existed -- same non-destructive ordering as before (insert the
+        // new set first, only delete what's no longer wanted, further
+        // below), so a failure here never wipes an existing assignee.
         const { error: insErr } = await supabase.from('phase_task_workers')
-          .upsert(draft.assigneeIds.map((worker_id) => ({ task_id: taskId, worker_id })), { onConflict: 'task_id,worker_id', ignoreDuplicates: true })
+          .upsert(draft.assigneeIds.map((worker_id) => ({ task_id: taskId, worker_id, is_lead: worker_id === draft.leadWorkerId })), { onConflict: 'task_id,worker_id', ignoreDuplicates: true })
         if (insErr) throw insErr
+        // ignoreDuplicates means an assignee who was already on the task
+        // keeps whatever is_lead value their row already had -- sync it
+        // explicitly for the two people whose leader status can actually
+        // change: clear it off everyone who isn't the new leader, then
+        // set it on the new leader (a real UPDATE, now that phase_task_
+        // workers has an admin_updates policy -- see migration -01).
+        const { error: clearLeadErr } = await supabase.from('phase_task_workers')
+          .update({ is_lead: false }).eq('task_id', taskId).neq('worker_id', draft.leadWorkerId || '00000000-0000-0000-0000-000000000000')
+        if (clearLeadErr) throw clearLeadErr
+        if (draft.leadWorkerId) {
+          const { error: setLeadErr } = await supabase.from('phase_task_workers')
+            .update({ is_lead: true }).eq('task_id', taskId).eq('worker_id', draft.leadWorkerId)
+          if (setLeadErr) throw setLeadErr
+        }
       }
       let delQuery = supabase.from('phase_task_workers').delete().eq('task_id', taskId)
       if (draft.assigneeIds.length) delQuery = delQuery.not('worker_id', 'in', `(${draft.assigneeIds.join(',')})`)
@@ -159,10 +180,17 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
   }
 
   const toggleAssignee = (workerId) => {
-    setDraft((d) => ({
-      ...d,
-      assigneeIds: d.assigneeIds.includes(workerId) ? d.assigneeIds.filter((id) => id !== workerId) : [...d.assigneeIds, workerId],
-    }))
+    setDraft((d) => {
+      const nowChecked = !d.assigneeIds.includes(workerId)
+      const assigneeIds = nowChecked ? [...d.assigneeIds, workerId] : d.assigneeIds.filter((id) => id !== workerId)
+      // เอาคนออกจากทีมแล้ว ก็เอาสถานะหัวหน้าออกไปด้วย (เป็นหัวหน้าของทีมที่ไม่ได้อยู่ในนั้นไม่ได้)
+      const leadWorkerId = !nowChecked && d.leadWorkerId === workerId ? null : d.leadWorkerId
+      return { ...d, assigneeIds, leadWorkerId }
+    })
+  }
+
+  const setLead = (workerId) => {
+    setDraft((d) => ({ ...d, leadWorkerId: d.leadWorkerId === workerId ? null : workerId }))
   }
 
   if (!phases.length) {
@@ -171,7 +199,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
 
   const boardProps = {
     canEdit, workers: workers || [], workerById, editingId, draft, setDraft,
-    onToggleAssignee: toggleAssignee, onStartEdit: startEdit, onStartAdd: startAdd,
+    onToggleAssignee: toggleAssignee, onSetLead: setLead, onStartEdit: startEdit, onStartAdd: startAdd,
     onCancelEdit: cancelEdit, onSaveDraft: saveDraft, onDeleteRequest: setConfirmDeleteId,
     onQuickMove: quickMove, saving, dragOverKey, setDragOverKey,
   }
@@ -248,7 +276,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged }) {
 }
 
 function PhaseBoard({
-  phaseId, tasks, canEdit, workers, workerById, editingId, draft, setDraft, onToggleAssignee,
+  phaseId, tasks, canEdit, workers, workerById, editingId, draft, setDraft, onToggleAssignee, onSetLead,
   onStartEdit, onStartAdd, onCancelEdit, onSaveDraft, onDeleteRequest, onQuickMove, saving,
   dragOverKey, setDragOverKey,
 }) {
@@ -278,11 +306,17 @@ function PhaseBoard({
             </div>
 
             {colTasks.map((task) => {
-              const assignees = (task.phase_task_workers || []).map((r) => workerById[r.worker_id]).filter(Boolean)
+              const workerRows = task.phase_task_workers || []
+              const leadRow = workerRows.find((r) => r.is_lead)
+              const leadWorker = leadRow ? workerById[leadRow.worker_id] : null
+              const otherAssignees = workerRows
+                .filter((r) => !r.is_lead)
+                .map((r) => workerById[r.worker_id])
+                .filter(Boolean)
               if (editingId === task.id) {
                 return (
                   <TaskEditPanel key={task.id} draft={draft} setDraft={setDraft} workers={workers}
-                    onToggleAssignee={onToggleAssignee} onCancel={onCancelEdit} onSave={onSaveDraft}
+                    onToggleAssignee={onToggleAssignee} onSetLead={onSetLead} onCancel={onCancelEdit} onSave={onSaveDraft}
                     onDelete={() => onDeleteRequest(task.id)} saving={saving} />
                 )
               }
@@ -300,14 +334,19 @@ function PhaseBoard({
                     {task.zone
                       ? <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--blue)', background: 'rgba(78,205,196,.14)', borderRadius: 20, padding: '2px 9px' }}>{task.zone}</span>
                       : <span />}
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      {assignees.length
-                        ? assignees.map((w) => (
-                          <span key={w.id} title={w.nickname || w.name} style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--accent)', color: '#fff', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            {(w.nickname || w.name || '?').slice(0, 2)}
-                          </span>
-                        ))
-                        : <span style={{ fontSize: 10.5, color: 'var(--text3)' }}>ยังไม่มอบหมาย</span>}
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      {leadWorker && (
+                        <span title={`👑 หัวหน้าทีม: ${leadWorker.nickname || leadWorker.name}`}
+                          style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--yellow)', color: '#3a2f0e', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--yellow)', boxShadow: '0 0 0 1px var(--bg2)' }}>
+                          {(leadWorker.nickname || leadWorker.name || '?').slice(0, 2)}
+                        </span>
+                      )}
+                      {otherAssignees.map((w) => (
+                        <span key={w.id} title={w.nickname || w.name} style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--accent)', color: '#fff', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {(w.nickname || w.name || '?').slice(0, 2)}
+                        </span>
+                      ))}
+                      {!leadWorker && !otherAssignees.length && <span style={{ fontSize: 10.5, color: 'var(--text3)' }}>ยังไม่มอบหมาย</span>}
                     </div>
                   </div>
                 </div>
@@ -316,7 +355,7 @@ function PhaseBoard({
 
             {isNewHere && (
               <TaskEditPanel draft={draft} setDraft={setDraft} workers={workers}
-                onToggleAssignee={onToggleAssignee} onCancel={onCancelEdit} onSave={onSaveDraft} saving={saving} isNew />
+                onToggleAssignee={onToggleAssignee} onSetLead={onSetLead} onCancel={onCancelEdit} onSave={onSaveDraft} saving={saving} isNew />
             )}
 
             {canEdit && !editingId && (
@@ -329,7 +368,7 @@ function PhaseBoard({
   )
 }
 
-function TaskEditPanel({ draft, setDraft, workers, onToggleAssignee, onCancel, onSave, onDelete, saving, isNew }) {
+function TaskEditPanel({ draft, setDraft, workers, onToggleAssignee, onSetLead, onCancel, onSave, onDelete, saving, isNew }) {
   return (
     <div style={{ background: 'var(--bg2)', border: '1px solid var(--accent)', borderRadius: 9, padding: 12, marginBottom: 10 }}>
       <input className="input input-sm" style={{ width: '100%', marginBottom: 8, fontWeight: 600 }}
@@ -357,14 +396,30 @@ function TaskEditPanel({ draft, setDraft, workers, onToggleAssignee, onCancel, o
             onChange={(e) => setDraft((d) => ({ ...d, due_date: e.target.value }))} />
         </label>
       </div>
-      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>มอบหมายให้</div>
-      <div style={{ maxHeight: 110, overflowY: 'auto', display: 'grid', gap: 4, marginBottom: 8, background: 'var(--bg3)', borderRadius: 6, padding: 8 }}>
-        {workers.map((w) => (
-          <label key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-            <input type="checkbox" checked={draft.assigneeIds.includes(w.id)} onChange={() => onToggleAssignee(w.id)} />
-            {w.nickname || w.name}
-          </label>
-        ))}
+      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>มอบหมายให้ — กด 👑 เพื่อตั้งเป็นหัวหน้าทีม (เลือกได้คนเดียว)</div>
+      <div style={{ maxHeight: 140, overflowY: 'auto', display: 'grid', gap: 2, marginBottom: 8, background: 'var(--bg3)', borderRadius: 6, padding: 8 }}>
+        {workers.map((w) => {
+          const checked = draft.assigneeIds.includes(w.id)
+          const isLead = draft.leadWorkerId === w.id
+          return (
+            <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '3px 0' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, cursor: 'pointer' }}>
+                <input type="checkbox" checked={checked} onChange={() => onToggleAssignee(w.id)} />
+                {w.nickname || w.name}
+              </label>
+              {checked && (
+                <button type="button" onClick={() => onSetLead(w.id)}
+                  title={isLead ? 'เอาออกจากหัวหน้าทีม' : 'ตั้งเป็นหัวหน้าทีม'}
+                  style={{
+                    border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, padding: '2px 4px',
+                    opacity: isLead ? 1 : 0.35, filter: isLead ? 'none' : 'grayscale(1)',
+                  }}>
+                  👑
+                </button>
+              )}
+            </div>
+          )
+        })}
         {!workers.length && <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>ไม่มีรายชื่อช่าง</div>}
       </div>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
