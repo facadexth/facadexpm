@@ -7,8 +7,9 @@ import { useMemo } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine, ResponsiveContainer } from 'recharts'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
-import { useSitePhases, useIncomes, useExpenses } from '../../hooks/useSupabase.js'
+import { useSitePhases, useSubtasks, useIncomes, useExpenses } from '../../hooks/useSupabase.js'
 import { buildPlanSeries, buildActualSeries, buildCostSeries, mergeCumulativeSeries } from './scurveCalc.js'
+import { flattenLeaves, groupSubtasksByParent } from './subtaskCalc.js'
 import { computeTimelineRange, computeMonthTicks, expandRangeForTransactions } from './ganttTimeline.js'
 import { fmt } from '../../lib/supabase.js'
 import { getEffectiveTheme } from '../../lib/theme.js'
@@ -17,6 +18,7 @@ const TODAY_ISO = new Date().toISOString().slice(0, 10)
 
 export default function SCurveChart({ site }) {
   const { data: allPhases } = useSitePhases()
+  const { data: allSubtasks } = useSubtasks()
   const { data: incomes } = useIncomes({ siteId: site.id })
   const { data: expenses } = useExpenses({ siteId: site.id })
 
@@ -33,6 +35,9 @@ export default function SCurveChart({ site }) {
   }
 
   const phasesForSite = useMemo(() => (allPhases || []).filter((p) => p.site_id === site.id), [allPhases, site.id])
+  const subtasksForSite = useMemo(() => (allSubtasks || []).filter((s) => s.site_id === site.id), [allSubtasks, site.id])
+  const subtasksByParent = useMemo(() => groupSubtasksByParent(subtasksForSite), [subtasksForSite])
+  const leaves = useMemo(() => flattenLeaves(phasesForSite, subtasksByParent), [phasesForSite, subtasksByParent])
 
   // Same function GanttView uses for its own timeline -- same site, same
   // phases, so this always produces the identical range GanttView shows.
@@ -50,7 +55,7 @@ export default function SCurveChart({ site }) {
   const range = useMemo(() => expandRangeForTransactions(baseRange, transactionDates), [baseRange, transactionDates])
 
   const chartData = useMemo(() => {
-    const plan = buildPlanSeries(phasesForSite, site.contract_value)
+    const plan = buildPlanSeries(leaves, site.contract_value)
     const actual = buildActualSeries(incomes || [])
     const cost = buildCostSeries(expenses || [])
     // Anchor the line data at the same range.start/range.end GanttView's
@@ -59,7 +64,7 @@ export default function SCurveChart({ site }) {
     // transaction or phase end-date happens to land.
     const extraDates = range ? [range.start.toISOString().slice(0, 10), range.end.toISOString().slice(0, 10)] : []
     return mergeCumulativeSeries({ plan, actual, cost }, TODAY_ISO, extraDates).map((row) => ({ ...row, ts: new Date(row.date).getTime() }))
-  }, [phasesForSite, incomes, expenses, site.contract_value, range])
+  }, [leaves, incomes, expenses, site.contract_value, range])
 
   if (!chartData.length) {
     return (
