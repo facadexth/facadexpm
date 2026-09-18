@@ -701,9 +701,12 @@ export default function Sites({ navigateTo, openSiteOverview }) {
         <GanttView
           sites={filtered}
           navigateTo={navigateTo}
-          onManagePhases={(site) => navigateTo('site_detail', { siteId: site.id, siteName: site.name })}
+          onManagePhases={(site) => navigateTo('site_detail', { siteId: site.id, siteName: site.name, tab: 'gantt' })}
           selectedSiteId={null}
-          onSelectSite={() => {}}
+          onSelectSite={(siteId) => {
+            const site = filtered.find(s => s.id === siteId)
+            navigateTo('site_detail', { siteId, siteName: site?.name, tab: 'gantt' })
+          }}
           canEdit={false}
         />
       )}

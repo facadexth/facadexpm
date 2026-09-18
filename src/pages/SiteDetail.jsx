@@ -15,7 +15,7 @@ import PhaseKanbanBoard from './sites/PhaseKanbanBoard.jsx'
 export default function SiteDetail({ navState, navigateTo }) {
   const siteId = navState?.siteId
   const siteName = navState?.siteName
-  const [tab, setTab] = useState('overview') // 'overview' | 'gantt' | 'kanban'
+  const [tab, setTab] = useState(navState?.tab || 'overview') // 'overview' | 'gantt' | 'kanban'
   const [phasesRefreshKey, setPhasesRefreshKey] = useState(0)
   const [kanbanInitialLeafId, setKanbanInitialLeafId] = useState(null) // ตั้งค่าเมื่อคลิก leaf บนแท็บ Gantt เพื่อ deep-link ไปยัง chip ที่ตรงกันในแท็บ Kanban
 
