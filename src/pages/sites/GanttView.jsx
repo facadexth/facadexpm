@@ -506,8 +506,14 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                         </label>
                         <label style={{ fontSize: 11, color: 'var(--text3)' }}>
                           % เบิกเงิน
-                          <input type="number" min="0" max="100" className="input input-sm" style={{ width: '100%', marginTop: 2 }}
-                            value={draft.billing_weight_pct} onChange={(e) => setDraft((d) => ({ ...d, billing_weight_pct: e.target.value }))} />
+                          {ns && ns.stats.source === 'subtasks' ? (
+                            <div style={{ marginTop: 2, fontSize: 12, color: 'var(--text2)', padding: '6px 8px', background: 'var(--bg3)', borderRadius: 6 }}>
+                              คำนวณอัตโนมัติจากขั้นตอนย่อย ({ns.displayWeight}%)
+                            </div>
+                          ) : (
+                            <input type="number" min="0" max="100" className="input input-sm" style={{ width: '100%', marginTop: 2 }}
+                              value={draft.billing_weight_pct} onChange={(e) => setDraft((d) => ({ ...d, billing_weight_pct: e.target.value }))} />
+                          )}
                         </label>
                       </div>
                       <label style={{ fontSize: 11, color: 'var(--text3)' }}>
