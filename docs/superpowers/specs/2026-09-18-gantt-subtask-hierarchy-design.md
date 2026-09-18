@@ -213,19 +213,26 @@ nesting here — flattening to leaves handles any depth uniformly).
 ## Resolved: a leaf's existing microtasks when it gains its first child
 
 **Decided:** when a phase or subtask that already has microtasks
-("board contained") gets its first child subtask added under it, that
-new subtask **automatically inherits the parent's existing microtasks**
-— their `subtask_id` is updated to point at the newly created subtask
-(and `phase_id` stays whatever it already was, unchanged) in the same
-write that creates the subtask. Nothing is blocked, nothing is deleted;
-the old leaf's board simply becomes the new subtask's board, and the old
-leaf is no longer itself a leaf (it now has this one child, so it
-switches to derived status/billing like any other non-leaf node).
+("board contained") gets its first child subtask added under it, its
+existing microtasks do **not** move into the subtask the user is actively
+creating (that one stays clean — the user is naming it for new, unrelated
+work). Instead, the app **auto-creates a second, sibling subtask named
+"Kanban เก่า"** ("old Kanban") in the same write, and moves the node's
+existing microtasks there (`subtask_id` repointed to this auto-created
+subtask; `phase_id` unchanged). Dates/billing % on "Kanban เก่า" start
+blank/zero — it's a holding pen, not a scheduled chunk of work — editable
+afterward like any other subtask if the user wants to give it real dates.
+
+So one user action (adding the first real subtask under a node that had
+microtasks) produces two new subtask rows: the one the user named, empty;
+and "Kanban เก่า", holding everything that node used to have directly.
+Nothing is blocked or deleted, and the user's new subtask never starts
+out cluttered with unrelated old cards.
 
 This only fires the **first** time a formerly-microtask-holding node
 gains a child — every subsequent "add another subtask here" goes through
 the normal empty-subtask path, since by then the node's own microtasks
-have already moved and it holds none directly any more.
+have already moved to "Kanban เก่า" and it holds none directly any more.
 
 ## Out of scope for this spec
 
