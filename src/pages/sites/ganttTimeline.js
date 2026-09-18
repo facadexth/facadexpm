@@ -101,26 +101,35 @@ export function computeDependencyArrows(phases, range) {
 
 /**
  * Same as computeDependencyArrows, but for the one-phase-per-row layout
- * (single-site detail view): also carries which row each endpoint sits on
- * (index into the SAME `phases` array the caller renders rows from), so an
- * arrow between two different phases can be drawn as a line spanning
- * multiple stacked rows instead of a single shared track.
+ * (single-site detail view): also carries which row each endpoint sits on.
+ *
+ * `rowById` (nodeId -> row index) is caller-supplied and defaults to plain
+ * array position when omitted. It MUST be supplied as the actual on-screen
+ * row index whenever rows can include more than just `phases` in order
+ * (e.g. the Gantt view's subtask tree, where expanding an ancestor inserts
+ * extra rows between phases) -- otherwise the returned fromRow/toRow would
+ * be phases-array positions that no longer match where those phases are
+ * actually drawn, and the arrow would point at the wrong bars the moment
+ * anything is expanded.
  */
-export function computeDependencyArrowsByRow(phases, range) {
+export function computeDependencyArrowsByRow(phases, range, rowById) {
   const byId = {}
-  const rowById = {}
-  phases.forEach((p, i) => { byId[p.id] = p; rowById[p.id] = i })
+  phases.forEach((p) => { byId[p.id] = p })
+  const resolveRow = rowById || phases.reduce((m, p, i) => { m[p.id] = i; return m }, {})
   const arrows = []
-  phases.forEach((p, row) => {
+  phases.forEach((p) => {
     if (!p.depends_on_phase_id) return
     const dep = byId[p.depends_on_phase_id]
     if (!dep) return
     const depBar = barStyle(dep, range)
     const thisBar = barStyle(p, range)
     if (!depBar || !thisBar) return
+    const fromRow = resolveRow[p.depends_on_phase_id]
+    const toRow = resolveRow[p.id]
+    if (fromRow == null || toRow == null) return
     const fromX = parseFloat(depBar.left) + parseFloat(depBar.width)
     const toX = parseFloat(thisBar.left)
-    arrows.push({ fromX, toX, fromRow: rowById[p.depends_on_phase_id], toRow: row })
+    arrows.push({ fromX, toX, fromRow, toRow })
   })
   return arrows
 }

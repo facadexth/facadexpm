@@ -370,7 +370,15 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     }
 
     const monthTicks = range ? computeMonthTicks(range) : []
-    const arrows = editingId ? [] : computeDependencyArrowsByRow(phases, range)
+    // phases-array index and visibleRows index are the SAME only when
+    // nothing is expanded -- expanding any ancestor inserts subtask rows
+    // between phases, shifting every phase after it down. Arrows must be
+    // positioned against the ACTUAL on-screen row, so resolve each phase's
+    // row via this id->visibleRows-index map instead of trusting its
+    // position in the flat `phases` array.
+    const nodeIdToVisibleRowIndex = {}
+    visibleRows.forEach((r, i) => { nodeIdToVisibleRowIndex[r.node.id] = i })
+    const arrows = editingId ? [] : computeDependencyArrowsByRow(phases, range, nodeIdToVisibleRowIndex)
     // Bar rows lay out as [label: LABEL_W][gap: GAP][track: flex 1][gap+edit
     // button, only when canEdit]. The header ticks, grid lines, and arrow
     // overlay used to hardcode `left: LABEL_W` (missing GAP) and ignore the
@@ -608,7 +616,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                 // viewBox stretched to the row height) and pushing the
                 // whole drawing off-screen.
                 style={{ position: 'absolute', top: 0, left: trackLeft, width: `calc(100% - ${trackLeft + trackRight}px)`, bottom: 0, height: '100%', pointerEvents: 'none' }}
-                preserveAspectRatio="none" viewBox={`0 0 100 ${phases.length}`}
+                preserveAspectRatio="none" viewBox={`0 0 100 ${visibleRows.length}`}
               >
                 {arrows.map((a, i) => {
                   // Elbow-routed (horizontal/vertical only, no diagonal):
