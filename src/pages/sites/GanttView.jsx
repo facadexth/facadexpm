@@ -19,6 +19,8 @@ import { getEffectiveTheme } from '../../lib/theme.js'
 const ROW_H = 34
 const EDIT_H = 320
 const LABEL_W = 170
+const GAP = 8
+const EDIT_BTN_W = 28
 const TODAY_ISO = new Date().toISOString().slice(0, 10)
 // สำหรับมุมมองหลายไซท์ (portfolio) ไม่ต้องขยาย timeline ตามรายรับ/รายจ่าย
 // ของไซท์ใดไซท์หนึ่ง -- ใช้ UUID ปลอมนี้เป็น siteId filter เพื่อให้ hook ดึงมา
@@ -204,6 +206,15 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
 
     const monthTicks = range ? computeMonthTicks(range) : []
     const arrows = editingId ? [] : computeDependencyArrowsByRow(phases, range)
+    // Bar rows lay out as [label: LABEL_W][gap: GAP][track: flex 1][gap+edit
+    // button, only when canEdit]. The header ticks, grid lines, and arrow
+    // overlay used to hardcode `left: LABEL_W` (missing GAP) and ignore the
+    // edit button entirely -- landing them a few to ~25px off from where
+    // the actual bar track renders, worse the further right you look. All
+    // four elements now share this exact track geometry so they can't drift
+    // apart again.
+    const trackLeft = LABEL_W + GAP
+    const trackRight = 0
     const doneCount = phases.filter((p) => phaseStatsById[p.id].displayStatus === 'done').length
     const inProgressCount = phases.filter((p) => phaseStatsById[p.id].displayStatus === 'in_progress').length
     const overallPct = phases.length ? Math.round((doneCount / phases.length) * 100) : 0
@@ -244,7 +255,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
             )}
           </div>
           {monthTicks.length > 0 && (
-            <div style={{ position: 'relative', height: 20, marginLeft: LABEL_W }}>
+            <div style={{ position: 'relative', height: 20, marginLeft: trackLeft, marginRight: trackRight }}>
               {monthTicks.map((t, i) => (
                 <div key={i} style={{ position: 'absolute', left: `${t.x}%`, fontSize: 10.5, color: 'var(--text3)', transform: 'translateX(-50%)' }}>
                   {format(t.date, 'MMM yy', { locale: th })}
@@ -253,6 +264,13 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
             </div>
           )}
           <div style={{ position: 'relative', height: bodyHeight }}>
+            {monthTicks.length > 0 && (
+              <div style={{ position: 'absolute', top: 0, bottom: 0, left: trackLeft, right: trackRight, pointerEvents: 'none' }}>
+                {monthTicks.map((t, i) => (
+                  <div key={i} style={{ position: 'absolute', top: 0, bottom: 0, left: `${t.x}%`, width: 1, background: 'var(--border)' }} />
+                ))}
+              </div>
+            )}
             {rows.map((phase, i) => {
               const top = rowTops[i]
               const isEditingThis = editingId && phase.id === editingId
@@ -353,25 +371,50 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                         {label}
                       </div>
                     )}
+                    {/* Floats over the track's right edge instead of taking
+                        a flex slot next to it -- so the track's own width
+                        always matches trackLeft/trackRight (no per-row
+                        canEdit-dependent shrinkage the header/grid/arrows
+                        would have to separately account for). */}
+                    {canEdit && !editingId && (
+                      <button type="button" className="btn btn-sm btn-ghost"
+                        style={{
+                          position: 'absolute', top: '50%', right: 2, transform: 'translateY(-50%)',
+                          width: EDIT_BTN_W, padding: '2px 0', opacity: 0.85,
+                        }}
+                        onClick={() => startEdit(phase)}>✎</button>
+                    )}
                   </div>
-                  {canEdit && !editingId && (
-                    <button type="button" className="btn btn-sm btn-ghost" style={{ flexShrink: 0, padding: '2px 8px' }} onClick={() => startEdit(phase)}>✎</button>
-                  )}
                 </div>
               )
             })}
             {arrows.length > 0 && (
               <svg
-                style={{ position: 'absolute', top: 0, left: LABEL_W, right: 0, bottom: 0, width: `calc(100% - ${LABEL_W}px)`, height: '100%', pointerEvents: 'none' }}
+                // Explicit width (not just left+right) -- SVG is a CSS
+                // "replaced element", so an absolutely-positioned one with
+                // left+right but no width falls back to sizing itself from
+                // the viewBox's intrinsic aspect ratio instead of the
+                // containing block, blowing up to ~14x too wide (100:7
+                // viewBox stretched to the row height) and pushing the
+                // whole drawing off-screen.
+                style={{ position: 'absolute', top: 0, left: trackLeft, width: `calc(100% - ${trackLeft + trackRight}px)`, bottom: 0, height: '100%', pointerEvents: 'none' }}
                 preserveAspectRatio="none" viewBox={`0 0 100 ${phases.length}`}
               >
-                {arrows.map((a, i) => (
-                  <line
-                    key={i}
-                    x1={a.fromX} y1={a.fromRow + 0.5} x2={a.toX} y2={a.toRow + 0.5}
-                    stroke={arrowColor} strokeWidth="0.4" strokeDasharray="1 0.8" vectorEffect="non-scaling-stroke"
-                  />
-                ))}
+                {arrows.map((a, i) => {
+                  // Elbow-routed (horizontal/vertical only, no diagonal):
+                  // out from the predecessor's end, across at the midpoint,
+                  // into the successor's start.
+                  const fromY = a.fromRow + 0.5
+                  const toY = a.toRow + 0.5
+                  const midX = (a.fromX + a.toX) / 2
+                  const d = `M ${a.fromX} ${fromY} H ${midX} V ${toY} H ${a.toX}`
+                  return (
+                    <path
+                      key={i} d={d} fill="none"
+                      stroke={arrowColor} strokeWidth="1.4" strokeDasharray="1 0.8" vectorEffect="non-scaling-stroke"
+                    />
+                  )
+                })}
               </svg>
             )}
             {todayX != null && !editingId && (
