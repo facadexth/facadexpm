@@ -12,7 +12,7 @@ import { th } from 'date-fns/locale'
 import { useSitePhases, usePhaseTasks, useSubtasks, useIncomes, useExpenses } from '../../hooks/useSupabase.js'
 import { supabase } from '../../lib/supabase.js'
 import { ConfirmDialog } from '../../components/Modal.jsx'
-import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, STATUS_COLOR, PHASE_TEMPLATE, expandRangeForTransactions } from './ganttTimeline.js'
+import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, phaseOverlapsRange, STATUS_COLOR, PHASE_TEMPLATE, expandRangeForTransactions } from './ganttTimeline.js'
 import { groupSubtasksByParent, computeNodeStats, isLeaf, flattenVisibleRows, siblingWeightSum } from './subtaskCalc.js'
 import { getEffectiveTheme } from '../../lib/theme.js'
 
@@ -80,6 +80,11 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     if (next.has(nodeId)) next.delete(nodeId); else next.add(nodeId)
     return next
   })
+
+  // มุมมองหลายไซท์ (portfolio): ดูทีละปี + ซ่อนไซท์ที่ไม่มีงานในปีนั้น/
+  // ไซท์ที่เสร็จหมดแล้ว -- ไม่เกี่ยวกับมุมมองไซท์เดียวด้านบนเลย
+  const [portfolioYear, setPortfolioYear] = useState(() => new Date(TODAY_ISO).getFullYear())
+  const [hideCompletedSites, setHideCompletedSites] = useState(false)
 
   // SVG presentation attributes (stroke=...) don't resolve CSS var() --
   // only real CSS property values do -- so derive a literal hex color here
@@ -664,94 +669,133 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   }
 
   // ── หลายไซท์: 1 แถวต่อไซท์ ทุกขั้นตอนแชร์แถวเดียว (หน้ารายการไซท์) ──
-  if (!range) {
-    return (
-      <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text3)' }}>
-        ไม่มีไซท์ที่มีวันที่ให้แสดงบน Gantt
-      </div>
-    )
-  }
+  // ดูทีละปี (ไม่ครอบคลุมทุกไซท์ทั้งหมดเหมือนเดิม -- ยาวเกินไปจนไม่มีประโยชน์)
+  // + ปุ่ม ‹ › เปลี่ยนปี + ซ่อนไซท์ที่ไม่มีงานในปีนั้น/ไซท์ที่เสร็จแล้ว
+  const portfolioRange = { start: new Date(portfolioYear, 0, 1), end: new Date(portfolioYear, 11, 31) }
+  const portfolioMonthTicks = computeMonthTicks(portfolioRange)
+  const portfolioTodayInRange = portfolioYear === new Date(TODAY_ISO).getFullYear()
+  const portfolioTodayX = portfolioTodayInRange ? positionPercent(TODAY_ISO, portfolioRange) : null
+  const visibleSites = sites.filter((site) => {
+    if (hideCompletedSites && site.status === 'Completed') return false
+    const phases = phasesBySite[site.id] || []
+    return phases.some((p) => phaseOverlapsRange(p, portfolioRange))
+  })
 
   return (
     <div className="card">
-      {sites.map((site) => {
-        const phases = phasesBySite[site.id] || []
-        const arrows = computeDependencyArrows(phases, range)
-        const isSelected = selectedSiteId === site.id
-        return (
-          <div
-            key={site.id}
-            onClick={() => onSelectSite(site.id)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              padding: '10px 12px',
-              borderBottom: '1px solid var(--border)',
-              cursor: 'pointer',
-              background: isSelected ? 'var(--bg2)' : 'transparent',
-            }}
-          >
-            <div style={{ width: 180, flexShrink: 0 }}>
-              <div
-                style={{ fontWeight: 600, fontSize: 13, textDecoration: 'underline dotted' }}
-                onClick={(e) => { e.stopPropagation(); navigateTo('assign', { siteId: site.id, siteName: site.name }) }}
-                title="ไปหน้า Assign ของไซท์นี้"
-              >
-                {site.name}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--accent)' }}>{site.site_number}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPortfolioYear((y) => y - 1)}>‹</button>
+          <div style={{ fontWeight: 700, fontSize: 14, minWidth: 48, textAlign: 'center' }}>{portfolioYear + 543}</div>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPortfolioYear((y) => y + 1)}>›</button>
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--text2)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={hideCompletedSites} onChange={(e) => setHideCompletedSites(e.target.checked)} />
+          ซ่อนไซท์ที่เสร็จแล้ว
+        </label>
+      </div>
+      {portfolioMonthTicks.length > 0 && (
+        <div style={{ position: 'relative', height: 20, marginLeft: 180, marginRight: canEdit ? 100 : 0, padding: '4px 0' }}>
+          {portfolioMonthTicks.map((t, i) => (
+            <div key={i} style={{ position: 'absolute', left: `${t.x}%`, fontSize: 10.5, color: 'var(--text3)', transform: 'translateX(-50%)' }}>
+              {format(t.date, 'MMM yy', { locale: th })}
             </div>
-            <div style={{ position: 'relative', flex: 1, height: 28, background: 'var(--bg2)', borderRadius: 4 }}>
-              {phases.map((phase) => {
-                const style = barStyle(phase, range)
-                if (!style) return null
-                return (
-                  <div
-                    key={phase.id}
-                    title={`${phase.name}\n${phase.start_date} → ${phase.end_date}\nสถานะ: ${phase.status}`}
-                    style={{
-                      position: 'absolute',
-                      top: 4,
-                      bottom: 4,
-                      left: style.left,
-                      width: style.width,
-                      background: STATUS_COLOR[phase.status] || STATUS_COLOR.not_started,
-                      borderRadius: 3,
-                    }}
-                  />
-                )
-              })}
-              {arrows.length > 0 && (
-                <svg
-                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
-                  preserveAspectRatio="none" viewBox="0 0 100 28"
-                >
-                  {arrows.map((a, i) => (
-                    <line
-                      key={i}
-                      x1={a.fromX} y1={14} x2={a.toX} y2={14}
-                      stroke={arrowColor} strokeWidth="0.6" strokeDasharray="1.5 1"
-                    />
-                  ))}
-                </svg>
-              )}
-            </div>
-            {canEdit && (
-              <button
-                className="btn btn-sm btn-ghost"
-                style={{ flexShrink: 0 }}
-                onClick={(e) => { e.stopPropagation(); onManagePhases(site) }}
-              >
-                📋 จัดการขั้นตอน
-              </button>
+          ))}
+        </div>
+      )}
+      <div style={{ position: 'relative' }}>
+        {portfolioMonthTicks.length > 0 && (
+          <div style={{ position: 'absolute', top: 0, bottom: 0, left: 180, right: canEdit ? 100 : 0, pointerEvents: 'none', zIndex: 0 }}>
+            {portfolioMonthTicks.map((t, i) => (
+              <div key={i} style={{ position: 'absolute', top: 0, bottom: 0, left: `${t.x}%`, width: 1, background: 'var(--border)' }} />
+            ))}
+            {portfolioTodayX != null && (
+              <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${portfolioTodayX}%`, borderLeft: '1px dashed var(--text3)' }} />
             )}
           </div>
-        )
-      })}
-      {!sites.length && (
-        <div style={{ padding: 32, textAlign: 'center', color: 'var(--text3)' }}>ไม่พบข้อมูลไซท์งาน</div>
-      )}
+        )}
+        {visibleSites.map((site) => {
+          const phases = phasesBySite[site.id] || []
+          const arrows = computeDependencyArrows(phases, portfolioRange)
+          const isSelected = selectedSiteId === site.id
+          return (
+            <div
+              key={site.id}
+              onClick={() => onSelectSite(site.id)}
+              style={{
+                position: 'relative', zIndex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '10px 12px',
+                borderBottom: '1px solid var(--border)',
+                cursor: 'pointer',
+                background: isSelected ? 'var(--bg2)' : 'transparent',
+              }}
+            >
+              <div style={{ width: 180, flexShrink: 0 }}>
+                <div
+                  style={{ fontWeight: 600, fontSize: 13, textDecoration: 'underline dotted' }}
+                  onClick={(e) => { e.stopPropagation(); navigateTo('assign', { siteId: site.id, siteName: site.name }) }}
+                  title="ไปหน้า Assign ของไซท์นี้"
+                >
+                  {site.name}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--accent)' }}>{site.site_number}</div>
+              </div>
+              <div style={{ position: 'relative', flex: 1, height: 28, background: 'var(--bg2)', borderRadius: 4 }}>
+                {phases.map((phase) => {
+                  const style = barStyle(phase, portfolioRange)
+                  if (!style) return null
+                  return (
+                    <div
+                      key={phase.id}
+                      title={`${phase.name}\n${phase.start_date} → ${phase.end_date}\nสถานะ: ${phase.status}`}
+                      style={{
+                        position: 'absolute',
+                        top: 4,
+                        bottom: 4,
+                        left: style.left,
+                        width: style.width,
+                        background: STATUS_COLOR[phase.status] || STATUS_COLOR.not_started,
+                        borderRadius: 3,
+                      }}
+                    />
+                  )
+                })}
+                {arrows.length > 0 && (
+                  <svg
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+                    preserveAspectRatio="none" viewBox="0 0 100 28"
+                  >
+                    {arrows.map((a, i) => (
+                      <line
+                        key={i}
+                        x1={a.fromX} y1={14} x2={a.toX} y2={14}
+                        stroke={arrowColor} strokeWidth="0.6" strokeDasharray="1.5 1"
+                      />
+                    ))}
+                  </svg>
+                )}
+              </div>
+              {canEdit && (
+                <button
+                  className="btn btn-sm btn-ghost"
+                  style={{ flexShrink: 0 }}
+                  onClick={(e) => { e.stopPropagation(); onManagePhases(site) }}
+                >
+                  📋 จัดการขั้นตอน
+                </button>
+              )}
+            </div>
+          )
+        })}
+        {!visibleSites.length && (
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--text3)' }}>
+            {sites.length ? `ไม่มีไซท์ที่มีงานในปี ${portfolioYear + 543}` : 'ไม่พบข้อมูลไซท์งาน'}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

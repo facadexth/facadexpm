@@ -66,6 +66,15 @@ export function positionPercent(dateStr, range) {
   return Math.min(100, Math.max(0, (offsetMs / totalMs) * 100))
 }
 
+/** True when a dated phase's own span touches `range` at all (standard
+ *  interval-overlap check) -- used to decide whether a phase/site has any
+ *  work to show in a given year, not to position anything. A phase with
+ *  no dates never overlaps. */
+export function phaseOverlapsRange(phase, range) {
+  if (!phase.start_date || !phase.end_date || !range) return false
+  return new Date(phase.start_date) <= range.end && new Date(phase.end_date) >= range.start
+}
+
 /** CSS left/width for one phase's bar, or null if it has no dates yet. */
 export function barStyle(phase, range) {
   if (!phase.start_date || !phase.end_date || !range) return null
