@@ -10,13 +10,15 @@
 // sign-link already established for its own public/unauthenticated
 // endpoint.
 //
-// Two parallel paths into the same three crew actions (see
-// docs/superpowers/specs/2026-09-19-line-notifications-design.md and
-// this plan's Task 8): typed keywords in the shared crew group
-// (original design), and Rich Menu buttons in a 1:1 DM with the bot
-// (Task 8 addition -- LINE Rich Menus cannot render inside a group
-// chat, so this had to be a second path, not a replacement). Both
-// funnel into the same handleAction() below.
+// Two parallel paths into the same three crew actions:
+//   - typed keywords in the shared crew group -> immediate action
+//   - the SAME trigger phrases in a 1:1 DM (typed manually, or tapped
+//     from a Rich Menu button configured in LINE Official Account
+//     Manager to send fixed text) -> two-step: set a pending action,
+//     ask for detail, the worker's next DM is the action's body. The
+//     Rich Menu itself is configured manually in the LINE console (this
+//     bot is internal-only, so a plain bot-wide default menu is fine --
+//     no per-user linking needed).
 //
 // Keyword sets are tuned to avoid real collisions found in review (bare
 // "ปัญหา" matches "ไม่มีปัญหา" = "no problem"; bare "ลา" matches ตลาด/
@@ -29,7 +31,7 @@
 // plus a bare linking code sent as a DM, Track B's one-time OWNER/ADMIN
 // account-linking flow (Settings -> ทั่วไป issues the code).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { verifyLineSignature, sendLineReply, linkRichMenuToUser } from '../_shared/line.ts'
+import { verifyLineSignature, sendLineReply } from '../_shared/line.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -48,27 +50,6 @@ function bangkokToday(): string {
   return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
 
-// This tenant's real LINE OA is ALSO used for sales/customer info -- the
-// crew Rich Menu is NEVER set as the bot's default for everyone (that
-// would put crew buttons in front of real customers). Instead it's
-// linked per-user, lazily, the first time a recognized worker is seen
-// in a 1:1 DM (the only context Rich Menus render in at all). Idempotent
-// on LINE's side either way, but line_rich_menu_linked_at avoids the
-// repeat API call on every subsequent message from an already-linked worker.
-async function ensureCrewRichMenuLinked(
-  worker: { id: string; line_user_id: string | null; line_rich_menu_linked_at: string | null },
-  settings: { channel_access_token: string; crew_rich_menu_id: string | null },
-) {
-  if (!settings.crew_rich_menu_id || worker.line_rich_menu_linked_at || !worker.line_user_id) return
-  const { ok } = await linkRichMenuToUser(settings.channel_access_token, worker.line_user_id, settings.crew_rich_menu_id)
-  if (ok) {
-    const { error } = await admin.from('workers').update({ line_rich_menu_linked_at: new Date().toISOString() }).eq('id', worker.id)
-    if (error) console.error('workers.line_rich_menu_linked_at update failed', error)
-  } else {
-    console.error('linkRichMenuToUser failed for worker', worker.id)
-  }
-}
-
 type ActionType = 'issue_report' | 'material_request' | 'leave'
 
 function promptForAction(action: ActionType): string {
@@ -77,9 +58,25 @@ function promptForAction(action: ActionType): string {
   return '🏖️ บอกรายละเอียดวันที่ลาได้เลยครับ'
 }
 
-// Shared by both the group-keyword path and the DM Rich-Menu path --
-// exactly the three action bodies Task 3 originally wrote inline,
-// unchanged in behavior, just callable from two call sites now.
+// Simple substring match, not NLP, tuned against real collisions found
+// in review: a bare "ปัญหา" also matches "ไม่มีปัญหา"/"ไม่ปัญหา" ("no
+// problem"), and a bare "ลา" matches ordinary words like ตลาด/ปลา/ฉลาด
+// with zero relation to leave. Each set is chosen so no phrase is a
+// substring of another branch's phrase, keeping the ปัญหา -> เบิก -> ลา
+// routing order unambiguous. Shared by both the group path (matches ->
+// immediate action) and the DM path (matches -> two-step ask-for-detail).
+function matchAction(text: string): ActionType | null {
+  const isIssueReport = text.includes('ปัญหา') && !text.includes('ไม่มีปัญหา') && !text.includes('ไม่ปัญหา')
+  if (isIssueReport) return 'issue_report'
+  const isMaterialRequest = ['อยากเบิก', 'ขอเบิก'].some((kw) => text.includes(kw))
+  if (isMaterialRequest) return 'material_request'
+  const isLeaveRequest = ['ลากิจ', 'ลาป่วย', 'ขอลา', 'อยากลา'].some((kw) => text.includes(kw))
+  if (isLeaveRequest) return 'leave'
+  return null
+}
+
+// The three action bodies -- shared by the group's immediate-action path
+// and the DM's two-step (pending-action-consumption) path.
 async function handleAction(
   action: ActionType,
   worker: { id: string; name: string },
@@ -110,6 +107,16 @@ async function handleAction(
       await sendLineReply(settings.channel_access_token, replyToken, '📦 รับคำขอเบิกของแล้ว แอดมินจะตรวจสอบและออกใบสั่งซื้อให้')
     }
   } else {
+    // A worker_assignments row (leave_personal), the same shape
+    // CellEditPopup.jsx builds for a leave save (src/pages/assign/
+    // CellEditPopup.jsx:81-85): { worker_id, date, shift, type,
+    // site_id: null, notes }. tenant_id must be set explicitly here --
+    // its DB default is current_tenant_id(), which resolves off the
+    // caller's JWT claims and would be NULL under this function's
+    // service-role client. shift/date aren't in the message at all, so
+    // this defaults to today (Bangkok) / 'morning' as a same-day
+    // heads-up. A plain insert (not upsert) so this can never silently
+    // overwrite an already-scheduled real shift.
     const { error } = await admin.from('worker_assignments').insert({
       tenant_id: settings.tenant_id,
       worker_id: worker.id,
@@ -149,38 +156,20 @@ Deno.serve(async (req) => {
 
   const events = (payload.events as Array<Record<string, any>>) ?? []
   for (const event of events) {
+    if (event.type !== 'message' || event.message?.type !== 'text') continue
+    const text: string = event.message.text
     const lineUserId: string | undefined = event.source?.userId
     const sourceGroupId: string | undefined = event.source?.groupId
     if (!lineUserId) continue
 
-    // Rich Menu button tap -- only ever fires from a 1:1 DM (LINE
-    // doesn't render Rich Menus inside groups, so this branch can't be
-    // reached from a group event in practice, but the code doesn't need
-    // to assume that -- it just resolves the worker and proceeds).
-    if (event.type === 'postback') {
-      const action = new URLSearchParams(event.postback?.data ?? '').get('action') as ActionType | null
-      if (action !== 'issue_report' && action !== 'material_request' && action !== 'leave') continue
-      const { data: worker } = await admin.from('workers').select('id, name, line_user_id, line_rich_menu_linked_at').eq('line_user_id', lineUserId).eq('tenant_id', settings.tenant_id).maybeSingle()
-      if (!worker) continue // a Rich Menu tap from someone not a recognized worker -- nothing useful to do without a group context to capture them the way line_unlinked_senders does
-      await ensureCrewRichMenuLinked(worker, settings)
-      const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
-      const { error } = await admin.from('line_pending_actions').upsert(
-        { tenant_id: settings.tenant_id, worker_id: worker.id, action, expires_at: expiresAt },
-        { onConflict: 'worker_id' }
-      )
-      if (error) console.error('line_pending_actions upsert failed', error)
-      await sendLineReply(settings.channel_access_token, event.replyToken, promptForAction(action))
-      continue
-    }
-
-    if (event.type !== 'message' || event.message?.type !== 'text') continue
-    const text: string = event.message.text
-
     if (!sourceGroupId) {
-      // DM -- either (a) an OWNER/ADMIN's bare linking code (existing
-      // Track B flow, unchanged), or (b) a worker's reply to a pending
-      // Rich Menu action (Task 8 addition). Linking-code match is
-      // checked first since it's a narrower, more specific match.
+      // DM -- either (a) an OWNER/ADMIN's bare linking code (Track B),
+      // or (b) a worker's crew action: a Rich Menu button tap (which
+      // sends fixed text, configured manually in LINE Official Account
+      // Manager) or manually-typed trigger phrase -- both indistinguishable
+      // once they arrive as text, and both get the same two-step
+      // treatment. Linking-code match is checked first since it's a
+      // narrower, more specific match.
       const { data: pendingCode } = await admin.from('user_roles').select('id').eq('tenant_id', settings.tenant_id).eq('line_link_code', text.trim()).maybeSingle()
       if (pendingCode) {
         const { error } = await admin.from('user_roles').update({ line_user_id: lineUserId, line_link_code: null }).eq('id', pendingCode.id)
@@ -193,20 +182,27 @@ Deno.serve(async (req) => {
         continue
       }
 
-      const { data: worker } = await admin.from('workers').select('id, name, line_user_id, line_rich_menu_linked_at').eq('line_user_id', lineUserId).eq('tenant_id', settings.tenant_id).maybeSingle()
+      const { data: worker } = await admin.from('workers').select('id, name').eq('line_user_id', lineUserId).eq('tenant_id', settings.tenant_id).maybeSingle()
       if (worker) {
-        await ensureCrewRichMenuLinked(worker, settings)
         const { data: pending } = await admin.from('line_pending_actions').select('*').eq('worker_id', worker.id).gt('expires_at', new Date().toISOString()).maybeSingle()
         if (pending) {
           const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
           if (deleteError) console.error('line_pending_actions delete failed', deleteError)
           await handleAction(pending.action as ActionType, worker, text, settings, event.replyToken)
+        } else {
+          const action = matchAction(text)
+          if (action) {
+            const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
+            const { error } = await admin.from('line_pending_actions').upsert(
+              { tenant_id: settings.tenant_id, worker_id: worker.id, action, expires_at: expiresAt },
+              { onConflict: 'worker_id' }
+            )
+            if (error) console.error('line_pending_actions upsert failed', error)
+            await sendLineReply(settings.channel_access_token, event.replyToken, promptForAction(action))
+          }
+          // No match and no pending action -- unrecognized DM text from a
+          // linked worker, silently ignored.
         }
-        // A linked worker DMing the bot with no pending action (e.g. they
-        // never tapped a Rich Menu button first) is out of scope for v1 --
-        // silently ignored. Free typing of keywords only works in the
-        // crew group, matching the original design; DM-only keyword
-        // typing was not asked for and is not built here.
       }
       continue
     }
@@ -225,20 +221,8 @@ Deno.serve(async (req) => {
       continue
     }
 
-    // Keyword-based triggers -- simple substring match, not NLP, tuned
-    // against real collisions found in review: a bare "ปัญหา" also
-    // matches "ไม่มีปัญหา"/"ไม่ปัญหา" ("no problem"), and a bare "ลา"
-    // matches ordinary words like ตลาด/ปลา/ฉลาด with zero relation to
-    // leave. Each set is chosen so no phrase is a substring of another
-    // branch's phrase, keeping the ปัญหา -> เบิก -> ลา routing order
-    // unambiguous.
-    const isIssueReport = text.includes('ปัญหา') && !text.includes('ไม่มีปัญหา') && !text.includes('ไม่ปัญหา')
-    const isMaterialRequest = ['อยากเบิก', 'ขอเบิก'].some((kw) => text.includes(kw))
-    const isLeaveRequest = ['ลากิจ', 'ลาป่วย', 'ขอลา', 'อยากลา'].some((kw) => text.includes(kw))
-
-    if (isIssueReport) await handleAction('issue_report', worker, text, settings, event.replyToken)
-    else if (isMaterialRequest) await handleAction('material_request', worker, text, settings, event.replyToken)
-    else if (isLeaveRequest) await handleAction('leave', worker, text, settings, event.replyToken)
+    const action = matchAction(text)
+    if (action) await handleAction(action, worker, text, settings, event.replyToken)
   }
 
   return json({ ok: true })
