@@ -9,12 +9,16 @@
 // established for its own public/unauthenticated endpoint.
 //
 // Three inbound triggers from the crew group (see
-// docs/superpowers/specs/2026-09-19-line-notifications-design.md):
-//   "ปัญหา" (site problem)   -> line_issue_reports row
-//   "เบิก"  (material request) -> see note below, NOT a purchase_orders
-//                                  row -- the schema can't support that
-//                                  yet (see comment at that branch)
-//   "ลา"    (leave request)  -> worker_assignments row (leave_personal)
+// docs/superpowers/specs/2026-09-19-line-notifications-design.md).
+// Keyword sets are tuned to avoid real collisions found in review (bare
+// "ปัญหา" matches "ไม่มีปัญหา" = "no problem"; bare "ลา" matches ตลาด/
+// ปลา/ฉลาด) -- see the keyword-set comment further down for the exact
+// phrase lists:
+//   "ปัญหา" minus negations -> line_issue_reports row
+//   "อยากเบิก"/"ขอเบิก"      -> see note below, NOT a purchase_orders
+//                                 row -- the schema can't support that
+//                                 yet (see comment at that branch)
+//   "ลากิจ"/"ลาป่วย"/"ขอลา"/"อยากลา" -> worker_assignments row (leave_personal)
 // plus a bare linking code sent as a DM, which is Track B's one-time
 // OWNER/ADMIN account-linking flow (Task 6 issues the code).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
@@ -73,8 +77,13 @@ Deno.serve(async (req) => {
     if (!sourceGroupId) {
       const { data: pending } = await admin.from('user_roles').select('id').eq('tenant_id', settings.tenant_id).eq('line_link_code', text.trim()).maybeSingle()
       if (pending) {
-        await admin.from('user_roles').update({ line_user_id: lineUserId, line_link_code: null }).eq('id', pending.id)
-        await sendLineReply(settings.channel_access_token, event.replyToken, '✅ เชื่อมต่อ LINE เรียบร้อยแล้ว')
+        const { error } = await admin.from('user_roles').update({ line_user_id: lineUserId, line_link_code: null }).eq('id', pending.id)
+        if (error) {
+          console.error('user_roles line-link update failed', error)
+          await sendLineReply(settings.channel_access_token, event.replyToken, '⚠️ เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่หรือแจ้งแอดมิน')
+        } else {
+          await sendLineReply(settings.channel_access_token, event.replyToken, '✅ เชื่อมต่อ LINE เรียบร้อยแล้ว')
+        }
       }
       continue
     }
@@ -87,20 +96,38 @@ Deno.serve(async (req) => {
     if (!worker) {
       // First message from someone we don't recognize -- capture, don't
       // silently drop (Task 7 gives an admin a way to resolve this).
-      await admin.from('line_unlinked_senders').upsert(
+      const { error: unlinkedError } = await admin.from('line_unlinked_senders').upsert(
         { tenant_id: settings.tenant_id, line_user_id: lineUserId, display_name: event.source?.userId ?? null },
         { onConflict: 'tenant_id,line_user_id', ignoreDuplicates: true }
       )
+      // No reply is sent on this branch either way (the sender isn't a
+      // recognized worker, so there's nothing useful to tell them) -- but
+      // a write failure here must not vanish silently, since it's the
+      // only record an admin would ever get of this sender.
+      if (unlinkedError) console.error('line_unlinked_senders upsert failed', unlinkedError)
       continue
     }
 
-    // Keyword-based triggers -- simple substring match, not NLP. Order
-    // matters only in that a message shouldn't match more than one; the
-    // three Thai phrases share no substrings so this is unambiguous.
-    if (text.includes('ปัญหา')) {
-      await admin.from('line_issue_reports').insert({ tenant_id: settings.tenant_id, worker_id: worker.id, message: text })
-      await sendLineReply(settings.channel_access_token, event.replyToken, '📩 รับแจ้งปัญหาแล้ว แอดมินจะติดตามให้')
-    } else if (text.includes('เบิก')) {
+    // Keyword-based triggers -- simple substring match, not NLP, tuned
+    // against real collisions found in review: a bare "ปัญหา" also
+    // matches "ไม่มีปัญหา"/"ไม่ปัญหา" ("no problem" -- the opposite of a
+    // report), and a bare "ลา" matches ordinary words like ตลาด/ปลา/ฉลาด
+    // with zero relation to leave. Each keyword set below is chosen so
+    // no phrase is a substring of another branch's phrase, keeping the
+    // ปัญหา -> เบิก -> ลา routing order unambiguous.
+    const isIssueReport = text.includes('ปัญหา') && !text.includes('ไม่มีปัญหา') && !text.includes('ไม่ปัญหา')
+    const isMaterialRequest = ['อยากเบิก', 'ขอเบิก'].some((kw) => text.includes(kw))
+    const isLeaveRequest = ['ลากิจ', 'ลาป่วย', 'ขอลา', 'อยากลา'].some((kw) => text.includes(kw))
+
+    if (isIssueReport) {
+      const { error } = await admin.from('line_issue_reports').insert({ tenant_id: settings.tenant_id, worker_id: worker.id, message: text })
+      if (error) {
+        console.error('line_issue_reports insert failed', error)
+        await sendLineReply(settings.channel_access_token, event.replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+      } else {
+        await sendLineReply(settings.channel_access_token, event.replyToken, '📩 รับแจ้งปัญหาแล้ว แอดมินจะติดตามให้')
+      }
+    } else if (isMaterialRequest) {
       // NOT a purchase_orders insert -- confirmed against the live schema
       // (2026-09-19): purchase_orders_status_check only allows
       // ('ordered','received','cancelled'), there is no 'draft' value,
@@ -117,9 +144,14 @@ Deno.serve(async (req) => {
       // schema follow-up (either a 'draft' status + nullable FKs on
       // purchase_orders, or a dedicated line_material_requests table)
       // before this can write directly into purchase_orders.
-      await admin.from('line_issue_reports').insert({ tenant_id: settings.tenant_id, worker_id: worker.id, message: `[ขอเบิกของ] ${text}` })
-      await sendLineReply(settings.channel_access_token, event.replyToken, '📦 รับคำขอเบิกของแล้ว แอดมินจะตรวจสอบและออกใบสั่งซื้อให้')
-    } else if (text.includes('ลา')) {
+      const { error } = await admin.from('line_issue_reports').insert({ tenant_id: settings.tenant_id, worker_id: worker.id, message: `[ขอเบิกของ] ${text}` })
+      if (error) {
+        console.error('line_issue_reports insert failed (material request)', error)
+        await sendLineReply(settings.channel_access_token, event.replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+      } else {
+        await sendLineReply(settings.channel_access_token, event.replyToken, '📦 รับคำขอเบิกของแล้ว แอดมินจะตรวจสอบและออกใบสั่งซื้อให้')
+      }
+    } else if (isLeaveRequest) {
       // A worker_assignments row (leave_personal), the same shape
       // CellEditPopup.jsx builds for a leave save (src/pages/assign/
       // CellEditPopup.jsx:81-85): { worker_id, date, shift, type,
