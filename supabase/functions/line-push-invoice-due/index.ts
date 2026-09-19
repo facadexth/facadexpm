@@ -22,14 +22,34 @@
 // pct: 0 }` at Invoices.jsx:1024/1047, and the `hideVoid` list filter at
 // Invoices.jsx:1647).
 //
-// verify_jwt is ON -- only this project's own pg_cron job calls this,
-// using the service-role key as its bearer token.
+// verify_jwt is ON, but that ALONE is not real access control -- it
+// only checks that the Authorization bearer is a validly-signed JWT
+// for this project, not its role. This project's anon key is such a
+// JWT and is intentionally public (ships in the client bundle), so
+// verify_jwt alone would let anyone holding it call this function
+// directly, on demand, bypassing the cron schedule -- against the real,
+// currently-linked OWNER. The real access control is the
+// `x-cron-secret` header check immediately below, verified via
+// public.verify_cron_secret() (see
+// supabase/migrations/2026-09-19-04-line-push-cron-secret-verify-fn.sql)
+// BEFORE any other query or LINE push.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { sendLinePush } from '../_shared/line.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+async function isAuthorizedCronCall(req: Request): Promise<boolean> {
+  const provided = req.headers.get('x-cron-secret')
+  if (!provided) return false
+  const { data, error } = await admin.rpc('verify_cron_secret', { provided })
+  if (error) {
+    console.error('verify_cron_secret RPC failed', error)
+    return false
+  }
+  return data === true
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -58,6 +78,7 @@ function formatInvoiceDueMessage(site: Site): string {
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
+  if (!(await isAuthorizedCronCall(req))) return json({ error: 'unauthorized' }, 401)
 
   const today = bangkokTodayISO()
 

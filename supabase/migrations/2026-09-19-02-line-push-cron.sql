@@ -8,6 +8,21 @@
 -- (2026-09-19-03-enable-pg-cron-pg-net.sql, applied first) before this
 -- file's cron.schedule() calls run.
 --
+-- CRITICAL FIX (post-review): the Authorization bearer below (the
+-- anon/publishable JWT) is NOT sufficient access control by itself --
+-- verify_jwt on the target functions only checks JWT signature
+-- validity, not role, and the anon key is intentionally public (ships
+-- in the client bundle). Anyone holding it could otherwise call any of
+-- these four functions directly, any time, bypassing this schedule
+-- entirely -- against the real tenant's real crew LINE group / real
+-- linked OWNER. The `x-cron-secret` header added below is the REAL
+-- access control: each function verifies it via
+-- public.verify_cron_secret() (see
+-- 2026-09-19-04-line-push-cron-secret-verify-fn.sql) BEFORE running
+-- any business-logic query or LINE push, and rejects with 401
+-- immediately if it's missing or wrong. The Authorization header is
+-- kept only because it's still needed to pass verify_jwt itself.
+--
 -- Auth secret: this project has no prior cron/net.http_post convention
 -- to follow (grepped every migration for cron.schedule/vault.create_secret/
 -- net.http_post -- zero matches before this file). The brief's own
@@ -46,6 +61,7 @@ select cron.schedule(
     url := 'https://yyzbgdmgyvvypfcjuhtr.supabase.co/functions/v1/line-push-daily-assignments',
     headers := jsonb_build_object(
       'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'line_push_cron_auth_key'),
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'line_push_cron_shared_secret'),
       'Content-Type', 'application/json'
     )
   )
@@ -59,6 +75,7 @@ select cron.schedule(
     url := 'https://yyzbgdmgyvvypfcjuhtr.supabase.co/functions/v1/line-push-quotation-followups',
     headers := jsonb_build_object(
       'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'line_push_cron_auth_key'),
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'line_push_cron_shared_secret'),
       'Content-Type', 'application/json'
     )
   )
@@ -72,6 +89,7 @@ select cron.schedule(
     url := 'https://yyzbgdmgyvvypfcjuhtr.supabase.co/functions/v1/line-push-cheque-reminders',
     headers := jsonb_build_object(
       'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'line_push_cron_auth_key'),
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'line_push_cron_shared_secret'),
       'Content-Type', 'application/json'
     )
   )
@@ -85,6 +103,7 @@ select cron.schedule(
     url := 'https://yyzbgdmgyvvypfcjuhtr.supabase.co/functions/v1/line-push-invoice-due',
     headers := jsonb_build_object(
       'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'line_push_cron_auth_key'),
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'line_push_cron_shared_secret'),
       'Content-Type', 'application/json'
     )
   )
