@@ -43,7 +43,7 @@
 -- a generic key/value store can't do that without scanning every
 -- tenant's blob. Everything else this feature needs that's just a
 -- per-tenant preference (not looked up from a webhook) lives in the
--- existing app_settings table instead -- see Task 6.
+-- existing app_settings table instead -- see Task 7.
 
 CREATE TABLE line_settings (
   tenant_id             UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
@@ -624,7 +624,7 @@ twice.
 Loop every tenant with `line_settings`. Read that tenant's
 `cheque_reminder_days` app_setting (same key the existing in-app
 Dashboard alert already uses — reuse it, don't add a second threshold
-setting) and its `cheque_reminder_line_enabled` app_setting (Task 6);
+setting) and its `cheque_reminder_line_enabled` app_setting (Task 7);
 skip tenants where that's not explicitly enabled. For enabled tenants,
 fetch `cheques` where `status != 'cashed'`, run the ported
 `isChequeReminderDue`, and push to every OWNER with a linked
@@ -722,7 +722,7 @@ git commit -m "feat: scheduled LINE pushes for assignments, quotation follow-ups
 - Modify: `src/pages/Quotations.jsx` (around line 1348's `handleSetStatus` and line 1572's "📤 ส่ง" button — re-read both before editing, this plan's line numbers may have drifted)
 
 **Interfaces:**
-- Consumes: `useAppSetting('quotation_followup_default_days', '7')` (Task 6 must land first, or this task stubs the same default inline as `'7'` and Task 6 wires the real setting in — either order works since `useAppSetting` degrades to its fallback value when the key doesn't exist yet).
+- Consumes: `useAppSetting('quotation_followup_default_days', '7')` (Task 7 must land first, or this task stubs the same default inline as `'7'` and Task 7 wires the real setting in — either order works since `useAppSetting` degrades to its fallback value when the key doesn't exist yet).
 
 **Design notes:** the existing "📤 ส่ง" button calls
 `handleSetStatus(qt.id, 'sent')` directly. This task inserts a small
@@ -818,7 +818,7 @@ tested pure logic from Task 2).
 - [ ] **Step 6: Live-verify**
 
 Send a test quotation, confirm the popup appears with the tenant
-default (or `7` if Task 6 hasn't landed yet) pre-filled, confirm
+default (or `7` if Task 7 hasn't landed yet) pre-filled, confirm
 changing the number and confirming saves `follow_up_after_days`
 correctly (check via `execute_sql`), confirm "ไม่ต้องเตือน" saves it as
 `null`, confirm `created_by`/`sent_at` are populated correctly either
@@ -833,133 +833,243 @@ git commit -m "feat: follow-up reminder popup on quotation send"
 
 ---
 
-### Task 6: Settings — LINE connection, per-user linking, preferences
+### Task 6: Settings → ทั่วไป — personal LINE account linking
+
+**Revised scope (mid-plan restructure — see the "Nav restructure" note
+at the end of this task):** originally this task also carried the
+OWNER-only channel-config card and the cheque/quotation reminder
+toggles. Those moved to Task 7's new dedicated OWNER/ADMIN page instead,
+so a WORKER opening this page never sees OWNER-only channel secrets
+anywhere near their own "connect my LINE" action. This task is now
+small: one any-role card.
 
 **Files:**
 - Modify: `src/pages/Settings.jsx`
 
 **Interfaces:**
-- Produces: `app_settings` keys `quotation_followup_default_days`
-  (default `'7'`) and `cheque_reminder_line_enabled` (`'true'`/`'false'`
-  string, matching this file's existing boolean-as-string convention —
-  check `cheque_reminder_days`'s own neighbor settings for the exact
-  existing convention before inventing a different one).
+- Consumes: nothing new from other tasks.
+- Produces: nothing other tasks consume (Task 7's page is fully
+  independent of this one).
 
-**Design notes:** three additions to this one file — an OWNER-only card
-for the tenant's LINE OA connection, an any-role card for a user's own
-LINE linking, and two small fields folded into the existing cheque-
-reminder card. Read the file's existing card structure (the
-`แจ้งเตือนเช็คใกล้ครบกำหนด` card around line 438 the plan already found)
-before adding — match its exact layout/save-button pattern, don't
-introduce a new settings-card pattern for these three additions.
+**Design notes:** `Settings.jsx` already mixes tenant-wide OWNER-only
+cards with role-agnostic personal cards on one page, split entirely by
+inline `isAtLeast()` checks — not by file separation (confirmed live:
+the `settings` tab has `minRole: 'WORKER'` in `src/App.jsx`, reachable
+by every role, with a comment at `Settings.jsx` lines 49-59 explicitly
+documenting this: "WORKER sees only the password card, ADMIN
+additionally sees the signature card, OWNER sees the rest of the page
+unchanged"). The existing "👤 บัญชีผู้ใช้" card (lines 391-398) is the
+established precedent for a card with **no role gate at all** — any
+role sees it:
 
-- [ ] **Step 1: OWNER-only "🔌 LINE" card**
+```jsx
+<div className="card" ...>
+  <h2>👤 บัญชีผู้ใช้</h2>
+  <p>จัดการรหัสผ่านสำหรับเข้าสู่ระบบของคุณ</p>
+  <button className="btn btn-ghost" onClick={onOpenChangePassword}>🔑 เปลี่ยนรหัสผ่าน</button>
+</div>
+```
 
-Fields: `channel_id`, `channel_access_token`, `channel_secret` (mask
-this one, e.g. `type="password"`, same as any other secret field
-elsewhere in this file), `crew_group_id`. On save: upsert into
-`line_settings` keyed by `tenant_id` (the table's own PK, per Task 1 —
-`onConflict: 'tenant_id'`). Gate the whole card on OWNER role, matching
-this file's existing pattern for other OWNER-only cards (check how an
-existing OWNER-only card in this file checks the role before rendering,
-and use the identical check).
+Add the new LINE-linking card immediately alongside this one, with the
+same "no gate" treatment.
 
-Also add, in the same card, a `quotation_followup_default_days` number
-input (default `7`) — this is the tenant default Task 5's send-time
-popup pre-fills (`useAppSetting('quotation_followup_default_days', '7')`).
-Save it via `saveAppSetting('quotation_followup_default_days', value)`,
-the same `app_settings`-backed pattern the existing
-`cheque_reminder_days` field already uses in this file (reuse that
-exact save-button/handler shape for this field, not a new one) — do not
-put this field inside `line_settings`; it is a soft per-tenant
-preference like `cheque_reminder_days` already is, not LINE channel
-identity/secrets.
+- [ ] **Step 1: Add the "🔗 เชื่อมต่อ LINE ของฉัน" card**
 
-- [ ] **Step 2: Any-role "เชื่อมต่อ LINE ของฉัน" card**
+Add a new `<div className="card">` block right next to the "👤
+บัญชีผู้ใช้" card found above (same section of the file, same visual
+weight, no `isAtLeast` gate — every role from WORKER up sees it).
 
-On mount, if the current user's own `user_roles` row has no
-`line_user_id` yet, show a "🔗 สร้างรหัสเชื่อมต่อ" button; clicking it
-generates a random code (e.g. 6 alphanumeric characters — collisions are
-already prevented by Task 1's unique index on `line_link_code`, so a
-generate-and-retry-on-conflict loop is enough, no need for a
-cryptographically exotic generator), saves it to that user's own
-`user_roles.line_link_code` row, and displays it with the instruction
-"ส่งข้อความนี้หาบัญชี LINE ของบริษัทเพื่อเชื่อมต่อ" (send this message
-to the company's LINE account to connect). If already linked, show
-"✅ เชื่อมต่อแล้ว" with an "ยกเลิกการเชื่อมต่อ" (unlink) option that
-clears `line_user_id`.
+State: on mount, read the current user's own `user_roles` row (however
+this file already resolves "my own user_roles row" elsewhere — check
+the existing pattern used by the personal cards already in this file,
+e.g. how the "👤 บัญชีผู้ใช้"/signature cards identify "me" via
+`session.user.email` joined against `user_roles.user_email`; reuse that
+exact lookup, don't introduce a second way to find "my own row").
 
-- [ ] **Step 3: Extend the existing cheque-reminder card**
+- If `line_user_id` is not set: show a "🔗 สร้างรหัสเชื่อมต่อ" button.
+  Clicking it generates a random 6-character alphanumeric code (collisions
+  are already prevented by Task 1's unique index on `line_link_code`, so
+  a generate-and-retry-on-conflict loop is enough — no need for a
+  cryptographically exotic generator), saves it to that user's own
+  `user_roles.line_link_code` via a plain `update(...).eq('id', myRoleId)`,
+  and displays the code with the instruction "ส่งข้อความนี้หาบัญชี LINE
+  ของบริษัทเพื่อเชื่อมต่อ" (send this message to the company's LINE
+  account to connect).
+- If `line_user_id` IS set: show "✅ เชื่อมต่อแล้ว" with a
+  "ยกเลิกการเชื่อมต่อ" (unlink) button that clears `line_user_id` (and
+  `line_link_code`, in case one was left over) via `update(...)`.
 
-Add a toggle next to the existing `cheque_reminder_days` input:
-"ส่งแจ้งเตือนไป LINE ด้วย" bound to the new
-`cheque_reminder_line_enabled` app_setting, saved the same way the
-existing `chequeReminderDays` value already saves in this same card
-(reuse the exact save handler pattern, just add the one new field to
-its payload).
+- [ ] **Step 2: Build, test, live-verify**
 
-- [ ] **Step 4: Build, test, live-verify**
+`npm run build && npm test -- --run`. Live-verify: as a WORKER-role test
+account (or by temporarily checking the rendered page against a WORKER
+session), confirm the card is visible and generates/displays a code;
+confirm clicking again after linking shows the "เชื่อมต่อแล้ว" state
+instead. A full round-trip test (actually DMing the code to a real LINE
+OA) is optional here since Tasks 1-3 already proved this exact DM-linking
+mechanism live against a real, connected LINE Official Account — this
+step only needs to confirm the UI reads/writes the right `user_roles`
+fields, not re-prove the webhook side.
 
-`npm run build && npm test -- --run`. Live-verify: an OWNER can save
-LINE settings and see them persist on reload; any role can generate a
-linking code, see it displayed, and (paired with Task 3's `line-webhook`
-already being live) actually complete the link by DMing the code to a
-real test LINE OA if one is available for testing — if no real LINE OA
-is available to test against at this point in implementation, verify
-the code-generation/storage half only and note in the report that the
-full round-trip needs a real LINE OA credential to verify end-to-end.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
 git add src/pages/Settings.jsx
-git commit -m "feat: LINE connection settings + per-user account linking"
+git commit -m "feat: personal LINE account linking in Settings"
 ```
 
 ---
 
-### Task 7: Admin UI — resolve unrecognized crew senders
+### Task 7: การสื่อสาร — new OWNER/ADMIN-only Communication tab
+
+**Why a new top-level tab, not a Settings card (mid-plan restructure):**
+originally this content was split between a Settings card (channel
+config + reminder toggles) and a Workers-page addition (unresolved
+senders). Live review of a UI mockup surfaced that bundling OWNER-only
+channel secrets into the same page WORKERs already need to visit (for
+their own "connect my LINE" card, Task 6) was confusing and felt
+insecure even though the fields were correctly role-gated. Resolution:
+everything OWNER/ADMIN-facing about LINE moves to its own dedicated,
+OWNER-gated top-level tab; the only thing that stays in Settings is
+Task 6's any-role personal-linking card.
 
 **Files:**
-- Modify: `src/pages/HR.jsx` (or wherever this codebase's existing
-  Workers management UI lives — confirm the exact file before starting;
-  this plan's earlier tasks reference `src/pages/HR.jsx` for leave-type
-  constants but the actual Workers list/edit UI may live in a different
-  file under `src/pages/` — find it first, don't assume)
+- Create: `src/pages/LineComms.jsx`
+- Modify: `src/App.jsx` (nav entry + lazy import + `renderPage` switch)
+- Modify: `src/lib/permissions.js` (label + default permission entry)
 
 **Interfaces:**
-- Consumes: `line_unlinked_senders` (Task 1), `workers` (existing).
+- Consumes: `line_settings`, `line_unlinked_senders`, `workers` (Task
+  1), `app_settings` via `useAppSetting`/`saveAppSetting` (existing
+  hook).
+- Produces: `app_settings` keys `quotation_followup_default_days`
+  (default `'7'`, consumed by Task 5's popup) and
+  `cheque_reminder_line_enabled` (`'true'`/`'false'` string — check
+  `Settings.jsx`'s existing `cheque_reminder_days` neighbor setting for
+  this schema's exact boolean-as-string convention before writing a new
+  one).
 
-**Design notes:** a small addition, not a new page. When
-`line_unlinked_senders` has any unresolved rows (`linked_worker_id IS
-NULL`) for the current tenant, show a compact "📱 พบผู้ส่งข้อความ LINE
-ที่ยังไม่เชื่อมต่อ (N)" banner or section wherever the Workers list
-already renders, listing each unresolved sender's `display_name`
-(or a fallback like "ไม่ทราบชื่อ" if LINE didn't supply one) with a
-worker picker (reuse this codebase's existing worker-select component —
-find and reuse it, e.g. if `QuickAddSelect`/`SearchableSelect` already
-used elsewhere in this file for a similar "pick an existing worker"
-input). Selecting a worker sets `workers.line_user_id =
+**Design notes — nav wiring (confirmed live against the real files):**
+`src/App.jsx` defines top-level navigation as a config array, `TABS`
+(lines 50-90) — either a plain `{id, label, minRole, module}` entry or a
+group `{label, children: [...]}`. Visibility is driven entirely by
+`minRole` (`'WORKER'|'ADMIN'|'OWNER'`) through `passesGates()` (lines
+253-257) and `visibleTabs` (lines 380-382) — an entry whose gate fails
+simply never renders, no per-page redirect logic needed. There's already
+a working precedent for an OWNER-only top-level entry:
+`{ id: 'user_management', label: '👤 ผู้ใช้งาน', minRole: 'OWNER', module: null }`
+inside the `⚙️ ตั้งค่า` group. Follow that exact shape.
+
+- [ ] **Step 1: Register the new tab in `src/App.jsx`**
+
+Add a new standalone top-level entry to `TABS` (not nested under the
+`⚙️ ตั้งค่า` group — this is deliberately a peer of ตั้งค่า, not a child
+of it, since it's a distinct destination for a distinct audience):
+
+```js
+{ id: 'line_comms', label: '📱 การสื่อสาร', minRole: 'OWNER', module: null },
+```
+
+Place it near the other standalone top-level entries (not inside any
+`children: [...]` group).
+
+Register the lazy import alongside the file's other page imports (in
+the lazy-import block, ~lines 25-48 — match the exact `React.lazy(() =>
+import('./pages/XYZ.jsx'))` shape already used there):
+
+```js
+const LineComms = lazy(() => import('./pages/LineComms.jsx'))
+```
+
+Add a `case` to `renderPage()`'s switch (lines 337-364, matching the
+existing cases' shape — check what props neighboring cases pass, e.g.
+`session`, and pass the same ones this new page needs):
+
+```js
+case 'line_comms': return <LineComms session={session} />
+```
+
+- [ ] **Step 2: Register the page in `src/lib/permissions.js`**
+
+Add a `PAGE_LABELS` entry and a `DEFAULT_PERMISSIONS` entry for
+`line_comms` (lines 14-118 — match the exact shape of the
+`user_management` entry already there, since both are OWNER-only
+top-level pages with the same visibility model) so this new page shows
+up correctly in the OWNER's role-permission matrix UI (the same one
+Settings already exposes for every other page).
+
+- [ ] **Step 3: Write `src/pages/LineComms.jsx`**
+
+A single page, three cards, reusing this codebase's existing `card`
+class and save-button conventions (match `Settings.jsx`'s own card
+markup shape exactly — same classNames, same button styles — since this
+page is visually a sibling of Settings, just relocated):
+
+**Card 1 — "🔌 LINE"** (channel connection):
+Fields: `channel_id`, `channel_access_token` (masked, `type="password"`
+with a show/hide toggle button — match whatever masked-field pattern
+already exists elsewhere in this codebase, e.g. `Settings.jsx`'s own
+password-related fields if any exist, otherwise a plain toggle), `channel_secret`
+(masked, same treatment), `crew_group_id`. On save: upsert into
+`line_settings` keyed by `tenant_id` (`onConflict: 'tenant_id'`). This
+whole page is already OWNER-gated at the nav level (Step 1), so no
+additional inline role check is needed inside the component itself —
+unlike `Settings.jsx`'s pattern of one page with mixed inline gates,
+this page is 100% single-audience.
+
+Also on this same card (or immediately below it, your call on visual
+grouping — keep it in the same card if it fits without crowding): a
+`quotation_followup_default_days` number input (default `7`), saved via
+`saveAppSetting('quotation_followup_default_days', value)`.
+
+**Card 2 — "🏦 เช็คใกล้ครบกำหนด → LINE"**:
+A single toggle bound to the new `cheque_reminder_line_enabled`
+app_setting, saved via `saveAppSetting(...)`. Read (but do NOT
+duplicate-edit) the existing `cheque_reminder_days` value from
+`app_settings` (via `useAppSetting('cheque_reminder_days', '3')`) and
+show it as plain read-only text: "อ้างอิงเกณฑ์ X วันจากตั้งค่า → ทั่วไป"
+(the threshold field itself stays owned by `Settings.jsx`, unrelated to
+LINE and pre-existing — this card only adds the LINE-push toggle, not a
+second copy of the threshold input).
+
+**Card 3 — "📱 ผู้ส่งข้อความ LINE ที่ยังไม่เชื่อมต่อ"** (moved from the
+plan's original Task 7): when `line_unlinked_senders` has any
+unresolved rows (`linked_worker_id IS NULL`) for the current tenant,
+show each one — `display_name` (fall back to "ไม่ทราบชื่อ" if null,
+matching the mockup) — with a worker-picker `<select>` (reuse this
+codebase's existing worker-list-fetching pattern, e.g. however
+`Settings.jsx` or `HR.jsx` already fetches a plain list of `workers` for
+a dropdown — don't introduce a new fetch pattern) and a "เชื่อมต่อ"
+button. Selecting a worker and confirming sets `workers.line_user_id =
 line_unlinked_senders.line_user_id` and
-`line_unlinked_senders.linked_worker_id` (mark it resolved, keep the
-row for history rather than deleting it).
+`line_unlinked_senders.linked_worker_id` (mark resolved, keep the row
+for history — don't delete it). If there are zero unresolved rows,
+don't render this card at all (not even an empty-state — Card 1/2 are
+always-relevant configuration, Card 3 is conditional).
 
-- [ ] **Step 1: Find the real Workers management file and its existing worker-picker component**
+- [ ] **Step 4: Build, test, live-verify**
 
-- [ ] **Step 2: Add the unresolved-senders section and resolve action**
+`npm run build && npm test -- --run`. Live-verify as an OWNER session:
+the new "📱 การสื่อสาร" tab appears in the nav, Card 1 saves and persists
+real `line_settings` fields correctly (there is already a REAL row for
+this exact tenant from the live proof done earlier in this plan's
+execution — be careful not to corrupt `channel_access_token`/
+`channel_secret`/`bot_user_id`/`crew_group_id` on that real row; read it
+first, confirm the form round-trips it correctly, and if you must write
+test values, use a different tenant, never overwrite the real
+production row's real credentials), Card 2's toggle saves and its
+read-only reference text shows the right threshold value, Card 3 (insert
+one throwaway `line_unlinked_senders` test row via `execute_sql` against
+a disposable/different tenant or with a clearly fake `line_user_id` you
+clean up immediately after) resolves correctly and disappears from the
+list. Also confirm as a WORKER or ADMIN session that the tab itself does
+not appear in the nav at all.
 
-- [ ] **Step 3: Build, test, live-verify**
-
-`npm run build && npm test -- --run`. Live-verify by inserting a test
-`line_unlinked_senders` row directly via `execute_sql`, confirming it
-appears in the UI, resolving it to a real test worker, confirming
-`workers.line_user_id` updates correctly. Clean up test data afterward.
-
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add <the real file found in Step 1>
-git commit -m "feat: admin UI to link unrecognized LINE senders to workers"
+git add src/pages/LineComms.jsx src/App.jsx src/lib/permissions.js
+git commit -m "feat: dedicated OWNER Communication tab for LINE channel config, office reminders, unresolved senders"
 ```
 
 ---
