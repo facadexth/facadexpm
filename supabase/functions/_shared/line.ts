@@ -32,3 +32,11 @@ export async function sendLineReply(accessToken: string, replyToken: string, tex
   })
   return { ok: res.ok, status: res.status }
 }
+
+export async function linkRichMenuToUser(accessToken: string, lineUserId: string, richMenuId: string): Promise<{ ok: boolean; status: number }> {
+  const res = await fetch(`https://api.line.me/v2/bot/user/${lineUserId}/richmenu/${richMenuId}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  return { ok: res.ok, status: res.status }
+}
