@@ -1074,6 +1074,557 @@ git commit -m "feat: dedicated OWNER Communication tab for LINE channel config, 
 
 ---
 
+### Task 8: Crew Rich Menu — button-driven actions via 1:1 DM
+
+**Added mid-plan, after Tasks 1-4 shipped and were live-proven against a
+real LINE OA.** The user asked for crew actions (แจ้งปัญหา/ขอเบิกของ/ขอลา)
+to be button-driven instead of typed. **Real LINE platform constraint,
+confirmed before this task was written:** Rich Menus only render in a
+1:1 chat between a user and the bot — they never appear inside a group
+chat. Resolution (explicit user decision, not a plan default): the crew
+group stays exactly as-is for typed keywords (Tasks 1-4's existing
+behavior, unchanged); this task ADDS a second, parallel path — a worker
+can also DM the bot directly and use Rich Menu buttons there. Both paths
+lead to the same three outcomes (`line_issue_reports` /
+`line_issue_reports` tagged / `worker_assignments` leave row); neither
+replaces the other.
+
+**Design — two-step buttons (explicit user choice over one-tap):**
+tapping any of the three buttons doesn't submit anything by itself — it
+sets a short-lived "pending action" for that worker and asks them to
+type the detail; their very next DM is then treated as that action's
+body (issue description, material list, or leave note), exactly the way
+today's group-typed messages already carry a description. This applies
+uniformly to all three actions, including ลา (the user picked the
+uniform two-step design over a leave-is-one-tap-only hybrid, since
+that's simpler to build as one mechanism).
+
+**Files:**
+- Create: `supabase/migrations/2026-09-19-07-line-pending-actions.sql`
+- Create: `scripts/generate-line-richmenu.py`
+- Modify: `supabase/functions/line-webhook/index.ts` (this is the file
+  Task 3 built and two fix rounds already touched — re-read it fresh
+  before starting; the version reproduced below matches its state as of
+  commit `4cef7c8`, but confirm nothing has changed since)
+- Modify: `supabase/functions/_shared/line.ts` (add one function,
+  `linkRichMenuToUser` — this file is also used unchanged by the four
+  `line-push-*` functions from Task 4; only ADD to it, don't restructure
+  anything those functions rely on)
+
+**Scoping constraint (added after Task 8 was first drafted):** the
+user confirmed live this tenant's real LINE OA is also used for
+sales/customer info (a Google-Script-driven outbound automation already
+runs on it) — not internal-only. The crew Rich Menu must therefore
+NEVER be set as this bot's default menu for all users (that would put
+crew buttons in front of real customers). LINE supports linking a Rich
+Menu to one specific user id instead of setting a bot-wide default —
+this task uses that per-user mechanism exclusively; the "set as default
+for all users" endpoint is never called anywhere in this task.
+
+**Interfaces:**
+- Consumes: `sendLineReply` from `_shared/line.ts` (unchanged); the real
+  channel_access_token on the real, live-connected tenant's
+  `line_settings` row (needed only for the one-time Rich Menu
+  creation/upload — NOT touched by any redeploy of the webhook itself).
+- Produces: `line_pending_actions` table, consumed only by this same
+  function (no other task reads it).
+
+**Global constraint reminder specific to this task:** the real tenant
+(`1b9affc4-2136-4ed1-b168-a36e6624e743`) has a real, live LINE OA with
+real crew members already capable of messaging it. Creating/uploading a
+Rich Menu and setting it as the default menu for all users of this bot
+is a REAL, user-visible change the moment it's done — every real friend
+of this real bot will see the new menu immediately. This is intended
+(the user asked for this feature), but test the webhook logic (postback
+handling, pending-action consumption) via hand-signed test requests
+FIRST, the same way Task 3 did, before doing the one-time live Rich Menu
+upload — don't upload the real menu until the code behind it is already
+proven correct.
+
+- [ ] **Step 1: Migration — `line_pending_actions`**
+
+```sql
+-- supabase/migrations/2026-09-19-07-line-pending-actions.sql
+--
+-- Tracks a crew member's in-progress two-step Rich Menu action (tap a
+-- button -> we ask for detail -> their next DM is the detail). One row
+-- per worker at a time (a second tap before finishing the first just
+-- overwrites it, upsert-style) with a short expiry so a stray unrelated
+-- DM days later can never get misread as an old action's detail.
+
+CREATE TABLE line_pending_actions (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id   UUID NOT NULL,
+  worker_id   UUID NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
+  action      TEXT NOT NULL CHECK (action IN ('issue_report','material_request','leave')),
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  expires_at  TIMESTAMPTZ NOT NULL
+);
+CREATE UNIQUE INDEX idx_line_pending_actions_worker ON line_pending_actions(worker_id);
+
+ALTER TABLE line_pending_actions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY admin_reads ON line_pending_actions FOR SELECT TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id());
+-- No client insert/update/delete policy -- only ever written by
+-- line-webhook via its service-role client, same as line_issue_reports.
+
+-- This tenant's real LINE OA is ALSO used for sales/customer info (user
+-- confirmed live) -- the crew Rich Menu must NOT become this bot's
+-- default menu for every friend, or real customers would see "แจ้ง
+-- ปัญหา/ขอเบิกของ/ขอลา" buttons. LINE supports linking a Rich Menu to a
+-- SPECIFIC user id instead of setting a bot-wide default -- this column
+-- holds the one crew menu's id (set once, in Step 6) so the webhook can
+-- link it to individual workers as they're recognized, rather than
+-- ever calling the "set as default for all users" endpoint.
+ALTER TABLE line_settings ADD COLUMN crew_rich_menu_id TEXT;
+
+-- Tracks whether a given worker has already had the crew Rich Menu
+-- linked to their personal LINE account, so the webhook doesn't
+-- re-call LINE's per-user-link API on every single message (idempotent
+-- either way, but no reason to pay the extra HTTP round-trip
+-- repeatedly).
+ALTER TABLE workers ADD COLUMN line_rich_menu_linked_at TIMESTAMPTZ;
+```
+
+Apply via `mcp__plugin_supabase_supabase__apply_migration`, project_id
+`yyzbgdmgyvvypfcjuhtr`. Verify the table, index, RLS policy, and both
+new columns exist.
+
+- [ ] **Step 2: Add `linkRichMenuToUser` to `_shared/line.ts`**
+
+Add this one function to the existing file (alongside
+`verifyLineSignature`/`sendLinePush`/`sendLineReply` — don't change
+those three at all):
+
+```ts
+export async function linkRichMenuToUser(accessToken: string, lineUserId: string, richMenuId: string): Promise<{ ok: boolean; status: number }> {
+  const res = await fetch(`https://api.line.me/v2/bot/user/${lineUserId}/richmenu/${richMenuId}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  return { ok: res.ok, status: res.status }
+}
+```
+
+This links a Rich Menu to ONE specific user — deliberately not
+`/v2/bot/user/all/richmenu/{id}` (the "set as default for everyone"
+endpoint), which this task never calls anywhere, since this tenant's
+real LINE OA is also used for sales/customer info and must never show
+crew buttons to a customer.
+
+- [ ] **Step 3: Rewrite `line-webhook/index.ts`**
+
+Re-read the file fresh first (it may have drifted from what's shown
+here if another task touched it since). Apply this restructuring:
+extract the three existing action bodies (issue report / material
+request / leave) into one shared `handleAction` function so both the
+existing group-keyword path and the new DM-pending-action path call the
+identical logic instead of duplicating it; add postback handling; add
+DM-side pending-action consumption ahead of the existing linking-code
+check reuse.
+
+```ts
+// supabase/functions/line-webhook/index.ts
+// Inbound LINE webhook -- receives every event for every tenant's LINE
+// OA on one shared URL, routes by the webhook payload's own
+// `destination` field (the bot's own internal LINE userId, from LINE's
+// GET /v2/bot/info -- NOT the numeric Channel ID shown in LINE's
+// console) against line_settings.bot_user_id. verify_jwt is OFF for
+// this function (LINE itself calls it, unauthenticated by Supabase's
+// own JWT check) -- this function's signature verification against
+// line_settings.channel_secret IS the access control, same pattern
+// sign-link already established for its own public/unauthenticated
+// endpoint.
+//
+// Two parallel paths into the same three crew actions (see
+// docs/superpowers/specs/2026-09-19-line-notifications-design.md and
+// this plan's Task 8): typed keywords in the shared crew group
+// (original design), and Rich Menu buttons in a 1:1 DM with the bot
+// (Task 8 addition -- LINE Rich Menus cannot render inside a group
+// chat, so this had to be a second path, not a replacement). Both
+// funnel into the same handleAction() below.
+//
+// Keyword sets are tuned to avoid real collisions found in review (bare
+// "ปัญหา" matches "ไม่มีปัญหา" = "no problem"; bare "ลา" matches ตลาด/
+// ปลา/ฉลาด):
+//   "ปัญหา" minus negations -> line_issue_reports row
+//   "อยากเบิก"/"ขอเบิก"      -> see note below, NOT a purchase_orders
+//                                 row -- the schema can't support that
+//                                 yet (see comment at that branch)
+//   "ลากิจ"/"ลาป่วย"/"ขอลา"/"อยากลา" -> worker_assignments row (leave_personal)
+// plus a bare linking code sent as a DM, Track B's one-time OWNER/ADMIN
+// account-linking flow (Settings -> ทั่วไป issues the code).
+import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { verifyLineSignature, sendLineReply, linkRichMenuToUser } from '../_shared/line.ts'
+
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+}
+
+// Bangkok has no DST -- a fixed +7h offset from UTC is always correct.
+function bangkokToday(): string {
+  return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
+// This tenant's real LINE OA is ALSO used for sales/customer info -- the
+// crew Rich Menu is NEVER set as the bot's default for everyone (that
+// would put crew buttons in front of real customers). Instead it's
+// linked per-user, lazily, the first time a recognized worker is seen
+// in a 1:1 DM (the only context Rich Menus render in at all). Idempotent
+// on LINE's side either way, but line_rich_menu_linked_at avoids the
+// repeat API call on every subsequent message from an already-linked worker.
+async function ensureCrewRichMenuLinked(
+  worker: { id: string; line_user_id: string | null; line_rich_menu_linked_at: string | null },
+  settings: { channel_access_token: string; crew_rich_menu_id: string | null },
+) {
+  if (!settings.crew_rich_menu_id || worker.line_rich_menu_linked_at || !worker.line_user_id) return
+  const { ok } = await linkRichMenuToUser(settings.channel_access_token, worker.line_user_id, settings.crew_rich_menu_id)
+  if (ok) {
+    const { error } = await admin.from('workers').update({ line_rich_menu_linked_at: new Date().toISOString() }).eq('id', worker.id)
+    if (error) console.error('workers.line_rich_menu_linked_at update failed', error)
+  } else {
+    console.error('linkRichMenuToUser failed for worker', worker.id)
+  }
+}
+
+type ActionType = 'issue_report' | 'material_request' | 'leave'
+
+function promptForAction(action: ActionType): string {
+  if (action === 'issue_report') return '🚧 บอกรายละเอียดปัญหาได้เลยครับ'
+  if (action === 'material_request') return '📦 บอกรายการของที่ต้องการเบิกได้เลยครับ'
+  return '🏖️ บอกรายละเอียดวันที่ลาได้เลยครับ'
+}
+
+// Shared by both the group-keyword path and the DM Rich-Menu path --
+// exactly the three action bodies Task 3 originally wrote inline,
+// unchanged in behavior, just callable from two call sites now.
+async function handleAction(
+  action: ActionType,
+  worker: { id: string; name: string },
+  text: string,
+  settings: { tenant_id: string; channel_access_token: string },
+  replyToken: string,
+) {
+  if (action === 'issue_report') {
+    const { error } = await admin.from('line_issue_reports').insert({ tenant_id: settings.tenant_id, worker_id: worker.id, message: text })
+    if (error) {
+      console.error('line_issue_reports insert failed', error)
+      await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+    } else {
+      await sendLineReply(settings.channel_access_token, replyToken, '📩 รับแจ้งปัญหาแล้ว แอดมินจะติดตามให้')
+    }
+  } else if (action === 'material_request') {
+    // NOT a purchase_orders insert -- confirmed against the live schema
+    // (2026-09-19): purchase_orders_status_check only allows
+    // ('ordered','received','cancelled'), there is no 'draft' value, and
+    // site_id/supplier_id/category_id are all NOT NULL FKs (RESTRICT)
+    // that a bare crew text message has no way to supply. See Task 3's
+    // original comment for the full rationale -- unchanged here.
+    const { error } = await admin.from('line_issue_reports').insert({ tenant_id: settings.tenant_id, worker_id: worker.id, message: `[ขอเบิกของ] ${text}` })
+    if (error) {
+      console.error('line_issue_reports insert failed (material request)', error)
+      await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+    } else {
+      await sendLineReply(settings.channel_access_token, replyToken, '📦 รับคำขอเบิกของแล้ว แอดมินจะตรวจสอบและออกใบสั่งซื้อให้')
+    }
+  } else {
+    const { error } = await admin.from('worker_assignments').insert({
+      tenant_id: settings.tenant_id,
+      worker_id: worker.id,
+      date: bangkokToday(),
+      shift: 'morning',
+      type: 'leave_personal',
+      site_id: null,
+      notes: text,
+    })
+    if (error) {
+      await sendLineReply(settings.channel_access_token, replyToken, '⚠️ วันนี้มีคิวงานอยู่แล้ว กรุณาติดต่อแอดมินโดยตรง')
+    } else {
+      await sendLineReply(settings.channel_access_token, replyToken, '🏖️ รับคำขอลาแล้ว แอดมินจะตรวจสอบให้')
+    }
+  }
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
+
+  const rawBody = await req.text()
+  let payload: Record<string, unknown>
+  try {
+    payload = JSON.parse(rawBody)
+  } catch {
+    return json({ error: 'Invalid JSON body' }, 400)
+  }
+  const destination = payload.destination as string | undefined
+  if (!destination) return json({ error: 'destination required' }, 400)
+
+  const { data: settings } = await admin.from('line_settings').select('*').eq('bot_user_id', destination).maybeSingle()
+  if (!settings) return json({ error: 'unknown channel' }, 404)
+
+  const signatureOk = await verifyLineSignature(settings.channel_secret, rawBody, req.headers.get('x-line-signature'))
+  if (!signatureOk) return json({ error: 'invalid signature' }, 401)
+
+  const events = (payload.events as Array<Record<string, any>>) ?? []
+  for (const event of events) {
+    const lineUserId: string | undefined = event.source?.userId
+    const sourceGroupId: string | undefined = event.source?.groupId
+    if (!lineUserId) continue
+
+    // Rich Menu button tap -- only ever fires from a 1:1 DM (LINE
+    // doesn't render Rich Menus inside groups, so this branch can't be
+    // reached from a group event in practice, but the code doesn't need
+    // to assume that -- it just resolves the worker and proceeds).
+    if (event.type === 'postback') {
+      const action = new URLSearchParams(event.postback?.data ?? '').get('action') as ActionType | null
+      if (action !== 'issue_report' && action !== 'material_request' && action !== 'leave') continue
+      const { data: worker } = await admin.from('workers').select('id, name, line_user_id, line_rich_menu_linked_at').eq('line_user_id', lineUserId).eq('tenant_id', settings.tenant_id).maybeSingle()
+      if (!worker) continue // a Rich Menu tap from someone not a recognized worker -- nothing useful to do without a group context to capture them the way line_unlinked_senders does
+      await ensureCrewRichMenuLinked(worker, settings)
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
+      const { error } = await admin.from('line_pending_actions').upsert(
+        { tenant_id: settings.tenant_id, worker_id: worker.id, action, expires_at: expiresAt },
+        { onConflict: 'worker_id' }
+      )
+      if (error) console.error('line_pending_actions upsert failed', error)
+      await sendLineReply(settings.channel_access_token, event.replyToken, promptForAction(action))
+      continue
+    }
+
+    if (event.type !== 'message' || event.message?.type !== 'text') continue
+    const text: string = event.message.text
+
+    if (!sourceGroupId) {
+      // DM -- either (a) an OWNER/ADMIN's bare linking code (existing
+      // Track B flow, unchanged), or (b) a worker's reply to a pending
+      // Rich Menu action (Task 8 addition). Linking-code match is
+      // checked first since it's a narrower, more specific match.
+      const { data: pendingCode } = await admin.from('user_roles').select('id').eq('tenant_id', settings.tenant_id).eq('line_link_code', text.trim()).maybeSingle()
+      if (pendingCode) {
+        const { error } = await admin.from('user_roles').update({ line_user_id: lineUserId, line_link_code: null }).eq('id', pendingCode.id)
+        if (error) {
+          console.error('user_roles line-link update failed', error)
+          await sendLineReply(settings.channel_access_token, event.replyToken, '⚠️ เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่หรือแจ้งแอดมิน')
+        } else {
+          await sendLineReply(settings.channel_access_token, event.replyToken, '✅ เชื่อมต่อ LINE เรียบร้อยแล้ว')
+        }
+        continue
+      }
+
+      const { data: worker } = await admin.from('workers').select('id, name, line_user_id, line_rich_menu_linked_at').eq('line_user_id', lineUserId).eq('tenant_id', settings.tenant_id).maybeSingle()
+      if (worker) {
+        await ensureCrewRichMenuLinked(worker, settings)
+        const { data: pending } = await admin.from('line_pending_actions').select('*').eq('worker_id', worker.id).gt('expires_at', new Date().toISOString()).maybeSingle()
+        if (pending) {
+          const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
+          if (deleteError) console.error('line_pending_actions delete failed', deleteError)
+          await handleAction(pending.action as ActionType, worker, text, settings, event.replyToken)
+        }
+        // A linked worker DMing the bot with no pending action (e.g. they
+        // never tapped a Rich Menu button first) is out of scope for v1 --
+        // silently ignored. Free typing of keywords only works in the
+        // crew group, matching the original design; DM-only keyword
+        // typing was not asked for and is not built here.
+      }
+      continue
+    }
+
+    // A message from the crew group -- only act on it if it's actually
+    // that tenant's configured crew group.
+    if (sourceGroupId !== settings.crew_group_id) continue
+
+    const { data: worker } = await admin.from('workers').select('id, name').eq('line_user_id', lineUserId).eq('tenant_id', settings.tenant_id).maybeSingle()
+    if (!worker) {
+      const { error: unlinkedError } = await admin.from('line_unlinked_senders').upsert(
+        { tenant_id: settings.tenant_id, line_user_id: lineUserId, display_name: event.source?.userId ?? null },
+        { onConflict: 'tenant_id,line_user_id', ignoreDuplicates: true }
+      )
+      if (unlinkedError) console.error('line_unlinked_senders upsert failed', unlinkedError)
+      continue
+    }
+
+    // Keyword-based triggers -- simple substring match, not NLP, tuned
+    // against real collisions found in review: a bare "ปัญหา" also
+    // matches "ไม่มีปัญหา"/"ไม่ปัญหา" ("no problem"), and a bare "ลา"
+    // matches ordinary words like ตลาด/ปลา/ฉลาด with zero relation to
+    // leave. Each set is chosen so no phrase is a substring of another
+    // branch's phrase, keeping the ปัญหา -> เบิก -> ลา routing order
+    // unambiguous.
+    const isIssueReport = text.includes('ปัญหา') && !text.includes('ไม่มีปัญหา') && !text.includes('ไม่ปัญหา')
+    const isMaterialRequest = ['อยากเบิก', 'ขอเบิก'].some((kw) => text.includes(kw))
+    const isLeaveRequest = ['ลากิจ', 'ลาป่วย', 'ขอลา', 'อยากลา'].some((kw) => text.includes(kw))
+
+    if (isIssueReport) await handleAction('issue_report', worker, text, settings, event.replyToken)
+    else if (isMaterialRequest) await handleAction('material_request', worker, text, settings, event.replyToken)
+    else if (isLeaveRequest) await handleAction('leave', worker, text, settings, event.replyToken)
+  }
+
+  return json({ ok: true })
+})
+```
+
+Deploy via `mcp__plugin_supabase_supabase__deploy_edge_function`,
+`verify_jwt: false` (unchanged from Task 3), including the unchanged
+`_shared/line.ts` file alongside it exactly as prior deploys did.
+
+- [ ] **Step 4: Test the code path BEFORE touching the real Rich Menu**
+
+Using the same hand-signed-HMAC-test-POST technique Task 3 used
+throughout, against a disposable test tenant + fake `line_settings`
+row (never the real tenant for this step):
+1. A postback event (`event.type: 'postback'`, `postback.data:
+   'action=issue_report'`) from a linked test worker's fake `userId` ->
+   confirm a `line_pending_actions` row appears with the right
+   `worker_id`/`action`/a future `expires_at`, and the reply matches
+   `promptForAction('issue_report')`.
+2. A follow-up text-message event (DM, no groupId) from that same fake
+   `userId` -> confirm the pending row is deleted AND a real
+   `line_issue_reports` row appears with the message text, matching what
+   `handleAction` would produce.
+3. An expired pending row (insert one directly via `execute_sql` with
+   `expires_at` in the past) followed by a DM text message -> confirm
+   NOTHING is created (the `gt('expires_at', now)` filter correctly
+   excludes it) and the message is silently ignored, matching the
+   documented "no pending action -> ignored" behavior.
+4. Confirm the original group-keyword path (Task 3's original tests)
+   still passes unchanged -- this refactor must not alter that behavior,
+   only add to it.
+Clean up all test rows afterward.
+
+- [ ] **Step 5: Generate the Rich Menu image**
+
+```python
+# scripts/generate-line-richmenu.py
+#
+# Produces a LINE Rich Menu image: 2500x1686px, 3 equal horizontal
+# tappable zones (LINE's minimum/maximum Rich Menu image size is well
+# documented and fixed -- this is the "full" 2500x1686 layout). Each
+# zone is a distinct flat color block with a large emoji + Thai label,
+# legible at LINE's in-app menu thumbnail size. Run once locally:
+#   python3 scripts/generate-line-richmenu.py
+# writes richmenu.png to the current directory.
+
+from PIL import Image, ImageDraw, ImageFont
+
+W, H = 2500, 1686
+ZONE_H = H // 3
+zones = [
+    ("🚧", "แจ้งปัญหา", (196, 90, 60)),
+    ("📦", "ขอเบิกของ", (60, 130, 170)),
+    ("🏖️", "ขอลา", (70, 150, 100)),
+]
+
+img = Image.new("RGB", (W, H), (245, 245, 240))
+draw = ImageDraw.Draw(img)
+
+try:
+    label_font = ImageFont.truetype("/System/Library/Fonts/Supplemental/Tahoma.ttf", 110)
+    emoji_font = ImageFont.truetype("/System/Library/Fonts/Apple Color Emoji.ttc", 160)
+except OSError:
+    # Fallback for non-macOS environments -- any installed TTF with Thai
+    # coverage works; adjust the path for the actual build environment.
+    label_font = ImageFont.load_default()
+    emoji_font = label_font
+
+for i, (emoji, label, color) in enumerate(zones):
+    y0 = i * ZONE_H
+    draw.rectangle([0, y0, W, y0 + ZONE_H], fill=color)
+    text_y = y0 + ZONE_H // 2
+    draw.text((200, text_y - 90), emoji, font=emoji_font, fill=(255, 255, 255), anchor="lm")
+    draw.text((520, text_y), label, font=label_font, fill=(255, 255, 255), anchor="lm")
+    if i < 2:
+        draw.line([0, y0 + ZONE_H, W, y0 + ZONE_H], fill=(255, 255, 255), width=6)
+
+img.save("richmenu.png")
+print("wrote richmenu.png", img.size)
+```
+
+Run it, confirm `richmenu.png` is produced at exactly 2500x1686 and
+looks legible (open it, don't just trust the script ran without error —
+if the emoji font path doesn't exist in this environment, the fallback
+default font will look poor; find and use whatever TTF with Thai +
+emoji-adjacent glyph coverage is actually available, adjusting the
+script's font paths for the real build environment rather than shipping
+visibly broken text).
+
+- [ ] **Step 6: Create and upload the Rich Menu — REAL tenant, real bot (but NOT set as anyone's default)**
+
+Only after Step 4's tests pass. Using the real tenant's real
+`channel_access_token` (read it from the real `line_settings` row —
+never log or echo the raw token value in your report):
+
+1. `POST https://api.line.me/v2/bot/richmenu` with `Authorization:
+   Bearer <real token>`, body:
+```json
+{
+  "size": { "width": 2500, "height": 1686 },
+  "selected": true,
+  "name": "FacadeX Crew Menu",
+  "chatBarText": "เมนู",
+  "areas": [
+    { "bounds": { "x": 0, "y": 0, "width": 2500, "height": 562 }, "action": { "type": "postback", "data": "action=issue_report" } },
+    { "bounds": { "x": 0, "y": 562, "width": 2500, "height": 562 }, "action": { "type": "postback", "data": "action=material_request" } },
+    { "bounds": { "x": 0, "y": 1124, "width": 2500, "height": 562 }, "action": { "type": "postback", "data": "action=leave" } }
+  ]
+}
+```
+Capture the returned `richMenuId`.
+2. `POST https://api.line.me/v2/bot/richmenu/{richMenuId}/content` with
+   `Content-Type: image/png`, body = the raw bytes of `richmenu.png`
+   from Step 5.
+3. **Do NOT call `POST /v2/bot/user/all/richmenu/{richMenuId}`** (the
+   "set as default for everyone" endpoint) — this tenant's real OA is
+   also used for sales/customer info, and that call would show crew
+   buttons to every real customer. Instead, store the id: `UPDATE
+   line_settings SET crew_rich_menu_id = '<richMenuId>' WHERE tenant_id
+   = '1b9affc4-2136-4ed1-b168-a36e6624e743'` (via `execute_sql`). From
+   this point on, `ensureCrewRichMenuLinked` (Step 3) links it to each
+   worker individually, lazily, the first time they're seen in a 1:1 DM
+   — nothing is visible to anyone until that happens naturally through
+   real use.
+4. Verify via `GET https://api.line.me/v2/bot/richmenu/list` that the
+   menu exists with the right `richMenuId`, and confirm via
+   `execute_sql` that `line_settings.crew_rich_menu_id` was set
+   correctly on the real row.
+
+- [ ] **Step 7: Live-verify against the real bot**
+
+Ask the user (this step needs a real phone, same as Task 3's live
+proof) to open a 1:1 DM with the real bot (not the test group, and not
+via a customer-facing conversation) as a worker whose `workers.line_user_id`
+is already set (reuse the same disposable test-worker-linked-to-a-real-
+personal-LINE-account technique from the earlier live proof if the
+person testing this isn't already a linked `workers` row). Send any
+message first (to trigger `ensureCrewRichMenuLinked`), confirm the Rich
+Menu now appears at the bottom of that chat, then tap each of the three
+buttons in turn, confirm the prompt reply appears, type a detail message
+for each, and confirm — via `execute_sql` — that the expected row landed
+each time (`line_issue_reports` x2, `worker_assignments` x1) with the
+correct `worker_id`. Also confirm `workers.line_rich_menu_linked_at` is
+now set on that worker's row. Separately, confirm (by checking with the
+user, or via a second real/test LINE account with no `workers` row at
+all) that a completely unrelated LINE user — standing in for a real
+customer — DMing the bot sees no Rich Menu and gets no reply of any
+kind, exactly as before this task. Clean up test rows afterward, same
+discipline as every other live-verify step in this plan.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add supabase/migrations/2026-09-19-07-line-pending-actions.sql scripts/generate-line-richmenu.py supabase/functions/line-webhook/index.ts supabase/functions/_shared/line.ts
+git commit -m "feat: crew Rich Menu (1:1 DM) as a second path alongside group-typed keywords"
+```
+
+---
+
 ## Final Integration Notes (for the controller, not a task)
 
 - After all 7 tasks: a real end-to-end smoke test needs an actual LINE
