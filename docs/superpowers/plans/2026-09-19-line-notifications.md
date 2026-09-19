@@ -864,6 +864,17 @@ this file's existing pattern for other OWNER-only cards (check how an
 existing OWNER-only card in this file checks the role before rendering,
 and use the identical check).
 
+Also add, in the same card, a `quotation_followup_default_days` number
+input (default `7`) — this is the tenant default Task 5's send-time
+popup pre-fills (`useAppSetting('quotation_followup_default_days', '7')`).
+Save it via `saveAppSetting('quotation_followup_default_days', value)`,
+the same `app_settings`-backed pattern the existing
+`cheque_reminder_days` field already uses in this file (reuse that
+exact save-button/handler shape for this field, not a new one) — do not
+put this field inside `line_settings`; it is a soft per-tenant
+preference like `cheque_reminder_days` already is, not LINE channel
+identity/secrets.
+
 - [ ] **Step 2: Any-role "เชื่อมต่อ LINE ของฉัน" card**
 
 On mount, if the current user's own `user_roles` row has no
