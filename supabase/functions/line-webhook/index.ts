@@ -1,9 +1,11 @@
 // supabase/functions/line-webhook/index.ts
 // Inbound LINE webhook -- receives every event for every tenant's LINE
 // OA on one shared URL, routes by the webhook payload's own
-// `destination` field (LINE's channel id for that event) against
-// line_settings.channel_id. verify_jwt is OFF for this function (LINE
-// itself calls it, unauthenticated by Supabase's own JWT check) --
+// `destination` field (the bot's own internal LINE userId, from LINE's
+// GET /v2/bot/info -- NOT the numeric Channel ID shown in LINE's
+// console) against line_settings.bot_user_id. verify_jwt is OFF for
+// this function (LINE itself calls it, unauthenticated by Supabase's
+// own JWT check) --
 // this function's signature verification against line_settings.
 // channel_secret IS the access control, same pattern sign-link already
 // established for its own public/unauthenticated endpoint.
@@ -58,7 +60,13 @@ Deno.serve(async (req) => {
   const destination = payload.destination as string | undefined
   if (!destination) return json({ error: 'destination required' }, 400)
 
-  const { data: settings } = await admin.from('line_settings').select('*').eq('channel_id', destination).maybeSingle()
+  // destination is the bot's own internal LINE userId (U + 32 hex chars,
+  // from LINE's GET /v2/bot/info) -- NOT the numeric Channel ID shown in
+  // LINE's console Basic Settings. Those are two different LINE
+  // identifiers; channel_id stays for the Settings UI, bot_user_id is the
+  // one this lookup actually needs (see
+  // supabase/migrations/2026-09-19-05-line-settings-bot-user-id.sql).
+  const { data: settings } = await admin.from('line_settings').select('*').eq('bot_user_id', destination).maybeSingle()
   if (!settings) return json({ error: 'unknown channel' }, 404)
 
   const signatureOk = await verifyLineSignature(settings.channel_secret, rawBody, req.headers.get('x-line-signature'))
