@@ -40,7 +40,13 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading, ha
   // คำนวณ VAT / Tax ถูกหัก / Retention อัตโนมัติจาก % ของมูลค่าก่อน VAT
   const noVat       = parseFloat(form.amount_no_vat) || 0
   const vatAmt       = noVat * (parseFloat(form.vat_pct)       || 0) / 100
-  const taxAmt        = noVat * (parseFloat(form.tax_pct)       || 0) / 100
+  // Blank tax_pct means "don't touch WHT," not "set it to zero" -- the edit
+  // modal always opens with this field blank (see Income.jsx's editRow
+  // spread), so it falls back to whatever this row already had stored
+  // instead of recomputing (and potentially rounding-drifting, or -- if
+  // the user just meant to fix an unrelated field -- silently zeroing) it.
+  // Typing any number, including 0, is what actually changes it.
+  const taxAmt = form.tax_pct === '' ? (parseFloat(initial.tax_withheld) || 0) : noVat * (parseFloat(form.tax_pct) || 0) / 100
   const retentionAmt = noVat * (parseFloat(form.retention_pct) || 0) / 100
 
   const isDepositRow = form.income_type === 'มัดจำ'
@@ -443,7 +449,13 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
             initial={editRow ? {
               ...editRow,
               vat_pct:       editRow.amount_no_vat ? +((editRow.vat||0)           / editRow.amount_no_vat * 100).toFixed(2) : '',
-              tax_pct:       editRow.amount_no_vat ? +((editRow.tax_withheld||0)  / editRow.amount_no_vat * 100).toFixed(2) : '',
+              // Left blank on purpose (not back-computed like the others) --
+              // IncomeForm falls back to this row's own stored tax_withheld
+              // when left blank, so just opening this modal to fix an
+              // unrelated field and saving can never silently zero out (or
+              // rounding-drift) the WHT. Typing a number, including 0, is
+              // what actually changes it.
+              tax_pct:       '',
               retention_pct: editRow.amount_no_vat ? +((editRow.retention||0)     / editRow.amount_no_vat * 100).toFixed(2) : '',
               income_type:   editRow.income_type || 'ปกติ',
               deposit_pct:   editRow.amount_no_vat ? +((editRow.deposit_deduction||0) / editRow.amount_no_vat * 100).toFixed(2) : '',
