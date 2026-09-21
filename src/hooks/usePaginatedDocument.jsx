@@ -316,6 +316,25 @@ export const ScaleToFit = forwardRef(function ScaleToFit({ width = PAGE_WIDTH_PX
   const innerRef = useRef(null)
   const [scale, setScale] = useState(1)
   const [naturalHeight, setNaturalHeight] = useState(0)
+  // While true, the inner wrapper's transform renders as 'none' no matter
+  // what `scale` currently holds -- see withNaturalScale below. This MUST
+  // be React state, not an imperative el.style.transform write (the
+  // previous approach): the layout effect right below has no dependency
+  // array and re-runs on every render of this component, and entering
+  // print layout genuinely can trigger one of those renders itself (the
+  // browser recomputes available width for paper dimensions, firing the
+  // ResizeObserver below). A plain DOM mutation survives only until the
+  // next render that touches this style prop -- if that render happens to
+  // land during the print/export window (afterprint can take a while),
+  // React writes its own remembered `scale(x)` straight back over the
+  // manual override, mid-capture. Reported live: printed invoices came out
+  // shrunk into the corner of the page with blank space around them,
+  // while Save-as-PDF/JPG (whose capture window is much shorter, so the
+  // race rarely won) stayed fine. Keeping the override in state means
+  // every render -- however it was triggered -- keeps rendering
+  // transform:'none' for as long as a capture is in flight; there's no
+  // stale imperative value for a later render to clobber.
+  const [forceNatural, setForceNatural] = useState(false)
 
   useLayoutEffect(() => {
     const update = () => {
@@ -332,25 +351,24 @@ export const ScaleToFit = forwardRef(function ScaleToFit({ width = PAGE_WIDTH_PX
 
   useImperativeHandle(ref, () => ({
     withNaturalScale: async (fn) => {
-      const el = innerRef.current
-      const prevTransform = el?.style.transform
-      if (el) el.style.transform = 'none'
-      // Two rAFs: the first commits the style change, the second runs only
-      // after the browser has actually painted it -- a single rAF can still
-      // fire before this frame's layout/paint on some browsers, which would
-      // let html2canvas/html2pdf read the pre-restore (scaled) frame.
+      setForceNatural(true)
+      // Two rAFs: the first lets React commit the transform:'none' render,
+      // the second runs only after the browser has actually painted it --
+      // a single rAF can still fire before this frame's layout/paint on
+      // some browsers, which would let html2canvas/html2pdf/window.print
+      // read the pre-restore (scaled) frame.
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
       try {
         await fn()
       } finally {
-        if (el) el.style.transform = prevTransform
+        setForceNatural(false)
       }
     },
   }))
 
   return (
     <div ref={outerRef} style={{ width: '100%', height: naturalHeight ? naturalHeight * scale : undefined }}>
-      <div ref={innerRef} style={{ width, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
+      <div ref={innerRef} style={{ width, transform: forceNatural ? 'none' : `scale(${scale})`, transformOrigin: 'top left' }}>
         {children}
       </div>
     </div>
