@@ -10,10 +10,10 @@
 // sign-link already established for its own public/unauthenticated
 // endpoint.
 //
-// Six crew actions total, two entry points:
+// Seven crew actions total, two entry points:
 //   - Typed keywords in the shared crew group -> immediate action.
 //     Scoped to the original three (แจ้งปัญหา/ขอเบิกของ/ขอลา) only --
-//     เช็คอิน/เช็คเอาท์/รูปภาพหน้างาน are 1:1-DM-only (see below).
+//     เช็คอิน/เช็คเอาท์/รูปภาพหน้างาน/งานเสร็จ are 1:1-DM-only (see below).
 //   - The SAME trigger phrases (or a Rich Menu button tap, configured
 //     manually in LINE Official Account Manager to send fixed text) in
 //     a 1:1 DM -> two-step for the "needs a detail" actions (ask ->
@@ -32,6 +32,14 @@
 //                                 today's own worker_assignments)
 //   "รูปภาพ"                -> line_site_photos row (two-step: ask for
 //                                 the photo, next DM must be an image)
+//   "งานเสร็จ"/"เสร็จงาน"   -> closes a real Kanban card (phase_tasks
+//                                 .status = 'done'), resolved from
+//                                 phase_task_workers. If the worker has
+//                                 more than one open task, asks which
+//                                 one via LINE Quick Reply buttons (tap
+//                                 the task name -- built for low-literacy
+//                                 crew, no typing required), then asks
+//                                 for a required completion photo.
 // plus a bare linking code sent as a DM -- either an OWNER/ADMIN's
 // (user_roles.line_link_code, Settings -> ทั่วไป issues it) or a
 // worker's own (workers.line_link_code, the PRIMARY way a worker gets
@@ -59,9 +67,17 @@ function bangkokToday(): string {
 function bangkokTimeString(): string {
   return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(11, 16)
 }
+// LINE quick-reply labels cap at 20 chars -- the message `text` sent on
+// tap can stay full-length (used for the exact-match lookup below), so
+// truncating only the visible label loses no matching precision.
+function truncateLabel(s: string, max = 20): string {
+  return s.length <= max ? s : s.slice(0, max - 1) + '…'
+}
 
 type GroupActionType = 'issue_report' | 'material_request' | 'leave'
-type ActionType = GroupActionType | 'check_in' | 'check_out' | 'site_photo'
+type DMOnlyActionType = 'check_in' | 'check_out' | 'site_photo' | 'job_done_start'
+type ActionType = GroupActionType | DMOnlyActionType
+type PendingActionType = GroupActionType | 'site_photo' | 'job_done_pick' | 'job_done'
 
 // LINE bots have no way to remove someone from a group chat -- there's
 // no "kick member" API for Official Accounts. So an offboarded worker
@@ -71,7 +87,11 @@ type ActionType = GroupActionType | 'check_in' | 'check_out' | 'site_photo'
 // never reach a live table -- and (b) tell an OWNER so a human removes
 // them from the group. Rate-limited to once per 24h per worker via
 // line_offboarding_alerted_at, so their continued presence doesn't
-// re-fire this on every message.
+// re-fire this on every message. (A proactive version of this same
+// alert also fires immediately on status change -- see
+// supabase/functions/line-worker-offboarded and migration
+// 2026-09-20-03 -- this reactive one is a fallback in case that
+// somehow doesn't fire, not the primary path anymore.)
 async function alertOwnersOfInactiveWorker(
   worker: { id: string; name: string; line_offboarding_alerted_at: string | null },
   settings: { tenant_id: string; channel_access_token: string },
@@ -118,7 +138,7 @@ async function resolveWorker(
   return { worker: { id: worker.id, name: worker.name }, foundButInactive: false }
 }
 
-function promptForAction(action: ActionType): string {
+function promptForAction(action: GroupActionType | 'site_photo'): string {
   if (action === 'issue_report') return '🚧 รับทราบครับ ช่วยบอกรายละเอียดปัญหาที่พบด้วยครับ'
   if (action === 'material_request') return '📦 รับทราบครับ ช่วยบอกรายการของที่ต้องการเบิกด้วยครับ'
   if (action === 'site_photo') return '📷 ส่งรูปหน้างานมาได้เลยครับ'
@@ -141,14 +161,15 @@ function matchGroupAction(text: string): GroupActionType | null {
   return null
 }
 
-// Used by the 1:1 DM path -- all six actions. เช็คอิน/เช็คเอาท์/รูปภาพ
-// don't collide with any existing phrase or each other.
+// Used by the 1:1 DM path -- all seven actions. เช็คอิน/เช็คเอาท์/
+// รูปภาพ/งานเสร็จ don't collide with any existing phrase or each other.
 function matchDMAction(text: string): ActionType | null {
   const base = matchGroupAction(text)
   if (base) return base
   if (text.includes('เช็คอิน')) return 'check_in'
   if (text.includes('เช็คเอาท์')) return 'check_out'
   if (text.includes('รูปภาพ')) return 'site_photo'
+  if (text.includes('งานเสร็จ') || text.includes('เสร็จงาน')) return 'job_done_start'
   return null
 }
 
@@ -173,6 +194,22 @@ async function resolveTodaysSite(workerId: string, tenantId: string): Promise<{ 
   if (!assignment?.site_id) return null
   const { data: site } = await admin.from('sites').select('id, name').eq('id', assignment.site_id).maybeSingle()
   return site ?? null
+}
+
+// Resolves the worker's currently-open Kanban tasks (not yet 'done'),
+// via phase_task_workers -- the assignment link the Kanban feature
+// already built earlier, reused as-is, no new assignment concept
+// needed. Ordered by sort_order so the list matches the order tasks
+// appear on the real board.
+async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Promise<Array<{ id: string; name: string }>> {
+  const { data } = await admin
+    .from('phase_task_workers')
+    .select('task_id, phase_tasks!inner(id, name, status, tenant_id, sort_order)')
+    .eq('worker_id', workerId)
+    .eq('phase_tasks.tenant_id', tenantId)
+    .neq('phase_tasks.status', 'done')
+    .order('sort_order', { referencedTable: 'phase_tasks' })
+  return (data ?? []).map((row: any) => ({ id: row.phase_tasks.id as string, name: row.phase_tasks.name as string }))
 }
 
 async function fetchLineImageContent(accessToken: string, messageId: string): Promise<Uint8Array | null> {
@@ -250,6 +287,111 @@ async function handleSitePhoto(
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
   } else {
     await sendLineReply(settings.channel_access_token, replyToken, `📷 รับรูปภาพแล้ว บันทึกเข้า ${site.name} เรียบร้อยครับ`)
+  }
+}
+
+// Starts the งานเสร็จ flow -- resolves open tasks and either goes
+// straight to asking for a photo (one task, the common case) or asks
+// which one via quick-reply chips (multiple tasks -- tap the name, no
+// typing, per the low-literacy-crew constraint).
+async function handleJobDoneStart(
+  worker: { id: string },
+  settings: { tenant_id: string; channel_access_token: string },
+  replyToken: string,
+) {
+  const tasks = await resolveOpenTasksForWorker(worker.id, settings.tenant_id)
+  if (tasks.length === 0) {
+    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายให้คุณตอนนี้ กรุณาติดต่อแอดมิน')
+    return
+  }
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
+  if (tasks.length === 1) {
+    const { error } = await admin.from('line_pending_actions').upsert(
+      { tenant_id: settings.tenant_id, worker_id: worker.id, action: 'job_done', task_id: tasks[0].id, expires_at: expiresAt },
+      { onConflict: 'worker_id' }
+    )
+    if (error) console.error('line_pending_actions upsert failed (job_done, single task)', error)
+    await sendLineReply(settings.channel_access_token, replyToken, `📷 "${tasks[0].name}" เสร็จแล้วใช่ไหมครับ ส่งรูปงานเสร็จมาได้เลย`)
+    return
+  }
+  const { error } = await admin.from('line_pending_actions').upsert(
+    { tenant_id: settings.tenant_id, worker_id: worker.id, action: 'job_done_pick', task_id: null, expires_at: expiresAt },
+    { onConflict: 'worker_id' }
+  )
+  if (error) console.error('line_pending_actions upsert failed (job_done_pick)', error)
+  await sendLineReply(
+    settings.channel_access_token,
+    replyToken,
+    'งานไหนเสร็จครับ? กดเลือกจากรายการด้านล่างได้เลย',
+    tasks.map((t) => truncateLabel(t.name)),
+  )
+}
+
+// Consumes the tapped quick-reply reply to "which task" -- re-resolves
+// the same candidate list (rather than storing it) and matches by
+// exact name, since a tapped quick-reply chip sends its full `text`
+// back verbatim. A non-matching reply (someone typed instead of
+// tapping) is silently ignored -- the prompt stays live until they
+// tap or it expires, same "stray message ignored" pattern used
+// elsewhere in this file.
+async function handleJobDonePick(
+  worker: { id: string },
+  settings: { tenant_id: string; channel_access_token: string },
+  replyToken: string,
+  text: string,
+) {
+  const tasks = await resolveOpenTasksForWorker(worker.id, settings.tenant_id)
+  const picked = tasks.find((t) => t.name === text.trim())
+  if (!picked) return // ignored -- prompt (and its quick-reply chips) stays live
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
+  const { error } = await admin.from('line_pending_actions').upsert(
+    { tenant_id: settings.tenant_id, worker_id: worker.id, action: 'job_done', task_id: picked.id, expires_at: expiresAt },
+    { onConflict: 'worker_id' }
+  )
+  if (error) console.error('line_pending_actions upsert failed (job_done, after pick)', error)
+  await sendLineReply(settings.channel_access_token, replyToken, `📷 "${picked.name}" เสร็จแล้วใช่ไหมครับ ส่งรูปงานเสร็จมาได้เลย`)
+}
+
+// Closes the real Kanban card: uploads the completion photo (tagged
+// with task_id, unlike a general รูปภาพหน้างาน photo), flips
+// phase_tasks.status to 'done' -- the exact same status value and
+// column the web Kanban board (PhaseKanbanBoard.jsx) already reads,
+// so this shows up there immediately, same as if an admin had dragged
+// the card themselves.
+async function handleJobDonePhoto(
+  worker: { id: string },
+  taskId: string,
+  settings: { tenant_id: string; channel_access_token: string },
+  replyToken: string,
+  messageId: string,
+) {
+  const { data: task } = await admin.from('phase_tasks').select('id, name, site_id').eq('id', taskId).maybeSingle()
+  if (!task) {
+    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานนี้แล้ว อาจถูกลบหรือแก้ไข กรุณาติดต่อแอดมิน')
+    return
+  }
+  const content = await fetchLineImageContent(settings.channel_access_token, messageId)
+  if (!content) {
+    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ดึงรูปภาพไม่สำเร็จ กรุณาลองส่งใหม่')
+    return
+  }
+  const photoPath = `${settings.tenant_id}/${task.site_id}/${Date.now()}-${worker.id}-done.jpg`
+  const { error: uploadError } = await admin.storage.from('line-site-photos').upload(photoPath, content, { contentType: 'image/jpeg' })
+  if (uploadError) {
+    console.error('line-site-photos upload failed (job done)', uploadError)
+    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ อัปโหลดรูปไม่สำเร็จ กรุณาลองใหม่')
+    return
+  }
+  const { error: photoInsertError } = await admin.from('line_site_photos').insert({
+    tenant_id: settings.tenant_id, worker_id: worker.id, site_id: task.site_id, task_id: task.id, date: bangkokToday(), photo_path: photoPath,
+  })
+  if (photoInsertError) console.error('line_site_photos insert failed (job done)', photoInsertError)
+  const { error: statusError } = await admin.from('phase_tasks').update({ status: 'done' }).eq('id', task.id)
+  if (statusError) {
+    console.error('phase_tasks status update failed', statusError)
+    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+  } else {
+    await sendLineReply(settings.channel_access_token, replyToken, `✅ บันทึกงานเสร็จแล้ว "${task.name}" อัปเดตบอร์ดเรียบร้อยครับ`)
   }
 }
 
@@ -355,8 +497,8 @@ Deno.serve(async (req) => {
       // or (b) a worker's crew action: a Rich Menu button tap (fixed
       // text, configured manually in LINE Official Account Manager) or
       // manually-typed trigger phrase, or the image reply to a pending
-      // รูปภาพหน้างาน prompt. Linking-code match is checked first since
-      // it's a narrower, more specific match.
+      // รูปภาพหน้างาน/งานเสร็จ prompt. Linking-code match is checked
+      // first since it's a narrower, more specific match.
       if (msgType === 'text' && text) {
         const trimmed = text.trim()
         const { data: pendingRoleCode } = await admin.from('user_roles').select('id').eq('tenant_id', settings.tenant_id).eq('line_link_code', trimmed).maybeSingle()
@@ -388,7 +530,7 @@ Deno.serve(async (req) => {
 
       const { data: pending } = await admin.from('line_pending_actions').select('*').eq('worker_id', worker.id).gt('expires_at', new Date().toISOString()).maybeSingle()
       if (pending) {
-        const pendingAction = pending.action as ActionType
+        const pendingAction = pending.action as PendingActionType
         if (pendingAction === 'site_photo') {
           if (msgType === 'image') {
             const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
@@ -397,6 +539,16 @@ Deno.serve(async (req) => {
           }
           // Still waiting for a photo -- a stray text message while this
           // pending action is open is silently ignored, prompt stays live.
+        } else if (pendingAction === 'job_done_pick') {
+          if (msgType === 'text' && text) await handleJobDonePick(worker, settings, event.replyToken, text)
+          // An image while still picking which task is silently ignored.
+        } else if (pendingAction === 'job_done') {
+          if (msgType === 'image') {
+            const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
+            if (deleteError) console.error('line_pending_actions delete failed', deleteError)
+            await handleJobDonePhoto(worker, pending.task_id as string, settings, event.replyToken, messageId)
+          }
+          // Still waiting for the completion photo -- text ignored, prompt stays live.
         } else if (msgType === 'text' && text) {
           const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
           if (deleteError) console.error('line_pending_actions delete failed', deleteError)
@@ -411,6 +563,8 @@ Deno.serve(async (req) => {
           await handleCheckIn(worker, settings, event.replyToken)
         } else if (action === 'check_out') {
           await handleCheckOut(worker, settings, event.replyToken)
+        } else if (action === 'job_done_start') {
+          await handleJobDoneStart(worker, settings, event.replyToken)
         } else if (action) {
           // issue_report / material_request / leave / site_photo --
           // two-step: ask for detail, consume the next matching message.
@@ -420,7 +574,7 @@ Deno.serve(async (req) => {
             { onConflict: 'worker_id' }
           )
           if (error) console.error('line_pending_actions upsert failed', error)
-          await sendLineReply(settings.channel_access_token, event.replyToken, promptForAction(action))
+          await sendLineReply(settings.channel_access_token, event.replyToken, promptForAction(action as GroupActionType | 'site_photo'))
         }
         // No match and no pending action -- unrecognized DM text from a
         // linked worker, silently ignored.
@@ -429,8 +583,8 @@ Deno.serve(async (req) => {
     }
 
     // A message from the crew group -- only act on it if it's actually
-    // that tenant's configured crew group, and only text (photos/checkin
-    // are 1:1-DM-only, matching the Rich Menu's own DM-only scope).
+    // that tenant's configured crew group, and only text (photos/checkin/
+    // job-done are 1:1-DM-only, matching the Rich Menu's own DM-only scope).
     if (msgType !== 'text' || !text) continue
     if (sourceGroupId !== settings.crew_group_id) continue
 

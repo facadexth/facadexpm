@@ -1,0 +1,56 @@
+// supabase/functions/line-worker-offboarded/index.ts
+// Called by a Postgres trigger (see migration 2026-09-20-03) the
+// moment a worker's status flips 'active' -> 'inactive' -- proactive,
+// not dependent on the offboarded worker ever messaging the bot again
+// (line-webhook's own reactive alert, kept as a fallback for the case
+// this trigger somehow doesn't fire, e.g. a status change made via a
+// path other than a normal UPDATE). Same "tell an OWNER, since LINE
+// bots can't remove someone from a group chat themselves" logic.
+//
+// Auth: the same shared-secret pattern Task 4's cron jobs use
+// (verify_cron_secret() against the line_push_cron_shared_secret Vault
+// entry) -- this function is called by trusted internal Postgres, not
+// LINE itself, so verify_jwt: true + this header check is the right
+// shape (unlike line-webhook, which is called BY LINE and uses HMAC
+// signature verification instead).
+import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { sendLinePush } from '../_shared/line.ts'
+
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+}
+
+Deno.serve(async (req) => {
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
+
+  const providedSecret = req.headers.get('x-cron-secret')
+  const { data: secretOk } = await admin.rpc('verify_cron_secret', { provided: providedSecret })
+  if (!secretOk) return json({ error: 'unauthorized' }, 401)
+
+  const { worker_id } = await req.json().catch(() => ({}))
+  if (!worker_id) return json({ error: 'worker_id required' }, 400)
+
+  const { data: worker } = await admin.from('workers').select('id, name, tenant_id, status').eq('id', worker_id).maybeSingle()
+  if (!worker || worker.status !== 'inactive') return json({ ok: true, skipped: 'not inactive or not found' })
+
+  const { data: settings } = await admin.from('line_settings').select('channel_access_token').eq('tenant_id', worker.tenant_id).maybeSingle()
+  if (!settings) return json({ ok: true, skipped: 'no line_settings for this tenant' })
+
+  const { data: owners } = await admin
+    .from('user_roles')
+    .select('line_user_id')
+    .eq('tenant_id', worker.tenant_id)
+    .eq('role', 'OWNER')
+    .not('line_user_id', 'is', null)
+
+  for (const owner of owners ?? []) {
+    await sendLinePush(settings.channel_access_token, owner.line_user_id as string, `⚠️ ${worker.name} ถูกเปลี่ยนสถานะเป็นพ้นสภาพพนักงาน กรุณาลบออกจากกลุ่มทีมงานใน LINE ด้วยครับ`)
+  }
+  await admin.from('workers').update({ line_offboarding_alerted_at: new Date().toISOString() }).eq('id', worker.id)
+
+  return json({ ok: true, notified: (owners ?? []).length })
+})

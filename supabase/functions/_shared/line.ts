@@ -24,11 +24,31 @@ export async function sendLinePush(accessToken: string, to: string, text: string
   return { ok: res.ok, status: res.status }
 }
 
-export async function sendLineReply(accessToken: string, replyToken: string, text: string): Promise<{ ok: boolean; status: number }> {
+// quickReplyLabels, when given, attaches tappable chips below the
+// message -- tapping one sends that exact label back as if the user
+// had typed it. Built for low-literacy crew members: tapping a task
+// name is far easier than typing a number or the name itself. LINE
+// caps each label at 20 characters (Thai counts as 1 char each) and
+// 13 items total -- callers are responsible for keeping within that.
+export async function sendLineReply(
+  accessToken: string,
+  replyToken: string,
+  text: string,
+  quickReplyLabels?: string[],
+): Promise<{ ok: boolean; status: number }> {
+  const message: Record<string, unknown> = { type: 'text', text }
+  if (quickReplyLabels && quickReplyLabels.length > 0) {
+    message.quickReply = {
+      items: quickReplyLabels.map((label) => ({
+        type: 'action',
+        action: { type: 'message', label, text: label },
+      })),
+    }
+  }
   const res = await fetch(`${LINE_API}/reply`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ replyToken, messages: [{ type: 'text', text }] }),
+    body: JSON.stringify({ replyToken, messages: [message] }),
   })
   return { ok: res.ok, status: res.status }
 }
