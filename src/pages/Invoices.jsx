@@ -1017,7 +1017,20 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
 function computeWithholding(invoice, depositTaxOffset = 0) {
   const taxableBase = Math.max(0, invoice.subtotal - depositTaxOffset)
   const income = invoice.incomes
-  if (income && income.tax_withheld > 0) {
+  // `income` existing at all (not `income.tax_withheld > 0`) is what makes
+  // this value real rather than an estimate -- an income row only exists
+  // once the invoice is actually paid (see this function's own comment
+  // above), so its tax_withheld is always a deliberately-recorded number,
+  // including a deliberate 0 (e.g. WHT manually waived/zeroed for this
+  // invoice in the ตัดรายรับ edit form). The old `> 0` check treated that
+  // zero the same as "no income row yet," so it fell through to the
+  // site's CURRENT default % below and showed a nonzero "estimated" WHT
+  // on the invoice/printed document/list that directly contradicted the
+  // real (zero) incomes.tax_withheld shown on the Income page -- reported
+  // live as "invoice and income show different numbers" (IN2609-023: real
+  // tax_withheld = 0.00, site default_tax_withheld_pct = 3, so the invoice
+  // side kept showing a 3% deduction the income side had already removed).
+  if (income) {
     const pct = taxableBase > 0 ? round2(income.tax_withheld / taxableBase * 100) : 0
     return { amount: income.tax_withheld, pct, isEstimate: false }
   }
@@ -1040,7 +1053,11 @@ function computeWithholding(invoice, depositTaxOffset = 0) {
 function computeDepositDeduction(invoice, depositBalance) {
   if (invoice.is_deposit) return { amount: 0, pct: 0, isEstimate: false }
   const income = invoice.incomes
-  if (income && income.deposit_deduction > 0) {
+  // Same `income` (not `income.deposit_deduction > 0`) fix as
+  // computeWithholding just above -- a real income row with a genuine
+  // zero deduction must not fall through to a nonzero site-default
+  // estimate.
+  if (income) {
     const pct = invoice.subtotal > 0 ? round2(income.deposit_deduction / invoice.subtotal * 100) : 0
     return { amount: income.deposit_deduction, pct, isEstimate: false }
   }
