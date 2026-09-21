@@ -200,9 +200,22 @@ function ProfileForm({ initial = EMPTY_PROFILE_FORM, onSave, onCancel, loading }
   )
 }
 
-function BalanceRow({ item, balance, isFirstForItem, centralSite, canEdit, savingKey, resolveSource, onSaveBalance, onEditItem, onDeleteItem }) {
-  const siteId = balance ? balance.site_id : centralSite?.id
-  const isCentralRow = !!centralSite && siteId === centralSite.id
+// Combines several per-site balances of the SAME item into one number set
+// -- used both by the multi-site row below and by the Excel export, so a
+// "how much of X do we have total" figure is computed exactly once.
+function aggregateBalances(siteBalances) {
+  const qty = siteBalances.reduce((s, b) => s + b.quantity_on_hand, 0)
+  const value = siteBalances.reduce((s, b) => s + b.quantity_on_hand * b.weighted_average_cost, 0)
+  return { qty, value, avgCost: qty > 0 ? value / qty : 0 }
+}
+
+function BalanceRow({ item, balance, multiSite, isFirstForItem, centralSite, canEdit, savingKey, resolveSource, onSaveBalance, onEditItem, onDeleteItem, onViewWarehouses }) {
+  // multiSite (stock at 2+ sites) has no single siteId of its own -- must
+  // NOT fall back to centralSite.id here, or isCentralRow below would
+  // wrongly show the single-site "ปรับยอด" adjust control on an aggregate
+  // row that has no one site to adjust.
+  const siteId = multiSite ? null : (balance ? balance.site_id : centralSite?.id)
+  const isCentralRow = !multiSite && !!centralSite && siteId === centralSite.id
   const [editing, setEditing] = useState(false)
   const [qtyDraft, setQtyDraft] = useState(String(balance?.quantity_on_hand ?? 0))
   const [costDraft, setCostDraft] = useState(String(balance?.weighted_average_cost ?? 0))
@@ -210,8 +223,10 @@ function BalanceRow({ item, balance, isFirstForItem, centralSite, canEdit, savin
   const saving = savingKey === key
 
   const siteName = balance ? balance.sites?.name : (centralSite?.name || 'ส่วนกลาง (ยังไม่มีไซท์นี้)')
-  const quantity = balance?.quantity_on_hand ?? 0
-  const cost = balance?.weighted_average_cost ?? 0
+  const agg = multiSite ? aggregateBalances(multiSite) : null
+  const quantity = agg ? agg.qty : (balance?.quantity_on_hand ?? 0)
+  const cost = agg ? agg.avgCost : (balance?.weighted_average_cost ?? 0)
+  const value = agg ? agg.value : quantity * cost
 
   const save = async () => {
     if (!siteId) { alert('ไม่พบไซท์งาน "ส่วนกลาง" — กรุณาสร้างไซท์งานชื่อนี้ก่อน'); return }
@@ -225,7 +240,11 @@ function BalanceRow({ item, balance, isFirstForItem, centralSite, canEdit, savin
       <td style={{ fontWeight: 600 }}>{item.name}</td>
       <td style={{ fontSize: 12 }}>{item.expense_categories?.name || '—'}</td>
       <td>{isFirstForItem ? (item.active ? <span className="badge badge-paid">ใช้งานอยู่</span> : <span className="badge badge-finished">ปิดใช้งาน</span>) : null}</td>
-      <td style={{ fontSize: 12 }}>{siteName}</td>
+      <td style={{ fontSize: 12 }}>
+        {multiSite ? (
+          <button className="btn btn-sm btn-ghost" onClick={onViewWarehouses}>📍 ดูคลัง ({multiSite.length} ที่)</button>
+        ) : siteName}
+      </td>
       <td className="font-mono">
         {editing ? (
           <input className="input input-sm" style={{ width: 90 }} type="number" min="0" step="0.0001" value={qtyDraft} onChange={e => setQtyDraft(e.target.value)} />
@@ -236,8 +255,8 @@ function BalanceRow({ item, balance, isFirstForItem, centralSite, canEdit, savin
           <input className="input input-sm" style={{ width: 90 }} type="number" min="0" step="0.0001" value={costDraft} onChange={e => setCostDraft(e.target.value)} />
         ) : fmt(cost)}
       </td>
-      <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(quantity * cost)}</td>
-      <td style={{ fontSize: 12, color: 'var(--text3)' }}>{balance ? resolveSource(item.id, balance.site_id) : '—'}</td>
+      <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(value)}</td>
+      <td style={{ fontSize: 12, color: 'var(--text3)' }}>{multiSite ? resolveSource(item.id) : (balance ? resolveSource(item.id, balance.site_id) : '—')}</td>
       <td style={{ whiteSpace: 'nowrap' }}>
         {canEdit && isCentralRow && (
           editing ? (
@@ -481,6 +500,7 @@ export default function Inventory() {
   const [profileSortCol, setProfileSortCol] = useState('name')
   const [profileSortDir, setProfileSortDir] = useState('asc')
   const [savingBalance, setSavingBalance] = useState(null) // the balance-row key currently saving, or null
+  const [warehousePopup, setWarehousePopup] = useState(null) // { item, balances } | null -- "ดูคลัง" breakdown for a multi-site row
 
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState(null)
@@ -532,8 +552,10 @@ export default function Inventory() {
 
   const centralSite = (sites || []).find(s => s.name === 'ส่วนกลาง')
 
+  // siteId omitted -> latest movement across ANY site for this item (used
+  // by the combined multi-site row, where there's no single site to ask).
   const resolveSource = (itemId, siteId) => {
-    const itemMovements = (allMovements || []).filter(m => m.inventory_item_id === itemId && m.site_id === siteId)
+    const itemMovements = (allMovements || []).filter(m => m.inventory_item_id === itemId && (siteId == null || m.site_id === siteId))
     if (!itemMovements.length) return '—'
     const latest = itemMovements.reduce((a, b) => new Date(a.created_at) > new Date(b.created_at) ? a : b)
     return resolveMovementReference(latest, { pos: allPos, invoices: invoiceNumbers, sites })
@@ -578,8 +600,17 @@ export default function Inventory() {
         // ส่วนกลาง row -- it read as a duplicate line per item for tenants
         // that never stock centrally.
         rows.push({ item, balance: null, isFirstForItem: true })
+      } else if (itemBalances.length === 1) {
+        rows.push({ item, balance: itemBalances[0], isFirstForItem: true })
       } else {
-        itemBalances.forEach((balance, i) => rows.push({ item, balance, isFirstForItem: i === 0 }))
+        // Stock at 2+ sites (e.g. two POs for the same item delivered to
+        // two different job sites) -- combine into ONE row instead of one
+        // row per site. Reported live: a single catalog item (one real
+        // inventory_items row, confirmed live via SQL -- the code was
+        // never actually duplicated) showing as separate list rows read
+        // as "the system split my material into two items." The
+        // breakdown by site is still available -- see the "ดูคลัง" popup.
+        rows.push({ item, balance: null, isFirstForItem: true, multiSite: itemBalances })
       }
     }
     return rows
@@ -591,12 +622,12 @@ export default function Inventory() {
       { header: 'ชื่อ', accessor: r => r.item.name },
       { header: 'หมวดหมู่', accessor: r => r.item._category || '' },
       { header: 'สถานะ', accessor: r => r.item.active ? 'ใช้งานอยู่' : 'ปิดใช้งาน' },
-      { header: 'คลัง', accessor: r => r.balance ? (r.balance.sites?.name || '') : (centralSite?.name || 'ส่วนกลาง') },
-      { header: 'ปริมาณ', accessor: r => r.balance?.quantity_on_hand ?? 0 },
+      { header: 'คลัง', accessor: r => r.multiSite ? `${r.multiSite.length} คลัง` : (r.balance ? (r.balance.sites?.name || '') : (centralSite?.name || 'ส่วนกลาง')) },
+      { header: 'ปริมาณ', accessor: r => r.multiSite ? aggregateBalances(r.multiSite).qty : (r.balance?.quantity_on_hand ?? 0) },
       { header: 'หน่วย', accessor: r => r.item.base_unit },
-      { header: 'ราคา/หน่วย', accessor: r => r.balance?.weighted_average_cost ?? 0 },
-      { header: 'มูลค่ารวม', accessor: r => (r.balance?.quantity_on_hand ?? 0) * (r.balance?.weighted_average_cost ?? 0) },
-      { header: 'แหล่งที่มาล่าสุด', accessor: r => r.balance ? resolveSource(r.item.id, r.balance.site_id) : '' },
+      { header: 'ราคา/หน่วย', accessor: r => r.multiSite ? aggregateBalances(r.multiSite).avgCost : (r.balance?.weighted_average_cost ?? 0) },
+      { header: 'มูลค่ารวม', accessor: r => r.multiSite ? aggregateBalances(r.multiSite).value : (r.balance?.quantity_on_hand ?? 0) * (r.balance?.weighted_average_cost ?? 0) },
+      { header: 'แหล่งที่มาล่าสุด', accessor: r => r.multiSite ? resolveSource(r.item.id) : (r.balance ? resolveSource(r.item.id, r.balance.site_id) : '') },
     ]
     exportToExcel(tableRows, columns, 'สินค้าคงคลัง')
   }
@@ -754,15 +785,16 @@ export default function Inventory() {
                   <th>คลัง</th><th>ปริมาณ</th><th>ราคา/หน่วย</th><th>มูลค่ารวม</th><th>แหล่งที่มาล่าสุด</th><th></th>
                 </tr></thead>
                 <tbody>
-                  {tableRows.map(({ item, balance, isFirstForItem }) => (
+                  {tableRows.map(({ item, balance, isFirstForItem, multiSite }) => (
                     <BalanceRow
                       key={balance ? balance.id : `${item.id}-empty`}
-                      item={item} balance={balance} isFirstForItem={isFirstForItem}
+                      item={item} balance={balance} multiSite={multiSite} isFirstForItem={isFirstForItem}
                       centralSite={centralSite} canEdit={canEdit} savingKey={savingBalance}
                       resolveSource={resolveSource}
                       onSaveBalance={handleSaveBalance}
                       onEditItem={() => { setEditItem(item); setShowForm(true) }}
                       onDeleteItem={() => setDeleteId(item.id)}
+                      onViewWarehouses={multiSite ? () => setWarehousePopup({ item, balances: multiSite }) : undefined}
                     />
                   ))}
                   {!tableRows.length && <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีสินค้าคงคลัง</td></tr>}
@@ -949,6 +981,42 @@ export default function Inventory() {
       {deleteId && (
         <ConfirmDialog title="ลบสินค้าคงคลัง" message="ยืนยันการลบ? (ถ้ามีประวัติสต็อกผูกอยู่ การลบจะไม่สำเร็จ)" onConfirm={handleDelete} onCancel={() => setDeleteId(null)} />
       )}
+
+      {warehousePopup && (() => {
+        const { qty: totalQty, value: totalValue } = aggregateBalances(warehousePopup.balances)
+        return (
+          <Modal title={`คลังของ ${warehousePopup.item.name}`} onClose={() => setWarehousePopup(null)} maxWidth={480}>
+            <div className="modal-body">
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>คลัง</th><th>ปริมาณ</th><th>ราคา/หน่วย</th><th>มูลค่า</th></tr></thead>
+                  <tbody>
+                    {warehousePopup.balances.map(b => (
+                      <tr key={b.id}>
+                        <td>{b.sites?.name || '—'}</td>
+                        <td className="font-mono">{fmt(b.quantity_on_hand)} {warehousePopup.item.base_unit}</td>
+                        <td className="font-mono">{fmt(b.weighted_average_cost)}</td>
+                        <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(b.quantity_on_hand * b.weighted_average_cost)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ fontWeight: 700, borderTop: '1px solid var(--border)' }}>
+                      <td>รวม</td>
+                      <td className="font-mono">{fmt(totalQty)} {warehousePopup.item.base_unit}</td>
+                      <td></td>
+                      <td className="font-mono">{fmt(totalValue)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-primary" onClick={() => setWarehousePopup(null)}>ปิด</button>
+            </div>
+          </Modal>
+        )
+      })()}
 
       {showProfileForm && (
         <Modal title={editProfile ? `แก้ไข ${editProfile.name}` : 'เพิ่มหน้าตัดใหม่'} onClose={() => { setShowProfileForm(false); setEditProfile(null) }} maxWidth={480}>
