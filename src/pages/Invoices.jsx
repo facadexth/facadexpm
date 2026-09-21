@@ -419,6 +419,10 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
         // สืบมาจากใบเสนอราคาต้นทาง (หมวด VAT ตรงกันอยู่แล้วเพราะ has_vat มาจาก
         // quotation เดียวกัน) เปลี่ยนได้ทีหลังจากตัว InvoiceDocumentModal เอง
         bank_account_id: quotation.bank_account_id || null,
+        // ผูกกับใบแจ้งหนี้นี้ใบเดียว (0 = ตั้งใจไม่หัก) -- handleMarkPaid ใช้
+        // ค่านี้เสมอตอนกดยืนยันชำระ แทนที่จะไปอ่าน sites.default_tax_withheld_pct
+        // สดๆ ตอนนั้น ซึ่งอาจเปลี่ยนไปแล้วนับจากตอนสร้างใบนี้
+        wht_pct: effectiveWhtPct,
       }).select().single()
       if (invError) throw invError
       createdInvoiceNumber = invoice.invoice_number
@@ -500,6 +504,22 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
               📐 หัก VAT เฉพาะส่วนที่ยังไม่เคยเสียภาษีจากใบมัดจำก่อนหน้า — คิด VAT จาก {fmt(Math.max(0, totals.subtotal - depositTaxOffset))} บาทเท่านั้น (ไม่ใช่ {fmt(totals.subtotal)} เต็มยอด) เพื่อไม่ให้ซ้ำซ้อนกับ VAT ที่เก็บไปแล้วตอนรับมัดจำ {fmt(depositTaxOffset)} บาท
             </div>
           )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--border)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text2)' }}>
+              <input type="checkbox" checked={includeWht} onChange={e => setIncludeWht(e.target.checked)} />
+              หัก ณ ที่จ่ายสำหรับใบนี้
+            </label>
+            {includeWht && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input type="number" min="0" max="100" step="any" className="input input-sm" style={{ width: 60 }}
+                  value={whtPct} onChange={e => setWhtPct(e.target.value)} />
+                <span style={{ fontSize: 12, color: 'var(--text3)' }}>%</span>
+              </div>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+            การตั้งค่านี้ผูกกับใบแจ้งหนี้นี้ใบเดียว — ตอนกดยืนยันชำระ ระบบจะหัก ณ ที่จ่ายตามนี้เสมอ ไม่ว่า % เริ่มต้นของไซท์จะเปลี่ยนไปภายหลังหรือไม่
+          </div>
         </div>
 
         {/* Policy description, not a live number -- the actual amount
@@ -518,23 +538,12 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
         )}
 
         <div className="card card-body" style={{ marginTop: 12, display: 'grid', gap: 8 }}>
-          <label className="label" style={{ marginBottom: 0 }}>กรอกยอดที่ต้องการเรียกเก็บ (สุทธิ หลัง VAT และหัก ณ ที่จ่าย)</label>
+          <label className="label" style={{ marginBottom: 0 }}>กรอกยอดที่ต้องการเรียกเก็บ (สุทธิ หลัง VAT และหัก ณ ที่จ่ายตามที่ตั้งไว้ด้านบน)</label>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <input
               type="number" min="0" step="any" className="input input-sm" style={{ width: 160 }}
               placeholder="เช่น 100000" value={targetNet} onChange={e => setTargetNet(e.target.value)}
             />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text2)' }}>
-              <input type="checkbox" checked={includeWht} onChange={e => setIncludeWht(e.target.checked)} />
-              รวมหัก ณ ที่จ่าย
-            </label>
-            {includeWht && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <input type="number" min="0" max="100" step="any" className="input input-sm" style={{ width: 60 }}
-                  value={whtPct} onChange={e => setWhtPct(e.target.value)} />
-                <span style={{ fontSize: 12, color: 'var(--text3)' }}>%</span>
-              </div>
-            )}
             <button type="button" className="btn btn-sm btn-primary" onClick={applyTargetFill} disabled={!targetNet}>
               🎯 เติมให้อัตโนมัติ
             </button>
@@ -1035,7 +1044,12 @@ function computeWithholding(invoice, depositTaxOffset = 0) {
     return { amount: income.tax_withheld, pct, isEstimate: false }
   }
   if (invoice.status === 'void') return { amount: 0, pct: 0, isEstimate: false }
-  const defaultPct = invoice.sites?.default_tax_withheld_pct || 0
+  // Prefer what was actually chosen when this invoice was created
+  // (invoice.wht_pct -- see CreateInvoiceModal's handleSave) over the
+  // site's current default, since that's what handleMarkPaid will
+  // actually use once this invoice is paid. null only for invoices
+  // created before this column existed.
+  const defaultPct = invoice.wht_pct != null ? invoice.wht_pct : (invoice.sites?.default_tax_withheld_pct || 0)
   if (defaultPct > 0) {
     return { amount: round2(taxableBase * defaultPct / 100), pct: defaultPct, isEstimate: true }
   }
@@ -1759,7 +1773,14 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
           ? 0
           : await getQuotationDepositTaxOffset(invoice.quotation_id, invoice.has_vat, invoice.price_includes_vat, invoice.id)
         const whtBase = Math.max(0, noVat - depositTaxOffset)
-        const taxAmt = whtBase * (site.default_tax_withheld_pct || 0) / 100
+        // invoice.wht_pct (set once, at invoice-creation time -- see
+        // CreateInvoiceModal's handleSave) wins over the site's CURRENT
+        // default whenever it's set, including an explicit 0 (WHT
+        // deliberately turned off for this invoice). null only for
+        // invoices created before this column existed -- those keep the
+        // old behavior of reading the site's live default at payment time.
+        const taxPct = invoice.wht_pct != null ? invoice.wht_pct : (site.default_tax_withheld_pct || 0)
+        const taxAmt = whtBase * taxPct / 100
         const retentionAmt = noVat * (site.default_retention_pct || 0) / 100
 
         // ใบมัดจำ "เป็น" เงินมัดจำเอง ไม่ใช่การเบิกที่ต้องหักจากยอดมัดจำที่มีอยู่

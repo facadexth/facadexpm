@@ -1,0 +1,14 @@
+-- Lets the WHT (หัก ณ ที่จ่าย) decision be made once, at invoice-creation
+-- time, and honored later when the invoice is actually marked paid --
+-- previously the invoice-creation form's WHT checkbox/% (Invoices.jsx's
+-- CreateInvoiceModal) was only a live calculator for the "target net
+-- amount" helper, never persisted; handleMarkPaid always re-derived WHT
+-- fresh from sites.default_tax_withheld_pct at payment time, ignoring
+-- whatever was chosen (or explicitly turned off) while creating the
+-- invoice.
+--
+-- NULL means "not specified" -- old invoices created before this column
+-- existed keep falling back to the site's default % at payment time,
+-- unchanged. A non-null value (including explicit 0, meaning "no WHT on
+-- this invoice") always wins over the site default once set.
+alter table invoices add column wht_pct numeric;
