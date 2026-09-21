@@ -46,6 +46,7 @@ const Cheques       = lazy(() => import('./pages/Cheques.jsx'))
 const BomTemplates = lazy(() => import('./pages/BomTemplates.jsx'))
 const Estimation   = lazy(() => import('./pages/Estimation.jsx'))
 const TenantManagement = lazy(() => import('./pages/TenantManagement.jsx'))
+const CommunicationCenter = lazy(() => import('./pages/CommunicationCenter.jsx'))
 
 const TABS = [
   { id: 'dashboard',         label: '📊 ภาพรวม',              minRole: 'WORKER', module: null },
@@ -85,6 +86,7 @@ const TABS = [
     { id: 'suppliers',       label: '🏭 ผู้จำหน่าย',     minRole: 'ADMIN', module: null },
     { id: 'catalog_items',   label: '📦 รายการสินค้า', minRole: 'ADMIN', module: 'quotations' },
     { id: 'user_management', label: '👤 ผู้ใช้งาน',    minRole: 'OWNER', module: null },
+    { id: 'communication_center', label: '💬 การสื่อสาร', minRole: 'OWNER', module: null },
   ] },
   { id: 'tenant_management', label: '🏢 ผู้ดูแลระบบ', minRole: 'WORKER', module: null, platformAdminOnly: true },
 ]
@@ -356,6 +358,7 @@ export default function App() {
         case 'invoices':      return <Invoices     {...props} />
         case 'catalog_items': return <CatalogItems {...props} />
         case 'user_management': return <UserManagement {...props} />
+        case 'communication_center': return <CommunicationCenter {...props} />
         case 'settings':   return <Settings   {...props} />
         case 'tenant_management': return <TenantManagement {...props} />
         case 'estimation':    return <Estimation    {...props} />
