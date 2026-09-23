@@ -576,7 +576,16 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   useEffect(() => {
     if (navState?.poId && pos) {
       const match = pos.find(p => p.id === navState.poId)
-      if (match) setDetailRow(match)
+      if (match) {
+        setDetailRow(match)
+        // Consume it -- navState.poId otherwise stays set for the rest of
+        // this page visit, and `pos` gets a new array reference on every
+        // refetch (saving/editing/adding ANY PO), which re-ran this effect
+        // and reopened this same old PO's detail every time. Reported
+        // live as "every time I add a PO, a popup auto-pops like the eye
+        // button was clicked."
+        navigateTo('purchase_orders', {})
+      }
     }
   }, [navState?.poId, pos])
 
