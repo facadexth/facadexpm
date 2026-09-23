@@ -428,7 +428,11 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
       createdInvoiceNumber = invoice.invoice_number
       await auditLog('invoices', invoice.id, 'INSERT', null, { quotation_id: quotation.id, total: totals.total })
 
-      for (const [sortOrder, l] of billedLines.entries()) {
+      // Not billedLines.entries() any more -- interleaving each item's
+      // glued item_description row (below) needs sort_order to keep
+      // counting up across both, not restart per item.
+      let nextSortOrder = 0
+      for (const l of billedLines) {
         const lineDrawQty = drawQty(l.units)
         // Waterfall-derived floats, unlike a user-typed decimal, are not
         // guaranteed to land on a clean 2-decimal value -- round before
@@ -439,7 +443,7 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
           invoice_id: invoice.id, quotation_item_id: l.quotationItemId,
           description: l.description, unit: l.unit, unit_price: l.unitPrice,
           unit_price_material: l.unitPriceMaterial, unit_price_labor: l.unitPriceLabor,
-          draw_qty: lineDrawQty, line_total: lineAmount, sort_order: sortOrder,
+          draw_qty: lineDrawQty, line_total: lineAmount, sort_order: nextSortOrder++,
         }).select().single()
         if (itemError) throw itemError
 
@@ -461,6 +465,26 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
           if (!updateResult || updateResult.length === 0) {
             throw new Error('รายการนี้ถูกแก้ไขโดยผู้ใช้อื่นระหว่างที่คุณกำลังสร้างใบแจ้งหนี้ กรุณาปิดหน้าต่างนี้แล้วลองใหม่')
           }
+        }
+
+        // Carry the source quotation item's glued item_description along --
+        // same positional convention as Quotations.jsx (no FK, just "the
+        // row directly after"), not a billable line of its own (0
+        // quantity/price/total, see DocumentPaper's renderRow for how this
+        // prints). Previously silently dropped: billedLines only keeps
+        // rows with a real drawn quantity, and a description row has none
+        // of its own quotation_item_units to draw from -- confirmed live,
+        // 212 real item_description rows existed across quotations and
+        // none had ever reached an invoice.
+        const srcIndex = items.findIndex(qi => qi.id === l.quotationItemId)
+        const descRow = srcIndex >= 0 ? items[srcIndex + 1] : null
+        if (descRow?.item_type === 'item_description' && descRow.description?.trim()) {
+          const { error: descError } = await supabase.from('invoice_items').insert({
+            invoice_id: invoice.id, quotation_item_id: descRow.id,
+            description: descRow.description, unit: null, unit_price: 0,
+            draw_qty: 0, line_total: 0, sort_order: nextSortOrder++, item_type: 'item_description',
+          })
+          if (descError) throw descError
         }
       }
 
@@ -740,7 +764,16 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
   const isSplit = (items || []).some(it => it.unit_price_material != null)
   const materialLabor = isSplit ? sumMaterialLabor(items) : null
 
-  const renderRow = (it, i) => (
+  // item_description: glued to the item row directly above it, same
+  // positional convention as quotation_items (see Quotations.jsx) -- not a
+  // billable line of its own (unit_price/draw_qty/line_total all 0, see
+  // handleSave), so it prints as one indented, full-width text row instead
+  // of repeating "0" across the qty/price/total columns.
+  const renderRow = (it, i) => it.item_type === 'item_description' ? (
+    <tr key={it.id || i}>
+      <td colSpan={isSplit ? 5 : 4} style={{ padding: '0 8px 9px 20px', borderBottom: '1px solid #eee', whiteSpace: 'pre-line', fontSize: '0.92em', color: '#6a6f85' }}>{it.description}</td>
+    </tr>
+  ) : (
     <tr key={it.id || i}>
       <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee', whiteSpace: 'pre-line' }}>{it.description}</td>
       <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.draw_qty).replace(/\.00$/, '')} {it.unit || ''}</td>

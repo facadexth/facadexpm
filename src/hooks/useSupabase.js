@@ -386,9 +386,16 @@ export function useInvoices(filters = {}) {
         // และ incomes.source_invoice_id -> invoices.id) -- ไม่งั้น PostgREST
         // จะ error "more than one relationship was found" ทันที ทำให้ query
         // ทั้งเส้นพังเงียบๆ (useInvoices ไม่มีใครอ่าน .error ใน Invoices.jsx เดิม)
-        .select('*, quotations(quotation_number, client_id, clients(name, address, tax_id)), sites(name, site_number, default_tax_withheld_pct, default_deposit_pct), invoice_items(id, quotation_item_id, description, unit, unit_price, unit_price_material, unit_price_labor, draw_qty, line_total, sort_order), incomes!invoices_income_id_fkey(tax_withheld, received_amount, deposit_deduction), bank_accounts(id, bank_name, account_name, account_no)')
+        .select('*, quotations(quotation_number, client_id, clients(name, address, tax_id)), sites(name, site_number, default_tax_withheld_pct, default_deposit_pct), invoice_items(id, quotation_item_id, description, unit, unit_price, unit_price_material, unit_price_labor, draw_qty, line_total, sort_order, item_type), incomes!invoices_income_id_fkey(tax_withheld, received_amount, deposit_deduction), bank_accounts(id, bank_name, account_name, account_no)')
         .order('date', { ascending: false })
         .order('id', { ascending: false })
+        // Not previously ordered -- harmless before now (a real item row's
+        // own position within one invoice rarely mattered), but a new
+        // item_description row (see 2026-09-23 migration) MUST land
+        // directly after the item row it's glued to for the printed
+        // document to read correctly, and PostgREST doesn't guarantee
+        // embedded-resource order without this.
+        .order('sort_order', { foreignTable: 'invoice_items' })
 
       if (filters.siteId) q = q.eq('site_id', filters.siteId)
       if (filters.status) q = q.eq('status', filters.status)
