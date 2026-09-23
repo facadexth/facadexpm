@@ -1,0 +1,13 @@
+-- Lets a catalog item's own descriptive text (quotation_items already
+-- supports this via item_type='item_description', glued positionally to
+-- the item row right above it -- see Quotations.jsx) survive onto the
+-- invoice/receipt/tax-invoice printed from it. Confirmed live: 212 real
+-- item_description rows exist across quotations, zero of them had ever
+-- made it into an invoice_items row -- CreateInvoiceModal's billedLines
+-- filter only keeps rows with a nonzero drawn quantity, and a pure
+-- description row (no quotation_item_units of its own) always has zero.
+--
+-- default 'item' so every existing row (and any insert that doesn't set
+-- this explicitly) keeps behaving exactly as it always has -- a real
+-- billable line, not a description.
+alter table invoice_items add column item_type text not null default 'item';
