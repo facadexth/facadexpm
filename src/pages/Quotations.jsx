@@ -1185,6 +1185,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   const [editRow,  setEditRow]  = useState(null)
   const [dupInitial, setDupInitial] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
+  const [ownerEditTarget, setOwnerEditTarget] = useState(null) // accepted qt OWNER confirmed editing
   const [saving,   setSaving]   = useState(false)
   const [toast,    setToast]    = useState(null)
   const [sortCol,  setSortCol]  = useState('date')
@@ -1359,8 +1360,13 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   // ดึงใบเสนอราคาที่ "ส่งแล้ว" กลับมาเป็น "ร่าง" เพื่อแก้ไข -- ทำทั้งสองอย่าง
   // ในคลิกเดียว (เปลี่ยนสถานะ + เปิดฟอร์มแก้ไขทันที) แทนที่จะให้กดสองครั้ง
   // ต้องเปลี่ยนสถานะกลับไปร่างก่อน เพราะปุ่มแก้ไข (ดินสอ) เดิมโชว์เฉพาะ
-  // status==='draft' เท่านั้น -- จำกัดไว้แค่ status==='sent' เพราะใบที่
+  // status==='draft' เท่านั้น -- ปุ่มปกติจำกัดไว้แค่ status==='sent' เพราะใบที่
   // "ยอมรับ" แล้วอาจมีไซท์งาน/ใบแจ้งหนี้ผูกอยู่แล้ว ดึงกลับไม่ปลอดภัยเท่า
+  // (OWNER ยังเรียกใช้ฟังก์ชันเดียวกันนี้ได้กับ status==='accepted' ผ่านปุ่มแยก
+  // ด้านล่าง หลัง confirm -- ปลอดภัยแม้มีใบแจ้งหนี้ผูกอยู่แล้วจริง เพราะ
+  // invoice_items.quotation_item_id เป็น ON DELETE RESTRICT ที่ระดับ DB
+  // (ยืนยันแล้วผ่าน live schema query): การบันทึกฟอร์มแก้ไขจะ error ทันที
+  // แทนที่จะลบ/ทำ invoice ที่มีอยู่แล้วพัง ถ้าใบนั้นถูกตัดยอดไปแล้วจริง)
   const handlePullBackToEdit = async (qt) => {
     const { error } = await supabase.from('quotations').update({ status: 'draft' }).eq('id', qt.id)
     if (error) { alert('Error: ' + error.message); return }
@@ -1593,15 +1599,23 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                           <>
                             <button className="btn btn-sm btn-primary" onClick={() => setAcceptRow(qt)} title="ลูกค้าเซ็นรับแล้ว เหลือแค่ผูกไซท์งาน">🔗 ผูกไซท์งาน</button>
                             <RowActionsMenu items={[
+                              ...(isAtLeast('OWNER') ? [{ label: '✏️ แก้ไข (OWNER)', onClick: () => setOwnerEditTarget(qt) }] : []),
                               { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
                             ]} />
                           </>
                         )}
-                        {/* accepted+linked / rejected / expired otherwise have no
-                            other action here -- duplicate works regardless of
-                            status (it never touches the source document, only
-                            seeds a new one), so it still gets a menu of its own. */}
-                        {canEdit && !(qt.status === 'draft' || qt.status === 'sent' || (qt.status === 'accepted' && !qt.site_id)) && (
+                        {/* accepted+linked: OWNER-only edit escape hatch (see
+                            handlePullBackToEdit's comment on why this is safe
+                            even with invoices already issued). rejected/expired
+                            below still have no edit path at all -- only
+                            duplicate, which never touches the source document. */}
+                        {canEdit && qt.status === 'accepted' && qt.site_id && (
+                          <RowActionsMenu items={[
+                            ...(isAtLeast('OWNER') ? [{ label: '✏️ แก้ไข (OWNER)', onClick: () => setOwnerEditTarget(qt) }] : []),
+                            { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
+                          ]} />
+                        )}
+                        {canEdit && (qt.status === 'rejected' || qt.status === 'expired') && (
                           <RowActionsMenu items={[
                             { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
                           ]} />
@@ -1621,6 +1635,16 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
 
       {deleteId && (
         <ConfirmDialog title="ลบใบเสนอราคา" message="ยืนยันการลบใบเสนอราคานี้?" onConfirm={handleDelete} onCancel={() => setDeleteId(null)} danger />
+      )}
+
+      {ownerEditTarget && (
+        <ConfirmDialog
+          title="แก้ไขใบเสนอราคาที่ยอมรับแล้ว"
+          message={`ใบนี้ถูกยอมรับแล้ว${ownerEditTarget.site_id ? ' และผูกไซท์งานอยู่' : ''} — แก้ไขแล้วจะดึงกลับเป็นร่างชั่วคราวจนกว่าจะกดส่งใหม่ ถ้ามีรายการที่ถูกตัดใบแจ้งหนี้ไปแล้ว ระบบจะกันไม่ให้บันทึกทับรายการนั้น (error แจ้งเตือน ไม่ทำให้ข้อมูลใบแจ้งหนี้เสียหาย) ยืนยันดำเนินการต่อ?`}
+          onConfirm={() => { handlePullBackToEdit(ownerEditTarget); setOwnerEditTarget(null) }}
+          onCancel={() => setOwnerEditTarget(null)}
+          danger
+        />
       )}
 
       {acceptRow && (
