@@ -173,16 +173,21 @@ Deno.serve(async (req) => {
     return json({ error: `AI API error: ${errText.slice(0, 500)}` }, 502)
   }
 
+  const anthropicJson = await anthropicRes.json()
+
   // Counts against the monthly quota here, not earlier -- a 200 from
   // Anthropic means the call was actually processed (and billed) even if
   // parsing its response below fails; a network error or a non-2xx
   // response above never reaches this line, so it's never charged against
-  // quota. Logged best-effort: a failed insert here shouldn't block the
-  // extraction result the caller is waiting on.
-  const { error: usageLogError } = await userClient.from('document_scan_usage').insert({})
+  // quota. Real input/output token counts (not an estimate) come straight
+  // off Anthropic's own `usage` field -- lets "PDF vs JPG cost" be
+  // answered from actual data instead of a formula guess. Logged
+  // best-effort: a failed insert here shouldn't block the extraction
+  // result the caller is waiting on.
+  const { error: usageLogError } = await userClient.from('document_scan_usage').insert({
+    mime_type, input_tokens: anthropicJson?.usage?.input_tokens ?? null, output_tokens: anthropicJson?.usage?.output_tokens ?? null,
+  })
   if (usageLogError) console.error('document_scan_usage insert failed:', usageLogError.message)
-
-  const anthropicJson = await anthropicRes.json()
   // The model can return a leading `thinking` content block before its
   // actual text response (observed live with claude-sonnet-5) -- find the
   // first text block by type rather than assuming content[0] is it.
