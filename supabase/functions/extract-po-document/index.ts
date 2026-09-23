@@ -149,7 +149,17 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 4096,
+        // 4096 was too low for a real document with a long item list --
+        // the model's JSON response got cut off mid-line-item, producing
+        // truncated (invalid) JSON that failed to parse below. Reported
+        // live as "cannot read json" on a 55-page, 9.8MB flattened
+        // quotation. 8192 is the highest safe ceiling without opting into
+        // an extended-output beta header this function doesn't send --
+        // still not guaranteed enough for a document THAT large (this
+        // feature is built for single delivery notes/invoices, not
+        // multi-page combined submittals); see the stop_reason check
+        // below for what happens if even this isn't enough.
+        max_tokens: 8192,
         system: SYSTEM_PROMPT,
         messages,
       }),
@@ -183,7 +193,17 @@ Deno.serve(async (req) => {
   if (typeof text !== 'string') return json({ error: 'AI ไม่ได้ตอบกลับเป็นข้อความ' }, 502)
 
   const parsed = parseModelJson(text)
-  if (!parsed) return json({ error: 'อ่านผลลัพธ์จาก AI ไม่สำเร็จ (ไม่ใช่ JSON ที่ถูกต้อง)' }, 502)
+  if (!parsed) {
+    // Distinguish "the model got cut off mid-answer" (stop_reason ===
+    // 'max_tokens' -- the document has too many line items to fit in one
+    // response) from a genuine malformed-output case, since the two need
+    // completely different user actions (split the document / enter it
+    // manually, vs. just retry).
+    if (anthropicJson?.stop_reason === 'max_tokens') {
+      return json({ error: 'เอกสารนี้มีรายการเยอะเกินไป AI ตอบไม่ทันจบภายในขีดจำกัด กรุณาสแกนทีละหน้า/ทีละส่วนที่มีตารางรายการ หรือกรอกใบสั่งซื้อด้วยตนเอง' }, 502)
+    }
+    return json({ error: 'อ่านผลลัพธ์จาก AI ไม่สำเร็จ (ไม่ใช่ JSON ที่ถูกต้อง)' }, 502)
+  }
 
   return json(parsed)
 })
