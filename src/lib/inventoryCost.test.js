@@ -446,6 +446,16 @@ describe('resolveMovementReference', () => {
     const label = resolveMovementReference({ reference_type: null, reference_id: null }, { pos, invoices, sites })
     expect(label).toBe('—')
   })
+
+  it('resolves a quotation reference to its quotation number from notes', () => {
+    const label = resolveMovementReference({ reference_type: 'quotation', reference_id: 'q1', notes: 'QT2609-040' }, { pos, invoices, sites })
+    expect(label).toBe('ใบเสนอราคา QT2609-040')
+  })
+
+  it('resolves a quotation reference with no notes to a generic label', () => {
+    const label = resolveMovementReference({ reference_type: 'quotation', reference_id: 'q1', notes: null }, { pos, invoices, sites })
+    expect(label).toBe('ใบเสนอราคา')
+  })
 })
 
 describe('computeStockLedgerReport', () => {
@@ -521,11 +531,17 @@ describe('computeStockLedgerReport', () => {
     expect(rows).toHaveLength(0)
   })
 
-  it('the movements list on each row carries reference (from notes) and direction', () => {
+  it('the movements list on each row carries reference fields and direction, sorted ascending by date', () => {
     const rows = computeStockLedgerReport({
-      movements: [m({ movement_type: 'sale_out', quantity: 5, unit_cost: 100, created_at: '2026-09-05T10:00:00Z', notes: 'IN2609-001' })],
+      movements: [
+        m({ movement_type: 'sale_out', quantity: 3, unit_cost: 100, created_at: '2026-09-10T10:00:00Z', notes: 'IN2609-002', inventory_item_id: 'item-rm' }),
+        m({ movement_type: 'sale_out', quantity: 5, unit_cost: 100, created_at: '2026-09-05T10:00:00Z', notes: 'IN2609-001', reference_type: 'invoice', reference_id: 'inv-1', inventory_item_id: 'item-rm' }),
+      ],
       items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'all', categoryId: null,
     })
-    expect(rows[0].movements).toEqual([{ date: '2026-09-05T10:00:00Z', type: 'sale_out', reference: 'IN2609-001', qty: 5, unitCost: 100, value: 500, direction: 'out' }])
+    expect(rows[0].movements).toEqual([
+      { date: '2026-09-05T10:00:00Z', type: 'sale_out', referenceType: 'invoice', referenceId: 'inv-1', notes: 'IN2609-001', qty: 5, unitCost: 100, value: 500, direction: 'out' },
+      { date: '2026-09-10T10:00:00Z', type: 'sale_out', referenceType: null, referenceId: null, notes: 'IN2609-002', qty: 3, unitCost: 100, value: 300, direction: 'out' },
+    ])
   })
 })

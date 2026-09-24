@@ -6,7 +6,7 @@
 // (see the inventory Phase 1 plan's Ruling A for why this rides on
 // the PO module instead of a new module key).
 // ============================================================
-import { useState, useMemo } from 'react'
+import { useState, useMemo, Fragment } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useAllAluminumProfiles, useCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices, useInvoiceNumbers, useSiteCostEstimates } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
@@ -365,86 +365,118 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
 
   const confirm = async () => {
     if (!validSum) { alert('ผลรวม % ต้องเท่ากับ 100'); return }
-    if (!plan || !plan.steps.length) { alert('ไม่มีรายการให้ตัดสต็อก'); return }
     setConfirming(true)
     try {
-      const { data: existing, error: checkErr } = await supabase
-        .from('stock_movements').select('id').eq('reference_type', 'invoice').eq('reference_id', invoice.id).limit(1)
-      if (checkErr) throw checkErr
-      if (existing?.length) { alert('ใบแจ้งหนี้นี้ถูกตัดสต็อกไปแล้ว — กำลังรีเฟรชรายการ'); onConfirmed(); return }
+      // Idempotency is checked per-kind (raw-material vs finished-goods)
+      // rather than with one combined check, so a partial failure (e.g.
+      // raw-material posts fine but finished-goods then throws) can be
+      // retried and will only redo the half that's actually missing.
+      const { data: existingRmRows, error: rmCheckErr } = await supabase
+        .from('stock_movements').select('id, inventory_items!inner(item_kind)')
+        .eq('reference_type', 'invoice').eq('reference_id', invoice.id)
+        .eq('inventory_items.item_kind', 'raw_material').limit(1)
+      if (rmCheckErr) throw rmCheckErr
+      const rmAlreadyDone = !!existingRmRows?.length
 
-      for (const step of plan.steps) {
-        const { error } = await supabase.rpc('record_stock_movement', {
-          p_inventory_item_id: step.inventoryItemId, p_site_id: step.siteId, p_movement_type: step.type,
-          p_quantity: step.quantity, p_unit_cost: step.unitCost,
-          p_reference_type: 'invoice', p_reference_id: invoice.id, p_notes: null,
-        })
-        if (error) throw error
+      const { data: existingFgRows, error: fgCheckErr } = await supabase
+        .from('stock_movements').select('id, inventory_items!inner(item_kind)')
+        .eq('reference_type', 'invoice').eq('reference_id', invoice.id)
+        .eq('inventory_items.item_kind', 'finished_goods').limit(1)
+      if (fgCheckErr) throw fgCheckErr
+      const fgAlreadyDone = !!existingFgRows?.length
+
+      if (rmAlreadyDone && fgAlreadyDone) { alert('ใบแจ้งหนี้นี้ถูกตัดสต็อกไปแล้ว — กำลังรีเฟรชรายการ'); onConfirmed(); return }
+
+      let didSomething = false
+
+      if (!rmAlreadyDone && plan && plan.steps.length) {
+        didSomething = true
+        for (const step of plan.steps) {
+          const { error } = await supabase.rpc('record_stock_movement', {
+            p_inventory_item_id: step.inventoryItemId, p_site_id: step.siteId, p_movement_type: step.type,
+            p_quantity: step.quantity, p_unit_cost: step.unitCost,
+            p_reference_type: 'invoice', p_reference_id: invoice.id, p_notes: null,
+          })
+          if (error) throw error
+        }
       }
 
       // Finished-goods deduction (additive to the raw-material steps
       // above, posted at this SAME confirm click -- see
       // docs/superpowers/specs/2026-09-24-finished-goods-tax-stock-reports-design.md).
-      const { data: quotation, error: qErr } = await supabase
-        .from('quotations').select('quotation_number').eq('id', invoice.quotation_id).maybeSingle()
-      if (qErr) throw qErr
+      // Deliberately NOT gated behind the raw-material plan having steps --
+      // a site with no raw-material stock must still get its finished-goods
+      // ledger entry.
+      let fgOverbilled = false
+      if (!fgAlreadyDone) {
+        const { data: quotation, error: qErr } = await supabase
+          .from('quotations').select('quotation_number').eq('id', invoice.quotation_id).maybeSingle()
+        if (qErr) throw qErr
 
-      const { data: invItems, error: invItemsErr } = await supabase
-        .from('invoice_items')
-        .select('quotation_item_id, line_total, quotation_items!inner(id, description, line_total, sort_order, item_type)')
-        .eq('invoice_id', invoice.id)
-        .eq('quotation_items.item_type', 'item')
-      if (invItemsErr) throw invItemsErr
+        const { data: invItems, error: invItemsErr } = await supabase
+          .from('invoice_items')
+          .select('quotation_item_id, line_total, quotation_items!inner(id, description, line_total, sort_order, item_type)')
+          .eq('invoice_id', invoice.id)
+          .eq('quotation_items.item_type', 'item')
+        if (invItemsErr) throw invItemsErr
 
-      const billedLines = (invItems || [])
-        .filter(li => li.quotation_item_id)
-        .map(li => ({
-          quotationItemId: li.quotation_item_id,
-          quotationNumber: quotation?.quotation_number || '',
-          sortOrder: li.quotation_items.sort_order,
-          description: li.quotation_items.description,
-          quotationItemLineTotal: li.quotation_items.line_total,
-          invoiceItemLineTotal: li.line_total,
-        }))
+        const billedLines = (invItems || [])
+          .filter(li => li.quotation_item_id)
+          .map(li => ({
+            quotationItemId: li.quotation_item_id,
+            quotationNumber: quotation?.quotation_number || '',
+            sortOrder: li.quotation_items.sort_order,
+            description: li.quotation_items.description,
+            quotationItemLineTotal: li.quotation_items.line_total,
+            invoiceItemLineTotal: li.line_total,
+          }))
 
-      if (billedLines.length) {
-        const quotationItemIds = billedLines.map(l => l.quotationItemId)
-        const { data: existingFg, error: fgErr } = await supabase
-          .from('inventory_items').select('id, quotation_item_id')
-          .eq('item_kind', 'finished_goods').in('quotation_item_id', quotationItemIds)
-        if (fgErr) throw fgErr
-        const existingByQuotationItemId = new Map((existingFg || []).map(r => [r.quotation_item_id, r.id]))
+        if (billedLines.length) {
+          didSomething = true
+          const quotationItemIds = billedLines.map(l => l.quotationItemId)
+          const { data: existingFg, error: fgErr } = await supabase
+            .from('inventory_items').select('id, quotation_item_id')
+            .eq('item_kind', 'finished_goods').in('quotation_item_id', quotationItemIds)
+          if (fgErr) throw fgErr
+          const existingByQuotationItemId = new Map((existingFg || []).map(r => [r.quotation_item_id, r.id]))
 
-        const fgPlan = computeFinishedGoodsDeductionPlan({
-          billedLines, materialPct: parseFloat(materialPct) || 0,
-          existingFinishedGoodsQuotationItemIds: new Set(existingByQuotationItemId.keys()),
-        })
-
-        for (const step of fgPlan.steps) {
-          let itemId = existingByQuotationItemId.get(step.quotationItemId)
-          if (step.type === 'adjustment' && !itemId) {
-            const { data: created, error: createErr } = await supabase
-              .from('inventory_items').insert({
-                name: step.name, code: step.code, base_unit: 'ชุด', active: true,
-                unit_conversion_mode: 'plain', item_kind: 'finished_goods', quotation_item_id: step.quotationItemId,
-              }).select('id').single()
-            if (createErr) throw createErr
-            itemId = created.id
-            existingByQuotationItemId.set(step.quotationItemId, itemId)
-          }
-          const { error: rpcErr } = await supabase.rpc('record_stock_movement', {
-            p_inventory_item_id: itemId, p_site_id: invoice.site_id, p_movement_type: step.type,
-            p_quantity: step.quantity, p_unit_cost: step.unitCost,
-            p_reference_type: step.type === 'adjustment' ? 'quotation' : 'invoice',
-            p_reference_id: step.type === 'adjustment' ? invoice.quotation_id : invoice.id,
-            p_notes: step.type === 'adjustment' ? (quotation?.quotation_number || null) : invoice.invoice_number,
+          const fgPlan = computeFinishedGoodsDeductionPlan({
+            billedLines, materialPct: parseFloat(materialPct) || 0,
+            existingFinishedGoodsQuotationItemIds: new Set(existingByQuotationItemId.keys()),
           })
-          if (rpcErr) throw rpcErr
+
+          for (const step of fgPlan.steps) {
+            let itemId = existingByQuotationItemId.get(step.quotationItemId)
+            if (step.type === 'adjustment' && !itemId) {
+              const { data: created, error: createErr } = await supabase
+                .from('inventory_items').insert({
+                  name: step.name, code: step.code, base_unit: 'ชุด', active: true,
+                  unit_conversion_mode: 'plain', item_kind: 'finished_goods', quotation_item_id: step.quotationItemId,
+                }).select('id').single()
+              if (createErr) throw createErr
+              itemId = created.id
+              existingByQuotationItemId.set(step.quotationItemId, itemId)
+            }
+            const { data: moveResult, error: rpcErr } = await supabase.rpc('record_stock_movement', {
+              p_inventory_item_id: itemId, p_site_id: invoice.site_id, p_movement_type: step.type,
+              p_quantity: step.quantity, p_unit_cost: step.unitCost,
+              p_reference_type: step.type === 'adjustment' ? 'quotation' : 'invoice',
+              p_reference_id: step.type === 'adjustment' ? invoice.quotation_id : invoice.id,
+              p_notes: step.type === 'adjustment' ? (quotation?.quotation_number || null) : invoice.invoice_number,
+            })
+            if (rpcErr) throw rpcErr
+            if (step.type === 'sale_out' && moveResult?.[0]?.new_quantity_on_hand < 0) fgOverbilled = true
+          }
         }
       }
 
-      if (plan.totalShortfall > 0.01) {
+      if (!didSomething) { alert('ไม่มีรายการให้ตัดสต็อก'); return }
+
+      if (plan && plan.totalShortfall > 0.01) {
         alert(`ตัดสต็อกสำเร็จบางส่วน — ขาดอีก ${fmt(plan.totalShortfall)} บาท (สต็อกไม่พอทั้งที่ไซท์งานและส่วนกลาง)`)
+      }
+      if (fgOverbilled) {
+        alert('คำเตือน: ใบแจ้งหนี้นี้ทำให้มีการตัดสต็อกสินค้าสำเร็จรูปเกิน 100% ของมูลค่าตามใบเสนอราคา (คงเหลือติดลบ) กรุณาตรวจสอบยอดใบแจ้งหนี้เทียบกับใบเสนอราคา')
       }
       onConfirmed()
     } catch (e) { alert('เกิดข้อผิดพลาดระหว่างตัดสต็อก: ' + e.message + ' — บางรายการอาจถูกบันทึกไปแล้ว กรุณาตรวจสอบที่แท็บ "ประวัติการเคลื่อนไหว" ก่อนลองใหม่') }
@@ -519,21 +551,24 @@ const TAX_REPORT_KINDS = [
 
 function fmtQty(n) { return (Math.round(n * 100) / 100).toLocaleString('th-TH') }
 
-function TaxReportsView({ categories }) {
+function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
   const today = new Date().toISOString().slice(0, 10)
   const monthStart = today.slice(0, 8) + '01'
   const [reportKind, setReportKind] = useState('all')
   const [dateFrom, setDateFrom] = useState(monthStart)
   const [dateTo, setDateTo] = useState(today)
   const [categoryFilter, setCategoryFilter] = useState('')
+  const [expandedItemId, setExpandedItemId] = useState(null)
 
   const { data: movements } = useStockMovements({ dateTo })
   const { data: allItems } = useAllInventoryItems()
 
-  const rows = computeStockLedgerReport({
+  const effectiveCategoryId = reportKind === 'finished_goods' ? null : (categoryFilter || null)
+
+  const rows = useMemo(() => computeStockLedgerReport({
     movements: movements || [], items: allItems || [], dateFrom, dateTo,
-    itemKindFilter: reportKind, categoryId: categoryFilter || null,
-  })
+    itemKindFilter: reportKind, categoryId: effectiveCategoryId,
+  }), [movements, allItems, dateFrom, dateTo, reportKind, effectiveCategoryId])
 
   return (
     <div>
@@ -556,7 +591,7 @@ function TaxReportsView({ categories }) {
         <table>
           <thead>
             <tr>
-              <th>รหัส</th><th>รายการ</th><th>หน่วย</th>
+              <th></th><th>รหัส</th><th>รายการ</th><th>หน่วย</th>
               <th>ยกมา (จำนวน)</th><th>ยกมา (มูลค่า)</th>
               <th>รับเข้า (จำนวน)</th><th>รับเข้า (มูลค่า)</th>
               <th>จำหน่ายออก (จำนวน)</th><th>จำหน่ายออก (มูลค่า)</th>
@@ -565,15 +600,43 @@ function TaxReportsView({ categories }) {
           </thead>
           <tbody>
             {rows.map(r => (
-              <tr key={r.itemId}>
-                <td>{r.code}</td><td>{r.name}</td><td>{r.unit}</td>
-                <td className="font-mono">{fmtQty(r.openingQty)}</td><td className="font-mono">{fmt(r.openingValue)}</td>
-                <td className="font-mono">{fmtQty(r.inQty)}</td><td className="font-mono">{fmt(r.inValue)}</td>
-                <td className="font-mono">{fmtQty(r.outQty)}</td><td className="font-mono">{fmt(r.outValue)}</td>
-                <td className="font-mono">{fmtQty(r.closingQty)}</td><td className="font-mono">{fmt(r.closingValue)}</td>
-              </tr>
+              <Fragment key={r.itemId}>
+                <tr style={{ cursor: r.movements.length ? 'pointer' : 'default' }} onClick={() => r.movements.length && setExpandedItemId(id => id === r.itemId ? null : r.itemId)}>
+                  <td style={{ color: 'var(--text3)' }}>{r.movements.length ? (expandedItemId === r.itemId ? '▲' : '▼') : ''}</td>
+                  <td>{r.code}</td><td>{r.name}</td><td>{r.unit}</td>
+                  <td className="font-mono">{fmtQty(r.openingQty)}</td><td className="font-mono">{fmt(r.openingValue)}</td>
+                  <td className="font-mono">{fmtQty(r.inQty)}</td><td className="font-mono">{fmt(r.inValue)}</td>
+                  <td className="font-mono">{fmtQty(r.outQty)}</td><td className="font-mono">{fmt(r.outValue)}</td>
+                  <td className="font-mono">{fmtQty(r.closingQty)}</td><td className="font-mono">{fmt(r.closingValue)}</td>
+                </tr>
+                {expandedItemId === r.itemId && (
+                  <tr>
+                    <td colSpan={12} style={{ padding: '0 0 10px 24px' }}>
+                      <table style={{ width: '100%' }}>
+                        <thead>
+                          <tr style={{ fontSize: 11, color: 'var(--text3)' }}>
+                            <th>วันที่</th><th>ประเภท</th><th>เลขที่อ้างอิง</th><th>รับเข้า</th><th>จำหน่ายออก</th><th>มูลค่า</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {r.movements.map((mv, i) => (
+                            <tr key={i} style={{ fontSize: 12.5 }}>
+                              <td>{new Date(mv.date).toLocaleDateString('th-TH')}</td>
+                              <td>{mv.type}</td>
+                              <td>{resolveMovementReference({ reference_type: mv.referenceType, reference_id: mv.referenceId, notes: mv.notes }, { pos, invoices: invoiceNumbers, sites })}</td>
+                              <td className="font-mono">{mv.direction === 'in' ? fmtQty(mv.qty) : ''}</td>
+                              <td className="font-mono">{mv.direction === 'out' ? fmtQty(mv.qty) : ''}</td>
+                              <td className="font-mono">{fmt(mv.value)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
-            {!rows.length && <tr><td colSpan={11} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีข้อมูลในช่วงเวลาที่เลือก</td></tr>}
+            {!rows.length && <tr><td colSpan={12} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีข้อมูลในช่วงเวลาที่เลือก</td></tr>}
           </tbody>
         </table>
       </div>
@@ -1100,7 +1163,7 @@ export default function Inventory() {
         </>
       )}
 
-      {view === 'tax_reports' && <TaxReportsView categories={categories} />}
+      {view === 'tax_reports' && <TaxReportsView categories={categories} pos={allPos} invoiceNumbers={invoiceNumbers} sites={sites} />}
 
       {showForm && (
         <Modal title={editItem ? `แก้ไข ${editItem.name}` : 'เพิ่มสินค้าคงคลังใหม่'} onClose={() => { setShowForm(false); setEditItem(null) }} maxWidth={520}>

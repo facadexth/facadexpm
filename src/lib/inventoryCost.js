@@ -57,6 +57,7 @@ export function resolveMovementReference(movement, { pos = [], invoices = [], si
     return site ? `โอนจาก ${site.name}` : 'โอนจากไซท์งาน'
   }
   if (reference_type === 'manual_adjustment') return 'ปรับยอด'
+  if (reference_type === 'quotation') return movement.notes ? `ใบเสนอราคา ${movement.notes}` : 'ใบเสนอราคา'
   return reference_type || '—'
 }
 
@@ -228,7 +229,7 @@ export function computeFinishedGoodsDeductionPlan({ billedLines, materialPct, ex
  * @param {string} params.dateTo - 'YYYY-MM-DD', inclusive
  * @param {'all'|'finished_goods'|'raw_material'} params.itemKindFilter
  * @param {string|null} params.categoryId - filter to one category, or null for all
- * @returns {Array<{itemId: string, code: string, name: string, unit: string, openingQty: number, openingValue: number, inQty: number, inValue: number, outQty: number, outValue: number, closingQty: number, closingValue: number, movements: Array<{date: string, type: string, reference: string, qty: number, unitCost: number, value: number, direction: 'in'|'out'}>}>}
+ * @returns {Array<{itemId: string, code: string, name: string, unit: string, openingQty: number, openingValue: number, inQty: number, inValue: number, outQty: number, outValue: number, closingQty: number, closingValue: number, movements: Array<{date: string, type: string, referenceType: string|null, referenceId: string|null, notes: string|null, qty: number, unitCost: number, value: number, direction: 'in'|'out'}>}>}
  */
 export function computeStockLedgerReport({ movements, items, dateFrom, dateTo, itemKindFilter, categoryId }) {
   const dateFromMs = new Date(`${dateFrom}T00:00:00`).getTime()
@@ -278,13 +279,14 @@ export function computeStockLedgerReport({ movements, items, dateFrom, dateTo, i
     } else {
       if (d === 'in') { row.inQty += magnitude; row.inValue += magnitude * (mv.unit_cost || 0) }
       else { row.outQty += magnitude; row.outValue += magnitude * (mv.unit_cost || 0) }
-      row.movements.push({ date: mv.created_at, type: mv.movement_type, reference: mv.notes || '', qty: magnitude, unitCost: mv.unit_cost || 0, value: magnitude * (mv.unit_cost || 0), direction: d })
+      row.movements.push({ date: mv.created_at, type: mv.movement_type, referenceType: mv.reference_type || null, referenceId: mv.reference_id || null, notes: mv.notes || null, qty: magnitude, unitCost: mv.unit_cost || 0, value: magnitude * (mv.unit_cost || 0), direction: d })
     }
   }
 
   for (const row of rowsByItem.values()) {
     row.closingQty = row.openingQty + row.inQty - row.outQty
     row.closingValue = row.openingValue + row.inValue - row.outValue
+    row.movements.sort((a, b) => new Date(a.date) - new Date(b.date))
   }
 
   return Array.from(rowsByItem.values()).sort((a, b) => a.code.localeCompare(b.code) || a.name.localeCompare(b.name))
