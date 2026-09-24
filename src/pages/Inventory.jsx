@@ -12,7 +12,7 @@ import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, us
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
-import { computeInvoiceDeductionPlan, resolveMovementReference } from '../lib/inventoryCost.js'
+import { computeInvoiceDeductionPlan, resolveMovementReference, computeFinishedGoodsDeductionPlan } from '../lib/inventoryCost.js'
 import { exportToExcel } from '../lib/exportExcel.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
@@ -381,6 +381,68 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
         })
         if (error) throw error
       }
+
+      // Finished-goods deduction (additive to the raw-material steps
+      // above, posted at this SAME confirm click -- see
+      // docs/superpowers/specs/2026-09-24-finished-goods-tax-stock-reports-design.md).
+      const { data: quotation, error: qErr } = await supabase
+        .from('quotations').select('quotation_number').eq('id', invoice.quotation_id).maybeSingle()
+      if (qErr) throw qErr
+
+      const { data: invItems, error: invItemsErr } = await supabase
+        .from('invoice_items')
+        .select('quotation_item_id, line_total, quotation_items!inner(id, description, line_total, sort_order, item_type)')
+        .eq('invoice_id', invoice.id)
+        .eq('quotation_items.item_type', 'item')
+      if (invItemsErr) throw invItemsErr
+
+      const billedLines = (invItems || [])
+        .filter(li => li.quotation_item_id)
+        .map(li => ({
+          quotationItemId: li.quotation_item_id,
+          quotationNumber: quotation?.quotation_number || '',
+          sortOrder: li.quotation_items.sort_order,
+          description: li.quotation_items.description,
+          quotationItemLineTotal: li.quotation_items.line_total,
+          invoiceItemLineTotal: li.line_total,
+        }))
+
+      if (billedLines.length) {
+        const quotationItemIds = billedLines.map(l => l.quotationItemId)
+        const { data: existingFg, error: fgErr } = await supabase
+          .from('inventory_items').select('id, quotation_item_id')
+          .eq('item_kind', 'finished_goods').in('quotation_item_id', quotationItemIds)
+        if (fgErr) throw fgErr
+        const existingByQuotationItemId = new Map((existingFg || []).map(r => [r.quotation_item_id, r.id]))
+
+        const fgPlan = computeFinishedGoodsDeductionPlan({
+          billedLines, materialPct: parseFloat(materialPct) || 0,
+          existingFinishedGoodsQuotationItemIds: new Set(existingByQuotationItemId.keys()),
+        })
+
+        for (const step of fgPlan.steps) {
+          let itemId = existingByQuotationItemId.get(step.quotationItemId)
+          if (step.type === 'adjustment' && !itemId) {
+            const { data: created, error: createErr } = await supabase
+              .from('inventory_items').insert({
+                name: step.name, code: step.code, base_unit: 'ชุด', active: true,
+                unit_conversion_mode: 'plain', item_kind: 'finished_goods', quotation_item_id: step.quotationItemId,
+              }).select('id').single()
+            if (createErr) throw createErr
+            itemId = created.id
+            existingByQuotationItemId.set(step.quotationItemId, itemId)
+          }
+          const { error: rpcErr } = await supabase.rpc('record_stock_movement', {
+            p_inventory_item_id: itemId, p_site_id: invoice.site_id, p_movement_type: step.type,
+            p_quantity: step.quantity, p_unit_cost: step.unitCost,
+            p_reference_type: step.type === 'adjustment' ? 'quotation' : 'invoice',
+            p_reference_id: step.type === 'adjustment' ? invoice.quotation_id : invoice.id,
+            p_notes: step.type === 'adjustment' ? (quotation?.quotation_number || null) : invoice.invoice_number,
+          })
+          if (rpcErr) throw rpcErr
+        }
+      }
+
       if (plan.totalShortfall > 0.01) {
         alert(`ตัดสต็อกสำเร็จบางส่วน — ขาดอีก ${fmt(plan.totalShortfall)} บาท (สต็อกไม่พอทั้งที่ไซท์งานและส่วนกลาง)`)
       }
