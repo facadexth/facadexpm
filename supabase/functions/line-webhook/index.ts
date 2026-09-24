@@ -10,15 +10,39 @@
 // sign-link already established for its own public/unauthenticated
 // endpoint.
 //
-// Seven crew actions total, two entry points:
+// Eight crew actions total, two entry points:
 //   - Typed keywords in the shared crew group -> immediate action.
 //     Scoped to the original three (แจ้งปัญหา/ขอเบิกของ/ขอลา) only --
-//     เช็คอิน/เช็คเอาท์/รูปภาพหน้างาน/งานเสร็จ are 1:1-DM-only (see below).
+//     เช็คอิน/เช็คเอาท์/รูปภาพหน้างาน/งานเสร็จ/งานวันนี้ are 1:1-DM-only.
 //   - The SAME trigger phrases (or a Rich Menu button tap, configured
 //     manually in LINE Official Account Manager to send fixed text) in
 //     a 1:1 DM -> two-step for the "needs a detail" actions (ask ->
-//     next message is the body), one-tap for เช็คอิน/เช็คเอาท์ (no detail
-//     needed, resolved from today's own assignment instead).
+//     next message is the body). เช็คอิน/เช็คเอาท์ are ALSO two-step now:
+//     ask the worker to share their LINE location (native picker, not
+//     typed text) -> next message is a `location`-type event -> validate
+//     against the assigned site's geofence. See the perform_worker_
+//     checkin_by_id/perform_worker_checkout_by_id note below.
+//
+// "งานวันนี้" (today's work) is the main Rich Menu entry point, NOT a
+// data-writing action of its own -- replaces the earlier flat 6-button
+// menu (which assumed a worker already knew which of 6 disconnected
+// actions to use) with a status summary + LINE Quick Reply chips for
+// only what's relevant right now (not checked in yet -> shows เช็คอิน;
+// already checked in -> shows เช็คเอาท์; has an open task -> shows
+// งานเสร็จ; always shows แจ้งปัญหา/รูปภาพหน้างาน). Tapping a chip sends
+// that exact phrase back as text, which flows into the SAME
+// matchDMAction() routing below, unchanged -- this menu is purely a
+// smarter front door onto existing actions, not a new code path per
+// action. ขอเบิกของ/ขอลา stay as their own separate Rich Menu buttons
+// (not "today's work" -- can happen any day, not tied to today's site).
+//
+// รูปภาพหน้างาน and งานเสร็จ both accept MULTIPLE photos per session now
+// (previously the first photo immediately closed the flow) -- each
+// photo uploads and saves right away, a "เสร็จแล้ว" quick-reply chip
+// appears after each one, and only tapping/typing "เสร็จแล้ว" (with at
+// least 1 photo already sent) closes the pending action -- for งานเสร็จ,
+// that's also the moment phase_tasks.status actually flips to 'done',
+// not the first photo.
 //
 // Keyword sets are tuned to avoid real collisions found in review (bare
 // "ปัญหา" matches "ไม่มีปัญหา" = "no problem"; bare "ลา" matches ตลาด/
@@ -28,10 +52,17 @@
 //                                 row -- the schema can't support that
 //                                 yet (see comment at that branch)
 //   "ลากิจ"/"ลาป่วย"/"ขอลา"/"อยากลา" -> worker_assignments row (leave_personal)
-//   "เช็คอิน"/"เช็คเอาท์"   -> line_checkins row (site resolved from
-//                                 today's own worker_assignments)
-//   "รูปภาพ"                -> line_site_photos row (two-step: ask for
-//                                 the photo, next DM must be an image)
+//   "เช็คอิน"/"เช็คเอาท์"   -> two-step: worker shares LINE location ->
+//                                 perform_worker_checkin_by_id/
+//                                 perform_worker_checkout_by_id (the SAME
+//                                 geofenced RPCs, worker_checkins table,
+//                                 and app_settings.checkin_radius_m the
+//                                 web app's own check-in card already
+//                                 uses -- site resolved from today's own
+//                                 worker_assignments, exactly as before).
+//                                 Rejects outside the configured radius
+//                                 with the distance in the reply.
+//   "รูปภาพ"                -> line_site_photos rows (multi-photo, see above)
 //   "งานเสร็จ"/"เสร็จงาน"   -> closes a real Kanban card (phase_tasks
 //                                 .status = 'done'), resolved from
 //                                 phase_task_workers. If the worker has
@@ -39,7 +70,8 @@
 //                                 one via LINE Quick Reply buttons (tap
 //                                 the task name -- built for low-literacy
 //                                 crew, no typing required), then asks
-//                                 for a required completion photo.
+//                                 for completion photo(s).
+//   "งานวันนี้"              -> handleTodaysJobMenu, see above
 // plus a bare linking code sent as a DM -- either an OWNER/ADMIN's
 // (user_roles.line_link_code, Settings -> ทั่วไป issues it) or a
 // worker's own (workers.line_link_code, the PRIMARY way a worker gets
@@ -75,9 +107,9 @@ function truncateLabel(s: string, max = 20): string {
 }
 
 type GroupActionType = 'issue_report' | 'material_request' | 'leave'
-type DMOnlyActionType = 'check_in' | 'check_out' | 'site_photo' | 'job_done_start'
+type DMOnlyActionType = 'check_in' | 'check_out' | 'site_photo' | 'job_done_start' | 'today_job'
 type ActionType = GroupActionType | DMOnlyActionType
-type PendingActionType = GroupActionType | 'site_photo' | 'job_done_pick' | 'job_done'
+type PendingActionType = GroupActionType | 'site_photo' | 'job_done_pick' | 'job_done' | 'check_in_location' | 'check_out_location'
 
 // LINE bots have no way to remove someone from a group chat -- there's
 // no "kick member" API for Official Accounts. So an offboarded worker
@@ -90,7 +122,7 @@ type PendingActionType = GroupActionType | 'site_photo' | 'job_done_pick' | 'job
 // re-fire this on every message. (A proactive version of this same
 // alert also fires immediately on status change -- see
 // supabase/functions/line-worker-offboarded and migration
-// 2026-09-20-03 -- this reactive one is a fallback in case that
+// 2026-09-23-03 -- this reactive one is a fallback in case that
 // somehow doesn't fire, not the primary path anymore.)
 async function alertOwnersOfInactiveWorker(
   worker: { id: string; name: string; line_offboarding_alerted_at: string | null },
@@ -141,7 +173,7 @@ async function resolveWorker(
 function promptForAction(action: GroupActionType | 'site_photo'): string {
   if (action === 'issue_report') return '🚧 รับทราบครับ ช่วยบอกรายละเอียดปัญหาที่พบด้วยครับ'
   if (action === 'material_request') return '📦 รับทราบครับ ช่วยบอกรายการของที่ต้องการเบิกด้วยครับ'
-  if (action === 'site_photo') return '📷 ส่งรูปหน้างานมาได้เลยครับ'
+  if (action === 'site_photo') return '📷 ส่งรูปหน้างานมาได้เลยครับ (ส่งได้หลายรูป พอครบแล้วกด "เสร็จแล้ว")'
   return '🏖️ รับทราบครับ ช่วยบอกรายละเอียดวันที่ลาด้วยครับ'
 }
 
@@ -161,8 +193,9 @@ function matchGroupAction(text: string): GroupActionType | null {
   return null
 }
 
-// Used by the 1:1 DM path -- all seven actions. เช็คอิน/เช็คเอาท์/
-// รูปภาพ/งานเสร็จ don't collide with any existing phrase or each other.
+// Used by the 1:1 DM path -- all eight actions. เช็คอิน/เช็คเอาท์/
+// รูปภาพ/งานเสร็จ/งานวันนี้ don't collide with any existing phrase or
+// each other (checked: "งานวันนี้" doesn't contain "งานเสร็จ").
 function matchDMAction(text: string): ActionType | null {
   const base = matchGroupAction(text)
   if (base) return base
@@ -170,6 +203,7 @@ function matchDMAction(text: string): ActionType | null {
   if (text.includes('เช็คเอาท์')) return 'check_out'
   if (text.includes('รูปภาพ')) return 'site_photo'
   if (text.includes('งานเสร็จ') || text.includes('เสร็จงาน')) return 'job_done_start'
+  if (text.includes('งานวันนี้')) return 'today_job'
   return null
 }
 
@@ -196,11 +230,11 @@ async function resolveTodaysSite(workerId: string, tenantId: string): Promise<{ 
   return site ?? null
 }
 
-// Resolves the worker's currently-open Kanban tasks (not yet 'done'),
-// via phase_task_workers -- the assignment link the Kanban feature
-// already built earlier, reused as-is, no new assignment concept
-// needed. Ordered by sort_order so the list matches the order tasks
-// appear on the real board.
+// Resolves the worker's OWN currently-open Kanban tasks (not yet
+// 'done'), via phase_task_workers. Used by งานเสร็จ's actual closing
+// action -- a worker can only mark done what's assigned to THEM, for
+// accountability. Ordered by sort_order so the list matches the order
+// tasks appear on the real board.
 async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Promise<Array<{ id: string; name: string }>> {
   const { data } = await admin
     .from('phase_task_workers')
@@ -212,6 +246,23 @@ async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Pr
   return (data ?? []).map((row: any) => ({ id: row.phase_tasks.id as string, name: row.phase_tasks.name as string }))
 }
 
+// All open Kanban cards for the SITE, not just this worker's own --
+// team visibility for "what's happening today," per the user's own
+// framing of the daily workflow ("all worker look at the board seeing
+// todays work across the board"). Shown in งานวันนี้'s summary;
+// deliberately distinct from resolveOpenTasksForWorker above, which
+// stays the source of truth for the actual งานเสร็จ closing action.
+async function resolveOpenTasksForSite(siteId: string, tenantId: string): Promise<Array<{ id: string; name: string }>> {
+  const { data } = await admin
+    .from('phase_tasks')
+    .select('id, name')
+    .eq('site_id', siteId)
+    .eq('tenant_id', tenantId)
+    .neq('status', 'done')
+    .order('sort_order')
+  return data ?? []
+}
+
 async function fetchLineImageContent(accessToken: string, messageId: string): Promise<Uint8Array | null> {
   const res = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -220,47 +271,154 @@ async function fetchLineImageContent(accessToken: string, messageId: string): Pr
   return new Uint8Array(await res.arrayBuffer())
 }
 
-async function handleCheckIn(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
+// Step 1 of 2 for both actions: resolve today's site, stash it on the
+// pending row (site_id -- the location message that answers this is a
+// separate webhook event with no other way to carry which site it's
+// being checked against), and ask the worker to share their LINE
+// location via the native picker. No coordinates exist yet -- nothing
+// to validate until step 2 arrives.
+async function handleCheckInStart(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
   const site = await resolveTodaysSite(worker.id, settings.tenant_id)
   if (!site) {
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน')
     return
   }
-  const { error } = await admin.from('line_checkins').upsert(
-    { tenant_id: settings.tenant_id, worker_id: worker.id, site_id: site.id, date: bangkokToday(), check_in_at: new Date().toISOString() },
-    { onConflict: 'worker_id,date' }
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
+  const { error } = await admin.from('line_pending_actions').upsert(
+    { tenant_id: settings.tenant_id, worker_id: worker.id, action: 'check_in_location', site_id: site.id, expires_at: expiresAt, photo_count: 0 },
+    { onConflict: 'worker_id' }
   )
-  if (error) {
-    console.error('line_checkins check-in upsert failed', error)
-    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
-  } else {
-    await sendLineReply(settings.channel_access_token, replyToken, `✅ เช็คอินแล้ว ที่ ${site.name} เวลา ${bangkokTimeString()} น.`)
-  }
+  if (error) console.error('line_pending_actions check_in_location upsert failed', error)
+  await sendLineReply(settings.channel_access_token, replyToken, `📍 กดปุ่มด้านล่างเพื่อแชร์ตำแหน่งและเช็คอินที่ ${site.name}`, [{ label: 'แชร์ตำแหน่ง', location: true }])
 }
 
-async function handleCheckOut(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
+async function handleCheckOutStart(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
   const site = await resolveTodaysSite(worker.id, settings.tenant_id)
   if (!site) {
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน')
     return
   }
-  const { error } = await admin.from('line_checkins').upsert(
-    { tenant_id: settings.tenant_id, worker_id: worker.id, site_id: site.id, date: bangkokToday(), check_out_at: new Date().toISOString() },
-    { onConflict: 'worker_id,date' }
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
+  const { error } = await admin.from('line_pending_actions').upsert(
+    { tenant_id: settings.tenant_id, worker_id: worker.id, action: 'check_out_location', site_id: site.id, expires_at: expiresAt, photo_count: 0 },
+    { onConflict: 'worker_id' }
   )
-  if (error) {
-    console.error('line_checkins check-out upsert failed', error)
-    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
-  } else {
-    await sendLineReply(settings.channel_access_token, replyToken, `🏁 เช็คเอาท์แล้ว ที่ ${site.name} เวลา ${bangkokTimeString()} น. วันนี้ทำงานหนักแล้ว พักผ่อนด้วยนะครับ`)
-  }
+  if (error) console.error('line_pending_actions check_out_location upsert failed', error)
+  await sendLineReply(settings.channel_access_token, replyToken, `📍 กดปุ่มด้านล่างเพื่อแชร์ตำแหน่งและเช็คเอาท์ที่ ${site.name}`, [{ label: 'แชร์ตำแหน่ง', location: true }])
 }
 
-async function handleSitePhoto(
+// Step 2 of 2: a `location` message arrived while check_in_location was
+// pending. Calls perform_worker_checkin_by_id -- the SAME geofence/
+// validation logic as the web app's own check-in card (see migration
+// 2026-09-23-05), just keyed by worker id instead of auth.email() since
+// the webhook runs as service_role with no worker's own session. On
+// success, appends the worker's own open Kanban cards to the reply (the
+// artifact comment thread's explicit ask); on an out-of-range rejection
+// the pending row is left in place so sharing location again (no need
+// to re-tap เช็คอิน) can succeed once they're closer.
+async function handleCheckInLocation(
+  worker: { id: string },
+  site: { id: string; name: string },
+  settings: { tenant_id: string; channel_access_token: string },
+  replyToken: string,
+  lat: number,
+  lng: number,
+): Promise<boolean> {
+  const { data, error } = await admin.rpc('perform_worker_checkin_by_id', { p_worker_id: worker.id, p_site_id: site.id, p_lat: lat, p_lng: lng })
+  const result = data?.[0] as { success: boolean; distance_m: number | null; radius_m: number | null; message: string } | undefined
+  if (error || !result) {
+    console.error('perform_worker_checkin_by_id failed', error)
+    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+    return true
+  }
+  if (!result.success) {
+    await sendLineReply(settings.channel_access_token, replyToken, `📍 ${result.message}`, [{ label: 'แชร์ตำแหน่ง', location: true }])
+    return false
+  }
+  const myTasks = await resolveOpenTasksForWorker(worker.id, settings.tenant_id)
+  const lines = [`✅ ${result.message} ที่ ${site.name} เวลา ${bangkokTimeString()} น.`]
+  if (myTasks.length) {
+    lines.push('', '🔧 งานของคุณวันนี้:')
+    lines.push(...myTasks.map((t) => `• ${t.name}`))
+  }
+  await sendLineReply(settings.channel_access_token, replyToken, lines.join('\n'))
+  return true
+}
+
+async function handleCheckOutLocation(
+  worker: { id: string },
+  site: { id: string; name: string },
+  settings: { tenant_id: string; channel_access_token: string },
+  replyToken: string,
+  lat: number,
+  lng: number,
+): Promise<boolean> {
+  const { data, error } = await admin.rpc('perform_worker_checkout_by_id', { p_worker_id: worker.id, p_site_id: site.id, p_lat: lat, p_lng: lng })
+  const result = data?.[0] as { success: boolean; distance_m: number | null; radius_m: number | null; message: string } | undefined
+  if (error || !result) {
+    console.error('perform_worker_checkout_by_id failed', error)
+    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+    return true
+  }
+  if (!result.success) {
+    await sendLineReply(settings.channel_access_token, replyToken, `📍 ${result.message}`, [{ label: 'แชร์ตำแหน่ง', location: true }])
+    return false
+  }
+  await sendLineReply(settings.channel_access_token, replyToken, `🏁 ${result.message} ที่ ${site.name} เวลา ${bangkokTimeString()} น. วันนี้ทำงานหนักแล้ว พักผ่อนด้วยนะครับ`)
+  return true
+}
+
+// The new single entry point -- resolves today's status and shows only
+// the tap-options relevant right now, instead of the earlier flat
+// 6-button menu that assumed a worker already knew which action to
+// use. Reuses every existing helper/handler as-is: the quick-reply
+// labels below are the SAME trigger phrases matchDMAction already
+// listens for, so tapping one flows straight into the existing action,
+// completely unchanged.
+async function handleTodaysJobMenu(
+  worker: { id: string },
+  settings: { tenant_id: string; channel_access_token: string },
+  replyToken: string,
+) {
+  const site = await resolveTodaysSite(worker.id, settings.tenant_id)
+  if (!site) {
+    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน')
+    return
+  }
+  const [checkinResult, siteTasks, myTasks] = await Promise.all([
+    admin.from('worker_checkins').select('checkin_at, checkout_at').eq('worker_id', worker.id).eq('site_id', site.id).eq('date', bangkokToday()).maybeSingle(),
+    resolveOpenTasksForSite(site.id, settings.tenant_id),
+    resolveOpenTasksForWorker(worker.id, settings.tenant_id),
+  ])
+  const checkin = checkinResult.data
+
+  const lines = [`📍 วันนี้: ${site.name}`]
+  if (siteTasks.length) {
+    lines.push('', '🔧 งานที่ต้องทำวันนี้ (ทั้งทีม):')
+    lines.push(...siteTasks.map((t) => `• ${t.name}`))
+  }
+
+  const options: string[] = []
+  if (!checkin?.checkin_at) options.push('เช็คอิน')
+  else if (!checkin?.checkout_at) options.push('เช็คเอาท์')
+  if (myTasks.length) options.push('งานเสร็จ')
+  options.push('แจ้งปัญหา', 'รูปภาพหน้างาน')
+
+  await sendLineReply(settings.channel_access_token, replyToken, lines.join('\n'), options.map((o) => ({ label: truncateLabel(o), text: o })))
+}
+
+// รูปภาพหน้างาน accepts MULTIPLE photos per session -- each one uploads
+// and saves immediately (no data loss if the session later expires),
+// the pending action stays open for more, and a "เสร็จแล้ว" quick-reply
+// chip after each photo lets the worker signal when they're done
+// instead of the bot guessing how many were expected.
+async function handleSitePhotoAdd(
   worker: { id: string },
   settings: { tenant_id: string; channel_access_token: string },
   replyToken: string,
   messageId: string,
+  pendingId: string,
+  priorCount: number,
 ) {
   const site = await resolveTodaysSite(worker.id, settings.tenant_id)
   if (!site) {
@@ -285,15 +443,33 @@ async function handleSitePhoto(
   if (insertError) {
     console.error('line_site_photos insert failed', insertError)
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
-  } else {
-    await sendLineReply(settings.channel_access_token, replyToken, `📷 รับรูปภาพแล้ว บันทึกเข้า ${site.name} เรียบร้อยครับ`)
+    return
   }
+  const newCount = priorCount + 1
+  const { error: countError } = await admin.from('line_pending_actions').update({ photo_count: newCount }).eq('id', pendingId)
+  if (countError) console.error('line_pending_actions photo_count update failed', countError)
+  await sendLineReply(settings.channel_access_token, replyToken, `📷 รับรูปแล้ว (${newCount} รูป) ส่งเพิ่มได้อีก หรือกด "เสร็จแล้ว" ถ้าส่งครบ`, [{ label: 'เสร็จแล้ว', text: 'เสร็จแล้ว' }])
 }
 
-// Starts the งานเสร็จ flow -- resolves open tasks and either goes
-// straight to asking for a photo (one task, the common case) or asks
-// which one via quick-reply chips (multiple tasks -- tap the name, no
-// typing, per the low-literacy-crew constraint).
+// Returns true if the pending action should now be closed (caller
+// deletes the row), false if it must stay open (nothing was sent yet).
+async function handleSitePhotoFinish(
+  settings: { channel_access_token: string },
+  replyToken: string,
+  photoCount: number,
+): Promise<boolean> {
+  if (photoCount === 0) {
+    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ยังไม่ได้ส่งรูปเลยครับ ส่งรูปหน้างานก่อน แล้วค่อยกด "เสร็จแล้ว"')
+    return false
+  }
+  await sendLineReply(settings.channel_access_token, replyToken, `✅ บันทึกรูปภาพหน้างานแล้ว ${photoCount} รูป เรียบร้อยครับ`)
+  return true
+}
+
+// Starts the งานเสร็จ flow -- resolves the worker's OWN open tasks and
+// either goes straight to asking for a photo (one task, the common
+// case) or asks which one via quick-reply chips (multiple tasks -- tap
+// the name, no typing, per the low-literacy-crew constraint).
 async function handleJobDoneStart(
   worker: { id: string },
   settings: { tenant_id: string; channel_access_token: string },
@@ -307,15 +483,15 @@ async function handleJobDoneStart(
   const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
   if (tasks.length === 1) {
     const { error } = await admin.from('line_pending_actions').upsert(
-      { tenant_id: settings.tenant_id, worker_id: worker.id, action: 'job_done', task_id: tasks[0].id, expires_at: expiresAt },
+      { tenant_id: settings.tenant_id, worker_id: worker.id, action: 'job_done', task_id: tasks[0].id, expires_at: expiresAt, photo_count: 0 },
       { onConflict: 'worker_id' }
     )
     if (error) console.error('line_pending_actions upsert failed (job_done, single task)', error)
-    await sendLineReply(settings.channel_access_token, replyToken, `📷 "${tasks[0].name}" เสร็จแล้วใช่ไหมครับ ส่งรูปงานเสร็จมาได้เลย`)
+    await sendLineReply(settings.channel_access_token, replyToken, `📷 "${tasks[0].name}" เสร็จแล้วใช่ไหมครับ ส่งรูปงานเสร็จมาได้เลย (ส่งได้หลายรูป พอครบแล้วกด "เสร็จแล้ว")`)
     return
   }
   const { error } = await admin.from('line_pending_actions').upsert(
-    { tenant_id: settings.tenant_id, worker_id: worker.id, action: 'job_done_pick', task_id: null, expires_at: expiresAt },
+    { tenant_id: settings.tenant_id, worker_id: worker.id, action: 'job_done_pick', task_id: null, expires_at: expiresAt, photo_count: 0 },
     { onConflict: 'worker_id' }
   )
   if (error) console.error('line_pending_actions upsert failed (job_done_pick)', error)
@@ -323,7 +499,7 @@ async function handleJobDoneStart(
     settings.channel_access_token,
     replyToken,
     'งานไหนเสร็จครับ? กดเลือกจากรายการด้านล่างได้เลย',
-    tasks.map((t) => truncateLabel(t.name)),
+    tasks.map((t) => ({ label: truncateLabel(t.name), text: t.name })),
   )
 }
 
@@ -345,25 +521,26 @@ async function handleJobDonePick(
   if (!picked) return // ignored -- prompt (and its quick-reply chips) stays live
   const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
   const { error } = await admin.from('line_pending_actions').upsert(
-    { tenant_id: settings.tenant_id, worker_id: worker.id, action: 'job_done', task_id: picked.id, expires_at: expiresAt },
+    { tenant_id: settings.tenant_id, worker_id: worker.id, action: 'job_done', task_id: picked.id, expires_at: expiresAt, photo_count: 0 },
     { onConflict: 'worker_id' }
   )
   if (error) console.error('line_pending_actions upsert failed (job_done, after pick)', error)
-  await sendLineReply(settings.channel_access_token, replyToken, `📷 "${picked.name}" เสร็จแล้วใช่ไหมครับ ส่งรูปงานเสร็จมาได้เลย`)
+  await sendLineReply(settings.channel_access_token, replyToken, `📷 "${picked.name}" เสร็จแล้วใช่ไหมครับ ส่งรูปงานเสร็จมาได้เลย (ส่งได้หลายรูป พอครบแล้วกด "เสร็จแล้ว")`)
 }
 
-// Closes the real Kanban card: uploads the completion photo (tagged
-// with task_id, unlike a general รูปภาพหน้างาน photo), flips
-// phase_tasks.status to 'done' -- the exact same status value and
-// column the web Kanban board (PhaseKanbanBoard.jsx) already reads,
-// so this shows up there immediately, same as if an admin had dragged
-// the card themselves.
-async function handleJobDonePhoto(
+// งานเสร็จ also accepts MULTIPLE completion photos per session -- each
+// uploads and saves immediately (tagged with task_id, unlike a general
+// รูปภาพหน้างาน photo), but phase_tasks.status only flips to 'done' once
+// "เสร็จแล้ว" is confirmed (handleJobDonePhotoFinish below), not on the
+// first photo.
+async function handleJobDonePhotoAdd(
   worker: { id: string },
   taskId: string,
   settings: { tenant_id: string; channel_access_token: string },
   replyToken: string,
   messageId: string,
+  pendingId: string,
+  priorCount: number,
 ) {
   const { data: task } = await admin.from('phase_tasks').select('id, name, site_id').eq('id', taskId).maybeSingle()
   if (!task) {
@@ -385,14 +562,47 @@ async function handleJobDonePhoto(
   const { error: photoInsertError } = await admin.from('line_site_photos').insert({
     tenant_id: settings.tenant_id, worker_id: worker.id, site_id: task.site_id, task_id: task.id, date: bangkokToday(), photo_path: photoPath,
   })
-  if (photoInsertError) console.error('line_site_photos insert failed (job done)', photoInsertError)
+  if (photoInsertError) {
+    console.error('line_site_photos insert failed (job done)', photoInsertError)
+    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+    return
+  }
+  const newCount = priorCount + 1
+  const { error: countError } = await admin.from('line_pending_actions').update({ photo_count: newCount }).eq('id', pendingId)
+  if (countError) console.error('line_pending_actions photo_count update failed', countError)
+  await sendLineReply(settings.channel_access_token, replyToken, `📷 "${task.name}" รับรูปแล้ว (${newCount} รูป) ส่งเพิ่มได้อีก หรือกด "เสร็จแล้ว" ถ้าส่งครบ`, [{ label: 'เสร็จแล้ว', text: 'เสร็จแล้ว' }])
+}
+
+// Closes the real Kanban card -- flips phase_tasks.status to 'done',
+// the exact same status value and column the web Kanban board
+// (PhaseKanbanBoard.jsx) already reads, so this shows up there
+// immediately, same as if an admin had dragged the card themselves.
+// Returns true if the pending action should now be closed, false if it
+// must stay open (nothing was sent yet, or the status update failed
+// and should be retryable without losing the photos already uploaded).
+async function handleJobDonePhotoFinish(
+  taskId: string,
+  settings: { channel_access_token: string },
+  replyToken: string,
+  photoCount: number,
+): Promise<boolean> {
+  if (photoCount === 0) {
+    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ยังไม่ได้ส่งรูปเลยครับ ส่งรูปงานเสร็จก่อน แล้วค่อยกด "เสร็จแล้ว"')
+    return false
+  }
+  const { data: task } = await admin.from('phase_tasks').select('id, name').eq('id', taskId).maybeSingle()
+  if (!task) {
+    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานนี้แล้ว อาจถูกลบหรือแก้ไข กรุณาติดต่อแอดมิน')
+    return true // nothing more this pending action can do -- let it close
+  }
   const { error: statusError } = await admin.from('phase_tasks').update({ status: 'done' }).eq('id', task.id)
   if (statusError) {
     console.error('phase_tasks status update failed', statusError)
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
-  } else {
-    await sendLineReply(settings.channel_access_token, replyToken, `✅ บันทึกงานเสร็จแล้ว "${task.name}" อัปเดตบอร์ดเรียบร้อยครับ`)
+    return false // let them retry "เสร็จแล้ว" -- already-uploaded photos are safe either way
   }
+  await sendLineReply(settings.channel_access_token, replyToken, `✅ บันทึกงานเสร็จแล้ว "${task.name}" (${photoCount} รูป) อัปเดตบอร์ดเรียบร้อยครับ`)
+  return true
 }
 
 // The three "detail-needed" action bodies -- shared by the group's
@@ -483,9 +693,11 @@ Deno.serve(async (req) => {
   for (const event of events) {
     if (event.type !== 'message') continue
     const msgType = event.message?.type
-    if (msgType !== 'text' && msgType !== 'image') continue
+    if (msgType !== 'text' && msgType !== 'image' && msgType !== 'location') continue
     const text: string | undefined = msgType === 'text' ? event.message.text : undefined
     const messageId: string = event.message.id
+    const lat: number | undefined = msgType === 'location' ? event.message.latitude : undefined
+    const lng: number | undefined = msgType === 'location' ? event.message.longitude : undefined
     const lineUserId: string | undefined = event.source?.userId
     const sourceGroupId: string | undefined = event.source?.groupId
     if (!lineUserId) continue
@@ -531,24 +743,53 @@ Deno.serve(async (req) => {
       const { data: pending } = await admin.from('line_pending_actions').select('*').eq('worker_id', worker.id).gt('expires_at', new Date().toISOString()).maybeSingle()
       if (pending) {
         const pendingAction = pending.action as PendingActionType
+        const priorCount = (pending.photo_count as number | null) ?? 0
         if (pendingAction === 'site_photo') {
           if (msgType === 'image') {
-            const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
-            if (deleteError) console.error('line_pending_actions delete failed', deleteError)
-            await handleSitePhoto(worker, settings, event.replyToken, messageId)
+            await handleSitePhotoAdd(worker, settings, event.replyToken, messageId, pending.id, priorCount)
+            // Pending row stays open -- more photos or "เสร็จแล้ว" can follow.
+          } else if (msgType === 'text' && text?.trim() === 'เสร็จแล้ว') {
+            const shouldClose = await handleSitePhotoFinish(settings, event.replyToken, priorCount)
+            if (shouldClose) {
+              const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
+              if (deleteError) console.error('line_pending_actions delete failed', deleteError)
+            }
           }
-          // Still waiting for a photo -- a stray text message while this
-          // pending action is open is silently ignored, prompt stays live.
+          // Any other stray text while accumulating photos is silently ignored.
         } else if (pendingAction === 'job_done_pick') {
           if (msgType === 'text' && text) await handleJobDonePick(worker, settings, event.replyToken, text)
           // An image while still picking which task is silently ignored.
         } else if (pendingAction === 'job_done') {
           if (msgType === 'image') {
-            const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
-            if (deleteError) console.error('line_pending_actions delete failed', deleteError)
-            await handleJobDonePhoto(worker, pending.task_id as string, settings, event.replyToken, messageId)
+            await handleJobDonePhotoAdd(worker, pending.task_id as string, settings, event.replyToken, messageId, pending.id, priorCount)
+            // Pending row stays open -- more photos or "เสร็จแล้ว" can follow.
+          } else if (msgType === 'text' && text?.trim() === 'เสร็จแล้ว') {
+            const shouldClose = await handleJobDonePhotoFinish(pending.task_id as string, settings, event.replyToken, priorCount)
+            if (shouldClose) {
+              const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
+              if (deleteError) console.error('line_pending_actions delete failed', deleteError)
+            }
           }
-          // Still waiting for the completion photo -- text ignored, prompt stays live.
+          // Any other stray text while accumulating photos is silently ignored.
+        } else if (pendingAction === 'check_in_location' || pendingAction === 'check_out_location') {
+          if (msgType === 'location' && lat !== undefined && lng !== undefined && pending.site_id) {
+            const { data: site } = await admin.from('sites').select('id, name').eq('id', pending.site_id).maybeSingle()
+            if (!site) {
+              await sendLineReply(settings.channel_access_token, event.replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+              await admin.from('line_pending_actions').delete().eq('id', pending.id)
+            } else {
+              const shouldClose = pendingAction === 'check_in_location'
+                ? await handleCheckInLocation(worker, site, settings, event.replyToken, lat, lng)
+                : await handleCheckOutLocation(worker, site, settings, event.replyToken, lat, lng)
+              if (shouldClose) {
+                const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
+                if (deleteError) console.error('line_pending_actions delete failed', deleteError)
+              }
+            }
+          } else if (msgType === 'text') {
+            await sendLineReply(settings.channel_access_token, event.replyToken, '📍 กรุณากดปุ่ม "แชร์ตำแหน่ง" เพื่อส่งตำแหน่งของคุณ', [{ label: 'แชร์ตำแหน่ง', location: true }])
+          }
+          // A stray image while awaiting location is silently ignored.
         } else if (msgType === 'text' && text) {
           const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
           if (deleteError) console.error('line_pending_actions delete failed', deleteError)
@@ -560,17 +801,19 @@ Deno.serve(async (req) => {
       if (msgType === 'text' && text) {
         const action = matchDMAction(text)
         if (action === 'check_in') {
-          await handleCheckIn(worker, settings, event.replyToken)
+          await handleCheckInStart(worker, settings, event.replyToken)
         } else if (action === 'check_out') {
-          await handleCheckOut(worker, settings, event.replyToken)
+          await handleCheckOutStart(worker, settings, event.replyToken)
         } else if (action === 'job_done_start') {
           await handleJobDoneStart(worker, settings, event.replyToken)
+        } else if (action === 'today_job') {
+          await handleTodaysJobMenu(worker, settings, event.replyToken)
         } else if (action) {
           // issue_report / material_request / leave / site_photo --
           // two-step: ask for detail, consume the next matching message.
           const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
           const { error } = await admin.from('line_pending_actions').upsert(
-            { tenant_id: settings.tenant_id, worker_id: worker.id, action, expires_at: expiresAt },
+            { tenant_id: settings.tenant_id, worker_id: worker.id, action, expires_at: expiresAt, photo_count: 0 },
             { onConflict: 'worker_id' }
           )
           if (error) console.error('line_pending_actions upsert failed', error)
@@ -584,7 +827,8 @@ Deno.serve(async (req) => {
 
     // A message from the crew group -- only act on it if it's actually
     // that tenant's configured crew group, and only text (photos/checkin/
-    // job-done are 1:1-DM-only, matching the Rich Menu's own DM-only scope).
+    // job-done/today's-work menu are 1:1-DM-only, matching the Rich
+    // Menu's own DM-only scope).
     if (msgType !== 'text' || !text) continue
     if (sourceGroupId !== settings.crew_group_id) continue
 

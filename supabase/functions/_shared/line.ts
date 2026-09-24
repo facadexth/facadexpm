@@ -24,25 +24,35 @@ export async function sendLinePush(accessToken: string, to: string, text: string
   return { ok: res.ok, status: res.status }
 }
 
-// quickReplyLabels, when given, attaches tappable chips below the
-// message -- tapping one sends that exact label back as if the user
-// had typed it. Built for low-literacy crew members: tapping a task
-// name is far easier than typing a number or the name itself. LINE
-// caps each label at 20 characters (Thai counts as 1 char each) and
-// 13 items total -- callers are responsible for keeping within that.
+// quickReplyItems, when given, attaches tappable chips below the
+// message. A text chip ({label, text}, the common case) sends `text`
+// back exactly as if the user had typed it -- built for low-literacy
+// crew members: tapping a task name is far easier than typing a number
+// or the name itself. `label` (what's shown on the chip) and `text`
+// (what's actually sent on tap) are DELIBERATELY separate fields, not
+// one value reused for both -- LINE caps a label at 20 characters, but
+// a real task name can be longer; keeping `text` full-length means a
+// caller that exact-matches the tapped reply against an untruncated
+// name (e.g. งานเสร็จ's task picker) still works correctly even when
+// the visible chip had to be shortened. A caller with nothing to
+// truncate just passes the same string for both. A location chip
+// ({label, location: true}) opens LINE's native location picker
+// instead, sending back a `location`-type message -- used by the
+// geofenced เช็คอิน/เช็คเอาท์ flow, which needs real coordinates.
 export async function sendLineReply(
   accessToken: string,
   replyToken: string,
   text: string,
-  quickReplyLabels?: string[],
+  quickReplyItems?: Array<{ label: string; text: string } | { label: string; location: true }>,
 ): Promise<{ ok: boolean; status: number }> {
   const message: Record<string, unknown> = { type: 'text', text }
-  if (quickReplyLabels && quickReplyLabels.length > 0) {
+  if (quickReplyItems && quickReplyItems.length > 0) {
     message.quickReply = {
-      items: quickReplyLabels.map((label) => ({
-        type: 'action',
-        action: { type: 'message', label, text: label },
-      })),
+      items: quickReplyItems.map((item) =>
+        'location' in item
+          ? { type: 'action', action: { type: 'location', label: item.label } }
+          : { type: 'action', action: { type: 'message', label: item.label, text: item.text } },
+      ),
     }
   }
   const res = await fetch(`${LINE_API}/reply`, {

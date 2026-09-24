@@ -1,0 +1,18 @@
+-- Supports two crew-bot UX changes:
+--
+-- 1. "งานวันนี้" (today's work) as a single contextual entry point --
+--    replaces the flat 6-button Rich Menu (which assumed a worker
+--    already knew which of 6 disconnected actions to tap) with a
+--    status summary + only the tap-options relevant right now. Pure
+--    backend addition, no schema change needed for this part -- it
+--    just calls the same resolveTodaysSite()/resolveOpenTasksForWorker()
+--    helpers check-in/job-done already use, then hands back LINE Quick
+--    Reply chips whose tapped text matches the SAME trigger phrases
+--    those existing actions already listen for.
+--
+-- 2. Multiple photos per รูปภาพหน้างาน/งานเสร็จ session, instead of the
+--    first image immediately closing it out. photo_count tracks how
+--    many photos have landed in the CURRENT pending session so the bot
+--    can say "received N so far" and know whether at least one photo
+--    arrived before honoring a "เสร็จแล้ว" (done sending) reply.
+alter table line_pending_actions add column photo_count integer not null default 0;
