@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, estimateSheetCount, computeInvoiceDeductionPlan, resolveMovementReference } from './inventoryCost.js'
+import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, estimateSheetCount, computeInvoiceDeductionPlan, computeFinishedGoodsDeductionPlan, resolveMovementReference } from './inventoryCost.js'
 
 describe('computeWeightedAverageCost', () => {
   it('first receipt into an empty balance', () => {
@@ -347,6 +347,68 @@ describe('computeInvoiceDeductionPlan', () => {
       const totalAvailable = balances.reduce((s, b) => s + b.quantity_on_hand * b.weighted_average_cost, 0)
       expect(totalDeducted).toBeLessThanOrEqual(totalAvailable + 1e-6)
     }
+  })
+})
+
+describe('computeFinishedGoodsDeductionPlan', () => {
+  const line = (over = {}) => ({
+    quotationItemId: 'qi-1', quotationNumber: 'QT2609-040', sortOrder: 1,
+    description: 'ประตูหน้าต่างอลูมิเนียม', quotationItemLineTotal: 100000, invoiceItemLineTotal: 10000,
+    ...over,
+  })
+
+  it('new finished-goods line: emits an opening adjustment plus the sale_out fraction', () => {
+    const plan = computeFinishedGoodsDeductionPlan({
+      billedLines: [line()], materialPct: 70, existingFinishedGoodsQuotationItemIds: new Set(),
+    })
+    expect(plan.steps).toEqual([
+      { type: 'adjustment', quotationItemId: 'qi-1', code: 'QT2609-040-1', name: 'ประตูหน้าต่างอลูมิเนียม', quantity: 1, unitCost: 70000 },
+      { type: 'sale_out', quotationItemId: 'qi-1', code: 'QT2609-040-1', name: 'ประตูหน้าต่างอลูมิเนียม', quantity: 0.1, unitCost: 70000 },
+    ])
+  })
+
+  it('already-existing finished-goods line: skips the adjustment, only sale_out', () => {
+    const plan = computeFinishedGoodsDeductionPlan({
+      billedLines: [line()], materialPct: 70, existingFinishedGoodsQuotationItemIds: new Set(['qi-1']),
+    })
+    expect(plan.steps).toEqual([
+      { type: 'sale_out', quotationItemId: 'qi-1', code: 'QT2609-040-1', name: 'ประตูหน้าต่างอลูมิเนียม', quantity: 0.1, unitCost: 70000 },
+    ])
+  })
+
+  it('materialPct scales unit cost, never the full sale value', () => {
+    const plan = computeFinishedGoodsDeductionPlan({
+      billedLines: [line({ quotationItemLineTotal: 50000, invoiceItemLineTotal: 50000 })],
+      materialPct: 40, existingFinishedGoodsQuotationItemIds: new Set(['qi-1']),
+    })
+    expect(plan.steps[0].unitCost).toBe(20000)
+    expect(plan.steps[0].quantity).toBe(1)
+  })
+
+  it('multiple billed lines each get their own steps', () => {
+    const plan = computeFinishedGoodsDeductionPlan({
+      billedLines: [
+        line({ quotationItemId: 'qi-1', sortOrder: 1 }),
+        line({ quotationItemId: 'qi-2', sortOrder: 2, description: 'ประตูบานเลื่อน', quotationItemLineTotal: 60000, invoiceItemLineTotal: 6000 }),
+      ],
+      materialPct: 70, existingFinishedGoodsQuotationItemIds: new Set(),
+    })
+    expect(plan.steps.map(s => s.quotationItemId)).toEqual(['qi-1', 'qi-1', 'qi-2', 'qi-2'])
+    expect(plan.steps[3]).toEqual({ type: 'sale_out', quotationItemId: 'qi-2', code: 'QT2609-040-2', name: 'ประตูบานเลื่อน', quantity: 0.1, unitCost: 42000 })
+  })
+
+  it('skips a line with no quotationItemId (not tied to a quotation)', () => {
+    const plan = computeFinishedGoodsDeductionPlan({
+      billedLines: [line({ quotationItemId: null })], materialPct: 70, existingFinishedGoodsQuotationItemIds: new Set(),
+    })
+    expect(plan.steps).toEqual([])
+  })
+
+  it('skips a line whose quotation-item total is zero (division guard)', () => {
+    const plan = computeFinishedGoodsDeductionPlan({
+      billedLines: [line({ quotationItemLineTotal: 0 })], materialPct: 70, existingFinishedGoodsQuotationItemIds: new Set(),
+    })
+    expect(plan.steps).toEqual([])
   })
 })
 
