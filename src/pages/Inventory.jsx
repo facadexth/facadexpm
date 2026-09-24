@@ -12,7 +12,7 @@ import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, us
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
-import { computeInvoiceDeductionPlan, resolveMovementReference, computeFinishedGoodsDeductionPlan } from '../lib/inventoryCost.js'
+import { computeInvoiceDeductionPlan, resolveMovementReference, computeFinishedGoodsDeductionPlan, computeStockLedgerReport } from '../lib/inventoryCost.js'
 import { exportToExcel } from '../lib/exportExcel.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
@@ -511,6 +511,76 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
   )
 }
 
+const TAX_REPORT_KINDS = [
+  { key: 'finished_goods', label: '1. รายงานการตัดสินค้าสำเร็จรูป' },
+  { key: 'raw_material', label: '2. รายงานตัดวัตถุดิบ' },
+  { key: 'all', label: '3. รายงานสินค้าและวัตถุดิบ (รวม)' },
+]
+
+function fmtQty(n) { return (Math.round(n * 100) / 100).toLocaleString('th-TH') }
+
+function TaxReportsView({ categories }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const monthStart = today.slice(0, 8) + '01'
+  const [reportKind, setReportKind] = useState('all')
+  const [dateFrom, setDateFrom] = useState(monthStart)
+  const [dateTo, setDateTo] = useState(today)
+  const [categoryFilter, setCategoryFilter] = useState('')
+
+  const { data: movements } = useStockMovements({ dateTo })
+  const { data: allItems } = useAllInventoryItems()
+
+  const rows = computeStockLedgerReport({
+    movements: movements || [], items: allItems || [], dateFrom, dateTo,
+    itemKindFilter: reportKind, categoryId: categoryFilter || null,
+  })
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        {TAX_REPORT_KINDS.map(k => (
+          <button key={k.key} className={`btn btn-sm ${reportKind === k.key ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setReportKind(k.key)}>{k.label}</button>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        <label className="label">จาก <input className="input input-sm" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></label>
+        <label className="label">ถึง <input className="input input-sm" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} /></label>
+        {reportKind !== 'finished_goods' && (
+          <div style={{ minWidth: 220, maxWidth: 260 }}>
+            <SearchableSelect value={categoryFilter} onChange={setCategoryFilter} placeholder="ทุกหมวดหมู่"
+              options={(categories || []).map(c => ({ value: c.id, label: c.name, keywords: c.name }))} />
+          </div>
+        )}
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>รหัส</th><th>รายการ</th><th>หน่วย</th>
+              <th>ยกมา (จำนวน)</th><th>ยกมา (มูลค่า)</th>
+              <th>รับเข้า (จำนวน)</th><th>รับเข้า (มูลค่า)</th>
+              <th>จำหน่ายออก (จำนวน)</th><th>จำหน่ายออก (มูลค่า)</th>
+              <th>คงเหลือ (จำนวน)</th><th>คงเหลือ (มูลค่า)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.itemId}>
+                <td>{r.code}</td><td>{r.name}</td><td>{r.unit}</td>
+                <td className="font-mono">{fmtQty(r.openingQty)}</td><td className="font-mono">{fmt(r.openingValue)}</td>
+                <td className="font-mono">{fmtQty(r.inQty)}</td><td className="font-mono">{fmt(r.inValue)}</td>
+                <td className="font-mono">{fmtQty(r.outQty)}</td><td className="font-mono">{fmt(r.outValue)}</td>
+                <td className="font-mono">{fmtQty(r.closingQty)}</td><td className="font-mono">{fmt(r.closingValue)}</td>
+              </tr>
+            ))}
+            {!rows.length && <tr><td colSpan={11} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีข้อมูลในช่วงเวลาที่เลือก</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export default function Inventory() {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'inventory')
@@ -809,6 +879,7 @@ export default function Inventory() {
         <button className={`btn btn-sm ${view === 'invoice_deduction' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('invoice_deduction')}>🧾 ตัดสต็อกจากใบแจ้งหนี้</button>
         <button className={`btn btn-sm ${view === 'profiles' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('profiles')}>📐 หน้าตัดอลูมิเนียม</button>
         <button className={`btn btn-sm ${view === 'movements' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('movements')}>📜 ประวัติการเคลื่อนไหว</button>
+        <button className={`btn btn-sm ${view === 'tax_reports' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('tax_reports')}>🧾 รายงานภาษี</button>
       </div>
 
       {view === 'items' && (
@@ -1028,6 +1099,8 @@ export default function Inventory() {
           </div>
         </>
       )}
+
+      {view === 'tax_reports' && <TaxReportsView categories={categories} />}
 
       {showForm && (
         <Modal title={editItem ? `แก้ไข ${editItem.name}` : 'เพิ่มสินค้าคงคลังใหม่'} onClose={() => { setShowForm(false); setEditItem(null) }} maxWidth={520}>
