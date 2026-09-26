@@ -707,6 +707,26 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
     })
   }, [finishedGoodsEvents, fgSearch, fgSortCol, fgSortDir])
 
+  // Every finished-goods purchase_in movement's PI-<invoice> notes within
+  // the current date range, deduped -- report 2's items were all cut to
+  // fulfil one of these production events, so naming them (in report 2's
+  // print header) answers "which invoice is this for" without the reader
+  // cross-referencing report 1 by hand. Scans the raw movements prop
+  // directly (not `rows`, which is filtered to the CURRENT reportKind) so
+  // this is available while printing report 2 itself.
+  const productionSourceRefs = useMemo(() => {
+    const refs = new Set()
+    const dateFromMs = new Date(`${dateFrom}T00:00:00`).getTime()
+    const dateToMs = new Date(`${dateTo}T23:59:59`).getTime()
+    for (const mv of movements || []) {
+      if (mv.movement_type !== 'purchase_in' || !isProductionRef(mv.notes)) continue
+      const ts = new Date(mv.created_at).getTime()
+      if (ts < dateFromMs || ts > dateToMs) continue
+      refs.add(mv.notes)
+    }
+    return [...refs]
+  }, [movements, dateFrom, dateTo])
+
   // Report 2's own view: just "what got cut, how much" per item in the
   // period -- no opening balance, no per-movement breakdown, no closing
   // balance. Full detail (opening/movements/closing) lives one click away
@@ -952,23 +972,63 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
               <div className="report-block">
                 <span className="report-badge">{activeReportMeta?.badge}</span>
                 <h1>{activeReportMeta?.label}</h1>
-                <p className="report-subtitle">{activeReportMeta?.subtitle}</p>
+                <p className="report-subtitle">
+                  {reportKind === 'raw_material'
+                    ? 'สรุปรายการวัตถุดิบที่ตัดในรอบระยะเวลานี้ — ดูรายละเอียดเต็มได้ที่รายงานที่ 3'
+                    : activeReportMeta?.subtitle}
+                </p>
                 <p className="report-period">รอบระยะเวลา {new Date(dateFrom).toLocaleDateString('th-TH')} — {new Date(dateTo).toLocaleDateString('th-TH')}</p>
+                {reportKind === 'raw_material' && productionSourceRefs.length > 0 && (
+                  <p className="report-source">อ้างอิงจาก: {productionSourceRefs.join(', ')}</p>
+                )}
               </div>
             </header>
-            <div className="summary-bar">
-              <div className="summary-cell"><span className="summary-label">จำนวนรายการสินค้า</span><span className="summary-value">{rows.length.toLocaleString('th-TH')}</span></div>
-              <div className="summary-cell"><span className="summary-label">ยอดยกมา</span><span className="summary-value">฿{fmt(printTotals.openingValue)}</span></div>
-              <div className="summary-cell"><span className="summary-label">รับเข้าระหว่างงวด</span><span className="summary-value">฿{fmt(printTotals.inValue)}</span></div>
-              <div className="summary-cell"><span className="summary-label">จำหน่ายออกระหว่างงวด</span><span className="summary-value">฿{fmt(printTotals.outValue)}</span></div>
-              <div className="summary-cell"><span className="summary-label">ยอดคงเหลือสิ้นงวด</span><span className="summary-value accent">฿{fmt(printTotals.closingValue)}</span></div>
-            </div>
-            <div className="table-wrap">
-              <table className="ledger">
-                {ledgerThead}
-                <tbody>{renderLedgerRows(rows, { interactive: false })}</tbody>
-              </table>
-            </div>
+            {reportKind === 'raw_material' ? (
+              <>
+                <div className="summary-bar summary-bar-simple">
+                  <div className="summary-cell"><span className="summary-label">จำนวนรายการที่ตัด</span><span className="summary-value">{rawMaterialSummary.length.toLocaleString('th-TH')}</span></div>
+                  <div className="summary-cell"><span className="summary-label">มูลค่ารวมที่ตัด</span><span className="summary-value accent">฿{fmt(rawMaterialSummary.reduce((s, e) => s + e.outValue, 0))}</span></div>
+                </div>
+                <div className="table-wrap">
+                  <table className="ledger">
+                    <thead>
+                      <tr>
+                        <th>รหัส</th><th>รายการ</th><th>หน่วย</th>
+                        <th>จำนวนที่ตัด</th><th>มูลค่าที่ตัด (บาท)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rawMaterialSummary.map(e => (
+                        <tr key={e.itemId}>
+                          <td>{e.code}</td>
+                          <td>{e.name}</td>
+                          <td>{e.unit}</td>
+                          <td className="font-mono">{fmtQty(e.outQty)}</td>
+                          <td className="font-mono">{fmt(e.outValue)}</td>
+                        </tr>
+                      ))}
+                      {!rawMaterialSummary.length && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}>ไม่มีรายการตัดวัตถุดิบในช่วงเวลาที่เลือก</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="summary-bar">
+                  <div className="summary-cell"><span className="summary-label">จำนวนรายการสินค้า</span><span className="summary-value">{rows.length.toLocaleString('th-TH')}</span></div>
+                  <div className="summary-cell"><span className="summary-label">ยอดยกมา</span><span className="summary-value">฿{fmt(printTotals.openingValue)}</span></div>
+                  <div className="summary-cell"><span className="summary-label">รับเข้าระหว่างงวด</span><span className="summary-value">฿{fmt(printTotals.inValue)}</span></div>
+                  <div className="summary-cell"><span className="summary-label">จำหน่ายออกระหว่างงวด</span><span className="summary-value">฿{fmt(printTotals.outValue)}</span></div>
+                  <div className="summary-cell"><span className="summary-label">ยอดคงเหลือสิ้นงวด</span><span className="summary-value accent">฿{fmt(printTotals.closingValue)}</span></div>
+                </div>
+                <div className="table-wrap">
+                  <table className="ledger">
+                    {ledgerThead}
+                    <tbody>{renderLedgerRows(rows, { interactive: false })}</tbody>
+                  </table>
+                </div>
+              </>
+            )}
             <footer className="doc-footer">
               <p>จัดทำตามมาตรา 87(3) แห่งประมวลรัษฎากร และประกาศอธิบดีกรมสรรพากรเกี่ยวกับภาษีมูลค่าเพิ่ม (ฉบับที่ 89) พ.ศ. 2542 — คำนวณต้นทุนด้วยวิธีถัวเฉลี่ยเคลื่อนที่ (Weighted Average Cost)</p>
               <p>พิมพ์จากระบบ FacadeX ERP เมื่อ {new Date().toLocaleDateString('th-TH')}</p>
