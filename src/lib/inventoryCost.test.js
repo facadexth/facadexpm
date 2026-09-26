@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, estimateSheetCount, computeInvoiceDeductionPlan, resolveMovementReference } from './inventoryCost.js'
+import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, estimateSheetCount, computeInvoiceDeductionPlan, computeFinishedGoodsProductionPlan, resolveMovementReference, computeStockLedgerReport } from './inventoryCost.js'
 
 describe('computeWeightedAverageCost', () => {
   it('first receipt into an empty balance', () => {
@@ -350,6 +350,62 @@ describe('computeInvoiceDeductionPlan', () => {
   })
 })
 
+describe('computeFinishedGoodsProductionPlan', () => {
+  const line = (over = {}) => ({
+    quotationItemId: 'qi-1', quotationNumber: 'QT2609-040', sortOrder: 0,
+    description: 'ประตูหน้าต่างอลูมิเนียม', invoiceItemLineTotal: 10000,
+    ...over,
+  })
+
+  it('one billed line: emits one self-contained step, valued at materialPct of THIS invoice line', () => {
+    const plan = computeFinishedGoodsProductionPlan({ billedLines: [line()], materialPct: 70 })
+    expect(plan.steps).toEqual([
+      { quotationItemId: 'qi-1', code: 'QT2609-040-1', name: 'ประตูหน้าต่างอลูมิเนียม', value: 7000 },
+    ])
+  })
+
+  it('every invoice against the same line gets its own step -- no "already exists" branching', () => {
+    const first = computeFinishedGoodsProductionPlan({ billedLines: [line({ invoiceItemLineTotal: 10000 })], materialPct: 70 })
+    const second = computeFinishedGoodsProductionPlan({ billedLines: [line({ invoiceItemLineTotal: 5000 })], materialPct: 70 })
+    expect(first.steps[0].value).toBe(7000)
+    expect(second.steps[0].value).toBe(3500)
+  })
+
+  it('materialPct scales THIS invoice\'s own billed amount, never the quotation\'s full value', () => {
+    const plan = computeFinishedGoodsProductionPlan({
+      billedLines: [line({ invoiceItemLineTotal: 50000 })], materialPct: 40,
+    })
+    expect(plan.steps[0].value).toBe(20000)
+  })
+
+  it('code is 1-based sort_order suffix, not 0-based', () => {
+    const plan = computeFinishedGoodsProductionPlan({ billedLines: [line({ sortOrder: 0 })], materialPct: 70 })
+    expect(plan.steps[0].code).toBe('QT2609-040-1')
+  })
+
+  it('multiple billed lines each get their own step', () => {
+    const plan = computeFinishedGoodsProductionPlan({
+      billedLines: [
+        line({ quotationItemId: 'qi-1', sortOrder: 0 }),
+        line({ quotationItemId: 'qi-2', sortOrder: 1, description: 'ประตูบานเลื่อน', invoiceItemLineTotal: 6000 }),
+      ],
+      materialPct: 70,
+    })
+    expect(plan.steps.map(s => s.quotationItemId)).toEqual(['qi-1', 'qi-2'])
+    expect(plan.steps[1]).toEqual({ quotationItemId: 'qi-2', code: 'QT2609-040-2', name: 'ประตูบานเลื่อน', value: 4200 })
+  })
+
+  it('skips a line with no quotationItemId (not tied to a quotation)', () => {
+    const plan = computeFinishedGoodsProductionPlan({ billedLines: [line({ quotationItemId: null })], materialPct: 70 })
+    expect(plan.steps).toEqual([])
+  })
+
+  it('skips a line whose invoice-billed amount is zero (division/no-op guard)', () => {
+    const plan = computeFinishedGoodsProductionPlan({ billedLines: [line({ invoiceItemLineTotal: 0 })], materialPct: 70 })
+    expect(plan.steps).toEqual([])
+  })
+})
+
 describe('resolveMovementReference', () => {
   const pos = [{ id: 'po-1', po_number: 'PO-2026-001' }]
   const invoices = [{ id: 'inv-1', invoice_number: 'INV-2026-042' }]
@@ -383,5 +439,103 @@ describe('resolveMovementReference', () => {
   it('falls back to an em dash when there is no reference at all', () => {
     const label = resolveMovementReference({ reference_type: null, reference_id: null }, { pos, invoices, sites })
     expect(label).toBe('—')
+  })
+
+  it('resolves a quotation reference to its quotation number from notes', () => {
+    const label = resolveMovementReference({ reference_type: 'quotation', reference_id: 'q1', notes: 'QT2609-040' }, { pos, invoices, sites })
+    expect(label).toBe('ใบเสนอราคา QT2609-040')
+  })
+
+  it('resolves a quotation reference with no notes to a generic label', () => {
+    const label = resolveMovementReference({ reference_type: 'quotation', reference_id: 'q1', notes: null }, { pos, invoices, sites })
+    expect(label).toBe('ใบเสนอราคา')
+  })
+})
+
+describe('computeStockLedgerReport', () => {
+  const items = [
+    { id: 'item-fg', code: 'QT2609-040-1', name: 'ประตูหน้าต่าง', base_unit: 'ชุด', item_kind: 'finished_goods', category_id: null },
+    { id: 'item-rm', code: 'GL-0001', name: 'กระจกใส 6mm', base_unit: 'แผ่น', item_kind: 'raw_material', category_id: 'cat-glass' },
+  ]
+  const m = (over = {}) => ({ inventory_item_id: 'item-rm', movement_type: 'purchase_in', quantity: 10, unit_cost: 100, created_at: '2026-09-15T10:00:00Z', notes: null, ...over })
+
+  it('movements before dateFrom become the opening balance, not in/out', () => {
+    const rows = computeStockLedgerReport({
+      movements: [m({ created_at: '2026-08-01T10:00:00Z', quantity: 50 })],
+      items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'all', categoryId: null,
+    })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ openingQty: 50, openingValue: 5000, inQty: 0, outQty: 0, closingQty: 50, closingValue: 5000 })
+  })
+
+  it('purchase_in within range counts as in; sale_out counts as out', () => {
+    const rows = computeStockLedgerReport({
+      movements: [
+        m({ movement_type: 'purchase_in', quantity: 100, unit_cost: 250, created_at: '2026-09-05T10:00:00Z' }),
+        m({ movement_type: 'sale_out', quantity: 15, unit_cost: 250, created_at: '2026-09-10T10:00:00Z' }),
+      ],
+      items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'all', categoryId: null,
+    })
+    expect(rows[0]).toMatchObject({ openingQty: 0, inQty: 100, inValue: 25000, outQty: 15, outValue: 3750, closingQty: 85, closingValue: 21250 })
+  })
+
+  it('adjustment with a positive stored delta counts as in', () => {
+    const rows = computeStockLedgerReport({
+      movements: [m({ movement_type: 'adjustment', quantity: 1, unit_cost: 70000, created_at: '2026-09-05T10:00:00Z', inventory_item_id: 'item-fg' })],
+      items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'finished_goods', categoryId: null,
+    })
+    expect(rows[0]).toMatchObject({ inQty: 1, inValue: 70000, outQty: 0, closingQty: 1 })
+  })
+
+  it('adjustment with a negative stored delta counts as out', () => {
+    const rows = computeStockLedgerReport({
+      movements: [
+        m({ movement_type: 'adjustment', quantity: 10, unit_cost: 100, created_at: '2026-08-01T10:00:00Z' }),
+        m({ movement_type: 'adjustment', quantity: -3, unit_cost: 100, created_at: '2026-09-05T10:00:00Z' }),
+      ],
+      items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'all', categoryId: null,
+    })
+    expect(rows[0]).toMatchObject({ openingQty: 10, inQty: 0, outQty: 3, outValue: 300, closingQty: 7 })
+  })
+
+  it('itemKindFilter narrows to just finished_goods or just raw_material', () => {
+    const movements = [
+      m({ inventory_item_id: 'item-fg', movement_type: 'adjustment', quantity: 1, unit_cost: 70000, created_at: '2026-09-05T10:00:00Z' }),
+      m({ inventory_item_id: 'item-rm', movement_type: 'purchase_in', quantity: 10, unit_cost: 100, created_at: '2026-09-05T10:00:00Z' }),
+    ]
+    const fgOnly = computeStockLedgerReport({ movements, items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'finished_goods', categoryId: null })
+    expect(fgOnly.map(r => r.itemId)).toEqual(['item-fg'])
+    const rmOnly = computeStockLedgerReport({ movements, items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'raw_material', categoryId: null })
+    expect(rmOnly.map(r => r.itemId)).toEqual(['item-rm'])
+  })
+
+  it('categoryId narrows raw-material rows to one category', () => {
+    const movements = [m({ inventory_item_id: 'item-rm', created_at: '2026-09-05T10:00:00Z' })]
+    const matching = computeStockLedgerReport({ movements, items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'all', categoryId: 'cat-glass' })
+    expect(matching).toHaveLength(1)
+    const nonMatching = computeStockLedgerReport({ movements, items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'all', categoryId: 'cat-other' })
+    expect(nonMatching).toHaveLength(0)
+  })
+
+  it('a movement after dateTo is excluded entirely (not opening, not in-range)', () => {
+    const rows = computeStockLedgerReport({
+      movements: [m({ created_at: '2026-10-05T10:00:00Z' })],
+      items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'all', categoryId: null,
+    })
+    expect(rows).toHaveLength(0)
+  })
+
+  it('the movements list on each row carries reference fields and direction, sorted ascending by date', () => {
+    const rows = computeStockLedgerReport({
+      movements: [
+        m({ movement_type: 'sale_out', quantity: 3, unit_cost: 100, created_at: '2026-09-10T10:00:00Z', notes: 'IN2609-002', inventory_item_id: 'item-rm' }),
+        m({ movement_type: 'sale_out', quantity: 5, unit_cost: 100, created_at: '2026-09-05T10:00:00Z', notes: 'IN2609-001', reference_type: 'invoice', reference_id: 'inv-1', inventory_item_id: 'item-rm' }),
+      ],
+      items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'all', categoryId: null,
+    })
+    expect(rows[0].movements).toEqual([
+      { date: '2026-09-05T10:00:00Z', type: 'sale_out', referenceType: 'invoice', referenceId: 'inv-1', notes: 'IN2609-001', qty: 5, unitCost: 100, value: 500, direction: 'out' },
+      { date: '2026-09-10T10:00:00Z', type: 'sale_out', referenceType: null, referenceId: null, notes: 'IN2609-002', qty: 3, unitCost: 100, value: 300, direction: 'out' },
+    ])
   })
 })

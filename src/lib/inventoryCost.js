@@ -57,6 +57,7 @@ export function resolveMovementReference(movement, { pos = [], invoices = [], si
     return site ? `โอนจาก ${site.name}` : 'โอนจากไซท์งาน'
   }
   if (reference_type === 'manual_adjustment') return 'ปรับยอด'
+  if (reference_type === 'quotation') return movement.notes ? `ใบเสนอราคา ${movement.notes}` : 'ใบเสนอราคา'
   return reference_type || '—'
 }
 
@@ -173,4 +174,124 @@ export function computeInvoiceDeductionPlan({ invoiceSubtotal, materialPct, cate
     totalDeductedValue: categoryResults.reduce((s, c) => s + c.deductedValue, 0),
     totalShortfall: categoryResults.reduce((s, c) => s + c.shortfall, 0),
   }
+}
+
+/**
+ * Computes the finished-goods "produce and sell" movements for one
+ * invoice's billed quotation lines -- redesigned 2026-09-25 (artifact
+ * comment thread on the ตัดสต็อก explainer, docs/superpowers/specs/2026-09-24-finished-goods-tax-stock-reports-design.md)
+ * away from the original "1 quotation line = 1.0 ชุด of the WHOLE
+ * contract, drawn down fractionally across every invoice against it"
+ * model. That model left a large, confusing leftover balance sitting
+ * against the contract after every invoice, and a contract billed over
+ * 100% showed up as a negative balance with no clean story. Instead:
+ * each invoice PRODUCES exactly what it's about to SELL, right then --
+ * one self-contained, self-balancing รับเข้า+ขายออก pair per billed
+ * line per invoice, both valued the same (materialPct% of THAT
+ * invoice's own billed amount, never the quotation's full value).
+ * Quantity is always 1 ("made and sold 1 batch this invoice"); nothing
+ * accumulates or depletes across invoices, so the >100%-billed edge
+ * case the original design had to warn about can no longer happen --
+ * there is no shared balance left to overdraw.
+ *
+ * @param {object} params
+ * @param {Array<{quotationItemId: string|null, quotationNumber: string, sortOrder: number, description: string, invoiceItemLineTotal: number}>} params.billedLines
+ * @param {number} params.materialPct - 0-100, the SAME %ต้นทุนวัสดุ the raw-material deduction step already uses for this invoice
+ * @returns {{ steps: Array<{ quotationItemId: string, code: string, name: string, value: number }> }}
+ */
+export function computeFinishedGoodsProductionPlan({ billedLines, materialPct }) {
+  const steps = []
+  for (const line of billedLines || []) {
+    if (!line.quotationItemId) continue
+    if (!(line.invoiceItemLineTotal > 0)) continue
+    const code = `${line.quotationNumber}-${line.sortOrder + 1}`
+    const value = line.invoiceItemLineTotal * (materialPct / 100)
+    steps.push({ quotationItemId: line.quotationItemId, code, name: line.description, value })
+  }
+  return { steps }
+}
+
+/**
+ * Builds one stock-card row per matching inventory item for the
+ * statutory รายงานสินค้าและวัตถุดิบ (and its finished-goods-only /
+ * raw-material-only variants) -- opening balance as of just before
+ * dateFrom, qty/value in and out within [dateFrom, dateTo], and the
+ * resulting closing balance. See
+ * docs/superpowers/specs/2026-09-24-finished-goods-tax-stock-reports-design.md's
+ * Report 1/2/3.
+ *
+ * Movement direction: purchase_in/transfer_in/sale_reversal are always
+ * "in" (quantity stored positive); transfer_out/sale_out are always
+ * "out" (quantity stored positive). 'adjustment' stores a SIGNED delta
+ * (record_stock_movement computes p_quantity - old_qty) -- a positive
+ * adjustment.quantity is "in", a negative one is "out".
+ *
+ * @param {object} params
+ * @param {Array<{inventory_item_id: string, movement_type: string, quantity: number, unit_cost: number|null, created_at: string, notes: string|null}>} params.movements
+ * @param {Array<{id: string, code: string|null, name: string, base_unit: string, item_kind: string, category_id: string|null}>} params.items
+ * @param {string} params.dateFrom - 'YYYY-MM-DD', inclusive
+ * @param {string} params.dateTo - 'YYYY-MM-DD', inclusive
+ * @param {'all'|'finished_goods'|'raw_material'} params.itemKindFilter
+ * @param {string|null} params.categoryId - filter to one category, or null for all
+ * @returns {Array<{itemId: string, code: string, name: string, unit: string, openingQty: number, openingValue: number, inQty: number, inValue: number, outQty: number, outValue: number, closingQty: number, closingValue: number, movements: Array<{date: string, type: string, referenceType: string|null, referenceId: string|null, notes: string|null, qty: number, unitCost: number, value: number, direction: 'in'|'out'}>}>}
+ */
+export function computeStockLedgerReport({ movements, items, dateFrom, dateTo, itemKindFilter, categoryId }) {
+  const dateFromMs = new Date(`${dateFrom}T00:00:00`).getTime()
+  const dateToMs = new Date(`${dateTo}T23:59:59`).getTime()
+  const itemsById = new Map((items || []).map(it => [it.id, it]))
+
+  const matchesFilter = (item) => {
+    if (!item) return false
+    if (itemKindFilter !== 'all' && item.item_kind !== itemKindFilter) return false
+    if (categoryId && item.category_id !== categoryId) return false
+    return true
+  }
+  const direction = (m) => {
+    if (m.movement_type === 'purchase_in' || m.movement_type === 'transfer_in' || m.movement_type === 'sale_reversal') return 'in'
+    if (m.movement_type === 'transfer_out' || m.movement_type === 'sale_out') return 'out'
+    return m.quantity >= 0 ? 'in' : 'out' // adjustment: signed delta
+  }
+
+  const rowsByItem = new Map()
+  const getRow = (itemId) => {
+    if (!rowsByItem.has(itemId)) {
+      const item = itemsById.get(itemId)
+      rowsByItem.set(itemId, {
+        itemId, code: item?.code || '', name: item?.name || '', unit: item?.base_unit || '',
+        openingQty: 0, openingValue: 0, inQty: 0, inValue: 0, outQty: 0, outValue: 0,
+        closingQty: 0, closingValue: 0, movements: [],
+      })
+    }
+    return rowsByItem.get(itemId)
+  }
+
+  for (const mv of movements || []) {
+    const item = itemsById.get(mv.inventory_item_id)
+    if (!matchesFilter(item)) continue
+    const ts = new Date(mv.created_at).getTime()
+    if (ts > dateToMs) continue
+
+    const d = direction(mv)
+    const magnitude = Math.abs(mv.quantity)
+    const signedQty = d === 'in' ? magnitude : -magnitude
+    const value = signedQty * (mv.unit_cost || 0)
+    const row = getRow(mv.inventory_item_id)
+
+    if (ts < dateFromMs) {
+      row.openingQty += signedQty
+      row.openingValue += value
+    } else {
+      if (d === 'in') { row.inQty += magnitude; row.inValue += magnitude * (mv.unit_cost || 0) }
+      else { row.outQty += magnitude; row.outValue += magnitude * (mv.unit_cost || 0) }
+      row.movements.push({ date: mv.created_at, type: mv.movement_type, referenceType: mv.reference_type || null, referenceId: mv.reference_id || null, notes: mv.notes || null, qty: magnitude, unitCost: mv.unit_cost || 0, value: magnitude * (mv.unit_cost || 0), direction: d })
+    }
+  }
+
+  for (const row of rowsByItem.values()) {
+    row.closingQty = row.openingQty + row.inQty - row.outQty
+    row.closingValue = row.openingValue + row.inValue - row.outValue
+    row.movements.sort((a, b) => new Date(a.date) - new Date(b.date))
+  }
+
+  return Array.from(rowsByItem.values()).sort((a, b) => a.code.localeCompare(b.code) || a.name.localeCompare(b.name))
 }

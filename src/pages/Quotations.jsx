@@ -65,7 +65,18 @@ const EMPTY_FORM = {
 // quotation_number from trg_quotation_number, same as any new document).
 // date defaults to today rather than the source's original date -- a
 // duplicate is a new document being issued now, not a backdated copy.
-function quotationToFormInitial(qt) {
+// keepItemIds is only ever true for the actual EDIT path (see
+// editFormInitial below) -- handleSave's diff-by-id save logic relies on
+// form.items[i].id to know which quotation_items row to UPDATE in place
+// (so an already-invoiced item, which invoice_items.quotation_item_id
+// references ON DELETE RESTRICT, survives a save instead of being
+// deleted-and-reinserted under a new id). The DUPLICATE path
+// ("ทำสำเนาใบเสนอราคา", quotationToFormInitial(qt) below with no second
+// arg) must never carry the original's item ids forward -- a duplicate
+// creates a brand-new quotation, and leaking the old ids would make
+// handleSave UPDATE the ORIGINAL quotation's item rows (reassigning them
+// to the new quotation_id), corrupting the quotation being copied from.
+function quotationToFormInitial(qt, { keepItemIds = false } = {}) {
   return {
     client_id: qt.client_id, site_name: qt.site_name || '',
     date: format(new Date(), 'yyyy-MM-dd'),
@@ -81,6 +92,7 @@ function quotationToFormInitial(qt) {
     bank_account_id: qt.bank_account_id || null,
     items: (qt.quotation_items?.length ? qt.quotation_items : [{ ...EMPTY_ITEM }])
       .map(it => ({
+        ...(keepItemIds && it.id ? { id: it.id } : {}),
         catalog_item_id: it.catalog_item_id, description: it.description, quantity: String(it.quantity), unit: it.unit || '',
         unit_price: String(it.unit_price), unit_price_material: it.unit_price_material != null ? String(it.unit_price_material) : '',
         unit_price_labor: it.unit_price_labor != null ? String(it.unit_price_labor) : '', item_type: it.item_type || 'item',
@@ -1253,6 +1265,31 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       }
       let quotationId = editRow?.id
       if (editRow) {
+        // invoice_items.quotation_item_id is ON DELETE RESTRICT (an
+        // invoice's line-item pricing basis must never be able to vanish
+        // out from under it) -- so before touching anything, check
+        // whether the user removed a line that's already been invoiced
+        // against (even a voided invoice keeps its invoice_items rows).
+        // Catching this up front, before any write, avoids the old
+        // failure mode: delete-all-then-insert-all would hit the FK
+        // violation deep into the save, after the quotations row and
+        // revision snapshot had already been written, leaving a
+        // half-saved document with a raw Postgres error on screen.
+        const formIds = new Set(form.items.filter(it => it.id).map(it => it.id))
+        const removedItems = (editRow.quotation_items || []).filter(it => !formIds.has(it.id))
+        if (removedItems.length) {
+          const { data: blocking, error: blockCheckErr } = await supabase
+            .from('invoice_items').select('quotation_item_id').in('quotation_item_id', removedItems.map(it => it.id))
+          if (blockCheckErr) throw blockCheckErr
+          const blockedIds = new Set((blocking || []).map(r => r.quotation_item_id))
+          const blockedItems = removedItems.filter(it => blockedIds.has(it.id))
+          if (blockedItems.length) {
+            alert('ไม่สามารถลบรายการนี้ได้ เนื่องจากมีใบแจ้งหนี้ที่ตัดจากรายการนี้ไปแล้ว:\n' + blockedItems.map(it => `• ${it.description}`).join('\n') + '\n\nกรุณาเก็บรายการนี้ไว้ในใบเสนอราคา (แก้ไขจำนวน/ราคาได้ตามปกติ) หรือติดต่อผู้ดูแลระบบหากต้องการลบจริงๆ')
+            setSaving(false)
+            return
+          }
+        }
+
         // Only a document that's been sent at least once (ever_sent —
         // stays true even after a pull-back-to-edit) gets a revision
         // snapshot + counter bump. Editing a quotation that's never been
@@ -1283,8 +1320,15 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
         const revisionUpdate = editRow.ever_sent ? { revision: (editRow.revision || 1) + 1 } : {}
         const { error } = await supabase.from('quotations').update({ ...qtPayload, ...revisionUpdate }).eq('id', editRow.id)
         if (error) throw error
-        const { error: delError } = await supabase.from('quotation_items').delete().eq('quotation_id', editRow.id)
-        if (delError) throw delError
+        // Delete only the items the user actually removed (already
+        // confirmed above to be un-invoiced, so this can't hit the FK
+        // restrict) -- existing kept items are UPDATEd in place below
+        // instead of being deleted and reinserted, so their id (and any
+        // invoice_items row still pointing at it) stays valid.
+        if (removedItems.length) {
+          const { error: delError } = await supabase.from('quotation_items').delete().in('id', removedItems.map(it => it.id))
+          if (delError) throw delError
+        }
         await auditLog('quotations', editRow.id, 'UPDATE', editRow, qtPayload)
       } else {
         const { data, error } = await supabase.from('quotations').insert(qtPayload).select().single()
@@ -1293,18 +1337,26 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
         await auditLog('quotations', quotationId, 'INSERT', null, qtPayload)
       }
 
-      const itemsPayload = form.items
-        .filter(it => it.description.trim())
-        .map((it, i) => ({
-          quotation_id: quotationId, catalog_item_id: it.catalog_item_id || null,
-          description: it.description, quantity: parseFloat(it.quantity) || 0,
-          unit: it.unit || null, unit_price: parseFloat(it.unit_price) || 0,
-          unit_price_material: form.pricing_mode === 'split' ? (parseFloat(it.unit_price_material) || 0) : null,
-          unit_price_labor: form.pricing_mode === 'split' ? (parseFloat(it.unit_price_labor) || 0) : null,
-          line_total: lineTotal(it), sort_order: i, item_type: it.item_type || 'item',
-        }))
-      if (itemsPayload.length) {
-        const { error } = await supabase.from('quotation_items').insert(itemsPayload)
+      const filteredItems = form.items.filter(it => it.description.trim())
+      const itemRow = (it, i) => ({
+        quotation_id: quotationId, catalog_item_id: it.catalog_item_id || null,
+        description: it.description, quantity: parseFloat(it.quantity) || 0,
+        unit: it.unit || null, unit_price: parseFloat(it.unit_price) || 0,
+        unit_price_material: form.pricing_mode === 'split' ? (parseFloat(it.unit_price_material) || 0) : null,
+        unit_price_labor: form.pricing_mode === 'split' ? (parseFloat(it.unit_price_labor) || 0) : null,
+        line_total: lineTotal(it), sort_order: i, item_type: it.item_type || 'item',
+      })
+      const toInsert = []
+      for (const [i, it] of filteredItems.entries()) {
+        if (it.id) {
+          const { error } = await supabase.from('quotation_items').update(itemRow(it, i)).eq('id', it.id)
+          if (error) throw error
+        } else {
+          toInsert.push(itemRow(it, i))
+        }
+      }
+      if (toInsert.length) {
+        const { error } = await supabase.from('quotation_items').insert(toInsert)
         if (error) throw error
       }
 
@@ -1468,7 +1520,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   // remaining validity window doesn't quietly shrink just because time
   // passed before this edit was made.)
   const editFormInitial = useMemo(() => (
-    editRow ? { id: editRow.id, ...quotationToFormInitial(editRow) } : null
+    editRow ? { id: editRow.id, ...quotationToFormInitial(editRow, { keepItemIds: true }) } : null
   ), [editRow])
 
   // Pre-fills a brand-new quotation's payment_terms/notes from the tenant's

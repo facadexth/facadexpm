@@ -1,3 +1,9 @@
+/* Sarabun -- Thai government-document typeface (ราชกิจจานุเบกษา etc.),
+   used only by the tax-report print output (.tax-report-print below) to
+   match the artifact preview it was built from. @import must be the very
+   first rule in the file. */
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap');
+
 /* ============================================================
    FACADE X — Global Styles
    ============================================================ */
@@ -491,4 +497,102 @@ th.sortable:hover { color: var(--accent); }
      visible for this exact element) removes it from the print layout
      entirely. */
   #doc-style-preview { display: none !important; }
+
+  /* .print-only: content that exists purely for the printed page (a
+     document header with company/period info that the on-screen app view
+     has no use for) -- hidden on screen, shown only inside a print.
+     !important because the base (non-media) .print-only rule below sits
+     later in this same file at equal specificity -- without it, source
+     order would let that later "display:none" win even while printing,
+     which is exactly what silently dropped the print header before. */
+  .print-only { display: block !important; }
+}
+.print-only { display: none; }
+
+/* Inventory.jsx's TaxReportsView print output -- deliberately matches the
+   FacadeX ERP "บัตรสินค้าและวัตถุดิบ" print-preview artifact this was
+   built from (https://claude.ai/artifact/XJNHBtGzs84PfJqpSwNE2e): same
+   Sarabun typeface, same navy/seal palette, same document-header +
+   summary-bar + statutory-footer layout, same per-item stock-card table.
+   Scoped entirely under .tax-report-print so it never leaks into the
+   on-screen app (which stays on the app's own dark/light theme) or into
+   QuotationPaper/DocumentPaper's own printable-document styling. */
+@media print {
+  .tax-report-print {
+    --pr-ink: #191d24;
+    --pr-ink-soft: #4d535f;
+    --pr-muted: #7b8290;
+    --pr-rule: #c7cbd2;
+    --pr-accent: #1f3a5f;
+    --pr-accent-soft: #e4ebf3;
+    --pr-seal: #8a3b2b;
+    --pr-seal-soft: #f4e6e1;
+    font-family: 'Sarabun', 'Noto Sans Thai', system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  .tax-report-print, .tax-report-print table, .tax-report-print th, .tax-report-print td {
+    color: var(--pr-ink) !important;
+    background: #fff !important;
+    border-color: var(--pr-rule) !important;
+  }
+
+  .tax-report-print .doc-header {
+    display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap;
+    padding-bottom: 14px; border-bottom: 2.5px solid var(--pr-ink); margin-bottom: 14px;
+  }
+  .tax-report-print .company-name { font-weight: 700; font-size: 16px; margin: 0 0 4px; }
+  .tax-report-print .company-meta { font-size: 12px; color: var(--pr-ink-soft) !important; margin: 2px 0; line-height: 1.5; }
+  .tax-report-print .report-block { text-align: right; }
+  .tax-report-print .report-badge {
+    display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+    color: var(--pr-seal) !important; background: var(--pr-seal-soft) !important;
+    border: 1px solid var(--pr-seal); border-radius: 999px; padding: 2px 12px; margin-bottom: 6px;
+  }
+  .tax-report-print .report-block h1 { font-size: 19px; margin: 0 0 4px; color: var(--pr-accent) !important; }
+  .tax-report-print .report-subtitle { font-size: 12.5px; color: var(--pr-ink-soft) !important; margin: 0 0 6px; }
+  .tax-report-print .report-period { font-size: 12.5px; font-weight: 600; margin: 0; }
+  .tax-report-print .report-source { font-size: 12px; color: var(--pr-seal) !important; font-weight: 600; margin: 4px 0 0; }
+
+  .tax-report-print .summary-bar {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px;
+    background: var(--pr-rule); border: 1px solid var(--pr-rule); border-radius: 6px;
+    overflow: hidden; margin-bottom: 16px;
+  }
+  .tax-report-print .summary-bar-simple { grid-template-columns: repeat(2, 1fr); max-width: 480px; }
+  .tax-report-print .summary-cell { background: #fff !important; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
+  .tax-report-print .summary-label { font-size: 10px; color: var(--pr-muted) !important; }
+  .tax-report-print .summary-value { font-size: 13.5px; font-weight: 600; }
+  .tax-report-print .summary-value.accent { color: var(--pr-accent) !important; }
+
+  .tax-report-print table.ledger thead { display: table-header-group; }
+  .tax-report-print table.ledger thead th { background: var(--pr-accent) !important; color: #fff !important; }
+  .tax-report-print tr.item-header-row td { background: var(--pr-accent-soft) !important; color: var(--pr-accent) !important; }
+
+  /* tr.print-repeat-row lives INSIDE the print table's <thead> so it
+     repeats atop every printed page the table spans -- browsers replay a
+     table's whole thead on each page fragment, unlike the doc-header
+     above the table, which only ever prints once on page 1. */
+  .tax-report-print tr.print-repeat-row td {
+    background: var(--pr-accent-soft) !important; color: var(--pr-accent) !important;
+    font-size: 10.5px; font-weight: 600; padding: 5px 10px; white-space: nowrap;
+  }
+  .tax-report-print tr.print-repeat-row .print-repeat-sep { margin: 0 6px; opacity: 0.5; font-weight: 400; }
+  .tax-report-print tr.print-repeat-row .print-repeat-period { font-weight: 400; color: var(--pr-ink-soft) !important; }
+
+  .tax-report-print .doc-footer {
+    margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--pr-rule);
+    font-size: 10.5px; color: var(--pr-muted) !important; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+
+  /* .table-wrap is a scroll box on screen (overflow-x:auto and a fixed
+     max-height with overflow-y:auto, see the base rule) -- printing an
+     overflow:auto box does NOT paginate its clipped content, it just cuts
+     it off at the box's rendered size. That silently dropped every row
+     past 560px tall and every column past the visible width. Landscape +
+     unclamped/visible overflow is what the artifact preview already does
+     for this same report and is the fix here too. */
+  @page { size: A4 landscape; margin: 12mm; }
+  .tax-report-print .table-wrap { max-height: none !important; overflow: visible !important; border: none !important; }
+  .tax-report-print table { width: 100%; }
+  .tax-report-print tr.item-header-row { break-after: avoid; }
 }
