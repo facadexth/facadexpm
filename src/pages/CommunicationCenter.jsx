@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useTenant } from '../hooks/useTenant.js'
+import { useUserRole } from '../hooks/useUserRole.js'
 import { useAppSetting, saveAppSetting } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 
@@ -22,6 +23,40 @@ function generateLinkCode() {
 
 export default function CommunicationCenter() {
   const { tenant } = useTenant()
+  const { user } = useUserRole()
+
+  // ---- My own LINE link (user_roles.line_link_code/line_user_id --
+  // same columns+webhook handling the LINE feature already had for any
+  // role, just never had a UI card anywhere until now) ----
+  const [myRole, setMyRole] = useState(null)
+  const [loadingMyRole, setLoadingMyRole] = useState(true)
+  const [generatingMyLink, setGeneratingMyLink] = useState(false)
+  const [showMyLinkModal, setShowMyLinkModal] = useState(false)
+
+  const fetchMyRole = async () => {
+    if (!user?.email) return
+    setLoadingMyRole(true)
+    const { data, error } = await supabase.from('user_roles').select('id, line_user_id, line_link_code').eq('user_email', user.email).maybeSingle()
+    if (!error) setMyRole(data)
+    setLoadingMyRole(false)
+  }
+  useEffect(() => { fetchMyRole() }, [user?.email])
+
+  const handleGenerateMyCode = async () => {
+    if (!myRole?.id) return
+    setGeneratingMyLink(true)
+    try {
+      const code = generateLinkCode()
+      const { error } = await supabase.from('user_roles').update({ line_link_code: code }).eq('id', myRole.id)
+      if (error) throw error
+      setMyRole(r => ({ ...r, line_link_code: code }))
+      setShowMyLinkModal(true)
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setGeneratingMyLink(false)
+    }
+  }
 
   // ---- Channel connection ----
   const [lineSettings, setLineSettings] = useState(null)
@@ -270,6 +305,24 @@ export default function CommunicationCenter() {
         )}
       </div>
 
+      {/* ---- My own LINE link ---- */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div style={{ padding: 16, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ fontWeight: 700 }}>🙋 เชื่อมต่อ LINE ส่วนตัว</div>
+          {!loadingMyRole && statusBadge(!!myRole?.line_user_id, '✅ เชื่อมต่อแล้ว', '❌ ยังไม่เชื่อมต่อ')}
+        </div>
+        <div style={{ padding: 16 }}>
+          <div style={{ fontSize: 12.5, color: 'var(--text3)', marginBottom: 10 }}>
+            เชื่อมบัญชี LINE ของคุณเองเข้ากับบอทนี้ เพื่อรับการแจ้งเตือน (เช่น พนักงานพ้นสภาพยังส่งข้อความอยู่)
+          </div>
+          {!myRole?.line_user_id && (
+            <button className="btn btn-sm btn-ghost" disabled={generatingMyLink} onClick={() => (myRole?.line_link_code ? setShowMyLinkModal(true) : handleGenerateMyCode())}>
+              {generatingMyLink ? '⏳...' : myRole?.line_link_code ? '🔗 ดูลิงก์' : '🔗 สร้างลิงก์เชื่อมต่อ'}
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* ---- Worker linking ---- */}
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ padding: 16, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
@@ -422,6 +475,37 @@ export default function CommunicationCenter() {
           </div>
           <div className="modal-footer">
             <button type="button" className="btn btn-primary" onClick={() => setLinkModalWorker(null)}>ปิด</button>
+          </div>
+        </Modal>
+      )}
+
+      {showMyLinkModal && myRole?.line_link_code && (
+        <Modal title="ลิงก์เชื่อมต่อ LINE ส่วนตัว" onClose={() => setShowMyLinkModal(false)} maxWidth={420}>
+          <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+            {!basicId ? (
+              <div className="alert alert-warning" style={{ fontSize: 12 }}>⚠️ ยังไม่ได้ตั้ง Basic ID ด้านบน — ให้พิมพ์รหัสนี้เองในแชทบอทแทน</div>
+            ) : null}
+            <div>
+              <label className="label">รหัสเชื่อมต่อ</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input className="input" readOnly value={myRole.line_link_code} style={{ fontFamily: 'monospace', fontWeight: 700, letterSpacing: 2 }} />
+                <button type="button" className="btn btn-ghost" onClick={() => handleCopy(myRole.line_link_code)}>คัดลอก</button>
+              </div>
+            </div>
+            {basicId && (
+              <div>
+                <label className="label">ลิงก์ (กดแล้วพิมพ์รหัสให้อัตโนมัติ)</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input className="input" readOnly value={`https://line.me/R/oaMessage/@${basicId}/?${myRole.line_link_code}`} style={{ fontSize: 12 }} />
+                  <button type="button" className="btn btn-ghost" onClick={() => handleCopy(`https://line.me/R/oaMessage/@${basicId}/?${myRole.line_link_code}`)}>คัดลอก</button>
+                </div>
+              </div>
+            )}
+            <div style={{ fontSize: 12, color: 'var(--text3)' }}>เปิดลิงก์นี้บนมือถือของคุณเอง แล้วกดส่งข้อความเพื่อเชื่อมต่อบัญชี</div>
+            <button type="button" className="btn btn-sm btn-ghost" style={{ justifySelf: 'start' }} onClick={handleGenerateMyCode}>🔄 สร้างรหัสใหม่</button>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-primary" onClick={() => setShowMyLinkModal(false)}>ปิด</button>
           </div>
         </Modal>
       )}

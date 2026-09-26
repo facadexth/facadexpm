@@ -83,6 +83,24 @@ import { verifyLineSignature, sendLineReply, sendLinePush } from '../_shared/lin
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+const APP_URL = 'https://pm.facadex.co.th'
+
+// Issues a one-time /f/<token> link (see field-form Edge Function +
+// src/FieldFormPage.jsx) for เบิกของ/ขอลา -- replaces the old free-text
+// insert (material_request couldn't satisfy purchase_orders' NOT NULL
+// site_id/supplier_id/category_id; leave wrote straight into
+// worker_assignments with no approval step at all). 30 minutes is enough
+// to switch from LINE to the browser and back without leaving a stale
+// link usable for days.
+async function issueFieldFormLink(tenantId: string, workerId: string, actionType: 'material_request' | 'leave'): Promise<string | null> {
+  const token = crypto.randomUUID().replace(/-/g, '')
+  const { error } = await admin.from('line_deep_link_tokens').insert({
+    tenant_id: tenantId, worker_id: workerId, action_type: actionType, token,
+    expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+  })
+  if (error) { console.error('issueFieldFormLink insert failed', error); return null }
+  return `${APP_URL}/f/${token}`
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -624,47 +642,29 @@ async function handleAction(
       await sendLineReply(settings.channel_access_token, replyToken, '📩 รับแจ้งปัญหาแล้วครับ แอดมินจะติดตามให้')
     }
   } else if (action === 'material_request') {
-    // NOT a purchase_orders insert -- confirmed against the live schema
-    // (2026-09-19): purchase_orders_status_check only allows
-    // ('ordered','received','cancelled'), there is no 'draft' value, and
-    // site_id/supplier_id/category_id are all NOT NULL FKs (RESTRICT)
-    // that a bare crew text message has no way to supply. See Task 3's
-    // original comment for the full rationale -- unchanged here. This
-    // branch is a planned candidate to become a link-based flow instead
-    // (opens an authenticated web form) -- design in progress.
-    const { error } = await admin.from('line_issue_reports').insert({ tenant_id: settings.tenant_id, worker_id: worker.id, message: `[ขอเบิกของ] ${text}` })
-    if (error) {
-      console.error('line_issue_reports insert failed (material request)', error)
+    // A real structured request (material_requests, 'pending') via a
+    // one-time web form -- NOT a purchase_orders insert. purchase_orders'
+    // site_id/supplier_id/category_id are all NOT NULL FKs a bare crew
+    // text message (or this worker, from the field) has no way to supply;
+    // an ADMIN turns an approved request into a real PO once those are
+    // known. See field-form Edge Function + src/FieldFormPage.jsx.
+    const link = await issueFieldFormLink(settings.tenant_id, worker.id, 'material_request')
+    if (!link) {
       await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
     } else {
-      await sendLineReply(settings.channel_access_token, replyToken, '📦 รับคำขอเบิกของแล้วครับ แอดมินจะตรวจสอบและออกใบสั่งซื้อให้')
+      await sendLineReply(settings.channel_access_token, replyToken, `📦 กดลิงก์นี้เพื่อบอกรายการของที่ต้องการเบิกครับ (ใช้ได้ 30 นาที)\n${link}`)
     }
   } else {
-    // A worker_assignments row (leave_personal), the same shape
-    // CellEditPopup.jsx builds for a leave save (src/pages/assign/
-    // CellEditPopup.jsx:81-85): { worker_id, date, shift, type,
-    // site_id: null, notes }. tenant_id must be set explicitly here --
-    // its DB default is current_tenant_id(), which resolves off the
-    // caller's JWT claims and would be NULL under this function's
-    // service-role client. shift/date aren't in the message at all, so
-    // this defaults to today (Bangkok) / 'morning' as a same-day
-    // heads-up. A plain insert (not upsert) so this can never silently
-    // overwrite an already-scheduled real shift. Also a planned
-    // candidate for a link-based flow (real date-range picker) -- not
-    // yet built.
-    const { error } = await admin.from('worker_assignments').insert({
-      tenant_id: settings.tenant_id,
-      worker_id: worker.id,
-      date: bangkokToday(),
-      shift: 'morning',
-      type: 'leave_personal',
-      site_id: null,
-      notes: text,
-    })
-    if (error) {
-      await sendLineReply(settings.channel_access_token, replyToken, '⚠️ วันนี้มีคิวงานอยู่แล้ว กรุณาติดต่อแอดมินโดยตรง')
+    // Same one-time-link pattern for leave -- a leave_requests row
+    // ('pending'), never written straight to worker_assignments anymore.
+    // An ADMIN/OWNER approving it in HR.jsx is what creates the real
+    // schedule day(s); a worker's own LINE message was never enough
+    // authority for that on its own.
+    const link = await issueFieldFormLink(settings.tenant_id, worker.id, 'leave')
+    if (!link) {
+      await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
     } else {
-      await sendLineReply(settings.channel_access_token, replyToken, '🏖️ รับคำขอลาแล้วครับ แอดมินจะตรวจสอบให้')
+      await sendLineReply(settings.channel_access_token, replyToken, `🏖️ กดลิงก์นี้เพื่อกรอกวันที่ลาครับ (ใช้ได้ 30 นาที)\n${link}`)
     }
   }
 }

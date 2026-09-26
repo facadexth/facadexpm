@@ -7,6 +7,9 @@ import './index.css'
 // checked before App even mounts, so a visitor with no account never
 // touches the login screen or any authenticated session logic at all.
 const signMatch = window.location.pathname.match(/^\/sign\/([^/]+)\/?$/)
+// /f/<token> is the same idea for the LINE crew bot's เบิกของ/ขอลา deep
+// links -- see FieldFormPage.jsx + the field-form Edge Function.
+const fieldFormMatch = window.location.pathname.match(/^\/f\/([^/]+)\/?$/)
 
 async function boot() {
   const root = ReactDOM.createRoot(document.getElementById('root'))
@@ -15,6 +18,13 @@ async function boot() {
     root.render(
       <React.StrictMode>
         <PublicSignPage linkId={signMatch[1]} />
+      </React.StrictMode>
+    )
+  } else if (fieldFormMatch) {
+    const { default: FieldFormPage } = await import('./FieldFormPage.jsx')
+    root.render(
+      <React.StrictMode>
+        <FieldFormPage token={fieldFormMatch[1]} />
       </React.StrictMode>
     )
   } else {
