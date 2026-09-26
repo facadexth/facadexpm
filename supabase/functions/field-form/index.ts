@@ -11,8 +11,9 @@
 //
 // เบิกของ submits straight into a REAL purchase_orders row (status
 // 'draft', no supplier_id yet -- a worker in the field has no way to
-// know which supplier to order from) + one purchase_order_items row for
-// the picked catalog item, then pushes a LINE message to every linked
+// know which supplier to order from) + one purchase_order_items row per
+// requested line (catalog pick, or free-typed name+unit for stock not
+// in the catalog yet), then pushes a LINE message to every linked
 // ADMIN/OWNER so it doesn't just sit unnoticed until someone opens the
 // PO list. ขอลา still writes a 'pending' leave_requests row -- approving
 // that in HR.jsx is what creates the real worker_assignments day(s).
@@ -107,31 +108,56 @@ Deno.serve(async (req) => {
       const workerName = worker.nickname || worker.name
 
       if (tok.action_type === 'material_request') {
-        const itemId = body?.itemId as string | undefined
         const siteId = body?.siteId as string | undefined
-        const quantity = Number(body?.quantity)
-        if (!itemId || !siteId || !quantity || quantity <= 0) return json({ error: 'missing_fields' }, 400)
+        const rawItems = Array.isArray(body?.items) ? body.items : []
+        if (!siteId || rawItems.length === 0) return json({ error: 'missing_fields' }, 400)
 
-        const { data: item } = await admin.from('inventory_items').select('name, base_unit, category_id').eq('id', itemId).eq('tenant_id', worker.tenant_id).maybeSingle()
-        if (!item) return json({ error: 'item_not_found' }, 400)
         const { data: site } = await admin.from('sites').select('name').eq('id', siteId).eq('tenant_id', worker.tenant_id).maybeSingle()
         if (!site) return json({ error: 'site_not_found' }, 400)
 
+        // Resolve every line -- either a catalog item (itemId) or a
+        // free-typed one (manualName/manualUnit, for stock not in the
+        // catalog yet), each still tagged with a category so the header's
+        // required category_id has something to point at.
+        const resolved: { description: string; unit: string; quantity: number; categoryId: string; inventoryItemId: string | null }[] = []
+        for (const raw of rawItems) {
+          const quantity = Number(raw?.quantity)
+          if (!quantity || quantity <= 0) return json({ error: 'invalid_quantity' }, 400)
+
+          if (raw?.itemId) {
+            const { data: item } = await admin.from('inventory_items').select('name, base_unit, category_id')
+              .eq('id', raw.itemId).eq('tenant_id', worker.tenant_id).maybeSingle()
+            if (!item) return json({ error: 'item_not_found' }, 400)
+            resolved.push({ description: item.name, unit: item.base_unit, quantity, categoryId: item.category_id, inventoryItemId: raw.itemId })
+          } else {
+            const manualName = String(raw?.manualName || '').trim()
+            const manualUnit = String(raw?.manualUnit || '').trim()
+            const categoryId = raw?.categoryId as string | undefined
+            if (!manualName || !manualUnit || !categoryId) return json({ error: 'missing_fields' }, 400)
+            const { data: category } = await admin.from('expense_categories').select('id').eq('id', categoryId).eq('tenant_id', worker.tenant_id).maybeSingle()
+            if (!category) return json({ error: 'category_not_found' }, 400)
+            resolved.push({ description: manualName, unit: manualUnit, quantity, categoryId, inventoryItemId: null })
+          }
+        }
+
         const { data: po, error: poError } = await admin.from('purchase_orders').insert({
-          tenant_id: worker.tenant_id, site_id: siteId, category_id: item.category_id, supplier_id: null,
+          tenant_id: worker.tenant_id, site_id: siteId, category_id: resolved[0].categoryId, supplier_id: null,
           date: bangkokToday(), status: 'draft', has_vat: true, price_includes_vat: false,
           ordered_by: workerName, notes: `ขอเบิกผ่านไลน์โดย ${workerName}`,
         }).select('id').single()
         if (poError || !po) return json({ error: poError?.message ?? 'po_insert_failed' }, 500)
 
-        const { error: itemError } = await admin.from('purchase_order_items').insert({
-          po_id: po.id, tenant_id: worker.tenant_id, description: item.name, quantity, unit: item.base_unit,
-          unit_price: 0, line_total: 0, sort_order: 0, inventory_item_id: itemId,
-        })
-        if (itemError) return json({ error: itemError.message }, 500)
+        const { error: itemsError } = await admin.from('purchase_order_items').insert(
+          resolved.map((r, i) => ({
+            po_id: po.id, tenant_id: worker.tenant_id, description: r.description, quantity: r.quantity, unit: r.unit,
+            unit_price: 0, line_total: 0, sort_order: i, inventory_item_id: r.inventoryItemId,
+          }))
+        )
+        if (itemsError) return json({ error: itemsError.message }, 500)
 
         await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
-        await notifyAdmins(worker.tenant_id, `📦 ${workerName} ขอเบิก "${item.name}" (${quantity} ${item.base_unit}) ที่ไซต์ ${site.name}\nสร้างใบสั่งซื้อร่างไว้ให้แล้ว รอเลือกซัพพลายเออร์และราคาที่ ${APP_URL}`)
+        const itemLines = resolved.map(r => `- ${r.description} (${r.quantity} ${r.unit})`).join('\n')
+        await notifyAdmins(worker.tenant_id, `📦 ${workerName} ขอเบิกที่ไซต์ ${site.name}:\n${itemLines}\nสร้างใบสั่งซื้อร่างไว้ให้แล้ว รอเลือกซัพพลายเออร์และราคาที่ ${APP_URL}`)
         return json({ ok: true, workerName })
       }
 

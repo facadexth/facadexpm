@@ -11,7 +11,7 @@
 // 'draft' row straight away and pushes a LINE message to admins, who fill
 // in the supplier/price later (see field-form's submit handler). ขอลา
 // still lands as 'pending' -- an ADMIN/OWNER approves it in HR.jsx.
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase.js'
 
 const REASON_MESSAGES = {
@@ -24,6 +24,12 @@ const LEAVE_TYPES = [
   { value: 'leave_personal', label: '🏖️ ลากิจ' },
   { value: 'leave_sick', label: '🤒 ลาป่วย' },
 ]
+
+const MANUAL_ITEM = '__manual__'
+let lineSeq = 0
+function newLine() {
+  return { id: `line-${++lineSeq}`, categoryId: '', itemId: '', manualName: '', manualUnit: '', quantity: '' }
+}
 
 function Shell({ children }) {
   return (
@@ -41,9 +47,7 @@ export default function FieldFormPage({ token }) {
   const [submitted, setSubmitted] = useState(false)
   const [submitError, setSubmitError] = useState(null)
 
-  const [categoryId, setCategoryId] = useState('')
-  const [itemId, setItemId] = useState('')
-  const [quantity, setQuantity] = useState('')
+  const [lines, setLines] = useState([newLine()])
   const [siteId, setSiteId] = useState('')
 
   const [leaveType, setLeaveType] = useState('leave_personal')
@@ -60,11 +64,10 @@ export default function FieldFormPage({ token }) {
       })
   }, [token])
 
-  const itemsInCategory = useMemo(
-    () => (state.items || []).filter(it => it.categoryId === categoryId),
-    [state.items, categoryId]
-  )
-  const selectedItem = useMemo(() => (state.items || []).find(it => it.id === itemId), [state.items, itemId])
+  const itemsInCategory = (categoryId) => (state.items || []).filter(it => it.categoryId === categoryId)
+  const addLine = () => setLines(ls => [...ls, newLine()])
+  const removeLine = (id) => setLines(ls => (ls.length > 1 ? ls.filter(l => l.id !== id) : ls))
+  const updateLine = (id, patch) => setLines(ls => ls.map(l => (l.id === id ? { ...l, ...patch } : l)))
 
   const submit = async (e) => {
     e.preventDefault()
@@ -72,7 +75,16 @@ export default function FieldFormPage({ token }) {
     setSubmitError(null)
     try {
       const body = state.actionType === 'material_request'
-        ? { action: 'submit', token, itemId, quantity, siteId }
+        ? {
+            action: 'submit', token, siteId,
+            items: lines.map(l => ({
+              categoryId: l.categoryId,
+              itemId: l.itemId && l.itemId !== MANUAL_ITEM ? l.itemId : null,
+              manualName: l.itemId === MANUAL_ITEM ? l.manualName.trim() : null,
+              manualUnit: l.itemId === MANUAL_ITEM ? l.manualUnit.trim() : null,
+              quantity: Number(l.quantity),
+            })),
+          }
         : { action: 'submit', token, leaveType, dateFrom, dateTo: dateTo || dateFrom, reason: reason.trim() || null }
       const { data, error } = await supabase.functions.invoke('field-form', { body })
       if (error) throw error
@@ -112,7 +124,11 @@ export default function FieldFormPage({ token }) {
     )
   }
 
-  const canSubmitMaterial = itemId && siteId && Number(quantity) > 0
+  const canSubmitMaterial = siteId && lines.length > 0 && lines.every(l => {
+    if (!l.categoryId || !(Number(l.quantity) > 0)) return false
+    if (l.itemId === MANUAL_ITEM) return l.manualName.trim() && l.manualUnit.trim()
+    return !!l.itemId
+  })
 
   return (
     <Shell>
@@ -124,24 +140,55 @@ export default function FieldFormPage({ token }) {
       <form onSubmit={submit} style={{ display: 'grid', gap: 14 }}>
         {state.actionType === 'material_request' ? (
           <>
-            <div>
-              <label className="label">หมวดหมู่ *</label>
-              <select className="select" required value={categoryId} onChange={e => { setCategoryId(e.target.value); setItemId('') }}>
-                <option value="">-- เลือกหมวดหมู่ --</option>
-                {(state.categories || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label">รายการ *</label>
-              <select className="select" required disabled={!categoryId} value={itemId} onChange={e => setItemId(e.target.value)}>
-                <option value="">-- เลือกรายการ --</option>
-                {itemsInCategory.map(it => <option key={it.id} value={it.id}>{it.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label">จำนวน {selectedItem ? `(${selectedItem.unit})` : ''} *</label>
-              <input className="input" type="number" required min="0" step="any" value={quantity} onChange={e => setQuantity(e.target.value)} />
-            </div>
+            {lines.map((line, idx) => {
+              const items = itemsInCategory(line.categoryId)
+              const isManual = line.itemId === MANUAL_ITEM
+              const selectedItem = items.find(it => it.id === line.itemId)
+              const unit = selectedItem?.unit || (isManual ? line.manualUnit : '')
+              return (
+                <div key={line.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, display: 'grid', gap: 10, position: 'relative' }}>
+                  {lines.length > 1 && (
+                    <button type="button" onClick={() => removeLine(line.id)} aria-label="ลบรายการนี้"
+                      style={{ position: 'absolute', top: 8, right: 8, background: 'none', border: 'none', color: 'var(--text3)', fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: 4 }}>✕</button>
+                  )}
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)' }}>รายการที่ {idx + 1}</div>
+                  <div>
+                    <label className="label">หมวดหมู่ *</label>
+                    <select className="select" required value={line.categoryId}
+                      onChange={e => updateLine(line.id, { categoryId: e.target.value, itemId: '', manualName: '', manualUnit: '' })}>
+                      <option value="">-- เลือกหมวดหมู่ --</option>
+                      {(state.categories || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">รายการ *</label>
+                    <select className="select" required disabled={!line.categoryId} value={line.itemId}
+                      onChange={e => updateLine(line.id, { itemId: e.target.value })}>
+                      <option value="">-- เลือกรายการ --</option>
+                      {items.map(it => <option key={it.id} value={it.id}>{it.name} ({it.unit})</option>)}
+                      {line.categoryId && <option value={MANUAL_ITEM}>✏️ อื่นๆ (พิมพ์เอง — สินค้าใหม่)</option>}
+                    </select>
+                  </div>
+                  {isManual && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
+                      <div>
+                        <label className="label">ชื่อสินค้า *</label>
+                        <input className="input" required value={line.manualName} onChange={e => updateLine(line.id, { manualName: e.target.value })} placeholder="เช่น ปูนซีเมนต์ตราเสือ" />
+                      </div>
+                      <div>
+                        <label className="label">หน่วย *</label>
+                        <input className="input" required value={line.manualUnit} onChange={e => updateLine(line.id, { manualUnit: e.target.value })} placeholder="เช่น ถุง" />
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <label className="label">จำนวน {unit ? `(${unit})` : ''} *</label>
+                    <input className="input" type="number" required min="0" step="any" value={line.quantity} onChange={e => updateLine(line.id, { quantity: e.target.value })} />
+                  </div>
+                </div>
+              )
+            })}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={addLine} style={{ justifySelf: 'start' }}>+ เพิ่มรายการ</button>
             <div>
               <label className="label">ไซต์งาน *</label>
               <select className="select" required value={siteId} onChange={e => setSiteId(e.target.value)}>
