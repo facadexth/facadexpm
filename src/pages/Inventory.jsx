@@ -587,26 +587,33 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
   const [dateTo, setDateTo] = useState(today)
   const [categoryFilter, setCategoryFilter] = useState('')
   // Set when the user clicks a finished-goods row's PI-/PO- reference, OR
-  // picks a row from the finished-goods event list below -- narrows the
-  // report down to just one invoice's cut, so "which materials did this
-  // finished-goods entry actually come from" (raw_material report) or
-  // "what happened on this specific cut" (finished_goods report) is one
-  // click away instead of a manual date+eyeball search. For reportKind
-  // 'finished_goods' specifically, referenceFilter doubles as the
+  // picks a row from either report's event list -- narrows the report down
+  // to just one invoice's cut, so "which materials did this finished-goods
+  // entry actually come from" (raw_material report) or "what happened on
+  // this specific cut" (finished_goods report) is one click away instead
+  // of a manual date+eyeball search. For both reportKind 'finished_goods'
+  // AND 'raw_material', referenceFilter doubles as that report's own
   // list<->detail switch: null shows the event list, set shows the ledger.
   const [referenceFilter, setReferenceFilter] = useState(null)
-  // Set when the user picks a row from the raw-material summary list
-  // (report 2) -- report 2 has no ledger of its own any more (just a flat
-  // "what got cut, how much" list), so its detail view is report 3's full
-  // ledger narrowed to one item, the same way referenceFilter narrows it
-  // to one invoice.
+  // Set when the user clicks an item WITHIN report 2's detail view (one
+  // invoice's materials) -- jumps to report 3 (reportKind 'all', the only
+  // report with every raw-material item's FULL history) narrowed to just
+  // that one item, so "how has this material moved across every invoice,
+  // not just this one" is one click away. Deliberately independent of
+  // referenceFilter (which stays set the whole time) so clearing itemFilter
+  // and returning to reportKind 'raw_material' lands back on the exact
+  // same invoice-detail view, not the report 2 list.
   const [itemFilter, setItemFilter] = useState(null)
+  // Report 2's detail view (one invoice's materials) toggle -- show the
+  // full opening/movements/closing ledger, or just a flat "what got cut,
+  // how much" summary per item. Defaults to showing the full ledger.
+  const [rmHideDetail, setRmHideDetail] = useState(false)
   const [fgSearch, setFgSearch] = useState('')
   const [fgSortCol, setFgSortCol] = useState('date')
   const [fgSortDir, setFgSortDir] = useState('desc')
   const [rmSearch, setRmSearch] = useState('')
-  const [rmSortCol, setRmSortCol] = useState('code')
-  const [rmSortDir, setRmSortDir] = useState('asc')
+  const [rmSortCol, setRmSortCol] = useState('date')
+  const [rmSortDir, setRmSortDir] = useState('desc')
 
   const switchReportKind = (kind) => { setReportKind(kind); setReferenceFilter(null); setItemFilter(null) }
   const fgToggleSort = (col) => {
@@ -646,43 +653,58 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
   // When a reference filter is active: keep only rows that actually have a
   // movement referencing that invoice, and within those rows, keep only
   // the matching movements -- a focused "what fed this invoice" view
-  // rather than each item's whole history. itemFilter (report 2's
-  // drill-in) narrows to one item's row but keeps its FULL movement
-  // history, not just one invoice's slice.
+  // rather than each item's whole history. itemFilter (report 3 only,
+  // arrived at from report 2) narrows to one item's row but keeps its
+  // FULL movement history, ignoring referenceFilter even if one is still
+  // set in the background -- report 3's whole point here is "every
+  // invoice this item has ever been touched by," not just one.
   const displayRows = useMemo(() => {
-    let base = itemFilter ? rows.filter(r => r.itemId === itemFilter.itemId) : rows
-    if (referenceFilter) {
-      base = base
-        .map(r => ({ ...r, movements: r.movements.filter(mv => movementMatchesInvoice(mv, referenceFilter)) }))
-        .filter(r => r.movements.length)
+    if (reportKind === 'all' && itemFilter) {
+      return rows.filter(r => r.itemId === itemFilter.itemId)
     }
-    return base
+    if (!referenceFilter) return rows
+    return rows
+      .map(r => ({ ...r, movements: r.movements.filter(mv => movementMatchesInvoice(mv, referenceFilter)) }))
+      .filter(r => r.movements.length)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, referenceFilter, itemFilter, invoiceNumbers])
+  }, [rows, referenceFilter, itemFilter, reportKind, invoiceNumbers])
 
   const jumpToMaterials = (notes) => {
     setReportKind('raw_material')
     setReferenceFilter(invoiceNumberFromProductionRef(notes))
   }
 
+  // From report 2's detail view: jump to report 3 filtered to just this
+  // item's complete cross-invoice history. Deliberately does NOT touch
+  // referenceFilter -- it stays set to the invoice we came from, so
+  // clearItemFilter can return straight to that same invoice-detail view.
   const jumpToItemDetail = (item) => {
     setReportKind('all')
-    setReferenceFilter(null)
     setCategoryFilter('')
     setItemFilter({ itemId: item.itemId, code: item.code, name: item.name })
   }
   const clearItemFilter = () => { setItemFilter(null); setReportKind('raw_material') }
+
+  // Finished-goods rows computed independently of the currently active
+  // reportKind (unlike `rows`, which is filtered to whichever report tab
+  // is selected) -- report 2's landing list needs this same event list
+  // while reportKind is 'raw_material', not just while on report 1.
+  const finishedGoodsRows = useMemo(() => computeStockLedgerReport({
+    movements: movements || [], items: allItems || [], dateFrom, dateTo,
+    itemKindFilter: 'finished_goods', categoryId: null,
+  }), [movements, allItems, dateFrom, dateTo])
 
   // One row per invoice's finished-goods "cut" event (the PI-/PO- pair's
   // purchase_in side stands in for the whole pair -- both movements always
   // carry the same value by design, see computeFinishedGoodsProductionPlan).
   // A single finished-goods item (one quotation line's code) can carry
   // several of these over its life -- one per invoice billed against it --
-  // so this list is keyed by event, not by item.
-  const finishedGoodsEvents = useMemo(() => {
-    if (reportKind !== 'finished_goods') return []
+  // so this list is keyed by event, not by item. Shared by report 1's list
+  // (view what was produced) and report 2's list (view what it was made
+  // FROM) -- same events, different drill-in target.
+  const productionEvents = useMemo(() => {
     const events = []
-    for (const row of rows) {
+    for (const row of finishedGoodsRows) {
       for (const mv of row.movements) {
         if (mv.type !== 'purchase_in' || !isProductionRef(mv.notes)) continue
         events.push({
@@ -692,87 +714,69 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
       }
     }
     return events
-  }, [rows, reportKind])
+  }, [finishedGoodsRows])
 
   const sortedFgEvents = useMemo(() => {
     const q = fgSearch.trim().toLowerCase()
     const filtered = q
-      ? finishedGoodsEvents.filter(e => e.code.toLowerCase().includes(q) || e.name.toLowerCase().includes(q) || e.invoiceNumber.toLowerCase().includes(q))
-      : finishedGoodsEvents
+      ? productionEvents.filter(e => e.code.toLowerCase().includes(q) || e.name.toLowerCase().includes(q) || e.invoiceNumber.toLowerCase().includes(q))
+      : productionEvents
     return [...filtered].sort((a, b) => {
       const va = a[fgSortCol] ?? ''
       const vb = b[fgSortCol] ?? ''
       if (typeof va === 'number') return fgSortDir === 'asc' ? va - vb : vb - va
       return fgSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
     })
-  }, [finishedGoodsEvents, fgSearch, fgSortCol, fgSortDir])
+  }, [productionEvents, fgSearch, fgSortCol, fgSortDir])
 
-  // Every finished-goods purchase_in movement's PI-<invoice> notes within
-  // the current date range, deduped -- report 2's items were all cut to
-  // fulfil one of these production events, so naming them (in report 2's
-  // print header) answers "which invoice is this for" without the reader
-  // cross-referencing report 1 by hand. Scans the raw movements prop
-  // directly (not `rows`, which is filtered to the CURRENT reportKind) so
-  // this is available while printing report 2 itself.
-  const productionSourceRefs = useMemo(() => {
-    const refs = new Set()
-    const dateFromMs = new Date(`${dateFrom}T00:00:00`).getTime()
-    const dateToMs = new Date(`${dateTo}T23:59:59`).getTime()
-    for (const mv of movements || []) {
-      if (mv.movement_type !== 'purchase_in' || !isProductionRef(mv.notes)) continue
-      const ts = new Date(mv.created_at).getTime()
-      if (ts < dateFromMs || ts > dateToMs) continue
-      refs.add(mv.notes)
-    }
-    return [...refs]
-  }, [movements, dateFrom, dateTo])
-
-  // Report 2's own view: just "what got cut, how much" per item in the
-  // period -- no opening balance, no per-movement breakdown, no closing
-  // balance. Full detail (opening/movements/closing) lives one click away
-  // in report 3 via jumpToItemDetail. Only items actually cut in-range
-  // (outQty > 0) show up -- an item with only a carried-forward opening
-  // balance and no activity this period isn't a "cut" to list here.
-  const rawMaterialSummary = useMemo(() => {
-    if (reportKind !== 'raw_material') return []
-    return rows.filter(r => r.outQty > 0).map(r => ({
-      itemId: r.itemId, code: r.code, name: r.name, unit: r.unit, outQty: r.outQty, outValue: r.outValue,
-    }))
-  }, [rows, reportKind])
-
-  const sortedRmSummary = useMemo(() => {
+  const sortedRmEvents = useMemo(() => {
     const q = rmSearch.trim().toLowerCase()
     const filtered = q
-      ? rawMaterialSummary.filter(e => e.code.toLowerCase().includes(q) || e.name.toLowerCase().includes(q))
-      : rawMaterialSummary
+      ? productionEvents.filter(e => e.code.toLowerCase().includes(q) || e.name.toLowerCase().includes(q) || e.invoiceNumber.toLowerCase().includes(q))
+      : productionEvents
     return [...filtered].sort((a, b) => {
       const va = a[rmSortCol] ?? ''
       const vb = b[rmSortCol] ?? ''
       if (typeof va === 'number') return rmSortDir === 'asc' ? va - vb : vb - va
       return rmSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
     })
-  }, [rawMaterialSummary, rmSearch, rmSortCol, rmSortDir])
+  }, [productionEvents, rmSearch, rmSortCol, rmSortDir])
+
+  // Report 2's detail view, "hide details" mode: just "what got cut, how
+  // much" per item within the CURRENTLY FILTERED invoice (displayRows is
+  // already narrowed to referenceFilter's movements) -- no opening
+  // balance, no per-movement breakdown, no closing balance.
+  const rmInvoiceSummary = useMemo(() => {
+    return displayRows.map(r => {
+      const outMovements = r.movements.filter(mv => mv.direction === 'out')
+      return {
+        itemId: r.itemId, code: r.code, name: r.name, unit: r.unit,
+        outQty: outMovements.reduce((s, mv) => s + mv.qty, 0),
+        outValue: outMovements.reduce((s, mv) => s + mv.value, 0),
+      }
+    }).filter(e => e.outQty > 0)
+  }, [displayRows])
 
   const showFgList = reportKind === 'finished_goods' && !referenceFilter
-  const showRmList = reportKind === 'raw_material'
+  const showRmList = reportKind === 'raw_material' && !referenceFilter
 
-  // Print always prints the WHOLE current report (all items, full
-  // opening/movements/closing ledger, every reportKind including 1 and
-  // 2) regardless of what's on screen right now (a list, or one item's
-  // drilled-in detail) -- matching the artifact preview this was built
-  // from, which was one complete document per report, not a filtered
-  // slice. Uses `rows` (unfiltered by referenceFilter/itemFilter), never
-  // `displayRows`.
-  const printTotals = useMemo(() => rows.reduce((a, r) => ({
+  // Print shows exactly what's on screen right now -- displayRows, which
+  // already reflects referenceFilter when one is active (one invoice's
+  // slice) and equals `rows` (everything) when it isn't. Report 3 has no
+  // list layer of its own, so it always prints the complete statutory
+  // ledger; report 1/2 print whatever single invoice they're drilled
+  // into, since the print button is hidden on their list views anyway
+  // (see showFgList/showRmList gating the button below).
+  const printTotals = useMemo(() => displayRows.reduce((a, r) => ({
     openingValue: a.openingValue + r.openingValue, inValue: a.inValue + r.inValue,
     outValue: a.outValue + r.outValue, closingValue: a.closingValue + r.closingValue,
-  }), { openingValue: 0, inValue: 0, outValue: 0, closingValue: 0 }), [rows])
+  }), { openingValue: 0, inValue: 0, outValue: 0, closingValue: 0 }), [displayRows])
 
   // Shared ledger-body renderer for both the on-screen interactive detail
   // view (displayRows, clickable PI-/PO- cross-links) and the always-
   // present print-only full report (rows, plain text -- a click target
   // means nothing on paper).
-  const renderLedgerRows = (list, { interactive }) => {
+  const renderLedgerRows = (list, { interactive, onItemClick }) => {
     if (!list.length) {
       return <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีข้อมูลในช่วงเวลาที่เลือก</td></tr>
     }
@@ -788,7 +792,15 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
         <Fragment key={r.itemId}>
           <tr className="item-header-row">
             <td colSpan={9} style={{ fontWeight: 700, background: 'var(--accent-soft, rgba(0,0,0,0.04))', color: 'var(--accent)' }}>
-              {r.code} — {r.name} <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: 12 }}>หน่วย: {r.unit}</span>
+              {onItemClick ? (
+                <button className="btn-ghost" style={{ padding: 0, font: 'inherit', fontWeight: 700, color: 'var(--accent)', textDecoration: 'underline' }}
+                  onClick={() => onItemClick(r)} title="ดูประวัติทั้งหมดของรายการนี้ในรายงานที่ 3">
+                  {r.code} — {r.name} →
+                </button>
+              ) : (
+                <>{r.code} — {r.name}</>
+              )}
+              {' '}<span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: 12 }}>หน่วย: {r.unit}</span>
             </td>
           </tr>
           <tr style={{ fontStyle: 'italic', color: 'var(--text3)' }}>
@@ -865,19 +877,21 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
               options={(categories || []).map(c => ({ value: c.id, label: c.name, keywords: c.name }))} />
           </div>
         )}
-        {referenceFilter && (
+        {referenceFilter && !(reportKind === 'all' && itemFilter) && (
           <span className="badge" style={{ background: 'var(--accent-soft, rgba(0,0,0,0.1))', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, fontSize: 12.5 }}>
-            {reportKind === 'finished_goods' ? '← กลับไปที่รายการ · กำลังดูเฉพาะใบแจ้งหนี้:' : 'กำลังดูเฉพาะใบแจ้งหนี้:'} {referenceFilter}
+            ← กลับไปที่รายการ · กำลังดูเฉพาะใบแจ้งหนี้: {referenceFilter}
             <button className="btn-ghost" style={{ padding: 0, lineHeight: 1 }} onClick={() => setReferenceFilter(null)}>✕</button>
           </span>
         )}
         {itemFilter && (
           <span className="badge" style={{ background: 'var(--accent-soft, rgba(0,0,0,0.1))', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, fontSize: 12.5 }}>
-            ← กลับไปที่รายการ · กำลังดูเฉพาะ: {itemFilter.code} — {itemFilter.name}
+            ← กลับไปที่ใบแจ้งหนี้ {referenceFilter} · กำลังดูเฉพาะ: {itemFilter.code} — {itemFilter.name}
             <button className="btn-ghost" style={{ padding: 0, lineHeight: 1 }} onClick={clearItemFilter}>✕</button>
           </span>
         )}
-        <button className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => window.print()}>🖨️ พิมพ์ / PDF</button>
+        {!showFgList && !showRmList && (
+          <button className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => window.print()}>🖨️ พิมพ์ / PDF</button>
+        )}
       </div>
       {showFgList ? (
         <>
@@ -916,36 +930,71 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
       ) : showRmList ? (
         <>
           <div style={{ marginBottom: 12 }}>
-            <input className="input input-sm" style={{ minWidth: 280 }} placeholder="ค้นหารหัส / รายการ..."
+            <input className="input input-sm" style={{ minWidth: 280 }} placeholder="ค้นหารหัส / รายการ / เลขที่ใบแจ้งหนี้..."
               value={rmSearch} onChange={e => setRmSearch(e.target.value)} />
           </div>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
+                  <th className="sortable" onClick={() => rmToggleSort('date')}>วันที่ตัด{rmSi('date')}</th>
                   <th className="sortable" onClick={() => rmToggleSort('code')}>รหัส{rmSi('code')}</th>
                   <th className="sortable" onClick={() => rmToggleSort('name')}>รายการ{rmSi('name')}</th>
-                  <th>หน่วย</th>
-                  <th className="sortable" onClick={() => rmToggleSort('outQty')}>จำนวนที่ตัด{rmSi('outQty')}</th>
-                  <th className="sortable" onClick={() => rmToggleSort('outValue')}>มูลค่าที่ตัด{rmSi('outValue')}</th>
+                  <th className="sortable" onClick={() => rmToggleSort('invoiceNumber')}>เลขที่ใบแจ้งหนี้{rmSi('invoiceNumber')}</th>
+                  <th className="sortable" onClick={() => rmToggleSort('value')}>มูลค่า{rmSi('value')}</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {sortedRmSummary.map(e => (
-                  <tr key={e.itemId} style={{ cursor: 'pointer' }} onClick={() => jumpToItemDetail(e)}>
+                {sortedRmEvents.map((e, i) => (
+                  <tr key={i} style={{ cursor: 'pointer' }} onClick={() => setReferenceFilter(e.invoiceNumber)}>
+                    <td>{new Date(e.date).toLocaleDateString('th-TH')}</td>
                     <td>{e.code}</td>
                     <td>{e.name}</td>
-                    <td>{e.unit}</td>
-                    <td className="font-mono">{fmtQty(e.outQty)}</td>
-                    <td className="font-mono">{fmt(e.outValue)}</td>
-                    <td style={{ color: 'var(--accent)', whiteSpace: 'nowrap' }}>ดูรายละเอียด →</td>
+                    <td>{e.invoiceNumber}</td>
+                    <td className="font-mono">{fmt(e.value)}</td>
+                    <td style={{ color: 'var(--accent)', whiteSpace: 'nowrap' }}>ดูวัตถุดิบที่ตัด →</td>
                   </tr>
                 ))}
-                {!sortedRmSummary.length && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีรายการตัดวัตถุดิบในช่วงเวลาที่เลือก</td></tr>}
+                {!sortedRmEvents.length && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีรายการตัดสต็อกในช่วงเวลาที่เลือก</td></tr>}
               </tbody>
             </table>
           </div>
+        </>
+      ) : reportKind === 'raw_material' ? (
+        <>
+          <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+            <input type="checkbox" checked={rmHideDetail} onChange={e => setRmHideDetail(e.target.checked)} />
+            ซ่อนรายละเอียด (ยอดยกมา/รับเข้า/จำหน่ายออก/คงเหลือ)
+          </label>
+          {rmHideDetail ? (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>รหัส</th><th>รายการ</th><th>หน่วย</th><th>จำนวนที่ตัด</th><th>มูลค่าที่ตัด</th></tr>
+                </thead>
+                <tbody>
+                  {rmInvoiceSummary.map(e => (
+                    <tr key={e.itemId} style={{ cursor: 'pointer' }} onClick={() => jumpToItemDetail(e)}>
+                      <td>{e.code}</td>
+                      <td>{e.name}</td>
+                      <td>{e.unit}</td>
+                      <td className="font-mono">{fmtQty(e.outQty)}</td>
+                      <td className="font-mono">{fmt(e.outValue)}</td>
+                    </tr>
+                  ))}
+                  {!rmInvoiceSummary.length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีรายการตัดวัตถุดิบสำหรับใบแจ้งหนี้นี้</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                {ledgerThead}
+                <tbody>{renderLedgerRows(displayRows, { interactive: true, onItemClick: jumpToItemDetail })}</tbody>
+              </table>
+            </div>
+          )}
         </>
       ) : (
         <div className="table-wrap">
@@ -957,9 +1006,10 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
       )}
 
       {/* Always-present print document -- hidden on screen (.print-only),
-          shown only inside window.print(). Prints the WHOLE current
-          report (rows, not displayRows) regardless of on-screen list vs.
-          detail state; see the printTotals comment above for why. */}
+          shown only inside window.print(). Prints exactly what's on
+          screen right now (displayRows) -- see the printTotals comment
+          above. The print button itself is hidden on list views, so this
+          only ever fires from a drilled-in detail view or report 3. */}
       <div className="print-only">
         <div className="printable-document tax-report-print">
           <div className="sheet-inner">
@@ -974,20 +1024,23 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
                 <h1>{activeReportMeta?.label}</h1>
                 <p className="report-subtitle">
                   {reportKind === 'raw_material'
-                    ? 'สรุปรายการวัตถุดิบที่ตัดในรอบระยะเวลานี้ — ดูรายละเอียดเต็มได้ที่รายงานที่ 3'
+                    ? (rmHideDetail ? 'สรุปรายการวัตถุดิบที่ตัดสำหรับใบแจ้งหนี้นี้' : 'รายละเอียดการตัดวัตถุดิบแบบเต็มสำหรับใบแจ้งหนี้นี้')
                     : activeReportMeta?.subtitle}
                 </p>
                 <p className="report-period">รอบระยะเวลา {new Date(dateFrom).toLocaleDateString('th-TH')} — {new Date(dateTo).toLocaleDateString('th-TH')}</p>
-                {reportKind === 'raw_material' && productionSourceRefs.length > 0 && (
-                  <p className="report-source">อ้างอิงจาก: {productionSourceRefs.join(', ')}</p>
+                {reportKind === 'raw_material' && referenceFilter && (
+                  <p className="report-source">สำหรับใบแจ้งหนี้: {referenceFilter}</p>
+                )}
+                {reportKind === 'all' && itemFilter && (
+                  <p className="report-source">กำลังดูเฉพาะ: {itemFilter.code} — {itemFilter.name}</p>
                 )}
               </div>
             </header>
-            {reportKind === 'raw_material' ? (
+            {reportKind === 'raw_material' && rmHideDetail ? (
               <>
                 <div className="summary-bar summary-bar-simple">
-                  <div className="summary-cell"><span className="summary-label">จำนวนรายการที่ตัด</span><span className="summary-value">{rawMaterialSummary.length.toLocaleString('th-TH')}</span></div>
-                  <div className="summary-cell"><span className="summary-label">มูลค่ารวมที่ตัด</span><span className="summary-value accent">฿{fmt(rawMaterialSummary.reduce((s, e) => s + e.outValue, 0))}</span></div>
+                  <div className="summary-cell"><span className="summary-label">จำนวนรายการที่ตัด</span><span className="summary-value">{rmInvoiceSummary.length.toLocaleString('th-TH')}</span></div>
+                  <div className="summary-cell"><span className="summary-label">มูลค่ารวมที่ตัด</span><span className="summary-value accent">฿{fmt(rmInvoiceSummary.reduce((s, e) => s + e.outValue, 0))}</span></div>
                 </div>
                 <div className="table-wrap">
                   <table className="ledger">
@@ -998,7 +1051,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {rawMaterialSummary.map(e => (
+                      {rmInvoiceSummary.map(e => (
                         <tr key={e.itemId}>
                           <td>{e.code}</td>
                           <td>{e.name}</td>
@@ -1007,7 +1060,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
                           <td className="font-mono">{fmt(e.outValue)}</td>
                         </tr>
                       ))}
-                      {!rawMaterialSummary.length && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}>ไม่มีรายการตัดวัตถุดิบในช่วงเวลาที่เลือก</td></tr>}
+                      {!rmInvoiceSummary.length && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}>ไม่มีรายการตัดวัตถุดิบสำหรับใบแจ้งหนี้นี้</td></tr>}
                     </tbody>
                   </table>
                 </div>
@@ -1015,7 +1068,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
             ) : (
               <>
                 <div className="summary-bar">
-                  <div className="summary-cell"><span className="summary-label">จำนวนรายการสินค้า</span><span className="summary-value">{rows.length.toLocaleString('th-TH')}</span></div>
+                  <div className="summary-cell"><span className="summary-label">จำนวนรายการสินค้า</span><span className="summary-value">{displayRows.length.toLocaleString('th-TH')}</span></div>
                   <div className="summary-cell"><span className="summary-label">ยอดยกมา</span><span className="summary-value">฿{fmt(printTotals.openingValue)}</span></div>
                   <div className="summary-cell"><span className="summary-label">รับเข้าระหว่างงวด</span><span className="summary-value">฿{fmt(printTotals.inValue)}</span></div>
                   <div className="summary-cell"><span className="summary-label">จำหน่ายออกระหว่างงวด</span><span className="summary-value">฿{fmt(printTotals.outValue)}</span></div>
@@ -1024,7 +1077,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
                 <div className="table-wrap">
                   <table className="ledger">
                     {ledgerThead}
-                    <tbody>{renderLedgerRows(rows, { interactive: false })}</tbody>
+                    <tbody>{renderLedgerRows(displayRows, { interactive: false })}</tbody>
                   </table>
                 </div>
               </>
