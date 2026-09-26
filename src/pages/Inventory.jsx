@@ -555,6 +555,20 @@ function fmtQty(n) { return (Math.round(n * 100) / 100).toLocaleString('th-TH') 
 function isProductionRef(notes) { return notes ? /^P[IO]-/.test(notes) : false }
 function invoiceNumberFromProductionRef(notes) { return notes.replace(/^P[IO]-/, '') }
 
+// Generic in/out labels for the tax-report ledger (report 1/2/3 all share
+// this table) -- MOVEMENT_TYPE_LABELS above says "รับเข้าจากใบสั่งซื้อ" for
+// purchase_in, which is right for raw materials but wrong for finished-goods
+// purchase_in rows (those come from an invoice's PI-/PO- production pair,
+// never a PO); the reference column already names the actual source.
+const LEDGER_MOVEMENT_LABELS = {
+  purchase_in: '📥 รับเข้า',
+  transfer_in: '↩️ โอนเข้า',
+  transfer_out: '↪️ โอนออก',
+  sale_out: '📤 จำหน่ายออก',
+  sale_reversal: '↩️ คืนสินค้า',
+  adjustment: '✏️ ปรับปรุงยอด',
+}
+
 function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
   const today = new Date().toISOString().slice(0, 10)
   const monthStart = today.slice(0, 8) + '01'
@@ -562,7 +576,6 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
   const [dateFrom, setDateFrom] = useState(monthStart)
   const [dateTo, setDateTo] = useState(today)
   const [categoryFilter, setCategoryFilter] = useState('')
-  const [expandedItemIds, setExpandedItemIds] = useState(() => new Set())
   // Set when the user clicks a finished-goods row's PI-/PO- reference --
   // narrows the raw-material report down to just the materials cut for
   // that one invoice, so "which materials did this finished-goods entry
@@ -606,16 +619,6 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, referenceFilter, invoiceNumbers])
 
-  // Auto-expand every row that survives the reference filter -- runs
-  // after displayRows recomputes against the NEW reportKind (jumpToMaterials
-  // itself can't compute this synchronously: `rows` at click time still
-  // reflects whatever reportKind was active before the click, not
-  // 'raw_material').
-  useEffect(() => {
-    if (referenceFilter) setExpandedItemIds(new Set(displayRows.map(r => r.itemId)))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [referenceFilter, displayRows])
-
   const jumpToMaterials = (notes) => {
     setReportKind('raw_material')
     setReferenceFilter(invoiceNumberFromProductionRef(notes))
@@ -648,8 +651,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
         <table>
           <thead>
             <tr>
-              <th></th><th>รหัส</th><th>รายการ</th><th>หน่วย</th>
-              <th>ยกมา (จำนวน)</th><th>ยกมา (มูลค่า)</th>
+              <th>วันเดือนปี</th><th>รายการเคลื่อนไหว</th><th>เลขที่เอกสารอ้างอิง</th>
               <th>รับเข้า (จำนวน)</th><th>รับเข้า (มูลค่า)</th>
               <th>จำหน่ายออก (จำนวน)</th><th>จำหน่ายออก (มูลค่า)</th>
               <th>คงเหลือ (จำนวน)</th><th>คงเหลือ (มูลค่า)</th>
@@ -657,60 +659,66 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
           </thead>
           <tbody>
             {displayRows.map(r => {
-              const isExpanded = expandedItemIds.has(r.itemId)
-              const toggle = () => setExpandedItemIds(prev => {
-                const next = new Set(prev)
-                next.has(r.itemId) ? next.delete(r.itemId) : next.add(r.itemId)
-                return next
+              let runningQty = r.openingQty
+              let runningValue = r.openingValue
+              const withRunning = r.movements.map(mv => {
+                runningQty += mv.direction === 'in' ? mv.qty : -mv.qty
+                runningValue += mv.direction === 'in' ? mv.value : -mv.value
+                return { ...mv, runningQty, runningValue }
               })
               return (
                 <Fragment key={r.itemId}>
-                  <tr style={{ cursor: r.movements.length ? 'pointer' : 'default' }} onClick={() => r.movements.length && toggle()}>
-                    <td style={{ color: 'var(--text3)' }}>{r.movements.length ? (isExpanded ? '▲' : '▼') : ''}</td>
-                    <td>{r.code}</td><td>{r.name}</td><td>{r.unit}</td>
-                    <td className="font-mono">{fmtQty(r.openingQty)}</td><td className="font-mono">{fmt(r.openingValue)}</td>
-                    <td className="font-mono">{fmtQty(r.inQty)}</td><td className="font-mono">{fmt(r.inValue)}</td>
-                    <td className="font-mono">{fmtQty(r.outQty)}</td><td className="font-mono">{fmt(r.outValue)}</td>
-                    <td className="font-mono">{fmtQty(r.closingQty)}</td><td className="font-mono">{fmt(r.closingValue)}</td>
+                  <tr>
+                    <td colSpan={9} style={{ fontWeight: 700, background: 'var(--accent-soft, rgba(0,0,0,0.04))', color: 'var(--accent)' }}>
+                      {r.code} — {r.name} <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: 12 }}>หน่วย: {r.unit}</span>
+                    </td>
                   </tr>
-                  {isExpanded && (
-                    <tr>
-                      <td colSpan={12} style={{ padding: '0 0 10px 24px' }}>
-                        <table style={{ width: '100%' }}>
-                          <thead>
-                            <tr style={{ fontSize: 11, color: 'var(--text3)' }}>
-                              <th>วันที่</th><th>ประเภท</th><th>เลขที่อ้างอิง</th><th>รับเข้า</th><th>จำหน่ายออก</th><th>มูลค่า</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {r.movements.map((mv, i) => (
-                              <tr key={i} style={{ fontSize: 12.5 }}>
-                                <td>{new Date(mv.date).toLocaleDateString('th-TH')}</td>
-                                <td>{mv.type}</td>
-                                <td>
-                                  {isProductionRef(mv.notes) ? (
-                                    <button className="btn-ghost" style={{ padding: 0, color: 'var(--accent)', textDecoration: 'underline' }}
-                                      onClick={() => jumpToMaterials(mv.notes)} title="ดูรายการวัตถุดิบที่ตัดสำหรับใบแจ้งหนี้นี้">
-                                      {mv.notes} →
-                                    </button>
-                                  ) : (
-                                    mv.notes || resolveMovementReference({ reference_type: mv.referenceType, reference_id: mv.referenceId, notes: mv.notes }, { pos, invoices: invoiceNumbers, sites })
-                                  )}
-                                </td>
-                                <td className="font-mono">{mv.direction === 'in' ? fmtQty(mv.qty) : ''}</td>
-                                <td className="font-mono">{mv.direction === 'out' ? fmtQty(mv.qty) : ''}</td>
-                                <td className="font-mono">{fmt(mv.value)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                  <tr style={{ fontStyle: 'italic', color: 'var(--text3)' }}>
+                    <td>{new Date(dateFrom).toLocaleDateString('th-TH')}</td>
+                    <td>ยอดยกมา</td>
+                    <td>—</td>
+                    <td className="font-mono">{fmtQty(r.openingQty)}</td>
+                    <td className="font-mono">{fmt(r.openingValue)}</td>
+                    <td className="font-mono">—</td>
+                    <td className="font-mono">—</td>
+                    <td className="font-mono">{fmtQty(r.openingQty)}</td>
+                    <td className="font-mono">{fmt(r.openingValue)}</td>
+                  </tr>
+                  {withRunning.map((mv, i) => (
+                    <tr key={i}>
+                      <td>{new Date(mv.date).toLocaleDateString('th-TH')}</td>
+                      <td>{LEDGER_MOVEMENT_LABELS[mv.type] || mv.type}</td>
+                      <td>
+                        {isProductionRef(mv.notes) ? (
+                          <button className="btn-ghost" style={{ padding: 0, color: 'var(--accent)', textDecoration: 'underline' }}
+                            onClick={() => jumpToMaterials(mv.notes)} title="ดูรายการวัตถุดิบที่ตัดสำหรับใบแจ้งหนี้นี้">
+                            {mv.notes} →
+                          </button>
+                        ) : (
+                          mv.notes || resolveMovementReference({ reference_type: mv.referenceType, reference_id: mv.referenceId, notes: mv.notes }, { pos, invoices: invoiceNumbers, sites })
+                        )}
                       </td>
+                      <td className="font-mono">{mv.direction === 'in' ? fmtQty(mv.qty) : ''}</td>
+                      <td className="font-mono">{mv.direction === 'in' ? fmt(mv.value) : ''}</td>
+                      <td className="font-mono">{mv.direction === 'out' ? fmtQty(mv.qty) : ''}</td>
+                      <td className="font-mono">{mv.direction === 'out' ? fmt(mv.value) : ''}</td>
+                      <td className="font-mono">{fmtQty(mv.runningQty)}</td>
+                      <td className="font-mono">{fmt(mv.runningValue)}</td>
                     </tr>
-                  )}
+                  ))}
+                  <tr style={{ fontWeight: 700, borderTop: '1.5px solid var(--border)' }}>
+                    <td colSpan={3}>ยอดคงเหลือสิ้นงวด</td>
+                    <td className="font-mono">{fmtQty(r.inQty)}</td>
+                    <td className="font-mono">{fmt(r.inValue)}</td>
+                    <td className="font-mono">{fmtQty(r.outQty)}</td>
+                    <td className="font-mono">{fmt(r.outValue)}</td>
+                    <td className="font-mono">{fmtQty(r.closingQty)}</td>
+                    <td className="font-mono">{fmt(r.closingValue)}</td>
+                  </tr>
                 </Fragment>
               )
             })}
-            {!displayRows.length && <tr><td colSpan={12} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีข้อมูลในช่วงเวลาที่เลือก</td></tr>}
+            {!displayRows.length && <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีข้อมูลในช่วงเวลาที่เลือก</td></tr>}
           </tbody>
         </table>
       </div>
