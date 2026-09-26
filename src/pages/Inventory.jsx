@@ -539,9 +539,18 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
 }
 
 const TAX_REPORT_KINDS = [
-  { key: 'finished_goods', label: '1. รายงานการตัดสินค้าสำเร็จรูป' },
-  { key: 'raw_material', label: '2. รายงานตัดวัตถุดิบ' },
-  { key: 'all', label: '3. รายงานสินค้าและวัตถุดิบ (รวม)' },
+  {
+    key: 'finished_goods', label: '1. รายงานการตัดสินค้าสำเร็จรูป', badge: 'รายงานที่ 1',
+    subtitle: 'บัตรสินค้า — สินค้าสำเร็จรูป (งานตามสัญญาที่ผลิตและขายในแต่ละใบแจ้งหนี้)',
+  },
+  {
+    key: 'raw_material', label: '2. รายงานตัดวัตถุดิบ', badge: 'รายงานที่ 2',
+    subtitle: 'บัตรสินค้า — วัตถุดิบและวัสดุประกอบ (อลูมิเนียม กระจก อุปกรณ์ และอื่นๆ)',
+  },
+  {
+    key: 'all', label: '3. รายงานสินค้าและวัตถุดิบ (รวม)', badge: 'รายงานที่ 3',
+    subtitle: 'บัตรสินค้า — รวมสินค้าสำเร็จรูปและวัตถุดิบทุกรายการในรอบระยะเวลาเดียวกัน',
+  },
 ]
 
 function fmtQty(n) { return (Math.round(n * 100) / 100).toLocaleString('th-TH') }
@@ -727,6 +736,99 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
   const showFgList = reportKind === 'finished_goods' && !referenceFilter
   const showRmList = reportKind === 'raw_material'
 
+  // Print always prints the WHOLE current report (all items, full
+  // opening/movements/closing ledger, every reportKind including 1 and
+  // 2) regardless of what's on screen right now (a list, or one item's
+  // drilled-in detail) -- matching the artifact preview this was built
+  // from, which was one complete document per report, not a filtered
+  // slice. Uses `rows` (unfiltered by referenceFilter/itemFilter), never
+  // `displayRows`.
+  const printTotals = useMemo(() => rows.reduce((a, r) => ({
+    openingValue: a.openingValue + r.openingValue, inValue: a.inValue + r.inValue,
+    outValue: a.outValue + r.outValue, closingValue: a.closingValue + r.closingValue,
+  }), { openingValue: 0, inValue: 0, outValue: 0, closingValue: 0 }), [rows])
+
+  // Shared ledger-body renderer for both the on-screen interactive detail
+  // view (displayRows, clickable PI-/PO- cross-links) and the always-
+  // present print-only full report (rows, plain text -- a click target
+  // means nothing on paper).
+  const renderLedgerRows = (list, { interactive }) => {
+    if (!list.length) {
+      return <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีข้อมูลในช่วงเวลาที่เลือก</td></tr>
+    }
+    return list.map(r => {
+      let runningQty = r.openingQty
+      let runningValue = r.openingValue
+      const withRunning = r.movements.map(mv => {
+        runningQty += mv.direction === 'in' ? mv.qty : -mv.qty
+        runningValue += mv.direction === 'in' ? mv.value : -mv.value
+        return { ...mv, runningQty, runningValue }
+      })
+      return (
+        <Fragment key={r.itemId}>
+          <tr className="item-header-row">
+            <td colSpan={9} style={{ fontWeight: 700, background: 'var(--accent-soft, rgba(0,0,0,0.04))', color: 'var(--accent)' }}>
+              {r.code} — {r.name} <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: 12 }}>หน่วย: {r.unit}</span>
+            </td>
+          </tr>
+          <tr style={{ fontStyle: 'italic', color: 'var(--text3)' }}>
+            <td>{new Date(dateFrom).toLocaleDateString('th-TH')}</td>
+            <td>ยอดยกมา</td>
+            <td>—</td>
+            <td className="font-mono">{fmtQty(r.openingQty)}</td>
+            <td className="font-mono">{fmt(r.openingValue)}</td>
+            <td className="font-mono">—</td>
+            <td className="font-mono">—</td>
+            <td className="font-mono">{fmtQty(r.openingQty)}</td>
+            <td className="font-mono">{fmt(r.openingValue)}</td>
+          </tr>
+          {withRunning.map((mv, i) => (
+            <tr key={i}>
+              <td>{new Date(mv.date).toLocaleDateString('th-TH')}</td>
+              <td>{LEDGER_MOVEMENT_LABELS[mv.type] || mv.type}</td>
+              <td>
+                {interactive && isProductionRef(mv.notes) ? (
+                  <button className="btn-ghost" style={{ padding: 0, color: 'var(--accent)', textDecoration: 'underline' }}
+                    onClick={() => jumpToMaterials(mv.notes)} title="ดูรายการวัตถุดิบที่ตัดสำหรับใบแจ้งหนี้นี้">
+                    {mv.notes} →
+                  </button>
+                ) : (
+                  mv.notes || resolveMovementReference({ reference_type: mv.referenceType, reference_id: mv.referenceId, notes: mv.notes }, { pos, invoices: invoiceNumbers, sites })
+                )}
+              </td>
+              <td className="font-mono">{mv.direction === 'in' ? fmtQty(mv.qty) : ''}</td>
+              <td className="font-mono">{mv.direction === 'in' ? fmt(mv.value) : ''}</td>
+              <td className="font-mono">{mv.direction === 'out' ? fmtQty(mv.qty) : ''}</td>
+              <td className="font-mono">{mv.direction === 'out' ? fmt(mv.value) : ''}</td>
+              <td className="font-mono">{fmtQty(mv.runningQty)}</td>
+              <td className="font-mono">{fmt(mv.runningValue)}</td>
+            </tr>
+          ))}
+          <tr style={{ fontWeight: 700, borderTop: '1.5px solid var(--border)' }}>
+            <td colSpan={3}>ยอดคงเหลือสิ้นงวด</td>
+            <td className="font-mono">{fmtQty(r.inQty)}</td>
+            <td className="font-mono">{fmt(r.inValue)}</td>
+            <td className="font-mono">{fmtQty(r.outQty)}</td>
+            <td className="font-mono">{fmt(r.outValue)}</td>
+            <td className="font-mono">{fmtQty(r.closingQty)}</td>
+            <td className="font-mono">{fmt(r.closingValue)}</td>
+          </tr>
+        </Fragment>
+      )
+    })
+  }
+  const ledgerThead = (
+    <thead>
+      <tr>
+        <th>วันเดือนปี</th><th>รายการเคลื่อนไหว</th><th>เลขที่เอกสารอ้างอิง</th>
+        <th>รับเข้า (จำนวน)</th><th>รับเข้า (มูลค่า)</th>
+        <th>จำหน่ายออก (จำนวน)</th><th>จำหน่ายออก (มูลค่า)</th>
+        <th>คงเหลือ (จำนวน)</th><th>คงเหลือ (มูลค่า)</th>
+      </tr>
+    </thead>
+  )
+  const activeReportMeta = TAX_REPORT_KINDS.find(k => k.key === reportKind)
+
   return (
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
@@ -755,9 +857,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
             <button className="btn-ghost" style={{ padding: 0, lineHeight: 1 }} onClick={clearItemFilter}>✕</button>
           </span>
         )}
-        {!showFgList && !showRmList && (
-          <button className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => window.print()}>🖨️ พิมพ์ / PDF</button>
-        )}
+        <button className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => window.print()}>🖨️ พิมพ์ / PDF</button>
       </div>
       {showFgList ? (
         <>
@@ -828,92 +928,54 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
           </div>
         </>
       ) : (
-        <div className="printable-document tax-report-print">
-          <div className="print-only tax-report-print-header">
-            <div style={{ fontWeight: 700, fontSize: 16 }}>{tenant?.company_name}</div>
-            {tenant?.tax_id && <div style={{ fontSize: 12 }}>เลขประจำตัวผู้เสียภาษีอากร {tenant.tax_id}</div>}
-            {tenant?.address && <div style={{ fontSize: 12 }}>{tenant.address}</div>}
-            <div style={{ fontWeight: 700, fontSize: 15, marginTop: 10 }}>{TAX_REPORT_KINDS.find(k => k.key === reportKind)?.label}</div>
-            <div style={{ fontSize: 12.5 }}>รอบระยะเวลา {new Date(dateFrom).toLocaleDateString('th-TH')} — {new Date(dateTo).toLocaleDateString('th-TH')}</div>
-            <hr style={{ margin: '10px 0', border: 'none', borderTop: '2px solid #000' }} />
-          </div>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>วันเดือนปี</th><th>รายการเคลื่อนไหว</th><th>เลขที่เอกสารอ้างอิง</th>
-                  <th>รับเข้า (จำนวน)</th><th>รับเข้า (มูลค่า)</th>
-                  <th>จำหน่ายออก (จำนวน)</th><th>จำหน่ายออก (มูลค่า)</th>
-                  <th>คงเหลือ (จำนวน)</th><th>คงเหลือ (มูลค่า)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayRows.map(r => {
-                  let runningQty = r.openingQty
-                  let runningValue = r.openingValue
-                  const withRunning = r.movements.map(mv => {
-                    runningQty += mv.direction === 'in' ? mv.qty : -mv.qty
-                    runningValue += mv.direction === 'in' ? mv.value : -mv.value
-                    return { ...mv, runningQty, runningValue }
-                  })
-                  return (
-                    <Fragment key={r.itemId}>
-                      <tr className="item-header-row">
-                        <td colSpan={9} style={{ fontWeight: 700, background: 'var(--accent-soft, rgba(0,0,0,0.04))', color: 'var(--accent)' }}>
-                          {r.code} — {r.name} <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: 12 }}>หน่วย: {r.unit}</span>
-                        </td>
-                      </tr>
-                      <tr style={{ fontStyle: 'italic', color: 'var(--text3)' }}>
-                        <td>{new Date(dateFrom).toLocaleDateString('th-TH')}</td>
-                        <td>ยอดยกมา</td>
-                        <td>—</td>
-                        <td className="font-mono">{fmtQty(r.openingQty)}</td>
-                        <td className="font-mono">{fmt(r.openingValue)}</td>
-                        <td className="font-mono">—</td>
-                        <td className="font-mono">—</td>
-                        <td className="font-mono">{fmtQty(r.openingQty)}</td>
-                        <td className="font-mono">{fmt(r.openingValue)}</td>
-                      </tr>
-                      {withRunning.map((mv, i) => (
-                        <tr key={i}>
-                          <td>{new Date(mv.date).toLocaleDateString('th-TH')}</td>
-                          <td>{LEDGER_MOVEMENT_LABELS[mv.type] || mv.type}</td>
-                          <td>
-                            {isProductionRef(mv.notes) ? (
-                              <button className="btn-ghost" style={{ padding: 0, color: 'var(--accent)', textDecoration: 'underline' }}
-                                onClick={() => jumpToMaterials(mv.notes)} title="ดูรายการวัตถุดิบที่ตัดสำหรับใบแจ้งหนี้นี้">
-                                {mv.notes} →
-                              </button>
-                            ) : (
-                              mv.notes || resolveMovementReference({ reference_type: mv.referenceType, reference_id: mv.referenceId, notes: mv.notes }, { pos, invoices: invoiceNumbers, sites })
-                            )}
-                          </td>
-                          <td className="font-mono">{mv.direction === 'in' ? fmtQty(mv.qty) : ''}</td>
-                          <td className="font-mono">{mv.direction === 'in' ? fmt(mv.value) : ''}</td>
-                          <td className="font-mono">{mv.direction === 'out' ? fmtQty(mv.qty) : ''}</td>
-                          <td className="font-mono">{mv.direction === 'out' ? fmt(mv.value) : ''}</td>
-                          <td className="font-mono">{fmtQty(mv.runningQty)}</td>
-                          <td className="font-mono">{fmt(mv.runningValue)}</td>
-                        </tr>
-                      ))}
-                      <tr style={{ fontWeight: 700, borderTop: '1.5px solid var(--border)' }}>
-                        <td colSpan={3}>ยอดคงเหลือสิ้นงวด</td>
-                        <td className="font-mono">{fmtQty(r.inQty)}</td>
-                        <td className="font-mono">{fmt(r.inValue)}</td>
-                        <td className="font-mono">{fmtQty(r.outQty)}</td>
-                        <td className="font-mono">{fmt(r.outValue)}</td>
-                        <td className="font-mono">{fmtQty(r.closingQty)}</td>
-                        <td className="font-mono">{fmt(r.closingValue)}</td>
-                      </tr>
-                    </Fragment>
-                  )
-                })}
-                {!displayRows.length && <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีข้อมูลในช่วงเวลาที่เลือก</td></tr>}
-              </tbody>
-            </table>
-          </div>
+        <div className="table-wrap">
+          <table>
+            {ledgerThead}
+            <tbody>{renderLedgerRows(displayRows, { interactive: true })}</tbody>
+          </table>
         </div>
       )}
+
+      {/* Always-present print document -- hidden on screen (.print-only),
+          shown only inside window.print(). Prints the WHOLE current
+          report (rows, not displayRows) regardless of on-screen list vs.
+          detail state; see the printTotals comment above for why. */}
+      <div className="print-only">
+        <div className="printable-document tax-report-print">
+          <div className="sheet-inner">
+            <header className="doc-header">
+              <div className="company-block">
+                <div className="company-name">{tenant?.company_name}</div>
+                {tenant?.tax_id && <div className="company-meta">เลขประจำตัวผู้เสียภาษีอากร {tenant.tax_id}</div>}
+                {tenant?.address && <div className="company-meta">{tenant.address}</div>}
+              </div>
+              <div className="report-block">
+                <span className="report-badge">{activeReportMeta?.badge}</span>
+                <h1>{activeReportMeta?.label}</h1>
+                <p className="report-subtitle">{activeReportMeta?.subtitle}</p>
+                <p className="report-period">รอบระยะเวลา {new Date(dateFrom).toLocaleDateString('th-TH')} — {new Date(dateTo).toLocaleDateString('th-TH')}</p>
+              </div>
+            </header>
+            <div className="summary-bar">
+              <div className="summary-cell"><span className="summary-label">จำนวนรายการสินค้า</span><span className="summary-value">{rows.length.toLocaleString('th-TH')}</span></div>
+              <div className="summary-cell"><span className="summary-label">ยอดยกมา</span><span className="summary-value">฿{fmt(printTotals.openingValue)}</span></div>
+              <div className="summary-cell"><span className="summary-label">รับเข้าระหว่างงวด</span><span className="summary-value">฿{fmt(printTotals.inValue)}</span></div>
+              <div className="summary-cell"><span className="summary-label">จำหน่ายออกระหว่างงวด</span><span className="summary-value">฿{fmt(printTotals.outValue)}</span></div>
+              <div className="summary-cell"><span className="summary-label">ยอดคงเหลือสิ้นงวด</span><span className="summary-value accent">฿{fmt(printTotals.closingValue)}</span></div>
+            </div>
+            <div className="table-wrap">
+              <table className="ledger">
+                {ledgerThead}
+                <tbody>{renderLedgerRows(rows, { interactive: false })}</tbody>
+              </table>
+            </div>
+            <footer className="doc-footer">
+              <p>จัดทำตามมาตรา 87(3) แห่งประมวลรัษฎากร และประกาศอธิบดีกรมสรรพากรเกี่ยวกับภาษีมูลค่าเพิ่ม (ฉบับที่ 89) พ.ศ. 2542 — คำนวณต้นทุนด้วยวิธีถัวเฉลี่ยเคลื่อนที่ (Weighted Average Cost)</p>
+              <p>พิมพ์จากระบบ FacadeX ERP เมื่อ {new Date().toLocaleDateString('th-TH')}</p>
+            </footer>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
