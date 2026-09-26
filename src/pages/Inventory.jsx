@@ -586,16 +586,30 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
   // 'finished_goods' specifically, referenceFilter doubles as the
   // list<->detail switch: null shows the event list, set shows the ledger.
   const [referenceFilter, setReferenceFilter] = useState(null)
+  // Set when the user picks a row from the raw-material summary list
+  // (report 2) -- report 2 has no ledger of its own any more (just a flat
+  // "what got cut, how much" list), so its detail view is report 3's full
+  // ledger narrowed to one item, the same way referenceFilter narrows it
+  // to one invoice.
+  const [itemFilter, setItemFilter] = useState(null)
   const [fgSearch, setFgSearch] = useState('')
   const [fgSortCol, setFgSortCol] = useState('date')
   const [fgSortDir, setFgSortDir] = useState('desc')
+  const [rmSearch, setRmSearch] = useState('')
+  const [rmSortCol, setRmSortCol] = useState('code')
+  const [rmSortDir, setRmSortDir] = useState('asc')
 
-  const switchReportKind = (kind) => { setReportKind(kind); setReferenceFilter(null) }
+  const switchReportKind = (kind) => { setReportKind(kind); setReferenceFilter(null); setItemFilter(null) }
   const fgToggleSort = (col) => {
     if (fgSortCol === col) setFgSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setFgSortCol(col); setFgSortDir('asc') }
   }
   const fgSi = (col) => fgSortCol === col ? (fgSortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+  const rmToggleSort = (col) => {
+    if (rmSortCol === col) setRmSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setRmSortCol(col); setRmSortDir('asc') }
+  }
+  const rmSi = (col) => rmSortCol === col ? (rmSortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
   const { tenant } = useTenant()
   const { data: movements } = useStockMovements({ dateTo })
@@ -623,19 +637,32 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
   // When a reference filter is active: keep only rows that actually have a
   // movement referencing that invoice, and within those rows, keep only
   // the matching movements -- a focused "what fed this invoice" view
-  // rather than each item's whole history.
+  // rather than each item's whole history. itemFilter (report 2's
+  // drill-in) narrows to one item's row but keeps its FULL movement
+  // history, not just one invoice's slice.
   const displayRows = useMemo(() => {
-    if (!referenceFilter) return rows
-    return rows
-      .map(r => ({ ...r, movements: r.movements.filter(mv => movementMatchesInvoice(mv, referenceFilter)) }))
-      .filter(r => r.movements.length)
+    let base = itemFilter ? rows.filter(r => r.itemId === itemFilter.itemId) : rows
+    if (referenceFilter) {
+      base = base
+        .map(r => ({ ...r, movements: r.movements.filter(mv => movementMatchesInvoice(mv, referenceFilter)) }))
+        .filter(r => r.movements.length)
+    }
+    return base
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, referenceFilter, invoiceNumbers])
+  }, [rows, referenceFilter, itemFilter, invoiceNumbers])
 
   const jumpToMaterials = (notes) => {
     setReportKind('raw_material')
     setReferenceFilter(invoiceNumberFromProductionRef(notes))
   }
+
+  const jumpToItemDetail = (item) => {
+    setReportKind('all')
+    setReferenceFilter(null)
+    setCategoryFilter('')
+    setItemFilter({ itemId: item.itemId, code: item.code, name: item.name })
+  }
+  const clearItemFilter = () => { setItemFilter(null); setReportKind('raw_material') }
 
   // One row per invoice's finished-goods "cut" event (the PI-/PO- pair's
   // purchase_in side stands in for the whole pair -- both movements always
@@ -671,7 +698,34 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
     })
   }, [finishedGoodsEvents, fgSearch, fgSortCol, fgSortDir])
 
+  // Report 2's own view: just "what got cut, how much" per item in the
+  // period -- no opening balance, no per-movement breakdown, no closing
+  // balance. Full detail (opening/movements/closing) lives one click away
+  // in report 3 via jumpToItemDetail. Only items actually cut in-range
+  // (outQty > 0) show up -- an item with only a carried-forward opening
+  // balance and no activity this period isn't a "cut" to list here.
+  const rawMaterialSummary = useMemo(() => {
+    if (reportKind !== 'raw_material') return []
+    return rows.filter(r => r.outQty > 0).map(r => ({
+      itemId: r.itemId, code: r.code, name: r.name, unit: r.unit, outQty: r.outQty, outValue: r.outValue,
+    }))
+  }, [rows, reportKind])
+
+  const sortedRmSummary = useMemo(() => {
+    const q = rmSearch.trim().toLowerCase()
+    const filtered = q
+      ? rawMaterialSummary.filter(e => e.code.toLowerCase().includes(q) || e.name.toLowerCase().includes(q))
+      : rawMaterialSummary
+    return [...filtered].sort((a, b) => {
+      const va = a[rmSortCol] ?? ''
+      const vb = b[rmSortCol] ?? ''
+      if (typeof va === 'number') return rmSortDir === 'asc' ? va - vb : vb - va
+      return rmSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
+    })
+  }, [rawMaterialSummary, rmSearch, rmSortCol, rmSortDir])
+
   const showFgList = reportKind === 'finished_goods' && !referenceFilter
+  const showRmList = reportKind === 'raw_material'
 
   return (
     <div>
@@ -695,7 +749,13 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
             <button className="btn-ghost" style={{ padding: 0, lineHeight: 1 }} onClick={() => setReferenceFilter(null)}>✕</button>
           </span>
         )}
-        {!showFgList && (
+        {itemFilter && (
+          <span className="badge" style={{ background: 'var(--accent-soft, rgba(0,0,0,0.1))', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, fontSize: 12.5 }}>
+            ← กลับไปที่รายการ · กำลังดูเฉพาะ: {itemFilter.code} — {itemFilter.name}
+            <button className="btn-ghost" style={{ padding: 0, lineHeight: 1 }} onClick={clearItemFilter}>✕</button>
+          </span>
+        )}
+        {!showFgList && !showRmList && (
           <button className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => window.print()}>🖨️ พิมพ์ / PDF</button>
         )}
       </div>
@@ -729,6 +789,40 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
                   </tr>
                 ))}
                 {!sortedFgEvents.length && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีรายการตัดสต็อกสินค้าสำเร็จรูปในช่วงเวลาที่เลือก</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : showRmList ? (
+        <>
+          <div style={{ marginBottom: 12 }}>
+            <input className="input input-sm" style={{ minWidth: 280 }} placeholder="ค้นหารหัส / รายการ..."
+              value={rmSearch} onChange={e => setRmSearch(e.target.value)} />
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th className="sortable" onClick={() => rmToggleSort('code')}>รหัส{rmSi('code')}</th>
+                  <th className="sortable" onClick={() => rmToggleSort('name')}>รายการ{rmSi('name')}</th>
+                  <th>หน่วย</th>
+                  <th className="sortable" onClick={() => rmToggleSort('outQty')}>จำนวนที่ตัด{rmSi('outQty')}</th>
+                  <th className="sortable" onClick={() => rmToggleSort('outValue')}>มูลค่าที่ตัด{rmSi('outValue')}</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedRmSummary.map(e => (
+                  <tr key={e.itemId} style={{ cursor: 'pointer' }} onClick={() => jumpToItemDetail(e)}>
+                    <td>{e.code}</td>
+                    <td>{e.name}</td>
+                    <td>{e.unit}</td>
+                    <td className="font-mono">{fmtQty(e.outQty)}</td>
+                    <td className="font-mono">{fmt(e.outValue)}</td>
+                    <td style={{ color: 'var(--accent)', whiteSpace: 'nowrap' }}>ดูรายละเอียด →</td>
+                  </tr>
+                ))}
+                {!sortedRmSummary.length && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีรายการตัดวัตถุดิบในช่วงเวลาที่เลือก</td></tr>}
               </tbody>
             </table>
           </div>

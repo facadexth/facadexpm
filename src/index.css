@@ -494,8 +494,12 @@ th.sortable:hover { color: var(--accent); }
 
   /* .print-only: content that exists purely for the printed page (a
      document header with company/period info that the on-screen app view
-     has no use for) -- hidden on screen, shown only inside a print. */
-  .print-only { display: block; }
+     has no use for) -- hidden on screen, shown only inside a print.
+     !important because the base (non-media) .print-only rule below sits
+     later in this same file at equal specificity -- without it, source
+     order would let that later "display:none" win even while printing,
+     which is exactly what silently dropped the print header before. */
+  .print-only { display: block !important; }
 }
 .print-only { display: none; }
 
@@ -511,4 +515,15 @@ th.sortable:hover { color: var(--accent); }
     border-color: #999 !important;
   }
   .tax-report-print tr.item-header-row td { background: #eee !important; }
+
+  /* .table-wrap is a scroll box on screen (overflow-x:auto and a fixed
+     max-height with overflow-y:auto, see the base rule) -- printing an
+     overflow:auto box does NOT paginate its clipped content, it just cuts
+     it off at the box's rendered size. That silently dropped every row
+     past 560px tall and every column past the visible width. Landscape +
+     unclamped/visible overflow is what the artifact preview already does
+     for this same report and is the fix here too. */
+  @page { size: A4 landscape; margin: 12mm; }
+  .tax-report-print .table-wrap { max-height: none !important; overflow: visible !important; }
+  .tax-report-print table { width: 100%; }
 }
