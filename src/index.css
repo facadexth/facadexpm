@@ -564,8 +564,20 @@ th.sortable:hover { color: var(--accent); }
   .tax-report-print .summary-value { font-size: 13.5px; font-weight: 600; }
   .tax-report-print .summary-value.accent { color: var(--pr-accent) !important; }
 
+  .tax-report-print table.ledger thead { display: table-header-group; }
   .tax-report-print table.ledger thead th { background: var(--pr-accent) !important; color: #fff !important; }
   .tax-report-print tr.item-header-row td { background: var(--pr-accent-soft) !important; color: var(--pr-accent) !important; }
+
+  /* tr.print-repeat-row lives INSIDE the print table's <thead> so it
+     repeats atop every printed page the table spans -- browsers replay a
+     table's whole thead on each page fragment, unlike the doc-header
+     above the table, which only ever prints once on page 1. */
+  .tax-report-print tr.print-repeat-row td {
+    background: var(--pr-accent-soft) !important; color: var(--pr-accent) !important;
+    font-size: 10.5px; font-weight: 600; padding: 5px 10px; white-space: nowrap;
+  }
+  .tax-report-print tr.print-repeat-row .print-repeat-sep { margin: 0 6px; opacity: 0.5; font-weight: 400; }
+  .tax-report-print tr.print-repeat-row .print-repeat-period { font-weight: 400; color: var(--pr-ink-soft) !important; }
 
   .tax-report-print .doc-footer {
     margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--pr-rule);

@@ -861,6 +861,37 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
   )
   const activeReportMeta = TAX_REPORT_KINDS.find(k => k.key === reportKind)
 
+  // A <thead> row repeats atop every printed page a <table> spans across
+  // -- standard browser behavior for multi-page tables. Putting the
+  // company/report identity INSIDE the print table's thead (not just the
+  // doc-header above it, which only ever prints once on page 1) is what
+  // makes it repeat -- requested via artifact comment since report 3's
+  // full ledger runs to many pages. Screen-only .print-only class keeps
+  // it out of the interactive on-screen table (which reuses `ledgerThead`
+  // above, unchanged).
+  const printRepeatRow = (cols) => (
+    <tr className="print-repeat-row">
+      <td colSpan={cols}>
+        <span className="print-repeat-company">{tenant?.company_name}</span>
+        <span className="print-repeat-sep">·</span>
+        <span className="print-repeat-report">{activeReportMeta?.badge} {activeReportMeta?.label}</span>
+        <span className="print-repeat-sep">·</span>
+        <span className="print-repeat-period">รอบระยะเวลา {new Date(dateFrom).toLocaleDateString('th-TH')} — {new Date(dateTo).toLocaleDateString('th-TH')}</span>
+      </td>
+    </tr>
+  )
+  const printLedgerThead = (
+    <thead>
+      {printRepeatRow(9)}
+      <tr>
+        <th>วันเดือนปี</th><th>รายการเคลื่อนไหว</th><th>เลขที่เอกสารอ้างอิง</th>
+        <th>รับเข้า (จำนวน)</th><th>รับเข้า (มูลค่า)</th>
+        <th>จำหน่ายออก (จำนวน)</th><th>จำหน่ายออก (มูลค่า)</th>
+        <th>คงเหลือ (จำนวน)</th><th>คงเหลือ (มูลค่า)</th>
+      </tr>
+    </thead>
+  )
+
   return (
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
@@ -1045,6 +1076,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
                 <div className="table-wrap">
                   <table className="ledger">
                     <thead>
+                      {printRepeatRow(5)}
                       <tr>
                         <th>รหัส</th><th>รายการ</th><th>หน่วย</th>
                         <th>จำนวนที่ตัด</th><th>มูลค่าที่ตัด (บาท)</th>
@@ -1076,7 +1108,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
                 </div>
                 <div className="table-wrap">
                   <table className="ledger">
-                    {ledgerThead}
+                    {printLedgerThead}
                     <tbody>{renderLedgerRows(displayRows, { interactive: false })}</tbody>
                   </table>
                 </div>
