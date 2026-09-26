@@ -403,11 +403,12 @@ export default function HR() {
   const [calcSortCol, setCalcSortCol] = useState('name')
   const [calcSortDir, setCalcSortDir] = useState('asc')
 
-  // Requests (เบิกของ/ขอลา from LINE crew bot, via FieldFormPage) --
-  // pending queue an ADMIN/OWNER must approve/reject. Approving a leave
-  // request is what actually creates the real worker_assignments day(s)
-  // -- a worker's LINE message alone was never enough authority for that.
-  const [materialRequests, setMaterialRequests] = useState([])
+  // Leave requests (ขอลา from LINE crew bot, via FieldFormPage) --
+  // pending queue an ADMIN/OWNER must approve/reject. Approving is what
+  // actually creates the real worker_assignments day(s) -- a worker's
+  // LINE message alone was never enough authority for that. (เบิกของ used
+  // to land in a sibling table here too, but now creates a real
+  // purchase_orders 'draft' row directly -- see PurchaseOrders.jsx.)
   const [leaveRequests, setLeaveRequests] = useState([])
   const [loadingRequests, setLoadingRequests] = useState(true)
   const [reviewingId, setReviewingId] = useState(null)
@@ -415,30 +416,13 @@ export default function HR() {
   const fetchRequests = async () => {
     if (!canEdit) return
     setLoadingRequests(true)
-    const [mr, lr] = await Promise.all([
-      supabase.from('material_requests').select('*, workers(name, nickname)').order('requested_at', { ascending: false }),
-      supabase.from('leave_requests').select('*, workers(name, nickname)').order('requested_at', { ascending: false }),
-    ])
-    setMaterialRequests(mr.data || [])
-    setLeaveRequests(lr.data || [])
+    const { data } = await supabase.from('leave_requests').select('*, workers(name, nickname)').order('requested_at', { ascending: false })
+    setLeaveRequests(data || [])
     setLoadingRequests(false)
   }
   useEffect(() => { fetchRequests() }, [canEdit])
 
-  const pendingRequestCount = materialRequests.filter(r => r.status === 'pending').length + leaveRequests.filter(r => r.status === 'pending').length
-
-  const reviewMaterialRequest = async (req, status) => {
-    setReviewingId(req.id)
-    try {
-      const { error } = await supabase.from('material_requests').update({ status, reviewed_by: user?.email, reviewed_at: new Date().toISOString() }).eq('id', req.id)
-      if (error) throw error
-      await fetchRequests()
-    } catch (e) {
-      alert('Error: ' + e.message)
-    } finally {
-      setReviewingId(null)
-    }
-  }
+  const pendingRequestCount = leaveRequests.filter(r => r.status === 'pending').length
 
   const reviewLeaveRequest = async (req, status) => {
     setReviewingId(req.id)
@@ -853,7 +837,7 @@ export default function HR() {
     { id: 'workers',  label: '👷 ข้อมูลช่าง' },
     { id: 'payroll',  label: '💼 เงินเดือน' },
     // Approval queue (เบิกของ/ขอลา จาก LINE) and audit log: ADMIN/OWNER only
-    ...(canEdit ? [{ id: 'requests', label: `📥 คำขอ${pendingRequestCount ? ` (${pendingRequestCount})` : ''}` }] : []),
+    ...(canEdit ? [{ id: 'requests', label: `🏖️ คำขอลา${pendingRequestCount ? ` (${pendingRequestCount})` : ''}` }] : []),
     ...(canEdit ? [{ id: 'audit', label: '📋 ประวัติการแก้ไข' }] : []),
   ]
 
@@ -1091,14 +1075,14 @@ export default function HR() {
         </div>
       )}
 
-      {/* ── Requests Tab (เบิกของ/ขอลา from LINE crew bot) ── */}
+      {/* ── Requests Tab (ขอลา from LINE crew bot) ── */}
       {innerTab === 'requests' && (
         <div>
           {loadingRequests ? (
             <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
           ) : (
             <>
-              <div className="card" style={{ marginBottom: 20 }}>
+              <div className="card">
                 <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>🏖️ คำขอลา</div>
                 <div className="table-wrap">
                   <table>
@@ -1139,51 +1123,6 @@ export default function HR() {
                       )}
                     </tbody>
                   </table>
-                </div>
-              </div>
-
-              <div className="card">
-                <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>📦 คำขอเบิกของ</div>
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>ช่าง</th>
-                        <th>รายการ</th>
-                        <th>จำนวน</th>
-                        <th>สถานะ</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {materialRequests.map(r => (
-                        <tr key={r.id}>
-                          <td style={{ fontWeight: 600 }}>{r.workers?.nickname || r.workers?.name}</td>
-                          <td>{r.description}</td>
-                          <td>{r.quantity ? `${r.quantity} ${r.unit || ''}` : '-'}</td>
-                          <td>
-                            {r.status === 'pending' && <span className="badge" style={{ background: 'rgba(255,193,7,0.2)', color: '#c98a00' }}>⏳ รอตรวจสอบ</span>}
-                            {r.status === 'approved' && <span className="badge" style={{ background: 'rgba(40,167,69,0.2)', color: 'var(--green)' }}>✅ อนุมัติแล้ว</span>}
-                            {r.status === 'rejected' && <span className="badge" style={{ background: 'rgba(220,53,69,0.2)', color: 'var(--red)' }}>❌ ปฏิเสธ</span>}
-                          </td>
-                          <td style={{ whiteSpace: 'nowrap' }}>
-                            {r.status === 'pending' && (
-                              <>
-                                <button className="btn btn-sm btn-primary" disabled={reviewingId === r.id} onClick={() => reviewMaterialRequest(r, 'approved')}>อนุมัติ</button>
-                                <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} disabled={reviewingId === r.id} onClick={() => reviewMaterialRequest(r, 'rejected')}>ปฏิเสธ</button>
-                              </>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                      {!materialRequests.length && (
-                        <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีคำขอเบิกของ</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <div style={{ padding: 12, fontSize: 11.5, color: 'var(--text3)', borderTop: '1px solid var(--border)' }}>
-                  อนุมัติแล้วยังไม่ได้ออกใบสั่งซื้อให้อัตโนมัติ — ไปสร้างใบสั่งซื้อจริงต่อที่หน้าใบสั่งซื้อได้เลย
                 </div>
               </div>
             </>

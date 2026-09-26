@@ -40,8 +40,8 @@ const supplierOpts = (suppliers) => (suppliers || []).map(s => ({
   value: s.id, label: `${s.supplier_number} · ${s.name}`, keywords: `${s.supplier_number} ${s.name}`,
 }))
 
-const PO_STATUSES = ['ordered', 'received', 'cancelled']
-const PO_STATUS_LABELS = { ordered: '📦 สั่งแล้ว', received: '✅ รับของแล้ว', cancelled: '✕ ยกเลิก' }
+const PO_STATUSES = ['draft', 'ordered', 'received', 'cancelled']
+const PO_STATUS_LABELS = { draft: '📝 ร่าง (รอเติมข้อมูล)', ordered: '📦 สั่งแล้ว', received: '✅ รับของแล้ว', cancelled: '✕ ยกเลิก' }
 
 const EMPTY_ITEM = { description: '', quantity: '1', unit: '', unit_price: '', inventory_item_id: '', aluminum_profile_id: '', rod_length_m: '', glass_width_m: '', glass_height_m: '' }
 const EMPTY_FORM = { site_id: '', supplier_id: '', category_id: '', date: '', has_vat: true, price_includes_vat: false, ordered_by: '', notes: '', items: [{ ...EMPTY_ITEM }] }
@@ -608,6 +608,11 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
         ordered_by: form.ordered_by || null,
         notes: form.notes || null,
       }
+      // A 'draft' PO (created hands-off from a LINE เบิกของ request, no
+      // supplier yet -- see field-form Edge Function) graduates to a real
+      // 'ordered' PO the moment an admin saves it with a supplier filled
+      // in. Never downgrades a PO that was already further along.
+      if (editRow?.status === 'draft' && form.supplier_id) poPayload.status = 'ordered'
       let poId = editRow?.id
       if (editRow) {
         const { error } = await supabase.from('purchase_orders').update(poPayload).eq('id', editRow.id)
@@ -876,8 +881,10 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                         <button className="btn btn-sm btn-ghost" onClick={() => setDetailRow(po)}>👁️</button>
                         <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(po)}>📄</button>
                         {canEdit && po.status === 'ordered' && (
+                          <button className="btn btn-sm btn-primary" onClick={() => setReceiveRow(po)}>✅ รับของแล้ว</button>
+                        )}
+                        {canEdit && (po.status === 'ordered' || po.status === 'draft') && (
                           <>
-                            <button className="btn btn-sm btn-primary" onClick={() => setReceiveRow(po)}>✅ รับของแล้ว</button>
                             <button className="btn btn-sm btn-edit" onClick={() => { clearDraft(ADD_FORM_OPEN_KEY); setEditRow(po); setShowAdd(true) }}><PencilIcon /></button>
                             <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(po.id)}><TrashIcon /></button>
                           </>
