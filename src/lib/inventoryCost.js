@@ -177,32 +177,36 @@ export function computeInvoiceDeductionPlan({ invoiceSubtotal, materialPct, cate
 }
 
 /**
- * Computes the finished-goods movements needed when confirming ตัดสต็อก
- * for one invoice, alongside (not instead of) the raw-material deduction
- * -- see docs/superpowers/specs/2026-09-24-finished-goods-tax-stock-reports-design.md.
- * One quotation line = one finished-goods SKU = 1.0 ชุด total. A line
- * seen for the first time gets an 'adjustment' step (รับเข้า 1 ชุด,
- * valued at materialPct of its full contract value) ahead of its
- * 'sale_out' step (the fraction billed on THIS invoice).
+ * Computes the finished-goods "produce and sell" movements for one
+ * invoice's billed quotation lines -- redesigned 2026-09-25 (artifact
+ * comment thread on the ตัดสต็อก explainer, docs/superpowers/specs/2026-09-24-finished-goods-tax-stock-reports-design.md)
+ * away from the original "1 quotation line = 1.0 ชุด of the WHOLE
+ * contract, drawn down fractionally across every invoice against it"
+ * model. That model left a large, confusing leftover balance sitting
+ * against the contract after every invoice, and a contract billed over
+ * 100% showed up as a negative balance with no clean story. Instead:
+ * each invoice PRODUCES exactly what it's about to SELL, right then --
+ * one self-contained, self-balancing รับเข้า+ขายออก pair per billed
+ * line per invoice, both valued the same (materialPct% of THAT
+ * invoice's own billed amount, never the quotation's full value).
+ * Quantity is always 1 ("made and sold 1 batch this invoice"); nothing
+ * accumulates or depletes across invoices, so the >100%-billed edge
+ * case the original design had to warn about can no longer happen --
+ * there is no shared balance left to overdraw.
  *
  * @param {object} params
- * @param {Array<{quotationItemId: string|null, quotationNumber: string, sortOrder: number, description: string, quotationItemLineTotal: number, invoiceItemLineTotal: number}>} params.billedLines
+ * @param {Array<{quotationItemId: string|null, quotationNumber: string, sortOrder: number, description: string, invoiceItemLineTotal: number}>} params.billedLines
  * @param {number} params.materialPct - 0-100, the SAME %ต้นทุนวัสดุ the raw-material deduction step already uses for this invoice
- * @param {Set<string>} params.existingFinishedGoodsQuotationItemIds - quotation_item_id values that already have an inventory_items row with item_kind='finished_goods'
- * @returns {{ steps: Array<{ type: 'adjustment'|'sale_out', quotationItemId: string, code: string, name: string, quantity: number, unitCost: number }> }}
+ * @returns {{ steps: Array<{ quotationItemId: string, code: string, name: string, value: number }> }}
  */
-export function computeFinishedGoodsDeductionPlan({ billedLines, materialPct, existingFinishedGoodsQuotationItemIds }) {
+export function computeFinishedGoodsProductionPlan({ billedLines, materialPct }) {
   const steps = []
   for (const line of billedLines || []) {
     if (!line.quotationItemId) continue
-    if (!(line.quotationItemLineTotal > 0)) continue
-    const code = `${line.quotationNumber}-${line.sortOrder}`
-    const unitCost = line.quotationItemLineTotal * (materialPct / 100)
-    if (!existingFinishedGoodsQuotationItemIds.has(line.quotationItemId)) {
-      steps.push({ type: 'adjustment', quotationItemId: line.quotationItemId, code, name: line.description, quantity: 1, unitCost })
-    }
-    const saleQty = line.invoiceItemLineTotal / line.quotationItemLineTotal
-    steps.push({ type: 'sale_out', quotationItemId: line.quotationItemId, code, name: line.description, quantity: saleQty, unitCost })
+    if (!(line.invoiceItemLineTotal > 0)) continue
+    const code = `${line.quotationNumber}-${line.sortOrder + 1}`
+    const value = line.invoiceItemLineTotal * (materialPct / 100)
+    steps.push({ quotationItemId: line.quotationItemId, code, name: line.description, value })
   }
   return { steps }
 }

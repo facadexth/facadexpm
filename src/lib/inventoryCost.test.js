@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, estimateSheetCount, computeInvoiceDeductionPlan, computeFinishedGoodsDeductionPlan, resolveMovementReference, computeStockLedgerReport } from './inventoryCost.js'
+import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, estimateSheetCount, computeInvoiceDeductionPlan, computeFinishedGoodsProductionPlan, resolveMovementReference, computeStockLedgerReport } from './inventoryCost.js'
 
 describe('computeWeightedAverageCost', () => {
   it('first receipt into an empty balance', () => {
@@ -350,64 +350,58 @@ describe('computeInvoiceDeductionPlan', () => {
   })
 })
 
-describe('computeFinishedGoodsDeductionPlan', () => {
+describe('computeFinishedGoodsProductionPlan', () => {
   const line = (over = {}) => ({
-    quotationItemId: 'qi-1', quotationNumber: 'QT2609-040', sortOrder: 1,
-    description: 'ประตูหน้าต่างอลูมิเนียม', quotationItemLineTotal: 100000, invoiceItemLineTotal: 10000,
+    quotationItemId: 'qi-1', quotationNumber: 'QT2609-040', sortOrder: 0,
+    description: 'ประตูหน้าต่างอลูมิเนียม', invoiceItemLineTotal: 10000,
     ...over,
   })
 
-  it('new finished-goods line: emits an opening adjustment plus the sale_out fraction', () => {
-    const plan = computeFinishedGoodsDeductionPlan({
-      billedLines: [line()], materialPct: 70, existingFinishedGoodsQuotationItemIds: new Set(),
-    })
+  it('one billed line: emits one self-contained step, valued at materialPct of THIS invoice line', () => {
+    const plan = computeFinishedGoodsProductionPlan({ billedLines: [line()], materialPct: 70 })
     expect(plan.steps).toEqual([
-      { type: 'adjustment', quotationItemId: 'qi-1', code: 'QT2609-040-1', name: 'ประตูหน้าต่างอลูมิเนียม', quantity: 1, unitCost: 70000 },
-      { type: 'sale_out', quotationItemId: 'qi-1', code: 'QT2609-040-1', name: 'ประตูหน้าต่างอลูมิเนียม', quantity: 0.1, unitCost: 70000 },
+      { quotationItemId: 'qi-1', code: 'QT2609-040-1', name: 'ประตูหน้าต่างอลูมิเนียม', value: 7000 },
     ])
   })
 
-  it('already-existing finished-goods line: skips the adjustment, only sale_out', () => {
-    const plan = computeFinishedGoodsDeductionPlan({
-      billedLines: [line()], materialPct: 70, existingFinishedGoodsQuotationItemIds: new Set(['qi-1']),
-    })
-    expect(plan.steps).toEqual([
-      { type: 'sale_out', quotationItemId: 'qi-1', code: 'QT2609-040-1', name: 'ประตูหน้าต่างอลูมิเนียม', quantity: 0.1, unitCost: 70000 },
-    ])
+  it('every invoice against the same line gets its own step -- no "already exists" branching', () => {
+    const first = computeFinishedGoodsProductionPlan({ billedLines: [line({ invoiceItemLineTotal: 10000 })], materialPct: 70 })
+    const second = computeFinishedGoodsProductionPlan({ billedLines: [line({ invoiceItemLineTotal: 5000 })], materialPct: 70 })
+    expect(first.steps[0].value).toBe(7000)
+    expect(second.steps[0].value).toBe(3500)
   })
 
-  it('materialPct scales unit cost, never the full sale value', () => {
-    const plan = computeFinishedGoodsDeductionPlan({
-      billedLines: [line({ quotationItemLineTotal: 50000, invoiceItemLineTotal: 50000 })],
-      materialPct: 40, existingFinishedGoodsQuotationItemIds: new Set(['qi-1']),
+  it('materialPct scales THIS invoice\'s own billed amount, never the quotation\'s full value', () => {
+    const plan = computeFinishedGoodsProductionPlan({
+      billedLines: [line({ invoiceItemLineTotal: 50000 })], materialPct: 40,
     })
-    expect(plan.steps[0].unitCost).toBe(20000)
-    expect(plan.steps[0].quantity).toBe(1)
+    expect(plan.steps[0].value).toBe(20000)
   })
 
-  it('multiple billed lines each get their own steps', () => {
-    const plan = computeFinishedGoodsDeductionPlan({
+  it('code is 1-based sort_order suffix, not 0-based', () => {
+    const plan = computeFinishedGoodsProductionPlan({ billedLines: [line({ sortOrder: 0 })], materialPct: 70 })
+    expect(plan.steps[0].code).toBe('QT2609-040-1')
+  })
+
+  it('multiple billed lines each get their own step', () => {
+    const plan = computeFinishedGoodsProductionPlan({
       billedLines: [
-        line({ quotationItemId: 'qi-1', sortOrder: 1 }),
-        line({ quotationItemId: 'qi-2', sortOrder: 2, description: 'ประตูบานเลื่อน', quotationItemLineTotal: 60000, invoiceItemLineTotal: 6000 }),
+        line({ quotationItemId: 'qi-1', sortOrder: 0 }),
+        line({ quotationItemId: 'qi-2', sortOrder: 1, description: 'ประตูบานเลื่อน', invoiceItemLineTotal: 6000 }),
       ],
-      materialPct: 70, existingFinishedGoodsQuotationItemIds: new Set(),
+      materialPct: 70,
     })
-    expect(plan.steps.map(s => s.quotationItemId)).toEqual(['qi-1', 'qi-1', 'qi-2', 'qi-2'])
-    expect(plan.steps[3]).toEqual({ type: 'sale_out', quotationItemId: 'qi-2', code: 'QT2609-040-2', name: 'ประตูบานเลื่อน', quantity: 0.1, unitCost: 42000 })
+    expect(plan.steps.map(s => s.quotationItemId)).toEqual(['qi-1', 'qi-2'])
+    expect(plan.steps[1]).toEqual({ quotationItemId: 'qi-2', code: 'QT2609-040-2', name: 'ประตูบานเลื่อน', value: 4200 })
   })
 
   it('skips a line with no quotationItemId (not tied to a quotation)', () => {
-    const plan = computeFinishedGoodsDeductionPlan({
-      billedLines: [line({ quotationItemId: null })], materialPct: 70, existingFinishedGoodsQuotationItemIds: new Set(),
-    })
+    const plan = computeFinishedGoodsProductionPlan({ billedLines: [line({ quotationItemId: null })], materialPct: 70 })
     expect(plan.steps).toEqual([])
   })
 
-  it('skips a line whose quotation-item total is zero (division guard)', () => {
-    const plan = computeFinishedGoodsDeductionPlan({
-      billedLines: [line({ quotationItemLineTotal: 0 })], materialPct: 70, existingFinishedGoodsQuotationItemIds: new Set(),
-    })
+  it('skips a line whose invoice-billed amount is zero (division/no-op guard)', () => {
+    const plan = computeFinishedGoodsProductionPlan({ billedLines: [line({ invoiceItemLineTotal: 0 })], materialPct: 70 })
     expect(plan.steps).toEqual([])
   })
 })
