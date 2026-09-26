@@ -491,4 +491,24 @@ th.sortable:hover { color: var(--accent); }
      visible for this exact element) removes it from the print layout
      entirely. */
   #doc-style-preview { display: none !important; }
+
+  /* .print-only: content that exists purely for the printed page (a
+     document header with company/period info that the on-screen app view
+     has no use for) -- hidden on screen, shown only inside a print. */
+  .print-only { display: block; }
+}
+.print-only { display: none; }
+
+/* Inventory.jsx's TaxReportsView reuses the app's normal <table> --
+   themed via CSS custom properties, which can print dark-on-dark if the
+   viewer is on the dark theme. Force plain black-on-white for this one
+   .printable-document consumer rather than the fixed light/dark palette
+   QuotationPaper/DocumentPaper hardcode for themselves. */
+@media print {
+  .tax-report-print, .tax-report-print table, .tax-report-print th, .tax-report-print td {
+    color: #000 !important;
+    background: #fff !important;
+    border-color: #999 !important;
+  }
+  .tax-report-print tr.item-header-row td { background: #eee !important; }
 }
