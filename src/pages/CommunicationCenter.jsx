@@ -228,6 +228,61 @@ export default function CommunicationCenter() {
     }
   }
 
+  // ---- Unrecognized groups -- every message from a group that isn't
+  // the configured crew_group_id gets captured here by line-webhook
+  // (see 2026-09-27-04-line-unrecognized-groups.sql) so switching to a
+  // new/different group chat has somewhere to actually find its ID,
+  // instead of the "Crew Group ID" field's placeholder claim being
+  // false. "ใช้กลุ่มนี้" writes straight into line_settings.crew_group_id.
+  const [unrecognizedGroups, setUnrecognizedGroups] = useState([])
+  const [loadingGroups, setLoadingGroups] = useState(true)
+  const [groupActionId, setGroupActionId] = useState(null)
+  const [dismissGroup, setDismissGroup] = useState(null)
+
+  const fetchUnrecognizedGroups = async () => {
+    setLoadingGroups(true)
+    const { data, error } = await supabase
+      .from('line_unrecognized_groups')
+      .select('*')
+      .order('last_seen_at', { ascending: false })
+    if (!error) setUnrecognizedGroups(data || [])
+    setLoadingGroups(false)
+  }
+  useEffect(() => { fetchUnrecognizedGroups() }, [])
+
+  const handleUseGroup = async (group) => {
+    if (!confirm(`ตั้งกลุ่มนี้เป็นกลุ่มทีมงาน?\n\n${group.group_id}\n\nข้อความล่าสุด: "${group.sample_text || '-'}"\n\nระบบจะแจ้งงานประจำวันและข้อความอัตโนมัติอื่นๆ เข้ากลุ่มนี้แทนกลุ่มเดิม`)) return
+    setGroupActionId(group.id)
+    try {
+      const { error: e1 } = await supabase.from('line_settings').update({ crew_group_id: group.group_id, updated_at: new Date().toISOString() }).eq('tenant_id', tenant.id)
+      if (e1) throw e1
+      const { error: e2 } = await supabase.from('line_unrecognized_groups').delete().eq('id', group.id)
+      if (e2) throw e2
+      setUnrecognizedGroups(list => list.filter(g => g.id !== group.id))
+      fetchLineSettings()
+      alert('✅ ตั้งเป็นกลุ่มทีมงานแล้ว')
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setGroupActionId(null)
+    }
+  }
+
+  const handleDismissGroup = async () => {
+    if (!dismissGroup) return
+    setGroupActionId(dismissGroup.id)
+    try {
+      const { error } = await supabase.from('line_unrecognized_groups').delete().eq('id', dismissGroup.id)
+      if (error) throw error
+      setUnrecognizedGroups(list => list.filter(g => g.id !== dismissGroup.id))
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setGroupActionId(null)
+      setDismissGroup(null)
+    }
+  }
+
   // ---- Reminders: the one LINE-specific toggle that actually gates a
   // scheduled push (line-push-cheque-reminders reads this exact key --
   // see that function's own top comment). Everything else scheduled
@@ -420,6 +475,47 @@ export default function CommunicationCenter() {
         )}
       </div>
 
+      {/* ---- Unrecognized groups ---- */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>
+          👥 กลุ่มไลน์ที่ยังไม่ตั้งเป็นกลุ่มทีมงาน {unrecognizedGroups.length > 0 && `(${unrecognizedGroups.length})`}
+        </div>
+        <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text3)', borderBottom: '1px solid var(--border)' }}>
+          เพิ่มบอทเข้ากลุ่มใหม่แล้วพิมพ์ข้อความอะไรก็ได้ในกลุ่มนั้น — ID กลุ่มจะโผล่ที่นี่ให้กดตั้งเป็นกลุ่มทีมงานได้เลย
+        </div>
+        {loadingGroups ? (
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
+        ) : !unrecognizedGroups.length ? (
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>ไม่มีรายการ — ยังไม่มีข้อความจากกลุ่มอื่นที่ไม่รู้จัก</div>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Group ID</th>
+                  <th>ข้อความล่าสุด</th>
+                  <th>พบล่าสุด</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {unrecognizedGroups.map(g => (
+                  <tr key={g.id}>
+                    <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{g.group_id}</td>
+                    <td style={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.sample_text || '-'}</td>
+                    <td style={{ fontSize: 12, color: 'var(--text3)' }}>{new Date(g.last_seen_at).toLocaleString('th-TH')}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="btn btn-sm btn-primary" disabled={groupActionId === g.id} onClick={() => handleUseGroup(g)}>ใช้กลุ่มนี้</button>
+                      <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} disabled={groupActionId === g.id} onClick={() => setDismissGroup(g)}>ลบ</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* ---- Reminders ---- */}
       <div className="card">
         <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>🔔 การแจ้งเตือนอัตโนมัติผ่าน LINE</div>
@@ -516,6 +612,15 @@ export default function CommunicationCenter() {
           message="ลบผู้ส่งข้อความนี้ออกจากรายการ? ใช้เมื่อไม่ใช่ทีมงานจริง (เช่น สแปมหรือลูกค้าที่ทักผิดกลุ่ม)"
           onConfirm={handleDismissSender}
           onCancel={() => setDismissSender(null)}
+        />
+      )}
+
+      {dismissGroup && (
+        <ConfirmDialog
+          title="ลบรายการ"
+          message="ลบกลุ่มนี้ออกจากรายการ? ใช้เมื่อไม่ใช่กลุ่มที่ต้องการ (เช่น กลุ่มทดสอบหรือกลุ่มอื่นที่ไม่เกี่ยวข้อง)"
+          onConfirm={handleDismissGroup}
+          onCancel={() => setDismissGroup(null)}
         />
       )}
     </div>

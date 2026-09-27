@@ -830,7 +830,20 @@ Deno.serve(async (req) => {
     // job-done/today's-work menu are 1:1-DM-only, matching the Rich
     // Menu's own DM-only scope).
     if (msgType !== 'text' || !text) continue
-    if (sourceGroupId !== settings.crew_group_id) continue
+    if (sourceGroupId !== settings.crew_group_id) {
+      // Not the configured crew group -- capture it so an admin can
+      // find and promote it from Communication Center instead of the
+      // group's ID silently going nowhere (see
+      // 2026-09-27-04-line-unrecognized-groups.sql for why this exists:
+      // the UI's own "จับได้จากข้อความจริงในกลุ่ม" placeholder implied this
+      // capture already happened, and it never did).
+      const { error: groupError } = await admin.from('line_unrecognized_groups').upsert(
+        { tenant_id: settings.tenant_id, group_id: sourceGroupId, sample_text: text.slice(0, 200), sample_sender: lineUserId, last_seen_at: new Date().toISOString() },
+        { onConflict: 'tenant_id,group_id' }
+      )
+      if (groupError) console.error('line_unrecognized_groups upsert failed', groupError)
+      continue
+    }
 
     const { worker, foundButInactive } = await resolveWorker(lineUserId, settings)
     if (!worker) {
