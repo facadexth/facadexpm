@@ -91,6 +91,26 @@ export default function CommunicationCenter() {
   }, [lineSettings])
   const setConn = (k, v) => setConnForm(f => ({ ...f, [k]: v }))
 
+  // Tests whatever Group ID is currently TYPED (not just the saved
+  // value) against LINE's own "get group chat summary" API -- read-only,
+  // no message sent, no push quota spent. Confirms both that the ID is
+  // valid AND that the bot is still actually a member of that group.
+  const [testingGroup, setTestingGroup] = useState(false)
+  const [groupTestResult, setGroupTestResult] = useState(null)
+  const handleTestGroupId = async () => {
+    setTestingGroup(true)
+    setGroupTestResult(null)
+    try {
+      const { data, error } = await supabase.functions.invoke('line-test-group', { body: { group_id: connForm.crew_group_id } })
+      if (error) throw error
+      setGroupTestResult(data)
+    } catch (e) {
+      setGroupTestResult({ ok: false, error: e.message })
+    } finally {
+      setTestingGroup(false)
+    }
+  }
+
   const handleSaveConnection = async (e) => {
     e.preventDefault()
     if (!lineSettings && (!connForm.channel_id || !connForm.channel_secret || !connForm.channel_access_token)) {
@@ -490,7 +510,17 @@ export default function CommunicationCenter() {
             </div>
             <div>
               <label className="label">Crew Group ID</label>
-              <input className="input" value={connForm.crew_group_id} onChange={e => setConn('crew_group_id', e.target.value)} placeholder="Cxxxxxxxx... (จับได้จากข้อความจริงในกลุ่ม)" />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input className="input" value={connForm.crew_group_id} onChange={e => { setConn('crew_group_id', e.target.value); setGroupTestResult(null) }} placeholder="Cxxxxxxxx... (จับได้จากข้อความจริงในกลุ่ม)" />
+                <button type="button" className="btn btn-ghost" disabled={testingGroup || !connForm.crew_group_id} onClick={handleTestGroupId}>
+                  {testingGroup ? '⏳...' : 'ทดสอบ'}
+                </button>
+              </div>
+              <div style={{ fontSize: 11, marginTop: 4 }}>
+                {groupTestResult?.ok && <span style={{ color: 'var(--green)' }}>✅ กลุ่ม: {groupTestResult.groupName}</span>}
+                {groupTestResult && !groupTestResult.ok && <span style={{ color: 'var(--red)' }}>❌ {groupTestResult.error}</span>}
+                {!groupTestResult && <span style={{ color: 'var(--text3)' }}>กด "ทดสอบ" เพื่อเช็คว่าบอทยังอยู่ในกลุ่มนี้จริง (ไม่ส่งข้อความ ไม่เสียโควต้า)</span>}
+              </div>
             </div>
             {!lineSettings?.bot_user_id && lineSettings && (
               <div className="alert alert-warning" style={{ fontSize: 12 }}>
