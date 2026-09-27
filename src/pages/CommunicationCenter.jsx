@@ -377,6 +377,68 @@ export default function CommunicationCenter() {
     }
   }
 
+  // ---- Issue reports (แจ้งปัญหา) -- line_issue_reports has been
+  // written to by the webhook since this feature's first build, but
+  // never had a viewer anywhere in the app until now: the user noticed
+  // the gap directly ("i didn't see place to store information like
+  // ปัญหา or photos?"). status is DB-constrained to 'open'/'resolved'
+  // (see line_issue_reports_status_check) -- an admin_updates RLS
+  // policy for it already existed too, just unused.
+  const [issueReports, setIssueReports] = useState([])
+  const [loadingIssues, setLoadingIssues] = useState(true)
+  const [resolvingIssueId, setResolvingIssueId] = useState(null)
+
+  const fetchIssueReports = async () => {
+    setLoadingIssues(true)
+    const { data, error } = await supabase
+      .from('line_issue_reports')
+      .select('id, message, status, created_at, workers(name, nickname), sites(name)')
+      .order('created_at', { ascending: false })
+      .limit(100)
+    if (!error) setIssueReports(data || [])
+    setLoadingIssues(false)
+  }
+  useEffect(() => { fetchIssueReports() }, [])
+
+  const handleResolveIssue = async (id) => {
+    setResolvingIssueId(id)
+    try {
+      const { error } = await supabase.from('line_issue_reports').update({ status: 'resolved' }).eq('id', id)
+      if (error) throw error
+      setIssueReports(list => list.map(r => (r.id === id ? { ...r, status: 'resolved' } : r)))
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setResolvingIssueId(null)
+    }
+  }
+
+  // ---- Site photos (รูปภาพหน้างาน) -- same "written but never shown"
+  // gap as issue reports above. line-site-photos is a PRIVATE storage
+  // bucket; a signed-URL read policy for admin/owner already existed
+  // (line_site_photos_tenant_access), just never called from anywhere.
+  const [sitePhotos, setSitePhotos] = useState([])
+  const [loadingPhotos, setLoadingPhotos] = useState(true)
+
+  const fetchSitePhotos = async () => {
+    setLoadingPhotos(true)
+    const { data, error } = await supabase
+      .from('line_site_photos')
+      .select('id, photo_path, date, created_at, workers(name, nickname), sites(name)')
+      .order('created_at', { ascending: false })
+      .limit(60)
+    if (error || !data?.length) {
+      setSitePhotos([])
+      setLoadingPhotos(false)
+      return
+    }
+    const { data: signed } = await supabase.storage.from('line-site-photos').createSignedUrls(data.map(p => p.photo_path), 3600)
+    const urlByPath = Object.fromEntries((signed || []).filter(s => !s.error).map(s => [s.path, s.signedUrl]))
+    setSitePhotos(data.map(p => ({ ...p, url: urlByPath[p.photo_path] })))
+    setLoadingPhotos(false)
+  }
+  useEffect(() => { fetchSitePhotos() }, [])
+
   // ---- Reminders: the one LINE-specific toggle that actually gates a
   // scheduled push (line-push-cheque-reminders reads this exact key --
   // see that function's own top comment). Everything else scheduled
@@ -688,6 +750,75 @@ export default function CommunicationCenter() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      {/* ---- Issue reports ---- */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>
+          🚧 แจ้งปัญหาหน้างาน {issueReports.filter(r => r.status === 'open').length > 0 && `(${issueReports.filter(r => r.status === 'open').length} ยังไม่แก้ไข)`}
+        </div>
+        {loadingIssues ? (
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
+        ) : !issueReports.length ? (
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>ไม่มีรายการ — ยังไม่มีการแจ้งปัญหาเข้ามา</div>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>พนักงาน</th>
+                  <th>ไซต์งาน</th>
+                  <th>รายละเอียด</th>
+                  <th>วันที่แจ้ง</th>
+                  <th>สถานะ</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {issueReports.map(r => (
+                  <tr key={r.id} style={{ opacity: r.status === 'resolved' ? 0.55 : 1 }}>
+                    <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>{r.workers?.nickname || r.workers?.name || '-'}</td>
+                    <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>{r.sites?.name || '-'}</td>
+                    <td style={{ fontSize: 12.5, maxWidth: 320 }}>{r.message}</td>
+                    <td style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{new Date(r.created_at).toLocaleString('th-TH')}</td>
+                    <td>{statusBadge(r.status === 'resolved', '✅ แก้ไขแล้ว', '🚧 ยังไม่แก้ไข')}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {r.status === 'open' && (
+                        <button className="btn btn-sm btn-primary" disabled={resolvingIssueId === r.id} onClick={() => handleResolveIssue(r.id)}>แก้ไขแล้ว</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ---- Site photos ---- */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>📷 รูปภาพหน้างาน (ล่าสุด {sitePhotos.length} รูป)</div>
+        {loadingPhotos ? (
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
+        ) : !sitePhotos.length ? (
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>ไม่มีรายการ — ยังไม่มีรูปภาพส่งเข้ามา</div>
+        ) : (
+          <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
+            {sitePhotos.map(p => (
+              <a key={p.id} href={p.url} target="_blank" rel="noreferrer" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
+                {p.url ? (
+                  <img src={p.url} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+                ) : (
+                  <div style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--text3)' }}>โหลดรูปไม่สำเร็จ</div>
+                )}
+                <div style={{ fontSize: 11, marginTop: 4, color: 'var(--text3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {p.workers?.nickname || p.workers?.name || '-'} · {p.sites?.name || '-'}
+                </div>
+                <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>{new Date(p.created_at).toLocaleDateString('th-TH')}</div>
+              </a>
+            ))}
           </div>
         )}
       </div>

@@ -880,7 +880,14 @@ async function handleAction(
   replyToken: string,
 ) {
   if (action === 'issue_report') {
-    const { error } = await admin.from('line_issue_reports').insert({ tenant_id: settings.tenant_id, worker_id: worker.id, message: text })
+    // resolveTodaysSite, not a caller-supplied site -- same "which site
+    // is this worker actually on today" resolution เช็คอิน/เช็คเอาท์/
+    // รูปภาพหน้างาน already use. Previously omitted entirely, so every
+    // issue report's site_id sat NULL forever -- a real gap found while
+    // building the report viewer, since there'd be nothing to show in a
+    // "site" column otherwise.
+    const site = await resolveTodaysSite(worker.id, settings.tenant_id)
+    const { error } = await admin.from('line_issue_reports').insert({ tenant_id: settings.tenant_id, worker_id: worker.id, site_id: site?.id ?? null, message: text })
     if (error) {
       console.error('line_issue_reports insert failed', error)
       await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
