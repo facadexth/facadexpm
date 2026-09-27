@@ -11,6 +11,14 @@ import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useAppSetting, saveAppSetting } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
+import { SCHEDULE_COMMAND_KEYS, SCHEDULE_COMMAND_DEFAULTS, resolveEnabled, resolveEffectivePhrase, validateCustomPhrase } from '../lib/lineCommandSettings.js'
+
+const SCHEDULE_COMMAND_DESCRIPTIONS = {
+  today_job: 'แชทส่วนตัว: งานของตัวเอง + ปุ่มลัดตามสถานะ (เช็คอิน/เช็คเอาท์/งานเสร็จ) · กลุ่ม: งานของทั้งทีมวันนี้ แบ่งตามไซต์',
+  tomorrow_job: 'เหมือนงานวันนี้ แต่เป็นของพรุ่งนี้',
+  this_week_job: 'สรุป 7 วัน (จ-อา) ของอาทิตย์นี้ ทีละบรรทัด',
+  next_week_job: 'สรุป 7 วัน (จ-อา) ของอาทิตย์หน้า ทีละบรรทัด',
+}
 
 // Ambiguous-looking characters (0/O, 1/I/L) dropped on purpose -- these
 // codes get read aloud or copy-pasted by crew with low literacy.
@@ -285,6 +293,70 @@ export default function CommunicationCenter() {
     }
   }
 
+  // ---- Custom command settings -- lets OWNER enable/disable and
+  // rename the 4 read-only schedule-query commands (see
+  // 2026-09-27-06-line-command-settings.sql). Deliberately scoped to
+  // only these 4 -- the 7 write-action commands stay hardcoded, not
+  // something to cherry-pick. A missing row for a command_key means
+  // "enabled, default phrase" (resolveEnabled/resolveEffectivePhrase
+  // handle that fallback), so this fetch can come back empty and the
+  // page still renders every command correctly.
+  const [commandSettings, setCommandSettings] = useState([])
+  const commandSettingsByKey = Object.fromEntries(commandSettings.map(r => [r.command_key, r]))
+  const [editingCommandKey, setEditingCommandKey] = useState(null)
+  const [editPhraseValue, setEditPhraseValue] = useState('')
+  const [savingCommandKey, setSavingCommandKey] = useState(null)
+
+  const fetchCommandSettings = async () => {
+    const { data, error } = await supabase.from('line_command_settings').select('*').eq('tenant_id', tenant.id)
+    if (!error) setCommandSettings(data || [])
+  }
+  useEffect(() => { if (tenant?.id) fetchCommandSettings() }, [tenant?.id])
+
+  const startEditCommandPhrase = (commandKey) => {
+    setEditingCommandKey(commandKey)
+    setEditPhraseValue(commandSettingsByKey[commandKey]?.custom_phrase || '')
+  }
+
+  const handleSaveCommandPhrase = async () => {
+    if (!editingCommandKey) return
+    const validation = validateCustomPhrase(editPhraseValue, editingCommandKey, commandSettingsByKey)
+    if (!validation.valid) { alert('⚠️ ' + validation.reason); return }
+    setSavingCommandKey(editingCommandKey)
+    try {
+      const existing = commandSettingsByKey[editingCommandKey]
+      const { error } = await supabase.from('line_command_settings').upsert(
+        { tenant_id: tenant.id, command_key: editingCommandKey, enabled: existing ? existing.enabled : true, custom_phrase: editPhraseValue.trim() || null, updated_at: new Date().toISOString() },
+        { onConflict: 'tenant_id,command_key' }
+      )
+      if (error) throw error
+      setEditingCommandKey(null)
+      await fetchCommandSettings()
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setSavingCommandKey(null)
+    }
+  }
+
+  const handleToggleCommandEnabled = async (commandKey) => {
+    setSavingCommandKey(commandKey)
+    try {
+      const existing = commandSettingsByKey[commandKey]
+      const currentlyEnabled = resolveEnabled(commandKey, commandSettingsByKey)
+      const { error } = await supabase.from('line_command_settings').upsert(
+        { tenant_id: tenant.id, command_key: commandKey, enabled: !currentlyEnabled, custom_phrase: existing?.custom_phrase ?? null, updated_at: new Date().toISOString() },
+        { onConflict: 'tenant_id,command_key' }
+      )
+      if (error) throw error
+      await fetchCommandSettings()
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setSavingCommandKey(null)
+    }
+  }
+
   // ---- Reminders: the one LINE-specific toggle that actually gates a
   // scheduled push (line-push-cheque-reminders reads this exact key --
   // see that function's own top comment). Everything else scheduled
@@ -319,7 +391,7 @@ export default function CommunicationCenter() {
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>📖 คำสั่งที่พิมพ์ได้ในไลน์</div>
         <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text3)', borderBottom: '1px solid var(--border)' }}>
-          คำสั่งเหล่านี้ถูกกำหนดไว้ในระบบตายตัว (ไม่ใช่ตั้งค่าได้จากหน้านี้) — รายการนี้ไว้ดูอ้างอิงว่าพิมพ์อะไรได้บ้าง และใช้ได้ที่ไหน
+          คำสั่งดูตารางงาน 4 อันแรกเปิด/ปิด และเปลี่ยนคำสั่งได้จากหน้านี้ — ที่เหลือกำหนดไว้ในระบบตายตัว
         </div>
         <div className="table-wrap">
           <table>
@@ -328,14 +400,42 @@ export default function CommunicationCenter() {
                 <th>พิมพ์</th>
                 <th>ใช้ได้ที่ไหน</th>
                 <th>ทำอะไร</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
+              {SCHEDULE_COMMAND_KEYS.map(key => {
+                const enabled = resolveEnabled(key, commandSettingsByKey)
+                const phrase = resolveEffectivePhrase(key, commandSettingsByKey)
+                const isEditing = editingCommandKey === key
+                const isSaving = savingCommandKey === key
+                return (
+                  <tr key={key} style={{ opacity: enabled ? 1 : 0.5 }}>
+                    <td style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap' }}>
+                      {isEditing ? (
+                        <input className="input" style={{ fontSize: 12, padding: '3px 6px', width: 160 }} value={editPhraseValue}
+                          onChange={e => setEditPhraseValue(e.target.value)} placeholder={SCHEDULE_COMMAND_DEFAULTS[key]} autoFocus />
+                      ) : phrase}
+                    </td>
+                    <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>แชทส่วนตัว + กลุ่ม</td>
+                    <td style={{ fontSize: 12.5 }}>{SCHEDULE_COMMAND_DESCRIPTIONS[key]}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {isEditing ? (
+                        <>
+                          <button className="btn btn-sm btn-primary" disabled={isSaving} onClick={handleSaveCommandPhrase}>บันทึก</button>
+                          <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => setEditingCommandKey(null)}>ยกเลิก</button>
+                        </>
+                      ) : (
+                        <>
+                          <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => startEditCommandPhrase(key)}>แก้ไข</button>
+                          <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => handleToggleCommandEnabled(key)}>{enabled ? 'ปิด' : 'เปิด'}</button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
               {[
-                ['งานวันนี้', 'แชทส่วนตัว + กลุ่ม', 'แชทส่วนตัว: งานของตัวเอง + ปุ่มลัดตามสถานะ (เช็คอิน/เช็คเอาท์/งานเสร็จ) · กลุ่ม: งานของทั้งทีมวันนี้ แบ่งตามไซต์'],
-                ['งานวันพรุ่งนี้', 'แชทส่วนตัว + กลุ่ม', 'เหมือนงานวันนี้ แต่เป็นของพรุ่งนี้'],
-                ['งานอาทิตย์นี้', 'แชทส่วนตัว + กลุ่ม', 'สรุป 7 วัน (จ-อา) ของอาทิตย์นี้ ทีละบรรทัด'],
-                ['งานอาทิตย์หน้า', 'แชทส่วนตัว + กลุ่ม', 'สรุป 7 วัน (จ-อา) ของอาทิตย์หน้า ทีละบรรทัด'],
                 ['เช็คอิน / เช็คเอาท์', 'แชทส่วนตัวเท่านั้น', 'ขอแชร์ตำแหน่ง แล้วบันทึกเช็คอิน/เอาท์ (ต้องอยู่ในรัศมีไซต์งาน)'],
                 ['รูปภาพหน้างาน', 'แชทส่วนตัวเท่านั้น', 'ส่งรูปหน้างาน (ส่งได้หลายรูป จบด้วย "เสร็จแล้ว")'],
                 ['งานเสร็จ / เสร็จงาน', 'แชทส่วนตัวเท่านั้น', 'ปิดการ์ด Kanban งานที่ทำอยู่ + แนบรูปงานเสร็จ'],
@@ -348,13 +448,14 @@ export default function CommunicationCenter() {
                   <td style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap' }}>{cmd}</td>
                   <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{where}</td>
                   <td style={{ fontSize: 12.5 }}>{what}</td>
+                  <td></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <div style={{ padding: '10px 16px', fontSize: 11.5, color: 'var(--text3)', borderTop: '1px solid var(--border)' }}>
-          "แชทส่วนตัว" ต้องเชื่อมบัญชีก่อนด้วยรหัส 6 หลัก · "กลุ่มทีมงาน" ต้องเป็นกลุ่มที่ตั้งไว้ด้านล่าง (การ์ด "การเชื่อมต่อ LINE Official Account") ยกเว้นคำสั่งดูตารางงาน 4 อันแรกที่ใครในกลุ่มก็ถามได้เลยเพราะเป็นแค่การดูข้อมูล
+          "แชทส่วนตัว" ต้องเชื่อมบัญชีก่อนด้วยรหัส 6 หลัก · "กลุ่มทีมงาน" ต้องเป็นกลุ่มที่ตั้งไว้ด้านล่าง (การ์ด "การเชื่อมต่อ LINE Official Account") ยกเว้นคำสั่งดูตารางงาน 4 อันแรกที่ใครในกลุ่มก็ถามได้เลยเพราะเป็นแค่การดูข้อมูล — "ปิด" คำสั่งดูตารางงานแล้วพิมพ์คำเดิม บอทจะเงียบไม่ตอบ
         </div>
       </div>
 

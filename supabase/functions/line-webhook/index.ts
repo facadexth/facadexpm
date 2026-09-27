@@ -236,17 +236,45 @@ function matchGroupAction(text: string): GroupActionType | null {
 // literal 9-char sequence ง-า-น-ว-ั-น-น-ี-้ never appears inside
 // ง-า-น-ว-ั-น-พ-ร-ุ-่-ง-น-ี-้). Order doesn't matter for correctness given
 // that, but the newer, longer phrases are still checked first.
-function matchDMAction(text: string): ActionType | null {
+// The 4 schedule-query phrases below are OWNER-configurable (enable/
+// disable + rename) via line_command_settings -- see
+// 2026-09-27-06-line-command-settings.sql. SCHEDULE_COMMAND_DEFAULTS/
+// resolveEffectivePhrase/resolveEnabled are a hand-ported copy of
+// src/lib/lineCommandSettings.js (same "port the pure logic" pattern
+// as formatDailyAssignmentsPushMessage -- Deno can't import Vite-
+// bundled files). Collision-safety between phrases is enforced at
+// SAVE time (CommunicationCenter.jsx's validateCustomPhrase, same
+// ported source), not here -- this function just resolves whatever
+// phrase is currently configured.
+const SCHEDULE_COMMAND_DEFAULTS: Record<string, string> = {
+  today_job: 'งานวันนี้',
+  tomorrow_job: 'งานวันพรุ่งนี้',
+  this_week_job: 'งานอาทิตย์นี้',
+  next_week_job: 'งานอาทิตย์หน้า',
+}
+type CommandSettingsRow = { command_key: string; enabled: boolean; custom_phrase: string | null }
+type CommandSettingsByKey = Record<string, CommandSettingsRow>
+function resolveEffectivePhrase(commandKey: string, settingsByKey: CommandSettingsByKey): string {
+  const row = settingsByKey[commandKey]
+  return row?.custom_phrase || SCHEDULE_COMMAND_DEFAULTS[commandKey]
+}
+function resolveEnabled(commandKey: string, settingsByKey: CommandSettingsByKey): boolean {
+  const row = settingsByKey[commandKey]
+  return row ? row.enabled !== false : true
+}
+const SCHEDULE_COMMAND_ORDER = ['tomorrow_job', 'this_week_job', 'next_week_job', 'today_job'] as const
+
+function matchDMAction(text: string, commandSettings: CommandSettingsByKey): ActionType | null {
   const base = matchGroupAction(text)
   if (base) return base
   if (text.includes('เช็คอิน')) return 'check_in'
   if (text.includes('เช็คเอาท์')) return 'check_out'
   if (text.includes('รูปภาพ')) return 'site_photo'
   if (text.includes('งานเสร็จ') || text.includes('เสร็จงาน')) return 'job_done_start'
-  if (text.includes('งานวันพรุ่งนี้')) return 'tomorrow_job'
-  if (text.includes('งานอาทิตย์นี้')) return 'this_week_job'
-  if (text.includes('งานอาทิตย์หน้า')) return 'next_week_job'
-  if (text.includes('งานวันนี้')) return 'today_job'
+  for (const key of SCHEDULE_COMMAND_ORDER) {
+    if (!resolveEnabled(key, commandSettings)) continue
+    if (text.includes(resolveEffectivePhrase(key, commandSettings))) return key
+  }
   return null
 }
 
@@ -618,11 +646,11 @@ function formatTeamWeekMessage(weekLabel: string, dates: string[], siteNamesByDa
 }
 
 type GroupInfoAction = 'today_job' | 'tomorrow_job' | 'this_week_job' | 'next_week_job'
-function matchGroupInfoAction(text: string): GroupInfoAction | null {
-  if (text.includes('งานวันพรุ่งนี้')) return 'tomorrow_job'
-  if (text.includes('งานอาทิตย์นี้')) return 'this_week_job'
-  if (text.includes('งานอาทิตย์หน้า')) return 'next_week_job'
-  if (text.includes('งานวันนี้')) return 'today_job'
+function matchGroupInfoAction(text: string, commandSettings: CommandSettingsByKey): GroupInfoAction | null {
+  for (const key of SCHEDULE_COMMAND_ORDER) {
+    if (!resolveEnabled(key, commandSettings)) continue
+    if (text.includes(resolveEffectivePhrase(key, commandSettings))) return key as GroupInfoAction
+  }
   return null
 }
 async function handleGroupInfoQuery(
@@ -907,6 +935,9 @@ Deno.serve(async (req) => {
   const signatureOk = await verifyLineSignature(settings.channel_secret, rawBody, req.headers.get('x-line-signature'))
   if (!signatureOk) return json({ error: 'invalid signature' }, 401)
 
+  const { data: commandSettingsRows } = await admin.from('line_command_settings').select('command_key, enabled, custom_phrase').eq('tenant_id', settings.tenant_id)
+  const commandSettingsByKey: CommandSettingsByKey = Object.fromEntries((commandSettingsRows ?? []).map((r: any) => [r.command_key, r]))
+
   const events = (payload.events as Array<Record<string, any>>) ?? []
   for (const event of events) {
     if (event.type !== 'message') continue
@@ -1017,7 +1048,7 @@ Deno.serve(async (req) => {
       }
 
       if (msgType === 'text' && text) {
-        const action = matchDMAction(text)
+        const action = matchDMAction(text, commandSettingsByKey)
         if (action === 'check_in') {
           await handleCheckInStart(worker, settings, event.replyToken)
         } else if (action === 'check_out') {
@@ -1076,7 +1107,7 @@ Deno.serve(async (req) => {
     // งานอาทิตย์นี้/งานอาทิตย์หน้า) work for anyone in the real crew group,
     // no linked-worker check needed -- unlike the 3 write actions below,
     // these can't create or change anything.
-    const infoAction = matchGroupInfoAction(text)
+    const infoAction = matchGroupInfoAction(text, commandSettingsByKey)
     if (infoAction) {
       await handleGroupInfoQuery(settings, event.replyToken, infoAction)
       continue
