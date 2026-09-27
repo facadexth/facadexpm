@@ -359,7 +359,7 @@ function SalarySlipModal({ record, month, year, onClose }) {
 export default function HR() {
   const now = new Date()
   const { role, user, isAtLeast } = useUserRole()
-  const { tenant } = useTenant()
+  const { tenant, hasModuleAccess } = useTenant()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'hr')
   const [innerTab, setInnerTab] = useState('workers')
 
@@ -414,7 +414,7 @@ export default function HR() {
   const [reviewingId, setReviewingId] = useState(null)
 
   const fetchRequests = async () => {
-    if (!canEdit) return
+    if (!canEdit || !hasModuleAccess('line_bot')) return
     setLoadingRequests(true)
     const { data } = await supabase.from('leave_requests').select('*, workers(name, nickname)').order('requested_at', { ascending: false })
     setLeaveRequests(data || [])
@@ -836,8 +836,8 @@ export default function HR() {
   const INNER_TABS = [
     { id: 'workers',  label: '👷 ข้อมูลช่าง' },
     { id: 'payroll',  label: '💼 เงินเดือน' },
-    // Approval queue (เบิกของ/ขอลา จาก LINE) and audit log: ADMIN/OWNER only
-    ...(canEdit ? [{ id: 'requests', label: `🏖️ คำขอลา${pendingRequestCount ? ` (${pendingRequestCount})` : ''}` }] : []),
+    // Approval queue (เบิกของ/ขอลา จาก LINE) — only for tenants with the LINE bot module enabled, so other tenants don't see a tab for a feature they haven't set up
+    ...(canEdit && hasModuleAccess('line_bot') ? [{ id: 'requests', label: `🏖️ คำขอลา${pendingRequestCount ? ` (${pendingRequestCount})` : ''}` }] : []),
     ...(canEdit ? [{ id: 'audit', label: '📋 ประวัติการแก้ไข' }] : []),
   ]
 

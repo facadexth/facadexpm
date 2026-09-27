@@ -86,7 +86,7 @@ const TABS = [
     { id: 'suppliers',       label: '🏭 ผู้จำหน่าย',     minRole: 'ADMIN', module: null },
     { id: 'catalog_items',   label: '📦 รายการสินค้า', minRole: 'ADMIN', module: 'quotations' },
     { id: 'user_management', label: '👤 ผู้ใช้งาน',    minRole: 'OWNER', module: null },
-    { id: 'communication_center', label: '💬 การสื่อสาร', minRole: 'OWNER', module: null },
+    { id: 'communication_center', label: '💬 การสื่อสาร', minRole: 'OWNER', module: 'line_bot' },
   ] },
   { id: 'tenant_management', label: '🏢 ผู้ดูแลระบบ', minRole: 'WORKER', module: null, platformAdminOnly: true },
 ]
