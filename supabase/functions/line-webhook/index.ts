@@ -10,10 +10,20 @@
 // sign-link already established for its own public/unauthenticated
 // endpoint.
 //
-// Eight crew actions total, two entry points:
+// Eleven crew actions total, two entry points:
 //   - Typed keywords in the shared crew group -> immediate action.
-//     Scoped to the original three (แจ้งปัญหา/ขอเบิกของ/ขอลา) only --
-//     เช็คอิน/เช็คเอาท์/รูปภาพหน้างาน/งานเสร็จ/งานวันนี้ are 1:1-DM-only.
+//     Write actions scoped to the original three (แจ้งปัญหา/ขอเบิกของ/
+//     ขอลา) only -- เช็คอิน/เช็คเอาท์/รูปภาพหน้างาน/งานเสร็จ stay
+//     1:1-DM-only (needs a linked worker's own identity/location/photo).
+//     But งานวันนี้/งานวันพรุ่งนี้/งานอาทิตย์นี้/งานอาทิตย์หน้า -- the 4
+//     read-only status queries -- work in BOTH: in a DM they answer for
+//     the asking worker only (handleTodaysJobMenu/handleSingleDayQuery/
+//     handleWeekQuery); in the crew GROUP they answer for the WHOLE TEAM
+//     instead (matchGroupInfoAction/handleGroupInfoQuery, same
+//     grouped-by-site shape as the automated daily-assignments push) --
+//     "in group chat, i want it to be whole team work" was the explicit
+//     ask, since a personal answer posted into a shared group would be
+//     answering the wrong question for everyone else reading it.
 //   - The SAME trigger phrases (or a Rich Menu button tap, configured
 //     manually in LINE Official Account Manager to send fixed text) in
 //     a 1:1 DM -> two-step for the "needs a detail" actions (ask ->
@@ -72,6 +82,14 @@
 //                                 crew, no typing required), then asks
 //                                 for completion photo(s).
 //   "งานวันนี้"              -> handleTodaysJobMenu, see above
+//   "งานวันพรุ่งนี้"          -> handleSingleDayQuery: read-only, site +
+//                                 team's open tasks at that site for
+//                                 tomorrow, no action chips (nothing
+//                                 about a future day is actionable yet)
+//   "งานอาทิตย์นี้"/"งานอาทิตย์หน้า" -> handleWeekQuery: read-only, one
+//                                 line per day (Mon-Sun, matching this
+//                                 app's own week convention) showing
+//                                 which site that day, no task detail
 // plus a bare linking code sent as a DM -- either an OWNER/ADMIN's
 // (user_roles.line_link_code, Settings -> ทั่วไป issues it) or a
 // worker's own (workers.line_link_code, the PRIMARY way a worker gets
@@ -125,7 +143,7 @@ function truncateLabel(s: string, max = 20): string {
 }
 
 type GroupActionType = 'issue_report' | 'material_request' | 'leave'
-type DMOnlyActionType = 'check_in' | 'check_out' | 'site_photo' | 'job_done_start' | 'today_job'
+type DMOnlyActionType = 'check_in' | 'check_out' | 'site_photo' | 'job_done_start' | 'today_job' | 'tomorrow_job' | 'this_week_job' | 'next_week_job'
 type ActionType = GroupActionType | DMOnlyActionType
 type PendingActionType = GroupActionType | 'site_photo' | 'job_done_pick' | 'job_done' | 'check_in_location' | 'check_out_location'
 
@@ -211,9 +229,13 @@ function matchGroupAction(text: string): GroupActionType | null {
   return null
 }
 
-// Used by the 1:1 DM path -- all eight actions. เช็คอิน/เช็คเอาท์/
-// รูปภาพ/งานเสร็จ/งานวันนี้ don't collide with any existing phrase or
-// each other (checked: "งานวันนี้" doesn't contain "งานเสร็จ").
+// Used by the 1:1 DM path -- all eleven actions. เช็คอิน/เช็คเอาท์/
+// รูปภาพ/งานเสร็จ/งานวันนี้/งานวันพรุ่งนี้/งานอาทิตย์นี้/งานอาทิตย์หน้า don't
+// collide with any existing phrase or each other -- checked pairwise as
+// substrings (e.g. "งานวันนี้" is NOT a substring of "งานวันพรุ่งนี้": the
+// literal 9-char sequence ง-า-น-ว-ั-น-น-ี-้ never appears inside
+// ง-า-น-ว-ั-น-พ-ร-ุ-่-ง-น-ี-้). Order doesn't matter for correctness given
+// that, but the newer, longer phrases are still checked first.
 function matchDMAction(text: string): ActionType | null {
   const base = matchGroupAction(text)
   if (base) return base
@@ -221,6 +243,9 @@ function matchDMAction(text: string): ActionType | null {
   if (text.includes('เช็คเอาท์')) return 'check_out'
   if (text.includes('รูปภาพ')) return 'site_photo'
   if (text.includes('งานเสร็จ') || text.includes('เสร็จงาน')) return 'job_done_start'
+  if (text.includes('งานวันพรุ่งนี้')) return 'tomorrow_job'
+  if (text.includes('งานอาทิตย์นี้')) return 'this_week_job'
+  if (text.includes('งานอาทิตย์หน้า')) return 'next_week_job'
   if (text.includes('งานวันนี้')) return 'today_job'
   return null
 }
@@ -246,6 +271,54 @@ async function resolveTodaysSite(workerId: string, tenantId: string): Promise<{ 
   if (!assignment?.site_id) return null
   const { data: site } = await admin.from('sites').select('id, name').eq('id', assignment.site_id).maybeSingle()
   return site ?? null
+}
+
+const DOW_TH_SHORT = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
+// dateISO + N days, still in Bangkok terms (no DST to worry about).
+function bangkokDateISO(fromISO: string, daysOffset: number): string {
+  const d = new Date(`${fromISO}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + daysOffset)
+  return d.toISOString().slice(0, 10)
+}
+function formatDateTH(dateISO: string): string {
+  const d = new Date(`${dateISO}T00:00:00Z`)
+  const dow = DOW_TH_SHORT[d.getUTCDay()]
+  return `${dow} ${dateISO.slice(8, 10)}/${dateISO.slice(5, 7)}`
+}
+// Monday-Sunday, matching this app's own week convention (date-fns
+// startOfWeek/endOfWeek with weekStartsOn: 1 -- see
+// src/pages/assign/useAssignRange.js). weekOffset 0 = the week
+// containing today, 1 = next week.
+function bangkokWeekDates(weekOffset: number): string[] {
+  const today = bangkokToday()
+  const dow = new Date(`${today}T00:00:00Z`).getUTCDay() // 0=Sun..6=Sat
+  const mondayOffset = (dow === 0 ? -6 : 1 - dow) + weekOffset * 7
+  const monday = bangkokDateISO(today, mondayOffset)
+  return Array.from({ length: 7 }, (_, i) => bangkokDateISO(monday, i))
+}
+
+// Resolves a worker's real-site-work assignment for EACH of several
+// dates in one query (งานวันพรุ่งนี้/งานอาทิตย์นี้/งานอาทิตย์หน้า) --
+// same "real site work" filter as resolveTodaysSite, just batched
+// across a date range instead of pinned to today. A date with more
+// than one site assignment just takes the first, same simplification
+// resolveTodaysSite already makes.
+async function resolveSitesForDates(workerId: string, tenantId: string, dates: string[]): Promise<Map<string, { id: string; name: string }>> {
+  const { data } = await admin
+    .from('worker_assignments')
+    .select('date, site_id, sites(id, name)')
+    .eq('worker_id', workerId)
+    .eq('tenant_id', tenantId)
+    .in('date', dates)
+    .in('type', ['site', 'factory', 'subcontract'])
+    .not('site_id', 'is', null)
+  const bySite = new Map<string, { id: string; name: string }>()
+  for (const r of data ?? []) {
+    const date = r.date as string
+    const site = r.sites as { id: string; name: string } | null
+    if (site && !bySite.has(date)) bySite.set(date, site)
+  }
+  return bySite
 }
 
 // Resolves the worker's OWN currently-open Kanban tasks (not yet
@@ -423,6 +496,151 @@ async function handleTodaysJobMenu(
   options.push('แจ้งปัญหา', 'รูปภาพหน้างาน')
 
   await sendLineReply(settings.channel_access_token, replyToken, lines.join('\n'), options.map((o) => ({ label: truncateLabel(o), text: o })))
+}
+
+// งานวันพรุ่งนี้ -- same shape as handleTodaysJobMenu's info half (site +
+// team's open tasks at that site) but for a single future date, and
+// with no quick-reply action chips: เช็คอิน/เช็คเอาท์/งานเสร็จ only make
+// sense for TODAY, not a day that hasn't happened yet.
+async function handleSingleDayQuery(
+  worker: { id: string },
+  settings: { tenant_id: string; channel_access_token: string },
+  replyToken: string,
+  dateISO: string,
+  dayLabel: string,
+) {
+  const sites = await resolveSitesForDates(worker.id, settings.tenant_id, [dateISO])
+  const site = sites.get(dateISO)
+  if (!site) {
+    await sendLineReply(settings.channel_access_token, replyToken, `📅 ${dayLabel}: ไม่มีงานที่มอบหมาย`)
+    return
+  }
+  const tasks = await resolveOpenTasksForSite(site.id, settings.tenant_id)
+  const lines = [`📅 ${dayLabel}: ${site.name}`]
+  if (tasks.length) {
+    lines.push('', '🔧 งานที่ต้องทำ (ทั้งทีม):')
+    lines.push(...tasks.map((t) => `• ${t.name}`))
+  }
+  await sendLineReply(settings.channel_access_token, replyToken, lines.join('\n'))
+}
+
+// งานอาทิตย์นี้/งานอาทิตย์หน้า -- one line per day, no task detail (7 days
+// of task lists would be too much for a chat message). "— ว่าง —" marks
+// a day with no real site work assigned yet, same wording DayView.jsx
+// and the "คัดลอกสำหรับ LINE" export already use for an empty shift.
+async function handleWeekQuery(
+  worker: { id: string },
+  settings: { tenant_id: string; channel_access_token: string },
+  replyToken: string,
+  dates: string[],
+  weekLabel: string,
+) {
+  const sites = await resolveSitesForDates(worker.id, settings.tenant_id, dates)
+  const lines = [`📅 ${weekLabel}:`]
+  for (const dateISO of dates) {
+    const site = sites.get(dateISO)
+    lines.push(`${formatDateTH(dateISO)} — ${site ? site.name : '— ว่าง —'}`)
+  }
+  await sendLineReply(settings.channel_access_token, replyToken, lines.join('\n'))
+}
+
+// Team-wide version of the same 4 read-only queries, for the crew
+// GROUP (not DM): "in group chat, i want it to be whole team work"
+// -- reuses the exact same grouped-by-site shape as the automated
+// daily-assignments push (line-push-daily-assignments), just callable
+// on demand for any day/week instead of only firing once at 18:00 for
+// tomorrow. Doesn't require a linked worker -- these are read-only, and
+// the crew group itself is already the access boundary (checked by the
+// caller before this ever runs).
+type TeamSiteGroup = { siteName: string; siteNumber?: string; morning: string[]; evening: string[] }
+async function resolveTeamSitesForDate(tenantId: string, dateISO: string): Promise<TeamSiteGroup[]> {
+  const { data } = await admin
+    .from('worker_assignments')
+    .select('site_id, shift, type, workers(name, nickname), sites(name, site_number)')
+    .eq('tenant_id', tenantId)
+    .eq('date', dateISO)
+    .in('type', ['site', 'factory', 'subcontract'])
+    .not('site_id', 'is', null)
+  const bySite = new Map<string, TeamSiteGroup>()
+  for (const r of data ?? []) {
+    const worker = r.workers as { name?: string; nickname?: string } | null
+    const site = r.sites as { name?: string; site_number?: string } | null
+    const workerName = worker?.nickname || worker?.name || 'ไม่ทราบชื่อ'
+    const siteId = r.site_id as string
+    const group = bySite.get(siteId) ?? { siteName: site?.name || '-', siteNumber: site?.site_number, morning: [], evening: [] }
+    if (r.shift === 'evening') group.evening.push(workerName)
+    else group.morning.push(workerName)
+    bySite.set(siteId, group)
+  }
+  return [...bySite.values()]
+}
+function formatTeamDayMessage(dayLabel: string, siteGroups: TeamSiteGroup[]): string {
+  if (!siteGroups.length) return `📋 ${dayLabel}: ไม่มีงานที่มอบหมาย`
+  const lines = [`📋 ${dayLabel}:`]
+  siteGroups.forEach((g) => {
+    lines.push('')
+    lines.push(`🏗️ ${g.siteNumber ? `${g.siteNumber} ` : ''}${g.siteName}`.trim())
+    if (g.morning.length) lines.push(`🌅 เช้า: ${g.morning.join(', ')}`)
+    if (g.evening.length) lines.push(`🌆 บ่าย: ${g.evening.join(', ')}`)
+  })
+  return lines.join('\n')
+}
+// Week view stays compact (site names only, no per-worker breakdown) --
+// 7 days x every worker x every site would run well past a readable
+// chat message length.
+async function resolveTeamSiteNamesForDates(tenantId: string, dates: string[]): Promise<Map<string, string[]>> {
+  const { data } = await admin
+    .from('worker_assignments')
+    .select('date, site_id, sites(name)')
+    .eq('tenant_id', tenantId)
+    .in('date', dates)
+    .in('type', ['site', 'factory', 'subcontract'])
+    .not('site_id', 'is', null)
+  const byDate = new Map<string, Set<string>>()
+  for (const r of data ?? []) {
+    const date = r.date as string
+    const site = r.sites as { name?: string } | null
+    if (!site?.name) continue
+    if (!byDate.has(date)) byDate.set(date, new Set())
+    byDate.get(date)!.add(site.name)
+  }
+  const result = new Map<string, string[]>()
+  for (const [date, names] of byDate) result.set(date, [...names])
+  return result
+}
+function formatTeamWeekMessage(weekLabel: string, dates: string[], siteNamesByDate: Map<string, string[]>): string {
+  const lines = [`📅 ${weekLabel}:`]
+  for (const dateISO of dates) {
+    const names = siteNamesByDate.get(dateISO)
+    lines.push(`${formatDateTH(dateISO)} — ${names && names.length ? names.join(', ') : '— ว่าง —'}`)
+  }
+  return lines.join('\n')
+}
+
+type GroupInfoAction = 'today_job' | 'tomorrow_job' | 'this_week_job' | 'next_week_job'
+function matchGroupInfoAction(text: string): GroupInfoAction | null {
+  if (text.includes('งานวันพรุ่งนี้')) return 'tomorrow_job'
+  if (text.includes('งานอาทิตย์นี้')) return 'this_week_job'
+  if (text.includes('งานอาทิตย์หน้า')) return 'next_week_job'
+  if (text.includes('งานวันนี้')) return 'today_job'
+  return null
+}
+async function handleGroupInfoQuery(
+  settings: { tenant_id: string; channel_access_token: string },
+  replyToken: string,
+  action: GroupInfoAction,
+) {
+  if (action === 'today_job' || action === 'tomorrow_job') {
+    const dateISO = action === 'today_job' ? bangkokToday() : bangkokDateISO(bangkokToday(), 1)
+    const label = action === 'today_job' ? `วันนี้ (${formatDateTH(dateISO)})` : `พรุ่งนี้ (${formatDateTH(dateISO)})`
+    const groups = await resolveTeamSitesForDate(settings.tenant_id, dateISO)
+    await sendLineReply(settings.channel_access_token, replyToken, formatTeamDayMessage(label, groups))
+    return
+  }
+  const dates = bangkokWeekDates(action === 'this_week_job' ? 0 : 1)
+  const label = (action === 'this_week_job' ? 'งานอาทิตย์นี้' : 'งานอาทิตย์หน้า') + ` (${formatDateTH(dates[0])} - ${formatDateTH(dates[6])})`
+  const siteNamesByDate = await resolveTeamSiteNamesForDates(settings.tenant_id, dates)
+  await sendLineReply(settings.channel_access_token, replyToken, formatTeamWeekMessage(label, dates, siteNamesByDate))
 }
 
 // รูปภาพหน้างาน accepts MULTIPLE photos per session -- each one uploads
@@ -808,6 +1026,15 @@ Deno.serve(async (req) => {
           await handleJobDoneStart(worker, settings, event.replyToken)
         } else if (action === 'today_job') {
           await handleTodaysJobMenu(worker, settings, event.replyToken)
+        } else if (action === 'tomorrow_job') {
+          const dateISO = bangkokDateISO(bangkokToday(), 1)
+          await handleSingleDayQuery(worker, settings, event.replyToken, dateISO, `พรุ่งนี้ (${formatDateTH(dateISO)})`)
+        } else if (action === 'this_week_job') {
+          const dates = bangkokWeekDates(0)
+          await handleWeekQuery(worker, settings, event.replyToken, dates, `งานอาทิตย์นี้ (${formatDateTH(dates[0])} - ${formatDateTH(dates[6])})`)
+        } else if (action === 'next_week_job') {
+          const dates = bangkokWeekDates(1)
+          await handleWeekQuery(worker, settings, event.replyToken, dates, `งานอาทิตย์หน้า (${formatDateTH(dates[0])} - ${formatDateTH(dates[6])})`)
         } else if (action) {
           // issue_report / material_request / leave / site_photo --
           // two-step: ask for detail, consume the next matching message.
@@ -842,6 +1069,16 @@ Deno.serve(async (req) => {
         { onConflict: 'tenant_id,group_id' }
       )
       if (groupError) console.error('line_unrecognized_groups upsert failed', groupError)
+      continue
+    }
+
+    // Read-only team-wide status queries (งานวันนี้/งานวันพรุ่งนี้/
+    // งานอาทิตย์นี้/งานอาทิตย์หน้า) work for anyone in the real crew group,
+    // no linked-worker check needed -- unlike the 3 write actions below,
+    // these can't create or change anything.
+    const infoAction = matchGroupInfoAction(text)
+    if (infoAction) {
+      await handleGroupInfoQuery(settings, event.replyToken, infoAction)
       continue
     }
 
