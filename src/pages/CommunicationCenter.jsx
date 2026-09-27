@@ -238,6 +238,7 @@ export default function CommunicationCenter() {
   const [loadingGroups, setLoadingGroups] = useState(true)
   const [groupActionId, setGroupActionId] = useState(null)
   const [dismissGroup, setDismissGroup] = useState(null)
+  const [useGroupTarget, setUseGroupTarget] = useState(null)
 
   const fetchUnrecognizedGroups = async () => {
     setLoadingGroups(true)
@@ -250,21 +251,22 @@ export default function CommunicationCenter() {
   }
   useEffect(() => { fetchUnrecognizedGroups() }, [])
 
-  const handleUseGroup = async (group) => {
-    if (!confirm(`ตั้งกลุ่มนี้เป็นกลุ่มทีมงาน?\n\n${group.group_id}\n\nข้อความล่าสุด: "${group.sample_text || '-'}"\n\nระบบจะแจ้งงานประจำวันและข้อความอัตโนมัติอื่นๆ เข้ากลุ่มนี้แทนกลุ่มเดิม`)) return
-    setGroupActionId(group.id)
+  const handleUseGroup = async () => {
+    if (!useGroupTarget) return
+    setGroupActionId(useGroupTarget.id)
     try {
-      const { error: e1 } = await supabase.from('line_settings').update({ crew_group_id: group.group_id, updated_at: new Date().toISOString() }).eq('tenant_id', tenant.id)
+      const { error: e1 } = await supabase.from('line_settings').update({ crew_group_id: useGroupTarget.group_id, updated_at: new Date().toISOString() }).eq('tenant_id', tenant.id)
       if (e1) throw e1
-      const { error: e2 } = await supabase.from('line_unrecognized_groups').delete().eq('id', group.id)
+      const { error: e2 } = await supabase.from('line_unrecognized_groups').delete().eq('id', useGroupTarget.id)
       if (e2) throw e2
-      setUnrecognizedGroups(list => list.filter(g => g.id !== group.id))
+      setUnrecognizedGroups(list => list.filter(g => g.id !== useGroupTarget.id))
       fetchLineSettings()
       alert('✅ ตั้งเป็นกลุ่มทีมงานแล้ว')
     } catch (e) {
       alert('Error: ' + e.message)
     } finally {
       setGroupActionId(null)
+      setUseGroupTarget(null)
     }
   }
 
@@ -505,7 +507,7 @@ export default function CommunicationCenter() {
                     <td style={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.sample_text || '-'}</td>
                     <td style={{ fontSize: 12, color: 'var(--text3)' }}>{new Date(g.last_seen_at).toLocaleString('th-TH')}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn btn-sm btn-primary" disabled={groupActionId === g.id} onClick={() => handleUseGroup(g)}>ใช้กลุ่มนี้</button>
+                      <button className="btn btn-sm btn-primary" disabled={groupActionId === g.id} onClick={() => setUseGroupTarget(g)}>ใช้กลุ่มนี้</button>
                       <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} disabled={groupActionId === g.id} onClick={() => setDismissGroup(g)}>ลบ</button>
                     </td>
                   </tr>
@@ -621,6 +623,21 @@ export default function CommunicationCenter() {
           message="ลบกลุ่มนี้ออกจากรายการ? ใช้เมื่อไม่ใช่กลุ่มที่ต้องการ (เช่น กลุ่มทดสอบหรือกลุ่มอื่นที่ไม่เกี่ยวข้อง)"
           onConfirm={handleDismissGroup}
           onCancel={() => setDismissGroup(null)}
+        />
+      )}
+
+      {useGroupTarget && (
+        <ConfirmDialog
+          title="ตั้งกลุ่มนี้เป็นกลุ่มทีมงาน"
+          message={
+            <>
+              <div style={{ fontFamily: 'monospace', fontSize: 12.5 }}>{useGroupTarget.group_id}</div>
+              <div style={{ margin: '8px 0' }}>ข้อความล่าสุด: "{useGroupTarget.sample_text || '-'}"</div>
+              <div>ระบบจะแจ้งงานประจำวันและข้อความอัตโนมัติอื่นๆ เข้ากลุ่มนี้แทนกลุ่มเดิม</div>
+            </>
+          }
+          onConfirm={handleUseGroup}
+          onCancel={() => setUseGroupTarget(null)}
         />
       )}
     </div>
