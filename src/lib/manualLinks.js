@@ -34,6 +34,7 @@ export const MANUAL_ANCHORS = {
   catalog_items:       'page-categories-etc',
   user_management:     'page-users',
   tenant_management:   'page-tenant',
+  communication_center: 'page-line-bot',
 }
 
 // role/isPlatformAdmin/theme are all optional -- omitted (e.g. a plain
