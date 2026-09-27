@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   isQuotationFollowupDue, isChequeReminderDue, isSiteInvoiceDueThisMonth,
-  formatAssignmentPushMessage, formatQuotationFollowupMessage,
+  formatDailyAssignmentsPushMessage, formatQuotationFollowupMessage,
   formatChequeReminderMessage, formatInvoiceDueMessage,
 } from './lineNotifications.js'
 
@@ -72,12 +72,26 @@ describe('isSiteInvoiceDueThisMonth', () => {
 })
 
 describe('message formatters', () => {
-  it('formats a daily assignment push listing every site for that worker', () => {
-    const msg = formatAssignmentPushMessage('ลิด', [{ siteName: 'SOAP OPERA', zone: null }, { siteName: 'FX-2026-001', zone: 'ชั้น 3' }])
-    expect(msg).toContain('ลิด')
+  it('formats one combined daily-assignments push covering every site, not one per worker', () => {
+    const msg = formatDailyAssignmentsPushMessage('2026-09-28', [
+      { siteName: 'SOAP OPERA', siteNumber: 'FX-2026-001', morning: ['ลิด', 'ซัง'], evening: [] },
+      { siteName: 'บ้านคุณนัตตี้', siteNumber: '', morning: [], evening: ['กร'] },
+    ])
     expect(msg).toContain('SOAP OPERA')
     expect(msg).toContain('FX-2026-001')
-    expect(msg).toContain('ชั้น 3')
+    expect(msg).toContain('ลิด, ซัง')
+    expect(msg).toContain('บ้านคุณนัตตี้')
+    expect(msg).toContain('กร')
+    // one message, not fanned out per worker
+    expect(msg.split('🏗️').length - 1).toBe(2)
+  })
+
+  it('omits an empty morning/evening line rather than showing "— ว่าง —" in the push', () => {
+    const msg = formatDailyAssignmentsPushMessage('2026-09-28', [
+      { siteName: 'SOAP OPERA', siteNumber: '', morning: ['ลิด'], evening: [] },
+    ])
+    expect(msg).toContain('🌅 เช้า: ลิด')
+    expect(msg).not.toContain('🌆 บ่าย')
   })
 
   it('formats a quotation follow-up reminder with the quotation number and days elapsed', () => {

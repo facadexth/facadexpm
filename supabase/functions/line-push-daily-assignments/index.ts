@@ -1,9 +1,16 @@
 // supabase/functions/line-push-daily-assignments/index.ts
 // Scheduled (Supabase Cron -- see
 // supabase/migrations/2026-09-19-02-line-push-cron.sql) daily push of
-// each worker's next-day assignment to their tenant's LINE crew group.
-// One message PER WORKER (not one combined message) so a single
-// worker's assignment stays findable in a busy group chat.
+// tomorrow's site assignments to each tenant's LINE crew group -- ONE
+// combined message per tenant per day, grouped by site (same shape as
+// Assign.jsx's "คัดลอกสำหรับ LINE" button, src/pages/assign/lineExport.js),
+// not one message per worker. The original per-worker design burned
+// through LINE's monthly free push quota N times faster for zero
+// benefit -- flagged live (2026-09-27) after the daily-assignments
+// push alone was already ~230 of a 300/month quota with 9-10 workers/day,
+// before counting anything else that pushes (cheque/invoice reminders,
+// เบิกของ/ขอลา admin notifications). A single combined send says the
+// same thing in one call.
 //
 // "Real site work (not leave/holiday)" filter: this codebase's own
 // established definition of that phrase is in
@@ -57,15 +64,21 @@ function bangkokTomorrowISO(): string {
   return bkk.toISOString().slice(0, 10)
 }
 
+const DOW_TH = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
+
 // Ported line-for-line from src/lib/lineNotifications.js's
-// formatAssignmentPushMessage -- keep in sync with that file. `zone`
-// isn't available on worker_assignments in this codebase (it only
-// exists on phase_tasks, a different table) so it's always omitted
-// here; the function already degrades gracefully to the plain
-// site-name line when zone is absent.
-function formatAssignmentPushMessage(workerName: string, assignments: { siteName: string; zone?: string }[]): string {
-  const lines = assignments.map((a) => (a.zone ? `• ${a.siteName} (${a.zone})` : `• ${a.siteName}`))
-  return `📋 พรุ่งนี้ ${workerName} ทำงานที่:\n${lines.join('\n')}`
+// formatDailyAssignmentsPushMessage -- keep in sync with that file.
+type SiteGroup = { siteName: string; siteNumber?: string; morning: string[]; evening: string[] }
+function formatDailyAssignmentsPushMessage(dateISO: string, siteGroups: SiteGroup[]): string {
+  const dow = DOW_TH[new Date(dateISO).getDay()]
+  const lines = [`📋 พรุ่งนี้ (${dow}) ทำงานที่:`]
+  siteGroups.forEach((g) => {
+    lines.push('')
+    lines.push(`🏗️ ${g.siteNumber ? `${g.siteNumber} ` : ''}${g.siteName}`.trim())
+    if (g.morning.length) lines.push(`🌅 เช้า: ${g.morning.join(', ')}`)
+    if (g.evening.length) lines.push(`🌆 บ่าย: ${g.evening.join(', ')}`)
+  })
+  return lines.join('\n')
 }
 
 Deno.serve(async (req) => {
@@ -83,13 +96,14 @@ Deno.serve(async (req) => {
   let tenantsProcessed = 0
   let messagesPushed = 0
   let pushFailures = 0
+  let tenantsSkippedEmpty = 0
 
   for (const settings of settingsRows ?? []) {
     tenantsProcessed++
 
     const { data: rows, error } = await admin
       .from('worker_assignments')
-      .select('worker_id, site_id, type, workers(name, nickname), sites(name, site_number)')
+      .select('site_id, shift, type, workers(name, nickname), sites(name, site_number)')
       .eq('tenant_id', settings.tenant_id)
       .eq('date', tomorrow)
       .not('site_id', 'is', null)
@@ -98,28 +112,32 @@ Deno.serve(async (req) => {
       console.error('worker_assignments query failed', settings.tenant_id, error)
       continue
     }
+    if (!rows || rows.length === 0) { tenantsSkippedEmpty++; continue }
 
-    const byWorker = new Map<string, { name: string; assignments: { siteName: string }[] }>()
-    for (const r of rows ?? []) {
+    // Grouped by site, not by worker -- one combined message per
+    // tenant instead of one push per worker (see file header).
+    const bySite = new Map<string, SiteGroup>()
+    for (const r of rows) {
       const worker = r.workers as { name?: string; nickname?: string } | null
       const site = r.sites as { name?: string; site_number?: string } | null
       const workerName = worker?.nickname || worker?.name || 'ไม่ทราบชื่อ'
-      const siteName = site?.name || site?.site_number || '-'
-      const entry = byWorker.get(r.worker_id as string) ?? { name: workerName, assignments: [] }
-      entry.assignments.push({ siteName })
-      byWorker.set(r.worker_id as string, entry)
+      const siteId = r.site_id as string
+      const group = bySite.get(siteId) ?? {
+        siteName: site?.name || '-', siteNumber: site?.site_number, morning: [], evening: [],
+      }
+      if (r.shift === 'evening') group.evening.push(workerName)
+      else group.morning.push(workerName)
+      bySite.set(siteId, group)
     }
 
-    for (const { name, assignments } of byWorker.values()) {
-      const message = formatAssignmentPushMessage(name, assignments)
-      const result = await sendLinePush(settings.channel_access_token, settings.crew_group_id as string, message)
-      if (result.ok) messagesPushed++
-      else {
-        pushFailures++
-        console.error('sendLinePush failed', settings.tenant_id, result.status)
-      }
+    const message = formatDailyAssignmentsPushMessage(tomorrow, [...bySite.values()])
+    const result = await sendLinePush(settings.channel_access_token, settings.crew_group_id as string, message)
+    if (result.ok) messagesPushed++
+    else {
+      pushFailures++
+      console.error('sendLinePush failed', settings.tenant_id, result.status)
     }
   }
 
-  return json({ ok: true, tenantsProcessed, messagesPushed, pushFailures })
+  return json({ ok: true, tenantsProcessed, tenantsSkippedEmpty, messagesPushed, pushFailures })
 })

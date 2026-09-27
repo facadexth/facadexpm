@@ -46,9 +46,29 @@ export function isSiteInvoiceDueThisMonth(site, todayISO) {
   return !(last.getFullYear() === today.getFullYear() && last.getMonth() === today.getMonth())
 }
 
-export function formatAssignmentPushMessage(workerName, assignments) {
-  const lines = assignments.map((a) => a.zone ? `• ${a.siteName} (${a.zone})` : `• ${a.siteName}`)
-  return `📋 พรุ่งนี้ ${workerName} ทำงานที่:\n${lines.join('\n')}`
+const DOW_TH = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
+
+// One combined message for the WHOLE crew group, grouped by site --
+// same shape as Assign.jsx's "คัดลอกสำหรับ LINE" (src/pages/assign/lineExport.js's
+// formatDayBlock), so the automated push reads exactly like what an
+// admin would paste in by hand. Replaces the old one-push-per-worker
+// design: that sent N separate push messages to the SAME group every
+// day (N = workers with a site assignment tomorrow), burning through
+// LINE's monthly free push quota N times faster than necessary for
+// zero benefit -- a single combined message says the same thing in
+// one send. `siteGroups`: [{ siteName, siteNumber, morning: string[],
+// evening: string[] }], already resolved to display names/numbers and
+// already excluding empty sites.
+export function formatDailyAssignmentsPushMessage(dateISO, siteGroups) {
+  const dow = DOW_TH[new Date(dateISO).getDay()]
+  const lines = [`📋 พรุ่งนี้ (${dow}) ทำงานที่:`]
+  siteGroups.forEach((g) => {
+    lines.push('')
+    lines.push(`🏗️ ${g.siteNumber ? `${g.siteNumber} ` : ''}${g.siteName}`.trim())
+    if (g.morning.length) lines.push(`🌅 เช้า: ${g.morning.join(', ')}`)
+    if (g.evening.length) lines.push(`🌆 บ่าย: ${g.evening.join(', ')}`)
+  })
+  return lines.join('\n')
 }
 
 export function formatQuotationFollowupMessage(quotation) {
