@@ -2,9 +2,15 @@ import { describe, it, expect } from 'vitest'
 import {
   phrasesCollide,
   resolveEffectivePhrase,
+  resolveEffectivePhrases,
   resolveEnabled,
   validateCustomPhrase,
+  splitPhrases,
   SCHEDULE_COMMAND_DEFAULTS,
+  SCHEDULE_COMMAND_KEYS,
+  FIXED_COMMAND_KEYS,
+  ALL_COMMAND_KEYS,
+  RESERVED_PHRASES,
 } from './lineCommandSettings.js'
 
 describe('phrasesCollide', () => {
@@ -67,5 +73,52 @@ describe('validateCustomPhrase', () => {
   it('accepts a genuinely non-colliding new phrase', () => {
     const result = validateCustomPhrase('เช็คตารางวันนี้', 'today_job', {})
     expect(result.valid).toBe(true)
+  })
+  it('validates every phrase in a comma-separated multi-phrase input', () => {
+    const result = validateCustomPhrase('เช็คงานวันนี้,ขอเบิกของ', 'today_job', {})
+    expect(result.valid).toBe(false)
+    expect(result.reason).toMatch(/ขอเบิก/)
+  })
+  it('accepts a multi-phrase input where every phrase is clean', () => {
+    const result = validateCustomPhrase('เช็คงานวันนี้, ดูงานวันนี้ ,งานวันนี้จ้า', 'today_job', {})
+    expect(result.valid).toBe(true)
+  })
+})
+
+describe('splitPhrases', () => {
+  it('splits, trims, and drops empty fragments', () => {
+    expect(splitPhrases('a, b ,,c')).toEqual(['a', 'b', 'c'])
+  })
+  it('returns an empty array for blank input', () => {
+    expect(splitPhrases('')).toEqual([])
+    expect(splitPhrases(null)).toEqual([])
+  })
+})
+
+describe('resolveEffectivePhrases', () => {
+  it('returns the default as a single-item array when no custom phrase is set', () => {
+    expect(resolveEffectivePhrases('today_job', {})).toEqual([SCHEDULE_COMMAND_DEFAULTS.today_job])
+  })
+  it('returns every comma-separated custom phrase', () => {
+    const settings = { today_job: { enabled: true, custom_phrase: 'สรุปงานวันนี้,เช็คงานวันนี้' } }
+    expect(resolveEffectivePhrases('today_job', settings)).toEqual(['สรุปงานวันนี้', 'เช็คงานวันนี้'])
+  })
+  it('resolveEffectivePhrase returns the first of the multi-phrase list', () => {
+    const settings = { today_job: { enabled: true, custom_phrase: 'สรุปงานวันนี้,เช็คงานวันนี้' } }
+    expect(resolveEffectivePhrase('today_job', settings)).toBe('สรุปงานวันนี้')
+  })
+})
+
+describe('command key coverage', () => {
+  it('ALL_COMMAND_KEYS is exactly the 4 schedule + 7 fixed keys, 11 total', () => {
+    expect(ALL_COMMAND_KEYS).toHaveLength(11)
+    expect(ALL_COMMAND_KEYS).toEqual([...SCHEDULE_COMMAND_KEYS, ...FIXED_COMMAND_KEYS])
+  })
+  it('resolveEnabled generalizes to fixed (non-schedule) command keys', () => {
+    expect(resolveEnabled('material_request', {})).toBe(true)
+    expect(resolveEnabled('material_request', { material_request: { enabled: false } })).toBe(false)
+  })
+  it('RESERVED_PHRASES is derived from the fixed commands, not hand-duplicated', () => {
+    expect(RESERVED_PHRASES).toEqual(expect.arrayContaining(['เบิกของ', 'ขอลา', 'เช็คอิน', 'เช็คเอาท์', 'รูปภาพ', 'งานเสร็จ']))
   })
 })

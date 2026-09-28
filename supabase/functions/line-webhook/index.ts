@@ -237,15 +237,22 @@ function matchGroupAction(text: string): GroupActionType | null {
 // ง-า-น-ว-ั-น-พ-ร-ุ-่-ง-น-ี-้). Order doesn't matter for correctness given
 // that, but the newer, longer phrases are still checked first.
 // The 4 schedule-query phrases below are OWNER-configurable (enable/
-// disable + rename) via line_command_settings -- see
-// 2026-09-27-06-line-command-settings.sql. SCHEDULE_COMMAND_DEFAULTS/
-// resolveEffectivePhrase/resolveEnabled are a hand-ported copy of
+// disable + rename, rename supports multiple comma-separated synonyms)
+// via line_command_settings -- see 2026-09-27-06-line-command-settings.sql
+// + 2026-09-28-02-line-command-settings-all-11.sql (widened to cover
+// enable/disable for all 11 commands, per explicit user ask). The
+// definitions below are a hand-ported copy of
 // src/lib/lineCommandSettings.js (same "port the pure logic" pattern
 // as formatDailyAssignmentsPushMessage -- Deno can't import Vite-
-// bundled files). Collision-safety between phrases is enforced at
-// SAVE time (CommunicationCenter.jsx's validateCustomPhrase, same
-// ported source), not here -- this function just resolves whatever
-// phrase is currently configured.
+// bundled files). Collision-safety between phrases is enforced at SAVE
+// time (CommunicationCenter.jsx's validateCustomPhrase, same ported
+// source), not here -- these functions just resolve/match whatever is
+// currently configured. NOTE: neither matchDMAction nor
+// matchGroupInfoAction check `enabled` internally anymore -- they
+// report ANY match regardless of enabled state, and every call site
+// does the enabled-check + "feature disabled" reply uniformly instead
+// (see DISABLED_MESSAGE below), so a disabled command gets an explicit
+// reply rather than silently doing nothing.
 const SCHEDULE_COMMAND_DEFAULTS: Record<string, string> = {
   today_job: 'งานวันนี้',
   tomorrow_job: 'งานวันพรุ่งนี้',
@@ -254,15 +261,20 @@ const SCHEDULE_COMMAND_DEFAULTS: Record<string, string> = {
 }
 type CommandSettingsRow = { command_key: string; enabled: boolean; custom_phrase: string | null }
 type CommandSettingsByKey = Record<string, CommandSettingsRow>
-function resolveEffectivePhrase(commandKey: string, settingsByKey: CommandSettingsByKey): string {
+function splitPhrases(raw: string | null | undefined): string[] {
+  return (raw || '').split(',').map((s) => s.trim()).filter(Boolean)
+}
+function resolveEffectivePhrases(commandKey: string, settingsByKey: CommandSettingsByKey): string[] {
   const row = settingsByKey[commandKey]
-  return row?.custom_phrase || SCHEDULE_COMMAND_DEFAULTS[commandKey]
+  const custom = splitPhrases(row?.custom_phrase)
+  return custom.length ? custom : [SCHEDULE_COMMAND_DEFAULTS[commandKey]]
 }
 function resolveEnabled(commandKey: string, settingsByKey: CommandSettingsByKey): boolean {
   const row = settingsByKey[commandKey]
   return row ? row.enabled !== false : true
 }
 const SCHEDULE_COMMAND_ORDER = ['tomorrow_job', 'this_week_job', 'next_week_job', 'today_job'] as const
+const DISABLED_MESSAGE = '⚠️ ฟีเจอร์นี้ปิดอยู่ขณะนี้ กรุณาติดต่อแอดมินโดยตรงครับ'
 
 function matchDMAction(text: string, commandSettings: CommandSettingsByKey): ActionType | null {
   const base = matchGroupAction(text)
@@ -272,8 +284,7 @@ function matchDMAction(text: string, commandSettings: CommandSettingsByKey): Act
   if (text.includes('รูปภาพ')) return 'site_photo'
   if (text.includes('งานเสร็จ') || text.includes('เสร็จงาน')) return 'job_done_start'
   for (const key of SCHEDULE_COMMAND_ORDER) {
-    if (!resolveEnabled(key, commandSettings)) continue
-    if (text.includes(resolveEffectivePhrase(key, commandSettings))) return key
+    if (resolveEffectivePhrases(key, commandSettings).some((p) => text.includes(p))) return key
   }
   return null
 }
@@ -648,8 +659,7 @@ function formatTeamWeekMessage(weekLabel: string, dates: string[], siteNamesByDa
 type GroupInfoAction = 'today_job' | 'tomorrow_job' | 'this_week_job' | 'next_week_job'
 function matchGroupInfoAction(text: string, commandSettings: CommandSettingsByKey): GroupInfoAction | null {
   for (const key of SCHEDULE_COMMAND_ORDER) {
-    if (!resolveEnabled(key, commandSettings)) continue
-    if (text.includes(resolveEffectivePhrase(key, commandSettings))) return key as GroupInfoAction
+    if (resolveEffectivePhrases(key, commandSettings).some((p) => text.includes(p))) return key as GroupInfoAction
   }
   return null
 }
@@ -1056,7 +1066,9 @@ Deno.serve(async (req) => {
 
       if (msgType === 'text' && text) {
         const action = matchDMAction(text, commandSettingsByKey)
-        if (action === 'check_in') {
+        if (action && !resolveEnabled(action, commandSettingsByKey)) {
+          await sendLineReply(settings.channel_access_token, event.replyToken, DISABLED_MESSAGE)
+        } else if (action === 'check_in') {
           await handleCheckInStart(worker, settings, event.replyToken)
         } else if (action === 'check_out') {
           await handleCheckOutStart(worker, settings, event.replyToken)
@@ -1126,7 +1138,11 @@ Deno.serve(async (req) => {
     // these can't create or change anything.
     const infoAction = matchGroupInfoAction(text, commandSettingsByKey)
     if (infoAction) {
-      await handleGroupInfoQuery(settings, event.replyToken, infoAction)
+      if (!resolveEnabled(infoAction, commandSettingsByKey)) {
+        await sendLineReply(settings.channel_access_token, event.replyToken, DISABLED_MESSAGE)
+      } else {
+        await handleGroupInfoQuery(settings, event.replyToken, infoAction)
+      }
       continue
     }
 
@@ -1146,7 +1162,13 @@ Deno.serve(async (req) => {
     }
 
     const action = matchGroupAction(text)
-    if (action) await handleAction(action, worker, text, settings, event.replyToken)
+    if (action) {
+      if (!resolveEnabled(action, commandSettingsByKey)) {
+        await sendLineReply(settings.channel_access_token, event.replyToken, DISABLED_MESSAGE)
+      } else {
+        await handleAction(action, worker, text, settings, event.replyToken)
+      }
+    }
   }
 
   return json({ ok: true })

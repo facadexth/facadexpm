@@ -11,13 +11,36 @@ import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useAppSetting, saveAppSetting } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
-import { SCHEDULE_COMMAND_KEYS, SCHEDULE_COMMAND_DEFAULTS, resolveEnabled, resolveEffectivePhrase, validateCustomPhrase } from '../lib/lineCommandSettings.js'
+import {
+  SCHEDULE_COMMAND_KEYS, SCHEDULE_COMMAND_DEFAULTS, FIXED_COMMAND_KEYS, FIXED_COMMAND_LABELS, FIXED_COMMAND_PHRASES,
+  resolveEnabled, resolveEffectivePhrases, validateCustomPhrase,
+} from '../lib/lineCommandSettings.js'
 
 const SCHEDULE_COMMAND_DESCRIPTIONS = {
   today_job: 'แชทส่วนตัว: งานของตัวเอง + ปุ่มลัดตามสถานะ (เช็คอิน/เช็คเอาท์/งานเสร็จ) · กลุ่ม: งานของทั้งทีมวันนี้ แบ่งตามไซต์',
   tomorrow_job: 'เหมือนงานวันนี้ แต่เป็นของพรุ่งนี้',
   this_week_job: 'สรุป 7 วัน (จ-อา) ของอาทิตย์นี้ ทีละบรรทัด',
   next_week_job: 'สรุป 7 วัน (จ-อา) ของอาทิตย์หน้า ทีละบรรทัด',
+}
+
+const FIXED_COMMAND_WHERE = {
+  issue_report: 'กลุ่มทีมงาน',
+  material_request: 'กลุ่มทีมงาน',
+  leave: 'กลุ่มทีมงาน',
+  check_in: 'แชทส่วนตัวเท่านั้น',
+  check_out: 'แชทส่วนตัวเท่านั้น',
+  site_photo: 'แชทส่วนตัวเท่านั้น',
+  job_done_start: 'แชทส่วนตัวเท่านั้น',
+}
+
+const FIXED_COMMAND_DESCRIPTIONS = {
+  issue_report: 'บันทึกแจ้งปัญหาหน้างาน',
+  material_request: 'ส่งลิงก์ฟอร์มเบิกของ (ใช้ได้ 30 นาที)',
+  leave: 'ส่งลิงก์ฟอร์มขอลา (ใช้ได้ 30 นาที)',
+  check_in: 'ขอแชร์ตำแหน่ง แล้วบันทึกเช็คอิน (ต้องอยู่ในรัศมีไซต์งาน)',
+  check_out: 'ขอแชร์ตำแหน่ง แล้วบันทึกเช็คเอาท์ (ต้องอยู่ในรัศมีไซต์งาน)',
+  site_photo: 'ส่งรูปหน้างาน (ส่งได้หลายรูป จบด้วย "เสร็จแล้ว")',
+  job_done_start: 'ปิดการ์ด Kanban งานที่ทำอยู่ + แนบรูปงานเสร็จ',
 }
 
 // Ambiguous-looking characters (0/O, 1/I/L) dropped on purpose -- these
@@ -313,14 +336,17 @@ export default function CommunicationCenter() {
     }
   }
 
-  // ---- Custom command settings -- lets OWNER enable/disable and
-  // rename the 4 read-only schedule-query commands (see
-  // 2026-09-27-06-line-command-settings.sql). Deliberately scoped to
-  // only these 4 -- the 7 write-action commands stay hardcoded, not
-  // something to cherry-pick. A missing row for a command_key means
-  // "enabled, default phrase" (resolveEnabled/resolveEffectivePhrase
-  // handle that fallback), so this fetch can come back empty and the
-  // page still renders every command correctly.
+  // ---- Custom command settings -- lets OWNER enable/disable ALL 11
+  // crew bot commands (widened 2026-09-28 from just the 4 schedule
+  // ones, per explicit ask), and additionally rename the 4 read-only
+  // schedule-query commands (2026-09-27-06-line-command-settings.sql +
+  // 2026-09-28-02-line-command-settings-all-11.sql). Rename supports
+  // multiple comma-separated phrases; the other 7's phrases stay fixed
+  // in code (matchGroupAction/matchDMAction), toggle-only. A missing
+  // row for a command_key means "enabled, default phrase"
+  // (resolveEnabled/resolveEffectivePhrases handle that fallback), so
+  // this fetch can come back empty and the page still renders every
+  // command correctly.
   const [commandSettings, setCommandSettings] = useState([])
   const commandSettingsByKey = Object.fromEntries(commandSettings.map(r => [r.command_key, r]))
   const [editingCommandKey, setEditingCommandKey] = useState(null)
@@ -473,7 +499,7 @@ export default function CommunicationCenter() {
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>📖 คำสั่งที่พิมพ์ได้ในไลน์</div>
         <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text3)', borderBottom: '1px solid var(--border)' }}>
-          คำสั่งดูตารางงาน 4 อันแรกเปิด/ปิด และเปลี่ยนคำสั่งได้จากหน้านี้ — ที่เหลือกำหนดไว้ในระบบตายตัว
+          เปิด/ปิดได้ทุกคำสั่ง — คำสั่งดูตารางงาน 4 อันแรกเปลี่ยนคำที่ใช้พิมพ์ได้ด้วย (ใส่ได้หลายคำ คั่นด้วยจุลภาค ",") ที่เหลือกำหนดคำไว้ในระบบตายตัว แต่ปิดเปิดได้เหมือนกัน
         </div>
         <div className="table-wrap">
           <table>
@@ -488,16 +514,16 @@ export default function CommunicationCenter() {
             <tbody>
               {SCHEDULE_COMMAND_KEYS.map(key => {
                 const enabled = resolveEnabled(key, commandSettingsByKey)
-                const phrase = resolveEffectivePhrase(key, commandSettingsByKey)
+                const phrases = resolveEffectivePhrases(key, commandSettingsByKey)
                 const isEditing = editingCommandKey === key
                 const isSaving = savingCommandKey === key
                 return (
                   <tr key={key} style={{ opacity: enabled ? 1 : 0.5 }}>
                     <td style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap' }}>
                       {isEditing ? (
-                        <input className="input" style={{ fontSize: 12, padding: '3px 6px', width: 160 }} value={editPhraseValue}
-                          onChange={e => setEditPhraseValue(e.target.value)} placeholder={SCHEDULE_COMMAND_DEFAULTS[key]} autoFocus />
-                      ) : phrase}
+                        <input className="input" style={{ fontSize: 12, padding: '3px 6px', width: 220 }} value={editPhraseValue}
+                          onChange={e => setEditPhraseValue(e.target.value)} placeholder={`${SCHEDULE_COMMAND_DEFAULTS[key]}, ...`} autoFocus />
+                      ) : phrases.join(' / ')}
                     </td>
                     <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>แชทส่วนตัว + กลุ่ม</td>
                     <td style={{ fontSize: 12.5 }}>{SCHEDULE_COMMAND_DESCRIPTIONS[key]}</td>
@@ -517,27 +543,31 @@ export default function CommunicationCenter() {
                   </tr>
                 )
               })}
-              {[
-                ['เช็คอิน / เช็คเอาท์', 'แชทส่วนตัวเท่านั้น', 'ขอแชร์ตำแหน่ง แล้วบันทึกเช็คอิน/เอาท์ (ต้องอยู่ในรัศมีไซต์งาน)'],
-                ['รูปภาพหน้างาน', 'แชทส่วนตัวเท่านั้น', 'ส่งรูปหน้างาน (ส่งได้หลายรูป จบด้วย "เสร็จแล้ว")'],
-                ['งานเสร็จ / เสร็จงาน', 'แชทส่วนตัวเท่านั้น', 'ปิดการ์ด Kanban งานที่ทำอยู่ + แนบรูปงานเสร็จ'],
-                ['แจ้งปัญหา (มีคำว่า "ปัญหา")', 'กลุ่มทีมงาน', 'บันทึกแจ้งปัญหาหน้างาน'],
-                ['ขอเบิก / อยากเบิก / เบิกของ', 'กลุ่มทีมงาน', 'ส่งลิงก์ฟอร์มเบิกของ (ใช้ได้ 30 นาที)'],
-                ['ขอลา / อยากลา / ลากิจ / ลาป่วย', 'กลุ่มทีมงาน', 'ส่งลิงก์ฟอร์มขอลา (ใช้ได้ 30 นาที)'],
-                ['รหัสเชื่อมต่อ 6 หลัก', 'แชทส่วนตัวเท่านั้น', 'เชื่อมบัญชีไลน์เข้ากับผู้ใช้/พนักงานในระบบ'],
-              ].map(([cmd, where, what]) => (
-                <tr key={cmd}>
-                  <td style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap' }}>{cmd}</td>
-                  <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{where}</td>
-                  <td style={{ fontSize: 12.5 }}>{what}</td>
-                  <td></td>
-                </tr>
-              ))}
+              {FIXED_COMMAND_KEYS.map(key => {
+                const enabled = resolveEnabled(key, commandSettingsByKey)
+                const isSaving = savingCommandKey === key
+                return (
+                  <tr key={key} style={{ opacity: enabled ? 1 : 0.5 }}>
+                    <td style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap' }}>{FIXED_COMMAND_PHRASES[key].join(' / ')}</td>
+                    <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{FIXED_COMMAND_WHERE[key]}</td>
+                    <td style={{ fontSize: 12.5 }}>{FIXED_COMMAND_DESCRIPTIONS[key]}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => handleToggleCommandEnabled(key)}>{enabled ? 'ปิด' : 'เปิด'}</button>
+                    </td>
+                  </tr>
+                )
+              })}
+              <tr>
+                <td style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap' }}>รหัสเชื่อมต่อ 6 หลัก</td>
+                <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>แชทส่วนตัวเท่านั้น</td>
+                <td style={{ fontSize: 12.5 }}>เชื่อมบัญชีไลน์เข้ากับผู้ใช้/พนักงานในระบบ</td>
+                <td></td>
+              </tr>
             </tbody>
           </table>
         </div>
         <div style={{ padding: '10px 16px', fontSize: 11.5, color: 'var(--text3)', borderTop: '1px solid var(--border)' }}>
-          "แชทส่วนตัว" ต้องเชื่อมบัญชีก่อนด้วยรหัส 6 หลัก · "กลุ่มทีมงาน" ต้องเป็นกลุ่มที่ตั้งไว้ด้านล่าง (การ์ด "การเชื่อมต่อ LINE Official Account") ยกเว้นคำสั่งดูตารางงาน 4 อันแรกที่ใครในกลุ่มก็ถามได้เลยเพราะเป็นแค่การดูข้อมูล — "ปิด" คำสั่งดูตารางงานแล้วพิมพ์คำเดิม บอทจะเงียบไม่ตอบ
+          "แชทส่วนตัว" ต้องเชื่อมบัญชีก่อนด้วยรหัส 6 หลัก · "กลุ่มทีมงาน" ต้องเป็นกลุ่มที่ตั้งไว้ด้านล่าง (การ์ด "การเชื่อมต่อ LINE Official Account") ยกเว้นคำสั่งดูตารางงาน 4 อันแรกที่ใครในกลุ่มก็ถามได้เลยเพราะเป็นแค่การดูข้อมูล — คำสั่งไหน "ปิด" อยู่แล้วมีคนพิมพ์ บอทจะตอบกลับว่าฟีเจอร์นี้ปิดอยู่ ให้ติดต่อแอดมินโดยตรง (ไม่เงียบเฉยแบบเดิม)
         </div>
       </div>
 
