@@ -18,7 +18,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../../lib/supabase.js'
-import { ConfirmDialog } from '../../components/Modal.jsx'
+import { Modal, ConfirmDialog } from '../../components/Modal.jsx'
 import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks } from '../../hooks/useSupabase.js'
 import { STATUS_COLOR } from './ganttTimeline.js'
 import { groupSubtasksByParent, isLeaf } from './subtaskCalc.js'
@@ -51,6 +51,46 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const [saving, setSaving] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [dragOverKey, setDragOverKey] = useState(null) // `${phaseId}:${status}` -- บอร์ดหลายอันโชว์พร้อมกันได้ในโหมด "ทั้งหมด"
+
+  // งานเสร็จ ที่ส่งรูปแนบมาผ่านไลน์ (line_site_photos.task_id) -- ต่างจาก
+  // รูปภาพหน้างานทั่วไปตรงที่ผูกกับ task โดยตรง เลยเอามาโชว์เป็น badge
+  // บนการ์ดที่ตรงกันได้จริง (ไม่ใช่แค่ผูกกับไซต์เหมือนรูปทั่วไป/แจ้งปัญหา).
+  // ดึงครั้งเดียวทั้งไซต์แทนที่จะยิงต่อการ์ด เพื่อไม่ให้ query ระเบิดตามจำนวนการ์ด.
+  const [taskPhotoCounts, setTaskPhotoCounts] = useState({})
+  const [viewingPhotosTaskId, setViewingPhotosTaskId] = useState(null)
+  const [viewingPhotosTaskName, setViewingPhotosTaskName] = useState('')
+  const [viewingPhotos, setViewingPhotos] = useState([])
+  const [loadingViewPhotos, setLoadingViewPhotos] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase.from('line_site_photos').select('task_id').eq('site_id', site.id).not('task_id', 'is', null)
+      if (cancelled) return
+      const counts = {}
+      ;(data || []).forEach((r) => { counts[r.task_id] = (counts[r.task_id] || 0) + 1 })
+      setTaskPhotoCounts(counts)
+    })()
+    return () => { cancelled = true }
+  }, [site.id])
+
+  const handleViewPhotos = async (task, e) => {
+    e.stopPropagation() // ไม่ให้ trigger onClick ของการ์ด (เปิด edit panel)
+    setViewingPhotosTaskId(task.id)
+    setViewingPhotosTaskName(task.name)
+    setLoadingViewPhotos(true)
+    const { data } = await supabase.from('line_site_photos').select('id, photo_path, workers(name, nickname), created_at')
+      .eq('task_id', task.id).order('created_at')
+    const rows = data || []
+    const paths = rows.map((p) => p.photo_path)
+    let urlByPath = {}
+    if (paths.length) {
+      const { data: signed } = await supabase.storage.from('line-site-photos').createSignedUrls(paths, 3600)
+      urlByPath = Object.fromEntries((signed || []).filter((s) => !s.error).map((s) => [s.path, s.signedUrl]))
+    }
+    setViewingPhotos(rows.map((p) => ({ ...p, url: urlByPath[p.photo_path] })))
+    setLoadingViewPhotos(false)
+  }
 
   const phases = useMemo(() => (allPhases || [])
     .filter((p) => p.site_id === site.id)
@@ -254,6 +294,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     onToggleAssignee: toggleAssignee, onSetLead: setLead, onStartEdit: startEdit, onStartAdd: startAdd,
     onCancelEdit: cancelEdit, onSaveDraft: saveDraft, onDeleteRequest: setConfirmDeleteId,
     onQuickMove: quickMove, saving, dragOverKey, setDragOverKey,
+    taskPhotoCounts, onViewPhotos: handleViewPhotos,
   }
 
   return (
@@ -350,6 +391,31 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
           onConfirm={() => doDelete(confirmDeleteId)}
         />
       )}
+
+      {viewingPhotosTaskId && (
+        <Modal title={`📷 รูปหลักฐานงานเสร็จ — ${viewingPhotosTaskName}`} onClose={() => setViewingPhotosTaskId(null)} maxWidth={520}>
+          <div className="modal-body">
+            {loadingViewPhotos ? (
+              <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
+            ) : !viewingPhotos.length ? (
+              <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>ไม่มีรูปภาพ</div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
+                {viewingPhotos.map((p) => (
+                  <a key={p.id} href={p.url} target="_blank" rel="noreferrer" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
+                    {p.url ? (
+                      <img src={p.url} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+                    ) : (
+                      <div style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--text3)' }}>โหลดรูปไม่สำเร็จ</div>
+                    )}
+                    <div style={{ fontSize: 10.5, marginTop: 3, color: 'var(--text3)' }}>{p.workers?.nickname || p.workers?.name || '-'}</div>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }
@@ -357,7 +423,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
 function PhaseBoard({
   phaseId, tasks, canEdit, workers, workerById, editingId, draft, setDraft, onToggleAssignee, onSetLead,
   onStartEdit, onStartAdd, onCancelEdit, onSaveDraft, onDeleteRequest, onQuickMove, saving,
-  dragOverKey, setDragOverKey, disableAdd,
+  dragOverKey, setDragOverKey, disableAdd, taskPhotoCounts, onViewPhotos,
 }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
@@ -410,9 +476,17 @@ function PhaseBoard({
                   }}>
                   <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{task.name}</div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                    {task.zone
-                      ? <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--blue)', background: 'rgba(78,205,196,.14)', borderRadius: 20, padding: '2px 9px' }}>{task.zone}</span>
-                      : <span />}
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      {task.zone && (
+                        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--blue)', background: 'rgba(78,205,196,.14)', borderRadius: 20, padding: '2px 9px' }}>{task.zone}</span>
+                      )}
+                      {taskPhotoCounts[task.id] > 0 && (
+                        <span title="ดูรูปหลักฐานงานเสร็จ" onClick={(e) => onViewPhotos(task, e)}
+                          style={{ fontSize: 10, fontWeight: 700, color: 'var(--green)', background: 'rgba(0,212,170,.14)', borderRadius: 20, padding: '2px 9px', cursor: 'pointer' }}>
+                          📷 {taskPhotoCounts[task.id]}
+                        </span>
+                      )}
+                    </div>
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                       {leadWorker && (
                         <span title={`👑 หัวหน้าทีม: ${leadWorker.nickname || leadWorker.name}`}

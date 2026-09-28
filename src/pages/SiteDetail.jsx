@@ -11,11 +11,12 @@ import SiteOverviewContent from '../components/SiteOverviewContent.jsx'
 import GanttView from './sites/GanttView.jsx'
 import SCurveChart from './sites/SCurveChart.jsx'
 import PhaseKanbanBoard from './sites/PhaseKanbanBoard.jsx'
+import DailyReport from './sites/DailyReport.jsx'
 
 export default function SiteDetail({ navState, navigateTo }) {
   const siteId = navState?.siteId
   const siteName = navState?.siteName
-  const [tab, setTab] = useState(navState?.tab || 'overview') // 'overview' | 'gantt' | 'kanban'
+  const [tab, setTab] = useState(navState?.tab || 'overview') // 'overview' | 'gantt' | 'kanban' | 'daily_report'
   const [phasesRefreshKey, setPhasesRefreshKey] = useState(0)
   const [kanbanInitialLeafId, setKanbanInitialLeafId] = useState(null) // ตั้งค่าเมื่อคลิก leaf บนแท็บ Gantt เพื่อ deep-link ไปยัง chip ที่ตรงกันในแท็บ Kanban
 
@@ -54,6 +55,10 @@ export default function SiteDetail({ navState, navigateTo }) {
           className={`btn btn-sm ${tab === 'kanban' ? 'btn-primary' : 'btn-ghost'}`}
           onClick={() => setTab('kanban')}
         >🗂 Kanban</button>
+        <button
+          className={`btn btn-sm ${tab === 'daily_report' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => setTab('daily_report')}
+        >📋 รายงานประจำวัน</button>
       </div>
 
       {tab === 'overview' && <SiteOverviewContent siteId={siteId} />}
@@ -93,6 +98,16 @@ export default function SiteDetail({ navState, navigateTo }) {
             canEdit={canEdit}
             initialLeafId={kanbanInitialLeafId}
           />
+        )
+      )}
+
+      {tab === 'daily_report' && (
+        siteError ? (
+          <div className="card" style={{ padding: 24, color: 'var(--red)', fontSize: 13 }}>โหลดข้อมูลไม่สำเร็จ: {siteError}</div>
+        ) : !site ? (
+          <div className="card" style={{ padding: 24, color: 'var(--text3)', fontSize: 13 }}>กำลังโหลด...</div>
+        ) : (
+          <DailyReport site={site} />
         )
       )}
     </div>
