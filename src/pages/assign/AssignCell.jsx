@@ -5,6 +5,7 @@
 // month shows an abbreviation (full name on hover).
 // ============================================================
 import { TYPE_COLOR, TYPE_LABEL, SITE_TYPES, siteColor, siteAbbrev } from './constants.js'
+import teamLeaderBadge from '../../assets/team-leader-badge.png'
 
 // resolve one shift-segment into { bg, color, label, title }
 function segInfo(seg, variant) {
@@ -55,6 +56,14 @@ export default function AssignCell({ cell = {}, ot = null, onEdit, w = '100%', h
     }}>⚡</span>
   )
 
+  const leaderShiftLabel = morning?.is_team_leader ? 'เช้า' : evening?.is_team_leader ? 'บ่าย' : null
+  const leaderBadge = leaderShiftLabel && (
+    <img src={teamLeaderBadge} alt="หัวหน้าทีม" title={`หัวหน้าทีม (${leaderShiftLabel})`} style={{
+      position: 'absolute', top: -3, left: -3, width: 14, height: 14, objectFit: 'contain',
+      background: 'var(--bg)', borderRadius: '50%', padding: 1,
+    }} />
+  )
+
   // full-day block (both shifts identical)
   if (same) {
     const info = segInfo(morning, variant)
@@ -70,6 +79,7 @@ export default function AssignCell({ cell = {}, ot = null, onEdit, w = '100%', h
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{info.label}</span>
         </div>
         {otBadge}
+        {leaderBadge}
       </div>
     )
   }
@@ -82,6 +92,7 @@ export default function AssignCell({ cell = {}, ot = null, onEdit, w = '100%', h
         <Half info={segInfo(evening, variant)} h={h / 2} fontSize={Math.max(8, fontSize - 1)} onClick={() => onEdit('evening')} />
       </div>
       {otBadge}
+      {leaderBadge}
     </div>
   )
 }

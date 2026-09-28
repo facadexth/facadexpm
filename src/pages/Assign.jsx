@@ -34,6 +34,7 @@ export default function Assign({ navState, openSiteOverview }) {
   const [cellTarget, setCellTarget] = useState(null)   // { worker, date, shift, existing }
   const [saving, setSaving] = useState(false)
   const [pendingRows, setPendingRows] = useState(null) // rows waiting for conflict confirm
+  const [pendingTaskIds, setPendingTaskIds] = useState([])
   const [conflictMsg, setConflictMsg] = useState('')
   const [copied, setCopied] = useState(false)
 
@@ -63,7 +64,7 @@ export default function Assign({ navState, openSiteOverview }) {
     ;(assignments || []).forEach(a => {
       const w = m[a.worker_id] || (m[a.worker_id] = {})
       const c = w[a.date] || (w[a.date] = {})
-      c[a.shift] = { id: a.id, type: a.type || 'site', site_id: a.site_id, site_number: a.sites?.site_number, site_name: a.sites?.name, ot: a.ot_hours || 0, notes: a.notes || '' }
+      c[a.shift] = { id: a.id, type: a.type || 'site', site_id: a.site_id, site_number: a.sites?.site_number, site_name: a.sites?.name, ot: a.ot_hours || 0, notes: a.notes || '', is_team_leader: !!a.is_team_leader }
     })
     return m
   }, [assignments])
@@ -98,18 +99,48 @@ export default function Assign({ navState, openSiteOverview }) {
   }, [laborData, travelData, otCostData])
 
   // ── save helpers ──
-  const doUpsert = async (rows) => {
+  // taskIds (optional): phase_tasks the crew being assigned should also
+  // be linked to (phase_task_workers) -- see AssignWizard.jsx's
+  // "งานที่กำลังทำ" step. Best-effort: a link failure never blocks the
+  // assignment rows themselves from having been saved.
+  const linkAssignedWorkersToTasks = async (rows, taskIds) => {
+    if (!taskIds?.length) return
+    const workerIds = [...new Set(rows.map(r => r.worker_id))]
+    const links = taskIds.flatMap(task_id => workerIds.map(worker_id => ({ task_id, worker_id })))
+    const { error } = await supabase.from('phase_task_workers').upsert(links, { onConflict: 'task_id,worker_id', ignoreDuplicates: true })
+    if (error) console.error('phase_task_workers link failed', error)
+  }
+
+  // Any row ticked as 🅒 leader (AssignWizard.jsx) claims sole leadership
+  // of its (site_id, date, shift) -- clear whoever held it before this
+  // submission touches it, same clear-then-set pattern the Kanban
+  // board's per-card 👑 lead already uses, so the DB's one-leader
+  // partial-unique-index never conflicts with a still-true prior row.
+  const clearPriorLeaders = async (rows) => {
+    const leaderRows = rows.filter(r => r.is_team_leader && r.site_id)
+    for (const r of leaderRows) {
+      const { error } = await supabase.from('worker_assignments')
+        .update({ is_team_leader: false })
+        .eq('site_id', r.site_id).eq('date', r.date).eq('shift', r.shift).eq('is_team_leader', true)
+        .neq('worker_id', r.worker_id)
+      if (error) console.error('clearPriorLeaders failed', r, error)
+    }
+  }
+
+  const doUpsert = async (rows, taskIds) => {
     setSaving(true)
     try {
+      await clearPriorLeaders(rows)
       const { error } = await supabase.from('worker_assignments')
         .upsert(rows, { onConflict: 'worker_id,date,shift' })
       if (error) throw error
+      await linkAssignedWorkersToTasks(rows, taskIds)
       setWizardOpen(false); setPendingRows(null); setConflictMsg(''); refetch()
     } catch (e) { alert('Error: ' + e.message) }
     finally { setSaving(false) }
   }
 
-  const handleWizardSubmit = async (rows) => {
+  const handleWizardSubmit = async (rows, taskIds) => {
     setSaving(true)
     try {
       const workerIds = [...new Set(rows.map(r => r.worker_id))]
@@ -126,10 +157,11 @@ export default function Assign({ navState, openSiteOverview }) {
           `• ${c.workers?.nickname || c.workers?.name} — ${c.date} (${c.shift === 'morning' ? 'เช้า' : 'บ่าย'}) มีงาน ${c.sites?.name || c.type} อยู่แล้ว`)
         setPendingRows(rows)
         setConflictMsg(`พบ ${conflicts.length} กะที่มีงานอยู่แล้ว:\n${lines.join('\n')}${conflicts.length > 8 ? '\n…' : ''}\n\nยืนยันจะเขียนทับตามนี้ไหม?`)
+        setPendingTaskIds(taskIds)
         setSaving(false)
         return
       }
-      await doUpsert(rows)
+      await doUpsert(rows, taskIds)
     } catch (e) { alert('Error: ' + e.message); setSaving(false) }
   }
 
@@ -328,8 +360,8 @@ export default function Assign({ navState, openSiteOverview }) {
         <ConfirmDialog
           title="มีงานอยู่แล้วในบางกะ"
           message={<span style={{ whiteSpace: 'pre-wrap' }}>{conflictMsg}</span>}
-          onConfirm={() => doUpsert(pendingRows)}
-          onCancel={() => { setConflictMsg(''); setPendingRows(null) }}
+          onConfirm={() => doUpsert(pendingRows, pendingTaskIds)}
+          onCancel={() => { setConflictMsg(''); setPendingRows(null); setPendingTaskIds([]) }}
         />
       )}
 

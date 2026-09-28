@@ -67,6 +67,12 @@ export function formatDailyAssignmentsPushMessage(dateISO, siteGroups) {
     lines.push(`🏗️ ${g.siteNumber ? `${g.siteNumber} ` : ''}${g.siteName}`.trim())
     if (g.morning.length) lines.push(`🌅 เช้า: ${g.morning.join(', ')}`)
     if (g.evening.length) lines.push(`🌆 บ่าย: ${g.evening.join(', ')}`)
+    if (g.leaderMorning || g.leaderEvening) {
+      const parts = []
+      if (g.leaderMorning) parts.push(`เช้า ${g.leaderMorning}`)
+      if (g.leaderEvening) parts.push(`บ่าย ${g.leaderEvening}`)
+      lines.push(`⛑️ หัวหน้าทีม: ${parts.join(' · ')}`)
+    }
   })
   return lines.join('\n')
 }

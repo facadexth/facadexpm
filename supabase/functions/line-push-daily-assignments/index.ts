@@ -68,7 +68,10 @@ const DOW_TH = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
 
 // Ported line-for-line from src/lib/lineNotifications.js's
 // formatDailyAssignmentsPushMessage -- keep in sync with that file.
-type SiteGroup = { siteName: string; siteNumber?: string; morning: string[]; evening: string[] }
+type SiteGroup = {
+  siteName: string; siteNumber?: string; morning: string[]; evening: string[]
+  leaderMorning?: string | null; leaderEvening?: string | null
+}
 function formatDailyAssignmentsPushMessage(dateISO: string, siteGroups: SiteGroup[]): string {
   const dow = DOW_TH[new Date(dateISO).getDay()]
   const lines = [`📋 พรุ่งนี้ (${dow}) ทำงานที่:`]
@@ -77,6 +80,12 @@ function formatDailyAssignmentsPushMessage(dateISO: string, siteGroups: SiteGrou
     lines.push(`🏗️ ${g.siteNumber ? `${g.siteNumber} ` : ''}${g.siteName}`.trim())
     if (g.morning.length) lines.push(`🌅 เช้า: ${g.morning.join(', ')}`)
     if (g.evening.length) lines.push(`🌆 บ่าย: ${g.evening.join(', ')}`)
+    if (g.leaderMorning || g.leaderEvening) {
+      const parts: string[] = []
+      if (g.leaderMorning) parts.push(`เช้า ${g.leaderMorning}`)
+      if (g.leaderEvening) parts.push(`บ่าย ${g.leaderEvening}`)
+      lines.push(`⛑️ หัวหน้าทีม: ${parts.join(' · ')}`)
+    }
   })
   return lines.join('\n')
 }
@@ -103,7 +112,7 @@ Deno.serve(async (req) => {
 
     const { data: rows, error } = await admin
       .from('worker_assignments')
-      .select('site_id, shift, type, workers(name, nickname), sites(name, site_number)')
+      .select('site_id, shift, type, is_team_leader, workers(name, nickname), sites(name, site_number)')
       .eq('tenant_id', settings.tenant_id)
       .eq('date', tomorrow)
       .not('site_id', 'is', null)
@@ -124,9 +133,15 @@ Deno.serve(async (req) => {
       const siteId = r.site_id as string
       const group = bySite.get(siteId) ?? {
         siteName: site?.name || '-', siteNumber: site?.site_number, morning: [], evening: [],
+        leaderMorning: null, leaderEvening: null,
       }
-      if (r.shift === 'evening') group.evening.push(workerName)
-      else group.morning.push(workerName)
+      if (r.shift === 'evening') {
+        group.evening.push(workerName)
+        if (r.is_team_leader) group.leaderEvening = workerName
+      } else {
+        group.morning.push(workerName)
+        if (r.is_team_leader) group.leaderMorning = workerName
+      }
       bySite.set(siteId, group)
     }
 

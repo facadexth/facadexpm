@@ -397,6 +397,45 @@ async function resolveOpenTasksForSite(siteId: string, tenantId: string): Promis
   return data ?? []
 }
 
+// ⛑️ วันนี้ ไซท์นี้ใครเป็นหัวหน้าทีม (แยกเช้า/บ่าย) -- ตั้งค่าจาก Assign
+// Wizard (worker_assignments.is_team_leader, 2026-09-28 migration).
+// Used by handleTodaysJobMenu's summary. `dateISO` generic (not always
+// "today") so the daily-assignments push (which runs for TOMORROW) can
+// reuse the same shape.
+async function resolveTeamLeadersForSite(
+  siteId: string, tenantId: string, dateISO: string,
+): Promise<{ morning: string | null; evening: string | null }> {
+  const { data } = await admin
+    .from('worker_assignments')
+    .select('shift, workers(name, nickname)')
+    .eq('site_id', siteId).eq('tenant_id', tenantId).eq('date', dateISO).eq('is_team_leader', true)
+  const result: { morning: string | null; evening: string | null } = { morning: null, evening: null }
+  for (const r of data ?? []) {
+    const w = r.workers as { name?: string; nickname?: string } | null
+    const name = w?.nickname || w?.name || null
+    if (r.shift === 'morning') result.morning = name
+    else if (r.shift === 'evening') result.evening = name
+  }
+  return result
+}
+
+// True if this worker holds 🅒 team-leader status for ANY shift they're
+// assigned today at this site -- drives งานเสร็จ's team-wide authority
+// below (handleJobDoneStart): a leader can close out teammates' cards,
+// not just their own, since they're accountable for the whole crew that
+// day. Scoped per (site,date,shift) per the 2026-09-28 migration, but a
+// worker only ever has one shift at one site per day in practice, so
+// "any shift" here is just "are they marked leader at all today."
+async function isTeamLeaderToday(workerId: string, siteId: string, tenantId: string): Promise<boolean> {
+  const { data } = await admin
+    .from('worker_assignments')
+    .select('id')
+    .eq('worker_id', workerId).eq('site_id', siteId).eq('tenant_id', tenantId)
+    .eq('date', bangkokToday()).eq('is_team_leader', true)
+    .limit(1).maybeSingle()
+  return !!data
+}
+
 async function fetchLineImageContent(accessToken: string, messageId: string): Promise<Uint8Array | null> {
   const res = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -458,14 +497,21 @@ async function handleTodaysJobMenu(
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน')
     return
   }
-  const [checkinResult, siteTasks, myTasks] = await Promise.all([
+  const [checkinResult, siteTasks, myTasks, leaders] = await Promise.all([
     admin.from('worker_checkins').select('checkin_at, checkout_at').eq('worker_id', worker.id).eq('site_id', site.id).eq('date', bangkokToday()).maybeSingle(),
     resolveOpenTasksForSite(site.id, settings.tenant_id),
     resolveOpenTasksForWorker(worker.id, settings.tenant_id),
+    resolveTeamLeadersForSite(site.id, settings.tenant_id, bangkokToday()),
   ])
   const checkin = checkinResult.data
 
   const lines = [`📍 วันนี้: ${site.name}`]
+  if (leaders.morning || leaders.evening) {
+    const parts: string[] = []
+    if (leaders.morning) parts.push(`เช้า ${leaders.morning}`)
+    if (leaders.evening) parts.push(`บ่าย ${leaders.evening}`)
+    lines.push(`⛑️ หัวหน้าทีม: ${parts.join(' · ')}`)
+  }
   if (siteTasks.length) {
     lines.push('', '🔧 งานที่ต้องทำวันนี้ (ทั้งทีม):')
     lines.push(...siteTasks.map((t) => `• ${t.name}`))
@@ -683,7 +729,24 @@ async function handleSitePhotoFinish(
   return true
 }
 
-// Starts the งานเสร็จ flow -- resolves the worker's OWN open tasks and
+// งานเสร็จ's candidate task list -- normally just the worker's OWN open
+// tasks (accountability: you close what's assigned to you). But a
+// worker holding 🅒 team-leader status today (Assign Wizard, see
+// isTeamLeaderToday) gets the SAME team-wide list handleTodaysJobMenu
+// already shows -- every open card at their site, not just their own --
+// explicit ask: leader gets "permission to finish the job for the
+// team." Shared by handleJobDoneStart and handleJobDonePick so the
+// prompt and its re-resolved candidate list never disagree.
+async function resolveJobDoneCandidates(workerId: string, tenantId: string): Promise<Array<{ id: string; name: string }>> {
+  const site = await resolveTodaysSite(workerId, tenantId)
+  if (site && await isTeamLeaderToday(workerId, site.id, tenantId)) {
+    return resolveOpenTasksForSite(site.id, tenantId)
+  }
+  return resolveOpenTasksForWorker(workerId, tenantId)
+}
+
+// Starts the งานเสร็จ flow -- resolves the worker's open tasks (team-
+// wide if they're today's leader, see resolveJobDoneCandidates) and
 // either goes straight to asking for a photo (one task, the common
 // case) or asks which one via quick-reply chips (multiple tasks -- tap
 // the name, no typing, per the low-literacy-crew constraint).
@@ -692,7 +755,7 @@ async function handleJobDoneStart(
   settings: { tenant_id: string; channel_access_token: string },
   replyToken: string,
 ) {
-  const tasks = await resolveOpenTasksForWorker(worker.id, settings.tenant_id)
+  const tasks = await resolveJobDoneCandidates(worker.id, settings.tenant_id)
   if (tasks.length === 0) {
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายให้คุณตอนนี้ กรุณาติดต่อแอดมิน')
     return
@@ -733,7 +796,7 @@ async function handleJobDonePick(
   replyToken: string,
   text: string,
 ) {
-  const tasks = await resolveOpenTasksForWorker(worker.id, settings.tenant_id)
+  const tasks = await resolveJobDoneCandidates(worker.id, settings.tenant_id)
   const picked = tasks.find((t) => t.name === text.trim())
   if (!picked) return // ignored -- prompt (and its quick-reply chips) stays live
   const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()

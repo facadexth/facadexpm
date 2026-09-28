@@ -86,6 +86,20 @@ describe('message formatters', () => {
     expect(msg.split('🏗️').length - 1).toBe(2)
   })
 
+  it('mentions the 🅒 team leader per shift in the push when set', () => {
+    const msg = formatDailyAssignmentsPushMessage('2026-09-28', [
+      { siteName: 'SOAP OPERA', siteNumber: '', morning: ['ลิด', 'ซัง'], evening: ['กร'], leaderMorning: 'ลิด', leaderEvening: 'กร' },
+    ])
+    expect(msg).toContain('⛑️ หัวหน้าทีม: เช้า ลิด · บ่าย กร')
+  })
+
+  it('omits the leader line entirely when no leader is set for either shift', () => {
+    const msg = formatDailyAssignmentsPushMessage('2026-09-28', [
+      { siteName: 'SOAP OPERA', siteNumber: '', morning: ['ลิด'], evening: [] },
+    ])
+    expect(msg).not.toContain('⛑️')
+  })
+
   it('omits an empty morning/evening line rather than showing "— ว่าง —" in the push', () => {
     const msg = formatDailyAssignmentsPushMessage('2026-09-28', [
       { siteName: 'SOAP OPERA', siteNumber: '', morning: ['ลิด'], evening: [] },

@@ -22,6 +22,7 @@ import { Modal, ConfirmDialog } from '../../components/Modal.jsx'
 import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks } from '../../hooks/useSupabase.js'
 import { STATUS_COLOR } from './ganttTimeline.js'
 import { groupSubtasksByParent, isLeaf } from './subtaskCalc.js'
+import teamLeaderBadge from '../../assets/team-leader-badge.png'
 
 const ALL_PHASES = '__all__'
 
@@ -71,6 +72,24 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
       ;(data || []).forEach((r) => { counts[r.task_id] = (counts[r.task_id] || 0) + 1 })
       setTaskPhotoCounts(counts)
     })()
+    return () => { cancelled = true }
+  }, [site.id])
+
+  // วันนี้ ไซท์นี้ใครเป็นหัวหน้าทีม -- read-only display จาก
+  // worker_assignments.is_team_leader (Assign Wizard เป็นจุดที่ตั้งค่านี้),
+  // ไม่เกี่ยวกับ leadWorkerId ต่อการ์ดด้านบน (คนละ concept กัน)
+  const [todayLeaders, setTodayLeaders] = useState({ morning: null, evening: null })
+  useEffect(() => {
+    let cancelled = false
+    const todayIso = new Date().toISOString().slice(0, 10)
+    supabase.from('worker_assignments').select('shift, workers(name, nickname)')
+      .eq('site_id', site.id).eq('date', todayIso).eq('is_team_leader', true)
+      .then(({ data }) => {
+        if (cancelled) return
+        const next = { morning: null, evening: null }
+        ;(data || []).forEach((r) => { next[r.shift] = r.workers?.nickname || r.workers?.name || null })
+        setTodayLeaders(next)
+      })
     return () => { cancelled = true }
   }, [site.id])
 
@@ -299,6 +318,16 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
 
   return (
     <div>
+      {(todayLeaders.morning || todayLeaders.evening) && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 10,
+          padding: '8px 14px', borderRadius: 8, background: 'rgba(255,193,7,.08)', border: '1px solid rgba(255,193,7,.3)',
+        }}>
+          <img src={teamLeaderBadge} alt="หัวหน้าทีม" style={{ width: 24, height: 24, objectFit: 'contain', flex: 'none' }} />
+          {todayLeaders.morning && <span style={{ fontSize: 12.5 }}>🌅 เช้า: <b>{todayLeaders.morning}</b></span>}
+          {todayLeaders.evening && <span style={{ fontSize: 12.5 }}>🌆 บ่าย: <b>{todayLeaders.evening}</b></span>}
+        </div>
+      )}
       {/* ยาว selectedChain.length + 1 เสมอ -- ชั้นสุดท้าย "พิเศษ" (ยังไม่มี
           ใน selectedChain) คือชั้นที่ให้เลือกลูกของโหนดที่เพิ่งเลือกไปหมาดๆ
           (ถ้ามีลูก) เพื่อให้กด chip แถวนั้นแล้วลึกลงไปได้เรื่อยๆ -- ไม่งั้น

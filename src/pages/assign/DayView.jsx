@@ -9,6 +9,7 @@ import { otCost } from './otMath.js'
 import { useSitePhases, usePhaseTasks } from '../../hooks/useSupabase.js'
 import { pickActivePhase } from '../sites/phaseTasksCalc.js'
 import { STATUS_COLOR } from '../sites/ganttTimeline.js'
+import teamLeaderBadge from '../../assets/team-leader-badge.png'
 
 const dayRate = (w) => Math.round((w?.monthly_salary || 0) / 26)
 
@@ -71,8 +72,9 @@ export default function DayView({ dayIso, assignments, otEntries, sites, travelR
     const tc = TYPE_COLOR[a.type] || TYPE_COLOR.site
     return (
       <span onClick={() => onEditHalf({ id: a.worker_id, name: a.workers?.name, nickname: a.workers?.nickname }, a.date, a.shift)}
-        title={`${a.workers?.name || ''}${a.type === 'factory' ? ' (โรงงาน)' : ''}${a.ot_hours > 0 ? ' OT' + a.ot_hours + 'h' : ''}`}
-        style={{ background: tc.bg, color: tc.color, borderRadius: 5, padding: '3px 8px', margin: 2, fontSize: 11, cursor: 'pointer', display: 'inline-block' }}>
+        title={`${a.workers?.name || ''}${a.is_team_leader ? ' — หัวหน้าทีม' : ''}${a.type === 'factory' ? ' (โรงงาน)' : ''}${a.ot_hours > 0 ? ' OT' + a.ot_hours + 'h' : ''}`}
+        style={{ background: tc.bg, color: tc.color, borderRadius: 5, padding: '3px 8px', margin: 2, fontSize: 11, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+        {a.is_team_leader && <img src={teamLeaderBadge} alt="หัวหน้าทีม" style={{ width: 14, height: 14, objectFit: 'contain' }} />}
         {a.workers?.nickname || a.workers?.name}{a.type === 'factory' ? ' 🏭' : ''}{a.ot_hours > 0 ? ' ⚡' : ''}
       </span>
     )
