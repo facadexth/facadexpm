@@ -1073,9 +1073,19 @@ Deno.serve(async (req) => {
         } else if (action === 'next_week_job') {
           const dates = bangkokWeekDates(1)
           await handleWeekQuery(worker, settings, event.replyToken, dates, `งานอาทิตย์หน้า (${formatDateTH(dates[0])} - ${formatDateTH(dates[6])})`)
+        } else if (action === 'material_request' || action === 'leave') {
+          // Neither needs typed detail anymore -- handleAction just
+          // issues the one-time field-form link (see the 2026-09-20
+          // migration off free-text capture). Act on the very first
+          // matching message, same as the group path already does.
+          // Previously this fell into the generic two-step branch below,
+          // which left only a bare "รับทราบครับ..." prompt on tap 1 and
+          // didn't send the actual link until a second, unrelated
+          // message -- a real bug, not by design.
+          await handleAction(action, worker, text, settings, event.replyToken)
         } else if (action) {
-          // issue_report / material_request / leave / site_photo --
-          // two-step: ask for detail, consume the next matching message.
+          // issue_report / site_photo -- genuinely two-step: ask for
+          // detail, consume the next matching message.
           const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
           const { error } = await admin.from('line_pending_actions').upsert(
             { tenant_id: settings.tenant_id, worker_id: worker.id, action, expires_at: expiresAt, photo_count: 0 },

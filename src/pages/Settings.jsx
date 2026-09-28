@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAppSetting, saveAppSetting, useContractorTypes, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature, useBankAccounts, setDefaultBankAccount } from '../hooks/useSupabase.js'
+import { useAppSetting, saveAppSetting, useContractorTypes, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature, useBankAccounts, setDefaultBankAccount, useSites } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { PAGE_LABELS, DEFAULT_PERMISSIONS, loadPermissions, savePermissions } from '../lib/permissions.js'
@@ -163,11 +163,20 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   // เลิกงานปกติ (ใช้ตัดสินว่าการเช็คเอาท์หลังจากนี้นับเป็น OT หรือไม่)
   const { data: checkinRadiusVal, refetch: refetchCheckinRadius } = useAppSetting('checkin_radius_m', '200')
   const { data: shiftEndVal, refetch: refetchShiftEnd } = useAppSetting('regular_shift_end_time', '17:00')
+  // ตำแหน่งโรงงาน -- เมื่อวันนี้ของช่างเป็นงานประเภท "โรงงาน" (ผลิต/ประกอบใน
+  // โรงงาน ไม่ใช่หน้างานลูกค้า) การเช็คอิน/เช็คเอาท์ผ่านไลน์จะเทียบระยะกับ
+  // พิกัดของไซท์นี้แทนพิกัดไซท์ลูกค้าที่งานนั้นถูกเบิกไป (ดู migration
+  // 2026-09-28-01) -- ใช้ฟิลด์พิกัด (ละติจูด/ลองจิจูด) ที่มีอยู่แล้วในหน้า
+  // ไซท์งาน ไม่ต้องสร้างหน้าใหม่
+  const { data: factorySiteIdVal, refetch: refetchFactorySiteId } = useAppSetting('factory_site_id', '')
+  const { data: sitesList } = useSites()
   const [checkinRadius, setCheckinRadius] = useState('')
   const [shiftEnd, setShiftEnd] = useState('')
+  const [factorySiteId, setFactorySiteId] = useState('')
   const [savingCheckin, setSavingCheckin] = useState(false)
   useEffect(() => { if (checkinRadiusVal != null) setCheckinRadius(String(checkinRadiusVal)) }, [checkinRadiusVal])
   useEffect(() => { if (shiftEndVal != null) setShiftEnd(String(shiftEndVal)) }, [shiftEndVal])
+  useEffect(() => { if (factorySiteIdVal != null) setFactorySiteId(String(factorySiteIdVal)) }, [factorySiteIdVal])
 
   const handleSaveCheckinSettings = async () => {
     // ตรวจก่อนบันทึกจริง -- เดิมใช้ `parseFloat(...) || 200` ซึ่งทำให้ค่า 0
@@ -182,7 +191,8 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     try {
       await saveAppSetting('checkin_radius_m', radius)
       await saveAppSetting('regular_shift_end_time', shiftEnd || '17:00')
-      refetchCheckinRadius(); refetchShiftEnd()
+      await saveAppSetting('factory_site_id', factorySiteId || '')
+      refetchCheckinRadius(); refetchShiftEnd(); refetchFactorySiteId()
       alert('✅ บันทึกการตั้งค่าเช็คอินแล้ว')
     } catch (e) {
       alert('Error: ' + e.message)
@@ -497,6 +507,16 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           <button className="btn btn-primary" onClick={handleSaveCheckinSettings} disabled={savingCheckin}>
             {savingCheckin ? '⏳ กำลังบันทึก...' : '✅ บันทึก'}
           </button>
+        </div>
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+          <label className="label">ตำแหน่งโรงงาน (ใช้เทียบระยะสำหรับงานประเภท "โรงงาน" แทนไซท์ลูกค้า)</label>
+          <select className="select" style={{ maxWidth: 360 }} value={factorySiteId} onChange={e => setFactorySiteId(e.target.value)}>
+            <option value="">-- ยังไม่ได้ตั้งค่า --</option>
+            {(sitesList || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
+            เลือกไซท์ที่เป็นโรงงานจริง แล้วไปตั้งพิกัด (ละติจูด/ลองจิจูด) ที่หน้า🏗️ ไซท์งาน → แก้ไขไซท์นั้น — กด "✅ บันทึก" ด้านบนเพื่อบันทึกช่องนี้ด้วย
+          </p>
         </div>
       </div>
       </>}

@@ -28,7 +28,7 @@ const LEAVE_TYPES = [
 const MANUAL_ITEM = '__manual__'
 let lineSeq = 0
 function newLine() {
-  return { id: `line-${++lineSeq}`, categoryId: '', itemId: '', manualName: '', manualUnit: '', quantity: '' }
+  return { id: `line-${++lineSeq}`, categoryId: '', itemId: '', itemQuery: '', manualName: '', manualUnit: '', quantity: '' }
 }
 
 function Shell({ children }) {
@@ -155,32 +155,58 @@ export default function FieldFormPage({ token }) {
                   <div>
                     <label className="label">หมวดหมู่ *</label>
                     <select className="select" required value={line.categoryId}
-                      onChange={e => updateLine(line.id, { categoryId: e.target.value, itemId: '', manualName: '', manualUnit: '' })}>
+                      onChange={e => updateLine(line.id, { categoryId: e.target.value, itemId: '', itemQuery: '', manualName: '', manualUnit: '' })}>
                       <option value="">-- เลือกหมวดหมู่ --</option>
                       {(state.categories || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="label">รายการ *</label>
-                    <select className="select" required disabled={!line.categoryId} value={line.itemId}
-                      onChange={e => updateLine(line.id, { itemId: e.target.value })}>
-                      <option value="">-- เลือกรายการ --</option>
-                      {items.map(it => <option key={it.id} value={it.id}>{it.name} ({it.unit})</option>)}
-                      {line.categoryId && <option value={MANUAL_ITEM}>✏️ อื่นๆ (พิมพ์เอง — สินค้าใหม่)</option>}
-                    </select>
+                    {isManual ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
+                        <div>
+                          <label className="label">ชื่อสินค้า *</label>
+                          <input className="input" required value={line.manualName} onChange={e => updateLine(line.id, { manualName: e.target.value })} placeholder="เช่น ปูนซีเมนต์ตราเสือ" />
+                        </div>
+                        <div>
+                          <label className="label">หน่วย *</label>
+                          <input className="input" required value={line.manualUnit} onChange={e => updateLine(line.id, { manualUnit: e.target.value })} placeholder="เช่น ถุง" />
+                        </div>
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ gridColumn: '1 / -1', justifySelf: 'start' }}
+                          onClick={() => updateLine(line.id, { itemId: '', manualName: '', manualUnit: '' })}>← กลับไปค้นหารายการเดิม</button>
+                      </div>
+                    ) : selectedItem ? (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 12px' }}>
+                        <span>{selectedItem.name} <span style={{ color: 'var(--text3)', fontSize: 12.5 }}>({selectedItem.unit})</span></span>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => updateLine(line.id, { itemId: '', itemQuery: '' })}>เปลี่ยน</button>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <input className="input" style={{ flex: 1 }} disabled={!line.categoryId} placeholder="พิมพ์ค้นหารายการ..."
+                            value={line.itemQuery} onChange={e => updateLine(line.id, { itemQuery: e.target.value })} />
+                          <button type="button" className="btn btn-ghost btn-sm" disabled={!line.categoryId} style={{ whiteSpace: 'nowrap' }}
+                            onClick={() => updateLine(line.id, { itemId: MANUAL_ITEM, itemQuery: '' })}>➕ ใหม่</button>
+                        </div>
+                        {line.categoryId && (() => {
+                          const q = line.itemQuery.trim().toLowerCase()
+                          const filtered = q ? items.filter(it => it.name.toLowerCase().includes(q)) : items
+                          return (
+                            <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, marginTop: 6 }}>
+                              {filtered.length === 0 ? (
+                                <div style={{ padding: '10px 12px', fontSize: 12.5, color: 'var(--text3)' }}>ไม่พบรายการนี้ — กด "➕ ใหม่" เพื่อเพิ่มสินค้าใหม่</div>
+                              ) : filtered.map((it, i) => (
+                                <div key={it.id} onClick={() => updateLine(line.id, { itemId: it.id, itemQuery: '' })}
+                                  style={{ padding: '9px 12px', cursor: 'pointer', borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
+                                  {it.name} <span style={{ color: 'var(--text3)', fontSize: 12 }}>({it.unit})</span>
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        })()}
+                      </>
+                    )}
                   </div>
-                  {isManual && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
-                      <div>
-                        <label className="label">ชื่อสินค้า *</label>
-                        <input className="input" required value={line.manualName} onChange={e => updateLine(line.id, { manualName: e.target.value })} placeholder="เช่น ปูนซีเมนต์ตราเสือ" />
-                      </div>
-                      <div>
-                        <label className="label">หน่วย *</label>
-                        <input className="input" required value={line.manualUnit} onChange={e => updateLine(line.id, { manualUnit: e.target.value })} placeholder="เช่น ถุง" />
-                      </div>
-                    </div>
-                  )}
                   <div>
                     <label className="label">จำนวน {unit ? `(${unit})` : ''} *</label>
                     <input className="input" type="number" required min="0" step="any" value={line.quantity} onChange={e => updateLine(line.id, { quantity: e.target.value })} />
