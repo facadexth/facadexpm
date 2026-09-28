@@ -50,29 +50,29 @@ const CommunicationCenter = lazy(() => import('./pages/CommunicationCenter.jsx')
 
 const TABS = [
   { id: 'dashboard',         label: '📊 ภาพรวม',              minRole: 'WORKER', module: null },
-  { id: 'assign',            label: '📋 จ่ายงานช่าง',          minRole: 'WORKER', module: 'payroll' },
   { label: '🏗️ ไซท์งาน', children: [
-    { id: 'sites',     label: '📊 ภาพรวม',  minRole: 'ADMIN', module: null },
-    { id: 'deposits',  label: '💰 มัดจำ',   minRole: 'ADMIN', module: 'client_deposits' },
-    { id: 'retention', label: '🔒 เงินประกันผลงาน', minRole: 'ADMIN', module: null },
-  ] },
-  { label: '💸 รายจ่าย', children: [
-    { id: 'expenses',        label: '📊 ภาพรวม',       minRole: 'ADMIN', module: null },
-    { id: 'purchase_orders', label: '🧾 ใบสั่งซื้อ',   minRole: 'ADMIN', module: 'purchase_orders' },
-    { id: 'inventory',       label: '📦 คลังสินค้า',   minRole: 'ADMIN', module: 'purchase_orders' },
-    { id: 'cheques',         label: '🏦 เช็ค',         minRole: 'ADMIN', module: 'cheque_tracking' },
+    { id: 'sites',              label: '📊 ภาพรวม',        minRole: 'ADMIN', module: null },
+    { id: 'assign',             label: '📋 จ่ายงานช่าง',    minRole: 'WORKER', module: 'payroll' },
+    { id: 'labor_contractors',  label: '🔧 ผู้รับเหมาค่าแรง', minRole: 'ADMIN', module: 'labor_subcontractors' },
   ] },
   { label: '💰 รายรับ', children: [
     { id: 'income',        label: '📊 ภาพรวม',           minRole: 'ADMIN', module: null },
+    { id: 'deposits',      label: '💰 มัดจำ',            minRole: 'ADMIN', module: 'client_deposits' },
+    { id: 'retention',     label: '🔒 เงินประกันผลงาน',  minRole: 'ADMIN', module: null },
     { id: 'sales_report',  label: '📊 รายงานการขาย',    minRole: 'ADMIN', module: 'quotations' },
     { id: 'quotations',    label: '📋 ใบเสนอราคา',      minRole: 'ADMIN', module: 'quotations' },
     { id: 'invoices', label: '🧾 ใบแจ้งหนี้', minRole: 'ADMIN', module: 'invoices' },
   ] },
+  { label: '💸 รายจ่าย', children: [
+    { id: 'expenses',        label: '📊 ภาพรวม',       minRole: 'ADMIN', module: null },
+    { id: 'purchase_orders', label: '🧾 ใบสั่งซื้อ',   minRole: 'ADMIN', module: 'purchase_orders' },
+    { id: 'cheques',         label: '🏦 เช็ค',         minRole: 'ADMIN', module: 'cheque_tracking' },
+  ] },
+  { id: 'inventory',       label: '📦 คลังสินค้า',   minRole: 'ADMIN', module: 'purchase_orders' },
   { label: '🧮 ประเมินราคา', children: [
     { id: 'estimation',    label: '📐 ประเมินราคา (BOM)', minRole: 'ADMIN', module: 'estimation' },
     { id: 'bom_templates', label: '🧩 BOM Templates',     minRole: 'ADMIN', module: 'estimation' },
   ] },
-  { id: 'labor_contractors', label: '🔧 ผู้รับเหมาค่าแรง',    minRole: 'ADMIN',  module: 'labor_subcontractors' },
   { label: '⚙️ ตั้งค่า', children: [
     // minRole WORKER, not OWNER -- Settings.jsx itself filters which cards
     // each role sees (password change + version info for WORKER, plus
