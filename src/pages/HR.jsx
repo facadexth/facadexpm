@@ -424,6 +424,28 @@ export default function HR() {
 
   const pendingRequestCount = leaveRequests.filter(r => r.status === 'pending').length
 
+  // Check-in/check-out log -- worker_checkins, written by the GPS-based
+  // /f/<token> flow (line-webhook + field-form, see FieldFormPage.jsx's
+  // CheckInFlow) and by the web app's own TodayCheckinCard. Read-only
+  // report, defaults to the last 30 days since the table only grows.
+  const todayISO = new Date().toISOString().slice(0, 10)
+  const [checkins, setCheckins] = useState([])
+  const [loadingCheckins, setLoadingCheckins] = useState(true)
+  const [checkinFrom, setCheckinFrom] = useState(new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10))
+  const [checkinTo, setCheckinTo] = useState(todayISO)
+
+  const fetchCheckins = async () => {
+    if (!canEdit) return
+    setLoadingCheckins(true)
+    const { data } = await supabase.from('worker_checkins')
+      .select('*, workers(name, nickname), sites(name)')
+      .gte('date', checkinFrom).lte('date', checkinTo)
+      .order('date', { ascending: false }).order('checkin_at', { ascending: false })
+    setCheckins(data || [])
+    setLoadingCheckins(false)
+  }
+  useEffect(() => { fetchCheckins() }, [canEdit, checkinFrom, checkinTo])
+
   const reviewLeaveRequest = async (req, status) => {
     setReviewingId(req.id)
     try {
@@ -838,6 +860,7 @@ export default function HR() {
     { id: 'payroll',  label: '💼 เงินเดือน' },
     // Approval queue (เบิกของ/ขอลา จาก LINE) — only for tenants with the LINE bot module enabled, so other tenants don't see a tab for a feature they haven't set up
     ...(canEdit && hasModuleAccess('line_bot') ? [{ id: 'requests', label: `🏖️ คำขอลา${pendingRequestCount ? ` (${pendingRequestCount})` : ''}` }] : []),
+    ...(canEdit ? [{ id: 'checkins', label: '🕐 เช็คอิน-เช็คเอาท์' }] : []),
     ...(canEdit ? [{ id: 'audit', label: '📋 ประวัติการแก้ไข' }] : []),
   ]
 
@@ -1126,6 +1149,56 @@ export default function HR() {
                 </div>
               </div>
             </>
+          )}
+        </div>
+      )}
+
+      {/* ── Check-in/Check-out Tab ── */}
+      {innerTab === 'checkins' && (
+        <div>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label className="label" style={{ marginBottom: 0 }}>จาก</label>
+            <input type="date" className="input input-sm" style={{ width: 150 }} value={checkinFrom} max={checkinTo} onChange={e => setCheckinFrom(e.target.value)} />
+            <label className="label" style={{ marginBottom: 0 }}>ถึง</label>
+            <input type="date" className="input input-sm" style={{ width: 150 }} value={checkinTo} min={checkinFrom} onChange={e => setCheckinTo(e.target.value)} />
+            <span style={{ color: 'var(--text3)', fontSize: 12 }}>{checkins.length} รายการ</span>
+          </div>
+          {loadingCheckins ? (
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
+          ) : (
+            <div className="card">
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ช่าง</th>
+                      <th>ไซต์</th>
+                      <th>วันที่</th>
+                      <th>เช็คอิน</th>
+                      <th>ระยะห่าง</th>
+                      <th>เช็คเอาท์</th>
+                      <th>ระยะห่าง</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {checkins.map(c => (
+                      <tr key={c.id}>
+                        <td style={{ fontWeight: 600 }}>{c.workers?.nickname || c.workers?.name || '—'}</td>
+                        <td>{c.sites?.name || '—'}</td>
+                        <td style={{ fontSize: 12 }}>{new Date(`${c.date}T00:00:00Z`).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })}</td>
+                        <td style={{ fontSize: 12 }}>{c.checkin_at ? new Date(c.checkin_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                        <td className="font-mono" style={{ fontSize: 12, color: 'var(--text3)' }}>{c.checkin_distance_m != null ? `${Math.round(c.checkin_distance_m)} ม.` : '—'}</td>
+                        <td style={{ fontSize: 12 }}>{c.checkout_at ? new Date(c.checkout_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : <span style={{ color: 'var(--yellow)' }}>ยังไม่เช็คเอาท์</span>}</td>
+                        <td className="font-mono" style={{ fontSize: 12, color: 'var(--text3)' }}>{c.checkout_distance_m != null ? `${Math.round(c.checkout_distance_m)} ม.` : '—'}</td>
+                      </tr>
+                    ))}
+                    {!checkins.length && (
+                      <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีข้อมูลเช็คอินในช่วงนี้</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
         </div>
       )}

@@ -7,7 +7,7 @@
 //
 // A token is single-use (line_deep_link_tokens.used_at) and short-lived
 // (expires_at, set by whoever creates it -- the LINE webhook, when a
-// worker taps เบิกของ/ขอลา on the Rich Menu).
+// worker taps เบิกของ/ขอลา/เช็คอิน/เช็คเอาท์ on the Rich Menu).
 //
 // เบิกของ submits straight into a REAL purchase_orders row (status
 // 'draft', no supplier_id yet -- a worker in the field has no way to
@@ -17,6 +17,20 @@
 // ADMIN/OWNER so it doesn't just sit unnoticed until someone opens the
 // PO list. ขอลา still writes a 'pending' leave_requests row -- approving
 // that in HR.jsx is what creates the real worker_assignments day(s).
+//
+// เช็คอิน/เช็คเอาท์ (added 2026-09-28) used to be a LINE-native
+// location-share two-step flow directly in line-webhook -- moved here
+// because LINE's own location picker lets the sender drag the pin to
+// ANY point on the map before sending (confirmed exploitable live: a
+// user checked in from ~685m away by moving the shared pin). A browser
+// geolocation permission prompt has no such manual-placement UI, so
+// routing through this same one-time-link page instead closes that
+// gap. Calls the SAME perform_worker_checkin_by_id/
+// perform_worker_checkout_by_id RPCs the old flow used -- the geofence
+// logic itself is unchanged, only how the coordinates are obtained. A
+// distance-rejection does NOT mark the token used (unlike a successful
+// submit) -- lets the worker walk closer and retry with the same link
+// inside its 30-minute window, matching the old flow's retry behavior.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { sendLinePush } from '../_shared/line.ts'
 
@@ -54,6 +68,37 @@ async function loadToken(token: string) {
   const { data: worker } = await admin.from('workers').select('id, name, nickname, tenant_id').eq('id', tok.worker_id).maybeSingle()
   if (!worker) return { reason: 'not_found' as const }
   return { tok, worker }
+}
+
+// Same "which site is this worker actually on today" resolution
+// line-webhook's own resolveTodaysSite uses -- duplicated here (Deno
+// Edge Functions can't share code across function directories except
+// via ../_shared/) since this is the only other place that needs it.
+async function resolveTodaysSite(workerId: string, tenantId: string): Promise<{ id: string; name: string } | null> {
+  const { data: assignment } = await admin
+    .from('worker_assignments')
+    .select('site_id')
+    .eq('worker_id', workerId)
+    .eq('tenant_id', tenantId)
+    .eq('date', bangkokToday())
+    .in('type', ['site', 'factory', 'subcontract'])
+    .not('site_id', 'is', null)
+    .limit(1)
+    .maybeSingle()
+  if (!assignment?.site_id) return null
+  const { data: site } = await admin.from('sites').select('id, name').eq('id', assignment.site_id).maybeSingle()
+  return site ?? null
+}
+
+async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Promise<Array<{ name: string }>> {
+  const { data } = await admin
+    .from('phase_task_workers')
+    .select('phase_tasks!inner(name, status, tenant_id, sort_order)')
+    .eq('worker_id', workerId)
+    .eq('phase_tasks.tenant_id', tenantId)
+    .neq('phase_tasks.status', 'done')
+    .order('sort_order', { referencedTable: 'phase_tasks' })
+  return (data ?? []).map((row: any) => ({ name: row.phase_tasks.name as string }))
 }
 
 // Pushes to every ADMIN/OWNER with a linked LINE account for this
@@ -97,6 +142,12 @@ Deno.serve(async (req) => {
         for (const it of items) if (it.categoryId) categoryMap.set(it.categoryId, it.categoryName)
         const categories = [...categoryMap.entries()].map(([id, name]) => ({ id, name }))
         return json({ actionType: 'material_request', workerName, categories, items, sites: sitesRes.data ?? [] })
+      }
+
+      if (tok.action_type === 'check_in' || tok.action_type === 'check_out') {
+        const site = await resolveTodaysSite(worker.id, worker.tenant_id)
+        if (!site) return json({ actionType: tok.action_type, workerName, reason: 'no_site' })
+        return json({ actionType: tok.action_type, workerName, siteName: site.name })
       }
       return json({ actionType: tok.action_type, workerName })
     }
@@ -178,6 +229,32 @@ Deno.serve(async (req) => {
         const dateLabel = dateFrom === dateTo ? dateFrom : `${dateFrom} — ${dateTo}`
         await notifyAdmins(worker.tenant_id, `🏖️ ${workerName} ขอ${leaveLabel} วันที่ ${dateLabel}\nรออนุมัติที่หน้าบุคคล → คำขอลา`)
         return json({ ok: true, workerName })
+      }
+
+      if (tok.action_type === 'check_in' || tok.action_type === 'check_out') {
+        const lat = Number(body?.lat)
+        const lng = Number(body?.lng)
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return json({ error: 'missing_location' }, 400)
+
+        const site = await resolveTodaysSite(worker.id, worker.tenant_id)
+        if (!site) return json({ error: 'no_site' }, 400)
+
+        const rpcName = tok.action_type === 'check_in' ? 'perform_worker_checkin_by_id' : 'perform_worker_checkout_by_id'
+        const { data, error } = await admin.rpc(rpcName, { p_worker_id: worker.id, p_site_id: site.id, p_lat: lat, p_lng: lng })
+        const result = data?.[0] as { success: boolean; distance_m: number | null; radius_m: number | null; message: string } | undefined
+        if (error || !result) return json({ error: error?.message ?? 'rpc_failed' }, 500)
+
+        if (!result.success) {
+          // Distance rejection -- token stays unused so the same link
+          // can be retried after walking closer, within its 30-minute
+          // window, same UX the old LINE-location two-step flow had.
+          return json({ ok: false, message: result.message, distanceM: result.distance_m, radiusM: result.radius_m })
+        }
+
+        await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
+
+        const openTasks = tok.action_type === 'check_in' ? await resolveOpenTasksForWorker(worker.id, worker.tenant_id) : []
+        return json({ ok: true, message: result.message, siteName: site.name, openTasks: openTasks.map(t => t.name) })
       }
 
       return json({ error: 'unknown_action_type' }, 400)

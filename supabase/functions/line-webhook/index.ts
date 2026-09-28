@@ -27,11 +27,12 @@
 //   - The SAME trigger phrases (or a Rich Menu button tap, configured
 //     manually in LINE Official Account Manager to send fixed text) in
 //     a 1:1 DM -> two-step for the "needs a detail" actions (ask ->
-//     next message is the body). เช็คอิน/เช็คเอาท์ are ALSO two-step now:
-//     ask the worker to share their LINE location (native picker, not
-//     typed text) -> next message is a `location`-type event -> validate
-//     against the assigned site's geofence. See the perform_worker_
-//     checkin_by_id/perform_worker_checkout_by_id note below.
+//     next message is the body). เช็คอิน/เช็คเอาท์ instead issue a
+//     one-time /f/<token> link (2026-09-28, same field-form pattern as
+//     ขอเบิกของ/ขอลา below) whose destination page reads the browser's
+//     real GPS -- NOT LINE's own location-share picker, which lets the
+//     sender drag the pin to any point before sending (confirmed
+//     exploitable live). See issueFieldFormLink's own comment.
 //
 // "งานวันนี้" (today's work) is the main Rich Menu entry point, NOT a
 // data-writing action of its own -- replaces the earlier flat 6-button
@@ -62,7 +63,9 @@
 //                                 row -- the schema can't support that
 //                                 yet (see comment at that branch)
 //   "ลากิจ"/"ลาป่วย"/"ขอลา"/"อยากลา" -> worker_assignments row (leave_personal)
-//   "เช็คอิน"/"เช็คเอาท์"   -> two-step: worker shares LINE location ->
+//   "เช็คอิน"/"เช็คเอาท์"   -> issues a /f/<token> link (field-form Edge
+//                                 Function); that page reads the phone
+//                                 browser's GPS and calls
 //                                 perform_worker_checkin_by_id/
 //                                 perform_worker_checkout_by_id (the SAME
 //                                 geofenced RPCs, worker_checkins table,
@@ -71,7 +74,7 @@
 //                                 uses -- site resolved from today's own
 //                                 worker_assignments, exactly as before).
 //                                 Rejects outside the configured radius
-//                                 with the distance in the reply.
+//                                 with the distance shown on the page.
 //   "รูปภาพ"                -> line_site_photos rows (multi-photo, see above)
 //   "งานเสร็จ"/"เสร็จงาน"   -> closes a real Kanban card (phase_tasks
 //                                 .status = 'done'), resolved from
@@ -104,13 +107,17 @@ const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 const APP_URL = 'https://pm.facadex.co.th'
 
 // Issues a one-time /f/<token> link (see field-form Edge Function +
-// src/FieldFormPage.jsx) for เบิกของ/ขอลา -- replaces the old free-text
-// insert (material_request couldn't satisfy purchase_orders' NOT NULL
-// site_id/supplier_id/category_id; leave wrote straight into
-// worker_assignments with no approval step at all). 30 minutes is enough
-// to switch from LINE to the browser and back without leaving a stale
+// src/FieldFormPage.jsx) for เบิกของ/ขอลา/เช็คอิน/เช็คเอาท์ -- replaces the
+// old free-text insert (material_request couldn't satisfy
+// purchase_orders' NOT NULL site_id/supplier_id/category_id; leave
+// wrote straight into worker_assignments with no approval step at
+// all), and for เช็คอิน/เช็คเอาท์ replaces LINE's own native
+// location-share picker (2026-09-28 -- see field-form/index.ts's top
+// comment for why: that picker lets the sender drag the pin anywhere
+// before sending, confirmed exploitable live). 30 minutes is enough to
+// switch from LINE to the browser and back without leaving a stale
 // link usable for days.
-async function issueFieldFormLink(tenantId: string, workerId: string, actionType: 'material_request' | 'leave'): Promise<string | null> {
+async function issueFieldFormLink(tenantId: string, workerId: string, actionType: 'material_request' | 'leave' | 'check_in' | 'check_out'): Promise<string | null> {
   const token = crypto.randomUUID().replace(/-/g, '')
   const { error } = await admin.from('line_deep_link_tokens').insert({
     tenant_id: tenantId, worker_id: workerId, action_type: actionType, token,
@@ -132,9 +139,6 @@ function json(body: unknown, status = 200) {
 function bangkokToday(): string {
   return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
-function bangkokTimeString(): string {
-  return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(11, 16)
-}
 // LINE quick-reply labels cap at 20 chars -- the message `text` sent on
 // tap can stay full-length (used for the exact-match lookup below), so
 // truncating only the visible label loses no matching precision.
@@ -145,7 +149,7 @@ function truncateLabel(s: string, max = 20): string {
 type GroupActionType = 'issue_report' | 'material_request' | 'leave'
 type DMOnlyActionType = 'check_in' | 'check_out' | 'site_photo' | 'job_done_start' | 'today_job' | 'tomorrow_job' | 'this_week_job' | 'next_week_job'
 type ActionType = GroupActionType | DMOnlyActionType
-type PendingActionType = GroupActionType | 'site_photo' | 'job_done_pick' | 'job_done' | 'check_in_location' | 'check_out_location'
+type PendingActionType = GroupActionType | 'site_photo' | 'job_done_pick' | 'job_done'
 
 // LINE bots have no way to remove someone from a group chat -- there's
 // no "kick member" API for Official Accounts. So an offboarded worker
@@ -401,25 +405,26 @@ async function fetchLineImageContent(accessToken: string, messageId: string): Pr
   return new Uint8Array(await res.arrayBuffer())
 }
 
-// Step 1 of 2 for both actions: resolve today's site, stash it on the
-// pending row (site_id -- the location message that answers this is a
-// separate webhook event with no other way to carry which site it's
-// being checked against), and ask the worker to share their LINE
-// location via the native picker. No coordinates exist yet -- nothing
-// to validate until step 2 arrives.
+// เช็คอิน/เช็คเอาท์ (rebuilt 2026-09-28 -- see issueFieldFormLink's own
+// comment for why): issues the same kind of one-time /f/<token> link
+// เบิกของ/ขอลา already use, whose destination page reads the phone
+// browser's real GPS instead of LINE's own drag-a-pin location picker.
+// The actual geofence check now happens in field-form/index.ts's
+// submit handler (same perform_worker_checkin_by_id/checkout RPCs,
+// unchanged) once the worker's browser reports its position -- this
+// function's only job is resolving today's site and sending the link.
 async function handleCheckInStart(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
   const site = await resolveTodaysSite(worker.id, settings.tenant_id)
   if (!site) {
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน')
     return
   }
-  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
-  const { error } = await admin.from('line_pending_actions').upsert(
-    { tenant_id: settings.tenant_id, worker_id: worker.id, action: 'check_in_location', site_id: site.id, expires_at: expiresAt, photo_count: 0 },
-    { onConflict: 'worker_id' }
-  )
-  if (error) console.error('line_pending_actions check_in_location upsert failed', error)
-  await sendLineReply(settings.channel_access_token, replyToken, `📍 กดปุ่มด้านล่างเพื่อแชร์ตำแหน่งและเช็คอินที่ ${site.name}`, [{ label: 'แชร์ตำแหน่ง', location: true }])
+  const link = await issueFieldFormLink(settings.tenant_id, worker.id, 'check_in')
+  if (!link) {
+    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+  } else {
+    await sendLineReply(settings.channel_access_token, replyToken, `📍 กดลิงก์นี้เพื่อเช็คอินที่ ${site.name} ครับ (ใช้ได้ 30 นาที ต้องอนุญาตให้เว็บใช้ตำแหน่งของคุณ)\n${link}`)
+  }
 }
 
 async function handleCheckOutStart(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
@@ -428,74 +433,12 @@ async function handleCheckOutStart(worker: { id: string }, settings: { tenant_id
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน')
     return
   }
-  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
-  const { error } = await admin.from('line_pending_actions').upsert(
-    { tenant_id: settings.tenant_id, worker_id: worker.id, action: 'check_out_location', site_id: site.id, expires_at: expiresAt, photo_count: 0 },
-    { onConflict: 'worker_id' }
-  )
-  if (error) console.error('line_pending_actions check_out_location upsert failed', error)
-  await sendLineReply(settings.channel_access_token, replyToken, `📍 กดปุ่มด้านล่างเพื่อแชร์ตำแหน่งและเช็คเอาท์ที่ ${site.name}`, [{ label: 'แชร์ตำแหน่ง', location: true }])
-}
-
-// Step 2 of 2: a `location` message arrived while check_in_location was
-// pending. Calls perform_worker_checkin_by_id -- the SAME geofence/
-// validation logic as the web app's own check-in card (see migration
-// 2026-09-23-05), just keyed by worker id instead of auth.email() since
-// the webhook runs as service_role with no worker's own session. On
-// success, appends the worker's own open Kanban cards to the reply (the
-// artifact comment thread's explicit ask); on an out-of-range rejection
-// the pending row is left in place so sharing location again (no need
-// to re-tap เช็คอิน) can succeed once they're closer.
-async function handleCheckInLocation(
-  worker: { id: string },
-  site: { id: string; name: string },
-  settings: { tenant_id: string; channel_access_token: string },
-  replyToken: string,
-  lat: number,
-  lng: number,
-): Promise<boolean> {
-  const { data, error } = await admin.rpc('perform_worker_checkin_by_id', { p_worker_id: worker.id, p_site_id: site.id, p_lat: lat, p_lng: lng })
-  const result = data?.[0] as { success: boolean; distance_m: number | null; radius_m: number | null; message: string } | undefined
-  if (error || !result) {
-    console.error('perform_worker_checkin_by_id failed', error)
+  const link = await issueFieldFormLink(settings.tenant_id, worker.id, 'check_out')
+  if (!link) {
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
-    return true
+  } else {
+    await sendLineReply(settings.channel_access_token, replyToken, `📍 กดลิงก์นี้เพื่อเช็คเอาท์ที่ ${site.name} ครับ (ใช้ได้ 30 นาที ต้องอนุญาตให้เว็บใช้ตำแหน่งของคุณ)\n${link}`)
   }
-  if (!result.success) {
-    await sendLineReply(settings.channel_access_token, replyToken, `📍 ${result.message}`, [{ label: 'แชร์ตำแหน่ง', location: true }])
-    return false
-  }
-  const myTasks = await resolveOpenTasksForWorker(worker.id, settings.tenant_id)
-  const lines = [`✅ ${result.message} ที่ ${site.name} เวลา ${bangkokTimeString()} น.`]
-  if (myTasks.length) {
-    lines.push('', '🔧 งานของคุณวันนี้:')
-    lines.push(...myTasks.map((t) => `• ${t.name}`))
-  }
-  await sendLineReply(settings.channel_access_token, replyToken, lines.join('\n'))
-  return true
-}
-
-async function handleCheckOutLocation(
-  worker: { id: string },
-  site: { id: string; name: string },
-  settings: { tenant_id: string; channel_access_token: string },
-  replyToken: string,
-  lat: number,
-  lng: number,
-): Promise<boolean> {
-  const { data, error } = await admin.rpc('perform_worker_checkout_by_id', { p_worker_id: worker.id, p_site_id: site.id, p_lat: lat, p_lng: lng })
-  const result = data?.[0] as { success: boolean; distance_m: number | null; radius_m: number | null; message: string } | undefined
-  if (error || !result) {
-    console.error('perform_worker_checkout_by_id failed', error)
-    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
-    return true
-  }
-  if (!result.success) {
-    await sendLineReply(settings.channel_access_token, replyToken, `📍 ${result.message}`, [{ label: 'แชร์ตำแหน่ง', location: true }])
-    return false
-  }
-  await sendLineReply(settings.channel_access_token, replyToken, `🏁 ${result.message} ที่ ${site.name} เวลา ${bangkokTimeString()} น. วันนี้ทำงานหนักแล้ว พักผ่อนด้วยนะครับ`)
-  return true
 }
 
 // The new single entry point -- resolves today's status and shows only
@@ -959,11 +902,12 @@ Deno.serve(async (req) => {
   for (const event of events) {
     if (event.type !== 'message') continue
     const msgType = event.message?.type
-    if (msgType !== 'text' && msgType !== 'image' && msgType !== 'location') continue
+    // 'location' messages no longer have a handler -- เช็คอิน/เช็คเอาท์
+    // moved off LINE's native location-share picker onto the /f/<token>
+    // browser-GPS flow (2026-09-28, see issueFieldFormLink's comment).
+    if (msgType !== 'text' && msgType !== 'image') continue
     const text: string | undefined = msgType === 'text' ? event.message.text : undefined
     const messageId: string = event.message.id
-    const lat: number | undefined = msgType === 'location' ? event.message.latitude : undefined
-    const lng: number | undefined = msgType === 'location' ? event.message.longitude : undefined
     const lineUserId: string | undefined = event.source?.userId
     const sourceGroupId: string | undefined = event.source?.groupId
     if (!lineUserId) continue
@@ -1037,25 +981,6 @@ Deno.serve(async (req) => {
             }
           }
           // Any other stray text while accumulating photos is silently ignored.
-        } else if (pendingAction === 'check_in_location' || pendingAction === 'check_out_location') {
-          if (msgType === 'location' && lat !== undefined && lng !== undefined && pending.site_id) {
-            const { data: site } = await admin.from('sites').select('id, name').eq('id', pending.site_id).maybeSingle()
-            if (!site) {
-              await sendLineReply(settings.channel_access_token, event.replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
-              await admin.from('line_pending_actions').delete().eq('id', pending.id)
-            } else {
-              const shouldClose = pendingAction === 'check_in_location'
-                ? await handleCheckInLocation(worker, site, settings, event.replyToken, lat, lng)
-                : await handleCheckOutLocation(worker, site, settings, event.replyToken, lat, lng)
-              if (shouldClose) {
-                const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
-                if (deleteError) console.error('line_pending_actions delete failed', deleteError)
-              }
-            }
-          } else if (msgType === 'text') {
-            await sendLineReply(settings.channel_access_token, event.replyToken, '📍 กรุณากดปุ่ม "แชร์ตำแหน่ง" เพื่อส่งตำแหน่งของคุณ', [{ label: 'แชร์ตำแหน่ง', location: true }])
-          }
-          // A stray image while awaiting location is silently ignored.
         } else if (msgType === 'text' && text) {
           const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
           if (deleteError) console.error('line_pending_actions delete failed', deleteError)

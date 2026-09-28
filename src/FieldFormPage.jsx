@@ -1,23 +1,132 @@
 // FieldFormPage — the page a link like /f/<token> opens to, from the LINE
-// crew bot's เบิกของ/ขอลา Rich Menu buttons. Deliberately outside the
-// normal authenticated app shell (see main.jsx) -- no login, no session,
-// nothing here ever touches the database directly with the anon key.
-// Every read/write goes through the field-form Edge Function, which
-// validates the token server-side with the service role (same pattern as
-// /sign/<linkId> + PublicSignPage).
+// crew bot's เบิกของ/ขอลา/เช็คอิน/เช็คเอาท์ Rich Menu buttons. Deliberately
+// outside the normal authenticated app shell (see main.jsx) -- no login,
+// no session, nothing here ever touches the database directly with the
+// anon key. Every read/write goes through the field-form Edge Function,
+// which validates the token server-side with the service role (same
+// pattern as /sign/<linkId> + PublicSignPage).
 //
 // เบิกของ picks from real catalog dropdowns (หมวดหมู่ -> รายการ -> จำนวน ->
 // ไซต์งาน), not free text -- submitting creates a real purchase_orders
 // 'draft' row straight away and pushes a LINE message to admins, who fill
 // in the supplier/price later (see field-form's submit handler). ขอลา
 // still lands as 'pending' -- an ADMIN/OWNER approves it in HR.jsx.
-import { useState, useEffect } from 'react'
+//
+// เช็คอิน/เช็คเอาท์ (2026-09-28) deliberately reads the browser's real GPS
+// via navigator.geolocation instead of using a form -- this replaces
+// LINE's own native location-share picker, which lets the sender drag
+// the pin to any point on the map before sending (confirmed exploitable
+// live: a user checked in from ~685m away by moving the shared pin). A
+// browser permission prompt has no such manual-placement UI.
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './lib/supabase.js'
 
 const REASON_MESSAGES = {
   not_found: 'ไม่พบลิงก์นี้ — อาจพิมพ์ผิดหรือลิงก์ถูกลบไปแล้ว',
   expired: 'ลิงก์นี้หมดอายุแล้ว — กดปุ่มในไลน์อีกครั้งเพื่อขอลิงก์ใหม่',
   used: 'ลิงก์นี้ถูกใช้ไปแล้ว — กดปุ่มในไลน์อีกครั้งถ้าต้องการส่งคำขอใหม่',
+  no_site: 'ไม่พบงานที่มอบหมายวันนี้ — กรุณาติดต่อแอดมิน',
+  network_error: 'เชื่อมต่อไม่สำเร็จ — เช็คสัญญาณอินเทอร์เน็ตแล้วลองใหม่ หรือกดปุ่มในไลน์อีกครั้ง',
+}
+
+// Maps navigator.geolocation's error.code to a clear Thai instruction --
+// PERMISSION_DENIED is by far the most common real-world case (worker
+// tapped "ไม่อนุญาต" on the browser prompt, or the phone's system-level
+// location setting is off).
+function geoErrorMessage(err) {
+  if (err?.code === 1) return 'คุณไม่ได้อนุญาตให้เว็บนี้ใช้ตำแหน่ง — กรุณาอนุญาต (หรือเปิด GPS ของเครื่อง) แล้วลองใหม่'
+  if (err?.code === 2) return 'ไม่สามารถระบุตำแหน่งได้ — ลองออกมานอกอาคารหรือรอสัญญาณ GPS แล้วลองใหม่'
+  if (err?.code === 3) return 'ค้นหาตำแหน่งนานเกินไป — กรุณาลองใหม่'
+  return 'เกิดข้อผิดพลาดในการขอตำแหน่ง — กรุณาลองใหม่'
+}
+
+// เช็คอิน/เช็คเอาท์: no form fields, just request GPS -> submit -> show
+// result. `phase`: 'requesting' | 'error' | 'submitting' | 'success' | 'rejected'.
+function CheckInFlow({ token, actionType, workerName, siteName }) {
+  const [phase, setPhase] = useState('requesting')
+  const [message, setMessage] = useState('')
+  const [distanceInfo, setDistanceInfo] = useState(null)
+  const [openTasks, setOpenTasks] = useState([])
+
+  const requestAndSubmit = useCallback(() => {
+    setPhase('requesting')
+    if (!navigator.geolocation) {
+      setPhase('error')
+      setMessage('เบราว์เซอร์นี้ไม่รองรับการขอตำแหน่ง กรุณาใช้เบราว์เซอร์อื่น')
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        setPhase('submitting')
+        try {
+          const { data, error } = await supabase.functions.invoke('field-form', {
+            body: { action: 'submit', token, lat: pos.coords.latitude, lng: pos.coords.longitude },
+          })
+          if (error) throw error
+          if (data?.error) throw new Error(data.error)
+          if (data?.ok) {
+            setPhase('success')
+            setMessage(data.message || '')
+            setOpenTasks(data.openTasks || [])
+          } else {
+            setPhase('rejected')
+            setMessage(data?.message || 'อยู่นอกระยะที่กำหนด')
+            setDistanceInfo({ distanceM: data?.distanceM, radiusM: data?.radiusM })
+          }
+        } catch (e) {
+          setPhase('error')
+          setMessage(e.message)
+        }
+      },
+      (err) => { setPhase('error'); setMessage(geoErrorMessage(err)) },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    )
+  }, [token])
+
+  useEffect(() => { requestAndSubmit() }, [requestAndSubmit])
+
+  const title = actionType === 'check_in' ? '📍 เช็คอิน' : '📍 เช็คเอาท์'
+
+  return (
+    <Shell>
+      <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{title}</div>
+      <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 18 }}>
+        สวัสดีครับคุณ{workerName} — {siteName}
+      </div>
+
+      {(phase === 'requesting' || phase === 'submitting') && (
+        <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text3)' }}>
+          {phase === 'requesting' ? '⏳ กำลังขอตำแหน่งของคุณ... (อนุญาตให้เว็บใช้ตำแหน่งด้วยครับ)' : '⏳ กำลังบันทึก...'}
+        </div>
+      )}
+
+      {phase === 'success' && (
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>{message}</div>
+          {openTasks.length > 0 && (
+            <div style={{ textAlign: 'left', fontSize: 13, color: 'var(--text3)', marginTop: 14, border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>🔧 งานของคุณวันนี้</div>
+              {openTasks.map((t, i) => <div key={i}>• {t}</div>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {(phase === 'error' || phase === 'rejected') && (
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>⚠️</div>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>{message}</div>
+          {phase === 'rejected' && distanceInfo?.distanceM != null && (
+            <div style={{ fontSize: 12.5, color: 'var(--text3)', marginBottom: 12 }}>
+              ห่างจากไซท์งาน {Math.round(distanceInfo.distanceM)} เมตร (ต้องอยู่ในระยะ {Math.round(distanceInfo.radiusM)} เมตร)
+            </div>
+          )}
+          <button type="button" className="btn btn-primary" onClick={requestAndSubmit}>🔄 ลองอีกครั้ง</button>
+        </div>
+      )}
+    </Shell>
+  )
 }
 
 const LEAVE_TYPES = [
@@ -55,14 +164,24 @@ export default function FieldFormPage({ token }) {
   const [dateTo, setDateTo] = useState('')
   const [reason, setReason] = useState('')
 
-  useEffect(() => {
+  const loadInfo = useCallback(() => {
+    setState({ loading: true })
     supabase.functions.invoke('field-form', { body: { action: 'info', token } })
       .then(({ data, error }) => {
         if (error || !data) { setState({ loading: false, reason: 'not_found' }); return }
         if (data.reason) { setState({ loading: false, reason: data.reason }); return }
         setState({ loading: false, ...data })
       })
+      .catch(() => {
+        // supabase.functions.invoke() rejecting (network/CORS failure, LINE
+        // in-app browser quirks) used to leave state.loading stuck at true
+        // forever with no error shown -- this is what a user saw as the
+        // page hanging on "กำลังโหลด" indefinitely.
+        setState({ loading: false, reason: 'network_error' })
+      })
   }, [token])
+
+  useEffect(() => { loadInfo() }, [loadInfo])
 
   const itemsInCategory = (categoryId) => (state.items || []).filter(it => it.categoryId === categoryId)
   const addLine = () => setLines(ls => [...ls, newLine()])
@@ -106,8 +225,17 @@ export default function FieldFormPage({ token }) {
         <div style={{ textAlign: 'center', color: 'var(--text3)', padding: '20px 0' }}>
           {REASON_MESSAGES[state.reason] || 'เกิดข้อผิดพลาด กรุณาลองใหม่'}
         </div>
+        {state.reason === 'network_error' && (
+          <div style={{ textAlign: 'center' }}>
+            <button type="button" className="btn btn-primary" onClick={loadInfo}>🔄 ลองอีกครั้ง</button>
+          </div>
+        )}
       </Shell>
     )
+  }
+
+  if (state.actionType === 'check_in' || state.actionType === 'check_out') {
+    return <CheckInFlow token={token} actionType={state.actionType} workerName={state.workerName} siteName={state.siteName} />
   }
 
   if (submitted) {
