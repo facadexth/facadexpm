@@ -18,6 +18,8 @@ import { DOW_TH } from './constants.js'
 import AssignCell from './AssignCell.jsx'
 import TodayCheckinCard from './TodayCheckinCard.jsx'
 import LocationCheckinCard from './LocationCheckinCard.jsx'
+import { uploadSitePhotos } from '../../lib/photoUpload.js'
+import { useTenant } from '../../hooks/useTenant.js'
 
 const OTHER_TYPE_LABEL = { office: 'ออฟฟิศ', leave: 'ลา', leave_sick: 'ลาป่วย', leave_personal: 'ลากิจ', holiday: 'หยุด' }
 const DOW_MON_START = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา']
@@ -37,9 +39,12 @@ export default function MySchedule({ from, to, days, view }) {
   const { data: leaveUsed } = useLeaveQuotaUsage(new Date().getFullYear())
   const { data: myTasksRaw, refetch: refetchTasks } = usePhaseTasks()
   const { data: teamToday } = useMyTeamToday()
+  const { tenant } = useTenant()
 
   const [openStatusMenuId, setOpenStatusMenuId] = useState(null)
   const [savingTaskId, setSavingTaskId] = useState(null)
+  const [uploadingTaskId, setUploadingTaskId] = useState(null)
+  const [uploadedTaskId, setUploadedTaskId] = useState(null) // brief "✅ แนบรูปแล้ว" confirmation, cleared after ~2s
 
   const me = useMemo(() => (workers || []).find(w => w.email === user?.email), [workers, user])
   const { data: myLocation } = useMyAssignedCheckinLocation()
@@ -98,6 +103,25 @@ export default function MySchedule({ from, to, days, view }) {
       alert('อัปเดตไม่สำเร็จ: ' + e.message)
     } finally {
       setSavingTaskId(null)
+    }
+  }
+
+  const uploadTaskPhotos = async (task, files) => {
+    if (!files || !files.length) return
+    if (!tenant?.id) { alert('กำลังโหลดข้อมูลบริษัท กรุณาลองใหม่อีกครั้ง'); return }
+    setUploadingTaskId(task.id)
+    try {
+      const { succeeded, failed } = await uploadSitePhotos(files, {
+        tenantId: tenant.id, workerId: me.id, siteId: task.site_id, taskId: task.id,
+        date: new Date().toISOString().slice(0, 10),
+      })
+      if (failed.length) alert(`แนบรูปไม่สำเร็จ ${failed.length} ไฟล์: ${failed.map((f) => f.file.name).join(', ')}`)
+      if (succeeded.length) {
+        setUploadedTaskId(task.id)
+        setTimeout(() => setUploadedTaskId((id) => (id === task.id ? null : id)), 2000)
+      }
+    } finally {
+      setUploadingTaskId(null)
     }
   }
 
@@ -207,6 +231,12 @@ export default function MySchedule({ from, to, days, view }) {
                         {s.label}
                       </button>
                     ))}
+                    <label className="btn btn-sm btn-ghost" style={{ flex: 1, fontSize: 11, textAlign: 'center', cursor: uploadingTaskId === t.id ? 'default' : 'pointer' }}>
+                      {uploadingTaskId === t.id ? '⏳...' : uploadedTaskId === t.id ? '✅ แนบรูปแล้ว' : '📷 แนบรูป'}
+                      <input type="file" accept="image/*" capture="environment" multiple hidden
+                        disabled={uploadingTaskId === t.id || !tenant?.id}
+                        onChange={(e) => { uploadTaskPhotos(t, e.target.files); e.target.value = '' }} />
+                    </label>
                   </div>
                 )}
               </div>
