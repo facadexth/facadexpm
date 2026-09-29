@@ -1033,8 +1033,22 @@ Deno.serve(async (req) => {
           }
           // Any other stray text while accumulating photos is silently ignored.
         } else if (pendingAction === 'job_done_pick') {
-          if (msgType === 'text' && text) await handleJobDonePick(worker, settings, event.replyToken, text)
-          // An image while still picking which task is silently ignored.
+          if (msgType === 'text' && text) {
+            await handleJobDonePick(worker, settings, event.replyToken, text)
+          } else if (msgType === 'image') {
+            // Used to be silently ignored -- the photo was lost with zero
+            // feedback and the worker had no way to know it never saved
+            // (found live: worker assigned to multiple cards, sent the
+            // photo before tapping which task, nothing landed anywhere).
+            // Re-send the same picker so they can tap then resend the
+            // photo, no retyping "งานเสร็จ" needed.
+            const tasks = await resolveJobDoneCandidates(worker.id, settings.tenant_id)
+            await sendLineReply(
+              settings.channel_access_token, event.replyToken,
+              '⚠️ ยังไม่ได้บันทึกรูปนี้ครับ กรุณาเลือกงานที่เสร็จก่อน แล้วค่อยส่งรูปอีกครั้ง',
+              tasks.map((t) => ({ label: truncateLabel(t.name), text: t.name })),
+            )
+          }
         } else if (pendingAction === 'job_done') {
           if (msgType === 'image') {
             await handleJobDonePhotoAdd(worker, pending.task_id as string, settings, event.replyToken, messageId, pending.id, priorCount)
