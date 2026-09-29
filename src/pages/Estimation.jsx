@@ -35,11 +35,15 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
   const [form, setForm] = useState(() => isNew ? {
     opening_no: '', template_id: '', series: '', thickness_mm: '', finish_id: '', infill_type_id: '',
     width_m: '', height_m: '', panel_count: '1', quantity: '1', extra_lines: [],
+    has_addon: false, addon_template_id: '', addon_width_m: '', addon_height_m: '', addon_panel_count: '1',
   } : {
     opening_no: opening.opening_no, template_id: opening.template_id, series: opening.series, thickness_mm: String(opening.thickness_mm),
     finish_id: opening.finish_id, infill_type_id: opening.infill_type_id || '',
     width_m: String(opening.width_m), height_m: String(opening.height_m),
     panel_count: String(opening.panel_count), quantity: String(opening.quantity), extra_lines: opening.extra_lines || [],
+    has_addon: !!opening.addon_template_id,
+    addon_template_id: opening.addon_template_id || '', addon_width_m: opening.addon_width_m != null ? String(opening.addon_width_m) : '',
+    addon_height_m: opening.addon_height_m != null ? String(opening.addon_height_m) : '', addon_panel_count: String(opening.addon_panel_count || 1),
   })
   const [saving, setSaving] = useState(false)
 
@@ -55,6 +59,10 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
   const finish = (finishes || []).find(f => f.id === form.finish_id)
   const infillType = (infillTypes || []).find(g => g.id === form.infill_type_id)
 
+  const addonTemplate = form.has_addon ? (templates || []).find(t => t.id === form.addon_template_id) : null
+  const addonComponents = (components || []).filter(c => c.template_id === form.addon_template_id)
+  const addonHardware = (hardware || []).filter(h => h.template_id === form.addon_template_id)
+
   const numericOpening = useMemo(() => ({
     width_m: parseFloat(form.width_m) || 0,
     height_m: parseFloat(form.height_m) || 0,
@@ -65,10 +73,35 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
     extra_lines: form.extra_lines.map(l => ({ description: l.description, amount: parseFloat(l.amount) || 0 })),
   }), [form])
 
+  // Add-on unit shares the main opening's series/thickness_mm (spec
+  // Decision 5) -- it has no selectors of its own for these, and no
+  // extra_lines of its own (one adjustment-line list per opening).
+  const numericAddon = useMemo(() => ({
+    width_m: parseFloat(form.addon_width_m) || 0,
+    height_m: parseFloat(form.addon_height_m) || 0,
+    panel_count: parseInt(form.addon_panel_count, 10) || 1,
+    series: form.series,
+    thickness_mm: parseFloat(form.thickness_mm) || 0,
+    quantity: 1,
+    extra_lines: [],
+  }), [form])
+
   const bom = useMemo(() => {
     if (!template || !finish || !numericOpening.width_m || !numericOpening.height_m || !numericOpening.series || !numericOpening.thickness_mm) return null
     return computeBomForOpening(numericOpening, template, templateComponents, templateHardware, profiles || [], finish, infillType || null)
   }, [template, finish, infillType, numericOpening, templateComponents, templateHardware, profiles])
+
+  // Add-on aggregation happens HERE, at the call site -- computeBomForOpening
+  // itself stays "one opening in, one BOM out" (spec Business logic).
+  // Requires all three of template/width/height before attempting a
+  // computation (spec Error handling: partially-filled add-on = "no
+  // add-on yet", not an error).
+  const addonBom = useMemo(() => {
+    if (!form.has_addon || !addonTemplate || !finish || !numericAddon.width_m || !numericAddon.height_m) return null
+    return computeBomForOpening(numericAddon, addonTemplate, addonComponents, addonHardware, profiles || [], finish, infillType || null)
+  }, [form.has_addon, addonTemplate, finish, infillType, numericAddon, addonComponents, addonHardware, profiles])
+
+  const combinedTotalCost = bom ? bom.totalCost + (addonBom ? addonBom.totalCost : 0) : null
 
   const violations = template ? evaluateConstraints(numericOpening, templateConstraints) : []
 
@@ -82,6 +115,10 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
         width_m: parseFloat(form.width_m) || 0, height_m: parseFloat(form.height_m) || 0,
         panel_count: parseInt(form.panel_count, 10) || 1, quantity: parseInt(form.quantity, 10) || 1,
         extra_lines: numericOpening.extra_lines,
+        addon_template_id: form.has_addon ? (form.addon_template_id || null) : null,
+        addon_width_m: form.has_addon ? (parseFloat(form.addon_width_m) || null) : null,
+        addon_height_m: form.has_addon ? (parseFloat(form.addon_height_m) || null) : null,
+        addon_panel_count: form.has_addon ? (parseInt(form.addon_panel_count, 10) || 1) : 1,
       }
       const { error } = isNew
         ? await supabase.from('estimation_openings').insert(payload)
@@ -158,6 +195,34 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
         </div>
       </div>
 
+      <div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, fontWeight: 700, marginBottom: form.has_addon ? 8 : 0 }}>
+          <input type="checkbox" disabled={!canEdit} checked={form.has_addon} onChange={e => set('has_addon', e.target.checked)} />
+          มีชุดต่อเติม (Add-on unit — เช่น ช่องแสงเหนือประตู)
+        </label>
+        {form.has_addon && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
+            <div style={{ gridColumn: 'span 2' }}>
+              <label className="label">Template ชุดต่อเติม ★</label>
+              <SearchableSelect required disabled={!canEdit} value={form.addon_template_id} onChange={v => set('addon_template_id', v)}
+                options={(templates || []).filter(t => t.active).map(t => ({ value: t.id, label: t.name, keywords: t.name }))} />
+            </div>
+            <div>
+              <label className="label">กว้าง (m) ★</label>
+              <input className="input" required disabled={!canEdit} type="number" min="0" step="0.01" value={form.addon_width_m} onChange={e => set('addon_width_m', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">สูง (m) ★</label>
+              <input className="input" required disabled={!canEdit} type="number" min="0" step="0.01" value={form.addon_height_m} onChange={e => set('addon_height_m', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">จำนวนช่อง (panel)</label>
+              <input className="input" disabled={!canEdit} type="number" min="1" value={form.addon_panel_count} onChange={e => set('addon_panel_count', e.target.value)} />
+            </div>
+          </div>
+        )}
+      </div>
+
       {violations.map((msg, i) => (
         <div key={i} className="alert alert-error" style={{ fontSize: 13 }}>⚠️ {msg}</div>
       ))}
@@ -196,10 +261,54 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
             <span>รายการเพิ่มเติม</span><span className="font-mono">{fmt(bom.extraLinesCost)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--border, #ddd)', marginTop: 6, paddingTop: 6 }}>
-            <span>รวมต่อชุด</span><span className="font-mono">{fmt(bom.totalCost)}</span>
+            <span>รวมต่อชุด (ชุดหลัก)</span><span className="font-mono">{fmt(bom.totalCost)}</span>
+          </div>
+        </div>
+      )}
+
+      {addonBom && (
+        <div className="card" style={{ padding: 12, background: 'var(--bg2, #f7f7f7)', border: '1px dashed var(--border, #ccc)' }}>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>ชุดต่อเติม: {addonTemplate?.name}</div>
+          {[...addonBom.profileLines, ...addonBom.gridLines].map((l, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: l.resolved ? 'inherit' : 'var(--red)' }}>
+              <span>{l.role_name} {!l.resolved && '(ไม่พบหน้าตัดที่ตรงกัน)'}</span>
+              <span className="font-mono">{fmt(l.cost)}</span>
+            </div>
+          ))}
+          {addonBom.hardwareLines.map((l, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+              <span>{l.name} x{l.quantity}</span>
+              <span className="font-mono">{fmt(l.cost)}</span>
+            </div>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+            <span>เผื่อเสียเศษ</span><span className="font-mono">{fmt(addonBom.wasteCost)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+            <span>วัสดุอุดช่อง ({addonBom.infillArea_sqm.toFixed(2)} ตร.ม.)</span><span className="font-mono">{fmt(addonBom.infillCost)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+            <span>ค่าแรง</span><span className="font-mono">{fmt(addonBom.laborCost)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+            <span>ซิลิโคน</span><span className="font-mono">{fmt(addonBom.siliconeCost)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+            <span>สักหลาด</span><span className="font-mono">{fmt(addonBom.feltCost)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--border, #ddd)', marginTop: 6, paddingTop: 6 }}>
+            <span>รวมต่อชุด (ชุดต่อเติม)</span><span className="font-mono">{fmt(addonBom.totalCost)}</span>
+          </div>
+        </div>
+      )}
+
+      {combinedTotalCost != null && (
+        <div className="card" style={{ padding: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+            <span>รวมทั้งช่องเปิด (ชุดหลัก{addonBom ? ' + ชุดต่อเติม' : ''})</span><span className="font-mono">{fmt(combinedTotalCost)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
-            <span>รวม x{numericOpening.quantity} ชุด</span><span className="font-mono">{fmt(bom.totalCost * numericOpening.quantity)}</span>
+            <span>รวม x{numericOpening.quantity} ชุด</span><span className="font-mono">{fmt(combinedTotalCost * numericOpening.quantity)}</span>
           </div>
         </div>
       )}
