@@ -125,3 +125,17 @@ export function computeBomForOpening(opening, template, components, hardware, pr
     laborCost, siliconeCost, feltCost, extraLinesCost, totalCost, unresolvedComponents,
   }
 }
+
+// Combines a main unit's BOM with an optional add-on unit's BOM (spec
+// Decision 5). A sibling to computeBomForOpening, not a second code path
+// inside it -- the Global Constraint only forbids the latter. Each
+// result's unresolvedComponents stays on its own object so the caller
+// can attribute an unresolved profile to the main unit or the add-on.
+export function combineOpeningBoms(mainBom, addonBom) {
+  if (!mainBom) return null
+  return {
+    mainBom,
+    addonBom: addonBom || null,
+    totalCost: mainBom.totalCost + (addonBom ? addonBom.totalCost : 0),
+  }
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeBomForOpening } from './bomEngine.js'
+import { computeBomForOpening, combineOpeningBoms } from './bomEngine.js'
 
 const PROFILE = { family: 'Frame-General', series: 'General', thickness_mm: 1.2, linear_weight_kg_per_m: 1.5 }
 const FINISH = { price_per_kg: 170 }
@@ -244,5 +244,35 @@ describe('computeBomForOpening -- infill material kinds', () => {
     const acpResult = computeBomForOpening(baseOpening({ width_m: 1, height_m: 1 }), template, [], [], [PROFILE], FINISH, { price_per_sqm: 500, material_kind: 'acp' })
     const glassResult = computeBomForOpening(baseOpening({ width_m: 1, height_m: 1 }), template, [], [], [PROFILE], FINISH, { price_per_sqm: 500, material_kind: 'glass' })
     expect(acpResult.infillCost).toBeCloseTo(glassResult.infillCost)
+  })
+})
+
+describe('combineOpeningBoms -- add-on unit aggregation (spec Testing section)', () => {
+  it('main-only total is unchanged when there is no add-on', () => {
+    const mainBom = computeBomForOpening(baseOpening({ width_m: 2, height_m: 2 }), baseTemplate(), [], [], [PROFILE], FINISH, GLASS)
+    const combined = combineOpeningBoms(mainBom, null)
+    expect(combined.totalCost).toBeCloseTo(mainBom.totalCost)
+    expect(combined.addonBom).toBeNull()
+  })
+
+  it('sums main and add-on totals correctly when an add-on is present', () => {
+    const mainBom = computeBomForOpening(baseOpening({ width_m: 2, height_m: 2 }), baseTemplate(), [], [], [PROFILE], FINISH, GLASS)
+    const addonBom = computeBomForOpening(baseOpening({ width_m: 1, height_m: 0.5 }), baseTemplate(), [], [], [PROFILE], FINISH, GLASS)
+    const combined = combineOpeningBoms(mainBom, addonBom)
+    expect(combined.totalCost).toBeCloseTo(mainBom.totalCost + addonBom.totalCost)
+  })
+
+  it('keeps each unit\'s unresolvedComponents reporting separate', () => {
+    const mainComponents = [{ role_name: 'Top rail', profile_family: 'Nonexistent-Main', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 1 }]
+    const addonComponents = [{ role_name: 'Transom rail', profile_family: 'Nonexistent-Addon', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 1 }]
+    const mainBom = computeBomForOpening(baseOpening(), baseTemplate(), mainComponents, [], [PROFILE], FINISH, GLASS)
+    const addonBom = computeBomForOpening(baseOpening({ width_m: 1, height_m: 0.5 }), baseTemplate(), addonComponents, [], [PROFILE], FINISH, GLASS)
+    const combined = combineOpeningBoms(mainBom, addonBom)
+    expect(combined.mainBom.unresolvedComponents).toEqual(['Top rail'])
+    expect(combined.addonBom.unresolvedComponents).toEqual(['Transom rail'])
+  })
+
+  it('returns null when there is no main BOM yet', () => {
+    expect(combineOpeningBoms(null, null)).toBeNull()
   })
 })

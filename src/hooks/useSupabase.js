@@ -1416,7 +1416,7 @@ export function useEstimationOpenings() {
   return useQuery(async () => {
     const { data, error } = await supabase
       .from('estimation_openings')
-      .select('*, bom_templates(name, category)')
+      .select('*, bom_templates!estimation_openings_template_id_fkey(name, category)')
       .order('opening_no')
     if (error) throw error
     return data

@@ -15,7 +15,7 @@ import {
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
-import { computeBomForOpening } from '../lib/bomEngine.js'
+import { computeBomForOpening, combineOpeningBoms } from '../lib/bomEngine.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 
@@ -62,6 +62,7 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
   const addonTemplate = form.has_addon ? (templates || []).find(t => t.id === form.addon_template_id) : null
   const addonComponents = (components || []).filter(c => c.template_id === form.addon_template_id)
   const addonHardware = (hardware || []).filter(h => h.template_id === form.addon_template_id)
+  const addonConstraints = (constraints || []).filter(c => c.template_id === form.addon_template_id)
 
   const numericOpening = useMemo(() => ({
     width_m: parseFloat(form.width_m) || 0,
@@ -101,9 +102,11 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
     return computeBomForOpening(numericAddon, addonTemplate, addonComponents, addonHardware, profiles || [], finish, infillType || null)
   }, [form.has_addon, addonTemplate, finish, infillType, numericAddon, addonComponents, addonHardware, profiles])
 
-  const combinedTotalCost = bom ? bom.totalCost + (addonBom ? addonBom.totalCost : 0) : null
+  const combined = useMemo(() => combineOpeningBoms(bom, addonBom), [bom, addonBom])
+  const combinedTotalCost = combined ? combined.totalCost : null
 
   const violations = template ? evaluateConstraints(numericOpening, templateConstraints) : []
+  const addonViolations = (form.has_addon && addonTemplate) ? evaluateConstraints(numericAddon, addonConstraints) : []
 
   const handleSave = async () => {
     setSaving(true)
@@ -221,6 +224,9 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
             </div>
           </div>
         )}
+        {addonViolations.map((msg, i) => (
+          <div key={i} className="alert alert-error" style={{ fontSize: 13, marginTop: 6 }}>⚠️ ชุดต่อเติม: {msg}</div>
+        ))}
       </div>
 
       {violations.map((msg, i) => (
