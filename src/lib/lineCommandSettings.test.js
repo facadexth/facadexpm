@@ -28,21 +28,23 @@ describe('phrasesCollide', () => {
 })
 
 describe('resolveEffectivePhrase / resolveEnabled', () => {
-  it('falls back to the default phrase and enabled=true when no row exists', () => {
+  it('falls back to the default phrase and enabled=true (both contexts) when no row exists', () => {
     expect(resolveEffectivePhrase('today_job', {})).toBe(SCHEDULE_COMMAND_DEFAULTS.today_job)
-    expect(resolveEnabled('today_job', {})).toBe(true)
+    expect(resolveEnabled('today_job', {}, 'dm')).toBe(true)
+    expect(resolveEnabled('today_job', {}, 'group')).toBe(true)
   })
   it('uses the custom phrase when one is set', () => {
-    const settings = { today_job: { enabled: true, custom_phrase: 'สรุปงานวันนี้' } }
+    const settings = { today_job: { enabled_dm: true, enabled_group: true, custom_phrase: 'สรุปงานวันนี้' } }
     expect(resolveEffectivePhrase('today_job', settings)).toBe('สรุปงานวันนี้')
   })
   it('falls back to default when custom_phrase is null even if a row exists', () => {
-    const settings = { today_job: { enabled: false, custom_phrase: null } }
+    const settings = { today_job: { enabled_dm: false, enabled_group: false, custom_phrase: null } }
     expect(resolveEffectivePhrase('today_job', settings)).toBe(SCHEDULE_COMMAND_DEFAULTS.today_job)
   })
-  it('respects an explicit enabled=false row', () => {
-    const settings = { today_job: { enabled: false, custom_phrase: null } }
-    expect(resolveEnabled('today_job', settings)).toBe(false)
+  it('respects each context independently', () => {
+    const settings = { today_job: { enabled_dm: true, enabled_group: false, custom_phrase: null } }
+    expect(resolveEnabled('today_job', settings, 'dm')).toBe(true)
+    expect(resolveEnabled('today_job', settings, 'group')).toBe(false)
   })
 })
 
@@ -114,9 +116,10 @@ describe('command key coverage', () => {
     expect(ALL_COMMAND_KEYS).toHaveLength(11)
     expect(ALL_COMMAND_KEYS).toEqual([...SCHEDULE_COMMAND_KEYS, ...FIXED_COMMAND_KEYS])
   })
-  it('resolveEnabled generalizes to fixed (non-schedule) command keys', () => {
-    expect(resolveEnabled('material_request', {})).toBe(true)
-    expect(resolveEnabled('material_request', { material_request: { enabled: false } })).toBe(false)
+  it('resolveEnabled generalizes to fixed (non-schedule) command keys, per context', () => {
+    expect(resolveEnabled('material_request', {}, 'dm')).toBe(true)
+    expect(resolveEnabled('material_request', { material_request: { enabled_dm: true, enabled_group: false } }, 'group')).toBe(false)
+    expect(resolveEnabled('material_request', { material_request: { enabled_dm: true, enabled_group: false } }, 'dm')).toBe(true)
   })
   it('RESERVED_PHRASES is derived from the fixed commands, not hand-duplicated', () => {
     expect(RESERVED_PHRASES).toEqual(expect.arrayContaining(['เบิกของ', 'ขอลา', 'เช็คอิน', 'เช็คเอาท์', 'รูปภาพ', 'งานเสร็จ']))

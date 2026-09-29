@@ -263,7 +263,7 @@ const SCHEDULE_COMMAND_DEFAULTS: Record<string, string> = {
   this_week_job: 'งานอาทิตย์นี้',
   next_week_job: 'งานอาทิตย์หน้า',
 }
-type CommandSettingsRow = { command_key: string; enabled: boolean; custom_phrase: string | null }
+type CommandSettingsRow = { command_key: string; enabled_dm: boolean; enabled_group: boolean; custom_phrase: string | null }
 type CommandSettingsByKey = Record<string, CommandSettingsRow>
 function splitPhrases(raw: string | null | undefined): string[] {
   return (raw || '').split(',').map((s) => s.trim()).filter(Boolean)
@@ -273,9 +273,12 @@ function resolveEffectivePhrases(commandKey: string, settingsByKey: CommandSetti
   const custom = splitPhrases(row?.custom_phrase)
   return custom.length ? custom : [SCHEDULE_COMMAND_DEFAULTS[commandKey]]
 }
-function resolveEnabled(commandKey: string, settingsByKey: CommandSettingsByKey): boolean {
+// context: 'dm' | 'group' -- each command is independently toggleable per
+// chat context (2026-09-29). A missing row still means "enabled" in both.
+function resolveEnabled(commandKey: string, settingsByKey: CommandSettingsByKey, context: 'dm' | 'group'): boolean {
   const row = settingsByKey[commandKey]
-  return row ? row.enabled !== false : true
+  const field = context === 'group' ? 'enabled_group' : 'enabled_dm'
+  return row ? row[field] !== false : true
 }
 const SCHEDULE_COMMAND_ORDER = ['tomorrow_job', 'this_week_job', 'next_week_job', 'today_job'] as const
 const DISABLED_MESSAGE = '⚠️ ฟีเจอร์นี้ปิดอยู่ขณะนี้ กรุณาติดต่อแอดมินโดยตรงครับ'
@@ -958,7 +961,7 @@ Deno.serve(async (req) => {
   const signatureOk = await verifyLineSignature(settings.channel_secret, rawBody, req.headers.get('x-line-signature'))
   if (!signatureOk) return json({ error: 'invalid signature' }, 401)
 
-  const { data: commandSettingsRows } = await admin.from('line_command_settings').select('command_key, enabled, custom_phrase').eq('tenant_id', settings.tenant_id)
+  const { data: commandSettingsRows } = await admin.from('line_command_settings').select('command_key, enabled_dm, enabled_group, custom_phrase').eq('tenant_id', settings.tenant_id)
   const commandSettingsByKey: CommandSettingsByKey = Object.fromEntries((commandSettingsRows ?? []).map((r: any) => [r.command_key, r]))
 
   const events = (payload.events as Array<Record<string, any>>) ?? []
@@ -1054,7 +1057,7 @@ Deno.serve(async (req) => {
 
       if (msgType === 'text' && text) {
         const action = matchDMAction(text, commandSettingsByKey)
-        if (action && !resolveEnabled(action, commandSettingsByKey)) {
+        if (action && !resolveEnabled(action, commandSettingsByKey, 'dm')) {
           await sendLineReply(settings.channel_access_token, event.replyToken, DISABLED_MESSAGE)
         } else if (action === 'check_in') {
           await handleCheckInStart(worker, settings, event.replyToken)
@@ -1126,7 +1129,7 @@ Deno.serve(async (req) => {
     // these can't create or change anything.
     const infoAction = matchGroupInfoAction(text, commandSettingsByKey)
     if (infoAction) {
-      if (!resolveEnabled(infoAction, commandSettingsByKey)) {
+      if (!resolveEnabled(infoAction, commandSettingsByKey, 'group')) {
         await sendLineReply(settings.channel_access_token, event.replyToken, DISABLED_MESSAGE)
       } else {
         await handleGroupInfoQuery(settings, event.replyToken, infoAction)
@@ -1151,7 +1154,7 @@ Deno.serve(async (req) => {
 
     const action = matchGroupAction(text)
     if (action) {
-      if (!resolveEnabled(action, commandSettingsByKey)) {
+      if (!resolveEnabled(action, commandSettingsByKey, 'group')) {
         await sendLineReply(settings.channel_access_token, event.replyToken, DISABLED_MESSAGE)
       } else {
         await handleAction(action, worker, text, settings, event.replyToken)

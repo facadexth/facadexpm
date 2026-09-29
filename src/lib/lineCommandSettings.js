@@ -98,9 +98,14 @@ export function resolveEffectivePhrase(commandKey, settingsByKey) {
   return resolveEffectivePhrases(commandKey, settingsByKey)[0]
 }
 
-export function resolveEnabled(commandKey, settingsByKey) {
+// context: 'dm' | 'group' -- each command is independently toggleable per
+// chat context (2026-09-29: "ทุก command ไลน์ ขอให้ทำ toggle เปิด-ปิด
+// สำหรับ pm/กลุ่มไลน์"). A missing row still means "enabled" in both
+// contexts, matching the original single-flag fallback.
+export function resolveEnabled(commandKey, settingsByKey, context) {
   const row = settingsByKey?.[commandKey]
-  return row ? row.enabled !== false : true
+  const field = context === 'group' ? 'enabled_group' : 'enabled_dm'
+  return row ? row[field] !== false : true
 }
 
 // Checks a candidate custom-phrase INPUT (raw, possibly comma-separated

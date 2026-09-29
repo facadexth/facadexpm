@@ -23,16 +23,6 @@ const SCHEDULE_COMMAND_DESCRIPTIONS = {
   next_week_job: 'สรุป 7 วัน (จ-อา) ของอาทิตย์หน้า ทีละบรรทัด',
 }
 
-const FIXED_COMMAND_WHERE = {
-  issue_report: 'กลุ่มทีมงาน',
-  material_request: 'กลุ่มทีมงาน',
-  leave: 'กลุ่มทีมงาน',
-  check_in: 'แชทส่วนตัวเท่านั้น',
-  check_out: 'แชทส่วนตัวเท่านั้น',
-  site_photo: 'แชทส่วนตัวเท่านั้น',
-  job_done_start: 'แชทส่วนตัวเท่านั้น',
-}
-
 const FIXED_COMMAND_DESCRIPTIONS = {
   issue_report: 'บันทึกแจ้งปัญหาหน้างาน',
   material_request: 'ส่งลิงก์ฟอร์มเบิกของ (ใช้ได้ 30 นาที)',
@@ -372,7 +362,7 @@ export default function CommunicationCenter() {
     try {
       const existing = commandSettingsByKey[editingCommandKey]
       const { error } = await supabase.from('line_command_settings').upsert(
-        { tenant_id: tenant.id, command_key: editingCommandKey, enabled: existing ? existing.enabled : true, custom_phrase: editPhraseValue.trim() || null, updated_at: new Date().toISOString() },
+        { tenant_id: tenant.id, command_key: editingCommandKey, enabled_dm: existing ? existing.enabled_dm : true, enabled_group: existing ? existing.enabled_group : true, custom_phrase: editPhraseValue.trim() || null, updated_at: new Date().toISOString() },
         { onConflict: 'tenant_id,command_key' }
       )
       if (error) throw error
@@ -385,13 +375,22 @@ export default function CommunicationCenter() {
     }
   }
 
-  const handleToggleCommandEnabled = async (commandKey) => {
+  // context: 'dm' | 'group' -- toggles only that one context, leaving the
+  // other's current state (or default true) untouched.
+  const handleToggleCommandEnabled = async (commandKey, context) => {
     setSavingCommandKey(commandKey)
     try {
       const existing = commandSettingsByKey[commandKey]
-      const currentlyEnabled = resolveEnabled(commandKey, commandSettingsByKey)
+      const field = context === 'group' ? 'enabled_group' : 'enabled_dm'
+      const otherField = context === 'group' ? 'enabled_dm' : 'enabled_group'
+      const currentlyEnabled = resolveEnabled(commandKey, commandSettingsByKey, context)
       const { error } = await supabase.from('line_command_settings').upsert(
-        { tenant_id: tenant.id, command_key: commandKey, enabled: !currentlyEnabled, custom_phrase: existing?.custom_phrase ?? null, updated_at: new Date().toISOString() },
+        {
+          tenant_id: tenant.id, command_key: commandKey,
+          [field]: !currentlyEnabled,
+          [otherField]: existing ? existing[otherField] : true,
+          custom_phrase: existing?.custom_phrase ?? null, updated_at: new Date().toISOString(),
+        },
         { onConflict: 'tenant_id,command_key' }
       )
       if (error) throw error
@@ -499,33 +498,40 @@ export default function CommunicationCenter() {
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>📖 คำสั่งที่พิมพ์ได้ในไลน์</div>
         <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text3)', borderBottom: '1px solid var(--border)' }}>
-          เปิด/ปิดได้ทุกคำสั่ง — คำสั่งดูตารางงาน 4 อันแรกเปลี่ยนคำที่ใช้พิมพ์ได้ด้วย (ใส่ได้หลายคำ คั่นด้วยจุลภาค ",") ที่เหลือกำหนดคำไว้ในระบบตายตัว แต่ปิดเปิดได้เหมือนกัน
+          เปิด/ปิดได้ทุกคำสั่ง แยกอิสระระหว่างแชทส่วนตัว (DM) กับกลุ่มไลน์ — คำสั่งดูตารางงาน 4 อันแรกเปลี่ยนคำที่ใช้พิมพ์ได้ด้วย (ใส่ได้หลายคำ คั่นด้วยจุลภาค ",") ที่เหลือกำหนดคำไว้ในระบบตายตัว แต่ปิดเปิดได้เหมือนกัน
         </div>
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>พิมพ์</th>
-                <th>ใช้ได้ที่ไหน</th>
+                <th>ส่วนตัว (DM)</th>
+                <th>กลุ่ม</th>
                 <th>ทำอะไร</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {SCHEDULE_COMMAND_KEYS.map(key => {
-                const enabled = resolveEnabled(key, commandSettingsByKey)
+                const enabledDm = resolveEnabled(key, commandSettingsByKey, 'dm')
+                const enabledGroup = resolveEnabled(key, commandSettingsByKey, 'group')
                 const phrases = resolveEffectivePhrases(key, commandSettingsByKey)
                 const isEditing = editingCommandKey === key
                 const isSaving = savingCommandKey === key
                 return (
-                  <tr key={key} style={{ opacity: enabled ? 1 : 0.5 }}>
+                  <tr key={key} style={{ opacity: (enabledDm || enabledGroup) ? 1 : 0.5 }}>
                     <td style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap' }}>
                       {isEditing ? (
                         <input className="input" style={{ fontSize: 12, padding: '3px 6px', width: 220 }} value={editPhraseValue}
                           onChange={e => setEditPhraseValue(e.target.value)} placeholder={`${SCHEDULE_COMMAND_DEFAULTS[key]}, ...`} autoFocus />
                       ) : phrases.join(' / ')}
                     </td>
-                    <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>แชทส่วนตัว + กลุ่ม</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => handleToggleCommandEnabled(key, 'dm')}>{enabledDm ? '✅ เปิด' : '⛔ ปิด'}</button>
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => handleToggleCommandEnabled(key, 'group')}>{enabledGroup ? '✅ เปิด' : '⛔ ปิด'}</button>
+                    </td>
                     <td style={{ fontSize: 12.5 }}>{SCHEDULE_COMMAND_DESCRIPTIONS[key]}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {isEditing ? (
@@ -534,26 +540,27 @@ export default function CommunicationCenter() {
                           <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => setEditingCommandKey(null)}>ยกเลิก</button>
                         </>
                       ) : (
-                        <>
-                          <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => startEditCommandPhrase(key)}>แก้ไข</button>
-                          <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => handleToggleCommandEnabled(key)}>{enabled ? 'ปิด' : 'เปิด'}</button>
-                        </>
+                        <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => startEditCommandPhrase(key)}>แก้ไข</button>
                       )}
                     </td>
                   </tr>
                 )
               })}
               {FIXED_COMMAND_KEYS.map(key => {
-                const enabled = resolveEnabled(key, commandSettingsByKey)
+                const enabledDm = resolveEnabled(key, commandSettingsByKey, 'dm')
+                const enabledGroup = resolveEnabled(key, commandSettingsByKey, 'group')
                 const isSaving = savingCommandKey === key
                 return (
-                  <tr key={key} style={{ opacity: enabled ? 1 : 0.5 }}>
+                  <tr key={key} style={{ opacity: (enabledDm || enabledGroup) ? 1 : 0.5 }}>
                     <td style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap' }}>{FIXED_COMMAND_PHRASES[key].join(' / ')}</td>
-                    <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{FIXED_COMMAND_WHERE[key]}</td>
-                    <td style={{ fontSize: 12.5 }}>{FIXED_COMMAND_DESCRIPTIONS[key]}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => handleToggleCommandEnabled(key)}>{enabled ? 'ปิด' : 'เปิด'}</button>
+                      <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => handleToggleCommandEnabled(key, 'dm')}>{enabledDm ? '✅ เปิด' : '⛔ ปิด'}</button>
                     </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => handleToggleCommandEnabled(key, 'group')}>{enabledGroup ? '✅ เปิด' : '⛔ ปิด'}</button>
+                    </td>
+                    <td style={{ fontSize: 12.5 }}>{FIXED_COMMAND_DESCRIPTIONS[key]}</td>
+                    <td></td>
                   </tr>
                 )
               })}
