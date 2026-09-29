@@ -420,7 +420,14 @@ export default function HR() {
     setLeaveRequests(data || [])
     setLoadingRequests(false)
   }
-  useEffect(() => { fetchRequests() }, [canEdit])
+  // Depends on hasModuleAccess('line_bot') too, not just canEdit -- useTenant()
+  // (module list) and useUserRole() (canEdit) are two independent async
+  // fetches with no guaranteed order. If canEdit resolves true before the
+  // module list finishes loading, fetchRequests's own guard bounces once
+  // and, without this second dependency, never re-fires once module access
+  // later resolves true -- leaving loadingRequests stuck true forever (the
+  // tab shows "กำลังโหลด..." with no error, indefinitely).
+  useEffect(() => { fetchRequests() }, [canEdit, hasModuleAccess('line_bot')])
 
   const pendingRequestCount = leaveRequests.filter(r => r.status === 'pending').length
 

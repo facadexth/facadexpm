@@ -26,6 +26,18 @@ export default defineConfig({
       // into every user's offline app-shell cache on install/update.
       workbox: {
         globIgnores: ['manual/**'],
+        // globIgnores above only keeps manual/index.html OUT of the
+        // precache -- it does NOT stop Workbox's default catch-all
+        // NavigationRoute (registered with no denylist) from treating a
+        // request for that path as an unmatched SPA route and serving
+        // this app's own index.html instead. Since ManualModal.jsx loads
+        // /manual/index.html in an <iframe>, and an iframe's top-level
+        // load is itself a navigation-mode request, that fallback was
+        // recursively rendering the whole app inside the manual iframe
+        // instead of the real manual page. Excluding /manual/ from the
+        // fallback lets that request go straight to the network/cache
+        // like any other static file.
+        navigateFallbackDenylist: [/^\/manual\//],
       },
       manifest: {
         name: 'FACADE X Construction Dashboard',
