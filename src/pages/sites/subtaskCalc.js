@@ -72,6 +72,43 @@ export function computeNodeStats(nodeId, subtasksByParent, microtasksByNodeId) {
 }
 
 /**
+ * Recursive date-range roll-up for one node (phase or subtask), mirroring
+ * computeNodeStats' shape but for dates instead of status/weight: a node
+ * with children takes the min start_date / max end_date over the DERIVED
+ * ranges of its children (recursing to any depth), so a phase's displayed
+ * span always tracks its subtasks' real dates instead of a manually-set
+ * start/end that can silently drift out of sync. A leaf (zero children)
+ * falls back to its own start_date/end_date. Returns null when nothing
+ * under the node -- recursively -- has both dates set yet.
+ *
+ * `byNodeId` (id -> the phase/subtask row itself) is required because,
+ * unlike computeNodeStats, a leaf's own dates are needed directly (not
+ * just its children's), including for the node the recursion started on.
+ *
+ * Date strings ("YYYY-MM-DD") compare correctly with plain `<`/`>` since
+ * ISO 8601 date order matches lexicographic order -- no Date objects
+ * needed here.
+ */
+export function computeNodeDateRange(nodeId, subtasksByParent, byNodeId) {
+  const children = subtasksByParent[nodeId] || []
+  if (children.length === 0) {
+    const node = byNodeId[nodeId]
+    if (!node || !node.start_date || !node.end_date) return null
+    return { start: node.start_date, end: node.end_date }
+  }
+  let start = null
+  let end = null
+  children.forEach((c) => {
+    const r = computeNodeDateRange(c.id, subtasksByParent, byNodeId)
+    if (!r) return
+    if (start === null || r.start < start) start = r.start
+    if (end === null || r.end > end) end = r.end
+  })
+  if (start === null) return null
+  return { start, end }
+}
+
+/**
  * Every leaf node (phase or subtask with zero child subtasks) across a
  * site's full tree, each still carrying its own dates/billing_weight_pct
  * -- flattened once here so callers (the S-curve) never need to know or

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  groupSubtasksByParent, computeNodeStats, isLeaf, flattenLeaves,
+  groupSubtasksByParent, computeNodeStats, computeNodeDateRange, isLeaf, flattenLeaves,
   flattenVisibleRows, siblingWeightSum,
 } from './subtaskCalc.js'
 
@@ -89,6 +89,64 @@ describe('computeNodeStats', () => {
     const subtasksByParent = groupSubtasksByParent(subtasks)
     expect(computeNodeStats('p1', subtasksByParent, { s1: [{ status: 'done' }], s2: [{ status: 'not_started' }] }).derivedStatus).toBe('in_progress')
     expect(computeNodeStats('p1', subtasksByParent, {}).derivedStatus).toBe('not_started')
+  })
+})
+
+describe('computeNodeDateRange', () => {
+  it('falls back to a leaf\'s own dates when it has no children', () => {
+    const byNodeId = { p1: { id: 'p1', start_date: '2026-08-01', end_date: '2026-08-10' } }
+    expect(computeNodeDateRange('p1', {}, byNodeId)).toEqual({ start: '2026-08-01', end: '2026-08-10' })
+  })
+
+  it('returns null for a leaf with no dates set yet', () => {
+    const byNodeId = { p1: { id: 'p1', start_date: null, end_date: null } }
+    expect(computeNodeDateRange('p1', {}, byNodeId)).toBeNull()
+  })
+
+  it('derives min start / max end from direct children, ignoring its own manual dates', () => {
+    const subtasks = [
+      { id: 's1', phase_id: 'p1', parent_subtask_id: null, start_date: '2026-08-05', end_date: '2026-08-12' },
+      { id: 's2', phase_id: 'p1', parent_subtask_id: null, start_date: '2026-08-10', end_date: '2026-08-20' },
+    ]
+    const subtasksByParent = groupSubtasksByParent(subtasks)
+    const byNodeId = {
+      p1: { id: 'p1', start_date: '2026-01-01', end_date: '2026-01-02' }, // stale manual dates -- must be ignored
+      s1: subtasks[0], s2: subtasks[1],
+    }
+    expect(computeNodeDateRange('p1', subtasksByParent, byNodeId)).toEqual({ start: '2026-08-05', end: '2026-08-20' })
+  })
+
+  it('recurses through nested subtasks (worked example from the spec)', () => {
+    // phase "ผลิต" (p1) has 2 child subtasks: "ตัดวัสดุ" (s1, 2026-08-01..05)
+    // and "เชื่อมประกอบ" (s2, no own dates) which itself has 1 child subtask
+    // "เชื่อมชั้น 3" (s2a, 2026-08-10..20).
+    const subtasks = [
+      { id: 's1', phase_id: 'p1', parent_subtask_id: null, start_date: '2026-08-01', end_date: '2026-08-05' },
+      { id: 's2', phase_id: 'p1', parent_subtask_id: null, start_date: null, end_date: null },
+      { id: 's2a', phase_id: 'p1', parent_subtask_id: 's2', start_date: '2026-08-10', end_date: '2026-08-20' },
+    ]
+    const subtasksByParent = groupSubtasksByParent(subtasks)
+    const byNodeId = { p1: { id: 'p1' }, s1: subtasks[0], s2: subtasks[1], s2a: subtasks[2] }
+
+    expect(computeNodeDateRange('s2', subtasksByParent, byNodeId)).toEqual({ start: '2026-08-10', end: '2026-08-20' })
+    expect(computeNodeDateRange('p1', subtasksByParent, byNodeId)).toEqual({ start: '2026-08-01', end: '2026-08-20' })
+  })
+
+  it('skips a child with no dates anywhere under it instead of returning null for the whole node', () => {
+    const subtasks = [
+      { id: 's1', phase_id: 'p1', parent_subtask_id: null, start_date: '2026-08-01', end_date: '2026-08-05' },
+      { id: 's2', phase_id: 'p1', parent_subtask_id: null, start_date: null, end_date: null },
+    ]
+    const subtasksByParent = groupSubtasksByParent(subtasks)
+    const byNodeId = { p1: { id: 'p1' }, s1: subtasks[0], s2: subtasks[1] }
+    expect(computeNodeDateRange('p1', subtasksByParent, byNodeId)).toEqual({ start: '2026-08-01', end: '2026-08-05' })
+  })
+
+  it('returns null when every child (recursively) has no dates', () => {
+    const subtasks = [{ id: 's1', phase_id: 'p1', parent_subtask_id: null, start_date: null, end_date: null }]
+    const subtasksByParent = groupSubtasksByParent(subtasks)
+    const byNodeId = { p1: { id: 'p1' }, s1: subtasks[0] }
+    expect(computeNodeDateRange('p1', subtasksByParent, byNodeId)).toBeNull()
   })
 })
 

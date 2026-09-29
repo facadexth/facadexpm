@@ -13,7 +13,7 @@ import { useSitePhases, usePhaseTasks, useSubtasks, useIncomes, useExpenses } fr
 import { supabase } from '../../lib/supabase.js'
 import { ConfirmDialog } from '../../components/Modal.jsx'
 import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, phaseOverlapsRange, STATUS_COLOR, PHASE_TEMPLATE, expandRangeForTransactions } from './ganttTimeline.js'
-import { groupSubtasksByParent, computeNodeStats, isLeaf, flattenVisibleRows, siblingWeightSum } from './subtaskCalc.js'
+import { groupSubtasksByParent, computeNodeStats, computeNodeDateRange, isLeaf, flattenVisibleRows, siblingWeightSum } from './subtaskCalc.js'
 import { getEffectiveTheme } from '../../lib/theme.js'
 
 const ROW_H = 34
@@ -55,6 +55,21 @@ const emptyDraft = (sortOrder) => ({
   name: '', start_date: '', end_date: '', status: 'not_started',
   billing_weight_pct: 0, depends_on_id: '', sort_order: sortOrder,
 })
+
+// Compact "1-20 ส.ค." / "1 ส.ค.-5 ก.ย." label shown after an item's name.
+// Reads local date components (matching how month-tick labels are already
+// formatted elsewhere in this file) -- fine for this app's own timezone
+// (Thailand, UTC+7): a UTC-midnight date string never rolls back a
+// calendar day under a positive UTC offset.
+const formatShortDateRange = (startStr, endStr) => {
+  if (!startStr || !endStr) return null
+  const s = new Date(startStr)
+  const e = new Date(endStr)
+  const sameMonth = s.getFullYear() === e.getFullYear() && s.getMonth() === e.getMonth()
+  return sameMonth
+    ? `${s.getDate()}-${e.getDate()} ${format(e, 'MMM', { locale: th })}`
+    : `${format(s, 'd MMM', { locale: th })}-${format(e, 'd MMM', { locale: th })}`
+}
 
 export default function GanttView({ sites, navigateTo, onManagePhases, selectedSiteId, onSelectSite, canEdit, onPhasesChanged, onOpenKanban }) {
   const { data: allPhases, refetch: refetchPhases } = useSitePhases()
@@ -446,10 +461,16 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
             {visibleRows.map(({ node, depth, isPhase }, i) => {
               const top = rowTops[i]
               const isEditingThis = node.isNew || (!!editingId && editingId === `${isPhase ? 'phase' : 'subtask'}:${node.id}`)
-              const style = node.isNew ? null : barStyle(node, range)
               const ns = nodeStatsById[node.id]
               const nodeIsLeaf = isLeaf(node.id, subtasksByParent)
               const hasChildren = !node.isNew && !nodeIsLeaf
+              // A node with children shows a bracket spanning its own
+              // descendants' real dates (derived, like status/weight already
+              // are) instead of its own possibly-stale manual start/end.
+              const nodeRange = hasChildren ? computeNodeDateRange(node.id, subtasksByParent, byNodeId) : null
+              const style = node.isNew ? null
+                : hasChildren ? (nodeRange && barStyle({ start_date: nodeRange.start, end_date: nodeRange.end }, range))
+                : barStyle(node, range)
 
               if (isEditingThis) {
                 const phase = node
@@ -554,11 +575,18 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                 : displayStatus === 'in_progress' ? (ns && ns.stats.total > 0 ? `${ns.stats.pct}%` : 'กำลังทำ')
                 : ''
               const titleSuffix = ns && ns.stats.total > 0 ? ` (${ns.stats.done}/${ns.stats.total} ${ns.stats.source === 'subtasks' ? 'ขั้นตอนย่อยเสร็จ' : 'งานย่อยเสร็จ'})` : ''
+              const dateRangeStr = hasChildren
+                ? (nodeRange && formatShortDateRange(nodeRange.start, nodeRange.end))
+                : formatShortDateRange(node.start_date, node.end_date)
+              const rangeForTitle = hasChildren
+                ? (nodeRange ? `${nodeRange.start} → ${nodeRange.end} (รวมขั้นตอนย่อย)` : 'ยังไม่มีวันที่ในขั้นตอนย่อย')
+                : `${node.start_date} → ${node.end_date}`
 
               return (
                 <div key={node.id} style={{ position: 'absolute', top, left: 0, right: 0, height: ROW_H, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div style={{ width: LABEL_W, flexShrink: 0, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: depth * 16 }} title={node.name}>
                     {node.name}
+                    {dateRangeStr && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 400, color: 'var(--text3)' }}>{dateRangeStr}</span>}
                   </div>
                   <div
                     style={{ position: 'relative', flex: 1, height: 20, background: 'var(--bg3)', borderRadius: 5, cursor: hasChildren || nodeIsLeaf ? 'pointer' : 'default' }}
@@ -570,13 +598,21 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                   >
                     {style && (
                       <div
-                        title={`${node.name}\n${node.start_date} → ${node.end_date}\nสถานะ: ${displayStatus}${titleSuffix}`}
+                        title={`${node.name}\n${rangeForTitle}\nสถานะ: ${displayStatus}${titleSuffix}`}
                         style={{
                           position: 'absolute', top: 2, bottom: 2, left: style.left, width: style.width,
-                          background: STATUS_COLOR[displayStatus] || STATUS_COLOR.not_started, borderRadius: 5,
+                          borderRadius: 5,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 10, fontWeight: 700, color: displayStatus === 'not_started' ? 'var(--text3)' : '#fff',
+                          fontSize: 10, fontWeight: 700,
                           overflow: 'hidden', whiteSpace: 'nowrap',
+                          // A node with children reads as a bracket over its
+                          // own child rows -- hollow outline in the status
+                          // color instead of the solid fill leaves get, so
+                          // it doesn't visually compete with the real task
+                          // bars nested underneath it once expanded.
+                          ...(hasChildren
+                            ? { background: 'transparent', border: `2px solid ${STATUS_COLOR[displayStatus] || STATUS_COLOR.not_started}`, color: STATUS_COLOR[displayStatus] || STATUS_COLOR.not_started }
+                            : { background: STATUS_COLOR[displayStatus] || STATUS_COLOR.not_started, color: displayStatus === 'not_started' ? 'var(--text3)' : '#fff' }),
                         }}
                       >
                         {hasChildren ? (expandedIds.has(node.id) ? '▾ ' : '▸ ') : ''}{label}
