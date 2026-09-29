@@ -8,8 +8,11 @@ const GLASS = { price_per_sqm: 500 }
 function baseTemplate(overrides = {}) {
   return {
     waste_pct: 10,
-    glass_width_deduction_mm: 80,
-    glass_height_deduction_mm: 80,
+    infill_width_deduction_mm: 80,
+    infill_height_deduction_mm: 80,
+    labor_price_per_sqm: 0,
+    silicone_price_per_m: 0,
+    felt_price_per_m: 0,
     grid_row_weights: [1],
     grid_horizontal_rail_family: null,
     grid_vertical_mullion_family: null,
@@ -75,7 +78,7 @@ describe('computeBomForOpening -- quantity_basis', () => {
 describe('computeBomForOpening -- waste_pct', () => {
   it('applies only to the aluminum subtotal (components + grid lines)', () => {
     const components = [{ role_name: 'Top rail', profile_family: 'Frame-General', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 1 }]
-    const template = baseTemplate({ waste_pct: 20, glass_width_deduction_mm: 0, glass_height_deduction_mm: 0 })
+    const template = baseTemplate({ waste_pct: 20, infill_width_deduction_mm: 0, infill_height_deduction_mm: 0 })
     const result = computeBomForOpening(baseOpening({ width_m: 2, height_m: 2 }), template, components, [], [PROFILE], FINISH, null)
     // length 2m x qty 1 x 1.5 kg/m = 3kg x 170 = 510
     expect(result.profileLines[0].cost).toBeCloseTo(510)
@@ -113,28 +116,28 @@ describe('computeBomForOpening -- grid-derived members', () => {
   })
 })
 
-describe('computeBomForOpening -- glass area, per cell', () => {
+describe('computeBomForOpening -- infill area, per cell', () => {
   it('single-cell opening: (width - deduction) x (height - deduction)', () => {
-    const template = baseTemplate({ glass_width_deduction_mm: 80, glass_height_deduction_mm: 80 })
+    const template = baseTemplate({ infill_width_deduction_mm: 80, infill_height_deduction_mm: 80 })
     const result = computeBomForOpening(baseOpening({ width_m: 1, height_m: 1 }), template, [], [], [PROFILE], FINISH, GLASS)
-    expect(result.glassArea_sqm).toBeCloseTo(0.92 * 0.92)
-    expect(result.glassCost).toBeCloseTo(0.92 * 0.92 * 500)
+    expect(result.infillArea_sqm).toBeCloseTo(0.92 * 0.92)
+    expect(result.infillCost).toBeCloseTo(0.92 * 0.92 * 500)
   })
 
   it('sums across every cell of a weighted-row, multi-column grid', () => {
-    const template = baseTemplate({ grid_row_weights: [0.25, 0.75], glass_width_deduction_mm: 80, glass_height_deduction_mm: 80 })
+    const template = baseTemplate({ grid_row_weights: [0.25, 0.75], infill_width_deduction_mm: 80, infill_height_deduction_mm: 80 })
     const result = computeBomForOpening(baseOpening({ width_m: 2, height_m: 2, panel_count: 2 }), template, [], [], [PROFILE], FINISH, GLASS)
     // 2 rows x 2 columns = 4 cells. columns: 1m wide each. rows: 0.5m and 1.5m tall.
     const cell1 = (1 - 0.08) * (0.5 - 0.08)
     const cell2 = (1 - 0.08) * (1.5 - 0.08)
     const expectedArea = 2 * cell1 + 2 * cell2
-    expect(result.glassArea_sqm).toBeCloseTo(expectedArea)
+    expect(result.infillArea_sqm).toBeCloseTo(expectedArea)
   })
 
-  it('is zero when no glassType is supplied', () => {
+  it('is zero when no infillType is supplied', () => {
     const result = computeBomForOpening(baseOpening(), baseTemplate(), [], [], [PROFILE], FINISH, null)
-    expect(result.glassArea_sqm).toBe(0)
-    expect(result.glassCost).toBe(0)
+    expect(result.infillArea_sqm).toBe(0)
+    expect(result.infillCost).toBe(0)
   })
 })
 
@@ -190,5 +193,56 @@ describe('computeBomForOpening -- extra_lines and totalCost', () => {
     const opening = baseOpening({ quantity: 5, extra_lines: [{ description: 'x', amount: 100 }] })
     const result = computeBomForOpening(opening, baseTemplate(), [], [], [PROFILE], FINISH, null)
     expect(result.totalCost).toBeCloseTo(result.wasteCost + 100)
+  })
+})
+
+describe('computeBomForOpening -- labor/silicone/felt cost lines', () => {
+  it('labor = width x height x labor_price_per_sqm', () => {
+    const template = baseTemplate({ labor_price_per_sqm: 500 })
+    const result = computeBomForOpening(baseOpening({ width_m: 2, height_m: 3 }), template, [], [], [PROFILE], FINISH, null)
+    expect(result.laborCost).toBeCloseTo(2 * 3 * 500)
+  })
+
+  it('silicone = perimeter x silicone_price_per_m', () => {
+    const template = baseTemplate({ silicone_price_per_m: 40 })
+    const result = computeBomForOpening(baseOpening({ width_m: 2, height_m: 3 }), template, [], [], [PROFILE], FINISH, null)
+    expect(result.siliconeCost).toBeCloseTo(2 * (2 + 3) * 40)
+  })
+
+  it('felt = perimeter x felt_price_per_m', () => {
+    const template = baseTemplate({ felt_price_per_m: 15 })
+    const result = computeBomForOpening(baseOpening({ width_m: 2, height_m: 3 }), template, [], [], [PROFILE], FINISH, null)
+    expect(result.feltCost).toBeCloseTo(2 * (2 + 3) * 15)
+  })
+
+  it('all three are zero at the default rate, and totalCost is unchanged from before this spec', () => {
+    const result = computeBomForOpening(baseOpening(), baseTemplate(), [], [], [PROFILE], FINISH, null)
+    expect(result.laborCost).toBe(0)
+    expect(result.siliconeCost).toBe(0)
+    expect(result.feltCost).toBe(0)
+    expect(result.totalCost).toBeCloseTo(result.wasteCost) // no components/hardware/infill/extra_lines in this fixture
+  })
+
+  it('all three sum into totalCost alongside the existing factors', () => {
+    const template = baseTemplate({ labor_price_per_sqm: 500, silicone_price_per_m: 40, felt_price_per_m: 15 })
+    const result = computeBomForOpening(baseOpening({ width_m: 2, height_m: 3 }), template, [], [], [PROFILE], FINISH, null)
+    expect(result.totalCost).toBeCloseTo(result.wasteCost + result.laborCost + result.siliconeCost + result.feltCost)
+  })
+})
+
+describe('computeBomForOpening -- infill material kinds', () => {
+  it('uses the same area x price formula regardless of material_kind', () => {
+    const meshInfill = { price_per_sqm: 300, material_kind: 'mesh' }
+    const template = baseTemplate({ infill_width_deduction_mm: 80, infill_height_deduction_mm: 80 })
+    const result = computeBomForOpening(baseOpening({ width_m: 1, height_m: 1 }), template, [], [], [PROFILE], FINISH, meshInfill)
+    expect(result.infillArea_sqm).toBeCloseTo(0.92 * 0.92)
+    expect(result.infillCost).toBeCloseTo(0.92 * 0.92 * 300)
+  })
+
+  it('acp and solid_panel infill kinds compute identically to glass at the same price', () => {
+    const template = baseTemplate({ infill_width_deduction_mm: 0, infill_height_deduction_mm: 0 })
+    const acpResult = computeBomForOpening(baseOpening({ width_m: 1, height_m: 1 }), template, [], [], [PROFILE], FINISH, { price_per_sqm: 500, material_kind: 'acp' })
+    const glassResult = computeBomForOpening(baseOpening({ width_m: 1, height_m: 1 }), template, [], [], [PROFILE], FINISH, { price_per_sqm: 500, material_kind: 'glass' })
+    expect(acpResult.infillCost).toBeCloseTo(glassResult.infillCost)
   })
 })

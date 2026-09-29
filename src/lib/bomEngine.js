@@ -6,7 +6,11 @@
 // used by inventoryCost.js.
 //
 // See docs/superpowers/specs/2026-09-10-bom-template-engine-design.md's
-// "Business logic" section -- this is a direct implementation of it.
+// "Business logic" section for the original engine, and
+// docs/superpowers/specs/2026-09-29-bom-cost-factors-design.md for the
+// infill generalization + labor/silicone/felt cost lines added here.
+// Add-on unit aggregation happens at the CALLER (Estimation.jsx), not in
+// this function -- this stays "one opening in, one BOM out."
 // ============================================================
 
 function resolveGrid(template, opening) {
@@ -42,7 +46,7 @@ function priceProfileLine({ role_name, family, length_m, quantity, profiles, ope
   return { role_name, family, series: opening.series, thickness_mm: opening.thickness_mm, length_m, quantity, weight_kg, cost, resolved }
 }
 
-export function computeBomForOpening(opening, template, components, hardware, profiles, finish, glassType) {
+export function computeBomForOpening(opening, template, components, hardware, profiles, finish, infillType) {
   const { rowCount, columnCount, cells } = resolveGrid(template, opening)
 
   // Grid-derived internal members (Business logic Step 2).
@@ -91,22 +95,33 @@ export function computeBomForOpening(opening, template, components, hardware, pr
     return { name: h.name, quantity, cost: quantity * h.reference_unit_price }
   })
 
-  let glassArea_sqm = 0
-  if (glassType) {
-    const wDed = template.glass_width_deduction_mm / 1000
-    const hDed = template.glass_height_deduction_mm / 1000
+  let infillArea_sqm = 0
+  if (infillType) {
+    const wDed = template.infill_width_deduction_mm / 1000
+    const hDed = template.infill_height_deduction_mm / 1000
     // Each entry in `cells` already represents one column's width (cellWidth_m
-    // = width_m / columnCount) for that row -- so one row's total glass area
+    // = width_m / columnCount) for that row -- so one row's total infill area
     // is columnCount identical cells, not a second loop over columns.
     for (const cell of cells) {
-      glassArea_sqm += columnCount * Math.max(0, cell.width_m - wDed) * Math.max(0, cell.height_m - hDed)
+      infillArea_sqm += columnCount * Math.max(0, cell.width_m - wDed) * Math.max(0, cell.height_m - hDed)
     }
   }
-  const glassCost = glassType ? glassArea_sqm * glassType.price_per_sqm : 0
+  const infillCost = infillType ? infillArea_sqm * infillType.price_per_sqm : 0
+
+  // New cost factors (2026-09-29 spec, Decision 3). Zero when the
+  // template's rate is the default 0, so an unfilled-in template keeps
+  // computing exactly the same totalCost as before this spec.
+  const laborCost = opening.width_m * opening.height_m * template.labor_price_per_sqm
+  const siliconeCost = perimeter_m * template.silicone_price_per_m
+  const feltCost = perimeter_m * template.felt_price_per_m
 
   const extraLinesCost = (opening.extra_lines || []).reduce((s, l) => s + l.amount, 0)
 
-  const totalCost = aluminumSubtotal + wasteCost + hardwareLines.reduce((s, l) => s + l.cost, 0) + glassCost + extraLinesCost
+  const totalCost = aluminumSubtotal + wasteCost + hardwareLines.reduce((s, l) => s + l.cost, 0) + infillCost
+    + laborCost + siliconeCost + feltCost + extraLinesCost
 
-  return { profileLines, gridLines, hardwareLines, glassArea_sqm, glassCost, wasteCost, extraLinesCost, totalCost, unresolvedComponents }
+  return {
+    profileLines, gridLines, hardwareLines, infillArea_sqm, infillCost, wasteCost,
+    laborCost, siliconeCost, feltCost, extraLinesCost, totalCost, unresolvedComponents,
+  }
 }
