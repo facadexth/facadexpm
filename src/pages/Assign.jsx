@@ -57,6 +57,16 @@ export default function Assign({ navState, openSiteOverview }) {
   // regardless of which view (MySchedule vs the admin grid) they land on.
   const { data: myLocation } = useMyAssignedCheckinLocation()
   const todayIso = new Date().toISOString().slice(0, 10)
+  // myTodaySiteAssignmentCount only means anything when today is actually
+  // inside the fetched [from, to] range -- assignments is scoped to
+  // whatever week/month is currently being viewed (final review finding:
+  // without this guard, browsing to a different week made the count
+  // silently read as 0 -- "no assignment" -- for someone who really did
+  // have one today, just outside the visible window; MySchedule.jsx
+  // doesn't have this problem because it only evaluates the check-in
+  // card inside its own per-day isToday loop, which simply never runs
+  // for any day when today isn't one of the days being displayed).
+  const isTodayInView = todayIso >= from && todayIso <= to
   const me = useMemo(() => (workers || []).find(w => w.email === user?.email), [workers, user])
   const myTodaySiteAssignmentCount = useMemo(() => {
     if (!me) return 0
@@ -303,7 +313,7 @@ export default function Assign({ navState, openSiteOverview }) {
           whose 'assign' page-permission was manually set to non-edit --
           that account sees MySchedule (canEdit false) and gets the card
           from there instead; exactly one of the two paths ever renders it. */}
-      {canEdit && me && myLocation && myTodaySiteAssignmentCount === 0 && (
+      {canEdit && isTodayInView && me && myLocation && myTodaySiteAssignmentCount === 0 && (
         <div style={{ marginBottom: 16 }}>
           <LocationCheckinCard workerId={me.id} locationId={myLocation.id} locationName={myLocation.name} date={todayIso} />
         </div>

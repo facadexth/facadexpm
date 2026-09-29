@@ -11,11 +11,24 @@
 // perform_worker_checkin_by_id's own existence check uses.
 const SCHEDULED_TYPES = ['site', 'factory', 'subcontract']
 
+// 'done' outranks 'open' -- a worker can have up to two worker_checkins
+// rows per day now (one site-based, one location-based, spec Decision 5's
+// dual-reference), so the cell reports whichever is furthest along rather
+// than whichever row the fetch happened to return last (final review
+// finding: the fetch has no ORDER BY, so "last row wins" was
+// nondeterministic once two rows per worker/day became possible).
+const RANK = { done: 2, open: 1 }
+
 export function deriveCellStates(checkins, assignments) {
   const key = (workerId, date) => `${workerId}::${date}`
 
-  const checkinByKey = new Map()
-  for (const c of checkins) checkinByKey.set(key(c.worker_id, c.date), c)
+  const bestByKey = new Map()
+  for (const c of checkins) {
+    const k = key(c.worker_id, c.date)
+    const state = c.checkout_at ? 'done' : 'open'
+    const existing = bestByKey.get(k)
+    if (!existing || RANK[state] > RANK[existing]) bestByKey.set(k, state)
+  }
 
   const scheduledKeys = new Set()
   for (const a of assignments) {
@@ -23,8 +36,8 @@ export function deriveCellStates(checkins, assignments) {
   }
 
   return function cellState(workerId, date) {
-    const c = checkinByKey.get(key(workerId, date))
-    if (c) return c.checkout_at ? 'done' : 'open'
+    const best = bestByKey.get(key(workerId, date))
+    if (best) return best
     return scheduledKeys.has(key(workerId, date)) ? 'missed' : null
   }
 }

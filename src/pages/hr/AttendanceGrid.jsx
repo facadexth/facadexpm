@@ -38,7 +38,7 @@ export default function AttendanceGrid({ workers, onCellClick }) {
     setLoading(true)
     const from = days[0], to = days[days.length - 1]
     Promise.all([
-      supabase.from('worker_checkins').select('worker_id, date, checkin_at, checkout_at').gte('date', from).lte('date', to),
+      supabase.from('worker_checkins').select('worker_id, date, checkin_at, checkout_at').gte('date', from).lte('date', to).order('checkin_at'),
       supabase.from('worker_assignments').select('worker_id, date, type').gte('date', from).lte('date', to),
     ]).then(([c, a]) => {
       if (cancelled) return

@@ -243,6 +243,19 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
 
   const handleDeleteLocation = async () => {
     if (!deleteLocationId) return
+    // user_roles.assigned_checkin_location_id / worker_assignments.checkin_location_id
+    // / worker_checkins.checkin_location_id are all real FKs to this table
+    // with no ON DELETE CASCADE, so the database itself already refuses to
+    // delete a location referenced there. app_settings.factory_site_id is
+    // the one exception -- it stores the id as a plain string with no FK
+    // at all, so deleting a location it points at would silently break
+    // factory check-in tenant-wide with no error at delete time (final
+    // review finding) -- check for that specific case explicitly.
+    if (deleteLocationId === factorySiteId) {
+      alert('ไม่สามารถลบได้ — ตำแหน่งนี้ถูกใช้เป็น "ตำแหน่งโรงงาน" อยู่ กรุณาเปลี่ยนตำแหน่งโรงงานก่อน')
+      setDeleteLocationId(null)
+      return
+    }
     try {
       const { error } = await supabase.from('checkin_locations').delete().eq('id', deleteLocationId)
       if (error) throw error

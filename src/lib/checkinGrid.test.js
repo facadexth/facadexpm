@@ -47,4 +47,17 @@ describe('deriveCellStates', () => {
     const cellState = deriveCellStates(checkins, assignments)
     expect(cellState('w1', '2026-09-29')).toBe('done')
   })
+
+  it('when a worker has two check-in rows the same day (one site-based, one location-based), reports "done" if either is complete, regardless of array order', () => {
+    const openFirst = [
+      { worker_id: 'w1', date: '2026-09-29', checkin_at: '2026-09-29T08:00:00Z', checkout_at: null },
+      { worker_id: 'w1', date: '2026-09-29', checkin_at: '2026-09-29T09:00:00Z', checkout_at: '2026-09-29T17:00:00Z' },
+    ]
+    const doneFirst = [
+      { worker_id: 'w1', date: '2026-09-29', checkin_at: '2026-09-29T09:00:00Z', checkout_at: '2026-09-29T17:00:00Z' },
+      { worker_id: 'w1', date: '2026-09-29', checkin_at: '2026-09-29T08:00:00Z', checkout_at: null },
+    ]
+    expect(deriveCellStates(openFirst, [])('w1', '2026-09-29')).toBe('done')
+    expect(deriveCellStates(doneFirst, [])('w1', '2026-09-29')).toBe('done')
+  })
 })
