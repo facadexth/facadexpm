@@ -7,7 +7,7 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useWorkers, useSites, useAssignmentsRange, useLaborCost, useSiteTravelCost, useAppSetting, useWorkerOTRange, useOTCostBySite, useCompanyHolidaysRange } from '../hooks/useSupabase.js'
+import { useWorkers, useSites, useAssignmentsRange, useLaborCost, useSiteTravelCost, useAppSetting, useWorkerOTRange, useOTCostBySite, useCompanyHolidaysRange, useMyAssignedCheckinLocation } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
@@ -16,6 +16,7 @@ import ViewToggle from './assign/ViewToggle.jsx'
 import GridView from './assign/GridView.jsx'
 import DayView from './assign/DayView.jsx'
 import MySchedule from './assign/MySchedule.jsx'
+import LocationCheckinCard from './assign/LocationCheckinCard.jsx'
 import AssignWizard from './assign/AssignWizard.jsx'
 import AssignOTWizard from './assign/AssignOTWizard.jsx'
 import CellEditPopup from './assign/CellEditPopup.jsx'
@@ -43,6 +44,22 @@ export default function Assign({ navState, openSiteOverview }) {
   const { data: workers }   = useWorkers()
   const { data: sites }     = useSites()
   const { data: assignments, refetch } = useAssignmentsRange(from, to)
+
+  // No-assignment location check-in (spec: 2026-09-29-checkin-locations-design.md).
+  // Rendered here, unconditionally, not just inside MySchedule (which only
+  // renders for !canEdit) -- found via live smoke test that ADMIN/OWNER
+  // always have canEdit=true on this page under default permissions, so
+  // they would never see MySchedule and could never reach this card even
+  // with a real assigned_checkin_location_id. ADMIN/OWNER is exactly the
+  // audience this feature is for (spec Decision 3), so it must be visible
+  // regardless of which view (MySchedule vs the admin grid) they land on.
+  const { data: myLocation } = useMyAssignedCheckinLocation()
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const me = useMemo(() => (workers || []).find(w => w.email === user?.email), [workers, user])
+  const myTodaySiteAssignmentCount = useMemo(() => {
+    if (!me) return 0
+    return (assignments || []).filter(a => a.worker_id === me.id && a.date === todayIso && a.type === 'site').length
+  }, [assignments, me, todayIso])
   const { data: laborData } = useLaborCost()
   const { data: travelData } = useSiteTravelCost()
   const { data: otEntries, refetch: refetchOT } = useWorkerOTRange(from, to)
@@ -278,6 +295,17 @@ export default function Assign({ navState, openSiteOverview }) {
         <div style={{ flex: 1 }} />
         <ViewToggle view={view} onView={setView} anchor={anchor} onAnchor={setAnchor} holidayDates={holidayDates} />
       </div>
+
+      {/* canEdit-gated so this never duplicates MySchedule's own internal
+          rendering of the same card for the (rare) case of an ADMIN/OWNER
+          whose 'assign' page-permission was manually set to non-edit --
+          that account sees MySchedule (canEdit false) and gets the card
+          from there instead; exactly one of the two paths ever renders it. */}
+      {canEdit && me && myLocation && myTodaySiteAssignmentCount === 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <LocationCheckinCard workerId={me.id} locationId={myLocation.id} locationName={myLocation.name} date={todayIso} />
+        </div>
+      )}
 
       {/* ── Legend ── */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
