@@ -4,7 +4,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
-import { useSeatStatus } from '../hooks/useSupabase.js'
+import { useSeatStatus, useCheckinLocations } from '../hooks/useSupabase.js'
 
 const ROLES = ['OWNER', 'ADMIN', 'WORKER']
 
@@ -23,9 +23,17 @@ export default function UserManagement() {
   const [deleteId, setDeleteId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
-  const [form, setForm] = useState({ email: '', password: '', role: 'ADMIN' })
+  const [form, setForm] = useState({ email: '', password: '', role: 'ADMIN', assigned_checkin_location_id: '' })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const { data: seat, refetch: refetchSeat } = useSeatStatus()
+  const { data: checkinLocations } = useCheckinLocations()
+  const [linkedWorkerEmails, setLinkedWorkerEmails] = useState(new Set())
+
+  useEffect(() => {
+    supabase.from('workers').select('email').then(({ data }) => {
+      setLinkedWorkerEmails(new Set((data || []).map(w => w.email).filter(Boolean)))
+    })
+  }, [])
   const [sortCol, setSortCol] = useState('user_email')
   const [sortDir, setSortDir] = useState('asc')
   const toggleSort = (col) => {
@@ -61,20 +69,20 @@ export default function UserManagement() {
 
   const handleCreate = () => {
     setEditItem(null)
-    setForm({ email: '', password: '', role: 'ADMIN' })
+    setForm({ email: '', password: '', role: 'ADMIN', assigned_checkin_location_id: '' })
     setShowForm(true)
   }
 
   const handleEdit = (item) => {
     setEditItem(item)
-    setForm({ email: item.user_email, password: '', role: item.role })
+    setForm({ email: item.user_email, password: '', role: item.role, assigned_checkin_location_id: item.assigned_checkin_location_id || '' })
     setShowForm(true)
   }
 
   const handleClose = () => {
     setShowForm(false)
     setEditItem(null)
-    setForm({ email: '', password: '', role: 'ADMIN' })
+    setForm({ email: '', password: '', role: 'ADMIN', assigned_checkin_location_id: '' })
   }
 
   const handleSave = async (e) => {
@@ -86,7 +94,7 @@ export default function UserManagement() {
         // Edit mode: update role (password requires Supabase dashboard)
         const { error } = await supabase
           .from('user_roles')
-          .update({ role: form.role })
+          .update({ role: form.role, assigned_checkin_location_id: form.assigned_checkin_location_id || null })
           .eq('id', editItem.id)
 
         if (error) throw error
@@ -141,7 +149,7 @@ export default function UserManagement() {
 
       setShowForm(false)
       setEditItem(null)
-      setForm({ email: '', password: '', role: 'ADMIN' })
+      setForm({ email: '', password: '', role: 'ADMIN', assigned_checkin_location_id: '' })
       fetchUsers()
       refetchSeat()
     } catch (e) {
@@ -325,6 +333,25 @@ export default function UserManagement() {
                   ))}
                 </select>
               </div>
+              {editItem && (form.role === 'ADMIN' || form.role === 'OWNER') && (
+                <div>
+                  <label className="label">ตำแหน่งเช็คอินที่กำหนด</label>
+                  <select
+                    className="select"
+                    value={form.assigned_checkin_location_id}
+                    disabled={!linkedWorkerEmails.has(form.email)}
+                    onChange={e => set('assigned_checkin_location_id', e.target.value)}
+                  >
+                    <option value="">-- ไม่กำหนด --</option>
+                    {(checkinLocations || []).filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </select>
+                  {!linkedWorkerEmails.has(form.email) && (
+                    <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>
+                      ต้องเพิ่มเป็นพนักงานในหน้าบุคคลก่อน (ใช้อีเมลเดียวกัน) จึงจะกำหนดตำแหน่งเช็คอินได้
+                    </p>
+                  )}
+                </div>
+              )}
               {showAdminLimitWarning && (
                 <div className="alert alert-warning" style={{ fontSize: 12 }}>
                   ⚠️ Package ปัจจุบันอนุญาต Admin/Owner สูงสุด {seat.admins.max} คน (ใช้ไปแล้ว {seat.admins.used})
