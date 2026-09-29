@@ -19,6 +19,7 @@ import { mergeWorkerOT } from '../lib/otMerge.js'
 import { SITE_TYPES } from './assign/constants.js'
 import { downloadPDF } from '../lib/pdf.js'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
+import AttendanceGrid from './hr/AttendanceGrid.jsx'
 
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
@@ -441,17 +442,21 @@ export default function HR() {
   const [checkinFrom, setCheckinFrom] = useState(new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10))
   const [checkinTo, setCheckinTo] = useState(todayISO)
 
+  const [checkinWorkerFilter, setCheckinWorkerFilter] = useState(null)
+
   const fetchCheckins = async () => {
     if (!canEdit) return
     setLoadingCheckins(true)
-    const { data } = await supabase.from('worker_checkins')
-      .select('*, workers(name, nickname), sites(name)')
+    let q = supabase.from('worker_checkins')
+      .select('*, workers(name, nickname), sites(name), checkin_locations(name)')
       .gte('date', checkinFrom).lte('date', checkinTo)
       .order('date', { ascending: false }).order('checkin_at', { ascending: false })
+    if (checkinWorkerFilter) q = q.eq('worker_id', checkinWorkerFilter)
+    const { data } = await q
     setCheckins(data || [])
     setLoadingCheckins(false)
   }
-  useEffect(() => { fetchCheckins() }, [canEdit, checkinFrom, checkinTo])
+  useEffect(() => { fetchCheckins() }, [canEdit, checkinFrom, checkinTo, checkinWorkerFilter])
 
   const reviewLeaveRequest = async (req, status) => {
     setReviewingId(req.id)
@@ -1163,12 +1168,19 @@ export default function HR() {
       {/* ── Check-in/Check-out Tab ── */}
       {innerTab === 'checkins' && (
         <div>
+          <AttendanceGrid
+            workers={workers}
+            onCellClick={(workerId, date) => { setCheckinFrom(date); setCheckinTo(date); setCheckinWorkerFilter(workerId) }}
+          />
           <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
             <label className="label" style={{ marginBottom: 0 }}>จาก</label>
             <input type="date" className="input input-sm" style={{ width: 150 }} value={checkinFrom} max={checkinTo} onChange={e => setCheckinFrom(e.target.value)} />
             <label className="label" style={{ marginBottom: 0 }}>ถึง</label>
             <input type="date" className="input input-sm" style={{ width: 150 }} value={checkinTo} min={checkinFrom} onChange={e => setCheckinTo(e.target.value)} />
             <span style={{ color: 'var(--text3)', fontSize: 12 }}>{checkins.length} รายการ</span>
+            {checkinWorkerFilter && (
+              <button className="btn btn-sm btn-ghost" onClick={() => setCheckinWorkerFilter(null)}>✕ ล้างตัวกรองช่าง</button>
+            )}
           </div>
           {loadingCheckins ? (
             <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
@@ -1179,7 +1191,7 @@ export default function HR() {
                   <thead>
                     <tr>
                       <th>ช่าง</th>
-                      <th>ไซต์</th>
+                      <th>ไซต์/ตำแหน่ง</th>
                       <th>วันที่</th>
                       <th>เช็คอิน</th>
                       <th>ระยะห่าง</th>
@@ -1191,7 +1203,7 @@ export default function HR() {
                     {checkins.map(c => (
                       <tr key={c.id}>
                         <td style={{ fontWeight: 600 }}>{c.workers?.nickname || c.workers?.name || '—'}</td>
-                        <td>{c.sites?.name || '—'}</td>
+                        <td>{c.sites?.name || c.checkin_locations?.name || '—'}</td>
                         <td style={{ fontSize: 12 }}>{new Date(`${c.date}T00:00:00Z`).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })}</td>
                         <td style={{ fontSize: 12 }}>{c.checkin_at ? new Date(c.checkin_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                         <td className="font-mono" style={{ fontSize: 12, color: 'var(--text3)' }}>{c.checkin_distance_m != null ? `${Math.round(c.checkin_distance_m)} ม.` : '—'}</td>
