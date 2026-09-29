@@ -7,7 +7,7 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useWorkers, useSites, useAssignmentsRange, useLaborCost, useSiteTravelCost, useAppSetting, useWorkerOTRange, useOTCostBySite, useCompanyHolidaysRange, useMyAssignedCheckinLocation } from '../hooks/useSupabase.js'
+import { useWorkers, useSites, useAssignmentsRange, useLaborCost, useSiteTravelCost, useAppSetting, useWorkerOTRange, useOTCostBySite, useCompanyHolidaysRange, useMyAssignedCheckinLocation, useSitePhases, usePhaseTasks } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
@@ -86,6 +86,23 @@ export default function Assign({ navState, openSiteOverview }) {
   const travelRate = parseFloat(travelRateVal) || 0
 
   const ongoingSites = useMemo(() => (sites || []).filter(s => s.status === 'Ongoing'), [sites])
+
+  // For CellEditPopup's team-leader toggle + Kanban card checklist (edits
+  // one worker/date/shift at a time, without needing AssignWizard's batch
+  // flow) -- same shape DayView.jsx computes independently for its own
+  // read-only mini board.
+  const { data: allPhases } = useSitePhases()
+  const { data: allTasks, refetch: refetchTasks } = usePhaseTasks()
+  const phasesBySite = useMemo(() => {
+    const m = {}
+    ;(allPhases || []).forEach((p) => { (m[p.site_id] ||= []).push(p) })
+    return m
+  }, [allPhases])
+  const tasksByPhaseId = useMemo(() => {
+    const m = {}
+    ;(allTasks || []).forEach((t) => { (m[t.phase_id] ||= []).push(t) })
+    return m
+  }, [allTasks])
 
   // cellLookup[worker_id][iso] = { morning?, evening? } each { id, type, site_id, site_number, ot, notes }
   const cellLookup = useMemo(() => {
@@ -197,12 +214,42 @@ export default function Assign({ navState, openSiteOverview }) {
   const handleCellSave = async (row) => {
     setSaving(true)
     try {
+      // row.is_team_leader is always explicitly present now (CellEditPopup
+      // sends it as part of every 'site'-type save, false when unchecked),
+      // so this upsert already flips it either way -- clearPriorLeaders
+      // only needs to run to make room for a NEW leader claim on this one
+      // (site_id, date, shift), same guard/pattern the wizard's batch path
+      // already uses.
+      if (row.is_team_leader) await clearPriorLeaders([row])
       const { error } = await supabase.from('worker_assignments')
         .upsert(row, { onConflict: 'worker_id,date,shift' })
       if (error) throw error
       setCellTarget(null); refetch()
     } catch (e) { alert('Error: ' + e.message) }
     finally { setSaving(false) }
+  }
+
+  // Syncs one worker's phase_task_workers links to exactly `taskIds`,
+  // scoped strictly to `candidateTaskIds` (the site's active-phase card ids
+  // CellEditPopup showed) -- never touches this worker's links on any other
+  // phase or site, and never touches any OTHER worker's links either.
+  const handleSaveTaskLinks = async (workerId, taskIds, candidateTaskIds) => {
+    if (!candidateTaskIds?.length) return
+    try {
+      if (taskIds.length) {
+        const links = taskIds.map((task_id) => ({ task_id, worker_id: workerId }))
+        const { error } = await supabase.from('phase_task_workers')
+          .upsert(links, { onConflict: 'task_id,worker_id', ignoreDuplicates: true })
+        if (error) throw error
+      }
+      const toRemove = candidateTaskIds.filter((id) => !taskIds.includes(id))
+      if (toRemove.length) {
+        const { error } = await supabase.from('phase_task_workers')
+          .delete().eq('worker_id', workerId).in('task_id', toRemove)
+        if (error) throw error
+      }
+      refetchTasks()
+    } catch (e) { alert('บันทึกงานที่มอบหมายไม่สำเร็จ: ' + e.message) }
   }
 
   const handleCellDelete = async () => {
@@ -410,7 +457,10 @@ export default function Assign({ navState, openSiteOverview }) {
         <CellEditPopup
           target={cellTarget}
           sites={ongoingSites}
+          sitePhasesBySite={phasesBySite}
+          tasksByPhaseId={tasksByPhaseId}
           onSave={handleCellSave}
+          onSaveTaskLinks={handleSaveTaskLinks}
           onDelete={handleCellDelete}
           onSaveOT={handleOTSave}
           onDeleteOT={handleOTDelete}

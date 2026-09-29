@@ -1,14 +1,31 @@
 // ============================================================
 // CellEditPopup — edit one worker×date×shift assignment, plus an
 // optional OT entry for that worker+date (independent of shift;
-// see docs/superpowers/specs/2026-08-14-ot-decouple-design.md).
-// onSave(row), onDelete(), onSaveOT(row), onDeleteOT(), onClose
+// see docs/superpowers/specs/2026-08-14-ot-decouple-design.md), plus
+// (for type 'site') that one shift's team-leader flag and which of the
+// site's active-phase Kanban cards this worker is linked to -- all
+// scoped to this single worker/date/shift, never touching any other
+// day the way re-running AssignWizard's batch flow would.
+// onSave(row), onSaveTaskLinks(workerId, taskIds, candidateTaskIds),
+// onDelete(), onSaveOT(row), onDeleteOT(), onClose
 // ============================================================
 import { Modal } from '../../components/Modal.jsx'
 import SearchableSelect from '../../components/SearchableSelect.jsx'
 import { SITE_TYPES } from './constants.js'
 import { computeOTHours } from './otMath.js'
 import { useDraftForm } from '../../hooks/useDraftForm.js'
+import { pickActivePhase } from '../sites/phaseTasksCalc.js'
+import teamLeaderBadge from '../../assets/team-leader-badge.png'
+
+/** The site's active-phase Kanban cards (same set DayView's own mini
+ *  board shows), or [] when the site has no phase with tasks yet --
+ *  shared by the initial-form seeding below and the live render, so
+ *  both always agree on what "the active phase" means for a site. */
+const activeTasksFor = (siteId, sitePhasesBySite, tasksByPhaseId) => {
+  if (!siteId) return []
+  const activePhase = pickActivePhase(sitePhasesBySite[siteId] || [], tasksByPhaseId)
+  return activePhase ? (tasksByPhaseId[activePhase.id] || []) : []
+}
 
 const TYPE_OPTS = [
   { k: 'site',            l: '🏗️ งานไซท์' },
@@ -19,7 +36,7 @@ const TYPE_OPTS = [
   { k: 'holiday',         l: '🎌 หยุด' },
 ]
 
-export default function CellEditPopup({ target, sites = [], onSave, onDelete, onSaveOT, onDeleteOT, onConfirm, onClose, saving }) {
+export default function CellEditPopup({ target, sites = [], sitePhasesBySite = {}, tasksByPhaseId = {}, onSave, onSaveTaskLinks, onDelete, onSaveOT, onDeleteOT, onConfirm, onClose, saving }) {
   const { worker, date, shift, existing, existingOT } = target
 
   // Draft key is specific to this exact cell — a generic key would let a
@@ -30,6 +47,15 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
   // already has real saved data must not silently overwrite it later.
   const cellKey = `cell-edit:${worker.id}:${date}:${shift}`
   const isFreshCell = !existing && !existingOT
+
+  // Seeded once, from the site the cell already belongs to (existing.site_id)
+  // -- form.siteId itself doesn't exist yet at this point, and the site
+  // rarely changes on an edit. If the user does change it, the site-select
+  // handler below recomputes against the NEW site and clears taskIds, since
+  // the old site's card ids don't apply to a different site.
+  const initialTaskIds = activeTasksFor(existing?.site_id, sitePhasesBySite, tasksByPhaseId)
+    .filter((t) => (t.phase_task_workers || []).some((w) => w.worker_id === worker.id))
+    .map((t) => t.id)
 
   const [form, setForm, clearFormDraft] = useDraftForm(cellKey, {
     // Historical rows may still carry the old undifferentiated 'leave' type
@@ -46,10 +72,19 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
     otEnd: existingOT?.end_time?.slice(0, 5) || '',
     otOvernight: existingOT?.is_overnight || false,
     otNotes: existingOT?.notes || '',
+    isTeamLeader: existing?.is_team_leader || false,
+    taskIds: initialTaskIds,
   }, isFreshCell)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  // Changing the site mid-edit invalidates any checked task ids -- they
+  // belong to the OLD site's active phase, which is meaningless (and could
+  // collide by coincidence) once pointed at a different site's phase.
+  const setSiteId = (id) => setForm(f => ({ ...f, siteId: id, taskIds: id === f.siteId ? f.taskIds : [] }))
 
   const needsSite = SITE_TYPES.includes(form.type)
+  const activePhase = form.type === 'site' && form.siteId ? pickActivePhase(sitePhasesBySite[form.siteId] || [], tasksByPhaseId) : null
+  const activeTasks = activePhase ? (tasksByPhaseId[activePhase.id] || []) : []
+  const toggleTask = (taskId) => set('taskIds', form.taskIds.includes(taskId) ? form.taskIds.filter((id) => id !== taskId) : [...form.taskIds, taskId])
   const otHours = computeOTHours(form.otStart, form.otEnd, form.otOvernight)
   // otSiteId alone doesn't count -- it's pre-seeded from the existing
   // shift's site_id as a convenience default (see useDraftForm initial
@@ -82,6 +117,7 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
         worker_id: worker.id, date, shift,
         type: form.type, site_id: needsSite ? form.siteId : null,
         notes: form.notes || null,
+        is_team_leader: form.type === 'site' ? !!form.isTeamLeader : false,
       })
     }
     if (otStarted && otHours != null) {
@@ -91,6 +127,11 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
         ot_hours: otHours, is_overnight: form.otOvernight, notes: form.otNotes || null,
       })
     }
+    // Diffed against activeTasks (the candidate set), not just the checked
+    // list, so unchecking a card actually removes that link instead of only
+    // ever adding new ones -- a no-op when the site has no active phase
+    // (activeTasks is then []), same as the shift-save guards above.
+    onSaveTaskLinks(worker.id, form.taskIds, activeTasks.map((t) => t.id))
   }
 
   // otSiteId/otStart/otEnd/etc. are only seeded from existingOT once, at
@@ -121,9 +162,29 @@ export default function CellEditPopup({ target, sites = [], onSave, onDelete, on
           <div>
             <label className="label">ไซท์งาน</label>
             <SearchableSelect
-              value={form.siteId} onChange={id => set('siteId', id)} placeholder="— เลือกไซท์ —"
+              value={form.siteId} onChange={setSiteId} placeholder="— เลือกไซท์ —"
               options={siteOptions}
             />
+          </div>
+        )}
+        {form.type === 'site' && form.siteId && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+            <input type="checkbox" checked={form.isTeamLeader} onChange={e => set('isTeamLeader', e.target.checked)} style={{ width: 16, height: 16 }} />
+            <img src={teamLeaderBadge} alt="" style={{ width: 16, height: 16, objectFit: 'contain' }} />
+            หัวหน้าทีม (กะนี้)
+          </label>
+        )}
+        {activeTasks.length > 0 && (
+          <div>
+            <label className="label">🗂 งานที่กำลังทำ — {activePhase.name}</label>
+            <div style={{ display: 'grid', gap: 4, maxHeight: 160, overflowY: 'auto' }}>
+              {activeTasks.map((t) => (
+                <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={form.taskIds.includes(t.id)} onChange={() => toggleTask(t.id)} />
+                  {t.name}{t.zone ? ` ${t.zone}` : ''}
+                </label>
+              ))}
+            </div>
           </div>
         )}
         {/* เฉพาะ type === 'site' เท่านั้น ไม่ใช่ needsSite (ซึ่งรวม factory ด้วย):
