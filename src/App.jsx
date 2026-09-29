@@ -57,11 +57,11 @@ const TABS = [
   ] },
   { label: '💰 รายรับ', children: [
     { id: 'income',        label: '📊 ภาพรวม',           minRole: 'ADMIN', module: null },
-    { id: 'deposits',      label: '💰 มัดจำ',            minRole: 'ADMIN', module: 'client_deposits' },
-    { id: 'retention',     label: '🔒 เงินประกันผลงาน',  minRole: 'ADMIN', module: null },
     { id: 'sales_report',  label: '📊 รายงานการขาย',    minRole: 'ADMIN', module: 'quotations' },
     { id: 'quotations',    label: '📋 ใบเสนอราคา',      minRole: 'ADMIN', module: 'quotations' },
     { id: 'invoices', label: '🧾 ใบแจ้งหนี้', minRole: 'ADMIN', module: 'invoices' },
+    { id: 'deposits',      label: '💰 มัดจำ',            minRole: 'ADMIN', module: 'client_deposits' },
+    { id: 'retention',     label: '🔒 เงินประกันผลงาน',  minRole: 'ADMIN', module: null },
   ] },
   { label: '💸 รายจ่าย', children: [
     { id: 'expenses',        label: '📊 ภาพรวม',       minRole: 'ADMIN', module: null },
