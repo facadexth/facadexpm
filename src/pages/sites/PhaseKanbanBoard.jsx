@@ -23,6 +23,8 @@ import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks } from '../../hoo
 import { STATUS_COLOR } from './ganttTimeline.js'
 import { groupSubtasksByParent, isLeaf } from './subtaskCalc.js'
 import teamLeaderBadge from '../../assets/team-leader-badge.png'
+import { uploadSitePhotos } from '../../lib/photoUpload.js'
+import { useTenant } from '../../hooks/useTenant.js'
 
 const ALL_PHASES = '__all__'
 
@@ -31,6 +33,8 @@ const COLUMNS = [
   { status: 'in_progress', label: 'กำลังทำ' },
   { status: 'done', label: 'เสร็จแล้ว' },
 ]
+
+const PHOTO_DRAG_MIME = 'application/x-line-site-photo-id'
 
 const emptyDraft = (phaseId, status, sortOrder) => ({
   phase_id: phaseId, name: '', zone: '', status, due_date: '', sort_order: sortOrder, assigneeIds: [], leadWorkerId: null,
@@ -41,6 +45,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const { data: allTasks, refetch } = usePhaseTasks()
   const { data: workers } = useWorkers()
   const { data: allSubtasks } = useSubtasks()
+  const { tenant } = useTenant()
 
   // เชนของ id ที่เลือกไว้ต่อชั้น: selectedChain[0] = phase (หรือ ALL_PHASES),
   // selectedChain[1] = subtask ชั้น 1 ที่เลือกใต้ phase นั้น, [2] = ชั้น 2, ...
@@ -63,17 +68,59 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const [viewingPhotos, setViewingPhotos] = useState([])
   const [loadingViewPhotos, setLoadingViewPhotos] = useState(false)
 
+  const [unassignedPhotos, setUnassignedPhotos] = useState([])
+  const [loadingPhotos, setLoadingPhotos] = useState(true)
+  const [uploadingBulk, setUploadingBulk] = useState(false)
+  const [assigningPhotoId, setAssigningPhotoId] = useState(null)
+  const [myWorkerId, setMyWorkerId] = useState(null)
+
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      const { data } = await supabase.from('line_site_photos').select('task_id').eq('site_id', site.id).not('task_id', 'is', null)
+    supabase.rpc('my_worker_id').then(({ data }) => { if (!cancelled) setMyWorkerId(data || null) })
+    return () => { cancelled = true }
+  }, [])
+
+  // Per-task photo counts (📷 badge) AND the site's unassigned-photo tray
+  // both come from line_site_photos -- fetched together so one refresh
+  // (after an upload or a drag-assign) keeps both in sync. fetchPhotos
+  // itself does no state writes so the mount effect below can guard
+  // against a stale write after site.id changes; refreshPhotos (called
+  // after a user action, when the component is definitely still mounted)
+  // just applies the result directly.
+  const fetchPhotos = async () => {
+    const [{ data: assignedRows }, { data: unassignedRows }] = await Promise.all([
+      supabase.from('line_site_photos').select('task_id').eq('site_id', site.id).not('task_id', 'is', null),
+      supabase.from('line_site_photos').select('id, photo_path, workers(name, nickname), created_at').eq('site_id', site.id).is('task_id', null).order('created_at'),
+    ])
+    const counts = {}
+    ;(assignedRows || []).forEach((r) => { counts[r.task_id] = (counts[r.task_id] || 0) + 1 })
+    const rows = unassignedRows || []
+    const paths = rows.map((p) => p.photo_path)
+    let urlByPath = {}
+    if (paths.length) {
+      const { data: signed } = await supabase.storage.from('line-site-photos').createSignedUrls(paths, 3600)
+      urlByPath = Object.fromEntries((signed || []).filter((s) => !s.error).map((s) => [s.path, s.signedUrl]))
+    }
+    return { counts, unassigned: rows.map((p) => ({ ...p, url: urlByPath[p.photo_path] })) }
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    setLoadingPhotos(true)
+    fetchPhotos().then(({ counts, unassigned }) => {
       if (cancelled) return
-      const counts = {}
-      ;(data || []).forEach((r) => { counts[r.task_id] = (counts[r.task_id] || 0) + 1 })
       setTaskPhotoCounts(counts)
-    })()
+      setUnassignedPhotos(unassigned)
+      setLoadingPhotos(false)
+    })
     return () => { cancelled = true }
   }, [site.id])
+
+  const refreshPhotos = async () => {
+    const { counts, unassigned } = await fetchPhotos()
+    setTaskPhotoCounts(counts)
+    setUnassignedPhotos(unassigned)
+  }
 
   // วันนี้ ไซท์นี้ใครเป็นหัวหน้าทีม -- read-only display จาก
   // worker_assignments.is_team_leader (Assign Wizard เป็นจุดที่ตั้งค่านี้),
@@ -109,6 +156,47 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     }
     setViewingPhotos(rows.map((p) => ({ ...p, url: urlByPath[p.photo_path] })))
     setLoadingViewPhotos(false)
+  }
+
+  const handleBulkUpload = async (e) => {
+    const files = e.target.files
+    if (!files || !files.length) return
+    if (!myWorkerId) { alert('ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ — กรุณาติดต่อผู้ดูแลระบบ'); e.target.value = ''; return }
+    if (!tenant?.id) { alert('กำลังโหลดข้อมูลบริษัท กรุณาลองใหม่อีกครั้ง'); e.target.value = ''; return }
+    setUploadingBulk(true)
+    try {
+      const { failed } = await uploadSitePhotos(files, {
+        tenantId: tenant.id, workerId: myWorkerId, siteId: site.id, taskId: null,
+        date: new Date().toISOString().slice(0, 10),
+      })
+      if (failed.length) alert(`อัปโหลดไม่สำเร็จ ${failed.length} ไฟล์: ${failed.map((f) => f.file.name).join(', ')}`)
+      await refreshPhotos()
+    } finally {
+      setUploadingBulk(false)
+      e.target.value = ''
+    }
+  }
+
+  // Called from a task card's onDrop when a photo (not another card) was
+  // dropped on it -- see the PHOTO_DRAG_MIME check in PhaseBoard below.
+  // A failed update never calls refreshPhotos, so the photo simply stays
+  // in the tray exactly as it was (never optimistically removed before
+  // the request settles) -- satisfies the spec's "don't silently lose
+  // the photo on failure" intent via this file's own existing alert()
+  // convention (every other write in this file -- saveDraft, doDelete,
+  // quickMove -- already surfaces failures the same way) rather than a
+  // new per-item inline-error UI this file has no other precedent for.
+  const handleAssignPhoto = async (photoId, taskId) => {
+    setAssigningPhotoId(photoId)
+    try {
+      const { error } = await supabase.from('line_site_photos').update({ task_id: taskId }).eq('id', photoId)
+      if (error) throw error
+      await refreshPhotos()
+    } catch (e) {
+      alert('มอบหมายรูปไม่สำเร็จ: ' + e.message)
+    } finally {
+      setAssigningPhotoId(null)
+    }
   }
 
   const phases = useMemo(() => (allPhases || [])
@@ -313,7 +401,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     onToggleAssignee: toggleAssignee, onSetLead: setLead, onStartEdit: startEdit, onStartAdd: startAdd,
     onCancelEdit: cancelEdit, onSaveDraft: saveDraft, onDeleteRequest: setConfirmDeleteId,
     onQuickMove: quickMove, saving, dragOverKey, setDragOverKey,
-    taskPhotoCounts, onViewPhotos: handleViewPhotos,
+    taskPhotoCounts, onViewPhotos: handleViewPhotos, onAssignPhoto: handleAssignPhoto,
   }
 
   return (
@@ -328,6 +416,37 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
           {todayLeaders.evening && <span style={{ fontSize: 12.5 }}>🌆 บ่าย: <b>{todayLeaders.evening}</b></span>}
         </div>
       )}
+      <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: unassignedPhotos.length ? 10 : 0, flexWrap: 'wrap', gap: 8 }}>
+          <div className="card-title">📷 รูปที่รอมอบหมาย{unassignedPhotos.length > 0 ? ` (${unassignedPhotos.length})` : ''}</div>
+          {canEdit && (
+            <label className="btn btn-ghost btn-sm" style={{ cursor: uploadingBulk ? 'default' : 'pointer' }}>
+              {uploadingBulk ? '⏳ กำลังอัปโหลด...' : '+ อัปโหลดรูป'}
+              <input type="file" accept="image/*" multiple hidden disabled={uploadingBulk || !tenant?.id} onChange={handleBulkUpload} />
+            </label>
+          )}
+        </div>
+        {loadingPhotos ? (
+          <div style={{ color: 'var(--text3)', fontSize: 12 }}>กำลังโหลด...</div>
+        ) : unassignedPhotos.length > 0 ? (
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {unassignedPhotos.map((p) => (
+              <div key={p.id}
+                draggable={canEdit}
+                onDragStart={canEdit ? (e) => e.dataTransfer.setData(PHOTO_DRAG_MIME, p.id) : undefined}
+                title={`${p.workers?.nickname || p.workers?.name || ''} · ลากไปวางบนการ์ดเพื่อมอบหมาย`}
+                style={{ width: 90, opacity: assigningPhotoId === p.id ? 0.5 : 1, cursor: canEdit ? 'grab' : 'default' }}>
+                {p.url ? (
+                  <img src={p.url} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+                ) : (
+                  <div style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'var(--text3)' }}>โหลดไม่สำเร็จ</div>
+                )}
+                <div style={{ fontSize: 9.5, marginTop: 3, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.workers?.nickname || p.workers?.name || '-'}</div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
       {/* ยาว selectedChain.length + 1 เสมอ -- ชั้นสุดท้าย "พิเศษ" (ยังไม่มี
           ใน selectedChain) คือชั้นที่ให้เลือกลูกของโหนดที่เพิ่งเลือกไปหมาดๆ
           (ถ้ามีลูก) เพื่อให้กด chip แถวนั้นแล้วลึกลงไปได้เรื่อยๆ -- ไม่งั้น
@@ -452,7 +571,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
 function PhaseBoard({
   phaseId, tasks, canEdit, workers, workerById, editingId, draft, setDraft, onToggleAssignee, onSetLead,
   onStartEdit, onStartAdd, onCancelEdit, onSaveDraft, onDeleteRequest, onQuickMove, saving,
-  dragOverKey, setDragOverKey, disableAdd, taskPhotoCounts, onViewPhotos,
+  dragOverKey, setDragOverKey, disableAdd, taskPhotoCounts, onViewPhotos, onAssignPhoto,
 }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
@@ -498,6 +617,14 @@ function PhaseBoard({
                 <div key={task.id}
                   draggable={canEdit}
                   onDragStart={canEdit ? (e) => e.dataTransfer.setData('text/plain', task.id) : undefined}
+                  onDragOver={canEdit ? (e) => { if (e.dataTransfer.types.includes(PHOTO_DRAG_MIME)) e.preventDefault() } : undefined}
+                  onDrop={canEdit ? (e) => {
+                    const photoId = e.dataTransfer.getData(PHOTO_DRAG_MIME)
+                    if (!photoId) return // not a photo drag -- let it bubble to the column's own onDrop (card-to-column move)
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onAssignPhoto(photoId, task.id)
+                  } : undefined}
                   onClick={canEdit ? () => onStartEdit(task) : undefined}
                   style={{
                     background: 'var(--bg2)', border: '1px solid var(--border)', borderLeft: `3px solid ${STATUS_COLOR[task.status] || STATUS_COLOR.not_started}`,
