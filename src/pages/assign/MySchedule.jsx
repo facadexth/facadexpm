@@ -18,7 +18,7 @@ import { DOW_TH } from './constants.js'
 import AssignCell from './AssignCell.jsx'
 import TodayCheckinCard from './TodayCheckinCard.jsx'
 import LocationCheckinCard from './LocationCheckinCard.jsx'
-import { uploadSitePhotos } from '../../lib/photoUpload.js'
+import { uploadSitePhotos, bangkokTodayIso } from '../../lib/photoUpload.js'
 import { useTenant } from '../../hooks/useTenant.js'
 
 const OTHER_TYPE_LABEL = { office: 'ออฟฟิศ', leave: 'ลา', leave_sick: 'ลาป่วย', leave_personal: 'ลากิจ', holiday: 'หยุด' }
@@ -113,7 +113,7 @@ export default function MySchedule({ from, to, days, view }) {
     try {
       const { succeeded, failed } = await uploadSitePhotos(files, {
         tenantId: tenant.id, workerId: me.id, siteId: task.site_id, taskId: task.id,
-        date: new Date().toISOString().slice(0, 10),
+        date: bangkokTodayIso(),
       })
       if (failed.length) alert(`แนบรูปไม่สำเร็จ ${failed.length} ไฟล์: ${failed.map((f) => f.file.name).join(', ')}`)
       if (succeeded.length) {

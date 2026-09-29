@@ -22,19 +22,57 @@ export function computePhotoDownscaledSize(width, height, maxDim = 1600) {
   return { width: Math.round(width * scale), height: Math.round(height * scale) }
 }
 
+/** Bangkok has no DST -- a fixed +7h offset from UTC is always correct.
+ *  Matches supabase/functions/line-webhook/index.ts's own bangkokToday(),
+ *  the authoritative existing writer to line_site_photos.date. */
+export function bangkokTodayIso() {
+  return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
+// Decodes at the source's natural size (no resize-during-decode) --
+// createImageBitmap's resizeWidth-only option decodes to exactly that
+// width regardless of the source's real size, which upscales any image
+// smaller than maxDim (computePhotoDownscaledSize then sees the
+// already-upscaled bitmap and leaves it alone, violating "never
+// upscale"). Deciding the real target size is left entirely to
+// computePhotoDownscaledSize below, given true dimensions. Falls back to
+// an <img> decode when createImageBitmap isn't available, same shape as
+// poDocumentExtraction.js's decodeImageSource (this module was modeled on
+// it) -- without this, every file in a batch would fail outright on such
+// an engine.
+async function decodePhotoSource(file) {
+  if (typeof createImageBitmap === 'function') {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+    return { source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close() }
+  }
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+  const img = await new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('อ่านไฟล์รูปภาพไม่สำเร็จ'))
+    image.src = dataUrl
+  })
+  return { source: img, width: img.naturalWidth, height: img.naturalHeight, close: () => {} }
+}
+
 async function downscaleToJpegBlob(file, maxDim = 1600, quality = 0.8) {
-  const bitmap = await createImageBitmap(file, { resizeWidth: maxDim, resizeQuality: 'medium', imageOrientation: 'from-image' })
+  const { source, width: srcWidth, height: srcHeight, close } = await decodePhotoSource(file)
   try {
-    const { width, height } = computePhotoDownscaledSize(bitmap.width, bitmap.height, maxDim)
+    const { width, height } = computePhotoDownscaledSize(srcWidth, srcHeight, maxDim)
     const canvas = document.createElement('canvas')
     canvas.width = width
     canvas.height = height
-    canvas.getContext('2d').drawImage(bitmap, 0, 0, width, height)
+    canvas.getContext('2d').drawImage(source, 0, 0, width, height)
     return await new Promise((resolve, reject) => {
       canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('แปลงรูปไม่สำเร็จ'))), 'image/jpeg', quality)
     })
   } finally {
-    bitmap.close()
+    close()
   }
 }
 
@@ -54,7 +92,8 @@ export async function uploadSitePhoto({ file, tenantId, workerId, siteId, taskId
   const { error: insertError } = await supabase.from('line_site_photos')
     .insert({ tenant_id: tenantId, worker_id: workerId, site_id: siteId, date, photo_path: photoPath, task_id: taskId })
   if (insertError) {
-    await supabase.storage.from('line-site-photos').remove([photoPath])
+    const { error: cleanupError } = await supabase.storage.from('line-site-photos').remove([photoPath])
+    if (cleanupError) console.error('orphan cleanup failed for', photoPath, cleanupError)
     throw insertError
   }
   return { photo_path: photoPath }

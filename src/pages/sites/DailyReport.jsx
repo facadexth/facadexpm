@@ -8,11 +8,13 @@
 // what's still open."
 //
 // "Completed today" is inferred from line_site_photos rows that have
-// BOTH task_id set AND date = the report date -- not from
-// phase_tasks.updated_at, which bumps on any edit (rename, zone
-// change), not specifically on the งานเสร็จ closing event. A
-// completion-photo row is the actual real-world signal for "this task
-// was marked done via the LINE bot on this exact day."
+// task_id set, that task's own status = 'done', AND date = the report
+// date -- not from phase_tasks.updated_at, which bumps on any edit
+// (rename, zone change), not specifically on the งานเสร็จ closing event.
+// The status check (added post-launch, see byTask below) matters because
+// task_id alone stopped being a done-only signal once the Kanban Photo
+// Upload & Assignment plan let an admin drag any photo onto any card, or
+// a worker attach one to their own task, regardless of its status.
 //
 // PDF export reuses the existing downloadPDF() helper (html2pdf.js)
 // already used by Quotations/Invoices/LaborContractors -- captures
@@ -65,7 +67,7 @@ export default function DailyReport({ site }) {
         .eq('site_id', site.id).neq('status', 'done').order('sort_order'),
       supabase.from('line_issue_reports').select('id, message, status, created_at, workers(name, nickname)')
         .eq('site_id', site.id).gte('created_at', dayStart).lte('created_at', dayEnd).order('created_at'),
-      supabase.from('line_site_photos').select('id, photo_path, task_id, created_at, workers(name, nickname), phase_tasks(name)')
+      supabase.from('line_site_photos').select('id, photo_path, task_id, created_at, workers(name, nickname), phase_tasks(name, status)')
         .eq('site_id', site.id).eq('date', date),
     ])
 
@@ -81,10 +83,19 @@ export default function DailyReport({ site }) {
     const urlByPath = await signPhotoUrls(photos)
     const withUrl = photos.map((p) => ({ ...p, url: urlByPath[p.photo_path] }))
 
-    setGeneralPhotos(withUrl.filter((p) => !p.task_id))
+    // Before Kanban Photo Upload & Assignment, task_id could ONLY get set
+    // by the LINE bot's job-done-pick flow, so "task_id set" reliably
+    // meant "this task was marked done." That plan added two more ways to
+    // set it -- an admin dragging any unassigned photo onto any card, and
+    // a worker attaching a photo straight to their own assigned task --
+    // both regardless of the task's current status. So task_id alone no
+    // longer proves completion; only phase_tasks.status === 'done' does.
+    // A photo attached to a still-open task falls through to
+    // generalPhotos below instead of silently disappearing from the report.
+    setGeneralPhotos(withUrl.filter((p) => !p.task_id || p.phase_tasks?.status !== 'done'))
 
     const byTask = new Map()
-    withUrl.filter((p) => p.task_id).forEach((p) => {
+    withUrl.filter((p) => p.task_id && p.phase_tasks?.status === 'done').forEach((p) => {
       const group = byTask.get(p.task_id) || { taskName: p.phase_tasks?.name || 'ไม่ทราบชื่องาน', photos: [] }
       group.photos.push(p)
       byTask.set(p.task_id, group)

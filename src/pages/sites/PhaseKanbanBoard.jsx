@@ -23,7 +23,7 @@ import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks } from '../../hoo
 import { STATUS_COLOR } from './ganttTimeline.js'
 import { groupSubtasksByParent, isLeaf } from './subtaskCalc.js'
 import teamLeaderBadge from '../../assets/team-leader-badge.png'
-import { uploadSitePhotos } from '../../lib/photoUpload.js'
+import { uploadSitePhotos, bangkokTodayIso } from '../../lib/photoUpload.js'
 import { useTenant } from '../../hooks/useTenant.js'
 
 const ALL_PHASES = '__all__'
@@ -90,7 +90,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const fetchPhotos = async () => {
     const [{ data: assignedRows }, { data: unassignedRows }] = await Promise.all([
       supabase.from('line_site_photos').select('task_id').eq('site_id', site.id).not('task_id', 'is', null),
-      supabase.from('line_site_photos').select('id, photo_path, workers(name, nickname), created_at').eq('site_id', site.id).is('task_id', null).order('created_at'),
+      supabase.from('line_site_photos').select('id, photo_path, workers(name, nickname), created_at').eq('site_id', site.id).is('task_id', null).order('created_at', { ascending: false }).limit(40),
     ])
     const counts = {}
     ;(assignedRows || []).forEach((r) => { counts[r.task_id] = (counts[r.task_id] || 0) + 1 })
@@ -167,7 +167,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     try {
       const { failed } = await uploadSitePhotos(files, {
         tenantId: tenant.id, workerId: myWorkerId, siteId: site.id, taskId: null,
-        date: new Date().toISOString().slice(0, 10),
+        date: bangkokTodayIso(),
       })
       if (failed.length) alert(`อัปโหลดไม่สำเร็จ ${failed.length} ไฟล์: ${failed.map((f) => f.file.name).join(', ')}`)
       await refreshPhotos()
