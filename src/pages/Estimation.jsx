@@ -10,7 +10,7 @@ import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import {
   useEstimationProjects, useEstimationOpenings, useBomTemplates, useBomTemplateComponents,
-  useBomTemplateHardware, useBomTemplateConstraints, useAluminumFinishes, useBomGlassTypes, useAluminumProfiles,
+  useBomTemplateHardware, useBomTemplateConstraints, useAluminumFinishes, useInfillTypes, useAluminumProfiles,
 } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -30,14 +30,14 @@ function evaluateConstraints(opening, constraints) {
   return violations
 }
 
-function OpeningEditor({ opening, projectId, templates, components, hardware, constraints, profiles, finishes, glassTypes, onSaved, canEdit }) {
+function OpeningEditor({ opening, projectId, templates, components, hardware, constraints, profiles, finishes, infillTypes, onSaved, canEdit }) {
   const isNew = !opening?.id
   const [form, setForm] = useState(() => isNew ? {
-    opening_no: '', template_id: '', series: '', thickness_mm: '', finish_id: '', glass_type_id: '',
+    opening_no: '', template_id: '', series: '', thickness_mm: '', finish_id: '', infill_type_id: '',
     width_m: '', height_m: '', panel_count: '1', quantity: '1', extra_lines: [],
   } : {
     opening_no: opening.opening_no, template_id: opening.template_id, series: opening.series, thickness_mm: String(opening.thickness_mm),
-    finish_id: opening.finish_id, glass_type_id: opening.glass_type_id || '',
+    finish_id: opening.finish_id, infill_type_id: opening.infill_type_id || '',
     width_m: String(opening.width_m), height_m: String(opening.height_m),
     panel_count: String(opening.panel_count), quantity: String(opening.quantity), extra_lines: opening.extra_lines || [],
   })
@@ -53,7 +53,7 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
   const templateHardware = (hardware || []).filter(h => h.template_id === form.template_id)
   const templateConstraints = (constraints || []).filter(c => c.template_id === form.template_id)
   const finish = (finishes || []).find(f => f.id === form.finish_id)
-  const glassType = (glassTypes || []).find(g => g.id === form.glass_type_id)
+  const infillType = (infillTypes || []).find(g => g.id === form.infill_type_id)
 
   const numericOpening = useMemo(() => ({
     width_m: parseFloat(form.width_m) || 0,
@@ -67,8 +67,8 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
 
   const bom = useMemo(() => {
     if (!template || !finish || !numericOpening.width_m || !numericOpening.height_m || !numericOpening.series || !numericOpening.thickness_mm) return null
-    return computeBomForOpening(numericOpening, template, templateComponents, templateHardware, profiles || [], finish, glassType || null)
-  }, [template, finish, glassType, numericOpening, templateComponents, templateHardware, profiles])
+    return computeBomForOpening(numericOpening, template, templateComponents, templateHardware, profiles || [], finish, infillType || null)
+  }, [template, finish, infillType, numericOpening, templateComponents, templateHardware, profiles])
 
   const violations = template ? evaluateConstraints(numericOpening, templateConstraints) : []
 
@@ -78,7 +78,7 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
       const payload = {
         project_id: projectId, opening_no: form.opening_no, template_id: form.template_id,
         series: form.series, thickness_mm: parseFloat(form.thickness_mm) || 0,
-        finish_id: form.finish_id, glass_type_id: form.glass_type_id || null,
+        finish_id: form.finish_id, infill_type_id: form.infill_type_id || null,
         width_m: parseFloat(form.width_m) || 0, height_m: parseFloat(form.height_m) || 0,
         panel_count: parseInt(form.panel_count, 10) || 1, quantity: parseInt(form.quantity, 10) || 1,
         extra_lines: numericOpening.extra_lines,
@@ -138,9 +138,9 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
           <input className="input" disabled={!canEdit} type="number" min="1" value={form.quantity} onChange={e => set('quantity', e.target.value)} />
         </div>
         <div>
-          <label className="label">ชนิดกระจก</label>
-          <SearchableSelect disabled={!canEdit} value={form.glass_type_id} onChange={v => set('glass_type_id', v)}
-            options={(glassTypes || []).filter(g => g.active).map(g => ({ value: g.id, label: g.name, keywords: g.name }))} placeholder="ไม่มีกระจก" />
+          <label className="label">วัสดุอุดช่อง</label>
+          <SearchableSelect disabled={!canEdit} value={form.infill_type_id} onChange={v => set('infill_type_id', v)}
+            options={(infillTypes || []).filter(g => g.active).map(g => ({ value: g.id, label: g.name, keywords: g.name }))} placeholder="ไม่มีวัสดุอุดช่อง" />
         </div>
       </div>
 
@@ -181,7 +181,16 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
             <span>เผื่อเสียเศษ</span><span className="font-mono">{fmt(bom.wasteCost)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-            <span>กระจก ({bom.glassArea_sqm.toFixed(2)} ตร.ม.)</span><span className="font-mono">{fmt(bom.glassCost)}</span>
+            <span>วัสดุอุดช่อง ({bom.infillArea_sqm.toFixed(2)} ตร.ม.)</span><span className="font-mono">{fmt(bom.infillCost)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+            <span>ค่าแรง</span><span className="font-mono">{fmt(bom.laborCost)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+            <span>ซิลิโคน</span><span className="font-mono">{fmt(bom.siliconeCost)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+            <span>สักหลาด</span><span className="font-mono">{fmt(bom.feltCost)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
             <span>รายการเพิ่มเติม</span><span className="font-mono">{fmt(bom.extraLinesCost)}</span>
@@ -217,7 +226,7 @@ export default function Estimation(props) {
   const { data: hardware } = useBomTemplateHardware()
   const { data: constraints } = useBomTemplateConstraints()
   const { data: finishes } = useAluminumFinishes()
-  const { data: glassTypes } = useBomGlassTypes()
+  const { data: infillTypes } = useInfillTypes()
   const { data: profiles } = useAluminumProfiles()
 
   const [selectedProjectId, setSelectedProjectId] = useState(null)
@@ -279,12 +288,12 @@ export default function Estimation(props) {
 
             {creatingOpening && (
               <OpeningEditor key="new" opening={null} projectId={selectedProjectId} templates={templates} components={components} hardware={hardware}
-                constraints={constraints} profiles={profiles} finishes={finishes} glassTypes={glassTypes} canEdit={canEdit}
+                constraints={constraints} profiles={profiles} finishes={finishes} infillTypes={infillTypes} canEdit={canEdit}
                 onSaved={() => { setCreatingOpening(false); refetchOpenings() }} />
             )}
             {editingOpeningId && (
               <OpeningEditor key={editingOpeningId} opening={projectOpenings.find(o => o.id === editingOpeningId)} projectId={selectedProjectId} templates={templates} components={components}
-                hardware={hardware} constraints={constraints} profiles={profiles} finishes={finishes} glassTypes={glassTypes} canEdit={canEdit}
+                hardware={hardware} constraints={constraints} profiles={profiles} finishes={finishes} infillTypes={infillTypes} canEdit={canEdit}
                 onSaved={() => { setEditingOpeningId(null); refetchOpenings() }} />
             )}
           </div>
