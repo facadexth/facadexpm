@@ -75,6 +75,14 @@ export function useSite(id) {
   }, [id])
 }
 
+export function useCheckinLocations() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.from('checkin_locations').select('*').order('name')
+    if (error) throw error
+    return data
+  })
+}
+
 /**
  * site_retention_summary: one row per site with end_date/
  * default_retention_period_days/retention_released state and the summed

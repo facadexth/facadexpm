@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAppSetting, saveAppSetting, useContractorTypes, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature, useBankAccounts, setDefaultBankAccount, useSites } from '../hooks/useSupabase.js'
+import { useAppSetting, saveAppSetting, useContractorTypes, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature, useBankAccounts, setDefaultBankAccount, useCheckinLocations } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { PAGE_LABELS, DEFAULT_PERMISSIONS, loadPermissions, savePermissions } from '../lib/permissions.js'
 import { THAI_BANKS } from '../lib/thaiBanks.js'
+import { useDraftForm } from '../hooks/useDraftForm.js'
 import PackageComparison from '../components/PackageComparison.jsx'
 import ChangelogModal from '../components/ChangelogModal.jsx'
+import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SignaturePad from '../components/SignaturePad.jsx'
 import { DEFAULT_DOCUMENT_STYLE, resolveDocumentStyle } from '../lib/documentStyle.js'
 import { QuotationPaper } from './Quotations.jsx'
@@ -44,6 +46,47 @@ const DOC_STYLE_PREVIEW_SAMPLE = {
   notes: 'ตัวอย่างหมายเหตุ: ไม่รวมค่านั่งร้าน',
   bankAccount: { bank_name: 'ธนาคารตัวอย่าง', account_name: 'บริษัท ตัวอย่าง จำกัด', account_no: '000-0-00000-0' },
   clientSignature: null,
+}
+
+function LocationForm({ initial, onSave, onCancel, loading }) {
+  const [form, setForm, clearDraft] = useDraftForm('checkin-location-form', { name: '', lat: '', lng: '', active: true, ...initial }, !initial?.id)
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  return (
+    <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave(form) }}>
+      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        <div>
+          <label className="label">ชื่อตำแหน่ง ★</label>
+          <input className="input" required value={form.name} onChange={e => set('name', e.target.value)} placeholder="เช่น โรงงาน, ออฟฟิศ" />
+        </div>
+        <div>
+          <label className="label">พิกัด GPS (ละติจูด, ลองจิจูด) ★</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input type="number" step="any" className="input" required value={form.lat}
+              onChange={e => set('lat', e.target.value)} placeholder="ละติจูด" />
+            <input type="number" step="any" className="input" required value={form.lng}
+              onChange={e => set('lng', e.target.value)} placeholder="ลองจิจูด" />
+          </div>
+        </div>
+        <button type="button" className="btn btn-ghost" onClick={() => {
+          if (!navigator.geolocation) { alert('เบราว์เซอร์นี้ไม่รองรับตำแหน่งที่ตั้ง'); return }
+          navigator.geolocation.getCurrentPosition(
+            pos => { set('lat', String(pos.coords.latitude)); set('lng', String(pos.coords.longitude)) },
+            err => alert('ไม่สามารถอ่านตำแหน่งได้: ' + err.message)
+          )
+        }}>📍 ใช้ตำแหน่งปัจจุบัน</button>
+        {initial?.id && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+            <input type="checkbox" checked={form.active} onChange={e => set('active', e.target.checked)} />
+            ใช้งานอยู่
+          </label>
+        )}
+      </div>
+      <div className="modal-footer">
+        <button type="button" className="btn btn-ghost" onClick={() => { clearDraft(); onCancel() }}>ยกเลิก</button>
+        <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? '⏳ กำลังบันทึก...' : '✅ บันทึก'}</button>
+      </div>
+    </form>
+  )
 }
 
 export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
@@ -169,7 +212,47 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   // 2026-09-28-01) -- ใช้ฟิลด์พิกัด (ละติจูด/ลองจิจูด) ที่มีอยู่แล้วในหน้า
   // ไซท์งาน ไม่ต้องสร้างหน้าใหม่
   const { data: factorySiteIdVal, refetch: refetchFactorySiteId } = useAppSetting('factory_site_id', '')
-  const { data: sitesList } = useSites()
+  const { data: checkinLocations, refetch: refetchCheckinLocations } = useCheckinLocations()
+  const [showLocationForm, setShowLocationForm] = useState(false)
+  const [editLocation, setEditLocation] = useState(null)
+  const [savingLocation, setSavingLocation] = useState(false)
+  const [deleteLocationId, setDeleteLocationId] = useState(null)
+
+  const handleSaveLocation = async (form) => {
+    setSavingLocation(true)
+    try {
+      const payload = {
+        name: form.name,
+        lat: parseFloat(form.lat) || 0,
+        lng: parseFloat(form.lng) || 0,
+        active: form.active,
+      }
+      const { error } = editLocation
+        ? await supabase.from('checkin_locations').update(payload).eq('id', editLocation.id)
+        : await supabase.from('checkin_locations').insert(payload)
+      if (error) throw error
+      setShowLocationForm(false)
+      setEditLocation(null)
+      refetchCheckinLocations()
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setSavingLocation(false)
+    }
+  }
+
+  const handleDeleteLocation = async () => {
+    if (!deleteLocationId) return
+    try {
+      const { error } = await supabase.from('checkin_locations').delete().eq('id', deleteLocationId)
+      if (error) throw error
+      setDeleteLocationId(null)
+      refetchCheckinLocations()
+    } catch (e) {
+      alert('Error: ' + e.message)
+    }
+  }
+
   const [checkinRadius, setCheckinRadius] = useState('')
   const [shiftEnd, setShiftEnd] = useState('')
   const [factorySiteId, setFactorySiteId] = useState('')
@@ -512,12 +595,45 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           <label className="label">ตำแหน่งโรงงาน (ใช้เทียบระยะสำหรับงานประเภท "โรงงาน" แทนไซท์ลูกค้า)</label>
           <select className="select" style={{ maxWidth: 360 }} value={factorySiteId} onChange={e => setFactorySiteId(e.target.value)}>
             <option value="">-- ยังไม่ได้ตั้งค่า --</option>
-            {(sitesList || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            {(checkinLocations || []).filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
           <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
-            เลือกไซท์ที่เป็นโรงงานจริง แล้วไปตั้งพิกัด (ละติจูด/ลองจิจูด) ที่หน้า🏗️ ไซท์งาน → แก้ไขไซท์นั้น — กด "✅ บันทึก" ด้านบนเพื่อบันทึกช่องนี้ด้วย
+            เลือกตำแหน่งที่เป็นโรงงานจริง — เพิ่ม/แก้ไขพิกัด (ละติจูด/ลองจิจูด) ได้ที่หัวข้อ "จัดการตำแหน่งเช็คอิน" ด้านล่าง — กด "✅ บันทึก" ด้านบนเพื่อบันทึกช่องนี้ด้วย
           </p>
         </div>
+
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <label className="label" style={{ marginBottom: 0 }}>จัดการตำแหน่งเช็คอิน</label>
+            <button className="btn btn-sm btn-ghost" onClick={() => { setEditLocation(null); setShowLocationForm(true) }}>+ เพิ่มตำแหน่ง</button>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>ชื่อตำแหน่ง</th><th>พิกัด</th><th>สถานะ</th><th></th></tr></thead>
+              <tbody>
+                {(checkinLocations || []).map(l => (
+                  <tr key={l.id}>
+                    <td style={{ fontWeight: 600 }}>{l.name}</td>
+                    <td className="font-mono" style={{ fontSize: 11.5 }}>{l.lat}, {l.lng}</td>
+                    <td>{l.active ? <span className="badge badge-paid">ใช้งานอยู่</span> : <span className="badge badge-finished">ปิดใช้งาน</span>}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="btn btn-sm btn-ghost" onClick={() => { setEditLocation(l); setShowLocationForm(true) }}>แก้ไข</button>
+                      <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => setDeleteLocationId(l.id)}>ลบ</button>
+                    </td>
+                  </tr>
+                ))}
+                {!(checkinLocations || []).length && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีตำแหน่งเช็คอิน</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {showLocationForm && (
+          <Modal title={editLocation ? `แก้ไข ${editLocation.name}` : 'เพิ่มตำแหน่งเช็คอินใหม่'} onClose={() => { setShowLocationForm(false); setEditLocation(null) }} maxWidth={420}>
+            <LocationForm initial={editLocation || {}} onSave={handleSaveLocation} onCancel={() => { setShowLocationForm(false); setEditLocation(null) }} loading={savingLocation} />
+          </Modal>
+        )}
+        {deleteLocationId && <ConfirmDialog title="ลบตำแหน่งเช็คอิน" message="ยืนยันการลบ?" onConfirm={handleDeleteLocation} onCancel={() => setDeleteLocationId(null)} />}
       </div>
       </>}
 
