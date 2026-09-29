@@ -466,6 +466,38 @@ export function useTodayCheckin(workerId, siteId, date) {
   }, [workerId, siteId, date])
 }
 
+// ผู้ใช้คนนี้ (session ปัจจุบัน) ถูก OWNER ผูกไว้กับสถานที่เช็คอินคงที่
+// สถานที่ไหนหรือไม่ -- ใช้โดย MySchedule เพื่อตัดสินใจว่าจะโชว์
+// LocationCheckinCard (เมื่อไม่มี site assignment วันนี้) หรือไม่
+export function useMyAssignedCheckinLocation() {
+  return useQuery(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.user) return null
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('assigned_checkin_location_id, checkin_locations(id, name)')
+      .eq('user_email', session.user.email)
+      .maybeSingle()
+    if (error) throw error
+    return data?.checkin_locations || null
+  })
+}
+
+// วันนี้ พนักงานเช็คอิน/เช็คเอาท์ที่สถานที่ที่ถูกผูกไว้แล้วหรือยัง --
+// มิเรอร์ useTodayCheckin แต่คีย์ด้วย checkin_location_id แทน site_id
+export function useTodayLocationCheckin(workerId, locationId, date) {
+  return useQuery(async () => {
+    if (!workerId || !locationId || !date) return null
+    const { data, error } = await supabase
+      .from('worker_checkins')
+      .select('*')
+      .eq('worker_id', workerId).eq('checkin_location_id', locationId).eq('date', date)
+      .maybeSingle()
+    if (error) throw error
+    return data
+  }, [workerId, locationId, date])
+}
+
 // ลายเซ็นส่วนตัวของผู้ใช้ที่ล็อกอินอยู่ตอนนี้ -- วาดครั้งเดียวที่หน้าตั้งค่า
 // แล้วเอาไปแปะอัตโนมัติในช่องลายเซ็นฝั่งพนักงานของทุกเอกสาร (ไม่ผูกกับ
 // เอกสารใบใดใบหนึ่ง) ดู saveMySignature ด้านล่างสำหรับการบันทึก

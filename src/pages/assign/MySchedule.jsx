@@ -11,12 +11,13 @@
 // ============================================================
 import { useMemo, useState } from 'react'
 import { useUserRole } from '../../hooks/useUserRole.js'
-import { useAllActiveWorkers, useAssignmentsRange, useWorkerOTRange, useMySiteNames, useLeaveQuotaUsage, usePhaseTasks, useMyTeamToday } from '../../hooks/useSupabase.js'
+import { useAllActiveWorkers, useAssignmentsRange, useWorkerOTRange, useMySiteNames, useLeaveQuotaUsage, usePhaseTasks, useMyTeamToday, useMyAssignedCheckinLocation } from '../../hooks/useSupabase.js'
 import { supabase } from '../../lib/supabase.js'
 import { isTaskOverdue } from '../sites/phaseTasksCalc.js'
 import { DOW_TH } from './constants.js'
 import AssignCell from './AssignCell.jsx'
 import TodayCheckinCard from './TodayCheckinCard.jsx'
+import LocationCheckinCard from './LocationCheckinCard.jsx'
 
 const OTHER_TYPE_LABEL = { office: 'ออฟฟิศ', leave: 'ลา', leave_sick: 'ลาป่วย', leave_personal: 'ลากิจ', holiday: 'หยุด' }
 const DOW_MON_START = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา']
@@ -41,6 +42,7 @@ export default function MySchedule({ from, to, days, view }) {
   const [savingTaskId, setSavingTaskId] = useState(null)
 
   const me = useMemo(() => (workers || []).find(w => w.email === user?.email), [workers, user])
+  const { data: myLocation } = useMyAssignedCheckinLocation()
 
   const siteById = useMemo(() => {
     const m = {}
@@ -292,6 +294,12 @@ export default function MySchedule({ from, to, days, view }) {
                   date={todayIso}
                 />
               ))}
+              {isToday && todaySiteAssignments.length === 0 && myLocation && (
+                <LocationCheckinCard
+                  workerId={me.id} locationId={myLocation.id}
+                  locationName={myLocation.name} date={todayIso}
+                />
+              )}
             </div>
           )
         })}
