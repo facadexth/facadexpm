@@ -7,7 +7,7 @@
 // ============================================================
 import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useBomTemplates, useAluminumFinishes, useBomGlassTypes } from '../hooks/useSupabase.js'
+import { useBomTemplates, useAluminumFinishes, useInfillTypes } from '../hooks/useSupabase.js'
 import { useBomTemplateComponents, useBomTemplateHardware, useBomTemplateConstraints, useAluminumProfiles } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -44,15 +44,23 @@ function FinishForm({ initial, onSave, onCancel, loading }) {
   )
 }
 
-function GlassTypeForm({ initial, onSave, onCancel, loading }) {
-  const [form, setForm, clearDraft] = useDraftForm('bom-glass-type-form', { name: '', price_per_sqm: '', active: true, ...initial }, !initial?.id)
+const MATERIAL_KIND_LABELS = { glass: 'กระจก', mesh: 'ตาข่าย', solid_panel: 'แผ่นทึบ', acp: 'อลูมิเนียมคอมโพสิต (ACP)' }
+
+function InfillTypeForm({ initial, onSave, onCancel, loading }) {
+  const [form, setForm, clearDraft] = useDraftForm('infill-type-form', { name: '', price_per_sqm: '', material_kind: 'glass', active: true, ...initial }, !initial?.id)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   return (
     <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave(form) }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
         <div>
-          <label className="label">ชื่อกระจก ★</label>
+          <label className="label">ชื่อวัสดุอุดช่อง ★</label>
           <input className="input" required value={form.name} onChange={e => set('name', e.target.value)} placeholder="เช่น กระจกใส 10มม." />
+        </div>
+        <div>
+          <label className="label">ประเภทวัสดุ ★</label>
+          <select className="input" required value={form.material_kind} onChange={e => set('material_kind', e.target.value)}>
+            {Object.entries(MATERIAL_KIND_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+          </select>
         </div>
         <div>
           <label className="label">ราคา/ตร.ม. ★</label>
@@ -86,7 +94,8 @@ const CONSTRAINT_TYPE_LABELS = { max_width_mm: 'กว้างสูงสุ�
 
 const EMPTY_TEMPLATE_FORM = {
   name: '', category: 'window', waste_pct: '10',
-  glass_width_deduction_mm: '0', glass_height_deduction_mm: '0',
+  infill_width_deduction_mm: '0', infill_height_deduction_mm: '0',
+  labor_price_per_sqm: '0', silicone_price_per_m: '0', felt_price_per_m: '0',
   grid_row_weights: [1],
   grid_horizontal_rail_family: '', grid_vertical_mullion_family: '',
   active: true,
@@ -96,7 +105,8 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
   const isNew = !template?.id
   const [form, setForm] = useState(() => isNew ? EMPTY_TEMPLATE_FORM : {
     name: template.name, category: template.category, waste_pct: String(template.waste_pct),
-    glass_width_deduction_mm: String(template.glass_width_deduction_mm), glass_height_deduction_mm: String(template.glass_height_deduction_mm),
+    infill_width_deduction_mm: String(template.infill_width_deduction_mm), infill_height_deduction_mm: String(template.infill_height_deduction_mm),
+    labor_price_per_sqm: String(template.labor_price_per_sqm), silicone_price_per_m: String(template.silicone_price_per_m), felt_price_per_m: String(template.felt_price_per_m),
     grid_row_weights: template.grid_row_weights, grid_horizontal_rail_family: template.grid_horizontal_rail_family || '',
     grid_vertical_mullion_family: template.grid_vertical_mullion_family || '', active: template.active,
   })
@@ -138,8 +148,11 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
       const payload = {
         name: form.name, category: form.category,
         waste_pct: parseFloat(form.waste_pct) || 0,
-        glass_width_deduction_mm: parseFloat(form.glass_width_deduction_mm) || 0,
-        glass_height_deduction_mm: parseFloat(form.glass_height_deduction_mm) || 0,
+        infill_width_deduction_mm: parseFloat(form.infill_width_deduction_mm) || 0,
+        infill_height_deduction_mm: parseFloat(form.infill_height_deduction_mm) || 0,
+        labor_price_per_sqm: parseFloat(form.labor_price_per_sqm) || 0,
+        silicone_price_per_m: parseFloat(form.silicone_price_per_m) || 0,
+        felt_price_per_m: parseFloat(form.felt_price_per_m) || 0,
         grid_row_weights: form.grid_row_weights,
         grid_horizontal_rail_family: form.grid_horizontal_rail_family || null,
         grid_vertical_mullion_family: form.grid_vertical_mullion_family || null,
@@ -219,12 +232,26 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
           <input className="input" disabled={!canEdit} type="number" min="0" step="0.1" value={form.waste_pct} onChange={e => set('waste_pct', e.target.value)} />
         </div>
         <div>
-          <label className="label">หักระยะกระจก กว้าง (mm)</label>
-          <input className="input" disabled={!canEdit} type="number" min="0" value={form.glass_width_deduction_mm} onChange={e => set('glass_width_deduction_mm', e.target.value)} />
+          <label className="label">หักระยะวัสดุอุดช่อง กว้าง (mm)</label>
+          <input className="input" disabled={!canEdit} type="number" min="0" value={form.infill_width_deduction_mm} onChange={e => set('infill_width_deduction_mm', e.target.value)} />
         </div>
         <div>
-          <label className="label">หักระยะกระจก สูง (mm)</label>
-          <input className="input" disabled={!canEdit} type="number" min="0" value={form.glass_height_deduction_mm} onChange={e => set('glass_height_deduction_mm', e.target.value)} />
+          <label className="label">หักระยะวัสดุอุดช่อง สูง (mm)</label>
+          <input className="input" disabled={!canEdit} type="number" min="0" value={form.infill_height_deduction_mm} onChange={e => set('infill_height_deduction_mm', e.target.value)} />
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+        <div>
+          <label className="label">ค่าแรง (฿/ตร.ม.)</label>
+          <input className="input" disabled={!canEdit} type="number" min="0" step="0.01" value={form.labor_price_per_sqm} onChange={e => set('labor_price_per_sqm', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">ซิลิโคน (฿/ม.)</label>
+          <input className="input" disabled={!canEdit} type="number" min="0" step="0.01" value={form.silicone_price_per_m} onChange={e => set('silicone_price_per_m', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">สักหลาด (฿/ม.)</label>
+          <input className="input" disabled={!canEdit} type="number" min="0" step="0.01" value={form.felt_price_per_m} onChange={e => set('felt_price_per_m', e.target.value)} />
         </div>
       </div>
 
@@ -383,17 +410,17 @@ export default function BomTemplates(props) {
 
   const { data: templates, refetch: refetchTemplates } = useBomTemplates()
   const { data: finishes, refetch: refetchFinishes } = useAluminumFinishes()
-  const { data: glassTypes, refetch: refetchGlassTypes } = useBomGlassTypes()
+  const { data: infillTypes, refetch: refetchInfillTypes } = useInfillTypes()
 
   const [showFinishForm, setShowFinishForm] = useState(false)
   const [editFinish, setEditFinish] = useState(null)
   const [savingFinish, setSavingFinish] = useState(false)
   const [deleteFinishId, setDeleteFinishId] = useState(null)
 
-  const [showGlassForm, setShowGlassForm] = useState(false)
-  const [editGlass, setEditGlass] = useState(null)
-  const [savingGlass, setSavingGlass] = useState(false)
-  const [deleteGlassId, setDeleteGlassId] = useState(null)
+  const [showInfillForm, setShowInfillForm] = useState(false)
+  const [editInfill, setEditInfill] = useState(null)
+  const [savingInfill, setSavingInfill] = useState(false)
+  const [deleteInfillId, setDeleteInfillId] = useState(null)
 
   const handleSaveFinish = async (form) => {
     setSavingFinish(true)
@@ -415,23 +442,23 @@ export default function BomTemplates(props) {
     else alert('ลบไม่สำเร็จ (อาจมีการใช้งานผูกอยู่): ' + error.message)
   }
 
-  const handleSaveGlass = async (form) => {
-    setSavingGlass(true)
+  const handleSaveInfill = async (form) => {
+    setSavingInfill(true)
     try {
-      const payload = { name: form.name, price_per_sqm: parseFloat(form.price_per_sqm) || 0, active: form.active !== false }
-      const { error } = editGlass
-        ? await supabase.from('bom_glass_types').update(payload).eq('id', editGlass.id)
-        : await supabase.from('bom_glass_types').insert(payload)
+      const payload = { name: form.name, price_per_sqm: parseFloat(form.price_per_sqm) || 0, material_kind: form.material_kind, active: form.active !== false }
+      const { error } = editInfill
+        ? await supabase.from('infill_types').update(payload).eq('id', editInfill.id)
+        : await supabase.from('infill_types').insert(payload)
       if (error) throw error
-      setShowGlassForm(false); setEditGlass(null); refetchGlassTypes()
+      setShowInfillForm(false); setEditInfill(null); refetchInfillTypes()
     } catch (e) { alert('บันทึกไม่สำเร็จ: ' + e.message) }
-    finally { setSavingGlass(false) }
+    finally { setSavingInfill(false) }
   }
 
-  const handleDeleteGlass = async () => {
-    if (!deleteGlassId) return
-    const { error } = await supabase.from('bom_glass_types').delete().eq('id', deleteGlassId)
-    if (!error) { setDeleteGlassId(null); refetchGlassTypes() }
+  const handleDeleteInfill = async () => {
+    if (!deleteInfillId) return
+    const { error } = await supabase.from('infill_types').delete().eq('id', deleteInfillId)
+    if (!error) { setDeleteInfillId(null); refetchInfillTypes() }
     else alert('ลบไม่สำเร็จ (อาจมีการใช้งานผูกอยู่): ' + error.message)
   }
 
@@ -440,7 +467,7 @@ export default function BomTemplates(props) {
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button className={`btn btn-sm ${view === 'templates' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('templates')}>🧩 BOM Templates</button>
         <button className={`btn btn-sm ${view === 'finishes' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('finishes')}>🎨 สีผิวอลูมิเนียม</button>
-        <button className={`btn btn-sm ${view === 'glass_types' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('glass_types')}>🪟 ชนิดกระจก</button>
+        <button className={`btn btn-sm ${view === 'infill_types' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('infill_types')}>🪟 วัสดุอุดช่อง</button>
       </div>
 
       {view === 'templates' && (
@@ -478,30 +505,31 @@ export default function BomTemplates(props) {
         </>
       )}
 
-      {view === 'glass_types' && (
+      {view === 'infill_types' && (
         <>
-          {canEdit && <button className="btn btn-primary" style={{ marginBottom: 14 }} onClick={() => { setEditGlass(null); setShowGlassForm(true) }}>+ เพิ่มชนิดกระจก</button>}
+          {canEdit && <button className="btn btn-primary" style={{ marginBottom: 14 }} onClick={() => { setEditInfill(null); setShowInfillForm(true) }}>+ เพิ่มวัสดุอุดช่อง</button>}
           <div className="card">
             <div className="table-wrap">
               <table>
-                <thead><tr><th>ชื่อกระจก</th><th>ราคา/ตร.ม.</th><th>สถานะ</th><th></th></tr></thead>
+                <thead><tr><th>ชื่อวัสดุ</th><th>ประเภท</th><th>ราคา/ตร.ม.</th><th>สถานะ</th><th></th></tr></thead>
                 <tbody>
-                  {(glassTypes || []).map(g => (
+                  {(infillTypes || []).map(g => (
                     <tr key={g.id}>
                       <td style={{ fontWeight: 600 }}>{g.name}</td>
+                      <td>{MATERIAL_KIND_LABELS[g.material_kind] || g.material_kind}</td>
                       <td className="font-mono">{fmt(g.price_per_sqm)}</td>
                       <td>{g.active ? <span className="badge badge-paid">ใช้งานอยู่</span> : <span className="badge badge-finished">ปิดใช้งาน</span>}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         {canEdit && (
                           <>
-                            <button className="btn btn-sm btn-ghost" onClick={() => { setEditGlass(g); setShowGlassForm(true) }}>แก้ไข</button>
-                            <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => setDeleteGlassId(g.id)}>ลบ</button>
+                            <button className="btn btn-sm btn-ghost" onClick={() => { setEditInfill(g); setShowInfillForm(true) }}>แก้ไข</button>
+                            <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => setDeleteInfillId(g.id)}>ลบ</button>
                           </>
                         )}
                       </td>
                     </tr>
                   ))}
-                  {!(glassTypes || []).length && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีชนิดกระจก</td></tr>}
+                  {!(infillTypes || []).length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีวัสดุอุดช่อง</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -516,12 +544,12 @@ export default function BomTemplates(props) {
       )}
       {deleteFinishId && <ConfirmDialog title="ลบสีผิว" message="ยืนยันการลบ?" onConfirm={handleDeleteFinish} onCancel={() => setDeleteFinishId(null)} />}
 
-      {showGlassForm && (
-        <Modal title={editGlass ? `แก้ไข ${editGlass.name}` : 'เพิ่มชนิดกระจกใหม่'} onClose={() => { setShowGlassForm(false); setEditGlass(null) }} maxWidth={420}>
-          <GlassTypeForm initial={editGlass || {}} onSave={handleSaveGlass} onCancel={() => { setShowGlassForm(false); setEditGlass(null) }} loading={savingGlass} />
+      {showInfillForm && (
+        <Modal title={editInfill ? `แก้ไข ${editInfill.name}` : 'เพิ่มวัสดุอุดช่องใหม่'} onClose={() => { setShowInfillForm(false); setEditInfill(null) }} maxWidth={420}>
+          <InfillTypeForm initial={editInfill || {}} onSave={handleSaveInfill} onCancel={() => { setShowInfillForm(false); setEditInfill(null) }} loading={savingInfill} />
         </Modal>
       )}
-      {deleteGlassId && <ConfirmDialog title="ลบชนิดกระจก" message="ยืนยันการลบ?" onConfirm={handleDeleteGlass} onCancel={() => setDeleteGlassId(null)} />}
+      {deleteInfillId && <ConfirmDialog title="ลบวัสดุอุดช่อง" message="ยืนยันการลบ?" onConfirm={handleDeleteInfill} onCancel={() => setDeleteInfillId(null)} />}
     </div>
   )
 }
