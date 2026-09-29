@@ -671,7 +671,11 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   // ── หลายไซท์: 1 แถวต่อไซท์ ทุกขั้นตอนแชร์แถวเดียว (หน้ารายการไซท์) ──
   // ดูทีละปี (ไม่ครอบคลุมทุกไซท์ทั้งหมดเหมือนเดิม -- ยาวเกินไปจนไม่มีประโยชน์)
   // + ปุ่ม ‹ › เปลี่ยนปี + ซ่อนไซท์ที่ไม่มีงานในปีนั้น/ไซท์ที่เสร็จแล้ว
-  const portfolioRange = { start: new Date(portfolioYear, 0, 1), end: new Date(portfolioYear, 11, 31) }
+  // Built in UTC (not the local-time `new Date(y, 0, 1)` constructor) to
+  // stay in the same UTC-day world as computeMonthTicks/positionPercent --
+  // see the comment on computeMonthTicks for why mixing local-time and
+  // UTC-string dates broke the timeline scale.
+  const portfolioRange = { start: new Date(Date.UTC(portfolioYear, 0, 1)), end: new Date(Date.UTC(portfolioYear, 11, 31)) }
   const portfolioMonthTicks = computeMonthTicks(portfolioRange)
   const portfolioTodayInRange = portfolioYear === new Date(TODAY_ISO).getFullYear()
   const portfolioTodayX = portfolioTodayInRange ? positionPercent(TODAY_ISO, portfolioRange) : null

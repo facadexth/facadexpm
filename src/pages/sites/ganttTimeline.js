@@ -146,15 +146,28 @@ export function computeDependencyArrowsByRow(phases, range, rowById) {
 /**
  * Month-boundary tick labels within [range.start, range.end], positioned
  * as 0-100 x-coordinates, for a header row above a per-phase-row Gantt.
+ *
+ * Every other date in this file flows through "YYYY-MM-DD" strings, which
+ * JS parses as UTC midnight (`new Date(dateStr)`) -- so range.start/end and
+ * positionPercent's own parsing are all UTC-consistent with each other.
+ * This function used to build its cursor with the LOCAL-time constructor
+ * (`new Date(y, m, 1)`) and then convert it back to a string via
+ * `.toISOString()`, which reads out in UTC -- for any positive UTC offset
+ * (e.g. Thailand, UTC+7, this app's own timezone) that round-trip silently
+ * lands on the PREVIOUS calendar day, so every tick's computed x-position
+ * was one day earlier than the month it was labeled with. Building and
+ * advancing the cursor entirely in UTC (Date.UTC + getUTC* getters) keeps
+ * it in the same UTC-day world as everything else, so the ISO slice always
+ * names the exact calendar day the cursor represents.
  */
 export function computeMonthTicks(range) {
   if (!range) return []
   const ticks = []
-  let cursor = new Date(range.start.getFullYear(), range.start.getMonth(), 1)
+  let cursor = new Date(Date.UTC(range.start.getUTCFullYear(), range.start.getUTCMonth(), 1))
   const end = range.end
   while (cursor <= end) {
     ticks.push({ date: new Date(cursor), x: positionPercent(cursor.toISOString().slice(0, 10), range) })
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)
+    cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1))
   }
   return ticks
 }
