@@ -1393,9 +1393,9 @@ export function useAluminumFinishes() {
   })
 }
 
-export function useBomGlassTypes() {
+export function useInfillTypes() {
   return useQuery(async () => {
-    const { data, error } = await supabase.from('bom_glass_types').select('*').order('name')
+    const { data, error } = await supabase.from('infill_types').select('*').order('name')
     if (error) throw error
     return data
   })
