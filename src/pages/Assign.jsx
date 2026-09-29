@@ -46,12 +46,14 @@ export default function Assign({ navState, openSiteOverview }) {
   const { data: assignments, refetch } = useAssignmentsRange(from, to)
 
   // No-assignment location check-in (spec: 2026-09-29-checkin-locations-design.md).
-  // Rendered here, unconditionally, not just inside MySchedule (which only
-  // renders for !canEdit) -- found via live smoke test that ADMIN/OWNER
-  // always have canEdit=true on this page under default permissions, so
-  // they would never see MySchedule and could never reach this card even
-  // with a real assigned_checkin_location_id. ADMIN/OWNER is exactly the
-  // audience this feature is for (spec Decision 3), so it must be visible
+  // The hook is called unconditionally here (React's own rule), but the
+  // card itself only renders on the canEdit branch below -- not just
+  // inside MySchedule (which only renders for !canEdit). Found via live
+  // smoke test that ADMIN/OWNER always have canEdit=true on this page
+  // under default permissions, so they would never see MySchedule and
+  // could never reach this card even with a real
+  // assigned_checkin_location_id. ADMIN/OWNER is exactly the audience
+  // this feature is for (spec Decision 3), so it must be visible
   // regardless of which view (MySchedule vs the admin grid) they land on.
   const { data: myLocation } = useMyAssignedCheckinLocation()
   const todayIso = new Date().toISOString().slice(0, 10)
