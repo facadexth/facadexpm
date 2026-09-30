@@ -31,6 +31,7 @@ import AttachmentsSection from '../components/AttachmentsSection.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
+import RowActionsMenu from '../components/RowActionsMenu.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -497,6 +498,120 @@ function PODocumentModal({ po, tenant, onClose }) {
   )
 }
 
+// SwapTaxInvoiceModal -- for a received PO whose commercial/delivery
+// invoice used a different unit than the supplier's real tax invoice
+// (e.g. KC Interframe: sells/delivers by เส้น, tax-invoices by kg), lets
+// an admin scan the real tax invoice and swap its reference into the
+// auto-created expense WITHOUT touching stock_movements or the expense's
+// amount -- receiving already posted the correct physical quantity in the
+// PO's own unit; this only corrects the paperwork trail. Reuses the same
+// extract-po-document AI pipeline (and its quota) as PO creation's own
+// "scan from photo" upload; see docs/superpowers/specs/2026-09-10-po-
+// document-scan-extraction-design.md for that pipeline's shape.
+function SwapTaxInvoiceModal({ po, onClose, onSwapped }) {
+  const expense = po.expenses
+  const originalAmount = expense?.amount_no_vat ?? expense?.amount ?? 0
+
+  const [scanning, setScanning] = useState(false)
+  const [scanError, setScanError] = useState(null)
+  const [extracted, setExtracted] = useState(null) // { reference_no_guess, line_items, computedTotal }
+  const [saving, setSaving] = useState(false)
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setScanError(null)
+    setExtracted(null)
+    setScanning(true)
+    try {
+      const { base64, mimeType } = await fileToExtractionPayload(file)
+      const result = await extractPoDocument(base64, mimeType, [])
+      if (!result.ok) { setScanError(result.error); return }
+      const { reference_no_guess, line_items } = result.data
+      const computedTotal = line_items.reduce((sum, it) => sum + it.quantity * it.unit_price, 0)
+      setExtracted({ reference_no_guess, line_items, computedTotal })
+    } catch (err) {
+      setScanError(err.message)
+    } finally {
+      setScanning(false)
+    }
+  }
+
+  // Tight tolerance on purpose -- this is the SAME delivery being
+  // re-described, not a fuzzy cross-reference against an unrelated batch
+  // of records (c.f. the ±5%/20-baht tolerance used for the Feb-Jul
+  // invoice/expense backfill matching), so a real match should land
+  // very close to exact; only enough slack for rounding.
+  const matches = extracted != null && Math.abs(extracted.computedTotal - originalAmount) <= Math.max(originalAmount * 0.01, 5)
+
+  const handleSave = async () => {
+    if (!expense || !extracted || !matches || saving) return
+    setSaving(true)
+    try {
+      const itemsSummary = extracted.line_items
+        .map((it) => `${it.description} ${it.quantity}${it.unit ? ' ' + it.unit : ''} @ ${fmt(it.unit_price)}`)
+        .join('; ')
+      const newInvoiceNo = extracted.reference_no_guess || expense.invoice_no
+      const newNotes = [expense.notes, `สลับเป็นใบกำกับภาษีจริง${extracted.reference_no_guess ? ' ' + extracted.reference_no_guess : ''}: ${itemsSummary}`]
+        .filter(Boolean).join(' | ')
+      const { error } = await supabase.from('expenses')
+        .update({ invoice_no: newInvoiceNo, notes: newNotes })
+        .eq('id', expense.id)
+      if (error) throw error
+      await auditLog('expenses', expense.id, 'UPDATE', { invoice_no: expense.invoice_no, notes: expense.notes }, { invoice_no: newInvoiceNo, notes: newNotes })
+      onSwapped()
+    } catch (err) {
+      alert('Error: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title={`สลับใบกำกับภาษี — ${po.po_number}`} onClose={onClose} maxWidth={560}>
+      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        {!expense ? (
+          <div style={{ color: 'var(--red)' }}>ไม่พบรายจ่ายที่ผูกกับใบสั่งซื้อนี้</div>
+        ) : (
+          <>
+            <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>
+              รายจ่ายเดิม: {expense.invoice_no || '(ไม่มีเลขที่)'} · ยอด {fmt(originalAmount)} บาท (ก่อน VAT)
+            </div>
+            <div>
+              <label className="label">อัปโหลดรูป/PDF ใบกำกับภาษีจริง</label>
+              <input type="file" accept="image/*,application/pdf" onChange={handleUpload} disabled={scanning} />
+              {scanning && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>⏳ กำลังอ่าน...</div>}
+              {scanError && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 6 }}>{scanError}</div>}
+            </div>
+            {extracted && (
+              <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>เลขที่ใบกำกับภาษี: {extracted.reference_no_guess || '(ไม่พบ)'}</div>
+                <div style={{ display: 'grid', gap: 4, fontSize: 12 }}>
+                  {extracted.line_items.map((it, i) => (
+                    <div key={i}>{it.description} — {it.quantity} {it.unit} × {fmt(it.unit_price)} = {fmt(it.quantity * it.unit_price)}</div>
+                  ))}
+                  {!extracted.line_items.length && <div style={{ color: 'var(--text3)' }}>ไม่พบรายการสินค้าในเอกสาร</div>}
+                </div>
+                <div style={{ marginTop: 8, fontWeight: 700, color: matches ? 'var(--green)' : 'var(--red)' }}>
+                  ยอดรวมที่อ่านได้: {fmt(extracted.computedTotal)} บาท
+                  {matches ? ' ✅ ตรงกับรายจ่ายเดิม' : ` ⚠️ ไม่ตรงกับยอดเดิม (${fmt(originalAmount)} บาท) — ตรวจสอบไฟล์ที่อัปโหลดอีกครั้ง`}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={onClose}>ยกเลิก</button>
+        <button className="btn btn-primary" disabled={!expense || !extracted || !matches || saving} onClick={handleSave}>
+          {saving ? '⏳...' : '✅ ยืนยันสลับใบกำกับภาษี'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
 export default function PurchaseOrders({ navigateTo, navState, openSiteOverview }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'purchase_orders')
@@ -519,6 +634,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const [docRow, setDocRow] = useState(null)
   const [detailRow, setDetailRow] = useState(null)
   const [receiveRow, setReceiveRow] = useState(null)
+  const [swapInvoiceRow, setSwapInvoiceRow] = useState(null)
   const [receiving, setReceiving] = useState(false)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState(null)
@@ -889,6 +1005,11 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                             <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(po.id)}><TrashIcon /></button>
                           </>
                         )}
+                        {canEdit && po.status === 'received' && po.expense_id && (
+                          <RowActionsMenu items={[
+                            { label: '🔄 สลับใบกำกับภาษี', onClick: () => setSwapInvoiceRow(po) },
+                          ]} />
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -944,6 +1065,14 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
           }
           onConfirm={handleReceive}
           onCancel={() => setReceiveRow(null)}
+        />
+      )}
+
+      {swapInvoiceRow && (
+        <SwapTaxInvoiceModal
+          po={swapInvoiceRow}
+          onClose={() => setSwapInvoiceRow(null)}
+          onSwapped={() => { setSwapInvoiceRow(null); refetch(); showToast('สลับใบกำกับภาษีแล้ว') }}
         />
       )}
     </div>
