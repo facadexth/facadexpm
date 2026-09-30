@@ -11,7 +11,7 @@ import { pickActivePhase } from '../sites/phaseTasksCalc.js'
 import { STATUS_COLOR } from '../sites/ganttTimeline.js'
 import teamLeaderBadge from '../../assets/team-leader-badge.png'
 
-const dayRate = (w) => Math.round((w?.monthly_salary || 0) / 26)
+const dayRate = (w) => Math.round((w?.monthly_salary || 0) / 30)
 
 const MINI_COLUMNS = [
   { status: 'not_started', label: 'ยังไม่เริ่ม' },

@@ -50,7 +50,7 @@ export default function GridView({ days, workers, cellLookup, otLookup, holidayD
                 <tr key={w.id}>
                   <td style={{ position: 'sticky', left: 0, background: 'var(--bg3)', zIndex: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{w.nickname || w.name}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>{fmt(Math.round((w.monthly_salary || 0) / 26))} บ/วัน</div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>{fmt(Math.round((w.monthly_salary || 0) / 30))} บ/วัน</div>
                   </td>
                   {days.map(d => (
                     <td key={d.iso} style={{ padding: 2, textAlign: 'center' }}>

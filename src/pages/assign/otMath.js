@@ -2,7 +2,7 @@
 // otMath — pure helpers for OT hour/cost computation, shared by
 // the +OT entry form (live preview) and the per-site day cards
 // (OT cost line). Formula must match Payroll.jsx/HR.jsx exactly:
-// ot_hours × (monthly_salary / 26 / 8) × 1.5
+// ot_hours × (monthly_salary / 30 / 8) × 1.5
 // ============================================================
 
 /** "HH:MM" (or "HH:MM:SS") -> minutes since midnight, or null if unparseable. */
@@ -36,6 +36,6 @@ export function computeOTHours(start, end, isOvernight = false) {
 /** OT pay for a given monthly salary and OT hours, rounded to 2 decimals. */
 export function otCost(monthlySalary, otHours) {
   if (!otHours) return 0
-  const hourlyRate = (monthlySalary || 0) / 26 / 8
+  const hourlyRate = (monthlySalary || 0) / 30 / 8
   return Math.round(hourlyRate * 1.5 * otHours * 100) / 100
 }

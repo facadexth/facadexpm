@@ -35,7 +35,7 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('worker-form', { ...EMPTY_WORKER, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const dailyRate = form.monthly_salary ? (parseFloat(form.monthly_salary) / 26).toFixed(2) : '—'
+  const dailyRate = form.monthly_salary ? (parseFloat(form.monthly_salary) / 30).toFixed(2) : '—'
   const workersFull = isAdd && seat?.workers?.max != null && seat.workers.used >= seat.workers.max
 
   // Raw File, deliberately NOT part of `form` (see handleSaveWorker's own
@@ -738,7 +738,7 @@ export default function HR() {
       })
 
       const results = Object.entries(wmap).map(([worker_id, d]) => {
-        const dr  = (d.worker.monthly_salary||0) / 26
+        const dr  = (d.worker.monthly_salary||0) / 30
         const lv  = parseFloat((d.leave_personal * dr).toFixed(2))
         const ot  = parseFloat((d.ot_hours * dr / 8 * 1.5).toFixed(2))
         const hb  = parseFloat(((d.holiday_shifts||0) * dr * 0.5 * holidayMultiplier).toFixed(2))

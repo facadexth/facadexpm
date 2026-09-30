@@ -294,7 +294,7 @@ export default function Payroll() {
       })
 
       const results = Object.entries(wmap).map(([worker_id, d]) => {
-        const daily_rate     = (d.worker.monthly_salary || 0) / 26
+        const daily_rate     = (d.worker.monthly_salary || 0) / 30
         const leave_ded      = parseFloat((d.leave_personal * daily_rate).toFixed(2))
         const ot_amt         = parseFloat((d.ot_hours * daily_rate / 8 * 1.5).toFixed(2))
         const holiday_bonus  = parseFloat(((d.holiday_shifts || 0) * daily_rate * 0.5 * holidayMultiplier).toFixed(2))
