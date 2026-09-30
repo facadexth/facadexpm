@@ -743,8 +743,9 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                   <tbody>
                     {filtered.map((s) => {
                       const c = bySite.get(s.id) || empty
+                      const goToKanban = () => navigateTo('site_detail', { siteId: s.id, siteName: s.name, tab: 'kanban' })
                       return (
-                        <tr key={s.id}>
+                        <tr key={s.id} onClick={goToKanban} style={{ cursor: 'pointer' }}>
                           <td>
                             <div style={{ fontWeight: 600 }}>{s.name}</div>
                             <div style={{ fontSize: 11, color: 'var(--text3)' }}>{s.site_number}</div>
@@ -756,7 +757,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
                           <td style={{ textAlign: 'right' }}>
                             <button
                               className="btn btn-sm btn-ghost"
-                              onClick={() => navigateTo('site_detail', { siteId: s.id, siteName: s.name, tab: 'kanban' })}
+                              onClick={(e) => { e.stopPropagation(); goToKanban() }}
                             >ดู Kanban →</button>
                           </td>
                         </tr>
