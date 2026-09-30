@@ -468,8 +468,18 @@ export default function HR() {
         for (let d = new Date(req.date_from); d <= new Date(req.date_to); d.setDate(d.getDate() + 1)) {
           days.push(new Date(d).toISOString().slice(0, 10))
         }
-        const { error: insertErr } = await supabase.from('worker_assignments').insert(
-          days.map(date => ({ worker_id: req.worker_id, date, shift: 'morning', type: req.leave_type, site_id: null, notes: req.reason || null }))
+        // upsert, not insert -- a worker can already have a real assignment
+        // (site/factory/office, or even a different leave type) on a day
+        // their leave request gets approved for (e.g. assigned to a site
+        // days before requesting leave for that same day). Approved leave
+        // must take priority and overwrite whatever was there, matching
+        // the same onConflict Assign.jsx's own cell/wizard saves already
+        // use for this exact table -- a plain insert() throws
+        // worker_assignments_worker_id_date_shift_key the moment any prior
+        // row already occupies that slot, permanently blocking approval.
+        const { error: insertErr } = await supabase.from('worker_assignments').upsert(
+          days.map(date => ({ worker_id: req.worker_id, date, shift: 'morning', type: req.leave_type, site_id: null, notes: req.reason || null })),
+          { onConflict: 'worker_id,date,shift' }
         )
         if (insertErr) throw insertErr
       }
