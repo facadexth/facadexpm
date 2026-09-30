@@ -14,6 +14,7 @@ import { supabase } from '../../lib/supabase.js'
 import { ConfirmDialog } from '../../components/Modal.jsx'
 import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, phaseOverlapsRange, STATUS_COLOR, PHASE_TEMPLATE, expandRangeForTransactions } from './ganttTimeline.js'
 import { groupSubtasksByParent, computeNodeStats, computeNodeDateRange, isLeaf, flattenVisibleRows, siblingWeightSum } from './subtaskCalc.js'
+import { summarizeTasks } from './phaseTasksCalc.js'
 import { getEffectiveTheme } from '../../lib/theme.js'
 
 const ROW_H = 34
@@ -721,8 +722,21 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     return phases.some((p) => phaseOverlapsRange(p, portfolioRange))
   })
 
+  // KPI row across every site passed in (not just visibleSites, which is
+  // further narrowed to the selected portfolioYear) -- gives the same
+  // whole-portfolio status picture regardless of which year is on screen.
+  const portfolioSiteIds = new Set(sites.map((s) => s.id))
+  const taskSummary = summarizeTasks((allTasks || []).filter((t) => portfolioSiteIds.has(t.site_id)), TODAY_ISO)
+
   return (
-    <div className="card">
+    <>
+      <div className="card" style={{ marginBottom: 12, padding: 12, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div className="kpi-card kpi-sm blue"><div className="kpi-label">ยังไม่เริ่ม</div><div className="kpi-value">{taskSummary.total.not_started}</div></div>
+        <div className="kpi-card kpi-sm yellow"><div className="kpi-label">กำลังทำ</div><div className="kpi-value">{taskSummary.total.in_progress}</div></div>
+        <div className="kpi-card kpi-sm green"><div className="kpi-label">เสร็จแล้ว</div><div className="kpi-value">{taskSummary.total.done}</div></div>
+        <div className="kpi-card kpi-sm red"><div className="kpi-label">เกินกำหนด</div><div className="kpi-value">{taskSummary.total.overdue}</div></div>
+      </div>
+      <div className="card">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPortfolioYear((y) => y - 1)}>‹</button>
@@ -836,6 +850,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </>
   )
 }

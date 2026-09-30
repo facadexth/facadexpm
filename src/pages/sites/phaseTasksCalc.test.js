@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computePhaseTaskStats, pickActivePhase, isTaskOverdue } from './phaseTasksCalc.js'
+import { computePhaseTaskStats, pickActivePhase, isTaskOverdue, summarizeTasks } from './phaseTasksCalc.js'
 
 describe('computePhaseTaskStats', () => {
   it('returns derivedStatus null for a phase with zero tasks', () => {
@@ -79,5 +79,26 @@ describe('isTaskOverdue', () => {
   it('is false when due_date is today or in the future', () => {
     expect(isTaskOverdue({ due_date: '2026-09-17', status: 'not_started' }, '2026-09-17')).toBe(false)
     expect(isTaskOverdue({ due_date: '2026-09-18', status: 'not_started' }, '2026-09-17')).toBe(false)
+  })
+})
+
+describe('summarizeTasks', () => {
+  it('returns all-zero totals and an empty per-site map for no tasks', () => {
+    const { bySite, total } = summarizeTasks([], '2026-09-17')
+    expect(total).toEqual({ not_started: 0, in_progress: 0, done: 0, overdue: 0 })
+    expect(bySite.size).toBe(0)
+  })
+
+  it('tallies status counts and overdue per site and overall', () => {
+    const tasks = [
+      { site_id: 's1', status: 'in_progress', due_date: '2026-09-01' }, // overdue
+      { site_id: 's1', status: 'done', due_date: '2026-09-01' },        // done -> not overdue
+      { site_id: 's2', status: 'not_started', due_date: null },
+      { site_id: 's2', status: 'in_progress', due_date: '2026-09-20' }, // future -> not overdue
+    ]
+    const { bySite, total } = summarizeTasks(tasks, '2026-09-17')
+    expect(bySite.get('s1')).toEqual({ not_started: 0, in_progress: 1, done: 1, overdue: 1 })
+    expect(bySite.get('s2')).toEqual({ not_started: 1, in_progress: 1, done: 0, overdue: 0 })
+    expect(total).toEqual({ not_started: 1, in_progress: 2, done: 1, overdue: 1 })
   })
 })

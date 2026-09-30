@@ -42,3 +42,23 @@ export function pickActivePhase(phases, tasksByPhaseId) {
 export function isTaskOverdue(task, todayISO) {
   return !!task.due_date && task.due_date < todayISO && task.status !== 'done'
 }
+
+/** Tally phase_tasks by status (+ overdue) across possibly-many sites --
+ *  an overall total plus a per-site breakdown, keyed by site_id. Shared
+ *  by the cross-site Kanban summary subtab (Sites.jsx) and the portfolio
+ *  Gantt view's KPI row (GanttView.jsx), so both agree on the same counts. */
+export function summarizeTasks(tasks, todayISO) {
+  const empty = () => ({ not_started: 0, in_progress: 0, done: 0, overdue: 0 })
+  const bySite = new Map()
+  const total = empty()
+  for (const t of tasks) {
+    const s = bySite.get(t.site_id) || empty()
+    if (t.status === 'not_started' || t.status === 'in_progress' || t.status === 'done') {
+      s[t.status]++
+      total[t.status]++
+    }
+    if (isTaskOverdue(t, todayISO)) { s.overdue++; total.overdue++ }
+    bySite.set(t.site_id, s)
+  }
+  return { bySite, total }
+}

@@ -9,8 +9,9 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useSites, useLaborCost, useClients, useSeatStatus, useCategories, useSiteCostEstimates, saveSiteCostEstimates } from '../hooks/useSupabase.js'
+import { useSites, useLaborCost, useClients, useSeatStatus, useCategories, useSiteCostEstimates, saveSiteCostEstimates, usePhaseTasks } from '../hooks/useSupabase.js'
 import GanttView from './sites/GanttView.jsx'
+import { summarizeTasks } from './sites/phaseTasksCalc.js'
 import { PencilIcon, LinkIcon } from '../components/icons.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { useUserRole } from '../hooks/useUserRole.js'
@@ -431,6 +432,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'sites')
   const { tenant, hasModuleAccess } = useTenant()
   const { data: sites, refetch } = useSites()
+  const { data: allPhaseTasks } = usePhaseTasks() // only fetched for the 🗂 Kanban summary subtab below
   const { data: laborData } = useLaborCost()
   const { data: clients, refetch: refetchClients }   = useClients()
   const { data: seat, refetch: refetchSeat } = useSeatStatus()
@@ -452,7 +454,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
   const [search,      setSearch]      = useState('')
   const [sortCol,     setSortCol]     = useState('last_activity_date')
   const [sortDir,     setSortDir]     = useState('desc')
-  const [viewMode,      setViewMode]      = useState('table') // 'table' | 'gantt'
+  const [viewMode,      setViewMode]      = useState('table') // 'table' | 'gantt' | 'kanban'
 
   // Labor cost lookup
   const laborBysite = useMemo(() => {
@@ -545,6 +547,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
         <div style={{ display: 'flex', gap: 4 }}>
           <button className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('table')}>📋 ตาราง</button>
           <button className={`btn btn-sm ${viewMode === 'gantt' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('gantt')}>📊 Gantt</button>
+          <button className={`btn btn-sm ${viewMode === 'kanban' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('kanban')}>🗂 Kanban</button>
         </div>
       </div>
 
@@ -710,6 +713,65 @@ export default function Sites({ navigateTo, openSiteOverview }) {
           canEdit={false}
         />
       )}
+
+      {viewMode === 'kanban' && (() => {
+        const siteIds = new Set(filtered.map((s) => s.id))
+        const todayIso = new Date().toISOString().slice(0, 10)
+        const { bySite, total } = summarizeTasks((allPhaseTasks || []).filter((t) => siteIds.has(t.site_id)), todayIso)
+        const empty = { not_started: 0, in_progress: 0, done: 0, overdue: 0 }
+        return (
+          <>
+            <div className="card" style={{ marginBottom: 12, padding: 12, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <div className="kpi-card kpi-sm blue"><div className="kpi-label">ยังไม่เริ่ม</div><div className="kpi-value">{total.not_started}</div></div>
+              <div className="kpi-card kpi-sm yellow"><div className="kpi-label">กำลังทำ</div><div className="kpi-value">{total.in_progress}</div></div>
+              <div className="kpi-card kpi-sm green"><div className="kpi-label">เสร็จแล้ว</div><div className="kpi-value">{total.done}</div></div>
+              <div className="kpi-card kpi-sm red"><div className="kpi-label">เกินกำหนด</div><div className="kpi-value">{total.overdue}</div></div>
+            </div>
+            <div className="card">
+              <div className="table-wrap" style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%' }}>
+                  <thead>
+                    <tr>
+                      <th>ไซท์งาน</th>
+                      <th style={{ textAlign: 'right' }}>ยังไม่เริ่ม</th>
+                      <th style={{ textAlign: 'right' }}>กำลังทำ</th>
+                      <th style={{ textAlign: 'right' }}>เสร็จแล้ว</th>
+                      <th style={{ textAlign: 'right' }}>เกินกำหนด</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((s) => {
+                      const c = bySite.get(s.id) || empty
+                      return (
+                        <tr key={s.id}>
+                          <td>
+                            <div style={{ fontWeight: 600 }}>{s.name}</div>
+                            <div style={{ fontSize: 11, color: 'var(--text3)' }}>{s.site_number}</div>
+                          </td>
+                          <td style={{ textAlign: 'right' }}>{c.not_started || '—'}</td>
+                          <td style={{ textAlign: 'right', color: c.in_progress ? 'var(--yellow)' : undefined }}>{c.in_progress || '—'}</td>
+                          <td style={{ textAlign: 'right', color: c.done ? 'var(--green)' : undefined }}>{c.done || '—'}</td>
+                          <td style={{ textAlign: 'right', color: c.overdue ? 'var(--red)' : undefined, fontWeight: c.overdue ? 700 : 400 }}>{c.overdue || '—'}</td>
+                          <td style={{ textAlign: 'right' }}>
+                            <button
+                              className="btn btn-sm btn-ghost"
+                              onClick={() => navigateTo('site_detail', { siteId: s.id, siteName: s.name, tab: 'kanban' })}
+                            >ดู Kanban →</button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {!filtered.length && (
+                      <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบข้อมูลไซท์งาน</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )
+      })()}
 
       {/* ── Add/Edit Modal ── */}
       {showForm && (
