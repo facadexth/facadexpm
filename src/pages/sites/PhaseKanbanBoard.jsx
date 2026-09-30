@@ -556,7 +556,9 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
                     ) : (
                       <div style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--text3)' }}>โหลดรูปไม่สำเร็จ</div>
                     )}
-                    <div style={{ fontSize: 10.5, marginTop: 3, color: 'var(--text3)' }}>{p.workers?.nickname || p.workers?.name || '-'}</div>
+                    <div style={{ fontSize: 10.5, marginTop: 3, color: 'var(--text3)' }}>
+                      {p.workers?.nickname || p.workers?.name || '-'} · {new Date(p.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                    </div>
                   </a>
                 ))}
               </div>

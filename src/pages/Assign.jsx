@@ -211,7 +211,12 @@ export default function Assign({ navState, openSiteOverview }) {
     } catch (e) { alert('Error: ' + e.message); setSaving(false) }
   }
 
-  const handleCellSave = async (row) => {
+  // Accepts either one row (the normal single-shift save) or an array of
+  // rows (CellEditPopup's "ทั้งวัน" option -- identical content written to
+  // both เช้า and บ่าย in one upsert, since the two half-day rows share the
+  // same (worker_id, date) but differ in shift).
+  const handleCellSave = async (rowOrRows) => {
+    const rows = Array.isArray(rowOrRows) ? rowOrRows : [rowOrRows]
     setSaving(true)
     try {
       // row.is_team_leader is always explicitly present now (CellEditPopup
@@ -220,9 +225,10 @@ export default function Assign({ navState, openSiteOverview }) {
       // only needs to run to make room for a NEW leader claim on this one
       // (site_id, date, shift), same guard/pattern the wizard's batch path
       // already uses.
-      if (row.is_team_leader) await clearPriorLeaders([row])
+      const leaderRows = rows.filter((r) => r.is_team_leader)
+      if (leaderRows.length) await clearPriorLeaders(leaderRows)
       const { error } = await supabase.from('worker_assignments')
-        .upsert(row, { onConflict: 'worker_id,date,shift' })
+        .upsert(rows, { onConflict: 'worker_id,date,shift' })
       if (error) throw error
       setCellTarget(null); refetch()
     } catch (e) { alert('Error: ' + e.message) }
@@ -455,6 +461,11 @@ export default function Assign({ navState, openSiteOverview }) {
       {/* ── Cell edit ── */}
       {cellTarget && (
         <CellEditPopup
+          // Remounts the popup whenever the targeted shift changes, so its
+          // form (seeded once at mount via useDraftForm) re-reads that
+          // shift's own `existing` row instead of carrying over whatever
+          // the previously-viewed shift had loaded.
+          key={cellTarget.shift}
           target={cellTarget}
           sites={ongoingSites}
           sitePhasesBySite={phasesBySite}
@@ -465,6 +476,7 @@ export default function Assign({ navState, openSiteOverview }) {
           onSaveOT={handleOTSave}
           onDeleteOT={handleOTDelete}
           onConfirm={handleConfirm}
+          onSwitchShift={(shift) => openCell(cellTarget.worker, cellTarget.date, shift)}
           onClose={() => setCellTarget(null)}
           saving={saving}
         />

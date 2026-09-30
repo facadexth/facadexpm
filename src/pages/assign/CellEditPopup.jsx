@@ -9,6 +9,7 @@
 // onSave(row), onSaveTaskLinks(workerId, taskIds, candidateTaskIds),
 // onDelete(), onSaveOT(row), onDeleteOT(), onClose
 // ============================================================
+import { useState } from 'react'
 import { Modal } from '../../components/Modal.jsx'
 import SearchableSelect from '../../components/SearchableSelect.jsx'
 import { SITE_TYPES } from './constants.js'
@@ -36,8 +37,15 @@ const TYPE_OPTS = [
   { k: 'holiday',         l: '🎌 หยุด' },
 ]
 
-export default function CellEditPopup({ target, sites = [], sitePhasesBySite = {}, tasksByPhaseId = {}, onSave, onSaveTaskLinks, onDelete, onSaveOT, onDeleteOT, onConfirm, onClose, saving }) {
+export default function CellEditPopup({ target, sites = [], sitePhasesBySite = {}, tasksByPhaseId = {}, onSave, onSaveTaskLinks, onDelete, onSaveOT, onDeleteOT, onConfirm, onSwitchShift, onClose, saving }) {
   const { worker, date, shift, existing, existingOT } = target
+  const otherShift = shift === 'morning' ? 'evening' : 'morning'
+  // "ทั้งวัน" -- write the same shift content to both เช้า and บ่าย on save.
+  // A tap on a ~16px touch target reliably lands on the wrong half on
+  // mobile (desktop mouse precision is fine), so this is the recovery: pick
+  // any half to open the popup, then decide the real scope in here instead
+  // of needing to have tapped the exact right pixel to begin with.
+  const [applyBoth, setApplyBoth] = useState(false)
 
   // Draft key is specific to this exact cell — a generic key would let a
   // draft typed for one worker/date/shift silently resurface on a totally
@@ -113,12 +121,13 @@ export default function CellEditPopup({ target, sites = [], sitePhasesBySite = {
     if (!wantsShiftSave && !otStarted) return alert('กรุณากรอกข้อมูลกะ หรือ OT อย่างน้อยหนึ่งอย่าง')
     clearFormDraft()
     if (wantsShiftSave) {
-      onSave({
-        worker_id: worker.id, date, shift,
+      const base = {
+        worker_id: worker.id, date,
         type: form.type, site_id: needsSite ? form.siteId : null,
         notes: form.notes || null,
         is_team_leader: form.type === 'site' ? !!form.isTeamLeader : false,
-      })
+      }
+      onSave(applyBoth ? [{ ...base, shift }, { ...base, shift: otherShift }] : { ...base, shift })
     }
     if (otStarted && otHours != null) {
       onSaveOT({
@@ -147,8 +156,19 @@ export default function CellEditPopup({ target, sites = [], sitePhasesBySite = {
   const siteOptions = sites.map(s => ({ value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}` }))
 
   return (
-    <Modal title={`${worker.nickname || worker.name} · ${date} · ${shift === 'morning' ? 'เช้า' : 'บ่าย'}`} onClose={onClose} maxWidth={420}>
+    <Modal title={`${worker.nickname || worker.name} · ${date} · ${applyBoth ? 'ทั้งวัน' : (shift === 'morning' ? 'เช้า' : 'บ่าย')}`} onClose={onClose} maxWidth={420}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        <div>
+          <label className="label">กะ</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button type="button" onClick={() => { setApplyBoth(false); onSwitchShift('morning') }}
+              className={`btn btn-sm ${!applyBoth && shift === 'morning' ? 'btn-primary' : 'btn-ghost'}`}>เช้า</button>
+            <button type="button" onClick={() => { setApplyBoth(false); onSwitchShift('evening') }}
+              className={`btn btn-sm ${!applyBoth && shift === 'evening' ? 'btn-primary' : 'btn-ghost'}`}>บ่าย</button>
+            <button type="button" onClick={() => setApplyBoth(true)}
+              className={`btn btn-sm ${applyBoth ? 'btn-primary' : 'btn-ghost'}`}>ทั้งวัน</button>
+          </div>
+        </div>
         <div>
           <label className="label">ประเภท</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>

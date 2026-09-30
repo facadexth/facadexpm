@@ -192,7 +192,13 @@ export default function DailyReport({ site }) {
           </ReportSection>
 
           <ReportSection title={`📷 รูปภาพหน้างานวันนี้ (${generalPhotos.length})`}>
-            {!generalPhotos.length ? <Empty text="ไม่มีรูปภาพ" /> : <PhotoGrid photos={generalPhotos} labelFor={(p) => workerLabel(p.workers)} />}
+            {!generalPhotos.length ? <Empty text="ไม่มีรูปภาพ" /> : (
+              <PhotoGrid
+                photos={generalPhotos}
+                labelFor={(p) => (p.task_id ? `${workerLabel(p.workers)} · มอบหมายให้: ${p.phase_tasks?.name || 'ไม่ทราบชื่องาน'}` : workerLabel(p.workers))}
+                italicFor={(p) => !!p.task_id}
+              />
+            )}
           </ReportSection>
 
           <ReportSection title={`✅ งานที่เสร็จวันนี้ (${completions.length})`} last>
@@ -226,7 +232,7 @@ function Empty({ text }) {
   return <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>{text}</div>
 }
 
-function PhotoGrid({ photos, labelFor }) {
+function PhotoGrid({ photos, labelFor, italicFor }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 10 }}>
       {photos.map((p) => (
@@ -236,7 +242,7 @@ function PhotoGrid({ photos, labelFor }) {
           ) : (
             <div style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--text3)' }}>โหลดรูปไม่สำเร็จ</div>
           )}
-          <div style={{ fontSize: 10.5, marginTop: 3, color: 'var(--text3)' }}>{labelFor(p)}</div>
+          <div style={{ fontSize: 10.5, marginTop: 3, color: 'var(--text3)', fontStyle: italicFor?.(p) ? 'italic' : 'normal' }}>{labelFor(p)}</div>
         </a>
       ))}
     </div>
