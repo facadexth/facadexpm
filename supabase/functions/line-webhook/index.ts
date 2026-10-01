@@ -1,14 +1,18 @@
 // supabase/functions/line-webhook/index.ts
-// Inbound LINE webhook -- receives every event for every tenant's LINE
-// OA on one shared URL, routes by the webhook payload's own
-// `destination` field (the bot's own internal LINE userId, from LINE's
-// GET /v2/bot/info -- NOT the numeric Channel ID shown in LINE's
-// console) against line_settings.bot_user_id. verify_jwt is OFF for
-// this function (LINE itself calls it, unauthenticated by Supabase's
-// own JWT check) -- this function's signature verification against
-// line_settings.channel_secret IS the access control, same pattern
-// sign-link already established for its own public/unauthenticated
-// endpoint.
+// Inbound LINE webhook -- receives every event for every tenant on one
+// shared platform LINE OA (see
+// docs/superpowers/specs/2026-10-01-shared-line-bot-design.md). Every
+// tenant now connects to the SAME bot, so the payload's `destination`
+// field (the bot's own internal LINE userId) is a constant and can no
+// longer identify which tenant sent an event -- signature verification
+// is checked once per request against the shared LINE_CHANNEL_SECRET,
+// then EACH event resolves its own tenant individually (from
+// line_settings.crew_group_id for a group message, or
+// workers/user_roles.line_user_id for a DM) before being handled.
+// verify_jwt is OFF for this function (LINE itself calls it,
+// unauthenticated by Supabase's own JWT check) -- signature
+// verification IS the access control, same pattern sign-link already
+// established for its own public/unauthenticated endpoint.
 //
 // Eleven crew actions total, two entry points:
 //   - Typed keywords in the shared crew group -> immediate action.
@@ -994,7 +998,6 @@ Deno.serve(async (req) => {
     // identification for a never-before-seen sender, so it must be
     // checked before concluding "unrecognized").
     let tenantId: string | null = null
-    let claimedViaCode = false
 
     if (!sourceGroupId && msgType === 'text' && text) {
       const trimmed = text.trim()
