@@ -7,6 +7,21 @@
 
 const LINE_API = 'https://api.line.me/v2/bot/message'
 
+// Shared platform bot credentials (see
+// docs/superpowers/specs/2026-10-01-shared-line-bot-design.md) -- every
+// tenant connects to this ONE LINE OA now, instead of providing their
+// own Channel ID/Secret/Access Token. channel_access_token and
+// channel_secret are real secrets (Edge Function secrets, set via the
+// Supabase dashboard or `supabase secrets set` -- never hardcoded,
+// never logged). bot_user_id and basic_id are NOT secret (LINE's own
+// Get Bot Info response and the public @handle are both discoverable
+// by anyone who messages the bot) -- plain constants, safe to also
+// mirror in the frontend (see src/lib/platformLineBot.js, Task 4).
+export const LINE_CHANNEL_ACCESS_TOKEN = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN')!
+export const LINE_CHANNEL_SECRET = Deno.env.get('LINE_CHANNEL_SECRET')!
+export const LINE_BOT_USER_ID = 'Uc21ab4c845be0f5d3b90e0daa1f5cf72'
+export const LINE_BASIC_ID = '302yljzw'
+
 export async function verifyLineSignature(channelSecret: string, rawBody: string, signatureHeader: string | null): Promise<boolean> {
   if (!signatureHeader) return false
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(channelSecret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
