@@ -1,0 +1,21 @@
+-- Stops the automated daily (18:00 Bangkok) push of tomorrow's site
+-- assignments to the crew LINE group. Per LINE's own billing rule (a push
+-- to a group counts once PER MEMBER against the monthly free quota, not
+-- once per API call -- confirmed against LINE's official docs 2026-10-01),
+-- this single daily push cost as many quota units as the crew group has
+-- members, every day -- a real risk of blowing the 300/month free quota
+-- entirely on its own.
+--
+-- Replaced by the existing FREE on-demand alternative: anyone typing
+-- "งานวันพรุ่งนี้" in the same crew group already gets the identical
+-- site-grouped summary back via handleGroupInfoQuery in line-webhook,
+-- sent as a LINE REPLY (not a push) -- replies that answer an incoming
+-- message are not counted against the quota at all, regardless of group
+-- size. The user is automating that trigger from outside LINE (an iOS
+-- Shortcut) rather than paying the push-quota cost for an unattended cron.
+--
+-- The line-push-daily-assignments Edge Function itself is left deployed
+-- (harmless once unscheduled -- it only runs if called with the correct
+-- x-cron-secret, which nothing will do once this job is gone) in case a
+-- future design wants it back; only the schedule is removed here.
+select cron.unschedule('line-push-daily-assignments');
