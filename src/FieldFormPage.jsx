@@ -368,6 +368,18 @@ export default function FieldFormPage({ token }) {
           </>
         ) : (
           <>
+            {(state.remainingPersonal != null || state.remainingSick != null) && (
+              <div style={{ display: 'flex', gap: 10 }}>
+                <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>ลากิจคงเหลือ</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: state.remainingPersonal < 0 ? 'var(--red)' : 'var(--text)' }}>{state.remainingPersonal} วัน</div>
+                </div>
+                <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>ลาป่วยคงเหลือ</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: state.remainingSick < 0 ? 'var(--red)' : 'var(--text)' }}>{state.remainingSick} วัน</div>
+                </div>
+              </div>
+            )}
             <div>
               <label className="label">ประเภทการลา *</label>
               <select className="select" required value={leaveType} onChange={e => setLeaveType(e.target.value)}>

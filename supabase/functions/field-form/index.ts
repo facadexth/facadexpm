@@ -65,7 +65,7 @@ async function loadToken(token: string) {
   if (tok.used_at) return { reason: 'used' as const }
   if (new Date(tok.expires_at as string).getTime() < Date.now()) return { reason: 'expired' as const }
 
-  const { data: worker } = await admin.from('workers').select('id, name, nickname, tenant_id, line_user_id').eq('id', tok.worker_id).maybeSingle()
+  const { data: worker } = await admin.from('workers').select('id, name, nickname, tenant_id, line_user_id, annual_leave_days, annual_sick_leave_days').eq('id', tok.worker_id).maybeSingle()
   if (!worker) return { reason: 'not_found' as const }
   return { tok, worker }
 }
@@ -114,6 +114,24 @@ async function notifyAdmins(tenantId: string, text: string) {
   }
 }
 
+// Remaining ลากิจ/ลาป่วย for the current (Bangkok) calendar year -- mirrors
+// useLeaveQuotaUsage/useSickLeaveQuotaUsage in src/hooks/useSupabase.js
+// EXACTLY (same worker_assignments row-count * 0.5 convention, same legacy
+// 'leave' => leave_personal rule) so the LINE-side numbers never drift from
+// what HR.jsx/MySchedule.jsx show in the app itself.
+async function leaveQuotaRemaining(workerId: string, annualLeaveDays: number, annualSickDays: number) {
+  const year = Number(bangkokToday().slice(0, 4))
+  const from = `${year}-01-01`
+  const to = `${year}-12-31`
+  const [personalRes, sickRes] = await Promise.all([
+    admin.from('worker_assignments').select('id').eq('worker_id', workerId).in('type', ['leave_personal', 'leave']).gte('date', from).lte('date', to),
+    admin.from('worker_assignments').select('id').eq('worker_id', workerId).eq('type', 'leave_sick').gte('date', from).lte('date', to),
+  ])
+  const personalUsed = (personalRes.data?.length ?? 0) * 0.5
+  const sickUsed = (sickRes.data?.length ?? 0) * 0.5
+  return { remainingPersonal: annualLeaveDays - personalUsed, remainingSick: annualSickDays - sickUsed }
+}
+
 // Confirms back to the WORKER who submitted the request -- previously only
 // notifyAdmins fired, so a worker's only feedback was the one-time in-browser
 // success message, easy to lose once they close the LINE in-app browser tab.
@@ -160,6 +178,10 @@ Deno.serve(async (req) => {
         const site = await resolveTodaysSite(worker.id, worker.tenant_id)
         if (!site) return json({ actionType: tok.action_type, workerName, reason: 'no_site' })
         return json({ actionType: tok.action_type, workerName, siteName: site.name })
+      }
+      if (tok.action_type === 'leave') {
+        const { remainingPersonal, remainingSick } = await leaveQuotaRemaining(worker.id, worker.annual_leave_days ?? 0, worker.annual_sick_leave_days ?? 0)
+        return json({ actionType: tok.action_type, workerName, remainingPersonal, remainingSick })
       }
       return json({ actionType: tok.action_type, workerName })
     }

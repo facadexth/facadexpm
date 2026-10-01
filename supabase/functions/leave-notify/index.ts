@@ -31,6 +31,32 @@ function json(body: unknown, status = 200) {
 
 const SHIFT_LABEL: Record<string, string> = { morning: ' (ช่วงเช้า)', evening: ' (ช่วงบ่าย)', full_day: '' }
 
+// Bangkok has no DST -- a fixed +7h offset from UTC is always correct.
+function bangkokToday(): string {
+  return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
+// Duplicated from field-form/index.ts rather than shared -- Deno Edge
+// Functions can't share code across function directories except via
+// ../_shared/, same reasoning field-form's own resolveTodaysSite comment
+// gives for its duplication. Mirrors useLeaveQuotaUsage/
+// useSickLeaveQuotaUsage in src/hooks/useSupabase.js EXACTLY (same
+// worker_assignments row-count * 0.5 convention, same legacy
+// 'leave' => leave_personal rule) so these numbers never drift from what
+// HR.jsx/MySchedule.jsx show in the app itself.
+async function leaveQuotaRemaining(workerId: string, annualLeaveDays: number, annualSickDays: number) {
+  const year = Number(bangkokToday().slice(0, 4))
+  const from = `${year}-01-01`
+  const to = `${year}-12-31`
+  const [personalRes, sickRes] = await Promise.all([
+    admin.from('worker_assignments').select('id').eq('worker_id', workerId).in('type', ['leave_personal', 'leave']).gte('date', from).lte('date', to),
+    admin.from('worker_assignments').select('id').eq('worker_id', workerId).eq('type', 'leave_sick').gte('date', from).lte('date', to),
+  ])
+  const personalUsed = (personalRes.data?.length ?? 0) * 0.5
+  const sickUsed = (sickRes.data?.length ?? 0) * 0.5
+  return { remainingPersonal: annualLeaveDays - personalUsed, remainingSick: annualSickDays - sickUsed }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
@@ -58,11 +84,12 @@ Deno.serve(async (req) => {
   // restricts this to the caller's own tenant, same guarantee the is_admin_or_owner
   // check above gives for the write path.
   const { data: req_, error: reqError } = await userClient.from('leave_requests')
-    .select('tenant_id, leave_type, date_from, date_to, shift, workers(line_user_id)')
+    .select('tenant_id, worker_id, leave_type, date_from, date_to, shift, workers(line_user_id, annual_leave_days, annual_sick_leave_days)')
     .eq('id', leaveRequestId).maybeSingle()
   if (reqError || !req_) return json({ error: reqError?.message ?? 'not_found' }, 404)
 
-  const lineUserId = (req_.workers as unknown as { line_user_id: string | null } | null)?.line_user_id
+  const workerRow = req_.workers as unknown as { line_user_id: string | null; annual_leave_days: number | null; annual_sick_leave_days: number | null } | null
+  const lineUserId = workerRow?.line_user_id
   if (!lineUserId) return json({ ok: true, skipped: 'no_line_user_id' })
 
   const { data: settings } = await admin.from('line_settings').select('channel_access_token').eq('tenant_id', req_.tenant_id).maybeSingle()
@@ -71,9 +98,19 @@ Deno.serve(async (req) => {
   const leaveLabel = req_.leave_type === 'leave_sick' ? 'ลาป่วย' : 'ลากิจ'
   const shiftLabel = SHIFT_LABEL[req_.shift as string] ?? ''
   const dateLabel = req_.date_from === req_.date_to ? req_.date_from : `${req_.date_from} — ${req_.date_to}`
-  const text = decision === 'approved'
-    ? `✅ คำขอ${leaveLabel}${shiftLabel} วันที่ ${dateLabel} ของคุณได้รับการอนุมัติแล้ว`
-    : `❌ คำขอ${leaveLabel}${shiftLabel} วันที่ ${dateLabel} ของคุณถูกปฏิเสธ`
+
+  let text: string
+  if (decision === 'approved') {
+    // worker_assignments rows for this request were already written by
+    // HR.jsx's reviewLeaveRequest BEFORE it calls this function, so the
+    // quota query below reflects this request's own usage already.
+    const { remainingPersonal, remainingSick } = await leaveQuotaRemaining(
+      req_.worker_id as string, workerRow?.annual_leave_days ?? 0, workerRow?.annual_sick_leave_days ?? 0,
+    )
+    text = `✅ คำขอ${leaveLabel}${shiftLabel} วันที่ ${dateLabel} ของคุณได้รับการอนุมัติแล้ว\nคงเหลือ: ลากิจ ${remainingPersonal} วัน / ลาป่วย ${remainingSick} วัน`
+  } else {
+    text = `❌ คำขอ${leaveLabel}${shiftLabel} วันที่ ${dateLabel} ของคุณถูกปฏิเสธ`
+  }
 
   const result = await sendLinePush(settings.channel_access_token, lineUserId, text)
   return json({ ok: result.ok })
