@@ -9,7 +9,9 @@ facadex-deploy/
 .claude/worktrees/
 supabase/.temp/
 supabase/region-migration/tmp/
-supabase/region-migration/*-dump.sql
-supabase/region-migration/*-only.sql
-supabase/region-migration/*-cleaned.sql
-supabase/region-migration/*-chunk-*.sql
+supabase/region-migration/*.sql
+!supabase/region-migration/create-buckets-chang.sql
+!supabase/region-migration/create-cron-vault-chang.sql
+!supabase/region-migration/enable-extensions-chang.sql
+!supabase/region-migration/generate-storage-policies.sql
+!supabase/region-migration/verify-row-counts.sql
