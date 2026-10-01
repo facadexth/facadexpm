@@ -60,6 +60,12 @@ the identical row by `id` from both Tokyo and CHANG, and diffed every column:
 Zero differences on any column, including timestamps, JSON/jsonb fields, numeric
 fields, and foreign-key columns.
 
+Raw evidence (added in Fix Round 3, since the original pass didn't save any):
+the 6 raw `SELECT *` JSON results (`supabase/region-migration/tmp/spotcheck-{tokyo,chang}-{site,worker,invoice}.json`)
+and the generated column-by-column diff
+(`supabase/region-migration/tmp/spotcheck-diff-report.txt`) — gitignored (under
+`supabase/region-migration/tmp/`) but present on disk for audit.
+
 ## Restore methodology (summary — full detail in task-2-report.md)
 
 The brief's literal single-file "schema + data combined" dump/restore did not work
