@@ -59,16 +59,18 @@ Schema addition: `line_settings.group_link_code TEXT` (nullable) + `group_link_c
 
 This also naturally replaces "switching to a new group" (same flow — generating a new code and claiming a different group moves `crew_group_id`) and needs no separate UI path for that case, unlike today's two-mechanism setup (manual paste + unrecognized-groups list).
 
-`line_unrecognized_groups` capture is removed from the webhook entirely — no group is ever captured without a claim code resolving it to exactly one tenant first.
+`line_unrecognized_groups` capture is removed from the webhook entirely — no group is ever captured without a claim code resolving it to exactly one tenant first. This is the ONLY capture table this spec removes — see the correction in §6 below.
 
-### 6. DM from an unrecognized LINE account — explicit reply, no global capture
+### 6. What does NOT need to change: `line_unlinked_senders` stays exactly as-is
 
-Same reasoning as §5: a DM from a `userId` that matches no worker/admin anywhere cannot be attributed to any tenant, so it must never be captured into any list an admin browses (there is no "admin" to show it to yet). Replace today's silent `line_unlinked_senders` capture with an immediate, generic reply:
+Re-reading the current code closely (important correction from an earlier draft of this spec): `line_unlinked_senders` is captured **only for a sender inside an already-matched crew group** (`sourceGroupId === <that tenant's> crew_group_id`, a stranger typing in a group whose tenant is already known) — never for a DM, and never for an unmatched group. Since §4's event-level routing resolves the tenant from `crew_group_id` before this capture would ever run, `tenant_id` is exactly as known here as it is today. **No change needed to this capture or to Communication Center's existing "ผู้ส่งข้อความที่ยังไม่รู้จัก" admin review list** — it was never part of the cross-tenant risk.
+
+The one genuinely new gap is a **DM from an unrecognized `userId`** (today: silently dropped, `line-webhook/index.ts:1028`, `if (!worker) continue` — no reply, no capture, nothing). A DM sender who has never linked cannot be attributed to any tenant, so unlike the group case, there is no safe tenant-scoped place to capture them. Add an explicit reply at that exact spot instead of a silent `continue`:
 
 > "ยังไม่พบบัญชีนี้ในระบบ — กรุณาติดต่อแอดมินของบริษัทคุณเพื่อขอรหัสเชื่อมต่อ 6 หลัก"
 > ("This account isn't recognized yet — contact your company's admin for a 6-digit link code.")
 
-This is a deliberate behavior change from today (admin-reviewable list → instructive auto-reply) and is the only way to keep the shared model from ever showing one tenant's data to another. `line_unlinked_senders` capture is removed from the webhook entirely for the same reason as `line_unrecognized_groups`.
+This is a pure improvement over today's silent drop, not a replacement of an existing capture — nothing is removed here, only a reply is added.
 
 ### 7. `field-form` and the four `line-push-*` functions
 
@@ -89,7 +91,7 @@ Reuses the existing production LINE OA (zero re-migration, per §2) — rename i
 
 1. **LINE's own platform** guarantees a group's members only ever see that group's messages — true regardless of how many tenants share one bot, not something this design can break even with a routing bug.
 2. **Every webhook event is resolved to at most one tenant**, strictly via a global-unique lookup (`crew_group_id`, or `workers`/`user_roles.line_user_id`, all already-unique or newly made unique by §3) — never a lookup scoped to "the tenant we already think we're talking to."
-3. **No cross-tenant list is ever shown to an admin.** Both existing admin-reviewable capture lists (`line_unrecognized_groups`, `line_unlinked_senders`) are removed in favor of code-based self-claiming (§5) and an instructive reply (§6) — an admin can only ever claim a group/account by proving tenant identity via a code generated inside their own already-authenticated session.
+3. **No cross-tenant list is ever shown to an admin.** `line_unrecognized_groups` (the one capture that genuinely had no safe tenant to attribute to) is replaced by code-based self-claiming (§5); `line_unlinked_senders` needs no change at all since it only ever fires inside an already-resolved tenant's group (§6). A DM from someone never linked gets an instructive reply instead of silent capture (§6) — an admin can only ever claim a group by proving tenant identity via a code generated inside their own already-authenticated session.
 4. Every downstream DB query (sites, workers, leave_requests, etc.) is unchanged — still filtered by the resolved `tenant_id` exactly as today, and RLS remains the backstop it already is.
 
 ## Out of scope for this spec
