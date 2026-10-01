@@ -49,9 +49,9 @@ Every event that fails to resolve a tenant is skipped (no reply, no write) excep
 
 **New flow (mirrors the existing worker/admin linking-code mechanism, which already solves exactly this kind of "prove you're the right tenant" problem):**
 
-Schema addition: `line_settings.group_link_code TEXT` (nullable) + `group_link_code_expires_at TIMESTAMPTZ`, the same two-column shape `workers.line_link_code`/`user_roles.line_link_code` already use for the identical "short-lived claim code" purpose. No new table needed.
+Schema addition: `line_settings.group_link_code TEXT` (nullable) — exactly the same single-column shape `workers.line_link_code`/`user_roles.line_link_code` already use (generated via the existing `generateLinkCode()` in `CommunicationCenter.jsx`, no expiry column either, consistent with those two: a code is valid until consumed or replaced by a newer one, not time-limited). No new table needed.
 
-1. Admin opens Communication Center → "➕ เพิ่ม/เปลี่ยนกลุ่มทีมงาน" → system generates a random 6-digit code, writes it (+ a short expiry, matching the existing deep-link-token convention) to their own tenant's `line_settings` row.
+1. Admin opens Communication Center → "➕ เพิ่ม/เปลี่ยนกลุ่มทีมงาน" → system generates a random 6-digit code (reusing `generateLinkCode()`) and writes it to their own tenant's `line_settings.group_link_code` via the existing `owner_writes` RLS policy (plain authenticated client call, same as `handleSaveConnection` already does — no new edge function needed for this step).
 2. UI shows: "เพิ่มบอทเข้ากลุ่มของคุณ แล้วพิมพ์รหัสนี้ในกลุ่ม: `123456`".
 3. Admin adds the shared bot to their real crew group, someone types the code in that group.
 4. Webhook sees a group message matching an outstanding group-link code for a group with no current owner → sets `line_settings.crew_group_id` for that code's `tenant_id`, invalidates the code, replies "✅ ตั้งกลุ่มนี้เป็นกลุ่มทีมงานเรียบร้อยแล้ว" in the group.
@@ -72,9 +72,9 @@ The one genuinely new gap is a **DM from an unrecognized `userId`** (today: sile
 
 This is a pure improvement over today's silent drop, not a replacement of an existing capture — nothing is removed here, only a reply is added.
 
-### 7. `field-form` and the four `line-push-*` functions
+### 7. Every other function that currently reads `channel_access_token` per-tenant
 
-These already resolve their tenant independently of `line_settings`/`destination` (worker's own `tenant_id`, or looping tenants directly) — **no routing logic changes**. The only edit: every `sendLinePush(settings.channel_access_token, ...)` call becomes `sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, ...)` (the shared constant). The four push functions' `settingsRows` query (`SELECT ... FROM line_settings WHERE crew_group_id IS NOT NULL`) is unchanged — it's still exactly "which tenants have a crew group configured," which remains meaningful and per-tenant.
+Full list, confirmed by grepping every edge function for `channel_access_token`/`channel_secret` — 8 files besides `line-webhook` itself: `field-form`, `leave-notify`, `line-test-group`, `line-worker-offboarded`, and the four `line-push-*` cron functions. All of them already resolve their tenant independently of `line_settings`/`destination` (a worker's own `tenant_id`, a leave request's own `tenant_id`, the caller's own JWT via `current_tenant_id()`, or looping tenants directly) — **no routing logic changes needed in any of them.** The only edit, identical in shape across all 8: every `admin.from('line_settings').select('channel_access_token')...` lookup + its use in `sendLinePush(settings.channel_access_token, ...)` is replaced with the shared `LINE_CHANNEL_ACCESS_TOKEN` constant directly — no query needed at all. The four push functions' `settingsRows` query (`SELECT tenant_id, crew_group_id FROM line_settings WHERE crew_group_id IS NOT NULL`) stays, minus the now-unnecessary `channel_access_token` column in its `select()` — it's still exactly "which tenants have a crew group configured," which remains meaningful and per-tenant.
 
 ### 8. Branding
 
