@@ -23,7 +23,7 @@
 // renewal, tenant explicitly warned there's no reimbursement for the
 // remaining paid days.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { activateTenantFromIntent } from './_shared/activate-tenant.ts'
+import { activateTenantFromIntent } from '../_shared/activate-tenant.ts'
 
 const OMISE_SECRET_KEY = Deno.env.get('OMISE_SECRET_KEY')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
