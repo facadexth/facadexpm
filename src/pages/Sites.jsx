@@ -91,6 +91,28 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
   const [form, setForm, clearDraft] = useDraftForm(draftKey, { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  // "ดึงพิกัดจากลิงก์" -- resolves a pasted Google Maps link (full or
+  // shortened, e.g. maps.app.goo.gl/xxxx) into lat/lng via
+  // extract-map-coordinates, so an admin can paste a link shared by
+  // someone at the site instead of standing there themselves or typing
+  // coordinates by hand.
+  const [extractingCoords, setExtractingCoords] = useState(false)
+  const handleExtractCoords = async () => {
+    if (!form.map_url) { alert('กรุณาวางลิงก์ Google Maps ก่อน'); return }
+    setExtractingCoords(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('extract-map-coordinates', { body: { url: form.map_url } })
+      if (error) throw error
+      if (!data?.ok) { alert(data?.error || 'หาพิกัดจากลิงก์นี้ไม่พบ'); return }
+      set('lat', String(data.lat))
+      set('lng', String(data.lng))
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setExtractingCoords(false)
+    }
+  }
+
   // ต้นทุนประมาณการต่อไซท์ -- คีย์ด้วย inventory_categories จริง (หมวดหมู่
   // เดียวกับที่ใช้ตั้งค่าตัดสต๊อกในหน้าคลังสินค้า) แทนคอลัมน์ cost_aluminum/
   // cost_glass/ฯลฯ แบบตายตัวเดิม แยกออกจาก useDraftForm's `form` เพราะเก็บคน
@@ -151,7 +173,12 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
           </div>
           <div>
             <label className="label">ลิงก์ Google Maps</label>
-            <input className="input" type="url" value={form.map_url} onChange={e => set('map_url', e.target.value)} placeholder="วางลิงก์แผนที่..." />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input className="input" type="url" value={form.map_url} onChange={e => set('map_url', e.target.value)} placeholder="วางลิงก์แผนที่..." />
+              <button type="button" className="btn btn-ghost" disabled={extractingCoords || !form.map_url} onClick={handleExtractCoords} style={{ whiteSpace: 'nowrap' }}>
+                {extractingCoords ? '⏳...' : '📍 ดึงพิกัดจากลิงก์'}
+              </button>
+            </div>
           </div>
         </div>
         <div className="form-grid-2">
