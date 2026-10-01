@@ -324,6 +324,57 @@ async function resolveTodaysSite(workerId: string, tenantId: string): Promise<{ 
   return site ?? null
 }
 
+// A tenant's designated fallback site for group-photo auto-filing, when
+// the sender has no real site assignment for today -- see spec'd
+// 2026-10-01-06-sites-default-flag-and-signup-seed.sql. Explicit
+// is_default flag, not a name match: now that every tenant shares one
+// platform LINE bot, a hardcoded name/UUID would only ever be correct
+// for one specific tenant.
+async function resolveFallbackSite(tenantId: string): Promise<{ id: string; name: string } | null> {
+  const { data } = await admin.from('sites').select('id, name').eq('tenant_id', tenantId).eq('is_default', true).maybeSingle()
+  return data ?? null
+}
+
+// Any image a known, linked worker drops in the crew group auto-files
+// to their real site assignment for today (or the tenant's default
+// site if they have none assigned) -- no "รูปภาพ" trigger phrase
+// needed, unlike the DM flow (handleSitePhotoAdd), which still requires
+// one. Deliberately silent on failure (a busy group shouldn't get an
+// error reply for every transient LINE API hiccup or a tenant with no
+// default site configured yet) -- only the success reply is visible,
+// giving feedback that the implicit behavior actually worked. Reuses
+// the exact same storage bucket/path convention and line_site_photos
+// insert shape as handleSitePhotoAdd, just without that flow's
+// line_pending_actions photo-count tracking (no "เสร็จแล้ว" step here --
+// every image files individually and immediately).
+async function handleGroupPhotoAutoFile(
+  worker: { id: string },
+  settings: { tenant_id: string; channel_access_token: string },
+  replyToken: string,
+  messageId: string,
+) {
+  const site = (await resolveTodaysSite(worker.id, settings.tenant_id)) ?? (await resolveFallbackSite(settings.tenant_id))
+  if (!site) return
+
+  const content = await fetchLineImageContent(settings.channel_access_token, messageId)
+  if (!content) return
+
+  const photoPath = `${settings.tenant_id}/${site.id}/${Date.now()}-${worker.id}.jpg`
+  const { error: uploadError } = await admin.storage.from('line-site-photos').upload(photoPath, content, { contentType: 'image/jpeg' })
+  if (uploadError) {
+    console.error('group photo upload failed', uploadError)
+    return
+  }
+  const { error: insertError } = await admin.from('line_site_photos').insert({
+    tenant_id: settings.tenant_id, worker_id: worker.id, site_id: site.id, date: bangkokToday(), photo_path: photoPath,
+  })
+  if (insertError) {
+    console.error('group photo line_site_photos insert failed', insertError)
+    return
+  }
+  await sendLineReply(settings.channel_access_token, replyToken, `📷 บันทึกรูปแล้ว — ${site.name}`)
+}
+
 const DOW_TH_SHORT = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
 // dateISO + N days, still in Bangkok terms (no DST to worry about).
 function bangkokDateISO(fromISO: string, daysOffset: number): string {
@@ -1211,9 +1262,23 @@ Deno.serve(async (req) => {
 
     // A message from the crew group -- by this point tenantId was already
     // resolved from THIS group matching that tenant's crew_group_id (see
-    // above), so there's nothing further to check there. Only text acted
-    // on here (photos/checkin/job-done/today's-work menu are 1:1-DM-only,
-    // matching the Rich Menu's own DM-only scope).
+    // above), so there's nothing further to check there.
+
+    // Group-photo auto-filing (see handleGroupPhotoAutoFile) -- the one
+    // exception to "group handling is text-only" below. Only a known,
+    // linked worker's image auto-files; resolveWorker returns null for
+    // an admin/owner (they live in user_roles, not workers) or a
+    // genuine stranger, so their photos are silently ignored here --
+    // same scoping as every other worker-only crew action.
+    if (msgType === 'image') {
+      const { worker } = await resolveWorker(lineUserId, settings)
+      if (worker) await handleGroupPhotoAutoFile(worker, settings, event.replyToken, messageId)
+      continue
+    }
+
+    // Everything else acted on here is text-only (checkin/job-done/
+    // today's-work menu are 1:1-DM-only, matching the Rich Menu's own
+    // DM-only scope).
     if (msgType !== 'text' || !text) continue
 
     // Read-only team-wide status queries (งานวันนี้/งานวันพรุ่งนี้/
