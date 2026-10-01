@@ -578,6 +578,26 @@ export default function CommunicationCenter() {
         </div>
       </div>
 
+      {/* ---- Tip: automate "งานวันพรุ่งนี้" for free via iOS Shortcuts ----
+          พิมพ์คำสั่งดูตารางงาน (4 คำสั่งแรกในตารางด้านบน) บอทตอบด้วย reply
+          message เสมอ ไม่เสีย LINE push quota เลยไม่ว่ากลุ่มจะมีกี่คน --
+          ต่างจาก push ที่เสีย quota เท่าจำนวนคนในกลุ่มทุกครั้งที่ส่ง (ดูการ์ด
+          "เตือนเช็คครบกำหนด" ด้านล่างสำหรับ push ที่ยังใช้งานจริง). ตั้งเวลา
+          ส่งอัตโนมัติทุกวันด้วย iOS Shortcuts จึงได้ผลเหมือน push แต่ฟรี. */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>💡 ประหยัด LINE quota: ตั้งเตือนอัตโนมัติด้วย iOS Shortcuts</div>
+        <div style={{ padding: 16, fontSize: 12.5, color: 'var(--text2)', display: 'grid', gap: 8 }}>
+          <div>คำสั่งดูตารางงาน (งานวันนี้/งานวันพรุ่งนี้/งานอาทิตย์นี้/งานอาทิตย์หน้า) ตอบกลับแบบ "reply" เสมอ — <strong>ไม่เสีย LINE push quota เลย</strong> ไม่ว่ากลุ่มจะมีกี่คน ต่างจากการ push ที่เสีย quota เท่าจำนวนคนในกลุ่มทุกครั้ง ถ้าอยากได้สรุปงานพรุ่งนี้ส่งเข้ากลุ่มอัตโนมัติทุกวันโดยไม่เสีย quota เลย ตั้งค่าได้เองฟรีด้วย iOS Shortcuts:</div>
+          <ol style={{ margin: 0, paddingLeft: 20, display: 'grid', gap: 4 }}>
+            <li>เปิดแอป LINE พิมพ์ "งานวันพรุ่งนี้" ส่งเข้ากลุ่มทีมงานด้วยมือสักครั้งหนึ่งก่อน (เพื่อให้ iOS รู้จัก action นี้)</li>
+            <li>เปิดแอป Shortcuts (ทางลัด) → แท็บ Automation → "+" → New Personal Automation → Time of Day → เลือกเวลาที่ต้องการ (เช่น 16:00) ทุกวัน</li>
+            <li>Add Action → ค้นหา "LINE" → เลือก "Send Message" → เลือกกลุ่มทีมงานเป็นผู้รับ → พิมพ์ข้อความ "งานวันพรุ่งนี้"</li>
+            <li>ปิด "Ask Before Running" เพื่อให้รันอัตโนมัติไม่ต้องกดยืนยัน</li>
+          </ol>
+          <div style={{ color: 'var(--text3)', fontSize: 11.5 }}>ทำได้เฉพาะ iPhone/iPad (iOS Shortcuts) — Android ยังไม่มีเครื่องมือเทียบเท่าในตัวเครื่อง</div>
+        </div>
+      </div>
+
       {/* ---- Connection ---- */}
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ padding: 16, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
