@@ -33,6 +33,7 @@
 // inside its 30-minute window, matching the old flow's retry behavior.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { sendLinePush } from '../_shared/line.ts'
+import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -157,6 +158,11 @@ Deno.serve(async (req) => {
       const result = await loadToken(token)
       if ('reason' in result) return json({ reason: result.reason }, 200)
       const { tok, worker } = result
+      // Real gap closed 2026-10-01: this whole /f/<token> flow is reached
+      // only via a LINE deep-link, but nothing downstream ever checked
+      // line_bot module access -- see tenant-access.ts's header for the
+      // full reasoning (same fix as line-webhook's).
+      if (!(await tenantHasModuleAccess(admin, worker.tenant_id, 'line_bot'))) return json({ reason: 'line_bot_disabled' }, 200)
       const workerName = worker.nickname || worker.name
 
       if (tok.action_type === 'material_request') {
@@ -190,6 +196,7 @@ Deno.serve(async (req) => {
       const result = await loadToken(token)
       if ('reason' in result) return json({ reason: result.reason }, 200)
       const { tok, worker } = result
+      if (!(await tenantHasModuleAccess(admin, worker.tenant_id, 'line_bot'))) return json({ reason: 'line_bot_disabled' }, 200)
       const workerName = worker.nickname || worker.name
 
       if (tok.action_type === 'material_request') {

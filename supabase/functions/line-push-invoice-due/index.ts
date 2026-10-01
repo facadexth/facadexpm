@@ -35,6 +35,7 @@
 // BEFORE any other query or LINE push.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { sendLinePush } from '../_shared/line.ts'
+import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -92,6 +93,9 @@ Deno.serve(async (req) => {
   let pushFailures = 0
 
   for (const settings of settingsRows ?? []) {
+    // Real gap closed 2026-10-01 -- see tenant-access.ts's header.
+    if (!(await tenantHasModuleAccess(admin, settings.tenant_id as string, 'line_bot'))) continue
+
     const { data: ongoingSites, error: sitesError } = await admin
       .from('sites')
       .select('id')

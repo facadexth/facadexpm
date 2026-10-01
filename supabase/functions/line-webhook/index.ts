@@ -100,6 +100,7 @@
 // since group membership is unreliable: people come and go).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { verifyLineSignature, sendLineReply, sendLinePush } from '../_shared/line.ts'
+import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -960,6 +961,16 @@ Deno.serve(async (req) => {
 
   const signatureOk = await verifyLineSignature(settings.channel_secret, rawBody, req.headers.get('x-line-signature'))
   if (!signatureOk) return json({ error: 'invalid signature' }, 401)
+
+  // Real gap closed 2026-10-01: this was the only one of eleven crew
+  // actions' entry points, and nothing downstream ever checked
+  // line_bot module access -- the module gate only ever hid the
+  // Communication Center page client-side. A tenant whose trial expired
+  // (or who never had line_bot on their package at all) kept full bot
+  // functionality forever, since this backend never looked. Returns 200
+  // (not an error) so LINE doesn't retry-storm a disabled tenant.
+  const hasLineAccess = await tenantHasModuleAccess(admin, settings.tenant_id, 'line_bot')
+  if (!hasLineAccess) return json({ ok: true, skipped: 'line_bot module not enabled for this tenant' })
 
   const { data: commandSettingsRows } = await admin.from('line_command_settings').select('command_key, enabled_dm, enabled_group, custom_phrase').eq('tenant_id', settings.tenant_id)
   const commandSettingsByKey: CommandSettingsByKey = Object.fromEntries((commandSettingsRows ?? []).map((r: any) => [r.command_key, r]))
