@@ -13,13 +13,20 @@
 // service-role client bypasses RLS entirely, so these are plain reads,
 // not RPC calls.
 //
-// Real gap this exists to close: NONE of line-webhook/field-form/the
+// Real gap this exists to close (2026-10-01, before every tenant moved
+// onto one shared platform bot): NONE of line-webhook/field-form/the
 // four line-push-* cron functions ever checked module access at all --
 // the line_bot module gate only ever hid the Communication Center page
 // client-side, while the LINE backend itself (which burns LINE's
 // per-recipient push quota, and can reach extract-po-document's
 // Anthropic cost via field-form's เบิกของ photo-scan path) ran for ANY
 // tenant with a channel_access_token configured, trial or not, forever.
+// Still load-bearing after the shared-bot migration: every tenant now
+// shares the same bot credentials, so this check is the ONLY thing
+// gating LINE functionality per tenant at all -- see every
+// tenantHasModuleAccess(...) call site across line-webhook,
+// leave-notify, line-worker-offboarded, and the four line-push-*
+// functions.
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 
 export async function tenantHasModuleAccess(admin: SupabaseClient, tenantId: string, moduleKey: string): Promise<boolean> {

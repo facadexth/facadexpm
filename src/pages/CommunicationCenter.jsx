@@ -103,8 +103,17 @@ export default function CommunicationCenter() {
     setGeneratingGroupCode(true)
     try {
       const code = generateLinkCode()
-      const { error } = await supabase.from('line_settings').update({ group_link_code: code }).eq('tenant_id', tenant.id)
+      // upsert, not update -- a tenant with no line_settings row yet
+      // (the normal case now that the old credential form's insert path
+      // is gone) would otherwise have this silently match zero rows:
+      // Postgres/PostgREST don't treat "UPDATE matched nothing" as an
+      // error, so a plain .update() here would show a code that was
+      // never actually persisted anywhere for the webhook to find.
+      const { data, error } = await supabase.from('line_settings')
+        .upsert({ tenant_id: tenant.id, group_link_code: code }, { onConflict: 'tenant_id' })
+        .select()
       if (error) throw error
+      if (!data?.length) throw new Error('บันทึกรหัสไม่สำเร็จ กรุณาลองใหม่')
       setGroupClaimCode(code)
     } catch (e) {
       alert('Error: ' + e.message)

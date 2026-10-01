@@ -15,6 +15,7 @@
 // signature verification instead).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
+import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -36,6 +37,12 @@ Deno.serve(async (req) => {
 
   const { data: worker } = await admin.from('workers').select('id, name, tenant_id, status').eq('id', worker_id).maybeSingle()
   if (!worker || worker.status !== 'inactive') return json({ ok: true, skipped: 'not inactive or not found' })
+
+  // Real gap closed 2026-10-01 (final-review finding #3c): deleting the
+  // old per-tenant line_settings existence check during the shared-bot
+  // migration removed this function's only line_bot gate -- it never
+  // imported tenantHasModuleAccess at all. See tenant-access.ts's header.
+  if (!(await tenantHasModuleAccess(admin, worker.tenant_id as string, 'line_bot'))) return json({ ok: true, skipped: 'line_bot module not enabled for this tenant' })
 
   const { data: owners } = await admin
     .from('user_roles')

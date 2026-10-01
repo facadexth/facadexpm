@@ -15,6 +15,7 @@
 // explicitly makes "not authorized" unambiguous regardless.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
+import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
@@ -87,6 +88,12 @@ Deno.serve(async (req) => {
     .select('tenant_id, worker_id, leave_type, date_from, date_to, shift, workers(line_user_id, annual_leave_days, annual_sick_leave_days)')
     .eq('id', leaveRequestId).maybeSingle()
   if (reqError || !req_) return json({ error: reqError?.message ?? 'not_found' }, 404)
+
+  // Real gap closed 2026-10-01 (final-review finding #3b): deleting the
+  // old per-tenant line_settings existence check during the shared-bot
+  // migration removed this function's only line_bot gate -- it never
+  // imported tenantHasModuleAccess at all. See tenant-access.ts's header.
+  if (!(await tenantHasModuleAccess(admin, req_.tenant_id as string, 'line_bot'))) return json({ ok: true, skipped: 'line_bot module not enabled for this tenant' })
 
   const workerRow = req_.workers as unknown as { line_user_id: string | null; annual_leave_days: number | null; annual_sick_leave_days: number | null } | null
   const lineUserId = workerRow?.line_user_id

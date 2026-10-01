@@ -1000,14 +1000,23 @@ Deno.serve(async (req) => {
     let tenantId: string | null = null
 
     if (!sourceGroupId && msgType === 'text' && text) {
-      const trimmed = text.trim()
+      // Codes are generated uppercase-only (CommunicationCenter.jsx's
+      // generateLinkCode) -- normalize what was typed so a lowercase
+      // retype still matches.
+      const trimmed = text.trim().toUpperCase()
       // No tenant filter here -- unlike today's per-tenant version,
       // we don't know the tenant yet, that's what this lookup resolves.
       // Collision across two different tenants' simultaneously-valid
       // codes is practically impossible (30^6 combinations, same
       // assumption the pre-existing per-tenant version already made).
-      const { data: pendingRoleCode } = await admin.from('user_roles').select('id, tenant_id').eq('line_link_code', trimmed).maybeSingle()
+      const { data: pendingRoleCode, error: roleCodeError } = await admin.from('user_roles').select('id, tenant_id').eq('line_link_code', trimmed).maybeSingle()
+      if (roleCodeError) { console.error('user_roles line_link_code lookup failed', roleCodeError); continue }
       if (pendingRoleCode) {
+        // Real gap closed 2026-10-01 (final-review finding #3): a code
+        // match alone used to link the account regardless of whether
+        // that tenant can even use the bot. Gate it the same as every
+        // other tenant-scoped action below.
+        if (!(await tenantHasModuleAccess(admin, pendingRoleCode.tenant_id as string, 'line_bot'))) { continue }
         const { error } = await admin.from('user_roles').update({ line_user_id: lineUserId, line_link_code: null }).eq('id', pendingRoleCode.id)
         if (error) {
           console.error('user_roles line-link update failed', error)
@@ -1017,8 +1026,10 @@ Deno.serve(async (req) => {
         }
         continue
       }
-      const { data: pendingWorkerCode } = await admin.from('workers').select('id, tenant_id').eq('line_link_code', trimmed).maybeSingle()
+      const { data: pendingWorkerCode, error: workerCodeError } = await admin.from('workers').select('id, tenant_id').eq('line_link_code', trimmed).maybeSingle()
+      if (workerCodeError) { console.error('workers line_link_code lookup failed', workerCodeError); continue }
       if (pendingWorkerCode) {
+        if (!(await tenantHasModuleAccess(admin, pendingWorkerCode.tenant_id as string, 'line_bot'))) { continue }
         const { error } = await admin.from('workers').update({ line_user_id: lineUserId, line_link_code: null }).eq('id', pendingWorkerCode.id)
         if (error) {
           console.error('workers line-link update failed', error)
@@ -1031,13 +1042,16 @@ Deno.serve(async (req) => {
     }
 
     if (sourceGroupId) {
-      const { data: match } = await admin.from('line_settings').select('tenant_id').eq('crew_group_id', sourceGroupId).maybeSingle()
+      const { data: match, error: matchError } = await admin.from('line_settings').select('tenant_id').eq('crew_group_id', sourceGroupId).maybeSingle()
+      if (matchError) { console.error('line_settings crew_group_id lookup failed', matchError); continue }
       tenantId = (match?.tenant_id as string | undefined) ?? null
     } else {
-      const { data: w } = await admin.from('workers').select('tenant_id').eq('line_user_id', lineUserId).maybeSingle()
+      const { data: w, error: workerLookupError } = await admin.from('workers').select('tenant_id').eq('line_user_id', lineUserId).maybeSingle()
+      if (workerLookupError) { console.error('workers line_user_id lookup failed', workerLookupError); continue }
       tenantId = (w?.tenant_id as string | undefined) ?? null
       if (!tenantId) {
-        const { data: u } = await admin.from('user_roles').select('tenant_id').eq('line_user_id', lineUserId).maybeSingle()
+        const { data: u, error: userLookupError } = await admin.from('user_roles').select('tenant_id').eq('line_user_id', lineUserId).maybeSingle()
+        if (userLookupError) { console.error('user_roles line_user_id lookup failed', userLookupError); continue }
         tenantId = (u?.tenant_id as string | undefined) ?? null
       }
     }
@@ -1047,9 +1061,11 @@ Deno.serve(async (req) => {
         // Group-claim code check (spec §5) -- a group with no owner yet
         // whose message matches SOME tenant's outstanding
         // group_link_code gets claimed for that tenant.
-        const trimmed = text.trim()
-        const { data: claimant } = await admin.from('line_settings').select('tenant_id').eq('group_link_code', trimmed).maybeSingle()
+        const trimmed = text.trim().toUpperCase()
+        const { data: claimant, error: claimantError } = await admin.from('line_settings').select('tenant_id').eq('group_link_code', trimmed).maybeSingle()
+        if (claimantError) { console.error('line_settings group_link_code lookup failed', claimantError); continue }
         if (claimant) {
+          if (!(await tenantHasModuleAccess(admin, claimant.tenant_id as string, 'line_bot'))) { continue }
           const { error } = await admin.from('line_settings').update({ crew_group_id: sourceGroupId, group_link_code: null }).eq('tenant_id', claimant.tenant_id)
           if (error) {
             console.error('line_settings group claim failed', error)
@@ -1066,7 +1082,7 @@ Deno.serve(async (req) => {
         // DM from a never-linked account -- see spec §6. Pure addition,
         // not a replacement: today this is a silent `continue` with no
         // reply at all.
-        await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, 'ยังไม่พบบัญชีนี้ในระบบ — กรุณาติดต่อแอดมินของบริษัทคุณเพื่อขอรหัสเชื่อมต่อ 6 หลัก')
+        await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, 'ยังไม่พบบัญชีนี้ในระบบ — กรุณาติดต่อแอดมินของบริษัทคุณเพื่อขอรหัสเชื่อมต่อ 6 ตัว')
       }
       continue
     }
@@ -1084,34 +1100,11 @@ Deno.serve(async (req) => {
       // or (b) a worker's crew action: a Rich Menu button tap (fixed
       // text, configured manually in LINE Official Account Manager) or
       // manually-typed trigger phrase, or the image reply to a pending
-      // รูปภาพหน้างาน/งานเสร็จ prompt. Linking-code match is checked
-      // first since it's a narrower, more specific match.
-      if (msgType === 'text' && text) {
-        const trimmed = text.trim()
-        const { data: pendingRoleCode } = await admin.from('user_roles').select('id').eq('tenant_id', settings.tenant_id).eq('line_link_code', trimmed).maybeSingle()
-        if (pendingRoleCode) {
-          const { error } = await admin.from('user_roles').update({ line_user_id: lineUserId, line_link_code: null }).eq('id', pendingRoleCode.id)
-          if (error) {
-            console.error('user_roles line-link update failed', error)
-            await sendLineReply(settings.channel_access_token, event.replyToken, '⚠️ เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่หรือแจ้งแอดมิน')
-          } else {
-            await sendLineReply(settings.channel_access_token, event.replyToken, '✅ เชื่อมต่อ LINE เรียบร้อยแล้วครับ')
-          }
-          continue
-        }
-        const { data: pendingWorkerCode } = await admin.from('workers').select('id').eq('tenant_id', settings.tenant_id).eq('line_link_code', trimmed).maybeSingle()
-        if (pendingWorkerCode) {
-          const { error } = await admin.from('workers').update({ line_user_id: lineUserId, line_link_code: null }).eq('id', pendingWorkerCode.id)
-          if (error) {
-            console.error('workers line-link update failed', error)
-            await sendLineReply(settings.channel_access_token, event.replyToken, '⚠️ เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่หรือแจ้งแอดมิน')
-          } else {
-            await sendLineReply(settings.channel_access_token, event.replyToken, '✅ เชื่อมต่อ LINE เรียบร้อยแล้วครับ')
-          }
-          continue
-        }
-      }
-
+      // รูปภาพหน้างาน/งานเสร็จ prompt. Linking-code match now happens
+      // ABOVE, before tenant resolution (a code IS the identification
+      // for a never-before-seen sender) -- by the time execution reaches
+      // here, tenantId is already resolved, so a sender who still had an
+      // outstanding code would already have matched there and `continue`d.
       const { worker } = await resolveWorker(lineUserId, settings)
       if (!worker) continue // unrecognized (or inactive -- already alerted) DM sender
 
@@ -1216,10 +1209,11 @@ Deno.serve(async (req) => {
       continue
     }
 
-    // A message from the crew group -- only act on it if it's actually
-    // that tenant's configured crew group, and only text (photos/checkin/
-    // job-done/today's-work menu are 1:1-DM-only, matching the Rich
-    // Menu's own DM-only scope).
+    // A message from the crew group -- by this point tenantId was already
+    // resolved from THIS group matching that tenant's crew_group_id (see
+    // above), so there's nothing further to check there. Only text acted
+    // on here (photos/checkin/job-done/today's-work menu are 1:1-DM-only,
+    // matching the Rich Menu's own DM-only scope).
     if (msgType !== 'text' || !text) continue
 
     // Read-only team-wide status queries (งานวันนี้/งานวันพรุ่งนี้/

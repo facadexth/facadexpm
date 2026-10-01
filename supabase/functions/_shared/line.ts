@@ -17,8 +17,21 @@ const LINE_API = 'https://api.line.me/v2/bot/message'
 // Get Bot Info response and the public @handle are both discoverable
 // by anyone who messages the bot) -- plain constants, safe to also
 // mirror in the frontend (see src/lib/platformLineBot.js, Task 4).
-export const LINE_CHANNEL_ACCESS_TOKEN = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN')!
-export const LINE_CHANNEL_SECRET = Deno.env.get('LINE_CHANNEL_SECRET')!
+// Fail loudly at module load, not silently at call time -- the bare `!`
+// assertion below is erased by TypeScript at runtime, so an unset secret
+// used to mean every function importing this file would HMAC-sign with
+// the literal string "undefined" and push with `Authorization: Bearer
+// undefined`, with nothing in the logs explaining why every request
+// failed. Every one of the 9 functions that import this file will now
+// refuse to even start instead, which is the correct failure mode for a
+// genuine misconfiguration (missing Supabase Edge Function secrets).
+const rawAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN')
+const rawChannelSecret = Deno.env.get('LINE_CHANNEL_SECRET')
+if (!rawAccessToken || !rawChannelSecret) {
+  throw new Error('LINE_CHANNEL_ACCESS_TOKEN / LINE_CHANNEL_SECRET not configured -- set them as Supabase Edge Function secrets before deploying any function that imports _shared/line.ts')
+}
+export const LINE_CHANNEL_ACCESS_TOKEN = rawAccessToken
+export const LINE_CHANNEL_SECRET = rawChannelSecret
 export const LINE_BOT_USER_ID = 'Uc21ab4c845be0f5d3b90e0daa1f5cf72'
 export const LINE_BASIC_ID = '302yljzw'
 
