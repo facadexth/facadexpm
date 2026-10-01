@@ -10,3 +10,6 @@ facadex-deploy/
 supabase/.temp/
 supabase/region-migration/tmp/
 supabase/region-migration/*-dump.sql
+supabase/region-migration/*-only.sql
+supabase/region-migration/*-cleaned.sql
+supabase/region-migration/*-chunk-*.sql
