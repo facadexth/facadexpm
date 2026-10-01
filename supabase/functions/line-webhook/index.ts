@@ -99,7 +99,7 @@
 // recognized -- not dependent on ever having posted in the crew group,
 // since group membership is unreliable: people come and go).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { verifyLineSignature, sendLineReply, sendLinePush } from '../_shared/line.ts'
+import { verifyLineSignature, sendLineReply, sendLinePush, LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET } from '../_shared/line.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -953,27 +953,27 @@ Deno.serve(async (req) => {
   } catch {
     return json({ error: 'Invalid JSON body' }, 400)
   }
-  const destination = payload.destination as string | undefined
-  if (!destination) return json({ error: 'destination required' }, 400)
 
-  const { data: settings } = await admin.from('line_settings').select('*').eq('bot_user_id', destination).maybeSingle()
-  if (!settings) return json({ error: 'unknown channel' }, 404)
-
-  const signatureOk = await verifyLineSignature(settings.channel_secret, rawBody, req.headers.get('x-line-signature'))
+  // destination is now the same constant bot_user_id for every tenant --
+  // it identifies OUR bot, not which tenant sent this. Signature
+  // verification moves to the one global channel_secret; tenant
+  // resolution moves inside the per-event loop below (see
+  // docs/superpowers/specs/2026-10-01-shared-line-bot-design.md §4).
+  const signatureOk = await verifyLineSignature(LINE_CHANNEL_SECRET, rawBody, req.headers.get('x-line-signature'))
   if (!signatureOk) return json({ error: 'invalid signature' }, 401)
 
-  // Real gap closed 2026-10-01: this was the only one of eleven crew
-  // actions' entry points, and nothing downstream ever checked
-  // line_bot module access -- the module gate only ever hid the
-  // Communication Center page client-side. A tenant whose trial expired
-  // (or who never had line_bot on their package at all) kept full bot
-  // functionality forever, since this backend never looked. Returns 200
-  // (not an error) so LINE doesn't retry-storm a disabled tenant.
-  const hasLineAccess = await tenantHasModuleAccess(admin, settings.tenant_id, 'line_bot')
-  if (!hasLineAccess) return json({ ok: true, skipped: 'line_bot module not enabled for this tenant' })
-
-  const { data: commandSettingsRows } = await admin.from('line_command_settings').select('command_key, enabled_dm, enabled_group, custom_phrase').eq('tenant_id', settings.tenant_id)
-  const commandSettingsByKey: CommandSettingsByKey = Object.fromEntries((commandSettingsRows ?? []).map((r: any) => [r.command_key, r]))
+  // Per-tenant line_command_settings now loaded lazily per resolved
+  // tenant, cached here so a request with several events from the same
+  // tenant (common -- LINE batches events) only queries once.
+  const commandSettingsCache = new Map<string, CommandSettingsByKey>()
+  async function loadCommandSettings(tenantId: string): Promise<CommandSettingsByKey> {
+    const cached = commandSettingsCache.get(tenantId)
+    if (cached) return cached
+    const { data: rows } = await admin.from('line_command_settings').select('command_key, enabled_dm, enabled_group, custom_phrase').eq('tenant_id', tenantId)
+    const byKey: CommandSettingsByKey = Object.fromEntries((rows ?? []).map((r: any) => [r.command_key, r]))
+    commandSettingsCache.set(tenantId, byKey)
+    return byKey
+  }
 
   const events = (payload.events as Array<Record<string, any>>) ?? []
   for (const event of events) {
@@ -988,6 +988,91 @@ Deno.serve(async (req) => {
     const lineUserId: string | undefined = event.source?.userId
     const sourceGroupId: string | undefined = event.source?.groupId
     if (!lineUserId) continue
+
+    // Resolve the tenant for THIS event specifically -- see spec §4.
+    // DM code-check happens first (a typed 6-digit code IS the
+    // identification for a never-before-seen sender, so it must be
+    // checked before concluding "unrecognized").
+    let tenantId: string | null = null
+    let claimedViaCode = false
+
+    if (!sourceGroupId && msgType === 'text' && text) {
+      const trimmed = text.trim()
+      // No tenant filter here -- unlike today's per-tenant version,
+      // we don't know the tenant yet, that's what this lookup resolves.
+      // Collision across two different tenants' simultaneously-valid
+      // codes is practically impossible (30^6 combinations, same
+      // assumption the pre-existing per-tenant version already made).
+      const { data: pendingRoleCode } = await admin.from('user_roles').select('id, tenant_id').eq('line_link_code', trimmed).maybeSingle()
+      if (pendingRoleCode) {
+        const { error } = await admin.from('user_roles').update({ line_user_id: lineUserId, line_link_code: null }).eq('id', pendingRoleCode.id)
+        if (error) {
+          console.error('user_roles line-link update failed', error)
+          await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '⚠️ เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่หรือแจ้งแอดมิน')
+        } else {
+          await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '✅ เชื่อมต่อ LINE เรียบร้อยแล้วครับ')
+        }
+        continue
+      }
+      const { data: pendingWorkerCode } = await admin.from('workers').select('id, tenant_id').eq('line_link_code', trimmed).maybeSingle()
+      if (pendingWorkerCode) {
+        const { error } = await admin.from('workers').update({ line_user_id: lineUserId, line_link_code: null }).eq('id', pendingWorkerCode.id)
+        if (error) {
+          console.error('workers line-link update failed', error)
+          await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '⚠️ เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่หรือแจ้งแอดมิน')
+        } else {
+          await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '✅ เชื่อมต่อ LINE เรียบร้อยแล้วครับ')
+        }
+        continue
+      }
+    }
+
+    if (sourceGroupId) {
+      const { data: match } = await admin.from('line_settings').select('tenant_id').eq('crew_group_id', sourceGroupId).maybeSingle()
+      tenantId = (match?.tenant_id as string | undefined) ?? null
+    } else {
+      const { data: w } = await admin.from('workers').select('tenant_id').eq('line_user_id', lineUserId).maybeSingle()
+      tenantId = (w?.tenant_id as string | undefined) ?? null
+      if (!tenantId) {
+        const { data: u } = await admin.from('user_roles').select('tenant_id').eq('line_user_id', lineUserId).maybeSingle()
+        tenantId = (u?.tenant_id as string | undefined) ?? null
+      }
+    }
+
+    if (!tenantId) {
+      if (sourceGroupId && msgType === 'text' && text) {
+        // Group-claim code check (spec §5) -- a group with no owner yet
+        // whose message matches SOME tenant's outstanding
+        // group_link_code gets claimed for that tenant.
+        const trimmed = text.trim()
+        const { data: claimant } = await admin.from('line_settings').select('tenant_id').eq('group_link_code', trimmed).maybeSingle()
+        if (claimant) {
+          const { error } = await admin.from('line_settings').update({ crew_group_id: sourceGroupId, group_link_code: null }).eq('tenant_id', claimant.tenant_id)
+          if (error) {
+            console.error('line_settings group claim failed', error)
+            await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '⚠️ ตั้งกลุ่มไม่สำเร็จ กรุณาลองใหม่หรือแจ้งแอดมิน')
+          } else {
+            await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '✅ ตั้งกลุ่มนี้เป็นกลุ่มทีมงานเรียบร้อยแล้ว')
+          }
+        }
+        // No match at all -- not a claim code (or an expired/already-used
+        // one), and no way to tell the difference without revealing
+        // whether some other tenant's code once existed. Silently ignore,
+        // same as any other unrecognized group text today.
+      } else if (!sourceGroupId && msgType === 'text' && text) {
+        // DM from a never-linked account -- see spec §6. Pure addition,
+        // not a replacement: today this is a silent `continue` with no
+        // reply at all.
+        await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, 'ยังไม่พบบัญชีนี้ในระบบ — กรุณาติดต่อแอดมินของบริษัทคุณเพื่อขอรหัสเชื่อมต่อ 6 หลัก')
+      }
+      continue
+    }
+
+    const hasLineAccess = await tenantHasModuleAccess(admin, tenantId, 'line_bot')
+    if (!hasLineAccess) continue
+
+    const commandSettingsByKey = await loadCommandSettings(tenantId)
+    const settings = { tenant_id: tenantId, channel_access_token: LINE_CHANNEL_ACCESS_TOKEN }
 
     if (!sourceGroupId) {
       // DM -- either (a) a bare linking code (OWNER/ADMIN via user_roles,
@@ -1133,20 +1218,6 @@ Deno.serve(async (req) => {
     // job-done/today's-work menu are 1:1-DM-only, matching the Rich
     // Menu's own DM-only scope).
     if (msgType !== 'text' || !text) continue
-    if (sourceGroupId !== settings.crew_group_id) {
-      // Not the configured crew group -- capture it so an admin can
-      // find and promote it from Communication Center instead of the
-      // group's ID silently going nowhere (see
-      // 2026-09-27-04-line-unrecognized-groups.sql for why this exists:
-      // the UI's own "จับได้จากข้อความจริงในกลุ่ม" placeholder implied this
-      // capture already happened, and it never did).
-      const { error: groupError } = await admin.from('line_unrecognized_groups').upsert(
-        { tenant_id: settings.tenant_id, group_id: sourceGroupId, sample_text: text.slice(0, 200), sample_sender: lineUserId, last_seen_at: new Date().toISOString() },
-        { onConflict: 'tenant_id,group_id' }
-      )
-      if (groupError) console.error('line_unrecognized_groups upsert failed', groupError)
-      continue
-    }
 
     // Read-only team-wide status queries (งานวันนี้/งานวันพรุ่งนี้/
     // งานอาทิตย์นี้/งานอาทิตย์หน้า) work for anyone in the real crew group,
