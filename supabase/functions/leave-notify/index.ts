@@ -14,7 +14,7 @@
 // filter rows silently rather than erroring, but calling the admin check
 // explicitly makes "not authorized" unambiguous regardless.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { sendLinePush } from '../_shared/line.ts'
+import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
@@ -92,9 +92,6 @@ Deno.serve(async (req) => {
   const lineUserId = workerRow?.line_user_id
   if (!lineUserId) return json({ ok: true, skipped: 'no_line_user_id' })
 
-  const { data: settings } = await admin.from('line_settings').select('channel_access_token').eq('tenant_id', req_.tenant_id).maybeSingle()
-  if (!settings?.channel_access_token) return json({ ok: true, skipped: 'no_line_settings' })
-
   const leaveLabel = req_.leave_type === 'leave_sick' ? 'ลาป่วย' : 'ลากิจ'
   const shiftLabel = SHIFT_LABEL[req_.shift as string] ?? ''
   const dateLabel = req_.date_from === req_.date_to ? req_.date_from : `${req_.date_from} — ${req_.date_to}`
@@ -112,6 +109,6 @@ Deno.serve(async (req) => {
     text = `❌ คำขอ${leaveLabel}${shiftLabel} วันที่ ${dateLabel} ของคุณถูกปฏิเสธ`
   }
 
-  const result = await sendLinePush(settings.channel_access_token, lineUserId, text)
+  const result = await sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, lineUserId, text)
   return json({ ok: result.ok })
 })

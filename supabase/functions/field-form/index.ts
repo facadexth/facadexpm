@@ -32,7 +32,7 @@
 // submit) -- lets the worker walk closer and retry with the same link
 // inside its 30-minute window, matching the old flow's retry behavior.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { sendLinePush } from '../_shared/line.ts'
+import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -107,11 +107,9 @@ async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Pr
 // in CommunicationCenter.jsx sets up. Best-effort: a push failure never
 // blocks the PO/leave request itself from having been created.
 async function notifyAdmins(tenantId: string, text: string) {
-  const { data: settings } = await admin.from('line_settings').select('channel_access_token').eq('tenant_id', tenantId).maybeSingle()
-  if (!settings?.channel_access_token) return
   const { data: admins } = await admin.from('user_roles').select('line_user_id').eq('tenant_id', tenantId).in('role', ['OWNER', 'ADMIN']).not('line_user_id', 'is', null)
   for (const a of admins ?? []) {
-    await sendLinePush(settings.channel_access_token, a.line_user_id as string, text).catch((e) => console.error('notifyAdmins push failed', e))
+    await sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, a.line_user_id as string, text).catch((e) => console.error('notifyAdmins push failed', e))
   }
 }
 
@@ -140,9 +138,7 @@ async function leaveQuotaRemaining(workerId: string, annualLeaveDays: number, an
 // itself from having been created.
 async function notifyWorker(tenantId: string, lineUserId: string | null | undefined, text: string) {
   if (!lineUserId) return
-  const { data: settings } = await admin.from('line_settings').select('channel_access_token').eq('tenant_id', tenantId).maybeSingle()
-  if (!settings?.channel_access_token) return
-  await sendLinePush(settings.channel_access_token, lineUserId, text).catch((e) => console.error('notifyWorker push failed', e))
+  await sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, lineUserId, text).catch((e) => console.error('notifyWorker push failed', e))
 }
 
 Deno.serve(async (req) => {

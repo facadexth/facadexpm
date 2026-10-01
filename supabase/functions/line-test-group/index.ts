@@ -9,6 +9,7 @@
 // not just the already-saved value, so an OWNER can check a candidate
 // ID before saving it.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
@@ -52,14 +53,8 @@ Deno.serve(async (req) => {
   const { data: tenantId, error: tenantError } = await userClient.rpc('current_tenant_id')
   if (tenantError || !tenantId) return json({ error: 'Unauthorized' }, 403)
 
-  // Service role from here -- channel_access_token never needs to reach
-  // the browser at all, this function is the only thing that touches it.
-  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-  const { data: settings } = await admin.from('line_settings').select('channel_access_token').eq('tenant_id', tenantId).maybeSingle()
-  if (!settings?.channel_access_token) return json({ ok: false, error: 'ยังไม่ได้ตั้งค่า Channel Access Token กรุณาบันทึกการเชื่อมต่อก่อน' })
-
   const res = await fetch(`https://api.line.me/v2/bot/group/${encodeURIComponent(groupId)}/summary`, {
-    headers: { Authorization: `Bearer ${settings.channel_access_token}` },
+    headers: { Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}` },
   })
   if (!res.ok) {
     return json({ ok: false, error: 'บอทไม่ได้อยู่ในกลุ่มนี้ หรือ Group ID ไม่ถูกต้อง' })

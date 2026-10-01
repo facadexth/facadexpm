@@ -34,7 +34,7 @@
 // supabase/migrations/2026-09-19-04-line-push-cron-secret-verify-fn.sql)
 // BEFORE any other query or LINE push.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { sendLinePush } from '../_shared/line.ts'
+import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
 
   const { data: settingsRows, error: settingsError } = await admin
     .from('line_settings')
-    .select('tenant_id, channel_access_token')
+    .select('tenant_id')
   if (settingsError) return json({ error: settingsError.message }, 500)
 
   let sitesDue = 0
@@ -149,7 +149,7 @@ Deno.serve(async (req) => {
       sitesDue++
       const message = formatInvoiceDueMessage(site)
       for (const lineUserId of ownerLineIds) {
-        const result = await sendLinePush(settings.channel_access_token, lineUserId, message)
+        const result = await sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, lineUserId, message)
         if (result.ok) messagesPushed++
         else {
           pushFailures++

@@ -14,7 +14,7 @@
 // shape (unlike line-webhook, which is called BY LINE and uses HMAC
 // signature verification instead).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { sendLinePush } from '../_shared/line.ts'
+import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -37,9 +37,6 @@ Deno.serve(async (req) => {
   const { data: worker } = await admin.from('workers').select('id, name, tenant_id, status').eq('id', worker_id).maybeSingle()
   if (!worker || worker.status !== 'inactive') return json({ ok: true, skipped: 'not inactive or not found' })
 
-  const { data: settings } = await admin.from('line_settings').select('channel_access_token').eq('tenant_id', worker.tenant_id).maybeSingle()
-  if (!settings) return json({ ok: true, skipped: 'no line_settings for this tenant' })
-
   const { data: owners } = await admin
     .from('user_roles')
     .select('line_user_id')
@@ -48,7 +45,7 @@ Deno.serve(async (req) => {
     .not('line_user_id', 'is', null)
 
   for (const owner of owners ?? []) {
-    await sendLinePush(settings.channel_access_token, owner.line_user_id as string, `⚠️ ${worker.name} ถูกเปลี่ยนสถานะเป็นพ้นสภาพพนักงาน กรุณาลบออกจากกลุ่มทีมงานใน LINE ด้วยครับ`)
+    await sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, owner.line_user_id as string, `⚠️ ${worker.name} ถูกเปลี่ยนสถานะเป็นพ้นสภาพพนักงาน กรุณาลบออกจากกลุ่มทีมงานใน LINE ด้วยครับ`)
   }
   await admin.from('workers').update({ line_offboarding_alerted_at: new Date().toISOString() }).eq('id', worker.id)
 
