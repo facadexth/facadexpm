@@ -39,16 +39,27 @@ reports. Read time: under 2 minutes.
 5. ✅ **Function deploy confirmation** — 12 of 14 functions deployed and
    confirmed `ACTIVE` on CHANG just now via a fresh `functions list`. This is
    the correct, complete result, not a partial one: `omise-webhook` and
-   `omise-create-charge` both fail to bundle because they import a
-   function-local `_shared/activate-tenant.ts` that was never committed to
-   git in either function's history anywhere in this repo — confirmed via
-   `git ls-files`, and corroborated by Tokyo's own live deployment of these 2
-   functions showing an anomalous `entrypoint_path` that proves they were
-   deployed from an uncommitted local copy at some point, not from what's in
-   this repo. This is a genuine, pre-existing production bug, equally present
-   on Tokyo today, completely independent of this migration. See "What this
-   does NOT prove" below for what has to happen before these 2 can ever be
-   deployed anywhere.
+   `omise-create-charge` both fail to bundle, but not because any file is
+   missing from the repo. The real, project-level shared file
+   (`supabase/functions/_shared/activate-tenant.ts`) is committed and
+   tracked in git (`89ac413`), and every other function that imports from it
+   via `../_shared/...` deploys and bundles cleanly. The bug is purely that
+   `omise-webhook/index.ts` and `omise-create-charge/index.ts` import it via
+   the wrong relative path — `./_shared/activate-tenant.ts` — which resolves
+   to a function-local file one directory below where the real shared file
+   actually lives, and no such function-local file exists. The fix is a
+   one-line import-path correction (`./_shared/...` → `../_shared/...`) in
+   both files, not recovering or re-committing anything. As minor supporting
+   detail (not decisive on its own, since `sign-link` and
+   `extract-po-document` show the same entrypoint shape on Tokyo yet deploy
+   cleanly to CHANG): Tokyo's own live deployment of these 2 functions shows
+   an `entrypoint_path` ending in `.../source/index.ts` rather than the
+   project-structure path every correctly-configured function shows,
+   consistent with having been deployed at some point from a flattened
+   invocation with a local, uncommitted copy of the file present on disk.
+   This is a genuine, pre-existing bug, equally present on Tokyo today,
+   completely independent of this migration. See "What this does NOT prove"
+   below for what has to happen before these 2 can be redeployed.
 6. ✅ **Cron/Vault mechanism proof** — re-ran `verify_cron_secret()` against
    the real Vault-stored secret on CHANG just now: returns `true`, confirming
    the Vault-secret-backed cron-auth mechanism still works end-to-end. (The 3
@@ -91,12 +102,12 @@ Two further items surfaced during this dry run and remain open, independent
 of the above:
 
 - **The Omise function bug.** `omise-webhook` and `omise-create-charge` need a
-  source-code fix (most likely changing their import path from
-  `./_shared/activate-tenant.ts` to `../_shared/activate-tenant.ts`, matching
-  every other function's convention, or committing the missing shared file)
-  before they can be deployed to *any* Supabase project via the standard
-  project-structure deploy path — this is not specific to CHANG or this
-  migration.
+  one-line source-code fix — changing their import path from
+  `./_shared/activate-tenant.ts` to `../_shared/activate-tenant.ts` so it
+  resolves to the real, already-committed project-level shared file that
+  every other function uses successfully — before they can be deployed to
+  *any* Supabase project via the standard project-structure deploy path. This
+  is not specific to CHANG or this migration.
 - **5 custom secrets not yet entered.** `ANTHROPIC_API_KEY`,
   `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, `OMISE_SECRET_KEY`, and
   `RESEND_API_KEY` still need manual entry on CHANG (see
