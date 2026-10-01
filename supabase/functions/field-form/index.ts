@@ -65,7 +65,7 @@ async function loadToken(token: string) {
   if (tok.used_at) return { reason: 'used' as const }
   if (new Date(tok.expires_at as string).getTime() < Date.now()) return { reason: 'expired' as const }
 
-  const { data: worker } = await admin.from('workers').select('id, name, nickname, tenant_id').eq('id', tok.worker_id).maybeSingle()
+  const { data: worker } = await admin.from('workers').select('id, name, nickname, tenant_id, line_user_id').eq('id', tok.worker_id).maybeSingle()
   if (!worker) return { reason: 'not_found' as const }
   return { tok, worker }
 }
@@ -112,6 +112,18 @@ async function notifyAdmins(tenantId: string, text: string) {
   for (const a of admins ?? []) {
     await sendLinePush(settings.channel_access_token, a.line_user_id as string, text).catch((e) => console.error('notifyAdmins push failed', e))
   }
+}
+
+// Confirms back to the WORKER who submitted the request -- previously only
+// notifyAdmins fired, so a worker's only feedback was the one-time in-browser
+// success message, easy to lose once they close the LINE in-app browser tab.
+// Best-effort, same as notifyAdmins: a push failure never blocks the request
+// itself from having been created.
+async function notifyWorker(tenantId: string, lineUserId: string | null | undefined, text: string) {
+  if (!lineUserId) return
+  const { data: settings } = await admin.from('line_settings').select('channel_access_token').eq('tenant_id', tenantId).maybeSingle()
+  if (!settings?.channel_access_token) return
+  await sendLinePush(settings.channel_access_token, lineUserId, text).catch((e) => console.error('notifyWorker push failed', e))
 }
 
 Deno.serve(async (req) => {
@@ -217,17 +229,24 @@ Deno.serve(async (req) => {
         const dateFrom = body?.dateFrom as string | undefined
         const dateTo = (body?.dateTo as string | undefined) || dateFrom
         const reason = body?.reason ? String(body.reason).trim() : null
+        const requestedShift = body?.shift as string | undefined
         if (leaveType !== 'leave_sick' && leaveType !== 'leave_personal') return json({ error: 'invalid_leave_type' }, 400)
         if (!dateFrom) return json({ error: 'missing_date' }, 400)
+        // Morning/afternoon-only leave only makes sense for a single day --
+        // never trust the client for a multi-day range, force full_day
+        // server-side regardless of what shift value was sent.
+        const shift = dateFrom === dateTo && (requestedShift === 'morning' || requestedShift === 'evening') ? requestedShift : 'full_day'
         const { error } = await admin.from('leave_requests').insert({
-          tenant_id: worker.tenant_id, worker_id: tok.worker_id, leave_type: leaveType, date_from: dateFrom, date_to: dateTo, reason,
+          tenant_id: worker.tenant_id, worker_id: tok.worker_id, leave_type: leaveType, date_from: dateFrom, date_to: dateTo, reason, shift,
         })
         if (error) return json({ error: error.message }, 500)
 
         await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
         const leaveLabel = leaveType === 'leave_sick' ? 'ลาป่วย' : 'ลากิจ'
+        const shiftLabel = shift === 'morning' ? ' (ช่วงเช้า)' : shift === 'evening' ? ' (ช่วงบ่าย)' : ''
         const dateLabel = dateFrom === dateTo ? dateFrom : `${dateFrom} — ${dateTo}`
-        await notifyAdmins(worker.tenant_id, `🏖️ ${workerName} ขอ${leaveLabel} วันที่ ${dateLabel}\nรออนุมัติที่หน้าบุคคล → คำขอลา`)
+        await notifyAdmins(worker.tenant_id, `🏖️ ${workerName} ขอ${leaveLabel}${shiftLabel} วันที่ ${dateLabel}\nรออนุมัติที่หน้าบุคคล → คำขอลา`)
+        await notifyWorker(worker.tenant_id, worker.line_user_id, `✅ ส่งคำขอ${leaveLabel}${shiftLabel} วันที่ ${dateLabel} เรียบร้อยแล้ว\nรอแอดมิน/เจ้าของตรวจสอบและอนุมัติ`)
         return json({ ok: true, workerName })
       }
 

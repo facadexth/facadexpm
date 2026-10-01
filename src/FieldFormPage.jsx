@@ -134,6 +134,12 @@ const LEAVE_TYPES = [
   { value: 'leave_sick', label: '🤒 ลาป่วย' },
 ]
 
+const LEAVE_SHIFTS = [
+  { value: 'full_day', label: 'เต็มวัน' },
+  { value: 'morning', label: 'ช่วงเช้า' },
+  { value: 'evening', label: 'ช่วงบ่าย' },
+]
+
 const MANUAL_ITEM = '__manual__'
 let lineSeq = 0
 function newLine() {
@@ -163,6 +169,15 @@ export default function FieldFormPage({ token }) {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [reason, setReason] = useState('')
+  const [shift, setShift] = useState('full_day')
+  const isSingleDay = !dateTo || dateTo === dateFrom
+  // เช้า/บ่าย only makes sense for one day -- switching to a multi-day range
+  // resets back to เต็มวัน and hides the picker, same rule field-form itself
+  // re-validates server-side (never trusts the client's shift value either).
+  const setDateToAndResetShift = (value) => {
+    setDateTo(value)
+    if (value && value !== dateFrom) setShift('full_day')
+  }
 
   const loadInfo = useCallback(() => {
     setState({ loading: true })
@@ -204,7 +219,7 @@ export default function FieldFormPage({ token }) {
               quantity: Number(l.quantity),
             })),
           }
-        : { action: 'submit', token, leaveType, dateFrom, dateTo: dateTo || dateFrom, reason: reason.trim() || null }
+        : { action: 'submit', token, leaveType, dateFrom, dateTo: dateTo || dateFrom, reason: reason.trim() || null, shift: isSingleDay ? shift : 'full_day' }
       const { data, error } = await supabase.functions.invoke('field-form', { body })
       if (error) throw error
       if (data?.reason) { setState(s => ({ ...s, reason: data.reason })); return }
@@ -366,9 +381,21 @@ export default function FieldFormPage({ token }) {
               </div>
               <div>
                 <label className="label">ถึงวันที่</label>
-                <input className="input" type="date" value={dateTo} min={dateFrom || undefined} onChange={e => setDateTo(e.target.value)} placeholder="เว้นว่างถ้าลาวันเดียว" />
+                <input className="input" type="date" value={dateTo} min={dateFrom || undefined} onChange={e => setDateToAndResetShift(e.target.value)} placeholder="เว้นว่างถ้าลาวันเดียว" />
               </div>
             </div>
+            {isSingleDay && (
+              <div>
+                <label className="label">ช่วงเวลา *</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {LEAVE_SHIFTS.map(s => (
+                    <button key={s.value} type="button"
+                      className={shift === s.value ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'}
+                      style={{ flex: 1 }} onClick={() => setShift(s.value)}>{s.label}</button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div>
               <label className="label">เหตุผล (ถ้ามี)</label>
               <textarea className="input" rows={2} value={reason} onChange={e => setReason(e.target.value)} />

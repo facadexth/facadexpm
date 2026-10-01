@@ -477,14 +477,22 @@ export default function HR() {
         // use for this exact table -- a plain insert() throws
         // worker_assignments_worker_id_date_shift_key the moment any prior
         // row already occupies that slot, permanently blocking approval.
-        const { error: insertErr } = await supabase.from('worker_assignments').upsert(
-          days.map(date => ({ worker_id: req.worker_id, date, shift: 'morning', type: req.leave_type, site_id: null, notes: req.reason || null })),
-          { onConflict: 'worker_id,date,shift' }
-        )
+        // full_day blocks BOTH shift rows -- previously this hardcoded
+        // 'morning' only, so a full-day approved leave never blocked the
+        // afternoon slot and the worker could still get double-booked for
+        // an afternoon site assignment.
+        const shiftsToBlock = req.shift === 'full_day' ? ['morning', 'evening'] : [req.shift]
+        const rows = days.flatMap(date => shiftsToBlock.map(shift => (
+          { worker_id: req.worker_id, date, shift, type: req.leave_type, site_id: null, notes: req.reason || null }
+        )))
+        const { error: insertErr } = await supabase.from('worker_assignments').upsert(rows, { onConflict: 'worker_id,date,shift' })
         if (insertErr) throw insertErr
       }
       const { error } = await supabase.from('leave_requests').update({ status, reviewed_by: user?.email, reviewed_at: new Date().toISOString() }).eq('id', req.id)
       if (error) throw error
+      // Best-effort worker confirmation -- never blocks the approval/rejection
+      // itself on a push failure.
+      supabase.functions.invoke('leave-notify', { body: { leaveRequestId: req.id, decision: status } }).catch(() => {})
       await fetchRequests()
     } catch (e) {
       alert('Error: ' + e.message)
@@ -1136,6 +1144,7 @@ export default function HR() {
                         <th>ช่าง</th>
                         <th>ประเภท</th>
                         <th>วันที่</th>
+                        <th>ช่วงเวลา</th>
                         <th>เหตุผล</th>
                         <th>สถานะ</th>
                         <th></th>
@@ -1147,6 +1156,7 @@ export default function HR() {
                           <td style={{ fontWeight: 600 }}>{r.workers?.nickname || r.workers?.name}</td>
                           <td>{r.leave_type === 'leave_sick' ? '🤒 ลาป่วย' : '🏖️ ลากิจ'}</td>
                           <td>{r.date_from === r.date_to ? r.date_from : `${r.date_from} — ${r.date_to}`}</td>
+                          <td>{r.shift === 'morning' ? 'ช่วงเช้า' : r.shift === 'evening' ? 'ช่วงบ่าย' : 'เต็มวัน'}</td>
                           <td style={{ color: 'var(--text3)' }}>{r.reason || '-'}</td>
                           <td>
                             {r.status === 'pending' && <span className="badge" style={{ background: 'rgba(255,193,7,0.2)', color: '#c98a00' }}>⏳ รออนุมัติ</span>}
@@ -1164,7 +1174,7 @@ export default function HR() {
                         </tr>
                       ))}
                       {!leaveRequests.length && (
-                        <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีคำขอลา</td></tr>
+                        <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีคำขอลา</td></tr>
                       )}
                     </tbody>
                   </table>
