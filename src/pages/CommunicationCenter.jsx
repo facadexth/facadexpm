@@ -15,6 +15,7 @@ import {
   SCHEDULE_COMMAND_KEYS, SCHEDULE_COMMAND_DEFAULTS, FIXED_COMMAND_KEYS, FIXED_COMMAND_LABELS, FIXED_COMMAND_PHRASES,
   resolveEnabled, resolveEffectivePhrases, validateCustomPhrase,
 } from '../lib/lineCommandSettings.js'
+import { PLATFORM_BOT_BASIC_ID, PLATFORM_BOT_NAME } from '../lib/platformLineBot.js'
 
 const SCHEDULE_COMMAND_DESCRIPTIONS = {
   today_job: 'แชทส่วนตัว: งานของตัวเอง + ปุ่มลัดตามสถานะ (เช็คอิน/เช็คเอาท์/งานเสร็จ) · กลุ่ม: งานของทั้งทีมวันนี้ แบ่งตามไซต์',
@@ -79,11 +80,13 @@ export default function CommunicationCenter() {
     }
   }
 
-  // ---- Channel connection ----
+  // ---- Channel connection -- every tenant now connects to the ONE
+  // shared platform LINE bot (PLATFORM_BOT_BASIC_ID) instead of
+  // providing its own Channel ID/Secret/Access Token/Basic ID. The only
+  // per-tenant state left here is whether the crew group has claimed
+  // itself via the 6-digit group_link_code flow below.
   const [lineSettings, setLineSettings] = useState(null)
   const [loadingSettings, setLoadingSettings] = useState(true)
-  const [connForm, setConnForm] = useState({ channel_id: '', channel_secret: '', channel_access_token: '', crew_group_id: '', basic_id: '' })
-  const [savingConnection, setSavingConnection] = useState(false)
 
   const fetchLineSettings = async () => {
     if (!tenant?.id) return
@@ -93,73 +96,20 @@ export default function CommunicationCenter() {
     setLoadingSettings(false)
   }
   useEffect(() => { fetchLineSettings() }, [tenant?.id])
-  useEffect(() => {
-    setConnForm({
-      channel_id: lineSettings?.channel_id || '',
-      channel_secret: '',
-      channel_access_token: '',
-      crew_group_id: lineSettings?.crew_group_id || '',
-      basic_id: lineSettings?.basic_id || '',
-    })
-  }, [lineSettings])
-  const setConn = (k, v) => setConnForm(f => ({ ...f, [k]: v }))
 
-  // Tests whatever Group ID is currently TYPED (not just the saved
-  // value) against LINE's own "get group chat summary" API -- read-only,
-  // no message sent, no push quota spent. Confirms both that the ID is
-  // valid AND that the bot is still actually a member of that group.
-  const [testingGroup, setTestingGroup] = useState(false)
-  const [groupTestResult, setGroupTestResult] = useState(null)
-  const handleTestGroupId = async () => {
-    setTestingGroup(true)
-    setGroupTestResult(null)
+  const [groupClaimCode, setGroupClaimCode] = useState(null)
+  const [generatingGroupCode, setGeneratingGroupCode] = useState(false)
+  const handleGenerateGroupCode = async () => {
+    setGeneratingGroupCode(true)
     try {
-      const { data, error } = await supabase.functions.invoke('line-test-group', { body: { group_id: connForm.crew_group_id } })
+      const code = generateLinkCode()
+      const { error } = await supabase.from('line_settings').update({ group_link_code: code }).eq('tenant_id', tenant.id)
       if (error) throw error
-      setGroupTestResult(data)
-    } catch (e) {
-      setGroupTestResult({ ok: false, error: e.message })
-    } finally {
-      setTestingGroup(false)
-    }
-  }
-
-  const handleSaveConnection = async (e) => {
-    e.preventDefault()
-    if (!lineSettings && (!connForm.channel_id || !connForm.channel_secret || !connForm.channel_access_token)) {
-      alert('กรุณากรอก Channel ID, Channel Secret และ Channel Access Token ให้ครบ (จำเป็นสำหรับการเชื่อมต่อครั้งแรก)')
-      return
-    }
-    setSavingConnection(true)
-    try {
-      if (!lineSettings) {
-        const { error } = await supabase.from('line_settings').insert({
-          tenant_id: tenant.id,
-          channel_id: connForm.channel_id,
-          channel_secret: connForm.channel_secret,
-          channel_access_token: connForm.channel_access_token,
-          crew_group_id: connForm.crew_group_id || null,
-          basic_id: connForm.basic_id || null,
-        })
-        if (error) throw error
-      } else {
-        // Secret/token fields start blank every load (never echoing a
-        // stored secret back into the page) -- only overwrite what was
-        // actually re-typed, so leaving them blank keeps the existing
-        // value instead of wiping it.
-        const payload = { crew_group_id: connForm.crew_group_id || null, basic_id: connForm.basic_id || null, updated_at: new Date().toISOString() }
-        if (connForm.channel_id) payload.channel_id = connForm.channel_id
-        if (connForm.channel_secret) payload.channel_secret = connForm.channel_secret
-        if (connForm.channel_access_token) payload.channel_access_token = connForm.channel_access_token
-        const { error } = await supabase.from('line_settings').update(payload).eq('tenant_id', tenant.id)
-        if (error) throw error
-      }
-      alert('✅ บันทึกการเชื่อมต่อแล้ว')
-      fetchLineSettings()
+      setGroupClaimCode(code)
     } catch (e) {
       alert('Error: ' + e.message)
     } finally {
-      setSavingConnection(false)
+      setGeneratingGroupCode(false)
     }
   }
 
@@ -210,7 +160,10 @@ export default function CommunicationCenter() {
     }
   }
 
-  const basicId = lineSettings?.basic_id
+  // basic_id is now a shared platform constant, not a per-tenant value
+  // (see src/lib/platformLineBot.js) -- every tenant's worker-link and
+  // own-link URLs point at the same bot.
+  const basicId = PLATFORM_BOT_BASIC_ID
   const linkUrl = (worker) =>
     basicId && worker?.line_link_code ? `https://line.me/R/oaMessage/@${basicId}/?${worker.line_link_code}` : null
 
@@ -266,63 +219,6 @@ export default function CommunicationCenter() {
     } finally {
       setResolvingId(null)
       setDismissSender(null)
-    }
-  }
-
-  // ---- Unrecognized groups -- every message from a group that isn't
-  // the configured crew_group_id gets captured here by line-webhook
-  // (see 2026-09-27-04-line-unrecognized-groups.sql) so switching to a
-  // new/different group chat has somewhere to actually find its ID,
-  // instead of the "Crew Group ID" field's placeholder claim being
-  // false. "ใช้กลุ่มนี้" writes straight into line_settings.crew_group_id.
-  const [unrecognizedGroups, setUnrecognizedGroups] = useState([])
-  const [loadingGroups, setLoadingGroups] = useState(true)
-  const [groupActionId, setGroupActionId] = useState(null)
-  const [dismissGroup, setDismissGroup] = useState(null)
-  const [useGroupTarget, setUseGroupTarget] = useState(null)
-
-  const fetchUnrecognizedGroups = async () => {
-    setLoadingGroups(true)
-    const { data, error } = await supabase
-      .from('line_unrecognized_groups')
-      .select('*')
-      .order('last_seen_at', { ascending: false })
-    if (!error) setUnrecognizedGroups(data || [])
-    setLoadingGroups(false)
-  }
-  useEffect(() => { fetchUnrecognizedGroups() }, [])
-
-  const handleUseGroup = async () => {
-    if (!useGroupTarget) return
-    setGroupActionId(useGroupTarget.id)
-    try {
-      const { error: e1 } = await supabase.from('line_settings').update({ crew_group_id: useGroupTarget.group_id, updated_at: new Date().toISOString() }).eq('tenant_id', tenant.id)
-      if (e1) throw e1
-      const { error: e2 } = await supabase.from('line_unrecognized_groups').delete().eq('id', useGroupTarget.id)
-      if (e2) throw e2
-      setUnrecognizedGroups(list => list.filter(g => g.id !== useGroupTarget.id))
-      fetchLineSettings()
-      alert('✅ ตั้งเป็นกลุ่มทีมงานแล้ว')
-    } catch (e) {
-      alert('Error: ' + e.message)
-    } finally {
-      setGroupActionId(null)
-      setUseGroupTarget(null)
-    }
-  }
-
-  const handleDismissGroup = async () => {
-    if (!dismissGroup) return
-    setGroupActionId(dismissGroup.id)
-    try {
-      const { error } = await supabase.from('line_unrecognized_groups').delete().eq('id', dismissGroup.id)
-      if (error) throw error
-      setUnrecognizedGroups(list => list.filter(g => g.id !== dismissGroup.id))
-    } catch (e) {
-      alert('Error: ' + e.message)
-    } finally {
-      setGroupActionId(null)
-      setDismissGroup(null)
     }
   }
 
@@ -602,56 +498,40 @@ export default function CommunicationCenter() {
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ padding: 16, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
           <div style={{ fontWeight: 700 }}>📡 การเชื่อมต่อ LINE Official Account</div>
-          {!loadingSettings && statusBadge(!!lineSettings?.bot_user_id, '✅ เชื่อมต่อแล้ว', '❌ ยังไม่เชื่อมต่อ')}
+          {!loadingSettings && statusBadge(!!lineSettings?.crew_group_id, '✅ เชื่อมต่อแล้ว', '❌ ยังไม่เชื่อมต่อ')}
         </div>
         {loadingSettings ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
         ) : (
-          <form onSubmit={handleSaveConnection} style={{ padding: 16, display: 'grid', gap: 12, maxWidth: 480 }}>
-            <div>
-              <label className="label">Channel ID {!lineSettings && '★'}</label>
-              <input className="input" value={connForm.channel_id} onChange={e => setConn('channel_id', e.target.value)} placeholder="เช่น 2011669659" />
+          <>
+            <div style={{ padding: 16 }}>
+              <div style={{ fontSize: 12.5, color: 'var(--text3)', marginBottom: 12 }}>
+                เพิ่มเพื่อนบอท <b>{PLATFORM_BOT_NAME}</b> ก่อน แล้วเพิ่มเข้ากลุ่มทีมงานของคุณ
+              </div>
+              <a className="btn btn-ghost" href={`https://line.me/R/ti/p/@${PLATFORM_BOT_BASIC_ID}`} target="_blank" rel="noreferrer">
+                ➕ เพิ่มเพื่อน {PLATFORM_BOT_NAME}
+              </a>
             </div>
-            <div>
-              <label className="label">Channel Secret {!lineSettings && '★'}</label>
-              <input className="input" type="password" value={connForm.channel_secret} onChange={e => setConn('channel_secret', e.target.value)}
-                placeholder={lineSettings ? '•••• (ตั้งไว้แล้ว — เว้นว่างไว้ถ้าไม่เปลี่ยน)' : 'วาง Channel Secret'} />
-            </div>
-            <div>
-              <label className="label">Channel Access Token {!lineSettings && '★'}</label>
-              <input className="input" type="password" value={connForm.channel_access_token} onChange={e => setConn('channel_access_token', e.target.value)}
-                placeholder={lineSettings ? '•••• (ตั้งไว้แล้ว — เว้นว่างไว้ถ้าไม่เปลี่ยน)' : 'วาง Channel Access Token'} />
-            </div>
-            <div>
-              <label className="label">Basic ID (@handle)</label>
-              <input className="input" value={connForm.basic_id} onChange={e => setConn('basic_id', e.target.value)} placeholder="เช่น 302yljzw (ไม่ต้องใส่ @)" />
-              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>ใช้สร้างลิงก์เชื่อมต่อให้ทีมงานด้านล่าง — ดูได้จาก LINE Official Account Manager</div>
-            </div>
-            <div>
-              <label className="label">Crew Group ID</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input className="input" value={connForm.crew_group_id} onChange={e => { setConn('crew_group_id', e.target.value); setGroupTestResult(null) }} placeholder="Cxxxxxxxx... (จับได้จากข้อความจริงในกลุ่ม)" />
-                <button type="button" className="btn btn-ghost" disabled={testingGroup || !connForm.crew_group_id} onClick={handleTestGroupId}>
-                  {testingGroup ? '⏳...' : 'ทดสอบ'}
+            <div style={{ padding: '0 16px 16px' }}>
+              <div style={{ marginTop: 14 }}>
+                <label className="label">กลุ่มทีมงาน</label>
+                {lineSettings?.crew_group_id ? (
+                  <div style={{ fontSize: 12.5, color: 'var(--green)' }}>✅ ตั้งค่าแล้ว</div>
+                ) : (
+                  <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>ยังไม่ได้ตั้งค่า</div>
+                )}
+                <button type="button" className="btn btn-ghost btn-sm" disabled={generatingGroupCode} onClick={handleGenerateGroupCode} style={{ marginTop: 6 }}>
+                  {generatingGroupCode ? '⏳...' : lineSettings?.crew_group_id ? '🔄 เปลี่ยนกลุ่มทีมงาน' : '➕ เพิ่มกลุ่มทีมงาน'}
                 </button>
-              </div>
-              <div style={{ fontSize: 11, marginTop: 4 }}>
-                {groupTestResult?.ok && <span style={{ color: 'var(--green)' }}>✅ กลุ่ม: {groupTestResult.groupName}</span>}
-                {groupTestResult && !groupTestResult.ok && <span style={{ color: 'var(--red)' }}>❌ {groupTestResult.error}</span>}
-                {!groupTestResult && <span style={{ color: 'var(--text3)' }}>กด "ทดสอบ" เพื่อเช็คว่าบอทยังอยู่ในกลุ่มนี้จริง (ไม่ส่งข้อความ ไม่เสียโควต้า)</span>}
+                {groupClaimCode && (
+                  <div style={{ fontSize: 12, marginTop: 8, padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 8 }}>
+                    เพิ่มบอทเข้ากลุ่มของคุณ แล้วพิมพ์รหัสนี้ในกลุ่ม:
+                    <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 16, letterSpacing: 2, marginTop: 4 }}>{groupClaimCode}</div>
+                  </div>
+                )}
               </div>
             </div>
-            {!lineSettings?.bot_user_id && lineSettings && (
-              <div className="alert alert-warning" style={{ fontSize: 12 }}>
-                ⚠️ ยังไม่มี Bot User ID — บอทจะไม่ตอบข้อความจนกว่าผู้ดูแลระบบจะตั้งค่านี้ให้ (ดึงจาก LINE Get Bot Info API)
-              </div>
-            )}
-            <div>
-              <button type="submit" className="btn btn-primary" disabled={savingConnection}>
-                {savingConnection ? '⏳...' : '✅ บันทึก'}
-              </button>
-            </div>
-          </form>
+          </>
         )}
       </div>
 
@@ -761,47 +641,6 @@ export default function CommunicationCenter() {
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button className="btn btn-sm btn-primary" disabled={resolvingId === s.id} onClick={() => handleResolveSender(s)}>เชื่อมต่อ</button>
                       <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} disabled={resolvingId === s.id} onClick={() => setDismissSender(s)}>ลบ</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* ---- Unrecognized groups ---- */}
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>
-          👥 กลุ่มไลน์ที่ยังไม่ตั้งเป็นกลุ่มทีมงาน {unrecognizedGroups.length > 0 && `(${unrecognizedGroups.length})`}
-        </div>
-        <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text3)', borderBottom: '1px solid var(--border)' }}>
-          เพิ่มบอทเข้ากลุ่มใหม่แล้วพิมพ์ข้อความอะไรก็ได้ในกลุ่มนั้น — ID กลุ่มจะโผล่ที่นี่ให้กดตั้งเป็นกลุ่มทีมงานได้เลย
-        </div>
-        {loadingGroups ? (
-          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
-        ) : !unrecognizedGroups.length ? (
-          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>ไม่มีรายการ — ยังไม่มีข้อความจากกลุ่มอื่นที่ไม่รู้จัก</div>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Group ID</th>
-                  <th>ข้อความล่าสุด</th>
-                  <th>พบล่าสุด</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {unrecognizedGroups.map(g => (
-                  <tr key={g.id}>
-                    <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{g.group_id}</td>
-                    <td style={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.sample_text || '-'}</td>
-                    <td style={{ fontSize: 12, color: 'var(--text3)' }}>{new Date(g.last_seen_at).toLocaleString('th-TH')}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn btn-sm btn-primary" disabled={groupActionId === g.id} onClick={() => setUseGroupTarget(g)}>ใช้กลุ่มนี้</button>
-                      <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} disabled={groupActionId === g.id} onClick={() => setDismissGroup(g)}>ลบ</button>
                     </td>
                   </tr>
                 ))}
@@ -979,29 +818,6 @@ export default function CommunicationCenter() {
         />
       )}
 
-      {dismissGroup && (
-        <ConfirmDialog
-          title="ลบรายการ"
-          message="ลบกลุ่มนี้ออกจากรายการ? ใช้เมื่อไม่ใช่กลุ่มที่ต้องการ (เช่น กลุ่มทดสอบหรือกลุ่มอื่นที่ไม่เกี่ยวข้อง)"
-          onConfirm={handleDismissGroup}
-          onCancel={() => setDismissGroup(null)}
-        />
-      )}
-
-      {useGroupTarget && (
-        <ConfirmDialog
-          title="ตั้งกลุ่มนี้เป็นกลุ่มทีมงาน"
-          message={
-            <>
-              <div style={{ fontFamily: 'monospace', fontSize: 12.5 }}>{useGroupTarget.group_id}</div>
-              <div style={{ margin: '8px 0' }}>ข้อความล่าสุด: "{useGroupTarget.sample_text || '-'}"</div>
-              <div>ระบบจะแจ้งงานประจำวันและข้อความอัตโนมัติอื่นๆ เข้ากลุ่มนี้แทนกลุ่มเดิม</div>
-            </>
-          }
-          onConfirm={handleUseGroup}
-          onCancel={() => setUseGroupTarget(null)}
-        />
-      )}
     </div>
   )
 }
