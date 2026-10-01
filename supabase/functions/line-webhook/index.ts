@@ -346,12 +346,30 @@ async function resolveFallbackSite(tenantId: string): Promise<{ id: string; name
 // the exact same storage bucket/path convention and line_site_photos
 // insert shape as handleSitePhotoAdd, just without that flow's
 // line_pending_actions photo-count tracking (no "เสร็จแล้ว" step here --
-// every image files individually and immediately).
+// every image still files individually and immediately).
+//
+// Reply batching (flagged live 2026-10-01: a 10-photo multi-select send
+// from camera roll buried the group in 10 separate confirmations).
+// LINE typically delivers a multi-select send as several image events
+// in ONE webhook payload -- isLastInBatch/batchCount (computed by the
+// caller from that single payload's events, see the pre-scan right
+// before the main event loop) lets every photo in that payload still
+// file individually and immediately, but only the LAST one of a
+// worker's batch within THIS payload actually replies, with the real
+// count baked in. For the rarer case where LINE splits one human burst
+// across two back-to-back payloads, a short debounce check (was this
+// worker's immediately-prior photo saved within BURST_WINDOW_SECONDS?)
+// suppresses the second payload's reply too, erring toward fewer
+// messages over an exact count when a burst spans a payload boundary.
+const BURST_WINDOW_SECONDS = 8
+
 async function handleGroupPhotoAutoFile(
   worker: { id: string },
   settings: { tenant_id: string; channel_access_token: string },
   replyToken: string,
   messageId: string,
+  isLastInBatch: boolean,
+  batchCount: number,
 ) {
   const site = (await resolveTodaysSite(worker.id, settings.tenant_id)) ?? (await resolveFallbackSite(settings.tenant_id))
   if (!site) return
@@ -372,7 +390,21 @@ async function handleGroupPhotoAutoFile(
     console.error('group photo line_site_photos insert failed', insertError)
     return
   }
-  await sendLineReply(settings.channel_access_token, replyToken, `📷 บันทึกรูปแล้ว — ${site.name}`)
+  if (!isLastInBatch) return // more of this worker's batch still coming later in this same payload
+
+  // Cross-payload debounce: the row just inserted above is always the
+  // most recent, so the SECOND-most-recent (range(1,1)) is this
+  // worker's previous photo, if any.
+  const { data: priorPhotos } = await admin.from('line_site_photos')
+    .select('created_at')
+    .eq('worker_id', worker.id)
+    .order('created_at', { ascending: false })
+    .range(1, 1)
+  const priorAt = priorPhotos?.[0]?.created_at ? new Date(priorPhotos[0].created_at as string).getTime() : null
+  if (priorAt && Date.now() - priorAt < BURST_WINDOW_SECONDS * 1000) return // continuing a burst that already got its reply
+
+  const countLabel = batchCount > 1 ? ` ${batchCount} รูป` : ''
+  await sendLineReply(settings.channel_access_token, replyToken, `📷 บันทึกรูปแล้ว${countLabel} — ${site.name}`)
 }
 
 const DOW_TH_SHORT = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
@@ -1031,6 +1063,20 @@ Deno.serve(async (req) => {
   }
 
   const events = (payload.events as Array<Record<string, any>>) ?? []
+
+  // Pre-scan for handleGroupPhotoAutoFile's reply-batching (see its own
+  // comment): how many image events does THIS payload hold per sender,
+  // so the per-event loop below can tell which one is the last of a
+  // worker's batch and reply with an accurate count instead of once per
+  // photo.
+  const imageEventsPerSender = new Map<string, number>()
+  for (const e of events) {
+    if (e.type === 'message' && e.message?.type === 'image' && e.source?.userId) {
+      imageEventsPerSender.set(e.source.userId, (imageEventsPerSender.get(e.source.userId) ?? 0) + 1)
+    }
+  }
+  const imageEventsSeenPerSender = new Map<string, number>()
+
   for (const event of events) {
     if (event.type !== 'message') continue
     const msgType = event.message?.type
@@ -1272,7 +1318,12 @@ Deno.serve(async (req) => {
     // same scoping as every other worker-only crew action.
     if (msgType === 'image') {
       const { worker } = await resolveWorker(lineUserId, settings)
-      if (worker) await handleGroupPhotoAutoFile(worker, settings, event.replyToken, messageId)
+      if (worker) {
+        const batchCount = imageEventsPerSender.get(lineUserId) ?? 1
+        const seenSoFar = (imageEventsSeenPerSender.get(lineUserId) ?? 0) + 1
+        imageEventsSeenPerSender.set(lineUserId, seenSoFar)
+        await handleGroupPhotoAutoFile(worker, settings, event.replyToken, messageId, seenSoFar === batchCount, batchCount)
+      }
       continue
     }
 
