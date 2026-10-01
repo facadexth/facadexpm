@@ -8,3 +8,5 @@ facadex-deploy/
 .superpowers/
 .claude/worktrees/
 supabase/.temp/
+supabase/region-migration/tmp/
+supabase/region-migration/*-dump.sql
