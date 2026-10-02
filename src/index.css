@@ -424,6 +424,19 @@ th.sortable:hover { color: var(--accent); }
 .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text2); }
 .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
 
+/* Settings page side-nav -- lets a card-heavy Settings page switch between
+   one section at a time instead of one long scroll (src/pages/Settings.jsx) */
+.settings-layout { display: flex; gap: 24px; align-items: flex-start; }
+.settings-nav { width: 200px; flex-shrink: 0; position: sticky; top: 20px; display: flex; flex-direction: column; gap: 2px; }
+.settings-nav-btn {
+  display: block; width: 100%; text-align: left; padding: 10px 12px;
+  border-radius: 8px; border: none; background: transparent; color: var(--text2);
+  font-size: 13px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.settings-nav-btn:hover { background: var(--bg3); color: var(--text); }
+.settings-nav-btn.active { background: rgba(var(--accent-rgb), 0.14); color: var(--accent); font-weight: 700; }
+.settings-content { flex: 1; min-width: 0; }
+
 /* Tablet range (iPad portrait/landscape and similar) -- tables with many
    columns (Sites: 11, Expenses/Assign: 10) genuinely don't fit an iPad's
    width with the desktop cell padding; reclaim horizontal space from
@@ -455,6 +468,9 @@ th.sortable:hover { color: var(--accent); }
   .header-subtitle, .header-date { display: none; }
   .header-email { max-width: 140px; }
   .app-main { padding: 12px !important; }
+  .settings-layout { flex-direction: column; }
+  .settings-nav { width: 100%; position: static; flex-direction: row; overflow-x: auto; gap: 6px; padding-bottom: 4px; }
+  .settings-nav-btn { flex-shrink: 0; white-space: nowrap; }
 }
 @media (max-width: 420px) {
   .header-email { display: none; }
