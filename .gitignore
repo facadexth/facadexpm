@@ -15,3 +15,6 @@ supabase/region-migration/*.sql
 !supabase/region-migration/enable-extensions-chang.sql
 !supabase/region-migration/generate-storage-policies.sql
 !supabase/region-migration/verify-row-counts.sql
+
+test-results/
+playwright-report/

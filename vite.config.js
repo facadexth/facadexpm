@@ -61,6 +61,6 @@ export default defineConfig({
     // Vitest's default excludes don't cover .claude, so without this
     // `npm test` from the main checkout also runs every other
     // worktree's tests against this project's node_modules.
-    exclude: ['**/node_modules/**', '**/dist/**', '**/.claude/**'],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/.claude/**', 'e2e/**'],
   },
 })
