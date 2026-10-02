@@ -23,12 +23,14 @@ fix() { # VAR ref region
   for style in aws-0 aws-1; do
     local host="$style-$region.pooler.supabase.com"
     local cand="postgresql://postgres.$ref:$pw@$host:5432/postgres"
-    if psqlc "$cand" -At -c "select 1" >/dev/null 2>&1; then
+    local err
+    if err=$(psqlc "$cand" -At -c "select 1" 2>&1 >/dev/null); then
       update_env "$var" "$cand"
       echo "$var: OK via $host"
       return 0
     fi
-    echo "$var: $host did not work"
+    # psql's own error text names the host and user, never the password.
+    echo "$var: $host did not work -> $(printf '%s' "$err" | tail -n 1 | cut -c1-200)"
   done
   echo "$var: no pooler host worked (wrong password, or a different region?)"
   return 1
