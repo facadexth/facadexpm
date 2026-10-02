@@ -21,3 +21,4 @@ playwright-report/
 
 .env.cutover
 supabase/region-migration/out/
+.env.cutover.bak
