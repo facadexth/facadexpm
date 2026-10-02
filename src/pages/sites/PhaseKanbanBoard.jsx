@@ -19,7 +19,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../../components/Modal.jsx'
-import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks } from '../../hooks/useSupabase.js'
+import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks, useSites } from '../../hooks/useSupabase.js'
 import { STATUS_COLOR } from './ganttTimeline.js'
 import { groupSubtasksByParent, isLeaf } from './subtaskCalc.js'
 import teamLeaderBadge from '../../assets/team-leader-badge.png'
@@ -45,6 +45,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const { data: allTasks, refetch } = usePhaseTasks()
   const { data: workers } = useWorkers()
   const { data: allSubtasks } = useSubtasks()
+  const { data: allSites } = useSites()
   const { tenant } = useTenant()
 
   // เชนของ id ที่เลือกไว้ต่อชั้น: selectedChain[0] = phase (หรือ ALL_PHASES),
@@ -67,6 +68,10 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const [viewingPhotosTaskName, setViewingPhotosTaskName] = useState('')
   const [viewingPhotos, setViewingPhotos] = useState([])
   const [loadingViewPhotos, setLoadingViewPhotos] = useState(false)
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState(() => new Set())
+  const [showSwitchSitePicker, setShowSwitchSitePicker] = useState(false)
+  const [confirmBulkDeletePhotos, setConfirmBulkDeletePhotos] = useState(false)
+  const [bulkActing, setBulkActing] = useState(false)
 
   const [unassignedPhotos, setUnassignedPhotos] = useState([])
   const [loadingPhotos, setLoadingPhotos] = useState(true)
@@ -144,6 +149,8 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     e.stopPropagation() // ไม่ให้ trigger onClick ของการ์ด (เปิด edit panel)
     setViewingPhotosTaskId(task.id)
     setViewingPhotosTaskName(task.name)
+    setSelectedPhotoIds(new Set())
+    setShowSwitchSitePicker(false)
     setLoadingViewPhotos(true)
     const { data } = await supabase.from('line_site_photos').select('id, photo_path, workers(name, nickname), created_at')
       .eq('task_id', task.id).order('created_at')
@@ -156,6 +163,68 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     }
     setViewingPhotos(rows.map((p) => ({ ...p, url: urlByPath[p.photo_path] })))
     setLoadingViewPhotos(false)
+  }
+
+  const handleTogglePhotoSelected = (photoId) => {
+    setSelectedPhotoIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(photoId)) next.delete(photoId)
+      else next.add(photoId)
+      return next
+    })
+  }
+
+  // Bulk switch-site: moves every selected photo to a different site and
+  // clears task_id (the destination site's cards are different from this
+  // one's -- the photo becomes "unassigned" there, same as a fresh LINE
+  // upload, ready to be dragged onto a card via that site's own tray).
+  // Single batched UPDATE (.in), not a loop -- same convention as the
+  // single-photo handleAssignPhoto above re: alert()-on-failure, no
+  // optimistic UI update before the request settles.
+  const handleBulkSwitchSite = async (newSiteId) => {
+    const ids = Array.from(selectedPhotoIds)
+    if (!ids.length) return
+    setBulkActing(true)
+    try {
+      const { error } = await supabase.from('line_site_photos')
+        .update({ site_id: newSiteId, task_id: null }).in('id', ids)
+      if (error) throw error
+      setShowSwitchSitePicker(false)
+      setSelectedPhotoIds(new Set())
+      await handleViewPhotos({ id: viewingPhotosTaskId, name: viewingPhotosTaskName }, { stopPropagation: () => {} })
+      await refreshPhotos()
+    } catch (e) {
+      alert('ย้ายไซต์ไม่สำเร็จ: ' + e.message)
+    } finally {
+      setBulkActing(false)
+    }
+  }
+
+  // Bulk delete: storage.remove() accepts an array directly, and the
+  // table delete uses .in() -- both single batched calls, not per-photo
+  // loops. Storage files are removed first; if that fails we stop before
+  // touching the DB rows (never want a live row with no photo behind it).
+  const doBulkDeletePhotos = async () => {
+    const ids = Array.from(selectedPhotoIds)
+    if (!ids.length) return
+    setConfirmBulkDeletePhotos(false)
+    setBulkActing(true)
+    try {
+      const paths = viewingPhotos.filter((p) => selectedPhotoIds.has(p.id)).map((p) => p.photo_path)
+      if (paths.length) {
+        const { error: storageError } = await supabase.storage.from('line-site-photos').remove(paths)
+        if (storageError) throw storageError
+      }
+      const { error } = await supabase.from('line_site_photos').delete().in('id', ids)
+      if (error) throw error
+      setSelectedPhotoIds(new Set())
+      setViewingPhotos((prev) => prev.filter((p) => !selectedPhotoIds.has(p.id)))
+      await refreshPhotos()
+    } catch (e) {
+      alert('ลบรูปไม่สำเร็จ: ' + e.message)
+    } finally {
+      setBulkActing(false)
+    }
   }
 
   const handleBulkUpload = async (e) => {
@@ -540,9 +609,51 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
         />
       )}
 
+      {confirmBulkDeletePhotos && (
+        <ConfirmDialog
+          title="ลบรูปภาพ"
+          message={`ลบรูป ${selectedPhotoIds.size} รูปที่เลือกไว้? การลบนี้ย้อนกลับไม่ได้`}
+          danger
+          onCancel={() => setConfirmBulkDeletePhotos(false)}
+          onConfirm={doBulkDeletePhotos}
+        />
+      )}
+
       {viewingPhotosTaskId && (
         <Modal title={`📷 รูปหลักฐานงานเสร็จ — ${viewingPhotosTaskName}`} onClose={() => setViewingPhotosTaskId(null)} maxWidth={520}>
           <div className="modal-body">
+            {canEdit && selectedPhotoIds.size > 0 && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 10px',
+                background: 'var(--bg2)', borderRadius: 8, border: '1px solid var(--border)', flexWrap: 'wrap',
+              }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>เลือกไว้ {selectedPhotoIds.size} รูป</span>
+                {showSwitchSitePicker ? (
+                  <select
+                    autoFocus
+                    disabled={bulkActing}
+                    defaultValue=""
+                    onChange={(e) => { if (e.target.value) handleBulkSwitchSite(e.target.value) }}
+                    style={{ fontSize: 13, padding: '4px 6px' }}
+                  >
+                    <option value="" disabled>เลือกไซต์ปลายทาง...</option>
+                    {(allSites || []).filter((s) => s.id !== site.id).map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <button type="button" className="btn-secondary" disabled={bulkActing} onClick={() => setShowSwitchSitePicker(true)} style={{ fontSize: 13 }}>
+                    📍 ย้ายไซต์
+                  </button>
+                )}
+                <button type="button" className="btn-secondary" disabled={bulkActing} onClick={() => setConfirmBulkDeletePhotos(true)} style={{ fontSize: 13, color: 'var(--red)' }}>
+                  🗑️ ลบ
+                </button>
+                <button type="button" className="btn-secondary" disabled={bulkActing} onClick={() => { setSelectedPhotoIds(new Set()); setShowSwitchSitePicker(false) }} style={{ fontSize: 13, marginLeft: 'auto' }}>
+                  ยกเลิก
+                </button>
+              </div>
+            )}
             {loadingViewPhotos ? (
               <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
             ) : !viewingPhotos.length ? (
@@ -550,16 +661,26 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
                 {viewingPhotos.map((p) => (
-                  <a key={p.id} href={p.url} target="_blank" rel="noreferrer" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
-                    {p.url ? (
-                      <img src={p.url} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
-                    ) : (
-                      <div style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--text3)' }}>โหลดรูปไม่สำเร็จ</div>
+                  <div key={p.id} style={{ position: 'relative' }}>
+                    {canEdit && (
+                      <input
+                        type="checkbox"
+                        checked={selectedPhotoIds.has(p.id)}
+                        onChange={() => handleTogglePhotoSelected(p.id)}
+                        style={{ position: 'absolute', top: 6, left: 6, width: 18, height: 18, zIndex: 1, cursor: 'pointer' }}
+                      />
                     )}
-                    <div style={{ fontSize: 10.5, marginTop: 3, color: 'var(--text3)' }}>
-                      {p.workers?.nickname || p.workers?.name || '-'} · {new Date(p.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
-                    </div>
-                  </a>
+                    <a href={p.url} target="_blank" rel="noreferrer" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
+                      {p.url ? (
+                        <img src={p.url} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+                      ) : (
+                        <div style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--text3)' }}>โหลดรูปไม่สำเร็จ</div>
+                      )}
+                      <div style={{ fontSize: 10.5, marginTop: 3, color: 'var(--text3)' }}>
+                        {p.workers?.nickname || p.workers?.name || '-'} · {new Date(p.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                      </div>
+                    </a>
+                  </div>
                 ))}
               </div>
             )}
