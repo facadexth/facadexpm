@@ -24,9 +24,17 @@ echo "== schema"
 # and default privileges FOR ROLE supabase_admin (objects here are owned by postgres on CHANG).
 sed -e '/^CREATE SCHEMA public;$/d' -e '/^ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin /d' "$OUT/public-schema.sql" | psqlc "$CHANG_DB_URL" -v ON_ERROR_STOP=1 -q
 
-echo "== data (FK checks off for this session only)"
-PGOPTIONS='-c session_replication_role=replica' psqlc "$CHANG_DB_URL" -v ON_ERROR_STOP=1 -q -f /out/public-data.sql
-PGOPTIONS='-c session_replication_role=replica' psqlc "$CHANG_DB_URL" -v ON_ERROR_STOP=1 -q -f /out/auth-data.sql
+echo "== data (auth first: public.tenants -> auth.users; FK checks off for each stream's session only)"
+# PGOPTIONS is ignored by the pooler, so the SET goes in the stream itself.
+{ echo "SET session_replication_role = replica;"; cat "$OUT/auth-data.sql"; }   | psqlc "$CHANG_DB_URL" -v ON_ERROR_STOP=1 -q
+{ echo "SET session_replication_role = replica;"; cat "$OUT/public-data.sql"; } | psqlc "$CHANG_DB_URL" -v ON_ERROR_STOP=1 -q
+
+echo "== recreate the app's triggers on auth.users (not part of a public-schema dump; created AFTER the data load so they do not fire on it)"
+psqlc "$CHANG_DB_URL" -v ON_ERROR_STOP=1 -c "
+  DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+  CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+  DROP TRIGGER IF EXISTS on_auth_user_deleted ON auth.users;
+  CREATE TRIGGER on_auth_user_deleted AFTER DELETE ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_auth_user_deleted();"
 
 echo "== rewrite hardcoded Tokyo URLs"
 # 1. notify_worker_offboarded() carries a Tokyo URL in its body.
