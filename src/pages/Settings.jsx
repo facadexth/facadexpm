@@ -49,14 +49,47 @@ const DOC_STYLE_PREVIEW_SAMPLE = {
 }
 
 function LocationForm({ initial, onSave, onCancel, loading }) {
-  const [form, setForm, clearDraft] = useDraftForm('checkin-location-form', { name: '', lat: '', lng: '', active: true, ...initial }, !initial?.id)
+  const [form, setForm, clearDraft] = useDraftForm('checkin-location-form', { name: '', lat: '', lng: '', active: true, map_url: '', ...initial }, !initial?.id)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // "ดึงพิกัดจากลิงก์" -- same extract-map-coordinates pattern as Sites.jsx,
+  // for when the device's own GPS can't resolve (e.g. POSITION_UNAVAILABLE,
+  // found live: 2026-10-02) or the admin is setting this location up
+  // remotely, not standing there. map_url is local-only form state --
+  // handleSaveLocation's payload below only ever sends name/lat/lng/active,
+  // so this never needs a checkin_locations column of its own.
+  const [extractingCoords, setExtractingCoords] = useState(false)
+  const handleExtractCoords = async () => {
+    if (!form.map_url) { alert('กรุณาวางลิงก์ Google Maps ก่อน'); return }
+    setExtractingCoords(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('extract-map-coordinates', { body: { url: form.map_url } })
+      if (error) throw error
+      if (!data?.ok) { alert(data?.error || 'หาพิกัดจากลิงก์นี้ไม่พบ'); return }
+      set('lat', String(data.lat))
+      set('lng', String(data.lng))
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setExtractingCoords(false)
+    }
+  }
+
   return (
     <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave(form) }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
         <div>
           <label className="label">ชื่อตำแหน่ง ★</label>
           <input className="input" required value={form.name} onChange={e => set('name', e.target.value)} placeholder="เช่น โรงงาน, ออฟฟิศ" />
+        </div>
+        <div>
+          <label className="label">ลิงก์ Google Maps (ถ้ามี)</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input className="input" type="url" value={form.map_url} onChange={e => set('map_url', e.target.value)} placeholder="วางลิงก์แผนที่..." />
+            <button type="button" className="btn btn-ghost" disabled={extractingCoords || !form.map_url} onClick={handleExtractCoords} style={{ whiteSpace: 'nowrap' }}>
+              {extractingCoords ? '⏳...' : '📍 ดึงพิกัดจากลิงก์'}
+            </button>
+          </div>
         </div>
         <div>
           <label className="label">พิกัด GPS (ละติจูด, ลองจิจูด) ★</label>
@@ -71,7 +104,7 @@ function LocationForm({ initial, onSave, onCancel, loading }) {
           if (!navigator.geolocation) { alert('เบราว์เซอร์นี้ไม่รองรับตำแหน่งที่ตั้ง'); return }
           navigator.geolocation.getCurrentPosition(
             pos => { set('lat', String(pos.coords.latitude)); set('lng', String(pos.coords.longitude)) },
-            err => alert('ไม่สามารถอ่านตำแหน่งได้: ' + err.message)
+            err => alert('ไม่สามารถอ่านตำแหน่งได้: ' + err.message + ' — ลองใช้ลิงก์ Google Maps แทนได้ครับ')
           )
         }}>📍 ใช้ตำแหน่งปัจจุบัน</button>
         {initial?.id && (
