@@ -1,13 +1,15 @@
 // usage: node copy-storage.mjs   (reads TOKYO_URL/CHANG_URL and service keys from the environment)
 // Reads Tokyo, writes CHANG only. Wipes CHANG's objects in each bucket first so the copy is exact.
-import { createClient } from '@supabase/supabase-js'
+import { StorageClient } from '@supabase/storage-js'
 
 const { TOKYO_URL, TOKYO_SERVICE_ROLE_KEY, CHANG_URL, CHANG_SERVICE_ROLE_KEY } = process.env
 if (!TOKYO_URL || !CHANG_URL || !TOKYO_SERVICE_ROLE_KEY || !CHANG_SERVICE_ROLE_KEY) throw new Error('missing env')
 if (!CHANG_URL.includes('kntspldhvcjeaubtqtkn') || CHANG_URL === TOKYO_URL) throw new Error('refusing: CHANG_URL is not CHANG')
 
-const tokyo = createClient(TOKYO_URL, TOKYO_SERVICE_ROLE_KEY)
-const chang = createClient(CHANG_URL, CHANG_SERVICE_ROLE_KEY)
+// Storage client only: the full supabase-js client needs a WebSocket (Realtime) that Node 20 lacks.
+const mk = (url, key) => ({ storage: new StorageClient(`${url}/storage/v1`, { apikey: key, Authorization: `Bearer ${key}` }) })
+const tokyo = mk(TOKYO_URL, TOKYO_SERVICE_ROLE_KEY)
+const chang = mk(CHANG_URL, CHANG_SERVICE_ROLE_KEY)
 
 async function listAll(client, bucket, prefix = '') {
   const out = []
