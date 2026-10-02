@@ -41,12 +41,13 @@ Respond with ONLY a JSON object, no markdown fences, no commentary, matching exa
   "document_date_guess": string or null (ISO YYYY-MM-DD, best effort from any date printed on the document),
   "reference_no_guess": string or null (invoice/document number printed on it, e.g. "IV6909/08046"),
   "line_items": [
-    { "description": string, "quantity": number, "unit": string, "unit_price": number }
+    { "description": string, "quantity": number, "unit": string, "unit_price": number, "discount_pct": number }
   ]
 }
 
 Rules:
-- unit_price is the price per single unit as printed (before any discount/VAT columns), not the line's total amount.
+- unit_price is the price per single unit AS PRINTED, before applying that row's own discount_pct (if any) and before VAT -- not the line's total amount, and not a value you've already discounted in your head.
+- discount_pct is that line's own discount percentage, read directly from a discount column/notation next to THAT row only (e.g. "5%", "ลด 5%"). Many documents discount only some rows -- read each row independently; a discount printed next to one item is never evidence that other items are also discounted. If a row has no discount printed at all, discount_pct is 0, not null.
 - Keep Thai text as printed in "unit" (e.g. "เส้น", "ชิ้น", "ชุด", "แผ่น").
 - If a field cannot be determined, use null (for header fields) rather than guessing.
 - Include every goods/materials line; skip signature lines, totals, VAT rows, and boilerplate footer text.`

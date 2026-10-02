@@ -44,11 +44,13 @@ const supplierOpts = (suppliers) => (suppliers || []).map(s => ({
 const PO_STATUSES = ['draft', 'ordered', 'received', 'cancelled']
 const PO_STATUS_LABELS = { draft: '📝 ร่าง (รอเติมข้อมูล)', ordered: '📦 สั่งแล้ว', received: '✅ รับของแล้ว', cancelled: '✕ ยกเลิก' }
 
-const EMPTY_ITEM = { description: '', quantity: '1', unit: '', unit_price: '', inventory_item_id: '', aluminum_profile_id: '', rod_length_m: '', glass_width_m: '', glass_height_m: '' }
+const EMPTY_ITEM = { description: '', quantity: '1', unit: '', unit_price: '', discount_pct: '0', inventory_item_id: '', aluminum_profile_id: '', rod_length_m: '', glass_width_m: '', glass_height_m: '' }
 const EMPTY_FORM = { site_id: '', supplier_id: '', category_id: '', date: '', has_vat: true, price_includes_vat: false, ordered_by: '', notes: '', items: [{ ...EMPTY_ITEM }] }
 
 function lineTotal(item) {
-  return (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)
+  const gross = (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)
+  const discountPct = parseFloat(item.discount_pct) || 0
+  return gross * (1 - discountPct / 100)
 }
 
 const VAT_RATE = 0.07
@@ -99,7 +101,7 @@ function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, 
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((it, i) => (
           <div key={i} style={{ display: 'grid', gap: 4 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 150px 100px 32px', gap: 6, alignItems: 'center' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 150px 100px 70px 32px', gap: 6, alignItems: 'center' }}>
               <input className="input input-sm" placeholder="รายละเอียดสินค้า" required
                 value={it.description} onChange={e => set(i, 'description', e.target.value)} />
               <input className="input input-sm" type="number" min="0" step="0.01" placeholder="จำนวน"
@@ -107,6 +109,8 @@ function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, 
               <UnitSelect value={it.unit} onChange={v => set(i, 'unit', v)} units={units} onUnitAdded={onUnitAdded} />
               <input className="input input-sm" type="number" min="0" step="0.01" placeholder="ราคา/หน่วย"
                 value={it.unit_price} onChange={e => set(i, 'unit_price', e.target.value)} />
+              <input className="input input-sm" type="number" min="0" max="100" step="0.01" placeholder="ลด%" title="ส่วนลดเฉพาะรายการนี้ (%)"
+                value={it.discount_pct} onChange={e => set(i, 'discount_pct', e.target.value)} />
               <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
             </div>
             <div style={{ marginLeft: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -223,7 +227,7 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
         date: document_date_guess || f.date,
         notes: reference_no_guess ? [f.notes, `อ้างอิง: ${reference_no_guess}`].filter(Boolean).join(' ') : f.notes,
         items: line_items.length
-          ? line_items.map(it => ({ ...EMPTY_ITEM, description: it.description, quantity: String(it.quantity), unit: it.unit, unit_price: String(it.unit_price) }))
+          ? line_items.map(it => ({ ...EMPTY_ITEM, description: it.description, quantity: String(it.quantity), unit: it.unit, unit_price: String(it.unit_price), discount_pct: String(it.discount_pct ?? 0) }))
           : f.items,
       }))
     } catch (err) {
@@ -446,7 +450,10 @@ function PODocumentModal({ po, tenant, onClose }) {
                     )}
                   </td>
                   <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.quantity} {it.unit || ''}</td>
-                  <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price)}</td>
+                  <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>
+                    {fmt(it.unit_price)}
+                    {it.discount_pct > 0 && <div style={{ fontSize: 10, color: '#6a6f85' }}>ลด {it.discount_pct}%</div>}
+                  </td>
                   <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.line_total)}</td>
                 </tr>
               ))}
@@ -529,7 +536,7 @@ function SwapTaxInvoiceModal({ po, onClose, onSwapped }) {
       const result = await extractPoDocument(base64, mimeType, [])
       if (!result.ok) { setScanError(result.error); return }
       const { reference_no_guess, line_items } = result.data
-      const computedTotal = line_items.reduce((sum, it) => sum + it.quantity * it.unit_price, 0)
+      const computedTotal = line_items.reduce((sum, it) => sum + it.quantity * it.unit_price * (1 - (it.discount_pct || 0) / 100), 0)
       setExtracted({ reference_no_guess, line_items, computedTotal })
     } catch (err) {
       setScanError(err.message)
@@ -550,7 +557,7 @@ function SwapTaxInvoiceModal({ po, onClose, onSwapped }) {
     setSaving(true)
     try {
       const itemsSummary = extracted.line_items
-        .map((it) => `${it.description} ${it.quantity}${it.unit ? ' ' + it.unit : ''} @ ${fmt(it.unit_price)}`)
+        .map((it) => `${it.description} ${it.quantity}${it.unit ? ' ' + it.unit : ''} @ ${fmt(it.unit_price)}${it.discount_pct > 0 ? ` (ลด ${it.discount_pct}%)` : ''}`)
         .join('; ')
       const newInvoiceNo = extracted.reference_no_guess || expense.invoice_no
       const newNotes = [expense.notes, `สลับเป็นใบกำกับภาษีจริง${extracted.reference_no_guess ? ' ' + extracted.reference_no_guess : ''}: ${itemsSummary}`]
@@ -589,7 +596,10 @@ function SwapTaxInvoiceModal({ po, onClose, onSwapped }) {
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>เลขที่ใบกำกับภาษี: {extracted.reference_no_guess || '(ไม่พบ)'}</div>
                 <div style={{ display: 'grid', gap: 4, fontSize: 12 }}>
                   {extracted.line_items.map((it, i) => (
-                    <div key={i}>{it.description} — {it.quantity} {it.unit} × {fmt(it.unit_price)} = {fmt(it.quantity * it.unit_price)}</div>
+                    <div key={i}>
+                      {it.description} — {it.quantity} {it.unit} × {fmt(it.unit_price)}
+                      {it.discount_pct > 0 ? ` (ลด ${it.discount_pct}%)` : ''} = {fmt(it.quantity * it.unit_price * (1 - (it.discount_pct || 0) / 100))}
+                    </div>
                   ))}
                   {!extracted.line_items.length && <div style={{ color: 'var(--text3)' }}>ไม่พบรายการสินค้าในเอกสาร</div>}
                 </div>
@@ -748,7 +758,8 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
         .map((it, i) => ({
           po_id: poId, description: it.description,
           quantity: parseFloat(it.quantity) || 0, unit: it.unit || null,
-          unit_price: parseFloat(it.unit_price) || 0, line_total: lineTotal(it), sort_order: i,
+          unit_price: parseFloat(it.unit_price) || 0, discount_pct: parseFloat(it.discount_pct) || 0,
+          line_total: lineTotal(it), sort_order: i,
           inventory_item_id: it.inventory_item_id || null,
           aluminum_profile_id: it.aluminum_profile_id || null,
           rod_length_m: it.rod_length_m ? parseFloat(it.rod_length_m) : null,
@@ -809,7 +820,12 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
           baseQty = factor ? convertToBaseUnit(it.quantity, factor.factor_to_base) : it.quantity
         }
 
-        let unitCostPerBase = baseQty > 0 ? (it.quantity * it.unit_price) / baseQty : it.unit_price
+        // Stock must be capitalized at the actual price paid, not the
+        // pre-discount list price -- a discounted item that goes uncounted
+        // here would overvalue that stock and inflate COGS when it's later
+        // consumed.
+        const netLinePrice = it.unit_price * (1 - (it.discount_pct || 0) / 100)
+        let unitCostPerBase = baseQty > 0 ? (it.quantity * netLinePrice) / baseQty : netLinePrice
 
         // The expense is posted ex-VAT (calcPoTotals backs VAT out of a
         // VAT-inclusive price via subtotal = total / 1.07). Stock must be
@@ -893,6 +909,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       items: (editRow.purchase_order_items?.length ? editRow.purchase_order_items : [{ ...EMPTY_ITEM }])
         .map(it => ({
           description: it.description, quantity: String(it.quantity), unit: it.unit || '', unit_price: String(it.unit_price),
+          discount_pct: String(it.discount_pct ?? 0),
           inventory_item_id: it.inventory_item_id || '',
           aluminum_profile_id: it.aluminum_profile_id || '',
           rod_length_m: it.rod_length_m != null ? String(it.rod_length_m) : '',
