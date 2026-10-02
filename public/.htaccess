@@ -3,3 +3,23 @@ RewriteEngine On
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.html [QSA,L]
+
+# Without explicit Cache-Control, this host's (and any browser's own
+# heuristic) caching can keep serving a stale sw.js/index.html after a
+# new zip is uploaded -- the PWA update banner (UpdatePrompt.jsx) then
+# compares against that stale copy and can loop/re-show "มีเวอร์ชันใหม่
+# พร้อมใช้งาน" even right after the user already updated. The build's
+# content-hashed files under /assets/ are the opposite case: their
+# filename always changes when their content does, so they're safe to
+# cache forever.
+<IfModule mod_headers.c>
+  <FilesMatch "\.(js|css|woff2?|png|jpg|jpeg|svg|webp)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  <FilesMatch "^(sw\.js|manifest\.webmanifest)$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+  </FilesMatch>
+  <FilesMatch "\.html$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+  </FilesMatch>
+</IfModule>

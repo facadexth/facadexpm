@@ -525,9 +525,54 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     }
   }
 
+  // Side-pick nav -- this page grew into ~12 cards, most OWNER-only, which
+  // made it a very long single scroll. Each entry below is gated by the
+  // exact same role/module checks the cards themselves used before this
+  // nav existed, so a WORKER (who only ever sees the password card) gets
+  // no nav at all -- there's nothing to pick between.
+  const isOwner = isAtLeast('OWNER')
+  const isAdminPlus = isAtLeast('ADMIN')
+  const hasCheque = hasModuleAccess('cheque_tracking')
+  const sections = [
+    { id: 'account', label: '👤 บัญชีผู้ใช้', show: true },
+    { id: 'plan', label: '💎 แพ็กเกจของคุณ', show: isOwner },
+    { id: 'travel', label: '🚗 ค่าเดินทางต่อไซท์', show: isOwner },
+    { id: 'cheque_reminder', label: '🏦 แจ้งเตือนเช็คใกล้ครบกำหนด', show: isOwner && hasCheque },
+    { id: 'sign_method', label: '✍️ วิธีเซ็นรับเอกสาร', show: isOwner && hasCheque },
+    { id: 'checkin_location', label: '📍 เช็คอิน/เช็คเอาท์ตำแหน่งที่ตั้ง', show: isOwner },
+    { id: 'signature', label: '🖊️ ลายเซ็นของฉัน', show: isAdminPlus },
+    { id: 'contractor_type', label: '🏗️ ประเภทผู้รับเหมา', show: isOwner },
+    { id: 'company_profile', label: '🏢 ข้อมูลบริษัท', show: isOwner },
+    { id: 'doc_style', label: '🎨 รูปแบบเอกสาร', show: isOwner },
+    { id: 'bank_accounts', label: '🏦 บัญชีธนาคาร', show: isOwner },
+    { id: 'permissions', label: '⚙️ ตั้งค่าสิทธิ์เข้าใช้งาน', show: isOwner },
+  ]
+  const visibleSections = sections.filter(s => s.show)
+  const visibleIds = visibleSections.map(s => s.id).join(',')
+  useEffect(() => {
+    if (!visibleSections.some(s => s.id === activeSection)) {
+      setActiveSection(visibleSections[0]?.id || null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleIds, activeSection])
+
   return (
     <div>
+      <div className="settings-layout">
+      {visibleSections.length > 1 && (
+        <nav className="settings-nav">
+          {visibleSections.map(s => (
+            <button key={s.id} type="button"
+              className={`settings-nav-btn${activeSection === s.id ? ' active' : ''}`}
+              onClick={() => setActiveSection(s.id)}>
+              {s.label}
+            </button>
+          ))}
+        </nav>
+      )}
+      <div className="settings-content">
       {/* ── บัญชีผู้ใช้ ── */}
+      {activeSection === 'account' && (
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>👤 บัญชีผู้ใช้</h2>
         <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
@@ -535,8 +580,9 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
         </p>
         <button className="btn btn-ghost" onClick={onOpenChangePassword}>🔑 เปลี่ยนรหัสผ่าน</button>
       </div>
+      )}
 
-      {isAtLeast('OWNER') && <>
+      {activeSection === 'plan' && isOwner && <>
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: tenant?.pending_package_id ? 8 : 0, flexWrap: 'wrap', gap: 10 }}>
           <div>
@@ -555,8 +601,10 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       </div>
 
       <PackageComparison currentPackageId={tenant?.package_id} />
+      </>}
 
       {/* ── ค่าเดินทาง ── */}
+      {activeSection === 'travel' && isOwner && (
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🚗 ค่าเดินทางต่อไซท์</h2>
         <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
@@ -573,9 +621,10 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           </button>
         </div>
       </div>
+      )}
 
       {/* ── แจ้งเตือนเช็คใกล้ครบกำหนด ── */}
-      {hasModuleAccess('cheque_tracking') && (
+      {activeSection === 'cheque_reminder' && isOwner && hasModuleAccess('cheque_tracking') && (
         <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
           <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🏦 แจ้งเตือนเช็คใกล้ครบกำหนด</h2>
           <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
@@ -595,7 +644,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       )}
 
       {/* ── วิธีเซ็นรับเอกสาร ── */}
-      {hasModuleAccess('cheque_tracking') && (
+      {activeSection === 'sign_method' && isOwner && hasModuleAccess('cheque_tracking') && (
         <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
           <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>✍️ วิธีเซ็นรับเอกสาร</h2>
           <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
@@ -617,6 +666,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       )}
 
       {/* ── เช็คอินตำแหน่งที่ตั้ง ── */}
+      {activeSection === 'checkin_location' && isOwner && <>
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>📍 เช็คอิน/เช็คเอาท์ตำแหน่งที่ตั้ง</h2>
         <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
@@ -684,7 +734,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       </>}
 
       {/* ── ลายเซ็นของฉัน -- ADMIN ขึ้นไป (WORKER เห็นแค่การ์ดรหัสผ่านด้านบน) ── */}
-      {isAtLeast('ADMIN') && <>
+      {activeSection === 'signature' && isAdminPlus && <>
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🖊️ ลายเซ็นของฉัน</h2>
         <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
@@ -707,8 +757,8 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       </div>
       </>}
 
-      {isAtLeast('OWNER') && <>
       {/* ── ประเภทผู้รับเหมา ── */}
+      {activeSection === 'contractor_type' && isOwner && (
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🏗️ ประเภทผู้รับเหมา</h2>
         <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
@@ -732,7 +782,9 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           </button>
         </div>
       </div>
+      )}
 
+      {activeSection === 'company_profile' && isOwner && (
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-header"><div className="card-title">🏢 ข้อมูลบริษัท (สำหรับใบเสนอราคา)</div></div>
         <div className="card-body" style={{ display: 'grid', gap: 12 }}>
@@ -791,7 +843,9 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           </div>
         </div>
       </div>
+      )}
 
+      {activeSection === 'doc_style' && isOwner && (
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-header"><div className="card-title">🎨 รูปแบบเอกสาร (ใบเสนอราคา/ใบแจ้งหนี้/ใบเสร็จ)</div></div>
         <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20, alignItems: 'start' }}>
@@ -958,8 +1012,10 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           </div>
         </div>
       </div>
+      )}
 
       {/* ── บัญชีธนาคาร ── */}
+      {activeSection === 'bank_accounts' && isOwner && (
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🏦 บัญชีธนาคาร</h2>
         <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
@@ -1028,7 +1084,9 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           <button type="button" className="btn btn-sm btn-ghost" onClick={() => setAddingBank(true)}>+ เพิ่มบัญชี</button>
         )}
       </div>
+      )}
 
+      {activeSection === 'permissions' && isOwner && <>
       <div style={{ marginBottom: 24 }}>
         <h2 style={{ marginBottom: 8, fontSize: 18, fontWeight: 700 }}>⚙️ ตั้งค่าสิทธิ์เข้าใช้งาน</h2>
         <p style={{ fontSize: 13, color: 'var(--text3)' }}>
@@ -1101,6 +1159,8 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
         </button>
       </div>
       </>}
+      </div>
+      </div>
 
       {/* __APP_VERSION__/__BUILD_TIME__ are injected at build time by
           vite.config.js's `define` -- there's no other build/deploy
