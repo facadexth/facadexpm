@@ -239,17 +239,31 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   // เลิกงานปกติ (ใช้ตัดสินว่าการเช็คเอาท์หลังจากนี้นับเป็น OT หรือไม่)
   const { data: checkinRadiusVal, refetch: refetchCheckinRadius } = useAppSetting('checkin_radius_m', '200')
   const { data: shiftEndVal, refetch: refetchShiftEnd } = useAppSetting('regular_shift_end_time', '17:00')
-  // ตำแหน่งโรงงาน -- เมื่อวันนี้ของช่างเป็นงานประเภท "โรงงาน" (ผลิต/ประกอบใน
-  // โรงงาน ไม่ใช่หน้างานลูกค้า) การเช็คอิน/เช็คเอาท์ผ่านไลน์จะเทียบระยะกับ
-  // พิกัดของไซท์นี้แทนพิกัดไซท์ลูกค้าที่งานนั้นถูกเบิกไป (ดู migration
-  // 2026-09-28-01) -- ใช้ฟิลด์พิกัด (ละติจูด/ลองจิจูด) ที่มีอยู่แล้วในหน้า
-  // ไซท์งาน ไม่ต้องสร้างหน้าใหม่
-  const { data: factorySiteIdVal, refetch: refetchFactorySiteId } = useAppSetting('factory_site_id', '')
   const { data: checkinLocations, refetch: refetchCheckinLocations } = useCheckinLocations()
   const [showLocationForm, setShowLocationForm] = useState(false)
   const [editLocation, setEditLocation] = useState(null)
   const [savingLocation, setSavingLocation] = useState(false)
   const [deleteLocationId, setDeleteLocationId] = useState(null)
+
+  // บทบาทของตำแหน่ง -- "โรงงาน" (เทียบระยะงานประเภทโรงงานแทนไซท์ลูกค้า) /
+  // "ออฟฟิศ" (แอดมิน/เจ้าของคนไหนก็เช็คอินได้โดยไม่ต้องตั้งค่าผูกบัญชีทีละคน)
+  // อย่างละ 1 ตำแหน่งต่อบริษัท -- บังคับด้วย unique index ในฐานข้อมูล
+  // (checkin_locations_tenant_role_uniq) ไม่ใช่แค่ฝั่งหน้าเว็บ จึงต้อง
+  // เคลียร์ role เดิมออกจากแถวที่ถือมันอยู่ก่อน ไม่งั้น update จะชนกัน
+  const handleSetLocationRole = async (locationId, role) => {
+    try {
+      const prevHolder = (checkinLocations || []).find(l => l.role === role && l.id !== locationId)
+      if (prevHolder) {
+        const { error: clearError } = await supabase.from('checkin_locations').update({ role: null }).eq('id', prevHolder.id)
+        if (clearError) throw clearError
+      }
+      const { error } = await supabase.from('checkin_locations').update({ role: role || null }).eq('id', locationId)
+      if (error) throw error
+      refetchCheckinLocations()
+    } catch (e) {
+      alert('Error: ' + e.message)
+    }
+  }
 
   const handleSaveLocation = async (form) => {
     setSavingLocation(true)
@@ -279,16 +293,10 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     // user_roles.assigned_checkin_location_id / worker_assignments.checkin_location_id
     // / worker_checkins.checkin_location_id are all real FKs to this table
     // with no ON DELETE CASCADE, so the database itself already refuses to
-    // delete a location referenced there. app_settings.factory_site_id is
-    // the one exception -- it stores the id as a plain string with no FK
-    // at all, so deleting a location it points at would silently break
-    // factory check-in tenant-wide with no error at delete time (final
-    // review finding) -- check for that specific case explicitly.
-    if (deleteLocationId === factorySiteId) {
-      alert('ไม่สามารถลบได้ — ตำแหน่งนี้ถูกใช้เป็น "ตำแหน่งโรงงาน" อยู่ กรุณาเปลี่ยนตำแหน่งโรงงานก่อน')
-      setDeleteLocationId(null)
-      return
-    }
+    // delete a location referenced there. role lives on this same row (no
+    // separate pointer elsewhere), so deleting it drops the role cleanly --
+    // no dangling-reference case to guard here the way factory_site_id
+    // used to need.
     try {
       const { error } = await supabase.from('checkin_locations').delete().eq('id', deleteLocationId)
       if (error) throw error
@@ -301,11 +309,9 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
 
   const [checkinRadius, setCheckinRadius] = useState('')
   const [shiftEnd, setShiftEnd] = useState('')
-  const [factorySiteId, setFactorySiteId] = useState('')
   const [savingCheckin, setSavingCheckin] = useState(false)
   useEffect(() => { if (checkinRadiusVal != null) setCheckinRadius(String(checkinRadiusVal)) }, [checkinRadiusVal])
   useEffect(() => { if (shiftEndVal != null) setShiftEnd(String(shiftEndVal)) }, [shiftEndVal])
-  useEffect(() => { if (factorySiteIdVal != null) setFactorySiteId(String(factorySiteIdVal)) }, [factorySiteIdVal])
 
   const handleSaveCheckinSettings = async () => {
     // ตรวจก่อนบันทึกจริง -- เดิมใช้ `parseFloat(...) || 200` ซึ่งทำให้ค่า 0
@@ -320,8 +326,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     try {
       await saveAppSetting('checkin_radius_m', radius)
       await saveAppSetting('regular_shift_end_time', shiftEnd || '17:00')
-      await saveAppSetting('factory_site_id', factorySiteId || '')
-      refetchCheckinRadius(); refetchShiftEnd(); refetchFactorySiteId()
+      refetchCheckinRadius(); refetchShiftEnd()
       alert('✅ บันทึกการตั้งค่าเช็คอินแล้ว')
     } catch (e) {
       alert('Error: ' + e.message)
@@ -530,6 +535,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   // exact same role/module checks the cards themselves used before this
   // nav existed, so a WORKER (who only ever sees the password card) gets
   // no nav at all -- there's nothing to pick between.
+  const [activeSection, setActiveSection] = useState(null)
   const isOwner = isAtLeast('OWNER')
   const isAdminPlus = isAtLeast('ADMIN')
   const hasCheque = hasModuleAccess('cheque_tracking')
@@ -688,29 +694,29 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           </button>
         </div>
         <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-          <label className="label">ตำแหน่งโรงงาน (ใช้เทียบระยะสำหรับงานประเภท "โรงงาน" แทนไซท์ลูกค้า)</label>
-          <select className="select" style={{ maxWidth: 360 }} value={factorySiteId} onChange={e => setFactorySiteId(e.target.value)}>
-            <option value="">-- ยังไม่ได้ตั้งค่า --</option>
-            {(checkinLocations || []).filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </select>
-          <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
-            เลือกตำแหน่งที่เป็นโรงงานจริง — เพิ่ม/แก้ไขพิกัด (ละติจูด/ลองจิจูด) ได้ที่หัวข้อ "จัดการตำแหน่งเช็คอิน" ด้านล่าง — กด "✅ บันทึก" ด้านบนเพื่อบันทึกช่องนี้ด้วย
-          </p>
-        </div>
-
-        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <label className="label" style={{ marginBottom: 0 }}>จัดการตำแหน่งเช็คอิน</label>
             <button className="btn btn-sm btn-ghost" onClick={() => { setEditLocation(null); setShowLocationForm(true) }}>+ เพิ่มตำแหน่ง</button>
           </div>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 0, marginBottom: 8 }}>
+            "โรงงาน" ใช้เทียบระยะสำหรับงานประเภท "โรงงาน" แทนไซท์ลูกค้า — "ออฟฟิศ" ให้แอดมิน/เจ้าของคนไหนก็เช็คอินได้โดยไม่ต้องตั้งผูกบัญชีทีละคน — เลือกได้อย่างละ 1 ตำแหน่งเท่านั้น (เลือกที่อื่นจะยกเลิกที่เดิมอัตโนมัติ)
+          </p>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>ชื่อตำแหน่ง</th><th>พิกัด</th><th>สถานะ</th><th></th></tr></thead>
+              <thead><tr><th>ชื่อตำแหน่ง</th><th>พิกัด</th><th>ประเภท</th><th>สถานะ</th><th></th></tr></thead>
               <tbody>
                 {(checkinLocations || []).map(l => (
                   <tr key={l.id}>
                     <td style={{ fontWeight: 600 }}>{l.name}</td>
                     <td className="font-mono" style={{ fontSize: 11.5 }}>{l.lat}, {l.lng}</td>
+                    <td>
+                      <select className="select" style={{ fontSize: 12.5, minWidth: 110 }}
+                        value={l.role || ''} onChange={e => handleSetLocationRole(l.id, e.target.value)}>
+                        <option value="">ไม่ระบุ</option>
+                        <option value="factory">โรงงาน</option>
+                        <option value="office">ออฟฟิศ</option>
+                      </select>
+                    </td>
                     <td>{l.active ? <span className="badge badge-paid">ใช้งานอยู่</span> : <span className="badge badge-finished">ปิดใช้งาน</span>}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button className="btn btn-sm btn-ghost" onClick={() => { setEditLocation(l); setShowLocationForm(true) }}>แก้ไข</button>
@@ -718,7 +724,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
                     </td>
                   </tr>
                 ))}
-                {!(checkinLocations || []).length && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีตำแหน่งเช็คอิน</td></tr>}
+                {!(checkinLocations || []).length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีตำแหน่งเช็คอิน</td></tr>}
               </tbody>
             </table>
           </div>
