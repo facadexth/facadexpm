@@ -886,10 +886,10 @@ async function handleJobDonePick(
   settings: { tenant_id: string; channel_access_token: string },
   replyToken: string,
   text: string,
-) {
+): Promise<boolean> {
   const tasks = await resolveJobDoneCandidates(worker.id, settings.tenant_id)
   const picked = tasks.find((t) => t.name === text.trim())
-  if (!picked) return // ignored -- prompt (and its quick-reply chips) stays live
+  if (!picked) return false // caller decides what to do with a non-match
   const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
   const { error } = await admin.from('line_pending_actions').upsert(
     { tenant_id: settings.tenant_id, worker_id: worker.id, action: 'job_done', task_id: picked.id, expires_at: expiresAt, photo_count: 0 },
@@ -897,6 +897,7 @@ async function handleJobDonePick(
   )
   if (error) console.error('line_pending_actions upsert failed (job_done, after pick)', error)
   await sendLineReply(settings.channel_access_token, replyToken, `📷 "${picked.name}" เสร็จแล้วใช่ไหมครับ ส่งรูปงานเสร็จมาได้เลย (ส่งได้หลายรูป พอครบแล้วกด "เสร็จแล้ว")`)
+  return true
 }
 
 // งานเสร็จ also accepts MULTIPLE completion photos per session -- each
@@ -1209,6 +1210,18 @@ Deno.serve(async (req) => {
       if (pending) {
         const pendingAction = pending.action as PendingActionType
         const priorCount = (pending.photo_count as number | null) ?? 0
+        // A worker can deliberately tap a different, real command (Rich
+        // Menu or typed) to get OUT of a stale site_photo/job_done_pick/
+        // job_done wait-state instead of sending a photo or "เสร็จแล้ว" --
+        // found live: a worker stuck mid-job_done tapped "งานวันนี้"
+        // repeatedly and got total silence, because those 3 branches only
+        // ever recognized their own expected input and silently dropped
+        // everything else (deliberate for stray chat noise, but it also
+        // ate real commands with zero feedback). When the text matches a
+        // real command, let it interrupt: clear the stale row and fall
+        // through to the normal dispatch block below instead of `continue`.
+        const interruptCommand = msgType === 'text' && text ? matchDMAction(text, commandSettingsByKey) : null
+        let interrupted = false
         if (pendingAction === 'site_photo') {
           if (msgType === 'image') {
             await handleSitePhotoAdd(worker, settings, event.replyToken, messageId, pending.id, priorCount)
@@ -1219,11 +1232,20 @@ Deno.serve(async (req) => {
               const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
               if (deleteError) console.error('line_pending_actions delete failed', deleteError)
             }
+          } else if (interruptCommand) {
+            const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
+            if (deleteError) console.error('line_pending_actions delete failed', deleteError)
+            interrupted = true
           }
-          // Any other stray text while accumulating photos is silently ignored.
+          // Any other stray text while accumulating photos is still silently ignored.
         } else if (pendingAction === 'job_done_pick') {
           if (msgType === 'text' && text) {
-            await handleJobDonePick(worker, settings, event.replyToken, text)
+            const picked = await handleJobDonePick(worker, settings, event.replyToken, text)
+            if (!picked && interruptCommand) {
+              const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
+              if (deleteError) console.error('line_pending_actions delete failed', deleteError)
+              interrupted = true
+            }
           } else if (msgType === 'image') {
             // Used to be silently ignored -- the photo was lost with zero
             // feedback and the worker had no way to know it never saved
@@ -1248,14 +1270,21 @@ Deno.serve(async (req) => {
               const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
               if (deleteError) console.error('line_pending_actions delete failed', deleteError)
             }
+          } else if (interruptCommand) {
+            const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
+            if (deleteError) console.error('line_pending_actions delete failed', deleteError)
+            interrupted = true
           }
-          // Any other stray text while accumulating photos is silently ignored.
+          // Any other stray text while accumulating photos is still silently ignored.
         } else if (msgType === 'text' && text) {
           const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
           if (deleteError) console.error('line_pending_actions delete failed', deleteError)
           await handleAction(pendingAction as GroupActionType, worker, text, settings, event.replyToken)
         }
-        continue
+        if (!interrupted) continue
+        // interrupted === true: fall through to the normal dispatch block
+        // below, which re-resolves the same command from `text` and
+        // handles it exactly as if there had been no pending action.
       }
 
       if (msgType === 'text' && text) {
