@@ -479,5 +479,6 @@ git commit -m "chore: remove dead Signup page, record rollback values"
 - [ ] **Step 1: Watch for 48 hours.** Check edge function logs on CHANG for errors, confirm the next scheduled cron runs fire, confirm staff can log in, and that password reset works.
 - [ ] **Step 2: Re-link the Supabase CLI to CHANG** (`supabase/.temp/linked-project.json` still points at Tokyo): `npx supabase link --project-ref kntspldhvcjeaubtqtkn`, and update any memory/notes that name the live project id.
 - [ ] **Step 3: Apply the LINE hybrid-privacy plan to CHANG** (`docs/superpowers/plans/2026-10-02-line-hybrid-privacy.md`, Task 8 Step 3). It was deliberately held until now.
+- [ ] **Step 3b: Rotate Tokyo's leaked credentials.** During setup on 2026-10-03, Tokyo's database password and its service-role key were exposed in the Claude session transcript (a malformed `.env.cutover` made the shell echo them). Only after the 48-hour watch (so Rollback B stays possible until then): reset Tokyo's database password, and rotate its service-role key (or the JWT secret if the project still uses legacy keys). CHANG's values were never exposed.
 - [ ] **Step 4: Pause Tokyo** (not delete) after the 48-hour watch, once no client has called it. Keep it paused for at least 30 days as the rollback copy.
 - [ ] **Step 5: Revisit the Pro upgrade** if it was deferred in Task 4.
