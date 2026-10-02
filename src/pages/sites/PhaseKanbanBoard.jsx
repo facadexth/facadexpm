@@ -72,6 +72,14 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const [showSwitchSitePicker, setShowSwitchSitePicker] = useState(false)
   const [confirmBulkDeletePhotos, setConfirmBulkDeletePhotos] = useState(false)
   const [bulkActing, setBulkActing] = useState(false)
+  // Same bulk switch-site/delete pattern, separate state -- this is the
+  // unassigned-photos tray (task_id IS NULL), not the per-task modal
+  // above. Kept as its own state rather than shared so selecting photos
+  // in one surface never bleeds into the other.
+  const [selectedUnassignedIds, setSelectedUnassignedIds] = useState(() => new Set())
+  const [showUnassignedSwitchSitePicker, setShowUnassignedSwitchSitePicker] = useState(false)
+  const [confirmUnassignedDelete, setConfirmUnassignedDelete] = useState(false)
+  const [unassignedBulkActing, setUnassignedBulkActing] = useState(false)
 
   const [unassignedPhotos, setUnassignedPhotos] = useState([])
   const [loadingPhotos, setLoadingPhotos] = useState(true)
@@ -224,6 +232,60 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
       alert('ลบรูปไม่สำเร็จ: ' + e.message)
     } finally {
       setBulkActing(false)
+    }
+  }
+
+  const handleToggleUnassignedSelected = (photoId) => {
+    setSelectedUnassignedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(photoId)) next.delete(photoId)
+      else next.add(photoId)
+      return next
+    })
+  }
+
+  // Same approach as handleBulkSwitchSite above (single batched UPDATE,
+  // clears task_id -- these already have task_id null, so that part is a
+  // no-op, but still correct) -- refreshPhotos() alone is enough here
+  // since it already repopulates unassignedPhotos directly, unlike the
+  // per-task modal which also needs its own separate re-fetch.
+  const handleUnassignedBulkSwitchSite = async (newSiteId) => {
+    const ids = Array.from(selectedUnassignedIds)
+    if (!ids.length) return
+    setUnassignedBulkActing(true)
+    try {
+      const { error } = await supabase.from('line_site_photos')
+        .update({ site_id: newSiteId, task_id: null }).in('id', ids)
+      if (error) throw error
+      setShowUnassignedSwitchSitePicker(false)
+      setSelectedUnassignedIds(new Set())
+      await refreshPhotos()
+    } catch (e) {
+      alert('ย้ายไซต์ไม่สำเร็จ: ' + e.message)
+    } finally {
+      setUnassignedBulkActing(false)
+    }
+  }
+
+  const doUnassignedBulkDelete = async () => {
+    const ids = Array.from(selectedUnassignedIds)
+    if (!ids.length) return
+    setConfirmUnassignedDelete(false)
+    setUnassignedBulkActing(true)
+    try {
+      const paths = unassignedPhotos.filter((p) => selectedUnassignedIds.has(p.id)).map((p) => p.photo_path)
+      if (paths.length) {
+        const { error: storageError } = await supabase.storage.from('line-site-photos').remove(paths)
+        if (storageError) throw storageError
+      }
+      const { error } = await supabase.from('line_site_photos').delete().in('id', ids)
+      if (error) throw error
+      setSelectedUnassignedIds(new Set())
+      await refreshPhotos()
+    } catch (e) {
+      alert('ลบรูปไม่สำเร็จ: ' + e.message)
+    } finally {
+      setUnassignedBulkActing(false)
     }
   }
 
@@ -495,22 +557,64 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
             </label>
           )}
         </div>
+        {canEdit && selectedUnassignedIds.size > 0 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '8px 10px',
+            background: 'var(--bg2)', borderRadius: 8, border: '1px solid var(--border)', flexWrap: 'wrap',
+          }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>เลือกไว้ {selectedUnassignedIds.size} รูป</span>
+            {showUnassignedSwitchSitePicker ? (
+              <select
+                autoFocus
+                disabled={unassignedBulkActing}
+                defaultValue=""
+                onChange={(e) => { if (e.target.value) handleUnassignedBulkSwitchSite(e.target.value) }}
+                style={{ fontSize: 13, padding: '4px 6px' }}
+              >
+                <option value="" disabled>เลือกไซต์ปลายทาง...</option>
+                {(allSites || []).filter((s) => s.id !== site.id).map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            ) : (
+              <button type="button" className="btn-secondary" disabled={unassignedBulkActing} onClick={() => setShowUnassignedSwitchSitePicker(true)} style={{ fontSize: 13 }}>
+                📍 ย้ายไซต์
+              </button>
+            )}
+            <button type="button" className="btn-secondary" disabled={unassignedBulkActing} onClick={() => setConfirmUnassignedDelete(true)} style={{ fontSize: 13, color: 'var(--red)' }}>
+              🗑️ ลบ
+            </button>
+            <button type="button" className="btn-secondary" disabled={unassignedBulkActing} onClick={() => { setSelectedUnassignedIds(new Set()); setShowUnassignedSwitchSitePicker(false) }} style={{ fontSize: 13, marginLeft: 'auto' }}>
+              ยกเลิก
+            </button>
+          </div>
+        )}
         {loadingPhotos ? (
           <div style={{ color: 'var(--text3)', fontSize: 12 }}>กำลังโหลด...</div>
         ) : unassignedPhotos.length > 0 ? (
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {unassignedPhotos.map((p) => (
-              <div key={p.id}
-                draggable={canEdit}
-                onDragStart={canEdit ? (e) => e.dataTransfer.setData(PHOTO_DRAG_MIME, p.id) : undefined}
-                title={`${p.workers?.nickname || p.workers?.name || ''} · ลากไปวางบนการ์ดเพื่อมอบหมาย`}
-                style={{ width: 90, opacity: assigningPhotoId === p.id ? 0.5 : 1, cursor: canEdit ? 'grab' : 'default' }}>
-                {p.url ? (
-                  <img src={p.url} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
-                ) : (
-                  <div style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'var(--text3)' }}>โหลดไม่สำเร็จ</div>
+              <div key={p.id} style={{ position: 'relative', width: 90 }}>
+                {canEdit && (
+                  <input
+                    type="checkbox"
+                    checked={selectedUnassignedIds.has(p.id)}
+                    onChange={() => handleToggleUnassignedSelected(p.id)}
+                    style={{ position: 'absolute', top: 4, left: 4, width: 16, height: 16, zIndex: 1, cursor: 'pointer' }}
+                  />
                 )}
-                <div style={{ fontSize: 9.5, marginTop: 3, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.workers?.nickname || p.workers?.name || '-'}</div>
+                <div
+                  draggable={canEdit}
+                  onDragStart={canEdit ? (e) => e.dataTransfer.setData(PHOTO_DRAG_MIME, p.id) : undefined}
+                  title={`${p.workers?.nickname || p.workers?.name || ''} · ลากไปวางบนการ์ดเพื่อมอบหมาย`}
+                  style={{ opacity: assigningPhotoId === p.id ? 0.5 : 1, cursor: canEdit ? 'grab' : 'default' }}>
+                  {p.url ? (
+                    <img src={p.url} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+                  ) : (
+                    <div style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'var(--text3)' }}>โหลดไม่สำเร็จ</div>
+                  )}
+                  <div style={{ fontSize: 9.5, marginTop: 3, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.workers?.nickname || p.workers?.name || '-'}</div>
+                </div>
               </div>
             ))}
           </div>
@@ -616,6 +720,16 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
           danger
           onCancel={() => setConfirmBulkDeletePhotos(false)}
           onConfirm={doBulkDeletePhotos}
+        />
+      )}
+
+      {confirmUnassignedDelete && (
+        <ConfirmDialog
+          title="ลบรูปภาพ"
+          message={`ลบรูป ${selectedUnassignedIds.size} รูปที่เลือกไว้? การลบนี้ย้อนกลับไม่ได้`}
+          danger
+          onCancel={() => setConfirmUnassignedDelete(false)}
+          onConfirm={doUnassignedBulkDelete}
         />
       )}
 
