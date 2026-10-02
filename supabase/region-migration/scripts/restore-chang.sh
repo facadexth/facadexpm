@@ -36,6 +36,10 @@ psqlc "$CHANG_DB_URL" -v ON_ERROR_STOP=1 -c "
   DROP TRIGGER IF EXISTS on_auth_user_deleted ON auth.users;
   CREATE TRIGGER on_auth_user_deleted AFTER DELETE ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_auth_user_deleted();"
 
+echo "== recreate storage.objects policies (they call public functions, so DROP SCHEMA public CASCADE removed them)"
+psqlc "$TOKYO_DB_URL" -At -c "select 'DROP POLICY IF EXISTS '||quote_ident(policyname)||' ON storage.objects; CREATE POLICY '||quote_ident(policyname)||' ON storage.objects AS '||permissive||' FOR '||cmd||' TO '||array_to_string(roles, ', ')||coalesce(' USING ('||qual||')','')||coalesce(' WITH CHECK ('||with_check||')','')||';' from pg_policies where schemaname='storage' and tablename='objects' order by policyname" \
+  | psqlc "$CHANG_DB_URL" -v ON_ERROR_STOP=1 -q
+
 echo "== rewrite hardcoded Tokyo URLs"
 # 1. notify_worker_offboarded() carries a Tokyo URL in its body.
 psqlc "$CHANG_DB_URL" -At -c "select pg_get_functiondef('public.notify_worker_offboarded'::regproc)" \
