@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Read-only on Tokyo.
 source "$(dirname "$0")/lib.sh"
+# Counters first, so any write during or after the dump shows up in `drift.sh check`.
+"$(dirname "$0")/drift.sh" snapshot
 t0=$(now)
 pgdump "$TOKYO_DB_URL" --schema=public --schema-only --no-owner -f /out/public-schema.sql
 pgdump "$TOKYO_DB_URL" --schema=public --data-only --no-owner -f /out/public-data.sql

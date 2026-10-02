@@ -4,7 +4,7 @@
 
 **Goal:** Move FacadeXPM production from the Tokyo Supabase project to the Singapore project (CHANG) with one short, announced write-freeze, a measured window, and a defined rollback.
 
-**Architecture:** Freeze Tokyo writes at the database level → dump Tokyo (`public` schema + data, `auth` data) with `pg_dump` run inside a Docker container → wipe and restore into CHANG with `psql` → rewrite every hardcoded Tokyo URL → copy storage → deploy all edge functions from `main` → recreate cron jobs → verify → flip the app/LINE/Omise to CHANG. Tokyo is left frozen (read-only) rather than paused, so stale clients get a clear error instead of silently writing data that would be lost.
+**Architecture:** Snapshot Tokyo's write counters → dump Tokyo (`public` schema + data, `auth` data) with `pg_dump` run inside a Docker container → wipe and restore into CHANG with `psql` → rewrite every hardcoded Tokyo URL → copy storage → deploy all edge functions from `main` → recreate cron jobs → verify → flip the app/LINE/Omise to CHANG. Tokyo cannot be reliably frozen (see 'Finding: freeze does not work'), so instead we detect writes after the dump with `drift.sh check` and re-dump if any occurred. After the flip Tokyo is left running briefly for rollback, then paused.
 
 **Tech Stack:** Supabase (Postgres 17, Storage, Edge Functions, pg_cron, Vault), `pg_dump`/`psql` from the `postgres:17` Docker image, Node (supabase-js) for storage copy, GitHub Actions + cPanel for the frontend.
 
@@ -12,14 +12,18 @@
 
 ## Global Constraints
 
-- **Tokyo is never deleted.** After cutover it stays frozen (read-only), then is paused later. Rollback depends on it.
+- **Tokyo is never deleted.** After cutover it keeps running briefly for rollback, then is paused. Rollback depends on it.
 - **No credential passes through Claude.** DB URLs and service-role keys live only in the operator's gitignored `.env.cutover`. Agents write and review scripts; the operator runs them.
-- **Order is fixed: freeze → dump DB → wipe/restore CHANG → copy storage last.** Never copy storage before the final DB dump (broken-image hazard from the dry-run report).
+- **Order is fixed: snapshot counters → dump DB → wipe/restore CHANG → copy storage last → `drift.sh check` immediately before the flip.** Never copy storage before the final DB dump (broken-image hazard from the dry-run report).
 - **Every script that writes refuses to run unless its target is CHANG** (ref `kntspldhvcjeaubtqtkn`), and nothing writes to Tokyo except the freeze/unfreeze scripts.
 - **Schedule the window outside these times (Asia/Bangkok):** 09:00 and 18:00 (cron pushes, 02:00 / 11:00 UTC) and the crew's working hours. Recommended: after 22:00 Bangkok.
 - Tokyo project ref `yyzbgdmgyvvypfcjuhtr`; CHANG project ref `kntspldhvcjeaubtqtkn`.
 - Existing test command `npm test` (301 tests) must still pass after any code change.
 - Do not apply the LINE-privacy plan's migration until cutover is finished; it is applied to CHANG afterwards (see Task 7).
+
+## Finding: freeze does not work (2026-10-03)
+
+`ALTER DATABASE postgres SET default_transaction_read_only = on` made direct SQL sessions read-only, but a write through the real REST path (PostgREST) still returned `204`, because PostgREST opens its own READ WRITE transactions. The first attempt at cutover stopped itself on this check and Tokyo was restored (`default_transaction_read_only = off`). `freeze.sh` was removed. The replacement is write *detection*: `drift.sh snapshot` (automatic at the start of `dump-tokyo.sh`) and `drift.sh check` (before the flip). Any write between the two means the dump is stale and must be redone. Anything written to Tokyo after the final check and before the LINE/app flip (seconds) is the accepted residual risk; run the flip steps back to back.
 
 ## Landmines found beyond the dry run (all must be handled)
 
@@ -29,7 +33,7 @@
 | 2 | `public.tenants.logo_url` (1 row) | Stores a full Tokyo storage URL; after the move the logo would load from the frozen Tokyo project. | Task 2 `restore-chang.sh` rewrites it |
 | 3 | 3 `pg_cron` jobs | Hardcode Tokyo URLs; `cron` schema is not dumped. | Task 2 `schedule-cron-chang.sh` |
 | 4 | Sessions | CHANG has a different JWT secret, so every logged-in user is signed out and must log in again (passwords carry over). | Task 6 announcement |
-| 5 | Installed PWAs | Old app bundles keep calling Tokyo until updated (`registerType: 'prompt'`). | Tokyo stays frozen; Task 6/7 |
+| 5 | Installed PWAs | Old app bundles keep calling Tokyo until updated (`registerType: 'prompt'`). | Tokyo stays running; Task 6/7 |
 | 6 | Dashboard-only settings | Auth redirect allowlist, Site URL, email templates, SMTP are not in any dump; an empty allowlist silently breaks password reset for everyone. | Task 4 |
 | 7 | Free plan | CHANG is on Free: no backups and projects pause after a week of inactivity. | Task 4 (decision) |
 | 8 | `src/pages/Signup.jsx` | Hardcodes the Tokyo URL, but nothing imports the page (dead code; `Login.jsx` has its own signup) and the `signup` function is not deployed on Tokyo. | Task 5 (cleanup only) |
@@ -42,7 +46,7 @@
 | `.gitignore` (modify) | Ignore `.env.cutover` and `supabase/region-migration/out/`. |
 | `supabase/region-migration/scripts/lib.sh` (create) | Shared setup: load env, Docker `pg_dump`/`psql` wrappers, CHANG-only guard, timing helper. |
 | `supabase/region-migration/scripts/preflight.sh` (create) | Check Docker and both DB connections. |
-| `supabase/region-migration/scripts/freeze.sh` (create) | Make a database read-only / undo it (`tokyo` or `chang`). |
+| `supabase/region-migration/scripts/drift.sh` (create) | Snapshot Tokyo's per-table write counters and later check whether anything was written. |
 | `supabase/region-migration/scripts/dump-tokyo.sh` (create) | Dump Tokyo. Read-only on Tokyo. |
 | `supabase/region-migration/scripts/restore-chang.sh` (create) | Wipe CHANG, restore, rewrite hardcoded URLs. |
 | `supabase/region-migration/scripts/copy-storage.mjs` (create) | Copy all storage objects Tokyo → CHANG (wipes CHANG's first). |
@@ -150,32 +154,13 @@ git commit -m "chore: cutover script scaffolding and preflight"
 ### Task 2: Cutover scripts
 
 **Files:**
-- Create: `freeze.sh`, `dump-tokyo.sh`, `restore-chang.sh`, `copy-storage.mjs`, `schedule-cron-chang.sh`, `verify.sh` (all in `supabase/region-migration/scripts/`)
+- Create: `drift.sh`, `dump-tokyo.sh`, `restore-chang.sh`, `copy-storage.mjs`, `schedule-cron-chang.sh`, `verify.sh` (all in `supabase/region-migration/scripts/`)
 
 **Interfaces:**
 - Consumes: Task 1's `lib.sh`.
 - Produces: `out/public-schema.sql`, `out/public-data.sql`, `out/auth-data.sql` (from dump); scripts print elapsed seconds for each phase for the rehearsal log.
 
-- [ ] **Step 1: `freeze.sh`**
-
-```bash
-#!/usr/bin/env bash
-# usage: freeze.sh <tokyo|chang> <on|off>
-# 'on' makes every NEW write fail with "cannot execute ... in a read-only
-# transaction" (from the app, edge functions, cron, LINE webhook -- all
-# of them) and terminates existing connections so nothing keeps writing on
-# an old session. 'off' undoes it. Reads and pg_dump keep working.
-source "$(dirname "$0")/lib.sh"
-which="${1:?tokyo|chang}"; mode="${2:?on|off}"
-if [ "$which" = tokyo ]; then url="$TOKYO_DB_URL"; else require_chang; url="$CHANG_DB_URL"; fi
-if [ "$mode" = on ]; then
-  psqlc "$url" -v ON_ERROR_STOP=1 -c "ALTER DATABASE postgres SET default_transaction_read_only = on;"
-  psqlc "$url" -c "select count(pg_terminate_backend(pid)) as terminated from pg_stat_activity where datname = 'postgres' and pid <> pg_backend_pid() and usename not in ('supabase_admin');"
-else
-  psqlc "$url" -v ON_ERROR_STOP=1 -c "ALTER DATABASE postgres RESET default_transaction_read_only;"
-fi
-echo "$which freeze: $mode"
-```
+- [ ] **Step 1: `drift.sh`** — committed (see the finding above). `snapshot` runs automatically at the start of `dump-tokyo.sh`; `check` is run by the operator before the flip.
 
 - [ ] **Step 2: `dump-tokyo.sh`**
 
@@ -382,12 +367,7 @@ The operator runs, in order, each as `! ./supabase/region-migration/scripts/<nam
 Note the printed `DUMP seconds`, `RESTORE seconds`, `STORAGE ... seconds`.
 Expected: `restore-chang.sh` ends with an empty "leftover Tokyo references" list; `copy-storage.mjs` prints `OK` for every bucket; `verify.sh` shows `OK` on every line except the one expected `notify_worker_offboarded` hash line. Fix any script that fails (an agent can edit scripts from the error output; commit each fix) and rerun from the failing step. If a re-dump is needed because Tokyo changed, rerun `dump-tokyo.sh` too.
 
-- [ ] **Step 2: Prove the freeze actually blocks writes (on CHANG)**
-
-Run `! ./supabase/region-migration/scripts/freeze.sh chang on`. Then try a write through the real API path, using CHANG's service role from the operator's shell:
-`set -a; source .env.cutover; set +a; curl -s -X POST "$CHANG_URL/rest/v1/app_settings" -H "apikey: $CHANG_SERVICE_ROLE_KEY" -H "Authorization: Bearer $CHANG_SERVICE_ROLE_KEY" -H "Content-Type: application/json" -d '{"key":"freeze_probe","value":"x"}'`
-Expected: a JSON error mentioning `read-only transaction`. (If `app_settings` needs other required columns, use any table; the point is that a write is rejected.) Then run `freeze.sh chang off` and repeat the curl — expect success, then delete the probe row.
-If the write is **not** rejected (e.g. the pooler keeps old connections writable), the freeze design is wrong: stop and ask for a different freeze mechanism before ever freezing Tokyo.
+- [ ] **Step 2: (rehearsal was skipped by the owner on 2026-10-03; if ever rehearsed)** run `drift.sh snapshot`, wait a minute, run `drift.sh check` and expect `NO WRITES`; then insert and delete one probe row in `app_settings` on a non-live copy and expect `WRITES HAPPENED`.
 
 - [ ] **Step 3: Smoke test the restored copy through the real app**
 
@@ -451,24 +431,25 @@ git commit -m "chore: remove dead Signup page, record rollback values"
 
 **Go/no-go checkpoints are marked ⛔. At any ⛔, if a check fails, run Rollback A and stop.**
 
-- [ ] **Step 1: Freeze Tokyo.** `! ./supabase/region-migration/scripts/freeze.sh tokyo on` — expected `tokyo freeze: on`. Writes everywhere now fail by design. Note the time.
-- [ ] **Step 2: Dump.** `! ./supabase/region-migration/scripts/dump-tokyo.sh`
+- [ ] **Step 1: Announce, then start.** There is no freeze: Tokyo keeps working normally until the flip. Note the time. (The write-counter snapshot is taken automatically at the start of Step 2.)
+- [ ] **Step 2: Snapshot + dump.** `! ./supabase/region-migration/scripts/dump-tokyo.sh`
 - [ ] **Step 3: Wipe and restore CHANG.** `! ./supabase/region-migration/scripts/restore-chang.sh` — ⛔ the "leftover Tokyo references" list must be empty.
 - [ ] **Step 4: Copy storage (last).** `set -a; source .env.cutover; set +a; node supabase/region-migration/scripts/copy-storage.mjs` — ⛔ every bucket prints `OK`.
 - [ ] **Step 5: Deploy all edge functions from `main` to CHANG** (agent can run this; no secrets involved). CHANG's copies are from 1 Oct and are stale. For each function directory in `supabase/functions` except `_shared`, run `npx supabase functions deploy <slug> --project-ref kntspldhvcjeaubtqtkn` adding `--no-verify-jwt` for exactly `omise-webhook`, `sign-link`, `line-webhook`, `field-form`. Then `npx supabase functions list --project-ref kntspldhvcjeaubtqtkn` — ⛔ every function `ACTIVE` with `verify_jwt` matching Tokyo's list. (`signup` and `create-user` exist in the repo but are not deployed on Tokyo; do not deploy them unless Tokyo has them.)
 - [ ] **Step 6: Schedule cron on CHANG.** `! ./supabase/region-migration/scripts/schedule-cron-chang.sh` — expect 3 active jobs listed.
+- [ ] **Step 6b: Check for writes.** `! ./supabase/region-migration/scripts/drift.sh check` — ⛔ must print `NO WRITES`. If it prints `WRITES HAPPENED`, repeat Steps 2-4 and check again (do not flip on a stale copy). Repeat this check once more immediately before Step 9, and do Steps 9-11 back to back.
 - [ ] **Step 7: Verify the copy.** `! ./supabase/region-migration/scripts/verify.sh` — ⛔ every line `OK` except the single expected `notify_worker_offboarded` hash line.
 - [ ] **Step 8: Smoke test on CHANG before flipping anyone.** Run the app locally against CHANG as in Task 3 Step 3: log in, open data and an image. ⛔ must work.
 - [ ] **Step 9: Flip the frontend.** Set the GitHub repository secrets `VITE_SUPABASE_URL` (CHANG URL) and `VITE_SUPABASE_ANON_KEY` (CHANG anon key) — `gh secret set` run by the operator — then trigger a build (push any commit, or re-run the deploy workflow). Confirm the new version is live in Settings and the browser's network tab calls `kntspldhvcjeaubtqtkn.supabase.co`.
 - [ ] **Step 10: Flip LINE.** In the LINE Developers Console set the webhook URL to `https://kntspldhvcjeaubtqtkn.supabase.co/functions/v1/line-webhook`, press Verify, and send a test message to the bot. ⛔ Verify must succeed.
 - [ ] **Step 11: Flip Omise.** In the Omise dashboard set the webhook endpoint to `https://kntspldhvcjeaubtqtkn.supabase.co/functions/v1/omise-webhook`.
 - [ ] **Step 12: Live checks.** Log in as a real user; create and delete a throwaway record; send `งานวันนี้` to the bot from a linked worker; open a tenant logo; trigger one cron function manually using the cron secret (or wait for the next scheduled run) and confirm it authenticates.
-- [ ] **Step 13: Leave Tokyo frozen.** Do not unfreeze and do not pause yet. Frozen Tokyo makes any stale client fail loudly rather than write data that would be lost. Tell staff to refresh the app if they see errors.
+- [ ] **Step 13: Leave Tokyo running, then watch for stragglers.** Right after the flip run `! ./supabase/region-migration/scripts/drift.sh snapshot` on Tokyo; later run `drift.sh check`. Any change means a stale app tab or phone is still writing to Tokyo; ask staff to refresh, and re-enter those few records on CHANG by hand. Pause Tokyo (Task 7) once checks stay clean.
 - [ ] **Step 14: Record.** Append the real timings and any surprises to `REHEARSAL-LOG.md` and commit.
 
-**Rollback A (before Step 9, i.e. before any user reaches CHANG):** `! ./supabase/region-migration/scripts/freeze.sh tokyo off`. Nothing else changed for users; CHANG is simply discarded. Total user impact: the freeze period.
+**Rollback A (before Step 9, i.e. before any user reaches CHANG):** nothing to undo on Tokyo (it was never changed). Discard CHANG. User impact: none.
 
-**Rollback B (after Step 9, before CHANG has meaningful new data):** revert the two GitHub secrets to the logged Tokyo values and redeploy the frontend; set the LINE and Omise webhook URLs back to Tokyo; `freeze.sh tokyo off`. Writes made on CHANG since the flip are lost, so only use this inside the first hour and say so to staff.
+**Rollback B (after Step 9, before CHANG has meaningful new data):** revert the two GitHub secrets to the logged Tokyo values and redeploy the frontend; set the LINE and Omise webhook URLs back to Tokyo; nothing to unfreeze. Writes made on CHANG since the flip are lost, so only use this inside the first hour and say so to staff.
 
 **After meaningful writes on CHANG, do not roll back** (it would discard real data). Fix forward instead.
 
