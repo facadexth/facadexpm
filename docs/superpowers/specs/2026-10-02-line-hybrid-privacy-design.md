@@ -141,3 +141,22 @@ In LINE Official Account Manager, set response mode to **Bot** and turn **Chat**
 2. Whether the admin gets a LINE push on new chat requests, or only sees them in the page.
 3. Exact Rich Menu wiring for the "คุยกับแอดมิน" button (Rich Menu is configured manually
    in LINE today; the postback data string needs agreeing).
+
+## Amendments (2026-10-02, found while writing the plan)
+
+1. **Idle-hours setting lives in its own table, not `app_settings`.** `app_settings` is per-tenant;
+   this value is a platform-owner concern. New single-row table `line_admin_chat_config`
+   (`idle_hours`, default 24), edited from the platform-owner chat page, not tenant Settings.
+2. **No change to webhook response timing.** The existing 1,400-line webhook processes events
+   synchronously and works live; making it respond-then-process is out of scope. Idempotency is
+   handled where it matters: `line_admin_messages.line_event_id` is unique (LINE message id), so a
+   redelivered event cannot insert twice.
+3. **Open questions resolved:** (1) ended conversations are kept until the platform owner deletes
+   them (per-conversation delete button); (2) no LINE push to the owner on new requests, the page
+   polls every 10 s; (3) the Rich Menu button sends fixed TEXT (that is how every existing button
+   works), so the trigger is the exact message `คุยกับแอดมิน` and the user-side end phrase is
+   `จบการสนทนา`. Exact-match only, never substring, so ordinary sentences can never opt a user in.
+4. **Availability:** chat is offered to linked DM senders only (workers, admins, owners). An
+   unlinked sender still gets the existing "account not found" reply.
+5. **Sequencing:** do not apply any migration or deploy any function until the Supabase region
+   relocation cutover is done; the cron job URL and the LINE webhook URL are project-specific.
