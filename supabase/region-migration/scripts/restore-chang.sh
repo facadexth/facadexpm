@@ -14,10 +14,15 @@ psqlc "$CHANG_DB_URL" -v ON_ERROR_STOP=1 -c "
   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO postgres, anon, authenticated, service_role;
   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO postgres, anon, authenticated, service_role;
   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO postgres, anon, authenticated, service_role;
-  DELETE FROM auth.users;"
+  DELETE FROM auth.users;
+  -- Tokyo (and CHANG) install pg_net in schema public, so DROP SCHEMA public CASCADE
+  -- removes it. net.http_post() is called by the cron jobs and notify_worker_offboarded().
+  CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA public;"
 
 echo "== schema"
-sed '/^CREATE SCHEMA public;$/d' "$OUT/public-schema.sql" | psqlc "$CHANG_DB_URL" -v ON_ERROR_STOP=1 -q
+# Drop two things the postgres role cannot / need not replay: the CREATE SCHEMA we already did,
+# and default privileges FOR ROLE supabase_admin (objects here are owned by postgres on CHANG).
+sed -e '/^CREATE SCHEMA public;$/d' -e '/^ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin /d' "$OUT/public-schema.sql" | psqlc "$CHANG_DB_URL" -v ON_ERROR_STOP=1 -q
 
 echo "== data (FK checks off for this session only)"
 PGOPTIONS='-c session_replication_role=replica' psqlc "$CHANG_DB_URL" -v ON_ERROR_STOP=1 -q -f /out/public-data.sql
