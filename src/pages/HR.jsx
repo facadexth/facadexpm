@@ -294,6 +294,7 @@ function HolidayForm({ onSave, onCancel, loading }) {
 
 // ── Salary Slip (payslip PDF) ─────────────────────────────────
 function SalarySlipModal({ record, month, year, onClose }) {
+  const { tenant } = useTenant()
   const handleDownload = () => {
     const label = (record.workers?.nickname || record.workers?.name || 'slip').replace(/\s+/g, '_')
     downloadPDF('salary-slip-preview', `สลิปเงินเดือน_${label}_${MONTHS[month-1]}${year+543}.pdf`)
@@ -313,7 +314,7 @@ function SalarySlipModal({ record, month, year, onClose }) {
       <div className="modal-body">
         <div id="salary-slip-preview" style={{ fontFamily: 'Sarabun,sans-serif', padding: '20px 24px', background: '#fff', color: '#111' }}>
           <div style={{ textAlign: 'center', marginBottom: 16 }}>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>FACADE X</div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{tenant?.company_name || 'CHANG'}</div>
             <div style={{ fontSize: 14, fontWeight: 600 }}>สลิปเงินเดือน — {MONTHS[month-1]} {year+543}</div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12, fontSize: 13 }}>

@@ -1116,7 +1116,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
             )}
             <footer className="doc-footer">
               <p>จัดทำตามมาตรา 87(3) แห่งประมวลรัษฎากร และประกาศอธิบดีกรมสรรพากรเกี่ยวกับภาษีมูลค่าเพิ่ม (ฉบับที่ 89) พ.ศ. 2542 — คำนวณต้นทุนด้วยวิธีถัวเฉลี่ยเคลื่อนที่ (Weighted Average Cost)</p>
-              <p>พิมพ์จากระบบ FacadeX ERP เมื่อ {new Date().toLocaleDateString('th-TH')}</p>
+              <p>พิมพ์จากระบบ CHANG เมื่อ {new Date().toLocaleDateString('th-TH')}</p>
             </footer>
           </div>
         </div>

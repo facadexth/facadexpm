@@ -3,7 +3,7 @@ import { normalizeAppUrl, DEFAULT_APP_URL, APP_URL } from '../../supabase/functi
 
 describe('normalizeAppUrl', () => {
   it('falls back to the current production URL when nothing is configured', () => {
-    expect(DEFAULT_APP_URL).toBe('https://pm.facadex.co.th')
+    expect(DEFAULT_APP_URL).toBe('https://changpm.app')
     expect(normalizeAppUrl(undefined)).toBe(DEFAULT_APP_URL)
     expect(normalizeAppUrl('')).toBe(DEFAULT_APP_URL)
     expect(normalizeAppUrl('   ')).toBe(DEFAULT_APP_URL)

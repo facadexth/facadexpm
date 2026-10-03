@@ -8,7 +8,7 @@
 // A misconfigured value must never produce broken links, so anything that is
 // not a plain https origin falls back to the current production URL.
 
-export const DEFAULT_APP_URL = 'https://pm.facadex.co.th'
+export const DEFAULT_APP_URL = 'https://changpm.app'
 
 export function normalizeAppUrl(raw: string | undefined): string {
   const trimmed = (raw ?? '').trim().replace(/\/+$/, '')

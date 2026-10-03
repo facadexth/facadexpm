@@ -12,6 +12,7 @@
 // copy under _shared/ is the single copy to edit; the deploy step reads
 // it fresh into each function's bundle.
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2'
+import { sendResendEmail } from './email-sender.ts'
 
 const SELLER_TENANT_ID = '1b9affc4-2136-4ed1-b168-a36e6624e743'
 
@@ -53,7 +54,7 @@ function receiptEmailHtml(opts: {
 
     <table style="width: 100%; border-collapse: collapse; border-top: 1px solid #ddd; border-bottom: 1px solid #ddd;">
       <tr style="border-bottom: 1px solid #eee;">
-        <td style="padding: 8px 0;">ค่าบริการ FacadeXPM แพ็กเกจ ${opts.packageName} (รายเดือน)</td>
+        <td style="padding: 8px 0;">ค่าบริการ CHANG แพ็กเกจ ${opts.packageName} (รายเดือน)</td>
         <td style="padding: 8px 0; text-align: right;">${fmtBaht(beforeVat)}</td>
       </tr>
       <tr style="border-bottom: 1px solid #eee;">
@@ -67,7 +68,7 @@ function receiptEmailHtml(opts: {
     </table>
 
     <p style="font-size: 12px; color: #999; margin-top: 24px;">
-      อีเมลนี้เป็นใบเสร็จอิเล็กทรอนิกส์สำหรับการชำระค่าบริการ FacadeXPM ผ่าน PromptPay
+      อีเมลนี้เป็นใบเสร็จอิเล็กทรอนิกส์สำหรับการชำระค่าบริการ CHANG ผ่าน PromptPay
     </p>
   </div>`
 }
@@ -146,21 +147,16 @@ export async function activateTenantFromIntent(
         buyer: buyer ?? { company_name: null, address: null, tax_id: null },
       })
 
-      const emailRes = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${resendApiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: 'FacadeXPM <contact@facadex.co.th>',
-          to: [ownerRole.user_email],
-          subject: `ใบเสร็จรับเงิน ${receipt.receipt_number} — FacadeXPM`,
-          html,
-        }),
+      const emailRes = await sendResendEmail(resendApiKey, {
+        to: [ownerRole.user_email],
+        subject: `ใบเสร็จรับเงิน ${receipt.receipt_number} — CHANG`,
+        html,
       })
 
       if (emailRes.ok) {
         await admin.from('subscription_receipts').update({ email_sent_at: new Date().toISOString() }).eq('id', receipt.id)
       } else {
-        const errText = await emailRes.text()
+        const errText = emailRes.error ?? ''
         console.error('activate-tenant: resend send failed', errText)
         await admin.from('subscription_receipts').update({ email_error: errText.slice(0, 500) }).eq('id', receipt.id)
       }

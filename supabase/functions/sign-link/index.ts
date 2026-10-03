@@ -21,6 +21,7 @@
 // (same RESEND_API_KEY + api.resend.com/emails pattern already used for
 // subscription-receipt emails in _shared/activate-tenant.ts -- no new
 // provider integration needed).
+import { sendResendEmail } from '../_shared/email-sender.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { APP_URL } from '../_shared/app-url.ts'
 
@@ -136,18 +137,13 @@ async function sendSignConfirmationEmail(to: string, doc: Record<string, unknown
       <p style="color:#999;font-size:12px;margin-top:20px;">อีเมลนี้ส่งอัตโนมัติเพื่อยืนยันว่าคุณได้เซ็นรับเอกสารข้างต้นแล้ว</p>
     </div>`
   try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: 'FacadeXPM <contact@facadex.co.th>',
-        to: [to],
-        subject: `ยืนยันการเซ็นรับ ${doc.label} — ${tenantName || 'FacadeXPM'}`,
-        html,
-      }),
+    const res = await sendResendEmail(RESEND_API_KEY, {
+      to: [to],
+      subject: `ยืนยันการเซ็นรับ ${doc.label} — ${tenantName || 'CHANG'}`,
+      html,
     })
     if (res.ok) return { sent: true }
-    return { sent: false, error: (await res.text()).slice(0, 500) }
+    return { sent: false, error: res.error }
   } catch (e) {
     return { sent: false, error: String(e).slice(0, 500) }
   }

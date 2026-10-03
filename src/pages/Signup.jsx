@@ -109,7 +109,7 @@ export default function Signup({ onSignupSuccess }) {
       }}>
         <div style={{ marginBottom: 24 }}>
           <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 8, color: 'var(--accent)' }}>
-            FACADE X
+            CHANG
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text3)' }}>
             สร้างบัญชีใหม่

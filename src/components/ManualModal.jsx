@@ -11,7 +11,7 @@ export default function ManualModal({ url, onClose }) {
   return (
     <Modal title="คู่มือใช้งาน" onClose={onClose} maxWidth={1100}>
       <div className="modal-body" style={{ padding: 0, height: '85vh' }}>
-        <iframe src={url} title="คู่มือใช้งาน FacadeX" style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} />
+        <iframe src={url} title="คู่มือใช้งาน CHANG" style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} />
       </div>
     </Modal>
   )

@@ -362,6 +362,7 @@ function ContractsTab() {
 // ── Payment Modal ─────────────────────────────────────────────
 
 function PaymentModal({ contract, onClose }) {
+  const { tenant } = useTenant()
   const isRetentionRelease = contract._isRetentionRelease || false
   const [saving, setSaving] = useState(false)
   const [pdfPreview, setPdfPreview] = useState(null)
@@ -422,7 +423,7 @@ function PaymentModal({ contract, onClose }) {
         <div className="modal-body">
           <div id="payment-pdf-preview" style={{ fontFamily:'Sarabun,sans-serif', padding:'20px 24px', background:'#fff', color:'#111' }}>
             <div style={{ textAlign:'center', marginBottom:16 }}>
-              <div style={{ fontSize:18, fontWeight:800 }}>FACADE X</div>
+              <div style={{ fontSize:18, fontWeight:800 }}>{tenant?.company_name || 'CHANG'}</div>
               <div style={{ fontSize:14, fontWeight:600 }}>ใบเบิกเงินผู้รับเหมาค่าแรง</div>
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12, fontSize:13 }}>

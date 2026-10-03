@@ -5,4 +5,4 @@
 // Neither value is secret: LINE's own Get Bot Info response and the
 // public @handle are both discoverable by anyone who messages the bot.
 export const PLATFORM_BOT_BASIC_ID = '302yljzw' // must match LINE_BASIC_ID in _shared/line.ts exactly
-export const PLATFORM_BOT_NAME = 'FacadeXPM'
+export const PLATFORM_BOT_NAME = 'CHANG'

@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useSeatStatus, useCheckinLocations } from '../hooks/useSupabase.js'
 import { linkHint, linkHintMessage } from '../lib/userLinkHint.js'
+import { friendlyUserError } from '../lib/userErrors.js'
 
 const ROLES = ['OWNER', 'ADMIN', 'WORKER']
 // WORKER stays a valid role in the database (lowest access, and the default for
@@ -13,12 +14,6 @@ const ROLES = ['OWNER', 'ADMIN', 'WORKER']
 // when creating a login. Existing WORKER rows can still be edited.
 const CREATE_ROLES = ['ADMIN', 'OWNER']
 const EMPTY_FORM = { email: '', password: '', display_name: '', role: 'ADMIN', assigned_checkin_location_id: '' }
-
-const friendlyError = (e) => {
-  if (e.message?.includes('row-level security policy'))
-    return 'บันทึกไม่สำเร็จ: อาจเกินจำนวน Admin ที่ package ปัจจุบันอนุญาต กรุณาติดต่อผู้ดูแลระบบเพื่ออัปเกรด package'
-  return 'Error: ' + e.message
-}
 
 export default function UserManagement() {
   // editItem === null → CREATE mode | editItem !== null → EDIT mode
@@ -162,7 +157,7 @@ export default function UserManagement() {
       fetchUsers()
       refetchSeat()
     } catch (e) {
-      alert(friendlyError(e))
+      alert(friendlyUserError(e, { adminsFull }))
     } finally {
       setSaving(false)
     }
