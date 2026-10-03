@@ -34,11 +34,11 @@ export default function LineAdminChat() {
   const { data: messages, refetch: refetchMessages } = useAdminChatMessages(selected)
   const [reply, setReply] = useState('')
   const [busy, setBusy] = useState(false)
-  const [idleHours, setIdleHours] = useState('')
+  const [idleMinutes, setIdleMinutes] = useState('')
   const [error, setError] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  useEffect(() => { if (config?.idle_hours != null) setIdleHours(String(config.idle_hours)) }, [config])
+  useEffect(() => { if (config?.idle_minutes != null) setIdleMinutes(String(config.idle_minutes)) }, [config])
 
   useEffect(() => {
     const t = setInterval(() => { refetchSessions(); refetchMessages() }, POLL_MS)
@@ -65,9 +65,9 @@ export default function LineAdminChat() {
     await run(() => callSend({ action: 'delete', lineUserId: selected }))
   }
   const saveIdle = () => run(async () => {
-    const n = parseInt(idleHours, 10)
-    if (!(n >= 1 && n <= 720)) throw new Error('ใส่ตัวเลข 1-720 ชั่วโมง')
-    const { error } = await supabase.from('line_admin_chat_config').update({ idle_hours: n }).eq('id', true)
+    const n = parseInt(idleMinutes, 10)
+    if (!(n >= 5 && n <= 1440)) throw new Error('ใส่ตัวเลข 5-1440 นาที')
+    const { error } = await supabase.from('line_admin_chat_config').update({ idle_minutes: n }).eq('id', true)
     if (error) throw error
     refetchConfig()
   })
@@ -77,8 +77,8 @@ export default function LineAdminChat() {
       <div>
         <h3 style={{ marginTop: 0 }}>💬 แชทแอดมิน</h3>
         <div style={{ marginBottom: 12, fontSize: 13 }}>
-          หมดอายุหลังไม่มีกิจกรรม (ชม.){' '}
-          <input value={idleHours} onChange={(e) => setIdleHours(e.target.value)} style={{ width: 56 }} />{' '}
+          หมดอายุหลังไม่มีกิจกรรม (นาที){' '}
+          <input value={idleMinutes} onChange={(e) => setIdleMinutes(e.target.value)} style={{ width: 56 }} />{' '}
           <button disabled={busy} onClick={saveIdle}>บันทึก</button>
         </div>
         {(sessions ?? []).length === 0 && <div style={{ opacity: 0.6 }}>ยังไม่มีบทสนทนา</div>}

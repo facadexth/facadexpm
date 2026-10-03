@@ -1698,7 +1698,7 @@ export function useAdminChatMessages(lineUserId) {
 
 export function useAdminChatConfig() {
   return useQuery(async () => {
-    const { data, error } = await supabase.from('line_admin_chat_config').select('idle_hours').eq('id', true).maybeSingle()
+    const { data, error } = await supabase.from('line_admin_chat_config').select('idle_minutes').eq('id', true).maybeSingle()
     if (error) throw error
     return data
   }, [])

@@ -160,3 +160,10 @@ In LINE Official Account Manager, set response mode to **Bot** and turn **Chat**
    unlinked sender still gets the existing "account not found" reply.
 5. **Sequencing:** do not apply any migration or deploy any function until the Supabase region
    relocation cutover is done; the cron job URL and the LINE webhook URL are project-specific.
+
+## Amendments v2 (2026-10-03, after the first live test)
+
+1. **Who may start a chat:** only LINE accounts linked to an `OWNER` or `ADMIN` row in `user_roles`. A worker who types the start phrase is told to use "แจ้งปัญหา" or to ask their own company's admin; nothing is recorded. Rationale: workers outnumber admins by far, their questions belong to their own company, and the platform owner cannot answer every tenant's workers.
+2. **Idle limit is 30 minutes** (was 24 hours), stored as `line_admin_chat_config.idle_minutes` (5-1440). The expiry job runs every 5 minutes (was 15) so the limit is honoured to within about 5 minutes.
+3. **Signals to the user:** the start notice tells how to leave and carries a one-tap "จบการสนทนา" chip; the first message of a session gets one acknowledgement ("ส่งถึงแอดมินแล้ว", `line_chat_sessions.ack_sent_at`); every admin reply is prefixed "💬 แอดมิน:" and carries the chip; 10 minutes before expiry the user gets one warning push (`warned_at`, cleared by any new activity).
+4. LINE cannot show a persistent "you are in admin chat" banner, so the repeated chip and the warning are the substitutes.
