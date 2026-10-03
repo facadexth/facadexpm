@@ -105,6 +105,8 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { verifyLineSignature, sendLineReply, sendLinePush, LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET } from '../_shared/line.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
+import { routeDmEvent, logSafeError, ADMIN_CHAT_START_NOTICE, ADMIN_CHAT_END_NOTICE } from '../_shared/line-admin-chat-logic.ts'
+import { getChatMode, startChatSession, endChatSession, recordUserText, recordUserImage } from '../_shared/line-admin-chat.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -128,7 +130,7 @@ async function issueFieldFormLink(tenantId: string, workerId: string, actionType
     tenant_id: tenantId, worker_id: workerId, action_type: actionType, token,
     expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
   })
-  if (error) { console.error('issueFieldFormLink insert failed', error); return null }
+  if (error) { logSafeError('issueFieldFormLink insert failed', error); return null }
   return `${APP_URL}/f/${token}`
 }
 
@@ -187,7 +189,7 @@ async function alertOwnersOfInactiveWorker(
     await sendLinePush(settings.channel_access_token, owner.line_user_id as string, `⚠️ ${worker.name} (พ้นสภาพพนักงานแล้ว) ยังคงส่งข้อความในระบบ LINE อยู่ กรุณาลบออกจากกลุ่มทีมงานด้วยครับ`)
   }
   const { error } = await admin.from('workers').update({ line_offboarding_alerted_at: new Date().toISOString() }).eq('id', worker.id)
-  if (error) console.error('workers.line_offboarding_alerted_at update failed', error)
+  if (error) logSafeError('workers.line_offboarding_alerted_at update failed', error)
 }
 
 // The one place every code path resolves "is this LINE sender a real,
@@ -380,14 +382,14 @@ async function handleGroupPhotoAutoFile(
   const photoPath = `${settings.tenant_id}/${site.id}/${Date.now()}-${worker.id}.jpg`
   const { error: uploadError } = await admin.storage.from('line-site-photos').upload(photoPath, content, { contentType: 'image/jpeg' })
   if (uploadError) {
-    console.error('group photo upload failed', uploadError)
+    logSafeError('group photo upload failed', uploadError)
     return
   }
   const { error: insertError } = await admin.from('line_site_photos').insert({
     tenant_id: settings.tenant_id, worker_id: worker.id, site_id: site.id, date: bangkokToday(), photo_path: photoPath,
   })
   if (insertError) {
-    console.error('group photo line_site_photos insert failed', insertError)
+    logSafeError('group photo line_site_photos insert failed', insertError)
     return
   }
   if (!isLastInBatch) return // more of this worker's batch still coming later in this same payload
@@ -787,7 +789,7 @@ async function handleSitePhotoAdd(
   const photoPath = `${settings.tenant_id}/${site.id}/${Date.now()}-${worker.id}.jpg`
   const { error: uploadError } = await admin.storage.from('line-site-photos').upload(photoPath, content, { contentType: 'image/jpeg' })
   if (uploadError) {
-    console.error('line-site-photos upload failed', uploadError)
+    logSafeError('line-site-photos upload failed', uploadError)
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ อัปโหลดรูปไม่สำเร็จ กรุณาลองใหม่')
     return
   }
@@ -795,13 +797,13 @@ async function handleSitePhotoAdd(
     tenant_id: settings.tenant_id, worker_id: worker.id, site_id: site.id, date: bangkokToday(), photo_path: photoPath,
   })
   if (insertError) {
-    console.error('line_site_photos insert failed', insertError)
+    logSafeError('line_site_photos insert failed', insertError)
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
     return
   }
   const newCount = priorCount + 1
   const { error: countError } = await admin.from('line_pending_actions').update({ photo_count: newCount }).eq('id', pendingId)
-  if (countError) console.error('line_pending_actions photo_count update failed', countError)
+  if (countError) logSafeError('line_pending_actions photo_count update failed', countError)
   await sendLineReply(settings.channel_access_token, replyToken, `📷 รับรูปแล้ว (${newCount} รูป) ส่งเพิ่มได้อีก หรือกด "เสร็จแล้ว" ถ้าส่งครบ`, [{ label: 'เสร็จแล้ว', text: 'เสร็จแล้ว' }])
 }
 
@@ -857,7 +859,7 @@ async function handleJobDoneStart(
       { tenant_id: settings.tenant_id, worker_id: worker.id, action: 'job_done', task_id: tasks[0].id, expires_at: expiresAt, photo_count: 0 },
       { onConflict: 'worker_id' }
     )
-    if (error) console.error('line_pending_actions upsert failed (job_done, single task)', error)
+    if (error) logSafeError('line_pending_actions upsert failed (job_done, single task)', error)
     await sendLineReply(settings.channel_access_token, replyToken, `📷 "${tasks[0].name}" เสร็จแล้วใช่ไหมครับ ส่งรูปงานเสร็จมาได้เลย (ส่งได้หลายรูป พอครบแล้วกด "เสร็จแล้ว")`)
     return
   }
@@ -865,7 +867,7 @@ async function handleJobDoneStart(
     { tenant_id: settings.tenant_id, worker_id: worker.id, action: 'job_done_pick', task_id: null, expires_at: expiresAt, photo_count: 0 },
     { onConflict: 'worker_id' }
   )
-  if (error) console.error('line_pending_actions upsert failed (job_done_pick)', error)
+  if (error) logSafeError('line_pending_actions upsert failed (job_done_pick)', error)
   await sendLineReply(
     settings.channel_access_token,
     replyToken,
@@ -895,7 +897,7 @@ async function handleJobDonePick(
     { tenant_id: settings.tenant_id, worker_id: worker.id, action: 'job_done', task_id: picked.id, expires_at: expiresAt, photo_count: 0 },
     { onConflict: 'worker_id' }
   )
-  if (error) console.error('line_pending_actions upsert failed (job_done, after pick)', error)
+  if (error) logSafeError('line_pending_actions upsert failed (job_done, after pick)', error)
   await sendLineReply(settings.channel_access_token, replyToken, `📷 "${picked.name}" เสร็จแล้วใช่ไหมครับ ส่งรูปงานเสร็จมาได้เลย (ส่งได้หลายรูป พอครบแล้วกด "เสร็จแล้ว")`)
   return true
 }
@@ -927,7 +929,7 @@ async function handleJobDonePhotoAdd(
   const photoPath = `${settings.tenant_id}/${task.site_id}/${Date.now()}-${worker.id}-done.jpg`
   const { error: uploadError } = await admin.storage.from('line-site-photos').upload(photoPath, content, { contentType: 'image/jpeg' })
   if (uploadError) {
-    console.error('line-site-photos upload failed (job done)', uploadError)
+    logSafeError('line-site-photos upload failed (job done)', uploadError)
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ อัปโหลดรูปไม่สำเร็จ กรุณาลองใหม่')
     return
   }
@@ -935,13 +937,13 @@ async function handleJobDonePhotoAdd(
     tenant_id: settings.tenant_id, worker_id: worker.id, site_id: task.site_id, task_id: task.id, date: bangkokToday(), photo_path: photoPath,
   })
   if (photoInsertError) {
-    console.error('line_site_photos insert failed (job done)', photoInsertError)
+    logSafeError('line_site_photos insert failed (job done)', photoInsertError)
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
     return
   }
   const newCount = priorCount + 1
   const { error: countError } = await admin.from('line_pending_actions').update({ photo_count: newCount }).eq('id', pendingId)
-  if (countError) console.error('line_pending_actions photo_count update failed', countError)
+  if (countError) logSafeError('line_pending_actions photo_count update failed', countError)
   await sendLineReply(settings.channel_access_token, replyToken, `📷 "${task.name}" รับรูปแล้ว (${newCount} รูป) ส่งเพิ่มได้อีก หรือกด "เสร็จแล้ว" ถ้าส่งครบ`, [{ label: 'เสร็จแล้ว', text: 'เสร็จแล้ว' }])
 }
 
@@ -969,7 +971,7 @@ async function handleJobDonePhotoFinish(
   }
   const { error: statusError } = await admin.from('phase_tasks').update({ status: 'done' }).eq('id', task.id)
   if (statusError) {
-    console.error('phase_tasks status update failed', statusError)
+    logSafeError('phase_tasks status update failed', statusError)
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
     return false // let them retry "เสร็จแล้ว" -- already-uploaded photos are safe either way
   }
@@ -997,7 +999,7 @@ async function handleAction(
     const site = await resolveTodaysSite(worker.id, settings.tenant_id)
     const { error } = await admin.from('line_issue_reports').insert({ tenant_id: settings.tenant_id, worker_id: worker.id, site_id: site?.id ?? null, message: text })
     if (error) {
-      console.error('line_issue_reports insert failed', error)
+      logSafeError('line_issue_reports insert failed', error)
       await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
     } else {
       await sendLineReply(settings.channel_access_token, replyToken, '📩 รับแจ้งปัญหาแล้วครับ แอดมินจะติดตามให้')
@@ -1108,7 +1110,7 @@ Deno.serve(async (req) => {
       // codes is practically impossible (30^6 combinations, same
       // assumption the pre-existing per-tenant version already made).
       const { data: pendingRoleCode, error: roleCodeError } = await admin.from('user_roles').select('id, tenant_id').eq('line_link_code', trimmed).maybeSingle()
-      if (roleCodeError) { console.error('user_roles line_link_code lookup failed', roleCodeError); continue }
+      if (roleCodeError) { logSafeError('user_roles line_link_code lookup failed', roleCodeError); continue }
       if (pendingRoleCode) {
         // Real gap closed 2026-10-01 (final-review finding #3): a code
         // match alone used to link the account regardless of whether
@@ -1117,7 +1119,7 @@ Deno.serve(async (req) => {
         if (!(await tenantHasModuleAccess(admin, pendingRoleCode.tenant_id as string, 'line_bot'))) { continue }
         const { error } = await admin.from('user_roles').update({ line_user_id: lineUserId, line_link_code: null }).eq('id', pendingRoleCode.id)
         if (error) {
-          console.error('user_roles line-link update failed', error)
+          logSafeError('user_roles line-link update failed', error)
           await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '⚠️ เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่หรือแจ้งแอดมิน')
         } else {
           await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '✅ เชื่อมต่อ LINE เรียบร้อยแล้วครับ')
@@ -1125,12 +1127,12 @@ Deno.serve(async (req) => {
         continue
       }
       const { data: pendingWorkerCode, error: workerCodeError } = await admin.from('workers').select('id, tenant_id').eq('line_link_code', trimmed).maybeSingle()
-      if (workerCodeError) { console.error('workers line_link_code lookup failed', workerCodeError); continue }
+      if (workerCodeError) { logSafeError('workers line_link_code lookup failed', workerCodeError); continue }
       if (pendingWorkerCode) {
         if (!(await tenantHasModuleAccess(admin, pendingWorkerCode.tenant_id as string, 'line_bot'))) { continue }
         const { error } = await admin.from('workers').update({ line_user_id: lineUserId, line_link_code: null }).eq('id', pendingWorkerCode.id)
         if (error) {
-          console.error('workers line-link update failed', error)
+          logSafeError('workers line-link update failed', error)
           await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '⚠️ เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่หรือแจ้งแอดมิน')
         } else {
           await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '✅ เชื่อมต่อ LINE เรียบร้อยแล้วครับ')
@@ -1141,15 +1143,15 @@ Deno.serve(async (req) => {
 
     if (sourceGroupId) {
       const { data: match, error: matchError } = await admin.from('line_settings').select('tenant_id').eq('crew_group_id', sourceGroupId).maybeSingle()
-      if (matchError) { console.error('line_settings crew_group_id lookup failed', matchError); continue }
+      if (matchError) { logSafeError('line_settings crew_group_id lookup failed', matchError); continue }
       tenantId = (match?.tenant_id as string | undefined) ?? null
     } else {
       const { data: w, error: workerLookupError } = await admin.from('workers').select('tenant_id').eq('line_user_id', lineUserId).maybeSingle()
-      if (workerLookupError) { console.error('workers line_user_id lookup failed', workerLookupError); continue }
+      if (workerLookupError) { logSafeError('workers line_user_id lookup failed', workerLookupError); continue }
       tenantId = (w?.tenant_id as string | undefined) ?? null
       if (!tenantId) {
         const { data: u, error: userLookupError } = await admin.from('user_roles').select('tenant_id').eq('line_user_id', lineUserId).maybeSingle()
-        if (userLookupError) { console.error('user_roles line_user_id lookup failed', userLookupError); continue }
+        if (userLookupError) { logSafeError('user_roles line_user_id lookup failed', userLookupError); continue }
         tenantId = (u?.tenant_id as string | undefined) ?? null
       }
     }
@@ -1161,12 +1163,12 @@ Deno.serve(async (req) => {
         // group_link_code gets claimed for that tenant.
         const trimmed = text.trim().toUpperCase()
         const { data: claimant, error: claimantError } = await admin.from('line_settings').select('tenant_id').eq('group_link_code', trimmed).maybeSingle()
-        if (claimantError) { console.error('line_settings group_link_code lookup failed', claimantError); continue }
+        if (claimantError) { logSafeError('line_settings group_link_code lookup failed', claimantError); continue }
         if (claimant) {
           if (!(await tenantHasModuleAccess(admin, claimant.tenant_id as string, 'line_bot'))) { continue }
           const { error } = await admin.from('line_settings').update({ crew_group_id: sourceGroupId, group_link_code: null }).eq('tenant_id', claimant.tenant_id)
           if (error) {
-            console.error('line_settings group claim failed', error)
+            logSafeError('line_settings group claim failed', error)
             await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '⚠️ ตั้งกลุ่มไม่สำเร็จ กรุณาลองใหม่หรือแจ้งแอดมิน')
           } else {
             await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '✅ ตั้งกลุ่มนี้เป็นกลุ่มทีมงานเรียบร้อยแล้ว')
@@ -1190,6 +1192,34 @@ Deno.serve(async (req) => {
 
     const commandSettingsByKey = await loadCommandSettings(tenantId)
     const settings = { tenant_id: tenantId, channel_access_token: LINE_CHANNEL_ACCESS_TOKEN }
+
+    // Hybrid privacy mode (docs/superpowers/specs/2026-10-02-line-hybrid-privacy-design.md).
+    // DM-only. In the default secure_bot mode this changes nothing and
+    // stores nothing; chat_with_admin is entered only by the user's own
+    // exact trigger phrase, and only then are messages/photos recorded.
+    if (!sourceGroupId) {
+      const route = routeDmEvent({ mode: await getChatMode(admin, lineUserId), msgType, text })
+      if (route === 'start_chat') {
+        await startChatSession(admin, lineUserId, tenantId)
+        await sendLineReply(settings.channel_access_token, event.replyToken, ADMIN_CHAT_START_NOTICE)
+        continue
+      }
+      if (route === 'end_chat') {
+        await endChatSession(admin, lineUserId)
+        await sendLineReply(settings.channel_access_token, event.replyToken, ADMIN_CHAT_END_NOTICE)
+        continue
+      }
+      if (route === 'record_text') {
+        await recordUserText(admin, lineUserId, messageId, text!)
+        continue
+      }
+      if (route === 'record_image') {
+        const content = await fetchLineImageContent(settings.channel_access_token, messageId)
+        if (content) await recordUserImage(admin, lineUserId, messageId, content)
+        continue
+      }
+      // 'normal_flow' falls through to the existing DM handling below, unchanged.
+    }
 
     if (!sourceGroupId) {
       // DM -- either (a) a bare linking code (OWNER/ADMIN via user_roles,
@@ -1230,11 +1260,11 @@ Deno.serve(async (req) => {
             const shouldClose = await handleSitePhotoFinish(settings, event.replyToken, priorCount)
             if (shouldClose) {
               const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
-              if (deleteError) console.error('line_pending_actions delete failed', deleteError)
+              if (deleteError) logSafeError('line_pending_actions delete failed', deleteError)
             }
           } else if (interruptCommand) {
             const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
-            if (deleteError) console.error('line_pending_actions delete failed', deleteError)
+            if (deleteError) logSafeError('line_pending_actions delete failed', deleteError)
             interrupted = true
           }
           // Any other stray text while accumulating photos is still silently ignored.
@@ -1243,7 +1273,7 @@ Deno.serve(async (req) => {
             const picked = await handleJobDonePick(worker, settings, event.replyToken, text)
             if (!picked && interruptCommand) {
               const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
-              if (deleteError) console.error('line_pending_actions delete failed', deleteError)
+              if (deleteError) logSafeError('line_pending_actions delete failed', deleteError)
               interrupted = true
             }
           } else if (msgType === 'image') {
@@ -1268,17 +1298,17 @@ Deno.serve(async (req) => {
             const shouldClose = await handleJobDonePhotoFinish(pending.task_id as string, settings, event.replyToken, priorCount)
             if (shouldClose) {
               const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
-              if (deleteError) console.error('line_pending_actions delete failed', deleteError)
+              if (deleteError) logSafeError('line_pending_actions delete failed', deleteError)
             }
           } else if (interruptCommand) {
             const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
-            if (deleteError) console.error('line_pending_actions delete failed', deleteError)
+            if (deleteError) logSafeError('line_pending_actions delete failed', deleteError)
             interrupted = true
           }
           // Any other stray text while accumulating photos is still silently ignored.
         } else if (msgType === 'text' && text) {
           const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
-          if (deleteError) console.error('line_pending_actions delete failed', deleteError)
+          if (deleteError) logSafeError('line_pending_actions delete failed', deleteError)
           await handleAction(pendingAction as GroupActionType, worker, text, settings, event.replyToken)
         }
         if (!interrupted) continue
@@ -1326,7 +1356,7 @@ Deno.serve(async (req) => {
             { tenant_id: settings.tenant_id, worker_id: worker.id, action, expires_at: expiresAt, photo_count: 0 },
             { onConflict: 'worker_id' }
           )
-          if (error) console.error('line_pending_actions upsert failed', error)
+          if (error) logSafeError('line_pending_actions upsert failed', error)
           await sendLineReply(settings.channel_access_token, event.replyToken, promptForAction(action as GroupActionType | 'site_photo'))
         }
         // No match and no pending action -- unrecognized DM text from a
@@ -1385,7 +1415,7 @@ Deno.serve(async (req) => {
           { tenant_id: settings.tenant_id, line_user_id: lineUserId, display_name: event.source?.userId ?? null },
           { onConflict: 'tenant_id,line_user_id', ignoreDuplicates: true }
         )
-        if (unlinkedError) console.error('line_unlinked_senders upsert failed', unlinkedError)
+        if (unlinkedError) logSafeError('line_unlinked_senders upsert failed', unlinkedError)
       }
       continue
     }
