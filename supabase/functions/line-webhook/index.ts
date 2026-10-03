@@ -105,6 +105,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { verifyLineSignature, sendLineReply, sendLinePush, LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET } from '../_shared/line.ts'
 import { withPushBudget } from '../_shared/push-budget.ts'
+import { todayMenuOptions } from '../_shared/today-menu.ts'
 import { jobDonePrompt, jobDoneConfirmation, JOB_DONE_CONFIRM_CHIP } from '../_shared/job-done-messages.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
@@ -606,6 +607,9 @@ async function handleTodaysJobMenu(
   worker: { id: string },
   settings: { tenant_id: string; channel_access_token: string },
   replyToken: string,
+  // The phrase that runs tomorrow's schedule for this company (they may have renamed it),
+  // or null if that command is off in direct chat -- decides the last chip.
+  tomorrowPhrase: string | null,
 ) {
   const site = await resolveTodaysSite(worker.id, settings.tenant_id)
   if (!site) {
@@ -632,11 +636,12 @@ async function handleTodaysJobMenu(
     lines.push(...siteTasks.map((t) => `• ${t.name}`))
   }
 
-  const options: string[] = []
-  if (!checkin?.checkin_at) options.push('เช็คอิน')
-  else if (!checkin?.checkout_at) options.push('เช็คเอาท์')
-  if (myTasks.length) options.push('งานเสร็จ')
-  options.push('แจ้งปัญหา', 'รูปภาพหน้างาน')
+  const options = todayMenuOptions({
+    hasCheckedIn: !!checkin?.checkin_at,
+    hasCheckedOut: !!checkin?.checkout_at,
+    hasOpenTasks: myTasks.length > 0,
+    tomorrowPhrase,
+  })
 
   await sendLineReply(settings.channel_access_token, replyToken, lines.join('\n'), options.map((o) => ({ label: truncateLabel(o), text: o })))
 }
@@ -1365,7 +1370,10 @@ Deno.serve(async (req) => {
         } else if (action === 'job_done_start') {
           await handleJobDoneStart(worker, settings, event.replyToken)
         } else if (action === 'today_job') {
-          await handleTodaysJobMenu(worker, settings, event.replyToken)
+          const tomorrowPhrase = resolveEnabled('tomorrow_job', commandSettingsByKey, 'dm')
+            ? (resolveEffectivePhrases('tomorrow_job', commandSettingsByKey)[0] ?? null)
+            : null
+          await handleTodaysJobMenu(worker, settings, event.replyToken, tomorrowPhrase)
         } else if (action === 'tomorrow_job') {
           const dateISO = bangkokDateISO(bangkokToday(), 1)
           await handleSingleDayQuery(worker, settings, event.replyToken, dateISO, `พรุ่งนี้ (${formatDateTH(dateISO)})`)
