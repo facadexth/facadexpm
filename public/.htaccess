@@ -1,5 +1,12 @@
 Options -MultiViews
 RewriteEngine On
+
+# The app moved to its own domain. Send the old FacadeX address there,
+# keeping the path and query so old LINE/form/sign links still open.
+# Matches only the old host, so this file is harmless anywhere else.
+RewriteCond %{HTTP_HOST} ^(www\.)?pm\.facadex\.co\.th$ [NC]
+RewriteRule ^(.*)$ https://changpm.app/$1 [R=301,L,NE]
+
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.html [QSA,L]
