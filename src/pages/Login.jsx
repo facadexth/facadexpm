@@ -5,6 +5,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useContractorTypes } from '../hooks/useSupabase.js'
+import { classifySignup } from '../lib/signupResult.js'
 
 export default function Login() {
   const [mode,     setMode]     = useState('login') // 'login' | 'signup'
@@ -15,6 +16,7 @@ export default function Login() {
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState(null)
   const [signupDone, setSignupDone] = useState(false)
+  const [needsConfirm, setNeedsConfirm] = useState(false) // email confirmation required before first login
   const { data: contractorTypes } = useContractorTypes()
 
   const handleLogin = async (e) => {
@@ -30,7 +32,7 @@ export default function Login() {
     e.preventDefault()
     setLoading(true)
     setError(null)
-    const { error } = await supabase.auth.signUp({
+    const result = await supabase.auth.signUp({
       email, password,
       options: { data: {
         company_name: companyName,
@@ -41,11 +43,13 @@ export default function Login() {
         ...(contractorTypeId && contractorTypeId !== 'none' ? { contractor_type_id: contractorTypeId } : {}),
       } }
     })
-    if (error) {
-      setError(error.message)
+    const outcome = classifySignup(result)
+    if (outcome.kind === 'duplicate' || outcome.kind === 'error') {
+      setError(outcome.message)
       setLoading(false)
       return
     }
+    setNeedsConfirm(outcome.kind === 'confirm')
     setSignupDone(true)
     setLoading(false)
   }
@@ -54,6 +58,7 @@ export default function Login() {
     setMode(next)
     setError(null)
     setSignupDone(false)
+    setNeedsConfirm(false)
   }
 
   return (
@@ -76,7 +81,12 @@ export default function Login() {
         {signupDone ? (
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 14, color: 'var(--text)', marginBottom: 20, lineHeight: 1.6 }}>
-              ✅ สร้างบัญชีสำเร็จ! ทดลองใช้ฟรี 14 วัน<br />เข้าสู่ระบบด้วยอีเมล/รหัสผ่านที่ตั้งไว้ได้เลย
+              {needsConfirm ? (
+                <>📧 ส่งอีเมลยืนยันไปที่ <b>{email}</b> แล้ว<br />กรุณากดลิงก์ในอีเมลก่อน แล้วจึงเข้าสู่ระบบ<br />
+                  <span style={{ fontSize: 12, color: 'var(--text3)' }}>ไม่พบอีเมล? ลองดูในจดหมายขยะ</span></>
+              ) : (
+                <>✅ สร้างบัญชีสำเร็จ! ทดลองใช้ฟรี 14 วัน<br />เข้าสู่ระบบด้วยอีเมล/รหัสผ่านที่ตั้งไว้ได้เลย</>
+              )}
             </div>
             <button
               type="button" className="btn btn-primary"
