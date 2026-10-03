@@ -6,7 +6,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
 import { endChatAndPush, getChatMode, recordAdminText } from '../_shared/line-admin-chat.ts'
-import { logSafeError } from '../_shared/line-admin-chat-logic.ts'
+import { logSafeError, formatAdminReply, ADMIN_CHAT_END_QUICK_REPLY } from '../_shared/line-admin-chat-logic.ts'
 
 const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
@@ -37,7 +37,8 @@ Deno.serve(async (req) => {
     const trimmed = (text ?? '').trim()
     if (!trimmed) return json({ error: 'text required' }, 400)
     if ((await getChatMode(admin, lineUserId)) !== 'chat_with_admin') return json({ error: 'Session is not open' }, 409)
-    const push = await sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, lineUserId, trimmed)
+    // The user sees who is speaking and gets a one-tap way out; the stored message stays the plain text.
+    const push = await sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, lineUserId, formatAdminReply(trimmed), ADMIN_CHAT_END_QUICK_REPLY)
     if (!push.ok) return json({ error: `LINE push failed (${push.status})` }, 502)
     await recordAdminText(admin, lineUserId, trimmed)
     return json({ ok: true })
