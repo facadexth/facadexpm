@@ -3,6 +3,9 @@
   // The Worker name must equal the project name chosen in the Cloudflare dashboard.
   "name": "changpm-app",
   "compatibility_date": "2026-10-03",
+  // Only the custom domain serves the app: no *.workers.dev address, no preview URLs.
+  "workers_dev": false,
+  "preview_urls": false,
   "assets": {
     "directory": "./dist",
     // Unknown paths (e.g. /f/<token>, /sign/<id>, deep links) get index.html, which is how a single-page app routes.
