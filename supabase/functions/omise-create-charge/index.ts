@@ -24,6 +24,7 @@
 // remaining paid days.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { activateTenantFromIntent } from '../_shared/activate-tenant.ts'
+import { APP_URL } from '../_shared/app-url.ts'
 
 const OMISE_SECRET_KEY = Deno.env.get('OMISE_SECRET_KEY')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -171,7 +172,7 @@ Deno.serve(async (req) => {
       amount: String(amountSatang),
       currency: 'thb',
       source: source.id,
-      return_uri: 'https://pm.facadex.co.th/',
+      return_uri: `${APP_URL}/`,
       'metadata[payment_intent_id]': intent.id,
     })
 

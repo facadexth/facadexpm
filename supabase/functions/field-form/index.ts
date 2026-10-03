@@ -34,11 +34,11 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
+import { APP_URL } from '../_shared/app-url.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-const APP_URL = 'https://pm.facadex.co.th'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

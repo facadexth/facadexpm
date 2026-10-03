@@ -110,11 +110,11 @@ import {
   ADMIN_CHAT_NOT_ALLOWED_NOTICE, ADMIN_CHAT_END_QUICK_REPLY,
 } from '../_shared/line-admin-chat-logic.ts'
 import { getChatMode, canStartAdminChat, claimAckForSession, startChatSession, endChatSession, recordUserText, recordUserImage } from '../_shared/line-admin-chat.ts'
+import { APP_URL } from '../_shared/app-url.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-const APP_URL = 'https://pm.facadex.co.th'
 
 // Issues a one-time /f/<token> link (see field-form Edge Function +
 // src/FieldFormPage.jsx) for เบิกของ/ขอลา/เช็คอิน/เช็คเอาท์ -- replaces the
