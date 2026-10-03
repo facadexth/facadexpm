@@ -107,6 +107,7 @@ import { verifyLineSignature, sendLineReply, sendLinePush, LINE_CHANNEL_ACCESS_T
 import { withPushBudget } from '../_shared/push-budget.ts'
 import { todayMenuOptions } from '../_shared/today-menu.ts'
 import { CANCEL_PHRASE, CANCEL_CHIP, CANCEL_REPLY, isCancel } from '../_shared/cancel.ts'
+import { isMenuButtonText, pendingWaitMinutes } from '../_shared/pending-flow.ts'
 import { TIME_CLOCK_PHRASE, SCHEDULE_MENU_PHRASE, SCHEDULE_MENU_PROMPT, TIME_CLOCK_DONE_MESSAGE, timeClockStep, scheduleMenuChips } from '../_shared/schedule-menu.ts'
 import { jobDonePrompt, jobDoneConfirmation, JOB_DONE_CONFIRM_CHIP } from '../_shared/job-done-messages.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
@@ -1421,7 +1422,13 @@ Deno.serve(async (req) => {
         } else if (msgType === 'text' && text) {
           const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
           if (deleteError) logSafeError('line_pending_actions delete failed', deleteError)
-          await handleAction(pendingAction as GroupActionType, worker, text, settings, event.replyToken)
+          const schedulePhrases = SCHEDULE_COMMAND_ORDER.flatMap((key) => resolveEffectivePhrases(key, commandSettingsByKey))
+          if (isMenuButtonText(text, schedulePhrases)) {
+            // A menu button, not the report: stop waiting and run the button below.
+            interrupted = true
+          } else {
+            await handleAction(pendingAction as GroupActionType, worker, text, settings, event.replyToken)
+          }
         }
         if (!interrupted) continue
         // interrupted === true: fall through to the normal dispatch block
@@ -1470,7 +1477,7 @@ Deno.serve(async (req) => {
         } else if (action) {
           // issue_report / site_photo -- genuinely two-step: ask for
           // detail, consume the next matching message.
-          const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
+          const expiresAt = new Date(Date.now() + pendingWaitMinutes(action) * 60 * 1000).toISOString()
           const { error } = await admin.from('line_pending_actions').upsert(
             { tenant_id: settings.tenant_id, worker_id: worker.id, action, expires_at: expiresAt, photo_count: 0 },
             { onConflict: 'worker_id' }
