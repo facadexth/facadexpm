@@ -19,6 +19,9 @@ import UpdatePrompt from './components/UpdatePrompt.jsx'
 import UpgradeModal from './components/UpgradeModal.jsx'
 import ManualModal from './components/ManualModal.jsx'
 import ChunkErrorBoundary from './components/ChunkErrorBoundary.jsx'
+import NotificationBell from './components/NotificationBell.jsx'
+import { usePendingCounts } from './hooks/usePendingCounts.js'
+import { visiblePendingItems, badgeByTab, badgeForTab, formatBadge } from './lib/pendingItems.js'
 import Login      from './pages/Login.jsx'
 import Dashboard   from './pages/Dashboard.jsx'
 
@@ -121,7 +124,19 @@ const ALL_TAB_ENTRIES = TABS.flatMap(t => t.children ?? [t]).concat(HIDDEN_TAB_E
 // longer a descendant of the clipping ancestor at all.
 // ✅ ทำงานได้ทั้ง hover (desktop) และแตะ 1 ครั้งเพื่อเปิด/ปิด (มือถือ -- ไม่มี
 //    hover ให้ใช้) พร้อมปิดเมื่อแตะนอกพื้นที่ trigger/dropdown
-function NavGroup({ tab, activeTab, onNavigate }) {
+// Red count next to a tab name (things waiting on that page). Nothing when 0.
+function NavBadge({ n }) {
+  if (!n) return null
+  return (
+    <span style={{
+      marginLeft: 6, minWidth: 16, height: 16, padding: '0 5px', boxSizing: 'border-box', display: 'inline-block',
+      borderRadius: 8, background: 'var(--red, #e5484d)', color: '#fff', fontSize: 10, fontWeight: 700,
+      lineHeight: '16px', textAlign: 'center', verticalAlign: 'middle',
+    }}>{formatBadge(n)}</span>
+  )
+}
+
+function NavGroup({ tab, activeTab, onNavigate, byTab = {} }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState(null)
   const triggerRef = useRef(null)
@@ -182,7 +197,7 @@ function NavGroup({ tab, activeTab, onNavigate }) {
           fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', transition: 'all 0.2s'
         }}
       >
-        {tab.label}
+        {tab.label}<NavBadge n={badgeForTab(tab, byTab)} />
       </span>
       {open && pos && createPortal(
         <div
@@ -206,7 +221,7 @@ function NavGroup({ tab, activeTab, onNavigate }) {
                 fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap'
               }}
             >
-              {child.label}
+              {child.label}<NavBadge n={byTab[child.id]} />
             </button>
           ))}
         </div>,
@@ -226,6 +241,10 @@ function PageLoadingFallback() {
 
 export default function App() {
   const [session,  setSession]  = useState(undefined) // undefined = loading
+  const { counts: pendingCounts, refetch: refetchPending } = usePendingCounts(!!session)
+  // Moving between pages is when someone has just acted on something (approved a
+  // leave request, issued an invoice), so refresh the numbers then, not only every minute.
+  useEffect(() => { if (session) refetchPending() }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
   const [activeTab, setActiveTab] = useState('dashboard')
   const [navState, setNavState] = useState({})
   const [showChangePassword, setShowChangePassword] = useState(false)
@@ -387,6 +406,11 @@ export default function App() {
     .map(tab => tab.children ? { ...tab, children: tab.children.filter(passesGates) } : tab)
     .filter(tab => tab.children ? tab.children.length > 0 : passesGates(tab))
 
+  // Things waiting for action, limited to pages this user can actually open.
+  const canSeeTab = (tabId) => { const entry = ALL_TAB_ENTRIES.find(t => t.id === tabId); return !!entry && passesGates(entry) }
+  const pendingItems = visiblePendingItems(pendingCounts, canSeeTab)
+  const pendingByTab = badgeByTab(pendingItems)
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <UpdatePrompt />
@@ -417,6 +441,7 @@ export default function App() {
           <span className="header-date" style={{ color: 'var(--text3)', fontSize: 12, whiteSpace: 'nowrap' }}>
             {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
           </span>
+          <NotificationBell items={pendingItems} onRefresh={refetchPending} onOpenItem={item => navigateTo(item.tab)} />
           <button
             className="btn btn-ghost btn-sm"
             style={{ fontSize: 12 }}
@@ -453,6 +478,7 @@ export default function App() {
             key={tab.label}
             tab={tab}
             activeTab={activeTab}
+            byTab={pendingByTab}
             onNavigate={child => { sessionStorage.removeItem('chunk-reload-attempted'); setNavState({}); setActiveTab(child.id) }}
           />
         ) : (
@@ -467,7 +493,7 @@ export default function App() {
               whiteSpace: 'nowrap', transition: 'all 0.2s'
             }}
           >
-            {tab.label}
+            {tab.label}<NavBadge n={badgeForTab(tab, pendingByTab)} />
           </button>
         ))}
       </nav>
