@@ -15,7 +15,7 @@ import {
   SCHEDULE_COMMAND_KEYS, SCHEDULE_COMMAND_DEFAULTS, FIXED_COMMAND_KEYS, FIXED_COMMAND_LABELS, FIXED_COMMAND_PHRASES,
   resolveEnabled, resolveEffectivePhrases, validateCustomPhrase,
 } from '../lib/lineCommandSettings.js'
-import { PLATFORM_BOT_BASIC_ID, PLATFORM_BOT_NAME } from '../lib/platformLineBot.js'
+import { PLATFORM_BOT_BASIC_ID, platformBotLabel } from '../lib/platformLineBot.js'
 
 const SCHEDULE_COMMAND_DESCRIPTIONS = {
   today_job: 'แชทส่วนตัว: งานของตัวเอง + ปุ่มลัดตามสถานะ (เช็คอิน/เช็คเอาท์/งานเสร็จ) · กลุ่ม: งานของทั้งทีมวันนี้ แบ่งตามไซต์',
@@ -517,10 +517,10 @@ export default function CommunicationCenter() {
           <>
             <div style={{ padding: 16 }}>
               <div style={{ fontSize: 12.5, color: 'var(--text3)', marginBottom: 12 }}>
-                เพิ่มเพื่อนบอท <b>{PLATFORM_BOT_NAME}</b> ก่อน แล้วเพิ่มเข้ากลุ่มทีมงานของคุณ
+                เพิ่มเพื่อนบอท <b>{platformBotLabel()}</b> ก่อน แล้วเพิ่มเข้ากลุ่มทีมงานของคุณ
               </div>
               <a className="btn btn-ghost" href={`https://line.me/R/ti/p/@${PLATFORM_BOT_BASIC_ID}`} target="_blank" rel="noreferrer">
-                ➕ เพิ่มเพื่อน {PLATFORM_BOT_NAME}
+                ➕ เพิ่มเพื่อนบอท
               </a>
             </div>
             <div style={{ padding: '0 16px 16px' }}>

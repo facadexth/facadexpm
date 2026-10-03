@@ -5,4 +5,12 @@
 // Neither value is secret: LINE's own Get Bot Info response and the
 // public @handle are both discoverable by anyone who messages the bot.
 export const PLATFORM_BOT_BASIC_ID = '302yljzw' // must match LINE_BASIC_ID in _shared/line.ts exactly
-export const PLATFORM_BOT_NAME = 'CHANG'
+// The name people see for the bot in LINE. Keep it null until the LINE account
+// is actually renamed (planned: 'ADMIN CHANG'): the app must never show a name
+// that does not match what LINE shows, or people cannot find the bot. Until
+// then the screens show the @ID, which always finds it.
+export const PLATFORM_BOT_NAME = null
+
+export function platformBotLabel(name = PLATFORM_BOT_NAME, basicId = PLATFORM_BOT_BASIC_ID) {
+  return name ? `${name} (@${basicId})` : `@${basicId}`
+}
