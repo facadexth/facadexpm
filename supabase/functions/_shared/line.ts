@@ -30,8 +30,13 @@ const rawChannelSecret = Deno.env.get('LINE_CHANNEL_SECRET')
 if (!rawAccessToken || !rawChannelSecret) {
   throw new Error('LINE_CHANNEL_ACCESS_TOKEN / LINE_CHANNEL_SECRET not configured -- set them as Supabase Edge Function secrets before deploying any function that imports _shared/line.ts')
 }
-export const LINE_CHANNEL_ACCESS_TOKEN = rawAccessToken
-export const LINE_CHANNEL_SECRET = rawChannelSecret
+// Neither value can legitimately contain whitespace, but a secret pasted from a
+// wrapped terminal/web page can carry stray newlines or spaces. A newline inside
+// the token makes `Authorization: Bearer <token>` an invalid header, so every
+// reply throws (found live on 2026-10-03 right after the region cutover).
+// Strip all whitespace instead of trusting the paste.
+export const LINE_CHANNEL_ACCESS_TOKEN = rawAccessToken.replace(/\s+/g, '')
+export const LINE_CHANNEL_SECRET = rawChannelSecret.replace(/\s+/g, '')
 export const LINE_BOT_USER_ID = 'Uc21ab4c845be0f5d3b90e0daa1f5cf72'
 export const LINE_BASIC_ID = '302yljzw'
 
