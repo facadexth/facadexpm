@@ -24,3 +24,4 @@ supabase/region-migration/out/
 .env.cutover.bak
 
 .wrangler/
+.env.tokyo.bak
