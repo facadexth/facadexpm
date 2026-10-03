@@ -1677,3 +1677,29 @@ export async function extractPoDocument(base64, mimeType, examples = []) {
     return { ok: false, error: e.message }
   }
 }
+
+// ---- LINE admin chat (platform owner only; RLS enforces it) ----
+export function useAdminChatSessions() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.from('line_chat_sessions').select('*').order('last_activity_at', { ascending: false })
+    if (error) throw error
+    return data
+  }, [])
+}
+
+export function useAdminChatMessages(lineUserId) {
+  return useQuery(async () => {
+    if (!lineUserId) return []
+    const { data, error } = await supabase.from('line_admin_messages').select('*').eq('line_user_id', lineUserId).order('created_at', { ascending: true })
+    if (error) throw error
+    return data
+  }, [lineUserId])
+}
+
+export function useAdminChatConfig() {
+  return useQuery(async () => {
+    const { data, error } = await supabase.from('line_admin_chat_config').select('idle_hours').eq('id', true).maybeSingle()
+    if (error) throw error
+    return data
+  }, [])
+}
