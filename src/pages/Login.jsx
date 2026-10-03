@@ -4,20 +4,17 @@
 // ============================================================
 import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useContractorTypes } from '../hooks/useSupabase.js'
 import { classifySignup } from '../lib/signupResult.js'
 
 export default function Login() {
   const [mode,     setMode]     = useState('login') // 'login' | 'signup'
   const [companyName, setCompanyName] = useState('')
-  const [contractorTypeId, setContractorTypeId] = useState('')
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState(null)
   const [signupDone, setSignupDone] = useState(false)
   const [needsConfirm, setNeedsConfirm] = useState(false) // email confirmation required before first login
-  const { data: contractorTypes } = useContractorTypes()
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -36,11 +33,6 @@ export default function Login() {
       email, password,
       options: { data: {
         company_name: companyName,
-        // 'none' (เริ่มต้นแบบว่างเปล่า) must NOT reach the DB trigger as an
-        // empty string -- casting '' to uuid there throws. Omit the key
-        // entirely so raw_user_meta_data->>'contractor_type_id' reads NULL,
-        // the trigger's already-supported "skip seeding" path.
-        ...(contractorTypeId && contractorTypeId !== 'none' ? { contractor_type_id: contractorTypeId } : {}),
       } }
     })
     const outcome = classifySignup(result)
@@ -107,21 +99,6 @@ export default function Login() {
                   value={companyName} onChange={e => setCompanyName(e.target.value)}
                   placeholder="บริษัท ตัวอย่าง จำกัด"
                 />
-              </div>
-            )}
-            {mode === 'signup' && (
-              <div>
-                <label className="label">ประเภทผู้รับเหมา</label>
-                <select
-                  className="input" required
-                  value={contractorTypeId} onChange={e => setContractorTypeId(e.target.value)}
-                >
-                  <option value="" disabled>เลือกประเภทผู้รับเหมา</option>
-                  {(contractorTypes || []).map(t => (
-                    <option key={t.id} value={t.id}>{t.label_th}</option>
-                  ))}
-                  <option value="none">— เริ่มต้นแบบว่างเปล่า (ไม่ใช้ preset) —</option>
-                </select>
               </div>
             )}
             <div>

@@ -939,20 +939,6 @@ export function useMyTeamToday() {
   })
 }
 
-// ── Contractor Types ────────────────────────────────────────────
-
-/** รายการประเภทผู้รับเหมาทั้งหมด — ใช้ในฟอร์ม signup และหน้า Settings */
-export function useContractorTypes() {
-  return useQuery(async () => {
-    const { data, error } = await supabase
-      .from('contractor_types')
-      .select('id, key, label_th')
-      .order('sort_order')
-    if (error) throw error
-    return data
-  })
-}
-
 // ── App Settings (key/value) ──────────────────────────────────
 
 export function useAppSetting(key, fallback = '') {

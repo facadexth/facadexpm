@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAppSetting, saveAppSetting, useContractorTypes, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature, useBankAccounts, setDefaultBankAccount, useCheckinLocations } from '../hooks/useSupabase.js'
+import { useAppSetting, saveAppSetting, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature, useBankAccounts, setDefaultBankAccount, useCheckinLocations } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { PAGE_LABELS, DEFAULT_PERMISSIONS, loadPermissions, savePermissions } from '../lib/permissions.js'
@@ -336,7 +336,6 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     }
   }
 
-  // Contractor type — stored on tenants.contractor_type_id
   const { tenant, hasModuleAccess, refetch: refetchTenant } = useTenant()
 
   // Document style customizer -- resolveDocumentStyle always returns a
@@ -420,28 +419,6 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       refetchMySignature()
     } catch (e) {
       alert('Error: ' + e.message)
-    }
-  }
-
-  const { data: contractorTypes } = useContractorTypes()
-  const [contractorTypeId, setContractorTypeId] = useState('')
-  const [savingType, setSavingType] = useState(false)
-  useEffect(() => { if (tenant) setContractorTypeId(tenant.contractor_type_id || '') }, [tenant])
-
-  const handleSaveContractorType = async () => {
-    setSavingType(true)
-    try {
-      const { error } = await supabase
-        .from('tenants')
-        .update({ contractor_type_id: contractorTypeId || null })
-        .eq('id', tenant.id)
-      if (error) throw error
-      refetchTenant()
-      alert('✅ บันทึกประเภทผู้รับเหมาแล้ว')
-    } catch (e) {
-      alert('Error: ' + e.message)
-    } finally {
-      setSavingType(false)
     }
   }
 
@@ -577,7 +554,6 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     { id: 'sign_method', label: '✍️ วิธีเซ็นรับเอกสาร', show: isOwner && hasCheque },
     { id: 'checkin_location', label: '📍 เช็คอิน/เช็คเอาท์ตำแหน่งที่ตั้ง', show: isOwner },
     { id: 'signature', label: '🖊️ ลายเซ็นของฉัน', show: isAdminPlus },
-    { id: 'contractor_type', label: '🏗️ ประเภทผู้รับเหมา', show: isOwner },
     { id: 'company_profile', label: '🏢 ข้อมูลบริษัท', show: isOwner },
     { id: 'doc_style', label: '🎨 รูปแบบเอกสาร', show: isOwner },
     { id: 'bank_accounts', label: '🏦 บัญชีธนาคาร', show: isOwner },
@@ -809,33 +785,6 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
         )}
       </div>
       </>}
-
-      {/* ── ประเภทผู้รับเหมา ── */}
-      {activeSection === 'contractor_type' && isOwner && (
-      <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
-        <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🏗️ ประเภทผู้รับเหมา</h2>
-        <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
-          เปลี่ยนได้ตลอด — ไม่กระทบหมวดค่าใช้จ่ายหรือ supplier ที่มีอยู่แล้ว
-        </p>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div>
-            <label className="label">ประเภทผู้รับเหมา</label>
-            <select
-              className="input" style={{ width: 240 }}
-              value={contractorTypeId} onChange={e => setContractorTypeId(e.target.value)}
-            >
-              <option value="">— ไม่ระบุ —</option>
-              {(contractorTypes || []).map(t => (
-                <option key={t.id} value={t.id}>{t.label_th}</option>
-              ))}
-            </select>
-          </div>
-          <button className="btn btn-primary" onClick={handleSaveContractorType} disabled={savingType || !tenant}>
-            {savingType ? '⏳ กำลังบันทึก...' : '✅ บันทึก'}
-          </button>
-        </div>
-      </div>
-      )}
 
       {activeSection === 'company_profile' && isOwner && (
       <div className="card" style={{ marginBottom: 16 }}>
