@@ -378,17 +378,31 @@ async function handleGroupPhotoAutoFile(
   messageId: string,
   isLastInBatch: boolean,
   batchCount: number,
+  // true when the photo came in a 1:1 chat. A busy group stays silent when a photo
+  // cannot be filed, but one person sending a photo to the bot must be told it did
+  // not go in, or they believe it was saved.
+  directChat = false,
 ) {
+  const tellFailure = async (text: string) => {
+    if (directChat) await sendLineReply(settings.channel_access_token, replyToken, text)
+  }
   const site = (await resolveTodaysSite(worker.id, settings.tenant_id)) ?? (await resolveFallbackSite(settings.tenant_id))
-  if (!site) return
+  if (!site) {
+    await tellFailure('⚠️ ยังไม่ได้บันทึกรูปครับ ไม่พบงานที่มอบหมายวันนี้ กรุณาแจ้งแอดมิน')
+    return
+  }
 
   const content = await fetchLineImageContent(settings.channel_access_token, messageId)
-  if (!content) return
+  if (!content) {
+    await tellFailure('⚠️ ดึงรูปภาพไม่สำเร็จ กรุณาลองส่งใหม่')
+    return
+  }
 
   const photoPath = `${settings.tenant_id}/${site.id}/${Date.now()}-${worker.id}.jpg`
   const { error: uploadError } = await admin.storage.from('line-site-photos').upload(photoPath, content, { contentType: 'image/jpeg' })
   if (uploadError) {
     logSafeError('group photo upload failed', uploadError)
+    await tellFailure('⚠️ อัปโหลดรูปไม่สำเร็จ กรุณาลองใหม่')
     return
   }
   const { error: insertError } = await admin.from('line_site_photos').insert({
@@ -396,6 +410,7 @@ async function handleGroupPhotoAutoFile(
   })
   if (insertError) {
     logSafeError('group photo line_site_photos insert failed', insertError)
+    await tellFailure('⚠️ ระบบขัดข้อง บันทึกรูปไม่สำเร็จ กรุณาแจ้งแอดมินโดยตรง')
     return
   }
   if (!isLastInBatch) return // more of this worker's batch still coming later in this same payload
@@ -1384,6 +1399,18 @@ Deno.serve(async (req) => {
         }
         // No match and no pending action -- unrecognized DM text from a
         // linked worker, silently ignored.
+      } else if (msgType === 'image') {
+        // A photo sent straight to the bot, with no รูปภาพหน้างาน/งานเสร็จ step open
+        // (those are handled above and `continue` before reaching here): file it to
+        // the worker's site for today, or the company's default site, exactly like a
+        // photo dropped in the crew group -- no trigger phrase needed. Reached only
+        // for a linked worker in the normal (secure_bot) mode: a photo sent during a
+        // "chat with admin" session is recorded for the admin by the privacy block
+        // above and never gets here.
+        const batchCount = imageEventsPerSender.get(lineUserId) ?? 1
+        const seenSoFar = (imageEventsSeenPerSender.get(lineUserId) ?? 0) + 1
+        imageEventsSeenPerSender.set(lineUserId, seenSoFar)
+        await handleGroupPhotoAutoFile(worker, settings, event.replyToken, messageId, seenSoFar === batchCount, batchCount, true)
       }
       continue
     }
