@@ -105,6 +105,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { verifyLineSignature, sendLineReply, sendLinePush, LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET } from '../_shared/line.ts'
 import { withPushBudget } from '../_shared/push-budget.ts'
+import { jobDonePrompt, jobDoneConfirmation, JOB_DONE_CONFIRM_CHIP } from '../_shared/job-done-messages.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 import {
@@ -881,7 +882,7 @@ async function handleJobDoneStart(
       { onConflict: 'worker_id' }
     )
     if (error) logSafeError('line_pending_actions upsert failed (job_done, single task)', error)
-    await sendLineReply(settings.channel_access_token, replyToken, `📷 "${tasks[0].name}" เสร็จแล้วใช่ไหมครับ ส่งรูปงานเสร็จมาได้เลย (ส่งได้หลายรูป พอครบแล้วกด "เสร็จแล้ว")`)
+    await sendLineReply(settings.channel_access_token, replyToken, jobDonePrompt(tasks[0].name), [JOB_DONE_CONFIRM_CHIP])
     return
   }
   const { error } = await admin.from('line_pending_actions').upsert(
@@ -919,7 +920,7 @@ async function handleJobDonePick(
     { onConflict: 'worker_id' }
   )
   if (error) logSafeError('line_pending_actions upsert failed (job_done, after pick)', error)
-  await sendLineReply(settings.channel_access_token, replyToken, `📷 "${picked.name}" เสร็จแล้วใช่ไหมครับ ส่งรูปงานเสร็จมาได้เลย (ส่งได้หลายรูป พอครบแล้วกด "เสร็จแล้ว")`)
+  await sendLineReply(settings.channel_access_token, replyToken, jobDonePrompt(picked.name), [JOB_DONE_CONFIRM_CHIP])
   return true
 }
 
@@ -973,7 +974,7 @@ async function handleJobDonePhotoAdd(
 // (PhaseKanbanBoard.jsx) already reads, so this shows up there
 // immediately, same as if an admin had dragged the card themselves.
 // Returns true if the pending action should now be closed, false if it
-// must stay open (nothing was sent yet, or the status update failed
+// must stay open (the status update failed
 // and should be retryable without losing the photos already uploaded).
 async function handleJobDonePhotoFinish(
   taskId: string,
@@ -981,10 +982,8 @@ async function handleJobDonePhotoFinish(
   replyToken: string,
   photoCount: number,
 ): Promise<boolean> {
-  if (photoCount === 0) {
-    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ยังไม่ได้ส่งรูปเลยครับ ส่งรูปงานเสร็จก่อน แล้วค่อยกด "เสร็จแล้ว"')
-    return false
-  }
+  // No photo is required (photoCount may be 0): the photos are often already in the
+  // crew group, and sending them twice only makes duplicates.
   const { data: task } = await admin.from('phase_tasks').select('id, name').eq('id', taskId).maybeSingle()
   if (!task) {
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานนี้แล้ว อาจถูกลบหรือแก้ไข กรุณาติดต่อแอดมิน')
@@ -996,7 +995,7 @@ async function handleJobDonePhotoFinish(
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
     return false // let them retry "เสร็จแล้ว" -- already-uploaded photos are safe either way
   }
-  await sendLineReply(settings.channel_access_token, replyToken, `✅ บันทึกงานเสร็จแล้ว "${task.name}" (${photoCount} รูป) อัปเดตบอร์ดเรียบร้อยครับ`)
+  await sendLineReply(settings.channel_access_token, replyToken, jobDoneConfirmation(task.name, photoCount))
   return true
 }
 
