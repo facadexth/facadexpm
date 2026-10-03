@@ -88,10 +88,12 @@ export default function CommunicationCenter() {
   const [lineSettings, setLineSettings] = useState(null)
   const [loadingSettings, setLoadingSettings] = useState(true)
 
+  // Named columns on purpose, never '*': line_settings still has the old per-tenant
+  // channel_access_token / channel_secret columns, which must never reach the browser.
   const fetchLineSettings = async () => {
     if (!tenant?.id) return
     setLoadingSettings(true)
-    const { data, error } = await supabase.from('line_settings').select('*').eq('tenant_id', tenant.id).maybeSingle()
+    const { data, error } = await supabase.from('line_settings').select('tenant_id, crew_group_id, group_link_code').eq('tenant_id', tenant.id).maybeSingle()
     if (!error) setLineSettings(data)
     setLoadingSettings(false)
   }
@@ -111,7 +113,7 @@ export default function CommunicationCenter() {
       // never actually persisted anywhere for the webhook to find.
       const { data, error } = await supabase.from('line_settings')
         .upsert({ tenant_id: tenant.id, group_link_code: code }, { onConflict: 'tenant_id' })
-        .select()
+        .select('tenant_id, group_link_code')
       if (error) throw error
       if (!data?.length) throw new Error('บันทึกรหัสไม่สำเร็จ กรุณาลองใหม่')
       setGroupClaimCode(code)
