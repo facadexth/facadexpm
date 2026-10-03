@@ -1,0 +1,10 @@
+# Cloudflare Pages response headers (same intent as the "headers" in vercel.json; ignored by other hosts).
+# The PWA service worker and index.html must always revalidate, otherwise installed apps keep an old bundle.
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+/index.html
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
