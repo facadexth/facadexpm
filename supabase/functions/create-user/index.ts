@@ -4,8 +4,17 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const adminClient = createClient(supabaseUrl, supabaseServiceKey)
 
+// The web app calls this from the browser, which first sends an OPTIONS
+// preflight. Without these headers (and the OPTIONS branch below) the browser
+// blocks the real request and the app only sees "Failed to send a request".
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
 const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+  new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
 // Creates a login for a teammate of the caller's own company, already
 // email-confirmed, so crew who never use email can sign in right away.
@@ -14,7 +23,8 @@ const json = (body: unknown, status = 200) =>
 // from the client: the seat-limit trigger reads current_tenant_id() from the
 // caller's JWT, so a service-role write here would silently skip the quota.
 Deno.serve(async (req) => {
-  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 })
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
+  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405, headers: corsHeaders })
 
   try {
     const authHeader = req.headers.get('authorization')
