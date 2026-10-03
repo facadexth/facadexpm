@@ -140,15 +140,18 @@ export default function UserManagement() {
         }
         if (!data?.user) throw new Error('Failed to create auth user')
 
-        // Upsert role (DB trigger may have already inserted WORKER row)
-        const { error: roleError } = await supabase
+        // create-user's signup trigger already inserted this person's row
+        // (as WORKER, in the OWNER's tenant), so set the real role on it with
+        // an UPDATE. An upsert would also run the INSERT policy, which needs
+        // tenant_id (no default on this table) and rejects the row.
+        const { data: updated, error: roleError } = await supabase
           .from('user_roles')
-          .upsert(
-            { user_email: form.email, role: form.role, display_name: form.display_name.trim() },
-            { onConflict: 'user_email' }
-          )
+          .update({ role: form.role, display_name: form.display_name.trim() })
+          .eq('user_email', form.email)
+          .select('id')
 
         if (roleError) throw roleError
+        if (!updated?.length) throw new Error('ตั้ง role ไม่สำเร็จ ไม่พบบัญชีที่เพิ่งสร้าง กรุณารีเฟรชหน้าแล้วตรวจในรายการผู้ใช้')
         const hint = linkHintMessage(linkHint({ email: form.email, name: form.display_name, workers: workerList }))
         alert('✅ สร้าง user สำเร็จ' + (hint ? '\n\nℹ️ ' + hint : ''))
       }
