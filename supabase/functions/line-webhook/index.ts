@@ -106,6 +106,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { verifyLineSignature, sendLineReply, sendLinePush, LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET } from '../_shared/line.ts'
 import { withPushBudget } from '../_shared/push-budget.ts'
 import { todayMenuOptions } from '../_shared/today-menu.ts'
+import { CANCEL_PHRASE, CANCEL_CHIP, CANCEL_REPLY, isCancel } from '../_shared/cancel.ts'
 import { TIME_CLOCK_PHRASE, SCHEDULE_MENU_PHRASE, SCHEDULE_MENU_PROMPT, TIME_CLOCK_DONE_MESSAGE, timeClockStep, scheduleMenuChips } from '../_shared/schedule-menu.ts'
 import { jobDonePrompt, jobDoneConfirmation, JOB_DONE_CONFIRM_CHIP } from '../_shared/job-done-messages.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
@@ -651,7 +652,7 @@ async function handleScheduleMenu(
     await sendLineReply(settings.channel_access_token, replyToken, DISABLED_MESSAGE)
     return
   }
-  await sendLineReply(settings.channel_access_token, replyToken, SCHEDULE_MENU_PROMPT, chips.map((p) => ({ label: truncateLabel(p), text: p })))
+  await sendLineReply(settings.channel_access_token, replyToken, SCHEDULE_MENU_PROMPT, [...chips, CANCEL_PHRASE].map((p) => ({ label: truncateLabel(p), text: p })))
 }
 
 // The new single entry point -- resolves today's status and shows only
@@ -889,7 +890,7 @@ async function handleSitePhotoAdd(
   const newCount = priorCount + 1
   const { error: countError } = await admin.from('line_pending_actions').update({ photo_count: newCount }).eq('id', pendingId)
   if (countError) logSafeError('line_pending_actions photo_count update failed', countError)
-  await sendLineReply(settings.channel_access_token, replyToken, `📷 รับรูปแล้ว (${newCount} รูป) ส่งเพิ่มได้อีก หรือกด "เสร็จแล้ว" ถ้าส่งครบ`, [{ label: 'เสร็จแล้ว', text: 'เสร็จแล้ว' }])
+  await sendLineReply(settings.channel_access_token, replyToken, `📷 รับรูปแล้ว (${newCount} รูป) ส่งเพิ่มได้อีก หรือกด "เสร็จแล้ว" ถ้าส่งครบ`, [JOB_DONE_CONFIRM_CHIP, CANCEL_CHIP])
 }
 
 // Returns true if the pending action should now be closed (caller
@@ -945,7 +946,7 @@ async function handleJobDoneStart(
       { onConflict: 'worker_id' }
     )
     if (error) logSafeError('line_pending_actions upsert failed (job_done, single task)', error)
-    await sendLineReply(settings.channel_access_token, replyToken, jobDonePrompt(tasks[0].name), [JOB_DONE_CONFIRM_CHIP])
+    await sendLineReply(settings.channel_access_token, replyToken, jobDonePrompt(tasks[0].name), [JOB_DONE_CONFIRM_CHIP, CANCEL_CHIP])
     return
   }
   const { error } = await admin.from('line_pending_actions').upsert(
@@ -957,7 +958,7 @@ async function handleJobDoneStart(
     settings.channel_access_token,
     replyToken,
     'งานไหนเสร็จครับ? กดเลือกจากรายการด้านล่างได้เลย',
-    tasks.map((t) => ({ label: truncateLabel(t.name), text: t.name })),
+    [...tasks.map((t) => ({ label: truncateLabel(t.name), text: t.name })), CANCEL_CHIP],
   )
 }
 
@@ -983,7 +984,7 @@ async function handleJobDonePick(
     { onConflict: 'worker_id' }
   )
   if (error) logSafeError('line_pending_actions upsert failed (job_done, after pick)', error)
-  await sendLineReply(settings.channel_access_token, replyToken, jobDonePrompt(picked.name), [JOB_DONE_CONFIRM_CHIP])
+  await sendLineReply(settings.channel_access_token, replyToken, jobDonePrompt(picked.name), [JOB_DONE_CONFIRM_CHIP, CANCEL_CHIP])
   return true
 }
 
@@ -1029,7 +1030,7 @@ async function handleJobDonePhotoAdd(
   const newCount = priorCount + 1
   const { error: countError } = await admin.from('line_pending_actions').update({ photo_count: newCount }).eq('id', pendingId)
   if (countError) logSafeError('line_pending_actions photo_count update failed', countError)
-  await sendLineReply(settings.channel_access_token, replyToken, `📷 "${task.name}" รับรูปแล้ว (${newCount} รูป) ส่งเพิ่มได้อีก หรือกด "เสร็จแล้ว" ถ้าส่งครบ`, [{ label: 'เสร็จแล้ว', text: 'เสร็จแล้ว' }])
+  await sendLineReply(settings.channel_access_token, replyToken, `📷 "${task.name}" รับรูปแล้ว (${newCount} รูป) ส่งเพิ่มได้อีก หรือกด "เสร็จแล้ว" ถ้าส่งครบ`, [JOB_DONE_CONFIRM_CHIP, CANCEL_CHIP])
 }
 
 // Closes the real Kanban card -- flips phase_tasks.status to 'done',
@@ -1336,6 +1337,17 @@ Deno.serve(async (req) => {
       const { worker } = await resolveWorker(lineUserId, settings)
       if (!worker) continue // unrecognized (or inactive -- already alerted) DM sender
 
+      // "ยกเลิก" (the chip under every menu and prompt): drop whatever the bot was waiting
+      // for from this worker -- an unfinished แจ้งปัญหา, งานเสร็จ or photo step -- and say
+      // so. The short reply also makes LINE remove the tappable chips. Handled before the
+      // pending-action logic below, which would otherwise swallow it as stray text.
+      if (msgType === 'text' && isCancel(text)) {
+        const { error: cancelError } = await admin.from('line_pending_actions').delete().eq('worker_id', worker.id)
+        if (cancelError) logSafeError('line_pending_actions delete failed (cancel)', cancelError)
+        await sendLineReply(settings.channel_access_token, event.replyToken, CANCEL_REPLY)
+        continue
+      }
+
       const { data: pending } = await admin.from('line_pending_actions').select('*').eq('worker_id', worker.id).gt('expires_at', new Date().toISOString()).maybeSingle()
       if (pending) {
         const pendingAction = pending.action as PendingActionType
@@ -1387,7 +1399,7 @@ Deno.serve(async (req) => {
             await sendLineReply(
               settings.channel_access_token, event.replyToken,
               '⚠️ ยังไม่ได้บันทึกรูปนี้ครับ กรุณาเลือกงานที่เสร็จก่อน แล้วค่อยส่งรูปอีกครั้ง',
-              tasks.map((t) => ({ label: truncateLabel(t.name), text: t.name })),
+              [...tasks.map((t) => ({ label: truncateLabel(t.name), text: t.name })), CANCEL_CHIP],
             )
           }
         } else if (pendingAction === 'job_done') {
@@ -1464,7 +1476,7 @@ Deno.serve(async (req) => {
             { onConflict: 'worker_id' }
           )
           if (error) logSafeError('line_pending_actions upsert failed', error)
-          await sendLineReply(settings.channel_access_token, event.replyToken, promptForAction(action as GroupActionType | 'site_photo'))
+          await sendLineReply(settings.channel_access_token, event.replyToken, promptForAction(action as GroupActionType | 'site_photo'), [CANCEL_CHIP])
         }
         // No match and no pending action -- unrecognized DM text from a
         // linked worker, silently ignored.

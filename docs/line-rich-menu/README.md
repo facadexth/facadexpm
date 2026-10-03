@@ -18,3 +18,8 @@ Set every area's action to **Text** and type exactly the text below. The bot rea
 Photos need no button: a photo sent to the bot is filed to the worker's site for today automatically.
 
 If a company renames or turns off a schedule command, the "ตารางงาน" chips follow that setting.
+
+## ยกเลิก (Cancel)
+Every menu and prompt the bot shows (the งานวันนี้ sub-menu, the ตารางงาน chips, งานเสร็จ, แจ้งปัญหา) ends with a
+"ยกเลิก" chip. Tapping it (or sending the word `ยกเลิก` alone) clears whatever the bot was waiting for from that
+worker and replies "ยกเลิกแล้วครับ", which also makes LINE remove the chips. This is not a Rich Menu button.

@@ -8,9 +8,12 @@
 //   - งานเสร็จ only while they have an open task assigned
 //   - แจ้งปัญหา always
 //   - the "tomorrow's work" phrase, unless the company has turned that command off
+//   - ยกเลิก last, to dismiss the chips without choosing anything
 // There is no photo chip: a photo sent to the bot is filed automatically.
 // Each chip's text is the exact phrase the bot already understands, so tapping
 // one runs the normal command.
+
+import { CANCEL_PHRASE } from './cancel.ts'
 
 export type TodayMenuState = {
   hasCheckedIn: boolean
@@ -28,5 +31,6 @@ export function todayMenuOptions(s: TodayMenuState): string[] {
   if (s.hasOpenTasks) options.push('งานเสร็จ')
   options.push('แจ้งปัญหา')
   if (s.tomorrowPhrase) options.push(s.tomorrowPhrase)
+  options.push(CANCEL_PHRASE)
   return options
 }

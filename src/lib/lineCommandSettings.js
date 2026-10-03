@@ -76,6 +76,8 @@ export const RESERVED_PHRASES = [
   // Rich Menu button "ตารางงาน" (opens the four schedule views); the combined
   // "เช็คอิน/เช็คเอาท์" button already collides with เช็คอิน/เช็คเอาท์ above.
   'ตารางงาน',
+  // The "ยกเลิก" chip under every LINE menu/prompt (clears whatever the bot is waiting for).
+  'ยกเลิก',
 ]
 
 export function phrasesCollide(a, b) {
