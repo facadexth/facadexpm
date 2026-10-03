@@ -387,9 +387,11 @@ export default function UserManagement() {
                   <li>
                     <strong>ADMIN:</strong> เพิ่ม/แก้/ลบ ข้อมูล
                   </li>
-                  <li>
-                    <strong>WORKER:</strong> ดูเฉพาะ Assign + HR ของตัวเอง
-                  </li>
+                  {editItem?.role === 'WORKER' && (
+                    <li>
+                      <strong>WORKER:</strong> ดูเฉพาะ Assign + HR ของตัวเอง
+                    </li>
+                  )}
                 </ul>
               </div>
             </div>
