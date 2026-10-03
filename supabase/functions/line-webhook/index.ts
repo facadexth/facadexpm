@@ -104,6 +104,7 @@
 // since group membership is unreliable: people come and go).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { verifyLineSignature, sendLineReply, sendLinePush, LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET } from '../_shared/line.ts'
+import { withPushBudget } from '../_shared/push-budget.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 import {
   routeDmEvent, isStartPhrase, logSafeError, ADMIN_CHAT_START_NOTICE, ADMIN_CHAT_END_NOTICE, ADMIN_CHAT_ACK_NOTICE,
@@ -189,7 +190,7 @@ async function alertOwnersOfInactiveWorker(
     .eq('role', 'OWNER')
     .not('line_user_id', 'is', null)
   for (const owner of owners ?? []) {
-    await sendLinePush(settings.channel_access_token, owner.line_user_id as string, `⚠️ ${worker.name} (พ้นสภาพพนักงานแล้ว) ยังคงส่งข้อความในระบบ LINE อยู่ กรุณาลบออกจากกลุ่มทีมงานด้วยครับ`)
+    await withPushBudget(admin, settings.tenant_id, () => sendLinePush(settings.channel_access_token, owner.line_user_id as string, `⚠️ ${worker.name} (พ้นสภาพพนักงานแล้ว) ยังคงส่งข้อความในระบบ LINE อยู่ กรุณาลบออกจากกลุ่มทีมงานด้วยครับ`))
   }
   const { error } = await admin.from('workers').update({ line_offboarding_alerted_at: new Date().toISOString() }).eq('id', worker.id)
   if (error) logSafeError('workers.line_offboarding_alerted_at update failed', error)

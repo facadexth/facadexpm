@@ -15,6 +15,7 @@
 // signature verification instead).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
+import { withPushBudget } from '../_shared/push-budget.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -44,6 +45,18 @@ Deno.serve(async (req) => {
   // imported tenantHasModuleAccess at all. See tenant-access.ts's header.
   if (!(await tenantHasModuleAccess(admin, worker.tenant_id as string, 'line_bot'))) return json({ ok: true, skipped: 'line_bot module not enabled for this tenant' })
 
+  // Alert at most once per 24h per worker. Claim the window with one atomic
+  // UPDATE BEFORE sending: previously the timestamp was only written after
+  // the pushes, so flipping a worker active -> inactive -> active -> inactive
+  // re-sent every owner a message each time.
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const { data: claimed } = await admin.from('workers')
+    .update({ line_offboarding_alerted_at: new Date().toISOString() })
+    .eq('id', worker.id)
+    .or(`line_offboarding_alerted_at.is.null,line_offboarding_alerted_at.lt.${cutoff}`)
+    .select('id')
+  if (!claimed?.length) return json({ ok: true, skipped: 'alerted_recently' })
+
   const { data: owners } = await admin
     .from('user_roles')
     .select('line_user_id')
@@ -52,9 +65,8 @@ Deno.serve(async (req) => {
     .not('line_user_id', 'is', null)
 
   for (const owner of owners ?? []) {
-    await sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, owner.line_user_id as string, `⚠️ ${worker.name} ถูกเปลี่ยนสถานะเป็นพ้นสภาพพนักงาน กรุณาลบออกจากกลุ่มทีมงานใน LINE ด้วยครับ`)
+    await withPushBudget(admin, worker.tenant_id as string, () => sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, owner.line_user_id as string, `⚠️ ${worker.name} ถูกเปลี่ยนสถานะเป็นพ้นสภาพพนักงาน กรุณาลบออกจากกลุ่มทีมงานใน LINE ด้วยครับ`))
   }
-  await admin.from('workers').update({ line_offboarding_alerted_at: new Date().toISOString() }).eq('id', worker.id)
 
   return json({ ok: true, notified: (owners ?? []).length })
 })

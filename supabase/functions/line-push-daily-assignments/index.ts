@@ -34,6 +34,7 @@
 // BEFORE any other query or LINE push.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
+import { withPushBudget } from '../_shared/push-budget.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -150,7 +151,7 @@ Deno.serve(async (req) => {
     }
 
     const message = formatDailyAssignmentsPushMessage(tomorrow, [...bySite.values()])
-    const result = await sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, settings.crew_group_id as string, message)
+    const result = await withPushBudget(admin, settings.tenant_id as string, () => sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, settings.crew_group_id as string, message))
     if (result.ok) messagesPushed++
     else {
       pushFailures++

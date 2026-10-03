@@ -15,6 +15,7 @@
 // explicitly makes "not authorized" unambiguous regardless.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
+import { withPushBudget } from '../_shared/push-budget.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -116,6 +117,21 @@ Deno.serve(async (req) => {
     text = `❌ คำขอ${leaveLabel}${shiftLabel} วันที่ ${dateLabel} ของคุณถูกปฏิเสธ`
   }
 
-  const result = await sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, lineUserId, text)
-  return json({ ok: result.ok })
+  // Announce each decision once. The claim is a single atomic UPDATE, so a
+  // repeated or parallel call for the same decision matches no row and sends
+  // nothing -- this endpoint used to push on every call, which let any
+  // admin (including a free trial) use it to burn the shared LINE quota.
+  const { data: claimed } = await admin.from('leave_requests')
+    .update({ decision_notified: decision })
+    .eq('id', leaveRequestId)
+    .or(`decision_notified.is.null,decision_notified.neq.${decision}`)
+    .select('id')
+  if (!claimed?.length) return json({ ok: true, skipped: 'already_notified' })
+
+  const result = await withPushBudget(admin, req_.tenant_id as string, () => sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, lineUserId, text))
+  if (!result.ok) {
+    // Nothing reached the worker: release the claim so a later call can retry.
+    await admin.from('leave_requests').update({ decision_notified: null }).eq('id', leaveRequestId).eq('decision_notified', decision)
+  }
+  return json({ ok: result.ok, ...(result.skipped ? { skipped: result.skipped } : {}) })
 })

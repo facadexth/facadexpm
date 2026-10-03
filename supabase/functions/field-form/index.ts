@@ -33,6 +33,7 @@
 // inside its 30-minute window, matching the old flow's retry behavior.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
+import { withPushBudget } from '../_shared/push-budget.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 import { APP_URL } from '../_shared/app-url.ts'
 
@@ -109,7 +110,7 @@ async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Pr
 async function notifyAdmins(tenantId: string, text: string) {
   const { data: admins } = await admin.from('user_roles').select('line_user_id').eq('tenant_id', tenantId).in('role', ['OWNER', 'ADMIN']).not('line_user_id', 'is', null)
   for (const a of admins ?? []) {
-    await sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, a.line_user_id as string, text).catch((e) => console.error('notifyAdmins push failed', e))
+    await withPushBudget(admin, tenantId, () => sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, a.line_user_id as string, text)).catch((e) => console.error('notifyAdmins push failed', e))
   }
 }
 
@@ -138,7 +139,7 @@ async function leaveQuotaRemaining(workerId: string, annualLeaveDays: number, an
 // itself from having been created.
 async function notifyWorker(tenantId: string, lineUserId: string | null | undefined, text: string) {
   if (!lineUserId) return
-  await sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, lineUserId, text).catch((e) => console.error('notifyWorker push failed', e))
+  await withPushBudget(admin, tenantId, () => sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, lineUserId, text)).catch((e) => console.error('notifyWorker push failed', e))
 }
 
 Deno.serve(async (req) => {
