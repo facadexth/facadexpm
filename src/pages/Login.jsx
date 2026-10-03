@@ -69,7 +69,7 @@ export default function Login() {
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{ fontSize: 16, color: 'var(--text3)', letterSpacing: 1 }}>
-            Construction Dashboard
+            CHANG
           </div>
         </div>
 

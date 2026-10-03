@@ -4,75 +4,52 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const adminClient = createClient(supabaseUrl, supabaseServiceKey)
 
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+
+// Creates a login for a teammate of the caller's own company, already
+// email-confirmed, so crew who never use email can sign in right away.
+// Only the auth user is created here. The role row is written by the
+// handle_new_user trigger (WORKER) and then set by the OWNER's own session
+// from the client: the seat-limit trigger reads current_tenant_id() from the
+// caller's JWT, so a service-role write here would silently skip the quota.
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 })
 
   try {
-    // Verify OWNER
     const authHeader = req.headers.get('authorization')
-    if (!authHeader) return new Response('Unauthorized', { status: 401 })
+    if (!authHeader) return json({ error: 'Unauthorized' }, 401)
 
     const token = authHeader.replace('Bearer ', '')
     const { data: { user }, error: userError } = await adminClient.auth.getUser(token)
-    if (userError || !user) return new Response('Unauthorized', { status: 401 })
+    if (userError || !user) return json({ error: 'Unauthorized' }, 401)
 
-    // Check if OWNER
-    const { data: roleData } = await adminClient
+    const { data: callerRole } = await adminClient
       .from('user_roles')
-      .select('role')
+      .select('role, tenant_id')
       .eq('user_email', user.email)
-      .single()
+      .maybeSingle()
 
-    if (roleData?.role !== 'OWNER') {
-      return new Response(JSON.stringify({ error: 'Only OWNER can create users' }), { 
-        status: 403,
-        headers: { 'Content-Type': 'application/json' }
-      })
+    if (callerRole?.role !== 'OWNER' || !callerRole.tenant_id) {
+      return json({ error: 'Only OWNER can create users' }, 403)
     }
 
-    const { email, password, role } = await req.json()
+    const { email, password } = await req.json()
+    if (!email || !password) return json({ error: 'Missing required fields' }, 400)
+    if (String(password).length < 6) return json({ error: 'Password must be at least 6 characters' }, 400)
 
-    if (!email || !password || !role) {
-      return new Response(JSON.stringify({ error: 'Missing required fields' }), { 
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      })
-    }
-
-    // Create auth user
-    const { data: { user: newUser }, error: createError } = await adminClient.auth.admin.createUser({
+    // The tenant comes from the caller's own row, never from the request body.
+    const { data, error: createError } = await adminClient.auth.admin.createUser({
       email,
       password,
-      email_confirm: true
+      email_confirm: true,
+      user_metadata: { invited_tenant_id: callerRole.tenant_id },
     })
 
-    if (createError) {
-      return new Response(JSON.stringify({ error: createError.message }), { 
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      })
-    }
+    if (createError) return json({ error: createError.message }, 400)
 
-    // Create role record
-    const { error: roleError } = await adminClient
-      .from('user_roles')
-      .insert({ user_email: email, role })
-
-    if (roleError) {
-      return new Response(JSON.stringify({ error: roleError.message }), { 
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      })
-    }
-
-    return new Response(JSON.stringify({ success: true, user: newUser }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    })
+    return json({ success: true, user: { id: data.user?.id, email: data.user?.email } })
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), { 
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    })
+    return json({ error: (error as Error).message }, 500)
   }
 })

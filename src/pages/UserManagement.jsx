@@ -117,23 +117,19 @@ export default function UserManagement() {
           return
         }
 
-        // Create auth user, tagged with our own tenant so the trigger
-        // joins them to it instead of spinning up a new one
-        const { data: { session } } = await supabase.auth.getSession()
-        const { data: ownRole } = await supabase
-          .from('user_roles')
-          .select('tenant_id')
-          .eq('user_email', session.user.email)
-          .single()
-
-        const { data, error: authError } = await supabase.auth.signUp({
-          email: form.email,
-          password: form.password,
-          options: { data: { invited_tenant_id: ownRole.tenant_id } }
+        // Create the login through the create-user function: it confirms the
+        // email on the spot (crew don't use email) and joins the new user to
+        // this OWNER's tenant. The role is set below with our own session so
+        // the seat-limit trigger still applies.
+        const { data, error: fnError } = await supabase.functions.invoke('create-user', {
+          body: { email: form.email, password: form.password },
         })
-
-        if (authError) throw authError
-        if (!data.user) throw new Error('Failed to create auth user')
+        if (fnError) {
+          let message = fnError.message
+          try { message = (await fnError.context.json()).error || message } catch { /* keep generic message */ }
+          throw new Error(message)
+        }
+        if (!data?.user) throw new Error('Failed to create auth user')
 
         // Upsert role (DB trigger may have already inserted WORKER row)
         const { error: roleError } = await supabase

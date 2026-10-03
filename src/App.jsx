@@ -237,10 +237,10 @@ export default function App() {
 
   // Browser tab title -- mirrors the header's tenant.logo_url/company_name
   // fallback (App.jsx header block below). Static index.html default
-  // ("Construction Dashboard") covers pre-login/loading; this only
-  // overrides it once a tenant is actually known.
+  // ("CHANG") covers pre-login/loading; this only overrides it once a
+  // tenant is actually known.
   useEffect(() => {
-    document.title = tenant?.company_name ? `${tenant.company_name} — Dashboard` : 'Construction Dashboard'
+    document.title = tenant?.company_name ? `${tenant.company_name} — CHANG` : 'CHANG'
   }, [tenant?.company_name])
 
   // Single source of truth for "can this user actually be on this tab" --
