@@ -5,8 +5,14 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useSeatStatus, useCheckinLocations } from '../hooks/useSupabase.js'
+import { linkHint, linkHintMessage } from '../lib/userLinkHint.js'
 
 const ROLES = ['OWNER', 'ADMIN', 'WORKER']
+// WORKER stays a valid role in the database (lowest access, and the default for
+// anyone invited), but crew use LINE, not the web app, so it is not offered
+// when creating a login. Existing WORKER rows can still be edited.
+const CREATE_ROLES = ['ADMIN', 'OWNER']
+const EMPTY_FORM = { email: '', password: '', display_name: '', role: 'ADMIN', assigned_checkin_location_id: '' }
 
 const friendlyError = (e) => {
   if (e.message?.includes('row-level security policy'))
@@ -23,16 +29,18 @@ export default function UserManagement() {
   const [deleteId, setDeleteId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
-  const [form, setForm] = useState({ email: '', password: '', role: 'ADMIN', assigned_checkin_location_id: '' })
+  const [form, setForm] = useState(EMPTY_FORM)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const { data: seat, refetch: refetchSeat } = useSeatStatus()
   const { data: checkinLocations } = useCheckinLocations()
-  const [linkedWorkerEmails, setLinkedWorkerEmails] = useState(new Set())
+  const [workerList, setWorkerList] = useState([])
+  const linkedWorkerEmails = useMemo(
+    () => new Set(workerList.map(w => w.email).filter(Boolean)),
+    [workerList]
+  )
 
   useEffect(() => {
-    supabase.from('workers').select('email').then(({ data }) => {
-      setLinkedWorkerEmails(new Set((data || []).map(w => w.email).filter(Boolean)))
-    })
+    supabase.from('workers').select('name, nickname, email').then(({ data }) => setWorkerList(data || []))
   }, [])
   const [sortCol, setSortCol] = useState('user_email')
   const [sortDir, setSortDir] = useState('asc')
@@ -69,20 +77,20 @@ export default function UserManagement() {
 
   const handleCreate = () => {
     setEditItem(null)
-    setForm({ email: '', password: '', role: 'ADMIN', assigned_checkin_location_id: '' })
+    setForm(EMPTY_FORM)
     setShowForm(true)
   }
 
   const handleEdit = (item) => {
     setEditItem(item)
-    setForm({ email: item.user_email, password: '', role: item.role, assigned_checkin_location_id: item.assigned_checkin_location_id || '' })
+    setForm({ email: item.user_email, password: '', display_name: item.display_name || '', role: item.role, assigned_checkin_location_id: item.assigned_checkin_location_id || '' })
     setShowForm(true)
   }
 
   const handleClose = () => {
     setShowForm(false)
     setEditItem(null)
-    setForm({ email: '', password: '', role: 'ADMIN', assigned_checkin_location_id: '' })
+    setForm(EMPTY_FORM)
   }
 
   const handleSave = async (e) => {
@@ -94,7 +102,7 @@ export default function UserManagement() {
         // Edit mode: update role (password requires Supabase dashboard)
         const { error } = await supabase
           .from('user_roles')
-          .update({ role: form.role, assigned_checkin_location_id: form.assigned_checkin_location_id || null })
+          .update({ role: form.role, display_name: form.display_name.trim() || null, assigned_checkin_location_id: form.assigned_checkin_location_id || null })
           .eq('id', editItem.id)
 
         if (error) throw error
@@ -102,6 +110,7 @@ export default function UserManagement() {
       } else {
         // Create mode
         if (!form.email || !form.password) return alert('กรุณากรอกอีเมลและรหัสผ่าน')
+        if (!form.display_name.trim()) return alert('กรุณากรอกชื่อ')
         if (form.password.length < 6) return alert('รหัสผ่านต้องอย่างน้อย 6 ตัว')
 
         // Check if email exists
@@ -135,12 +144,13 @@ export default function UserManagement() {
         const { error: roleError } = await supabase
           .from('user_roles')
           .upsert(
-            { user_email: form.email, role: form.role },
+            { user_email: form.email, role: form.role, display_name: form.display_name.trim() },
             { onConflict: 'user_email' }
           )
 
         if (roleError) throw roleError
-        alert('✅ สร้าง user สำเร็จ')
+        const hint = linkHintMessage(linkHint({ email: form.email, name: form.display_name, workers: workerList }))
+        alert('✅ สร้าง user สำเร็จ' + (hint ? '\n\nℹ️ ' + hint : ''))
       }
 
       setShowForm(false)
@@ -208,6 +218,7 @@ export default function UserManagement() {
             <table>
               <thead>
                 <tr>
+                  <th className="sortable" onClick={() => toggleSort('display_name')}>ชื่อ{si('display_name')}</th>
                   <th className="sortable" onClick={() => toggleSort('user_email')}>Email{si('user_email')}</th>
                   <th className="sortable" onClick={() => toggleSort('role')}>Role{si('role')}</th>
                   <th className="sortable" onClick={() => toggleSort('created_at')}>เพิ่มเมื่อ{si('created_at')}</th>
@@ -217,7 +228,8 @@ export default function UserManagement() {
               <tbody>
                 {filtered.map(u => (
                   <tr key={u.id}>
-                    <td style={{ fontWeight: 600 }}>{u.user_email}</td>
+                    <td style={{ fontWeight: 600 }}>{u.display_name || <span style={{ color: 'var(--text3)', fontWeight: 400 }}>—</span>}</td>
+                    <td>{u.user_email}</td>
                     <td>
                       <span
                         className="badge"
@@ -261,7 +273,7 @@ export default function UserManagement() {
                 ))}
                 {!filtered.length && (
                   <tr>
-                    <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>
+                    <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>
                       ไม่พบ user
                     </td>
                   </tr>
@@ -296,6 +308,18 @@ export default function UserManagement() {
                   autoComplete="off"
                 />
               </div>
+              <div>
+                <label className="label">ชื่อ {!editItem && '★'}</label>
+                <input
+                  className="input"
+                  type="text"
+                  required={!editItem}
+                  value={form.display_name}
+                  onChange={e => set('display_name', e.target.value)}
+                  placeholder="ชื่อ-นามสกุล หรือชื่อเล่น"
+                  autoComplete="off"
+                />
+              </div>
               {!editItem && (
                 <div>
                   <label className="label">Password ★</label>
@@ -322,7 +346,7 @@ export default function UserManagement() {
                   value={form.role}
                   onChange={e => set('role', e.target.value)}
                 >
-                  {ROLES.map(r => (
+                  {(editItem ? ROLES : CREATE_ROLES).map(r => (
                     <option key={r} value={r}>
                       {r}
                     </option>

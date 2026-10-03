@@ -2237,7 +2237,8 @@ CREATE TABLE user_roles (
   -- would resolve to NULL at exactly the moment the signup trigger needs
   -- to create this first row — it must set tenant_id explicitly instead
   -- (see the tenant-aware signup trigger).
-  tenant_id  UUID NOT NULL REFERENCES tenants(id)
+  tenant_id  UUID NOT NULL REFERENCES tenants(id),
+  display_name TEXT  -- person's name (see 2026-10-03-04-user-roles-display-name.sql)
 );
 
 CREATE INDEX idx_user_roles_tenant_id ON user_roles(tenant_id);

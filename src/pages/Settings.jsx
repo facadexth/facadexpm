@@ -538,6 +538,34 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   const [activeSection, setActiveSection] = useState(null)
   const isOwner = isAtLeast('OWNER')
   const isAdminPlus = isAtLeast('ADMIN')
+
+  // The OWNER's own name (user_roles.display_name). Only the OWNER can write
+  // their own row (RLS owner_updates), so the field is shown to them alone;
+  // an ADMIN's name is set by the OWNER in User Management.
+  const [myEmail, setMyEmail] = useState(null)
+  const [myName, setMyName] = useState('')
+  const [savingName, setSavingName] = useState(false)
+  useEffect(() => {
+    if (!isOwner) return
+    let alive = true
+    ;(async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      const email = session?.user?.email
+      if (!email || !alive) return
+      setMyEmail(email)
+      const { data } = await supabase.from('user_roles').select('display_name').eq('user_email', email).maybeSingle()
+      if (alive) setMyName(data?.display_name || '')
+    })()
+    return () => { alive = false }
+  }, [isOwner])
+  const handleSaveMyName = async () => {
+    if (!myEmail) return
+    setSavingName(true)
+    const { error } = await supabase.from('user_roles').update({ display_name: myName.trim() || null }).eq('user_email', myEmail)
+    setSavingName(false)
+    if (error) alert('บันทึกชื่อไม่สำเร็จ: ' + error.message)
+    else alert('✅ บันทึกชื่อแล้ว')
+  }
   const hasCheque = hasModuleAccess('cheque_tracking')
   const sections = [
     { id: 'account', label: '👤 บัญชีผู้ใช้', show: true },
@@ -582,8 +610,20 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>👤 บัญชีผู้ใช้</h2>
         <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
-          จัดการรหัสผ่านสำหรับเข้าสู่ระบบของคุณ
+          {isOwner ? 'ชื่อของคุณและรหัสผ่านสำหรับเข้าสู่ระบบ' : 'จัดการรหัสผ่านสำหรับเข้าสู่ระบบของคุณ'}
         </p>
+        {isOwner && (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 14 }}>
+            <div>
+              <label className="label">ชื่อของคุณ</label>
+              <input className="input" style={{ width: 240 }} value={myName} placeholder="ชื่อ-นามสกุล หรือชื่อเล่น"
+                onChange={e => setMyName(e.target.value)} />
+            </div>
+            <button className="btn btn-primary" onClick={handleSaveMyName} disabled={savingName || !myEmail}>
+              {savingName ? '⏳ กำลังบันทึก...' : '✅ บันทึกชื่อ'}
+            </button>
+          </div>
+        )}
         <button className="btn btn-ghost" onClick={onOpenChangePassword}>🔑 เปลี่ยนรหัสผ่าน</button>
       </div>
       )}
