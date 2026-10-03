@@ -7,7 +7,7 @@
     "build": "vite build && node scripts/generate-build-info.js",
     "preview": "vite preview",
     "verify:bundle": "node scripts/verify-bundle.mjs",
-    "deploy": "npm run build && npm run verify:bundle && wrangler deploy",
+    "deploy": "npm run build && npm run verify:bundle && npx --yes wrangler deploy",
     "test": "vitest run",
     "test:e2e": "playwright test"
   },
