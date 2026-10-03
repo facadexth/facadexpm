@@ -105,6 +105,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { verifyLineSignature, sendLineReply, sendLinePush, LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET } from '../_shared/line.ts'
 import { withPushBudget } from '../_shared/push-budget.ts'
+import { isPushEnabled } from '../_shared/push-settings.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 import {
   routeDmEvent, isStartPhrase, logSafeError, ADMIN_CHAT_START_NOTICE, ADMIN_CHAT_END_NOTICE, ADMIN_CHAT_ACK_NOTICE,
@@ -183,6 +184,7 @@ async function alertOwnersOfInactiveWorker(
     const hoursSince = (Date.now() - new Date(worker.line_offboarding_alerted_at).getTime()) / (60 * 60 * 1000)
     if (hoursSince < 24) return
   }
+  if (!(await isPushEnabled(admin, settings.tenant_id, 'line_push_offboarding'))) return
   const { data: owners } = await admin
     .from('user_roles')
     .select('line_user_id')

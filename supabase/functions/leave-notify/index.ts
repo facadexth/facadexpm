@@ -16,6 +16,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
 import { withPushBudget } from '../_shared/push-budget.ts'
+import { isPushEnabled } from '../_shared/push-settings.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -95,6 +96,8 @@ Deno.serve(async (req) => {
   // migration removed this function's only line_bot gate -- it never
   // imported tenantHasModuleAccess at all. See tenant-access.ts's header.
   if (!(await tenantHasModuleAccess(admin, req_.tenant_id as string, 'line_bot'))) return json({ ok: true, skipped: 'line_bot module not enabled for this tenant' })
+
+  if (!(await isPushEnabled(admin, req_.tenant_id as string, 'line_push_leave_result'))) return json({ ok: true, skipped: 'push_disabled' })
 
   const workerRow = req_.workers as unknown as { line_user_id: string | null; annual_leave_days: number | null; annual_sick_leave_days: number | null } | null
   const lineUserId = workerRow?.line_user_id

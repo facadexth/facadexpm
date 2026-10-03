@@ -36,6 +36,8 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
 import { withPushBudget } from '../_shared/push-budget.ts'
+import { isPushEnabled } from '../_shared/push-settings.ts'
+import { formatInvoiceDueDigest } from '../_shared/invoice-due-message.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -73,11 +75,6 @@ function isSiteInvoiceDueThisMonth(site: Site, todayISO: string): boolean {
   return !(last.getFullYear() === today.getFullYear() && last.getMonth() === today.getMonth())
 }
 
-// Ported line-for-line from formatInvoiceDueMessage.
-function formatInvoiceDueMessage(site: Site): string {
-  return `🧾 ${site.name} (${site.site_number}) เบิกไปแล้ว ${site.billing_pct}% — ถึงกำหนดออกใบแจ้งหนี้งวดถัดไปเดือนนี้`
-}
-
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
   if (!(await isAuthorizedCronCall(req))) return json({ error: 'unauthorized' }, 401)
@@ -96,6 +93,7 @@ Deno.serve(async (req) => {
   for (const settings of settingsRows ?? []) {
     // Real gap closed 2026-10-01 -- see tenant-access.ts's header.
     if (!(await tenantHasModuleAccess(admin, settings.tenant_id as string, 'line_bot'))) continue
+    if (!(await isPushEnabled(admin, settings.tenant_id as string, 'line_push_invoice_due'))) continue
 
     const { data: ongoingSites, error: sitesError } = await admin
       .from('sites')
@@ -146,16 +144,15 @@ Deno.serve(async (req) => {
     if (ownersError) console.error('user_roles owners query failed', settings.tenant_id, ownersError)
     const ownerLineIds = (owners ?? []).map((o) => o.line_user_id as string)
 
-    for (const site of dueSites) {
-      sitesDue++
-      const message = formatInvoiceDueMessage(site)
-      for (const lineUserId of ownerLineIds) {
-        const result = await withPushBudget(admin, settings.tenant_id as string, () => sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, lineUserId, message))
-        if (result.ok) messagesPushed++
-        else {
-          pushFailures++
-          console.error('sendLinePush failed', settings.tenant_id, result.status)
-        }
+    // One message listing every due site (was one message per site per owner).
+    sitesDue += dueSites.length
+    const message = formatInvoiceDueDigest(dueSites)
+    for (const lineUserId of ownerLineIds) {
+      const result = await withPushBudget(admin, settings.tenant_id as string, () => sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, lineUserId, message))
+      if (result.ok) messagesPushed++
+      else {
+        pushFailures++
+        console.error('sendLinePush failed', settings.tenant_id, result.status)
       }
     }
   }

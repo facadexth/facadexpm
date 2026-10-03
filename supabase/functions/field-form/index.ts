@@ -34,6 +34,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
 import { withPushBudget } from '../_shared/push-budget.ts'
+import { isPushEnabled } from '../_shared/push-settings.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 import { APP_URL } from '../_shared/app-url.ts'
 
@@ -107,7 +108,8 @@ async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Pr
 // tenant -- same user_roles.line_user_id the "เชื่อมต่อ LINE ส่วนตัว" card
 // in CommunicationCenter.jsx sets up. Best-effort: a push failure never
 // blocks the PO/leave request itself from having been created.
-async function notifyAdmins(tenantId: string, text: string) {
+async function notifyAdmins(tenantId: string, text: string, toggleKey: string) {
+  if (!(await isPushEnabled(admin, tenantId, toggleKey))) return
   const { data: admins } = await admin.from('user_roles').select('line_user_id').eq('tenant_id', tenantId).in('role', ['OWNER', 'ADMIN']).not('line_user_id', 'is', null)
   for (const a of admins ?? []) {
     await withPushBudget(admin, tenantId, () => sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, a.line_user_id as string, text)).catch((e) => console.error('notifyAdmins push failed', e))
@@ -137,8 +139,9 @@ async function leaveQuotaRemaining(workerId: string, annualLeaveDays: number, an
 // success message, easy to lose once they close the LINE in-app browser tab.
 // Best-effort, same as notifyAdmins: a push failure never blocks the request
 // itself from having been created.
-async function notifyWorker(tenantId: string, lineUserId: string | null | undefined, text: string) {
+async function notifyWorker(tenantId: string, lineUserId: string | null | undefined, text: string, toggleKey: string) {
   if (!lineUserId) return
+  if (!(await isPushEnabled(admin, tenantId, toggleKey))) return
   await withPushBudget(admin, tenantId, () => sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, lineUserId, text)).catch((e) => console.error('notifyWorker push failed', e))
 }
 
@@ -246,7 +249,7 @@ Deno.serve(async (req) => {
 
         await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
         const itemLines = resolved.map(r => `- ${r.description} (${r.quantity} ${r.unit})`).join('\n')
-        await notifyAdmins(worker.tenant_id, `📦 ${workerName} ขอเบิกที่ไซต์ ${site.name}:\n${itemLines}\nสร้างใบสั่งซื้อร่างไว้ให้แล้ว รอเลือกซัพพลายเออร์และราคาที่ ${APP_URL}`)
+        await notifyAdmins(worker.tenant_id, `📦 ${workerName} ขอเบิกที่ไซต์ ${site.name}:\n${itemLines}\nสร้างใบสั่งซื้อร่างไว้ให้แล้ว รอเลือกซัพพลายเออร์และราคาที่ ${APP_URL}`, 'line_push_material_request_admin')
         return json({ ok: true, workerName })
       }
 
@@ -271,8 +274,8 @@ Deno.serve(async (req) => {
         const leaveLabel = leaveType === 'leave_sick' ? 'ลาป่วย' : 'ลากิจ'
         const shiftLabel = shift === 'morning' ? ' (ช่วงเช้า)' : shift === 'evening' ? ' (ช่วงบ่าย)' : ''
         const dateLabel = dateFrom === dateTo ? dateFrom : `${dateFrom} — ${dateTo}`
-        await notifyAdmins(worker.tenant_id, `🏖️ ${workerName} ขอ${leaveLabel}${shiftLabel} วันที่ ${dateLabel}\nรออนุมัติที่หน้าบุคคล → คำขอลา`)
-        await notifyWorker(worker.tenant_id, worker.line_user_id, `✅ ส่งคำขอ${leaveLabel}${shiftLabel} วันที่ ${dateLabel} เรียบร้อยแล้ว\nรอแอดมิน/เจ้าของตรวจสอบและอนุมัติ`)
+        await notifyAdmins(worker.tenant_id, `🏖️ ${workerName} ขอ${leaveLabel}${shiftLabel} วันที่ ${dateLabel}\nรออนุมัติที่หน้าบุคคล → คำขอลา`, 'line_push_leave_request_admin')
+        await notifyWorker(worker.tenant_id, worker.line_user_id, `✅ ส่งคำขอ${leaveLabel}${shiftLabel} วันที่ ${dateLabel} เรียบร้อยแล้ว\nรอแอดมิน/เจ้าของตรวจสอบและอนุมัติ`, 'line_push_leave_ack_worker')
         return json({ ok: true, workerName })
       }
 
