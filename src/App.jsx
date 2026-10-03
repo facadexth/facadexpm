@@ -242,11 +242,12 @@ function PageLoadingFallback() {
 export default function App() {
   const [session,  setSession]  = useState(undefined) // undefined = loading
   const { counts: pendingCounts, refetch: refetchPending } = usePendingCounts(!!session)
+  const [activeTab, setActiveTab] = useState('dashboard')
+  const [navState, setNavState] = useState({})
+
   // Moving between pages is when someone has just acted on something (approved a
   // leave request, issued an invoice), so refresh the numbers then, not only every minute.
   useEffect(() => { if (session) refetchPending() }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
-  const [activeTab, setActiveTab] = useState('dashboard')
-  const [navState, setNavState] = useState({})
   const [showChangePassword, setShowChangePassword] = useState(false)
   const [overviewSiteId, setOverviewSiteId] = useState(null)
   const [theme, setTheme] = useState(getEffectiveTheme)
