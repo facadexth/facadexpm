@@ -73,6 +73,9 @@ export const RESERVED_PHRASES = [
   // ADMIN_CHAT_END_PHRASE in supabase/functions/_shared/line-admin-chat-logic.ts
   // (lineAdminChatLogic.test.js asserts they stay in sync).
   'คุยกับแอดมิน', 'จบการสนทนา',
+  // Rich Menu button "ตารางงาน" (opens the four schedule views); the combined
+  // "เช็คอิน/เช็คเอาท์" button already collides with เช็คอิน/เช็คเอาท์ above.
+  'ตารางงาน',
 ]
 
 export function phrasesCollide(a, b) {

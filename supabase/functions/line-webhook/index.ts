@@ -106,6 +106,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { verifyLineSignature, sendLineReply, sendLinePush, LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET } from '../_shared/line.ts'
 import { withPushBudget } from '../_shared/push-budget.ts'
 import { todayMenuOptions } from '../_shared/today-menu.ts'
+import { TIME_CLOCK_PHRASE, SCHEDULE_MENU_PHRASE, SCHEDULE_MENU_PROMPT, TIME_CLOCK_DONE_MESSAGE, timeClockStep, scheduleMenuChips } from '../_shared/schedule-menu.ts'
 import { jobDonePrompt, jobDoneConfirmation, JOB_DONE_CONFIRM_CHIP } from '../_shared/job-done-messages.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
@@ -161,7 +162,7 @@ function truncateLabel(s: string, max = 20): string {
 }
 
 type GroupActionType = 'issue_report' | 'material_request' | 'leave'
-type DMOnlyActionType = 'check_in' | 'check_out' | 'site_photo' | 'job_done_start' | 'today_job' | 'tomorrow_job' | 'this_week_job' | 'next_week_job'
+type DMOnlyActionType = 'check_in' | 'check_out' | 'site_photo' | 'job_done_start' | 'today_job' | 'tomorrow_job' | 'this_week_job' | 'next_week_job' | 'time_clock' | 'schedule_menu'
 type ActionType = GroupActionType | DMOnlyActionType
 type PendingActionType = GroupActionType | 'site_photo' | 'job_done_pick' | 'job_done'
 
@@ -299,6 +300,11 @@ const SCHEDULE_COMMAND_ORDER = ['tomorrow_job', 'this_week_job', 'next_week_job'
 const DISABLED_MESSAGE = '⚠️ ฟีเจอร์นี้ปิดอยู่ขณะนี้ กรุณาติดต่อแอดมินโดยตรงครับ'
 
 function matchDMAction(text: string, commandSettings: CommandSettingsByKey): ActionType | null {
+  // The two Rich Menu buttons that need a decision first. Checked before everything
+  // else: the combined phrase contains both เช็คอิน and เช็คเอาท์ and would otherwise
+  // be read as a plain check-in.
+  if (text.includes(TIME_CLOCK_PHRASE)) return 'time_clock'
+  if (text.includes(SCHEDULE_MENU_PHRASE)) return 'schedule_menu'
   const base = matchGroupAction(text)
   if (base) return base
   if (text.includes('เช็คอิน')) return 'check_in'
@@ -594,6 +600,58 @@ async function handleCheckOutStart(worker: { id: string }, settings: { tenant_id
   } else {
     await sendLineReply(settings.channel_access_token, replyToken, `📍 กดลิงก์นี้เพื่อเช็คเอาท์ที่ ${site.name} ครับ (ใช้ได้ 30 นาที ต้องอนุญาตให้เว็บใช้ตำแหน่งของคุณ)\n${link}`)
   }
+}
+
+// The Rich Menu's single "เช็คอิน/เช็คเอาท์" button: look at the worker's day and send
+// the matching link -- check-in until they have checked in, then check-out, then a
+// short "done" note. Respects the company's on/off setting for whichever of the two
+// commands it ends up running.
+async function handleTimeClock(
+  worker: { id: string },
+  settings: { tenant_id: string; channel_access_token: string },
+  replyToken: string,
+  commandSettings: CommandSettingsByKey,
+) {
+  const site = await resolveTodaysSite(worker.id, settings.tenant_id)
+  let hasCheckedIn = false
+  let hasCheckedOut = false
+  if (site) {
+    const { data: row } = await admin.from('worker_checkins').select('checkin_at, checkout_at').eq('worker_id', worker.id).eq('site_id', site.id).eq('date', bangkokToday()).maybeSingle()
+    hasCheckedIn = !!row?.checkin_at
+    hasCheckedOut = !!row?.checkout_at
+  }
+  const step = timeClockStep({ hasSite: !!site, hasCheckedIn, hasCheckedOut })
+  if (step === 'no_site') {
+    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ไม่พบงานที่มอบหมายวันนี้ กรุณาติดต่อแอดมิน')
+  } else if (step === 'done') {
+    await sendLineReply(settings.channel_access_token, replyToken, TIME_CLOCK_DONE_MESSAGE)
+  } else if (!resolveEnabled(step, commandSettings, 'dm')) {
+    await sendLineReply(settings.channel_access_token, replyToken, DISABLED_MESSAGE)
+  } else if (step === 'check_in') {
+    await handleCheckInStart(worker, settings, replyToken)
+  } else {
+    await handleCheckOutStart(worker, settings, replyToken)
+  }
+}
+
+// The Rich Menu's "ตารางงาน" button: offer the four schedule views as tappable chips
+// (each chip sends the exact phrase the bot already understands for that view).
+async function handleScheduleMenu(
+  settings: { channel_access_token: string },
+  replyToken: string,
+  commandSettings: CommandSettingsByKey,
+) {
+  const chips = scheduleMenuChips(
+    (['today_job', 'tomorrow_job', 'this_week_job', 'next_week_job'] as const).map((key) => ({
+      phrase: resolveEffectivePhrases(key, commandSettings)[0],
+      enabled: resolveEnabled(key, commandSettings, 'dm'),
+    })),
+  )
+  if (chips.length === 0) {
+    await sendLineReply(settings.channel_access_token, replyToken, DISABLED_MESSAGE)
+    return
+  }
+  await sendLineReply(settings.channel_access_token, replyToken, SCHEDULE_MENU_PROMPT, chips.map((p) => ({ label: truncateLabel(p), text: p })))
 }
 
 // The new single entry point -- resolves today's status and shows only
@@ -1363,6 +1421,10 @@ Deno.serve(async (req) => {
         const action = matchDMAction(text, commandSettingsByKey)
         if (action && !resolveEnabled(action, commandSettingsByKey, 'dm')) {
           await sendLineReply(settings.channel_access_token, event.replyToken, DISABLED_MESSAGE)
+        } else if (action === 'time_clock') {
+          await handleTimeClock(worker, settings, event.replyToken, commandSettingsByKey)
+        } else if (action === 'schedule_menu') {
+          await handleScheduleMenu(settings, event.replyToken, commandSettingsByKey)
         } else if (action === 'check_in') {
           await handleCheckInStart(worker, settings, event.replyToken)
         } else if (action === 'check_out') {
