@@ -1,0 +1,12 @@
+{
+  // Cloudflare Workers config: serve the built web app (dist/) as static assets.
+  // The Worker name must equal the project name chosen in the Cloudflare dashboard.
+  "name": "changpm-app",
+  "compatibility_date": "2026-10-03",
+  "assets": {
+    "directory": "./dist",
+    // Unknown paths (e.g. /f/<token>, /sign/<id>, deep links) get index.html, which is how a single-page app routes.
+    // Real files such as /manual/index.html and /assets/* are still served as themselves.
+    "not_found_handling": "single-page-application"
+  }
+}
