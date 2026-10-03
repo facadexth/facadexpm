@@ -48,11 +48,24 @@ export async function verifyLineSignature(channelSecret: string, rawBody: string
   return expected === signatureHeader
 }
 
-export async function sendLinePush(accessToken: string, to: string, text: string): Promise<{ ok: boolean; status: number }> {
+// quickReplyItems works exactly as in sendLineReply: tappable chips under the
+// message, each sending `text` back as if the user typed it.
+export async function sendLinePush(
+  accessToken: string,
+  to: string,
+  text: string,
+  quickReplyItems?: Array<{ label: string; text: string }>,
+): Promise<{ ok: boolean; status: number }> {
+  const message: Record<string, unknown> = { type: 'text', text }
+  if (quickReplyItems && quickReplyItems.length > 0) {
+    message.quickReply = {
+      items: quickReplyItems.map((item) => ({ type: 'action', action: { type: 'message', label: item.label, text: item.text } })),
+    }
+  }
   const res = await fetch(`${LINE_API}/push`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ to, messages: [{ type: 'text', text }] }),
+    body: JSON.stringify({ to, messages: [message] }),
   })
   return { ok: res.ok, status: res.status }
 }

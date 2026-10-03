@@ -105,8 +105,11 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { verifyLineSignature, sendLineReply, sendLinePush, LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET } from '../_shared/line.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
-import { routeDmEvent, logSafeError, ADMIN_CHAT_START_NOTICE, ADMIN_CHAT_END_NOTICE } from '../_shared/line-admin-chat-logic.ts'
-import { getChatMode, startChatSession, endChatSession, recordUserText, recordUserImage } from '../_shared/line-admin-chat.ts'
+import {
+  routeDmEvent, isStartPhrase, logSafeError, ADMIN_CHAT_START_NOTICE, ADMIN_CHAT_END_NOTICE, ADMIN_CHAT_ACK_NOTICE,
+  ADMIN_CHAT_NOT_ALLOWED_NOTICE, ADMIN_CHAT_END_QUICK_REPLY,
+} from '../_shared/line-admin-chat-logic.ts'
+import { getChatMode, canStartAdminChat, claimAckForSession, startChatSession, endChatSession, recordUserText, recordUserImage } from '../_shared/line-admin-chat.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -1198,10 +1201,20 @@ Deno.serve(async (req) => {
     // stores nothing; chat_with_admin is entered only by the user's own
     // exact trigger phrase, and only then are messages/photos recorded.
     if (!sourceGroupId) {
-      const route = routeDmEvent({ mode: await getChatMode(admin, lineUserId), msgType, text })
+      const mode = await getChatMode(admin, lineUserId)
+      // Only look up the sender's role when they actually typed the start phrase.
+      const canStartChat = mode === 'secure_bot' && msgType === 'text' && isStartPhrase(text)
+        ? await canStartAdminChat(admin, lineUserId)
+        : false
+      const route = routeDmEvent({ mode, msgType, text, canStartChat })
+      if (route === 'chat_not_allowed') {
+        // A worker asked for the platform admin: point them to their own company instead. Nothing is recorded.
+        await sendLineReply(settings.channel_access_token, event.replyToken, ADMIN_CHAT_NOT_ALLOWED_NOTICE)
+        continue
+      }
       if (route === 'start_chat') {
         await startChatSession(admin, lineUserId, tenantId)
-        await sendLineReply(settings.channel_access_token, event.replyToken, ADMIN_CHAT_START_NOTICE)
+        await sendLineReply(settings.channel_access_token, event.replyToken, ADMIN_CHAT_START_NOTICE, ADMIN_CHAT_END_QUICK_REPLY)
         continue
       }
       if (route === 'end_chat') {
@@ -1211,11 +1224,18 @@ Deno.serve(async (req) => {
       }
       if (route === 'record_text') {
         await recordUserText(admin, lineUserId, messageId, text!)
+        // Acknowledge once per session (the first message), not every message.
+        if (await claimAckForSession(admin, lineUserId)) {
+          await sendLineReply(settings.channel_access_token, event.replyToken, ADMIN_CHAT_ACK_NOTICE, ADMIN_CHAT_END_QUICK_REPLY)
+        }
         continue
       }
       if (route === 'record_image') {
         const content = await fetchLineImageContent(settings.channel_access_token, messageId)
         if (content) await recordUserImage(admin, lineUserId, messageId, content)
+        if (await claimAckForSession(admin, lineUserId)) {
+          await sendLineReply(settings.channel_access_token, event.replyToken, ADMIN_CHAT_ACK_NOTICE, ADMIN_CHAT_END_QUICK_REPLY)
+        }
         continue
       }
       // 'normal_flow' falls through to the existing DM handling below, unchanged.
