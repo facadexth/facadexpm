@@ -40,8 +40,8 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/manual\//],
       },
       manifest: {
-        name: 'FACADE X Construction Dashboard',
-        short_name: 'FACADE X',
+        name: 'CHANG',
+        short_name: 'CHANG',
         theme_color: '#1a1d2e',
         background_color: '#1a1d2e',
         display: 'standalone',
