@@ -69,6 +69,10 @@ export const ALL_COMMAND_KEYS = [...SCHEDULE_COMMAND_KEYS, ...FIXED_COMMAND_KEYS
 export const RESERVED_PHRASES = [
   ...Object.values(FIXED_COMMAND_PHRASES).flat(),
   'ไม่มีปัญหา', 'ไม่ปัญหา', 'เสร็จแล้ว',
+  // Hybrid privacy mode triggers -- must equal ADMIN_CHAT_START_PHRASE /
+  // ADMIN_CHAT_END_PHRASE in supabase/functions/_shared/line-admin-chat-logic.ts
+  // (lineAdminChatLogic.test.js asserts they stay in sync).
+  'คุยกับแอดมิน', 'จบการสนทนา',
 ]
 
 export function phrasesCollide(a, b) {
