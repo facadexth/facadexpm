@@ -469,7 +469,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
           )}
           {viewRange && (
             <div style={{ position: 'relative', height: 40, marginLeft: trackLeft, marginRight: trackRight }}>
-              {monthTicks.map((t, i) => (
+              {monthTicks.filter((t) => t.x <= 90).map((t, i) => (
                 <div key={`m${i}`} style={{ position: 'absolute', top: 0, left: `${t.x}%`, fontSize: 11, fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap', paddingLeft: 3, borderLeft: t.pinned ? 'none' : '1px solid var(--border)', lineHeight: '16px' }}>
                   {format(toLocalDay(t.date), 'MMM yy', { locale: th })}
                 </div>
