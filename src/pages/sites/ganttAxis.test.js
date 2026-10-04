@@ -63,3 +63,13 @@ describe('dateAtPercent', () => {
     expect(iso(dateAtPercent(50, range))).toBe('2026-10-06')
   })
 })
+
+import { expandRangeForTransactions } from './ganttTimeline.js'
+describe('expandRangeForTransactions', () => {
+  it('ignores dates outside a believable window (typo years)', () => {
+    const base = r('2026-09-01', '2026-09-08')
+    const out = expandRangeForTransactions(base, ['2026-08-30', '82026-08-30', '1999-01-01'])
+    expect(iso(out.start)).toBe('2026-08-30')
+    expect(iso(out.end)).toBe('2026-09-08')
+  })
+})

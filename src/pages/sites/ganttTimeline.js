@@ -183,7 +183,9 @@ export function computeMonthTicks(range) {
  * outside its own phase dates.
  */
 export function expandRangeForTransactions(range, transactionDates) {
-  const valid = transactionDates.map((d) => new Date(d)).filter((d) => !isNaN(d))
+  // A mistyped date (e.g. year 82026) must not stretch the timeline, or the site's own
+  // start/end dates that GanttView derives from it.
+  const valid = transactionDates.filter((d) => typeof d === 'string' && d >= '2000-01-01' && d <= '2100-12-31').map((d) => new Date(d)).filter((d) => !isNaN(d))
   if (!valid.length) return range
   const minD = new Date(Math.min(...valid))
   const maxD = new Date(Math.max(...valid))

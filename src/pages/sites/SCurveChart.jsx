@@ -62,16 +62,29 @@ export default function SCurveChart({ site }) {
     return computeFocusRange(baseRange, extra, TODAY_ISO)
   }, [baseRange, expandedRange, subtasksForSite])
 
+  // A mistyped date (e.g. year 82026) would stretch the whole time axis, so records dated
+  // outside a believable window are left out of the chart and counted for a visible warning.
+  const plausibleDate = (d) => typeof d === 'string' && d >= '2000-01-01' && d <= '2100-12-31'
+  const badDateCount = useMemo(
+    () => [...(incomes || []), ...(expenses || [])].filter((r) => !plausibleDate(r.date)).length,
+    [incomes, expenses],
+  )
+
   const chartData = useMemo(() => {
     const plan = buildPlanSeries(leaves, site.contract_value)
-    const actual = buildActualSeries(incomes || [])
-    const cost = buildCostSeries(expenses || [])
+    const actual = buildActualSeries((incomes || []).filter((r) => plausibleDate(r.date)))
+    const cost = buildCostSeries((expenses || []).filter((r) => plausibleDate(r.date)))
     // Anchor the line data at the same range.start/range.end GanttView's
     // own timeline uses, so the plotted lines actually reach both edges
     // of the axis instead of starting/stopping wherever a real
     // transaction or phase end-date happens to land.
     const extraDates = range ? [range.start.toISOString().slice(0, 10), range.end.toISOString().slice(0, 10)] : []
-    return mergeCumulativeSeries({ plan, actual, cost }, TODAY_ISO, extraDates).map((row) => ({ ...row, ts: new Date(row.date).getTime() }))
+    const rows = mergeCumulativeSeries({ plan, actual, cost }, TODAY_ISO, extraDates).map((row) => ({ ...row, ts: new Date(row.date).getTime() }))
+    // Keep only the visible window. Rows are forward-filled running totals, so the first row
+    // inside the window (range.start was added above) already carries everything earlier,
+    // such as a deposit paid months before work started.
+    if (!range) return rows
+    return rows.filter((row) => row.ts >= range.start.getTime() && row.ts <= range.end.getTime())
   }, [leaves, incomes, expenses, site.contract_value, range])
 
   if (!chartData.length) {
@@ -101,6 +114,11 @@ export default function SCurveChart({ site }) {
   return (
     <div className="card" style={{ padding: 16 }}>
       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>S-curve: {site.name}</div>
+      {badDateCount > 0 && (
+        <div className="alert alert-warning" style={{ fontSize: 12, marginBottom: 10 }}>
+          ⚠️ มี {badDateCount} รายการรายรับ/รายจ่ายของไซต์นี้ที่วันที่ผิดปกติ (เช่นพิมพ์ปีผิด) จึงไม่ถูกนับในกราฟนี้ ตรวจสอบและแก้วันที่ในหน้ารายการ
+        </div>
+      )}
       <ResponsiveContainer width="100%" height={280}>
         <LineChart data={chartData} margin={{ left: 114, right: 4 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={chartColors.border} />
