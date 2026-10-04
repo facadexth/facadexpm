@@ -32,6 +32,7 @@
 // public.verify_cron_secret() (see
 // supabase/migrations/2026-09-19-04-line-push-cron-secret-verify-fn.sql)
 // BEFORE any other query or LINE push.
+import { siteMapLink } from '../_shared/site-map-link.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
 import { withPushBudget } from '../_shared/push-budget.ts'
@@ -71,7 +72,7 @@ const DOW_TH = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
 // Ported line-for-line from src/lib/lineNotifications.js's
 // formatDailyAssignmentsPushMessage -- keep in sync with that file.
 type SiteGroup = {
-  siteName: string; siteNumber?: string; morning: string[]; evening: string[]
+  siteName: string; siteNumber?: string; mapUrl?: string | null; morning: string[]; evening: string[]
   leaderMorning?: string | null; leaderEvening?: string | null
 }
 function formatDailyAssignmentsPushMessage(dateISO: string, siteGroups: SiteGroup[]): string {
@@ -80,6 +81,7 @@ function formatDailyAssignmentsPushMessage(dateISO: string, siteGroups: SiteGrou
   siteGroups.forEach((g) => {
     lines.push('')
     lines.push(`🏗️ ${g.siteNumber ? `${g.siteNumber} ` : ''}${g.siteName}`.trim())
+    if (g.mapUrl) lines.push(`🗺️ ${g.mapUrl}`)
     if (g.morning.length) lines.push(`🌅 เช้า: ${g.morning.join(', ')}`)
     if (g.evening.length) lines.push(`🌆 บ่าย: ${g.evening.join(', ')}`)
     if (g.leaderMorning || g.leaderEvening) {
@@ -117,7 +119,7 @@ Deno.serve(async (req) => {
 
     const { data: rows, error } = await admin
       .from('worker_assignments')
-      .select('site_id, shift, type, is_team_leader, workers(name, nickname), sites(name, site_number)')
+      .select('site_id, shift, type, is_team_leader, workers(name, nickname), sites(name, site_number, map_url, lat, lng)')
       .eq('tenant_id', settings.tenant_id)
       .eq('date', tomorrow)
       .not('site_id', 'is', null)
@@ -133,11 +135,11 @@ Deno.serve(async (req) => {
     const bySite = new Map<string, SiteGroup>()
     for (const r of rows) {
       const worker = r.workers as { name?: string; nickname?: string } | null
-      const site = r.sites as { name?: string; site_number?: string } | null
+      const site = r.sites as { name?: string; site_number?: string; map_url?: string | null; lat?: number | null; lng?: number | null } | null
       const workerName = worker?.nickname || worker?.name || 'ไม่ทราบชื่อ'
       const siteId = r.site_id as string
       const group = bySite.get(siteId) ?? {
-        siteName: site?.name || '-', siteNumber: site?.site_number, morning: [], evening: [],
+        siteName: site?.name || '-', siteNumber: site?.site_number, mapUrl: siteMapLink(site), morning: [], evening: [],
         leaderMorning: null, leaderEvening: null,
       }
       if (r.shift === 'evening') {

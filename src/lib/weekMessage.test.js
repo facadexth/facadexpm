@@ -30,3 +30,18 @@ describe('formatWeekMessage', () => {
     expect(t).toContain('ยังมีอีก')
   })
 })
+
+import { siteMapLink } from '../../supabase/functions/_shared/site-map-link.ts'
+
+describe('map link in schedule messages', () => {
+  it('shows the link under the site pin', () => {
+    const t = formatWeekMessage('x', [{ dateLabel: 'จ', sites: [{ siteName: 'A', mapUrl: 'https://maps.app.goo.gl/abc', morning: ['นก'], evening: [] }] }])
+    expect(t).toContain('📍 A\n   🗺️ https://maps.app.goo.gl/abc')
+  })
+  it('uses the saved link, else the coordinates, else nothing', () => {
+    expect(siteMapLink({ map_url: ' https://maps.app.goo.gl/x ', lat: 1, lng: 2 })).toBe('https://maps.app.goo.gl/x')
+    expect(siteMapLink({ map_url: '', lat: 13.7, lng: 100.5 })).toBe('https://www.google.com/maps?q=13.7,100.5')
+    expect(siteMapLink({ map_url: 'ไม่มีลิงก์', lat: null, lng: null })).toBeNull()
+    expect(siteMapLink({ map_url: 'javascript:alert(1)' })).toBeNull()
+  })
+})

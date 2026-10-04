@@ -5,7 +5,7 @@
 // shift. A day with nothing assigned says so on one line. The whole message stays
 // under LINE's 5000-character text limit; days that do not fit are cut with a note.
 
-export type WeekSite = { siteName: string; siteNumber?: string; morning: string[]; evening: string[] }
+export type WeekSite = { siteName: string; siteNumber?: string; mapUrl?: string | null; morning: string[]; evening: string[] }
 export type WeekDay = { dateLabel: string; sites: WeekSite[] }
 
 const LINE_TEXT_LIMIT = 4800
@@ -20,6 +20,7 @@ function dayBlock(day: WeekDay, showWorkers: boolean): string {
   }
   for (const s of day.sites) {
     lines.push(`📍 ${s.siteNumber ? `${s.siteNumber} ` : ''}${s.siteName}`.trim())
+    if (s.mapUrl) lines.push(`   🗺️ ${s.mapUrl}`)
     if (!showWorkers) continue
     if (s.morning.length) lines.push(`   🌅 เช้า: ${names(s.morning)}`)
     if (s.evening.length) lines.push(`   🌆 บ่าย: ${names(s.evening)}`)

@@ -108,6 +108,7 @@ import { withPushBudget } from '../_shared/push-budget.ts'
 import { todayMenuOptions } from '../_shared/today-menu.ts'
 import { CANCEL_PHRASE, CANCEL_CHIP, CANCEL_REPLY, isCancel } from '../_shared/cancel.ts'
 import { isMenuButtonText, pendingWaitMinutes } from '../_shared/pending-flow.ts'
+import { siteMapLink } from '../_shared/site-map-link.ts'
 import { formatWeekMessage, type WeekDay, type WeekSite } from '../_shared/week-message.ts'
 import { TIME_CLOCK_PHRASE, SCHEDULE_MENU_PHRASE, SCHEDULE_MENU_PROMPT, TIME_CLOCK_DONE_MESSAGE, timeClockStep, scheduleMenuChips } from '../_shared/schedule-menu.ts'
 import { jobDonePrompt, jobDoneConfirmation, JOB_DONE_CONFIRM_CHIP } from '../_shared/job-done-messages.ts'
@@ -327,7 +328,7 @@ function matchDMAction(text: string, commandSettings: CommandSettingsByKey): Act
 // SITE_TYPES + DayView.jsx's own grouping). If a worker has more than
 // one site assigned today, this just takes one -- a genuine edge case,
 // not worth a disambiguation prompt for how rarely it happens.
-async function resolveTodaysSite(workerId: string, tenantId: string): Promise<{ id: string; name: string } | null> {
+async function resolveTodaysSite(workerId: string, tenantId: string): Promise<{ id: string; name: string; map_url?: string | null; lat?: number | null; lng?: number | null } | null> {
   const { data: assignment } = await admin
     .from('worker_assignments')
     .select('site_id')
@@ -339,7 +340,7 @@ async function resolveTodaysSite(workerId: string, tenantId: string): Promise<{ 
     .limit(1)
     .maybeSingle()
   if (!assignment?.site_id) return null
-  const { data: site } = await admin.from('sites').select('id, name').eq('id', assignment.site_id).maybeSingle()
+  const { data: site } = await admin.from('sites').select('id, name, map_url, lat, lng').eq('id', assignment.site_id).maybeSingle()
   return site ?? null
 }
 
@@ -471,19 +472,20 @@ function bangkokWeekDates(weekOffset: number): string[] {
 // across a date range instead of pinned to today. A date with more
 // than one site assignment just takes the first, same simplification
 // resolveTodaysSite already makes.
-async function resolveSitesForDates(workerId: string, tenantId: string, dates: string[]): Promise<Map<string, { id: string; name: string }>> {
+type SiteWithMap = { id: string; name: string; map_url?: string | null; lat?: number | null; lng?: number | null }
+async function resolveSitesForDates(workerId: string, tenantId: string, dates: string[]): Promise<Map<string, SiteWithMap>> {
   const { data } = await admin
     .from('worker_assignments')
-    .select('date, site_id, sites(id, name)')
+    .select('date, site_id, sites(id, name, map_url, lat, lng)')
     .eq('worker_id', workerId)
     .eq('tenant_id', tenantId)
     .in('date', dates)
     .in('type', ['site', 'factory', 'subcontract'])
     .not('site_id', 'is', null)
-  const bySite = new Map<string, { id: string; name: string }>()
+  const bySite = new Map<string, SiteWithMap>()
   for (const r of data ?? []) {
     const date = r.date as string
-    const site = r.sites as { id: string; name: string } | null
+    const site = r.sites as SiteWithMap | null
     if (site && !bySite.has(date)) bySite.set(date, site)
   }
   return bySite
@@ -686,6 +688,8 @@ async function handleTodaysJobMenu(
   const checkin = checkinResult.data
 
   const lines = [`📍 วันนี้: ${site.name}`]
+  const todayMap = siteMapLink(site)
+  if (todayMap) lines.push(`🗺️ ${todayMap}`)
   if (leaders.morning || leaders.evening) {
     const parts: string[] = []
     if (leaders.morning) parts.push(`เช้า ${leaders.morning}`)
@@ -726,6 +730,8 @@ async function handleSingleDayQuery(
   }
   const tasks = await resolveOpenTasksForSite(site.id, settings.tenant_id)
   const lines = [`📅 ${dayLabel}: ${site.name}`]
+  const dayMap = siteMapLink(site)
+  if (dayMap) lines.push(`🗺️ ${dayMap}`)
   if (tasks.length) {
     lines.push('', '🔧 งานที่ต้องทำ (ทั้งทีม):')
     lines.push(...tasks.map((t) => `• ${t.name}`))
@@ -747,7 +753,7 @@ async function handleWeekQuery(
   const sites = await resolveSitesForDates(worker.id, settings.tenant_id, dates)
   const days: WeekDay[] = dates.map((dateISO) => {
     const site = sites.get(dateISO)
-    return { dateLabel: formatDateTH(dateISO), sites: site ? [{ siteName: site.name, morning: [], evening: [] }] : [] }
+    return { dateLabel: formatDateTH(dateISO), sites: site ? [{ siteName: site.name, mapUrl: siteMapLink(site), morning: [], evening: [] }] : [] }
   })
   await sendLineReply(settings.channel_access_token, replyToken, formatWeekMessage(weekLabel, days, false))
 }
@@ -760,11 +766,11 @@ async function handleWeekQuery(
 // tomorrow. Doesn't require a linked worker -- these are read-only, and
 // the crew group itself is already the access boundary (checked by the
 // caller before this ever runs).
-type TeamSiteGroup = { siteName: string; siteNumber?: string; morning: string[]; evening: string[] }
+type TeamSiteGroup = { siteName: string; siteNumber?: string; mapUrl?: string | null; morning: string[]; evening: string[] }
 async function resolveTeamSitesForDate(tenantId: string, dateISO: string): Promise<TeamSiteGroup[]> {
   const { data } = await admin
     .from('worker_assignments')
-    .select('site_id, shift, type, workers(name, nickname), sites(name, site_number)')
+    .select('site_id, shift, type, workers(name, nickname), sites(name, site_number, map_url, lat, lng)')
     .eq('tenant_id', tenantId)
     .eq('date', dateISO)
     .in('type', ['site', 'factory', 'subcontract'])
@@ -772,10 +778,10 @@ async function resolveTeamSitesForDate(tenantId: string, dateISO: string): Promi
   const bySite = new Map<string, TeamSiteGroup>()
   for (const r of data ?? []) {
     const worker = r.workers as { name?: string; nickname?: string } | null
-    const site = r.sites as { name?: string; site_number?: string } | null
+    const site = r.sites as { name?: string; site_number?: string; map_url?: string | null; lat?: number | null; lng?: number | null } | null
     const workerName = worker?.nickname || worker?.name || 'ไม่ทราบชื่อ'
     const siteId = r.site_id as string
-    const group = bySite.get(siteId) ?? { siteName: site?.name || '-', siteNumber: site?.site_number, morning: [], evening: [] }
+    const group = bySite.get(siteId) ?? { siteName: site?.name || '-', siteNumber: site?.site_number, mapUrl: siteMapLink(site), morning: [], evening: [] }
     if (r.shift === 'evening') group.evening.push(workerName)
     else group.morning.push(workerName)
     bySite.set(siteId, group)
@@ -788,6 +794,7 @@ function formatTeamDayMessage(dayLabel: string, siteGroups: TeamSiteGroup[]): st
   siteGroups.forEach((g) => {
     lines.push('')
     lines.push(`🏗️ ${g.siteNumber ? `${g.siteNumber} ` : ''}${g.siteName}`.trim())
+    if (g.mapUrl) lines.push(`🗺️ ${g.mapUrl}`)
     if (g.morning.length) lines.push(`🌅 เช้า: ${g.morning.join(', ')}`)
     if (g.evening.length) lines.push(`🌆 บ่าย: ${g.evening.join(', ')}`)
   })
@@ -798,7 +805,7 @@ function formatTeamDayMessage(dayLabel: string, siteGroups: TeamSiteGroup[]): st
 async function resolveTeamWeek(tenantId: string, dates: string[]): Promise<WeekDay[]> {
   const { data } = await admin
     .from('worker_assignments')
-    .select('date, site_id, shift, workers(name, nickname), sites(name, site_number)')
+    .select('date, site_id, shift, workers(name, nickname), sites(name, site_number, map_url, lat, lng)')
     .eq('tenant_id', tenantId)
     .in('date', dates)
     .in('type', ['site', 'factory', 'subcontract'])
@@ -806,12 +813,12 @@ async function resolveTeamWeek(tenantId: string, dates: string[]): Promise<WeekD
   const byDate = new Map<string, Map<string, WeekSite>>()
   for (const r of data ?? []) {
     const worker = r.workers as { name?: string; nickname?: string } | null
-    const site = r.sites as { name?: string; site_number?: string } | null
+    const site = r.sites as { name?: string; site_number?: string; map_url?: string | null; lat?: number | null; lng?: number | null } | null
     if (!site?.name) continue
     const date = r.date as string
     const siteId = r.site_id as string
     const sitesOfDay = byDate.get(date) ?? new Map<string, WeekSite>()
-    const entry = sitesOfDay.get(siteId) ?? { siteName: site.name, siteNumber: site.site_number, morning: [], evening: [] }
+    const entry = sitesOfDay.get(siteId) ?? { siteName: site.name, siteNumber: site.site_number, mapUrl: siteMapLink(site), morning: [], evening: [] }
     const workerName = worker?.nickname || worker?.name || 'ไม่ทราบชื่อ'
     if (r.shift === 'evening') entry.evening.push(workerName)
     else entry.morning.push(workerName)
