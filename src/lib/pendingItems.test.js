@@ -13,7 +13,7 @@ describe('visiblePendingItems', () => {
     expect(items.map(i => i.key)).toEqual(['leave_pending', 'cheques_due'])
   })
   it('hides items whose page the user cannot open', () => {
-    const items = visiblePendingItems({ leave_pending: 2, invoices_due: 5 }, tab => tab !== 'invoices')
+    const items = visiblePendingItems({ leave_pending: 2, po_draft: 5 }, tab => tab !== 'purchase_orders')
     expect(items.map(i => i.key)).toEqual(['leave_pending'])
   })
   it('ignores missing, null and non-numeric counts', () => {
@@ -21,6 +21,10 @@ describe('visiblePendingItems', () => {
   })
   it('reads counts that arrive as numeric strings', () => {
     expect(visiblePendingItems({ leave_pending: '3' }, all)[0].count).toBe(3)
+  })
+  it('does not count invoices due: it buried the items that need a decision', () => {
+    expect(PENDING_ITEMS.map(i => i.key)).not.toContain('invoices_due')
+    expect(visiblePendingItems({ invoices_due: 26 }, all)).toEqual([])
   })
   it('gives every item a label, icon and a page', () => {
     for (const i of PENDING_ITEMS) {
@@ -32,10 +36,10 @@ describe('visiblePendingItems', () => {
 })
 
 describe('totals and badges', () => {
-  const items = visiblePendingItems({ leave_pending: 1, po_draft: 3, cheques_due: 3, invoices_due: 26 }, all)
-  it('adds up the total', () => expect(totalPending(items)).toBe(33))
+  const items = visiblePendingItems({ leave_pending: 1, po_draft: 3, cheques_due: 3 }, all)
+  it('adds up the total', () => expect(totalPending(items)).toBe(7))
   it('groups counts by page', () => {
-    expect(badgeByTab(items)).toEqual({ hr: 1, purchase_orders: 3, cheques: 3, invoices: 26 })
+    expect(badgeByTab(items)).toEqual({ hr: 1, purchase_orders: 3, cheques: 3 })
   })
   it('sums a group header from its sub-tabs', () => {
     const byTab = badgeByTab(items)

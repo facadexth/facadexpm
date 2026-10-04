@@ -7,7 +7,6 @@ export const PENDING_ITEMS = [
   { key: 'po_draft',            icon: '📦', label: 'ใบสั่งซื้อฉบับร่าง รอเลือกซัพพลายเออร์', tab: 'purchase_orders' },
   { key: 'issues_open',         icon: '🚧', label: 'แจ้งปัญหาจากหน้างานที่ยังไม่แก้',        tab: 'sites' },
   { key: 'cheques_due',         icon: '🏦', label: 'เช็คใกล้ครบกำหนด',                    tab: 'cheques' },
-  { key: 'invoices_due',        icon: '🧾', label: 'ไซท์ที่ถึงกำหนดออกใบแจ้งหนี้เดือนนี้',    tab: 'invoices' },
   { key: 'quotations_followup', icon: '📋', label: 'ใบเสนอราคาถึงวันติดตาม',               tab: 'quotations' },
 ]
 
