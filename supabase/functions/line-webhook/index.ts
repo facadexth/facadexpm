@@ -1085,11 +1085,14 @@ async function handleAction(
     // building the report viewer, since there'd be nothing to show in a
     // "site" column otherwise.
     const site = await resolveTodaysSite(worker.id, settings.tenant_id)
-    const { error } = await admin.from('line_issue_reports').insert({ tenant_id: settings.tenant_id, worker_id: worker.id, site_id: site?.id ?? null, message: text })
+    const { data: report, error } = await admin.from('line_issue_reports').insert({ tenant_id: settings.tenant_id, worker_id: worker.id, site_id: site?.id ?? null, message: text }).select('id').single()
     if (error) {
       logSafeError('line_issue_reports insert failed', error)
       await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
     } else {
+      // A card on the site's Kanban board; never blocks the report itself.
+      const { error: cardError } = await admin.rpc('create_issue_card', { p_report_id: report.id })
+      if (cardError) logSafeError('create_issue_card failed', cardError)
       try {
         const [{ sendWebPushToTenantAdmins }, { issueReportPush }] = await Promise.all([import('../_shared/web-push.ts'), import('../_shared/web-push-messages.ts')])
         await sendWebPushToTenantAdmins(admin, settings.tenant_id, issueReportPush(worker.name, text))

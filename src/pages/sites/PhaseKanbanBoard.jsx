@@ -41,7 +41,7 @@ const emptyDraft = (phaseId, status, sortOrder) => ({
 })
 
 export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initialLeafId }) {
-  const { data: allPhases } = useSitePhases()
+  const { data: allPhases } = useSitePhases({ includeIssues: true })
   const { data: allTasks, refetch } = usePhaseTasks()
   const { data: workers } = useWorkers()
   const { data: allSubtasks } = useSubtasks()

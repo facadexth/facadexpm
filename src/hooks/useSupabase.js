@@ -2,7 +2,7 @@
 // Custom hook สำหรับ fetch ข้อมูลจาก Supabase
 // รองรับ loading / error state และ refetch
 // ============================================================
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { applyDateFilter } from '../lib/expenseFilters.js'
 import { buildUnitSeedRows, VAT_RATE } from '../lib/invoiceCalc.js'
@@ -741,12 +741,17 @@ export function useLaborCost(siteId) {
 }
 
 /** ขั้นตอนงาน (Gantt) ทุกไซท์ — group ฝั่ง client ด้วย site_id */
-export function useSitePhases() {
-  return useQuery(async () => fetchAllRows(() => supabase
+// The per-site "🚧 ปัญหาหน้างาน" phase (is_issue_phase) only holds Kanban cards made from
+// LINE issue reports. It has no dates or billing weight, so it is hidden from the Gantt,
+// S-curve, schedule pickers and phase editor; only the Kanban asks for it (includeIssues).
+export function useSitePhases({ includeIssues = false } = {}) {
+  const { data, loading, error, refetch } = useQuery(async () => fetchAllRows(() => supabase
     .from('site_phases')
     .select('*')
     .order('site_id', { ascending: true })
     .order('sort_order', { ascending: true })))
+  const visible = useMemo(() => (data && !includeIssues ? data.filter(p => !p.is_issue_phase) : data), [data, includeIssues])
+  return { data: visible, loading, error, refetch }
 }
 
 /** ขั้นตอนย่อย (Subtask) ทุกไซท์ ทุกชั้น -- ซ้อนกันได้ไม่จำกัดชั้นผ่าน
