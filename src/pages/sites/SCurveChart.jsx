@@ -10,7 +10,7 @@ import { th } from 'date-fns/locale'
 import { useSitePhases, useSubtasks, useIncomes, useExpenses } from '../../hooks/useSupabase.js'
 import { buildPlanSeries, buildActualSeries, buildCostSeries, mergeCumulativeSeries } from './scurveCalc.js'
 import { flattenLeaves, groupSubtasksByParent } from './subtaskCalc.js'
-import { computeTimelineRange, computeMonthTicks, expandRangeForTransactions } from './ganttTimeline.js'
+import { computeTimelineRange, computeFocusRange, computeAxisTicks, expandRangeForTransactions } from './ganttTimeline.js'
 import { fmt } from '../../lib/supabase.js'
 import { getEffectiveTheme } from '../../lib/theme.js'
 
@@ -52,7 +52,15 @@ export default function SCurveChart({ site }) {
     ...(incomes || []).map((i) => i.date),
     ...(expenses || []).map((e) => e.date),
   ], [incomes, expenses])
-  const range = useMemo(() => expandRangeForTransactions(baseRange, transactionDates), [baseRange, transactionDates])
+  const expandedRange = useMemo(() => expandRangeForTransactions(baseRange, transactionDates), [baseRange, transactionDates])
+  // Same work-focused range the Gantt shows (GanttView.jsx's focusRange: phases + subtasks +
+  // today when near) so the two charts line up. Money recorded outside it, such as a deposit
+  // months before work starts, is still in the cumulative totals; it just sits left of the axis.
+  const range = useMemo(() => {
+    if (!baseRange) return expandedRange
+    const extra = subtasksForSite.flatMap((s) => [s.start_date, s.end_date])
+    return computeFocusRange(baseRange, extra, TODAY_ISO)
+  }, [baseRange, expandedRange, subtasksForSite])
 
   const chartData = useMemo(() => {
     const plan = buildPlanSeries(leaves, site.contract_value)
@@ -80,8 +88,12 @@ export default function SCurveChart({ site }) {
   // own "no dates" empty state in that case, so there's nothing to match).
   const domainStart = range ? range.start.getTime() : chartData[0].ts
   const domainEnd = range ? range.end.getTime() : chartData[chartData.length - 1].ts
-  const monthTicks = range ? computeMonthTicks(range).map((t) => t.date.getTime()) : undefined
-  const monthLabel = (ts) => format(new Date(ts), 'MMM yy', { locale: th })
+  // Same tick spacing as the Gantt axis: fine day ticks for a short span, months for a long one.
+  const axis = range ? computeAxisTicks(range) : null
+  const fine = !!axis && axis.days.length > 0
+  const axisTicks = axis ? (fine ? axis.days : axis.months).map((t) => t.date.getTime()) : undefined
+  // Tick times are UTC midnight; format their UTC calendar day so the label never slips a day.
+  const monthLabel = (ts) => { const d = new Date(ts); const local = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); return format(local, fine ? 'd MMM' : 'MMM yy', { locale: th }) }
 
   const todayTs = new Date(TODAY_ISO).getTime()
   const todayInRange = domainStart <= todayTs && todayTs <= domainEnd
@@ -93,7 +105,7 @@ export default function SCurveChart({ site }) {
         <LineChart data={chartData} margin={{ left: 114, right: 4 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={chartColors.border} />
           <XAxis dataKey="ts" type="number" scale="time" domain={[domainStart, domainEnd]}
-            ticks={monthTicks} tickFormatter={monthLabel} tick={{ fontSize: 11 }} />
+            ticks={axisTicks} tickFormatter={monthLabel} tick={{ fontSize: 11 }} />
           {/* width fixed (not auto) so the plot area's left edge is
               predictable -- paired with the chart's own margin.left above
               to land the plot area at the same 178px offset (170px phase

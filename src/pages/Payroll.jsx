@@ -180,6 +180,7 @@ export default function Payroll() {
   const { data: records, refetch } = useSalary(month, year)
   const { data: workers } = useAllActiveWorkers()
   const { data: holidayMultiplierVal } = useAppSetting('holiday_pay_multiplier', '1.5')
+  const { data: requireConfirmVal } = useAppSetting('require_checkin_confirmation', 'false')
 
   const totalBase = useMemo(() => (records||[]).reduce((s,r) => s+(r.base_salary||0), 0), [records])
   const totalNet  = useMemo(() => (records||[]).reduce((s,r) => s+(r.net_pay||0), 0), [records])
@@ -287,7 +288,7 @@ export default function Payroll() {
       ;(assigns || []).forEach(a => {
         if (!wmap[a.worker_id]) return
         const isHolidayRateDay = holidaySet.has(a.date) || new Date(a.date).getDay() === 0
-        const countsForHoliday = SITE_TYPES.includes(a.type) && (a.type === 'factory' || !!a.confirmed_at)
+        const countsForHoliday = SITE_TYPES.includes(a.type) && (a.type === 'factory' || !!a.confirmed_at || requireConfirmVal !== 'true')
         if (countsForHoliday && isHolidayRateDay) {
           wmap[a.worker_id].holiday_shifts = (wmap[a.worker_id].holiday_shifts || 0) + 1
         }

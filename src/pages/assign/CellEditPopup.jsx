@@ -37,7 +37,7 @@ const TYPE_OPTS = [
   { k: 'holiday',         l: '🎌 หยุด' },
 ]
 
-export default function CellEditPopup({ target, sites = [], sitePhasesBySite = {}, tasksByPhaseId = {}, onSave, onSaveTaskLinks, onDelete, onSaveOT, onDeleteOT, onConfirm, onSwitchShift, onClose, saving }) {
+export default function CellEditPopup({ target, sites = [], sitePhasesBySite = {}, tasksByPhaseId = {}, onSave, onSaveTaskLinks, onDelete, onSaveOT, onDeleteOT, onConfirm, onSwitchShift, onClose, saving, requireConfirmation = false }) {
   const { worker, date, shift, existing, existingOT } = target
   const otherShift = shift === 'morning' ? 'evening' : 'morning'
   // "ทั้งวัน" -- write the same shift content to both เช้า and บ่าย on save.
@@ -210,7 +210,7 @@ export default function CellEditPopup({ target, sites = [], sitePhasesBySite = {
         {/* เฉพาะ type === 'site' เท่านั้น ไม่ใช่ needsSite (ซึ่งรวม factory ด้วย):
             แถว factory นับเป็นค่าแรง/ค่าเดินทางทันทีอยู่แล้ว และไม่มีทางได้รับ
             การเช็คอินจริง การโชว์สถานะ "รอการยืนยัน" ตรงนั้นจึงชวนเข้าใจผิด */}
-        {form.type === 'site' && existing && (
+        {requireConfirmation && form.type === 'site' && existing && (
           <div style={{ fontSize: 12.5 }}>
             {existing.confirmed_at ? (
               <span style={{ color: 'var(--green)' }}>

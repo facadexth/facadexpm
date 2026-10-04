@@ -519,6 +519,18 @@ export default function HR() {
   const [multiplierInput, setMultiplierInput] = useState('')
   const [savingMultiplier, setSavingMultiplier] = useState(false)
   useEffect(() => { if (multiplierVal != null) setMultiplierInput(String(multiplierVal)) }, [multiplierVal])
+  // Whether a site shift counts as wages/travel only after a real check-in (or admin override).
+  // Off by default; the database views labor_cost_by_site / site_travel_cost read the same setting.
+  const { data: requireConfirmVal, refetch: refetchRequireConfirm } = useAppSetting('require_checkin_confirmation', 'false')
+  const [savingRequireConfirm, setSavingRequireConfirm] = useState(false)
+  const handleToggleRequireConfirm = async () => {
+    setSavingRequireConfirm(true)
+    try {
+      await saveAppSetting('require_checkin_confirmation', requireConfirmVal === 'true' ? 'false' : 'true')
+      refetchRequireConfirm()
+    } catch (e) { alert('Error: ' + e.message) }
+    finally { setSavingRequireConfirm(false) }
+  }
 
   // ── Worker handlers ──
   // idCardFile is a raw File, kept OUTSIDE the draft-persisted form state
@@ -742,7 +754,7 @@ export default function HR() {
       ;(assigns||[]).forEach(a => {
         if (!wmap[a.worker_id]) return
         const isHolidayRateDay = holidaySet.has(a.date) || new Date(a.date).getDay() === 0
-        const countsForHoliday = SITE_TYPES.includes(a.type) && (a.type === 'factory' || !!a.confirmed_at)
+        const countsForHoliday = SITE_TYPES.includes(a.type) && (a.type === 'factory' || !!a.confirmed_at || requireConfirmVal !== 'true')
         if (countsForHoliday && isHolidayRateDay) {
           wmap[a.worker_id].holiday_shifts = (wmap[a.worker_id].holiday_shifts || 0) + 1
         }
@@ -973,6 +985,23 @@ export default function HR() {
               </table>
             </div>
           </div>
+
+          {canEdit && (
+            <div className="card" style={{ marginTop: 24, padding: '14px 18px' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>⚙️ ตั้งค่าการนับค่าแรง</div>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, cursor: 'pointer' }}>
+                <input type="checkbox" style={{ marginTop: 3 }} checked={requireConfirmVal === 'true'} disabled={requireConfirmVal == null || savingRequireConfirm} onChange={handleToggleRequireConfirm} />
+                <span>
+                  <span style={{ fontWeight: 600 }}>นับค่าแรง/ค่าเดินทางเฉพาะกะที่ยืนยันแล้ว</span>
+                  <span style={{ display: 'block', color: 'var(--text3)', fontSize: 12, marginTop: 2, lineHeight: 1.6 }}>
+                    {requireConfirmVal === 'true'
+                      ? 'เปิดอยู่: กะที่จัดลงไซต์จะนับเป็นค่าแรงและค่าเดินทางต่อเมื่อช่างเช็คอินจริงผ่าน LINE หรือแอดมินกด "ยืนยันเอง" (โบนัสวันหยุดก็นับเฉพาะกะที่ยืนยัน)'
+                      : 'ปิดอยู่: ทุกกะที่จัดลงไซต์นับเป็นค่าแรงและค่าเดินทางทันที ไม่ต้องรอเช็คอิน เปิดเมื่อพร้อมใช้ระบบเช็คอินจริง'}
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
 
           <div style={{ marginTop: 24 }}>
             <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>

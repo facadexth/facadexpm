@@ -166,12 +166,11 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   ], [incomesForRange, expensesForRange])
   const range = useMemo(() => expandRangeForTransactions(baseRange, transactionDatesForRange), [baseRange, transactionDatesForRange])
 
-  // แกนเวลาที่ "แสดง": ค่าเริ่มต้นโฟกัสเฉพาะช่วงที่มีงานจริง (ขั้นตอน/ขั้นตอนย่อย
-  // + วันนี้ถ้าอยู่ใกล้) เพราะรายรับ เช่น มัดจำล่วงหน้าหลายเดือน ทำให้ `range`
-  // ด้านบนยืดไปไกลจนงานจริงเหลือแค่แถบเล็กๆ กดปุ่ม "ทั้งโครงการ" เพื่อดูช่วง
-  // เต็มรวมรายรับ/รายจ่าย -- `range` เดิมไม่ถูกแก้ เพราะ effect ด้านล่างใช้มันเก็บ
-  // sites.start_date/end_date (กำหนดคืนเงินประกันผลงาน) และ S-curve ใช้ช่วงเต็ม
-  const [axisMode, setAxisMode] = useState('focus')
+  // แกนเวลาที่ "แสดง": โฟกัสเฉพาะช่วงที่มีงานจริง (ขั้นตอน/ขั้นตอนย่อย + วันนี้ถ้า
+  // อยู่ใกล้) เพราะรายรับ เช่น มัดจำล่วงหน้าหลายเดือน ทำให้ `range` ด้านล่างยืดไป
+  // ไกลจนงานจริงเหลือแค่แถบเล็กๆ S-curve ใช้ช่วงเดียวกันนี้ (SCurveChart.jsx) ให้
+  // สองกราฟตรงกัน -- `range` เดิมไม่ถูกแก้ เพราะ effect ด้านล่างใช้มันเก็บ
+  // sites.start_date/end_date (กำหนดคืนเงินประกันผลงาน)
   const [hoverPct, setHoverPct] = useState(null)
   const focusRange = useMemo(() => {
     if (!baseRange) return null
@@ -179,8 +178,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     const extra = (allSubtasks || []).filter((s) => ids.has(s.site_id)).flatMap((s) => [s.start_date, s.end_date])
     return computeFocusRange(baseRange, extra, TODAY_ISO)
   }, [baseRange, sites, allSubtasks])
-  const fullRangeDiffers = !!(range && focusRange && (range.start < focusRange.start || range.end > focusRange.end))
-  const viewRange = axisMode === 'all' || !focusRange ? range : focusRange
+  const viewRange = focusRange || range
 
   // ไซท์เดียว + แก้ไขได้: เก็บ sites.start_date/end_date ให้ตรงกับ timeline
   // ที่ Gantt แสดงจริงเสมอ (ช่วงที่ขยายแล้ว รวมวันที่รายรับ/รายจ่ายด้วย) --
@@ -460,13 +458,6 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => startAdd(null, null, phases.length + 1)}>+ เพิ่มขั้นตอน</button>
             )}
           </div>
-          {fullRangeDiffers && (
-            <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              <button type="button" className={`btn btn-sm ${axisMode === 'focus' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setAxisMode('focus')}>🔍 เน้นช่วงทำงาน</button>
-              <button type="button" className={`btn btn-sm ${axisMode === 'all' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setAxisMode('all')}>↔ ทั้งโครงการ (รวมมัดจำ/รายจ่าย)</button>
-              {axisMode === 'focus' && <span style={{ fontSize: 11, color: 'var(--text3)' }}>มีรายรับ/รายจ่ายนอกช่วงนี้ กด "ทั้งโครงการ" เพื่อดู</span>}
-            </div>
-          )}
           {viewRange && (
             <div style={{ position: 'relative', height: 40, marginLeft: trackLeft, marginRight: trackRight }}>
               {monthTicks.filter((t) => t.x <= 90).map((t, i) => (

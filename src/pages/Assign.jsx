@@ -83,6 +83,7 @@ export default function Assign({ navState, openSiteOverview }) {
     return m
   }, [holidaysInRange])
   const { data: travelRateVal } = useAppSetting('travel_rate_per_km', '20')
+  const { data: requireConfirmVal } = useAppSetting('require_checkin_confirmation', 'false')
   const travelRate = parseFloat(travelRateVal) || 0
 
   const ongoingSites = useMemo(() => (sites || []).filter(s => s.status === 'Ongoing'), [sites])
@@ -461,6 +462,7 @@ export default function Assign({ navState, openSiteOverview }) {
       {/* ── Cell edit ── */}
       {cellTarget && (
         <CellEditPopup
+          requireConfirmation={requireConfirmVal === 'true'}
           // Remounts the popup whenever the targeted shift changes, so its
           // form (seeded once at mount via useDraftForm) re-reads that
           // shift's own `existing` row instead of carrying over whatever
