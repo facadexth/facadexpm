@@ -29,9 +29,14 @@
 // functions.
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 
+// Modules a company only has through its own tenant_modules row, never from the free trial or a
+// package. Keep in step with src/lib/modules.js and has_module_access() in the database.
+export const EXPLICIT_ONLY_MODULES = ['estimation']
+
 export async function tenantHasModuleAccess(admin: SupabaseClient, tenantId: string, moduleKey: string): Promise<boolean> {
   const { data: tenant } = await admin.from('tenants').select('trial_ends_at').eq('id', tenantId).maybeSingle()
-  if (tenant?.trial_ends_at && new Date(tenant.trial_ends_at as string) > new Date()) return true
+  // The free trial opens every module except the explicit-only ones (see EXPLICIT_ONLY_MODULES).
+  if (tenant?.trial_ends_at && new Date(tenant.trial_ends_at as string) > new Date() && !EXPLICIT_ONLY_MODULES.includes(moduleKey)) return true
 
   const { data: mod } = await admin.from('tenant_modules').select('tenant_id').eq('tenant_id', tenantId).eq('module_key', moduleKey).maybeSingle()
   return !!mod

@@ -4,6 +4,7 @@
 // ============================================================
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { companyHasModule } from '../lib/modules.js'
 
 export function useTenant() {
   const [tenant, setTenant] = useState(null)
@@ -82,11 +83,7 @@ export function useTenant() {
   /**
    * moduleKey === null/undefined means a core feature — always accessible.
    */
-  const hasModuleAccess = (moduleKey) => {
-    if (!moduleKey) return true
-    if (isTrialActive) return true
-    return enabledModules.includes(moduleKey)
-  }
+  const hasModuleAccess = (moduleKey) => companyHasModule(moduleKey, { isTrialActive, enabledModules })
 
   return { tenant, enabledModules, loading, isTrialActive, trialDaysRemaining, hasModuleAccess, refetch: fetchTenant }
 }

@@ -18,7 +18,7 @@ const MODULE_LABELS = {
   client_deposits: '💰 มัดจำลูกค้า',
   payroll: '👷 Payroll / จ่ายงานช่าง',
   labor_subcontractors: '🔧 ผู้รับเหมาค่าแรง',
-  estimation: '📐 ประเมินราคา (BOM)',
+  // estimation is not sold in any package (see src/lib/modules.js), so it has no row here.
 }
 
 export default function PackageComparison({ currentPackageId, onApply, applyingId, allowFreeApply }) {
