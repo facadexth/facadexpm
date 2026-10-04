@@ -1087,6 +1087,10 @@ async function handleAction(
       logSafeError('line_issue_reports insert failed', error)
       await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
     } else {
+      try {
+        const [{ sendWebPushToTenantAdmins }, { issueReportPush }] = await Promise.all([import('../_shared/web-push.ts'), import('../_shared/web-push-messages.ts')])
+        await sendWebPushToTenantAdmins(admin, settings.tenant_id, issueReportPush(worker.name, text))
+      } catch (e) { console.error('web push failed', (e as Error).message) }
       await sendLineReply(settings.channel_access_token, replyToken, '📩 รับแจ้งปัญหาแล้วครับ แอดมินจะติดตามให้')
     }
   } else if (action === 'material_request') {

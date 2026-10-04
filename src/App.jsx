@@ -304,6 +304,16 @@ export default function App() {
   // attempt it was set for; it's cleared instead on explicit user
   // navigation (tab click / navigateTo below), which is a real signal of
   // fresh intent distinct from "the page just reloaded on its own."
+  // Tapping a Web Push notification: an open app gets a message from the service worker,
+  // a closed one is launched at /#tab=<id>. Both go through the access check below.
+  useEffect(() => {
+    const m = /^#tab=([\w-]+)$/.exec(window.location.hash)
+    if (m) { setActiveTab(m[1]); history.replaceState(null, '', window.location.pathname) }
+    const onMsg = (e) => { if (e.data?.type === 'chang-open-tab' && typeof e.data.tab === 'string') setActiveTab(e.data.tab) }
+    navigator.serviceWorker?.addEventListener('message', onMsg)
+    return () => navigator.serviceWorker?.removeEventListener('message', onMsg)
+  }, [])
+
   useEffect(() => {
     const pending = sessionStorage.getItem('pendingTab')
     if (pending) {

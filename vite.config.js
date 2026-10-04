@@ -32,6 +32,8 @@ export default defineConfig({
         // happened and the banner stayed. Safe in 'prompt' mode: a new worker only becomes
         // active after the user taps the button.
         clientsClaim: true,
+        // Web Push: shows notifications and opens the tapped page (public/push-handler.js).
+        importScripts: ['push-handler.js'],
         // globIgnores above only keeps manual/index.html OUT of the
         // precache -- it does NOT stop Workbox's default catch-all
         // NavigationRoute (registered with no denylist) from treating a

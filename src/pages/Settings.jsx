@@ -9,6 +9,7 @@ import { useDraftForm } from '../hooks/useDraftForm.js'
 import PackageComparison from '../components/PackageComparison.jsx'
 import ChangelogModal from '../components/ChangelogModal.jsx'
 import LinePushSettings from '../components/LinePushSettings.jsx'
+import WebPushSettings from '../components/WebPushSettings.jsx'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SignaturePad from '../components/SignaturePad.jsx'
 import { DEFAULT_DOCUMENT_STYLE, resolveDocumentStyle } from '../lib/documentStyle.js'
@@ -551,6 +552,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     { id: 'travel', label: '🚗 ค่าเดินทางต่อไซท์', show: isOwner },
     { id: 'cheque_reminder', label: '🏦 แจ้งเตือนเช็คใกล้ครบกำหนด', show: isOwner && hasCheque },
     { id: 'line_push', label: '🔔 การแจ้งเตือนทาง LINE', show: isOwner && hasModuleAccess('line_bot') },
+    { id: 'web_push', label: '📲 แจ้งเตือนบนเครื่องนี้', show: isAdminPlus },
     { id: 'sign_method', label: '✍️ วิธีเซ็นรับเอกสาร', show: isOwner && hasCheque },
     { id: 'checkin_location', label: '📍 เช็คอิน/เช็คเอาท์ตำแหน่งที่ตั้ง', show: isOwner },
     { id: 'signature', label: '🖊️ ลายเซ็นของฉัน', show: isAdminPlus },
@@ -671,6 +673,8 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       {activeSection === 'line_push' && isOwner && hasModuleAccess('line_bot') && (
         <LinePushSettings hasModuleAccess={hasModuleAccess} />
       )}
+
+      {activeSection === 'web_push' && isAdminPlus && <WebPushSettings />}
 
       {/* ── วิธีเซ็นรับเอกสาร ── */}
       {activeSection === 'sign_method' && isOwner && hasModuleAccess('cheque_tracking') && (
