@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
     })
     if (!res.ok) {
       console.error('route-distance ORS status', res.status)
-      return json({ ok: false, error: res.status === 404 ? 'no_route' : `routing_${res.status}` })
+      return json({ ok: false, error: (res.status === 404 || res.status === 400) ? 'no_route' : `routing_${res.status}` })
     }
     const data = await res.json()
     const s = data?.routes?.[0]?.summary
