@@ -1,6 +1,6 @@
 // ============================================================
 // AluminumProfiles -- master list of aluminium cross-sections (หน้าตัดอลูมิเนียม).
-// Lives inside ประเมินราคา (FacadeX only). Moved here from the คลังสินค้า page; the table
+// Lives inside ประเมินราคา > BOM Templates (FacadeX only). Moved here from the คลังสินค้า page; the table
 // (aluminum_profiles) is unchanged and still feeds BOM templates and PO receiving.
 // ============================================================
 import { useState, useMemo } from 'react'

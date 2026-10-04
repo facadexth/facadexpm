@@ -5,6 +5,7 @@
 // glass types). Gated on has_module_access('estimation').
 // See docs/superpowers/specs/2026-09-10-bom-template-engine-design.md.
 // ============================================================
+import AluminumProfiles from './AluminumProfiles.jsx'
 import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useBomTemplates, useAluminumFinishes, useInfillTypes } from '../hooks/useSupabase.js'
@@ -466,6 +467,7 @@ export default function BomTemplates(props) {
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button className={`btn btn-sm ${view === 'templates' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('templates')}>🧩 BOM Templates</button>
+        <button className={`btn btn-sm ${view === 'profiles' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('profiles')}>📏 หน้าตัดอลูมิเนียม</button>
         <button className={`btn btn-sm ${view === 'finishes' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('finishes')}>🎨 สีผิวอลูมิเนียม</button>
         <button className={`btn btn-sm ${view === 'infill_types' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('infill_types')}>🪟 วัสดุอุดช่อง</button>
       </div>
@@ -473,6 +475,8 @@ export default function BomTemplates(props) {
       {view === 'templates' && (
         <TemplatesView canEdit={canEdit} />
       )}
+
+      {view === 'profiles' && <AluminumProfiles />}
 
       {view === 'finishes' && (
         <>
