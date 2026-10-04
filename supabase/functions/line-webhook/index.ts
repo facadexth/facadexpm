@@ -1094,8 +1094,10 @@ async function handleAction(
       const { error: cardError } = await admin.rpc('create_issue_card', { p_report_id: report.id })
       if (cardError) logSafeError('create_issue_card failed', cardError)
       try {
+        if (await isPushEnabled(admin, settings.tenant_id, 'web_push_issue_report')) {
         const [{ sendWebPushToTenantAdmins }, { issueReportPush }] = await Promise.all([import('../_shared/web-push.ts'), import('../_shared/web-push-messages.ts')])
         await sendWebPushToTenantAdmins(admin, settings.tenant_id, issueReportPush(worker.name, text))
+        }
       } catch (e) { console.error('web push failed', (e as Error).message) }
       await sendLineReply(settings.channel_access_token, replyToken, '📩 รับแจ้งปัญหาแล้วครับ แอดมินจะติดตามให้')
     }

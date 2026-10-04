@@ -2,9 +2,49 @@
 // Per device: turning it on here only affects the phone/computer being used.
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { useUserRole } from '../hooks/useUserRole.js'
+import { saveAppSetting } from '../hooks/useSupabase.js'
+import { parseToggle } from '../lib/linePushToggles.js'
+import { WEB_PUSH_TOGGLES } from '../lib/webPushToggles.js'
 import { pushSupport, currentSubscription, subscribeThisDevice, subscriptionParts } from '../lib/webPush.js'
 
+// OWNER only: which events send a device notification at all (company-wide, not per device).
+function EventSwitches() {
+  const [stored, setStored] = useState(null)
+  const [savingKey, setSavingKey] = useState(null)
+  useEffect(() => {
+    supabase.from('app_settings').select('key, value').in('key', WEB_PUSH_TOGGLES.map(t => t.key))
+      .then(({ data }) => setStored(Object.fromEntries((data || []).map(r => [r.key, r.value]))))
+  }, [])
+  const isOn = (t) => parseToggle(stored?.[t.key], t.defaultOn)
+  const toggle = async (t) => {
+    const next = !isOn(t)
+    setSavingKey(t.key)
+    try {
+      await saveAppSetting(t.key, next)
+      setStored(s => ({ ...(s || {}), [t.key]: String(next) }))
+    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + e.message) } finally { setSavingKey(null) }
+  }
+  return (
+    <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>เหตุการณ์ที่ส่งแจ้งเตือนบนเครื่อง (ทุกเครื่องของบริษัท)</div>
+      <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10, lineHeight: 1.6 }}>
+        แต่ละเหตุการณ์เลือกช่องทางได้ ทาง LINE (นับโควตาข้อความ ตั้งที่ "การแจ้งเตือนทาง LINE") ทางเครื่อง (ฟรี) ทั้งสองอย่าง หรือปิดทั้งคู่
+      </p>
+      <div style={{ display: 'grid', gap: 10 }}>
+        {WEB_PUSH_TOGGLES.map(t => (
+          <label key={t.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" style={{ marginTop: 3 }} checked={isOn(t)} disabled={stored === null || savingKey === t.key} onChange={() => toggle(t)} />
+            <span><span style={{ fontWeight: 600 }}>{t.icon} {t.label}</span><span style={{ display: 'block', color: 'var(--text3)', fontSize: 12 }}>{t.detail}</span></span>
+          </label>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function WebPushSettings() {
+  const { isAtLeast } = useUserRole()
   const support = pushSupport()
   const [on, setOn] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -78,6 +118,7 @@ export default function WebPushSettings() {
         </div>
       )}
       {msg && <div style={{ fontSize: 12, marginTop: 10, color: 'var(--text3)' }}>{msg}</div>}
+      {isAtLeast('OWNER') && <EventSwitches />}
     </div>
   )
 }

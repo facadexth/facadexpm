@@ -51,3 +51,18 @@ describe('parseChequeWindowDays', () => {
     expect(parseChequeWindowDays('-2')).toBe(3)
   })
 })
+
+import { isQuotationExpiring } from './pendingRules.js'
+describe('isQuotationExpiring', () => {
+  const q = (o) => ({ status: 'sent', on_hold: false, valid_until: '2026-10-11', ...o })
+  it('marks a sent quotation 7 days or less before valid_until', () => {
+    expect(isQuotationExpiring(q({}), '2026-10-04')).toBe(true)
+    expect(isQuotationExpiring(q({ valid_until: '2026-10-12' }), '2026-10-04')).toBe(false)
+    expect(isQuotationExpiring(q({ valid_until: '2026-10-01' }), '2026-10-04')).toBe(true)
+  })
+  it('ignores held, undated and non-sent quotations', () => {
+    expect(isQuotationExpiring(q({ on_hold: true }), '2026-10-04')).toBe(false)
+    expect(isQuotationExpiring(q({ valid_until: null }), '2026-10-04')).toBe(false)
+    expect(isQuotationExpiring(q({ status: 'accepted' }), '2026-10-04')).toBe(false)
+  })
+})

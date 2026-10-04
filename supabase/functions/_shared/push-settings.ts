@@ -16,12 +16,16 @@ export const PUSH_TOGGLE_DEFAULTS: Record<string, boolean> = {
   // Existing key (predates this list); off unless an owner turned it on.
   cheque_reminder_line_enabled: false,
   line_push_quotation_followup: true,
-  line_push_invoice_due: true,
   line_push_leave_result: true,
   line_push_leave_request_admin: true,
   line_push_leave_ack_worker: true,
   line_push_material_request_admin: true,
   line_push_offboarding: true,
+  // Free device notifications (Web Push); one switch per kind of event, independent of LINE.
+  web_push_leave_request: true,
+  web_push_material_request: true,
+  web_push_issue_report: true,
+  web_push_quotation_expiry: true,
 }
 
 export function parseToggle(value: unknown, defaultOn: boolean): boolean {

@@ -9,7 +9,7 @@ export const PENDING_ITEMS = [
   // an ADMIN, who cannot open it, is sent to the Sites page, where each day's reports are.
   { key: 'issues_open',         icon: '🚧', label: 'แจ้งปัญหาจากหน้างานที่ยังไม่แก้',        tab: 'communication_center', fallbackTabs: ['sites'] },
   { key: 'cheques_due',         icon: '🏦', label: 'เช็คใกล้ครบกำหนด',                    tab: 'cheques' },
-  { key: 'quotations_followup', icon: '📋', label: 'ใบเสนอราคาถึงวันติดตาม',               tab: 'quotations' },
+  { key: 'quotations_followup', icon: '📋', label: 'ใบเสนอราคาใกล้หมดวันยืนราคา',          tab: 'quotations' },
 ]
 
 // Items that have something waiting AND whose page this user can open.

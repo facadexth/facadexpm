@@ -27,6 +27,8 @@ import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
 import DocumentReceiptModal from '../components/DocumentReceiptModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
+import PendingMark from '../components/PendingMark.jsx'
+import { isQuotationExpiring } from '../lib/pendingRules.js'
 import UnitSelect from '../components/UnitSelect.jsx'
 import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX, ScaleToFit } from '../hooks/usePaginatedDocument.jsx'
 import { resolveDocumentStyle } from '../lib/documentStyle.js'
@@ -1398,6 +1400,28 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
     showToast('เซ็นรับและยอมรับใบเสนอราคาแล้ว')
   }
 
+  // วันยืนราคา: เลื่อนอีก 7 วัน / พักใบเสนอราคา / ยกเลิกพัก
+  // (ใบที่ส่งแล้วและเลยวันยืนราคาจะถูกพักอัตโนมัติทุกคืน -- ดู migration 2026-10-04-07)
+  const TODAY_BKK = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10)
+  const plusDays = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
+  const updateQuotation = async (id, payload, toast) => {
+    const { error } = await supabase.from('quotations').update(payload).eq('id', id)
+    if (error) { alert('Error: ' + error.message); return }
+    await auditLog('quotations', id, 'UPDATE', null, payload)
+    refetch(); showToast(toast)
+  }
+  const handleSnooze = (qt) => {
+    const next = plusDays(qt.valid_until, 7)
+    updateQuotation(qt.id, { valid_until: next }, `เลื่อนวันยืนราคาเป็น ${fmtDate(next)} แล้ว`)
+  }
+  const handleHold = (qt) => updateQuotation(qt.id, { on_hold: true, held_at: new Date().toISOString() }, 'พักใบเสนอราคาแล้ว')
+  const handleUnhold = (qt) => {
+    // A quotation held for being past its date would be held again tonight, so it gets 7 fresh days.
+    const next = !qt.valid_until || qt.valid_until < TODAY_BKK ? plusDays(TODAY_BKK, 7) : qt.valid_until
+    const note = next !== qt.valid_until ? ` (ขยายวันยืนราคาเป็น ${fmtDate(next)})` : ''
+    updateQuotation(qt.id, { on_hold: false, held_at: null, valid_until: next, expiry_notified_for: null }, `ยกเลิกพักแล้ว${note}`)
+  }
+
   const handleSetStatus = async (id, newStatus) => {
     // ever_sent ติดค้างเป็น true ตลอดไปตั้งแต่ครั้งแรกที่กด "ส่ง" -- ไม่รีเซ็ต
     // แม้ดึงกลับเป็นร่างทีหลัง (handlePullBackToEdit) ใช้แยกว่าการแก้ไข
@@ -1599,7 +1623,10 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                 })
                 return (
                   <tr key={qt.id}>
-                    <td className="font-mono" style={{ fontSize: 12 }}>{qt.quotation_number}</td>
+                    <td className="font-mono" style={{ fontSize: 12 }}>
+                      {isQuotationExpiring(qt, TODAY_BKK) && <PendingMark label="ใกล้หมดวันยืนราคา" />}
+                      {qt.quotation_number}
+                    </td>
                     <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDate(qt.date)}</td>
                     <td style={{ fontSize: 12 }}>{qt.clients?.name || '—'}</td>
                     {/* qt.sites?.name only exists once accepted (site_id set) --
@@ -1618,7 +1645,15 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                         notes showing "51 รายการ"). */}
                     <td style={{ fontSize: 11, color: 'var(--text3)' }}>{(qt.quotation_items || []).filter(it => it.item_type === 'item').length} รายการ</td>
                     <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(totals.total)}</td>
-                    <td><span className={`badge badge-${qt.status}`}>{QT_STATUS_LABELS[qt.status] || qt.status}</span></td>
+                    <td>
+                      <span className={`badge badge-${qt.status}`}>{QT_STATUS_LABELS[qt.status] || qt.status}</span>
+                      {qt.status === 'sent' && qt.on_hold && <span className="badge" style={{ marginLeft: 4 }} title="เลยวันยืนราคา ระบบพักไว้ — กดยกเลิกพักจากเมนู ⋮">⏸ พักไว้</span>}
+                      {qt.status === 'sent' && !qt.on_hold && qt.valid_until && (
+                        <div style={{ fontSize: 10.5, color: isQuotationExpiring(qt, TODAY_BKK) ? 'var(--red, #e5484d)' : 'var(--text3)', marginTop: 2 }}>
+                          ยืนราคาถึง {fmtDate(qt.valid_until)}
+                        </div>
+                      )}
+                    </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <div className="actions-cell">
                         <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(qt)}>📄</button>
@@ -1637,8 +1672,14 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                         )}
                         {canEdit && qt.status === 'sent' && (
                           <>
-                            <button className="btn btn-sm btn-primary" onClick={() => setSignTarget(qt)} title="เซ็นรับต่อหน้า (ส่งอุปกรณ์ให้ลูกค้าเซ็นตรงนี้)">🖊️ เซ็นรับ</button>
+                            {qt.on_hold
+                              ? <button className="btn btn-sm btn-primary" onClick={() => handleUnhold(qt)} title="เลยวันยืนราคา ระบบพักไว้ — ยกเลิกพักแล้วขยายวันยืนราคาให้ 7 วัน">▶ ยกเลิกพัก</button>
+                              : <button className="btn btn-sm btn-primary" onClick={() => setSignTarget(qt)} title="เซ็นรับต่อหน้า (ส่งอุปกรณ์ให้ลูกค้าเซ็นตรงนี้)">🖊️ เซ็นรับ</button>}
                             <RowActionsMenu items={[
+                              ...(qt.valid_until && !qt.on_hold ? [{ label: '⏳ เลื่อนวันยืนราคา +7 วัน', onClick: () => handleSnooze(qt) }] : []),
+                              qt.on_hold
+                                ? { label: '▶ ยกเลิกพัก (Unhold)', onClick: () => handleUnhold(qt) }
+                                : { label: '⏸ พักใบเสนอราคา', onClick: () => handleHold(qt) },
                               { label: '🔗 ลิงก์เซ็นรับ', onClick: () => setLinkTarget(qt) },
                               { label: '↩️ แก้ไข (ดึงกลับเป็นร่าง)', onClick: () => handlePullBackToEdit(qt) },
                               { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },

@@ -4,7 +4,7 @@
 export const VAPID_PUBLIC_KEY = 'BDX5ThKaDY5mz--6gS-1lqFmtLb93SjqGdz5vZ8-rx-kqkGtObNpVNUTq7VfZD3YP4LSmxDwOMzCPbjM9kHSyXQ'
 
 // Page ids a notification may open (see TABS in src/App.jsx). Used only by tests.
-export const TABS_FOR_TEST = ['hr', 'purchase_orders', 'sites', 'settings']
+export const TABS_FOR_TEST = ['hr', 'purchase_orders', 'sites', 'settings', 'quotations']
 
 export function urlBase64ToUint8Array(base64) {
   const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4)

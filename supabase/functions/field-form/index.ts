@@ -118,8 +118,9 @@ async function notifyAdmins(tenantId: string, text: string, toggleKey: string) {
 
 // Free browser/phone notification to admins' devices (Web Push). Loaded lazily and never
 // throws, so a problem there cannot affect the request itself.
-async function webPushAdmins(tenantId: string, build: (m: typeof import('../_shared/web-push-messages.ts')) => import('../_shared/web-push-messages.ts').PushPayload) {
+async function webPushAdmins(tenantId: string, toggleKey: string, build: (m: typeof import('../_shared/web-push-messages.ts')) => import('../_shared/web-push-messages.ts').PushPayload) {
   try {
+    if (!(await isPushEnabled(admin, tenantId, toggleKey))) return
     const [{ sendWebPushToTenantAdmins }, messages] = await Promise.all([import('../_shared/web-push.ts'), import('../_shared/web-push-messages.ts')])
     await sendWebPushToTenantAdmins(admin, tenantId, build(messages))
   } catch (e) { console.error('web push failed', (e as Error).message) }
@@ -259,7 +260,7 @@ Deno.serve(async (req) => {
         await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
         const itemLines = resolved.map(r => `- ${r.description} (${r.quantity} ${r.unit})`).join('\n')
         await notifyAdmins(worker.tenant_id, `📦 ${workerName} ขอเบิกที่ไซต์ ${site.name}:\n${itemLines}\nสร้างใบสั่งซื้อร่างไว้ให้แล้ว รอเลือกซัพพลายเออร์และราคาที่ ${APP_URL}`, 'line_push_material_request_admin')
-        await webPushAdmins(worker.tenant_id, (m) => m.materialRequestPush(workerName, site.name))
+        await webPushAdmins(worker.tenant_id, 'web_push_material_request', (m) => m.materialRequestPush(workerName, site.name))
         return json({ ok: true, workerName })
       }
 
@@ -285,7 +286,7 @@ Deno.serve(async (req) => {
         const shiftLabel = shift === 'morning' ? ' (ช่วงเช้า)' : shift === 'evening' ? ' (ช่วงบ่าย)' : ''
         const dateLabel = dateFrom === dateTo ? dateFrom : `${dateFrom} — ${dateTo}`
         await notifyAdmins(worker.tenant_id, `🏖️ ${workerName} ขอ${leaveLabel}${shiftLabel} วันที่ ${dateLabel}\nรออนุมัติที่หน้าบุคคล → คำขอลา`, 'line_push_leave_request_admin')
-        await webPushAdmins(worker.tenant_id, (m) => m.leaveRequestPush(workerName, leaveLabel, shiftLabel, dateLabel))
+        await webPushAdmins(worker.tenant_id, 'web_push_leave_request', (m) => m.leaveRequestPush(workerName, leaveLabel, shiftLabel, dateLabel))
         await notifyWorker(worker.tenant_id, worker.line_user_id, `✅ ส่งคำขอ${leaveLabel}${shiftLabel} วันที่ ${dateLabel} เรียบร้อยแล้ว\nรอแอดมิน/เจ้าของตรวจสอบและอนุมัติ`, 'line_push_leave_ack_worker')
         return json({ ok: true, workerName })
       }

@@ -7,14 +7,9 @@
 
 export const LINE_PUSH_TOGGLES = [
   {
-    key: 'line_push_invoice_due', defaultOn: true, icon: '🧾',
-    label: 'เตือนออกใบแจ้งหนี้ประจำเดือน',
-    detail: 'วันที่ 1 ของทุกเดือน ส่งสรุปไซท์ที่ถึงกำหนดออกใบแจ้งหนี้ ถึงเจ้าของ (1 ข้อความต่อเจ้าของ 1 คน)',
-  },
-  {
     key: 'line_push_quotation_followup', defaultOn: true, icon: '📋',
-    label: 'เตือนติดตามใบเสนอราคา',
-    detail: 'เมื่อใบเสนอราคาที่ส่งแล้วถึงวันที่ตั้งให้ติดตาม ส่งถึงเจ้าของและผู้สร้างใบ (ใบละครั้งเดียว)',
+    label: 'เตือนใบเสนอราคาใกล้หมดวันยืนราคา',
+    detail: 'ก่อนวันยืนราคา 7 วัน ส่งถึงเจ้าของและผู้สร้างใบ (ครั้งเดียวต่อวันยืนราคา ถ้าเลื่อนวัน จะเตือนใหม่)',
   },
   {
     key: 'cheque_reminder_line_enabled', defaultOn: false, icon: '🏦', module: 'cheque_tracking',

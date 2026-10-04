@@ -28,3 +28,8 @@ export function issueReportPush(workerName: string, message: string): PushPayloa
 export function testPush(): PushPayload {
   return { title: '✅ ทดสอบแจ้งเตือน', body: 'แจ้งเตือนบนเครื่องนี้ใช้งานได้ปกติ', tab: 'settings' }
 }
+
+export function quotationExpiryPush(quotationNumber: string, validUntil: string, daysLeft: number): PushPayload {
+  const when = daysLeft > 0 ? `อีก ${daysLeft} วัน` : daysLeft === 0 ? 'วันนี้' : 'เลยกำหนดแล้ว'
+  return { title: '⏳ ใบเสนอราคาใกล้หมดวันยืนราคา', body: `${quotationNumber} ยืนราคาถึง ${validUntil} (${when})`, tab: 'quotations' }
+}

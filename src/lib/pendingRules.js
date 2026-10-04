@@ -6,12 +6,22 @@
 //   leave request   status = 'pending'
 //   purchase order  status = 'draft'
 //   problem report  status = 'open'
+//   quotation       status 'sent', not on hold, valid_until is today or within the next 7 days (or past)
 //   cheque          not cashed, and its date is today or within cheque_reminder_days (past due included)
 import { isChequeReminderDue } from './lineNotifications.js'
 
 export const isLeavePending = (request) => request?.status === 'pending'
 export const isPoDraft = (po) => po?.status === 'draft'
 export const isIssueOpen = (report) => report?.status === 'open'
+
+// A sent quotation whose price validity ends within 7 days (past due included until the
+// nightly job puts it on hold). `todayISO` is the Bangkok date, YYYY-MM-DD.
+export function isQuotationExpiring(quotation, todayISO) {
+  if (quotation?.status !== 'sent' || quotation.on_hold || !quotation.valid_until) return false
+  const limit = new Date(`${todayISO}T00:00:00Z`)
+  limit.setUTCDate(limit.getUTCDate() + 7)
+  return quotation.valid_until <= limit.toISOString().slice(0, 10)
+}
 
 // thresholdDays: the company's cheque_reminder_days setting (3 when never set).
 export function isChequeAwaitingAction(cheque, thresholdDays, todayISO) {

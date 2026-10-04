@@ -62,7 +62,7 @@ const DOCUMENT_LOADERS: Record<string, (id: string) => Promise<Record<string, un
   quotation: async (id: string) => {
     const { data } = await admin.from('quotations')
       .select(`
-        quotation_number, date, valid_until, status, has_vat, price_includes_vat,
+        quotation_number, date, valid_until, status, on_hold, has_vat, price_includes_vat,
         discount_amount, discount_pct, payment_terms, notes, tenant_id, site_name,
         clients(name, address, tax_id),
         bank_accounts(bank_name, account_name, account_no),
@@ -89,7 +89,7 @@ const DOCUMENT_LOADERS: Record<string, (id: string) => Promise<Record<string, un
     const client = data.clients as { name?: string; address?: string; tax_id?: string } | null
     return {
       type: 'quotation', label: `ใบเสนอราคา ${data.quotation_number}`, number: data.quotation_number,
-      date: data.date, validUntil: data.valid_until, status: data.status, tenant_id: data.tenant_id,
+      date: data.date, validUntil: data.valid_until, status: data.status, onHold: data.on_hold === true, tenant_id: data.tenant_id,
       clientName: client?.name, clientAddress: client?.address, clientTaxId: client?.tax_id,
       siteName: data.site_name, items, hasVat: data.has_vat, subtotal, vat, total,
       notes: data.notes, paymentTerms: data.payment_terms,
@@ -205,6 +205,11 @@ Deno.serve(async (req) => {
   if (action === 'submit') {
     if (link.signed_at) return json({ error: 'ลิงก์นี้เซ็นไปแล้ว' }, 409)
     if (new Date(link.expires_at) < new Date()) return json({ error: 'ลิงก์นี้หมดอายุแล้ว' }, 410)
+
+    // A quotation on hold is past its price validity; the customer must ask the company to renew it.
+    if (link.document_type === 'quotation' && (doc as { onHold?: boolean }).onHold) {
+      return json({ error: 'ใบเสนอราคานี้เลยวันยืนราคาแล้ว กรุณาติดต่อบริษัทเพื่อขอต่ออายุ' }, 409)
+    }
 
     const { signerName, signerNote, signerEmail, signatureDataUrl } = body
     if (!signerName || typeof signerName !== 'string' || !signerName.trim()) {

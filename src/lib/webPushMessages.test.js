@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { leaveRequestPush, materialRequestPush, issueReportPush, testPush } from '../../supabase/functions/_shared/web-push-messages.ts'
+import { leaveRequestPush, materialRequestPush, issueReportPush, testPush, quotationExpiryPush } from '../../supabase/functions/_shared/web-push-messages.ts'
 import { TABS_FOR_TEST } from './webPush.js'
 
 describe('Web Push wording', () => {
@@ -30,7 +30,7 @@ describe('Web Push wording', () => {
     expect(testPush().title).toContain('ทดสอบ')
   })
   it('every notification points at a real app page', () => {
-    const tabs = [leaveRequestPush('a', 'b', '', 'c'), materialRequestPush('a', 'b'), issueReportPush('a', 'b'), testPush()].map((p) => p.tab)
+    const tabs = [leaveRequestPush('a', 'b', '', 'c'), materialRequestPush('a', 'b'), issueReportPush('a', 'b'), testPush(), quotationExpiryPush('QT-1', '2026-10-11', 7)].map((p) => p.tab)
     for (const t of tabs) expect(TABS_FOR_TEST).toContain(t)
   })
 })
