@@ -8,7 +8,7 @@
 // ============================================================
 import { useState, useMemo, useEffect, Fragment } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useAllAluminumProfiles, useCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices, useInvoiceNumbers, useSiteCostEstimates } from '../hooks/useSupabase.js'
+import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices, useInvoiceNumbers, useSiteCostEstimates } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -82,7 +82,7 @@ function ItemForm({ initial = EMPTY_ITEM_FORM, onSave, onCancel, loading, catego
             dropdown (aluminum_profile/glass_dimension special receiving
             flows) is pulled from the UI -- not finished yet. Re-enable
             here once complete; the underlying field/logic in
-            PurchaseOrders.jsx and the ↓ profiles subtab are untouched.
+            PurchaseOrders.jsx and the aluminium profiles list (now under ประเมินราคา) are untouched.
             Every item stays on 'plain' mode until this comes back. */}
         {!isAdd && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
@@ -145,59 +145,6 @@ function UnitFactorsPanel({ item, factors, onChanged }) {
         <button type="button" className="btn btn-sm btn-primary" disabled={saving} onClick={add}>+ เพิ่ม</button>
       </div>
     </div>
-  )
-}
-
-const EMPTY_PROFILE_FORM = { name: '', family: '', series: '', thickness_mm: '', linear_weight_kg_per_m: '', default_length_m: '6.4' }
-
-function ProfileForm({ initial = EMPTY_PROFILE_FORM, onSave, onCancel, loading }) {
-  const isAdd = !initial?.id
-  const [form, setForm, clearDraft] = useDraftForm('aluminum-profile-form', { ...EMPTY_PROFILE_FORM, ...initial }, isAdd)
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-
-  return (
-    <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave(form) }}>
-      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
-        <div>
-          <label className="label">ชื่อหน้าตัด ★</label>
-          <input className="input" required value={form.name} onChange={e => set('name', e.target.value)} placeholder="เช่น หน้าตัด X" />
-        </div>
-        <div>
-          <label className="label">กลุ่มหน้าตัด (family) — สำหรับผูกกับ BOM Template</label>
-          <input className="input" value={form.family} onChange={e => set('family', e.target.value)} placeholder="เช่น กล่องร่อง" />
-        </div>
-        <div>
-          <label className="label">รุ่น/ซีรีส์ (series)</label>
-          <input className="input" value={form.series} onChange={e => set('series', e.target.value)} placeholder="เช่น ทั่วไป, ยูโร, วิสดอม" />
-        </div>
-        <div>
-          <label className="label">ความหนา (มม.)</label>
-          <input className="input" type="number" min="0" step="0.1" value={form.thickness_mm} onChange={e => set('thickness_mm', e.target.value)} placeholder="เช่น 1.2" />
-        </div>
-        <div>
-          <label className="label">น้ำหนัก (กก./เมตร) ★</label>
-          <input className="input" required type="number" min="0" step="0.0001" value={form.linear_weight_kg_per_m}
-            onChange={e => set('linear_weight_kg_per_m', e.target.value)} />
-        </div>
-        <div>
-          <label className="label">ความยาวมาตรฐาน (เมตร)</label>
-          <input className="input" type="number" min="0" step="0.01" value={form.default_length_m}
-            onChange={e => set('default_length_m', e.target.value)} placeholder="ค่าเริ่มต้น 6.4" />
-        </div>
-        {!isAdd && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
-            <input type="checkbox" checked={form.active} onChange={e => set('active', e.target.checked)} />
-            ใช้งานอยู่
-          </label>
-        )}
-      </div>
-      <div className="modal-footer">
-        <button type="button" className="btn btn-ghost" onClick={() => { clearDraft(); onCancel() }}>ยกเลิก</button>
-        <button type="submit" className="btn btn-primary" disabled={loading}>
-          {loading ? '⏳ กำลังบันทึก...' : '✅ บันทึก'}
-        </button>
-      </div>
-    </form>
   )
 }
 
@@ -1141,7 +1088,6 @@ export default function Inventory() {
   const deductionCategories = useMemo(() => (categories || []).filter(c => c.use_for_cost_deduction), [categories])
   const { data: factors, refetch: refetchFactors } = useInventoryItemUnitFactors()
   const { data: balances, refetch: refetchBalances } = useStockBalances()
-  const { data: profiles, refetch: refetchProfiles } = useAllAluminumProfiles()
   const [movementItemFilter, setMovementItemFilter] = useState('')
   const [movementTypeFilter, setMovementTypeFilter] = useState('')
   const [movementSiteFilter, setMovementSiteFilter] = useState('')
@@ -1172,9 +1118,6 @@ export default function Inventory() {
   const [itemSortDir, setItemSortDir] = useState('asc')
   const [movementSortCol, setMovementSortCol] = useState('created_at')
   const [movementSortDir, setMovementSortDir] = useState('desc')
-  const [profileSearch, setProfileSearch] = useState('')
-  const [profileSortCol, setProfileSortCol] = useState('name')
-  const [profileSortDir, setProfileSortDir] = useState('asc')
   const [savingBalance, setSavingBalance] = useState(null) // the balance-row key currently saving, or null
   const [warehousePopup, setWarehousePopup] = useState(null) // { item, balances } | null -- "ดูคลัง" breakdown for a multi-site row
 
@@ -1182,12 +1125,7 @@ export default function Inventory() {
   const [editItem, setEditItem] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
   const [saving, setSaving] = useState(false)
-  const [showProfileForm, setShowProfileForm] = useState(false)
-  const [editProfile, setEditProfile] = useState(null)
-  const [deleteProfileId, setDeleteProfileId] = useState(null)
-  const [savingProfile, setSavingProfile] = useState(false)
   const [showImportItems, setShowImportItems] = useState(false)
-  const [showImportProfiles, setShowImportProfiles] = useState(false)
 
   const totalValue = useMemo(() => (balances || []).reduce((s, b) => s + b.quantity_on_hand * b.weighted_average_cost, 0), [balances])
   const itemOpts = (items || []).map(it => ({ value: it.id, label: `${it.name} (${it.base_unit})`, keywords: it.name }))
@@ -1219,12 +1157,6 @@ export default function Inventory() {
     else { setMovementSortCol(col); setMovementSortDir('asc') }
   }
   const movementSi = (col) => movementSortCol === col ? (movementSortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
-
-  const profileToggleSort = (col) => {
-    if (profileSortCol === col) setProfileSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    else { setProfileSortCol(col); setProfileSortDir('asc') }
-  }
-  const profileSi = (col) => profileSortCol === col ? (profileSortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
   const centralSite = (sites || []).find(s => s.name === 'ส่วนกลาง')
 
@@ -1324,18 +1256,6 @@ export default function Inventory() {
     })
   }, [movements, movementSortCol, movementSortDir])
 
-  const sortedProfiles = useMemo(() => {
-    const q = profileSearch.trim().toLowerCase()
-    const rows = (profiles || []).filter(p => !q || p.name?.toLowerCase().includes(q))
-    return [...rows].sort((a, b) => {
-      const va = a[profileSortCol] ?? ''
-      const vb = b[profileSortCol] ?? ''
-      if (typeof va === 'number') return profileSortDir === 'asc' ? va - vb : vb - va
-      if (typeof va === 'boolean') return profileSortDir === 'asc' ? (va === vb ? 0 : va ? 1 : -1) : (va === vb ? 0 : va ? -1 : 1)
-      return profileSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
-    })
-  }, [profiles, profileSearch, profileSortCol, profileSortDir])
-
   const handleSaveBalance = async (itemId, siteId, quantityStr, costStr) => {
     const quantity = parseFloat(quantityStr)
     const cost = parseFloat(costStr)
@@ -1385,43 +1305,11 @@ export default function Inventory() {
     else alert('ลบไม่สำเร็จ (อาจมีสต็อกหรือประวัติผูกอยู่): ' + error.message)
   }
 
-  const handleSaveProfile = async (form) => {
-    setSavingProfile(true)
-    try {
-      const payload = {
-        name: form.name,
-        family: form.family || null,
-        series: form.series || null,
-        thickness_mm: form.thickness_mm ? parseFloat(form.thickness_mm) : null,
-        linear_weight_kg_per_m: parseFloat(form.linear_weight_kg_per_m) || 0,
-        default_length_m: form.default_length_m ? parseFloat(form.default_length_m) : 6.4,
-        active: form.active !== false,
-      }
-      if (editProfile) {
-        const { error } = await supabase.from('aluminum_profiles').update(payload).eq('id', editProfile.id)
-        if (error) throw error
-      } else {
-        const { error } = await supabase.from('aluminum_profiles').insert(payload)
-        if (error) throw error
-      }
-      setShowProfileForm(false); setEditProfile(null); refetchProfiles()
-    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + e.message) }
-    finally { setSavingProfile(false) }
-  }
-
-  const handleDeleteProfile = async () => {
-    if (!deleteProfileId) return
-    const { error } = await supabase.from('aluminum_profiles').delete().eq('id', deleteProfileId)
-    if (!error) { setDeleteProfileId(null); refetchProfiles() }
-    else alert('ลบไม่สำเร็จ (อาจมีใบสั่งซื้อผูกอยู่): ' + error.message)
-  }
-
   return (
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button className={`btn btn-sm ${view === 'items' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('items')}>📦 รายการสินค้าคงคลัง</button>
         <button className={`btn btn-sm ${view === 'invoice_deduction' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('invoice_deduction')}>🧾 ตัดสต็อกจากใบแจ้งหนี้</button>
-        <button className={`btn btn-sm ${view === 'profiles' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('profiles')}>📐 หน้าตัดอลูมิเนียม</button>
         <button className={`btn btn-sm ${view === 'movements' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('movements')}>📜 ประวัติการเคลื่อนไหว</button>
         <button className={`btn btn-sm ${view === 'tax_reports' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('tax_reports')}>🧾 รายงานภาษี</button>
       </div>
@@ -1510,60 +1398,6 @@ export default function Inventory() {
           {!(unprocessedInvoices || []).length && (
             <div className="card" style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>ไม่มีใบแจ้งหนี้ที่รอตัดสต็อก</div>
           )}
-        </>
-      )}
-
-      {view === 'profiles' && (
-        <>
-          {canEdit && <button className="btn btn-primary" style={{ marginBottom: 14 }} onClick={() => { setEditProfile(null); setShowProfileForm(true) }}>+ เพิ่มหน้าตัด</button>}
-          {canEdit && <button className="btn btn-ghost" style={{ marginBottom: 14, marginLeft: 8 }} onClick={() => setShowImportProfiles(v => !v)}>📥 Import Excel</button>}
-          <a className="btn btn-ghost" style={{ marginBottom: 14, marginLeft: 8 }} href="/templates/TEMPLATE_หน้าตัดอลูมิเนียม.xlsx" download>📄 Template</a>
-          {showImportProfiles && (
-            <div style={{ marginBottom: 14 }}>
-              <ExcelUpload type="aluminum_profile" onSuccess={() => { setShowImportProfiles(false); refetchProfiles() }} />
-            </div>
-          )}
-          <div style={{ marginBottom: 14 }}>
-            <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อหน้าตัด..." value={profileSearch} onChange={e => setProfileSearch(e.target.value)} />
-          </div>
-          <div className="card">
-            <div className="table-wrap">
-              <table>
-                <thead><tr>
-                  <th className="sortable" onClick={() => profileToggleSort('name')}>ชื่อหน้าตัด{profileSi('name')}</th>
-                  <th className="sortable" onClick={() => profileToggleSort('family')}>กลุ่ม{profileSi('family')}</th>
-                  <th className="sortable" onClick={() => profileToggleSort('series')}>รุ่น{profileSi('series')}</th>
-                  <th className="sortable" onClick={() => profileToggleSort('thickness_mm')}>หนา (มม.){profileSi('thickness_mm')}</th>
-                  <th className="sortable" onClick={() => profileToggleSort('linear_weight_kg_per_m')}>กก./เมตร{profileSi('linear_weight_kg_per_m')}</th>
-                  <th className="sortable" onClick={() => profileToggleSort('default_length_m')}>ความยาวมาตรฐาน{profileSi('default_length_m')}</th>
-                  <th className="sortable" onClick={() => profileToggleSort('active')}>สถานะ{profileSi('active')}</th>
-                  <th></th>
-                </tr></thead>
-                <tbody>
-                  {sortedProfiles.map(p => (
-                    <tr key={p.id}>
-                      <td style={{ fontWeight: 600 }}>{p.name}</td>
-                      <td>{p.family || '—'}</td>
-                      <td>{p.series || '—'}</td>
-                      <td className="font-mono">{p.thickness_mm ?? '—'}</td>
-                      <td className="font-mono">{fmt(p.linear_weight_kg_per_m)}</td>
-                      <td className="font-mono">{fmt(p.default_length_m)} ม.</td>
-                      <td>{p.active ? <span className="badge badge-paid">ใช้งานอยู่</span> : <span className="badge badge-finished">ปิดใช้งาน</span>}</td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        {canEdit && (
-                          <>
-                            <button className="btn btn-sm btn-ghost" onClick={() => { setEditProfile(p); setShowProfileForm(true) }}>แก้ไข</button>
-                            <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => setDeleteProfileId(p.id)}>ลบ</button>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                  {!sortedProfiles.length && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>{profileSearch ? 'ไม่พบหน้าตัดที่ค้นหา' : 'ยังไม่มีหน้าตัด'}</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </>
       )}
 
@@ -1697,15 +1531,6 @@ export default function Inventory() {
         )
       })()}
 
-      {showProfileForm && (
-        <Modal title={editProfile ? `แก้ไข ${editProfile.name}` : 'เพิ่มหน้าตัดใหม่'} onClose={() => { setShowProfileForm(false); setEditProfile(null) }} maxWidth={480}>
-          <ProfileForm initial={editProfile || EMPTY_PROFILE_FORM} onSave={handleSaveProfile} onCancel={() => { setShowProfileForm(false); setEditProfile(null) }} loading={savingProfile} />
-        </Modal>
-      )}
-
-      {deleteProfileId && (
-        <ConfirmDialog title="ลบหน้าตัด" message="ยืนยันการลบ? (ถ้ามีใบสั่งซื้อผูกอยู่ การลบจะไม่สำเร็จ)" onConfirm={handleDeleteProfile} onCancel={() => setDeleteProfileId(null)} />
-      )}
     </div>
   )
 }

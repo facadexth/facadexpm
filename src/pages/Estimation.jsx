@@ -18,6 +18,7 @@ import { fmt } from '../lib/supabase.js'
 import { computeBomForOpening, combineOpeningBoms } from '../lib/bomEngine.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
+import AluminumProfiles from './AluminumProfiles.jsx'
 
 function evaluateConstraints(opening, constraints) {
   const violations = []
@@ -331,6 +332,19 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
 }
 
 export default function Estimation(props) {
+  const [view, setView] = useState('projects')
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <button className={`btn btn-sm ${view === 'projects' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('projects')}>📐 โปรเจกต์ประเมินราคา</button>
+        <button className={`btn btn-sm ${view === 'profiles' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('profiles')}>📏 หน้าตัดอลูมิเนียม</button>
+      </div>
+      {view === 'projects' ? <EstimationProjects {...props} /> : <AluminumProfiles />}
+    </div>
+  )
+}
+
+function EstimationProjects(props) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'estimation')
 
