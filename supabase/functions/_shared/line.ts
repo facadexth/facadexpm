@@ -5,6 +5,8 @@
 // signature verification and exactly one of "send a message" to keep
 // in sync with LINE's API, not five copies.
 
+import { timingSafeEqual } from './timing-safe.ts'
+
 const LINE_API = 'https://api.line.me/v2/bot/message'
 
 // Shared platform bot credentials (see
@@ -45,7 +47,7 @@ export async function verifyLineSignature(channelSecret: string, rawBody: string
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(channelSecret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
   const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(rawBody))
   const expected = btoa(String.fromCharCode(...new Uint8Array(sig)))
-  return expected === signatureHeader
+  return timingSafeEqual(expected, signatureHeader)
 }
 
 // quickReplyItems works exactly as in sendLineReply: tappable chips under the
