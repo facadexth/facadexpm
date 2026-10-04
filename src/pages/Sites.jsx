@@ -24,6 +24,7 @@ import ExcelUpload from '../components/ExcelUpload.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
+import { loadOrigin, fetchRoute, routeErrorMessage } from '../lib/siteRoute.js'
 
 const STATUS_OPTS = ['Ongoing', 'Completed', 'On Hold', 'Cancelled']
 
@@ -42,7 +43,7 @@ const COST_TYPES = [
 
 const EMPTY_FORM = {
   name: '', client_id: '', location: '',
-  distance_km: '', map_url: '', lat: '', lng: '',
+  distance_km: '', travel_minutes: '', map_url: '', lat: '', lng: '',
   status: 'Ongoing', start_date: '', end_date: '',
   has_vat: true, contract_value_no_vat: '', notes: '',
   default_vat_pct: 7, default_tax_withheld_pct: 3, default_retention_pct: 0,
@@ -67,6 +68,7 @@ export function siteFormToPayload(form) {
     client_id:      form.client_id || null,
     location:       form.location || null,
     distance_km:    parseFloat(form.distance_km) || null,
+    travel_minutes: form.travel_minutes === '' || form.travel_minutes == null ? null : Math.round(parseFloat(form.travel_minutes)) || null,
     map_url:        form.map_url || null,
     lat:            form.lat === '' ? null : parseFloat(form.lat),
     lng:            form.lng === '' ? null : parseFloat(form.lng),
@@ -111,6 +113,29 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
     } finally {
       setExtractingCoords(false)
     }
+  }
+
+  // "คำนวณจากส่วนกลาง" -- driving distance + time from the base set in Settings -> ค่าเดินทาง
+  // to this site's coordinates (pasted link is resolved first if no coordinates yet).
+  const [routing, setRouting] = useState(false)
+  const [routeNote, setRouteNote] = useState(null)
+  const handleRoute = async () => {
+    setRouting(true); setRouteNote(null)
+    try {
+      const origin = await loadOrigin()
+      if (!origin) { setRouteNote('ตั้งที่ตั้งส่วนกลางก่อนที่ ตั้งค่า → ค่าเดินทางต่อไซท์'); return }
+      let lat = form.lat === '' ? null : parseFloat(form.lat)
+      let lng = form.lng === '' ? null : parseFloat(form.lng)
+      if ((lat == null || lng == null) && form.map_url) {
+        const { data } = await supabase.functions.invoke('extract-map-coordinates', { body: { url: form.map_url } })
+        if (data?.ok) { lat = data.lat; lng = data.lng; set('lat', String(lat)); set('lng', String(lng)) }
+      }
+      if (lat == null || lng == null) { setRouteNote('ยังไม่มีพิกัดไซต์ วางลิงก์ Google Maps แล้วกด "ดึงพิกัดจากลิงก์" ก่อน'); return }
+      const r = await fetchRoute(origin, { lat, lng })
+      if (!r?.ok) { setRouteNote(routeErrorMessage(r?.error)); return }
+      set('distance_km', String(r.km)); set('travel_minutes', String(r.minutes))
+      setRouteNote(`ได้ ${r.km} กม. ขับประมาณ ${r.minutes} นาที (ไม่รวมรถติด) กดบันทึกไซต์เพื่อเก็บค่านี้`)
+    } catch (e) { setRouteNote('คำนวณไม่สำเร็จ: ' + e.message) } finally { setRouting(false) }
   }
 
   // ต้นทุนประมาณการต่อไซท์ -- คีย์ด้วย inventory_categories จริง (หมวดหมู่
@@ -170,6 +195,15 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
             <label className="label">ระยะทางจากโรงงาน (กม.)</label>
             <input type="number" className="input" min="0" step="0.1" value={form.distance_km}
               onChange={e => set('distance_km', e.target.value)} placeholder="เที่ยวเดียว — ใช้คิดค่าเดินทาง (×2)" />
+            <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-ghost" disabled={routing} onClick={handleRoute} style={{ whiteSpace: 'nowrap' }}>
+                {routing ? '⏳...' : '🚗 คำนวณจากส่วนกลาง'}
+              </button>
+              {form.travel_minutes !== '' && form.travel_minutes != null && !routeNote && (
+                <span style={{ fontSize: 12, color: 'var(--text3)' }}>ขับประมาณ {form.travel_minutes} นาที</span>
+              )}
+            </div>
+            {routeNote && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{routeNote}</div>}
           </div>
           <div>
             <label className="label">ลิงก์ Google Maps</label>

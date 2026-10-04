@@ -10,6 +10,7 @@ import PackageComparison from '../components/PackageComparison.jsx'
 import ChangelogModal from '../components/ChangelogModal.jsx'
 import LinePushSettings from '../components/LinePushSettings.jsx'
 import WebPushSettings from '../components/WebPushSettings.jsx'
+import TravelOriginSettings from '../components/TravelOriginSettings.jsx'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SignaturePad from '../components/SignaturePad.jsx'
 import { DEFAULT_DOCUMENT_STYLE, resolveDocumentStyle } from '../lib/documentStyle.js'
@@ -646,6 +647,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
             {savingRate ? '⏳ กำลังบันทึก...' : '✅ บันทึกเรท'}
           </button>
         </div>
+        <TravelOriginSettings />
       </div>
       )}
 
