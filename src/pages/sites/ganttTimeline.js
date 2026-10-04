@@ -193,3 +193,83 @@ export function expandRangeForTransactions(range, transactionDates) {
     end: maxD > range.end ? maxD : range.end,
   }
 }
+
+const DAY_MS = 86400000
+const utcDay = (d) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+
+/**
+ * The part of the timeline that actually has work in it: the span of the
+ * phases (and subtasks) with a little padding, plus today when it is close
+ * enough to matter. The full range from expandRangeForTransactions can start
+ * months earlier (deposits paid long before work begins), which squeezes the
+ * real work into a sliver; the Gantt shows this focused range by default and
+ * offers the full one on request. `baseRange` is the phase-only range.
+ */
+export function computeFocusRange(baseRange, extraDates = [], todayISO = null) {
+  if (!baseRange) return null
+  const dates = [baseRange.start, baseRange.end, ...extraDates.filter(Boolean).map((d) => new Date(d))].filter((d) => !isNaN(d))
+  let start = new Date(Math.min(...dates))
+  let end = new Date(Math.max(...dates))
+  if (todayISO) {
+    const today = new Date(todayISO)
+    const near = DAY_MS * 45
+    if (today >= start - near && today <= +end + near) {
+      if (today < start) start = today
+      if (today > end) end = today
+    }
+  }
+  const span = Math.max(1, Math.round((end - start) / DAY_MS))
+  const pad = Math.max(2, Math.round(span * 0.03)) * DAY_MS
+  return { start: new Date(+utcDay(start) - pad), end: new Date(+utcDay(end) + pad) }
+}
+
+/**
+ * Axis ticks that fit the visible span, so the scale stays readable whether the
+ * range is a week or two years:
+ *   months: month starts (x in 0-100) for the upper header row; the month the
+ *           range starts in is pinned at x=0 unless the next month is very close.
+ *   days:   fine ticks for the lower row, step chosen so there are about 14 or
+ *           fewer (every day, 2, 3 days, every Monday, every second Monday).
+ *           Empty when the span is long enough that month ticks alone are better.
+ */
+export function computeAxisTicks(range) {
+  if (!range) return { months: [], days: [], step: null }
+  const startDay = utcDay(range.start)
+  const endDay = utcDay(range.end)
+  const totalDays = Math.max(1, Math.round((endDay - startDay) / DAY_MS) + 1)
+  const x = (d) => positionPercent(d.toISOString().slice(0, 10), { start: startDay, end: endDay })
+
+  const months = []
+  let cursor = new Date(Date.UTC(startDay.getUTCFullYear(), startDay.getUTCMonth(), 1))
+  while (cursor <= endDay) {
+    if (cursor >= startDay) months.push({ date: new Date(cursor), x: x(cursor) })
+    cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1))
+  }
+  if (!months.length || months[0].x > 0) {
+    const nextX = months.length ? months[0].x : 100
+    if (nextX >= 10) months.unshift({ date: new Date(startDay), x: 0, pinned: true })
+  }
+
+  const steps = [1, 2, 3, 7, 14]
+  const step = steps.find((s) => Math.ceil(totalDays / s) <= 14)
+  if (!step) return { months, days: [], step: null }
+
+  const days = []
+  let d = new Date(startDay)
+  if (step >= 7) {
+    const dow = d.getUTCDay() // 0 = Sunday
+    d = new Date(+d + (((8 - dow) % 7) * DAY_MS)) // next Monday (today if already Monday)
+  }
+  for (; d <= endDay; d = new Date(+d + step * DAY_MS)) {
+    days.push({ date: new Date(d), x: x(d) })
+  }
+  return { months, days, step }
+}
+
+/** The calendar day under a horizontal position (0-100) of the range, as UTC midnight. */
+export function dateAtPercent(pct, range) {
+  const startDay = utcDay(range.start)
+  const endDay = utcDay(range.end)
+  const days = Math.round(((endDay - startDay) / DAY_MS) * (Math.min(100, Math.max(0, pct)) / 100))
+  return new Date(+startDay + days * DAY_MS)
+}

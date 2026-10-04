@@ -12,7 +12,7 @@ import { th } from 'date-fns/locale'
 import { useSitePhases, usePhaseTasks, useSubtasks, useIncomes, useExpenses } from '../../hooks/useSupabase.js'
 import { supabase } from '../../lib/supabase.js'
 import { ConfirmDialog } from '../../components/Modal.jsx'
-import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, phaseOverlapsRange, STATUS_COLOR, PHASE_TEMPLATE, expandRangeForTransactions } from './ganttTimeline.js'
+import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, computeFocusRange, computeAxisTicks, dateAtPercent, phaseOverlapsRange, STATUS_COLOR, PHASE_TEMPLATE, expandRangeForTransactions } from './ganttTimeline.js'
 import { groupSubtasksByParent, computeNodeStats, computeNodeDateRange, isLeaf, flattenVisibleRows, siblingWeightSum } from './subtaskCalc.js'
 import { summarizeTasks } from './phaseTasksCalc.js'
 import { getEffectiveTheme } from '../../lib/theme.js'
@@ -165,6 +165,22 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     ...(expensesForRange || []).map((e) => e.date),
   ], [incomesForRange, expensesForRange])
   const range = useMemo(() => expandRangeForTransactions(baseRange, transactionDatesForRange), [baseRange, transactionDatesForRange])
+
+  // แกนเวลาที่ "แสดง": ค่าเริ่มต้นโฟกัสเฉพาะช่วงที่มีงานจริง (ขั้นตอน/ขั้นตอนย่อย
+  // + วันนี้ถ้าอยู่ใกล้) เพราะรายรับ เช่น มัดจำล่วงหน้าหลายเดือน ทำให้ `range`
+  // ด้านบนยืดไปไกลจนงานจริงเหลือแค่แถบเล็กๆ กดปุ่ม "ทั้งโครงการ" เพื่อดูช่วง
+  // เต็มรวมรายรับ/รายจ่าย -- `range` เดิมไม่ถูกแก้ เพราะ effect ด้านล่างใช้มันเก็บ
+  // sites.start_date/end_date (กำหนดคืนเงินประกันผลงาน) และ S-curve ใช้ช่วงเต็ม
+  const [axisMode, setAxisMode] = useState('focus')
+  const [hoverPct, setHoverPct] = useState(null)
+  const focusRange = useMemo(() => {
+    if (!baseRange) return null
+    const ids = new Set(sites.map((s) => s.id))
+    const extra = (allSubtasks || []).filter((s) => ids.has(s.site_id)).flatMap((s) => [s.start_date, s.end_date])
+    return computeFocusRange(baseRange, extra, TODAY_ISO)
+  }, [baseRange, sites, allSubtasks])
+  const fullRangeDiffers = !!(range && focusRange && (range.start < focusRange.start || range.end > focusRange.end))
+  const viewRange = axisMode === 'all' || !focusRange ? range : focusRange
 
   // ไซท์เดียว + แก้ไขได้: เก็บ sites.start_date/end_date ให้ตรงกับ timeline
   // ที่ Gantt แสดงจริงเสมอ (ช่วงที่ขยายแล้ว รวมวันที่รายรับ/รายจ่ายด้วย) --
@@ -383,7 +399,9 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
       )
     }
 
-    const monthTicks = range ? computeMonthTicks(range) : []
+    const axis = viewRange ? computeAxisTicks(viewRange) : { months: [], days: [] }
+    const monthTicks = axis.months
+    const toLocalDay = (d) => new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
     // phases-array index and visibleRows index are the SAME only when
     // nothing is expanded -- expanding any ancestor inserts subtask rows
     // between phases, shifting every phase after it down. Arrows must be
@@ -392,7 +410,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     // position in the flat `phases` array.
     const nodeIdToVisibleRowIndex = {}
     visibleRows.forEach((r, i) => { nodeIdToVisibleRowIndex[r.node.id] = i })
-    const arrows = editingId ? [] : computeDependencyArrowsByRow(phases, range, nodeIdToVisibleRowIndex)
+    const arrows = editingId ? [] : computeDependencyArrowsByRow(phases, viewRange, nodeIdToVisibleRowIndex)
     // Bar rows lay out as [label: LABEL_W][gap: GAP][track: flex 1][gap+edit
     // button, only when canEdit]. The header ticks, grid lines, and arrow
     // overlay used to hardcode `left: LABEL_W` (missing GAP) and ignore the
@@ -408,8 +426,8 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     // Same reasoning as SCurveChart's todayInRange guard: only draw "today"
     // when it actually falls inside this site's own timeline, otherwise a
     // clamped line at 0%/100% would falsely read as "today = start/end".
-    const todayInRange = range && range.start <= new Date(TODAY_ISO) && new Date(TODAY_ISO) <= range.end
-    const todayX = todayInRange ? positionPercent(TODAY_ISO, range) : null
+    const todayInRange = viewRange && viewRange.start <= new Date(TODAY_ISO) && new Date(TODAY_ISO) <= viewRange.end
+    const todayX = todayInRange ? positionPercent(TODAY_ISO, viewRange) : null
 
     // ยอดสะสมตามแนวตั้ง: แถวที่กำลังแก้ไข/เพิ่ม จะสูงกว่าแถวปกติ เพื่อดัน
     // แถวถัดไปลงแทนที่จะซ้อนทับ (เดิมใช้ i*ROW_H คงที่ ตอนนี้ต้องคำนวณสะสม)
@@ -442,18 +460,53 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => startAdd(null, null, phases.length + 1)}>+ เพิ่มขั้นตอน</button>
             )}
           </div>
-          {monthTicks.length > 0 && (
-            <div style={{ position: 'relative', height: 20, marginLeft: trackLeft, marginRight: trackRight }}>
-              {monthTicks.map((t, i) => (
-                <div key={i} style={{ position: 'absolute', left: `${t.x}%`, fontSize: 10.5, color: 'var(--text3)', transform: 'translateX(-50%)' }}>
-                  {format(t.date, 'MMM yy', { locale: th })}
-                </div>
-              ))}
+          {fullRangeDiffers && (
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button type="button" className={`btn btn-sm ${axisMode === 'focus' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setAxisMode('focus')}>🔍 เน้นช่วงทำงาน</button>
+              <button type="button" className={`btn btn-sm ${axisMode === 'all' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setAxisMode('all')}>↔ ทั้งโครงการ (รวมมัดจำ/รายจ่าย)</button>
+              {axisMode === 'focus' && <span style={{ fontSize: 11, color: 'var(--text3)' }}>มีรายรับ/รายจ่ายนอกช่วงนี้ กด "ทั้งโครงการ" เพื่อดู</span>}
             </div>
           )}
-          <div style={{ position: 'relative', height: bodyHeight }}>
+          {viewRange && (
+            <div style={{ position: 'relative', height: 40, marginLeft: trackLeft, marginRight: trackRight }}>
+              {monthTicks.map((t, i) => (
+                <div key={`m${i}`} style={{ position: 'absolute', top: 0, left: `${t.x}%`, fontSize: 11, fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap', paddingLeft: 3, borderLeft: t.pinned ? 'none' : '1px solid var(--border)', lineHeight: '16px' }}>
+                  {format(toLocalDay(t.date), 'MMM yy', { locale: th })}
+                </div>
+              ))}
+              {axis.days.map((t, i) => (
+                <div key={`d${i}`} style={{ position: 'absolute', top: 20, left: `${t.x}%`, fontSize: 10, color: 'var(--text3)', transform: 'translateX(-50%)', lineHeight: '14px' }}>
+                  {t.date.getUTCDate()}
+                </div>
+              ))}
+              {hoverPct != null && (
+                <div style={{ position: 'absolute', top: 18, left: `${hoverPct}%`, transform: 'translateX(-50%)', background: 'var(--accent)', color: '#fff', fontSize: 10.5, fontWeight: 600, padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap', zIndex: 5, pointerEvents: 'none' }}>
+                  {format(toLocalDay(dateAtPercent(hoverPct, viewRange)), 'EEE d MMM yy', { locale: th })}
+                </div>
+              )}
+            </div>
+          )}
+          <div
+            style={{ position: 'relative', height: bodyHeight }}
+            onMouseMove={(e) => {
+              if (!viewRange) return
+              const rect = e.currentTarget.getBoundingClientRect()
+              const trackW = rect.width - trackLeft - trackRight
+              const pct = ((e.clientX - rect.left - trackLeft) / trackW) * 100
+              setHoverPct(pct >= 0 && pct <= 100 ? pct : null)
+            }}
+            onMouseLeave={() => setHoverPct(null)}
+          >
+            {hoverPct != null && (
+              <div style={{ position: 'absolute', top: 0, bottom: 0, left: trackLeft, right: trackRight, pointerEvents: 'none', zIndex: 4 }}>
+                <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${hoverPct}%`, borderLeft: '1px solid var(--accent)', opacity: 0.7 }} />
+              </div>
+            )}
             {monthTicks.length > 0 && (
               <div style={{ position: 'absolute', top: 0, bottom: 0, left: trackLeft, right: trackRight, pointerEvents: 'none' }}>
+                {axis.days.map((t, i) => (
+                  <div key={`d${i}`} style={{ position: 'absolute', top: 0, bottom: 0, left: `${t.x}%`, width: 1, background: 'var(--border)', opacity: 0.35 }} />
+                ))}
                 {monthTicks.map((t, i) => (
                   <div key={i} style={{ position: 'absolute', top: 0, bottom: 0, left: `${t.x}%`, width: 1, background: 'var(--border)' }} />
                 ))}
@@ -470,8 +523,8 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
               // are) instead of its own possibly-stale manual start/end.
               const nodeRange = hasChildren ? computeNodeDateRange(node.id, subtasksByParent, byNodeId) : null
               const style = node.isNew ? null
-                : hasChildren ? (nodeRange && barStyle({ start_date: nodeRange.start, end_date: nodeRange.end }, range))
-                : barStyle(node, range)
+                : hasChildren ? (nodeRange && barStyle({ start_date: nodeRange.start, end_date: nodeRange.end }, viewRange))
+                : barStyle(node, viewRange)
 
               if (isEditingThis) {
                 const phase = node
