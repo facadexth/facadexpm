@@ -20,6 +20,16 @@ export default function UpdatePrompt() {
   } = useRegisterSW()
   const [showChangelog, setShowChangelog] = useState(false)
 
+  // updateServiceWorker(true) reloads the page once the new worker takes control, but that
+  // signal never arrives for a page that was not controlled by any worker (it was loaded
+  // with Shift-reload, or right after the first install). Reload ourselves a moment later
+  // as a fallback: by then the new worker is active and a plain reload runs the new
+  // version. In the normal case the page has already reloaded and this never fires.
+  const handleRefresh = () => {
+    updateServiceWorker(true)
+    setTimeout(() => window.location.reload(), 1500)
+  }
+
   if (!needRefresh) return null
 
   return (
@@ -34,7 +44,7 @@ export default function UpdatePrompt() {
         <button className="btn btn-sm btn-ghost" onClick={() => setNeedRefresh(false)}>ไว้ทีหลัง</button>
       </div>
       {showChangelog && (
-        <ChangelogModal onClose={() => setShowChangelog(false)} onRefresh={() => updateServiceWorker(true)} />
+        <ChangelogModal onClose={() => setShowChangelog(false)} onRefresh={handleRefresh} />
       )}
     </>
   )

@@ -26,6 +26,12 @@ export default defineConfig({
       // into every user's offline app-shell cache on install/update.
       workbox: {
         globIgnores: ['manual/**'],
+        // A new service worker takes over pages that have none (e.g. after a Shift-reload,
+        // which loads the page without one). Without this the "รีเฟรชเพื่ออัปเดต" button
+        // activated the new worker but never got the signal to reload, so nothing visibly
+        // happened and the banner stayed. Safe in 'prompt' mode: a new worker only becomes
+        // active after the user taps the button.
+        clientsClaim: true,
         // globIgnores above only keeps manual/index.html OUT of the
         // precache -- it does NOT stop Workbox's default catch-all
         // NavigationRoute (registered with no denylist) from treating a
