@@ -5,7 +5,9 @@
 export const PENDING_ITEMS = [
   { key: 'leave_pending',       icon: '🏖️', label: 'คำขอลารออนุมัติ',                    tab: 'hr' },
   { key: 'po_draft',            icon: '📦', label: 'ใบสั่งซื้อฉบับร่าง รอเลือกซัพพลายเออร์', tab: 'purchase_orders' },
-  { key: 'issues_open',         icon: '🚧', label: 'แจ้งปัญหาจากหน้างานที่ยังไม่แก้',        tab: 'sites' },
+  // The list of ALL open problem reports is on the Communication Center page (owner only);
+  // an ADMIN, who cannot open it, is sent to the Sites page, where each day's reports are.
+  { key: 'issues_open',         icon: '🚧', label: 'แจ้งปัญหาจากหน้างานที่ยังไม่แก้',        tab: 'communication_center', fallbackTabs: ['sites'] },
   { key: 'cheques_due',         icon: '🏦', label: 'เช็คใกล้ครบกำหนด',                    tab: 'cheques' },
   { key: 'quotations_followup', icon: '📋', label: 'ใบเสนอราคาถึงวันติดตาม',               tab: 'quotations' },
 ]
@@ -17,7 +19,10 @@ export function visiblePendingItems(counts, canSeeTab) {
   if (!counts) return []
   return PENDING_ITEMS
     .map(item => ({ ...item, count: Number(counts[item.key]) || 0 }))
-    .filter(item => item.count > 0 && canSeeTab(item.tab))
+    .filter(item => item.count > 0)
+    // Point at the first page the user can open (the item's own page, then its fallbacks).
+    .map(item => ({ ...item, tab: [item.tab, ...(item.fallbackTabs || [])].find(canSeeTab) }))
+    .filter(item => item.tab)
 }
 
 export function totalPending(items) {

@@ -16,6 +16,13 @@ describe('visiblePendingItems', () => {
     const items = visiblePendingItems({ leave_pending: 2, po_draft: 5 }, tab => tab !== 'purchase_orders')
     expect(items.map(i => i.key)).toEqual(['leave_pending'])
   })
+  it('sends problem reports to the Communication Center, or to Sites when the user cannot open it', () => {
+    const owner = visiblePendingItems({ issues_open: 2 }, () => true)
+    expect(owner[0].tab).toBe('communication_center')
+    const admin = visiblePendingItems({ issues_open: 2 }, tab => tab !== 'communication_center')
+    expect(admin[0].tab).toBe('sites')
+    expect(visiblePendingItems({ issues_open: 2 }, () => false)).toEqual([])
+  })
   it('ignores missing, null and non-numeric counts', () => {
     expect(visiblePendingItems({ leave_pending: null, po_draft: 'x', cheques_due: undefined }, all)).toEqual([])
   })

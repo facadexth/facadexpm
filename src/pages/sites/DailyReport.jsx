@@ -26,6 +26,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { downloadPDF } from '../../lib/pdf.js'
+import PendingMark from '../../components/PendingMark.jsx'
+import { isIssueOpen } from '../../lib/pendingRules.js'
 
 function todayLocal() {
   const d = new Date()
@@ -177,7 +179,7 @@ export default function DailyReport({ site }) {
                 {issues.map((r) => (
                   <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, fontSize: 13.5, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
                     <div>
-                      <b>{workerLabel(r.workers)}</b>: {r.message}
+                      {isIssueOpen(r) && <PendingMark label="ยังไม่แก้ไข" />}<b>{workerLabel(r.workers)}</b>: {r.message}
                       <div style={{ fontSize: 11, color: 'var(--text3)' }}>{new Date(r.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
                     </div>
                     {r.status === 'open' ? (

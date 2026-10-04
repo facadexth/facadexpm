@@ -16,6 +16,8 @@ import {
   resolveEnabled, resolveEffectivePhrases, validateCustomPhrase,
 } from '../lib/lineCommandSettings.js'
 import { PLATFORM_BOT_BASIC_ID, platformBotLabel } from '../lib/platformLineBot.js'
+import PendingMark from '../components/PendingMark.jsx'
+import { isIssueOpen } from '../lib/pendingRules.js'
 
 const SCHEDULE_COMMAND_DESCRIPTIONS = {
   today_job: 'แชทส่วนตัว: งานของตัวเอง + ปุ่มลัดตามสถานะ (เช็คอิน/เช็คเอาท์/งานเสร็จ) · กลุ่ม: งานของทั้งทีมวันนี้ แบ่งตามไซต์',
@@ -686,7 +688,7 @@ export default function CommunicationCenter() {
               <tbody>
                 {issueReports.map(r => (
                   <tr key={r.id} style={{ opacity: r.status === 'resolved' ? 0.55 : 1 }}>
-                    <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>{r.workers?.nickname || r.workers?.name || '-'}</td>
+                    <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>{isIssueOpen(r) && <PendingMark label="ยังไม่แก้ไข" />}{r.workers?.nickname || r.workers?.name || '-'}</td>
                     <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>{r.sites?.name || '-'}</td>
                     <td style={{ fontSize: 12.5, maxWidth: 320 }}>{r.message}</td>
                     <td style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{new Date(r.created_at).toLocaleString('th-TH')}</td>

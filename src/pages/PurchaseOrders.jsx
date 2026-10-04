@@ -32,6 +32,8 @@ import { format, startOfYear, endOfYear } from 'date-fns'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
+import PendingMark from '../components/PendingMark.jsx'
+import { isPoDraft } from '../lib/pendingRules.js'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -999,6 +1001,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                 return (
                   <tr key={po.id}>
                     <td className="font-mono" style={{ fontSize: 12 }}>
+                      {isPoDraft(po) && <PendingMark label="ฉบับร่าง รอดำเนินการ" />}
                       {po.po_number}
                       {po.purchase_order_attachments?.length > 0 && <span title="มีไฟล์แนบ" style={{ marginLeft: 4 }}>📎</span>}
                     </td>

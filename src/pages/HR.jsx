@@ -13,6 +13,8 @@ import { supabase } from '../lib/supabase.js'
 import { useAllActiveWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs, fetchWorkerOTForRange, useCompanyHolidays, saveCompanyHoliday, deleteCompanyHoliday, useAppSetting, saveAppSetting, fetchCompanyHolidaysForRange, useLeaveQuotaUsage, useSickLeaveQuotaUsage, useSeatStatus } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
+import PendingMark from '../components/PendingMark.jsx'
+import { isLeavePending } from '../lib/pendingRules.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { auditLog } from '../lib/audit.js'
 import { mergeWorkerOT } from '../lib/otMerge.js'
@@ -1154,7 +1156,7 @@ export default function HR() {
                     <tbody>
                       {leaveRequests.map(r => (
                         <tr key={r.id}>
-                          <td style={{ fontWeight: 600 }}>{r.workers?.nickname || r.workers?.name}</td>
+                          <td style={{ fontWeight: 600 }}>{isLeavePending(r) && <PendingMark />}{r.workers?.nickname || r.workers?.name}</td>
                           <td>{r.leave_type === 'leave_sick' ? '🤒 ลาป่วย' : '🏖️ ลากิจ'}</td>
                           <td>{r.date_from === r.date_to ? r.date_from : `${r.date_from} — ${r.date_to}`}</td>
                           <td>{r.shift === 'morning' ? 'ช่วงเช้า' : r.shift === 'evening' ? 'ช่วงบ่าย' : 'เต็มวัน'}</td>

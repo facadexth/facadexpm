@@ -16,6 +16,9 @@ import SignLinkModal from '../components/SignLinkModal.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { THAI_BANKS } from '../lib/thaiBanks.js'
+import PendingMark from '../components/PendingMark.jsx'
+import { isChequeAwaitingAction, parseChequeWindowDays } from '../lib/pendingRules.js'
+import { bangkokTodayIso } from '../lib/photoUpload.js'
 
 const EMPTY_FORM = { cheque_no: '', bank: '', check_date: '', notes: '' }
 
@@ -68,6 +71,10 @@ export default function Cheques() {
   // เปิด/ปิดวิธีเซ็นรับแต่ละแบบ -- ตั้งค่าได้ที่หน้าตั้งค่า (Settings.jsx)
   const { data: signPhysicalVal } = useAppSetting('sign_physical_enabled', 'true')
   const { data: signDigitalVal } = useAppSetting('sign_digital_enabled', 'true')
+  // The rows marked 🔔 are the ones counted in the tab/bell numbers (src/lib/pendingRules.js).
+  const { data: chequeWindowVal } = useAppSetting('cheque_reminder_days', '3')
+  const chequeWindowDays = parseChequeWindowDays(chequeWindowVal)
+  const todayIso = bangkokTodayIso()
   const signPhysicalEnabled = signPhysicalVal !== 'false'
   const signDigitalEnabled = signDigitalVal !== 'false'
   // Linked-expense totals per cheque -- a lightweight aggregate query
@@ -244,7 +251,7 @@ export default function Cheques() {
                     : { cls: 'badge-check_issued', label: '📄 ยังไม่ขึ้นเงิน' }
                 return (
                   <tr key={c.id}>
-                    <td style={{ fontWeight: 600 }}>{c.cheque_no}</td>
+                    <td style={{ fontWeight: 600 }}>{isChequeAwaitingAction(c, chequeWindowDays, todayIso) && <PendingMark label="เช็คใกล้ครบกำหนด" />}{c.cheque_no}</td>
                     <td style={{ fontSize: 12 }}>{c._supplier || <span style={{ color: 'var(--text3)' }}>—</span>}</td>
                     <td>{c.bank}</td>
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}>{c.check_date ? new Date(c.check_date).toLocaleDateString('th-TH') : '—'}</td>
