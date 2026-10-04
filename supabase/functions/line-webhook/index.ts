@@ -108,6 +108,7 @@ import { withPushBudget } from '../_shared/push-budget.ts'
 import { todayMenuOptions } from '../_shared/today-menu.ts'
 import { CANCEL_PHRASE, CANCEL_CHIP, CANCEL_REPLY, isCancel } from '../_shared/cancel.ts'
 import { isMenuButtonText, pendingWaitMinutes } from '../_shared/pending-flow.ts'
+import { formatWeekMessage, type WeekDay, type WeekSite } from '../_shared/week-message.ts'
 import { TIME_CLOCK_PHRASE, SCHEDULE_MENU_PHRASE, SCHEDULE_MENU_PROMPT, TIME_CLOCK_DONE_MESSAGE, timeClockStep, scheduleMenuChips } from '../_shared/schedule-menu.ts'
 import { jobDonePrompt, jobDoneConfirmation, JOB_DONE_CONFIRM_CHIP } from '../_shared/job-done-messages.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
@@ -744,12 +745,11 @@ async function handleWeekQuery(
   weekLabel: string,
 ) {
   const sites = await resolveSitesForDates(worker.id, settings.tenant_id, dates)
-  const lines = [`📅 ${weekLabel}:`]
-  for (const dateISO of dates) {
+  const days: WeekDay[] = dates.map((dateISO) => {
     const site = sites.get(dateISO)
-    lines.push(`${formatDateTH(dateISO)} — ${site ? site.name : '— ว่าง —'}`)
-  }
-  await sendLineReply(settings.channel_access_token, replyToken, lines.join('\n'))
+    return { dateLabel: formatDateTH(dateISO), sites: site ? [{ siteName: site.name, morning: [], evening: [] }] : [] }
+  })
+  await sendLineReply(settings.channel_access_token, replyToken, formatWeekMessage(weekLabel, days, false))
 }
 
 // Team-wide version of the same 4 read-only queries, for the crew
@@ -793,36 +793,32 @@ function formatTeamDayMessage(dayLabel: string, siteGroups: TeamSiteGroup[]): st
   })
   return lines.join('\n')
 }
-// Week view stays compact (site names only, no per-worker breakdown) --
-// 7 days x every worker x every site would run well past a readable
-// chat message length.
-async function resolveTeamSiteNamesForDates(tenantId: string, dates: string[]): Promise<Map<string, string[]>> {
+// Week view: every day, each site with its workers split by shift (formatWeekMessage
+// keeps it under LINE's text limit).
+async function resolveTeamWeek(tenantId: string, dates: string[]): Promise<WeekDay[]> {
   const { data } = await admin
     .from('worker_assignments')
-    .select('date, site_id, sites(name)')
+    .select('date, site_id, shift, workers(name, nickname), sites(name, site_number)')
     .eq('tenant_id', tenantId)
     .in('date', dates)
     .in('type', ['site', 'factory', 'subcontract'])
     .not('site_id', 'is', null)
-  const byDate = new Map<string, Set<string>>()
+  const byDate = new Map<string, Map<string, WeekSite>>()
   for (const r of data ?? []) {
-    const date = r.date as string
-    const site = r.sites as { name?: string } | null
+    const worker = r.workers as { name?: string; nickname?: string } | null
+    const site = r.sites as { name?: string; site_number?: string } | null
     if (!site?.name) continue
-    if (!byDate.has(date)) byDate.set(date, new Set())
-    byDate.get(date)!.add(site.name)
+    const date = r.date as string
+    const siteId = r.site_id as string
+    const sitesOfDay = byDate.get(date) ?? new Map<string, WeekSite>()
+    const entry = sitesOfDay.get(siteId) ?? { siteName: site.name, siteNumber: site.site_number, morning: [], evening: [] }
+    const workerName = worker?.nickname || worker?.name || 'ไม่ทราบชื่อ'
+    if (r.shift === 'evening') entry.evening.push(workerName)
+    else entry.morning.push(workerName)
+    sitesOfDay.set(siteId, entry)
+    byDate.set(date, sitesOfDay)
   }
-  const result = new Map<string, string[]>()
-  for (const [date, names] of byDate) result.set(date, [...names])
-  return result
-}
-function formatTeamWeekMessage(weekLabel: string, dates: string[], siteNamesByDate: Map<string, string[]>): string {
-  const lines = [`📅 ${weekLabel}:`]
-  for (const dateISO of dates) {
-    const names = siteNamesByDate.get(dateISO)
-    lines.push(`${formatDateTH(dateISO)} — ${names && names.length ? names.join(', ') : '— ว่าง —'}`)
-  }
-  return lines.join('\n')
+  return dates.map((d) => ({ dateLabel: formatDateTH(d), sites: [...(byDate.get(d)?.values() ?? [])] }))
 }
 
 type GroupInfoAction = 'today_job' | 'tomorrow_job' | 'this_week_job' | 'next_week_job'
@@ -846,8 +842,8 @@ async function handleGroupInfoQuery(
   }
   const dates = bangkokWeekDates(action === 'this_week_job' ? 0 : 1)
   const label = (action === 'this_week_job' ? 'งานอาทิตย์นี้' : 'งานอาทิตย์หน้า') + ` (${formatDateTH(dates[0])} - ${formatDateTH(dates[6])})`
-  const siteNamesByDate = await resolveTeamSiteNamesForDates(settings.tenant_id, dates)
-  await sendLineReply(settings.channel_access_token, replyToken, formatTeamWeekMessage(label, dates, siteNamesByDate))
+  const days = await resolveTeamWeek(settings.tenant_id, dates)
+  await sendLineReply(settings.channel_access_token, replyToken, formatWeekMessage(label, days))
 }
 
 // รูปภาพหน้างาน accepts MULTIPLE photos per session -- each one uploads
