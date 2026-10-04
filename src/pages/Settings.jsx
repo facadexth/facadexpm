@@ -585,6 +585,11 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           ))}
         </nav>
       )}
+      {visibleSections.length > 1 && (
+        <select className="input settings-select" value={activeSection || ''} onChange={e => setActiveSection(e.target.value)} aria-label="เลือกหมวดการตั้งค่า">
+          {visibleSections.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+      )}
       <div className="settings-content">
       {/* ── บัญชีผู้ใช้ ── */}
       {activeSection === 'account' && (
