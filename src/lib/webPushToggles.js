@@ -8,4 +8,5 @@ export const WEB_PUSH_TOGGLES = [
   { key: 'web_push_material_request', defaultOn: true, icon: '📦', label: 'คำขอเบิกของใหม่', detail: 'เมื่อพนักงานขอเบิกของจาก LINE' },
   { key: 'web_push_issue_report', defaultOn: true, icon: '🚧', label: 'แจ้งปัญหาหน้างาน', detail: 'เมื่อมีคนแจ้งปัญหาจาก LINE (ยังไม่มีการส่งทาง LINE ให้แอดมิน)' },
   { key: 'web_push_quotation_expiry', defaultOn: true, icon: '⏳', label: 'ใบเสนอราคาใกล้หมดวันยืนราคา', detail: 'ก่อนวันยืนราคา 7 วัน' },
+  { key: 'web_push_cheque_due', defaultOn: false, icon: '🏦', label: 'เช็คใกล้ครบกำหนด (สรุปวันละครั้ง)', detail: 'ถ้ามีเช็คใกล้ถึงวันตามที่ตั้งไว้ที่ "แจ้งเตือนเช็คใกล้ครบกำหนด"' },
 ]

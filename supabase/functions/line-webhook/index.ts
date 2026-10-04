@@ -109,6 +109,7 @@ import { todayMenuOptions } from '../_shared/today-menu.ts'
 import { CANCEL_PHRASE, CANCEL_CHIP, CANCEL_REPLY, isCancel } from '../_shared/cancel.ts'
 import { isMenuButtonText, pendingWaitMinutes } from '../_shared/pending-flow.ts'
 import { siteMapLink } from '../_shared/site-map-link.ts'
+import { linkRequestsThrottled, THROTTLED_LINK_MESSAGE } from '../_shared/form-throttle.ts'
 import { formatWeekMessage, type WeekDay, type WeekSite } from '../_shared/week-message.ts'
 import { TIME_CLOCK_PHRASE, SCHEDULE_MENU_PHRASE, SCHEDULE_MENU_PROMPT, TIME_CLOCK_DONE_MESSAGE, timeClockStep, scheduleMenuChips } from '../_shared/schedule-menu.ts'
 import { jobDonePrompt, jobDoneConfirmation, JOB_DONE_CONFIRM_CHIP } from '../_shared/job-done-messages.ts'
@@ -1108,6 +1109,10 @@ async function handleAction(
     // text message (or this worker, from the field) has no way to supply;
     // an ADMIN turns an approved request into a real PO once those are
     // known. See field-form Edge Function + src/FieldFormPage.jsx.
+    if (await linkRequestsThrottled(admin, worker.id, 'material_request')) {
+      await sendLineReply(settings.channel_access_token, replyToken, THROTTLED_LINK_MESSAGE)
+      return
+    }
     const link = await issueFieldFormLink(settings.tenant_id, worker.id, 'material_request')
     if (!link) {
       await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
@@ -1120,6 +1125,10 @@ async function handleAction(
     // An ADMIN/OWNER approving it in HR.jsx is what creates the real
     // schedule day(s); a worker's own LINE message was never enough
     // authority for that on its own.
+    if (await linkRequestsThrottled(admin, worker.id, 'leave')) {
+      await sendLineReply(settings.channel_access_token, replyToken, THROTTLED_LINK_MESSAGE)
+      return
+    }
     const link = await issueFieldFormLink(settings.tenant_id, worker.id, 'leave')
     if (!link) {
       await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')

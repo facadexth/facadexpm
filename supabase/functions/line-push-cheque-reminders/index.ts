@@ -30,6 +30,9 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { sendLinePush, LINE_CHANNEL_ACCESS_TOKEN } from '../_shared/line.ts'
 import { withPushBudget } from '../_shared/push-budget.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
+import { isPushEnabled } from '../_shared/push-settings.ts'
+import { formatChequeDigest, groupChequesByRecipient } from '../_shared/cheque-digest.ts'
+import { sendWebPushToTenantAdmins } from '../_shared/web-push.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -67,11 +70,6 @@ function isChequeReminderDue(cheque: Cheque, thresholdDays: number, todayISO: st
   return daysBetween(todayISO, cheque.check_date) <= thresholdDays
 }
 
-// Ported line-for-line from formatChequeReminderMessage.
-function formatChequeReminderMessage(cheque: Cheque): string {
-  return `🏦 เช็ค ${cheque.cheque_no} (${cheque.bank}) ครบกำหนด ${cheque.check_date}`
-}
-
 async function getAppSetting(tenantId: string, key: string): Promise<string | null> {
   const { data, error } = await admin.from('app_settings').select('value').eq('tenant_id', tenantId).eq('key', key).maybeSingle()
   if (error) {
@@ -87,81 +85,75 @@ Deno.serve(async (req) => {
 
   const today = bangkokTodayISO()
 
-  const { data: settingsRows, error: settingsError } = await admin
-    .from('line_settings')
-    .select('tenant_id')
-  if (settingsError) return json({ error: settingsError.message }, 500)
+  // Companies with an uncashed cheque; each is then checked for its own switches and window.
+  const { data: tenantRows, error: tenantError } = await admin.from('cheques').select('tenant_id').neq('status', 'cashed')
+  if (tenantError) return json({ error: tenantError.message }, 500)
+  const tenantIds = [...new Set((tenantRows ?? []).map((r) => r.tenant_id as string))]
 
   let tenantsEnabled = 0
   let chequesDue = 0
   let messagesPushed = 0
   let pushFailures = 0
 
-  for (const settings of settingsRows ?? []) {
-    // Real gap closed 2026-10-01 -- see tenant-access.ts's header.
-    if (!(await tenantHasModuleAccess(admin, settings.tenant_id as string, 'line_bot'))) continue
-
-    const lineEnabled = await getAppSetting(settings.tenant_id as string, 'cheque_reminder_line_enabled')
-    if (lineEnabled !== 'true') continue // not explicitly enabled -- skip tenant
+  for (const tenantId of tenantIds) {
+    // LINE: opt-in (cheque_reminder_line_enabled) + the LINE bot module. Device push: its own switch.
+    const lineOn = (await tenantHasModuleAccess(admin, tenantId, 'line_bot')) && (await getAppSetting(tenantId, 'cheque_reminder_line_enabled')) === 'true'
+    const webOn = (await tenantHasModuleAccess(admin, tenantId, 'cheque_tracking')) && (await isPushEnabled(admin, tenantId, 'web_push_cheque_due'))
+    if (!lineOn && !webOn) continue
     tenantsEnabled++
 
-    const daysVal = await getAppSetting(settings.tenant_id as string, 'cheque_reminder_days')
+    const daysVal = await getAppSetting(tenantId, 'cheque_reminder_days')
     const thresholdDays = daysVal != null ? parseInt(daysVal, 10) : 3 // same fallback ('3') as useAppSetting('cheque_reminder_days', '3') in Dashboard.jsx/Settings.jsx
     const safeThresholdDays = Number.isFinite(thresholdDays) ? thresholdDays : 3
 
     const { data: cheques, error } = await admin
       .from('cheques')
       .select('id, cheque_no, bank, status, check_date, created_by')
-      .eq('tenant_id', settings.tenant_id)
+      .eq('tenant_id', tenantId)
       .neq('status', 'cashed')
     if (error) {
-      console.error('cheques query failed', settings.tenant_id, error)
+      console.error('cheques query failed', tenantId, error)
       continue
     }
-    const dueCheques = (cheques ?? []).filter((c) => isChequeReminderDue(c as Cheque, safeThresholdDays, today))
+    const dueCheques = ((cheques ?? []) as Cheque[]).filter((c) => isChequeReminderDue(c, safeThresholdDays, today))
     if (dueCheques.length === 0) continue
+    chequesDue += dueCheques.length
 
-    const { data: owners, error: ownersError } = await admin
-      .from('user_roles')
-      .select('line_user_id')
-      .eq('tenant_id', settings.tenant_id)
-      .eq('role', 'OWNER')
-      .not('line_user_id', 'is', null)
-    if (ownersError) console.error('user_roles owners query failed', settings.tenant_id, ownersError)
-    const ownerLineIds = (owners ?? []).map((o) => o.line_user_id as string)
+    if (lineOn) {
+      const { data: owners, error: ownersError } = await admin
+        .from('user_roles').select('line_user_id').eq('tenant_id', tenantId).eq('role', 'OWNER').not('line_user_id', 'is', null)
+      if (ownersError) console.error('user_roles owners query failed', tenantId, ownersError)
+      const ownerLineIds = (owners ?? []).map((o) => o.line_user_id as string)
 
-    for (const cheque of dueCheques as Cheque[]) {
-      chequesDue++
-
-      // Resolving cheques.created_by to an individual, same join pattern
-      // as quotations (user_roles.user_email = created_by). Straightforward
-      // in practice -- created_by is the same free TEXT email-string shape
-      // Task 1 added to both tables, so the exact same lookup works
-      // unchanged; the only difference from quotations is cheques don't
-      // ever null this out or require it, so it's simply absent (no error)
-      // on any cheque created before Task 1 shipped `created_by`.
-      const recipients = new Set<string>(ownerLineIds)
-      if (cheque.created_by) {
-        const { data: creator, error: creatorError } = await admin
-          .from('user_roles')
-          .select('line_user_id')
-          .eq('tenant_id', settings.tenant_id)
-          .eq('user_email', cheque.created_by)
-          .not('line_user_id', 'is', null)
-          .maybeSingle()
-        if (creatorError) console.error('user_roles creator lookup failed', settings.tenant_id, creatorError)
-        if (creator?.line_user_id) recipients.add(creator.line_user_id as string)
+      // Creators' LINE ids, looked up once per company (not once per cheque).
+      const creatorEmails = [...new Set(dueCheques.map((c) => c.created_by).filter((e): e is string => !!e))]
+      const creatorLine = new Map<string, string>()
+      if (creatorEmails.length) {
+        const { data: creators, error: creatorError } = await admin
+          .from('user_roles').select('user_email, line_user_id').eq('tenant_id', tenantId).in('user_email', creatorEmails).not('line_user_id', 'is', null)
+        if (creatorError) console.error('user_roles creators lookup failed', tenantId, creatorError)
+        for (const c of creators ?? []) creatorLine.set(c.user_email as string, c.line_user_id as string)
       }
 
-      const message = formatChequeReminderMessage(cheque)
-      for (const lineUserId of recipients) {
-        const result = await withPushBudget(admin, settings.tenant_id as string, () => sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, lineUserId, message))
+      // One message per person with all their cheques in it.
+      const byRecipient = groupChequesByRecipient(dueCheques, ownerLineIds, (email) => creatorLine.get(email))
+      for (const [lineUserId, list] of byRecipient) {
+        const message = formatChequeDigest(list)
+        const result = await withPushBudget(admin, tenantId, () => sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, lineUserId, message))
         if (result.ok) messagesPushed++
         else {
           pushFailures++
-          console.error('sendLinePush failed', settings.tenant_id, result.status)
+          console.error('sendLinePush failed', tenantId, result.status)
         }
       }
+    }
+
+    if (webOn) {
+      await sendWebPushToTenantAdmins(admin, tenantId, {
+        title: '🏦 เช็คใกล้ครบกำหนด',
+        body: `${dueCheques.length} ใบ ครบกำหนดภายใน ${safeThresholdDays} วัน`,
+        tab: 'cheques',
+      })
     }
   }
 

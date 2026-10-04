@@ -14,7 +14,7 @@ export const LINE_PUSH_TOGGLES = [
   {
     key: 'cheque_reminder_line_enabled', defaultOn: false, icon: '🏦', module: 'cheque_tracking',
     label: 'เตือนเช็คใกล้ครบกำหนด',
-    detail: 'ทุกวัน ส่งทีละใบถึงเจ้าของและผู้สร้างเช็ค จำนวนวันล่วงหน้าตั้งที่ส่วน "แจ้งเตือนเช็คใกล้ครบกำหนด"',
+    detail: 'ทุกวัน ส่งสรุปรวมใบเดียวถึงเจ้าของ (และผู้สร้างเช็ค เฉพาะเช็คของตัวเอง) จำนวนวันล่วงหน้าตั้งที่ส่วน "แจ้งเตือนเช็คใกล้ครบกำหนด"',
   },
   {
     key: 'line_push_leave_request_admin', defaultOn: true, icon: '🏖️',

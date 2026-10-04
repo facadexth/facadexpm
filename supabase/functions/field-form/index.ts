@@ -37,6 +37,7 @@ import { withPushBudget } from '../_shared/push-budget.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 import { APP_URL } from '../_shared/app-url.ts'
+import { dailySubmitLimitReached, DAILY_LIMIT_MESSAGE } from '../_shared/form-throttle.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -208,6 +209,11 @@ Deno.serve(async (req) => {
       const { tok, worker } = result
       if (!(await tenantHasModuleAccess(admin, worker.tenant_id, 'line_bot'))) return json({ reason: 'line_bot_disabled' }, 200)
       const workerName = worker.nickname || worker.name
+
+      // Shown on the form as the error text (the page prints data.error).
+      if ((tok.action_type === 'material_request' || tok.action_type === 'leave') && (await dailySubmitLimitReached(admin, tok.worker_id, tok.action_type))) {
+        return json({ error: DAILY_LIMIT_MESSAGE })
+      }
 
       if (tok.action_type === 'material_request') {
         const siteId = body?.siteId as string | undefined
