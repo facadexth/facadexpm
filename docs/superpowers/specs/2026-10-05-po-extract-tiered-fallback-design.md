@@ -129,6 +129,24 @@ until this is fixed.
   triggers on well under half the documents; otherwise ship the fallback and
   caching parts only. Also measure how much saved examples (full images)
   raise input tokens and offset the saving.
+- Provider comparison (evaluation only): the same evaluation also runs
+  **Gemini Pro** (Google) as a challenger next to the Anthropic models, to see
+  whether any non-Anthropic option gives equal accuracy at lower cost on real
+  documents. Measure per document: field accuracy against the corrected
+  result, whether the subtotal check passes, input/output tokens and cost.
+  Rules for this comparison:
+  - Offline script run by the owner or on the owner's machine; nothing is wired
+    into production and no new edge-function secret is added. The Gemini API key
+    stays local and never goes in the repo or the chat.
+  - Use only documents the owner supplies or FacadeX's own tenant. Other
+    tenants' saved supplier examples are not sent to Google.
+  - Pricing and model names are checked against Google's current docs at run
+    time, not assumed. Gemini Pro is usually priced above its Flash tier, so a
+    Flash model may be added to the run if Pro does not beat the Anthropic
+    cost.
+  - Switching the production provider is a separate decision and a separate
+    spec (new function code, new secret, data-protection review). It happens
+    only if a challenger is clearly cheaper at equal accuracy.
 - Live on changpm.app: one PDF and one photo through the PO form and swap
   modal, plus a deliberately blurry photo for the reject path. The
   quota-exhausted message is covered by the unit test (not forced on prod).
@@ -148,6 +166,7 @@ until this is fixed.
 
 ## Out of scope
 
-Free non-AI reading (PDF text layer, browser OCR), weighted quota, prefill from
+Switching the production provider away from Anthropic (only evaluated, see
+Testing), free non-AI reading (PDF text layer, browser OCR), weighted quota, prefill from
 past supplier lines, plausibility checks from examples, removing the
 "TEMPORARY diagnostic" `console.error` lines in `PurchaseOrderForm`.
