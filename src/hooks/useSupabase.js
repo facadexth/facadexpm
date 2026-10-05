@@ -1644,7 +1644,7 @@ async function loadExampleForPrompt(example) {
 
 /** Calls the extract-po-document Edge Function with one document image
  *  and (optionally) a supplier's saved calibration examples. Never
- *  throws -- returns the same { ok, data|error } shape as
+ *  throws -- returns the same { ok, data|error, code } shape as
  *  validateExtraction so callers have one place to handle failure. */
 export async function extractPoDocument(base64, mimeType, examples = []) {
   try {
@@ -1655,17 +1655,19 @@ export async function extractPoDocument(base64, mimeType, examples = []) {
     })
     if (error) {
       let message = error.message
+      let code = null
       try {
         const body = await error.context?.json()
         if (body?.error) message = body.error
+        if (body?.code) code = body.code
       } catch {
         // context unreadable/not JSON -- fall back to the generic message above
       }
-      return { ok: false, error: message }
+      return { ok: false, error: message, code }
     }
     return validateExtraction(data)
   } catch (e) {
-    return { ok: false, error: e.message }
+    return { ok: false, error: e.message, code: null }
   }
 }
 
