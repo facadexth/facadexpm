@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { compareExtraction, summariseProvider } from './scanEvalCompare.mjs'
+import { compareExtraction, summariseProvider, pickExampleFields } from './scanEvalCompare.mjs'
 
 const L = (over = {}) => ({ description: 'a', quantity: 2, unit: 'เส้น', unit_price: 100, discount_pct: 0, ...over })
 
@@ -32,5 +32,24 @@ describe('summariseProvider', () => {
       { accuracy: 0.5, kind: 'check_failed', inputTokens: 300, outputTokens: 30 },
     ])
     expect(s).toEqual({ docs: 2, meanAccuracy: 0.75, checkPassRate: 0.5, inputTokens: 400, outputTokens: 40 })
+  })
+})
+
+describe('pickExampleFields', () => {
+  it('drops status and printed_subtotal and keeps only the saved keys', () => {
+    const r = pickExampleFields({ status: 'success', printed_subtotal: 5, supplier_name_guess: 'ACME', document_date_guess: '2026-01-02', reference_no_guess: 'R1', line_items: [] })
+    expect(Object.keys(r)).toEqual(['supplier_name_guess', 'document_date_guess', 'reference_no_guess', 'line_items'])
+    expect(r.supplier_name_guess).toBe('ACME')
+  })
+  it('defaults missing header values to null and line_items to []', () => {
+    expect(pickExampleFields({})).toEqual({ supplier_name_guess: null, document_date_guess: null, reference_no_guess: null, line_items: [] })
+    expect(pickExampleFields(undefined).line_items).toEqual([])
+  })
+  it('reduces line items and defaults discount_pct to 0', () => {
+    const r = pickExampleFields({ line_items: [{ description: 'b', quantity: 1, unit: 'x', unit_price: 5, extra: 'z' }, { description: 'c', quantity: 2, unit: 'y', unit_price: 6, discount_pct: 10 }] })
+    expect(r.line_items).toEqual([
+      { description: 'b', quantity: 1, unit: 'x', unit_price: 5, discount_pct: 0 },
+      { description: 'c', quantity: 2, unit: 'y', unit_price: 6, discount_pct: 10 },
+    ])
   })
 })
