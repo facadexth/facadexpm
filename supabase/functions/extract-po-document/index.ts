@@ -78,6 +78,29 @@ function buildMessages(imageBase64: string, mimeType: string, examples: ExampleI
   return messages
 }
 
+// One JSON line per model call so spend and upstream errors are visible in the
+// function logs. Never log the request body, document, examples, headers or keys.
+function logCall(
+  model: string,
+  ok: boolean,
+  httpStatus: number | null,
+  inputTokens: number | null,
+  outputTokens: number | null,
+  stopReason: string | null,
+  detail?: string,
+) {
+  console.log(JSON.stringify({
+    evt: 'po_scan_model_call',
+    model,
+    ok,
+    httpStatus,
+    inputTokens,
+    outputTokens,
+    stopReason,
+    ...(ok ? {} : { detail: (detail ?? '').slice(0, 300) }),
+  }))
+}
+
 async function callAnthropic(model: string, messages: unknown, deadlineMs: number): Promise<ModelCall> {
   let res: Response
   try {
@@ -96,6 +119,7 @@ async function callAnthropic(model: string, messages: unknown, deadlineMs: numbe
       body: JSON.stringify({ model, max_tokens: 8192, system: SYSTEM_PROMPT, messages }),
     })
   } catch (e) {
+    logCall(model, false, null, null, null, null, String(e))
     return { ok: false, detail: String(e) }
   }
   if (!res.ok) {
@@ -105,6 +129,7 @@ async function callAnthropic(model: string, messages: unknown, deadlineMs: numbe
     } catch (e) {
       errText = String(e)
     }
+    logCall(model, false, res.status, null, null, null, errText)
     return { ok: false, detail: `AI API error: ${errText.slice(0, 500)}` }
   }
   // deno-lint-ignore no-explicit-any
@@ -112,12 +137,17 @@ async function callAnthropic(model: string, messages: unknown, deadlineMs: numbe
   try {
     j = await res.json()
   } catch (e) {
+    logCall(model, false, res.status, null, null, null, String(e))
     return { ok: false, detail: `AI response unreadable: ${String(e)}` }
   }
   // The model can return a leading `thinking` content block before its
   // actual text response -- find the first text block by type.
   const block = Array.isArray(j?.content) ? j.content.find((b: { type?: string }) => b?.type === 'text') : null
-  if (typeof block?.text !== 'string') return { ok: false, detail: 'AI ไม่ได้ตอบกลับเป็นข้อความ' }
+  if (typeof block?.text !== 'string') {
+    logCall(model, false, res.status, j?.usage?.input_tokens ?? null, j?.usage?.output_tokens ?? null, j?.stop_reason ?? null, 'no text block')
+    return { ok: false, detail: 'AI ไม่ได้ตอบกลับเป็นข้อความ' }
+  }
+  logCall(model, true, res.status, j?.usage?.input_tokens ?? null, j?.usage?.output_tokens ?? null, j?.stop_reason ?? null)
   return {
     ok: true,
     text: block.text,
@@ -198,7 +228,16 @@ Deno.serve(async (req) => {
     outcome = await runScan(deps, cacheKey)
   } catch (e) {
     console.error('extract-po-document runScan threw:', String(e))
+    console.log(JSON.stringify({ evt: 'po_scan_outcome', status: 502, code: 'ai_unavailable', model_used: null, cache_hit: false, threw: true }))
     return json({ error: 'ระบบอ่านเอกสารขัดข้อง ลองใหม่ภายหลัง หรือกรอกรายการเองจากเอกสาร', code: 'ai_unavailable' }, 502)
   }
+  const ob = outcome.body as Record<string, unknown>
+  console.log(JSON.stringify({
+    evt: 'po_scan_outcome',
+    status: outcome.status,
+    code: ob.code ?? null,
+    model_used: ob.model_used ?? null,
+    cache_hit: ob.cache_hit === true,
+  }))
   return json(outcome.body, outcome.status)
 })

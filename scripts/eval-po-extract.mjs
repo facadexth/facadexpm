@@ -43,7 +43,8 @@ async function callAnthropic(model, mimeType, b64) {
 // reference before the first run. If a request is rejected, fix the script
 // from the docs -- do not guess.
 async function callGemini(model, mimeType, b64) {
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+  const id = model.replace(/^models\//, '')
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${id}:generateContent`, {
     method: 'POST',
     headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY, 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -86,8 +87,9 @@ for (const spec of providers) {
   }
 }
 
+const csvCell = v => '"' + String(v ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ') + '"'
 const csv = ['provider,doc,kind,accuracy,input_tokens,output_tokens,ms,note',
-  ...rows.map(r => [r.provider, r.doc, r.kind, r.accuracy.toFixed(3), r.inputTokens, r.outputTokens, r.ms, r.note].join(','))].join('\n')
+  ...rows.map(r => [r.provider, r.doc, r.kind, r.accuracy.toFixed(3), r.inputTokens, r.outputTokens, r.ms, r.note].map(csvCell).join(','))].join('\n')
 writeFileSync(args.out && args.out !== true ? args.out : 'eval-report.csv', csv)
 
 console.log('\nprovider'.padEnd(46), 'docs  meanAcc  checkPass  inTok   outTok')
