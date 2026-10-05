@@ -8,6 +8,9 @@ import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument } from '../hooks/useSupabase.js'
 import { fileToExtractionPayload } from '../lib/poDocumentExtraction.js'
+import ScanDocPreview from '../components/ScanDocPreview.jsx'
+import ScanNotice from '../components/ScanNotice.jsx'
+import { SCAN_REMINDER } from '../lib/scanNotice.js'
 import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm } from '../lib/inventoryCost.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -183,6 +186,9 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
   const { data: units, refetch: refetchUnits } = useUnits()
   const [scanning, setScanning] = useState(false)
   const [scanError, setScanError] = useState(null)
+  const [scanCode, setScanCode] = useState(null)
+  const [scanFile, setScanFile] = useState(null)
+  const [scanPayload, setScanPayload] = useState(null) // { base64, mimeType, reference_no_guess } after a successful scan
 
   // TEMPORARY diagnostic -- proves whether PurchaseOrderForm itself is
   // silently unmounting/remounting while the native picker is open
@@ -200,11 +206,15 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
     if (!file) return
     e.target.value = ''
     setScanError(null)
+    setScanCode(null)
+    setScanPayload(null)
+    setScanFile(file)
     setScanning(true)
     try {
       const { base64, mimeType } = await fileToExtractionPayload(file)
       const result = await extractPoDocument(base64, mimeType, supplierExamples || [])
-      if (!result.ok) { setScanError(result.error); return }
+      if (!result.ok) { setScanError(result.error); setScanCode(result.code || null); return }
+      setScanPayload({ base64, mimeType, reference_no_guess: result.data.reference_no_guess })
       const { document_date_guess, reference_no_guess, line_items } = result.data
 
       // Any extracted unit that doesn't already exist in the tenant's
@@ -275,7 +285,9 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
           <input type="file" accept="image/*,application/pdf" onChange={handleScanUpload} disabled={!form.supplier_id || scanning} />
           {!form.supplier_id && <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>เลือก Supplier ก่อนถึงจะอัพโหลดได้</div>}
           {scanning && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>⏳ กำลังอ่านเอกสาร...</div>}
-          {scanError && <div className="alert alert-error" style={{ marginTop: 6 }}>{scanError}</div>}
+          {scanError && <ScanNotice code={scanCode} message={scanError} />}
+          {scanFile && <ScanDocPreview file={scanFile} />}
+          {scanFile && !scanning && <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>{SCAN_REMINDER}</div>}
         </div>
         <ItemsEditor items={form.items} onChange={items => set('items', items)} inventoryItems={inventoryItems} onInventoryItemCreated={onInventoryItemCreated} aluminumProfiles={aluminumProfiles} units={units} onUnitAdded={refetchUnits} categories={categories} defaultCategoryId={form.category_id} />
         <div>
