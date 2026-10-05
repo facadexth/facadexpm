@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeDownscaledSize, validateExtraction } from './poDocumentExtraction.js'
+import { computeDownscaledSize, validateExtraction, buildExampleExtracted } from './poDocumentExtraction.js'
 
 describe('computeDownscaledSize', () => {
   it('leaves an image already under maxDim unchanged', () => {
@@ -97,5 +97,30 @@ describe('validateExtraction', () => {
     expect(validateExtraction({ line_items: [], printed_subtotal: 1234.5 }).data.printed_subtotal).toBe(1234.5)
     expect(validateExtraction({ line_items: [], printed_subtotal: '1,200' }).data.printed_subtotal).toBeNull()
     expect(validateExtraction({ line_items: [] }).data.printed_subtotal).toBeNull()
+  })
+})
+
+describe('buildExampleExtracted', () => {
+  it('turns the corrected form lines into the extraction shape saved as an example', () => {
+    const out = buildExampleExtracted({
+      supplierName: 'YONG CHANG', date: '2026-09-08', referenceNo: 'IV6909/08046',
+      items: [
+        { description: ' กรอบมุ้ง ', quantity: '3', unit: 'เส้น', unit_price: '353', discount_pct: '5' },
+        { description: '', quantity: '1', unit: 'ชิ้น', unit_price: '10', discount_pct: '0' },
+        { description: 'ขอบยาง', quantity: '', unit: '', unit_price: 'abc', discount_pct: '' },
+      ],
+    })
+    expect(out).toEqual({
+      supplier_name_guess: 'YONG CHANG',
+      document_date_guess: '2026-09-08',
+      reference_no_guess: 'IV6909/08046',
+      line_items: [
+        { description: 'กรอบมุ้ง', quantity: 3, unit: 'เส้น', unit_price: 353, discount_pct: 5 },
+        { description: 'ขอบยาง', quantity: 0, unit: '', unit_price: 0, discount_pct: 0 },
+      ],
+    })
+  })
+  it('uses null for missing header values and an empty list for no items', () => {
+    expect(buildExampleExtracted({ items: [] })).toEqual({ supplier_name_guess: null, document_date_guess: null, reference_no_guess: null, line_items: [] })
   })
 })

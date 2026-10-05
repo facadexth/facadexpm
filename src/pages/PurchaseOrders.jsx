@@ -6,8 +6,8 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument } from '../hooks/useSupabase.js'
-import { fileToExtractionPayload } from '../lib/poDocumentExtraction.js'
+import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample } from '../hooks/useSupabase.js'
+import { fileToExtractionPayload, buildExampleExtracted } from '../lib/poDocumentExtraction.js'
 import ScanDocPreview from '../components/ScanDocPreview.jsx'
 import ScanNotice from '../components/ScanNotice.jsx'
 import { SCAN_REMINDER } from '../lib/scanNotice.js'
@@ -189,6 +189,7 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
   const [scanCode, setScanCode] = useState(null)
   const [scanFile, setScanFile] = useState(null)
   const [scanPayload, setScanPayload] = useState(null) // { base64, mimeType, reference_no_guess } after a successful scan
+  const [saveAsExample, setSaveAsExample] = useState(false)
 
   // TEMPORARY diagnostic -- proves whether PurchaseOrderForm itself is
   // silently unmounting/remounting while the native picker is open
@@ -208,6 +209,7 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
     setScanError(null)
     setScanCode(null)
     setScanPayload(null)
+    setSaveAsExample(false)
     setScanFile(file)
     setScanning(true)
     try {
@@ -250,7 +252,18 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
   }
 
   return (
-    <form onSubmit={e => { e.preventDefault(); clearFormDraft(); onSave(form) }}>
+    <form onSubmit={e => {
+      e.preventDefault()
+      clearFormDraft()
+      const supplierName = (suppliers || []).find(s => s.id === form.supplier_id)?.name
+      const extra = saveAsExample && scanPayload
+        ? { afterSave: () => saveSupplierDocumentExample(
+            form.supplier_id, scanPayload.base64, scanPayload.mimeType,
+            buildExampleExtracted({ supplierName, date: form.date, referenceNo: scanPayload.reference_no_guess, items: form.items }),
+          ) }
+        : undefined
+      onSave(form, extra)
+    }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
         <div className="form-grid-2">
           <div>
@@ -288,6 +301,12 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
           {scanError && <ScanNotice code={scanCode} message={scanError} />}
           {scanFile && <ScanDocPreview file={scanFile} />}
           {scanFile && !scanning && <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>{SCAN_REMINDER}</div>}
+          {scanPayload && form.supplier_id && (
+            <label style={{ display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 12.5, marginTop: 6, cursor: 'pointer' }}>
+              <input type="checkbox" checked={saveAsExample} onChange={e => setSaveAsExample(e.target.checked)} />
+              <span>เก็บใบนี้เป็นตัวอย่างของซัพพลายเออร์ (ช่วยให้ AI อ่านเอกสารเจ้านี้แม่นขึ้น เก็บได้สูงสุด 3 ใบ ใบเก่าสุดจะถูกแทนที่)</span>
+            </label>
+          )}
         </div>
         <ItemsEditor items={form.items} onChange={items => set('items', items)} inventoryItems={inventoryItems} onInventoryItemCreated={onInventoryItemCreated} aluminumProfiles={aluminumProfiles} units={units} onUnitAdded={refetchUnits} categories={categories} defaultCategoryId={form.category_id} />
         <div>
@@ -764,7 +783,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const handleSave = async (form) => {
+  const handleSave = async (form, opts) => {
     setSaving(true)
     try {
       const poPayload = {
@@ -811,8 +830,15 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
         if (error) throw error
       }
 
+      // The example is saved only after the PO and its items are safely
+      // stored, and a failure here must never undo or hide the saved PO.
+      let exampleError = null
+      if (opts?.afterSave) {
+        try { await opts.afterSave() } catch (e) { exampleError = e.message }
+      }
       clearDraft(ADD_FORM_OPEN_KEY)
-      setShowAdd(false); setEditRow(null); refetch(); showToast('บันทึกสำเร็จ')
+      setShowAdd(false); setEditRow(null); refetch()
+      showToast(exampleError ? `บันทึกสำเร็จ แต่เก็บตัวอย่างไม่สำเร็จ: ${exampleError}` : 'บันทึกสำเร็จ')
     } catch (e) {
       alert('Error: ' + e.message)
     } finally {

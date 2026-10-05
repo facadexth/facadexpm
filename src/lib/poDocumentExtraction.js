@@ -69,6 +69,26 @@ export function validateExtraction(raw) {
   }
 }
 
+/** Builds the `extracted` JSON saved with a supplier calibration example from
+ *  the lines the user corrected in the PO form (so the example is a verified
+ *  answer, not the raw AI output). Same shape the edge function returns. */
+export function buildExampleExtracted({ supplierName, date, referenceNo, items }) {
+  return {
+    supplier_name_guess: supplierName || null,
+    document_date_guess: date || null,
+    reference_no_guess: referenceNo || null,
+    line_items: (items || [])
+      .filter(it => (it.description || '').trim())
+      .map(it => ({
+        description: it.description.trim(),
+        quantity: parseFloat(it.quantity) || 0,
+        unit: it.unit || '',
+        unit_price: parseFloat(it.unit_price) || 0,
+        discount_pct: parseFloat(it.discount_pct) || 0,
+      })),
+  }
+}
+
 /** Decodes a File into whatever the browser gives us to draw from, plus
  *  its natural size -- prefers createImageBitmap (decodes straight from
  *  the Blob, no intermediate base64 string) since a raw phone-camera
