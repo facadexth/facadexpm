@@ -34,3 +34,22 @@ export function summariseProvider(rows) {
     outputTokens: rows.reduce((s, r) => s + (r.outputTokens || 0), 0),
   }
 }
+
+// The shape production saves as a supplier example (and replays as the
+// assistant turn): header guesses plus reduced line items. status and
+// printed_subtotal are NOT saved, so they are dropped here.
+export function pickExampleFields(extracted) {
+  const e = extracted || {}
+  return {
+    supplier_name_guess: e.supplier_name_guess ?? null,
+    document_date_guess: e.document_date_guess ?? null,
+    reference_no_guess: e.reference_no_guess ?? null,
+    line_items: (e.line_items || []).map(li => ({
+      description: li.description,
+      quantity: li.quantity,
+      unit: li.unit,
+      unit_price: li.unit_price,
+      discount_pct: li.discount_pct ?? 0,
+    })),
+  }
+}
