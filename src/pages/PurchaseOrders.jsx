@@ -537,6 +537,11 @@ function SwapTaxInvoiceModal({ po, onClose, onSwapped }) {
   const [scanError, setScanError] = useState(null)
   const [extracted, setExtracted] = useState(null) // { reference_no_guess, line_items, computedTotal }
   const [saving, setSaving] = useState(false)
+  const { data: supplierExamples } = useSupplierDocumentExamples(po.supplier_id || null)
+  const [scanCode, setScanCode] = useState(null)
+  const [scanFile, setScanFile] = useState(null)
+  const [manualRef, setManualRef] = useState('')
+  const [manualAmount, setManualAmount] = useState('')
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0]
@@ -544,11 +549,13 @@ function SwapTaxInvoiceModal({ po, onClose, onSwapped }) {
     e.target.value = ''
     setScanError(null)
     setExtracted(null)
+    setScanCode(null)
+    setScanFile(file)
     setScanning(true)
     try {
       const { base64, mimeType } = await fileToExtractionPayload(file)
-      const result = await extractPoDocument(base64, mimeType, [])
-      if (!result.ok) { setScanError(result.error); return }
+      const result = await extractPoDocument(base64, mimeType, supplierExamples || [])
+      if (!result.ok) { setScanError(result.error); setScanCode(result.code || null); return }
       const { reference_no_guess, line_items } = result.data
       const computedTotal = line_items.reduce((sum, it) => sum + it.quantity * it.unit_price * (1 - (it.discount_pct || 0) / 100), 0)
       setExtracted({ reference_no_guess, line_items, computedTotal })
@@ -557,6 +564,15 @@ function SwapTaxInvoiceModal({ po, onClose, onSwapped }) {
     } finally {
       setScanning(false)
     }
+  }
+
+  // Manual path when the automatic read failed: the user types the real tax
+  // invoice's number and its amount before VAT. It feeds the SAME `extracted`
+  // state, so the amount-match check below still gates the swap.
+  const applyManual = () => {
+    const amount = parseFloat(manualAmount)
+    if (!manualRef.trim() || !Number.isFinite(amount) || amount <= 0) return
+    setExtracted({ reference_no_guess: manualRef.trim(), line_items: [], computedTotal: amount, manual: true })
   }
 
   // Tight tolerance on purpose -- this is the SAME delivery being
@@ -573,8 +589,9 @@ function SwapTaxInvoiceModal({ po, onClose, onSwapped }) {
       const itemsSummary = extracted.line_items
         .map((it) => `${it.description} ${it.quantity}${it.unit ? ' ' + it.unit : ''} @ ${fmt(it.unit_price)}${it.discount_pct > 0 ? ` (ลด ${it.discount_pct}%)` : ''}`)
         .join('; ')
+      const noteDetail = extracted.manual ? `กรอกเอง ยอดก่อน VAT ${fmt(extracted.computedTotal)}` : itemsSummary
       const newInvoiceNo = extracted.reference_no_guess || expense.invoice_no
-      const newNotes = [expense.notes, `สลับเป็นใบกำกับภาษีจริง${extracted.reference_no_guess ? ' ' + extracted.reference_no_guess : ''}: ${itemsSummary}`]
+      const newNotes = [expense.notes, `สลับเป็นใบกำกับภาษีจริง${extracted.reference_no_guess ? ' ' + extracted.reference_no_guess : ''}: ${noteDetail}`]
         .filter(Boolean).join(' | ')
       const { error } = await supabase.from('expenses')
         .update({ invoice_no: newInvoiceNo, notes: newNotes })
@@ -603,8 +620,17 @@ function SwapTaxInvoiceModal({ po, onClose, onSwapped }) {
               <label className="label">อัปโหลดรูป/PDF ใบกำกับภาษีจริง</label>
               <input type="file" accept="image/*,application/pdf" onChange={handleUpload} disabled={scanning} />
               {scanning && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>⏳ กำลังอ่าน...</div>}
-              {scanError && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 6 }}>{scanError}</div>}
+              {scanError && <ScanNotice code={scanCode} message={scanError} />}
+              {scanFile && <ScanDocPreview file={scanFile} />}
             </div>
+            {scanError && !extracted && (
+              <div style={{ display: 'grid', gap: 8, border: '1px dashed var(--border)', borderRadius: 8, padding: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700 }}>กรอกเองจากใบกำกับภาษี</div>
+                <input className="input" placeholder="เลขที่ใบกำกับภาษี" value={manualRef} onChange={e => setManualRef(e.target.value)} />
+                <input className="input" type="number" min="0" step="0.01" placeholder="ยอดรวมก่อน VAT (บาท)" value={manualAmount} onChange={e => setManualAmount(e.target.value)} />
+                <button type="button" className="btn btn-ghost" onClick={applyManual}>ใช้ค่าที่กรอก</button>
+              </div>
+            )}
             {extracted && (
               <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>เลขที่ใบกำกับภาษี: {extracted.reference_no_guess || '(ไม่พบ)'}</div>
@@ -615,7 +641,7 @@ function SwapTaxInvoiceModal({ po, onClose, onSwapped }) {
                       {it.discount_pct > 0 ? ` (ลด ${it.discount_pct}%)` : ''} = {fmt(it.quantity * it.unit_price * (1 - (it.discount_pct || 0) / 100))}
                     </div>
                   ))}
-                  {!extracted.line_items.length && <div style={{ color: 'var(--text3)' }}>ไม่พบรายการสินค้าในเอกสาร</div>}
+                  {!extracted.line_items.length && !extracted.manual && <div style={{ color: 'var(--text3)' }}>ไม่พบรายการสินค้าในเอกสาร</div>}
                 </div>
                 <div style={{ marginTop: 8, fontWeight: 700, color: matches ? 'var(--green)' : 'var(--red)' }}>
                   ยอดรวมที่อ่านได้: {fmt(extracted.computedTotal)} บาท
