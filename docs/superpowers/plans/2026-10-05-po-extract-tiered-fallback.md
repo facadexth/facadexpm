@@ -1648,10 +1648,12 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ### Task 11: Offline evaluation script (Anthropic models and Gemini Pro)
 
+Note on the `.mjs` extension of the compare module: tsx loads `.js` ESM syntax as CJS in this package, and adding `"type": "module"` to package.json breaks `scripts/generate-build-info.js`, so the module is `.mjs` (the test file stays `.test.js`).
+
 Produces the evidence for the spec's gate: ship cheap-first only if the cheap model matches the strong one and escalates on well under half the documents. Runs on the owner's machine with the owner's keys; nothing here touches production, and no key is ever written to the repo or pasted in chat.
 
 **Files:**
-- Create: `src/lib/scanEvalCompare.js`
+- Create: `src/lib/scanEvalCompare.mjs`
 - Test: `src/lib/scanEvalCompare.test.js`
 - Create: `scripts/eval-po-extract.mjs`
 - Modify: `.gitignore` (add `eval-docs/` and `eval-report*.csv`)
@@ -1666,7 +1668,7 @@ Create `src/lib/scanEvalCompare.test.js`:
 
 ```js
 import { describe, it, expect } from 'vitest'
-import { compareExtraction, summariseProvider } from './scanEvalCompare.js'
+import { compareExtraction, summariseProvider } from './scanEvalCompare.mjs'
 
 const L = (over = {}) => ({ description: 'a', quantity: 2, unit: 'เส้น', unit_price: 100, discount_pct: 0, ...over })
 
@@ -1710,7 +1712,7 @@ Expected: FAIL (module not found).
 
 - [ ] **Step 3: Implement the compare helpers**
 
-Create `src/lib/scanEvalCompare.js`:
+Create `src/lib/scanEvalCompare.mjs`:
 
 ```js
 // Comparison helpers for the offline PO-scan evaluation
@@ -1777,7 +1779,7 @@ import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, extname, basename } from 'node:path'
 import { SYSTEM_PROMPT } from '../supabase/functions/_shared/po-extract-prompt.ts'
 import { classifyModelOutput } from '../supabase/functions/_shared/scan-logic.ts'
-import { compareExtraction, summariseProvider } from '../src/lib/scanEvalCompare.js'
+import { compareExtraction, summariseProvider } from '../src/lib/scanEvalCompare.mjs'
 
 const args = Object.fromEntries(process.argv.slice(2).map((a, i, all) => a.startsWith('--') ? [a.slice(2), all[i + 1]?.startsWith('--') || all[i + 1] === undefined ? true : all[i + 1]] : []).filter(e => e.length))
 const dir = args.dir
@@ -1883,7 +1885,7 @@ Expected: a table with `docs 1`, `meanAcc 1.000`, `checkPass 1.00` for both prov
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/lib/scanEvalCompare.js src/lib/scanEvalCompare.test.js scripts/eval-po-extract.mjs .gitignore
+git add src/lib/scanEvalCompare.mjs src/lib/scanEvalCompare.test.js scripts/eval-po-extract.mjs .gitignore
 git commit -m "feat: offline evaluation script for PO extraction (Anthropic models and Gemini Pro)
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
@@ -1943,7 +1945,7 @@ Expected: `has_col 1, has_table 1, anon_grants 0`.
 - [ ] **Step 4: Deploy the edge function (cheap-first still off)**
 
 Run: `npx supabase functions deploy extract-po-document --project-ref kntspldhvcjeaubtqtkn --use-api` (JWT verification stays on; no `--no-verify-jwt`).
-Expected: deploy succeeds. A TypeScript error here is the first real type check of the adapter: fix it, redeploy.
+Expected: deploy succeeds. `supabase functions deploy --use-api` bundles without type-checking, so the live smoke scan in Step 5 is the first real check; a boot failure shows up there.
 
 - [ ] **Step 5: Live-check the function with the owner's session (Chrome tool, chang-ship section 4)**
 
@@ -1952,7 +1954,7 @@ On changpm.app logged in as the owner, call the function from the page with the 
 ```sql
 SELECT created_at, mime_type, model_used, input_tokens, output_tokens FROM document_scan_usage ORDER BY created_at DESC LIMIT 3;
 ```
-Expected: one new row per successful scan with `model_used = 'claude-sonnet-5'`.
+Expected: one new row per successful scan with `model_used = 'claude-sonnet-5'`. This check is mandatory: if no new `document_scan_usage` row with `model_used` appears after the live scan, treat the deploy as failed (likely the migration is missing or PostgREST's schema cache has not reloaded) and stop. The function only logs insert errors, so a silent miss means uncounted scans.
 
 ```sql
 SELECT count(*) FROM scan_result_cache;
@@ -1973,6 +1975,10 @@ After the PWA update banner is accepted, on the PO form: upload a PDF with a dis
 - [ ] **Step 8: Evaluate, then decide cheap-first (owner)**
 
 The owner puts 20-30 real documents (their own or FacadeX's own tenant) and matching `*.expected.json` files in `eval-docs/` and runs Task 11's script with `anthropic:claude-haiku-4-5-20251001,anthropic:claude-sonnet-5,gemini:<current Gemini Pro model id from Google's docs>`. If the gate in the spec passes (cheap meanAcc within ~0.02 of strong, escalation well under half), the owner sets the Supabase secret `PO_SCAN_CHEAP_FIRST` to `true` in the dashboard for project CHANG. Verify with a new scan: `document_scan_usage.model_used` shows `claude-haiku-4-5-20251001` for a clean document and `claude-sonnet-5` after an escalation. If the gate fails, leave the secret unset: everything else in this plan still ships and works.
+
+HARD PRECONDITION before enabling `PO_SCAN_CHEAP_FIRST`: supplier example turns replayed to the model currently carry no `printed_subtotal` (and no `status`), so with examples the model tends to omit `printed_subtotal` and the subtotal check rarely fires; also the evaluation script runs WITHOUT examples. Before enabling cheap-first, either (i) run the evaluation with supplier examples and confirm the cheap model still passes the gate, or (ii) normalise example turns so the check stays meaningful. Do NOT derive `printed_subtotal` from the verified lines (that would make the check pass vacuously).
+
+After deploy, watch model spend in the function Logs: `po_scan_model_call` (one line per model call) and `po_scan_outcome` (one line per scan).
 
 - [ ] **Step 9: Commit**
 
