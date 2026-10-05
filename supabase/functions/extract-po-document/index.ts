@@ -99,10 +99,21 @@ async function callAnthropic(model: string, messages: unknown, deadlineMs: numbe
     return { ok: false, detail: String(e) }
   }
   if (!res.ok) {
-    const errText = await res.text()
+    let errText = ''
+    try {
+      errText = await res.text()
+    } catch (e) {
+      errText = String(e)
+    }
     return { ok: false, detail: `AI API error: ${errText.slice(0, 500)}` }
   }
-  const j = await res.json()
+  // deno-lint-ignore no-explicit-any
+  let j: any
+  try {
+    j = await res.json()
+  } catch (e) {
+    return { ok: false, detail: `AI response unreadable: ${String(e)}` }
+  }
   // The model can return a leading `thinking` content block before its
   // actual text response -- find the first text block by type.
   const block = Array.isArray(j?.content) ? j.content.find((b: { type?: string }) => b?.type === 'text') : null
@@ -182,6 +193,12 @@ Deno.serve(async (req) => {
     },
   }
 
-  const outcome = await runScan(deps, cacheKey)
+  let outcome: Awaited<ReturnType<typeof runScan>>
+  try {
+    outcome = await runScan(deps, cacheKey)
+  } catch (e) {
+    console.error('extract-po-document runScan threw:', String(e))
+    return json({ error: 'ระบบอ่านเอกสารขัดข้อง ลองใหม่ภายหลัง หรือกรอกรายการเองจากเอกสาร', code: 'ai_unavailable' }, 502)
+  }
   return json(outcome.body, outcome.status)
 })
