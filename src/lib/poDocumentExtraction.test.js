@@ -29,7 +29,7 @@ describe('validateExtraction', () => {
     const result = validateExtraction(raw)
     expect(result.ok).toBe(true)
     expect(result.data.line_items).toEqual([
-      { description: 'กรอบมุ้งบานเลื่อน 1.2 พ่นดำ-SMS', quantity: 3, unit: 'เส้น', unit_price: 353 },
+      { description: 'กรอบมุ้งบานเลื่อน 1.2 พ่นดำ-SMS', quantity: 3, unit: 'เส้น', unit_price: 353, discount_pct: 0 },
     ])
     expect(result.data.supplier_name_guess).toBe('YONG CHANG (THAILAND) CO., LTD.')
   })
@@ -69,5 +69,33 @@ describe('validateExtraction', () => {
     expect(result.data.document_date_guess).toBeNull()
     expect(result.data.reference_no_guess).toBeNull()
     expect(result.data.line_items).toEqual([])
+  })
+
+  it('keeps a per-line discount_pct, coercing numeric strings', () => {
+    const result = validateExtraction({
+      line_items: [
+        { description: 'a', quantity: 1, unit: 'ชิ้น', unit_price: 10, discount_pct: 5 },
+        { description: 'b', quantity: 1, unit: 'ชิ้น', unit_price: 10, discount_pct: '12.5' },
+      ],
+    })
+    expect(result.data.line_items.map(it => it.discount_pct)).toEqual([5, 12.5])
+  })
+
+  it('defaults a missing or invalid discount_pct to 0 and clamps to 0..100', () => {
+    const result = validateExtraction({
+      line_items: [
+        { description: 'a', quantity: 1, unit: 'x', unit_price: 10 },
+        { description: 'b', quantity: 1, unit: 'x', unit_price: 10, discount_pct: 'abc' },
+        { description: 'c', quantity: 1, unit: 'x', unit_price: 10, discount_pct: -5 },
+        { description: 'd', quantity: 1, unit: 'x', unit_price: 10, discount_pct: 250 },
+      ],
+    })
+    expect(result.data.line_items.map(it => it.discount_pct)).toEqual([0, 0, 0, 100])
+  })
+
+  it('keeps printed_subtotal when numeric and null otherwise', () => {
+    expect(validateExtraction({ line_items: [], printed_subtotal: 1234.5 }).data.printed_subtotal).toBe(1234.5)
+    expect(validateExtraction({ line_items: [], printed_subtotal: '1,200' }).data.printed_subtotal).toBeNull()
+    expect(validateExtraction({ line_items: [] }).data.printed_subtotal).toBeNull()
   })
 })

@@ -23,6 +23,11 @@ function toFiniteNumber(v) {
   return Number.isFinite(n) ? n : null
 }
 
+function toDiscountPct(v) {
+  const n = toFiniteNumber(v)
+  return n == null ? 0 : Math.min(100, Math.max(0, n))
+}
+
 /** Normalizes and defensively validates the extraction edge function's
  *  JSON response. Never throws -- returns { ok:false, error } for
  *  anything unusable instead, so a bad AI response degrades to "nothing
@@ -47,6 +52,7 @@ export function validateExtraction(raw) {
         quantity: quantity ?? 0,
         unit: typeof it.unit === 'string' ? it.unit : '',
         unit_price: unit_price ?? 0,
+        discount_pct: toDiscountPct(it.discount_pct),
       }
     })
     .filter(Boolean)
@@ -57,6 +63,7 @@ export function validateExtraction(raw) {
       supplier_name_guess: typeof raw.supplier_name_guess === 'string' ? raw.supplier_name_guess : null,
       document_date_guess: typeof raw.document_date_guess === 'string' ? raw.document_date_guess : null,
       reference_no_guess: typeof raw.reference_no_guess === 'string' ? raw.reference_no_guess : null,
+      printed_subtotal: typeof raw.printed_subtotal === 'number' && Number.isFinite(raw.printed_subtotal) ? raw.printed_subtotal : null,
       line_items,
     },
   }
