@@ -109,6 +109,37 @@ until this is fixed.
 4. Deferred: using examples' known units and prices as an extra plausibility
    check, and prefilling manual entry from a supplier's past lines.
 
+## Relationship to the scan-credit purchase design
+
+`2026-09-10-scan-credit-purchase-design.md` (designed, not built as of
+2026-10-05: no `scan_credit*` objects in code or migrations) lets a tenant buy
+rollover scan credits. It replaces `tenant_under_document_scan_limit()` with
+`tenant_scan_access_check()` returning `(allowed, source)` and writes a `-1`
+ledger row when a scan draws from credit. This design does not depend on it and
+is compatible with it, provided the function keeps this fixed order per call
+(either spec may land first):
+
+1. Cache lookup (by tenant + file hash + example ids). A hit returns the stored
+   result immediately and skips every step below: **no quota check, no usage
+   row, no credit draw**. A hit therefore still works when quota is exhausted.
+2. Access check (quota, then credit once that exists). Denied returns
+   `quota_exhausted` (429).
+3. Model pass(es) and validation.
+4. Only if the final result is a success: insert the `document_scan_usage` row
+   (with `model_used`) and, when the access check said `source = 'credit'`,
+   the `-1` ledger row. Rejected reads (`unreadable`), failed or unparseable
+   calls and `too_long` write neither. Today the usage row is inserted right
+   after the Anthropic 200, before the result is parsed, so a rejected
+   document would be counted; this design moves the insert after validation.
+5. Store the result in the cache.
+
+UI hook: the `quota_exhausted` notice leaves a slot for a "ซื้อโควต้าเพิ่ม"
+button. Until credits exist it shows the billing/upgrade link instead.
+
+Neither design changes how a scan is counted (one successful document = one
+scan, whichever model read it), so credits stay integers and the weighted-quota
+idea remains out of scope.
+
 ## Rollout order (each step backward compatible)
 
 0. Fix the 502 / new key (owner).
