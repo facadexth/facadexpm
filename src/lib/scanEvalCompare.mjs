@@ -14,7 +14,8 @@ export function compareExtraction(expected, actual) {
     if (!a) return
     if (near(e.quantity, a.quantity)) q++
     if (near(e.unit_price, a.unit_price)) p++
-    if ((e.unit || '').trim() === (a.unit || '').trim()) u++
+    // A document that prints no unit has an empty expected unit: anything the model answers is fine.
+    if (!(e.unit || '').trim() || (e.unit || '').trim() === (a.unit || '').trim()) u++
   })
   const n = exp.length
   return {
