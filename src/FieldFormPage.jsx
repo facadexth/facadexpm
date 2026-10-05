@@ -20,6 +20,7 @@
 // browser permission prompt has no such manual-placement UI.
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './lib/supabase.js'
+import { removeBlockOrClear } from './lib/rowEditing.js'
 
 const REASON_MESSAGES = {
   not_found: 'ไม่พบลิงก์นี้ — อาจพิมพ์ผิดหรือลิงก์ถูกลบไปแล้ว',
@@ -201,7 +202,7 @@ export default function FieldFormPage({ token }) {
 
   const itemsInCategory = (categoryId) => (state.items || []).filter(it => it.categoryId === categoryId)
   const addLine = () => setLines(ls => [...ls, newLine()])
-  const removeLine = (id) => setLines(ls => (ls.length > 1 ? ls.filter(l => l.id !== id) : ls))
+  const removeLine = (id) => setLines(ls => removeBlockOrClear(ls, ls.findIndex(l => l.id === id), 1, newLine))
   const updateLine = (id, patch) => setLines(ls => ls.map(l => (l.id === id ? { ...l, ...patch } : l)))
 
   const submit = async (e) => {
@@ -291,9 +292,12 @@ export default function FieldFormPage({ token }) {
               const unit = selectedItem?.unit || (isManual ? line.manualUnit : '')
               return (
                 <div key={line.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, display: 'grid', gap: 10, position: 'relative' }}>
-                  {lines.length > 1 && (
+                  {lines.length > 1 ? (
                     <button type="button" onClick={() => removeLine(line.id)} aria-label="ลบรายการนี้"
                       style={{ position: 'absolute', top: 8, right: 8, background: 'none', border: 'none', color: 'var(--text3)', fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: 4 }}>✕</button>
+                  ) : (
+                    <button type="button" onClick={() => removeLine(line.id)}
+                      style={{ position: 'absolute', top: 8, right: 8, background: 'none', border: 'none', color: 'var(--text3)', fontSize: 12, cursor: 'pointer', lineHeight: 1, padding: 4 }}>ลบข้อมูลทั้งหมด</button>
                   )}
                   <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)' }}>รายการที่ {idx + 1}</div>
                   <div>
