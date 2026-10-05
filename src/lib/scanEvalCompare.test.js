@@ -8,6 +8,10 @@ describe('compareExtraction', () => {
     const r = compareExtraction({ line_items: [L(), L({ description: 'b' })] }, { line_items: [L(), L({ description: 'b' })] })
     expect(r).toMatchObject({ lineCountMatches: true, quantityAcc: 1, unitPriceAcc: 1, unitAcc: 1, accuracy: 1 })
   })
+  it('does not score the unit when the document prints none', () => {
+    const r = compareExtraction({ line_items: [L({ unit: '' })] }, { line_items: [L({ unit: 'ชิ้น' })] })
+    expect(r.unitAcc).toBe(1)
+  })
   it('counts a wrong price and a wrong unit separately', () => {
     const r = compareExtraction({ line_items: [L(), L()] }, { line_items: [L({ unit_price: 90 }), L({ unit: 'ชิ้น' })] })
     expect(r.unitPriceAcc).toBe(0.5)

@@ -3,7 +3,8 @@
 //   ANTHROPIC_API_KEY=... GEMINI_API_KEY=... \
 //   npx --yes tsx scripts/eval-po-extract.mjs --dir ./eval-docs \
 //     --providers anthropic:claude-haiku-4-5-20251001,anthropic:claude-sonnet-5,gemini:<model-id> \
-//     [--dry-run] [--examples] [--out eval-report.csv]
+//     [--dry-run] [--examples] [--out eval-report.csv] [--raw-dir ./eval-raw]
+// --raw-dir saves each model's raw answer as <dir>/<provider>__<doc>.txt so a low score can be inspected.
 // <dir> holds documents (.pdf/.jpg/.jpeg/.png) each with a sibling
 // <name>.expected.json in the extraction shape (the corrected answer).
 // Use only documents the owner supplies or FacadeX's own tenant -- never
@@ -18,7 +19,7 @@
 // (examples = number of example turns used for the row, 0 without --examples).
 // --dry-run skips every network call and answers with the expected JSON,
 // to prove the pipeline end to end (expect accuracy 1.0 everywhere).
-import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join, extname, basename, resolve, sep } from 'node:path'
 import { SYSTEM_PROMPT } from '../supabase/functions/_shared/po-extract-prompt.ts'
 import { classifyModelOutput } from '../supabase/functions/_shared/scan-logic.ts'
@@ -151,6 +152,10 @@ for (const spec of providers) {
     } catch (e) {
       rows.push({ provider: spec, doc: f, kind: 'call_failed', accuracy: 0, inputTokens: 0, outputTokens: 0, examples: exampleTurns.length, ms: Date.now() - t0, note: String(e).slice(0, 120) })
       continue
+    }
+    if (args['raw-dir'] && args['raw-dir'] !== true) {
+      mkdirSync(args['raw-dir'], { recursive: true })
+      writeFileSync(join(args['raw-dir'], `${spec.replace(/[^a-z0-9.-]+/gi, '_')}__${basename(f, extname(f))}.txt`), out.text)
     }
     const c = classifyModelOutput(out.text)
     const actual = c.kind === 'ok' || c.kind === 'check_failed' ? c.result : { line_items: [] }
