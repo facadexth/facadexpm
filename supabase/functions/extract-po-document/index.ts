@@ -2,12 +2,15 @@
 // ============================================================
 // extract-po-document -- stateless AI vision extraction for the PO
 // document-scan feature (see
-// docs/superpowers/specs/2026-09-10-po-document-scan-extraction-design.md).
-// Takes one document image (+ optional per-supplier calibration
-// examples, as prior verified image+JSON pairs) and returns a
-// best-effort structured guess at supplier/date/reference/line items.
-// Has no knowledge of suppliers, POs, or tenants -- callers own all of
-// that; this function only talks to Claude's API.
+// docs/superpowers/specs/2026-09-10-po-document-scan-extraction-design.md
+// and docs/superpowers/specs/2026-10-05-po-extract-tiered-fallback-design.md).
+// Takes one document image/PDF (+ optional per-supplier calibration
+// examples, as prior verified image+JSON pairs) and returns a best-effort
+// structured guess at supplier/date/reference/line items.
+//
+// This file is only the adapter: auth gates, building the Anthropic request,
+// and wiring the Supabase calls into runScan (_shared/po-scan-flow.ts), which
+// owns the order of steps (cache -> quota -> cheap/strong model -> usage).
 //
 // Auth: bound to the caller's own JWT (same pattern as
 // omise-create-charge), gated via the existing is_admin_or_owner() and
@@ -18,12 +21,20 @@
 // module-less tenant would get `{ data: [], error: null }`, not an
 // error, and slip straight through. This gate exists because every
 // call spends real ANTHROPIC_API_KEY money.
+// ============================================================
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { SYSTEM_PROMPT, PROMPT_VERSION } from '../_shared/po-extract-prompt.ts'
+import { scanCacheKey, type Extraction } from '../_shared/scan-logic.ts'
+import { runScan, type ModelCall, type ScanDeps } from '../_shared/po-scan-flow.ts'
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
-const MODEL = 'claude-sonnet-5'
+const STRONG_MODEL = 'claude-sonnet-5'
+const CHEAP_MODEL = 'claude-haiku-4-5-20251001'
+// Cheap-first stays off until the owner sets this secret to "true" after the
+// offline evaluation (plan Task 11) shows it is accurate enough.
+const CHEAP_FIRST = Deno.env.get('PO_SCAN_CHEAP_FIRST') === 'true'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -32,25 +43,6 @@ const corsHeaders = {
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 }
-
-const SYSTEM_PROMPT = `You read Thai supplier delivery notes, provisional invoices, and quotations (often dot-matrix printed) and extract their line-item table plus header info.
-
-Respond with ONLY a JSON object, no markdown fences, no commentary, matching exactly this shape:
-{
-  "supplier_name_guess": string or null,
-  "document_date_guess": string or null (ISO YYYY-MM-DD, best effort from any date printed on the document),
-  "reference_no_guess": string or null (invoice/document number printed on it, e.g. "IV6909/08046"),
-  "line_items": [
-    { "description": string, "quantity": number, "unit": string, "unit_price": number, "discount_pct": number }
-  ]
-}
-
-Rules:
-- unit_price is the price per single unit AS PRINTED, before applying that row's own discount_pct (if any) and before VAT -- not the line's total amount, and not a value you've already discounted in your head.
-- discount_pct is that line's own discount percentage, read directly from a discount column/notation next to THAT row only (e.g. "5%", "ลด 5%"). Many documents discount only some rows -- read each row independently; a discount printed next to one item is never evidence that other items are also discounted. If a row has no discount printed at all, discount_pct is 0, not null.
-- Keep Thai text as printed in "unit" (e.g. "เส้น", "ชิ้น", "ชุด", "แผ่น").
-- If a field cannot be determined, use null (for header fields) rather than guessing.
-- Include every goods/materials line; skip signature lines, totals, VAT rows, and boilerplate footer text.`
 
 type ExampleInput = { image_base64: string; mime_type: string; extracted: Record<string, unknown> }
 
@@ -86,14 +78,41 @@ function buildMessages(imageBase64: string, mimeType: string, examples: ExampleI
   return messages
 }
 
-function parseModelJson(text: string): Record<string, unknown> | null {
-  // Models sometimes wrap JSON in ```json fences despite instructions --
-  // strip those before parsing rather than failing on well-formed output.
-  const cleaned = text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+async function callAnthropic(model: string, messages: unknown, deadlineMs: number): Promise<ModelCall> {
+  let res: Response
   try {
-    return JSON.parse(cleaned)
-  } catch {
-    return null
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      signal: AbortSignal.timeout(Math.max(1000, deadlineMs - Date.now())),
+      // 4096 was too low for a real document with a long item list (the
+      // answer got cut off mid-line-item). 8192 is the highest safe ceiling
+      // without an extended-output beta header; if even this is not enough
+      // runScan answers `too_long` from stop_reason === 'max_tokens'.
+      body: JSON.stringify({ model, max_tokens: 8192, system: SYSTEM_PROMPT, messages }),
+    })
+  } catch (e) {
+    return { ok: false, detail: String(e) }
+  }
+  if (!res.ok) {
+    const errText = await res.text()
+    return { ok: false, detail: `AI API error: ${errText.slice(0, 500)}` }
+  }
+  const j = await res.json()
+  // The model can return a leading `thinking` content block before its
+  // actual text response -- find the first text block by type.
+  const block = Array.isArray(j?.content) ? j.content.find((b: { type?: string }) => b?.type === 'text') : null
+  if (typeof block?.text !== 'string') return { ok: false, detail: 'AI ไม่ได้ตอบกลับเป็นข้อความ' }
+  return {
+    ok: true,
+    text: block.text,
+    stopReason: j?.stop_reason ?? null,
+    inputTokens: j?.usage?.input_tokens ?? null,
+    outputTokens: j?.usage?.output_tokens ?? null,
   }
 }
 
@@ -114,13 +133,8 @@ Deno.serve(async (req) => {
   if (!image_base64 || typeof image_base64 !== 'string') return json({ error: 'image_base64 required' }, 400)
   if (!mime_type || typeof mime_type !== 'string') return json({ error: 'mime_type required' }, 400)
 
-  // Bound to the caller's own JWT. NOTE: a plain SELECT against
-  // purchase_orders is NOT a valid gate here -- RLS USING clauses filter
-  // rows silently (no error) rather than rejecting the query, so a
-  // non-admin or a tenant without the purchase_orders module would get
-  // back `{ data: [], error: null }` and sail straight through. Call the
-  // RLS helper functions directly instead: they return a real boolean
-  // (COALESCE(..., false)), so "not authorized" is unambiguous.
+  // Bound to the caller's own JWT (see the header comment for why the RLS
+  // helper functions are called directly instead of a plain SELECT).
   const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: authHeader } },
   })
@@ -130,86 +144,44 @@ Deno.serve(async (req) => {
   const { data: hasAccess, error: moduleCheckError } = await userClient.rpc('has_module_access', { p_module_key: 'purchase_orders' })
   if (moduleCheckError || !hasAccess) return json({ error: 'Unauthorized' }, 403)
 
-  // Monthly quota, tier-configurable (packages.max_document_scans_per_month,
-  // NULL = unlimited) -- checked BEFORE the Anthropic call since that's the
-  // step that actually costs money; a tenant over quota never reaches it.
-  const { data: underQuota, error: quotaCheckError } = await userClient.rpc('tenant_under_document_scan_limit')
-  if (quotaCheckError) return json({ error: 'ตรวจสอบโควต้าไม่สำเร็จ' }, 500)
-  if (!underQuota) return json({ error: 'ใช้โควต้าการสแกนเอกสารในเดือนนี้ครบแล้ว กรุณาอัพเกรดแพ็กเกจหรือรอรอบเดือนถัดไป' }, 429)
+  const exampleList = Array.isArray(examples) ? examples : []
+  const messages = buildMessages(image_base64, mime_type, exampleList)
+  const cacheKey = await scanCacheKey({ version: PROMPT_VERSION, mimeType: mime_type, imageBase64: image_base64, examples: exampleList })
 
-  const messages = buildMessages(image_base64, mime_type, Array.isArray(examples) ? examples : [])
-
-  let anthropicRes: Response
-  try {
-    anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        // 4096 was too low for a real document with a long item list --
-        // the model's JSON response got cut off mid-line-item, producing
-        // truncated (invalid) JSON that failed to parse below. Reported
-        // live as "cannot read json" on a 55-page, 9.8MB flattened
-        // quotation. 8192 is the highest safe ceiling without opting into
-        // an extended-output beta header this function doesn't send --
-        // still not guaranteed enough for a document THAT large (this
-        // feature is built for single delivery notes/invoices, not
-        // multi-page combined submittals); see the stop_reason check
-        // below for what happens if even this isn't enough.
-        max_tokens: 8192,
-        system: SYSTEM_PROMPT,
-        messages,
-      }),
-    })
-  } catch (e) {
-    return json({ error: `เรียก AI ไม่สำเร็จ: ${String(e)}` }, 502)
+  const deps: ScanDeps = {
+    cheapFirst: CHEAP_FIRST,
+    cheapModel: CHEAP_MODEL,
+    strongModel: STRONG_MODEL,
+    now: () => Date.now(),
+    lookupCache: async (key) => {
+      const { data, error } = await userClient.from('scan_result_cache').select('result').eq('cache_key', key).maybeSingle()
+      if (error) throw error
+      return (data?.result as Extraction | undefined) ?? null
+    },
+    storeCache: async (key, result) => {
+      // onConflict names the table's real unique constraint columns.
+      const { error } = await userClient.from('scan_result_cache').upsert({ cache_key: key, result }, { onConflict: 'tenant_id,cache_key', ignoreDuplicates: true })
+      if (error) console.error('scan_result_cache upsert failed:', error.message)
+    },
+    // Monthly quota, tier-configurable (packages.max_document_scans_per_month,
+    // NULL = unlimited). Checked BEFORE any model call: that is the step that
+    // costs money, and a tenant over quota never reaches it.
+    checkQuota: async () => {
+      const { data, error } = await userClient.rpc('tenant_under_document_scan_limit')
+      if (error) return { ok: false }
+      return { ok: true, allowed: !!data }
+    },
+    callModel: (model, deadlineMs) => callAnthropic(model, messages, deadlineMs),
+    // Counts against the monthly quota only for a result that is returned to
+    // the user; real token counts come straight from Anthropic's `usage`.
+    recordUsage: async ({ model, inputTokens, outputTokens }) => {
+      const { error } = await userClient.from('document_scan_usage').insert({
+        mime_type, input_tokens: inputTokens, output_tokens: outputTokens, model_used: model,
+      })
+      if (error) console.error('document_scan_usage insert failed:', error.message)
+    },
   }
 
-  if (!anthropicRes.ok) {
-    const errText = await anthropicRes.text()
-    return json({ error: `AI API error: ${errText.slice(0, 500)}` }, 502)
-  }
-
-  const anthropicJson = await anthropicRes.json()
-
-  // Counts against the monthly quota here, not earlier -- a 200 from
-  // Anthropic means the call was actually processed (and billed) even if
-  // parsing its response below fails; a network error or a non-2xx
-  // response above never reaches this line, so it's never charged against
-  // quota. Real input/output token counts (not an estimate) come straight
-  // off Anthropic's own `usage` field -- lets "PDF vs JPG cost" be
-  // answered from actual data instead of a formula guess. Logged
-  // best-effort: a failed insert here shouldn't block the extraction
-  // result the caller is waiting on.
-  const { error: usageLogError } = await userClient.from('document_scan_usage').insert({
-    mime_type, input_tokens: anthropicJson?.usage?.input_tokens ?? null, output_tokens: anthropicJson?.usage?.output_tokens ?? null,
-  })
-  if (usageLogError) console.error('document_scan_usage insert failed:', usageLogError.message)
-  // The model can return a leading `thinking` content block before its
-  // actual text response (observed live with claude-sonnet-5) -- find the
-  // first text block by type rather than assuming content[0] is it.
-  const textBlock = Array.isArray(anthropicJson?.content)
-    ? anthropicJson.content.find((b: { type?: string }) => b?.type === 'text')
-    : null
-  const text = textBlock?.text
-  if (typeof text !== 'string') return json({ error: 'AI ไม่ได้ตอบกลับเป็นข้อความ' }, 502)
-
-  const parsed = parseModelJson(text)
-  if (!parsed) {
-    // Distinguish "the model got cut off mid-answer" (stop_reason ===
-    // 'max_tokens' -- the document has too many line items to fit in one
-    // response) from a genuine malformed-output case, since the two need
-    // completely different user actions (split the document / enter it
-    // manually, vs. just retry).
-    if (anthropicJson?.stop_reason === 'max_tokens') {
-      return json({ error: 'เอกสารนี้มีรายการเยอะเกินไป AI ตอบไม่ทันจบภายในขีดจำกัด กรุณาสแกนทีละหน้า/ทีละส่วนที่มีตารางรายการ หรือกรอกใบสั่งซื้อด้วยตนเอง' }, 502)
-    }
-    return json({ error: 'อ่านผลลัพธ์จาก AI ไม่สำเร็จ (ไม่ใช่ JSON ที่ถูกต้อง)' }, 502)
-  }
-
-  return json(parsed)
+  const outcome = await runScan(deps, cacheKey)
+  return json(outcome.body, outcome.status)
 })
