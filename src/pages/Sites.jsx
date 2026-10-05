@@ -469,7 +469,7 @@ function SiteCompleteModal({ site, onClose, onDone }) {
             {rows.map(r => (
               <div key={r.inventory_item_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 13 }}>{r.name} (มี {fmt(r.quantity_on_hand)} {r.base_unit})</span>
-                <input className="input input-sm" style={{ width: 100 }} type="number" min="0" step="0.0001" max={r.quantity_on_hand}
+                <input className="input input-sm num-spin" style={{ width: 100 }} type="number" min="0" step="any" max={r.quantity_on_hand}
                   value={r.leftover} onChange={e => setLeftover(r.inventory_item_id, e.target.value)} />
               </div>
             ))}

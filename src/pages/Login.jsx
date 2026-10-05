@@ -90,7 +90,7 @@ export default function Login() {
             </button>
           </div>
         ) : (
-          <form key={mode} onSubmit={mode === 'login' ? handleLogin : handleSignup} style={{ display: 'grid', gap: 16 }}>
+          <form data-enter-submit key={mode} onSubmit={mode === 'login' ? handleLogin : handleSignup} style={{ display: 'grid', gap: 16 }}>
             {mode === 'signup' && (
               <div>
                 <label className="label">ชื่อบริษัท</label>

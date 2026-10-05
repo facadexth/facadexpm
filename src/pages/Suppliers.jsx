@@ -257,7 +257,7 @@ function SupplierDocumentTrainingModal({ supplier, onClose }) {
               {pending.lineItems.map((it, i) => (
                 <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 100px', gap: 6 }}>
                   <input className="input input-sm" value={it.description} onChange={e => setLineItem(i, 'description', e.target.value)} />
-                  <input className="input input-sm" type="number" value={it.quantity} onChange={e => setLineItem(i, 'quantity', parseFloat(e.target.value) || 0)} />
+                  <input className="input input-sm num-spin" type="number" step="any" value={it.quantity} onChange={e => setLineItem(i, 'quantity', parseFloat(e.target.value) || 0)} />
                   <input className="input input-sm" value={it.unit} onChange={e => setLineItem(i, 'unit', e.target.value)} />
                   <input className="input input-sm" type="number" value={it.unit_price} onChange={e => setLineItem(i, 'unit_price', parseFloat(e.target.value) || 0)} />
                 </div>

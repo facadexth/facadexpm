@@ -175,7 +175,7 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
         </div>
         <div>
           <label className="label">จำนวน (set)</label>
-          <input className="input" disabled={!canEdit} type="number" min="1" value={form.quantity} onChange={e => set('quantity', e.target.value)} />
+          <input className="input num-spin" disabled={!canEdit} type="number" step="any" min="1" value={form.quantity} onChange={e => set('quantity', e.target.value)} />
         </div>
         <div>
           <label className="label">วัสดุอุดช่อง</label>

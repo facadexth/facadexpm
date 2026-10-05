@@ -357,7 +357,7 @@ export default function FieldFormPage({ token }) {
                   </div>
                   <div>
                     <label className="label">จำนวน {unit ? `(${unit})` : ''} *</label>
-                    <input className="input" type="number" required min="0" step="any" value={line.quantity} onChange={e => updateLine(line.id, { quantity: e.target.value })} />
+                    <input className="input num-spin" type="number" required min="0" step="any" value={line.quantity} onChange={e => updateLine(line.id, { quantity: e.target.value })} />
                   </div>
                 </div>
               )

@@ -195,7 +195,7 @@ function BalanceRow({ item, balance, multiSite, isFirstForItem, centralSite, can
       </td>
       <td className="font-mono">
         {editing ? (
-          <input className="input input-sm" style={{ width: 90 }} type="number" min="0" step="0.0001" value={qtyDraft} onChange={e => setQtyDraft(e.target.value)} />
+          <input className="input input-sm num-spin" style={{ width: 90 }} type="number" min="0" step="any" value={qtyDraft} onChange={e => setQtyDraft(e.target.value)} />
         ) : `${fmt(quantity)} ${item.base_unit}`}
       </td>
       <td className="font-mono">

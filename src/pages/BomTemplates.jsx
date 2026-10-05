@@ -294,7 +294,7 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
               <select className="input input-sm" disabled={!canEdit} value={r.quantity_basis} onChange={e => setComponent(i, 'quantity_basis', e.target.value)}>
                 {Object.entries(QUANTITY_BASIS_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
               </select>
-              <input className="input input-sm" disabled={!canEdit} type="number" min="0" placeholder="จำนวน" value={r.quantity_value} onChange={e => setComponent(i, 'quantity_value', e.target.value)} />
+              <input className="input input-sm num-spin" disabled={!canEdit} type="number" step="any" min="0" placeholder="จำนวน" value={r.quantity_value} onChange={e => setComponent(i, 'quantity_value', e.target.value)} />
               {canEdit && <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => removeComponent(i)}>✕</button>}
             </div>
           ))}
@@ -312,7 +312,7 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
               <select className="input input-sm" disabled={!canEdit} value={h.quantity_basis} onChange={e => setHardware(i, 'quantity_basis', e.target.value)}>
                 {Object.entries(HARDWARE_BASIS_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
               </select>
-              <input className="input input-sm" disabled={!canEdit} type="number" min="0" placeholder="จำนวน" value={h.quantity_value} onChange={e => setHardware(i, 'quantity_value', e.target.value)} />
+              <input className="input input-sm num-spin" disabled={!canEdit} type="number" step="any" min="0" placeholder="จำนวน" value={h.quantity_value} onChange={e => setHardware(i, 'quantity_value', e.target.value)} />
               {canEdit && <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => removeHardware(i)}>✕</button>}
             </div>
           ))}
