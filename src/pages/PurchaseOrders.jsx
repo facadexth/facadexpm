@@ -642,7 +642,7 @@ function SwapTaxInvoiceModal({ po, onClose, onSwapped }) {
               {scanError && <ScanNotice code={scanCode} message={scanError} />}
               {scanFile && <ScanDocPreview file={scanFile} />}
             </div>
-            {scanError && !extracted && (
+            {(scanError || (extracted && !matches)) && (
               <div style={{ display: 'grid', gap: 8, border: '1px dashed var(--border)', borderRadius: 8, padding: 10 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700 }}>กรอกเองจากใบกำกับภาษี</div>
                 <input className="input" placeholder="เลขที่ใบกำกับภาษี" value={manualRef} onChange={e => setManualRef(e.target.value)} />
@@ -834,7 +834,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       // stored, and a failure here must never undo or hide the saved PO.
       let exampleError = null
       if (opts?.afterSave) {
-        try { await opts.afterSave() } catch (e) { exampleError = e.message }
+        try { await opts.afterSave() } catch (e) { exampleError = e?.message || 'ไม่ทราบสาเหตุ' }
       }
       clearDraft(ADD_FORM_OPEN_KEY)
       setShowAdd(false); setEditRow(null); refetch()
