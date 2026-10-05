@@ -36,6 +36,7 @@ import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import PendingMark from '../components/PendingMark.jsx'
+import { removeBlockOrClear } from '../lib/rowEditing.js'
 import { isPoDraft } from '../lib/pendingRules.js'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
@@ -91,7 +92,7 @@ const profileOpts = (profiles) => (profiles || []).map(p => ({
 function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, aluminumProfiles, units, onUnitAdded, categories, defaultCategoryId }) {
   const set = (i, k, v) => onChange(items.map((it, idx) => idx === i ? { ...it, [k]: v } : it))
   const add = () => onChange([...items, { ...EMPTY_ITEM }])
-  const remove = (i) => onChange(items.length > 1 ? items.filter((_, idx) => idx !== i) : items)
+  const remove = (i) => onChange(removeBlockOrClear(items, i, 1, () => ({ ...EMPTY_ITEM })))
   const grandTotal = items.reduce((sum, it) => sum + lineTotal(it), 0)
   const selectProfile = (i, profileId) => {
     const profile = (aluminumProfiles || []).find(p => p.id === profileId)
@@ -104,6 +105,14 @@ function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, 
     <div>
       <label className="label">รายการสินค้า ★</label>
       <div style={{ display: 'grid', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 150px 100px 70px 32px', gap: 6, fontSize: 11.5, color: 'var(--text3)', fontWeight: 600 }}>
+          <span>รายละเอียดสินค้า</span>
+          <span>จำนวน</span>
+          <span>หน่วย</span>
+          <span>ราคา/หน่วย</span>
+          <span>ลด %</span>
+          <span />
+        </div>
         {items.map((it, i) => (
           <div key={i} style={{ display: 'grid', gap: 4 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 150px 100px 70px 32px', gap: 6, alignItems: 'center' }}>
@@ -116,8 +125,15 @@ function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, 
                 value={it.unit_price} onChange={e => set(i, 'unit_price', e.target.value)} />
               <input className="input input-sm" type="number" min="0" max="100" step="0.01" placeholder="ลด%" title="ส่วนลดเฉพาะรายการนี้ (%)"
                 value={it.discount_pct} onChange={e => set(i, 'discount_pct', e.target.value)} />
-              <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
+              {items.length === 1
+                ? <span />
+                : <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)}>✕</button>}
             </div>
+            {items.length === 1 && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)}>ลบข้อมูลทั้งหมด</button>
+            </div>
+            )}
             <div style={{ marginLeft: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ color: 'var(--text3)', flexShrink: 0 }}>📦 ผูกกับสต็อก:</span>
               <div style={{ flex: 1, maxWidth: 340 }}>

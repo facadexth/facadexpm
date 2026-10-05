@@ -32,6 +32,7 @@ import { isQuotationExpiring } from '../lib/pendingRules.js'
 import UnitSelect from '../components/UnitSelect.jsx'
 import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX, ScaleToFit } from '../hooks/usePaginatedDocument.jsx'
 import { resolveDocumentStyle } from '../lib/documentStyle.js'
+import { removeBlockOrClear } from '../lib/rowEditing.js'
 
 const clientOpts = (clients) => (clients || []).map(c => ({
   value: c.id, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
@@ -179,9 +180,7 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
   // description behind, where it would silently re-attach (by position) to
   // whatever item ended up above it instead of disappearing with its own item.
   const remove = (i) => {
-    const len = blockLenAt(i)
-    if (items.length <= len) return
-    onChange([...items.slice(0, i), ...items.slice(i + len)])
+    onChange(removeBlockOrClear(items, i, blockLenAt(i), () => ({ ...EMPTY_ITEM })))
   }
   // Shows the description field for item i (inserts its item_description
   // row right after it) -- the ✕ on that row is the "hide" side of this,
@@ -313,7 +312,9 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
                 placeholder="📝 ข้อมูลเพิ่มเติม (ไม่มีราคา — เช่น หมายเหตุ, หัวข้อคั่น — แยกอิสระ ไม่ผูกกับรายการไหน)"
                 style={{ fontStyle: 'italic', resize: 'vertical', background: 'var(--bg3)', border: '1px dashed var(--border)' }}
                 value={it.description} onChange={e => set(i, 'description', e.target.value)} />
-              <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
+              {items.length <= blockLenAt(i)
+                ? <span />
+                : <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)}>✕</button>}
             </div>
           ) : it.item_type === 'item_description' ? (
             // Grid columns ตรงกับแถว item เป๊ะ (itemGridCols ตัวเดียวกัน) เพื่อให้
@@ -340,7 +341,7 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
                   ไม่มีอะไรจะใส่ที่นี่ (แถวนี้ตัวเองคือคำอธิบายอยู่แล้ว) แต่ต้อง
                   เว้น span ไว้ 2 อัน ไม่งั้นคอลัมน์จะเลื่อนไม่ตรงกับแถว item */}
               <span /><span />
-              <button type="button" className="btn btn-sm btn-ghost" title="ซ่อนคำอธิบายนี้" onClick={() => remove(i)} disabled={items.length === 1}>✕</button>
+              <button type="button" className="btn btn-sm btn-ghost" title="ซ่อนคำอธิบายนี้" onClick={() => remove(i)}>✕</button>
             </div>
           ) : (
             <div key={i} style={{ display: 'grid', gridTemplateColumns: itemGridCols, gap: 6, alignItems: 'center' }}>
@@ -370,7 +371,14 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
               {!it.catalog_item_id && it.description.trim()
                 ? <button type="button" className="btn btn-sm btn-ghost" title="บันทึกเป็นรายการสินค้าใหม่" onClick={() => saveToCatalog(i)}>💾</button>
                 : <span title={it.catalog_item_id ? 'อยู่ในรายการสินค้าแล้ว' : undefined} style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>{it.catalog_item_id ? '📦' : ''}</span>}
-              <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)} disabled={items.length <= blockLenAt(i)}>✕</button>
+              {items.length <= blockLenAt(i)
+                ? <span />
+                : <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)}>✕</button>}
+            </div>
+          )}
+          {it.item_type !== 'item_description' && items.length <= blockLenAt(i) && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)}>ลบข้อมูลทั้งหมด</button>
             </div>
           )}
           {catalogPickerAt === i && (
