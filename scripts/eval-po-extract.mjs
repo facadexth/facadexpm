@@ -13,10 +13,13 @@
 // "examples": ["acme-1.jpg", ...] naming files in <dir>/examples/, each with a
 // sibling <ex-name>.expected.json (its verified answer). At most 3 are used,
 // in the listed order. Without --examples the field is ignored.
+// Names must be bare file names (no paths); all problems are reported up front.
+// CSV columns: provider,doc,kind,accuracy,input_tokens,output_tokens,ms,note,examples
+// (examples = number of example turns used for the row, 0 without --examples).
 // --dry-run skips every network call and answers with the expected JSON,
 // to prove the pipeline end to end (expect accuracy 1.0 everywhere).
 import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs'
-import { join, extname, basename } from 'node:path'
+import { join, extname, basename, resolve, sep } from 'node:path'
 import { SYSTEM_PROMPT } from '../supabase/functions/_shared/po-extract-prompt.ts'
 import { classifyModelOutput } from '../supabase/functions/_shared/scan-logic.ts'
 import { compareExtraction, summariseProvider, pickExampleFields } from '../src/lib/scanEvalCompare.mjs'
@@ -87,30 +90,42 @@ const files = readdirSync(dir).filter(f => MIME[extname(f).toLowerCase()])
 // Resolve and validate example files up front (also in --dry-run).
 const exampleNames = {}
 if (useExamples) {
-  const missing = []
-  let docsWith = 0, turns = 0
+  const problems = []
+  const exDir = resolve(dir, 'examples')
+  let docsWith = 0, turns = 0, overLimit = 0
+  const parses = p => { try { JSON.parse(readFileSync(p, 'utf8')); return true } catch { return false } }
   for (const f of files) {
     const base = basename(f, extname(f))
     const expPath = join(dir, `${base}.expected.json`)
     if (!existsSync(expPath)) continue // missing doc expected.json fails later as today
     let list = []
-    try { list = JSON.parse(readFileSync(expPath, 'utf8')).examples ?? [] } catch { continue }
-    if (!Array.isArray(list)) { missing.push(`${base}.expected.json: "examples" must be an array`); continue }
-    if (list.length > MAX_EXAMPLES) console.warn(`warning: ${f} lists ${list.length} examples; production sends at most ${MAX_EXAMPLES}, using the first ${MAX_EXAMPLES}`)
+    try { list = JSON.parse(readFileSync(expPath, 'utf8')).examples ?? [] } catch { problems.push(`${base}.expected.json: malformed JSON`); continue }
+    if (!Array.isArray(list)) { problems.push(`${base}.expected.json: "examples" must be an array`); continue }
+    if (list.length > MAX_EXAMPLES) overLimit++
     const used = list.slice(0, MAX_EXAMPLES)
+    const ok = []
     for (const ex of used) {
+      if (typeof ex !== 'string') { problems.push(`${f}: example entry ${JSON.stringify(ex)} is not a string`); continue }
+      if (!ex || ex !== basename(ex) || /[\\/]/.test(ex) || ex.startsWith('.') || !resolve(exDir, ex).startsWith(exDir + sep)) {
+        problems.push(`${f}: example name ${JSON.stringify(ex)} is not a bare file name (path traversal / separators are not allowed)`)
+        continue
+      }
+      ok.push(ex)
       const exBase = basename(ex, extname(ex))
-      if (!MIME[extname(ex).toLowerCase()]) missing.push(`${f}: example ${ex} has an unsupported extension`)
-      else if (!existsSync(join(dir, 'examples', ex))) missing.push(`examples/${ex} (listed by ${f})`)
-      if (!existsSync(join(dir, 'examples', `${exBase}.expected.json`))) missing.push(`examples/${exBase}.expected.json (listed by ${f})`)
+      const exExp = join(exDir, `${exBase}.expected.json`)
+      if (!MIME[extname(ex).toLowerCase()]) problems.push(`${f}: example ${ex} has an unsupported extension`)
+      else if (!existsSync(join(exDir, ex))) problems.push(`examples/${ex} missing (listed by ${f})`)
+      if (!existsSync(exExp)) problems.push(`examples/${exBase}.expected.json missing (listed by ${f})`)
+      else if (!parses(exExp)) problems.push(`examples/${exBase}.expected.json: malformed JSON (listed by ${f})`)
     }
-    exampleNames[f] = used
-    if (used.length) { docsWith++; turns += used.length }
+    exampleNames[f] = ok
+    if (ok.length) { docsWith++; turns += ok.length }
   }
-  if (missing.length) {
-    console.error('missing or invalid example files:\n  ' + missing.join('\n  '))
+  if (problems.length) {
+    console.error('missing or invalid example files:\n  ' + problems.join('\n  '))
     process.exit(1)
   }
+  if (overLimit) console.warn(`warning: ${overLimit} doc(s) list more than ${MAX_EXAMPLES} examples; production sends at most ${MAX_EXAMPLES}, using the first ${MAX_EXAMPLES} of each`)
   console.log(`examples: ${docsWith} docs use examples (${turns} example turns in total)`)
 }
 
@@ -144,8 +159,8 @@ for (const spec of providers) {
 }
 
 const csvCell = v => '"' + String(v ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ') + '"'
-const csv = ['provider,doc,kind,accuracy,input_tokens,output_tokens,examples,ms,note',
-  ...rows.map(r => [r.provider, r.doc, r.kind, r.accuracy.toFixed(3), r.inputTokens, r.outputTokens, r.examples, r.ms, r.note].map(csvCell).join(','))].join('\n')
+const csv = ['provider,doc,kind,accuracy,input_tokens,output_tokens,ms,note,examples',
+  ...rows.map(r => [r.provider, r.doc, r.kind, r.accuracy.toFixed(3), r.inputTokens, r.outputTokens, r.ms, r.note, r.examples].map(csvCell).join(','))].join('\n')
 writeFileSync(args.out && args.out !== true ? args.out : 'eval-report.csv', csv)
 
 console.log('\nprovider'.padEnd(46), 'docs  meanAcc  checkPass  inTok   outTok')
