@@ -48,7 +48,7 @@ export default function ChangePassword({ onClose }) {
           </button>
         </div>
       ) : (
-        <form onSubmit={handleSave} autoComplete="off">
+        <form data-enter-submit onSubmit={handleSave} autoComplete="off">
           <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
             {error && (
               <div style={{

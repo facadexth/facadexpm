@@ -197,7 +197,7 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
                 {showAdvanced ? (
                   <span style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic', textAlign: 'right' }}>{fmt(drawQty(l.units))} {l.unit}</span>
                 ) : (
-                  <input type="number" min="0" max={remaining} step="any" className="input input-sm"
+                  <input type="number" min="0" max={remaining} step="any" className="input input-sm num-spin"
                     style={{ textAlign: 'right' }}
                     value={qtyDrafts[l.quotationItemId] ?? String(drawQty(l.units))}
                     disabled={l.checked}

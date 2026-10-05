@@ -118,7 +118,7 @@ function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 150px 100px 70px 32px', gap: 6, alignItems: 'center' }}>
               <input className="input input-sm" placeholder="รายละเอียดสินค้า" required
                 value={it.description} onChange={e => set(i, 'description', e.target.value)} />
-              <input className="input input-sm" type="number" min="0" step="0.01" placeholder="จำนวน"
+              <input className="input input-sm num-spin" type="number" min="0" step="any" placeholder="จำนวน"
                 value={it.quantity} onChange={e => set(i, 'quantity', e.target.value)} />
               <UnitSelect value={it.unit} onChange={v => set(i, 'unit', v)} units={units} onUnitAdded={onUnitAdded} />
               <input className="input input-sm" type="number" min="0" step="0.01" placeholder="ราคา/หน่วย"

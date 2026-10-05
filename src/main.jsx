@@ -2,6 +2,11 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
+import { installInputGuards } from './lib/inputGuards.js'
+
+// Enter never submits a form (except data-enter-submit forms); wheel never
+// changes a number input. Installed once, app-wide.
+installInputGuards()
 
 // /sign/<linkId> is a standalone public page (remote document signing) --
 // checked before App even mounts, so a visitor with no account never

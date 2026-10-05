@@ -349,7 +349,7 @@ function QuotationItemsEditor({ items, onChange, catalogItems, onCatalogRefetch,
               <MoveButtons onInsertItem={() => insertItemAfter(i)} onInsertCatalog={() => setCatalogInsertAt(i)} onInsertNote={() => insertNoteAfter(i)} onUp={() => moveBlock(i, 'up')} onDown={() => moveBlock(i, 'down')} disabledUp={i === 0} disabledDown={isLastBlock(i)} />
               <input className="input input-sm" placeholder="รายละเอียดรายการ" required
                 value={it.description} onChange={e => set(i, 'description', e.target.value)} />
-              <input className="input input-sm" type="number" min="0" step="0.01" placeholder="จำนวน"
+              <input className="input input-sm num-spin" type="number" min="0" step="any" placeholder="จำนวน"
                 value={it.quantity} onChange={e => set(i, 'quantity', e.target.value)} />
               <UnitSelect value={it.unit} onChange={v => set(i, 'unit', v)} units={units} onUnitAdded={refetchUnits} />
               {pricingMode === 'split' ? (

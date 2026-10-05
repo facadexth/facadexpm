@@ -116,7 +116,7 @@ export default function Signup({ onSignupSuccess }) {
           </p>
         </div>
 
-        <form onSubmit={handleSignup} style={{ display: 'grid', gap: 16 }}>
+        <form data-enter-submit onSubmit={handleSignup} style={{ display: 'grid', gap: 16 }}>
           {error && (
             <div style={{
               background: 'rgba(255,107,107,0.1)',

@@ -614,3 +614,12 @@ th.sortable:hover { color: var(--accent); }
   .tax-report-print table { width: 100%; }
   .tax-report-print tr.item-header-row { break-after: avoid; }
 }
+
+/* Number inputs: no spinner by default (prices, money, percent...). Quantity
+   fields opt in with className "num-spin" (+ step="any", spinner steps by 1).
+   Native spinners show on desktop browsers only, never on touch devices. */
+input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number].num-spin { -moz-appearance: auto; appearance: auto; }
+input[type=number].num-spin::-webkit-inner-spin-button { -webkit-appearance: inner-spin-button; }
