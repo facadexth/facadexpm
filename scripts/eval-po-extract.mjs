@@ -14,7 +14,7 @@ import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, extname, basename } from 'node:path'
 import { SYSTEM_PROMPT } from '../supabase/functions/_shared/po-extract-prompt.ts'
 import { classifyModelOutput } from '../supabase/functions/_shared/scan-logic.ts'
-import { compareExtraction, summariseProvider } from '../src/lib/scanEvalCompare.js'
+import { compareExtraction, summariseProvider } from '../src/lib/scanEvalCompare.mjs'
 
 const args = Object.fromEntries(process.argv.slice(2).map((a, i, all) => a.startsWith('--') ? [a.slice(2), all[i + 1]?.startsWith('--') || all[i + 1] === undefined ? true : all[i + 1]] : []).filter(e => e.length))
 const dir = args.dir

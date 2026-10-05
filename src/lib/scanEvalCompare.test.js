@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { compareExtraction, summariseProvider } from './scanEvalCompare.js'
+import { compareExtraction, summariseProvider } from './scanEvalCompare.mjs'
 
 const L = (over = {}) => ({ description: 'a', quantity: 2, unit: 'เส้น', unit_price: 100, discount_pct: 0, ...over })
 
