@@ -4,10 +4,21 @@
 
 const near = (a, b) => Math.abs((Number(a) || 0) - (Number(b) || 0)) < 0.005
 
+const normRef = s => String(s || '').toLowerCase().replace(/[\s\-_./#:()]/g, '')
+
+/** Expected deposit deductions found in actual (ref normalized, amount within a satang). Absent expectation = ignored. */
+export function depositDeductionsMatch(expected, actual) {
+  const exp = expected?.deposit_deductions
+  if (!Array.isArray(exp)) return true
+  const act = Array.isArray(actual?.deposit_deductions) ? actual.deposit_deductions : []
+  return exp.length === act.length && exp.every(e => act.some(a => normRef(a.ref) === normRef(e.ref) && near(a.amount, e.amount)))
+}
+
 export function compareExtraction(expected, actual) {
   const exp = expected?.line_items || []
   const act = actual?.line_items || []
-  if (exp.length === 0) return { lineCountMatches: act.length === 0, quantityAcc: 1, unitPriceAcc: 1, unitAcc: 1, accuracy: 1 }
+  const depositOk = depositDeductionsMatch(expected, actual)
+  if (exp.length === 0) return { lineCountMatches: act.length === 0, quantityAcc: 1, unitPriceAcc: 1, unitAcc: 1, depositOk, accuracy: depositOk ? 1 : 0.5 }
   let q = 0, p = 0, u = 0
   exp.forEach((e, i) => {
     const a = act[i]
@@ -21,7 +32,9 @@ export function compareExtraction(expected, actual) {
   return {
     lineCountMatches: act.length === exp.length,
     quantityAcc: q / n, unitPriceAcc: p / n, unitAcc: u / n,
-    accuracy: (q + p + u) / (3 * n),
+    depositOk,
+    // a missed/invented deposit deduction costs a quarter (only when the fixture lists deposit_deductions)
+    accuracy: Array.isArray(expected?.deposit_deductions) ? ((q + p + u) / (3 * n)) * 0.75 + (depositOk ? 0.25 : 0) : (q + p + u) / (3 * n),
   }
 }
 

@@ -19,3 +19,15 @@ describe('SYSTEM_PROMPT', () => {
     expect(PROMPT_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}-v\d+$/)
   })
 })
+
+describe('SYSTEM_PROMPT deposit deductions', () => {
+  it('asks for deposit_deductions and names the printed phrasings', () => {
+    expect(SYSTEM_PROMPT).toContain('deposit_deductions')
+    expect(SYSTEM_PROMPT).toContain('Deduct Down Payment')
+    expect(SYSTEM_PROMPT).toContain('หักดาวน์เพย์เมนต์')
+  })
+  it('says the amount is the ex-VAT amount deducted and line items stay at printed prices', () => {
+    expect(SYSTEM_PROMPT).toMatch(/before VAT/i)
+    expect(SYSTEM_PROMPT).toMatch(/Do NOT reduce unit_price/)
+  })
+})

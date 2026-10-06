@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { compareExtraction, summariseProvider, pickExampleFields } from './scanEvalCompare.mjs'
+import { compareExtraction, summariseProvider, pickExampleFields, depositDeductionsMatch } from './scanEvalCompare.mjs'
 
 const L = (over = {}) => ({ description: 'a', quantity: 2, unit: 'เส้น', unit_price: 100, discount_pct: 0, ...over })
 
@@ -55,5 +55,21 @@ describe('pickExampleFields', () => {
       { description: 'b', quantity: 1, unit: 'x', unit_price: 5, discount_pct: 0 },
       { description: 'c', quantity: 2, unit: 'y', unit_price: 6, discount_pct: 10 },
     ])
+  })
+})
+
+describe('deposit_deductions comparison', () => {
+  const exp = { line_items: [], deposit_deductions: [{ ref: 'AI6901007', amount: 41004 }] }
+  it('matches with normalized ref and amount', () => {
+    expect(depositDeductionsMatch(exp, { deposit_deductions: [{ ref: 'ai 6901007', amount: 41004 }] })).toBe(true)
+    expect(compareExtraction(exp, { line_items: [], deposit_deductions: [{ ref: 'AI6901007', amount: 41004 }] }).accuracy).toBe(1)
+  })
+  it('fails on missing, wrong amount or extra', () => {
+    expect(depositDeductionsMatch(exp, { deposit_deductions: [] })).toBe(false)
+    expect(depositDeductionsMatch(exp, { deposit_deductions: [{ ref: 'AI6901007', amount: 41000 }] })).toBe(false)
+    expect(depositDeductionsMatch(exp, { deposit_deductions: [{ ref: 'AI6901007', amount: 41004 }, { ref: 'X', amount: 1 }] })).toBe(false)
+  })
+  it('is ignored when the fixture has no deposit_deductions', () => {
+    expect(depositDeductionsMatch({ line_items: [] }, { deposit_deductions: [{ ref: 'A', amount: 1 }] })).toBe(true)
   })
 })

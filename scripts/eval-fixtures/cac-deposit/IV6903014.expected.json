@@ -1,0 +1,11 @@
+{
+  "_source": "SCAN DOCS/เดือน 3/บริษัท ซี เอ ซี แปซิฟิค จำกัด.pdf (local, not committed): copy/crop the IV6903014 page next to this file as IV6903014.pdf (or .jpg) before running scripts/eval-po-extract.mjs --dir <this folder>. Fill line_items from the scan to also score line accuracy.",
+  "reference_no_guess": "IV6903014",
+  "line_items": [],
+  "deposit_deductions": [
+    {
+      "ref": "AI6901007",
+      "amount": 41004
+    }
+  ]
+}

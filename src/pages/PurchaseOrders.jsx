@@ -55,7 +55,7 @@ const PO_STATUSES = ['draft', 'ordered', 'received', 'cancelled']
 const PO_STATUS_LABELS = { draft: '📝 ร่าง (รอเติมข้อมูล)', ordered: '📦 สั่งแล้ว', received: '✅ รับของแล้ว', cancelled: '✕ ยกเลิก' }
 
 const EMPTY_ITEM = { description: '', quantity: '1', unit: '', unit_price: '', discount_pct: '0', inventory_item_id: '', aluminum_profile_id: '', rod_length_m: '', glass_width_m: '', glass_height_m: '' }
-const EMPTY_FORM = { site_id: '', supplier_id: '', category_id: '', date: '', has_vat: true, price_includes_vat: false, ordered_by: '', notes: '', items: [{ ...EMPTY_ITEM }] }
+const EMPTY_FORM = { site_id: '', supplier_id: '', category_id: '', date: '', has_vat: true, price_includes_vat: false, ordered_by: '', notes: '', deposit_deductions: [], items: [{ ...EMPTY_ITEM }] }
 
 function lineTotal(item) {
   const gross = (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)
@@ -239,7 +239,7 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
       const result = await extractPoDocument(base64, mimeType, supplierExamples || [])
       if (!result.ok) { setScanError(result.error); setScanCode(result.code || null); return }
       setScanPayload({ base64, mimeType, reference_no_guess: result.data.reference_no_guess })
-      const { document_date_guess, reference_no_guess, line_items } = result.data
+      const { document_date_guess, reference_no_guess, line_items, deposit_deductions } = result.data
 
       // Any extracted unit that doesn't already exist in the tenant's
       // units list needs to be created first -- otherwise UnitSelect
@@ -261,6 +261,7 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
       setForm(f => ({
         ...f,
         date: document_date_guess || f.date,
+        deposit_deductions: deposit_deductions || [],
         notes: reference_no_guess ? [f.notes, `อ้างอิง: ${reference_no_guess}`].filter(Boolean).join(' ') : f.notes,
         items: line_items.length
           ? line_items.map(it => ({ ...EMPTY_ITEM, description: it.description, quantity: String(it.quantity), unit: it.unit, unit_price: String(it.unit_price), discount_pct: String(it.discount_pct ?? 0) }))
@@ -354,6 +355,9 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
               </label>
             </div>
           )}
+          {(form.deposit_deductions || []).map((d, i) => (
+            <div key={i} style={{ fontSize: 12, color: '#b45309' }}>อ่านพบการหักมัดจำ {d.ref} {fmt(d.amount)}</div>
+          ))}
           {(() => {
             const { subtotal, vat, total } = calcPoTotals(form.items, form.has_vat, form.price_includes_vat)
             return (
@@ -829,6 +833,8 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
         ordered_by: form.ordered_by || null,
         notes: form.notes || null,
       }
+      // Only when the scan read deductions, so saving still works before the deposit migration.
+      if ((form.deposit_deductions || []).length) poPayload.deposit_hint = form.deposit_deductions.map(d => ({ ref: d.ref, amount_no_vat: d.amount }))
       // A 'draft' PO (created hands-off from a LINE เบิกของ request, no
       // supplier yet -- see field-form Edge Function) graduates to a real
       // 'ordered' PO the moment an admin saves it with a supplier filled

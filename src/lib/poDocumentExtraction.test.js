@@ -124,3 +124,24 @@ describe('buildExampleExtracted', () => {
     expect(buildExampleExtracted({ items: [] })).toEqual({ supplier_name_guess: null, document_date_guess: null, reference_no_guess: null, line_items: [] })
   })
 })
+
+describe('validateExtraction deposit_deductions', () => {
+  const base = { line_items: [{ description: 'x', quantity: 1, unit: 'ea', unit_price: 10, discount_pct: 0 }] }
+  it('keeps valid entries with a trimmed ref', () => {
+    const r = validateExtraction({ ...base, deposit_deductions: [{ ref: '  AI6901007 ', amount: 41004 }, { ref: 'B1', amount: '2935.8' }] })
+    expect(r.ok).toBe(true)
+    expect(r.data.deposit_deductions).toEqual([{ ref: 'AI6901007', amount: 41004 }, { ref: 'B1', amount: 2935.8 }])
+  })
+  it('drops entries without a ref or with a bad amount', () => {
+    const r = validateExtraction({ ...base, deposit_deductions: [
+      { amount: 5 }, { ref: '  ', amount: 5 }, { ref: 'A', amount: 'abc' }, { ref: 'A', amount: 0 }, { ref: 'A', amount: -3 }, null, 'x', { ref: 7, amount: 5 }, { ref: 'OK', amount: 1 },
+    ] })
+    expect(r.ok).toBe(true)
+    expect(r.data.deposit_deductions).toEqual([{ ref: 'OK', amount: 1 }])
+  })
+  it('missing or non-array gives []', () => {
+    expect(validateExtraction(base).data.deposit_deductions).toEqual([])
+    expect(validateExtraction({ ...base, deposit_deductions: 'AI1' }).data.deposit_deductions).toEqual([])
+    expect(validateExtraction({ ...base, deposit_deductions: { ref: 'A', amount: 1 } }).data.deposit_deductions).toEqual([])
+  })
+})

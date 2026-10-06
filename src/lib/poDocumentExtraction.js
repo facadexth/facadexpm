@@ -57,6 +57,15 @@ export function validateExtraction(raw) {
     })
     .filter(Boolean)
 
+  const deposit_deductions = (Array.isArray(raw.deposit_deductions) ? raw.deposit_deductions : [])
+    .map(d => {
+      if (!d || typeof d !== 'object') return null
+      const ref = typeof d.ref === 'string' ? d.ref.trim() : ''
+      const amount = toFiniteNumber(d.amount)
+      return ref && amount != null && amount > 0 ? { ref, amount } : null
+    })
+    .filter(Boolean)
+
   return {
     ok: true,
     data: {
@@ -65,6 +74,7 @@ export function validateExtraction(raw) {
       reference_no_guess: typeof raw.reference_no_guess === 'string' ? raw.reference_no_guess : null,
       printed_subtotal: typeof raw.printed_subtotal === 'number' && Number.isFinite(raw.printed_subtotal) ? raw.printed_subtotal : null,
       line_items,
+      deposit_deductions,
     },
   }
 }
