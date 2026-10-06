@@ -33,7 +33,7 @@ function hasContact(c) { return !!(c.contactNo || c.taxId) }
 
 export function buildPeakExpenseRows(expenses, { accountByCategoryId, supplierById }) {
   const rows = [], skipped = []
-  let noContact = 0, seq = 0
+  let noContact = 0, vatUnknown = 0, seq = 0
   const idx = k => PEAK_EXPENSE_HEADERS.indexOf(k)
   for (const e of expenses) {
     if (Number(e.amount) < 0) { skipped.push({ id: e.id, reason: 'negative' }); continue }
@@ -42,6 +42,7 @@ export function buildPeakExpenseRows(expenses, { accountByCategoryId, supplierBy
     const contact = peakContact(supplierById[e.supplier_id])
     if (!hasContact(contact)) noContact++
     const vat = Number(e.vat) || 0
+    if (e.amount_no_vat == null) vatUnknown++ // exported as gross, no VAT
     const net = e.amount_no_vat != null ? Number(e.amount_no_vat) : Number(e.amount)
     const r = emptyRow(PEAK_EXPENSE_HEADERS.length)
     r[idx('ลำดับที่* ')] = ++seq
@@ -59,7 +60,7 @@ export function buildPeakExpenseRows(expenses, { accountByCategoryId, supplierBy
     r[idx('อัตราภาษี')] = vat > 0 ? 0.07 : 'NO'
     rows.push(r)
   }
-  return { rows, skipped, noContact }
+  return { rows, skipped, noContact, vatUnknown }
 }
 
 export function buildPeakJournalRows(creditNotes, { accountByCategoryId, supplierById }) {
@@ -106,11 +107,12 @@ export function downloadPeakSheet(headers, rows, sheetName, filenameBase) {
   XLSX.writeFile(wb, `${filenameBase}_${stamp()}.xlsx`)
 }
 
-export function summarizeExport({ rows, skipped, noContact }) {
+export function summarizeExport({ rows, skipped, noContact, vatUnknown = 0 }) {
   return {
     exported: rows.length,
     skippedNegative: skipped.filter(s => s.reason === "negative").length,
     skippedNoAccount: skipped.filter(s => s.reason === "no_account").length,
     noContact,
+    vatUnknown,
   }
 }

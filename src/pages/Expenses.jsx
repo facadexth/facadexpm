@@ -9,7 +9,7 @@
 // ============================================================
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useExpenses, useSites, useCategories, useSuppliers, useCheques } from '../hooks/useSupabase.js'
+import { useExpenses, useSites, useCategories, useSuppliers, useCheques, useCreditNoteExpenseIds } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -400,6 +400,8 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
   const { data: categories } = useCategories()
   const { data: suppliers, refetch: refetchSuppliers } = useSuppliers()
   const { data: cheques, refetch: refetchCheques } = useCheques()
+  const { data: cnExpenseIds } = useCreditNoteExpenseIds()
+  const isCnExpense = id => !!cnExpenseIds && cnExpenseIds.has(id)
   const { hasModuleAccess }  = useTenant()
   const hasChequeTracking = hasModuleAccess('cheque_tracking')
 
@@ -496,7 +498,11 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
     if (!deleteId) return
     const row = (expenses || []).find(e => e.id === deleteId)
     const { error } = await supabase.from('expenses').delete().eq('id', deleteId)
-    if (error) { alert('Error: ' + error.message); return }
+    if (error) {
+      alert(error.code === '23503' ? 'ลบไม่ได้ — รายจ่ายนี้เกิดจากใบลดหนี้ กรุณายกเลิกใบลดหนี้แทน' : 'Error: ' + error.message)
+      setDeleteId(null)
+      return
+    }
     setDeleteId(null); refetch(); showToast('ลบแล้ว')
     if (row?.po_id) setReconcilePoId(row.po_id)
   }
@@ -694,8 +700,8 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                     {/* คลิกเพื่อเปลี่ยนสถานะ -- ยกเว้นรายจ่ายที่ผูกกับเช็คไว้แล้ว
                         (สถานะต้องตามเช็คเท่านั้น กันไม่ให้เปลี่ยนสถานะทาง
                         shortcut นี้แล้ว conflict กับสถานะเช็คจริง) */}
-                    {e.cheque_id ? (
-                      <span className={`badge badge-${e.status}`} title={`ผูกกับเช็ค ${e.cheque_no || ''} — เปลี่ยนสถานะได้ที่หน้า "เช็ค" เท่านั้น`}>
+                    {(e.cheque_id || isCnExpense(e.id)) ? (
+                      <span className={`badge badge-${e.status}`} title={isCnExpense(e.id) ? 'เกิดจากใบลดหนี้ — เปลี่ยนสถานะเงินได้ที่หน้าใบลดหนี้เท่านั้น' : `ผูกกับเช็ค ${e.cheque_no || ''} — เปลี่ยนสถานะได้ที่หน้า "เช็ค" เท่านั้น`}>
                         {STATUS_LABELS[e.status] || e.status}
                       </span>
                     ) : (
@@ -710,7 +716,10 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                     )}
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    {canEdit && (
+                    {canEdit && isCnExpense(e.id) && (
+                      <span style={{ fontSize: 11, color: 'var(--text3)' }} title="แก้ไข/ลบที่หน้าใบลดหนี้">🔒 ใบลดหนี้</span>
+                    )}
+                    {canEdit && !isCnExpense(e.id) && (
                       <div className="actions-cell">
                         <button className="btn btn-sm btn-edit" onClick={() => { setEditRow(e); setShowAdd(true) }}><PencilIcon /></button>
                         <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(e.id)}><TrashIcon /></button>

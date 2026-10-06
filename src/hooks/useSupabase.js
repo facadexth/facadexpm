@@ -245,6 +245,14 @@ export function useSupplierCreditNotes(filters = {}) {
   }, [JSON.stringify(filters)])
 }
 
+/** Set of expense ids that were created by a supplier credit note (locked in Expenses). */
+export function useCreditNoteExpenseIds() {
+  return useQuery(async () => {
+    const rows = await fetchAllRows(() => supabase.from('supplier_credit_notes').select('id, expense_id').not('expense_id', 'is', null).order('id'))
+    return new Set((rows || []).map(r => r.expense_id))
+  }, [])
+}
+
 /** Quantity on hand per inventory item at one site (for the return shortfall check). */
 export function useInventoryOnHand(siteId) {
   return useQuery(async () => {

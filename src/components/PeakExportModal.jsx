@@ -14,8 +14,9 @@ import {
 function summaryLine(s, unit) {
   const parts = [`ส่งออก ${s.exported} ${unit}`]
   if (s.skippedNegative) parts.push(`ข้าม ${s.skippedNegative} ใบ (ยอดติดลบ)`)
-  if (s.skippedNoAccount) parts.push(`${s.skippedNoAccount} รายการไม่มีรหัสบัญชี PEAK`)
-  if (s.noContact) parts.push(`${s.noContact} รายการไม่มีผู้ติดต่อ (PEAK จะเว้นว่าง)`)
+  if (s.skippedNoAccount) parts.push(`${s.skippedNoAccount} ${unit === 'แถว' ? 'ใบ' : 'รายการ'}ไม่มีรหัสบัญชี PEAK`)
+  if (s.noContact) parts.push(`${s.noContact} ${unit === 'แถว' ? 'ใบ' : 'รายการ'}ไม่มีผู้ติดต่อ (PEAK จะเว้นว่าง)`)
+  if (s.vatUnknown) parts.push(`ไม่ทราบ VAT (ส่งออกเป็นไม่มี VAT) ${s.vatUnknown} รายการ`)
   return parts.join(' · ')
 }
 
@@ -43,8 +44,8 @@ export default function PeakExportModal({ onClose }) {
 
   const { data: expenses, loading: l1, error: e1 } = useExpenses({ from, to })
   const { data: notes, loading: l2, error: e2 } = useSupplierCreditNotes({ status: 'confirmed' })
-  const { data: categories } = useCategories()
-  const { data: suppliers } = useSuppliers()
+  const { data: categories, loading: l3, error: e3 } = useCategories()
+  const { data: suppliers, loading: l4, error: e4 } = useSuppliers()
 
   const ctx = useMemo(() => ({
     accountByCategoryId: Object.fromEntries((categories || []).filter(c => c.peak_account_code).map(c => [c.id, c.peak_account_code])),
@@ -58,8 +59,8 @@ export default function PeakExportModal({ onClose }) {
     return { exp: buildPeakExpenseRows(exp, ctx), cn: buildPeakJournalRows(cns, ctx) }
   }, [expenses, notes, ctx, from, to])
 
-  const loading = l1 || l2
-  const error = e1 || e2
+  const loading = l1 || l2 || l3 || l4
+  const error = e1 || e3 || e4 // credit-note error is shown only in its own section
 
   return (
     <Modal title="ส่งออกไฟล์สำหรับ PEAK" onClose={onClose} maxWidth={460}>
@@ -83,11 +84,18 @@ export default function PeakExportModal({ onClose }) {
               filename="ดาวน์โหลดไฟล์รายจ่าย"
               onDownload={() => downloadPeakSheet(PEAK_EXPENSE_HEADERS, built.exp.rows, 'Import_Expenses', 'PEAK_expenses')}
             />
-            <Section
-              title="ใบลดหนี้ (ยืนยันแล้ว)" unit="แถว" built={built.cn}
-              filename="ดาวน์โหลดไฟล์ใบลดหนี้ (journal)"
-              onDownload={() => downloadPeakSheet(PEAK_JOURNAL_HEADERS, built.cn.rows, 'Import Multiple Journal', 'PEAK_credit_notes')}
-            />
+            {e2 ? (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>ใบลดหนี้ (ยืนยันแล้ว)</div>
+                <div className="alert alert-error">โหลดใบลดหนี้ไม่สำเร็จ: {e2}</div>
+              </div>
+            ) : (
+              <Section
+                title="ใบลดหนี้ (ยืนยันแล้ว)" unit="แถว" built={built.cn}
+                filename="ดาวน์โหลดไฟล์ใบลดหนี้ (journal)"
+                onDownload={() => downloadPeakSheet(PEAK_JOURNAL_HEADERS, built.cn.rows, 'Import Multiple Journal', 'PEAK_credit_notes')}
+              />
+            )}
           </>
         )}
         <div className="alert alert-warning" style={{ marginTop: 16, fontSize: 13 }}>ตรวจไฟล์ก่อนนำเข้า PEAK ทุกครั้ง</div>

@@ -12,6 +12,8 @@ import {
   useCategories, usePurchaseOrders, useInventoryItems,
 } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
+import { useUserRole } from '../hooks/useUserRole.js'
+import { canEditPage } from '../lib/permissions.js'
 import { peekCreditNotePrefill, clearCreditNotePrefill } from '../lib/creditNotePrefill.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
@@ -27,6 +29,8 @@ const CN_ERRORS = {
   insufficient_privilege: 'ไม่มีสิทธิ์ทำรายการนี้',
   no_items: 'ใบลดหนี้นี้ไม่มีรายการสินค้า',
   bad_settlement: 'สถานะเงินไม่ถูกต้อง',
+  credit_note_locked: 'ใบลดหนี้ที่ยืนยันแล้วแก้ไขไม่ได้',
+  cross_tenant_reference: 'ข้อมูลอ้างอิงไม่ถูกต้อง',
 }
 const cnErrorText = e => CN_ERRORS[(e?.message || '').split(':')[0].trim()] || e?.message || 'เกิดข้อผิดพลาด'
 async function confirmNote(id) {
@@ -64,6 +68,7 @@ function makeInitialForm(prefill, note) {
     return {
       supplier_id: note.supplier_id, site_id: note.site_id, doc_number: note.doc_number,
       doc_date: note.doc_date, category_id: note.category_id || '', po_id: note.po_id || '',
+      original_expense_id: note.original_expense_id || null,
       vatEnabled, priceIncludesVat, notes: note.notes || '',
       lines: items.length ? items : [{ ...EMPTY_LINE }],
     }
@@ -72,6 +77,7 @@ function makeInitialForm(prefill, note) {
   return {
     supplier_id: p.supplier_id || '', site_id: p.site_id || '', doc_number: '',
     doc_date: bangkokTodayIso(), category_id: p.category_id || '', po_id: p.po_id || '',
+    original_expense_id: p.original_expense_id || null,
     vatEnabled: p.vatEnabled ?? true, priceIncludesVat: p.priceIncludesVat ?? false, notes: '',
     lines: p.items?.length
       ? p.items.map(i => ({
@@ -213,6 +219,8 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
 const SETTLEMENT_ORDER = ['owed', 'offset', 'refunded']
 
 export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
+  const { isAtLeast, role } = useUserRole()
+  const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'purchase_orders')
   // a PO row hands data over via the module holder; the prop overrides it
   const [prefill] = useState(() => prefillProp || peekCreditNotePrefill())
   useEffect(() => { clearCreditNotePrefill() }, [])
@@ -233,6 +241,7 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
   const [busy, setBusy] = useState(false)
   const [confirmId, setConfirmId] = useState(null)
   const [voidId, setVoidId] = useState(null)
+  const [deleteId, setDeleteId] = useState(null)
   const [settleTarget, setSettleTarget] = useState(null)
   const [settleValue, setSettleValue] = useState('owed')
 
@@ -267,6 +276,7 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
         amount_no_vat: t.amount_no_vat, vat: t.vat, amount: round2(t.amount_no_vat + t.vat),
         notes: form.notes || null,
       }
+      if (form.original_expense_id) payload.original_expense_id = form.original_expense_id
       if (savedId) {
         const { error } = await supabase.from('supplier_credit_notes').update(payload).eq('id', savedId)
         if (error) throw error
@@ -329,12 +339,22 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
     setConfirmId(n.id)
   }
 
+  const handleDeleteDraft = async () => {
+    if (!deleteId || busy) return
+    setBusy(true)
+    const { error } = await supabase.from('supplier_credit_notes').delete().eq('id', deleteId)
+    setBusy(false)
+    setDeleteId(null)
+    if (error) { alert('Error: ' + cnErrorText(error)); return }
+    refetch()
+  }
+
   const rows = notes || []
 
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button className="btn btn-primary" onClick={openNew}>+ เพิ่มใบลดหนี้</button>
+        {canEdit && <button className="btn btn-primary" onClick={openNew}>+ เพิ่มใบลดหนี้</button>}
         <select className="select select-sm" style={{ width: 200 }} value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)}>
           <option value="">ทุกซัพพลายเออร์</option>
           {(suppliers || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -372,14 +392,17 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
                     <td>{n.status === 'confirmed' ? (SETTLEMENT_LABELS[n.settlement_status] || n.settlement_status) : <span style={{ color: 'var(--text3)' }}>—</span>}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <div className="actions-cell">
-                        {n.status === 'draft' && <button className="btn btn-sm btn-success" disabled={busy} onClick={() => askConfirm(n)}>✅ ยืนยัน</button>}
-                        <RowActionsMenu items={[
-                          ...(n.status === 'draft' ? [{ label: '✏️ แก้ไข', onClick: () => openEdit(n) }] : []),
+                        {canEdit && n.status === 'draft' && <button className="btn btn-sm btn-success" disabled={busy} onClick={() => askConfirm(n)}>✅ ยืนยัน</button>}
+                        {canEdit && <RowActionsMenu items={[
+                          ...(n.status === 'draft' ? [
+                            { label: '✏️ แก้ไข', onClick: () => openEdit(n) },
+                            { label: '🗑️ ลบ', onClick: () => setDeleteId(n.id), danger: true },
+                          ] : []),
                           ...(n.status === 'confirmed' ? [
                             { label: '💰 เปลี่ยนสถานะเงิน', onClick: () => { setSettleTarget(n); setSettleValue(n.settlement_status || 'owed') } },
                             { label: '🚫 ยกเลิก', onClick: () => setVoidId(n.id), danger: true },
                           ] : []),
-                        ]} />
+                        ]} />}
                       </div>
                     </td>
                   </tr>
@@ -408,6 +431,13 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
           message="เมื่อยืนยันแล้ว ระบบจะตัดสต็อกสินค้าที่คืนและบันทึกเป็นรายจ่ายติดลบ แก้ไขไม่ได้อีก (ยกเลิกได้เท่านั้น)"
           onConfirm={() => runRpc(() => confirmNote(confirmId), () => setConfirmId(null))}
           onCancel={() => setConfirmId(null)} />
+      )}
+
+      {deleteId && (
+        <ConfirmDialog title="ลบใบลดหนี้ฉบับร่าง" danger
+          message="ลบใบลดหนี้ฉบับร่างนี้และรายการสินค้าทั้งหมด? (ยังไม่มีผลกับสต็อกหรือรายจ่าย)"
+          onConfirm={handleDeleteDraft}
+          onCancel={() => setDeleteId(null)} />
       )}
 
       {voidId && (

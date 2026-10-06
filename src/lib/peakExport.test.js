@@ -95,6 +95,39 @@ describe('buildPeakJournalRows', () => {
 describe("summarizeExport", () => {
   it("counts exported and skipped by reason", () => {
     expect(summarizeExport({ rows: [1, 2], skipped: [{ reason: "negative" }, { reason: "no_account" }, { reason: "no_account" }], noContact: 3 }))
-      .toEqual({ exported: 2, skippedNegative: 1, skippedNoAccount: 2, noContact: 3 })
+      .toEqual({ exported: 2, skippedNegative: 1, skippedNoAccount: 2, noContact: 3, vatUnknown: 0 })
+    expect(summarizeExport({ rows: [1], skipped: [], noContact: 0, vatUnknown: 2 }).vatUnknown).toBe(2)
+  })
+})
+
+describe('builders with blank / tax-ID-only contacts and vatUnknown', () => {
+  const exp = { id: 'e1', date: '2026-10-06', category_id: 'c1', supplier_id: 's2', amount: 107, amount_no_vat: 100, vat: 7, invoice_no: 'INV1', description: 'x' }
+  const cn = { id: 'n1', doc_date: '2026-10-06', doc_number: 'CN-9', category_id: 'c1', supplier_id: 's2', amount: 107, amount_no_vat: 100, vat: 7 }
+  const mk = supplier => ({ accountByCategoryId: { c1: '530306' }, supplierById: supplier ? { s2: supplier } : {} })
+  const E = k => PEAK_EXPENSE_HEADERS.indexOf(k)
+  const J = k => PEAK_JOURNAL_HEADERS.indexOf(k)
+
+  it('expense: unknown supplier gives blank contact cells and counts noContact', () => {
+    const { rows, noContact } = buildPeakExpenseRows([exp], mk(null))
+    expect(noContact).toBe(1)
+    expect(rows[0][E('ผู้รับเงิน/คู่ค้า')]).toBe(''); expect(rows[0][E('เลขทะเบียน 13 หลัก')]).toBe('')
+  })
+  it('expense: tax-id-only supplier fills tax id and branch, not counted as noContact', () => {
+    const { rows, noContact } = buildPeakExpenseRows([exp], mk({ tax_id: '0105557083391', branch_no: '00001' }))
+    expect(noContact).toBe(0)
+    expect(rows[0][E('เลขทะเบียน 13 หลัก')]).toBe('0105557083391'); expect(rows[0][E('เลขสาขา 5 หลัก')]).toBe('00001')
+  })
+  it('journal: blank contact counted; tax-id-only used as contact', () => {
+    const blank = buildPeakJournalRows([cn], mk(null))
+    expect(blank.noContact).toBe(1); expect(blank.rows[0][J('ผู้ติดต่อ')]).toBe('')
+    const tax = buildPeakJournalRows([cn], mk({ tax_id: '0105557083391' }))
+    expect(tax.noContact).toBe(0); expect(tax.rows[0][J('ผู้ติดต่อ')]).toBe('0105557083391')
+  })
+  it('vatUnknown counts exported expenses with null/undefined amount_no_vat only', () => {
+    const list = [exp, { ...exp, id: 'e2', amount_no_vat: null }, { ...exp, id: 'e3', amount_no_vat: undefined }, { ...exp, id: 'e4', amount_no_vat: null, category_id: 'zz' }]
+    const out = buildPeakExpenseRows(list, mk({ peak_contact_no: 'C1' }))
+    expect(out.rows).toHaveLength(3)
+    expect(out.vatUnknown).toBe(2)
+    expect(buildPeakExpenseRows([exp], mk(null)).vatUnknown).toBe(0)
   })
 })
