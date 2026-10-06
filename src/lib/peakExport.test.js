@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import * as XLSX from 'xlsx'
 import {
   PEAK_EXPENSE_HEADERS, PEAK_JOURNAL_HEADERS, peakDate, peakContact,
-  buildPeakExpenseRows, buildPeakJournalRows,
+  buildPeakExpenseRows, buildPeakJournalRows, summarizeExport,
 } from './peakExport.js'
 
 function templateHeaders(file) {
@@ -89,5 +89,12 @@ describe('buildPeakJournalRows', () => {
   it('numbers each credit note separately', () => {
     const { rows } = buildPeakJournalRows([cn, { ...cn, id: 'n2', doc_number: 'CN-10' }], ctx)
     expect(rows.map(r => r[0])).toEqual([1, 1, 1, 2, 2, 2])
+  })
+})
+
+describe("summarizeExport", () => {
+  it("counts exported and skipped by reason", () => {
+    expect(summarizeExport({ rows: [1, 2], skipped: [{ reason: "negative" }, { reason: "no_account" }, { reason: "no_account" }], noContact: 3 }))
+      .toEqual({ exported: 2, skippedNegative: 1, skippedNoAccount: 2, noContact: 3 })
   })
 })

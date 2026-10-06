@@ -105,3 +105,12 @@ export function downloadPeakSheet(headers, rows, sheetName, filenameBase) {
   XLSX.utils.book_append_sheet(wb, ws, sheetName)
   XLSX.writeFile(wb, `${filenameBase}_${stamp()}.xlsx`)
 }
+
+export function summarizeExport({ rows, skipped, noContact }) {
+  return {
+    exported: rows.length,
+    skippedNegative: skipped.filter(s => s.reason === "negative").length,
+    skippedNoAccount: skipped.filter(s => s.reason === "no_account").length,
+    noContact,
+  }
+}

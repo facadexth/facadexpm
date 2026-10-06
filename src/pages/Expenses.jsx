@@ -18,6 +18,7 @@ import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { auditLog } from '../lib/audit.js'
 import ExcelUpload from '../components/ExcelUpload.jsx'
+import PeakExportModal from '../components/PeakExportModal.jsx'
 import { exportToExcel } from '../lib/exportExcel.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import QuickAddSelect from '../components/QuickAddSelect.jsx'
@@ -380,6 +381,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
   const [saving,   setSaving]   = useState(false)
   const [toast,    setToast]    = useState(null)
   const [showImport, setShowImport] = useState(false)
+  const [showPeakExport, setShowPeakExport] = useState(false)
   const [sortCol,  setSortCol]  = useState('date')
   const [sortDir,  setSortDir]  = useState('desc')
 
@@ -529,6 +531,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
         {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
         <a className="btn btn-ghost" href="/templates/TEMPLATE_รายจ่าย.xlsx" download>📄 Template</a>
         <button className="btn btn-ghost" onClick={handleExport}>📤 Export Excel</button>
+        <button className="btn btn-ghost" onClick={() => setShowPeakExport(true)}>ส่งออก PEAK</button>
       </div>
 
       {/* ── Import Zone ── */}
@@ -743,6 +746,8 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
           />
         </Modal>
       )}
+
+      {showPeakExport && <PeakExportModal onClose={() => setShowPeakExport(false)} />}
 
       {/* ── Toggle Status Dialog ── */}
       {toggleRow && (
