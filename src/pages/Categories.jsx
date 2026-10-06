@@ -10,7 +10,7 @@ import { useCategories, setCategoryUseForDeduction } from '../hooks/useSupabase.
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
-import { isPeakAccountCode } from '../lib/peakFields.js'
+import { isPeakAccountCode, pickPeakFields } from '../lib/peakFields.js'
 
 const PRESET_COLORS = [
   '#6c63ff','#00d4aa','#ff6b6b','#ffd166','#4ecdc4',
@@ -94,7 +94,7 @@ export default function Categories() {
         alert('รหัสบัญชีต้องเป็นตัวเลข 6 หลัก')
         return
       }
-      const payload = { name: form.name, color: form.color, code_prefix: form.code_prefix?.trim() || null, peak_account_code: peakCode || null }
+      const payload = { name: form.name, color: form.color, code_prefix: form.code_prefix?.trim() || null, ...pickPeakFields(form, editCat, ['peak_account_code']) }
       if (editCat) {
         const { error } = await supabase.from('expense_categories').update(payload).eq('id', editCat.id)
         if (error) throw error

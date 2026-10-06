@@ -1071,15 +1071,6 @@ export async function setCategoryUseForDeduction(categoryId, useForDeduction) {
   if (error) throw error
 }
 
-/** Set the PEAK chart-of-accounts code (6 digits) for a category; blank = null. */
-export async function setCategoryPeakCode(categoryId, code) {
-  const { error } = await supabase
-    .from('expense_categories')
-    .update({ peak_account_code: code || null })
-    .eq('id', categoryId)
-  if (error) throw error
-}
-
 // ── Cheques ──────────────────────────────────────────────────
 
 export function useCheques() {

@@ -15,7 +15,7 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { fileToExtractionPayload } from '../lib/poDocumentExtraction.js'
-import { isTaxId13, isBranch5 } from '../lib/peakFields.js'
+import { isTaxId13, isBranch5, pickPeakFields } from '../lib/peakFields.js'
 
 const SUPPLIER_TYPES = [
   'อลูมิเนียม', 'เหล็ก', 'อุปกรณ์', 'กระจก',
@@ -354,15 +354,12 @@ export default function Suppliers() {
     try {
       const cats = normCategory(form.category)
       const isCash = form.payment_mode === 'transfer_cash'
-      const peakContactNo = (form.peak_contact_no || '').trim()
       const taxId = (form.tax_id || '').trim()
       const branchNo = (form.branch_no || '').trim()
       if (taxId && !isTaxId13(taxId)) { alert('ใส่ครบ 13 หลัก'); return }
       if (branchNo && !isBranch5(branchNo)) { alert('ใส่ครบ 5 หลัก'); return }
       const payload = {
-        peak_contact_no: peakContactNo || null,
-        tax_id: taxId || null,
-        branch_no: branchNo || null,
+        ...pickPeakFields(form, editItem, ['peak_contact_no', 'tax_id', 'branch_no']),
         name: form.name, contact_person: form.contact_person || null,
         phone: form.phone || null, email: form.email || null,
         category: cats.length ? cats : null,
