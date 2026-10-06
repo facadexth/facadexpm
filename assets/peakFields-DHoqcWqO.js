@@ -1,0 +1,1 @@
+const a=t=>/^\d{6}$/.test(String(t||"").trim()),o=t=>/^\d{13}$/.test(String(t||"").trim()),r=t=>/^\d{5}$/.test(String(t||"").trim());function d(t,i,e){const n={};for(const s of e){const c=String((t==null?void 0:t[s])??"").trim();c?n[s]=c:i&&i[s]!=null&&(n[s]=null)}return n}export{o as a,r as b,a as i,d as p};
