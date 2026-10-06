@@ -74,7 +74,36 @@ export function cleanCompanyName(raw: unknown): string | null {
 
 // ---- budget result from consume_company_lookup() -----------------------
 export type BudgetCode = 'ok' | 'tenant_cap' | 'global_cap' | 'error'
-export function budgetOutcome(result: unknown): { ok: boolean; code: BudgetCode; message: string } {
+// consume_company_lookup returns jsonb {status, day}; a bare status string is also accepted.
+export function budgetStatus(result: unknown): string {
+  if (typeof result === 'string') return result
+  const s = (result as { status?: unknown } | null)?.status
+  return typeof s === 'string' ? s : 'error'
+}
+export function budgetDay(result: unknown): string | null {
+  const d = (result as { day?: unknown } | null)?.day
+  return typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null
+}
+
+// Refund the reservation ONLY when Anthropic certainly did not bill:
+//  - a non-2xx HTTP status, or
+//  - a fetch failure that is not an abort/timeout (the request may have been processed
+//    when we gave up), and
+//  - no earlier response in this lookup (a first call already succeeded = spent).
+// A timeout, or a 200 whose body cannot be parsed, counts as SPENT.
+export type FailureKind =
+  | { kind: 'http'; status: number }
+  | { kind: 'fetch'; errorName?: string }
+  | { kind: 'unparseable_200' }
+export function shouldRefund(f: FailureKind, priorResponse = false): boolean {
+  if (priorResponse) return false
+  if (f.kind === 'http') return !(f.status >= 200 && f.status < 300)
+  if (f.kind === 'fetch') return f.errorName !== 'AbortError' && f.errorName !== 'TimeoutError'
+  return false
+}
+
+export function budgetOutcome(raw: unknown): { ok: boolean; code: BudgetCode; message: string } {
+  const result = budgetStatus(raw)
   if (result === 'ok') return { ok: true, code: 'ok', message: '' }
   if (result === 'tenant_cap') {
     return { ok: false, code: 'tenant_cap', message: 'ใช้ค้นหาอัตโนมัติครบโควตาของวันนี้แล้ว ลองใหม่พรุ่งนี้ หรือใช้ปุ่ม "ค้นหาใน DBD" แล้ววางข้อความแทน' }
@@ -183,12 +212,15 @@ export function textContainsId(text: unknown, id: string): boolean {
 // Company name without the legal-form words, whitespace-stripped, lowercase.
 export function companyNameCore(name: unknown): string {
   return normalizeDigits(name)
-    .replace(/ห้างหุ้นส่วนจำกัด|ห้างหุ้นส่วนสามัญ|\(มหาชน\)|บริษัท|จำกัด|หจก\.?|บจก\.?/g, ' ')
-    .replace(/\s+/g, '')
     .toLowerCase()
+    .replace(/ห้างหุ้นส่วนจำกัด|ห้างหุ้นส่วนสามัญ|\(มหาชน\)|บริษัท|จำกัด|หจก\.?|บจก\.?/g, ' ')
+    // English legal forms, with or without punctuation (co., ltd., public company limited, pcl, corp, inc ...)
+    .replace(/(?<![a-z])(?:public|company|limited|corporation|corp|co|ltd|pcl|inc)(?![a-z])\.?/g, ' ')
+    .replace(/[.,()]/g, ' ')
+    .replace(/\s+/g, '')
 }
 function containsCore(text: unknown, core: string): boolean {
-  return core.length > 0 && normalizeDigits(text).replace(/\s+/g, '').toLowerCase().includes(core)
+  return core.length > 0 && normalizeDigits(text).toLowerCase().replace(/[.,()]/g, ' ').replace(/\s+/g, '').includes(core)
 }
 
 // ---- tolerant JSON parse of the model's answer ------------------------

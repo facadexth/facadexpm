@@ -17,8 +17,8 @@
 // ============================================================
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
-  budgetOutcome, buildLookupRequest, candidatesFromContent, cleanCompanyName,
-  INCOMPLETE_MESSAGE, lookupOutcome, MAX_CONTINUATIONS,
+  budgetDay, budgetOutcome, buildLookupRequest, candidatesFromContent, cleanCompanyName,
+  INCOMPLETE_MESSAGE, lookupOutcome, MAX_CONTINUATIONS, shouldRefund,
 } from '../_shared/company-lookup.ts'
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')!
@@ -38,7 +38,7 @@ function json(body: unknown, status = 200) {
 type Block = any
 type SearchResult =
   | { ok: true; content: Block[]; stopReason: string | null; continuations: number; inputTokens: number; outputTokens: number; searchRequests: number }
-  | { ok: false; status: number; code: string; gotResponse: boolean }
+  | { ok: false; status: number; code: string; refundable: boolean }
 
 // Runs the request, continuing a paused server-side loop (MAX_CONTINUATIONS times).
 async function runSearch(name: string, deadline: number): Promise<SearchResult> {
@@ -60,17 +60,19 @@ async function runSearch(name: string, deadline: number): Promise<SearchResult> 
       })
     } catch (e) {
       console.error('lookup-company fetch failed:', String(e).slice(0, 200))
-      return { ok: false, status: 502, code: 'ai_unavailable', gotResponse }
+      // a timeout/abort may still have been processed and billed: only other failures refund
+      return { ok: false, status: 502, code: 'ai_unavailable', refundable: shouldRefund({ kind: 'fetch', errorName: (e as Error)?.name }, gotResponse) }
     }
     if (!res.ok) {
       const t = (await res.text().catch(() => '')).slice(0, 400)
       console.error('lookup-company API error', res.status, t)
-      if (res.status === 400 && /web search/i.test(t) && /not enabled/i.test(t)) return { ok: false, status: 503, code: 'search_disabled', gotResponse }
-      return { ok: false, status: 502, code: 'ai_unavailable', gotResponse }
+      const refundable = shouldRefund({ kind: 'http', status: res.status }, gotResponse)
+      if (res.status === 400 && /web search/i.test(t) && /not enabled/i.test(t)) return { ok: false, status: 503, code: 'search_disabled', refundable }
+      return { ok: false, status: 502, code: 'ai_unavailable', refundable }
     }
     // deno-lint-ignore no-explicit-any
     let j: any
-    try { j = await res.json() } catch { return { ok: false, status: 502, code: 'ai_unavailable', gotResponse } }
+    try { j = await res.json() } catch { return { ok: false, status: 502, code: 'ai_unavailable', refundable: shouldRefund({ kind: 'unparseable_200' }, gotResponse) } }
     gotResponse = true
     const blocks: Block[] = Array.isArray(j?.content) ? j.content : []
     content.push(...blocks)
@@ -87,11 +89,21 @@ async function runSearch(name: string, deadline: number): Promise<SearchResult> 
   return { ok: true, content, stopReason, continuations, inputTokens, outputTokens, searchRequests }
 }
 
+async function refund(admin: ReturnType<typeof createClient>, r: { tenant: string; day: string | null }) {
+  try {
+    const { error } = await admin.rpc('refund_company_lookup', { p_tenant: r.tenant, p_day: r.day ?? new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10) })
+    console.log(JSON.stringify({ evt: 'company_lookup_refund', ok: !error, code: error ? ((error as { code?: string }).code ?? 'unknown') : null }))
+  } catch (e) {
+    console.error('company_lookup_refund threw', String(e).slice(0, 200))
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
-  let reservedFor: string | null = null
+  let reservedFor: { tenant: string; day: string | null } | null = null
+  let callStarted = false
   let admin: ReturnType<typeof createClient> | null = null
   try {
     const authHeader = req.headers.get('Authorization')
@@ -116,19 +128,21 @@ Deno.serve(async (req) => {
     const { data: reserved, error: reserveErr } = await admin.rpc('consume_company_lookup', { p_tenant: tenantId })
     if (reserveErr) console.error('lookup-company reserve failed', (reserveErr as { code?: string }).code ?? 'unknown')
     const budget = budgetOutcome(reserveErr ? 'error' : reserved)
+    const reservedDay = budgetDay(reserved)
     if (!budget.ok) {
       console.log(JSON.stringify({ evt: 'company_lookup_budget', code: budget.code }))
       return json({ error: budget.message, code: budget.code }, budget.code === 'error' ? 502 : 429)
     }
-    reservedFor = tenantId
+    reservedFor = { tenant: tenantId, day: reservedDay }
+    callStarted = true
 
     const r = await runSearch(name, Date.now() + 50_000)
     if (!r.ok) {
-      if (!r.gotResponse) {
-        // failed before any successful API response: give the reservation back
-        await admin.rpc('refund_company_lookup', { p_tenant: tenantId })
-        reservedFor = null
+      if (r.refundable) {
+        // Anthropic certainly did not bill (non-2xx / non-timeout fetch failure): give it back
+        await refund(admin, reservedFor)
       }
+      reservedFor = null
       const msg = r.code === 'search_disabled' ? 'บริการค้นหายังไม่เปิดใช้' : 'ระบบค้นหาขัดข้อง ลองใหม่ภายหลัง หรือใช้ปุ่ม "ค้นหาใน DBD" แทน'
       return json({ error: msg, code: r.code }, r.status)
     }
@@ -150,9 +164,8 @@ Deno.serve(async (req) => {
     return json({ candidates })
   } catch (e) {
     console.error('lookup-company threw:', String(e).slice(0, 300))
-    if (reservedFor && admin) {
-      try { await admin.rpc('refund_company_lookup', { p_tenant: reservedFor }) } catch { /* ignore */ }
-    }
+    // only refund when the failure happened before the Anthropic call began
+    if (reservedFor && admin && !callStarted) await refund(admin, reservedFor)
     return json({ error: 'ระบบค้นหาขัดข้อง ลองใหม่ภายหลัง หรือใช้ปุ่ม "ค้นหาใน DBD" แทน', code: 'ai_unavailable' }, 502)
   }
 })

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  ALLOWED_DOMAINS, JSON_DELIMITER, MAX_CONTINUATIONS, MAX_SEARCHES, allowedDomainOf, budgetOutcome, buildLookupRequest,
+  ALLOWED_DOMAINS, JSON_DELIMITER, budgetDay, shouldRefund, MAX_CONTINUATIONS, MAX_SEARCHES, allowedDomainOf, budgetOutcome, buildLookupRequest,
   candidatesFromContent, cleanCompanyName, collectEvidence, companyNameCore, isValidThaiId13 as serverValid,
   lookupOutcome, normalizeDigits as serverNorm, parseCandidatesJson, textContainsId, validateCandidates,
 } from '../../supabase/functions/_shared/company-lookup.ts'
@@ -91,6 +91,27 @@ describe('request + input + budget', () => {
     expect(new Set([t.message, g.message, e.message]).size).toBe(3)
     expect(budgetOutcome('unknown_tenant').ok).toBe(false)
   })
+  it('reads the jsonb {status, day} reservation result', () => {
+    expect(budgetOutcome({ status: 'ok', day: '2026-10-08' }).ok).toBe(true)
+    expect(budgetOutcome({ status: 'global_cap', day: '2026-10-08' }).code).toBe('global_cap')
+    expect(budgetOutcome({}).code).toBe('error')
+    expect(budgetDay({ status: 'ok', day: '2026-10-08' })).toBe('2026-10-08')
+    expect(budgetDay({ day: 'x' })).toBeNull()
+    expect(budgetDay(null)).toBeNull()
+  })
+  it('refunds only when Anthropic certainly did not bill', () => {
+    expect(shouldRefund({ kind: 'http', status: 500 })).toBe(true)
+    expect(shouldRefund({ kind: 'http', status: 429 })).toBe(true)
+    expect(shouldRefund({ kind: 'http', status: 400 })).toBe(true)
+    expect(shouldRefund({ kind: 'fetch', errorName: 'TypeError' })).toBe(true)
+    expect(shouldRefund({ kind: 'fetch', errorName: 'TimeoutError' })).toBe(false)
+    expect(shouldRefund({ kind: 'fetch', errorName: 'AbortError' })).toBe(false)
+    expect(shouldRefund({ kind: 'unparseable_200' })).toBe(false)
+    expect(shouldRefund({ kind: 'http', status: 200 })).toBe(false)
+    // an earlier successful response in the same lookup means it was spent
+    expect(shouldRefund({ kind: 'http', status: 500 }, true)).toBe(false)
+    expect(shouldRefund({ kind: 'fetch', errorName: 'TypeError' }, true)).toBe(false)
+  })
   it('incomplete is not "not found"', () => {
     expect(lookupOutcome('pause_turn', 0)).toBe('incomplete')
     expect(lookupOutcome('max_tokens', 0)).toBe('incomplete')
@@ -147,6 +168,11 @@ describe('textContainsId / companyNameCore', () => {
     expect(companyNameCore('ห้างหุ้นส่วนจำกัด สยาม')).toBe('สยาม')
     expect(companyNameCore('บจก. เอ')).toBe('เอ')
     expect(companyNameCore('บริษัท จำกัด')).toBe('')
+    expect(companyNameCore('ABC Co., Ltd.')).toBe('abc')
+    expect(companyNameCore('Siam Glass Public Company Limited (PCL)')).toBe('siamglass')
+    expect(companyNameCore('XYZ Corporation Inc.')).toBe('xyz')
+    expect(companyNameCore('Cosmo Limited')).toBe('cosmo') // "co" inside a word is kept
+    expect(companyNameCore('บริษัท ABC จำกัด')).toBe('abc')
   })
 })
 

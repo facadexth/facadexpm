@@ -21,8 +21,9 @@ Gate (same as extract-po-document): JWT required (deployed WITH verification), `
 ## Budget (migration `supabase/migrations/2026-10-08-03-company-lookup-usage.sql`, NOT applied)
 - Tables: `company_lookup_caps(plan, daily_cap)` seeded trial 5 / active 30 / expired 0 / `_global` 300 (adjust with a plain UPDATE; unknown plan falls back to 5); `company_lookup_usage(tenant_id, day, count)`, PK (tenant_id, day). RLS on, no policies, no grants to app roles.
 - Functions (SECURITY DEFINER, `REVOKE ALL FROM PUBLIC, anon, authenticated`, `GRANT EXECUTE TO service_role`):
-  - `consume_company_lookup(p_tenant uuid) returns text` -> `'ok' | 'tenant_cap' | 'global_cap' | 'unknown_tenant'`. It reserves BEFORE the Anthropic call (every attempt counts). It enforces the per-tenant plan cap and the global all-tenant daily ceiling atomically (an advisory lock serialises callers, and the upsert has `WHERE count < cap`).
-  - `refund_company_lookup(p_tenant uuid)` decrements (floor 0). It is called only when the Anthropic call failed before any successful API response (fetch error or non-2xx), or when the handler threw before a response.
+  - `consume_company_lookup(p_tenant uuid) returns jsonb` -> `{status: 'ok' | 'tenant_cap' | 'global_cap' | 'unknown_tenant', day: 'YYYY-MM-DD'}` (the Bangkok day counted). It reserves BEFORE the Anthropic call (every attempt counts). It enforces the per-tenant plan cap and the global all-tenant daily ceiling atomically (an advisory lock serialises callers, and the upsert has `WHERE count < cap`).
+  - `refund_company_lookup(p_tenant uuid, p_day date)` decrements (floor 0) on the day that was counted. It is called only when Anthropic certainly did not bill (`shouldRefund`): a non-2xx HTTP status, or a fetch failure that is not an abort/timeout, with no earlier successful response in the same lookup. A timeout (50 s deadline) or a 200 whose body cannot be parsed counts as SPENT, with no refund. A handler throw refunds only if it happened before the Anthropic call began. The refund result is logged (`company_lookup_refund`).
+  - Both functions use `SET search_path = public, pg_temp`. The migration drops and recreates them, so it can be re-run.
 - Day = Bangkok date. The old count-after-success functions are gone (never applied).
 
 ## Release order

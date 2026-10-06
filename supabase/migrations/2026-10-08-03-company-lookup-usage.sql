@@ -33,13 +33,16 @@ ALTER TABLE company_lookup_caps  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE company_lookup_usage ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON company_lookup_caps, company_lookup_usage FROM PUBLIC, anon, authenticated;
 
--- Reserves one lookup. Returns 'ok', 'tenant_cap', 'global_cap' or 'unknown_tenant'.
+-- Reserves one lookup. Returns jsonb {"status": "ok"|"tenant_cap"|"global_cap"|"unknown_tenant",
+-- "day": "YYYY-MM-DD"}: the Bangkok day it counted on, which the caller passes back to
+-- refund_company_lookup so a refund after midnight hits the same day.
 -- The advisory lock serialises callers so neither limit can be overshot.
+DROP FUNCTION IF EXISTS consume_company_lookup(UUID);
 CREATE OR REPLACE FUNCTION consume_company_lookup(p_tenant UUID)
-RETURNS TEXT
+RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_cap    INT;
@@ -53,11 +56,11 @@ BEGIN
   SELECT COALESCE(c.daily_cap, 5) INTO v_cap
   FROM tenants t LEFT JOIN company_lookup_caps c ON c.plan = t.plan
   WHERE t.id = p_tenant;
-  IF NOT FOUND THEN RETURN 'unknown_tenant'; END IF;
+  IF NOT FOUND THEN RETURN jsonb_build_object('status', 'unknown_tenant', 'day', v_day); END IF;
 
   SELECT COALESCE((SELECT daily_cap FROM company_lookup_caps WHERE plan = '_global'), 300) INTO v_global;
   SELECT COALESCE(SUM(count), 0) INTO v_total FROM company_lookup_usage WHERE day = v_day;
-  IF v_total >= v_global THEN RETURN 'global_cap'; END IF;
+  IF v_total >= v_global THEN RETURN jsonb_build_object('status', 'global_cap', 'day', v_day); END IF;
 
   INSERT INTO company_lookup_usage AS u (tenant_id, day, count)
   VALUES (p_tenant, v_day, 1)
@@ -69,27 +72,29 @@ BEGIN
   -- first insert with a cap of 0 must not stick
   IF v_count IS NOT NULL AND v_cap <= 0 THEN
     UPDATE company_lookup_usage SET count = GREATEST(count - 1, 0) WHERE tenant_id = p_tenant AND day = v_day;
-    RETURN 'tenant_cap';
+    RETURN jsonb_build_object('status', 'tenant_cap', 'day', v_day);
   END IF;
 
-  RETURN CASE WHEN v_count IS NULL THEN 'tenant_cap' ELSE 'ok' END;
+  RETURN jsonb_build_object('status', CASE WHEN v_count IS NULL THEN 'tenant_cap' ELSE 'ok' END, 'day', v_day);
 END;
 $$;
 
--- Gives back one reserved lookup (floor 0). Called only when the Anthropic call
--- failed before any successful response.
-CREATE OR REPLACE FUNCTION refund_company_lookup(p_tenant UUID)
+-- Gives back one reserved lookup (floor 0) on the day it was counted. Called only
+-- when Anthropic certainly did not bill (see shouldRefund in _shared/company-lookup.ts).
+DROP FUNCTION IF EXISTS refund_company_lookup(UUID);
+DROP FUNCTION IF EXISTS refund_company_lookup(UUID, DATE);
+CREATE OR REPLACE FUNCTION refund_company_lookup(p_tenant UUID, p_day DATE)
 RETURNS VOID
 LANGUAGE sql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
   UPDATE company_lookup_usage
      SET count = GREATEST(count - 1, 0)
-   WHERE tenant_id = p_tenant AND day = (now() AT TIME ZONE 'Asia/Bangkok')::date;
+   WHERE tenant_id = p_tenant AND day = p_day;
 $$;
 
-REVOKE ALL ON FUNCTION consume_company_lookup(UUID) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION refund_company_lookup(UUID)  FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION consume_company_lookup(UUID) TO service_role;
-GRANT EXECUTE ON FUNCTION refund_company_lookup(UUID)  TO service_role;
+REVOKE ALL ON FUNCTION consume_company_lookup(UUID)       FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION refund_company_lookup(UUID, DATE)  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION consume_company_lookup(UUID)      TO service_role;
+GRANT EXECUTE ON FUNCTION refund_company_lookup(UUID, DATE) TO service_role;
