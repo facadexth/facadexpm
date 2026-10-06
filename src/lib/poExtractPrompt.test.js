@@ -30,4 +30,8 @@ describe('SYSTEM_PROMPT deposit deductions', () => {
     expect(SYSTEM_PROMPT).toMatch(/before VAT/i)
     expect(SYSTEM_PROMPT).toMatch(/Do NOT reduce unit_price/)
   })
+  it('only returns explicitly printed deductions, never inferred ones', () => {
+    expect(SYSTEM_PROMPT).toMatch(/explicitly prints a line deducting a deposit/)
+    expect(SYSTEM_PROMPT).toMatch(/Never infer a deduction from totals/)
+  })
 })
