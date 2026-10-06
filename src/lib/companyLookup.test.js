@@ -71,6 +71,10 @@ describe('request + input + budget', () => {
     expect(r.model).toBe('claude-sonnet-5-5')
     expect(r.tools[0]).toMatchObject({ type: 'web_search_20250305', name: 'web_search', max_uses: MAX_SEARCHES, allowed_domains: ALLOWED_DOMAINS })
     expect(r.tools[0].blocked_domains).toBeUndefined()
+    // live 400: "Country code TH is not supported" -> never send user_location / country
+    expect(r.tools[0].user_location).toBeUndefined()
+    expect(JSON.stringify(r)).not.toMatch(/country|user_location/i)
+    expect(r.messages[0].content).toContain('Thailand')
     expect(r.system).toContain(JSON_DELIMITER)
     expect(MAX_CONTINUATIONS).toBe(1)
   })

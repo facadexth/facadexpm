@@ -46,7 +46,7 @@ Rules:
 - Every candidate needs at least one source url that you actually used.`
 
 export function lookupUserPrompt(name: string): string {
-  return `Company name: ${name}`
+  return `Company name (a company registered in Thailand): ${name}`
 }
 
 export function buildLookupRequest(name: string) {
@@ -59,7 +59,8 @@ export function buildLookupRequest(name: string) {
       name: 'web_search',
       max_uses: MAX_SEARCHES,
       allowed_domains: ALLOWED_DOMAINS,
-      user_location: { type: 'approximate', country: 'TH', timezone: 'Asia/Bangkok' },
+      // No user_location: the API rejected country 'TH' with a 400 ("Country code TH is not
+      // supported") and timezone-only is untested. Thailand focus comes from the prompt instead.
     }],
     messages: [{ role: 'user', content: lookupUserPrompt(name) }],
   }
