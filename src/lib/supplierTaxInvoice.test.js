@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
+  fmtWac,
   matchTolerance, withinTolerance, lineAmount, evaluateMatch, wacAfterIn, wacAfterReversal,
   simulateStock, proposePos, lineBase, formSignature, previewIsCurrent, mapTaxInvoiceRpcError, CHECK_TEXT,
   GENERIC_ERROR_TEXT, isTaxInvoiceNotReady, postSummaryLines, reversingPoCount, fmtQty,
@@ -293,6 +294,16 @@ describe('lineBase extra cases', () => {
   })
 })
 
+describe('fmtWac', () => {
+  it('keeps small per-unit costs visible, 2 decimals otherwise, ASCII minus', () => {
+    expect(fmtWac(0.0125)).toBe('0.0125')
+    expect(fmtWac(0.5)).toBe('0.50')
+    expect(fmtWac(100)).toBe('100.00')
+    expect(fmtWac(-3)).toBe('-3.00')
+    expect(fmtWac(null)).toBe('—')
+  })
+})
+
 describe('postSummaryLines (confirm dialog text)', () => {
   const row = { item_name: 'X', site_name: 'S2', before_qty: 10, before_wac: 100, add_qty: 5, remove_qty: 28.3333333333, after_qty: -13.3333333333, after_wac: 100, base_unit: 'kg', negative: true }
   it('lists per-item changes, warnings, reason, stamping and the undo rule with rounded numbers', () => {
@@ -303,7 +314,7 @@ describe('postSummaryLines (confirm dialog text)', () => {
     expect(lines).toEqual([
       'เพิ่มสต็อกจากใบกำกับ 2 รายการ',
       'กลับรายการรับเข้าสต็อกของใบสั่งซื้อ 2 ใบ',
-      '⚠️ X @ S2: คงเหลือ 10 → -13.3333 kg · ต้นทุนเฉลี่ย 100.00 → 100.00 · รับเข้าใหม่ +5 · กลับรายการ −28.3333 (สต็อกจะติดลบ)',
+      '⚠️ X @ S2: คงเหลือ 10 → -13.3333 kg · ต้นทุนเฉลี่ย 100.00 → 100.00 · รับเข้าใหม่ +5 · กลับรายการ -28.3333 (สต็อกจะติดลบ)',
       '⚠️ ' + 'ใบสั่งซื้อนอกเดือนของใบกำกับ',
       'เหตุผลที่ยอดต่าง: ราคาขึ้น',
       'รายจ่ายของใบสั่งซื้อไม่เปลี่ยนยอด แต่จะประทับเลขที่ใบกำกับ INV-1',

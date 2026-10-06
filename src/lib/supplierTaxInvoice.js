@@ -230,7 +230,13 @@ const NF_QTY = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 4 })
 const NF_MONEY = new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 /** Quantity text: at most 4 decimals (never 13.333333333). */
 export const fmtQty = v => (v == null || v === '' || !Number.isFinite(Number(v)) ? '—' : NF_QTY.format(Number(v)))
-const fmtWac = v => (v == null || v === '' || !Number.isFinite(Number(v)) ? '—' : NF_MONEY.format(Number(v)))
+const NF_WAC_SMALL = new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+/** Per-unit cost text: 2 decimals, up to 4 when |value| < 1 so small unit costs are not shown as 0.00. Minus is ASCII '-'. */
+export const fmtWac = v => {
+  if (v == null || v === '' || !Number.isFinite(Number(v))) return '—'
+  const n = Number(v)
+  return (Math.abs(n) < 1 ? NF_WAC_SMALL : NF_MONEY).format(n)
+}
 const NO_REVERSAL_CODES = ['po_no_receipt_movements', 'po_stock_from_invoice']
 
 /** Number of linked POs that really have receipt movements to reverse (the server flags the others). */
@@ -245,7 +251,7 @@ export function postSummaryLines({ invoiceNo, stockLineCount, poCount, preview, 
   for (const r of preview?.rows || []) {
     out.push(`${r.negative ? '⚠️ ' : ''}${r.item_name} @ ${r.site_name}: คงเหลือ ${fmtQty(r.before_qty)} → ${fmtQty(r.after_qty)} ${r.base_unit || ''}`.trim()
       + ` · ต้นทุนเฉลี่ย ${fmtWac(r.before_wac)} → ${fmtWac(r.after_wac)}`
-      + ` · รับเข้าใหม่ +${fmtQty(r.add_qty)} · กลับรายการ −${fmtQty(r.remove_qty)}`
+      + ` · รับเข้าใหม่ +${fmtQty(r.add_qty)} · กลับรายการ -${fmtQty(r.remove_qty)}`
       + (r.negative ? ' (สต็อกจะติดลบ)' : ''))
   }
   const seen = new Set()

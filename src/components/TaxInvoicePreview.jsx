@@ -5,10 +5,10 @@
 // ============================================================
 import { useEffect, useRef } from 'react'
 import { fmt } from '../lib/supabase.js'
-import { CHECK_TEXT } from '../lib/supplierTaxInvoice.js'
+import { CHECK_TEXT, fmtQty, fmtWac } from '../lib/supplierTaxInvoice.js'
 
 const num = v => (v == null || v === '' ? null : Number(v))
-const q = v => fmt(v, 3)
+const q = fmtQty
 
 export function checkLine(c, poNumberById) {
   const po = c.po_id ? (poNumberById?.get?.(c.po_id) || null) : null
@@ -39,7 +39,7 @@ export default function TaxInvoicePreview({ preview, poNumberById }) {
               <th>สินค้า</th><th>ไซท์งาน</th>
               <th style={{ textAlign: 'right' }}>คงเหลือก่อน</th>
               <th style={{ textAlign: 'right' }}>+ จากใบกำกับ</th>
-              <th style={{ textAlign: 'right' }}>− กลับรายการใบสั่งซื้อ</th>
+              <th style={{ textAlign: 'right' }}>- กลับรายการใบสั่งซื้อ</th>
               <th style={{ textAlign: 'right' }}>คงเหลือหลัง</th>
               <th style={{ textAlign: 'right' }}>ต้นทุนเฉลี่ยหลัง</th>
             </tr>
@@ -57,7 +57,7 @@ export default function TaxInvoicePreview({ preview, poNumberById }) {
                   <td className="font-mono" style={{ textAlign: 'right', ...(neg ? { color: 'var(--danger, #e55)', fontWeight: 700 } : null) }}>
                     {q(r.after_qty)} {r.base_unit || ''}
                   </td>
-                  <td className="font-mono" style={{ textAlign: 'right' }}>{fmt(r.after_wac)}</td>
+                  <td className="font-mono" style={{ textAlign: 'right' }}>{fmtWac(r.after_wac)}</td>
                 </tr>
               )
             })}
