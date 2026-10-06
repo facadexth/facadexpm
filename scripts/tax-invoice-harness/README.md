@@ -12,3 +12,10 @@ Run from the repo root (uses the repo's existing `esbuild` and `playwright`; add
 
 Run it alone: parallel runs make the Playwright waits slow. Mocks: `mockHooks.js` (hooks + RPC wrappers, `window.__rpc`,
 `window.__rpcDelay`), `mockSupabaseLib.js`, `useRoleMock.js` (`window.__role`), `MockQuickAdd.jsx`.
+
+## PO page scenarios
+
+`buildPo.mjs` / `runPo.mjs` (same rules, run alone) check `src/pages/PurchaseOrders.jsx` with `mockPoHooks.js` (links `null` = migrations not applied,
+or a Map), `mockPoSupabaseLib.js` (logs writes/rpc in `window.__log`, `window.__rpcError` injects a record_stock_movement error) and `mockTenant.js`:
+
+    node scripts/tax-invoice-harness/buildPo.mjs && node scripts/tax-invoice-harness/runPo.mjs
