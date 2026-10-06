@@ -6,8 +6,8 @@
 // ✅ Multi-category (JSONB array) with checkboxes
 // ============================================================
 import { useState, useMemo } from 'react'
-import { supabase } from '../lib/supabase.js'
-import { useSuppliers, useSupplierDocumentExamples, saveSupplierDocumentExample, deleteSupplierDocumentExample, extractPoDocument } from '../hooks/useSupabase.js'
+import { supabase, fmt } from '../lib/supabase.js'
+import { useSupplierCreditNotes, useSuppliers, useSupplierDocumentExamples, saveSupplierDocumentExample, deleteSupplierDocumentExample, extractPoDocument } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -292,6 +292,15 @@ export default function Suppliers() {
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'suppliers')
   const { hasModuleAccess } = useTenant()
   const { data: suppliers, refetch } = useSuppliers()
+  const { data: owedNotes } = useSupplierCreditNotes({ settlement: 'owed' })
+  const owedBySupplier = useMemo(() => {
+    const m = {}
+    for (const n of owedNotes || []) {
+      if (n.status !== 'confirmed') continue
+      m[n.supplier_id] = (m[n.supplier_id] || 0) + Number(n.amount || 0)
+    }
+    return m
+  }, [owedNotes])
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
@@ -404,6 +413,7 @@ export default function Suppliers() {
                   <td>
                     <div style={{ fontWeight: 600 }}>{s.name}</div>
                     {s.address && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{s.address}</div>}
+                    {owedBySupplier[s.id] > 0 && <span className="badge" style={{ fontSize: 11, marginTop: 4 }}>รอรับคืน ฿{fmt(owedBySupplier[s.id])}</span>}
                   </td>
                   <td>
                     {normCategory(s.category).length

@@ -12,6 +12,7 @@ import {
   useCategories, usePurchaseOrders, useInventoryItems,
 } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
+import { takeCreditNotePrefill } from '../lib/creditNotePrefill.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
@@ -211,7 +212,9 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
 
 const SETTLEMENT_ORDER = ['owed', 'offset', 'refunded']
 
-export default function SupplierCreditNotes({ prefill } = {}) {
+export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
+  // a PO row hands data over via the module holder; the prop overrides it
+  const [prefill] = useState(() => prefillProp || takeCreditNotePrefill())
   const [supplierFilter, setSupplierFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const { data: notes, loading, error, refetch } = useSupplierCreditNotes({ supplierId: supplierFilter, status: statusFilter })

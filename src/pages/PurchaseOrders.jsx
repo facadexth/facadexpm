@@ -26,6 +26,7 @@ const ADD_FORM_OPEN_KEY = 'purchase-order-form-open'
 import { useTenant } from '../hooks/useTenant.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { auditLog } from '../lib/audit.js'
+import { setCreditNotePrefill } from '../lib/creditNotePrefill.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import QuickAddSelect from '../components/QuickAddSelect.jsx'
@@ -1105,9 +1106,19 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                             <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(po.id)}><TrashIcon /></button>
                           </>
                         )}
-                        {canEdit && po.status === 'received' && po.expense_id && (
+                        {canEdit && po.status === 'received' && (
                           <RowActionsMenu items={[
-                            { label: '🔄 สลับใบกำกับภาษี', onClick: () => setSwapInvoiceRow(po) },
+                            ...(po.expense_id ? [{ label: '🔄 สลับใบกำกับภาษี', onClick: () => setSwapInvoiceRow(po) }] : []),
+                            { label: '↩️ สร้างใบลดหนี้', onClick: () => {
+                              setCreditNotePrefill({
+                                supplier_id: po.supplier_id, site_id: po.site_id, po_id: po.id, category_id: po.category_id,
+                                items: (po.purchase_order_items || []).map(i => ({
+                                  inventory_item_id: i.inventory_item_id, description: i.description,
+                                  quantity: i.quantity, unit: i.unit, unit_price: i.unit_price,
+                                })),
+                              })
+                              navigateTo('supplier_credit_notes', {})
+                            } },
                           ]} />
                         )}
                       </div>
