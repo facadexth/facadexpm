@@ -236,7 +236,8 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
   }
 
   const submit = (confirmAfter) => {
-    if (!form.supplier_id || !form.site_id || !form.doc_number.trim() || !form.category_id) { alert('กรุณากรอกซัพพลายเออร์ ไซต์ เลขที่ใบลดหนี้ และหมวดหมู่'); return }
+    const missing = [!form.supplier_id && 'ซัพพลายเออร์', !form.site_id && 'ไซต์', !form.doc_number.trim() && 'เลขที่ใบลดหนี้', !form.category_id && 'หมวดหมู่'].filter(Boolean)
+    if (missing.length) { alert('ยังไม่ได้กรอก: ' + missing.join(', ')); return }
     if (poMode && lookupError) { alert('โหลดข้อมูลสินค้า/หน่วยแปลงไม่สำเร็จ: ' + lookupError); return }
     if (poMode && !lookupsReady) { alert('กำลังโหลดข้อมูลสินค้า กรุณารอสักครู่'); return }
     if (poMode) {
@@ -280,7 +281,7 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
               options={(categories || []).map(c => ({ value: c.id, label: c.name, keywords: c.name }))} />
           </div>
           <div>
-            <label className="label">วันที่ลงรายจ่าย (ว่าง = ใช้วันที่ในใบ)</label>
+            <label className="label">วันที่ลงรายจ่าย (เดือนที่หักรายจ่ายติดลบ ว่าง = ใช้วันที่ในใบ)</label>
             <input type="date" className="input" value={form.expense_date} onChange={e => set('expense_date', e.target.value)} />
           </div>
           <div>
@@ -288,7 +289,7 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
             <input className="input" value={form.original_invoice_no} onChange={e => set('original_invoice_no', e.target.value)} />
           </div>
           <div>
-            <label className="label">— วันที่</label>
+            <label className="label">อ้างถึงใบกำกับเดิม — วันที่</label>
             <input type="date" className="input" value={form.original_invoice_date} onChange={e => set('original_invoice_date', e.target.value)} />
           </div>
           <div>
