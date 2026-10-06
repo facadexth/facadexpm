@@ -31,6 +31,15 @@ export default function ReceiveDepositBlock({ po, totals, onChange }) {
 
   useEffect(() => { onChange({ ...result, ready }) }, [result, ready]) // eslint-disable-line
 
+  // The deposit query failed (e.g. table missing) but the scan read a deduction: say so instead of silently receiving without it.
+  const hintFailed = error != null && Array.isArray(po.deposit_hint) && po.deposit_hint.length > 0
+  if (hintFailed) {
+    return (
+      <div style={{ marginTop: 10, fontSize: 12, borderTop: '1px solid var(--border)', paddingTop: 8, color: '#b45309' }}>
+        ⚠️ เอกสารที่สแกนมีการหักมัดจำ ({po.deposit_hint.map(h => h.ref).filter(Boolean).join(', ')}) แต่โหลดรายการมัดจำไม่สำเร็จ — การรับของครั้งนี้จะไม่หักมัดจำ
+      </div>
+    )
+  }
   if (rows == null || (deposits.length === 0 && unmatched.length === 0 && unavailable.length === 0)) return null
 
   const coveredExcept = (id) => deposits.reduce((s, d) => (d.id !== id && result.lines[d.id] ? s + result.lines[d.id].net : s), 0)

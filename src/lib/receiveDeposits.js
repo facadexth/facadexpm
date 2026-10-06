@@ -13,6 +13,9 @@ export const DEDUCTION_ERROR_TEXT = {
   bad_deposit: 'ข้อมูลมัดจำไม่ถูกต้อง (VAT คงเหลือติดลบ)',
 }
 
+/** Shown when a PO that deducted deposits is un-received/cancelled (trigger + RPC code po_has_deposit_applications). */
+export const PO_DEPOSIT_LOCKED_TEXT = 'ใบสั่งซื้อนี้หักมัดจำแล้ว ย้อนไม่ได้จากหน้านี้ — แจ้งผู้ดูแลระบบ'
+
 export const RPC_ERROR_TEXT = {
   not_ordered: 'ใบสั่งซื้อนี้รับของไปแล้ว',
   deposit_exceeds_remaining: 'ยอดหักเกินมัดจำคงเหลือ (อาจมีการใช้มัดจำไปแล้ว) กรุณาเปิดใหม่',
@@ -25,6 +28,7 @@ export const RPC_ERROR_TEXT = {
   bad_application: 'ข้อมูลการหักมัดจำไม่ถูกต้อง',
   insufficient_privilege: 'ไม่มีสิทธิ์รับของ',
   po_not_found: 'ไม่พบใบสั่งซื้อ',
+  po_has_deposit_applications: PO_DEPOSIT_LOCKED_TEXT,
 }
 
 /** Thai message for an RPC error; unknown codes fall back to the raw message. */
@@ -114,7 +118,7 @@ export function computeReceiveSelection({ deposits, supplierId, totals, selectio
     if (d.remaining.vat < 0) { errors[d.id] = 'bad_deposit'; continue }
     const split = splitDeduction(d.expense, d.remaining, amount)
     lines[d.id] = split
-    deductions.push(split)
+    deductions.push({ ...split, id: d.id })
     applications.push({ deposit_id: d.id, amount_no_vat: split.net })
     coveredNet = round2(coveredNet + split.net)
   }

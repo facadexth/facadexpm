@@ -31,7 +31,13 @@ export function computeReceivePlan({ subtotal, vat }, deductions) {
   let vatRaw = round2(vat - dVat)
   // Deductions cover the whole net: a VAT gap of up to 0.01 per deduction is per-line
   // rounding, not money (the server adjusts the last application) -> no dust expense.
-  if (n > 0 && Math.abs(netRaw) <= EPS && Math.abs(vatRaw) <= 0.01 * n + 1e-9) vatRaw = 0
+  // Like the RPC, the fold lands on the LAST application (ordered by deposit id when ids are given) and
+  // is refused when it would push that application's VAT below zero (the RPC then raises deposit_vat_exceeds_po).
+  if (n > 0 && Math.abs(netRaw) <= EPS && Math.abs(vatRaw) > EPS && Math.abs(vatRaw) <= 0.01 * n + 1e-9) {
+    const ordered = deductions.every(d => d && d.id != null) ? [...deductions].sort((a, b) => (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0)) : deductions
+    const last = ordered[n - 1]
+    if (round2(Number(last.vat || 0) + vatRaw) >= 0) vatRaw = 0
+  }
   const netToPay = Math.max(0, netRaw)
   const vatToPay = Math.max(0, vatRaw)
   const total = round2(netToPay + vatToPay)

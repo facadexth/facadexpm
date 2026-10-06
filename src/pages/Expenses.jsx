@@ -11,6 +11,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useExpenses, useSites, useCategories, useSuppliers, useCheques, useCreditNoteExpenseIds, useDepositMap } from '../hooks/useSupabase.js'
 import DepositRegisterModal from '../components/DepositRegisterModal.jsx'
+import { PO_DEPOSIT_LOCKED_TEXT } from '../lib/receiveDeposits.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -62,7 +63,9 @@ const chequeOpts = (cheques) => (cheques || []).map(c => ({
   value: c.id, label: `${c.cheque_no} · ${c.bank}${c.status === 'cashed' ? ' (ขึ้นเงินแล้ว)' : ''}`, keywords: `${c.cheque_no} ${c.bank}`,
 }))
 
-function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], cheques = [], hasChequeTracking, onSave, onCancel, loading, onChequeCreated, onSiteCreated, onSupplierCreated }) {
+const mapPoRevertError = err => (String(err?.message || '').includes('po_has_deposit_applications') ? PO_DEPOSIT_LOCKED_TEXT : 'Error: ' + err.message)
+
+function ExpenseForm({ lockedMoney = false, initial = EMPTY_FORM, sites, categories, suppliers = [], cheques = [], hasChequeTracking, onSave, onCancel, loading, onChequeCreated, onSiteCreated, onSupplierCreated }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('expense-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -164,7 +167,9 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
         <div className="form-grid-2">
           <div>
             <label className="label">Supplier</label>
-            <QuickAddSelect
+            {lockedMoney ? (
+              <input className="input" disabled value={form.supplier || '—'} />
+            ) : <QuickAddSelect
               value={form.supplier_id}
               onChange={id => {
                 const sup = suppliers.find(s => s.id === id)
@@ -185,12 +190,13 @@ function ExpenseForm({ initial = EMPTY_FORM, sites, categories, suppliers = [], 
               table="suppliers"
               namePlaceholder="ชื่อ Supplier ใหม่"
               onCreated={onSupplierCreated}
-            />
+            />}
           </div>
           <div>
             <label className="label">มูลค่า (บาท) ★</label>
-            <input type="number" className="input" required min="0" step="0.01" value={form.amount}
+            <input type="number" className="input" required min="0" step="0.01" value={form.amount} disabled={lockedMoney}
               onChange={e => set('amount', e.target.value)} />
+            {lockedMoney && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>มัดจำนี้ถูกใช้หักกับใบสั่งซื้อแล้ว — แก้ยอด/Supplier ไม่ได้ (แก้สถานะ วันที่ หมายเหตุได้)</div>}
           </div>
         </div>
         <div className="form-grid-3">
@@ -379,6 +385,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
   const [newStatus, setNewStatus] = useState('')
   const [deleteId, setDeleteId] = useState(null)
   const [reconcilePoId, setReconcilePoId] = useState(null)
+  const [reconcileLocked, setReconcileLocked] = useState(false)   // the PO deducted deposits: it cannot be un-received from here
   const [saving,   setSaving]   = useState(false)
   const [toast,    setToast]    = useState(null)
   const [showImport, setShowImport] = useState(false)
@@ -487,7 +494,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
       }
       setShowAdd(false); setEditRow(null); refetch(); showToast('บันทึกสำเร็จ')
     } catch (e) {
-      alert('Error: ' + e.message)
+      alert(String(e.message || '').includes('deposit_in_use') ? 'มัดจำนี้ถูกใช้หักกับใบสั่งซื้อแล้ว — แก้ยอด/Supplier ไม่ได้' : 'Error: ' + e.message)
     } finally {
       setSaving(false)
     }
@@ -514,7 +521,14 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
       return
     }
     setDeleteId(null); refetch(); showToast('ลบแล้ว')
-    if (row?.po_id) setReconcilePoId(row.po_id)
+    if (row?.po_id) {
+      // A PO that deducted deposits cannot be un-received/cancelled (server trigger); explain instead of offering it.
+      let locked = false
+      const { count, error: appErr } = await supabase.from('po_deposit_applications').select('id', { count: 'exact', head: true }).eq('po_id', row.po_id)
+      if (!appErr && (count || 0) > 0) locked = true
+      setReconcileLocked(locked)
+      setReconcilePoId(row.po_id)
+    }
   }
 
   const handleExport = () => {
@@ -718,8 +732,8 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                     {/* คลิกเพื่อเปลี่ยนสถานะ -- ยกเว้นรายจ่ายที่ผูกกับเช็คไว้แล้ว
                         (สถานะต้องตามเช็คเท่านั้น กันไม่ให้เปลี่ยนสถานะทาง
                         shortcut นี้แล้ว conflict กับสถานะเช็คจริง) */}
-                    {(e.cheque_id || isCnExpense(e.id) || isDepositLocked(e.id)) ? (
-                      <span className={`badge badge-${e.status}`} title={isDepositLocked(e.id) ? 'ใช้หักมัดจำแล้ว — เปลี่ยนสถานะไม่ได้' : isCnExpense(e.id) ? 'เกิดจากใบลดหนี้ — เปลี่ยนสถานะเงินได้ที่หน้าใบลดหนี้เท่านั้น' : `ผูกกับเช็ค ${e.cheque_no || ''} — เปลี่ยนสถานะได้ที่หน้า "เช็ค" เท่านั้น`}>
+                    {(e.cheque_id || isCnExpense(e.id)) ? (
+                      <span className={`badge badge-${e.status}`} title={isCnExpense(e.id) ? 'เกิดจากใบลดหนี้ — เปลี่ยนสถานะเงินได้ที่หน้าใบลดหนี้เท่านั้น' : `ผูกกับเช็ค ${e.cheque_no || ''} — เปลี่ยนสถานะได้ที่หน้า "เช็ค" เท่านั้น`}>
                         {STATUS_LABELS[e.status] || e.status}
                       </span>
                     ) : (
@@ -738,7 +752,10 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                       <span style={{ fontSize: 11, color: 'var(--text3)' }} title="แก้ไข/ลบที่หน้าใบลดหนี้">🔒 ใบลดหนี้</span>
                     )}
                     {canEdit && !isCnExpense(e.id) && isDepositLocked(e.id) && (
-                      <span style={{ fontSize: 11, color: 'var(--text3)' }} title="มัดจำนี้ถูกใช้หักกับใบสั่งซื้อแล้ว แก้ไข/ลบไม่ได้">🔒 ใช้หักมัดจำแล้ว</span>
+                      <div className="actions-cell">
+                        <span style={{ fontSize: 11, color: 'var(--text3)' }} title="มัดจำนี้ถูกใช้หักกับใบสั่งซื้อแล้ว แก้ยอด/Supplier และลบไม่ได้ (แก้สถานะ วันที่ หมายเหตุได้)">🔒 ใช้หักมัดจำแล้ว</span>
+                        <button className="btn btn-sm btn-edit" onClick={() => { setEditRow(e); setShowAdd(true) }}><PencilIcon /></button>
+                      </div>
                     )}
                     {canEdit && !isCnExpense(e.id) && !isDepositLocked(e.id) && (
                       <div className="actions-cell">
@@ -764,6 +781,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
       {showAdd && (
         <Modal title={editRow ? 'แก้ไขรายจ่าย' : 'เพิ่มรายจ่าย'} onClose={() => { setShowAdd(false); setEditRow(null) }} maxWidth={660}>
           <ExpenseForm
+            lockedMoney={!!(editRow && isDepositLocked(editRow.id))}
             initial={editRow || { ...EMPTY_FORM, site_id: siteId }}
             sites={sites}
             categories={categories}
@@ -817,23 +835,26 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
       {reconcilePoId && (
         <Modal title="ใบสั่งซื้ออ้างอิงยังอยู่" onClose={() => setReconcilePoId(null)} maxWidth={420}>
           <div className="modal-body">
-            <p style={{ color: 'var(--text2)' }}>รายจ่ายที่ลบไปมาจากใบสั่งซื้อนี้ — ต้องการปรับสถานะใบสั่งซื้ออย่างไร?</p>
+            {reconcileLocked
+              ? <p style={{ color: 'var(--text2)' }}>{PO_DEPOSIT_LOCKED_TEXT}</p>
+              : <p style={{ color: 'var(--text2)' }}>รายจ่ายที่ลบไปมาจากใบสั่งซื้อนี้ — ต้องการปรับสถานะใบสั่งซื้ออย่างไร?</p>}
           </div>
           <div className="modal-footer">
-            <button className="btn btn-ghost" onClick={async () => {
+            {reconcileLocked && <button className="btn btn-ghost" onClick={() => { setReconcilePoId(null); setReconcileLocked(false) }}>ปิด</button>}
+            {!reconcileLocked && <button className="btn btn-ghost" onClick={async () => {
               const update = { status: 'ordered', received_date: null, expense_id: null }
               const { error } = await supabase.from('purchase_orders').update(update).eq('id', reconcilePoId)
-              if (error) { alert('Error: ' + error.message); return }
+              if (error) { alert(mapPoRevertError(error)); return }
               await auditLog('purchase_orders', reconcilePoId, 'UPDATE', null, update)
               setReconcilePoId(null)
-            }}>กลับไปเป็นยังไม่รับของ</button>
-            <button className="btn btn-danger" onClick={async () => {
+            }}>กลับไปเป็นยังไม่รับของ</button>}
+            {!reconcileLocked && <button className="btn btn-danger" onClick={async () => {
               const update = { status: 'cancelled' }
               const { error } = await supabase.from('purchase_orders').update(update).eq('id', reconcilePoId)
-              if (error) { alert('Error: ' + error.message); return }
+              if (error) { alert(mapPoRevertError(error)); return }
               await auditLog('purchase_orders', reconcilePoId, 'UPDATE', null, update)
               setReconcilePoId(null)
-            }}>ยกเลิกใบสั่งซื้อ</button>
+            }}>ยกเลิกใบสั่งซื้อ</button>}
           </div>
         </Modal>
       )}

@@ -157,3 +157,23 @@ describe('deposit ref matching', () => {
     expect(matchDepositByRef('AI6901007', deps, 's3')).toBeNull()
   })
 })
+
+describe('computeReceivePlan VAT fold mirrors the RPC', () => {
+  it('folds a one-satang VAT gap into the last application', () => {
+    const r = computeReceivePlan({ subtotal: 100, vat: 6.99 }, [{ net: 100, vat: 7, id: 'a' }])
+    expect(r).toMatchObject({ createExpense: false, overVat: false })
+  })
+  it('does not fold when the last application would go below zero VAT (the RPC raises instead)', () => {
+    const r = computeReceivePlan({ subtotal: 100, vat: 0 }, [{ net: 50, vat: 0.01, id: 'a' }, { net: 50, vat: 0.01, id: 'b' }])
+    expect(r.overVat).toBe(true)
+  })
+  it('picks the last application by deposit id, not by array order', () => {
+    // ids sort a < b; last = b (vat 0.02) -> fold ok even though array order puts a (vat 0) last
+    const r = computeReceivePlan({ subtotal: 100, vat: 0 }, [{ net: 50, vat: 0.02, id: 'b' }, { net: 50, vat: 0, id: 'a' }])
+    expect(r.overVat).toBe(false)
+  })
+  it('a VAT gap of 0.01 left after the net is fully covered is dust only when it is within the fold', () => {
+    expect(computeReceivePlan({ subtotal: 100, vat: 7.01 }, [{ net: 100, vat: 7 }]).createExpense).toBe(false)
+    expect(computeReceivePlan({ subtotal: 100, vat: 7.05 }, [{ net: 100, vat: 7 }]).createExpense).toBe(true)
+  })
+})

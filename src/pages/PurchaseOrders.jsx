@@ -28,7 +28,7 @@ import { fmt, fmtDate } from '../lib/supabase.js'
 import { auditLog } from '../lib/audit.js'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
 import ReceiveDepositBlock from '../components/ReceiveDepositBlock.jsx'
-import { mapReceiveRpcError, canConfirmReceive } from '../lib/receiveDeposits.js'
+import { mapReceiveRpcError, canConfirmReceive, PO_DEPOSIT_LOCKED_TEXT } from '../lib/receiveDeposits.js'
 import { setCreditNotePrefill, poItemToCreditLine } from '../lib/creditNotePrefill.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -892,7 +892,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     if (!deleteId) return
     const { error } = await supabase.from('purchase_orders').update({ status: 'cancelled' }).eq('id', deleteId)
     if (!error) { await auditLog('purchase_orders', deleteId, 'UPDATE', null, { status: 'cancelled' }); setDeleteId(null); refetch(); showToast('ยกเลิกแล้ว') }
-    else alert('Error: ' + error.message)
+    else alert(String(error.message || '').includes('po_has_deposit_applications') ? PO_DEPOSIT_LOCKED_TEXT : 'Error: ' + error.message)
   }
 
   // Uses allInventoryItems/allAluminumProfiles (NOT the active-only
@@ -1189,7 +1189,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
             </div>
           }
           onConfirm={handleReceive}
-          confirmDisabled={!canConfirmReceive(depositSel)}
+          confirmDisabled={receiving || !canConfirmReceive(depositSel)}
           onCancel={() => setReceiveRow(null)}
         />
       )}
