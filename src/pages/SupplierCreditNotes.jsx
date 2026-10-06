@@ -16,7 +16,7 @@ import SearchableSelect from '../components/SearchableSelect.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
 import { VAT_RATE } from '../lib/invoiceCalc.js'
-import { computeCreditNoteTotals, findStockShortfalls, round2, SETTLEMENT_LABELS } from '../lib/creditNoteCalc.js'
+import { computeCreditNoteTotals, findStockShortfalls, inferVatFlags, round2, SETTLEMENT_LABELS } from '../lib/creditNoteCalc.js'
 
 const CN_ERRORS = {
   insufficient_stock: 'สต็อกไม่พอสำหรับคืนสินค้า — ตรวจจำนวนในรายการอีกครั้ง',
@@ -24,6 +24,8 @@ const CN_ERRORS = {
   not_confirmed: 'ใบลดหนี้นี้ยังไม่ได้ยืนยัน',
   credit_note_not_found: 'ไม่พบใบลดหนี้',
   insufficient_privilege: 'ไม่มีสิทธิ์ทำรายการนี้',
+  no_items: 'ใบลดหนี้นี้ไม่มีรายการสินค้า',
+  bad_settlement: 'สถานะเงินไม่ถูกต้อง',
 }
 const cnErrorText = e => CN_ERRORS[(e?.message || '').split(':')[0].trim()] || e?.message || 'เกิดข้อผิดพลาด'
 async function confirmNote(id) {
@@ -56,12 +58,12 @@ function makeInitialForm(prefill, note) {
       unit: i.unit || '',
       unit_price: String(i.unit_price ?? ''),
     }))
-    // vat_enabled / price_includes_vat are not stored; infer from saved totals.
-    const vatEnabled = Number(note.vat) > 0
+    // vat_enabled / price_includes_vat are not stored; infer from saved data.
+    const { vatEnabled, priceIncludesVat } = inferVatFlags(note)
     return {
       supplier_id: note.supplier_id, site_id: note.site_id, doc_number: note.doc_number,
       doc_date: note.doc_date, category_id: note.category_id || '', po_id: note.po_id || '',
-      vatEnabled, priceIncludesVat: false, notes: note.notes || '',
+      vatEnabled, priceIncludesVat, notes: note.notes || '',
       lines: items.length ? items : [{ ...EMPTY_LINE }],
     }
   }
@@ -178,7 +180,7 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
                   <input className="input" placeholder="คำอธิบาย" value={l.description} onChange={e => setLine(i, 'description', e.target.value)} />
                 </div>
                 <input className="input" type="number" min="0" step="any" placeholder="จำนวน" value={l.quantity} onChange={e => setLine(i, 'quantity', e.target.value)} />
-                <input className="input" placeholder="หน่วย" value={l.unit} onChange={e => setLine(i, 'unit', e.target.value)} />
+                <input className="input" placeholder="หน่วย" value={l.unit} readOnly={!!l.inventory_item_id} title={l.inventory_item_id ? 'หน่วยฐานของสินค้าในคลัง' : undefined} onChange={e => setLine(i, 'unit', e.target.value)} />
                 <input className="input" type="number" min="0" step="any" placeholder="ราคา/หน่วย" value={l.unit_price} onChange={e => setLine(i, 'unit_price', e.target.value)} />
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeLine(i)} disabled={form.lines.length <= 1}>🗑️ ลบรายการ</button>
               </div>
@@ -224,6 +226,7 @@ export default function SupplierCreditNotes({ prefill } = {}) {
   const [formKey, setFormKey] = useState(0)
   const [formInitial, setFormInitial] = useState(() => (prefill ? makeInitialForm(prefill, null) : null))
   const [saving, setSaving] = useState(false)
+  const [busy, setBusy] = useState(false)
   const [confirmId, setConfirmId] = useState(null)
   const [voidId, setVoidId] = useState(null)
   const [settleTarget, setSettleTarget] = useState(null)
@@ -236,6 +239,8 @@ export default function SupplierCreditNotes({ prefill } = {}) {
   const supplierNameById = useMemo(() => Object.fromEntries((suppliers || []).map(s => [s.id, s.name])), [suppliers])
 
   const handleSave = async (form, confirmAfter, onHand, itemById) => {
+    if (saving || busy) return
+    if (!form.lines.length) { alert('ใบลดหนี้ต้องมีรายการสินค้าอย่างน้อย 1 รายการ'); return }
     // Stock shortfall pre-check (the RPC is the final authority).
     if (confirmAfter) {
       const short = findStockShortfalls(form.lines, onHand)
@@ -248,6 +253,7 @@ export default function SupplierCreditNotes({ prefill } = {}) {
     setSaving(true)
     let savedId = editNote?.id || null
     let createdNew = false
+    let oldItemIds = []
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const t = form.totals
@@ -260,9 +266,9 @@ export default function SupplierCreditNotes({ prefill } = {}) {
       if (savedId) {
         const { error } = await supabase.from('supplier_credit_notes').update(payload).eq('id', savedId)
         if (error) throw error
-        // replace items: delete all then insert
-        const { error: delErr } = await supabase.from('supplier_credit_note_items').delete().eq('credit_note_id', savedId)
-        if (delErr) throw delErr
+        const { data: oldItems, error: oldErr } = await supabase.from('supplier_credit_note_items').select('id').eq('credit_note_id', savedId)
+        if (oldErr) throw oldErr
+        oldItemIds = (oldItems || []).map(r => r.id)
       } else {
         const { data, error } = await supabase.from('supplier_credit_notes')
           .insert({ ...payload, status: 'draft', settlement_status: 'owed', created_by: session?.user?.email || null })
@@ -285,6 +291,11 @@ export default function SupplierCreditNotes({ prefill } = {}) {
         if (createdNew) await supabase.from('supplier_credit_notes').delete().eq('id', savedId)
         throw itemErr
       }
+      // new rows are in; only now remove the previous ones (a failed insert keeps the old items)
+      if (oldItemIds.length) {
+        const { error: delErr } = await supabase.from('supplier_credit_note_items').delete().in('id', oldItemIds)
+        if (delErr) throw delErr
+      }
       if (confirmAfter) {
         try { await confirmNote(savedId) }
         catch (e) {
@@ -303,8 +314,15 @@ export default function SupplierCreditNotes({ prefill } = {}) {
   }
 
   const runRpc = async (fn, closer) => {
+    if (busy) return
+    setBusy(true)
     try { await fn(); closer(); refetch() }
     catch (e) { alert('Error: ' + e.message); closer(); refetch() }
+    finally { setBusy(false) }
+  }
+  const askConfirm = n => {
+    if (!(n.supplier_credit_note_items || []).length) { alert('ใบลดหนี้นี้ไม่มีรายการสินค้า — แก้ไขและเพิ่มรายการก่อนยืนยัน'); return }
+    setConfirmId(n.id)
   }
 
   const rows = notes || []
@@ -350,7 +368,7 @@ export default function SupplierCreditNotes({ prefill } = {}) {
                     <td>{n.status === 'confirmed' ? (SETTLEMENT_LABELS[n.settlement_status] || n.settlement_status) : <span style={{ color: 'var(--text3)' }}>—</span>}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <div className="actions-cell">
-                        {n.status === 'draft' && <button className="btn btn-sm btn-success" onClick={() => setConfirmId(n.id)}>✅ ยืนยัน</button>}
+                        {n.status === 'draft' && <button className="btn btn-sm btn-success" disabled={busy} onClick={() => askConfirm(n)}>✅ ยืนยัน</button>}
                         <RowActionsMenu items={[
                           ...(n.status === 'draft' ? [{ label: '✏️ แก้ไข', onClick: () => openEdit(n) }] : []),
                           ...(n.status === 'confirmed' ? [
@@ -406,7 +424,7 @@ export default function SupplierCreditNotes({ prefill } = {}) {
           </div>
           <div className="modal-footer">
             <button className="btn btn-ghost" onClick={() => setSettleTarget(null)}>ยกเลิก</button>
-            <button className="btn btn-primary"
+            <button className="btn btn-primary" disabled={busy}
               onClick={() => runRpc(() => setSettlement(settleTarget.id, settleValue), () => setSettleTarget(null))}>บันทึก</button>
           </div>
         </Modal>

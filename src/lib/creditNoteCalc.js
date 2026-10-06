@@ -42,3 +42,12 @@ export function findStockShortfalls(lines, onHandByItemId) {
 export function expenseStatusForSettlement(settlement) {
   return settlement === 'owed' ? 'pending' : 'paid'
 }
+
+/** Rebuild the VAT flags of a stored note (they are not persisted). */
+export function inferVatFlags(note) {
+  const vatEnabled = Number(note.vat) > 0
+  const subtotal = (note.supplier_credit_note_items || note.items || [])
+    .reduce((s, l) => s + num(l.quantity) * num(l.unit_price), 0)
+  const priceIncludesVat = vatEnabled && Math.abs(subtotal - Number(note.amount)) < 0.01
+  return { vatEnabled, priceIncludesVat }
+}

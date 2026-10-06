@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { round2, computeCreditNoteTotals, findStockShortfalls, expenseStatusForSettlement } from './creditNoteCalc.js'
+import { round2, computeCreditNoteTotals, findStockShortfalls, expenseStatusForSettlement, inferVatFlags } from './creditNoteCalc.js'
 
 describe('computeCreditNoteTotals', () => {
   it('adds VAT on top when prices exclude VAT', () => {
@@ -38,5 +38,18 @@ describe('expenseStatusForSettlement', () => {
     expect(expenseStatusForSettlement('owed')).toBe('pending')
     expect(expenseStatusForSettlement('offset')).toBe('paid')
     expect(expenseStatusForSettlement('refunded')).toBe('paid')
+  })
+})
+
+describe('inferVatFlags', () => {
+  const item = { quantity: 1, unit_price: 2000 }
+  it('VAT-exclusive draft', () => {
+    expect(inferVatFlags({ vat: 140, amount: 2140, supplier_credit_note_items: [item] })).toEqual({ vatEnabled: true, priceIncludesVat: false })
+  })
+  it('VAT-inclusive draft', () => {
+    expect(inferVatFlags({ vat: 140, amount: 2140, supplier_credit_note_items: [{ quantity: 1, unit_price: 2140 }] })).toEqual({ vatEnabled: true, priceIncludesVat: true })
+  })
+  it('no-VAT draft', () => {
+    expect(inferVatFlags({ vat: 0, amount: 2000, supplier_credit_note_items: [item] })).toEqual({ vatEnabled: false, priceIncludesVat: false })
   })
 })

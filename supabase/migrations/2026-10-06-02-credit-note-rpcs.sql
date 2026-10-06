@@ -19,6 +19,9 @@ BEGIN
   SELECT * INTO cn FROM supplier_credit_notes WHERE id = p_id AND tenant_id = v_tenant FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'credit_note_not_found'; END IF;
   IF cn.status <> 'draft' THEN RAISE EXCEPTION 'not_draft'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM supplier_credit_note_items WHERE credit_note_id = p_id AND tenant_id = v_tenant) THEN
+    RAISE EXCEPTION 'no_items';
+  END IF;
 
   FOR it IN SELECT * FROM supplier_credit_note_items
             WHERE credit_note_id = p_id AND tenant_id = v_tenant
