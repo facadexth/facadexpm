@@ -4,11 +4,13 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSupplierDeposits } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
-import { openDeposits, selectionFromHint, defaultAmount, computeReceiveSelection, DEDUCTION_ERROR_TEXT } from '../lib/receiveDeposits.js'
+import { openDeposits, selectionFromHint, defaultAmount, computeReceiveSelection, unavailableDeposits, unmatchedHintText, isDepositQuerySettled, DEDUCTION_ERROR_TEXT } from '../lib/receiveDeposits.js'
 
 export default function ReceiveDepositBlock({ po, totals, onChange }) {
   const { data: rows, error } = useSupplierDeposits(po.supplier_id)
   const deposits = useMemo(() => (error ? [] : openDeposits(rows)), [rows, error])
+  const unavailable = useMemo(() => (error ? [] : unavailableDeposits(rows)), [rows, error])
+  const ready = isDepositQuerySettled(rows, error)
   const [selection, setSelection] = useState({})
   const [unmatched, setUnmatched] = useState([])
   const initRef = useRef(false)
@@ -17,7 +19,7 @@ export default function ReceiveDepositBlock({ po, totals, onChange }) {
   useEffect(() => {
     if (initRef.current || rows == null) return
     initRef.current = true
-    const r = selectionFromHint(po.deposit_hint, deposits, po.supplier_id)
+    const r = selectionFromHint(po.deposit_hint, deposits, po.supplier_id, rows)
     setSelection(r.selection)
     setUnmatched(r.unmatched)
   }, [rows, deposits, po.deposit_hint, po.supplier_id])
@@ -27,9 +29,9 @@ export default function ReceiveDepositBlock({ po, totals, onChange }) {
     [deposits, po.supplier_id, totals.subtotal, totals.vat, selection], // eslint-disable-line
   )
 
-  useEffect(() => { onChange(result) }, [result]) // eslint-disable-line
+  useEffect(() => { onChange({ ...result, ready }) }, [result, ready]) // eslint-disable-line
 
-  if (rows == null || (deposits.length === 0 && unmatched.length === 0)) return null
+  if (rows == null || (deposits.length === 0 && unmatched.length === 0 && unavailable.length === 0)) return null
 
   const coveredExcept = (id) => deposits.reduce((s, d) => (d.id !== id && result.lines[d.id] ? s + result.lines[d.id].net : s), 0)
 
@@ -45,10 +47,11 @@ export default function ReceiveDepositBlock({ po, totals, onChange }) {
   return (
     <div style={{ marginTop: 10, fontSize: 12, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
       <strong>หักมัดจำ</strong>
-      {unmatched.map(ref => (
-        <div key={ref} style={{ marginTop: 4, color: '#b45309' }}>
-          ⚠️ ไม่พบมัดจำเลขที่ {ref} ในระบบ — เลือกเอง หรือลงทะเบียนมัดจำที่หน้ารายจ่ายก่อน
-        </div>
+      {unmatched.map(u => (
+        <div key={u.ref} style={{ marginTop: 4, color: '#b45309' }}>⚠️ {unmatchedHintText(u)}</div>
+      ))}
+      {unavailable.map(u => (
+        <div key={u.id} style={{ marginTop: 4, color: 'var(--text3)' }}>🚫 {u.no || 'มัดจำ'}: {u.reason}</div>
       ))}
       {deposits.map(d => {
         const sel = selection[d.id] || {}

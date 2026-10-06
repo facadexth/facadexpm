@@ -27,7 +27,7 @@ import { useTenant } from '../hooks/useTenant.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { auditLog } from '../lib/audit.js'
 import ReceiveDepositBlock from '../components/ReceiveDepositBlock.jsx'
-import { mapReceiveRpcError } from '../lib/receiveDeposits.js'
+import { mapReceiveRpcError, canConfirmReceive } from '../lib/receiveDeposits.js'
 import { setCreditNotePrefill, poItemToCreditLine } from '../lib/creditNotePrefill.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -922,7 +922,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   }
 
   const handleReceive = async () => {
-    if (!receiveRow || receiving) return
+    if (!receiveRow || receiving || !canConfirmReceive(depositSel)) return
     setReceiving(true)
     const { subtotal, vat } = calcPoTotals(receiveRow.purchase_order_items, receiveRow.has_vat, receiveRow.price_includes_vat)
     const depositApps = depositSel?.valid ? depositSel.applications : []
@@ -930,13 +930,16 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     try {
       // Atomic: creates the remainder expense (none if the deposits cover it all),
       // records the deposit applications and marks the PO received.
-      try {
-        expenseId = await receivePoWithDeposits(receiveRow.id, depositApps, subtotal, vat)
-      } catch (rpcErr) {
-        throw new Error(mapReceiveRpcError(rpcErr))
-      }
+      expenseId = await receivePoWithDeposits(receiveRow.id, depositApps, subtotal, vat)
+    } catch (rpcErr) {
+      // The RPC is all-or-nothing: nothing was saved, so show only the reason.
+      setReceiveRow(null); setReceiving(false); refetch()
+      alert(mapReceiveRpcError(rpcErr))
+      return
+    }
+    try {
       if (expenseId) await auditLog('expenses', expenseId, 'INSERT', null, { po_id: receiveRow.id, via: 'receive_po_with_deposits' })
-      await auditLog('purchase_orders', receiveRow.id, 'UPDATE', null, { status: 'received', deposit_applications: depositApps })
+      await auditLog('purchase_orders', receiveRow.id, 'UPDATE', null, { status: 'received', received_date: new Date().toISOString().slice(0, 10), expense_id: expenseId, deposit_applications: depositApps })
 
       for (const plan of receiveStockPlan(receiveRow)) {
         const { error: moveErr } = await supabase.rpc('record_stock_movement', {
@@ -1179,7 +1182,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
             </div>
           }
           onConfirm={handleReceive}
-          confirmDisabled={depositSel?.valid === false}
+          confirmDisabled={!canConfirmReceive(depositSel)}
           onCancel={() => setReceiveRow(null)}
         />
       )}
