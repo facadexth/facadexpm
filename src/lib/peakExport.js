@@ -81,7 +81,7 @@ export function buildPeakJournalRows(creditNotes, { accountByCategoryId, supplie
         r[col('วันที่รายการ (YYYYMMDD)')] = peakDate(n.doc_date)
         r[col('อ้างอิง')] = n.doc_number || ''
         r[col('ผู้ติดต่อ')] = contact.contactNo || contact.taxId
-        r[col('คำอธิบายการบันทึกบัญชี')] = `ใบลดหนี้ซัพพลายเออร์ ${n.doc_number || ''}${n.notes ? ' - ' + n.notes : ''}`.trim()
+        r[col('คำอธิบายการบันทึกบัญชี')] = `ใบลดหนี้ซัพพลายเออร์ ${n.doc_number || ''}${n.original_invoice_no ? ' อ้างถึงใบกำกับ ' + n.original_invoice_no : ''}${n.notes ? ' - ' + n.notes : ''}`.trim()
       }
       r[col('เลขที่บัญชี*')] = acct
       if (debit) r[col('เดบิต')] = round2(debit)

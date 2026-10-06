@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase, fmt } from '../lib/supabase.js'
 import {
   useSupplierCreditNotes, useInventoryOnHand, useSuppliers, useSites,
-  useCategories, usePurchaseOrders, useInventoryItems,
+  useCategories, usePurchaseOrders, useInventoryItems, useExpenses,
 } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useUserRole } from '../hooks/useUserRole.js'
@@ -19,6 +19,7 @@ import SearchableSelect from '../components/SearchableSelect.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
 import { VAT_RATE } from '../lib/invoiceCalc.js'
+import { pickCreditNoteExtra } from '../lib/creditNoteExtra.js'
 import { computeCreditNoteTotals, findStockShortfalls, inferVatFlags, round2, SETTLEMENT_LABELS } from '../lib/creditNoteCalc.js'
 
 const CN_ERRORS = {
@@ -69,6 +70,8 @@ function makeInitialForm(prefill, note) {
       supplier_id: note.supplier_id, site_id: note.site_id, doc_number: note.doc_number,
       doc_date: note.doc_date, category_id: note.category_id || '', po_id: note.po_id || '',
       original_expense_id: note.original_expense_id || null,
+      expense_date: note.expense_date || '', original_invoice_no: note.original_invoice_no || '',
+      original_invoice_date: note.original_invoice_date || '',
       vatEnabled, priceIncludesVat, notes: note.notes || '',
       lines: items.length ? items : [{ ...EMPTY_LINE }],
     }
@@ -78,6 +81,7 @@ function makeInitialForm(prefill, note) {
     supplier_id: p.supplier_id || '', site_id: p.site_id || '', doc_number: '',
     doc_date: bangkokTodayIso(), category_id: p.category_id || '', po_id: p.po_id || '',
     original_expense_id: p.original_expense_id || null,
+    expense_date: '', original_invoice_no: '', original_invoice_date: '',
     vatEnabled: p.vatEnabled ?? true, priceIncludesVat: p.priceIncludesVat ?? false, notes: '',
     lines: p.items?.length
       ? p.items.map(i => ({
@@ -97,6 +101,7 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
 
   const { data: onHandData } = useInventoryOnHand(form.site_id)
   const onHand = onHandData || {}
+  const { data: supplierExpenses } = useExpenses(form.supplier_id ? { supplierId: form.supplier_id } : {})
   const { data: pos } = usePurchaseOrders(form.supplier_id ? { supplierId: form.supplier_id } : {})
 
   const itemOptions = useMemo(() => (inventoryItems || []).map(it => ({
@@ -135,7 +140,7 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
           <div>
             <label className="label">ซัพพลายเออร์ ★</label>
             <SearchableSelect required value={form.supplier_id}
-              onChange={v => setForm(f => ({ ...f, supplier_id: v, po_id: '' }))}
+              onChange={v => setForm(f => ({ ...f, supplier_id: v, po_id: '', original_expense_id: null }))}
               options={(suppliers || []).map(s => ({ value: s.id, label: s.name, keywords: s.name }))} />
           </div>
           <div>
@@ -161,6 +166,28 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
             <SearchableSelect value={form.po_id} onChange={v => set('po_id', v)}
               placeholder="— ไม่ผูก —"
               options={(pos || []).map(p => ({ value: p.id, label: `${p.po_number || p.id.slice(0, 8)} · ${p.date || ''}`, keywords: p.po_number || '' }))} />
+          </div>
+          <div>
+            <label className="label">วันที่ลงรายจ่าย (ว่าง = ใช้วันที่ในใบ)</label>
+            <input type="date" className="input" value={form.expense_date} onChange={e => set('expense_date', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">อ้างถึงใบกำกับเดิม — เลขที่</label>
+            <input className="input" value={form.original_invoice_no} onChange={e => set('original_invoice_no', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">— วันที่</label>
+            <input type="date" className="input" value={form.original_invoice_date} onChange={e => set('original_invoice_date', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">รายจ่ายเดิมที่อ้างถึง (ไม่บังคับ)</label>
+            <SearchableSelect value={form.original_expense_id || ''} onChange={v => set('original_expense_id', v || null)}
+              placeholder="— ไม่ผูก —"
+              options={(form.supplier_id ? (supplierExpenses || []) : []).map(x => ({
+                value: x.id,
+                label: `${x.date || ''} · ${x.invoice_no || '-'} · ${fmt(x.amount)}`,
+                keywords: `${x.invoice_no || ''} ${x.date || ''}`,
+              }))} />
           </div>
         </div>
 
@@ -276,7 +303,7 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
         amount_no_vat: t.amount_no_vat, vat: t.vat, amount: round2(t.amount_no_vat + t.vat),
         notes: form.notes || null,
       }
-      if (form.original_expense_id) payload.original_expense_id = form.original_expense_id
+      Object.assign(payload, pickCreditNoteExtra(form, editNote))
       if (savedId) {
         const { error } = await supabase.from('supplier_credit_notes').update(payload).eq('id', savedId)
         if (error) throw error
@@ -383,7 +410,10 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
                 const badge = STATUS_BADGE[n.status] || STATUS_BADGE.draft
                 return (
                   <tr key={n.id}>
-                    <td style={{ fontWeight: 600 }}>{n.doc_number}</td>
+                    <td style={{ fontWeight: 600 }}>
+                      {n.doc_number}
+                      {n.original_invoice_no && <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text2)' }}>อ้างถึง {n.original_invoice_no}</div>}
+                    </td>
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}>{n.doc_date ? new Date(n.doc_date).toLocaleDateString('th-TH') : '—'}</td>
                     <td>{n.suppliers?.name || supplierNameById[n.supplier_id] || '—'}</td>
                     <td>{n.sites?.name || '—'}</td>

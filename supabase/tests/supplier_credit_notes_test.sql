@@ -138,6 +138,19 @@ BEGIN
   END IF;
   RAISE NOTICE 'Test 8 (delete draft with items): PASSED';
 
+  -- Test 9 (needs migration 2026-10-06-03): expense_date drives the negative expense date; null -> doc_date
+  INSERT INTO supplier_credit_notes (supplier_id, site_id, doc_number, doc_date, expense_date, category_id, amount_no_vat, vat, amount)
+  VALUES (t_sup, t_site, 'CN-D1', '2026-07-29', '2026-08-31', t_cat, 100, 0, 100) RETURNING id INTO n1;
+  INSERT INTO supplier_credit_note_items (credit_note_id, description, quantity, unit_price) VALUES (n1, 'non-stock', 1, 100);
+  v_exp := confirm_supplier_credit_note(n1);
+  IF (SELECT date FROM expenses WHERE id = v_exp) <> DATE '2026-08-31' THEN RAISE EXCEPTION 'Test 9 FAIL: expense_date not used'; END IF;
+  INSERT INTO supplier_credit_notes (supplier_id, site_id, doc_number, doc_date, category_id, amount_no_vat, vat, amount)
+  VALUES (t_sup, t_site, 'CN-D2', '2026-07-29', t_cat, 100, 0, 100) RETURNING id INTO n2;
+  INSERT INTO supplier_credit_note_items (credit_note_id, description, quantity, unit_price) VALUES (n2, 'non-stock', 1, 100);
+  v_exp := confirm_supplier_credit_note(n2);
+  IF (SELECT date FROM expenses WHERE id = v_exp) <> DATE '2026-07-29' THEN RAISE EXCEPTION 'Test 9 FAIL: doc_date fallback'; END IF;
+  RAISE NOTICE 'Test 9 (expense_date vs doc_date): PASSED';
+
   RESET role;
 END $$;
 

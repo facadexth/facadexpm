@@ -86,6 +86,13 @@ describe('buildPeakJournalRows', () => {
     expect(buildPeakJournalRows([{ ...cn, vat: 0, amount: 100 }], ctx).rows).toHaveLength(2)
     expect(buildPeakJournalRows([{ ...cn, id: 'x', category_id: 'zz' }], ctx).skipped).toEqual([{ id: 'x', reason: 'no_account' }])
   })
+  it('mentions the original invoice in the description only when present', () => {
+    const D = PEAK_JOURNAL_HEADERS.indexOf('คำอธิบายการบันทึกบัญชี')
+    expect(buildPeakJournalRows([cn], ctx).rows[0][D]).toBe('ใบลดหนี้ซัพพลายเออร์ CN-9 - คืนกระจก')
+    const withInv = buildPeakJournalRows([{ ...cn, original_invoice_no: 'PK-57' }], ctx).rows[0]
+    expect(withInv[D]).toBe('ใบลดหนี้ซัพพลายเออร์ CN-9 อ้างถึงใบกำกับ PK-57 - คืนกระจก')
+    expect(withInv[PEAK_JOURNAL_HEADERS.indexOf('วันที่รายการ (YYYYMMDD)')]).toBe('20261006')
+  })
   it('numbers each credit note separately', () => {
     const { rows } = buildPeakJournalRows([cn, { ...cn, id: 'n2', doc_number: 'CN-10' }], ctx)
     expect(rows.map(r => r[0])).toEqual([1, 1, 1, 2, 2, 2])
