@@ -31,6 +31,9 @@ describe('SQL error codes <-> supplierTaxInvoice.js text', () => {
     const missing = [...checkCodes].filter(c => !(c in CHECK_TEXT))
     expect(missing).toEqual([])
   })
+  it('every code reported by post/void has text in CHECK_TEXT', () => {
+    expect([...reported].filter(c => !(c in CHECK_TEXT))).toEqual([])
+  })
   it('every CHECK_TEXT code is produced by _sti_check, reported by void, or raised by an RPC', () => {
     const unknown = Object.keys(CHECK_TEXT).filter(c => !checkCodes.has(c) && !raised.has(c) && !reported.has(c))
     expect(unknown).toEqual([])

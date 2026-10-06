@@ -32,6 +32,9 @@ CREATE TABLE supplier_tax_invoices (
   posted_at      TIMESTAMPTZ,
   voided_by      TEXT,
   voided_at      TIMESTAMPTZ,
+  -- NaN compares greater than everything in PG, so `< 'Infinity'` rejects both NaN and Infinity.
+  CONSTRAINT sti_finite_check CHECK (net_before_vat < 'Infinity'::numeric AND vat < 'Infinity'::numeric AND grand_total < 'Infinity'::numeric
+    AND (match_diff IS NULL OR (match_diff > '-Infinity'::numeric AND match_diff < 'Infinity'::numeric))),
   CONSTRAINT sti_total_sum_check CHECK (round(net_before_vat + vat - grand_total, 2) = 0),
   CONSTRAINT sti_supplier_fk FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE RESTRICT
 );
@@ -57,6 +60,8 @@ CREATE TABLE supplier_tax_invoice_items (
   CONSTRAINT stii_invoice_fk FOREIGN KEY (invoice_id) REFERENCES supplier_tax_invoices(id) ON DELETE CASCADE,
   CONSTRAINT stii_item_fk FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(id) ON DELETE RESTRICT,
   CONSTRAINT stii_site_fk FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE RESTRICT,
+  CONSTRAINT stii_finite_check CHECK (qty < 'Infinity'::numeric AND unit_price < 'Infinity'::numeric AND amount < 'Infinity'::numeric
+    AND (base_qty IS NULL OR base_qty < 'Infinity'::numeric) AND (base_unit_cost IS NULL OR base_unit_cost < 'Infinity'::numeric)),
   CONSTRAINT stii_stock_fields_check CHECK (
     (inventory_item_id IS NULL AND site_id IS NULL AND base_qty IS NULL AND base_unit_cost IS NULL)
     OR (inventory_item_id IS NOT NULL AND site_id IS NOT NULL AND base_qty > 0 AND base_unit_cost >= 0))
@@ -78,7 +83,8 @@ CREATE TABLE supplier_tax_invoice_pos (
   stamped_invoice_no TEXT,
   CONSTRAINT stip_invoice_fk FOREIGN KEY (invoice_id) REFERENCES supplier_tax_invoices(id) ON DELETE CASCADE,
   CONSTRAINT stip_po_fk FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE RESTRICT,
-  CONSTRAINT stip_invoice_po_uq UNIQUE (invoice_id, po_id)
+  CONSTRAINT stip_invoice_po_uq UNIQUE (invoice_id, po_id),
+  CONSTRAINT stip_finite_check CHECK (po_subtotal IS NULL OR (po_subtotal > '-Infinity'::numeric AND po_subtotal < 'Infinity'::numeric))
 );
 -- Ruling A5: a PO belongs to at most one non-void invoice (drafts included).
 CREATE UNIQUE INDEX stip_po_active_uq ON supplier_tax_invoice_pos (po_id) WHERE active;
@@ -102,16 +108,42 @@ CREATE TABLE supplier_tax_invoice_reversals (
   CONSTRAINT stir_invoice_fk FOREIGN KEY (invoice_id) REFERENCES supplier_tax_invoices(id) ON DELETE RESTRICT,
   CONSTRAINT stir_source_fk FOREIGN KEY (source_movement_id) REFERENCES stock_movements(id) ON DELETE RESTRICT,
   CONSTRAINT stir_reversal_fk FOREIGN KEY (reversal_movement_id) REFERENCES stock_movements(id) ON DELETE RESTRICT,
-  CONSTRAINT stir_restored_fk FOREIGN KEY (restored_movement_id) REFERENCES stock_movements(id) ON DELETE RESTRICT
+  CONSTRAINT stir_restored_fk FOREIGN KEY (restored_movement_id) REFERENCES stock_movements(id) ON DELETE RESTRICT,
+  CONSTRAINT stir_finite_check CHECK (quantity < 'Infinity'::numeric AND unit_cost > '-Infinity'::numeric AND unit_cost < 'Infinity'::numeric)
 );
 CREATE INDEX idx_stir_invoice ON supplier_tax_invoice_reversals(invoice_id);
 CREATE INDEX idx_stir_po ON supplier_tax_invoice_reversals(po_id);
 CREATE INDEX idx_stir_tenant ON supplier_tax_invoice_reversals(tenant_id);
 
+-- Balance snapshots taken by post, per (item, site) it touches: before = just before post wrote anything,
+-- after = just after post's last movement. Void restores `before` exactly when the balance still equals
+-- `after` (no later movement); otherwise it falls back to the formulas and warns void_inexact.
+-- Needed because _sti_wac_after_reversal keeps the WAC at a balance <= 0, so the formulas alone are not invertible.
+CREATE TABLE supplier_tax_invoice_snapshots (
+  id                UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id         UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  invoice_id        UUID NOT NULL,
+  inventory_item_id UUID NOT NULL,
+  site_id           UUID NOT NULL,
+  before_qty        NUMERIC NOT NULL,
+  before_wac        NUMERIC NOT NULL,
+  after_qty         NUMERIC,
+  after_wac         NUMERIC,
+  CONSTRAINT stis_invoice_fk FOREIGN KEY (invoice_id) REFERENCES supplier_tax_invoices(id) ON DELETE RESTRICT,
+  CONSTRAINT stis_key_uq UNIQUE (invoice_id, inventory_item_id, site_id),
+  CONSTRAINT stis_finite_check CHECK (
+    before_qty > '-Infinity'::numeric AND before_qty < 'Infinity'::numeric AND before_wac > '-Infinity'::numeric AND before_wac < 'Infinity'::numeric
+    AND (after_qty IS NULL OR (after_qty > '-Infinity'::numeric AND after_qty < 'Infinity'::numeric))
+    AND (after_wac IS NULL OR (after_wac > '-Infinity'::numeric AND after_wac < 'Infinity'::numeric)))
+);
+CREATE INDEX idx_stis_invoice ON supplier_tax_invoice_snapshots(invoice_id);
+CREATE INDEX idx_stis_tenant ON supplier_tax_invoice_snapshots(tenant_id);
+
 ALTER TABLE supplier_tax_invoices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE supplier_tax_invoice_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE supplier_tax_invoice_pos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE supplier_tax_invoice_reversals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE supplier_tax_invoice_snapshots ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY admin_read ON supplier_tax_invoices FOR SELECT TO authenticated
   USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
@@ -121,9 +153,11 @@ CREATE POLICY admin_read ON supplier_tax_invoice_pos FOR SELECT TO authenticated
   USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
 CREATE POLICY admin_read ON supplier_tax_invoice_reversals FOR SELECT TO authenticated
   USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
+CREATE POLICY admin_read ON supplier_tax_invoice_snapshots FOR SELECT TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
 
-REVOKE ALL ON supplier_tax_invoices, supplier_tax_invoice_items, supplier_tax_invoice_pos, supplier_tax_invoice_reversals FROM anon, authenticated;
-GRANT SELECT ON supplier_tax_invoices, supplier_tax_invoice_items, supplier_tax_invoice_pos, supplier_tax_invoice_reversals TO authenticated;
+REVOKE ALL ON supplier_tax_invoices, supplier_tax_invoice_items, supplier_tax_invoice_pos, supplier_tax_invoice_reversals, supplier_tax_invoice_snapshots FROM anon, authenticated;
+GRANT SELECT ON supplier_tax_invoices, supplier_tax_invoice_items, supplier_tax_invoice_pos, supplier_tax_invoice_reversals, supplier_tax_invoice_snapshots TO authenticated;
 
 -- New movement type (keep every type q1 listed; add receipt_reversal).
 ALTER TABLE stock_movements DROP CONSTRAINT stock_movements_movement_type_check;
@@ -131,6 +165,12 @@ ALTER TABLE stock_movements ADD CONSTRAINT stock_movements_movement_type_check
   CHECK (movement_type IN ('purchase_in', 'transfer_in', 'transfer_out', 'sale_out', 'sale_reversal', 'adjustment', 'purchase_return', 'receipt_reversal'));
 
 -- ── pure math (mirrored in src/lib/supplierTaxInvoice.js) ──
+-- True for a real, finite number (NULL, NaN, +/-Infinity are all false). The RPCs reject those inputs.
+CREATE OR REPLACE FUNCTION _sti_finite(n NUMERIC) RETURNS BOOLEAN
+LANGUAGE sql IMMUTABLE SET search_path = public AS $$
+  SELECT n IS NOT NULL AND n <> 'NaN'::numeric AND n <> 'Infinity'::numeric AND n <> '-Infinity'::numeric
+$$;
+
 CREATE OR REPLACE FUNCTION _sti_tolerance(p_base NUMERIC) RETURNS NUMERIC
 LANGUAGE sql IMMUTABLE SET search_path = public AS $$
   SELECT LEAST(abs(COALESCE(p_base, 0)) * 0.01, 5)
@@ -255,10 +295,26 @@ END $$;
 CREATE TRIGGER poi_block_when_tax_invoiced_trg BEFORE INSERT OR UPDATE OR DELETE ON purchase_order_items
   FOR EACH ROW EXECUTE FUNCTION poi_block_when_tax_invoiced();
 
-REVOKE ALL ON FUNCTION _sti_tolerance(NUMERIC), _sti_wac_after_in(NUMERIC, NUMERIC, NUMERIC, NUMERIC),
+-- Late receipt loop race: the app records a PO's purchase_in movements from the client AFTER the receive RPC.
+-- Once the PO is linked to a posted invoice, a late receipt movement would be neither reversed nor counted.
+-- Only purchase_in rows that reference a purchase_order take the PO row lock; every other movement type
+-- (and a plain purchase_in without a reference) is untouched.
+CREATE OR REPLACE FUNCTION stock_movement_block_when_tax_invoiced() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NEW.movement_type = 'purchase_in' AND NEW.reference_type = 'purchase_order' AND NEW.reference_id IS NOT NULL THEN
+    PERFORM 1 FROM purchase_orders WHERE id = NEW.reference_id FOR SHARE;
+    IF _po_tax_invoiced(NEW.reference_id) THEN RAISE EXCEPTION 'po_tax_invoiced'; END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER stock_movement_block_when_tax_invoiced_trg BEFORE INSERT ON stock_movements
+  FOR EACH ROW EXECUTE FUNCTION stock_movement_block_when_tax_invoiced();
+
+REVOKE ALL ON FUNCTION _sti_finite(NUMERIC), _sti_tolerance(NUMERIC), _sti_wac_after_in(NUMERIC, NUMERIC, NUMERIC, NUMERIC),
   _sti_wac_after_reversal(NUMERIC, NUMERIC, NUMERIC, NUMERIC), _po_goods_subtotal(UUID, UUID), _po_tax_invoiced(UUID),
   _stock_receipt_reversal(UUID, UUID, UUID, NUMERIC, NUMERIC, TEXT, UUID, TEXT, TIMESTAMPTZ),
-  po_block_when_tax_invoiced(), poi_block_when_tax_invoiced()
+  po_block_when_tax_invoiced(), poi_block_when_tax_invoiced(), stock_movement_block_when_tax_invoiced()
   FROM PUBLIC, anon, authenticated;
 
 -- Identity sequence of the reversals table: not usable by clients (name resolved, so the REVOKE cannot fail).
