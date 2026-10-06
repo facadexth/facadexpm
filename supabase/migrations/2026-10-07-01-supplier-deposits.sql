@@ -38,6 +38,8 @@ CREATE POLICY admin_full_access ON supplier_deposits FOR ALL TO authenticated
 CREATE POLICY admin_read ON po_deposit_applications FOR SELECT TO authenticated
   USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
 
+REVOKE ALL ON po_deposit_applications FROM anon, authenticated;
+REVOKE ALL ON supplier_deposits FROM anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON supplier_deposits TO authenticated;
 GRANT SELECT ON po_deposit_applications TO authenticated;
 
@@ -45,10 +47,12 @@ GRANT SELECT ON po_deposit_applications TO authenticated;
 CREATE OR REPLACE FUNCTION sd_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE e RECORD;
 BEGIN
-  SELECT tenant_id, amount_no_vat, vat, supplier_id INTO e FROM expenses WHERE id = NEW.expense_id;
+  SELECT tenant_id, amount, amount_no_vat, vat, supplier_id, po_id INTO e FROM expenses WHERE id = NEW.expense_id;
   IF NOT FOUND OR e.tenant_id IS DISTINCT FROM NEW.tenant_id THEN RAISE EXCEPTION 'cross_tenant_reference'; END IF;
   IF e.amount_no_vat IS NULL OR e.vat IS NULL OR e.amount_no_vat <= 0 THEN RAISE EXCEPTION 'deposit_expense_needs_vat_split'; END IF;
+  IF round(e.amount_no_vat + e.vat - e.amount, 2) <> 0 THEN RAISE EXCEPTION 'deposit_expense_bad_split'; END IF;
   IF e.supplier_id IS NULL THEN RAISE EXCEPTION 'deposit_expense_needs_supplier'; END IF;
+  IF e.po_id IS NOT NULL THEN RAISE EXCEPTION 'deposit_expense_is_po_generated'; END IF;
   RETURN NEW;
 END $$;
 CREATE TRIGGER sd_validate_trg BEFORE INSERT OR UPDATE ON supplier_deposits FOR EACH ROW EXECUTE FUNCTION sd_validate();
@@ -57,10 +61,27 @@ CREATE TRIGGER sd_validate_trg BEFORE INSERT OR UPDATE ON supplier_deposits FOR 
 CREATE OR REPLACE FUNCTION expenses_block_deposit_edit() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   IF (NEW.amount IS DISTINCT FROM OLD.amount OR NEW.amount_no_vat IS DISTINCT FROM OLD.amount_no_vat
-      OR NEW.vat IS DISTINCT FROM OLD.vat OR NEW.supplier_id IS DISTINCT FROM OLD.supplier_id)
+      OR NEW.vat IS DISTINCT FROM OLD.vat OR NEW.supplier_id IS DISTINCT FROM OLD.supplier_id
+      OR NEW.po_id IS DISTINCT FROM OLD.po_id)
      AND EXISTS (SELECT 1 FROM po_deposit_applications a JOIN supplier_deposits d ON d.id = a.deposit_id WHERE d.expense_id = OLD.id) THEN
     RAISE EXCEPTION 'deposit_in_use';
+  END IF;
+  IF NEW.po_id IS NOT NULL AND NEW.po_id IS DISTINCT FROM OLD.po_id
+     AND EXISTS (SELECT 1 FROM supplier_deposits WHERE expense_id = OLD.id) THEN
+    RAISE EXCEPTION 'deposit_expense_is_po_generated';
   END IF;
   RETURN NEW;
 END $$;
 CREATE TRIGGER expenses_block_deposit_edit_trg BEFORE UPDATE ON expenses FOR EACH ROW EXECUTE FUNCTION expenses_block_deposit_edit();
+
+-- A deposit that has applications keeps its expense, number, tenant and id.
+CREATE OR REPLACE FUNCTION sd_lock_when_applied() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF (NEW.expense_id IS DISTINCT FROM OLD.expense_id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+      OR NEW.deposit_invoice_no IS DISTINCT FROM OLD.deposit_invoice_no OR NEW.id IS DISTINCT FROM OLD.id)
+     AND EXISTS (SELECT 1 FROM po_deposit_applications WHERE deposit_id = OLD.id) THEN
+    RAISE EXCEPTION 'deposit_in_use';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER sd_lock_when_applied_trg BEFORE UPDATE ON supplier_deposits FOR EACH ROW EXECUTE FUNCTION sd_lock_when_applied();
