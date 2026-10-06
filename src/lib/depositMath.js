@@ -3,7 +3,7 @@
 // RPC (supabase/migrations/2026-10-07-02-...sql), which is the authority.
 // ============================================================
 
-export const round2 = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100
+export const round2 = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100 || 0
 
 const EPS = 0.005
 
@@ -16,31 +16,45 @@ export function depositRemaining(deposit, applications) {
 export function splitDeduction(deposit, remaining, amountNoVat) {
   const net = round2(amountNoVat)
   if (Math.abs(net - remaining.net) < EPS) return { net, vat: round2(remaining.vat) }
-  const rate = Number(deposit.amount_no_vat) > 0 ? Number(deposit.vat || 0) / Number(deposit.amount_no_vat) : 0
-  return { net, vat: round2(net * rate) }
+  const depositAmount = Number(deposit.amount_no_vat)
+  const vat = depositAmount > 0 ? round2((net * Number(deposit.vat)) / depositAmount) : 0
+  return { net, vat: Math.min(vat, remaining.vat) }
 }
 
 export function computeReceivePlan({ subtotal, vat }, deductions) {
-  const dNet = (deductions || []).reduce((s, d) => s + d.net, 0)
-  const dVat = (deductions || []).reduce((s, d) => s + d.vat, 0)
-  const netToPay = Math.max(0, round2(subtotal - dNet))
-  const vatToPay = Math.max(0, round2(vat - dVat))
+  const dNet = (deductions || []).reduce((s, d) => s + Number(d.net || 0), 0)
+  const dVat = (deductions || []).reduce((s, d) => s + Number(d.vat || 0), 0)
+  const netRaw = round2(subtotal - dNet)
+  const vatRaw = round2(vat - dVat)
+  const netToPay = Math.max(0, netRaw)
+  const vatToPay = Math.max(0, vatRaw)
   const total = round2(netToPay + vatToPay)
-  return { netToPay, vatToPay, total, createExpense: netToPay > EPS || vatToPay > EPS }
+  const overNet = netRaw < -EPS
+  const overVat = vatRaw < -EPS
+  return { netToPay, vatToPay, total, createExpense: netToPay > EPS || vatToPay > EPS, overNet, overVat }
 }
 
 export function validateDeduction({ supplierOk, remainingNet, amountNoVat, uncoveredNet }) {
   if (!supplierOk) return 'wrong_supplier'
   if (!Number.isFinite(Number(amountNoVat)) || Number(amountNoVat) <= 0) return 'not_positive'
-  if (Number(amountNoVat) > remainingNet + EPS) return 'exceeds_remaining'
-  if (Number(amountNoVat) > uncoveredNet + EPS) return 'exceeds_po'
+  if (!Number.isFinite(Number(remainingNet)) || !Number.isFinite(Number(uncoveredNet))) return 'bad_limits'
+  const amount = round2(amountNoVat)
+  if (amount > remainingNet + EPS) return 'exceeds_remaining'
+  if (amount > uncoveredNet + EPS) return 'exceeds_po'
   return null
 }
 
-export const normalizeDepositRef = s => String(s || '').toLowerCase().replace(/[\s\-_./]/g, '')
+export const normalizeDepositRef = s => String(s || '').toLowerCase().replace(/[\s\-_./#:()]/g, '')
 
-export function matchDepositByRef(ref, deposits) {
+export function matchDepositByRef(ref, deposits, supplierId) {
   const n = normalizeDepositRef(ref)
   if (!n) return null
-  return (deposits || []).find(d => normalizeDepositRef(d.deposit_invoice_no) === n) || null
+  const candidates = (deposits || []).filter(d => {
+    if (!d.deposit_invoice_no) return false
+    if (normalizeDepositRef(d.deposit_invoice_no) !== n) return false
+    if (supplierId !== undefined && d.supplier_id !== supplierId) return false
+    return true
+  })
+  if (candidates.length !== 1) return null
+  return candidates[0]
 }
