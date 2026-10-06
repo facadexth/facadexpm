@@ -13,6 +13,8 @@ import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
+import DbdLookup from '../components/DbdLookup.jsx'
+import { isValidThaiId13 } from '../lib/dbdCompanyParse.js'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { fileToExtractionPayload } from '../lib/poDocumentExtraction.js'
 import { isTaxId13, isBranch5, pickPeakFields } from '../lib/peakFields.js'
@@ -87,6 +89,8 @@ function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
           <div>
             <label className="label">ชื่อ Supplier / บริษัท ★</label>
             <input className="input" required value={form.name} onChange={e => set('name', e.target.value)} placeholder="เช่น บริษัท กระจกไทย จำกัด" />
+            <DbdLookup name={form.name} address={form.address} taxId={form.tax_id}
+              onApply={r => setForm(f => ({ ...f, ...(r.name ? { name: r.name } : {}), ...(r.address ? { address: r.address } : {}), ...(r.taxId ? { tax_id: r.taxId.slice(0, 13) } : {}) }))} />
           </div>
           <div>
             <label className="label">ชื่อผู้ติดต่อ</label>
@@ -170,6 +174,9 @@ function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
           <div>
             <label className="label">เลขประจำตัวผู้เสียภาษี (13 หลัก)</label>
             <input className="input" inputMode="numeric" maxLength={13} value={form.tax_id || ''} onChange={e => set('tax_id', e.target.value.replace(/\D/g, ''))} placeholder="เว้นว่างได้" />
+            {form.tax_id?.length === 13 && !isValidThaiId13(form.tax_id) && (
+              <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>เลขไม่ถูกต้องตามสูตร (ตรวจอีกครั้ง — บันทึกได้)</div>
+            )}
           </div>
           <div>
             <label className="label">สาขา (5 หลัก)</label>
