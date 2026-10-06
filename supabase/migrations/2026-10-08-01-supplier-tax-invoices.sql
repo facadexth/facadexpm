@@ -129,6 +129,12 @@ CREATE TABLE supplier_tax_invoice_snapshots (
   before_wac        NUMERIC NOT NULL,
   after_qty         NUMERIC,
   after_wac         NUMERIC,
+  -- The balance row's updated_at before / after post (post stamps it with clock_timestamp(), so it is unique per post
+  -- even inside one transaction). Void's exact path also requires the row to still carry after_updated_at: equal
+  -- (qty, wac) alone can be a different state (two invoices can end on the same numbers). Every balance writer
+  -- (record_stock_movement, _stock_receipt_reversal, post, void) sets updated_at.
+  before_updated_at TIMESTAMPTZ,
+  after_updated_at  TIMESTAMPTZ,
   CONSTRAINT stis_invoice_fk FOREIGN KEY (invoice_id) REFERENCES supplier_tax_invoices(id) ON DELETE RESTRICT,
   CONSTRAINT stis_key_uq UNIQUE (invoice_id, inventory_item_id, site_id),
   CONSTRAINT stis_finite_check CHECK (
@@ -299,6 +305,10 @@ CREATE TRIGGER poi_block_when_tax_invoiced_trg BEFORE INSERT OR UPDATE OR DELETE
 -- Once the PO is linked to a posted invoice, a late receipt movement would be neither reversed nor counted.
 -- Only purchase_in rows that reference a purchase_order take the PO row lock; every other movement type
 -- (and a plain purchase_in without a reference) is untouched.
+-- KNOWN LIMIT (accepted ruling, record_stock_movement is live and NOT modified): lock order differs.
+-- The client receive loop's record_stock_movement locks the balance row first and then, through this trigger, the PO row
+-- (FOR SHARE); post/void lock the PO row (FOR UPDATE) first and then the balances. Two such calls on the same PO and
+-- item/site can deadlock: Postgres aborts one side with 40P01, the data stays correct, and the user retries.
 CREATE OR REPLACE FUNCTION stock_movement_block_when_tax_invoiced() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN

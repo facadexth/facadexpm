@@ -118,8 +118,14 @@ BEGIN
   END IF;
 
   SELECT COALESCE(SUM(amount), 0) INTO v_lines FROM supplier_tax_invoice_items WHERE invoice_id = p_id AND tenant_id = p_tenant;
-  -- Non-finite totals (NaN/Infinity) must never reach the tolerance maths: block with bad_header.
-  IF NOT (_sti_finite(v_lines) AND _sti_finite(inv.net_before_vat) AND _sti_finite(v_posum)) THEN
+  -- Non-finite PO data (a PO line total, or a receipt movement's quantity/unit cost) must never reach the maths.
+  IF NOT _sti_finite(v_posum)
+     OR EXISTS (SELECT 1 FROM _sti_receipt_movements(p_id, p_tenant) r WHERE NOT (_sti_finite(r.quantity) AND _sti_finite(r.unit_cost))) THEN
+    c := c || jsonb_build_object('code', 'po_data_not_finite', 'blocking', true);
+    RETURN jsonb_build_object('checks', c, 'po_sum', 0, 'diff', 0, 'tolerance', 0, 'lines_sum', 0);
+  END IF;
+  -- Non-finite invoice totals (NaN/Infinity) are blocked with bad_header.
+  IF NOT (_sti_finite(v_lines) AND _sti_finite(inv.net_before_vat)) THEN
     c := c || jsonb_build_object('code', 'bad_header', 'blocking', true);
     RETURN jsonb_build_object('checks', c, 'po_sum', 0, 'diff', 0, 'tolerance', 0, 'lines_sum', 0);
   END IF;
@@ -248,6 +254,10 @@ BEGIN
   IF NOT (is_admin_or_owner() AND has_module_access('purchase_orders')) THEN RAISE EXCEPTION 'insufficient_privilege'; END IF;
   v_chk := _sti_check(p_id, v_tenant);
   IF (v_chk->'checks'->0->>'code') = 'invoice_not_found' THEN RETURN v_chk || jsonb_build_object('rows', '[]'::jsonb); END IF;
+  -- non-finite data cannot be simulated (jsonb has no NaN): report the blocking check only
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_chk->'checks') e WHERE e->>'code' IN ('po_data_not_finite', 'bad_header')) THEN
+    RETURN v_chk || jsonb_build_object('rows', '[]'::jsonb);
+  END IF;
 
   FOR r IN SELECT * FROM _sti_touched_keys(p_id, v_tenant) LOOP
     k := r.inventory_item_id::text || '|' || r.site_id::text;
@@ -338,8 +348,8 @@ BEGIN
 
   -- Snapshot the pre-post balance of every touched (item, site) so void can restore it exactly (ruling C1).
   -- Void exactness needs: no stock movement on these keys between post and void (else void_inexact).
-  INSERT INTO supplier_tax_invoice_snapshots (tenant_id, invoice_id, inventory_item_id, site_id, before_qty, before_wac)
-  SELECT v_tenant, p_id, t.inventory_item_id, t.site_id, COALESCE(b.quantity_on_hand, 0), COALESCE(b.weighted_average_cost, 0)
+  INSERT INTO supplier_tax_invoice_snapshots (tenant_id, invoice_id, inventory_item_id, site_id, before_qty, before_wac, before_updated_at)
+  SELECT v_tenant, p_id, t.inventory_item_id, t.site_id, COALESCE(b.quantity_on_hand, 0), COALESCE(b.weighted_average_cost, 0), b.updated_at
     FROM _sti_touched_keys(p_id, v_tenant) t
     LEFT JOIN inventory_stock_balances b ON b.inventory_item_id = t.inventory_item_id AND b.site_id = t.site_id AND b.tenant_id = v_tenant;
 
@@ -361,11 +371,18 @@ BEGIN
     v_revs := v_revs + 1;
   END LOOP;
 
+  -- Stamp every touched balance row with a post-unique updated_at, then record the post-post state incl. that stamp.
+  UPDATE inventory_stock_balances b SET updated_at = clock_timestamp()
+    FROM supplier_tax_invoice_snapshots s
+   WHERE s.invoice_id = p_id AND s.tenant_id = v_tenant AND b.tenant_id = v_tenant
+     AND b.inventory_item_id = s.inventory_item_id AND b.site_id = s.site_id;
   UPDATE supplier_tax_invoice_snapshots s
      SET after_qty = COALESCE((SELECT b.quantity_on_hand FROM inventory_stock_balances b
                                 WHERE b.inventory_item_id = s.inventory_item_id AND b.site_id = s.site_id AND b.tenant_id = v_tenant), 0),
          after_wac = COALESCE((SELECT b.weighted_average_cost FROM inventory_stock_balances b
-                                WHERE b.inventory_item_id = s.inventory_item_id AND b.site_id = s.site_id AND b.tenant_id = v_tenant), 0)
+                                WHERE b.inventory_item_id = s.inventory_item_id AND b.site_id = s.site_id AND b.tenant_id = v_tenant), 0),
+         after_updated_at = (SELECT b.updated_at FROM inventory_stock_balances b
+                              WHERE b.inventory_item_id = s.inventory_item_id AND b.site_id = s.site_id AND b.tenant_id = v_tenant)
    WHERE s.invoice_id = p_id AND s.tenant_id = v_tenant;
 
   -- (c) stamp the invoice number on each PO's expense; amounts untouched (ruling A6)
@@ -410,7 +427,7 @@ DECLARE
   v_tenant UUID := current_tenant_id();
   inv supplier_tax_invoices%ROWTYPE;
   v_keys JSONB; v_warn JSONB := '[]'::jsonb; v_exact JSONB := '[]'::jsonb;
-  r RECORD; m RECORD; k RECORD; mv RECORD; sn RECORD; q NUMERIC; w NUMERIC;
+  r RECORD; m RECORD; k RECORD; mv RECORD; sn RECORD; q NUMERIC; w NUMERIC; u TIMESTAMPTZ;
 BEGIN
   IF NOT (is_admin_or_owner() AND has_module_access('purchase_orders') AND tenant_can_write()) THEN RAISE EXCEPTION 'insufficient_privilege'; END IF;
   IF COALESCE(btrim(p_reason), '') = '' THEN RAISE EXCEPTION 'void_reason_required'; END IF;
@@ -436,13 +453,14 @@ BEGIN
   -- and reported as void_inexact (never blocks).
   FOR sn IN SELECT * FROM supplier_tax_invoice_snapshots WHERE invoice_id = p_id AND tenant_id = v_tenant
              ORDER BY inventory_item_id, site_id LOOP
-    SELECT quantity_on_hand, weighted_average_cost INTO q, w FROM inventory_stock_balances
+    SELECT quantity_on_hand, weighted_average_cost, updated_at INTO q, w, u FROM inventory_stock_balances
      WHERE inventory_item_id = sn.inventory_item_id AND site_id = sn.site_id AND tenant_id = v_tenant;
-    IF NOT FOUND THEN q := 0; w := 0; END IF;
-    IF sn.after_qty IS NOT NULL AND q = sn.after_qty AND w = sn.after_wac THEN
+    IF NOT FOUND THEN q := 0; w := 0; u := NULL; END IF;
+    -- exact only if nothing touched the balance since post: numbers AND the post-unique stamp must match
+    IF sn.after_qty IS NOT NULL AND q = sn.after_qty AND w = sn.after_wac AND u IS NOT DISTINCT FROM sn.after_updated_at THEN
       v_exact := v_exact || jsonb_build_object('item', sn.inventory_item_id, 'site', sn.site_id);
     ELSE
-      v_warn := v_warn || jsonb_build_object('code', 'void_inexact', 'inventory_item_id', sn.inventory_item_id, 'site_id', sn.site_id);
+      v_warn := v_warn || jsonb_build_object('code', 'void_inexact', 'blocking', false, 'inventory_item_id', sn.inventory_item_id, 'site_id', sn.site_id);
     END IF;
   END LOOP;
 
@@ -462,7 +480,7 @@ BEGIN
   END LOOP;
 
   UPDATE inventory_stock_balances b
-     SET quantity_on_hand = s.before_qty, weighted_average_cost = s.before_wac, updated_at = now()
+     SET quantity_on_hand = s.before_qty, weighted_average_cost = s.before_wac, updated_at = COALESCE(s.before_updated_at, now())
     FROM supplier_tax_invoice_snapshots s
    WHERE s.invoice_id = p_id AND s.tenant_id = v_tenant AND b.tenant_id = v_tenant
      AND b.inventory_item_id = s.inventory_item_id AND b.site_id = s.site_id
@@ -477,7 +495,7 @@ BEGIN
        SET invoice_no = k.prev_invoice_no,
            notes = concat_ws(' | ', NULLIF(btrim(notes), ''), 'ยกเลิกใบกำกับภาษี ' || inv.invoice_no)
      WHERE id = k.expense_id AND tenant_id = v_tenant AND invoice_no IS NOT DISTINCT FROM k.stamped_invoice_no;
-    IF NOT FOUND THEN v_warn := v_warn || jsonb_build_object('code', 'expense_changed', 'po_id', k.po_id); END IF;
+    IF NOT FOUND THEN v_warn := v_warn || jsonb_build_object('code', 'expense_changed', 'blocking', false, 'po_id', k.po_id); END IF;
   END LOOP;
 
   UPDATE supplier_tax_invoice_pos SET active = false WHERE invoice_id = p_id AND tenant_id = v_tenant;
