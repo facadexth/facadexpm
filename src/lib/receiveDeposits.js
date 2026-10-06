@@ -59,7 +59,7 @@ export function unavailableDeposits(rows) {
 export const canConfirmReceive = sel => !!sel && sel.ready !== false && sel.valid !== false
 
 /** The deposit query has settled (loaded, failed, or table missing) -> receiving may proceed. */
-export const isDepositQuerySettled = (rows, error) => rows != null || !!error
+export const isDepositQuerySettled = (rows, error) => rows != null || error != null
 
 /**
  * Initial selection from po.deposit_hint: { selection, unmatched: [{ref, reason}] }.

@@ -26,6 +26,7 @@ const ADD_FORM_OPEN_KEY = 'purchase-order-form-open'
 import { useTenant } from '../hooks/useTenant.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { auditLog } from '../lib/audit.js'
+import { bangkokTodayIso } from '../lib/photoUpload.js'
 import ReceiveDepositBlock from '../components/ReceiveDepositBlock.jsx'
 import { mapReceiveRpcError, canConfirmReceive } from '../lib/receiveDeposits.js'
 import { setCreditNotePrefill, poItemToCreditLine } from '../lib/creditNotePrefill.js'
@@ -939,7 +940,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     }
     try {
       if (expenseId) await auditLog('expenses', expenseId, 'INSERT', null, { po_id: receiveRow.id, via: 'receive_po_with_deposits' })
-      await auditLog('purchase_orders', receiveRow.id, 'UPDATE', null, { status: 'received', received_date: new Date().toISOString().slice(0, 10), expense_id: expenseId, deposit_applications: depositApps })
+      await auditLog('purchase_orders', receiveRow.id, 'UPDATE', null, { status: 'received', received_date: bangkokTodayIso(), expense_id: expenseId, deposit_applications: depositApps })
 
       for (const plan of receiveStockPlan(receiveRow)) {
         const { error: moveErr } = await supabase.rpc('record_stock_movement', {
@@ -960,7 +961,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       // update run BEFORE the stock-posting loop, so by the time any error
       // reaches here those two may already be committed — tell the admin to
       // check the actual ledger rather than inviting a blind retry.
-      setReceiveRow(null)
+      setReceiveRow(null); refetch()
       alert(
         'Error: ' + e.message +
         ' — รายจ่ายและสถานะใบสั่งซื้ออาจถูกบันทึกไปแล้วก่อนเกิดข้อผิดพลาดนี้ ' +
