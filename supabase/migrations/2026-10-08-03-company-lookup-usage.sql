@@ -1,10 +1,26 @@
 -- NOT APPLIED. Written for review only; the owner applies it (release order is in
 -- docs/superpowers/plans/2026-10-08-company-lookup-ai-handoff.md).
 --
--- Per-tenant daily counter for the AI company lookup (edge function lookup-company).
--- Counts SUCCESSFUL lookups per Bangkok day; the cap itself (30) is a constant in
--- supabase/functions/_shared/company-lookup.ts. Same shape as line_push_log
--- (2026-10-03-05): RLS on, no policies, no grants to app roles, service role only.
+-- Budget for the AI company lookup (edge function lookup-company). Every lookup
+-- spends real Anthropic money (model tokens + $0.01 per web search), so the
+-- budget is RESERVED BEFORE the model call (every attempt counts) and refunded
+-- only when the call failed before any successful API response.
+-- Modelled on consume_line_push / line_push_caps (2026-10-03-05).
+--
+-- Two limits, both enforced atomically in consume_company_lookup():
+--   1. per-tenant daily cap by plan (company_lookup_caps; trial 5, active 30)
+--   2. a global daily ceiling across ALL tenants (row plan='_global', default 300)
+-- Both are adjustable any time with a plain UPDATE. "Day" = Bangkok date.
+-- Service role only: RLS on with no policies, no grants to app roles.
+
+CREATE TABLE IF NOT EXISTS company_lookup_caps (
+  plan      TEXT PRIMARY KEY,
+  daily_cap INT  NOT NULL CHECK (daily_cap >= 0)
+);
+-- '_global' is the all-tenant ceiling, not a plan. Unknown plans fall back to 5.
+INSERT INTO company_lookup_caps (plan, daily_cap)
+VALUES ('trial', 5), ('active', 30), ('expired', 0), ('_global', 300)
+ON CONFLICT (plan) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS company_lookup_usage (
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -13,42 +29,67 @@ CREATE TABLE IF NOT EXISTS company_lookup_usage (
   PRIMARY KEY (tenant_id, day)
 );
 
+ALTER TABLE company_lookup_caps  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE company_lookup_usage ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON company_lookup_usage FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON company_lookup_caps, company_lookup_usage FROM PUBLIC, anon, authenticated;
 
--- Today's count (Bangkok date) for a tenant; 0 when none yet.
-CREATE OR REPLACE FUNCTION company_lookup_count_today(p_tenant UUID)
-RETURNS INT
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT COALESCE(
-    (SELECT count FROM company_lookup_usage
-      WHERE tenant_id = p_tenant AND day = (now() AT TIME ZONE 'Asia/Bangkok')::date),
-    0);
-$$;
-
--- Records one successful lookup; returns the new count for today.
-CREATE OR REPLACE FUNCTION company_lookup_record(p_tenant UUID)
-RETURNS INT
+-- Reserves one lookup. Returns 'ok', 'tenant_cap', 'global_cap' or 'unknown_tenant'.
+-- The advisory lock serialises callers so neither limit can be overshot.
+CREATE OR REPLACE FUNCTION consume_company_lookup(p_tenant UUID)
+RETURNS TEXT
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_day   DATE := (now() AT TIME ZONE 'Asia/Bangkok')::date;
-  v_count INT;
+  v_cap    INT;
+  v_global INT;
+  v_day    DATE := (now() AT TIME ZONE 'Asia/Bangkok')::date;
+  v_total  INT;
+  v_count  INT;
 BEGIN
+  PERFORM pg_advisory_xact_lock(hashtext('consume_company_lookup'));
+
+  SELECT COALESCE(c.daily_cap, 5) INTO v_cap
+  FROM tenants t LEFT JOIN company_lookup_caps c ON c.plan = t.plan
+  WHERE t.id = p_tenant;
+  IF NOT FOUND THEN RETURN 'unknown_tenant'; END IF;
+
+  SELECT COALESCE((SELECT daily_cap FROM company_lookup_caps WHERE plan = '_global'), 300) INTO v_global;
+  SELECT COALESCE(SUM(count), 0) INTO v_total FROM company_lookup_usage WHERE day = v_day;
+  IF v_total >= v_global THEN RETURN 'global_cap'; END IF;
+
   INSERT INTO company_lookup_usage AS u (tenant_id, day, count)
   VALUES (p_tenant, v_day, 1)
-  ON CONFLICT (tenant_id, day) DO UPDATE SET count = u.count + 1
+  ON CONFLICT (tenant_id, day)
+  DO UPDATE SET count = u.count + 1
+  WHERE u.count < v_cap
   RETURNING u.count INTO v_count;
-  RETURN v_count;
+
+  -- first insert with a cap of 0 must not stick
+  IF v_count IS NOT NULL AND v_cap <= 0 THEN
+    UPDATE company_lookup_usage SET count = GREATEST(count - 1, 0) WHERE tenant_id = p_tenant AND day = v_day;
+    RETURN 'tenant_cap';
+  END IF;
+
+  RETURN CASE WHEN v_count IS NULL THEN 'tenant_cap' ELSE 'ok' END;
 END;
 $$;
 
-REVOKE ALL ON FUNCTION company_lookup_count_today(UUID) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION company_lookup_record(UUID)      FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION company_lookup_count_today(UUID) TO service_role;
-GRANT EXECUTE ON FUNCTION company_lookup_record(UUID)      TO service_role;
+-- Gives back one reserved lookup (floor 0). Called only when the Anthropic call
+-- failed before any successful response.
+CREATE OR REPLACE FUNCTION refund_company_lookup(p_tenant UUID)
+RETURNS VOID
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  UPDATE company_lookup_usage
+     SET count = GREATEST(count - 1, 0)
+   WHERE tenant_id = p_tenant AND day = (now() AT TIME ZONE 'Asia/Bangkok')::date;
+$$;
+
+REVOKE ALL ON FUNCTION consume_company_lookup(UUID) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION refund_company_lookup(UUID)  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION consume_company_lookup(UUID) TO service_role;
+GRANT EXECUTE ON FUNCTION refund_company_lookup(UUID)  TO service_role;

@@ -24,20 +24,25 @@ export const ALLOWED_DOMAINS: string[] = [
 
 export const COMPANY_LOOKUP_MODEL = 'claude-sonnet-5-5'
 export const MAX_SEARCHES = 4
-export const MAX_CONTINUATIONS = 2
-// ---- EDITABLE: successful lookups per tenant per Bangkok day ----------
-export const DAILY_LOOKUP_CAP = 30
+// pause_turn continuations resend search results as input tokens (cost), so keep this at 1.
+export const MAX_CONTINUATIONS = 1
 export const MAX_CANDIDATES = 3
+// Per-tenant (trial 5 / active 30) and global (300) daily caps live in the DB table
+// company_lookup_caps (migration 2026-10-08-03), enforced atomically by consume_company_lookup().
+export const JSON_DELIMITER = '###JSON###'
 
 export const LOOKUP_SYSTEM_PROMPT = `You look up Thai registered companies (juristic persons) using web search restricted to official and registry sites.
 Given a company name, find the company or companies that name refers to.
-Return JSON ONLY, no prose, no code fences, in exactly this shape:
+Answer in two parts:
+PART 1 (short prose): one line per candidate company quoting, word for word, the source sentence that contains BOTH the company name and its 13-digit registration number. Do not add anything else.
+Then a line containing exactly ${JSON_DELIMITER}
+PART 2: JSON ONLY (no code fences) in exactly this shape:
 [{"name": "<registered name in Thai>", "address": "<registered head-office address or null>", "taxId": "<13-digit juristic registration number>", "sources": [{"url": "<page url>", "title": "<page title>"}]}]
 Rules:
 - Never guess. Only include a value that you read in a search result; use null for an address you did not see.
 - taxId must be the 13 digits exactly as shown in a source. If you did not see it, leave the candidate out.
 - If the name is ambiguous, list every distinct company (maximum 3), each with its own sources.
-- If you cannot find the company, return [].
+- If you cannot find the company, write ${JSON_DELIMITER} followed by [].
 - Every candidate needs at least one source url that you actually used.`
 
 export function lookupUserPrompt(name: string): string {
@@ -63,15 +68,29 @@ export function buildLookupRequest(name: string) {
 // ---- input ------------------------------------------------------------
 export function cleanCompanyName(raw: unknown): string | null {
   if (typeof raw !== 'string') return null
-  const t = raw.replace(/\s+/g, ' ').trim()
+  const t = raw.replace(/\p{Cc}/gu, ' ').replace(/\s+/g, ' ').trim()
   return t.length >= 2 && t.length <= 120 ? t : null
 }
 
-// ---- cap --------------------------------------------------------------
-export function capDecision(countToday: number, cap: number = DAILY_LOOKUP_CAP) {
-  const used = Number.isFinite(countToday) && countToday > 0 ? Math.floor(countToday) : 0
-  return { allowed: used < cap, remaining: Math.max(0, cap - used) }
+// ---- budget result from consume_company_lookup() -----------------------
+export type BudgetCode = 'ok' | 'tenant_cap' | 'global_cap' | 'error'
+export function budgetOutcome(result: unknown): { ok: boolean; code: BudgetCode; message: string } {
+  if (result === 'ok') return { ok: true, code: 'ok', message: '' }
+  if (result === 'tenant_cap') {
+    return { ok: false, code: 'tenant_cap', message: 'ใช้ค้นหาอัตโนมัติครบโควตาของวันนี้แล้ว ลองใหม่พรุ่งนี้ หรือใช้ปุ่ม "ค้นหาใน DBD" แล้ววางข้อความแทน' }
+  }
+  if (result === 'global_cap') {
+    return { ok: false, code: 'global_cap', message: 'ระบบค้นหาอัตโนมัติถึงขีดจำกัดรวมของวันนี้แล้ว ลองใหม่พรุ่งนี้ หรือใช้ปุ่ม "ค้นหาใน DBD" แทน' }
+  }
+  return { ok: false, code: 'error', message: 'ระบบค้นหาขัดข้อง ลองใหม่ภายหลัง หรือใช้ปุ่ม "ค้นหาใน DBD" แทน' }
 }
+
+// Final stop_reason + candidates -> outcome. Incomplete is NOT "not found".
+export function lookupOutcome(stopReason: unknown, candidateCount: number): 'ok' | 'incomplete' | 'not_found' {
+  if (candidateCount > 0) return 'ok'
+  return stopReason === 'pause_turn' || stopReason === 'max_tokens' ? 'incomplete' : 'not_found'
+}
+export const INCOMPLETE_MESSAGE = 'ค้นหาไม่เสร็จ ลองใหม่หรือใช้การวางข้อความ'
 
 // ---- digits / checksum (keep in sync with src/lib/dbdCompanyParse.js; a test enforces it)
 export function normalizeDigits(s: unknown): string {
@@ -87,14 +106,14 @@ export function isValidThaiId13(raw: unknown): boolean {
 }
 
 // ---- domains ----------------------------------------------------------
-// Returns the matching allowlist entry for a URL, or null. Subdomains match;
-// look-alikes (evil-dbd.go.th, dbd.go.th.evil.com) do not.
+// Returns the matching allowlist entry for an https URL, or null. Subdomains
+// match; look-alikes (evil-dbd.go.th, dbd.go.th.evil.com) and http: do not.
 export function allowedDomainOf(url: unknown, allowed: string[] = ALLOWED_DOMAINS): string | null {
   if (typeof url !== 'string') return null
   let host: string
   try {
     const u = new URL(url)
-    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
+    if (u.protocol !== 'https:') return null
     host = u.hostname.toLowerCase()
   } catch {
     return null
@@ -108,8 +127,8 @@ export function allowedDomainOf(url: unknown, allowed: string[] = ALLOWED_DOMAIN
 // ---- response evidence ------------------------------------------------
 export type Citation = { url: string; title: string; citedText: string }
 export type Evidence = {
-  text: string
-  citations: Citation[]
+  text: string // text blocks AFTER the last tool block, joined, after the delimiter (the JSON part)
+  citations: Citation[] // citations from ALL text blocks
   resultUrls: string[]
   searchErrors: string[]
   searches: number
@@ -119,8 +138,13 @@ export type Evidence = {
 export function collectEvidence(content: any[]): Evidence {
   const ev: Evidence = { text: '', citations: [], resultUrls: [], searchErrors: [], searches: 0 }
   if (!Array.isArray(content)) return ev
-  for (const b of content) {
-    if (!b || typeof b !== 'object') continue
+  let lastTool = -1
+  content.forEach((b, i) => {
+    if (b && (b.type === 'server_tool_use' || b.type === 'web_search_tool_result')) lastTool = i
+  })
+  let answer = ''
+  content.forEach((b, i) => {
+    if (!b || typeof b !== 'object') return
     if (b.type === 'server_tool_use') ev.searches++
     else if (b.type === 'web_search_tool_result') {
       if (Array.isArray(b.content)) {
@@ -129,7 +153,7 @@ export function collectEvidence(content: any[]): Evidence {
         ev.searchErrors.push(String(b.content.error_code ?? 'unknown'))
       }
     } else if (b.type === 'text') {
-      if (typeof b.text === 'string') ev.text += b.text
+      if (typeof b.text === 'string' && i > lastTool) answer += b.text
       if (Array.isArray(b.citations)) {
         for (const c of b.citations) {
           if (c && typeof c.url === 'string' && typeof c.cited_text === 'string') {
@@ -138,7 +162,10 @@ export function collectEvidence(content: any[]): Evidence {
         }
       }
     }
-  }
+  })
+  // only what follows the delimiter is JSON
+  const d = answer.lastIndexOf(JSON_DELIMITER)
+  ev.text = d === -1 ? answer : answer.slice(d + JSON_DELIMITER.length)
   return ev
 }
 
@@ -153,6 +180,17 @@ export function textContainsId(text: unknown, id: string): boolean {
   return re.test(t)
 }
 
+// Company name without the legal-form words, whitespace-stripped, lowercase.
+export function companyNameCore(name: unknown): string {
+  return normalizeDigits(name)
+    .replace(/ห้างหุ้นส่วนจำกัด|ห้างหุ้นส่วนสามัญ|\(มหาชน\)|บริษัท|จำกัด|หจก\.?|บจก\.?/g, ' ')
+    .replace(/\s+/g, '')
+    .toLowerCase()
+}
+function containsCore(text: unknown, core: string): boolean {
+  return core.length > 0 && normalizeDigits(text).replace(/\s+/g, '').toLowerCase().includes(core)
+}
+
 // ---- tolerant JSON parse of the model's answer ------------------------
 export function parseCandidatesJson(text: unknown): unknown[] {
   if (typeof text !== 'string') return []
@@ -165,17 +203,20 @@ export function parseCandidatesJson(text: unknown): unknown[] {
     }
     return null
   }
-  const direct = unwrap(tryParse(t.trim()))
-  if (direct) return direct
-  const a = t.indexOf('['), z = t.lastIndexOf(']')
-  if (a !== -1 && z > a) {
-    const arr = unwrap(tryParse(t.slice(a, z + 1)))
-    if (arr) return arr
-  }
-  const o = t.indexOf('{'), oz = t.lastIndexOf('}')
-  if (o !== -1 && oz > o) {
-    const arr = unwrap(tryParse(t.slice(o, oz + 1)))
-    if (arr) return arr
+  const whole = unwrap(tryParse(t.trim()))
+  if (whole) return whole
+  // narration like "ค้นหา [DBD] ..." or "[1]" may precede the JSON: try each '[' / '{' start
+  const ends: number[] = []
+  for (let i = 0; i < t.length; i++) if (t[i] === ']' || t[i] === '}') ends.push(i)
+  let attempts = 0
+  for (let i = 0; i < t.length && attempts < 60; i++) {
+    if (t[i] !== '[' && t[i] !== '{') continue
+    for (let k = ends.length - 1; k >= 0 && ends[k] > i; k--) {
+      if (++attempts > 60) break
+      const arr = unwrap(tryParse(t.slice(i, ends[k] + 1)))
+      if (arr && arr.length > 0 && arr.every((x) => x && typeof x === 'object' && !Array.isArray(x))) return arr
+      if (arr) break
+    }
   }
   return []
 }
@@ -183,58 +224,64 @@ export function parseCandidatesJson(text: unknown): unknown[] {
 // ---- validation -------------------------------------------------------
 export type Candidate = {
   name: string
-  address: string | null
+  address: string | null // taken from the model, not verified
   taxId: string
   taxIdValid: true
   verification: 'multi_source' | 'single_source'
   sources: { url: string; title: string }[]
 }
+export type DropReason = 'malformed' | 'checksum' | 'duplicate' | 'no_allowed_source' | 'id_not_cited' | 'name_not_cited'
+export type Validation = { candidates: Candidate[]; drops: DropReason[] }
 
-export function validateCandidates(raw: unknown[], ev: Evidence, allowed: string[] = ALLOWED_DOMAINS): Candidate[] {
-  const out: Candidate[] = []
+// Sources are built from the citations (never from model-written URLs): a citation
+// counts only if it is on an allowed https domain, its cited_text contains the ID,
+// and its cited_text or title contains the company-name core.
+export function validateCandidates(raw: unknown[], ev: Evidence, allowed: string[] = ALLOWED_DOMAINS): Validation {
+  const candidates: Candidate[] = []
+  const drops: DropReason[] = []
   const seen = new Set<string>()
   const allowedCitations = ev.citations.filter((c) => allowedDomainOf(c.url, allowed))
   for (const item of Array.isArray(raw) ? raw : []) {
-    if (out.length >= MAX_CANDIDATES) break
-    if (!item || typeof item !== 'object') continue
+    if (candidates.length >= MAX_CANDIDATES) break
+    if (!item || typeof item !== 'object') { drops.push('malformed'); continue }
     const r = item as Record<string, unknown>
     const name = typeof r.name === 'string' ? r.name.replace(/\s+/g, ' ').trim().slice(0, 200) : ''
-    if (!name) continue
     const taxId = normalizeDigits(r.taxId).replace(/[\s-]/g, '')
-    if (!isValidThaiId13(taxId) || seen.has(taxId)) continue
+    if (!name) { drops.push('malformed'); continue }
+    if (!isValidThaiId13(taxId)) { drops.push('checksum'); continue }
+    if (seen.has(taxId)) { drops.push('duplicate'); continue }
+    if (allowedCitations.length === 0) { drops.push('no_allowed_source'); continue }
+
+    const idCites = allowedCitations.filter((c) => textContainsId(c.citedText, taxId))
+    if (idCites.length === 0) { drops.push('id_not_cited'); continue }
+    const core = companyNameCore(name)
+    const good = idCites.filter((c) => containsCore(c.citedText, core) || containsCore(c.title, core))
+    if (good.length === 0) { drops.push('name_not_cited'); continue }
 
     const sources: { url: string; title: string }[] = []
-    for (const s of Array.isArray(r.sources) ? r.sources : []) {
-      const url = (s as { url?: unknown })?.url
-      if (typeof url === 'string' && allowedDomainOf(url, allowed) && !sources.some((x) => x.url === url)) {
-        sources.push({ url, title: String((s as { title?: unknown }).title ?? '').slice(0, 200) })
-      }
-    }
-    if (sources.length === 0) continue
-
-    // the digits must really appear in a visible, allowed-domain citation
     const domains = new Set<string>()
-    for (const c of allowedCitations) {
-      if (textContainsId(c.citedText, taxId)) domains.add(allowedDomainOf(c.url, allowed)!)
+    for (const c of good) {
+      domains.add(allowedDomainOf(c.url, allowed)!)
+      if (!sources.some((x) => x.url === c.url)) sources.push({ url: c.url, title: c.title.slice(0, 200) })
     }
-    if (domains.size === 0) continue
-
     seen.add(taxId)
     const address = typeof r.address === 'string' && r.address.trim()
       ? r.address.replace(/\s+/g, ' ').trim().slice(0, 400)
       : null
-    out.push({
+    candidates.push({
       name, address, taxId, taxIdValid: true,
       verification: domains.size >= 2 ? 'multi_source' : 'single_source',
       sources,
     })
   }
-  return out
+  return { candidates, drops }
 }
 
-// One call: model content blocks -> final candidates.
+// One call: model content blocks -> final candidates (+ diagnostics).
 // deno-lint-ignore no-explicit-any
-export function candidatesFromContent(content: any[]): { candidates: Candidate[]; evidence: Evidence } {
+export function candidatesFromContent(content: any[]): { candidates: Candidate[]; evidence: Evidence; drops: DropReason[]; rawCount: number } {
   const evidence = collectEvidence(content)
-  return { candidates: validateCandidates(parseCandidatesJson(evidence.text), evidence), evidence }
+  const raw = parseCandidatesJson(evidence.text)
+  const v = validateCandidates(raw, evidence)
+  return { candidates: v.candidates, evidence, drops: v.drops, rawCount: raw.length }
 }

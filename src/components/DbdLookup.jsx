@@ -4,6 +4,7 @@
 // ============================================================
 import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { safeSourceUrl } from '../lib/companyLookupUi.js'
 import { parseDbdText, isValidThaiId13, normalizeDigits } from '../lib/dbdCompanyParse.js'
 
 const DBD_URL = 'https://datawarehouse.dbd.go.th/juristic'
@@ -27,6 +28,8 @@ export default function DbdLookup({ name, address, taxId, onApply }) {
         let msg = AI_FAIL
         try { const b = await error.context?.json(); if (b?.error) msg = b.error } catch { /* generic */ }
         setAiError(msg)
+      } else if (data?.code === 'incomplete') {
+        setAiError(data.error || AI_FAIL)
       } else {
         setAiCands(Array.isArray(data?.candidates) ? data.candidates : [])
       }
@@ -37,6 +40,7 @@ export default function DbdLookup({ name, address, taxId, onApply }) {
     }
   }
   const pickCandidate = c => {
+    setRaw('')
     setPv({ name: c.name || '', address: c.address || '', taxId: c.taxId || '', multiple: false })
     setOpen(true)
   }
@@ -109,7 +113,7 @@ export default function DbdLookup({ name, address, taxId, onApply }) {
           {aiCands.map((c, i) => (
             <div key={c.taxId + i} style={{ padding: 10, border: '1px solid var(--border)', borderRadius: 8, display: 'grid', gap: 4 }}>
               <div style={{ fontWeight: 600 }}>{c.name}</div>
-              {c.address && <div style={{ fontSize: 12 }}>{c.address}</div>}
+              {c.address && <div style={{ fontSize: 12 }}>{c.address} <span style={{ color: '#b45309' }}>(ที่อยู่จาก AI — ตรวจก่อนใช้)</span></div>}
               <div style={{ fontSize: 12 }}>
                 {c.taxId}{' '}
                 {isValidThaiId13(c.taxId)
@@ -120,9 +124,10 @@ export default function DbdLookup({ name, address, taxId, onApply }) {
                 {c.verification === 'multi_source' ? 'ยืนยันจากหลายแหล่ง' : 'แหล่งเดียว — ตรวจกับ DBD ก่อนใช้'}
               </div>
               <div style={{ fontSize: 11, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {(c.sources || []).map((src, k) => (
-                  <a key={k} href={src.url} target="_blank" rel="noopener noreferrer">{src.title || src.url}</a>
-                ))}
+                {(c.sources || []).map((src, k) => {
+                  const href = safeSourceUrl(src.url)
+                  return href ? <a key={k} href={href} target="_blank" rel="noopener noreferrer">{src.title || href}</a> : null
+                })}
               </div>
               <div><button type="button" className="btn btn-ghost btn-sm" onClick={() => pickCandidate(c)}>เลือกรายการนี้</button></div>
             </div>
