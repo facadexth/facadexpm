@@ -29,7 +29,7 @@ import { auditLog } from '../lib/audit.js'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
 import { calcPoTotals, poLineTotal as lineTotal } from '../lib/poTotals.js'
 import { VAT_RATE } from '../lib/invoiceCalc.js'
-import { poTaxInvoiceBadge, buildPoPayloadFlag, poEditLockedText, poTaxInvoiceErrorText, PO_STOCK_FROM_INVOICE_RECEIVE_NOTE } from '../lib/poTaxInvoiceStatus.js'
+import { poTaxInvoiceBadge, buildPoPayloadFlag, poEditLockedText, poTaxInvoiceErrorText } from '../lib/poTaxInvoiceStatus.js'
 import ReceiveDepositBlock from '../components/ReceiveDepositBlock.jsx'
 import { mapReceiveRpcError, canConfirmReceive, PO_DEPOSIT_LOCKED_TEXT } from '../lib/receiveDeposits.js'
 import { setCreditNotePrefill, poItemToCreditLine } from '../lib/creditNotePrefill.js'
@@ -747,7 +747,8 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const { data: aluminumProfiles } = useAluminumProfiles()
   const { data: allAluminumProfiles } = useAllAluminumProfiles()
   // data is null while loading or before the tax invoice migrations are applied: then no badges and no locks (page works as before)
-  const { data: taxInvoiceLinks } = useActiveTaxInvoiceLinks()
+  const { data: taxInvoiceLinks, refetch: refetchLinks } = useActiveTaxInvoiceLinks()
+  const refetchAll = () => { refetch(); refetchLinks() }
 
   // เรียง/ค้นหาแบบ client-side ทับผลลัพธ์ที่กรองมาจาก server แล้ว (ช่วงวันที่/ไซท์งาน/Supplier/สถานะ)
   // -- accessor ต่อคอลัมน์ เพราะบางคอลัมน์ (ไซท์งาน, Supplier, ยอดรวม) เป็น field ที่ join มา/คำนวณ
@@ -873,7 +874,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
         try { await opts.afterSave() } catch (e) { exampleError = e?.message || 'ไม่ทราบสาเหตุ' }
       }
       clearDraft(ADD_FORM_OPEN_KEY)
-      setShowAdd(false); setEditRow(null); refetch()
+      setShowAdd(false); setEditRow(null); refetchAll()
       showToast(exampleError ? `บันทึกสำเร็จ แต่เก็บตัวอย่างไม่สำเร็จ: ${exampleError}` : 'บันทึกสำเร็จ')
     } catch (e) {
       alert('Error: ' + (poTaxInvoiceErrorText(e) || e.message))
@@ -885,7 +886,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const handleCancel = async () => {
     if (!deleteId) return
     const { error } = await supabase.from('purchase_orders').update({ status: 'cancelled' }).eq('id', deleteId)
-    if (!error) { await auditLog('purchase_orders', deleteId, 'UPDATE', null, { status: 'cancelled' }); setDeleteId(null); refetch(); showToast('ยกเลิกแล้ว') }
+    if (!error) { await auditLog('purchase_orders', deleteId, 'UPDATE', null, { status: 'cancelled' }); setDeleteId(null); refetchAll(); showToast('ยกเลิกแล้ว') }
     else alert(String(error.message || '').includes('po_has_deposit_applications') ? PO_DEPOSIT_LOCKED_TEXT : 'Error: ' + (poTaxInvoiceErrorText(error) || error.message))
   }
 
@@ -934,7 +935,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       expenseId = await receivePoWithDeposits(receiveRow.id, depositApps, subtotal, vat)
     } catch (rpcErr) {
       // The RPC is all-or-nothing: nothing was saved, so show only the reason.
-      setReceiveRow(null); setReceiving(false); refetch()
+      setReceiveRow(null); setReceiving(false); refetchAll()
       alert(mapReceiveRpcError(rpcErr))
       return
     }
@@ -955,7 +956,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
         refetchInventoryItems()
       }
 
-      setReceiveRow(null); refetch(); showToast('รับของแล้ว ' + (expenseId ? 'สร้างรายจ่ายอัตโนมัติ' : 'หักมัดจำครบ ไม่สร้างรายจ่าย') + (receiveRow.stock_from_invoice ? ' · สต็อกจะเข้าเมื่อบันทึกใบกำกับภาษี' : ''))
+      setReceiveRow(null); refetchAll(); showToast('รับของแล้ว ' + (expenseId ? 'สร้างรายจ่ายอัตโนมัติ' : 'หักมัดจำครบ ไม่สร้างรายจ่าย') + (receiveRow.stock_from_invoice ? ' · สต็อกจะเข้าเมื่อบันทึกใบกำกับภาษี' : ''))
     } catch (e) {
       // Close the dialog so a stray click can't re-run this whole function
       // (same stale closure/ConfirmDialog) and re-post a second expense +
@@ -964,7 +965,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       // update run BEFORE the stock-posting loop, so by the time any error
       // reaches here those two may already be committed — tell the admin to
       // check the actual ledger rather than inviting a blind retry.
-      setReceiveRow(null); refetch()
+      setReceiveRow(null); refetchAll()
       alert(
         'Error: ' + (poTaxInvoiceErrorText(e) || e.message) +
         ' — รายจ่ายและสถานะใบสั่งซื้ออาจถูกบันทึกไปแล้วก่อนเกิดข้อผิดพลาดนี้ ' +
@@ -1104,7 +1105,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                         {canEdit && (po.status === 'ordered' || po.status === 'draft') && (
                           <>
                             <button className="btn btn-sm btn-edit" disabled={!!editLocked} title={editLocked || undefined} onClick={() => { clearDraft(ADD_FORM_OPEN_KEY); setEditRow(po); setShowAdd(true) }}><PencilIcon /></button>
-                            <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(po.id)}><TrashIcon /></button>
+                            <button className="btn btn-sm btn-danger" disabled={!!editLocked} title={editLocked || undefined} onClick={() => setDeleteId(po.id)}><TrashIcon /></button>
                           </>
                         )}
                         {canEdit && po.status === 'received' && (
@@ -1168,8 +1169,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
               />
               {receiveRow.stock_from_invoice && (
                 <div style={{ marginTop: 10, fontSize: 12, borderTop: '1px solid var(--border)', paddingTop: 8, color: '#b45309' }}>
-                  📦 {PO_STOCK_FROM_INVOICE_RECEIVE_NOTE}
-                  <div style={{ color: 'var(--text3)' }}>ไม่ลงสต็อกตอนรับของ — สต็อกจะเข้าเมื่อบันทึกใบกำกับภาษีผู้ขาย</div>
+                  📦 ไม่ลงสต็อกตอนรับของ — สต็อกจะเข้าเมื่อบันทึกใบกำกับภาษีผู้ขาย
                 </div>
               )}
               {!receiveRow.stock_from_invoice && receiveStockPlan(receiveRow).length > 0 && (

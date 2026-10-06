@@ -3,8 +3,6 @@
 
 import { mapTaxInvoiceRpcError } from './supplierTaxInvoice.js'
 
-export const PO_STOCK_FROM_INVOICE_RECEIVE_NOTE = 'ใบสั่งซื้อนี้รอตัดสต็อกจากใบกำกับภาษี: ยังไม่เข้าสต็อกจนกว่าจะลงใบกำกับ'
-
 export function poTaxInvoiceBadge(po, links) {
   if (!links || !po) return { kind: null, text: '' }
   const l = links.get(po.id)
