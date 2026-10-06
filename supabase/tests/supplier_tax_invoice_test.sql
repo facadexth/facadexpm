@@ -1,12 +1,14 @@
 -- ================================================================
 -- Tests for supplier tax invoice matching (migrations 2026-10-08-01 / -02).
 --
--- !!! NOT RUN against any database !!!
--- Written without applying anything. Fixture column lists follow
--- supabase/tests/po_deposit_test.sql and may need a tweak on first run.
--- Run only where 2026-10-06-01..03, 2026-10-07-01..02 and 2026-10-08-01..02 are applied.
+-- STATUS: dry-run only. This file has never been applied for real: it was executed against the CHANG database
+-- (migrations 01 + 02 + this file in ONE transaction that always rolls back) on 2026-10-07 and ended with
+-- ALL PASSED; nothing was persisted. It is NOT a regression suite that has run anywhere else.
+-- Run only where 2026-10-06-01..03 and 2026-10-07-01..02 are applied; 2026-10-08-01..02 are applied first OR
+-- (dry run) prepended in the same transaction.
 -- Success ends with: ERROR: RESULT: supplier_tax_invoice_test ALL PASSED
 -- (the RAISE rolls everything back). Any other error text = a failure.
+-- Concurrency (lock order, deadlocks, FOR SHARE vs FOR UPDATE) cannot be tested in one session.
 -- ================================================================
 BEGIN;
 
@@ -22,6 +24,8 @@ DECLARE
   t2_item UUID; z UUID; w1 UUID; w2 UUID; w3 UUID; w4 UUID; po10 UUID; po11 UUID; po12 UUID; po13 UUID; po14 UUID; po15 UUID; po16 UUID; po17 UUID;
   inv8 UUID; inv9 UUID; inv10 UUID; inv11 UUID; inv12 UUID; inv13 UUID; e_ec UUID; e_dp UUID; d_exp2 UUID; d_dep2 UUID; e_dp_amt NUMERIC; e_dp_prev TEXT;
   w_email TEXT := '__test_sti_worker__@example.com'; v_stmt TEXT;
+  nk UUID; rk UUID; hm UUID; sl UUID; pq1 UUID; pq2 UUID; pq3 UUID; pq4 UUID; pq5 UUID; pq6 UUID; pq7 UUID;
+  iq1 UUID; iq2 UUID; iq3 UUID; iq4 UUID; iq5 UUID; iq6 UUID; iq7 UUID; iq8 UUID; iq9 UUID; iq10 UUID; v_rev INT;
   f1 UUID; g1 UUID; po22 UUID; po23 UUID; po24 UUID; po25 UUID; po26 UUID; po27 UUID; inv14 UUID; inv15 UUID; inv16 UUID; inv17 UUID;
   v_bkk DATE := (now() AT TIME ZONE 'Asia/Bangkok')::date;
   v_j JSONB; v_q NUMERIC; v_w NUMERIC; v_cnt INT; v_msg TEXT; v_state TEXT; v_txt TEXT;
@@ -193,7 +197,7 @@ BEGIN
   RAISE NOTICE 'T4 (preview): PASSED';
 
   -- T5: post: lines first, then reversals; expenses stamped, amounts unchanged; dated invoice date
-  v_j := post_supplier_tax_invoice(inv1);
+  v_j := post_supplier_tax_invoice(inv1, (SELECT revision FROM supplier_tax_invoices WHERE id = inv1));
   SELECT quantity_on_hand, round(weighted_average_cost, 6) INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = x AND site_id = s1;
   IF v_q <> 8 OR v_w <> 85 THEN RAISE EXCEPTION 'T5 FAIL: X % @ %', v_q, v_w; END IF;
   SELECT quantity_on_hand, round(weighted_average_cost, 6) INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = y AND site_id = s1;
@@ -219,7 +223,7 @@ BEGIN
   -- T6: second post -> not_draft, nothing written
   SELECT count(*) INTO v_cnt FROM stock_movements WHERE reference_id = inv1;
   BEGIN
-    PERFORM post_supplier_tax_invoice(inv1);
+    PERFORM post_supplier_tax_invoice(inv1, (SELECT revision FROM supplier_tax_invoices WHERE id = inv1));
     RAISE EXCEPTION 'T6 FAIL: posted twice';
   EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
@@ -292,7 +296,7 @@ BEGIN
     IF v_msg NOT LIKE 'not_posted%' THEN RAISE EXCEPTION 'T10 FAIL: got %', v_msg; END IF;
   END;
   BEGIN
-    PERFORM post_supplier_tax_invoice(inv1);
+    PERFORM post_supplier_tax_invoice(inv1, (SELECT revision FROM supplier_tax_invoices WHERE id = inv1));
     RAISE EXCEPTION 'T10 FAIL: posted a void';
   EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
@@ -319,7 +323,7 @@ BEGIN
     jsonb_build_array(jsonb_build_object('description', 'X', 'qty', 5, 'unit', 'kg', 'unit_price', 100, 'inventory_item_id', x, 'site_id', s2, 'base_qty', 5)),
     ARRAY[po3]);
   BEGIN
-    PERFORM post_supplier_tax_invoice(inv2);
+    PERFORM post_supplier_tax_invoice(inv2, (SELECT revision FROM supplier_tax_invoices WHERE id = inv2));
     RAISE EXCEPTION 'T12 FAIL: posted without match note';
   EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
@@ -333,7 +337,7 @@ BEGIN
     jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-NEG', 'invoice_date', v_bkk, 'net_before_vat', 500, 'vat', 35, 'match_note', 'ส่งของไม่ครบ'),
     jsonb_build_array(jsonb_build_object('description', 'X', 'qty', 5, 'unit', 'kg', 'unit_price', 100, 'inventory_item_id', x, 'site_id', s2, 'base_qty', 5)),
     ARRAY[po3]);
-  v_j := post_supplier_tax_invoice(inv2);
+  v_j := post_supplier_tax_invoice(inv2, (SELECT revision FROM supplier_tax_invoices WHERE id = inv2));
   IF jsonb_array_length(v_j->'negative') <> 1 OR ((v_j->'negative'->0)->>'qty')::numeric <> -13 THEN
     RAISE EXCEPTION 'T12 FAIL: negative not reported %', v_j;
   END IF;
@@ -357,7 +361,7 @@ BEGIN
     jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-DEP', 'invoice_date', v_bkk, 'net_before_vat', 500, 'vat', 35),
     jsonb_build_array(jsonb_build_object('description', 'X', 'qty', 5, 'unit', 'kg', 'unit_price', 100, 'inventory_item_id', x, 'site_id', s1, 'base_qty', 5)),
     ARRAY[po4]);
-  v_j := post_supplier_tax_invoice(inv3);
+  v_j := post_supplier_tax_invoice(inv3, (SELECT revision FROM supplier_tax_invoices WHERE id = inv3));
   IF (v_j->>'diff')::numeric <> 0 OR (v_j->>'expenses_stamped')::int <> 0
      OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_j->'checks') e WHERE e->>'code' = 'po_no_expense')
      OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_j->'checks') e WHERE e->>'code' = 'po_has_deposit') THEN
@@ -377,7 +381,7 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_j->'checks') e WHERE e->>'code' = 'po_stock_from_invoice') THEN
     RAISE EXCEPTION 'T14 FAIL: flag check missing %', v_j->'checks';
   END IF;
-  PERFORM post_supplier_tax_invoice(inv4);
+  PERFORM post_supplier_tax_invoice(inv4, (SELECT revision FROM supplier_tax_invoices WHERE id = inv4));
   IF (SELECT quantity_on_hand FROM inventory_stock_balances WHERE inventory_item_id = y AND site_id = s1) <> v_q + 3
      OR EXISTS (SELECT 1 FROM supplier_tax_invoice_reversals WHERE invoice_id = inv4) THEN
     RAISE EXCEPTION 'T14 FAIL: flagged PO stock';
@@ -411,7 +415,7 @@ BEGIN
     RAISE EXCEPTION 'T14b FAIL: %', v_j->'checks';
   END IF;
   SELECT quantity_on_hand INTO v_q FROM inventory_stock_balances WHERE inventory_item_id = y AND site_id = s1;
-  PERFORM post_supplier_tax_invoice(inv5);
+  PERFORM post_supplier_tax_invoice(inv5, (SELECT revision FROM supplier_tax_invoices WHERE id = inv5));
   IF (SELECT quantity_on_hand FROM inventory_stock_balances WHERE inventory_item_id = y AND site_id = s1) <> v_q
      OR (SELECT count(*) FROM supplier_tax_invoice_reversals WHERE invoice_id = inv5) <> 1 THEN
     RAISE EXCEPTION 'T14b FAIL: stale receipt not reversed';
@@ -424,7 +428,7 @@ BEGIN
     jsonb_build_array(jsonb_build_object('description', 'ค่าของ', 'qty', 1, 'unit_price', 900)),
     ARRAY[po1]);
   BEGIN
-    PERFORM post_supplier_tax_invoice(inv6);
+    PERFORM post_supplier_tax_invoice(inv6, (SELECT revision FROM supplier_tax_invoices WHERE id = inv6));
     RAISE EXCEPTION 'T15 FAIL: posted with lines != net';
   EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
@@ -464,7 +468,7 @@ BEGIN
     IF v_msg NOT LIKE 'po_not_eligible%' THEN RAISE EXCEPTION 'T17 FAIL: got %', v_msg; END IF;
   END;
   BEGIN
-    PERFORM post_supplier_tax_invoice(t2_inv);
+    PERFORM post_supplier_tax_invoice(t2_inv, (SELECT revision FROM supplier_tax_invoices WHERE id = t2_inv));
     RAISE EXCEPTION 'T17 FAIL: posted another tenant invoice';
   EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
@@ -480,7 +484,7 @@ BEGIN
   UPDATE tenants SET trial_ends_at = now() - interval '1 day' WHERE id = t_tenant;
   SET LOCAL role = 'authenticated';
   BEGIN
-    PERFORM post_supplier_tax_invoice(inv7);
+    PERFORM post_supplier_tax_invoice(inv7, (SELECT revision FROM supplier_tax_invoices WHERE id = inv7));
     RAISE EXCEPTION 'T18 FAIL: expired tenant posted';
   EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
@@ -525,7 +529,7 @@ BEGIN
     jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-ZERO', 'invoice_date', v_bkk, 'net_before_vat', 360, 'vat', 25.2, 'match_note', 'ทดสอบ'),
     jsonb_build_array(jsonb_build_object('description', 'W1', 'qty', 4, 'unit', 'kg', 'unit_price', 90, 'inventory_item_id', w1, 'site_id', s1, 'base_qty', 4)),
     ARRAY[po10]);
-  PERFORM post_supplier_tax_invoice(inv8);
+  PERFORM post_supplier_tax_invoice(inv8, (SELECT revision FROM supplier_tax_invoices WHERE id = inv8));
   SELECT quantity_on_hand, round(weighted_average_cost, 6) INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = w1 AND site_id = s1;
   IF v_q <> 0 OR v_w <> 96 THEN RAISE EXCEPTION 'T19a FAIL: after post % @ % (want 0 @ 96)', v_q, v_w; END IF;
   v_j := void_supplier_tax_invoice(inv8, 'ทดสอบ');
@@ -543,7 +547,7 @@ BEGIN
     jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-POS', 'invoice_date', v_bkk, 'net_before_vat', 1080, 'vat', 75.6, 'match_note', 'ทดสอบ'),
     jsonb_build_array(jsonb_build_object('description', 'W2', 'qty', 12, 'unit', 'kg', 'unit_price', 90, 'inventory_item_id', w2, 'site_id', s1, 'base_qty', 12)),
     ARRAY[po11]);
-  PERFORM post_supplier_tax_invoice(inv9);
+  PERFORM post_supplier_tax_invoice(inv9, (SELECT revision FROM supplier_tax_invoices WHERE id = inv9));
   SELECT quantity_on_hand, round(weighted_average_cost, 6) INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = w2 AND site_id = s1;
   IF v_q <> 8 OR v_w <> 85 THEN RAISE EXCEPTION 'T19b FAIL: after post % @ % (want 8 @ 85)', v_q, v_w; END IF;
   PERFORM void_supplier_tax_invoice(inv9, 'ทดสอบ');
@@ -561,7 +565,7 @@ BEGIN
     jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-NEG2', 'invoice_date', v_bkk, 'net_before_vat', 450, 'vat', 31.5, 'match_note', 'ทดสอบ'),
     jsonb_build_array(jsonb_build_object('description', 'W3', 'qty', 5, 'unit', 'kg', 'unit_price', 90, 'inventory_item_id', w3, 'site_id', s1, 'base_qty', 5)),
     ARRAY[po12]);
-  v_j := post_supplier_tax_invoice(inv10);
+  v_j := post_supplier_tax_invoice(inv10, (SELECT revision FROM supplier_tax_invoices WHERE id = inv10));
   SELECT quantity_on_hand, round(weighted_average_cost, 6) INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = w3 AND site_id = s1;
   IF v_q <> -13 OR v_w <> 92.857143 OR jsonb_array_length(v_j->'negative') <> 1 THEN RAISE EXCEPTION 'T19c FAIL: after post % @ % %', v_q, v_w, v_j->'negative'; END IF;
   PERFORM void_supplier_tax_invoice(inv10, 'ทดสอบ');
@@ -580,7 +584,7 @@ BEGIN
     jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-MOVED', 'invoice_date', v_bkk, 'net_before_vat', 1080, 'vat', 75.6, 'match_note', 'ทดสอบ'),
     jsonb_build_array(jsonb_build_object('description', 'W4', 'qty', 12, 'unit', 'kg', 'unit_price', 90, 'inventory_item_id', w4, 'site_id', s1, 'base_qty', 12)),
     ARRAY[po13]);
-  PERFORM post_supplier_tax_invoice(inv11);
+  PERFORM post_supplier_tax_invoice(inv11, (SELECT revision FROM supplier_tax_invoices WHERE id = inv11));
   PERFORM record_stock_movement(w4, s1, 'sale_out', 3, 90, 'invoice', NULL, NULL);
   v_j := void_supplier_tax_invoice(inv11, 'ทดสอบ');
   SELECT quantity_on_hand, round(weighted_average_cost, 6) INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = w4 AND site_id = s1;
@@ -695,7 +699,7 @@ BEGIN
     'SELECT save_supplier_tax_invoice_draft(NULL, ''{}''::jsonb, ''[]''::jsonb, ''{}''::uuid[])',
     'SELECT delete_supplier_tax_invoice_draft(gen_random_uuid())',
     'SELECT preview_supplier_tax_invoice(gen_random_uuid())',
-    'SELECT post_supplier_tax_invoice(gen_random_uuid())',
+    'SELECT post_supplier_tax_invoice(gen_random_uuid(), 1)',
     'SELECT void_supplier_tax_invoice(gen_random_uuid(), ''x'')'] LOOP
     BEGIN
       EXECUTE v_stmt;
@@ -711,7 +715,7 @@ BEGIN
     'SELECT save_supplier_tax_invoice_draft(NULL, ''{}''::jsonb, ''[]''::jsonb, ''{}''::uuid[])',
     'SELECT delete_supplier_tax_invoice_draft(gen_random_uuid())',
     'SELECT preview_supplier_tax_invoice(gen_random_uuid())',
-    'SELECT post_supplier_tax_invoice(gen_random_uuid())',
+    'SELECT post_supplier_tax_invoice(gen_random_uuid(), 1)',
     'SELECT void_supplier_tax_invoice(gen_random_uuid(), ''x'')'] LOOP
     BEGIN
       EXECUTE v_stmt;
@@ -783,7 +787,7 @@ BEGIN
   inv12 := save_supplier_tax_invoice_draft(NULL,
     jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-EC', 'invoice_date', v_bkk, 'net_before_vat', 100, 'vat', 7),
     jsonb_build_array(jsonb_build_object('description', 'misc', 'qty', 1, 'unit_price', 100)), ARRAY[po16]);
-  v_j := post_supplier_tax_invoice(inv12);
+  v_j := post_supplier_tax_invoice(inv12, (SELECT revision FROM supplier_tax_invoices WHERE id = inv12));
   IF (v_j->>'expenses_stamped')::int <> 1 OR (SELECT invoice_no FROM expenses WHERE id = e_ec) <> 'STI-EC' THEN RAISE EXCEPTION 'T24 FAIL: not stamped %', v_j; END IF;
   RESET role;
   UPDATE expenses SET invoice_no = 'EDITED-BY-HAND' WHERE id = e_ec;
@@ -812,7 +816,7 @@ BEGIN
   inv13 := save_supplier_tax_invoice_draft(NULL,
     jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-DEPREM', 'invoice_date', v_bkk, 'net_before_vat', 1000, 'vat', 70),
     jsonb_build_array(jsonb_build_object('description', 'misc', 'qty', 1, 'unit_price', 1000)), ARRAY[po17]);
-  v_j := post_supplier_tax_invoice(inv13);
+  v_j := post_supplier_tax_invoice(inv13, (SELECT revision FROM supplier_tax_invoices WHERE id = inv13));
   IF (v_j->>'expenses_stamped')::int <> 1 OR (v_j->>'diff')::numeric <> 0
      OR NOT EXISTS (SELECT 1 FROM expenses WHERE id = e_dp AND invoice_no = 'STI-DEPREM' AND amount = e_dp_amt)
      OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_j->'checks') e WHERE e->>'code' = 'po_has_deposit') THEN
@@ -860,10 +864,10 @@ BEGIN
   inv15 := save_supplier_tax_invoice_draft(NULL,
     jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-F2', 'invoice_date', v_bkk, 'net_before_vat', 600, 'vat', 42, 'match_note', 'ทดสอบ'),
     jsonb_build_array(jsonb_build_object('description', 'F1', 'qty', 10, 'unit', 'kg', 'unit_price', 60, 'inventory_item_id', f1, 'site_id', s1, 'base_qty', 10)), ARRAY[po23]);
-  PERFORM post_supplier_tax_invoice(inv14);
+  PERFORM post_supplier_tax_invoice(inv14, (SELECT revision FROM supplier_tax_invoices WHERE id = inv14));
   SELECT quantity_on_hand, round(weighted_average_cost, 6) INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = f1 AND site_id = s1;
   IF v_q <> -5 OR v_w <> 60 THEN RAISE EXCEPTION 'T19e FAIL: after I1 % @ % (want -5 @ 60)', v_q, v_w; END IF;
-  PERFORM post_supplier_tax_invoice(inv15);
+  PERFORM post_supplier_tax_invoice(inv15, (SELECT revision FROM supplier_tax_invoices WHERE id = inv15));
   SELECT quantity_on_hand, round(weighted_average_cost, 6) INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = f1 AND site_id = s1;
   IF v_q <> -5 OR v_w <> 60 THEN RAISE EXCEPTION 'T19e FAIL: after I2 % @ % (want -5 @ 60, identical to I1)', v_q, v_w; END IF;
   -- FIFO: void I1 while I2 is posted. The balance LOOKS like I1's post-state, but I2 touched it since -> must warn.
@@ -895,8 +899,8 @@ BEGIN
   inv17 := save_supplier_tax_invoice_draft(NULL,
     jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-G2', 'invoice_date', v_bkk, 'net_before_vat', 600, 'vat', 42, 'match_note', 'ทดสอบ'),
     jsonb_build_array(jsonb_build_object('description', 'G1', 'qty', 10, 'unit', 'kg', 'unit_price', 60, 'inventory_item_id', g1, 'site_id', s1, 'base_qty', 10)), ARRAY[po25]);
-  PERFORM post_supplier_tax_invoice(inv16);
-  PERFORM post_supplier_tax_invoice(inv17);
+  PERFORM post_supplier_tax_invoice(inv16, (SELECT revision FROM supplier_tax_invoices WHERE id = inv16));
+  PERFORM post_supplier_tax_invoice(inv17, (SELECT revision FROM supplier_tax_invoices WHERE id = inv17));
   v_j := void_supplier_tax_invoice(inv17, 'ทดสอบ');
   IF jsonb_array_length(v_j->'warnings') <> 0 THEN RAISE EXCEPTION 'T19f FAIL: LIFO void warned %', v_j; END IF;
   SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = g1 AND site_id = s1;
@@ -929,7 +933,7 @@ BEGIN
       RAISE EXCEPTION 'T26 FAIL: PO % preview %', v_txt, v_j->'checks';
     END IF;
     BEGIN
-      PERFORM post_supplier_tax_invoice(tmp);
+      PERFORM post_supplier_tax_invoice(tmp, (SELECT revision FROM supplier_tax_invoices WHERE id = tmp));
       RAISE EXCEPTION 'T26 FAIL: PO % posted', v_txt;
     EXCEPTION WHEN OTHERS THEN
       GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
@@ -937,6 +941,232 @@ BEGIN
     END;
   END LOOP;
   RAISE NOTICE 'T26 (po_data_not_finite): PASSED';
+
+  -- ════════════ Final-review tests ════════════
+  -- Fixtures (superuser): items nk/rk/hm/sl, POs pq1..pq7. Back to the tenant owner afterwards.
+  RESET role;
+  INSERT INTO inventory_items (tenant_id, name, base_unit) VALUES (t_tenant, '__sti NK__', 'kg') RETURNING id INTO nk;
+  INSERT INTO inventory_items (tenant_id, name, base_unit) VALUES (t_tenant, '__sti RK__', 'kg') RETURNING id INTO rk;
+  INSERT INTO inventory_items (tenant_id, name, base_unit) VALUES (t_tenant, '__sti HM__', 'kg') RETURNING id INTO hm;
+  INSERT INTO inventory_items (tenant_id, name, base_unit) VALUES (t_tenant, '__sti SL__', 'kg') RETURNING id INTO sl;
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status, has_vat, price_includes_vat)
+  VALUES (t_tenant, 'PO-STI-30', s1, sa, t_cat, v_bkk, 'ordered', true, false) RETURNING id INTO pq1;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t_tenant, pq1, 'misc', 1, 100, 100);
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status, has_vat, price_includes_vat)
+  VALUES (t_tenant, 'PO-STI-31', s1, sa, t_cat, v_bkk, 'ordered', true, false) RETURNING id INTO pq2;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t_tenant, pq2, 'NK', 6, 50, 300);
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status, has_vat, price_includes_vat)
+  VALUES (t_tenant, 'PO-STI-32', s1, sa, t_cat, v_bkk, 'ordered', true, false) RETURNING id INTO pq3;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t_tenant, pq3, 'RK', 10, 100, 1000);
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status, has_vat, price_includes_vat)
+  VALUES (t_tenant, 'PO-STI-33', s1, sa, t_cat, v_bkk, 'ordered', true, false) RETURNING id INTO pq4;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t_tenant, pq4, 'HM', 10, 100, 1000);
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status, has_vat, price_includes_vat)
+  VALUES (t_tenant, 'PO-STI-34', s1, sa, t_cat, v_bkk, 'ordered', true, false) RETURNING id INTO pq5;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t_tenant, pq5, 'misc', 1, 100, 100);
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status, has_vat, price_includes_vat)
+  VALUES (t_tenant, 'PO-STI-35', s1, sa, t_cat, v_bkk - 70, 'ordered', true, false) RETURNING id INTO pq6;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t_tenant, pq6, 'misc', 1, 100, 100);
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status, has_vat, price_includes_vat)
+  VALUES (t_tenant, 'PO-STI-36', s1, sa, t_cat, v_bkk, 'ordered', true, false) RETURNING id INTO pq7;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t_tenant, pq7, 'misc', 1, 100, 100);
+  SET LOCAL role = 'authenticated';
+  PERFORM set_config('request.jwt.claims', json_build_object('email', email, 'role', 'authenticated')::text, true);
+  PERFORM receive_po_with_deposits(pq1, '[]'::jsonb, 100, 7);
+  PERFORM receive_po_with_deposits(pq2, '[]'::jsonb, 300, 21);          -- NO stock movement recorded (like a backfilled month)
+  PERFORM receive_po_with_deposits(pq3, '[]'::jsonb, 1000, 70);
+  PERFORM record_stock_movement(rk, s1, 'purchase_in', 10, 100, 'purchase_order', pq3, NULL);
+  PERFORM receive_po_with_deposits(pq4, '[]'::jsonb, 1000, 70);
+  PERFORM record_stock_movement(hm, s1, 'purchase_in', 10, 100, 'purchase_order', pq4, NULL);
+  PERFORM receive_po_with_deposits(pq5, '[]'::jsonb, 100, 7);
+  PERFORM receive_po_with_deposits(pq6, '[]'::jsonb, 100, 7);
+  PERFORM receive_po_with_deposits(pq7, '[]'::jsonb, 100, 7);
+
+  -- T27: server-side stale preview. preview returns the revision; every save bumps it; post must pass the previewed one.
+  iq1 := save_supplier_tax_invoice_draft(NULL,
+    jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-REV', 'invoice_date', v_bkk, 'net_before_vat', 100, 'vat', 7),
+    jsonb_build_array(jsonb_build_object('description', 'misc', 'qty', 1, 'unit_price', 100)), ARRAY[pq1]);
+  SELECT revision INTO v_rev FROM supplier_tax_invoices WHERE id = iq1;
+  v_j := preview_supplier_tax_invoice(iq1);
+  IF v_rev <> 1 OR (v_j->>'revision')::int <> v_rev THEN RAISE EXCEPTION 'T27 FAIL: revision % preview %', v_rev, v_j->>'revision'; END IF;
+  PERFORM save_supplier_tax_invoice_draft(iq1,
+    jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-REV', 'invoice_date', v_bkk, 'net_before_vat', 100, 'vat', 7),
+    jsonb_build_array(jsonb_build_object('description', 'misc', 'qty', 1, 'unit_price', 100)), ARRAY[pq1]);
+  IF (SELECT revision FROM supplier_tax_invoices WHERE id = iq1) <> v_rev + 1 THEN RAISE EXCEPTION 'T27 FAIL: save did not bump the revision'; END IF;
+  BEGIN
+    PERFORM post_supplier_tax_invoice(iq1, v_rev);
+    RAISE EXCEPTION 'T27 FAIL: posted with an old revision';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+    IF v_msg NOT LIKE 'stale_preview%' THEN RAISE EXCEPTION 'T27 FAIL: got %', v_msg; END IF;
+  END;
+  BEGIN
+    PERFORM post_supplier_tax_invoice(iq1, NULL);
+    RAISE EXCEPTION 'T27 FAIL: posted without a revision';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+    IF v_msg NOT LIKE 'stale_preview%' THEN RAISE EXCEPTION 'T27 FAIL: null revision got %', v_msg; END IF;
+  END;
+  IF (SELECT status FROM supplier_tax_invoices WHERE id = iq1) <> 'draft' THEN RAISE EXCEPTION 'T27 FAIL: stale post changed the status'; END IF;
+  PERFORM post_supplier_tax_invoice(iq1, v_rev + 1);
+  IF (SELECT status FROM supplier_tax_invoices WHERE id = iq1) <> 'posted' THEN RAISE EXCEPTION 'T27 FAIL: current revision did not post'; END IF;
+  PERFORM void_supplier_tax_invoice(iq1, 'ทดสอบ');
+  RAISE NOTICE 'T27 (stale_preview): PASSED';
+
+  -- T28: brand-new balance key (M1) + post -> void -> re-link the same PO -> post again.
+  --   NK has no balance row. PO pq2 has no receipt movement (po_no_receipt_movements warning, nothing to reverse).
+  --   Invoice line 6 kg @ 50 = 300. post: row created (0@0), +6@50 => 6@50. Snapshot says "did not exist": before 0@0, no stamp.
+  SELECT count(*) INTO v_cnt FROM inventory_stock_balances WHERE inventory_item_id = nk;
+  IF v_cnt <> 0 THEN RAISE EXCEPTION 'T28 FAIL: NK already has a balance row'; END IF;
+  iq2 := save_supplier_tax_invoice_draft(NULL,
+    jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-NK', 'invoice_date', v_bkk, 'net_before_vat', 300, 'vat', 21),
+    jsonb_build_array(jsonb_build_object('description', 'NK', 'qty', 6, 'unit', 'kg', 'unit_price', 50, 'inventory_item_id', nk, 'site_id', s1, 'base_qty', 6)), ARRAY[pq2]);
+  v_j := preview_supplier_tax_invoice(iq2);
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_j->'checks') e WHERE e->>'code' = 'po_no_receipt_movements' AND NOT (e->>'blocking')::boolean) THEN
+    RAISE EXCEPTION 'T28 FAIL: double-count warning missing %', v_j->'checks';
+  END IF;
+  PERFORM post_supplier_tax_invoice(iq2, (SELECT revision FROM supplier_tax_invoices WHERE id = iq2));
+  SELECT quantity_on_hand, round(weighted_average_cost, 6) INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = nk AND site_id = s1;
+  IF v_q <> 6 OR v_w <> 50 THEN RAISE EXCEPTION 'T28 FAIL: after post % @ % (want 6 @ 50)', v_q, v_w; END IF;
+  IF NOT EXISTS (SELECT 1 FROM supplier_tax_invoice_snapshots WHERE invoice_id = iq2 AND inventory_item_id = nk
+                  AND before_qty = 0 AND before_wac = 0 AND before_updated_at IS NULL AND after_qty = 6) THEN
+    RAISE EXCEPTION 'T28 FAIL: snapshot of a brand-new key';
+  END IF;
+  v_j := void_supplier_tax_invoice(iq2, 'ทดสอบ');
+  SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = nk AND site_id = s1;
+  IF v_q <> 0 OR v_w <> 0 OR jsonb_array_length(v_j->'warnings') <> 0 THEN RAISE EXCEPTION 'T28 FAIL: void -> % @ % %', v_q, v_w, v_j->'warnings'; END IF;
+  iq3 := save_supplier_tax_invoice_draft(NULL,
+    jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-NK2', 'invoice_date', v_bkk, 'net_before_vat', 300, 'vat', 21),
+    jsonb_build_array(jsonb_build_object('description', 'NK', 'qty', 6, 'unit', 'kg', 'unit_price', 50, 'inventory_item_id', nk, 'site_id', s1, 'base_qty', 6)), ARRAY[pq2]);
+  PERFORM post_supplier_tax_invoice(iq3, (SELECT revision FROM supplier_tax_invoices WHERE id = iq3));
+  SELECT quantity_on_hand, round(weighted_average_cost, 6) INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = nk AND site_id = s1;
+  IF v_q <> 6 OR v_w <> 50 THEN RAISE EXCEPTION 'T28 FAIL: re-post % @ % (want 6 @ 50)', v_q, v_w; END IF;
+  PERFORM void_supplier_tax_invoice(iq3, 'ทดสอบ');
+  RAISE NOTICE 'T28 (brand-new key, void, re-post): PASSED';
+
+  -- T29: post -> void -> re-link the same PO -> post again WITH a PO receipt to reverse (numbers at every step).
+  --   RK: PO receipt 10@100 => 10@100. Invoice line 12 kg @ 90 (1080, note needed: PO goods value is 1000).
+  --   post: line q=22, wac=(1000+1080)/22=94.545454; reversal 10@100: q=12, wac=(22*94.545454-1000)/12=90 => 12@90.
+  --   void (exact): 10@100.  Again post => 12@90.
+  iq4 := save_supplier_tax_invoice_draft(NULL,
+    jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-RK1', 'invoice_date', v_bkk, 'net_before_vat', 1080, 'vat', 75.6, 'match_note', 'ทดสอบ'),
+    jsonb_build_array(jsonb_build_object('description', 'RK', 'qty', 12, 'unit', 'kg', 'unit_price', 90, 'inventory_item_id', rk, 'site_id', s1, 'base_qty', 12)), ARRAY[pq3]);
+  PERFORM post_supplier_tax_invoice(iq4, (SELECT revision FROM supplier_tax_invoices WHERE id = iq4));
+  SELECT quantity_on_hand, round(weighted_average_cost, 6) INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = rk AND site_id = s1;
+  IF v_q <> 12 OR v_w <> 90 THEN RAISE EXCEPTION 'T29 FAIL: post 1 % @ % (want 12 @ 90)', v_q, v_w; END IF;
+  PERFORM void_supplier_tax_invoice(iq4, 'ทดสอบ');
+  SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = rk AND site_id = s1;
+  IF v_q <> 10 OR v_w <> 100 THEN RAISE EXCEPTION 'T29 FAIL: void 1 % @ % (want exactly 10 @ 100)', v_q, v_w; END IF;
+  iq5 := save_supplier_tax_invoice_draft(NULL,
+    jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-RK2', 'invoice_date', v_bkk, 'net_before_vat', 1080, 'vat', 75.6, 'match_note', 'ทดสอบ'),
+    jsonb_build_array(jsonb_build_object('description', 'RK', 'qty', 12, 'unit', 'kg', 'unit_price', 90, 'inventory_item_id', rk, 'site_id', s1, 'base_qty', 12)), ARRAY[pq3]);
+  PERFORM post_supplier_tax_invoice(iq5, (SELECT revision FROM supplier_tax_invoices WHERE id = iq5));
+  SELECT quantity_on_hand, round(weighted_average_cost, 6) INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = rk AND site_id = s1;
+  IF v_q <> 12 OR v_w <> 90 THEN RAISE EXCEPTION 'T29 FAIL: post 2 % @ % (want 12 @ 90)', v_q, v_w; END IF;
+  IF (SELECT count(*) FROM supplier_tax_invoice_reversals WHERE invoice_id = iq5) <> 1 THEN RAISE EXCEPTION 'T29 FAIL: reversal rows of the second post'; END IF;
+  PERFORM void_supplier_tax_invoice(iq5, 'ทดสอบ');
+  RAISE NOTICE 'T29 (post, void, re-link, post): PASSED';
+
+  -- T30: void reverses BY the movement ids post stored (M3). A hand-made purchase_in that merely carries the invoice
+  --   reference is never touched. HM: 10@100; invoice line 10@100 => post: 20@100 then reversal => 10@100.
+  iq6 := save_supplier_tax_invoice_draft(NULL,
+    jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-HM', 'invoice_date', v_bkk, 'net_before_vat', 1000, 'vat', 70),
+    jsonb_build_array(jsonb_build_object('description', 'HM', 'qty', 10, 'unit', 'kg', 'unit_price', 100, 'inventory_item_id', hm, 'site_id', s1, 'base_qty', 10)), ARRAY[pq4]);
+  PERFORM post_supplier_tax_invoice(iq6, (SELECT revision FROM supplier_tax_invoices WHERE id = iq6));
+  IF (SELECT count(*) FROM supplier_tax_invoice_items WHERE invoice_id = iq6 AND posted_movement_id IS NOT NULL) <> 1 THEN
+    RAISE EXCEPTION 'T30 FAIL: post did not store the line movement id';
+  END IF;
+  RESET role;
+  INSERT INTO stock_movements (tenant_id, inventory_item_id, site_id, movement_type, quantity, unit_cost, reference_type, reference_id)
+  VALUES (t_tenant, hm, s1, 'purchase_in', 3, 100, 'supplier_tax_invoice', iq6);
+  SET LOCAL role = 'authenticated';
+  PERFORM void_supplier_tax_invoice(iq6, 'ทดสอบ');
+  IF (SELECT count(*) FROM stock_movements WHERE reference_id = iq6 AND reference_type = 'supplier_tax_invoice_void' AND movement_type = 'receipt_reversal') <> 1
+     OR (SELECT quantity FROM stock_movements WHERE reference_id = iq6 AND reference_type = 'supplier_tax_invoice_void' AND movement_type = 'receipt_reversal') <> 10 THEN
+    RAISE EXCEPTION 'T30 FAIL: void reversed something other than the stored line movement';
+  END IF;
+  IF (SELECT count(*) FROM stock_movements WHERE reference_id = iq6 AND reference_type = 'supplier_tax_invoice' AND movement_type = 'purchase_in' AND quantity = 3) <> 1 THEN
+    RAISE EXCEPTION 'T30 FAIL: the hand-made movement was altered';
+  END IF;
+  SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = hm AND site_id = s1;
+  IF v_q <> 10 OR v_w <> 100 THEN RAISE EXCEPTION 'T30 FAIL: HM balance % @ % (want 10 @ 100)', v_q, v_w; END IF;
+  RAISE NOTICE 'T30 (void by stored movement ids): PASSED';
+
+  -- T31: duplicate invoice number (case/space-insensitive) among non-void invoices of one supplier
+  iq7 := save_supplier_tax_invoice_draft(NULL,
+    jsonb_build_object('supplier_id', sa, 'invoice_no', ' INV-DUP ', 'invoice_date', v_bkk, 'net_before_vat', 0, 'vat', 0), '[]'::jsonb, '{}'::uuid[]);
+  BEGIN
+    PERFORM save_supplier_tax_invoice_draft(NULL,
+      jsonb_build_object('supplier_id', sa, 'invoice_no', 'inv-dup', 'invoice_date', v_bkk, 'net_before_vat', 0, 'vat', 0), '[]'::jsonb, '{}'::uuid[]);
+    RAISE EXCEPTION 'T31 FAIL: duplicate number accepted';
+  EXCEPTION WHEN unique_violation THEN
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+    IF v_msg NOT LIKE '%sti_invoice_no_active_uq%' THEN RAISE EXCEPTION 'T31 FAIL: got %', v_msg; END IF;
+  END;
+  PERFORM save_supplier_tax_invoice_draft(NULL,   -- another supplier may reuse the number
+    jsonb_build_object('supplier_id', sb, 'invoice_no', 'INV-DUP', 'invoice_date', v_bkk, 'net_before_vat', 0, 'vat', 0), '[]'::jsonb, '{}'::uuid[]);
+  PERFORM delete_supplier_tax_invoice_draft(iq7);
+  RAISE NOTICE 'T31 (duplicate invoice number): PASSED';
+
+  -- T32: PO with a confirmed credit note -> non-blocking po_has_credit_note
+  RESET role;
+  INSERT INTO supplier_credit_notes (tenant_id, supplier_id, site_id, doc_number, doc_date, po_id, category_id, amount_no_vat, vat, amount, status)
+  VALUES (t_tenant, sa, s1, 'CN-STI-1', v_bkk, pq5, t_cat, 10, 0.7, 10.7, 'confirmed');
+  SET LOCAL role = 'authenticated';
+  iq8 := save_supplier_tax_invoice_draft(NULL,
+    jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-CN', 'invoice_date', v_bkk, 'net_before_vat', 100, 'vat', 7),
+    jsonb_build_array(jsonb_build_object('description', 'misc', 'qty', 1, 'unit_price', 100)), ARRAY[pq5]);
+  v_j := preview_supplier_tax_invoice(iq8);
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_j->'checks') e WHERE e->>'code' = 'po_has_credit_note' AND NOT (e->>'blocking')::boolean)
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_j->'checks') e WHERE (e->>'blocking')::boolean) THEN
+    RAISE EXCEPTION 'T32 FAIL: credit note warning %', v_j->'checks';
+  END IF;
+  RAISE NOTICE 'T32 (po_has_credit_note): PASSED';
+
+  -- T33: PO dated 70 days ago -> po_outside_month (warning); the invoice's supplier changed behind our back -> po_wrong_supplier blocks
+  iq9 := save_supplier_tax_invoice_draft(NULL,
+    jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-OM', 'invoice_date', v_bkk, 'net_before_vat', 100, 'vat', 7),
+    jsonb_build_array(jsonb_build_object('description', 'misc', 'qty', 1, 'unit_price', 100)), ARRAY[pq6]);
+  v_j := preview_supplier_tax_invoice(iq9);
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_j->'checks') e WHERE e->>'code' = 'po_outside_month' AND NOT (e->>'blocking')::boolean) THEN
+    RAISE EXCEPTION 'T33 FAIL: outside-month warning %', v_j->'checks';
+  END IF;
+  RESET role;
+  UPDATE supplier_tax_invoices SET supplier_id = sb WHERE id = iq9;
+  SET LOCAL role = 'authenticated';
+  v_j := preview_supplier_tax_invoice(iq9);
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_j->'checks') e WHERE e->>'code' = 'po_wrong_supplier' AND (e->>'blocking')::boolean) THEN
+    RAISE EXCEPTION 'T33 FAIL: wrong-supplier check %', v_j->'checks';
+  END IF;
+  BEGIN
+    PERFORM post_supplier_tax_invoice(iq9, (SELECT revision FROM supplier_tax_invoices WHERE id = iq9));
+    RAISE EXCEPTION 'T33 FAIL: posted with a wrong-supplier PO';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+    IF v_msg NOT LIKE 'po_wrong_supplier%' THEN RAISE EXCEPTION 'T33 FAIL: got %', v_msg; END IF;
+  END;
+  RAISE NOTICE 'T33 (po_outside_month, po_wrong_supplier): PASSED';
+
+  -- T34: stock_line_invalid (a line's site belongs to another tenant) blocks, and the brand-new-row insert of M1 rolls back
+  iq10 := save_supplier_tax_invoice_draft(NULL,
+    jsonb_build_object('supplier_id', sa, 'invoice_no', 'STI-SL', 'invoice_date', v_bkk, 'net_before_vat', 100, 'vat', 7),
+    jsonb_build_array(jsonb_build_object('description', 'SL', 'qty', 1, 'unit', 'kg', 'unit_price', 100, 'inventory_item_id', sl, 'site_id', s1, 'base_qty', 1)), ARRAY[pq7]);
+  RESET role;
+  UPDATE supplier_tax_invoice_items SET site_id = t2_site WHERE invoice_id = iq10;
+  SET LOCAL role = 'authenticated';
+  v_j := preview_supplier_tax_invoice(iq10);
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_j->'checks') e WHERE e->>'code' = 'stock_line_invalid' AND (e->>'blocking')::boolean) THEN
+    RAISE EXCEPTION 'T34 FAIL: stock_line_invalid not reported %', v_j->'checks';
+  END IF;
+  BEGIN
+    PERFORM post_supplier_tax_invoice(iq10, (SELECT revision FROM supplier_tax_invoices WHERE id = iq10));
+    RAISE EXCEPTION 'T34 FAIL: posted with an invalid stock line';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+    IF v_msg NOT LIKE 'stock_line_invalid%' THEN RAISE EXCEPTION 'T34 FAIL: got %', v_msg; END IF;
+  END;
+  IF EXISTS (SELECT 1 FROM inventory_stock_balances WHERE inventory_item_id = sl) THEN RAISE EXCEPTION 'T34 FAIL: failed post left a balance row'; END IF;
+  RAISE NOTICE 'T34 (stock_line_invalid): PASSED';
 
   RESET role;
   RAISE EXCEPTION 'RESULT: supplier_tax_invoice_test ALL PASSED';

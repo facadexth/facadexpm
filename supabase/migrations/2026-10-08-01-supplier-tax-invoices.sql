@@ -26,6 +26,8 @@ CREATE TABLE supplier_tax_invoices (
   status         TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'posted', 'void')),
   post_result    JSONB,
   void_reason    TEXT,
+  -- Bumped by every draft save. preview returns it; post must pass the previewed value (stale_preview otherwise).
+  revision       INT NOT NULL DEFAULT 1,
   created_by     TEXT,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   posted_by      TEXT,
@@ -57,9 +59,12 @@ CREATE TABLE supplier_tax_invoice_items (
   site_id           UUID,
   base_qty          NUMERIC,
   base_unit_cost    NUMERIC,
+  -- The purchase_in movement post wrote for this line; void reverses BY THIS ID (never by a reference lookup).
+  posted_movement_id UUID,
   CONSTRAINT stii_invoice_fk FOREIGN KEY (invoice_id) REFERENCES supplier_tax_invoices(id) ON DELETE CASCADE,
   CONSTRAINT stii_item_fk FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(id) ON DELETE RESTRICT,
   CONSTRAINT stii_site_fk FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE RESTRICT,
+  CONSTRAINT stii_movement_fk FOREIGN KEY (posted_movement_id) REFERENCES stock_movements(id) ON DELETE RESTRICT,
   CONSTRAINT stii_finite_check CHECK (qty < 'Infinity'::numeric AND unit_price < 'Infinity'::numeric AND amount < 'Infinity'::numeric
     AND (base_qty IS NULL OR base_qty < 'Infinity'::numeric) AND (base_unit_cost IS NULL OR base_unit_cost < 'Infinity'::numeric)),
   CONSTRAINT stii_stock_fields_check CHECK (
@@ -234,7 +239,7 @@ BEGIN
     RAISE EXCEPTION 'site not found for this tenant';
   END IF;
   SELECT quantity_on_hand, weighted_average_cost INTO v_old_qty, v_old_wac
-    FROM inventory_stock_balances WHERE inventory_item_id = p_item AND site_id = p_site FOR UPDATE;
+    FROM inventory_stock_balances WHERE inventory_item_id = p_item AND site_id = p_site AND tenant_id = p_tenant FOR UPDATE;
   IF NOT FOUND THEN v_old_qty := 0; v_old_wac := 0; END IF;
   v_new_qty := v_old_qty - p_qty;
   v_new_wac := _sti_wac_after_reversal(v_old_qty, v_old_wac, p_qty, p_unit_cost);

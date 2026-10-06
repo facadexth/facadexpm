@@ -185,7 +185,7 @@ BEGIN
     IF v_status <> 'draft' THEN RAISE EXCEPTION 'not_draft'; END IF;
     UPDATE supplier_tax_invoices
        SET supplier_id = v_sup, invoice_no = v_no, invoice_date = v_date, net_before_vat = v_net, vat = v_vat,
-           grand_total = round(v_net + v_vat, 2), match_note = v_note
+           grand_total = round(v_net + v_vat, 2), match_note = v_note, revision = revision + 1
      WHERE id = v_id;
     DELETE FROM supplier_tax_invoice_items WHERE invoice_id = v_id;
     DELETE FROM supplier_tax_invoice_pos WHERE invoice_id = v_id;
@@ -262,7 +262,7 @@ BEGIN
   FOR r IN SELECT * FROM _sti_touched_keys(p_id, v_tenant) LOOP
     k := r.inventory_item_id::text || '|' || r.site_id::text;
     SELECT quantity_on_hand, weighted_average_cost INTO q, w FROM inventory_stock_balances
-     WHERE inventory_item_id = r.inventory_item_id AND site_id = r.site_id;
+     WHERE inventory_item_id = r.inventory_item_id AND site_id = r.site_id AND tenant_id = v_tenant;
     IF NOT FOUND THEN q := 0; w := 0; END IF;
     v_state := v_state || jsonb_build_object(k, jsonb_build_object('item', r.inventory_item_id, 'site', r.site_id,
       'before_qty', q, 'before_wac', w, 'add_qty', 0, 'remove_qty', 0, 'qty', q, 'wac', w));
@@ -294,7 +294,8 @@ BEGIN
     JOIN inventory_items ii ON ii.id = (t.val->>'item')::uuid AND ii.tenant_id = v_tenant
     JOIN sites s ON s.id = (t.val->>'site')::uuid AND s.tenant_id = v_tenant;
 
-  RETURN v_chk || jsonb_build_object('rows', v_rows);
+  -- revision: the client passes it back to post; a save in between makes post raise stale_preview
+  RETURN v_chk || jsonb_build_object('rows', v_rows, 'revision', (SELECT revision FROM supplier_tax_invoices WHERE id = p_id AND tenant_id = v_tenant));
 END $$;
 
 -- Negative balances among the touched keys (post and void report them; ruling R2).
@@ -311,12 +312,12 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
 $$;
 
 -- ── post (spec steps 1-5) ──
-CREATE OR REPLACE FUNCTION post_supplier_tax_invoice(p_id UUID) RETURNS JSONB
+CREATE OR REPLACE FUNCTION post_supplier_tax_invoice(p_id UUID, p_expected_revision INT) RETURNS JSONB
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_tenant UUID := current_tenant_id();
   inv supplier_tax_invoices%ROWTYPE;
-  v_chk JSONB; v_block TEXT; v_keys JSONB; v_result JSONB;
+  v_chk JSONB; v_block TEXT; v_keys JSONB; v_result JSONB; v_created JSONB := '[]'::jsonb;
   v_at TIMESTAMPTZ;
   l RECORD; r RECORD; k RECORD; mv RECORD; rv RECORD;
   v_prev TEXT; v_sub NUMERIC; v_warns JSONB := '[]'::jsonb;
@@ -326,6 +327,8 @@ BEGIN
   SELECT * INTO inv FROM supplier_tax_invoices WHERE id = p_id AND tenant_id = v_tenant FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'invoice_not_found'; END IF;
   IF inv.status <> 'draft' THEN RAISE EXCEPTION 'not_draft'; END IF;
+  -- the draft changed after the preview the user looked at (or no revision was passed)
+  IF p_expected_revision IS DISTINCT FROM inv.revision THEN RAISE EXCEPTION 'stale_preview'; END IF;
 
   -- fixed lock order: invoice -> POs by id -> balances by (item, site)
   PERFORM 1 FROM purchase_orders
@@ -333,8 +336,19 @@ BEGIN
    ORDER BY id FOR UPDATE;
   SELECT COALESCE(jsonb_agg(jsonb_build_object('item', t.inventory_item_id, 'site', t.site_id)), '[]'::jsonb)
     INTO v_keys FROM _sti_touched_keys(p_id, v_tenant) t;
+  -- Make sure every touched (item, site) has a balance row BEFORE locking, in (item, site) order: the locks below then
+  -- always land on existing rows (no lost update / deadlock between two posts on a brand-new key). `created` remembers
+  -- which rows we made, so the snapshot still says "did not exist" (before 0@0, no stamp) and void restores exactly that.
+  WITH ins AS (
+    INSERT INTO inventory_stock_balances (tenant_id, inventory_item_id, site_id, quantity_on_hand, weighted_average_cost, updated_at)
+    SELECT v_tenant, t.inventory_item_id, t.site_id, 0, 0, now() FROM _sti_touched_keys(p_id, v_tenant) t
+     ORDER BY t.inventory_item_id, t.site_id
+    ON CONFLICT (inventory_item_id, site_id) DO NOTHING
+    RETURNING inventory_item_id, site_id)
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('item', ins.inventory_item_id, 'site', ins.site_id)), '[]'::jsonb) INTO v_created FROM ins;
   PERFORM 1 FROM inventory_stock_balances b
-   WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(v_keys) e
+   WHERE b.tenant_id = v_tenant
+     AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_keys) e
                   WHERE (e->>'item')::uuid = b.inventory_item_id AND (e->>'site')::uuid = b.site_id)
    ORDER BY b.inventory_item_id, b.site_id FOR UPDATE;
 
@@ -349,7 +363,10 @@ BEGIN
   -- Snapshot the pre-post balance of every touched (item, site) so void can restore it exactly (ruling C1).
   -- Void exactness needs: no stock movement on these keys between post and void (else void_inexact).
   INSERT INTO supplier_tax_invoice_snapshots (tenant_id, invoice_id, inventory_item_id, site_id, before_qty, before_wac, before_updated_at)
-  SELECT v_tenant, p_id, t.inventory_item_id, t.site_id, COALESCE(b.quantity_on_hand, 0), COALESCE(b.weighted_average_cost, 0), b.updated_at
+  SELECT v_tenant, p_id, t.inventory_item_id, t.site_id, COALESCE(b.quantity_on_hand, 0), COALESCE(b.weighted_average_cost, 0),
+         CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(v_created) e
+                            WHERE (e->>'item')::uuid = t.inventory_item_id AND (e->>'site')::uuid = t.site_id)
+              THEN NULL ELSE b.updated_at END
     FROM _sti_touched_keys(p_id, v_tenant) t
     LEFT JOIN inventory_stock_balances b ON b.inventory_item_id = t.inventory_item_id AND b.site_id = t.site_id AND b.tenant_id = v_tenant;
 
@@ -357,7 +374,8 @@ BEGIN
   FOR l IN SELECT * FROM _sti_stock_lines(p_id, v_tenant) LOOP
     SELECT * INTO mv FROM record_stock_movement(l.inventory_item_id, l.site_id, 'purchase_in', l.base_qty, l.base_unit_cost,
                                                 'supplier_tax_invoice', p_id, 'ใบกำกับ ' || inv.invoice_no);
-    UPDATE stock_movements SET created_at = v_at WHERE id = mv.movement_id;
+    UPDATE stock_movements SET created_at = v_at WHERE id = mv.movement_id AND tenant_id = v_tenant;
+    UPDATE supplier_tax_invoice_items SET posted_movement_id = mv.movement_id WHERE id = l.line_id AND tenant_id = v_tenant;
     v_lines := v_lines + 1;
   END LOOP;
 
@@ -441,10 +459,10 @@ BEGIN
   SELECT COALESCE(jsonb_agg(jsonb_build_object('item', x.inventory_item_id, 'site', x.site_id)), '[]'::jsonb) INTO v_keys
     FROM (SELECT inventory_item_id, site_id FROM supplier_tax_invoice_reversals WHERE invoice_id = p_id AND tenant_id = v_tenant
           UNION
-          SELECT inventory_item_id, site_id FROM stock_movements
-           WHERE tenant_id = v_tenant AND reference_type = 'supplier_tax_invoice' AND reference_id = p_id AND movement_type = 'purchase_in') x;
+          SELECT inventory_item_id, site_id FROM supplier_tax_invoice_items
+           WHERE invoice_id = p_id AND tenant_id = v_tenant AND posted_movement_id IS NOT NULL) x;
   PERFORM 1 FROM inventory_stock_balances b
-   WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(v_keys) e
+   WHERE b.tenant_id = v_tenant AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_keys) e
                   WHERE (e->>'item')::uuid = b.inventory_item_id AND (e->>'site')::uuid = b.site_id)
    ORDER BY b.inventory_item_id, b.site_id FOR UPDATE;
 
@@ -472,9 +490,12 @@ BEGIN
   END LOOP;
 
   -- (2) take the invoice lines back out (exact inverse)
-  FOR m IN SELECT id, inventory_item_id, site_id, quantity, unit_cost FROM stock_movements
-            WHERE tenant_id = v_tenant AND reference_type = 'supplier_tax_invoice' AND reference_id = p_id AND movement_type = 'purchase_in'
-            ORDER BY created_at DESC, id DESC LOOP
+  -- BY THE MOVEMENT IDS post stored on the lines (a hand-made movement carrying the invoice reference is never touched)
+  FOR m IN SELECT sm.id, sm.inventory_item_id, sm.site_id, sm.quantity, sm.unit_cost
+             FROM supplier_tax_invoice_items i
+             JOIN stock_movements sm ON sm.id = i.posted_movement_id AND sm.tenant_id = v_tenant
+            WHERE i.invoice_id = p_id AND i.tenant_id = v_tenant
+            ORDER BY sm.created_at DESC, sm.id DESC LOOP
     PERFORM _stock_receipt_reversal(v_tenant, m.inventory_item_id, m.site_id, m.quantity, m.unit_cost,
                                     'supplier_tax_invoice_void', p_id, 'ยกเลิกใบกำกับ ' || inv.invoice_no, now());
   END LOOP;
@@ -506,8 +527,8 @@ BEGIN
 END $$;
 
 REVOKE ALL ON FUNCTION save_supplier_tax_invoice_draft(UUID, JSONB, JSONB, UUID[]), delete_supplier_tax_invoice_draft(UUID),
-  preview_supplier_tax_invoice(UUID), post_supplier_tax_invoice(UUID), void_supplier_tax_invoice(UUID, TEXT) FROM PUBLIC, anon;
+  preview_supplier_tax_invoice(UUID), post_supplier_tax_invoice(UUID, INT), void_supplier_tax_invoice(UUID, TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION save_supplier_tax_invoice_draft(UUID, JSONB, JSONB, UUID[]), delete_supplier_tax_invoice_draft(UUID),
-  preview_supplier_tax_invoice(UUID), post_supplier_tax_invoice(UUID), void_supplier_tax_invoice(UUID, TEXT) TO authenticated;
+  preview_supplier_tax_invoice(UUID), post_supplier_tax_invoice(UUID, INT), void_supplier_tax_invoice(UUID, TEXT) TO authenticated;
 REVOKE ALL ON FUNCTION _sti_stock_lines(UUID, UUID), _sti_receipt_movements(UUID, UUID), _sti_touched_keys(UUID, UUID),
   _sti_check(UUID, UUID), _sti_negatives(UUID, JSONB) FROM PUBLIC, anon, authenticated;
