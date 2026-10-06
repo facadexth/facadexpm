@@ -1,0 +1,1 @@
+export function useUserRole() { return { role: window.__role || 'OWNER', user: null, loading: false, isAtLeast: r => ({ OWNER: 3, ADMIN: 2, WORKER: 1 }[window.__role || 'OWNER'] >= { OWNER: 3, ADMIN: 2, WORKER: 1 }[r]) } }

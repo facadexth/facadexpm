@@ -29,7 +29,7 @@ const amber = { background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,
 const badge = (color, bg) => ({ fontSize: 11, padding: '1px 6px', borderRadius: 6, color, background: bg, marginLeft: 6, whiteSpace: 'nowrap' })
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
-export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSaveDraft, onPreview, onChange, onCancel }) {
+export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSaveDraft, onPreview, onChange, onCancel, children }) {
   const today = bangkokTodayIso()
   const [form, setForm] = useState(initial)
   const formRef = useRef(form)
@@ -185,8 +185,8 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
 
   return (
     <form onSubmit={e => e.preventDefault()}>
-      <fieldset disabled={!!busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-        <div className="modal-body" style={{ display: 'grid', gap: 14 }}>
+      <fieldset disabled={!!busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: 'contents' }}>
+        <div className="modal-body" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 14 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
             <div>
               <label className="label">ซัพพลายเออร์ ★</label>
@@ -365,6 +365,7 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
               {!match.invalid && !match.linesOk && ' ไม่ตรงกับยอดก่อน VAT'}
             </div>
           </div>
+          {children}
         </div>
       </fieldset>
 

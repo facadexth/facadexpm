@@ -3,7 +3,7 @@
 // PostConfirmOverlay -- plain overlay (NOT <Modal>) because it opens over the form modal
 // (Modal's popstate handling is not safe for stacked modals; see SupplierCreditNotes.jsx).
 // ============================================================
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { fmt } from '../lib/supabase.js'
 import { CHECK_TEXT } from '../lib/supplierTaxInvoice.js'
 
@@ -20,7 +20,7 @@ export default function TaxInvoicePreview({ preview, poNumberById }) {
   const checks = preview.checks || []
   const rows = preview.rows || []
   return (
-    <div style={{ display: 'grid', gap: 10, fontSize: 13 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 10, fontSize: 13 }}>
       {checks.length > 0 && (
         <div style={{ display: 'grid', gap: 4 }}>
           {checks.map((c, i) => (
@@ -73,15 +73,21 @@ export default function TaxInvoicePreview({ preview, poNumberById }) {
 }
 
 export function PostConfirmOverlay({ lines, busy, onConfirm, onCancel }) {
+  const busyRef = useRef(busy); busyRef.current = busy
+  const cancelRef = useRef(onCancel); cancelRef.current = onCancel
   useEffect(() => {
-    // capture + stopImmediatePropagation: the form <Modal> underneath also listens for Escape and must stay open
-    const h = e => { if (e.key !== 'Escape') return; e.stopImmediatePropagation(); if (!busy) onCancel() }
-    window.addEventListener('keydown', h, true)
-    return () => window.removeEventListener('keydown', h, true)
-  }, [onCancel, busy])
+    // capture + stopImmediatePropagation: the form <Modal> underneath also listens for Escape / back and must stay open
+    const onKey = e => { if (e.key !== 'Escape') return; e.stopImmediatePropagation(); if (!busyRef.current) cancelRef.current() }
+    // Back button: this press consumed the form Modal's history entry (the overlay pushes none), so put it back and
+    // close only the overlay (ignored while busy). The next back then closes the form modal as usual.
+    const onPop = e => { e.stopImmediatePropagation(); window.history.pushState({ modalOpen: true }, ''); if (!busyRef.current) cancelRef.current() }
+    window.addEventListener('keydown', onKey, true)
+    window.addEventListener('popstate', onPop, true)
+    return () => { window.removeEventListener('keydown', onKey, true); window.removeEventListener('popstate', onPop, true) }
+  }, [])
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" style={{ zIndex: 1100 }}>
-      <div className="modal" style={{ maxWidth: 'min(520px, 94vw)' }}>
+      <div className="modal" style={{ maxWidth: 'min(680px, 94vw)' }}>
         <div className="modal-header">
           <span className="modal-title">ยืนยันบันทึกใบกำกับภาษี — โปรดตรวจสอบ</span>
           <button type="button" className="modal-close" disabled={busy} onClick={onCancel}>✕</button>

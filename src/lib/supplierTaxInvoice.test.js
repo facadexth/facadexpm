@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   matchTolerance, withinTolerance, lineAmount, evaluateMatch, wacAfterIn, wacAfterReversal,
   simulateStock, proposePos, lineBase, formSignature, previewIsCurrent, mapTaxInvoiceRpcError, CHECK_TEXT,
-  GENERIC_ERROR_TEXT, isTaxInvoiceNotReady, postSummaryLines,
+  GENERIC_ERROR_TEXT, isTaxInvoiceNotReady, postSummaryLines, reversingPoCount, fmtQty,
 } from './supplierTaxInvoice.js'
 
 describe('tolerance = min(1%, 5 baht)  (owner ruling R1)', () => {
@@ -294,17 +294,18 @@ describe('lineBase extra cases', () => {
 })
 
 describe('postSummaryLines (confirm dialog text)', () => {
-  it('lists stock in, reversals, negatives, expense stamping and the undo rule', () => {
+  const row = { item_name: 'X', site_name: 'S2', before_qty: 10, before_wac: 100, add_qty: 5, remove_qty: 28.3333333333, after_qty: -13.3333333333, after_wac: 100, base_unit: 'kg', negative: true }
+  it('lists per-item changes, warnings, reason, stamping and the undo rule with rounded numbers', () => {
     const lines = postSummaryLines({
-      invoiceNo: 'INV-1', stockLineCount: 2, poCount: 2,
-      preview: { rows: [{ item_name: 'X', site_name: 'S2', after_qty: -13, base_unit: 'kg', negative: true }],
-                 checks: [{ code: 'po_outside_month', blocking: false }] },
+      invoiceNo: 'INV-1', stockLineCount: 2, poCount: 2, matchNote: ' ราคาขึ้น ',
+      preview: { rows: [row], checks: [{ code: 'po_outside_month', blocking: false }] },
     })
     expect(lines).toEqual([
       'เพิ่มสต็อกจากใบกำกับ 2 รายการ',
       'กลับรายการรับเข้าสต็อกของใบสั่งซื้อ 2 ใบ',
-      '⚠️ สต็อกจะติดลบ: X @ S2 = -13 kg',
+      '⚠️ X @ S2: คงเหลือ 10 → -13.3333 kg · ต้นทุนเฉลี่ย 100.00 → 100.00 · รับเข้าใหม่ +5 · กลับรายการ −28.3333 (สต็อกจะติดลบ)',
       '⚠️ ' + 'ใบสั่งซื้อนอกเดือนของใบกำกับ',
+      'เหตุผลที่ยอดต่าง: ราคาขึ้น',
       'รายจ่ายของใบสั่งซื้อไม่เปลี่ยนยอด แต่จะประทับเลขที่ใบกำกับ INV-1',
       'แก้ไขภายหลังไม่ได้ — ย้อนกลับได้ด้วย "ยกเลิกใบกำกับ" เท่านั้น',
     ])
@@ -315,5 +316,15 @@ describe('postSummaryLines (confirm dialog text)', () => {
       preview: { rows: [], checks: [{ code: 'po_has_deposit', blocking: false }, { code: 'po_has_deposit', blocking: false }, { code: 'no_pos', blocking: true }] },
     })
     expect(lines.filter(l => l.startsWith('⚠️'))).toEqual(['⚠️ ' + CHECK_TEXT.po_has_deposit])
+  })
+  it('counts only POs that really have receipt movements', () => {
+    expect(reversingPoCount(3, [{ code: 'po_no_receipt_movements', po_id: 'a' }, { code: 'po_stock_from_invoice', po_id: 'b' }, { code: 'po_no_receipt_movements', po_id: 'a' }])).toBe(1)
+    expect(reversingPoCount(1, [{ code: 'po_has_deposit', po_id: 'a' }])).toBe(1)
+    expect(reversingPoCount(1, [{ code: 'po_no_receipt_movements', po_id: 'a' }, { code: 'po_no_receipt_movements', po_id: 'z' }])).toBe(0)
+  })
+  it('fmtQty never shows long fractions', () => {
+    expect(fmtQty(-13.333333333)).toBe('-13.3333')
+    expect(fmtQty(5)).toBe('5')
+    expect(fmtQty(null)).toBe('—')
   })
 })

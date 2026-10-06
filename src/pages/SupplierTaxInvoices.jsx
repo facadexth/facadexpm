@@ -4,7 +4,7 @@
 // expense stamping) -> void. Every write is an RPC; nothing is posted without the confirm dialog.
 // Before the migration is applied the tables do not exist: the page shows a calm "not live" state.
 // ============================================================
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import {
   useSupplierTaxInvoices, useSupplierTaxInvoice, useSuppliers, useSites, useReceivedPosForSupplier,
@@ -20,7 +20,7 @@ import { canEditPage } from '../lib/permissions.js'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
 import { toRpcPayload, formFromInvoice, emptyTaxInvoiceForm, poRowsFor } from '../lib/taxInvoiceForm.js'
 import {
-  CHECK_TEXT, mapTaxInvoiceRpcError, formSignature, previewIsCurrent, postSummaryLines, withinTolerance,
+  CHECK_TEXT, mapTaxInvoiceRpcError, formSignature, previewIsCurrent, postSummaryLines, withinTolerance, fmtQty,
 } from '../lib/supplierTaxInvoice.js'
 
 const STATUS_BADGE = {
@@ -29,7 +29,7 @@ const STATUS_BADGE = {
   void: { cls: 'badge-received', label: '🚫 ยกเลิก' },
 }
 
-const negText = n => `${n.item_name} @ ${n.site_name} = ${n.qty}`
+const negText = n => `${n.item_name} @ ${n.site_name} = ${fmtQty(n.qty)}`
 /** Non-blocking warning texts, de-duplicated by code. */
 const warnTexts = list => {
   const seen = new Set()
@@ -61,6 +61,9 @@ export default function SupplierTaxInvoices() {
   const busyRef = useRef(false)                  // synchronous guard: setBusy alone is async, a double click could slip through
   const [preview, setPreview] = useState(null)   // { id, signature, data, form }
   const [confirm, setConfirm] = useState(null)   // { id, signature, lines }
+  const confirmRef = useRef(null)
+  confirmRef.current = confirm
+  const previewBoxRef = useRef(null)
   const [formTick, setFormTick] = useState(0)    // re-render when the form changes (stale-preview guard)
   const latestFormRef = useRef(null)
   const [viewRow, setViewRow] = useState(null)
@@ -85,11 +88,13 @@ export default function SupplierTaxInvoices() {
       { label: '✏️ แก้ไข', onClick: () => openEdit(n) },
       { label: '🗑️ ลบ', onClick: () => setDeleteId(n.id), danger: true },
     ] : []),
-    ...(n.status !== 'draft' ? [{ label: '👁️ ดูรายละเอียด', onClick: () => setViewRow(n) }] : []),
+    ...(n.status !== 'draft' || !canEdit ? [{ label: '👁️ ดูรายละเอียด', onClick: () => setViewRow(n) }] : []),
     ...(canEdit && n.status === 'posted' ? [
       { label: '🚫 ยกเลิกใบกำกับ', onClick: () => { setVoidReason(''); setVoidRow(n) }, danger: true },
     ] : []),
   ]
+
+  useEffect(() => { previewBoxRef.current?.scrollIntoView?.({ block: 'nearest' }) }, [preview])
 
   const guard = async fn => {
     if (busyRef.current) return
@@ -108,8 +113,10 @@ export default function SupplierTaxInvoices() {
     latestFormRef.current = null; setPreview(null); setConfirm(null)
     setEditing({ id: row.id, loadId: row.id, key: keySeq.current, form: null })
   }
+  // Modal's back-button handler treats `false` as "refused": it re-pushes its history entry (see Modal.jsx)
+  const refuseWhenBusy = fn => () => { if (busyRef.current) return false; fn() }
   const closeEditor = () => {
-    if (busyRef.current) return
+    if (busyRef.current) return false
     setEditing(null); setPreview(null); setConfirm(null); latestFormRef.current = null
   }
 
@@ -142,13 +149,15 @@ export default function SupplierTaxInvoices() {
     const stockLineCount = preview.form.lines.filter(l => l.inventory_item_id).length
     setConfirm({
       id: preview.id, signature: preview.signature,
-      lines: postSummaryLines({ invoiceNo: preview.form.invoice_no.trim(), stockLineCount, poCount: preview.form.po_ids.length, preview: preview.data }),
+      lines: postSummaryLines({ invoiceNo: preview.form.invoice_no.trim(), stockLineCount, poCount: preview.form.po_ids.length, preview: preview.data, matchNote: preview.form.match_note }),
     })
   }
   const doPost = () => guard(async () => {
     if (!confirm) return
     // the form cannot change while the overlay is open, but never post a preview that is not the current form
-    if (preview?.signature !== confirm.signature || !previewIsCurrent(preview, latestFormRef.current)) { setConfirm(null); return }
+    if (preview?.signature !== confirm.signature || !previewIsCurrent(preview, latestFormRef.current)) {
+      setConfirm(null); alert('ข้อมูลเปลี่ยนแล้ว — กด "ตรวจสอบก่อนบันทึก" อีกครั้ง'); return
+    }
     try {
       const result = await postSupplierTaxInvoice(confirm.id)
       setConfirm(null); setPreview(null); setEditing(null); latestFormRef.current = null; refetch()
@@ -255,28 +264,29 @@ export default function SupplierTaxInvoices() {
       </div>
 
       {editing && (
-        <Modal title={editing.id ? 'แก้ไขใบกำกับภาษีผู้ขาย' : 'เพิ่มใบกำกับภาษีผู้ขาย'} onClose={() => { if (!confirm) closeEditor() }} maxWidth={980}>
+        <Modal title={editing.id ? 'แก้ไขใบกำกับภาษีผู้ขาย' : 'เพิ่มใบกำกับภาษีผู้ขาย'} onClose={() => (confirmRef.current ? false : closeEditor())} maxWidth={980}>
           {formReady && formInitial ? (
             <>
               <SupplierTaxInvoiceForm
                 key={editing.key} initial={formInitial} invoiceId={editing.loadId || null} busy={busy}
                 onChange={f => { latestFormRef.current = f; setFormTick(t => t + 1) }}
-                onSaveDraft={handleSaveDraft} onPreview={handlePreview} onCancel={closeEditor} />
-              {preview && (
-                <div className="modal-body" data-tick={formTick} style={{ borderTop: '1px solid var(--border, #ddd)' }}>
-                  <div style={{ fontWeight: 600, marginBottom: 8 }}>ผลตรวจสอบก่อนบันทึก</div>
-                  <TaxInvoicePreview preview={preview.data} poNumberById={poNumberById} />
-                  {!previewCurrent && (
-                    <div style={{ color: '#b45309', marginTop: 8, fontSize: 13 }}>ข้อมูลเปลี่ยนแล้ว — กด &quot;ตรวจสอบก่อนบันทึก&quot; อีกครั้ง</div>
-                  )}
-                  {previewBlocking && <div style={{ color: 'var(--danger, #e55)', marginTop: 8, fontSize: 13 }}>มีรายการที่ต้องแก้ก่อน จึงจะบันทึกได้</div>}
-                  <div style={{ marginTop: 10, textAlign: 'right' }}>
-                    <button type="button" className="btn btn-primary" disabled={busy || previewBlocking || !previewCurrent} onClick={askPost}>
-                      ✅ บันทึกใบกำกับ (ลงสต็อก)
-                    </button>
+                onSaveDraft={handleSaveDraft} onPreview={handlePreview} onCancel={closeEditor}>
+                {preview && (
+                  <div ref={previewBoxRef} data-tick={formTick} style={{ borderTop: '1px solid var(--border, #ddd)', paddingTop: 12, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, marginBottom: 8 }}>ผลตรวจสอบก่อนบันทึก</div>
+                    <TaxInvoicePreview preview={preview.data} poNumberById={poNumberById} />
+                    {!previewCurrent && (
+                      <div style={{ color: '#b45309', marginTop: 8, fontSize: 13 }}>ข้อมูลเปลี่ยนแล้ว — กด &quot;ตรวจสอบก่อนบันทึก&quot; อีกครั้ง</div>
+                    )}
+                    {previewBlocking && <div style={{ color: 'var(--danger, #e55)', marginTop: 8, fontSize: 13 }}>มีรายการที่ต้องแก้ก่อน จึงจะบันทึกได้</div>}
+                    <div style={{ marginTop: 10, textAlign: 'right' }}>
+                      <button type="button" className="btn btn-primary" disabled={busy || previewBlocking || !previewCurrent} onClick={askPost}>
+                        ✅ บันทึกใบกำกับ (ลงสต็อก)
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </SupplierTaxInvoiceForm>
             </>
           ) : (
             <div className="modal-body" style={{ color: 'var(--text2)' }}>
@@ -287,12 +297,12 @@ export default function SupplierTaxInvoices() {
         </Modal>
       )}
 
-      {confirm && <PostConfirmOverlay lines={confirm.lines} busy={busy} onConfirm={doPost} onCancel={() => { if (!busy) setConfirm(null) }} />}
+      {confirm && <PostConfirmOverlay lines={confirm.lines} busy={busy} onConfirm={doPost} onCancel={() => setConfirm(null)} />}
 
       {viewRow && <ViewModal row={viewRow} siteNameById={siteNameById} onClose={() => setViewRow(null)} />}
 
       {voidRow && (
-        <Modal title="ยกเลิกใบกำกับภาษี" onClose={() => { if (!busy) setVoidRow(null) }} maxWidth={480}>
+        <Modal title="ยกเลิกใบกำกับภาษี" onClose={refuseWhenBusy(() => setVoidRow(null))} maxWidth={480}>
           <div className="modal-body" style={{ display: 'grid', gap: 10 }}>
             <div>ใบกำกับ <b>{voidRow.invoice_no}</b></div>
             <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>
@@ -311,7 +321,7 @@ export default function SupplierTaxInvoices() {
 
       {deleteId && (
         <ConfirmDialog title="ลบใบกำกับฉบับร่าง" message="ลบใบกำกับฉบับร่างนี้? (ยังไม่กระทบสต็อก)" danger confirmDisabled={busy}
-          onConfirm={doDelete} onCancel={() => { if (!busy) setDeleteId(null) }} />
+          onConfirm={doDelete} onCancel={refuseWhenBusy(() => setDeleteId(null))} />
       )}
     </div>
   )
@@ -340,7 +350,7 @@ function ViewModal({ row, siteNameById, onClose }) {
         {row.status === 'void' && (
           <div style={{ color: 'var(--danger, #e55)' }}>
             🚫 ยกเลิกแล้ว: {inv.void_reason || '—'}
-            <div style={{ fontSize: 12 }}>เมื่อ {inv.voided_at ? new Date(inv.voided_at).toLocaleString('th-TH') : '—'} โดย {inv.voided_by || '—'}</div>
+            <div style={{ fontSize: 12 }}>เมื่อ {inv.voided_at ? new Date(inv.voided_at).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }) : '—'} โดย {inv.voided_by || '—'}</div>
           </div>
         )}
         {error && <div style={{ color: 'var(--danger, #e55)' }}>โหลดรายการไม่สำเร็จ: {error}</div>}

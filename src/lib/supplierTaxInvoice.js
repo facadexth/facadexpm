@@ -226,15 +226,34 @@ export function mapTaxInvoiceRpcError(err) {
   return GENERIC_ERROR_TEXT
 }
 
-/** Text for the post confirm dialog. Warnings are de-duplicated by code. */
-export function postSummaryLines({ invoiceNo, stockLineCount, poCount, preview }) {
-  const out = [`เพิ่มสต็อกจากใบกำกับ ${stockLineCount} รายการ`, `กลับรายการรับเข้าสต็อกของใบสั่งซื้อ ${poCount} ใบ`]
-  for (const r of preview?.rows || []) if (r.negative) out.push(`⚠️ สต็อกจะติดลบ: ${r.item_name} @ ${r.site_name} = ${Number(r.after_qty)} ${r.base_unit || ''}`.trim())
+const NF_QTY = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 4 })
+const NF_MONEY = new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+/** Quantity text: at most 4 decimals (never 13.333333333). */
+export const fmtQty = v => (v == null || v === '' || !Number.isFinite(Number(v)) ? '—' : NF_QTY.format(Number(v)))
+const fmtWac = v => (v == null || v === '' || !Number.isFinite(Number(v)) ? '—' : NF_MONEY.format(Number(v)))
+const NO_REVERSAL_CODES = ['po_no_receipt_movements', 'po_stock_from_invoice']
+
+/** Number of linked POs that really have receipt movements to reverse (the server flags the others). */
+export function reversingPoCount(poCount, checks) {
+  const skipped = new Set((checks || []).filter(c => NO_REVERSAL_CODES.includes(c.code) && c.po_id).map(c => c.po_id))
+  return Math.max(0, poCount - skipped.size)
+}
+
+/** Text for the post confirm dialog: every stock change, warnings (de-duplicated by code), typed reason. */
+export function postSummaryLines({ invoiceNo, stockLineCount, poCount, preview, matchNote }) {
+  const out = [`เพิ่มสต็อกจากใบกำกับ ${stockLineCount} รายการ`, `กลับรายการรับเข้าสต็อกของใบสั่งซื้อ ${reversingPoCount(poCount, preview?.checks)} ใบ`]
+  for (const r of preview?.rows || []) {
+    out.push(`${r.negative ? '⚠️ ' : ''}${r.item_name} @ ${r.site_name}: คงเหลือ ${fmtQty(r.before_qty)} → ${fmtQty(r.after_qty)} ${r.base_unit || ''}`.trim()
+      + ` · ต้นทุนเฉลี่ย ${fmtWac(r.before_wac)} → ${fmtWac(r.after_wac)}`
+      + ` · รับเข้าใหม่ +${fmtQty(r.add_qty)} · กลับรายการ −${fmtQty(r.remove_qty)}`
+      + (r.negative ? ' (สต็อกจะติดลบ)' : ''))
+  }
   const seen = new Set()
   for (const c of preview?.checks || []) {
     if (c.blocking || seen.has(c.code)) continue
     seen.add(c.code); out.push('⚠️ ' + (CHECK_TEXT[c.code] || c.code))
   }
+  if (String(matchNote || '').trim()) out.push(`เหตุผลที่ยอดต่าง: ${String(matchNote).trim()}`)
   out.push(`รายจ่ายของใบสั่งซื้อไม่เปลี่ยนยอด แต่จะประทับเลขที่ใบกำกับ ${invoiceNo}`)
   out.push('แก้ไขภายหลังไม่ได้ — ย้อนกลับได้ด้วย "ยกเลิกใบกำกับ" เท่านั้น')
   return out

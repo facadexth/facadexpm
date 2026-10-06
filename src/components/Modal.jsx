@@ -48,8 +48,10 @@ export function Modal({ title, onClose, children, maxWidth = 600 }) {
     window.history.pushState({ modalOpen: true }, '')
     const handlePopState = () => {
       if (suppressPopstateCount > 0) { suppressPopstateCount -= 1; return }
+      // onClose() === false: the caller refuses to close now (busy / a child overlay is open). The back press
+      // already consumed this modal's history entry, so push it again; otherwise the next back would leave the page.
+      if (onClose() === false) { window.history.pushState({ modalOpen: true }, ''); return }
       closedByBackRef.current = true
-      onClose()
     }
     window.addEventListener('popstate', handlePopState)
     return () => {
