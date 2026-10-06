@@ -12,7 +12,7 @@ Worktree: `/Users/plfx/code/FacadeXPM/facadex-app/.claude/worktrees/po-deposit-d
   new movement type `receipt_reversal`, private helpers, 3 lock triggers (PO, PO items, late stock movement on a tax-invoiced PO).
 - Migration `2026-10-08-02-supplier-tax-invoice-rpcs.sql`: 5 public RPCs (`save_supplier_tax_invoice_draft`, `delete_supplier_tax_invoice_draft`,
   `preview_supplier_tax_invoice`, `post_supplier_tax_invoice`, `void_supplier_tax_invoice`) and their private helpers.
-- SQL test `supabase/tests/supplier_tax_invoice_test.sql` (T2-T26, includes cross-tenant, void exactness, FIFO/LIFO, non-finite data).
+- SQL test `supabase/tests/supplier_tax_invoice_test.sql` (T2-T34: cross-tenant, void exactness, FIFO/LIFO, non-finite data, stale preview, brand-new balance keys, void by stored movement ids, re-link after void, duplicate numbers, credit-note / outside-month / wrong-supplier / invalid-stock-line checks).
 - App: new page "ใบกำกับภาษีผู้ขาย" (list, form with scan + month PO picker + line mapping, preview, confirm-to-post, view, void, delete draft),
   stock ledger understands `receipt_reversal`, PO page has the "สต็อกเข้าตอนบันทึกใบกำกับภาษี" flag, badges, locked edit of linked POs, receive skips stock for flagged POs.
 - Model: a PO flagged `stock_from_invoice` posts NO stock when received. When the supplier's (monthly) invoice is posted, its lines become `purchase_in`
@@ -26,11 +26,15 @@ This branch is stacked on the deposit branch, so deploying this branch's web app
 
 ### Step 1: dry run (rolled back, nothing persists)
 
-Build ONE file: `BEGIN;` + migration 01 + migration 02 + the SQL test body (its own `BEGIN;`/`ROLLBACK;` stripped) + `ROLLBACK;`:
+Run this at a QUIET time: the file creates triggers on `purchase_orders`, `purchase_order_items` and `stock_movements`, so it holds locks on them until the rollback, and the test takes about a minute.
+`lock_timeout` makes it give up (error, nothing changed) instead of freezing the app if someone is using purchase orders or stock at that moment; if you see a lock timeout, retry later.
+
+Build ONE file: `BEGIN;` + `SET LOCAL lock_timeout='5s';` + migration 01 + migration 02 + the SQL test body (its own `BEGIN;`/`ROLLBACK;` stripped) + `ROLLBACK;`:
 
 ```bash
 W=/Users/plfx/code/FacadeXPM/facadex-app/.claude/worktrees/po-deposit-deduction
 ( echo "BEGIN;"
+  echo "SET LOCAL lock_timeout='5s';"
   cat $W/supabase/migrations/2026-10-08-01-supplier-tax-invoices.sql
   cat $W/supabase/migrations/2026-10-08-02-supplier-tax-invoice-rpcs.sql
   grep -v -x -e "BEGIN;" -e "ROLLBACK;" $W/supabase/tests/supplier_tax_invoice_test.sql
@@ -45,11 +49,11 @@ it aborts the transaction so nothing can persist. So SUCCESS LOOKS LIKE AN ERROR
 Then confirm nothing persisted (all three must return null):
 
 ```sql
-SELECT to_regclass('public.supplier_tax_invoices') AS t, to_regprocedure('post_supplier_tax_invoice(uuid)') AS f,
+SELECT to_regclass('public.supplier_tax_invoices') AS t, to_regprocedure('post_supplier_tax_invoice(uuid,integer)') AS f,
        (SELECT 1 FROM information_schema.columns WHERE table_name='purchase_orders' AND column_name='stock_from_invoice') AS c;
 ```
 
-The dry run does not exercise real concurrency (lock order). The test header still says "NOT RUN": this dry run (by an earlier task) passed, but run it again yourself before applying.
+The dry run does not exercise real concurrency (lock order). The test header says "dry-run only": the file was run this way against CHANG on 2026-10-07 (rolled back, ALL PASSED, nothing persisted), but run it again yourself before applying.
 
 ### Step 2: apply (quiet time), one file per transaction
 
@@ -111,19 +115,52 @@ A restore or move of the database loses function grants (seen before), so repeat
 
 ### Step 5: deploy the web app (only AFTER steps 2-4)
 
+STOP: do not run `npm run deploy` from the main checkout. As of 2026-10-07 `/Users/plfx/code/FacadeXPM/facadex-app` is on branch `claude/task-i56nn7`.
+That branch has NEITHER this feature NOR the deposit client, and it does not contain the live build `68ab4fe` (credit note / PEAK export), so deploying from it would REMOVE live features.
+(Checked with `git branch --contains 68ab4fe`: `feat/po-deposit-deduction` and `feat/tax-invoice-matching` contain it; `main` and `claude/task-i56nn7` did not.) The worktree under `.claude/worktrees/` has no `.env`, so it cannot build for CHANG either.
+**This deploy ALSO ships the PO deposit web client** (the deposit migrations are already live; the client is not).
+
+Procedure (merge in order into `main` in a clean checkout, then deploy from that checkout). Nothing below was run by me.
+
 ```bash
-cd /Users/plfx/code/FacadeXPM/facadex-app   # on the branch that contains this work
-npm run deploy
+cd /Users/plfx/code/FacadeXPM/facadex-app
+git status --short                                   # note anything uncommitted in the main checkout; do not touch it
+git fetch origin
+git worktree add -b release/tax-invoice ../facadex-release main     # clean checkout of main in a NEW folder
+cd ../facadex-release
+git merge --no-ff feat/po-deposit-deduction          # 1st: the deposit feature
+git merge --no-ff feat/tax-invoice-matching          # 2nd: this feature (it is stacked on the deposit branch)
+# a merge conflict = STOP and send me the file names; do not resolve guesses
+git merge-base --is-ancestor 68ab4fe HEAD && echo "OK: live build 68ab4fe is included" || echo "STOP: 68ab4fe missing"
 ```
+
+Only continue if it printed `OK`. If you prefer NOT to merge yet, deploy straight from this branch in a clean checkout instead (it already contains `68ab4fe` and the deposit client):
+`git worktree add --detach ../facadex-release feat/tax-invoice-matching`, then run the rest of this procedure from `../facadex-release`.
+
+```bash
+cd /Users/plfx/code/FacadeXPM/facadex-release
+cp /Users/plfx/code/FacadeXPM/facadex-app/.env .env    # the CHANG values (or build .env from .env.cutover.example)
+grep -c kntspldhvcjeaubtqtkn .env                      # must be 1 or more (CHANG)
+grep -c yyzbgd .env                                    # must be 0 (old Tokyo project)
+npm ci
+npx vitest run
+npm run deploy      # = build + verify:bundle + smoke:boot + wrangler deploy
+```
+
+`npm run deploy` stops by itself if `verify:bundle` does not print `verify-bundle: OK (points at CHANG, no retired project)`; do not work around that.
+Afterwards merge `release/tax-invoice` into `main` the way you normally do (push) so `main` matches what is live.
 
 Why migrations first: the ledger must understand `receipt_reversal` before the first invoice is posted. The app is otherwise safe before or after the migration:
 with no migration the links hook reports "not ready", the PO page shows no badges and hides the flag checkbox, and the new page shows a calm "not live yet" state.
-Reminder: this also deploys the PO deposit web client (not yet live).
 
 ### Step 6: live verification with ONE real invoice (ช.เจริญกลาส)
 
 1. In the app open "ใบกำกับภาษีผู้ขาย", press "+ เพิ่ม", pick the supplier, scan or type the invoice, tick that month's POs, map each line to its stock item and site.
-   (For POs received BEFORE this feature, the old receipt movements exist; the invoice post reverses them. For new POs, tick the flag when creating the PO.)
+   IMPORTANT (stock can be counted twice): the post reverses the PO's *real receipt movements*. Those only exist for POs received from about 2026-08-18 on (the app records them when you press receive).
+   POs of Jan-Aug 2026 were entered by the stock BACKFILL (purchase_in rows with a `<month>26_backfill` reference and no PO link), so such a PO has no receipt movement to reverse:
+   posting its invoice would ADD the invoice's stock on top of stock that is already there. The preview shows `ใบสั่งซื้อไม่มีรายการรับเข้าสต็อกให้กลับรายการ — สต็อกจะถูกเพิ่มจากใบกำกับทั้งหมด หากเดือนนี้ลงสต็อกย้อนหลังไว้แล้ว จะนับซ้ำ`,
+   and the confirm dialog repeats it in a red box with each affected PO number and will not enable the confirm button until you tick the acknowledgement.
+   Owner guidance: do NOT post invoices for POs of months that were already backfilled (up to Aug 2026) unless that PO's stock was NOT backfilled. For new POs received from now on, tick the flag when creating the PO (no receipt movement is made, the invoice is the stock source).
 2. Before posting: write down, for every item in the invoice, the Inventory balance (quantity and average cost) per site. Press "ตรวจสอบก่อนบันทึก" and compare the preview rows
    (คงเหลือก่อน = what you wrote down; คงเหลือหลัง and ต้นทุนเฉลี่ยหลัง = what you expect). Read every warning. Negative stock is allowed but flagged.
 3. Post. Then check: the stock card shows `ใบกำกับ ...` in-lines and `กลับรายการรับเข้า ...` out-lines dated the invoice date; the expenses of the POs show the invoice number
@@ -144,8 +181,8 @@ If stock moved in between (another receipt, sale, transfer), void cannot restore
 Verified in this branch (task 9, 2026-10-08): `npx vitest run` and `npm run build` pass; the two headless harnesses pass; static checks below.
 Static: 16 `SECURITY DEFINER` functions in the two migrations (the plan said 15 before the snapshot and negatives helpers were added): 6 in migration 01 and 10 in 02;
 each has its REVOKE (private helpers and triggers FROM PUBLIC, anon, authenticated; the 5 RPCs FROM PUBLIC, anon with an explicit GRANT to authenticated); tables REVOKE ALL then GRANT SELECT only.
-Dry run: an earlier task ran migrations 01+02+test in one rolled-back transaction and it passed (ALL PASSED, nothing persisted). In THIS task the re-run was blocked by the permission system,
-so it was not repeated; the combined file was built and is at the scratchpad path of that session. Run step 1 yourself.
+Dry run: migrations 01+02+test (T2-T34) ran in one rolled-back transaction against CHANG on 2026-10-07 after the final fixes: ALL PASSED, and a read-only check afterwards showed nothing persisted
+(tables, columns, functions, triggers and the movement-type CHECK unchanged). Run step 1 yourself before applying.
 
 NOT verified: any UI flow against the live database; real concurrency / lock order; the Android Chrome history re-push when a modal refuses to close on the back button;
 the extra back-press on old Safari; the real Postgres error texts (the Thai error mapper is tested against strings from the migrations, not live errors).
@@ -160,11 +197,19 @@ the extra back-press on old Safari; the real Postgres error texts (the Thai erro
 - Editing a PO is not atomic in the app (header update, then items delete and insert). So the UI locks editing and cancelling of a PO linked to an active (draft or posted) invoice; the DB trigger blocks a posted-invoice PO only. Void or delete the draft first.
 - Old invoice links make a PO undeletable (FK RESTRICT); relevant for a tenant purge.
 - `useInventoryItemUnitFactors` is not paginated (pre-existing).
+- Backfilled months: POs without receipt movements (Jan-Aug 2026 backfill) get the invoice stock ADDED with nothing reversed, which double counts if that month's stock was already entered. The warning and the acknowledgement checkbox exist; the owner guidance is in step 6 and the decision is in section 5.
+- Movement dating (A4): post dates its movements at the invoice date, void writes `now()`. Voiding does not rewrite the invoice month's ledger; the confirm dialog says so.
+- Credit notes confirmed AFTER an invoice was posted get no warning. If the supplier's invoice already nets out returned goods, stock will be low by the returned quantity (check the PO's credit notes before posting; `po_has_credit_note` warns only at preview time).
+- Old browser tabs show `receipt_reversal` movements as "in" until they are reloaded (the ledger fix is in the new bundle).
+- The new foreign keys are `ON DELETE RESTRICT`: a supplier, site, inventory item, PO or stock movement that is referenced by a tax invoice cannot be hard-deleted; the app shows the raw database foreign-key error instead of a Thai message.
+- `void_supplier_credit_note` (existing) locks balances without a fixed order, so it can deadlock with post/void (40P01, one side aborts cleanly, retry). Two posts racing on a brand-new (item, site) key are handled: post first creates the missing balance rows in (item, site) order.
+- Stale preview is also enforced server-side: every draft save bumps `revision`, preview returns it, post must pass it (`stale_preview` otherwise), and saving after a preview drops the preview in the page.
 
 ## 5. การตัดสินใจของเจ้าของ (OWNER DECISIONS pending)
 
 - A4 backdating: `invoice_date` may not be in the future but has NO lower bound. Posting writes movements dated the invoice date at 12:00 Bangkok, so an invoice dated months ago changes stock reports for months that may already be reported or closed.
   Decide whether to add a lower bound (for example: not before the start of the previous month) or a typed-reason requirement. Left as is.
+- Backfilled months: should invoices for POs dated in already-backfilled months (up to Aug 2026) be BLOCKED (for example POs dated before a cutoff such as 2026-09-01), or stay allowed with the red acknowledgement box? Today they are allowed with the box; a hard cutoff is a small change if you want it.
 - Whether the tolerance rule R1 (smaller of 1% and 5 baht) is what you want for monthly invoices with many lines (a bigger difference needs a typed reason).
 
 ## 6. Rulings
