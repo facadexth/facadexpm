@@ -31,6 +31,7 @@ const Assign             = lazy(() => import('./pages/Assign.jsx'))
 const Expenses           = lazy(() => import('./pages/Expenses.jsx'))
 const PurchaseOrders     = lazy(() => import('./pages/PurchaseOrders.jsx'))
 const SupplierCreditNotes = lazy(() => import('./pages/SupplierCreditNotes.jsx'))
+const SupplierTaxInvoices = lazy(() => import('./pages/SupplierTaxInvoices.jsx'))
 const Inventory          = lazy(() => import('./pages/Inventory.jsx'))
 const Income             = lazy(() => import('./pages/Income.jsx'))
 const HR                 = lazy(() => import('./pages/HR.jsx'))
@@ -72,6 +73,7 @@ const TABS = [
     { id: 'expenses',        label: '📊 ภาพรวม',       minRole: 'ADMIN', module: null },
     { id: 'purchase_orders', label: '🧾 ใบสั่งซื้อ',   minRole: 'ADMIN', module: 'purchase_orders' },
     { id: 'supplier_credit_notes', label: '↩️ ใบลดหนี้ซัพพลายเออร์', minRole: 'ADMIN', module: 'purchase_orders', permKey: 'purchase_orders' },
+    { id: 'supplier_tax_invoices', label: '🧾 ใบกำกับภาษีผู้ขาย', minRole: 'ADMIN', module: 'purchase_orders', permKey: 'purchase_orders' },
     { id: 'cheques',        label: '🏦 เช็ค',         minRole: 'ADMIN', module: 'cheque_tracking' },
   ] },
   { id: 'inventory',       label: '📦 คลังสินค้า',   minRole: 'ADMIN', module: 'purchase_orders' },
@@ -379,6 +381,7 @@ export default function App() {
         case 'expenses':   return <Expenses   {...props} />
         case 'purchase_orders': return <PurchaseOrders {...props} />
         case 'supplier_credit_notes': return <SupplierCreditNotes {...props} />
+        case 'supplier_tax_invoices': return <SupplierTaxInvoices {...props} />
         case 'inventory':  return <Inventory  {...props} />
         case 'cheques':    return <Cheques    {...props} />
         case 'income':     return <Income     {...props} />

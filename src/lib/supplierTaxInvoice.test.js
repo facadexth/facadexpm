@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   matchTolerance, withinTolerance, lineAmount, evaluateMatch, wacAfterIn, wacAfterReversal,
   simulateStock, proposePos, lineBase, formSignature, previewIsCurrent, mapTaxInvoiceRpcError, CHECK_TEXT,
-  GENERIC_ERROR_TEXT, isTaxInvoiceNotReady,
+  GENERIC_ERROR_TEXT, isTaxInvoiceNotReady, postSummaryLines,
 } from './supplierTaxInvoice.js'
 
 describe('tolerance = min(1%, 5 baht)  (owner ruling R1)', () => {
@@ -290,5 +290,30 @@ describe('lineBase extra cases', () => {
   })
   it('unit match is case-insensitive and trimmed', () => {
     expect(lineBase({ qty: 4, unit: ' KG ' }, { base_unit: 'kg', unit_conversion_mode: 'plain' }, null)).toEqual({ baseQty: 4, unconverted: false })
+  })
+})
+
+describe('postSummaryLines (confirm dialog text)', () => {
+  it('lists stock in, reversals, negatives, expense stamping and the undo rule', () => {
+    const lines = postSummaryLines({
+      invoiceNo: 'INV-1', stockLineCount: 2, poCount: 2,
+      preview: { rows: [{ item_name: 'X', site_name: 'S2', after_qty: -13, base_unit: 'kg', negative: true }],
+                 checks: [{ code: 'po_outside_month', blocking: false }] },
+    })
+    expect(lines).toEqual([
+      'เพิ่มสต็อกจากใบกำกับ 2 รายการ',
+      'กลับรายการรับเข้าสต็อกของใบสั่งซื้อ 2 ใบ',
+      '⚠️ สต็อกจะติดลบ: X @ S2 = -13 kg',
+      '⚠️ ' + 'ใบสั่งซื้อนอกเดือนของใบกำกับ',
+      'รายจ่ายของใบสั่งซื้อไม่เปลี่ยนยอด แต่จะประทับเลขที่ใบกำกับ INV-1',
+      'แก้ไขภายหลังไม่ได้ — ย้อนกลับได้ด้วย "ยกเลิกใบกำกับ" เท่านั้น',
+    ])
+  })
+  it('de-duplicates warnings by code and skips blocking checks', () => {
+    const lines = postSummaryLines({
+      invoiceNo: 'A', stockLineCount: 1, poCount: 1,
+      preview: { rows: [], checks: [{ code: 'po_has_deposit', blocking: false }, { code: 'po_has_deposit', blocking: false }, { code: 'no_pos', blocking: true }] },
+    })
+    expect(lines.filter(l => l.startsWith('⚠️'))).toEqual(['⚠️ ' + CHECK_TEXT.po_has_deposit])
   })
 })

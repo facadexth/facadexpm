@@ -225,3 +225,17 @@ export function mapTaxInvoiceRpcError(err) {
   console.error('[supplier tax invoice] unmapped error:', err)
   return GENERIC_ERROR_TEXT
 }
+
+/** Text for the post confirm dialog. Warnings are de-duplicated by code. */
+export function postSummaryLines({ invoiceNo, stockLineCount, poCount, preview }) {
+  const out = [`เพิ่มสต็อกจากใบกำกับ ${stockLineCount} รายการ`, `กลับรายการรับเข้าสต็อกของใบสั่งซื้อ ${poCount} ใบ`]
+  for (const r of preview?.rows || []) if (r.negative) out.push(`⚠️ สต็อกจะติดลบ: ${r.item_name} @ ${r.site_name} = ${Number(r.after_qty)} ${r.base_unit || ''}`.trim())
+  const seen = new Set()
+  for (const c of preview?.checks || []) {
+    if (c.blocking || seen.has(c.code)) continue
+    seen.add(c.code); out.push('⚠️ ' + (CHECK_TEXT[c.code] || c.code))
+  }
+  out.push(`รายจ่ายของใบสั่งซื้อไม่เปลี่ยนยอด แต่จะประทับเลขที่ใบกำกับ ${invoiceNo}`)
+  out.push('แก้ไขภายหลังไม่ได้ — ย้อนกลับได้ด้วย "ยกเลิกใบกำกับ" เท่านั้น')
+  return out
+}
