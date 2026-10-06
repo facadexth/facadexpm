@@ -28,7 +28,8 @@ Ledger/journal, full chart of accounts, PEAK Open API, return backfill, tax-ID m
 **Confirm action** (atomic, one RPC `confirm_supplier_credit_note`)
 1. For each stock line, record a movement of new type `purchase_return` at the item's **current weighted-average cost** (not the document price; the difference is not a stock effect). Quantity decreases, WAC unchanged. Must not take stock below zero: reject with a clear error.
 2. Insert a negative `expenses` row (amount, amount_no_vat, vat negative) in the note's category, linked to the credit note, so expense totals and VAT reports drop automatically.
-3. Set settlement status (default `owed`).
+3. Set settlement status (default `owed`). The negative expense's `status` follows it: `owed` -> `pending` (reduces the payables forecast), `offset`/`refunded` -> `paid`.
+4. `site_id` is required on a credit note (it is both the stock site and the expense site).
 - Void reverses all three (stock back at the original movement cost, expense row removed or negated).
 - Migration: add `purchase_return` to the `stock_movements.movement_type` CHECK and to the `record_stock_movement` whitelist; extend it to support the decrease path like `transfer_out`.
 
@@ -36,14 +37,16 @@ Ledger/journal, full chart of accounts, PEAK Open API, return backfill, tax-ID m
 
 ## Phase 2 — PEAK account-code mapping
 - Add nullable `peak_account_code` (6-digit text) to `expense_categories` and to income types; editable in Categories/Settings.
-- Fixed defaults for credit notes (editable): 510301 ส่วนลดรับ, 115401 ภาษีซื้อ, 212101 เจ้าหนี้การค้า, 114101 วัตถุดิบคงเหลือ (see memory note peak-chart-of-accounts).
+- Credit-note journal uses the note's category account for the credit side (symmetrical with the original purchase) plus code constants 212101 (payable) and 115401 (input VAT). Editing those two constants in Settings is out of scope for now (YAGNI).
 - Unmapped categories export with a blank code and a warning count in the export dialog.
 
 ## Phase 3 — PEAK-format Excel export
 - Templates are in `docs/reference/peak-import-templates/` (expense, purchase, invoice, journal). Start with expense/purchase (credit notes ride the same path as negative expenses — verify against the template before building) then income/invoice.
 - Built on `src/lib/exportExcel.js`; one pure builder function per template, unit tested with vitest (a fixture row in → expected cells out).
-- Supplier/client contact column = name now; tax ID and 5-digit branch columns left blank until the DBD feature exists. Export dialog notes that PEAK matches contacts by contact no. or tax ID + branch, so new names may create contacts.
-- Date range + document type filters; export lists skipped/unmapped rows.
+- **Finding (templates read 2026-10-06):** PEAK's contact column accepts only a PEAK contact number (e.g. C00001) or a 13-digit tax ID (+5-digit branch), never a name; unmatched values import blank. So suppliers get nullable `peak_contact_no`, `tax_id`, `branch_no` columns (filled by hand now, by the DBD feature later); the export uses contact no. first, then tax ID, else blank and counts the row as "no contact".
+- **Finding:** PEAK has no credit-note import template (only expense, purchase-inventory, invoice, journal) and the expense template defines no negative rows. Credit notes therefore export through the **journal template** (book รายวันซื้อ): Dr 212101 เจ้าหนี้การค้า (total), Cr the credit note category's PEAK account (net), Cr 115401 ภาษีซื้อ (VAT). Negative expense rows are skipped by the expense export and listed in the export result.
+- Date range filter; export result lists skipped rows (negative expenses, unmapped category, no contact).
+- Income/invoice export is **not** in this plan; it is a follow-up once expense + credit-note export is proven.
 
 ## Testing
 - vitest for builders and credit-note math (VAT split, rounding, WAC-cost return).
