@@ -155,8 +155,6 @@ function CreditNoteForm({ initial, suppliers, sites, onSave, onCancel, loading }
   const [form, setForm] = useState(initial)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const { data: onHandData } = useInventoryOnHand(form.site_id)
-  const onHand = onHandData || {}
   const { data: pos } = usePurchaseOrders(form.supplier_id ? { supplierId: form.supplier_id } : {})
   const { data: allItems, error: e1 } = useAllInventoryItems()
   const { data: profiles, error: e2 } = useAllAluminumProfiles()
@@ -167,6 +165,11 @@ function CreditNoteForm({ initial, suppliers, sites, onSave, onCancel, loading }
   const [includeUnreceived, setIncludeUnreceived] = useState(false)
   const [hydrateNote, setHydrateNote] = useState('')
   const selectedPo = useMemo(() => (pos || []).find(p => p.id === form.po_id) || null, [pos, form.po_id])
+  // the site is always the chosen PO's site (never user-editable); stock check uses it
+  const siteId = selectedPo?.site_id || ''
+  const { data: onHandData } = useInventoryOnHand(siteId)
+  const onHand = onHandData || {}
+  useEffect(() => { if (selectedPo && form.site_id !== siteId) setForm(f => ({ ...f, site_id: siteId })) }, [selectedPo, siteId, form.site_id])
   const poOptions = (pos || []).filter(p => p.id === form.po_id || p.status === 'received' || (includeUnreceived && p.status !== 'cancelled'))
   const hydrated = useRef(false)
   useEffect(() => {
@@ -193,7 +196,7 @@ function CreditNoteForm({ initial, suppliers, sites, onSave, onCancel, loading }
     const po = (pos || []).find(p => p.id === id)
     hydrated.current = true
     setForm(f => po ? {
-      ...f, po_id: id, site_id: po.site_id || f.site_id, category_id: po.category_id || f.category_id,
+      ...f, po_id: id, site_id: po.site_id || '', category_id: po.category_id || f.category_id,
       vatEnabled: po.has_vat !== false, priceIncludesVat: !!po.price_includes_vat,
       original_expense_id: po.expense_id || null, ...poInvoice(po), selection: defaultSelection(po, false, lookups),
     } : { ...f, po_id: '', selection: {}, original_expense_id: null, original_invoice_no: '', original_invoice_date: '' })
@@ -212,12 +215,13 @@ function CreditNoteForm({ initial, suppliers, sites, onSave, onCancel, loading }
   const totals = computeCreditNoteTotals(activeLines, { vatEnabled: form.vatEnabled, vatRate: VAT_RATE, priceIncludesVat: form.priceIncludesVat })
 
   const submit = (confirmAfter) => {
-    const missing = [!form.supplier_id && 'ซัพพลายเออร์', !form.site_id && 'ไซต์', !form.doc_number.trim() && 'เลขที่ใบลดหนี้', !form.po_id && 'ใบสั่งซื้อ (PO)'].filter(Boolean)
+    const missing = [!form.supplier_id && 'ซัพพลายเออร์', !form.doc_number.trim() && 'เลขที่ใบลดหนี้', !form.po_id && 'ใบสั่งซื้อ (PO)'].filter(Boolean)
     if (missing.length) { alert('ยังไม่ได้กรอก: ' + missing.join(', ')); return }
     if (lookupError) { alert('โหลดข้อมูลสินค้า/หน่วยแปลงไม่สำเร็จ: ' + lookupError); return }
     if (!lookupsReady) { alert('กำลังโหลดข้อมูลสินค้า กรุณารอสักครู่'); return }
     {
       if (!selectedPo) { alert('กรุณาเลือกใบสั่งซื้อ'); return }
+      if (!siteId) { alert('ใบสั่งซื้อนี้ไม่มีไซต์ — กำหนดไซต์ที่ใบสั่งซื้อก่อน'); return }
       if (!form.category_id) { alert('ใบสั่งซื้อนี้ไม่มีหมวดหมู่ — กำหนดหมวดหมู่ที่ใบสั่งซื้อก่อน'); return }
       const bad = validateReturnQty(form.selection, selectedPo, lookups)
       if (bad.length) { alert(bad.map(b => `• ${b.description || ''}: ${REASON_TEXT[b.reason]}`).join('\n')); return }
@@ -226,7 +230,7 @@ function CreditNoteForm({ initial, suppliers, sites, onSave, onCancel, loading }
     if (!activeLines.length) { alert('กรุณาเพิ่มรายการอย่างน้อย 1 รายการ'); return }
     if (activeLines.some(l => !(Number(l.quantity) > 0))) { alert('จำนวนในรายการต้องมากกว่า 0'); return }
     if (activeLines.some(l => !l.description.trim() && !l.inventory_item_id)) { alert('กรุณาระบุสินค้าหรือคำอธิบายในทุกรายการ'); return }
-    onSave({ ...form, lines: activeLines, totals }, confirmAfter, onHand, itemById)
+    onSave({ ...form, site_id: siteId, lines: activeLines, totals }, confirmAfter, onHand, itemById)
   }
 
   return (
@@ -240,9 +244,10 @@ function CreditNoteForm({ initial, suppliers, sites, onSave, onCancel, loading }
               options={(suppliers || []).map(s => ({ value: s.id, label: s.name, keywords: s.name }))} />
           </div>
           <div>
-            <label className="label">ไซต์ ★ (ที่คืนสินค้าออกจากสต็อก)</label>
-            <SearchableSelect required value={form.site_id} onChange={v => set('site_id', v)}
-              options={(sites || []).map(s => ({ value: s.id, label: s.name, keywords: s.name }))} />
+            <label className="label">ไซต์ (ตามใบสั่งซื้อ — ที่คืนสินค้าออกจากสต็อก)</label>
+            <input className="input" readOnly disabled
+              value={selectedPo ? ((sites || []).find(x => x.id === siteId)?.name || '—') : ''}
+              placeholder="ไซต์จะตามใบสั่งซื้อที่เลือก" />
           </div>
           <div>
             <label className="label">เลขที่ใบลดหนี้ ★</label>
