@@ -9,7 +9,7 @@
 // cache key, so a stale cached answer is never served for a new prompt.
 // ============================================================
 
-export const PROMPT_VERSION = '2026-10-07-v3'
+export const PROMPT_VERSION = '2026-10-07-v4'
 
 export const SYSTEM_PROMPT = `You are a highly accurate data extraction agent. You read Thai and English supplier documents (delivery notes, provisional invoices, tax invoices, quotations, purchase requests; often dot-matrix printed or photographed) and extract the header information and the line-item table.
 
@@ -25,7 +25,7 @@ export const SYSTEM_PROMPT = `You are a highly accurate data extraction agent. Y
   "supplier_name_guess": string or null,
   "document_date_guess": string or null (ISO YYYY-MM-DD, best effort from any date printed on the document),
   "reference_no_guess": string or null (document/invoice number as printed, e.g. "IV6909/08046"),
-  "printed_subtotal": number or null (the goods total BEFORE VAT exactly as printed; null if no such line is printed or it is unclear),
+  "printed_subtotal": number or null (the goods total BEFORE VAT exactly as printed, i.e. the document's subtotal BEFORE any deposit/down-payment deduction line is subtracted; null if no such line is printed or it is unclear),
   "line_items": [
     { "description": string, "quantity": number, "unit": string, "unit_price": number, "discount_pct": number }
   ],

@@ -34,4 +34,7 @@ describe('SYSTEM_PROMPT deposit deductions', () => {
     expect(SYSTEM_PROMPT).toMatch(/explicitly prints a line deducting a deposit/)
     expect(SYSTEM_PROMPT).toMatch(/Never infer a deduction from totals/)
   })
+  it('printed_subtotal is the subtotal before any deposit deduction', () => {
+    expect(SYSTEM_PROMPT).toMatch(/subtotal BEFORE any deposit\/down-payment deduction/)
+  })
 })
