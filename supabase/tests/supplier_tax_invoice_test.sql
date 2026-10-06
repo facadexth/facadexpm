@@ -111,10 +111,30 @@ BEGIN
     RAISE EXCEPTION 'A6 FAIL: client insert allowed';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
-  -- A7: the client cannot see the other tenant's invoice
+  -- A6b: no INSERT/UPDATE/DELETE privilege on any of the four tables
+  IF has_table_privilege('authenticated', 'supplier_tax_invoices', 'INSERT')
+     OR has_table_privilege('authenticated', 'supplier_tax_invoice_items', 'INSERT')
+     OR has_table_privilege('authenticated', 'supplier_tax_invoice_pos', 'INSERT')
+     OR has_table_privilege('authenticated', 'supplier_tax_invoice_reversals', 'INSERT')
+     OR has_table_privilege('authenticated', 'supplier_tax_invoices', 'UPDATE')
+     OR has_table_privilege('authenticated', 'supplier_tax_invoices', 'DELETE') THEN
+    RAISE EXCEPTION 'A6b FAIL: authenticated has write privilege on a tax invoice table';
+  END IF;
+  -- A7: positive control (own-tenant row IS visible), then the other tenant's row is NOT
+  RESET role;
+  INSERT INTO supplier_tax_invoices (tenant_id, supplier_id, invoice_no, invoice_date, net_before_vat, vat, grand_total)
+  VALUES (t_tenant, sa, 'OWN-CONTROL', v_bkk, 0, 0, 0) RETURNING id INTO tmp;
+  SET LOCAL role = 'authenticated';
+  PERFORM set_config('request.jwt.claims', json_build_object('email', email, 'role', 'authenticated')::text, true);
+  SELECT count(*) INTO v_cnt FROM supplier_tax_invoices WHERE id = tmp;
+  IF v_cnt <> 1 THEN RAISE EXCEPTION 'A7 FAIL: own-tenant row not visible (control)'; END IF;
   SELECT count(*) INTO v_cnt FROM supplier_tax_invoices WHERE id = t2_inv;
   IF v_cnt <> 0 THEN RAISE EXCEPTION 'A7 FAIL: cross-tenant row visible'; END IF;
   RAISE NOTICE 'Part A grants/RLS: PASSED';
+
+  -- NOTE (concurrency, not testable in one session): poi_block_when_tax_invoiced takes the parent PO
+  -- row lock FOR SHARE before checking _po_tax_invoiced, so an item edit cannot slip past a concurrent
+  -- post (which holds the PO FOR UPDATE). Verify by hand with two sessions if in doubt.
 
   -- ── Part B (Task 3) goes here ──
 

@@ -170,7 +170,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
                   WHERE l.po_id = p_po_id AND l.active AND i.status = 'posted')
 $$;
 
--- The only writer of receipt_reversal movements. Called only from the definer RPCs.
+-- Writer of receipt_reversal movements for the definer RPCs. NOT the only possible writer: stock_movements
+-- stays tenant-admin-writable by RLS policy (pre-existing, for every movement type).
 CREATE OR REPLACE FUNCTION _stock_receipt_reversal(
   p_tenant UUID, p_item UUID, p_site UUID, p_qty NUMERIC, p_unit_cost NUMERIC,
   p_reference_type TEXT, p_reference_id UUID, p_notes TEXT, p_at TIMESTAMPTZ
@@ -228,13 +229,25 @@ CREATE TRIGGER po_block_when_tax_invoiced_trg BEFORE UPDATE ON purchase_orders
 CREATE OR REPLACE FUNCTION poi_block_when_tax_invoiced() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
+  -- Take the parent PO row lock FIRST (FOR SHARE), so a concurrent post (which locks the PO
+  -- FOR UPDATE) either finishes before this check (we then see it) or waits for us. Without it
+  -- an item edit could slip between the post's check and its commit. Under READ COMMITTED each
+  -- statement below gets a fresh snapshot after the lock is granted. Two POs (UPDATE moving an
+  -- item between POs) are locked in id order to avoid deadlocks.
   IF TG_OP = 'INSERT' THEN
+    PERFORM 1 FROM purchase_orders WHERE id = NEW.po_id FOR SHARE;
     IF _po_tax_invoiced(NEW.po_id) THEN RAISE EXCEPTION 'po_tax_invoiced'; END IF;
     RETURN NEW;
   ELSIF TG_OP = 'UPDATE' THEN
+    IF OLD.po_id IS DISTINCT FROM NEW.po_id THEN
+      PERFORM 1 FROM purchase_orders WHERE id IN (OLD.po_id, NEW.po_id) ORDER BY id FOR SHARE;
+    ELSE
+      PERFORM 1 FROM purchase_orders WHERE id = NEW.po_id FOR SHARE;
+    END IF;
     IF _po_tax_invoiced(OLD.po_id) OR _po_tax_invoiced(NEW.po_id) THEN RAISE EXCEPTION 'po_tax_invoiced'; END IF;
     RETURN NEW;
   ELSE
+    PERFORM 1 FROM purchase_orders WHERE id = OLD.po_id FOR SHARE;
     IF _po_tax_invoiced(OLD.po_id) THEN RAISE EXCEPTION 'po_tax_invoiced'; END IF;
     RETURN OLD;
   END IF;
@@ -247,3 +260,11 @@ REVOKE ALL ON FUNCTION _sti_tolerance(NUMERIC), _sti_wac_after_in(NUMERIC, NUMER
   _stock_receipt_reversal(UUID, UUID, UUID, NUMERIC, NUMERIC, TEXT, UUID, TEXT, TIMESTAMPTZ),
   po_block_when_tax_invoiced(), poi_block_when_tax_invoiced()
   FROM PUBLIC, anon, authenticated;
+
+-- Identity sequence of the reversals table: not usable by clients (name resolved, so the REVOKE cannot fail).
+DO $$
+DECLARE v_seq TEXT := pg_get_serial_sequence('public.supplier_tax_invoice_reversals', 'seq');
+BEGIN
+  IF v_seq IS NULL THEN RAISE EXCEPTION 'identity sequence of supplier_tax_invoice_reversals.seq not found'; END IF;
+  EXECUTE format('REVOKE ALL ON SEQUENCE %s FROM PUBLIC, anon, authenticated', v_seq);
+END $$;
