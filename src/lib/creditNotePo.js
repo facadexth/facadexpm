@@ -110,3 +110,9 @@ export function describeCreditNoteConfirm({ docNumber, siteName, lines, amount, 
     shortTexts: shortfalls.map(s => `${itemNameById[s.inventory_item_id] || s.inventory_item_id}: ต้องการคืน ${fmtN(s.requested)} แต่คงเหลือ ${fmtN(s.onHand)}`),
   }
 }
+
+/** State of the on-hand stock query for the confirm gate: 'ready' only once loaded without error. */
+export function stockCheckStatus(onHandData, error) {
+  if (error) return 'error'
+  return onHandData ? 'ready' : 'loading'
+}

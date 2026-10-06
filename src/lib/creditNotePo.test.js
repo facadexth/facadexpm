@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildCreditLinesFromPo, validateReturnQty, poItemBlocked, defaultSelection, selectionFromSavedLines, describeCreditNoteConfirm } from './creditNotePo.js'
+import { buildCreditLinesFromPo, validateReturnQty, poItemBlocked, stockCheckStatus, defaultSelection, selectionFromSavedLines, describeCreditNoteConfirm } from './creditNotePo.js'
 import { computeCreditNoteTotals } from './creditNoteCalc.js'
 
 const po = {
@@ -128,5 +128,15 @@ describe('blocked rows are un-ticked on hydration', () => {
   it('selectionFromSavedLines un-ticks blocked', () => {
     const s = selectionFromSavedLines(p3, [{ inventory_item_id: 'al', description: 'rod', quantity: 2 }], lookups)
     expect(s.u.checked).toBe(false)
+  })
+})
+
+describe('stockCheckStatus', () => {
+  it('loading until data arrives, error wins, ready when loaded', () => {
+    expect(stockCheckStatus(null, null)).toBe('loading')
+    expect(stockCheckStatus(undefined, null)).toBe('loading')
+    expect(stockCheckStatus({}, null)).toBe('ready')
+    expect(stockCheckStatus(null, 'boom')).toBe('error')
+    expect(stockCheckStatus({ a: 1 }, 'boom')).toBe('error')
   })
 })

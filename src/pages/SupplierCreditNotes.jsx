@@ -14,7 +14,7 @@ import {
 } from '../hooks/useSupabase.js'
 import {
   buildCreditLinesFromPo, validateReturnQty, defaultSelection, selectionFromSavedLines,
-  describeCreditNoteConfirm, creditLineForPoItem, poItemBlocked, poItemNetUnitPrice, poItemTotal,
+  describeCreditNoteConfirm, creditLineForPoItem, poItemBlocked, stockCheckStatus, poItemNetUnitPrice, poItemTotal,
 } from '../lib/creditNotePo.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useUserRole } from '../hooks/useUserRole.js'
@@ -105,49 +105,80 @@ const toFormLines = lines => lines.map(l => ({
 
 const REASON_TEXT = { not_positive: 'จำนวนที่คืนต้องมากกว่า 0', above_ordered: 'จำนวนที่คืนเกินจำนวนที่สั่ง', unconvertible: 'แปลงหน่วยไม่ได้ ตรวจโปรไฟล์/ขนาดสินค้า' }
 
-function CreditNoteConfirmDialog({ info, onConfirm, onCancel }) {
+// Plain overlay on purpose (NOT <Modal>/<ConfirmDialog>): this dialog opens on top of the form
+// <Modal>, and Modal's history/popstate handling is window-level and not safe for stacked modals
+// (see the warning at the top of components/Modal.jsx) -- a stray popstate would close it.
+function CreditNoteConfirmDialog({ info, stockStatus, onConfirm, onCancel }) {
+  useEffect(() => {
+    const h = e => { if (e.key === 'Escape') onCancel() }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [onCancel])
   return (
-    <ConfirmDialog title="ยืนยันใบลดหนี้ — โปรดตรวจสอบ" danger onConfirm={onConfirm} onCancel={onCancel}
-      message={
-        <div style={{ display: 'grid', gap: 8, fontSize: 13 }}>
-          <div>เลขที่ใบลดหนี้: <b>{info.docNumber}</b></div>
-          <div>
-            ระบบจะ<b>ตัดสต็อก</b>{info.siteName ? <> ที่ไซต์ <b>{info.siteName}</b></> : null}:
-            {info.stockTexts.length
-              ? <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{info.stockTexts.map((t, i) => <li key={i}>{t}</li>)}</ul>
-              : <span> (ไม่มีรายการสต็อก)</span>}
-          </div>
-          {info.shortTexts.length > 0 && (
-            <div style={{ color: 'var(--danger, #e55)', fontWeight: 600 }}>
-              ⚠️ สต็อกไม่พอ:
-              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{info.shortTexts.map((t, i) => <li key={i}>{t}</li>)}</ul>
+    <div className="modal-overlay" role="dialog" aria-modal="true">
+      <div className="modal" style={{ maxWidth: 'min(420px, 94vw)' }}>
+        <div className="modal-header">
+          <span className="modal-title">ยืนยันใบลดหนี้ — โปรดตรวจสอบ</span>
+          <button type="button" className="modal-close" onClick={onCancel}>✕</button>
+        </div>
+        <div className="modal-body">
+          <div style={{ display: 'grid', gap: 8, fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>
+            <div>เลขที่ใบลดหนี้: <b>{info.docNumber}</b></div>
+            <div>
+              ระบบจะ<b>ตัดสต็อก</b>{info.siteName ? <> ที่ไซต์ <b>{info.siteName}</b></> : null}:
+              {info.stockTexts.length
+                ? <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{info.stockTexts.map((t, i) => <li key={i}>{t}</li>)}</ul>
+                : <span> (ไม่มีรายการสต็อก)</span>}
             </div>
-          )}
-          <div>
-            และบันทึก<b>รายจ่ายติดลบ</b> <b>{info.amountText}</b> บาท (รวม VAT)
-            {info.month ? <> ในเดือน <b>{info.month}</b></> : null}
-          </div>
-          <div style={{ color: 'var(--danger, #e55)' }}>
-            เมื่อยืนยันแล้วจะแก้ไขไม่ได้ — ย้อนกลับได้โดยการยกเลิกใบลดหนี้เท่านั้น
+            {info.stockTexts.length > 0 && stockStatus === 'loading' && <div>⏳ กำลังตรวจสต็อกคงเหลือ...</div>}
+            {info.stockTexts.length > 0 && stockStatus === 'error' && (
+              <div style={{ color: 'var(--danger, #e55)', fontWeight: 600 }}>โหลดสต็อกคงเหลือไม่สำเร็จ — ปิดแล้วลองใหม่</div>
+            )}
+            {info.shortTexts.length > 0 && (
+              <div style={{ color: 'var(--danger, #e55)', fontWeight: 600 }}>
+                ⚠️ สต็อกไม่พอ:
+                <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{info.shortTexts.map((t, i) => <li key={i}>{t}</li>)}</ul>
+              </div>
+            )}
+            <div>
+              และบันทึก<b>รายจ่ายติดลบ</b> <b>{info.amountText}</b> บาท (รวม VAT)
+              {info.month ? <> ในเดือน <b>{info.month}</b></> : null}
+            </div>
+            <div style={{ color: 'var(--danger, #e55)' }}>
+              เมื่อยืนยันแล้วจะแก้ไขไม่ได้ — ย้อนกลับได้โดยการยกเลิกใบลดหนี้เท่านั้น
+            </div>
           </div>
         </div>
-      } />
+        <div className="modal-footer">
+          <button type="button" className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>
+          <button type="button" className="btn btn-danger" disabled={stockStatus !== 'ready' && info.stockTexts.length > 0} onClick={onConfirm}>ยืนยัน</button>
+        </div>
+      </div>
+    </div>
   )
 }
 
-// List-action confirm: loads the site's stock so shortfalls are shown in red (RPC stays the authority).
-function ConfirmNoteDialog({ note, itemNameById, onConfirm, onCancel }) {
-  const { data: onHand } = useInventoryOnHand(note.site_id)
-  const lines = note.supplier_credit_note_items || []
-  const shortfalls = onHand ? findStockShortfalls(lines, onHand) : []
-  const info = describeCreditNoteConfirm({
+// Confirm dialog for a note about to be confirmed. Stock is read LIVE here (not snapshotted at
+// click time) so a late load corrects the shortfall lines; confirm stays disabled until it loaded.
+function ConfirmNoteDialog({ note, form, itemById, itemNameById, onConfirm, onCancel }) {
+  const siteId = note ? note.site_id : form.site_id
+  const { data: onHand, error: onHandError } = useInventoryOnHand(siteId)
+  const lines = note ? (note.supplier_credit_note_items || []) : form.lines
+  const status = stockCheckStatus(onHand, onHandError)
+  const names = note ? itemNameById : Object.fromEntries(Object.entries(itemById || {}).map(([id, it]) => [id, it.name]))
+  const shortfalls = status === 'ready' ? findStockShortfalls(lines, onHand) : []
+  const info = describeCreditNoteConfirm(note ? {
     docNumber: note.doc_number, siteName: note.sites?.name, lines, amount: note.amount,
-    docDate: note.doc_date, expenseDate: note.expense_date, shortfalls, itemNameById,
+    docDate: note.doc_date, expenseDate: note.expense_date, shortfalls, itemNameById: names,
+  } : {
+    docNumber: form.doc_number.trim(), siteName: form.siteName, lines,
+    amount: round2(form.totals.amount_no_vat + form.totals.vat),
+    docDate: form.doc_date, expenseDate: form.expense_date, shortfalls, itemNameById: names,
   })
-  return <CreditNoteConfirmDialog info={info} onCancel={onCancel}
+  return <CreditNoteConfirmDialog info={info} stockStatus={status} onCancel={onCancel}
     onConfirm={() => {
       if (shortfalls.length) { alert('สต็อกไม่พอสำหรับคืนสินค้า:\n' + info.shortTexts.map(t => '• ' + t).join('\n')); return }
-      onConfirm()
+      onConfirm(onHand)
     }} />
 }
 
@@ -167,8 +198,9 @@ function CreditNoteForm({ initial, suppliers, sites, onSave, onCancel, loading }
   const selectedPo = useMemo(() => (pos || []).find(p => p.id === form.po_id) || null, [pos, form.po_id])
   // the site is always the chosen PO's site (never user-editable); stock check uses it
   const siteId = selectedPo?.site_id || ''
-  const { data: onHandData } = useInventoryOnHand(siteId)
+  const { data: onHandData, error: onHandError } = useInventoryOnHand(siteId)
   const onHand = onHandData || {}
+  const stockStatus = selectedPo ? stockCheckStatus(onHandData, onHandError) : 'ready'
   useEffect(() => { if (selectedPo && form.site_id !== siteId) setForm(f => ({ ...f, site_id: siteId })) }, [selectedPo, siteId, form.site_id])
   const poOptions = (pos || []).filter(p => p.id === form.po_id || p.status === 'received' || (includeUnreceived && p.status !== 'cancelled'))
   const hydrated = useRef(false)
@@ -219,6 +251,7 @@ function CreditNoteForm({ initial, suppliers, sites, onSave, onCancel, loading }
     if (missing.length) { alert('ยังไม่ได้กรอก: ' + missing.join(', ')); return }
     if (lookupError) { alert('โหลดข้อมูลสินค้า/หน่วยแปลงไม่สำเร็จ: ' + lookupError); return }
     if (!lookupsReady) { alert('กำลังโหลดข้อมูลสินค้า กรุณารอสักครู่'); return }
+    if (confirmAfter && stockStatus !== 'ready') { alert(stockStatus === 'error' ? 'โหลดสต็อกคงเหลือไม่สำเร็จ — ยืนยันไม่ได้' : 'กำลังโหลดสต็อกคงเหลือ กรุณารอสักครู่'); return }
     {
       if (!selectedPo) { alert('กรุณาเลือกใบสั่งซื้อ'); return }
       if (!siteId) { alert('ใบสั่งซื้อนี้ไม่มีไซต์ — กำหนดไซต์ที่ใบสั่งซื้อก่อน'); return }
@@ -263,6 +296,8 @@ function CreditNoteForm({ initial, suppliers, sites, onSave, onCancel, loading }
           </div>
         </div>
 
+        {stockStatus === 'loading' && <div style={{ fontSize: 13, color: 'var(--text3)' }}>⏳ กำลังโหลดสต็อกคงเหลือของไซต์ — ปุ่มยืนยันจะใช้ได้เมื่อโหลดเสร็จ</div>}
+        {stockStatus === 'error' && <div style={{ color: 'var(--danger, #e55)', fontSize: 13 }}>โหลดสต็อกคงเหลือไม่สำเร็จ: {onHandError} — ยืนยันไม่ได้ (บันทึกร่างได้)</div>}
         {lookupError && <div style={{ color: 'var(--danger, #e55)', fontSize: 13 }}>โหลดข้อมูลสินค้า/หน่วยแปลงไม่สำเร็จ: {lookupError} — บันทึกไม่ได้ ลองเปิดหน้านี้ใหม่</div>}
 
         {(
@@ -350,7 +385,7 @@ function CreditNoteForm({ initial, suppliers, sites, onSave, onCancel, loading }
       <div className="modal-footer">
         <button type="button" className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>
         <button type="submit" className="btn btn-ghost" disabled={loading || !lookupsReady}>{loading ? '⏳...' : '💾 บันทึกร่าง'}</button>
-        <button type="button" className="btn btn-primary" disabled={loading || !lookupsReady} onClick={() => submit(true)}>✅ บันทึกและยืนยัน</button>
+        <button type="button" className="btn btn-primary" disabled={loading || !lookupsReady || stockStatus !== 'ready'} onClick={() => submit(true)}>✅ บันทึกและยืนยัน</button>
       </div>
     </form>
   )
@@ -397,7 +432,7 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
     if (!form.lines.length) { alert('ใบลดหนี้ต้องมีรายการสินค้าอย่างน้อย 1 รายการ'); return }
     if (confirmAfter && !warned) {
       // warning first; the save + RPC only run once the owner confirms
-      setPendingSave({ form, onHand, itemById })
+      setPendingSave({ form: { ...form, siteName: (sites || []).find(x => x.id === form.site_id)?.name }, itemById })
       return
     }
     // Stock shortfall pre-check (the RPC is the final authority).
@@ -482,20 +517,6 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
   }
   const rows = notes || []
   const confirmTarget = confirmId ? rows.find(n => n.id === confirmId) : null
-  const pendingInfo = (() => {
-    if (!pendingSave) return null
-    const { form, onHand, itemById } = pendingSave
-    const names = Object.fromEntries(Object.entries(itemById || {}).map(([id, it]) => [id, it.name]))
-    const shortfalls = findStockShortfalls(form.lines, onHand || {})
-    return {
-      shortfalls,
-      info: describeCreditNoteConfirm({
-        docNumber: form.doc_number.trim(), siteName: (sites || []).find(x => x.id === form.site_id)?.name,
-        lines: form.lines, amount: round2(form.totals.amount_no_vat + form.totals.vat),
-        docDate: form.doc_date, expenseDate: form.expense_date, shortfalls, itemNameById: names,
-      }),
-    }
-  })()
   const askConfirm = n => {
     if (!(n.supplier_credit_note_items || []).length) { alert('ใบลดหนี้นี้ไม่มีรายการสินค้า — แก้ไขและเพิ่มรายการก่อนยืนยัน'); return }
     setConfirmId(n.id)
@@ -595,17 +616,13 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
           onCancel={() => setConfirmId(null)} />
       )}
 
-      {pendingInfo && (
-        <CreditNoteConfirmDialog info={pendingInfo.info}
+      {pendingSave && (
+        <ConfirmNoteDialog form={pendingSave.form} itemById={pendingSave.itemById}
           onCancel={() => setPendingSave(null)}
-          onConfirm={() => {
+          onConfirm={onHand => {
             const ps = pendingSave
-            if (pendingInfo.shortfalls.length) {
-              alert('สต็อกไม่พอสำหรับคืนสินค้า:\n' + pendingInfo.info.shortTexts.map(t => '• ' + t).join('\n'))
-              return
-            }
             setPendingSave(null)
-            handleSave(ps.form, true, ps.onHand, ps.itemById, true)
+            handleSave(ps.form, true, onHand, ps.itemById, true)
           }} />
       )}
 
