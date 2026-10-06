@@ -9,7 +9,8 @@
 // ============================================================
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useExpenses, useSites, useCategories, useSuppliers, useCheques, useCreditNoteExpenseIds } from '../hooks/useSupabase.js'
+import { useExpenses, useSites, useCategories, useSuppliers, useCheques, useCreditNoteExpenseIds, useDepositMap } from '../hooks/useSupabase.js'
+import DepositRegisterModal from '../components/DepositRegisterModal.jsx'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -402,6 +403,11 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
   const { data: cheques, refetch: refetchCheques } = useCheques()
   const { data: cnExpenseIds } = useCreditNoteExpenseIds()
   const isCnExpense = id => !!cnExpenseIds && cnExpenseIds.has(id)
+  // deposits: data is an empty Map while loading or before the migration (table missing)
+  const { data: depositMap, refetch: refetchDeposits } = useDepositMap()
+  const depositOf = id => depositMap.get(id)
+  const isDepositLocked = id => !!depositMap.get(id)?.applied
+  const [depositRow, setDepositRow] = useState(null)
   const { hasModuleAccess }  = useTenant()
   const hasChequeTracking = hasModuleAccess('cheque_tracking')
 
@@ -499,7 +505,11 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
     const row = (expenses || []).find(e => e.id === deleteId)
     const { error } = await supabase.from('expenses').delete().eq('id', deleteId)
     if (error) {
-      alert(error.code === '23503' ? 'ลบไม่ได้ — รายจ่ายนี้เกิดจากใบลดหนี้ กรุณายกเลิกใบลดหนี้แทน' : 'Error: ' + error.message)
+      alert(error.code === '23503'
+        ? (depositOf(deleteId)
+            ? (isDepositLocked(deleteId) ? 'ลบไม่ได้ — มัดจำนี้ถูกใช้หักกับใบสั่งซื้อแล้ว' : 'ลบไม่ได้ — รายจ่ายนี้ลงทะเบียนเป็นมัดจำแล้ว')
+            : 'ลบไม่ได้ — รายจ่ายนี้เกิดจากใบลดหนี้ กรุณายกเลิกใบลดหนี้แทน')
+        : 'Error: ' + error.message)
       setDeleteId(null)
       return
     }
@@ -667,6 +677,14 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                   <td style={{ maxWidth: 220 }}>
                     <div style={{ fontWeight: 500, fontSize: 13 }}>{e.description}</div>
                     {e.invoice_no && <div style={{ fontSize: 10, color: 'var(--text3)' }}>#{e.invoice_no}</div>}
+                    {depositOf(e.id) && (() => {
+                      const d = depositOf(e.id)
+                      return (
+                        <span className="badge" style={{ background: 'rgba(var(--accent-rgb), 0.15)', color: 'var(--accent)', fontSize: 10, marginTop: 2 }}>
+                          มัดจำ {d.deposit_invoice_no} · ใช้แล้ว {fmt(d.used.net)} · เหลือ {fmt(Math.max(0, d.remaining.net))}{d.fullyUsed ? ' (ใช้หมดแล้ว)' : ''}
+                        </span>
+                      )
+                    })()}
                     {e.po_id && (
                       <button
                         type="button"
@@ -700,8 +718,8 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                     {/* คลิกเพื่อเปลี่ยนสถานะ -- ยกเว้นรายจ่ายที่ผูกกับเช็คไว้แล้ว
                         (สถานะต้องตามเช็คเท่านั้น กันไม่ให้เปลี่ยนสถานะทาง
                         shortcut นี้แล้ว conflict กับสถานะเช็คจริง) */}
-                    {(e.cheque_id || isCnExpense(e.id)) ? (
-                      <span className={`badge badge-${e.status}`} title={isCnExpense(e.id) ? 'เกิดจากใบลดหนี้ — เปลี่ยนสถานะเงินได้ที่หน้าใบลดหนี้เท่านั้น' : `ผูกกับเช็ค ${e.cheque_no || ''} — เปลี่ยนสถานะได้ที่หน้า "เช็ค" เท่านั้น`}>
+                    {(e.cheque_id || isCnExpense(e.id) || isDepositLocked(e.id)) ? (
+                      <span className={`badge badge-${e.status}`} title={isDepositLocked(e.id) ? 'ใช้หักมัดจำแล้ว — เปลี่ยนสถานะไม่ได้' : isCnExpense(e.id) ? 'เกิดจากใบลดหนี้ — เปลี่ยนสถานะเงินได้ที่หน้าใบลดหนี้เท่านั้น' : `ผูกกับเช็ค ${e.cheque_no || ''} — เปลี่ยนสถานะได้ที่หน้า "เช็ค" เท่านั้น`}>
                         {STATUS_LABELS[e.status] || e.status}
                       </span>
                     ) : (
@@ -719,8 +737,14 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                     {canEdit && isCnExpense(e.id) && (
                       <span style={{ fontSize: 11, color: 'var(--text3)' }} title="แก้ไข/ลบที่หน้าใบลดหนี้">🔒 ใบลดหนี้</span>
                     )}
-                    {canEdit && !isCnExpense(e.id) && (
+                    {canEdit && !isCnExpense(e.id) && isDepositLocked(e.id) && (
+                      <span style={{ fontSize: 11, color: 'var(--text3)' }} title="มัดจำนี้ถูกใช้หักกับใบสั่งซื้อแล้ว แก้ไข/ลบไม่ได้">🔒 ใช้หักมัดจำแล้ว</span>
+                    )}
+                    {canEdit && !isCnExpense(e.id) && !isDepositLocked(e.id) && (
                       <div className="actions-cell">
+                        {e.supplier_id && e.amount_no_vat != null && !e.po_id && !depositOf(e.id) && (
+                          <button className="btn btn-sm btn-ghost" onClick={() => setDepositRow(e)}>🏷️ ลงทะเบียนเป็นมัดจำ</button>
+                        )}
                         <button className="btn btn-sm btn-edit" onClick={() => { setEditRow(e); setShowAdd(true) }}><PencilIcon /></button>
                         <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(e.id)}><TrashIcon /></button>
                       </div>
@@ -774,6 +798,14 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
             <button className="btn btn-primary" onClick={handleToggleStatus}>ยืนยัน</button>
           </div>
         </Modal>
+      )}
+
+      {depositRow && (
+        <DepositRegisterModal
+          expense={depositRow}
+          onClose={() => setDepositRow(null)}
+          onSaved={() => { setDepositRow(null); refetchDeposits(); showToast('ลงทะเบียนมัดจำแล้ว') }}
+        />
       )}
 
       {/* ── Delete Confirm ── */}

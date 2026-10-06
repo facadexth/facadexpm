@@ -50,6 +50,23 @@ export function validateDeduction({ supplierOk, remainingNet, amountNoVat, uncov
   return null
 }
 
+/** Map<expense_id, {id, deposit_invoice_no, remaining, used, applied, fullyUsed}> from useSupplierDeposits rows. */
+export function buildDepositMap(rows) {
+  const m = new Map()
+  for (const d of rows || []) {
+    const exp = d.expense
+    if (!exp) continue
+    const apps = d.applications || []
+    const remaining = depositRemaining(exp, apps)
+    const used = {
+      net: round2(apps.reduce((s, a) => s + Number(a.amount_no_vat || 0), 0)),
+      vat: round2(apps.reduce((s, a) => s + Number(a.vat || 0), 0)),
+    }
+    m.set(d.expense_id, { id: d.id, deposit_invoice_no: d.deposit_invoice_no, remaining, used, applied: apps.length > 0, fullyUsed: remaining.net <= EPS })
+  }
+  return m
+}
+
 export const normalizeDepositRef = s => String(s || '').toLowerCase().replace(/[\s\-_./#:()]/g, '')
 
 export function matchDepositByRef(ref, deposits, supplierId) {

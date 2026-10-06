@@ -1,5 +1,21 @@
 import { describe, it, expect } from 'vitest'
-import { round2, depositRemaining, splitDeduction, computeReceivePlan, validateDeduction, normalizeDepositRef, matchDepositByRef } from './depositMath.js'
+import { round2, depositRemaining, splitDeduction, computeReceivePlan, validateDeduction, normalizeDepositRef, matchDepositByRef, buildDepositMap } from './depositMath.js'
+
+describe('buildDepositMap', () => {
+  const exp = { amount_no_vat: 1000, vat: 70 }
+  it('no applications', () => {
+    const m = buildDepositMap([{ id: 'd', expense_id: 'e', deposit_invoice_no: 'D1', expense: exp, applications: [] }])
+    expect(m.get('e')).toMatchObject({ remaining: { net: 1000, vat: 70 }, used: { net: 0, vat: 0 }, applied: false, fullyUsed: false })
+  })
+  it('fully used', () => {
+    const m = buildDepositMap([{ id: 'd', expense_id: 'e', deposit_invoice_no: 'D1', expense: exp, applications: [{ amount_no_vat: 1000, vat: 70 }] }])
+    expect(m.get('e')).toMatchObject({ applied: true, fullyUsed: true })
+  })
+  it('tolerates null and missing expense', () => {
+    expect(buildDepositMap(null).size).toBe(0)
+    expect(buildDepositMap([{ expense_id: 'e', applications: [] }]).size).toBe(0)
+  })
+})
 
 describe('depositRemaining', () => {
   it('subtracts applications from net and vat', () => {
