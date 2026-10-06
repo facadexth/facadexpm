@@ -24,6 +24,7 @@ CREATE TABLE supplier_credit_notes (
   amount_no_vat       NUMERIC NOT NULL CHECK (amount_no_vat >= 0),
   vat                 NUMERIC NOT NULL DEFAULT 0 CHECK (vat >= 0),
   amount              NUMERIC NOT NULL CHECK (amount >= 0),
+  CONSTRAINT scn_amount_sum_check CHECK (round(amount_no_vat + vat - amount, 2) = 0),
   settlement_status   TEXT NOT NULL DEFAULT 'owed' CHECK (settlement_status IN ('owed', 'offset', 'refunded')),
   settled_at          TIMESTAMPTZ,
   notes               TEXT,
@@ -56,20 +57,90 @@ CREATE POLICY admin_full_access ON supplier_credit_notes FOR ALL TO authenticate
   USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'))
   WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
 CREATE POLICY admin_full_access ON supplier_credit_note_items FOR ALL TO authenticated
-  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'))
-  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders')
+    AND EXISTS (SELECT 1 FROM supplier_credit_notes n WHERE n.id = credit_note_id))
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders')
+    AND EXISTS (SELECT 1 FROM supplier_credit_notes n WHERE n.id = credit_note_id));
 
--- A confirmed/void note is immutable except via the RPCs (which run as definer).
+-- Lock rules apply only to direct client access (current_user = 'authenticated').
+-- SECURITY DEFINER RPCs run as the function owner and stay unrestricted.
 CREATE OR REPLACE FUNCTION scn_block_edit_when_posted() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF OLD.status <> 'draft' AND current_user = 'authenticated' THEN
-    RAISE EXCEPTION 'credit_note_locked';
+  IF current_user = 'authenticated' THEN
+    IF TG_OP = 'INSERT' THEN
+      IF NEW.status <> 'draft' OR NEW.expense_id IS NOT NULL OR NEW.confirmed_at IS NOT NULL
+         OR NEW.settled_at IS NOT NULL OR NEW.settlement_status <> 'owed' THEN
+        RAISE EXCEPTION 'credit_note_locked';
+      END IF;
+    ELSIF TG_OP = 'UPDATE' THEN
+      IF OLD.status <> 'draft' OR NEW.status <> 'draft'
+         OR NEW.expense_id IS DISTINCT FROM OLD.expense_id
+         OR NEW.confirmed_at IS DISTINCT FROM OLD.confirmed_at
+         OR NEW.settled_at IS DISTINCT FROM OLD.settled_at
+         OR NEW.settlement_status IS DISTINCT FROM OLD.settlement_status THEN
+        RAISE EXCEPTION 'credit_note_locked';
+      END IF;
+    ELSIF TG_OP = 'DELETE' THEN
+      IF OLD.status <> 'draft' THEN
+        RAISE EXCEPTION 'credit_note_locked';
+      END IF;
+    END IF;
   END IF;
   IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
   RETURN NEW;
 END $$;
+CREATE TRIGGER scn_lock_insert BEFORE INSERT ON supplier_credit_notes
+  FOR EACH ROW EXECUTE FUNCTION scn_block_edit_when_posted();
 CREATE TRIGGER scn_lock_update BEFORE UPDATE OR DELETE ON supplier_credit_notes
   FOR EACH ROW EXECUTE FUNCTION scn_block_edit_when_posted();
+
+-- Items can only change while the parent note is a draft.
+CREATE OR REPLACE FUNCTION scni_block_edit_when_posted() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  v_status TEXT;
+BEGIN
+  IF current_user = 'authenticated' THEN
+    IF TG_OP IN ('UPDATE', 'DELETE') THEN
+      SELECT status INTO v_status FROM supplier_credit_notes WHERE id = OLD.credit_note_id;
+      IF v_status IS DISTINCT FROM 'draft' THEN RAISE EXCEPTION 'credit_note_locked'; END IF;
+    END IF;
+    IF TG_OP IN ('INSERT', 'UPDATE') THEN
+      SELECT status INTO v_status FROM supplier_credit_notes WHERE id = NEW.credit_note_id;
+      IF v_status IS DISTINCT FROM 'draft' THEN RAISE EXCEPTION 'credit_note_locked'; END IF;
+    END IF;
+  END IF;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER scni_lock BEFORE INSERT OR UPDATE OR DELETE ON supplier_credit_note_items
+  FOR EACH ROW EXECUTE FUNCTION scni_block_edit_when_posted();
+
+-- Cross-tenant reference validation (applies to everyone, including RPCs).
+CREATE OR REPLACE FUNCTION scn_validate_refs() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM suppliers WHERE id = NEW.supplier_id AND tenant_id = NEW.tenant_id)
+     OR NOT EXISTS (SELECT 1 FROM sites WHERE id = NEW.site_id AND tenant_id = NEW.tenant_id)
+     OR NOT EXISTS (SELECT 1 FROM expense_categories WHERE id = NEW.category_id AND tenant_id = NEW.tenant_id)
+     OR (NEW.po_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM purchase_orders WHERE id = NEW.po_id AND tenant_id = NEW.tenant_id))
+     OR (NEW.original_expense_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM expenses WHERE id = NEW.original_expense_id AND tenant_id = NEW.tenant_id))
+  THEN
+    RAISE EXCEPTION 'cross_tenant_reference';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER scn_validate_refs BEFORE INSERT OR UPDATE ON supplier_credit_notes
+  FOR EACH ROW EXECUTE FUNCTION scn_validate_refs();
+
+CREATE OR REPLACE FUNCTION scni_validate_refs() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.inventory_item_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM inventory_items WHERE id = NEW.inventory_item_id AND tenant_id = NEW.tenant_id) THEN
+    RAISE EXCEPTION 'cross_tenant_reference';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER scni_validate_refs BEFORE INSERT OR UPDATE ON supplier_credit_note_items
+  FOR EACH ROW EXECUTE FUNCTION scni_validate_refs();
 
 -- New stock movement type
 ALTER TABLE stock_movements DROP CONSTRAINT stock_movements_movement_type_check;
