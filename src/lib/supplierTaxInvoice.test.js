@@ -212,6 +212,13 @@ describe('isTaxInvoiceNotReady', () => {
     expect(isTaxInvoiceNotReady('relation "supplier_tax_invoices" does not exist')).toBe(true)
     expect(isTaxInvoiceNotReady({ message: 'Could not find the function public.post_supplier_tax_invoice' })).toBe(true)
   })
+  it('does NOT report a bad embed or an undefined column as not-ready', () => {
+    expect(isTaxInvoiceNotReady({ code: 'PGRST200', message: "Could not find a relationship between 'supplier_tax_invoices' and 'suppliers' in the schema cache" })).toBe(false)
+    expect(isTaxInvoiceNotReady("Could not find a relationship between 'a' and 'b' in the schema cache")).toBe(false)
+    expect(isTaxInvoiceNotReady({ code: '42703', message: 'column supplier_tax_invoices.foo does not exist' })).toBe(false)
+    expect(isTaxInvoiceNotReady('column "foo" of relation "supplier_tax_invoices" does not exist')).toBe(false)
+    expect(isTaxInvoiceNotReady({ code: 'PGRST204', message: "Could not find the 'foo' column of 'supplier_tax_invoices' in the schema cache" })).toBe(false)
+  })
   it('does not match other failures', () => {
     expect(isTaxInvoiceNotReady(null)).toBe(false)
     expect(isTaxInvoiceNotReady('')).toBe(false)

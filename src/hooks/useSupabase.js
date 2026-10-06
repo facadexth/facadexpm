@@ -191,12 +191,14 @@ export function useExpenses(filters = {}) {
   }, [JSON.stringify(filters)])
 }
 
+const PO_LIST_SELECT = '*, sites(name, site_number), suppliers(name, supplier_number, credit_days), expense_categories(name), purchase_order_items(id, description, quantity, unit, unit_price, discount_pct, line_total, inventory_item_id, aluminum_profile_id, rod_length_m, glass_width_m, glass_height_m, aluminum_profiles(name)), purchase_order_attachments(id), expenses!purchase_orders_expense_id_fkey(id, invoice_no, date, amount, amount_no_vat, notes)'
+
 export function usePurchaseOrders(filters = {}) {
   return useQuery(async () => {
     const buildQuery = () => {
       let q = supabase
         .from('purchase_orders')
-        .select('*, sites(name, site_number), suppliers(name, supplier_number, credit_days), expense_categories(name), purchase_order_items(id, description, quantity, unit, unit_price, discount_pct, line_total, inventory_item_id, aluminum_profile_id, rod_length_m, glass_width_m, glass_height_m, aluminum_profiles(name)), purchase_order_attachments(id), expenses!purchase_orders_expense_id_fkey(id, invoice_no, date, amount, amount_no_vat, notes)')
+        .select(PO_LIST_SELECT)
         .order('date', { ascending: false })
         .order('id', { ascending: false })
 
@@ -1816,3 +1818,21 @@ export const deleteSupplierTaxInvoiceDraft = id => rpcOrThrow(TAX_INVOICE_RPCS.d
 export const previewSupplierTaxInvoice = id => rpcOrThrow(TAX_INVOICE_RPCS.preview, idArgs(id))
 export const postSupplierTaxInvoice = id => rpcOrThrow(TAX_INVOICE_RPCS.post, idArgs(id))
 export const voidSupplierTaxInvoice = (id, reason) => rpcOrThrow(TAX_INVOICE_RPCS.void, voidArgs(id, reason))
+
+/** Received POs of one supplier, tagged with the supplier they were fetched for.
+ *  useQuery keeps the previous data while a new fetch runs, so a consumer must compare
+ *  `data.supplierId` with the current supplier before trusting `data.rows`
+ *  (see poRowsFor in taxInvoiceForm.js). A supplier without id fetches nothing. */
+export function useReceivedPosForSupplier(supplierId) {
+  return useQuery(async () => {
+    if (!supplierId) return { supplierId: '', rows: [] }
+    const rows = await fetchAllRows(() => supabase
+      .from('purchase_orders')
+      .select(PO_LIST_SELECT)
+      .eq('supplier_id', supplierId)
+      .eq('status', 'received')
+      .order('date', { ascending: false })
+      .order('id', { ascending: false }))
+    return { supplierId, rows }
+  }, [supplierId])
+}

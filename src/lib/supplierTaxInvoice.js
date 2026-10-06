@@ -178,15 +178,23 @@ export const TIMEOUT_TEXT = 'ใช้เวลานานเกินไป �
 export const SESSION_EXPIRED_TEXT = 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่'
 
 const NOT_READY_CODES = ['PGRST202', 'PGRST205', '42883', '42P01']
-const NOT_READY_PATTERN = /schema cache|does not exist|could not find/i
+// A bad embed (PGRST200 "Could not find a relationship ... in the schema cache") or an undefined column
+// (42703 / PGRST204) is a code bug, NOT a missing migration: those are excluded before the message patterns run.
+const NOT_READY_EXCLUDED_CODES = ['PGRST200', 'PGRST204', '42703']
+const NOT_READY_EXCLUDED_TEXT = /relationship|\bcolumn\b/i
+const NOT_READY_PATTERN = /could not find the (table|function)|schema cache|(relation|function|table) [^|]*does not exist/i
 const errText = err => (typeof err === 'string' ? err : [err?.message, err?.details, err?.hint].filter(Boolean).join(' | '))
 
 /** True when the error means the feature's table/function is missing (migration not applied yet).
  *  Accepts a Supabase error object or a plain string (useQuery keeps only err.message). */
 export function isTaxInvoiceNotReady(err) {
   if (!err) return false
-  if (typeof err === 'object' && NOT_READY_CODES.includes(err.code)) return true
-  return NOT_READY_PATTERN.test(errText(err))
+  const code = typeof err === 'object' ? err.code : null
+  if (NOT_READY_EXCLUDED_CODES.includes(code)) return false
+  if (NOT_READY_CODES.includes(code)) return true
+  const text = errText(err)
+  if (NOT_READY_EXCLUDED_TEXT.test(text)) return false
+  return NOT_READY_PATTERN.test(text)
 }
 
 const CONSTRAINT_TEXT = {
