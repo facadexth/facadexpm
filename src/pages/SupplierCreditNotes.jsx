@@ -100,6 +100,8 @@ function makeInitialForm(prefill, note) {
   }
 }
 
+// display only: stored full-precision price is kept unless the user edits the field
+const displayPrice = v => { const n = Number(v); return v === '' || !Number.isFinite(n) ? v : String(Math.round(n * 1e4) / 1e4) }
 const nz = v => (v == null ? '' : String(v))
 // PO-mode lines in the same string shape as the manual editor
 const toFormLines = lines => lines.map(l => ({
@@ -189,7 +191,7 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
       if (sel) setForm(f => ({ ...f, selection: sel }))
       else setForm(f => ({ ...f, mode: 'manual' })) // lines no longer match the PO: keep them as manual lines
     } else if (form.hydratePending) {
-      setForm(f => ({ ...f, selection: defaultSelection(selectedPo, true) }))
+      setForm(f => ({ ...f, selection: defaultSelection(selectedPo, true, lookups) }))
     }
   }, [poMode, form.po_id, form.hydrateLines, form.hydratePending, pos, lookupsReady, lookupError, selectedPo, lookups])
 
@@ -199,12 +201,13 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
     setForm(f => po ? {
       ...f, po_id: id, site_id: po.site_id || f.site_id, category_id: po.category_id || f.category_id,
       vatEnabled: po.has_vat !== false, priceIncludesVat: !!po.price_includes_vat,
-      original_expense_id: po.expense_id || null, selection: defaultSelection(po, false),
+      original_expense_id: po.expense_id || null, selection: defaultSelection(po, false, lookups),
     } : { ...f, po_id: '', selection: {} })
   }
   const setSel = (itemId, patch) => setForm(f => ({ ...f, selection: { ...f.selection, [itemId]: { qty: String((selectedPo?.purchase_order_items || []).find(x => x.id === itemId)?.quantity ?? ''), ...f.selection[itemId], ...patch } } }))
   const poItems = selectedPo?.purchase_order_items || []
-  const allTicked = poItems.length > 0 && poItems.every(it => form.selection[it.id]?.checked || (lookupsReady && poItemBlocked(it, lookups)))
+  const selectable = poItems.filter(it => !(lookupsReady && poItemBlocked(it, lookups)))
+  const allTicked = selectable.length > 0 && selectable.every(it => form.selection[it.id]?.checked)
   const toggleAll = on => setForm(f => ({ ...f, selection: Object.fromEntries(poItems.map(it => [it.id, { checked: on && !(lookupsReady && poItemBlocked(it, lookups)), qty: f.selection[it.id]?.qty ?? String(it.quantity) }])) }))
   const setMode = m => { hydrated.current = true; setForm(f => ({ ...f, mode: m, ...(m === 'manual' ? { po_id: '', selection: {} } : {}) })) }
 
@@ -234,8 +237,8 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
 
   const submit = (confirmAfter) => {
     if (!form.supplier_id || !form.site_id || !form.doc_number.trim() || !form.category_id) { alert('กรุณากรอกซัพพลายเออร์ ไซต์ เลขที่ใบลดหนี้ และหมวดหมู่'); return }
-    if (lookupError) { alert('โหลดข้อมูลสินค้า/หน่วยแปลงไม่สำเร็จ: ' + lookupError); return }
-    if (!lookupsReady) { alert('กำลังโหลดข้อมูลสินค้า กรุณารอสักครู่'); return }
+    if (poMode && lookupError) { alert('โหลดข้อมูลสินค้า/หน่วยแปลงไม่สำเร็จ: ' + lookupError); return }
+    if (poMode && !lookupsReady) { alert('กำลังโหลดข้อมูลสินค้า กรุณารอสักครู่'); return }
     if (poMode) {
       if (!selectedPo) { alert('กรุณาเลือกใบสั่งซื้อ หรือเลือก "ไม่อ้างอิง PO (กรอกเอง)"'); return }
       const bad = validateReturnQty(form.selection, selectedPo, lookups)
@@ -255,7 +258,7 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
           <div>
             <label className="label">ซัพพลายเออร์ ★</label>
             <SearchableSelect required value={form.supplier_id}
-              onChange={v => { hydrated.current = true; setForm(f => ({ ...f, supplier_id: v, po_id: '', original_expense_id: null, selection: {}, mode: 'po' })) }}
+              onChange={v => { hydrated.current = true; setForm(f => ({ ...f, supplier_id: v, po_id: '', original_expense_id: null, selection: {} })) }}
               options={(suppliers || []).map(s => ({ value: s.id, label: s.name, keywords: s.name }))} />
           </div>
           <div>
@@ -314,7 +317,7 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
           <button type="button" className={`btn btn-sm ${!poMode ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setMode('manual')}>ไม่อ้างอิง PO (กรอกเอง)</button>
         </div>
 
-        {lookupError && <div style={{ color: 'var(--danger, #e55)', fontSize: 13 }}>โหลดข้อมูลสินค้า/หน่วยแปลงไม่สำเร็จ: {lookupError} — บันทึกไม่ได้ ลองเปิดหน้านี้ใหม่</div>}
+        {poMode && lookupError && <div style={{ color: 'var(--danger, #e55)', fontSize: 13 }}>โหลดข้อมูลสินค้า/หน่วยแปลงไม่สำเร็จ: {lookupError} — บันทึกไม่ได้ ลองเปิดหน้านี้ใหม่</div>}
 
         {poMode && (
           <div style={{ display: 'grid', gap: 10 }}>
@@ -395,7 +398,7 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
                 </div>
                 <input className="input" type="number" min="0" step="any" placeholder="จำนวน" value={l.quantity} onChange={e => setLine(i, 'quantity', e.target.value)} />
                 <input className="input" placeholder="หน่วย" value={l.unit} readOnly={!!l.inventory_item_id} title={l.inventory_item_id ? 'หน่วยฐานของสินค้าในคลัง' : undefined} onChange={e => setLine(i, 'unit', e.target.value)} />
-                <input className="input" type="number" min="0" step="any" placeholder="ราคา/หน่วย" value={l.unit_price} onChange={e => setLine(i, 'unit_price', e.target.value)} />
+                <input className="input" type="number" min="0" step="any" placeholder="ราคา/หน่วย" value={l.upEdited ? l.unit_price : displayPrice(l.unit_price)} onChange={e => setForm(f => ({ ...f, lines: f.lines.map((x, idx) => idx === i ? { ...x, unit_price: e.target.value, upEdited: true } : x) }))} />
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeLine(i)} disabled={form.lines.length <= 1}>🗑️ ลบรายการ</button>
               </div>
             ))}
@@ -416,8 +419,8 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
       </div>
       <div className="modal-footer">
         <button type="button" className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>
-        <button type="submit" className="btn btn-ghost" disabled={loading || !lookupsReady}>{loading ? '⏳...' : '💾 บันทึกร่าง'}</button>
-        <button type="button" className="btn btn-primary" disabled={loading || !lookupsReady} onClick={() => submit(true)}>✅ บันทึกและยืนยัน</button>
+        <button type="submit" className="btn btn-ghost" disabled={loading || (poMode && !lookupsReady)}>{loading ? '⏳...' : '💾 บันทึกร่าง'}</button>
+        <button type="button" className="btn btn-primary" disabled={loading || (poMode && !lookupsReady)} onClick={() => submit(true)}>✅ บันทึกและยืนยัน</button>
       </div>
     </form>
   )

@@ -46,3 +46,10 @@ describe('poItemToCreditLine with base-unit conversion', () => {
     expect(l).toMatchObject({ quantity: 3, unit: 'งาน', unit_price: 100 })
   })
 })
+
+describe('poItemToCreditLine full-return total', () => {
+  it('no conversion: qty 3, total 100 -> 100', () => {
+    const l = poItemToCreditLine({ inventory_item_id: null, description: 'x', quantity: 3, unit: 'งาน', unit_price: 0, line_total: 100 })
+    expect(l.quantity * l.unit_price).toBeCloseTo(100, 8)
+  })
+})

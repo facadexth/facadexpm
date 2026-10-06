@@ -43,8 +43,8 @@ export function creditLineForPoItem(it, returnQty, lookups) {
   return poItemToCreditLine(scaled, convFor(scaled, lookups))
 }
 
-export function defaultSelection(po, checked = false) {
-  return Object.fromEntries((po?.purchase_order_items || []).map(it => [it.id, { checked, qty: String(it.quantity) }]))
+export function defaultSelection(po, checked = false, lookups = null) {
+  return Object.fromEntries((po?.purchase_order_items || []).map(it => [it.id, { checked: checked && !(lookups && poItemBlocked(it, lookups)), qty: String(it.quantity) }]))
 }
 
 /** Ticked rows -> credit lines (base units for stock lines). Invalid rows are skipped. */
@@ -80,7 +80,7 @@ export function validateReturnQty(selection, po, lookups = null) {
  * Returns null if any saved line can't be matched to a PO item (-> caller falls back to manual).
  */
 export function selectionFromSavedLines(po, savedLines, lookups) {
-  const sel = defaultSelection(po, false)
+  const sel = defaultSelection(po, false, lookups)
   const used = new Set()
   for (const l of savedLines) {
     const it = (po?.purchase_order_items || []).find(x => !used.has(x.id)
@@ -91,7 +91,7 @@ export function selectionFromSavedLines(po, savedLines, lookups) {
     const fullLine = creditLineForPoItem(it, Number(it.quantity), lookups)
     const ratio = Number(fullLine.quantity) > 0 ? Number(l.quantity) / Number(fullLine.quantity) : 0
     const qty = Math.round(Number(it.quantity) * ratio * 10000) / 10000
-    sel[it.id] = { checked: true, qty: String(qty) }
+    sel[it.id] = { checked: !poItemBlocked(it, lookups), qty: String(qty) }
   }
   return sel
 }

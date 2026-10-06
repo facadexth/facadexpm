@@ -116,3 +116,17 @@ describe('unconvertible stock lines', () => {
     expect(validateReturnQty(s, p2, lk).map(e => e.reason)).toEqual(['unconvertible', 'unconvertible'])
   })
 })
+
+describe('blocked rows are un-ticked on hydration', () => {
+  const blockedItem = { id: 'u', inventory_item_id: 'al', description: 'rod', quantity: 2, unit: 'เส้น', unit_price: 10, line_total: 20 }
+  const p3 = { purchase_order_items: [blockedItem, po.purchase_order_items[0]] }
+  it('defaultSelection(checked) skips blocked', () => {
+    const s = defaultSelection(p3, true, lookups)
+    expect(s.u.checked).toBe(false)
+    expect(s.a.checked).toBe(true)
+  })
+  it('selectionFromSavedLines un-ticks blocked', () => {
+    const s = selectionFromSavedLines(p3, [{ inventory_item_id: 'al', description: 'rod', quantity: 2 }], lookups)
+    expect(s.u.checked).toBe(false)
+  })
+})

@@ -23,7 +23,7 @@ export function poItemToCreditLine(item, conv = null) {
     }
   }
   let unit_price
-  if (Number.isFinite(lineTotal) && qty > 0) unit_price = round2(lineTotal / qty)
+  if (Number.isFinite(lineTotal) && qty > 0) unit_price = lineTotal / qty // unrounded so a full return equals the line total
   else unit_price = round2(Number(item.unit_price || 0) * (1 - (Number(item.discount_pct) || 0) / 100))
   return {
     inventory_item_id: item.inventory_item_id, description: item.description,
