@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildCreditLinesFromPo, validateReturnQty, defaultSelection, selectionFromSavedLines, describeCreditNoteConfirm } from './creditNotePo.js'
+import { buildCreditLinesFromPo, validateReturnQty, poItemBlocked, defaultSelection, selectionFromSavedLines, describeCreditNoteConfirm } from './creditNotePo.js'
 import { computeCreditNoteTotals } from './creditNoteCalc.js'
 
 const po = {
@@ -81,5 +81,38 @@ describe('describeCreditNoteConfirm', () => {
     expect(d.stockTexts).toEqual(['Cement × 5 kg'])
     expect(d.shortTexts[0]).toContain('คงเหลือ 2')
     expect(d.amountText).toBe('1,070.00')
+  })
+})
+
+describe('full return keeps the PO line total', () => {
+  const mk = (id, qty, total, extra = {}) => ({ id, inventory_item_id: 'al', aluminum_profile_id: 'p', description: 'rod', quantity: qty, unit: 'เส้น', unit_price: 0, line_total: total, rod_length_m: 6, ...extra })
+  it('72 kg for 1000', () => {
+    const l = buildCreditLinesFromPo({ purchase_order_items: [mk('x', 10, 1000)] }, sel({ x: [true, 10] }), lookups)[0]
+    expect(l.quantity).toBe(72)
+    expect(l.quantity * l.unit_price).toBeCloseTo(1000, 6)
+    expect(computeCreditNoteTotals([l], { vatEnabled: false }).amount).toBe(1000)
+  })
+  it('50,000 kg case', () => {
+    const lk = { ...lookups, aluminumProfiles: [{ id: 'p', default_length_m: 6, linear_weight_kg_per_m: 1.2 }] }
+    const it = mk('y', 6944.4444, 123456.78)
+    const l = buildCreditLinesFromPo({ purchase_order_items: [it] }, sel({ y: [true, 6944.4444] }), lk)[0]
+    expect(computeCreditNoteTotals([l], { vatEnabled: false }).amount).toBe(123456.78)
+  })
+})
+
+describe('unconvertible stock lines', () => {
+  const noProfile = { id: 'u', inventory_item_id: 'al', description: 'rod', quantity: 2, unit: 'เส้น', unit_price: 10, line_total: 20 }
+  const glass = { id: 'g', inventory_item_id: 'gl', description: 'glass', quantity: 2, unit: 'แผ่น', unit_price: 10, line_total: 20 }
+  const lk = { ...lookups, inventoryItems: [...lookups.inventoryItems, { id: 'gl', base_unit: 'sqm', unit_conversion_mode: 'glass_dimension' }] }
+  const p2 = { purchase_order_items: [noProfile, glass, po.purchase_order_items[0]] }
+  it('flags aluminium without profile and glass without size, not record-only', () => {
+    expect(poItemBlocked(noProfile, lk)).toBe(true)
+    expect(poItemBlocked(glass, lk)).toBe(true)
+    expect(poItemBlocked(p2.purchase_order_items[2], lk)).toBe(false)
+  })
+  it('are skipped when building and reported by validate', () => {
+    const s = sel({ u: [true, 2], g: [true, 2], a: [true, 3] })
+    expect(buildCreditLinesFromPo(p2, s, lk)).toHaveLength(1)
+    expect(validateReturnQty(s, p2, lk).map(e => e.reason)).toEqual(['unconvertible', 'unconvertible'])
   })
 })

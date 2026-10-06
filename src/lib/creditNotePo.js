@@ -27,6 +27,13 @@ function convFor(item, lookups) {
   return { ...computePoItemBaseQty(item, invItem, profile, factor), baseUnit: invItem.base_unit }
 }
 
+/** true when a stock line cannot be converted to the base unit (aluminium w/o profile, glass w/o size, unknown item). Record-only lines (no inventory item) are fine. */
+export function poItemBlocked(it, lookups) {
+  if (!it.inventory_item_id) return false
+  const c = convFor(it, lookups)
+  return !c || c.unconverted === true
+}
+
 /** Credit line for one PO item at a returned quantity (PO unit). */
 export function creditLineForPoItem(it, returnQty, lookups) {
   const q = Number(returnQty)
@@ -46,6 +53,7 @@ export function buildCreditLinesFromPo(po, selection, lookups) {
   for (const it of po?.purchase_order_items || []) {
     const s = selection?.[it.id]
     if (!s?.checked) continue
+    if (poItemBlocked(it, lookups)) continue
     const q = Number(s.qty)
     if (!(q > 0) || q > Number(it.quantity)) continue
     lines.push({ ...creditLineForPoItem(it, q, lookups), po_item_id: it.id })
@@ -54,11 +62,12 @@ export function buildCreditLinesFromPo(po, selection, lookups) {
 }
 
 /** Errors for ticked rows whose returned qty is not 0 < qty <= ordered. */
-export function validateReturnQty(selection, po) {
+export function validateReturnQty(selection, po, lookups = null) {
   const errors = []
   for (const it of po?.purchase_order_items || []) {
     const s = selection?.[it.id]
     if (!s?.checked) continue
+    if (lookups && poItemBlocked(it, lookups)) { errors.push({ itemId: it.id, description: it.description, reason: 'unconvertible' }); continue }
     const q = Number(s.qty)
     if (!(q > 0)) errors.push({ itemId: it.id, description: it.description, reason: 'not_positive' })
     else if (q > Number(it.quantity)) errors.push({ itemId: it.id, description: it.description, reason: 'above_ordered' })

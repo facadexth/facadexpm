@@ -19,7 +19,7 @@ export function poItemToCreditLine(item, conv = null) {
   if (conv && baseQty > 0) {
     return {
       inventory_item_id: item.inventory_item_id, description: item.description,
-      quantity: baseQty, unit: conv.baseUnit || item.unit, unit_price: round2(total / baseQty),
+      quantity: baseQty, unit: conv.baseUnit || item.unit, unit_price: total / baseQty, // unrounded: column is plain NUMERIC, so qty x price == line total
     }
   }
   let unit_price

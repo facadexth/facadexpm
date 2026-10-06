@@ -14,7 +14,7 @@ import {
 } from '../hooks/useSupabase.js'
 import {
   buildCreditLinesFromPo, validateReturnQty, defaultSelection, selectionFromSavedLines,
-  describeCreditNoteConfirm, creditLineForPoItem, poItemNetUnitPrice, poItemTotal,
+  describeCreditNoteConfirm, creditLineForPoItem, poItemBlocked, poItemNetUnitPrice, poItemTotal,
 } from '../lib/creditNotePo.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useUserRole } from '../hooks/useUserRole.js'
@@ -107,7 +107,7 @@ const toFormLines = lines => lines.map(l => ({
   quantity: nz(l.quantity), unit: l.unit || '', unit_price: nz(l.unit_price),
 }))
 
-const REASON_TEXT = { not_positive: 'จำนวนที่คืนต้องมากกว่า 0', above_ordered: 'จำนวนที่คืนเกินจำนวนที่สั่ง' }
+const REASON_TEXT = { not_positive: 'จำนวนที่คืนต้องมากกว่า 0', above_ordered: 'จำนวนที่คืนเกินจำนวนที่สั่ง', unconvertible: 'แปลงหน่วยไม่ได้ ตรวจโปรไฟล์/ขนาดสินค้า' }
 
 function CreditNoteConfirmDialog({ info, onConfirm, onCancel }) {
   return (
@@ -166,9 +166,10 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
   const onHand = onHandData || {}
   const { data: supplierExpenses } = useExpenses(form.supplier_id ? { supplierId: form.supplier_id } : {})
   const { data: pos } = usePurchaseOrders(form.supplier_id ? { supplierId: form.supplier_id } : {})
-  const { data: allItems } = useAllInventoryItems()
-  const { data: profiles } = useAllAluminumProfiles()
-  const { data: unitFactors } = useInventoryItemUnitFactors()
+  const { data: allItems, error: e1 } = useAllInventoryItems()
+  const { data: profiles, error: e2 } = useAllAluminumProfiles()
+  const { data: unitFactors, error: e3 } = useInventoryItemUnitFactors()
+  const lookupError = e1 || e2 || e3
   const lookupsReady = !!(allItems && profiles && unitFactors)
   const lookups = useMemo(() => ({ inventoryItems: allItems || [], aluminumProfiles: profiles || [], unitFactors: unitFactors || [] }), [allItems, profiles, unitFactors])
   const [includeUnreceived, setIncludeUnreceived] = useState(false)
@@ -179,6 +180,7 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
   useEffect(() => {
     if (hydrated.current) return
     if (!poMode || !form.po_id) { hydrated.current = true; return }
+    if (lookupError) return
     if (!pos || !lookupsReady) return
     hydrated.current = true
     if (!selectedPo) { setForm(f => ({ ...f, mode: 'manual', po_id: '' })); return }
@@ -189,7 +191,7 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
     } else if (form.hydratePending) {
       setForm(f => ({ ...f, selection: defaultSelection(selectedPo, true) }))
     }
-  }, [poMode, form.po_id, form.hydrateLines, form.hydratePending, pos, lookupsReady, selectedPo, lookups])
+  }, [poMode, form.po_id, form.hydrateLines, form.hydratePending, pos, lookupsReady, lookupError, selectedPo, lookups])
 
   const pickPo = id => {
     const po = (pos || []).find(p => p.id === id)
@@ -200,10 +202,10 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
       original_expense_id: po.expense_id || null, selection: defaultSelection(po, false),
     } : { ...f, po_id: '', selection: {} })
   }
-  const setSel = (itemId, patch) => setForm(f => ({ ...f, selection: { ...f.selection, [itemId]: { ...f.selection[itemId], ...patch } } }))
+  const setSel = (itemId, patch) => setForm(f => ({ ...f, selection: { ...f.selection, [itemId]: { qty: String((selectedPo?.purchase_order_items || []).find(x => x.id === itemId)?.quantity ?? ''), ...f.selection[itemId], ...patch } } }))
   const poItems = selectedPo?.purchase_order_items || []
-  const allTicked = poItems.length > 0 && poItems.every(it => form.selection[it.id]?.checked)
-  const toggleAll = on => setForm(f => ({ ...f, selection: Object.fromEntries(poItems.map(it => [it.id, { checked: on, qty: f.selection[it.id]?.qty ?? String(it.quantity) }])) }))
+  const allTicked = poItems.length > 0 && poItems.every(it => form.selection[it.id]?.checked || (lookupsReady && poItemBlocked(it, lookups)))
+  const toggleAll = on => setForm(f => ({ ...f, selection: Object.fromEntries(poItems.map(it => [it.id, { checked: on && !(lookupsReady && poItemBlocked(it, lookups)), qty: f.selection[it.id]?.qty ?? String(it.quantity) }])) }))
   const setMode = m => { hydrated.current = true; setForm(f => ({ ...f, mode: m, ...(m === 'manual' ? { po_id: '', selection: {} } : {}) })) }
 
   const itemOptions = useMemo(() => (inventoryItems || []).map(it => ({
@@ -232,9 +234,11 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
 
   const submit = (confirmAfter) => {
     if (!form.supplier_id || !form.site_id || !form.doc_number.trim() || !form.category_id) { alert('กรุณากรอกซัพพลายเออร์ ไซต์ เลขที่ใบลดหนี้ และหมวดหมู่'); return }
+    if (lookupError) { alert('โหลดข้อมูลสินค้า/หน่วยแปลงไม่สำเร็จ: ' + lookupError); return }
+    if (!lookupsReady) { alert('กำลังโหลดข้อมูลสินค้า กรุณารอสักครู่'); return }
     if (poMode) {
       if (!selectedPo) { alert('กรุณาเลือกใบสั่งซื้อ หรือเลือก "ไม่อ้างอิง PO (กรอกเอง)"'); return }
-      const bad = validateReturnQty(form.selection, selectedPo)
+      const bad = validateReturnQty(form.selection, selectedPo, lookups)
       if (bad.length) { alert(bad.map(b => `• ${b.description || ''}: ${REASON_TEXT[b.reason]}`).join('\n')); return }
       if (!activeLines.length) { alert('กรุณาติ๊กเลือกรายการที่คืนอย่างน้อย 1 รายการ'); return }
     }
@@ -251,7 +255,7 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
           <div>
             <label className="label">ซัพพลายเออร์ ★</label>
             <SearchableSelect required value={form.supplier_id}
-              onChange={v => setForm(f => ({ ...f, supplier_id: v, po_id: '', original_expense_id: null }))}
+              onChange={v => { hydrated.current = true; setForm(f => ({ ...f, supplier_id: v, po_id: '', original_expense_id: null, selection: {}, mode: 'po' })) }}
               options={(suppliers || []).map(s => ({ value: s.id, label: s.name, keywords: s.name }))} />
           </div>
           <div>
@@ -310,6 +314,8 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
           <button type="button" className={`btn btn-sm ${!poMode ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setMode('manual')}>ไม่อ้างอิง PO (กรอกเอง)</button>
         </div>
 
+        {lookupError && <div style={{ color: 'var(--danger, #e55)', fontSize: 13 }}>โหลดข้อมูลสินค้า/หน่วยแปลงไม่สำเร็จ: {lookupError} — บันทึกไม่ได้ ลองเปิดหน้านี้ใหม่</div>}
+
         {poMode && (
           <div style={{ display: 'grid', gap: 10 }}>
             <div>
@@ -344,16 +350,17 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
                     {poItems.map(it => {
                       const s = form.selection[it.id] || { checked: false, qty: String(it.quantity) }
                       const bad = s.checked && (!(Number(s.qty) > 0) || Number(s.qty) > Number(it.quantity))
-                      const line = s.checked && !bad ? creditLineForPoItem(it, Number(s.qty), lookups) : null
+                      const blocked = lookupsReady && poItemBlocked(it, lookups)
+                      const line = s.checked && !bad && !blocked ? creditLineForPoItem(it, Number(s.qty), lookups) : null
                       return (
                         <tr key={it.id}>
-                          <td><input type="checkbox" checked={!!s.checked} onChange={e => setSel(it.id, { checked: e.target.checked })} /></td>
+                          <td><input type="checkbox" checked={!!s.checked} disabled={blocked} onChange={e => setSel(it.id, { checked: e.target.checked })} /></td>
                           <td>{it.description}{!it.inventory_item_id && <div style={{ fontSize: 11, color: 'var(--text3)' }}>ไม่ใช่สต็อก — ไม่ตัดสต็อก</div>}</td>
                           <td className="font-mono" style={{ textAlign: 'right' }}>{fmt(it.quantity)} {it.unit}</td>
                           <td className="font-mono" style={{ textAlign: 'right' }}>{fmt(poItemNetUnitPrice(it))}</td>
                           <td className="font-mono" style={{ textAlign: 'right' }}>{fmt(poItemTotal(it))}</td>
                           <td style={{ minWidth: 130 }}>
-                            {s.checked ? (
+                            {blocked ? <span style={{ fontSize: 11, color: 'var(--danger, #e55)' }}>{REASON_TEXT.unconvertible}</span> : s.checked ? (
                               <>
                                 <input className="input" type="number" min="0" step="any" style={{ width: 90 }} value={s.qty}
                                   onChange={e => setSel(it.id, { qty: e.target.value })} /> {it.unit}
@@ -409,8 +416,8 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
       </div>
       <div className="modal-footer">
         <button type="button" className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>
-        <button type="submit" className="btn btn-ghost" disabled={loading}>{loading ? '⏳...' : '💾 บันทึกร่าง'}</button>
-        <button type="button" className="btn btn-primary" disabled={loading} onClick={() => submit(true)}>✅ บันทึกและยืนยัน</button>
+        <button type="submit" className="btn btn-ghost" disabled={loading || !lookupsReady}>{loading ? '⏳...' : '💾 บันทึกร่าง'}</button>
+        <button type="button" className="btn btn-primary" disabled={loading || !lookupsReady} onClick={() => submit(true)}>✅ บันทึกและยืนยัน</button>
       </div>
     </form>
   )
