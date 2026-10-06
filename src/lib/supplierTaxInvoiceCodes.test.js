@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { CHECK_TEXT, mapTaxInvoiceRpcError } from './supplierTaxInvoice.js'
+import { CHECK_TEXT, GENERIC_ERROR_TEXT, mapTaxInvoiceRpcError } from './supplierTaxInvoice.js'
 
 // Locks the JS error-code lists to the SQL: every code the migrations can raise or report
 // must have Thai text, and every blocking/warning code in CHECK_TEXT must exist in _sti_check.
@@ -24,7 +24,9 @@ describe('SQL error codes <-> supplierTaxInvoice.js text', () => {
     expect(checkCodes.size).toBeGreaterThan(15)
   })
   it('every RAISE EXCEPTION code has Thai text', () => {
-    const missing = [...raised].filter(c => mapTaxInvoiceRpcError({ message: c }) === c)
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const missing = [...raised].filter(c => mapTaxInvoiceRpcError({ message: c }) === GENERIC_ERROR_TEXT)
+    spy.mockRestore()
     expect(missing).toEqual([])
   })
   it('every _sti_check code has text in CHECK_TEXT', () => {

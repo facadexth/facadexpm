@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   matchTolerance, withinTolerance, lineAmount, evaluateMatch, wacAfterIn, wacAfterReversal,
   simulateStock, proposePos, lineBase, formSignature, previewIsCurrent, mapTaxInvoiceRpcError, CHECK_TEXT,
+  GENERIC_ERROR_TEXT, isTaxInvoiceNotReady,
 } from './supplierTaxInvoice.js'
 
 describe('tolerance = min(1%, 5 baht)  (owner ruling R1)', () => {
@@ -175,8 +176,48 @@ describe('error text', () => {
     expect(mapTaxInvoiceRpcError({ code: '23505', message: 'duplicate key value violates unique constraint "sti_invoice_no_active_uq"' })).toMatch(/เลขที่ใบกำกับนี้มีอยู่แล้ว/)
     expect(mapTaxInvoiceRpcError({ code: '23505', message: 'duplicate key value violates unique constraint "stip_po_active_uq"' })).toBe(CHECK_TEXT.po_linked_elsewhere)
   })
-  it('falls back to the raw message', () => {
-    expect(mapTaxInvoiceRpcError({ message: 'boom' })).toBe('boom')
+  it('falls back to a generic Thai text and logs the raw error', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(mapTaxInvoiceRpcError({ message: 'boom' })).toBe(GENERIC_ERROR_TEXT)
+    expect(mapTaxInvoiceRpcError(null)).toBe(GENERIC_ERROR_TEXT)
+    expect(mapTaxInvoiceRpcError({ code: '23514', message: 'violates check constraint "something_else"' })).toBe(GENERIC_ERROR_TEXT)
+    expect(spy).toHaveBeenCalledWith('[supplier tax invoice] unmapped error:', { message: 'boom' })
+    spy.mockRestore()
+  })
+  it('never leaks raw English text for the known failure classes', () => {
+    const cases = [
+      [{ code: '23514', message: 'new row for relation "supplier_tax_invoices" violates check constraint "sti_total_sum_check"' }, 'ยอดรวม'],
+      [{ code: '23514', message: 'violates check constraint "sti_finite_check"' }, 'ยอดเงิน'],
+      [{ code: '23514', message: 'violates check constraint "stii_stock_fields_check"' }, 'สต็อก'],
+      [{ code: '42501', message: 'permission denied for function x' }, 'สิทธิ์'],
+      [{ code: '55P03', message: 'could not obtain lock on row' }, 'ลองใหม่'],
+      [{ code: '40001', message: 'could not serialize access' }, 'ลองใหม่'],
+      [{ code: '57014', message: 'canceling statement due to statement timeout' }, 'นานเกินไป'],
+      [{ code: 'PGRST301', message: 'JWT expired' }, 'เซสชัน'],
+    ]
+    for (const [err, frag] of cases) expect(mapTaxInvoiceRpcError(err)).toContain(frag)
+  })
+  it('reads details and hint too', () => {
+    expect(mapTaxInvoiceRpcError({ message: 'x', details: 'Key (po_id)=... violates stip_po_active_uq', code: '23505' })).toBe(CHECK_TEXT.po_linked_elsewhere)
+    expect(mapTaxInvoiceRpcError({ message: 'x', hint: 'not_draft' })).toBe(CHECK_TEXT.not_draft)
+  })
+})
+
+describe('isTaxInvoiceNotReady', () => {
+  it('matches the missing table/function codes', () => {
+    for (const code of ['PGRST202', 'PGRST205', '42P01', '42883']) expect(isTaxInvoiceNotReady({ code, message: 'x' })).toBe(true)
+  })
+  it('matches supabase-js message patterns, also as a plain string (useQuery keeps err.message)', () => {
+    expect(isTaxInvoiceNotReady("Could not find the table 'public.supplier_tax_invoices' in the schema cache")).toBe(true)
+    expect(isTaxInvoiceNotReady('relation "supplier_tax_invoices" does not exist')).toBe(true)
+    expect(isTaxInvoiceNotReady({ message: 'Could not find the function public.post_supplier_tax_invoice' })).toBe(true)
+  })
+  it('does not match other failures', () => {
+    expect(isTaxInvoiceNotReady(null)).toBe(false)
+    expect(isTaxInvoiceNotReady('')).toBe(false)
+    expect(isTaxInvoiceNotReady({ code: '40P01', message: 'deadlock detected' })).toBe(false)
+    expect(isTaxInvoiceNotReady('JWT expired')).toBe(false)
+    expect(isTaxInvoiceNotReady({ code: '23505', message: 'duplicate key' })).toBe(false)
   })
 })
 

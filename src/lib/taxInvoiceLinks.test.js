@@ -12,6 +12,22 @@ describe('buildActiveLinkMap', () => {
     expect(m.get('p1')).toEqual({ invoice_id: 'i1', invoice_no: 'INV-1', status: 'posted' })
     expect(m.get('p2')).toEqual({ invoice_id: 'i2', invoice_no: '', status: '' })
   })
+  it('skips inactive rows; a PO relinked after a void points at the new invoice', () => {
+    const m = buildActiveLinkMap([
+      { po_id: 'p1', invoice_id: 'old', active: false, supplier_tax_invoices: { invoice_no: 'INV-OLD', status: 'void' } },
+      { po_id: 'p1', invoice_id: 'new', active: true, supplier_tax_invoices: { invoice_no: 'INV-NEW', status: 'draft' } },
+      { po_id: 'p2', invoice_id: 'old', active: false, supplier_tax_invoices: { invoice_no: 'INV-OLD', status: 'void' } },
+    ])
+    expect(m.get('p1')).toEqual({ invoice_id: 'new', invoice_no: 'INV-NEW', status: 'draft' })
+    expect(m.has('p2')).toBe(false)
+    expect(m.size).toBe(1)
+  })
+  it('many POs on one invoice', () => {
+    const rows = ['a', 'b', 'c'].map(po => ({ po_id: po, invoice_id: 'i1', active: true, supplier_tax_invoices: { invoice_no: 'INV-1', status: 'posted' } }))
+    const m = buildActiveLinkMap(rows)
+    expect([...m.keys()]).toEqual(['a', 'b', 'c'])
+    expect([...m.values()].every(v => v.invoice_id === 'i1')).toBe(true)
+  })
   it('null/undefined rows -> empty map (table missing before the migration)', () => {
     expect(buildActiveLinkMap(null).size).toBe(0)
     expect(buildActiveLinkMap(undefined).size).toBe(0)
@@ -39,6 +55,28 @@ describe('RPC argument builders match the SQL function signatures', () => {
   it('save defaults: a new draft sends p_id null and arrays', () => {
     expect(saveDraftArgs(undefined, { a: 1 }, undefined, undefined)).toEqual({ p_id: null, p_header: { a: 1 }, p_items: [], p_po_ids: [] })
     expect(saveDraftArgs('abc', {}, [1], ['p'])).toEqual({ p_id: 'abc', p_header: {}, p_items: [1], p_po_ids: ['p'] })
+  })
+})
+
+describe('hooks file wiring', () => {
+  const hooks = readFileSync(new URL('../hooks/useSupabase.js', import.meta.url), 'utf8')
+  const mig1 = readFileSync(new URL('../../supabase/migrations/2026-10-08-01-supplier-tax-invoices.sql', import.meta.url), 'utf8')
+  it('every embed constraint name exists in migration 01 and is used by the hooks', () => {
+    for (const c of ['sti_supplier_fk', 'stii_invoice_fk', 'stip_invoice_fk', 'stip_po_fk']) {
+      expect(mig1).toContain(`CONSTRAINT ${c} FOREIGN KEY`)
+      expect(hooks).toContain(`!${c}(`)
+    }
+  })
+  it('each wrapper calls its own RPC entry (post must not call preview)', () => {
+    const want = {
+      saveSupplierTaxInvoiceDraft: 'save', deleteSupplierTaxInvoiceDraft: 'delete', previewSupplierTaxInvoice: 'preview',
+      postSupplierTaxInvoice: 'post', voidSupplierTaxInvoice: 'void',
+    }
+    for (const [fn, key] of Object.entries(want)) {
+      const line = hooks.split('\n').find(l => l.startsWith(`export const ${fn} =`))
+      expect(line, fn).toBeTruthy()
+      expect(line).toContain(`TAX_INVOICE_RPCS.${key},`)
+    }
   })
 })
 

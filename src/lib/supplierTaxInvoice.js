@@ -173,14 +173,47 @@ const CODES_LONGEST_FIRST = Object.keys(RPC_TEXT).sort((a, b) => b.length - a.le
 export const DEADLOCK_TEXT = 'ระบบกำลังประมวลผลรายการเดียวกันอยู่ — ข้อมูลไม่เสียหาย กรุณาลองใหม่อีกครั้ง'
 export const FEATURE_NOT_READY_TEXT = 'ฟีเจอร์ใบกำกับภาษียังไม่พร้อมใช้งาน'
 
+export const GENERIC_ERROR_TEXT = 'บันทึกไม่สำเร็จ กรุณาลองใหม่ หรือแจ้งผู้ดูแลระบบ'
+export const TIMEOUT_TEXT = 'ใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง'
+export const SESSION_EXPIRED_TEXT = 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่'
+
+const NOT_READY_CODES = ['PGRST202', 'PGRST205', '42883', '42P01']
+const NOT_READY_PATTERN = /schema cache|does not exist|could not find/i
+const errText = err => (typeof err === 'string' ? err : [err?.message, err?.details, err?.hint].filter(Boolean).join(' | '))
+
+/** True when the error means the feature's table/function is missing (migration not applied yet).
+ *  Accepts a Supabase error object or a plain string (useQuery keeps only err.message). */
+export function isTaxInvoiceNotReady(err) {
+  if (!err) return false
+  if (typeof err === 'object' && NOT_READY_CODES.includes(err.code)) return true
+  return NOT_READY_PATTERN.test(errText(err))
+}
+
+const CONSTRAINT_TEXT = {
+  sti_total_sum_check: 'ยอดรวมไม่เท่ากับยอดก่อน VAT + VAT',
+  sti_finite_check: 'ยอดเงินในใบกำกับไม่ถูกต้อง',
+  stii_finite_check: 'ตัวเลขในรายการไม่ถูกต้อง',
+  stii_stock_fields_check: 'รายการที่ผูกสต็อกต้องมีสินค้า ไซท์งาน และจำนวนในหน่วยหลักครบ',
+}
+
+/** Thai text for any error from the tax invoice RPCs/hooks. Unknown errors get a generic Thai text;
+ *  the raw text goes to console.error only. */
 export function mapTaxInvoiceRpcError(err) {
-  const msg = String(err?.message || err || '')
+  const msg = errText(err)
   if (err?.code === '40P01' || /deadlock detected/i.test(msg)) return DEADLOCK_TEXT
-  if (['PGRST202', 'PGRST205', '42883', '42P01'].includes(err?.code)) return FEATURE_NOT_READY_TEXT
+  if (isTaxInvoiceNotReady(err)) return FEATURE_NOT_READY_TEXT
   if (err?.code === '23505' || msg.includes('duplicate key')) {
     if (msg.includes('sti_invoice_no_active_uq')) return 'เลขที่ใบกำกับนี้มีอยู่แล้วสำหรับซัพพลายเออร์นี้'
     if (msg.includes('stip_po_active_uq')) return CHECK_TEXT.po_linked_elsewhere
   }
+  if (err?.code === '23514' || msg.includes('violates check constraint')) {
+    for (const [name, text] of Object.entries(CONSTRAINT_TEXT)) if (msg.includes(name)) return text
+  }
   for (const code of CODES_LONGEST_FIRST) if (msg.includes(code)) return RPC_TEXT[code]
-  return msg
+  if (err?.code === '42501') return RPC_TEXT.insufficient_privilege
+  if (err?.code === '55P03' || err?.code === '40001') return DEADLOCK_TEXT
+  if (err?.code === '57014') return TIMEOUT_TEXT
+  if (err?.code === 'PGRST301') return SESSION_EXPIRED_TEXT
+  console.error('[supplier tax invoice] unmapped error:', err)
+  return GENERIC_ERROR_TEXT
 }

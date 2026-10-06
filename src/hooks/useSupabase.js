@@ -10,6 +10,7 @@ import { applyDateFilter } from '../lib/expenseFilters.js'
 import { buildUnitSeedRows, VAT_RATE } from '../lib/invoiceCalc.js'
 import { validateExtraction, blobToBase64 } from '../lib/poDocumentExtraction.js'
 import { buildActiveLinkMap, saveDraftArgs, idArgs, voidArgs, TAX_INVOICE_RPCS } from '../lib/taxInvoiceLinks.js'
+import { isTaxInvoiceNotReady } from '../lib/supplierTaxInvoice.js'
 
 /** Generic fetch hook */
 export function useQuery(queryFn, deps = []) {
@@ -1766,16 +1767,32 @@ export async function receivePoWithDeposits(poId, applications, subtotal, vat) {
 // null as "not ready" and the PO page keeps working.
 // The RPC wrappers throw the Supabase error object; show it with mapTaxInvoiceRpcError().
 
+// List: item columns narrowed to what a list needs. The edit form loads one invoice with all item
+// columns through useSupplierTaxInvoice(id). `notReady` = the migration is not applied yet.
 export function useSupplierTaxInvoices(filters = {}) {
-  return useQuery(async () => fetchAllRows(() => {
+  const r = useQuery(async () => fetchAllRows(() => {
     let q = supabase.from('supplier_tax_invoices')
-      .select('*, suppliers!sti_supplier_fk(name, supplier_number), supplier_tax_invoice_items!stii_invoice_fk(*), supplier_tax_invoice_pos!stip_invoice_fk(id, po_id, active, po_subtotal, expense_id, prev_invoice_no, stamped_invoice_no, purchase_orders!stip_po_fk(id, po_number, date, site_id, supplier_id, status))')
+      .select('*, suppliers!sti_supplier_fk(name, supplier_number), supplier_tax_invoice_items!stii_invoice_fk(id, sort_order, description, amount), supplier_tax_invoice_pos!stip_invoice_fk(id, po_id, active, po_subtotal, expense_id, prev_invoice_no, stamped_invoice_no, purchase_orders!stip_po_fk(id, po_number, date, site_id, supplier_id, status))')
       .order('invoice_date', { ascending: false })
       .order('id', { ascending: false })
     if (filters.supplierId) q = q.eq('supplier_id', filters.supplierId)
     if (filters.status) q = q.eq('status', filters.status)
     return q
   }), [JSON.stringify(filters)])
+  return { ...r, notReady: isTaxInvoiceNotReady(r.error) }
+}
+
+/** One invoice with every item column (for the edit form). data = row | null. */
+export function useSupplierTaxInvoice(id) {
+  const r = useQuery(async () => {
+    if (!id) return null
+    const { data, error } = await supabase.from('supplier_tax_invoices')
+      .select('*, supplier_tax_invoice_items!stii_invoice_fk(*), supplier_tax_invoice_pos!stip_invoice_fk(id, po_id, active, po_subtotal, expense_id, prev_invoice_no, stamped_invoice_no)')
+      .eq('id', id).maybeSingle()
+    if (error) throw error
+    return data
+  }, [id])
+  return { ...r, notReady: isTaxInvoiceNotReady(r.error) }
 }
 
 /** data: Map<po_id,{invoice_id, invoice_no, status}>, or null while loading / before the migration. */
@@ -1786,7 +1803,7 @@ export function useActiveTaxInvoiceLinks() {
     .eq('active', true)
     .order('id')), [])
   const map = useMemo(() => (data ? buildActiveLinkMap(data) : null), [data])
-  return { data: map, error, refetch }
+  return { data: map, error, refetch, notReady: isTaxInvoiceNotReady(error) }
 }
 
 async function rpcOrThrow(name, args) {

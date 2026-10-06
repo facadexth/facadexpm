@@ -4,6 +4,7 @@
 export function buildActiveLinkMap(rows) {
   const m = new Map()
   for (const r of rows || []) {
+    if (r.active === false) continue // void / relinked rows never count (the hook also filters server-side)
     m.set(r.po_id, { invoice_id: r.invoice_id, invoice_no: r.supplier_tax_invoices?.invoice_no || '', status: r.supplier_tax_invoices?.status || '' })
   }
   return m
