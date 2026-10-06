@@ -22,8 +22,8 @@ File 02 depends on 01, so dry-run it inside the same transaction as 01 (concaten
 - Verified read-only against the live schema: `expenses` columns/status values, no CHECK against negative amounts, existing `record_stock_movement` matched migration 2026-09-05-15, tenant_id on the referenced tables.
 - **Not verified:** that either migration applies (e.g. constraint name `stock_movements_movement_type_check` on CHANG, default grants), the RPCs/triggers under the real `authenticated` role, every UI flow (create/edit/confirm/void/settle, draft delete, Expenses lock, PEAK modal, PO prefill) in a browser, and **importing the produced files into PEAK** (price-type codes, tax-rate values, journal layout, contact matching).
 
-## Open item to decide
-- `src/App.jsx:74` nav entry for the credit-note page lacks `permKey: 'purchase_orders'`, so a role whose purchase-orders page permission is "none" still sees the tab (read-only list; actions are hidden). One-line fix: add `permKey: 'purchase_orders'` to that entry.
+## Resolved after the final review
+- Nav entry for the credit-note page now has `permKey: 'purchase_orders'` (src/App.jsx:74), so it inherits the purchase-orders page permission.
 
 ## Deliberately left out
 Income/invoice PEAK export, DBD tax-ID lookup (suppliers have empty `tax_id`/`branch_no`/`peak_contact_no` to fill by hand until then), editable PEAK constants 212101/115401, backfilling past returns, "create from expense" entry point (only from a received PO).

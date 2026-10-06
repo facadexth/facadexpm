@@ -71,8 +71,8 @@ const TABS = [
   { label: '💸 รายจ่าย', children: [
     { id: 'expenses',        label: '📊 ภาพรวม',       minRole: 'ADMIN', module: null },
     { id: 'purchase_orders', label: '🧾 ใบสั่งซื้อ',   minRole: 'ADMIN', module: 'purchase_orders' },
-    { id: 'supplier_credit_notes', label: '↩️ ใบลดหนี้ซัพพลายเออร์', minRole: 'ADMIN', module: 'purchase_orders' },
-    { id: 'cheques',         label: '🏦 เช็ค',         minRole: 'ADMIN', module: 'cheque_tracking' },
+    { id: 'supplier_credit_notes', label: '↩️ ใบลดหนี้ซัพพลายเออร์', minRole: 'ADMIN', module: 'purchase_orders', permKey: 'purchase_orders' },
+    { id: 'cheques',        label: '🏦 เช็ค',         minRole: 'ADMIN', module: 'cheque_tracking' },
   ] },
   { id: 'inventory',       label: '📦 คลังสินค้า',   minRole: 'ADMIN', module: 'purchase_orders' },
   { label: '🧮 ประเมินราคา', children: [
