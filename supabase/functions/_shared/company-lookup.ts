@@ -107,7 +107,7 @@ export function budgetOutcome(raw: unknown): { ok: boolean; code: BudgetCode; me
   const result = budgetStatus(raw)
   if (result === 'ok') return { ok: true, code: 'ok', message: '' }
   if (result === 'tenant_cap') {
-    return { ok: false, code: 'tenant_cap', message: 'ใช้ค้นหาอัตโนมัติครบโควตาของวันนี้แล้ว ลองใหม่พรุ่งนี้ หรือใช้ปุ่ม "ค้นหาใน DBD" แล้ววางข้อความแทน' }
+    return { ok: false, code: 'tenant_cap', message: 'ใช้ค้นหาอัตโนมัติครบโควตาของวันนี้แล้ว ลองใหม่พรุ่งนี้ หรือใช้ปุ่ม "ค้นหาใน DBD" เปิดเว็บ DBD แล้วกรอกเอง' }
   }
   if (result === 'global_cap') {
     return { ok: false, code: 'global_cap', message: 'ระบบค้นหาอัตโนมัติถึงขีดจำกัดรวมของวันนี้แล้ว ลองใหม่พรุ่งนี้ หรือใช้ปุ่ม "ค้นหาใน DBD" แทน' }
@@ -120,7 +120,58 @@ export function lookupOutcome(stopReason: unknown, candidateCount: number): 'ok'
   if (candidateCount > 0) return 'ok'
   return stopReason === 'pause_turn' || stopReason === 'max_tokens' ? 'incomplete' : 'not_found'
 }
-export const INCOMPLETE_MESSAGE = 'ค้นหาไม่เสร็จ ลองใหม่หรือใช้การวางข้อความ'
+// ---- statistics (table company_lookup_stats, migration 2026-10-08-04) -----
+// EDITABLE price constants for the cost estimate (USD). Source: platform.claude.com pricing page.
+export const PRICE_PER_SEARCH_USD = 0.01
+export const PRICE_INPUT_PER_MTOK_USD = 2
+export const PRICE_OUTPUT_PER_MTOK_USD = 10
+
+export function estimateCostUsd(u: { searches?: number; inputTokens?: number; outputTokens?: number }): number {
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0)
+  const usd = n(u.searches) * PRICE_PER_SEARCH_USD
+    + (n(u.inputTokens) / 1_000_000) * PRICE_INPUT_PER_MTOK_USD
+    + (n(u.outputTokens) / 1_000_000) * PRICE_OUTPUT_PER_MTOK_USD
+  return Math.round(usd * 100000) / 100000
+}
+
+// Distinct allowlisted hostnames of the KEPT sources only (never names/IDs/addresses).
+export function statsDomains(candidates: Array<{ sources?: Array<{ url?: string }> }>, allowed: string[] = ALLOWED_DOMAINS): string[] {
+  const hosts = new Set<string>()
+  for (const c of Array.isArray(candidates) ? candidates : []) {
+    for (const s of c?.sources ?? []) {
+      if (allowedDomainOf(s?.url, allowed)) hosts.add(new URL(s.url as string).hostname.toLowerCase())
+    }
+  }
+  return [...hosts].sort()
+}
+
+export type StatsOutcome = 'found' | 'not_found' | 'incomplete' | 'error'
+export function buildStatsRow(a: {
+  tenantId: string
+  day: string
+  outcome: StatsOutcome
+  candidates?: Array<{ verification?: string; sources?: Array<{ url?: string }> }>
+  searches?: number | null
+  inputTokens?: number | null
+  outputTokens?: number | null
+}) {
+  const cands = a.candidates ?? []
+  const known = a.searches != null || a.inputTokens != null || a.outputTokens != null
+  return {
+    tenant_id: a.tenantId,
+    day: a.day,
+    outcome: a.outcome,
+    candidates_kept: cands.length,
+    web_search_requests: a.searches ?? null,
+    input_tokens: a.inputTokens ?? null,
+    output_tokens: a.outputTokens ?? null,
+    est_cost_usd: known ? estimateCostUsd({ searches: a.searches ?? 0, inputTokens: a.inputTokens ?? 0, outputTokens: a.outputTokens ?? 0 }) : null,
+    domains: statsDomains(cands),
+    multi_source: cands.some((c) => c.verification === 'multi_source'),
+  }
+}
+
+export const INCOMPLETE_MESSAGE = 'ค้นหาไม่เสร็จ ลองใหม่ หรือใช้ปุ่ม "ค้นหาใน DBD" แล้วกรอกเอง'
 
 // ---- digits / checksum (keep in sync with src/lib/dbdCompanyParse.js; a test enforces it)
 export function normalizeDigits(s: unknown): string {

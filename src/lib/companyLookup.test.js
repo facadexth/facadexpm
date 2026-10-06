@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  ALLOWED_DOMAINS, JSON_DELIMITER, budgetDay, shouldRefund, MAX_CONTINUATIONS, MAX_SEARCHES, allowedDomainOf, budgetOutcome, buildLookupRequest,
+  ALLOWED_DOMAINS, JSON_DELIMITER, budgetDay, shouldRefund, estimateCostUsd, statsDomains, buildStatsRow,
+  PRICE_PER_SEARCH_USD, PRICE_INPUT_PER_MTOK_USD, PRICE_OUTPUT_PER_MTOK_USD, MAX_CONTINUATIONS, MAX_SEARCHES, allowedDomainOf, budgetOutcome, buildLookupRequest,
   candidatesFromContent, cleanCompanyName, collectEvidence, companyNameCore, isValidThaiId13 as serverValid,
   lookupOutcome, normalizeDigits as serverNorm, parseCandidatesJson, textContainsId, validateCandidates,
 } from '../../supabase/functions/_shared/company-lookup.ts'
@@ -121,6 +122,42 @@ describe('request + input + budget', () => {
     expect(lookupOutcome('max_tokens', 0)).toBe('incomplete')
     expect(lookupOutcome('end_turn', 0)).toBe('not_found')
     expect(lookupOutcome('pause_turn', 1)).toBe('ok')
+  })
+})
+
+describe('stats helpers', () => {
+  it('estimates cost from the editable price constants', () => {
+    expect(estimateCostUsd({ searches: 4, inputTokens: 0, outputTokens: 0 })).toBe(0.04)
+    expect(estimateCostUsd({ searches: 0, inputTokens: 1_000_000, outputTokens: 1_000_000 })).toBe(12)
+    expect(estimateCostUsd({ searches: 2, inputTokens: 30_000, outputTokens: 1_500 })).toBe(0.095)
+    expect(estimateCostUsd({})).toBe(0)
+    expect(estimateCostUsd({ searches: -3, inputTokens: NaN })).toBe(0)
+    expect(PRICE_PER_SEARCH_USD).toBe(0.01)
+    expect(PRICE_INPUT_PER_MTOK_USD).toBe(2)
+    expect(PRICE_OUTPUT_PER_MTOK_USD).toBe(10)
+  })
+  it('collects distinct allowlisted hostnames of kept sources only', () => {
+    const cands = [
+      { sources: [{ url: 'https://www.dbd.go.th/a' }, { url: 'https://www.dbd.go.th/b' }, { url: 'https://evil.example.com/x' }] },
+      { sources: [{ url: 'https://www.dataforthai.com/c' }, { url: 'http://dbd.go.th/insecure' }] },
+    ]
+    expect(statsDomains(cands)).toEqual(['www.dataforthai.com', 'www.dbd.go.th'])
+    expect(statsDomains([])).toEqual([])
+    expect(statsDomains(null)).toEqual([])
+  })
+  it('builds a row with no names, IDs or addresses', () => {
+    const row = buildStatsRow({
+      tenantId: 't1', day: '2026-10-08', outcome: 'found', searches: 2, inputTokens: 30000, outputTokens: 1500,
+      candidates: [{ name: 'บริษัท ลับ จำกัด', taxId: ID_A, address: 'ที่อยู่ลับ', verification: 'multi_source', sources: [{ url: 'https://www.dbd.go.th/a' }] }],
+    })
+    expect(row).toMatchObject({ tenant_id: 't1', day: '2026-10-08', outcome: 'found', candidates_kept: 1, web_search_requests: 2, est_cost_usd: 0.095, multi_source: true, domains: ['www.dbd.go.th'] })
+    const s = JSON.stringify(row)
+    expect(s).not.toContain('ลับ')
+    expect(s).not.toContain(ID_A)
+  })
+  it('error rows with unknown usage have null cost; not_found has no domains', () => {
+    expect(buildStatsRow({ tenantId: 't', day: 'd', outcome: 'error' })).toMatchObject({ est_cost_usd: null, web_search_requests: null, candidates_kept: 0, domains: [], multi_source: false })
+    expect(buildStatsRow({ tenantId: 't', day: 'd', outcome: 'not_found', searches: 3, inputTokens: 1000, outputTokens: 100 })).toMatchObject({ candidates_kept: 0, domains: [], est_cost_usd: 0.033 })
   })
 })
 

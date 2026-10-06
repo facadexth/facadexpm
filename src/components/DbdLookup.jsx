@@ -1,27 +1,27 @@
 // ============================================================
-// DbdLookup — ช่วยกรอกชื่อ/ที่อยู่/เลขผู้เสียภาษี จากหน้า DBD (กึ่งอัตโนมัติ)
-// 1) คัดลอกชื่อ + เปิด DBD  2) วางข้อความผลลัพธ์  3) ตรวจ/แก้ในพรีวิว แล้วกด "ใช้ข้อมูลนี้"
+// DbdLookup — ช่วยกรอกที่อยู่/เลขผู้เสียภาษี ของบริษัท
+// - "ค้นหาอัตโนมัติ (AI)": เรียก edge function lookup-company แล้วกรอกช่องว่างให้ทันที
+//   (ไม่บันทึกอะไรเอง) พร้อมแถบสรุป + ยกเลิก (คืนค่าเดิม)
+// - "ค้นหาใน DBD": เปิดเว็บ DBD แท็บใหม่ และคัดลอกชื่อที่พิมพ์ไว้ให้
 // ============================================================
 import { useRef, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { safeSourceUrl, computeAutofill } from '../lib/companyLookupUi.js'
-import { parseDbdText, isValidThaiId13, normalizeDigits } from '../lib/dbdCompanyParse.js'
+import { isValidThaiId13 } from '../lib/dbdCompanyParse.js'
 
 const DBD_URL = 'https://datawarehouse.dbd.go.th/juristic'
 
 export default function DbdLookup({ name, address, taxId, onApply }) {
-  const [open, setOpen] = useState(false)
-  const [raw, setRaw] = useState('')
-  const [pv, setPv] = useState(null) // { name, address, taxId, multiple }
   const [aiBusy, setAiBusy] = useState(false)
   const [aiCands, setAiCands] = useState(null) // null = not run, [] = none found
   const [aiError, setAiError] = useState('')
   const [fill, setFill] = useState(null) // { cand, prev, skipped, nameSuggestion } after an auto-fill
+  const [dbdHint, setDbdHint] = useState(false)
   // latest form values, read inside async handlers (props captured at click time go stale)
   const curRef = useRef({})
   curRef.current = { name, address, taxId }
 
-  const AI_FAIL = 'ค้นหาอัตโนมัติไม่สำเร็จ — ใช้ปุ่ม "ค้นหาใน DBD" แล้ววางข้อความแทนได้'
+  const AI_FAIL = 'ค้นหาอัตโนมัติไม่สำเร็จ — ใช้ปุ่ม "ค้นหาใน DBD" เปิดเว็บ DBD แล้วกรอกเองได้'
   const searchAi = async () => {
     const q = (name || '').trim()
     if (q.length < 2) { setAiError('พิมพ์ชื่อบริษัทก่อน (อย่างน้อย 2 ตัวอักษร)'); return }
@@ -52,7 +52,7 @@ export default function DbdLookup({ name, address, taxId, onApply }) {
     const prev = {}
     for (const k of Object.keys(patch)) prev[k] = curRef.current[k] ?? ''
     if (Object.keys(patch).length) onApply(patch)
-    setRaw(''); setPv(null); setAiCands(null)
+    setAiCands(null)
     setFill({ cand: c, prev, skipped, nameSuggestion })
   }
   const takeAiValue = (key, value) => {
@@ -69,49 +69,13 @@ export default function DbdLookup({ name, address, taxId, onApply }) {
     setFill(null)
   }
 
+  // Plain helper: open DBD in a new tab, then copy the typed name (silent if refused).
   const openDbd = async () => {
     window.open(DBD_URL, '_blank', 'noopener,noreferrer')
-    setOpen(true)
+    setDbdHint(true)
     try {
       if (name && navigator.clipboard) await navigator.clipboard.writeText(name)
     } catch { /* silent */ }
-  }
-
-  const onPaste = text => {
-    setRaw(text)
-    if (!text.trim()) { setPv(null); return }
-    const r = parseDbdText(text)
-    setPv({ name: r.name || '', address: r.address || '', taxId: r.taxId || '', multiple: r.multiple })
-  }
-
-  const setField = (k, v) => setPv(p => ({ ...p, [k]: v }))
-  const idOk = pv?.taxId ? isValidThaiId13(pv.taxId) : null
-  const idLenOk = pv?.taxId ? normalizeDigits(pv.taxId).replace(/\D/g, '').length === 13 : true
-
-  const apply = () => {
-    onApply({
-      ...(pv.name.trim() ? { name: pv.name.trim() } : {}),
-      ...(pv.address.trim() ? { address: pv.address.trim() } : {}),
-      ...(pv.taxId.trim() ? { taxId: normalizeDigits(pv.taxId).replace(/\D/g, '') } : {}),
-    })
-    setPv(null); setRaw(''); setOpen(false); setAiCands(null)
-  }
-
-  const row = (label, key, current, extra) => {
-    const val = pv[key]
-    const replacing = current && val.trim() && current.trim() !== val.trim()
-    return (
-      <div key={key}>
-        <label className="label">{label}</label>
-        <input className="input" value={val} onChange={e => setField(key, e.target.value)} placeholder="ไม่พบในข้อความ — เว้นว่างไว้ = ไม่เปลี่ยน" />
-        {extra}
-        {replacing && (
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-            จะแทนที่ค่าเดิม: <span style={{ textDecoration: 'line-through' }}>{current}</span>
-          </div>
-        )}
-      </div>
-    )
   }
 
   return (
@@ -121,10 +85,12 @@ export default function DbdLookup({ name, address, taxId, onApply }) {
           {aiBusy ? 'กำลังค้นหา… (ประมาณ 10-30 วินาที)' : 'ค้นหาอัตโนมัติ (AI)'}
         </button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={openDbd}>ค้นหาใน DBD</button>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(o => !o)}>
-          {open ? '▾' : '▸'} วางข้อความจาก DBD
-        </button>
       </div>
+      {dbdHint && (
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>
+          เปิดเว็บ DBD ในแท็บใหม่แล้ว และคัดลอกชื่อที่พิมพ์ไว้ให้ — กดวาง (Ctrl+V) ในช่องค้นหาของ DBD ได้เลย
+        </div>
+      )}
       {aiError && <div style={{ fontSize: 12, color: '#dc2626', marginTop: 6 }}>{aiError}</div>}
       {fill && (() => {
         const c = fill.cand
@@ -173,7 +139,7 @@ export default function DbdLookup({ name, address, taxId, onApply }) {
       })()}
       {aiCands && aiCands.length === 0 && (
         <div style={{ fontSize: 12, color: '#b45309', marginTop: 6 }}>
-          ไม่พบบริษัทจากแหล่งที่เชื่อถือได้ — ลอง "ค้นหาใน DBD" แล้ววางข้อความแทน
+          ไม่พบบริษัทจากแหล่งที่เชื่อถือได้ — ลองใช้ปุ่ม "ค้นหาใน DBD" เปิดเว็บ DBD แล้วกรอกเอง
         </div>
       )}
       {aiCands && aiCands.length > 0 && (
@@ -201,33 +167,6 @@ export default function DbdLookup({ name, address, taxId, onApply }) {
               <div><button type="button" className="btn btn-ghost btn-sm" onClick={() => autofill(c)}>เลือกและกรอกให้</button></div>
             </div>
           ))}
-        </div>
-      )}
-      {(open || pv) && (
-        <div style={{ display: 'grid', gap: 8, marginTop: 8, padding: 10, border: '1px solid var(--border)', borderRadius: 8 }}>
-          <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-            วางชื่อในช่องค้นหาของ DBD เลือกบริษัท แล้วคัดลอกข้อความหน้าผลลัพธ์กลับมาวางที่นี่
-          </div>
-          <textarea className="input" rows={4} value={raw} onChange={e => onPaste(e.target.value)} placeholder="วางข้อความจาก DBD" />
-          {pv && (
-            <>
-              {pv.multiple && (
-                <div style={{ fontSize: 12, color: '#b45309' }}>พบหลายบริษัทในข้อความ — แสดงรายการแรก กรุณาตรวจสอบ</div>
-              )}
-              {!pv.name && !pv.address && !pv.taxId && (
-                <div style={{ fontSize: 12, color: '#b45309' }}>อ่านข้อมูลไม่ได้ — กรอกในช่องด้านล่างเองได้</div>
-              )}
-              {row('ชื่อบริษัท', 'name', name)}
-              {row('ที่อยู่', 'address', address)}
-              {row('เลขประจำตัวผู้เสียภาษี', 'taxId', taxId,
-                pv.taxId && (idOk && idLenOk
-                  ? <div style={{ fontSize: 12, color: '#16a34a' }}>✓ เลขถูกต้องตามสูตร</div>
-                  : <div style={{ fontSize: 12, color: '#dc2626' }}>เลขไม่ถูกต้องตามสูตร</div>))}
-              <div>
-                <button type="button" className="btn btn-primary btn-sm" onClick={apply}>ใช้ข้อมูลนี้</button>
-              </div>
-            </>
-          )}
         </div>
       )}
     </div>

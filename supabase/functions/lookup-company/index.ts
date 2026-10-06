@@ -18,7 +18,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
   budgetDay, budgetOutcome, buildLookupRequest, candidatesFromContent, cleanCompanyName,
-  INCOMPLETE_MESSAGE, lookupOutcome, MAX_CONTINUATIONS, shouldRefund,
+  buildStatsRow, INCOMPLETE_MESSAGE, lookupOutcome, MAX_CONTINUATIONS, shouldRefund,
 } from '../_shared/company-lookup.ts'
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')!
@@ -89,6 +89,16 @@ async function runSearch(name: string, deadline: number): Promise<SearchResult> 
   return { ok: true, content, stopReason, continuations, inputTokens, outputTokens, searchRequests }
 }
 
+// One stats row per paid attempt. Never fails the lookup. No names, IDs or addresses.
+async function recordStats(admin: ReturnType<typeof createClient>, row: ReturnType<typeof buildStatsRow>) {
+  try {
+    const { error } = await admin.from('company_lookup_stats').insert(row)
+    if (error) console.error('company_lookup_stats insert failed', (error as { code?: string }).code ?? 'unknown')
+  } catch (e) {
+    console.error('company_lookup_stats insert threw', String(e).slice(0, 200))
+  }
+}
+
 async function refund(admin: ReturnType<typeof createClient>, r: { tenant: string; day: string | null }) {
   try {
     const { error } = await admin.rpc('refund_company_lookup', { p_tenant: r.tenant, p_day: r.day ?? new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10) })
@@ -136,11 +146,15 @@ Deno.serve(async (req) => {
     reservedFor = { tenant: tenantId, day: reservedDay }
     callStarted = true
 
+    const statsDay = reservedDay ?? new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10)
     const r = await runSearch(name, Date.now() + 50_000)
     if (!r.ok) {
       if (r.refundable) {
         // Anthropic certainly did not bill (non-2xx / non-timeout fetch failure): give it back
         await refund(admin, reservedFor)
+      } else {
+        // billed or possibly billed (timeout, unparseable 200, failure after a response): usage unknown
+        await recordStats(admin, buildStatsRow({ tenantId, day: statsDay, outcome: 'error' }))
       }
       reservedFor = null
       const msg = r.code === 'search_disabled' ? 'บริการค้นหายังไม่เปิดใช้' : 'ระบบค้นหาขัดข้อง ลองใหม่ภายหลัง หรือใช้ปุ่ม "ค้นหาใน DBD" แทน'
@@ -160,6 +174,10 @@ Deno.serve(async (req) => {
     }))
 
     const outcome = lookupOutcome(r.stopReason, candidates.length)
+    await recordStats(admin, buildStatsRow({
+      tenantId, day: statsDay, outcome: outcome === 'ok' ? 'found' : outcome, candidates,
+      searches: r.searchRequests, inputTokens: r.inputTokens, outputTokens: r.outputTokens,
+    }))
     if (outcome === 'incomplete') return json({ error: INCOMPLETE_MESSAGE, code: 'incomplete' }, 200)
     return json({ candidates })
   } catch (e) {

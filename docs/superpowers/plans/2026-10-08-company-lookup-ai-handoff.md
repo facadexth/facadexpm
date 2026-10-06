@@ -3,7 +3,8 @@
 Branch `feat/dbd-company-lookup`. Nothing here has been run against the real Anthropic API, and the migration is NOT applied.
 
 ## What it does
-In the supplier and client forms, `DbdLookup` has a new button "ค้นหาอัตโนมัติ (AI)" next to "ค้นหาใน DBD" (the paste flow stays as the fallback).
+In the supplier and client forms, `DbdLookup` has the button "ค้นหาอัตโนมัติ (AI)" next to "ค้นหาใน DBD". The old "วางข้อความจาก DBD" paste flow and its parser were REMOVED; "ค้นหาใน DBD" is now only a helper that opens DBD in a new tab and copies the typed name. `src/lib/dbdCompanyParse.js` keeps only `isValidThaiId13` and `normalizeDigits`.
+One click on the AI button fills the EMPTY form fields (tax ID, address) immediately, keeps the typed name (offers "ใช้ชื่อนี้"), lists non-empty fields it did not overwrite (with "ใช้ค่าจาก AI แทน"), and shows a banner with an undo ("ยกเลิก (คืนค่าเดิม)"). Nothing is saved until the form's own บันทึก.
 It calls the edge function `lookup-company` with `{name}`. The function asks Claude (`claude-sonnet-5-5`) to search the web with the web search tool restricted to an allowlist, and returns up to 3 candidates `{name, address, taxId, taxIdValid, verification, sources[]}`.
 The user picks one candidate. It feeds the existing editable preview, and the form is only filled after "ใช้ข้อมูลนี้". Nothing is auto-filled. The AI address is labelled "ที่อยู่จาก AI — ตรวจก่อนใช้" (it is not verified by the server).
 
@@ -15,7 +16,7 @@ Server-side trust rules (all in `supabase/functions/_shared/company-lookup.ts`, 
 3. That same citation's `cited_text` or `title` must contain the company-name core (name minus บริษัท / จำกัด / (มหาชน) / ห้างหุ้นส่วน… / หจก. / บจก., whitespace, Thai digits and case normalised), otherwise it is dropped. This stops an ID cited for another company.
 4. `sources` are built by the server from those citations only. URLs the model wrote itself are ignored.
 5. `multi_source` = qualifying citations from 2+ distinct allowlisted domains, otherwise `single_source`.
-6. Final `stop_reason` of `pause_turn` or `max_tokens` with no candidates returns code `incomplete` (Thai "ค้นหาไม่เสร็จ ลองใหม่หรือใช้การวางข้อความ"), not "not found".
+6. Final `stop_reason` of `pause_turn` or `max_tokens` with no candidates returns code `incomplete` (Thai "ค้นหาไม่เสร็จ ลองใหม่ หรือใช้ปุ่ม "ค้นหาใน DBD" แล้วกรอกเอง"), not "not found".
 Gate (same as extract-po-document): JWT required (deployed WITH verification), `is_admin_or_owner()`, `tenant_can_write()`, `current_tenant_id()`, all via the caller's JWT; Thai 403. The Suppliers/Clients forms are only editable by ADMIN+ and are not behind a module key, so there is no `has_module_access` check. The AI button stays visible; a non-admin gets the Thai error.
 
 ## Budget (migration `supabase/migrations/2026-10-08-03-company-lookup-usage.sql`, NOT applied)
@@ -27,10 +28,30 @@ Gate (same as extract-po-document): JWT required (deployed WITH verification), `
 - Day = Bangkok date. The old count-after-success functions are gone (never applied).
 
 ## Release order
-1. Apply the migration, then diff the function ACLs against what is expected (a past restore lost function grants: see 2026-10-03-07). Check that `anon` and `authenticated` cannot EXECUTE the two functions or read the two tables.
-2. Confirm web search is enabled for the Anthropic org in the Claude Console (a disabled org gets 400 "web search is not enabled", which the function maps to "บริการค้นหายังไม่เปิดใช้"). The `ANTHROPIC_API_KEY` secret already exists.
-3. `npx supabase functions deploy lookup-company --project-ref kntspldhvcjeaubtqtkn --use-api` (NOT `--no-verify-jwt`).
-4. Build and deploy the web app.
+1. `2026-10-08-03-company-lookup-usage.sql` (budget). ALREADY APPLIED by the owner; do not edit it, put changes in a new migration. Diff the function ACLs against what is expected (a past restore lost function grants: see 2026-10-03-07).
+2. Apply `2026-10-08-04-company-lookup-stats.sql` (statistics table, NOT APPLIED yet). Check that `anon` and `authenticated` cannot read or insert it or use its sequence.
+3. Confirm web search is enabled for the Anthropic org in the Claude Console (a disabled org gets 400 "web search is not enabled", which the function maps to "บริการค้นหายังไม่เปิดใช้"). The `ANTHROPIC_API_KEY` secret already exists.
+4. Redeploy the function (it now writes stats rows; if the table is missing it only logs an error and the lookup still works): `npx supabase functions deploy lookup-company --project-ref kntspldhvcjeaubtqtkn --use-api` (NOT `--no-verify-jwt`).
+5. Build and deploy the web app.
+
+## Statistics (`company_lookup_stats`, migration 2026-10-08-04)
+One row per paid attempt, inserted by the edge function (service role) after the Anthropic response: outcome `found` / `not_found` / `incomplete`, or `error` only when the call was billed or possibly billed (not refunded; usage unknown, so tokens and cost are NULL). Columns: tenant_id, day (Bangkok), outcome, candidates_kept, web_search_requests, input_tokens, output_tokens, est_cost_usd, domains (allowlisted hostnames of the kept citations), multi_source. No names, tax IDs or addresses are stored. A failed insert is logged and never fails the lookup. Cost comes from editable constants in `_shared/company-lookup.ts` ($0.01 per search, $2/M input, $10/M output).
+Owner queries (run in the SQL editor as service role; there is deliberately no client-readable view):
+```sql
+-- lookups and estimated cost per day
+select day, count(*) as lookups, sum(est_cost_usd) as est_cost_usd
+from company_lookup_stats group by day order by day desc;
+-- total estimated cost
+select sum(est_cost_usd) as total_est_cost_usd, count(*) as lookups from company_lookup_stats;
+-- which sites answer (kept citations)
+select d as domain, count(*) as lookups
+from company_lookup_stats, unnest(domains) as d group by d order by lookups desc;
+-- found vs not_found rate
+select outcome, count(*) as n, round(100.0 * count(*) / sum(count(*)) over (), 1) as pct
+from company_lookup_stats group by outcome order by n desc;
+-- how often 2+ sources agree
+select multi_source, count(*) from company_lookup_stats where outcome = 'found' group by multi_source;
+```
 
 ## Allowlist (single editable constant `ALLOWED_DOMAINS`)
 `dbd.go.th` (includes datawarehouse.dbd.go.th), `rd.go.th`, `set.or.th`, `sec.or.th`, `dataforthai.com`. Subdomains are included automatically; https only. No wildcards or schemes (the API rejects them); keep ASCII-only. The browser mirror is `src/lib/companyLookupUi.js` (source links render only for https + allowlist); a test keeps both in sync.
