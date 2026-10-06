@@ -9,6 +9,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { fetchAllRows } from '../lib/fetchAllRows.js'
 import { useSites, useLaborCost, useClients, useSeatStatus, useCategories, useSiteCostEstimates, saveSiteCostEstimates, usePhaseTasks } from '../hooks/useSupabase.js'
 import GanttView from './sites/GanttView.jsx'
 import { summarizeTasks } from './sites/phaseTasksCalc.js'
@@ -389,12 +390,15 @@ function SiteCompleteModal({ site, onClose, onDone }) {
   const [error, setError] = useState(null)
 
   const loadRows = async () => {
-    const { data, error: err } = await supabase
-      .from('inventory_stock_balances')
-      .select('inventory_item_id, quantity_on_hand, inventory_items(name, base_unit)')
-      .eq('site_id', site.id)
-      .gt('quantity_on_hand', 0)
-    if (err) { setError(err.message); return }
+    let data
+    try {
+      data = await fetchAllRows(() => supabase
+        .from('inventory_stock_balances')
+        .select('inventory_item_id, quantity_on_hand, inventory_items(name, base_unit)')
+        .eq('site_id', site.id)
+        .gt('quantity_on_hand', 0)
+        .order('inventory_item_id'))
+    } catch (err) { setError(err.message); return }
     setRows((data || []).map(r => ({
       inventory_item_id: r.inventory_item_id,
       name: r.inventory_items?.name,

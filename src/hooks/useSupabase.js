@@ -4,6 +4,7 @@
 // ============================================================
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { fetchAllRows } from '../lib/fetchAllRows.js'
 import { applyDateFilter } from '../lib/expenseFilters.js'
 import { buildUnitSeedRows, VAT_RATE } from '../lib/invoiceCalc.js'
 import { validateExtraction, blobToBase64 } from '../lib/poDocumentExtraction.js'
@@ -30,26 +31,6 @@ export function useQuery(queryFn, deps = []) {
   useEffect(() => { fetch() }, [fetch])
 
   return { data, loading, error, refetch: fetch }
-}
-
-/**
- * Supabase/PostgREST caps a single response at 1000 rows by default.
- * This walks `.range()` pages until a short page signals the end, so
- * list hooks return every matching row instead of silently truncating
- * past row 1000. `buildQuery` must return a fresh query each call
- * (query builders can't be re-awaited after their first request).
- */
-async function fetchAllRows(buildQuery, pageSize = 1000) {
-  let allRows = []
-  let from = 0
-  while (true) {
-    const { data, error } = await buildQuery().range(from, from + pageSize - 1)
-    if (error) throw error
-    allRows = allRows.concat(data)
-    if (!data || data.length < pageSize) break
-    from += pageSize
-  }
-  return allRows
 }
 
 // ── Sites ────────────────────────────────────────────────────
@@ -257,12 +238,13 @@ export function useCreditNoteExpenseIds() {
 export function useInventoryOnHand(siteId) {
   return useQuery(async () => {
     if (!siteId) return {}
-    const { data, error } = await supabase
+    // a big site has > 1000 balance rows: paginate or on-hand silently reads 0 for dropped items
+    const data = await fetchAllRows(() => supabase
       .from('inventory_stock_balances')
       .select('inventory_item_id, quantity_on_hand')
       .eq('site_id', siteId)
-    if (error) throw error
-    return Object.fromEntries((data || []).map(r => [r.inventory_item_id, Number(r.quantity_on_hand)]))
+      .order('inventory_item_id'))
+    return Object.fromEntries(data.map(r => [r.inventory_item_id, Number(r.quantity_on_hand)]))
   }, [siteId])
 }
 
