@@ -25,7 +25,8 @@ const NAME_LABEL = /^ชื่อ(?:นิติบุคคล|บริษั�
 const ADDR_LABEL = /^(?:ที่ตั้งสำนักงานแห่งใหญ่|ที่อยู่สำนักงานแห่งใหญ่|ที่ตั้ง|ที่อยู่)\s*[:：]?\s*(.*)$/
 const KNOWN_LABELS = /^(?:ชื่อ(?:นิติบุคคล|บริษัท)?|เลขทะเบียน|เลขที่ทะเบียน|เลขประจำตัว|สถานะ|ทุนจดทะเบียน|ทุน|วันที่จดทะเบียน|วันที่|ประเภท|หมวด|วัตถุประสงค์|กรรมการ|ผู้มีอำนาจ|งบการเงิน|เบอร์|โทร|อีเมล|เว็บไซต์|ขนาดธุรกิจ|ปีที่)/
 const GENERIC_LABEL = /^[^\s:：][^:：]{0,40}[:：]/
-const ID_RE = /(?<!\d)(\d(?:[\s-]?\d){12})(?!\d)/g
+// 13 หลักติดกัน หรือจัดกลุ่มแบบไทย 1-4-5-2-1 (คั่นด้วยช่องว่างหรือ - เดียว); ห้ามขึ้นต้นกลางเลขที่ยาวกว่า/ต่อท้ายด้วยตัวเลข
+const ID_RE = /(?<!\d-?)(\d{13}|\d[ -]\d{4}[ -]\d{5}[ -]\d{2}[ -]\d)(?!-?\d)/g
 
 const ID_LINE = new RegExp(ID_RE.source)
 
@@ -75,8 +76,8 @@ function findIds(lines) {
   const labeled = []
   const all = []
   lines.forEach((l, i) => {
-    const isLabel = /เลขทะเบียน|เลขที่ทะเบียน|เลขประจำตัว|นิติบุคคลเลขที่|tax/i.test(l)
-    const scan = isLabel && !new RegExp(ID_RE.source).test(l) ? l + ' ' + (lines[i + 1] || '') : l
+    const isLabel = /เลขทะเบียน|เลขที่ทะเบียน|เลขประจำตัว|นิติบุคคลเลขที่/.test(l)
+    const scan = isLabel && !ID_LINE.test(l) ? l + ' ' + (lines[i + 1] || '') : l
     for (const m of scan.matchAll(ID_RE)) {
       const id = m[1].replace(/[\s-]/g, '')
       if (!all.includes(id)) all.push(id)
@@ -86,6 +87,7 @@ function findIds(lines) {
   return { labeled, all }
 }
 
+const MAX_ADDR = 400
 const ADDR_HEURISTIC = /(?:ตำบล|แขวง|ต\.)[\s\S]*(?:อำเภอ|เขต|อ\.)[\s\S]*(?:จังหวัด|จ\.|กรุงเทพ)[\s\S]*(?<!\d)\d{5}(?!\d)/
 
 function findAddress(lines) {
@@ -101,10 +103,10 @@ function findAddress(lines) {
       parts.push(l)
     }
     const addr = parts.join(' ').replace(/\s+/g, ' ').trim()
-    if (addr) return addr
+    if (addr) return addr.slice(0, MAX_ADDR)
   }
   const h = lines.find(l => l.length <= 300 && ADDR_HEURISTIC.test(l))
-  return h ? h.replace(ADDR_LABEL, '$1').trim() : null
+  return h ? h.replace(ADDR_LABEL, '$1').trim().slice(0, MAX_ADDR) : null
 }
 
 // คืน { name, address, taxId, taxIdValid, multiple } — ค่าที่หาไม่เจอเป็น null
@@ -112,15 +114,16 @@ export function parseDbdText(text) {
   const out = { name: null, address: null, taxId: null, taxIdValid: null, multiple: false }
   try {
     if (!text || typeof text !== 'string') return out
-    const lines = cleanLines(text)
+    const lines = cleanLines(text.slice(0, 50000))
     const names = findNames(lines)
     const { labeled, all } = findIds(lines)
     out.name = names[0] || null
-    const ids = labeled.length ? labeled : all
+    const valid = all.filter(isValidThaiId13)
+    const ids = [...labeled.filter(isValidThaiId13), ...valid, ...labeled, ...all]
     out.taxId = ids[0] || null
     out.taxIdValid = out.taxId ? isValidThaiId13(out.taxId) : null
     out.address = findAddress(lines)
-    out.multiple = names.length > 1 || all.length > 1
+    out.multiple = names.length > 1 || valid.length > 1
   } catch {
     // never throw
   }

@@ -90,7 +90,7 @@ function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
             <label className="label">ชื่อ Supplier / บริษัท ★</label>
             <input className="input" required value={form.name} onChange={e => set('name', e.target.value)} placeholder="เช่น บริษัท กระจกไทย จำกัด" />
             <DbdLookup name={form.name} address={form.address} taxId={form.tax_id}
-              onApply={r => setForm(f => ({ ...f, ...(r.name ? { name: r.name } : {}), ...(r.address ? { address: r.address } : {}), ...(r.taxId ? { tax_id: r.taxId.slice(0, 13) } : {}) }))} />
+              onApply={r => setForm(f => ({ ...f, ...(r.name ? { name: r.name } : {}), ...(r.address ? { address: r.address } : {}), ...(r.taxId ? { tax_id: r.taxId } : {}) }))} />
           </div>
           <div>
             <label className="label">ชื่อผู้ติดต่อ</label>

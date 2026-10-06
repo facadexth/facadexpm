@@ -3,7 +3,7 @@
 // 1) คัดลอกชื่อ + เปิด DBD  2) วางข้อความผลลัพธ์  3) ตรวจ/แก้ในพรีวิว แล้วกด "ใช้ข้อมูลนี้"
 // ============================================================
 import { useState } from 'react'
-import { parseDbdText, isValidThaiId13 } from '../lib/dbdCompanyParse.js'
+import { parseDbdText, isValidThaiId13, normalizeDigits } from '../lib/dbdCompanyParse.js'
 
 const DBD_URL = 'https://datawarehouse.dbd.go.th/juristic'
 
@@ -13,11 +13,11 @@ export default function DbdLookup({ name, address, taxId, onApply }) {
   const [pv, setPv] = useState(null) // { name, address, taxId, multiple }
 
   const openDbd = async () => {
+    window.open(DBD_URL, '_blank', 'noopener,noreferrer')
+    setOpen(true)
     try {
       if (name && navigator.clipboard) await navigator.clipboard.writeText(name)
     } catch { /* silent */ }
-    window.open(DBD_URL, '_blank', 'noopener,noreferrer')
-    setOpen(true)
   }
 
   const onPaste = text => {
@@ -29,12 +29,13 @@ export default function DbdLookup({ name, address, taxId, onApply }) {
 
   const setField = (k, v) => setPv(p => ({ ...p, [k]: v }))
   const idOk = pv?.taxId ? isValidThaiId13(pv.taxId) : null
+  const idLenOk = pv?.taxId ? normalizeDigits(pv.taxId).replace(/\D/g, '').length === 13 : true
 
   const apply = () => {
     onApply({
       ...(pv.name.trim() ? { name: pv.name.trim() } : {}),
       ...(pv.address.trim() ? { address: pv.address.trim() } : {}),
-      ...(pv.taxId.trim() ? { taxId: pv.taxId.replace(/\D/g, '') } : {}),
+      ...(pv.taxId.trim() ? { taxId: normalizeDigits(pv.taxId).replace(/\D/g, '') } : {}),
     })
     setPv(null); setRaw(''); setOpen(false)
   }
@@ -81,7 +82,7 @@ export default function DbdLookup({ name, address, taxId, onApply }) {
               {row('ชื่อบริษัท', 'name', name)}
               {row('ที่อยู่', 'address', address)}
               {row('เลขประจำตัวผู้เสียภาษี', 'taxId', taxId,
-                pv.taxId && (idOk
+                pv.taxId && (idOk && idLenOk
                   ? <div style={{ fontSize: 12, color: '#16a34a' }}>✓ เลขถูกต้องตามสูตร</div>
                   : <div style={{ fontSize: 12, color: '#dc2626' }}>เลขไม่ถูกต้องตามสูตร</div>))}
               <div>

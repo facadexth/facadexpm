@@ -108,4 +108,51 @@ describe('parseDbdText', () => {
   it('does not take a 14-digit run as an ID', () => {
     expect(parseDbdText('เลขทะเบียน 01055640000123').taxId).toBeNull()
   })
+
+  describe('ID candidate hardening', () => {
+    it('real anchors are valid', () => {
+      for (const id of ['0107544000108', '0107542000011', '0107536000633', '0107537000114']) {
+        expect(isValidThaiId13(id)).toBe(true)
+        expect(parseDbdText('เลขทะเบียนนิติบุคคล ' + id).taxId).toBe(id)
+      }
+    })
+    it('accepts Thai grouping 1-4-5-2-1 with spaces or hyphens', () => {
+      expect(parseDbdText('เลขทะเบียน 0 1075 44000 10 8').taxId).toBe('0107544000108')
+      expect(parseDbdText('เลขทะเบียน 0-1075-44000-10-8').taxId).toBe('0107544000108')
+    })
+    it('does not join postcode + date into an ID', () => {
+      const r = parseDbdText('กรุงเทพมหานคร 10110 2024-01-01 วันที่จดทะเบียน')
+      expect(r.taxId).toBeNull()
+    })
+    it('phone number does not beat the real ID', () => {
+      const r = parseDbdText('โทร 02-123-4567 ต่อ 89\nเลขทะเบียน: 0107544000108\nโทร 081 234 5678')
+      expect(r.taxId).toBe('0107544000108')
+    })
+    it('prefers a checksum-valid ID over an earlier invalid one', () => {
+      const r = parseDbdText('เลขอ้างอิง 1234567890123\nเลขทะเบียน 0107542000011')
+      expect(r.taxId).toBe('0107542000011')
+      expect(r.multiple).toBe(false)
+    })
+    it('ID hidden behind leading digits / long digit runs is not extracted', () => {
+      expect(parseDbdText('เลขทะเบียน 990107544000108').taxId).toBeNull()
+      expect(parseDbdText('เลขทะเบียน 01075440001089').taxId).toBeNull()
+      expect(parseDbdText('99 0107544000108').taxId).toBe('0107544000108')
+      expect(parseDbdText('081-0107544000108').taxId).toBeNull()
+      expect(parseDbdText('12345678901234567890').taxId).toBeNull()
+    })
+    it('stray "tax" text does not make an ID labelled', () => {
+      const r = parseDbdText('tax 0105564000013\nเลขทะเบียน 0107544000108')
+      expect(r.taxId).toBe('0107544000108')
+    })
+    it('multiple counts only distinct valid IDs', () => {
+      expect(parseDbdText('0107544000108 และ 1111111111111 กับ 2222222222222').multiple).toBe(false)
+      expect(parseDbdText('0107544000108 0107542000011').multiple).toBe(true)
+    })
+    it('caps address length and survives huge input', () => {
+      const r = parseDbdText('ที่ตั้ง: ' + 'ก'.repeat(2000))
+      expect(r.address.length).toBeLessThanOrEqual(400)
+      const big = parseDbdText('บริษัท ก จำกัด\n' + '1 '.repeat(300000))
+      expect(big.name).toBe('บริษัท ก จำกัด')
+    })
+  })
 })
