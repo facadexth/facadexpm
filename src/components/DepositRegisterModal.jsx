@@ -5,7 +5,11 @@ import { registerSupplierDeposit } from '../hooks/useSupabase.js'
 
 function mapError(err) {
   const msg = String(err?.message || '')
-  if (err?.code === '23505') return 'เลขที่ใบมัดจำนี้มีอยู่แล้ว'
+  if (err?.code === '23505') {
+    if (msg.includes('supplier_deposits_invoice_uq')) return 'เลขที่ใบมัดจำนี้มีอยู่แล้ว'
+    if (msg.includes('expense_id')) return 'รายจ่ายนี้ลงทะเบียนมัดจำไปแล้ว'
+    return 'ลงทะเบียนซ้ำ: เลขที่ใบมัดจำนี้มีอยู่แล้ว หรือรายจ่ายนี้ลงทะเบียนไปแล้ว'
+  }
   if (msg.includes('deposit_expense_needs_vat_split')) return 'รายจ่ายนี้ไม่มียอดก่อน VAT/VAT แยก ลงทะเบียนเป็นมัดจำไม่ได้'
   if (msg.includes('deposit_expense_needs_supplier')) return 'รายจ่ายนี้ยังไม่ระบุซัพพลายเออร์'
   if (msg.includes('deposit_expense_bad_split')) return 'ยอดก่อน VAT + VAT ไม่ตรงกับยอดรวมของรายจ่าย'
@@ -14,7 +18,7 @@ function mapError(err) {
 }
 
 export default function DepositRegisterModal({ expense, onClose, onSaved }) {
-  const [no, setNo] = useState(expense.invoice_no || '')
+  const [no, setNo] = useState('')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 

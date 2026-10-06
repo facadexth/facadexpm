@@ -677,7 +677,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                   <td style={{ maxWidth: 220 }}>
                     <div style={{ fontWeight: 500, fontSize: 13 }}>{e.description}</div>
                     {e.invoice_no && <div style={{ fontSize: 10, color: 'var(--text3)' }}>#{e.invoice_no}</div>}
-                    {depositOf(e.id) && (() => {
+                    {depositOf(e.id) && Number.isFinite(depositOf(e.id).used?.net) && Number.isFinite(depositOf(e.id).remaining?.net) && (() => {
                       const d = depositOf(e.id)
                       return (
                         <span className="badge" style={{ background: 'rgba(var(--accent-rgb), 0.15)', color: 'var(--accent)', fontSize: 10, marginTop: 2 }}>
@@ -742,7 +742,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                     )}
                     {canEdit && !isCnExpense(e.id) && !isDepositLocked(e.id) && (
                       <div className="actions-cell">
-                        {e.supplier_id && e.amount_no_vat != null && !e.po_id && !depositOf(e.id) && (
+                        {e.supplier_id && e.amount_no_vat != null && !e.po_id && !depositOf(e.id) && hasModuleAccess('purchase_orders') && (
                           <button className="btn btn-sm btn-ghost" onClick={() => setDepositRow(e)}>🏷️ ลงทะเบียนเป็นมัดจำ</button>
                         )}
                         <button className="btn btn-sm btn-edit" onClick={() => { setEditRow(e); setShowAdd(true) }}><PencilIcon /></button>
