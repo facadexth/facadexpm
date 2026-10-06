@@ -5,14 +5,14 @@
 // ✅ Client may only write DRAFT notes; every status change goes through the
 //    RPCs (see supabase/migrations/2026-10-06-0*.sql)
 // ============================================================
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase, fmt } from '../lib/supabase.js'
 import {
   useSupplierCreditNotes, useInventoryOnHand, useSuppliers, useSites,
   useCategories, usePurchaseOrders, useInventoryItems,
 } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
-import { takeCreditNotePrefill } from '../lib/creditNotePrefill.js'
+import { peekCreditNotePrefill, clearCreditNotePrefill } from '../lib/creditNotePrefill.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
@@ -72,7 +72,7 @@ function makeInitialForm(prefill, note) {
   return {
     supplier_id: p.supplier_id || '', site_id: p.site_id || '', doc_number: '',
     doc_date: bangkokTodayIso(), category_id: p.category_id || '', po_id: p.po_id || '',
-    vatEnabled: true, priceIncludesVat: false, notes: '',
+    vatEnabled: p.vatEnabled ?? true, priceIncludesVat: p.priceIncludesVat ?? false, notes: '',
     lines: p.items?.length
       ? p.items.map(i => ({
           inventory_item_id: i.inventory_item_id || '', description: i.description || '',
@@ -214,7 +214,8 @@ const SETTLEMENT_ORDER = ['owed', 'offset', 'refunded']
 
 export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
   // a PO row hands data over via the module holder; the prop overrides it
-  const [prefill] = useState(() => prefillProp || takeCreditNotePrefill())
+  const [prefill] = useState(() => prefillProp || peekCreditNotePrefill())
+  useEffect(() => { clearCreditNotePrefill() }, [])
   const [supplierFilter, setSupplierFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const { data: notes, loading, error, refetch } = useSupplierCreditNotes({ supplierId: supplierFilter, status: statusFilter })
