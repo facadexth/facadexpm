@@ -27,6 +27,8 @@ import { useTenant } from '../hooks/useTenant.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { auditLog } from '../lib/audit.js'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
+import { calcPoTotals, poLineTotal as lineTotal } from '../lib/poTotals.js'
+import { VAT_RATE } from '../lib/invoiceCalc.js'
 import ReceiveDepositBlock from '../components/ReceiveDepositBlock.jsx'
 import { mapReceiveRpcError, canConfirmReceive, PO_DEPOSIT_LOCKED_TEXT } from '../lib/receiveDeposits.js'
 import { setCreditNotePrefill, poItemToCreditLine } from '../lib/creditNotePrefill.js'
@@ -56,35 +58,6 @@ const PO_STATUS_LABELS = { draft: '📝 ร่าง (รอเติมข้�
 
 const EMPTY_ITEM = { description: '', quantity: '1', unit: '', unit_price: '', discount_pct: '0', inventory_item_id: '', aluminum_profile_id: '', rod_length_m: '', glass_width_m: '', glass_height_m: '' }
 const EMPTY_FORM = { site_id: '', supplier_id: '', category_id: '', date: '', has_vat: true, price_includes_vat: false, ordered_by: '', notes: '', deposit_deductions: [], items: [{ ...EMPTY_ITEM }] }
-
-function lineTotal(item) {
-  const gross = (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)
-  const discountPct = parseFloat(item.discount_pct) || 0
-  return gross * (1 - discountPct / 100)
-}
-
-const VAT_RATE = 0.07
-
-/**
- * priceIncludesVat: some suppliers quote a unit price that already
- * includes VAT. When true, the entered line-item prices ARE the grand
- * total — subtotal/VAT are backed out of it (subtotal = total / 1.07)
- * instead of VAT being added on top of the raw item sum.
- */
-function calcPoTotals(items, hasVat, priceIncludesVat) {
-  const rawTotal = (items || []).reduce((s, it) => s + (it.line_total != null ? it.line_total : lineTotal(it)), 0)
-  if (!hasVat) return { subtotal: rawTotal, vat: 0, total: rawTotal }
-  if (priceIncludesVat) {
-    const total = Math.round(rawTotal * 100) / 100
-    const subtotal = Math.round((total / (1 + VAT_RATE)) * 100) / 100
-    const vat = Math.round((total - subtotal) * 100) / 100
-    return { subtotal, vat, total }
-  }
-  const subtotal = rawTotal
-  const vat = Math.round(subtotal * VAT_RATE * 100) / 100
-  const total = Math.round((subtotal + vat) * 100) / 100
-  return { subtotal, vat, total }
-}
 
 const receiveTotals = po => { const { subtotal, vat } = calcPoTotals(po.purchase_order_items, po.has_vat, po.price_includes_vat); return { subtotal, vat } }
 
