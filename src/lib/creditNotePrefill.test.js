@@ -27,3 +27,22 @@ describe('poItemToCreditLine', () => {
     expect(poItemToCreditLine({ ...base, quantity: 'abc', unit_price: 50, line_total: 10 }).unit_price).toBe(50)
   })
 })
+
+describe('poItemToCreditLine with base-unit conversion', () => {
+  it('aluminium: 10 rods booked as 72 kg, money total unchanged', () => {
+    const l = poItemToCreditLine({ inventory_item_id: 'a', description: 'rod', quantity: 10, unit: 'เส้น', unit_price: 720, line_total: 7200 }, { baseQty: 72, baseUnit: 'kg' })
+    expect(l).toMatchObject({ quantity: 72, unit: 'kg', unit_price: 100 })
+  })
+  it('glass area', () => {
+    const l = poItemToCreditLine({ inventory_item_id: 'g', description: 'glass', quantity: 4, unit: 'แผ่น', unit_price: 300, line_total: 1200 }, { baseQty: 12, baseUnit: 'm2' })
+    expect(l).toMatchObject({ quantity: 12, unit: 'm2', unit_price: 100 })
+  })
+  it('plain unit factor with discount, no line_total', () => {
+    const l = poItemToCreditLine({ inventory_item_id: 'c', description: 'cement', quantity: 2, unit: 'ถุง', unit_price: 500, discount_pct: 10 }, { baseQty: 50, baseUnit: 'kg' })
+    expect(l).toMatchObject({ quantity: 50, unit: 'kg', unit_price: 18 })
+  })
+  it('non-stock line keeps raw quantity/unit', () => {
+    const l = poItemToCreditLine({ inventory_item_id: null, description: 'fee', quantity: 3, unit: 'งาน', unit_price: 100, line_total: 300 }, null)
+    expect(l).toMatchObject({ quantity: 3, unit: 'งาน', unit_price: 100 })
+  })
+})

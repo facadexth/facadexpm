@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, estimateSheetCount, computeInvoiceDeductionPlan, computeFinishedGoodsProductionPlan, resolveMovementReference, computeStockLedgerReport } from './inventoryCost.js'
+import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, estimateSheetCount, computeInvoiceDeductionPlan, computeFinishedGoodsProductionPlan, resolveMovementReference, computeStockLedgerReport, computePoItemBaseQty } from './inventoryCost.js'
 
 describe('computeWeightedAverageCost', () => {
   it('first receipt into an empty balance', () => {
@@ -537,5 +537,48 @@ describe('computeStockLedgerReport', () => {
       { date: '2026-09-05T10:00:00Z', type: 'sale_out', referenceType: 'invoice', referenceId: 'inv-1', notes: 'IN2609-001', qty: 5, unitCost: 100, value: 500, direction: 'out' },
       { date: '2026-09-10T10:00:00Z', type: 'sale_out', referenceType: null, referenceId: null, notes: 'IN2609-002', qty: 3, unitCost: 100, value: 300, direction: 'out' },
     ])
+  })
+})
+
+describe('computeStockLedgerReport purchase_return', () => {
+  const items = [{ id: 'rm', code: 'AL-1', name: 'อลูมิเนียม', base_unit: 'kg', item_kind: 'raw_material', category_id: null }]
+  const mv = (over) => ({ inventory_item_id: 'rm', movement_type: 'purchase_in', quantity: 10, unit_cost: 100, created_at: '2026-09-05T10:00:00Z', notes: null, ...over })
+  it('a purchase_return (stored positive) counts as OUT and reduces the balance', () => {
+    const rows = computeStockLedgerReport({
+      movements: [mv({}), mv({ movement_type: 'purchase_return', quantity: 4, created_at: '2026-09-10T10:00:00Z' })],
+      items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'all', categoryId: null,
+    })
+    expect(rows[0]).toMatchObject({ inQty: 10, outQty: 4, outValue: 400, closingQty: 6, closingValue: 600 })
+    expect(rows[0].movements.find(x => x.type === 'purchase_return').direction).toBe('out')
+  })
+  it('a purchase_return before dateFrom lowers the opening balance', () => {
+    const rows = computeStockLedgerReport({
+      movements: [mv({ created_at: '2026-08-01T10:00:00Z' }), mv({ movement_type: 'purchase_return', quantity: 3, created_at: '2026-08-05T10:00:00Z' })],
+      items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'all', categoryId: null,
+    })
+    expect(rows[0]).toMatchObject({ openingQty: 7, inQty: 0, outQty: 0, closingQty: 7 })
+  })
+})
+
+describe('computePoItemBaseQty', () => {
+  it('aluminium: rods x length x kg/m, explicit rod length wins', () => {
+    const profile = { default_length_m: 6, linear_weight_kg_per_m: 1.2 }
+    const inv = { unit_conversion_mode: 'aluminum_profile' }
+    expect(computePoItemBaseQty({ quantity: 10 }, inv, profile, null).baseQty).toBeCloseTo(72)
+    expect(computePoItemBaseQty({ quantity: 10, rod_length_m: 5 }, inv, profile, null).baseQty).toBeCloseTo(60)
+  })
+  it('aluminium without profile is unconverted', () => {
+    expect(computePoItemBaseQty({ quantity: 10 }, { unit_conversion_mode: 'aluminum_profile' }, null, null)).toEqual({ baseQty: 10, unconverted: true })
+  })
+  it('glass: sheets x width x height', () => {
+    const r = computePoItemBaseQty({ quantity: 4, glass_width_m: 1.5, glass_height_m: 2 }, { unit_conversion_mode: 'glass_dimension' }, null, null)
+    expect(r).toEqual({ baseQty: 12, unconverted: false })
+  })
+  it('plain unit factor, and no factor', () => {
+    expect(computePoItemBaseQty({ quantity: 3 }, { unit_conversion_mode: 'none' }, null, { factor_to_base: 25 }).baseQty).toBe(75)
+    expect(computePoItemBaseQty({ quantity: 3 }, { unit_conversion_mode: 'none' }, null, null).baseQty).toBe(3)
+  })
+  it('non-stock line (no inventory item) keeps quantity', () => {
+    expect(computePoItemBaseQty({ quantity: 3 }, null, null, null)).toEqual({ baseQty: 3, unconverted: false })
   })
 })

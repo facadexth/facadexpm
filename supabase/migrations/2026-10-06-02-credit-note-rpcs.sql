@@ -10,7 +10,6 @@ DECLARE
   v_tenant UUID := current_tenant_id();
   cn supplier_credit_notes%ROWTYPE;
   it RECORD;
-  v_wac NUMERIC;
   v_exp UUID;
 BEGIN
   IF NOT (is_admin_or_owner() AND has_module_access('purchase_orders')) THEN
@@ -26,11 +25,8 @@ BEGIN
   FOR it IN SELECT * FROM supplier_credit_note_items
             WHERE credit_note_id = p_id AND tenant_id = v_tenant
               AND inventory_item_id IS NOT NULL LOOP
-    SELECT weighted_average_cost INTO v_wac FROM inventory_stock_balances
-      WHERE inventory_item_id = it.inventory_item_id AND site_id = cn.site_id
-        AND tenant_id = v_tenant;
     PERFORM record_stock_movement(it.inventory_item_id, cn.site_id, 'purchase_return',
-      it.quantity, COALESCE(v_wac, 0), 'supplier_credit_note', p_id, 'ใบลดหนี้ ' || cn.doc_number);
+      it.quantity, NULL, 'supplier_credit_note', p_id, 'ใบลดหนี้ ' || cn.doc_number);
   END LOOP;
 
   INSERT INTO expenses (tenant_id, date, site_id, category_id, supplier_id, description,

@@ -29,12 +29,14 @@ CREATE TABLE supplier_credit_notes (
   settled_at          TIMESTAMPTZ,
   notes               TEXT,
   status              TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'confirmed', 'void')),
-  expense_id          UUID REFERENCES expenses(id) ON DELETE SET NULL,
+  expense_id          UUID REFERENCES expenses(id) ON DELETE RESTRICT,
   created_by          TEXT,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  confirmed_at        TIMESTAMPTZ,
-  UNIQUE (tenant_id, supplier_id, doc_number)
+  confirmed_at        TIMESTAMPTZ
 );
+-- Voided notes release their number for re-entry.
+CREATE UNIQUE INDEX scn_doc_number_active ON supplier_credit_notes (tenant_id, supplier_id, doc_number)
+  WHERE status <> 'void';
 CREATE INDEX idx_scn_tenant ON supplier_credit_notes(tenant_id);
 CREATE INDEX idx_scn_supplier ON supplier_credit_notes(supplier_id);
 
@@ -101,11 +103,11 @@ DECLARE
 BEGIN
   IF current_user = 'authenticated' THEN
     IF TG_OP IN ('UPDATE', 'DELETE') THEN
-      SELECT status INTO v_status FROM supplier_credit_notes WHERE id = OLD.credit_note_id;
+      SELECT status INTO v_status FROM supplier_credit_notes WHERE id = OLD.credit_note_id FOR SHARE;
       IF v_status IS DISTINCT FROM 'draft' THEN RAISE EXCEPTION 'credit_note_locked'; END IF;
     END IF;
     IF TG_OP IN ('INSERT', 'UPDATE') THEN
-      SELECT status INTO v_status FROM supplier_credit_notes WHERE id = NEW.credit_note_id;
+      SELECT status INTO v_status FROM supplier_credit_notes WHERE id = NEW.credit_note_id FOR SHARE;
       IF v_status IS DISTINCT FROM 'draft' THEN RAISE EXCEPTION 'credit_note_locked'; END IF;
     END IF;
   END IF;
@@ -231,7 +233,7 @@ BEGIN
     v_new_qty := v_old_qty - p_quantity;
     v_new_wac := v_old_wac;
     v_stored_qty := p_quantity;
-    v_stored_cost := COALESCE(p_unit_cost, v_old_wac);
+    v_stored_cost := v_old_wac; -- caller-supplied cost is ignored on returns
   ELSE -- transfer_out, sale_out
     v_new_qty := v_old_qty - p_quantity;
     v_new_wac := v_old_wac;
@@ -251,3 +253,5 @@ BEGIN
   RETURN QUERY SELECT v_movement_id, v_new_qty, v_new_wac;
 END;
 $$;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON supplier_credit_notes, supplier_credit_note_items TO authenticated;

@@ -248,7 +248,7 @@ export function computeStockLedgerReport({ movements, items, dateFrom, dateTo, i
   }
   const direction = (m) => {
     if (m.movement_type === 'purchase_in' || m.movement_type === 'transfer_in' || m.movement_type === 'sale_reversal') return 'in'
-    if (m.movement_type === 'transfer_out' || m.movement_type === 'sale_out') return 'out'
+    if (m.movement_type === 'transfer_out' || m.movement_type === 'sale_out' || m.movement_type === 'purchase_return') return 'out'
     return m.quantity >= 0 ? 'in' : 'out' // adjustment: signed delta
   }
 
@@ -294,4 +294,30 @@ export function computeStockLedgerReport({ movements, items, dateFrom, dateTo, i
   }
 
   return Array.from(rowsByItem.values()).sort((a, b) => a.code.localeCompare(b.code) || a.name.localeCompare(b.name))
+}
+
+/**
+ * Convert a PO line's quantity to the inventory item's base unit (shared by
+ * PO receive and the credit-note prefill so both book the same stock).
+ * @param {object} it PO item row
+ * @param {object|null} invItem inventory item (unit_conversion_mode)
+ * @param {object|null} profile aluminium profile for the line, if any
+ * @param {object|null} factor unit factor row {factor_to_base} for the line's unit, if any
+ * @returns {{baseQty: number, unconverted: boolean}}
+ */
+export function computePoItemBaseQty(it, invItem, profile, factor) {
+  if (invItem?.unit_conversion_mode === 'aluminum_profile') {
+    if (profile) {
+      const length = it.rod_length_m || profile.default_length_m
+      return { baseQty: computeAluminumWeightKg(it.quantity, length, profile.linear_weight_kg_per_m), unconverted: false }
+    }
+    return { baseQty: it.quantity, unconverted: true }
+  }
+  if (invItem?.unit_conversion_mode === 'glass_dimension') {
+    if (it.glass_width_m && it.glass_height_m) {
+      return { baseQty: computeGlassAreaSqm(it.quantity, it.glass_width_m, it.glass_height_m), unconverted: false }
+    }
+    return { baseQty: it.quantity, unconverted: true }
+  }
+  return { baseQty: factor ? convertToBaseUnit(it.quantity, factor.factor_to_base) : it.quantity, unconverted: false }
 }

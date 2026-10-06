@@ -11,7 +11,7 @@ import { fileToExtractionPayload, buildExampleExtracted } from '../lib/poDocumen
 import ScanDocPreview from '../components/ScanDocPreview.jsx'
 import ScanNotice from '../components/ScanNotice.jsx'
 import { SCAN_REMINDER } from '../lib/scanNotice.js'
-import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm } from '../lib/inventoryCost.js'
+import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, computePoItemBaseQty } from '../lib/inventoryCost.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { useDraftForm, readDraft, saveDraft, clearDraft } from '../hooks/useDraftForm.js'
@@ -880,28 +880,9 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       .filter(it => it.inventory_item_id)
       .map(it => {
         const invItem = (allInventoryItems || []).find(i => i.id === it.inventory_item_id)
-        let baseQty, unconverted = false
-
-        if (invItem?.unit_conversion_mode === 'aluminum_profile') {
-          const profile = it.aluminum_profile_id ? (allAluminumProfiles || []).find(p => p.id === it.aluminum_profile_id) : null
-          if (profile) {
-            const length = it.rod_length_m || profile.default_length_m
-            baseQty = computeAluminumWeightKg(it.quantity, length, profile.linear_weight_kg_per_m)
-          } else {
-            unconverted = true
-            baseQty = it.quantity
-          }
-        } else if (invItem?.unit_conversion_mode === 'glass_dimension') {
-          if (it.glass_width_m && it.glass_height_m) {
-            baseQty = computeGlassAreaSqm(it.quantity, it.glass_width_m, it.glass_height_m)
-          } else {
-            unconverted = true
-            baseQty = it.quantity
-          }
-        } else {
-          const factor = (unitFactors || []).find(f => f.inventory_item_id === it.inventory_item_id && f.unit_name === it.unit)
-          baseQty = factor ? convertToBaseUnit(it.quantity, factor.factor_to_base) : it.quantity
-        }
+        const profile = it.aluminum_profile_id ? (allAluminumProfiles || []).find(p => p.id === it.aluminum_profile_id) : null
+        const factor = (unitFactors || []).find(f => f.inventory_item_id === it.inventory_item_id && f.unit_name === it.unit)
+        const { baseQty, unconverted } = computePoItemBaseQty(it, invItem, profile, factor)
 
         // Stock must be capitalized at the actual price paid, not the
         // pre-discount list price -- a discounted item that goes uncounted
@@ -1114,7 +1095,13 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                                 supplier_id: po.supplier_id, site_id: po.site_id, po_id: po.id, category_id: po.category_id,
                                 vatEnabled: po.has_vat !== false,
                                 priceIncludesVat: !!po.price_includes_vat,
-                                items: (po.purchase_order_items || []).map(poItemToCreditLine),
+                                original_expense_id: po.expense_id || null,
+                                items: (po.purchase_order_items || []).map(it => {
+                                  const invItem = it.inventory_item_id ? (allInventoryItems || []).find(i => i.id === it.inventory_item_id) : null
+                                  const profile = it.aluminum_profile_id ? (allAluminumProfiles || []).find(p => p.id === it.aluminum_profile_id) : null
+                                  const factor = it.inventory_item_id ? (unitFactors || []).find(f => f.inventory_item_id === it.inventory_item_id && f.unit_name === it.unit) : null
+                                  return poItemToCreditLine(it, invItem ? { ...computePoItemBaseQty(it, invItem, profile, factor), baseUnit: invItem.base_unit } : null)
+                                }),
                               })
                               navigateTo('supplier_credit_notes', {})
                             } },

@@ -38,6 +38,7 @@ const MOVEMENT_TYPE_LABELS = {
   transfer_out: '↪️ โอนออก',
   sale_out: '📤 ขายออก',
   sale_reversal: '↩️ ยกเลิกการขาย',
+  purchase_return: '↩️ คืนสินค้าให้ซัพพลายเออร์',
   adjustment: '✏️ ปรับปรุงยอด',
 }
 
@@ -523,6 +524,7 @@ const LEDGER_MOVEMENT_LABELS = {
   transfer_out: '↪️ โอนออก',
   sale_out: '📤 จำหน่ายออก',
   sale_reversal: '↩️ คืนสินค้า',
+  purchase_return: '↩️ คืนสินค้าให้ซัพพลายเออร์',
   adjustment: '✏️ ปรับปรุงยอด',
 }
 
