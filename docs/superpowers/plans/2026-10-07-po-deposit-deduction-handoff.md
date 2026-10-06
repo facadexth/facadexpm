@@ -11,22 +11,31 @@ Branch `feat/po-deposit-deduction`, built on top of the credit-note work. The cr
 
 ## REQUIRED ORDER of release (ลำดับที่ต้องทำ)
 Migrations go live the moment they are applied. **The web app must NOT be deployed before the migrations: every PO receive now calls `receive_po_with_deposits`, so receiving any PO would fail until both migrations exist.**
-0. Dry run in ONE transaction (migration 01 + migration 02 + `supabase/tests/po_deposit_test.sql`, nothing is kept). Continue only when it prints every "Test N ...: PASSED" and "ALL PO DEPOSIT TESTS PASSED" with no ERROR. Commands below.
+0. Dry run in ONE transaction (migration 01 + migration 02 + `supabase/tests/po_deposit_test.sql`, nothing is kept). Continue only when it returns the single row "ALL PO DEPOSIT TESTS PASSED" and no error. Commands below.
 1. Apply `supabase/migrations/2026-10-07-01-supplier-deposits.sql` (wrapped in BEGIN/COMMIT).
 2. Apply `supabase/migrations/2026-10-07-02-receive-po-with-deposits.sql` (wrapped in BEGIN/COMMIT), then `NOTIFY pgrst, 'reload schema';`.
 3. Deploy the edge function: `npx supabase functions deploy extract-po-document --project-ref kntspldhvcjeaubtqtkn --use-api` (shared files `scan-logic.ts` and `po-extract-prompt.ts` changed; prompt version `2026-10-07-v4`, so cached scans are not reused).
 4. Deploy the web app: `npm run deploy`.
 
 ### Dry run: ONE transaction, then the real apply
-File 01 is NOT re-runnable (plain CREATE TABLE / CREATE POLICY), so never "just run it again". Build one dry-run file: BEGIN; migration 01; migration 02; the SQL test file. The test file ends with its own ROLLBACK, so nothing is kept:
+Run everything from the MAIN checkout `/Users/plfx/code/FacadeXPM/facadex-app` (it is the one linked to the Supabase project; the worktree is not), with absolute paths to the files. Run at a quiet time: the migrations briefly lock `purchase_orders` and `expenses`; `lock_timeout` makes them fail fast instead of queueing behind other traffic. File 01 is NOT re-runnable (plain CREATE TABLE / CREATE POLICY), so never "just run it again".
+
+Set once: `W=/Users/plfx/code/FacadeXPM/facadex-app/.claude/worktrees/po-deposit-deduction` and `cd /Users/plfx/code/FacadeXPM/facadex-app`.
+
+Build the combined dry-run file with a plain redirect and check it is not empty (a failed `cat` must not be hidden):
 ```
-{ printf 'BEGIN;\n'; cat supabase/migrations/2026-10-07-01-supplier-deposits.sql supabase/migrations/2026-10-07-02-receive-po-with-deposits.sql supabase/tests/po_deposit_test.sql; } > /tmp/dry.sql
+(printf 'BEGIN;\nSET LOCAL lock_timeout = '"'"'5s'"'"';\n'; cat "$W/supabase/migrations/2026-10-07-01-supplier-deposits.sql" "$W/supabase/migrations/2026-10-07-02-receive-po-with-deposits.sql" "$W/supabase/tests/po_deposit_test.sql") > /tmp/dry.sql
+test -s /tmp/dry.sql || { echo "dry-run file is empty"; exit 1; }
 npx supabase db query --linked -f /tmp/dry.sql
 ```
-(The test file starts with its own BEGIN, which only prints a harmless "already a transaction" warning.) Read the output: every "Test N ...: PASSED" line plus "ALL PO DEPOSIT TESTS PASSED" must appear and there must be no ERROR. The test file has never run; if a fixture insert fails, fix the test, not the migration, and re-run the whole dry run. Only after all PASSED, apply for real, each migration in its own explicit transaction:
+The test file begins with its own BEGIN (a harmless "already a transaction" warning) and ends with ROLLBACK, so nothing is kept; its last statement is `SELECT 'ALL PO DEPOSIT TESTS PASSED' AS result;`. **Success = exactly that one result row and no error.** (`db query` does not show NOTICE lines and stops at the first error.) A failure comes back as an HTTP 400 containing `Test N FAIL ...`. The test file has never run: if a fixture insert fails, fix the test, not the migration, and re-run the whole dry run.
+
+Only after that, apply for real, each migration in its own explicit transaction (build each file first and check it, then run it):
 ```
-{ printf 'BEGIN;\n'; cat supabase/migrations/2026-10-07-01-supplier-deposits.sql; printf '\nCOMMIT;\n'; } > /tmp/m01.sql && npx supabase db query --linked -f /tmp/m01.sql
-{ printf 'BEGIN;\n'; cat supabase/migrations/2026-10-07-02-receive-po-with-deposits.sql; printf '\nCOMMIT;\n'; } > /tmp/m02.sql && npx supabase db query --linked -f /tmp/m02.sql
+(printf 'BEGIN;\nSET LOCAL lock_timeout = '"'"'5s'"'"';\n'; cat "$W/supabase/migrations/2026-10-07-01-supplier-deposits.sql"; printf '\nCOMMIT;\n') > /tmp/m01.sql
+test -s /tmp/m01.sql && npx supabase db query --linked -f /tmp/m01.sql
+(printf 'BEGIN;\nSET LOCAL lock_timeout = '"'"'5s'"'"';\n'; cat "$W/supabase/migrations/2026-10-07-02-receive-po-with-deposits.sql"; printf '\nCOMMIT;\n') > /tmp/m02.sql
+test -s /tmp/m02.sql && npx supabase db query --linked -f /tmp/m02.sql
 ```
 Right after applying, refresh the API schema cache so the new tables are visible to the web app:
 ```
@@ -61,6 +70,7 @@ The deposit's invoice number (`AI6901007`) differs from its expense's `invoice_n
 - Stock posting is not atomic with the RPC: if a stock movement fails after the RPC committed, the PO is already received and the user is told to check the ledger and not receive again.
 - PEAK exports the deposit and the remainder as ordinary expenses (no deposit-aware journal).
 - Deposit invoice numbers are unique per tenant (case/whitespace-insensitive); one expense registers at most once.
+- Deleting the remainder expense of a deposit PO is still possible (the Expenses page only explains instead of offering un-receive): it leaves the PO received with no payable. Do not do it; re-create the expense by hand if it happens.
 - Swap-tax-invoice mismatch on deposit POs (finding M1): the "สลับใบกำกับภาษี" flow works on the PO's remainder expense. For a PO fully covered by deposits there is no expense, so the real tax invoice number of that PO is recorded nowhere. Note it by hand (PO notes) until a follow-up handles it.
 - `created_by` on deposits and applications is filled from the client / `auth.email()` and can be spoofed by a client for `supplier_deposits`; do not treat it as an audit trail (the audit log is).
 - The preview and the server can differ by one satang in display (rounding ties, VAT folded into the last application); the server value is the one stored.

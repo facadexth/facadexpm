@@ -7,7 +7,10 @@
 -- defaults, CHECK constraints), but the script itself has never executed. Run only
 -- on a database where both migrations are applied (or in ONE rolled-back dry-run
 -- transaction: BEGIN; migration 01; migration 02; this file -- it ends in ROLLBACK).
--- Success = the NOTICE lines "Test N ...: PASSED" for every test, no ERROR.
+-- Success = exactly ONE result row 'ALL PO DEPOSIT TESTS PASSED' (the last statement, after the
+-- ROLLBACK) and no error. `supabase db query --linked` does not return NOTICE lines, and it stops at the
+-- first error, so that row can only come back if every test passed. A failure surfaces as an HTTP 400
+-- whose message contains 'Test N FAIL ...'.
 --
 -- Style: single BEGIN ... ROLLBACK script; runs as `authenticated` on a scratch
 -- tenant; each negative check uses a nested BEGIN..EXCEPTION block.
@@ -494,3 +497,5 @@ BEGIN
 END $$;
 
 ROLLBACK;
+
+SELECT 'ALL PO DEPOSIT TESTS PASSED' AS result;

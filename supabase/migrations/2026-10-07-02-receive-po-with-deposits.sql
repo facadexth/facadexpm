@@ -43,7 +43,7 @@ BEGIN
     RAISE EXCEPTION 'totals_mismatch';
   END IF;
 
-  FOR a IN SELECT value FROM jsonb_array_elements(COALESCE(p_applications, '[]'::jsonb)) ORDER BY value->>'deposit_id' LOOP   -- fixed lock order: no deadlock between concurrent receives
+  FOR a IN SELECT value FROM jsonb_array_elements(COALESCE(p_applications, '[]'::jsonb)) ORDER BY value->>'deposit_id' COLLATE "C" LOOP   -- fixed lock order: no deadlock between concurrent receives. COLLATE "C" = plain byte order, independent of the database collation; the client mirror (depositMath.js computeReceivePlan) sorts ids with plain JS string comparison, which is identical for lowercase hex UUIDs
     BEGIN
       v_amt := round((a->>'amount_no_vat')::numeric, 2);
       v_dep := (a->>'deposit_id')::uuid;
