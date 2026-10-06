@@ -13,8 +13,11 @@ export function matchTolerance(base) {
   return Math.min(Math.abs(Number(base) || 0) * 0.01, 5)
 }
 export function withinTolerance(diff, base) {
-  return Math.abs(Number(diff) || 0) <= matchTolerance(base) + EPS
+  const d = Number(diff), b = Number(base)
+  if (diff === null || diff === '' || base === null || base === '' || !Number.isFinite(d) || !Number.isFinite(b)) return false
+  return Math.abs(d) <= matchTolerance(b) + EPS
 }
+const finiteNum = v => v !== null && v !== undefined && String(v).trim() !== '' && Number.isFinite(Number(v))
 
 /** Ex-VAT line amount (ruling A8); the server recomputes and stores the same value. */
 export function lineAmount({ qty, unit_price, discount_pct }) {
@@ -23,14 +26,18 @@ export function lineAmount({ qty, unit_price, discount_pct }) {
 }
 
 export function evaluateMatch({ netBeforeVat, poSubtotals, lineAmounts }) {
-  const net = round2(Number(netBeforeVat) || 0)
-  const poSum = round2((poSubtotals || []).reduce((s, x) => s + (Number(x) || 0), 0))
-  const linesSum = round2((lineAmounts || []).reduce((s, x) => s + (Number(x) || 0), 0))
+  const valid = finiteNum(netBeforeVat) && (poSubtotals || []).every(finiteNum) && (lineAmounts || []).every(finiteNum)
+  if (!valid) {
+    return { poSum: NaN, diff: NaN, tolerance: NaN, matchOk: false, linesSum: NaN, linesDiff: NaN, linesOk: false, invalid: true }
+  }
+  const net = round2(Number(netBeforeVat))
+  const poSum = round2((poSubtotals || []).reduce((s, x) => s + Number(x), 0))
+  const linesSum = round2((lineAmounts || []).reduce((s, x) => s + Number(x), 0))
   const diff = round2(net - poSum)
   const linesDiff = round2(linesSum - net)
   return {
     poSum, diff, tolerance: matchTolerance(poSum), matchOk: withinTolerance(diff, poSum),
-    linesSum, linesDiff, linesOk: withinTolerance(linesDiff, net),
+    linesSum, linesDiff, linesOk: withinTolerance(linesDiff, net), invalid: false,
   }
 }
 
@@ -59,7 +66,9 @@ export function simulateStock({ balances, lines, reversals }) {
     return state.get(k)
   }
   for (const l of lines || []) {
-    const s = get(l.inventory_item_id, l.site_id), a = Number(l.base_qty) || 0
+    const a = Number(l.base_qty)
+    if (l.base_qty == null || !(a > 0)) continue
+    const s = get(l.inventory_item_id, l.site_id)
     s.wac = wacAfterIn(s.qty, s.wac, a, l.base_unit_cost); s.qty += a; s.addQty += a
   }
   for (const r of reversals || []) {
@@ -77,14 +86,16 @@ const monthOf = d => String(d || '').slice(0, 7)
 /** Ruling A10: propose by the PO's own date month. */
 export function proposePos({ pos, supplierId, invoiceDate, activeLinks, invoiceId }) {
   const month = monthOf(invoiceDate)
+  const monthValid = /^\d{4}-\d{2}$/.test(month)
+  const inMonth = po => monthValid && monthOf(po.date) === month
   const elsewhere = po => {
     const l = activeLinks?.get?.(po.id)
     return l && l.invoice_id !== invoiceId ? l : null
   }
   const eligible = (pos || []).filter(po => po.supplier_id === supplierId && po.status === 'received')
   return {
-    proposed: eligible.filter(po => monthOf(po.date) === month && !elsewhere(po)),
-    outsideMonth: eligible.filter(po => monthOf(po.date) !== month && !elsewhere(po)),
+    proposed: eligible.filter(po => inMonth(po) && !elsewhere(po)),
+    outsideMonth: eligible.filter(po => !inMonth(po) && !elsewhere(po)),
     linkedElsewhere: eligible.filter(po => elsewhere(po)).map(po => ({ po, link: elsewhere(po) })),
   }
 }

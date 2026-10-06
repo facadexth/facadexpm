@@ -179,3 +179,68 @@ describe('error text', () => {
     expect(mapTaxInvoiceRpcError({ message: 'boom' })).toBe('boom')
   })
 })
+
+describe('fail-closed on bad input', () => {
+  it('withinTolerance rejects non-finite diff/base', () => {
+    expect(withinTolerance(NaN, 100)).toBe(false)
+    expect(withinTolerance(1, NaN)).toBe(false)
+    expect(withinTolerance('', 100)).toBe(false)
+    expect(withinTolerance(null, 100)).toBe(false)
+    expect(withinTolerance(undefined, 100)).toBe(false)
+    expect(withinTolerance(Infinity, 100)).toBe(false)
+  })
+  it('evaluateMatch flags blank/NaN net, PO subtotals and line amounts', () => {
+    expect(evaluateMatch({ netBeforeVat: '', poSubtotals: [0], lineAmounts: [0] }).matchOk).toBe(false)
+    expect(evaluateMatch({ netBeforeVat: NaN, poSubtotals: [0], lineAmounts: [0] }).matchOk).toBe(false)
+    expect(evaluateMatch({ netBeforeVat: 100, poSubtotals: [NaN], lineAmounts: [100] }).matchOk).toBe(false)
+    const r = evaluateMatch({ netBeforeVat: 100, poSubtotals: [100], lineAmounts: [undefined] })
+    expect(r.linesOk).toBe(false)
+    expect(r.matchOk).toBe(false)
+    expect(r.invalid).toBe(true)
+  })
+})
+
+describe('simulateStock skips non-positive / null base_qty', () => {
+  it('ignores such lines', () => {
+    const rows = simulateStock({
+      balances: {},
+      lines: [
+        { inventory_item_id: 'Z', site_id: 'S1', base_qty: 0, base_unit_cost: 50 },
+        { inventory_item_id: 'Z', site_id: 'S1', base_qty: null, base_unit_cost: 50 },
+        { inventory_item_id: 'Z', site_id: 'S1', base_qty: -2, base_unit_cost: 50 },
+      ],
+      reversals: [],
+    })
+    expect(rows).toEqual([])
+  })
+})
+
+describe('proposePos blank/invalid dates', () => {
+  const pos = [
+    { id: 'p1', supplier_id: 'A', status: 'received', date: '2026-09-03' },
+    { id: 'p2', supplier_id: 'A', status: 'received', date: null },
+  ]
+  it('blank invoice date -> nothing proposed', () => {
+    const r = proposePos({ pos, supplierId: 'A', invoiceDate: '', activeLinks: new Map(), invoiceId: 'x' })
+    expect(r.proposed).toEqual([])
+    expect(r.outsideMonth.map(p => p.id)).toEqual(['p1', 'p2'])
+  })
+  it('invalid invoice date -> nothing proposed', () => {
+    const r = proposePos({ pos, supplierId: 'A', invoiceDate: 'garbage', activeLinks: new Map(), invoiceId: 'x' })
+    expect(r.proposed).toEqual([])
+  })
+  it('PO with null date is outsideMonth even with a valid invoice date', () => {
+    const r = proposePos({ pos, supplierId: 'A', invoiceDate: '2026-09-30', activeLinks: new Map(), invoiceId: 'x' })
+    expect(r.proposed.map(p => p.id)).toEqual(['p1'])
+    expect(r.outsideMonth.map(p => p.id)).toEqual(['p2'])
+  })
+})
+
+describe('lineBase extra cases', () => {
+  it('glass_dimension item in a non-base unit is unconverted', () => {
+    expect(lineBase({ qty: 3, unit: 'แผ่น' }, { base_unit: 'sqm', unit_conversion_mode: 'glass_dimension' }, null).unconverted).toBe(true)
+  })
+  it('unit match is case-insensitive and trimmed', () => {
+    expect(lineBase({ qty: 4, unit: ' KG ' }, { base_unit: 'kg', unit_conversion_mode: 'plain' }, null)).toEqual({ baseQty: 4, unconverted: false })
+  })
+})

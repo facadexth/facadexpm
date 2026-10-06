@@ -1,4 +1,4 @@
-// PO line / totals math. Moved verbatim from PurchaseOrders.jsx (which imports it from Task 8 on).
+// PO line / totals math. Moved verbatim from PurchaseOrders.jsx, which imports it from here.
 // Mirrored server-side by receive_po_with_deposits and _po_goods_subtotal -- change all three together.
 import { VAT_RATE } from './invoiceCalc.js'
 
