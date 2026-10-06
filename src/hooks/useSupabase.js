@@ -9,6 +9,7 @@ import { buildDepositMap } from '../lib/depositMath.js'
 import { applyDateFilter } from '../lib/expenseFilters.js'
 import { buildUnitSeedRows, VAT_RATE } from '../lib/invoiceCalc.js'
 import { validateExtraction, blobToBase64 } from '../lib/poDocumentExtraction.js'
+import { buildActiveLinkMap, saveDraftArgs, idArgs, voidArgs, TAX_INVOICE_RPCS } from '../lib/taxInvoiceLinks.js'
 
 /** Generic fetch hook */
 export function useQuery(queryFn, deps = []) {
@@ -1757,3 +1758,44 @@ export async function receivePoWithDeposits(poId, applications, subtotal, vat) {
   if (error) throw error
   return data // remainder expense id or null
 }
+
+// ── Supplier tax invoices (ใบกำกับภาษีผู้ขาย) ─────────────────
+// Tables are SELECT-only for clients; every write is an RPC (see 2026-10-08-02).
+// Embeds name the constraint explicitly (ambiguous-embed trap). Before the migration is applied
+// the tables do not exist: useQuery then returns data = null (+ error), so callers must treat
+// null as "not ready" and the PO page keeps working.
+// The RPC wrappers throw the Supabase error object; show it with mapTaxInvoiceRpcError().
+
+export function useSupplierTaxInvoices(filters = {}) {
+  return useQuery(async () => fetchAllRows(() => {
+    let q = supabase.from('supplier_tax_invoices')
+      .select('*, suppliers!sti_supplier_fk(name, supplier_number), supplier_tax_invoice_items!stii_invoice_fk(*), supplier_tax_invoice_pos!stip_invoice_fk(id, po_id, active, po_subtotal, expense_id, prev_invoice_no, stamped_invoice_no, purchase_orders!stip_po_fk(id, po_number, date, site_id, supplier_id, status))')
+      .order('invoice_date', { ascending: false })
+      .order('id', { ascending: false })
+    if (filters.supplierId) q = q.eq('supplier_id', filters.supplierId)
+    if (filters.status) q = q.eq('status', filters.status)
+    return q
+  }), [JSON.stringify(filters)])
+}
+
+/** data: Map<po_id,{invoice_id, invoice_no, status}>, or null while loading / before the migration. */
+export function useActiveTaxInvoiceLinks() {
+  const { data, error, refetch } = useQuery(async () => fetchAllRows(() => supabase
+    .from('supplier_tax_invoice_pos')
+    .select('po_id, invoice_id, supplier_tax_invoices!stip_invoice_fk(invoice_no, status)')
+    .eq('active', true)
+    .order('id')), [])
+  const map = useMemo(() => (data ? buildActiveLinkMap(data) : null), [data])
+  return { data: map, error, refetch }
+}
+
+async function rpcOrThrow(name, args) {
+  const { data, error } = await supabase.rpc(name, args)
+  if (error) throw error
+  return data
+}
+export const saveSupplierTaxInvoiceDraft = (id, header, items, poIds) => rpcOrThrow(TAX_INVOICE_RPCS.save, saveDraftArgs(id, header, items, poIds))
+export const deleteSupplierTaxInvoiceDraft = id => rpcOrThrow(TAX_INVOICE_RPCS.delete, idArgs(id))
+export const previewSupplierTaxInvoice = id => rpcOrThrow(TAX_INVOICE_RPCS.preview, idArgs(id))
+export const postSupplierTaxInvoice = id => rpcOrThrow(TAX_INVOICE_RPCS.post, idArgs(id))
+export const voidSupplierTaxInvoice = (id, reason) => rpcOrThrow(TAX_INVOICE_RPCS.void, voidArgs(id, reason))

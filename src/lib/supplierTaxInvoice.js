@@ -170,8 +170,13 @@ const RPC_TEXT = {
 }
 const CODES_LONGEST_FIRST = Object.keys(RPC_TEXT).sort((a, b) => b.length - a.length)
 
+export const DEADLOCK_TEXT = 'ระบบกำลังประมวลผลรายการเดียวกันอยู่ — ข้อมูลไม่เสียหาย กรุณาลองใหม่อีกครั้ง'
+export const FEATURE_NOT_READY_TEXT = 'ฟีเจอร์ใบกำกับภาษียังไม่พร้อมใช้งาน'
+
 export function mapTaxInvoiceRpcError(err) {
   const msg = String(err?.message || err || '')
+  if (err?.code === '40P01' || /deadlock detected/i.test(msg)) return DEADLOCK_TEXT
+  if (['PGRST202', 'PGRST205', '42883', '42P01'].includes(err?.code)) return FEATURE_NOT_READY_TEXT
   if (err?.code === '23505' || msg.includes('duplicate key')) {
     if (msg.includes('sti_invoice_no_active_uq')) return 'เลขที่ใบกำกับนี้มีอยู่แล้วสำหรับซัพพลายเออร์นี้'
     if (msg.includes('stip_po_active_uq')) return CHECK_TEXT.po_linked_elsewhere
