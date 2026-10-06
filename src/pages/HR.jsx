@@ -245,7 +245,7 @@ function SalaryForm({ initial = EMPTY_SALARY, workers, onSave, onCancel, loading
           <div><label className="label">กยศ / เงินกู้</label>
             <input type="number" className="input" min="0" step="0.01" value={form.loan_deduction} onChange={e => set('loan_deduction', e.target.value)} /></div>
         </div>
-        <div style={{ background: 'rgba(0,212,170,0.08)', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ background: 'rgba(var(--green-rgb), 0.08)', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ color: 'var(--text2)', fontSize: 13 }}>รับสุทธิ (คำนวณ):</span>
           <strong style={{ color: 'var(--green)', fontSize: 20 }}>{fmt(calcNet(form))} บาท</strong>
           <div style={{ flex: 1 }} />

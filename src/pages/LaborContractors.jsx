@@ -468,7 +468,7 @@ function PaymentModal({ contract, onClose }) {
     <Modal title={isRetentionRelease ? `คืนประกันผลงาน — ${contract.subcontractor_name}` : `เบิกเงิน — ${contract.subcontractor_name}`}
       onClose={onClose} maxWidth={520}>
       <div className="modal-body" style={{ display:'grid', gap:12 }}>
-        <div style={{ background:'rgba(108,99,255,0.1)', borderRadius:8, padding:'10px 14px', fontSize:12 }}>
+        <div style={{ background:'rgba(var(--accent-rgb), 0.1)', borderRadius:8, padding:'10px 14px', fontSize:12 }}>
           <strong>{contract.site_number} · {contract.site_name}</strong> — {contract.work_description}<br/>
           มูลค่าสัญญา: {fmt(contract.contract_amount)} | เบิกแล้ว: {fmt(contract.total_billed_gross)} | คงเหลือ: {fmt(contract.remaining_amount)}
         </div>

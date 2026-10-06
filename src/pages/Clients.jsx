@@ -16,8 +16,8 @@ import { useDraftForm } from '../hooks/useDraftForm.js'
 const CLIENT_TYPES = ['DEVELOPER', 'ENDUSER', 'ผู้รับเหมา']
 
 const TYPE_STYLE = {
-  'DEVELOPER': { bg: 'rgba(108,99,255,0.15)', color: 'var(--accent)' },
-  'ENDUSER':   { bg: 'rgba(0,212,170,0.15)',  color: 'var(--green)' },
+  'DEVELOPER': { bg: 'rgba(var(--accent-rgb), 0.15)', color: 'var(--accent)' },
+  'ENDUSER':   { bg: 'rgba(var(--green-rgb), 0.15)',  color: 'var(--green)' },
   'ผู้รับเหมา': { bg: 'rgba(255,209,102,0.15)', color: 'var(--yellow)' },
 }
 

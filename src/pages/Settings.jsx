@@ -1114,7 +1114,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           }}>
             <div style={{
               padding: '12px 16px',
-              background: role === 'OWNER' ? 'rgba(255,107,107,0.1)' : role === 'ADMIN' ? 'rgba(108,99,255,0.1)' : 'rgba(0,212,170,0.1)',
+              background: role === 'OWNER' ? 'rgba(var(--red-rgb), 0.1)' : role === 'ADMIN' ? 'rgba(var(--accent-rgb), 0.1)' : 'rgba(var(--green-rgb), 0.1)',
               borderBottom: '1px solid var(--border)',
             }}>
               <h3 style={{

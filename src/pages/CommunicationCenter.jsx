@@ -394,7 +394,7 @@ export default function CommunicationCenter() {
   }
 
   const statusBadge = (ok, onText, offText) => (
-    <span className="badge" style={{ background: ok ? 'rgba(0,212,170,0.2)' : 'rgba(255,107,107,0.2)', color: ok ? 'var(--green)' : 'var(--red)' }}>
+    <span className="badge" style={{ background: ok ? 'rgba(var(--green-rgb), 0.2)' : 'rgba(var(--red-rgb), 0.2)', color: ok ? 'var(--green)' : 'var(--red)' }}>
       {ok ? onText : offText}
     </span>
   )

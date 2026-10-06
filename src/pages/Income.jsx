@@ -182,7 +182,7 @@ function IncomeForm({ initial = EMPTY_FORM, sites, onSave, onCancel, loading, ha
             </div>
           )}
         </div>
-        <div style={{ background: 'rgba(0,212,170,0.08)', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ background: 'rgba(var(--green-rgb), 0.08)', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ color: 'var(--text2)', fontSize: 13 }}>ยอดที่ได้รับจริง:</span>
           <strong style={{ color: 'var(--green)', fontSize: 18 }}>{fmt(calcReceived())} บาท</strong>
           <div style={{ flex: 1 }} />
@@ -356,7 +356,7 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
             />
           </div>
           {navState?.siteName && (
-            <span className="badge" style={{ background: 'rgba(0,212,170,0.15)', color: 'var(--green)' }}>
+            <span className="badge" style={{ background: 'rgba(var(--green-rgb), 0.15)', color: 'var(--green)' }}>
               🔍 {navState.siteName}
               <button style={{ background:'none',border:'none',cursor:'pointer',color:'inherit',marginLeft:4 }} onClick={() => setSiteId('')}>✕</button>
             </span>

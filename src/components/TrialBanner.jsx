@@ -18,7 +18,7 @@ export default function TrialBanner({ tenant, isTrialActive, trialDaysRemaining,
   if (tenant.plan !== 'active') {
     return (
       <div style={{
-        background: 'rgba(255,107,107,0.12)', borderBottom: '1px solid rgba(255,107,107,0.3)',
+        background: 'rgba(var(--red-rgb), 0.12)', borderBottom: '1px solid rgba(var(--red-rgb), 0.3)',
         padding: '8px 24px', fontSize: 13, color: 'var(--red)', textAlign: 'center',
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
       }}>

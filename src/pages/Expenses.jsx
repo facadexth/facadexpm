@@ -581,7 +581,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
           </select>
           <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={resetFilters}>🔄 ล้างตัวกรอง</button>
           {navState?.siteName && (
-            <span className="badge" style={{ background: 'rgba(108,99,255,0.2)', color: 'var(--accent)' }}>
+            <span className="badge" style={{ background: 'rgba(var(--accent-rgb), 0.2)', color: 'var(--accent)' }}>
               🔍 {navState.siteName} <button style={{ background:'none',border:'none',cursor:'pointer',color:'inherit',marginLeft:4 }} onClick={() => setSiteId('')}>✕</button>
             </span>
           )}
@@ -671,7 +671,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                       <button
                         type="button"
                         className="badge"
-                        style={{ background: 'rgba(108,99,255,0.15)', color: 'var(--accent)', fontSize: 10, marginTop: 2, border: 'none', cursor: 'pointer' }}
+                        style={{ background: 'rgba(var(--accent-rgb), 0.15)', color: 'var(--accent)', fontSize: 10, marginTop: 2, border: 'none', cursor: 'pointer' }}
                         onClick={() => navigateTo('purchase_orders', { poId: e.po_id })}
                       >
                         🧾 จาก PO
@@ -684,7 +684,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                   </td>
                   <td style={{ fontSize: 11 }}>
                     {e.category_name
-                      ? <span className="badge" style={{ background: 'rgba(108,99,255,0.15)', color: 'var(--accent)' }}>{e.category_name}</span>
+                      ? <span className="badge" style={{ background: 'rgba(var(--accent-rgb), 0.15)', color: 'var(--accent)' }}>{e.category_name}</span>
                       : <span style={{ color: 'var(--text3)' }}>—</span>}
                   </td>
                   <td style={{ fontSize: 12, color: 'var(--text2)' }}>{e.supplier || '—'}</td>

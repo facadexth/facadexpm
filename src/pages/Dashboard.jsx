@@ -312,9 +312,12 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
   const isDarkChart = getEffectiveTheme() === 'dark'
   const chartColors = {
     grid: isDarkChart ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)',
-    tick: isDarkChart ? '#9e9ec8' : '#565a7a',
-    tooltipBg: isDarkChart ? '#252840' : '#ffffff',
-    tooltipBorder: isDarkChart ? '1px solid rgba(108,99,255,0.3)' : '1px solid rgba(108,99,255,0.25)',
+    tick: isDarkChart ? '#C9C2B8' : '#5F5A54',
+    tooltipBg: isDarkChart ? '#3F3B36' : '#ffffff',
+    tooltipBorder: isDarkChart ? '1px solid #4A4640' : '1px solid #E7E2DB',
+    // income/expense bars: same green/red as the --green/--red theme tokens (SVG attributes can't read CSS variables reliably)
+    income: isDarkChart ? '#8DB596' : '#5E9A6C',
+    expense: isDarkChart ? '#E0806A' : '#D0624F',
   }
 
   // ── Ongoing sites table ──
@@ -428,8 +431,8 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
               <YAxis tickFormatter={fmtShort} tick={{ fill: chartColors.tick, fontSize: 10 }} />
               <Tooltip formatter={(v) => `${fmt(v)} บาท`} contentStyle={{ background: chartColors.tooltipBg, border: chartColors.tooltipBorder, borderRadius: 8 }} />
               <Legend wrapperStyle={{ fontSize: 12, color: chartColors.tick }} />
-              <Bar dataKey="income"  name="รายรับ"  fill="#00d4aa" radius={[3,3,0,0]} />
-              <Bar dataKey="expense" name="รายจ่าย" fill="#ff6b6b" radius={[3,3,0,0]} />
+              <Bar dataKey="income"  name="รายรับ"  fill={chartColors.income} radius={[3,3,0,0]} />
+              <Bar dataKey="expense" name="รายจ่าย" fill={chartColors.expense} radius={[3,3,0,0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

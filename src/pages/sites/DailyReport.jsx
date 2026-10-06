@@ -185,7 +185,7 @@ export default function DailyReport({ site }) {
                     {r.status === 'open' ? (
                       <button className="btn btn-sm btn-primary" style={{ flex: 'none' }} disabled={resolvingId === r.id} onClick={() => handleResolve(r.id)}>แก้ไขแล้ว</button>
                     ) : (
-                      <span className="badge" style={{ flex: 'none', background: 'rgba(0,212,170,0.2)', color: 'var(--green)' }}>✅ แก้ไขแล้ว</span>
+                      <span className="badge" style={{ flex: 'none', background: 'rgba(var(--green-rgb), 0.2)', color: 'var(--green)' }}>✅ แก้ไขแล้ว</span>
                     )}
                   </div>
                 ))}

@@ -234,10 +234,10 @@ export default function UserManagement() {
                         style={{
                           background:
                             u.role === 'OWNER'
-                              ? 'rgba(255,107,107,0.2)'
+                              ? 'rgba(var(--red-rgb), 0.2)'
                               : u.role === 'ADMIN'
-                              ? 'rgba(108,99,255,0.2)'
-                              : 'rgba(0,212,170,0.2)',
+                              ? 'rgba(var(--accent-rgb), 0.2)'
+                              : 'rgba(var(--green-rgb), 0.2)',
                           color:
                             u.role === 'OWNER'
                               ? 'var(--red)'
@@ -333,7 +333,7 @@ export default function UserManagement() {
                 </div>
               )}
               {editItem && (
-                <div style={{ fontSize: 12, color: 'var(--text3)', background: 'rgba(108,99,255,0.1)', padding: 8, borderRadius: 6 }}>
+                <div style={{ fontSize: 12, color: 'var(--text3)', background: 'rgba(var(--accent-rgb), 0.1)', padding: 8, borderRadius: 6 }}>
                   💡 แก้ password ไป Supabase Dashboard
                 </div>
               )}

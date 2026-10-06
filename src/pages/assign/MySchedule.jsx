@@ -303,7 +303,7 @@ export default function MySchedule({ from, to, days, view }) {
                       </div>
                       <div style={{ display: 'flex', gap: 6 }}>
                         {morning && <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(255,209,102,.16)', color: 'var(--yellow)' }}>เช้า</span>}
-                        {evening && <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(108,99,255,.18)', color: 'var(--accent)' }}>บ่าย</span>}
+                        {evening && <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(var(--accent-rgb), .18)', color: 'var(--accent)' }}>บ่าย</span>}
                       </div>
                     </>
                   ) : (
@@ -311,7 +311,7 @@ export default function MySchedule({ from, to, days, view }) {
                   )}
                 </div>
                 {ot && (
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--green)', background: 'rgba(0,212,170,.13)', borderRadius: 999, padding: '5px 10px', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--green)', background: 'rgba(var(--green-rgb), .13)', borderRadius: 999, padding: '5px 10px', whiteSpace: 'nowrap' }}>
                     ⚡ OT {ot.ot_hours} ชม.
                   </div>
                 )}

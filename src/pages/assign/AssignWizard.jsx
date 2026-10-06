@@ -133,7 +133,7 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
               return (
                 <div key={w.id} style={{
                   display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 6,
-                  background: on ? 'rgba(108,99,255,.15)' : 'rgba(255,255,255,.04)',
+                  background: on ? 'rgba(var(--accent-rgb), .15)' : 'rgba(255,255,255,.04)',
                   border: on ? '1px solid var(--accent)' : '1px solid transparent',
                 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: 1 }}>

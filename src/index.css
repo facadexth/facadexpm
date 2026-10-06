@@ -8,22 +8,27 @@
    FACADE X — Global Styles
    ============================================================ */
 :root {
-  --bg: #0f1117;
-  --bg2: #1a1d2e;
-  --bg3: #252840;
-  --bg4: #2e3250;
-  --accent: #6c63ff;
-  --accent-rgb: 108, 99, 255;
-  --green: #00d4aa;
-  --red: #ff6b6b;
+  --bg: #292724;
+  --bg2: #34312D;
+  --bg3: #3F3B36;
+  --bg4: #4A4640;
+  --accent: #D4B596;            /* Warm Oak: links, outlines, accents */
+  --accent-rgb: 212, 181, 150;
+  --accent-fill: #D4B596;       /* primary button / active tab fill */
+  --on-accent: #1E1E1E;         /* Deep Charcoal text on Warm Oak and on green fills */
+  --green: #8DB596;             /* income */
+  --green-rgb: 141, 181, 150;
+  --red: #E0806A;               /* expense */
+  --red-rgb: 224, 128, 106;
+  --on-red: #1E1E1E;
+  --text: #F4F1EC;
+  --text2: #C9C2B8;
+  --text3: #ADA69C;
+  --border: #4A4640;
+  --icon-danger: #000;
+  --icon-edit: #000;
   --yellow: #ffd166;
   --blue: #4ecdc4;
-  --text: #e8eaf6;
-  --text2: #9e9ec8;
-  --text3: #5c5f80;
-  --border: rgba(var(--accent-rgb), 0.2);
-  --icon-danger: #000; /* bin icon on .btn-danger -- black reads better against the lighter coral --red in dark mode than white does */
-  --icon-edit: #000; /* pencil icon on .btn-edit -- black on --yellow reads well regardless of theme, kept as its own token to match the pattern */
   --radius: 10px;
   --shadow: 0 4px 24px rgba(0,0,0,0.3);
 }
@@ -32,16 +37,23 @@
    user hasn't explicitly chosen a theme yet on this device. */
 @media (prefers-color-scheme: light) {
   :root {
-    --bg: #f5f1e8;
-    --bg2: #ffffff;
-    --bg3: #ece6d8;
-    --bg4: #e0d8c4;
-    --accent: #3e5c46;
-    --accent-rgb: 62, 92, 70;
-    --text: #2a2924;
-    --text2: #5a5648;
-    --text3: #928c7a;
-    --border: rgba(62, 92, 70, 0.18);
+  --bg: #F9F8F6;
+    --bg2: #FFFFFF;
+    --bg3: #EFEAE3;
+    --bg4: #E7E2DB;
+    --accent: #8A6A44;            /* darker oak for text/links on light backgrounds */
+    --accent-rgb: 138, 106, 68;
+    --accent-fill: #D4B596;       /* Warm Oak: primary button / active tab fill */
+    --on-accent: #1E1E1E;
+    --green: #5E9A6C;             /* income */
+    --green-rgb: 94, 154, 108;
+    --red: #D0624F;               /* expense */
+    --red-rgb: 208, 98, 79;
+    --on-red: #FFFFFF;
+    --text: #1E1E1E;
+    --text2: #5F5A54;
+    --text3: #6B6660;
+    --border: #E7E2DB;
     --icon-danger: #fff;
     --icon-edit: #000;
   }
@@ -50,31 +62,45 @@
 /* Explicit theme choice (data-theme set by src/lib/theme.js) always wins
    over the media query above, in both directions. */
 :root[data-theme="dark"] {
-  --bg: #0f1117;
-  --bg2: #1a1d2e;
-  --bg3: #252840;
-  --bg4: #2e3250;
-  --accent: #6c63ff;
-  --accent-rgb: 108, 99, 255;
-  --text: #e8eaf6;
-  --text2: #9e9ec8;
-  --text3: #5c5f80;
-  --border: rgba(var(--accent-rgb), 0.2);
+  --bg: #292724;
+  --bg2: #34312D;
+  --bg3: #3F3B36;
+  --bg4: #4A4640;
+  --accent: #D4B596;            /* Warm Oak: links, outlines, accents */
+  --accent-rgb: 212, 181, 150;
+  --accent-fill: #D4B596;       /* primary button / active tab fill */
+  --on-accent: #1E1E1E;         /* Deep Charcoal text on Warm Oak and on green fills */
+  --green: #8DB596;             /* income */
+  --green-rgb: 141, 181, 150;
+  --red: #E0806A;               /* expense */
+  --red-rgb: 224, 128, 106;
+  --on-red: #1E1E1E;
+  --text: #F4F1EC;
+  --text2: #C9C2B8;
+  --text3: #ADA69C;
+  --border: #4A4640;
   --icon-danger: #000;
   --icon-edit: #000;
 }
 
 :root[data-theme="light"] {
-  --bg: #f5f1e8;
-  --bg2: #ffffff;
-  --bg3: #ece6d8;
-  --bg4: #e0d8c4;
-  --accent: #3e5c46;
-  --accent-rgb: 62, 92, 70;
-  --text: #2a2924;
-  --text2: #5a5648;
-  --text3: #928c7a;
-  --border: rgba(62, 92, 70, 0.18);
+  --bg: #F9F8F6;
+  --bg2: #FFFFFF;
+  --bg3: #EFEAE3;
+  --bg4: #E7E2DB;
+  --accent: #8A6A44;            /* darker oak for text/links on light backgrounds */
+  --accent-rgb: 138, 106, 68;
+  --accent-fill: #D4B596;       /* Warm Oak: primary button / active tab fill */
+  --on-accent: #1E1E1E;
+  --green: #5E9A6C;             /* income */
+  --green-rgb: 94, 154, 108;
+  --red: #D0624F;               /* expense */
+  --red-rgb: 208, 98, 79;
+  --on-red: #FFFFFF;
+  --text: #1E1E1E;
+  --text2: #5F5A54;
+  --text3: #6B6660;
+  --border: #E7E2DB;
   --icon-danger: #fff;
   --icon-edit: #000;
 }
@@ -118,11 +144,11 @@ body {
    replaces ad-hoc marginRight on each button, which left them
    baseline-aligned rather than vertically centered as a group. */
 .actions-cell { display: inline-flex; align-items: center; gap: 6px; }
-.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary { background: var(--accent-fill); color: var(--on-accent); }
 .btn-primary:hover { opacity: 0.85; }
-.btn-success { background: var(--green); color: #fff; }
+.btn-success { background: var(--green); color: var(--on-accent); }
 .btn-success:hover { opacity: 0.85; }
-.btn-danger { background: var(--red); color: #fff; }
+.btn-danger { background: var(--red); color: var(--on-red); }
 .btn-danger:hover { opacity: 0.85; }
 /* Bin icon color follows --icon-danger, not .btn-danger's own #fff --
    other .btn-danger content (text labels like "✕ ยกเลิก") is unaffected. */
@@ -233,19 +259,19 @@ tbody tr:last-child td { border-bottom: none; }
   cursor: pointer; transition: opacity 0.2s;
 }
 .badge:hover { opacity: 0.8; }
-.badge-ongoing { background: rgba(0,212,170,0.15); color: var(--green); }
+.badge-ongoing { background: rgba(var(--green-rgb), 0.15); color: var(--green); }
 .badge-finished { background: rgba(94,97,128,0.25); color: var(--text3); }
 .badge-onhold { background: rgba(255,209,102,0.15); color: var(--yellow); }
 .badge-awaiting_billing { background: rgba(255,209,102,0.1); color: var(--yellow); }
-.badge-paid { background: rgba(0,212,170,0.15); color: var(--green); }
+.badge-paid { background: rgba(var(--green-rgb), 0.15); color: var(--green); }
 .badge-pending { background: rgba(255,209,102,0.15); color: var(--yellow); }
 .badge-check_issued { background: rgba(var(--accent-rgb), 0.15); color: var(--accent); }
 .badge-check_cleared { background: rgba(78,205,196,0.15); color: var(--blue); }
 .badge-received { background: rgba(255,209,102,0.15); color: var(--yellow); }
 .badge-draft     { background: rgba(94,97,128,0.2); color: var(--text2); }
 .badge-sent      { background: rgba(255,209,102,0.15); color: var(--yellow); }
-.badge-accepted  { background: rgba(0,212,170,0.15); color: var(--green); }
-.badge-rejected  { background: rgba(255,107,107,0.15); color: var(--red); }
+.badge-accepted  { background: rgba(var(--green-rgb), 0.15); color: var(--green); }
+.badge-rejected  { background: rgba(var(--red-rgb), 0.15); color: var(--red); }
 .badge-expired   { background: rgba(94,97,128,0.25); color: var(--text3); }
 .badge-unpaid    { background: rgba(255,209,102,0.15); color: var(--yellow); }
 .badge-void      { background: rgba(94,97,128,0.25); color: var(--text3); }
@@ -310,7 +336,7 @@ tbody tr:last-child td { border-bottom: none; }
   background: var(--bg3); border: 1px solid var(--border);
   transition: all 0.2s;
 }
-.inner-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.inner-tab.active { background: var(--accent-fill); color: var(--on-accent); border-color: var(--accent-fill); }
 
 /* Date range picker */
 .date-range { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -341,8 +367,8 @@ tbody tr:last-child td { border-bottom: none; }
 
 /* Alerts */
 .alert { padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
-.alert-success { background: rgba(0,212,170,0.1); border: 1px solid rgba(0,212,170,0.3); color: var(--green); }
-.alert-error { background: rgba(255,107,107,0.1); border: 1px solid rgba(255,107,107,0.3); color: var(--red); }
+.alert-success { background: rgba(var(--green-rgb), 0.1); border: 1px solid rgba(var(--green-rgb), 0.3); color: var(--green); }
+.alert-error { background: rgba(var(--red-rgb), 0.1); border: 1px solid rgba(var(--red-rgb), 0.3); color: var(--red); }
 .alert-info { background: rgba(var(--accent-rgb), 0.1); border: 1px solid rgba(var(--accent-rgb), 0.3); color: var(--accent); }
 .alert-warning { background: rgba(255,209,102,0.1); border: 1px solid rgba(255,209,102,0.3); color: var(--yellow); }
 
@@ -396,19 +422,19 @@ th.sortable:hover { color: var(--accent); }
 
 /* Badge status variants */
 .badge-awaiting_billing { background: rgba(255,209,102,0.1); color: var(--yellow); }
-.badge-paid         { background: rgba(0,212,170,0.15); color: var(--green); }
+.badge-paid         { background: rgba(var(--green-rgb), 0.15); color: var(--green); }
 .badge-pending      { background: rgba(255,209,102,0.15); color: var(--yellow); }
 .badge-check_issued { background: rgba(78,205,196,0.15); color: var(--blue); }
-.badge-check_cleared{ background: rgba(0,212,170,0.1); color: var(--green); }
+.badge-check_cleared{ background: rgba(var(--green-rgb), 0.1); color: var(--green); }
 .badge-status-ongoing   { background: rgba(var(--accent-rgb), 0.15); color: var(--accent); }
-.badge-status-completed { background: rgba(0,212,170,0.15); color: var(--green); }
+.badge-status-completed { background: rgba(var(--green-rgb), 0.15); color: var(--green); }
 .badge-status-on-hold   { background: rgba(255,209,102,0.15); color: var(--yellow); }
-.badge-status-cancelled { background: rgba(255,107,107,0.15); color: var(--red); }
+.badge-status-cancelled { background: rgba(var(--red-rgb), 0.15); color: var(--red); }
 .badge-method-transfer  { background: rgba(78,205,196,0.15); color: var(--blue); }
 .badge-method-check     { background: rgba(255,209,102,0.15); color: var(--yellow); }
-.badge-method-cash      { background: rgba(0,212,170,0.15); color: var(--green); }
+.badge-method-cash      { background: rgba(var(--green-rgb), 0.15); color: var(--green); }
 .badge-po-ordered   { background: rgba(var(--accent-rgb), 0.15); color: var(--accent); }
-.badge-po-received  { background: rgba(0,212,170,0.15); color: var(--green); }
+.badge-po-received  { background: rgba(var(--green-rgb), 0.15); color: var(--green); }
 .badge-po-cancelled { background: rgba(94,97,128,0.25); color: var(--text3); }
 
 /* Input sm/select sm */
@@ -416,7 +442,7 @@ th.sortable:hover { color: var(--accent); }
 .select-sm { padding: 6px 10px; font-size: 12px; }
 
 /* Btn variants */
-.btn-success { background: var(--green); color: #000; font-weight: 700; }
+.btn-success { background: var(--green); color: var(--on-accent); font-weight: 700; }
 .btn-success:hover { opacity: 0.85; }
 .btn-warning { background: var(--yellow); color: #1a1a2e; font-weight: 700; }
 .btn-warning:hover { opacity: 0.85; }

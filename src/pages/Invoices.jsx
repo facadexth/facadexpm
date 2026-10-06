@@ -1464,7 +1464,7 @@ function WorkPhotosModal({ invoice, tenant, onClose, onPrint }) {
           style={{
             border: `2px dashed ${dragOver ? 'var(--accent)' : 'var(--border)'}`,
             borderRadius: 8, padding: 16, textAlign: 'center',
-            background: dragOver ? 'rgba(108,99,255,0.06)' : 'transparent',
+            background: dragOver ? 'rgba(var(--accent-rgb), 0.06)' : 'transparent',
           }}
         >
           <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 8 }}>ลากรูปมาวางที่นี่ (เลือกได้หลายรูปพร้อมกัน) หรือ</div>

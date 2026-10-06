@@ -119,7 +119,7 @@ function SalaryForm({ initial = EMPTY_FORM, workers, onSave, onCancel, loading }
         </div>
 
         {/* Net */}
-        <div style={{ background: 'rgba(0,212,170,0.08)', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ background: 'rgba(var(--green-rgb), 0.08)', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ color: 'var(--text2)', fontSize: 13 }}>รับสุทธิ (คำนวณ):</span>
           <strong style={{ color: 'var(--green)', fontSize: 20 }}>{fmt(netCalc)} บาท</strong>
           <div style={{ flex: 1 }} />

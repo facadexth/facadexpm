@@ -119,7 +119,7 @@ export default function Signup({ onSignupSuccess }) {
         <form data-enter-submit onSubmit={handleSignup} style={{ display: 'grid', gap: 16 }}>
           {error && (
             <div style={{
-              background: 'rgba(255,107,107,0.1)',
+              background: 'rgba(var(--red-rgb), 0.1)',
               border: '1px solid var(--red)',
               borderRadius: 6,
               padding: 12,

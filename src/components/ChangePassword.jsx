@@ -52,7 +52,7 @@ export default function ChangePassword({ onClose }) {
           <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
             {error && (
               <div style={{
-                background: 'rgba(255,107,107,0.1)', border: '1px solid var(--red)',
+                background: 'rgba(var(--red-rgb), 0.1)', border: '1px solid var(--red)',
                 borderRadius: 6, padding: 10, fontSize: 13, color: 'var(--red)'
               }}>
                 {error}

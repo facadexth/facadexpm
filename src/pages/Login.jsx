@@ -120,7 +120,7 @@ export default function Login() {
 
             {error && (
               <div style={{
-                background: 'rgba(255,107,107,0.1)', border: '1px solid rgba(255,107,107,0.3)',
+                background: 'rgba(var(--red-rgb), 0.1)', border: '1px solid rgba(var(--red-rgb), 0.3)',
                 borderRadius: 6, padding: '10px 14px', fontSize: 13, color: 'var(--red)'
               }}>
                 {error === 'Invalid login credentials'

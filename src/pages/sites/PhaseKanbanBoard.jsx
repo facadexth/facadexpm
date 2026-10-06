@@ -875,7 +875,7 @@ function PhaseBoard({
                       )}
                       {taskPhotoCounts[task.id] > 0 && (
                         <span title="ดูรูปหลักฐานงานเสร็จ" onClick={(e) => onViewPhotos(task, e)}
-                          style={{ fontSize: 10, fontWeight: 700, color: 'var(--green)', background: 'rgba(0,212,170,.14)', borderRadius: 20, padding: '2px 9px', cursor: 'pointer' }}>
+                          style={{ fontSize: 10, fontWeight: 700, color: 'var(--green)', background: 'rgba(var(--green-rgb), .14)', borderRadius: 20, padding: '2px 9px', cursor: 'pointer' }}>
                           📷 {taskPhotoCounts[task.id]}
                         </span>
                       )}

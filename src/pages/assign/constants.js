@@ -4,10 +4,10 @@
 import { getEffectiveTheme } from '../../lib/theme.js'
 
 export const TYPE_COLOR = {
-  site:            { bg: 'rgba(108,99,255,0.25)', color: 'var(--accent)' },
-  factory:         { bg: 'rgba(0,212,170,0.25)',  color: 'var(--green)' },
+  site:            { bg: 'rgba(var(--accent-rgb), 0.25)', color: 'var(--accent)' },
+  factory:         { bg: 'rgba(var(--green-rgb), 0.25)',  color: 'var(--green)' },
   office:          { bg: 'rgba(78,205,196,0.25)',  color: 'var(--blue)' },
-  leave:           { bg: 'rgba(255,107,107,0.25)', color: 'var(--red)' },
+  leave:           { bg: 'rgba(var(--red-rgb), 0.25)', color: 'var(--red)' },
   leave_sick:      { bg: 'rgba(255,159,67,0.25)',  color: '#ff9f43' },
   leave_personal:  { bg: 'rgba(255,71,87,0.25)',   color: '#ff4757' },
   holiday:         { bg: 'rgba(94,97,128,0.25)',   color: 'var(--text3)' },
@@ -44,11 +44,11 @@ export const DOW_TH = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']  /
 // white background). siteColor() picks between them at call time so it
 // stays correct across a theme toggle without a page reload.
 const SITE_PALETTE_DARK = [
-  { bg: 'rgba(108,99,255,0.30)',  color: '#c2bdff' },
-  { bg: 'rgba(0,212,170,0.30)',   color: '#5fe6ca' },
+  { bg: 'rgba(var(--accent-rgb), 0.30)',  color: '#c2bdff' },
+  { bg: 'rgba(var(--green-rgb), 0.30)',   color: '#5fe6ca' },
   { bg: 'rgba(255,209,102,0.30)', color: '#ffd980' },
   { bg: 'rgba(78,205,196,0.30)',  color: '#6fd8d0' },
-  { bg: 'rgba(255,107,107,0.30)', color: '#ff9d9d' },
+  { bg: 'rgba(var(--red-rgb), 0.30)', color: '#ff9d9d' },
   { bg: 'rgba(186,104,255,0.30)', color: '#d8b0ff' },
   { bg: 'rgba(120,190,255,0.30)', color: '#9dd2ff' },
   { bg: 'rgba(255,159,67,0.30)',  color: '#ffbd80' },
@@ -57,11 +57,11 @@ const SITE_PALETTE_DARK = [
 ]
 
 const SITE_PALETTE_LIGHT = [
-  { bg: 'rgba(108,99,255,0.12)',  color: '#4a3fd9' },
-  { bg: 'rgba(0,212,170,0.12)',   color: '#00815f' },
+  { bg: 'rgba(var(--accent-rgb), 0.12)',  color: '#4a3fd9' },
+  { bg: 'rgba(var(--green-rgb), 0.12)',   color: '#00815f' },
   { bg: 'rgba(255,209,102,0.18)', color: '#8a6400' },
   { bg: 'rgba(78,205,196,0.14)',  color: '#1f7d75' },
-  { bg: 'rgba(255,107,107,0.14)', color: '#c23636' },
+  { bg: 'rgba(var(--red-rgb), 0.14)', color: '#c23636' },
   { bg: 'rgba(186,104,255,0.14)', color: '#7a2ecc' },
   { bg: 'rgba(120,190,255,0.14)', color: '#1f6fb8' },
   { bg: 'rgba(255,159,67,0.16)',  color: '#b35900' },
