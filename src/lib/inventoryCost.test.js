@@ -582,3 +582,30 @@ describe('computePoItemBaseQty', () => {
     expect(computePoItemBaseQty({ quantity: 3 }, null, null, null)).toEqual({ baseQty: 3, unconverted: false })
   })
 })
+
+describe('receipt_reversal (supplier tax invoice)', () => {
+  const items = [{ id: 'X', code: 'X1', name: 'X', base_unit: 'kg', item_kind: 'raw_material', category_id: null }]
+  const mv = (type, qty, cost, at, extra = {}) => ({ inventory_item_id: 'X', movement_type: type, quantity: qty, unit_cost: cost, created_at: at, ...extra })
+  it('counts receipt_reversal as stock OUT at its stored cost', () => {
+    const [row] = computeStockLedgerReport({
+      movements: [
+        mv('purchase_in', 10, 100, '2026-09-01T03:00:00Z', { reference_type: 'purchase_order' }),
+        mv('purchase_in', 12, 90, '2026-09-30T05:00:00Z', { reference_type: 'supplier_tax_invoice', notes: 'ใบกำกับ INV-1' }),
+        mv('receipt_reversal', 10, 100, '2026-09-30T05:00:00Z', { reference_type: 'supplier_tax_invoice' }),
+      ],
+      items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'all', categoryId: null,
+    })
+    expect(row.inQty).toBe(22)
+    expect(row.outQty).toBe(10)
+    expect(row.outValue).toBe(1000)
+    expect(row.closingQty).toBe(12)
+    expect(row.closingValue).toBe(1080)
+    expect(row.movements.map(m => m.direction)).toEqual(['in', 'in', 'out'])
+  })
+  it('labels the new references from notes, with a fallback', () => {
+    expect(resolveMovementReference({ reference_type: 'supplier_tax_invoice', notes: 'ใบกำกับ INV-1' })).toBe('ใบกำกับ INV-1')
+    expect(resolveMovementReference({ reference_type: 'supplier_tax_invoice' })).toBe('ใบกำกับภาษีผู้ขาย')
+    expect(resolveMovementReference({ reference_type: 'supplier_tax_invoice_void' })).toBe('ยกเลิกใบกำกับภาษีผู้ขาย')
+    expect(resolveMovementReference({ reference_type: 'supplier_tax_invoice_void', notes: 'ยกเลิกใบกำกับ INV-1' })).toBe('ยกเลิกใบกำกับ INV-1')
+  })
+})

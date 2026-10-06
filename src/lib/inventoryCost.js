@@ -57,6 +57,8 @@ export function resolveMovementReference(movement, { pos = [], invoices = [], si
     return site ? `โอนจาก ${site.name}` : 'โอนจากไซท์งาน'
   }
   if (reference_type === 'manual_adjustment') return 'ปรับยอด'
+  if (reference_type === 'supplier_tax_invoice') return movement.notes || 'ใบกำกับภาษีผู้ขาย'
+  if (reference_type === 'supplier_tax_invoice_void') return movement.notes || 'ยกเลิกใบกำกับภาษีผู้ขาย'
   if (reference_type === 'quotation') return movement.notes ? `ใบเสนอราคา ${movement.notes}` : 'ใบเสนอราคา'
   return reference_type || '—'
 }
@@ -221,8 +223,9 @@ export function computeFinishedGoodsProductionPlan({ billedLines, materialPct })
  * Report 1/2/3.
  *
  * Movement direction: purchase_in/transfer_in/sale_reversal are always
- * "in" (quantity stored positive); transfer_out/sale_out are always
- * "out" (quantity stored positive). 'adjustment' stores a SIGNED delta
+ * "in" (quantity stored positive); transfer_out/sale_out/purchase_return/
+ * receipt_reversal (a supplier tax invoice taking a PO receipt back out)
+ * are always "out" (quantity stored positive). 'adjustment' stores a SIGNED delta
  * (record_stock_movement computes p_quantity - old_qty) -- a positive
  * adjustment.quantity is "in", a negative one is "out".
  *
@@ -248,7 +251,7 @@ export function computeStockLedgerReport({ movements, items, dateFrom, dateTo, i
   }
   const direction = (m) => {
     if (m.movement_type === 'purchase_in' || m.movement_type === 'transfer_in' || m.movement_type === 'sale_reversal') return 'in'
-    if (m.movement_type === 'transfer_out' || m.movement_type === 'sale_out' || m.movement_type === 'purchase_return') return 'out'
+    if (m.movement_type === 'transfer_out' || m.movement_type === 'sale_out' || m.movement_type === 'purchase_return' || m.movement_type === 'receipt_reversal') return 'out'
     return m.quantity >= 0 ? 'in' : 'out' // adjustment: signed delta
   }
 
