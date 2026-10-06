@@ -312,6 +312,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
 $$;
 
 -- ── post (spec steps 1-5) ──
+-- Defensive: an older one-argument post (never applied anywhere) must not linger next to the two-argument one.
+DROP FUNCTION IF EXISTS post_supplier_tax_invoice(UUID);
 CREATE OR REPLACE FUNCTION post_supplier_tax_invoice(p_id UUID, p_expected_revision INT) RETURNS JSONB
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE

@@ -117,24 +117,25 @@ A restore or move of the database loses function grants (seen before), so repeat
 
 STOP: do not run `npm run deploy` from the main checkout. As of 2026-10-07 `/Users/plfx/code/FacadeXPM/facadex-app` is on branch `claude/task-i56nn7`.
 That branch has NEITHER this feature NOR the deposit client, and it does not contain the live build `68ab4fe` (credit note / PEAK export), so deploying from it would REMOVE live features.
-(Checked with `git branch --contains 68ab4fe`: `feat/po-deposit-deduction` and `feat/tax-invoice-matching` contain it; `main` and `claude/task-i56nn7` did not.) The worktree under `.claude/worktrees/` has no `.env`, so it cannot build for CHANG either.
+(Checked with `git merge-base --is-ancestor 68ab4fe <branch>`: `feat/po-deposit-deduction`, `feat/tax-invoice-matching` and `origin/main` contain it; `claude/task-i56nn7` does not. The LOCAL `main` branch is behind `origin/main`, which is why the procedure below branches from `origin/main`.) The worktree under `.claude/worktrees/` has no `.env`, so it cannot build for CHANG either.
 **This deploy ALSO ships the PO deposit web client** (the deposit migrations are already live; the client is not).
 
-Procedure (merge in order into `main` in a clean checkout, then deploy from that checkout). Nothing below was run by me.
+Procedure (merge in order on top of `origin/main` in a clean checkout, then deploy from that checkout). Nothing below was run by me.
 
 ```bash
 cd /Users/plfx/code/FacadeXPM/facadex-app
 git status --short                                   # note anything uncommitted in the main checkout; do not touch it
 git fetch origin
-git worktree add -b release/tax-invoice ../facadex-release main     # clean checkout of main in a NEW folder
+git worktree add -b release/deposit-tax-invoice ../facadex-release origin/main   # clean checkout of origin/main (NOT the local main) in a NEW folder
 cd ../facadex-release
 git merge --no-ff feat/po-deposit-deduction          # 1st: the deposit feature
 git merge --no-ff feat/tax-invoice-matching          # 2nd: this feature (it is stacked on the deposit branch)
 # a merge conflict = STOP and send me the file names; do not resolve guesses
 git merge-base --is-ancestor 68ab4fe HEAD && echo "OK: live build 68ab4fe is included" || echo "STOP: 68ab4fe missing"
+git merge-base --is-ancestor origin/main HEAD && echo "OK: everything on origin/main is included" || echo "STOP: origin/main is not included"
 ```
 
-Only continue if it printed `OK`. If you prefer NOT to merge yet, deploy straight from this branch in a clean checkout instead (it already contains `68ab4fe` and the deposit client):
+Only continue if BOTH lines printed `OK`. If you prefer NOT to merge yet, deploy straight from this branch in a clean checkout instead (it already contains `68ab4fe` and the deposit client):
 `git worktree add --detach ../facadex-release feat/tax-invoice-matching`, then run the rest of this procedure from `../facadex-release`.
 
 ```bash
@@ -148,7 +149,7 @@ npm run deploy      # = build + verify:bundle + smoke:boot + wrangler deploy
 ```
 
 `npm run deploy` stops by itself if `verify:bundle` does not print `verify-bundle: OK (points at CHANG, no retired project)`; do not work around that.
-Afterwards merge `release/tax-invoice` into `main` the way you normally do (push) so `main` matches what is live.
+Afterwards push `release/deposit-tax-invoice` / merge it into `main` the way you normally do, so `main` matches what is live.
 
 Why migrations first: the ledger must understand `receipt_reversal` before the first invoice is posted. The app is otherwise safe before or after the migration:
 with no migration the links hook reports "not ready", the PO page shows no badges and hides the flag checkbox, and the new page shows a calm "not live yet" state.

@@ -254,8 +254,14 @@ const box = await page.locator('[data-testid="confirm-alerts"]').innerText().cat
 ok('alert box at the top lists each PO (known number and unknown), not de-duplicated', box.includes('PO-001') && (box.match(/นับซ้ำ/g) || []).length >= 3 && (box.match(/สต็อกจะถูกเพิ่มจากใบกำกับทั้งหมด/g) || []).length >= 3, box)
 const boxTop = await page.evaluate(() => { const b = document.querySelector('[data-testid="confirm-alerts"]').getBoundingClientRect(); const li = document.querySelector('.modal-body ul:last-of-type'); return { boxTop: b.top, firstSummary: li ? li.getBoundingClientRect().top : null } })
 ok('alert box is above the summary list', boxTop.firstSummary != null && boxTop.boxTop < boxTop.firstSummary, JSON.stringify(boxTop))
-const boxColor = await page.locator('[data-testid="confirm-alerts"]').evaluate(el => getComputedStyle(el).borderTopColor)
-ok('alert box is red-bordered', /rgb\(2[0-9]{2}, ?\d+, ?\d+\)|rgb\(\d+, ?\d+, ?\d+\)/.test(boxColor) && boxColor !== 'rgb(0, 0, 0)', boxColor)
+// the app's terracotta alert token is --red (#E0806A dark / #D0624F light); compare with what the CSS resolves it to
+const boxColors = await page.locator('[data-testid="confirm-alerts"]').evaluate(el => {
+  const probe = document.createElement('span'); probe.style.color = 'var(--red)'; document.body.appendChild(probe)
+  const token = getComputedStyle(probe).color; probe.remove()
+  const title = el.firstElementChild
+  return { border: getComputedStyle(el).borderTopColor, title: getComputedStyle(title).color, token }
+})
+ok('alert box border and title use the CSS --red token', boxColors.token !== '' && boxColors.token !== 'rgb(0, 0, 0)' && boxColors.border === boxColors.token && boxColors.title === boxColors.token, JSON.stringify(boxColors))
 ok('summary states the dating rule (invoice date; void is dated today)', t.includes('ลงวันที่ตามวันที่ใบกำกับ (2026-10-05)') && t.includes('ยกเลิกใบกำกับภาษีภายหลัง') === false && t.includes('ยกเลิกใบกำกับภายหลัง') && t.includes('วันนี้'), t.slice(0, 900))
 ok('confirm disabled until acknowledged', await page.getByRole('button', { name: '✅ ยืนยันบันทึก' }).isDisabled())
 await page.getByRole('button', { name: '✅ ยืนยันบันทึก' }).click({ force: true }).catch(() => {}); await wait(200)

@@ -73,6 +73,8 @@ CREATE TABLE supplier_tax_invoice_items (
 );
 CREATE INDEX idx_stii_invoice ON supplier_tax_invoice_items(invoice_id);
 CREATE INDEX idx_stii_tenant ON supplier_tax_invoice_items(tenant_id);
+-- the ON DELETE RESTRICT check of stii_movement_fk (deleting a stock movement) looks items up by this column
+CREATE INDEX idx_stii_posted_movement ON supplier_tax_invoice_items(posted_movement_id) WHERE posted_movement_id IS NOT NULL;
 
 -- expense_id has NO foreign key on purpose (PostgREST would see a second
 -- purchase_orders<->expenses path through this table). The RPCs own its integrity.

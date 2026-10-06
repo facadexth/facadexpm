@@ -98,8 +98,8 @@ export function PostConfirmOverlay({ lines, alerts = [], busy, onConfirm, onCanc
         </div>
         <div className="modal-body">
           {needAck && (
-            <div data-testid="confirm-alerts" style={{ border: '2px solid var(--danger, #e55)', background: 'rgba(239,68,68,.08)', borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 13, lineHeight: 1.6 }}>
-              <div style={{ fontWeight: 700, color: 'var(--danger, #e55)', marginBottom: 4 }}>⛔ ระวัง: สต็อกอาจถูกนับซ้ำ</div>
+            <div data-testid="confirm-alerts" style={{ border: '2px solid var(--red)', background: 'rgba(var(--red-rgb), .1)', borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 13, lineHeight: 1.6 }}>
+              <div style={{ fontWeight: 700, color: 'var(--red)', marginBottom: 4 }}>⛔ ระวัง: สต็อกอาจถูกนับซ้ำ</div>
               <ul style={{ margin: 0, paddingLeft: 18 }}>{alerts.map((a, i) => <li key={i}>{a}</li>)}</ul>
               <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 8, fontWeight: 600 }}>
                 <input type="checkbox" checked={ack} disabled={busy} onChange={e => setAck(e.target.checked)} style={{ marginTop: 4 }} />
