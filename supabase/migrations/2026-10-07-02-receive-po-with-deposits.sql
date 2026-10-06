@@ -4,7 +4,7 @@
 -- Note: the client preview (depositMath.js) and this server value can differ by one satang on exact
 -- .5 rounding ties; the server value is the one stored.
 -- Errors: insufficient_privilege, po_not_found, not_ordered, totals_mismatch, deposit_not_found,
---         deposit_wrong_supplier, deposit_exceeds_remaining, deposit_exceeds_po, deposit_vat_exceeds_po, deposit_expense_needs_vat_split, bad_application.
+--         deposit_wrong_supplier, deposit_exceeds_remaining, deposit_exceeds_po, deposit_vat_exceeds_po, deposit_expense_needs_vat_split, bad_application, po_has_deposit_applications.
 
 CREATE OR REPLACE FUNCTION receive_po_with_deposits(
   p_po_id UUID, p_applications JSONB, p_expected_subtotal NUMERIC, p_expected_vat NUMERIC
@@ -28,6 +28,8 @@ BEGIN
   SELECT * INTO po FROM purchase_orders WHERE id = p_po_id AND tenant_id = v_tenant FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'po_not_found'; END IF;
   IF po.status <> 'ordered' THEN RAISE EXCEPTION 'not_ordered'; END IF;
+  -- a PO that already carries deposit applications (e.g. un-received by a superuser) must never be received again
+  IF EXISTS (SELECT 1 FROM po_deposit_applications WHERE po_id = p_po_id) THEN RAISE EXCEPTION 'po_has_deposit_applications'; END IF;
   IF jsonb_typeof(COALESCE(p_applications, '[]'::jsonb)) <> 'array' THEN RAISE EXCEPTION 'bad_application'; END IF;
 
   -- totals exactly as the client's calcPoTotals

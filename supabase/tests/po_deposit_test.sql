@@ -2,10 +2,12 @@
 -- Tests for PO deposit deduction (migrations 2026-10-07-01 / -02).
 --
 -- !!! NOT RUN against any database !!!
--- Written without applying anything. Fixture column lists (sites / suppliers /
--- expense_categories / purchase_orders / purchase_order_items) are best guesses
--- from a read-only schema check and may need a tweak on first run. Run only on a
--- database where both migrations are applied (or wrapped in a rolled-back dry run).
+-- Written without applying anything. Fixture INSERT columns were re-checked against
+-- the live schema with read-only information_schema SELECTs (NOT NULL columns,
+-- defaults, CHECK constraints), but the script itself has never executed. Run only
+-- on a database where both migrations are applied (or in ONE rolled-back dry-run
+-- transaction: BEGIN; migration 01; migration 02; this file -- it ends in ROLLBACK).
+-- Success = the NOTICE lines "Test N ...: PASSED" for every test, no ERROR.
 --
 -- Style: single BEGIN ... ROLLBACK script; runs as `authenticated` on a scratch
 -- tenant; each negative check uses a nested BEGIN..EXCEPTION block.
@@ -24,6 +26,9 @@ DECLARE
   v_bkk DATE := (now() AT TIME ZONE 'Asia/Bangkok')::date; v_vsum NUMERIC;
   v_exp UUID; v_cnt INT; v_msg TEXT; v_status TEXT; v_pexp UUID;
   r RECORD;
+  t3_tenant UUID; t3_site UUID; t3_sup UUID; t3_cat UUID; t3_exp UUID; t3_po UUID; email3 TEXT := '__test_pd_owner3__@example.com';
+  e9 UUID; d9 UUID; po12 UUID; po13 UUID; po14 UUID; po15 UUID; po16 UUID; e10 UUID; d10 UUID; e11 UUID; d11 UUID; e12 UUID;
+  v_bool BOOLEAN;
 BEGIN
   -- ── fixtures (as the connecting superuser) ──
   SELECT id INTO t_owner FROM auth.users ORDER BY created_at ASC LIMIT 1;
@@ -47,6 +52,20 @@ BEGIN
   INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status, has_vat, price_includes_vat)
   VALUES (t2_tenant, 'PO-PD-T2', t2_site, t2_sup, t2_cat, current_date, 'ordered', true, false) RETURNING id INTO t2_po;
   INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t2_tenant, t2_po, 'item', 1, 100, 100);
+
+  -- third tenant: trial ended, plan expired (tenant_can_write() = false) but module access kept via tenant_modules
+  INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at)
+  VALUES ('__TEST TENANT pd3__', t_owner, 'expired', now() - interval '1 day') RETURNING id INTO t3_tenant;
+  INSERT INTO tenant_modules (tenant_id, module_key) VALUES (t3_tenant, 'purchase_orders');
+  INSERT INTO user_roles (user_email, role, status, tenant_id) VALUES (email3, 'OWNER', 'approved', t3_tenant);
+  INSERT INTO sites (tenant_id, site_number, name) VALUES (t3_tenant, '__PD-3__', '__pd site3__') RETURNING id INTO t3_site;
+  INSERT INTO suppliers (tenant_id, name) VALUES (t3_tenant, '__pd t3 supplier__') RETURNING id INTO t3_sup;
+  INSERT INTO expense_categories (tenant_id, name) VALUES (t3_tenant, '__pd t3 cat__') RETURNING id INTO t3_cat;
+  INSERT INTO expenses (tenant_id, date, description, site_id, category_id, supplier_id, amount_no_vat, vat, amount, payment_method, status)
+  VALUES (t3_tenant, current_date, 't3 deposit', t3_site, t3_cat, t3_sup, 100, 7, 107, 'transfer', 'paid') RETURNING id INTO t3_exp;
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status, has_vat, price_includes_vat)
+  VALUES (t3_tenant, 'PO-PD-T3', t3_site, t3_sup, t3_cat, current_date, 'ordered', true, false) RETURNING id INTO t3_po;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t3_tenant, t3_po, 'item', 1, 100, 100);
 
   SET LOCAL role = 'authenticated';
   PERFORM set_config('request.jwt.claims', '{"email":"' || email || '"}', true);
@@ -283,6 +302,193 @@ BEGIN
     RAISE EXCEPTION 'Test 13 FAIL: something was written';
   END IF;
   RAISE NOTICE 'Test 13 (deposit_vat_exceeds_po on real excess): PASSED';
+
+  -- Test 14 (C1): a received PO that carries deposit applications cannot be un-received or cancelled;
+  -- ordinary edits still work; a received PO WITHOUT applications can still be reverted as before.
+  BEGIN
+    UPDATE purchase_orders SET status = 'ordered', received_date = NULL, expense_id = NULL WHERE id = po1;
+    RAISE EXCEPTION 'Test 14 FAIL: un-receive did not raise';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+    IF v_msg NOT LIKE 'po_has_deposit_applications%' THEN RAISE EXCEPTION 'Test 14 FAIL: un-receive got %', v_msg; END IF;
+  END;
+  BEGIN
+    UPDATE purchase_orders SET status = 'cancelled' WHERE id = po2;
+    RAISE EXCEPTION 'Test 14 FAIL: cancel did not raise';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+    IF v_msg NOT LIKE 'po_has_deposit_applications%' THEN RAISE EXCEPTION 'Test 14 FAIL: cancel got %', v_msg; END IF;
+  END;
+  SELECT status INTO v_status FROM purchase_orders WHERE id = po1;
+  IF v_status <> 'received' THEN RAISE EXCEPTION 'Test 14 FAIL: PO status changed to %', v_status; END IF;
+  UPDATE purchase_orders SET notes = 'edited after receive' WHERE id = po1;   -- non-status edit is fine
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status, has_vat, price_includes_vat)
+  VALUES (t_tenant, 'PO-PD-12', t_site, t_sup, t_cat, current_date, 'ordered', true, false) RETURNING id INTO po12;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t_tenant, po12, 'item', 1, 100, 100);
+  v_exp := receive_po_with_deposits(po12, '[]'::jsonb, 100, 7);
+  IF v_exp IS NULL THEN RAISE EXCEPTION 'Test 14 FAIL: no-deposit receive made no expense'; END IF;
+  UPDATE purchase_orders SET status = 'ordered', received_date = NULL WHERE id = po12;   -- no applications: allowed
+  SELECT status INTO v_status FROM purchase_orders WHERE id = po12;
+  IF v_status <> 'ordered' THEN RAISE EXCEPTION 'Test 14 FAIL: plain un-receive blocked'; END IF;
+  RAISE NOTICE 'Test 14 (un-receive guard): PASSED';
+
+  -- Test 15 (C1): the RPC refuses a PO that already carries applications even if it is 'ordered' again
+  -- (simulated by a superuser bypassing the guard trigger inside this rolled-back transaction).
+  RESET role;
+  ALTER TABLE purchase_orders DISABLE TRIGGER po_block_unreceive_with_deposits_trg;
+  UPDATE purchase_orders SET status = 'ordered', received_date = NULL, expense_id = NULL WHERE id = po1;
+  ALTER TABLE purchase_orders ENABLE TRIGGER po_block_unreceive_with_deposits_trg;
+  SET LOCAL role = 'authenticated';
+  BEGIN
+    PERFORM receive_po_with_deposits(po1, '[]'::jsonb, 9786.00, 685.02);
+    RAISE EXCEPTION 'Test 15 FAIL: re-receive did not raise';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+    IF v_msg NOT LIKE 'po_has_deposit_applications%' THEN RAISE EXCEPTION 'Test 15 FAIL: got %', v_msg; END IF;
+  END;
+  RAISE NOTICE 'Test 15 (re-receive guard): PASSED';
+
+  -- Test 16: second application on a partly used deposit, last-use VAT path.
+  -- Deposit 333.33 / 23.33. PO A (100 / 7.00) takes 100 -> VAT 7.00 (pro-rated). PO B (233.33 / 16.33) takes the
+  -- remaining 233.33 -> VAT = remaining 16.33 exactly, so applications sum to the deposit VAT and no expense is created.
+  INSERT INTO expenses (date, description, site_id, category_id, supplier_id, amount_no_vat, vat, amount, payment_method, status)
+  VALUES (current_date, 'deposit 9', t_site, t_cat, t_sup, 333.33, 23.33, 356.66, 'transfer', 'paid') RETURNING id INTO e9;
+  INSERT INTO supplier_deposits (expense_id, deposit_invoice_no) VALUES (e9, 'AI-T9') RETURNING id INTO d9;
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status, has_vat, price_includes_vat)
+  VALUES (t_tenant, 'PO-PD-13', t_site, t_sup, t_cat, current_date, 'ordered', true, false) RETURNING id INTO po13;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t_tenant, po13, 'item', 1, 100, 100);
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status, has_vat, price_includes_vat)
+  VALUES (t_tenant, 'PO-PD-14', t_site, t_sup, t_cat, current_date, 'ordered', true, false) RETURNING id INTO po14;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t_tenant, po14, 'item', 1, 233.33, 233.33);
+  v_exp := receive_po_with_deposits(po13, jsonb_build_array(jsonb_build_object('deposit_id', d9, 'amount_no_vat', 100)), 100, 7);
+  IF v_exp IS NOT NULL THEN RAISE EXCEPTION 'Test 16 FAIL: PO A should be fully covered, expense %', v_exp; END IF;
+  SELECT amount_no_vat, vat INTO r FROM po_deposit_applications WHERE po_id = po13;
+  IF r.amount_no_vat <> 100 OR r.vat <> 7.00 THEN RAISE EXCEPTION 'Test 16 FAIL: first application % / %', r.amount_no_vat, r.vat; END IF;
+  v_exp := receive_po_with_deposits(po14, jsonb_build_array(jsonb_build_object('deposit_id', d9, 'amount_no_vat', 233.33)), 233.33, 16.33);
+  IF v_exp IS NOT NULL THEN RAISE EXCEPTION 'Test 16 FAIL: PO B should be fully covered, expense %', v_exp; END IF;
+  SELECT amount_no_vat, vat INTO r FROM po_deposit_applications WHERE po_id = po14;
+  IF r.amount_no_vat <> 233.33 OR r.vat <> 16.33 THEN RAISE EXCEPTION 'Test 16 FAIL: last application % / %', r.amount_no_vat, r.vat; END IF;
+  SELECT SUM(vat) INTO v_vsum FROM po_deposit_applications WHERE deposit_id = d9;
+  IF (SELECT SUM(amount_no_vat) FROM po_deposit_applications WHERE deposit_id = d9) <> 333.33 OR v_vsum <> 23.33 THEN
+    RAISE EXCEPTION 'Test 16 FAIL: deposit not consumed exactly';
+  END IF;
+  -- a third use of the exhausted deposit is rejected
+  BEGIN
+    PERFORM receive_po_with_deposits(po4, jsonb_build_array(jsonb_build_object('deposit_id', d9, 'amount_no_vat', 0.01)), 9786.00, 685.02);
+    RAISE EXCEPTION 'Test 16 FAIL: exhausted deposit accepted';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+    IF v_msg NOT LIKE 'deposit_exceeds_remaining%' THEN RAISE EXCEPTION 'Test 16 FAIL: got %', v_msg; END IF;
+  END;
+  RAISE NOTICE 'Test 16 (second application, last-use VAT): PASSED';
+
+  -- Test 17: VAT-inclusive PO (107 incl. VAT -> 100.00 / 7.00) with a 40 / 2.80 deposit -> remainder 60.00 / 4.20 / 64.20
+  INSERT INTO expenses (date, description, site_id, category_id, supplier_id, amount_no_vat, vat, amount, payment_method, status)
+  VALUES (current_date, 'deposit 10', t_site, t_cat, t_sup, 40, 2.80, 42.80, 'transfer', 'paid') RETURNING id INTO e10;
+  INSERT INTO supplier_deposits (expense_id, deposit_invoice_no) VALUES (e10, 'AI-T10') RETURNING id INTO d10;
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status, has_vat, price_includes_vat)
+  VALUES (t_tenant, 'PO-PD-15', t_site, t_sup, t_cat, current_date, 'ordered', true, true) RETURNING id INTO po15;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t_tenant, po15, 'item', 1, 107, 107);
+  v_exp := receive_po_with_deposits(po15, jsonb_build_array(jsonb_build_object('deposit_id', d10, 'amount_no_vat', 40)), 100, 7);
+  SELECT amount_no_vat, vat, amount INTO r FROM expenses WHERE id = v_exp;
+  IF v_exp IS NULL OR r.amount_no_vat <> 60 OR r.vat <> 4.20 OR r.amount <> 64.20 THEN
+    RAISE EXCEPTION 'Test 17 FAIL: expense % / % / %', r.amount_no_vat, r.vat, r.amount;
+  END IF;
+  RAISE NOTICE 'Test 17 (VAT-inclusive PO): PASSED';
+
+  -- Test 18: no-VAT PO (500) with a VAT-free 200 deposit -> remainder 300.00 / 0 / 300.00
+  INSERT INTO expenses (date, description, site_id, category_id, supplier_id, amount_no_vat, vat, amount, payment_method, status)
+  VALUES (current_date, 'deposit 11', t_site, t_cat, t_sup, 200, 0, 200, 'transfer', 'paid') RETURNING id INTO e11;
+  INSERT INTO supplier_deposits (expense_id, deposit_invoice_no) VALUES (e11, 'AI-T11') RETURNING id INTO d11;
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status, has_vat, price_includes_vat)
+  VALUES (t_tenant, 'PO-PD-16', t_site, t_sup, t_cat, current_date, 'ordered', false, false) RETURNING id INTO po16;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t_tenant, po16, 'item', 1, 500, 500);
+  v_exp := receive_po_with_deposits(po16, jsonb_build_array(jsonb_build_object('deposit_id', d11, 'amount_no_vat', 200)), 500, 0);
+  SELECT amount_no_vat, vat, amount INTO r FROM expenses WHERE id = v_exp;
+  IF v_exp IS NULL OR r.amount_no_vat <> 300 OR r.vat <> 0 OR r.amount <> 300 THEN
+    RAISE EXCEPTION 'Test 18 FAIL: expense % / % / %', r.amount_no_vat, r.vat, r.amount;
+  END IF;
+  RAISE NOTICE 'Test 18 (no-VAT PO): PASSED';
+
+  -- Test 19: an applied deposit (d1) keeps its expense, number and id
+  BEGIN
+    UPDATE supplier_deposits SET expense_id = e_dep3 WHERE id = d1;
+    RAISE EXCEPTION 'Test 19 FAIL: expense_id update did not raise';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+    IF v_msg NOT LIKE 'deposit_in_use%' THEN RAISE EXCEPTION 'Test 19 FAIL: expense_id got %', v_msg; END IF;
+  END;
+  BEGIN
+    UPDATE supplier_deposits SET deposit_invoice_no = 'AI-RENAMED' WHERE id = d1;
+    RAISE EXCEPTION 'Test 19 FAIL: deposit_invoice_no update did not raise';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+    IF v_msg NOT LIKE 'deposit_in_use%' THEN RAISE EXCEPTION 'Test 19 FAIL: invoice no got %', v_msg; END IF;
+  END;
+  RAISE NOTICE 'Test 19 (applied deposit identity locked): PASSED';
+
+  -- Test 20: setting po_id on a deposit expense is rejected (unapplied deposit e_dep3; applied deposit e_dep)
+  BEGIN
+    UPDATE expenses SET po_id = po4 WHERE id = e_dep3;
+    RAISE EXCEPTION 'Test 20 FAIL: po_id on registered deposit expense accepted';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+    IF v_msg NOT LIKE 'deposit_expense_is_po_generated%' THEN RAISE EXCEPTION 'Test 20 FAIL: got %', v_msg; END IF;
+  END;
+  BEGIN
+    UPDATE expenses SET po_id = po4 WHERE id = e_dep;
+    RAISE EXCEPTION 'Test 20 FAIL: po_id on applied deposit expense accepted';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+    IF v_msg NOT LIKE 'deposit_in_use%' THEN RAISE EXCEPTION 'Test 20 FAIL: applied got %', v_msg; END IF;
+  END;
+  RAISE NOTICE 'Test 20 (po_id on deposit expense rejected): PASSED';
+
+  -- Test 21 (I1): an applied deposit's expense still allows status / date / notes changes (money fields stay locked: Test 8)
+  UPDATE expenses SET status = 'pending', notes = 'status change after apply', date = current_date - 1 WHERE id = e_dep;
+  SELECT status, notes INTO r FROM expenses WHERE id = e_dep;
+  IF r.status <> 'pending' OR r.notes <> 'status change after apply' THEN RAISE EXCEPTION 'Test 21 FAIL: edit not applied'; END IF;
+  UPDATE expenses SET status = 'paid' WHERE id = e_dep;
+  RAISE NOTICE 'Test 21 (applied deposit expense: status/notes/date editable): PASSED';
+
+  -- Test 22: tenant_can_write() = false (expired tenant that still has the module) -> RPC and deposit writes rejected
+  PERFORM set_config('request.jwt.claims', '{"email":"' || email3 || '"}', true);
+  IF NOT (is_admin_or_owner() AND has_module_access('purchase_orders') AND NOT tenant_can_write()) THEN
+    RAISE EXCEPTION 'Test 22 FAIL: fixture does not isolate tenant_can_write (admin=%, module=%, can_write=%)',
+      is_admin_or_owner(), has_module_access('purchase_orders'), tenant_can_write();
+  END IF;
+  BEGIN
+    PERFORM receive_po_with_deposits(t3_po, '[]'::jsonb, 100, 7);
+    RAISE EXCEPTION 'Test 22 FAIL: read-only tenant received a PO';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+    IF v_msg NOT LIKE 'insufficient_privilege%' THEN RAISE EXCEPTION 'Test 22 FAIL: got %', v_msg; END IF;
+  END;
+  BEGIN
+    INSERT INTO supplier_deposits (expense_id, deposit_invoice_no) VALUES (t3_exp, 'AI-T3RO');
+    RAISE EXCEPTION 'Test 22 FAIL: read-only tenant registered a deposit';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+  PERFORM set_config('request.jwt.claims', '{"email":"' || email || '"}', true);
+  RAISE NOTICE 'Test 22 (tenant_can_write false rejected): PASSED';
+
+  -- Test 23: anon cannot execute the receive RPC
+  IF has_function_privilege('anon', 'receive_po_with_deposits(uuid,jsonb,numeric,numeric)', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'receive_po_with_deposits(uuid,jsonb,numeric,numeric)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Test 23 FAIL: EXECUTE grants wrong';
+  END IF;
+  BEGIN
+    SET LOCAL role = 'anon';
+    PERFORM receive_po_with_deposits(po4, '[]'::jsonb, 9786.00, 685.02);
+    RAISE EXCEPTION 'Test 23 FAIL: anon call succeeded';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+  SET LOCAL role = 'authenticated';
+  RAISE NOTICE 'Test 23 (anon EXECUTE denied): PASSED';
+
+  RAISE NOTICE 'ALL PO DEPOSIT TESTS PASSED';
 
   RESET role;
 END $$;

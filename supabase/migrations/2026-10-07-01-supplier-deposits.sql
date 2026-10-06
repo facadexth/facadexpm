@@ -31,15 +31,22 @@ CREATE INDEX idx_pda_tenant ON po_deposit_applications(tenant_id);
 ALTER TABLE supplier_deposits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE po_deposit_applications ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY admin_full_access ON supplier_deposits FOR ALL TO authenticated
-  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'))
-  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
+-- Reads need only role/tenant/module; every write also needs tenant_can_write() (expired/unpaid tenants are read-only).
+CREATE POLICY admin_read ON supplier_deposits FOR SELECT TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
+CREATE POLICY admin_insert ON supplier_deposits FOR INSERT TO authenticated
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders') AND tenant_can_write());
+CREATE POLICY admin_update ON supplier_deposits FOR UPDATE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders') AND tenant_can_write())
+  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders') AND tenant_can_write());
+CREATE POLICY admin_delete ON supplier_deposits FOR DELETE TO authenticated
+  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders') AND tenant_can_write());
 -- applications: clients may only READ; rows are written by the receive RPC (definer)
 CREATE POLICY admin_read ON po_deposit_applications FOR SELECT TO authenticated
   USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('purchase_orders'));
 
-REVOKE ALL ON po_deposit_applications FROM anon, authenticated;
-REVOKE ALL ON supplier_deposits FROM anon;
+REVOKE ALL ON po_deposit_applications FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON supplier_deposits FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON supplier_deposits TO authenticated;
 GRANT SELECT ON po_deposit_applications TO authenticated;
 
@@ -85,3 +92,16 @@ BEGIN
   RETURN NEW;
 END $$;
 CREATE TRIGGER sd_lock_when_applied_trg BEFORE UPDATE ON supplier_deposits FOR EACH ROW EXECUTE FUNCTION sd_lock_when_applied();
+
+-- A received PO that has deposit applications cannot be moved away from 'received' (un-receive / cancel):
+-- the applications would stay behind (clients cannot delete them) and a re-receive would double-count or
+-- strand the deposit. The receive RPC itself goes ordered -> received and is unaffected.
+CREATE OR REPLACE FUNCTION po_block_unreceive_with_deposits() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF OLD.status = 'received' AND NEW.status IS DISTINCT FROM 'received'
+     AND EXISTS (SELECT 1 FROM po_deposit_applications WHERE po_id = OLD.id) THEN
+    RAISE EXCEPTION 'po_has_deposit_applications';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER po_block_unreceive_with_deposits_trg BEFORE UPDATE OF status ON purchase_orders FOR EACH ROW EXECUTE FUNCTION po_block_unreceive_with_deposits();
