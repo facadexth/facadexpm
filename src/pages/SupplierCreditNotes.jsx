@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, fmt } from '../lib/supabase.js'
 import {
   useSupplierCreditNotes, useInventoryOnHand, useSuppliers, useSites,
-  useCategories, usePurchaseOrders, useInventoryItems, useExpenses,
+  usePurchaseOrders,
   useAllInventoryItems, useInventoryItemUnitFactors, useAllAluminumProfiles,
 } from '../hooks/useSupabase.js'
 import {
@@ -58,8 +58,6 @@ const STATUS_BADGE = {
   void: { cls: 'badge-received', label: '🚫 ยกเลิก' },
 }
 
-const EMPTY_LINE = { inventory_item_id: '', description: '', quantity: '1', unit: '', unit_price: '' }
-
 function makeInitialForm(prefill, note) {
   if (note) {
     const items = (note.supplier_credit_note_items || []).map(i => ({
@@ -69,7 +67,7 @@ function makeInitialForm(prefill, note) {
       unit: i.unit || '',
       unit_price: String(i.unit_price ?? ''),
     }))
-    // vat_enabled / price_includes_vat are not stored; infer from saved data.
+    // vat flags are not stored; inferred here, then taken from the PO once it loads.
     const { vatEnabled, priceIncludesVat } = inferVatFlags(note)
     return {
       supplier_id: note.supplier_id, site_id: note.site_id, doc_number: note.doc_number,
@@ -78,9 +76,8 @@ function makeInitialForm(prefill, note) {
       expense_date: note.expense_date || '', original_invoice_no: note.original_invoice_no || '',
       original_invoice_date: note.original_invoice_date || '',
       vatEnabled, priceIncludesVat, notes: note.notes || '',
-      lines: items.length ? items : [{ ...EMPTY_LINE }],
-      // a draft saved from a PO reopens in PO mode (ticked rows rebuilt once the PO loads)
-      mode: note.po_id ? 'po' : 'manual', selection: {}, hydrateLines: note.po_id ? items : null,
+      // ticked rows are rebuilt from the saved lines once the PO loads
+      selection: {}, hydrateLines: note.po_id ? items : null,
     }
   }
   const p = prefill || {}
@@ -90,20 +87,17 @@ function makeInitialForm(prefill, note) {
     original_expense_id: p.original_expense_id || null,
     expense_date: '', original_invoice_no: '', original_invoice_date: '',
     vatEnabled: p.vatEnabled ?? true, priceIncludesVat: p.priceIncludesVat ?? false, notes: '',
-    lines: p.items?.length
-      ? p.items.map(i => ({
-          inventory_item_id: i.inventory_item_id || '', description: i.description || '',
-          quantity: String(i.quantity ?? '1'), unit: i.unit || '', unit_price: String(i.unit_price ?? ''),
-        }))
-      : [{ ...EMPTY_LINE }],
-    mode: 'po', selection: {}, hydrateLines: null, hydratePending: !!p.po_id,
+    selection: {}, hydrateLines: null, hydratePending: !!p.po_id,
   }
 }
 
-// display only: stored full-precision price is kept unless the user edits the field
-const displayPrice = v => { const n = Number(v); return v === '' || !Number.isFinite(n) ? v : String(Math.round(n * 1e4) / 1e4) }
+// original invoice (no + date) comes from the PO's linked expense
+const poInvoice = po => {
+  const x = Array.isArray(po?.expenses) ? po.expenses[0] : po?.expenses
+  return { original_invoice_no: x?.invoice_no || '', original_invoice_date: x?.date || '' }
+}
 const nz = v => (v == null ? '' : String(v))
-// PO-mode lines in the same string shape as the manual editor
+// credit lines in string form (as stored on the form)
 const toFormLines = lines => lines.map(l => ({
   inventory_item_id: l.inventory_item_id || '', description: l.description || '',
   quantity: nz(l.quantity), unit: l.unit || '', unit_price: nz(l.unit_price),
@@ -157,16 +151,12 @@ function ConfirmNoteDialog({ note, itemNameById, onConfirm, onCancel }) {
     }} />
 }
 
-function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems, onSave, onCancel, loading }) {
+function CreditNoteForm({ initial, suppliers, sites, onSave, onCancel, loading }) {
   const [form, setForm] = useState(initial)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const setLine = (i, k, v) => setForm(f => ({ ...f, lines: f.lines.map((l, idx) => idx === i ? { ...l, [k]: v } : l) }))
-  const addLine = () => setForm(f => ({ ...f, lines: [...f.lines, { ...EMPTY_LINE }] }))
-  const removeLine = i => setForm(f => ({ ...f, lines: f.lines.length > 1 ? f.lines.filter((_, idx) => idx !== i) : f.lines }))
 
   const { data: onHandData } = useInventoryOnHand(form.site_id)
   const onHand = onHandData || {}
-  const { data: supplierExpenses } = useExpenses(form.supplier_id ? { supplierId: form.supplier_id } : {})
   const { data: pos } = usePurchaseOrders(form.supplier_id ? { supplierId: form.supplier_id } : {})
   const { data: allItems, error: e1 } = useAllInventoryItems()
   const { data: profiles, error: e2 } = useAllAluminumProfiles()
@@ -175,25 +165,29 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
   const lookupsReady = !!(allItems && profiles && unitFactors)
   const lookups = useMemo(() => ({ inventoryItems: allItems || [], aluminumProfiles: profiles || [], unitFactors: unitFactors || [] }), [allItems, profiles, unitFactors])
   const [includeUnreceived, setIncludeUnreceived] = useState(false)
-  const poMode = form.mode === 'po'
+  const [hydrateNote, setHydrateNote] = useState('')
   const selectedPo = useMemo(() => (pos || []).find(p => p.id === form.po_id) || null, [pos, form.po_id])
   const poOptions = (pos || []).filter(p => p.id === form.po_id || p.status === 'received' || (includeUnreceived && p.status !== 'cancelled'))
   const hydrated = useRef(false)
   useEffect(() => {
     if (hydrated.current) return
-    if (!poMode || !form.po_id) { hydrated.current = true; return }
+    if (!form.po_id) { hydrated.current = true; return }
     if (lookupError) return
     if (!pos || !lookupsReady) return
     hydrated.current = true
-    if (!selectedPo) { setForm(f => ({ ...f, mode: 'manual', po_id: '' })); return }
+    if (!selectedPo) { setForm(f => ({ ...f, po_id: '' })); setHydrateNote('ไม่พบใบสั่งซื้อเดิมของใบลดหนี้นี้ กรุณาเลือก PO ใหม่'); return }
     if (form.hydrateLines) {
       const sel = selectionFromSavedLines(selectedPo, form.hydrateLines, lookups)
-      if (sel) setForm(f => ({ ...f, selection: sel }))
-      else setForm(f => ({ ...f, mode: 'manual' })) // lines no longer match the PO: keep them as manual lines
+      const vat = { vatEnabled: selectedPo.has_vat !== false, priceIncludesVat: !!selectedPo.price_includes_vat }
+      if (sel) setForm(f => ({ ...f, ...vat, selection: sel }))
+      else {
+        setForm(f => ({ ...f, ...vat, selection: defaultSelection(selectedPo, false, lookups) }))
+        setHydrateNote('รายการในร่างเดิมไม่ตรงกับ PO ปัจจุบัน กรุณาติ๊กเลือกรายการที่คืนใหม่')
+      }
     } else if (form.hydratePending) {
-      setForm(f => ({ ...f, selection: defaultSelection(selectedPo, true, lookups) }))
+      setForm(f => ({ ...f, ...poInvoice(selectedPo), selection: defaultSelection(selectedPo, true, lookups) }))
     }
-  }, [poMode, form.po_id, form.hydrateLines, form.hydratePending, pos, lookupsReady, lookupError, selectedPo, lookups])
+  }, [form.po_id, form.hydrateLines, form.hydratePending, pos, lookupsReady, lookupError, selectedPo, lookups])
 
   const pickPo = id => {
     const po = (pos || []).find(p => p.id === id)
@@ -201,47 +195,30 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
     setForm(f => po ? {
       ...f, po_id: id, site_id: po.site_id || f.site_id, category_id: po.category_id || f.category_id,
       vatEnabled: po.has_vat !== false, priceIncludesVat: !!po.price_includes_vat,
-      original_expense_id: po.expense_id || null, selection: defaultSelection(po, false, lookups),
-    } : { ...f, po_id: '', selection: {} })
+      original_expense_id: po.expense_id || null, ...poInvoice(po), selection: defaultSelection(po, false, lookups),
+    } : { ...f, po_id: '', selection: {}, original_expense_id: null, original_invoice_no: '', original_invoice_date: '' })
+    setHydrateNote('')
   }
   const setSel = (itemId, patch) => setForm(f => ({ ...f, selection: { ...f.selection, [itemId]: { qty: String((selectedPo?.purchase_order_items || []).find(x => x.id === itemId)?.quantity ?? ''), ...f.selection[itemId], ...patch } } }))
   const poItems = selectedPo?.purchase_order_items || []
   const selectable = poItems.filter(it => !(lookupsReady && poItemBlocked(it, lookups)))
   const allTicked = selectable.length > 0 && selectable.every(it => form.selection[it.id]?.checked)
   const toggleAll = on => setForm(f => ({ ...f, selection: Object.fromEntries(poItems.map(it => [it.id, { checked: on && !(lookupsReady && poItemBlocked(it, lookups)), qty: f.selection[it.id]?.qty ?? String(it.quantity) }])) }))
-  const setMode = m => { hydrated.current = true; setForm(f => ({ ...f, mode: m, ...(m === 'manual' ? { po_id: '', selection: {} } : {}) })) }
-
-  const itemOptions = useMemo(() => (inventoryItems || []).map(it => ({
-    value: it.id, label: `${it.name} (${it.base_unit})`, keywords: it.name,
-  })), [inventoryItems])
-  const itemById = useMemo(() => Object.fromEntries([...(allItems || []), ...(inventoryItems || [])].map(it => [it.id, it])), [allItems, inventoryItems])
-
+  const itemById = useMemo(() => Object.fromEntries((allItems || []).map(it => [it.id, it])), [allItems])
   const poLines = useMemo(
-    () => (poMode && selectedPo ? toFormLines(buildCreditLinesFromPo(selectedPo, form.selection, lookups)) : []),
-    [poMode, selectedPo, form.selection, lookups])
-  const activeLines = poMode ? poLines : form.lines.filter(l => l.inventory_item_id || l.description.trim() || Number(l.unit_price) > 0)
+    () => (selectedPo ? toFormLines(buildCreditLinesFromPo(selectedPo, form.selection, lookups)) : []),
+    [selectedPo, form.selection, lookups])
+  const activeLines = poLines
   const totals = computeCreditNoteTotals(activeLines, { vatEnabled: form.vatEnabled, vatRate: VAT_RATE, priceIncludesVat: form.priceIncludesVat })
 
-  const pickItem = (i, id) => {
-    const it = itemById[id]
-    setForm(f => ({
-      ...f,
-      lines: f.lines.map((l, idx) => idx !== i ? l : {
-        ...l,
-        inventory_item_id: id || '',
-        description: id ? (it?.name || l.description) : l.description,
-        unit: id ? (it?.base_unit || l.unit) : l.unit,
-      }),
-    }))
-  }
-
   const submit = (confirmAfter) => {
-    const missing = [!form.supplier_id && 'ซัพพลายเออร์', !form.site_id && 'ไซต์', !form.doc_number.trim() && 'เลขที่ใบลดหนี้', !form.category_id && 'หมวดหมู่'].filter(Boolean)
+    const missing = [!form.supplier_id && 'ซัพพลายเออร์', !form.site_id && 'ไซต์', !form.doc_number.trim() && 'เลขที่ใบลดหนี้', !form.po_id && 'ใบสั่งซื้อ (PO)'].filter(Boolean)
     if (missing.length) { alert('ยังไม่ได้กรอก: ' + missing.join(', ')); return }
-    if (poMode && lookupError) { alert('โหลดข้อมูลสินค้า/หน่วยแปลงไม่สำเร็จ: ' + lookupError); return }
-    if (poMode && !lookupsReady) { alert('กำลังโหลดข้อมูลสินค้า กรุณารอสักครู่'); return }
-    if (poMode) {
-      if (!selectedPo) { alert('กรุณาเลือกใบสั่งซื้อ หรือเลือก "ไม่อ้างอิง PO (กรอกเอง)"'); return }
+    if (lookupError) { alert('โหลดข้อมูลสินค้า/หน่วยแปลงไม่สำเร็จ: ' + lookupError); return }
+    if (!lookupsReady) { alert('กำลังโหลดข้อมูลสินค้า กรุณารอสักครู่'); return }
+    {
+      if (!selectedPo) { alert('กรุณาเลือกใบสั่งซื้อ'); return }
+      if (!form.category_id) { alert('ใบสั่งซื้อนี้ไม่มีหมวดหมู่ — กำหนดหมวดหมู่ที่ใบสั่งซื้อก่อน'); return }
       const bad = validateReturnQty(form.selection, selectedPo, lookups)
       if (bad.length) { alert(bad.map(b => `• ${b.description || ''}: ${REASON_TEXT[b.reason]}`).join('\n')); return }
       if (!activeLines.length) { alert('กรุณาติ๊กเลือกรายการที่คืนอย่างน้อย 1 รายการ'); return }
@@ -249,7 +226,7 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
     if (!activeLines.length) { alert('กรุณาเพิ่มรายการอย่างน้อย 1 รายการ'); return }
     if (activeLines.some(l => !(Number(l.quantity) > 0))) { alert('จำนวนในรายการต้องมากกว่า 0'); return }
     if (activeLines.some(l => !l.description.trim() && !l.inventory_item_id)) { alert('กรุณาระบุสินค้าหรือคำอธิบายในทุกรายการ'); return }
-    onSave({ ...form, po_id: poMode ? form.po_id : '', lines: activeLines, totals }, confirmAfter, onHand, itemById)
+    onSave({ ...form, lines: activeLines, totals }, confirmAfter, onHand, itemById)
   }
 
   return (
@@ -276,51 +253,14 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
             <input type="date" className="input" required value={form.doc_date} onChange={e => set('doc_date', e.target.value)} />
           </div>
           <div>
-            <label className="label">หมวดหมู่ ★</label>
-            <SearchableSelect required value={form.category_id} onChange={v => set('category_id', v)}
-              options={(categories || []).map(c => ({ value: c.id, label: c.name, keywords: c.name }))} />
-          </div>
-          <div>
             <label className="label">วันที่ลงรายจ่าย (เดือนที่หักรายจ่ายติดลบ ว่าง = ใช้วันที่ในใบ)</label>
             <input type="date" className="input" value={form.expense_date} onChange={e => set('expense_date', e.target.value)} />
           </div>
-          <div>
-            <label className="label">อ้างถึงใบกำกับเดิม — เลขที่</label>
-            <input className="input" value={form.original_invoice_no} onChange={e => set('original_invoice_no', e.target.value)} />
-          </div>
-          <div>
-            <label className="label">อ้างถึงใบกำกับเดิม — วันที่</label>
-            <input type="date" className="input" value={form.original_invoice_date} onChange={e => set('original_invoice_date', e.target.value)} />
-          </div>
-          <div>
-            <label className="label">รายจ่ายเดิมที่อ้างถึง (ไม่บังคับ)</label>
-            <SearchableSelect value={form.original_expense_id || ''} onChange={v => set('original_expense_id', v || null)}
-              placeholder="— ไม่ผูก —"
-              options={(form.supplier_id ? (supplierExpenses || []) : []).map(x => ({
-                value: x.id,
-                label: `${x.date || ''} · ${x.invoice_no || '-'} · ${fmt(x.amount)}`,
-                keywords: `${x.invoice_no || ''} ${x.date || ''}`,
-              }))} />
-          </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-          <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
-            <input type="checkbox" checked={form.vatEnabled} onChange={e => set('vatEnabled', e.target.checked)} /> มี VAT
-          </label>
-          <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, opacity: form.vatEnabled ? 1 : 0.5 }}>
-            <input type="checkbox" disabled={!form.vatEnabled} checked={form.priceIncludesVat} onChange={e => set('priceIncludesVat', e.target.checked)} /> ราคารวม VAT แล้ว
-          </label>
-        </div>
+        {lookupError && <div style={{ color: 'var(--danger, #e55)', fontSize: 13 }}>โหลดข้อมูลสินค้า/หน่วยแปลงไม่สำเร็จ: {lookupError} — บันทึกไม่ได้ ลองเปิดหน้านี้ใหม่</div>}
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" className={`btn btn-sm ${poMode ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setMode('po')}>อ้างอิงใบสั่งซื้อ (PO)</button>
-          <button type="button" className={`btn btn-sm ${!poMode ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setMode('manual')}>ไม่อ้างอิง PO (กรอกเอง)</button>
-        </div>
-
-        {poMode && lookupError && <div style={{ color: 'var(--danger, #e55)', fontSize: 13 }}>โหลดข้อมูลสินค้า/หน่วยแปลงไม่สำเร็จ: {lookupError} — บันทึกไม่ได้ ลองเปิดหน้านี้ใหม่</div>}
-
-        {poMode && (
+        {(
           <div style={{ display: 'grid', gap: 10 }}>
             <div>
               <label className="label">ใบสั่งซื้อของซัพพลายเออร์นี้ ★</label>
@@ -336,6 +276,13 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
                 <input type="checkbox" checked={includeUnreceived} onChange={e => setIncludeUnreceived(e.target.checked)} /> รวมใบสั่งซื้อที่ยังไม่รับของ
               </label>
             </div>
+            {selectedPo && (
+              <div style={{ fontSize: 13, color: 'var(--text2)' }}>
+                ใบกำกับเดิม: {form.original_invoice_no ? <b>{form.original_invoice_no}</b> : '—'}
+                {form.original_invoice_no && form.original_invoice_date ? <> ลงวันที่ <b>{form.original_invoice_date}</b></> : null}
+              </div>
+            )}
+            {hydrateNote && <div style={{ fontSize: 13, color: 'var(--danger, #e55)' }}>{hydrateNote}</div>}
             {form.supplier_id && pos && !poOptions.length && (
               <div style={{ fontSize: 13, color: 'var(--text3)' }}>ไม่พบใบสั่งซื้อที่รับของแล้วของซัพพลายเออร์นี้</div>
             )}
@@ -384,29 +331,6 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
           </div>
         )}
 
-        {!poMode && <div>
-          <label className="label">รายการสินค้าที่คืน</label>
-          <div style={{ display: 'grid', gap: 10 }}>
-            {form.lines.map((l, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, padding: 10, border: '1px solid var(--border)', borderRadius: 8 }}>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <SearchableSelect value={l.inventory_item_id} onChange={v => pickItem(i, v)}
-                    placeholder="— สินค้าในคลัง (หรือพิมพ์คำอธิบายด้านล่างสำหรับรายการที่ไม่ใช่สต็อก) —"
-                    options={itemOptions} />
-                </div>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <input className="input" placeholder="คำอธิบาย" value={l.description} onChange={e => setLine(i, 'description', e.target.value)} />
-                </div>
-                <input className="input" type="number" min="0" step="any" placeholder="จำนวน" value={l.quantity} onChange={e => setLine(i, 'quantity', e.target.value)} />
-                <input className="input" placeholder="หน่วย" value={l.unit} readOnly={!!l.inventory_item_id} title={l.inventory_item_id ? 'หน่วยฐานของสินค้าในคลัง' : undefined} onChange={e => setLine(i, 'unit', e.target.value)} />
-                <input className="input" type="number" min="0" step="any" placeholder="ราคา/หน่วย" value={l.upEdited ? l.unit_price : displayPrice(l.unit_price)} onChange={e => setForm(f => ({ ...f, lines: f.lines.map((x, idx) => idx === i ? { ...x, unit_price: e.target.value, upEdited: true } : x) }))} />
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeLine(i)} disabled={form.lines.length <= 1}>🗑️ ลบรายการ</button>
-              </div>
-            ))}
-            <div><button type="button" className="btn btn-ghost btn-sm" onClick={addLine}>+ เพิ่มรายการ</button></div>
-          </div>
-        </div>}
-
         <div>
           <label className="label">หมายเหตุ</label>
           <input className="input" value={form.notes} onChange={e => set('notes', e.target.value)} />
@@ -420,8 +344,8 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
       </div>
       <div className="modal-footer">
         <button type="button" className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>
-        <button type="submit" className="btn btn-ghost" disabled={loading || (poMode && !lookupsReady)}>{loading ? '⏳...' : '💾 บันทึกร่าง'}</button>
-        <button type="button" className="btn btn-primary" disabled={loading || (poMode && !lookupsReady)} onClick={() => submit(true)}>✅ บันทึกและยืนยัน</button>
+        <button type="submit" className="btn btn-ghost" disabled={loading || !lookupsReady}>{loading ? '⏳...' : '💾 บันทึกร่าง'}</button>
+        <button type="button" className="btn btn-primary" disabled={loading || !lookupsReady} onClick={() => submit(true)}>✅ บันทึกและยืนยัน</button>
       </div>
     </form>
   )
@@ -440,8 +364,6 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
   const { data: notes, loading, error, refetch } = useSupplierCreditNotes({ supplierId: supplierFilter, status: statusFilter })
   const { data: suppliers } = useSuppliers()
   const { data: sites } = useSites()
-  const { data: categories } = useCategories()
-  const { data: inventoryItems } = useInventoryItems()
 
   // prefill (from a PO, Task 6) opens the form once on mount
   const [showForm, setShowForm] = useState(!!prefill)
@@ -657,7 +579,7 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
       {showForm && formInitial && (
         <Modal title={editNote ? 'แก้ไขใบลดหนี้' : 'เพิ่มใบลดหนี้ซัพพลายเออร์'} onClose={closeForm} maxWidth={760}>
           <CreditNoteForm key={formKey} initial={formInitial}
-            suppliers={suppliers} sites={sites} categories={categories} inventoryItems={inventoryItems}
+            suppliers={suppliers} sites={sites}
             onSave={handleSave} onCancel={closeForm} loading={saving} />
         </Modal>
       )}
