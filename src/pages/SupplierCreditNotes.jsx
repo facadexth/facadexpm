@@ -5,12 +5,17 @@
 // ✅ Client may only write DRAFT notes; every status change goes through the
 //    RPCs (see supabase/migrations/2026-10-06-0*.sql)
 // ============================================================
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, fmt } from '../lib/supabase.js'
 import {
   useSupplierCreditNotes, useInventoryOnHand, useSuppliers, useSites,
   useCategories, usePurchaseOrders, useInventoryItems, useExpenses,
+  useAllInventoryItems, useInventoryItemUnitFactors, useAllAluminumProfiles,
 } from '../hooks/useSupabase.js'
+import {
+  buildCreditLinesFromPo, validateReturnQty, defaultSelection, selectionFromSavedLines,
+  describeCreditNoteConfirm, creditLineForPoItem, poItemNetUnitPrice, poItemTotal,
+} from '../lib/creditNotePo.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -74,6 +79,8 @@ function makeInitialForm(prefill, note) {
       original_invoice_date: note.original_invoice_date || '',
       vatEnabled, priceIncludesVat, notes: note.notes || '',
       lines: items.length ? items : [{ ...EMPTY_LINE }],
+      // a draft saved from a PO reopens in PO mode (ticked rows rebuilt once the PO loads)
+      mode: note.po_id ? 'po' : 'manual', selection: {}, hydrateLines: note.po_id ? items : null,
     }
   }
   const p = prefill || {}
@@ -89,7 +96,63 @@ function makeInitialForm(prefill, note) {
           quantity: String(i.quantity ?? '1'), unit: i.unit || '', unit_price: String(i.unit_price ?? ''),
         }))
       : [{ ...EMPTY_LINE }],
+    mode: 'po', selection: {}, hydrateLines: null, hydratePending: !!p.po_id,
   }
+}
+
+const nz = v => (v == null ? '' : String(v))
+// PO-mode lines in the same string shape as the manual editor
+const toFormLines = lines => lines.map(l => ({
+  inventory_item_id: l.inventory_item_id || '', description: l.description || '',
+  quantity: nz(l.quantity), unit: l.unit || '', unit_price: nz(l.unit_price),
+}))
+
+const REASON_TEXT = { not_positive: 'จำนวนที่คืนต้องมากกว่า 0', above_ordered: 'จำนวนที่คืนเกินจำนวนที่สั่ง' }
+
+function CreditNoteConfirmDialog({ info, onConfirm, onCancel }) {
+  return (
+    <ConfirmDialog title="ยืนยันใบลดหนี้ — โปรดตรวจสอบ" danger onConfirm={onConfirm} onCancel={onCancel}
+      message={
+        <div style={{ display: 'grid', gap: 8, fontSize: 13 }}>
+          <div>เลขที่ใบลดหนี้: <b>{info.docNumber}</b></div>
+          <div>
+            ระบบจะ<b>ตัดสต็อก</b>{info.siteName ? <> ที่ไซต์ <b>{info.siteName}</b></> : null}:
+            {info.stockTexts.length
+              ? <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{info.stockTexts.map((t, i) => <li key={i}>{t}</li>)}</ul>
+              : <span> (ไม่มีรายการสต็อก)</span>}
+          </div>
+          {info.shortTexts.length > 0 && (
+            <div style={{ color: 'var(--danger, #e55)', fontWeight: 600 }}>
+              ⚠️ สต็อกไม่พอ:
+              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{info.shortTexts.map((t, i) => <li key={i}>{t}</li>)}</ul>
+            </div>
+          )}
+          <div>
+            และบันทึก<b>รายจ่ายติดลบ</b> <b>{info.amountText}</b> บาท (รวม VAT)
+            {info.month ? <> ในเดือน <b>{info.month}</b></> : null}
+          </div>
+          <div style={{ color: 'var(--danger, #e55)' }}>
+            เมื่อยืนยันแล้วจะแก้ไขไม่ได้ — ย้อนกลับได้โดยการยกเลิกใบลดหนี้เท่านั้น
+          </div>
+        </div>
+      } />
+  )
+}
+
+// List-action confirm: loads the site's stock so shortfalls are shown in red (RPC stays the authority).
+function ConfirmNoteDialog({ note, itemNameById, onConfirm, onCancel }) {
+  const { data: onHand } = useInventoryOnHand(note.site_id)
+  const lines = note.supplier_credit_note_items || []
+  const shortfalls = onHand ? findStockShortfalls(lines, onHand) : []
+  const info = describeCreditNoteConfirm({
+    docNumber: note.doc_number, siteName: note.sites?.name, lines, amount: note.amount,
+    docDate: note.doc_date, expenseDate: note.expense_date, shortfalls, itemNameById,
+  })
+  return <CreditNoteConfirmDialog info={info} onCancel={onCancel}
+    onConfirm={() => {
+      if (shortfalls.length) { alert('สต็อกไม่พอสำหรับคืนสินค้า:\n' + info.shortTexts.map(t => '• ' + t).join('\n')); return }
+      onConfirm()
+    }} />
 }
 
 function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems, onSave, onCancel, loading }) {
@@ -103,13 +166,55 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
   const onHand = onHandData || {}
   const { data: supplierExpenses } = useExpenses(form.supplier_id ? { supplierId: form.supplier_id } : {})
   const { data: pos } = usePurchaseOrders(form.supplier_id ? { supplierId: form.supplier_id } : {})
+  const { data: allItems } = useAllInventoryItems()
+  const { data: profiles } = useAllAluminumProfiles()
+  const { data: unitFactors } = useInventoryItemUnitFactors()
+  const lookupsReady = !!(allItems && profiles && unitFactors)
+  const lookups = useMemo(() => ({ inventoryItems: allItems || [], aluminumProfiles: profiles || [], unitFactors: unitFactors || [] }), [allItems, profiles, unitFactors])
+  const [includeUnreceived, setIncludeUnreceived] = useState(false)
+  const poMode = form.mode === 'po'
+  const selectedPo = useMemo(() => (pos || []).find(p => p.id === form.po_id) || null, [pos, form.po_id])
+  const poOptions = (pos || []).filter(p => p.id === form.po_id || p.status === 'received' || (includeUnreceived && p.status !== 'cancelled'))
+  const hydrated = useRef(false)
+  useEffect(() => {
+    if (hydrated.current) return
+    if (!poMode || !form.po_id) { hydrated.current = true; return }
+    if (!pos || !lookupsReady) return
+    hydrated.current = true
+    if (!selectedPo) { setForm(f => ({ ...f, mode: 'manual', po_id: '' })); return }
+    if (form.hydrateLines) {
+      const sel = selectionFromSavedLines(selectedPo, form.hydrateLines, lookups)
+      if (sel) setForm(f => ({ ...f, selection: sel }))
+      else setForm(f => ({ ...f, mode: 'manual' })) // lines no longer match the PO: keep them as manual lines
+    } else if (form.hydratePending) {
+      setForm(f => ({ ...f, selection: defaultSelection(selectedPo, true) }))
+    }
+  }, [poMode, form.po_id, form.hydrateLines, form.hydratePending, pos, lookupsReady, selectedPo, lookups])
+
+  const pickPo = id => {
+    const po = (pos || []).find(p => p.id === id)
+    hydrated.current = true
+    setForm(f => po ? {
+      ...f, po_id: id, site_id: po.site_id || f.site_id, category_id: po.category_id || f.category_id,
+      vatEnabled: po.has_vat !== false, priceIncludesVat: !!po.price_includes_vat,
+      original_expense_id: po.expense_id || null, selection: defaultSelection(po, false),
+    } : { ...f, po_id: '', selection: {} })
+  }
+  const setSel = (itemId, patch) => setForm(f => ({ ...f, selection: { ...f.selection, [itemId]: { ...f.selection[itemId], ...patch } } }))
+  const poItems = selectedPo?.purchase_order_items || []
+  const allTicked = poItems.length > 0 && poItems.every(it => form.selection[it.id]?.checked)
+  const toggleAll = on => setForm(f => ({ ...f, selection: Object.fromEntries(poItems.map(it => [it.id, { checked: on, qty: f.selection[it.id]?.qty ?? String(it.quantity) }])) }))
+  const setMode = m => { hydrated.current = true; setForm(f => ({ ...f, mode: m, ...(m === 'manual' ? { po_id: '', selection: {} } : {}) })) }
 
   const itemOptions = useMemo(() => (inventoryItems || []).map(it => ({
     value: it.id, label: `${it.name} (${it.base_unit})`, keywords: it.name,
   })), [inventoryItems])
-  const itemById = useMemo(() => Object.fromEntries((inventoryItems || []).map(it => [it.id, it])), [inventoryItems])
+  const itemById = useMemo(() => Object.fromEntries([...(allItems || []), ...(inventoryItems || [])].map(it => [it.id, it])), [allItems, inventoryItems])
 
-  const activeLines = form.lines.filter(l => l.inventory_item_id || l.description.trim() || Number(l.unit_price) > 0)
+  const poLines = useMemo(
+    () => (poMode && selectedPo ? toFormLines(buildCreditLinesFromPo(selectedPo, form.selection, lookups)) : []),
+    [poMode, selectedPo, form.selection, lookups])
+  const activeLines = poMode ? poLines : form.lines.filter(l => l.inventory_item_id || l.description.trim() || Number(l.unit_price) > 0)
   const totals = computeCreditNoteTotals(activeLines, { vatEnabled: form.vatEnabled, vatRate: VAT_RATE, priceIncludesVat: form.priceIncludesVat })
 
   const pickItem = (i, id) => {
@@ -127,10 +232,16 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
 
   const submit = (confirmAfter) => {
     if (!form.supplier_id || !form.site_id || !form.doc_number.trim() || !form.category_id) { alert('กรุณากรอกซัพพลายเออร์ ไซต์ เลขที่ใบลดหนี้ และหมวดหมู่'); return }
+    if (poMode) {
+      if (!selectedPo) { alert('กรุณาเลือกใบสั่งซื้อ หรือเลือก "ไม่อ้างอิง PO (กรอกเอง)"'); return }
+      const bad = validateReturnQty(form.selection, selectedPo)
+      if (bad.length) { alert(bad.map(b => `• ${b.description || ''}: ${REASON_TEXT[b.reason]}`).join('\n')); return }
+      if (!activeLines.length) { alert('กรุณาติ๊กเลือกรายการที่คืนอย่างน้อย 1 รายการ'); return }
+    }
     if (!activeLines.length) { alert('กรุณาเพิ่มรายการอย่างน้อย 1 รายการ'); return }
     if (activeLines.some(l => !(Number(l.quantity) > 0))) { alert('จำนวนในรายการต้องมากกว่า 0'); return }
     if (activeLines.some(l => !l.description.trim() && !l.inventory_item_id)) { alert('กรุณาระบุสินค้าหรือคำอธิบายในทุกรายการ'); return }
-    onSave({ ...form, lines: activeLines, totals }, confirmAfter, onHand, itemById)
+    onSave({ ...form, po_id: poMode ? form.po_id : '', lines: activeLines, totals }, confirmAfter, onHand, itemById)
   }
 
   return (
@@ -160,12 +271,6 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
             <label className="label">หมวดหมู่ ★</label>
             <SearchableSelect required value={form.category_id} onChange={v => set('category_id', v)}
               options={(categories || []).map(c => ({ value: c.id, label: c.name, keywords: c.name }))} />
-          </div>
-          <div>
-            <label className="label">ผูก PO (ถ้ามี)</label>
-            <SearchableSelect value={form.po_id} onChange={v => set('po_id', v)}
-              placeholder="— ไม่ผูก —"
-              options={(pos || []).map(p => ({ value: p.id, label: `${p.po_number || p.id.slice(0, 8)} · ${p.date || ''}`, keywords: p.po_number || '' }))} />
           </div>
           <div>
             <label className="label">วันที่ลงรายจ่าย (ว่าง = ใช้วันที่ในใบ)</label>
@@ -200,7 +305,75 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
           </label>
         </div>
 
-        <div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" className={`btn btn-sm ${poMode ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setMode('po')}>อ้างอิงใบสั่งซื้อ (PO)</button>
+          <button type="button" className={`btn btn-sm ${!poMode ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setMode('manual')}>ไม่อ้างอิง PO (กรอกเอง)</button>
+        </div>
+
+        {poMode && (
+          <div style={{ display: 'grid', gap: 10 }}>
+            <div>
+              <label className="label">ใบสั่งซื้อของซัพพลายเออร์นี้ ★</label>
+              {!form.supplier_id
+                ? <div style={{ fontSize: 13, color: 'var(--text3)' }}>เลือกซัพพลายเออร์ก่อน</div>
+                : <SearchableSelect value={form.po_id} onChange={pickPo} placeholder="— เลือก PO —"
+                    options={poOptions.map(p => ({
+                      value: p.id,
+                      label: `${p.po_number || p.id.slice(0, 8)} · ${p.date || ''} · ${fmt((p.purchase_order_items || []).reduce((t, it) => t + poItemTotal(it), 0))}`,
+                      keywords: p.po_number || '',
+                    }))} />}
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, marginTop: 6 }}>
+                <input type="checkbox" checked={includeUnreceived} onChange={e => setIncludeUnreceived(e.target.checked)} /> รวมใบสั่งซื้อที่ยังไม่รับของ
+              </label>
+            </div>
+            {form.supplier_id && pos && !poOptions.length && (
+              <div style={{ fontSize: 13, color: 'var(--text3)' }}>ไม่พบใบสั่งซื้อที่รับของแล้วของซัพพลายเออร์นี้</div>
+            )}
+            {selectedPo && (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th><input type="checkbox" checked={allTicked} onChange={e => toggleAll(e.target.checked)} title="เลือกทั้งหมด" /></th>
+                      <th>รายการ</th><th style={{ textAlign: 'right' }}>จำนวนที่สั่ง</th>
+                      <th style={{ textAlign: 'right' }}>ราคา/หน่วย (หลังส่วนลด)</th>
+                      <th style={{ textAlign: 'right' }}>รวม</th><th>จำนวนที่คืน</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {poItems.map(it => {
+                      const s = form.selection[it.id] || { checked: false, qty: String(it.quantity) }
+                      const bad = s.checked && (!(Number(s.qty) > 0) || Number(s.qty) > Number(it.quantity))
+                      const line = s.checked && !bad ? creditLineForPoItem(it, Number(s.qty), lookups) : null
+                      return (
+                        <tr key={it.id}>
+                          <td><input type="checkbox" checked={!!s.checked} onChange={e => setSel(it.id, { checked: e.target.checked })} /></td>
+                          <td>{it.description}{!it.inventory_item_id && <div style={{ fontSize: 11, color: 'var(--text3)' }}>ไม่ใช่สต็อก — ไม่ตัดสต็อก</div>}</td>
+                          <td className="font-mono" style={{ textAlign: 'right' }}>{fmt(it.quantity)} {it.unit}</td>
+                          <td className="font-mono" style={{ textAlign: 'right' }}>{fmt(poItemNetUnitPrice(it))}</td>
+                          <td className="font-mono" style={{ textAlign: 'right' }}>{fmt(poItemTotal(it))}</td>
+                          <td style={{ minWidth: 130 }}>
+                            {s.checked ? (
+                              <>
+                                <input className="input" type="number" min="0" step="any" style={{ width: 90 }} value={s.qty}
+                                  onChange={e => setSel(it.id, { qty: e.target.value })} /> {it.unit}
+                                {bad && <div style={{ fontSize: 11, color: 'var(--danger, #e55)' }}>{Number(s.qty) > 0 ? REASON_TEXT.above_ordered : REASON_TEXT.not_positive}</div>}
+                                {line && line.inventory_item_id && <div style={{ fontSize: 11, color: 'var(--text3)' }}>ตัดสต็อก {fmt(line.quantity)} {line.unit}</div>}
+                                {line && <div style={{ fontSize: 11, color: 'var(--text3)' }}>ยอดคืน {fmt(Number(line.quantity) * Number(line.unit_price))}</div>}
+                              </>
+                            ) : <span style={{ color: 'var(--text3)' }}>—</span>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!poMode && <div>
           <label className="label">รายการสินค้าที่คืน</label>
           <div style={{ display: 'grid', gap: 10 }}>
             {form.lines.map((l, i) => (
@@ -221,7 +394,7 @@ function CreditNoteForm({ initial, suppliers, sites, categories, inventoryItems,
             ))}
             <div><button type="button" className="btn btn-ghost btn-sm" onClick={addLine}>+ เพิ่มรายการ</button></div>
           </div>
-        </div>
+        </div>}
 
         <div>
           <label className="label">หมายเหตุ</label>
@@ -267,6 +440,9 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
   const [saving, setSaving] = useState(false)
   const [busy, setBusy] = useState(false)
   const [confirmId, setConfirmId] = useState(null)
+  const [pendingSave, setPendingSave] = useState(null)
+  const { data: allInvItems } = useAllInventoryItems()
+  const itemNameById = useMemo(() => Object.fromEntries((allInvItems || []).map(i => [i.id, i.name])), [allInvItems])
   const [voidId, setVoidId] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
   const [settleTarget, setSettleTarget] = useState(null)
@@ -278,9 +454,14 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
 
   const supplierNameById = useMemo(() => Object.fromEntries((suppliers || []).map(s => [s.id, s.name])), [suppliers])
 
-  const handleSave = async (form, confirmAfter, onHand, itemById) => {
+  const handleSave = async (form, confirmAfter, onHand, itemById, warned = false) => {
     if (saving || busy) return
     if (!form.lines.length) { alert('ใบลดหนี้ต้องมีรายการสินค้าอย่างน้อย 1 รายการ'); return }
+    if (confirmAfter && !warned) {
+      // warning first; the save + RPC only run once the owner confirms
+      setPendingSave({ form, onHand, itemById })
+      return
+    }
     // Stock shortfall pre-check (the RPC is the final authority).
     if (confirmAfter) {
       const short = findStockShortfalls(form.lines, onHand)
@@ -361,6 +542,22 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
     catch (e) { alert('Error: ' + e.message); closer(); refetch() }
     finally { setBusy(false) }
   }
+  const rows = notes || []
+  const confirmTarget = confirmId ? rows.find(n => n.id === confirmId) : null
+  const pendingInfo = (() => {
+    if (!pendingSave) return null
+    const { form, onHand, itemById } = pendingSave
+    const names = Object.fromEntries(Object.entries(itemById || {}).map(([id, it]) => [id, it.name]))
+    const shortfalls = findStockShortfalls(form.lines, onHand || {})
+    return {
+      shortfalls,
+      info: describeCreditNoteConfirm({
+        docNumber: form.doc_number.trim(), siteName: (sites || []).find(x => x.id === form.site_id)?.name,
+        lines: form.lines, amount: round2(form.totals.amount_no_vat + form.totals.vat),
+        docDate: form.doc_date, expenseDate: form.expense_date, shortfalls, itemNameById: names,
+      }),
+    }
+  })()
   const askConfirm = n => {
     if (!(n.supplier_credit_note_items || []).length) { alert('ใบลดหนี้นี้ไม่มีรายการสินค้า — แก้ไขและเพิ่มรายการก่อนยืนยัน'); return }
     setConfirmId(n.id)
@@ -375,8 +572,6 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
     if (error) { alert('Error: ' + cnErrorText(error)); return }
     refetch()
   }
-
-  const rows = notes || []
 
   return (
     <div>
@@ -456,11 +651,24 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
         </Modal>
       )}
 
-      {confirmId && (
-        <ConfirmDialog title="ยืนยันใบลดหนี้"
-          message="เมื่อยืนยันแล้ว ระบบจะตัดสต็อกสินค้าที่คืนและบันทึกเป็นรายจ่ายติดลบ แก้ไขไม่ได้อีก (ยกเลิกได้เท่านั้น)"
-          onConfirm={() => runRpc(() => confirmNote(confirmId), () => setConfirmId(null))}
+      {confirmTarget && (
+        <ConfirmNoteDialog note={confirmTarget} itemNameById={itemNameById}
+          onConfirm={() => runRpc(() => confirmNote(confirmTarget.id), () => setConfirmId(null))}
           onCancel={() => setConfirmId(null)} />
+      )}
+
+      {pendingInfo && (
+        <CreditNoteConfirmDialog info={pendingInfo.info}
+          onCancel={() => setPendingSave(null)}
+          onConfirm={() => {
+            const ps = pendingSave
+            if (pendingInfo.shortfalls.length) {
+              alert('สต็อกไม่พอสำหรับคืนสินค้า:\n' + pendingInfo.info.shortTexts.map(t => '• ' + t).join('\n'))
+              return
+            }
+            setPendingSave(null)
+            handleSave(ps.form, true, ps.onHand, ps.itemById, true)
+          }} />
       )}
 
       {deleteId && (
