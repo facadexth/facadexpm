@@ -10,13 +10,14 @@ import { useCategories, setCategoryUseForDeduction } from '../hooks/useSupabase.
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
+import { isPeakAccountCode } from '../lib/peakFields.js'
 
 const PRESET_COLORS = [
   '#6c63ff','#00d4aa','#ff6b6b','#ffd166','#4ecdc4',
   '#a29bfe','#fd79a8','#74b9ff','#55efc4','#fab1a0'
 ]
 
-const EMPTY_FORM = { name: '', color: '#6c63ff', sort_order: 99, code_prefix: '' }
+const EMPTY_FORM = { name: '', color: '#6c63ff', sort_order: 99, code_prefix: '', peak_account_code: '' }
 
 function CatForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
   const isAdd = !initial?.id
@@ -33,6 +34,10 @@ function CatForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
           <label className="label">รหัสย่อ (สำหรับตั้งรหัสสินค้าคงคลังอัตโนมัติ)</label>
           <input className="input" value={form.code_prefix || ''} onChange={e => set('code_prefix', e.target.value.toUpperCase())} placeholder="เช่น OPK, GLS — เว้นว่างได้ถ้าไม่ต้องการ" style={{ maxWidth: 160 }} />
           <p style={{ fontSize: 11.5, color: 'var(--text3)', margin: '4px 0 0' }}>ถ้าตั้งไว้ สินค้าคงคลังใหม่ในหมวดนี้ที่เว้นช่องรหัสว่างไว้จะได้รหัสอัตโนมัติ เช่น {form.code_prefix || 'OPK'}-0001, {form.code_prefix || 'OPK'}-0002 ...</p>
+        </div>
+        <div>
+          <label className="label">รหัสบัญชี PEAK</label>
+          <input className="input" inputMode="numeric" maxLength={6} value={form.peak_account_code || ''} onChange={e => set('peak_account_code', e.target.value.replace(/\D/g, ''))} placeholder="เช่น 530306 (6 หลัก) — เว้นว่างได้" style={{ maxWidth: 200 }} />
         </div>
         <div>
           <label className="label">สี</label>
@@ -84,7 +89,12 @@ export default function Categories() {
   const handleSave = async (form) => {
     setSaving(true)
     try {
-      const payload = { name: form.name, color: form.color, code_prefix: form.code_prefix?.trim() || null }
+      const peakCode = (form.peak_account_code || '').trim()
+      if (peakCode && !isPeakAccountCode(peakCode)) {
+        alert('รหัสบัญชีต้องเป็นตัวเลข 6 หลัก')
+        return
+      }
+      const payload = { name: form.name, color: form.color, code_prefix: form.code_prefix?.trim() || null, peak_account_code: peakCode || null }
       if (editCat) {
         const { error } = await supabase.from('expense_categories').update(payload).eq('id', editCat.id)
         if (error) throw error
@@ -139,6 +149,7 @@ export default function Categories() {
                 <th>สี</th>
                 <th className="sortable" onClick={() => toggleSort('name')}>ชื่อหมวด{si('name')}</th>
                 <th>รหัสย่อ</th>
+                <th>รหัสบัญชี PEAK</th>
                 <th>ใช้คิดต้นทุน/ตัดสต็อก</th>
                 <th>เรียง</th>
                 <th></th>
@@ -154,6 +165,7 @@ export default function Categories() {
                     <span className="badge" style={{ background: `${c.color}22`, color: c.color || 'var(--accent)', fontSize: 13 }}>{c.name}</span>
                   </td>
                   <td style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--text3)' }}>{c.code_prefix || '—'}</td>
+                  <td style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--text3)' }}>{c.peak_account_code || '—'}</td>
                   <td style={{ textAlign: 'center' }}>
                     <input type="checkbox" checked={!!c.use_for_cost_deduction} disabled={savingDeductionId === c.id}
                       onChange={() => handleToggleDeduction(c)} />
@@ -185,7 +197,7 @@ export default function Categories() {
                 </tr>
               ))}
               {!filtered.length && (
-                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีหมวดหมู่</td></tr>
+                <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีหมวดหมู่</td></tr>
               )}
             </tbody>
           </table>

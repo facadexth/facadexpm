@@ -15,6 +15,7 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { fileToExtractionPayload } from '../lib/poDocumentExtraction.js'
+import { isTaxId13, isBranch5 } from '../lib/peakFields.js'
 
 const SUPPLIER_TYPES = [
   'อลูมิเนียม', 'เหล็ก', 'อุปกรณ์', 'กระจก',
@@ -24,7 +25,8 @@ const SUPPLIER_TYPES = [
 const EMPTY_FORM = {
   name: '', contact_person: '', phone: '', email: '',
   category: [], address: '', notes: '',
-  payment_mode: 'transfer_cash', credit_days: ''
+  payment_mode: 'transfer_cash', credit_days: '',
+  peak_contact_no: '', tax_id: '', branch_no: ''
 }
 
 const PAYMENT_MODES = [
@@ -159,6 +161,20 @@ function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
         <div>
           <label className="label">ที่อยู่</label>
           <input className="input" value={form.address} onChange={e => set('address', e.target.value)} />
+        </div>
+        <div className="form-grid-2">
+          <div>
+            <label className="label">รหัสผู้ติดต่อ PEAK</label>
+            <input className="input" value={form.peak_contact_no || ''} onChange={e => set('peak_contact_no', e.target.value)} placeholder="เว้นว่างได้" />
+          </div>
+          <div>
+            <label className="label">เลขประจำตัวผู้เสียภาษี (13 หลัก)</label>
+            <input className="input" inputMode="numeric" maxLength={13} value={form.tax_id || ''} onChange={e => set('tax_id', e.target.value.replace(/\D/g, ''))} placeholder="เว้นว่างได้" />
+          </div>
+          <div>
+            <label className="label">สาขา (5 หลัก)</label>
+            <input className="input" inputMode="numeric" maxLength={5} value={form.branch_no || ''} onChange={e => set('branch_no', e.target.value.replace(/\D/g, ''))} placeholder="เช่น 00000 — เว้นว่างได้" />
+          </div>
         </div>
         <div>
           <label className="label">หมายเหตุ</label>
@@ -338,7 +354,15 @@ export default function Suppliers() {
     try {
       const cats = normCategory(form.category)
       const isCash = form.payment_mode === 'transfer_cash'
+      const peakContactNo = (form.peak_contact_no || '').trim()
+      const taxId = (form.tax_id || '').trim()
+      const branchNo = (form.branch_no || '').trim()
+      if (taxId && !isTaxId13(taxId)) { alert('ใส่ครบ 13 หลัก'); return }
+      if (branchNo && !isBranch5(branchNo)) { alert('ใส่ครบ 5 หลัก'); return }
       const payload = {
+        peak_contact_no: peakContactNo || null,
+        tax_id: taxId || null,
+        branch_no: branchNo || null,
         name: form.name, contact_person: form.contact_person || null,
         phone: form.phone || null, email: form.email || null,
         category: cats.length ? cats : null,
