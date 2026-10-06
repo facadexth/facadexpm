@@ -3,7 +3,7 @@
 // PostConfirmOverlay -- plain overlay (NOT <Modal>) because it opens over the form modal
 // (Modal's popstate handling is not safe for stacked modals; see SupplierCreditNotes.jsx).
 // ============================================================
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { fmt } from '../lib/supabase.js'
 import { CHECK_TEXT, fmtQty, fmtWac } from '../lib/supplierTaxInvoice.js'
 
@@ -72,7 +72,11 @@ export default function TaxInvoicePreview({ preview, poNumberById }) {
   )
 }
 
-export function PostConfirmOverlay({ lines, busy, onConfirm, onCancel }) {
+/** alerts: red box at the top (e.g. POs whose stock may be double counted). While any alert is present the
+ *  confirm button stays disabled until the user ticks the acknowledgement. */
+export function PostConfirmOverlay({ lines, alerts = [], busy, onConfirm, onCancel }) {
+  const [ack, setAck] = useState(false)
+  const needAck = alerts.length > 0
   const busyRef = useRef(busy); busyRef.current = busy
   const cancelRef = useRef(onCancel); cancelRef.current = onCancel
   useEffect(() => {
@@ -93,13 +97,23 @@ export function PostConfirmOverlay({ lines, busy, onConfirm, onCancel }) {
           <button type="button" className="modal-close" disabled={busy} onClick={onCancel}>✕</button>
         </div>
         <div className="modal-body">
+          {needAck && (
+            <div data-testid="confirm-alerts" style={{ border: '2px solid var(--danger, #e55)', background: 'rgba(239,68,68,.08)', borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 13, lineHeight: 1.6 }}>
+              <div style={{ fontWeight: 700, color: 'var(--danger, #e55)', marginBottom: 4 }}>⛔ ระวัง: สต็อกอาจถูกนับซ้ำ</div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>{alerts.map((a, i) => <li key={i}>{a}</li>)}</ul>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 8, fontWeight: 600 }}>
+                <input type="checkbox" checked={ack} disabled={busy} onChange={e => setAck(e.target.checked)} style={{ marginTop: 4 }} />
+                <span>ฉันรับทราบ — สต็อกจะถูกเพิ่มจากใบกำกับทั้งหมด และอาจนับซ้ำหากเดือนนี้ลงสต็อกย้อนหลังไว้แล้ว</span>
+              </label>
+            </div>
+          )}
           <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6, fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>
             {lines.map((l, i) => <li key={i} style={l.startsWith('⚠️') ? { color: '#b45309', fontWeight: 600 } : undefined}>{l}</li>)}
           </ul>
         </div>
         <div className="modal-footer">
           <button type="button" className="btn btn-ghost" disabled={busy} onClick={onCancel}>ยกเลิก</button>
-          <button type="button" className="btn btn-danger" disabled={busy} onClick={onConfirm}>✅ ยืนยันบันทึก</button>
+          <button type="button" className="btn btn-danger" disabled={busy || (needAck && !ack)} onClick={onConfirm}>✅ ยืนยันบันทึก</button>
         </div>
       </div>
     </div>

@@ -15,6 +15,8 @@ export function buildActiveLinkMap(rows) {
 export const saveDraftArgs = (id, header, items, poIds) =>
   ({ p_id: id || null, p_header: header, p_items: items || [], p_po_ids: poIds || [] })
 export const idArgs = id => ({ p_id: id })
+/** post must pass the revision the user previewed; a missing value is sent as null and the server refuses it. */
+export const postArgs = (id, expectedRevision) => ({ p_id: id, p_expected_revision: Number.isInteger(expectedRevision) ? expectedRevision : null })
 export const voidArgs = (id, reason) => ({ p_id: id, p_reason: reason })
 
 export const TAX_INVOICE_RPCS = {

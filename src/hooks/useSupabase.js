@@ -9,7 +9,7 @@ import { buildDepositMap } from '../lib/depositMath.js'
 import { applyDateFilter } from '../lib/expenseFilters.js'
 import { buildUnitSeedRows, VAT_RATE } from '../lib/invoiceCalc.js'
 import { validateExtraction, blobToBase64 } from '../lib/poDocumentExtraction.js'
-import { buildActiveLinkMap, saveDraftArgs, idArgs, voidArgs, TAX_INVOICE_RPCS } from '../lib/taxInvoiceLinks.js'
+import { buildActiveLinkMap, saveDraftArgs, idArgs, postArgs, voidArgs, TAX_INVOICE_RPCS } from '../lib/taxInvoiceLinks.js'
 import { isTaxInvoiceNotReady } from '../lib/supplierTaxInvoice.js'
 
 /** Generic fetch hook */
@@ -1816,7 +1816,7 @@ async function rpcOrThrow(name, args) {
 export const saveSupplierTaxInvoiceDraft = (id, header, items, poIds) => rpcOrThrow(TAX_INVOICE_RPCS.save, saveDraftArgs(id, header, items, poIds))
 export const deleteSupplierTaxInvoiceDraft = id => rpcOrThrow(TAX_INVOICE_RPCS.delete, idArgs(id))
 export const previewSupplierTaxInvoice = id => rpcOrThrow(TAX_INVOICE_RPCS.preview, idArgs(id))
-export const postSupplierTaxInvoice = id => rpcOrThrow(TAX_INVOICE_RPCS.post, idArgs(id))
+export const postSupplierTaxInvoice = (id, expectedRevision) => rpcOrThrow(TAX_INVOICE_RPCS.post, postArgs(id, expectedRevision))
 export const voidSupplierTaxInvoice = (id, reason) => rpcOrThrow(TAX_INVOICE_RPCS.void, voidArgs(id, reason))
 
 /** Received POs of one supplier, tagged with the supplier they were fetched for.

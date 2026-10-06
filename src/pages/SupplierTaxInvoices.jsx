@@ -20,7 +20,7 @@ import { canEditPage } from '../lib/permissions.js'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
 import { toRpcPayload, formFromInvoice, emptyTaxInvoiceForm, poRowsFor } from '../lib/taxInvoiceForm.js'
 import {
-  CHECK_TEXT, mapTaxInvoiceRpcError, formSignature, previewIsCurrent, postSummaryLines, withinTolerance, fmtQty,
+  CHECK_TEXT, mapTaxInvoiceRpcError, formSignature, previewIsCurrent, postSummaryLines, doubleCountAlerts, withinTolerance, fmtQty,
 } from '../lib/supplierTaxInvoice.js'
 
 const STATUS_BADGE = {
@@ -127,7 +127,11 @@ export default function SupplierTaxInvoices() {
     return id
   }
   const handleSaveDraft = form => guard(async () => {
-    try { await saveDraft(form); refetch(); alert('บันทึกร่างแล้ว') }
+    try {
+      await saveDraft(form); refetch()
+      setPreview(null); setConfirm(null)   // every save bumps the revision: an earlier preview can no longer be posted
+      alert('บันทึกร่างแล้ว')
+    }
     catch (e) { alert(mapTaxInvoiceRpcError(e)) }
   })
   const handlePreview = form => guard(async () => {
@@ -148,8 +152,9 @@ export default function SupplierTaxInvoices() {
     if ((preview.data?.checks || []).some(c => c.blocking)) return
     const stockLineCount = preview.form.lines.filter(l => l.inventory_item_id).length
     setConfirm({
-      id: preview.id, signature: preview.signature,
-      lines: postSummaryLines({ invoiceNo: preview.form.invoice_no.trim(), stockLineCount, poCount: preview.form.po_ids.length, preview: preview.data, matchNote: preview.form.match_note }),
+      id: preview.id, signature: preview.signature, revision: preview.data?.revision,
+      alerts: doubleCountAlerts(preview.data?.checks, poNumberById),
+      lines: postSummaryLines({ invoiceNo: preview.form.invoice_no.trim(), invoiceDate: preview.form.invoice_date, stockLineCount, poCount: preview.form.po_ids.length, preview: preview.data, matchNote: preview.form.match_note }),
     })
   }
   const doPost = () => guard(async () => {
@@ -159,7 +164,7 @@ export default function SupplierTaxInvoices() {
       setConfirm(null); alert('ข้อมูลเปลี่ยนแล้ว — กด "ตรวจสอบก่อนบันทึก" อีกครั้ง'); return
     }
     try {
-      const result = await postSupplierTaxInvoice(confirm.id)
+      const result = await postSupplierTaxInvoice(confirm.id, confirm.revision)
       setConfirm(null); setPreview(null); setEditing(null); latestFormRef.current = null; refetch()
       const neg = (result?.negative || []).map(negText)
       const warn = warnTexts(result?.checks)
@@ -268,7 +273,7 @@ export default function SupplierTaxInvoices() {
           {formReady && formInitial ? (
             <>
               <SupplierTaxInvoiceForm
-                key={editing.key} initial={formInitial} invoiceId={editing.loadId || null} busy={busy}
+                key={editing.key} initial={formInitial} invoiceId={editing.id || editing.loadId || null} busy={busy}
                 onChange={f => { latestFormRef.current = f; setFormTick(t => t + 1) }}
                 onSaveDraft={handleSaveDraft} onPreview={handlePreview} onCancel={closeEditor}>
                 {preview && (
@@ -297,7 +302,7 @@ export default function SupplierTaxInvoices() {
         </Modal>
       )}
 
-      {confirm && <PostConfirmOverlay lines={confirm.lines} busy={busy} onConfirm={doPost} onCancel={() => setConfirm(null)} />}
+      {confirm && <PostConfirmOverlay lines={confirm.lines} alerts={confirm.alerts} busy={busy} onConfirm={doPost} onCancel={() => setConfirm(null)} />}
 
       {viewRow && <ViewModal row={viewRow} siteNameById={siteNameById} onClose={() => setViewRow(null)} />}
 
@@ -307,6 +312,7 @@ export default function SupplierTaxInvoices() {
             <div>ใบกำกับ <b>{voidRow.invoice_no}</b></div>
             <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>
               สต็อกจะกลับเป็นเหมือนก่อนบันทึก (รับเข้าจากใบสั่งซื้อกลับมา และนำรายการของใบกำกับออก) และรายจ่ายจะกลับเป็นเลขที่ใบกำกับเดิม
+              รายการย้อนกลับจะลงวันที่วันนี้ (ไม่ใช่เดือนของใบกำกับ)
             </div>
             <label style={{ fontSize: 13 }}>เหตุผลที่ยกเลิก *
               <textarea className="input" rows={3} value={voidReason} onChange={e => setVoidReason(e.target.value)} disabled={busy} />

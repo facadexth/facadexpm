@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { buildActiveLinkMap, saveDraftArgs, idArgs, voidArgs, TAX_INVOICE_RPCS } from './taxInvoiceLinks.js'
+import { buildActiveLinkMap, saveDraftArgs, idArgs, postArgs, voidArgs, TAX_INVOICE_RPCS } from './taxInvoiceLinks.js'
 import { mapTaxInvoiceRpcError, CHECK_TEXT } from './supplierTaxInvoice.js'
 
 describe('buildActiveLinkMap', () => {
@@ -44,8 +44,14 @@ describe('RPC argument builders match the SQL function signatures', () => {
   it('save', () => {
     expect(Object.keys(saveDraftArgs(null, {}, [], [])).sort()).toEqual(paramsOf(TAX_INVOICE_RPCS.save))
   })
-  it('delete / preview / post', () => {
-    for (const fn of [TAX_INVOICE_RPCS.delete, TAX_INVOICE_RPCS.preview, TAX_INVOICE_RPCS.post]) {
+  it('post passes the previewed revision (p_expected_revision)', () => {
+    expect(Object.keys(postArgs('x', 3)).sort()).toEqual(paramsOf(TAX_INVOICE_RPCS.post))
+    expect(postArgs('x', 3)).toEqual({ p_id: 'x', p_expected_revision: 3 })
+    expect(postArgs('x', undefined)).toEqual({ p_id: 'x', p_expected_revision: null })
+    expect(postArgs('x', '3')).toEqual({ p_id: 'x', p_expected_revision: null })
+  })
+  it('delete / preview', () => {
+    for (const fn of [TAX_INVOICE_RPCS.delete, TAX_INVOICE_RPCS.preview]) {
       expect(Object.keys(idArgs('x')).sort()).toEqual(paramsOf(fn))
     }
   })

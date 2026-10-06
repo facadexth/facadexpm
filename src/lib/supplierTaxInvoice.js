@@ -144,7 +144,7 @@ export const CHECK_TEXT = {
   match_note_required: 'ยอดใบกำกับต่างจากมูลค่าสินค้าในใบสั่งซื้อเกินเกณฑ์ — ต้องกรอกเหตุผล',
   match_outside_tolerance: 'ยอดต่างจากใบสั่งซื้อเกินเกณฑ์ (กรอกเหตุผลแล้ว)',
   po_has_credit_note: 'ใบสั่งซื้อนี้มีใบลดหนี้ — ตรวจว่าใบกำกับหักของที่คืนแล้วหรือยัง',
-  po_no_receipt_movements: 'ใบสั่งซื้อนี้ไม่มีการลงสต็อกตอนรับของ (ไม่มีสต็อกให้กลับรายการ)',
+  po_no_receipt_movements: 'ใบสั่งซื้อไม่มีรายการรับเข้าสต็อกให้กลับรายการ — สต็อกจะถูกเพิ่มจากใบกำกับทั้งหมด หากเดือนนี้ลงสต็อกย้อนหลังไว้แล้ว จะนับซ้ำ',
   po_stock_from_invoice: 'ใบสั่งซื้อนี้ตั้งให้สต็อกเข้าจากใบกำกับ (ไม่ต้องกลับรายการ)',
   po_stock_flag_but_received_stock: 'ตั้งให้สต็อกเข้าจากใบกำกับ แต่มีการลงสต็อกตอนรับของ — จะถูกกลับรายการ',
   po_outside_month: 'ใบสั่งซื้อนอกเดือนของใบกำกับ',
@@ -160,6 +160,7 @@ export const CHECK_TEXT = {
 const RPC_TEXT = {
   ...CHECK_TEXT,
   insufficient_privilege: 'ไม่มีสิทธิ์ทำรายการนี้ (หรือแพ็กเกจหมดอายุ)',
+  stale_preview: 'ใบกำกับถูกแก้ไขหลังจากดูตัวอย่าง กรุณาดูตัวอย่างใหม่',
   void_reason_required: 'กรุณากรอกเหตุผลที่ยกเลิก',
   bad_item: 'ข้อมูลรายการไม่ถูกต้อง',
   stock_line_incomplete: 'รายการที่ผูกสต็อกต้องมีไซท์งานและจำนวนในหน่วยหลักมากกว่า 0',
@@ -245,8 +246,19 @@ export function reversingPoCount(poCount, checks) {
   return Math.max(0, poCount - skipped.size)
 }
 
-/** Text for the post confirm dialog: every stock change, warnings (de-duplicated by code), typed reason. */
-export function postSummaryLines({ invoiceNo, stockLineCount, poCount, preview, matchNote }) {
+/** Prominent alerts for the confirm dialog: one entry per PO whose receipt was never recorded as a movement
+ *  (post will ADD the invoice's stock with nothing to reverse: double count if that month was backfilled).
+ *  Never de-duplicated by code: every affected PO is listed. */
+export function doubleCountAlerts(checks, poNumberById) {
+  return (checks || []).filter(c => c.code === 'po_no_receipt_movements' && !c.blocking).map(c => {
+    const no = c.po_id ? poNumberById?.get?.(c.po_id) : null
+    return (no ? `${no} — ` : '') + CHECK_TEXT.po_no_receipt_movements
+  })
+}
+
+/** Text for the post confirm dialog: every stock change, warnings (de-duplicated by code), typed reason.
+ *  po_no_receipt_movements is NOT in here: doubleCountAlerts() shows it separately and prominently. */
+export function postSummaryLines({ invoiceNo, invoiceDate, stockLineCount, poCount, preview, matchNote }) {
   const out = [`เพิ่มสต็อกจากใบกำกับ ${stockLineCount} รายการ`, `กลับรายการรับเข้าสต็อกของใบสั่งซื้อ ${reversingPoCount(poCount, preview?.checks)} ใบ`]
   for (const r of preview?.rows || []) {
     out.push(`${r.negative ? '⚠️ ' : ''}${r.item_name} @ ${r.site_name}: คงเหลือ ${fmtQty(r.before_qty)} → ${fmtQty(r.after_qty)} ${r.base_unit || ''}`.trim()
@@ -256,11 +268,15 @@ export function postSummaryLines({ invoiceNo, stockLineCount, poCount, preview, 
   }
   const seen = new Set()
   for (const c of preview?.checks || []) {
-    if (c.blocking || seen.has(c.code)) continue
+    if (c.blocking || c.code === 'po_no_receipt_movements' || seen.has(c.code)) continue
     seen.add(c.code); out.push('⚠️ ' + (CHECK_TEXT[c.code] || c.code))
   }
   if (String(matchNote || '').trim()) out.push(`เหตุผลที่ยอดต่าง: ${String(matchNote).trim()}`)
   out.push(`รายจ่ายของใบสั่งซื้อไม่เปลี่ยนยอด แต่จะประทับเลขที่ใบกำกับ ${invoiceNo}`)
+  if (invoiceDate) {
+    out.push(`รายการเคลื่อนไหวสต็อกจะลงวันที่ตามวันที่ใบกำกับ (${invoiceDate})`)
+    out.push('หากยกเลิกใบกำกับภายหลัง รายการย้อนกลับจะลงวันที่วันที่ยกเลิก (วันนี้) ไม่ใช่เดือนของใบกำกับ — บัญชีสต็อกของเดือนนั้นจะไม่ถูกแก้ย้อนหลัง')
+  }
   out.push('แก้ไขภายหลังไม่ได้ — ย้อนกลับได้ด้วย "ยกเลิกใบกำกับ" เท่านั้น')
   return out
 }

@@ -3,7 +3,7 @@ import {
   fmtWac,
   matchTolerance, withinTolerance, lineAmount, evaluateMatch, wacAfterIn, wacAfterReversal,
   simulateStock, proposePos, lineBase, formSignature, previewIsCurrent, mapTaxInvoiceRpcError, CHECK_TEXT,
-  GENERIC_ERROR_TEXT, isTaxInvoiceNotReady, postSummaryLines, reversingPoCount, fmtQty,
+  GENERIC_ERROR_TEXT, isTaxInvoiceNotReady, postSummaryLines, reversingPoCount, fmtQty, doubleCountAlerts,
 } from './supplierTaxInvoice.js'
 
 describe('tolerance = min(1%, 5 baht)  (owner ruling R1)', () => {
@@ -337,5 +337,41 @@ describe('postSummaryLines (confirm dialog text)', () => {
     expect(fmtQty(-13.333333333)).toBe('-13.3333')
     expect(fmtQty(5)).toBe('5')
     expect(fmtQty(null)).toBe('—')
+  })
+})
+
+describe('double-count alerts (PO without receipt movements, e.g. backfilled months)', () => {
+  const names = new Map([['a', 'PO-001'], ['b', 'PO-002']])
+  it('one prominent alert per affected PO, never merged by code', () => {
+    const alerts = doubleCountAlerts([
+      { code: 'po_no_receipt_movements', po_id: 'a', blocking: false },
+      { code: 'po_no_receipt_movements', po_id: 'b', blocking: false },
+      { code: 'po_has_deposit', po_id: 'a', blocking: false },
+    ], names)
+    expect(alerts).toHaveLength(2)
+    expect(alerts[0]).toBe('PO-001 — ' + CHECK_TEXT.po_no_receipt_movements)
+    expect(alerts[1]).toContain('PO-002')
+    expect(CHECK_TEXT.po_no_receipt_movements).toContain('นับซ้ำ')
+    expect(CHECK_TEXT.po_no_receipt_movements).toContain('สต็อกจะถูกเพิ่มจากใบกำกับทั้งหมด')
+  })
+  it('unknown PO number still produces the alert; no such check -> none', () => {
+    expect(doubleCountAlerts([{ code: 'po_no_receipt_movements', po_id: 'zz' }], names)).toEqual([CHECK_TEXT.po_no_receipt_movements])
+    expect(doubleCountAlerts([{ code: 'po_outside_month', po_id: 'a' }], names)).toEqual([])
+    expect(doubleCountAlerts(null, names)).toEqual([])
+  })
+  it('the summary lines do not repeat it (the alert box owns it) but do state the dating rule', () => {
+    const lines = postSummaryLines({
+      invoiceNo: 'A', invoiceDate: '2026-09-30', stockLineCount: 1, poCount: 1,
+      preview: { rows: [], checks: [{ code: 'po_no_receipt_movements', po_id: 'a', blocking: false }, { code: 'po_has_deposit', po_id: 'a', blocking: false }] },
+    })
+    expect(lines.some(l => l.includes('นับซ้ำ'))).toBe(false)
+    expect(lines).toContain('รายการเคลื่อนไหวสต็อกจะลงวันที่ตามวันที่ใบกำกับ (2026-09-30)')
+    expect(lines.some(l => l.includes('ยกเลิกใบกำกับภายหลัง') && l.includes('วันนี้'))).toBe(true)
+  })
+})
+
+describe('stale_preview', () => {
+  it('has the Thai text', () => {
+    expect(mapTaxInvoiceRpcError({ message: 'stale_preview' })).toBe('ใบกำกับถูกแก้ไขหลังจากดูตัวอย่าง กรุณาดูตัวอย่างใหม่')
   })
 })
