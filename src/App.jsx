@@ -30,6 +30,7 @@ const SiteDetail          = lazy(() => import('./pages/SiteDetail.jsx'))
 const Assign             = lazy(() => import('./pages/Assign.jsx'))
 const Expenses           = lazy(() => import('./pages/Expenses.jsx'))
 const PurchaseOrders     = lazy(() => import('./pages/PurchaseOrders.jsx'))
+const SupplierCreditNotes = lazy(() => import('./pages/SupplierCreditNotes.jsx'))
 const Inventory          = lazy(() => import('./pages/Inventory.jsx'))
 const Income             = lazy(() => import('./pages/Income.jsx'))
 const HR                 = lazy(() => import('./pages/HR.jsx'))
@@ -70,6 +71,7 @@ const TABS = [
   { label: '💸 รายจ่าย', children: [
     { id: 'expenses',        label: '📊 ภาพรวม',       minRole: 'ADMIN', module: null },
     { id: 'purchase_orders', label: '🧾 ใบสั่งซื้อ',   minRole: 'ADMIN', module: 'purchase_orders' },
+    { id: 'supplier_credit_notes', label: '↩️ ใบลดหนี้ซัพพลายเออร์', minRole: 'ADMIN', module: 'purchase_orders' },
     { id: 'cheques',         label: '🏦 เช็ค',         minRole: 'ADMIN', module: 'cheque_tracking' },
   ] },
   { id: 'inventory',       label: '📦 คลังสินค้า',   minRole: 'ADMIN', module: 'purchase_orders' },
@@ -376,6 +378,7 @@ export default function App() {
         case 'site_detail': return <SiteDetail {...props} />
         case 'expenses':   return <Expenses   {...props} />
         case 'purchase_orders': return <PurchaseOrders {...props} />
+        case 'supplier_credit_notes': return <SupplierCreditNotes {...props} />
         case 'inventory':  return <Inventory  {...props} />
         case 'cheques':    return <Cheques    {...props} />
         case 'income':     return <Income     {...props} />

@@ -228,6 +228,36 @@ export function usePurchaseOrders(filters = {}) {
   }, [JSON.stringify(filters)])
 }
 
+export function useSupplierCreditNotes(filters = {}) {
+  return useQuery(async () => {
+    const buildQuery = () => {
+      let q = supabase
+        .from('supplier_credit_notes')
+        .select('*, suppliers(name, supplier_number), sites(name), expense_categories(name), supplier_credit_note_items(id, inventory_item_id, description, quantity, unit, unit_price)')
+        .order('doc_date', { ascending: false })
+        .order('id', { ascending: false })
+      if (filters.supplierId) q = q.eq('supplier_id', filters.supplierId)
+      if (filters.status)     q = q.eq('status', filters.status)
+      if (filters.settlement) q = q.eq('settlement_status', filters.settlement)
+      return q
+    }
+    return fetchAllRows(buildQuery)
+  }, [JSON.stringify(filters)])
+}
+
+/** Quantity on hand per inventory item at one site (for the return shortfall check). */
+export function useInventoryOnHand(siteId) {
+  return useQuery(async () => {
+    if (!siteId) return {}
+    const { data, error } = await supabase
+      .from('inventory_stock_balances')
+      .select('inventory_item_id, quantity_on_hand')
+      .eq('site_id', siteId)
+    if (error) throw error
+    return Object.fromEntries((data || []).map(r => [r.inventory_item_id, Number(r.quantity_on_hand)]))
+  }, [siteId])
+}
+
 export function useQuotations(filters = {}) {
   return useQuery(async () => {
     const buildQuery = () => {
