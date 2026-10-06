@@ -72,6 +72,7 @@ These are the five failure modes most likely to hurt a real user that the spec i
 
 - Create `src/lib/poTotals.js` (+ `.test.js`): `poLineTotal`, `calcPoTotals`, moved verbatim from `PurchaseOrders.jsx` (it becomes the importer in Task 8).
 - Create `src/lib/supplierTaxInvoice.js` (+ `.test.js`): pure math, mirroring the SQL helpers; also proposal, line base, error text.
+- Create `src/lib/taxInvoiceLinks.js` (Task 5), `src/lib/taxInvoiceForm.js` (Task 6), `src/lib/poTaxInvoiceStatus.js` (Task 8), each with a `.test.js`.
 - Create `supabase/migrations/2026-10-08-01-supplier-tax-invoices.sql`: tables, RLS, grants, `stock_from_invoice`, widened movement type CHECK, PO lock triggers, private math/stock helpers.
 - Create `supabase/migrations/2026-10-08-02-supplier-tax-invoice-rpcs.sql`: `_sti_*` plan/check helpers, `save_…_draft`, `delete_…_draft`, `preview_…`, `post_…`, `void_…`.
 - Create `supabase/tests/supplier_tax_invoice_test.sql`: Task 2 writes part A, Task 3 writes the rest.
@@ -278,7 +279,7 @@ describe('proposePos (PO date month, ruling A10)', () => {
 })
 
 describe('lineBase (ruling A15)', () => {
-  const kgItem = { id: 'X', base_unit: 'kg', unit_conversion_mode: 'none' }
+  const kgItem = { id: 'X', base_unit: 'kg', unit_conversion_mode: 'plain' }   // 'plain' = the live column default
   it('same unit as base -> qty', () => {
     expect(lineBase({ qty: 12, unit: 'kg' }, kgItem, null)).toEqual({ baseQty: 12, unconverted: false })
   })
@@ -1809,7 +1810,7 @@ Notes for the implementer:
 
 - [ ] **Step 3: Static checks** (no database):
   - `grep -c "SECURITY DEFINER" supabase/migrations/2026-10-08-02-supplier-tax-invoice-rpcs.sql` = 10. Every one of those 10 function names appears in a `REVOKE` line; the 5 public ones also appear in the `GRANT`.
-  - Every public RPC body contains `is_admin_or_owner() AND has_module_access('purchase_orders')`, and the 4 writers also contain `tenant_can_write()`. Check: `grep -n "tenant_can_write" <file>` → 4 hits (save, delete, post, void).
+  - Every public RPC body contains `is_admin_or_owner() AND has_module_access('purchase_orders')`, and the 4 writers also contain `tenant_can_write()`. Check: `grep -n "tenant_can_write" <file>` → 5 hits: 1 in the header comment plus 4 in function bodies (save, delete, post, void).
   - Every `FROM supplier_tax_invoice*`, `FROM purchase_orders` and `FROM stock_movements` query filters by `tenant_id` or joins through a tenant-filtered row. Read each and list any exception in the report.
   - No `notes` string starts with `P`. Check: `grep -n "'P[IO]-" <file>` → no hits.
   - The SQL test file has no `Part B (Task 3) goes here` marker left and ends with `RAISE EXCEPTION 'RESULT: …'` then `ROLLBACK;`.
@@ -2006,7 +2007,7 @@ git commit -m "feat: supplier tax invoice hooks and RPC wrappers"
 - Consumes: Task 1 (`lineAmount`, `evaluateMatch`, `proposePos`, `lineBase`, `formSignature`), `calcPoTotals` (`src/lib/poTotals.js`), Task 5 hooks. Existing: `usePurchaseOrders`, `useSuppliers`, `useSites`, `useCategories`, `useInventoryItems`, `useAllInventoryItems`, `useInventoryItemUnitFactors`, `useSupplierDocumentExamples`, `extractPoDocument`, `useSupplierDeposits` (deposit feature), `fileToExtractionPayload` (`src/lib/poDocumentExtraction.js`), `SearchableSelect`, `QuickAddSelect`, `ScanNotice`, `ScanDocPreview`, `round2`.
 - Produces:
   - `emptyTaxInvoiceForm(today) → form`, `formFromInvoice(row) → form`, `toRpcPayload(form) → { header, items, poIds }`, `validateFormForSave(form) → string[]` (Thai messages; empty = OK), all in `taxInvoiceForm.js`.
-  - `<SupplierTaxInvoiceForm initial={form} invoiceId={uuid|null} busy={bool} onSaveDraft={form => Promise} onPreview={form => Promise} onCancel />`. The form owns its state, and calls `onSaveDraft(form)` / `onPreview(form)` with the current form.
+  - `<SupplierTaxInvoiceForm initial={form} invoiceId={uuid|null} busy={bool} onSaveDraft={form => Promise} onPreview={form => Promise} onChange={form => void} onCancel />`. The form owns its state, and calls `onSaveDraft(form)` / `onPreview(form)` with the current form. It also calls `onChange?.(form)` from a `useEffect` on `form` (Task 7 uses it for the stale-preview guard).
   - The form shape: `{ supplier_id, invoice_no, invoice_date, net_before_vat, vat, match_note, lines: [{ key, description, qty, unit, unit_price, discount_pct, inventory_item_id, site_id, base_qty, base_manual }], po_ids: [] }`.
 
 - [ ] **Step 1: Write the failing tests** `src/lib/taxInvoiceForm.test.js`:
@@ -2123,14 +2124,15 @@ import { calcPoTotals } from '../lib/poTotals.js'
 import { round2 } from '../lib/depositMath.js'
 import { lineAmount, evaluateMatch, proposePos, lineBase } from '../lib/supplierTaxInvoice.js'
 import { emptyLine, validateFormForSave } from '../lib/taxInvoiceForm.js'
-import { fmt } from '../lib/supabase.js'
+import { fmt, fmtDate } from '../lib/supabase.js'
 import SearchableSelect from './SearchableSelect.jsx'
 import QuickAddSelect from './QuickAddSelect.jsx'
 import ScanNotice from './ScanNotice.jsx'
 import ScanDocPreview from './ScanDocPreview.jsx'
 
-export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSaveDraft, onPreview, onCancel }) {
+export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSaveDraft, onPreview, onChange, onCancel }) {
   const [form, setForm] = useState(initial)
+  useEffect(() => { onChange?.(form) }, [form])   // eslint-disable-line react-hooks/exhaustive-deps
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const setLine = (key, patch) => setForm(f => ({ ...f, lines: f.lines.map(l => (l.key === key ? { ...l, ...patch } : l)) }))
 
@@ -2141,7 +2143,8 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
   const { data: allItems } = useAllInventoryItems()
   const { data: unitFactors } = useInventoryItemUnitFactors()
   const { data: links } = useActiveTaxInvoiceLinks()
-  const { data: supplierPos } = usePurchaseOrders(form.supplier_id ? { supplierId: form.supplier_id, status: 'received' } : { supplierId: '__none__' })
+  // No supplier yet: filter by the nil UUID (a non-UUID string such as '__none__' makes PostgREST return a 400 uuid-syntax error).
+  const { data: supplierPos } = usePurchaseOrders(form.supplier_id ? { supplierId: form.supplier_id, status: 'received' } : { supplierId: '00000000-0000-0000-0000-000000000000' })
   const { data: deposits } = useSupplierDeposits(form.supplier_id || undefined)
   const { data: examples } = useSupplierDocumentExamples(form.supplier_id || null)
 
@@ -2213,7 +2216,7 @@ git commit -m "feat: supplier tax invoice form (scan, month PO picker, line mapp
 
 **Interfaces:**
 - Consumes: Task 5 wrappers and hooks; Task 6 form and `toRpcPayload`/`formFromInvoice`/`emptyTaxInvoiceForm`; Task 1 `CHECK_TEXT`, `mapTaxInvoiceRpcError`, `formSignature`, `previewIsCurrent`; `useUserRole`, `canEditPage`, `Modal`, `ConfirmDialog`, `RowActionsMenu`.
-- Produces: page id `supplier_tax_invoices`. `<TaxInvoicePreview preview={json} />`. `<PostConfirmOverlay summary onConfirm onCancel busy />` (plain overlay, not `<Modal>`, because it opens over the form modal; see `SupplierCreditNotes.jsx:108-161`).
+- Produces: page id `supplier_tax_invoices`. `<TaxInvoicePreview preview={json} poNumberById={Map} />`. `<PostConfirmOverlay lines onConfirm onCancel busy />` (plain overlay, not `<Modal>`, because it opens over the form modal; see `SupplierCreditNotes.jsx:108-161`).
 
 - [ ] **Step 1: Write the failing test** for the confirm text builder. Add to `src/lib/supplierTaxInvoice.test.js`, and add `postSummaryLines` to the module's exports:
 
@@ -2304,8 +2307,10 @@ export default function SupplierTaxInvoices() {
     } catch (e) { alert(mapTaxInvoiceRpcError(e)) }
     finally { setBusy(false) }
   }
+  const latestFormRef = useRef(null)                  // fed by <SupplierTaxInvoiceForm onChange> (Task 6)
   const askPost = () => {
-    if (!preview || !previewIsCurrent(preview, preview.form)) return
+    // compare with the LIVE form, not preview.form (that would always be "current")
+    if (!preview || !previewIsCurrent(preview, latestFormRef.current)) return
     if ((preview.data.checks || []).some(c => c.blocking)) return
     const stockLineCount = preview.form.lines.filter(l => l.inventory_item_id).length
     setConfirm({ id: preview.id, lines: postSummaryLines({ invoiceNo: preview.form.invoice_no.trim(), stockLineCount, poCount: preview.form.po_ids.length, preview: preview.data }) })
@@ -2343,7 +2348,7 @@ JSX requirements:
 - Toolbar exactly like `SupplierCreditNotes.jsx:535-549`: `+ เพิ่มใบกำกับภาษีผู้ขาย` (only when `canEdit`), a supplier filter, and a status filter (`📝 ร่าง`, `✅ บันทึกแล้ว`, `🚫 ยกเลิก`).
 - `{error && …}` shows `โหลดข้อมูลไม่สำเร็จ: {error}`. Before the migration this is the visible state; the page must not crash.
 - Table: `เลขที่`, `วันที่`, `ซัพพลายเออร์`, `ก่อน VAT`, `ใบสั่งซื้อ` (count of active links, or all links for void rows), `ต่าง` (`match_diff`, red when outside tolerance), `สถานะ`, actions. Row actions via `RowActionsMenu`: drafts get `✏️ แก้ไข` (opens the form with `formFromInvoice(row)`) and `🗑️ ลบ`; posted rows get `👁️ ดูรายละเอียด` and `🚫 ยกเลิกใบกำกับ`; void rows get `👁️ ดูรายละเอียด`.
-- Form modal: `<Modal title={editing.id ? 'แก้ไขใบกำกับภาษีผู้ขาย' : 'เพิ่มใบกำกับภาษีผู้ขาย'} maxWidth={980}>` containing `<SupplierTaxInvoiceForm key={formKey} …/>`. Below the form inside the same modal, when `preview` is set for this draft, render `<TaxInvoicePreview preview={preview.data} />` and a button `✅ บันทึกใบกำกับ (ลงสต็อก)`. The button is disabled when `busy`, when any check is blocking, or when the form changed since the preview. Detect a change by passing `onChange` from the form, or by keeping the latest form in a ref, and comparing with `previewIsCurrent(preview, latestForm)`. When stale, show `ข้อมูลเปลี่ยนแล้ว — กด "ตรวจสอบก่อนบันทึก" อีกครั้ง`. Add an `onChange={f => latestFormRef.current = f}` prop to the form (call it from a `useEffect` on `form`) for this.
+- Form modal: `<Modal title={editing.id ? 'แก้ไขใบกำกับภาษีผู้ขาย' : 'เพิ่มใบกำกับภาษีผู้ขาย'} maxWidth={980}>` containing `<SupplierTaxInvoiceForm key={formKey} …/>`. Below the form inside the same modal, when `preview` is set for this draft, render `<TaxInvoicePreview preview={preview.data} />` and a button `✅ บันทึกใบกำกับ (ลงสต็อก)`. The button is disabled when `busy`, when any check is blocking, or when the form changed since the preview. Detect a change with the form's `onChange` prop (built in Task 6; do not edit `SupplierTaxInvoiceForm.jsx` here): pass `onChange={f => { latestFormRef.current = f; setFormTick(t => t + 1) }}` (a `formTick` state so the button re-renders) and compare with `previewIsCurrent(preview, latestFormRef.current)`. When stale, show `ข้อมูลเปลี่ยนแล้ว — กด "ตรวจสอบก่อนบันทึก" อีกครั้ง`.
 - `confirm` renders `<PostConfirmOverlay>` (plain overlay; the form `<Modal>` stays open beneath it).
 - The view modal for posted/void rows shows: header fields; lines with base qty and site; linked POs with `po_subtotal` and the stamped expense numbers; `post_result.checks` through `CHECK_TEXT`; `post_result.negative`; for void rows, `void_reason`, `voided_at` and `voided_by`.
 - The void dialog uses `<Modal title="ยกเลิกใบกำกับภาษี">`. Text: `สต็อกจะกลับเป็นเหมือนก่อนบันทึก (รับเข้าจากใบสั่งซื้อกลับมา และนำรายการของใบกำกับออก) และรายจ่ายจะกลับเป็นเลขที่ใบกำกับเดิม`. Required reason textarea; buttons `ยกเลิก` and `🚫 ยืนยันยกเลิกใบกำกับ` (`btn-danger`, disabled while `busy`).
@@ -2442,7 +2447,7 @@ Run the test and confirm it PASSES.
   1. Delete the local `lineTotal`, `VAT_RATE` (only if nothing else in the file uses it; `receiveStockPlan` uses `VAT_RATE`, so import `VAT_RATE` from `../lib/invoiceCalc.js` instead) and `calcPoTotals`. Add `import { calcPoTotals, poLineTotal } from '../lib/poTotals.js'` and replace `lineTotal(` with `poLineTotal(`. Behaviour must be identical.
   2. `EMPTY_FORM` gets `stock_from_invoice: false`; `editFormInitial` gets `stock_from_invoice: !!editRow.stock_from_invoice`.
   3. In the form, next to the VAT checkboxes, add a checkbox `📦 สต็อกเข้าตอนบันทึกใบกำกับภาษี (รับของแล้วไม่ลงสต็อก)` with the hint `ใช้กับซัพพลายเออร์ที่ออกใบกำกับรวมรายเดือนและรายการไม่ตรงกับใบสั่งซื้อ`. Render it only when `taxInvoiceLinks !== null` (the feature is live, so the column exists). Disable it when the edited PO's status is `received`.
-  4. `handleSave`: `Object.assign(poPayload, buildPoPayloadFlag(form, editRow))`. In its `catch`, use `alert('Error: ' + mapTaxInvoiceRpcError(e))` so `po_tax_invoiced` and `po_stock_flag_locked` read in Thai. Do the same in `handleCancel`'s error branch.
+  4. `handleSave` (the main page's `handleSave(form, opts)`, NOT the one inside `SwapTaxInvoiceModal`): `Object.assign(poPayload, buildPoPayloadFlag(form, editRow))`. In its `catch`, use `alert('Error: ' + mapTaxInvoiceRpcError(e))` so `po_tax_invoiced` and `po_stock_flag_locked` read in Thai. In `handleCancel`'s error branch keep the existing `po_has_deposit_applications` → `PO_DEPOSIT_LOCKED_TEXT` check first and use `mapTaxInvoiceRpcError(error)` only in its `'Error: ' + …` fallback.
   5. `handleReceive`: wrap the stock-posting loop as `if (!receiveRow.stock_from_invoice) { …existing loop unchanged… }`. Keep everything else, including the deposit RPC call and the hardened `catch` text. The toast adds ` · สต็อกจะเข้าเมื่อบันทึกใบกำกับภาษี` when the flag is set.
   6. In the receive confirm dialog, where the stock preview from `receiveStockPlan` is shown: when `receiveRow.stock_from_invoice`, show `ไม่ลงสต็อกตอนรับของ — สต็อกจะเข้าเมื่อบันทึกใบกำกับภาษีผู้ขาย` instead of the stock lines.
   7. `const { data: taxInvoiceLinks } = useActiveTaxInvoiceLinks()`. In the list row (next to the status badge) and in the PO detail header, render `poTaxInvoiceBadge(po, taxInvoiceLinks)`: `linked` as a blue `badge`, `awaiting` as an amber `badge`.
