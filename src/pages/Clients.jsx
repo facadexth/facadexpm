@@ -43,7 +43,7 @@ function ClientForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
             <input className="input" required value={form.name}
               onChange={e => set('name', e.target.value)} placeholder="เช่น บริษัท NCP จำกัด" />
             <DbdLookup name={form.name} address={form.address} taxId={form.tax_id}
-              onApply={r => setForm(f => ({ ...f, ...(r.name ? { name: r.name } : {}), ...(r.address ? { address: r.address } : {}), ...(r.taxId ? { tax_id: r.taxId } : {}) }))} />
+              onApply={r => setForm(f => ({ ...f, ...('name' in r ? { name: r.name } : {}), ...('address' in r ? { address: r.address } : {}), ...('taxId' in r ? { tax_id: r.taxId } : {}) }))} />
           </div>
           <div>
             <label className="label">ประเภทลูกค้า</label>
