@@ -23,10 +23,11 @@ Credit notes on deposit-paid POs; a PEAK "deduct deposit" document (deposit and 
 - Remaining of a deposit = deposit expense `amount_no_vat` − Σ applications `amount_no_vat` (VAT likewise); computed on read, never stored.
 - A deposit expense that has applications cannot be edited in amount or deleted (FK RESTRICT + UI lock, same pattern as credit-note expenses). Client writes to applications only through the RPC below.
 - Lock/validation triggers follow the credit-note migration (cross-tenant reference check, no client forging).
+- `purchase_orders.deposit_hint` (nullable JSONB, `[{ref, amount_no_vat}]`): what a scanned supplier document said was deducted, saved with the PO so the receive dialog can pre-fill it later (the scan happens at PO creation, the deduction at receive). Sent by the client only when non-empty, so code deployed before the migration keeps working.
 
 ## Receive flow
 RPC `receive_po_with_deposits(p_po_id, p_applications jsonb)` (SECURITY DEFINER, re-checks tenant + role), atomic:
-1. Lock the PO (`status = 'ordered'` else error `not_ordered`).
+1. Lock the PO (`status = 'ordered'` else error `not_ordered`). The RPC recomputes the PO subtotal/VAT from `purchase_order_items` exactly like the client's `calcPoTotals`; the client also sends its expected subtotal/VAT and the RPC raises `totals_mismatch` if they differ by more than 0.01 (guards against the two implementations drifting).
 2. For each application `{deposit_id, amount_no_vat}`: reject if the deposit is not the PO supplier's, if it exceeds the deposit's remaining, or if the sum exceeds the PO's ex-VAT subtotal. VAT of the deduction = `amount_no_vat × deposit.vat / deposit.amount_no_vat` (the deposit invoice's own rate), rounded 2dp.
 3. Remainder: `net = subtotal − Σnet`, `vat = poVat − Σdeductionvat`, `total = net + vat` (all ≥ 0). If `net` and `vat` are both 0 → **no expense is created** and `purchase_orders.expense_id` stays null; otherwise insert the remainder expense exactly like today (same fields, `po_id` set) with `amount_no_vat = net`, `vat`, `amount = total`.
 4. Insert the application rows, set the PO `received` / `received_date` / `expense_id`.
