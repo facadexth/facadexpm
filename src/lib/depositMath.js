@@ -1,6 +1,8 @@
 // ============================================================
 // Deposit (หักมัดจำ) math -- pure; mirrored in the receive_po_with_deposits
 // RPC (supabase/migrations/2026-10-07-02-...sql), which is the authority.
+// The client preview and the server value can differ by one satang on exact
+// .5 rounding ties; the server value is the one stored.
 // ============================================================
 
 export const round2 = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100 || 0
@@ -22,10 +24,14 @@ export function splitDeduction(deposit, remaining, amountNoVat) {
 }
 
 export function computeReceivePlan({ subtotal, vat }, deductions) {
+  const n = (deductions || []).length
   const dNet = (deductions || []).reduce((s, d) => s + Number(d.net || 0), 0)
   const dVat = (deductions || []).reduce((s, d) => s + Number(d.vat || 0), 0)
   const netRaw = round2(subtotal - dNet)
-  const vatRaw = round2(vat - dVat)
+  let vatRaw = round2(vat - dVat)
+  // Deductions cover the whole net: a VAT gap of up to 0.01 per deduction is per-line
+  // rounding, not money (the server adjusts the last application) -> no dust expense.
+  if (n > 0 && Math.abs(netRaw) <= EPS && Math.abs(vatRaw) <= 0.01 * n + 1e-9) vatRaw = 0
   const netToPay = Math.max(0, netRaw)
   const vatToPay = Math.max(0, vatRaw)
   const total = round2(netToPay + vatToPay)

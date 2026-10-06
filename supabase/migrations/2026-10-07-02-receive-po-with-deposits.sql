@@ -1,8 +1,10 @@
 -- PO deposit deduction (หักมัดจำ): atomic receive RPC. Requires 2026-10-07-01-supplier-deposits.sql.
 -- Math mirrors src/lib/depositMath.js (splitDeduction / computeReceivePlan); this function is the authority.
 -- Definer rights: po_deposit_applications is not client-writable. Re-checks role + tenant itself.
+-- Note: the client preview (depositMath.js) and this server value can differ by one satang on exact
+-- .5 rounding ties; the server value is the one stored.
 -- Errors: insufficient_privilege, po_not_found, not_ordered, totals_mismatch, deposit_not_found,
---         deposit_wrong_supplier, deposit_exceeds_remaining, deposit_exceeds_po, deposit_vat_exceeds_po, bad_application.
+--         deposit_wrong_supplier, deposit_exceeds_remaining, deposit_exceeds_po, deposit_vat_exceeds_po, deposit_expense_needs_vat_split, bad_application.
 
 CREATE OR REPLACE FUNCTION receive_po_with_deposits(
   p_po_id UUID, p_applications JSONB, p_expected_subtotal NUMERIC, p_expected_vat NUMERIC
@@ -22,7 +24,7 @@ DECLARE
   v_seen UUID[] := '{}';
   v_dep UUID;
 BEGIN
-  IF NOT (is_admin_or_owner() AND has_module_access('purchase_orders')) THEN RAISE EXCEPTION 'insufficient_privilege'; END IF;
+  IF NOT (is_admin_or_owner() AND has_module_access('purchase_orders') AND tenant_can_write()) THEN RAISE EXCEPTION 'insufficient_privilege'; END IF;
   SELECT * INTO po FROM purchase_orders WHERE id = p_po_id AND tenant_id = v_tenant FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'po_not_found'; END IF;
   IF po.status <> 'ordered' THEN RAISE EXCEPTION 'not_ordered'; END IF;
@@ -39,7 +41,7 @@ BEGIN
     RAISE EXCEPTION 'totals_mismatch';
   END IF;
 
-  FOR a IN SELECT value FROM jsonb_array_elements(COALESCE(p_applications, '[]'::jsonb)) LOOP
+  FOR a IN SELECT value FROM jsonb_array_elements(COALESCE(p_applications, '[]'::jsonb)) ORDER BY value->>'deposit_id' LOOP   -- fixed lock order: no deadlock between concurrent receives
     BEGIN
       v_amt := round((a->>'amount_no_vat')::numeric, 2);
       v_dep := (a->>'deposit_id')::uuid;
@@ -51,12 +53,15 @@ BEGIN
     v_seen := v_seen || v_dep;
 
     -- lock deposit AND its expense so concurrent receives serialize and cannot overspend
-    SELECT sd.id, e.tenant_id AS e_tenant, e.supplier_id, e.amount_no_vat, e.vat INTO d
+    SELECT sd.id, e.tenant_id AS e_tenant, e.supplier_id, e.amount, e.amount_no_vat, e.vat INTO d
       FROM supplier_deposits sd JOIN expenses e ON e.id = sd.expense_id
      WHERE sd.id = v_dep AND sd.tenant_id = v_tenant FOR UPDATE OF sd, e;
     IF NOT FOUND THEN RAISE EXCEPTION 'deposit_not_found'; END IF;
     IF d.e_tenant IS DISTINCT FROM v_tenant THEN RAISE EXCEPTION 'deposit_not_found'; END IF;
     IF d.supplier_id IS DISTINCT FROM po.supplier_id THEN RAISE EXCEPTION 'deposit_wrong_supplier'; END IF;
+    IF d.amount_no_vat IS NULL OR d.vat IS NULL OR d.amount_no_vat <= 0 OR round(d.amount_no_vat + d.vat - d.amount, 2) <> 0 THEN
+      RAISE EXCEPTION 'deposit_expense_needs_vat_split';
+    END IF;
 
     SELECT COALESCE(SUM(amount_no_vat), 0), COALESCE(SUM(vat), 0) INTO v_used_net, v_used_vat
       FROM po_deposit_applications WHERE deposit_id = d.id;
@@ -70,6 +75,15 @@ BEGIN
 
   IF v_sum_net > v_sub + 0.005 THEN RAISE EXCEPTION 'deposit_exceeds_po'; END IF;
   v_net := round(v_sub - v_sum_net, 2); v_vat_pay := round(v_vat - v_sum_vat, 2);
+  -- Deductions cover the whole net: a VAT gap of up to 0.01 per application is per-line rounding.
+  -- Fold it into the LAST application so deduction VAT == PO VAT exactly and no dust expense is made.
+  IF jsonb_array_length(v_apps) > 0 AND abs(v_net) <= 0.005 AND abs(v_vat_pay) > 0.005
+     AND abs(v_vat_pay) <= 0.01 * jsonb_array_length(v_apps) + 0.0001
+     AND round((v_apps->(jsonb_array_length(v_apps) - 1)->>'vat')::numeric + v_vat_pay, 2) >= 0 THEN
+    v_apps := jsonb_set(v_apps, ARRAY[(jsonb_array_length(v_apps) - 1)::text, 'vat'],
+      to_jsonb(round((v_apps->(jsonb_array_length(v_apps) - 1)->>'vat')::numeric + v_vat_pay, 2)));
+    v_sum_vat := v_sum_vat + v_vat_pay; v_vat_pay := 0;
+  END IF;
   IF v_vat_pay < -0.005 THEN RAISE EXCEPTION 'deposit_vat_exceeds_po'; END IF;
   v_net := GREATEST(v_net, 0); v_vat_pay := GREATEST(v_vat_pay, 0);
 

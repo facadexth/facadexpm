@@ -58,6 +58,28 @@ describe('computeReceivePlan (real CAC invoices)', () => {
   })
 })
 
+describe('computeReceivePlan one-satang rounding', () => {
+  it('two deposits of 1,000.80 (VAT 70.06 each) vs PO 2,001.60 / 140.11 -> no expense, no overVat', () => {
+    const p = computeReceivePlan({ subtotal: 2001.6, vat: 140.11 }, [{ net: 1000.8, vat: 70.06 }, { net: 1000.8, vat: 70.06 }])
+    expect(p).toEqual({ netToPay: 0, vatToPay: 0, total: 0, createExpense: false, overNet: false, overVat: false })
+  })
+  it('VAT-inclusive single deposit differing by 0.01 -> no expense, no overVat', () => {
+    const p = computeReceivePlan({ subtotal: 1000, vat: 70 }, [{ net: 1000, vat: 70.01 }])
+    expect(p.createExpense).toBe(false)
+    expect(p.overVat).toBe(false)
+    expect(p.vatToPay).toBe(0)
+  })
+  it('a real excess (0.50) -> overVat true', () => {
+    const p = computeReceivePlan({ subtotal: 100, vat: 7 }, [{ net: 100, vat: 7.5 }])
+    expect(p.overVat).toBe(true)
+  })
+  it('net not fully covered keeps strict VAT behaviour', () => {
+    const p = computeReceivePlan({ subtotal: 100, vat: 7 }, [{ net: 50, vat: 3.51 }])
+    expect(p.overVat).toBe(false)
+    expect(p.vatToPay).toBe(3.49)
+  })
+})
+
 describe('validateDeduction', () => {
   const ok = { supplierOk: true, remainingNet: 100, amountNoVat: 50, uncoveredNet: 80 }
   it('accepts a valid deduction', () => expect(validateDeduction(ok)).toBeNull())
