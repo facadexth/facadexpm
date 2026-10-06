@@ -1,5 +1,5 @@
 -- Supplier credit note RPCs (confirm / void / settle).
--- SECURITY DEFINER so the scn_/scni_ lock triggers (which only restrict
+-- Definer-rights functions so the scn_/scni_ lock triggers (which only restrict
 -- current_user = 'authenticated') do not block these functions' own writes.
 -- Each re-checks role + tenant. plpgsql functions are atomic: any failure
 -- (e.g. insufficient_stock from record_stock_movement) rolls back everything.
