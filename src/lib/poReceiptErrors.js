@@ -1,7 +1,7 @@
 // src/lib/poReceiptErrors.js
 // Thai text for the receipt / deposit / split RPCs and triggers (2026-10-09-01..02), PO money locks, and the
 // pure summary behind the PO popup. Pure; no Supabase calls here.
-import { RPC_ERROR_TEXT, PO_DEPOSIT_LOCKED_TEXT } from './receiveDeposits.js'
+import { RPC_ERROR_TEXT, PO_DEPOSIT_LOCKED_TEXT, openDeposits } from './receiveDeposits.js'
 import { depositRemaining, round2 } from './depositMath.js'
 import { poTaxInvoiceErrorText } from './poTaxInvoiceStatus.js'
 
@@ -67,8 +67,11 @@ export function mapPoReceiptRpcError(err) {
   return msg
 }
 
-export function buildPoMoneyIndex({ receiptItems, deposits }) {
+/** schemaReady = false when the receipt tables / po_id column are missing (pre-migration soft fail): the index is
+ *  then empty and the new receive dialog must not be offered (receive_po_lines does not exist yet). */
+export function buildPoMoneyIndex({ receiptItems, deposits, schemaReady = true }) {
   const m = new Map()
+  m.schemaReady = !!schemaReady
   const get = id => { if (!m.has(id)) m.set(id, { receivedItemIds: new Set(), receiptIds: new Set(), depositId: null }); return m.get(id) }
   for (const r of receiptItems || []) { const poId = r.po_receipts?.po_id; if (poId) { const e = get(poId); e.receivedItemIds.add(r.po_item_id); if (r.receipt_id) e.receiptIds.add(r.receipt_id) } }
   for (const d of deposits || []) if (d.po_id) get(d.po_id).depositId = d.id
@@ -102,6 +105,28 @@ export function poLedgerSummary(po, ledger) {
     deposit = { id: d.id, no: d.deposit_invoice_no, gross, pct: d.pct_of_po, usedGross: round2(gross - remainingGross), remainingGross, status: d.expenses.status }
   }
   return { lines, receipts, deposit, applications: ledger?.applications || [], bills: ledger?.bills || [], outstandingCount: lines.filter(l => !l.received).length, legacy }
+}
+
+export const RECEIVE_NOT_READY_TEXT = 'กำลังโหลดข้อมูลการรับของ… (ถ้าไม่หายไป กรุณาโหลดหน้าใหม่)'
+export const RECEIVE_DISCOUNT_PARTIAL_TEXT = 'ใบสั่งซื้อนี้มีรายการส่วนลด (ยอดติดลบ) รับของบางส่วนต่อไม่ได้ — แจ้งผู้ดูแลระบบ'
+
+/** Which receive flow the ⋯ menu opens: {kind:'new'} (ReceivePoLinesModal), {kind:'old'} (receive_po_with_deposits),
+ *  {kind:'disabled', reason}, or null (not receivable). The new flow needs the 2026-10-09 schema (index.schemaReady);
+ *  a PO with a discount line (line_total < 0) always uses the old flow (receive_po_lines raises bad_lines for it). */
+export function receiveRoute(po, index) {
+  if (!po || !['ordered', 'partially_received'].includes(po.status)) return null
+  const discount = (po.purchase_order_items || []).some(it => Number(it.line_total) < 0)
+  const ready = !!index && index.schemaReady !== false
+  if (po.status === 'ordered') return ready && !discount ? { kind: 'new' } : { kind: 'old' }
+  if (!ready) return { kind: 'disabled', reason: RECEIVE_NOT_READY_TEXT }
+  if (discount) return { kind: 'disabled', reason: RECEIVE_DISCOUNT_PARTIAL_TEXT }
+  return { kind: 'new' }
+}
+
+/** Deposits listed in the receive dialog: open (remaining > 0, VAT split), not tied to another PO (R6), own deposit first. */
+export function receiveDialogDeposits(rows, poId, ownId) {
+  const list = openDeposits((rows || []).filter(d => depositSelectableForPo(d, poId)))
+  return [...list].sort((a, b) => (a.id === ownId ? -1 : b.id === ownId ? 1 : 0))
 }
 
 /** Old deposit picker: hide deposits tied to a different PO (server refuses them: deposit_other_po).

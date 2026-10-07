@@ -21,3 +21,7 @@ or a Map), `mockPoSupabaseLib.js` (logs writes/rpc in `window.__log`, `window.__
     node scripts/tax-invoice-harness/buildPo.mjs && node scripts/tax-invoice-harness/runPo.mjs
 
 Section 7: row layout (📄 + ⋯), popup ledger, document actions, money locks; mocks `__money` (`receivedItemIds`, `receiptIds`, `depositId`), `__ledger`. 7b: old receive stays reachable, multi-bill swap lock, discount-line notice, `refreshPoData`, phone width (menu not clipped, popup scrolls).
+Sections 3-5 and 9/9b drive the new receive dialog (`ReceivePoLinesModal`, wrapper `receive_po_lines` logged with its args,
+`__wrapperError` / `__wrapperDelay`): all / some lines, received date, deposit deduction and bill preview, receive-the-rest,
+errors kept inside the open dialog, double click = one call, 375 px. `__moneySchema = false` simulates the pre-migration
+index (empty, `schemaReady` false) that routes ordered POs to the old receive.

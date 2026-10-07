@@ -32,8 +32,9 @@ import { suggestStockLinks } from '../lib/poStockLinkSuggest.js'
 import { calcPoTotals, poLineTotal as lineTotal } from '../lib/poTotals.js'
 import { VAT_RATE } from '../lib/invoiceCalc.js'
 import { poTaxInvoiceBadge, buildPoPayloadFlag, poEditLockedText, poTaxInvoiceErrorText } from '../lib/poTaxInvoiceStatus.js'
-import { poMoneyLockText, poLedgerSummary, mapPoReceiptRpcError } from '../lib/poReceiptErrors.js'
+import { poMoneyLockText, poLedgerSummary, mapPoReceiptRpcError, receiveRoute } from '../lib/poReceiptErrors.js'
 import CreatePoDepositModal from '../components/CreatePoDepositModal.jsx'
+import ReceivePoLinesModal from '../components/ReceivePoLinesModal.jsx'
 import ReceiveDepositBlock from '../components/ReceiveDepositBlock.jsx'
 import { mapReceiveRpcError, canConfirmReceive } from '../lib/receiveDeposits.js'
 import { setCreditNotePrefill, poItemToCreditLine } from '../lib/creditNotePrefill.js'
@@ -804,6 +805,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const [docRow, setDocRow] = useState(null)
   const [detailRow, setDetailRow] = useState(null)
   const [receiveRow, setReceiveRow] = useState(null)
+  const [receiveKind, setReceiveKind] = useState(null)   // 'new' (ReceivePoLinesModal) | 'old' (receive_po_with_deposits)
   const [depositPo, setDepositPo] = useState(null)
   const [swapInvoiceRow, setSwapInvoiceRow] = useState(null)
   const [receiving, setReceiving] = useState(false)
@@ -976,10 +978,12 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   // inventoryItems/aluminumProfiles used by ItemsEditor's pickers) --
   // an item or profile deactivated after a PO was placed but before it's
   // received must still compute correctly here (final-review Fix 1).
-  const receiveStockPlan = (po) => {
+  // lineIds (optional): only those PO lines (ReceivePoLinesModal); the result feeds receive_po_lines' p_stock.
+  const receiveStockPlan = (po, lineIds) => {
     if (!po) return []
+    const only = lineIds ? new Set(lineIds) : null
     return (po.purchase_order_items || [])
-      .filter(it => it.inventory_item_id)
+      .filter(it => it.inventory_item_id && (!only || only.has(it.id)))
       .map(it => {
         const invItem = (allInventoryItems || []).find(i => i.id === it.inventory_item_id)
         const profile = it.aluminum_profile_id ? (allAluminumProfiles || []).find(p => p.id === it.aluminum_profile_id) : null
@@ -1001,7 +1005,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
           unitCostPerBase = unitCostPerBase / (1 + VAT_RATE)
         }
 
-        return { inventoryItemId: it.inventory_item_id, name: invItem?.name || it.description, baseUnit: invItem?.base_unit || it.unit, baseQty, unitCostPerBase, unconverted }
+        return { poItemId: it.id, inventoryItemId: it.inventory_item_id, name: invItem?.name || it.description, baseUnit: invItem?.base_unit || it.unit, baseQty, unitCostPerBase, unconverted }
       })
   }
 
@@ -1107,13 +1111,13 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const poMenuItems = (po) => {
     const lock = poEditLockedText(po, taxInvoiceLinks) || poMoneyLockText(po, moneyIndex)
     const items = []
-    if (canEdit && po.status === 'ordered') {
-      // old receive stays available even while / if the money index is unavailable (pre-migration or query error)
-      items.push({ label: '📦 รับของ', onClick: () => setReceiveRow(po) })
-    } else if (canEdit && po.status === 'partially_received') {
-      items.push(moneyIndex
-        ? { label: '📦 รับของ', onClick: () => setReceiveRow(po) }
-        : { label: '📦 รับของ', disabled: true, disabledTitle: 'กำลังโหลดข้อมูลการรับของ… (ถ้าไม่หายไป กรุณาโหลดหน้าใหม่)', onClick: () => {} })
+    // new dialog once the 2026-10-09 schema is live; old receive for ordered POs before it (index null / schema missing)
+    // or with a discount line; a partially received PO without the schema is disabled with the reason
+    const route = canEdit ? receiveRoute(po, moneyIndex) : null
+    if (route) {
+      items.push(route.kind === 'disabled'
+        ? { label: '📦 รับของ', disabled: true, disabledTitle: route.reason, onClick: () => {} }
+        : { label: '📦 รับของ', onClick: () => { setReceiveKind(route.kind); setReceiveRow(po) } })
     }
     if (canEdit && po.status === 'ordered' && moneyIndex) {
       items.push(moneyIndex.get(po.id)?.depositId
@@ -1270,15 +1274,20 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
             setDepositPo(null); refreshPoData(); showToast('สร้างใบมัดจำแล้ว ' + fmt(res.amount) + ' บาท')
           }} />
       )}
-      {/* Placeholder until Task 9 (new receive dialog) replaces it. */}
-      {receiveRow && receiveRow.status === 'partially_received' && (
-        <Modal title="รับของ" onClose={() => setReceiveRow(null)} maxWidth={400}>
-          <div className="modal-body" data-testid="receive-placeholder">ฟังก์ชันรับของบางส่วนสำหรับ {receiveRow.po_number} กำลังจะเปิดให้ใช้งาน</div>
-          <div className="modal-footer"><button className="btn btn-ghost" onClick={() => setReceiveRow(null)}>ปิด</button></div>
-        </Modal>
+      {receiveRow && receiveKind === 'new' && (
+        <ReceivePoLinesModal key={receiveRow.id} po={receiveRow} stockPlanFor={receiveStockPlan} stockBalances={stockBalances}
+          onClose={() => setReceiveRow(null)}
+          onDone={async res => {
+            const po = receiveRow
+            setReceiveRow(null)
+            if (res.expense_id) await auditLog('expenses', res.expense_id, 'INSERT', null, { po_id: po.id, via: 'receive_po_lines', receipt_no: res.receipt_no })
+            await auditLog('purchase_orders', po.id, 'UPDATE', null, { via: 'receive_po_lines', status: res.status, receipt_no: res.receipt_no, receipt_id: res.receipt_id, expense_id: res.expense_id })
+            refreshPoData(); refetchInventoryItems()
+            showToast('รับของแล้ว' + (res.receipt_no ? ` (${res.receipt_no}) ` : ' ') + (res.expense_id ? 'สร้างบิลแล้ว' : 'หักมัดจำครบ ไม่สร้างบิล') + (po.stock_from_invoice ? ' · สต็อกจะเข้าเมื่อบันทึกใบกำกับภาษี' : ''))
+          }} />
       )}
 
-      {receiveRow && receiveRow.status !== 'partially_received' && (
+      {receiveRow && receiveKind === 'old' && (
         <ConfirmDialog
           title="ยืนยันรับของ"
           message={

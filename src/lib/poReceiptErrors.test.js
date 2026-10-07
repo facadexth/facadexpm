@@ -1,6 +1,6 @@
 // src/lib/poReceiptErrors.test.js
 import { describe, it, expect } from 'vitest'
-import { mapPoReceiptRpcError, buildPoMoneyIndex, poMoneyLockText, poLedgerSummary, PO_RECEIPT_LOCKED_TEXT, PO_HAS_DEPOSIT_TEXT, depositSelectableForPo, isMissingColumnError, PO_RECEIPT_ERROR_TEXT } from './poReceiptErrors.js'
+import { mapPoReceiptRpcError, buildPoMoneyIndex, poMoneyLockText, poLedgerSummary, PO_RECEIPT_LOCKED_TEXT, PO_HAS_DEPOSIT_TEXT, depositSelectableForPo, isMissingColumnError, PO_RECEIPT_ERROR_TEXT, receiveRoute, receiveDialogDeposits } from './poReceiptErrors.js'
 import { readFileSync } from 'node:fs'
 
 describe('mapPoReceiptRpcError', () => {
@@ -112,4 +112,53 @@ describe('every RAISE EXCEPTION literal in the migrations has Thai text', () => 
       for (const c of codes) expect(PO_RECEIPT_ERROR_TEXT[c], c).toBeTruthy()
     })
   }
+})
+
+describe('buildPoMoneyIndex schemaReady (Task 9 routing)', () => {
+  it('defaults to ready; a soft-failed (pre-migration) index says not ready', () => {
+    expect(buildPoMoneyIndex({ receiptItems: [], deposits: [] }).schemaReady).toBe(true)
+    expect(buildPoMoneyIndex({ receiptItems: [], deposits: [], schemaReady: false }).schemaReady).toBe(false)
+  })
+})
+
+describe('receiveRoute (Task 9)', () => {
+  const item = (o = {}) => ({ id: 'i1', line_total: 100, ...o })
+  const ready = Object.assign(new Map(), { schemaReady: true })
+  const pre = Object.assign(new Map(), { schemaReady: false })
+  const po = (status, items = [item()]) => ({ id: 'P1', status, purchase_order_items: items })
+  it('new dialog for ordered / partially received when the schema is ready', () => {
+    expect(receiveRoute(po('ordered'), ready)).toEqual({ kind: 'new' })
+    expect(receiveRoute(po('partially_received'), ready)).toEqual({ kind: 'new' })
+  })
+  it('old receive for an ordered PO before the migrations (index null or schema missing)', () => {
+    expect(receiveRoute(po('ordered'), null)).toEqual({ kind: 'old' })
+    expect(receiveRoute(po('ordered'), pre)).toEqual({ kind: 'old' })
+  })
+  it('partially received without the schema: disabled with a reason', () => {
+    const r = receiveRoute(po('partially_received'), null)
+    expect(r.kind).toBe('disabled')
+    expect(r.reason.length).toBeGreaterThan(5)
+    expect(receiveRoute(po('partially_received'), pre).kind).toBe('disabled')
+  })
+  it('a discount line (line_total < 0) always uses the old receive on an ordered PO', () => {
+    expect(receiveRoute(po('ordered', [item(), item({ id: 'i2', line_total: -10 })]), ready)).toEqual({ kind: 'old' })
+    expect(receiveRoute(po('partially_received', [item(), item({ id: 'i2', line_total: -10 })]), ready).kind).toBe('disabled')
+  })
+  it('other statuses: nothing', () => {
+    for (const s of ['draft', 'received', 'cancelled']) expect(receiveRoute(po(s), ready)).toBeNull()
+  })
+})
+
+describe('receiveDialogDeposits (Task 9, R6)', () => {
+  const dep = (id, o = {}) => ({ id, deposit_invoice_no: id.toUpperCase(), expense: { supplier_id: 'S', amount: 107, amount_no_vat: 100, vat: 7 }, applications: [], ...o })
+  it('keeps legacy (po_id null) and own deposits, drops other POs\' deposits and used-up ones, own first', () => {
+    const rows = [dep('a', { po_id: null }), dep('b', { po_id: 'P2' }), dep('c', { po_id: 'P1' }), dep('d', { applications: [{ amount_no_vat: 100, vat: 7 }] })]
+    const out = receiveDialogDeposits(rows, 'P1', 'c')
+    expect(out.map(d => d.id)).toEqual(['c', 'a'])
+    expect(out[1].supplier_id).toBe('S')
+    expect(out[0].remaining).toEqual({ net: 100, vat: 7 })
+  })
+  it('null rows -> empty list', () => {
+    expect(receiveDialogDeposits(null, 'P1', null)).toEqual([])
+  })
 })

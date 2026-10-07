@@ -1779,14 +1779,16 @@ export async function fetchPoMoneyIndex() {
   {
     // Before the migrations the new tables/columns don't exist: fail soft to an EMPTY index (old flows keep working).
     // Any other error still surfaces (data null).
-    const soft = p => p.catch(e => { if (isMissingRelationError(e) || isMissingColumnError(e, 'po_id')) return []; throw e })
+    // schemaReady = false after a soft fail: the receive menu then keeps the old receive (receive_po_lines is missing too)
+    let schemaReady = true
+    const soft = p => p.catch(e => { if (isMissingRelationError(e) || isMissingColumnError(e, 'po_id')) { schemaReady = false; return [] } throw e })
     const [receiptItems, deposits] = await Promise.all([
       soft(fetchAllRows(() => supabase.from('po_receipt_items')
         .select('id, po_item_id, receipt_id, po_receipts!po_receipt_items_receipt_fk(po_id)').order('id'))),
       soft(fetchAllRows(() => supabase.from('supplier_deposits')
         .select('id, po_id').not('po_id', 'is', null).order('id'))),
     ])
-    return buildPoMoneyIndex({ receiptItems, deposits })
+    return buildPoMoneyIndex({ receiptItems, deposits, schemaReady })
   }
 }
 
