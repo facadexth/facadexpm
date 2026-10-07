@@ -37,12 +37,15 @@ describe('fail soft before the migrations', () => {
   it('money index: missing new tables -> empty index', async () => {
     results.po_receipt_items = { data: null, error: relErr }
     results.supplier_deposits = { data: [], error: null }
+    results.expenses = { data: [], error: null }
     const idx = await fetchPoMoneyIndex()
     expect(idx instanceof Map && idx.size === 0).toBe(true)
+    expect(idx.schemaReady).toBe(false)
   })
   it('money index: other errors still surface', async () => {
     results.po_receipt_items = { data: null, error: { code: '42501', message: 'permission denied' } }
     results.supplier_deposits = { data: [], error: null }
+    results.expenses = { data: [], error: null }
     await expect(fetchPoMoneyIndex()).rejects.toBeTruthy()
   })
   it('ledger: new tables missing, legacy deposit applications still returned', async () => {

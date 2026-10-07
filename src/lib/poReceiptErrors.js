@@ -72,13 +72,22 @@ export function mapPoReceiptRpcError(err) {
 
 /** schemaReady = false when the receipt tables / po_id column are missing (pre-migration soft fail): the index is
  *  then empty and the new receive dialog must not be offered (receive_po_lines does not exist yet). */
-export function buildPoMoneyIndex({ receiptItems, deposits, schemaReady = true }) {
+export function buildPoMoneyIndex({ receiptItems, deposits, bills, schemaReady = true }) {
   const m = new Map()
   m.schemaReady = !!schemaReady
-  const get = id => { if (!m.has(id)) m.set(id, { receivedItemIds: new Set(), receiptIds: new Set(), depositId: null }); return m.get(id) }
+  const get = id => { if (!m.has(id)) m.set(id, { receivedItemIds: new Set(), receiptIds: new Set(), depositId: null, billCount: 0 }); return m.get(id) }
   for (const r of receiptItems || []) { const poId = r.po_receipts?.po_id; if (poId) { const e = get(poId); e.receivedItemIds.add(r.po_item_id); if (r.receipt_id) e.receiptIds.add(r.receipt_id) } }
   for (const d of deposits || []) if (d.po_id) get(d.po_id).depositId = d.id
+  for (const b of bills || []) if (b.po_id) get(b.po_id).billCount += 1
   return m
+}
+
+export const SWAP_MULTI_BILL_TEXT = 'ใบสั่งซื้อนี้มีหลายบิล (รับของหลายครั้ง หรือแยกบิลจ่ายบางส่วน) สลับใบกำกับภาษีจากที่นี่ไม่ได้ — แจ้งผู้ดูแลระบบ'
+
+/** True when the PO's bills are not one single bill: several receipts, or more than one expense row (a split). */
+export function poHasMultipleBills(po, index) {
+  const e = index && po ? index.get(po.id) : null
+  return !!e && ((e.receiptIds?.size || 0) > 1 || (e.billCount || 0) > 1)
 }
 
 /** '' or why a PO's edit / cancel is locked by its receipts or its own deposit. */

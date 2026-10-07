@@ -32,7 +32,7 @@ import { suggestStockLinks } from '../lib/poStockLinkSuggest.js'
 import { calcPoTotals, poLineTotal as lineTotal } from '../lib/poTotals.js'
 import { VAT_RATE } from '../lib/invoiceCalc.js'
 import { poTaxInvoiceBadge, buildPoPayloadFlag, poEditLockedText, poTaxInvoiceErrorText } from '../lib/poTaxInvoiceStatus.js'
-import { poMoneyLockText, poLedgerSummary, mapPoReceiptRpcError, receiveRoute, canOfferCreateDeposit } from '../lib/poReceiptErrors.js'
+import { poMoneyLockText, poLedgerSummary, mapPoReceiptRpcError, receiveRoute, canOfferCreateDeposit, poHasMultipleBills, SWAP_MULTI_BILL_TEXT } from '../lib/poReceiptErrors.js'
 import CreatePoDepositModal from '../components/CreatePoDepositModal.jsx'
 import ReceivePoLinesModal from '../components/ReceivePoLinesModal.jsx'
 import ReceiveDepositBlock from '../components/ReceiveDepositBlock.jsx'
@@ -1134,11 +1134,10 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     items.push({ label: '🖼️ ดาวน์โหลด JPEG', onClick: () => setDocRow({ po, action: 'jpg' }) })
     if (canEdit && po.status === 'received') {
       if (po.expense_id && !taxInvoiceLinks?.get(po.id)) {
-        // A PO with several bills (several receipts) has no single bill to swap the tax invoice on.
-        // TODO(Task 10): legacy single-receipt POs later split via split_payment must also disable swap (bills with split rows / >1 expense with po_id).
-        const multiBill = (moneyIndex?.get(po.id)?.receiptIds?.size || 0) > 1
+        // A PO with several bills (several receipts, or a bill split by จ่ายบางส่วน) has no single bill to swap the tax invoice on.
+        const multiBill = poHasMultipleBills(po, moneyIndex)
         items.push(multiBill
-          ? { label: '🔄 สลับใบกำกับภาษี', disabled: true, disabledTitle: 'ใบสั่งซื้อนี้มีหลายบิล (รับของหลายครั้ง) สลับใบกำกับภาษีจากที่นี่ไม่ได้ — แจ้งผู้ดูแลระบบ', onClick: () => {} }
+          ? { label: '🔄 สลับใบกำกับภาษี', disabled: true, disabledTitle: SWAP_MULTI_BILL_TEXT, onClick: () => {} }
           : { label: '🔄 สลับใบกำกับภาษี', onClick: () => setSwapInvoiceRow(po) })
       }
       items.push({ label: '↩️ สร้างใบลดหนี้', onClick: () => openCreditNote(po) })

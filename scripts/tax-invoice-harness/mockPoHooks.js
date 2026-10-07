@@ -36,7 +36,7 @@ export const useActiveTaxInvoiceLinks = () => useQuery(() => delay(() => (W.__li
 // W.__wrapperError: thrown by the RPC wrappers; every wrapper call is logged as ['rpc', name, args].
 // W.__moneySchema === false: the pre-migration soft-failed index (empty Map with schemaReady false), as fetchPoMoneyIndex returns it live.
 export const usePoMoneyIndex = () => useQuery(() => delay(() => (W.__money === null ? null
-  : Object.assign(new Map((W.__money || []).map(([k, v]) => [k, { receivedItemIds: new Set(v.receivedItemIds || []), receiptIds: new Set(v.receiptIds || []), depositId: v.depositId || null }])), { schemaReady: W.__moneySchema !== false }))), [W.__moneyVersion])
+  : Object.assign(new Map((W.__money || []).map(([k, v]) => [k, { receivedItemIds: new Set(v.receivedItemIds || []), receiptIds: new Set(v.receiptIds || []), depositId: v.depositId || null, billCount: v.billCount || 0 }])), { schemaReady: W.__moneySchema !== false }))), [W.__moneyVersion])
 export const usePoLedger = (poId) => useQuery(() => delay(() => (W.__ledger || {})[poId] || { receipts: [], deposit: null, applications: [], bills: [] }), [poId, W.__ledgerVersion])
 const wrapper = (name, result) => async (args) => {
   W.__log.push(['rpc', name, JSON.stringify(args)])

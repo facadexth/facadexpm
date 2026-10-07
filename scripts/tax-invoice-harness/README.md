@@ -25,3 +25,14 @@ Sections 3-5 and 9/9b drive the new receive dialog (`ReceivePoLinesModal`, wrapp
 `__wrapperError` / `__wrapperDelay`): all / some lines, received date, deposit deduction and bill preview, receive-the-rest,
 errors kept inside the open dialog, double click = one call, 375 px. `__moneySchema = false` simulates the pre-migration
 index (empty, `schemaReady` false) that routes ordered POs to the old receive.
+
+## Expenses page scenarios
+
+`buildExp.mjs` / `runExp.mjs` (same rules, run alone) check `src/pages/Expenses.jsx` with `mockExpHooks.js` (+ the PO harness's supabase lib and tenant/role mocks):
+
+    node scripts/tax-invoice-harness/buildExp.mjs && node scripts/tax-invoice-harness/runExp.mjs
+
+Mocks: `__exp` (expense rows, `expenses_view` shape; the mocked `splitPayment` updates it so the refetch shows the result), `__cnIds` (credit-note expense ids),
+`__depMap` (`[[expenseId, depositInfo]]`), `__splitReady = false` (pre-migration: จ่ายบางส่วน hidden), `__wrapperError` / `__wrapperDelay` (RPC wrapper
+failure / latency; calls logged in `__log`). Scenarios: which bills offer / disable the action, dialog maths and guards, double click = one call,
+refetch after success, Thai error keeps the dialog open, pre-migration hide, 375 px.

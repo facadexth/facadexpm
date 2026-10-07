@@ -9,8 +9,10 @@
 // ============================================================
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useExpenses, useSites, useCategories, useSuppliers, useCheques, useCreditNoteExpenseIds, useDepositMap } from '../hooks/useSupabase.js'
+import { useExpenses, useSites, useCategories, useSuppliers, useCheques, useCreditNoteExpenseIds, useDepositMap, useSplitPaymentReady } from '../hooks/useSupabase.js'
 import DepositRegisterModal from '../components/DepositRegisterModal.jsx'
+import SplitPaymentModal from '../components/SplitPaymentModal.jsx'
+import { mapPoReceiptRpcError, PO_RECEIPT_LOCKED_TEXT } from '../lib/poReceiptErrors.js'
 import { PO_DEPOSIT_LOCKED_TEXT } from '../lib/receiveDeposits.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
@@ -63,7 +65,7 @@ const chequeOpts = (cheques) => (cheques || []).map(c => ({
   value: c.id, label: `${c.cheque_no} · ${c.bank}${c.status === 'cashed' ? ' (ขึ้นเงินแล้ว)' : ''}`, keywords: `${c.cheque_no} ${c.bank}`,
 }))
 
-const mapPoRevertError = err => (String(err?.message || '').includes('po_has_deposit_applications') ? PO_DEPOSIT_LOCKED_TEXT : 'Error: ' + err.message)
+const mapPoRevertError = err => mapPoReceiptRpcError(err)   // covers po_has_deposit_applications / po_has_receipts / po_has_deposit
 
 function ExpenseForm({ lockedMoney = false, initial = EMPTY_FORM, sites, categories, suppliers = [], cheques = [], hasChequeTracking, onSave, onCancel, loading, onChequeCreated, onSiteCreated, onSupplierCreated }) {
   const isAdd = !initial?.id
@@ -385,7 +387,8 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
   const [newStatus, setNewStatus] = useState('')
   const [deleteId, setDeleteId] = useState(null)
   const [reconcilePoId, setReconcilePoId] = useState(null)
-  const [reconcileLocked, setReconcileLocked] = useState(false)   // the PO deducted deposits: it cannot be un-received from here
+  const [reconcileLocked, setReconcileLocked] = useState('')   // '' = may un-receive; else the reason it cannot (deposit deducted / receipts)
+  const [splitRow, setSplitRow] = useState(null)
   const [saving,   setSaving]   = useState(false)
   const [toast,    setToast]    = useState(null)
   const [showImport, setShowImport] = useState(false)
@@ -413,6 +416,9 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
   // deposits: data is an empty Map while loading or before the migration (table missing)
   const { data: depositMap, refetch: refetchDeposits } = useDepositMap()
   const depositOf = id => depositMap.get(id)
+  const splitReady = useSplitPaymentReady()   // true only once the 2026-10-09 schema (split_payment) exists; else the action is hidden
+  // a PO bill the server's split_payment can take (pending only; awaiting_billing shows the action disabled)
+  const canSplitRow = e => !!e.po_id && (e.status === 'pending' || e.status === 'awaiting_billing') && !e.cheque_id && !isCnExpense(e.id) && !depositOf(e.id) && Number(e.amount) > 0
   const isDepositLocked = id => !!depositMap.get(id)?.applied
   const [depositRow, setDepositRow] = useState(null)
   const { hasModuleAccess }  = useTenant()
@@ -512,6 +518,8 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
     const row = (expenses || []).find(e => e.id === deleteId)
     const { error } = await supabase.from('expenses').delete().eq('id', deleteId)
     if (error) {
+      const msg = String(error.message || '')
+      if (['expense_is_receipt_bill', 'expense_is_split_part', 'deposit_expense_is_po_generated', 'deposit_linked_to_po', 'deposit_in_use'].some(c => msg.includes(c))) { alert(mapPoReceiptRpcError(error)); setDeleteId(null); return }
       alert(error.code === '23503'
         ? (depositOf(deleteId)
             ? (isDepositLocked(deleteId) ? 'ลบไม่ได้ — มัดจำนี้ถูกใช้หักกับใบสั่งซื้อแล้ว' : 'ลบไม่ได้ — รายจ่ายนี้ลงทะเบียนเป็นมัดจำแล้ว')
@@ -523,9 +531,11 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
     setDeleteId(null); refetch(); showToast('ลบแล้ว')
     if (row?.po_id) {
       // A PO that deducted deposits cannot be un-received/cancelled (server trigger); explain instead of offering it.
-      let locked = false
+      let locked = ''
       const { count, error: appErr } = await supabase.from('po_deposit_applications').select('id', { count: 'exact', head: true }).eq('po_id', row.po_id)
-      if (!appErr && (count || 0) > 0) locked = true
+      if (!appErr && (count || 0) > 0) locked = PO_DEPOSIT_LOCKED_TEXT
+      const { count: rc, error: rcErr } = await supabase.from('po_receipts').select('id', { count: 'exact', head: true }).eq('po_id', row.po_id)
+      if (!rcErr && (rc || 0) > 0) locked = PO_RECEIPT_LOCKED_TEXT   // table missing before the migration: rcErr, ignored
       setReconcileLocked(locked)
       setReconcilePoId(row.po_id)
     }
@@ -762,6 +772,11 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
                         {e.supplier_id && e.amount_no_vat != null && !e.po_id && !depositOf(e.id) && hasModuleAccess('purchase_orders') && (
                           <button className="btn btn-sm btn-ghost" onClick={() => setDepositRow(e)}>🏷️ ลงทะเบียนเป็นมัดจำ</button>
                         )}
+                        {splitReady === true && canSplitRow(e) && hasModuleAccess('purchase_orders') && (
+                          e.status === 'awaiting_billing'
+                            ? <button className="btn btn-sm btn-ghost" disabled title="เปลี่ยนสถานะเป็นค้างจ่ายก่อน">💸 จ่ายบางส่วน</button>
+                            : <button className="btn btn-sm btn-ghost" onClick={() => setSplitRow(e)}>💸 จ่ายบางส่วน</button>
+                        )}
                         <button className="btn btn-sm btn-edit" onClick={() => { setEditRow(e); setShowAdd(true) }}><PencilIcon /></button>
                         <button className="btn btn-sm btn-danger" onClick={() => setDeleteId(e.id)}><TrashIcon /></button>
                       </div>
@@ -826,6 +841,15 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
         />
       )}
 
+      {splitRow && (
+        <SplitPaymentModal expense={splitRow} onClose={() => setSplitRow(null)}
+          onDone={async res => {
+            await auditLog('expenses', res.paid_expense_id, 'UPDATE', { amount: splitRow.amount, status: splitRow.status }, { amount: res.paid_amount, status: 'paid', via: 'split_payment' })
+            await auditLog('expenses', res.remaining_expense_id, 'INSERT', null, { amount: res.remaining_amount, split_from: res.paid_expense_id })
+            setSplitRow(null); refetch(); showToast('แยกบิลแล้ว — จ่าย ' + fmt(res.paid_amount) + ' คงค้าง ' + fmt(res.remaining_amount) + ' บาท')
+          }} />
+      )}
+
       {/* ── Delete Confirm ── */}
       {deleteId && (
         <ConfirmDialog title="ลบรายจ่าย" message="ยืนยันการลบรายการนี้?" onConfirm={handleDelete} onCancel={() => setDeleteId(null)} danger />
@@ -836,11 +860,11 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
         <Modal title="ใบสั่งซื้ออ้างอิงยังอยู่" onClose={() => setReconcilePoId(null)} maxWidth={420}>
           <div className="modal-body">
             {reconcileLocked
-              ? <p style={{ color: 'var(--text2)' }}>{PO_DEPOSIT_LOCKED_TEXT}</p>
+              ? <p style={{ color: 'var(--text2)' }}>{reconcileLocked}</p>
               : <p style={{ color: 'var(--text2)' }}>รายจ่ายที่ลบไปมาจากใบสั่งซื้อนี้ — ต้องการปรับสถานะใบสั่งซื้ออย่างไร?</p>}
           </div>
           <div className="modal-footer">
-            {reconcileLocked && <button className="btn btn-ghost" onClick={() => { setReconcilePoId(null); setReconcileLocked(false) }}>ปิด</button>}
+            {reconcileLocked && <button className="btn btn-ghost" onClick={() => { setReconcilePoId(null); setReconcileLocked('') }}>ปิด</button>}
             {!reconcileLocked && <button className="btn btn-ghost" onClick={async () => {
               const update = { status: 'ordered', received_date: null, expense_id: null }
               const { error } = await supabase.from('purchase_orders').update(update).eq('id', reconcilePoId)

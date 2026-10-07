@@ -1782,14 +1782,26 @@ export async function fetchPoMoneyIndex() {
     // schemaReady = false after a soft fail: the receive menu then keeps the old receive (receive_po_lines is missing too)
     let schemaReady = true
     const soft = p => p.catch(e => { if (isMissingRelationError(e) || isMissingColumnError(e, 'po_id')) { schemaReady = false; return [] } throw e })
-    const [receiptItems, deposits] = await Promise.all([
+    const [receiptItems, deposits, bills] = await Promise.all([
       soft(fetchAllRows(() => supabase.from('po_receipt_items')
         .select('id, po_item_id, receipt_id, po_receipts!po_receipt_items_receipt_fk(po_id)').order('id'))),
       soft(fetchAllRows(() => supabase.from('supplier_deposits')
         .select('id, po_id').not('po_id', 'is', null).order('id'))),
+      // bills per PO (swap-invoice lock after a legacy single bill was split by split_payment); deposit rows carry no po_id
+      soft(fetchAllRows(() => supabase.from('expenses').select('id, po_id').not('po_id', 'is', null).order('id'))),
     ])
-    return buildPoMoneyIndex({ receiptItems, deposits, schemaReady })
+    return buildPoMoneyIndex({ receiptItems, deposits, bills, schemaReady })
   }
+}
+
+/** true = split_payment's tables exist (2026-10-09 applied); false = not yet / unreadable. null while loading.
+ *  Cheap head count; any error (missing table, RLS) hides the จ่ายบางส่วน action and never blocks the page. */
+export function useSplitPaymentReady() {
+  const { data } = useQuery(async () => {
+    const { error } = await supabase.from('expense_splits').select('id', { count: 'exact', head: true })
+    return !error
+  }, [])
+  return data
 }
 
 /** One PO's receipts, own deposit (with all its applications), applications to this PO, bills. */

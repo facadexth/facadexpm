@@ -1,6 +1,6 @@
 // src/lib/poReceiptErrors.test.js
 import { describe, it, expect } from 'vitest'
-import { mapPoReceiptRpcError, buildPoMoneyIndex, poMoneyLockText, poLedgerSummary, PO_RECEIPT_LOCKED_TEXT, PO_HAS_DEPOSIT_TEXT, depositSelectableForPo, isMissingColumnError, PO_RECEIPT_ERROR_TEXT, receiveRoute, receiveDialogDeposits, canOfferCreateDeposit, DB_NOT_UPDATED_TEXT, RECEIVE_NOT_READY_TEXT } from './poReceiptErrors.js'
+import { mapPoReceiptRpcError, buildPoMoneyIndex, poMoneyLockText, poLedgerSummary, PO_RECEIPT_LOCKED_TEXT, PO_HAS_DEPOSIT_TEXT, depositSelectableForPo, isMissingColumnError, PO_RECEIPT_ERROR_TEXT, receiveRoute, receiveDialogDeposits, canOfferCreateDeposit, DB_NOT_UPDATED_TEXT, RECEIVE_NOT_READY_TEXT, poHasMultipleBills } from './poReceiptErrors.js'
 import { readFileSync } from 'node:fs'
 
 describe('mapPoReceiptRpcError', () => {
@@ -183,5 +183,20 @@ describe('receiveDialogDeposits (Task 9, R6)', () => {
   })
   it('null rows -> empty list', () => {
     expect(receiveDialogDeposits(null, 'P1', null)).toEqual([])
+  })
+})
+
+describe('poHasMultipleBills (swap-invoice lock, Task 10)', () => {
+  const idx = buildPoMoneyIndex({
+    receiptItems: [{ po_item_id: 'i1', receipt_id: 'r1', po_receipts: { po_id: 'A' } }, { po_item_id: 'i2', receipt_id: 'r2', po_receipts: { po_id: 'B' } }, { po_item_id: 'i3', receipt_id: 'r3', po_receipts: { po_id: 'B' } }],
+    deposits: [],
+    bills: [{ id: 'e1', po_id: 'A' }, { id: 'e2', po_id: 'C' }, { id: 'e3', po_id: 'C' }, { id: 'e4', po_id: null }],
+  })
+  it('single bill: false; several receipts: true; a split (2 expense rows, 1 receipt): true', () => {
+    expect(poHasMultipleBills({ id: 'A' }, idx)).toBe(false)
+    expect(poHasMultipleBills({ id: 'B' }, idx)).toBe(true)
+    expect(poHasMultipleBills({ id: 'C' }, idx)).toBe(true)
+    expect(poHasMultipleBills({ id: 'Z' }, idx)).toBe(false)
+    expect(poHasMultipleBills({ id: 'A' }, null)).toBe(false)
   })
 })
