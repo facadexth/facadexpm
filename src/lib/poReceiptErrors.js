@@ -58,7 +58,12 @@ export function mapPoReceiptRpcError(err) {
   const tax = poTaxInvoiceErrorText(err)   // po_tax_invoiced, po_stock_flag_locked, 40P01 deadlock
   if (tax) return tax
   const msg = String(err?.message || err || '')
-  for (const code of Object.keys(PO_RECEIPT_ERROR_TEXT).sort((a, b) => b.length - a.length)) if (msg.includes(code)) return PO_RECEIPT_ERROR_TEXT[code]
+  const codes = Object.keys(PO_RECEIPT_ERROR_TEXT).sort((a, b) => b.length - a.length)
+  // message first, then details, then hint
+  for (const hay of [msg, err?.details, err?.hint]) {
+    if (!hay) continue
+    for (const code of codes) if (String(hay).includes(code)) return PO_RECEIPT_ERROR_TEXT[code]
+  }
   return msg
 }
 
@@ -104,4 +109,11 @@ export function poLedgerSummary(po, ledger) {
 export function depositSelectableForPo(deposit, poId) {
   const linked = deposit?.po_id
   return !linked || linked === poId
+}
+
+/** True only for Postgres/PostgREST 'undefined column' errors naming `column` (e.g. before a migration adds it). */
+export function isMissingColumnError(err, column) {
+  const msg = String(err?.message || '')
+  if (err?.code === '42703') return true
+  return new RegExp(column, 'i').test(msg) && /does not exist|column/i.test(msg)
 }

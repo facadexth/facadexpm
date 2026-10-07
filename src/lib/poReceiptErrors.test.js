@@ -1,6 +1,7 @@
 // src/lib/poReceiptErrors.test.js
 import { describe, it, expect } from 'vitest'
-import { mapPoReceiptRpcError, buildPoMoneyIndex, poMoneyLockText, poLedgerSummary, PO_RECEIPT_LOCKED_TEXT, PO_HAS_DEPOSIT_TEXT, depositSelectableForPo } from './poReceiptErrors.js'
+import { mapPoReceiptRpcError, buildPoMoneyIndex, poMoneyLockText, poLedgerSummary, PO_RECEIPT_LOCKED_TEXT, PO_HAS_DEPOSIT_TEXT, depositSelectableForPo, isMissingColumnError, PO_RECEIPT_ERROR_TEXT } from './poReceiptErrors.js'
+import { readFileSync } from 'node:fs'
 
 describe('mapPoReceiptRpcError', () => {
   it('maps every new code to Thai and never shows the raw code', () => {
@@ -79,4 +80,35 @@ describe('depositSelectableForPo', () => {
     expect(depositSelectableForPo({ po_id: 'P1' }, 'P1')).toBe(true)
     expect(depositSelectableForPo({ po_id: 'P2' }, 'P1')).toBe(false)
   })
+})
+
+describe('isMissingColumnError', () => {
+  it('only the undefined-column case', () => {
+    expect(isMissingColumnError({ code: '42703', message: 'x' }, 'po_id')).toBe(true)
+    expect(isMissingColumnError({ message: 'column supplier_deposits.po_id does not exist' }, 'po_id')).toBe(true)
+    expect(isMissingColumnError({ message: 'TypeError: Failed to fetch' }, 'po_id')).toBe(false)
+    expect(isMissingColumnError({ code: '500', message: 'Internal Server Error' }, 'po_id')).toBe(false)
+    expect(isMissingColumnError(undefined, 'po_id')).toBe(false)
+  })
+})
+
+describe('error text reads details and hint', () => {
+  it('finds a code in details/hint, message first', () => {
+    expect(mapPoReceiptRpcError({ message: 'x', details: 'bill_changed' })).toBe(PO_RECEIPT_ERROR_TEXT.bill_changed)
+    expect(mapPoReceiptRpcError({ message: 'x', hint: 'bad_lines' })).toBe(PO_RECEIPT_ERROR_TEXT.bad_lines)
+    expect(mapPoReceiptRpcError({ message: 'bad_lines', details: 'bill_changed' })).toBe(PO_RECEIPT_ERROR_TEXT.bad_lines)
+  })
+})
+
+describe('every RAISE EXCEPTION literal in the migrations has Thai text', () => {
+  // none intentionally unmapped; add here with a comment if one ever must be
+  const ALLOW = []
+  for (const f of ['2026-10-09-01-po-receipts.sql', '2026-10-09-02-po-receipt-rpcs.sql']) {
+    it(f, () => {
+      const sql = readFileSync(new URL('../../supabase/migrations/' + f, import.meta.url), 'utf8')
+      const codes = [...new Set([...sql.matchAll(/RAISE EXCEPTION '([a-z_0-9]+)'/g)].map(m => m[1]))].filter(c => !ALLOW.includes(c))
+      expect(codes.length).toBeGreaterThan(3)
+      for (const c of codes) expect(PO_RECEIPT_ERROR_TEXT[c], c).toBeTruthy()
+    })
+  }
 })

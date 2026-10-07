@@ -11,7 +11,7 @@ import { buildUnitSeedRows, VAT_RATE } from '../lib/invoiceCalc.js'
 import { validateExtraction, blobToBase64 } from '../lib/poDocumentExtraction.js'
 import { buildActiveLinkMap, saveDraftArgs, idArgs, postArgs, voidArgs, TAX_INVOICE_RPCS } from '../lib/taxInvoiceLinks.js'
 import { isTaxInvoiceNotReady } from '../lib/supplierTaxInvoice.js'
-import { buildPoMoneyIndex } from '../lib/poReceiptErrors.js'
+import { buildPoMoneyIndex, isMissingColumnError } from '../lib/poReceiptErrors.js'
 
 /** Generic fetch hook */
 export function useQuery(queryFn, deps = []) {
@@ -1735,7 +1735,7 @@ export function useSupplierDeposits(supplierId) {
       .order('id'))
     // po_id (2026-10-09-01) lets the old picker hide other POs' deposits; before that migration the column is missing -> retry without it.
     let rows
-    try { rows = await load(cols.replace('id, expense_id,', 'id, expense_id, po_id,')) } catch { rows = await load(cols) }
+    try { rows = await load(cols.replace('id, expense_id,', 'id, expense_id, po_id,')) } catch (e) { if (!isMissingColumnError(e, 'po_id')) throw e; rows = await load(cols) }
     return (rows || [])
       .map(r => ({ ...r, expense: r.expenses, applications: r.po_deposit_applications || [] }))
       .filter(r => !supplierId || r.expense?.supplier_id === supplierId)
@@ -1773,10 +1773,12 @@ export async function receivePoWithDeposits(poId, applications, subtotal, vat) {
 /** Map<po_id, {receivedItemIds:Set, depositId}> for the whole tenant (list row menu + edit locks). */
 export function usePoMoneyIndex() {
   return useQuery(async () => {
-    const receiptItems = await fetchAllRows(() => supabase.from('po_receipt_items')
-      .select('id, po_item_id, po_receipts!po_receipt_items_receipt_fk(po_id)').order('id'))
-    const deposits = await fetchAllRows(() => supabase.from('supplier_deposits')
-      .select('id, po_id').not('po_id', 'is', null).order('id'))
+    const [receiptItems, deposits] = await Promise.all([
+      fetchAllRows(() => supabase.from('po_receipt_items')
+        .select('id, po_item_id, po_receipts!po_receipt_items_receipt_fk(po_id)').order('id')),
+      fetchAllRows(() => supabase.from('supplier_deposits')
+        .select('id, po_id').not('po_id', 'is', null).order('id')),
+    ])
     return buildPoMoneyIndex({ receiptItems, deposits })
   }, [])
 }
