@@ -92,6 +92,10 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'po_has_receipts%' THEN RAISE EXCEPTION 'A5 FAIL: %', v_msg; END IF; END;
   BEGIN UPDATE purchase_orders SET has_vat = NOT has_vat WHERE id = po_r; RAISE EXCEPTION 'A5 FAIL: has_vat';
   EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'po_has_receipts%' THEN RAISE EXCEPTION 'A5 FAIL: %', v_msg; END IF; END;
+  BEGIN UPDATE purchase_orders SET expense_id = NULL WHERE id = po_r; RAISE EXCEPTION 'A5 FAIL: expense_id';
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'po_has_receipts%' THEN RAISE EXCEPTION 'A5 FAIL: %', v_msg; END IF; END;
+  BEGIN UPDATE purchase_orders SET received_date = current_date - 1 WHERE id = po_r; RAISE EXCEPTION 'A5 FAIL: received_date';
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'po_has_receipts%' THEN RAISE EXCEPTION 'A5 FAIL: %', v_msg; END IF; END;
   UPDATE purchase_orders SET notes = 'ok' WHERE id = po_r;
 
   -- A7: a client can never set partially_received itself
@@ -101,17 +105,35 @@ BEGIN
   -- A8: deposit linked to a PO (as the RPC will do; clients may also insert supplier_deposits under RLS)
   INSERT INTO expenses (date, description, site_id, category_id, supplier_id, amount_no_vat, vat, amount, payment_method, status)
   VALUES (current_date, 'dep', t_site, t_cat, t_sup, 300, 21, 321, 'transfer', 'paid') RETURNING id INTO e_dep;
-  INSERT INTO supplier_deposits (expense_id, deposit_invoice_no, po_id, pct_of_po) VALUES (e_dep, 'PRA-D1', po_d, 30) RETURNING id INTO d_dep;
+  -- A13: clients cannot set the PO link (column privileges); a plain register insert still works
+  BEGIN INSERT INTO supplier_deposits (expense_id, deposit_invoice_no, po_id) VALUES (e_dep, 'PRA-D0', po_d); RAISE EXCEPTION 'A13 FAIL: client set po_id on insert';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  INSERT INTO supplier_deposits (expense_id, deposit_invoice_no, created_by) VALUES (e_dep, 'PRA-D1', email) RETURNING id INTO d_dep;
+  BEGIN UPDATE supplier_deposits SET po_id = po_d WHERE id = d_dep; RAISE EXCEPTION 'A13 FAIL: client set po_id on update';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN UPDATE supplier_deposits SET pct_of_po = 30 WHERE id = d_dep; RAISE EXCEPTION 'A13 FAIL: client set pct_of_po on update';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  -- the link itself is made as the definer RPC would (superuser)
+  RESET role;
+  UPDATE supplier_deposits SET po_id = po_d, pct_of_po = 30 WHERE id = d_dep;
+  SET LOCAL role = 'authenticated';
+  -- A14: the linked deposit's expense is frozen for money/supplier
+  BEGIN UPDATE expenses SET supplier_id = t_sup2 WHERE id = e_dep; RAISE EXCEPTION 'A14 FAIL: supplier changed';
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'deposit_in_use%' THEN RAISE EXCEPTION 'A14 FAIL: %', v_msg; END IF; END;
+  BEGIN UPDATE expenses SET amount = 1, amount_no_vat = 1, vat = 0 WHERE id = e_dep; RAISE EXCEPTION 'A14 FAIL: amount changed';
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'deposit_in_use%' THEN RAISE EXCEPTION 'A14 FAIL: %', v_msg; END IF; END;
   INSERT INTO expenses (date, description, site_id, category_id, supplier_id, amount_no_vat, vat, amount, payment_method, status)
   VALUES (current_date, 'dep2', t_site, t_cat, t_sup, 10, 0.7, 10.7, 'transfer', 'paid') RETURNING id INTO e_dep2;
-  BEGIN INSERT INTO supplier_deposits (expense_id, deposit_invoice_no, po_id) VALUES (e_dep2, 'PRA-D2', po_d); RAISE EXCEPTION 'A8 FAIL: two deposits on one PO';
+  RESET role;
+  BEGIN INSERT INTO supplier_deposits (tenant_id, expense_id, deposit_invoice_no, po_id) VALUES (t_tenant, e_dep2, 'PRA-D2', po_d); RAISE EXCEPTION 'A8 FAIL: two deposits on one PO';
   EXCEPTION WHEN unique_violation THEN NULL; END;
-  BEGIN INSERT INTO supplier_deposits (expense_id, deposit_invoice_no, po_id) VALUES (e_dep2, 'PRA-D2', po_x); RAISE EXCEPTION 'A8 FAIL: PO of another supplier';
+  BEGIN INSERT INTO supplier_deposits (tenant_id, expense_id, deposit_invoice_no, po_id) VALUES (t_tenant, e_dep2, 'PRA-D2', po_x); RAISE EXCEPTION 'A8 FAIL: PO of another supplier';
   EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'deposit_wrong_supplier%' THEN RAISE EXCEPTION 'A8 FAIL: %', v_msg; END IF; END;
-  BEGIN INSERT INTO supplier_deposits (expense_id, deposit_invoice_no, po_id) VALUES (e_dep2, 'PRA-D2', t2_po); RAISE EXCEPTION 'A8 FAIL: PO of another tenant';
+  BEGIN INSERT INTO supplier_deposits (tenant_id, expense_id, deposit_invoice_no, po_id) VALUES (t_tenant, e_dep2, 'PRA-D2', t2_po); RAISE EXCEPTION 'A8 FAIL: PO of another tenant';
   EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'cross_tenant_reference%' THEN RAISE EXCEPTION 'A8 FAIL: %', v_msg; END IF; END;
-  BEGIN INSERT INTO supplier_deposits (expense_id, deposit_invoice_no, po_id, pct_of_po) VALUES (e_dep2, 'PRA-D2', po_l, 120); RAISE EXCEPTION 'A8 FAIL: pct 120';
+  BEGIN INSERT INTO supplier_deposits (tenant_id, expense_id, deposit_invoice_no, po_id, pct_of_po) VALUES (t_tenant, e_dep2, 'PRA-D2', po_l, 120); RAISE EXCEPTION 'A8 FAIL: pct 120';
   EXCEPTION WHEN check_violation THEN NULL; END;
+  SET LOCAL role = 'authenticated';
 
   -- A6: PO with its own deposit: items, cancel and money fields refused; legacy ordered->received (old RPC) still allowed
   BEGIN INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t_tenant, po_d, 'e', 1, 1, 1); RAISE EXCEPTION 'A6 FAIL: item insert';
@@ -125,9 +147,9 @@ BEGIN
   -- A9: an applied deposit keeps its PO link
   RESET role;
   INSERT INTO po_deposit_applications (tenant_id, deposit_id, po_id, amount_no_vat, vat) VALUES (t_tenant, d_dep, po_d, 10, 0.7);
-  SET LOCAL role = 'authenticated';
   BEGIN UPDATE supplier_deposits SET po_id = po_l WHERE id = d_dep; RAISE EXCEPTION 'A9 FAIL';
   EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'deposit_in_use%' THEN RAISE EXCEPTION 'A9 FAIL: %', v_msg; END IF; END;
+  SET LOCAL role = 'authenticated';
 
   -- A10: receipt bills and split parts cannot be deleted
   BEGIN DELETE FROM expenses WHERE id = e_bill; RAISE EXCEPTION 'A10 FAIL: receipt bill deleted';

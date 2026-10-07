@@ -9,6 +9,8 @@
 -- purchase_orders<->expenses path would make existing unnamed PostgREST embeds ambiguous.
 -- ============================================================
 
+SET LOCAL lock_timeout = '5s';
+
 ALTER TABLE purchase_orders DROP CONSTRAINT purchase_orders_status_check;
 ALTER TABLE purchase_orders ADD CONSTRAINT purchase_orders_status_check
   CHECK (status IN ('draft', 'ordered', 'partially_received', 'received', 'cancelled'));
@@ -108,6 +110,29 @@ BEGIN
 END $$;
 CREATE TRIGGER sd_validate_po_trg BEFORE INSERT OR UPDATE ON supplier_deposits FOR EACH ROW EXECUTE FUNCTION sd_validate_po();
 
+-- Only the definer RPC (create_po_deposit) may set the deposit -> PO link: clients keep exactly the columns the
+-- live registerSupplierDeposit uses. SELECT and DELETE grants stay as 2026-10-07-01 set them (RLS policies unchanged).
+REVOKE INSERT, UPDATE ON supplier_deposits FROM authenticated;
+GRANT INSERT (expense_id, deposit_invoice_no, created_by), UPDATE (expense_id, deposit_invoice_no) ON supplier_deposits TO authenticated;
+
+-- A deposit expense whose deposit is linked to a PO is frozen (money + supplier) like an applied one.
+-- Body copied from 2026-10-07-01 with one extra condition.
+CREATE OR REPLACE FUNCTION expenses_block_deposit_edit() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF (NEW.amount IS DISTINCT FROM OLD.amount OR NEW.amount_no_vat IS DISTINCT FROM OLD.amount_no_vat
+      OR NEW.vat IS DISTINCT FROM OLD.vat OR NEW.supplier_id IS DISTINCT FROM OLD.supplier_id
+      OR NEW.po_id IS DISTINCT FROM OLD.po_id)
+     AND (EXISTS (SELECT 1 FROM po_deposit_applications a JOIN supplier_deposits d ON d.id = a.deposit_id WHERE d.expense_id = OLD.id)
+          OR EXISTS (SELECT 1 FROM supplier_deposits WHERE expense_id = OLD.id AND po_id IS NOT NULL)) THEN
+    RAISE EXCEPTION 'deposit_in_use';
+  END IF;
+  IF NEW.po_id IS NOT NULL AND NEW.po_id IS DISTINCT FROM OLD.po_id
+     AND EXISTS (SELECT 1 FROM supplier_deposits WHERE expense_id = OLD.id) THEN
+    RAISE EXCEPTION 'deposit_expense_is_po_generated';
+  END IF;
+  RETURN NEW;
+END $$;
+
 -- Receipts / the PO's own deposit freeze the PO's money (the PO edit path is not atomic). Status moves only
 -- through receive_po_lines (transaction-local flag app.po_receipt_rpc='on'); the legacy ordered -> received of a PO
 -- WITHOUT receipts (old client's receive_po_with_deposits) keeps working.
@@ -127,6 +152,9 @@ BEGIN
      OR NEW.category_id IS DISTINCT FROM OLD.category_id OR NEW.has_vat IS DISTINCT FROM OLD.has_vat
      OR NEW.price_includes_vat IS DISTINCT FROM OLD.price_includes_vat OR NEW.stock_from_invoice IS DISTINCT FROM OLD.stock_from_invoice THEN
     RAISE EXCEPTION '%', v_code;
+  END IF;
+  IF v_rcpt AND (NEW.expense_id IS DISTINCT FROM OLD.expense_id OR NEW.received_date IS DISTINCT FROM OLD.received_date) THEN
+    RAISE EXCEPTION 'po_has_receipts';
   END IF;
   RETURN NEW;
 END $$;
