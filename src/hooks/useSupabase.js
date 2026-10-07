@@ -11,6 +11,7 @@ import { buildUnitSeedRows, VAT_RATE } from '../lib/invoiceCalc.js'
 import { validateExtraction, blobToBase64 } from '../lib/poDocumentExtraction.js'
 import { buildActiveLinkMap, saveDraftArgs, idArgs, postArgs, voidArgs, TAX_INVOICE_RPCS } from '../lib/taxInvoiceLinks.js'
 import { isTaxInvoiceNotReady } from '../lib/supplierTaxInvoice.js'
+import { buildPoMoneyIndex } from '../lib/poReceiptErrors.js'
 
 /** Generic fetch hook */
 export function useQuery(queryFn, deps = []) {
@@ -1728,10 +1729,13 @@ export function useAdminChatConfig() {
  *  Before the migration the table is missing: useQuery stores the error and data stays null. */
 export function useSupplierDeposits(supplierId) {
   return useQuery(async () => {
-    const rows = await fetchAllRows(() => supabase.from('supplier_deposits')
-      .select('id, expense_id, deposit_invoice_no, expenses!supplier_deposits_expense_id_fkey(id, date, supplier_id, invoice_no, amount, amount_no_vat, vat), po_deposit_applications(amount_no_vat, vat, po_id)')
+    const cols = 'id, expense_id, deposit_invoice_no, expenses!supplier_deposits_expense_id_fkey(id, date, supplier_id, invoice_no, amount, amount_no_vat, vat), po_deposit_applications(amount_no_vat, vat, po_id)'
+    const load = c => fetchAllRows(() => supabase.from('supplier_deposits').select(c)
       .order('created_at', { ascending: false })
       .order('id'))
+    // po_id (2026-10-09-01) lets the old picker hide other POs' deposits; before that migration the column is missing -> retry without it.
+    let rows
+    try { rows = await load(cols.replace('id, expense_id,', 'id, expense_id, po_id,')) } catch { rows = await load(cols) }
     return (rows || [])
       .map(r => ({ ...r, expense: r.expenses, applications: r.po_deposit_applications || [] }))
       .filter(r => !supplierId || r.expense?.supplier_id === supplierId)
@@ -1760,6 +1764,67 @@ export async function receivePoWithDeposits(poId, applications, subtotal, vat) {
   })
   if (error) throw error
   return data // remainder expense id or null
+}
+
+// ── PO receipts / PO deposits / split payments (2026-10-09-01..02) ─────────
+// Tables are SELECT-only for clients; writes are RPCs. Embeds name their constraint.
+// Before the migration the tables are missing: data stays null (+ error) and the PO page hides the new actions.
+
+/** Map<po_id, {receivedItemIds:Set, depositId}> for the whole tenant (list row menu + edit locks). */
+export function usePoMoneyIndex() {
+  return useQuery(async () => {
+    const receiptItems = await fetchAllRows(() => supabase.from('po_receipt_items')
+      .select('id, po_item_id, po_receipts!po_receipt_items_receipt_fk(po_id)').order('id'))
+    const deposits = await fetchAllRows(() => supabase.from('supplier_deposits')
+      .select('id, po_id').not('po_id', 'is', null).order('id'))
+    return buildPoMoneyIndex({ receiptItems, deposits })
+  }, [])
+}
+
+/** One PO's receipts, own deposit (with all its applications), applications to this PO, bills. */
+export function usePoLedger(poId) {
+  return useQuery(async () => {
+    if (!poId) return null
+    const [rc, dp, ap, bl] = await Promise.all([
+      supabase.from('po_receipts')
+        .select('id, seq, received_date, received_by, goods_subtotal, goods_vat, expense_id, po_receipt_items!po_receipt_items_receipt_fk(po_item_id)')
+        .eq('po_id', poId).order('seq'),
+      supabase.from('supplier_deposits')
+        .select('id, deposit_invoice_no, pct_of_po, po_id, expenses!supplier_deposits_expense_id_fkey(id, date, amount, amount_no_vat, vat, status), po_deposit_applications!po_deposit_applications_deposit_id_fkey(amount_no_vat, vat, po_id, receipt_id)')
+        .eq('po_id', poId).maybeSingle(),
+      supabase.from('po_deposit_applications')
+        .select('id, amount_no_vat, vat, receipt_id, deposit_id, supplier_deposits!po_deposit_applications_deposit_id_fkey(deposit_invoice_no)')
+        .eq('po_id', poId).order('created_at'),
+      supabase.from('expenses')
+        .select('id, date, amount, amount_no_vat, vat, status, invoice_no, notes, created_at')
+        .eq('po_id', poId).order('created_at'),
+    ])
+    for (const r of [rc, dp, ap, bl]) if (r.error) throw r.error
+    return { receipts: rc.data || [], deposit: dp.data || null, applications: ap.data || [], bills: bl.data || [] }
+  }, [poId])
+}
+
+export async function createPoDeposit({ poId, mode, value, invoiceNo, date, paymentMethod, status }) {
+  const { data, error } = await supabase.rpc('create_po_deposit', {
+    p_po_id: poId, p_mode: mode, p_value: Number(value), p_invoice_no: invoiceNo, p_date: date, p_payment_method: paymentMethod, p_status: status,
+  })
+  if (error) throw error
+  return data
+}
+
+export async function receivePoLines({ poId, lineIds, receivedDate, deductions, subtotal, vat, stock }) {
+  const { data, error } = await supabase.rpc('receive_po_lines', {
+    p_po_id: poId, p_line_ids: lineIds, p_received_date: receivedDate, p_deduction: deductions || [],
+    p_expected_subtotal: subtotal, p_expected_vat: vat, p_stock: stock || [],
+  })
+  if (error) throw error
+  return data
+}
+
+export async function splitPayment({ expenseId, amount, paidDate, method }) {
+  const { data, error } = await supabase.rpc('split_payment', { p_expense_id: expenseId, p_amount: Number(amount), p_paid_date: paidDate, p_method: method })
+  if (error) throw error
+  return data
 }
 
 // ── Supplier tax invoices (ใบกำกับภาษีผู้ขาย) ─────────────────

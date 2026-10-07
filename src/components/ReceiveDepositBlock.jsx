@@ -4,10 +4,13 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSupplierDeposits } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
+import { depositSelectableForPo } from '../lib/poReceiptErrors.js'
 import { openDeposits, selectionFromHint, defaultAmount, computeReceiveSelection, unavailableDeposits, unmatchedHintText, isDepositQuerySettled, DEDUCTION_ERROR_TEXT } from '../lib/receiveDeposits.js'
 
 export default function ReceiveDepositBlock({ po, totals, onChange }) {
-  const { data: rows, error } = useSupplierDeposits(po.supplier_id)
+  const { data: allDeposits, error } = useSupplierDeposits(po.supplier_id)
+  // the server refuses a deposit tied to another PO (deposit_other_po): do not offer it
+  const rows = useMemo(() => (allDeposits == null ? allDeposits : allDeposits.filter(d => depositSelectableForPo(d, po.id))), [allDeposits, po.id])
   const deposits = useMemo(() => (error ? [] : openDeposits(rows)), [rows, error])
   const unavailable = useMemo(() => (error ? [] : unavailableDeposits(rows)), [rows, error])
   const ready = isDepositQuerySettled(rows, error)
