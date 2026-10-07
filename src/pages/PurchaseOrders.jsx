@@ -4,7 +4,7 @@
 // ✅ Auto-number PO-YYYY-NNN
 // ✅ Status: ordered -> received (auto-creates expense) | cancelled
 // ============================================================
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits, useActiveTaxInvoiceLinks } from '../hooks/useSupabase.js'
 import { fileToExtractionPayload, buildExampleExtracted } from '../lib/poDocumentExtraction.js'
@@ -27,6 +27,8 @@ import { useTenant } from '../hooks/useTenant.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { auditLog } from '../lib/audit.js'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
+import { decideScanDate, formatIsoDmy } from '../lib/scanDateGuard.js'
+import { suggestStockLinks } from '../lib/poStockLinkSuggest.js'
 import { calcPoTotals, poLineTotal as lineTotal } from '../lib/poTotals.js'
 import { VAT_RATE } from '../lib/invoiceCalc.js'
 import { poTaxInvoiceBadge, buildPoPayloadFlag, poEditLockedText, poTaxInvoiceErrorText } from '../lib/poTaxInvoiceStatus.js'
@@ -75,6 +77,8 @@ const profileOpts = (profiles) => (profiles || []).map(p => ({
 function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, aluminumProfiles, units, onUnitAdded, categories, defaultCategoryId }) {
   const set = (i, k, v) => onChange(items.map((it, idx) => idx === i ? { ...it, [k]: v } : it))
   const add = () => onChange([...items, { ...EMPTY_ITEM }])
+  // Picking (or clearing) the stock item by hand ends the 'auto-linked, please check' hint for that line.
+  const setStock = (i, v) => onChange(items.map((it, idx) => idx === i ? { ...it, inventory_item_id: v, auto_linked: false } : it))
   const remove = (i) => onChange(removeBlockOrClear(items, i, 1, () => ({ ...EMPTY_ITEM })))
   const grandTotal = items.reduce((sum, it) => sum + lineTotal(it), 0)
   const selectProfile = (i, profileId) => {
@@ -116,7 +120,7 @@ function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, 
               <span style={{ color: 'var(--text3)', flexShrink: 0 }}>📦 ผูกกับสต็อก:</span>
               <div style={{ flex: 1, maxWidth: 340 }}>
                 <QuickAddSelect
-                  value={it.inventory_item_id} onChange={v => set(i, 'inventory_item_id', v)}
+                  value={it.inventory_item_id} onChange={v => setStock(i, v)}
                   placeholder="— ไม่ผูกกับสต็อก —" options={inventoryItemOpts(inventoryItems)}
                   table="inventory_items" namePlaceholder="ชื่อสินค้าคงคลังใหม่"
                   initialName={it.description}
@@ -127,6 +131,9 @@ function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, 
                   addLabel="+ สร้างใหม่"
                 />
               </div>
+              {it.auto_linked && it.inventory_item_id && (
+                <span style={{ flexShrink: 0, fontSize: 11, padding: '1px 8px', borderRadius: 10, background: 'var(--amber-bg, #fff4d6)', color: 'var(--amber, #8a5a00)', border: '1px solid var(--amber, #e0b040)' }}>เชื่อมอัตโนมัติ — ตรวจสอบ</span>
+              )}
             </div>
             {(() => {
               const linkedItem = (inventoryItems || []).find(i => i.id === it.inventory_item_id)
@@ -171,10 +178,12 @@ function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, 
   )
 }
 
-function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, initial = EMPTY_FORM, sites, suppliers, categories, onSave, onCancel, loading, onSiteCreated, onSupplierCreated, inventoryItems, onInventoryItemCreated, aluminumProfiles }) {
+function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, initial = EMPTY_FORM, sites, suppliers, categories, onSave, onCancel, loading, onSiteCreated, onSupplierCreated, inventoryItems, onInventoryItemCreated, aluminumProfiles, pastPoItems }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('purchase-order-form', { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const formRef = useRef(form)
+  formRef.current = form
 
   const { data: supplierExamples } = useSupplierDocumentExamples(form.supplier_id || null)
   const { data: units, refetch: refetchUnits } = useUnits()
@@ -182,13 +191,14 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, ini
   const [scanError, setScanError] = useState(null)
   const [scanCode, setScanCode] = useState(null)
   const [scanFile, setScanFile] = useState(null)
+  const [scanDateNote, setScanDateNote] = useState(null) // dd/mm/yyyy the scan read but the form did not take
   const [scanPayload, setScanPayload] = useState(null) // { base64, mimeType, reference_no_guess } after a successful scan
   const [saveAsExample, setSaveAsExample] = useState(false)
   const [confirmClearAll, setConfirmClearAll] = useState(false)
   // Clears every product line and whatever the scan filled in (header fields stay).
   const clearAllLines = () => {
     setForm(f => ({ ...f, items: [{ ...EMPTY_ITEM }], deposit_deductions: [] }))
-    setScanError(null); setScanCode(null); setScanPayload(null); setScanFile(null); setSaveAsExample(false)
+    setScanError(null); setScanCode(null); setScanPayload(null); setScanFile(null); setSaveAsExample(false); setScanDateNote(null)
     setConfirmClearAll(false)
   }
 
@@ -209,6 +219,7 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, ini
     e.target.value = ''
     setScanError(null)
     setScanCode(null)
+    setScanDateNote(null)
     setScanPayload(null)
     setSaveAsExample(false)
     setScanFile(file)
@@ -237,14 +248,19 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, ini
         await refetchUnits()
       }
 
+      // Never trust the scanned date over the user's: only an empty form date takes a plausible guess.
+      const dateDecision = decideScanDate({ guess: document_date_guess, currentDate: formRef.current.date, today: bangkokTodayIso() })
+      setScanDateNote(dateDecision.showNote ? formatIsoDmy(document_date_guess) : null)
+      const newLines = line_items.map(it => ({ ...EMPTY_ITEM, description: it.description, quantity: String(it.quantity), unit: it.unit, unit_price: String(it.unit_price), discount_pct: String(it.discount_pct ?? 0) }))
+      const suggestions = suggestStockLinks(newLines, inventoryItems, (pastPoItems || []).filter(p => p.supplier_id === formRef.current.supplier_id))
+      const linkedLines = newLines.map((l, i) => suggestions[i] ? { ...l, inventory_item_id: suggestions[i], auto_linked: true } : l)
+
       setForm(f => ({
         ...f,
-        date: document_date_guess || f.date,
+        date: dateDecision.apply ? dateDecision.date : f.date,
         deposit_deductions: deposit_deductions || [],
         notes: reference_no_guess ? [f.notes, `อ้างอิง: ${reference_no_guess}`].filter(Boolean).join(' ') : f.notes,
-        items: line_items.length
-          ? line_items.map(it => ({ ...EMPTY_ITEM, description: it.description, quantity: String(it.quantity), unit: it.unit, unit_price: String(it.unit_price), discount_pct: String(it.discount_pct ?? 0) }))
-          : f.items,
+        items: line_items.length ? linkedLines : f.items,
       }))
     } catch (err) {
       setScanError(err.message)
@@ -306,6 +322,7 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, ini
           </div>
           {!form.supplier_id && <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>เลือก Supplier ก่อนถึงจะอัพโหลดได้</div>}
           {scanning && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>⏳ กำลังอ่านเอกสาร...</div>}
+          {scanDateNote && <div data-testid="scan-date-note" style={{ fontSize: 12, marginTop: 6, padding: '6px 10px', borderRadius: 6, background: 'var(--amber-bg, #fff4d6)', color: 'var(--amber, #8a5a00)', border: '1px solid var(--amber, #e0b040)' }}>เอกสารอ่านวันที่ได้ {scanDateNote} ไม่ตรงกับที่คาด (ใช้วันที่ในฟอร์มแทน) กรุณาตรวจวันที่</div>}
           {scanError && <ScanNotice code={scanCode} message={scanError} />}
           {scanFile && <ScanDocPreview file={scanFile} />}
           {scanFile && !scanning && <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>{SCAN_REMINDER}</div>}
@@ -991,6 +1008,13 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     }
   }
 
+  // Earlier PO lines, newest PO first -- feeds the scan's stock auto-link (the form keeps only the chosen supplier's).
+  // Comes from the already-loaded list, so it covers whatever the list filters currently show.
+  const pastPoItems = useMemo(() => [...(pos || [])]
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+    .flatMap(po => (po.purchase_order_items || []).map(it => ({ supplier_id: po.supplier_id, description: it.description, inventory_item_id: it.inventory_item_id }))),
+  [pos])
+
   const editFormInitial = useMemo(() => {
     if (!editRow) return null
     return {
@@ -1030,6 +1054,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
             onSave={handleSave} onCancel={() => { clearDraft(ADD_FORM_OPEN_KEY); setShowAdd(false); setEditRow(null) }} loading={saving}
             onSiteCreated={refetchSites} onSupplierCreated={refetchSuppliers}
             inventoryItems={inventoryItems} onInventoryItemCreated={refetchInventoryItems} aluminumProfiles={aluminumProfiles}
+            pastPoItems={pastPoItems}
           />
           {editRow && tenant?.id && (
             <div className="modal-body" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>

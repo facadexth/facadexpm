@@ -24,7 +24,7 @@ export const useMySignatureUrl = () => null
 export const useMyWorkerName = () => ({ data: null })
 export const useSupplierDocumentExamples = () => useQuery(() => delay([]))
 export const useSupplierDeposits = () => useQuery(() => delay([]))
-export const extractPoDocument = async () => ({ ok: false })
+export const extractPoDocument = async () => W.__extract || { ok: false }
 export const saveSupplierDocumentExample = async () => {}
 export const receivePoWithDeposits = async (...a) => { W.__log.push(['rpc', 'receive_po_with_deposits', JSON.stringify(a)]); return 'exp1' }
 // null = not ready (links hook errors before the migration / still loading); a Map = live
