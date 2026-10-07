@@ -1,7 +1,7 @@
 // src/components/CreatePoDepositModal.jsx
 // สร้างใบจ่ายมัดจำจากใบสั่งซื้อ: percent of the PO total or an amount (both incl. VAT); VAT split follows the PO.
 // create_po_deposit (supabase/migrations/2026-10-09-02-po-receipt-rpcs.sql) is the authority; depositFromPo shows the
-// same numbers first. The RPC creates NO cheque record, so a cheque deposit must be recorded on the cheque page.
+// same numbers first. Cheque is not offered: the RPC creates no cheque record, so it would be orphaned from cheque tracking.
 import { useState } from 'react'
 import { Modal } from './Modal.jsx'
 import { fmt } from '../lib/supabase.js'
@@ -42,7 +42,7 @@ export default function CreatePoDepositModal({ po, onDone, onClose }) {
   }
 
   return (
-    <Modal title={`สร้างใบจ่ายมัดจำ — ${po.po_number}`} onClose={() => { if (!busy) onClose() }} maxWidth={480}>
+    <Modal title={`สร้างใบจ่ายมัดจำ — ${po.po_number}`} onClose={() => { if (busy) return false; onClose() }} maxWidth={480}>
       <div className="modal-body" style={{ display: 'grid', gap: 12, fontSize: 13 }}>
         <div>{po.suppliers?.name || '—'} · ยอดใบสั่งซื้อ <span className="font-mono">{fmt(t.total)}</span> บาท (รวม VAT)</div>
         {notOrdered && <div style={{ color: 'var(--red)' }}>สร้างมัดจำได้เฉพาะใบสั่งซื้อที่สถานะ "สั่งซื้อแล้ว"</div>}
@@ -61,7 +61,7 @@ export default function CreatePoDepositModal({ po, onDone, onClose }) {
           {value !== '' && calc.code && <div style={{ color: 'var(--red)', marginTop: 4 }}>{DEPOSIT_INPUT_TEXT[calc.code]}</div>}
           {!calc.code && (
             <div style={{ marginTop: 4, color: 'var(--text2)' }}>
-              มัดจำ <span className="font-mono">{fmt(calc.gross)}</span> = ก่อน VAT <span className="font-mono">{fmt(calc.net)}</span> + VAT <span className="font-mono">{fmt(calc.vat)}</span> ({calc.pctOfPo}% ของใบสั่งซื้อ)
+              มัดจำ <span className="font-mono">{fmt(calc.gross)}</span> = ก่อน VAT <span className="font-mono">{fmt(calc.net)}</span> + VAT <span className="font-mono">{fmt(calc.vat)}</span> ({calc.pctOfPo}% ของใบสั่งซื้อ) <span style={{ color: 'var(--text3)' }}>· ยอดจริงคำนวณโดยระบบ</span>
             </div>
           )}
         </div>
@@ -80,7 +80,7 @@ export default function CreatePoDepositModal({ po, onDone, onClose }) {
           <div>
             <label className="label" htmlFor="dep-method">วิธีชำระ</label>
             <select id="dep-method" className="select" value={method} onChange={e => setMethod(e.target.value)}>
-              <option value="transfer">โอนเงิน</option><option value="check">เช็ค</option><option value="cash">เงินสด</option>
+              <option value="transfer">โอนเงิน</option><option value="cash">เงินสด</option>
             </select>
           </div>
           <div>
@@ -90,7 +90,6 @@ export default function CreatePoDepositModal({ po, onDone, onClose }) {
             </select>
           </div>
         </div>
-        {method === 'check' && <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>การเลือกเช็คไม่สร้างรายการเช็คให้ — ต้องบันทึกเช็คแยกที่หน้าเช็ค</div>}
         <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>มัดจำจะถูกบันทึกเป็นรายจ่ายรายการแรกของใบสั่งซื้อนี้ และหักได้ตอนรับของ</div>
         {error && <div style={{ color: 'var(--red)' }}>{error}</div>}
       </div>
