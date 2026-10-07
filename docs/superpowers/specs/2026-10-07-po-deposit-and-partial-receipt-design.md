@@ -80,6 +80,6 @@ Pure JS (vitest): deduction split (percent/value/default proportional/last-recei
 
 ## 10. Open items for the owner
 
-1. Confirm R3 (split = partial payment) or ask for a payments table.
+1. ~~Confirm R3 (split = partial payment)~~ **Confirmed by the owner on 2026-10-07 ("แยกบิลตอนจ่าย").** A payments table stays deferred.
 2. Confirm R4 default deduction (proportional to the receipt's share of the PO, whole remainder on the last receipt).
 3. Confirm "one deposit per PO from the PO" for v1.
