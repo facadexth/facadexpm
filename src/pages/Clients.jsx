@@ -10,6 +10,8 @@ import { useClients } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
+import DbdLookup from '../components/DbdLookup.jsx'
+import { isValidThaiId13 } from '../lib/dbdCompanyParse.js'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 
@@ -40,6 +42,8 @@ function ClientForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
             <label className="label">ชื่อลูกค้า / บริษัท ★</label>
             <input className="input" required value={form.name}
               onChange={e => set('name', e.target.value)} placeholder="เช่น บริษัท NCP จำกัด" />
+            <DbdLookup name={form.name} address={form.address} taxId={form.tax_id}
+              onApply={r => setForm(f => ({ ...f, ...('name' in r ? { name: r.name } : {}), ...('address' in r ? { address: r.address } : {}), ...('taxId' in r ? { tax_id: r.taxId } : {}) }))} />
           </div>
           <div>
             <label className="label">ประเภทลูกค้า</label>
@@ -52,6 +56,9 @@ function ClientForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
         <div>
           <label className="label">เลขประจำตัวผู้เสียภาษี</label>
           <input className="input" style={{ maxWidth: 240 }} value={form.tax_id} onChange={e => set('tax_id', e.target.value)} placeholder="เช่น 0105564000001" />
+          {/^\d{13}$/.test((form.tax_id || '').replace(/[\s-]/g, '')) && !isValidThaiId13(form.tax_id) && (
+            <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>เลขไม่ถูกต้องตามสูตร (ตรวจอีกครั้ง — บันทึกได้)</div>
+          )}
         </div>
         <div className="form-grid-2">
           <div>
