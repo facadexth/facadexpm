@@ -1367,15 +1367,15 @@ export function useSeatStatus() {
  *  list, since a deactivated item would vanish and become unreachable;
  *  use useAllInventoryItems() there instead). */
 export function useInventoryItems() {
-  return useQuery(async () => {
-    const { data, error } = await supabase
-      .from('inventory_items')
-      .select('*')
-      .eq('active', true)
-      .order('name')
-    if (error) throw error
-    return data
-  })
+  // Paged: a plain select stops at PostgREST's 1000-row cap, which silently hid every
+  // item after the first 1000 (by name) from the PO/stock pickers once the tenant passed
+  // 1000 active items. Stable order (name, id) so pages never skip or repeat a row.
+  return useQuery(async () => fetchAllRows(() => supabase
+    .from('inventory_items')
+    .select('*')
+    .eq('active', true)
+    .order('name')
+    .order('id')))
 }
 
 /** Every inventory item regardless of active flag, for the Inventory
