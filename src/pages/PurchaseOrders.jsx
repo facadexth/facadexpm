@@ -429,7 +429,7 @@ function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument }) {
         </div>
         {po.ordered_by && <div style={{ fontSize: 13 }}><strong>ชื่อผู้สั่ง:</strong> {po.ordered_by}</div>}
         {po.notes && <div style={{ fontSize: 13 }}><strong>หมายเหตุ:</strong> {po.notes}</div>}
-        {hasDiscountLine && (
+        {hasDiscountLine && po.status === 'ordered' && (
           <div data-testid="po-discount-notice" style={{ fontSize: 12.5, color: 'var(--yellow)' }}>
             ใบสั่งซื้อนี้มีรายการส่วนลด (ยอดติดลบ) จึงใช้การรับของบางส่วนแบบใหม่ไม่ได้ — ใช้การรับของแบบเดิม (รับครบทั้งใบ)
           </div>
@@ -480,8 +480,8 @@ function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument }) {
         )}
         {s.applications.length > 0 && (
           <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>
-            {s.applications.map(a => (
-              <div key={a.id}>หักมัดจำ {a.supplier_deposits?.deposit_invoice_no || ''}: ก่อน VAT <span className="font-mono">{fmt(a.amount_no_vat)}</span> · VAT <span className="font-mono">{fmt(a.vat)}</span></div>
+            {s.applications.map((a, i) => (
+              <div key={a.id || i}>หักมัดจำ {a.supplier_deposits?.deposit_invoice_no || ''}: ก่อน VAT <span className="font-mono">{fmt(a.amount_no_vat)}</span> · VAT <span className="font-mono">{fmt(a.vat)}</span></div>
             ))}
           </div>
         )}
@@ -968,7 +968,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     if (!deleteId) return
     const { error } = await supabase.from('purchase_orders').update({ status: 'cancelled' }).eq('id', deleteId)
     if (!error) { await auditLog('purchase_orders', deleteId, 'UPDATE', null, { status: 'cancelled' }); setDeleteId(null); refetchAll(); showToast('ยกเลิกแล้ว') }
-    else alert(mapPoReceiptRpcError(error))
+    else { const m = mapPoReceiptRpcError(error); alert(m === String(error?.message || '') ? 'Error: ' + m : m) }
   }
 
   // Uses allInventoryItems/allAluminumProfiles (NOT the active-only
@@ -1106,10 +1106,13 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const poMenuItems = (po) => {
     const lock = poEditLockedText(po, taxInvoiceLinks) || poMoneyLockText(po, moneyIndex)
     const items = []
-    if (canEdit && (po.status === 'ordered' || po.status === 'partially_received')) {
+    if (canEdit && po.status === 'ordered') {
+      // old receive stays available even while / if the money index is unavailable (pre-migration or query error)
+      items.push({ label: '📦 รับของ', onClick: () => setReceiveRow(po) })
+    } else if (canEdit && po.status === 'partially_received') {
       items.push(moneyIndex
         ? { label: '📦 รับของ', onClick: () => setReceiveRow(po) }
-        : { label: '📦 รับของ', disabled: true, disabledTitle: 'กำลังโหลดข้อมูลการรับของ…', onClick: () => {} })
+        : { label: '📦 รับของ', disabled: true, disabledTitle: 'กำลังโหลดข้อมูลการรับของ… (ถ้าไม่หายไป กรุณาโหลดหน้าใหม่)', onClick: () => {} })
     }
     if (canEdit && po.status === 'ordered' && moneyIndex) {
       items.push(moneyIndex.get(po.id)?.depositId
@@ -1127,6 +1130,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     if (canEdit && po.status === 'received') {
       if (po.expense_id && !taxInvoiceLinks?.get(po.id)) {
         // A PO with several bills (several receipts) has no single bill to swap the tax invoice on.
+        // TODO(Task 10): legacy single-receipt POs later split via split_payment must also disable swap (bills with split rows / >1 expense with po_id).
         const multiBill = (moneyIndex?.get(po.id)?.receiptIds?.size || 0) > 1
         items.push(multiBill
           ? { label: '🔄 สลับใบกำกับภาษี', disabled: true, disabledTitle: 'ใบสั่งซื้อนี้มีหลายบิล (รับของหลายครั้ง) สลับใบกำกับภาษีจากที่นี่ไม่ได้ — แจ้งผู้ดูแลระบบ', onClick: () => {} }
@@ -1233,7 +1237,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <div className="actions-cell">
-                        <button className="btn btn-sm btn-ghost" title="ดูใบสั่งซื้อ / เอกสาร" onClick={() => setDetailRow(po)}>📄</button>
+                        <button className="btn btn-sm btn-ghost" title="ดูใบสั่งซื้อ / เอกสาร" aria-label="📄 ดูใบสั่งซื้อ / เอกสาร" onClick={() => setDetailRow(po)}>📄</button>
                         <RowActionsMenu items={poMenuItems(po)} />
                       </div>
                     </td>

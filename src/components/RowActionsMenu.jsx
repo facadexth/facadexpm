@@ -104,6 +104,8 @@ export default function RowActionsMenu({ items = [], trigger, triggerClassName =
           {items.map((it, i) => (
             <div
               key={i}
+              role="menuitem"
+              aria-disabled={it.disabled ? true : undefined}
               title={it.disabled ? it.disabledTitle : undefined}
               onClick={() => { if (it.disabled) return; setOpen(false); it.onClick() }}
               style={{

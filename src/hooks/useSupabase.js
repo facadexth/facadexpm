@@ -11,7 +11,7 @@ import { buildUnitSeedRows, VAT_RATE } from '../lib/invoiceCalc.js'
 import { validateExtraction, blobToBase64 } from '../lib/poDocumentExtraction.js'
 import { buildActiveLinkMap, saveDraftArgs, idArgs, postArgs, voidArgs, TAX_INVOICE_RPCS } from '../lib/taxInvoiceLinks.js'
 import { isTaxInvoiceNotReady } from '../lib/supplierTaxInvoice.js'
-import { buildPoMoneyIndex, isMissingColumnError } from '../lib/poReceiptErrors.js'
+import { buildPoMoneyIndex, isMissingColumnError, isMissingRelationError } from '../lib/poReceiptErrors.js'
 
 /** Generic fetch hook */
 export function useQuery(queryFn, deps = []) {
@@ -1772,20 +1772,31 @@ export async function receivePoWithDeposits(poId, applications, subtotal, vat) {
 
 /** Map<po_id, {receivedItemIds:Set, depositId}> for the whole tenant (list row menu + edit locks). */
 export function usePoMoneyIndex() {
-  return useQuery(async () => {
+  return useQuery(fetchPoMoneyIndex, [])
+}
+
+export async function fetchPoMoneyIndex() {
+  {
+    // Before the migrations the new tables/columns don't exist: fail soft to an EMPTY index (old flows keep working).
+    // Any other error still surfaces (data null).
+    const soft = p => p.catch(e => { if (isMissingRelationError(e) || isMissingColumnError(e, 'po_id')) return []; throw e })
     const [receiptItems, deposits] = await Promise.all([
-      fetchAllRows(() => supabase.from('po_receipt_items')
-        .select('id, po_item_id, receipt_id, po_receipts!po_receipt_items_receipt_fk(po_id)').order('id')),
-      fetchAllRows(() => supabase.from('supplier_deposits')
-        .select('id, po_id').not('po_id', 'is', null).order('id')),
+      soft(fetchAllRows(() => supabase.from('po_receipt_items')
+        .select('id, po_item_id, receipt_id, po_receipts!po_receipt_items_receipt_fk(po_id)').order('id'))),
+      soft(fetchAllRows(() => supabase.from('supplier_deposits')
+        .select('id, po_id').not('po_id', 'is', null).order('id'))),
     ])
     return buildPoMoneyIndex({ receiptItems, deposits })
-  }, [])
+  }
 }
 
 /** One PO's receipts, own deposit (with all its applications), applications to this PO, bills. */
 export function usePoLedger(poId) {
-  return useQuery(async () => {
+  return useQuery(() => fetchPoLedger(poId), [poId])
+}
+
+export async function fetchPoLedger(poId) {
+  {
     if (!poId) return null
     const [rc, dp, ap, bl] = await Promise.all([
       supabase.from('po_receipts')
@@ -1801,9 +1812,20 @@ export function usePoLedger(poId) {
         .select('id, date, amount, amount_no_vat, vat, status, invoice_no, notes, created_at')
         .eq('po_id', poId).order('created_at'),
     ])
-    for (const r of [rc, dp, ap, bl]) if (r.error) throw r.error
+    // Pre-migration the applications table exists but lacks receipt_id/deposit_id/created_at: retry with the legacy columns
+    // so the old 'หักมัดจำ' lines still show.
+    if (ap.error && isMissingColumnError(ap.error, 'receipt_id|deposit_id|created_at')) {
+      const legacy = await supabase.from('po_deposit_applications')
+        .select('amount_no_vat, vat, supplier_deposits(deposit_invoice_no)').eq('po_id', poId)
+      if (!legacy.error) { ap.error = null; ap.data = legacy.data }
+    }
+    // Fail soft per part: a missing new table/column (pre-migration) leaves just that part empty; legacy
+    // po_deposit_applications (exists today) still renders. Other errors still throw.
+    for (const r of [rc, dp, ap, bl]) {
+      if (r.error) { if (isMissingRelationError(r.error) || isMissingColumnError(r.error, 'po_id|receipt_id|pct_of_po|seq')) { r.data = null } else throw r.error }
+    }
     return { receipts: rc.data || [], deposit: dp.data || null, applications: ap.data || [], bills: bl.data || [] }
-  }, [poId])
+  }
 }
 
 export async function createPoDeposit({ poId, mode, value, invoiceNo, date, paymentMethod, status }) {

@@ -205,9 +205,19 @@ ok('non-admin: menu has document actions only', (await page.getByText('📦 ร�
 await closeMenu(); await set('__role', 'OWNER')
 const moneyAll = [['G', { receivedItemIds: ['g1'], receiptIds: ['rG'], depositId: 'dG' }], ['H', { receivedItemIds: [], depositId: 'dH' }], ['M', { receivedItemIds: ['m1', 'm2'], receiptIds: ['r1', 'r2'] }]]
 await set('__money', null); await render()
-await openMenu(/PO-C/)
-ok('money index not ready: receive disabled with loading title', (await menuItem('📦 รับของ').getAttribute('title')) === 'กำลังโหลดข้อมูลการรับของ…')
+await openMenu(/PO-G/)
+ok('money index not ready: receive on a partially received PO disabled with explanation', (await menuItem('📦 รับของ').getAttribute('title'))?.startsWith('กำลังโหลดข้อมูลการรับของ…'))
 await closeMenu()
+for (const [label, val] of [['null', null], ['empty', []]]) {
+  await set('__money', val); await render()
+  await openMenu(/PO-C/)
+  ok(`index ${label}: old receive offered for an ordered PO (enabled)`, (await menuItem('📦 รับของ').getAttribute('title')) === null)
+  await menuItem('📦 รับของ').click(); await wait(400)
+  ok(`index ${label}: old receive dialog opens`, (await page.locator('.modal').innerText()).includes('ยืนยันรับของ'))
+  await page.getByRole('button', { name: 'ยืนยัน', exact: true }).click(); await wait(600)
+  ok(`index ${label}: old receive RPC called`, (await log()).some(x => x[1] === 'receive_po_with_deposits'))
+}
+await set('__money', moneyAll)
 
 console.log('=== 7b old receive stays reachable; multi-bill swap; discount notice; refreshPoData; phone width')
 await set('__money', moneyAll); await render()
@@ -225,6 +235,11 @@ await openMenu(/PO-A/)
 ok('single-bill received PO: swap enabled (no title)', (await menuItem('🔄 สลับใบกำกับภาษี').getAttribute('title')) === null)
 await closeMenu()
 await row(/PO-M/).getByRole('button', { name: '📄' }).click(); await wait(500)
+ok('popup: discount-line PO (received) shows no notice', (await page.getByTestId('po-discount-notice').count()) === 0)
+await page.getByRole('button', { name: 'ปิด' }).click(); await wait(200)
+await page.evaluate(() => { window.__data.pos.push({ ...window.__data.pos[2], id: 'N', po_number: 'PO-N', status: 'ordered', purchase_order_items: window.__data.pos.find(p => p.id === 'M').purchase_order_items }) })
+await render()
+await row(/PO-N/).getByRole('button', { name: '📄' }).click(); await wait(500)
 ok('popup: discount-line PO shows the old-receive notice', (await page.getByTestId('po-discount-notice').innerText()).includes('รับของบางส่วนแบบใหม่ไม่ได้'))
 await page.getByRole('button', { name: 'ปิด' }).click(); await wait(200)
 // refreshPoData: the deposit placeholder closes through it, so a changed money index shows up without a reload

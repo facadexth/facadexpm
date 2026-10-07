@@ -117,3 +117,11 @@ export function isMissingColumnError(err, column) {
   if (err?.code === '42703') return true
   return new RegExp(column, 'i').test(msg) && /does not exist|column/i.test(msg)
 }
+
+/** True for "table/relation does not exist" errors (Postgres 42P01, PostgREST PGRST205 / schema-cache miss), e.g. before a migration. */
+export function isMissingRelationError(err) {
+  if (!err) return false
+  if (err.code === '42P01' || err.code === 'PGRST205') return true
+  const msg = `${err.message || ''} ${err.details || ''}`
+  return /relation .* does not exist/i.test(msg) || /Could not find the table/i.test(msg)
+}
