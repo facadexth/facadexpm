@@ -33,6 +33,7 @@ import { calcPoTotals, poLineTotal as lineTotal } from '../lib/poTotals.js'
 import { VAT_RATE } from '../lib/invoiceCalc.js'
 import { poTaxInvoiceBadge, buildPoPayloadFlag, poEditLockedText, poTaxInvoiceErrorText } from '../lib/poTaxInvoiceStatus.js'
 import { poMoneyLockText, poLedgerSummary, mapPoReceiptRpcError } from '../lib/poReceiptErrors.js'
+import CreatePoDepositModal from '../components/CreatePoDepositModal.jsx'
 import ReceiveDepositBlock from '../components/ReceiveDepositBlock.jsx'
 import { mapReceiveRpcError, canConfirmReceive } from '../lib/receiveDeposits.js'
 import { setCreditNotePrefill, poItemToCreditLine } from '../lib/creditNotePrefill.js'
@@ -1262,13 +1263,14 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
         onClose={() => setDetailRow(null)}
         onViewDocument={po => { setDetailRow(null); setDocRow({ po, action: null }) }} />}
 
-      {/* Placeholders until Task 8 (create-deposit dialog) and Task 9 (new receive dialog) replace them. */}
       {depositPo && (
-        <Modal title="สร้างใบจ่ายมัดจำ" onClose={() => { setDepositPo(null); refreshPoData() }} maxWidth={400}>
-          <div className="modal-body" data-testid="deposit-placeholder">ฟังก์ชันสร้างใบจ่ายมัดจำสำหรับ {depositPo.po_number} กำลังจะเปิดให้ใช้งาน</div>
-          <div className="modal-footer"><button className="btn btn-ghost" onClick={() => { setDepositPo(null); refreshPoData() }}>ปิด</button></div>
-        </Modal>
+        <CreatePoDepositModal po={depositPo} onClose={() => setDepositPo(null)}
+          onDone={async res => {
+            await auditLog('expenses', res.expense_id, 'INSERT', null, { po_id: depositPo.id, via: 'create_po_deposit', deposit_id: res.deposit_id, amount: res.amount })
+            setDepositPo(null); refreshPoData(); showToast('สร้างใบมัดจำแล้ว ' + fmt(res.amount) + ' บาท')
+          }} />
       )}
+      {/* Placeholder until Task 9 (new receive dialog) replaces it. */}
       {receiveRow && receiveRow.status === 'partially_received' && (
         <Modal title="รับของ" onClose={() => setReceiveRow(null)} maxWidth={400}>
           <div className="modal-body" data-testid="receive-placeholder">ฟังก์ชันรับของบางส่วนสำหรับ {receiveRow.po_number} กำลังจะเปิดให้ใช้งาน</div>
