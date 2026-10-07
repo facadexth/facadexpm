@@ -2,6 +2,9 @@
 -- Tax-invoice matching for POs with several bills (receipts / split payments). Requires 2026-10-08-01..02, 2026-10-09-01..02.
 -- post_supplier_tax_invoice / void_supplier_tax_invoice are re-created VERBATIM from 2026-10-08-02 plus ONE line each
 -- (marked "-- 2026-10-09-03"). Same signatures, same grants: the deployed client is unaffected.
+-- KNOWN LIMIT (same as 2026-10-08-01): post/void lock the PO rows first, then the bills. A bulk client UPDATE on
+-- expenses (no PO lock) that touches several bills of a PO being posted/voided can lock in the other order and
+-- deadlock: Postgres aborts one side with 40P01, the data stays correct, and the user retries.
 -- ============================================================
 
 SET LOCAL lock_timeout = '5s';
@@ -36,6 +39,7 @@ BEGIN
              JOIN expenses e ON e.po_id = p.id AND e.tenant_id = p_tenant
             WHERE l.invoice_id = p_id AND l.tenant_id = p_tenant
               AND e.id IS DISTINCT FROM p.expense_id
+              AND NOT EXISTS (SELECT 1 FROM supplier_tax_invoice_pos x WHERE x.invoice_id = p_id AND x.expense_id = e.id)
               AND NOT EXISTS (SELECT 1 FROM supplier_deposits sd WHERE sd.expense_id = e.id)
               AND NOT EXISTS (SELECT 1 FROM supplier_credit_notes cn WHERE cn.expense_id = e.id)
             ORDER BY e.id
@@ -53,16 +57,21 @@ BEGIN
 END $$;
 
 -- Undo of the above, plus bills split off any stamped bill AFTER the post (split_payment copies invoice_no).
+-- Only splits made at/after the invoice's posted_at are followed: a bill split off BEFORE the post either still
+-- carries po_id (then it was stamped itself and has its own stamp row) or was detached from the PO (never ours).
 CREATE OR REPLACE FUNCTION _sti_unstamp_other_bills(p_id UUID, p_tenant UUID, p_invoice_no TEXT) RETURNS JSONB
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE k RECORD; v_warn JSONB := '[]'::jsonb;
+DECLARE k RECORD; v_warn JSONB := '[]'::jsonb; v_posted TIMESTAMPTZ;
 BEGIN
+  SELECT posted_at INTO v_posted FROM supplier_tax_invoices WHERE id = p_id AND tenant_id = p_tenant;
   FOR k IN SELECT * FROM supplier_tax_invoice_expense_stamps WHERE invoice_id = p_id AND tenant_id = p_tenant ORDER BY expense_id LOOP
     UPDATE expenses
        SET invoice_no = k.prev_invoice_no,
            notes = concat_ws(' | ', NULLIF(btrim(notes), ''), 'ยกเลิกใบกำกับภาษี ' || p_invoice_no)
      WHERE id = k.expense_id AND tenant_id = p_tenant AND invoice_no IS NOT DISTINCT FROM k.stamped_invoice_no;
-    IF NOT FOUND THEN v_warn := v_warn || jsonb_build_object('code', 'expense_changed', 'blocking', false, 'po_id', k.po_id); END IF;
+    IF NOT FOUND THEN
+      v_warn := v_warn || jsonb_build_object('code', 'expense_changed', 'blocking', false, 'po_id', k.po_id, 'expense_id', k.expense_id);
+    END IF;
   END LOOP;
   FOR k IN
     WITH RECURSIVE src AS (
@@ -73,16 +82,19 @@ BEGIN
        WHERE invoice_id = p_id AND tenant_id = p_tenant),
     d AS (
       SELECT s.new_expense_id AS expense_id, src.prev_invoice_no, src.stamped_invoice_no
-        FROM expense_splits s JOIN src ON s.source_expense_id = src.expense_id WHERE s.tenant_id = p_tenant
+        FROM expense_splits s JOIN src ON s.source_expense_id = src.expense_id
+       WHERE s.tenant_id = p_tenant AND s.created_at >= v_posted
       UNION
       SELECT s.new_expense_id, d.prev_invoice_no, d.stamped_invoice_no
-        FROM expense_splits s JOIN d ON s.source_expense_id = d.expense_id WHERE s.tenant_id = p_tenant)
+        FROM expense_splits s JOIN d ON s.source_expense_id = d.expense_id
+       WHERE s.tenant_id = p_tenant AND s.created_at >= v_posted)
     SELECT * FROM d WHERE d.expense_id NOT IN (SELECT expense_id FROM src) ORDER BY expense_id
   LOOP
     UPDATE expenses
        SET invoice_no = k.prev_invoice_no,
            notes = concat_ws(' | ', NULLIF(btrim(notes), ''), 'ยกเลิกใบกำกับภาษี ' || p_invoice_no)
      WHERE id = k.expense_id AND tenant_id = p_tenant AND invoice_no IS NOT DISTINCT FROM k.stamped_invoice_no;
+    IF NOT FOUND THEN v_warn := v_warn || jsonb_build_object('code','expense_changed','blocking',false,'po_id',(SELECT po_id FROM expenses WHERE id = k.expense_id),'expense_id',k.expense_id); END IF;   -- 2026-10-09-03
   END LOOP;
   RETURN v_warn;
 END $$;
