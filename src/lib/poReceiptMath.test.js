@@ -119,4 +119,12 @@ describe('computeReceiveDeductions', () => {
     expect(none.deductions).toEqual([])
     expect(none.plan.total).toBe(64200)
   })
+  it('deposit 100 + 6.99 used in full vs receipt 100 + 7: no fold above the deposit VAT -> 0.01 bill (= receive_po_lines)', () => {
+    const dep = { id: 'd', supplier_id: 'S', expense: { amount_no_vat: 100, vat: 6.99 }, remaining: { net: 100, vat: 6.99 } }
+    const r = computeReceiveDeductions({ deposits: [dep], supplierId: 'S', selection: { d: { checked: true, mode: 'value', value: '106.99' } },
+      receipt: { subtotal: 100, vat: 7, total: 107, isFinal: true } })
+    expect(r.lines.d).toEqual({ gross: 106.99, net: 100, vat: 6.99 })
+    expect(r.plan).toMatchObject({ netToPay: 0, vatToPay: 0.01, total: 0.01, createExpense: true })
+    expect(r.valid).toBe(true)
+  })
 })

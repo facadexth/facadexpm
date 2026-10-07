@@ -33,10 +33,13 @@ export function computeReceivePlan({ subtotal, vat }, deductions) {
   // rounding, not money (the server adjusts the last application) -> no dust expense.
   // Like the RPC, the fold lands on the LAST application (ordered by deposit id when ids are given) and
   // is refused when it would push that application's VAT below zero (the RPC then raises deposit_vat_exceeds_po).
+  // When a deduction carries remVat (its deposit's remaining VAT, receive_po_lines only), the fold is also refused
+  // when it would push that application's VAT above remVat: the satang then stays on the bill.
   if (n > 0 && Math.abs(netRaw) <= EPS && Math.abs(vatRaw) > EPS && Math.abs(vatRaw) <= 0.01 * n + 1e-9) {
     const ordered = deductions.every(d => d && d.id != null) ? [...deductions].sort((a, b) => (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0)) : deductions
     const last = ordered[n - 1]
-    if (round2(Number(last.vat || 0) + vatRaw) >= 0) vatRaw = 0
+    const folded = round2(Number(last.vat || 0) + vatRaw)
+    if (folded >= 0 && (last.remVat == null || folded <= Number(last.remVat) + 1e-9)) vatRaw = 0
   }
   const netToPay = Math.max(0, netRaw)
   const vatToPay = Math.max(0, vatRaw)

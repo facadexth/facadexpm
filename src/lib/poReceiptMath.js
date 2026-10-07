@@ -94,7 +94,7 @@ export function computeReceiveDeductions({ deposits, supplierId, selection, rece
     if (r.gross > round2(receipt.total - covered) + EPS) { errors[d.id] = 'exceeds_receipt'; continue }
     covered = round2(covered + r.gross)
     lines[d.id] = { gross: r.gross, net: r.net, vat: r.vat }
-    forPlan.push({ id: d.id, net: r.net, vat: r.vat })
+    forPlan.push({ id: d.id, net: r.net, vat: r.vat, remVat: Number(d.remaining.vat) })
     deductions.push({ deposit_id: d.id, mode: s.mode, value: Number(s.value) })
   }
   const plan = computeReceivePlan({ subtotal: receipt.subtotal, vat: receipt.vat }, forPlan)

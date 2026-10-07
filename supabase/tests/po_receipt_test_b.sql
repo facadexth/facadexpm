@@ -16,6 +16,7 @@ DECLARE
   j JSONB; r RECORD; v_msg TEXT; v_cnt INT; depA UUID; depT UUID; depC UUID; e_leg UUID; d_leg UUID; e_leg2 UUID; d_leg2 UUID;
   bill1 UUID; bill2 UUID; rem1 UUID; rem2 UUID;
   poR UUID; rr1 UUID; rr2 UUID; poD UUID; dd1 UUID; v_ti UUID; e_leg3 UUID; d_leg3 UUID;
+  poO UUID; oo1 UUID; e_leg4 UUID; d_leg4 UUID; poV UUID; vv1 UUID; e_v UUID; d_v UUID; poN UUID; nn1 UUID; nn2 UUID;
 BEGIN
   SELECT id INTO t_owner FROM auth.users ORDER BY created_at ASC LIMIT 1;
   INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at) VALUES ('__TEST prb__', t_owner, 'trial', now() + interval '14 days') RETURNING id INTO t_tenant;
@@ -81,6 +82,14 @@ BEGIN
   -- poD: for the PO-linked deposit lock (B18)
   INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status) VALUES (t_tenant, 'PO-PRB-D', t_site, t_sup, t_cat, v_bkk, 'ordered') RETURNING id INTO poD;
   INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t_tenant, poD, 'D1', 1, 100, 100) RETURNING id INTO dd1;
+  -- poO: legacy RPC with a legacy deposit (B20); poV: VAT fold capped by the deposit's VAT (B21); poN: discount line (B22)
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status) VALUES (t_tenant, 'PO-PRB-O', t_site, t_sup, t_cat, v_bkk, 'ordered') RETURNING id INTO poO;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t_tenant, poO, 'O1', 1, 100, 100) RETURNING id INTO oo1;
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status) VALUES (t_tenant, 'PO-PRB-V', t_site, t_sup, t_cat, v_bkk, 'ordered') RETURNING id INTO poV;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total) VALUES (t_tenant, poV, 'V1', 1, 100, 100) RETURNING id INTO vv1;
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status) VALUES (t_tenant, 'PO-PRB-N', t_site, t_sup, t_cat, v_bkk, 'ordered') RETURNING id INTO poN;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total, sort_order) VALUES (t_tenant, poN, 'N1', 1, 100, 100, 0) RETURNING id INTO nn1;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total, sort_order) VALUES (t_tenant, poN, 'discount', 1, -10, -10, 1) RETURNING id INTO nn2;
 
   -- B1: create_po_deposit 30 % of poA
   j := create_po_deposit(poA, 'percent', 30, 'PRB-DEP-A', v_bkk - 25, 'transfer', 'paid');
@@ -123,6 +132,15 @@ BEGIN
      OR r.created_at <> ((v_bkk - 2) + time '12:00') AT TIME ZONE 'Asia/Bangkok' OR r.notes <> 'PO-PRB-A-R1' THEN RAISE EXCEPTION 'B3 FAIL: movement %', row_to_json(r); END IF;
   SELECT goods_subtotal, goods_vat INTO r FROM po_receipts WHERE id = (j->>'receipt_id')::uuid;
   IF r.goods_subtotal <> 60000 OR r.goods_vat <> 4200 THEN RAISE EXCEPTION 'B3 FAIL: receipt value'; END IF;
+
+  -- B20: poA's own deposit (12,840 left) cannot be deducted on another PO of the same supplier, by either RPC
+  BEGIN PERFORM receive_po_lines(poC, ARRAY[c1], v_bkk, jsonb_build_array(jsonb_build_object('deposit_id', depA, 'mode', 'value', 'value', 10)), 1000, 70, '[]'::jsonb);
+        RAISE EXCEPTION 'B20 FAIL: new RPC used another PO''s deposit';
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'deposit_other_po%' THEN RAISE EXCEPTION 'B20 FAIL: %', v_msg; END IF; END;
+  BEGIN PERFORM receive_po_with_deposits(poC, jsonb_build_array(jsonb_build_object('deposit_id', depA, 'amount_no_vat', 10)), 1000, 70);
+        RAISE EXCEPTION 'B20 FAIL: legacy RPC used another PO''s deposit';
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'deposit_other_po%' THEN RAISE EXCEPTION 'B20 FAIL: %', v_msg; END IF; END;
+  IF (SELECT status FROM purchase_orders WHERE id = poC) <> 'ordered' THEN RAISE EXCEPTION 'B20 FAIL: poC moved'; END IF;
 
   -- B4: the same line again (double click) and a stale total
   BEGIN PERFORM receive_po_lines(poA, ARRAY[a1], v_bkk, '[]'::jsonb, 60000, 4200, jsonb_build_array(jsonb_build_object('po_item_id', a1, 'base_qty', 1, 'unit_cost', 60000))); RAISE EXCEPTION 'B4 FAIL: line received twice';
@@ -216,6 +234,33 @@ BEGIN
   -- B15: the legacy RPC still receives a plain ordered PO
   PERFORM receive_po_with_deposits(poP, '[]'::jsonb, 100, 7);
   IF (SELECT status FROM purchase_orders WHERE id = poP) <> 'received' THEN RAISE EXCEPTION 'B15 FAIL'; END IF;
+  -- B20b: a legacy deposit (po_id NULL) is still deductible by the legacy RPC
+  INSERT INTO expenses (date, description, site_id, category_id, supplier_id, amount_no_vat, vat, amount, payment_method, status)
+  VALUES (v_bkk, 'dep 4', t_site, t_cat, t_sup, 50, 3.5, 53.5, 'transfer', 'paid') RETURNING id INTO e_leg4;
+  INSERT INTO supplier_deposits (expense_id, deposit_invoice_no) VALUES (e_leg4, 'PRB-LEG4') RETURNING id INTO d_leg4;
+  PERFORM receive_po_with_deposits(poO, jsonb_build_array(jsonb_build_object('deposit_id', d_leg4, 'amount_no_vat', 50)), 100, 7);
+  SELECT amount_no_vat, vat INTO r FROM po_deposit_applications WHERE deposit_id = d_leg4;
+  IF r.amount_no_vat IS DISTINCT FROM 50::numeric OR r.vat IS DISTINCT FROM 3.5::numeric
+     OR (SELECT status FROM purchase_orders WHERE id = poO) <> 'received' THEN RAISE EXCEPTION 'B20b FAIL'; END IF;
+
+  -- B21: deposit 100 + 6.99 used in full on a 100 + 7 receipt: the 0.01 VAT gap is NOT folded above the deposit's VAT,
+  -- it stays on a 0.01 bill. The deposit id is sent in upper case (lock order uses the cast uuid).
+  INSERT INTO expenses (date, description, site_id, category_id, supplier_id, amount_no_vat, vat, amount, payment_method, status)
+  VALUES (v_bkk, 'dep v', t_site, t_cat, t_sup, 100, 6.99, 106.99, 'transfer', 'paid') RETURNING id INTO e_v;
+  INSERT INTO supplier_deposits (expense_id, deposit_invoice_no) VALUES (e_v, 'PRB-LEGV') RETURNING id INTO d_v;
+  j := receive_po_lines(poV, ARRAY[vv1], v_bkk, jsonb_build_array(jsonb_build_object('deposit_id', upper(d_v::text), 'mode', 'value', 'value', 106.99)), 100, 7, '[]'::jsonb);
+  SELECT amount_no_vat, vat INTO r FROM po_deposit_applications WHERE deposit_id = d_v;
+  IF r.amount_no_vat <> 100 OR r.vat <> 6.99 THEN RAISE EXCEPTION 'B21 FAIL: application % / %', r.amount_no_vat, r.vat; END IF;
+  SELECT * INTO r FROM expenses WHERE id = (j->>'expense_id')::uuid;
+  IF NOT FOUND OR r.amount_no_vat <> 0 OR r.vat <> 0.01 OR r.amount <> 0.01 OR j->>'status' <> 'received' THEN RAISE EXCEPTION 'B21 FAIL: bill %', j; END IF;
+
+  -- B22: a negative (discount) line is refused (v1 limit), alone or with others; positive lines still receivable
+  BEGIN PERFORM receive_po_lines(poN, ARRAY[nn1, nn2], v_bkk, '[]'::jsonb, 90, 6.3, '[]'::jsonb); RAISE EXCEPTION 'B22 FAIL: discount line received';
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'bad_lines%' THEN RAISE EXCEPTION 'B22 FAIL: %', v_msg; END IF; END;
+  j := receive_po_lines(poN, ARRAY[nn1], v_bkk, '[]'::jsonb, 100, 7, '[]'::jsonb);
+  IF j->>'status' <> 'partially_received' THEN RAISE EXCEPTION 'B22 FAIL: %', j; END IF;
+  BEGIN PERFORM receive_po_lines(poN, ARRAY[nn2], v_bkk, '[]'::jsonb, -10, -0.7, '[]'::jsonb); RAISE EXCEPTION 'B22 FAIL: negative final receipt';
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'bad_lines%' THEN RAISE EXCEPTION 'B22 FAIL: %', v_msg; END IF; END;
 
   -- B17: tax-invoice interplay (R7). A partially received PO cannot be linked to a tax invoice; a PO linked by hand
   -- to a posted invoice gets the clean code from receive_po_lines (before any write).
@@ -246,6 +291,12 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'deposit_in_use%' THEN RAISE EXCEPTION 'B18 FAIL: %', v_msg; END IF; END;
   UPDATE supplier_deposits SET deposit_invoice_no = 'PRB-LEG2-B' WHERE id = d_leg2;
   IF (SELECT deposit_invoice_no FROM supplier_deposits WHERE id = d_leg2) IS DISTINCT FROM 'PRB-LEG2-B' THEN RAISE EXCEPTION 'B18 FAIL: legacy rename blocked'; END IF;
+  -- B23: a PO-linked deposit cannot be unregistered (deleted); an unlinked unapplied one still can
+  BEGIN DELETE FROM supplier_deposits WHERE id = depC; RAISE EXCEPTION 'B23 FAIL: linked deposit deleted';
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'deposit_linked_to_po%' THEN RAISE EXCEPTION 'B23 FAIL: %', v_msg; END IF; END;
+  IF NOT EXISTS (SELECT 1 FROM supplier_deposits WHERE id = depC AND po_id = poD) THEN RAISE EXCEPTION 'B23 FAIL: link lost'; END IF;
+  DELETE FROM supplier_deposits WHERE id = d_leg2;
+  IF EXISTS (SELECT 1 FROM supplier_deposits WHERE id = d_leg2) THEN RAISE EXCEPTION 'B23 FAIL: legacy unregister blocked'; END IF;
 
   -- B19: under the lock, a deposit whose applications exceed its own VAT (data changed past the triggers) is refused
   INSERT INTO expenses (date, description, site_id, category_id, supplier_id, amount_no_vat, vat, amount, payment_method, status)

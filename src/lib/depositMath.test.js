@@ -176,4 +176,15 @@ describe('computeReceivePlan VAT fold mirrors the RPC', () => {
     expect(computeReceivePlan({ subtotal: 100, vat: 7.01 }, [{ net: 100, vat: 7 }]).createExpense).toBe(false)
     expect(computeReceivePlan({ subtotal: 100, vat: 7.05 }, [{ net: 100, vat: 7 }]).createExpense).toBe(true)
   })
+  it('does not fold above the deposit\'s remaining VAT: deposit 100 + 6.99 used in full vs receipt 100 + 7 -> 0.01 bill', () => {
+    const r = computeReceivePlan({ subtotal: 100, vat: 7 }, [{ net: 100, vat: 6.99, id: 'a', remVat: 6.99 }])
+    expect(r).toEqual({ netToPay: 0, vatToPay: 0.01, total: 0.01, createExpense: true, overNet: false, overVat: false })
+  })
+  it('still folds when the deposit has VAT left to take the satang', () => {
+    const r = computeReceivePlan({ subtotal: 100, vat: 7 }, [{ net: 100, vat: 6.99, id: 'a', remVat: 7.5 }])
+    expect(r.createExpense).toBe(false)
+  })
+  it('without remVat (legacy receive) the fold is unchanged', () => {
+    expect(computeReceivePlan({ subtotal: 100, vat: 7 }, [{ net: 100, vat: 6.99, id: 'a' }]).createExpense).toBe(false)
+  })
 })
