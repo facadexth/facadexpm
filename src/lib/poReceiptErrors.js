@@ -6,7 +6,8 @@ import { depositRemaining, round2 } from './depositMath.js'
 import { poTaxInvoiceErrorText } from './poTaxInvoiceStatus.js'
 
 export const PO_RECEIPT_LOCKED_TEXT = 'ใบสั่งซื้อนี้รับของแล้ว แก้ไขหรือยกเลิกไม่ได้ — แจ้งผู้ดูแลระบบ'
-export const PO_HAS_DEPOSIT_TEXT = 'ใบสั่งซื้อนี้มีใบมัดจำแล้ว แก้ไขหรือยกเลิกไม่ได้ — แจ้งผู้ดูแลระบบ'
+export const DB_NOT_UPDATED_TEXT = 'ระบบยังไม่ได้อัปเดตฐานข้อมูล — แจ้งผู้ดูแลระบบ'
+export const PO_HAS_DEPOSIT_TEXT ='ใบสั่งซื้อนี้มีใบมัดจำแล้ว แก้ไขหรือยกเลิกไม่ได้ — แจ้งผู้ดูแลระบบ'
 
 export const PO_RECEIPT_ERROR_TEXT = {
   ...RPC_ERROR_TEXT,
@@ -58,6 +59,8 @@ export function mapPoReceiptRpcError(err) {
   const tax = poTaxInvoiceErrorText(err)   // po_tax_invoiced, po_stock_flag_locked, 40P01 deadlock
   if (tax) return tax
   const msg = String(err?.message || err || '')
+  // the RPC is not deployed yet (migration not applied): PostgREST PGRST202 "Could not find the function ..."
+  if (err?.code === 'PGRST202' || /could not find the function/i.test(msg)) return DB_NOT_UPDATED_TEXT
   const codes = Object.keys(PO_RECEIPT_ERROR_TEXT).sort((a, b) => b.length - a.length)
   // message first, then details, then hint
   for (const hay of [msg, err?.details, err?.hint]) {
@@ -116,11 +119,19 @@ export const RECEIVE_DISCOUNT_PARTIAL_TEXT = 'ใบสั่งซื้อน�
 export function receiveRoute(po, index) {
   if (!po || !['ordered', 'partially_received'].includes(po.status)) return null
   const discount = (po.purchase_order_items || []).some(it => Number(it.line_total) < 0)
-  const ready = !!index && index.schemaReady !== false
-  if (po.status === 'ordered') return ready && !discount ? { kind: 'new' } : { kind: 'old' }
-  if (!ready) return { kind: 'disabled', reason: RECEIVE_NOT_READY_TEXT }
+  // null = loading or a non-soft query failure: we cannot tell which schema is live, so offer nothing yet
+  if (!index) return { kind: 'disabled', reason: RECEIVE_NOT_READY_TEXT }
+  if (index.schemaReady === false) return po.status === 'ordered' ? { kind: 'old' } : { kind: 'disabled', reason: RECEIVE_NOT_READY_TEXT }
+  if (po.status === 'ordered') return discount ? { kind: 'old' } : { kind: 'new' }
   if (discount) return { kind: 'disabled', reason: RECEIVE_DISCOUNT_PARTIAL_TEXT }
   return { kind: 'new' }
+}
+
+/** May the ⋯ menu offer "create deposit"? Only on the live schema (create_po_deposit exists) and never for a PO with a
+ *  discount line (it always uses the old receive, which does not pre-tick the PO's own deposit). */
+export function canOfferCreateDeposit(po, index) {
+  if (!po || po.status !== 'ordered' || !index || index.schemaReady === false) return false
+  return !(po.purchase_order_items || []).some(it => Number(it.line_total) < 0)
 }
 
 /** Deposits listed in the receive dialog: open (remaining > 0, VAT split), not tied to another PO (R6), own deposit first. */

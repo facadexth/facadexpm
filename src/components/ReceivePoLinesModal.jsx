@@ -9,7 +9,7 @@ import { Modal } from './Modal.jsx'
 import { fmt } from '../lib/supabase.js'
 import { usePoLedger, useSupplierDeposits, receivePoLines } from '../hooks/useSupabase.js'
 import { calcPoTotals } from '../lib/poTotals.js'
-import { round2 } from '../lib/depositMath.js'
+import { round2, depositRemaining } from '../lib/depositMath.js'
 import { computeWeightedAverageCost } from '../lib/inventoryCost.js'
 import { receiptValue, outstandingItems, defaultDeduction, computeReceiveDeductions, DEDUCTION_INPUT_TEXT } from '../lib/poReceiptMath.js'
 import { mapPoReceiptRpcError, receiveDialogDeposits } from '../lib/poReceiptErrors.js'
@@ -58,16 +58,26 @@ export default function ReceivePoLinesModal({ po, stockPlanFor, stockBalances, o
   const stock = po.stock_from_invoice ? [] : stockPlanFor(po, lineIds)
   const stockBad = stock.some(s => !(s.baseQty > 0))
   const dateBad = !receivedDate || receivedDate > today
-  const canConfirm = loaded && !ledgerError && !busy && lineIds.length > 0 && result.valid && !stockBad && !dateBad
+  // the PO's own deposit (from the ledger) still has money left but is not usable here (e.g. its expense has no VAT
+  // split): receiving without it would leave it stranded, so block until it is fixed
+  const ownLedger = ledger?.deposit || null
+  const ownExp = ownLedger?.expenses || null
+  const ownSplit = !!ownExp && ownExp.amount_no_vat != null && ownExp.vat != null
+  const ownLedgerRem = ownSplit ? depositRemaining(ownExp, ownLedger.po_deposit_applications || []) : null
+  const ownMissing = !depError && !!ownLedger && !deposits.some(d => d.id === ownLedger.id) && (!ownSplit || ownLedgerRem.net > 0.005)
+  const ownUnpaid = !!ownExp && ownExp.status && ownExp.status !== 'paid'
+  const canConfirm = loaded && !ledgerError && !depError && !ownMissing && !busy && lineIds.length > 0 && result.valid && !stockBad && !dateBad
 
   const covered = id => deposits.reduce((s, d) => (d.id !== id && result.lines[d.id] ? s + result.lines[d.id].gross : s), 0)
   const toggle = (d, checked) => setSel(prev => {
+    // re-ticking the own deposit hands it back to the R4 default, which follows the chosen lines
+    if (checked && d.id === ownId) { const n = { ...prev }; delete n[d.id]; return n }
     const cur = prev[d.id] || selection[d.id]
     return { ...prev, [d.id]: {
-      checked, mode: cur?.mode || 'value',
+      checked, mode: checked ? 'value' : (cur?.mode || 'value'),
       value: checked
-        ? (cur?.value || defaultDeduction({ own: d.id === ownId, depositGross: depGross(d), poTotal, remaining: d.remaining,
-          receiptTotal: receipt.total, isFinal: receipt.isFinal, alreadyCovered: covered(d.id) }))
+        ? defaultDeduction({ own: d.id === ownId, depositGross: depGross(d), poTotal, remaining: d.remaining,
+          receiptTotal: receipt.total, isFinal: receipt.isFinal, alreadyCovered: covered(d.id) })
         : (cur?.value ?? ''),
     } }
   })
@@ -78,7 +88,8 @@ export default function ReceivePoLinesModal({ po, stockPlanFor, stockBalances, o
     if (s.mode === m) return
     const line = result.lines[d.id]
     let value = ''
-    if (line && m === 'percent' && receipt.total > 0) value = String(round2((line.gross / receipt.total) * 100))
+    // 6 decimals, not 2: a rounded percent could miss the exact remainder by a satang and strand it
+    if (line && m === 'percent' && receipt.total > 0) value = String(Math.round((line.gross / receipt.total) * 100 * 1e6) / 1e6)
     else if (line && m === 'value') value = String(line.gross)
     edit(d, { mode: m, value })
   }
@@ -111,6 +122,12 @@ export default function ReceivePoLinesModal({ po, stockPlanFor, stockBalances, o
         <div>{po.suppliers?.name || '—'} · ยอดใบสั่งซื้อ <span className="font-mono">{fmt(poTotal)}</span> · รับแล้ว {receivedIds.size}/{allItems.length} รายการ</div>
         {!loaded && !ledgerError && <div style={muted}>⏳ กำลังโหลด...</div>}
         {ledgerError && <div style={{ color: 'var(--red)' }}>โหลดข้อมูลการรับของไม่สำเร็จ — ปิดแล้วเปิดใหม่</div>}
+        {depError && <div role="alert" style={{ color: 'var(--red)' }}>โหลดข้อมูลมัดจำไม่สำเร็จ — ปิดแล้วเปิดใหม่</div>}
+        {ownMissing && (
+          <div role="alert" style={{ color: 'var(--red)' }}>
+            มัดจำของใบสั่งซื้อนี้ ({ownLedger.deposit_invoice_no || 'มัดจำ'}) ยังมียอดคงเหลือแต่ใช้หักไม่ได้{ownSplit ? '' : ' (รายจ่ายมัดจำยังไม่แยก VAT)'} — แก้ที่หน้ารายจ่ายก่อน แล้วเปิดใหม่
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
             <input type="radio" name="rcv-mode" checked={mode === 'all'} onChange={() => setMode('all')} /> รับทั้งหมด ({outstanding.length} รายการ)
@@ -159,8 +176,15 @@ export default function ReceivePoLinesModal({ po, stockPlanFor, stockBalances, o
                 <div key={d.id} style={{ marginTop: 6 }}>
                   <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
                     <input type="checkbox" aria-label={`ใช้มัดจำ ${no}`} checked={!!s.checked} onChange={e => toggle(d, e.target.checked)} />
-                    <span>{no}{d.id === ownId ? ' (มัดจำของใบสั่งซื้อนี้)' : ''} · คงเหลือ <span className="font-mono">{fmt(remGross)}</span></span>
+                    <span>{no}{d.id === ownId ? ' (มัดจำของใบสั่งซื้อนี้)' : ''} · คงเหลือ <span className="font-mono">{fmt(remGross)}</span>
+                      {d.id === ownId && ownUnpaid && <span data-testid="own-deposit-unpaid" style={{ color: '#b45309', fontSize: 12 }}> (ยังไม่ได้จ่ายใบมัดจำ — อย่าลืมจ่ายใบมัดจำ)</span>}
+                    </span>
                   </label>
+                  {d.id === ownId && receipt.isFinal && lineIds.length > 0 && round2(remGross - (result.lines[d.id]?.gross || 0)) > 0.005 && (
+                    <div data-testid="own-deposit-left" style={{ marginLeft: 22, color: '#b45309', fontSize: 12 }}>
+                      รับครั้งสุดท้ายแล้ว แต่มัดจำของใบสั่งซื้อนี้จะเหลือ {fmt(round2(remGross - (result.lines[d.id]?.gross || 0)))} บาท ที่ไม่ได้หัก
+                    </div>
+                  )}
                   {s.checked && (
                     <div style={{ marginLeft: 22, marginTop: 4, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                       <button type="button" className={`btn btn-sm ${s.mode === 'value' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => switchMode(d, 'value')}>บาท</button>

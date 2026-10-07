@@ -32,7 +32,7 @@ import { suggestStockLinks } from '../lib/poStockLinkSuggest.js'
 import { calcPoTotals, poLineTotal as lineTotal } from '../lib/poTotals.js'
 import { VAT_RATE } from '../lib/invoiceCalc.js'
 import { poTaxInvoiceBadge, buildPoPayloadFlag, poEditLockedText, poTaxInvoiceErrorText } from '../lib/poTaxInvoiceStatus.js'
-import { poMoneyLockText, poLedgerSummary, mapPoReceiptRpcError, receiveRoute } from '../lib/poReceiptErrors.js'
+import { poMoneyLockText, poLedgerSummary, mapPoReceiptRpcError, receiveRoute, canOfferCreateDeposit } from '../lib/poReceiptErrors.js'
 import CreatePoDepositModal from '../components/CreatePoDepositModal.jsx'
 import ReceivePoLinesModal from '../components/ReceivePoLinesModal.jsx'
 import ReceiveDepositBlock from '../components/ReceiveDepositBlock.jsx'
@@ -1119,7 +1119,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
         ? { label: '📦 รับของ', disabled: true, disabledTitle: route.reason, onClick: () => {} }
         : { label: '📦 รับของ', onClick: () => { setReceiveKind(route.kind); setReceiveRow(po) } })
     }
-    if (canEdit && po.status === 'ordered' && moneyIndex) {
+    if (canEdit && canOfferCreateDeposit(po, moneyIndex)) {
       items.push(moneyIndex.get(po.id)?.depositId
         ? { label: '💰 สร้างใบจ่ายมัดจำ', disabled: true, disabledTitle: 'ใบสั่งซื้อนี้มีใบมัดจำแล้ว', onClick: () => {} }
         : { label: '💰 สร้างใบจ่ายมัดจำ', onClick: () => setDepositPo(po) })
@@ -1280,10 +1280,14 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
           onDone={async res => {
             const po = receiveRow
             setReceiveRow(null)
-            if (res.expense_id) await auditLog('expenses', res.expense_id, 'INSERT', null, { po_id: po.id, via: 'receive_po_lines', receipt_no: res.receipt_no })
-            await auditLog('purchase_orders', po.id, 'UPDATE', null, { via: 'receive_po_lines', status: res.status, receipt_no: res.receipt_no, receipt_id: res.receipt_id, expense_id: res.expense_id })
-            refreshPoData(); refetchInventoryItems()
-            showToast('รับของแล้ว' + (res.receipt_no ? ` (${res.receipt_no}) ` : ' ') + (res.expense_id ? 'สร้างบิลแล้ว' : 'หักมัดจำครบ ไม่สร้างบิล') + (po.stock_from_invoice ? ' · สต็อกจะเข้าเมื่อบันทึกใบกำกับภาษี' : ''))
+            try {
+              if (res.expense_id) await auditLog('expenses', res.expense_id, 'INSERT', null, { po_id: po.id, via: 'receive_po_lines', receipt_no: res.receipt_no })
+              await auditLog('purchase_orders', po.id, 'UPDATE', null, { via: 'receive_po_lines', status: res.status, receipt_no: res.receipt_no, receipt_id: res.receipt_id, expense_id: res.expense_id })
+            } catch (e) { console.warn('audit log failed:', e?.message) } finally {
+              // the receipt is saved whatever the audit did: always refresh and confirm
+              refreshPoData(); refetchInventoryItems()
+              showToast('รับของแล้ว' + (res.receipt_no ? ` (${res.receipt_no}) ` : ' ') + (res.expense_id ? 'สร้างบิลแล้ว' : 'หักมัดจำครบ ไม่สร้างบิล') + (po.stock_from_invoice ? ' · สต็อกจะเข้าเมื่อบันทึกใบกำกับภาษี' : ''))
+            }
           }} />
       )}
 

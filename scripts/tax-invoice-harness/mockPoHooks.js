@@ -23,7 +23,8 @@ export const useAllAluminumProfiles = () => useQuery(() => delay([]))
 export const useMySignatureUrl = () => null
 export const useMyWorkerName = () => ({ data: null })
 export const useSupplierDocumentExamples = () => useQuery(() => delay([]))
-export const useSupplierDeposits = () => useQuery(() => delay(() => W.__deposits || []))
+// W.__depositsError: the deposit query fails (useQuery stores the error, data stays null)
+export const useSupplierDeposits = () => useQuery(() => delay(null).then(() => { if (W.__depositsError) throw new Error(W.__depositsError); return W.__deposits || [] }))
 export const extractPoDocument = async () => W.__extract || { ok: false }
 export const saveSupplierDocumentExample = async () => {}
 export const receivePoWithDeposits = async (...a) => { W.__log.push(['rpc', 'receive_po_with_deposits', JSON.stringify(a)]); return 'exp1' }

@@ -1,6 +1,6 @@
 // src/lib/poReceiptErrors.test.js
 import { describe, it, expect } from 'vitest'
-import { mapPoReceiptRpcError, buildPoMoneyIndex, poMoneyLockText, poLedgerSummary, PO_RECEIPT_LOCKED_TEXT, PO_HAS_DEPOSIT_TEXT, depositSelectableForPo, isMissingColumnError, PO_RECEIPT_ERROR_TEXT, receiveRoute, receiveDialogDeposits } from './poReceiptErrors.js'
+import { mapPoReceiptRpcError, buildPoMoneyIndex, poMoneyLockText, poLedgerSummary, PO_RECEIPT_LOCKED_TEXT, PO_HAS_DEPOSIT_TEXT, depositSelectableForPo, isMissingColumnError, PO_RECEIPT_ERROR_TEXT, receiveRoute, receiveDialogDeposits, canOfferCreateDeposit, DB_NOT_UPDATED_TEXT, RECEIVE_NOT_READY_TEXT } from './poReceiptErrors.js'
 import { readFileSync } from 'node:fs'
 
 describe('mapPoReceiptRpcError', () => {
@@ -130,15 +130,18 @@ describe('receiveRoute (Task 9)', () => {
     expect(receiveRoute(po('ordered'), ready)).toEqual({ kind: 'new' })
     expect(receiveRoute(po('partially_received'), ready)).toEqual({ kind: 'new' })
   })
-  it('old receive for an ordered PO before the migrations (index null or schema missing)', () => {
-    expect(receiveRoute(po('ordered'), null)).toEqual({ kind: 'old' })
+  it('old receive for an ordered PO only when the schema is known to be missing (pre-migration soft fail)', () => {
     expect(receiveRoute(po('ordered'), pre)).toEqual({ kind: 'old' })
   })
+  it('index null (loading / real failure): disabled with the loading text for every receivable status', () => {
+    for (const s of ['ordered', 'partially_received']) {
+      const r = receiveRoute(po(s), null)
+      expect(r.kind, s).toBe('disabled')
+      expect(r.reason).toBe(RECEIVE_NOT_READY_TEXT)
+    }
+  })
   it('partially received without the schema: disabled with a reason', () => {
-    const r = receiveRoute(po('partially_received'), null)
-    expect(r.kind).toBe('disabled')
-    expect(r.reason.length).toBeGreaterThan(5)
-    expect(receiveRoute(po('partially_received'), pre).kind).toBe('disabled')
+    expect(receiveRoute(po('partially_received'), pre)).toEqual({ kind: 'disabled', reason: RECEIVE_NOT_READY_TEXT })
   })
   it('a discount line (line_total < 0) always uses the old receive on an ordered PO', () => {
     expect(receiveRoute(po('ordered', [item(), item({ id: 'i2', line_total: -10 })]), ready)).toEqual({ kind: 'old' })
@@ -146,6 +149,26 @@ describe('receiveRoute (Task 9)', () => {
   })
   it('other statuses: nothing', () => {
     for (const s of ['draft', 'received', 'cancelled']) expect(receiveRoute(po(s), ready)).toBeNull()
+  })
+})
+
+describe('canOfferCreateDeposit (Task 9 fix R-C)', () => {
+  const ready = Object.assign(new Map(), { schemaReady: true })
+  const pre = Object.assign(new Map(), { schemaReady: false })
+  const po = (o = {}) => ({ id: 'P1', status: 'ordered', purchase_order_items: [{ id: 'i1', line_total: 100 }], ...o })
+  it('only on the live schema, ordered POs without a discount line', () => {
+    expect(canOfferCreateDeposit(po(), ready)).toBe(true)
+    expect(canOfferCreateDeposit(po(), null)).toBe(false)
+    expect(canOfferCreateDeposit(po(), pre)).toBe(false)
+    expect(canOfferCreateDeposit(po({ status: 'partially_received' }), ready)).toBe(false)
+    expect(canOfferCreateDeposit(po({ purchase_order_items: [{ id: 'i1', line_total: 100 }, { id: 'i2', line_total: -5 }] }), ready)).toBe(false)
+  })
+})
+
+describe('mapPoReceiptRpcError: RPC not deployed (Task 9 fix M1)', () => {
+  it('PGRST202 / could not find the function -> Thai', () => {
+    expect(mapPoReceiptRpcError({ code: 'PGRST202', message: 'x' })).toBe(DB_NOT_UPDATED_TEXT)
+    expect(mapPoReceiptRpcError({ message: 'Could not find the function public.receive_po_lines(p_po_id, ...) in the schema cache' })).toBe(DB_NOT_UPDATED_TEXT)
   })
 })
 
