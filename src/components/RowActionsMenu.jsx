@@ -33,24 +33,33 @@ export default function RowActionsMenu({ items = [], trigger, triggerClassName =
     const el = triggerRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
-    const estHeight = items.length * 34 + 8
-    const spaceBelow = window.innerHeight - rect.bottom
-    const spaceAbove = rect.top
+    // Real height once rendered (rows are ~39px, not 34); estimate only for the very first pass.
+    const estHeight = menuRef.current?.scrollHeight || (items.length * 40 + 8)
+    const spaceBelow = window.innerHeight - rect.bottom - MENU_MARGIN * 2
+    const spaceAbove = rect.top - MENU_MARGIN * 2
     const openUp = spaceBelow < estHeight && spaceAbove > spaceBelow
     setMenuStyle({
       position: 'fixed',
-      right: window.innerWidth - rect.right,
+      maxHeight: Math.max(120, openUp ? spaceAbove : spaceBelow),   // taller than the room: the menu scrolls instead of clipping
+      maxWidth: window.innerWidth - 8,
+      right: Math.max(4, window.innerWidth - rect.right),
       ...(openUp
         ? { bottom: window.innerHeight - rect.top + MENU_MARGIN }
         : { top: rect.bottom + MENU_MARGIN }),
     })
   }
 
+  const measured = useRef(false)
   useLayoutEffect(() => {
-    if (!open) return
+    if (!open) { measured.current = false; return }
     reposition()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+  // second pass once the menu is mounted, so the real height decides up/down
+  useLayoutEffect(() => {
+    if (open && menuStyle && !measured.current) { measured.current = true; reposition() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, menuStyle])
 
   useEffect(() => {
     if (!open) return
@@ -89,7 +98,7 @@ export default function RowActionsMenu({ items = [], trigger, triggerClassName =
             ...menuStyle,
             zIndex: 9999, minWidth: 170,
             background: 'var(--bg2, #1a1a1a)', border: '1px solid var(--border, #333)',
-            borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.4)', overflow: 'hidden',
+            borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.4)', overflowX: 'hidden', overflowY: 'auto',
           }}
         >
           {items.map((it, i) => (

@@ -1775,7 +1775,7 @@ export function usePoMoneyIndex() {
   return useQuery(async () => {
     const [receiptItems, deposits] = await Promise.all([
       fetchAllRows(() => supabase.from('po_receipt_items')
-        .select('id, po_item_id, po_receipts!po_receipt_items_receipt_fk(po_id)').order('id')),
+        .select('id, po_item_id, receipt_id, po_receipts!po_receipt_items_receipt_fk(po_id)').order('id')),
       fetchAllRows(() => supabase.from('supplier_deposits')
         .select('id, po_id').not('po_id', 'is', null).order('id')),
     ])

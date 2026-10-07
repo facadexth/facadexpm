@@ -30,11 +30,11 @@ export const receivePoWithDeposits = async (...a) => { W.__log.push(['rpc', 'rec
 // null = not ready (links hook errors before the migration / still loading); a Map = live
 export const useActiveTaxInvoiceLinks = () => useQuery(() => delay(() => (W.__links ? new Map(W.__links) : null)), [W.__linksVersion])
 
-// ── 2026-10-09 PO receipts (Task 6). W.__money: [[poId, {receivedItemIds:[...], depositId}]] or null (= not ready);
+// ── 2026-10-09 PO receipts (Task 6). W.__money: [[poId, {receivedItemIds:[...], receiptIds:[...], depositId}]] or null (= not ready);
 // W.__ledger: {[poId]: {receipts, deposit, applications, bills}}; W.__deposits: useSupplierDeposits rows;
 // W.__wrapperError: thrown by the RPC wrappers; every wrapper call is logged as ['rpc', name, args].
 export const usePoMoneyIndex = () => useQuery(() => delay(() => (W.__money === null ? null
-  : new Map((W.__money || []).map(([k, v]) => [k, { receivedItemIds: new Set(v.receivedItemIds || []), depositId: v.depositId || null }])))), [W.__moneyVersion])
+  : new Map((W.__money || []).map(([k, v]) => [k, { receivedItemIds: new Set(v.receivedItemIds || []), receiptIds: new Set(v.receiptIds || []), depositId: v.depositId || null }])))), [W.__moneyVersion])
 export const usePoLedger = (poId) => useQuery(() => delay(() => (W.__ledger || {})[poId] || { receipts: [], deposit: null, applications: [], bills: [] }), [poId, W.__ledgerVersion])
 const wrapper = (name, result) => async (args) => {
   W.__log.push(['rpc', name, JSON.stringify(args)])

@@ -28,11 +28,12 @@ describe('mapPoReceiptRpcError', () => {
 
 describe('buildPoMoneyIndex / poMoneyLockText', () => {
   const idx = buildPoMoneyIndex({
-    receiptItems: [{ po_item_id: 'i1', po_receipts: { po_id: 'P1' } }],
+    receiptItems: [{ po_item_id: 'i1', receipt_id: 'r1', po_receipts: { po_id: 'P1' } }, { po_item_id: 'i2', receipt_id: 'r2', po_receipts: { po_id: 'P1' } }],
     deposits: [{ id: 'd1', po_id: 'P2' }],
   })
   it('indexes receipts and deposits by PO', () => {
-    expect([...idx.get('P1').receivedItemIds]).toEqual(['i1'])
+    expect([...idx.get('P1').receivedItemIds]).toEqual(['i1', 'i2'])
+    expect(idx.get('P1').receiptIds.size).toBe(2)
     expect(idx.get('P2').depositId).toBe('d1')
     expect(idx.get('P3')).toBeUndefined()
   })

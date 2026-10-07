@@ -435,6 +435,7 @@ th.sortable:hover { color: var(--accent); }
 .badge-method-cash      { background: rgba(var(--green-rgb), 0.15); color: var(--green); }
 .badge-po-ordered   { background: rgba(var(--accent-rgb), 0.15); color: var(--accent); }
 .badge-po-received  { background: rgba(var(--green-rgb), 0.15); color: var(--green); }
+.badge-po-partially_received { background: rgba(234,179,8,0.15); color: var(--yellow); }
 .badge-po-cancelled { background: rgba(94,97,128,0.25); color: var(--text3); }
 
 /* Input sm/select sm */

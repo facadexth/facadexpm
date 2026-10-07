@@ -19,3 +19,5 @@ Run it alone: parallel runs make the Playwright waits slow. Mocks: `mockHooks.js
 or a Map), `mockPoSupabaseLib.js` (logs writes/rpc in `window.__log`, `window.__rpcError` injects a record_stock_movement error) and `mockTenant.js`:
 
     node scripts/tax-invoice-harness/buildPo.mjs && node scripts/tax-invoice-harness/runPo.mjs
+
+Section 7: row layout (📄 + ⋯), popup ledger, document actions, money locks; mocks `__money` (`receivedItemIds`, `receiptIds`, `depositId`), `__ledger`. 7b: old receive stays reachable, multi-bill swap lock, discount-line notice, `refreshPoData`, phone width (menu not clipped, popup scrolls).

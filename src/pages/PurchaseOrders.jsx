@@ -6,7 +6,7 @@
 // ============================================================
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits, useActiveTaxInvoiceLinks } from '../hooks/useSupabase.js'
+import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits, useActiveTaxInvoiceLinks, usePoMoneyIndex, usePoLedger } from '../hooks/useSupabase.js'
 import { fileToExtractionPayload, buildExampleExtracted } from '../lib/poDocumentExtraction.js'
 import ScanDocPreview from '../components/ScanDocPreview.jsx'
 import ScanNotice from '../components/ScanNotice.jsx'
@@ -32,8 +32,9 @@ import { suggestStockLinks } from '../lib/poStockLinkSuggest.js'
 import { calcPoTotals, poLineTotal as lineTotal } from '../lib/poTotals.js'
 import { VAT_RATE } from '../lib/invoiceCalc.js'
 import { poTaxInvoiceBadge, buildPoPayloadFlag, poEditLockedText, poTaxInvoiceErrorText } from '../lib/poTaxInvoiceStatus.js'
+import { poMoneyLockText, poLedgerSummary, mapPoReceiptRpcError } from '../lib/poReceiptErrors.js'
 import ReceiveDepositBlock from '../components/ReceiveDepositBlock.jsx'
-import { mapReceiveRpcError, canConfirmReceive, PO_DEPOSIT_LOCKED_TEXT } from '../lib/receiveDeposits.js'
+import { mapReceiveRpcError, canConfirmReceive } from '../lib/receiveDeposits.js'
 import { setCreditNotePrefill, poItemToCreditLine } from '../lib/creditNotePrefill.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -42,7 +43,6 @@ import UnitSelect from '../components/UnitSelect.jsx'
 import AttachmentsSection from '../components/AttachmentsSection.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
-import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import PendingMark from '../components/PendingMark.jsx'
 import { removeBlockOrClear } from '../lib/rowEditing.js'
@@ -56,8 +56,9 @@ const supplierOpts = (suppliers) => (suppliers || []).map(s => ({
   value: s.id, label: `${s.supplier_number} · ${s.name}`, keywords: `${s.supplier_number} ${s.name}`,
 }))
 
-const PO_STATUSES = ['draft', 'ordered', 'received', 'cancelled']
-const PO_STATUS_LABELS = { draft: '📝 ร่าง (รอเติมข้อมูล)', ordered: '📦 สั่งแล้ว', received: '✅ รับของแล้ว', cancelled: '✕ ยกเลิก' }
+const PO_STATUSES = ['draft', 'ordered', 'partially_received', 'received', 'cancelled']
+const PO_STATUS_LABELS = { draft: '📝 ร่าง (รอเติมข้อมูล)', ordered: '📦 สั่งแล้ว', partially_received: '🚚 รับบางส่วน', received: '✅ รับของแล้ว', cancelled: '✕ ยกเลิก' }
+const BILL_STATUS_LABELS = { awaiting_billing: '🧾 รอวางบิล', pending: '⏳ ค้างจ่าย', check_issued: '📄 ออกเช็ค', check_cleared: '🏦 เช็คผ่าน', paid: '✅ จ่ายแล้ว' }
 
 // linked = blue, awaiting = amber (existing badge colours)
 const TAX_BADGE_CLASS = { linked: 'badge-check_cleared', awaiting: 'badge-pending' }
@@ -407,23 +408,17 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, ini
   )
 }
 
-function PODetailModal({ po, tenantId, onClose, taxBadge }) {
+function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument }) {
   const items = po.purchase_order_items || []
   const { subtotal, vat, total } = calcPoTotals(items, po.has_vat, po.price_includes_vat)
-  const [deposits, setDeposits] = useState([])
-  useEffect(() => {
-    let alive = true
-    supabase.from('po_deposit_applications')
-      .select('amount_no_vat, vat, supplier_deposits(deposit_invoice_no)')
-      .eq('po_id', po.id)
-      .then(({ data, error }) => { if (alive && !error && data) setDeposits(data) })   // table may not exist yet: ignore
-    return () => { alive = false }
-  }, [po.id])
-
+  const { data: ledger } = usePoLedger(po.id)          // null while loading or before the migration: sections hide
+  const s = poLedgerSummary(po, ledger)
+  const hasDiscountLine = items.some(it => Number(it.line_total) < 0)
+  const cell = { padding: '4px 6px', borderBottom: '1px solid var(--border)' }
   return (
-    <Modal title={`ใบสั่งซื้อ ${po.po_number}`} onClose={onClose} maxWidth={700}>
+    <Modal title={`ใบสั่งซื้อ ${po.po_number}`} onClose={onClose} maxWidth={760}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <span className={`badge badge-po-${po.status}`}>{PO_STATUS_LABELS[po.status] || po.status}</span>
           {taxBadge?.kind && <span className={`badge ${TAX_BADGE_CLASS[taxBadge.kind]}`}>{taxBadge.text}</span>}
           <span style={{ fontSize: 12, color: 'var(--text3)' }}>{fmtDate(po.date)}</span>
@@ -434,38 +429,74 @@ function PODetailModal({ po, tenantId, onClose, taxBadge }) {
         </div>
         {po.ordered_by && <div style={{ fontSize: 13 }}><strong>ชื่อผู้สั่ง:</strong> {po.ordered_by}</div>}
         {po.notes && <div style={{ fontSize: 13 }}><strong>หมายเหตุ:</strong> {po.notes}</div>}
+        {hasDiscountLine && (
+          <div data-testid="po-discount-notice" style={{ fontSize: 12.5, color: 'var(--yellow)' }}>
+            ใบสั่งซื้อนี้มีรายการส่วนลด (ยอดติดลบ) จึงใช้การรับของบางส่วนแบบใหม่ไม่ได้ — ใช้การรับของแบบเดิม (รับครบทั้งใบ)
+          </div>
+        )}
         <div>
           <label className="label">รายการสินค้า</label>
-          <div style={{ display: 'grid', gap: 6 }}>
-            {items.map(it => (
-              <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
-                <span>
-                  {it.description} ({it.quantity} {it.unit || ''})
-                  {it.aluminum_profiles?.name && (
-                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>หน้าตัด {it.aluminum_profiles.name} ยาว {it.rod_length_m} ม.</div>
-                  )}
-                  {it.glass_width_m && it.glass_height_m && (
-                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>ขนาด {it.glass_width_m}×{it.glass_height_m} ม.</div>
-                  )}
-                </span>
-                <span className="font-mono">{fmt(it.line_total)}</span>
-              </div>
-            ))}
+          <div className="table-wrap">
+            <table style={{ fontSize: 12.5 }}>
+              <thead><tr><th>รายการ</th><th>สั่ง</th><th>รับ</th><th style={{ textAlign: 'right' }}>มูลค่า</th></tr></thead>
+              <tbody>
+                {s.lines.map(it => (
+                  <tr key={it.id}>
+                    <td style={cell}>
+                      {it.description}
+                      {it.aluminum_profiles?.name && <div style={{ fontSize: 11, color: 'var(--text3)' }}>หน้าตัด {it.aluminum_profiles.name} ยาว {it.rod_length_m} ม.</div>}
+                      {it.glass_width_m && it.glass_height_m && <div style={{ fontSize: 11, color: 'var(--text3)' }}>ขนาด {it.glass_width_m}×{it.glass_height_m} ม.</div>}
+                    </td>
+                    <td style={cell}>{it.quantity} {it.unit || ''}</td>
+                    <td style={cell}>{it.received
+                      ? <span style={{ color: 'var(--green)' }}>✓ รับแล้ว {it.receivedDate ? fmtDate(it.receivedDate) : ''}{it.receiptSeq ? ` (R${it.receiptSeq})` : ''}</span>
+                      : <span style={{ color: 'var(--yellow)' }}>ค้างรับ</span>}</td>
+                    <td style={{ ...cell, textAlign: 'right' }} className="font-mono">{fmt(it.line_total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
           <div style={{ marginTop: 8, textAlign: 'right', fontSize: 13 }}>
             <div>รวมก่อน VAT: <span className="font-mono">{fmt(subtotal)}</span></div>
             {po.has_vat && <div>VAT (7%): <span className="font-mono">{fmt(vat)}</span></div>}
-            {deposits.map((a, i) => (
-              <div key={i} style={{ color: 'var(--text3)' }}>หักมัดจำ {a.supplier_deposits?.deposit_invoice_no || ''}: ก่อน VAT <span className="font-mono">{fmt(a.amount_no_vat)}</span> · VAT <span className="font-mono">{fmt(a.vat)}</span></div>
-            ))}
             <div style={{ fontWeight: 700 }}>รวมสุทธิ: <span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(total)}</span></div>
           </div>
         </div>
-        {tenantId && (
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-            <AttachmentsSection table="purchase_order_attachments" bucket="po-attachments" foreignKey="po_id" entityId={po.id} tenantId={tenantId} />
+        {s.receipts.length > 0 && (
+          <div style={{ fontSize: 13 }}>
+            <label className="label">การรับของ</label>
+            {s.receipts.map(r => (
+              <div key={r.id}>R{r.seq} · {fmtDate(r.received_date)} · ก่อน VAT <span className="font-mono">{fmt(r.goods_subtotal)}</span> · VAT <span className="font-mono">{fmt(r.goods_vat)}</span></div>
+            ))}
           </div>
         )}
+        {s.deposit && (
+          <div style={{ fontSize: 13 }}>
+            <label className="label">มัดจำ</label>
+            <div>{s.deposit.no} · <span className="font-mono">{fmt(s.deposit.gross)}</span>{s.deposit.pct ? ` (${Number(s.deposit.pct)}% ของใบสั่งซื้อ)` : ''}</div>
+            <div>ใช้แล้ว <span className="font-mono">{fmt(s.deposit.usedGross)}</span> · <strong>คงเหลือ <span className="font-mono">{fmt(s.deposit.remainingGross)}</span></strong></div>
+          </div>
+        )}
+        {s.applications.length > 0 && (
+          <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>
+            {s.applications.map(a => (
+              <div key={a.id}>หักมัดจำ {a.supplier_deposits?.deposit_invoice_no || ''}: ก่อน VAT <span className="font-mono">{fmt(a.amount_no_vat)}</span> · VAT <span className="font-mono">{fmt(a.vat)}</span></div>
+            ))}
+          </div>
+        )}
+        {s.bills.length > 0 && (
+          <div style={{ fontSize: 13 }}>
+            <label className="label">บิล</label>
+            {s.bills.map(b => (
+              <div key={b.id}>{fmtDate(b.date)} · <span className="font-mono">{fmt(b.amount)}</span> · {BILL_STATUS_LABELS[b.status] || b.status}{b.invoice_no ? ` · #${b.invoice_no}` : ''}</div>
+            ))}
+          </div>
+        )}
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, display: 'grid', gap: 8 }}>
+          <div><button type="button" className="btn btn-sm btn-ghost" onClick={() => onViewDocument(po)}>📄 ดู PO</button></div>
+          {tenantId && <AttachmentsSection table="purchase_order_attachments" bucket="po-attachments" foreignKey="po_id" entityId={po.id} tenantId={tenantId} />}
+        </div>
       </div>
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
@@ -477,16 +508,28 @@ function PODetailModal({ po, tenantId, onClose, taxBadge }) {
 // Same letterhead pattern as QuotationDocumentModal (src/pages/Quotations.jsx)
 // — logo/company block, bordered doc-info box + ต้นฉบับ tag, light-purple
 // table header, boxed notes, purple-accented (unfilled) grand total.
-function PODocumentModal({ po, tenant, onClose }) {
+function PODocumentModal({ po, tenant, onClose, autoAction = null }) {
   const items = po.purchase_order_items || []
   const { subtotal, vat, total } = calcPoTotals(items, po.has_vat, po.price_includes_vat)
   const mySignature = useMySignatureUrl()
   const { data: myWorkerName } = useMyWorkerName()
 
+  const fileBase = `${po.po_number}${po.sites?.name ? '-' + po.sites.name : ''}`
+  useEffect(() => {
+    if (!autoAction) return
+    const t = setTimeout(() => {          // let the logo / signature images load first
+      if (autoAction === 'pdf') downloadPDF(`po-doc-${po.id}`, `${fileBase}.pdf`)
+      else if (autoAction === 'jpg') downloadJPG(`po-doc-${po.id}`, `${fileBase}.jpg`)
+      else if (autoAction === 'print') window.print()
+    }, 400)
+    return () => clearTimeout(t)
+  }, [autoAction]) // eslint-disable-line react-hooks/exhaustive-deps
+
+
   return (
     <Modal title={`ใบสั่งซื้อ ${po.po_number}`} onClose={onClose} maxWidth={720}>
       <div className="modal-body">
-        <div id={`po-doc-${po.id}`} style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
+        <div className="printable-document" id={`po-doc-${po.id}`} style={{ fontFamily: 'Sarabun,sans-serif', padding: '40px 44px', background: '#fff', color: '#17181f' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
               {tenant?.logo_url
@@ -587,8 +630,9 @@ function PODocumentModal({ po, tenant, onClose }) {
       </div>
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
-        <button className="btn btn-ghost" onClick={() => downloadJPG(`po-doc-${po.id}`, `${po.po_number}${po.sites?.name ? '-' + po.sites.name : ''}.jpg`)}>🖼️ ดาวน์โหลด JPG</button>
-        <button className="btn btn-primary" onClick={() => downloadPDF(`po-doc-${po.id}`, `${po.po_number}${po.sites?.name ? '-' + po.sites.name : ''}.pdf`)}>📄 ดาวน์โหลด PDF</button>
+        <button className="btn btn-ghost" onClick={() => window.print()}>🖨️ พิมพ์</button>
+        <button className="btn btn-ghost" onClick={() => downloadJPG(`po-doc-${po.id}`, `${fileBase}.jpg`)}>🖼️ ดาวน์โหลด JPG</button>
+        <button className="btn btn-primary" onClick={() => downloadPDF(`po-doc-${po.id}`, `${fileBase}.pdf`)}>📄 ดาวน์โหลด PDF</button>
       </div>
     </Modal>
   )
@@ -759,6 +803,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const [docRow, setDocRow] = useState(null)
   const [detailRow, setDetailRow] = useState(null)
   const [receiveRow, setReceiveRow] = useState(null)
+  const [depositPo, setDepositPo] = useState(null)
   const [swapInvoiceRow, setSwapInvoiceRow] = useState(null)
   const [receiving, setReceiving] = useState(false)
   const [depositSel, setDepositSel] = useState(null)
@@ -774,12 +819,17 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const { data: inventoryItems, refetch: refetchInventoryItems } = useInventoryItems()
   const { data: allInventoryItems } = useAllInventoryItems()
   const { data: unitFactors } = useInventoryItemUnitFactors()
-  const { data: stockBalances } = useStockBalances()
+  const { data: stockBalances, refetch: refetchStock } = useStockBalances()
   const { data: aluminumProfiles } = useAluminumProfiles()
   const { data: allAluminumProfiles } = useAllAluminumProfiles()
   // data is null while loading or before the tax invoice migrations are applied: then no badges and no locks (page works as before)
   const { data: taxInvoiceLinks, refetch: refetchLinks } = useActiveTaxInvoiceLinks()
-  const refetchAll = () => { refetch(); refetchLinks() }
+  const { data: moneyIndex, refetch: refetchMoney } = usePoMoneyIndex()
+  const refetchAll = () => { refetch(); refetchLinks(); refetchMoney() }
+  // One call for the receive / deposit / split dialogs (Tasks 8-10) after any mutation: PO list, links, money index,
+  // stock balances, and the open popup's ledger (the popup is re-keyed so usePoLedger refetches).
+  const [poDataVersion, setPoDataVersion] = useState(0)
+  const refreshPoData = () => { refetchAll(); refetchStock(); setPoDataVersion(v => v + 1) }
 
   // เรียง/ค้นหาแบบ client-side ทับผลลัพธ์ที่กรองมาจาก server แล้ว (ช่วงวันที่/ไซท์งาน/Supplier/สถานะ)
   // -- accessor ต่อคอลัมน์ เพราะบางคอลัมน์ (ไซท์งาน, Supplier, ยอดรวม) เป็น field ที่ join มา/คำนวณ
@@ -865,7 +915,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       if (editRow?.status === 'draft' && form.supplier_id) poPayload.status = 'ordered'
       let poId = editRow?.id
       // The edit below is not atomic (header update, then items delete/insert): never run it on a PO a tax invoice is linked to.
-      const lockedText = editRow ? poEditLockedText(editRow, taxInvoiceLinks) : ''
+      const lockedText = editRow ? (poEditLockedText(editRow, taxInvoiceLinks) || poMoneyLockText(editRow, moneyIndex)) : ''
       if (lockedText) throw new Error(lockedText)
       if (editRow) {
         const { error } = await supabase.from('purchase_orders').update(poPayload).eq('id', editRow.id)
@@ -908,7 +958,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       setShowAdd(false); setEditRow(null); refetchAll()
       showToast(exampleError ? `บันทึกสำเร็จ แต่เก็บตัวอย่างไม่สำเร็จ: ${exampleError}` : 'บันทึกสำเร็จ')
     } catch (e) {
-      alert('Error: ' + (poTaxInvoiceErrorText(e) || e.message))
+      alert('Error: ' + mapPoReceiptRpcError(e))
     } finally {
       setSaving(false)
     }
@@ -918,7 +968,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     if (!deleteId) return
     const { error } = await supabase.from('purchase_orders').update({ status: 'cancelled' }).eq('id', deleteId)
     if (!error) { await auditLog('purchase_orders', deleteId, 'UPDATE', null, { status: 'cancelled' }); setDeleteId(null); refetchAll(); showToast('ยกเลิกแล้ว') }
-    else alert(String(error.message || '').includes('po_has_deposit_applications') ? PO_DEPOSIT_LOCKED_TEXT : 'Error: ' + (poTaxInvoiceErrorText(error) || error.message))
+    else alert(mapPoReceiptRpcError(error))
   }
 
   // Uses allInventoryItems/allAluminumProfiles (NOT the active-only
@@ -1039,6 +1089,54 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   // ฟอร์มเพิ่ม/แก้ไขใบสั่งซื้อแยกเป็นหน้าเต็มแทน popup เดิม (เหมือน Quotations.jsx
   // -- ฟอร์มยาว มีทั้งรายการสินค้าและช่องแนบไฟล์ popup แคบเกินไป) แทนที่ทั้งหน้า
   // list ไปเลยตอนเปิด แทนที่จะซ้อน Modal ทับ
+  const openCreditNote = (po) => {
+    setCreditNotePrefill({
+      supplier_id: po.supplier_id, site_id: po.site_id, po_id: po.id, category_id: po.category_id,
+      vatEnabled: po.has_vat !== false, priceIncludesVat: !!po.price_includes_vat, original_expense_id: po.expense_id || null,
+      items: (po.purchase_order_items || []).map(it => {
+        const invItem = it.inventory_item_id ? (allInventoryItems || []).find(i => i.id === it.inventory_item_id) : null
+        const profile = it.aluminum_profile_id ? (allAluminumProfiles || []).find(p => p.id === it.aluminum_profile_id) : null
+        const factor = it.inventory_item_id ? (unitFactors || []).find(f => f.inventory_item_id === it.inventory_item_id && f.unit_name === it.unit) : null
+        return poItemToCreditLine(it, invItem ? { ...computePoItemBaseQty(it, invItem, profile, factor), baseUnit: invItem.base_unit } : null)
+      }),
+    })
+    navigateTo('supplier_credit_notes', {})
+  }
+
+  const poMenuItems = (po) => {
+    const lock = poEditLockedText(po, taxInvoiceLinks) || poMoneyLockText(po, moneyIndex)
+    const items = []
+    if (canEdit && (po.status === 'ordered' || po.status === 'partially_received')) {
+      items.push(moneyIndex
+        ? { label: '📦 รับของ', onClick: () => setReceiveRow(po) }
+        : { label: '📦 รับของ', disabled: true, disabledTitle: 'กำลังโหลดข้อมูลการรับของ…', onClick: () => {} })
+    }
+    if (canEdit && po.status === 'ordered' && moneyIndex) {
+      items.push(moneyIndex.get(po.id)?.depositId
+        ? { label: '💰 สร้างใบจ่ายมัดจำ', disabled: true, disabledTitle: 'ใบสั่งซื้อนี้มีใบมัดจำแล้ว', onClick: () => {} }
+        : { label: '💰 สร้างใบจ่ายมัดจำ', onClick: () => setDepositPo(po) })
+    }
+    if (canEdit && (po.status === 'ordered' || po.status === 'draft')) {
+      items.push({ label: '✏️ แก้ไข', disabled: !!lock, disabledTitle: lock || undefined, onClick: () => { clearDraft(ADD_FORM_OPEN_KEY); setEditRow(po); setShowAdd(true) } })
+      items.push({ label: '🗑️ ยกเลิกใบสั่งซื้อ', danger: true, disabled: !!lock, disabledTitle: lock || undefined, onClick: () => setDeleteId(po.id) })
+    }
+    items.push({ label: '👁️ ดูตัวอย่างก่อนพิมพ์', onClick: () => setDocRow({ po, action: null }) })
+    items.push({ label: '🖨️ พิมพ์', onClick: () => setDocRow({ po, action: 'print' }) })
+    items.push({ label: '📄 ดาวน์โหลด PDF', onClick: () => setDocRow({ po, action: 'pdf' }) })
+    items.push({ label: '🖼️ ดาวน์โหลด JPEG', onClick: () => setDocRow({ po, action: 'jpg' }) })
+    if (canEdit && po.status === 'received') {
+      if (po.expense_id && !taxInvoiceLinks?.get(po.id)) {
+        // A PO with several bills (several receipts) has no single bill to swap the tax invoice on.
+        const multiBill = (moneyIndex?.get(po.id)?.receiptIds?.size || 0) > 1
+        items.push(multiBill
+          ? { label: '🔄 สลับใบกำกับภาษี', disabled: true, disabledTitle: 'ใบสั่งซื้อนี้มีหลายบิล (รับของหลายครั้ง) สลับใบกำกับภาษีจากที่นี่ไม่ได้ — แจ้งผู้ดูแลระบบ', onClick: () => {} }
+          : { label: '🔄 สลับใบกำกับภาษี', onClick: () => setSwapInvoiceRow(po) })
+      }
+      items.push({ label: '↩️ สร้างใบลดหนี้', onClick: () => openCreditNote(po) })
+    }
+    return items
+  }
+
   if (showAdd) {
     return (
       <div>
@@ -1116,7 +1214,6 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
               {sortedPos.map(po => {
                 const { total } = calcPoTotals(po.purchase_order_items, po.has_vat, po.price_includes_vat)
                 const taxBadge = poTaxInvoiceBadge(po, taxInvoiceLinks)
-                const editLocked = poEditLockedText(po, taxInvoiceLinks)
                 return (
                   <tr key={po.id}>
                     <td className="font-mono" style={{ fontSize: 12 }}>
@@ -1136,37 +1233,8 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <div className="actions-cell">
-                        <button className="btn btn-sm btn-ghost" onClick={() => setDetailRow(po)}>👁️</button>
-                        <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(po)}>📄</button>
-                        {canEdit && po.status === 'ordered' && (
-                          <button className="btn btn-sm btn-primary" onClick={() => setReceiveRow(po)}>✅ รับของแล้ว</button>
-                        )}
-                        {canEdit && (po.status === 'ordered' || po.status === 'draft') && (
-                          <>
-                            <button className="btn btn-sm btn-edit" disabled={!!editLocked} title={editLocked || undefined} onClick={() => { clearDraft(ADD_FORM_OPEN_KEY); setEditRow(po); setShowAdd(true) }}><PencilIcon /></button>
-                            <button className="btn btn-sm btn-danger" disabled={!!editLocked} title={editLocked || undefined} onClick={() => setDeleteId(po.id)}><TrashIcon /></button>
-                          </>
-                        )}
-                        {canEdit && po.status === 'received' && (
-                          <RowActionsMenu items={[
-                            ...(po.expense_id && !taxInvoiceLinks?.get(po.id) ? [{ label: '🔄 สลับใบกำกับภาษี', onClick: () => setSwapInvoiceRow(po) }] : []),
-                            { label: '↩️ สร้างใบลดหนี้', onClick: () => {
-                              setCreditNotePrefill({
-                                supplier_id: po.supplier_id, site_id: po.site_id, po_id: po.id, category_id: po.category_id,
-                                vatEnabled: po.has_vat !== false,
-                                priceIncludesVat: !!po.price_includes_vat,
-                                original_expense_id: po.expense_id || null,
-                                items: (po.purchase_order_items || []).map(it => {
-                                  const invItem = it.inventory_item_id ? (allInventoryItems || []).find(i => i.id === it.inventory_item_id) : null
-                                  const profile = it.aluminum_profile_id ? (allAluminumProfiles || []).find(p => p.id === it.aluminum_profile_id) : null
-                                  const factor = it.inventory_item_id ? (unitFactors || []).find(f => f.inventory_item_id === it.inventory_item_id && f.unit_name === it.unit) : null
-                                  return poItemToCreditLine(it, invItem ? { ...computePoItemBaseQty(it, invItem, profile, factor), baseUnit: invItem.base_unit } : null)
-                                }),
-                              })
-                              navigateTo('supplier_credit_notes', {})
-                            } },
-                          ]} />
-                        )}
+                        <button className="btn btn-sm btn-ghost" title="ดูใบสั่งซื้อ / เอกสาร" onClick={() => setDetailRow(po)}>📄</button>
+                        <RowActionsMenu items={poMenuItems(po)} />
                       </div>
                     </td>
                   </tr>
@@ -1184,11 +1252,27 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
         <ConfirmDialog title="ยกเลิกใบสั่งซื้อ" message="ยืนยันการยกเลิกใบสั่งซื้อนี้?" onConfirm={handleCancel} onCancel={() => setDeleteId(null)} danger />
       )}
 
-      {docRow && <PODocumentModal po={docRow} tenant={tenant} onClose={() => setDocRow(null)} />}
+      {docRow && <PODocumentModal po={docRow.po} autoAction={docRow.action} tenant={tenant} onClose={() => setDocRow(null)} />}
 
-      {detailRow && <PODetailModal po={detailRow} taxBadge={poTaxInvoiceBadge(detailRow, taxInvoiceLinks)} tenantId={tenant?.id} onClose={() => setDetailRow(null)} />}
+      {detailRow && <PODetailModal key={`${detailRow.id}:${poDataVersion}`} po={detailRow} taxBadge={poTaxInvoiceBadge(detailRow, taxInvoiceLinks)} tenantId={tenant?.id}
+        onClose={() => setDetailRow(null)}
+        onViewDocument={po => { setDetailRow(null); setDocRow({ po, action: null }) }} />}
 
-      {receiveRow && (
+      {/* Placeholders until Task 8 (create-deposit dialog) and Task 9 (new receive dialog) replace them. */}
+      {depositPo && (
+        <Modal title="สร้างใบจ่ายมัดจำ" onClose={() => { setDepositPo(null); refreshPoData() }} maxWidth={400}>
+          <div className="modal-body" data-testid="deposit-placeholder">ฟังก์ชันสร้างใบจ่ายมัดจำสำหรับ {depositPo.po_number} กำลังจะเปิดให้ใช้งาน</div>
+          <div className="modal-footer"><button className="btn btn-ghost" onClick={() => { setDepositPo(null); refreshPoData() }}>ปิด</button></div>
+        </Modal>
+      )}
+      {receiveRow && receiveRow.status === 'partially_received' && (
+        <Modal title="รับของ" onClose={() => setReceiveRow(null)} maxWidth={400}>
+          <div className="modal-body" data-testid="receive-placeholder">ฟังก์ชันรับของบางส่วนสำหรับ {receiveRow.po_number} กำลังจะเปิดให้ใช้งาน</div>
+          <div className="modal-footer"><button className="btn btn-ghost" onClick={() => setReceiveRow(null)}>ปิด</button></div>
+        </Modal>
+      )}
+
+      {receiveRow && receiveRow.status !== 'partially_received' && (
         <ConfirmDialog
           title="ยืนยันรับของ"
           message={

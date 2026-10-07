@@ -69,8 +69,8 @@ export function mapPoReceiptRpcError(err) {
 
 export function buildPoMoneyIndex({ receiptItems, deposits }) {
   const m = new Map()
-  const get = id => { if (!m.has(id)) m.set(id, { receivedItemIds: new Set(), depositId: null }); return m.get(id) }
-  for (const r of receiptItems || []) { const poId = r.po_receipts?.po_id; if (poId) get(poId).receivedItemIds.add(r.po_item_id) }
+  const get = id => { if (!m.has(id)) m.set(id, { receivedItemIds: new Set(), receiptIds: new Set(), depositId: null }); return m.get(id) }
+  for (const r of receiptItems || []) { const poId = r.po_receipts?.po_id; if (poId) { const e = get(poId); e.receivedItemIds.add(r.po_item_id); if (r.receipt_id) e.receiptIds.add(r.receipt_id) } }
   for (const d of deposits || []) if (d.po_id) get(d.po_id).depositId = d.id
   return m
 }
