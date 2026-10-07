@@ -2,6 +2,9 @@
 // Modal component — ใช้ทั้ง add / edit / confirm ทุกหน้า
 // ✅ ปิดได้แค่ปุ่ม X / Escape / ปุ่มยกเลิกในฟอร์ม -- คลิกนอก modal ไม่ปิด
 //    (กันปิดโดยไม่ตั้งใจ)
+// ✅ onClose() คืน false = "ปฏิเสธการปิดตอนนี้" (กำลังบันทึก / มี overlay ลูกเปิดอยู่)
+//    สัญญานี้ใช้เฉพาะปุ่ม back ของเบราว์เซอร์ (modal จะ push history entry กลับให้)
+//    -- Escape และปุ่ม X ไม่สนค่าที่คืน: handler ต้องกันเองถ้าไม่อยากให้ปิด
 // ✅ ปุ่ม back บนมือถือปิด modal แทนที่จะออกจากหน้าเว็บทั้งหมด
 // ============================================================
 import { useEffect, useRef } from 'react'
@@ -25,6 +28,10 @@ import { useEffect, useRef } from 'react'
 // ต้องกลับมาดูจุดนี้ใหม่
 let suppressPopstateCount = 0
 
+/**
+ * @param {() => (void|false)} onClose  Called by X / Escape / browser back. Returning `false` is honoured ONLY for the
+ *   browser back button (modal stays open and its history entry is re-pushed); X and Escape ignore the return value.
+ */
 export function Modal({ title, onClose, children, maxWidth = 600 }) {
   // ปุ่ม back มือถือ: push history entry ตอนเปิด modal แล้วฟัง popstate --
   // กด back = ปิด modal เฉยๆ ไม่ back ออกจากหน้าเว็บ. ถ้า modal ถูกปิดด้วยวิธีอื่น
@@ -48,8 +55,12 @@ export function Modal({ title, onClose, children, maxWidth = 600 }) {
     window.history.pushState({ modalOpen: true }, '')
     const handlePopState = () => {
       if (suppressPopstateCount > 0) { suppressPopstateCount -= 1; return }
+      // onClose() === false: the caller refuses to close now (busy / a child overlay is open). The back press
+      // already consumed this modal's history entry, so push it again; otherwise the next back would leave the page.
+      // set the flag BEFORE onClose(): if the handler throws or unmounts this modal synchronously, cleanup must not
+      // call history.back() a second time (the back press already consumed our entry)
       closedByBackRef.current = true
-      onClose()
+      if (onClose() === false) { closedByBackRef.current = false; window.history.pushState({ modalOpen: true }, ''); return }
     }
     window.addEventListener('popstate', handlePopState)
     return () => {
