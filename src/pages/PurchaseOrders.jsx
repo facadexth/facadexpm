@@ -112,11 +112,6 @@ function ItemsEditor({ items, onChange, inventoryItems, onInventoryItemCreated, 
                 ? <span />
                 : <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)}>✕</button>}
             </div>
-            {items.length === 1 && (
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn btn-sm btn-ghost" onClick={() => remove(i)}>ลบข้อมูลทั้งหมด</button>
-            </div>
-            )}
             <div style={{ marginLeft: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ color: 'var(--text3)', flexShrink: 0 }}>📦 ผูกกับสต็อก:</span>
               <div style={{ flex: 1, maxWidth: 340 }}>
@@ -189,6 +184,13 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, ini
   const [scanFile, setScanFile] = useState(null)
   const [scanPayload, setScanPayload] = useState(null) // { base64, mimeType, reference_no_guess } after a successful scan
   const [saveAsExample, setSaveAsExample] = useState(false)
+  const [confirmClearAll, setConfirmClearAll] = useState(false)
+  // Clears every product line and whatever the scan filled in (header fields stay).
+  const clearAllLines = () => {
+    setForm(f => ({ ...f, items: [{ ...EMPTY_ITEM }], deposit_deductions: [] }))
+    setScanError(null); setScanCode(null); setScanPayload(null); setScanFile(null); setSaveAsExample(false)
+    setConfirmClearAll(false)
+  }
 
   // TEMPORARY diagnostic -- proves whether PurchaseOrderForm itself is
   // silently unmounting/remounting while the native picker is open
@@ -252,6 +254,7 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, ini
   }
 
   return (
+    <>
     <form onSubmit={e => {
       e.preventDefault()
       clearFormDraft()
@@ -295,7 +298,12 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, ini
         </div>
         <div>
           <label className="label">📷 อัพโหลดจากใบส่งของ/ใบเสนอราคา (ไม่บังคับ)</label>
-          <input type="file" accept="image/*,application/pdf" onChange={handleScanUpload} disabled={!form.supplier_id || scanning} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <input type="file" accept="image/*,application/pdf" onChange={handleScanUpload} disabled={!form.supplier_id || scanning} />
+            <button type="button" className="btn btn-sm btn-danger" disabled={scanning}
+              title="ลบรายการสินค้าทั้งหมดและผลที่สแกนได้ (ข้อมูลหัวเอกสารไม่ถูกลบ)"
+              onClick={() => setConfirmClearAll(true)}>🗑️ ลบข้อมูลทั้งหมด</button>
+          </div>
           {!form.supplier_id && <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>เลือก Supplier ก่อนถึงจะอัพโหลดได้</div>}
           {scanning && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>⏳ กำลังอ่านเอกสาร...</div>}
           {scanError && <ScanNotice code={scanCode} message={scanError} />}
@@ -373,6 +381,12 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, ini
         </button>
       </div>
     </form>
+    {confirmClearAll && (
+      <ConfirmDialog title="ลบข้อมูลทั้งหมด"
+        message={`ลบรายการสินค้าทั้งหมด ${form.items.length} รายการ รวมถึงผลที่สแกนจากเอกสารและเลขมัดจำที่อ่านได้? ข้อมูลที่กรอกไว้จะหายและกู้คืนไม่ได้ (วันที่ ไซต์ และ Supplier ยังอยู่)`}
+        onConfirm={clearAllLines} onCancel={() => setConfirmClearAll(false)} danger />
+    )}
+    </>
   )
 }
 
