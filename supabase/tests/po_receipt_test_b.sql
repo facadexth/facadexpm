@@ -17,6 +17,7 @@ DECLARE
   bill1 UUID; bill2 UUID; rem1 UUID; rem2 UUID;
   poR UUID; rr1 UUID; rr2 UUID; poD UUID; dd1 UUID; v_ti UUID; e_leg3 UUID; d_leg3 UUID;
   poO UUID; oo1 UUID; e_leg4 UUID; d_leg4 UUID; poV UUID; vv1 UUID; e_v UUID; d_v UUID; poN UUID; nn1 UUID; nn2 UUID;
+  poZ UUID; z1 UUID; z2 UUID; z3 UUID; poY UUID; y1 UUID; y2 UUID; y_rc UUID; e_leg5 UUID; d_leg5 UUID; rem3 UUID; rem4 UUID;
 BEGIN
   SELECT id INTO t_owner FROM auth.users ORDER BY created_at ASC LIMIT 1;
   INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at) VALUES ('__TEST prb__', t_owner, 'trial', now() + interval '14 days') RETURNING id INTO t_tenant;
@@ -309,6 +310,50 @@ BEGIN
                                  jsonb_build_array(jsonb_build_object('po_item_id', s1, 'base_qty', 4, 'unit_cost', 25))); RAISE EXCEPTION 'B19 FAIL';
   EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'deposit_exceeds_remaining%' THEN RAISE EXCEPTION 'B19 FAIL: %', v_msg; END IF; END;
 
+  -- B24: last delivery of a free (0-baht) line after two deliveries whose VAT rounded up (10.535 -> 10.54 twice):
+  -- final remainder 0.00 / -0.01 is tolerated (no deductions, >= -0.01 x 2), stored as computed, and makes no bill
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status) VALUES (t_tenant, 'PO-PRB-Z', t_site, t_sup, t_cat, v_bkk, 'ordered') RETURNING id INTO poZ;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total, sort_order) VALUES (t_tenant, poZ, 'Z1', 1, 150.50, 150.50, 0) RETURNING id INTO z1;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total, sort_order) VALUES (t_tenant, poZ, 'Z2', 1, 150.50, 150.50, 1) RETURNING id INTO z2;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total, sort_order) VALUES (t_tenant, poZ, 'free', 1, 0, 0, 2) RETURNING id INTO z3;
+  j := receive_po_lines(poZ, ARRAY[z1], v_bkk, '[]'::jsonb, 150.50, 10.54, '[]'::jsonb);
+  j := receive_po_lines(poZ, ARRAY[z2], v_bkk, '[]'::jsonb, 150.50, 10.54, '[]'::jsonb);
+  j := receive_po_lines(poZ, ARRAY[z3], v_bkk, '[]'::jsonb, 0, -0.01, '[]'::jsonb);
+  IF j->>'status' <> 'received' OR j->>'expense_id' IS NOT NULL OR (j->>'vat')::numeric <> -0.01 THEN RAISE EXCEPTION 'B24 FAIL: %', j; END IF;
+  SELECT sum(goods_subtotal) AS s, sum(goods_vat) AS v INTO r FROM po_receipts WHERE po_id = poZ;
+  IF r.s <> 301 OR r.v <> 21.07 THEN RAISE EXCEPTION 'B24 FAIL: receipts % / %', r.s, r.v; END IF;
+  SELECT count(*) INTO v_cnt FROM expenses WHERE po_id = poZ;
+  IF v_cnt <> 2 THEN RAISE EXCEPTION 'B24 FAIL: % bills', v_cnt; END IF;
+
+  -- B24b: same remainder WITH a deduction keeps the strict refusal; beyond the tolerance always refused
+  INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status) VALUES (t_tenant, 'PO-PRB-Y', t_site, t_sup, t_cat, v_bkk, 'ordered') RETURNING id INTO poY;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total, sort_order) VALUES (t_tenant, poY, 'Y1', 1, 100, 100, 0) RETURNING id INTO y1;
+  INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit_price, line_total, sort_order) VALUES (t_tenant, poY, 'free', 1, 0, 0, 1) RETURNING id INTO y2;
+  INSERT INTO expenses (date, description, site_id, category_id, supplier_id, amount_no_vat, vat, amount, payment_method, status)
+  VALUES (v_bkk, 'dep 5', t_site, t_cat, t_sup, 10, 0.7, 10.7, 'transfer', 'paid') RETURNING id INTO e_leg5;
+  INSERT INTO supplier_deposits (expense_id, deposit_invoice_no) VALUES (e_leg5, 'PRB-LEG5') RETURNING id INTO d_leg5;
+  RESET role;   -- an earlier receipt whose VAT is 0.01 above the line's (as rounding could leave it), made as the RPC would
+  INSERT INTO po_receipts (tenant_id, po_id, seq, received_date, goods_subtotal, goods_vat) VALUES (t_tenant, poY, 1, v_bkk, 100, 7.01) RETURNING id INTO y_rc;
+  INSERT INTO po_receipt_items (tenant_id, receipt_id, po_item_id, quantity, line_total) VALUES (t_tenant, y_rc, y1, 1, 100);
+  PERFORM set_config('app.po_receipt_rpc', 'on', true);
+  UPDATE purchase_orders SET status = 'partially_received', received_date = v_bkk WHERE id = poY;
+  PERFORM set_config('app.po_receipt_rpc', 'off', true);
+  SET LOCAL role = 'authenticated';
+  BEGIN PERFORM receive_po_lines(poY, ARRAY[y2], v_bkk, jsonb_build_array(jsonb_build_object('deposit_id', d_leg5, 'mode', 'value', 'value', 1)), 0, -0.01, '[]'::jsonb);
+        RAISE EXCEPTION 'B24b FAIL: deduction on a negative receipt';
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'bad_lines%' THEN RAISE EXCEPTION 'B24b FAIL: %', v_msg; END IF; END;
+  RESET role;
+  UPDATE po_receipts SET goods_vat = 7.02 WHERE id = y_rc;   -- remainder -0.02 with one earlier receipt: beyond -0.01
+  SET LOCAL role = 'authenticated';
+  BEGIN PERFORM receive_po_lines(poY, ARRAY[y2], v_bkk, '[]'::jsonb, 0, -0.02, '[]'::jsonb); RAISE EXCEPTION 'B24b FAIL: beyond tolerance';
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'bad_lines%' THEN RAISE EXCEPTION 'B24b FAIL: %', v_msg; END IF; END;
+  RESET role;
+  UPDATE po_receipts SET goods_vat = 7.01 WHERE id = y_rc;
+  SET LOCAL role = 'authenticated';
+  j := receive_po_lines(poY, ARRAY[y2], v_bkk, '[]'::jsonb, 0, -0.01, '[]'::jsonb);
+  IF j->>'status' <> 'received' OR j->>'expense_id' IS NOT NULL THEN RAISE EXCEPTION 'B24b FAIL: tolerated %', j; END IF;
+  IF EXISTS (SELECT 1 FROM po_deposit_applications WHERE deposit_id = d_leg5) THEN RAISE EXCEPTION 'B24b FAIL: deposit applied'; END IF;
+
   -- B13: split_payment on bill1 (pending 44,940)
   j := split_payment(bill1, 20000, v_bkk, 'transfer');
   rem1 := (j->>'remaining_expense_id')::uuid;
@@ -333,6 +378,21 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'not_a_po_bill%' THEN RAISE EXCEPTION 'B13 FAIL: %', v_msg; END IF; END;
   BEGIN DELETE FROM expenses WHERE id = rem2; RAISE EXCEPTION 'B13 FAIL: split part deleted';
   EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'expense_is_split_part%' THEN RAISE EXCEPTION 'B13 FAIL: %', v_msg; END IF; END;
+
+  -- B25: the pending remainder keeps check_date and payer; the paid part drops check_date unless paid by cheque;
+  -- the split row is stamped with clock_timestamp() (>= the transaction start)
+  UPDATE expenses SET check_date = v_bkk + 5, payer = '__prb payer__' WHERE id = rem2;
+  j := split_payment(rem2, 1000, v_bkk, 'transfer');
+  rem3 := (j->>'remaining_expense_id')::uuid;
+  SELECT * INTO r FROM expenses WHERE id = rem3;
+  IF r.check_date IS DISTINCT FROM v_bkk + 5 OR r.payer IS DISTINCT FROM '__prb payer__' OR r.amount <> 19000 THEN RAISE EXCEPTION 'B25 FAIL: remainder %', row_to_json(r); END IF;
+  SELECT * INTO r FROM expenses WHERE id = rem2;
+  IF r.check_date IS NOT NULL OR r.payer IS DISTINCT FROM '__prb payer__' OR r.status <> 'paid' THEN RAISE EXCEPTION 'B25 FAIL: paid part %', row_to_json(r); END IF;
+  j := split_payment(rem3, 1000, v_bkk, 'check');
+  rem4 := (j->>'remaining_expense_id')::uuid;
+  IF (SELECT check_date FROM expenses WHERE id = rem3) IS DISTINCT FROM v_bkk + 5
+     OR (SELECT check_date FROM expenses WHERE id = rem4) IS DISTINCT FROM v_bkk + 5 THEN RAISE EXCEPTION 'B25 FAIL: cheque split'; END IF;
+  IF EXISTS (SELECT 1 FROM expense_splits WHERE source_expense_id IN (rem2, rem3) AND created_at < now()) THEN RAISE EXCEPTION 'B25 FAIL: created_at'; END IF;
 
   -- B12: role / tenant / read-only
   BEGIN PERFORM receive_po_lines(t2_po, '{}'::uuid[], v_bkk, '[]'::jsonb, 0, 0, '[]'::jsonb); RAISE EXCEPTION 'B12 FAIL: other tenant PO';

@@ -417,8 +417,9 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
   const { data: depositMap, refetch: refetchDeposits } = useDepositMap()
   const depositOf = id => depositMap.get(id)
   const splitReady = useSplitPaymentReady()   // true only once the 2026-10-09 schema (split_payment) exists; else the action is hidden
-  // a PO bill the server's split_payment can take (pending only; awaiting_billing shows the action disabled)
-  const canSplitRow = e => !!e.po_id && (e.status === 'pending' || e.status === 'awaiting_billing') && !e.cheque_id && !isCnExpense(e.id) && !depositOf(e.id) && Number(e.amount) > 0
+  // a PO bill the server's split_payment can take (pending only; awaiting_billing shows the action disabled).
+  // The RPC requires ADMIN/OWNER (is_admin_or_owner): gated here explicitly, not only through the row's canEdit wrapper.
+  const canSplitRow = e => isAtLeast('ADMIN') && !!e.po_id && (e.status === 'pending' || e.status === 'awaiting_billing') && !e.cheque_id && !isCnExpense(e.id) && !depositOf(e.id) && Number(e.amount) > 0
   const isDepositLocked = id => !!depositMap.get(id)?.applied
   const [depositRow, setDepositRow] = useState(null)
   const { hasModuleAccess }  = useTenant()

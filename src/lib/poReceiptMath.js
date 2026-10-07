@@ -41,7 +41,29 @@ export function receiptValue({ items, hasVat, priceIncludesVat, lineIds, receive
     subtotal = round2(t.subtotal)
     vat = round2(t.vat)
   }
-  return { subtotal, vat, total: round2(subtotal + vat), isFinal }
+  // priorCount: each earlier receipt is rounded to satang, so a FINAL remainder may sit up to 0.01 x priorCount below 0
+  // (e.g. a last delivery of free lines); receive_po_lines tolerates that only without deductions (receiptBillPlan)
+  return { subtotal, vat, total: round2(subtotal + vat), isFinal, priorCount: isFinal ? (priorReceipts || []).length : 0 }
+}
+
+/** Is this receipt value acceptable, and is it a tolerated negative final remainder? (= receive_po_lines' bad_lines rule)
+ *  Non-final, or with deductions: neither part may be negative. Final without deductions: down to -0.01 per earlier receipt. */
+export function receiptRange(receipt, hasDeductions) {
+  const tol = receipt.isFinal && !hasDeductions ? 0.01 * Number(receipt.priorCount || 0) : 0
+  const bad = Number(receipt.subtotal) < -(tol + EPS) || Number(receipt.vat) < -(tol + EPS)
+  const tolerated = !bad && receipt.isFinal && !hasDeductions && (Number(receipt.subtotal) < 0 || Number(receipt.vat) < 0)
+  return { bad, tolerated }
+}
+
+/** Bill for a tolerated negative final remainder (no deductions): the payable total exactly, never a negative field,
+ *  no bill when it is worth <= 0. Same shape as computeReceivePlan. */
+export function toleratedReceiptPlan({ subtotal, vat }) {
+  let net = round2(subtotal)
+  let v = round2(vat)
+  if (round2(net + v) <= 0) { net = 0; v = 0 }
+  else if (v < 0) { net = round2(net + v); v = 0 }
+  else if (net < 0) { v = round2(v + net); net = 0 }
+  return { netToPay: net, vatToPay: v, total: round2(net + v), createExpense: net > EPS || v > EPS, overNet: false, overVat: false }
 }
 
 /** VAT-inclusive input (value in baht, or percent of this receipt incl. VAT) -> stored split.
@@ -97,7 +119,10 @@ export function computeReceiveDeductions({ deposits, supplierId, selection, rece
     forPlan.push({ id: d.id, net: r.net, vat: r.vat, remVat: Number(d.remaining.vat) })
     deductions.push({ deposit_id: d.id, mode: s.mode, value: Number(s.value) })
   }
-  const plan = computeReceivePlan({ subtotal: receipt.subtotal, vat: receipt.vat }, forPlan)
-  const valid = Object.keys(errors).length === 0 && !plan.overNet && !plan.overVat
-  return { deductions, lines, errors, plan, valid }
+  const range = receiptRange(receipt, forPlan.length > 0)
+  const plan = range.tolerated
+    ? toleratedReceiptPlan({ subtotal: receipt.subtotal, vat: receipt.vat })
+    : computeReceivePlan({ subtotal: receipt.subtotal, vat: receipt.vat }, forPlan)
+  const valid = Object.keys(errors).length === 0 && !range.bad && !plan.overNet && !plan.overVat
+  return { deductions, lines, errors, plan, valid, receiptBad: range.bad }
 }

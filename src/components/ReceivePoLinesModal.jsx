@@ -206,11 +206,13 @@ export default function ReceivePoLinesModal({ po, stockPlanFor, stockBalances, o
         <div style={{ fontWeight: 600 }}>
           {lineIds.length === 0
             ? <span style={muted}>ยังไม่ได้เลือกรายการ</span>
+            : result.receiptBad
+              ? <span style={{ color: 'var(--red)' }}>{result.deductions.length > 0 ? 'มูลค่าการรับครั้งนี้ติดลบจากการปัดเศษ — ไม่สามารถหักมัดจำในการรับครั้งนี้' : 'มูลค่าการรับครั้งนี้ติดลบ — ติดต่อผู้ดูแลระบบ'}</span>
             : (plan.overNet || plan.overVat)
               ? <span style={{ color: 'var(--red)' }}>{plan.overVat && !plan.overNet ? 'VAT ที่หักเกิน VAT ของการรับครั้งนี้' : 'ยอดหักเกินมูลค่าที่รับครั้งนี้'}</span>
               : plan.createExpense
                 ? <>บิลที่จะสร้าง: ก่อน VAT <span className="font-mono">{fmt(plan.netToPay)}</span> · VAT <span className="font-mono">{fmt(plan.vatToPay)}</span> · ยอดชำระ <span className="font-mono">{fmt(plan.total)}</span></>
-                : 'ไม่สร้างบิล (หักครบ)'}
+                : result.deductions.length > 0 ? 'ไม่สร้างบิล (หักครบ)' : 'ไม่สร้างบิล (มูลค่า 0 บาท)'}
           {lineIds.length > 0 && <div style={{ ...muted, fontWeight: 400, fontSize: 12 }}>ยอดที่บันทึกจริงคำนวณโดยระบบ อาจต่างจากที่แสดง ±0.01 บาท (ปัดเศษ)</div>}
         </div>
         {po.stock_from_invoice && <div style={{ color: '#b45309' }}>📦 ไม่ลงสต็อกตอนรับของ — สต็อกจะเข้าเมื่อบันทึกใบกำกับภาษีผู้ขาย</div>}

@@ -29,8 +29,10 @@ BEGIN
 END $$;
 
 -- = receiptValue() in src/lib/poReceiptMath.js. Final receipt (nothing outstanding after it) = PO minus earlier receipts.
+-- n_prior = number of earlier receipts: each rounded to satang, so a final remainder may sit up to 0.01 x n_prior below 0
+-- (e.g. a last delivery of free lines after two deliveries whose VAT rounded up); receive_po_lines tolerates that.
 CREATE OR REPLACE FUNCTION _po_receipt_value(p_po_id UUID, p_tenant UUID, p_line_ids UUID[],
-  OUT subtotal NUMERIC, OUT vat NUMERIC, OUT is_final BOOLEAN)
+  OUT subtotal NUMERIC, OUT vat NUMERIC, OUT is_final BOOLEAN, OUT n_prior INT)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_has BOOLEAN; v_incl BOOLEAN; v_raw NUMERIC; v_left INT; v_psub NUMERIC; v_pvat NUMERIC; t RECORD;
 BEGIN
@@ -40,6 +42,7 @@ BEGIN
    WHERE i.po_id = p_po_id AND i.tenant_id = p_tenant AND NOT (i.id = ANY (COALESCE(p_line_ids, '{}'::uuid[])))
      AND NOT EXISTS (SELECT 1 FROM po_receipt_items r WHERE r.po_item_id = i.id);
   is_final := v_left = 0 AND cardinality(COALESCE(p_line_ids, '{}'::uuid[])) > 0;
+  SELECT count(*) INTO n_prior FROM po_receipts WHERE po_id = p_po_id AND tenant_id = p_tenant;
   IF is_final THEN
     SELECT * INTO t FROM _po_totals(p_po_id, p_tenant);
     SELECT COALESCE(SUM(goods_subtotal), 0), COALESCE(SUM(goods_vat), 0) INTO v_psub, v_pvat
@@ -116,6 +119,7 @@ DECLARE
   v_used_net NUMERIC; v_used_vat NUMERIC; v_rem_net NUMERIC; v_rem_vat NUMERIC; v_amt NUMERIC; v_dvat NUMERIC;
   v_sum_net NUMERIC := 0; v_sum_vat NUMERIC := 0; v_net NUMERIC; v_vat_pay NUMERIC;
   v_apps JSONB := '[]'::jsonb; v_seen UUID[] := '{}'; v_cov NUMERIC := 0; v_parsed JSONB := '[]'::jsonb; v_last JSONB;
+  v_has_ded BOOLEAN; v_tol NUMERIC; v_tolerated BOOLEAN;
   s JSONB; v_stock JSONB := '{}'::jsonb; v_item UUID; v_bq NUMERIC; v_uc NUMERIC; v_line_net NUMERIC;
 BEGIN
   IF NOT (is_admin_or_owner() AND has_module_access('purchase_orders') AND tenant_can_write()) THEN RAISE EXCEPTION 'insufficient_privilege'; END IF;
@@ -142,7 +146,14 @@ BEGIN
   END IF;
 
   SELECT * INTO rv FROM _po_receipt_value(po.id, v_tenant, v_ids);
-  IF rv.subtotal IS NULL OR rv.vat IS NULL OR rv.subtotal < 0 OR rv.vat < -0.005 THEN RAISE EXCEPTION 'bad_lines'; END IF;
+  IF rv.subtotal IS NULL OR rv.vat IS NULL THEN RAISE EXCEPTION 'bad_lines'; END IF;
+  -- A receipt value may not be negative, except the FINAL receipt WITHOUT deductions, whose remainder (PO minus the
+  -- earlier, satang-rounded receipts) may sit up to 0.01 per earlier receipt below 0. It is stored as computed (the
+  -- receipts still add up to the PO exactly); no bill when it is worth <= 0 (see below). Mirror: computeReceiveDeductions.
+  v_has_ded := jsonb_typeof(COALESCE(p_deduction, '[]'::jsonb)) = 'array' AND jsonb_array_length(COALESCE(p_deduction, '[]'::jsonb)) > 0;
+  v_tol := CASE WHEN rv.is_final AND NOT v_has_ded THEN 0.01 * rv.n_prior ELSE 0 END;
+  IF rv.subtotal < -(v_tol + 0.005) OR rv.vat < -(v_tol + 0.005) THEN RAISE EXCEPTION 'bad_lines'; END IF;
+  v_tolerated := rv.is_final AND NOT v_has_ded AND (rv.subtotal < 0 OR rv.vat < 0);
   IF abs(rv.subtotal - COALESCE(p_expected_subtotal, -1)) > 0.01 OR abs(rv.vat - COALESCE(p_expected_vat, -1)) > 0.01 THEN
     RAISE EXCEPTION 'totals_mismatch';
   END IF;
@@ -198,7 +209,7 @@ BEGIN
     v_apps := v_apps || jsonb_build_object('deposit_id', d.id, 'net', v_amt, 'vat', v_dvat, 'rem_vat', v_rem_vat);
   END LOOP;
 
-  IF v_sum_net > rv.subtotal + 0.005 THEN RAISE EXCEPTION 'deposit_exceeds_receipt'; END IF;
+  IF jsonb_array_length(v_apps) > 0 AND v_sum_net > rv.subtotal + 0.005 THEN RAISE EXCEPTION 'deposit_exceeds_receipt'; END IF;
   v_net := round(rv.subtotal - v_sum_net, 2); v_vat_pay := round(rv.vat - v_sum_vat, 2);
   -- same fold as receive_po_with_deposits: deductions cover the whole net -> a VAT gap of up to 0.01 per application is rounding.
   -- The last application (uuid order) takes it only while its VAT stays within [0, that deposit's remaining VAT];
@@ -212,8 +223,16 @@ BEGIN
       to_jsonb(round((v_last->>'vat')::numeric + v_vat_pay, 2)));
     v_sum_vat := v_sum_vat + v_vat_pay; v_vat_pay := 0;
   END IF;
-  IF v_vat_pay < -0.005 THEN RAISE EXCEPTION 'deposit_vat_exceeds_receipt'; END IF;
-  v_net := GREATEST(v_net, 0); v_vat_pay := GREATEST(v_vat_pay, 0);
+  IF v_tolerated THEN
+    -- tolerated final remainder (no deductions): bill the payable total exactly, never a negative field; none when <= 0
+    IF round(v_net + v_vat_pay, 2) <= 0 THEN v_net := 0; v_vat_pay := 0;
+    ELSIF v_vat_pay < 0 THEN v_net := round(v_net + v_vat_pay, 2); v_vat_pay := 0;
+    ELSIF v_net < 0 THEN v_vat_pay := round(v_vat_pay + v_net, 2); v_net := 0;
+    END IF;
+  ELSE
+    IF v_vat_pay < -0.005 THEN RAISE EXCEPTION 'deposit_vat_exceeds_receipt'; END IF;
+    v_net := GREATEST(v_net, 0); v_vat_pay := GREATEST(v_vat_pay, 0);
+  END IF;
 
   -- stock plan: the base-quantity conversion lives in the client (computePoItemBaseQty); validate it here
   IF jsonb_typeof(COALESCE(p_stock, '[]'::jsonb)) <> 'array' THEN RAISE EXCEPTION 'bad_stock_plan'; END IF;
@@ -323,24 +342,27 @@ BEGIN
 
   -- the remainder is a NEW pending row; the original row (id kept: PO / receipt / tax-invoice links stay valid) becomes the paid part
   INSERT INTO expenses (tenant_id, date, description, site_id, category_id, supplier, supplier_id, amount, amount_no_vat, vat,
-                        payment_method, status, invoice_no, notes, is_subcontract, billing_date, due_date, po_id)
+                        payment_method, status, invoice_no, notes, is_subcontract, billing_date, due_date, check_date, payer, po_id)
   VALUES (v_tenant, e.date, e.description, e.site_id, e.category_id, e.supplier, e.supplier_id, round(e.amount - v_paid, 2),
           CASE WHEN v_split THEN round(e.amount_no_vat - v_pnet, 2) END, CASE WHEN v_split THEN round(e.vat - v_pvat, 2) END,
           e.payment_method, 'pending', e.invoice_no,
           concat_ws(' | ', NULLIF(btrim(e.notes), ''), 'ยอดคงเหลือหลังจ่ายบางส่วน ' || to_char(v_paid, 'FM999,999,999,990.00') || ' บาท (แยกบิล)'),
-          e.is_subcontract, e.billing_date, e.due_date, e.po_id)
+          e.is_subcontract, e.billing_date, e.due_date, e.check_date, e.payer, e.po_id)
   RETURNING id INTO v_new;
   UPDATE expenses
      SET amount = v_paid,
          amount_no_vat = CASE WHEN v_split THEN v_pnet END,
          vat = CASE WHEN v_split THEN v_pvat END,
          status = 'paid', payment_method = p_method,
+         check_date = CASE WHEN p_method = 'check' THEN check_date END,
          notes = concat_ws(' | ', NULLIF(btrim(notes), ''),
                    'จ่ายบางส่วน ' || to_char(v_paid, 'FM999,999,999,990.00') || ' จาก ' || to_char(e.amount, 'FM999,999,999,990.00')
                    || ' บาท วันที่ ' || to_char(p_paid_date, 'DD/MM/YYYY') || ' (แยกบิล)')
    WHERE id = e.id;
-  INSERT INTO expense_splits (tenant_id, source_expense_id, new_expense_id, paid_amount, paid_date, payment_method, created_by)
-  VALUES (v_tenant, e.id, v_new, v_paid, p_paid_date, p_method, auth.email());
+  -- created_at = clock_timestamp(), not now(): a split that waited on the PO lock behind post_supplier_tax_invoice
+  -- is then stamped after that invoice's posted_at (now() would be this transaction's start, possibly earlier)
+  INSERT INTO expense_splits (tenant_id, source_expense_id, new_expense_id, paid_amount, paid_date, payment_method, created_by, created_at)
+  VALUES (v_tenant, e.id, v_new, v_paid, p_paid_date, p_method, auth.email(), clock_timestamp());
   RETURN jsonb_build_object('paid_expense_id', e.id, 'remaining_expense_id', v_new, 'paid_amount', v_paid, 'remaining_amount', round(e.amount - v_paid, 2));
 END $$;
 
