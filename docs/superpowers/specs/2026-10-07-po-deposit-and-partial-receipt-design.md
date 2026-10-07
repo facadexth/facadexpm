@@ -56,10 +56,10 @@ Out of v1 (explicit): partial quantity inside one line (only whole lines), a pay
 
 ## 6. UI
 
-- PO list row (owner layout, 2026-10-07): only two controls remain on the row: the **eye 👁️** and the **3-dot menu ⋯**.
-  - **Eye 👁️ popup** (today's PODetailModal, kept) = the PO's page: lines with ordered / received / outstanding, receipts with dates, deposit (amount, % of PO, used, **remaining**), bills (paid/pending), totals, and the **reference-file upload** (AttachmentsSection, unchanged). The button **"ดู PO"** (document view, today the 📄 button) moves INTO this popup.
+- PO list row (owner layout, 2026-10-07): only two controls remain on the row: the **document icon 📄** (replaces the eye 👁️; owner ruling 2026-10-07) and the **3-dot menu ⋯**.
+  - **Document 📄 popup** (today's PODetailModal behind the eye button, kept, button icon changes from 👁️ to 📄) = the PO's page: lines with ordered / received / outstanding, receipts with dates, deposit (amount, % of PO, used, **remaining**), bills (paid/pending), totals, and the **reference documents** (AttachmentsSection upload/list, unchanged). The button **"ดู PO"** (the PO document view, today the separate 📄 button) moves INTO this popup next to the other documents.
   - **3-dot menu ⋯** = everything else: *รับของ*, *สร้างใบจ่ายมัดจำ*, *แก้ไข*, *ยกเลิก/ลบ*, and the document actions **ดูตัวอย่างก่อนพิมพ์ / พิมพ์ / ดาวน์โหลด PDF / ดาวน์โหลด JPEG** (the actions that live today in the 📄 document modal footer), plus the existing *สลับใบกำกับภาษี* and *สร้างใบลดหนี้* for received POs. Same permission gating and locks as today (deposit-locked, tax-invoice-locked, role rules); a locked item stays visible but disabled with the explanation as its title.
-  - The standalone ✅ รับของแล้ว, ✏️, 🗑️ and 📄 buttons are removed from the row.
+  - The standalone ✅ รับของแล้ว, ✏️, 🗑️ buttons and the old separate PO-document button are removed from the row (the 📄 icon that remains opens the PO popup).
 - *รับของ* popup: the PO header, radio **รับทั้งหมด / รับบางรายการ** (the second shows a checkbox per outstanding line with its value), **วันที่รับสินค้า** (default today Bangkok), the deduction block (percent | value, remaining deposit shown, preview "บิลที่จะสร้าง: ก่อน VAT x · VAT y · ยอดชำระ z" or "ไม่สร้างบิล (หักครบ)"), confirm disabled while loading and while busy (same guards as the shipped dialog).
 - Bill row on Expenses: *จ่ายบางส่วน* action (split) for pending bills.
 - Manual: the full manual and quick-start get a section after release (not part of v1 code).
