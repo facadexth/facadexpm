@@ -17,6 +17,8 @@
 // Names must be bare file names (no paths); all problems are reported up front.
 // CSV columns: provider,doc,kind,accuracy,input_tokens,output_tokens,ms,note,examples
 // (examples = number of example turns used for the row, 0 without --examples).
+// A doc's expected.json may carry "deposit_deductions": [{ref, amount}]; it is then compared (ref normalized, amount to a satang) and scored.
+// Fixtures for the CAC deposit documents: scripts/eval-fixtures/cac-deposit/ (the scans stay local, not in git).
 // --dry-run skips every network call and answers with the expected JSON,
 // to prove the pipeline end to end (expect accuracy 1.0 everywhere).
 import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'

@@ -13,6 +13,7 @@ export type Extraction = {
   reference_no_guess: string | null
   printed_subtotal: number | null
   line_items: LineItem[]
+  deposit_deductions: Array<{ ref: string; amount: number }>
 }
 export type Classified =
   | { kind: 'reject' }
@@ -89,12 +90,21 @@ export function classifyModelOutput(text: string): Classified {
     })
   }
 
+  const deposit_deductions: Array<{ ref: string; amount: number }> = []
+  for (const raw of Array.isArray(obj.deposit_deductions) ? obj.deposit_deductions : []) {
+    const r = asObject(raw)
+    const ref = r ? str(r.ref) : null
+    const amount = r ? num(r.amount) : null
+    if (ref && amount != null && amount > 0) deposit_deductions.push({ ref, amount })
+  }
+
   const result: Extraction = {
     supplier_name_guess: str(obj.supplier_name_guess),
     document_date_guess: str(obj.document_date_guess),
     reference_no_guess: str(obj.reference_no_guess),
     printed_subtotal: num(obj.printed_subtotal),
     line_items,
+    deposit_deductions,
   }
 
   if (line_items.length === 0) return { kind: 'check_failed', result, reason: 'no_items' }

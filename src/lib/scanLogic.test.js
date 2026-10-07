@@ -106,3 +106,14 @@ describe('scanCacheKey', () => {
     expect(await sha256Hex('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')
   })
 })
+
+describe('classifyModelOutput deposit_deductions', () => {
+  it('passes valid deductions through and drops invalid ones', () => {
+    const c = classifyModelOutput(out({ deposit_deductions: [{ ref: ' AI1 ', amount: '41,004.00' }, { ref: '', amount: 5 }, { ref: 'B', amount: 0 }] }))
+    expect(c.kind).toBe('ok')
+    expect(c.result.deposit_deductions).toEqual([{ ref: 'AI1', amount: 41004 }])
+  })
+  it('defaults to []', () => {
+    expect(classifyModelOutput(out({})).result.deposit_deductions).toEqual([])
+  })
+})

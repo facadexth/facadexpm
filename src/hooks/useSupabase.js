@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { fetchAllRows } from '../lib/fetchAllRows.js'
+import { buildDepositMap } from '../lib/depositMath.js'
 import { applyDateFilter } from '../lib/expenseFilters.js'
 import { buildUnitSeedRows, VAT_RATE } from '../lib/invoiceCalc.js'
 import { validateExtraction, blobToBase64 } from '../lib/poDocumentExtraction.js'
@@ -1715,4 +1716,44 @@ export function useAdminChatConfig() {
     if (error) throw error
     return data
   }, [])
+}
+
+// ── Supplier deposits (มัดจำ) ────────────────────────────────
+
+/** Registered deposits with their expense and applications. Pass undefined for all suppliers.
+ *  Before the migration the table is missing: useQuery stores the error and data stays null. */
+export function useSupplierDeposits(supplierId) {
+  return useQuery(async () => {
+    const rows = await fetchAllRows(() => supabase.from('supplier_deposits')
+      .select('id, expense_id, deposit_invoice_no, expenses!supplier_deposits_expense_id_fkey(id, date, supplier_id, invoice_no, amount, amount_no_vat, vat), po_deposit_applications(amount_no_vat, vat, po_id)')
+      .order('created_at', { ascending: false })
+      .order('id'))
+    return (rows || [])
+      .map(r => ({ ...r, expense: r.expenses, applications: r.po_deposit_applications || [] }))
+      .filter(r => !supplierId || r.expense?.supplier_id === supplierId)
+  }, [supplierId])
+}
+
+/** Map<expense_id, {deposit_invoice_no, remaining:{net,vat}, used:{net,vat}, applied, fullyUsed}>. Empty while loading / table missing. */
+export function useDepositMap() {
+  const { data, refetch } = useSupplierDeposits()
+  const map = useMemo(() => buildDepositMap(data), [data])
+  return { data: map, refetch }
+}
+
+export async function registerSupplierDeposit(expenseId, depositInvoiceNo) {
+  const { error } = await supabase.from('supplier_deposits').insert({
+    expense_id: expenseId,
+    deposit_invoice_no: depositInvoiceNo.trim(),
+    created_by: (await supabase.auth.getUser()).data?.user?.email || null,
+  })
+  if (error) throw error
+}
+
+export async function receivePoWithDeposits(poId, applications, subtotal, vat) {
+  const { data, error } = await supabase.rpc('receive_po_with_deposits', {
+    p_po_id: poId, p_applications: applications, p_expected_subtotal: subtotal, p_expected_vat: vat,
+  })
+  if (error) throw error
+  return data // remainder expense id or null
 }

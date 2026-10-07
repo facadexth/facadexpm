@@ -6,7 +6,7 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample } from '../hooks/useSupabase.js'
+import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits } from '../hooks/useSupabase.js'
 import { fileToExtractionPayload, buildExampleExtracted } from '../lib/poDocumentExtraction.js'
 import ScanDocPreview from '../components/ScanDocPreview.jsx'
 import ScanNotice from '../components/ScanNotice.jsx'
@@ -26,6 +26,9 @@ const ADD_FORM_OPEN_KEY = 'purchase-order-form-open'
 import { useTenant } from '../hooks/useTenant.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { auditLog } from '../lib/audit.js'
+import { bangkokTodayIso } from '../lib/photoUpload.js'
+import ReceiveDepositBlock from '../components/ReceiveDepositBlock.jsx'
+import { mapReceiveRpcError, canConfirmReceive, PO_DEPOSIT_LOCKED_TEXT } from '../lib/receiveDeposits.js'
 import { setCreditNotePrefill, poItemToCreditLine } from '../lib/creditNotePrefill.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -52,7 +55,7 @@ const PO_STATUSES = ['draft', 'ordered', 'received', 'cancelled']
 const PO_STATUS_LABELS = { draft: '📝 ร่าง (รอเติมข้อมูล)', ordered: '📦 สั่งแล้ว', received: '✅ รับของแล้ว', cancelled: '✕ ยกเลิก' }
 
 const EMPTY_ITEM = { description: '', quantity: '1', unit: '', unit_price: '', discount_pct: '0', inventory_item_id: '', aluminum_profile_id: '', rod_length_m: '', glass_width_m: '', glass_height_m: '' }
-const EMPTY_FORM = { site_id: '', supplier_id: '', category_id: '', date: '', has_vat: true, price_includes_vat: false, ordered_by: '', notes: '', items: [{ ...EMPTY_ITEM }] }
+const EMPTY_FORM = { site_id: '', supplier_id: '', category_id: '', date: '', has_vat: true, price_includes_vat: false, ordered_by: '', notes: '', deposit_deductions: [], items: [{ ...EMPTY_ITEM }] }
 
 function lineTotal(item) {
   const gross = (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)
@@ -82,6 +85,8 @@ function calcPoTotals(items, hasVat, priceIncludesVat) {
   const total = Math.round((subtotal + vat) * 100) / 100
   return { subtotal, vat, total }
 }
+
+const receiveTotals = po => { const { subtotal, vat } = calcPoTotals(po.purchase_order_items, po.has_vat, po.price_includes_vat); return { subtotal, vat } }
 
 const inventoryItemOpts = (items) => (items || []).map(it => ({
   value: it.id, label: `${it.name} (${it.base_unit})`, keywords: it.name,
@@ -234,7 +239,7 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
       const result = await extractPoDocument(base64, mimeType, supplierExamples || [])
       if (!result.ok) { setScanError(result.error); setScanCode(result.code || null); return }
       setScanPayload({ base64, mimeType, reference_no_guess: result.data.reference_no_guess })
-      const { document_date_guess, reference_no_guess, line_items } = result.data
+      const { document_date_guess, reference_no_guess, line_items, deposit_deductions } = result.data
 
       // Any extracted unit that doesn't already exist in the tenant's
       // units list needs to be created first -- otherwise UnitSelect
@@ -256,6 +261,7 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
       setForm(f => ({
         ...f,
         date: document_date_guess || f.date,
+        deposit_deductions: deposit_deductions || [],
         notes: reference_no_guess ? [f.notes, `อ้างอิง: ${reference_no_guess}`].filter(Boolean).join(' ') : f.notes,
         items: line_items.length
           ? line_items.map(it => ({ ...EMPTY_ITEM, description: it.description, quantity: String(it.quantity), unit: it.unit, unit_price: String(it.unit_price), discount_pct: String(it.discount_pct ?? 0) }))
@@ -349,6 +355,9 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
               </label>
             </div>
           )}
+          {(form.deposit_deductions || []).map((d, i) => (
+            <div key={i} style={{ fontSize: 12, color: '#b45309' }}>อ่านพบการหักมัดจำ {d.ref} {fmt(d.amount)}</div>
+          ))}
           {(() => {
             const { subtotal, vat, total } = calcPoTotals(form.items, form.has_vat, form.price_includes_vat)
             return (
@@ -384,6 +393,15 @@ function PurchaseOrderForm({ initial = EMPTY_FORM, sites, suppliers, categories,
 function PODetailModal({ po, tenantId, onClose }) {
   const items = po.purchase_order_items || []
   const { subtotal, vat, total } = calcPoTotals(items, po.has_vat, po.price_includes_vat)
+  const [deposits, setDeposits] = useState([])
+  useEffect(() => {
+    let alive = true
+    supabase.from('po_deposit_applications')
+      .select('amount_no_vat, vat, supplier_deposits(deposit_invoice_no)')
+      .eq('po_id', po.id)
+      .then(({ data, error }) => { if (alive && !error && data) setDeposits(data) })   // table may not exist yet: ignore
+    return () => { alive = false }
+  }, [po.id])
 
   return (
     <Modal title={`ใบสั่งซื้อ ${po.po_number}`} onClose={onClose} maxWidth={700}>
@@ -419,6 +437,9 @@ function PODetailModal({ po, tenantId, onClose }) {
           <div style={{ marginTop: 8, textAlign: 'right', fontSize: 13 }}>
             <div>รวมก่อน VAT: <span className="font-mono">{fmt(subtotal)}</span></div>
             {po.has_vat && <div>VAT (7%): <span className="font-mono">{fmt(vat)}</span></div>}
+            {deposits.map((a, i) => (
+              <div key={i} style={{ color: 'var(--text3)' }}>หักมัดจำ {a.supplier_deposits?.deposit_invoice_no || ''}: ก่อน VAT <span className="font-mono">{fmt(a.amount_no_vat)}</span> · VAT <span className="font-mono">{fmt(a.vat)}</span></div>
+            ))}
             <div style={{ fontWeight: 700 }}>รวมสุทธิ: <span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(total)}</span></div>
           </div>
         </div>
@@ -722,6 +743,8 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const [receiveRow, setReceiveRow] = useState(null)
   const [swapInvoiceRow, setSwapInvoiceRow] = useState(null)
   const [receiving, setReceiving] = useState(false)
+  const [depositSel, setDepositSel] = useState(null)
+  useEffect(() => { if (!receiveRow) setDepositSel(null) }, [receiveRow])
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState(null)
 
@@ -810,6 +833,8 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
         ordered_by: form.ordered_by || null,
         notes: form.notes || null,
       }
+      // Only when the scan read deductions, so saving still works before the deposit migration.
+      if ((form.deposit_deductions || []).length) poPayload.deposit_hint = form.deposit_deductions.map(d => ({ ref: d.ref, amount_no_vat: d.amount }))
       // A 'draft' PO (created hands-off from a LINE เบิกของ request, no
       // supplier yet -- see field-form Edge Function) graduates to a real
       // 'ordered' PO the moment an admin saves it with a supplier filled
@@ -867,7 +892,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     if (!deleteId) return
     const { error } = await supabase.from('purchase_orders').update({ status: 'cancelled' }).eq('id', deleteId)
     if (!error) { await auditLog('purchase_orders', deleteId, 'UPDATE', null, { status: 'cancelled' }); setDeleteId(null); refetch(); showToast('ยกเลิกแล้ว') }
-    else alert('Error: ' + error.message)
+    else alert(String(error.message || '').includes('po_has_deposit_applications') ? PO_DEPOSIT_LOCKED_TEXT : 'Error: ' + error.message)
   }
 
   // Uses allInventoryItems/allAluminumProfiles (NOT the active-only
@@ -904,33 +929,24 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   }
 
   const handleReceive = async () => {
-    if (!receiveRow || receiving) return
+    if (!receiveRow || receiving || !canConfirmReceive(depositSel)) return
     setReceiving(true)
-    const { subtotal, vat, total } = calcPoTotals(receiveRow.purchase_order_items, receiveRow.has_vat, receiveRow.price_includes_vat)
+    const { subtotal, vat } = calcPoTotals(receiveRow.purchase_order_items, receiveRow.has_vat, receiveRow.price_includes_vat)
+    const depositApps = depositSel?.valid ? depositSel.applications : []
+    let expenseId = null
     try {
-      const expensePayload = {
-        date: new Date().toISOString().slice(0, 10),
-        description: `จากใบสั่งซื้อ ${receiveRow.po_number}`,
-        site_id: receiveRow.site_id,
-        category_id: receiveRow.category_id,
-        supplier_id: receiveRow.supplier_id,
-        supplier: receiveRow.suppliers?.name || null,
-        amount_no_vat: subtotal,
-        vat: vat,
-        amount: total,
-        payment_method: receiveRow.suppliers?.credit_days != null ? 'check' : 'transfer',
-        status: receiveRow.suppliers?.credit_days != null ? 'awaiting_billing' : 'pending',
-        notes: `จาก ใบสั่งซื้อ ${receiveRow.po_number}`,
-        po_id: receiveRow.id,
-      }
-      const { data: expense, error: expError } = await supabase.from('expenses').insert(expensePayload).select().single()
-      if (expError) throw expError
-      await auditLog('expenses', expense.id, 'INSERT', null, expensePayload)
-
-      const poUpdate = { status: 'received', received_date: expensePayload.date, expense_id: expense.id }
-      const { error: poError } = await supabase.from('purchase_orders').update(poUpdate).eq('id', receiveRow.id)
-      if (poError) throw poError
-      await auditLog('purchase_orders', receiveRow.id, 'UPDATE', null, poUpdate)
+      // Atomic: creates the remainder expense (none if the deposits cover it all),
+      // records the deposit applications and marks the PO received.
+      expenseId = await receivePoWithDeposits(receiveRow.id, depositApps, subtotal, vat)
+    } catch (rpcErr) {
+      // The RPC is all-or-nothing: nothing was saved, so show only the reason.
+      setReceiveRow(null); setReceiving(false); refetch()
+      alert(mapReceiveRpcError(rpcErr))
+      return
+    }
+    try {
+      if (expenseId) await auditLog('expenses', expenseId, 'INSERT', null, { po_id: receiveRow.id, via: 'receive_po_with_deposits' })
+      await auditLog('purchase_orders', receiveRow.id, 'UPDATE', null, { status: 'received', received_date: bangkokTodayIso(), expense_id: expenseId, deposit_applications: depositApps })
 
       for (const plan of receiveStockPlan(receiveRow)) {
         const { error: moveErr } = await supabase.rpc('record_stock_movement', {
@@ -942,7 +958,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       }
       refetchInventoryItems()
 
-      setReceiveRow(null); refetch(); showToast('รับของแล้ว สร้างรายจ่ายอัตโนมัติ')
+      setReceiveRow(null); refetch(); showToast('รับของแล้ว ' + (expenseId ? 'สร้างรายจ่ายอัตโนมัติ' : 'หักมัดจำครบ ไม่สร้างรายจ่าย'))
     } catch (e) {
       // Close the dialog so a stray click can't re-run this whole function
       // (same stale closure/ConfirmDialog) and re-post a second expense +
@@ -951,7 +967,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       // update run BEFORE the stock-posting loop, so by the time any error
       // reaches here those two may already be committed — tell the admin to
       // check the actual ledger rather than inviting a blind retry.
-      setReceiveRow(null)
+      setReceiveRow(null); refetch()
       alert(
         'Error: ' + e.message +
         ' — รายจ่ายและสถานะใบสั่งซื้ออาจถูกบันทึกไปแล้วก่อนเกิดข้อผิดพลาดนี้ ' +
@@ -1133,7 +1149,19 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
           title="ยืนยันรับของ"
           message={
             <div>
-              <div>สร้างรายจ่ายอัตโนมัติจากใบสั่งซื้อ {receiveRow.po_number} ยอดรวม {fmt(calcPoTotals(receiveRow.purchase_order_items, receiveRow.has_vat, receiveRow.price_includes_vat).total)} บาท?</div>
+              {(() => {
+                const t = calcPoTotals(receiveRow.purchase_order_items, receiveRow.has_vat, receiveRow.price_includes_vat)
+                const plan = depositSel?.valid ? depositSel.plan : null
+                return plan && !plan.createExpense
+                  ? <div>รับของตามใบสั่งซื้อ {receiveRow.po_number} — ไม่สร้างรายจ่าย (หักมัดจำครบ)</div>
+                  : <div>สร้างรายจ่ายอัตโนมัติจากใบสั่งซื้อ {receiveRow.po_number} ยอดรวม {fmt(plan ? plan.total : t.total)} บาท?</div>
+              })()}
+              <ReceiveDepositBlock
+                key={receiveRow.id}
+                po={receiveRow}
+                totals={receiveTotals(receiveRow)}
+                onChange={setDepositSel}
+              />
               {receiveStockPlan(receiveRow).length > 0 && (
                 <div style={{ marginTop: 10, fontSize: 12, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
                   <strong>จะบันทึกเข้าสต็อก:</strong>
@@ -1161,6 +1189,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
             </div>
           }
           onConfirm={handleReceive}
+          confirmDisabled={receiving || !canConfirmReceive(depositSel)}
           onCancel={() => setReceiveRow(null)}
         />
       )}

@@ -83,7 +83,7 @@ export function Modal({ title, onClose, children, maxWidth = 600 }) {
 }
 
 /** Confirm dialog พร้อม danger styling */
-export function ConfirmDialog({ title, message, onConfirm, onCancel, danger = false }) {
+export function ConfirmDialog({ title, message, onConfirm, onCancel, danger = false, confirmDisabled = false }) {
   return (
     <Modal title={title} onClose={onCancel} maxWidth={400}>
       <div className="modal-body">
@@ -94,6 +94,7 @@ export function ConfirmDialog({ title, message, onConfirm, onCancel, danger = fa
         <button
           className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`}
           onClick={onConfirm}
+          disabled={confirmDisabled}
         >
           ยืนยัน
         </button>
