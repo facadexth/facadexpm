@@ -150,7 +150,7 @@ export function computeBomForOpening(opening, template, components, hardware, pr
     unresolvedDetails: [
       ...unresolvedProfileLines.map(l => ({ name: l.role_name, reason: l.reason })),
       ...unresolvedHardwareLines.map(l => ({ name: l.name, reason: 'no_hardware_price' })),
-      ...unresolvedSetLines.map(l => ({ name: l.name, reason: 'no_part_price' })),
+      ...unresolvedSetLines.map(l => ({ name: l.name, reason: l.reason || 'no_part_price' })),
     ],
   }
 }
