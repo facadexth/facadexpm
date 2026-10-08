@@ -128,9 +128,10 @@ export default function ProfilesTab({ canEdit }) {
           <div>
             {pickedProfile ? (
               <>
+                <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 6 }}>สี/ความยาวแก้ไม่ได้ ถ้าผิดให้ลบแล้วเพิ่มใหม่ (ราคาต่อเส้นของแถวที่ลบจะถูกลบด้วย)</div>
                 <CatalogCrud
                   title={`📐 สี × ความยาวเส้น · ${profileName[pickedProfile.id]}`} table="alu_profile_variants" fields={VARIANT_FIELDS} rows={profileVariants}
-                  scope={{ profile_id: profileId }} onChanged={variants.refetch} canEdit={canEdit}
+                  scope={{ profile_id: profileId }} onChanged={variants.refetch} canEdit={canEdit} allowEdit={false}
                   deleteWarning="ลบแล้วจะลบราคาต่อเส้นของสีและความยาวนี้ทั้งหมดด้วย (ย้อนกลับไม่ได้)"
                   duplicateMessage="หน้าตัดนี้มีสีและความยาวนี้อยู่แล้ว"
                   addLabel="+ เพิ่มความยาว" emptyText="ยังไม่มีความยาวเส้น (จำเป็นเมื่อโรงรีดคิดราคาต่อเส้น)"
