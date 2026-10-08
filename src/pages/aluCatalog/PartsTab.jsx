@@ -10,6 +10,9 @@ import { seriesLabelFull } from '../../lib/aluCatalog.js'
 
 const KIND_LABEL = { hardware: 'อุปกรณ์', hardware_set: 'ชุดอุปกรณ์', accessory: 'อะไหล่/อุปกรณ์เสริม' }
 
+// management selectors list every row, inactive ones tagged, so nothing becomes unreachable
+const withInactiveTag = (rows, labelFn) => (rows || []).map(r => ({ value: r.id, label: labelFn(r) + (r.active === false ? ' (ปิดใช้งาน)' : '') }))
+
 export default function PartsTab({ canEdit }) {
   const providers = useCatalogTable('alu_providers')
   const parts = useCatalogTable('alu_parts')
@@ -93,7 +96,7 @@ export default function PartsTab({ canEdit }) {
         <label className="label">เลือกซีรีส์เพื่อกำหนดอุปกรณ์ที่ใช้</label>
         <select className="input" style={{ maxWidth: 380 }} value={seriesId} onChange={e => setSeriesId(e.target.value)}>
           <option value="">— เลือกซีรีส์ —</option>
-          {optionList(series.data, s => seriesLabelFull(s, providerById[s.provider_id]), seriesId).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {withInactiveTag(series.data, s => seriesLabelFull(s, providerById[s.provider_id])).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </div>
       {seriesId && (

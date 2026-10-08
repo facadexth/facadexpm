@@ -26,6 +26,9 @@ const FINISH_FIELDS = [
   { key: 'active', label: 'ใช้งานอยู่', type: 'checkbox', default: true },
 ]
 
+// management selectors list every row, inactive ones tagged, so nothing becomes unreachable
+const withInactiveTag = (rows, labelFn) => (rows || []).map(r => ({ value: r.id, label: labelFn(r) + (r.active === false ? ' (ปิดใช้งาน)' : '') }))
+
 const noWeight = p => !(Number(p.linear_weight_kg_per_m) > 0)
 
 export default function ProfilesTab({ canEdit }) {
@@ -80,7 +83,7 @@ export default function ProfilesTab({ canEdit }) {
         <select className="input" style={{ maxWidth: 320 }} value={providerId}
           onChange={e => { setProviderId(e.target.value); setProfileId(''); setSeriesId('') }}>
           <option value="">— เลือกโรงรีด —</option>
-          {optionList(providers.data, p => p.name, providerId).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {withInactiveTag(providers.data, p => p.name).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6, maxWidth: 560 }}>
           สีเป็นของแต่ละโรงรีด ไม่ใช้ร่วมกัน · หน้าตัด 1 แถว = 1 ความหนา (ความหนาและน้ำหนักอยู่แถวเดียวกัน) · ราคาต่อกก. กรอกที่แท็บ "ราคา"
@@ -156,7 +159,7 @@ export default function ProfilesTab({ canEdit }) {
               <label className="label">เลือกซีรีส์เพื่อกำหนดหน้าตัดที่ใช้</label>
               <select className="input" style={{ maxWidth: 320 }} value={seriesId} onChange={e => setSeriesId(e.target.value)}>
                 <option value="">— เลือกซีรีส์ —</option>
-                {optionList(mySeries, s => seriesLabelFull(s, provider), seriesId).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                {withInactiveTag(mySeries, s => seriesLabelFull(s, provider)).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
             {seriesId && (
