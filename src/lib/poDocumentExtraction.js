@@ -73,10 +73,22 @@ export function validateExtraction(raw) {
       document_date_guess: typeof raw.document_date_guess === 'string' ? raw.document_date_guess : null,
       reference_no_guess: typeof raw.reference_no_guess === 'string' ? raw.reference_no_guess : null,
       printed_subtotal: typeof raw.printed_subtotal === 'number' && Number.isFinite(raw.printed_subtotal) ? raw.printed_subtotal : null,
+      printed_total: typeof raw.printed_total === 'number' && Number.isFinite(raw.printed_total) ? raw.printed_total : null,
+      // Decided server-side from the printed totals (detectPriceBasis); absent on older responses.
+      prices_include_vat: typeof raw.prices_include_vat === 'boolean' ? raw.prices_include_vat : null,
       line_items,
       deposit_deductions,
     },
   }
+}
+
+/** Applies the scan's detected price basis to the PO form. Only a detected
+ *  VAT-inclusive document changes anything: price_includes_vat is switched on
+ *  and the unit prices stay as printed (calcPoTotals backs the VAT out).
+ *  false / null leave the form exactly as it was, and has_vat is never touched. */
+export function applyScanVatBasis(form, pricesIncludeVat) {
+  if (pricesIncludeVat !== true) return form
+  return { ...form, price_includes_vat: true }
 }
 
 /** Builds the `extracted` JSON saved with a supplier calibration example from

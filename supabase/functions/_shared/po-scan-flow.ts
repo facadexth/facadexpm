@@ -7,7 +7,7 @@
 // A cache hit skips quota/usage entirely; usage is written only for a
 // result that is returned to the user.
 // ============================================================
-import { classifyModelOutput, type Extraction } from './scan-logic.ts'
+import { classifyModelOutput, withExtractionDefaults, type Extraction } from './scan-logic.ts'
 
 export const TIME_BUDGET_MS = 100_000
 export const ESCALATE_ONLY_BEFORE_MS = 40_000
@@ -40,7 +40,7 @@ const fail = (status: number, code: string, error: string): ScanOutcome => ({ st
 
 export async function runScan(deps: ScanDeps, cacheKey: string): Promise<ScanOutcome> {
   const cached = await deps.lookupCache(cacheKey).catch(() => null)
-  if (cached) return { status: 200, body: { ...cached, cache_hit: true } }
+  if (cached) return { status: 200, body: { ...withExtractionDefaults(cached), cache_hit: true } }
 
   const quota = await deps.checkQuota()
   if (!quota.ok) return fail(500, 'quota_check_failed', 'ตรวจสอบโควต้าไม่สำเร็จ')

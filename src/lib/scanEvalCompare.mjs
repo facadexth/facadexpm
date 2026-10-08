@@ -50,8 +50,9 @@ export function summariseProvider(rows) {
 }
 
 // The shape production saves as a supplier example (and replays as the
-// assistant turn): header guesses plus reduced line items. status and
-// printed_subtotal are NOT saved, so they are dropped here.
+// assistant turn): header guesses plus reduced line items. status,
+// printed_subtotal, printed_total and prices_include_vat are NOT saved, so
+// they are dropped here.
 export function pickExampleFields(extracted) {
   const e = extracted || {}
   return {

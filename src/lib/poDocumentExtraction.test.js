@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeDownscaledSize, validateExtraction, buildExampleExtracted } from './poDocumentExtraction.js'
+import { computeDownscaledSize, validateExtraction, buildExampleExtracted, applyScanVatBasis } from './poDocumentExtraction.js'
 
 describe('computeDownscaledSize', () => {
   it('leaves an image already under maxDim unchanged', () => {
@@ -97,6 +97,42 @@ describe('validateExtraction', () => {
     expect(validateExtraction({ line_items: [], printed_subtotal: 1234.5 }).data.printed_subtotal).toBe(1234.5)
     expect(validateExtraction({ line_items: [], printed_subtotal: '1,200' }).data.printed_subtotal).toBeNull()
     expect(validateExtraction({ line_items: [] }).data.printed_subtotal).toBeNull()
+  })
+})
+
+describe('validateExtraction VAT basis', () => {
+  it('keeps printed_total and a boolean prices_include_vat', () => {
+    const r = validateExtraction({ line_items: [], printed_total: 214, prices_include_vat: true })
+    expect(r.data.printed_total).toBe(214)
+    expect(r.data.prices_include_vat).toBe(true)
+    expect(validateExtraction({ line_items: [], prices_include_vat: false }).data.prices_include_vat).toBe(false)
+  })
+  it('defaults both to null for an older response or a bad value', () => {
+    const r = validateExtraction({ line_items: [] })
+    expect(r.data.printed_total).toBeNull()
+    expect(r.data.prices_include_vat).toBeNull()
+    expect(validateExtraction({ line_items: [], prices_include_vat: 'true', printed_total: '214' }).data).toMatchObject({ prices_include_vat: null, printed_total: null })
+  })
+})
+
+describe('applyScanVatBasis', () => {
+  const form = { has_vat: true, price_includes_vat: false, items: [{ unit_price: '107' }] }
+  it('sets price_includes_vat when the scan detected VAT-inclusive prices, leaving unit prices as printed', () => {
+    const f = applyScanVatBasis(form, true)
+    expect(f.price_includes_vat).toBe(true)
+    expect(f.items).toBe(form.items)
+    expect(f.has_vat).toBe(true)
+  })
+  it('changes nothing when the basis is exclusive or unknown', () => {
+    const incl = { ...form, price_includes_vat: true }
+    expect(applyScanVatBasis(form, false)).toBe(form)
+    expect(applyScanVatBasis(form, null)).toBe(form)
+    expect(applyScanVatBasis(form, undefined)).toBe(form)
+    expect(applyScanVatBasis(incl, false)).toBe(incl)
+  })
+  it('does not switch VAT on for a PO the user marked as no-VAT', () => {
+    const noVat = { ...form, has_vat: false }
+    expect(applyScanVatBasis(noVat, true).has_vat).toBe(false)
   })
 })
 

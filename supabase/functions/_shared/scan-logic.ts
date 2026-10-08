@@ -12,9 +12,16 @@ export type Extraction = {
   document_date_guess: string | null
   reference_no_guess: string | null
   printed_subtotal: number | null
+  /** Grand total INCLUDING VAT as printed (null if not printed / unclear). */
+  printed_total: number | null
+  /** Decided from the numbers by detectPriceBasis, never by the model:
+   *  true = printed unit prices already include VAT, false = they exclude it,
+   *  null = could not tell (nothing printed to check against, or a mismatch). */
+  prices_include_vat: boolean | null
   line_items: LineItem[]
   deposit_deductions: Array<{ ref: string; amount: number }>
 }
+export type PriceBasis = 'exclusive' | 'inclusive' | 'unchecked' | 'mismatch'
 export type Classified =
   | { kind: 'reject' }
   | { kind: 'malformed' }
@@ -64,6 +71,53 @@ export function subtotalMatches(computed: number, printed: number): boolean {
   return Math.abs(computed - printed) <= Math.max(printed * SUBTOTAL_TOLERANCE_PCT, SUBTOTAL_TOLERANCE_MIN_BAHT)
 }
 
+export const VAT_RATE = 0.07
+
+/** Decides whether the printed unit prices include VAT, from numbers only
+ *  (sum = sumLineItems of the read lines). Some suppliers print VAT-inclusive
+ *  unit prices and others VAT-exclusive ones -- even the same company on
+ *  different documents -- so both bases are a correct read. Rules, in order,
+ *  each with the subtotalMatches tolerance:
+ *   1. sum ~ printed_subtotal            -> exclusive (also VAT-exempt docs, subtotal == total)
+ *   2. sum ~ printed_total               -> inclusive
+ *   3. sum ~ printed_subtotal x 1.07     -> inclusive (only the pre-VAT subtotal printed)
+ *   4. subtotal null, sum ~ total / 1.07 -> exclusive (only the grand total printed)
+ *  Neither figure printed -> 'unchecked'; nothing fits -> 'mismatch'.
+ *  A non-positive figure counts as not printed. When only the total is
+ *  printed and it is so small that the sum fits BOTH rule 2 and rule 4
+ *  (the 5 baht minimum slack covers 7% below ~71 baht) the basis is
+ *  ambiguous: 'unchecked', so the PO is never flipped to inclusive on a guess. */
+export function detectPriceBasis(sum: number, printedSubtotal: number | null, printedTotal: number | null): PriceBasis {
+  const sub = printedSubtotal != null && printedSubtotal > 0 ? printedSubtotal : null
+  const tot = printedTotal != null && printedTotal > 0 ? printedTotal : null
+  if (sub == null && tot == null) return 'unchecked'
+  if (sub != null && subtotalMatches(sum, sub)) return 'exclusive'
+  const matchesTotal = tot != null && subtotalMatches(sum, tot)
+  const matchesTotalExVat = sub == null && tot != null && subtotalMatches(sum, tot / (1 + VAT_RATE))
+  if (matchesTotal && matchesTotalExVat) return 'unchecked'
+  if (matchesTotal) return 'inclusive'
+  if (sub != null && subtotalMatches(sum, sub * (1 + VAT_RATE))) return 'inclusive'
+  if (matchesTotalExVat) return 'exclusive'
+  return 'mismatch'
+}
+
+/** Fills fields added after a result was cached (printed_total,
+ *  prices_include_vat, deposit_deductions) so an older scan_result_cache
+ *  entry is served in the current shape instead of with missing keys. */
+export function withExtractionDefaults(cached: Partial<Extraction> & Record<string, unknown>): Extraction {
+  return {
+    ...cached,
+    supplier_name_guess: cached.supplier_name_guess ?? null,
+    document_date_guess: cached.document_date_guess ?? null,
+    reference_no_guess: cached.reference_no_guess ?? null,
+    printed_subtotal: typeof cached.printed_subtotal === 'number' ? cached.printed_subtotal : null,
+    printed_total: typeof cached.printed_total === 'number' ? cached.printed_total : null,
+    prices_include_vat: typeof cached.prices_include_vat === 'boolean' ? cached.prices_include_vat : null,
+    line_items: Array.isArray(cached.line_items) ? cached.line_items : [],
+    deposit_deductions: Array.isArray(cached.deposit_deductions) ? cached.deposit_deductions : [],
+  }
+}
+
 export function classifyModelOutput(text: string): Classified {
   const obj = parseModelJson(text)
   if (!obj) return { kind: 'malformed' }
@@ -103,15 +157,17 @@ export function classifyModelOutput(text: string): Classified {
     document_date_guess: str(obj.document_date_guess),
     reference_no_guess: str(obj.reference_no_guess),
     printed_subtotal: num(obj.printed_subtotal),
+    printed_total: num(obj.printed_total),
+    prices_include_vat: null,
     line_items,
     deposit_deductions,
   }
 
   if (line_items.length === 0) return { kind: 'check_failed', result, reason: 'no_items' }
   if (problems.length) return { kind: 'check_failed', result, reason: problems[0] }
-  if (result.printed_subtotal != null && result.printed_subtotal > 0 && !subtotalMatches(sumLineItems(line_items), result.printed_subtotal)) {
-    return { kind: 'check_failed', result, reason: 'subtotal_mismatch' }
-  }
+  const basis = detectPriceBasis(sumLineItems(line_items), result.printed_subtotal, result.printed_total)
+  if (basis === 'mismatch') return { kind: 'check_failed', result, reason: 'subtotal_mismatch' }
+  if (basis !== 'unchecked') result.prices_include_vat = basis === 'inclusive'
   return { kind: 'ok', result }
 }
 

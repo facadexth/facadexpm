@@ -7,10 +7,10 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits, useActiveTaxInvoiceLinks, usePoMoneyIndex, usePoLedger } from '../hooks/useSupabase.js'
-import { fileToExtractionPayload, buildExampleExtracted } from '../lib/poDocumentExtraction.js'
+import { fileToExtractionPayload, buildExampleExtracted, applyScanVatBasis } from '../lib/poDocumentExtraction.js'
 import ScanDocPreview from '../components/ScanDocPreview.jsx'
 import ScanNotice from '../components/ScanNotice.jsx'
-import { SCAN_REMINDER } from '../lib/scanNotice.js'
+import { SCAN_REMINDER, SCAN_VAT_INCLUSIVE_NOTICE } from '../lib/scanNotice.js'
 import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, computePoItemBaseQty } from '../lib/inventoryCost.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -196,12 +196,13 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, ini
   const [scanFile, setScanFile] = useState(null)
   const [scanDateNote, setScanDateNote] = useState(null) // dd/mm/yyyy the scan read but the form did not take
   const [scanPayload, setScanPayload] = useState(null) // { base64, mimeType, reference_no_guess } after a successful scan
+  const [scanVatInclusive, setScanVatInclusive] = useState(false) // scan detected VAT-inclusive unit prices
   const [saveAsExample, setSaveAsExample] = useState(false)
   const [confirmClearAll, setConfirmClearAll] = useState(false)
   // Clears every product line and whatever the scan filled in (header fields stay).
   const clearAllLines = () => {
     setForm(f => ({ ...f, items: [{ ...EMPTY_ITEM }], deposit_deductions: [] }))
-    setScanError(null); setScanCode(null); setScanPayload(null); setScanFile(null); setSaveAsExample(false); setScanDateNote(null)
+    setScanError(null); setScanCode(null); setScanPayload(null); setScanFile(null); setSaveAsExample(false); setScanDateNote(null); setScanVatInclusive(false)
     setConfirmClearAll(false)
   }
 
@@ -224,6 +225,7 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, ini
     setScanCode(null)
     setScanDateNote(null)
     setScanPayload(null)
+    setScanVatInclusive(false)
     setSaveAsExample(false)
     setScanFile(file)
     setScanning(true)
@@ -232,7 +234,7 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, ini
       const result = await extractPoDocument(base64, mimeType, supplierExamples || [])
       if (!result.ok) { setScanError(result.error); setScanCode(result.code || null); return }
       setScanPayload({ base64, mimeType, reference_no_guess: result.data.reference_no_guess })
-      const { document_date_guess, reference_no_guess, line_items, deposit_deductions } = result.data
+      const { document_date_guess, reference_no_guess, line_items, deposit_deductions, prices_include_vat } = result.data
 
       // Any extracted unit that doesn't already exist in the tenant's
       // units list needs to be created first -- otherwise UnitSelect
@@ -258,13 +260,15 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, ini
       const suggestions = suggestStockLinks(newLines, inventoryItems, (pastPoItems || []).filter(p => p.supplier_id === formRef.current.supplier_id))
       const linkedLines = newLines.map((l, i) => suggestions[i] ? { ...l, inventory_item_id: suggestions[i], auto_linked: true } : l)
 
-      setForm(f => ({
+      // Only a detected VAT-inclusive document changes the price basis; unit prices stay as printed.
+      setScanVatInclusive(prices_include_vat === true)
+      setForm(f => applyScanVatBasis({
         ...f,
         date: dateDecision.apply ? dateDecision.date : f.date,
         deposit_deductions: deposit_deductions || [],
         notes: reference_no_guess ? [f.notes, `อ้างอิง: ${reference_no_guess}`].filter(Boolean).join(' ') : f.notes,
         items: line_items.length ? linkedLines : f.items,
-      }))
+      }, prices_include_vat))
     } catch (err) {
       setScanError(err.message)
     } finally {
@@ -326,6 +330,7 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, ini
           {!form.supplier_id && <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>เลือก Supplier ก่อนถึงจะอัพโหลดได้</div>}
           {scanning && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>⏳ กำลังอ่านเอกสาร...</div>}
           {scanDateNote && <div data-testid="scan-date-note" style={{ fontSize: 12, marginTop: 6, padding: '6px 10px', borderRadius: 6, background: 'var(--amber-bg, #fff4d6)', color: 'var(--amber, #8a5a00)', border: '1px solid var(--amber, #e0b040)' }}>เอกสารอ่านวันที่ได้ {scanDateNote} ไม่ตรงกับที่คาด (ใช้วันที่ในฟอร์มแทน) กรุณาตรวจวันที่</div>}
+          {scanVatInclusive && <div data-testid="scan-vat-inclusive-note" role="status" style={{ fontSize: 12, marginTop: 6, padding: '6px 10px', borderRadius: 6, background: 'var(--amber-bg, #fff4d6)', color: 'var(--amber, #8a5a00)', border: '1px solid var(--amber, #e0b040)' }}>{SCAN_VAT_INCLUSIVE_NOTICE}</div>}
           {scanError && <ScanNotice code={scanCode} message={scanError} />}
           {scanFile && <ScanDocPreview file={scanFile} />}
           {scanFile && !scanning && <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>{SCAN_REMINDER}</div>}

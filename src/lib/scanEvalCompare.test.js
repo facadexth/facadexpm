@@ -40,8 +40,8 @@ describe('summariseProvider', () => {
 })
 
 describe('pickExampleFields', () => {
-  it('drops status and printed_subtotal and keeps only the saved keys', () => {
-    const r = pickExampleFields({ status: 'success', printed_subtotal: 5, supplier_name_guess: 'ACME', document_date_guess: '2026-01-02', reference_no_guess: 'R1', line_items: [] })
+  it('drops status, printed_subtotal, printed_total, prices_include_vat and keeps only the saved keys', () => {
+    const r = pickExampleFields({ status: 'success', printed_subtotal: 5, printed_total: 5.35, prices_include_vat: false, supplier_name_guess: 'ACME', document_date_guess: '2026-01-02', reference_no_guess: 'R1', line_items: [] })
     expect(Object.keys(r)).toEqual(['supplier_name_guess', 'document_date_guess', 'reference_no_guess', 'line_items'])
     expect(r.supplier_name_guess).toBe('ACME')
   })

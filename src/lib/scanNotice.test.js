@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { scanErrorNotice, SCAN_REMINDER } from './scanNotice.js'
+import { scanErrorNotice, SCAN_REMINDER, SCAN_VAT_INCLUSIVE_NOTICE } from './scanNotice.js'
 
 describe('scanErrorNotice', () => {
   it('tells the user to type the lines themselves for every known code', () => {
@@ -19,6 +19,9 @@ describe('scanErrorNotice', () => {
   })
   it('has a generic fallback when there is no message either', () => {
     expect(scanErrorNotice(undefined).text).toMatch(/กรอก/)
+  })
+  it('has the VAT-inclusive notice shown when the scan detected VAT-inclusive prices', () => {
+    expect(SCAN_VAT_INCLUSIVE_NOTICE).toBe('ราคาในเอกสารนี้รวม VAT แล้ว — ตั้งใบสั่งซื้อเป็น ราคารวม VAT ให้อัตโนมัติ — ตรวจสอบ')
   })
   it('exposes the reminder shown after a scan', () => {
     expect(SCAN_REMINDER).toBe('ตรวจรายการทุกครั้งก่อนบันทึก')

@@ -8,6 +8,10 @@
 
 export const SCAN_REMINDER = 'ตรวจรายการทุกครั้งก่อนบันทึก'
 
+// Shown after a successful scan whose line items added up to the printed
+// grand total (VAT included) rather than the pre-VAT subtotal.
+export const SCAN_VAT_INCLUSIVE_NOTICE = 'ราคาในเอกสารนี้รวม VAT แล้ว — ตั้งใบสั่งซื้อเป็น ราคารวม VAT ให้อัตโนมัติ — ตรวจสอบ'
+
 const NOTICES = {
   quota_exhausted: 'โควต้าสแกนเอกสารเดือนนี้ครบแล้ว กรอกรายการเองจากเอกสารด้านบนได้เลย หรืออัปเกรดแพ็กเกจที่เมนูตั้งค่า',
   ai_unavailable: 'ระบบอ่านเอกสารอัตโนมัติใช้ไม่ได้ในตอนนี้ ลองใหม่ภายหลัง หรือกรอกรายการเองจากเอกสารด้านบน',

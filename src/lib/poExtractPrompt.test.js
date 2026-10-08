@@ -20,6 +20,21 @@ describe('SYSTEM_PROMPT', () => {
   })
 })
 
+describe('SYSTEM_PROMPT printed_total', () => {
+  it('asks for printed_total as the grand total including VAT, read not computed', () => {
+    expect(SYSTEM_PROMPT).toContain('"printed_total"')
+    expect(SYSTEM_PROMPT).toMatch(/printed_total[^\n]*INCLUDING VAT exactly as printed/)
+    expect(SYSTEM_PROMPT).toMatch(/printed_subtotal and printed_total are only values you READ/)
+  })
+  it('does not ask the model to judge whether prices include VAT', () => {
+    expect(SYSTEM_PROMPT).not.toMatch(/prices_include_vat/)
+    expect(SYSTEM_PROMPT).toMatch(/Do not decide whether the unit prices include VAT/)
+  })
+  it('unit_price is read as printed, whatever VAT basis the document uses', () => {
+    expect(SYSTEM_PROMPT).toMatch(/unit_price is the price per single unit AS PRINTED/)
+  })
+})
+
 describe('SYSTEM_PROMPT deposit deductions', () => {
   it('asks for deposit_deductions and names the printed phrasings', () => {
     expect(SYSTEM_PROMPT).toContain('deposit_deductions')

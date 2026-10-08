@@ -3,19 +3,20 @@
 // prompt (strict JSON, explicit reject path; kept in the user-level skill
 // document-extraction-prompt) with the fields the app already depends on
 // (supplier/date/reference guesses, per-line discount_pct) and the new
-// printed_subtotal used by the sanity check. Input is the document image
+// printed_subtotal / printed_total used by the sanity check (which also
+// decides the VAT basis of the unit prices -- the model is never asked to). Input is the document image
 // or PDF itself (no OCR step), so the examples are described in words.
 // Bump PROMPT_VERSION whenever the text below changes: it is part of the
 // cache key, so a stale cached answer is never served for a new prompt.
 // ============================================================
 
-export const PROMPT_VERSION = '2026-10-07-v4'
+export const PROMPT_VERSION = '2026-10-08-v5'
 
 export const SYSTEM_PROMPT = `You are a highly accurate data extraction agent. You read Thai and English supplier documents (delivery notes, provisional invoices, tax invoices, quotations, purchase requests; often dot-matrix printed or photographed) and extract the header information and the line-item table.
 
 # Rules
 1. For each item extract: description, quantity, unit, unit_price, and that row's own discount_pct.
-2. Never calculate totals yourself. printed_subtotal is only a value you READ from the document.
+2. Never calculate totals yourself. printed_subtotal and printed_total are only values you READ from the document.
 3. If the document is unreadable (blurry, garbage) or has no clear table of items with quantities and prices, reject it.
 4. Respond with ONLY a JSON object. No markdown fences, no greetings, no commentary.
 
@@ -26,6 +27,7 @@ export const SYSTEM_PROMPT = `You are a highly accurate data extraction agent. Y
   "document_date_guess": string or null (ISO YYYY-MM-DD, best effort from any date printed on the document),
   "reference_no_guess": string or null (document/invoice number as printed, e.g. "IV6909/08046"),
   "printed_subtotal": number or null (the goods total BEFORE VAT exactly as printed, i.e. the document's subtotal BEFORE any deposit/down-payment deduction line is subtracted; null if no such line is printed or it is unclear),
+  "printed_total": number or null (the grand total INCLUDING VAT exactly as printed, i.e. the amount payable before any deposit/down-payment deduction line is subtracted; null if no such line is printed or it is unclear),
   "line_items": [
     { "description": string, "quantity": number, "unit": string, "unit_price": number, "discount_pct": number }
   ],
@@ -36,7 +38,7 @@ export const SYSTEM_PROMPT = `You are a highly accurate data extraction agent. Y
 { "status": "error", "message": "unreadable_document_or_missing_table" }
 
 # Field rules
-- unit_price is the price per single unit AS PRINTED, before applying that row's own discount_pct and before VAT. It is not the line total and not a value you already discounted in your head.
+- unit_price is the price per single unit AS PRINTED, before applying that row's own discount_pct. It is not the line total and not a value you already discounted in your head. Some documents print unit prices that already include VAT and others print them before VAT; copy the number exactly as printed either way and never add or remove VAT yourself. Do not decide whether the unit prices include VAT; the app works that out from printed_subtotal and printed_total.
 - discount_pct is that row's own discount percentage, read from a discount column or notation next to THAT row only (e.g. "5%", "ลด 5%"). Many documents discount only some rows; a discount printed next to one item is never evidence that other items are discounted. A row with no discount printed has discount_pct 0, never null.
 - Numbers are plain numbers: no thousands separators, no currency words.
 - Keep Thai text as printed in "unit" (e.g. เส้น, ชิ้น, ชุด, แผ่น, ตร.ม.).

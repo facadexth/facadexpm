@@ -36,6 +36,23 @@ describe('runScan', () => {
     expect(log.usage).toEqual([])
   })
 
+  it('serves an older cached entry (no printed_total / prices_include_vat) with those fields as null', async () => {
+    const cached = { line_items: [], supplier_name_guess: 'X', document_date_guess: null, reference_no_guess: null, printed_subtotal: 200 }
+    const { deps } = makeDeps({ cached })
+    const r = await runScan(deps, 'k')
+    expect(r.status).toBe(200)
+    expect(r.body).toMatchObject({ cache_hit: true, printed_subtotal: 200, printed_total: null, prices_include_vat: null, deposit_deductions: [] })
+  })
+
+  it('returns prices_include_vat true for an inclusive document and caches it', async () => {
+    const INCL = JSON.stringify({ status: 'success', line_items: [{ description: 'a', quantity: 2, unit: 'เส้น', unit_price: 107, discount_pct: 0 }], printed_subtotal: 200, printed_total: 214 })
+    const { deps, log } = makeDeps({ queues: { strong: [ok(INCL)] } })
+    const r = await runScan(deps, 'k')
+    expect(r.status).toBe(200)
+    expect(r.body.prices_include_vat).toBe(true)
+    expect(log.cacheStored[0][1].prices_include_vat).toBe(true)
+  })
+
   it('falls through to a normal scan when the cache lookup throws', async () => {
     const { deps, log } = makeDeps({ cacheThrows: true, queues: { strong: [ok(GOOD)] } })
     expect((await runScan(deps, 'k')).status).toBe(200)

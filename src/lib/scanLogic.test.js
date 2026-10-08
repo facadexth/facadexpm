@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   parseModelJson, sumLineItems, subtotalMatches, classifyModelOutput, sha256Hex, scanCacheKey,
+  detectPriceBasis, withExtractionDefaults,
 } from '../../supabase/functions/_shared/scan-logic.ts'
 
 const item = (over = {}) => ({ description: 'อลูมิเนียม', quantity: 2, unit: 'เส้น', unit_price: 100, discount_pct: 0, ...over })
@@ -115,5 +116,113 @@ describe('classifyModelOutput deposit_deductions', () => {
   })
   it('defaults to []', () => {
     expect(classifyModelOutput(out({})).result.deposit_deductions).toEqual([])
+  })
+})
+
+describe('detectPriceBasis', () => {
+  // S = 200 in most cases; tolerance on a ~200 baht figure is the 5 baht minimum.
+  it('prices exclude VAT when the sum matches printed_subtotal (first rule)', () => {
+    expect(detectPriceBasis(200, 200, 214)).toBe('exclusive')
+    expect(detectPriceBasis(200, 200, null)).toBe('exclusive')
+  })
+  it('a VAT-exempt document (subtotal == total == sum) stays exclusive', () => {
+    expect(detectPriceBasis(200, 200, 200)).toBe('exclusive')
+  })
+  it('prices include VAT when the sum matches printed_total instead', () => {
+    expect(detectPriceBasis(214, 200, 214)).toBe('inclusive')
+    expect(detectPriceBasis(214, null, 214)).toBe('inclusive')
+  })
+  it('prices include VAT when only the pre-VAT subtotal is printed and sum == subtotal x 1.07', () => {
+    expect(detectPriceBasis(1070, 1000, null)).toBe('inclusive')
+  })
+  it('prices exclude VAT when only the total is printed and sum == total / 1.07', () => {
+    expect(detectPriceBasis(1000, null, 1070)).toBe('exclusive')
+  })
+  it('the total / 1.07 rule only applies when printed_subtotal is null', () => {
+    expect(detectPriceBasis(1000, 1200, 1070)).toBe('mismatch')
+  })
+  it('no check when neither figure is printed (null or 0)', () => {
+    expect(detectPriceBasis(200, null, null)).toBe('unchecked')
+    expect(detectPriceBasis(200, 0, 0)).toBe('unchecked')
+  })
+  it('a sum matching neither basis is a mismatch', () => {
+    expect(detectPriceBasis(200, 300, 321)).toBe('mismatch')
+    expect(detectPriceBasis(200, null, 321)).toBe('mismatch')
+  })
+  it('uses the same tolerance as subtotalMatches at the boundary', () => {
+    // 5 baht minimum slack on small figures
+    expect(detectPriceBasis(205, 200, null)).toBe('exclusive')
+    expect(detectPriceBasis(205.01, 200, null)).toBe('mismatch')
+    expect(detectPriceBasis(219, null, 214)).toBe('inclusive')
+    expect(detectPriceBasis(219.01, null, 214)).toBe('mismatch')
+    // 1% slack on large figures: total 107,000, sum 108,070 is exactly 1% off
+    expect(detectPriceBasis(108070, null, 107000)).toBe('inclusive')
+    expect(detectPriceBasis(108071, 99000, 107000)).toBe('mismatch')
+  })
+  it('a tiny total where the sum fits both total and total/1.07 is left unchecked, never flipped to inclusive', () => {
+    // 50 vs 53.5: both within the 5 baht minimum slack
+    expect(detectPriceBasis(50, null, 53.5)).toBe('unchecked')
+  })
+})
+
+describe('classifyModelOutput VAT basis', () => {
+  const two = (price) => ({ line_items: [item({ quantity: 2, unit_price: price })] })
+  it('exclusive document: ok, prices_include_vat false, printed_total kept', () => {
+    const c = classifyModelOutput(out({ ...two(100), printed_subtotal: 200, printed_total: 214 }))
+    expect(c.kind).toBe('ok')
+    expect(c.result.prices_include_vat).toBe(false)
+    expect(c.result.printed_total).toBe(214)
+  })
+  it('VAT-exempt document (subtotal == total) is exclusive', () => {
+    const c = classifyModelOutput(out({ ...two(100), printed_subtotal: 200, printed_total: 200 }))
+    expect(c).toMatchObject({ kind: 'ok', result: { prices_include_vat: false } })
+  })
+  it('inclusive document whose lines add up to printed_total passes the check', () => {
+    const c = classifyModelOutput(out({ ...two(107), printed_subtotal: 200, printed_total: 214 }))
+    expect(c).toMatchObject({ kind: 'ok', result: { prices_include_vat: true } })
+    expect(c.result.line_items[0].unit_price).toBe(107)
+  })
+  it('inclusive document that prints only the pre-VAT subtotal passes via x1.07', () => {
+    const c = classifyModelOutput(out({ line_items: [item({ quantity: 10, unit_price: 107 })], printed_subtotal: 1000 }))
+    expect(c).toMatchObject({ kind: 'ok', result: { prices_include_vat: true } })
+  })
+  it('exclusive document that prints only the grand total passes via /1.07', () => {
+    const c = classifyModelOutput(out({ line_items: [item({ quantity: 10, unit_price: 100 })], printed_total: 1070 }))
+    expect(c).toMatchObject({ kind: 'ok', result: { prices_include_vat: false } })
+  })
+  it('a sum matching neither basis still fails the check with subtotal_mismatch', () => {
+    const c = classifyModelOutput(out({ ...two(100), printed_subtotal: 300, printed_total: 321 }))
+    expect(c).toMatchObject({ kind: 'check_failed', reason: 'subtotal_mismatch' })
+    expect(c.result.prices_include_vat).toBeNull()
+  })
+  it('both printed figures null: ok, no basis decided', () => {
+    const c = classifyModelOutput(out({ printed_subtotal: null, printed_total: null }))
+    expect(c.kind).toBe('ok')
+    expect(c.result.printed_total).toBeNull()
+    expect(c.result.prices_include_vat).toBeNull()
+  })
+  it('parses printed_total given as a string with separators', () => {
+    const c = classifyModelOutput(out({ line_items: [item({ quantity: 1, unit_price: 1070 })], printed_total: '1,070.00' }))
+    expect(c).toMatchObject({ kind: 'ok', result: { printed_total: 1070, prices_include_vat: true } })
+  })
+})
+
+describe('withExtractionDefaults (older cached entries)', () => {
+  it('fills printed_total and prices_include_vat with null on an old cached shape', () => {
+    const old = { supplier_name_guess: 'X', document_date_guess: null, reference_no_guess: null, printed_subtotal: 200, line_items: [item()] }
+    const r = withExtractionDefaults(old)
+    expect(r.printed_total).toBeNull()
+    expect(r.prices_include_vat).toBeNull()
+    expect(r.deposit_deductions).toEqual([])
+    expect(r.line_items).toEqual([item()])
+    expect(r.supplier_name_guess).toBe('X')
+    expect(r.printed_subtotal).toBe(200)
+  })
+  it('keeps the new fields when present', () => {
+    const r = withExtractionDefaults({ line_items: [], printed_total: 214, prices_include_vat: true, deposit_deductions: [{ ref: 'A', amount: 1 }] })
+    expect(r).toMatchObject({ printed_total: 214, prices_include_vat: true, deposit_deductions: [{ ref: 'A', amount: 1 }] })
+  })
+  it('treats a non-boolean prices_include_vat as null', () => {
+    expect(withExtractionDefaults({ line_items: [], prices_include_vat: 'yes' }).prices_include_vat).toBeNull()
   })
 })
