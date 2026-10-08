@@ -31,6 +31,15 @@ export const receivePoWithDeposits = async (...a) => { W.__log.push(['rpc', 'rec
 // null = not ready (links hook errors before the migration / still loading); a Map = live
 export const useActiveTaxInvoiceLinks = () => useQuery(() => delay(() => (W.__links ? new Map(W.__links) : null)), [W.__linksVersion])
 
+// 2026-10-09 per-delivery tax invoice. W.__deliveryReady === false -> not ready (the harness sets it false up front; sections 1-9 run as before)
+// window event '__readychange' refetches it (the real hook resolves later while a form is already open)
+export const useDeliveryTaxInvoiceReady = () => {
+  const q = useQuery(() => delay(() => W.__deliveryReady !== false), [])
+  useEffect(() => { const h = () => q.refetch(); W.addEventListener('__readychange', h); return () => W.removeEventListener('__readychange', h) }, [q.refetch]) // eslint-disable-line
+  return q.data
+}
+export const useActiveReceiptTaxInvoiceLinks = () => useQuery(() => delay(() => (W.__deliveryReady === false ? { ready: false, map: new Map() } : { ready: true, map: new Map(W.__receiptLinks || []) })), [W.__posVersion])
+
 // ── 2026-10-09 PO receipts (Task 6). W.__money: [[poId, {receivedItemIds:[...], receiptIds:[...], depositId}]] or null (= not ready);
 // W.__ledger: {[poId]: {receipts, deposit, applications, bills}}; W.__deposits: useSupplierDeposits rows;
 // W.__wrapperError: thrown by the RPC wrappers; every wrapper call is logged as ['rpc', name, args].

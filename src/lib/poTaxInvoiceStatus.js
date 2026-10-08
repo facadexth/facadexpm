@@ -7,7 +7,7 @@ export function poTaxInvoiceBadge(po, links) {
   if (!links || !po) return { kind: null, text: '' }
   const l = links.get(po.id)
   if (l) return { kind: 'linked', text: `ใบกำกับ ${l.invoice_no}${l.status === 'draft' ? ' (ร่าง)' : ''}` }
-  if (po.status === 'received' && po.stock_from_invoice) return { kind: 'awaiting', text: 'รอใบกำกับ (สต็อกยังไม่เข้า)' }
+  if (po.status === 'received' && po.stock_from_invoice && po.tax_invoice_mode !== 'delivery') return { kind: 'awaiting', text: 'รอใบกำกับ (สต็อกยังไม่เข้า)' }
   return { kind: null, text: '' }
 }
 

@@ -117,6 +117,10 @@ describe('mode defaults, payloads, locks, badges', () => {
     expect(poModePayload({ tax_invoice_mode: 'x' }, { id: 'P', tax_invoice_mode: 'delivery' }, true)).toEqual({ tax_invoice_mode: 'po' })
     expect(poModePayload({ tax_invoice_mode: 'delivery' }, { id: 'P' }, true)).toEqual({})
   })
+  it('payload helpers never leak the form-only touched flag', () => {
+    expect(poModePayload({ tax_invoice_mode: 'po', tax_invoice_mode_touched: true }, null, true)).toEqual({ tax_invoice_mode: 'po' })
+    expect(Object.keys(supplierModePayload({ default_tax_invoice_mode: 'delivery', tax_invoice_mode_touched: true }, null, true))).toEqual(['default_tax_invoice_mode'])
+  })
   it('supplierModePayload', () => {
     expect(supplierModePayload({ default_tax_invoice_mode: 'delivery' }, null, true)).toEqual({ default_tax_invoice_mode: 'delivery' })
     expect(supplierModePayload({ default_tax_invoice_mode: 'delivery' }, null, false)).toEqual({})

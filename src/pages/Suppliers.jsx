@@ -7,7 +7,7 @@
 // ============================================================
 import { useState, useMemo } from 'react'
 import { supabase, fmt } from '../lib/supabase.js'
-import { useSupplierCreditNotes, useSuppliers, useSupplierDocumentExamples, saveSupplierDocumentExample, deleteSupplierDocumentExample, extractPoDocument } from '../hooks/useSupabase.js'
+import { useSupplierCreditNotes, useSuppliers, useDeliveryTaxInvoiceReady, useSupplierDocumentExamples, saveSupplierDocumentExample, deleteSupplierDocumentExample, extractPoDocument } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -18,6 +18,7 @@ import { isValidThaiId13 } from '../lib/dbdCompanyParse.js'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { fileToExtractionPayload } from '../lib/poDocumentExtraction.js'
 import { isTaxId13, isBranch5, pickPeakFields } from '../lib/peakFields.js'
+import { supplierModePayload } from '../lib/deliveryTaxInvoice.js'
 
 const SUPPLIER_TYPES = [
   'อลูมิเนียม', 'เหล็ก', 'อุปกรณ์', 'กระจก',
@@ -28,7 +29,8 @@ const EMPTY_FORM = {
   name: '', contact_person: '', phone: '', email: '',
   category: [], address: '', notes: '',
   payment_mode: 'transfer_cash', credit_days: '',
-  peak_contact_no: '', tax_id: '', branch_no: ''
+  peak_contact_no: '', tax_id: '', branch_no: '',
+  default_tax_invoice_mode: 'po'
 }
 
 const PAYMENT_MODES = [
@@ -57,7 +59,7 @@ function normCategory(raw) {
   return []
 }
 
-function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
+function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading, showMode = false }) {
   const isAdd = !initial?.id
   const [form, setForm, clearDraft] = useDraftForm(
     'suppliers-form',
@@ -65,6 +67,7 @@ function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
       ...EMPTY_FORM, ...initial, category: normCategory(initial.category),
       payment_mode: modeFromSupplier(initial.default_payment_method ?? 'transfer', initial.credit_days),
       credit_days: initial.credit_days ?? '',
+      default_tax_invoice_mode: initial.default_tax_invoice_mode === 'delivery' ? 'delivery' : 'po',
     },
     isAdd
   )
@@ -152,6 +155,20 @@ function SupplierForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
             </div>
           )}
         </div>
+        {showMode && (
+          <div>
+            <label className="label">ใบกำกับภาษีจากผู้จำหน่ายนี้ (ค่าเริ่มต้นของใบสั่งซื้อใหม่)</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 6 }}>
+              {[['po', '1 ใบต่อใบสั่งซื้อ (ปกติ)'], ['delivery', '1 ใบต่อการส่งของ (ส่งเป็นล็อต)']].map(([v, label]) => (
+                <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+                  <input type="radio" name="supplier-tax-invoice-mode" checked={form.default_tax_invoice_mode === v} onChange={() => set('default_tax_invoice_mode', v)} />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>ใช้กับใบสั่งซื้อที่สร้างใหม่เท่านั้น ใบสั่งซื้อเดิมไม่เปลี่ยน</div>
+          </div>
+        )}
         <div className="form-grid-2">
           <div>
             <label className="label">เบอร์โทร</label>
@@ -315,6 +332,7 @@ export default function Suppliers() {
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'suppliers')
   const { hasModuleAccess } = useTenant()
   const { data: suppliers, refetch } = useSuppliers()
+  const deliveryReady = useDeliveryTaxInvoiceReady()
   const { data: owedNotes } = useSupplierCreditNotes({ settlement: 'owed' })
   const owedBySupplier = useMemo(() => {
     const m = {}
@@ -373,6 +391,7 @@ export default function Suppliers() {
         address: form.address || null, notes: form.notes || null,
         default_payment_method: form.payment_mode === 'check_credit' ? 'check' : 'transfer',
         credit_days: isCash || form.credit_days === '' ? null : parseInt(form.credit_days, 10),
+        ...supplierModePayload(form, editItem, deliveryReady),
       }
       if (editItem) {
         const { error } = await supabase.from('suppliers').update(payload).eq('id', editItem.id)
@@ -439,7 +458,7 @@ export default function Suppliers() {
                 <tr key={s.id}>
                   <td style={{ color: 'var(--accent)', fontSize: 11, whiteSpace: 'nowrap', fontWeight: 700 }}>{s.supplier_number}</td>
                   <td>
-                    <div style={{ fontWeight: 600 }}>{s.name}</div>
+                    <div style={{ fontWeight: 600 }}>{s.name}{s.default_tax_invoice_mode === 'delivery' && <span className="badge badge-po-ordered" style={{ marginLeft: 6 }}>ใบกำกับต่อการส่งของ</span>}</div>
                     {s.address && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{s.address}</div>}
                     {owedBySupplier[s.id] > 0 && <span className="badge" style={{ fontSize: 11, marginTop: 4 }}>รอรับคืน ฿{fmt(owedBySupplier[s.id])}</span>}
                   </td>
@@ -478,7 +497,7 @@ export default function Suppliers() {
 
       {showForm && (
         <Modal title={editItem ? `แก้ไข ${editItem.supplier_number}` : 'เพิ่ม Supplier ใหม่'} onClose={() => { setShowForm(false); setEditItem(null) }} maxWidth={600}>
-          <SupplierForm initial={editItem || EMPTY_FORM} onSave={handleSave} onCancel={() => { setShowForm(false); setEditItem(null) }} loading={saving} />
+          <SupplierForm initial={editItem || EMPTY_FORM} onSave={handleSave} onCancel={() => { setShowForm(false); setEditItem(null) }} loading={saving} showMode={deliveryReady === true} />
         </Modal>
       )}
 
