@@ -18,7 +18,7 @@ Date: 2026-10-08 · Status: draft for owner review · Builds on `2026-10-06-supp
 ### 3.1 A mode on the PO
 `purchase_orders.tax_invoice_mode` text, `'po'` (default) or `'delivery'`.
 - Set on the PO form (a small choice next to the existing "stock from invoice" choice) and changeable from the ⋯ menu **only while the PO has no receipt and no active invoice**.
-- Optional convenience (open question Q1): remember the mode per supplier and pre-select it for that supplier's new POs.
+- **Decided (owner Q1):** the mode is remembered per supplier (`suppliers.default_tax_invoice_mode`, default `'po'`) and pre-selected for that supplier's new POs; it stays changeable per PO under the rule above. Existing POs keep `'po'`.
 - `'po'` POs behave exactly as today. Nothing existing changes meaning.
 
 ### 3.2 Data (additive)
@@ -29,6 +29,7 @@ Date: 2026-10-08 · Status: draft for owner review · Builds on `2026-10-06-supp
 ### 3.3 Eligibility and matching
 - A receipt is eligible when: its PO is in `'delivery'` mode, same supplier as the invoice, the receipt is not already in an active invoice, and it has a bill (or is fully covered by a deposit and has none — then the stamp step has nothing to stamp).
 - A `'delivery'` PO may be `partially_received`; it never needs to be fully received (the R7 rule applies only to `'po'` mode).
+- **Late invoice (decided, owner Q3 = yes):** a receipt may exist without an invoice and be linked later. Until then it carries a derived state "รอใบกำกับ" (no row in `supplier_tax_invoice_receipts` for a `'delivery'` PO's receipt), shown as a badge in the PO popup and as a list "ใบรับของที่รอใบกำกับ" on the supplier tax invoice page (per supplier, oldest first), so nothing is silently left without an invoice.
 - Match rule: invoice net before VAT vs Σ `goods_subtotal` of the linked receipts, same tolerance as today (max 1% / 5 baht, reason required beyond it). The comparison also accepts the VAT-inclusive basis (invoice total vs Σ(`goods_subtotal`+`goods_vat`)), because supplier documents mix both bases.
 
 ### 3.4 Posting and void (extend the two existing RPCs, keep their contracts)
@@ -39,8 +40,8 @@ Date: 2026-10-08 · Status: draft for owner review · Builds on `2026-10-06-supp
 
 ### 3.5 Stock follows the delivered lot
 For a `'delivery'` PO, the ideal one-step flow is: receive the lot, key (or scan) that lot's invoice, post.
-- In the receive dialog add an optional checkbox "ลงใบกำกับภาษีของล็อตนี้ต่อทันที". After the receipt succeeds it opens the supplier tax invoice form with the new receipt already selected and lines prefilled from the PO lines of the receipt (or from a scan).
-- Stock policy per PO stays the owner's existing choice: either stock enters at receipt (and is replaced by the invoice's lines when the invoice posts), or `stock_from_invoice` (stock enters only when the lot's invoice posts).
+- In the receive dialog add the checkbox "ลงใบกำกับภาษีของล็อตนี้ต่อทันที", **ticked by default for `'delivery'` POs (decided, owner Q2)** and absent for `'po'` POs. After the receipt succeeds it opens the supplier tax invoice form with the new receipt already selected and lines prefilled from the PO lines of the receipt (or from a scan). Unticking leaves the receipt in "รอใบกำกับ" (Q3).
+- **Stock policy (decided, owner Q4 = option ก):** in `'delivery'` mode stock enters **at receipt**, from the delivered lines, so the system matches the warehouse; when the lot's invoice posts, that receipt's stock is reversed and the invoice's lines are posted (section 3.4). The existing per-PO choice `stock_from_invoice` stays available for suppliers whose invoice lines differ a lot from the PO lines; with it the lot's stock enters only when its invoice posts (and the lot shows "รอใบกำกับ" and no stock until then). The default for `'delivery'` POs is "stock at receipt".
 
 ### 3.6 UI
 - Supplier tax invoice form: a switch "ผูกกับ: ใบสั่งซื้อ | การส่งของ". In delivery mode the picker lists the supplier's un-invoiced receipts (PO number, receipt number `PO-R<n>`, date, goods value) instead of POs, with a running Σ against the invoice net.
@@ -61,8 +62,14 @@ For a `'delivery'` PO, the ideal one-step flow is: receive the lot, key (or scan
 ## 6. Testing
 Rolled-back SQL tests (house style): delivery-mode post with one receipt of a two-receipt PO; two receipts of different POs in one invoice; void restores only those receipts; stock reversal exactness incl. balance reaching 0 and below 0 warnings; a receipt cannot be linked twice; mixed link types rejected; `'po'` mode behaviour unchanged (re-run the existing tax-invoice, deposit and receipt tests); cross-tenant and role gates. vitest for the matching maths (both VAT bases) and the eligibility helper. Playwright harness for the form switch and the "ต่อทันที" flow. Whole-branch review before applying, then a live check on a test tenant.
 
-## 7. Open questions for the owner
-1. Remember the mode per supplier (e.g. CAC always `delivery`)? Proposed: yes, as a default on the supplier, still changeable per PO.
-2. Should "ลงใบกำกับภาษีของล็อตนี้ต่อทันที" be ticked by default for `delivery` POs? Proposed: yes.
-3. If a lot arrives **before** its invoice (invoice follows days later): proposed to allow linking later (receipt stays un-invoiced, flagged in the list "รอใบกำกับ"). Confirm.
-4. For `delivery` POs with stock-from-invoice: is it acceptable that lot stock stays out of inventory until its invoice is posted?
+## 7. Decisions (owner, 2026-10-08)
+1. Remember the mode per supplier (e.g. CAC always `delivery`): **yes**, default on the supplier, changeable per PO.
+2. "ลงใบกำกับภาษีของล็อตนี้ต่อทันที" ticked by default for `'delivery'` POs: **yes**.
+3. A lot may arrive before its invoice and be linked later ("รอใบกำกับ"): **yes**.
+4. Stock for `'delivery'` POs: **enters at receipt**, then adjusted to the invoice's lines when the invoice posts (option ก); `stock_from_invoice` remains an optional per-PO setting.
+
+## 8. Remaining details to settle in the plan (not owner decisions)
+- Where the per-supplier default is edited (suppliers page field) and whether bulk-setting existing suppliers is needed.
+- Migration number and ordering after `2026-10-09-01..03`; the new link table and the two column additions (`purchase_orders.tax_invoice_mode`, `suppliers.default_tax_invoice_mode`) in one migration, with CHECK on the two values.
+- The invoice scan prefill uses the scan's VAT-basis detection (live) so inclusive-price invoices compare correctly with `goods_subtotal + goods_vat`.
+- Effect on the manual: one new subsection after the PO flow section.
