@@ -449,7 +449,7 @@ DECLARE
   c JSONB := '[]'::jsonb;
   rc RECORD; v_no TEXT; v_ref JSONB;
   v_sum NUMERIC := 0; v_vat NUMERIC := 0; v_sumi NUMERIC; v_lines NUMERIC; v_dex NUMERIC; v_din NUMERIC; v_n INT := 0;
-  v_basis TEXT; v_diff NUMERIC; v_tol NUMERIC;
+  v_basis TEXT; v_diff NUMERIC; v_tol NUMERIC; v_vexp NUMERIC;
 BEGIN
   SELECT * INTO inv FROM supplier_tax_invoices WHERE id = p_id AND tenant_id = p_tenant;
   IF NOT FOUND THEN
@@ -502,6 +502,15 @@ BEGIN
       c := c || (jsonb_build_object('code', 'receipt_has_deposit', 'blocking', false) || v_ref);
     END IF;
     IF rc.expense_id IS NULL THEN c := c || (jsonb_build_object('code', 'receipt_no_expense', 'blocking', false) || v_ref); END IF;
+    -- the receipt names a bill that _sti_stamp_receipt_bills will not stamp (deleted, moved off the PO, or a
+    -- deposit / credit-note row): same condition as that function's tree root. Reported here so preview and
+    -- post_result both carry it (post's body is verbatim and only adds the stamp count).
+    IF rc.expense_id IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM expenses e WHERE e.id = rc.expense_id AND e.tenant_id = p_tenant AND e.po_id = rc.po_id
+                         AND NOT EXISTS (SELECT 1 FROM supplier_deposits sd WHERE sd.expense_id = e.id)
+                         AND NOT EXISTS (SELECT 1 FROM supplier_credit_notes cn WHERE cn.expense_id = e.id)) THEN
+      c := c || (jsonb_build_object('code', 'expense_missing', 'blocking', false, 'expense_id', rc.expense_id) || v_ref);
+    END IF;
     v_sum := v_sum + COALESCE(rc.goods_subtotal, 0);
     v_vat := v_vat + COALESCE(rc.goods_vat, 0);
   END LOOP;
@@ -526,6 +535,12 @@ BEGIN
   IF abs(v_lines - inv.net_before_vat) > _sti_tolerance(inv.net_before_vat) + 0.005 THEN
     c := c || jsonb_build_object('code', 'lines_total_mismatch', 'blocking', true, 'detail', round(v_lines, 2)::text);
   END IF;
+  -- header VAT vs 7% of the header net, beyond max(1 baht, 1% of that 7%): a typo or a wrong rate (warning only).
+  -- Skipped when neither the invoice nor the linked receipts carry any VAT (a non-VAT supplier).
+  v_vexp := round(inv.net_before_vat * 0.07, 2);
+  IF (inv.vat <> 0 OR v_vat <> 0) AND abs(inv.vat - v_vexp) > GREATEST(1, abs(v_vexp) * 0.01) THEN
+    c := c || jsonb_build_object('code', 'vat_rate_mismatch', 'blocking', false, 'detail', v_vexp::text);
+  END IF;
 
   v_sumi := round(v_sum + v_vat, 2);
   v_sum := round(v_sum, 2);
@@ -535,7 +550,8 @@ BEGIN
     v_basis := 'excl'; v_diff := v_dex; v_tol := _sti_tolerance(v_sum);
   ELSIF abs(v_din) <= _sti_tolerance(v_sumi) + 0.005 THEN
     v_basis := 'incl'; v_diff := v_din; v_tol := _sti_tolerance(v_sumi);
-    c := c || jsonb_build_object('code', 'match_vat_inclusive', 'blocking', false, 'detail', v_din::text);
+    -- detail = the ex-VAT difference the user would otherwise not see (the matched incl. difference is diff/diff_incl)
+    c := c || jsonb_build_object('code', 'match_vat_inclusive', 'blocking', false, 'detail', v_dex::text);
   ELSE
     v_basis := 'none'; v_diff := v_dex; v_tol := _sti_tolerance(v_sum);
     IF v_n > 0 THEN
@@ -630,6 +646,9 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public AS $$ SELECT true 
 -- Only that receipt's bill tree (expense_splits) still carrying the PO; deposit and credit-note rows are never bills.
 -- Rows go to supplier_tax_invoice_expense_stamps, so _sti_unstamp_other_bills (void) restores them unchanged,
 -- including parts split off AFTER the post. Expenses are locked in id order (after the balances).
+-- A linked receipt whose bill this skips (deleted / moved off the PO / deposit / credit note) is reported by
+-- _sti_check_delivery as the warning expense_missing {receipt_id, expense_id} (same root condition), which post
+-- carries into post_result.checks: post's verbatim body only adds this function's INT count.
 CREATE OR REPLACE FUNCTION _sti_stamp_receipt_bills(p_id UUID, p_tenant UUID, p_invoice_no TEXT) RETURNS INT
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE k RECORD; v_n INT := 0;
@@ -665,6 +684,9 @@ BEGIN
   END LOOP;
   RETURN v_n;
 END $$;
+
+-- receipt_already_reversed (_sti_check_delivery) looks reversals up by their source movement
+CREATE INDEX idx_stir_source_movement ON supplier_tax_invoice_reversals(source_movement_id);
 
 REVOKE ALL ON FUNCTION _sti_check_po(UUID, UUID), _sti_check_delivery(UUID, UUID), _sti_check(UUID, UUID),
   _sti_receipt_movements_po(UUID, UUID), _sti_receipt_movements_delivery(UUID, UUID), _sti_receipt_movements(UUID, UUID),

@@ -50,7 +50,7 @@ For a `'delivery'` PO, the ideal one-step flow is: receive the lot, key (or scan
 
 ## 4. Safety and compatibility
 - All changes additive; migration `2026-10-0x-04` after the three live ones. `'po'` mode code paths keep their current function bodies; the new branches are guarded by the invoice's link type.
-- Same locking order as today (PO row, then expenses in id order, then balances in item order); the receipt-level links are locked after the PO row.
+- Same locking order as today (invoice row, then PO rows by id, then stock balances by (item, site), then expenses in id order: PO → balances → expenses); a receipt-linked invoice locks its receipts' POs in the same PO step.
 - A receipt already in a posted invoice cannot be edited or have its bill deleted (existing triggers extended to the new link table).
 - Web is fail-soft before the migration (new switch hidden when the link table is missing), like the earlier release.
 

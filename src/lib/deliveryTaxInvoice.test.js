@@ -17,7 +17,10 @@ describe('texts', () => {
       expect(t).toMatch(/[฀-๿]/)
     }
     for (const c of ['po_mode_locked', 'po_delivery_needs_receipt', 'receipt_not_eligible', 'receipt_linked_elsewhere', 'invoice_mixed_links', 'po_is_delivery_mode']) expect(DELIVERY_RPC_TEXT[c], c).toBeTruthy()
-    for (const c of ['receipt_not_found', 'receipt_wrong_supplier', 'receipt_po_not_delivery', 'receipt_linked_elsewhere', 'receipt_already_reversed', 'receipt_stock_from_invoice', 'receipt_no_stock_movements', 'receipt_outside_month', 'receipt_has_deposit', 'receipt_no_expense', 'match_vat_inclusive', 'invoice_mixed_links', 'po_is_delivery_mode']) expect(DELIVERY_CHECK_TEXT[c], c).toBeTruthy()
+    for (const c of ['receipt_not_found', 'receipt_wrong_supplier', 'receipt_po_not_delivery', 'receipt_linked_elsewhere', 'receipt_already_reversed', 'receipt_stock_from_invoice', 'receipt_no_stock_movements', 'receipt_outside_month', 'receipt_has_deposit', 'receipt_no_expense', 'match_vat_inclusive', 'vat_rate_mismatch', 'invoice_mixed_links', 'po_is_delivery_mode']) expect(DELIVERY_CHECK_TEXT[c], c).toBeTruthy()
+    // expense_missing (also reported by _sti_check_delivery) keeps its existing CHECK_TEXT entry: it must NOT be
+    // redefined here, because Task 5 spreads DELIVERY_CHECK_TEXT last into CHECK_TEXT (it would override the PO text)
+    expect('expense_missing' in DELIVERY_CHECK_TEXT).toBe(false)
   })
 })
 

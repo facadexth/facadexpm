@@ -25,6 +25,7 @@ export const DELIVERY_CHECK_TEXT = {
   receipt_has_deposit: 'การรับของนี้หักมัดจำ (เทียบด้วยมูลค่าสินค้า ไม่ใช่ยอดบิล)',
   receipt_no_expense: 'การรับของนี้ไม่มีบิล (หักมัดจำครบ) — ไม่มีรายจ่ายให้ประทับเลขที่',
   match_vat_inclusive: 'ยอดตรงเมื่อเทียบแบบรวม VAT (ยอดรวมใบกำกับ กับ มูลค่าที่รับรวม VAT)',
+  vat_rate_mismatch: 'VAT ในใบกำกับไม่ตรงกับ 7% ของยอดก่อน VAT — ตรวจตัวเลขหรืออัตราภาษีอีกครั้ง',
   invoice_mixed_links: MIXED,
   po_is_delivery_mode: PO_IS_DELIVERY,
 }

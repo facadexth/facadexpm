@@ -14,7 +14,7 @@ DECLARE
   poD1 UUID; a1 UUID; a2 UUID; poD2 UUID; b1 UUID; poX UUID; x1 UUID; poP UUID; p1 UUID; poD3 UUID; k1 UUID; k2 UUID; poF UUID; f1 UUID; poT2 UUID;
   rc1 UUID; rc2 UUID; rc3 UUID; rcX UUID; rcP UUID; rcK1 UUID; rcK2 UUID; rcF UUID; rcT2 UUID;
   bill1 UUID; bill2 UUID; bill3 UUID; billP UUID; c3 UUID; g2 UUID; x_exp UUID; mv1 UUID;
-  inv1 UUID; inv2 UUID; inv4 UUID; invM UUID; invP UUID; invF UUID; invK UUID; invL UUID;
+  inv1 UUID; inv2 UUID; inv4 UUID; invM UUID; invP UUID; invF UUID; invK UUID; invL UUID; invN UUID; invS UUID; itN JSONB;
   j JSONB; e JSONB; hdr JSONB; v_rev INT; v_msg TEXT; v_q NUMERIC; v_w NUMERIC;
   v_bkk DATE := (now() AT TIME ZONE 'Asia/Bangkok')::date;
 BEGIN
@@ -111,6 +111,8 @@ BEGIN
   IF (j->>'po_sum')::numeric <> 600 OR j->>'basis' <> 'excl' OR (j->>'diff')::numeric <> 0 THEN RAISE EXCEPTION 'B4 FAIL: match %', j; END IF;
   SELECT x INTO e FROM jsonb_array_elements(j->'rows') x WHERE x->>'inventory_item_id' = iI::text;
   IF (e->>'before_qty')::numeric <> 2 OR (e->>'add_qty')::numeric <> 2.5 OR (e->>'remove_qty')::numeric <> 2 OR (e->>'after_qty')::numeric <> 2.5 THEN RAISE EXCEPTION 'B4 FAIL: row %', e; END IF;
+  -- B4b header VAT 42 = 7% of 600: no vat_rate_mismatch
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(j->'checks') c WHERE c->>'code' = 'vat_rate_mismatch') THEN RAISE EXCEPTION 'B4b FAIL: vat_rate_mismatch %', j->'checks'; END IF;
   v_rev := (j->>'revision')::int;
 
   -- B5 post lot 1: only that receipt's stock and bill; PO status unchanged
@@ -150,6 +152,11 @@ BEGIN
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(j->'checks') c WHERE (c->>'blocking')::boolean) THEN RAISE EXCEPTION 'B7 FAIL: blocking %', j->'checks'; END IF;
   IF j->>'basis' <> 'incl' OR (j->>'diff')::numeric <> 0 OR (j->>'diff_excl')::numeric <> -10 OR (j->>'sum_incl')::numeric <> 1498 THEN RAISE EXCEPTION 'B7 FAIL: match %', j; END IF;
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(j->'checks') c WHERE c->>'code' = 'match_vat_inclusive' AND NOT (c->>'blocking')::boolean) THEN RAISE EXCEPTION 'B7 FAIL: no match_vat_inclusive'; END IF;
+  -- B7b the incl-basis warning carries the ex-VAT difference; header VAT 108 vs 7% of 1390 = 97.30 (> max(1, 0.973)): warned, not blocking
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(j->'checks') c WHERE c->>'code' = 'match_vat_inclusive' AND (c->>'detail')::numeric = -10) THEN RAISE EXCEPTION 'B7b FAIL: detail %', j->'checks'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(j->'checks') c WHERE c->>'code' = 'vat_rate_mismatch' AND NOT (c->>'blocking')::boolean AND (c->>'detail')::numeric = 97.3) THEN
+    RAISE EXCEPTION 'B7b FAIL: no vat_rate_mismatch %', j->'checks';
+  END IF;
   j := post_supplier_tax_invoice(inv2, (j->>'revision')::int);
   IF (j->>'receipts_reversed')::int <> 2 OR (j->>'expenses_stamped')::int <> 3 THEN RAISE EXCEPTION 'B7 FAIL: result %', j; END IF;
   j := split_payment(bill2, 100, v_bkk, 'transfer'); g2 := (j->>'remaining_expense_id')::uuid;
@@ -204,6 +211,11 @@ BEGIN
   SELECT x INTO e FROM jsonb_array_elements(j->'rows') x WHERE x->>'inventory_item_id' = iI::text;
   IF (e->>'remove_qty')::numeric <> 2 THEN RAISE EXCEPTION 'B11 FAIL: row %', e; END IF;
   PERFORM delete_supplier_tax_invoice_draft(inv4);
+  -- B11b deleting the draft freed the lot: it links again (then that draft is deleted too)
+  inv4 := save_supplier_tax_invoice_receipt_draft(NULL, jsonb_set(hdr, '{invoice_no}', '"DTIB-4B"'),
+    jsonb_build_array(jsonb_build_object('description', 'x', 'qty', 1, 'unit_price', 600)), ARRAY[rc1]);
+  IF (SELECT count(*) FROM supplier_tax_invoice_receipts WHERE invoice_id = inv4 AND receipt_id = rc1 AND active) <> 1 THEN RAISE EXCEPTION 'B11b FAIL: relink'; END IF;
+  PERFORM delete_supplier_tax_invoice_draft(inv4);
 
   -- B12 'po' mode is unchanged (short; the full regression runs separately)
   invP := save_supplier_tax_invoice_draft(NULL, jsonb_build_object('supplier_id', t_sup, 'invoice_no', 'DTIB-P', 'invoice_date', v_bkk, 'net_before_vat', 50, 'vat', 3.5),
@@ -246,6 +258,63 @@ BEGIN
   IF (e->>'after_qty')::numeric <> -1 OR NOT (e->>'negative')::boolean THEN RAISE EXCEPTION 'B14 FAIL: L preview %', e; END IF;
   j := post_supplier_tax_invoice(invL, (j->>'revision')::int);
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(j->'negative') n WHERE n->>'inventory_item_id' = iL::text AND (n->>'qty')::numeric = -1) THEN RAISE EXCEPTION 'B14 FAIL: negative not reported %', j; END IF;
+
+  -- B20 outside tolerance on both bases WITHOUT a note blocks (match_note_required); WITH a note it posts.
+  -- rc3 (J 1000 + 70) is free again since B9. Invoice 900 + 63: diff_excl -100, diff_incl -107, tolerance 5.
+  itN := jsonb_build_array(jsonb_build_object('description', 'J ส่งไม่ครบ', 'qty', 1, 'unit_price', 900));
+  invN := save_supplier_tax_invoice_receipt_draft(NULL, jsonb_build_object('supplier_id', t_sup, 'invoice_no', 'DTIB-N', 'invoice_date', v_bkk, 'net_before_vat', 900, 'vat', 63), itN, ARRAY[rc3]);
+  j := preview_supplier_tax_invoice(invN);
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(j->'checks') c WHERE c->>'code' = 'match_note_required' AND (c->>'blocking')::boolean)
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(j->'checks') c WHERE (c->>'blocking')::boolean AND c->>'code' <> 'match_note_required')
+     OR j->>'basis' <> 'none' THEN
+    RAISE EXCEPTION 'B20 FAIL: no-note checks %', j;
+  END IF;
+  BEGIN PERFORM post_supplier_tax_invoice(invN, (j->>'revision')::int); RAISE EXCEPTION 'B20 FAIL: posted without a note';
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'match_note_required%' THEN RAISE EXCEPTION 'B20 FAIL: got %', v_msg; END IF; END;
+  PERFORM save_supplier_tax_invoice_receipt_draft(invN,
+    jsonb_build_object('supplier_id', t_sup, 'invoice_no', 'DTIB-N', 'invoice_date', v_bkk, 'net_before_vat', 900, 'vat', 63, 'match_note', 'ส่งไม่ครบ'), itN, ARRAY[rc3]);
+  j := preview_supplier_tax_invoice(invN);
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(j->'checks') c WHERE (c->>'blocking')::boolean)
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(j->'checks') c WHERE c->>'code' = 'match_outside_tolerance') THEN
+    RAISE EXCEPTION 'B20 FAIL: with-note checks %', j->'checks';
+  END IF;
+  j := post_supplier_tax_invoice(invN, (j->>'revision')::int);
+  IF (j->>'receipts_reversed')::int <> 1 OR (j->>'expenses_stamped')::int <> 2 THEN RAISE EXCEPTION 'B20 FAIL: post %', j; END IF;
+  RESET role;
+  IF (SELECT count(*) FROM expenses WHERE id IN (bill3, c3) AND invoice_no = 'DTIB-N') <> 2 THEN RAISE EXCEPTION 'B20 FAIL: stamps'; END IF;
+  IF (SELECT match_diff FROM supplier_tax_invoices WHERE id = invN) <> -100 THEN RAISE EXCEPTION 'B20 FAIL: match_diff'; END IF;
+
+  -- B21 a stamped bill's number edited by hand after the post: void warns expense_changed (with expense_id) and keeps the hand value
+  UPDATE expenses SET invoice_no = 'HAND-1' WHERE id = c3;
+  SET LOCAL role = 'authenticated';
+  j := void_supplier_tax_invoice(invN, 'ทดสอบ');
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(j->'warnings') w WHERE w->>'code' = 'expense_changed' AND w->>'expense_id' = c3::text) THEN
+    RAISE EXCEPTION 'B21 FAIL: warnings %', j;
+  END IF;
+  RESET role;
+  IF (SELECT invoice_no FROM expenses WHERE id = c3) <> 'HAND-1' THEN RAISE EXCEPTION 'B21 FAIL: hand value overwritten'; END IF;
+  IF (SELECT invoice_no FROM expenses WHERE id = bill3) <> 'DN-3' THEN RAISE EXCEPTION 'B21 FAIL: bill3 not restored'; END IF;
+
+  -- B22 a lot whose bill was moved off the PO: expense_missing {receipt_id, expense_id} in preview and in the post result;
+  -- that bill is not stamped (its split remainder g2 still carries the PO, so it is the one stamped)
+  UPDATE expenses SET po_id = NULL WHERE id = bill2;
+  SET LOCAL role = 'authenticated';
+  invS := save_supplier_tax_invoice_receipt_draft(NULL, jsonb_build_object('supplier_id', t_sup, 'invoice_no', 'DTIB-S', 'invoice_date', v_bkk, 'net_before_vat', 400, 'vat', 28),
+    jsonb_build_array(jsonb_build_object('description', 'เหล็ก ล็อต 2', 'qty', 1, 'unit_price', 400)), ARRAY[rc2]);
+  j := preview_supplier_tax_invoice(invS);
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(j->'checks') c WHERE (c->>'blocking')::boolean)
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(j->'checks') c WHERE c->>'code' = 'expense_missing' AND NOT (c->>'blocking')::boolean
+                      AND c->>'receipt_id' = rc2::text AND c->>'expense_id' = bill2::text) THEN
+    RAISE EXCEPTION 'B22 FAIL: preview checks %', j->'checks';
+  END IF;
+  j := post_supplier_tax_invoice(invS, (j->>'revision')::int);
+  IF (j->>'expenses_stamped')::int <> 1
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(j->'checks') c WHERE c->>'code' = 'expense_missing' AND c->>'expense_id' = bill2::text) THEN
+    RAISE EXCEPTION 'B22 FAIL: post %', j;
+  END IF;
+  RESET role;
+  IF (SELECT invoice_no FROM expenses WHERE id = bill2) <> 'DN-2' OR (SELECT invoice_no FROM expenses WHERE id = g2) <> 'DTIB-S' THEN RAISE EXCEPTION 'B22 FAIL: stamps'; END IF;
+  SET LOCAL role = 'authenticated';
 
   -- B18 a delivery draft needs at least one lot (client also refuses it)
   BEGIN PERFORM save_supplier_tax_invoice_receipt_draft(NULL, jsonb_set(hdr, '{invoice_no}', '"DTIB-E"'), '[]'::jsonb, '{}'::uuid[]); RAISE EXCEPTION 'B18 FAIL: empty accepted';
