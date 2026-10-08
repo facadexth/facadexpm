@@ -27,7 +27,7 @@ export function buildPayload(fields, form) {
   for (const f of fields) {
     const v = form[f.key]
     if (f.type === 'checkbox') payload[f.key] = !!v
-    else if (f.type === 'number') payload[f.key] = isBlank(v) ? null : parseFloat(v)
+    else if (f.type === 'number') payload[f.key] = isBlank(v) ? (f.blankAs !== undefined ? f.blankAs : null) : parseFloat(v)
     else payload[f.key] = isBlank(v) ? null : (typeof v === 'string' ? v.trim() : v)
   }
   return payload
@@ -56,6 +56,7 @@ export function friendlyDbError(error) {
   switch (error.code) {
     case '23505': return 'มีข้อมูลนี้อยู่แล้ว (ซ้ำ) เช่น ชื่อเดียวกัน หรือราคาของวันที่เดียวกัน'
     case '23503': return 'ทำรายการไม่ได้ เพราะมีข้อมูลอื่นผูกอยู่'
+    case '23502': return 'กรุณากรอกค่าที่จำเป็นให้ครบ'
     case '23514': return 'ค่าที่กรอกไม่ถูกต้อง (เช่น ติดลบ หรือเกินช่วงที่กำหนด)'
     case '42501': return 'ไม่มีสิทธิ์ทำรายการนี้'
     default: return error.message || 'เกิดข้อผิดพลาด'

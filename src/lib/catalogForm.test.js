@@ -66,9 +66,18 @@ describe('friendlyDbError', () => {
     expect(friendlyDbError({ code: '23503', message: 'fk' })).toMatch(/ผูกอยู่/)
     expect(friendlyDbError({ code: '23514', message: 'check' })).toMatch(/ไม่ถูกต้อง/)
     expect(friendlyDbError({ code: '42501', message: 'rls' })).toMatch(/สิทธิ์/)
+    expect(friendlyDbError({ code: '23502', message: 'null value' })).toBe('กรุณากรอกค่าที่จำเป็นให้ครบ')
   })
   it('falls back to the raw message', () => {
     expect(friendlyDbError({ message: 'boom' })).toBe('boom')
     expect(friendlyDbError(null)).toBe('เกิดข้อผิดพลาด')
+  })
+})
+
+describe('buildPayload blankAs', () => {
+  it('uses blankAs for a blank number field instead of null', () => {
+    const f = [{ key: 'discount_pct', type: 'number', blankAs: 0 }]
+    expect(buildPayload(f, { discount_pct: '' })).toEqual({ discount_pct: 0 })
+    expect(buildPayload(f, { discount_pct: '5' })).toEqual({ discount_pct: 5 })
   })
 })

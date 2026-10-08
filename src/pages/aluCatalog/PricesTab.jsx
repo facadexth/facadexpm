@@ -13,7 +13,7 @@ const todayStr = () => new Date().toLocaleDateString('en-CA')
 
 function StatusPill({ status }) {
   if (status === STATUS_CURRENT) return <span className="badge badge-paid">ใช้อยู่</span>
-  if (status === STATUS_PENDING) return <span className="badge" style={{ background: 'var(--amber-bg, #fef3c7)', color: 'var(--amber, #92400e)' }}>รอมีผล</span>
+  if (status === STATUS_PENDING) return <span className="badge badge-onhold">รอมีผล</span>
   return <span className="badge badge-finished">เก่า</span>
 }
 
@@ -49,7 +49,7 @@ export default function PricesTab({ canEdit }) {
   const statusCol = map => ({ key: 'status', label: 'สถานะ', render: r => <StatusPill status={map.get(r.id)} /> })
 
   const KG_FIELDS = [
-    { key: 'provider_id', label: 'โรงรีด', type: 'select', required: true, options: form => optionList(providers.data, p => p.name, form.provider_id) },
+    { key: 'provider_id', label: 'โรงรีด', type: 'select', required: true, clears: ['finish_id', 'series_id', 'profile_id'], options: form => optionList(providers.data, p => p.name, form.provider_id) },
     { key: 'finish_id', label: 'สี', type: 'select', required: true,
       options: form => optionList((finishes.data || []).filter(f => f.provider_id === form.provider_id), f => f.name, form.finish_id) },
     { key: 'series_id', label: 'ทับเฉพาะซีรีส์ (ไม่บังคับ)', type: 'select',
@@ -68,10 +68,17 @@ export default function PricesTab({ canEdit }) {
   const PART_FIELDS = [
     { key: 'part_id', label: 'อุปกรณ์', type: 'select', required: true, options: form => optionList(parts.data, p => p.name, form.part_id) },
     { key: 'list_price', label: 'ราคาป้าย', type: 'number', required: true, min: 0 },
-    { key: 'discount_pct', label: 'ส่วนลด (%)', type: 'number', min: 0, default: 0 },
+    { key: 'discount_pct', label: 'ส่วนลด (%)', type: 'number', min: 0, default: 0, blankAs: 0 },
     { key: 'effective_from', label: 'มีผลตั้งแต่วันที่', type: 'date', required: true, default: todayStr() },
   ]
-  const validateKg = form => (form.series_id && form.profile_id ? 'เลือกทับได้อย่างใดอย่างหนึ่ง: ซีรีส์ หรือ หน้าตัด' : null)
+  const validateKg = form => {
+    if (form.series_id && form.profile_id) return 'เลือกทับได้อย่างใดอย่างหนึ่ง: ซีรีส์ หรือ หน้าตัด'
+    const wrong = (id, byId) => id && byId[id]?.provider_id !== form.provider_id
+    if (wrong(form.finish_id, finishById) || wrong(form.series_id, seriesById) || wrong(form.profile_id, profileById)) {
+      return 'สี/ซีรีส์/หน้าตัดที่เลือกไม่ใช่ของโรงรีดนี้ กรุณาเลือกใหม่'
+    }
+    return null
+  }
   const validateDiscount = form => (Number(form.discount_pct) > 100 ? 'ส่วนลดต้องไม่เกิน 100%' : null)
 
   return (
@@ -80,10 +87,11 @@ export default function PricesTab({ canEdit }) {
         <label className="label" style={{ margin: 0 }}>ดูราคา ณ วันที่</label>
         <input className="input" type="date" style={{ width: 170 }} value={asOf} onChange={e => setAsOf(e.target.value || todayStr())} />
         <span style={{ fontSize: 12, color: 'var(--text3)' }}>ราคาใหม่ = เพิ่มแถวใหม่ที่มีวันที่มีผลใหม่ ระบบเก็บประวัติเดิมไว้</span>
+        <div style={{ width: '100%', fontSize: 12, color: 'var(--text3)' }}>ราคาเก่าแก้ไม่ได้ ถ้าราคาเปลี่ยนให้เพิ่มแถวใหม่พร้อมวันที่เริ่มใช้ (ลบได้เฉพาะกรณีกรอกผิด)</div>
       </div>
       <CatalogCrud
         title="⚖️ ราคาต่อกก. (โรงรีด × สี)" table="alu_kg_prices" fields={KG_FIELDS} rows={kgPrices.data}
-        onChanged={kgPrices.refetch} canEdit={canEdit} addLabel="+ เพิ่มราคา" validate={validateKg}
+        onChanged={kgPrices.refetch} canEdit={canEdit} allowEdit={false} addLabel="+ เพิ่มราคา" validate={validateKg}
         emptyText="ยังไม่มีราคา เพิ่มราคาใหม่โดยใช้วันที่มีผลใหม่ ระบบเก็บประวัติให้"
         columns={[
           { key: 'effective_from', label: 'มีผลตั้งแต่' },
@@ -96,7 +104,7 @@ export default function PricesTab({ canEdit }) {
       />
       <CatalogCrud
         title="📏 ราคาต่อเส้น" table="alu_piece_prices" fields={PIECE_FIELDS} rows={piecePrices.data}
-        onChanged={piecePrices.refetch} canEdit={canEdit} addLabel="+ เพิ่มราคา"
+        onChanged={piecePrices.refetch} canEdit={canEdit} allowEdit={false} addLabel="+ เพิ่มราคา"
         emptyText="ยังไม่มีราคาต่อเส้น (ต้องเพิ่มความยาวเส้นที่แท็บ 'หน้าตัด · สี · ความยาว' ก่อน)"
         columns={[
           { key: 'effective_from', label: 'มีผลตั้งแต่' },
@@ -107,7 +115,7 @@ export default function PricesTab({ canEdit }) {
       />
       <CatalogCrud
         title="🔩 ราคาอุปกรณ์" table="alu_part_prices" fields={PART_FIELDS} rows={partPrices.data}
-        onChanged={partPrices.refetch} canEdit={canEdit} addLabel="+ เพิ่มราคา" validate={validateDiscount}
+        onChanged={partPrices.refetch} canEdit={canEdit} allowEdit={false} addLabel="+ เพิ่มราคา" validate={validateDiscount}
         emptyText="ยังไม่มีราคาอุปกรณ์"
         columns={[
           { key: 'effective_from', label: 'มีผลตั้งแต่' },

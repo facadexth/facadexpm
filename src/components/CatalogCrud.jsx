@@ -18,7 +18,13 @@ export function ActiveBadge({ active }) {
 
 export function CrudForm({ fields, initial, onSave, onCancel, loading }) {
   const [form, setForm] = useState(initial)
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  // a field may declare clears: [keys] -- dependent fields reset when it changes
+  const set = (k, v) => setForm(f => {
+    const next = { ...f, [k]: v }
+    const clears = fields.find(x => x.key === k)?.clears || []
+    for (const c of clears) next[c] = ''
+    return next
+  })
 
   const renderInput = (f) => {
     if (f.type === 'checkbox') {
@@ -68,7 +74,7 @@ export function CrudForm({ fields, initial, onSave, onCancel, loading }) {
 
 export default function CatalogCrud({
   title, table, fields, columns, rows, onChanged, canEdit,
-  scope = {}, addLabel = '+ เพิ่ม', emptyText = 'ยังไม่มีข้อมูล', validate, rowActions,
+  scope = {}, addLabel = '+ เพิ่ม', emptyText = 'ยังไม่มีข้อมูล', validate, rowActions, allowEdit = true,
 }) {
   const [editing, setEditing] = useState(null)   // null | 'new' | row
   const [deleteId, setDeleteId] = useState(null)
@@ -120,14 +126,14 @@ export default function CatalogCrud({
                     {rowActions && rowActions(row)}
                     {canEdit && (
                       <>
-                        <button className="btn btn-sm btn-ghost" onClick={() => setEditing(row)}>แก้ไข</button>
+                        {allowEdit && <button className="btn btn-sm btn-ghost" onClick={() => setEditing(row)}>แก้ไข</button>}
                         <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => setDeleteId(row.id)}>ลบ</button>
                       </>
                     )}
                   </td>
                 </tr>
               ))}
-              {!(rows || []).length && <tr><td colSpan={columns.length + 1} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>{emptyText}</td></tr>}
+              {!(rows || []).length && <tr><td colSpan={columns.length + 1} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>{rows == null ? 'กำลังโหลด...' : emptyText}</td></tr>}
             </tbody>
           </table>
         </div>
