@@ -1,6 +1,6 @@
 // src/components/ReceivePoLinesModal.jsx
 // รับของ: receive all / some lines (whole lines, R1), received date (dates the stock, R2), deposit deduction
-// (percent | value, VAT-inclusive, R4/R5) and the bill preview. receive_po_lines is the authority and does
+// (ตามสัดส่วนมัดจำ = percent | ระบุยอดหักเอง = value, VAT-inclusive, R4/R5) and the bill preview. receive_po_lines is the authority and does
 // everything (bill, deduction, stock, status) in one transaction.
 // Deposits: the PO's own deposit is pre-ticked with the R4 default and follows the chosen lines until the user edits
 // it; other open deposits of the supplier not tied to another PO are listed unticked (R6).
@@ -15,6 +15,7 @@ import { receiptValue, outstandingItems, defaultDeduction, computeReceiveDeducti
 import { mapPoReceiptRpcError, receiveDialogDeposits } from '../lib/poReceiptErrors.js'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
 
+const fmtPct = n => String(Math.round(n * 100) / 100)
 const depGross = d => round2(Number(d.expense.amount_no_vat) + Number(d.expense.vat))
 
 export default function ReceivePoLinesModal({ po, stockPlanFor, stockBalances, onDone, onClose }) {
@@ -82,7 +83,7 @@ export default function ReceivePoLinesModal({ po, stockPlanFor, stockBalances, o
     } }
   })
   const edit = (d, patch) => setSel(prev => ({ ...prev, [d.id]: { ...(selection[d.id] || { checked: true, mode: 'value', value: '' }), checked: true, ...patch } }))
-  // switching บาท <-> % keeps the same deduction when the current one is valid
+  // switching ระบุยอดหักเอง <-> ตามสัดส่วนมัดจำ keeps the same deduction when the current one is valid
   const switchMode = (d, m) => {
     const s = selection[d.id] || {}
     if (s.mode === m) return
@@ -187,11 +188,17 @@ export default function ReceivePoLinesModal({ po, stockPlanFor, stockBalances, o
                   )}
                   {s.checked && (
                     <div style={{ marginLeft: 22, marginTop: 4, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <button type="button" className={`btn btn-sm ${s.mode === 'value' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => switchMode(d, 'value')}>บาท</button>
-                      <button type="button" className={`btn btn-sm ${s.mode === 'percent' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => switchMode(d, 'percent')}>%</button>
+                      <button type="button" className={`btn btn-sm ${s.mode === 'percent' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => switchMode(d, 'percent')}>ตามสัดส่วนมัดจำ</button>
+                      <button type="button" className={`btn btn-sm ${s.mode === 'value' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => switchMode(d, 'value')}>ระบุยอดหักเอง</button>
                       <input className="input font-mono" type="number" min="0" step="0.01" style={{ width: 140 }} aria-label={`ยอดหัก ${no}`}
                         value={s.value ?? ''} onChange={e => edit(d, { value: e.target.value })} />
                       <span>{s.mode === 'percent' ? '% ของมูลค่ารับครั้งนี้ (รวม VAT)' : 'บาท (รวม VAT)'}</span>
+                      {s.mode === 'percent' && poTotal > 0 && (
+                        <div data-testid="deposit-share-note" style={{ ...muted, width: '100%' }}>
+                          มัดจำ <span className="font-mono">{fmt(depGross(d))}</span> = {fmtPct(depGross(d) / poTotal * 100)}% ของยอดใบสั่งซื้อ {fmt(poTotal)} — หักตามสัดส่วนของมูลค่าที่รับครั้งนี้
+                        </div>
+                      )}
+                      {s.mode === 'value' && <div style={{ ...muted, width: '100%' }}>ระบุยอดที่ต้องการหักเอง (ไม่เกินมัดจำคงเหลือและมูลค่าที่รับครั้งนี้)</div>}
                       {result.lines[d.id] && (
                         <div style={{ ...muted, width: '100%' }}>หัก <span className="font-mono">{fmt(result.lines[d.id].gross)}</span> = ก่อน VAT {fmt(result.lines[d.id].net)} + VAT {fmt(result.lines[d.id].vat)} · คงเหลือก่อนหัก {fmt(remGross)} → หลังหัก <span className="font-mono">{fmt(round2(remGross - result.lines[d.id].gross))}</span></div>
                       )}

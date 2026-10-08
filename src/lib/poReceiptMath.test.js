@@ -185,3 +185,42 @@ describe('final remainder below 0 from satang rounding (= receive_po_lines toler
     }
   })
 })
+
+describe('owner examples: the two deposit deduction methods (no-VAT PO)', () => {
+  const mkDeposits = gross => [{ id: 'D', supplier_id: 'S', expense: { amount_no_vat: gross, vat: 0 }, remaining: { net: gross, vat: 0 } }]
+  const receiptOf = (items, lineIds) => receiptValue({ items, hasVat: false, priceIncludesVat: false, lineIds, receivedItemIds: new Set(), priorReceipts: [] })
+  const deduct = (gross, receipt, selection) => computeReceiveDeductions({ deposits: mkDeposits(gross), supplierId: 'S', selection: { D: selection }, receipt })
+  const po700 = [{ id: 'P1', line_total: 700 }, { id: 'P2', line_total: 300 }]
+
+  it('method 1 (ตามสัดส่วนมัดจำ): PO 1,000, deposit 300 (30 %), receive 500 -> deduct 150, pay 350, 150 left', () => {
+    const receipt = receiptOf([{ id: 'H1', line_total: 500 }, { id: 'H2', line_total: 500 }], ['H1'])
+    expect(receipt).toMatchObject({ total: 500, isFinal: false })
+    const def = defaultDeduction({ own: true, depositGross: 300, poTotal: 1000, remaining: { net: 300, vat: 0 }, receiptTotal: receipt.total, isFinal: false })
+    expect(def).toBe('150')
+    const out = deduct(300, receipt, { checked: true, mode: 'value', value: def })
+    expect(out.valid).toBe(true)
+    expect(out.plan.total).toBe(350)
+    expect(300 - out.lines.D.gross).toBe(150)
+    // the same deduction as the proportional mode input (30 % of the receipt)
+    const pct = deduct(300, receipt, { checked: true, mode: 'percent', value: '30' })
+    expect(pct.lines.D.gross).toBe(150)
+    expect(pct.plan.total).toBe(350)
+  })
+  it('method 2 (ระบุยอดหักเอง): deposit 500 on PO 1,000, receive 700, deduct 500 -> pay 200, 0 left', () => {
+    const out = deduct(500, receiptOf(po700, ['P1']), { checked: true, mode: 'value', value: '500' })
+    expect(out.valid).toBe(true)
+    expect(out.plan.total).toBe(200)
+    expect(out.lines.D).toEqual({ gross: 500, net: 500, vat: 0 })
+    expect(500 - out.lines.D.gross).toBe(0)
+  })
+  it('guard: manual 600 on a deposit of 500 is refused (exceeds remaining deposit)', () => {
+    const out = deduct(500, receiptOf(po700, ['P1']), { checked: true, mode: 'value', value: '600' })
+    expect(out.errors.D).toBe('exceeds_remaining')
+    expect(out.valid).toBe(false)
+  })
+  it('guard: a deduction larger than the receipt is refused', () => {
+    const out = deduct(900, receiptOf(po700, ['P1']), { checked: true, mode: 'value', value: '800' })   // receipt 700, deposit 900
+    expect(out.errors.D).toBe('exceeds_receipt')
+    expect(out.valid).toBe(false)
+  })
+})

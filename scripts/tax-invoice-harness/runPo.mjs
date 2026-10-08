@@ -376,7 +376,7 @@ ok('one line: value 64,200.00, default deduction 19,260 (30 %)', t.includes('64,
 ok('preview 44,940.00 and remaining after shown', t.includes('44,940.00') && t.includes('12,840.00'), t)
 await m.getByLabel('ยอดหัก DEP-G').fill('99999'); await wait(100)
 ok('too large deduction: Thai error, confirm disabled', (await m.innerText()).includes('เกินยอดมัดจำคงเหลือ') && await confirmRcv.isDisabled())
-await m.getByRole('button', { name: '%' }).click(); await m.getByLabel('ยอดหัก DEP-G').fill('30'); await wait(100)
+await m.getByRole('button', { name: 'ตามสัดส่วนมัดจำ' }).click(); await m.getByLabel('ยอดหัก DEP-G').fill('30'); await wait(100)
 ok('percent mode 30 % -> 19,260.00', (await m.innerText()).includes('19,260.00'))
 const dateBox = m.getByLabel('วันที่รับสินค้า')
 await dateBox.fill('2099-01-01'); await wait(100)
@@ -458,7 +458,7 @@ await m.getByText('รับบางรายการ').click(); await m.getBy
 ok('after re-tick the own deposit follows the chosen lines again (19260)', (await m.getByLabel('ยอดหัก DEP-G').inputValue()) === '19260')
 await m.getByText('รับทั้งหมด').click(); await wait(100)
 await m.getByLabel('ยอดหัก DEP-G').fill('32099.99'); await wait(50)
-await m.getByRole('button', { name: '%' }).click(); await wait(100)
+await m.getByRole('button', { name: 'ตามสัดส่วนมัดจำ' }).click(); await wait(100)
 ok('บาท -> % keeps 6 decimals (29.999991) and the same 32,099.99', (await m.getByLabel('ยอดหัก DEP-G').inputValue()) === '29.999991' && (await m.innerText()).includes('32,099.99'), await m.getByLabel('ยอดหัก DEP-G').inputValue())
 await page.getByRole('button', { name: 'ยกเลิก', exact: true }).click(); await wait(200)
 await set('__depositsError', 'boom'); await render()
@@ -472,6 +472,30 @@ await openMenu(/PO-G/); await menuItem('📦 รับของ').click(); await
 ok('own deposit with money left but not usable (no VAT split): warning, confirm disabled', (await page.locator('.modal').innerText()).includes('ยังมียอดคงเหลือแต่ใช้หักไม่ได้') && await confirmRcv.isDisabled())
 await page.getByRole('button', { name: 'ยกเลิก', exact: true }).click(); await wait(200)
 await page.evaluate(() => { window.__deposits = []; window.__ledger = {} })
+
+console.log('=== 9d receive dialog: the two deduction methods are named, owner example (a) on a no-VAT PO')
+await page.evaluate(() => {
+  window.__data.pos.push({ ...window.__data.pos[2], id: 'X', po_number: 'PO-X', status: 'ordered', has_vat: false, purchase_order_items: [
+    { id: 'n1', description: 'ของ-1', quantity: 1, unit: 'ชิ้น', unit_price: 500, discount_pct: 0, line_total: 500, inventory_item_id: null },
+    { id: 'n2', description: 'ของ-2', quantity: 1, unit: 'ชิ้น', unit_price: 500, discount_pct: 0, line_total: 500, inventory_item_id: null }] })
+  window.__deposits = [{ id: 'dN', deposit_invoice_no: 'DEP-N', expense: { id: 'eN', supplier_id: '11111111-1111-1111-1111-111111111111', amount: 300, amount_no_vat: 300, vat: 0 }, applications: [] }]
+  window.__money = [['X', { receivedItemIds: [], depositId: 'dN' }]]
+  window.__ledger = { X: { receipts: [], deposit: { id: 'dN', deposit_invoice_no: 'DEP-N', pct_of_po: 30, expenses: { amount_no_vat: 300, vat: 0, status: 'paid' }, po_deposit_applications: [] }, applications: [], bills: [] } }
+})
+await render()
+await openMenu(/PO-X/); await menuItem('📦 รับของ').click(); await wait(500)
+m = page.locator('.modal')
+await m.getByText('รับบางรายการ').click(); await m.getByLabel('ของ-1', { exact: true }).check(); await wait(100)
+t = await m.innerText()
+ok('both method names visible', t.includes('ตามสัดส่วนมัดจำ') && t.includes('ระบุยอดหักเอง'), t)
+ok('goods 500 of 1,000, deposit 300 (30 %): default deduction 150', (await m.getByLabel('ยอดหัก DEP-N').inputValue()) === '150', t)
+ok('bill preview: payable 350.00, deposit remaining after 150.00', t.includes('บิลที่จะสร้าง') && t.includes('350.00') && t.includes('คงเหลือก่อนหัก 300.00') && t.includes('หลังหัก 150.00'), t)
+await m.getByRole('button', { name: 'ตามสัดส่วนมัดจำ' }).click(); await wait(100)
+t = await m.innerText()
+ok('proportional method: 30 % of the receipt, deposit share of the PO and the amount shown', (await m.getByLabel('ยอดหัก DEP-N').inputValue()) === '30' && t.includes('30% ของยอดใบสั่งซื้อ') && t.includes('หัก 150.00') && t.includes('350.00'), t)
+await m.getByRole('button', { name: 'ระบุยอดหักเอง' }).click(); await wait(100)
+ok('manual method: back to baht 150', (await m.getByLabel('ยอดหัก DEP-N').inputValue()) === '150' && (await m.innerText()).includes('ระบุยอดที่ต้องการหักเอง'))
+await page.getByRole('button', { name: 'ยกเลิก', exact: true }).click(); await wait(200)
 
 const errs = await page.evaluate(() => window.__errors)
 ok('no React errors', errs.length === 0, errs.join('\n'))
