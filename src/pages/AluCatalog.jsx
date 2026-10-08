@@ -10,11 +10,13 @@ import { canEditPage } from '../lib/permissions.js'
 import HierarchyTab from './aluCatalog/HierarchyTab.jsx'
 import TypesTab from './aluCatalog/TypesTab.jsx'
 import ProfilesTab from './aluCatalog/ProfilesTab.jsx'
+import PartsTab from './aluCatalog/PartsTab.jsx'
 
 const TABS = [
   { id: 'hierarchy', label: '🏭 โรงรีด · ซีรีส์' },
   { id: 'types',     label: '🚪 ประเภทบาน' },
   { id: 'profiles',  label: '📏 หน้าตัด · สี · ความยาว' },
+  { id: 'parts',     label: '🔩 ชิ้นส่วนอื่น' },
 ]
 
 export default function AluCatalog() {
@@ -32,6 +34,7 @@ export default function AluCatalog() {
       {tab === 'hierarchy' && <HierarchyTab canEdit={canEdit} />}
       {tab === 'types' && <TypesTab canEdit={canEdit} />}
       {tab === 'profiles' && <ProfilesTab canEdit={canEdit} />}
+      {tab === 'parts' && <PartsTab canEdit={canEdit} />}
     </div>
   )
 }
