@@ -3,7 +3,7 @@ import {
   fmtWac,
   matchTolerance, withinTolerance, lineAmount, evaluateMatch, wacAfterIn, wacAfterReversal,
   simulateStock, proposePos, lineBase, formSignature, previewIsCurrent, mapTaxInvoiceRpcError, CHECK_TEXT,
-  GENERIC_ERROR_TEXT, isTaxInvoiceNotReady, postSummaryLines, reversingPoCount, fmtQty, doubleCountAlerts,
+  GENERIC_ERROR_TEXT, isTaxInvoiceNotReady, postSummaryLines, reversingPoCount, reversingReceiptCount, fmtQty, doubleCountAlerts,
 } from './supplierTaxInvoice.js'
 
 describe('tolerance = min(1%, 5 baht)  (owner ruling R1)', () => {
@@ -373,5 +373,32 @@ describe('double-count alerts (PO without receipt movements, e.g. backfilled mon
 describe('stale_preview', () => {
   it('has the Thai text', () => {
     expect(mapTaxInvoiceRpcError({ message: 'stale_preview' })).toBe('ใบกำกับถูกแก้ไขหลังจากดูตัวอย่าง กรุณาดูตัวอย่างใหม่')
+  })
+})
+
+describe('per-delivery additions', () => {
+  it('formSignature: a PO form signature is unchanged; a delivery form also covers kind and receipts', () => {
+    const base = { supplier_id: 'S', invoice_no: 'X', invoice_date: '2026-10-08', net_before_vat: '1', vat: '0', match_note: '', lines: [], po_ids: ['p1'] }
+    expect(formSignature({ ...base, link_kind: 'po', receipt_ids: ['r9'] })).toBe(formSignature(base))
+    const d = { ...base, po_ids: [], link_kind: 'delivery', receipt_ids: ['r2', 'r1'] }
+    expect(formSignature(d)).toBe(formSignature({ ...d, receipt_ids: ['r1', 'r2'] }))
+    expect(formSignature(d)).not.toBe(formSignature({ ...d, receipt_ids: ['r1'] }))
+  })
+  it('proposePos never offers a delivery-mode PO', () => {
+    const r = proposePos({ pos: [{ id: 'p1', supplier_id: 'A', status: 'received', date: '2026-10-01' }, { id: 'p2', supplier_id: 'A', status: 'received', date: '2026-10-01', tax_invoice_mode: 'delivery' }],
+      supplierId: 'A', invoiceDate: '2026-10-08', activeLinks: new Map(), invoiceId: null })
+    expect(r.proposed.map(p => p.id)).toEqual(['p1'])
+  })
+  it('postSummaryLines: receipt wording only when receiptCount is given; PO wording unchanged', () => {
+    const po = postSummaryLines({ invoiceNo: 'INV', invoiceDate: '2026-10-08', stockLineCount: 1, poCount: 2, preview: { checks: [], rows: [] }, matchNote: '' })
+    expect(po[1]).toBe('กลับรายการรับเข้าสต็อกของใบสั่งซื้อ 2 ใบ')
+    expect(po).toContain('รายจ่ายของใบสั่งซื้อไม่เปลี่ยนยอด แต่จะประทับเลขที่ใบกำกับ INV')
+    const d = postSummaryLines({ invoiceNo: 'INV', invoiceDate: '2026-10-08', stockLineCount: 1, receiptCount: 2,
+      preview: { checks: [{ code: 'receipt_stock_from_invoice', blocking: false, receipt_id: 'r2' }], rows: [] }, matchNote: '' })
+    expect(d[1]).toBe('กลับรายการรับเข้าสต็อกของการรับของ 1 ล็อต')
+    expect(d).toContain('บิลของล็อตที่เลือกไม่เปลี่ยนยอด แต่จะประทับเลขที่ใบกำกับ INV')
+  })
+  it('reversingReceiptCount', () => {
+    expect(reversingReceiptCount(3, [{ code: 'receipt_no_stock_movements', receipt_id: 'a' }, { code: 'receipt_no_stock_movements', receipt_id: 'a' }])).toBe(2)
   })
 })

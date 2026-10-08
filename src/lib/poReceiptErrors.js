@@ -4,6 +4,7 @@
 import { RPC_ERROR_TEXT, PO_DEPOSIT_LOCKED_TEXT, openDeposits } from './receiveDeposits.js'
 import { depositRemaining, round2 } from './depositMath.js'
 import { poTaxInvoiceErrorText } from './poTaxInvoiceStatus.js'
+import { RECEIVE_DELIVERY_DISCOUNT_TEXT } from './deliveryTaxInvoiceText.js'
 
 export const PO_RECEIPT_LOCKED_TEXT = 'ใบสั่งซื้อนี้รับของแล้ว แก้ไขหรือยกเลิกไม่ได้ — แจ้งผู้ดูแลระบบ'
 export const DB_NOT_UPDATED_TEXT = 'ระบบยังไม่ได้อัปเดตฐานข้อมูล — แจ้งผู้ดูแลระบบ'
@@ -130,6 +131,13 @@ export function receiveRoute(po, index) {
   const discount = (po.purchase_order_items || []).some(it => Number(it.line_total) < 0)
   // null = loading or a non-soft query failure: we cannot tell which schema is live, so offer nothing yet
   if (!index) return { kind: 'disabled', reason: RECEIVE_NOT_READY_TEXT }
+  // a 'delivery' PO is received lot by lot only (receive_po_lines): the server refuses the old whole-PO receive
+  // (po_delivery_needs_receipt) because no po_receipts row would exist to link an invoice to
+  if (po.tax_invoice_mode === 'delivery') {
+    if (index.schemaReady === false) return { kind: 'disabled', reason: RECEIVE_NOT_READY_TEXT }
+    if (discount) return { kind: 'disabled', reason: RECEIVE_DELIVERY_DISCOUNT_TEXT }
+    return { kind: 'new' }
+  }
   if (index.schemaReady === false) return po.status === 'ordered' ? { kind: 'old' } : { kind: 'disabled', reason: RECEIVE_NOT_READY_TEXT }
   if (po.status === 'ordered') return discount ? { kind: 'old' } : { kind: 'new' }
   if (discount) return { kind: 'disabled', reason: RECEIVE_DISCOUNT_PARTIAL_TEXT }
@@ -169,4 +177,11 @@ export function isMissingRelationError(err) {
   if (err.code === '42P01' || err.code === 'PGRST205') return true
   const msg = `${err.message || ''} ${err.details || ''}`
   return /relation .* does not exist/i.test(msg) || /Could not find the table/i.test(msg)
+}
+
+/** True when PostgREST cannot find the embedded relationship to `table` (PGRST200), e.g. before the migration creates it. */
+export function isMissingEmbedError(err, table) {
+  if (!err) return false
+  const msg = `${err.message || ''} ${err.details || ''} ${err.hint || ''}`
+  return (err.code === 'PGRST200' || /could not find a relationship/i.test(msg)) && msg.includes(table)
 }

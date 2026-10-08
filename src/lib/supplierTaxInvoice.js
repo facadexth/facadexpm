@@ -92,7 +92,7 @@ export function proposePos({ pos, supplierId, invoiceDate, activeLinks, invoiceI
     const l = activeLinks?.get?.(po.id)
     return l && l.invoice_id !== invoiceId ? l : null
   }
-  const eligible = (pos || []).filter(po => po.supplier_id === supplierId && po.status === 'received')
+  const eligible = (pos || []).filter(po => po.supplier_id === supplierId && po.status === 'received' && po.tax_invoice_mode !== 'delivery')
   return {
     proposed: eligible.filter(po => inMonth(po) && !elsewhere(po)),
     outsideMonth: eligible.filter(po => !inMonth(po) && !elsewhere(po)),
@@ -121,6 +121,7 @@ export function formSignature(form) {
     net: String(f.net_before_vat ?? ''), vat: String(f.vat ?? ''), note: String(f.match_note || '').trim(),
     lines: (f.lines || []).map(l => [l.description, l.qty, l.unit, l.unit_price, l.discount_pct, l.inventory_item_id || '', l.site_id || '', l.base_qty ?? '']),
     pos: [...(f.po_ids || [])].sort(),
+    ...(f.link_kind === 'delivery' ? { k: 'delivery', rc: [...(f.receipt_ids || [])].sort() } : {}),
   })
 }
 export function previewIsCurrent(preview, form) {
@@ -246,6 +247,13 @@ export function reversingPoCount(poCount, checks) {
   return Math.max(0, poCount - skipped.size)
 }
 
+const NO_REVERSAL_RECEIPT_CODES = ['receipt_no_stock_movements', 'receipt_stock_from_invoice']
+/** Number of linked receipts that really have stock movements to reverse. */
+export function reversingReceiptCount(receiptCount, checks) {
+  const skipped = new Set((checks || []).filter(c => NO_REVERSAL_RECEIPT_CODES.includes(c.code) && c.receipt_id).map(c => c.receipt_id))
+  return Math.max(0, receiptCount - skipped.size)
+}
+
 /** Prominent alerts for the confirm dialog: one entry per PO whose receipt was never recorded as a movement
  *  (post will ADD the invoice's stock with nothing to reverse: double count if that month was backfilled).
  *  Never de-duplicated by code: every affected PO is listed. */
@@ -258,8 +266,11 @@ export function doubleCountAlerts(checks, poNumberById) {
 
 /** Text for the post confirm dialog: every stock change, warnings (de-duplicated by code), typed reason.
  *  po_no_receipt_movements is NOT in here: doubleCountAlerts() shows it separately and prominently. */
-export function postSummaryLines({ invoiceNo, invoiceDate, stockLineCount, poCount, preview, matchNote }) {
-  const out = [`เพิ่มสต็อกจากใบกำกับ ${stockLineCount} รายการ`, `กลับรายการรับเข้าสต็อกของใบสั่งซื้อ ${reversingPoCount(poCount, preview?.checks)} ใบ`]
+export function postSummaryLines({ invoiceNo, invoiceDate, stockLineCount, poCount, receiptCount, preview, matchNote }) {
+  const byReceipt = receiptCount != null
+  const out = [`เพิ่มสต็อกจากใบกำกับ ${stockLineCount} รายการ`, byReceipt
+    ? `กลับรายการรับเข้าสต็อกของการรับของ ${reversingReceiptCount(receiptCount, preview?.checks)} ล็อต`
+    : `กลับรายการรับเข้าสต็อกของใบสั่งซื้อ ${reversingPoCount(poCount, preview?.checks)} ใบ`]
   for (const r of preview?.rows || []) {
     out.push(`${r.negative ? '⚠️ ' : ''}${r.item_name} @ ${r.site_name}: คงเหลือ ${fmtQty(r.before_qty)} → ${fmtQty(r.after_qty)} ${r.base_unit || ''}`.trim()
       + ` · ต้นทุนเฉลี่ย ${fmtWac(r.before_wac)} → ${fmtWac(r.after_wac)}`
@@ -272,7 +283,7 @@ export function postSummaryLines({ invoiceNo, invoiceDate, stockLineCount, poCou
     seen.add(c.code); out.push('⚠️ ' + (CHECK_TEXT[c.code] || c.code))
   }
   if (String(matchNote || '').trim()) out.push(`เหตุผลที่ยอดต่าง: ${String(matchNote).trim()}`)
-  out.push(`รายจ่ายของใบสั่งซื้อไม่เปลี่ยนยอด แต่จะประทับเลขที่ใบกำกับ ${invoiceNo}`)
+  out.push(byReceipt ? `บิลของล็อตที่เลือกไม่เปลี่ยนยอด แต่จะประทับเลขที่ใบกำกับ ${invoiceNo}` : `รายจ่ายของใบสั่งซื้อไม่เปลี่ยนยอด แต่จะประทับเลขที่ใบกำกับ ${invoiceNo}`)
   if (invoiceDate) {
     out.push(`รายการเคลื่อนไหวสต็อกจะลงวันที่ตามวันที่ใบกำกับ (${invoiceDate})`)
     out.push('หากยกเลิกใบกำกับภายหลัง รายการย้อนกลับจะลงวันที่วันที่ยกเลิก (วันนี้) ไม่ใช่เดือนของใบกำกับ — บัญชีสต็อกของเดือนนั้นจะไม่ถูกแก้ย้อนหลัง')

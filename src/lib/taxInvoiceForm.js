@@ -20,13 +20,14 @@ const num = v => {
 export const emptyLine = () => ({ key: nextKey(), description: '', qty: '1', unit: '', unit_price: '', discount_pct: '0', inventory_item_id: '', site_id: '', base_qty: '', base_manual: false, base_stale: false })
 
 export function emptyTaxInvoiceForm(today) {
-  return { supplier_id: '', invoice_no: '', invoice_date: today, net_before_vat: '', vat: '', match_note: '', lines: [], po_ids: [] }
+  return { supplier_id: '', invoice_no: '', invoice_date: today, net_before_vat: '', vat: '', match_note: '', lines: [], po_ids: [], link_kind: 'po', receipt_ids: [] }
 }
 
 /** row = a full invoice row (useSupplierTaxInvoice), items and pos embedded.
  *  base_manual starts true for a saved base quantity (we cannot compute here); the form calls
  *  reconcileBaseManual() once the item/unit lookups are loaded. */
 export function formFromInvoice(row) {
+  const rl = (row.supplier_tax_invoice_receipts || []).filter(l => l.active)
   return {
     supplier_id: row.supplier_id, invoice_no: row.invoice_no, invoice_date: row.invoice_date,
     net_before_vat: String(row.net_before_vat ?? ''), vat: String(row.vat ?? ''), match_note: row.match_note || '',
@@ -36,6 +37,7 @@ export function formFromInvoice(row) {
       base_qty: i.base_qty != null ? String(i.base_qty) : '', base_manual: i.base_qty != null, base_stale: false,
     })),
     po_ids: (row.supplier_tax_invoice_pos || []).filter(l => l.active).map(l => l.po_id),
+    link_kind: rl.length ? 'delivery' : 'po', receipt_ids: rl.map(l => l.receipt_id),
   }
 }
 
@@ -55,6 +57,7 @@ export function toRpcPayload(form) {
       }
     }),
     poIds: [...(form.po_ids || [])],
+    receiptIds: [...(form.receipt_ids || [])], linkKind: form.link_kind === 'delivery' ? 'delivery' : 'po',
   }
 }
 
@@ -130,4 +133,11 @@ export function missingPoIds(poIds, poRows) {
   if (!poRows) return []
   const have = new Set(poRows.map(p => p.id))
   return (poIds || []).filter(id => !have.has(id))
+}
+
+/** receipt_ids not among the loaded receipts (must be shown, never dropped silently). */
+export function missingReceiptIds(ids, rows) {
+  if (!rows) return []
+  const have = new Set(rows.map(r => r.id))
+  return (ids || []).filter(id => !have.has(id))
 }

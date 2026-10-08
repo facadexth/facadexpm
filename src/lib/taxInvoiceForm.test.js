@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   emptyTaxInvoiceForm, emptyLine, formFromInvoice, toRpcPayload, validateFormForSave,
-  poRowsFor, computeAutoVat, applyLineChange, reconcileBaseManual, missingPoIds,
+  poRowsFor, computeAutoVat, applyLineChange, reconcileBaseManual, missingPoIds, missingReceiptIds,
 } from './taxInvoiceForm.js'
 
 describe('taxInvoiceForm', () => {
@@ -161,5 +161,27 @@ describe('missingPoIds', () => {
   })
   it('rows not loaded yet -> nothing is reported', () => {
     expect(missingPoIds(['a'], null)).toEqual([])
+  })
+})
+
+describe('per-delivery form model', () => {
+  it('empty form is PO kind with no receipts', () => {
+    expect(emptyTaxInvoiceForm('2026-10-08')).toMatchObject({ link_kind: 'po', receipt_ids: [], po_ids: [] })
+  })
+  it('formFromInvoice: active receipt links -> delivery kind', () => {
+    const f = formFromInvoice({ supplier_id: 'S', invoice_no: 'X', invoice_date: '2026-10-08', net_before_vat: 1, vat: 0, supplier_tax_invoice_items: [],
+      supplier_tax_invoice_pos: [], supplier_tax_invoice_receipts: [{ receipt_id: 'r1', active: true }, { receipt_id: 'r0', active: false }] })
+    expect(f).toMatchObject({ link_kind: 'delivery', receipt_ids: ['r1'], po_ids: [] })
+    expect(formFromInvoice({ supplier_id: 'S', invoice_no: 'X', invoice_date: '2026-10-08', net_before_vat: 1, vat: 0, supplier_tax_invoice_items: [], supplier_tax_invoice_pos: [] }))
+      .toMatchObject({ link_kind: 'po', receipt_ids: [] })
+  })
+  it('toRpcPayload carries receipt ids and the kind', () => {
+    const p = toRpcPayload({ ...emptyTaxInvoiceForm('2026-10-08'), supplier_id: 'S', invoice_no: 'X', net_before_vat: '1', link_kind: 'delivery', receipt_ids: ['r1', 'r2'] })
+    expect(p.receiptIds).toEqual(['r1', 'r2']); expect(p.linkKind).toBe('delivery')
+    expect(toRpcPayload({ ...emptyTaxInvoiceForm('2026-10-08') }).linkKind).toBe('po')
+  })
+  it('missingReceiptIds: null rows -> nothing; unknown ids listed', () => {
+    expect(missingReceiptIds(['a'], null)).toEqual([])
+    expect(missingReceiptIds(['a', 'b'], [{ id: 'a' }])).toEqual(['b'])
   })
 })

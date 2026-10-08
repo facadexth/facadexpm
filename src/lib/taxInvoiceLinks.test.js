@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { buildActiveLinkMap, saveDraftArgs, idArgs, postArgs, voidArgs, TAX_INVOICE_RPCS } from './taxInvoiceLinks.js'
+import { buildActiveLinkMap, saveDraftArgs, saveReceiptDraftArgs, idArgs, postArgs, voidArgs, TAX_INVOICE_RPCS } from './taxInvoiceLinks.js'
 import { mapTaxInvoiceRpcError, CHECK_TEXT } from './supplierTaxInvoice.js'
 
 describe('buildActiveLinkMap', () => {
@@ -102,5 +102,13 @@ describe('error mapping for the wrappers (thrown Supabase error objects)', () =>
   it('maps a missing function/table (migration not applied) to a clear message', () => {
     expect(mapTaxInvoiceRpcError({ code: 'PGRST202', message: 'Could not find the function public.post_supplier_tax_invoice' })).toMatch(/ยังไม่พร้อม/)
     expect(mapTaxInvoiceRpcError({ code: '42P01', message: 'relation "supplier_tax_invoices" does not exist' })).toMatch(/ยังไม่พร้อม/)
+  })
+})
+
+describe('receipt draft args', () => {
+  it('defaults and shape', () => {
+    expect(saveReceiptDraftArgs(undefined, { a: 1 }, undefined, undefined)).toEqual({ p_id: null, p_header: { a: 1 }, p_items: [], p_receipt_ids: [] })
+    expect(saveReceiptDraftArgs('i', {}, [1], ['r'])).toEqual({ p_id: 'i', p_header: {}, p_items: [1], p_receipt_ids: ['r'] })
+    expect(TAX_INVOICE_RPCS.saveReceipts).toBe('save_supplier_tax_invoice_receipt_draft')
   })
 })

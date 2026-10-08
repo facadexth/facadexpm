@@ -14,6 +14,8 @@ export function buildActiveLinkMap(rows) {
 // supabase/migrations/2026-10-08-02-supplier-tax-invoice-rpcs.sql (locked by taxInvoiceLinks.test.js).
 export const saveDraftArgs = (id, header, items, poIds) =>
   ({ p_id: id || null, p_header: header, p_items: items || [], p_po_ids: poIds || [] })
+export const saveReceiptDraftArgs = (id, header, items, receiptIds) =>
+  ({ p_id: id || null, p_header: header, p_items: items || [], p_receipt_ids: receiptIds || [] })
 export const idArgs = id => ({ p_id: id })
 /** post must pass the revision the user previewed; a missing value is sent as null and the server refuses it. */
 export const postArgs = (id, expectedRevision) => ({ p_id: id, p_expected_revision: Number.isInteger(expectedRevision) ? expectedRevision : null })
@@ -21,6 +23,7 @@ export const voidArgs = (id, reason) => ({ p_id: id, p_reason: reason })
 
 export const TAX_INVOICE_RPCS = {
   save: 'save_supplier_tax_invoice_draft',
+  saveReceipts: 'save_supplier_tax_invoice_receipt_draft',
   delete: 'delete_supplier_tax_invoice_draft',
   preview: 'preview_supplier_tax_invoice',
   post: 'post_supplier_tax_invoice',

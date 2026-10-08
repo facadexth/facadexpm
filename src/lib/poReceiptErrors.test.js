@@ -1,6 +1,7 @@
 // src/lib/poReceiptErrors.test.js
 import { describe, it, expect } from 'vitest'
-import { mapPoReceiptRpcError, buildPoMoneyIndex, poMoneyLockText, poLedgerSummary, PO_RECEIPT_LOCKED_TEXT, PO_HAS_DEPOSIT_TEXT, depositSelectableForPo, isMissingColumnError, PO_RECEIPT_ERROR_TEXT, receiveRoute, receiveDialogDeposits, canOfferCreateDeposit, DB_NOT_UPDATED_TEXT, RECEIVE_NOT_READY_TEXT, poHasMultipleBills } from './poReceiptErrors.js'
+import { mapPoReceiptRpcError, buildPoMoneyIndex, poMoneyLockText, poLedgerSummary, PO_RECEIPT_LOCKED_TEXT, PO_HAS_DEPOSIT_TEXT, depositSelectableForPo, isMissingColumnError, PO_RECEIPT_ERROR_TEXT, receiveRoute, receiveDialogDeposits, canOfferCreateDeposit, DB_NOT_UPDATED_TEXT, RECEIVE_NOT_READY_TEXT, poHasMultipleBills, isMissingEmbedError } from './poReceiptErrors.js'
+import { RECEIVE_DELIVERY_DISCOUNT_TEXT } from './deliveryTaxInvoiceText.js'
 import { readFileSync } from 'node:fs'
 
 describe('mapPoReceiptRpcError', () => {
@@ -198,5 +199,28 @@ describe('poHasMultipleBills (swap-invoice lock, Task 10)', () => {
     expect(poHasMultipleBills({ id: 'C' }, idx)).toBe(true)
     expect(poHasMultipleBills({ id: 'Z' }, idx)).toBe(false)
     expect(poHasMultipleBills({ id: 'A' }, null)).toBe(false)
+  })
+})
+
+describe('receiveRoute for delivery-mode POs (never the old whole-PO receive)', () => {
+  const item = (o = {}) => ({ id: 'i1', line_total: 100, ...o })
+  const dpo = (status, items = [item()]) => ({ id: 'P', status, tax_invoice_mode: 'delivery', purchase_order_items: items })
+  const ready = buildPoMoneyIndex({ receiptItems: [], deposits: [] })
+  const pre = buildPoMoneyIndex({ receiptItems: [], deposits: [], schemaReady: false })
+  it('new dialog when the schema is ready', () => {
+    expect(receiveRoute(dpo('ordered'), ready)).toEqual({ kind: 'new' })
+    expect(receiveRoute(dpo('partially_received'), ready)).toEqual({ kind: 'new' })
+  })
+  it('disabled (not old) before the schema and with a discount line', () => {
+    expect(receiveRoute(dpo('ordered'), pre)).toEqual({ kind: 'disabled', reason: RECEIVE_NOT_READY_TEXT })
+    expect(receiveRoute(dpo('ordered', [item(), item({ id: 'i2', line_total: -5 })]), ready)).toEqual({ kind: 'disabled', reason: RECEIVE_DELIVERY_DISCOUNT_TEXT })
+  })
+})
+describe('isMissingEmbedError', () => {
+  it('PGRST200 naming the table only', () => {
+    expect(isMissingEmbedError({ code: 'PGRST200', message: "Could not find a relationship between 'supplier_tax_invoices' and 'supplier_tax_invoice_receipts' in the schema cache" }, 'supplier_tax_invoice_receipts')).toBe(true)
+    expect(isMissingEmbedError({ code: 'PGRST200', message: "... 'suppliers' ..." }, 'supplier_tax_invoice_receipts')).toBe(false)
+    expect(isMissingEmbedError({ code: '42501', message: 'supplier_tax_invoice_receipts' }, 'supplier_tax_invoice_receipts')).toBe(false)
+    expect(isMissingEmbedError(null, 'x')).toBe(false)
   })
 })
