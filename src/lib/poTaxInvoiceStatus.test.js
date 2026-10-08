@@ -51,3 +51,10 @@ describe('poTaxInvoiceErrorText', () => {
     expect(poTaxInvoiceErrorText(null)).toBe(null)
   })
 })
+
+describe("poTaxInvoiceBadge and delivery POs", () => {
+  it("the PO-level awaiting badge never shows for a delivery PO (lots carry their own status)", () => {
+    expect(poTaxInvoiceBadge({ id: "P", status: "received", stock_from_invoice: true, tax_invoice_mode: "delivery" }, new Map())).toEqual({ kind: null, text: "" })
+    expect(poTaxInvoiceBadge({ id: "P", status: "received", stock_from_invoice: true }, new Map()).kind).toBe("awaiting")
+  })
+})

@@ -171,3 +171,9 @@ export function invoiceMatchBase(row) {
   }
   return pickLinks(row, row?.supplier_tax_invoice_pos).reduce((s, l) => s + (Number(l.po_subtotal) || 0), 0)
 }
+
+/** Navigation state for 'supplier_tax_invoices' that opens a new invoice for one receipt (consumed by the invoice page). */
+export function invoiceHandoff(po, receiptId) {
+  if (!po || !receiptId) return null
+  return { newForReceipt: { receiptId, poId: po.id, supplierId: po.supplier_id } }
+}

@@ -3,7 +3,7 @@ import {
   receiptLabel, evaluateDeliveryMatch, buildActiveReceiptLinkMap, receiptEligibility, receiptPickerRows,
   receiptsAwaitingInvoice, receiptTaxInvoiceStatus, defaultTaxInvoiceMode, poModePayload, supplierModePayload,
   poModeLockedText, deliveryPoBadge, formForReceipt, invoiceMatchBase, linkKindOf,
-  poModeForSupplier, poDeliveryDiscountWarning, splitDeliveryPoIds,
+  poModeForSupplier, poDeliveryDiscountWarning, splitDeliveryPoIds, invoiceHandoff,
 } from './deliveryTaxInvoice.js'
 import { PO_MODE_LOCKED_TEXT, DELIVERY_CHECK_TEXT, DELIVERY_RPC_TEXT, RECEIVE_DELIVERY_DISCOUNT_TEXT, PO_DELIVERY_DISCOUNT_SAVE_TEXT } from './deliveryTaxInvoiceText.js'
 
@@ -192,5 +192,15 @@ describe('list helpers', () => {
     expect(linkKindOf(p)).toBe('po')
     expect(invoiceMatchBase(p)).toBe(1000)
     expect(invoiceMatchBase({ ...p, status: 'void' })).toBe(1005)
+  })
+})
+
+describe("invoiceHandoff (receive dialog -> tax invoice form)", () => {
+  it("builds the newForReceipt navigation state", () => {
+    expect(invoiceHandoff({ id: "P1", supplier_id: "S" }, "r9")).toEqual({ newForReceipt: { receiptId: "r9", poId: "P1", supplierId: "S" } })
+  })
+  it("returns null without a receipt id", () => {
+    expect(invoiceHandoff({ id: "P1", supplier_id: "S" }, "")).toBe(null)
+    expect(invoiceHandoff(null, "r9")).toBe(null)
   })
 })

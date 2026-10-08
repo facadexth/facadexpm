@@ -18,7 +18,7 @@ import { bangkokTodayIso } from '../lib/photoUpload.js'
 const fmtPct = n => String(Math.round(n * 100) / 100)
 const depGross = d => round2(Number(d.expense.amount_no_vat) + Number(d.expense.vat))
 
-export default function ReceivePoLinesModal({ po, stockPlanFor, stockBalances, onDone, onClose }) {
+export default function ReceivePoLinesModal({ po, stockPlanFor, stockBalances, onDone, onClose, offerInvoiceNext = false }) {
   const today = bangkokTodayIso()
   const { data: ledger, error: ledgerError } = usePoLedger(po.id)
   const { data: depRows, error: depError } = useSupplierDeposits(po.supplier_id)
@@ -26,6 +26,7 @@ export default function ReceivePoLinesModal({ po, stockPlanFor, stockBalances, o
   const [picked, setPicked] = useState(() => new Set())
   const [receivedDate, setReceivedDate] = useState(today)
   const [sel, setSel] = useState({})        // user edits only: {[depositId]: {checked, mode, value}}
+  const [invoiceNext, setInvoiceNext] = useState(true)   // delivery POs: key the lot's tax invoice right after receiving (ticked by default)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const inFlight = useRef(false)            // double-click guard: state updates are async, a ref is not
@@ -112,7 +113,7 @@ export default function ReceivePoLinesModal({ po, stockPlanFor, stockBalances, o
       return
     }
     // saved: never re-enable confirm from here (a retry would receive again)
-    onDone(res || {})
+    onDone(res || {}, { openInvoice: offerInvoiceNext && invoiceNext })
   }
 
   const { plan } = result
@@ -235,6 +236,12 @@ export default function ReceivePoLinesModal({ po, stockPlanFor, stockBalances, o
               return <div key={p.poItemId} style={{ marginTop: 4 }}>📦 {p.name}: +{fmt(p.baseQty)} {p.baseUnit} → คงเหลือ {fmt(oldQty + p.baseQty)} {p.baseUnit} @ เฉลี่ย {fmt(newWac)}/{p.baseUnit}</div>
             })}
           </div>
+        )}
+        {offerInvoiceNext && (
+          <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+            <input type="checkbox" aria-label="ลงใบกำกับภาษีของล็อตนี้ต่อทันที" checked={invoiceNext} disabled={busy} onChange={e => setInvoiceNext(e.target.checked)} />
+            <span>🧾 ลงใบกำกับภาษีของล็อตนี้ต่อทันที <span style={{ ...muted, fontSize: 12 }}>(ไม่ติ๊ก = ล็อตนี้ "รอใบกำกับ" ลงทีหลังได้)</span></span>
+          </label>
         )}
         {error && <div role="alert" style={{ color: 'var(--red)' }}>{error}</div>}
       </div>

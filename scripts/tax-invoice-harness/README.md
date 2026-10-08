@@ -26,6 +26,7 @@ Sections 3-5 and 9/9b drive the new receive dialog (`ReceivePoLinesModal`, wrapp
 errors kept inside the open dialog, double click = one call, 375 px. `__moneySchema = false` simulates the pre-migration
 index (empty, `schemaReady` false) that routes ordered POs to the old receive.
 Section 10: delivery mode (`__deliveryReady`, `__receiptLinks`; sections 1-9 run with `__deliveryReady=false`): form mode choice + supplier default (touched / draft restore / inline supplier / late readiness), discount-line save warning, ⋯ mode switch and lock, no swap for delivery POs, badge guard, 375 px.
+Section 11: receive checkbox + hand-off (`window.__nav`), popup lot status, row badge.
 
 ## Expenses page scenarios
 

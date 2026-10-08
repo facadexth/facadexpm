@@ -6,7 +6,7 @@
 // ============================================================
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits, useActiveTaxInvoiceLinks, usePoMoneyIndex, usePoLedger, useDeliveryTaxInvoiceReady } from '../hooks/useSupabase.js'
+import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits, useActiveTaxInvoiceLinks, usePoMoneyIndex, usePoLedger, useDeliveryTaxInvoiceReady, useActiveReceiptTaxInvoiceLinks } from '../hooks/useSupabase.js'
 import { fileToExtractionPayload, buildExampleExtracted, applyScanVatBasis, clearScanVatBasis, scanLinesTotalExVat } from '../lib/poDocumentExtraction.js'
 import ScanDocPreview from '../components/ScanDocPreview.jsx'
 import ScanNotice from '../components/ScanNotice.jsx'
@@ -33,7 +33,7 @@ import { calcPoTotals, poLineTotal as lineTotal } from '../lib/poTotals.js'
 import { VAT_RATE } from '../lib/invoiceCalc.js'
 import { poTaxInvoiceBadge, buildPoPayloadFlag, poEditLockedText, poTaxInvoiceErrorText } from '../lib/poTaxInvoiceStatus.js'
 import { poMoneyLockText, poLedgerSummary, mapPoReceiptRpcError, receiveRoute, canOfferCreateDeposit, poHasMultipleBills, SWAP_MULTI_BILL_TEXT } from '../lib/poReceiptErrors.js'
-import { poModeForSupplier, poModePayload, poModeLockedText, poDeliveryDiscountWarning } from '../lib/deliveryTaxInvoice.js'
+import { poModeForSupplier, poModePayload, poModeLockedText, poDeliveryDiscountWarning, deliveryPoBadge, receiptTaxInvoiceStatus, invoiceHandoff } from '../lib/deliveryTaxInvoice.js'
 import { PO_MODE_LOCKED_TEXT } from '../lib/deliveryTaxInvoiceText.js'
 import CreatePoDepositModal from '../components/CreatePoDepositModal.jsx'
 import ReceivePoLinesModal from '../components/ReceivePoLinesModal.jsx'
@@ -65,7 +65,7 @@ const PO_STATUS_LABELS = { draft: '📝 ร่าง (รอเติมข้�
 const BILL_STATUS_LABELS = { awaiting_billing: '🧾 รอวางบิล', pending: '⏳ ค้างจ่าย', check_issued: '📄 ออกเช็ค', check_cleared: '🏦 เช็คผ่าน', paid: '✅ จ่ายแล้ว' }
 
 // linked = blue, awaiting = amber (existing badge colours)
-const TAX_BADGE_CLASS = { linked: 'badge-check_cleared', awaiting: 'badge-pending' }
+const TAX_BADGE_CLASS = { linked: 'badge-check_cleared', awaiting: 'badge-pending', delivery: 'badge-po-ordered' }
 
 const EMPTY_ITEM = { description: '', quantity: '1', unit: '', unit_price: '', discount_pct: '0', inventory_item_id: '', aluminum_profile_id: '', rod_length_m: '', glass_width_m: '', glass_height_m: '' }
 const EMPTY_FORM = { site_id: '', supplier_id: '', category_id: '', date: '', has_vat: true, price_includes_vat: false, ordered_by: '', notes: '', deposit_deductions: [], stock_from_invoice: false, tax_invoice_mode: 'po', items: [{ ...EMPTY_ITEM }] }
@@ -443,7 +443,7 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, sho
   )
 }
 
-function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument }) {
+function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument, receiptLinks = null, onStartInvoice = null }) {
   const items = po.purchase_order_items || []
   const { subtotal, vat, total } = calcPoTotals(items, po.has_vat, po.price_includes_vat)
   const { data: ledger } = usePoLedger(po.id)          // null while loading or before the migration: sections hide
@@ -502,7 +502,17 @@ function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument }) {
           <div style={{ fontSize: 13 }}>
             <label className="label">การรับของ</label>
             {s.receipts.map(r => (
-              <div key={r.id}>R{r.seq} · {fmtDate(r.received_date)} · ก่อน VAT <span className="font-mono">{fmt(r.goods_subtotal)}</span> · VAT <span className="font-mono">{fmt(r.goods_vat)}</span></div>
+              <div key={r.id} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span>R{r.seq} · {fmtDate(r.received_date)} · ก่อน VAT <span className="font-mono">{fmt(r.goods_subtotal)}</span> · VAT <span className="font-mono">{fmt(r.goods_vat)}</span></span>
+                {po.tax_invoice_mode === 'delivery' && (() => {
+                  const st = receiptTaxInvoiceStatus(r.id, receiptLinks)
+                  if (!st.kind) return null
+                  return <>
+                    <span className={`badge ${TAX_BADGE_CLASS[st.kind]}`}>{st.text}</span>
+                    {st.kind === 'awaiting' && onStartInvoice && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onStartInvoice(r.id)}>🧾 ลงใบกำกับ</button>}
+                  </>
+                })()}
+              </div>
             ))}
           </div>
         )}
@@ -865,7 +875,12 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   // data is null while loading or before the tax invoice migrations are applied: then no badges and no locks (page works as before)
   const { data: taxInvoiceLinks, refetch: refetchLinks } = useActiveTaxInvoiceLinks()
   const { data: moneyIndex, refetch: refetchMoney } = usePoMoneyIndex()
-  const refetchAll = () => { refetch(); refetchLinks(); refetchMoney() }
+  // per-delivery lots: null until the migration is live ({ ready: false } before), so nothing delivery-related shows early
+  const { data: receiptLinkData, refetch: refetchReceiptLinks } = useActiveReceiptTaxInvoiceLinks()
+  const receiptLinks = receiptLinkData?.ready ? receiptLinkData.map : null
+  const refetchAll = () => { refetch(); refetchLinks(); refetchMoney(); refetchReceiptLinks() }
+  // hand-off to the tax invoice form (the form reads navState.newForReceipt)
+  const startInvoiceForReceipt = (po, receiptId) => { const st = invoiceHandoff(po, receiptId); if (st) navigateTo('supplier_tax_invoices', st) }
   // One call for the receive / deposit / split dialogs (Tasks 8-10) after any mutation: PO list, links, money index,
   // stock balances, and the open popup's ledger (the popup is re-keyed so usePoLedger refetches).
   const [poDataVersion, setPoDataVersion] = useState(0)
@@ -1301,6 +1316,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                     <td>
                       <span className={`badge badge-po-${po.status}`}>{PO_STATUS_LABELS[po.status] || po.status}</span>
                       {taxBadge.kind && <span className={`badge ${TAX_BADGE_CLASS[taxBadge.kind]}`} style={{ marginLeft: 4 }}>{taxBadge.text}</span>}
+                      {(() => { const d = deliveryPoBadge(po, moneyIndex, receiptLinks); return d.kind ? <span className={`badge ${TAX_BADGE_CLASS[d.kind]}`} style={{ marginLeft: 4 }}>{d.text}</span> : null })()}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <div className="actions-cell">
@@ -1327,6 +1343,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
 
       {detailRow && <PODetailModal key={`${detailRow.id}:${poDataVersion}`} po={detailRow} taxBadge={poTaxInvoiceBadge(detailRow, taxInvoiceLinks)} tenantId={tenant?.id}
         onClose={() => setDetailRow(null)}
+        receiptLinks={receiptLinks} onStartInvoice={canEdit ? rid => { const p = detailRow; setDetailRow(null); startInvoiceForReceipt(p, rid) } : null}
         onViewDocument={po => { setDetailRow(null); setDocRow({ po, action: null }) }} />}
 
       {depositPo && (
@@ -1339,7 +1356,8 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       {receiveRow && receiveKind === 'new' && (
         <ReceivePoLinesModal key={receiveRow.id} po={receiveRow} stockPlanFor={receiveStockPlan} stockBalances={stockBalances}
           onClose={() => setReceiveRow(null)}
-          onDone={async res => {
+          offerInvoiceNext={receiveRow.tax_invoice_mode === 'delivery' && deliveryReady === true}
+          onDone={async (res, opts) => {
             const po = receiveRow
             setReceiveRow(null)
             try {
@@ -1349,6 +1367,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
               // the receipt is saved whatever the audit did: always refresh and confirm
               refreshPoData(); refetchInventoryItems()
               showToast('รับของแล้ว' + (res.receipt_no ? ` (${res.receipt_no}) ` : ' ') + (res.expense_id ? 'สร้างบิลแล้ว' : 'หักมัดจำครบ ไม่สร้างบิล') + (po.stock_from_invoice ? ' · สต็อกจะเข้าเมื่อบันทึกใบกำกับภาษี' : ''))
+              if (opts?.openInvoice && res.receipt_id) startInvoiceForReceipt(po, res.receipt_id)
             }
           }} />
       )}

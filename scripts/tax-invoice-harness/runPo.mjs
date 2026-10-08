@@ -616,6 +616,74 @@ await clearDrafts(); await render(); await openAdd()
 ok('375px: mode radios shown and the page does not scroll sideways', (await text()).includes('ใบกำกับภาษีของใบสั่งซื้อนี้') && await page.evaluate(() => document.documentElement.scrollWidth <= 375))
 await backFromAdd(); await page.setViewportSize({ width: 1280, height: 800 })
 
+console.log('=== 11 delivery: receive checkbox + hand-off, popup lot status, row badge')
+await page.evaluate(sd => {
+  window.__wrapperError = null; window.__wrapperDelay = 0; window.__depositsError = null; window.__deposits = []; window.__ledger = {}; window.__role = 'OWNER'
+  const h = window.__data.pos.find(p => p.id === 'H'); h.status = 'ordered'; h.tax_invoice_mode = 'delivery'; h.supplier_id = sd; h.suppliers = { name: 'CAC' }
+  const g = window.__data.pos.find(p => p.id === 'G'); g.status = 'ordered'; g.tax_invoice_mode = 'po'
+  window.__data.pos.push({ ...window.__data.pos[0], id: 'RS', po_number: 'PO-RS', status: 'received', tax_invoice_mode: 'delivery', stock_from_invoice: true, supplier_id: sd, suppliers: { name: 'CAC' } })
+}, SD)
+await set('__deliveryReady', true); await set('__money', []); await set('__moneySchema', true); await set('__receiptLinks', []); await page.evaluate(() => { window.__nav = [] }); await render()
+await openMenu(/PO-H/); await menuItem('📦 รับของ').click(); await wait(400)
+const invCb = page.getByLabel('ลงใบกำกับภาษีของล็อตนี้ต่อทันที')
+ok('delivery PO: checkbox shown and ticked', await invCb.isVisible() && await invCb.isChecked())
+await page.getByRole('button', { name: /ยืนยันรับของ/ }).dblclick(); await wait(500)
+const nav1 = await page.evaluate(() => window.__nav)
+ok('double click = one receipt + one hand-off', (await log()).filter(([k, n]) => k === 'rpc' && n === 'receive_po_lines').length === 1 && nav1.length === 1
+  && nav1[0][0] === 'supplier_tax_invoices' && nav1[0][1].newForReceipt.receiptId === 'r1' && nav1[0][1].newForReceipt.poId === 'H', JSON.stringify(nav1))
+await page.evaluate(() => { window.__nav = [] }); await render()
+await openMenu(/PO-H/); await menuItem('📦 รับของ').click(); await wait(400)
+await page.getByLabel('ลงใบกำกับภาษีของล็อตนี้ต่อทันที').uncheck()
+await page.getByRole('button', { name: /ยืนยันรับของ/ }).click(); await wait(500)
+ok('unticked: no hand-off', (await page.evaluate(() => window.__nav)).length === 0)
+await openMenu(/PO-G/); await menuItem('📦 รับของ').click(); await wait(400)
+ok('po-mode PO: no checkbox', !(await text()).includes('ลงใบกำกับภาษีของล็อตนี้ต่อทันที'))
+await page.getByRole('button', { name: 'ยกเลิก' }).click(); await wait(200)
+// not ready: a delivery-flagged PO still gets no checkbox
+await set('__deliveryReady', false); await render()
+await openMenu(/PO-H/); await menuItem('📦 รับของ').click(); await wait(400)
+ok('not ready: no checkbox even on a delivery PO', !(await text()).includes('ลงใบกำกับภาษีของล็อตนี้ต่อทันที'))
+await page.getByRole('button', { name: 'ยกเลิก' }).click(); await wait(200)
+await set('__deliveryReady', true)
+// popup lot status + row badge
+await page.evaluate(() => {
+  const rc = (id, seq) => ({ id, seq, received_date: '2026-10-05', goods_subtotal: 600, goods_vat: 42, po_receipt_items: [] })
+  window.__ledger = { H: { receipts: [rc('r1', 1), rc('r2', 2)], deposit: null, applications: [], bills: [] } }
+  window.__receiptLinks = [['r1', { invoice_id: 'i9', invoice_no: 'INV-9', status: 'posted' }]]
+  window.__money = [['H', { receivedItemIds: [], receiptIds: ['r1', 'r2'] }]]
+  window.__nav = []
+})
+await render()
+ok('row badge: รอใบกำกับ 1 ล็อต', (await row(/PO-H/).innerText()).includes('รอใบกำกับ 1 ล็อต'), await row(/PO-H/).innerText())
+await row(/PO-H/).getByRole('button', { name: '📄' }).click(); await wait(500)
+t = await page.locator('.modal').innerText()
+ok('popup: R1 has ใบกำกับ INV-9, R2 รอใบกำกับ + button', /R1[^\n]*\n?[^\n]*ใบกำกับ INV-9/.test(t) && t.includes('R2') && t.includes('รอใบกำกับ') && (await page.getByRole('button', { name: '🧾 ลงใบกำกับ' }).count()) === 1, t)
+await page.getByRole('button', { name: '🧾 ลงใบกำกับ' }).click(); await wait(300)
+const nav2 = await page.evaluate(() => window.__nav)
+ok('start-invoice button navigates with the receipt', nav2.length === 1 && nav2[0][0] === 'supplier_tax_invoices' && JSON.stringify(nav2[0][1]) === JSON.stringify({ newForReceipt: { receiptId: 'r2', poId: 'H', supplierId: SD } }), JSON.stringify(nav2))
+ok('popup closed by the hand-off', (await page.locator('.modal').count()) === 0)
+// received stock_from_invoice delivery PO: no PO-level awaiting text
+ok('stock_from_invoice delivery PO: no PO-level awaiting text in the row', !(await row(/PO-RS/).innerText()).includes('รอใบกำกับ (สต็อกยังไม่เข้า)'))
+await row(/PO-RS/).getByRole('button', { name: '📄' }).click(); await wait(400)
+ok('... nor in its popup', !(await page.locator('.modal').innerText()).includes('รอใบกำกับ (สต็อกยังไม่เข้า)'))
+await page.getByRole('button', { name: 'ปิด' }).click(); await wait(200)
+// not ready: popup shows neither text and the row badge is gone
+await set('__deliveryReady', false); await render()
+ok('not ready: no row lot badge', !(await row(/PO-H/).innerText()).includes('ล็อต'))
+await row(/PO-H/).getByRole('button', { name: '📄' }).click(); await wait(500)
+t = await page.locator('.modal').innerText()
+ok('not ready: popup shows neither ใบกำกับ INV-9 nor รอใบกำกับ nor the button', !t.includes('INV-9') && !t.includes('รอใบกำกับ') && (await page.getByRole('button', { name: '🧾 ลงใบกำกับ' }).count()) === 0 && t.includes('R2'), t)
+await page.getByRole('button', { name: 'ปิด' }).click(); await wait(200)
+// 375px
+await set('__deliveryReady', true); await page.setViewportSize({ width: 375, height: 740 }); await render()
+await row(/PO-H/).getByRole('button', { name: '📄' }).click(); await wait(500)
+ok('375px: popup lot rows, no sideways page scroll', (await page.locator('.modal').innerText()).includes('รอใบกำกับ') && await page.evaluate(() => document.documentElement.scrollWidth <= 375))
+await page.getByRole('button', { name: 'ปิด' }).click(); await wait(200)
+await openMenu(/PO-H/); await menuItem('📦 รับของ').click(); await wait(400)
+ok('375px: receive dialog with checkbox, no sideways page scroll', await page.getByLabel('ลงใบกำกับภาษีของล็อตนี้ต่อทันที').isVisible() && await page.evaluate(() => document.documentElement.scrollWidth <= 375))
+await page.getByRole('button', { name: 'ยกเลิก' }).click(); await wait(200)
+await page.setViewportSize({ width: 1280, height: 800 })
+
 const errs = await page.evaluate(() => window.__errors)
 ok('no React errors', errs.length === 0, errs.join('\n'))
 await browser.close()
