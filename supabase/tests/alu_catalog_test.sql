@@ -130,3 +130,61 @@ BEGIN
   RESET role;
   RAISE NOTICE 'Test 1 (hierarchy): TEST PASSED';
 END $$;
+
+-- ── Test 2: components ──
+DO $$
+DECLARE
+  prov UUID; ser UUID; typ UUID; prof UUID; fin UUID; setp UUID; partp UUID; n INT;
+BEGIN
+  SET LOCAL role = 'authenticated';
+  SET LOCAL request.jwt.claims = '{"email":"__alu_a__@example.com"}';
+
+  SELECT id INTO prov FROM alu_providers WHERE name = 'TYK';
+  SELECT id INTO ser  FROM alu_series WHERE provider_id = prov AND name = 'กล่องร่อง';
+  SELECT id INTO typ  FROM door_window_types WHERE name = 'บานเลื่อน';
+
+  INSERT INTO alu_profiles (name, linear_weight_kg_per_m, provider_id, drawing_no, thickness_mm)
+    VALUES ('กล่องร่อง 1.2', 0.8, prov, 'FX-001', 1.2) RETURNING id INTO prof;
+  INSERT INTO alu_finishes (name, provider_id, code) VALUES ('ขาว', prov, 'W01') RETURNING id INTO fin;
+  INSERT INTO alu_series_profiles (series_id, profile_id, family) VALUES (ser, prof, 'กล่องร่อง');
+  INSERT INTO alu_profile_variants (profile_id, finish_id, length_m) VALUES (prof, fin, 6.4);
+
+  BEGIN
+    INSERT INTO alu_series_profiles (series_id, profile_id) VALUES (ser, prof);
+    RAISE EXCEPTION 'series_profiles unique did not fire';
+  EXCEPTION WHEN unique_violation THEN NULL; END;
+
+  BEGIN
+    INSERT INTO alu_profile_variants (profile_id, finish_id, length_m) VALUES (prof, fin, 0);
+    RAISE EXCEPTION 'length CHECK did not fire';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+
+  INSERT INTO alu_parts (name, kind) VALUES ('ชุดล็อกบานเลื่อน', 'hardware_set') RETURNING id INTO setp;
+  INSERT INTO alu_parts (name, kind, unit) VALUES ('ยางขอบ', 'accessory', 'ม.') RETURNING id INTO partp;
+  INSERT INTO alu_part_set_items (set_id, part_id, quantity) VALUES (setp, partp, 2);
+
+  BEGIN
+    INSERT INTO alu_part_set_items (set_id, part_id) VALUES (setp, setp);
+    RAISE EXCEPTION 'set_id <> part_id CHECK did not fire';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+
+  -- NULL type_id means "every type"; two such rows for the same part must collide
+  INSERT INTO alu_series_parts (series_id, part_id) VALUES (ser, partp);
+  BEGIN
+    INSERT INTO alu_series_parts (series_id, part_id) VALUES (ser, partp);
+    RAISE EXCEPTION 'series_parts NULL-type unique did not fire';
+  EXCEPTION WHEN unique_violation THEN NULL; END;
+  INSERT INTO alu_series_parts (series_id, type_id, part_id) VALUES (ser, typ, partp);  -- a typed row is a different row
+
+  -- tenant C: nothing visible, cannot write
+  SET LOCAL request.jwt.claims = '{"email":"__alu_c__@example.com"}';
+  SELECT count(*) INTO n FROM alu_parts;
+  IF n <> 0 THEN RAISE EXCEPTION 'tenant C sees parts'; END IF;
+  BEGIN
+    INSERT INTO alu_parts (name) VALUES ('NOPE');
+    RAISE EXCEPTION 'tenant C insert was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+
+  RESET role;
+  RAISE NOTICE 'Test 2 (components): TEST PASSED';
+END $$;
