@@ -10,7 +10,13 @@ export const SCAN_REMINDER = 'ตรวจรายการทุกครั�
 
 // Shown after a successful scan whose line items added up to the printed
 // grand total (VAT included) rather than the pre-VAT subtotal.
-export const SCAN_VAT_INCLUSIVE_NOTICE = 'ราคาในเอกสารนี้รวม VAT แล้ว — ตั้งใบสั่งซื้อเป็น ราคารวม VAT ให้อัตโนมัติ — ตรวจสอบ'
+export const SCAN_VAT_INCLUSIVE_NOTICE = 'ราคาในเอกสารนี้รวม VAT แล้ว — ตั้งใบสั่งซื้อเป็น ราคารวม VAT ให้อัตโนมัติ — ตรวจสอบ ถ้าผู้ขายไม่จด VAT ให้เลือก ไม่มี VAT'
+
+/** The notice is shown only while it is still true: the scan set the flag,
+ *  the PO has VAT, and the user has not switched the basis back. */
+export function showVatInclusiveNotice(scanVatInclusive, form) {
+  return !!(scanVatInclusive && form?.has_vat && form?.price_includes_vat)
+}
 
 const NOTICES = {
   quota_exhausted: 'โควต้าสแกนเอกสารเดือนนี้ครบแล้ว กรอกรายการเองจากเอกสารด้านบนได้เลย หรืออัปเกรดแพ็กเกจที่เมนูตั้งค่า',

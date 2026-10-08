@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { scanErrorNotice, SCAN_REMINDER, SCAN_VAT_INCLUSIVE_NOTICE } from './scanNotice.js'
+import { scanErrorNotice, SCAN_REMINDER, SCAN_VAT_INCLUSIVE_NOTICE, showVatInclusiveNotice } from './scanNotice.js'
 
 describe('scanErrorNotice', () => {
   it('tells the user to type the lines themselves for every known code', () => {
@@ -21,7 +21,13 @@ describe('scanErrorNotice', () => {
     expect(scanErrorNotice(undefined).text).toMatch(/กรอก/)
   })
   it('has the VAT-inclusive notice shown when the scan detected VAT-inclusive prices', () => {
-    expect(SCAN_VAT_INCLUSIVE_NOTICE).toBe('ราคาในเอกสารนี้รวม VAT แล้ว — ตั้งใบสั่งซื้อเป็น ราคารวม VAT ให้อัตโนมัติ — ตรวจสอบ')
+    expect(SCAN_VAT_INCLUSIVE_NOTICE).toBe('ราคาในเอกสารนี้รวม VAT แล้ว — ตั้งใบสั่งซื้อเป็น ราคารวม VAT ให้อัตโนมัติ — ตรวจสอบ ถ้าผู้ขายไม่จด VAT ให้เลือก ไม่มี VAT')
+  })
+  it('shows the VAT-inclusive notice only while the scan flag is in force on a VAT PO', () => {
+    expect(showVatInclusiveNotice(true, { has_vat: true, price_includes_vat: true })).toBe(true)
+    expect(showVatInclusiveNotice(true, { has_vat: false, price_includes_vat: true })).toBe(false)
+    expect(showVatInclusiveNotice(true, { has_vat: true, price_includes_vat: false })).toBe(false)
+    expect(showVatInclusiveNotice(false, { has_vat: true, price_includes_vat: true })).toBe(false)
   })
   it('exposes the reminder shown after a scan', () => {
     expect(SCAN_REMINDER).toBe('ตรวจรายการทุกครั้งก่อนบันทึก')

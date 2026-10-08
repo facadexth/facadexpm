@@ -18,6 +18,7 @@
 // CSV columns: provider,doc,kind,accuracy,input_tokens,output_tokens,ms,note,examples
 // (examples = number of example turns used for the row, 0 without --examples).
 // A doc's expected.json may carry "deposit_deductions": [{ref, amount}]; it is then compared (ref normalized, amount to a satang) and scored.
+// It may also carry "prices_include_vat": true|false (with printed_subtotal/printed_total); a wrong detected basis adds "vat_basis_wrong" to note (not scored).
 // Fixtures for the CAC deposit documents: scripts/eval-fixtures/cac-deposit/ (the scans stay local, not in git).
 // --dry-run skips every network call and answers with the expected JSON,
 // to prove the pipeline end to end (expect accuracy 1.0 everywhere).
@@ -161,7 +162,9 @@ for (const spec of providers) {
     }
     const c = classifyModelOutput(out.text)
     const actual = c.kind === 'ok' || c.kind === 'check_failed' ? c.result : { line_items: [] }
-    rows.push({ provider: spec, doc: f, kind: c.kind, accuracy: compareExtraction(expected, actual).accuracy, inputTokens: out.inputTokens, outputTokens: out.outputTokens, examples: exampleTurns.length, ms: Date.now() - t0, note: c.reason || '' })
+    const cmp = compareExtraction(expected, actual)
+    const note = [c.reason || '', cmp.vatBasisOk ? '' : 'vat_basis_wrong'].filter(Boolean).join(' ')
+    rows.push({ provider: spec, doc: f, kind: c.kind, accuracy: cmp.accuracy, inputTokens: out.inputTokens, outputTokens: out.outputTokens, examples: exampleTurns.length, ms: Date.now() - t0, note })
   }
 }
 

@@ -14,11 +14,18 @@ export function depositDeductionsMatch(expected, actual) {
   return exp.length === act.length && exp.every(e => act.some(a => normRef(a.ref) === normRef(e.ref) && near(a.amount, e.amount)))
 }
 
+/** Expected VAT basis (prices_include_vat true/false) equals the detected one. Absent expectation = ignored. Reported only, not part of accuracy. */
+export function vatBasisMatches(expected, actual) {
+  if (typeof expected?.prices_include_vat !== 'boolean') return true
+  return actual?.prices_include_vat === expected.prices_include_vat
+}
+
 export function compareExtraction(expected, actual) {
   const exp = expected?.line_items || []
   const act = actual?.line_items || []
   const depositOk = depositDeductionsMatch(expected, actual)
-  if (exp.length === 0) return { lineCountMatches: act.length === 0, quantityAcc: 1, unitPriceAcc: 1, unitAcc: 1, depositOk, accuracy: depositOk ? 1 : 0.5 }
+  const vatBasisOk = vatBasisMatches(expected, actual)
+  if (exp.length === 0) return { lineCountMatches: act.length === 0, quantityAcc: 1, unitPriceAcc: 1, unitAcc: 1, depositOk, vatBasisOk, accuracy: depositOk ? 1 : 0.5 }
   let q = 0, p = 0, u = 0
   exp.forEach((e, i) => {
     const a = act[i]
@@ -33,6 +40,7 @@ export function compareExtraction(expected, actual) {
     lineCountMatches: act.length === exp.length,
     quantityAcc: q / n, unitPriceAcc: p / n, unitAcc: u / n,
     depositOk,
+    vatBasisOk,
     // a missed/invented deposit deduction costs a quarter (only when the fixture lists deposit_deductions)
     accuracy: Array.isArray(expected?.deposit_deductions) ? ((q + p + u) / (3 * n)) * 0.75 + (depositOk ? 0.25 : 0) : (q + p + u) / (3 * n),
   }

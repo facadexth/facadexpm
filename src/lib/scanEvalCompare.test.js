@@ -39,6 +39,21 @@ describe('summariseProvider', () => {
   })
 })
 
+describe('VAT basis comparison', () => {
+  // inclusive fixture: unit prices print with VAT, lines add up to printed_total
+  const inclusive = { printed_subtotal: 200, printed_total: 214, prices_include_vat: true, line_items: [L({ unit_price: 107 })] }
+  it('vatBasisOk is true when the detected basis matches the fixture', () => {
+    expect(compareExtraction(inclusive, { line_items: [L({ unit_price: 107 })], prices_include_vat: true }).vatBasisOk).toBe(true)
+  })
+  it('vatBasisOk is false when the basis was missed', () => {
+    expect(compareExtraction(inclusive, { line_items: [L({ unit_price: 107 })], prices_include_vat: null }).vatBasisOk).toBe(false)
+  })
+  it('is ignored (true) when the fixture does not state a basis, and never changes accuracy', () => {
+    expect(compareExtraction({ line_items: [L()] }, { line_items: [L()], prices_include_vat: true }).vatBasisOk).toBe(true)
+    expect(compareExtraction(inclusive, { line_items: [L({ unit_price: 107 })], prices_include_vat: false }).accuracy).toBe(1)
+  })
+})
+
 describe('pickExampleFields', () => {
   it('drops status, printed_subtotal, printed_total, prices_include_vat and keeps only the saved keys', () => {
     const r = pickExampleFields({ status: 'success', printed_subtotal: 5, printed_total: 5.35, prices_include_vat: false, supplier_name_guess: 'ACME', document_date_guess: '2026-01-02', reference_no_guess: 'R1', line_items: [] })

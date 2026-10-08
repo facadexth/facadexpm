@@ -82,13 +82,36 @@ export function validateExtraction(raw) {
   }
 }
 
-/** Applies the scan's detected price basis to the PO form. Only a detected
- *  VAT-inclusive document changes anything: price_includes_vat is switched on
- *  and the unit prices stay as printed (calcPoTotals backs the VAT out).
- *  false / null leave the form exactly as it was, and has_vat is never touched. */
+const SCAN_VAT_RATE = 0.07
+
+/** Applies the scan's detected price basis to the PO form: a detected basis
+ *  (true OR false) is mirrored into price_includes_vat, so re-scanning an
+ *  exclusive document after an inclusive one turns the flag back off. Unit
+ *  prices stay as printed (calcPoTotals backs VAT out of inclusive prices).
+ *  null/unknown keeps whatever the user set, and has_vat is never touched. */
 export function applyScanVatBasis(form, pricesIncludeVat) {
-  if (pricesIncludeVat !== true) return form
-  return { ...form, price_includes_vat: true }
+  return typeof pricesIncludeVat === 'boolean' ? { ...form, price_includes_vat: pricesIncludeVat } : form
+}
+
+/** "ลบข้อมูลทั้งหมด" on the PO form: undo price_includes_vat only when a
+ *  scan set it (fromScan); a value the user chose by hand is kept. */
+export function clearScanVatBasis(form, fromScan) {
+  return fromScan ? { ...form, price_includes_vat: false } : form
+}
+
+/** Pre-VAT unit price for a scanned line: divides by 1.07 (4 dp) only when
+ *  the scan detected VAT-inclusive prices. Used where the app stores net
+ *  amounts (supplier tax invoice lines / stock cost). */
+export function exVatUnitPrice(unitPrice, pricesIncludeVat) {
+  if (pricesIncludeVat !== true) return unitPrice
+  return Math.round((unitPrice / (1 + SCAN_VAT_RATE)) * 10000) / 10000
+}
+
+/** Sum of scanned lines after each row's discount, as a pre-VAT amount:
+ *  the raw sum divided by 1.07 when the scan detected VAT-inclusive prices. */
+export function scanLinesTotalExVat(lineItems, pricesIncludeVat) {
+  const raw = (lineItems || []).reduce((s, it) => s + it.quantity * it.unit_price * (1 - (it.discount_pct || 0) / 100), 0)
+  return pricesIncludeVat === true ? raw / (1 + SCAN_VAT_RATE) : raw
 }
 
 /** Builds the `extracted` JSON saved with a supplier calibration example from

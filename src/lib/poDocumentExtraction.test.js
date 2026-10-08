@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeDownscaledSize, validateExtraction, buildExampleExtracted, applyScanVatBasis } from './poDocumentExtraction.js'
+import { computeDownscaledSize, validateExtraction, buildExampleExtracted, applyScanVatBasis, clearScanVatBasis, exVatUnitPrice, scanLinesTotalExVat } from './poDocumentExtraction.js'
 
 describe('computeDownscaledSize', () => {
   it('leaves an image already under maxDim unchanged', () => {
@@ -123,16 +123,63 @@ describe('applyScanVatBasis', () => {
     expect(f.items).toBe(form.items)
     expect(f.has_vat).toBe(true)
   })
-  it('changes nothing when the basis is exclusive or unknown', () => {
+  it('mirrors a detected exclusive basis (false) so a stale inclusive flag is turned off', () => {
     const incl = { ...form, price_includes_vat: true }
-    expect(applyScanVatBasis(form, false)).toBe(form)
+    expect(applyScanVatBasis(incl, false).price_includes_vat).toBe(false)
+  })
+  it('re-scan inclusive then exclusive ends exclusive', () => {
+    const afterFirst = applyScanVatBasis(form, true)
+    expect(afterFirst.price_includes_vat).toBe(true)
+    expect(applyScanVatBasis(afterFirst, false).price_includes_vat).toBe(false)
+  })
+  it('keeps the user-set value when the basis is unknown', () => {
+    const incl = { ...form, price_includes_vat: true }
     expect(applyScanVatBasis(form, null)).toBe(form)
     expect(applyScanVatBasis(form, undefined)).toBe(form)
-    expect(applyScanVatBasis(incl, false)).toBe(incl)
+    expect(applyScanVatBasis(incl, null)).toBe(incl)
+    expect(applyScanVatBasis(incl, 'true')).toBe(incl)
   })
   it('does not switch VAT on for a PO the user marked as no-VAT', () => {
     const noVat = { ...form, has_vat: false }
     expect(applyScanVatBasis(noVat, true).has_vat).toBe(false)
+  })
+})
+
+describe('clearScanVatBasis (ลบข้อมูลทั้งหมด)', () => {
+  const incl = { has_vat: true, price_includes_vat: true }
+  it('resets price_includes_vat to false when the flag came from a scan', () => {
+    expect(clearScanVatBasis(incl, true).price_includes_vat).toBe(false)
+  })
+  it('keeps a user-set value when the scan did not set it', () => {
+    expect(clearScanVatBasis(incl, false)).toBe(incl)
+  })
+})
+
+describe('exVatUnitPrice', () => {
+  it('backs VAT out of an inclusive price, rounded to 4 dp', () => {
+    expect(exVatUnitPrice(107, true)).toBe(100)
+    expect(exVatUnitPrice(100, true)).toBe(93.4579)
+  })
+  it('leaves the price alone when the basis is exclusive or unknown', () => {
+    expect(exVatUnitPrice(107, false)).toBe(107)
+    expect(exVatUnitPrice(107, null)).toBe(107)
+    expect(exVatUnitPrice(107, undefined)).toBe(107)
+  })
+})
+
+describe('scanLinesTotalExVat', () => {
+  const lines = [{ quantity: 2, unit_price: 107, discount_pct: 0 }, { quantity: 1, unit_price: 214, discount_pct: 50 }]
+  it('sums the lines after each row discount', () => {
+    expect(scanLinesTotalExVat(lines, false)).toBe(321)
+    expect(scanLinesTotalExVat(lines, null)).toBe(321)
+  })
+  it('divides the raw sum by 1.07 when the prices include VAT', () => {
+    expect(scanLinesTotalExVat(lines, true)).toBeCloseTo(300, 6)
+  })
+  it('tolerates a missing discount_pct and empty input', () => {
+    expect(scanLinesTotalExVat([{ quantity: 3, unit_price: 10 }], false)).toBe(30)
+    expect(scanLinesTotalExVat([], true)).toBe(0)
+    expect(scanLinesTotalExVat(undefined, true)).toBe(0)
   })
 })
 

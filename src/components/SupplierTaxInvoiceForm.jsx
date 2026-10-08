@@ -10,7 +10,7 @@ import {
   useInventoryItemUnitFactors, useSupplierDocumentExamples, extractPoDocument, useSupplierDeposits,
   useActiveTaxInvoiceLinks,
 } from '../hooks/useSupabase.js'
-import { fileToExtractionPayload } from '../lib/poDocumentExtraction.js'
+import { fileToExtractionPayload, exVatUnitPrice } from '../lib/poDocumentExtraction.js'
 import { calcPoTotals } from '../lib/poTotals.js'
 import { round2 } from '../lib/depositMath.js'
 import { lineAmount, evaluateMatch, proposePos, lineBase } from '../lib/supplierTaxInvoice.js'
@@ -129,11 +129,12 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
       const result = await extractPoDocument(base64, mimeType, examples || [])
       if (!result.ok) { setScanError(result.error); setScanCode(result.code || null); return }
       if (formRef.current.lines.length && !window.confirm('มีรายการอยู่แล้ว — การอ่านเอกสารใหม่จะแทนที่รายการทั้งหมด ต้องการแทนที่หรือไม่?')) return
-      const { reference_no_guess, document_date_guess, line_items } = result.data
+      const { reference_no_guess, document_date_guess, line_items, prices_include_vat } = result.data
       setForm(f => {
+        // Lines here are net amounts (net_before_vat prefill, stock base cost): back VAT out of an inclusive document.
         const lines = (line_items || []).map(it => ({
           ...emptyLine(), description: it.description, qty: String(it.quantity), unit: it.unit || '',
-          unit_price: String(it.unit_price), discount_pct: String(it.discount_pct || 0),
+          unit_price: String(exVatUnitPrice(it.unit_price, prices_include_vat)), discount_pct: String(it.discount_pct || 0),
         }))
         const net = f.net_before_vat === '' && lines.length ? String(round2(lines.reduce((s, l) => s + lineAmount(l), 0))) : f.net_before_vat
         const validDate = document_date_guess && ISO_DATE.test(document_date_guess) && document_date_guess <= today
