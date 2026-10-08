@@ -7,6 +7,16 @@ const BOX_W = 280
 const BOX_H = 220
 const MARGIN = 40
 const MEMBER_GAP = 4
+const MAX_PANELS = 12
+
+// Preview-only guards: a template without usable row weights draws equal rows (or one row), never NaN or a throw.
+function safeWeights(template) {
+  const w = template && template.grid_row_weights
+  if (!Array.isArray(w) || w.length === 0) return [1]
+  const ok = w.every(n => Number.isFinite(n) && n >= 0) && w.reduce((a, b) => a + b, 0) > 0
+  return ok ? w : w.map(() => 1)
+}
+const safePanels = n => clamp(Math.floor(Number.isFinite(n) ? n : 1), 1, MAX_PANELS)
 
 const positive = n => Number.isFinite(n) && n > 0
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
@@ -18,7 +28,7 @@ function drawUnit(kind, template, w_m, h_m, panel_count, scale, x, y) {
   const t = Math.min(clamp(0.045 * Math.min(outer.w, outer.h), 4, 10), Math.min(outer.w, outer.h) / 3)
   const inner = { x: outer.x + t, y: outer.y + t, w: outer.w - 2 * t, h: outer.h - 2 * t }
 
-  const { cells, columnCount } = resolveGrid(template, { width_m: w_m, height_m: h_m, panel_count })
+  const { cells, columnCount } = resolveGrid({ ...template, grid_row_weights: safeWeights(template) }, { width_m: w_m, height_m: h_m, panel_count: safePanels(panel_count) })
   const totalH = cells.reduce((s, c) => s + c.height_m, 0)
   const lines = []
   let acc = 0
@@ -48,11 +58,11 @@ export function buildFramePreview({ template, width_m, height_m, panel_count, ad
   let y = MARGIN
   if (addonOk) {
     const ax = MARGIN + ((totalW - addon.width_m) / 2) * scale
-    units.push(drawUnit('addon', addon.template, addon.width_m, addon.height_m, addon.panel_count || 1, scale, ax, y))
+    units.push(drawUnit('addon', addon.template, addon.width_m, addon.height_m, addon.panel_count, scale, ax, y))
     y += addon.height_m * scale
   }
   const mx = MARGIN + ((totalW - width_m) / 2) * scale
-  units.push(drawUnit('main', template, width_m, height_m, panel_count || 1, scale, mx, y))
+  units.push(drawUnit('main', template, width_m, height_m, panel_count, scale, mx, y))
 
   const main = units[units.length - 1]
   const dims = [

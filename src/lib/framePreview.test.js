@@ -79,4 +79,43 @@ describe('buildFramePreview', () => {
     const p = buildFramePreview({ template: tpl(), width_m: 2, height_m: 2, panel_count: 1, addon: { template: tpl(), width_m: 0, height_m: 0.5, panel_count: 1 } })
     expect(p.units).toHaveLength(1)
   })
+
+  it('never throws or yields NaN for templates without a usable grid', () => {
+    for (const t of [{}, { grid_row_weights: null }, { grid_row_weights: 'x' }, { grid_row_weights: [] }, { grid_row_weights: [0, 0] }, { grid_row_weights: [1, -1] }, { grid_row_weights: [NaN, 1] }]) {
+      const p = buildFramePreview({ template: t, width_m: 2, height_m: 2, panel_count: 2, addon: { template: t, width_m: 1, height_m: 0.5, panel_count: 1 } })
+      expect(p.units).toHaveLength(2)
+      for (const u of p.units) {
+        for (const l of u.lines) for (const v of Object.values(l)) {
+          expect(Number.isFinite(v)).toBe(true)
+          expect(v).toBeGreaterThanOrEqual(0)
+          expect(v).toBeLessThanOrEqual(p.viewBox.width)
+        }
+        for (const v of [...Object.values(u.outer), ...Object.values(u.inner)]) expect(Number.isFinite(v)).toBe(true)
+      }
+    }
+  })
+
+  it('bad weight arrays fall back to equal rows', () => {
+    const u = buildFramePreview({ template: { grid_row_weights: [0, 0] }, width_m: 2, height_m: 2, panel_count: 1 }).units[0]
+    expect(u.lines.filter(l => l.y1 === l.y2)).toHaveLength(2)
+  })
+
+  it('panel_count 0 / undefined / fractional is floored to at least 1 and capped at 12', () => {
+    const lines = pc => buildFramePreview({ template: tpl(), width_m: 2, height_m: 2, panel_count: pc }).units[0].lines.length
+    expect(lines(0)).toBe(0)
+    expect(lines(undefined)).toBe(0)
+    expect(lines(2.9)).toBe(2)
+    expect(lines(500)).toBe(22)
+  })
+
+  it('a string width returns null', () => {
+    expect(buildFramePreview({ template: tpl(), width_m: '2', height_m: 2, panel_count: 1 })).toBeNull()
+  })
+
+  it('3 panels put the members at 1/3 and 2/3 of the inner width', () => {
+    const u = buildFramePreview({ template: tpl(), width_m: 3, height_m: 2, panel_count: 3 }).units[0]
+    const xs = u.lines.map(l => l.x1).sort((a, b) => a - b)
+    expect((xs[0] + xs[1]) / 2).toBeCloseTo(u.inner.x + u.inner.w / 3)
+    expect((xs[2] + xs[3]) / 2).toBeCloseTo(u.inner.x + (2 * u.inner.w) / 3)
+  })
 })
