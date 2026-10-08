@@ -134,8 +134,12 @@ END $$;
 -- ── Test 2: components ──
 DO $$
 DECLARE
+  ta UUID; tb UUID; tc UUID; t TEXT;
   prov UUID; ser UUID; typ UUID; prof UUID; fin UUID; setp UUID; partp UUID; n INT;
 BEGIN
+  -- read fixtures BEFORE switching role (authenticated cannot read the temp table)
+  SELECT a_tenant, b_tenant, c_tenant INTO ta, tb, tc FROM _alu_fx;
+
   SET LOCAL role = 'authenticated';
   SET LOCAL request.jwt.claims = '{"email":"__alu_a__@example.com"}';
 
@@ -176,13 +180,63 @@ BEGIN
   EXCEPTION WHEN unique_violation THEN NULL; END;
   INSERT INTO alu_series_parts (series_id, type_id, part_id) VALUES (ser, typ, partp);  -- a typed row is a different row
 
-  -- tenant C: nothing visible, cannot write
+  -- tenant A: every component table has rows (so the zero-counts below cannot pass vacuously)
+  FOREACH t IN ARRAY ARRAY['alu_profiles','alu_finishes','alu_series_profiles','alu_profile_variants','alu_parts','alu_part_set_items','alu_series_parts'] LOOP
+    EXECUTE format('SELECT count(*) FROM %I', t) INTO n;
+    IF n < 1 THEN RAISE EXCEPTION 'tenant A sees no rows in %', t; END IF;
+  END LOOP;
+
+  -- WITH CHECK: A cannot write a component row into tenant B
+  BEGIN
+    INSERT INTO alu_profiles (tenant_id, provider_id, name, linear_weight_kg_per_m) VALUES (tb, prov, 'X', 1);
+    RAISE EXCEPTION 'tenant A inserted an alu_profiles row into tenant B (WITH CHECK failed)';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN
+    INSERT INTO alu_finishes (tenant_id, provider_id, name) VALUES (tb, prov, 'X');
+    RAISE EXCEPTION 'tenant A inserted an alu_finishes row into tenant B (WITH CHECK failed)';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+
+  -- tenant B: sees nothing of A in any component table
+  SET LOCAL request.jwt.claims = '{"email":"__alu_b__@example.com"}';
+  FOREACH t IN ARRAY ARRAY['alu_profiles','alu_finishes','alu_series_profiles','alu_profile_variants','alu_parts','alu_part_set_items','alu_series_parts'] LOOP
+    EXECUTE format('SELECT count(*) FROM %I', t) INTO n;
+    IF n <> 0 THEN RAISE EXCEPTION 'tenant B sees % rows in %', n, t; END IF;
+  END LOOP;
+
+  -- tenant C (no estimation module): sees nothing, cannot write to any component table
   SET LOCAL request.jwt.claims = '{"email":"__alu_c__@example.com"}';
-  SELECT count(*) INTO n FROM alu_parts;
-  IF n <> 0 THEN RAISE EXCEPTION 'tenant C sees parts'; END IF;
+  FOREACH t IN ARRAY ARRAY['alu_profiles','alu_finishes','alu_series_profiles','alu_profile_variants','alu_parts','alu_part_set_items','alu_series_parts'] LOOP
+    EXECUTE format('SELECT count(*) FROM %I', t) INTO n;
+    IF n <> 0 THEN RAISE EXCEPTION 'tenant C sees % rows in %', n, t; END IF;
+  END LOOP;
+
+  BEGIN
+    INSERT INTO alu_profiles (provider_id, name, linear_weight_kg_per_m) VALUES (prov, 'NOPE', 1);
+    RAISE EXCEPTION 'tenant C alu_profiles insert was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN
+    INSERT INTO alu_finishes (provider_id, name) VALUES (prov, 'NOPE');
+    RAISE EXCEPTION 'tenant C alu_finishes insert was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN
+    INSERT INTO alu_series_profiles (series_id, profile_id) VALUES (ser, prof);
+    RAISE EXCEPTION 'tenant C alu_series_profiles insert was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN
+    INSERT INTO alu_profile_variants (profile_id, finish_id, length_m) VALUES (prof, fin, 1);
+    RAISE EXCEPTION 'tenant C alu_profile_variants insert was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
   BEGIN
     INSERT INTO alu_parts (name) VALUES ('NOPE');
-    RAISE EXCEPTION 'tenant C insert was allowed';
+    RAISE EXCEPTION 'tenant C alu_parts insert was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN
+    INSERT INTO alu_part_set_items (set_id, part_id) VALUES (setp, partp);
+    RAISE EXCEPTION 'tenant C alu_part_set_items insert was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN
+    INSERT INTO alu_series_parts (series_id, part_id) VALUES (ser, partp);
+    RAISE EXCEPTION 'tenant C alu_series_parts insert was allowed';
   EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 
   RESET role;
