@@ -73,7 +73,7 @@ export function CrudForm({ fields, initial, onSave, onCancel, loading }) {
 }
 
 export default function CatalogCrud({
-  title, table, fields, columns, rows, onChanged, canEdit,
+  title, table, fields, columns, rows, onChanged, canEdit, deleteWarning, duplicateMessage,
   scope = {}, addLabel = '+ เพิ่ม', emptyText = 'ยังไม่มีข้อมูล', validate, rowActions, allowEdit = true,
 }) {
   const [editing, setEditing] = useState(null)   // null | 'new' | row
@@ -81,6 +81,10 @@ export default function CatalogCrud({
   const [saving, setSaving] = useState(false)
 
   const close = () => setEditing(null)
+  const DEFAULT_DELETE_WARNING = 'ยืนยันการลบ? (ถ้ามีข้อมูลอื่นผูกอยู่ การลบจะไม่สำเร็จ)'
+  const deleteRow = deleteId ? (rows || []).find(r => r.id === deleteId) : null
+  const warningText = typeof deleteWarning === 'function' ? deleteWarning(deleteRow) : deleteWarning
+  const deleteMessage = warningText ? `ยืนยันการลบ? ${warningText}` : DEFAULT_DELETE_WARNING
 
   const handleSave = async (form) => {
     const missing = missingRequired(fields, form)
@@ -98,13 +102,13 @@ export default function CatalogCrud({
         if (error) throw error
       }
       close(); onChanged()
-    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + friendlyDbError(e)) }
+    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + friendlyDbError(e, duplicateMessage)) }
     finally { setSaving(false) }
   }
 
   const handleDelete = async () => {
     const { error } = await supabase.from(table).delete().eq('id', deleteId)
-    if (error) { alert('ลบไม่สำเร็จ: ' + friendlyDbError(error)); return }
+    if (error) { alert('ลบไม่สำเร็จ: ' + friendlyDbError(error, duplicateMessage)); return }
     setDeleteId(null); onChanged()
   }
 
@@ -148,7 +152,7 @@ export default function CatalogCrud({
         </Modal>
       )}
       {deleteId && (
-        <ConfirmDialog title="ลบข้อมูล" message="ยืนยันการลบ? (ถ้ามีข้อมูลอื่นผูกอยู่ การลบจะไม่สำเร็จ)" onConfirm={handleDelete} onCancel={() => setDeleteId(null)} />
+        <ConfirmDialog title="ลบข้อมูล" message={deleteMessage} onConfirm={handleDelete} onCancel={() => setDeleteId(null)} />
       )}
     </div>
   )

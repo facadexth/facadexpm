@@ -36,7 +36,7 @@ function ExtraInput({ extra, link, canEdit, onSaved }) {
   )
 }
 
-export default function LinkEditor({ title, hint, linkTable, parentKey, parentId, childKey, childOptions, links, onChanged, canEdit, extra = null }) {
+export default function LinkEditor({ title, hint, linkTable, parentKey, parentId, childKey, childOptions, links, onChanged, canEdit, extra = null, duplicateMessage }) {
   const mine = (links || []).filter(l => l[parentKey] === parentId)
   const linkFor = (childId) => mine.find(l => l[childKey] === childId)
   const extraWithTable = extra ? { ...extra, table: linkTable } : null
@@ -50,7 +50,7 @@ export default function LinkEditor({ title, hint, linkTable, parentKey, parentId
       const row = { [parentKey]: parentId, [childKey]: child.id }
       if (extra && extra.defaultFor) row[extra.key] = extra.defaultFor(child)
       const { error } = await supabase.from(linkTable).insert(row)
-      if (error) { alert('บันทึกไม่สำเร็จ: ' + friendlyDbError(error)); return }
+      if (error) { alert('บันทึกไม่สำเร็จ: ' + friendlyDbError(error, duplicateMessage)); return }
     }
     onChanged()
   }

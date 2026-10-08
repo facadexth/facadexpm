@@ -76,7 +76,8 @@ export default function HierarchyTab({ canEdit }) {
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, alignItems: 'start' }}>
       <CatalogCrud
         title="🏭 โรงรีด" table="alu_providers" fields={PROVIDER_FIELDS} rows={providers.data}
-        onChanged={providers.refetch} canEdit={canEdit} addLabel="+ เพิ่มโรงรีด" emptyText="ยังไม่มีโรงรีด"
+        onChanged={providers.refetch} canEdit={canEdit} deleteWarning="ลบไม่ได้ถ้ายังมีซีรีส์ หน้าตัด สี อุปกรณ์ หรือราคาของโรงรีดนี้อยู่ ให้ปิด “ใช้งานอยู่” แทน"
+        addLabel="+ เพิ่มโรงรีด" emptyText="ยังไม่มีโรงรีด"
         columns={[
           { key: 'name', label: 'ชื่อ', render: r => <strong>{r.name}</strong> },
           { key: 'short_name', label: 'ชื่อย่อ' },
@@ -92,6 +93,7 @@ export default function HierarchyTab({ canEdit }) {
             <CatalogCrud
               title={`📚 ซีรีส์ของ ${providerById[providerId].name}`} table="alu_series" fields={SERIES_FIELDS} rows={seriesOfProvider}
               scope={{ provider_id: providerId }} onChanged={series.refetch} canEdit={canEdit}
+              deleteWarning="ลบแล้วจะลบการผูกประเภท หน้าตัด อุปกรณ์ และราคาต่อกก.ที่ทับเฉพาะซีรีส์นี้ทั้งหมดด้วย (ย้อนกลับไม่ได้) ถ้าแค่เลิกใช้ ให้ปิด “ใช้งานอยู่” แทน"
               addLabel="+ เพิ่มซีรีส์" emptyText="โรงรีดนี้ยังไม่มีซีรีส์"
               columns={[
                 { key: 'name', label: 'ซีรีส์', render: r => <strong>{seriesLabelFull(r, providerById[r.provider_id])}</strong> },

@@ -47,7 +47,10 @@ export default function ProfilesTab({ canEdit }) {
   const myFinishes = (finishes.data || []).filter(f => f.provider_id === providerId)
   const mySeries = (series.data || []).filter(s => s.provider_id === providerId)
   const pickedProfile = myProfiles.find(p => p.id === profileId)
-  const profileName = Object.fromEntries(myProfiles.map(p => [p.id, p.name + (p.thickness_mm ? ` ${p.thickness_mm}` : '')]))
+  // a selection whose row vanished (deleted, or other provider) must not linger
+  if (profileId && profiles.data && !pickedProfile) setProfileId('')
+  if (seriesId && series.data && !mySeries.some(s => s.id === seriesId)) setSeriesId('')
+  const profileName = Object.fromEntries(myProfiles.map(p => [p.id, p.name + (p.thickness_mm ? ` ${p.thickness_mm} มม.` : '')]))
   const finishName = Object.fromEntries(myFinishes.map(f => [f.id, f.name]))
   const profileVariants = (variants.data || []).filter(v => v.profile_id === profileId)
   const usedBy = (seriesProfiles.data || [])
@@ -91,6 +94,7 @@ export default function ProfilesTab({ canEdit }) {
             <CatalogCrud
               title="📏 หน้าตัดอลูมิเนียม" table="alu_profiles" fields={PROFILE_FIELDS} rows={myProfiles}
               scope={{ provider_id: providerId }} onChanged={profiles.refetch} canEdit={canEdit}
+              deleteWarning="ลบแล้วจะลบความยาว/สี การผูกกับซีรีส์ และราคาของหน้าตัดนี้ทั้งหมดด้วย (ย้อนกลับไม่ได้) ถ้าแค่เลิกใช้ ให้ปิด “ใช้งานอยู่” แทน"
               addLabel="+ เพิ่มหน้าตัด" emptyText="โรงรีดนี้ยังไม่มีหน้าตัด"
               columns={[
                 { key: 'name', label: 'ชื่อ', render: r => (
@@ -100,7 +104,7 @@ export default function ProfilesTab({ canEdit }) {
                 { key: 'thickness_mm', label: 'หนา (มม.)' },
                 { key: 'linear_weight_kg_per_m', label: 'กก./ม.', render: r => (
                   noWeight(r)
-                    ? <span className="badge badge-finished" style={{ color: 'var(--red)' }}>ไม่มีน้ำหนัก</span>
+                    ? <span className="badge badge-rejected">ไม่มีน้ำหนัก</span>
                     : r.linear_weight_kg_per_m
                 ) },
                 { key: 'default_length_m', label: 'ยาวมาตรฐาน (ม.)' },
@@ -111,6 +115,7 @@ export default function ProfilesTab({ canEdit }) {
             <CatalogCrud
               title={`🎨 สีของ ${provider ? provider.name : 'โรงรีด'}`} table="alu_finishes" fields={FINISH_FIELDS} rows={myFinishes}
               scope={{ provider_id: providerId }} onChanged={finishes.refetch} canEdit={canEdit}
+              deleteWarning="ลบไม่ได้ถ้ายังมีความยาวเส้นหรือราคาต่อกก.ที่ใช้สีนี้อยู่ ให้ปิด “ใช้งานอยู่” แทน"
               addLabel="+ เพิ่มสี" emptyText="โรงรีดนี้ยังไม่มีสี"
               columns={[
                 { key: 'name', label: 'ชื่อสี', render: r => <strong>{r.name}</strong> },
@@ -126,6 +131,8 @@ export default function ProfilesTab({ canEdit }) {
                 <CatalogCrud
                   title={`📐 สี × ความยาวเส้น · ${profileName[pickedProfile.id]}`} table="alu_profile_variants" fields={VARIANT_FIELDS} rows={profileVariants}
                   scope={{ profile_id: profileId }} onChanged={variants.refetch} canEdit={canEdit}
+                  deleteWarning="ลบแล้วจะลบราคาต่อเส้นของสีและความยาวนี้ทั้งหมดด้วย (ย้อนกลับไม่ได้)"
+                  duplicateMessage="หน้าตัดนี้มีสีและความยาวนี้อยู่แล้ว"
                   addLabel="+ เพิ่มความยาว" emptyText="ยังไม่มีความยาวเส้น (จำเป็นเมื่อโรงรีดคิดราคาต่อเส้น)"
                   columns={[
                     { key: 'finish_id', label: 'สี', render: r => finishName[r.finish_id] || '—' },
@@ -157,6 +164,7 @@ export default function ProfilesTab({ canEdit }) {
                 linkTable="alu_series_profiles" parentKey="series_id" parentId={seriesId} childKey="profile_id"
                 childOptions={linkOptions}
                 links={seriesProfiles.data} onChanged={seriesProfiles.refetch} canEdit={canEdit}
+                duplicateMessage="ซีรีส์นี้ใช้หน้าตัดนี้อยู่แล้ว"
                 extra={{ key: 'family', label: 'บทบาท (family)', type: 'text', defaultFor: child => (myProfiles.find(p => p.id === child.id)?.family || null) }}
               />
             )}

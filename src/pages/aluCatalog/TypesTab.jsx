@@ -18,7 +18,8 @@ export default function TypesTab({ canEdit }) {
   return (
     <CatalogCrud
       title="🚪 ประเภทบาน" table="door_window_types" fields={TYPE_FIELDS} rows={types.data}
-      onChanged={types.refetch} canEdit={canEdit} addLabel="+ เพิ่มประเภท" emptyText="ยังไม่มีประเภทบาน"
+      onChanged={types.refetch} canEdit={canEdit} deleteWarning="ลบแล้วจะลบการผูกประเภทนี้กับซีรีส์ และการจำกัดประเภทของอุปกรณ์ในซีรีส์ทั้งหมดด้วย (ย้อนกลับไม่ได้) ถ้าแค่เลิกใช้ ให้ปิด “ใช้งานอยู่” แทน"
+      addLabel="+ เพิ่มประเภท" emptyText="ยังไม่มีประเภทบาน"
       columns={[
         { key: 'name', label: 'ชื่อ', render: r => <strong>{r.name}</strong> },
         { key: 'category', label: 'ประเภทหลัก', render: r => (r.category === 'door' ? 'ประตู' : 'หน้าต่าง') },

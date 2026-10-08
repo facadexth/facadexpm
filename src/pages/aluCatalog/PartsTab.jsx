@@ -25,6 +25,9 @@ export default function PartsTab({ canEdit }) {
   if (error) return <div style={{ color: 'var(--red)' }}>โหลดข้อมูลไม่สำเร็จ: {error}</div>
 
   const providerById = Object.fromEntries((providers.data || []).map(p => [p.id, p]))
+  // a selection whose row vanished must not linger
+  if (setId && parts.data && !parts.data.some(p => p.id === setId)) setSetId('')
+  if (seriesId && series.data && !series.data.some(s => s.id === seriesId)) setSeriesId('')
   const sets = (parts.data || []).filter(p => p.kind === 'hardware_set')
   const linkedToSet = new Set((setItems.data || []).filter(l => l.set_id === setId).map(l => l.part_id))
   const singles = (parts.data || []).filter(p => p.kind !== 'hardware_set' && (p.active !== false || linkedToSet.has(p.id)))
@@ -54,7 +57,10 @@ export default function PartsTab({ canEdit }) {
       </div>
       <CatalogCrud
         title="🔩 ชิ้นส่วนอื่น · อุปกรณ์ / ชุดอุปกรณ์ / อะไหล่" table="alu_parts" fields={PART_FIELDS} rows={shownParts}
-        onChanged={parts.refetch} canEdit={canEdit} addLabel="+ เพิ่มรายการ" emptyText="ยังไม่มีอุปกรณ์"
+        onChanged={parts.refetch} canEdit={canEdit} addLabel="+ เพิ่มรายการ" emptyText={(parts.data || []).length && kindFilter ? 'ไม่มีรายการในชนิดนี้' : 'ยังไม่มีอุปกรณ์'}
+        deleteWarning={r => (r?.kind === 'hardware_set'
+          ? 'ลบแล้วจะลบรายการในชุด การผูกกับซีรีส์ และราคาของชุดนี้ทั้งหมดด้วย (ย้อนกลับไม่ได้)'
+          : 'ลบไม่ได้ถ้ารายการนี้อยู่ในชุดอุปกรณ์ใด ต้องเอาออกจากชุดก่อน (ลบได้แล้วจะลบการผูกกับซีรีส์และราคาทั้งหมดของรายการนี้ด้วย) ถ้าแค่เลิกใช้ ให้ปิด "ใช้งานอยู่" แทน')}
         columns={[
           { key: 'code', label: 'รหัส', render: r => <span style={{ fontFamily: 'monospace' }}>{r.code}</span> },
           { key: 'name', label: 'ชื่อ', render: r => <strong>{r.name}</strong> },

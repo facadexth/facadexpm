@@ -92,6 +92,8 @@ export default function PricesTab({ canEdit }) {
       <CatalogCrud
         title="⚖️ ราคาต่อกก. (โรงรีด × สี)" table="alu_kg_prices" fields={KG_FIELDS} rows={kgPrices.data}
         onChanged={kgPrices.refetch} canEdit={canEdit} allowEdit={false} addLabel="+ เพิ่มราคา" validate={validateKg}
+        deleteWarning="ลบแถวราคานี้แถวเดียว (ไม่กระทบแถวอื่นหรือข้อมูลอื่น) ลบเฉพาะกรณีกรอกผิด ถ้าราคาเปลี่ยนให้เพิ่มแถวใหม่แทน (ย้อนกลับไม่ได้)"
+        duplicateMessage="มีราคาของโรงรีด สี และขอบเขตนี้ในวันที่มีผลเดียวกันอยู่แล้ว"
         emptyText="ยังไม่มีราคา เพิ่มราคาใหม่โดยใช้วันที่มีผลใหม่ ระบบเก็บประวัติให้"
         columns={[
           { key: 'effective_from', label: 'มีผลตั้งแต่' },
@@ -105,6 +107,8 @@ export default function PricesTab({ canEdit }) {
       <CatalogCrud
         title="📏 ราคาต่อเส้น" table="alu_piece_prices" fields={PIECE_FIELDS} rows={piecePrices.data}
         onChanged={piecePrices.refetch} canEdit={canEdit} allowEdit={false} addLabel="+ เพิ่มราคา"
+        deleteWarning="ลบแถวราคานี้แถวเดียว (ไม่กระทบแถวอื่นหรือข้อมูลอื่น) ลบเฉพาะกรณีกรอกผิด ถ้าราคาเปลี่ยนให้เพิ่มแถวใหม่แทน (ย้อนกลับไม่ได้)"
+        duplicateMessage="มีราคาของหน้าตัด สี และความยาวนี้ในวันที่มีผลเดียวกันอยู่แล้ว"
         emptyText="ยังไม่มีราคาต่อเส้น (ต้องเพิ่มความยาวเส้นที่แท็บ 'หน้าตัด · สี · ความยาว' ก่อน)"
         columns={[
           { key: 'effective_from', label: 'มีผลตั้งแต่' },
@@ -116,6 +120,8 @@ export default function PricesTab({ canEdit }) {
       <CatalogCrud
         title="🔩 ราคาอุปกรณ์" table="alu_part_prices" fields={PART_FIELDS} rows={partPrices.data}
         onChanged={partPrices.refetch} canEdit={canEdit} allowEdit={false} addLabel="+ เพิ่มราคา" validate={validateDiscount}
+        deleteWarning="ลบแถวราคานี้แถวเดียว (ไม่กระทบแถวอื่นหรือข้อมูลอื่น) ลบเฉพาะกรณีกรอกผิด ถ้าราคาเปลี่ยนให้เพิ่มแถวใหม่แทน (ย้อนกลับไม่ได้)"
+        duplicateMessage="มีราคาของอุปกรณ์นี้ในวันที่มีผลเดียวกันอยู่แล้ว"
         emptyText="ยังไม่มีราคาอุปกรณ์"
         columns={[
           { key: 'effective_from', label: 'มีผลตั้งแต่' },

@@ -68,6 +68,11 @@ describe('friendlyDbError', () => {
     expect(friendlyDbError({ code: '42501', message: 'rls' })).toMatch(/สิทธิ์/)
     expect(friendlyDbError({ code: '23502', message: 'null value' })).toBe('กรุณากรอกค่าที่จำเป็นให้ครบ')
   })
+  it('uses a table-specific duplicate message when given', () => {
+    expect(friendlyDbError({ code: '23505' }, 'สีและความยาวนี้มีอยู่แล้ว')).toBe('สีและความยาวนี้มีอยู่แล้ว')
+    expect(friendlyDbError({ code: '23505' })).toMatch(/ซ้ำ/)
+    expect(friendlyDbError({ code: '23503' }, 'x')).toMatch(/ผูกอยู่/)
+  })
   it('falls back to the raw message', () => {
     expect(friendlyDbError({ message: 'boom' })).toBe('boom')
     expect(friendlyDbError(null)).toBe('เกิดข้อผิดพลาด')

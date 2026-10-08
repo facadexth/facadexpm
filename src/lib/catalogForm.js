@@ -51,10 +51,11 @@ export function optionList(rows, labelFn, keepId = null) {
     .map(r => ({ value: r.id, label: labelFn(r) }))
 }
 
-export function friendlyDbError(error) {
+// duplicateMessage lets a table say what "duplicate" means for it.
+export function friendlyDbError(error, duplicateMessage) {
   if (!error) return 'เกิดข้อผิดพลาด'
   switch (error.code) {
-    case '23505': return 'มีข้อมูลนี้อยู่แล้ว (ซ้ำ) เช่น ชื่อเดียวกัน หรือราคาของวันที่เดียวกัน'
+    case '23505': return duplicateMessage || 'มีข้อมูลนี้อยู่แล้ว (ซ้ำ) กรุณาตรวจสอบรายการเดิม'
     case '23503': return 'ทำรายการไม่ได้ เพราะมีข้อมูลอื่นผูกอยู่'
     case '23502': return 'กรุณากรอกค่าที่จำเป็นให้ครบ'
     case '23514': return 'ค่าที่กรอกไม่ถูกต้อง (เช่น ติดลบ หรือเกินช่วงที่กำหนด)'
