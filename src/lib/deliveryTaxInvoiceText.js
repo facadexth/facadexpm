@@ -39,3 +39,6 @@ export const DELIVERY_RPC_TEXT = {
   po_is_delivery_mode: PO_IS_DELIVERY,
   no_receipts: NO_RECEIPTS_TEXT,
 }
+export const HANDOFF_LOAD_ERROR_TEXT = 'โหลดรายการรับของไม่สำเร็จ จึงเปิดใบกำกับให้อัตโนมัติไม่ได้ — เลือกจาก "ใบรับของที่รอใบกำกับ" แทน หรือลองใหม่'
+export const HANDOFF_ALREADY_LINKED_TEXT = 'การรับของนี้มีใบกำกับผูกอยู่แล้ว — ไม่เปิดใบกำกับใหม่'
+export const HANDOFF_NO_PERMISSION_TEXT = 'คุณไม่มีสิทธิ์ลงใบกำกับภาษีผู้ขาย'

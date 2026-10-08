@@ -18,9 +18,9 @@ import TaxInvoicePreview, { PostConfirmOverlay, checkLine } from '../components/
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
-import { draftSaveCall } from '../lib/taxInvoiceLinks.js'
+import { draftSaveCall, TAX_INVOICE_RPCS } from '../lib/taxInvoiceLinks.js'
 import { formForReceipt, receiptsAwaitingInvoice, receiptLabel, invoiceMatchBase, linkKindOf } from '../lib/deliveryTaxInvoice.js'
-import { DELIVERY_NOT_READY_TEXT, HANDOFF_RECEIPT_NOT_FOUND_TEXT } from '../lib/deliveryTaxInvoiceText.js'
+import { DELIVERY_NOT_READY_TEXT, HANDOFF_RECEIPT_NOT_FOUND_TEXT, HANDOFF_LOAD_ERROR_TEXT, HANDOFF_ALREADY_LINKED_TEXT, HANDOFF_NO_PERMISSION_TEXT } from '../lib/deliveryTaxInvoiceText.js'
 import { toRpcPayload, formFromInvoice, emptyTaxInvoiceForm, poRowsFor } from '../lib/taxInvoiceForm.js'
 import {
   CHECK_TEXT, mapTaxInvoiceRpcError, formSignature, previewIsCurrent, postSummaryLines, doubleCountAlerts, withinTolerance, fmtQty,
@@ -59,8 +59,8 @@ export default function SupplierTaxInvoices({ navState, navigateTo } = {}) {
   const [supplierFilter, setSupplierFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const { data: invoices, loading, error, refetch, notReady } = useSupplierTaxInvoices({ supplierId: supplierFilter, status: statusFilter })
-  const { data: deliveryData, refetch: refetchDelivery } = useDeliveryReceipts()
-  const { data: receiptLinkData, refetch: refetchReceiptLinks } = useActiveReceiptTaxInvoiceLinks()
+  const { data: deliveryData, error: deliveryError, refetch: refetchDelivery } = useDeliveryReceipts()
+  const { data: receiptLinkData, error: receiptLinkError, refetch: refetchReceiptLinks } = useActiveReceiptTaxInvoiceLinks()
   const refetchAllLinks = () => { refetch(); refetchDelivery(); refetchReceiptLinks() }
   const { data: suppliers } = useSuppliers()
   const { data: sites } = useSites()
@@ -128,14 +128,22 @@ export default function SupplierTaxInvoices({ navState, navigateTo } = {}) {
   }
   // hand-off from the receive dialog / PO popup: consume the nav state once, then open the lot's invoice
   const handoffId = navState?.newForReceipt?.receiptId || null
+  const handledRef = useRef(null)
   useEffect(() => {
-    if (!handoffId || !canEdit || !deliveryData) return
-    navigateTo?.('supplier_tax_invoices', {})
-    if (!deliveryData.ready) { alert(DELIVERY_NOT_READY_TEXT); return }
+    if (!handoffId) { handledRef.current = null; return }
+    if (handledRef.current === handoffId) return
+    const consume = msg => { handledRef.current = handoffId; navigateTo?.('supplier_tax_invoices', {}); if (msg) alert(msg) }
+    if (!canEdit) { consume(HANDOFF_NO_PERMISSION_TEXT); return }
+    if (deliveryError) { consume(HANDOFF_LOAD_ERROR_TEXT); return }
+    if (!deliveryData) return
+    if (!deliveryData.ready) { consume(DELIVERY_NOT_READY_TEXT); return }
+    if (!receiptLinkData && !receiptLinkError) return                      // wait for the link map so an already-linked lot is caught
     const rc = deliveryData.rows.find(r => r.id === handoffId)
-    if (!rc) { alert(HANDOFF_RECEIPT_NOT_FOUND_TEXT); return }
+    if (!rc) { consume(HANDOFF_RECEIPT_NOT_FOUND_TEXT); return }
+    if (receiptLinkData?.ready && receiptLinkData.map.has(handoffId)) { consume(HANDOFF_ALREADY_LINKED_TEXT); return }
+    consume()
     openNewForReceipt(rc)
-  }, [handoffId, canEdit, deliveryData]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [handoffId, canEdit, deliveryData, deliveryError, receiptLinkData, receiptLinkError]) // eslint-disable-line react-hooks/exhaustive-deps
   const openEdit = row => {
     keySeq.current += 1
     latestFormRef.current = null; setPreview(null); setConfirm(null)
@@ -152,7 +160,7 @@ export default function SupplierTaxInvoices({ navState, navigateTo } = {}) {
     const { header, items } = toRpcPayload(form)
     // the explicit link_kind alone decides the RPC (draftSaveCall); every save goes through it
     const call = draftSaveCall(form, editing?.id || null, header, items)
-    const id = call.args.p_receipt_ids
+    const id = call.rpc === TAX_INVOICE_RPCS.saveReceipts
       ? await saveSupplierTaxInvoiceReceiptDraft(call.args.p_id, call.args.p_header, call.args.p_items, call.args.p_receipt_ids)
       : await saveSupplierTaxInvoiceDraft(call.args.p_id, call.args.p_header, call.args.p_items, call.args.p_po_ids)
     setEditing(e => (e ? { ...e, id } : e))     // later saves update the same draft
@@ -281,7 +289,7 @@ export default function SupplierTaxInvoices({ navState, navigateTo } = {}) {
             <thead>
               <tr>
                 <th>เลขที่</th><th>วันที่</th><th>ซัพพลายเออร์</th>
-                <th style={{ textAlign: 'right' }}>ก่อน VAT</th><th style={{ textAlign: 'right' }}>ใบสั่งซื้อ</th>
+                <th style={{ textAlign: 'right' }}>ก่อน VAT</th><th style={{ textAlign: 'right' }}>ใบสั่งซื้อ / ล็อต</th>
                 <th style={{ textAlign: 'right' }}>ต่าง</th><th>สถานะ</th><th></th>
               </tr>
             </thead>

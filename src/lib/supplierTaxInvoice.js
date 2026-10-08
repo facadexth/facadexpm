@@ -295,3 +295,10 @@ export function postSummaryLines({ invoiceNo, invoiceDate, stockLineCount, poCou
   out.push('แก้ไขภายหลังไม่ได้ — ย้อนกลับได้ด้วย "ยกเลิกใบกำกับ" เท่านั้น')
   return out
 }
+
+/** One check as a line of text; the receipt no (delivery invoices) wins over the PO number. */
+export function checkLine(c, poNumberById) {
+  const po = c.po_id ? (poNumberById?.get?.(c.po_id) || null) : null
+  const ref = c.receipt_no || po
+  return (CHECK_TEXT[c.code] || c.code) + (ref ? ` (${ref})` : '')
+}

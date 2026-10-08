@@ -5,16 +5,12 @@
 // ============================================================
 import { useEffect, useRef, useState } from 'react'
 import { fmt } from '../lib/supabase.js'
-import { CHECK_TEXT, fmtQty, fmtWac } from '../lib/supplierTaxInvoice.js'
+import { CHECK_TEXT, checkLine, fmtQty, fmtWac } from '../lib/supplierTaxInvoice.js'
 
 const num = v => (v == null || v === '' ? null : Number(v))
 const q = fmtQty
 
-export function checkLine(c, poNumberById) {
-  const po = c.po_id ? (poNumberById?.get?.(c.po_id) || null) : null
-  const ref = c.receipt_no || po
-  return (CHECK_TEXT[c.code] || c.code) + (ref ? ` (${ref})` : '')
-}
+export { checkLine }
 
 export default function TaxInvoicePreview({ preview, poNumberById }) {
   if (!preview) return null
