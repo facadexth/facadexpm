@@ -79,7 +79,7 @@ BEGIN
     PERFORM pg_advisory_xact_lock(hashtext('alu_parts_code:' || NEW.tenant_id::text));
     SELECT COALESCE(max(substring(code FROM 3)::int), 0) + 1 INTO next_n
       FROM alu_parts
-     WHERE tenant_id = NEW.tenant_id AND code ~ '^P-[0-9]+$';
+     WHERE tenant_id = NEW.tenant_id AND code ~ '^P-[0-9]{1,9}$';
     NEW.code := 'P-' || lpad(next_n::text, 4, '0');
   END IF;
   RETURN NEW;

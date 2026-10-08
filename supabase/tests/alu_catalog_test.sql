@@ -136,7 +136,7 @@ DO $$
 DECLARE
   ta UUID; tb UUID; tc UUID; t TEXT;
   prov UUID; ser UUID; typ UUID; prof UUID; fin UUID; setp UUID; partp UUID; n INT;
-  code1 TEXT; code2 TEXT; raised BOOLEAN;
+  code1 TEXT; code2 TEXT; acode2 TEXT; raised BOOLEAN;
 BEGIN
   -- read fixtures BEFORE switching role (authenticated cannot read the temp table)
   SELECT a_tenant, b_tenant, c_tenant INTO ta, tb, tc FROM _alu_fx;
@@ -171,6 +171,7 @@ BEGIN
   -- auto-numbered code: distinct, well-formed, increasing
   SELECT code INTO code1 FROM alu_parts WHERE id = setp;
   SELECT code INTO code2 FROM alu_parts WHERE id = partp;
+  acode2 := code2;  -- code2 is reused below
   IF code1 IS NULL OR code1 !~ '^P-[0-9]{4}$' THEN RAISE EXCEPTION 'first part code malformed: %', code1; END IF;
   IF code2 IS NULL OR code2 !~ '^P-[0-9]{4}$' THEN RAISE EXCEPTION 'second part code malformed: %', code2; END IF;
   IF code1 = code2 THEN RAISE EXCEPTION 'part codes are not distinct: %', code1; END IF;
@@ -238,9 +239,16 @@ BEGIN
   INSERT INTO alu_parts (name) VALUES ('B part') RETURNING code INTO code2;
   IF code2 <> 'P-0001' THEN RAISE EXCEPTION 'tenant B first part code should be P-0001, got %', code2; END IF;
   -- the same explicit code as one of A's is allowed in another tenant
-  INSERT INTO alu_parts (name, code) VALUES ('B part 2', code1);
-  SELECT count(*) INTO n FROM alu_parts WHERE code = code1;
-  IF n <> 1 THEN RAISE EXCEPTION 'tenant B should see exactly 1 part with code %, saw %', code1, n; END IF;
+  -- (B already holds its own P-0001, so use A's second code P-0002, which B does not hold)
+  INSERT INTO alu_parts (name, code) VALUES ('B part 2', acode2);
+  SELECT count(*) INTO n FROM alu_parts WHERE code = acode2 AND tenant_id = tb;
+  IF n <> 1 THEN RAISE EXCEPTION 'tenant B should see exactly 1 own part with code %, saw %', acode2, n; END IF;
+  SELECT count(*) INTO n FROM alu_parts WHERE code = acode2 AND tenant_id <> tb;
+  IF n <> 0 THEN RAISE EXCEPTION 'tenant B sees % foreign parts with code %', n, acode2; END IF;
+  -- tenant A still holds its own row with that code
+  SET LOCAL request.jwt.claims = '{"email":"__alu_a__@example.com"}';
+  SELECT count(*) INTO n FROM alu_parts WHERE code = acode2 AND tenant_id = ta;
+  IF n <> 1 THEN RAISE EXCEPTION 'tenant A should still hold 1 part with code %, saw %', acode2, n; END IF;
 
   -- tenant C (no estimation module): sees nothing, cannot write to any component table
   SET LOCAL request.jwt.claims = '{"email":"__alu_c__@example.com"}';
