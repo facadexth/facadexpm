@@ -4,7 +4,7 @@
 
 **Goal:** Ship the aluminium cost database (extruder → series → type → components, per-extruder colours, price history with effective dates) with a management screen, and a tested pure price-resolution function, without touching the existing BOM engine.
 
-**Architecture:** Three additive SQL migrations (new tables + new nullable columns on two existing tables) gated by `has_module_access('estimation')`. A pure `resolveAluPrice` library picks prices from rows loaded client-side. A new page `AluCatalog` (five tabs) is built from two generic components (`CatalogCrud`, `LinkEditor`) so each tab is mostly configuration. Phase 2 (engine wiring, project defaults, item flow) and Phase 3 (price structure, export) are separate plans.
+**Architecture:** Three additive SQL migrations creating only new tables (no change to any existing table), all gated by `has_module_access('estimation')` and independent of the purchase-orders module. A pure `resolveAluPrice` library picks prices from rows loaded client-side. A new page `AluCatalog` (five tabs) is built from two generic components (`CatalogCrud`, `LinkEditor`) so each tab is mostly configuration. Phase 2 (engine wiring, project defaults, item flow) and Phase 3 (price structure, export) are separate plans.
 
 **Tech Stack:** Postgres/Supabase (RLS), React + Vite, vitest, supabase-js. Thai UI copy.
 
@@ -14,9 +14,9 @@
 
 - FacadeX only: every new table has RLS policy `admin_full_access` = `is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('estimation')` for both `USING` and `WITH CHECK`.
 - Every new table: `tenant_id UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)` and an index on `tenant_id`. Any `UNIQUE` must include `tenant_id` or a tenant-scoped parent id (a globally-unique name once blocked new tenant signups).
-- `aluminum_profiles` keeps its existing policy, which is gated by the `purchase_orders` module (PO receiving reads it); the profile tab therefore needs both `estimation` and `purchase_orders`, which FacadeX has. `aluminum_finishes` is gated by `estimation`.
+- The catalog is separate from the legacy tables: new `alu_profiles` and `alu_finishes` (both gated by `estimation` only). Do NOT alter `aluminum_profiles` (read by PO receiving, gated by `purchase_orders`) or `aluminum_finishes` (has `price_per_kg`, read by the current engine). Linking the catalog to the PO side is deferred until the owner is happy with the catalog.
 - Do NOT modify `src/lib/bomEngine.js`, `src/pages/Estimation.jsx`, `src/pages/BomTemplates.jsx`, `src/pages/AluminumProfiles.jsx`. Phase 1 must leave the existing estimation module working.
-- `aluminum_finishes.price_per_kg` is kept in Phase 1 (made nullable). It is dropped in Phase 2 when the engine moves to `alu_kg_prices`. `aluminum_profiles.series` (legacy text) is untouched.
+- Prices live only in the three price tables; the new catalog has no `price_per_kg` column anywhere else. The legacy `aluminum_finishes.price_per_kg` keeps serving the current engine until Phase 2 repoints it to the catalog and retires `aluminum_finishes`.
 - Migrations are written but NOT applied by the agent. The owner applies them with `!`. Verify SQL only inside `BEGIN; … ROLLBACK;`.
 - Price tables are append-only history: `effective_from DATE NOT NULL`, `source TEXT NOT NULL DEFAULT 'manual'`; lookup = latest row with `effective_from <= asOf`. Dates are `'YYYY-MM-DD'` strings in JS.
 - No upserts and no PostgREST embeds in Phase 1: use plain `insert`/`update`/`delete` and load tables separately, joining client-side (avoids the `onConflict` and ambiguous-FK traps).
@@ -33,7 +33,7 @@ Inputs and conditions the spec implies that a person will hit, most likely first
 2. A second tenant (or FacadeX's own second extruder) creating the same name as an existing row must not collide — Task 1 (SQL: tenant B can create provider `TYK` too; two series of the same name under different providers).
 3. Two price rows with the same effective date, deleting a row that other rows depend on, and invalid numbers must give a readable Thai message, not a raw Postgres error — Task 5 (`friendlyDbError`).
 4. A per-kg extruder whose profile weight is 0/missing, or that only has piece prices, must come back `unresolved` and never cost 0 silently; a price dated in the future must be ignored — Task 4.
-5. A tenant without the estimation module must see and write nothing in any new table — Tasks 1–3 (SQL, tenant C).
+5. A tenant without the estimation module must see and write nothing in any new table, and a tenant with `estimation` but NOT `purchase_orders` must be able to use all of it — Tasks 1–3 (SQL: tenants A and B hold only `estimation`, tenant C holds nothing).
 6. An inactive provider/series/profile must disappear from pickers for new rows but still show its name when editing an old row that points at it — Task 5 (`optionList`).
 
 ## File Structure
@@ -41,7 +41,7 @@ Inputs and conditions the spec implies that a person will hit, most likely first
 | Path | Responsibility |
 |---|---|
 | `supabase/migrations/2026-10-10-01-alu-catalog-hierarchy.sql` | providers, types, series, series↔types |
-| `supabase/migrations/2026-10-10-02-alu-catalog-components.sql` | profile/colour columns, series↔profiles, variants, parts, sets, series↔parts |
+| `supabase/migrations/2026-10-10-02-alu-catalog-components.sql` | new `alu_profiles` and `alu_finishes` (per-extruder, no price), series↔profiles, variants, parts, sets, series↔parts |
 | `supabase/migrations/2026-10-10-03-alu-catalog-prices.sql` | kg / piece / part price history |
 | `supabase/tests/alu_catalog_test.sql` | RLS, uniqueness and CHECK tests (run inside BEGIN/ROLLBACK) |
 | `src/lib/aluPrice.js` (+ `.test.js`) | pure price resolution |
@@ -138,7 +138,7 @@ END $$;
 -- Aluminium cost catalog: RLS isolation, uniqueness and CHECK constraints.
 -- RUN ONLY INSIDE A TRANSACTION THAT ROLLS BACK:
 --   BEGIN; <migrations 01..03>; <this file>; ROLLBACK;
--- Tenants: A and B have the 'estimation' and 'purchase_orders' modules, C has neither (expired trial).
+-- Tenants: A and B have ONLY the 'estimation' module (the catalog must not need purchase_orders), C has no module (expired trial).
 
 CREATE TEMP TABLE _alu_fx (a_tenant UUID, b_tenant UUID, c_tenant UUID);
 DO $$
@@ -151,9 +151,7 @@ BEGIN
     VALUES ('__ALU TEST B__', owner_id, 'expired', now() - interval '1 day') RETURNING id INTO tb;
   INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at)
     VALUES ('__ALU TEST C__', owner_id, 'expired', now() - interval '1 day') RETURNING id INTO tc;
-  -- aluminum_profiles is gated by 'purchase_orders' (PO receiving reads it), the new tables by 'estimation'; FacadeX has both
-  INSERT INTO tenant_modules (tenant_id, module_key) VALUES
-    (ta, 'estimation'), (ta, 'purchase_orders'), (tb, 'estimation'), (tb, 'purchase_orders');
+  INSERT INTO tenant_modules (tenant_id, module_key) VALUES (ta, 'estimation'), (tb, 'estimation');
   INSERT INTO user_roles (user_email, role, status, tenant_id) VALUES
     ('__alu_a__@example.com', 'OWNER', 'approved', ta),
     ('__alu_b__@example.com', 'OWNER', 'approved', tb),
@@ -242,39 +240,52 @@ git commit -m "feat(alu-catalog): hierarchy tables with RLS and SQL test" -m "Co
 
 **Interfaces:**
 - Consumes: Task 1 tables.
-- Produces: new columns `aluminum_profiles.provider_id, drawing_no, image_url`; `aluminum_finishes.provider_id, code` (and `price_per_kg` now nullable); tables `alu_series_profiles(id, tenant_id, series_id, profile_id, family)`, `alu_profile_variants(id, tenant_id, profile_id, finish_id, length_m)`, `alu_parts(id, tenant_id, provider_id, name, kind, unit, active, created_at)`, `alu_part_set_items(id, tenant_id, set_id, part_id, quantity)`, `alu_series_parts(id, tenant_id, series_id, type_id, part_id)`.
+- Produces: tables `alu_profiles(id, tenant_id, provider_id, name, drawing_no, family, thickness_mm, linear_weight_kg_per_m, default_length_m, image_url, active, created_at)`, `alu_finishes(id, tenant_id, provider_id, name, code, active, created_at)`, `alu_series_profiles(id, tenant_id, series_id, profile_id, family)`, `alu_profile_variants(id, tenant_id, profile_id, finish_id, length_m)`, `alu_parts(id, tenant_id, provider_id, name, kind, unit, active, created_at)`, `alu_part_set_items(id, tenant_id, set_id, part_id, quantity)`, `alu_series_parts(id, tenant_id, series_id, type_id, part_id)`.
 
-- [ ] **Step 1: Confirm no view freezes the two altered tables' column lists**
-
-Run: `grep -lE "CREATE (OR REPLACE )?VIEW" supabase/migrations/*.sql | xargs grep -liE "aluminum_profiles|aluminum_finishes"`
-Expected: no output (verified when this plan was written; re-check in case newer migrations landed).
-
-- [ ] **Step 2: Write the migration**
+- [ ] **Step 1: Write the migration**
 
 ```sql
 -- supabase/migrations/2026-10-10-02-alu-catalog-components.sql
 -- Aluminium cost catalog, part 2 of 3: profiles, colours, variants, parts.
--- aluminum_finishes.price_per_kg stays for the existing estimation engine
--- (dropped in Phase 2); it becomes nullable because catalog colours are
--- priced through alu_kg_prices instead.
+-- Deliberately separate from the legacy aluminum_profiles (read by PO
+-- receiving, gated by the purchase_orders module) and aluminum_finishes
+-- (has price_per_kg, read by the current estimation engine): neither is
+-- altered. Phase 2 repoints the engine here; a link to the PO side can be
+-- added later. Prices live only in the price tables (migration 03).
 
-ALTER TABLE aluminum_profiles
-  ADD COLUMN provider_id UUID REFERENCES alu_providers(id) ON DELETE RESTRICT,
-  ADD COLUMN drawing_no  TEXT,
-  ADD COLUMN image_url   TEXT;
-CREATE INDEX idx_aluminum_profiles_provider_id ON aluminum_profiles(provider_id);
+CREATE TABLE alu_profiles (
+  id                     UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id              UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  provider_id            UUID NOT NULL REFERENCES alu_providers(id) ON DELETE RESTRICT,
+  name                   TEXT NOT NULL,
+  drawing_no             TEXT,
+  family                 TEXT,
+  thickness_mm           NUMERIC CHECK (thickness_mm IS NULL OR thickness_mm > 0),
+  linear_weight_kg_per_m NUMERIC NOT NULL CHECK (linear_weight_kg_per_m >= 0),
+  default_length_m       NUMERIC NOT NULL DEFAULT 6.4 CHECK (default_length_m > 0),
+  image_url              TEXT,
+  active                 BOOLEAN NOT NULL DEFAULT true,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
-ALTER TABLE aluminum_finishes
-  ADD COLUMN provider_id UUID REFERENCES alu_providers(id) ON DELETE RESTRICT,
-  ADD COLUMN code        TEXT;
-ALTER TABLE aluminum_finishes ALTER COLUMN price_per_kg DROP NOT NULL;
-CREATE INDEX idx_aluminum_finishes_provider_id ON aluminum_finishes(provider_id);
+CREATE TABLE alu_finishes (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id   UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  provider_id UUID NOT NULL REFERENCES alu_providers(id) ON DELETE RESTRICT,
+  name        TEXT NOT NULL,
+  code        TEXT,
+  active      BOOLEAN NOT NULL DEFAULT true,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (provider_id, name)
+);
+CREATE INDEX idx_alu_profiles_provider_id ON alu_profiles(provider_id);
+CREATE INDEX idx_alu_finishes_provider_id ON alu_finishes(provider_id);
 
 CREATE TABLE alu_series_profiles (
   id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   tenant_id  UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
   series_id  UUID NOT NULL REFERENCES alu_series(id) ON DELETE CASCADE,
-  profile_id UUID NOT NULL REFERENCES aluminum_profiles(id) ON DELETE CASCADE,
+  profile_id UUID NOT NULL REFERENCES alu_profiles(id) ON DELETE CASCADE,
   family     TEXT,
   UNIQUE (series_id, profile_id)
 );
@@ -282,8 +293,8 @@ CREATE TABLE alu_series_profiles (
 CREATE TABLE alu_profile_variants (
   id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   tenant_id  UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
-  profile_id UUID NOT NULL REFERENCES aluminum_profiles(id) ON DELETE CASCADE,
-  finish_id  UUID NOT NULL REFERENCES aluminum_finishes(id) ON DELETE RESTRICT,
+  profile_id UUID NOT NULL REFERENCES alu_profiles(id) ON DELETE CASCADE,
+  finish_id  UUID NOT NULL REFERENCES alu_finishes(id) ON DELETE RESTRICT,
   length_m   NUMERIC NOT NULL CHECK (length_m > 0),
   UNIQUE (profile_id, finish_id, length_m)
 );
@@ -329,7 +340,7 @@ CREATE INDEX idx_alu_series_parts_part_id       ON alu_series_parts(part_id);
 DO $$
 DECLARE t TEXT;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['alu_series_profiles','alu_profile_variants','alu_parts','alu_part_set_items','alu_series_parts'] LOOP
+  FOREACH t IN ARRAY ARRAY['alu_profiles','alu_finishes','alu_series_profiles','alu_profile_variants','alu_parts','alu_part_set_items','alu_series_parts'] LOOP
     EXECUTE format('CREATE INDEX idx_%s_tenant_id ON %I(tenant_id)', t, t);
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format($p$CREATE POLICY admin_full_access ON %I FOR ALL TO authenticated
@@ -339,7 +350,7 @@ BEGIN
 END $$;
 ```
 
-- [ ] **Step 3: Append Test 2 to `supabase/tests/alu_catalog_test.sql`**
+- [ ] **Step 2: Append Test 2 to `supabase/tests/alu_catalog_test.sql`**
 
 ```sql
 -- ── Test 2: components ──
@@ -354,9 +365,9 @@ BEGIN
   SELECT id INTO ser  FROM alu_series WHERE provider_id = prov AND name = 'กล่องร่อง';
   SELECT id INTO typ  FROM door_window_types WHERE name = 'บานเลื่อน';
 
-  INSERT INTO aluminum_profiles (name, linear_weight_kg_per_m, provider_id, drawing_no, thickness_mm)
+  INSERT INTO alu_profiles (name, linear_weight_kg_per_m, provider_id, drawing_no, thickness_mm)
     VALUES ('กล่องร่อง 1.2', 0.8, prov, 'FX-001', 1.2) RETURNING id INTO prof;
-  INSERT INTO aluminum_finishes (name, provider_id, code) VALUES ('ขาว', prov, 'W01') RETURNING id INTO fin;  -- no price_per_kg: now nullable
+  INSERT INTO alu_finishes (name, provider_id, code) VALUES ('ขาว', prov, 'W01') RETURNING id INTO fin;
   INSERT INTO alu_series_profiles (series_id, profile_id, family) VALUES (ser, prof, 'กล่องร่อง');
   INSERT INTO alu_profile_variants (profile_id, finish_id, length_m) VALUES (prof, fin, 6.4);
 
@@ -401,7 +412,7 @@ BEGIN
 END $$;
 ```
 
-- [ ] **Step 4: Run migrations 01+02 and the test file in a rolled-back transaction**
+- [ ] **Step 3: Run migrations 01+02 and the test file in a rolled-back transaction**
 
 ```bash
 SCRATCH=/private/tmp/claude-501/-Users-plfx-code-FacadeXPM-facadex-app/c6b37346-e3c3-435c-b5ba-380c8b970a05/scratchpad
@@ -411,11 +422,13 @@ npx supabase db query --linked -f $SCRATCH/alu_t2.sql
 
 Expected: no `ERROR`; both `Test 1` and `Test 2 … TEST PASSED` notices.
 
-- [ ] **Step 5: Commit**
+Then confirm the catalog never touches the legacy tables: `grep -nE "ALTER TABLE aluminum_|REFERENCES aluminum_" supabase/migrations/2026-10-10-0*.sql` → expected: no output.
+
+- [ ] **Step 4: Commit**
 
 ```bash
 git add supabase/migrations/2026-10-10-02-alu-catalog-components.sql supabase/tests/alu_catalog_test.sql
-git commit -m "feat(alu-catalog): profile/colour columns, variants, parts, sets, series links" -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+git commit -m "feat(alu-catalog): profiles, colours, variants, parts, sets, series links" -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -440,9 +453,9 @@ CREATE TABLE alu_kg_prices (
   id             UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   tenant_id      UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
   provider_id    UUID NOT NULL REFERENCES alu_providers(id) ON DELETE RESTRICT,
-  finish_id      UUID NOT NULL REFERENCES aluminum_finishes(id) ON DELETE RESTRICT,
+  finish_id      UUID NOT NULL REFERENCES alu_finishes(id) ON DELETE RESTRICT,
   series_id      UUID REFERENCES alu_series(id) ON DELETE CASCADE,
-  profile_id     UUID REFERENCES aluminum_profiles(id) ON DELETE CASCADE,
+  profile_id     UUID REFERENCES alu_profiles(id) ON DELETE CASCADE,
   price_per_kg   NUMERIC NOT NULL CHECK (price_per_kg >= 0),
   effective_from DATE NOT NULL,
   source         TEXT NOT NULL DEFAULT 'manual',
@@ -507,8 +520,8 @@ BEGIN
 
   SELECT id INTO prov FROM alu_providers WHERE name = 'TYK';
   SELECT id INTO ser  FROM alu_series WHERE provider_id = prov;
-  SELECT id INTO prof FROM aluminum_profiles WHERE provider_id = prov;
-  SELECT id INTO fin  FROM aluminum_finishes WHERE provider_id = prov;
+  SELECT id INTO prof FROM alu_profiles WHERE provider_id = prov;
+  SELECT id INTO fin  FROM alu_finishes WHERE provider_id = prov;
   SELECT id INTO var  FROM alu_profile_variants WHERE profile_id = prof;
   SELECT id INTO partp FROM alu_parts WHERE name = 'ยางขอบ';
 
@@ -1625,15 +1638,13 @@ const PROFILE_FIELDS = [
 const FINISH_FIELDS = [
   { key: 'name', label: 'ชื่อสี', type: 'text', required: true, placeholder: 'เช่น ขาว, อโนไดซ์ดำ' },
   { key: 'code', label: 'รหัสสีของโรงรีด', type: 'text' },
-  { key: 'price_per_kg', label: 'ราคา/กก. (เดิม)', type: 'number', min: 0,
-    hint: 'ใช้โดยหน้าประเมินราคาเดิมเท่านั้น ราคาของแคตตาล็อกใหม่กรอกที่แท็บ "ราคา" ' },
   { key: 'active', label: 'ใช้งานอยู่', type: 'checkbox', default: true },
 ]
 
 export default function ProfilesTab({ canEdit }) {
   const providers = useCatalogTable('alu_providers')
-  const profiles = useCatalogTable('aluminum_profiles')
-  const finishes = useCatalogTable('aluminum_finishes')
+  const profiles = useCatalogTable('alu_profiles')
+  const finishes = useCatalogTable('alu_finishes')
   const variants = useCatalogTable('alu_profile_variants', 'id')
   const series = useCatalogTable('alu_series')
   const seriesProfiles = useCatalogTable('alu_series_profiles', 'id')
@@ -1660,6 +1671,9 @@ export default function ProfilesTab({ canEdit }) {
   return (
     <div>
       <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8, maxWidth: 560 }}>
+          แท็บนี้เป็นแคตตาล็อกใหม่ แยกจากรายการ "หน้าตัดอลูมิเนียม" และ "สีผิวอลูมิเนียม" เดิมใน BOM Templates ซึ่งยังใช้กับระบบประเมินราคาเดิมจนกว่าจะถึงเฟส 2 ราคาต่อกก. กรอกที่แท็บ "ราคา"
+        </div>
         <label className="label">เลือกโรงรีด</label>
         <select className="input" style={{ maxWidth: 320 }} value={providerId} onChange={e => { setProviderId(e.target.value); setSeriesId('') }}>
           <option value="">— เลือกโรงรีด —</option>
@@ -1671,7 +1685,7 @@ export default function ProfilesTab({ canEdit }) {
       {providerId && (
         <>
           <CatalogCrud
-            title="📏 หน้าตัดอลูมิเนียม" table="aluminum_profiles" fields={PROFILE_FIELDS} rows={myProfiles}
+            title="📏 หน้าตัดอลูมิเนียม" table="alu_profiles" fields={PROFILE_FIELDS} rows={myProfiles}
             scope={{ provider_id: providerId }} onChanged={profiles.refetch} canEdit={canEdit}
             addLabel="+ เพิ่มหน้าตัด" emptyText="โรงรีดนี้ยังไม่มีหน้าตัด"
             columns={[
@@ -1685,7 +1699,7 @@ export default function ProfilesTab({ canEdit }) {
             ]}
           />
           <CatalogCrud
-            title="🎨 สีของโรงรีด" table="aluminum_finishes" fields={FINISH_FIELDS} rows={myFinishes}
+            title="🎨 สีของโรงรีด" table="alu_finishes" fields={FINISH_FIELDS} rows={myFinishes}
             scope={{ provider_id: providerId }} onChanged={finishes.refetch} canEdit={canEdit}
             addLabel="+ เพิ่มสี" emptyText="โรงรีดนี้ยังไม่มีสี"
             columns={[
@@ -1892,9 +1906,9 @@ const todayStr = () => new Date().toLocaleDateString('en-CA')
 
 export default function PricesTab({ canEdit }) {
   const providers = useCatalogTable('alu_providers')
-  const finishes = useCatalogTable('aluminum_finishes')
+  const finishes = useCatalogTable('alu_finishes')
   const series = useCatalogTable('alu_series')
-  const profiles = useCatalogTable('aluminum_profiles')
+  const profiles = useCatalogTable('alu_profiles')
   const variants = useCatalogTable('alu_profile_variants', 'id')
   const parts = useCatalogTable('alu_parts')
   const kgPrices = useCatalogTable('alu_kg_prices', 'effective_from', false)
@@ -2034,7 +2048,7 @@ Tell the owner to run (the agent cannot apply migrations):
 ! npx supabase db query --linked -f supabase/migrations/2026-10-10-03-alu-catalog-prices.sql
 ```
 
-and then confirm the tables exist: `npx supabase db query --linked "select count(*) from information_schema.tables where table_schema='public' and (table_name like 'alu\_%' or table_name = 'door_window_types')"` returns 12 (11 `alu_*` tables plus `door_window_types`).
+and then confirm the tables exist: `npx supabase db query --linked "select count(*) from information_schema.tables where table_schema='public' and (table_name like 'alu\_%' or table_name = 'door_window_types')"` returns 14 (13 `alu_*` tables plus `door_window_types`).
 
 - [ ] **Step 5: Live check in the browser (after the owner applies the migrations)**
 
@@ -2045,7 +2059,7 @@ Run the app (`npm run dev`), sign in as the FacadeX owner, open ประเม�
 4. หน้าตัด tab: add a profile (weight 0.85, หนา 1.2), a colour "ขาว", a length 6.4 m; link the profile to the series with role "กล่องร่อง".
 5. อุปกรณ์ tab: add a set and a part, put the part in the set with quantity 2.
 6. ราคา tab: add a kg price 95 dated today, then 98 dated later; try adding another 95 on the first date → a Thai "ซ้ำ" message, not a Postgres error.
-7. Open BOM Templates and Estimation → they still load and behave as before.
+7. Open BOM Templates and Estimation → they still load and behave as before, and the old หน้าตัดอลูมิเนียม / สีผิวอลูมิเนียม lists are unchanged (the new catalog is a separate list until Phase 2).
 8. Sign in as a tenant without the estimation module → the nav entry is absent.
 
 Expected: all eight hold. Record any deviation as a bug before merging.
@@ -2058,9 +2072,9 @@ Do not merge `feat/alu-cost-catalog` into main. Phases 2 and 3 continue on this 
 
 ## Self-Review
 
-**Spec coverage (Phase 1 scope = catalog):** hierarchy and series↔types (Task 1); profile/colour columns, variants, parts, sets, series↔profiles/parts (Task 2); kg/piece/part price history with precedence, effective dates and `source` (Task 3, Task 4); `resolveAluPrice`/`resolvePartPrice` with the three bases and `unresolved` (Task 4); series labels full/short with `short_name` (Tasks 1, 5); management UI for every table (Tasks 6–10); FacadeX-only gating (Tasks 1–3, 7). Deferred to later plans by design: `bom_templates.type_id`, estimation project/opening changes, engine rewiring, the stale-price banner, price structure and export (Phases 2–3), and dropping `aluminum_finishes.price_per_kg`. No spec requirement for Phase 1 lacks a task.
+**Spec coverage (Phase 1 scope = catalog):** hierarchy and series↔types (Task 1); profiles, colours, variants, parts, sets, series↔profiles/parts as new tables (Task 2); kg/piece/part price history with precedence, effective dates and `source` (Task 3, Task 4); `resolveAluPrice`/`resolvePartPrice` with the three bases and `unresolved` (Task 4); series labels full/short with `short_name` (Tasks 1, 5); management UI for every table (Tasks 6–10); FacadeX-only gating (Tasks 1–3, 7). Deferred to later plans by design: `bom_templates.type_id`, estimation project/opening changes, engine rewiring, the stale-price banner, price structure and export (Phases 2–3), and retiring the legacy `aluminum_finishes` (Phase 2). No spec requirement for Phase 1 lacks a task.
 
-**Placeholder scan:** no TBD/TODO/"similar to" steps; every code step carries its code. Checked against the live schema while writing: `aluminum_profiles` is gated by `purchase_orders` (not `estimation`), so the SQL fixtures grant tenants A and B both modules.
+**Placeholder scan:** no TBD/TODO/"similar to" steps; every code step carries its code. Checked against the live schema while writing: legacy `aluminum_profiles` is gated by `purchase_orders`, so the catalog uses its own `alu_profiles`/`alu_finishes` and the SQL fixtures give tenants A and B only `estimation`.
 
 **Type consistency:** field/option shapes match across `catalogForm.js`, `CatalogCrud`, and the tabs (`options` array or `(form) => array`, `{ value, label }`); `LinkEditor` `childOptions` use `{ id, label }` in every tab; `extra.table` is injected by `LinkEditor`; `fetchCatalogRows` argument order matches `useCatalogTable`; `resolveAluPrice` reasons match the test expectations; table/column names match the migrations (`alu_series_profiles.family` nullable, `alu_part_set_items.set_id/part_id/quantity`, `alu_series_parts.type_id` nullable).
 

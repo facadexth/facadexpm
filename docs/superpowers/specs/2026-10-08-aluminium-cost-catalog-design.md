@@ -6,7 +6,7 @@
 
 The estimation module prices an opening from `aluminum_profiles` matched by free-text `series`, with one `price_per_kg` per finish. Real quoting needs (1) a proper cost catalog — extruder → series → door/window type → components — where price basis differs per extruder (per kg, per piece, or both) and prices change over time, and (2) a project-level price build-up (profit, transport, protection, cleaning, PM, rounding, VAT) shaped like the owner's `price_structure.xlsx` (tab ELSY), ending in an export to Quotation.
 
-All catalog tables are empty in the live CHANG DB (checked 2026-10-08); 2 estimation projects, 0 openings. No data migration is needed, so existing tables are reshaped in place.
+All catalog tables are empty in the live CHANG DB (checked 2026-10-08); 2 estimation projects, 0 openings. No data migration is needed. The catalog is built as **new tables, separate from the legacy `aluminum_profiles` (read by PO receiving, gated by the `purchase_orders` module) and `aluminum_finishes` (carries `price_per_kg`)**, so the catalog depends only on the `estimation` module and prices exist in one place. Linking the catalog to the PO side is deferred until the owner is satisfied with it; Phase 2 repoints the engine to the new tables and retires `aluminum_finishes`.
 
 ## Goals
 
@@ -24,7 +24,7 @@ All catalog tables are empty in the live CHANG DB (checked 2026-10-08); 2 estima
 
 ## Data model
 
-All tables: `tenant_id UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)`, RLS `admin_full_access` identical to `aluminum_finishes`, index on `tenant_id`.
+All tables: `tenant_id UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)`, RLS `admin_full_access` = `is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('estimation')`, index on `tenant_id`.
 
 ### Hierarchy
 - `alu_providers(name, short_name, price_basis CHECK in ('per_kg','per_piece','both'), active)` — `short_name` is for the abbreviated series label (Decision 6).
@@ -33,9 +33,9 @@ All tables: `tenant_id UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tena
 - `alu_series_types(series_id, type_id)` — which types a series offers. No row = not offered.
 
 ### Components
-- `aluminum_profiles` (existing, reshaped): add `provider_id`, `drawing_no`, `image_url`. Keep `name`, `family`, `linear_weight_kg_per_m`, `thickness_mm`, `default_length_m`, `series` (legacy text, unused by new code; PO flow still reads the table). **No separate shapes table**: a profile row is already "cross-section + thickness" (one row of the DB sheet), and cross-extruder grouping is the existing `family`.
+- `alu_profiles` (new): `provider_id`, `name`, `drawing_no`, `family`, `thickness_mm`, `linear_weight_kg_per_m`, `default_length_m`, `image_url`, `active`. Legacy `aluminum_profiles` is left alone. **No separate shapes table**: a profile row is already "cross-section + thickness" (one row of the DB sheet), and cross-extruder grouping is `family`.
 - `alu_series_profiles(series_id, profile_id, family)` — many-to-many reuse. `family` lives on the link because the same profile can play a different role in another series.
-- `aluminum_finishes` (existing, reshaped): add `provider_id`, `code`. Colours are per extruder. `price_per_kg` is dropped (prices move to `alu_kg_prices`).
+- `alu_finishes` (new): `provider_id`, `name`, `code`, `active`. Colours are per extruder and carry **no price**; prices exist only in `alu_kg_prices`. Legacy `aluminum_finishes` keeps serving the current engine until Phase 2.
 - `alu_profile_variants(profile_id, finish_id, length_m)` — colour × stock length; carries piece prices.
 - `alu_parts(provider_id nullable, name, kind 'hardware'|'hardware_set'|'accessory', unit)`; `alu_part_set_items(set_id, part_id, quantity)`; `alu_series_parts(series_id, type_id nullable, part_id)`. A hardware set is linked to the type(s) it is used with (DB sheet column "ใช้กับชุด").
 
@@ -114,7 +114,7 @@ Item = six fields, shared with the future AI reader: **1** name, **2** size, **3
 ## Phasing
 
 1. **Catalog**: migrations for the hierarchy/components/prices, `resolveAluPrice` + vitest, catalog management screens (extruder → series/types → profiles/colours/lengths → parts → prices).
-2. **Engine + item flow**: reshape `estimation_openings`/`estimation_projects`, rewire `bomEngine.js`, project defaults, modal, preview, availability warnings, stale-price banner.
+2. **Engine + item flow**: reshape `estimation_openings`/`estimation_projects` (repoint `finish_id` to `alu_finishes`, profiles to `alu_profiles`, retire legacy `aluminum_finishes`), rewire `bomEngine.js`, project defaults, modal, preview, availability warnings, stale-price banner.
 3. **Price structure + export**: cost-settings, price-structure table, rounding/VAT, Quotation export and update-as-revision.
 
 Each phase merges and deploys on its own. Migrations are applied by the owner (`!`), not by the agent.
