@@ -46,20 +46,29 @@ export function resolveAluPrice({ provider, series, profile, finish, variants, a
   const triedKg = basis !== 'per_piece'
   const triedPiece = basis !== 'per_kg'
 
+  // a 'both' provider with no usable weight cannot be kg-priced; it falls through to the
+  // piece price (Decision 7). Only a per_kg provider stops dead on a missing weight.
+  let weightMissing = false
   if (triedKg) {
     const weight = Number(profile.linear_weight_kg_per_m)
-    if (!(weight > 0)) return { unresolved: true, reason: 'no_weight' }
-    const kg = resolveKgPrice({ provider, finish, series, profile, asOf, kgPrices })
-    if (kg) {
-      return { basis: 'per_kg', price_per_kg: kg.price_per_kg, price_per_m: kg.price_per_kg * weight, source: kg.source }
+    if (!(weight > 0)) {
+      if (basis === 'per_kg') return { unresolved: true, reason: 'no_weight' }
+      weightMissing = true
+    } else {
+      const kg = resolveKgPrice({ provider, finish, series, profile, asOf, kgPrices })
+      if (kg) {
+        return { basis: 'per_kg', price_per_kg: kg.price_per_kg, price_per_m: kg.price_per_kg * weight, source: kg.source }
+      }
     }
   }
 
   if (triedPiece) {
+    // if the piece attempt also fails and the weight was the blocker, report that instead
+    const fail = reason => ({ unresolved: true, reason: weightMissing ? 'no_weight' : reason })
     const variant = findVariant(variants, profile.id, finish.id, profile.default_length_m)
-    if (!variant) return { unresolved: true, reason: basis === 'both' ? 'no_price' : 'no_variant' }
+    if (!variant) return fail(basis === 'both' ? 'no_price' : 'no_variant')
     const row = pickLatest(piecePrices, asOf, r => r.variant_id === variant.id)
-    if (!row) return { unresolved: true, reason: basis === 'both' ? 'no_price' : 'no_piece_price' }
+    if (!row) return fail(basis === 'both' ? 'no_price' : 'no_piece_price')
     const perPiece = Number(row.price_per_piece)
     return { basis: 'per_piece', price_per_piece: perPiece, price_per_m: perPiece / Number(variant.length_m), source: 'piece', variant_id: variant.id }
   }

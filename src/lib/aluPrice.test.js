@@ -84,6 +84,21 @@ describe('resolveAluPrice', () => {
         .toEqual({ unresolved: true, reason: 'no_weight' })
     }
   })
+  it('both with zero or missing weight skips kg and falls back to the piece price', () => {
+    const both = { ...provider, price_basis: 'both' }
+    for (const w of [0, null, undefined]) {
+      const r = resolveAluPrice({ provider: both, series, profile: { ...profile, linear_weight_kg_per_m: w }, finish, variants, asOf: '2026-10-08', kgPrices: [kg()], piecePrices: [piece()] })
+      expect(r).toMatchObject({ basis: 'per_piece', price_per_piece: 1200, variant_id: 'v1' })
+    }
+  })
+  it('both with zero weight and no piece price is unresolved "no_weight" (tells the user what to fix)', () => {
+    const both = { ...provider, price_basis: 'both' }
+    const noWt = { ...profile, linear_weight_kg_per_m: 0 }
+    expect(resolveAluPrice({ provider: both, series, profile: noWt, finish, variants, asOf: '2026-10-08', kgPrices: [kg()], piecePrices: [] }))
+      .toEqual({ unresolved: true, reason: 'no_weight' })
+    expect(resolveAluPrice({ provider: both, series, profile: noWt, finish, variants: [], asOf: '2026-10-08', kgPrices: [kg()], piecePrices: [] }))
+      .toEqual({ unresolved: true, reason: 'no_weight' })
+  })
   it('per_piece reasons: no variant, then no price', () => {
     const pp = { ...provider, price_basis: 'per_piece' }
     expect(resolveAluPrice({ provider: pp, series, profile, finish, variants: [], asOf: '2026-10-08', kgPrices: [], piecePrices: [] })).toEqual({ unresolved: true, reason: 'no_variant' })
