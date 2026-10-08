@@ -242,7 +242,7 @@ git commit -m "feat(alu-catalog): hierarchy tables with RLS and SQL test" -m "Co
 
 **Interfaces:**
 - Consumes: Task 1 tables.
-- Produces: tables `alu_profiles(id, tenant_id, provider_id, name, drawing_no, family, thickness_mm, linear_weight_kg_per_m, default_length_m, image_url, active, created_at)`, `alu_finishes(id, tenant_id, provider_id, name, code, active, created_at)`, `alu_series_profiles(id, tenant_id, series_id, profile_id, family)`, `alu_profile_variants(id, tenant_id, profile_id, finish_id, length_m)`, `alu_parts(id, tenant_id, provider_id, name, kind, unit, active, created_at)`, `alu_part_set_items(id, tenant_id, set_id, part_id, quantity)`, `alu_series_parts(id, tenant_id, series_id, type_id, part_id)`.
+- Produces: tables `alu_profiles(id, tenant_id, provider_id, name, drawing_no, family, thickness_mm, linear_weight_kg_per_m, default_length_m, image_url, active, created_at)`, `alu_finishes(id, tenant_id, provider_id, name, code, active, created_at)`, `alu_series_profiles(id, tenant_id, series_id, profile_id, family)`, `alu_profile_variants(id, tenant_id, profile_id, finish_id, length_m)`, `alu_parts(id, tenant_id, provider_id, code, name, kind, unit, active, created_at)` (`code` is auto-numbered `P-0001`, `P-0002` ... per tenant by a BEFORE INSERT trigger, never typed, never edited), `alu_part_set_items(id, tenant_id, set_id, part_id, quantity)`, `alu_series_parts(id, tenant_id, series_id, type_id, part_id)`.
 
 - [ ] **Step 1: Write the migration**
 
@@ -305,6 +305,7 @@ CREATE TABLE alu_parts (
   id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   tenant_id   UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
   provider_id UUID REFERENCES alu_providers(id) ON DELETE RESTRICT,
+  code        TEXT NOT NULL,  -- auto: P-0001 ... per tenant (trigger alu_parts_assign_code)
   name        TEXT NOT NULL,
   kind        TEXT NOT NULL DEFAULT 'hardware' CHECK (kind IN ('hardware','hardware_set','accessory')),
   unit        TEXT NOT NULL DEFAULT 'ชิ้น',
@@ -1818,6 +1819,7 @@ export default function PartsTab({ canEdit }) {
         title="🔩 อุปกรณ์ · ชุดอุปกรณ์ · อะไหล่" table="alu_parts" fields={PART_FIELDS} rows={parts.data}
         onChanged={parts.refetch} canEdit={canEdit} addLabel="+ เพิ่มรายการ" emptyText="ยังไม่มีอุปกรณ์"
         columns={[
+          { key: 'code', label: 'รหัส', render: r => <span style={{ fontFamily: 'monospace' }}>{r.code}</span> },
           { key: 'name', label: 'ชื่อ', render: r => <strong>{r.name}</strong> },
           { key: 'kind', label: 'ชนิด', render: r => KIND_LABEL[r.kind] },
           { key: 'unit', label: 'หน่วย' },
