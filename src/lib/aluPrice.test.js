@@ -130,3 +130,24 @@ describe('part prices', () => {
     expect(resolvePartPrice({ partId: 'x', asOf: '2025-01-01', partPrices: rows })).toBeNull()
   })
 })
+
+describe('resolveAluPrice -- row_id of the price row used', () => {
+  const provider = { id: 'p', price_basis: 'both' }
+  const profile = { id: 'pr', linear_weight_kg_per_m: 2, default_length_m: 6 }
+  const finish = { id: 'f' }
+  const variants = [{ id: 'v', profile_id: 'pr', finish_id: 'f', length_m: 6 }]
+
+  it('per_kg result carries the id of the kg price row', () => {
+    const kgPrices = [{ id: 'k1', provider_id: 'p', finish_id: 'f', series_id: null, profile_id: null, price_per_kg: 100, effective_from: '2026-01-01' }]
+    const r = resolveAluPrice({ provider, series: null, profile, finish, variants, asOf: '2026-06-01', kgPrices, piecePrices: [] })
+    expect(r.basis).toBe('per_kg')
+    expect(r.row_id).toBe('k1')
+  })
+
+  it('per_piece result carries the id of the piece price row', () => {
+    const piecePrices = [{ id: 'pc1', variant_id: 'v', price_per_piece: 600, effective_from: '2026-01-01' }]
+    const r = resolveAluPrice({ provider, series: null, profile, finish, variants, asOf: '2026-06-01', kgPrices: [], piecePrices })
+    expect(r.basis).toBe('per_piece')
+    expect(r.row_id).toBe('pc1')
+  })
+})

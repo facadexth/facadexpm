@@ -57,7 +57,7 @@ export function resolveAluPrice({ provider, series, profile, finish, variants, a
     } else {
       const kg = resolveKgPrice({ provider, finish, series, profile, asOf, kgPrices })
       if (kg) {
-        return { basis: 'per_kg', price_per_kg: kg.price_per_kg, price_per_m: kg.price_per_kg * weight, source: kg.source }
+        return { basis: 'per_kg', price_per_kg: kg.price_per_kg, price_per_m: kg.price_per_kg * weight, source: kg.source, row_id: kg.row.id }
       }
     }
   }
@@ -70,7 +70,7 @@ export function resolveAluPrice({ provider, series, profile, finish, variants, a
     const row = pickLatest(piecePrices, asOf, r => r.variant_id === variant.id)
     if (!row) return fail(basis === 'both' ? 'no_price' : 'no_piece_price')
     const perPiece = Number(row.price_per_piece)
-    return { basis: 'per_piece', price_per_piece: perPiece, price_per_m: perPiece / Number(variant.length_m), source: 'piece', variant_id: variant.id }
+    return { basis: 'per_piece', price_per_piece: perPiece, price_per_m: perPiece / Number(variant.length_m), source: 'piece', variant_id: variant.id, row_id: row.id }
   }
 
   return { unresolved: true, reason: 'no_kg_price' }
