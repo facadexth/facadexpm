@@ -50,6 +50,7 @@ const CatalogItems = lazy(() => import('./pages/CatalogItems.jsx'))
 const Cheques       = lazy(() => import('./pages/Cheques.jsx'))
 const BomTemplates = lazy(() => import('./pages/BomTemplates.jsx'))
 const Estimation   = lazy(() => import('./pages/Estimation.jsx'))
+const AluCatalog   = lazy(() => import('./pages/AluCatalog.jsx'))
 const TenantManagement = lazy(() => import('./pages/TenantManagement.jsx'))
 const LineAdminChat = lazy(() => import('./pages/LineAdminChat.jsx'))
 const CommunicationCenter = lazy(() => import('./pages/CommunicationCenter.jsx'))
@@ -80,6 +81,7 @@ const TABS = [
   { label: '🧮 ประเมินราคา', children: [
     { id: 'estimation',    label: '📐 ประเมินราคา (BOM)', minRole: 'ADMIN', module: 'estimation' },
     { id: 'bom_templates', label: '🧩 BOM Templates',     minRole: 'ADMIN', module: 'estimation' },
+    { id: 'alu_catalog',   label: '🏭 แคตตาล็อกอลูมิเนียม', minRole: 'ADMIN', module: 'estimation', permKey: 'estimation' },
   ] },
   { label: '⚙️ ตั้งค่า', children: [
     // minRole WORKER, not OWNER -- Settings.jsx itself filters which cards
@@ -402,6 +404,7 @@ export default function App() {
         case 'line_admin_chat': return <LineAdminChat {...props} />
         case 'estimation':    return <Estimation    {...props} />
         case 'bom_templates': return <BomTemplates   {...props} />
+        case 'alu_catalog':   return <AluCatalog    {...props} />
         default:           return <Dashboard  {...props} />
       }
     })()

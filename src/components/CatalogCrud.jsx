@@ -16,7 +16,7 @@ export function ActiveBadge({ active }) {
     : <span className="badge badge-finished">ปิดใช้งาน</span>
 }
 
-function CrudForm({ fields, initial, onSave, onCancel, loading }) {
+export function CrudForm({ fields, initial, onSave, onCancel, loading }) {
   const [form, setForm] = useState(initial)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
