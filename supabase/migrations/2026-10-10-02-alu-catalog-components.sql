@@ -56,12 +56,52 @@ CREATE TABLE alu_parts (
   id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   tenant_id   UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
   provider_id UUID REFERENCES alu_providers(id) ON DELETE RESTRICT,
+  code        TEXT NOT NULL,  -- system-numbered P-0001, P-0002 ... per tenant; never typed, never edited
   name        TEXT NOT NULL,
   kind        TEXT NOT NULL DEFAULT 'hardware' CHECK (kind IN ('hardware','hardware_set','accessory')),
   unit        TEXT NOT NULL DEFAULT 'ชิ้น',
   active      BOOLEAN NOT NULL DEFAULT true,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, code)
 );
+
+-- Auto-number: when no code is supplied, take the tenant's next P-nnnn.
+-- The advisory lock serialises concurrent inserts for the same tenant so two
+-- parts cannot compute the same number. An explicit code is left alone (the
+-- UNIQUE constraint still protects it).
+CREATE FUNCTION alu_parts_assign_code() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE next_n INT;
+BEGIN
+  IF NEW.code IS NULL OR NEW.code = '' THEN
+    PERFORM pg_advisory_xact_lock(hashtext('alu_parts_code:' || NEW.tenant_id::text));
+    SELECT COALESCE(max(substring(code FROM 3)::int), 0) + 1 INTO next_n
+      FROM alu_parts
+     WHERE tenant_id = NEW.tenant_id AND code ~ '^P-[0-9]+$';
+    NEW.code := 'P-' || lpad(next_n::text, 4, '0');
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER alu_parts_assign_code BEFORE INSERT ON alu_parts
+  FOR EACH ROW EXECUTE FUNCTION alu_parts_assign_code();
+
+-- The code is permanent once assigned.
+CREATE FUNCTION alu_parts_lock_code() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.code IS DISTINCT FROM OLD.code THEN
+    RAISE EXCEPTION 'alu_parts.code cannot be changed';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER alu_parts_lock_code BEFORE UPDATE ON alu_parts
+  FOR EACH ROW EXECUTE FUNCTION alu_parts_lock_code();
 
 CREATE TABLE alu_part_set_items (
   id        UUID DEFAULT gen_random_uuid() PRIMARY KEY,

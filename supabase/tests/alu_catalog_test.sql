@@ -136,6 +136,7 @@ DO $$
 DECLARE
   ta UUID; tb UUID; tc UUID; t TEXT;
   prov UUID; ser UUID; typ UUID; prof UUID; fin UUID; setp UUID; partp UUID; n INT;
+  code1 TEXT; code2 TEXT; raised BOOLEAN;
 BEGIN
   -- read fixtures BEFORE switching role (authenticated cannot read the temp table)
   SELECT a_tenant, b_tenant, c_tenant INTO ta, tb, tc FROM _alu_fx;
@@ -166,6 +167,36 @@ BEGIN
   INSERT INTO alu_parts (name, kind) VALUES ('ชุดล็อกบานเลื่อน', 'hardware_set') RETURNING id INTO setp;
   INSERT INTO alu_parts (name, kind, unit) VALUES ('ยางขอบ', 'accessory', 'ม.') RETURNING id INTO partp;
   INSERT INTO alu_part_set_items (set_id, part_id, quantity) VALUES (setp, partp, 2);
+
+  -- auto-numbered code: distinct, well-formed, increasing
+  SELECT code INTO code1 FROM alu_parts WHERE id = setp;
+  SELECT code INTO code2 FROM alu_parts WHERE id = partp;
+  IF code1 IS NULL OR code1 !~ '^P-[0-9]{4}$' THEN RAISE EXCEPTION 'first part code malformed: %', code1; END IF;
+  IF code2 IS NULL OR code2 !~ '^P-[0-9]{4}$' THEN RAISE EXCEPTION 'second part code malformed: %', code2; END IF;
+  IF code1 = code2 THEN RAISE EXCEPTION 'part codes are not distinct: %', code1; END IF;
+  IF substring(code2 FROM 3)::int <= substring(code1 FROM 3)::int THEN
+    RAISE EXCEPTION 'part codes do not increase: % then %', code1, code2;
+  END IF;
+
+  -- name may change
+  UPDATE alu_parts SET name = 'ชุดล็อกบานเลื่อน (แก้ไข)' WHERE id = setp;
+  SELECT count(*) INTO n FROM alu_parts WHERE id = setp AND name = 'ชุดล็อกบานเลื่อน (แก้ไข)';
+  IF n <> 1 THEN RAISE EXCEPTION 'part name update did not apply'; END IF;
+
+  -- code may not change
+  raised := false;
+  BEGIN
+    UPDATE alu_parts SET code = 'P-9999' WHERE id = setp;
+  EXCEPTION WHEN raise_exception THEN raised := true; END;
+  IF NOT raised THEN RAISE EXCEPTION 'alu_parts.code update was allowed'; END IF;
+  SELECT code INTO code2 FROM alu_parts WHERE id = setp;
+  IF code2 <> code1 THEN RAISE EXCEPTION 'alu_parts.code changed to %', code2; END IF;
+
+  -- explicit duplicate code in the same tenant
+  BEGIN
+    INSERT INTO alu_parts (name, code) VALUES ('ซ้ำ', code1);
+    RAISE EXCEPTION 'alu_parts (tenant, code) unique did not fire';
+  EXCEPTION WHEN unique_violation THEN NULL; END;
 
   BEGIN
     INSERT INTO alu_part_set_items (set_id, part_id) VALUES (setp, setp);
@@ -202,6 +233,14 @@ BEGIN
     EXECUTE format('SELECT count(*) FROM %I', t) INTO n;
     IF n <> 0 THEN RAISE EXCEPTION 'tenant B sees % rows in %', n, t; END IF;
   END LOOP;
+
+  -- tenant B numbers its own parts from P-0001, independent of A's count
+  INSERT INTO alu_parts (name) VALUES ('B part') RETURNING code INTO code2;
+  IF code2 <> 'P-0001' THEN RAISE EXCEPTION 'tenant B first part code should be P-0001, got %', code2; END IF;
+  -- the same explicit code as one of A's is allowed in another tenant
+  INSERT INTO alu_parts (name, code) VALUES ('B part 2', code1);
+  SELECT count(*) INTO n FROM alu_parts WHERE code = code1;
+  IF n <> 1 THEN RAISE EXCEPTION 'tenant B should see exactly 1 part with code %, saw %', code1, n; END IF;
 
   -- tenant C (no estimation module): sees nothing, cannot write to any component table
   SET LOCAL request.jwt.claims = '{"email":"__alu_c__@example.com"}';
