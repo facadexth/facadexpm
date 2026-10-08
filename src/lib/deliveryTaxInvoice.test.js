@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  receiptLabel, evaluateDeliveryMatch, buildActiveReceiptLinkMap, receiptEligibility, receiptPickerRows,
+  receiptLabel, evaluateDeliveryMatch, receiptSelectionTotals, buildActiveReceiptLinkMap, receiptEligibility, receiptPickerRows,
   receiptsAwaitingInvoice, receiptTaxInvoiceStatus, defaultTaxInvoiceMode, poModePayload, supplierModePayload,
   poModeLockedText, deliveryPoBadge, formForReceipt, invoiceMatchBase, linkKindOf,
   poModeForSupplier, poDeliveryDiscountWarning, splitDeliveryPoIds, invoiceHandoff,
@@ -50,6 +50,7 @@ describe('evaluateDeliveryMatch (mirror of _sti_check_delivery)', () => {
     expect(evaluateDeliveryMatch({ netBeforeVat: 101, grandTotal: 108, receipts: r, lineAmounts: [101] }).basis).toBe('excl')
     expect(evaluateDeliveryMatch({ netBeforeVat: 101.02, grandTotal: 999, receipts: r, lineAmounts: [101.02] }).basis).toBe('none')
   })
+  // SQL agrees: save_supplier_tax_invoice_receipt_draft raises no_receipts for an empty set, and _sti_check_delivery only runs on an invoice that has receipt links
   it('no receipts -> invalid, never a match (net 0 must not match an empty selection)', () => {
     const m = evaluateDeliveryMatch({ netBeforeVat: 0, grandTotal: 0, receipts: [], lineAmounts: [] })
     expect(m.invalid).toBe(true); expect(m.matchOk).toBe(false)
@@ -59,6 +60,13 @@ describe('evaluateDeliveryMatch (mirror of _sti_check_delivery)', () => {
     expect(evaluateDeliveryMatch({ netBeforeVat: '', grandTotal: 0, receipts: [rc('a')], lineAmounts: [] }).invalid).toBe(true)
     const bad = evaluateDeliveryMatch({ netBeforeVat: 600, grandTotal: 642, receipts: [rc('a', { goods_subtotal: 'NaN' })], lineAmounts: [] })
     expect(bad.invalid).toBe(true); expect(bad.matchOk).toBe(false)
+  })
+})
+
+describe('receiptSelectionTotals', () => {
+  it('count, goods sum and sum incl. VAT; empty / null -> zeros', () => {
+    expect(receiptSelectionTotals([rc('a'), rc('b', { goods_subtotal: 400.1, goods_vat: 28.01 })])).toEqual({ count: 2, sum: 1000.1, sumIncl: 1070.11 })
+    expect(receiptSelectionTotals(null)).toEqual({ count: 0, sum: 0, sumIncl: 0 })
   })
 })
 

@@ -35,6 +35,16 @@ export function evaluateDeliveryMatch({ netBeforeVat, grandTotal, receipts, line
   return { invalid: false, sum, sumIncl, diffExcl, diffIncl, basis, diff, tolerance, matchOk: basis !== 'none', linesSum, linesOk: withinTolerance(round2(linesSum - net), net) }
 }
 
+/** Running total of the ticked receipts for the picker: count, Σ goods_subtotal, Σ (goods_subtotal + goods_vat). */
+export function receiptSelectionTotals(receipts) {
+  const rs = receipts || []
+  return {
+    count: rs.length,
+    sum: round2(rs.reduce((s, r) => s + (Number(r.goods_subtotal) || 0), 0)),
+    sumIncl: round2(rs.reduce((s, r) => s + (Number(r.goods_subtotal) || 0) + (Number(r.goods_vat) || 0), 0)),
+  }
+}
+
 /** Map<receipt_id, {invoice_id, invoice_no, status}> from active supplier_tax_invoice_receipts rows. */
 export function buildActiveReceiptLinkMap(rows) {
   const m = new Map()

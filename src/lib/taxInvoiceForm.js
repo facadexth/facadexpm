@@ -141,3 +141,8 @@ export function missingReceiptIds(ids, rows) {
   const have = new Set(rows.map(r => r.id))
   return (ids || []).filter(id => !have.has(id))
 }
+
+/** The form as emitted to save / preview: only the selected kind's ids (an initial form may carry both). */
+export function normalizeLinkKind(form) {
+  return form.link_kind === 'delivery' ? { ...form, link_kind: 'delivery', po_ids: [] } : { ...form, link_kind: 'po', receipt_ids: [] }
+}

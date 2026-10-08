@@ -15,9 +15,9 @@ import { calcPoTotals } from '../lib/poTotals.js'
 import { round2 } from '../lib/depositMath.js'
 import { lineAmount, evaluateMatch, proposePos, lineBase } from '../lib/supplierTaxInvoice.js'
 import {
-  emptyLine, validateFormForSave, poRowsFor, computeAutoVat, applyLineChange, reconcileBaseManual, missingPoIds, missingReceiptIds,
+  emptyLine, validateFormForSave, poRowsFor, computeAutoVat, applyLineChange, reconcileBaseManual, missingPoIds, missingReceiptIds, normalizeLinkKind,
 } from '../lib/taxInvoiceForm.js'
-import { evaluateDeliveryMatch, receiptPickerRows, receiptLabel, splitDeliveryPoIds } from '../lib/deliveryTaxInvoice.js'
+import { evaluateDeliveryMatch, receiptSelectionTotals, receiptPickerRows, receiptLabel, splitDeliveryPoIds } from '../lib/deliveryTaxInvoice.js'
 import { NO_RECEIPTS_TEXT, DELIVERY_PO_IN_PO_INVOICE_TEXT } from '../lib/deliveryTaxInvoiceText.js'
 import { SCAN_REMINDER } from '../lib/scanNotice.js'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
@@ -63,6 +63,7 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
     [receiptRows, form.supplier_id, receiptLinkData, invoiceId])
   const receiptById = useMemo(() => new Map((receiptRows || []).map(r => [r.id, r])), [receiptRows])
   const selectedReceipts = (form.receipt_ids || []).map(id => receiptById.get(id)).filter(Boolean)
+  const selTotals = receiptSelectionTotals(selectedReceipts)
   const missingReceipts = kind === 'delivery' ? missingReceiptIds(form.receipt_ids, receiptRows) : []
 
   const itemById = useMemo(() => new Map((allItems || []).map(i => [i.id, i])), [allItems])
@@ -192,7 +193,8 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
       if (deliveryPoIds.length) errs.push(DELIVERY_PO_IN_PO_INVOICE_TEXT)
     }
     if (errs.length) { alert(errs.join('\n')); return }
-    return fn(form)
+    // emit only the selected kind's ids (an initial form may carry both)
+    return fn(normalizeLinkKind(form))
   }
 
   const siteOpts = (sites || []).map(s => ({ value: s.id, label: s.name, keywords: s.name }))
@@ -285,53 +287,53 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
             </div>
           )}
           {kind === 'po' && (
-          <div>
-            <label className="label">ใบสั่งซื้อที่รวมอยู่ในใบกำกับนี้</label>
-            {!form.supplier_id ? (
-              <div style={{ fontSize: 13, color: 'var(--text3)' }}>เลือกซัพพลายเออร์ก่อน</div>
-            ) : !posRows || !links ? (
-              <div style={{ fontSize: 13, color: 'var(--text3)' }}>⏳ กำลังโหลดใบสั่งซื้อ...</div>
-            ) : (
-              <>
-                {proposal.proposed.length === 0 && proposal.outsideMonth.length === 0 && proposal.linkedElsewhere.length === 0 && (
-                  <div style={{ fontSize: 13, color: 'var(--text3)' }}>ไม่พบใบสั่งซื้อที่รับของแล้วของซัพพลายเออร์นี้</div>
-                )}
-                {proposal.proposed.map(po => <div key={po.id}>{renderPoRow(po)}</div>)}
-                {proposal.outsideMonth.length > 0 && (
-                  <div style={{ marginTop: 6 }}>
-                    <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowOutsideOpen(s => !s)}>
-                      {showOutside ? '▾' : '▸'} ใบสั่งซื้อนอกเดือน ({proposal.outsideMonth.length})
-                    </button>
-                    {showOutside && proposal.outsideMonth.map(po => (
-                      <div key={po.id}>
-                        {renderPoRow(po)}
-                        <span style={{ ...badge('#b45309', 'rgba(245,158,11,.2)'), marginLeft: 26 }}>นอกเดือน</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {proposal.linkedElsewhere.map(({ po, link }) => <div key={po.id}>{renderPoRow(po, { disabled: true, link })}</div>)}
-              </>
-            )}
-            {missing.length > 0 && (
-              <div style={{ ...amber, marginTop: 8 }}>
-                ใบสั่งซื้อที่เลือกไว้ไม่พบในรายการ (อาจถูกแก้ไขหรือยกเลิก) {missing.length} ใบ — บันทึกไม่ได้จนกว่าจะเอาออก
-                {missing.map(id => (
-                  <button key={id} type="button" className="btn btn-sm btn-ghost" style={{ marginLeft: 6 }}
-                    onClick={() => set('po_ids', form.po_ids.filter(x => x !== id))}>เอาออก {id.slice(0, 8)}</button>
-                ))}
-              </div>
-            )}
-                      {deliveryPoIds.length > 0 && (
-              <div style={{ ...amber, marginTop: 8 }}>
-                {deliveryPoIds.map(id => (
-                  <div key={id}>{poById.get(id)?.po_number || id.slice(0, 8)} — {DELIVERY_PO_IN_PO_INVOICE_TEXT}
-                    <button type="button" className="btn btn-sm btn-ghost" style={{ marginLeft: 6 }} onClick={() => set('po_ids', form.po_ids.filter(x => x !== id))}>เอาออก</button>
-                  </div>
-                ))}
-              </div>
-            )}
-</div>
+            <div>
+              <label className="label">ใบสั่งซื้อที่รวมอยู่ในใบกำกับนี้</label>
+              {!form.supplier_id ? (
+                <div style={{ fontSize: 13, color: 'var(--text3)' }}>เลือกซัพพลายเออร์ก่อน</div>
+              ) : !posRows || !links ? (
+                <div style={{ fontSize: 13, color: 'var(--text3)' }}>⏳ กำลังโหลดใบสั่งซื้อ...</div>
+              ) : (
+                <>
+                  {proposal.proposed.length === 0 && proposal.outsideMonth.length === 0 && proposal.linkedElsewhere.length === 0 && (
+                    <div style={{ fontSize: 13, color: 'var(--text3)' }}>ไม่พบใบสั่งซื้อที่รับของแล้วของซัพพลายเออร์นี้</div>
+                  )}
+                  {proposal.proposed.map(po => <div key={po.id}>{renderPoRow(po)}</div>)}
+                  {proposal.outsideMonth.length > 0 && (
+                    <div style={{ marginTop: 6 }}>
+                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowOutsideOpen(s => !s)}>
+                        {showOutside ? '▾' : '▸'} ใบสั่งซื้อนอกเดือน ({proposal.outsideMonth.length})
+                      </button>
+                      {showOutside && proposal.outsideMonth.map(po => (
+                        <div key={po.id}>
+                          {renderPoRow(po)}
+                          <span style={{ ...badge('#b45309', 'rgba(245,158,11,.2)'), marginLeft: 26 }}>นอกเดือน</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {proposal.linkedElsewhere.map(({ po, link }) => <div key={po.id}>{renderPoRow(po, { disabled: true, link })}</div>)}
+                </>
+              )}
+              {missing.length > 0 && (
+                <div style={{ ...amber, marginTop: 8 }}>
+                  ใบสั่งซื้อที่เลือกไว้ไม่พบในรายการ (อาจถูกแก้ไขหรือยกเลิก) {missing.length} ใบ — บันทึกไม่ได้จนกว่าจะเอาออก
+                  {missing.map(id => (
+                    <button key={id} type="button" className="btn btn-sm btn-ghost" style={{ marginLeft: 6 }}
+                      onClick={() => set('po_ids', form.po_ids.filter(x => x !== id))}>เอาออก {id.slice(0, 8)}</button>
+                  ))}
+                </div>
+              )}
+              {deliveryPoIds.length > 0 && (
+                <div style={{ ...amber, marginTop: 8 }}>
+                  {deliveryPoIds.map(id => (
+                    <div key={id}>{poById.get(id)?.po_number || id.slice(0, 8)} — {DELIVERY_PO_IN_PO_INVOICE_TEXT}
+                      <button type="button" className="btn btn-sm btn-ghost" style={{ marginLeft: 6 }} onClick={() => set('po_ids', form.po_ids.filter(x => x !== id))}>เอาออก</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
           {kind === 'delivery' && (
             <div>
@@ -348,6 +350,11 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
                   {picker.available.map(r => <div key={r.id}>{renderReceiptRow(r)}</div>)}
                   {picker.linkedElsewhere.map(({ receipt, link }) => <div key={receipt.id}>{renderReceiptRow(receipt, { disabled: true, link })}</div>)}
                 </>
+              )}
+              {selTotals.count > 0 && (
+                <div data-testid="receipt-sum" style={{ marginTop: 6, fontSize: 13, fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }}>
+                  เลือก {selTotals.count} ใบรับของ รวม {fmt(selTotals.sum)} (รวม VAT {fmt(selTotals.sumIncl)})
+                </div>
               )}
               {missingReceipts.length > 0 && (
                 <div style={{ ...amber, marginTop: 8 }}>
@@ -369,7 +376,7 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
 
           <div style={{ fontSize: 13, padding: 10, borderRadius: 8, border: `1px solid ${match.matchOk ? 'rgba(16,185,129,.5)' : 'rgba(239,68,68,.5)'}`, background: match.matchOk ? 'rgba(16,185,129,.1)' : 'rgba(239,68,68,.08)' }}>
             {match.invalid
-              ? 'กรอกยอดก่อน VAT และรายการให้ครบเพื่อเทียบกับใบสั่งซื้อ'
+              ? (kind === 'delivery' ? 'กรอกยอดก่อน VAT และรายการให้ครบ และเลือกใบรับของ เพื่อเทียบกับการส่งของ' : 'กรอกยอดก่อน VAT และรายการให้ครบเพื่อเทียบกับใบสั่งซื้อ')
               : kind === 'delivery'
                 ? `มูลค่าสินค้าที่รับ ${fmt(match.sum)} (รวม VAT ${fmt(match.sumIncl)}) · ใบกำกับก่อน VAT ${fmt(netNum)} · ต่าง ${fmt(match.diffExcl)}${match.basis === 'incl' ? ` · ตรงเมื่อเทียบรวม VAT (ต่าง ${fmt(match.diffIncl)})` : ''} (เกณฑ์ ±${fmt(match.tolerance)})`
                 : `มูลค่าสินค้าใบสั่งซื้อ ${fmt(match.poSum)} · ใบกำกับก่อน VAT ${fmt(netNum)} · ต่าง ${fmt(match.diff)} (เกณฑ์ ±${fmt(match.tolerance)})`}

@@ -185,3 +185,13 @@ describe('per-delivery form model', () => {
     expect(missingReceiptIds(['a', 'b'], [{ id: 'a' }])).toEqual(['b'])
   })
 })
+
+describe('normalizeLinkKind', () => {
+  it('keeps only the selected kind ids even when the initial form holds both', async () => {
+    const { normalizeLinkKind } = await import('./taxInvoiceForm.js')
+    const f = { link_kind: 'delivery', po_ids: ['P1'], receipt_ids: ['r1'] }
+    expect(normalizeLinkKind(f)).toMatchObject({ link_kind: 'delivery', po_ids: [], receipt_ids: ['r1'] })
+    expect(normalizeLinkKind({ ...f, link_kind: 'po' })).toMatchObject({ link_kind: 'po', po_ids: ['P1'], receipt_ids: [] })
+    expect(normalizeLinkKind({ ...f, link_kind: undefined })).toMatchObject({ link_kind: 'po', receipt_ids: [] })
+  })
+})
