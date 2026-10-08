@@ -13,6 +13,8 @@
 ## Global Constraints
 
 - **Production database.** Migrations are applied ONLY by the owner, by typing `! npx supabase db query --linked --workdir /Users/plfx/code/FacadeXPM/facadex-app -f <absolute path of the file>` (the auto-mode classifier blocks Claude from applying). Implementers and reviewers NEVER run SQL against any database (not even SELECTs through the CLI); the controller runs rolled-back dry runs only and may run read-only SELECTs through the Supabase MCP `execute_sql` (project `kntspldhvcjeaubtqtkn`). A migration is live the instant it commits; an unpushed branch is not "safe".
+- **Apply order: `2026-10-09-04` and `2026-10-09-05` go live in ONE step.** The controller builds one file `BEGIN; <04>; <05>; COMMIT;` and the owner applies that single file (Task 11). The web readiness flag is keyed on `delivery_tax_invoice_ready()`, a function created by `-05`, so the web offers nothing new until BOTH are live. Web deploy strictly AFTER the combined apply (the web stays safe before it: it just shows nothing new).
+- **Implementers run no SQL of any kind.** Every "prove it does not exist yet" query, baseline run and dry run in this plan is a controller step with the exact query and expected result; the implementer waits for the controller's report.
 - **Dry run shape (controller only):** one transaction that always rolls back: `BEGIN; SET LOCAL lock_timeout='5s'; <every pending migration of this plan, in order>; <ONE test body with its own BEGIN;/ROLLBACK; lines stripped>; ROLLBACK;`. One test per run. Live already has `2026-10-08-01..04` and `2026-10-09-01..03` (verified read-only 2026-10-08: every live function body md5-matches the repo files), so "pending" = `2026-10-09-04` (+ `2026-10-09-05` once it exists). After `-05` exists the controller also re-runs, each in its own dry run with both new migrations prepended: `supplier_tax_invoice_test.sql`, `tax_invoice_multi_bill_test.sql`, `po_receipt_test_a.sql`, `po_receipt_test_b.sql`, `po_deposit_test.sql`, `supplier_credit_notes_test.sql`. Before that, the controller runs each of those six WITHOUT the new migrations once (baseline): a test that already fails on the baseline is reported to the owner and is not this branch's bug.
 - **Every SECURITY DEFINER function:** `SET search_path = public`; `REVOKE ALL ... FROM PUBLIC, anon` (helpers: also `authenticated`); `GRANT EXECUTE ... TO authenticated` only for client RPCs; tenant from `current_tenant_id()`, never a parameter; role gate `is_admin_or_owner() AND has_module_access('purchase_orders')` and `tenant_can_write()` on every writer.
 - **Additive only.** New FKs are named (`stirc_invoice_fk`, `stirc_receipt_fk`). No FK to `expenses` from a new table, and no FK to `purchase_orders` from the new link table (`po_id` is a plain copy): a second `purchase_orders <-> supplier_tax_invoices` path would make existing many-to-many embeds ambiguous. No new view; no view selects `purchase_orders.*` or `suppliers.*` (checked live 2026-10-08; `expenses_view` lists columns).
@@ -75,6 +77,8 @@
   - `poModeLockedText(po, moneyIndex, poLinks) -> '' | PO_MODE_LOCKED_TEXT`
   - `deliveryPoBadge(po, moneyIndex, receiptLinks) -> { kind: null|'awaiting'|'linked'|'delivery', text }`
   - `formForReceipt(receipt, today) -> tax-invoice form object (link_kind 'delivery')`
+  - `poModeForSupplier(form, supplier) -> 'po'|'delivery'`, `poDeliveryDiscountWarning(form, lineTotalOf) -> ''|text`, `splitDeliveryPoIds(poIds, poRows) -> { keep, delivery }`
+  - text also: `NO_RECEIPTS_TEXT`, `DELIVERY_PO_IN_PO_INVOICE_TEXT`, `PO_DELIVERY_DISCOUNT_SAVE_TEXT`; `DELIVERY_RPC_TEXT.no_receipts`
   - `invoiceMatchBase(row) -> number`, `linkKindOf(row) -> 'po'|'delivery'`
   - Receipt row shape (from Task 5's `useDeliveryReceipts`): `{ id, po_id, seq, received_date, goods_subtotal, goods_vat, expense_id, purchase_orders: { id, po_number, supplier_id, site_id, tax_invoice_mode, stock_from_invoice, has_vat, price_includes_vat }, po_receipt_items: [{ id, po_item_id, quantity, line_total, base_qty, unit_cost, stock_movement_id, purchase_order_items: { description, unit, quantity, unit_price, discount_pct, line_total, inventory_item_id } }] }`.
 
@@ -86,8 +90,9 @@ import {
   receiptLabel, evaluateDeliveryMatch, buildActiveReceiptLinkMap, receiptEligibility, receiptPickerRows,
   receiptsAwaitingInvoice, receiptTaxInvoiceStatus, defaultTaxInvoiceMode, poModePayload, supplierModePayload,
   poModeLockedText, deliveryPoBadge, formForReceipt, invoiceMatchBase, linkKindOf,
+  poModeForSupplier, poDeliveryDiscountWarning, splitDeliveryPoIds,
 } from './deliveryTaxInvoice.js'
-import { PO_MODE_LOCKED_TEXT, DELIVERY_CHECK_TEXT, DELIVERY_RPC_TEXT, RECEIVE_DELIVERY_DISCOUNT_TEXT } from './deliveryTaxInvoiceText.js'
+import { PO_MODE_LOCKED_TEXT, DELIVERY_CHECK_TEXT, DELIVERY_RPC_TEXT, RECEIVE_DELIVERY_DISCOUNT_TEXT, PO_DELIVERY_DISCOUNT_SAVE_TEXT } from './deliveryTaxInvoiceText.js'
 
 const po = (o = {}) => ({ id: 'P1', po_number: 'PO-1', supplier_id: 'S', site_id: 'SITE', tax_invoice_mode: 'delivery', stock_from_invoice: false, has_vat: true, price_includes_vat: false, ...o })
 const rc = (id, o = {}, p = {}) => ({ id, po_id: 'P1', seq: 1, received_date: '2026-10-05', goods_subtotal: 600, goods_vat: 42, expense_id: 'e' + id, purchase_orders: po(p), po_receipt_items: [], ...o })
@@ -221,6 +226,24 @@ describe('mode defaults, payloads, locks, badges', () => {
   })
 })
 
+describe('PO form mode helpers', () => {
+  it('poModeForSupplier: hand-picked wins (survives draft restore); unknown supplier -> po', () => {
+    expect(poModeForSupplier({ tax_invoice_mode: 'po' }, { default_tax_invoice_mode: 'delivery' })).toBe('delivery')
+    expect(poModeForSupplier({ tax_invoice_mode: 'po', tax_invoice_mode_touched: true }, { default_tax_invoice_mode: 'delivery' })).toBe('po')
+    expect(poModeForSupplier({ tax_invoice_mode: 'delivery' }, undefined)).toBe('po')
+  })
+  it('poDeliveryDiscountWarning', () => {
+    const lt = it => Number(it.quantity) * Number(it.unit_price)
+    expect(poDeliveryDiscountWarning({ tax_invoice_mode: 'delivery', items: [{ description: 'a', quantity: 1, unit_price: 10 }, { description: 'ส่วนลด', quantity: 1, unit_price: -5 }] }, lt)).toBe(PO_DELIVERY_DISCOUNT_SAVE_TEXT)
+    expect(poDeliveryDiscountWarning({ tax_invoice_mode: 'po', items: [{ description: 'ส่วนลด', quantity: 1, unit_price: -5 }] }, lt)).toBe('')
+    expect(poDeliveryDiscountWarning({ tax_invoice_mode: 'delivery', items: [{ description: '', quantity: 1, unit_price: -5 }] }, lt)).toBe('')
+  })
+  it('splitDeliveryPoIds: stale delivery POs separated from a PO-kind selection', () => {
+    expect(splitDeliveryPoIds(['a', 'b', 'z'], [{ id: 'a' }, { id: 'b', tax_invoice_mode: 'delivery' }])).toEqual({ keep: ['a', 'z'], delivery: ['b'] })
+    expect(splitDeliveryPoIds(['a'], null)).toEqual({ keep: ['a'], delivery: [] })
+  })
+})
+
 describe('formForReceipt (hand-off prefill)', () => {
   const item = (o = {}) => ({ description: 'เหล็ก', unit: 'kg', quantity: 2, unit_price: 321, discount_pct: 0, line_total: 642, inventory_item_id: 'I1', ...o })
   it('VAT-inclusive PO: unit price ex-VAT; stored base quantity kept as typed; net/VAT/date from the receipt', () => {
@@ -268,6 +291,9 @@ export const PO_MODE_LOCKED_TEXT = 'เปลี่ยนวิธีออก�
 export const RECEIVE_DELIVERY_DISCOUNT_TEXT = 'ใบสั่งซื้อแบบใบกำกับต่อการส่งของมีรายการส่วนลด (ยอดติดลบ) รับของทีละล็อตไม่ได้ — เปลี่ยนเป็นใบกำกับต่อใบสั่งซื้อก่อนรับของ'
 export const DELIVERY_NOT_READY_TEXT = 'ใบกำกับต่อการส่งของยังไม่พร้อมใช้งาน'
 export const HANDOFF_RECEIPT_NOT_FOUND_TEXT = 'ไม่พบการรับของนี้ในรายการ — เปิดจากหน้าใบกำกับภาษีผู้ขาย (ใบรับของที่รอใบกำกับ) แทน'
+export const NO_RECEIPTS_TEXT = 'ยังไม่ได้เลือกการส่งของ (ล็อต) — เลือกอย่างน้อย 1 ล็อต'
+export const DELIVERY_PO_IN_PO_INVOICE_TEXT = 'ใบสั่งซื้อนี้ตั้งเป็นใบกำกับต่อการส่งของ จึงผูกทั้งใบไม่ได้ — เอาออก แล้วเลือก "ผูกกับ: การส่งของ"'
+export const PO_DELIVERY_DISCOUNT_SAVE_TEXT = 'ใบสั่งซื้อแบบใบกำกับต่อการส่งของที่มีรายการส่วนลด (ยอดติดลบ) จะรับของไม่ได้ — ต้องการบันทึกต่อหรือไม่? (แนะนำเลือก "1 ใบต่อใบสั่งซื้อ")'
 
 const LINKED_ELSEWHERE = 'การรับของนี้ผูกกับใบกำกับอื่นอยู่แล้ว'
 const MIXED = 'ใบกำกับหนึ่งใบผูกได้แบบเดียว: ใบสั่งซื้อ หรือ การส่งของ — ไม่ผสมกัน'
@@ -296,6 +322,7 @@ export const DELIVERY_RPC_TEXT = {
   receipt_linked_elsewhere: LINKED_ELSEWHERE,
   invoice_mixed_links: MIXED,
   po_is_delivery_mode: PO_IS_DELIVERY,
+  no_receipts: NO_RECEIPTS_TEXT,
 }
 ```
 
@@ -312,7 +339,7 @@ import { round2 } from './depositMath.js'
 import { matchTolerance, withinTolerance } from './supplierTaxInvoice.js'
 import { emptyLine } from './taxInvoiceForm.js'
 import { exVatUnitPrice } from './poDocumentExtraction.js'
-import { PO_MODE_LOCKED_TEXT } from './deliveryTaxInvoiceText.js'
+import { PO_MODE_LOCKED_TEXT, PO_DELIVERY_DISCOUNT_SAVE_TEXT } from './deliveryTaxInvoiceText.js'
 
 const finite = v => v !== null && v !== undefined && String(v).trim() !== '' && Number.isFinite(Number(v))
 const has = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k)
@@ -393,6 +420,24 @@ export function receiptTaxInvoiceStatus(receiptId, links) {
 }
 
 export const defaultTaxInvoiceMode = supplier => mode(supplier?.default_tax_invoice_mode)
+
+/** PO form: the mode after a supplier pick / readiness change. A hand-picked mode (form.tax_invoice_mode_touched, kept in
+ *  the form state so it survives the useDraftForm restore) always wins; a supplier not in the list yet (just created
+ *  inline) has the column default 'po'. */
+export const poModeForSupplier = (form, supplier) => (form?.tax_invoice_mode_touched ? mode(form.tax_invoice_mode) : defaultTaxInvoiceMode(supplier))
+
+/** '' or the save-time warning for a delivery PO with a discount (negative) line: such a PO cannot be received lot by lot. */
+export function poDeliveryDiscountWarning(form, lineTotalOf) {
+  if (mode(form?.tax_invoice_mode) !== 'delivery') return ''
+  return (form.items || []).some(it => String(it.description || '').trim() && Number(lineTotalOf(it)) < 0) ? PO_DELIVERY_DISCOUNT_SAVE_TEXT : ''
+}
+
+/** The tax-invoice form's PO-kind selection minus delivery-mode POs (stale drafts): { keep, delivery } id lists. */
+export function splitDeliveryPoIds(poIds, poRows) {
+  const byId = new Map((poRows || []).map(p => [p.id, p]))
+  const delivery = (poIds || []).filter(id => byId.get(id)?.tax_invoice_mode === 'delivery')
+  return { keep: (poIds || []).filter(id => !delivery.includes(id)), delivery }
+}
 
 /** Only send the column when it exists: on an edited row that carries it, or on a new row once the migration is live. */
 export function poModePayload(form, editRow, ready) {
@@ -679,13 +724,25 @@ git commit -m "feat(lib): link kind, receipt ids, delivery receive routing and r
 **Interfaces:**
 - Produces: `purchase_orders.tax_invoice_mode TEXT NOT NULL DEFAULT 'po'` (`po_tax_invoice_mode_check`); `suppliers.default_tax_invoice_mode TEXT NOT NULL DEFAULT 'po'` (`suppliers_default_tax_invoice_mode_check`); table `supplier_tax_invoice_receipts(id, tenant_id, invoice_id, receipt_id, po_id, active, goods_subtotal, goods_vat)` with `stirc_invoice_fk`, `stirc_receipt_fk`, `stirc_invoice_receipt_uq`, partial unique `stirc_receipt_active_uq`; triggers `po_tax_invoice_mode_guard_trg` (codes `po_mode_locked`, `po_delivery_needs_receipt`), `stirc_link_kind_guard_trg` + `stip_link_kind_guard_trg` (codes `invoice_mixed_links`, `cross_tenant_reference`).
 
-- [ ] **Step 1: Prove the objects do not exist yet (read-only, MCP `execute_sql`, project `kntspldhvcjeaubtqtkn`)**
+- [ ] **Step 1 (CONTROLLER ONLY, read-only MCP `execute_sql`, project `kntspldhvcjeaubtqtkn`; the implementer does not run it): prove the objects do not exist yet**
 
 ```sql
 SELECT to_regclass('public.supplier_tax_invoice_receipts') AS link_table,
        (SELECT count(*) FROM information_schema.columns WHERE table_name IN ('purchase_orders','suppliers') AND column_name LIKE '%tax_invoice_mode') AS mode_cols;
 ```
-Expected: `link_table` null, `mode_cols` 0.
+Expected (controller reports back): `link_table` null, `mode_cols` 0.
+
+- [ ] **Step 1b (CONTROLLER ONLY): baseline of the six existing tests on live, WITHOUT the new migrations** — must finish before Step 5. For each `T` in `supplier_tax_invoice_test.sql tax_invoice_multi_bill_test.sql po_receipt_test_a.sql po_receipt_test_b.sql po_deposit_test.sql supplier_credit_notes_test.sql`:
+
+```bash
+W=/Users/plfx/code/FacadeXPM/facadex-app/.claude/worktrees/release-deposit-tax
+T=supplier_tax_invoice_test.sql   # repeat for each of the six names
+( echo "BEGIN;"; echo "SET LOCAL lock_timeout='5s';"
+  grep -v -x -e "BEGIN;" -e "ROLLBACK;" $W/supabase/tests/$T
+  echo "ROLLBACK;" ) > /tmp/dti_base_$T
+cd /Users/plfx/code/FacadeXPM/facadex-app && npx supabase db query --linked -f /tmp/dti_base_$T
+```
+Record each outcome verbatim (`RESULT: <name> ALL PASSED`, or "no error" for the two files without a RESULT marker, or the error text). A baseline failure goes to the owner and is not fixed in this branch; the Task 4 regression runs are compared against these baselines.
 
 - [ ] **Step 2: Write the test** — `supabase/tests/delivery_tax_invoice_test_a.sql`:
 
@@ -952,12 +1009,14 @@ git commit -m "feat(db): tax invoice mode per PO and supplier, receipt link tabl
 - Consumes: Task 3 objects; live `_sti_finite`, `_sti_tolerance`, `_sti_wac_after_*`, `_stock_receipt_reversal`, `_sti_touched_keys`, `_sti_negatives`, `_sti_stamp_other_bills`, `_sti_unstamp_other_bills`, `preview_supplier_tax_invoice`, `delete_supplier_tax_invoice_draft`, `record_stock_movement`, `receive_po_lines`, `split_payment`.
 - Produces: client RPC `save_supplier_tax_invoice_receipt_draft(p_id UUID, p_header JSONB, p_items JSONB, p_receipt_ids UUID[]) RETURNS UUID` (codes `receipt_not_eligible`, `receipt_linked_elsewhere`); unchanged signatures of `save_supplier_tax_invoice_draft` (+ code `po_is_delivery_mode`), `post_supplier_tax_invoice(UUID, INT)`, `void_supplier_tax_invoice(UUID, TEXT)`, `preview_supplier_tax_invoice(UUID)`. For a receipt-linked invoice the preview adds keys `sum_incl`, `diff_excl`, `diff_incl`, `basis` and check codes from `DELIVERY_CHECK_TEXT`; every receipt check carries `po_id`, `receipt_id`, `receipt_no` (e.g. `PO-1-R2`).
 
-- [ ] **Step 1: Prove the RPC does not exist (read-only MCP)**
+**Review gate for this task (reviewer checks exactly this):** the five Step 5 diffs are empty and the marker count is 7; every new function is SECURITY DEFINER with `search_path = public` (except `delivery_tax_invoice_ready`, SECURITY INVOKER, no table access) and has the REVOKE/GRANT lines; lock order invoice -> POs -> balances -> expenses; test B covers B1-B18 and the controller reported test A, test B and all six regressions equal to baseline.
+
+- [ ] **Step 1 (CONTROLLER ONLY, read-only MCP): prove the RPCs do not exist**
 
 ```sql
-SELECT count(*) FROM pg_proc WHERE proname IN ('save_supplier_tax_invoice_receipt_draft', '_sti_check_delivery', '_sti_stamp_receipt_bills');
+SELECT count(*) FROM pg_proc WHERE proname IN ('save_supplier_tax_invoice_receipt_draft', '_sti_check_delivery', '_sti_stamp_receipt_bills', 'delivery_tax_invoice_ready');
 ```
-Expected: 0.
+Expected (controller reports back): 0.
 
 - [ ] **Step 2: Write the test** — `supabase/tests/delivery_tax_invoice_test_b.sql`:
 
@@ -1425,6 +1484,8 @@ DECLARE
   v_id UUID; v_sup UUID; v_rc UUID; rec RECORD;
 BEGIN
   IF NOT (is_admin_or_owner() AND has_module_access('purchase_orders') AND tenant_can_write()) THEN RAISE EXCEPTION 'insufficient_privilege'; END IF;
+  -- a delivery draft always has at least one lot (an empty one would reopen as a PO draft)
+  IF NOT EXISTS (SELECT 1 FROM unnest(COALESCE(p_receipt_ids, '{}'::uuid[])) AS u WHERE u IS NOT NULL) THEN RAISE EXCEPTION 'no_receipts'; END IF;
   v_id := save_supplier_tax_invoice_draft(p_id, p_header, p_items, '{}'::uuid[]);
   SELECT supplier_id INTO v_sup FROM supplier_tax_invoices WHERE id = v_id AND tenant_id = v_tenant;
   FOR v_rc IN SELECT DISTINCT u FROM unnest(COALESCE(p_receipt_ids, '{}'::uuid[])) AS u WHERE u IS NOT NULL ORDER BY u LOOP
@@ -1435,10 +1496,19 @@ BEGIN
     IF EXISTS (SELECT 1 FROM supplier_tax_invoice_receipts WHERE receipt_id = v_rc AND active AND invoice_id <> v_id) THEN
       RAISE EXCEPTION 'receipt_linked_elsewhere';
     END IF;
-    INSERT INTO supplier_tax_invoice_receipts (tenant_id, invoice_id, receipt_id, po_id) VALUES (v_tenant, v_id, v_rc, rec.po_id);
+    BEGIN
+      INSERT INTO supplier_tax_invoice_receipts (tenant_id, invoice_id, receipt_id, po_id) VALUES (v_tenant, v_id, v_rc, rec.po_id);
+    EXCEPTION WHEN unique_violation THEN
+      -- two drafts saving the same lot at once: the loser gets the same code as the pre-check above
+      RAISE EXCEPTION 'receipt_linked_elsewhere';
+    END;
   END LOOP;
   RETURN v_id;
 END $$;
+
+-- Web readiness probe: exists only once this migration is live (the web keys every new choice on it, not on 04's table).
+CREATE OR REPLACE FUNCTION delivery_tax_invoice_ready() RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public AS $$ SELECT true $$;
 
 -- ── post step (c) for receipts: snapshot the matched values, stamp each linked receipt's bill and its split parts ──
 -- Only that receipt's bill tree (expense_splits) still carrying the PO; deposit and credit-note rows are never bills.
@@ -1487,7 +1557,22 @@ REVOKE ALL ON FUNCTION save_supplier_tax_invoice_draft(UUID, JSONB, JSONB, UUID[
   post_supplier_tax_invoice(UUID, INT), void_supplier_tax_invoice(UUID, TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION save_supplier_tax_invoice_draft(UUID, JSONB, JSONB, UUID[]), save_supplier_tax_invoice_receipt_draft(UUID, JSONB, JSONB, UUID[]),
   post_supplier_tax_invoice(UUID, INT), void_supplier_tax_invoice(UUID, TEXT) TO authenticated;
+REVOKE ALL ON FUNCTION delivery_tax_invoice_ready() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION delivery_tax_invoice_ready() TO authenticated;
 ```
+
+Add to test B, right before `-- B15 role gate` (and add `B18`/`B19` to the review gate list):
+
+```sql
+  -- B18 a delivery draft needs at least one lot (client also refuses it)
+  BEGIN PERFORM save_supplier_tax_invoice_receipt_draft(NULL, jsonb_set(hdr, '{invoice_no}', '"DTIB-E"'), '[]'::jsonb, '{}'::uuid[]); RAISE EXCEPTION 'B18 FAIL: empty accepted';
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'no_receipts%' THEN RAISE EXCEPTION 'B18 FAIL: got %', v_msg; END IF; END;
+  BEGIN PERFORM save_supplier_tax_invoice_receipt_draft(NULL, jsonb_set(hdr, '{invoice_no}', '"DTIB-E"'), '[]'::jsonb, ARRAY[NULL::uuid]); RAISE EXCEPTION 'B18 FAIL: null-only accepted';
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'no_receipts%' THEN RAISE EXCEPTION 'B18 FAIL: null got %', v_msg; END IF; END;
+  -- B19 readiness probe callable by clients
+  IF delivery_tax_invoice_ready() IS DISTINCT FROM true THEN RAISE EXCEPTION 'B19 FAIL: probe'; END IF;
+```
+and add to the B17 privilege check: `OR has_function_privilege('anon', 'delivery_tax_invoice_ready()', 'EXECUTE') OR NOT has_function_privilege('authenticated', 'delivery_tax_invoice_ready()', 'EXECUTE')`. The `unique_violation` catch cannot be raced inside one session (the pre-check always fires first); it is pinned by code review plus the JS 23505 mapping test of Task 5.
 
 - [ ] **Step 4: Generate the verbatim section with the builder (never hand-copy)**
 
@@ -1565,7 +1650,7 @@ diff <(sed -n '231,317p' $O3) <(awk '/^CREATE OR REPLACE FUNCTION void_supplier_
 grep -c -- '-- 2026-10-09-05' $F
 grep -c "@@VERBATIM_COPIES@@" $F
 ```
-Expected: five empty diffs, then `7`, then `0`. Also `grep -c "SECURITY DEFINER SET search_path = public" $F` = 11.
+Expected: five empty diffs, then `7`, then `0`. Also `grep -c "SECURITY DEFINER SET search_path = public" $F` = 11 and `grep -c "SECURITY INVOKER" $F` = 1.
 
 - [ ] **Step 6: Hand to the controller (do not run yourself)**
 
@@ -1618,7 +1703,7 @@ and change `reported` to read `(sql2 + sql5)`. Add:
 ```js
   it('delivery codes are covered', () => {
     for (const c of ['receipt_wrong_supplier', 'match_vat_inclusive', 'po_is_delivery_mode', 'invoice_mixed_links', 'receipt_no_stock_movements']) expect(checkCodes.has(c), c).toBe(true)
-    for (const c of ['po_mode_locked', 'receipt_not_eligible']) expect(raised.has(c), c).toBe(true)
+    for (const c of ['po_mode_locked', 'receipt_not_eligible', 'no_receipts']) expect(raised.has(c), c).toBe(true)
     expect(mapTaxInvoiceRpcError({ code: '23505', message: 'duplicate key value violates unique constraint "stirc_receipt_active_uq"' })).toBe(CHECK_TEXT.receipt_linked_elsewhere)
   })
 ```
@@ -1629,6 +1714,8 @@ describe('PO page texts for the mode guards', () => {
   it('mode locked / legacy receive refused', () => {
     expect(mapPoReceiptRpcError({ message: 'po_mode_locked' })).toMatch(/เปลี่ยนวิธีออกใบกำกับภาษีไม่ได้/)
     expect(mapPoReceiptRpcError({ message: 'po_delivery_needs_receipt' })).toMatch(/ทีละล็อต/)
+    // the PO form save path (handleSave -> mapPoReceiptRpcError) shows Thai for every code 04 can raise
+    for (const c of ['po_mode_locked', 'po_delivery_needs_receipt', 'invoice_mixed_links']) expect(mapPoReceiptRpcError({ message: c })).not.toBe(c)
   })
 })
 ```
@@ -1653,7 +1740,15 @@ and in "hooks file wiring" add
   })
 ```
 
-`src/hooks/poFailSoft.test.js`: follow the file's existing mocking pattern for `supabase` (read the top of the file first) and add tests: `fetchDeliveryReceipts()` resolves `{ ready: false, rows: [] }` when the query errors with `{ code: '42703', message: 'column purchase_orders.tax_invoice_mode does not exist' }` and when it errors with `{ code: 'PGRST205', message: "Could not find the table 'public.po_receipts'" }`; rethrows `{ code: '42501', message: 'permission denied' }`; `fetchActiveReceiptLinks()` resolves `{ ready: false, map: Map(0) }` on `PGRST205` and `{ ready: true, map }` with rows `[{ receipt_id: 'r1', invoice_id: 'i1', active: true, supplier_tax_invoices: { invoice_no: 'A', status: 'draft' } }]` -> `map.get('r1').invoice_no === 'A'`.
+`src/lib/receiveDeposits.test.js` (the old-receive error map, used by `mapReceiveRpcError`; a new bundle that still hits the legacy path gets Thai text):
+```js
+it('legacy receive refused for a delivery PO has Thai text', () => {
+  expect(mapReceiveRpcError({ message: 'po_delivery_needs_receipt' })).toMatch(/ทีละล็อต/)
+})
+```
+(import `mapReceiveRpcError` from wherever `PurchaseOrders.jsx` imports it — read the import first; if it lives in `receiveDeposits.js`, add `po_delivery_needs_receipt: DELIVERY_RPC_TEXT.po_delivery_needs_receipt` to that module's `RPC_ERROR_TEXT` in Step 3, importing the leaf `deliveryTaxInvoiceText.js`.)
+
+`src/hooks/poFailSoft.test.js`: follow the file's existing mocking pattern for `supabase` (read the top of the file first) and add tests: when `supabase.rpc('delivery_tax_invoice_ready')` errors (`PGRST202`), `deliveryReadyProbe()` is false and `fetchDeliveryReceipts()` / `fetchActiveReceiptLinks()` return not-ready WITHOUT querying the tables (04 applied alone must not light anything up); with the probe returning `true`: `fetchDeliveryReceipts()` resolves `{ ready: false, rows: [] }` when the query errors with `{ code: '42703', message: 'column purchase_orders.tax_invoice_mode does not exist' }` and when it errors with `{ code: 'PGRST205', message: "Could not find the table 'public.po_receipts'" }`; rethrows `{ code: '42501', message: 'permission denied' }`; `fetchActiveReceiptLinks()` resolves `{ ready: false, map: Map(0) }` on `PGRST205` and `{ ready: true, map }` with rows `[{ receipt_id: 'r1', invoice_id: 'i1', active: true, supplier_tax_invoices: { invoice_no: 'A', status: 'draft' } }]` -> `map.get('r1').invoice_no === 'A'`.
 
 - [ ] **Step 2: Run, expect failures**
 
@@ -1711,13 +1806,14 @@ export const saveSupplierTaxInvoiceReceiptDraft = (id, header, items, receiptIds
 // Before the migration the link table / mode column do not exist: these return { ready: false, ... } and never
 // throw for that case, so the PO page, the receive dialog and the tax invoice page behave as today.
 
-/** true = the per-delivery migration is live; false = not yet / unreadable; null while loading. */
+/** Keyed on delivery_tax_invoice_ready(), created by 2026-10-09-05 (NOT on 04's table): false until BOTH are live. */
+export async function deliveryReadyProbe() {
+  const { data, error } = await supabase.rpc('delivery_tax_invoice_ready')
+  return !error && data === true
+}
+/** true = the per-delivery migrations are live; false = not yet / unreadable; null while loading. */
 export function useDeliveryTaxInvoiceReady() {
-  const { data } = useQuery(async () => {
-    const { error } = await supabase.from('supplier_tax_invoice_receipts').select('id', { count: 'exact', head: true })
-    return !error
-  }, [])
-  return data
+  return useQuery(deliveryReadyProbe, []).data
 }
 
 const DELIVERY_RECEIPT_SELECT = 'id, po_id, seq, received_date, goods_subtotal, goods_vat, expense_id, '
@@ -1730,6 +1826,7 @@ export function useDeliveryReceipts() {
   return useQuery(fetchDeliveryReceipts, [])
 }
 export async function fetchDeliveryReceipts() {
+  if (!(await deliveryReadyProbe())) return { ready: false, rows: [] }
   try {
     const rows = await fetchAllRows(() => supabase.from('po_receipts').select(DELIVERY_RECEIPT_SELECT)
       .eq('purchase_orders.tax_invoice_mode', 'delivery').order('id'))
@@ -1745,6 +1842,7 @@ export function useActiveReceiptTaxInvoiceLinks() {
   return useQuery(fetchActiveReceiptLinks, [])
 }
 export async function fetchActiveReceiptLinks() {
+  if (!(await deliveryReadyProbe())) return { ready: false, map: new Map() }
   try {
     const rows = await fetchAllRows(() => supabase.from('supplier_tax_invoice_receipts')
       .select('receipt_id, invoice_id, active, supplier_tax_invoices!stirc_invoice_fk(invoice_no, status)')
@@ -1764,13 +1862,15 @@ Run: `npx vitest run` -> all PASS. Run: `npm run build` -> succeeds.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/hooks/useSupabase.js src/lib/supplierTaxInvoice.js src/lib/poReceiptErrors.js src/lib/supplierTaxInvoiceCodes.test.js src/lib/poReceiptErrors.test.js src/lib/taxInvoiceLinks.test.js src/hooks/poFailSoft.test.js
+git add src/hooks/useSupabase.js src/lib/supplierTaxInvoice.js src/lib/poReceiptErrors.js src/lib/receiveDeposits.js src/lib/receiveDeposits.test.js src/lib/supplierTaxInvoiceCodes.test.js src/lib/poReceiptErrors.test.js src/lib/taxInvoiceLinks.test.js src/hooks/poFailSoft.test.js
 git commit -m "feat(hooks): fail-soft delivery receipts, receipt links and receipt draft wrapper; Thai text for new codes"
 ```
 
 ---
 
 ### Task 6: PO form mode choice, supplier default, ⋯ mode switch, swap hidden for delivery POs
+
+**Review gate:** 'po' PO rows/forms render and save exactly as before when `__deliveryReady=false` (sections 1-9 unchanged and passing); the mode column is sent only via `poModePayload`; `tax_invoice_mode_touched` never reaches a payload; section 10 all PASS incl. 375 px.
 
 **Files:**
 - Modify: `src/pages/PurchaseOrders.jsx`, `src/pages/Suppliers.jsx`
@@ -1813,7 +1913,7 @@ await page.getByRole('button', { name: '+ เพิ่มใบสั่งซ�
 t = await text()
 ok('ready: mode choice shown, PO mode preselected', t.includes('ใบกำกับภาษีของใบสั่งซื้อนี้') && await page.getByLabel('1 ใบต่อใบสั่งซื้อ (ปกติ)').isChecked())
 ```
-Then (same section) drive the supplier picker to `CAC` exactly as the existing scenarios that pick a supplier do (reuse their selector), and assert `ok('supplier default preselects delivery', await page.getByLabel(/1 ใบต่อการส่งของ/).isChecked())`; pick the PO-mode radio by hand, pick another supplier, assert it stays on PO mode (`modeTouched`); fill the minimum fields the existing add-form scenario fills, save, and assert `(await log()).some(([k, tb, p]) => k === 'insert' && tb === 'purchase_orders' && JSON.parse(p).tax_invoice_mode === 'po')`. Then:
+Then (same section) drive the supplier picker to `CAC` exactly as the existing scenarios that pick a supplier do (reuse their selector), and assert `ok('supplier default preselects delivery', await page.getByLabel(/1 ใบต่อการส่งของ/).isChecked())`; pick the PO-mode radio by hand, pick another supplier, assert it stays on PO mode (`tax_invoice_mode_touched`); fill the minimum fields the existing add-form scenario fills, save, and assert `(await log()).some(([k, tb, p]) => k === 'insert' && tb === 'purchase_orders' && JSON.parse(p).tax_invoice_mode === 'po')`. Then:
 
 ```js
 await openMenu(/PO-G/)
@@ -1833,7 +1933,11 @@ await page.getByRole('button', { name: '+ เพิ่มใบสั่งซ�
 ok('375px: mode radios fit', await page.evaluate(() => document.documentElement.scrollWidth <= 375))
 await page.getByRole('button', { name: '← กลับ' }).click(); await page.setViewportSize({ width: 1280, height: 800 })
 ```
-(Use the existing `__money` format of section 7 — read it first and match it exactly; the confirm button label is `ConfirmDialog`'s confirm text — read `Modal.jsx` and use it.)
+(Use the existing `__money` format of section 7 — read it first and match it exactly; the confirm button label is `ConfirmDialog`'s confirm text — read `Modal.jsx` and use it.) Also in section 10:
+- **draft restore keeps a hand-picked mode:** open the add form, pick CAC (delivery preselected), click `1 ใบต่อใบสั่งซื้อ (ปกติ)`, `__render()` again (remount restores the draft), assert the PO-mode radio is still checked and picking CAC again keeps it.
+- **inline-created supplier:** add a supplier through the supplier `QuickAddSelect` "+ สร้างใหม่" path the way the existing scenarios create inline records (read `MockQuickAdd.jsx` usage in `buildPo.mjs` first); assert the mode stays `1 ใบต่อใบสั่งซื้อ (ปกติ)`.
+- **readiness arrives late:** `__deliveryReady = false`, open the add form, pick CAC; `__deliveryReady = true` and trigger a refetch (re-render with the form open as section 1 does); assert delivery is now preselected.
+- **discount warning:** delivery mode + a line with unit price `-5`: click save -> a dialog with `จะรับของไม่ได้` appears (the harness `page.on('dialog')` collector records it; dismissing it means no `insert` in `__log` — use `page.once('dialog', d => d.dismiss())` for that click).
 
 - [ ] **Step 2: Build + run, expect FAIL** — `node scripts/tax-invoice-harness/buildPo.mjs && node scripts/tax-invoice-harness/runPo.mjs` -> section 10 FAILs, sections 1-9 PASS.
 
@@ -1844,12 +1948,19 @@ await page.getByRole('button', { name: '← กลับ' }).click(); await page
 3. `PurchaseOrderForm` signature: add `showModeChoice = false, modeLocked = false,` after `stockFlagLocked = false,`. After `const set = ...` add:
 
 ```js
-  // a new PO takes the supplier's remembered mode (owner Q1) until the user picks one by hand
-  const modeTouched = useRef(!isAdd)
+  // A new PO takes the supplier's remembered mode (owner Q1) until the user picks one by hand. The "picked by hand" flag
+  // lives IN the form state (tax_invoice_mode_touched), so the useDraftForm restore after an Android reload keeps it.
+  // An inline-created supplier is not in `suppliers` yet: poModeForSupplier gives 'po', its column default.
   const pickSupplier = id => setForm(f => ({ ...f, supplier_id: id,
-    ...(modeTouched.current || !showModeChoice ? {} : { tax_invoice_mode: defaultTaxInvoiceMode((suppliers || []).find(s => s.id === id)) }) }))
+    ...(showModeChoice ? { tax_invoice_mode: poModeForSupplier(f, (suppliers || []).find(s => s.id === id)) } : {}) }))
+  // readiness can arrive after a supplier was picked (or after a draft restore): apply the default once, if untouched
+  useEffect(() => {
+    if (!isAdd || !showModeChoice || !form.supplier_id || form.tax_invoice_mode_touched) return
+    const next = poModeForSupplier(form, (suppliers || []).find(s => s.id === form.supplier_id))
+    if (next !== form.tax_invoice_mode) set('tax_invoice_mode', next)
+  }, [isAdd, showModeChoice, form.supplier_id, suppliers]) // eslint-disable-line react-hooks/exhaustive-deps
 ```
-   and the supplier `QuickAddSelect` gets `onChange={pickSupplier}` (was `onChange={id => set('supplier_id', id)}`).
+   and the supplier `QuickAddSelect` gets `onChange={pickSupplier}` (was `onChange={id => set('supplier_id', id)}`). Editing an existing PO starts with `tax_invoice_mode_touched: true` (step 7). `tax_invoice_mode_touched` is never sent to the database (the payload is built field by field). Import `poModeForSupplier, poDeliveryDiscountWarning` instead of `defaultTaxInvoiceMode`.
 4. After the `{showStockFlag && (...)}` block insert:
 
 ```jsx
@@ -1860,7 +1971,7 @@ await page.getByRole('button', { name: '← กลับ' }).click(); await page
                 {[['po', '1 ใบต่อใบสั่งซื้อ (ปกติ)'], ['delivery', '1 ใบต่อการส่งของ (ส่งเป็นล็อต แต่ละล็อตมีใบกำกับของตัวเอง)']].map(([v, label]) => (
                   <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: modeLocked ? 'not-allowed' : 'pointer', minWidth: 0 }}>
                     <input type="radio" name="po-tax-invoice-mode" aria-label={label} disabled={modeLocked} checked={(form.tax_invoice_mode || 'po') === v}
-                      onChange={() => { modeTouched.current = true; set('tax_invoice_mode', v) }} />
+                      onChange={() => setForm(f => ({ ...f, tax_invoice_mode: v, tax_invoice_mode_touched: true }))} />
                     {label}
                   </label>
                 ))}
@@ -1870,8 +1981,8 @@ await page.getByRole('button', { name: '← กลับ' }).click(); await page
           )}
 ```
 5. In `PurchaseOrders`: `const deliveryReady = useDeliveryTaxInvoiceReady()`; state `const [modeRow, setModeRow] = useState(null)` and `const [modeSaving, setModeSaving] = useState(false)`.
-6. `handleSave`: after `Object.assign(poPayload, buildPoPayloadFlag(form, editRow))` add `Object.assign(poPayload, poModePayload(form, editRow, deliveryReady))`.
-7. `editFormInitial`: add `tax_invoice_mode: editRow.tax_invoice_mode === 'delivery' ? 'delivery' : 'po',`.
+6. `handleSave`: first statement inside `try` (before building the payload): `const discWarn = deliveryReady === true ? poDeliveryDiscountWarning(form, lineTotal) : ''; if (discWarn && !window.confirm(discWarn)) return` (the `finally` resets `saving`). After `Object.assign(poPayload, buildPoPayloadFlag(form, editRow))` add `Object.assign(poPayload, poModePayload(form, editRow, deliveryReady))`.
+7. `editFormInitial`: add `tax_invoice_mode: editRow.tax_invoice_mode === 'delivery' ? 'delivery' : 'po', tax_invoice_mode_touched: true,`.
 8. `<PurchaseOrderForm ...>`: add `showModeChoice={deliveryReady === true} modeLocked={!!editRow && !!poModeLockedText(editRow, moneyIndex, taxInvoiceLinks)}`.
 9. `poMenuItems`: after the create-deposit block add:
 
@@ -1949,7 +2060,8 @@ git commit -m "feat(po): choose tax invoice per PO or per delivery, remembered p
 ### Task 7: Receive dialog checkbox, hand-off, per-receipt status in the PO popup and row badge
 
 **Files:**
-- Modify: `src/components/ReceivePoLinesModal.jsx`, `src/pages/PurchaseOrders.jsx`
+- Modify: `src/components/ReceivePoLinesModal.jsx`, `src/pages/PurchaseOrders.jsx`, `src/lib/poTaxInvoiceStatus.js`
+- Test: `src/lib/poTaxInvoiceStatus.test.js` (append)
 - Modify (harness): `scripts/tax-invoice-harness/entryPo.jsx`, `scripts/tax-invoice-harness/runPo.mjs`, `scripts/tax-invoice-harness/README.md`
 
 **Interfaces:**
@@ -1981,7 +2093,21 @@ await page.getByRole('button', { name: 'ยกเลิก' }).click(); await wa
 ```
 Then set `__ledger` for `H` with two receipts `{ id: 'r1', seq: 1, received_date: '2026-10-05', goods_subtotal: 600, goods_vat: 42, po_receipt_items: [] }` and `r2` (seq 2), `__receiptLinks = [['r1', { invoice_id: 'i9', invoice_no: 'INV-9', status: 'posted' }]]`, `__money = [['H', { receivedItemIds: [], receiptIds: ['r1', 'r2'] }]]` (match section 7's format), render, and assert: row text contains `รอใบกำกับ 1 ล็อต`; opening 📄 on PO-H shows `R1` with `ใบกำกับ INV-9` and `R2` with `รอใบกำกับ` and a button `🧾 ลงใบกำกับ`; clicking it pushes `['supplier_tax_invoices', { newForReceipt: { receiptId: 'r2', poId: 'H', supplierId: SD } }]`; with `__deliveryReady=false` the popup shows neither text; at 375 px the popup has no horizontal page scroll.
 
-- [ ] **Step 2: Build + run -> section 11 FAILs.**
+Also in section 11: a received delivery PO flagged `stock_from_invoice: true` (push `{ ...PO-R, id: 'RS', po_number: 'PO-RS', stock_from_invoice: true }`) never shows `รอใบกำกับ (สต็อกยังไม่เข้า)` in its row or popup (only the per-lot badge).
+
+`src/lib/poTaxInvoiceStatus.test.js` (append):
+```js
+describe('poTaxInvoiceBadge and delivery POs', () => {
+  it('the PO-level "awaiting" badge never shows for a delivery PO (lots carry their own status)', () => {
+    expect(poTaxInvoiceBadge({ id: 'P', status: 'received', stock_from_invoice: true, tax_invoice_mode: 'delivery' }, new Map())).toEqual({ kind: null, text: '' })
+    expect(poTaxInvoiceBadge({ id: 'P', status: 'received', stock_from_invoice: true }, new Map()).kind).toBe('awaiting')
+  })
+})
+```
+
+- [ ] **Step 2: Build + run -> section 11 FAILs; `npx vitest run src/lib/poTaxInvoiceStatus.test.js` FAILs.**
+
+- [ ] **Step 2b: `src/lib/poTaxInvoiceStatus.js`** — in `poTaxInvoiceBadge`, the awaiting line becomes `if (po.status === 'received' && po.stock_from_invoice && po.tax_invoice_mode !== 'delivery') return { kind: 'awaiting', text: 'รอใบกำกับ (สต็อกยังไม่เข้า)' }`.
 
 - [ ] **Step 3: Implement `ReceivePoLinesModal.jsx`**
 
@@ -2027,7 +2153,7 @@ Then set `__ledger` for `H` with two receipts `{ id: 'r1', seq: 1, received_date
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/components/ReceivePoLinesModal.jsx src/pages/PurchaseOrders.jsx scripts/tax-invoice-harness/entryPo.jsx scripts/tax-invoice-harness/runPo.mjs scripts/tax-invoice-harness/README.md
+git add src/components/ReceivePoLinesModal.jsx src/pages/PurchaseOrders.jsx src/lib/poTaxInvoiceStatus.js src/lib/poTaxInvoiceStatus.test.js scripts/tax-invoice-harness/entryPo.jsx scripts/tax-invoice-harness/runPo.mjs scripts/tax-invoice-harness/README.md
 git commit -m "feat(po): key the lot's tax invoice right after receiving; lot invoice status in the PO popup"
 ```
 
@@ -2062,6 +2188,12 @@ await page.evaluate(() => { window.__deliveryReady = true; window.__log = [] });
 await page.getByRole('button', { name: '+ เพิ่มใบกำกับภาษีผู้ขาย' }).click(); await wait(300)
 ```
 then pick supplier `Supplier One` (same selector the existing sections use), click radio `การส่งของ`, and assert: the picker lists `PO-1-R?` labels oldest first (`rB` before `rA`), `rC` is disabled with `ผูกกับใบกำกับ INV-X`, the other supplier's receipt is absent; ticking `rB` and `rA` and typing net `1000` vat `70` shows `มูลค่าสินค้าที่รับ 1,000.00`; net `990` vat `80` shows `ตรงเมื่อเทียบรวม VAT` (incl basis); switching back to `ใบสั่งซื้อ` clears the ticks (re-switching shows none ticked); 💾 บันทึกร่าง with delivery kind logs `['rpc', 'saveReceipts', ...]` whose 4th argument is `["rB","rA"]` (order of ticking) and NOT `save`; at 375 px the picker has no horizontal page scroll.
+
+Also in D1:
+- **delivery POs never in the PO picker:** add to `data.pos` a received PO `{ ...PO, id: 'PD', po_number: 'PO-DEL', tax_invoice_mode: 'delivery' }`; in `ใบสั่งซื้อ` kind for `Supplier One`, `PO-DEL` is not listed (proposed, outside month or linked elsewhere).
+- **stale draft that selected a delivery PO:** open an existing draft invoice whose `supplier_tax_invoice_pos` holds `PD` (data written before the PO was switched): the picker does not list it, an amber notice shows `PO-DEL — ` + `DELIVERY_PO_IN_PO_INVOICE_TEXT` with a button `เอาออก`, the match sum excludes it, and 💾 บันทึกร่าง alerts that text without calling `save`; after `เอาออก` save calls `save` with `PD` absent.
+- **empty delivery selection:** `การส่งของ` kind with no lot ticked: 💾 บันทึกร่าง alerts `NO_RECEIPTS_TEXT` and logs no RPC.
+- **scan in delivery kind:** with `การส่งของ` kind and `rA` ticked, upload a file with the mocked extractor returning two lines, `prices_include_vat: true`, unit price `107`: the lines are replaced with unit price `100` (ex-VAT), net is filled only if it was blank, `receipt_ids` stays `['rA']` (no PO auto-tick, no proposal list appears), and the kind stays `การส่งของ`.
 
 - [ ] **Step 2: Build + run (`node scripts/tax-invoice-harness/build.mjs && node scripts/tax-invoice-harness/run.mjs`) -> D1 FAILs** (save wiring is Task 9; the `saveReceipts` assertion is expected to keep failing until Task 9 — mark it with a `// Task 9` comment and keep it).
 
@@ -2115,17 +2247,36 @@ then pick supplier `Supplier One` (same selector the existing sections use), cli
     setForm(f => ({ ...f, lines: f.lines.map(l => (l.inventory_item_id && l.base_qty === '' && !l.base_manual ? applyLineChange(l, {}, lookupsRef.current) : l)) }))
   }, [invoiceId, allItems, unitFactors])
 ```
+8b. Stale delivery POs in a PO-kind selection (import `splitDeliveryPoIds` and `DELIVERY_PO_IN_PO_INVOICE_TEXT`, `NO_RECEIPTS_TEXT`):
+
+```js
+  const { delivery: deliveryPoIds } = kind === 'po' ? splitDeliveryPoIds(form.po_ids, posRows) : { delivery: [] }
+```
+   `selectedPos` becomes `form.po_ids.filter(id => !deliveryPoIds.includes(id)).map(id => poById.get(id)).filter(Boolean)`; below the PO picker render, when `deliveryPoIds.length`:
+
+```jsx
+              <div style={{ ...amber, marginTop: 8 }}>
+                {deliveryPoIds.map(id => (
+                  <div key={id}>{poById.get(id)?.po_number || id.slice(0, 8)} — {DELIVERY_PO_IN_PO_INVOICE_TEXT}
+                    <button type="button" className="btn btn-sm btn-ghost" style={{ marginLeft: 6 }} onClick={() => set('po_ids', form.po_ids.filter(x => x !== id))}>เอาออก</button>
+                  </div>
+                ))}
+              </div>
+```
 9. `run`: replace the two PO-specific checks with
 
 ```js
     if (kind === 'delivery') {
+      if (!form.receipt_ids.length) errs.push(NO_RECEIPTS_TEXT)
       if (form.supplier_id && !receiptRows && form.receipt_ids.length) errs.push('กำลังโหลดการรับของ กรุณารอสักครู่')
       if (missingReceipts.length) errs.push(`มีการรับของที่เลือกไว้ ${missingReceipts.length} รายการที่ไม่พบในรายการ — เอาออกก่อนบันทึก`)
     } else {
       if (form.supplier_id && !posRows && form.po_ids.length) errs.push('กำลังโหลดใบสั่งซื้อ กรุณารอสักครู่')
       if (missing.length) errs.push(`มีใบสั่งซื้อที่เลือกไว้ ${missing.length} ใบที่ไม่พบในรายการ — เอาออกก่อนบันทึก`)
+      if (deliveryPoIds.length) errs.push(DELIVERY_PO_IN_PO_INVOICE_TEXT)
     }
 ```
+   The scan handler is unchanged: it only replaces lines/net/VAT/number/date, and the auto-tick effect is gated on `kind === 'po'` (item 3), so a delivery scan never ticks POs.
 10. Render helper next to `renderPoRow`:
 
 ```jsx
@@ -2196,6 +2347,8 @@ git commit -m "feat(tax-invoice): link an invoice to deliveries (receipt picker,
 ---
 
 ### Task 9: Tax invoice page — save by kind, hand-off, "ใบรับของที่รอใบกำกับ", list and view
+
+**Review gate:** a PO-kind invoice saves, previews, posts and voids through exactly the old wrappers and texts (existing run.mjs sections unchanged and passing); the hand-off consumes `navState` once and never opens two forms; every list/view path handles rows without `supplier_tax_invoice_receipts` (pre-migration fallback); D2 all PASS incl. 375 px.
 
 **Files:**
 - Modify: `src/pages/SupplierTaxInvoices.jsx`, `src/components/TaxInvoicePreview.jsx`
@@ -2344,20 +2497,28 @@ git commit -m "docs(manual): tax invoice per delivery"
 - [ ] **Step 1: Whole-branch review** by a fresh reviewer on the strongest model, over `git diff main...HEAD`, with this checklist: Global Constraints line by line; Review Focus 1-5 each pinned by a passing test; every new embed names its constraint; no `REFERENCES expenses`; Task 4 Step 5 diffs re-run and empty; `'po'` code paths untouched apart from the 7 marked lines and the `receiveRoute`/`proposePos`/swap guards (each keyed on `tax_invoice_mode === 'delivery'`); fail-soft paths reviewed with the migration absent.
 - [ ] **Step 2: Local gates** — `npx vitest run` (all PASS), `npm run build`, `npm run lint` if present in `package.json`, both harnesses ALL PASS (run one at a time).
 - [ ] **Step 3: Controller dry runs, final** — Task 3 Step 5 and Task 4 Step 6 commands, every result recorded in the handoff (test A, test B, six regressions vs their baselines).
-- [ ] **Step 4: Owner handoff note** (written into the controller's report, not a file). Apply order — each by the owner, one at a time, checking the output before the next:
+- [ ] **Step 4: Owner handoff note** (written into the controller's report, not a file). The controller builds ONE apply file (04 and 05 must never be live one without the other):
+
+```bash
+W=/Users/plfx/code/FacadeXPM/facadex-app/.claude/worktrees/release-deposit-tax
+( echo "BEGIN;"
+  cat $W/supabase/migrations/2026-10-09-04-delivery-tax-invoice.sql
+  cat $W/supabase/migrations/2026-10-09-05-delivery-tax-invoice-rpcs.sql
+  echo "COMMIT;" ) > /Users/plfx/code/FacadeXPM/facadex-app/dti_apply_2026-10-09-04_05.sql
+```
+  and dry-runs exactly that file once more with `COMMIT;` swapped for test B's body + `ROLLBACK;`. The owner then applies it in one step:
 
 ```
-! npx supabase db query --linked --workdir /Users/plfx/code/FacadeXPM/facadex-app -f /Users/plfx/code/FacadeXPM/facadex-app/.claude/worktrees/release-deposit-tax/supabase/migrations/2026-10-09-04-delivery-tax-invoice.sql
-! npx supabase db query --linked --workdir /Users/plfx/code/FacadeXPM/facadex-app -f /Users/plfx/code/FacadeXPM/facadex-app/.claude/worktrees/release-deposit-tax/supabase/migrations/2026-10-09-05-delivery-tax-invoice-rpcs.sql
+! npx supabase db query --linked --workdir /Users/plfx/code/FacadeXPM/facadex-app -f /Users/plfx/code/FacadeXPM/facadex-app/dti_apply_2026-10-09-04_05.sql
 ```
-  Web: deploy (build + wrangler, per the chang-ship skill) either before or after the migrations; recommended after, so the new choices appear at once.
+  (Any error = nothing applied; report it, do not retry piecemeal.) Web deploy (build + wrangler, per the chang-ship skill) strictly AFTER the combined apply and the Step 5 checks. Delete the apply file afterwards.
 - [ ] **Step 5: Post-apply ACL and body checks (controller, read-only MCP)**
 
 ```sql
 SELECT p.proname, p.prosecdef, p.proconfig, p.proacl FROM pg_proc p
  WHERE p.proname IN ('_sti_check','_sti_check_po','_sti_check_delivery','_sti_receipt_movements','_sti_receipt_movements_po','_sti_receipt_movements_delivery',
                      '_sti_stamp_receipt_bills','save_supplier_tax_invoice_receipt_draft','save_supplier_tax_invoice_draft','post_supplier_tax_invoice',
-                     'void_supplier_tax_invoice','sti_link_kind_guard','po_tax_invoice_mode_guard') ORDER BY 1;
+                     'void_supplier_tax_invoice','sti_link_kind_guard','po_tax_invoice_mode_guard','delivery_tax_invoice_ready') ORDER BY 1;
 SELECT grantee, privilege_type FROM information_schema.role_table_grants WHERE table_name = 'supplier_tax_invoice_receipts' ORDER BY 1, 2;
 SELECT relrowsecurity FROM pg_class WHERE oid = 'public.supplier_tax_invoice_receipts'::regclass;
 SELECT proname, md5(prosrc) FROM pg_proc WHERE proname IN ('post_supplier_tax_invoice','void_supplier_tax_invoice','save_supplier_tax_invoice_draft','_sti_check_po','_sti_receipt_movements_po') ORDER BY 1;
