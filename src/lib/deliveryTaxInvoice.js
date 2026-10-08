@@ -19,7 +19,7 @@ export const receiptLabel = (poNumber, seq) => `${poNumber || '?'}-R${seq}`
 /** Invoice net vs Σ goods_subtotal; if that fails, invoice total vs Σ(goods_subtotal + goods_vat). Same tolerance as today. */
 export function evaluateDeliveryMatch({ netBeforeVat, grandTotal, receipts, lineAmounts }) {
   const rs = receipts || []
-  const valid = finite(netBeforeVat) && finite(grandTotal) && (lineAmounts || []).every(finite)
+  const valid = rs.length > 0 && finite(netBeforeVat) && finite(grandTotal) && (lineAmounts || []).every(finite)
     && rs.every(r => finite(r.goods_subtotal) && finite(r.goods_vat ?? 0))
   if (!valid) {
     return { invalid: true, sum: NaN, sumIncl: NaN, diffExcl: NaN, diffIncl: NaN, basis: 'none', diff: NaN, tolerance: NaN, matchOk: false, linesSum: NaN, linesOk: false }

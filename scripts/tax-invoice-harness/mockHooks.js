@@ -44,3 +44,8 @@ export const previewSupplierTaxInvoice = (...a) => call('preview', a)
 export const postSupplierTaxInvoice = (...a) => call('post', a)
 export const voidSupplierTaxInvoice = (...a) => call('void', a)
 export const deleteSupplierTaxInvoiceDraft = (...a) => call('delete', a)
+
+// ---- per-delivery hooks (Task 8): __deliveryReady === false = migrations not live ----
+export const useDeliveryReceipts = () => useQuery(() => delay(() => (W.__deliveryReady === false ? { ready: false, rows: [] } : { ready: true, rows: D().deliveryReceipts || [] })), [W.__dVersion])
+export const useActiveReceiptTaxInvoiceLinks = () => useQuery(() => delay(() => (W.__deliveryReady === false ? { ready: false, map: new Map() } : { ready: true, map: new Map(D().receiptLinks || []) })), [W.__dVersion])
+export const saveSupplierTaxInvoiceReceiptDraft = (...a) => call('saveReceipts', a)

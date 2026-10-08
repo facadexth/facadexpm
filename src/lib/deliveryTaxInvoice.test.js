@@ -50,6 +50,11 @@ describe('evaluateDeliveryMatch (mirror of _sti_check_delivery)', () => {
     expect(evaluateDeliveryMatch({ netBeforeVat: 101, grandTotal: 108, receipts: r, lineAmounts: [101] }).basis).toBe('excl')
     expect(evaluateDeliveryMatch({ netBeforeVat: 101.02, grandTotal: 999, receipts: r, lineAmounts: [101.02] }).basis).toBe('none')
   })
+  it('no receipts -> invalid, never a match (net 0 must not match an empty selection)', () => {
+    const m = evaluateDeliveryMatch({ netBeforeVat: 0, grandTotal: 0, receipts: [], lineAmounts: [] })
+    expect(m.invalid).toBe(true); expect(m.matchOk).toBe(false)
+    expect(evaluateDeliveryMatch({ netBeforeVat: 0, grandTotal: 0, lineAmounts: [] }).matchOk).toBe(false)
+  })
   it('blank / non-finite -> invalid, never a match', () => {
     expect(evaluateDeliveryMatch({ netBeforeVat: '', grandTotal: 0, receipts: [rc('a')], lineAmounts: [] }).invalid).toBe(true)
     const bad = evaluateDeliveryMatch({ netBeforeVat: 600, grandTotal: 642, receipts: [rc('a', { goods_subtotal: 'NaN' })], lineAmounts: [] })
