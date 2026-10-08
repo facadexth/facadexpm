@@ -52,6 +52,17 @@ export const PO_RECEIPT_ERROR_TEXT = {
   cross_tenant_reference: 'ข้อมูลที่อ้างถึงไม่ถูกต้อง กรุณาเปิดใหม่',
   deposit_expense_is_po_generated: 'รายจ่ายนี้เป็นมัดจำที่สร้างจากใบสั่งซื้อ ลบหรือแก้ไขไม่ได้',
   po_tax_invoiced: 'ใบสั่งซื้อนี้ผูกกับใบกำกับภาษีแล้ว ทำรายการไม่ได้',
+  // 2026-10-09-06: un-receive / cancel of a received PO reverses its stock; refused when the stock was already used
+  po_unreceive_stock_insufficient: 'หักสต็อกคืนไม่ได้ — ยอดคงเหลือไม่พอ (ของถูกใช้ไปแล้ว) ปรับสต็อกก่อนแล้วลองใหม่',
+}
+
+/** Sentence for the cancel / un-receive confirm dialogs once 2026-10-09-06 is live. */
+export const PO_UNRECEIVE_STOCK_NOTE = 'สต็อกที่รับจากใบนี้จะถูกหักคืนด้วย'
+export const PO_UNRECEIVE_STOCK_NOTE_MAYBE = 'สต็อกที่รับจากใบนี้ (ถ้ามี) จะถูกหักคืนด้วย'
+
+/** True when cancelling this PO will reverse stock on the server (probe live, legacy received PO, stock not from invoice). */
+export function poCancelReversesStock(po, probeReady) {
+  return !!(probeReady && po && po.status === 'received' && !po.stock_from_invoice)
 }
 
 /** Thai message for an RPC / trigger error; unknown codes fall back to the raw message. */

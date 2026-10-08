@@ -1,6 +1,6 @@
 // src/lib/poReceiptErrors.test.js
 import { describe, it, expect } from 'vitest'
-import { mapPoReceiptRpcError, buildPoMoneyIndex, poMoneyLockText, poLedgerSummary, PO_RECEIPT_LOCKED_TEXT, PO_HAS_DEPOSIT_TEXT, depositSelectableForPo, isMissingColumnError, PO_RECEIPT_ERROR_TEXT, receiveRoute, receiveDialogDeposits, canOfferCreateDeposit, DB_NOT_UPDATED_TEXT, RECEIVE_NOT_READY_TEXT, poHasMultipleBills } from './poReceiptErrors.js'
+import { mapPoReceiptRpcError, buildPoMoneyIndex, poMoneyLockText, poLedgerSummary, PO_RECEIPT_LOCKED_TEXT, PO_HAS_DEPOSIT_TEXT, depositSelectableForPo, isMissingColumnError, PO_RECEIPT_ERROR_TEXT, receiveRoute, receiveDialogDeposits, canOfferCreateDeposit, DB_NOT_UPDATED_TEXT, RECEIVE_NOT_READY_TEXT, poHasMultipleBills, poCancelReversesStock } from './poReceiptErrors.js'
 import { readFileSync } from 'node:fs'
 
 describe('mapPoReceiptRpcError', () => {
@@ -112,6 +112,27 @@ describe('every RAISE EXCEPTION literal in the migrations has Thai text', () => 
       for (const c of codes) expect(PO_RECEIPT_ERROR_TEXT[c], c).toBeTruthy()
     })
   }
+})
+
+describe('PO un-receive stock reversal (2026-10-09-06)', () => {
+  it('every RAISE EXCEPTION literal of the migration has Thai text', () => {
+    const sql = readFileSync(new URL('../../supabase/migrations/2026-10-09-06-po-unreceive-stock-reversal.sql', import.meta.url), 'utf8')
+    const codes = [...new Set([...sql.matchAll(/RAISE EXCEPTION '([a-z_0-9]+)'/g)].map(m => m[1]))]
+    expect(codes).toEqual(['po_unreceive_stock_insufficient'])
+    for (const c of codes) expect(PO_RECEIPT_ERROR_TEXT[c], c).toBeTruthy()
+  })
+  it('maps the trigger error to Thai (message, or details only)', () => {
+    const err = { code: 'P0001', message: 'po_unreceive_stock_insufficient', details: 'po=PO1 item=x site=y on_hand=2 to_reverse=6' }
+    expect(mapPoReceiptRpcError(err)).toBe('หักสต็อกคืนไม่ได้ — ยอดคงเหลือไม่พอ (ของถูกใช้ไปแล้ว) ปรับสต็อกก่อนแล้วลองใหม่')
+    expect(mapPoReceiptRpcError({ message: 'x', details: 'po_unreceive_stock_insufficient' })).toBe(PO_RECEIPT_ERROR_TEXT.po_unreceive_stock_insufficient)
+  })
+  it('poCancelReversesStock: only a received, non-invoice-stock PO once the probe is live', () => {
+    expect(poCancelReversesStock({ status: 'received', stock_from_invoice: false }, true)).toBe(true)
+    expect(poCancelReversesStock({ status: 'received', stock_from_invoice: false }, false)).toBe(false)
+    expect(poCancelReversesStock({ status: 'received', stock_from_invoice: true }, true)).toBe(false)
+    expect(poCancelReversesStock({ status: 'ordered' }, true)).toBe(false)
+    expect(poCancelReversesStock(null, true)).toBe(false)
+  })
 })
 
 describe('buildPoMoneyIndex schemaReady (Task 9 routing)', () => {
