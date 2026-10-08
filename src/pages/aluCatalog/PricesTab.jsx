@@ -39,6 +39,7 @@ export default function PricesTab({ canEdit }) {
   const profileById = Object.fromEntries((profiles.data || []).map(p => [p.id, p]))
   const variantById = Object.fromEntries((variants.data || []).map(v => [v.id, v]))
   const partById = Object.fromEntries((parts.data || []).map(p => [p.id, p]))
+  const partLabel = p => (p.code ? `${p.code} · ${p.name}` : p.name)
   const money = n => (n == null ? '—' : Number(n).toLocaleString('th-TH', { maximumFractionDigits: 4 }))
   const profileLabel = p => (p ? `${p.name}${p.thickness_mm ? ' ' + p.thickness_mm : ''}` : '—')
   const variantLabel = v => (v ? `${profileLabel(profileById[v.profile_id])} · ${finishById[v.finish_id]?.name || '—'} · ${v.length_m} ม.` : '—')
@@ -66,7 +67,7 @@ export default function PricesTab({ canEdit }) {
     { key: 'effective_from', label: 'มีผลตั้งแต่วันที่', type: 'date', required: true, default: todayStr() },
   ]
   const PART_FIELDS = [
-    { key: 'part_id', label: 'อุปกรณ์', type: 'select', required: true, options: form => optionList(parts.data, p => p.name, form.part_id) },
+    { key: 'part_id', label: 'อุปกรณ์', type: 'select', required: true, options: form => optionList(parts.data, partLabel, form.part_id) },
     { key: 'list_price', label: 'ราคาป้าย', type: 'number', required: true, min: 0 },
     { key: 'discount_pct', label: 'ส่วนลด (%)', type: 'number', min: 0, default: 0, blankAs: 0 },
     { key: 'effective_from', label: 'มีผลตั้งแต่วันที่', type: 'date', required: true, default: todayStr() },
@@ -125,7 +126,7 @@ export default function PricesTab({ canEdit }) {
         emptyText="ยังไม่มีราคาอุปกรณ์"
         columns={[
           { key: 'effective_from', label: 'มีผลตั้งแต่' },
-          { key: 'part_id', label: 'อุปกรณ์', render: r => partById[r.part_id]?.name },
+          { key: 'part_id', label: 'อุปกรณ์', render: r => (partById[r.part_id] ? partLabel(partById[r.part_id]) : '—') },
           { key: 'list_price', label: 'ราคาป้าย', render: r => money(r.list_price) },
           { key: 'discount_pct', label: 'ลด %' },
           { key: 'net', label: 'ราคาสุทธิ', render: r => money(Number(r.list_price) * (1 - Number(r.discount_pct) / 100)) },

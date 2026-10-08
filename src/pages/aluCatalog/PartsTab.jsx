@@ -35,6 +35,7 @@ export default function PartsTab({ canEdit }) {
   const seriesPartChoices = (parts.data || []).filter(p => p.active !== false || linkedToSeries.has(p.id))
   const shownParts = (parts.data || []).filter(p => !kindFilter || p.kind === kindFilter)
   const typeOptions = (types.data || []).map(t => ({ value: t.id, label: t.active === false ? `${t.name} (ปิดใช้งาน)` : t.name }))
+  const partLabel = p => (p.code ? `${p.code} · ${p.name}` : p.name)
   const inactiveTag = p => (p.active === false ? ' (ปิดใช้งาน)' : '')
 
   const PART_FIELDS = [
@@ -75,14 +76,14 @@ export default function PartsTab({ canEdit }) {
         <label className="label">เลือกชุดอุปกรณ์เพื่อกำหนดสิ่งที่อยู่ในชุด</label>
         <select className="input" style={{ maxWidth: 320 }} value={setId} onChange={e => setSetId(e.target.value)}>
           <option value="">— เลือกชุดอุปกรณ์ —</option>
-          {optionList(sets, s => s.name, setId).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {optionList(sets, partLabel, setId).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </div>
       {setId && (
         <LinkEditor
           title="สิ่งที่อยู่ในชุดนี้" hint="ติ๊กเพื่อเพิ่มเข้าชุด แล้วใส่จำนวน"
           linkTable="alu_part_set_items" parentKey="set_id" parentId={setId} childKey="part_id"
-          childOptions={singles.map(p => ({ id: p.id, label: `${p.name} (${p.unit})${inactiveTag(p)}` }))}
+          childOptions={singles.map(p => ({ id: p.id, label: `${partLabel(p)} (${p.unit})${inactiveTag(p)}` }))}
           links={setItems.data} onChanged={setItems.refetch} canEdit={canEdit}
           extra={{ key: 'quantity', label: 'จำนวน', type: 'number', defaultFor: () => 1 }}
         />
@@ -99,7 +100,7 @@ export default function PartsTab({ canEdit }) {
         <LinkEditor
           title="อุปกรณ์/ชุดอุปกรณ์ที่ซีรีส์นี้ใช้" hint="เลือกประเภทบานเพื่อจำกัดให้ใช้กับประเภทนั้นเท่านั้น เว้นว่างคือใช้กับทุกประเภท (ชุดอุปกรณ์ 'ใช้กับชุด')"
           linkTable="alu_series_parts" parentKey="series_id" parentId={seriesId} childKey="part_id"
-          childOptions={seriesPartChoices.map(p => ({ id: p.id, label: `${p.name} · ${KIND_LABEL[p.kind]}${inactiveTag(p)}` }))}
+          childOptions={seriesPartChoices.map(p => ({ id: p.id, label: `${partLabel(p)} · ${KIND_LABEL[p.kind]}${inactiveTag(p)}` }))}
           links={seriesParts.data} onChanged={seriesParts.refetch} canEdit={canEdit}
           extra={{ key: 'type_id', label: 'ประเภท', type: 'select', emptyLabel: 'ทุกประเภท', options: typeOptions }}
         />
