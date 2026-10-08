@@ -113,7 +113,7 @@ Item = six fields, shared with the future AI reader: **1** name, **2** size, **3
 
 ## Phasing
 
-1. **Catalog**: migrations for the hierarchy/components/prices, `resolveAluPrice` + vitest, catalog management screens (extruder → series/types → profiles/colours/lengths → parts → prices).
+1. **Catalog**: migrations for the hierarchy/components/prices, `resolveAluPrice` + vitest, catalog management screens (extruder → series/types → profiles/colours/lengths → parts → prices). The legacy profile and colour lists in BOM Templates are hidden (not deleted) so the user sees one list only; Phase 2 removes them.
 2. **Engine + item flow**: reshape `estimation_openings`/`estimation_projects` (repoint `finish_id` to `alu_finishes`, profiles to `alu_profiles`, retire legacy `aluminum_finishes`), rewire `bomEngine.js`, project defaults, modal, preview, availability warnings, stale-price banner.
 3. **Price structure + export**: cost-settings, price-structure table, rounding/VAT, Quotation export and update-as-revision.
 

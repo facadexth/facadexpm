@@ -15,7 +15,9 @@
 - FacadeX only: every new table has RLS policy `admin_full_access` = `is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('estimation')` for both `USING` and `WITH CHECK`.
 - Every new table: `tenant_id UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id)` and an index on `tenant_id`. Any `UNIQUE` must include `tenant_id` or a tenant-scoped parent id (a globally-unique name once blocked new tenant signups).
 - The catalog is separate from the legacy tables: new `alu_profiles` and `alu_finishes` (both gated by `estimation` only). Do NOT alter `aluminum_profiles` (read by PO receiving, gated by `purchase_orders`) or `aluminum_finishes` (has `price_per_kg`, read by the current engine). Linking the catalog to the PO side is deferred until the owner is happy with the catalog.
-- Do NOT modify `src/lib/bomEngine.js`, `src/pages/Estimation.jsx`, `src/pages/BomTemplates.jsx`, `src/pages/AluminumProfiles.jsx`. Phase 1 must leave the existing estimation module working.
+- Do NOT modify `src/lib/bomEngine.js`, `src/pages/Estimation.jsx`, `src/pages/AluminumProfiles.jsx`. The only change to `src/pages/BomTemplates.jsx` is Task 11 (hide two toolbar buttons). Phase 1 must otherwise leave the existing estimation module working.
+- One profile/colour list for the user: the legacy lists in BOM Templates are hidden (Task 11), not deleted, so the owner sees only the catalog's lists. Hiding is reversible by restoring two buttons.
+- **Execution gate (owner rule):** do Tasks 1–5 first. STOP before Task 6 and publish a clickable mockup artifact of the catalog screens (and the Task 11 change) for the owner to comment on; build Tasks 6–11 only after reading those comments.
 - Prices live only in the three price tables; the new catalog has no `price_per_kg` column anywhere else. The legacy `aluminum_finishes.price_per_kg` keeps serving the current engine until Phase 2 repoints it to the catalog and retires `aluminum_finishes`.
 - Migrations are written but NOT applied by the agent. The owner applies them with `!`. Verify SQL only inside `BEGIN; … ROLLBACK;`.
 - Price tables are append-only history: `effective_from DATE NOT NULL`, `source TEXT NOT NULL DEFAULT 'manual'`; lookup = latest row with `effective_from <= asOf`. Dates are `'YYYY-MM-DD'` strings in JS.
@@ -1672,7 +1674,7 @@ export default function ProfilesTab({ canEdit }) {
     <div>
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8, maxWidth: 560 }}>
-          แท็บนี้เป็นแคตตาล็อกใหม่ แยกจากรายการ "หน้าตัดอลูมิเนียม" และ "สีผิวอลูมิเนียม" เดิมใน BOM Templates ซึ่งยังใช้กับระบบประเมินราคาเดิมจนกว่าจะถึงเฟส 2 ราคาต่อกก. กรอกที่แท็บ "ราคา"
+          หน้าตัดและสีอลูมิเนียมจัดการที่นี่ที่เดียว ราคาต่อกก. กรอกที่แท็บ "ราคา"
         </div>
         <label className="label">เลือกโรงรีด</label>
         <select className="input" style={{ maxWidth: 320 }} value={providerId} onChange={e => { setProviderId(e.target.value); setSeriesId('') }}>
@@ -2013,7 +2015,50 @@ git commit -m "feat(alu-catalog): price history tab for kg, piece and part price
 
 ---
 
-### Task 11: Phase wrap-up — verify, hand over to the owner, live check
+### Task 11: Show one list — hide the legacy profile and colour lists
+
+**Files:**
+- Modify: `src/pages/BomTemplates.jsx` (the toolbar, currently lines 469-472)
+
+**Interfaces:**
+- Consumes: the `view` state in `BomTemplates` (`'templates' | 'profiles' | 'finishes' | 'infill_types'`).
+- Produces: a toolbar with only `templates` and `infill_types`; the `profiles` and `finishes` views become unreachable (their code is kept so the change is reversible and Phase 2 can delete it).
+
+- [ ] **Step 1: Replace the two legacy buttons with a pointer**
+
+In `src/pages/BomTemplates.jsx` replace exactly these two lines:
+
+```jsx
+        <button className={`btn btn-sm ${view === 'profiles' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('profiles')}>📏 หน้าตัดอลูมิเนียม</button>
+        <button className={`btn btn-sm ${view === 'finishes' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('finishes')}>🎨 สีผิวอลูมิเนียม</button>
+```
+
+with:
+
+```jsx
+        {/* Legacy profile / colour lists are hidden so there is one list only (the catalog's).
+            Restore these two buttons to bring them back; Phase 2 deletes them for good. */}
+        <span style={{ alignSelf: 'center', fontSize: 12, color: 'var(--text3)' }}>หน้าตัดและสีอลูมิเนียมอยู่ที่ ประเมินราคา → 🏭 แคตตาล็อกอลูมิเนียม</span>
+```
+
+- [ ] **Step 2: Build and test**
+
+Run: `npm run build && npx vitest run`
+Expected: build succeeds; all tests PASS.
+
+- [ ] **Step 3: Confirm the diff is only that toolbar change**
+
+Run: `git diff --stat -- src/pages/BomTemplates.jsx`
+Expected: one file, a handful of lines changed (2 removed, 3 added).
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/pages/BomTemplates.jsx
+git commit -m "feat(alu-catalog): hide the legacy profile and colour lists so there is one list" -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+```
+
+### Task 12: Phase wrap-up — verify, hand over to the owner, live check
 
 **Files:**
 - Modify: none expected (fixes only if a check below fails).
@@ -2035,8 +2080,8 @@ Expected: Tests 1, 2, 3 `TEST PASSED`; no `ERROR`.
 
 - [ ] **Step 3: Check the existing estimation module is untouched**
 
-Run: `git diff --stat origin/main -- src/lib/bomEngine.js src/pages/Estimation.jsx src/pages/BomTemplates.jsx src/pages/AluminumProfiles.jsx`
-Expected: no output (none of the four files changed).
+Run: `git diff --stat origin/main -- src/lib/bomEngine.js src/pages/Estimation.jsx src/pages/AluminumProfiles.jsx`
+Expected: no output (none of the three files changed). `src/pages/BomTemplates.jsx` differs only by the Task 11 toolbar lines.
 
 - [ ] **Step 4: Hand the migrations to the owner**
 
@@ -2059,7 +2104,7 @@ Run the app (`npm run dev`), sign in as the FacadeX owner, open ประเม�
 4. หน้าตัด tab: add a profile (weight 0.85, หนา 1.2), a colour "ขาว", a length 6.4 m; link the profile to the series with role "กล่องร่อง".
 5. อุปกรณ์ tab: add a set and a part, put the part in the set with quantity 2.
 6. ราคา tab: add a kg price 95 dated today, then 98 dated later; try adding another 95 on the first date → a Thai "ซ้ำ" message, not a Postgres error.
-7. Open BOM Templates and Estimation → they still load and behave as before, and the old หน้าตัดอลูมิเนียม / สีผิวอลูมิเนียม lists are unchanged (the new catalog is a separate list until Phase 2).
+7. Open BOM Templates and Estimation → both still load; BOM Templates shows only 'BOM Templates' and 'วัสดุอุดช่อง' plus the pointer to the catalog (the old หน้าตัด/สีผิว lists are hidden). Estimation still cannot price an opening with the new colours until Phase 2 (it reads the legacy colour table, which is empty, exactly as before).
 8. Sign in as a tenant without the estimation module → the nav entry is absent.
 
 Expected: all eight hold. Record any deviation as a bug before merging.
@@ -2072,7 +2117,7 @@ Do not merge `feat/alu-cost-catalog` into main. Phases 2 and 3 continue on this 
 
 ## Self-Review
 
-**Spec coverage (Phase 1 scope = catalog):** hierarchy and series↔types (Task 1); profiles, colours, variants, parts, sets, series↔profiles/parts as new tables (Task 2); kg/piece/part price history with precedence, effective dates and `source` (Task 3, Task 4); `resolveAluPrice`/`resolvePartPrice` with the three bases and `unresolved` (Task 4); series labels full/short with `short_name` (Tasks 1, 5); management UI for every table (Tasks 6–10); FacadeX-only gating (Tasks 1–3, 7). Deferred to later plans by design: `bom_templates.type_id`, estimation project/opening changes, engine rewiring, the stale-price banner, price structure and export (Phases 2–3), and retiring the legacy `aluminum_finishes` (Phase 2). No spec requirement for Phase 1 lacks a task.
+**Spec coverage (Phase 1 scope = catalog):** hierarchy and series↔types (Task 1); profiles, colours, variants, parts, sets, series↔profiles/parts as new tables (Task 2); kg/piece/part price history with precedence, effective dates and `source` (Task 3, Task 4); `resolveAluPrice`/`resolvePartPrice` with the three bases and `unresolved` (Task 4); series labels full/short with `short_name` (Tasks 1, 5); management UI for every table (Tasks 6–10) and a single profile/colour list (Task 11); FacadeX-only gating (Tasks 1–3, 7). Deferred to later plans by design: `bom_templates.type_id`, estimation project/opening changes, engine rewiring, the stale-price banner, price structure and export (Phases 2–3), and retiring the legacy `aluminum_finishes` (Phase 2). No spec requirement for Phase 1 lacks a task.
 
 **Placeholder scan:** no TBD/TODO/"similar to" steps; every code step carries its code. Checked against the live schema while writing: legacy `aluminum_profiles` is gated by `purchase_orders`, so the catalog uses its own `alu_profiles`/`alu_finishes` and the SQL fixtures give tenants A and B only `estimation`.
 
