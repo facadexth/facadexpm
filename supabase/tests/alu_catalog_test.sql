@@ -242,3 +242,102 @@ BEGIN
   RESET role;
   RAISE NOTICE 'Test 2 (components): TEST PASSED';
 END $$;
+
+-- ── Test 3: price history ──
+DO $$
+DECLARE
+  ta UUID; tb UUID; tc UUID; t TEXT;
+  prov UUID; ser UUID; prof UUID; fin UUID; var UUID; partp UUID; n INT;
+BEGIN
+  -- read fixtures BEFORE switching role (authenticated cannot read the temp table)
+  SELECT a_tenant, b_tenant, c_tenant INTO ta, tb, tc FROM _alu_fx;
+
+  SET LOCAL role = 'authenticated';
+  SET LOCAL request.jwt.claims = '{"email":"__alu_a__@example.com"}';
+
+  SELECT id INTO prov FROM alu_providers WHERE name = 'TYK';
+  SELECT id INTO ser  FROM alu_series WHERE provider_id = prov;
+  SELECT id INTO prof FROM alu_profiles WHERE provider_id = prov;
+  SELECT id INTO fin  FROM alu_finishes WHERE provider_id = prov;
+  SELECT id INTO var  FROM alu_profile_variants WHERE profile_id = prof;
+  SELECT id INTO partp FROM alu_parts WHERE name = 'ยางขอบ';
+
+  INSERT INTO alu_kg_prices (provider_id, finish_id, price_per_kg, effective_from) VALUES (prov, fin, 95, '2026-01-01');
+  INSERT INTO alu_kg_prices (provider_id, finish_id, price_per_kg, effective_from) VALUES (prov, fin, 98, '2026-06-01');  -- history: a later date is a new row
+  INSERT INTO alu_kg_prices (provider_id, finish_id, series_id, price_per_kg, effective_from) VALUES (prov, fin, ser, 101, '2026-01-01');  -- series override, same date is fine
+
+  BEGIN
+    INSERT INTO alu_kg_prices (provider_id, finish_id, price_per_kg, effective_from) VALUES (prov, fin, 99, '2026-01-01');
+    RAISE EXCEPTION 'kg price same-date unique did not fire';
+  EXCEPTION WHEN unique_violation THEN NULL; END;
+
+  BEGIN
+    INSERT INTO alu_kg_prices (provider_id, finish_id, series_id, profile_id, price_per_kg, effective_from)
+      VALUES (prov, fin, ser, prof, 90, '2026-02-01');
+    RAISE EXCEPTION 'series/profile exclusive CHECK did not fire';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+
+  BEGIN
+    INSERT INTO alu_kg_prices (provider_id, finish_id, price_per_kg, effective_from) VALUES (prov, fin, -1, '2026-03-01');
+    RAISE EXCEPTION 'negative price CHECK did not fire';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+
+  INSERT INTO alu_piece_prices (variant_id, price_per_piece, effective_from) VALUES (var, 1200, '2026-01-01');
+  INSERT INTO alu_part_prices (part_id, list_price, discount_pct, effective_from) VALUES (partp, 1000, 22, '2026-01-01');
+
+  BEGIN
+    INSERT INTO alu_part_prices (part_id, list_price, discount_pct, effective_from) VALUES (partp, 1000, 101, '2026-02-01');
+    RAISE EXCEPTION 'discount_pct CHECK did not fire';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+
+  BEGIN
+    INSERT INTO alu_part_prices (part_id, list_price, effective_from) VALUES (partp, 900, '2026-01-01');
+    RAISE EXCEPTION 'part price same-date unique did not fire';
+  EXCEPTION WHEN unique_violation THEN NULL; END;
+
+  -- tenant A: every price table has rows (so the zero-counts below cannot pass vacuously)
+  FOREACH t IN ARRAY ARRAY['alu_kg_prices','alu_piece_prices','alu_part_prices'] LOOP
+    EXECUTE format('SELECT count(*) FROM %I', t) INTO n;
+    IF n < 1 THEN RAISE EXCEPTION 'tenant A sees no rows in %', t; END IF;
+  END LOOP;
+
+  -- WITH CHECK: A cannot write a price row into tenant B
+  BEGIN
+    INSERT INTO alu_kg_prices (tenant_id, provider_id, finish_id, price_per_kg, effective_from) VALUES (tb, prov, fin, 1, '2026-04-01');
+    RAISE EXCEPTION 'tenant A inserted an alu_kg_prices row into tenant B (WITH CHECK failed)';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN
+    INSERT INTO alu_part_prices (tenant_id, part_id, list_price, effective_from) VALUES (tb, partp, 1, '2026-04-01');
+    RAISE EXCEPTION 'tenant A inserted an alu_part_prices row into tenant B (WITH CHECK failed)';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+
+  -- tenant B: sees nothing of A in any price table
+  SET LOCAL request.jwt.claims = '{"email":"__alu_b__@example.com"}';
+  FOREACH t IN ARRAY ARRAY['alu_kg_prices','alu_piece_prices','alu_part_prices'] LOOP
+    EXECUTE format('SELECT count(*) FROM %I', t) INTO n;
+    IF n <> 0 THEN RAISE EXCEPTION 'tenant B sees % rows in %', n, t; END IF;
+  END LOOP;
+
+  -- tenant C (no estimation module): sees nothing, cannot write to any price table
+  SET LOCAL request.jwt.claims = '{"email":"__alu_c__@example.com"}';
+  FOREACH t IN ARRAY ARRAY['alu_kg_prices','alu_piece_prices','alu_part_prices'] LOOP
+    EXECUTE format('SELECT count(*) FROM %I', t) INTO n;
+    IF n <> 0 THEN RAISE EXCEPTION 'tenant C sees % rows in %', n, t; END IF;
+  END LOOP;
+
+  BEGIN
+    INSERT INTO alu_kg_prices (provider_id, finish_id, price_per_kg, effective_from) VALUES (prov, fin, 1, '2026-05-01');
+    RAISE EXCEPTION 'tenant C alu_kg_prices insert was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN
+    INSERT INTO alu_piece_prices (variant_id, price_per_piece, effective_from) VALUES (var, 1, '2026-05-01');
+    RAISE EXCEPTION 'tenant C alu_piece_prices insert was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN
+    INSERT INTO alu_part_prices (part_id, list_price, effective_from) VALUES (partp, 1, '2026-05-01');
+    RAISE EXCEPTION 'tenant C alu_part_prices insert was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+
+  RESET role;
+  RAISE NOTICE 'Test 3 (prices): TEST PASSED';
+END $$;
