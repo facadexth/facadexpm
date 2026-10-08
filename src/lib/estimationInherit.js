@@ -24,6 +24,32 @@ export function resolveItemInputs(item, project, template, typesById) {
   }
 }
 
+// The engine (computeBomForOpening) reads thickness_mm / hardware_set_id / labour_per_sqm as ALREADY RESOLVED
+// values, so the opening it gets must never carry the item's raw (possibly NULL = "inherit") columns.
+// The legacy `finish_id` column is not an alu finish and is deliberately never read here.
+function engineParts(item, project, template, typesById, infillTypesById, extra) {
+  const r = resolveItemInputs(item, project, template, typesById)
+  const opening = {
+    ...(item || {}), ...extra,
+    thickness_mm: r.thickness_mm,
+    hardware_set_id: extra && extra.__noHardware ? null : r.hardware_set_id,
+    labour_per_sqm: r.labour_per_sqm,
+  }
+  delete opening.__noHardware
+  const infillType = r.infill_type_id ? (infillTypesById || {})[r.infill_type_id] || null : null
+  return { opening, seriesId: r.series_id, finishId: r.finish_id, infillType }
+}
+
+export function buildEngineOpening(item, project, template, typesById, infillTypesById) {
+  return engineParts(item, project, template, typesById, infillTypesById, null)
+}
+
+// Add-on unit: same series, finish and thickness as the main item; labour uses the ADD-ON's own type default;
+// the hardware set is priced once, on the main opening.
+export function buildEngineAddonOpening(item, project, addon, addonTemplate, typesById, infillTypesById) {
+  return engineParts(item, project, addonTemplate, typesById, infillTypesById, { ...(addon || {}), __noHardware: true })
+}
+
 // 'unknown' = cannot judge (no type on the template, no template, or no series yet); never a hard block.
 export function typeAvailability(template, seriesId, seriesTypes) {
   if (!template || !template.type_id || !seriesId) return 'unknown'

@@ -36,10 +36,12 @@ export function buildCatalogIndex(rows = {}) {
 // A series offers a profile in a role (family) through alu_series_profiles; the thickness lives on the
 // profile row. The DB does not stop two profiles matching one tuple, so pick the lowest id and say so.
 export function resolveCatalogProfile(index, seriesId, family, thicknessMm) {
-  const links = (index.seriesProfilesBySeries[seriesId] || []).filter(l => l.family === family)
-  const matches = links
-    .map(l => index.profiles[l.profile_id])
-    .filter(p => p && p.active !== false && Number(p.thickness_mm) === Number(thicknessMm))
+  const want = String(family ?? '').trim()
+  const matches = (index.seriesProfilesBySeries[seriesId] || [])
+    .map(l => ({ l, p: index.profiles[l.profile_id] }))
+    .filter(({ l, p }) => p && String(l.family ?? p.family ?? '').trim() === want)
+    .map(({ p }) => p)
+    .filter(p => p.active !== false && Number(p.thickness_mm) === Number(thicknessMm))
     .sort((a, b) => (String(a.id) < String(b.id) ? -1 : 1))
   if (!matches.length) return { profile: null, ambiguous: false }
   return { profile: matches[0], ambiguous: matches.length > 1 }
@@ -48,6 +50,8 @@ export function resolveCatalogProfile(index, seriesId, family, thicknessMm) {
 export function makeCatalogPricing({ index, seriesId, finishId, asOf }) {
   const series = index.series[seriesId] || null
   const finish = index.finishes[finishId] || null
+  // Without a real YYYY-MM-DD date nothing may be priced: a missing asOf must not silently mean "today" or "any".
+  const asOfOk = typeof asOf === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(asOf)
 
   return {
     kind: 'catalog',
@@ -57,6 +61,7 @@ export function makeCatalogPricing({ index, seriesId, finishId, asOf }) {
         role_name, family, series_id: seriesId || null, thickness_mm, length_m, quantity,
         weight_kg: 0, cost: 0, resolved: false, reason: null, ambiguous: false, price_row_id: null,
       }
+      if (!asOfOk) return { ...base, reason: 'no_as_of' }
       if (!series) return { ...base, reason: 'no_series' }
       if (!finish) return { ...base, reason: 'no_finish' }
       const { profile, ambiguous } = resolveCatalogProfile(index, seriesId, family, thickness_mm)
@@ -80,6 +85,7 @@ export function makeCatalogPricing({ index, seriesId, finishId, asOf }) {
 
     // h is a bom_template_hardware row. A priced catalog part wins; otherwise the reference price stays.
     hardwarePrice(h) {
+      if (!asOfOk) return { unit_price: 0, source: 'reference', price_row_id: null, unresolved: true, reason: 'no_as_of' }
       if (h.part_id) {
         const p = resolvePartPrice({ partId: h.part_id, asOf, partPrices: index.partPrices })
         if (p) return { unit_price: p.net_price, source: 'part', price_row_id: p.row.id }
@@ -88,8 +94,18 @@ export function makeCatalogPricing({ index, seriesId, finishId, asOf }) {
     },
 
     setLines(setId) {
-      if (!setId) return []
-      return (index.setItemsBySet[setId] || []).map(item => {
+      if (setId === null || setId === undefined || setId === '') return []
+      const bad = (reason) => [{ name: 'ชุดอุปกรณ์', code: null, quantity: 0, unit_price: 0, cost: 0, resolved: false, reason, price_row_id: null }]
+      const setPart = index.parts[setId]
+      if (!setPart) return bad('unknown_set')
+      if (setPart.kind !== 'hardware_set') return bad('not_hardware_set')
+      const items = index.setItemsBySet[setId] || []
+      if (!items.length) return bad('empty_set')
+      return items.map(item => {
+        if (!asOfOk) {
+          const part = index.parts[item.part_id]
+          return { name: part ? part.name : '?', code: part ? part.code : null, quantity: Number(item.quantity), unit_price: 0, cost: 0, resolved: false, reason: 'no_as_of', price_row_id: null }
+        }
         const part = index.parts[item.part_id]
         const p = resolvePartPrice({ partId: item.part_id, asOf, partPrices: index.partPrices })
         const quantity = Number(item.quantity)

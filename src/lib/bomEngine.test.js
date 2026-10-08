@@ -347,6 +347,15 @@ describe('computeBomForOpening -- catalog pricing', () => {
     expect(r.totalCost).toBeCloseTo(180)
   })
 
+  it('an unknown hardware set id is listed unresolved and adds no cost (never silently empty)', () => {
+    const known = computeBomForOpening(opening({ hardware_set_id: null }), baseTemplate(), [], [], pricing(), null)
+    const r = computeBomForOpening(opening({ hardware_set_id: 'ghost' }), baseTemplate(), [], [], pricing(), null)
+    expect(r.unresolvedComponents).toEqual(['ชุดอุปกรณ์'])
+    expect(r.unresolvedDetails).toHaveLength(1)
+    expect(r.unresolvedDetails[0].name).toBe('ชุดอุปกรณ์')
+    expect(r.totalCost).toBe(known.totalCost)
+  })
+
   it('no hardware_set_id means no set lines (legacy pricing never has sets)', () => {
     const r = computeBomForOpening(opening(), baseTemplate(), [], [], pricing(), null)
     expect(r.hardwareSetLines).toEqual([])

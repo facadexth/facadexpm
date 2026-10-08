@@ -122,8 +122,57 @@ describe('makeCatalogPricing.setLines', () => {
     expect(lock).toMatchObject({ quantity: 2, unit_price: 90, cost: 180, resolved: true, code: 'P-0002' })
     expect(hinge).toMatchObject({ quantity: 1, cost: 0, resolved: false })
   })
-  it('an unknown or empty set gives no lines', () => {
-    expect(pricing.setLines('nope')).toEqual([])
+  it('no set chosen (null/undefined) is a real "no set": no lines', () => {
     expect(pricing.setLines(null)).toEqual([])
+    expect(pricing.setLines(undefined)).toEqual([])
+  })
+  it('an unknown set id is one unresolved line, never silently empty', () => {
+    expect(pricing.setLines('nope')).toEqual([expect.objectContaining({ name: 'ชุดอุปกรณ์', reason: 'unknown_set', resolved: false, cost: 0 })])
+  })
+  it('a part that is not a hardware_set is unresolved not_hardware_set', () => {
+    expect(pricing.setLines('pt1')).toEqual([expect.objectContaining({ reason: 'not_hardware_set', resolved: false, cost: 0 })])
+  })
+  it('a hardware_set with zero items is unresolved empty_set', () => {
+    const r = rows(); r.parts.push({ id: 'set2', name: 'Empty', code: 'P-0009', kind: 'hardware_set' })
+    const p = makeCatalogPricing({ index: buildCatalogIndex(r), seriesId: 's1', finishId: 'f1', asOf: '2026-06-01' })
+    expect(p.setLines('set2')).toEqual([expect.objectContaining({ reason: 'empty_set', resolved: false, cost: 0 })])
+  })
+})
+
+describe('makeCatalogPricing asOf guard', () => {
+  const bad = [undefined, null, '', 'today', new Date('2026-06-01'), '2026-6-1']
+  for (const asOf of bad) {
+    it('asOf=' + String(asOf) + ' prices nothing', () => {
+      const p = makeCatalogPricing({ index: buildCatalogIndex(rows()), seriesId: 's1', finishId: 'f1', asOf })
+      expect(p.profileLine({ role_name: 'R', family: 'Frame', length_m: 2, quantity: 2, thickness_mm: 1.2 }))
+        .toMatchObject({ resolved: false, reason: 'no_as_of', cost: 0 })
+      expect(p.hardwarePrice({ part_id: 'pt1', reference_unit_price: 50 }))
+        .toMatchObject({ unit_price: 0, source: 'reference', unresolved: true, reason: 'no_as_of' })
+      const lines = p.setLines('set1')
+      expect(lines).toHaveLength(2)
+      for (const l of lines) expect(l).toMatchObject({ resolved: false, reason: 'no_as_of', cost: 0, unit_price: 0 })
+    })
+  }
+  it('a valid date still prices normally', () => {
+    const p = makeCatalogPricing({ index: buildCatalogIndex(rows()), seriesId: 's1', finishId: 'f1', asOf: '2026-06-01' })
+    expect(p.profileLine({ role_name: 'R', family: 'Frame', length_m: 2, quantity: 2, thickness_mm: 1.2 }).resolved).toBe(true)
+  })
+})
+
+describe('resolveCatalogProfile family fallback', () => {
+  it('link.family null falls back to profile.family', () => {
+    const r = rows(); r.seriesProfiles[0].family = null; r.profiles[0].family = 'Frame'
+    expect(resolveCatalogProfile(buildCatalogIndex(r), 's1', 'Frame', 1.2).profile.id).toBe('pr1')
+  })
+  it('whitespace on either side matches', () => {
+    const r = rows(); r.seriesProfiles[0].family = ' Frame '
+    expect(resolveCatalogProfile(buildCatalogIndex(r), 's1', 'Frame', 1.2).profile.id).toBe('pr1')
+    expect(resolveCatalogProfile(buildCatalogIndex(rows()), 's1', '  Frame\t', 1.2).profile.id).toBe('pr1')
+  })
+  it('no family anywhere gives no_profile', () => {
+    const r = rows(); r.seriesProfiles[0].family = null
+    expect(resolveCatalogProfile(buildCatalogIndex(r), 's1', 'Frame', 1.2).profile).toBeNull()
+    const p = makeCatalogPricing({ index: buildCatalogIndex(r), seriesId: 's1', finishId: 'f1', asOf: '2026-06-01' })
+    expect(p.profileLine({ role_name: 'R', family: 'Frame', length_m: 1, quantity: 1, thickness_mm: 1.2 }).reason).toBe('no_profile')
   })
 })
