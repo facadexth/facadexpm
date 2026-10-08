@@ -4,7 +4,7 @@
 import { RPC_ERROR_TEXT, PO_DEPOSIT_LOCKED_TEXT, openDeposits } from './receiveDeposits.js'
 import { depositRemaining, round2 } from './depositMath.js'
 import { poTaxInvoiceErrorText } from './poTaxInvoiceStatus.js'
-import { RECEIVE_DELIVERY_DISCOUNT_TEXT } from './deliveryTaxInvoiceText.js'
+import { RECEIVE_DELIVERY_DISCOUNT_TEXT, DELIVERY_RPC_TEXT, DELIVERY_CHECK_TEXT } from './deliveryTaxInvoiceText.js'
 
 export const PO_RECEIPT_LOCKED_TEXT = 'ใบสั่งซื้อนี้รับของแล้ว แก้ไขหรือยกเลิกไม่ได้ — แจ้งผู้ดูแลระบบ'
 export const DB_NOT_UPDATED_TEXT = 'ระบบยังไม่ได้อัปเดตฐานข้อมูล — แจ้งผู้ดูแลระบบ'
@@ -53,6 +53,8 @@ export const PO_RECEIPT_ERROR_TEXT = {
   cross_tenant_reference: 'ข้อมูลที่อ้างถึงไม่ถูกต้อง กรุณาเปิดใหม่',
   deposit_expense_is_po_generated: 'รายจ่ายนี้เป็นมัดจำที่สร้างจากใบสั่งซื้อ ลบหรือแก้ไขไม่ได้',
   po_tax_invoiced: 'ใบสั่งซื้อนี้ผูกกับใบกำกับภาษีแล้ว ทำรายการไม่ได้',
+  receipt_po_not_delivery: DELIVERY_CHECK_TEXT.receipt_po_not_delivery,
+  ...DELIVERY_RPC_TEXT,
 }
 
 /** Thai message for an RPC / trigger error; unknown codes fall back to the raw message. */

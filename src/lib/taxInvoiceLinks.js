@@ -16,6 +16,15 @@ export const saveDraftArgs = (id, header, items, poIds) =>
   ({ p_id: id || null, p_header: header, p_items: items || [], p_po_ids: poIds || [] })
 export const saveReceiptDraftArgs = (id, header, items, receiptIds) =>
   ({ p_id: id || null, p_header: header, p_items: items || [], p_receipt_ids: receiptIds || [] })
+/** Which save RPC + args a tax invoice form uses. A delivery form ALWAYS goes to the receipt RPC (even with no receipt
+ *  picked yet: the server answers no_receipts), so an old bundle's po-level save can never be hit by a delivery draft. */
+export function draftSaveCall(form, id, header, items) {
+  const receiptIds = form?.receipt_ids || []
+  if (form?.link_kind === 'delivery' || receiptIds.length > 0) {
+    return { rpc: TAX_INVOICE_RPCS.saveReceipts, args: saveReceiptDraftArgs(id, header, items, receiptIds) }
+  }
+  return { rpc: TAX_INVOICE_RPCS.save, args: saveDraftArgs(id, header, items, form?.po_ids) }
+}
 export const idArgs = id => ({ p_id: id })
 /** post must pass the revision the user previewed; a missing value is sent as null and the server refuses it. */
 export const postArgs = (id, expectedRevision) => ({ p_id: id, p_expected_revision: Number.isInteger(expectedRevision) ? expectedRevision : null })

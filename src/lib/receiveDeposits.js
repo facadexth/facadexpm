@@ -1,3 +1,4 @@
+import { DELIVERY_RPC_TEXT } from './deliveryTaxInvoiceText.js'
 // Pure logic behind the receive dialog's deposit block (หักมัดจำ).
 // The receive_po_with_deposits RPC stays the authority; this is the preview.
 import { round2, depositRemaining, splitDeduction, computeReceivePlan, validateDeduction, matchDepositByRef, normalizeDepositRef } from './depositMath.js'
@@ -17,6 +18,7 @@ export const DEDUCTION_ERROR_TEXT = {
 export const PO_DEPOSIT_LOCKED_TEXT = 'ใบสั่งซื้อนี้หักมัดจำแล้ว ย้อนไม่ได้จากหน้านี้ — แจ้งผู้ดูแลระบบ'
 
 export const RPC_ERROR_TEXT = {
+  po_delivery_needs_receipt: DELIVERY_RPC_TEXT.po_delivery_needs_receipt,
   not_ordered: 'ใบสั่งซื้อนี้รับของไปแล้ว',
   deposit_exceeds_remaining: 'ยอดหักเกินมัดจำคงเหลือ (อาจมีการใช้มัดจำไปแล้ว) กรุณาเปิดใหม่',
   deposit_exceeds_po: 'ยอดหักมัดจำเกินยอดใบสั่งซื้อ',

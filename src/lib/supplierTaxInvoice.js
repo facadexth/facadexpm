@@ -5,6 +5,7 @@
 // ============================================================
 import { round2 } from './depositMath.js'
 import { computePoItemBaseQty } from './inventoryCost.js'
+import { DELIVERY_CHECK_TEXT, DELIVERY_RPC_TEXT } from './deliveryTaxInvoiceText.js'
 
 const EPS = 0.005
 
@@ -156,6 +157,7 @@ export const CHECK_TEXT = {
   expense_missing: 'ไม่พบรายจ่ายของใบสั่งซื้อนี้ — ไม่ได้ประทับเลขที่ใบกำกับ',
   void_inexact: 'สต็อกมีการเคลื่อนไหวหลังบันทึกใบกำกับ — ยกเลิกแล้ว แต่ต้นทุนเฉลี่ยอาจไม่เท่าเดิมทุกบาท',
   bad_header: 'ข้อมูลหัวใบกำกับไม่ครบหรือไม่ถูกต้อง',
+  ...DELIVERY_CHECK_TEXT,
 }
 
 const RPC_TEXT = {
@@ -169,6 +171,7 @@ const RPC_TEXT = {
   cross_tenant_reference: 'ข้อมูลอ้างอิงไม่ถูกต้อง',
   po_tax_invoiced: 'ใบสั่งซื้อนี้ผูกกับใบกำกับภาษีที่บันทึกแล้ว — ยกเลิกใบกำกับก่อนจึงจะแก้ได้',
   po_stock_flag_locked: 'เปลี่ยน "สต็อกเข้าจากใบกำกับ" หลังรับของไม่ได้',
+  ...DELIVERY_RPC_TEXT,
 }
 const CODES_LONGEST_FIRST = Object.keys(RPC_TEXT).sort((a, b) => b.length - a.length)
 
@@ -215,6 +218,7 @@ export function mapTaxInvoiceRpcError(err) {
   if (err?.code === '23505' || msg.includes('duplicate key')) {
     if (msg.includes('sti_invoice_no_active_uq')) return 'เลขที่ใบกำกับนี้มีอยู่แล้วสำหรับซัพพลายเออร์นี้'
     if (msg.includes('stip_po_active_uq')) return CHECK_TEXT.po_linked_elsewhere
+    if (msg.includes('stirc_receipt_active_uq')) return CHECK_TEXT.receipt_linked_elsewhere
   }
   if (err?.code === '23514' || msg.includes('violates check constraint')) {
     for (const [name, text] of Object.entries(CONSTRAINT_TEXT)) if (msg.includes(name)) return text

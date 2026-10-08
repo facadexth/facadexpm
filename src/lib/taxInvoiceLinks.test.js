@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { buildActiveLinkMap, saveDraftArgs, saveReceiptDraftArgs, idArgs, postArgs, voidArgs, TAX_INVOICE_RPCS } from './taxInvoiceLinks.js'
+import { buildActiveLinkMap, draftSaveCall, saveDraftArgs, saveReceiptDraftArgs, idArgs, postArgs, voidArgs, TAX_INVOICE_RPCS } from './taxInvoiceLinks.js'
 import { mapTaxInvoiceRpcError, CHECK_TEXT } from './supplierTaxInvoice.js'
 
 describe('buildActiveLinkMap', () => {
@@ -58,6 +58,12 @@ describe('RPC argument builders match the SQL function signatures', () => {
   it('void', () => {
     expect(Object.keys(voidArgs('x', 'r')).sort()).toEqual(paramsOf(TAX_INVOICE_RPCS.void))
   })
+  it('saveReceipts matches 2026-10-09-05', () => {
+    const sql5 = readFileSync(new URL('../../supabase/migrations/2026-10-09-05-delivery-tax-invoice-rpcs.sql', import.meta.url), 'utf8')
+    const m = sql5.match(/FUNCTION save_supplier_tax_invoice_receipt_draft\(([^)]*)\)/)
+    expect(m).toBeTruthy()
+    expect(Object.keys(saveReceiptDraftArgs(null, {}, [], [])).sort()).toEqual(m[1].split(',').map(a => a.trim().split(/\s+/)[0]).sort())
+  })
   it('save defaults: a new draft sends p_id null and arrays', () => {
     expect(saveDraftArgs(undefined, { a: 1 }, undefined, undefined)).toEqual({ p_id: null, p_header: { a: 1 }, p_items: [], p_po_ids: [] })
     expect(saveDraftArgs('abc', {}, [1], ['p'])).toEqual({ p_id: 'abc', p_header: {}, p_items: [1], p_po_ids: ['p'] })
@@ -72,6 +78,19 @@ describe('hooks file wiring', () => {
       expect(mig1).toContain(`CONSTRAINT ${c} FOREIGN KEY`)
       expect(hooks).toContain(`!${c}(`)
     }
+  })
+  it('receipt-link embeds name constraints that exist in 2026-10-09-04; the receipt wrapper calls its own RPC', () => {
+    const mig4 = readFileSync(new URL('../../supabase/migrations/2026-10-09-04-delivery-tax-invoice.sql', import.meta.url), 'utf8')
+    for (const c of ['stirc_invoice_fk', 'stirc_receipt_fk']) { expect(mig4).toContain(`CONSTRAINT ${c} FOREIGN KEY`); expect(hooks).toContain(`!${c}(`) }
+    for (const c of ['po_receipts_po_fk', 'po_receipt_items_receipt_fk', 'po_receipt_items_item_fk']) expect(hooks).toContain(`!${c}`)
+    const line = hooks.split('\n').find(l => l.startsWith('export const saveSupplierTaxInvoiceReceiptDraft ='))
+    expect(line).toContain('TAX_INVOICE_RPCS.saveReceipts,')
+  })
+  it('the receipt-link reads select the active column (else every link is dropped and a delivery invoice reads as po)', () => {
+    const sel = hooks.match(/const STI_RECEIPTS_EMBED = '([^']*)'/)[1]
+    expect(sel).toMatch(/supplier_tax_invoice_receipts!stirc_invoice_fk\([^)]*\bactive\b/)
+    const fn = hooks.slice(hooks.indexOf('export async function fetchActiveReceiptLinks'))
+    expect(fn.slice(0, fn.indexOf('catch'))).toMatch(/select\('receipt_id, invoice_id, active,/)
   })
   it('each wrapper calls its own RPC entry (post must not call preview)', () => {
     const want = {
@@ -110,5 +129,22 @@ describe('receipt draft args', () => {
     expect(saveReceiptDraftArgs(undefined, { a: 1 }, undefined, undefined)).toEqual({ p_id: null, p_header: { a: 1 }, p_items: [], p_receipt_ids: [] })
     expect(saveReceiptDraftArgs('i', {}, [1], ['r'])).toEqual({ p_id: 'i', p_header: {}, p_items: [1], p_receipt_ids: ['r'] })
     expect(TAX_INVOICE_RPCS.saveReceipts).toBe('save_supplier_tax_invoice_receipt_draft')
+  })
+})
+
+describe('draftSaveCall: old-client safety (a delivery draft never reaches the po-level save)', () => {
+  it('delivery form -> receipt RPC with p_receipt_ids, even when no receipt is selected yet', () => {
+    const c = draftSaveCall({ link_kind: 'delivery', receipt_ids: ['r1'], po_ids: ['p9'] }, 'i', { h: 1 }, [])
+    expect(c.rpc).toBe('save_supplier_tax_invoice_receipt_draft')
+    expect(c.args).toEqual({ p_id: 'i', p_header: { h: 1 }, p_items: [], p_receipt_ids: ['r1'] })
+    expect(draftSaveCall({ link_kind: 'delivery' }, null, {}, []).rpc).toBe(TAX_INVOICE_RPCS.saveReceipts)
+    expect(draftSaveCall({ link_kind: 'delivery' }, null, {}, []).args.p_receipt_ids).toEqual([])
+  })
+  it('receipt ids without a kind still go to the receipt RPC; po forms use the old save', () => {
+    expect(draftSaveCall({ receipt_ids: ['r1'] }, null, {}, []).rpc).toBe(TAX_INVOICE_RPCS.saveReceipts)
+    const c = draftSaveCall({ link_kind: 'po', po_ids: ['p1'] }, null, {}, [])
+    expect(c.rpc).toBe(TAX_INVOICE_RPCS.save)
+    expect(c.args.p_po_ids).toEqual(['p1'])
+    expect(draftSaveCall({}, null, {}, []).rpc).toBe(TAX_INVOICE_RPCS.save)
   })
 })

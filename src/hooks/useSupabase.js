@@ -9,9 +9,10 @@ import { buildDepositMap } from '../lib/depositMath.js'
 import { applyDateFilter } from '../lib/expenseFilters.js'
 import { buildUnitSeedRows, VAT_RATE } from '../lib/invoiceCalc.js'
 import { validateExtraction, blobToBase64 } from '../lib/poDocumentExtraction.js'
-import { buildActiveLinkMap, saveDraftArgs, idArgs, postArgs, voidArgs, TAX_INVOICE_RPCS } from '../lib/taxInvoiceLinks.js'
+import { buildActiveLinkMap, saveDraftArgs, saveReceiptDraftArgs, idArgs, postArgs, voidArgs, TAX_INVOICE_RPCS } from '../lib/taxInvoiceLinks.js'
 import { isTaxInvoiceNotReady } from '../lib/supplierTaxInvoice.js'
-import { buildPoMoneyIndex, isMissingColumnError, isMissingRelationError } from '../lib/poReceiptErrors.js'
+import { buildPoMoneyIndex, isMissingColumnError, isMissingRelationError, isMissingEmbedError } from '../lib/poReceiptErrors.js'
+import { buildActiveReceiptLinkMap } from '../lib/deliveryTaxInvoice.js'
 
 /** Generic fetch hook */
 export function useQuery(queryFn, deps = []) {
@@ -1874,16 +1875,23 @@ export async function splitPayment({ expenseId, amount, paidDate, method }) {
 
 // List: item columns narrowed to what a list needs. The edit form loads one invoice with all item
 // columns through useSupplierTaxInvoice(id). `notReady` = the migration is not applied yet.
+const STI_LIST_SELECT = '*, suppliers!sti_supplier_fk(name, supplier_number), supplier_tax_invoice_items!stii_invoice_fk(id, sort_order, description, amount), supplier_tax_invoice_pos!stip_invoice_fk(id, po_id, active, po_subtotal, expense_id, prev_invoice_no, stamped_invoice_no, purchase_orders!stip_po_fk(id, po_number, date, site_id, supplier_id, status))'
+const STI_ONE_SELECT = '*, supplier_tax_invoice_items!stii_invoice_fk(*), supplier_tax_invoice_pos!stip_invoice_fk(id, po_id, active, po_subtotal, expense_id, prev_invoice_no, stamped_invoice_no)'
+// per-delivery links (2026-10-09-04); before the migration the relationship is missing: retry without it
+const STI_RECEIPTS_EMBED = ', supplier_tax_invoice_receipts!stirc_invoice_fk(id, receipt_id, po_id, active, goods_subtotal, goods_vat, po_receipts!stirc_receipt_fk(seq, received_date, purchase_orders!po_receipts_po_fk(po_number)))'
+const withReceiptsFallback = async run => {
+  try { return await run(STI_RECEIPTS_EMBED) } catch (e) { if (isMissingEmbedError(e, 'supplier_tax_invoice_receipts')) return run(''); throw e }
+}
+
 export function useSupplierTaxInvoices(filters = {}) {
-  const r = useQuery(async () => fetchAllRows(() => {
-    let q = supabase.from('supplier_tax_invoices')
-      .select('*, suppliers!sti_supplier_fk(name, supplier_number), supplier_tax_invoice_items!stii_invoice_fk(id, sort_order, description, amount), supplier_tax_invoice_pos!stip_invoice_fk(id, po_id, active, po_subtotal, expense_id, prev_invoice_no, stamped_invoice_no, purchase_orders!stip_po_fk(id, po_number, date, site_id, supplier_id, status))')
+  const r = useQuery(async () => withReceiptsFallback(extra => fetchAllRows(() => {
+    let q = supabase.from('supplier_tax_invoices').select(STI_LIST_SELECT + extra)
       .order('invoice_date', { ascending: false })
       .order('id', { ascending: false })
     if (filters.supplierId) q = q.eq('supplier_id', filters.supplierId)
     if (filters.status) q = q.eq('status', filters.status)
     return q
-  }), [JSON.stringify(filters)])
+  })), [JSON.stringify(filters)])
   return { ...r, notReady: isTaxInvoiceNotReady(r.error) }
 }
 
@@ -1891,11 +1899,11 @@ export function useSupplierTaxInvoices(filters = {}) {
 export function useSupplierTaxInvoice(id) {
   const r = useQuery(async () => {
     if (!id) return null
-    const { data, error } = await supabase.from('supplier_tax_invoices')
-      .select('*, supplier_tax_invoice_items!stii_invoice_fk(*), supplier_tax_invoice_pos!stip_invoice_fk(id, po_id, active, po_subtotal, expense_id, prev_invoice_no, stamped_invoice_no)')
-      .eq('id', id).maybeSingle()
-    if (error) throw error
-    return data
+    return withReceiptsFallback(async extra => {
+      const { data, error } = await supabase.from('supplier_tax_invoices').select(STI_ONE_SELECT + extra).eq('id', id).maybeSingle()
+      if (error) throw error
+      return data
+    })
   }, [id])
   return { ...r, notReady: isTaxInvoiceNotReady(r.error) }
 }
@@ -1921,6 +1929,59 @@ export const deleteSupplierTaxInvoiceDraft = id => rpcOrThrow(TAX_INVOICE_RPCS.d
 export const previewSupplierTaxInvoice = id => rpcOrThrow(TAX_INVOICE_RPCS.preview, idArgs(id))
 export const postSupplierTaxInvoice = (id, expectedRevision) => rpcOrThrow(TAX_INVOICE_RPCS.post, postArgs(id, expectedRevision))
 export const voidSupplierTaxInvoice = (id, reason) => rpcOrThrow(TAX_INVOICE_RPCS.void, voidArgs(id, reason))
+export const saveSupplierTaxInvoiceReceiptDraft = (id, header, items, receiptIds) => rpcOrThrow(TAX_INVOICE_RPCS.saveReceipts, saveReceiptDraftArgs(id, header, items, receiptIds))
+
+// ── Supplier tax invoice per delivery (2026-10-09-04..05) ─────────
+// Before the migration the link table / mode column do not exist: these return { ready: false, ... } and never
+// throw for that case, so the PO page, the receive dialog and the tax invoice page behave as today.
+
+/** Keyed on delivery_tax_invoice_ready(), created by 2026-10-09-05 (NOT on 04's table): false until BOTH are live. */
+export async function deliveryReadyProbe() {
+  const { data, error } = await supabase.rpc('delivery_tax_invoice_ready')
+  return !error && data === true
+}
+/** true = the per-delivery migrations are live; false = not yet / unreadable; null while loading. */
+export function useDeliveryTaxInvoiceReady() {
+  return useQuery(deliveryReadyProbe, []).data
+}
+
+const DELIVERY_RECEIPT_SELECT = 'id, po_id, seq, received_date, goods_subtotal, goods_vat, expense_id, '
+  + 'purchase_orders!po_receipts_po_fk!inner(id, po_number, supplier_id, site_id, tax_invoice_mode, stock_from_invoice, has_vat, price_includes_vat), '
+  + 'po_receipt_items!po_receipt_items_receipt_fk(id, po_item_id, quantity, line_total, base_qty, unit_cost, stock_movement_id, '
+  + 'purchase_order_items!po_receipt_items_item_fk(description, unit, quantity, unit_price, discount_pct, line_total, inventory_item_id))'
+
+/** Receipts of 'delivery' POs (every supplier of the tenant). data = { ready, rows } | null while loading. */
+export function useDeliveryReceipts() {
+  return useQuery(fetchDeliveryReceipts, [])
+}
+export async function fetchDeliveryReceipts() {
+  if (!(await deliveryReadyProbe())) return { ready: false, rows: [] }
+  try {
+    const rows = await fetchAllRows(() => supabase.from('po_receipts').select(DELIVERY_RECEIPT_SELECT)
+      .eq('purchase_orders.tax_invoice_mode', 'delivery').order('id'))
+    return { ready: true, rows }
+  } catch (e) {
+    if (isMissingRelationError(e) || isMissingColumnError(e, 'tax_invoice_mode')) return { ready: false, rows: [] }
+    throw e
+  }
+}
+
+/** data = { ready, map: Map<receipt_id, {invoice_id, invoice_no, status}> } | null while loading. */
+export function useActiveReceiptTaxInvoiceLinks() {
+  return useQuery(fetchActiveReceiptLinks, [])
+}
+export async function fetchActiveReceiptLinks() {
+  if (!(await deliveryReadyProbe())) return { ready: false, map: new Map() }
+  try {
+    const rows = await fetchAllRows(() => supabase.from('supplier_tax_invoice_receipts')
+      .select('receipt_id, invoice_id, active, supplier_tax_invoices!stirc_invoice_fk(invoice_no, status)')
+      .eq('active', true).order('id'))
+    return { ready: true, map: buildActiveReceiptLinkMap(rows) }
+  } catch (e) {
+    if (isMissingRelationError(e)) return { ready: false, map: new Map() }
+    throw e
+  }
+}
 
 /** Received POs of one supplier, tagged with the supplier they were fetched for.
  *  useQuery keeps the previous data while a new fetch runs, so a consumer must compare

@@ -105,7 +105,7 @@ describe('error text reads details and hint', () => {
 describe('every RAISE EXCEPTION literal in the migrations has Thai text', () => {
   // none intentionally unmapped; add here with a comment if one ever must be
   const ALLOW = []
-  for (const f of ['2026-10-09-01-po-receipts.sql', '2026-10-09-02-po-receipt-rpcs.sql']) {
+  for (const f of ['2026-10-09-01-po-receipts.sql', '2026-10-09-02-po-receipt-rpcs.sql', '2026-10-09-04-delivery-tax-invoice.sql']) {
     it(f, () => {
       const sql = readFileSync(new URL('../../supabase/migrations/' + f, import.meta.url), 'utf8')
       const codes = [...new Set([...sql.matchAll(/RAISE EXCEPTION '([a-z_0-9]+)'/g)].map(m => m[1]))].filter(c => !ALLOW.includes(c))
@@ -223,4 +223,25 @@ describe('isMissingEmbedError', () => {
     expect(isMissingEmbedError({ code: '42501', message: 'supplier_tax_invoice_receipts' }, 'supplier_tax_invoice_receipts')).toBe(false)
     expect(isMissingEmbedError(null, 'x')).toBe(false)
   })
+})
+
+describe('PO page texts for the mode guards', () => {
+  it('mode locked / legacy receive refused', () => {
+    expect(mapPoReceiptRpcError({ message: 'po_mode_locked' })).toMatch(/เปลี่ยนวิธีออกใบกำกับภาษีไม่ได้/)
+    expect(mapPoReceiptRpcError({ message: 'po_delivery_needs_receipt' })).toMatch(/ทีละล็อต/)
+    // the PO form save path (handleSave -> mapPoReceiptRpcError) shows Thai for every code 04 can raise
+    for (const c of ['po_mode_locked', 'po_delivery_needs_receipt', 'invoice_mixed_links']) expect(mapPoReceiptRpcError({ message: c })).not.toBe(c)
+  })
+})
+
+describe('receiveRoute for po-mode POs is unchanged by the delivery work', () => {
+  const item = (o = {}) => ({ id: 'i1', line_total: 100, ...o })
+  const pre = buildPoMoneyIndex({ receiptItems: [], deposits: [], schemaReady: false })
+  for (const m of [undefined, 'po']) {
+    it(`tax_invoice_mode ${m}: schema not ready -> old for ordered, disabled for partial`, () => {
+      const po = status => ({ id: 'P', status, tax_invoice_mode: m, purchase_order_items: [item()] })
+      expect(receiveRoute(po('ordered'), pre)).toEqual({ kind: 'old' })
+      expect(receiveRoute(po('partially_received'), pre)).toEqual({ kind: 'disabled', reason: RECEIVE_NOT_READY_TEXT })
+    })
+  }
 })
