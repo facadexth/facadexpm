@@ -140,6 +140,16 @@ describe('draftSaveCall: old-client safety (a delivery draft never reaches the p
     expect(draftSaveCall({ link_kind: 'delivery' }, null, {}, []).rpc).toBe(TAX_INVOICE_RPCS.saveReceipts)
     expect(draftSaveCall({ link_kind: 'delivery' }, null, {}, []).args.p_receipt_ids).toEqual([])
   })
+  it('explicit link_kind wins both ways and the other kind\'s ids are not carried', () => {
+    const po = draftSaveCall({ link_kind: 'po', po_ids: ['p1'], receipt_ids: ['r1'] }, null, {}, [])
+    expect(po.rpc).toBe(TAX_INVOICE_RPCS.save)
+    expect(po.args).toEqual({ p_id: null, p_header: {}, p_items: [], p_po_ids: ['p1'] })
+    const dl = draftSaveCall({ link_kind: 'delivery', po_ids: ['p1'], receipt_ids: [] }, null, {}, [])
+    expect(dl.rpc).toBe(TAX_INVOICE_RPCS.saveReceipts)
+    expect(dl.args).toEqual({ p_id: null, p_header: {}, p_items: [], p_receipt_ids: [] })
+    expect(draftSaveCall({ link_kind: null, receipt_ids: ['r1'] }, null, {}, []).rpc).toBe(TAX_INVOICE_RPCS.saveReceipts)
+    expect(draftSaveCall({ link_kind: null, po_ids: ['p1'] }, null, {}, []).rpc).toBe(TAX_INVOICE_RPCS.save)
+  })
   it('receipt ids without a kind still go to the receipt RPC; po forms use the old save', () => {
     expect(draftSaveCall({ receipt_ids: ['r1'] }, null, {}, []).rpc).toBe(TAX_INVOICE_RPCS.saveReceipts)
     const c = draftSaveCall({ link_kind: 'po', po_ids: ['p1'] }, null, {}, [])

@@ -58,13 +58,24 @@ describe('SQL error codes <-> supplierTaxInvoice.js text', () => {
     expect('expense_missing' in DELIVERY_CHECK_TEXT).toBe(false)
     expect(CHECK_TEXT.expense_missing).toMatch(/ใบสั่งซื้อ/)
   })
-  it('merge order: delivery maps never override an existing PO wording', () => {
-    const existing = { ...CHECK_TEXT }
-    for (const k of Object.keys({ ...DELIVERY_CHECK_TEXT, ...DELIVERY_RPC_TEXT })) {
-      // a key present in both the delivery map and the PO-side map must carry the same text (no silent override)
-      if (k in PO_RECEIPT_ERROR_TEXT && k in DELIVERY_RPC_TEXT) expect(PO_RECEIPT_ERROR_TEXT[k], k).toBe(DELIVERY_RPC_TEXT[k])
-      if (k in existing && k in DELIVERY_CHECK_TEXT) expect(existing[k], k).toBe(DELIVERY_CHECK_TEXT[k])
-    }
-    for (const k of ['po_linked_elsewhere', 'po_has_deposit', 'po_no_expense', 'expense_missing', 'po_has_credit_note']) expect(k in DELIVERY_CHECK_TEXT, k).toBe(false)
+  it('merge order: every wording written in the source map BEFORE the delivery spread survives the merge', () => {
+    const src = readFileSync(new URL('./supplierTaxInvoice.js', import.meta.url), 'utf8')
+    const body = src.slice(src.indexOf('export const CHECK_TEXT = {'), src.indexOf('...DELIVERY_CHECK_TEXT'))
+    const own = [...body.matchAll(/^  ([a-z_]+): '((?:[^'\\]|\\.)*)',$/gm)]
+    expect(own.length).toBeGreaterThan(25)
+    for (const [, k, v] of own) expect(CHECK_TEXT[k], k).toBe(v.replace(/\\'/g, "'"))
+    // pinned literals for the PO-side wording most at risk of being overridden
+    expect(CHECK_TEXT.po_linked_elsewhere).toBe('ใบสั่งซื้อนี้ผูกกับใบกำกับอื่นอยู่แล้ว')
+    expect(CHECK_TEXT.po_has_deposit).toBe('ใบสั่งซื้อนี้หักมัดจำ (เทียบด้วยมูลค่าสินค้า ไม่ใช่ยอดรายจ่าย)')
+    expect(CHECK_TEXT.po_no_expense).toBe('ใบสั่งซื้อนี้ไม่มีรายจ่าย (หักมัดจำครบ) — ไม่มีรายจ่ายให้ประทับเลขที่')
+    expect(CHECK_TEXT.expense_missing).toBe('ไม่พบรายจ่ายของใบสั่งซื้อนี้ — ไม่ได้ประทับเลขที่ใบกำกับ')
+    // the PO page map: delivery spread only adds keys, existing PO wording is untouched
+    const poSrc = readFileSync(new URL('./poReceiptErrors.js', import.meta.url), 'utf8')
+    const poBody = poSrc.slice(poSrc.indexOf('export const PO_RECEIPT_ERROR_TEXT = {'), poSrc.indexOf('...DELIVERY_RPC_TEXT'))
+    const poOwn = [...poBody.matchAll(/^  ([a-z_]+): '((?:[^'\\]|\\.)*)',$/gm)]
+    expect(poOwn.length).toBeGreaterThan(30)
+    for (const [, k, v] of poOwn) expect(PO_RECEIPT_ERROR_TEXT[k], k).toBe(v)
+    // keys shared between the delivery maps and the PO-side maps must be absent (no silent override possible)
+    for (const k of Object.keys(DELIVERY_CHECK_TEXT)) expect(own.some(m => m[1] === k), k).toBe(false)
   })
 })

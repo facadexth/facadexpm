@@ -1936,11 +1936,22 @@ export const saveSupplierTaxInvoiceReceiptDraft = (id, header, items, receiptIds
 // throw for that case, so the PO page, the receive dialog and the tax invoice page behave as today.
 
 /** Keyed on delivery_tax_invoice_ready(), created by 2026-10-09-05 (NOT on 04's table): false until BOTH are live. */
+let deliveryReadyCached = false
+/** Test helper: forget the per-session cached TRUE. */
+export function resetDeliveryReadyCache() { deliveryReadyCached = false }
 export async function deliveryReadyProbe() {
+  if (deliveryReadyCached) return true
   const { data, error } = await supabase.rpc('delivery_tax_invoice_ready')
-  return !error && data === true
+  if (error) {
+    // only "function missing" means the migration is not live; network / auth / 5xx must surface (hook error + refetch),
+    // never a silent false that sticks for the whole session
+    if (error.code === 'PGRST202' || error.code === '42883' || /could not find the function/i.test(String(error.message || ''))) return false
+    throw error
+  }
+  if (data === true) deliveryReadyCached = true
+  return data === true
 }
-/** true = the per-delivery migrations are live; false = not yet / unreadable; null while loading. */
+/** true = the per-delivery migrations are live; false = not yet; null while loading or when the probe failed (unknown). */
 export function useDeliveryTaxInvoiceReady() {
   return useQuery(deliveryReadyProbe, []).data
 }
