@@ -1805,6 +1805,36 @@ export function useSplitPaymentReady() {
   return data
 }
 
+// ── PO un-receive reverses stock (2026-10-09-06) ─────────
+// po_unreceive_reverses_stock() exists only once that migration is live. Only the confirm-dialog sentence depends on
+// it, so every failure means "don't show it" (false) and never throws. One call per session (cached promise); a
+// failed call is not cached so the next dialog retries.
+let unreceiveProbePromise = null
+/** Test helper: forget the cached probe. */
+export function resetUnreceiveProbeCache() { unreceiveProbePromise = null }
+export function poUnreceiveReversesStockProbe() {
+  if (!unreceiveProbePromise) {
+    unreceiveProbePromise = Promise.resolve()
+      .then(() => supabase.rpc('po_unreceive_reverses_stock'))
+      .then(({ data, error }) => {
+        if (error) { unreceiveProbePromise = null; return false }   // PGRST202 / 42883 = not live yet; anything else = unknown
+        return data === true
+      })
+      .catch(() => { unreceiveProbePromise = null; return false })
+  }
+  return unreceiveProbePromise
+}
+/** true = un-receive / cancel of a legacy received PO reverses its stock on the server; false = not live / unknown. */
+export function usePoUnreceiveReversesStock() {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    let alive = true
+    poUnreceiveReversesStockProbe().then(v => { if (alive) setReady(v) })
+    return () => { alive = false }
+  }, [])
+  return ready
+}
+
 /** One PO's receipts, own deposit (with all its applications), applications to this PO, bills. */
 export function usePoLedger(poId) {
   return useQuery(() => fetchPoLedger(poId), [poId])

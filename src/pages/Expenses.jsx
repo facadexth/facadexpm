@@ -9,10 +9,10 @@
 // ============================================================
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useExpenses, useSites, useCategories, useSuppliers, useCheques, useCreditNoteExpenseIds, useDepositMap, useSplitPaymentReady } from '../hooks/useSupabase.js'
+import { useExpenses, useSites, useCategories, useSuppliers, useCheques, useCreditNoteExpenseIds, useDepositMap, useSplitPaymentReady, usePoUnreceiveReversesStock } from '../hooks/useSupabase.js'
 import DepositRegisterModal from '../components/DepositRegisterModal.jsx'
 import SplitPaymentModal from '../components/SplitPaymentModal.jsx'
-import { mapPoReceiptRpcError, PO_RECEIPT_LOCKED_TEXT } from '../lib/poReceiptErrors.js'
+import { mapPoReceiptRpcError, PO_RECEIPT_LOCKED_TEXT, PO_UNRECEIVE_STOCK_NOTE_MAYBE } from '../lib/poReceiptErrors.js'
 import { PO_DEPOSIT_LOCKED_TEXT } from '../lib/receiveDeposits.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
@@ -387,6 +387,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
   const [newStatus, setNewStatus] = useState('')
   const [deleteId, setDeleteId] = useState(null)
   const [reconcilePoId, setReconcilePoId] = useState(null)
+  const unreceiveReversesStock = usePoUnreceiveReversesStock()   // 2026-10-09-06 live: un-receive / cancel reverses the PO's stock
   const [reconcileLocked, setReconcileLocked] = useState('')   // '' = may un-receive; else the reason it cannot (deposit deducted / receipts)
   const [splitRow, setSplitRow] = useState(null)
   const [saving,   setSaving]   = useState(false)
@@ -862,7 +863,10 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
           <div className="modal-body">
             {reconcileLocked
               ? <p style={{ color: 'var(--text2)' }}>{reconcileLocked}</p>
-              : <p style={{ color: 'var(--text2)' }}>รายจ่ายที่ลบไปมาจากใบสั่งซื้อนี้ — ต้องการปรับสถานะใบสั่งซื้ออย่างไร?</p>}
+              : <>
+                  <p style={{ color: 'var(--text2)' }}>รายจ่ายที่ลบไปมาจากใบสั่งซื้อนี้ — ต้องการปรับสถานะใบสั่งซื้ออย่างไร?</p>
+                  {unreceiveReversesStock && <p style={{ color: 'var(--text2)', marginTop: 8 }}>{PO_UNRECEIVE_STOCK_NOTE_MAYBE}</p>}
+                </>}
           </div>
           <div className="modal-footer">
             {reconcileLocked && <button className="btn btn-ghost" onClick={() => { setReconcilePoId(null); setReconcileLocked('') }}>ปิด</button>}

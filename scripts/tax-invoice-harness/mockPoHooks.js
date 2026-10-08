@@ -33,6 +33,8 @@ export const useActiveTaxInvoiceLinks = () => useQuery(() => delay(() => (W.__li
 
 // 2026-10-09 per-delivery tax invoice. W.__deliveryReady === false -> not ready (the harness sets it false up front; sections 1-9 run as before)
 // window event '__readychange' refetches it (the real hook resolves later while a form is already open)
+// 2026-10-09-06 probe (cancel dialog sentence): live by default, window.__unreceiveProbe = false hides it
+export const usePoUnreceiveReversesStock = () => W.__unreceiveProbe !== false
 export const useDeliveryTaxInvoiceReady = () => {
   const q = useQuery(() => delay(() => W.__deliveryReady !== false), [])
   useEffect(() => { const h = () => q.refetch(); W.addEventListener('__readychange', h); return () => W.removeEventListener('__readychange', h) }, [q.refetch]) // eslint-disable-line

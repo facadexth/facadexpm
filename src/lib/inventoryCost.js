@@ -224,7 +224,7 @@ export function computeFinishedGoodsProductionPlan({ billedLines, materialPct })
  *
  * Movement direction: purchase_in/transfer_in/sale_reversal are always
  * "in" (quantity stored positive); transfer_out/sale_out/purchase_return/
- * receipt_reversal (a supplier tax invoice taking a PO receipt back out)
+ * receipt_reversal (a supplier tax invoice, or a PO un-receive / cancel, taking a PO receipt back out)
  * are always "out" (quantity stored positive). 'adjustment' stores a SIGNED delta
  * (record_stock_movement computes p_quantity - old_qty) -- a positive
  * adjustment.quantity is "in", a negative one is "out".

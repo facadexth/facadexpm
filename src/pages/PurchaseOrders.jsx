@@ -6,7 +6,7 @@
 // ============================================================
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits, useActiveTaxInvoiceLinks, usePoMoneyIndex, usePoLedger, useDeliveryTaxInvoiceReady, useActiveReceiptTaxInvoiceLinks } from '../hooks/useSupabase.js'
+import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits, useActiveTaxInvoiceLinks, usePoMoneyIndex, usePoLedger, useDeliveryTaxInvoiceReady, useActiveReceiptTaxInvoiceLinks, usePoUnreceiveReversesStock } from '../hooks/useSupabase.js'
 import { fileToExtractionPayload, buildExampleExtracted, applyScanVatBasis, clearScanVatBasis, scanLinesTotalExVat } from '../lib/poDocumentExtraction.js'
 import ScanDocPreview from '../components/ScanDocPreview.jsx'
 import ScanNotice from '../components/ScanNotice.jsx'
@@ -32,7 +32,7 @@ import { suggestStockLinks } from '../lib/poStockLinkSuggest.js'
 import { calcPoTotals, poLineTotal as lineTotal } from '../lib/poTotals.js'
 import { VAT_RATE } from '../lib/invoiceCalc.js'
 import { poTaxInvoiceBadge, buildPoPayloadFlag, poEditLockedText, poTaxInvoiceErrorText } from '../lib/poTaxInvoiceStatus.js'
-import { poMoneyLockText, poLedgerSummary, mapPoReceiptRpcError, receiveRoute, canOfferCreateDeposit, poHasMultipleBills, SWAP_MULTI_BILL_TEXT } from '../lib/poReceiptErrors.js'
+import { poMoneyLockText, poLedgerSummary, mapPoReceiptRpcError, receiveRoute, canOfferCreateDeposit, poHasMultipleBills, SWAP_MULTI_BILL_TEXT, poCancelReversesStock, PO_UNRECEIVE_STOCK_NOTE } from '../lib/poReceiptErrors.js'
 import { poModeForSupplier, poModePayload, poModeLockedText, poDeliveryDiscountWarning, deliveryPoBadge, receiptTaxInvoiceStatus, invoiceHandoff } from '../lib/deliveryTaxInvoice.js'
 import { PO_MODE_LOCKED_TEXT } from '../lib/deliveryTaxInvoiceText.js'
 import CreatePoDepositModal from '../components/CreatePoDepositModal.jsx'
@@ -846,6 +846,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const [showAdd, setShowAdd] = useState(false)
   const [editRow, setEditRow] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
+  const unreceiveReversesStock = usePoUnreceiveReversesStock()   // 2026-10-09-06 live: cancel of a received PO reverses its stock
   const [docRow, setDocRow] = useState(null)
   const [detailRow, setDetailRow] = useState(null)
   const [receiveRow, setReceiveRow] = useState(null)
@@ -1336,7 +1337,11 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       </div>
 
       {deleteId && (
-        <ConfirmDialog title="ยกเลิกใบสั่งซื้อ" message="ยืนยันการยกเลิกใบสั่งซื้อนี้?" onConfirm={handleCancel} onCancel={() => setDeleteId(null)} danger />
+        <ConfirmDialog title="ยกเลิกใบสั่งซื้อ"
+          message={poCancelReversesStock((pos || []).find(p => p.id === deleteId), unreceiveReversesStock)
+            ? <>ยืนยันการยกเลิกใบสั่งซื้อนี้?<br />{PO_UNRECEIVE_STOCK_NOTE}</>
+            : 'ยืนยันการยกเลิกใบสั่งซื้อนี้?'}
+          onConfirm={handleCancel} onCancel={() => setDeleteId(null)} danger />
       )}
 
       {docRow && <PODocumentModal po={docRow.po} autoAction={docRow.action} tenant={tenant} onClose={() => setDocRow(null)} />}

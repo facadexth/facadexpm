@@ -30,3 +30,4 @@ export const splitPayment = async (args) => {
   W.__exp.push({ ...src, id: 'enew', status: 'pending', description: 'ยอดคงเหลือ NEW', amount: 1 })
   return { paid_expense_id: args.expenseId, remaining_expense_id: 'enew', paid_amount: Number(args.amount), remaining_amount: 1 }
 }
+export const usePoUnreceiveReversesStock = () => W.__unreceiveProbe !== false

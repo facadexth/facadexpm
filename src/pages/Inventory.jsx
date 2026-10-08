@@ -39,7 +39,7 @@ const MOVEMENT_TYPE_LABELS = {
   sale_out: '📤 ขายออก',
   sale_reversal: '↩️ ยกเลิกการขาย',
   purchase_return: '↩️ คืนสินค้าให้ซัพพลายเออร์',
-  receipt_reversal: '↩️ กลับรายการรับเข้า (ใบกำกับภาษี)',
+  receipt_reversal: '↩️ กลับรายการรับเข้า',
   adjustment: '✏️ ปรับปรุงยอด',
 }
 
