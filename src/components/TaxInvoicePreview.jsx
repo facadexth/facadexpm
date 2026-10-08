@@ -12,7 +12,8 @@ const q = fmtQty
 
 export function checkLine(c, poNumberById) {
   const po = c.po_id ? (poNumberById?.get?.(c.po_id) || null) : null
-  return (CHECK_TEXT[c.code] || c.code) + (po ? ` (${po})` : '')
+  const ref = c.receipt_no || po
+  return (CHECK_TEXT[c.code] || c.code) + (ref ? ` (${ref})` : '')
 }
 
 export default function TaxInvoicePreview({ preview, poNumberById }) {

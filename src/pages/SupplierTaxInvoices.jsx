@@ -9,7 +9,7 @@ import { fmt, fmtDate } from '../lib/supabase.js'
 import {
   useSupplierTaxInvoices, useSupplierTaxInvoice, useSuppliers, useSites, useReceivedPosForSupplier,
   saveSupplierTaxInvoiceDraft, previewSupplierTaxInvoice, postSupplierTaxInvoice, voidSupplierTaxInvoice,
-  deleteSupplierTaxInvoiceDraft,
+  deleteSupplierTaxInvoiceDraft, saveSupplierTaxInvoiceReceiptDraft, useDeliveryReceipts, useActiveReceiptTaxInvoiceLinks,
 } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
@@ -18,6 +18,9 @@ import TaxInvoicePreview, { PostConfirmOverlay, checkLine } from '../components/
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
+import { draftSaveCall } from '../lib/taxInvoiceLinks.js'
+import { formForReceipt, receiptsAwaitingInvoice, receiptLabel, invoiceMatchBase, linkKindOf } from '../lib/deliveryTaxInvoice.js'
+import { DELIVERY_NOT_READY_TEXT, HANDOFF_RECEIPT_NOT_FOUND_TEXT } from '../lib/deliveryTaxInvoiceText.js'
 import { toRpcPayload, formFromInvoice, emptyTaxInvoiceForm, poRowsFor } from '../lib/taxInvoiceForm.js'
 import {
   CHECK_TEXT, mapTaxInvoiceRpcError, formSignature, previewIsCurrent, postSummaryLines, doubleCountAlerts, withinTolerance, fmtQty,
@@ -45,14 +48,20 @@ const linksOf = row => {
   const all = row.supplier_tax_invoice_pos || []
   return row.status === 'void' ? all : all.filter(l => l.active)
 }
-const poSumOf = row => linksOf(row).reduce((s, l) => s + (Number(l.po_subtotal) || 0), 0)
+const receiptLinksOf = row => {
+  const all = row.supplier_tax_invoice_receipts || []
+  return row.status === 'void' ? all : all.filter(l => l.active)
+}
 
-export default function SupplierTaxInvoices() {
+export default function SupplierTaxInvoices({ navState, navigateTo } = {}) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'purchase_orders')
   const [supplierFilter, setSupplierFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const { data: invoices, loading, error, refetch, notReady } = useSupplierTaxInvoices({ supplierId: supplierFilter, status: statusFilter })
+  const { data: deliveryData, refetch: refetchDelivery } = useDeliveryReceipts()
+  const { data: receiptLinkData, refetch: refetchReceiptLinks } = useActiveReceiptTaxInvoiceLinks()
+  const refetchAllLinks = () => { refetch(); refetchDelivery(); refetchReceiptLinks() }
   const { data: suppliers } = useSuppliers()
   const { data: sites } = useSites()
 
@@ -75,6 +84,10 @@ export default function SupplierTaxInvoices() {
   const rows = invoices || []
   const supplierNameById = Object.fromEntries((suppliers || []).map(s => [s.id, s.name]))
   const siteNameById = Object.fromEntries((sites || []).map(s => [s.id, s.name]))
+  // receipts of delivery POs with no invoice yet (null until both reads are ready: pre-migration the card is simply absent)
+  const awaiting = deliveryData?.ready && receiptLinkData?.ready
+    ? (receiptsAwaitingInvoice(deliveryData.rows, receiptLinkData.map) || []).filter(g => !supplierFilter || g.supplierId === supplierFilter)
+    : null
 
   // the saved draft being edited (full item columns)
   const { data: loaded, error: loadError } = useSupplierTaxInvoice(editing?.loadId || null)
@@ -108,6 +121,21 @@ export default function SupplierTaxInvoices() {
     latestFormRef.current = null; setPreview(null); setConfirm(null)
     setEditing({ id: null, loadId: null, key: keySeq.current, form: emptyTaxInvoiceForm(bangkokTodayIso()) })
   }
+  const openNewForReceipt = rc => {
+    keySeq.current += 1
+    latestFormRef.current = null; setPreview(null); setConfirm(null)
+    setEditing({ id: null, loadId: null, key: keySeq.current, form: formForReceipt(rc, bangkokTodayIso()) })
+  }
+  // hand-off from the receive dialog / PO popup: consume the nav state once, then open the lot's invoice
+  const handoffId = navState?.newForReceipt?.receiptId || null
+  useEffect(() => {
+    if (!handoffId || !canEdit || !deliveryData) return
+    navigateTo?.('supplier_tax_invoices', {})
+    if (!deliveryData.ready) { alert(DELIVERY_NOT_READY_TEXT); return }
+    const rc = deliveryData.rows.find(r => r.id === handoffId)
+    if (!rc) { alert(HANDOFF_RECEIPT_NOT_FOUND_TEXT); return }
+    openNewForReceipt(rc)
+  }, [handoffId, canEdit, deliveryData]) // eslint-disable-line react-hooks/exhaustive-deps
   const openEdit = row => {
     keySeq.current += 1
     latestFormRef.current = null; setPreview(null); setConfirm(null)
@@ -121,14 +149,18 @@ export default function SupplierTaxInvoices() {
   }
 
   const saveDraft = async form => {
-    const { header, items, poIds } = toRpcPayload(form)
-    const id = await saveSupplierTaxInvoiceDraft(editing?.id || null, header, items, poIds)
+    const { header, items } = toRpcPayload(form)
+    // the explicit link_kind alone decides the RPC (draftSaveCall); every save goes through it
+    const call = draftSaveCall(form, editing?.id || null, header, items)
+    const id = call.args.p_receipt_ids
+      ? await saveSupplierTaxInvoiceReceiptDraft(call.args.p_id, call.args.p_header, call.args.p_items, call.args.p_receipt_ids)
+      : await saveSupplierTaxInvoiceDraft(call.args.p_id, call.args.p_header, call.args.p_items, call.args.p_po_ids)
     setEditing(e => (e ? { ...e, id } : e))     // later saves update the same draft
     return id
   }
   const handleSaveDraft = form => guard(async () => {
     try {
-      await saveDraft(form); refetch()
+      await saveDraft(form); refetchAllLinks()
       setPreview(null); setConfirm(null)   // every save bumps the revision: an earlier preview can no longer be posted
       alert('บันทึกร่างแล้ว')
     }
@@ -139,7 +171,7 @@ export default function SupplierTaxInvoices() {
       const id = await saveDraft(form)
       const data = await previewSupplierTaxInvoice(id)
       setPreview({ id, signature: formSignature(form), data, form })
-      refetch()
+      refetchAllLinks()
     } catch (e) { alert(mapTaxInvoiceRpcError(e)) }
   })
 
@@ -154,7 +186,7 @@ export default function SupplierTaxInvoices() {
     setConfirm({
       id: preview.id, signature: preview.signature, revision: preview.data?.revision,
       alerts: doubleCountAlerts(preview.data?.checks, poNumberById),
-      lines: postSummaryLines({ invoiceNo: preview.form.invoice_no.trim(), invoiceDate: preview.form.invoice_date, stockLineCount, poCount: preview.form.po_ids.length, preview: preview.data, matchNote: preview.form.match_note }),
+      lines: postSummaryLines({ invoiceNo: preview.form.invoice_no.trim(), invoiceDate: preview.form.invoice_date, stockLineCount, poCount: preview.form.po_ids.length, receiptCount: preview.form.link_kind === 'delivery' ? preview.form.receipt_ids.length : undefined, preview: preview.data, matchNote: preview.form.match_note }),
     })
   }
   const doPost = () => guard(async () => {
@@ -165,14 +197,14 @@ export default function SupplierTaxInvoices() {
     }
     try {
       const result = await postSupplierTaxInvoice(confirm.id, confirm.revision)
-      setConfirm(null); setPreview(null); setEditing(null); latestFormRef.current = null; refetch()
+      setConfirm(null); setPreview(null); setEditing(null); latestFormRef.current = null; refetchAllLinks()
       const neg = (result?.negative || []).map(negText)
       const warn = warnTexts(result?.checks)
       alert(`บันทึกใบกำกับแล้ว: เพิ่มสต็อก ${result?.lines_posted} รายการ · กลับรายการ ${result?.receipts_reversed} รายการ · ประทับเลขที่ในรายจ่าย ${result?.expenses_stamped} รายการ`
         + (warn.length ? '\n⚠️ ' + warn.join('\n⚠️ ') : '')
         + (neg.length ? `\n⚠️ สต็อกติดลบ:\n${neg.join('\n')}` : ''))
     } catch (e) {
-      setConfirm(null); setPreview(null); refetch()   // nothing was written (atomic RPC); the preview is no longer trusted
+      setConfirm(null); setPreview(null); refetchAllLinks()   // nothing was written (atomic RPC); the preview is no longer trusted
       alert(mapTaxInvoiceRpcError(e))
     }
   })
@@ -181,16 +213,16 @@ export default function SupplierTaxInvoices() {
     if (!voidReason.trim()) { alert('กรุณากรอกเหตุผลที่ยกเลิก'); return }
     try {
       const r = await voidSupplierTaxInvoice(voidRow.id, voidReason.trim())
-      setVoidRow(null); setVoidReason(''); refetch()
+      setVoidRow(null); setVoidReason(''); refetchAllLinks()
       const warn = warnTexts(r?.warnings)
       const neg = (r?.negative || []).map(negText)
       alert('ยกเลิกใบกำกับแล้ว' + (warn.length ? '\n⚠️ ' + warn.join('\n⚠️ ') : '') + (neg.length ? `\n⚠️ สต็อกติดลบ:\n${neg.join('\n')}` : ''))
-    } catch (e) { setVoidRow(null); refetch(); alert(mapTaxInvoiceRpcError(e)) }
+    } catch (e) { setVoidRow(null); refetchAllLinks(); alert(mapTaxInvoiceRpcError(e)) }
   })
   const doDelete = () => guard(async () => {
     if (!deleteId) return
-    try { await deleteSupplierTaxInvoiceDraft(deleteId); setDeleteId(null); refetch() }
-    catch (e) { setDeleteId(null); refetch(); alert(mapTaxInvoiceRpcError(e)) }
+    try { await deleteSupplierTaxInvoiceDraft(deleteId); setDeleteId(null); refetchAllLinks() }
+    catch (e) { setDeleteId(null); refetchAllLinks(); alert(mapTaxInvoiceRpcError(e)) }
   })
 
   if (notReady) {
@@ -222,6 +254,25 @@ export default function SupplierTaxInvoices() {
         </select>
       </div>
 
+      {awaiting && awaiting.length > 0 && (
+        <div className="card" style={{ marginBottom: 16, padding: 12 }}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>📦 ใบรับของที่รอใบกำกับ ({awaiting.reduce((s, g) => s + g.rows.length, 0)})</div>
+          {awaiting.map(g => (
+            <div key={g.supplierId} style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{supplierNameById[g.supplierId] || '—'}</div>
+              {g.rows.map(r => (
+                <div key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 13, padding: '2px 0' }}>
+                  <span className="font-mono">{receiptLabel(r.purchase_orders?.po_number, r.seq)}</span>
+                  <span>รับ {fmtDate(r.received_date)}</span>
+                  <span>มูลค่าสินค้า <span className="font-mono">{fmt(r.goods_subtotal)}</span></span>
+                  {canEdit && <button type="button" className="btn btn-sm btn-ghost" onClick={() => openNewForReceipt(r)}>🧾 ลงใบกำกับ</button>}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
       {error && <div style={{ color: 'var(--danger, #e55)', marginBottom: 12 }}>โหลดข้อมูลไม่สำเร็จ: {error}</div>}
 
       <div className="card">
@@ -238,14 +289,15 @@ export default function SupplierTaxInvoices() {
               {rows.map(n => {
                 const badge = STATUS_BADGE[n.status] || STATUS_BADGE.draft
                 const links = linksOf(n)
-                const diffBad = n.match_diff != null && !withinTolerance(n.match_diff, poSumOf(n))
+                const delivery = linkKindOf(n) === 'delivery'
+                const diffBad = n.match_diff != null && !withinTolerance(n.match_diff, invoiceMatchBase(n))
                 return (
                   <tr key={n.id}>
                     <td style={{ fontWeight: 600 }}>{n.invoice_no}</td>
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}>{fmtDate(n.invoice_date)}</td>
                     <td>{n.suppliers?.name || supplierNameById[n.supplier_id] || '—'}</td>
                     <td className="font-mono" style={{ textAlign: 'right' }}>{fmt(n.net_before_vat)}</td>
-                    <td style={{ textAlign: 'right' }}>{links.length}</td>
+                    <td style={{ textAlign: 'right' }}>{delivery ? `${receiptLinksOf(n).length} ล็อต` : links.length}</td>
                     <td className="font-mono" style={{ textAlign: 'right', ...(diffBad ? { color: 'var(--danger, #e55)', fontWeight: 600 } : null) }}>
                       {n.match_diff == null ? '—' : fmt(n.match_diff)}
                     </td>
@@ -340,6 +392,7 @@ function ViewModal({ row, siteNameById, onClose }) {
   const items = [...(full?.supplier_tax_invoice_items || [])].sort((a, b) => a.sort_order - b.sort_order)
   const poNoByLinkPo = new Map((row.supplier_tax_invoice_pos || []).map(l => [l.po_id, l.purchase_orders?.po_number]))
   const links = linksOf(row)
+  const delivery = linkKindOf(row) === 'delivery'
   const pr = inv.post_result || {}
   const neg = (pr.negative || []).map(negText)
   return (
@@ -350,7 +403,7 @@ function ViewModal({ row, siteNameById, onClose }) {
           <span>ก่อน VAT <b>{fmt(inv.net_before_vat)}</b></span>
           <span>VAT <b>{fmt(inv.vat)}</b></span>
           <span>รวม <b>{fmt(inv.grand_total)}</b></span>
-          <span>ต่างจากใบสั่งซื้อ <b>{inv.match_diff == null ? '—' : fmt(inv.match_diff)}</b></span>
+          <span>{delivery ? 'ต่างจากมูลค่าที่รับ' : 'ต่างจากใบสั่งซื้อ'} <b>{inv.match_diff == null ? '—' : fmt(inv.match_diff)}</b></span>
         </div>
         {inv.match_note && <div>เหตุผลที่ยอดต่าง: {inv.match_note}</div>}
         {row.status === 'void' && (
@@ -378,16 +431,25 @@ function ViewModal({ row, siteNameById, onClose }) {
             </tbody>
           </table>
         </div>
-        <div>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>ใบสั่งซื้อที่ผูก</div>
-          {links.map(l => (
-            <div key={l.id}>
-              {poNoByLinkPo.get(l.po_id) || l.po_id} · มูลค่าสินค้า {fmt(l.po_subtotal)}
-              {l.expense_id ? <> · ประทับเลขที่ในรายจ่าย <b>{l.stamped_invoice_no || row.invoice_no}</b>{l.prev_invoice_no ? ` (เดิม ${l.prev_invoice_no})` : ''}</> : ' · ไม่มีรายจ่าย'}
-            </div>
-          ))}
-          {!links.length && <div style={{ color: 'var(--text3)' }}>—</div>}
-        </div>
+        {delivery ? (
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>การส่งของที่ผูก</div>
+            {receiptLinksOf(row).map(l => (
+              <div key={l.id}>{receiptLabel(l.po_receipts?.purchase_orders?.po_number, l.po_receipts?.seq)} · รับ {fmtDate(l.po_receipts?.received_date)} · มูลค่าสินค้า {fmt(l.goods_subtotal)} · VAT {fmt(l.goods_vat)}</div>
+            ))}
+          </div>
+        ) : (
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>ใบสั่งซื้อที่ผูก</div>
+            {links.map(l => (
+              <div key={l.id}>
+                {poNoByLinkPo.get(l.po_id) || l.po_id} · มูลค่าสินค้า {fmt(l.po_subtotal)}
+                {l.expense_id ? <> · ประทับเลขที่ในรายจ่าย <b>{l.stamped_invoice_no || row.invoice_no}</b>{l.prev_invoice_no ? ` (เดิม ${l.prev_invoice_no})` : ''}</> : ' · ไม่มีรายจ่าย'}
+              </div>
+            ))}
+            {!links.length && <div style={{ color: 'var(--text3)' }}>—</div>}
+          </div>
+        )}
         {(pr.checks || []).length > 0 && (
           <div style={{ color: '#b45309' }}>
             {(pr.checks || []).map((c, i) => <div key={i}>{c.blocking ? '⛔ ' : '⚠️ '}{checkLine(c, poNoByLinkPo)}</div>)}

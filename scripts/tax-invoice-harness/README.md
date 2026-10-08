@@ -38,3 +38,5 @@ Mocks: `__exp` (expense rows, `expenses_view` shape; the mocked `splitPayment` u
 `__depMap` (`[[expenseId, depositInfo]]`), `__splitReady = false` (pre-migration: จ่ายบางส่วน hidden), `__wrapperError` / `__wrapperDelay` (RPC wrapper
 failure / latency; calls logged in `__log`). Scenarios: which bills offer / disable the action, dialog maths and guards, double click = one call,
 refetch after success, Thai error keeps the dialog open, pre-migration hide, 375 px.
+
+Section D1/D2: delivery kind (`__deliveryReady`, `deliveryReceipts`, `receiptLinks`, `__navState`, `window.__nav`).
