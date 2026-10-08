@@ -1,6 +1,7 @@
 -- supabase/tests/alu_catalog_test.sql
 -- Aluminium cost catalog: RLS isolation, uniqueness and CHECK constraints.
--- RUN ONLY INSIDE A TRANSACTION THAT ROLLS BACK:
+-- RUN ONLY INSIDE ONE TRANSACTION THAT ENDS IN ROLLBACK (the fixtures are real rows).
+-- A failing test leaves the session role set to 'authenticated'; ROLLBACK (or RESET role) before reusing the session.
 --   BEGIN; <migrations 01..03>; <this file>; ROLLBACK;
 -- Tenants: A and B have ONLY the 'estimation' module (the catalog must not need purchase_orders), C has no module (expired trial).
 
@@ -26,8 +27,12 @@ END $$;
 -- ── Test 1: hierarchy tables ──
 DO $$
 DECLARE
-  prov UUID; prov2 UUID; ser UUID; typ UUID; n INT;
+  ta UUID; tb UUID; tc UUID;
+  prov UUID; prov2 UUID; ser UUID; typ UUID; n INT; tid UUID;
 BEGIN
+  -- read fixtures BEFORE switching role (authenticated cannot read the temp table)
+  SELECT a_tenant, b_tenant, c_tenant INTO ta, tb, tc FROM _alu_fx;
+
   SET LOCAL role = 'authenticated';
   SET LOCAL request.jwt.claims = '{"email":"__alu_a__@example.com"}';
 
@@ -57,19 +62,69 @@ BEGIN
     RAISE EXCEPTION 'series_types unique did not fire';
   EXCEPTION WHEN unique_violation THEN NULL; END;
 
-  -- tenant B: sees nothing of A, and may reuse the same provider name
+  -- WITH CHECK: A cannot write a row into tenant B
+  BEGIN
+    INSERT INTO alu_providers (tenant_id, name, short_name) VALUES (tb, 'X', 'X');
+    RAISE EXCEPTION 'tenant A inserted a provider into tenant B (WITH CHECK failed)';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+
+  -- tenant B: sees nothing of A
   SET LOCAL request.jwt.claims = '{"email":"__alu_b__@example.com"}';
   SELECT count(*) INTO n FROM alu_providers;
   IF n <> 0 THEN RAISE EXCEPTION 'tenant B sees % of tenant A providers', n; END IF;
-  INSERT INTO alu_providers (name, short_name) VALUES ('TYK', 'TYK');
+  SELECT count(*) INTO n FROM door_window_types;
+  IF n <> 0 THEN RAISE EXCEPTION 'tenant B sees % of tenant A door_window_types', n; END IF;
+  SELECT count(*) INTO n FROM alu_series;
+  IF n <> 0 THEN RAISE EXCEPTION 'tenant B sees % of tenant A alu_series', n; END IF;
+  SELECT count(*) INTO n FROM alu_series_types;
+  IF n <> 0 THEN RAISE EXCEPTION 'tenant B sees % of tenant A alu_series_types', n; END IF;
 
-  -- tenant C (no estimation module): reads nothing, cannot write
+  -- WITH CHECK: B cannot write a row into tenant A
+  BEGIN
+    INSERT INTO alu_providers (tenant_id, name, short_name) VALUES (ta, 'X', 'X');
+    RAISE EXCEPTION 'tenant B inserted a provider into tenant A (WITH CHECK failed)';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+
+  -- B may reuse the same provider name, and then sees exactly its own single row
+  INSERT INTO alu_providers (name, short_name) VALUES ('TYK', 'TYK');
+  SELECT count(*) INTO n FROM alu_providers;
+  IF n <> 1 THEN RAISE EXCEPTION 'tenant B should see exactly 1 provider, saw %', n; END IF;
+  SELECT tenant_id INTO tid FROM alu_providers LIMIT 1;
+  IF tid IS DISTINCT FROM tb THEN RAISE EXCEPTION 'tenant B provider row has wrong tenant_id %', tid; END IF;
+
+  -- tenant A is unaffected: still exactly its own 2 providers (TYK, KC)
+  SET LOCAL request.jwt.claims = '{"email":"__alu_a__@example.com"}';
+  SELECT count(*) INTO n FROM alu_providers;
+  IF n <> 2 THEN RAISE EXCEPTION 'tenant A should see exactly 2 providers, saw %', n; END IF;
+  SELECT count(*) INTO n FROM alu_providers WHERE tenant_id <> ta;
+  IF n <> 0 THEN RAISE EXCEPTION 'tenant A sees % providers of another tenant', n; END IF;
+
+  -- tenant C (no estimation module): reads nothing, cannot write anywhere
   SET LOCAL request.jwt.claims = '{"email":"__alu_c__@example.com"}';
   SELECT count(*) INTO n FROM alu_providers;
   IF n <> 0 THEN RAISE EXCEPTION 'tenant C sees providers'; END IF;
+  SELECT count(*) INTO n FROM door_window_types;
+  IF n <> 0 THEN RAISE EXCEPTION 'tenant C sees door_window_types'; END IF;
+  SELECT count(*) INTO n FROM alu_series;
+  IF n <> 0 THEN RAISE EXCEPTION 'tenant C sees alu_series'; END IF;
+  SELECT count(*) INTO n FROM alu_series_types;
+  IF n <> 0 THEN RAISE EXCEPTION 'tenant C sees alu_series_types'; END IF;
+
   BEGIN
     INSERT INTO alu_providers (name, short_name) VALUES ('NOPE', 'NOPE');
-    RAISE EXCEPTION 'tenant C insert was allowed';
+    RAISE EXCEPTION 'tenant C alu_providers insert was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN
+    INSERT INTO door_window_types (name, category) VALUES ('NOPE', 'door');
+    RAISE EXCEPTION 'tenant C door_window_types insert was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN
+    INSERT INTO alu_series (provider_id, name) VALUES (prov, 'NOPE');
+    RAISE EXCEPTION 'tenant C alu_series insert was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN
+    INSERT INTO alu_series_types (series_id, type_id) VALUES (ser, typ);
+    RAISE EXCEPTION 'tenant C alu_series_types insert was allowed';
   EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 
   RESET role;
