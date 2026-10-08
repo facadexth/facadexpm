@@ -1134,7 +1134,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       date: editRow.date, has_vat: editRow.has_vat, price_includes_vat: editRow.price_includes_vat || false,
       ordered_by: editRow.ordered_by || '', notes: editRow.notes || '',
       stock_from_invoice: !!editRow.stock_from_invoice,
-      tax_invoice_mode: editRow.tax_invoice_mode === 'delivery' ? 'delivery' : 'po', tax_invoice_mode_touched: true,
+      tax_invoice_mode: editRow.tax_invoice_mode === 'delivery' ? 'delivery' : 'po', tax_invoice_mode_touched: !(editRow.status === 'draft' && !editRow.supplier_id),   // a LINE draft without a supplier still takes the picked supplier's remembered mode
       items: (editRow.purchase_order_items?.length ? editRow.purchase_order_items : [{ ...EMPTY_ITEM }])
         .map(it => ({
           description: it.description, quantity: String(it.quantity), unit: it.unit || '', unit_price: String(it.unit_price),
