@@ -42,7 +42,14 @@ export default function PricesTab({ canEdit }) {
   const partLabel = p => (p.code ? `${p.code} · ${p.name}` : p.name)
   const money = n => (n == null ? '—' : Number(n).toLocaleString('th-TH', { maximumFractionDigits: 4 }))
   const profileLabel = p => (p ? `${p.name}${p.thickness_mm ? ' ' + p.thickness_mm : ''}` : '—')
-  const variantLabel = v => (v ? `${profileLabel(profileById[v.profile_id])} · ${finishById[v.finish_id]?.name || '—'} · ${v.length_m} ม.` : '—')
+  const variantLabel = (v, withExtruder = false) => {
+    if (!v) return '—'
+    const base = `${profileLabel(profileById[v.profile_id])} · ${finishById[v.finish_id]?.name || '—'} · ${v.length_m} ม.`
+    const ext = withExtruder ? providerById[profileById[v.profile_id]?.provider_id]?.name : null
+    return ext ? `${ext} · ${base}` : base
+  }
+  // a variant is selectable when both its profile and its colour are still active
+  const variantActive = v => profileById[v.profile_id]?.active !== false && finishById[v.finish_id]?.active !== false
 
   const kgStatus = priceStatuses(kgPrices.data, r => [r.provider_id, r.finish_id, r.series_id, r.profile_id].join('|'), asOf)
   const pieceStatus = priceStatuses(piecePrices.data, r => r.variant_id, asOf)
@@ -62,7 +69,10 @@ export default function PricesTab({ canEdit }) {
   ]
   const PIECE_FIELDS = [
     { key: 'variant_id', label: 'หน้าตัด · สี · ความยาว', type: 'select', required: true,
-      options: () => (variants.data || []).map(v => ({ value: v.id, label: variantLabel(v) })) },
+      options: form => (variants.data || [])
+        .filter(v => variantActive(v) || v.id === form.variant_id)
+        .map(v => ({ value: v.id, label: variantLabel(v, true) + (variantActive(v) ? '' : ' (ปิดใช้งาน)') }))
+        .sort((a, b) => a.label.localeCompare(b.label, 'th')) },
     { key: 'price_per_piece', label: 'ราคา (บาท/เส้น)', type: 'number', required: true, min: 0 },
     { key: 'effective_from', label: 'มีผลตั้งแต่วันที่', type: 'date', required: true, default: todayStr() },
   ]
