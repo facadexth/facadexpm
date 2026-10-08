@@ -15,7 +15,7 @@ import {
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
-import { computeBomForOpening, combineOpeningBoms } from '../lib/bomEngine.js'
+import { computeBomForOpening, combineOpeningBoms, legacyPricing } from '../lib/bomEngine.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 
@@ -89,7 +89,7 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
 
   const bom = useMemo(() => {
     if (!template || !finish || !numericOpening.width_m || !numericOpening.height_m || !numericOpening.series || !numericOpening.thickness_mm) return null
-    return computeBomForOpening(numericOpening, template, templateComponents, templateHardware, profiles || [], finish, infillType || null)
+    return computeBomForOpening(numericOpening, template, templateComponents, templateHardware, legacyPricing(profiles || [], finish), infillType || null)
   }, [template, finish, infillType, numericOpening, templateComponents, templateHardware, profiles])
 
   // Add-on aggregation happens HERE, at the call site -- computeBomForOpening
@@ -99,7 +99,7 @@ function OpeningEditor({ opening, projectId, templates, components, hardware, co
   // add-on yet", not an error).
   const addonBom = useMemo(() => {
     if (!form.has_addon || !addonTemplate || !finish || !numericAddon.width_m || !numericAddon.height_m) return null
-    return computeBomForOpening(numericAddon, addonTemplate, addonComponents, addonHardware, profiles || [], finish, infillType || null)
+    return computeBomForOpening(numericAddon, addonTemplate, addonComponents, addonHardware, legacyPricing(profiles || [], finish), infillType || null)
   }, [form.has_addon, addonTemplate, finish, infillType, numericAddon, addonComponents, addonHardware, profiles])
 
   const combined = useMemo(() => combineOpeningBoms(bom, addonBom), [bom, addonBom])
