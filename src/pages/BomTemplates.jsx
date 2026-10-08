@@ -467,8 +467,9 @@ export default function BomTemplates(props) {
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button className={`btn btn-sm ${view === 'templates' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('templates')}>🧩 BOM Templates</button>
-        <button className={`btn btn-sm ${view === 'profiles' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('profiles')}>📏 หน้าตัดอลูมิเนียม</button>
-        <button className={`btn btn-sm ${view === 'finishes' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('finishes')}>🎨 สีผิวอลูมิเนียม</button>
+        {/* Legacy profile / colour lists are hidden so there is one list only (the catalog's).
+            Restore these two buttons to bring them back; Phase 2 deletes them for good. */}
+        <span style={{ alignSelf: 'center', fontSize: 12, color: 'var(--text3)' }}>หน้าตัดและสีอลูมิเนียมอยู่ที่ ประเมินราคา → 🏭 แคตตาล็อกอลูมิเนียม</span>
         <button className={`btn btn-sm ${view === 'infill_types' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('infill_types')}>🪟 วัสดุอุดช่อง</button>
       </div>
 
