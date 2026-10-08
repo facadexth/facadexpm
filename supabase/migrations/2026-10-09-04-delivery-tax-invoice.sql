@@ -7,6 +7,12 @@
 -- table-level INSERT/UPDATE on both tables, so the PO form and the supplier page can set them).
 -- New link table: SELECT-only for clients; 2026-10-09-05's RPCs write it. po_id is a plain copy (NO FK): a second
 -- purchase_orders <-> supplier_tax_invoices path would make existing many-to-many embeds ambiguous. No FK to expenses.
+-- Guards (codes): an invoice links POs OR receipts, never both (invoice_mixed_links); a receipt link must match its
+-- receipt's tenant and PO (cross_tenant_reference); receipt links only for 'delivery' POs (receipt_po_not_delivery);
+-- whole-PO links never for 'delivery' POs (po_is_delivery_mode). A PO's mode is locked (po_mode_locked) once it left
+-- draft/ordered, has a receipt, an active PO-level invoice link, or any purchase_order stock movement (a hand-reverted
+-- legacy receive flipped to 'delivery' would post its stock twice). A 'delivery' PO reaches received /
+-- partially_received only through receive_po_lines (po_delivery_needs_receipt).
 -- ============================================================
 
 SET LOCAL lock_timeout = '5s';
@@ -44,10 +50,15 @@ CREATE POLICY admin_read ON supplier_tax_invoice_receipts FOR SELECT TO authenti
 REVOKE ALL ON supplier_tax_invoice_receipts FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON supplier_tax_invoice_receipts TO authenticated;
 
--- An invoice links POs OR receipts, never both; a receipt link must match its receipt (tenant, PO).
--- The invoice row is locked first so two links of different kinds cannot be added concurrently.
+-- An invoice links POs OR receipts, never both; a receipt link must match its receipt (tenant, PO); the link kind must
+-- match the PO's mode. The invoice row is locked first so two links of different kinds cannot be added concurrently
+-- (lock order invoice -> PO, as post/void_supplier_tax_invoice).
+-- Race-free mode reads: a receipt link's PO already has that receipt, so its mode is locked for good (po_receipts rows
+-- are never deleted by the app); a PO link takes the PO row FOR SHARE, so a concurrent mode change either commits
+-- first (its new mode is read here) or waits and then sees this active link (po_mode_locked).
 CREATE OR REPLACE FUNCTION sti_link_kind_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_mode TEXT;
 BEGIN
   PERFORM 1 FROM supplier_tax_invoices WHERE id = NEW.invoice_id FOR UPDATE;
   IF TG_TABLE_NAME = 'supplier_tax_invoice_receipts' THEN
@@ -56,25 +67,31 @@ BEGIN
        OR NOT EXISTS (SELECT 1 FROM po_receipts r WHERE r.id = NEW.receipt_id AND r.tenant_id = NEW.tenant_id AND r.po_id = NEW.po_id) THEN
       RAISE EXCEPTION 'cross_tenant_reference';
     END IF;
+    SELECT p.tax_invoice_mode INTO v_mode FROM po_receipts r JOIN purchase_orders p ON p.id = r.po_id WHERE r.id = NEW.receipt_id;
+    IF v_mode IS DISTINCT FROM 'delivery' THEN RAISE EXCEPTION 'receipt_po_not_delivery'; END IF;
   ELSE
     IF EXISTS (SELECT 1 FROM supplier_tax_invoice_receipts WHERE invoice_id = NEW.invoice_id) THEN RAISE EXCEPTION 'invoice_mixed_links'; END IF;
+    SELECT tax_invoice_mode INTO v_mode FROM purchase_orders WHERE id = NEW.po_id FOR SHARE;
+    IF v_mode = 'delivery' THEN RAISE EXCEPTION 'po_is_delivery_mode'; END IF;
   END IF;
   RETURN NEW;
 END $$;
-CREATE TRIGGER stirc_link_kind_guard_trg BEFORE INSERT OR UPDATE OF invoice_id, receipt_id, po_id ON supplier_tax_invoice_receipts
+CREATE TRIGGER stirc_link_kind_guard_trg BEFORE INSERT OR UPDATE OF invoice_id, receipt_id, po_id, tenant_id ON supplier_tax_invoice_receipts
   FOR EACH ROW EXECUTE FUNCTION sti_link_kind_guard();
-CREATE TRIGGER stip_link_kind_guard_trg BEFORE INSERT OR UPDATE OF invoice_id ON supplier_tax_invoice_pos
+CREATE TRIGGER stip_link_kind_guard_trg BEFORE INSERT OR UPDATE OF invoice_id, po_id, tenant_id ON supplier_tax_invoice_pos
   FOR EACH ROW EXECUTE FUNCTION sti_link_kind_guard();
 
 -- The mode is set before the first receipt / active PO-level invoice only (owner Q1). A 'delivery' PO is received
 -- only through receive_po_lines (flag app.po_receipt_rpc): the old whole-PO receive leaves no receipt to invoice.
+-- Stock movements referencing the PO also lock it (idx_stock_movements_reference serves the lookup).
 CREATE OR REPLACE FUNCTION po_tax_invoice_mode_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   IF TG_OP = 'UPDATE' AND NEW.tax_invoice_mode IS DISTINCT FROM OLD.tax_invoice_mode
      AND (OLD.status NOT IN ('draft', 'ordered')
           OR EXISTS (SELECT 1 FROM po_receipts WHERE po_id = OLD.id)
-          OR EXISTS (SELECT 1 FROM supplier_tax_invoice_pos WHERE po_id = OLD.id AND active)) THEN
+          OR EXISTS (SELECT 1 FROM supplier_tax_invoice_pos WHERE po_id = OLD.id AND active)
+          OR EXISTS (SELECT 1 FROM stock_movements WHERE reference_type = 'purchase_order' AND reference_id = OLD.id)) THEN
     RAISE EXCEPTION 'po_mode_locked';
   END IF;
   IF NEW.tax_invoice_mode = 'delivery' AND NEW.status IN ('received', 'partially_received')
