@@ -56,8 +56,11 @@ export function legacyPricing(profiles, finish) {
   }
 }
 
-function priceProfileLine({ role_name, family, length_m, quantity, pricing, opening }) {
-  return pricing.profileLine({ role_name, family, length_m, quantity, thickness_mm: opening.thickness_mm, opening })
+// A component may carry its own thickness (frame vs sash, only where the type allows it; see assembly.applyRoleThickness);
+// otherwise the opening's single thickness applies.
+function priceProfileLine({ role_name, family, length_m, quantity, pricing, opening, thickness_mm, cut_style }) {
+  const line = pricing.profileLine({ role_name, family, length_m, quantity, thickness_mm: thickness_mm != null ? thickness_mm : opening.thickness_mm, opening })
+  return { ...line, cut_style: cut_style || 'square' }
 }
 
 // `pricing` comes from legacyPricing() or aluCatalogPricing.makeCatalogPricing(); callers of the
@@ -88,7 +91,7 @@ export function computeBomForOpening(opening, template, components, hardware, pr
   const profileLines = (components || []).map(c => {
     const length_m = computeComponentLength(c.length_rule_type, c.length_deduction_mm, opening.width_m, opening.height_m)
     const quantity = c.quantity_basis === 'per_cell' ? c.quantity_value * rowCount * columnCount : c.quantity_value
-    return priceProfileLine({ role_name: c.role_name, family: c.profile_family, length_m, quantity, pricing, opening })
+    return priceProfileLine({ role_name: c.role_name, family: c.profile_family, length_m, quantity, pricing, opening, thickness_mm: c.thickness_mm, cut_style: c.cut_style })
   })
 
   const unresolvedProfileLines = [...profileLines, ...gridLines].filter(l => !l.resolved)
