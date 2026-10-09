@@ -133,3 +133,14 @@ describe('costOpening reports an add-on it could not cost', () => {
     expect(costOpening(c).unresolved).toContainEqual({ name: 'ชุดต่อเติม', reason: 'no_dimension', source: 'addon' })
   })
 })
+
+describe('costOpening with a project hardware package', () => {
+  it('passes the package rows on: a type the package does not cover resolves no set, a none row stays none', () => {
+    const c = ctxBase()
+    c.project = { ...c.project, default_hardware_set_id: 'legacySet' }
+    expect(costOpening(c).resolved.hardware_set_id).toBe('legacySet')
+    expect(costOpening({ ...c, packageItems: [] }).resolved.hardware_set_id).toBeNull()
+    expect(costOpening({ ...c, packageItems: [{ type_id: 'tSlide', hardware_set_id: 'setA' }] }).resolved.hardware_set_id).toBe('setA')
+    expect(costOpening({ ...c, packageItems: [{ type_id: 'tSlide', hardware_set_id: null }] }).resolved.hardware_set_id).toBeNull()
+  })
+})

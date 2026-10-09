@@ -18,6 +18,16 @@ import { fmt } from '../lib/supabase.js'
 import { computeBomForOpening, combineOpeningBoms, legacyPricing } from '../lib/bomEngine.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
+import { useEstimationCatalog } from '../hooks/useAluCatalog.js'
+import { useEstimationSettings, useTemplateJoints, useHardwarePackages, groupByTemplate } from '../hooks/useEstimation2b.js'
+import { listPriceChanges } from '../lib/staleProjectPrices.js'
+import { localDateString } from '../lib/localDate.js'
+import { typeLabel } from '../lib/typeTree.js'
+import ProjectDefaultsPanel from './estimation/ProjectDefaultsPanel.jsx'
+import AvailabilityBanner from './estimation/AvailabilityBanner.jsx'
+import StalePriceBanner from './estimation/StalePriceBanner.jsx'
+import ItemsTable from './estimation/ItemsTable.jsx'
+import { newProjectRow, packageRowsFor, hardwareBanners, availabilityIssues, costItems, bomsForStale } from './estimation/projectDefaults.js'
 
 function evaluateConstraints(opening, constraints) {
   const violations = []
@@ -343,6 +353,10 @@ export default function Estimation(props) {
   const { data: finishes } = useAluminumFinishes()
   const { data: infillTypes } = useInfillTypes()
   const { data: profiles } = useAluminumProfiles()
+  const catalog = useEstimationCatalog()
+  const { settings } = useEstimationSettings()
+  const { data: joints } = useTemplateJoints()
+  const hw = useHardwarePackages()
 
   const [selectedProjectId, setSelectedProjectId] = useState(null)
   const [showProjectForm, setShowProjectForm] = useState(false)
@@ -350,14 +364,46 @@ export default function Estimation(props) {
   const [creatingOpening, setCreatingOpening] = useState(false)
   const [editingOpeningId, setEditingOpeningId] = useState(null)
 
-  const projectOpenings = (openings || []).filter(o => o.project_id === selectedProjectId)
+  const project = (projects || []).find(p => p.id === selectedProjectId) || null
+  const projectOpenings = useMemo(() => (openings || []).filter(o => o.project_id === selectedProjectId), [openings, selectedProjectId])
+  const index = catalog.index
+
+  // Everything costOpening needs except the item itself; rebuilt only when a source table changes.
+  const base = useMemo(() => {
+    if (!index) return null
+    return {
+      templatesById: Object.fromEntries((templates || []).map(t => [t.id, t])),
+      componentsByTemplate: groupByTemplate(components), hardwareByTemplate: groupByTemplate(hardware), jointsByTemplate: groupByTemplate(joints),
+      typesById: index.types, infillTypesById: Object.fromEntries((infillTypes || []).map(g => [g.id, g])), index, settings,
+    }
+  }, [index, templates, components, hardware, joints, infillTypes, settings])
+
+  const packageItems = useMemo(() => (project ? packageRowsFor(project, hw.items) : null), [project, hw.items])
+  const pkg = project && project.hardware_package_id ? hw.packages.find(p => p.id === project.hardware_package_id) : null
+  const costCtx = useMemo(() => (base ? { ...base, packageItems } : null), [base, packageItems])
+  const today = localDateString(new Date())
+  const costs = useMemo(() => (costCtx && project ? costItems({ items: projectOpenings, project, base: costCtx, asOf: project.price_as_of }) : {}), [costCtx, project, projectOpenings])
+  const stale = useMemo(() => {
+    if (!costCtx || !project) return []
+    const now = costItems({ items: projectOpenings, project, base: costCtx, asOf: today })
+    return listPriceChanges(bomsForStale(costs), bomsForStale(now))
+  }, [costCtx, project, projectOpenings, costs, today])
+
+  const issues = useMemo(() => (base && project ? availabilityIssues({ items: projectOpenings, project, templatesById: base.templatesById, index, seriesTypes: catalog.seriesTypes }) : []),
+    [base, project, projectOpenings, index, catalog.seriesTypes])
+  const hwBanners = useMemo(() => (base && project ? hardwareBanners({ project, pkg, packageItems, items: projectOpenings, templatesById: base.templatesById, typesById: index.types }) : null),
+    [base, project, pkg, packageItems, projectOpenings, index])
+  const typeNames = useMemo(() => (hwBanners && index ? Object.fromEntries(hwBanners.missingTypeIds.map(id => [id, typeLabel(index.types, id)])) : {}), [hwBanners, index])
 
   const handleCreateProject = async () => {
-    if (!newProjectName) return
-    const { error } = await supabase.from('estimation_projects').insert({ name: newProjectName })
+    if (!newProjectName.trim()) return
+    const { error } = await supabase.from('estimation_projects').insert(newProjectRow(newProjectName))
     if (error) { alert('สร้างไม่สำเร็จ: ' + error.message); return }
     setNewProjectName(''); setShowProjectForm(false); refetchProjects()
   }
+
+  if (catalog.error) return <div className="alert alert-error">โหลดแคตตาล็อกอลูมิเนียมไม่สำเร็จ: {catalog.error}</div>
+  if (!index || !base) return <div style={{ color: 'var(--text3)', padding: 20 }}>กำลังโหลดแคตตาล็อก...</div>
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16 }}>
@@ -374,32 +420,19 @@ export default function Estimation(props) {
         </div>
       </div>
 
-      <div>
-        {!selectedProjectId && <div style={{ color: 'var(--text3)', padding: 20 }}>เลือกโปรเจกต์ทางซ้าย หรือสร้างใหม่</div>}
-        {selectedProjectId && (
+      <div style={{ minWidth: 0 }}>
+        {!project && <div style={{ color: 'var(--text3)', padding: 20 }}>เลือกโปรเจกต์ทางซ้าย หรือสร้างใหม่</div>}
+        {project && (
           <div style={{ display: 'grid', gap: 12 }}>
+            <ProjectDefaultsPanel project={project} index={index} seriesTypes={catalog.seriesTypes} infillTypes={infillTypes} packages={hw.packages}
+              items={projectOpenings} templatesById={base.templatesById} canEdit={canEdit} onSaved={refetchProjects} />
+            <AvailabilityBanner issues={issues} hardware={hwBanners} typeNames={typeNames} />
+            <StalePriceBanner changes={stale} itemsById={Object.fromEntries(projectOpenings.map(o => [o.id, o]))} index={index} priceAsOf={project.price_as_of} />
             <div style={{ display: 'flex', gap: 8 }}>
               {canEdit && <button className="btn btn-primary btn-sm" onClick={() => { setCreatingOpening(true); setEditingOpeningId(null) }}>+ เพิ่มช่องเปิด</button>}
             </div>
-            <div className="card">
-              <div className="table-wrap">
-                <table>
-                  <thead><tr><th>เลขช่อง</th><th>Template</th><th>ขนาด</th><th>จำนวน</th><th></th></tr></thead>
-                  <tbody>
-                    {projectOpenings.map(o => (
-                      <tr key={o.id} style={{ cursor: 'pointer' }} onClick={() => { setEditingOpeningId(o.id); setCreatingOpening(false) }}>
-                        <td style={{ fontWeight: 600 }}>{o.opening_no}</td>
-                        <td>{o.bom_templates?.name}</td>
-                        <td className="font-mono">{o.width_m} x {o.height_m} m</td>
-                        <td className="font-mono">{o.quantity}</td>
-                        <td><button className="btn btn-sm btn-ghost">แก้ไข</button></td>
-                      </tr>
-                    ))}
-                    {!projectOpenings.length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีช่องเปิด</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <ItemsTable items={projectOpenings} costs={costs} project={project} index={index} templatesById={base.templatesById} canEdit={canEdit}
+              onOpen={id => { setEditingOpeningId(id); setCreatingOpening(false) }} onQuantitySaved={refetchOpenings} />
 
             {creatingOpening && (
               <OpeningEditor key="new" opening={null} projectId={selectedProjectId} templates={templates} components={components} hardware={hardware}
@@ -423,7 +456,7 @@ export default function Estimation(props) {
           </div>
           <div className="modal-footer">
             <button className="btn btn-ghost" onClick={() => setShowProjectForm(false)}>ยกเลิก</button>
-            <button className="btn btn-primary" disabled={!newProjectName} onClick={handleCreateProject}>✅ สร้าง</button>
+            <button className="btn btn-primary" disabled={!newProjectName.trim()} onClick={handleCreateProject}>✅ สร้าง</button>
           </div>
         </Modal>
       )}

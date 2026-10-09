@@ -17,20 +17,21 @@ function prepareComponents({ template, components, joints, index, seriesId, thic
 }
 
 // ctx: { item, project, template, addonTemplate, componentsByTemplate, hardwareByTemplate, jointsByTemplate,
-//        typesById, infillTypesById, index, settings, asOf }
+//        typesById, infillTypesById, index, settings, asOf, packageItems? }
 export function costOpening(ctx) {
   const { item: rawItem, project, template, addonTemplate, index, settings, asOf } = ctx
   // DB numerics can arrive as strings; the engine adds width + height, so coerce once here.
   const item = { ...rawItem, width_m: Number(rawItem.width_m) || 0, height_m: Number(rawItem.height_m) || 0, panel_count: Math.max(1, Math.floor(Number(rawItem.panel_count)) || 1) }
   const byT = (m, id) => (m && m[id]) || []
-  const resolved = resolveItemInputs(item, project, template, ctx.typesById)
+  // packageItems: rows of the project's chosen hardware package, or null/undefined when it has none
+  const resolved = resolveItemInputs(item, project, template, ctx.typesById, ctx.packageItems)
   const pricing = makeCatalogPricing({ index, seriesId: resolved.series_id, finishId: resolved.finish_id, asOf })
   const issues = []
   const own = []
   if (!(item.width_m > 0 && item.height_m > 0)) own.push({ name: 'ขนาดช่องเปิด', reason: 'no_dimension', source: 'main' })
   if (resolved.infill_type_id && !(ctx.infillTypesById || {})[resolved.infill_type_id]) own.push({ name: 'วัสดุอุดช่อง', reason: 'unknown_infill', source: 'main' })
 
-  const main = buildEngineOpening(item, project, template, ctx.typesById, ctx.infillTypesById)
+  const main = buildEngineOpening(item, project, template, ctx.typesById, ctx.infillTypesById, ctx.packageItems)
   const prepared = prepareComponents({ template, components: byT(ctx.componentsByTemplate, template.id), joints: byT(ctx.jointsByTemplate, template.id), index, seriesId: resolved.series_id, thicknessMm: resolved.thickness_mm, sashThicknessMm: resolved.sash_thickness_mm })
   issues.push(...prepared.issues)
   const bom = computeBomForOpening(main.opening, template, prepared.components, byT(ctx.hardwareByTemplate, template.id), pricing, main.infillType)
