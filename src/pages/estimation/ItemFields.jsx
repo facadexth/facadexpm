@@ -113,7 +113,7 @@ export default function ItemFields({ form, m, update, dis }) {
       </div>
 
       <div>
-        <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13 }}>รายการเพิ่มเติม (Fire Barrier, ดัดโค้ง ฯลฯ)</div>
+        <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13 }}>รายการเพิ่มเติมอื่นๆ (ไม่รวม Fire Barrier / Bracket / ดัดโค้ง ซึ่งมีช่องแยกด้านบน)</div>
         <div style={{ display: 'grid', gap: 6 }}>
           {form.extra_lines.map((l, i) => (
             <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 120px 32px', gap: 6 }}>

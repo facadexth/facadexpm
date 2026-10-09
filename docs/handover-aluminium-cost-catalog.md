@@ -101,7 +101,7 @@ Spec: `docs/superpowers/specs/2026-10-09-aluminium-price-structure-and-quotation
 2. `2026-10-14-01-price-structure.sql` — test first: `! bash .superpowers/sdd/2026-10-09-aluminium-cost-catalog-phase-3-price-structure/run-price-structure-tests.sh`, then apply.
 3. `2026-10-14-02-estimation-images.sql` (adds `image_path` columns + the private `estimation-images` bucket; used by the later pictures task) — test first: `! bash .superpowers/sdd/2026-10-09-aluminium-cost-catalog-phase-3-price-structure/run-estimation-images-tests.sh`, then apply.
 
-**Deploy order: apply 14-01 BEFORE deploying the code.** Item saves and the estimation settings save now send the new columns; without the migration they fail with an unknown-column error. (14-02 can follow; without it the attachment pages simply show placeholders.)
+**Deploy order: apply 14-01 BEFORE deploying the code.** Without the migration ALL of these writes fail with an unknown-column error: item save (the four cost columns), estimation settings save (`default_*` columns), project creation (`newProjectRow` sends the factor columns and `round_step`), project factors save (`waste_pct`, `pm_pct`, `transport_total`, `round_step`) and the profit-tick write on the price structure tab; the send-to-quotation and compare tabs also need the three new tables. (14-01 also makes `estimation_quotation_lines.opening_id` nullable with ON DELETE SET NULL and caps the three `default_*_pct` settings and project `*_pct` columns at 1000.) (14-02 can follow; without it the attachment pages simply show placeholders.)
 
 ## Files touched outside the estimation area
 
