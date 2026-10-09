@@ -30,7 +30,7 @@ Owner-given answers are marked **(owner)**; the rest are mine, each with what it
 
 1. **(owner) Price lock stays by `effective_from`** (`price_as_of`). Quotations hold 30–60 days; emergencies are handled by the refresh-price button (Task 17). No `price_locked_at`.
 2. **(owner) Hardware vs accessory** are the existing `alu_parts.kind` values (`hardware`/`hardware_set` vs `accessory`); series↔part links are the existing `alu_series_parts` (`type_id` NULL = every type). No schema change. A part may link to several types of one series (the unique index already allows it).
-3. **(owner) Frame and sash thickness are separate** (government specs, e.g. frame 2.0 mm / sash 1.5 mm, are the common traditional case on every extruder's standard series). The item has `thickness_mm` (frame / main) and `sash_thickness_mm` (NULL = same as the frame); the project has `default_thickness_mm` and `default_sash_thickness_mm`; both inherit by NULL. A template component is tagged `thickness_role = 'sash'` (NULL = frame/main). Sash thickness applies only where the series+type link allows it (`alu_series_types.allow_mixed_thickness`); otherwise every component uses the single thickness (`applyRoleThickness`). A joint's main bar is always looked up at the frame thickness.
+3. **(owner) Frame and sash thickness are separate** (government specs, e.g. frame 2.0 mm / sash 1.5 mm, are the common traditional case on every extruder's standard series). The item has `thickness_mm` (frame / main) and `sash_thickness_mm` (NULL = same as the frame); the project has `default_thickness_mm` and `default_sash_thickness_mm`; both inherit by NULL. A template component is tagged `thickness_role = 'sash'` (NULL = frame/main). Sash thickness applies only where the series+type link allows it (`alu_series_types.allow_mixed_thickness`); otherwise every component uses the single thickness (`applyRoleThickness`). A joint's main bar is looked up at the thickness its own components use (the sash thickness when the main bar's components are sash-role, otherwise the frame thickness) — changed after the interim review, because the government case (frame 2.0 / sash 1.5) could never resolve a sash joint otherwise.
 4. **(owner) One die = one item.** `alu_profiles.drawing_no` is the extruder's DIE NO. (relabelled in the UI); equal shape with different thickness is a different profile row. `shape_group` only groups profiles and shares the drawing/dimensions; it carries no price. The same die no. from two extruders is two rows. *Wrong if:* shape groups must also hold shared prices — then they need their own table.
 5. **(owner) Joint logic is per template.** Main bar = full length. Each profile records its **primary contact surface** = the face a butting bar rests against; the secondary bar is shortened, per end, by the dimension **perpendicular** to that face. Example from the owner: กล่องเรียบ 101.6 × 44.45 — contact on the 101.6 face (the normal case, `primary_contact = 'width'`, the default) shortens the secondary bar by 44.45 (`depth_mm`); contact on the narrow face (`'depth'`) shortens it by 101.6 (`width_mm`). Overridable per joint (manual mm). Which bar is main is set in the template (`bom_template_joints.main_family`; `bom_templates.main_axis` drives the preview). Sliding frame: the two vertical bars are main (waterproofing).
 6. **(owner) Cut optimizer is whole-project only**; saw kerf differs for 90° (`kerf_square_mm`, default 3 mm, placeholder) and 45° (`kerf_miter_mm`, default 10 mm = the owner's estimate; he says the real distance must be checked); all constants are tenant-wide in `estimation_settings`. **A 45° piece's length is always its OUTER (long-point) length**; mixing in the shorter inner length causes large errors (owner warning), so the joint UI, the parts-style preview and the cut list must all label mitred pieces as outer length.
@@ -48,7 +48,7 @@ Owner-given answers are marked **(owner)**; the rest are mine, each with what it
 
 ## Review Focus
 
-1. A tenant without the `estimation` module (possibly not an aluminium business) must see and change nothing: DB policies on all four new tables and every UI entry. Test: Task 1 SQL test 3 and Task 12–17 gating checklist.
+1. A tenant without the `estimation` module (possibly not an aluminium business) must see and change nothing: DB policies on all five new tables and every UI entry. Test: Task 1 SQL test 3 and Task 12–17 gating checklist.
 2. An item with missing inputs (no series, a thickness the series lacks, an unlinked joint, an unpriced accessory) shows reason codes and an unresolved list; the total never silently treats it as 0 (Task 7 tests).
 3. A saved preview snapshot must not silently outlive an edit: the signature changes with every input that changes the drawing (Task 10 tests) and the form shows the stale hint.
 4. Cut optimizer edge inputs: a cut longer than the bar, zero/negative/fractional quantities, 45° vs 90° kerf, a candidate bar shorter than the longest cut, and nothing to cut (Task 5 tests). A mitred piece must always be listed with its outer length (Ruling 6); the joint tab and the parts preview must say so.
@@ -58,6 +58,10 @@ Owner-given answers are marked **(owner)**; the rest are mine, each with what it
 
 New pure libs (`src/lib/`, each with a `.test.js` beside it): `estimationCatalogViews`, `localDate`, `assembly`, `estimationSettings`, `openingExtras`, `cutOptimizer`, `projectBom`, `openingCost`, `providerCompare`, `layoutTemplates`, `descriptionFormat`, `openingPayload`, `templateSave`, `profileSketch`. Changed libs: `aluCatalogPricing` (3 index keys), `bomEngine` (role thickness + cut style), `estimationInherit` (+ its test: sash thickness inherits), `framePreview` (rewritten, backward compatible).
 New hook file: `src/hooks/useEstimation2b.js`. New/changed screens: `src/pages/aluCatalog/{ProfilesTab,HierarchyTab,SettingsTab}.jsx`, `src/pages/BomTemplates.jsx` (+ `src/pages/bomTemplates/JointsTab.jsx`), `src/pages/Estimation.jsx` (split into `src/pages/estimation/*`). SQL: `supabase/migrations/2026-10-12-01-estimation-2b-expand.sql`, `supabase/tests/estimation_2b_expand_test.sql`, and (Task 18) `supabase/migrations/2026-10-13-01-estimation-contract.sql`.
+
+## Follow-up A (already on the branch)
+
+After Tasks 1–11 an interim whole-range review (opus) found one Critical and six Important cross-task problems; they were fixed in commits `3983a9ed` and `e31b1ccb` and the Task code blocks below show the FINAL code. What changed relative to a naive reading of the tasks: `componentRowsForInsert` writes only whitelisted real columns (`thickness_role`, not `thickness_mm`); `projectBom` also lists `costOpening`'s own unresolved entries (joint issues, `no_dimension`, `unknown_infill`, `unknown_addon_template`) and merges hardware by `part_id`; `applyJoints` looks a joint's main bar up at its own components' thickness and marks main bars of a mitre joint 45° (only bars without their own joint); `previewSignature` is normalised and covers the template inputs; `costOpening` reports an add-on it could not cost; `compareProviders` never marks a row complete when a template, size, joint, add-on or infill is missing; `bomEngine` hardware lines carry `part_id`; `stockForProject` and a single `ADDON_POSITIONS` source exist; `validateForm` checks thickness > 0 and a non-negative offset.
 
 ## Task order and gates
 
@@ -862,6 +866,57 @@ describe('applyRoleThickness', () => {
     expect(applyRoleThickness([{ role_name: 'x', thickness_mm: 2 }], { allowMixed: true, sashThicknessMm: 1.5 })[0].thickness_mm).toBeNull()
   })
 })
+
+describe('applyJoints: main bar thickness and mitre', () => {
+  const comp = (o = {}) => ({ role_name: 'r', profile_family: 'x', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 1, ...o })
+  const sashIndex = buildCatalogIndex({
+    series: [{ id: 's1', provider_id: 'pA' }],
+    profiles: [{ id: 'sbox', provider_id: 'pA', family: 'กล่องเฉพาะบาน', thickness_mm: 1.5, depth_mm: 30, width_mm: 80, primary_contact: 'width' }],
+    seriesProfiles: [{ series_id: 's1', profile_id: 'sbox' }],
+  })
+  const j = o => joint({ main_family: 'กล่องเฉพาะบาน', ...o })
+  const go = (components, jo, idx = sashIndex) => applyJoints({ components, joints: [jo], index: idx, seriesId: 's1', thicknessMm: 2 })
+  it('the main bar is looked up at the thickness of its own components (sash 1.5 while the frame is 2)', () => {
+    const r = go([comp({ role_name: 'main', profile_family: 'กล่องเฉพาะบาน', thickness_mm: 1.5 }), comp({ joint_id: 'j1' })], j())
+    expect(r.issues).toEqual([])
+    expect(r.components[1].length_deduction_mm).toBe(60)
+  })
+  it('with no component of the main family, the frame thickness is used', () => {
+    expect(go([comp({ joint_id: 'j1' })], j()).issues[0].reason).toBe('no_main_profile')
+  })
+  it('a main-family component without its own thickness uses the frame thickness', () => {
+    const r = go([comp({ profile_family: 'กล่องเฉพาะบาน', thickness_mm: null }), comp({ joint_id: 'j1' })], j())
+    expect(r.issues[0].reason).toBe('no_main_profile')
+  })
+  it('a mitre joint marks the main-family bars 45 degrees as well; others stay square', () => {
+    const r = go([comp({ role_name: 'main', profile_family: 'กล่องเฉพาะบาน' }), comp({ role_name: 'sec', joint_id: 'j1' }), comp({ role_name: 'other', profile_family: 'zzz' })], j({ cut_style: 'miter45' }))
+    expect(r.components.map(c => c.cut_style)).toEqual(['miter45', 'miter45', 'square'])
+    expect(r.components[0].length_deduction_mm).toBe(0)
+    expect(r.components[1].length_deduction_mm).toBe(0)
+  })
+  it('a main bar keeps a non-square cut from its own joint', () => {
+    const joints = [j({ cut_style: 'miter45' }), j({ id: 'j2', cut_style: 'notch', notch_width_mm: 5, notch_depth_mm: 5, secondary_family: 'q' })]
+    const r = applyJoints({ components: [comp({ role_name: 'main', profile_family: 'กล่องเฉพาะบาน', joint_id: 'j2', thickness_mm: 1.5 }), comp({ joint_id: 'j1' })], joints, index: sashIndex, seriesId: 's1', thicknessMm: 2 })
+    expect(r.components[0].cut_style).toBe('notch')
+  })
+})
+
+describe('applyJoints: mitre only flips main bars without their own joint', () => {
+  const comp = (o = {}) => ({ role_name: 'r', profile_family: 'x', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 1, ...o })
+  it('a main-family bar linked to a square joint stays square; one with no joint flips', () => {
+    const joints = [joint({ id: 'jm', cut_style: 'miter45' }), joint({ id: 'js', cut_style: 'square' })]
+    const r = applyJoints({ components: [comp({ profile_family: 'กล่องเรียบ', joint_id: 'js' }), comp({ profile_family: 'กล่องเรียบ' })], joints, index, seriesId: 's1', thicknessMm: 1.5 })
+    expect(r.components.map(c => c.cut_style)).toEqual(['square', 'miter45'])
+  })
+  it('a component whose own joint cannot be resolved stays square', () => {
+    const r = applyJoints({ components: [comp({ profile_family: 'กล่องเรียบ', joint_id: 'gone' })], joints: [joint({ cut_style: 'miter45' })], index, seriesId: 's1', thicknessMm: 1.5 })
+    expect(r.components[0].cut_style).toBe('square')
+  })
+  it('a mitre joint with no main_family flips nothing', () => {
+    const r = applyJoints({ components: [comp({ profile_family: undefined }), comp({ profile_family: '' })], joints: [joint({ cut_style: 'miter45', main_family: '' })], index, seriesId: 's1', thicknessMm: 1.5 })
+    expect(r.components.map(c => c.cut_style)).toEqual(['square', 'square'])
+  })
+})
 ```
 
 - [ ] **Step 2: Write the failing test** — create `src/lib/bomEngineAssembly.test.js` with exactly:
@@ -905,6 +960,13 @@ describe('cut style on profile lines', () => {
   it('grid members are square cuts', () => {
     const t = { ...tpl, grid_row_weights: [1, 1], grid_horizontal_rail_family: 'F' }
     expect(computeBomForOpening(opening, t, [], [], legacyPricing([P12], FINISH), null).gridLines[0].cut_style).toBe('square')
+  })
+})
+
+describe('hardware lines carry part_id', () => {
+  it('part_id is passed through, null when absent', () => {
+    const r = computeBomForOpening(opening, tpl, [], [{ name: 'a', part_id: 'p1', quantity_basis: 'fixed', quantity_value: 1 }, { name: 'b', quantity_basis: 'fixed', quantity_value: 1 }], legacyPricing([P12], FINISH), null)
+    expect(r.hardwareLines.map(l => l.part_id)).toEqual(['p1', null])
   })
 })
 ```
@@ -952,13 +1014,20 @@ export function applyJoints({ components, joints, index, seriesId, thicknessMm }
   const jointsById = {}
   for (const j of joints || []) jointsById[j.id] = j
   const issues = []
+  // the thickness each profile family is built at (a sash-role bar may differ from the frame); first component wins
+  const familyThickness = {}
+  for (const c of components || []) {
+    if (c.profile_family && !(c.profile_family in familyThickness)) familyThickness[c.profile_family] = c.thickness_mm != null ? c.thickness_mm : thicknessMm
+  }
+  const miterMains = new Set((joints || []).filter(j => j.cut_style === 'miter45' && j.main_family).map(j => j.main_family))
   const out = (components || []).map(c => {
     if (!c.joint_id) return { ...c, cut_style: c.cut_style || 'square' }
     const joint = jointsById[c.joint_id]
     const rule = SHORTEN[c.length_rule_type]
     if (!rule) { issues.push({ role_name: c.role_name, reason: 'rule_not_cuttable' }); return { ...c, cut_style: 'square' } }
-    // the main bar is looked up at the frame thickness (the opening's own); a sash-role bar's thickness does not move it
-    const main = joint ? resolveCatalogProfile(index, seriesId, joint.main_family, thicknessMm).profile : null
+    // the main bar is looked up at the thickness of its own components (frame by default, sash where the main bars are
+    // sash-role); the secondary bar's own thickness does not move it
+    const main = joint ? resolveCatalogProfile(index, seriesId, joint.main_family, familyThickness[joint.main_family] ?? thicknessMm).profile : null
     const ded = jointDeductionMm(joint, main)
     if (ded.mm === null) { issues.push({ role_name: c.role_name, reason: ded.reason }); return { ...c, cut_style: 'square' } }
     const ends = Number(c.joint_ends) === 1 ? 1 : 2
@@ -968,7 +1037,9 @@ export function applyJoints({ components, joints, index, seriesId, thicknessMm }
       cut_style: joint.cut_style || 'square', notch_width_mm: joint.notch_width_mm ?? null, notch_depth_mm: joint.notch_depth_mm ?? null,
     }
   })
-  return { components: out, issues }
+  // a mitre joint cuts the main bars at 45 degrees too (their lengths are unchanged); a bar with its own joint keeps what that joint gave it
+  const withMitreMains = out.map(c => (!c.joint_id && miterMains.has(c.profile_family) && (c.cut_style || 'square') === 'square' ? { ...c, cut_style: 'miter45' } : c))
+  return { components: withMitreMains, issues }
 }
 
 // Government-style specs fix the frame and the sash separately (e.g. frame 2.0 mm, sash 1.5 mm). A template component
@@ -999,6 +1070,8 @@ function priceProfileLine({ role_name, family, length_m, quantity, pricing, open
 ```js
     return priceProfileLine({ role_name: c.role_name, family: c.profile_family, length_m, quantity, pricing, opening, thickness_mm: c.thickness_mm, cut_style: c.cut_style })
 ```
+
+(c) In the `hardwareLines` map, add `part_id: h.part_id || null` to the returned object (Follow-up A).
 
 The grid members (`gridLines`) keep calling `priceProfileLine` without `thickness_mm` / `cut_style`, so they use the opening thickness and are square cuts.
 
@@ -1429,7 +1502,7 @@ Rolls every item (x its quantity) into: aluminium by profile + colour (merged cu
 ```js
 import { describe, it, expect } from 'vitest'
 import { mergeSettings } from './estimationSettings.js'
-import { buildProjectBom, stockLengthFor } from './projectBom.js'
+import { buildProjectBom, stockLengthFor, stockForProject } from './projectBom.js'
 
 const S = mergeSettings(null)
 const pl = (o = {}) => ({ role_name: 'r', profile_id: 'p1', length_m: 2, quantity: 2, resolved: true, cut_style: 'square', ...o })
@@ -1497,6 +1570,47 @@ describe('buildProjectBom', () => {
     expect(run([])).toMatchObject({ profiles: [], parts: [], unresolved: [], sealant: { tubes: 0 } })
   })
 })
+
+describe('costOpening problems surface in the project BOM', () => {
+  it('joint issues, no_dimension, unknown infill and add-on problems are listed with the opening; profile-line problems are not doubled', () => {
+    const unresolved = [
+      { name: 'bar', reason: 'no_main_profile', source: 'joint' },
+      { name: 'ขนาดช่องเปิด', reason: 'no_dimension', source: 'main' },
+      { name: 'วัสดุอุดช่อง', reason: 'unknown_infill', source: 'main' },
+      { name: 'ชุดต่อเติม', reason: 'unknown_addon_template', source: 'addon' },
+      { name: 'ชุดต่อเติม', reason: 'no_dimension', source: 'addon' },
+      { name: 'วงกบ', reason: 'no_profile', source: 'main' },
+      { name: 'ล้อ', reason: 'no_hardware_price', source: 'main' },
+    ]
+    const r = run([{ opening_no: 'D1', quantity: 1, finish_id: 'f1', bom: bom([pl({ resolved: false, profile_id: undefined, role_name: 'วงกบ', reason: 'no_profile' })]), unresolved }])
+    expect(r.unresolved).toEqual([
+      { opening_no: 'D1', name: 'วงกบ', reason: 'no_profile' },
+      { opening_no: 'D1', name: 'bar', reason: 'no_main_profile' },
+      { opening_no: 'D1', name: 'ขนาดช่องเปิด', reason: 'no_dimension' },
+      { opening_no: 'D1', name: 'วัสดุอุดช่อง', reason: 'unknown_infill' },
+      { opening_no: 'D1', name: 'ชุดต่อเติม', reason: 'unknown_addon_template' },
+      { opening_no: 'D1', name: 'ชุดต่อเติม', reason: 'no_dimension' },
+    ])
+  })
+})
+
+describe('hardware merged by part_id', () => {
+  it('two lines with the same part_id merge even if the names differ; a part marked accessory in partsById is tagged', () => {
+    const hw = n => ({ hardwareLines: [{ name: n, part_id: 'ps1', quantity: 1, cost: 10, unresolved: false }, { name: 'ไม่มีรหัส', quantity: 1, cost: 5, unresolved: false }] })
+    const r = buildProjectBom({ entries: [{ opening_no: 'D1', quantity: 1, bom: bom([], hw('ล้อ A')) }, { opening_no: 'D2', quantity: 1, bom: bom([], hw('ล้อ B')) }], settings: S, partsById: { ps1: { kind: 'accessory' } } })
+    expect(r.parts).toHaveLength(2)
+    expect(r.parts.find(p => p.key === 'ps1')).toMatchObject({ quantity: 2, cost: 20, kind: 'accessory' })
+    expect(r.parts.find(p => p.name === 'ไม่มีรหัส')).toMatchObject({ quantity: 2, kind: 'hardware' })
+  })
+})
+
+describe('stockForProject', () => {
+  it('keeps only this project\'s per-profile lengths and its own default length', () => {
+    const rows = [{ project_id: 'a', profile_id: 'p1', length_m: '5.8' }, { project_id: 'b', profile_id: 'p1', length_m: '9' }, { project_id: 'a', profile_id: 'p2', length_m: 6 }]
+    expect(stockForProject(rows, 'a', { stock_length_m: '6.2' })).toEqual({ byProfile: { p1: 5.8, p2: 6 }, projectM: 6.2 })
+    expect(stockForProject(null, 'a', null)).toEqual({ byProfile: {}, projectM: null })
+  })
+})
 ```
 
 - [ ] **Step 2: Run it to confirm it fails**
@@ -1531,7 +1645,18 @@ export function stockLengthFor(profileId, stock, settings) {
 
 const bomsOf = e => [e.bom, e.addonBom].filter(Boolean)
 
-export function buildProjectBom({ entries, settings, stock, profilesById, finishesById }) {
+// Stock lengths that apply to ONE project: the per-profile rows of that project and its own default length.
+export function stockForProject(rows, projectId, project) {
+  const byProfile = {}
+  for (const r of rows || []) if (r.project_id === projectId) byProfile[r.profile_id] = Number(r.length_m)
+  const pm = Number(project && project.stock_length_m)
+  return { byProfile, projectM: pm > 0 ? pm : null }
+}
+
+// costOpening().unresolved entries that never show up as an unresolved profile line
+const surfaced = u => u.source === 'joint' || u.reason === 'no_dimension' || u.reason === 'unknown_infill' || u.reason === 'unknown_addon_template'
+
+export function buildProjectBom({ entries, settings, stock, profilesById, finishesById, partsById }) {
   const groups = new Map()
   const unresolved = []
   const hardware = new Map()
@@ -1539,6 +1664,7 @@ export function buildProjectBom({ entries, settings, stock, profilesById, finish
 
   for (const e of entries || []) {
     const q = Number(e.quantity) > 0 ? Number(e.quantity) : 1
+    const costProblems = (e.unresolved || []).filter(surfaced)
     for (const bom of bomsOf(e)) {
       for (const line of [...bom.profileLines, ...bom.gridLines]) {
         if (!line.resolved || !line.profile_id) { unresolved.push({ opening_no: e.opening_no, name: line.role_name, reason: line.reason || 'no_profile' }); continue }
@@ -1552,9 +1678,13 @@ export function buildProjectBom({ entries, settings, stock, profilesById, finish
         g.openings.add(e.opening_no)
         groups.set(key, g)
       }
-      for (const l of bom.hardwareLines) addPart(hardware, l.name, l.name, null, l.quantity * q, l.cost * q, !l.unresolved, 'hardware')
+      for (const l of bom.hardwareLines) {
+        const kind = l.part_id && partsById && partsById[l.part_id] && partsById[l.part_id].kind === 'accessory' ? 'accessory' : 'hardware'
+        addPart(hardware, l.part_id || l.name, l.name, null, l.quantity * q, l.cost * q, !l.unresolved, kind)
+      }
       for (const l of bom.hardwareSetLines || []) addPart(hardware, l.code || l.name, l.name, l.code, l.quantity * q, l.cost * q, l.resolved, 'hardware')
     }
+    for (const u of costProblems) unresolved.push({ opening_no: e.opening_no, name: u.name, reason: u.reason })
     if (e.extras) {
       for (const l of e.extras.lines) addPart(hardware, `extra:${l.key}:${l.part_id}`, l.name, null, l.quantity * q, l.cost * q, l.resolved, 'accessory')
       sealant_m += e.extras.sealant_m * q
@@ -1744,6 +1874,19 @@ describe('costOpening', () => {
     expect(costOpening(c).unresolved).toContainEqual({ name: 'วัสดุอุดช่อง', reason: 'unknown_infill', source: 'main' })
   })
 })
+
+describe('costOpening reports an add-on it could not cost', () => {
+  it('unknown add-on template, zero add-on size; a normal add-on adds nothing', () => {
+    const c = ctxBase()
+    c.item = { ...c.item, addon_template_id: 't2', addon_width_m: 2, addon_height_m: 0.5 }
+    expect(costOpening(c).unresolved).toContainEqual({ name: 'ชุดต่อเติม', reason: 'unknown_addon_template', source: 'addon' })
+    c.addonTemplate = T({ id: 't2' })
+    c.componentsByTemplate = { t1: comps.slice(0, 1), t2: comps.slice(0, 1) }
+    expect(costOpening(c).unresolved).toEqual([])
+    c.item = { ...c.item, addon_height_m: 0 }
+    expect(costOpening(c).unresolved).toContainEqual({ name: 'ชุดต่อเติม', reason: 'no_dimension', source: 'addon' })
+  })
+})
 ```
 
 - [ ] **Step 2: Run it to confirm it fails**
@@ -1800,6 +1943,9 @@ export function costOpening(ctx) {
     issues.push(...aPrepared.issues)
     addonBom = computeBomForOpening(ao.opening, addonTemplate, aPrepared.components, byT(ctx.hardwareByTemplate, addonTemplate.id), pricing, ao.infillType)
   }
+
+  // an add-on the item asks for but that could not be costed must be said, never silently left out of the total
+  if (item.addon_template_id && !hasAddon) own.push({ name: 'ชุดต่อเติม', reason: addonTemplate ? 'no_dimension' : 'unknown_addon_template', source: 'addon' })
 
   const units = [{ width_m: Number(item.width_m), height_m: Number(item.height_m) }]
   if (hasAddon) units.push({ width_m: Number(item.addon_width_m), height_m: Number(item.addon_height_m) })
@@ -1944,6 +2090,26 @@ describe('diffAgainst', () => {
     expect(diffAgainst(null, null)).toBeNull()
   })
 })
+
+describe('Follow-up A: an item whose template is missing', () => {
+  it('makes the row incomplete, so a diff against a complete base is null', () => {
+    const r = compareProviders({ ...base, items: [item, { ...item, id: 'i2', template_id: 'gone', quantity: 2 }], candidates: [{ providerId: 'A', seriesId: 'sA', finishId: 'fA' }] })
+    expect(r[0]).toMatchObject({ itemsPriced: 1, unresolvedLines: 2, complete: false })
+    expect(diffAgainst({ complete: true, aluminium: 1000 }, r[0])).toBeNull()
+  })
+})
+
+describe('fix round 1: left-out add-on or infill makes the row incomplete', () => {
+  const cand = [{ providerId: 'A', seriesId: 'sA', finishId: 'fA' }]
+  it('an add-on template that is not found', () => {
+    const r = compareProviders({ ...base, items: [{ ...item, addon_template_id: 'gone', addon_width_m: 1, addon_height_m: 1 }], candidates: cand })
+    expect(r[0].complete).toBe(false)
+  })
+  it('an infill type that is not found', () => {
+    const r = compareProviders({ ...base, items: [{ ...item, infill_type_id: 'nope' }], candidates: cand })
+    expect(r[0].complete).toBe(false)
+  })
+})
 ```
 
 - [ ] **Step 2: Run it to confirm it fails**
@@ -1977,7 +2143,7 @@ export function compareProviders(ctx) {
     let itemsPriced = 0
     for (const item of items || []) {
       const template = (templatesById || {})[item.template_id]
-      if (!template) continue
+      if (!template) { unresolvedLines += Number(item.quantity) > 0 ? Number(item.quantity) : 1; continue }
       // the same item, forced onto the candidate series + colour; hardware is not part of this comparison
       const forced = { ...item, series_id: cand.seriesId, alu_finish_id: cand.finishId, no_hardware_set: true, hardware_set_id: null }
       const addonTemplate = item.addon_template_id ? (templatesById || {})[item.addon_template_id] : null
@@ -1991,7 +2157,7 @@ export function compareProviders(ctx) {
       aluminium += lines.reduce((s, l) => s + l.cost, 0) * qty
       unresolvedLines += lines.filter(l => !l.resolved).length * qty
       // also count unresolved dimensions and joints
-      unresolvedLines += (r.unresolved || []).filter(u => u.reason === 'no_dimension' || u.source === 'joint').length * qty
+      unresolvedLines += (r.unresolved || []).filter(u => u.reason === 'no_dimension' || u.reason === 'unknown_addon_template' || u.reason === 'unknown_infill' || u.source === 'joint').length * qty
       itemsPriced += 1
     }
     return { ...cand, aluminium, unresolvedLines, itemsPriced, complete: unresolvedLines === 0 && itemsPriced > 0 }
@@ -2117,6 +2283,14 @@ describe('bomTemplatesForType / layoutTemplateFromItem', () => {
     expect(layoutTemplateFromItem({ name: 'x', mainTypeId: 'slide', addonTypeId: 'f', position: 'top', widthM: 2, heightM: 1, addonWidthM: 1, addonHeightM: 0.3, offsetM: 9 }).addon_offset_ratio).toBe(1)
   })
 })
+
+describe('ADDON_POSITIONS', () => {
+  it('is the same list the preview uses', async () => {
+    const fp = await import('./framePreview.js')
+    const lt = await import('./layoutTemplates.js')
+    expect(lt.ADDON_POSITIONS).toBe(fp.ADDON_POSITIONS)
+  })
+})
 ```
 
 - [ ] **Step 2: Write the failing test** — create `src/lib/descriptionFormat.test.js` with exactly:
@@ -2154,7 +2328,8 @@ Expected: FAIL (module / export not found).
 // src/lib/layoutTemplates.js
 // Layout templates ("แม่แบบรูปแบบ"): a main type + optional add-on type, position and proportions. They store NO series,
 // colour, price or profile: those come from whatever series the item uses. Pure.
-export const ADDON_POSITIONS = ['top', 'bottom', 'left', 'right']
+import { ADDON_POSITIONS } from './framePreview.js'
+export { ADDON_POSITIONS }
 
 const offers = (seriesTypes, seriesId, typeId) => (seriesTypes || []).some(st => st.series_id === seriesId && st.type_id === typeId)
 
@@ -2410,7 +2585,7 @@ describe('previewSvgString', () => {
 
 describe('previewSignature', () => {
   it('changes with any input that changes the drawing and is stable otherwise', () => {
-    const a = { template_id: 't', width_m: 2, height_m: 1.5, panel_count: 2 }
+    const a = { template_id: 't', width_m: 2, height_m: 1.5, panel_count: 2, addon_template_id: 'x', addon_width_m: 1, addon_height_m: 0.5 }
     expect(previewSignature(a)).toBe(previewSignature({ ...a }))
     expect(previewSignature(a)).not.toBe(previewSignature({ ...a, width_m: 2.1 }))
     expect(previewSignature(a)).not.toBe(previewSignature({ ...a, addon_position: 'bottom' }))
@@ -2427,7 +2602,7 @@ describe('fix round 1: svg safety, signature completeness, empty offset', () => 
     expect(previewSvgString(p, { style: 'solid', finishColor: '#2b2f33' })).toContain('fill="#2b2f33"')
   })
   it('signature tells centred from offset 0 and sees frame widths', () => {
-    const a = { template_id: 't', width_m: 2, height_m: 1.5, panel_count: 2 }
+    const a = { template_id: 't', width_m: 2, height_m: 1.5, panel_count: 2, addon_template_id: 'x', addon_width_m: 1, addon_height_m: 0.5 }
     expect(previewSignature({ ...a, addon_offset_m: null })).not.toBe(previewSignature({ ...a, addon_offset_m: 0 }))
     expect(previewSignature({ ...a, addon_offset_m: '' })).toBe(previewSignature({ ...a, addon_offset_m: null }))
     expect(previewSignature({ ...a, frame_mm: 40 })).not.toBe(previewSignature({ ...a, frame_mm: 44.45 }))
@@ -2444,6 +2619,32 @@ describe('fix round 1: svg safety, signature completeness, empty offset', () => 
     const svg = previewSvgString(buildFramePreview({ ...withAddon({ position: 'right' }), view: 'in', template: tpl({ preview_kind: 'swing' }), part_labels: { left: 'L' } }))
     expect(svg.startsWith('<svg')).toBe(true)
     expect(svg).not.toMatch(/NaN|undefined/)
+  })
+})
+
+describe('Follow-up A: normalised, complete signature', () => {
+  const a = { template_id: 't', width_m: 1.2, height_m: 1.5, panel_count: 2 }
+  it('form strings and DB numbers give the same signature; a stale hidden add-on value does not matter', () => {
+    expect(previewSignature({ ...a, width_m: '1.20', height_m: '1.50', panel_count: '2' })).toBe(previewSignature(a))
+    expect(previewSignature({ ...a, addon_offset_m: '' })).toBe(previewSignature({ ...a, addon_offset_m: null }))
+    expect(previewSignature({ ...a, frame_mm: '' })).toBe(previewSignature({ ...a, frame_mm: null }))
+    expect(previewSignature({ ...a, addon_position: 'top', addon_width_m: '1', addon_panel_count: 3, addon_offset_m: 0.2, addon_frame_mm: 40, addon_main_axis: 'horizontal' })).toBe(previewSignature(a))
+    expect(previewSignature({ ...a, addon_template_id: 'x', addon_width_m: '1.0' })).toBe(previewSignature({ ...a, addon_template_id: 'x', addon_width_m: 1 }))
+  })
+  it('preview kind, row weights and the add-on axis change it', () => {
+    const s = previewSignature(a)
+    expect(previewSignature({ ...a, preview_kind: 'slide' })).not.toBe(s)
+    expect(previewSignature({ ...a, grid_row_weights: [1, 2] })).not.toBe(s)
+    const w = { ...a, addon_template_id: 'x', addon_width_m: 1, addon_height_m: 1 }
+    expect(previewSignature({ ...w, addon_main_axis: 'horizontal' })).not.toBe(previewSignature(w))
+    expect(previewSignature({ ...w, addon_preview_kind: 'swing' })).not.toBe(previewSignature(w))
+    expect(previewSignature({ ...w, addon_grid_row_weights: [1, 1] })).not.toBe(previewSignature(w))
+  })
+  it('an add-on can have its own main axis for the seams', () => {
+    const p = buildFramePreview(withAddon({ main_axis: 'horizontal' }))
+    const [ad, mn] = p.units
+    expect(ad.seams[0].y1).toBe(ad.seams[0].y2)
+    expect(mn.seams[0].x1).toBe(mn.seams[0].x2)
   })
 })
 ```
@@ -2558,7 +2759,7 @@ function mirrorPreview(p) {
 
 // opts (all optional): main_axis 'vertical' | 'horizontal' (default vertical: the left/right bars run full height),
 // view 'out' | 'in', frame_mm, part_labels { top, bottom, left, right } (text placed on the main unit's four bars),
-// addon { template, width_m, height_m, panel_count, position, offset_m, frame_mm }.
+// addon { template, width_m, height_m, panel_count, position, offset_m, frame_mm, main_axis (default: the main axis) }.
 export function buildFramePreview({ template, width_m, height_m, panel_count, addon, main_axis, view, frame_mm, part_labels }) {
   if (!template || !positive(width_m) || !positive(height_m)) return null
   const addonOk = addon && addon.template && positive(addon.width_m) && positive(addon.height_m)
@@ -2575,7 +2776,7 @@ export function buildFramePreview({ template, width_m, height_m, panel_count, ad
   const py = v => MARGIN + (v - minY) * scale
 
   const units = []
-  if (addonOk) units.push(drawUnit('addon', addon.template, addon.width_m, addon.height_m, addon.panel_count, scale, px(ar.x), py(ar.y), { main_axis: axis, frame_mm: addon.frame_mm }))
+  if (addonOk) units.push(drawUnit('addon', addon.template, addon.width_m, addon.height_m, addon.panel_count, scale, px(ar.x), py(ar.y), { main_axis: addon.main_axis ? (addon.main_axis === 'horizontal' ? 'horizontal' : 'vertical') : axis, frame_mm: addon.frame_mm }))
   units.push(drawUnit('main', template, width_m, height_m, panel_count, scale, px(0), py(0), { main_axis: axis, frame_mm }))
 
   const main = units[units.length - 1]
@@ -2652,9 +2853,21 @@ export function previewSvgString(p, { style = 'double', finishColor = '#f4f4f2' 
 }
 
 // Cheap signature of every input that changes the saved drawing; the item stores it with the snapshot so a
-// later edit can be detected ("the saved preview is older than the item").
-export function previewSignature({ template_id, width_m, height_m, panel_count, addon_template_id, addon_width_m, addon_height_m, addon_panel_count, addon_position, addon_offset_m, main_axis, frame_mm, addon_frame_mm }) {
-  return JSON.stringify([template_id ?? null, width_m ?? null, height_m ?? null, panel_count ?? 1, addon_template_id ?? null, addon_width_m ?? null, addon_height_m ?? null, addon_panel_count ?? 1, addon_position ?? null, addon_offset_m === '' ? null : (addon_offset_m ?? null), main_axis ?? 'vertical', frame_mm ?? null, addon_frame_mm ?? null])
+// later edit can be detected ("the saved preview is older than the item"). Normalised: form strings and DB
+// numbers give the same string, and an add-on's fields are ignored while there is no add-on.
+export function previewSignature({ template_id, width_m, height_m, panel_count, addon_template_id, addon_width_m, addon_height_m, addon_panel_count, addon_position, addon_offset_m, main_axis, frame_mm, addon_frame_mm, preview_kind, grid_row_weights, addon_preview_kind, addon_grid_row_weights, addon_main_axis }) {
+  const num = v => (v === null || v === undefined || String(v).trim() === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null))
+  const hasAddon = !(addon_template_id === null || addon_template_id === undefined || String(addon_template_id).trim() === '')
+  const a = hasAddon
+    ? [addon_template_id, num(addon_width_m), num(addon_height_m), num(addon_panel_count) ?? 1, addon_position ?? null, num(addon_offset_m), num(addon_frame_mm)]
+    : [null, null, null, 1, null, null, null]
+  return JSON.stringify([
+    template_id ?? null, num(width_m), num(height_m), num(panel_count) ?? 1,
+    ...a.slice(0, 6),
+    main_axis ?? 'vertical', num(frame_mm), a[6],
+    preview_kind ?? 'fixed', Array.isArray(grid_row_weights) ? grid_row_weights : null,
+    hasAddon ? (addon_preview_kind ?? null) : null, hasAddon && Array.isArray(addon_grid_row_weights) ? addon_grid_row_weights : null, hasAddon ? (addon_main_axis ?? null) : null,
+  ])
 }
 ```
 
@@ -2762,6 +2975,19 @@ describe('validateForm', () => {
     expect(validateForm(filled({ labour_per_sqm: '0', profit_pct: '0' }))).toBeNull()
   })
 })
+
+describe('validateForm hardening', () => {
+  it('rejects a zero or negative thickness and a negative add-on offset; blank stays allowed', () => {
+    expect(validateForm(filled({ thickness_mm: '0' }))).toBe('ความหนาต้องมากกว่า 0')
+    expect(validateForm(filled({ sash_thickness_mm: '-1' }))).toBe('ความหนาต้องมากกว่า 0')
+    expect(validateForm(filled({ thickness_mm: '1.5', sash_thickness_mm: '' }))).toBeNull()
+    const ao = { has_addon: true, addon_template_id: 't2', addon_width_m: '1', addon_height_m: '1' }
+    expect(validateForm(filled({ ...ao, addon_offset_m: '-0.1' }))).toBe('ระยะขอบของชุดต่อเติมต้องไม่ติดลบ')
+    expect(validateForm(filled({ ...ao, addon_offset_m: '' }))).toBeNull()
+    expect(validateForm(filled({ ...ao, addon_offset_m: '0' }))).toBeNull()
+    expect(validateForm(filled({ has_addon: false, addon_offset_m: '-5' }))).toBeNull()
+  })
+})
 ```
 
 - [ ] **Step 2: Write the failing test** — create `src/lib/templateSave.test.js` with exactly:
@@ -2802,7 +3028,8 @@ describe('componentRowsForInsert', () => {
       { id: 'old', tenant_id: 'x', created_at: 'y', role_name: 'bar', profile_family: 'bar', length_rule_type: 'width', length_deduction_mm: '0', quantity_basis: 'fixed', quantity_value: '2', joint_index: '1', joint_ends: '1', thickness_mm: '' },
       { role_name: 'top', profile_family: 'box', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 1, joint_index: '' },
     ], 't1', [{ id: 'jA' }, { id: 'jB' }])
-    expect(out[0]).toMatchObject({ template_id: 't1', joint_id: 'jB', joint_ends: 1, thickness_mm: null, quantity_value: 2, sort_order: 0 })
+    expect(out[0]).toMatchObject({ template_id: 't1', joint_id: 'jB', joint_ends: 1, thickness_role: null, quantity_value: 2, sort_order: 0 })
+    expect(out[0]).not.toHaveProperty('thickness_mm')
     expect(out[0]).not.toHaveProperty('id')
     expect(out[0]).not.toHaveProperty('joint_index')
     expect(out[1]).toMatchObject({ joint_id: null, joint_ends: 2, sort_order: 1 })
@@ -2817,6 +3044,15 @@ describe('jointIndexForLoad', () => {
     const joints = [{ id: 'b', sort_order: 1 }, { id: 'a', sort_order: 0 }]
     const out = jointIndexForLoad([{ joint_id: 'b' }, { joint_id: 'a' }, { joint_id: null }, { joint_id: 'gone' }], joints)
     expect(out.map(c => c.joint_index)).toEqual(['1', '0', '', ''])
+  })
+})
+
+describe('componentRowsForInsert whitelist', () => {
+  it('only the real bom_template_components columns reach the insert, whatever the editor row carries', () => {
+    const [row] = componentRowsForInsert([{ foo: 1, bar: 'x', thickness_mm: 2, joint_index: '0', id: 'old', role_name: 'a', profile_family: 'f', length_rule_type: 'width', quantity_basis: 'fixed', thickness_role: 'sash' }], 't', [{ id: 'j' }])
+    expect(Object.keys(row).sort()).toEqual(['template_id', 'role_name', 'profile_family', 'length_rule_type', 'length_deduction_mm', 'quantity_basis', 'quantity_value', 'joint_id', 'joint_ends', 'thickness_role', 'sort_order'].sort())
+    expect(row).toMatchObject({ thickness_role: 'sash', length_deduction_mm: 0, quantity_value: 0, joint_id: 'j', joint_ends: 2 })
+    expect(componentRowsForInsert([{ thickness_role: 'frame' }], 't', [])[0].thickness_role).toBeNull()
   })
 })
 ```
@@ -2935,9 +3171,15 @@ export function validateForm(form) {
   if (!String(form.opening_no).trim()) return 'กรอกเลขช่อง'
   if (!form.template_id) return 'เลือก template'
   if (!(numOrNull(form.width_m) > 0) || !(numOrNull(form.height_m) > 0)) return 'กรอกขนาดกว้างและสูงให้มากกว่า 0'
+  for (const k of ['thickness_mm', 'sash_thickness_mm']) {
+    const n = numOrNull(form[k])
+    if (n !== null && n <= 0) return 'ความหนาต้องมากกว่า 0'
+  }
   if (form.has_addon) {
     if (!form.addon_template_id) return 'เลือก template ของชุดต่อเติม'
     if (!(numOrNull(form.addon_width_m) > 0) || !(numOrNull(form.addon_height_m) > 0)) return 'กรอกขนาดชุดต่อเติมให้มากกว่า 0'
+    const off = numOrNull(form.addon_offset_m)
+    if (off !== null && off < 0) return 'ระยะขอบของชุดต่อเติมต้องไม่ติดลบ'
   }
   const labour = numOrNull(form.labour_per_sqm)
   if (labour !== null && labour < 0) return 'ค่าแรงต้องไม่ติดลบ'
@@ -2984,15 +3226,15 @@ export function componentRowsForInsert(rows, templateId, insertedJoints) {
   return (rows || []).map((r, i) => {
     const idx = r.joint_index === '' || r.joint_index === null || r.joint_index === undefined ? null : Number(r.joint_index)
     const joint = idx !== null && Number.isInteger(idx) ? (insertedJoints || [])[idx] : null
-    const { joint_index, id, tenant_id, created_at, ...rest } = r
-    void joint_index; void id; void tenant_id; void created_at
+    // an explicit whitelist: editor-only fields (joint_index, thickness_mm, ...) must never reach PostgREST
     return {
-      ...rest, template_id: templateId,
+      template_id: templateId, role_name: r.role_name, profile_family: r.profile_family, length_rule_type: r.length_rule_type,
       length_deduction_mm: parseFloat(r.length_deduction_mm) || 0,
+      quantity_basis: r.quantity_basis,
       quantity_value: parseFloat(r.quantity_value) || 0,
-      thickness_mm: numOrNull(r.thickness_mm),
       joint_id: joint ? joint.id : null,
       joint_ends: Number(r.joint_ends) === 1 ? 1 : 2,
+      thickness_role: r.thickness_role === 'sash' ? 'sash' : null,
       sort_order: i,
     }
   })
@@ -3119,9 +3361,9 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 Mockup screen 8 + the template/type notes. Steps:
 
 - [ ] **Step 1: ProfilesTab.** In `PROFILE_FIELDS`: relabel `drawing_no` to `DIE NO. (รหัสแม่พิมพ์ของโรงรีด)`; add `shape_group` (text, "กลุ่มรูปร่าง เช่น กล่องเรียบ"), `width_mm` and `depth_mm` (number, step `0.01`, min 0, labels "ความกว้างรวมหน้าตัด (มม.)" / "ความสูง/ลึกรวมหน้าตัด (มม.)"), `primary_contact` (select, label "พื้นผิวสัมผัสหลัก (หน้าที่เส้นรองมาชน)": `width` = "หน้ากว้าง เช่น 101.6 (ปกติ) — เส้นรองหักตามความสูง/ลึก", `depth` = "หน้าแคบ — เส้นรองหักตามความกว้าง", default `width`; show beside it the live result, e.g. "เส้นรองจะหักข้างละ 44.45 มม.", computed with `jointDeductionMm`). Show the sketch (`profileSketchSvg` via `dangerouslySetInnerHTML` is acceptable here: the string is built only from numbers) under the form, using `thickness_mm` as `wall_mm` and `shape: 'u'` when `shape_group` contains "กล่องเรียบ" else `'box'`. Also list, read-only, the other profiles that share the same `shape_group` (DIE NO., thickness, weight) so the owner sees the dies of one shape.
-- [ ] **Step 2: Drawing files.** Under the profile form render `<AttachmentsSection table="alu_profile_files" bucket="alu-profile-files" foreignKey="profile_id" entityId={profile.id} tenantId={...} accept=".pdf,.dwg,.dxf,.svg,.png,.jpg,.jpeg" />` (get `tenantId` the way the other pages that use `AttachmentsSection` do). Add the optional `accept` prop to `src/components/AttachmentsSection.jsx` (default = today's `.pdf,.xlsx,.xls,.jpg,.jpeg,.png`, so nothing else changes). Add the hint "1 ไฟล์ = 1 หน้าตัด แยกไฟล์ catalog/DWG ก่อนอัปโหลด". Files are stored and downloaded only; DWG has no preview. The migration (Task 1) already creates the table and bucket.
+- [ ] **Step 2: Drawing files.** Under the profile form render `<AttachmentsSection table="alu_profile_files" bucket="alu-profile-files" foreignKey="profile_id" entityId={profile.id} tenantId={...} accept=".pdf,.dwg,.dxf,.svg,.png,.jpg,.jpeg" />` (get `tenantId` the way the other pages that use `AttachmentsSection` do). Add the optional `accept` prop to `src/components/AttachmentsSection.jsx` (default = today's `.pdf,.xlsx,.xls,.jpg,.jpeg,.png`, so nothing else changes). Add the hint "1 ไฟล์ = 1 หน้าตัด แยกไฟล์ catalog/DWG ก่อนอัปโหลด". Files are stored and downloaded only; DWG has no preview. Deleting a profile must first delete its stored files (storage objects), because the table rows cascade but the storage objects do not: remove the objects with `supabase.storage.from('alu-profile-files').remove(paths)` before deleting the profile row. The migration (Task 1) already creates the table and bucket.
 - [ ] **Step 3: HierarchyTab — mixed thickness.** Under the series-types links of the selected series, add one checkbox per linked type: "อนุญาตให้วงกบกับบานใช้ความหนาต่างกัน (งานราชการ เช่น วงกบ 2.0 / บาน 1.5)" bound to `alu_series_types.allow_mixed_thickness` (update the existing link row by id; no upsert). Disabled when the user cannot edit.
-- [ ] **Step 4: SettingsTab** (new tab "ค่ามาตรฐาน" in `AluCatalog.jsx`, same gating as the other tabs). One form for `estimation_settings`: stock length (ม.), kerf ตัดฉาก 90° (มม.), kerf ตัด 45° (มม.), min keep offcut (ม.), sealant (ม./หลอด 300 มล.), fixing pitch (ม.), min fixing points per side, and four part selects (sealant, shim, screw, plug) listing active `accessory` parts or "— ไม่ใช้ —". Show the hints: "kerf เป็นค่าสมมติ ใส่ค่าจริงของเลื่อย" and, beside the 45° field, "ตัด 45° เสียมากกว่า (ประมาณ 10 มม.) ให้วัดจริง และระบุความยาวชิ้น 45° เป็นความยาวด้านนอกเสมอ". Load with `useEstimationSettings`, save with `saveEstimationSettings` (insert-or-update). Empty numeric inputs fall back to the default (never save NaN / blank).
+- [ ] **Step 4: SettingsTab** (new tab "ค่ามาตรฐาน" in `AluCatalog.jsx`, same gating as the other tabs). One form for `estimation_settings`: stock length (ม.), kerf ตัดฉาก 90° (มม.), kerf ตัด 45° (มม.), min keep offcut (ม.), sealant (ม./หลอด 300 มล.), fixing pitch (ม.), min fixing points per side, and four part selects (sealant, shim, screw, plug) listing active `accessory` parts or "— ไม่ใช้ —". Show the hints: "kerf เป็นค่าสมมติ ใส่ค่าจริงของเลื่อย" and, beside the 45° field, "ตัด 45° เสียมากกว่า (ประมาณ 10 มม.) ให้วัดจริง และระบุความยาวชิ้น 45° เป็นความยาวด้านนอกเสมอ". Load with `useEstimationSettings`, save with `saveEstimationSettings` (insert-or-update). If the load returned an `error`, disable saving (otherwise `saveEstimationSettings(null, …)` would insert a duplicate row). Empty numeric inputs fall back to the default (never save NaN / blank).
 - [ ] **Step 5: Build and commit**
 
 ```bash
@@ -3150,7 +3392,7 @@ Mockup screen 5 (three tabs). Steps:
 - [ ] **Step 3: Family list.** Replace the `profile-family-options` datalist (read from legacy `aluminum_profiles`) with the distinct families of the catalog (`alu_series_profiles.family` or the profile's `family`).
 - [ ] **Step 4: Components.** Add per component row: `joint_index` select ("ไม่มีจุดชน" + the template's joints by name), `joint_ends` (1 or 2), and `thickness_role` (select "ความหนา: ตามวงกบ" = NULL / "ตามบาน" = `sash`; shown only when the template's type is offered by at least one series with `allowsMixedThickness` true; otherwise hidden and saved as NULL). Rows are loaded through `jointIndexForLoad(components, joints)`.
 - [ ] **Step 5: Joints tab** (`JointsTab.jsx`, tabs "ส่วนประกอบและอุปกรณ์" / "รายละเอียดการประกอบ (จุดชน)" / "รายละเอียดการบาก" as in the mockup). Joint rows: `name`, `main_family`, `secondary_family` (selects of families), `deduction_mode` (`auto` "อัตโนมัติ: พื้นผิวสัมผัสหลักของเส้นหลัก" / `manual` "กำหนดเอง (มม.)" + `deduction_mm`), `cut_style` (`square` "ตัดตรง 90°", `notch` "บากมน (notch)", `miter45` "ตัด 45°"). The notch tab edits `notch_width_mm` / `notch_depth_mm` of the selected joint and draws the code-drawn sketch (port the mockup's `drawNotch`). Show the main/secondary rule as a one-line hint, and for `miter45` the warning "ความยาวชิ้นตัด 45° ใช้ความยาวด้านนอกเสมอ".
-- [ ] **Step 6: Save order (critical).** In `handleSave`, after the template row is written: validate with `validateJoints` (show the Thai message, do not write); delete components; delete joints; insert joints from `jointRowsForInsert(jointRows, templateId)` with `.select('id')` ordered by `sort_order`; then insert components from `componentRowsForInsert(rows, templateId, insertedJoints)`. Then hardware and constraints as today. A component must never be inserted before its joints.
+- [ ] **Step 6: Save order (critical).** In `handleSave`, after the template row is written: validate with `validateJoints` (show the Thai message, do not write); delete components; delete joints; insert joints from `jointRowsForInsert(jointRows, templateId)` with `.select('id')` ordered by `sort_order`; then insert components from `componentRowsForInsert(rows, templateId, insertedJoints)`. Then hardware and constraints as today. A component must never be inserted before its joints. Before saving, check that every component linked to a joint has `profile_family === joint.secondary_family` (Thai message "ส่วนประกอบที่ผูกจุดชนต้องเป็นหน้าตัดเดียวกับเส้นรองของจุดชน") — costing prices the component's own family, so a mismatch would silently disagree. Component rows are built only by `componentRowsForInsert` (a whitelist of real columns); never spread editor rows into an insert. Validate that every component has a non-negative number for the deduction and a positive quantity (the lib turns blanks into 0, so the editor must refuse them).
 - [ ] **Step 7: Build and commit**
 
 ```bash
@@ -3176,7 +3418,7 @@ Mockup screens 1, 3, 4, and the items table of the project page. Steps:
 - [ ] **Step 1: Defaults panel.** Fields: main extruder (`primary_provider_id`; "ไม่กำหนด (เลือกต่อรายการ)" allowed), series (label `ชื่อซีรีส์ · ชื่อโรงรีด`; options filtered to the main extruder when set), colour (the series' provider's `alu_finishes`), frame thickness (`thicknessesForSeries`; a single thickness is auto-selected and the select locked with the hint) and sash thickness (`default_sash_thickness_mm`, same choices, "เท่ากับวงกบ" = blank; shown only when at least one type of the series allows mixed thickness), infill, hardware set (`hardwareSetsForSeries(index, seriesId, null)`), labour ฿/ตร.ม., profit %, price date (read-only text, `price_as_of`), description format (ordered chips from `DESCRIPTION_TOKENS` stored in `description_format`, with a live sample from `buildItemDescription`). Blank = NULL (labour 0 is a value). Saving writes only changed columns.
 - [ ] **Step 2: New project.** `price_as_of` is set from `localDateString(new Date())` in the insert (Ruling 17); never leave it to the DB default.
 - [ ] **Step 3: Changing the default series** lists the items it affects (`itemsAffectedByDefaultSeries`) in a confirm dialog before saving; the warning banner (`AvailabilityBanner`) lists items whose template or add-on type the series does not offer (`typeAvailability`), with the offering series, as in mockup screen 3. It never blocks saving.
-- [ ] **Step 4: Items table** columns: เลขช่อง, ชื่อรายการ, ประเภท, ซีรีส์, สถานะ (unresolved / ภาพเก่า / ok), ขนาด, จำนวนชุด (editable inline; updates `quantity` only), ราคา/ชุด (from `costOpening(...).total`), รวม. An unresolved item shows its reasons in a tooltip and its price cell reads "—", never 0.
+- [ ] **Step 4: Items table** columns: เลขช่อง, ชื่อรายการ, ประเภท, ซีรีส์, สถานะ (unresolved / ภาพเก่า / ok), ขนาด, จำนวนชุด (editable inline; integer ≥ 1, refuse blanks, fractions and 0; updates `quantity` only), ราคา/ชุด (from `costOpening(...).total`), รวม. An unresolved item shows its reasons in a tooltip and its price cell reads "—", never 0.
 - [ ] **Step 5: Stale-price banner** (`StalePriceBanner`): compute each item's cost twice (`asOf = project.price_as_of`, `asOf = localDateString(new Date())`) with `costOpening`, feed `{[id]: bom}` maps to `listPriceChanges`, and show "มีราคาใหม่ N รายการ" with the list (name, before/after price row). The refresh button comes in Task 17.
 - [ ] **Step 6: Gate and load states.** Show a loading line until `useEstimationCatalog().index` is non-null; show the error text if it fails; render nothing sensitive for a user without edit rights (inputs disabled via `canEdit`).
 - [ ] **Step 7: Build and commit**
@@ -3205,8 +3447,8 @@ Mockup screen 2 (all of it). Steps:
 - [ ] **Step 2: Add-on.** Template choice from `addonTemplatesForSeries` (2a), size, panels, **position** (บน/ล่าง/ซ้าย/ขวา) and **offset** (ม. from the left or top; blank = centred). Partly filled = "no add-on yet", not an error.
 - [ ] **Step 3: Layout templates.** `LayoutTemplatePicker` shows thumbnail cards for `availableLayoutTemplates(...)` of the chosen main type: each card renders a small `buildFramePreview` of the template applied to the current size (`applyLayoutTemplate`), greyed with the reason text when unusable. Clicking applies add-on type/position/size/offset/panels; the add-on BOM template is the first of `bomTemplatesForType`, changeable. A "บันทึกเป็นแม่แบบรูปแบบ" checkbox + name saves a row from `layoutTemplateFromItem` into `estimation_layout_templates` AFTER the item saves successfully; a duplicate name error is shown in Thai and does not undo the item.
 - [ ] **Step 4: Live preview.** `PreviewPanel` calls `buildFramePreview` with `main_axis` and `preview_kind` from the template, `frame_mm` from the main frame profile's visible width (`resolveCatalogProfile(...).profile.width_mm`; omit when unknown), `view` (out/in toggle), and for the "parts" style `part_labels` built from `costOpening` (profile die no. and cut length per side). Styles: double, solid, CAD, parts (all four stay, Ruling 11); render the geometry as SVG using CSS variables for theming (see the mockup's `unit()`), and draw `seams`, `decor`, `dims`, `labels`.
-- [ ] **Step 5: Saved snapshots.** A checkbox "บันทึกภาพตัวอย่างพร้อมรายการ" (on by default) with ภายนอก / ภายใน. On save build the two views with NO part labels via `previewSvgString(buildFramePreview({... view: 'out' | 'in'}), { style: 'double' })`, plus `previewSignature(...)`, and pass `{out, in, sig}` and `savedAt` (an ISO string made in the click handler) to `buildOpeningPayload`. When the stored `preview_sig` differs from the current signature show "ภาพที่บันทึกไว้เก่ากว่าข้อมูล" and a button to re-save the snapshot.
-- [ ] **Step 6: Cost summary.** `ItemCostSummary` lists, from `costOpening`: profile lines (with die no. and an "ไม่พบ: <reason>" in Thai for each unresolved reason code: `no_series` "ยังไม่เลือกซีรีส์", `no_finish` "ยังไม่เลือกสี", `no_profile` "ไม่พบหน้าตัดความหนานี้", `no_weight`, `no_kg_price` / `no_price` "ยังไม่มีราคา", `finish_other_provider` "สีเป็นของโรงรีดอื่น", `no_hardware_price`, `no_part_price`, `unknown_set` / `empty_set` / `not_hardware_set`, `no_as_of`, `no_main_profile`, `no_dimension`, `rule_not_cuttable`, `unknown_joint`, `bad_manual_deduction`), hardware, hardware-set lines, accessory extras, waste, infill, labour, silicone, felt, extra lines, per-set total. The total is not shown as a number while `unresolved` is non-empty — show "ราคายังไม่ครบ" with the list instead.
+- [ ] **Step 5: Saved snapshots.** A checkbox "บันทึกภาพตัวอย่างพร้อมรายการ" (on by default) with ภายนอก / ภายใน. On save build the two views with NO part labels via `previewSvgString(buildFramePreview({... view: 'out' | 'in'}), { style: 'double' })`, plus `previewSignature(...)` computed from the SAME normalised values as the payload (the saved row's numbers, never raw form strings) and including the main template's `preview_kind` / `grid_row_weights` and the add-on template's `preview_kind` / `grid_row_weights` / `main_axis`, and pass `{out, in, sig}` and `savedAt` (an ISO string made in the click handler) to `buildOpeningPayload`. When the stored `preview_sig` differs from the current signature show "ภาพที่บันทึกไว้เก่ากว่าข้อมูล" and a button to re-save the snapshot.
+- [ ] **Step 6: Cost summary.** `ItemCostSummary` lists, from `costOpening`: profile lines (with die no. and an "ไม่พบ: <reason>" in Thai for each unresolved reason code: `no_series` "ยังไม่เลือกซีรีส์", `no_finish` "ยังไม่เลือกสี", `no_profile` "ไม่พบหน้าตัดความหนานี้", `no_weight`, `no_kg_price` / `no_price` "ยังไม่มีราคา", `finish_other_provider` "สีเป็นของโรงรีดอื่น", `no_hardware_price`, `no_part_price`, `unknown_set` / `empty_set` / `not_hardware_set`, `no_as_of`, `no_main_profile`, `no_dimension`, `rule_not_cuttable`, `unknown_joint`, `bad_manual_deduction`), hardware, hardware-set lines, accessory extras, waste, infill, labour, silicone, felt, extra lines, per-set total. Reason-code texts must also cover `unknown_infill` "ไม่พบวัสดุอุดช่อง", `unknown_addon_template` "ไม่พบเทมเพลตชุดต่อเติม", `no_variant`/`no_piece_price` "ยังไม่มีราคาต่อเส้น", `no_provider`, and `no_dimension` reads "ยังไม่ได้กรอกขนาด" when `name === 'ขนาดช่องเปิด'` or `source === 'addon'`, but "ไม่มีมิติของหน้าตัดเส้นหลัก" when `source === 'joint'`; list every entry of `unresolved` (shape `{name, reason, source}`). The total is not shown as a number while `unresolved` is non-empty — show "ราคายังไม่ครบ" with the list instead.
 - [ ] **Step 7: Constraints** (`evaluateConstraints`, existing) keep working per template.
 - [ ] **Step 8: Build and commit**
 
@@ -3230,8 +3472,8 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 Mockup screens 6 and 7. Steps:
 
-- [ ] **Step 1: BOM view.** Build `entries` (`{opening_no, quantity, finish_id: resolved.finish_id, bom, addonBom, extras}`) from `costOpening` for every item, then `buildProjectBom`. Show the three sections of mockup screen 6: (1) aluminium by profile + colour: die no., colour, merged cut list (length, quantity, 45°/90° marker), total metres, stock length (editable per profile → `estimation_project_stock`, no upsert: look up, then insert/update/delete when blank), bars, offcut; plus the project stock length field (`stock_length_m`, blank = tenant default shown as hint); (2) parts table (hardware vs accessory, quantity, cost, an "ราคายังไม่ครบ" flag); (3) sealant: total length, tubes. Unresolved entries are listed with opening and reason, above the tables.
-- [ ] **Step 2: Cut optimizer panel** (mockup screen 7). Per profile: candidate lengths = the distinct `length_m` of its `alu_profile_variants` for that colour plus the stock length; `barPrice(L)` = price per bar from `resolveAluPrice` (`price_per_m * L`) or null; run `compareLengths`; highlight `best`, show bars, scrap, reusable offcut, waste %, cost, and "ใช้ความยาวนี้" which writes the per-profile stock length. Kerf and min-keep are read from settings (shown, not edited here). A candidate shorter than the longest cut shows "ตัดไม่ได้".
+- [ ] **Step 1: BOM view.** Build `entries` (`{opening_no, quantity, finish_id: resolved.finish_id, bom, addonBom, extras, unresolved: r.unresolved}`) from `costOpening` for every item, then `buildProjectBom({entries, settings, stock: stockForProject(projectStockRows, project.id, project), profilesById: index.profiles, finishesById: index.finishes, partsById: index.parts})` (`stockForProject` ignores other projects' rows). Show the three sections of mockup screen 6: (1) aluminium by profile + colour: die no., colour, merged cut list (length, quantity, 45°/90° marker), total metres, stock length (editable per profile → `estimation_project_stock`, no upsert: look up, then insert/update/delete when blank), bars, offcut; plus the project stock length field (`stock_length_m`, blank = tenant default shown as hint); (2) parts table (hardware vs accessory, quantity, cost, an "ราคายังไม่ครบ" flag); (3) sealant: total length, tubes. Unresolved entries are listed with opening and reason, above the tables.
+- [ ] **Step 2: Cut optimizer panel** (mockup screen 7). Per profile: candidate lengths = the distinct `length_m` of its `alu_profile_variants` for that colour plus the stock length; `barPrice(L)`: for a `per_kg` provider = `resolveAluPrice(...).price_per_m * L`; for `per_piece` / `both` providers it must NOT scale the default-length price: use the exact `alu_profile_variants` row of length L (`findVariant` with an exact-length match) and its own latest piece price at the project's `price_as_of`, else null (then the row is compared by scrap, not cost); run `compareLengths`; highlight `best`, show bars, scrap, reusable offcut, waste %, cost, and "ใช้ความยาวนี้" which writes the per-profile stock length. Kerf and min-keep are read from settings (shown, not edited here). A candidate shorter than the longest cut shows "ตัดไม่ได้"; an infeasible row (`feasible === false`) shows its `unplaced` pieces and must never look cheap (its bar count and cost are not comparable). Cap free-typed piece quantities in the UI (the packer allocates one object per piece).
 - [ ] **Step 3: Extruder comparison** (mockup screen 6, lower panel). For each candidate extruder row the owner picks a series and colour of that extruder; `compareProviders` computes aluminium cost; show difference vs the project's main extruder with `diffAgainst` (— when incomplete) and "คิดไม่ได้ N รายการ" with the reason; a "ใช้โรงรีดนี้" button sets `primary_provider_id` and the project default series/colour (after a confirm that lists the items affected). Read-only otherwise.
 - [ ] **Step 4: Build and commit**
 
