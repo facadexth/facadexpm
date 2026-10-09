@@ -92,7 +92,7 @@ function HardwareBlock({ page, imageUrls }) {
                     {i === 0 && !s.continued && (
                       <td rowSpan={s.parts.length} style={{ width: '30%', padding: '3px 8px', verticalAlign: 'top', borderRight: `1px solid ${LINE}` }}>
                         <div style={{ color: MUTED, fontSize: 10.5 }}>ใช้กับรายการ</div>
-                        {(s.uses || []).map(u => <div key={u.no}>{u.no}{u.quantity != null ? ` (${u.quantity} ชุด)` : ''}</div>)}
+                        <div>{s.useText}</div>
                       </td>
                     )}
                     <td style={{ padding: '3px 8px', width: 40 }}>
@@ -111,6 +111,7 @@ function HardwareBlock({ page, imageUrls }) {
         </div>
       ))}
       {(sc.noSetItemNos || []).length > 0 && <p style={{ margin: '8px 0 0', color: MUTED, fontSize: 11 }}>{sc.noSetItemNos.join(', ')} : บานติดตาย / ไม่มีชุดอุปกรณ์</p>}
+      {(sc.unselectedItemNos || []).length > 0 && <p style={{ margin: '4px 0 0', color: MUTED, fontSize: 11 }}>ยังไม่ได้เลือกชุดอุปกรณ์ : {sc.unselectedItemNos.join(', ')}</p>}
       {sc.needsApprovalNote && <p style={{ margin: '4px 0 0', color: MUTED, fontSize: 11 }}>* {sc.approvalNote || APPROVAL_NOTE}</p>}
     </div>
   )

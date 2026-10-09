@@ -22,22 +22,23 @@ describe('planAttachmentPages', () => {
   })
   it('hardware paging by rows: 5, 14, 15, 30', () => {
     const hw = n => planAttachmentPages({ items: mk(1), totalQuotationPages: 2, schedule: sched(n), legend: [] }).pages.filter(p => p.kind === 'hardware').length
-    expect([hw(5), hw(14), hw(15), hw(30)]).toEqual([1, 1, 2, 3])
+    // weights now honest: header row + intro (2) on page 1 + notes (2) on the last page, so 14 rows no longer fit on one page
+    expect([hw(5), hw(14), hw(15), hw(30)]).toEqual([1, 2, 2, 3])
   })
-  it('keeps sets whole: 8+8 rows go on two pages', () => {
+  it('keeps sets whole: 8+8 parts go on two pages', () => {
     const r = planAttachmentPages({ items: mk(1), totalQuotationPages: 1, schedule: sched(8, 8), legend: [] })
     expect(r.pages.filter(p => p.kind === 'hardware').map(p => p.hardwareSets.length)).toEqual([1, 1])
-    const r2 = planAttachmentPages({ items: mk(1), totalQuotationPages: 1, schedule: sched(6, 7), legend: [] })
+    const r2 = planAttachmentPages({ items: mk(1), totalQuotationPages: 1, schedule: sched(3, 4), legend: [] })
     expect(r2.pages.filter(p => p.kind === 'hardware').map(p => p.hardwareSets.length)).toEqual([2])
   })
   it('legend shares the last hardware page when it fits', () => {
-    const r = planAttachmentPages({ items: mk(1), totalQuotationPages: 2, schedule: sched(8), legend: leg(4) })
+    const r = planAttachmentPages({ items: mk(1), totalQuotationPages: 2, schedule: sched(3), legend: leg(4) })
     expect(kindsOf(r)).toEqual(['items', 'hardware'])
     expect(r.pages[1].withColours).toBe(true)
     expect(r.pages[1].colours.length).toBe(4)
   })
   it('legend gets its own page (counted in total) when the last hardware page is full', () => {
-    const r = planAttachmentPages({ items: mk(1), totalQuotationPages: 2, schedule: sched(14), legend: leg(4) })
+    const r = planAttachmentPages({ items: mk(1), totalQuotationPages: 2, schedule: sched(9), legend: leg(4) })
     expect(kindsOf(r)).toEqual(['items', 'hardware', 'colours'])
     expect(r.pages[1].withColours).toBe(false)
     expect(r.pages.map(p => p.pageNo)).toEqual([3, 4, 5])
@@ -76,6 +77,44 @@ describe('planAttachmentPages', () => {
   })
 })
 
+describe('hardware page weights', () => {
+  const hwPages = r => r.pages.filter(p => p.kind === 'hardware')
+  it('14 single-part sets: headers count, so they need several pages', () => {
+    const r = planAttachmentPages({ items: mk(1), totalQuotationPages: 1, schedule: sched(...Array(14).fill(1)), legend: [] })
+    expect(hwPages(r).map(p => p.hardwareSets.length)).toEqual([6, 7, 1])
+  })
+  it('a set used by 30 items weighs by its use-list text', () => {
+    const useText = Array.from({ length: 30 }, (_, i) => `W${i + 1} (2 ชุด)`).join(', ')
+    const s1 = sched(2)
+    s1.sets[0].useText = useText
+    expect(Math.ceil(useText.length / 60)).toBeGreaterThanOrEqual(6)
+    const r = planAttachmentPages({ items: mk(1), totalQuotationPages: 1, schedule: { ...s1, sets: [s1.sets[0], { ...sched(2).sets[0], setId: 'z' }, { ...sched(2).sets[0], setId: 'y' }] }, legend: [] })
+    expect(hwPages(r).map(p => p.hardwareSets.length)).toEqual([2, 1])
+  })
+  it('intro only on the first page; notes only on the last', () => {
+    const r = planAttachmentPages({ items: mk(1), totalQuotationPages: 1, schedule: { ...sched(11), noSetItemNos: ['F1'], unselectedItemNos: ['X1'] }, legend: [] })
+    const h = hwPages(r)
+    expect(h.length).toBe(2)
+    expect(h.map(p => p.schedule.intro)).toEqual([true, false])
+    expect(h.map(p => p.schedule.needsApprovalNote)).toEqual([false, true])
+    expect(h[1].schedule.noSetItemNos).toEqual(['F1'])
+    expect(h[1].schedule.unselectedItemNos).toEqual(['X1'])
+  })
+  it('notes that do not fit move the last set down or get their own page', () => {
+    const two = planAttachmentPages({ items: mk(1), totalQuotationPages: 1, schedule: sched(4, 4), legend: [] })
+    expect(hwPages(two).map(p => p.hardwareSets.length)).toEqual([2])
+    const tight = planAttachmentPages({ items: mk(1), totalQuotationPages: 1, schedule: sched(4, 6), legend: [] })
+    expect(hwPages(tight).map(p => p.hardwareSets.length)).toEqual([1, 1])
+  })
+  it('continued chunks repeat the header and drop the use list', () => {
+    const r = planAttachmentPages({ items: mk(1), totalQuotationPages: 1, schedule: sched(30), legend: [] })
+    const h = hwPages(r)
+    expect(h[0].hardwareSets[0].continued).toBe(false)
+    expect(h[1].hardwareSets[0].continued).toBe(true)
+    expect(h.reduce((n, p) => n + p.hardwareSets[0].parts.length, 0)).toBe(30)
+  })
+})
+
 describe('hardwareSchedule', () => {
   const setsById = { s1: { id: 's1', name: 'ชุด A', provider_id: 'p1' }, s2: { id: 's2', name: 'ชุด B', provider_id: 'p2' }, s3: { id: 's3', name: 'ไม่ใช้', provider_id: 'p1' } }
   const partsBySet = {
@@ -91,9 +130,18 @@ describe('hardwareSchedule', () => {
     expect(r.sets[0].brand).toBe('ยี่ห้อ B')
     expect(r.sets[0].uses).toEqual([{ no: 'D1', quantity: null, typeName: '' }, { no: 'D2', quantity: null, typeName: '' }])
     expect(r.noSetItemNos).toEqual(['F1'])
+    expect(r.unselectedItemNos).toEqual([])
+    expect(r.sets[0].useText).toBe('D1, D2')
     expect(r.sets[1].parts[0]).toEqual({ partId: 'a', name: 'ล้อ', quantity: 2, unit: 'ชุด', imagePath: 'x/a.png' })
     expect(r.needsApprovalNote).toBe(true)
     expect(r.needsApprovalNote && r.approvalNote).toBe('ยี่ห้ออื่นที่เทียบเท่าต้องได้รับการอนุมัติ')
+  })
+  it('separates fixed panels from unselected and dangling sets; nothing vanishes', () => {
+    const items = [{ opening_no: 'F1', no_hardware_set: true }, { opening_no: 'U1' }, { opening_no: 'U2', hardware_set_id: 'gone' }, { opening_no: 'W1', hardware_set_id: 's1', quantity: 4 }]
+    const r = hardwareSchedule({ items, setsById, partsBySet, providersById })
+    expect(r.noSetItemNos).toEqual(['F1'])
+    expect(r.unselectedItemNos).toEqual(['U1', 'U2'])
+    expect(r.sets[0].useText).toBe('W1 (4 ชุด)')
   })
   it('no sets used gives empty and no note', () => {
     const r = hardwareSchedule({ items: [{ opening_no: 'F1' }], setsById, partsBySet, providersById })

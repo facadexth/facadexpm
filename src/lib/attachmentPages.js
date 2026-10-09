@@ -45,6 +45,10 @@ export function itemViews(item, view = 'both') {
 export const HARDWARE_ROWS_PER_PAGE = 14
 
 const legendRows = n => Math.ceil(n / 2) + 2
+export const INTRO_ROWS = 2
+const USE_CHARS_PER_LINE = 60
+const useLines = s => Math.ceil((s.useText || '').length / USE_CHARS_PER_LINE)
+const setWeight = s => 1 + Math.max(s.parts.length, useLines(s), 1)
 
 // Page plan. The caller passes the schedule (hardwareSchedule()) and legend (colourLegend()); the pages carry
 // exactly what must be rendered, so the component never recomputes anything.
@@ -63,41 +67,59 @@ export function planAttachmentPages({ items = [], options = {}, firstPageNo, tot
   if (framed.length > 0) {
     const sets = schedule?.sets || []
     const colours = legend || []
-    // pack whole sets into pages of HARDWARE_ROWS_PER_PAGE part rows; an oversize set is split
+    const B = HARDWARE_ROWS_PER_PAGE
+    const noteCost = (schedule?.needsApprovalNote ? 1 : 0) + ((schedule?.noSetItemNos || []).length ? 1 : 0) + ((schedule?.unselectedItemNos || []).length ? 1 : 0)
+    // Pack whole sets by honest row weight (header 1 + max(part rows, use-list lines)); the intro costs rows on
+    // the first page, the notes on the last. An oversize set splits across pages, repeating its header.
     const hw = []
     let cur = null
-    const fresh = () => { cur = { rows: 0, sets: [] }; hw.push(cur) }
+    const fresh = () => { cur = { rows: hw.length === 0 ? INTRO_ROWS : 0, sets: [] }; hw.push(cur) }
     for (const s of sets) {
-      const n = Math.max(1, s.parts.length)
-      if (n > HARDWARE_ROWS_PER_PAGE) {
-        if (cur && cur.sets.length) cur = null
-        for (let i = 0; i < s.parts.length; i += HARDWARE_ROWS_PER_PAGE) {
-          fresh()
-          const chunk = s.parts.slice(i, i + HARDWARE_ROWS_PER_PAGE)
-          cur.sets.push({ ...s, parts: chunk, continued: i > 0 })
-          cur.rows = chunk.length
-        }
-        cur = hw[hw.length - 1]
-        continue
+      const w = setWeight(s)
+      if (cur && cur.rows + w <= B) { cur.sets.push(s); cur.rows += w; continue }
+      if (!cur || cur.sets.length > 0) fresh()
+      if (cur.rows + w <= B) { cur.sets.push(s); cur.rows += w; continue }
+      // oversize: split the parts across pages, repeating the header
+      let i = 0
+      let firstChunk = true
+      while (firstChunk || i < s.parts.length) {
+        if (!firstChunk) fresh()
+        const room = Math.max(1, B - cur.rows - 1)
+        const chunk = s.parts.slice(i, i + room)
+        cur.sets.push({ ...s, parts: chunk, continued: !firstChunk, useText: firstChunk ? s.useText : '' })
+        cur.rows += 1 + (firstChunk ? Math.max(chunk.length, useLines(s)) : chunk.length)
+        i += chunk.length
+        firstChunk = false
       }
-      if (!cur || cur.rows + n > HARDWARE_ROWS_PER_PAGE) fresh()
-      cur.sets.push(s)
-      cur.rows += n
+    }
+    // the notes need room on the last page: move its last set down, or give the notes their own page
+    if (hw.length > 0 && noteCost > 0) {
+      const last = hw[hw.length - 1]
+      if (last.rows + noteCost > B) {
+        if (last.sets.length > 1 && !last.sets[last.sets.length - 1].continued) {
+          const moved = last.sets.pop()
+          last.rows -= setWeight(moved)
+          hw.push({ rows: setWeight(moved), sets: [moved] })
+        } else {
+          hw.push({ rows: 0, sets: [] })
+        }
+      }
     }
     let ownColours = colours.length > 0
     hw.forEach((h, idx) => {
       const last = idx === hw.length - 1
-      const share = last && colours.length > 0 && h.rows + legendRows(colours.length) <= HARDWARE_ROWS_PER_PAGE
+      const share = last && colours.length > 0 && h.rows + noteCost + legendRows(colours.length) <= B
       if (share) ownColours = false
       pages.push({
         kind: 'hardware', pageNo: no++, hardwareSets: h.sets, first: idx === 0, last,
-        schedule: { needsApprovalNote: !!schedule?.needsApprovalNote && last, approvalNote: schedule?.approvalNote, noSetItemNos: last ? (schedule?.noSetItemNos || []) : [], intro: idx === 0 },
+        schedule: {
+          needsApprovalNote: !!schedule?.needsApprovalNote && last, approvalNote: schedule?.approvalNote,
+          noSetItemNos: last ? (schedule?.noSetItemNos || []) : [], unselectedItemNos: last ? (schedule?.unselectedItemNos || []) : [],
+          intro: idx === 0,
+        },
         withColours: share, colours: share ? colours : undefined,
       })
     })
-    if (hw.length === 0 && (schedule?.noSetItemNos || []).length > 0) {
-      // no set used at all: nothing to schedule
-    }
     if (ownColours) pages.push({ kind: 'colours', pageNo: no++, colours })
   }
   const lastQuotation = Math.max(totalQuotationPages, start - 1)
@@ -107,10 +129,12 @@ export function planAttachmentPages({ items = [], options = {}, firstPageNo, tot
 export function hardwareSchedule({ items = [], setsById = {}, partsBySet = {}, providersById = {} } = {}) {
   const order = []
   const uses = {}
-  const noSetItemNos = []
+  const noSetItemNos = []       // fixed panels (no_hardware_set)
+  const unselectedItemNos = []  // no set chosen, or the chosen set no longer exists
   for (const it of items || []) {
     const id = it?.hardware_set_id
-    if (!id || it.no_hardware_set || !setsById[id]) { if (it?.no_hardware_set || !id) noSetItemNos.push(itemNo(it)); continue }
+    if (it?.no_hardware_set) { noSetItemNos.push(itemNo(it)); continue }
+    if (!id || !setsById[id]) { unselectedItemNos.push(itemNo(it)); continue }
     if (!uses[id]) { uses[id] = []; order.push(id) }
     uses[id].push({ no: itemNo(it), quantity: it.quantity ?? null, typeName: it.type_name || '' })
   }
@@ -129,10 +153,11 @@ export function hardwareSchedule({ items = [], setsById = {}, partsBySet = {}, p
         imagePath: r.part?.image_path ?? null,
       })),
       uses: uses[id],
+      useText: uses[id].map(u => u.no + (u.quantity != null ? ` (${u.quantity} ชุด)` : '')).join(', '),
       itemNos: uses[id].map(u => u.no),
     }
   })
-  return { sets, noSetItemNos, needsApprovalNote: sets.length > 0, approvalNote: APPROVAL_NOTE }
+  return { sets, noSetItemNos, unselectedItemNos, needsApprovalNote: sets.length > 0, approvalNote: APPROVAL_NOTE }
 }
 
 export function colourLegend(items = [], ctx = {}) {
