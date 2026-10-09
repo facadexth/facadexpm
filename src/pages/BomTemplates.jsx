@@ -9,12 +9,20 @@ import AluminumProfiles from './AluminumProfiles.jsx'
 import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useBomTemplates, useAluminumFinishes, useInfillTypes } from '../hooks/useSupabase.js'
-import { useBomTemplateComponents, useBomTemplateHardware, useBomTemplateConstraints, useAluminumProfiles } from '../hooks/useSupabase.js'
+import { useBomTemplateComponents, useBomTemplateHardware, useBomTemplateConstraints } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
+import { useCatalogTable, useEstimationCatalog } from '../hooks/useAluCatalog.js'
+import { useTemplateJoints } from '../hooks/useEstimation2b.js'
+import { jointRowsForInsert, validateJoints, componentRowsForInsert, jointIndexForLoad } from '../lib/templateSave.js'
+import JointsTab, { emptyJoint } from './bomTemplates/JointsTab.jsx'
+import HardwarePackagesTab from './bomTemplates/HardwarePackagesTab.jsx'
+import {
+  catalogFamilies, templateTypeOptions, typeAllowsMixed, hardwarePartOptions, relinkAfterJointRemoved, validateComponentRows,
+} from './bomTemplates/helpers.js'
 
 function FinishForm({ initial, onSave, onCancel, loading }) {
   const [form, setForm, clearDraft] = useDraftForm('aluminum-finish-form', { name: '', price_per_kg: '', active: true, ...initial }, !initial?.id)
@@ -91,6 +99,9 @@ const LENGTH_RULE_LABELS = {
 }
 const QUANTITY_BASIS_LABELS = { fixed: 'จำนวนคงที่', per_cell: 'ต่อช่อง (cell)' }
 const HARDWARE_BASIS_LABELS = { fixed: 'จำนวนคงที่', per_cell: 'ต่อช่อง (cell)', per_perimeter_m: 'ต่อเมตรเส้นรอบรูป' }
+const PREVIEW_KIND_LABELS = { fixed: 'บานติดตาย', slide: 'บานเลื่อน', swing: 'บานสวิง' }
+const MAIN_AXIS_LABELS = { vertical: 'เส้นตั้ง ซ้าย/ขวา', horizontal: 'เส้นนอน บน/ล่าง' }
+const EDITOR_TABS = ['ส่วนประกอบและอุปกรณ์', 'รายละเอียดการประกอบ (จุดชน)', 'รายละเอียดการบาก', 'ชุดอุปกรณ์โครงการ']
 const CONSTRAINT_TYPE_LABELS = { max_width_mm: 'กว้างสูงสุด (mm)', max_height_mm: 'สูงสุงสุด (mm)', max_span_mm: 'ช่วงกว้างสูงสุด (mm)', max_panel_count: 'จำนวนช่องสูงสุด' }
 
 const EMPTY_TEMPLATE_FORM = {
@@ -99,10 +110,11 @@ const EMPTY_TEMPLATE_FORM = {
   labor_price_per_sqm: '0', silicone_price_per_m: '0', felt_price_per_m: '0',
   grid_row_weights: [1],
   grid_horizontal_rail_family: '', grid_vertical_mullion_family: '',
+  type_id: '', preview_kind: 'fixed', main_axis: 'vertical',
   active: true,
 }
 
-function TemplateEditor({ template, allProfiles, components, hardware, constraints, onSaved, onDeleted, canEdit }) {
+function TemplateEditor({ template, joints, catalog, types, components, hardware, constraints, onSaved, onDeleted, canEdit }) {
   const isNew = !template?.id
   const [form, setForm] = useState(() => isNew ? EMPTY_TEMPLATE_FORM : {
     name: template.name, category: template.category, waste_pct: String(template.waste_pct),
@@ -110,29 +122,43 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
     labor_price_per_sqm: String(template.labor_price_per_sqm), silicone_price_per_m: String(template.silicone_price_per_m), felt_price_per_m: String(template.felt_price_per_m),
     grid_row_weights: template.grid_row_weights, grid_horizontal_rail_family: template.grid_horizontal_rail_family || '',
     grid_vertical_mullion_family: template.grid_vertical_mullion_family || '', active: template.active,
+    type_id: template.type_id || '', preview_kind: template.preview_kind || 'fixed', main_axis: template.main_axis || 'vertical',
   })
-  const [rows, setRows] = useState(() => isNew ? [] : components.filter(c => c.template_id === template.id).sort((a, b) => a.sort_order - b.sort_order))
+  const [jointRows, setJointRows] = useState(() => isNew ? [] : joints.filter(j => j.template_id === template.id).sort((a, b) => a.sort_order - b.sort_order))
+  const [rows, setRows] = useState(() => isNew ? [] : jointIndexForLoad(
+    components.filter(c => c.template_id === template.id).sort((a, b) => a.sort_order - b.sort_order),
+    joints.filter(j => j.template_id === template.id)))
+  const [tab, setTab] = useState(0)
   const [hwRows, setHwRows] = useState(() => isNew ? [] : hardware.filter(h => h.template_id === template.id).sort((a, b) => a.sort_order - b.sort_order))
   const [constraintRows, setConstraintRows] = useState(() => isNew ? [] : constraints.filter(c => c.template_id === template.id))
   const [saving, setSaving] = useState(false)
 
-  const familyOptions = [...new Set(allProfiles.map(p => p.family).filter(Boolean))]
+  const index = catalog.index
+  const familyOptions = catalogFamilies(index)
+  const typesById = Object.fromEntries((types || []).map(t => [t.id, t]))
+  const typeOpts = templateTypeOptions(types || [], typesById, template?.type_id || '')
+  const showThickness = typeAllowsMixed(index, form.type_id)
+  const partOpts = hardwarePartOptions(index?.parts)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const setRowWeight = (i, v) => setForm(f => ({ ...f, grid_row_weights: f.grid_row_weights.map((w, idx) => idx === i ? parseFloat(v) || 0 : w) }))
   const addRow = () => setForm(f => ({ ...f, grid_row_weights: [...f.grid_row_weights, 1] }))
   const removeRow = (i) => setForm(f => ({ ...f, grid_row_weights: f.grid_row_weights.filter((_, idx) => idx !== i) }))
 
-  const addComponent = () => setRows(r => [...r, { role_name: '', profile_family: '', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 1, sort_order: r.length }])
+  const addComponent = () => setRows(r => [...r, { role_name: '', profile_family: '', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 1, joint_index: '', joint_ends: 2, thickness_role: null, sort_order: r.length }])
   const setComponent = (i, k, v) => setRows(r => r.map((row, idx) => idx === i ? { ...row, [k]: v } : row))
   const removeComponent = (i) => setRows(r => r.filter((_, idx) => idx !== i))
 
-  const addHardware = () => setHwRows(r => [...r, { name: '', reference_unit_price: 0, quantity_basis: 'fixed', quantity_value: 1, sort_order: r.length }])
+  const addHardware = () => setHwRows(r => [...r, { name: '', part_id: null, reference_unit_price: 0, quantity_basis: 'fixed', quantity_value: 1, sort_order: r.length }])
   const setHardware = (i, k, v) => setHwRows(r => r.map((row, idx) => idx === i ? { ...row, [k]: v } : row))
   const removeHardware = (i) => setHwRows(r => r.filter((_, idx) => idx !== i))
 
   const addConstraint = () => setConstraintRows(r => [...r, { rule_type: 'max_width_mm', value: 0, message: '' }])
   const setConstraint = (i, k, v) => setConstraintRows(r => r.map((row, idx) => idx === i ? { ...row, [k]: v } : row))
+  const removeJoint = (i) => {
+    setRows(r => relinkAfterJointRemoved(r, i))
+    setJointRows(js => js.filter((_, k) => k !== i))
+  }
   const removeConstraint = (i) => setConstraintRows(r => r.filter((_, idx) => idx !== i))
 
   // One template, its components, its hardware, and its constraints save
@@ -157,8 +183,13 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
         grid_row_weights: form.grid_row_weights,
         grid_horizontal_rail_family: form.grid_horizontal_rail_family || null,
         grid_vertical_mullion_family: form.grid_vertical_mullion_family || null,
+        type_id: form.type_id || null,
+        preview_kind: form.preview_kind, main_axis: form.main_axis,
         active: form.active !== false,
       }
+      // nothing is written until everything checks out
+      const problem = validateJoints(jointRows) || validateComponentRows(rows, jointRows)
+      if (problem) { alert(problem); return }
       let templateId = template?.id
       if (isNew) {
         const { data, error } = await supabase.from('bom_templates').insert(payload).select('id').single()
@@ -169,13 +200,26 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
         if (error) throw error
       }
 
+      // Order matters: components point at joints, so delete components first, then joints, then insert joints
+      // (ids come back in sort_order) and only then the components.
       {
         const { error } = await supabase.from('bom_template_components').delete().eq('template_id', templateId)
         if (error) throw error
       }
+      {
+        const { error } = await supabase.from('bom_template_joints').delete().eq('template_id', templateId)
+        if (error) throw error
+      }
+      let insertedJoints = []
+      if (jointRows.length) {
+        const { data, error } = await supabase.from('bom_template_joints').insert(jointRowsForInsert(jointRows, templateId)).select('id').order('sort_order')
+        if (error) throw error
+        insertedJoints = data || []
+        if (insertedJoints.length !== jointRows.length) throw new Error('บันทึกจุดชนไม่ครบ')
+      }
       if (rows.length) {
         const { error } = await supabase.from('bom_template_components').insert(
-          rows.map((r, i) => ({ ...r, template_id: templateId, length_deduction_mm: parseFloat(r.length_deduction_mm) || 0, quantity_value: parseFloat(r.quantity_value) || 0, sort_order: i }))
+          componentRowsForInsert(rows.map(r => showThickness ? r : { ...r, thickness_role: null }), templateId, insertedJoints)
         )
         if (error) throw error
       }
@@ -186,7 +230,7 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
       }
       if (hwRows.length) {
         const { error } = await supabase.from('bom_template_hardware').insert(
-          hwRows.map((h, i) => ({ ...h, template_id: templateId, reference_unit_price: parseFloat(h.reference_unit_price) || 0, quantity_value: parseFloat(h.quantity_value) || 0, sort_order: i }))
+          hwRows.map((h, i) => ({ ...h, part_id: h.part_id || null, template_id: templateId, reference_unit_price: parseFloat(h.reference_unit_price) || 0, quantity_value: parseFloat(h.quantity_value) || 0, sort_order: i }))
         )
         if (error) throw error
       }
@@ -213,6 +257,17 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
         {familyOptions.map(f => <option key={f} value={f} />)}
       </datalist>
 
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {EDITOR_TABS.map((label, k) => (
+          <button key={k} type="button" className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{label}</button>
+        ))}
+      </div>
+
+      {tab === 1 && <JointsTab view="joints" joints={jointRows} onChange={setJointRows} onRemove={removeJoint} families={familyOptions} index={index} typeId={form.type_id} canEdit={canEdit} />}
+      {tab === 2 && <JointsTab view="notch" joints={jointRows} onChange={setJointRows} onRemove={removeJoint} families={familyOptions} index={index} typeId={form.type_id} canEdit={canEdit} />}
+      {tab === 3 && <HardwarePackagesTab types={types} typesById={typesById} index={index} canEdit={canEdit} />}
+
+      {tab === 0 && <>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: 10 }}>
         <div>
           <label className="label">ชื่อ Template ★</label>
@@ -227,6 +282,28 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
         </div>
       </div>
 
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+        <div>
+          <label className="label">ประเภท (จากแคตตาล็อก)</label>
+          <select className="input" disabled={!canEdit} value={form.type_id} onChange={e => set('type_id', e.target.value)}>
+            <option value="">— ไม่ระบุ —</option>
+            {typeOpts.options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+          {typeOpts.savedNotSelectable && form.type_id === template?.type_id && <span className="pill" style={{ color: 'var(--yellow)', fontSize: 11 }}>ประเภทนี้มีประเภทย่อย เลือกประเภทย่อย</span>}
+        </div>
+        <div>
+          <label className="label">รูปแบบภาพตัวอย่าง</label>
+          <select className="input" disabled={!canEdit} value={form.preview_kind} onChange={e => set('preview_kind', e.target.value)}>
+            {Object.entries(PREVIEW_KIND_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">เส้นหลักของกรอบ (วิ่งเต็ม)</label>
+          <select className="input" disabled={!canEdit} value={form.main_axis} onChange={e => set('main_axis', e.target.value)}>
+            {Object.entries(MAIN_AXIS_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </div>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
         <div>
           <label className="label">เผื่อเสียเศษ (%)</label>
@@ -284,7 +361,8 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
         <div style={{ fontWeight: 700, marginBottom: 8 }}>ชิ้นส่วนอลูมิเนียม (Components)</div>
         <div style={{ display: 'grid', gap: 6 }}>
           {rows.map((r, i) => (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 80px 1fr 80px 32px', gap: 6, alignItems: 'center' }}>
+            <div key={i} style={{ display: 'grid', gap: 4 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 80px 1fr 80px 32px', gap: 6, alignItems: 'center' }}>
               <input className="input input-sm" disabled={!canEdit} placeholder="ชื่อชิ้นส่วน" value={r.role_name} onChange={e => setComponent(i, 'role_name', e.target.value)} />
               <input className="input input-sm" disabled={!canEdit} list="profile-family-options" placeholder="กลุ่มหน้าตัด" value={r.profile_family} onChange={e => setComponent(i, 'profile_family', e.target.value)} />
               <select className="input input-sm" disabled={!canEdit} value={r.length_rule_type} onChange={e => setComponent(i, 'length_rule_type', e.target.value)}>
@@ -297,6 +375,25 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
               <input className="input input-sm num-spin" disabled={!canEdit} type="number" step="any" min="0" placeholder="จำนวน" value={r.quantity_value} onChange={e => setComponent(i, 'quantity_value', e.target.value)} />
               {canEdit && <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => removeComponent(i)}>✕</button>}
             </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', paddingLeft: 8 }}>
+              <select className="input input-sm" style={{ width: 200 }} disabled={!canEdit} value={r.joint_index ?? ''} onChange={e => setComponent(i, 'joint_index', e.target.value)}>
+                <option value="">ไม่มีจุดชน</option>
+                {jointRows.map((j, k) => <option key={k} value={String(k)}>{j.name || `จุดชน ${k + 1}`}</option>)}
+              </select>
+              {(r.joint_index ?? '') !== '' && (
+                <select className="input input-sm" style={{ width: 120 }} disabled={!canEdit} value={Number(r.joint_ends) === 1 ? '1' : '2'} onChange={e => setComponent(i, 'joint_ends', Number(e.target.value))}>
+                  <option value="2">ชน 2 ปลาย</option>
+                  <option value="1">ชน 1 ปลาย</option>
+                </select>
+              )}
+              {showThickness && (
+                <select className="input input-sm" style={{ width: 170 }} disabled={!canEdit} value={r.thickness_role === 'sash' ? 'sash' : ''} onChange={e => setComponent(i, 'thickness_role', e.target.value === 'sash' ? 'sash' : null)}>
+                  <option value="">ความหนา: ตามวงกบ</option>
+                  <option value="sash">ความหนา: ตามบาน</option>
+                </select>
+              )}
+            </div>
+            </div>
           ))}
           {canEdit && <button type="button" className="btn btn-sm btn-ghost" style={{ justifySelf: 'start' }} onClick={addComponent}>+ เพิ่มชิ้นส่วน</button>}
         </div>
@@ -306,7 +403,8 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
         <div style={{ fontWeight: 700, marginBottom: 8 }}>อุปกรณ์ (Hardware)</div>
         <div style={{ display: 'grid', gap: 6 }}>
           {hwRows.map((h, i) => (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 120px 1fr 80px 32px', gap: 6, alignItems: 'center' }}>
+            <div key={i} style={{ display: 'grid', gap: 4 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 1fr 80px 32px', gap: 6, alignItems: 'center' }}>
               <input className="input input-sm" disabled={!canEdit} placeholder="ชื่ออุปกรณ์" value={h.name} onChange={e => setHardware(i, 'name', e.target.value)} />
               <input className="input input-sm" disabled={!canEdit} type="number" min="0" placeholder="ราคา/ชิ้น" value={h.reference_unit_price} onChange={e => setHardware(i, 'reference_unit_price', e.target.value)} />
               <select className="input input-sm" disabled={!canEdit} value={h.quantity_basis} onChange={e => setHardware(i, 'quantity_basis', e.target.value)}>
@@ -314,6 +412,11 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
               </select>
               <input className="input input-sm num-spin" disabled={!canEdit} type="number" step="any" min="0" placeholder="จำนวน" value={h.quantity_value} onChange={e => setHardware(i, 'quantity_value', e.target.value)} />
               {canEdit && <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => removeHardware(i)}>✕</button>}
+            </div>
+            <select className="input input-sm" style={{ marginLeft: 8, maxWidth: 360 }} disabled={!canEdit} value={h.part_id || ''} onChange={e => setHardware(i, 'part_id', e.target.value || null)}>
+              <option value="">— ไม่ผูก (ใช้ราคาอ้างอิง) —</option>
+              {partOpts.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
             </div>
           ))}
           {canEdit && <button type="button" className="btn btn-sm btn-ghost" style={{ justifySelf: 'start' }} onClick={addHardware}>+ เพิ่มอุปกรณ์</button>}
@@ -344,7 +447,9 @@ function TemplateEditor({ template, allProfiles, components, hardware, constrain
         </label>
       )}
 
-      {canEdit && (
+      </>}
+
+      {canEdit && tab !== 3 && (
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           {!isNew && <button type="button" className="btn btn-ghost" style={{ color: 'var(--red)' }} onClick={() => onDeleted(template.id)}>🗑️ ลบ Template</button>}
           <button type="button" className="btn btn-primary" disabled={saving || !form.name} onClick={handleSave}>{saving ? '⏳ กำลังบันทึก...' : '💾 บันทึก'}</button>
@@ -359,7 +464,11 @@ function TemplatesView({ canEdit }) {
   const { data: components, refetch: refetchComponents } = useBomTemplateComponents()
   const { data: hardware, refetch: refetchHardware } = useBomTemplateHardware()
   const { data: constraints, refetch: refetchConstraints } = useBomTemplateConstraints()
-  const { data: allProfiles } = useAluminumProfiles()
+  const { data: joints, refetch: refetchJoints } = useTemplateJoints()
+  const { data: types } = useCatalogTable('door_window_types', 'name')
+  const catalog = useEstimationCatalog()
+  // The editor copies joints/types/catalog on mount, so it must not open before they arrive (a save would wipe joints).
+  const ready = !!(joints && types && catalog.index)
   const [selectedId, setSelectedId] = useState(null)
   const [creating, setCreating] = useState(false)
   const [deleteId, setDeleteId] = useState(null)
@@ -388,13 +497,14 @@ function TemplatesView({ canEdit }) {
         </div>
       </div>
       <div>
-        {creating && (
-          <TemplateEditor key="new" template={null} allProfiles={allProfiles || []} components={[]} hardware={[]} constraints={[]} canEdit={canEdit}
-            onSaved={() => { setCreating(false); refetchTemplates(); refetchComponents(); refetchHardware(); refetchConstraints() }} onDeleted={() => {}} />
+        {(creating || selected) && !ready && <div style={{ color: 'var(--text3)', padding: 20 }}>กำลังโหลดแคตตาล็อก...</div>}
+        {ready && creating && (
+          <TemplateEditor key="new" template={null} joints={[]} catalog={catalog} types={types || []} components={[]} hardware={[]} constraints={[]} canEdit={canEdit}
+            onSaved={() => { setCreating(false); refetchTemplates(); refetchComponents(); refetchHardware(); refetchConstraints(); refetchJoints() }} onDeleted={() => {}} />
         )}
-        {selected && !creating && (
-          <TemplateEditor key={selected.id} template={selected} allProfiles={allProfiles || []} components={components || []} hardware={hardware || []} constraints={constraints || []} canEdit={canEdit}
-            onSaved={() => { refetchTemplates(); refetchComponents(); refetchHardware(); refetchConstraints() }} onDeleted={(id) => setDeleteId(id)} />
+        {ready && selected && !creating && (
+          <TemplateEditor key={selected.id} template={selected} joints={joints || []} catalog={catalog} types={types || []} components={components || []} hardware={hardware || []} constraints={constraints || []} canEdit={canEdit}
+            onSaved={() => { refetchTemplates(); refetchComponents(); refetchHardware(); refetchConstraints(); refetchJoints() }} onDeleted={(id) => setDeleteId(id)} />
         )}
         {!creating && !selected && <div style={{ color: 'var(--text3)', padding: 20 }}>เลือก Template ทางซ้าย หรือสร้างใหม่</div>}
       </div>
