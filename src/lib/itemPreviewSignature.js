@@ -4,6 +4,7 @@
 // project's items table calls it for the "ภาพเก่า" status, so the two can never disagree. Pure.
 import { buildFramePreview, previewSvgString, previewSignature } from './framePreview.js'
 import { resolveCatalogProfile } from './aluCatalogPricing.js'
+import { resolveItemInputs } from './estimationInherit.js'
 
 const num = v => (v === null || v === undefined || String(v).trim() === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null))
 const intOr1 = v => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n >= 1 ? n : 1 }
@@ -12,19 +13,25 @@ const axisOf = t => (t && t.main_axis === 'horizontal' ? 'horizontal' : 'vertica
 const isSet = v => !(v === null || v === undefined || String(v).trim() === '')
 const WIDTH_OR_HEIGHT = new Set(['width', 'height', 'width_minus', 'height_minus'])
 
-// The profile family drawn as the frame: the main bar of the template's first joint (by sort_order), else the
-// first frame-role (not sash) component cut along the width or height. null when the template says neither.
-export function mainFrameFamily(components, joints) {
+// The ONE frame picker (the drawing's frame width and the "parts" labels both use it): the profile family of the
+// frame bars = non-sash components (thickness_role NULL) cut along the width or height (head, sill, jamb). Among
+// several such families a joint's main_family decides (first joint by sort_order whose main family is one of
+// them; a joint whose main family only sash bars use is ignored); otherwise the first one. null = no frame bar.
+export function frameFamily(components, joints) {
+  const fams = []
+  for (const c of components || []) {
+    const f = String(c.profile_family ?? '').trim()
+    if (f && c.thickness_role !== 'sash' && WIDTH_OR_HEIGHT.has(c.length_rule_type) && !fams.includes(f)) fams.push(f)
+  }
+  if (!fams.length) return null
   const j = [...(joints || [])].sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0))
-    .find(x => String(x.main_family ?? '').trim())
-  if (j) return String(j.main_family).trim()
-  const c = (components || []).find(x => x.thickness_role !== 'sash' && String(x.profile_family ?? '').trim() && WIDTH_OR_HEIGHT.has(x.length_rule_type))
-  return c ? String(c.profile_family).trim() : null
+    .find(x => fams.includes(String(x.main_family ?? '').trim()))
+  return j ? String(j.main_family).trim() : fams[0]
 }
 
 function frameWidthMm(template, ctx, seriesId, thicknessMm) {
   if (!template || !seriesId || !(Number(thicknessMm) > 0) || !ctx.index) return null
-  const fam = mainFrameFamily((ctx.componentsByTemplate || {})[template.id], (ctx.jointsByTemplate || {})[template.id])
+  const fam = frameFamily((ctx.componentsByTemplate || {})[template.id], (ctx.jointsByTemplate || {})[template.id])
   if (!fam) return null
   const { profile } = resolveCatalogProfile(ctx.index, seriesId, fam, Number(thicknessMm))
   return profile ? positive(profile.width_mm) : null
@@ -89,4 +96,15 @@ export function snapshotPreviews(item, template, addonTemplate, resolved, views 
   const inn = views.in ? draw('in') : null
   if (!out && !inn) return null
   return { out, in: inn, sig: itemPreviewSignature(item, template, addonTemplate, resolved) }
+}
+
+// The snapshot of a row as the item form saves it (the row = the payload, metres): frames from the series and
+// thickness the row resolves to. ctx = the costOpening context (templatesById, index, packageItems, components, joints).
+export function snapshotFor(row, { project, ctx, views }) {
+  const tpl = ctx.templatesById[row.template_id] || null
+  if (!tpl) return null
+  const atpl = row.addon_template_id ? ctx.templatesById[row.addon_template_id] || null : null
+  const r = resolveItemInputs(row, project, tpl, ctx.index.types, ctx.packageItems)
+  const frames = previewFrames({ template: tpl, addonTemplate: atpl, ctx, seriesId: r.series_id, thicknessMm: r.thickness_mm })
+  return snapshotPreviews(row, tpl, atpl, frames, views)
 }

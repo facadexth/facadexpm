@@ -13,7 +13,8 @@ export const DESCRIPTION_TOKENS = [
 ]
 export const DEFAULT_DESCRIPTION_FORMAT = ['item_name', 'type', 'size', 'alu_color']
 
-const m2 = n => Number(n).toFixed(2)
+// sizes are metres in; the quotation reads millimetres (Ruling 23)
+const mm = n => String(Math.round(Number(n) * 1e4) / 10)
 
 // ctx: { item_name, type_name, width_m, height_m, series_label, finish_name, thickness_mm, infill_name, hardware_set_name }
 export function descriptionParts(ctx, tokens) {
@@ -21,7 +22,7 @@ export function descriptionParts(ctx, tokens) {
   const text = {
     item_name: c.item_name,
     type: c.type_name,
-    size: c.width_m > 0 && c.height_m > 0 ? `${m2(c.width_m)} x ${m2(c.height_m)} ม.` : '',
+    size: c.width_m > 0 && c.height_m > 0 ? `ขนาด ${mm(c.width_m)} × ${mm(c.height_m)} มม.` : '',
     series: c.series_label,
     alu_color: c.finish_name ? `สี${c.finish_name}` : '',
     thickness: c.thickness_mm > 0 ? `หนา ${Number(c.thickness_mm)} มม.` : '',

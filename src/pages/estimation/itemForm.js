@@ -3,12 +3,12 @@
 // the cost and drawing are computed from, the project hardware set shown while inheriting, part labels for the
 // "parts" drawing, layout-template cards and the quotation description context. No React, no Supabase.
 import { buildTypeTree, typeAndAncestorIds, typeLabel, selectableTypes } from '../../lib/typeTree.js'
-import { thicknessesForSeries, hardwareSetsForSeries, allowsMixedThickness } from '../../lib/estimationCatalogViews.js'
-import { buildOpeningPayload, validateForm } from '../../lib/openingPayload.js'
+import { thicknessesForSeries, allowsMixedThickness } from '../../lib/estimationCatalogViews.js'
+import { buildOpeningPayload, validateForm, mmText } from '../../lib/openingPayload.js'
 import { hardwareSetStatus } from '../../lib/projectHardware.js'
 import { availableLayoutTemplates, applyLayoutTemplate, bomTemplatesForType, layoutTemplateFromItem } from '../../lib/layoutTemplates.js'
 import { seriesLabelFull } from '../../lib/aluCatalog.js'
-import { finishChoices } from './projectDefaults.js'
+import { frameFamily } from '../../lib/itemPreviewSignature.js'
 
 const num = v => (v === null || v === undefined || String(v).trim() === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null))
 const pos = v => { const n = num(v); return n !== null && n > 0 }
@@ -56,9 +56,11 @@ export function cascadeLevels(tree, path) {
 export const pickInPath = (path, level, value) => [...(path || []).slice(0, level), ...(value ? [value] : [])]
 
 // BOM templates that build a type, keeping the item's current template listed even if it no longer fits.
-export function templatesForType(templates, typeId, currentId) {
+// `all` (optional) = every template incl. inactive ones, so a saved template that is inactive / typeless / not
+// offered still shows as the selected value.
+export function templatesForType(templates, typeId, currentId, all) {
   const list = typeId ? bomTemplatesForType(templates, typeId) : []
-  const cur = currentId ? (templates || []).find(t => t.id === currentId) : null
+  const cur = currentId ? (all || templates || []).find(t => t.id === currentId) : null
   return cur && !list.some(t => t.id === cur.id) ? [...list, cur] : list
 }
 
@@ -89,30 +91,44 @@ export function validateExtraLines(lines) {
 export const validateItemForm = form => validateForm(form) || validateExtraLines(form.extra_lines)
 
 // ---- dependent fields ---------------------------------------------------------------------------------------
-// After any change: an own series must exist, an own colour must belong to the series' extruder, an own thickness
-// must be one the series offers (a single one is set for the owner when the project's value does not fit), the
-// sash thickness exists only where the series+type allows mixed thickness and is then always a real number
-// (Ruling 21), and an own hardware set must be one the series offers for the type. Returns a new form.
-export function reconcileItemForm(form, { index, project, template }) {
-  const f = { ...form }
+// Fills only, never clears (an own value the series does not offer stays and is shown as "(ไม่มีในซีรีส์นี้)",
+// so what the screen costs is what will be saved, and opening an old item changes nothing by itself):
+// - a series with a single thickness gets it as the item's own value when the series changed (or on a new item)
+//   and the project's thickness does not fit;
+// - where the series+type allows mixed thickness, a blank sash is filled with the resolved frame thickness only
+//   when the frame changed or on a new item (Ruling 21: where shown it holds a real number).
+// prev = the form before this change, next = after it.
+export function reconcileItemForm(prev, next, { index, project, template, isNew }) {
+  const f = { ...next }
+  const p = prev || {}
   const pj = project || {}
-  if (f.series_id && !index.series[f.series_id]) f.series_id = ''
   const seriesId = f.series_id || pj.default_series_id || null
-  if (f.alu_finish_id && !finishChoices(index, seriesId, pj.primary_provider_id).some(o => o.value === f.alu_finish_id)) f.alu_finish_id = ''
   const opts = seriesId ? thicknessesForSeries(index, seriesId) : []
-  const has = v => opts.includes(Number(v))
-  if (f.thickness_mm !== '' && opts.length && !has(f.thickness_mm)) f.thickness_mm = ''
-  if (opts.length === 1 && f.thickness_mm === '' && !has(pj.default_thickness_mm)) f.thickness_mm = String(opts[0])
+  const has = v => v !== '' && v !== null && v !== undefined && opts.includes(Number(v))
+  const seriesChanged = (p.series_id || '') !== (f.series_id || '')
+  if ((seriesChanged || isNew) && f.thickness_mm === '' && opts.length === 1 && !has(pj.default_thickness_mm)) f.thickness_mm = String(opts[0])
+  const frameChanged = (p.thickness_mm || '') !== (f.thickness_mm || '')
   const typeId = template && template.type_id
   const mixed = !!(typeId && seriesId && allowsMixedThickness(index, seriesId, typeId))
-  if (!mixed || !has(f.sash_thickness_mm)) f.sash_thickness_mm = ''
-  if (mixed && f.sash_thickness_mm === '') {
+  if (mixed && f.sash_thickness_mm === '' && (frameChanged || isNew)) {
     const frame = f.thickness_mm !== '' ? f.thickness_mm : pj.default_thickness_mm
-    const fill = has(pj.default_sash_thickness_mm) ? pj.default_sash_thickness_mm : (has(frame) ? frame : null)
-    if (fill !== null && fill !== undefined) f.sash_thickness_mm = String(Number(fill))
+    if (has(frame)) f.sash_thickness_mm = String(Number(frame))
   }
-  if (f.hardware_set_id && seriesId && !hardwareSetsForSeries(index, seriesId, typeId).some(p => p.id === f.hardware_set_id)) f.hardware_set_id = ''
   return f
+}
+
+// Options + the item's own value when it is not among them, marked so the owner sees it is not offered.
+export function withCurrent(options, value, label, note = '(ไม่มีในซีรีส์นี้)') {
+  if (value === '' || value === null || value === undefined || options.some(o => String(o.value) === String(value))) return options
+  return [...options, { value: String(value), label: `${label || value} ${note}`, missing: true }]
+}
+
+// Waste is a share of the aluminium, infill a price per area: neither can be shown as a number while what it is
+// computed from is unresolved ("—", never 0.00).
+export function costRowFlags(cost, bom) {
+  const lines = bom ? [...(bom.profileLines || []), ...(bom.gridLines || [])] : []
+  const infillBad = (cost && cost.unresolved || []).some(u => u.reason === 'unknown_infill')
+  return { wasteKnown: lines.every(l => l.resolved), infillKnown: !infillBad }
 }
 
 export const showSashField = (index, seriesId, template) => !!(template && template.type_id && seriesId && allowsMixedThickness(index, seriesId, template.type_id))
@@ -130,14 +146,19 @@ export function inheritedHardware({ packageItems, index, typeId, project }) {
 // ---- drawing -------------------------------------------------------------------------------------------------
 const WIDTH_RULES = new Set(['width', 'width_minus'])
 const HEIGHT_RULES = new Set(['height', 'height_minus'])
-// Part labels for the "parts" drawing: die no. (drawing_no, else the family) and cut length in mm of the first
-// frame-role bar cut along the width (top/bottom) and along the height (left/right). components = the template's
-// raw components, which computeBomForOpening maps one-to-one, in order, to bom.profileLines.
-export function partLabels({ components, bom, index }) {
+// Part labels for the "parts" drawing: die no. (drawing_no, else the family) and cut length in mm of the frame bar
+// cut along the width (top/bottom) and along the height (left/right). The frame family comes from the SAME picker
+// as the drawn frame width (frameFamily); a side without a bar of that family falls back to its first non-sash bar.
+// components = the template's raw components, mapped one-to-one, in order, to bom.profileLines.
+export function partLabels({ components, joints, bom, index }) {
   if (!bom) return null
   const lines = bom.profileLines || []
+  const fam = frameFamily(components, joints)
   const pick = rules => {
-    const i = (components || []).findIndex((c, k) => lines[k] && c.thickness_role !== 'sash' && rules.has(c.length_rule_type))
+    const ok = (c, k) => lines[k] && c.thickness_role !== 'sash' && rules.has(c.length_rule_type)
+    const all = components || []
+    let i = all.findIndex((c, k) => ok(c, k) && String(c.profile_family ?? '').trim() === fam)
+    if (i < 0) i = all.findIndex(ok)
     if (i < 0) return null
     const l = lines[i]
     const p = l.profile_id ? index.profiles[l.profile_id] : null
@@ -174,15 +195,15 @@ export function layoutCards({ layoutTemplates, mainTypeId, seriesId, seriesTypes
   })
 }
 
-// The form after clicking a card. Sizes are filled only when the main size is known.
+// The form after clicking a card (form sizes are millimetre text). Sizes are filled only when the main size is known.
 export function applyCardToForm(form, card) {
   const a = card.applied
   const f = { ...form, panel_count: String(a.main_panel_count || 1) }
   if (!a.addon_type_id || !card.addonTemplate) return { ...f, has_addon: false, addon_template_id: '', addon_width_m: '', addon_height_m: '', addon_panel_count: '1', addon_position: 'top', addon_offset_m: '' }
   return {
     ...f, has_addon: true, addon_template_id: card.addonTemplate.id, addon_position: a.addon_position, addon_panel_count: String(a.addon_panel_count || 1),
-    addon_width_m: card.sized ? String(a.addon_width_m) : '', addon_height_m: card.sized ? String(a.addon_height_m) : '',
-    addon_offset_m: card.sized ? String(a.addon_offset_m) : '',
+    addon_width_m: card.sized ? mmText(a.addon_width_m) : '', addon_height_m: card.sized ? mmText(a.addon_height_m) : '',
+    addon_offset_m: card.sized ? mmText(a.addon_offset_m) : '',
   }
 }
 

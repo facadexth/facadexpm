@@ -20,7 +20,7 @@ export const Check = ({ checked, disabled, onChange, children }) => (
 )
 
 const grid = cols => ({ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${cols}px, 1fr))`, gap: 10 })
-const Options = ({ list }) => list.map(o => <option key={o.value} value={o.value}>{o.label}</option>)
+export const Options = ({ list }) => list.map(o => <option key={o.value} value={o.value}>{o.label}</option>)
 
 export default function ItemFields({ form, m, update, dis }) {
   const setLine = (i, k, v) => update({ extra_lines: form.extra_lines.map((l, j) => (j === i ? { ...l, [k]: v } : l)) })
@@ -49,8 +49,8 @@ export default function ItemFields({ form, m, update, dis }) {
       </Field>
 
       <div style={grid(110)}>
-        <Field label="กว้าง (ม.) ★"><input className="input" type="number" min="0" step="0.01" disabled={dis} value={form.width_m} onChange={e => update({ width_m: e.target.value })} /></Field>
-        <Field label="สูง (ม.) ★"><input className="input" type="number" min="0" step="0.01" disabled={dis} value={form.height_m} onChange={e => update({ height_m: e.target.value })} /></Field>
+        <Field label="กว้าง (มม.) ★"><input className="input" type="number" min="0" step="1" disabled={dis} value={form.width_m} onChange={e => update({ width_m: e.target.value })} /></Field>
+        <Field label="สูง (มม.) ★"><input className="input" type="number" min="0" step="1" disabled={dis} value={form.height_m} onChange={e => update({ height_m: e.target.value })} /></Field>
         <Field label="จำนวนช่อง (บาน)"><input className="input" type="number" min="1" step="1" disabled={dis} value={form.panel_count} onChange={e => update({ panel_count: e.target.value })} /></Field>
       </div>
 
@@ -61,17 +61,17 @@ export default function ItemFields({ form, m, update, dis }) {
             <Options list={m.seriesOpts} />
           </select>
         </Field>
-        <Field label="ความหนา วงกบ (มม.)" hint={m.thicknessHint}>
-          <select className="input" disabled={dis || m.thicknesses.length === 1 || !m.thicknesses.length} value={form.thickness_mm} onChange={e => update({ thickness_mm: e.target.value })}>
+        <Field label="ความหนา วงกบ (มม.)" hint={m.thicknessHint} warn={m.thicknessOpts.some(o => o.missing) ? 'ความหนาเดิมไม่มีในซีรีส์นี้ เลือกใหม่' : null}>
+          <select className="input" disabled={dis || m.thicknessOpts.length === 0 || (m.thicknesses.length === 1 && m.thicknessOpts.length === 1)} value={form.thickness_mm} onChange={e => update({ thickness_mm: e.target.value })}>
             <option value="">ใช้ค่าโปรเจกต์ · {m.inherit.thickness || 'ไม่กำหนด'}</option>
-            {m.thicknesses.map(t => <option key={t} value={String(t)}>{t}</option>)}
+            <Options list={m.thicknessOpts} />
           </select>
         </Field>
         {m.showSash && (
           <Field label="ความหนากรอบบาน (มม.)" hint="แสดงเมื่อประเภทนี้อนุญาตความหนาต่างกัน">
             <select className="input" disabled={dis} value={form.sash_thickness_mm} onChange={e => update({ sash_thickness_mm: e.target.value })}>
               {!form.sash_thickness_mm && <option value="">— เลือก —</option>}
-              {m.thicknesses.map(t => <option key={t} value={String(t)}>{t}</option>)}
+              <Options list={m.sashOpts} />
             </select>
           </Field>
         )}

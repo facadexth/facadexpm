@@ -6,6 +6,7 @@ import { typeLabel } from '../../lib/typeTree.js'
 import { seriesLabelShort } from '../../lib/aluCatalog.js'
 import { itemStatus, unresolvedSummary, parseQuantity } from './projectDefaults.js'
 
+const mm = v => (v === null || v === undefined || v === '' ? '—' : Math.round(Number(v) * 1000))
 const STATUS = { ok: ['ok', 'var(--green)'], unresolved: ['ราคาไม่ครบ', 'var(--red)'], old_preview: ['ภาพเก่า', 'var(--amber, #b88600)'] }
 
 function QuantityCell({ item, canEdit, onSaved }) {
@@ -53,7 +54,7 @@ export default function ItemsTable({ items, costs, previewSigs, project, index, 
                   <td>{tpl && tpl.type_id ? typeLabel(index.types, tpl.type_id) : (tpl ? tpl.name : '—')}</td>
                   <td>{series ? seriesLabelShort(series, index.providers[series.provider_id]) : (o.series || '—')}</td>
                   <td><span title={status === 'unresolved' ? reasons : status === 'old_preview' ? 'ภาพที่บันทึกไว้เก่ากว่าข้อมูล เปิดรายการแล้วบันทึกภาพใหม่' : undefined} style={{ color: STATUS[status][1], fontWeight: 600 }}>{STATUS[status][0]}</span></td>
-                  <td className="font-mono">{o.width_m} x {o.height_m} m</td>
+                  <td className="font-mono">{mm(o.width_m)} × {mm(o.height_m)} มม.</td>
                   <td><QuantityCell key={`${o.id}-${o.quantity}`} item={o} canEdit={canEdit} onSaved={onQuantitySaved} /></td>
                   <td className="font-mono" title={priced ? undefined : reasons}>{priced ? fmt(cost.total) : '—'}</td>
                   <td className="font-mono" title={priced ? undefined : reasons}>{priced ? fmt(cost.total * qty) : '—'}</td>

@@ -12,7 +12,8 @@ const Row = ({ label, value, note, bad }) => (
 )
 const money = (ok, v) => (ok ? fmt(v) : '—')
 
-function BomRows({ bom, index }) {
+function BomRows({ bom, index, flags }) {
+  const f = flags || { wasteKnown: true, infillKnown: true }
   const profile = [...bom.profileLines, ...bom.gridLines]
   return (
     <>
@@ -23,8 +24,8 @@ function BomRows({ bom, index }) {
       })}
       {bom.hardwareLines.map((l, i) => <Row key={`h${i}`} label={`${l.name} × ${Number(l.quantity).toFixed(2).replace(/\.00$/, '')}`} value={money(!l.unresolved, l.cost)} bad={l.unresolved} note={l.unresolved ? `ไม่พบ: ${reasonText('no_hardware_price')}` : null} />)}
       {(bom.hardwareSetLines || []).map((l, i) => <Row key={`s${i}`} label={`ชุดอุปกรณ์: ${l.name} × ${l.quantity}`} value={money(l.resolved, l.cost)} bad={!l.resolved} note={l.resolved ? null : `ไม่พบ: ${reasonText(l.reason || 'no_part_price')}`} />)}
-      <Row label="เผื่อเสียเศษ" value={fmt(bom.wasteCost)} />
-      <Row label={`วัสดุอุดช่อง (${bom.infillArea_sqm.toFixed(2)} ตร.ม.)`} value={fmt(bom.infillCost)} />
+      <Row label="เผื่อเสียเศษ" value={money(f.wasteKnown, bom.wasteCost)} note={f.wasteKnown ? null : 'รอราคาอลูมิเนียมให้ครบ'} bad={!f.wasteKnown} />
+      <Row label={`วัสดุอุดช่อง (${bom.infillArea_sqm.toFixed(2)} ตร.ม.)`} value={money(f.infillKnown, bom.infillCost)} note={f.infillKnown ? null : `ไม่พบ: ${reasonText('unknown_infill')}`} bad={!f.infillKnown} />
       <Row label="ค่าแรง" value={fmt(bom.laborCost)} />
       <Row label="ซิลิโคน" value={fmt(bom.siliconeCost)} />
       <Row label="สักหลาด" value={fmt(bom.feltCost)} />
@@ -40,14 +41,14 @@ const Section = ({ title, children }) => (
   </div>
 )
 
-export default function ItemCostSummary({ cost, index, addonName }) {
+export default function ItemCostSummary({ cost, flags, index, addonName }) {
   if (!cost) return <div className="card" style={{ padding: 12, fontSize: 13, color: 'var(--text3)' }}>เลือกประเภทและเทมเพลตเพื่อคิดราคา</div>
   const unresolved = cost.unresolved || []
   return (
     <div className="card" style={{ padding: 12, display: 'grid', gap: 6, background: 'var(--bg2)' }}>
       <div style={{ fontWeight: 700 }}>ต้นทุนต่อ 1 ชุด</div>
-      <Section title="ชุดหลัก"><BomRows bom={cost.bom} index={index} /></Section>
-      {cost.addonBom && <Section title={`ของเพิ่มเติม${addonName ? `: ${addonName}` : ''}`}><BomRows bom={cost.addonBom} index={index} /></Section>}
+      <Section title="ชุดหลัก"><BomRows bom={cost.bom} index={index} flags={flags && flags.main} /></Section>
+      {cost.addonBom && <Section title={`ของเพิ่มเติม${addonName ? `: ${addonName}` : ''}`}><BomRows bom={cost.addonBom} index={index} flags={flags && flags.addon} /></Section>}
       {cost.extras.lines.length > 0 && (
         <Section title={`อุปกรณ์ติดตั้ง (${cost.extras.points} จุดยึด)`}>
           {cost.extras.lines.map(l => <Row key={l.key} label={`${l.name} × ${l.quantity}`} value={money(l.resolved, l.cost)} bad={!l.resolved} note={l.resolved ? null : `ไม่พบ: ${reasonText(l.reason)}`} />)}

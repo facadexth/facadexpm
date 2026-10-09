@@ -7,8 +7,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { Modal } from '../../components/Modal.jsx'
 import { emptyForm, formFromOpening, buildOpeningPayload } from '../../lib/openingPayload.js'
-import { resolveItemInputs } from '../../lib/estimationInherit.js'
-import { previewFrames, snapshotPreviews } from '../../lib/itemPreviewSignature.js'
+import { snapshotFor } from '../../lib/itemPreviewSignature.js'
 import { bomTemplatesForType } from '../../lib/layoutTemplates.js'
 import { typePath, pickInPath, cascadeLevels, typeTreeOf, templatesForType, reconcileItemForm, validateItemForm, applyCardToForm, layoutRowFromItem, layoutSaveErrorText } from './itemForm.js'
 import { useItemModel } from './useItemModel.js'
@@ -19,23 +18,14 @@ import LayoutTemplatePicker from './LayoutTemplatePicker.jsx'
 import SnapshotOptions from './SnapshotOptions.jsx'
 import ItemCostSummary from './ItemCostSummary.jsx'
 
-// The snapshot of a row (stored or about to be saved): frames from the series/thickness the row resolves to.
-function snapshotFor(row, { project, ctx, views }) {
-  const tpl = ctx.templatesById[row.template_id] || null
-  if (!tpl) return null
-  const atpl = row.addon_template_id ? ctx.templatesById[row.addon_template_id] || null : null
-  const r = resolveItemInputs(row, project, tpl, ctx.index.types, ctx.packageItems)
-  const frames = previewFrames({ template: tpl, addonTemplate: atpl, ctx, seriesId: r.series_id, thicknessMm: r.thickness_mm })
-  return snapshotPreviews(row, tpl, atpl, frames, views)
-}
-
 export default function ItemModal({ opening, project, ctx, templates, constraints, infillTypes, layoutTemplates, seriesTypes, currentSig, canEdit, onClose, onSaved, onLayoutSaved }) {
   const { index, templatesById } = ctx
   const [form, setForm] = useState(() => (opening ? formFromOpening(opening) : emptyForm()))
   const [path, setPath] = useState(() => typePath(index.types, (templatesById[opening && opening.template_id] || {}).type_id))
   const [own, setOwnState] = useState(() => ({ finish: !!(opening && opening.alu_finish_id), infill: !!(opening && opening.infill_type_id), hw: !!(opening && opening.hardware_set_id) }))
   const [addonTypeId, setAddonTypeId] = useState(() => (templatesById[opening && opening.addon_template_id] || {}).type_id || '')
-  const [descTouched, setDescTouched] = useState(() => !!(opening && opening.item_description))
+  // an opened item keeps its description (even blank) until the owner presses "สร้างใหม่จากรูปแบบ"; a new one follows
+  const [descTouched, setDescTouched] = useState(() => !!opening)
   const [layoutPick, setLayoutPick] = useState(null)
   const [layoutSave, setLayoutSave] = useState({ on: false, name: '' })
   const [snap, setSnap] = useState({ on: true, out: true, in: true })
@@ -46,11 +36,9 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
   const dis = !canEdit || busy
   const rowId = (opening && opening.id) || savedId
 
-  const update = patch => setForm(f => {
-    const next = { ...f, ...patch }
-    return reconcileItemForm(next, { index, project, template: templatesById[next.template_id] })
-  })
-  const m = useItemModel({ form, path, project, ctx, templates, constraints, infillTypes, layoutTemplates, seriesTypes })
+  // fills only (single thickness, blank sash on a frame change / new item); never clears an own value
+  const update = patch => setForm(f => reconcileItemForm(f, { ...f, ...patch }, { index, project, template: templatesById[patch.template_id ?? f.template_id], isNew: !rowId }))
+  const m = useItemModel({ form, path, addonTypeId, project, ctx, templates, constraints, infillTypes, layoutTemplates, seriesTypes })
 
   // the quotation description follows the item until the owner types in it ("สร้างใหม่" brings it back)
   useEffect(() => { if (!descTouched) setForm(f => (f.item_description === m.generatedDescription ? f : { ...f, item_description: m.generatedDescription })) }, [m.generatedDescription, descTouched])
@@ -81,7 +69,6 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
     update(applyCardToForm(form, card))
   }
 
-  const addonTemplateOptions = templatesForType(m.addonTemplates, addonTypeId, form.addon_template_id).map(t => ({ value: t.id, label: t.name }))
   const storedSnapshot = opening && (opening.preview_svg_out || opening.preview_svg_in) && opening.preview_sig
   const stale = !!(storedSnapshot && currentSig && currentSig !== opening.preview_sig)
 
@@ -100,11 +87,15 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
       if (e) throw e
       setSavedId(data.id)
       if (layoutSave.on) {
-        const tpl = templatesById[payload.template_id]
-        const atpl = payload.addon_template_id ? templatesById[payload.addon_template_id] : null
-        const row = tpl && tpl.type_id ? layoutRowFromItem(payload, { name: layoutSave.name, mainTypeId: tpl.type_id, addonTypeId: atpl && atpl.type_id }) : null
-        const { error: le } = row ? await supabase.from('estimation_layout_templates').insert(row) : { error: { message: 'เทมเพลตนี้ยังไม่มีประเภท' } }
-        if (le) { setLayoutError(`บันทึกรายการแล้ว แต่ ${layoutSaveErrorText(le)}`); onSaved({ close: false }); return }
+        let layoutFail = null
+        try {
+          const tpl = templatesById[payload.template_id]
+          const atpl = payload.addon_template_id ? templatesById[payload.addon_template_id] : null
+          const row = tpl && tpl.type_id ? layoutRowFromItem(payload, { name: layoutSave.name, mainTypeId: tpl.type_id, addonTypeId: atpl && atpl.type_id }) : null
+          const { error: le } = row ? await supabase.from('estimation_layout_templates').insert(row) : { error: { message: 'เทมเพลตนี้ยังไม่มีประเภท' } }
+          layoutFail = le || null
+        } catch (le) { layoutFail = le }
+        if (layoutFail) { setLayoutError(`บันทึกรายการแล้ว แต่ ${layoutSaveErrorText(layoutFail)}`); onSaved({ close: false }); return }
         setLayoutSave({ on: false, name: '' })
         onLayoutSaved()
       }
@@ -133,7 +124,7 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
         <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
           <ItemFields form={form} update={update} dis={dis} m={{ ...m, pickType, own, setOwn }} />
           {m.violations.map((msg, i) => <div key={i} className="alert alert-error" style={{ fontSize: 13 }}>⚠️ {msg}</div>)}
-          <AddonFields form={form} update={update} dis={dis} typeId={addonTypeId} typeOptions={m.addonTypeOptions} templateOptions={addonTemplateOptions} onPickType={pickAddonType} violations={m.addonViolations} />
+          <AddonFields form={form} update={update} dis={dis} typeId={addonTypeId} typeOptions={m.addonTypeOptions} templateOptions={m.addonTemplateOptions} onPickType={pickAddonType} violations={m.addonViolations} />
           <div style={{ display: 'grid', gap: 6 }}>
             <div style={{ fontWeight: 700, fontSize: 13 }}>คำอธิบายสำหรับใบเสนอราคา <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text3)' }}>ประกอบจากรูปแบบของโปรเจกต์ แก้ข้อความเองได้</span></div>
             <textarea className="input" rows={3} disabled={dis} value={form.item_description} onChange={e => { setDescTouched(true); setForm(f => ({ ...f, item_description: e.target.value })) }} />
@@ -145,7 +136,7 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
           <LayoutTemplatePicker cards={m.cards} selectedId={layoutPick} mainTemplate={m.template} disabled={dis} onPick={pickCard} onClear={() => setLayoutPick(null)}
             save={layoutSave} onSaveChange={setLayoutSave} saveError={layoutError} />
           <SnapshotOptions snap={snap} onChange={setSnap} stale={stale} savedAt={opening && opening.preview_saved_at} onResave={resaveSnapshot} busy={busy} dis={dis} />
-          <ItemCostSummary cost={m.cost} index={index} addonName={m.addonTemplate && m.addonTemplate.name} />
+          <ItemCostSummary cost={m.cost} flags={m.costFlags} index={index} addonName={m.addonTemplate && m.addonTemplate.name} />
         </div>
       </div>
       {error && <div className="alert alert-error" style={{ margin: '0 16px', fontSize: 13 }}>{error}</div>}

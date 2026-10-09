@@ -83,6 +83,18 @@ function addonRect(position, offset, w, h, aw, ah) {
   return { x: along(w, aw), y: -ah }                              // 'top' (default)
 }
 
+// Arrow heads (both ends) of a decor polyline with `arrow: true`: two 3-point polylines, 6 px long, 3 px wide.
+export function arrowHeads(points) {
+  if (!Array.isArray(points) || points.length < 2) return []
+  const head = ([x, y], [px, py]) => {
+    const len = Math.hypot(x - px, y - py) || 1
+    const ux = (x - px) / len, uy = (y - py) / len
+    return [[x - 6 * ux - 3 * uy, y - 6 * uy + 3 * ux], [x, y], [x - 6 * ux + 3 * uy, y - 6 * uy - 3 * ux]]
+  }
+  const n = points.length
+  return [head(points[n - 1], points[n - 2]), head(points[0], points[1])]
+}
+
 const mirrorX = (x, W) => W - x
 function mirrorPreview(p) {
   const W = p.viewBox.width
@@ -171,7 +183,10 @@ export function previewSvgString(p, { style = 'double', finishColor = '#f4f4f2' 
     for (const l of u.seams) parts.push(`<line x1="${n2(l.x1)}" y1="${n2(l.y1)}" x2="${n2(l.x2)}" y2="${n2(l.y2)}" stroke="${INK}" stroke-width="1.2"/>`)
     for (const d of u.decor) {
       if (d.type === 'circle') parts.push(`<circle cx="${n2(d.cx)}" cy="${n2(d.cy)}" r="${n2(d.r)}" fill="${INK}"/>`)
-      else if (d.type === 'polyline') parts.push(`<polyline points="${d.points.map(([x, y]) => `${n2(x)},${n2(y)}`).join(' ')}" fill="none" stroke="${INK}" stroke-width="0.9"${d.dashed ? ' stroke-dasharray="4 3"' : ''}/>`)
+      else if (d.type === 'polyline') {
+        parts.push(`<polyline points="${d.points.map(([x, y]) => `${n2(x)},${n2(y)}`).join(' ')}" fill="none" stroke="${INK}" stroke-width="0.9"${d.dashed ? ' stroke-dasharray="4 3"' : ''}/>`)
+        if (d.arrow) for (const h of arrowHeads(d.points)) parts.push(`<polyline points="${h.map(([x, y]) => `${n2(x)},${n2(y)}`).join(' ')}" fill="none" stroke="${INK}" stroke-width="0.9"/>`)
+      }
       else parts.push(`<line x1="${n2(d.x1)}" y1="${n2(d.y1)}" x2="${n2(d.x2)}" y2="${n2(d.y2)}" stroke="${INK}" stroke-width="${d.heavy ? 3 : 1}" stroke-linecap="round"/>`)
     }
   }

@@ -4,8 +4,9 @@ import { emptyForm } from '../../lib/openingPayload.js'
 import {
   evaluateConstraints, typeTreeOf, typePath, cascadeLevels, pickInPath, templatesForType, addonTypeOptions, liveItem,
   validateItemForm, reconcileItemForm, showSashField, inheritedHardware, partLabels, layoutCards, applyCardToForm,
-  layoutRowFromItem, layoutSaveErrorText, descriptionContext,
+  layoutRowFromItem, layoutSaveErrorText, descriptionContext, withCurrent, costRowFlags,
 } from './itemForm.js'
+import { formFromOpening, buildOpeningPayload } from '../../lib/openingPayload.js'
 
 const types = [
   { id: 'door', name: 'ประตู' }, { id: 'win', name: 'หน้าต่าง' },
@@ -64,15 +65,15 @@ describe('type cascade', () => {
 
 describe('live item + validation', () => {
   it('a half-filled add-on is left out of the live item, not an error', () => {
-    const { item, addonPartial } = liveItem({ ...emptyForm(), opening_no: 'W1', template_id: 't1', width_m: '1.2', height_m: '1', has_addon: true, addon_template_id: 't2', addon_width_m: '1.2' }, 'p')
+    const { item, addonPartial } = liveItem({ ...emptyForm(), opening_no: 'W1', template_id: 't1', width_m: '1200', height_m: '1000', has_addon: true, addon_template_id: 't2', addon_width_m: '1200' }, 'p')
     expect(addonPartial).toBe(true)
     expect(item).toMatchObject({ addon_template_id: null, addon_width_m: null, width_m: 1.2 })
-    const full = liveItem({ ...emptyForm(), template_id: 't1', has_addon: true, addon_template_id: 't2', addon_width_m: '1.2', addon_height_m: '0.4', addon_position: 'left' }, 'p')
+    const full = liveItem({ ...emptyForm(), template_id: 't1', has_addon: true, addon_template_id: 't2', addon_width_m: '1200', addon_height_m: '400', addon_position: 'left' }, 'p')
     expect(full.addonPartial).toBe(false)
     expect(full.item.addon_position).toBe('left')
   })
   it('extra lines need a description and a numeric amount', () => {
-    const ok = { ...emptyForm(), opening_no: 'W1', template_id: 't1', width_m: '1', height_m: '1' }
+    const ok = { ...emptyForm(), opening_no: 'W1', template_id: 't1', width_m: '1000', height_m: '1000' }
     expect(validateItemForm(ok)).toBeNull()
     expect(validateItemForm({ ...ok, extra_lines: [{ description: 'ดัดโค้ง', amount: 'abc' }] })).toContain('ตัวเลข')
     expect(validateItemForm({ ...ok, extra_lines: [{ description: '', amount: '100' }] })).toContain('รายละเอียด')
@@ -80,26 +81,51 @@ describe('live item + validation', () => {
   })
 })
 
-describe('reconcileItemForm', () => {
+describe('reconcileItemForm (fills only, never clears)', () => {
   const project = { default_series_id: 'sA', default_thickness_mm: 1.4, primary_provider_id: 'A' }
-  it('an own thickness the series does not offer is cleared; a single thickness is set when the project value does not fit', () => {
-    expect(reconcileItemForm({ ...emptyForm(), thickness_mm: '2' }, { index, project, template: tplS2 }).thickness_mm).toBe('')
-    expect(reconcileItemForm({ ...emptyForm(), series_id: 'sB' }, { index, project, template: tplS2 }).thickness_mm).toBe('2')
-    expect(reconcileItemForm({ ...emptyForm() }, { index, project, template: tplS2 }).thickness_mm).toBe('')
+  const old = { ...emptyForm(), opening_no: 'W1', template_id: 't1', series_id: 'sB', thickness_mm: '1.6', alu_finish_id: 'fA', hardware_set_id: 'hw2', sash_thickness_mm: '' }
+  const edit = (prev, patch, o = {}) => reconcileItemForm(prev, { ...prev, ...patch }, { index, project, template: tplS2, isNew: false, ...o })
+  it('opening an old item and editing only the name changes nothing else, even values the series does not offer', () => {
+    const f = edit(old, { item_name: 'ห้องนอน' })
+    expect(f).toEqual({ ...old, item_name: 'ห้องนอน' })
   })
-  it('sash shows only where the series+type allows mixed thickness, and then always holds a real number', () => {
+  it('no series and no main extruder: an own colour stays (finish list empty)', () => {
+    const f = reconcileItemForm({ ...emptyForm(), alu_finish_id: 'fB' }, { ...emptyForm(), alu_finish_id: 'fB', item_name: 'x' }, { index, project: {}, template: null, isNew: false })
+    expect(f.alu_finish_id).toBe('fB')
+  })
+  it('a single-thickness series fills the thickness when the series changes (or on a new item), only if the project value does not fit', () => {
+    expect(edit({ ...emptyForm() }, { series_id: 'sB' }).thickness_mm).toBe('2')
+    expect(edit({ ...emptyForm(), series_id: 'sB' }, { item_name: 'x' }).thickness_mm).toBe('')
+    expect(reconcileItemForm(emptyForm(), { ...emptyForm(), series_id: 'sB', item_name: 'x' }, { index, project, template: null, isNew: true }).thickness_mm).toBe('2')
+    expect(edit({ ...emptyForm(), series_id: 'sB' }, { series_id: 'sA' }).thickness_mm).toBe('')
+  })
+  it('sash: a blank is filled with the resolved frame only on a frame change or a new item (Ruling 21)', () => {
+    expect(edit({ ...emptyForm() }, { thickness_mm: '1.6' }).sash_thickness_mm).toBe('1.6')
+    expect(edit({ ...emptyForm() }, { item_name: 'x' }).sash_thickness_mm).toBe('')
+    expect(reconcileItemForm(emptyForm(), { ...emptyForm(), item_name: 'x' }, { index, project, template: tplS2, isNew: true }).sash_thickness_mm).toBe('1.4')
+    expect(edit({ ...emptyForm(), sash_thickness_mm: '1.4' }, { thickness_mm: '1.6' }).sash_thickness_mm).toBe('1.4')
+    expect(edit({ ...emptyForm(), series_id: 'sB' }, { thickness_mm: '2' }, { template: { type_id: 'fixed' } }).sash_thickness_mm).toBe('')
     expect(showSashField(index, 'sA', tplS2)).toBe(true)
     expect(showSashField(index, 'sB', { type_id: 'fixed' })).toBe(false)
-    expect(reconcileItemForm({ ...emptyForm() }, { index, project, template: tplS2 }).sash_thickness_mm).toBe('1.4')
-    expect(reconcileItemForm({ ...emptyForm(), sash_thickness_mm: '1.6' }, { index, project: { ...project, default_sash_thickness_mm: 1.4 }, template: tplS2 }).sash_thickness_mm).toBe('1.6')
-    expect(reconcileItemForm({ ...emptyForm() }, { index, project: { ...project, default_sash_thickness_mm: 1.6 }, template: tplS2 }).sash_thickness_mm).toBe('1.6')
-    expect(reconcileItemForm({ ...emptyForm(), series_id: 'sB', sash_thickness_mm: '2' }, { index, project, template: { type_id: 'fixed' } }).sash_thickness_mm).toBe('')
   })
-  it('colour and hardware set must fit the series (and type)', () => {
-    const f = reconcileItemForm({ ...emptyForm(), alu_finish_id: 'fB', hardware_set_id: 'hw2' }, { index, project, template: tplS2 })
-    expect(f.alu_finish_id).toBe('')
-    expect(f.hardware_set_id).toBe('')
-    expect(reconcileItemForm({ ...emptyForm(), alu_finish_id: 'fA', hardware_set_id: 'hw1' }, { index, project, template: tplS2 })).toMatchObject({ alu_finish_id: 'fA', hardware_set_id: 'hw1' })
+  it('an own value missing from the options is listed, marked, never shown as the inherited value', () => {
+    expect(withCurrent([{ value: 'fA', label: 'ขาว' }], 'fB', 'ดำ')).toEqual([{ value: 'fA', label: 'ขาว' }, { value: 'fB', label: 'ดำ (ไม่มีในซีรีส์นี้)', missing: true }])
+    expect(withCurrent([{ value: '1.4', label: '1.4' }], '1.4', '1.4')).toHaveLength(1)
+    expect(withCurrent([], '', 'x')).toEqual([])
+  })
+  it('the stored item survives open -> edit name -> save unchanged (sizes in mm on the form)', () => {
+    const row = { opening_no: 'W1', template_id: 't1', series_id: 'sB', thickness_mm: '1.60', alu_finish_id: 'fA', hardware_set_id: 'hw2', width_m: 1.15, height_m: '0.35', panel_count: 2, extra_lines: [] }
+    const f0 = formFromOpening(row)
+    const p = buildOpeningPayload(edit(f0, { item_name: 'ใหม่' }), { projectId: 'p' })
+    expect(p).toMatchObject({ series_id: 'sB', thickness_mm: 1.6, alu_finish_id: 'fA', hardware_set_id: 'hw2', width_m: 1.15, height_m: 0.35, sash_thickness_mm: null, item_name: 'ใหม่' })
+  })
+})
+
+describe('cost row flags', () => {
+  it('waste is unknown while any profile/grid line is unresolved; infill unknown with unknown_infill', () => {
+    const bom = { profileLines: [{ resolved: true }], gridLines: [{ resolved: false }] }
+    expect(costRowFlags({ unresolved: [] }, bom)).toEqual({ wasteKnown: false, infillKnown: true })
+    expect(costRowFlags({ unresolved: [{ reason: 'unknown_infill' }] }, { profileLines: [{ resolved: true }], gridLines: [] })).toEqual({ wasteKnown: true, infillKnown: false })
   })
 })
 
@@ -115,10 +141,15 @@ describe('inherited hardware', () => {
 
 describe('part labels', () => {
   it('die no. + cut length of the first frame bar along the width and along the height', () => {
-    const components = [{ length_rule_type: 'width', thickness_role: 'sash' }, { length_rule_type: 'width_minus' }, { length_rule_type: 'height' }]
+    const components = [{ length_rule_type: 'width', thickness_role: 'sash', profile_family: 'sash' }, { length_rule_type: 'width_minus', profile_family: 'frame' }, { length_rule_type: 'height', profile_family: 'frame' }]
     const bom = { profileLines: [{ length_m: 0.7, family: 'sash' }, { length_m: 1.4111, profile_id: 'p14', family: 'frame' }, { length_m: 1.2, family: 'frame' }] }
     expect(partLabels({ components, bom, index })).toEqual({ top: 'D40-F1 1411', bottom: 'D40-F1 1411', left: 'frame 1200', right: 'frame 1200' })
     expect(partLabels({ components: [], bom, index })).toBeNull()
+    // the joint picks the frame family among frame bars, the same one the drawn frame width uses
+    const comps2 = [{ length_rule_type: 'width', profile_family: 'head' }, { length_rule_type: 'width', profile_family: 'frame' }, { length_rule_type: 'height', profile_family: 'frame' }]
+    const bom2 = { profileLines: [{ length_m: 1, family: 'head' }, { length_m: 1.4111, profile_id: 'p14', family: 'frame' }, { length_m: 1.2, family: 'frame' }] }
+    expect(partLabels({ components: comps2, joints: [{ main_family: 'frame' }], bom: bom2, index }).top).toBe('D40-F1 1411')
+    expect(partLabels({ components: comps2, joints: [], bom: bom2, index }).top).toBe('head 1000')
   })
 })
 
@@ -140,7 +171,7 @@ describe('layout templates', () => {
   })
   it('clicking a card fills panels and the add-on; a card without add-on clears it', () => {
     const [l1, l2] = layoutCards({ layoutTemplates: layouts, mainTypeId: 's2', seriesId: 'sA', seriesTypes, addonTemplates: [addonTpl], widthM: '2', heightM: '1.2' })
-    expect(applyCardToForm(emptyForm(), l1)).toMatchObject({ panel_count: '2', has_addon: true, addon_template_id: 'tf', addon_position: 'top', addon_width_m: '2', addon_height_m: '0.3', addon_offset_m: '0' })
+    expect(applyCardToForm(emptyForm(), l1)).toMatchObject({ panel_count: '2', has_addon: true, addon_template_id: 'tf', addon_position: 'top', addon_width_m: '2000', addon_height_m: '300', addon_offset_m: '0' })
     expect(applyCardToForm({ ...emptyForm(), has_addon: true, addon_template_id: 'tf' }, l2)).toMatchObject({ panel_count: '3', has_addon: false, addon_template_id: '' })
   })
   it('save row from the saved item; duplicate name reads in Thai', () => {

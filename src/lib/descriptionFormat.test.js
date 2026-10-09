@@ -5,8 +5,8 @@ const ctx = { item_name: 'D-01', type_name: 'ประตูบานเลื�
 
 describe('buildItemDescription', () => {
   it('joins the chosen tokens in the chosen order', () => {
-    expect(buildItemDescription(ctx, ['item_name', 'type', 'size', 'alu_color'])).toBe('D-01 ประตูบานเลื่อน 2.40 x 2.10 ม. สีอบขาว')
-    expect(buildItemDescription(ctx, ['size', 'item_name'])).toBe('2.40 x 2.10 ม. D-01')
+    expect(buildItemDescription(ctx, ['item_name', 'type', 'size', 'alu_color'])).toBe('D-01 ประตูบานเลื่อน ขนาด 2400 × 2100 มม. สีอบขาว')
+    expect(buildItemDescription(ctx, ['size', 'item_name'])).toBe('ขนาด 2400 × 2100 มม. D-01')
   })
   it('skips empty parts and unknown tokens; a missing list uses the default format', () => {
     expect(buildItemDescription({ item_name: 'D-01', width_m: 0, height_m: 0 }, ['item_name', 'size', 'alu_color', 'nonsense'])).toBe('D-01')

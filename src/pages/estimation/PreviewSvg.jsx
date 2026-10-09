@@ -2,6 +2,8 @@
 // Draws a buildFramePreview() result as SVG with theme colours (CSS variables), so it follows light/dark.
 // style: 'double' | 'solid' | 'cad' | 'parts' ('parts' = double + the part labels the preview carries).
 // The stored snapshot uses previewSvgString() with literal colours instead; this one is for the screen only.
+import { arrowHeads } from '../../lib/framePreview.js'
+
 const INK = 'var(--text)'
 const DIM = 'var(--accent)'
 
@@ -14,7 +16,12 @@ function Unit({ u, frameFill, glassFill }) {
       {u.seams.map((l, i) => <line key={`s${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke={INK} strokeWidth={1.2} />)}
       {u.decor.map((d, i) => {
         if (d.type === 'circle') return <circle key={`d${i}`} cx={d.cx} cy={d.cy} r={d.r} fill={INK} />
-        if (d.type === 'polyline') return <polyline key={`d${i}`} points={d.points.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke={INK} strokeWidth={0.9} strokeDasharray={d.dashed ? '4 3' : undefined} />
+        if (d.type === 'polyline') return (
+          <g key={`d${i}`}>
+            <polyline points={d.points.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke={INK} strokeWidth={0.9} strokeDasharray={d.dashed ? '4 3' : undefined} />
+            {d.arrow && arrowHeads(d.points).map((h, k) => <polyline key={k} points={h.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke={INK} strokeWidth={0.9} />)}
+          </g>
+        )
         return <line key={`d${i}`} x1={d.x1} y1={d.y1} x2={d.x2} y2={d.y2} stroke={INK} strokeWidth={d.heavy ? 3 : 1} strokeLinecap="round" />
       })}
     </g>

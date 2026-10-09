@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { emptyForm, formFromOpening, buildOpeningPayload, validateForm } from './openingPayload.js'
+import { emptyForm, formFromOpening, buildOpeningPayload, validateForm, mmText, metresFromMm } from './openingPayload.js'
 
-const filled = (o = {}) => ({ ...emptyForm(), opening_no: 'D1', template_id: 't1', width_m: '2.4', height_m: '2.1', ...o })
+const filled = (o = {}) => ({ ...emptyForm(), opening_no: 'D1', template_id: 't1', width_m: '2400', height_m: '2100', ...o })
 
 describe('buildOpeningPayload', () => {
   it('blank inherit fields become NULL, never empty strings or 0', () => {
@@ -26,9 +26,9 @@ describe('buildOpeningPayload', () => {
     expect(p).toMatchObject({ no_infill: true, infill_type_id: null, no_hardware_set: true, hardware_set_id: null })
   })
   it('add-on fields are cleared when the add-on is switched off, and kept (with position/offset) when on', () => {
-    const off = buildOpeningPayload(filled({ has_addon: false, addon_template_id: 't2', addon_width_m: '1', addon_position: 'bottom' }), { projectId: 'p1' })
+    const off = buildOpeningPayload(filled({ has_addon: false, addon_template_id: 't2', addon_width_m: '1000', addon_position: 'bottom' }), { projectId: 'p1' })
     expect(off).toMatchObject({ addon_template_id: null, addon_width_m: null, addon_position: null, addon_offset_m: null, addon_panel_count: 1 })
-    const on = buildOpeningPayload(filled({ has_addon: true, addon_template_id: 't2', addon_width_m: '1.2', addon_height_m: '0.4', addon_position: 'left', addon_offset_m: '0.3' }), { projectId: 'p1' })
+    const on = buildOpeningPayload(filled({ has_addon: true, addon_template_id: 't2', addon_width_m: '1200', addon_height_m: '400', addon_position: 'left', addon_offset_m: '300' }), { projectId: 'p1' })
     expect(on).toMatchObject({ addon_template_id: 't2', addon_width_m: 1.2, addon_height_m: 0.4, addon_position: 'left', addon_offset_m: 0.3 })
   })
   it('snapshots are included only when previews are passed', () => {
@@ -50,6 +50,19 @@ describe('formFromOpening', () => {
     const p = buildOpeningPayload(f, { projectId: 'p1' })
     expect(p).toMatchObject({ thickness_mm: 1.5, addon_offset_m: 0, addon_template_id: 't2', series_id: null })
   })
+  it('sizes show in millimetres and go back to the same metres (no float tails)', () => {
+    const row = { opening_no: 'W', template_id: 't1', width_m: 1.15, height_m: '0.35', addon_template_id: 't2', addon_width_m: 1.15, addon_height_m: 0.35, addon_offset_m: 0.07, addon_position: 'top' }
+    const f = formFromOpening(row)
+    expect(f).toMatchObject({ width_m: '1150', height_m: '350', addon_width_m: '1150', addon_height_m: '350', addon_offset_m: '70' })
+    const p = buildOpeningPayload(f, { projectId: 'p' })
+    expect(p).toMatchObject({ width_m: 1.15, height_m: 0.35, addon_width_m: 1.15, addon_height_m: 0.35, addon_offset_m: 0.07 })
+    expect(formFromOpening(p)).toMatchObject({ width_m: '1150', height_m: '350', addon_offset_m: '70' })
+    expect(mmText(2.4)).toBe('2400')
+    expect(mmText(null)).toBe('')
+    expect(metresFromMm('1800')).toBe(1.8)
+    expect(metresFromMm('1234.5')).toBe(1.2345)
+    expect(metresFromMm('')).toBeNull()
+  })
 })
 
 describe('validateForm', () => {
@@ -61,7 +74,7 @@ describe('validateForm', () => {
   })
   it('a partly filled add-on blocks saving; negative labour and out-of-range profit are refused', () => {
     expect(validateForm(filled({ has_addon: true }))).toMatch(/ชุดต่อเติม/)
-    expect(validateForm(filled({ has_addon: true, addon_template_id: 't2', addon_width_m: '1' }))).toMatch(/ขนาดชุดต่อเติม/)
+    expect(validateForm(filled({ has_addon: true, addon_template_id: 't2', addon_width_m: '1000' }))).toMatch(/ขนาดชุดต่อเติม/)
     expect(validateForm(filled({ labour_per_sqm: '-1' }))).toMatch(/ค่าแรง/)
     expect(validateForm(filled({ profit_pct: '1001' }))).toMatch(/กำไร/)
     expect(validateForm(filled({ labour_per_sqm: '0', profit_pct: '0' }))).toBeNull()
@@ -73,8 +86,8 @@ describe('validateForm hardening', () => {
     expect(validateForm(filled({ thickness_mm: '0' }))).toBe('ความหนาต้องมากกว่า 0')
     expect(validateForm(filled({ sash_thickness_mm: '-1' }))).toBe('ความหนาต้องมากกว่า 0')
     expect(validateForm(filled({ thickness_mm: '1.5', sash_thickness_mm: '' }))).toBeNull()
-    const ao = { has_addon: true, addon_template_id: 't2', addon_width_m: '1', addon_height_m: '1' }
-    expect(validateForm(filled({ ...ao, addon_offset_m: '-0.1' }))).toBe('ระยะขอบของชุดต่อเติมต้องไม่ติดลบ')
+    const ao = { has_addon: true, addon_template_id: 't2', addon_width_m: '1000', addon_height_m: '1000' }
+    expect(validateForm(filled({ ...ao, addon_offset_m: '-100' }))).toBe('ระยะขอบของชุดต่อเติมต้องไม่ติดลบ')
     expect(validateForm(filled({ ...ao, addon_offset_m: '' }))).toBeNull()
     expect(validateForm(filled({ ...ao, addon_offset_m: '0' }))).toBeNull()
     expect(validateForm(filled({ has_addon: false, addon_offset_m: '-5' }))).toBeNull()

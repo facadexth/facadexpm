@@ -30,15 +30,15 @@ export default function AddonFields({ form, update, typeId, typeOptions, templat
       </div>
       {form.has_addon && (
         <div style={grid}>
-          <Field label="กว้าง (ม.) ★"><input className="input" type="number" min="0" step="0.01" disabled={dis} value={form.addon_width_m} onChange={e => update({ addon_width_m: e.target.value })} /></Field>
-          <Field label="สูง (ม.) ★"><input className="input" type="number" min="0" step="0.01" disabled={dis} value={form.addon_height_m} onChange={e => update({ addon_height_m: e.target.value })} /></Field>
+          <Field label="กว้าง (มม.) ★"><input className="input" type="number" min="0" step="1" disabled={dis} value={form.addon_width_m} onChange={e => update({ addon_width_m: e.target.value })} /></Field>
+          <Field label="สูง (มม.) ★"><input className="input" type="number" min="0" step="1" disabled={dis} value={form.addon_height_m} onChange={e => update({ addon_height_m: e.target.value })} /></Field>
           <Field label="จำนวนช่อง (บาน)"><input className="input" type="number" min="1" step="1" disabled={dis} value={form.addon_panel_count} onChange={e => update({ addon_panel_count: e.target.value })} /></Field>
           <Field label="ตำแหน่ง">
             <select className="input" disabled={dis} value={form.addon_position} onChange={e => update({ addon_position: e.target.value })}>
               {POSITIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </Field>
-          <Field label="ระยะจากขอบ (ม.)" hint={offsetHint}><input className="input" type="number" min="0" step="0.01" disabled={dis} value={form.addon_offset_m} onChange={e => update({ addon_offset_m: e.target.value })} /></Field>
+          <Field label="ระยะจากขอบ (มม.)" hint={offsetHint}><input className="input" type="number" min="0" step="1" disabled={dis} value={form.addon_offset_m} onChange={e => update({ addon_offset_m: e.target.value })} /></Field>
         </div>
       )}
       {(violations || []).map((msg, i) => <div key={i} className="alert alert-error" style={{ fontSize: 13 }}>⚠️ ของเพิ่มเติม: {msg}</div>)}

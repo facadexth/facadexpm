@@ -8,6 +8,7 @@ import PreviewSvg from './PreviewSvg.jsx'
 const STYLES = [['double', 'เส้นคู่'], ['solid', 'สีทึบ'], ['cad', 'เส้นเดียว (CAD)'], ['parts', 'บอกความยาวชิ้นส่วน']]
 const VIEWS = [['out', 'มองจากภายนอก'], ['in', 'มองจากภายใน']]
 const POSITION = { top: 'บน', bottom: 'ล่าง', left: 'ซ้าย', right: 'ขวา' }
+const mm = m => Math.round(m * 1000)
 
 function Chips({ items, value, onChange }) {
   return (
@@ -29,7 +30,7 @@ export default function PreviewPanel({ inputs, labels, availability, addonPartia
 
   const a = inputs && inputs.addon
   const caption = !inputs || !preview ? null
-    : a ? `ชุดหลัก ${inputs.width_m.toFixed(2)} × ${inputs.height_m.toFixed(2)} ม. + ของเพิ่มเติม ${a.width_m.toFixed(2)} × ${a.height_m.toFixed(2)} ม. (${POSITION[a.position] || 'บน'})`
+    : a ? `ชุดหลัก ${mm(inputs.width_m)} × ${mm(inputs.height_m)} มม. + ของเพิ่มเติม ${mm(a.width_m)} × ${mm(a.height_m)} มม. (${POSITION[a.position] || 'บน'})`
       : `พื้นที่ ${(inputs.width_m * inputs.height_m).toFixed(2)} ตร.ม.`
 
   return (

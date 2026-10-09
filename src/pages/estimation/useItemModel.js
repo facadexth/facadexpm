@@ -6,18 +6,19 @@ import { useMemo } from 'react'
 import { costOpening } from '../../lib/openingCost.js'
 import { resolveItemInputs, addonTemplatesForSeries, typeAvailability } from '../../lib/estimationInherit.js'
 import { thicknessesForSeries, hardwareSetsForSeries } from '../../lib/estimationCatalogViews.js'
+import { typeLabel } from '../../lib/typeTree.js'
 import { previewFrames, itemPreviewInputs } from '../../lib/itemPreviewSignature.js'
 import { buildItemDescription } from '../../lib/descriptionFormat.js'
 import { seriesLabelFull } from '../../lib/aluCatalog.js'
 import { seriesChoices, finishChoices } from './projectDefaults.js'
 import {
   typeTreeOf, cascadeLevels, templatesForType, addonTypeOptions, liveItem, showSashField, inheritedHardware,
-  partLabels, layoutCards, descriptionContext, evaluateConstraints,
+  partLabels, layoutCards, descriptionContext, evaluateConstraints, withCurrent, costRowFlags,
 } from './itemForm.js'
 
-const optionsOf = rows => rows.map(r => ({ value: r.id, label: r.name }))
+const optionsOf = rows => rows.map(r => ({ value: r.id, label: r.name + (r.active === false ? ' (ปิดใช้งาน)' : '') }))
 
-export function useItemModel({ form, path, project, ctx, templates, constraints, infillTypes, layoutTemplates, seriesTypes }) {
+export function useItemModel({ form, path, addonTypeId, project, ctx, templates, constraints, infillTypes, layoutTemplates, seriesTypes }) {
   const { index, templatesById, infillTypesById, packageItems } = ctx
   const tree = useMemo(() => typeTreeOf(index.types), [index])
   const activeTemplates = useMemo(() => (templates || []).filter(t => t.active !== false), [templates])
@@ -36,10 +37,10 @@ export function useItemModel({ form, path, project, ctx, templates, constraints,
     }
     const frames = previewFrames({ template, addonTemplate, ctx, seriesId, thicknessMm: resolved.thickness_mm })
     const inputs = template && item.width_m > 0 && item.height_m > 0 ? itemPreviewInputs(item, template, addonTemplate, frames) : null
-    const labels = template && cost ? partLabels({ components: (ctx.componentsByTemplate || {})[template.id], bom: cost.bom, index }) : null
+    const labels = template && cost ? partLabels({ components: (ctx.componentsByTemplate || {})[template.id], joints: (ctx.jointsByTemplate || {})[template.id], bom: cost.bom, index }) : null
 
     const { levels, leafId } = cascadeLevels(tree, path)
-    const templateOptions = optionsOf(templatesForType(activeTemplates, leafId, form.template_id))
+    const templateOptions = optionsOf(templatesForType(activeTemplates, leafId, form.template_id, templates))
     const addonTemplates = addonTemplatesForSeries(activeTemplates, seriesId, seriesTypes)
 
     const thicknesses = seriesId ? thicknessesForSeries(index, seriesId) : []
@@ -53,7 +54,14 @@ export function useItemModel({ form, path, project, ctx, templates, constraints,
       labour: inheritedOnly.labour_per_sqm != null ? `ใช้ ${inheritedOnly.labour_per_sqm.toLocaleString('en-US')} จากโปรเจกต์/ประเภท` : 'ใช้ค่าจากเทมเพลต',
       profit: inheritedOnly.profit_pct != null ? `ใช้ ${inheritedOnly.profit_pct}% จากโปรเจกต์` : 'ไม่กำหนด',
     }
-    const hwOpts = optionsOf(hardwareSetsForSeries(index, seriesId, template && template.type_id))
+    const nameOf = (m, id) => (m[id] ? m[id].name : 'ที่ถูกลบแล้ว')
+    const hwOpts = withCurrent(optionsOf(hardwareSetsForSeries(index, seriesId, template && template.type_id)), form.hardware_set_id, nameOf(index.parts, form.hardware_set_id))
+    const thicknessOpts = withCurrent(thicknesses.map(t => ({ value: String(t), label: String(t) })), form.thickness_mm, form.thickness_mm)
+    const sashOpts = withCurrent(thicknesses.map(t => ({ value: String(t), label: String(t) })), form.sash_thickness_mm, form.sash_thickness_mm)
+    const addonOffered = addonTemplates.some(t => t.id === form.addon_template_id)
+    const addonTemplateOptions = templatesForType(addonTemplates, addonTypeId, form.addon_template_id, templates)
+      .map(t => ({ value: t.id, label: t.name + (t.id === form.addon_template_id && !addonOffered ? ' (ซีรีส์นี้ไม่ผลิต)' : '') + (t.active === false ? ' (ปิดใช้งาน)' : '') }))
+    const addonTypes = withCurrent(addonTypeOptions(index.types, index.types, addonTemplates), form.has_addon ? addonTypeId : '', typeLabel(index.types, addonTypeId), '(ซีรีส์นี้ไม่ผลิต)')
     const series = seriesId ? index.series[seriesId] : null
 
     const generatedDescription = buildItemDescription(descriptionContext({ item, resolved, index, template, infillTypesById }), pj.description_format)
@@ -63,11 +71,11 @@ export function useItemModel({ form, path, project, ctx, templates, constraints,
       typeWarn: path.length && !leafId ? 'เลือกประเภทให้ถึงชั้นสุดท้าย' : null,
       templateHint: leafId && !templateOptions.length ? 'ประเภทนี้ยังไม่มีเทมเพลต BOM สร้างได้ที่หน้าเทมเพลต BOM' : null,
       availability: typeAvailability(template, seriesId, seriesTypes),
-      addonTemplates, addonTypeOptions: addonTypeOptions(index.types, index.types, addonTemplates),
-      seriesOpts: seriesChoices(index, pj.primary_provider_id),
-      finishOpts: finishChoices(index, seriesId, pj.primary_provider_id),
-      infillOpts: optionsOf((infillTypes || []).filter(g => g.active !== false)),
-      thicknesses, showSash: showSashField(index, seriesId, template),
+      addonTemplates, addonTypeOptions: addonTypes, addonTemplateOptions,
+      seriesOpts: withCurrent(seriesChoices(index, pj.primary_provider_id), form.series_id, nameOf(index.series, form.series_id), '(ไม่อยู่ในรายการ)'),
+      finishOpts: withCurrent(finishChoices(index, seriesId, pj.primary_provider_id), form.alu_finish_id, nameOf(index.finishes, form.alu_finish_id)),
+      infillOpts: withCurrent(optionsOf((infillTypes || []).filter(g => g.active !== false)), form.no_infill ? '' : form.infill_type_id, nameOf(infillTypesById, form.infill_type_id), '(ปิดใช้งาน)'),
+      thicknesses, thicknessOpts, sashOpts, costFlags: cost ? { main: costRowFlags(cost, cost.bom), addon: cost.addonBom ? costRowFlags(cost, cost.addonBom) : null } : null, showSash: showSashField(index, seriesId, template),
       thicknessHint: !seriesId ? 'เลือกซีรีส์ก่อน' : thicknesses.length === 1 ? `ซีรีส์นี้มีความหนาเดียว (${thicknesses[0]} มม.) เลือกให้อัตโนมัติ` : `ซีรีส์นี้มี ${thicknesses.length} ความหนา`,
       inherit, hwOpts, hwOwnHint: series ? `แสดงเฉพาะชุดที่ใช้กับ ${series.name}` : 'เลือกซีรีส์ก่อน',
       hwInherit: inheritedHardware({ packageItems, index, typeId: template && template.type_id, project: pj }),
@@ -76,5 +84,5 @@ export function useItemModel({ form, path, project, ctx, templates, constraints,
       violations: template ? evaluateConstraints(item, cons(template.id)) : [],
       addonViolations: addonTemplate ? evaluateConstraints({ width_m: item.addon_width_m, height_m: item.addon_height_m, panel_count: item.addon_panel_count }, cons(addonTemplate.id)) : [],
     }
-  }, [form, path, project, ctx, tree, activeTemplates, constraints, infillTypes, layoutTemplates, seriesTypes, index, templatesById, infillTypesById, packageItems])
+  }, [form, path, addonTypeId, project, ctx, tree, activeTemplates, constraints, infillTypes, layoutTemplates, seriesTypes, index, templatesById, infillTypesById, packageItems])
 }

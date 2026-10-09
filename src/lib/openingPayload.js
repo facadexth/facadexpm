@@ -2,6 +2,8 @@
 // The item form's state <-> the estimation_openings row. Pure. "Inherit" is NULL (spec Decision 1); infill and
 // hardware set also carry an explicit "none" flag because NULL already means inherit. Quantity is NOT here:
 // it is set on the project page (owner), so an edit never resets it.
+// Units (Ruling 23): the FORM holds sizes in MILLIMETRES (width_m / height_m / addon_* keep their column names);
+// the row and every engine stay in metres. Conversion happens only here, rounded so 1.15 m <-> '1150' exactly.
 
 const numOrNull = v => {
   if (v === null || v === undefined || String(v).trim() === '') return null
@@ -10,6 +12,18 @@ const numOrNull = v => {
 }
 const intOr = (v, d) => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n >= 1 ? n : d }
 const str = v => (v === null || v === undefined ? '' : String(v))
+// a stored number as plain text ('1.40' -> '1.4') so it matches the select options
+const numText = v => (v === null || v === undefined || String(v).trim() === '' || !Number.isFinite(Number(v)) ? str(v) : String(Number(v)))
+// metres (row) -> millimetre text (form); 0.001 mm precision, no float tails
+export const mmText = m => {
+  if (m === null || m === undefined || String(m).trim() === '' || !Number.isFinite(Number(m))) return ''
+  return String(Math.round(Number(m) * 1e6) / 1e3)
+}
+// millimetre text (form) -> metres (row), or null
+export const metresFromMm = v => {
+  const n = numOrNull(v)
+  return n === null ? null : Math.round(n * 1e3) / 1e6
+}
 
 export function emptyForm() {
   return {
@@ -25,11 +39,11 @@ export function emptyForm() {
 export function formFromOpening(o) {
   return {
     opening_no: str(o.opening_no), item_name: str(o.item_name), item_description: str(o.item_description), template_id: str(o.template_id),
-    series_id: str(o.series_id), alu_finish_id: str(o.alu_finish_id), thickness_mm: str(o.thickness_mm), sash_thickness_mm: str(o.sash_thickness_mm),
+    series_id: str(o.series_id), alu_finish_id: str(o.alu_finish_id), thickness_mm: numText(o.thickness_mm), sash_thickness_mm: numText(o.sash_thickness_mm),
     infill_type_id: str(o.infill_type_id), no_infill: !!o.no_infill, hardware_set_id: str(o.hardware_set_id), no_hardware_set: !!o.no_hardware_set,
-    width_m: str(o.width_m), height_m: str(o.height_m), panel_count: str(o.panel_count || 1),
-    has_addon: !!o.addon_template_id, addon_template_id: str(o.addon_template_id), addon_width_m: str(o.addon_width_m), addon_height_m: str(o.addon_height_m),
-    addon_panel_count: str(o.addon_panel_count || 1), addon_position: o.addon_position || 'top', addon_offset_m: str(o.addon_offset_m),
+    width_m: mmText(o.width_m), height_m: mmText(o.height_m), panel_count: str(o.panel_count || 1),
+    has_addon: !!o.addon_template_id, addon_template_id: str(o.addon_template_id), addon_width_m: mmText(o.addon_width_m), addon_height_m: mmText(o.addon_height_m),
+    addon_panel_count: str(o.addon_panel_count || 1), addon_position: o.addon_position || 'top', addon_offset_m: mmText(o.addon_offset_m),
     labour_per_sqm: str(o.labour_per_sqm), profit_pct: str(o.profit_pct), extra_lines: Array.isArray(o.extra_lines) ? o.extra_lines : [],
   }
 }
@@ -51,15 +65,15 @@ export function buildOpeningPayload(form, { projectId, previews = null, savedAt 
     infill_type_id: form.no_infill ? null : (form.infill_type_id || null),
     no_hardware_set: !!form.no_hardware_set,
     hardware_set_id: form.no_hardware_set ? null : (form.hardware_set_id || null),
-    width_m: numOrNull(form.width_m),
-    height_m: numOrNull(form.height_m),
+    width_m: metresFromMm(form.width_m),
+    height_m: metresFromMm(form.height_m),
     panel_count: intOr(form.panel_count, 1),
     addon_template_id: addon ? form.addon_template_id : null,
-    addon_width_m: addon ? numOrNull(form.addon_width_m) : null,
-    addon_height_m: addon ? numOrNull(form.addon_height_m) : null,
+    addon_width_m: addon ? metresFromMm(form.addon_width_m) : null,
+    addon_height_m: addon ? metresFromMm(form.addon_height_m) : null,
     addon_panel_count: addon ? intOr(form.addon_panel_count, 1) : 1,
     addon_position: addon ? form.addon_position || 'top' : null,
-    addon_offset_m: addon ? numOrNull(form.addon_offset_m) : null,
+    addon_offset_m: addon ? metresFromMm(form.addon_offset_m) : null,
     labour_per_sqm: numOrNull(form.labour_per_sqm),
     profit_pct: numOrNull(form.profit_pct),
     extra_lines: (form.extra_lines || []).map(l => ({ description: String(l.description || ''), amount: Number(l.amount) || 0 })),

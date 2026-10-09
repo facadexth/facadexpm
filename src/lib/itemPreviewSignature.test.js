@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildCatalogIndex } from './aluCatalogPricing.js'
 import { emptyForm, buildOpeningPayload } from './openingPayload.js'
-import { mainFrameFamily, previewFrames, itemPreviewInputs, itemPreviewSignature, snapshotPreviews } from './itemPreviewSignature.js'
+import { frameFamily, previewFrames, itemPreviewInputs, itemPreviewSignature, snapshotPreviews } from './itemPreviewSignature.js'
 
 const index = buildCatalogIndex({
   providers: [{ id: 'pA', name: 'A' }],
@@ -39,11 +39,23 @@ const asDbRow = payload => {
     addon_width_m: s(payload.addon_width_m), addon_height_m: s(payload.addon_height_m), addon_offset_m: s(payload.addon_offset_m) }
 }
 
-describe('mainFrameFamily', () => {
-  it('prefers the first joint main bar, else the first frame-role width/height component', () => {
-    expect(mainFrameFamily([{ profile_family: 'c', length_rule_type: 'width' }], [{ main_family: ' b ', sort_order: 2 }, { main_family: 'a', sort_order: 1 }])).toBe('a')
-    expect(mainFrameFamily([{ profile_family: 's', thickness_role: 'sash', length_rule_type: 'width' }, { profile_family: 'p', length_rule_type: 'perimeter' }, { profile_family: 'f', length_rule_type: 'height' }], [])).toBe('f')
-    expect(mainFrameFamily([], [])).toBeNull()
+describe('frameFamily (one picker for the drawn frame and the part labels)', () => {
+  const head = { profile_family: 'frame', length_rule_type: 'width' }
+  const jamb = { profile_family: 'jamb', length_rule_type: 'height_minus' }
+  const sash = { profile_family: 'sash', length_rule_type: 'width', thickness_role: 'sash' }
+  it('no joints: the first non-sash bar cut along width/height', () => {
+    expect(frameFamily([sash, { profile_family: 'p', length_rule_type: 'perimeter' }, jamb, head], [])).toBe('jamb')
+  })
+  it('a joint chooses only among frame families; a first joint on sash bars is ignored', () => {
+    expect(frameFamily([head, jamb, sash], [{ main_family: 'sash', sort_order: 1 }, { main_family: 'jamb', sort_order: 2 }])).toBe('jamb')
+    expect(frameFamily([head, jamb, sash], [{ main_family: 'sash', sort_order: 1 }])).toBe('frame')
+    expect(frameFamily([head, jamb], [{ main_family: ' jamb ', sort_order: 3 }, { main_family: 'other', sort_order: 1 }])).toBe('jamb')
+  })
+  it('a sash-only template has no frame family, so frame_mm is omitted', () => {
+    expect(frameFamily([sash], [{ main_family: 'sash' }])).toBeNull()
+    const c = { ...ctx, componentsByTemplate: { tSlide: [{ ...sash, profile_family: 'frame' }] } }
+    expect(previewFrames({ template: slide, ctx: c, seriesId: 's1', thicknessMm: 1.5 }).frame_mm).toBeNull()
+    expect(itemPreviewInputs({ width_m: 1, height_m: 1 }, slide, null, { frame_mm: null }).frame_mm).toBeUndefined()
   })
 })
 
@@ -57,7 +69,7 @@ describe('previewFrames', () => {
 
 describe('itemPreviewSignature round trip', () => {
   it('horizontal-axis slide template: save-time signature equals the one recomputed from the stored row', () => {
-    const form = { ...emptyForm(), opening_no: 'W1', template_id: 'tSlide', width_m: '1.80', height_m: '1.2', panel_count: '2' }
+    const form = { ...emptyForm(), opening_no: 'W1', template_id: 'tSlide', width_m: '1800', height_m: '1200', panel_count: '2' }
     const { payload, sig } = saveTime(form)
     expect(tableTime(asDbRow(payload))).toBe(sig)
     expect(sig).toContain('horizontal')
@@ -65,8 +77,8 @@ describe('itemPreviewSignature round trip', () => {
     expect(sig).toContain('44.45')
   })
   it('an item with an add-on round-trips too (offset blank = centred stays null)', () => {
-    const form = { ...emptyForm(), opening_no: 'W2', template_id: 'tSlide', width_m: '2', height_m: '2.1', panel_count: '3',
-      has_addon: true, addon_template_id: 'tFix', addon_width_m: '2.00', addon_height_m: '0.4', addon_panel_count: '2', addon_position: 'left', addon_offset_m: '' }
+    const form = { ...emptyForm(), opening_no: 'W2', template_id: 'tSlide', width_m: '2000', height_m: '2100', panel_count: '3',
+      has_addon: true, addon_template_id: 'tFix', addon_width_m: '2000', addon_height_m: '400', addon_panel_count: '2', addon_position: 'left', addon_offset_m: '' }
     const { payload, sig } = saveTime(form)
     expect(tableTime(asDbRow(payload))).toBe(sig)
     const withOffset = saveTime({ ...form, addon_offset_m: '0' })
@@ -74,14 +86,14 @@ describe('itemPreviewSignature round trip', () => {
     expect(withOffset.sig).not.toBe(sig)
   })
   it('changing the size (main or add-on) changes the signature', () => {
-    const form = { ...emptyForm(), opening_no: 'W3', template_id: 'tSlide', width_m: '1.8', height_m: '1.2', has_addon: true, addon_template_id: 'tFix', addon_width_m: '1.8', addon_height_m: '0.4' }
+    const form = { ...emptyForm(), opening_no: 'W3', template_id: 'tSlide', width_m: '1800', height_m: '1200', has_addon: true, addon_template_id: 'tFix', addon_width_m: '1800', addon_height_m: '400' }
     const a = saveTime(form).sig
-    expect(saveTime({ ...form, width_m: '1.81' }).sig).not.toBe(a)
-    expect(saveTime({ ...form, addon_height_m: '0.5' }).sig).not.toBe(a)
-    expect(saveTime({ ...form, width_m: '1.80' }).sig).toBe(a)
+    expect(saveTime({ ...form, width_m: '1810' }).sig).not.toBe(a)
+    expect(saveTime({ ...form, addon_height_m: '500' }).sig).not.toBe(a)
+    expect(saveTime({ ...form, width_m: '1800.0' }).sig).toBe(a)
   })
   it('a template preview change or a frame thickness change makes the stored signature old', () => {
-    const { payload, sig } = saveTime({ ...emptyForm(), opening_no: 'W4', template_id: 'tSlide', width_m: '1', height_m: '1' })
+    const { payload, sig } = saveTime({ ...emptyForm(), opening_no: 'W4', template_id: 'tSlide', width_m: '1000', height_m: '1000' })
     expect(itemPreviewSignature(payload, { ...slide, preview_kind: 'swing' }, null, { frame_mm: 44.45 })).not.toBe(sig)
     expect(itemPreviewSignature(payload, slide, null, { frame_mm: 50.8 })).not.toBe(sig)
   })
