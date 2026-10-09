@@ -1892,6 +1892,45 @@ describe('compareProviders', () => {
     const r = compareProviders({ ...base, items: [{ ...item, template_id: 'gone' }], candidates: [{ providerId: 'A', seriesId: 'sA', finishId: 'fA' }] })
     expect(r[0]).toMatchObject({ itemsPriced: 0, complete: false })
   })
+  it('a candidate without finishId is incomplete, zero aluminium, diffAgainst is null', () => {
+    const r = compareProviders({ ...base, candidates: [{ providerId: 'A', seriesId: 'sA' }] })
+    expect(r[0]).toMatchObject({ aluminium: 0, complete: false })
+    expect(diffAgainst({ complete: true, aluminium: 1000 }, r[0])).toBeNull()
+  })
+  it('an item with height_m 0 is unresolved', () => {
+    const r = compareProviders({ ...base, items: [{ ...item, height_m: 0 }], candidates: [{ providerId: 'A', seriesId: 'sA', finishId: 'fA' }] })
+    expect(r[0].complete).toBe(false)
+    expect(r[0].unresolvedLines).toBeGreaterThanOrEqual(1)
+  })
+  it('an item with its own series_id and alu_finish_id is still priced in the candidate series', () => {
+    const itemWithOwnSeries = { ...item, series_id: 'sB', alu_finish_id: 'fB' }
+    const r = compareProviders({ ...base, items: [itemWithOwnSeries], candidates: [{ providerId: 'A', seriesId: 'sA', finishId: 'fA' }] })
+    expect(r[0].aluminium).toBe(2 * 2 * 100 * 3)
+  })
+  it('an item with addon_template_id includes the addon aluminium cost', () => {
+    const t2 = { id: 't2', waste_pct: 0, grid_row_weights: [1], labor_price_per_sqm: 0, silicone_price_per_m: 0, felt_price_per_m: 0, infill_width_deduction_mm: 0, infill_height_deduction_mm: 0 }
+    const componentsWithAddon = { ...components, t2: [{ role_name: 'addon', profile_family: 'box', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 0.5 }] }
+    const itemWithAddon = { ...item, addon_template_id: 't2', addon_width_m: 2, addon_height_m: 1 }
+    const r = compareProviders({
+      ...base,
+      items: [itemWithAddon],
+      templatesById: { ...base.templatesById, t2 },
+      componentsByTemplate: componentsWithAddon,
+      candidates: [{ providerId: 'A', seriesId: 'sA', finishId: 'fA' }]
+    })
+    expect(r[0].aluminium).toBe(1500)
+  })
+  it('an item with an unresolvable joint is incomplete', () => {
+    const componentWithJoint = [{ role_name: 'top', profile_family: 'box', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 2, joint_id: 'j1' }]
+    const joints = { j1: { main_family: 'nonexistent' } }
+    const r = compareProviders({
+      ...base,
+      componentsByTemplate: { t1: componentWithJoint },
+      jointsByTemplate: joints,
+      candidates: [{ providerId: 'A', seriesId: 'sA', finishId: 'fA' }]
+    })
+    expect(r[0].complete).toBe(false)
+  })
 })
 
 describe('diffAgainst', () => {
@@ -1928,6 +1967,11 @@ import { costOpening } from './openingCost.js'
 export function compareProviders(ctx) {
   const { items, templatesById, index } = ctx
   return (ctx.candidates || []).map(cand => {
+    // early return if seriesId or finishId is missing
+    if (!cand.seriesId || !cand.finishId) {
+      return { ...cand, aluminium: 0, unresolvedLines: 1, itemsPriced: 0, complete: false }
+    }
+
     let aluminium = 0
     let unresolvedLines = 0
     let itemsPriced = 0
@@ -1946,6 +1990,8 @@ export function compareProviders(ctx) {
       const qty = Number(item.quantity) > 0 ? Number(item.quantity) : 1
       aluminium += lines.reduce((s, l) => s + l.cost, 0) * qty
       unresolvedLines += lines.filter(l => !l.resolved).length * qty
+      // also count unresolved dimensions and joints
+      unresolvedLines += (r.unresolved || []).filter(u => u.reason === 'no_dimension' || u.source === 'joint').length * qty
       itemsPriced += 1
     }
     return { ...cand, aluminium, unresolvedLines, itemsPriced, complete: unresolvedLines === 0 && itemsPriced > 0 }
