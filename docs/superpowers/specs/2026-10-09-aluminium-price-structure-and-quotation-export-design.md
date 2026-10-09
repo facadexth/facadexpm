@@ -21,13 +21,17 @@ Success = the owner can open a project, see the same numbers his ELSY workbook g
 7. Hardware sets: when a project uses several brands, each item shows its hardware-set name; the schedule at the end explains what each set contains.
 8. Aluminium colour is shown per item as a square swatch plus the colour name; a legend at the end lists the colours used and the items.
 9. The price-structure table shows a SUMPRODUCT row (cost × quantity per column), pie charts (cost by category; selling-price composition), total aluminium weight (net and with waste), the real column names from ELSY (no letters V–Z), hides cost columns that are zero for every item, shows the glass code with a hover (type, price per m² and per ft²), and has a clickable text for every tick box.
-10. Isolation: estimation is FacadeX-only. Nothing in the standard Quotation module may change for tenants without the `estimation` module; additions there must be optional and tested.
+10. Sub-numbering (owner, round 2): every export/update from the price structure gets a running sub-number inside its revision: before the first send `R1-1, R1-2 …`; after a send and a pull-back `R2-1, R2-2 …` until sent again; then `R3-1 …`. The sub-number resets to 1 with each new revision.
+11. Split pricing is offered: a tick box "แยกค่าของ/ค่าแรง" with an adjustable ratio next to it, default 80 / 20.
+12. The export must behave as a plain export of the price structure into a normal quotation: everything is the same as a quotation created by hand (same defaults for notes, terms, bank, VAT, validity); only the attachment pages are added at the back.
+13. Every catalogue table (aluminium profiles, glass/infill types, silicone/felt and other sundries, hardware parts and sets) carries an attached picture; the attachment pages use these pictures.
+14. Isolation: estimation is FacadeX-only. Nothing in the standard Quotation module may change for tenants without the `estimation` module; additions there must be optional and tested.
 
 ## 3. Scope
 
 In scope: price-structure calculation and screen; four new item costs; per-project factors and per-item profit override; "send to quotation" (create draft, update lines on later sends, revision 2 rule); attachment pages and A4 pagination for the quotation print/PDF; snapshots of what was offered; "pull agreed prices" comparison.
 
-Out of scope (later): CAD/DXF drawing export; split material/labour pricing mode (see §10, question 2); photos of real products (drawn icons are placeholders); importing quotations created outside the estimation module; changing the Quotation page's own revision counter; invoices from the price structure.
+Out of scope (later): CAD/DXF drawing export; importing quotations created outside the estimation module; changing the Quotation page's own revision counter; invoices from the price structure.
 
 ## 4. Calculation (pure library `priceStructure`, tested against ELSY rows)
 
@@ -58,6 +62,9 @@ Rounding of money to 2 decimals only at display; calculations keep full precisio
 - `estimation_quotation_links` (one row per project that has been sent): `project_id` (unique), `quotation_id` (FK → `quotations`, ON DELETE SET NULL), `attach_enabled`, `attach_mode` (`pages|thumb|both`), `attach_view` (`both|out|in`), `last_pushed_revision`, `last_pushed_at`.
 - `estimation_quotation_lines`: `project_id`, `opening_id`, `item_row_id` and `description_row_id` (the generated `quotation_items` ids, ON DELETE SET NULL), unique `(project_id, opening_id)`. This is how a re-send finds the rows it owns; rows the user added in the quotation are never touched.
 - `estimation_price_snapshots` (append-only): `project_id`, `quotation_id`, `kind` (`sent|agreed`), `revision`, `price_as_of`, `factors` jsonb, `items` jsonb (per item: costs by category, V, W, X, Y, Z, PM, price per set, selling price, quantity, profit % used, weight, unresolved reasons), `totals` jsonb, `created_at`.
+- `estimation_quotation_links` also gets `split_enabled` (bool, default false) and `split_material_pct` (numeric 0–100, default 80).
+- `estimation_price_snapshots` also gets `sub_no` (int ≥ 1): the running number inside `revision` (revision NULL means before first send, shown as R1-n). Label shown = `R{revision_or_1}-{sub_no}`.
+- Pictures: nullable `image_path` text on each catalogue table (aluminium profiles, `infill_types`, sundries such as silicone/felt wherever they are stored, `alu_parts` for hardware and hardware sets), plus one private storage bucket `estimation-images` with tenant-prefixed paths and storage policies gated like the estimation tables (admin/owner + estimation module). The plan must first list exactly which tables hold profiles, sundries and sets. Pages without a picture show the drawn placeholder icon.
 - All new tables: RLS loop `is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('estimation')`, `tenant_id DEFAULT current_tenant_id()`, tenant index.
 
 The only touch on a standard table is a **foreign key from an estimation table to `quotations`** (and to `quotation_items`); no column is added to `quotations` or `quotation_items`.
@@ -75,7 +82,9 @@ The only touch on a standard table is a **foreign key from an estimation table t
 
 ### 7.1 First send
 
-Creates a `quotations` draft (client required; `site_id`, `date`, `valid_until`, VAT and payment terms/notes from the same defaults the Quotation "new" form uses; `has_vat = true`, prices exclude VAT, `pricing_mode = 'combined'`), then for every item two `quotation_items` rows in order: `item` (description = "NO name", unit "ชุด", quantity, `unit_price` = selling price, `line_total`) and `item_description` (text from the project's description format; quantity 0, price 0), mirroring exactly what the Quotation page itself inserts. Writes the link, the line map and a `sent`-kind snapshot with `revision = null` (draft). Draft = no revision yet.
+Creates a `quotations` draft (client required; `site_id`, `date`, `valid_until`, VAT and payment terms/notes from the same defaults the Quotation "new" form uses; `has_vat = true`, prices exclude VAT, `pricing_mode = 'combined'`, or `'split'` when the split box is ticked), then for every item two `quotation_items` rows in order: `item` (description = "NO name", unit "ชุด", quantity, `unit_price` = selling price, `line_total`) and `item_description` (text from the project's description format; quantity 0, price 0), mirroring exactly what the Quotation page itself inserts. Writes the link, the line map and a `sent`-kind snapshot with `revision = null` (draft). Draft = no revision yet.
+
+Split mode: with the box ticked, each line's selling price is divided into material = price × material % (default 80, adjustable beside the box) and labour = remainder, written to `unit_price_material` / `unit_price_labor` with `unit_price` equal to their sum, so the line total never changes; rounding goes to the labour part. The ratio is stored on the link and reused on re-send.
 
 ### 7.2 Re-send ("update price")
 
@@ -89,7 +98,7 @@ State is read from the quotation, never kept twice:
 
 Generated rows are updated in place by id (ids stay valid for any invoice rows pointing at them); items added to the project get new row pairs; items removed from the project delete their generated pair only if no invoice references it, otherwise the pair is kept and flagged. Rows the user added in the quotation are untouched. A `sent`-kind snapshot is appended for every push. Pressing "send" in the Quotation page itself is unchanged (it sets `ever_sent`).
 
-The owner's rule ("edit as often as you like, still R2 until sent again") therefore holds for every push from the estimation side. Edits made in the Quotation page keep that page's own counter (§9).
+The owner's rule therefore holds for every push from the estimation side: the revision number follows the table above, and each push also increments `sub_no` within that revision (R2-1, R2-2 …); a new revision restarts at 1 (R3-1). The label appears in the price-structure history, in the send/update confirmation, and in the footer of the attachment pages; the quotation's own revision field shows only the whole number. Edits made in the Quotation page keep that page's own counter (§9).
 
 ### 7.3 Print / PDF with attachments
 
@@ -108,14 +117,11 @@ Button on the price-structure tab, enabled when the linked quotation exists and 
 - Foreign keys to `quotations`/`quotation_items` use SET NULL so deleting a quotation never fails because of estimation data; the link then shows "ใบเสนอราคาถูกลบ".
 - A project's prices shown in the quotation can drift from the structure if someone edits lines in the Quotation page; the compare screen exists for exactly that.
 
-## 10. Open questions for the owner
+## 10. Resolved questions and remaining items
 
-1. **"R2-1"** (comment on the revision step in the mockup): does it mean a sub-number counting edits inside revision 2 (R2-1, R2-2 …) shown in the history and document number, or something else? Default if unanswered: no sub-number; revision stays `R2`.
-2. Should the send offer the quotation's **split material / labour** pricing mode (the Quotation module has it), allocating the selling price between material and labour?
-3. Default **notes, payment terms and bank account** text for a first send: take them from the same defaults the Quotation "new" form uses (default), or per project?
-4. **Hardware part pictures**: the catalogue has no image per part; the mockup uses drawn icons. Add an optional picture per part in a later phase?
-5. **Aluminium weight** shown in the price structure is the net weight of the cut pieces × quantity (and the same with waste); confirm that is the weight he wants, not the purchased bar weight.
-6. The per-item profit override must be reconciled with any profit/margin fields Phase 2b already has on the item or project; default: the new `markup_pct` is the only profit input used by the price structure, and any older field is ignored by it (to be checked against the code when the plan is written).
+Resolved by the owner on 2026-10-09: sub-numbering (decision 10); split pricing with adjustable 80/20 (decision 11); notes/terms/bank identical to a hand-made quotation (decision 12); pictures on every catalogue table (decision 13); aluminium weight is net cut weight × quantity, and the same plus waste; the new `markup_pct` is the only profit input in the price structure (any older Phase 2b field is ignored by it, to be confirmed against the code when the plan is written).
+
+Remaining, decided in the plan: the exact list of catalogue tables that receive `image_path`; picture upload UI in each catalogue screen (small additive file field, mockup first per the standing rule); picture size limit and thumbnail handling for the attachment pages.
 
 ## 11. Testing
 
