@@ -24,6 +24,7 @@ import AvailabilityBanner from './estimation/AvailabilityBanner.jsx'
 import StalePriceBanner from './estimation/StalePriceBanner.jsx'
 import ItemsTable from './estimation/ItemsTable.jsx'
 import ItemModal from './estimation/ItemModal.jsx'
+import ProjectBomView from './estimation/ProjectBomView.jsx'
 import { newProjectRow, packageRowsFor, hardwareBanners, availabilityIssues, costItems, bomsForStale, currentPreviewSigs } from './estimation/projectDefaults.js'
 
 export default function Estimation(props) {
@@ -47,6 +48,7 @@ export default function Estimation(props) {
   const [showProjectForm, setShowProjectForm] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [itemModal, setItemModal] = useState(null)   // null | { id: string | null }
+  const [tab, setTab] = useState('items')   // 'items' | 'bom'
 
   const project = (projects || []).find(p => p.id === selectedProjectId) || null
   const projectOpenings = useMemo(() => (openings || []).filter(o => o.project_id === selectedProjectId), [openings, selectedProjectId])
@@ -116,10 +118,16 @@ export default function Estimation(props) {
             <AvailabilityBanner issues={issues} hardware={hwBanners} typeNames={typeNames} />
             <StalePriceBanner changes={stale} itemsById={Object.fromEntries(projectOpenings.map(o => [o.id, o]))} index={index} priceAsOf={project.price_as_of} />
             <div style={{ display: 'flex', gap: 8 }}>
-              {canEdit && <button className="btn btn-primary btn-sm" onClick={() => setItemModal({ id: null })}>+ เพิ่มรายการ</button>}
+              <button type="button" className={`btn btn-sm ${tab === 'items' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('items')}>รายการ</button>
+              <button type="button" className={`btn btn-sm ${tab === 'bom' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('bom')}>BOM ทั้งโครงการ</button>
+              {tab === 'items' && canEdit && <button className="btn btn-primary btn-sm" onClick={() => setItemModal({ id: null })}>+ เพิ่มรายการ</button>}
             </div>
-            <ItemsTable items={projectOpenings} costs={costs} previewSigs={previewSigs} project={project} index={index} templatesById={base.templatesById} canEdit={canEdit}
-              onOpen={id => setItemModal({ id })} onQuantitySaved={refetchOpenings} />
+            {tab === 'bom' && costCtx && (
+              <ProjectBomView project={project} items={projectOpenings} costs={costs} base={costCtx} index={index} seriesTypes={catalog.seriesTypes}
+                settings={settings} canEdit={canEdit} onProjectSaved={refetchProjects} />
+            )}
+            {tab === 'items' && <ItemsTable items={projectOpenings} costs={costs} previewSigs={previewSigs} project={project} index={index} templatesById={base.templatesById} canEdit={canEdit}
+              onOpen={id => setItemModal({ id })} onQuantitySaved={refetchOpenings} />}
 
             {itemModal && costCtx && (
               <ItemModal key={itemModal.id || 'new'} opening={itemModal.id ? projectOpenings.find(o => o.id === itemModal.id) || null : null}
