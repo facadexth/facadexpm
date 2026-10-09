@@ -65,6 +65,8 @@ export function typePickerOptions(types, keepIds = new Set()) {
 }
 
 // The database trigger raises English text; show it in Thai.
+// Ruling 25: type names stay unique per tenant (the Excel import refers to types by name), at every level.
+export const TYPE_DUPLICATE_TEXT = 'ชื่อประเภทนี้มีอยู่แล้ว (ชื่อต้องไม่ซ้ำกันทุกระดับ) ให้ใช้ชื่อเต็ม เช่น ประตูบานเลื่อนรางล่าง'
 const TYPE_ERRORS = [
   [/at most three levels/i, 'ประเภทมีได้สูงสุด 3 ระดับ'],
   [/own parent/i, 'ประเภทอยู่ใต้ตัวเองไม่ได้'],
@@ -72,6 +74,7 @@ const TYPE_ERRORS = [
   [/same category as its parent/i, 'ประเภทย่อยต้องมีประเภทหลักเดียวกับประเภทแม่'],
   [/another category/i, 'เปลี่ยนประเภทหลักไม่ได้ เพราะมีประเภทย่อยที่เป็นประเภทหลักอื่นอยู่'],
   [/parent type not found/i, 'ไม่พบประเภทแม่'],
+  [/duplicate key|unique constraint/i, TYPE_DUPLICATE_TEXT],
 ]
 export function thaiTypeError(message) {
   const m = String(message || '')

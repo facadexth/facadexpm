@@ -128,16 +128,20 @@ export function packageRowsFor(project, allItems) {
 
 // Amber banners of the hardware package: types of the project's items it does not cover, and a package of another series.
 export function hardwareBanners({ project, pkg, packageItems, items, templatesById, typesById }) {
+  // Only the main template gets a hardware set; add-ons are priced with __noHardware, so they never raise a banner.
   const typeIds = []
+  let typelessCount = 0
   for (const it of items || []) {
-    for (const tid of [it.template_id, it.addon_template_id]) {
-      const t = tid ? (templatesById || {})[tid] : null
-      if (t && t.type_id) typeIds.push(t.type_id)
-    }
+    const t = it.template_id ? (templatesById || {})[it.template_id] : null
+    if (!t) continue
+    if (t.type_id) typeIds.push(t.type_id)
+    else typelessCount += 1
   }
   const missingTypeIds = packageItems ? missingHardwareTypeIds(packageItems, typesById, typeIds) : []
+  // A template with no type cannot match a package row, so its items price without a hardware set.
+  const typelessTemplateItems = packageItems ? typelessCount : 0
   const wrongSeries = !!(pkg && pkg.series_id && project && project.default_series_id && pkg.series_id !== project.default_series_id)
-  return { missingTypeIds, wrongSeries }
+  return { missingTypeIds, wrongSeries, typelessTemplateItems }
 }
 
 // Items whose main template or add-on type the series they will use does not offer, with the series that do.

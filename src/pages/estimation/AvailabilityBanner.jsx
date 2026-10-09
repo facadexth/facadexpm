@@ -3,7 +3,8 @@
 export default function AvailabilityBanner({ issues, hardware, typeNames }) {
   const missing = (hardware && hardware.missingTypeIds) || []
   const wrong = !!(hardware && hardware.wrongSeries)
-  if (!(issues || []).length && !missing.length && !wrong) return null
+  const typeless = (hardware && hardware.typelessTemplateItems) || 0
+  if (!(issues || []).length && !missing.length && !wrong && !typeless) return null
   const box = { padding: 12, background: 'var(--amber-bg, #fff7e0)', border: '1px solid var(--amber, #e0a800)', borderRadius: 8, fontSize: 13 }
   return (
     <div style={{ display: 'grid', gap: 8 }}>
@@ -23,6 +24,7 @@ export default function AvailabilityBanner({ issues, hardware, typeNames }) {
       {missing.length > 0 && (
         <div style={box}>⚠️ ประเภท {missing.map(id => (typeNames || {})[id] || id).join(', ')} ยังไม่ได้กำหนดชุดอุปกรณ์ คิดราคาโดยไม่มีชุด</div>
       )}
+      {typeless > 0 && <div style={box}>⚠️ {typeless} รายการใช้แม่แบบที่ยังไม่ระบุประเภท จึงไม่ได้ชุดอุปกรณ์จากชุดของโปรเจกต์</div>}
       {wrong && <div style={box}>⚠️ ชุดนี้ไม่ใช่ของซีรีส์ที่เลือก</div>}
     </div>
   )

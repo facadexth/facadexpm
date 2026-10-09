@@ -47,6 +47,7 @@ describe('type tree helpers', () => {
 describe('misc', () => {
   it('translates trigger errors', () => {
     expect(thaiTypeError('types have at most three levels')).toBe('ประเภทมีได้สูงสุด 3 ระดับ')
+    expect(thaiTypeError('duplicate key value violates unique constraint "door_window_types_tenant_id_name_key"')).toBe('ชื่อประเภทนี้มีอยู่แล้ว (ชื่อต้องไม่ซ้ำกันทุกระดับ) ให้ใช้ชื่อเต็ม เช่น ประตูบานเลื่อนรางล่าง')
     expect(thaiTypeError('something else')).toBeNull()
   })
   it('sketch shape', () => { expect(sketchShapeFor('กล่องเรียบ')).toBe('u'); expect(sketchShapeFor('')).toBe('box') })

@@ -101,8 +101,20 @@ describe('banners', () => {
   it('lists types the package does not cover, and a package of another series', () => {
     const items = [{ template_id: 't1' }, { template_id: 't2', addon_template_id: 't1' }]
     const b = hardwareBanners({ project: { default_series_id: 's1' }, pkg: { series_id: 's2' }, packageItems: [{ type_id: 'tSlide', hardware_set_id: 'x' }], items, templatesById, typesById: index.types })
-    expect(b).toEqual({ missingTypeIds: ['tFixed'], wrongSeries: true })
+    expect(b).toEqual({ missingTypeIds: ['tFixed'], wrongSeries: true, typelessTemplateItems: 0 })
     expect(hardwareBanners({ project: {}, pkg: null, packageItems: null, items, templatesById, typesById: index.types }).missingTypeIds).toEqual([])
+  })
+  it('an add-on template type never raises the missing-type banner', () => {
+    const items = [{ template_id: 't1', addon_template_id: 't2' }]
+    const b = hardwareBanners({ project: {}, pkg: null, packageItems: [{ type_id: 'tSlide', hardware_set_id: 'x' }], items, templatesById, typesById: index.types })
+    expect(b.missingTypeIds).toEqual([])
+  })
+  it('counts items whose template has no type, only when the project has a package', () => {
+    const tpl = { ...templatesById, t3: { id: 't3', name: 'ไม่ระบุ', type_id: null } }
+    const items = [{ template_id: 't3' }, { template_id: 't3' }, { template_id: 't1' }]
+    const withPkg = hardwareBanners({ project: {}, pkg: null, packageItems: [{ type_id: 'tSlide', hardware_set_id: 'x' }], items, templatesById: tpl, typesById: index.types })
+    expect(withPkg.typelessTemplateItems).toBe(2)
+    expect(hardwareBanners({ project: {}, pkg: null, packageItems: null, items, templatesById: tpl, typesById: index.types }).typelessTemplateItems).toBe(0)
   })
   it('availability: the type a series does not offer, with the series that do', () => {
     const issues = availabilityIssues({ items: [{ id: 'i', template_id: 't2' }, { id: 'j', template_id: 't1', series_id: 's2' }], project: { default_series_id: 's1' }, templatesById, index, seriesTypes })

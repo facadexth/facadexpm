@@ -10,7 +10,8 @@ const CATEGORY_LABEL = { door: 'ประตู', window: 'หน้าต่า
 
 // `types` = all type rows (the parent picker needs them); Hierarchy's quick-add passes the same.
 export const typeFields = (types) => [
-  { key: 'name', label: 'ชื่อประเภท', type: 'text', required: true, placeholder: 'เช่น บานเลื่อน' },
+  { key: 'name', label: 'ชื่อประเภท', type: 'text', required: true, placeholder: 'เช่น บานเลื่อน',
+    hint: 'ชื่อต้องไม่ซ้ำกันทุกระดับ ให้ใช้ชื่อเต็ม เช่น ประตูบานเลื่อนรางล่าง' },
   { key: 'parent_id', label: 'อยู่ใต้ประเภท', type: 'select', emptyLabel: '— ระดับบนสุด —',
     options: (form, row) => parentOptions(types, row ? row.id : null),
     sets: (value) => { const c = categoryForParent(types, value); return c ? { category: c } : {} },
