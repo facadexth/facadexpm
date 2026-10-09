@@ -7,12 +7,13 @@ import { ConfirmDialog } from '../../components/Modal.jsx'
 import { compareProviders } from '../../lib/providerCompare.js'
 import { itemsAffectedByDefaultSeries } from '../../lib/estimationInherit.js'
 import { seriesChoices, finishChoices, draftFromProject, reconcileDraft, buildPatch } from './projectDefaults.js'
-import { comparisonRows } from './projectBomHelpers.js'
+import { comparisonRows, itemsWithForeignColour } from './projectBomHelpers.js'
 
 export default function ProviderCompare({ project, items, base, index, seriesTypes, canEdit, onApplied }) {
   const providers = useMemo(() => Object.values(index.providers).filter(p => p.active !== false).sort((a, b) => String(a.name).localeCompare(String(b.name), 'th')), [index])
   const primaryId = project.primary_provider_id || null
   // picks[providerId] = { seriesId, finishId }; the main extruder row always uses the project's own defaults
+  const baseMissing = !primaryId || !providers.some(p => p.id === primaryId)
   const [picks, setPicks] = useState({})
   const [confirm, setConfirm] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -32,7 +33,9 @@ export default function ProviderCompare({ project, items, base, index, seriesTyp
   const startApply = row => {
     const draft = reconcileDraft({ ...draftFromProject(project), primary_provider_id: row.providerId, default_series_id: row.seriesId, default_finish_id: row.finishId }, index, seriesTypes)
     const patch = buildPatch(project, draft)
-    const affected = itemsAffectedByDefaultSeries(items, base.templatesById, row.seriesId, seriesTypes)
+    const seen = new Set()
+    const affected = [...itemsAffectedByDefaultSeries(items, base.templatesById, row.seriesId, seriesTypes), ...itemsWithForeignColour(items, index, row.providerId)]
+      .filter(i => !seen.has(i.id) && seen.add(i.id))
     setConfirm({ row, patch, affected, name: index.providers[row.providerId].name, clearsThickness: 'default_thickness_mm' in patch })
   }
   const apply = async () => {
@@ -52,9 +55,10 @@ export default function ProviderCompare({ project, items, base, index, seriesTyp
         คิดต้นทุนอลูมิเนียมทั้งโครงการซ้ำ โดยบังคับทุกรายการเป็นซีรีส์และสีที่เลือก (ขนาด เทมเพลต ความหนาตามเดิม) ไม่รวมอุปกรณ์ วัสดุอุดช่อง และค่าแรง
         {!project.default_series_id || !project.default_finish_id ? ' · ตั้งซีรีส์และสีเริ่มต้นของโปรเจกต์ก่อน จึงจะเทียบกับโรงรีดหลักได้' : ''}
       </div>
+      {baseMissing && <div className="alert alert-warning" style={{ fontSize: 13 }}>ไม่มีโรงรีดหลักเป็นฐานเทียบ (ยังไม่ได้เลือก หรือโรงรีดหลักถูกปิดใช้งาน) จึงไม่แสดงส่วนต่าง</div>}
       <div className="table-wrap">
         <table>
-          <thead><tr><th>โรงรีด</th><th>ซีรีส์</th><th>สี</th><th>ต้นทุนอลูมิเนียม (฿)</th><th>เทียบโรงรีดหลัก</th><th>สถานะ</th><th /></tr></thead>
+          <thead><tr><th>โรงรีด</th><th>ซีรีส์</th><th>สี</th><th>ต้นทุนอลูมิเนียม (฿)</th><th>เทียบโรงรีดหลัก<div style={{ fontWeight: 400, fontSize: 11, color: 'var(--text3)' }}>ฐานเทียบ (บังคับซีรีส์/สีตั้งต้นของโปรเจกต์ ไม่ใช่ยอดจริงในรายการ)</div></th><th>สถานะ</th><th /></tr></thead>
           <tbody>
             {providers.map((p, i) => {
               const row = rows[i]
@@ -89,7 +93,8 @@ export default function ProviderCompare({ project, items, base, index, seriesTyp
         <ConfirmDialog title={`ใช้โรงรีด ${confirm.name}`} confirmDisabled={busy} onCancel={() => setConfirm(null)} onConfirm={apply}
           message={<div>
             จะตั้งโรงรีดหลัก ซีรีส์ และสีเริ่มต้นของโปรเจกต์ตามแถวนี้{confirm.clearsThickness ? ' (ความหนาเริ่มต้นที่ซีรีส์ใหม่ไม่มีจะถูกล้าง ต้องเลือกใหม่)' : ''}
-            {confirm.affected.length > 0 ? <> รายการเหล่านี้ที่ใช้ค่าเริ่มต้นของโปรเจกต์ ({confirm.affected.length}) ไม่มีแบบในซีรีส์ใหม่ จะคิดราคาไม่ได้จนกว่าจะแก้:
+            <div>ความหนาวงกบ/ความหนากรอบบานที่บันทึกไว้เป็นค่าเริ่มต้น อาจถูกล้างถ้าไม่มีในซีรีส์ใหม่</div>
+            {confirm.affected.length > 0 ? <> รายการเหล่านี้ที่ใช้ค่าเริ่มต้นของโปรเจกต์ ({confirm.affected.length}) ไม่มีแบบในซีรีส์ใหม่ หรือตั้งสีเองเป็นสีของโรงรีดอื่น จะคิดราคาไม่ได้จนกว่าจะแก้:
               <ul style={{ margin: '6px 0 0 18px' }}>{confirm.affected.map(i => <li key={i.id}>{i.opening_no}{i.item_name ? ` · ${i.item_name}` : ''}</li>)}</ul></> : ' ไม่มีรายการที่ได้รับผลกระทบด้านแบบ'}
             <div style={{ marginTop: 6 }}>รายการที่ตั้งซีรีส์หรือสีเองยังคงเดิม</div>
           </div>} />

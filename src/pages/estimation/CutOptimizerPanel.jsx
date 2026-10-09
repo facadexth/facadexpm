@@ -35,7 +35,7 @@ export default function CutOptimizerPanel({ profiles, seriesMap, index, settings
       </div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>ความยาวเส้น (ม.)</th><th>จำนวนเส้น</th><th>เศษทิ้ง (ม.)</th><th>เศษเก็บใช้ต่อ (ม.)</th><th>เศษ %</th><th>ค่าอลูมิเนียม (฿)</th><th>ผล</th><th></th></tr></thead>
+          <thead><tr><th>ความยาวเส้น (ม.)</th><th>จำนวนเส้น</th><th>เศษทิ้ง (ม.)</th><th>เศษเก็บใช้ต่อ (ม.)</th><th>เศษ %</th><th>ค่าอลูมิเนียม (฿)<div style={{ fontWeight: 400, fontSize: 11, color: 'var(--text3)' }}>ต้นทุนซื้อเป็นเส้น ใช้เทียบความยาวเท่านั้น ไม่ใช่ยอดอลูมิเนียมในรายการ</div></th><th>ผล</th><th></th></tr></thead>
           <tbody>
             {view.rows.map(r => (
               <tr key={r.length_m} style={r.status === 'infeasible' ? { color: 'var(--text3)' } : undefined}>

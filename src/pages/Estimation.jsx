@@ -123,7 +123,7 @@ export default function Estimation(props) {
               {tab === 'items' && canEdit && <button className="btn btn-primary btn-sm" onClick={() => setItemModal({ id: null })}>+ เพิ่มรายการ</button>}
             </div>
             {tab === 'bom' && costCtx && (
-              <ProjectBomView project={project} items={projectOpenings} costs={costs} base={costCtx} index={index} seriesTypes={catalog.seriesTypes}
+              <ProjectBomView key={project.id} project={project} items={projectOpenings} costs={costs} base={costCtx} index={index} seriesTypes={catalog.seriesTypes}
                 settings={settings} canEdit={canEdit} onProjectSaved={refetchProjects} />
             )}
             {tab === 'items' && <ItemsTable items={projectOpenings} costs={costs} previewSigs={previewSigs} project={project} index={index} templatesById={base.templatesById} canEdit={canEdit}

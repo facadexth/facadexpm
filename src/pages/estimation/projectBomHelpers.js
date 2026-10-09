@@ -71,13 +71,19 @@ export function stockWriteAction(existing, value) {
 
 // Price of one WHOLE bar of length L (metres), or null. per_kg: the metre price x L. per_piece / both: never
 // scaled from another length: the exact variant row of length L and its latest piece price at asOf, else null.
-export function makeBarPrice({ index, profile, finish, seriesId, asOf }) {
+// seriesIds: the series the profile+colour was priced in. With more than one, the kg bar price is given only when
+// every one of them resolves to the same metre price; otherwise null (never a guess from one of them).
+export function makeBarPrice({ index, profile, finish, seriesIds, seriesId, asOf }) {
   const provider = profile && index.providers[profile.provider_id]
   if (!provider || !finish || !asOf) return () => null
   if (provider.price_basis === 'per_kg') {
-    const series = seriesId ? index.series[seriesId] : null
-    const p = resolveAluPrice({ provider, series, profile, finish, variants: index.variants, asOf, kgPrices: index.kgPrices, piecePrices: index.piecePrices })
-    return L => (p.unresolved || !(p.price_per_m > 0) ? null : p.price_per_m * L)
+    const ids = [...new Set(seriesIds ? seriesIds.filter(Boolean) : (seriesId ? [seriesId] : []))]
+    const prices = (ids.length ? ids : [null]).map(id => resolveAluPrice({
+      provider, series: id ? index.series[id] : null, profile, finish, variants: index.variants, asOf, kgPrices: index.kgPrices, piecePrices: index.piecePrices,
+    }))
+    const perM = prices.every(p => !p.unresolved && p.price_per_m > 0) && prices.every(p => Math.abs(p.price_per_m - prices[0].price_per_m) < 1e-9)
+      ? prices[0].price_per_m : null
+    return L => (perM == null ? null : perM * L)
   }
   return L => {
     const v = findVariant(index.variants, profile.id, finish.id, L)
@@ -99,25 +105,21 @@ export function candidateLengths(index, profileId, finishId, stockLengthM) {
 export function optimizerView({ group, index, settings, asOf, seriesIds }) {
   const profile = index.profiles[group.profile_id]
   const finish = group.finish_id ? index.finishes[group.finish_id] : null
-  const ids = [...(seriesIds || [])].filter(Boolean)
-  // one series for the group, or none: a profile used in two series is never priced from a guessed one
-  const barPrice = makeBarPrice({ index, profile, finish, seriesId: ids.length === 1 ? ids[0] : null, asOf })
+  const barPrice = makeBarPrice({ index, profile, finish, seriesIds: seriesIds || [], asOf })
   const lengths = candidateLengths(index, group.profile_id, group.finish_id, group.stock_length_m)
-  const longest = Math.max(0, ...group.cuts.map(c => c.length_m))
   const result = compareLengths({ cuts: group.cuts, lengths, settings, barPrice })
   const rows = result.rows.map(r => {
-    const tooShort = r.length_m + EPS < longest
     const infeasible = r.feasible === false
     return {
       length_m: r.length_m, isCurrent: Math.abs(r.length_m - group.stock_length_m) < EPS,
-      status: infeasible ? 'infeasible' : 'ok', tooShort,
+      status: infeasible ? 'infeasible' : 'ok',
       unplaced: infeasible ? r.unplaced : [],
       count: infeasible ? null : r.count, scrap_m: infeasible ? null : r.scrap_m, reusable_m: infeasible ? null : r.reusable_m,
       waste_pct: infeasible ? null : r.waste_pct, cost: infeasible ? null : r.cost,
       best: !!result.best && result.best.length_m === r.length_m,
     }
   })
-  return { rows, basis: result.basis, longest, hasCuts: group.cuts.length > 0 }
+  return { rows, basis: result.basis, hasCuts: group.cuts.length > 0 }
 }
 
 // Rows of the extruder comparison. results = compareProviders(...) rows (candidate fields + aluminium, complete,
@@ -134,5 +136,13 @@ export function comparisonRows(results, baseId) {
       pending: !r.seriesId || !r.finishId,
       canApply: !isBase && !!r.complete && !!r.seriesId && !!r.finishId,
     }
+  })
+}
+
+// Items that pin their own colour from an extruder other than providerId: they cannot be priced after the switch.
+export function itemsWithForeignColour(items, index, providerId) {
+  return (items || []).filter(i => {
+    const f = i.alu_finish_id ? index.finishes[i.alu_finish_id] : null
+    return !!f && f.provider_id !== providerId
   })
 }

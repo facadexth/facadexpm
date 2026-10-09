@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  buildEntries, entriesPieceCount, parseStockLength, stockWriteAction, makeBarPrice, candidateLengths, optimizerView, comparisonRows, seriesByGroup,
+  buildEntries, entriesPieceCount, parseStockLength, stockWriteAction, makeBarPrice, candidateLengths, optimizerView, comparisonRows, seriesByGroup, itemsWithForeignColour,
 } from './projectBomHelpers.js'
 import { DEFAULT_SETTINGS } from '../../lib/estimationSettings.js'
 
@@ -78,13 +78,25 @@ describe('barPrice and candidates', () => {
   })
 })
 
+describe('per_kg bar price across several series', () => {
+  const ix = () => { const x = index('per_kg'); x.series = { s1: { id: 's1' }, s2: { id: 's2' } }; return x }
+  const price = (x, ids) => makeBarPrice({ index: x, profile: x.profiles.p1, finish: x.finishes.f1, seriesIds: ids, asOf: '2026-09-01' })
+  it('same price in both series gives a number', () => { expect(price(ix(), ['s1', 's2'])(5)).toBe(500) })
+  it('different series-level prices give null; a single series is unchanged', () => {
+    const x = ix()
+    x.kgPrices = [...x.kgPrices, { id: 'k2', provider_id: 'pr', finish_id: 'f1', series_id: 's2', profile_id: null, price_per_kg: 120, effective_from: '2026-01-01' }]
+    expect(price(x, ['s1', 's2'])(5)).toBeNull()
+    expect(price(x, ['s1'])(5)).toBe(500)
+    expect(price(x, ['s2'])(5)).toBe(600)
+  })
+})
+
 describe('optimizerView', () => {
   const group = { profile_id: 'p1', finish_id: 'f1', stock_length_m: 6, cuts: [{ length_m: 5.5, quantity: 1, style: 'square' }, { length_m: 2, quantity: 2, style: 'square' }] }
   it('marks a shorter candidate infeasible with its unplaced pieces and no cost', () => {
     const v = optimizerView({ group, index: index('per_piece'), settings: DEFAULT_SETTINGS, asOf: '2026-09-01', seriesIds: ['s1'] })
     const r5 = v.rows.find(r => r.length_m === 5)
     expect(r5.status).toBe('infeasible')
-    expect(r5.tooShort).toBe(true)
     expect(r5.unplaced).toEqual([5.5])
     expect(r5.cost).toBeNull()
     expect(r5.count).toBeNull()
@@ -125,5 +137,13 @@ describe('comparisonRows', () => {
   it('has no differences when the base itself is incomplete', () => {
     const rows = comparisonRows([{ ...results[0], complete: false, unresolvedLines: 2 }, results[1]], 'A')
     expect(rows[1].diff).toBeNull()
+  })
+})
+
+describe('itemsWithForeignColour', () => {
+  it('lists items whose own colour belongs to another extruder', () => {
+    const ix = { finishes: { fa: { provider_id: 'A' }, fb: { provider_id: 'B' } } }
+    const items = [{ id: 1, alu_finish_id: 'fa' }, { id: 2, alu_finish_id: 'fb' }, { id: 3, alu_finish_id: null }]
+    expect(itemsWithForeignColour(items, ix, 'B').map(i => i.id)).toEqual([1])
   })
 })
