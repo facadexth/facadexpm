@@ -20,9 +20,9 @@ export const NO_LINES_MESSAGE = 'ใบเสนอราคานี้มี�
 
 // Reads the quotation's current state from the database and plans the push. Throws (Thai message) when the push
 // would risk duplicating rows. quotation: the linked quotations row or null.
-export async function preparePlan({ supabase, project, quotation, newLines }) {
+export async function preparePlan({ supabase, project, quotation, newLines, projectOpeningIds = null, skippedOpeningIds = null }) {
   const lineRows = must(await supabase.from('estimation_quotation_lines').select('*').eq('project_id', project.id)) || []
-  const existingLines = lineRows.map(r => ({ openingId: r.opening_id, itemRowId: r.item_row_id, descRowId: r.description_row_id }))
+  const existingLines = lineRows.map(r => ({ id: r.id, openingId: r.opening_id, itemRowId: r.item_row_id, descRowId: r.description_row_id }))
   let items = []
   if (quotation) {
     items = must(await supabase.from('quotation_items').select('*').eq('quotation_id', quotation.id)) || []
@@ -38,7 +38,7 @@ export async function preparePlan({ supabase, project, quotation, newLines }) {
   }
   const userRows = items.filter(i => !generated.has(i.id)).map(i => ({ id: i.id, sort_order: i.sort_order }))
   const snapshots = must(await supabase.from('estimation_price_snapshots').select('*').eq('project_id', project.id)) || []
-  return planPush({ quotation, existingLines, newLines, existingRowIds, invoiceRefs, userRows, snapshots })
+  return planPush({ quotation, existingLines, newLines, existingRowIds, invoiceRefs, userRows, snapshots, projectOpeningIds, skippedOpeningIds: skippedOpeningIds || new Set() })
 }
 
 // The jsonb written to estimation_price_snapshots. result = priceProject(...) output; items = the project's openings.
@@ -156,9 +156,9 @@ export async function pushToQuotation({ supabase, project, link, quotation, plan
   for (const k of [...(plan.keepOrder || []), ...(plan.userRowOrder || [])]) {
     must(await supabase.from('quotation_items').update({ sort_order: k.sort_order }).eq('id', k.id))
   }
-  const keptOpenings = new Set(plan.keeps.map(k => k.openingId))
-  const goneOpenings = [...new Set(plan.deletes.map(d => d.openingId))].filter(o => !keptOpenings.has(o) && existingByOpening.has(o))
-  for (const o of goneOpenings) must(await supabase.from('estimation_quotation_lines').delete().eq('id', existingByOpening.get(o).id))
+  const keptLineIds = new Set(plan.keeps.map(k => k.lineId || (existingByOpening.get(k.openingId) || {}).id).filter(Boolean))
+  const goneLineIds = new Set(plan.deletes.map(d => d.lineId || (existingByOpening.get(d.openingId) || {}).id).filter(id => id && !keptLineIds.has(id)))
+  for (const id of goneLineIds) must(await supabase.from('estimation_quotation_lines').delete().eq('id', id))
 
   // (5) append-only snapshot of what was sent
   must(await supabase.from('estimation_price_snapshots').insert(pick({

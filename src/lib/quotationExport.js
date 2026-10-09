@@ -52,7 +52,7 @@ export function nextSubNo(snapshots, quotationId, revision) {
 // Sort rule: generated pairs take sort_order 0.. in the project's item order (item row, then description row);
 // pairs kept because an invoice references them follow; user-added rows come last in their existing relative order.
 // existingRowIds: Set of quotation_items ids that still exist. invoiceRefs: Set of ids referenced by invoice_items.
-export function planPush({ quotation, link, existingLines = [], newLines = [], existingRowIds = new Set(), invoiceRefs = new Set(), userRows = [], snapshots = [] }) {
+export function planPush({ quotation, link, existingLines = [], newLines = [], existingRowIds = new Set(), invoiceRefs = new Set(), userRows = [], snapshots = [], projectOpeningIds = null, skippedOpeningIds = new Set() }) {
   let action, bumpRevision = false, newRevision, setStatus = null, needsAcceptedConfirm = false, statusWarning = false
   if (!quotation) { action = 'create'; newRevision = 1 }
   else {
@@ -83,10 +83,15 @@ export function planPush({ quotation, link, existingLines = [], newLines = [], e
     if (newIds.has(e.openingId)) continue
     const live = [e.itemRowId, e.descRowId].filter(id => id && existingRowIds.has(id))
     if (!live.length) continue
-    if (live.some(id => invoiceRefs.has(id))) {
-      keeps.push({ openingId: e.openingId, itemRowId: e.itemRowId, descRowId: e.descRowId, rowIds: live, reason: 'มีใบแจ้งหนี้อ้างอิงรายการนี้ จึงเก็บไว้ในใบเสนอราคา', sort_order: order })
+    // An opening still in the project but skipped/unresolved keeps its existing pair untouched. Only openings no longer in
+    // the project (or whose map row lost its opening: openingId null) are removed.
+    const stillInProject = e.openingId != null && ((skippedOpeningIds && skippedOpeningIds.has(e.openingId)) || (projectOpeningIds && projectOpeningIds.has(e.openingId)))
+    const referenced = live.some(id => invoiceRefs.has(id))
+    if (stillInProject || referenced) {
+      const reason = stillInProject ? 'skipped' : 'มีใบแจ้งหนี้อ้างอิงรายการนี้ จึงเก็บไว้ในใบเสนอราคา'
+      keeps.push({ openingId: e.openingId, lineId: e.id, itemRowId: e.itemRowId, descRowId: e.descRowId, rowIds: live, reason, sort_order: order })
       live.forEach(id => { keepOrder.push({ id, sort_order: order++ }) })   // consecutive: the kept pair stays together
-    } else live.forEach(id => deletes.push({ id, openingId: e.openingId }))
+    } else live.forEach(id => deletes.push({ id, openingId: e.openingId, lineId: e.id }))
   }
   const userRowOrder = []
   for (const u of [...userRows].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))) {

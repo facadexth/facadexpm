@@ -19,6 +19,9 @@ const Check = ({ checked, disabled, onChange, children }) => (
   </label>
 )
 
+export const SKIPPED_KEEP_TEXT = 'ข้าม – คงบรรทัดเดิมไว้ในใบเสนอราคา'
+export const keepReasonText = reason => (reason === 'skipped' ? SKIPPED_KEEP_TEXT : reason)
+
 export const unresolvedMessage = skipped =>
   `มี ${skipped.length} รายการที่คิดราคาไม่ได้ (${skipped.map(s => s.opening_no || '—').join(', ')}) ต้องแก้ให้คิดได้ก่อน หรือติ๊ก "ข้ามรายการที่คิดไม่ได้"`
 
@@ -71,6 +74,12 @@ export default function SendToQuotationDialog({ project, items, result, descript
     split: { enabled: effectiveSplit, materialPct: pctOk ? pctNum : 80 },
   }), [result, items, descriptionCtxById, project.description_format, effectiveSplit, pctOk, pctNum])
 
+  // Openings still in the project and the ones skipped: a skipped opening keeps its already-sent lines.
+  const openingSets = useMemo(() => ({
+    projectOpeningIds: new Set((items || []).map(i => i.id)),
+    skippedOpeningIds: new Set(skipped.map(s => s.openingId)),
+  }), [items, skipped])
+
   // Read the linked quotation (if any) once, then the plan for the preview.
   useEffect(() => {
     if (preloaded) return undefined
@@ -78,7 +87,7 @@ export default function SendToQuotationDialog({ project, items, result, descript
     ;(async () => {
       try {
         const { link: l, quotation: q } = await loadLinkedQuotation({ supabase, project })
-        const p = await preparePlan({ supabase, project, quotation: q, newLines: lines })
+        const p = await preparePlan({ supabase, project, quotation: q, newLines: lines, ...openingSets })
         if (alive) { setLink(l); setQuotation(q); setPlan(p) }
       } catch (e) { if (alive) setError(e.message || String(e)) }
       finally { if (alive) setLoading(false) }
@@ -119,7 +128,7 @@ export default function SendToQuotationDialog({ project, items, result, descript
       // Re-read everything now: the quotation may have changed since the dialog opened.
       const { link: freshLink, quotation: q } = await loadLinkedQuotation({ supabase, project })
       if (!q && !clientId) throw new Error('ใบเสนอราคาเดิมถูกลบไปแล้ว กรุณาเลือกลูกค้าเพื่อสร้างใบใหม่')
-      const fresh = await preparePlan({ supabase, project, quotation: q, newLines: lines })
+      const fresh = await preparePlan({ supabase, project, quotation: q, newLines: lines, ...openingSets })
       setLink(freshLink); setQuotation(q); setPlan(fresh)
       if (fresh.needsAcceptedConfirm && !confirming) { setConfirming(true); return }
       const r = await pushToQuotation({
@@ -237,7 +246,7 @@ export default function SendToQuotationDialog({ project, items, result, descript
                     ))}
                     {plan && plan.keeps.map(k => (
                       <tr key={'k' + k.openingId} style={{ color: 'var(--text3)' }}>
-                        <td style={{ padding: 6 }} colSpan={3}>{itemNo(k.openingId)} · {k.reason}</td><td style={{ padding: 6, textAlign: 'center' }}>เก็บไว้</td>
+                        <td style={{ padding: 6 }} colSpan={3}>{itemNo(k.openingId)} · {keepReasonText(k.reason)}</td><td style={{ padding: 6, textAlign: 'center' }}>เก็บไว้</td>
                       </tr>
                     ))}
                     {plan && plan.deletes.length > 0 && (

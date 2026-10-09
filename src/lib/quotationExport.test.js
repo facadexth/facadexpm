@@ -173,3 +173,27 @@ describe('description fallback and comparison', () => {
   })
   it('no snapshot: old total 0', () => { expect(compareWithLastSent({ snapshot: null, rows: [row('a', 10)] }).oldTotal).toBe(0) })
 })
+
+describe('planPush skipped / removed / null-opening lines (final-fix 1+4)', () => {
+  const exAll = [ex('a', 'i1', 'd1'), ex('b', 'i2', 'd2'), ex('c', 'i3', 'd3')]
+  const ids = new Set(['i1', 'd1', 'i2', 'd2', 'i3', 'd3'])
+  it('keeps the pair of an opening that is still in the project but skipped', () => {
+    const p = planPush({ ...base, newLines: [L('a'), L('c')], existingLines: exAll, existingRowIds: ids, projectOpeningIds: new Set(['a', 'b', 'c']), skippedOpeningIds: new Set(['b']) })
+    expect(p.deletes).toEqual([])
+    expect(p.updates.map(u => u.id).sort()).toEqual(['d1', 'd3', 'i1', 'i3'])
+    expect(p.keeps).toHaveLength(1)
+    expect(p.keeps[0]).toMatchObject({ openingId: 'b', reason: 'skipped', rowIds: ['i2', 'd2'] })
+  })
+  it('deletes the pair of an opening truly removed from the project', () => {
+    const p = planPush({ ...base, newLines: [L('a'), L('c')], existingLines: exAll, existingRowIds: ids, projectOpeningIds: new Set(['a', 'c']), skippedOpeningIds: new Set() })
+    expect(p.deletes.map(d => d.id).sort()).toEqual(['d2', 'i2'])
+    expect(p.keeps).toEqual([])
+  })
+  it('a null-opening line is removed from the project: deleted unless invoice-referenced', () => {
+    const lines = [{ openingId: null, itemRowId: 'i9', descRowId: 'd9' }]
+    const p = planPush({ ...base, existingLines: lines, existingRowIds: new Set(['i9', 'd9']), projectOpeningIds: new Set(['a']) })
+    expect(p.deletes.map(d => d.id).sort()).toEqual(['d9', 'i9'])
+    const q = planPush({ ...base, existingLines: lines, existingRowIds: new Set(['i9', 'd9']), invoiceRefs: new Set(['d9']), projectOpeningIds: new Set(['a']) })
+    expect(q.deletes).toEqual([]); expect(q.keeps[0].reason).not.toBe('skipped')
+  })
+})

@@ -169,6 +169,30 @@ describe('pushToQuotation', () => {
   })
 })
 
+describe('preparePlan with skipped / null-opening lines (final-fix 1+4)', () => {
+  it('passes project/skipped opening ids to the plan: a skipped mapped opening is kept, not deleted', async () => {
+    const db = makeFake(); seed(db)
+    await send(db, { ids: ['a', 'b', 'c'] })
+    const { quotation } = await loadLinkedQuotation({ supabase: db, project })
+    const plan = await preparePlan({ supabase: db, project, quotation, newLines: mkLines(['a', 'c']), projectOpeningIds: new Set(['a', 'b', 'c']), skippedOpeningIds: new Set(['b']) })
+    expect(plan.deletes).toEqual([])
+    expect(plan.keeps).toHaveLength(1)
+    expect(plan.keeps[0]).toMatchObject({ openingId: 'b', reason: 'skipped' })
+  })
+  it('does not throw NO_LINES when every map row has a null opening; the pairs are deleted and the map rows removed on push', async () => {
+    const db = makeFake(); seed(db)
+    await send(db)
+    db.tables.estimation_quotation_lines.forEach(l => { l.opening_id = null })
+    const { link, quotation } = await loadLinkedQuotation({ supabase: db, project })
+    const lines = mkLines(['c'])
+    const plan = await preparePlan({ supabase: db, project, quotation, newLines: lines, projectOpeningIds: new Set(['c']) })
+    expect(plan.deletes).toHaveLength(4)
+    await pushToQuotation({ supabase: db, project, link, quotation, plan, header, lines, snapshotPayload: payload, tenant })
+    expect(db.tables.estimation_quotation_lines.map(l => l.opening_id)).toEqual(['c'])
+    expect(db.tables.quotation_items).toHaveLength(2)
+  })
+})
+
 describe('buildSnapshotPayload', () => {
   it('captures per-item costs, price and unresolved flag', () => {
     const result = { rows: [{ id: 'a', resolved: true, v: 1, w: 2, x: 3, y: 4, z: 5, pm: 6, perSet: 7, price: 8, quantity: 2, profitPct: 30, aluWeightKg: 9, breakdown: { alu: 10 }, extraCosts: { bracket: 1 } }, { id: 'b', resolved: false, quantity: 1 }], totals: { lineTotal: 16 } }

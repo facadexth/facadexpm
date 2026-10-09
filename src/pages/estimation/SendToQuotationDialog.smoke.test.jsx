@@ -60,4 +60,11 @@ describe('SendToQuotationDialog', () => {
     expect(h).not.toContain('— เลือกลูกค้า —')
     expect(h).toContain('บ้านพี่วัฒน์')
   })
+  it('a skipped item that already has a quotation pair is shown as kept, never as removed from the project', () => {
+    const quotation = { id: 'q1', status: 'draft', revision: 1, pricing_mode: 'combined', clients: { name: 'x' } }
+    const plan = { action: 'overwrite', bumpRevision: false, newRevision: 1, subNo: 2, needsAcceptedConfirm: false, updates: [{ openingId: 'a' }], inserts: [], deletes: [], keeps: [{ openingId: 'c', reason: 'skipped', rowIds: ['i', 'd'] }] }
+    const h = html({ link: { quotation_id: 'q1' }, preloaded: { quotation, plan } })
+    expect(h).toContain('W-03 · ข้าม – คงบรรทัดเดิมไว้ในใบเสนอราคา')
+    expect(h).not.toContain('ถูกลบออกจากโปรเจกต์')
+  })
 })
