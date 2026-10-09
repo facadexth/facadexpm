@@ -158,3 +158,27 @@ describe('labour default through ancestors', () => {
     expect(resolveItemInputs({}, {}, { id: 'x', type_id: 'leaf' }, ts).labour_per_sqm).toBe(300)
   })
 })
+
+describe('hardware package in resolveItemInputs', () => {
+  const ptypes = { t1: { id: 't1', parent_id: null }, kid: { id: 'kid', parent_id: 't1' }, t2: { id: 't2', parent_id: null } }
+  const pkg = [{ type_id: 't1', hardware_set_id: 'PK1' }]
+  it('the item\'s own set wins over the package', () => {
+    expect(resolveItemInputs({ hardware_set_id: 'mine' }, project, { type_id: 't1' }, ptypes, pkg).hardware_set_id).toBe('mine')
+  })
+  it('no_hardware_set beats the package', () => {
+    expect(resolveItemInputs({ no_hardware_set: true }, project, { type_id: 't1' }, ptypes, pkg).hardware_set_id).toBeNull()
+  })
+  it('uses the package set for the template type and for a child of a mapped parent', () => {
+    expect(resolveItemInputs({}, project, { type_id: 't1' }, ptypes, pkg).hardware_set_id).toBe('PK1')
+    expect(resolveItemInputs({}, project, { type_id: 'kid' }, ptypes, pkg).hardware_set_id).toBe('PK1')
+  })
+  it('a missing type gives no set and ignores the old project default', () => {
+    expect(resolveItemInputs({}, project, { type_id: 't2' }, ptypes, pkg).hardware_set_id).toBeNull()
+  })
+  it('packageItems omitted keeps the old project default', () => {
+    expect(resolveItemInputs({}, project, { type_id: 't2' }, ptypes).hardware_set_id).toBe('h1')
+  })
+  it('buildEngineOpening passes the package through', () => {
+    expect(buildEngineOpening({}, project, { type_id: 't1' }, ptypes, {}, pkg).opening.hardware_set_id).toBe('PK1')
+  })
+})

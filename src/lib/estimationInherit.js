@@ -4,22 +4,25 @@
 // explicit "none" flag on the item, because NULL already means "inherit".
 
 import { typeLabourDefault } from './typeTree.js'
+import { hardwareSetStatus } from './projectHardware.js'
 
 const isSet = v => v !== null && v !== undefined && v !== ''
 const first = (...vals) => { for (const v of vals) if (isSet(v)) return v; return null }
 // Numeric columns can arrive as strings from the DB; the engine only accepts finite numbers, and 0 is a real value.
 const firstNum = (...vals) => { for (const v of vals) { if (!isSet(v)) continue; const n = Number(v); if (Number.isFinite(n)) return n } return null }
 
-export function resolveItemInputs(item, project, template, typesById) {
+// packageItems: rows of the project's chosen hardware package, or null/omitted when it has none (old default applies).
+export function resolveItemInputs(item, project, template, typesById, packageItems) {
   const it = item || {}
   const pj = project || {}
   const rate = template && template.type_id ? typeLabourDefault(typesById, template.type_id) : null
   const typeLabour = rate > 0 ? rate : null
+  const hw = hardwareSetStatus(packageItems, typesById, template && template.type_id, pj.default_hardware_set_id)
   return {
     series_id: first(it.series_id, pj.default_series_id),
     finish_id: first(it.alu_finish_id, pj.default_finish_id),
     infill_type_id: it.no_infill ? null : first(it.infill_type_id, pj.default_infill_id),
-    hardware_set_id: it.no_hardware_set ? null : first(it.hardware_set_id, pj.default_hardware_set_id),
+    hardware_set_id: it.no_hardware_set ? null : first(it.hardware_set_id, hw.set_id),
     thickness_mm: firstNum(it.thickness_mm, pj.default_thickness_mm),
     sash_thickness_mm: firstNum(it.sash_thickness_mm, pj.default_sash_thickness_mm),
     labour_per_sqm: firstNum(it.labour_per_sqm, pj.labour_per_sqm, typeLabour),
@@ -30,8 +33,8 @@ export function resolveItemInputs(item, project, template, typesById) {
 // The engine (computeBomForOpening) reads thickness_mm / hardware_set_id / labour_per_sqm as ALREADY RESOLVED
 // values, so the opening it gets must never carry the item's raw (possibly NULL = "inherit") columns.
 // The legacy `finish_id` column is not an alu finish and is deliberately never read here.
-function engineParts(item, project, template, typesById, infillTypesById, extra) {
-  const r = resolveItemInputs(item, project, template, typesById)
+function engineParts(item, project, template, typesById, infillTypesById, extra, packageItems) {
+  const r = resolveItemInputs(item, project, template, typesById, packageItems)
   const opening = {
     ...(item || {}), ...extra,
     thickness_mm: r.thickness_mm,
@@ -43,8 +46,8 @@ function engineParts(item, project, template, typesById, infillTypesById, extra)
   return { opening, seriesId: r.series_id, finishId: r.finish_id, infillType }
 }
 
-export function buildEngineOpening(item, project, template, typesById, infillTypesById) {
-  return engineParts(item, project, template, typesById, infillTypesById, null)
+export function buildEngineOpening(item, project, template, typesById, infillTypesById, packageItems) {
+  return engineParts(item, project, template, typesById, infillTypesById, null, packageItems)
 }
 
 // Add-on unit: same series, finish and thickness as the main item; labour uses the ADD-ON's own type default;

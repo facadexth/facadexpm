@@ -34,3 +34,31 @@ export function groupByTemplate(rows) {
   return m
 }
 
+
+// Project hardware packages (Ruling 20): raw rows only, so create/update/delete helpers never see expanded rows.
+export function useHardwarePackages() {
+  const pk = useCatalogTable('alu_hardware_packages', 'name')
+  const it = useCatalogTable('alu_hardware_package_items', 'id')
+  // No upsert (house rule): insert or update by id.
+  async function savePackage(values) {
+    const { id, ...rest } = values
+    const { data, error } = id
+      ? await supabase.from('alu_hardware_packages').update(rest).eq('id', id).select().single()
+      : await supabase.from('alu_hardware_packages').insert(rest).select().single()
+    if (error) throw error
+    pk.refetch && pk.refetch()
+    return data
+  }
+  // Replaces the package's rows with `rows` ([{ type_id, hardware_set_id|null }]).
+  async function saveItems(packageId, rows) {
+    const { error: de } = await supabase.from('alu_hardware_package_items').delete().eq('package_id', packageId)
+    if (de) throw de
+    if (rows && rows.length) {
+      const { error } = await supabase.from('alu_hardware_package_items')
+        .insert(rows.map(r => ({ package_id: packageId, type_id: r.type_id, hardware_set_id: r.hardware_set_id || null })))
+      if (error) throw error
+    }
+    it.refetch && it.refetch()
+  }
+  return { packages: pk.data || [], items: it.data || [], loading: pk.loading || it.loading, error: pk.error || it.error, savePackage, saveItems }
+}
