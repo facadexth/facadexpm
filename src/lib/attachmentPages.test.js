@@ -87,9 +87,9 @@ describe('hardware page weights', () => {
     const useText = Array.from({ length: 30 }, (_, i) => `W${i + 1} (2 ชุด)`).join(', ')
     const s1 = sched(2)
     s1.sets[0].useText = useText
-    expect(Math.ceil(useText.length / 60)).toBeGreaterThanOrEqual(6)
+    expect(Math.ceil(useText.length / 36)).toBeGreaterThanOrEqual(8)
     const r = planAttachmentPages({ items: mk(1), totalQuotationPages: 1, schedule: { ...s1, sets: [s1.sets[0], { ...sched(2).sets[0], setId: 'z' }, { ...sched(2).sets[0], setId: 'y' }] }, legend: [] })
-    expect(hwPages(r).map(p => p.hardwareSets.length)).toEqual([2, 1])
+    expect(hwPages(r).map(p => p.hardwareSets.length)).toEqual([1, 2])
   })
   it('intro only on the first page; notes only on the last', () => {
     const r = planAttachmentPages({ items: mk(1), totalQuotationPages: 1, schedule: { ...sched(11), noSetItemNos: ['F1'], unselectedItemNos: ['X1'] }, legend: [] })

@@ -46,7 +46,7 @@ export const HARDWARE_ROWS_PER_PAGE = 14
 
 const legendRows = n => Math.ceil(n / 2) + 2
 export const INTRO_ROWS = 2
-const USE_CHARS_PER_LINE = 60
+const USE_CHARS_PER_LINE = 36
 const useLines = s => Math.ceil((s.useText || '').length / USE_CHARS_PER_LINE)
 const setWeight = s => 1 + Math.max(s.parts.length, useLines(s), 1)
 
