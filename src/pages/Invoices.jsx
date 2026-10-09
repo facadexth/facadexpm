@@ -26,7 +26,7 @@ import { auditLog } from '../lib/audit.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
-import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, sumMaterialLabor, VAT_RATE } from '../lib/invoiceCalc.js'
+import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, sumMaterialLabor, VAT_RATE, chosenTaxOffset, effectiveInvoiceTaxOffset } from '../lib/invoiceCalc.js'
 import { calcQuotationTotals } from '../lib/quotationCalc.js'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
@@ -374,10 +374,16 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   // actually stored, or a printed invoice's line items visibly fail to add
   // up to its own total by a satang.
   const invoiceItemsForTotals = billedLines.map(l => ({ line_total: round2(drawAmount(l.units, l.unitPrice)) }))
-  const totals = calcInvoiceTotals(invoiceItemsForTotals, { hasVat: quotation.has_vat, priceIncludesVat: quotation.price_includes_vat, depositTaxOffset: depositTaxOffset || 0 })
+  const totalsOpts = { hasVat: quotation.has_vat, priceIncludesVat: quotation.price_includes_vat }
+  // ฐานของ % มัดจำ = มูลค่างวดนี้ก่อน VAT โดยยังไม่ตัดฐานภาษี (กันวนกับ VAT ในราคาที่รวม VAT แล้ว)
+  const baseTotals = calcInvoiceTotals(invoiceItemsForTotals, { ...totalsOpts, depositTaxOffset: 0 })
   const deposit = showDepositBox
-    ? resolveDepositChoice({ subtotal: totals.subtotal, mode: depositChoice.mode, text: depositChoice.text, balance: depositRemaining })
+    ? resolveDepositChoice({ subtotal: baseTotals.subtotal, mode: depositChoice.mode, text: depositChoice.text, balance: depositRemaining })
     : null
+  // ฐาน VAT / ณ ที่จ่ายลดเฉพาะส่วนที่หักมัดจำจริงในใบนี้ (ไม่หัก = VAT เต็มยอด) และไม่เกินภาษีมัดจำที่ยังไม่ถูกใช้
+  // ถ้ากล่องหักมัดจำไม่โผล่ (migration ยังไม่ลง / ไม่มีมัดจำคงเหลือ) ใช้พฤติกรรมเดิม: ลดเต็มที่ยังเหลือ
+  const taxOffset = deposit ? chosenTaxOffset(deposit.amount, depositTaxOffset || 0) : (depositTaxOffset || 0)
+  const totals = calcInvoiceTotals(invoiceItemsForTotals, { ...totalsOpts, depositTaxOffset: taxOffset })
   const isSplit = quotation.pricing_mode === 'split'
   const materialLabor = isSplit
     ? sumMaterialLabor(billedLines.map(l => ({ draw_qty: drawQty(l.units), unit_price_material: l.unitPriceMaterial, unit_price_labor: l.unitPriceLabor })))
@@ -548,10 +554,13 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
           {quotation.has_vat && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>VAT (7%)</span><span className="font-mono">{fmt(totals.vat)}</span></div>
-              {depositTaxOffset > 0 && (
+              {taxOffset > 0 && (
                 <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-                  คิดจาก {fmt(Math.max(0, totals.subtotal - depositTaxOffset))} บาท (ตัด {fmt(Math.min(totals.subtotal, depositTaxOffset))} บาทที่เสีย VAT ไปแล้วตอนรับมัดจำ)
+                  คิดจาก {fmt(Math.max(0, totals.subtotal - taxOffset))} บาท (ตัด {fmt(Math.min(totals.subtotal, taxOffset))} บาทที่หักมัดจำในใบนี้ ซึ่งเสีย VAT ไปแล้วตอนรับมัดจำ)
                 </div>
+              )}
+              {showDepositBox && taxOffset === 0 && depositTaxOffset > 0 && (
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>คิดจากยอดเต็มของงวดนี้ (ใบนี้ไม่หักมัดจำ)</div>
               )}
             </div>
           )}
@@ -591,8 +600,8 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
 
         {showDepositBox && (
           <InvoiceDepositBox
-            choice={depositChoice} subtotal={totals.subtotal} vat={totals.vat} total={totals.total}
-            taxOffset={depositTaxOffset || 0} whtPct={effectiveWhtPct}
+            choice={depositChoice} subtotal={baseTotals.subtotal} vat={totals.vat} total={totals.total}
+            taxOffset={taxOffset} whtPct={effectiveWhtPct}
             retentionPct={Number(site?.default_retention_pct) || 0}
             balance={depositRemaining} siteDepositPct={siteDepositPct}
           />
@@ -1184,7 +1193,7 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
   const client = invoice.quotations?.clients
   const { hasModuleAccess } = useTenant()
   const { data: depositTaxOffset } = useQuotationDepositTaxOffset(invoice.quotation_id, invoice.has_vat, invoice.price_includes_vat, invoice.id)
-  const wht = computeWithholding(invoice, depositTaxOffset || 0)
+  const wht = computeWithholding(invoice, effectiveInvoiceTaxOffset(invoice, depositTaxOffset))
   const { data: depositBalance } = useSiteDepositBalance(hasModuleAccess('client_deposits') ? invoice.site_id : null)
   const deposit = computeDepositDeduction(invoice, depositBalance)
   const { data: receipt } = useDocumentReceipt('invoice', invoice.id)
@@ -1341,7 +1350,7 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
   const client = invoice.quotations?.clients
   const { hasModuleAccess } = useTenant()
   const { data: depositTaxOffset } = useQuotationDepositTaxOffset(invoice.quotation_id, invoice.has_vat, invoice.price_includes_vat, invoice.id)
-  const wht = computeWithholding(invoice, depositTaxOffset || 0)
+  const wht = computeWithholding(invoice, effectiveInvoiceTaxOffset(invoice, depositTaxOffset))
   const { data: depositBalance } = useSiteDepositBalance(hasModuleAccess('client_deposits') ? invoice.site_id : null)
   const deposit = computeDepositDeduction(invoice, depositBalance)
   const [titleVariant, setTitleVariant] = useState('receipt')
@@ -1853,9 +1862,16 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
         // same quotation. Retention is deliberately NOT adjusted here --
         // it's a holdback against the full delivered contract value, not
         // a tax, so deposit timing doesn't affect its base.
+        // ใบที่เลือกยอดหักมัดจำตอนสร้าง (deposit_deduction_amount) ใช้ส่วนที่ตัดฐานภาษีจริงของใบนั้นเอง
+        // ใบเก่าคงพฤติกรรมเดิม (ภาษีมัดจำที่ยังไม่ถูกใช้ ณ ตอนนี้)
         const depositTaxOffset = invoice.is_deposit
           ? 0
-          : await getQuotationDepositTaxOffset(invoice.quotation_id, invoice.has_vat, invoice.price_includes_vat, invoice.id)
+          : effectiveInvoiceTaxOffset(
+              invoice,
+              invoice.deposit_deduction_amount != null
+                ? 0
+                : await getQuotationDepositTaxOffset(invoice.quotation_id, invoice.has_vat, invoice.price_includes_vat, invoice.id),
+            )
         const whtBase = Math.max(0, noVat - depositTaxOffset)
         // invoice.wht_pct (set once, at invoice-creation time -- see
         // CreateInvoiceModal's handleSave) wins over the site's CURRENT

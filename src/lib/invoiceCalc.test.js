@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isCountable, buildUnitSeedRows, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, sumMaterialLabor } from './invoiceCalc.js'
+import { isCountable, buildUnitSeedRows, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, sumMaterialLabor, chosenTaxOffset, invoiceTaxOffsetUsed, effectiveInvoiceTaxOffset } from './invoiceCalc.js'
 
 describe('isCountable', () => {
   it('true for small whole numbers', () => {
@@ -151,5 +151,57 @@ describe('sumMaterialLabor', () => {
 
   it('empty items list sums to zero', () => {
     expect(sumMaterialLabor([])).toEqual({ material: 0, labor: 0 })
+  })
+})
+
+describe('deposit tax offset follows the deduction the invoice chose', () => {
+  const items = [{ line_total: 249300 }]
+  const opts = { hasVat: true, priceIncludesVat: false }
+
+  it('chosenTaxOffset is the deduction, capped by the deposit tax still unused', () => {
+    expect(chosenTaxOffset(78210, 78210)).toBe(78210)
+    expect(chosenTaxOffset(45000, 78210)).toBe(45000)
+    expect(chosenTaxOffset(78210, 30000)).toBe(30000)
+    expect(chosenTaxOffset(0, 78210)).toBe(0)
+    expect(chosenTaxOffset(undefined, 78210)).toBe(0)
+    expect(chosenTaxOffset(50000, -5)).toBe(0)
+  })
+
+  it('no deduction: VAT on the full value delivered', () => {
+    const t = calcInvoiceTotals(items, { ...opts, depositTaxOffset: chosenTaxOffset(0, 78210) })
+    expect(t.vat).toBe(17451)          // 249,300 x 7%
+    expect(t.total).toBe(266751)
+  })
+
+  it('deducting the whole deposit: VAT only on 171,090', () => {
+    const t = calcInvoiceTotals(items, { ...opts, depositTaxOffset: chosenTaxOffset(78210, 78210) })
+    expect(t.vat).toBe(11976.3)        // 171,090 x 7%
+  })
+
+  it('deducting part of the deposit: VAT on the rest', () => {
+    const t = calcInvoiceTotals(items, { ...opts, depositTaxOffset: chosenTaxOffset(45000, 78210) })
+    expect(t.vat).toBe(14301)          // 204,300 x 7%
+  })
+
+  it('invoiceTaxOffsetUsed reads the offset back from the stored invoice (VAT excluded from price)', () => {
+    expect(invoiceTaxOffsetUsed({ has_vat: true, price_includes_vat: false, subtotal: '249300', vat: '11976.30', total: '261276.30' })).toBe(78210)
+    expect(invoiceTaxOffsetUsed({ has_vat: true, price_includes_vat: false, subtotal: '249300', vat: '17451', total: '266751' })).toBe(0)
+  })
+
+  it('invoiceTaxOffsetUsed also works when the price includes VAT', () => {
+    const t = calcInvoiceTotals([{ line_total: 107000 }], { hasVat: true, priceIncludesVat: true, depositTaxOffset: 40000 })
+    expect(invoiceTaxOffsetUsed({ has_vat: true, price_includes_vat: true, subtotal: t.subtotal, vat: t.vat, total: t.total })).toBeCloseTo(40000, 1)
+  })
+
+  it('invoiceTaxOffsetUsed is 0 without VAT', () => {
+    expect(invoiceTaxOffsetUsed({ has_vat: false, subtotal: '1000', vat: '0', total: '1000' })).toBe(0)
+  })
+
+  it('effectiveInvoiceTaxOffset: a chosen-deduction invoice uses its own offset, an old one keeps the live legacy value', () => {
+    const chosenNone = { deposit_deduction_amount: '0', has_vat: true, price_includes_vat: false, subtotal: '249300', vat: '17451', total: '266751' }
+    expect(effectiveInvoiceTaxOffset(chosenNone, 78210)).toBe(0)
+    const old = { deposit_deduction_amount: null, has_vat: true, price_includes_vat: false, subtotal: '249300', vat: '11976.30', total: '261276.30' }
+    expect(effectiveInvoiceTaxOffset(old, 78210)).toBe(78210)
+    expect(effectiveInvoiceTaxOffset({ has_vat: true }, undefined)).toBe(0)
   })
 })

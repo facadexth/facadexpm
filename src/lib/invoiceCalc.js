@@ -122,3 +122,37 @@ export function calcInvoiceTotals(invoiceItems, { hasVat, priceIncludesVat, depo
   const total = round2(subtotal + vat)
   return { subtotal, vat, total }
 }
+
+// ---- tax offset of an invoice that CHOSE its deposit deduction (invoices.deposit_deduction_amount) ----
+// VAT / withholding base excludes only the value this invoice actually deducts as deposit (deposit already taxed when
+// it was received). "No deduction" = VAT on the full value. It can never exceed the deposit tax still unused on the
+// quotation (`available`, from earlier deposit invoices minus what earlier progress invoices already used).
+
+/** The tax offset a new invoice takes: what it deducts, capped by the deposit tax still unused. */
+export function chosenTaxOffset(deductionAmount, availableOffset) {
+  return round2(Math.min(Math.max(0, Number(deductionAmount) || 0), Math.max(0, Number(availableOffset) || 0)))
+}
+
+/**
+ * The offset a STORED invoice used, read back from its own vat (the same reverse-engineering the quotation-level
+ * helper applies to earlier invoices). 0 when the quotation has no VAT.
+ */
+export function invoiceTaxOffsetUsed(invoice) {
+  if (!invoice?.has_vat) return 0
+  const subtotal = parseFloat(invoice.subtotal) || 0
+  const vat = parseFloat(invoice.vat) || 0
+  const total = parseFloat(invoice.total) || 0
+  const taxableUsed = invoice.price_includes_vat ? vat * (1 + VAT_RATE) / VAT_RATE : vat / VAT_RATE
+  const rawBilled = invoice.price_includes_vat ? total : subtotal
+  return round2(Math.max(0, rawBilled - taxableUsed))
+}
+
+/**
+ * Offset to use for an invoice that already exists: one that chose its deduction (deposit_deduction_amount set) uses
+ * exactly what it took when created; an older invoice keeps the previous behaviour (`legacyOffset` = whatever deposit
+ * tax is still unused on the quotation right now).
+ */
+export function effectiveInvoiceTaxOffset(invoice, legacyOffset) {
+  if (invoice?.deposit_deduction_amount != null) return invoiceTaxOffsetUsed(invoice)
+  return Math.max(0, Number(legacyOffset) || 0)
+}
