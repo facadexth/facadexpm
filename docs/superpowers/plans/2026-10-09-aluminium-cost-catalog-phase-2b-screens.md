@@ -12,6 +12,7 @@
 
 ## Global Constraints
 
+- **Tick boxes (owner, 2026-10-09):** every checkbox the new screens add is wrapped in a `<label>` with its text, so clicking the text toggles it as well (never a bare `<input>` beside a `<span>`; when a checkbox sits inside another `<label>` field, use a `<div>`/`<span>` wrapper with a click handler on the wrapper, as the mockup does).
 - **FacadeX only; other tenants must see no change.** Every new table has the `admin_full_access` policy gated by `has_module_access('estimation')`; every new screen/menu entry is gated by the `estimation` module (an `EXPLICIT_ONLY_MODULES` entry, never opened by a free trial). Nothing in this plan edits a standard module (Quotations, Invoices, PO). Any later link to a standard module must be additive, nullable and module-gated.
 - **Expand / contract.** Migration `2026-10-12-01-estimation-2b-expand.sql` is additive only. The contract migration (Task 18) is applied at deploy time, after the new code is live, and guards on legacy data. Migrations go live the instant they are applied; an unpushed branch is not safe.
 - **Agents never touch any database.** SQL is verified by careful reading; the owner runs the prepared scripts (`!`). Do not run `supabase`, `psql`, or any MCP SQL tool.
