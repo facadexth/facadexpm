@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   catalogFamilies, templateTypeOptions, hardwarePartOptions, relinkAfterJointRemoved, validateComponentRows,
-  jointDeductionPreview, notchGeometry, itemRowsForSave, editorRowsFromItems, hardwareSetChoices, flatTypeRows, typeAllowsMixed,
+  jointDeductionPreview, notchGeometry, itemRowsForSave, editorRowsFromItems, hardwareSetChoices, flatTypeRows, typeAllowsMixed, orderJointIds,
 } from './helpers.js'
 
 const types = [
@@ -17,6 +17,8 @@ const index = {
   parts: { a: { id: 'a', code: 'HW-A', name: 'ชุด A', kind: 'hardware_set', active: true }, b: { id: 'b', name: 'ชุด B', kind: 'hardware_set', active: true }, c: { id: 'c', name: 'ล้อ', kind: 'hardware', active: true }, d: { id: 'd', name: 'ผง', kind: 'profile', active: true } },
   seriesPartsBySeries: { s1: [{ part_id: 'a', type_id: null }] },
 }
+
+import { componentRowsForInsert } from '../../lib/templateSave.js'
 
 describe('bomTemplates helpers', () => {
   it('families come from links first, then profiles', () => {
@@ -49,7 +51,7 @@ describe('bomTemplates helpers', () => {
     expect(validateComponentRows([{ ...ok, length_deduction_mm: '' }], [])).toMatch(/ระยะหัก/)
     expect(validateComponentRows([{ ...ok, length_deduction_mm: '-1' }], [])).toMatch(/ระยะหัก/)
     expect(validateComponentRows([{ ...ok, quantity_value: '0' }], [])).toMatch(/จำนวน/)
-    expect(validateComponentRows([{ ...ok, joint_index: '0' }], [{ secondary_family: 'อื่น' }])).toBe('ส่วนประกอบที่ผูกจุดชนต้องเป็นหน้าตัดเดียวกับเส้นรองของจุดชน')
+    expect(validateComponentRows([{ ...ok, joint_index: '0' }], [{ secondary_family: 'อื่น' }])).toBe('ชิ้นส่วนที่ 1: ส่วนประกอบที่ผูกจุดชนต้องเป็นหน้าตัดเดียวกับเส้นรองของจุดชน')
     expect(validateComponentRows([{ ...ok, joint_index: '0' }], [{ secondary_family: 'บาน' }])).toBeNull()
   })
   it('reads the auto deduction from the catalog profile', () => {
@@ -75,5 +77,16 @@ describe('bomTemplates helpers', () => {
   })
   it('flattens the type tree at any level', () => {
     expect(flatTypeRows(types, typesById).map(r => r.id)).toEqual(['w', 'wf', 'ws'])
+  })
+  it('maps joint ids by sort_order, not return order', () => {
+    expect(orderJointIds([{ id: 'c', sort_order: 2 }, { id: 'a', sort_order: 0 }, { id: 'b', sort_order: 1 }], 3)).toEqual(['a', 'b', 'c'])
+    expect(() => orderJointIds([{ id: 'a', sort_order: 0 }], 2)).toThrow()
+    expect(() => orderJointIds([{ id: 'a', sort_order: 0 }, { id: 'b', sort_order: 0 }], 2)).toThrow()
+    expect(() => orderJointIds([{ id: 'a' }], 1)).toThrow()
+    expect(orderJointIds([], 0)).toEqual([])
+  })
+  it('keeps a stored sash thickness role when the select is hidden', () => {
+    const r = componentRowsForInsert([{ role_name: 'x', profile_family: 'f', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 1, thickness_role: 'sash', joint_index: '' }], 't', [])
+    expect(r[0].thickness_role).toBe('sash')
   })
 })

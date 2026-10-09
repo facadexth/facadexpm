@@ -26,7 +26,7 @@ export function templateTypeOptions(types, typesById, savedTypeId) {
   const opts = selectableTypes(types).map(t => ({ id: t.id, label: typeLabel(typesById, t.id) || t.name }))
   const savedMissing = !!savedTypeId && !opts.some(o => o.id === savedTypeId) && !!typesById[savedTypeId]
   if (savedMissing) opts.push({ id: savedTypeId, label: typeLabel(typesById, savedTypeId) || typesById[savedTypeId].name })
-  return { options: opts, savedNotSelectable: savedMissing && selectableTypes(types).every(t => t.id !== savedTypeId) }
+  return { options: opts, savedNotSelectable: savedMissing }
 }
 
 // Whether the thickness-role select is shown: some series offers the type with mixed thickness allowed.
@@ -65,7 +65,7 @@ export function validateComponentRows(rows, joints) {
     if (!blank(r.joint_index)) {
       const j = (joints || [])[Number(r.joint_index)]
       if (!j) return `ชิ้นส่วนที่ ${n}: จุดชนที่เลือกไม่มีอยู่`
-      if (String(r.profile_family || '').trim() !== String(j.secondary_family || '').trim()) return 'ส่วนประกอบที่ผูกจุดชนต้องเป็นหน้าตัดเดียวกับเส้นรองของจุดชน'
+      if (String(r.profile_family || '').trim() !== String(j.secondary_family || '').trim()) return `ชิ้นส่วนที่ ${n}: ส่วนประกอบที่ผูกจุดชนต้องเป็นหน้าตัดเดียวกับเส้นรองของจุดชน`
     }
   }
   return null
@@ -163,3 +163,16 @@ export function hardwareSetChoices(index, seriesId, typeId, currentChoice) {
   }
   return out
 }
+
+// Inserted joint rows ({ id, sort_order }) in any order -> ids by position (index i = the row saved with sort_order i).
+export function orderJointIds(inserted, count) {
+  const out = new Array(count).fill(null)
+  for (const r of inserted || []) {
+    const k = Number(r.sort_order)
+    if (!Number.isInteger(k) || k < 0 || k >= count || out[k] !== null) throw new Error('บันทึกจุดชนไม่ครบ')
+    out[k] = r.id
+  }
+  if ((inserted || []).length !== count || out.some(x => x === null)) throw new Error('บันทึกจุดชนไม่ครบ')
+  return out
+}
+

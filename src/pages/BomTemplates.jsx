@@ -18,10 +18,10 @@ import { useDraftForm } from '../hooks/useDraftForm.js'
 import { useCatalogTable, useEstimationCatalog } from '../hooks/useAluCatalog.js'
 import { useTemplateJoints } from '../hooks/useEstimation2b.js'
 import { jointRowsForInsert, validateJoints, componentRowsForInsert, jointIndexForLoad } from '../lib/templateSave.js'
-import JointsTab, { emptyJoint } from './bomTemplates/JointsTab.jsx'
+import JointsTab from './bomTemplates/JointsTab.jsx'
 import HardwarePackagesTab from './bomTemplates/HardwarePackagesTab.jsx'
 import {
-  catalogFamilies, templateTypeOptions, typeAllowsMixed, hardwarePartOptions, relinkAfterJointRemoved, validateComponentRows,
+  catalogFamilies, templateTypeOptions, typeAllowsMixed, hardwarePartOptions, relinkAfterJointRemoved, validateComponentRows, orderJointIds,
 } from './bomTemplates/helpers.js'
 
 function FinishForm({ initial, onSave, onCancel, loading }) {
@@ -200,28 +200,45 @@ function TemplateEditor({ template, joints, catalog, types, components, hardware
         if (error) throw error
       }
 
-      // Order matters: components point at joints, so delete components first, then joints, then insert joints
-      // (ids come back in sort_order) and only then the components.
-      {
-        const { error } = await supabase.from('bom_template_components').delete().eq('template_id', templateId)
-        if (error) throw error
+      // Never leave the template empty: remember the old rows, write the new ones first, delete the old ones last.
+      const oldComp = isNew ? [] : ((await supabase.from('bom_template_components').select('id').eq('template_id', templateId)).data || []).map(r => r.id)
+      const oldJoints = isNew ? [] : ((await supabase.from('bom_template_joints').select('id').eq('template_id', templateId)).data || []).map(r => r.id)
+      const newJointIds = []
+      const newCompIds = []
+      const rollback = async () => {
+        if (newCompIds.length) await supabase.from('bom_template_components').delete().in('id', newCompIds)
+        if (newJointIds.length) await supabase.from('bom_template_joints').delete().in('id', newJointIds)
       }
-      {
-        const { error } = await supabase.from('bom_template_joints').delete().eq('template_id', templateId)
-        if (error) throw error
+      try {
+        let jointIds = []
+        if (jointRows.length) {
+          const { data, error } = await supabase.from('bom_template_joints').insert(jointRowsForInsert(jointRows, templateId)).select('id, sort_order')
+          if (error) throw error
+          newJointIds.push(...(data || []).map(r => r.id))
+          jointIds = orderJointIds(data, jointRows.length)
+        }
+        if (rows.length) {
+          const { data, error } = await supabase.from('bom_template_components').insert(
+            componentRowsForInsert(rows, templateId, jointIds.map(id => ({ id })))
+          ).select('id')
+          if (error) throw error
+          newCompIds.push(...(data || []).map(r => r.id))
+        }
+      } catch (e) {
+        await rollback()
+        throw new Error(e.message + ' (ข้อมูลเดิมยังอยู่)')
       }
-      let insertedJoints = []
-      if (jointRows.length) {
-        const { data, error } = await supabase.from('bom_template_joints').insert(jointRowsForInsert(jointRows, templateId)).select('id').order('sort_order')
-        if (error) throw error
-        insertedJoints = data || []
-        if (insertedJoints.length !== jointRows.length) throw new Error('บันทึกจุดชนไม่ครบ')
-      }
-      if (rows.length) {
-        const { error } = await supabase.from('bom_template_components').insert(
-          componentRowsForInsert(rows.map(r => showThickness ? r : { ...r, thickness_role: null }), templateId, insertedJoints)
-        )
-        if (error) throw error
+      try {
+        if (oldComp.length) {
+          const { error } = await supabase.from('bom_template_components').delete().in('id', oldComp)
+          if (error) throw error
+        }
+        if (oldJoints.length) {
+          const { error } = await supabase.from('bom_template_joints').delete().in('id', oldJoints)
+          if (error) throw error
+        }
+      } catch (e) {
+        throw new Error(e.message + ' (บันทึกชุดใหม่แล้ว แต่ลบชุดเก่าไม่สำเร็จ อาจมีข้อมูลซ้ำ กรุณารีโหลดหน้านี้และตรวจสอบ)')
       }
 
       {
