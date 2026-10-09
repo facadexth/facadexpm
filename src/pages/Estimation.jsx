@@ -24,6 +24,7 @@ import AvailabilityBanner from './estimation/AvailabilityBanner.jsx'
 import StalePriceBanner from './estimation/StalePriceBanner.jsx'
 import ItemsTable from './estimation/ItemsTable.jsx'
 import PriceStructureTab from './estimation/PriceStructureTab.jsx'
+import CompareTab, { CompareTabButton } from './estimation/CompareTab.jsx'
 import ItemModal from './estimation/ItemModal.jsx'
 import QuickQuote from './estimation/QuickQuote.jsx'
 import ProjectBomView from './estimation/ProjectBomView.jsx'
@@ -51,7 +52,7 @@ export default function Estimation(props) {
   const [newProjectName, setNewProjectName] = useState('')
   const [itemModal, setItemModal] = useState(null)   // null | { id: string | null }
   const [quickOpen, setQuickOpen] = useState(false)
-  const [tab, setTab] = useState('items')   // 'items' | 'bom' | 'price'
+  const [tab, setTab] = useState('items')   // 'items' | 'bom' | 'price' | 'compare'
 
   const project = (projects || []).find(p => p.id === selectedProjectId) || null
   const projectOpenings = useMemo(() => (openings || []).filter(o => o.project_id === selectedProjectId), [openings, selectedProjectId])
@@ -125,6 +126,7 @@ export default function Estimation(props) {
               <button type="button" className={`btn btn-sm ${tab === 'items' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('items')}>รายการ</button>
               <button type="button" className={`btn btn-sm ${tab === 'bom' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('bom')}>BOM ทั้งโครงการ</button>
               <button type="button" className={`btn btn-sm ${tab === 'price' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('price')}>โครงสร้างราคา</button>
+              <CompareTabButton key={project.id} project={project} canEdit={canEdit} active={tab === 'compare'} onClick={() => setTab('compare')} />
               {tab === 'items' && canEdit && <button className="btn btn-primary btn-sm" onClick={() => setItemModal({ id: null })}>+ เพิ่มรายการ</button>}
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setQuickOpen(true)}>ลองคิดราคา</button>
             </div>
@@ -136,6 +138,7 @@ export default function Estimation(props) {
               <PriceStructureTab key={project.id} project={project} items={projectOpenings} costs={costs} index={index} infillTypes={infillTypes}
                 templatesById={base.templatesById} packageItems={packageItems} canEdit={canEdit} onProjectSaved={refetchProjects} onItemsSaved={refetchOpenings} />
             )}
+            {tab === 'compare' && <CompareTab key={project.id} project={project} canEdit={canEdit} />}
             {tab === 'items' && <ItemsTable items={projectOpenings} costs={costs} previewSigs={previewSigs} project={project} index={index} templatesById={base.templatesById} canEdit={canEdit}
               onOpen={id => setItemModal({ id })} onQuantitySaved={refetchOpenings} />}
 
