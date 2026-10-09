@@ -35,7 +35,7 @@ export function compareProviders(ctx) {
       aluminium += lines.reduce((s, l) => s + l.cost, 0) * qty
       unresolvedLines += lines.filter(l => !l.resolved).length * qty
       // also count unresolved dimensions and joints
-      unresolvedLines += (r.unresolved || []).filter(u => u.reason === 'no_dimension' || u.source === 'joint').length * qty
+      unresolvedLines += (r.unresolved || []).filter(u => u.reason === 'no_dimension' || u.reason === 'unknown_addon_template' || u.reason === 'unknown_infill' || u.source === 'joint').length * qty
       itemsPriced += 1
     }
     return { ...cand, aluminium, unresolvedLines, itemsPriced, complete: unresolvedLines === 0 && itemsPriced > 0 }

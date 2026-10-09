@@ -112,3 +112,20 @@ describe('applyJoints: main bar thickness and mitre', () => {
     expect(r.components[0].cut_style).toBe('notch')
   })
 })
+
+describe('applyJoints: mitre only flips main bars without their own joint', () => {
+  const comp = (o = {}) => ({ role_name: 'r', profile_family: 'x', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 1, ...o })
+  it('a main-family bar linked to a square joint stays square; one with no joint flips', () => {
+    const joints = [joint({ id: 'jm', cut_style: 'miter45' }), joint({ id: 'js', cut_style: 'square' })]
+    const r = applyJoints({ components: [comp({ profile_family: 'กล่องเรียบ', joint_id: 'js' }), comp({ profile_family: 'กล่องเรียบ' })], joints, index, seriesId: 's1', thicknessMm: 1.5 })
+    expect(r.components.map(c => c.cut_style)).toEqual(['square', 'miter45'])
+  })
+  it('a component whose own joint cannot be resolved stays square', () => {
+    const r = applyJoints({ components: [comp({ profile_family: 'กล่องเรียบ', joint_id: 'gone' })], joints: [joint({ cut_style: 'miter45' })], index, seriesId: 's1', thicknessMm: 1.5 })
+    expect(r.components[0].cut_style).toBe('square')
+  })
+  it('a mitre joint with no main_family flips nothing', () => {
+    const r = applyJoints({ components: [comp({ profile_family: undefined }), comp({ profile_family: '' })], joints: [joint({ cut_style: 'miter45', main_family: '' })], index, seriesId: 's1', thicknessMm: 1.5 })
+    expect(r.components.map(c => c.cut_style)).toEqual(['square', 'square'])
+  })
+})

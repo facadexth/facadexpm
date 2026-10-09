@@ -38,7 +38,7 @@ export function applyJoints({ components, joints, index, seriesId, thicknessMm }
   for (const c of components || []) {
     if (c.profile_family && !(c.profile_family in familyThickness)) familyThickness[c.profile_family] = c.thickness_mm != null ? c.thickness_mm : thicknessMm
   }
-  const miterMains = new Set((joints || []).filter(j => j.cut_style === 'miter45').map(j => j.main_family))
+  const miterMains = new Set((joints || []).filter(j => j.cut_style === 'miter45' && j.main_family).map(j => j.main_family))
   const out = (components || []).map(c => {
     if (!c.joint_id) return { ...c, cut_style: c.cut_style || 'square' }
     const joint = jointsById[c.joint_id]
@@ -56,8 +56,8 @@ export function applyJoints({ components, joints, index, seriesId, thicknessMm }
       cut_style: joint.cut_style || 'square', notch_width_mm: joint.notch_width_mm ?? null, notch_depth_mm: joint.notch_depth_mm ?? null,
     }
   })
-  // a mitre joint cuts the main bars at 45 degrees too (their lengths are unchanged); an own non-square cut is kept
-  const withMitreMains = out.map(c => (miterMains.has(c.profile_family) && (c.cut_style || 'square') === 'square' ? { ...c, cut_style: 'miter45' } : c))
+  // a mitre joint cuts the main bars at 45 degrees too (their lengths are unchanged); a bar with its own joint keeps what that joint gave it
+  const withMitreMains = out.map(c => (!c.joint_id && miterMains.has(c.profile_family) && (c.cut_style || 'square') === 'square' ? { ...c, cut_style: 'miter45' } : c))
   return { components: withMitreMains, issues }
 }
 

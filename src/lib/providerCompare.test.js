@@ -101,3 +101,15 @@ describe('Follow-up A: an item whose template is missing', () => {
     expect(diffAgainst({ complete: true, aluminium: 1000 }, r[0])).toBeNull()
   })
 })
+
+describe('fix round 1: left-out add-on or infill makes the row incomplete', () => {
+  const cand = [{ providerId: 'A', seriesId: 'sA', finishId: 'fA' }]
+  it('an add-on template that is not found', () => {
+    const r = compareProviders({ ...base, items: [{ ...item, addon_template_id: 'gone', addon_width_m: 1, addon_height_m: 1 }], candidates: cand })
+    expect(r[0].complete).toBe(false)
+  })
+  it('an infill type that is not found', () => {
+    const r = compareProviders({ ...base, items: [{ ...item, infill_type_id: 'nope' }], candidates: cand })
+    expect(r[0].complete).toBe(false)
+  })
+})
