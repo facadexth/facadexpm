@@ -7,7 +7,8 @@ import { localDateString } from '../../lib/localDate.js'
 import { costOpening } from '../../lib/openingCost.js'
 import { typeAvailability } from '../../lib/estimationInherit.js'
 import { missingHardwareTypeIds } from '../../lib/projectHardware.js'
-import { reasonText } from '../../lib/reasonText.js'
+import { unresolvedText } from '../../lib/reasonText.js'
+import { previewFrames, itemPreviewSignature } from '../../lib/itemPreviewSignature.js'
 
 const str = v => (v === null || v === undefined ? '' : String(v))
 const numOrNull = v => {
@@ -155,14 +156,33 @@ export function availabilityIssues({ items, project, templatesById, index, serie
 }
 
 export function unresolvedSummary(unresolved) {
-  return (unresolved || []).map(u => `${u.name || '?'}: ${reasonText(u.reason)}`).join('\n')
+  return (unresolved || []).map(u => `${u.name || '?'}: ${unresolvedText(u)}`).join('\n')
 }
 
-// 'unresolved' | 'ok' ('old_preview' stays a known status in ItemsTable).
-// Task 15 re-enables the old-drawing check with the shared signature helper.
-export function itemStatus(item, cost) {
+// 'unresolved' | 'old_preview' | 'ok'. Old preview = a saved drawing whose signature differs from currentSig, the
+// signature the item has now (currentPreviewSigs, the same helper the item form uses when it saves the snapshot).
+export function itemStatus(item, cost, currentSig) {
   if (!cost || (cost.unresolved || []).length) return 'unresolved'
+  const it = item || {}
+  if ((it.preview_svg_out || it.preview_svg_in) && it.preview_sig && currentSig && currentSig !== it.preview_sig) return 'old_preview'
   return 'ok'
+}
+
+// { [itemId]: signature now } for items that have a saved snapshot. costs = costItems(...) (its `resolved` gives the
+// series and thickness the item inherits); base = the costOpening context (templatesById, index, components, joints).
+export function currentPreviewSigs({ items, costs, base }) {
+  const out = {}
+  const byId = (base && base.templatesById) || {}
+  for (const item of items || []) {
+    const cost = (costs || {})[item.id]
+    if (!item.preview_sig || !cost) continue
+    const template = byId[item.template_id]
+    if (!template) continue
+    const addonTemplate = item.addon_template_id ? byId[item.addon_template_id] || null : null
+    const resolved = previewFrames({ template, addonTemplate, ctx: base, seriesId: cost.resolved.series_id, thicknessMm: cost.resolved.thickness_mm })
+    out[item.id] = itemPreviewSignature(item, template, addonTemplate, resolved)
+  }
+  return out
 }
 
 // { [itemId]: costOpening result } for one price date. base = the catalog/lookup part of the costOpening context.

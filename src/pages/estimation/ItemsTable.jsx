@@ -30,7 +30,7 @@ function QuantityCell({ item, canEdit, onSaved }) {
   )
 }
 
-export default function ItemsTable({ items, costs, project, index, templatesById, canEdit, onOpen, onQuantitySaved }) {
+export default function ItemsTable({ items, costs, previewSigs, project, index, templatesById, canEdit, onOpen, onQuantitySaved }) {
   return (
     <div className="card">
       <div className="table-wrap">
@@ -39,7 +39,7 @@ export default function ItemsTable({ items, costs, project, index, templatesById
           <tbody>
             {items.map(o => {
               const cost = costs[o.id]
-              const status = itemStatus(o, cost)
+              const status = itemStatus(o, cost, (previewSigs || {})[o.id])
               const priced = cost && status !== 'unresolved' && Number.isFinite(cost.total)
               const tpl = templatesById[o.template_id]
               const seriesId = o.series_id || project.default_series_id
@@ -52,7 +52,7 @@ export default function ItemsTable({ items, costs, project, index, templatesById
                   <td>{o.item_name || '—'}</td>
                   <td>{tpl && tpl.type_id ? typeLabel(index.types, tpl.type_id) : (tpl ? tpl.name : '—')}</td>
                   <td>{series ? seriesLabelShort(series, index.providers[series.provider_id]) : (o.series || '—')}</td>
-                  <td><span title={status === 'unresolved' ? reasons : undefined} style={{ color: STATUS[status][1], fontWeight: 600 }}>{STATUS[status][0]}</span></td>
+                  <td><span title={status === 'unresolved' ? reasons : status === 'old_preview' ? 'ภาพที่บันทึกไว้เก่ากว่าข้อมูล เปิดรายการแล้วบันทึกภาพใหม่' : undefined} style={{ color: STATUS[status][1], fontWeight: 600 }}>{STATUS[status][0]}</span></td>
                   <td className="font-mono">{o.width_m} x {o.height_m} m</td>
                   <td><QuantityCell key={`${o.id}-${o.quantity}`} item={o} canEdit={canEdit} onSaved={onQuantitySaved} /></td>
                   <td className="font-mono" title={priced ? undefined : reasons}>{priced ? fmt(cost.total) : '—'}</td>

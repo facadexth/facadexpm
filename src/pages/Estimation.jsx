@@ -27,7 +27,7 @@ import ProjectDefaultsPanel from './estimation/ProjectDefaultsPanel.jsx'
 import AvailabilityBanner from './estimation/AvailabilityBanner.jsx'
 import StalePriceBanner from './estimation/StalePriceBanner.jsx'
 import ItemsTable from './estimation/ItemsTable.jsx'
-import { newProjectRow, packageRowsFor, hardwareBanners, availabilityIssues, costItems, bomsForStale } from './estimation/projectDefaults.js'
+import { newProjectRow, packageRowsFor, hardwareBanners, availabilityIssues, costItems, bomsForStale, currentPreviewSigs } from './estimation/projectDefaults.js'
 
 function evaluateConstraints(opening, constraints) {
   const violations = []
@@ -384,6 +384,7 @@ export default function Estimation(props) {
   const costCtx = useMemo(() => (base ? { ...base, packageItems } : null), [base, packageItems])
   const today = localDateString(new Date())
   const costs = useMemo(() => (costCtx && project ? costItems({ items: projectOpenings, project, base: costCtx, asOf: project.price_as_of }) : {}), [costCtx, project, projectOpenings])
+  const previewSigs = useMemo(() => (costCtx ? currentPreviewSigs({ items: projectOpenings, costs, base: costCtx }) : {}), [costCtx, projectOpenings, costs])
   const stale = useMemo(() => {
     if (!costCtx || !project) return []
     const now = costItems({ items: projectOpenings, project, base: costCtx, asOf: today })
@@ -433,7 +434,7 @@ export default function Estimation(props) {
             <div style={{ display: 'flex', gap: 8 }}>
               {canEdit && <button className="btn btn-primary btn-sm" onClick={() => { setCreatingOpening(true); setEditingOpeningId(null) }}>+ เพิ่มช่องเปิด</button>}
             </div>
-            <ItemsTable items={projectOpenings} costs={costs} project={project} index={index} templatesById={base.templatesById} canEdit={canEdit}
+            <ItemsTable items={projectOpenings} costs={costs} previewSigs={previewSigs} project={project} index={index} templatesById={base.templatesById} canEdit={canEdit}
               onOpen={id => { setEditingOpeningId(id); setCreatingOpening(false) }} onQuantitySaved={refetchOpenings} />
 
             {creatingOpening && (

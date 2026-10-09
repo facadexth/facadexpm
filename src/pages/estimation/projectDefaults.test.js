@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { buildCatalogIndex } from '../../lib/aluCatalogPricing.js'
 import {
   draftFromProject, reconcileDraft, buildPatch, validateDraft, newProjectRow, parseQuantity, seriesChoices, finishChoices,
-  sashDisplayValue, packageRowsFor, hardwareBanners, availabilityIssues, itemStatus, bomsForStale, priceRowLabel, unresolvedSummary,
+  sashDisplayValue, packageRowsFor, hardwareBanners, availabilityIssues, itemStatus, bomsForStale, priceRowLabel, unresolvedSummary, currentPreviewSigs,
 } from './projectDefaults.js'
+import { itemPreviewSignature } from '../../lib/itemPreviewSignature.js'
 
 const index = buildCatalogIndex({
   providers: [{ id: 'A', name: 'โรงรีด A' }, { id: 'B', name: 'โรงรีด B' }],
@@ -115,6 +116,22 @@ describe('status + stale helpers', () => {
     expect(itemStatus({}, { unresolved: [{ name: 'x', reason: 'no_series' }] })).toBe('unresolved')
     expect(itemStatus({}, { unresolved: [] })).toBe('ok')
     expect(unresolvedSummary([{ name: 'ขนาด', reason: 'no_dimension' }])).toContain('ขนาด')
+    expect(unresolvedSummary([{ name: 'เสา', reason: 'no_dimension', source: 'joint' }])).toBe('เสา: ไม่มีมิติของหน้าตัดเส้นหลัก')
+    expect(unresolvedSummary([{ name: 'ขนาดช่องเปิด', reason: 'no_dimension', source: 'main' }])).toBe('ขนาดช่องเปิด: ยังไม่ได้กรอกขนาด')
+  })
+  it('old preview: a saved drawing whose signature differs from the current one (shared helper)', () => {
+    const tpl = { id: 'tH', main_axis: 'horizontal', preview_kind: 'slide', grid_row_weights: [1] }
+    const item = { id: 'o1', template_id: 'tH', width_m: '1.8', height_m: 1.2, panel_count: 2, preview_svg_out: '<svg/>' }
+    const cost = { unresolved: [], resolved: { series_id: null, thickness_mm: null } }
+    const base = { templatesById: { tH: tpl }, index, componentsByTemplate: {}, jointsByTemplate: {} }
+    const saved = itemPreviewSignature({ ...item, width_m: 1.8 }, tpl, null, { frame_mm: null })
+    const sigs = currentPreviewSigs({ items: [{ ...item, preview_sig: saved }, { id: 'o2', template_id: 'tH' }], costs: { o1: cost, o2: cost }, base })
+    expect(Object.keys(sigs)).toEqual(['o1'])
+    expect(itemStatus({ ...item, preview_sig: saved }, cost, sigs.o1)).toBe('ok')
+    const moved = currentPreviewSigs({ items: [{ ...item, width_m: 2, preview_sig: saved }], costs: { o1: cost }, base })
+    expect(itemStatus({ ...item, preview_sig: saved }, cost, moved.o1)).toBe('old_preview')
+    expect(itemStatus({ ...item, preview_svg_out: null, preview_sig: saved }, cost, moved.o1)).toBe('ok')
+    expect(itemStatus({ ...item, preview_sig: saved }, { unresolved: [{ reason: 'no_series' }] }, moved.o1)).toBe('unresolved')
   })
   it('add-on lines are folded into the BOM handed to listPriceChanges', () => {
     const m = bomsForStale({ a: { bom: { profileLines: [1], gridLines: [], hardwareLines: [], hardwareSetLines: [] }, addonBom: { profileLines: [2], gridLines: [], hardwareLines: [], hardwareSetLines: [] } }, b: null })
