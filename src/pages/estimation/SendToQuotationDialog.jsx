@@ -193,9 +193,10 @@ export default function SendToQuotationDialog({ project, items, result, descript
                     <label className="label">รูปแบบการแนบ</label>
                     <select className="input" value={attachMode} onChange={e => setAttachMode(e.target.value)}>
                       <option value="pages">หน้าแยกท้ายเอกสาร (ภาพใหญ่ รายการละภาพ)</option>
-                      <option value="thumb">ภาพเล็กในบรรทัดรายการ</option>
-                      <option value="both">ทั้งสองแบบ</option>
+                      <option value="thumb" disabled>ภาพเล็กในบรรทัดรายการ (เร็วๆ นี้)</option>
+                      <option value="both" disabled>ทั้งสองแบบ (เร็วๆ นี้)</option>
                     </select>
+                    <div className="attach-mode-soon" style={{ fontSize: 12, color: 'var(--text-muted, #6a6f85)', marginTop: 4 }}>ภาพเล็กในบรรทัดรายการ: เร็วๆ นี้ ตอนนี้แนบได้เฉพาะหน้าแยกท้ายเอกสาร</div>
                   </div>
                   <div>
                     <label className="label">มุมมอง</label>
