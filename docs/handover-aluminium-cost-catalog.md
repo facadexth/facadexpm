@@ -1,6 +1,6 @@
 # Aluminium cost catalog — Phase 2b handover
 
-Branch `feat/alu-cost-catalog` (worktree `.claude/worktrees/alu-cost-catalog`). **Not merged, not pushed.** Phase 3 (cost settings, price-structure table, Quotation export, attaching the saved previews to a quotation) is planned separately after you have tried Phase 2b.
+Branch `feat/alu-cost-catalog` (worktree `.claude/worktrees/alu-cost-catalog`). **Not merged, not pushed.** Phase 3 is described in the second half of this file.
 
 ## What was built
 
@@ -80,3 +80,55 @@ Owner-given answers are marked **(owner)**; the rest are mine, each with what it
 - Review minors deferred on purpose: inactive-ancestor types (the item cascade hides the subtree, other pickers list the leaf); the project defaults panel counts as edited when opened (reconcile fills blanks); BOM template category is still door/window only; duplicated tiny helpers (`num`, `isSet`); `BomTemplates.jsx` is 594 lines; the typeless-template banner also counts items that set their own hardware; a failed new-template save leaves a delete button that does nothing until refetch.
 - Contract-guard test: `! bash .superpowers/sdd/2026-10-09-aluminium-cost-catalog-phase-2b-screens/run-contract-guard-tests.sh` (needs migrations up to 2026-10-11-01 applied; run it before the deploy-time contract step).
 - Drawing / CAD (DXF/DWG) export is a later extension, not part of this arc.
+
+---
+
+# Phase 3 handover — price structure, quotation export, attachments, compare
+
+Spec: `docs/superpowers/specs/2026-10-09-aluminium-price-structure-and-quotation-export-design.md`. Plan: `docs/superpowers/plans/2026-10-09-aluminium-cost-catalog-phase-3-price-structure.md`. **Not merged, not pushed.** Task 9 (pictures in the catalogue screens) is **not built**: it waits for an owner-approved mockup.
+
+## What was built
+
+- **Price structure tab** ("โครงสร้างราคา") on the project page: waste %, profit % (the existing `profit_pct`, per-item override), PM %, project transport total, rounding step; V / W / X / Y / Z / PM / per-set / rounded price / per-m²; hide-empty cost columns; SUMPRODUCT row; two pies; aluminium weight (net and with waste); glass code hover. The formulas were checked against **all 21 rows** of the owner's workbook (`price_structure.xlsx`, sheet ELSY): V, X, Y, Z, PM, per-set, rounded price, per-m² all match.
+- **Four per-set item costs** in the item form: Fire Barrier, Bracket, bend aluminium, bend glass (baht per set).
+- **Send / update to quotation** (button needs `estimation` + `quotations` modules, ADMIN and edit rights on both pages): creates a normal draft quotation (one `item` + one `item_description` row per item, same defaults as a hand-made quotation), optional split material/labour (default 80/20, adjustable). Re-sending follows the owner's revision rule: draft → overwrite in place; sent/accepted → history snapshot in `quotation_revisions`, status back to draft, revision +1; each push is numbered R{rev}-{n} (R1-1, R1-2, R2-1 …). Rows the user added in the quotation are never touched; rows referenced by invoices are never deleted. Retry after a failed push does not duplicate quotations or lines.
+- **Attachment pages** ("แบบแนบ") appended to the quotation print/PDF: 4 items per A4 page (2×2), outside + inside views, spec rows, hardware-set schedule (paged), colour legend, page numbers continue, footer `QT-xxxx-R2-1 · หน้า n / N`. Stored SVG previews are shown through `<img src="data:image/svg+xml…">` after a reject-validator (never injected as markup).
+- **Compare after signing** ("เทียบราคาจริง" tab): pulls the agreed per-line prices and bill discount from the quotation, compares per item with the offer using the cost base of the last *sent* snapshot, shows real profit % vs the % that was set, stores an `agreed` snapshot. Opening the tab only reads.
+
+## SQL — the owner runs these (agents never ran any)
+
+1. Phase 2b first (`2026-10-12-02`, `-03`) as above.
+2. `2026-10-14-01-price-structure.sql` — test first: `! bash .superpowers/sdd/2026-10-09-aluminium-cost-catalog-phase-3-price-structure/run-price-structure-tests.sh`, then apply.
+3. `2026-10-14-02-estimation-images.sql` (adds `image_path` columns + the private `estimation-images` bucket; used by the later pictures task) — test first: `! bash .superpowers/sdd/2026-10-09-aluminium-cost-catalog-phase-3-price-structure/run-estimation-images-tests.sh`, then apply.
+
+**Deploy order: apply 14-01 BEFORE deploying the code.** Item saves and the estimation settings save now send the new columns; without the migration they fail with an unknown-column error. (14-02 can follow; without it the attachment pages simply show placeholders.)
+
+## Files touched outside the estimation area
+
+`src/pages/Quotations.jsx` — additive only (+36 / −6, the removed lines are signature/call-site lines): `QuotationHeader` exported with an optional `subtitle`; `QuotationPaper` optional `extraPages` / `extraPageCount`; the document modal calls `useQuotationAttachments`. A characterization snapshot of the original output was committed first and is unchanged; for a tenant without `estimation` the hook makes zero queries (tested). `Estimation.jsx` gained two tabs. No other standard module changed.
+
+## Owner click-through list (nothing has been clicked with real data yet)
+
+1. Apply the migrations above (tests first). Open a project: set waste / profit / PM / transport / step; add items with the four extra costs.
+2. Price structure tab: compare the numbers with your ELSY workbook.
+3. Press "ส่งไปใบเสนอราคา": pick a customer; check the draft quotation (lines, prices, notes, bank) in the Quotations page.
+4. Open the quotation print / PDF: check attachment pages (A4 heights, 4 per page, colour swatches, hardware schedule), the last page has no blank page after it, footer label.
+5. Change a price, press update → R1-2; mark the quotation sent, then update again → R2-1, quotation back to draft with revision 2.
+6. Tick split material/labour and re-check totals. Mark the quotation accepted, edit a price in the Quotations page, open "เทียบราคาจริง" and pull the agreed prices.
+
+## Decisions waiting for the owner
+
+- Attachment pages are visible only to admin/owner (row security on the link/line tables). Other roles that print a linked quotation get no attachments and no warning. Open read access to the quotation roles, or show a warning?
+- If the print modal is opened before attachments finish loading and PDF is pressed immediately, the PDF has no attachments.
+- Pictures in the catalogues (Task 9): needs a mockup of the upload field per catalogue screen.
+- Transport total in the ELSY sheet is calculated from trips × km × rate + film per sq ft + cleaning per sq m; the app has one number. Add a small sub-calculator?
+- The ELSY sheet applies a supplier discount per cost category (e.g. glass −10%) before V; the app uses catalogue prices as they are.
+- Compare tab shows per item only (no per-category comparison).
+
+## Rulings made in Phase 3 (owner may overturn)
+
+P3-1 reuse the existing `profit_pct` (no `markup_pct`); P3-2 the template's own waste is excluded from V and the project's waste % applies to aluminium; P3-3 `image_path` on `alu_profiles`, `infill_types`, `alu_parts`, `alu_finishes` (+ `color_hex`), `alu_profiles.image_url` ignored; P3-4 sub-number stored on `estimation_price_snapshots`; P3-5 split rounding goes to labour; plus: Task 9 gated on mockup; migration before deploy; user-row sort order may be rewritten (order only); validity default 30 days (spec §6); notes from `tenants.default_notes`; thumbnails (`thumb` mode) deferred and disabled in the dialog; hook takes `hasModuleAccess` as a parameter (`useTenant` is not a shared context).
+
+## Deferred minors
+
+link-insert failure after the quotation insert can orphan one draft (tiny window); step-6 failure then retry adds a second sent snapshot; send gate untested in a browser; attachment: moved-last-set vs notes budget, duplicate part keys, no hardware page when no set is used, `-webkit-line-clamp` unchecked in PDF, part quantities per set not per type; source-guard test bypassable (`supabase['from']`); sumproductRow ignores its `keys` argument; tests do not pin the profit untick write.
