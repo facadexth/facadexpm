@@ -45,6 +45,8 @@ Owner-given answers are marked **(owner)**; the rest are mine, each with what it
 15. **Stock length order:** per-profile project override > project `stock_length_m` > tenant default (6.4 m).
 16. **Quantity (sets) is not in the item form** (owner); it is edited in the items table of the project page.
 17. **`price_as_of`** is set from the user's LOCAL date at project creation (`localDateString(new Date())`); the DB default (`current_date`, UTC) is only a fallback.
+18. **(owner, 2026-10-09) Three-level types.** `door_window_types.parent_id`, up to three levels: กลุ่มหลัก (ประตู / หน้าต่าง / ผนังกระจก; category gains `curtain_wall`) → แบบ (บานเลื่อน) → แบบย่อย (รางล่าง / รางบน). Only a type with no active children can be chosen on templates, layout templates and items (`selectableTypes`). A series link or part link on a type applies to all its descendants; a link on a deeper type applies to it alone; the nearest linked ancestor's mixed-thickness flag wins. *Wrong if:* the owner wants a child to remove a parent's parts (no "exclude" rule yet) or wants to quote a non-leaf directly.
+19. **Types tab shows a tree** (indented, up to three levels); labels everywhere read "ประตู › บานเลื่อน › รางล่าง" (`typeLabel`). A child takes its category from its parent. A legacy template pointing at a type that now has children keeps pricing but shows a warning in the template editor. Labour rate falls back to the nearest ancestor's.
 
 ## Review Focus
 
@@ -56,8 +58,8 @@ Owner-given answers are marked **(owner)**; the rest are mine, each with what it
 
 ## File Structure
 
-New pure libs (`src/lib/`, each with a `.test.js` beside it): `estimationCatalogViews`, `localDate`, `assembly`, `estimationSettings`, `openingExtras`, `cutOptimizer`, `projectBom`, `openingCost`, `providerCompare`, `layoutTemplates`, `descriptionFormat`, `openingPayload`, `templateSave`, `profileSketch`. Changed libs: `aluCatalogPricing` (3 index keys), `bomEngine` (role thickness + cut style), `estimationInherit` (+ its test: sash thickness inherits), `framePreview` (rewritten, backward compatible).
-New hook file: `src/hooks/useEstimation2b.js`. New/changed screens: `src/pages/aluCatalog/{ProfilesTab,HierarchyTab,SettingsTab}.jsx`, `src/pages/BomTemplates.jsx` (+ `src/pages/bomTemplates/JointsTab.jsx`), `src/pages/Estimation.jsx` (split into `src/pages/estimation/*`). SQL: `supabase/migrations/2026-10-12-01-estimation-2b-expand.sql`, `supabase/tests/estimation_2b_expand_test.sql`, and (Task 18) `supabase/migrations/2026-10-13-01-estimation-contract.sql`.
+New pure libs (`src/lib/`, each with a `.test.js` beside it): `estimationCatalogViews`, `localDate`, `assembly`, `estimationSettings`, `openingExtras`, `cutOptimizer`, `projectBom`, `openingCost`, `providerCompare`, `layoutTemplates`, `descriptionFormat`, `openingPayload`, `templateSave`, `profileSketch`, `typeTree`. Changed libs: `aluCatalogPricing` (3 index keys), `bomEngine` (role thickness + cut style), `estimationInherit` (+ its test: sash thickness inherits), `framePreview` (rewritten, backward compatible).
+New hook file: `src/hooks/useEstimation2b.js`. New/changed screens: `src/pages/aluCatalog/{ProfilesTab,HierarchyTab,SettingsTab}.jsx`, `src/pages/BomTemplates.jsx` (+ `src/pages/bomTemplates/JointsTab.jsx`), `src/pages/Estimation.jsx` (split into `src/pages/estimation/*`). SQL: `supabase/migrations/2026-10-12-01-estimation-2b-expand.sql`, `supabase/migrations/2026-10-12-02-estimation-type-parent.sql` (Task 11A), `supabase/tests/estimation_2b_expand_test.sql`, and (Task 18) `supabase/migrations/2026-10-13-01-estimation-contract.sql`.
 
 ## Follow-up A (already on the branch)
 
@@ -65,7 +67,7 @@ After Tasks 1–11 an interim whole-range review (opus) found one Critical and s
 
 ## Task order and gates
 
-Tasks 1–10 are SQL + pure code (no UI) and can be reviewed without a browser. Task 11 is data hooks. Tasks 12–17 are screens (verified by `npm run build` plus the owner's click-through list at the end; agents cannot load data, so they must not claim a screen "works" beyond building). Task 18 is the deploy-time contract migration (written, not applied). Task 19 is the final verification and handover. Do not skip the task review for the pure-code tasks: transcription errors are the risk.
+Tasks 1–10 are SQL + pure code (no UI) and can be reviewed without a browser. Task 11 is data hooks. Task 11A (parent/child types, added by owner request) is SQL + pure code and must be done before Tasks 12–15. Tasks 12–17 are screens (verified by `npm run build` plus the owner's click-through list at the end; agents cannot load data, so they must not claim a screen "works" beyond building). Task 18 is the deploy-time contract migration (written, not applied). Task 19 is the final verification and handover. Do not skip the task review for the pure-code tasks: transcription errors are the risk.
 
 ---
 
@@ -3347,6 +3349,304 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 **How to build these.** The mockup (v20) is the visual spec: same fields, labels (Thai strings are in the mockup HTML), order and states. Follow the surrounding code's style (`className="card"`, `label`, `input`, `btn`, `Modal`, `SearchableSelect`, `useDraftForm`, `canEditPage(role, 'estimation')`); read the neighbouring component first and match it. All numbers come from the pure libs above; screens must not recompute prices, deductions, bars or fixing points themselves. Gate every new entry point with the `estimation` module exactly as `src/pages/AluCatalog.jsx` and its menu entry in `src/App.jsx` already do. After each screen task run `npm run build` and `npm test`; state in the report which behaviours were NOT exercised (no database is available to agents). Do not claim a screen "works".
 
+### Task 11A: Parent / child door-window types, three levels (migration #3, `typeTree` lib, index expansion)
+
+Owner request 2026-10-09: split types into levels, e.g. ประตู → ประตูบานเลื่อน → ประตูบานเลื่อนรางล่าง / รางบน. Owner ruled (Ruling 18): **three levels** (level 1 = กลุ่มหลัก ประตู / หน้าต่าง / ผนังกระจก, level 2 = แบบ เช่น บานเลื่อน, level 3 = แบบย่อย เช่น รางล่าง), and **only a type with no active children can be chosen** on templates, layout templates and items.
+
+**Files:**
+- Create: `supabase/migrations/2026-10-12-02-estimation-type-parent.sql`, `supabase/tests/estimation_type_parent_test.sql`, `src/lib/typeTree.js`, `src/lib/typeTree.test.js`
+- Modify: `src/lib/aluCatalogPricing.js` (`buildCatalogIndex`: expanded series-type links), `src/lib/estimationCatalogViews.js` (`partsForSeries` also matches ancestors' links), `src/lib/estimationInherit.js` (labour default through ancestors), `src/hooks/useEstimation2b.js` (`useEstimationCatalog` exposes `seriesTypes` already expanded; every caller of `typeAvailability` / `availableLayoutTemplates` / `addonTemplatesForSeries` MUST pass that list, never the raw table rows), `src/lib/estimationCatalogViews.test.js`, `src/lib/estimationInherit.test.js`
+- Isolation: `door_window_types` is an estimation-only table (RLS `has_module_access('estimation')`). The column is nullable and additive; the category CHECK is widened (adds `curtain_wall`), never narrowed. No standard-module table is touched.
+
+**Interfaces:**
+- Produces: `buildTypeTree`, `selectableTypes`, `isSelectableType`, `typeLabel`, `typeAndAncestorIds`, `typeLabourDefault`, `expandSeriesTypes` (all from `typeTree.js`); `door_window_types.parent_id`; category value `curtain_wall` (label ผนังกระจก).
+- Consumes: the existing index shape (`index.types` by id).
+
+Behaviour (pure, no I/O):
+1. **Up to three levels.** Same tenant and same `category` all the way down; no self-parent or loop; moving a type under a parent must keep its whole subtree within three levels. Category of a type cannot change while its children have another category (the Types tab sets a child's category from its parent). Enforced by trigger; mirrored in the Types tab (parent select lists only types that are at level 1 or 2 and are not inside the type's own subtree).
+2. **Series offers.** Linking a type to a series (`alu_series_types`) makes the series offer all its descendants; linking a deeper type offers it alone. Done by `expandSeriesTypes` when the index is built, so `seriesForType`, `typesForSeries`, `allowsMixedThickness` (a descendant inherits the flag of its NEAREST linked ancestor unless it has its own link row), `typeAvailability` and layout-template availability work unchanged.
+3. **Part links.** An `alu_series_parts` link on a type counts for all its descendants; a link on a descendant counts only for it; `type_id` NULL still means every type.
+4. **Selectable = leaf.** `selectableTypes` returns active types with no active child. A type with children is never offered in a template, layout template or item type select; a type with no (active) children behaves exactly like a type today. A legacy template whose `type_id` has children still prices but the template editor shows a warning pill "ประเภทนี้มีประเภทย่อย เลือกประเภทย่อย".
+5. **Labour default.** A type with no `default_labour_per_sqm` uses the nearest ancestor's (`typeLabourDefault`; 0 is a real value), used by `estimationInherit`.
+6. **Delete.** `parent_id` is `ON DELETE RESTRICT`: deleting a type that has children fails; the Types tab says "ลบประเภทย่อยก่อน".
+
+- [ ] **Step 1: Write the migration** `supabase/migrations/2026-10-12-02-estimation-type-parent.sql`
+
+```sql
+-- Parent/child door-window types (three levels). Additive; estimation-only table (RLS already module-gated).
+ALTER TABLE door_window_types DROP CONSTRAINT IF EXISTS door_window_types_category_check;
+ALTER TABLE door_window_types
+  ADD CONSTRAINT door_window_types_category_check CHECK (category IN ('door','window','curtain_wall'));
+
+ALTER TABLE door_window_types
+  ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES door_window_types(id) ON DELETE RESTRICT;
+CREATE INDEX IF NOT EXISTS idx_door_window_types_parent_id ON door_window_types(parent_id);
+
+CREATE OR REPLACE FUNCTION door_window_types_check_parent() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE p1 RECORD; p2 RECORD; depth_above INT := 0; height INT := 1;
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF EXISTS (SELECT 1 FROM door_window_types WHERE parent_id = NEW.id AND category <> NEW.category) THEN
+      RAISE EXCEPTION 'cannot change the category: child types have another category';
+    END IF;
+    IF EXISTS (SELECT 1 FROM door_window_types WHERE parent_id = NEW.id) THEN height := 2; END IF;
+    IF EXISTS (SELECT 1 FROM door_window_types c JOIN door_window_types g ON g.parent_id = c.id WHERE c.parent_id = NEW.id) THEN
+      height := 3;
+    END IF;
+  END IF;
+  IF NEW.parent_id IS NULL THEN RETURN NEW; END IF;
+  IF NEW.parent_id = NEW.id THEN RAISE EXCEPTION 'a type cannot be its own parent'; END IF;
+  SELECT id, tenant_id, category, parent_id INTO p1 FROM door_window_types WHERE id = NEW.parent_id;
+  IF NOT FOUND OR p1.tenant_id <> NEW.tenant_id THEN RAISE EXCEPTION 'parent type not found in this tenant'; END IF;
+  IF p1.category <> NEW.category THEN RAISE EXCEPTION 'a child type must have the same category as its parent'; END IF;
+  depth_above := 1;
+  IF p1.parent_id IS NOT NULL THEN
+    IF p1.parent_id = NEW.id THEN RAISE EXCEPTION 'a type cannot be moved under its own child'; END IF;
+    SELECT id, parent_id INTO p2 FROM door_window_types WHERE id = p1.parent_id;
+    depth_above := 2;
+    IF p2.parent_id IS NOT NULL THEN
+      IF p2.parent_id = NEW.id THEN RAISE EXCEPTION 'a type cannot be moved under its own child'; END IF;
+      depth_above := 3;
+    END IF;
+  END IF;
+  IF depth_above + height > 3 THEN RAISE EXCEPTION 'types have at most three levels'; END IF;
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS trg_door_window_types_check_parent ON door_window_types;
+CREATE TRIGGER trg_door_window_types_check_parent
+  BEFORE INSERT OR UPDATE OF parent_id, category, tenant_id ON door_window_types
+  FOR EACH ROW EXECUTE FUNCTION door_window_types_check_parent();
+```
+
+- [ ] **Step 2: Write the SQL test** `supabase/tests/estimation_type_parent_test.sql`. Same fixture header as `estimation_2b_expand_test.sql` (copy its tenant block with the names `__TPAR TEST A/B/C__`, emails `__tpar_a__/_b__/_c__@example.com`, temp table `_tpar_fx`). Header comment: `BEGIN; <catalog migrations if not applied>; 2026-10-12-02; <this file>; ROLLBACK;`. Three DO blocks:
+  - **Test 1 (rules, as tenant A):** category `curtain_wall` is accepted and `'roof'` raises `check_violation`. Insert L1 `T-L1` (door), L2 `T-L2` (parent L1), L3 `T-L3` (parent L2): all succeed. A fourth level (parent = L3) raises; an L3 under a window-category parent raises (category mismatch); `parent_id = id` raises; moving L1 under L3 raises (loop); moving a second L1 `T-X` that has one child under L2 (depth 3 + height 2) raises, but moving a childless `T-Y` under L2 succeeds; changing `T-L1` category while its children are doors raises; deleting L1 while a child exists raises `foreign_key_violation`; deleting leaves upward then L1 succeeds.
+  - **Test 2 (isolation, as tenant A, runs BEFORE any delete block):** a child whose `parent_id` is a type owned by tenant B (insert B's type as B first) raises ("parent type not found"). As tenant C (no `estimation` module) `SELECT count(*) FROM door_window_types` is 0 and an `INSERT` raises (RLS).
+  - **Test 3 (existing rows unchanged):** a type inserted without `parent_id` has `parent_id IS NULL`; categories `door` and `window` still work.
+  Each block ends with `RAISE NOTICE 'Test N (...): TEST PASSED'`. Add `.superpowers/sdd/2026-10-09-aluminium-cost-catalog-phase-2b-screens/run-type-parent-tests.sh` by copying `run-estimation-2b-tests.sh`, replacing the migration/test file names and the persistence check with `select count(*) from information_schema.columns where table_name='door_window_types' and column_name='parent_id'` (applied) and `tenants like '__TPAR TEST%'` (leftover). **Agents never run it against Supabase; the owner runs it with `!`.**
+
+- [ ] **Step 3: Write the failing lib tests** `src/lib/typeTree.test.js`
+
+```js
+import { describe, it, expect } from 'vitest'
+import { buildTypeTree, selectableTypes, isSelectableType, typeLabel, typeAndAncestorIds, typeLabourDefault, expandSeriesTypes } from './typeTree.js'
+
+const T = [
+  { id: 'door', name: 'ประตู', category: 'door', parent_id: null, active: true, default_labour_per_sqm: 300 },
+  { id: 'slide', name: 'บานเลื่อน', category: 'door', parent_id: 'door', active: true, default_labour_per_sqm: null },
+  { id: 'low', name: 'รางล่าง', category: 'door', parent_id: 'slide', active: true, default_labour_per_sqm: null },
+  { id: 'top', name: 'รางบน', category: 'door', parent_id: 'slide', active: true, default_labour_per_sqm: 350 },
+  { id: 'swing', name: 'บานเปิด', category: 'door', parent_id: 'door', active: true },
+  { id: 'win', name: 'หน้าต่าง', category: 'window', parent_id: null, active: true },
+  { id: 'off', name: 'ปิดใช้งาน', category: 'window', parent_id: 'win', active: false },
+]
+const byId = Object.fromEntries(T.map(t => [t.id, t]))
+
+describe('buildTypeTree', () => {
+  it('nests up to three levels, sorted by name; an orphan becomes a root', () => {
+    const tree = buildTypeTree(T)
+    expect(tree.map(n => n.type.id).sort()).toEqual(['door', 'win'])
+    const door = tree.find(n => n.type.id === 'door')
+    expect(door.children.map(c => c.type.id).sort()).toEqual(['slide', 'swing'])
+    expect(door.children.find(c => c.type.id === 'slide').children.map(c => c.type.id).sort()).toEqual(['low', 'top'])
+    expect(buildTypeTree([{ id: 'k', name: 'k', parent_id: 'gone' }]).map(n => n.type.id)).toEqual(['k'])
+  })
+  it('never throws or loops on null, empty or cyclic input', () => {
+    expect(buildTypeTree(null)).toEqual([])
+    expect(buildTypeTree([])).toEqual([])
+    expect(() => buildTypeTree([{ id: 'a', name: 'a', parent_id: 'b' }, { id: 'b', name: 'b', parent_id: 'a' }])).not.toThrow()
+  })
+})
+
+describe('selectableTypes / isSelectableType (Ruling 18: leaves only)', () => {
+  it('a type with active children is not selectable at any level', () => {
+    expect(selectableTypes(T).map(t => t.id).sort()).toEqual(['low', 'swing', 'top', 'win'])   // win: its only child is inactive
+    expect(isSelectableType(T, 'door')).toBe(false)
+    expect(isSelectableType(T, 'slide')).toBe(false)
+    expect(isSelectableType(T, 'low')).toBe(true)
+  })
+  it('inactive types are not selectable; a parent whose children are all inactive becomes selectable again', () => {
+    expect(isSelectableType(T, 'off')).toBe(false)
+    expect(isSelectableType(T, 'win')).toBe(true)
+  })
+  it('unknown or empty ids are not selectable', () => {
+    expect(isSelectableType(T, 'nope')).toBe(false)
+    expect(isSelectableType(T, null)).toBe(false)
+  })
+})
+
+describe('typeLabel / typeAndAncestorIds / typeLabourDefault', () => {
+  it('labels from the top down, joined with " › "', () => {
+    expect(typeLabel(byId, 'low')).toBe('ประตู › บานเลื่อน › รางล่าง')
+    expect(typeLabel(byId, 'slide')).toBe('ประตู › บานเลื่อน')
+    expect(typeLabel(byId, 'door')).toBe('ประตู')
+    expect(typeLabel(byId, 'nope')).toBe('')
+  })
+  it('lists the type then its ancestors, nearest first', () => {
+    expect(typeAndAncestorIds(byId, 'low')).toEqual(['low', 'slide', 'door'])
+    expect(typeAndAncestorIds(byId, 'door')).toEqual(['door'])
+    expect(typeAndAncestorIds(byId, null)).toEqual([])
+    expect(typeAndAncestorIds({}, 'q')).toEqual(['q'])
+    expect(typeAndAncestorIds({ a: { id: 'a', parent_id: 'b' }, b: { id: 'b', parent_id: 'a' } }, 'a')).toEqual(['a', 'b'])
+  })
+  it('the labour rate comes from the nearest type that has one; 0 is a real value', () => {
+    expect(typeLabourDefault(byId, 'low')).toBe(300)
+    expect(typeLabourDefault(byId, 'top')).toBe(350)
+    expect(typeLabourDefault({ ...byId, slide: { ...byId.slide, default_labour_per_sqm: 0 } }, 'low')).toBe(0)
+    expect(typeLabourDefault(byId, 'win')).toBeNull()
+    expect(typeLabourDefault(byId, 'nope')).toBeNull()
+  })
+})
+
+describe('expandSeriesTypes', () => {
+  it('a link on a type also offers every descendant, inheriting the mixed-thickness flag', () => {
+    const out = expandSeriesTypes([{ id: 'l1', series_id: 's1', type_id: 'slide', allow_mixed_thickness: true }], T)
+    expect(out.filter(l => l.series_id === 's1').map(l => l.type_id).sort()).toEqual(['low', 'slide', 'top'])
+    expect(out.find(l => l.type_id === 'top')).toMatchObject({ allow_mixed_thickness: true, inherited_from: 'slide' })
+  })
+  it('a link on the top level reaches the third level', () => {
+    const out = expandSeriesTypes([{ id: 'l1', series_id: 's1', type_id: 'door', allow_mixed_thickness: false }], T)
+    expect(out.map(l => l.type_id).sort()).toEqual(['door', 'low', 'slide', 'swing', 'top'])
+  })
+  it('a deeper type linked alone offers only itself', () => {
+    expect(expandSeriesTypes([{ id: 'l2', series_id: 's2', type_id: 'low', allow_mixed_thickness: false }], T).map(l => l.type_id)).toEqual(['low'])
+  })
+  it('an explicit link wins, and the NEAREST linked ancestor wins over a farther one, without duplicates', () => {
+    const links = [
+      { id: 'a', series_id: 's1', type_id: 'door', allow_mixed_thickness: false },
+      { id: 'b', series_id: 's1', type_id: 'slide', allow_mixed_thickness: true },
+      { id: 'c', series_id: 's1', type_id: 'top', allow_mixed_thickness: false },
+    ]
+    const out = expandSeriesTypes(links, T)
+    expect(out.filter(l => l.type_id === 'low')).toHaveLength(1)
+    expect(out.find(l => l.type_id === 'low').allow_mixed_thickness).toBe(true)
+    expect(out.filter(l => l.type_id === 'top')).toHaveLength(1)
+    expect(out.find(l => l.type_id === 'top').allow_mixed_thickness).toBe(false)
+    expect(out.find(l => l.type_id === 'swing').allow_mixed_thickness).toBe(false)
+  })
+  it('does not mutate its inputs and tolerates null', () => {
+    const links = [{ id: 'l1', series_id: 's1', type_id: 'door', allow_mixed_thickness: true }]
+    const copy = JSON.stringify(links)
+    expandSeriesTypes(links, T)
+    expect(JSON.stringify(links)).toBe(copy)
+    expect(expandSeriesTypes(null, null)).toEqual([])
+  })
+})
+```
+
+- [ ] **Step 4: Run it, see it fail** (`npx vitest run src/lib/typeTree.test.js` → module not found).
+
+- [ ] **Step 5: Write `src/lib/typeTree.js`**
+
+```js
+// src/lib/typeTree.js
+// Parent / child door-window types, up to three levels (กลุ่มหลัก → แบบ → แบบย่อย). Pure.
+// A type that has active children is a grouping only: templates, layout templates and items choose a leaf (Ruling 18).
+
+const MAX_LEVELS = 3
+const byName = (a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), 'th')
+const asRows = types => (Array.isArray(types) ? types : Object.values(types || {})).filter(Boolean)
+
+// { [parentId]: [child rows, sorted by name] }
+function childrenByParent(types) {
+  const out = {}
+  for (const t of asRows(types)) if (t.parent_id) (out[t.parent_id] ||= []).push(t)
+  for (const k of Object.keys(out)) out[k].sort(byName)
+  return out
+}
+
+// [typeId, parentId?, grandparentId?] nearest first; stops at an unknown id or a loop. `typesById` is index.types.
+export function typeAndAncestorIds(typesById, typeId) {
+  const ids = []
+  let cur = typeId
+  while (cur && !ids.includes(cur) && ids.length < MAX_LEVELS) {
+    ids.push(cur)
+    const t = (typesById || {})[cur]
+    cur = t ? t.parent_id : null
+  }
+  return ids
+}
+
+// [{ type, children: [...] }] sorted by name, at most three levels; a type whose parent is missing is shown as a root.
+export function buildTypeTree(types) {
+  const rows = asRows(types)
+  const ids = new Set(rows.map(t => t.id))
+  const kids = childrenByParent(rows)
+  const node = (t, seen, level) => ({
+    type: t,
+    children: level >= MAX_LEVELS ? [] : (kids[t.id] || []).filter(c => !seen.has(c.id)).map(c => node(c, new Set([...seen, c.id]), level + 1)),
+  })
+  return rows.filter(t => !t.parent_id || !ids.has(t.parent_id)).sort(byName).map(t => node(t, new Set([t.id]), 1))
+}
+
+// Active types with no active child.
+export function selectableTypes(types) {
+  const rows = asRows(types)
+  const parents = new Set(rows.filter(t => t.parent_id && t.active !== false).map(t => t.parent_id))
+  return rows.filter(t => t.active !== false && !parents.has(t.id)).sort(byName)
+}
+
+export const isSelectableType = (types, typeId) => !!typeId && selectableTypes(types).some(t => t.id === typeId)
+
+// "ประตู › บานเลื่อน › รางล่าง"; '' for an unknown id.
+export function typeLabel(typesById, typeId) {
+  const chain = typeAndAncestorIds(typesById, typeId).map(id => (typesById || {})[id]).filter(Boolean)
+  return chain.reverse().map(t => t.name).join(' › ')
+}
+
+// Own rate if set (0 counts), else the nearest ancestor's, else null.
+export function typeLabourDefault(typesById, typeId) {
+  for (const id of typeAndAncestorIds(typesById, typeId)) {
+    const t = (typesById || {})[id]
+    const v = t ? t.default_labour_per_sqm : null
+    if (v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v))) return Number(v)
+  }
+  return null
+}
+
+// A series linked to a type also offers every descendant. An explicit link wins; otherwise the NEAREST linked
+// ancestor's flag is inherited. New array, inputs untouched.
+export function expandSeriesTypes(seriesTypes, types) {
+  const rows = asRows(types)
+  const kids = childrenByParent(rows)
+  const level = Object.fromEntries(rows.map(t => [t.id, typeAndAncestorIds(Object.fromEntries(rows.map(r => [r.id, r])), t.id).length]))
+  const out = [...(seriesTypes || [])]
+  const have = new Set(out.map(l => `${l.series_id}|${l.type_id}`))
+  // deepest links first so a nearer ancestor claims its descendants before a farther one
+  const ordered = [...(seriesTypes || [])].sort((a, b) => (level[b.type_id] || 0) - (level[a.type_id] || 0))
+  for (const l of ordered) {
+    const stack = [...(kids[l.type_id] || [])]
+    const seen = new Set([l.type_id])
+    while (stack.length) {
+      const c = stack.pop()
+      if (seen.has(c.id)) continue
+      seen.add(c.id)
+      stack.push(...(kids[c.id] || []))
+      const key = `${l.series_id}|${c.id}`
+      if (have.has(key)) continue
+      have.add(key)
+      out.push({ id: null, series_id: l.series_id, type_id: c.id, allow_mixed_thickness: l.allow_mixed_thickness === true, inherited_from: l.type_id })
+    }
+  }
+  return out
+}
+```
+
+- [ ] **Step 6: Index and views.** In `buildCatalogIndex` replace the `seriesTypesBySeries` line with `groupBy(expandSeriesTypes(rows.seriesTypes, rows.types), 'series_id')` (import from `./typeTree.js`). In `partsForSeries`, compute `const ids = typeId ? typeAndAncestorIds(index.types, typeId) : null` before the loop and use `if (ids && l.type_id && !ids.includes(l.type_id)) continue` inside it. Add tests to `estimationCatalogViews.test.js`: (a) a part linked to a parent type shows for its grandchild; (b) a part linked to one child does not show for its sibling; (c) `seriesForType(index, grandchild)` includes a series linked only to the top-level type; (d) `allowsMixedThickness` is true for a descendant of a type whose link allows it. Make `estimationInherit.resolveItemInputs` use `typeLabourDefault(typesById, template.type_id)` instead of reading `type.default_labour_per_sqm` directly, with one test: grandchild with NULL rate and parent NULL → top-level rate 300.
+
+- [ ] **Step 7: Full run and commit**
+
+```bash
+npx vitest run && npm run build
+git add supabase/migrations/2026-10-12-02-estimation-type-parent.sql supabase/tests/estimation_type_parent_test.sql src/lib src/hooks
+git commit -m "feat(estimation): three-level parent/child door-window types (migration, typeTree lib, index expansion)
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+```
+
+(The owner-run script lives in the git-ignored `.superpowers` folder only.)
+
 ### Task 12: Catalog screens — profile dimensions + die no. + drawing, mixed thickness, settings tab
 
 **Files:**
@@ -3364,6 +3664,7 @@ Mockup screen 8 + the template/type notes. Steps:
 - [ ] **Step 2: Drawing files.** Under the profile form render `<AttachmentsSection table="alu_profile_files" bucket="alu-profile-files" foreignKey="profile_id" entityId={profile.id} tenantId={...} accept=".pdf,.dwg,.dxf,.svg,.png,.jpg,.jpeg" />` (get `tenantId` the way the other pages that use `AttachmentsSection` do). Add the optional `accept` prop to `src/components/AttachmentsSection.jsx` (default = today's `.pdf,.xlsx,.xls,.jpg,.jpeg,.png`, so nothing else changes). Add the hint "1 ไฟล์ = 1 หน้าตัด แยกไฟล์ catalog/DWG ก่อนอัปโหลด". Files are stored and downloaded only; DWG has no preview. Deleting a profile must first delete its stored files (storage objects), because the table rows cascade but the storage objects do not: remove the objects with `supabase.storage.from('alu-profile-files').remove(paths)` before deleting the profile row. The migration (Task 1) already creates the table and bucket.
 - [ ] **Step 3: HierarchyTab — mixed thickness.** Under the series-types links of the selected series, add one checkbox per linked type: "อนุญาตให้วงกบกับบานใช้ความหนาต่างกัน (งานราชการ เช่น วงกบ 2.0 / บาน 1.5)" bound to `alu_series_types.allow_mixed_thickness` (update the existing link row by id; no upsert). Disabled when the user cannot edit.
 - [ ] **Step 4: SettingsTab** (new tab "ค่ามาตรฐาน" in `AluCatalog.jsx`, same gating as the other tabs). One form for `estimation_settings`: stock length (ม.), kerf ตัดฉาก 90° (มม.), kerf ตัด 45° (มม.), min keep offcut (ม.), sealant (ม./หลอด 300 มล.), fixing pitch (ม.), min fixing points per side, and four part selects (sealant, shim, screw, plug) listing active `accessory` parts or "— ไม่ใช้ —". Show the hints: "kerf เป็นค่าสมมติ ใส่ค่าจริงของเลื่อย" and, beside the 45° field, "ตัด 45° เสียมากกว่า (ประมาณ 10 มม.) ให้วัดจริง และระบุความยาวชิ้น 45° เป็นความยาวด้านนอกเสมอ". Load with `useEstimationSettings`, save with `saveEstimationSettings` (insert-or-update). If the load returned an `error`, disable saving (otherwise `saveEstimationSettings(null, …)` would insert a duplicate row). Empty numeric inputs fall back to the default (never save NaN / blank).
+- [ ] **Step 4A: TypesTab tree (Ruling 18/19).** Replace the flat table in `src/pages/aluCatalog/TypesTab.jsx` with the tree from `buildTypeTree` (indent per level, up to three; show the badge "ใช้เลือกได้" on leaves only). Add fields: `parent_id` (select "อยู่ใต้ประเภท": "— ระดับบนสุด —" plus types that are at level 1 or 2 and are not the edited type or inside its own subtree, labelled with `typeLabel`) and extend the `category` options with `curtain_wall` = "ผนังกระจก". When a parent is chosen the category select is set from the parent and disabled. Add a "+ เพิ่มประเภทย่อย" button on each row of level 1 or 2 (prefills `parent_id`). `default_labour_per_sqm` hint: "เว้นว่าง = ใช้ของประเภทแม่". The delete warning gains "ถ้ามีประเภทย่อย ต้องลบประเภทย่อยก่อน". Surface the trigger's error text in Thai ("ประเภทมีได้สูงสุด 3 ระดับ"). `HierarchyTab`: the series-type picker lists the tree; ticking a type that has children shows "ซีรีส์จะผลิตประเภทย่อยทั้งหมดของประเภทนี้"; `PartsTab`/series-part links use the same tree picker with the same hint. All three use `typeLabel`.
 - [ ] **Step 5: Build and commit**
 
 ```bash
@@ -3387,7 +3688,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 Mockup screen 5 (three tabs). Steps:
 
-- [ ] **Step 1: Template fields.** Add selects `ประเภท (จากแคตตาล็อก)` → `type_id`, `รูปแบบภาพตัวอย่าง` → `preview_kind` (`fixed` "บานติดตาย", `slide` "บานเลื่อน", `swing` "บานสวิง"), and `เส้นหลักของกรอบ (วิ่งเต็ม)` → `main_axis` (`vertical` "เส้นตั้ง ซ้าย/ขวา", `horizontal` "เส้นนอน บน/ล่าง"). Include them in the `payload` that is inserted/updated.
+- [ ] **Step 1: Template fields.** Add selects `ประเภท (จากแคตตาล็อก)` → `type_id` (options = `selectableTypes(types)` labelled with `typeLabel`; if the saved `type_id` is not selectable because it now has children, keep it in the list and show a warning pill "ประเภทนี้มีประเภทย่อย เลือกประเภทย่อย"), `รูปแบบภาพตัวอย่าง` → `preview_kind` (`fixed` "บานติดตาย", `slide` "บานเลื่อน", `swing` "บานสวิง"), and `เส้นหลักของกรอบ (วิ่งเต็ม)` → `main_axis` (`vertical` "เส้นตั้ง ซ้าย/ขวา", `horizontal` "เส้นนอน บน/ล่าง"). Include them in the `payload` that is inserted/updated.
 - [ ] **Step 2: Hardware lines.** Add a `part_id` select per hardware line (active parts of kind `hardware`, `accessory` or `hardware_set`, shown as `P-0007 ชื่อ`), "— ไม่ผูก (ใช้ราคาอ้างอิง) —" first. Keep `reference_unit_price` as the fallback.
 - [ ] **Step 3: Family list.** Replace the `profile-family-options` datalist (read from legacy `aluminum_profiles`) with the distinct families of the catalog (`alu_series_profiles.family` or the profile's `family`).
 - [ ] **Step 4: Components.** Add per component row: `joint_index` select ("ไม่มีจุดชน" + the template's joints by name), `joint_ends` (1 or 2), and `thickness_role` (select "ความหนา: ตามวงกบ" = NULL / "ตามบาน" = `sash`; shown only when the template's type is offered by at least one series with `allowsMixedThickness` true; otherwise hidden and saved as NULL). Rows are loaded through `jointIndexForLoad(components, joints)`.
@@ -3442,6 +3743,8 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 - Produces: rows in `estimation_openings` (via `buildOpeningPayload`).
 
 Mockup screen 2 (all of it). Steps:
+
+Type selects (main type, add-on type, layout-template main/add-on type) list `selectableTypes(types)` labelled with `typeLabel` (Ruling 18); series availability and layout-template availability use the EXPANDED `seriesTypes` from `useEstimationCatalog` (Task 11A).
 
 - [ ] **Step 1: Fields.** Item no., item name and description (separate; description auto-filled from `buildItemDescription` with a "สร้างใหม่" button, editable), template (grouped by type), size (กว้าง/สูง ม.), panels, series / colour / thickness / infill / hardware set each with "ใช้ค่าโปรเจกต์" (empty = inherit; infill and set also have an explicit "ไม่ใช้" = `no_infill` / `no_hardware_set`), per-item labour and profit override, extra lines. **No quantity field.** Thickness choices (frame, and sash when the template's type allows mixed thickness in the resolved series, `allowsMixedThickness`) come from `thicknessesForSeries` of the resolved series; hardware-set choices from `hardwareSetsForSeries(index, seriesId, template.type_id)`; show the inherited value as a hint. Seed and save with `emptyForm` / `formFromOpening` / `validateForm` / `buildOpeningPayload` (Task 11).
 - [ ] **Step 2: Add-on.** Template choice from `addonTemplatesForSeries` (2a), size, panels, **position** (บน/ล่าง/ซ้าย/ขวา) and **offset** (ม. from the left or top; blank = centred). Partly filled = "no add-on yet", not an error.
@@ -3564,6 +3867,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ---
 
 ## Owner click-through checklist (after the migrations are applied on a copy or on CHANG)
+- Types tab: create ประตู → บานเลื่อน → รางล่าง / รางบน (3 levels; a 4th level is refused; a child cannot be given the other category). Link the series to บานเลื่อน only: both child types appear for that series. In a template and in the item form, only รางล่าง / รางบน are listed (not ประตู or บานเลื่อน). A part linked to บานเลื่อน shows for both children.
 
 1. Settings tab: enter kerf 90°/45°, sealant 10 m, link shim/screw/plug parts. Catalog → profile "กล่องเรียบ" U1613: dimensions 101.6 × 44.45, primary contact "ความสูง", attach a drawing; the sketch shows; the other dies of the shape are listed.
 2. Series → type: tick "อนุญาตความหนาต่างกัน" for บานเลื่อน.
@@ -3576,7 +3880,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ## Deploy checklist (the order matters)
 
-1. Owner applies Phase 1 migrations 01–03, then 2026-10-11-01, then 2026-10-12-01 (each only after its test script is green).
+1. Owner applies Phase 1 migrations 01–03, then 2026-10-11-01, then 2026-10-12-01, then 2026-10-12-02 (type parents; test script `run-type-parent-tests.sh`) (each only after its test script is green).
 2. Deploy the code. Open and save every existing item once (so `series_id` / `alu_finish_id` are set).
 3. Only then apply `2026-10-13-01-estimation-contract.sql` (it refuses while any item still uses the legacy columns).
 4. Rebase the branch onto the current `origin/main` (the PO release moved it) before the final merge; resolve conflicts in `src/App.jsx` / `src/hooks/useSupabase.js` by hand.
