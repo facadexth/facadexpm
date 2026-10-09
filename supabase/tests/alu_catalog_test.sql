@@ -36,7 +36,7 @@ BEGIN
   SET LOCAL role = 'authenticated';
   SET LOCAL request.jwt.claims = '{"email":"__alu_a__@example.com"}';
 
-  INSERT INTO alu_providers (name, short_name, price_basis) VALUES ('TYK', 'TYK', 'per_kg') RETURNING id INTO prov;
+  INSERT INTO alu_providers (name, short_name, price_basis) VALUES ('RA', 'RA', 'per_kg') RETURNING id INTO prov;
   INSERT INTO alu_providers (name, short_name, price_basis) VALUES ('KC', 'KC', 'both') RETURNING id INTO prov2;
   INSERT INTO alu_series (provider_id, name, is_base) VALUES (prov, 'กล่องร่อง', true) RETURNING id INTO ser;
   -- the same series name under a different provider is allowed
@@ -52,7 +52,7 @@ BEGIN
 
   -- duplicate provider name inside one tenant
   BEGIN
-    INSERT INTO alu_providers (name, short_name) VALUES ('TYK', 'TYK2');
+    INSERT INTO alu_providers (name, short_name) VALUES ('RA', 'RA2');
     RAISE EXCEPTION 'provider unique did not fire';
   EXCEPTION WHEN unique_violation THEN NULL; END;
 
@@ -86,13 +86,13 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 
   -- B may reuse the same provider name, and then sees exactly its own single row
-  INSERT INTO alu_providers (name, short_name) VALUES ('TYK', 'TYK');
+  INSERT INTO alu_providers (name, short_name) VALUES ('RA', 'RA');
   SELECT count(*) INTO n FROM alu_providers;
   IF n <> 1 THEN RAISE EXCEPTION 'tenant B should see exactly 1 provider, saw %', n; END IF;
   SELECT tenant_id INTO tid FROM alu_providers LIMIT 1;
   IF tid IS DISTINCT FROM tb THEN RAISE EXCEPTION 'tenant B provider row has wrong tenant_id %', tid; END IF;
 
-  -- tenant A is unaffected: still exactly its own 2 providers (TYK, KC)
+  -- tenant A is unaffected: still exactly its own 2 providers (RA, KC)
   SET LOCAL request.jwt.claims = '{"email":"__alu_a__@example.com"}';
   SELECT count(*) INTO n FROM alu_providers;
   IF n <> 2 THEN RAISE EXCEPTION 'tenant A should see exactly 2 providers, saw %', n; END IF;
@@ -144,7 +144,7 @@ BEGIN
   SET LOCAL role = 'authenticated';
   SET LOCAL request.jwt.claims = '{"email":"__alu_a__@example.com"}';
 
-  SELECT id INTO prov FROM alu_providers WHERE name = 'TYK';
+  SELECT id INTO prov FROM alu_providers WHERE name = 'RA';
   SELECT id INTO ser  FROM alu_series WHERE provider_id = prov AND name = 'กล่องร่อง';
   SELECT id INTO typ  FROM door_window_types WHERE name = 'บานเลื่อน';
 
@@ -302,7 +302,7 @@ BEGIN
   SET LOCAL role = 'authenticated';
   SET LOCAL request.jwt.claims = '{"email":"__alu_a__@example.com"}';
 
-  SELECT id INTO prov FROM alu_providers WHERE name = 'TYK';
+  SELECT id INTO prov FROM alu_providers WHERE name = 'RA';
   SELECT id INTO ser  FROM alu_series WHERE provider_id = prov;
   SELECT id INTO prof FROM alu_profiles WHERE provider_id = prov;
   SELECT id INTO fin  FROM alu_finishes WHERE provider_id = prov;

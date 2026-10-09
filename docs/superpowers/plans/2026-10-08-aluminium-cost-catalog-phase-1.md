@@ -32,7 +32,7 @@
 Inputs and conditions the spec implies that a person will hit, most likely first. Each has a pinning test in the task named.
 
 1. A price history longer than 1000 rows must not be silently truncated in the UI — Task 6 (`fetchCatalogRows` test with 1005 rows).
-2. A second tenant (or FacadeX's own second extruder) creating the same name as an existing row must not collide — Task 1 (SQL: tenant B can create provider `TYK` too; two series of the same name under different providers).
+2. A second tenant (or FacadeX's own second extruder) creating the same name as an existing row must not collide — Task 1 (SQL: tenant B can create provider `RA` too; two series of the same name under different providers).
 3. Two price rows with the same effective date, deleting a row that other rows depend on, and invalid numbers must give a readable Thai message, not a raw Postgres error — Task 5 (`friendlyDbError`).
 4. A per-kg extruder whose profile weight is 0/missing, or that only has piece prices, must come back `unresolved` and never cost 0 silently; a price dated in the future must be ignored — Task 4.
 5. A tenant without the estimation module must see and write nothing in any new table, and a tenant with `estimation` but NOT `purchase_orders` must be able to use all of it — Tasks 1–3 (SQL: tenants A and B hold only `estimation`, tenant C holds nothing).
@@ -169,7 +169,7 @@ BEGIN
   SET LOCAL role = 'authenticated';
   SET LOCAL request.jwt.claims = '{"email":"__alu_a__@example.com"}';
 
-  INSERT INTO alu_providers (name, short_name, price_basis) VALUES ('TYK', 'TYK', 'per_kg') RETURNING id INTO prov;
+  INSERT INTO alu_providers (name, short_name, price_basis) VALUES ('RA', 'RA', 'per_kg') RETURNING id INTO prov;
   INSERT INTO alu_providers (name, short_name, price_basis) VALUES ('KC', 'KC', 'both') RETURNING id INTO prov2;
   INSERT INTO alu_series (provider_id, name, is_base) VALUES (prov, 'กล่องร่อง', true) RETURNING id INTO ser;
   -- the same series name under a different provider is allowed
@@ -185,7 +185,7 @@ BEGIN
 
   -- duplicate provider name inside one tenant
   BEGIN
-    INSERT INTO alu_providers (name, short_name) VALUES ('TYK', 'TYK2');
+    INSERT INTO alu_providers (name, short_name) VALUES ('RA', 'RA2');
     RAISE EXCEPTION 'provider unique did not fire';
   EXCEPTION WHEN unique_violation THEN NULL; END;
 
@@ -199,7 +199,7 @@ BEGIN
   SET LOCAL request.jwt.claims = '{"email":"__alu_b__@example.com"}';
   SELECT count(*) INTO n FROM alu_providers;
   IF n <> 0 THEN RAISE EXCEPTION 'tenant B sees % of tenant A providers', n; END IF;
-  INSERT INTO alu_providers (name, short_name) VALUES ('TYK', 'TYK');
+  INSERT INTO alu_providers (name, short_name) VALUES ('RA', 'RA');
 
   -- tenant C (no estimation module): reads nothing, cannot write
   SET LOCAL request.jwt.claims = '{"email":"__alu_c__@example.com"}';
@@ -364,7 +364,7 @@ BEGIN
   SET LOCAL role = 'authenticated';
   SET LOCAL request.jwt.claims = '{"email":"__alu_a__@example.com"}';
 
-  SELECT id INTO prov FROM alu_providers WHERE name = 'TYK';
+  SELECT id INTO prov FROM alu_providers WHERE name = 'RA';
   SELECT id INTO ser  FROM alu_series WHERE provider_id = prov AND name = 'กล่องร่อง';
   SELECT id INTO typ  FROM door_window_types WHERE name = 'บานเลื่อน';
 
@@ -521,7 +521,7 @@ BEGIN
   SET LOCAL role = 'authenticated';
   SET LOCAL request.jwt.claims = '{"email":"__alu_a__@example.com"}';
 
-  SELECT id INTO prov FROM alu_providers WHERE name = 'TYK';
+  SELECT id INTO prov FROM alu_providers WHERE name = 'RA';
   SELECT id INTO ser  FROM alu_series WHERE provider_id = prov;
   SELECT id INTO prof FROM alu_profiles WHERE provider_id = prov;
   SELECT id INTO fin  FROM alu_finishes WHERE provider_id = prov;
@@ -859,13 +859,13 @@ git commit -m "feat(alu-catalog): pure price resolution with history and precede
 import { describe, it, expect } from 'vitest'
 import { seriesLabelFull, seriesLabelShort } from './aluCatalog.js'
 
-const provider = { name: 'ไทยยูนิค', short_name: 'TYK' }
+const provider = { name: 'โรงรีด A', short_name: 'RA' }
 describe('series labels', () => {
   it('full label puts the owner after the series name', () => {
-    expect(seriesLabelFull({ name: 'กล่องร่อง' }, provider)).toBe('กล่องร่อง · ไทยยูนิค')
+    expect(seriesLabelFull({ name: 'กล่องร่อง' }, provider)).toBe('กล่องร่อง · โรงรีด A')
   })
   it('short label uses the owner short name', () => {
-    expect(seriesLabelShort({ name: 'กล่องร่อง' }, provider)).toBe('กล่องร่อง (TYK)')
+    expect(seriesLabelShort({ name: 'กล่องร่อง' }, provider)).toBe('กล่องร่อง (RA)')
   })
   it('falls back to the bare series name when the provider is unknown', () => {
     expect(seriesLabelFull({ name: 'กล่องร่อง' }, undefined)).toBe('กล่องร่อง')
@@ -2100,8 +2100,8 @@ and then confirm the tables exist: `npx supabase db query --linked "select count
 - [ ] **Step 5: Live check in the browser (after the owner applies the migrations)**
 
 Run the app (`npm run dev`), sign in as the FacadeX owner, open ประเมินราคา → 🏭 แคตตาล็อกอลูมิเนียม, and verify in order:
-1. Add extruder "TYK" (short name TYK, ต่อกก.) → appears in the list.
-2. Pick it, add series "กล่องร่อง" (พื้นฐาน) → label shows "กล่องร่อง · TYK".
+1. Add extruder "RA" (short name RA, ต่อกก.) → appears in the list.
+2. Pick it, add series "กล่องร่อง" (พื้นฐาน) → label shows "กล่องร่อง · RA".
 3. ประเภทบาน tab: add "บานเลื่อน" (หน้าต่าง, 140). Back on hierarchy, press ประเภทบาน on the series and tick it.
 4. หน้าตัด tab: add a profile (weight 0.85, หนา 1.2), a colour "ขาว", a length 6.4 m; link the profile to the series with role "กล่องร่อง".
 5. อุปกรณ์ tab: add a set and a part, put the part in the set with quantity 2.
