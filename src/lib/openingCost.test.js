@@ -92,4 +92,31 @@ describe('costOpening', () => {
     c.item = { ...c.item, addon_template_id: 't2', addon_width_m: 2 }
     expect(costOpening(c).addonBom).toBeNull()
   })
+  it('string width/height (DB numerics) cost the same as numbers', () => {
+    const c = ctxBase()
+    c.item = { ...c.item, width_m: '2', height_m: '1' }
+    expect(costOpening(c).total).toBeCloseTo(584)
+  })
+  it('a missing main height is flagged no_dimension, never a silent 0', () => {
+    const c = ctxBase()
+    c.item = { ...c.item, height_m: undefined }
+    const r = costOpening(c)
+    expect(r.unresolved).toContainEqual({ name: 'ขนาดช่องเปิด', reason: 'no_dimension', source: 'main' })
+  })
+  it('every unresolved entry has exactly name/reason/source, joint failures included', () => {
+    const c = ctxBase()
+    c.jointsByTemplate = { t1: [{ ...joints[0], main_family: 'missing' }] }
+    c.project = { ...c.project, default_series_id: undefined }
+    const r = costOpening(c)
+    expect(r.unresolved.length).toBeGreaterThan(0)
+    r.unresolved.forEach(u => expect(Object.keys(u).sort()).toEqual(['name', 'reason', 'source']))
+    const c2 = ctxBase()
+    c2.jointsByTemplate = { t1: [{ ...joints[0], main_family: 'missing' }] }
+    expect(costOpening(c2).unresolved).toContainEqual({ name: 'bar', reason: 'no_main_profile', source: 'joint' })
+  })
+  it('an infill id missing from infillTypesById is flagged unknown_infill', () => {
+    const c = ctxBase()
+    c.item = { ...c.item, infill_type_id: 'ghost' }
+    expect(costOpening(c).unresolved).toContainEqual({ name: 'วัสดุอุดช่อง', reason: 'unknown_infill', source: 'main' })
+  })
 })
