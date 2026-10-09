@@ -108,7 +108,7 @@ export function buildFramePreview({ template, width_m, height_m, panel_count, ad
   const position = addonOk && ADDON_POSITIONS.includes(addon.position) ? addon.position : 'top'
   const axis = main_axis === 'horizontal' ? 'horizontal' : 'vertical'
 
-  const ar = addonOk ? addonRect(position, addon.offset_m == null ? null : Number(addon.offset_m), width_m, height_m, addon.width_m, addon.height_m) : null
+  const ar = addonOk ? addonRect(position, addon.offset_m === '' || addon.offset_m == null ? null : Number(addon.offset_m), width_m, height_m, addon.width_m, addon.height_m) : null
   const minX = addonOk ? Math.min(0, ar.x) : 0
   const minY = addonOk ? Math.min(0, ar.y) : 0
   const totalW = (addonOk ? Math.max(width_m, ar.x + addon.width_m) : width_m) - minX
@@ -160,6 +160,7 @@ const n2 = n => Math.round(n * 100) / 100
 
 export function previewSvgString(p, { style = 'double', finishColor = '#f4f4f2' } = {}) {
   if (!p) return ''
+  if (!/^#[0-9a-f]{3,8}$/i.test(String(finishColor))) finishColor = '#f4f4f2'
   const frameFill = style === 'cad' ? 'none' : style === 'solid' ? finishColor : FRAME
   const glassFill = style === 'cad' ? 'none' : GLASS
   const parts = []
@@ -195,6 +196,6 @@ export function previewSvgString(p, { style = 'double', finishColor = '#f4f4f2' 
 
 // Cheap signature of every input that changes the saved drawing; the item stores it with the snapshot so a
 // later edit can be detected ("the saved preview is older than the item").
-export function previewSignature({ template_id, width_m, height_m, panel_count, addon_template_id, addon_width_m, addon_height_m, addon_panel_count, addon_position, addon_offset_m, main_axis }) {
-  return JSON.stringify([template_id ?? null, width_m ?? null, height_m ?? null, panel_count ?? 1, addon_template_id ?? null, addon_width_m ?? null, addon_height_m ?? null, addon_panel_count ?? 1, addon_position ?? null, addon_offset_m ?? 0, main_axis ?? 'vertical'])
+export function previewSignature({ template_id, width_m, height_m, panel_count, addon_template_id, addon_width_m, addon_height_m, addon_panel_count, addon_position, addon_offset_m, main_axis, frame_mm, addon_frame_mm }) {
+  return JSON.stringify([template_id ?? null, width_m ?? null, height_m ?? null, panel_count ?? 1, addon_template_id ?? null, addon_width_m ?? null, addon_height_m ?? null, addon_panel_count ?? 1, addon_position ?? null, addon_offset_m === '' ? null : (addon_offset_m ?? null), main_axis ?? 'vertical', frame_mm ?? null, addon_frame_mm ?? null])
 }

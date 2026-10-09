@@ -129,3 +129,32 @@ describe('previewSignature', () => {
     expect(previewSignature(a)).not.toBe(previewSignature({ ...a, main_axis: 'horizontal' }))
   })
 })
+
+describe('fix round 1: svg safety, signature completeness, empty offset', () => {
+  it('finishColor is validated before it reaches an attribute', () => {
+    const p = buildFramePreview(base)
+    const bad = previewSvgString(p, { style: 'solid', finishColor: '" onload="x' })
+    expect(bad).not.toContain('onload')
+    expect(bad).toContain('fill="#f4f4f2"')
+    expect(previewSvgString(p, { style: 'solid', finishColor: '#2b2f33' })).toContain('fill="#2b2f33"')
+  })
+  it('signature tells centred from offset 0 and sees frame widths', () => {
+    const a = { template_id: 't', width_m: 2, height_m: 1.5, panel_count: 2 }
+    expect(previewSignature({ ...a, addon_offset_m: null })).not.toBe(previewSignature({ ...a, addon_offset_m: 0 }))
+    expect(previewSignature({ ...a, addon_offset_m: '' })).toBe(previewSignature({ ...a, addon_offset_m: null }))
+    expect(previewSignature({ ...a, frame_mm: 40 })).not.toBe(previewSignature({ ...a, frame_mm: 44.45 }))
+    expect(previewSignature({ ...a, addon_frame_mm: 40 })).not.toBe(previewSignature({ ...a, addon_frame_mm: 44.45 }))
+    expect(previewSignature({ ...a, frame_mm: 40 })).toBe(previewSignature({ ...a, frame_mm: 40 }))
+  })
+  it('an empty-string offset centres the add-on like null', () => {
+    const e = buildFramePreview(withAddon({ offset_m: '' }))
+    const n = buildFramePreview(withAddon({ offset_m: null }))
+    expect(e.units[0].outer.x).toBeCloseTo(n.units[0].outer.x)
+    expect(e.units[0].outer.x).toBeCloseTo(e.units[1].outer.x + (e.units[1].outer.w - e.units[0].outer.w) / 2)
+  })
+  it('a mirrored preview serialises without NaN or undefined', () => {
+    const svg = previewSvgString(buildFramePreview({ ...withAddon({ position: 'right' }), view: 'in', template: tpl({ preview_kind: 'swing' }), part_labels: { left: 'L' } }))
+    expect(svg.startsWith('<svg')).toBe(true)
+    expect(svg).not.toMatch(/NaN|undefined/)
+  })
+})
