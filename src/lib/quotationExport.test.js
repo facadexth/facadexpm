@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildLines, planPush, revisionLabel, nextSubNo, snapshotFor } from './quotationExport'
+import { buildLines, planPush, revisionLabel, nextSubNo, snapshotFor, compareWithLastSent } from './quotationExport'
 
 const row = (id, price, quantity = 1, resolved = true) => ({ id, resolved, price: resolved ? price : null, quantity })
 const mk = (rows, split = { enabled: false, materialPct: 80 }, items) => buildLines({
@@ -153,4 +153,23 @@ describe('Task 8 contract fixes', () => {
     const p = planPush({ ...base, newLines: [L('b')], existingLines: [ex('a', 'i1', 'd1')], existingRowIds: new Set(['i1', 'd1']), invoiceRefs: new Set(['i1']) })
     expect(p.keepOrder).toEqual([{ id: 'i1', sort_order: 2 }, { id: 'd1', sort_order: 3 }])
   })
+})
+
+describe('description fallback and comparison', () => {
+  it('blank description falls back to size, then item name', () => {
+    const mkd = (ctx, items) => buildLines({ rows: [row('o1', 100)], items, descriptionCtxById: { o1: ctx }, descriptionFormat: ['type'], split: {} }).lines[0].desc.description
+    expect(mkd({ width_m: 1.2, height_m: 0.8 }, [{ id: 'o1', item_name: 'ประตู' }])).toBe('ขนาด 1200 × 800 มม.')
+    expect(mkd({}, [{ id: 'o1', opening_no: 'D1', item_name: 'ประตู' }])).toBe('ประตู')
+    expect(mkd({}, [{ id: 'o1' }])).toBe('รายการ 1')
+  })
+  it('compareWithLastSent: per item diff, pct and totals', () => {
+    const snapshot = { items: [{ opening_id: 'a', price: 1000, quantity: 2 }, { opening_id: 'gone', price: 500, quantity: 1 }] }
+    const r = compareWithLastSent({ snapshot, rows: [row('a', 1100, 2), row('n', 300, 1), row('u', 0, 1, false)], items: [{ id: 'a', opening_no: 'W1' }] })
+    expect(r.rows).toEqual([
+      { openingId: 'a', opening_no: 'W1', oldPrice: 1000, newPrice: 1100, diff: 100, pct: 10 },
+      { openingId: 'n', opening_no: null, oldPrice: null, newPrice: 300, diff: null, pct: null },
+    ])
+    expect(r.oldTotal).toBe(2500); expect(r.newTotal).toBe(2500); expect(r.diffTotal).toBe(0)
+  })
+  it('no snapshot: old total 0', () => { expect(compareWithLastSent({ snapshot: null, rows: [row('a', 10)] }).oldTotal).toBe(0) })
 })

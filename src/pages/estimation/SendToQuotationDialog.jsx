@@ -5,8 +5,8 @@ import { format, addDays } from 'date-fns'
 import { supabase } from '../../lib/supabase.js'
 import { useClients } from '../../hooks/useSupabase.js'
 import { Modal } from '../../components/Modal.jsx'
-import { buildLines, revisionLabel } from '../../lib/quotationExport.js'
-import { preparePlan, pushToQuotation, buildSnapshotPayload } from '../../lib/estimationQuotationApi.js'
+import { buildLines, revisionLabel, compareWithLastSent } from '../../lib/quotationExport.js'
+import { preparePlan, loadLinkedQuotation, pushToQuotation, buildSnapshotPayload } from '../../lib/estimationQuotationApi.js'
 import { projectFactors } from '../../lib/priceStructureInputs.js'
 
 export const DEFAULT_VALID_DAYS = 30
@@ -37,15 +37,15 @@ export function AcceptedConfirm({ label, busy, onConfirm, onBack }) {
 
 // props: project, items (openings), result (priceProject output), descriptionCtxById, link, snapshots, tenant,
 // onClose, onDone(label). preloaded = { quotation, plan } is for tests only (skips the database reads).
-export default function SendToQuotationDialog({ project, items, result, descriptionCtxById, link, snapshots, tenant, onClose, onDone, clients: clientsProp, preloaded }) {
+export default function SendToQuotationDialog({ project, items, result, descriptionCtxById, link: linkProp, snapshots, tenant, onClose, onDone, clients: clientsProp, preloaded }) {
   const clientsQ = useClients()
   const clients = clientsProp || clientsQ.data || []
   const today = format(new Date(), 'yyyy-MM-dd')
-  const hasLinkedQuotation = !!(link && link.quotation_id)
+  const [link, setLink] = useState(linkProp || null)   // re-read from the database on open and on submit
 
   const [quotation, setQuotation] = useState(preloaded ? preloaded.quotation : null)
   const [plan, setPlan] = useState(preloaded ? preloaded.plan : null)
-  const [loading, setLoading] = useState(preloaded ? false : hasLinkedQuotation)
+  const [loading, setLoading] = useState(!preloaded)
   const [clientId, setClientId] = useState('')
   const [siteName, setSiteName] = useState('')
   const [date, setDate] = useState(today)
@@ -77,14 +77,9 @@ export default function SendToQuotationDialog({ project, items, result, descript
     let alive = true
     ;(async () => {
       try {
-        let q = null
-        if (hasLinkedQuotation) {
-          const { data, error: e } = await supabase.from('quotations').select('*, clients(name)').eq('id', link.quotation_id).maybeSingle()
-          if (e) throw e
-          q = data || null
-        }
+        const { link: l, quotation: q } = await loadLinkedQuotation({ supabase, project })
         const p = await preparePlan({ supabase, project, quotation: q, newLines: lines })
-        if (alive) { setQuotation(q); setPlan(p) }
+        if (alive) { setLink(l); setQuotation(q); setPlan(p) }
       } catch (e) { if (alive) setError(e.message || String(e)) }
       finally { if (alive) setLoading(false) }
     })()
@@ -92,12 +87,15 @@ export default function SendToQuotationDialog({ project, items, result, descript
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const lastLabel = useMemo(() => {
+  const lastSnap = useMemo(() => {
     if (!quotation) return null
     const sent = (snapshots || []).filter(s => s.kind === 'sent' && s.quotation_id === quotation.id)
-    const last = sent[sent.length - 1]
-    return last ? revisionLabel(last.revision, last.sub_no) : null
+    return sent[sent.length - 1] || null
   }, [quotation, snapshots])
+  const lastLabel = lastSnap ? revisionLabel(lastSnap.revision, lastSnap.sub_no) : null
+  const comparison = useMemo(() => (isExisting ? compareWithLastSent({ snapshot: lastSnap, rows: result.rows, items }) : null), [isExisting, lastSnap, result, items])
+  const totalBeforeVat = lines.reduce((s, l) => s + l.item.line_total, 0)
+  const signed = n => (n > 0 ? '+' : '') + Number(n).toLocaleString('th-TH')
   const nextLabel = plan ? revisionLabel(plan.newRevision, plan.subNo) : (isExisting ? null : 'R1-1')
 
   const actionOf = useMemo(() => {
@@ -113,24 +111,19 @@ export default function SendToQuotationDialog({ project, items, result, descript
 
   const blockedByUnresolved = skipped.length > 0 && !skipUnresolved
   const missingCustomer = !isExisting && !clientId
-  const canSubmit = !busy && !loading && !doneLabel && !missingCustomer && !blockedByUnresolved && lines.length > 0 && (!effectiveSplit || pctOk) && (!!plan || !hasLinkedQuotation)
+  const canSubmit = !busy && !loading && !doneLabel && !missingCustomer && !blockedByUnresolved && lines.length > 0 && (!effectiveSplit || pctOk) && !!plan
 
   const submit = async () => {
     setBusy(true); setError(null)
     try {
       // Re-read everything now: the quotation may have changed since the dialog opened.
-      let q = null
-      if (hasLinkedQuotation) {
-        const { data, error: e } = await supabase.from('quotations').select('*, clients(name)').eq('id', link.quotation_id).maybeSingle()
-        if (e) throw e
-        q = data || null
-      }
+      const { link: freshLink, quotation: q } = await loadLinkedQuotation({ supabase, project })
       if (!q && !clientId) throw new Error('ใบเสนอราคาเดิมถูกลบไปแล้ว กรุณาเลือกลูกค้าเพื่อสร้างใบใหม่')
       const fresh = await preparePlan({ supabase, project, quotation: q, newLines: lines })
-      setQuotation(q); setPlan(fresh)
+      setLink(freshLink); setQuotation(q); setPlan(fresh)
       if (fresh.needsAcceptedConfirm && !confirming) { setConfirming(true); return }
       const r = await pushToQuotation({
-        supabase, project, link, quotation: q, plan: fresh, lines, tenant,
+        supabase, project, link: freshLink, quotation: q, plan: fresh, lines, tenant,
         header: {
           client_id: clientId, site_name: siteName.trim(), date, validDays,
           attach_enabled: attachOn, attach_mode: attachMode, attach_view: attachView,
@@ -187,6 +180,10 @@ export default function SendToQuotationDialog({ project, items, result, descript
                 </div>
               </>
             )}
+
+            <div className="alert alert-success" style={{ fontSize: 13 }}>
+              ราคาล็อกตามวันที่ราคาโปรเจกต์ <b className="font-mono">{project.price_as_of || '—'}</b>{!isExisting && validDays !== '' && <> ใบเสนอราคาจะยืนราคา {validDays} วัน</>}
+            </div>
 
             <div style={{ display: 'grid', gap: 8 }}>
               <Check checked={attachOn} onChange={setAttachOn}>แนบแบบท้ายใบเสนอราคา</Check>
@@ -248,11 +245,41 @@ export default function SendToQuotationDialog({ project, items, result, descript
                   </tbody>
                 </table>
               </div>
+              <div style={{ fontSize: 13, marginTop: 6, fontWeight: 600 }}>รวม (ก่อน VAT) <span className="font-mono">{Number(totalBeforeVat).toLocaleString('th-TH')}</span> บาท</div>
+              <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>เขียนลงเฉพาะใบเสนอราคาของโปรเจกต์นี้ ลูกค้าที่ไม่มีโมดูลประเมินราคาไม่เห็นปุ่มนี้และไม่มีอะไรเปลี่ยน</div>
               <div style={{ fontSize: 13, marginTop: 6 }}>
                 {lastLabel && <>ล่าสุด <b>{lastLabel}</b> · </>}จะส่งเป็น <b>{nextLabel || '—'}</b>
               </div>
             </div>
 
+            {comparison && lastSnap && (
+              <div>
+                <div className="label">เปรียบเทียบกับที่ส่งล่าสุด ({lastLabel})</div>
+                <div style={{ maxHeight: 220, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
+                  <table style={{ width: '100%', fontSize: 12.5 }}>
+                    <thead><tr><th style={{ textAlign: 'left', padding: 6 }}>รายการ</th><th style={{ textAlign: 'right', padding: 6 }}>ราคาเดิม ({lastLabel})</th><th style={{ textAlign: 'right', padding: 6 }}>ราคาใหม่ ({nextLabel})</th><th style={{ textAlign: 'right', padding: 6 }}>ต่าง</th><th style={{ textAlign: 'right', padding: 6 }}>ต่าง %</th></tr></thead>
+                    <tbody>
+                      {comparison.rows.map(r => (
+                        <tr key={r.openingId}>
+                          <td style={{ padding: 6 }}>{r.opening_no || '—'}</td>
+                          <td style={{ padding: 6, textAlign: 'right' }}>{r.oldPrice == null ? '—' : Number(r.oldPrice).toLocaleString('th-TH')}</td>
+                          <td style={{ padding: 6, textAlign: 'right' }}>{Number(r.newPrice).toLocaleString('th-TH')}</td>
+                          <td style={{ padding: 6, textAlign: 'right', color: r.diff < 0 ? 'var(--red)' : undefined }}>{r.diff == null ? 'ใหม่' : r.diff === 0 ? '—' : signed(r.diff)}</td>
+                          <td style={{ padding: 6, textAlign: 'right' }}>{r.pct == null || r.diff === 0 ? '—' : `${r.pct > 0 ? '+' : ''}${r.pct.toFixed(1)}%`}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot><tr style={{ fontWeight: 700 }}>
+                      <td style={{ padding: 6 }}>รวม (ก่อน VAT)</td>
+                      <td style={{ padding: 6, textAlign: 'right' }}>{Number(comparison.oldTotal).toLocaleString('th-TH')}</td>
+                      <td style={{ padding: 6, textAlign: 'right' }}>{Number(comparison.newTotal).toLocaleString('th-TH')}</td>
+                      <td style={{ padding: 6, textAlign: 'right' }}>{comparison.diffTotal === 0 ? '—' : signed(comparison.diffTotal)}</td>
+                      <td style={{ padding: 6, textAlign: 'right' }}>{comparison.oldTotal > 0 && comparison.diffTotal !== 0 ? `${comparison.diffTotal > 0 ? '+' : ''}${(comparison.diffTotal / comparison.oldTotal * 100).toFixed(1)}%` : '—'}</td>
+                    </tr></tfoot>
+                  </table>
+                </div>
+              </div>
+            )}
             {plan && plan.bumpRevision && (
               <div className="alert alert-warning" style={{ fontSize: 13 }}>
                 ใบนี้{STATUS_TH[quotation.status] ? `อยู่ในสถานะ "${STATUS_TH[quotation.status]}"` : 'ส่งไปแล้ว'} จะถูกดึงกลับเป็นร่างและนับเป็น revision {plan.newRevision} ภาพของ revision ปัจจุบันถูกเก็บในประวัติ
@@ -283,7 +310,7 @@ export default function SendToQuotationDialog({ project, items, result, descript
             <button type="button" className="btn btn-ghost" disabled={busy} onClick={onClose}>ยกเลิก</button>
             {!confirming && (
               <button type="button" className="btn btn-primary" disabled={!canSubmit} onClick={submit}>
-                {busy ? 'กำลังบันทึก...' : isExisting ? 'อัปเดตราคา' : 'สร้างใบเสนอราคาร่าง'}
+                {busy ? 'กำลังบันทึก...' : isExisting ? (plan && plan.bumpRevision ? 'ดึงกลับเป็นร่างและอัปเดตราคา' : 'อัปเดตราคา') : 'สร้างใบเสนอราคาร่าง'}
               </button>
             )}
           </>

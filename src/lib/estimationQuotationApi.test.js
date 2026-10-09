@@ -1,12 +1,24 @@
-import { describe, it, expect } from 'vitest'
-import { buildLines, snapshotFor } from './quotationExport'
-import { pushToQuotation, preparePlan, buildSnapshotPayload, NO_LINES_MESSAGE } from './estimationQuotationApi'
+import { describe, it, expect, vi } from 'vitest'
 
+vi.mock('./audit.js', () => ({ auditLog: vi.fn(async () => {}) }))
+import { buildLines, snapshotFor } from './quotationExport'
+import { auditLog } from './audit.js'
+import { pushToQuotation, preparePlan, loadLinkedQuotation, buildSnapshotPayload, NO_LINES_MESSAGE } from './estimationQuotationApi'
+
+const ALLOWED = {
+  quotations: ['client_id', 'site_name', 'date', 'valid_until', 'has_vat', 'price_includes_vat', 'discount_amount', 'discount_pct', 'pricing_mode', 'payment_terms', 'notes', 'bank_account_id', 'status', 'revision'],
+  quotation_items: ['quotation_id', 'catalog_item_id', 'description', 'quantity', 'unit', 'unit_price', 'unit_price_material', 'unit_price_labor', 'line_total', 'sort_order', 'item_type'],
+  quotation_revisions: ['quotation_id', 'revision', 'snapshot'],
+  estimation_quotation_links: ['project_id', 'quotation_id', 'attach_enabled', 'attach_mode', 'attach_view', 'split_enabled', 'split_material_pct', 'last_pushed_at'],
+  estimation_quotation_lines: ['project_id', 'opening_id', 'item_row_id', 'description_row_id'],
+  estimation_price_snapshots: ['project_id', 'quotation_id', 'kind', 'revision', 'sub_no', 'price_as_of', 'factors', 'items', 'totals'],
+}
 // ---- hand-written in-memory Supabase fake -------------------------------------------------------------
-function makeFake(failOn = null) {
-  const tables = {}
+function makeFake(failOn = null, shared = null) {
+  const tables = shared || {}
   let n = 0
   const T = name => (tables[name] ||= [])
+  const counts = {}
   const calls = []
   const client = {
     tables, calls,
@@ -14,7 +26,18 @@ function makeFake(failOn = null) {
       const st = { table, op: 'select', payload: null, filters: [], order: null, mode: 'many' }
       const run = () => {
         calls.push(`${st.op}:${table}`)
-        if (failOn && failOn.table === table && failOn.op === st.op) return { data: null, error: new Error('boom ' + table) }
+        if (failOn && failOn.table === table && failOn.op === st.op) {
+          const k = `${table}:${st.op}`; counts[k] = (counts[k] || 0) + 1
+          if (!failOn.nth || counts[k] === failOn.nth) return { data: null, error: new Error('boom ' + table) }
+        }
+        if (st.op === 'insert' || st.op === 'update') {
+          const ok = ALLOWED[table]
+          for (const r of (Array.isArray(st.payload) ? st.payload : [st.payload])) {
+            const bad = ok ? Object.keys(r).filter(c => !ok.includes(c)) : []
+            if (bad.length) return { data: null, error: new Error(`column ${bad.join(',')} of ${table} does not exist`) }
+            if (table === 'quotation_items' && r.item_type !== undefined && !['item', 'item_description', 'note'].includes(r.item_type)) return { data: null, error: new Error('item_type check') }
+          }
+        }
         const match = r => st.filters.every(f => (f.kind === 'eq' ? r[f.col] === f.val : f.val.includes(r[f.col])))
         let data
         if (st.op === 'insert') {
@@ -55,10 +78,12 @@ const mkLines = (ids, split = { enabled: false, materialPct: 80 }) => buildLines
 }).lines
 const payload = { factors: { wastePct: 5 }, items: [], totals: { lineTotal: 1 } }
 
-async function send(db, { link, quotation, ids = ['a', 'b'], hdr = header } = {}) {
+// link/quotation are always re-read from the database (the dialog does the same), never passed in.
+async function send(db, { ids = ['a', 'b'], hdr = header } = {}) {
   const lines = mkLines(ids)
-  const plan = await preparePlan({ supabase: db, project, quotation: quotation || null, newLines: lines })
-  return pushToQuotation({ supabase: db, project, link: link || null, quotation: quotation || null, plan, header: hdr, lines, snapshotPayload: payload, tenant })
+  const { link, quotation } = await loadLinkedQuotation({ supabase: db, project })
+  const plan = await preparePlan({ supabase: db, project, quotation, newLines: lines })
+  return pushToQuotation({ supabase: db, project, link, quotation, plan, header: hdr, lines, snapshotPayload: payload, tenant })
 }
 const qOf = (db, id) => db.tables.quotations.find(q => q.id === id)
 const seed = db => { db.tables.bank_accounts = [{ id: 'bk1', vat_category: 'vat', is_default: false }, { id: 'bk2', vat_category: 'vat', is_default: true }, { id: 'bk3', vat_category: 'non_vat', is_default: true }] }
@@ -88,7 +113,7 @@ describe('pushToQuotation', () => {
     const db = makeFake(); seed(db)
     const r1 = await send(db)
     const ids = db.tables.quotation_items.map(i => i.id)
-    const r2 = await send(db, { link: db.tables.estimation_quotation_links[0], quotation: qOf(db, r1.quotationId) })
+    const r2 = await send(db)
     expect(r2.label).toBe('R1-2')
     expect(db.tables.quotation_items.map(i => i.id)).toEqual(ids)
     expect(db.tables.quotation_revisions || []).toHaveLength(0)
@@ -103,14 +128,14 @@ describe('pushToQuotation', () => {
     db.tables.quotation_items.push({ id: 'user1', quotation_id: r1.quotationId, description: 'ค่าขนย้าย', quantity: 1, unit: 'งาน', unit_price: 500, line_total: 500, sort_order: 4, item_type: 'item' })
     const q = qOf(db, r1.quotationId); q.status = 'sent'; q.revision = 1; q.ever_sent = true
     const before = snapshotFor(q, [...db.tables.quotation_items].sort((a, b) => a.sort_order - b.sort_order))
-    const r2 = await send(db, { link, quotation: { ...q } })
+    const r2 = await send(db)
     expect(r2.label).toBe('R2-1')
     expect(db.tables.quotation_revisions).toHaveLength(1)
     expect(db.tables.quotation_revisions[0]).toMatchObject({ quotation_id: r1.quotationId, revision: 1 })
     expect(db.tables.quotation_revisions[0].snapshot).toEqual(before)
     expect(qOf(db, r1.quotationId)).toMatchObject({ status: 'draft', revision: 2 })
     expect(db.tables.quotation_items.some(i => i.id === 'user1')).toBe(true)
-    const r3 = await send(db, { link, quotation: { ...qOf(db, r1.quotationId) } })
+    const r3 = await send(db)
     expect(r3.label).toBe('R2-2')
     expect(db.tables.quotation_revisions).toHaveLength(1)
     expect(db.tables.estimation_price_snapshots.map(s => [s.revision, s.sub_no])).toEqual([[1, 1], [2, 1], [2, 2]])
@@ -122,8 +147,8 @@ describe('pushToQuotation', () => {
     const link = db.tables.estimation_quotation_links[0]
     const linesBefore = JSON.stringify(db.tables.estimation_quotation_lines)
     db.calls.length = 0
-    const failing = makeFake({ table: 'quotation_items', op: 'update' }); Object.assign(failing.tables, db.tables)
-    await expect(send(failing, { link, quotation: qOf(db, r1.quotationId) })).rejects.toThrow('boom quotation_items')
+    const failing = makeFake({ table: 'quotation_items', op: 'update' }, db.tables)
+    await expect(send(failing)).rejects.toThrow('boom quotation_items')
     expect(failing.tables.estimation_price_snapshots).toHaveLength(1)
     expect(JSON.stringify(failing.tables.estimation_quotation_lines)).toBe(linesBefore)
     expect(failing.calls.some(c => c === 'insert:estimation_price_snapshots')).toBe(false)
@@ -151,5 +176,80 @@ describe('buildSnapshotPayload', () => {
     expect(p.items[0]).toMatchObject({ opening_no: 'W1', price: 8, weight: 9, unresolved: false, cost: { alu: 10, bracket: 1 } })
     expect(p.items[1].unresolved).toBe(true)
     expect(p.totals).toEqual({ lineTotal: 16 }); expect(p.factors).toEqual({ wastePct: 5 })
+  })
+})
+
+const lineMapComplete = (db, ids) => ids.every(id => {
+  const l = db.tables.estimation_quotation_lines.find(x => x.opening_id === id)
+  return l && db.tables.quotation_items.some(i => i.id === l.item_row_id) && db.tables.quotation_items.some(i => i.id === l.description_row_id)
+})
+
+describe('retry safety', () => {
+  it('first send failing on the 2nd line insert, then retry: one quotation, no duplicate rows, complete map', async () => {
+    const db = makeFake(); seed(db)
+    const failing = makeFake({ table: 'estimation_quotation_lines', op: 'insert', nth: 2 }, db.tables)
+    await expect(send(failing)).rejects.toThrow('boom estimation_quotation_lines')
+    expect(db.tables.quotations).toHaveLength(1)
+    expect(db.tables.estimation_quotation_links).toHaveLength(1)   // linked straight after create
+    expect(db.tables.quotation_items).toHaveLength(2)                // the 2nd pair was rolled back
+    const r = await send(db)
+    expect(r.label).toBe('R1-1')
+    expect(db.tables.quotations).toHaveLength(1)
+    expect(db.tables.quotation_items).toHaveLength(4)
+    expect(lineMapComplete(db, ['a', 'b'])).toBe(true)
+    expect(db.tables.estimation_quotation_links).toHaveLength(1)
+    expect(db.tables.estimation_quotation_links[0].last_pushed_at).toBeTruthy()
+  })
+
+  it('first send failing at step 6 (link update), then retry: still one quotation', async () => {
+    const db = makeFake(); seed(db)
+    const failing = makeFake({ table: 'estimation_quotation_links', op: 'update' }, db.tables)
+    await expect(send(failing)).rejects.toThrow('boom estimation_quotation_links')
+    expect(db.tables.estimation_price_snapshots).toHaveLength(1)
+    await send(db)
+    expect(db.tables.quotations).toHaveLength(1)
+    expect(db.tables.quotation_items).toHaveLength(4)
+    expect(lineMapComplete(db, ['a', 'b'])).toBe(true)
+    expect(db.tables.estimation_quotation_links[0].last_pushed_at).toBeTruthy()
+  })
+
+  it('re-send adding an opening, failing on its map row, then retry: no duplicate pair', async () => {
+    const db = makeFake(); seed(db)
+    await send(db)
+    const failing = makeFake({ table: 'estimation_quotation_lines', op: 'insert' }, db.tables)
+    await expect(send(failing, { ids: ['a', 'b', 'c'] })).rejects.toThrow('boom')
+    expect(db.tables.quotation_items).toHaveLength(4)
+    await send(db, { ids: ['a', 'b', 'c'] })
+    expect(db.tables.quotation_items).toHaveLength(6)
+    expect(lineMapComplete(db, ['a', 'b', 'c'])).toBe(true)
+  })
+
+  it('pull-back retry after a failed status update does not double the history', async () => {
+    const db = makeFake(); seed(db)
+    const r1 = await send(db)
+    Object.assign(qOf(db, r1.quotationId), { status: 'sent', revision: 1 })
+    const failing = makeFake({ table: 'quotations', op: 'update' }, db.tables)
+    await expect(send(failing)).rejects.toThrow('boom quotations')
+    expect(db.tables.quotation_revisions).toHaveLength(1)
+    const r2 = await send(db)
+    expect(db.tables.quotation_revisions).toHaveLength(1)
+    expect(r2.label).toBe('R2-1')
+    expect(qOf(db, r1.quotationId)).toMatchObject({ status: 'draft', revision: 2 })
+  })
+
+  it('audit-logs the create and the pull-back', async () => {
+    auditLog.mockClear()
+    const db = makeFake(); seed(db)
+    const r1 = await send(db)
+    expect(auditLog).toHaveBeenCalledWith('quotations', r1.quotationId, 'INSERT', null, expect.objectContaining({ client_id: 'c1' }))
+    Object.assign(qOf(db, r1.quotationId), { status: 'sent', revision: 1 })
+    await send(db)
+    expect(auditLog).toHaveBeenCalledWith('quotations', r1.quotationId, 'UPDATE', { status: 'sent', revision: 1 }, { status: 'draft', revision: 2 })
+  })
+
+  it('every description row is non-blank and item types are valid (fake enforces the check)', async () => {
+    const db = makeFake(); seed(db)
+    await send(db)
+    expect(db.tables.quotation_items.filter(i => i.item_type === 'item_description').every(i => i.description.trim())).toBe(true)
   })
 })

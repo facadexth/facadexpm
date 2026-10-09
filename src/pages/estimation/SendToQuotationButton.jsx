@@ -2,6 +2,9 @@
 // modules and the user can edit. Owns the dialog's open state and builds the per-item description context.
 import { useMemo, useState } from 'react'
 import { useTenant } from '../../hooks/useTenant.js'
+import { useUserRole } from '../../hooks/useUserRole.js'
+import { canEditPage } from '../../lib/permissions.js'
+import { canSendToQuotation } from './sendToQuotationGate.js'
 import { usePriceStructure } from '../../hooks/usePriceStructure.js'
 import { resolveItemInputs } from '../../lib/estimationInherit.js'
 import { descriptionContext } from './itemForm.js'
@@ -11,7 +14,11 @@ export default function SendToQuotationButton({ project, items, result, index, t
   const { tenant, hasModuleAccess } = useTenant()
   const ps = usePriceStructure(project.id)
   const [open, setOpen] = useState(false)
-  const allowed = canEdit && hasModuleAccess('estimation') && hasModuleAccess('quotations')
+  const { isAtLeast, role } = useUserRole()
+  const allowed = canSendToQuotation({
+    canEditEstimation: canEdit, hasEstimation: hasModuleAccess('estimation'), hasQuotations: hasModuleAccess('quotations'),
+    isAdmin: isAtLeast('ADMIN'), canEditQuotations: canEditPage(role, 'quotations'),
+  })
 
   const descriptionCtxById = useMemo(() => {
     const out = {}

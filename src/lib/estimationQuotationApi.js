@@ -4,6 +4,7 @@
 import { addDays, format } from 'date-fns'
 import { planPush, revisionLabel, snapshotFor } from './quotationExport.js'
 import { pickDefaultBankAccount } from './defaultBankAccount.js'
+import { auditLog } from './audit.js'
 
 const pick = (obj, cols) => Object.fromEntries(cols.filter(c => obj[c] !== undefined).map(c => [c, obj[c]]))
 const must = ({ data, error }) => { if (error) throw error; return data }
@@ -58,14 +59,34 @@ export function buildSnapshotPayload({ result, items, factors }) {
   }
 }
 
+// Reads the project's link and the quotation it points to, fresh from the database. A link whose quotation was
+// deleted yields { link, quotation: null }. Always call this right before preparePlan (never trust a cached link: a
+// failed earlier attempt may already have written it).
+export async function loadLinkedQuotation({ supabase, project }) {
+  const link = must(await supabase.from('estimation_quotation_links').select('*').eq('project_id', project.id).maybeSingle())
+  let quotation = null
+  if (link && link.quotation_id) quotation = must(await supabase.from('quotations').select('*, clients(name)').eq('id', link.quotation_id).maybeSingle())
+  return { link: link || null, quotation: quotation || null }
+}
+
 // header: { client_id, site_name, date ('yyyy-MM-dd'), validDays, attach_enabled, attach_mode, attach_view, split_enabled, split_material_pct }
-// plan: preparePlan output. lines: buildLines output (needed for the opening -> row map). Returns { quotationId, label }.
+// plan: preparePlan output. lines: buildLines output. link/quotation: from loadLinkedQuotation. Returns { quotationId, label }.
+//
+// Retry safety: the link is written right after the quotation is created (so a retry finds it), and every generated
+// pair is mapped in estimation_quotation_lines immediately after it is inserted. The only unmapped-generated-row window
+// is between those two statements of one pair; if the map write fails the pair is deleted again (best effort) before the
+// error is rethrown. Only if that delete also fails can a retry see the pair as a user row.
 export async function pushToQuotation({ supabase, project, link, quotation, plan, header, lines, snapshotPayload, tenant }) {
   if (quotation && plan.action === 'create') throw new Error('แผนการส่งไม่ตรงกับสถานะใบเสนอราคา')
   if (!quotation && plan.action !== 'create') throw new Error('แผนการส่งไม่ตรงกับสถานะใบเสนอราคา')
   let quotationId = quotation ? quotation.id : null
+  let linkId = link ? link.id : null
+  const linkOptions = pick({
+    attach_enabled: header.attach_enabled, attach_mode: header.attach_mode, attach_view: header.attach_view,
+    split_enabled: !!header.split_enabled, split_material_pct: header.split_material_pct,
+  }, LINK_COLS)
 
-  // (1) create the quotation, exactly as the Quotation form's save writes a new one
+  // (1) create the quotation, exactly as the Quotation form's save writes a new one, and link it at once
   if (plan.action === 'create') {
     const accounts = must(await supabase.from('bank_accounts').select('*')) || []
     const bank = pickDefaultBankAccount(accounts, true)
@@ -81,41 +102,59 @@ export async function pushToQuotation({ supabase, project, link, quotation, plan
     }, QUOTATION_COLS)
     const row = must(await supabase.from('quotations').insert(payload).select().single())
     quotationId = row.id
+    await auditLog('quotations', quotationId, 'INSERT', null, payload)
+    if (linkId) must(await supabase.from('estimation_quotation_links').update({ quotation_id: quotationId }).eq('id', linkId))
+    else {
+      const l = must(await supabase.from('estimation_quotation_links').insert(pick({ project_id: project.id, quotation_id: quotationId, ...linkOptions }, LINK_COLS)).select().single())
+      linkId = l.id
+    }
   }
 
   // (2) pull back: keep the content being replaced in the same history the Quotation page uses
   if (plan.bumpRevision) {
     const q = must(await supabase.from('quotations').select('*, clients(name), bank_accounts(bank_name, account_name, account_no)').eq('id', quotationId).single())
-    const cur = must(await supabase.from('quotation_items').select('*').eq('quotation_id', quotationId).order('sort_order'))
-    must(await supabase.from('quotation_revisions').insert({ quotation_id: quotationId, revision: q.revision || 1, snapshot: snapshotFor(q, cur || []) }))
+    const oldRevision = q.revision || 1
+    const have = must(await supabase.from('quotation_revisions').select('id').eq('quotation_id', quotationId).eq('revision', oldRevision)) || []
+    if (!have.length) {   // a retry after a failed status update must not double the history
+      const cur = must(await supabase.from('quotation_items').select('*').eq('quotation_id', quotationId).order('sort_order'))
+      must(await supabase.from('quotation_revisions').insert({ quotation_id: quotationId, revision: oldRevision, snapshot: snapshotFor(q, cur || []) }))
+    }
     must(await supabase.from('quotations').update({ status: plan.setStatus || 'draft', revision: plan.newRevision }).eq('id', quotationId))
+    await auditLog('quotations', quotationId, 'UPDATE', { status: q.status, revision: oldRevision }, { status: plan.setStatus || 'draft', revision: plan.newRevision })
   }
 
-  // (3) quotation_items
+  // (3) quotation_items + (4) the line map, pair by pair
   if (plan.deletes.length) must(await supabase.from('quotation_items').delete().in('id', plan.deletes.map(d => d.id)))
   const rowIdOf = new Map()   // `${openingId}:${kind}` -> quotation_items id
   for (const u of plan.updates) {
     must(await supabase.from('quotation_items').update(pick({ ...u.values, sort_order: u.sort_order }, ITEM_UPDATE_COLS)).eq('id', u.id))
     rowIdOf.set(`${u.openingId}:${u.kind}`, u.id)
   }
-  if (plan.inserts.length) {
-    const rows = plan.inserts.map(i => pick({ ...i.values, quotation_id: quotationId, catalog_item_id: null, sort_order: i.sort_order }, ITEM_COLS))
-    const created = must(await supabase.from('quotation_items').insert(rows).select('id')) || []
-    if (created.length !== plan.inserts.length) throw new Error('สร้างรายการในใบเสนอราคาไม่ครบ')
-    plan.inserts.forEach((i, idx) => rowIdOf.set(`${i.openingId}:${i.kind}`, created[idx].id))
-  }
-  for (const k of [...(plan.keepOrder || []), ...(plan.userRowOrder || [])]) {
-    must(await supabase.from('quotation_items').update({ sort_order: k.sort_order }).eq('id', k.id))
-  }
-
-  // (4) estimation_quotation_lines: look up, then insert or update (no upsert)
   const existing = must(await supabase.from('estimation_quotation_lines').select('*').eq('project_id', project.id)) || []
   const existingByOpening = new Map(existing.map(r => [r.opening_id, r]))
   for (const l of lines) {
+    const mine = plan.inserts.filter(i => i.openingId === l.openingId)
+    let createdIds = []
+    if (mine.length) {
+      const rows = mine.map(i => pick({ ...i.values, quotation_id: quotationId, catalog_item_id: null, sort_order: i.sort_order }, ITEM_COLS))
+      const created = must(await supabase.from('quotation_items').insert(rows).select('id')) || []
+      if (created.length !== mine.length) throw new Error('สร้างรายการในใบเสนอราคาไม่ครบ')
+      createdIds = created.map(c => c.id)
+      mine.forEach((i, idx) => rowIdOf.set(`${l.openingId}:${i.kind}`, createdIds[idx]))
+    }
     const vals = { item_row_id: rowIdOf.get(`${l.openingId}:item`) || null, description_row_id: rowIdOf.get(`${l.openingId}:desc`) || null }
     const e = existingByOpening.get(l.openingId)
-    if (e) must(await supabase.from('estimation_quotation_lines').update(vals).eq('id', e.id))
-    else must(await supabase.from('estimation_quotation_lines').insert(pick({ project_id: project.id, opening_id: l.openingId, ...vals }, LINE_COLS)))
+    try {
+      if (e && e.item_row_id === vals.item_row_id && e.description_row_id === vals.description_row_id) continue
+      if (e) must(await supabase.from('estimation_quotation_lines').update(vals).eq('id', e.id))
+      else must(await supabase.from('estimation_quotation_lines').insert(pick({ project_id: project.id, opening_id: l.openingId, ...vals }, LINE_COLS)))
+    } catch (err) {
+      if (createdIds.length) { try { await supabase.from('quotation_items').delete().in('id', createdIds) } catch { /* best effort */ } }
+      throw err
+    }
+  }
+  for (const k of [...(plan.keepOrder || []), ...(plan.userRowOrder || [])]) {
+    must(await supabase.from('quotation_items').update({ sort_order: k.sort_order }).eq('id', k.id))
   }
   const keptOpenings = new Set(plan.keeps.map(k => k.openingId))
   const goneOpenings = [...new Set(plan.deletes.map(d => d.openingId))].filter(o => !keptOpenings.has(o) && existingByOpening.has(o))
@@ -127,15 +166,8 @@ export async function pushToQuotation({ supabase, project, link, quotation, plan
     price_as_of: project.price_as_of || null, factors: snapshotPayload.factors, items: snapshotPayload.items, totals: snapshotPayload.totals,
   }, SNAPSHOT_COLS)))
 
-  // (6) the link
-  const linkVals = pick({
-    project_id: project.id, quotation_id: quotationId,
-    attach_enabled: header.attach_enabled, attach_mode: header.attach_mode, attach_view: header.attach_view,
-    split_enabled: !!header.split_enabled, split_material_pct: header.split_material_pct,
-    last_pushed_at: new Date().toISOString(),
-  }, LINK_COLS)
-  if (link) must(await supabase.from('estimation_quotation_links').update(linkVals).eq('id', link.id))
-  else must(await supabase.from('estimation_quotation_links').insert(linkVals))
+  // (6) the link: options and push time
+  must(await supabase.from('estimation_quotation_links').update({ ...linkOptions, quotation_id: quotationId, last_pushed_at: new Date().toISOString() }).eq('id', linkId))
 
   return { quotationId, label: revisionLabel(plan.newRevision, plan.subNo) }
 }

@@ -1,6 +1,6 @@
 // src/lib/quotationExport.js
 // Plans an export of an estimation price structure into the standard quotation tables. Pure: no I/O.
-import { buildItemDescription } from './descriptionFormat'
+import { buildItemDescription, descriptionParts } from './descriptionFormat'
 
 const num = v => Number(v) || 0
 
@@ -33,7 +33,7 @@ export function buildLines({ rows, items, descriptionCtxById, descriptionFormat,
     lines.push({
       openingId: r.id,
       item: { description: title, unit: 'ชุด', quantity, unit_price: price, unit_price_material: material, unit_price_labor: labour, line_total: price * quantity, item_type: 'item' },
-      desc: { description: buildItemDescription(ctx, descriptionFormat), unit: null, quantity: 0, unit_price: 0, unit_price_material: splitOn ? 0 : null, unit_price_labor: splitOn ? 0 : null, line_total: 0, item_type: 'item_description' },
+      desc: { description: buildItemDescription(ctx, descriptionFormat) || descriptionParts(ctx, ['size'])[0] || name || title, unit: null, quantity: 0, unit_price: 0, unit_price_material: splitOn ? 0 : null, unit_price_labor: splitOn ? 0 : null, line_total: 0, item_type: 'item_description' },
     })
   })
   return { lines, skipped }
@@ -111,4 +111,24 @@ export function snapshotFor(q, items) {
       unit_price_material: it.unit_price_material, unit_price_labor: it.unit_price_labor, line_total: it.line_total,
     })),
   }
+}
+
+// Old-vs-new price comparison for the update dialog. snapshot: the last 'sent' estimation_price_snapshots row
+// (items[].opening_id / price / quantity). rows: priceProject rows. Only resolved rows with a new price are compared;
+// an item missing from the snapshot has oldPrice null. Totals are price x quantity, before VAT.
+export function compareWithLastSent({ snapshot, rows, items }) {
+  const old = new Map(((snapshot && snapshot.items) || []).filter(i => i && i.price != null).map(i => [i.opening_id, i]))
+  const byId = new Map((items || []).map(i => [i.id, i]))
+  const out = []
+  let oldTotal = 0, newTotal = 0
+  for (const r of rows || []) {
+    if (!r.resolved || r.price == null) continue
+    const o = old.get(r.id)
+    const oldPrice = o ? num(o.price) : null
+    const diff = oldPrice == null ? null : r.price - oldPrice
+    out.push({ openingId: r.id, opening_no: (byId.get(r.id) || {}).opening_no ?? null, oldPrice, newPrice: r.price, diff, pct: oldPrice > 0 ? diff / oldPrice * 100 : null })
+    newTotal += r.price * num(r.quantity)
+  }
+  for (const o of old.values()) oldTotal += num(o.price) * num(o.quantity)
+  return { rows: out, oldTotal, newTotal, diffTotal: newTotal - oldTotal }
 }
