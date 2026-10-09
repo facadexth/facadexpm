@@ -3,11 +3,11 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase.js'
 
 const FIELDS = [
-  ['waste_pct', 'เผื่อเสียเศษอลูมิเนียม (%)'],
-  ['profit_pct', 'กำไร (%)'],
-  ['pm_pct', 'PM (%)'],
-  ['transport_total', 'ค่าขนส่งทั้งโครงการ (฿)'],
-  ['round_step', 'ปัดราคาขึ้นทีละ (฿)'],
+  ['waste_pct', 'เผื่อเสียเศษ (% ของอลูมิเนียม)'],
+  ['profit_pct', 'กำไร (% ทับรวมต้นทุน)'],
+  ['pm_pct', 'PM (% ของราคาขาย)'],
+  ['transport_total', 'ค่าขนส่งทั้งโปรเจกต์ (บาท)'],
+  ['round_step', 'ปัดราคาขายขึ้นทีละ (บาท)'],
 ]
 export const FACTOR_COLUMNS = FIELDS.map(f => f[0])
 
