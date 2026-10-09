@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isCountable, buildUnitSeedRows, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, sumMaterialLabor, chosenTaxOffset, invoiceTaxOffsetUsed, effectiveInvoiceTaxOffset } from './invoiceCalc.js'
+import { isCountable, buildUnitSeedRows, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, sumMaterialLabor, chosenTaxOffset, invoiceTaxOffsetUsed, effectiveInvoiceTaxOffset, invoiceBillingTotal } from './invoiceCalc.js'
 
 describe('isCountable', () => {
   it('true for small whole numbers', () => {
@@ -195,6 +195,15 @@ describe('deposit tax offset follows the deduction the invoice chose', () => {
 
   it('invoiceTaxOffsetUsed is 0 without VAT', () => {
     expect(invoiceTaxOffsetUsed({ has_vat: false, subtotal: '1000', vat: '0', total: '1000' })).toBe(0)
+  })
+
+  it('invoiceBillingTotal: a chosen deposit comes off before VAT; old and deposit invoices keep their total', () => {
+    const withDeposit = { total: '217684.50', deposit_deduction_amount: '78210.00', is_deposit: false }
+    expect(invoiceBillingTotal(withDeposit)).toBe(139474.5)
+    expect(invoiceBillingTotal({ total: '132080.82', deposit_deduction_amount: '0.00', is_deposit: false })).toBe(132080.82)
+    expect(invoiceBillingTotal({ total: '273474.30', deposit_deduction_amount: null, is_deposit: false })).toBe(273474.3)
+    expect(invoiceBillingTotal({ total: '83684.70', deposit_deduction_amount: '5000', is_deposit: true })).toBe(83684.7)
+    expect(invoiceBillingTotal(null)).toBe(0)
   })
 
   it('effectiveInvoiceTaxOffset: a chosen-deduction invoice uses its own offset, an old one keeps the live legacy value', () => {

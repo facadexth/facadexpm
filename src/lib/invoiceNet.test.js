@@ -32,6 +32,20 @@ describe('computeInvoiceNet', () => {
     expect(r.depositAmount).toBe(78210)
     expect(r.net).toBe(74661.6)
   })
+  it('card lines for the owner example: 150,000 - 78,210 = 71,790; VAT 5,025.30; invoice amount 76,815.30; receives 74,661.60', () => {
+    const r = computeInvoiceNet({ ...base, raw: 150000, deposit: dep('value', '78210') })
+    expect(r.subtotal).toBe(150000)
+    expect(r.afterDeposit).toBe(71790)
+    expect(r.vat).toBe(5025.3)
+    expect(r.billingTotal).toBe(76815.3)
+    expect(r.wht).toBe(2153.7)
+    expect(r.net).toBe(74661.6)
+  })
+  it('without a deposit the invoice amount is the old total', () => {
+    const r = computeInvoiceNet({ ...base, raw: 100000, deposit: dep('none', ''), availableOffset: 0 })
+    expect(r.afterDeposit).toBe(100000)
+    expect(r.billingTotal).toBe(107000)
+  })
   it('no deduction: VAT and WHT on the full value', () => {
     const r = computeInvoiceNet({ ...base, raw: 150000, deposit: dep('none', '') })
     expect(r.taxOffset).toBe(0)

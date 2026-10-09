@@ -26,7 +26,7 @@ import { auditLog } from '../lib/audit.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
-import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, sumMaterialLabor, VAT_RATE, effectiveInvoiceTaxOffset } from '../lib/invoiceCalc.js'
+import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, sumMaterialLabor, VAT_RATE, effectiveInvoiceTaxOffset, invoiceBillingTotal } from '../lib/invoiceCalc.js'
 import { calcQuotationTotals } from '../lib/quotationCalc.js'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
@@ -320,8 +320,6 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   // ตามสัดส่วนมูลค่าที่เหลือของแต่ละรายการ -- กรอกครั้งเดียว เห็นผลเป็นจำนวน/
   // บาทจริงในแต่ละแถวเหมือนเดิม ไม่ต้องยุ่งกับ % เลย
   const [targetNet, setTargetNet] = useState('')
-  const [includeWht, setIncludeWht] = useState(true)
-  const [whtPct, setWhtPct] = useState(site?.default_tax_withheld_pct ?? 3)
 
   // หักมัดจำสำหรับใบนี้ -- เลือกตอนสร้างใบ (ไม่หัก / % ของยอดก่อน VAT / มูลค่าเป็นบาท) ผูกกับใบนี้ใบเดียว
   // กล่องนี้โผล่เมื่อ migration 2026-10-09-07 ลงแล้ว + โมดูลมัดจำเปิดอยู่ + ไซต์ยังมีมัดจำคงเหลือ
@@ -381,7 +379,8 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   const invoiceItemsForTotals = billedLines.map(l => ({ line_total: round2(drawAmount(l.units, l.unitPrice)) }))
   // ทุกตัวเลขของการ์ดสรุปและช่อง "กรอกยอดที่ต้องการเรียกเก็บ" มาจากสูตรเดียวกัน (lib/invoiceNet.js)
   const rawDrawn = invoiceItemsForTotals.reduce((s, it) => s + it.line_total, 0)
-  const effectiveWhtPct = includeWht ? (parseFloat(whtPct) || 0) : 0
+  // หัก ณ ที่จ่ายใช้ค่าของไซท์เสมอ (ไม่มีช่องกรอกเอง) 0 = ไม่หัก
+  const effectiveWhtPct = Number(site?.default_tax_withheld_pct) || 0
   const netParams = {
     hasVat: quotation.has_vat, priceIncludesVat: quotation.price_includes_vat,
     whtPct: effectiveWhtPct, retentionPct: Number(site?.default_retention_pct) || 0,
@@ -532,7 +531,7 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
           showDeposit={showDepositBox} choice={depositChoice} siteDepositPct={siteDepositPct}
           remaining={depositRemaining} reservedTotal={reserved.total} reservedInvoices={reserved.invoices}
           free={depositFree} availableOffset={depositTaxOffset || 0}
-          includeWht={includeWht} setIncludeWht={setIncludeWht} whtPct={whtPct} setWhtPct={setWhtPct}
+          whtPct={effectiveWhtPct}
           legacyDepositPct={!showDepositBox && depositModule ? siteDepositPct : 0}
         />
 
@@ -540,8 +539,8 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
           <button type="button" onClick={() => setShowTargetCard(v => !v)} aria-expanded={showTargetCard} aria-controls="inv-target-card"
             style={{ display: 'flex', justifyContent: 'space-between', gap: 8, width: '100%', textAlign: 'left', background: 'none', border: 0, padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer' }}>
             <span className="label" style={{ marginBottom: 0 }}>{showDepositBox
-              ? 'กรอกยอดที่ต้องการเรียกเก็บ (สุทธิ หลัง VAT หัก ณ ที่จ่าย และหักมัดจำตามที่ตั้งไว้ด้านบน)'
-              : 'กรอกยอดที่ต้องการเรียกเก็บ (สุทธิ หลัง VAT และหัก ณ ที่จ่ายตามที่ตั้งไว้ด้านบน)'}</span>
+              ? 'กรอกยอดที่ต้องการเรียกเก็บ (สุทธิ หลัง VAT หัก ณ ที่จ่ายตามค่าของไซท์ และหักมัดจำตามที่ตั้งไว้ด้านบน)'
+              : 'กรอกยอดที่ต้องการเรียกเก็บ (สุทธิ หลัง VAT และหัก ณ ที่จ่ายตามค่าของไซท์)'}</span>
             <span style={{ fontSize: 12, color: 'var(--accent)', whiteSpace: 'nowrap' }}>{showTargetCard ? '▴ ซ่อน' : '▾ แสดง'}</span>
           </button>
           <div id="inv-target-card" hidden={!showTargetCard} style={{ display: showTargetCard ? 'grid' : 'none', gap: 8 }}>
@@ -735,7 +734,7 @@ function DocumentHeader({ tenant, tag, title, infoFields, clientName, clientAddr
 // paymentTerms/notes/bankAccount, and there are two independently-labeled
 // signatures (signatures[0]/[1] + mySignature/recipientSignature) instead
 // of a fixed "ผู้เสนอราคา"/"ผู้ยอมรับ (ลูกค้า)" pair.
-function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct = 0, withholdingTaxAmount = 0, isWithholdingEstimate, depositDeductionPct = 0, depositDeductionAmount = 0, isDepositEstimate, notesBlock, signatures, recipientSignature, onPageCountChange, extraRemeasureKey }) {
+export function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct = 0, withholdingTaxAmount = 0, isWithholdingEstimate, depositDeductionPct = 0, depositDeductionAmount = 0, isDepositEstimate, depositBeforeVat = false, notesBlock, signatures, recipientSignature, onPageCountChange, extraRemeasureKey }) {
   const mySignature = useMySignatureUrl()
   const { data: myWorkerName } = useMyWorkerName()
   const style = resolveDocumentStyle(tenant?.document_style)
@@ -812,8 +811,10 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
     </tr>
   )
 
-  const netAmount = totalsAmount - withholdingTaxAmount - depositDeductionAmount
-  const hasDeductions = withholdingTaxAmount > 0 || depositDeductionAmount > 0
+  // depositBeforeVat: the deposit is already inside totalsAmount (shown above the VAT line), so it is not deducted again below
+  const deductedBelow = depositBeforeVat ? 0 : depositDeductionAmount
+  const netAmount = totalsAmount - withholdingTaxAmount - deductedBelow
+  const hasDeductions = withholdingTaxAmount > 0 || deductedBelow > 0
 
   // สรุป box (totals) + caller-supplied notesBlock + signature grid --
   // rendered ONLY on the true last page, but also handed to
@@ -847,7 +848,14 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>รวมค่าแรง</span><span>{fmt(materialLabor.labor)} บาท</span></div>
                 </>
               )}
-              {subtotal != null && (
+              {subtotal != null && depositBeforeVat && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>รวมงวดนี้ (ก่อน VAT)</span><span>{fmt(subtotal)} บาท</span></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>หักเงินมัดจำ{depositDeductionPct ? ` (${depositDeductionPct}%)` : ''}</span><span>({fmt(depositDeductionAmount)}) บาท</span></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontWeight: 600 }}><span style={{ color: '#6a6f85' }}>รวมเบิก หลังหักมัดจำ</span><span>{fmt(subtotal - depositDeductionAmount)} บาท</span></div>
+                </>
+              )}
+              {subtotal != null && !depositBeforeVat && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>มูลค่าที่คำนวณภาษี 7%</span><span>{fmt(subtotal)} บาท</span></div>
               )}
               {hasVat && vat != null && (
@@ -872,7 +880,7 @@ function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, 
                     <span>({fmt(withholdingTaxAmount)})</span>
                   </div>
                 )}
-                {depositDeductionAmount > 0 && (
+                {deductedBelow > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: '#c0392b' }}>
                     <span>หักเงินมัดจำ ({depositDeductionPct}%){isDepositEstimate ? ' (ประมาณการ)' : ''}</span>
                     <span>({fmt(depositDeductionAmount)})</span>
@@ -1128,6 +1136,9 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
   const wht = computeWithholding(invoice, effectiveInvoiceTaxOffset(invoice, depositTaxOffset))
   const { data: depositBalance } = useSiteDepositBalance(hasModuleAccess('client_deposits') ? invoice.site_id : null)
   const deposit = computeDepositDeduction(invoice, depositBalance)
+  // ใบที่เลือกยอดหักมัดจำตอนสร้าง: เอกสารแสดงหักมัดจำก่อน VAT ใช้ยอดที่เลือกไว้ ณ วันออกใบ (VAT คิดจากยอดนี้ไปแล้ว)
+  const chosenDeposit = !invoice.is_deposit && invoice.deposit_deduction_amount != null ? Number(invoice.deposit_deduction_amount) || 0 : 0
+  const depositBeforeVat = chosenDeposit > 0
   const { data: receipt } = useDocumentReceipt('invoice', invoice.id)
   const [signatureUrl, setSignatureUrl] = useState(null)
   const [titleVariant, setTitleVariant] = useState('invoice')
@@ -1214,10 +1225,13 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
                 { label: 'โครงการ', value: invoice.sites?.name || '—' },
               ]}
               clientName={client?.name} clientAddress={client?.address} clientTaxId={client?.tax_id}
-              items={items} totalsLabel="รวมทั้งสิ้น" totalsAmount={invoice.total}
+              items={items} totalsLabel="รวมทั้งสิ้น" totalsAmount={invoiceBillingTotal(invoice)}
               subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
               withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
-              depositDeductionPct={deposit.pct} depositDeductionAmount={deposit.amount} isDepositEstimate={deposit.isEstimate}
+              depositDeductionPct={depositBeforeVat ? round2(chosenDeposit / (invoice.subtotal || 1) * 100) : deposit.pct}
+              depositDeductionAmount={depositBeforeVat ? chosenDeposit : deposit.amount}
+              isDepositEstimate={depositBeforeVat ? false : deposit.isEstimate}
+              depositBeforeVat={depositBeforeVat}
               notesBlock={bankAccount && (
                 <div style={{ marginTop: 20, fontSize: style.footerTextSize, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
                   <strong>ชำระเงินไปที่:</strong> {bankAccount.bank_name} ชื่อบัญชี {bankAccount.account_name} เลขที่ {bankAccount.account_no}
@@ -1694,7 +1708,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
     date:           inv => inv.date || '',
     site:           inv => inv.sites?.name || '',
     client:         inv => inv.quotations?.clients?.name || '',
-    total:          inv => inv.total || 0,
+    total:          inv => invoiceBillingTotal(inv),
     status:         inv => inv.status || '',
   }
   const sortedInvoices = useMemo(() => {
@@ -2072,12 +2086,12 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
                   <td style={{ fontSize: 12 }}>{inv.quotations?.clients?.name || '—'}</td>
                   <td style={{ fontSize: 11, color: 'var(--text3)' }}>{(inv.invoice_items || []).length} รายการ</td>
                   <td className="font-mono" style={{ fontWeight: 700 }}>
-                    {fmt(inv.total)}
+                    {fmt(invoiceBillingTotal(inv))}
                     {(() => {
-                      const wht = computeWithholding(inv)
+                      const wht = computeWithholding(inv, effectiveInvoiceTaxOffset(inv, 0))
                       return wht.amount > 0 ? (
                         <div style={{ fontSize: 10, fontWeight: 400, color: 'var(--text3)' }}>
-                          สุทธิ {fmt(inv.total - wht.amount)}{wht.isEstimate ? ' (ประมาณ)' : ''}
+                          สุทธิ {fmt(invoiceBillingTotal(inv) - wht.amount)}{wht.isEstimate ? ' (ประมาณ)' : ''}
                         </div>
                       ) : null
                     })()}

@@ -56,8 +56,16 @@ ok('switches to value mode', (await btn('หักเป็นมูลค่า
 ok('fills 78210', (await val()) === '78210', await val())
 b = await body()
 ok('caption 78,210.00 baht = 52.14%, left 0.00', /78,210\.00 บาท · 52\.14% ของงวดนี้ · มัดจำที่ใช้ได้หลังหักใบนี้ \(ประมาณการ\) 0\.00/.test(b), b)
-ok('net received 74,661.60 (VAT/WHT only on 71,790)', /รับจริง 74,661\.60/.test(b), b)
-ok('WHT line is 2,153.70 on base 71,790', /หัก ณ ที่จ่าย \(คิดจาก 71,790\.00\) − 2,153\.70/.test(b), b)
+ok('estimated cash received 74,661.60 (VAT/WHT only on 71,790)', /ประมาณการรับจริง.*74,661\.60/.test(b), b)
+ok('WHT line is 3% = 2,153.70 on base 71,790 (site setting, no editable box)', /หัก ณ ที่จ่าย 3% − 2,153\.70.*คิดจาก 71,790\.00 บาท/.test(b) && (await page.locator('input[type=checkbox]').count()) === 0, b)
+ok('card lines in the owner order', (() => {
+  const order = ['รวมงวดนี้ (ก่อน VAT)', 'หักมัดจำ', 'รวมเบิก หลังหักมัดจำ', 'หัก ณ ที่จ่าย 3%', 'VAT 7%', 'รวมงวดนี้ (หลัง VAT)', 'ประมาณการรับจริง']
+  let at = b.indexOf('ผูกกับใบแจ้งหนี้นี้ใบเดียว')
+  for (const l of order) { const i = b.indexOf(l, at); if (i < 0) return false; at = i + 1 }
+  return true
+})(), b)
+ok('after-deposit line 71,790.00 and invoice amount 76,815.30', /รวมเบิก หลังหักมัดจำ 71,790\.00/.test(b) && /รวมงวดนี้ \(หลัง VAT\) = ยอดใบกำกับ 76,815\.30/.test(b), b)
+ok('the estimate line says it is not printed', /ไม่พิมพ์ลงเอกสาร/.test(b))
 const sameRow = await page.evaluate(() => {
   const all = [...document.querySelectorAll('button')]
   const a = all.find(x => x.textContent === 'หักเป็นมูลค่า'), c = all.find(x => x.textContent === 'หักมัดจำคงเหลือทั้งหมด')
@@ -83,7 +91,7 @@ await page.locator('#sub').fill('150000')
 await btn('หักเป็นมูลค่า').click()
 await btn('หักมัดจำคงเหลือทั้งหมด').click()
 b = await body()
-ok('VAT line explains its base on the VAT line', /VAT \(7%\) 5,025\.30 คิดจาก 71,790\.00 บาท \(ตัด 78,210\.00 บาท/.test(b), b)
+ok('VAT line explains its base on the VAT line', /VAT 7% \+ 5,025\.30 คิดจาก 71,790\.00 บาท \(ตัด 78,210\.00 บาท/.test(b), b)
 
 console.log('=== 8 deposit already promised by an unpaid invoice cannot be promised again')
 const page2 = await browser.newPage()
@@ -101,7 +109,7 @@ ok('the default 30% is cut to 0 (nothing left to deduct)', (await page2.locator(
 ok('and the warning says so', (await page2.locator('#inv-deposit-warn').count()) === 1)
 await page2.getByRole('button', { name: 'หักมัดจำคงเหลือทั้งหมด', exact: true }).click()
 ok('"deduct all" also gives 0', (await page2.locator('#resolved').innerText()) === '0')
-ok('VAT is then on the full value', /VAT \(7%\) 10,500\.00/.test((await page2.locator('body').innerText()).replace(/\s+/g, ' ')))
+ok('VAT is then on the full value', /VAT 7% \+ 10,500\.00/.test((await page2.locator('body').innerText()).replace(/\s+/g, ' ')))
 await page2.close()
 
 console.log(fails ? `${fails} FAILED` : 'ALL PASSED')

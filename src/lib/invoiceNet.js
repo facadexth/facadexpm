@@ -47,8 +47,15 @@ export function computeInvoiceNet({ raw, hasVat, priceIncludesVat, whtPct, reten
   const wht = round2(whtBase * (Number(whtPct) || 0) / 100)
   const retention = round2(totals.subtotal * (Number(retentionPct) || 0) / 100)
   const depositAmount = dep ? dep.amount : 0
-  const net = round2(totals.subtotal + totals.vat - wht - retention - depositAmount)
-  return { baseSubtotal: base.subtotal, subtotal: totals.subtotal, vat: totals.vat, total: totals.total, taxOffset, whtBase, wht, retention, dep, depositAmount, net }
+  // รวมเบิก หลังหักมัดจำ = what is billed once the deposit is off; ยอดใบกำกับ = that + VAT (withholding is the customer's
+  // deduction when paying, so it is NOT in the invoice amount); cash received = invoice amount - withholding - retention.
+  const afterDeposit = round2(totals.subtotal - depositAmount)
+  const billingTotal = round2(totals.total - depositAmount)
+  const net = round2(billingTotal - wht - retention)
+  return {
+    baseSubtotal: base.subtotal, subtotal: totals.subtotal, vat: totals.vat, total: totals.total, taxOffset, whtBase, wht, retention,
+    dep, depositAmount, afterDeposit, billingTotal, net,
+  }
 }
 
 /**

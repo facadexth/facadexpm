@@ -8,13 +8,11 @@ const BAL = 78210
 // window.__reserved (default 0) = deposit already promised by other unpaid invoices.
 function Host() {
   const [sub, setSub] = React.useState(150000)
-  const [includeWht, setIncludeWht] = React.useState(true)
-  const [whtPct, setWhtPct] = React.useState(3)
   const choice = useDepositChoiceState(30)
   const reservedTotal = window.__reserved || 0
   const free = Math.max(0, BAL - reservedTotal)
   const calc = computeInvoiceNet({
-    raw: sub, hasVat: true, priceIncludesVat: false, whtPct: includeWht ? Number(whtPct) || 0 : 0, retentionPct: 0, availableOffset: BAL,
+    raw: sub, hasVat: true, priceIncludesVat: false, whtPct: 3, retentionPct: 0, availableOffset: BAL,
     deposit: { enabled: true, mode: choice.mode, text: choice.text, balance: free },
   })
   return (
@@ -26,7 +24,7 @@ function Host() {
         showDeposit choice={choice} siteDepositPct={30} remaining={BAL}
         reservedTotal={reservedTotal} reservedInvoices={reservedTotal ? [{ invoice_number: 'IN2610-002', amount: reservedTotal }] : []}
         free={free} availableOffset={BAL}
-        includeWht={includeWht} setIncludeWht={setIncludeWht} whtPct={whtPct} setWhtPct={setWhtPct} legacyDepositPct={0}
+        whtPct={3} legacyDepositPct={0}
       />
     </div>
   )

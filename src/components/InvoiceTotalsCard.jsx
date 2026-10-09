@@ -1,6 +1,6 @@
 // ============================================================
 // InvoiceTotalsCard -- the ONE card of the create-invoice form that holds the deposit choice, the totals (VAT) and the
-// withholding tax, ending in the cash the customer is expected to pay. Everything shown comes from `calc`
+// withholding tax (the site's setting, not editable here), ending in the cash the customer is expected to pay. Everything shown comes from `calc`
 // (lib/invoiceNet.computeInvoiceNet), the same pipeline the "กรอกยอดที่ต้องการเรียกเก็บ" back-solver uses.
 // Deposit state lives in useDepositChoiceState (called at the top of the form, before its early returns).
 // ============================================================
@@ -26,7 +26,7 @@ const small = { fontSize: 11.5, color: 'var(--text3)' }
 export default function InvoiceTotalsCard({
   calc, hasVat, isSplit, materialLabor,
   showDeposit, choice, siteDepositPct, remaining, reservedTotal, reservedInvoices, free, availableOffset,
-  includeWht, setIncludeWht, whtPct, setWhtPct, legacyDepositPct,
+  whtPct, legacyDepositPct,
 }) {
   const { mode, text, warned, setMode, setText, setWarned } = choice
   const dep = calc.dep
@@ -96,9 +96,23 @@ export default function InvoiceTotalsCard({
           </>
         )}
         <div style={row}><span>รวมงวดนี้ (ก่อน VAT)</span><span className="font-mono">{fmt(calc.subtotal)}</span></div>
+        {showDeposit && (
+          <>
+            <div style={row}><span>หักมัดจำ</span><span className="font-mono">− {fmt(calc.depositAmount)}</span></div>
+            <div style={{ ...row, fontWeight: 700, borderTop: '1px solid var(--border)', paddingTop: 3 }}>
+              <span>รวมเบิก หลังหักมัดจำ</span><span className="font-mono">{fmt(calc.afterDeposit)}</span>
+            </div>
+          </>
+        )}
+        {whtPct > 0 && (
+          <div>
+            <div style={row}><span>หัก ณ ที่จ่าย {whtPct}%</span><span className="font-mono">− {fmt(calc.wht)}</span></div>
+            <div style={small}>ตามค่าของไซท์ · คิดจาก {fmt(calc.whtBase)} บาท · ผู้ว่าจ้างหักตอนจ่าย ไม่รวมในยอดใบกำกับ</div>
+          </div>
+        )}
         {hasVat && (
           <div>
-            <div style={row}><span>VAT (7%)</span><span className="font-mono">{fmt(calc.vat)}</span></div>
+            <div style={row}><span>VAT 7%</span><span className="font-mono">+ {fmt(calc.vat)}</span></div>
             {calc.taxOffset > 0 && (
               <div style={small}>
                 คิดจาก {fmt(Math.max(0, calc.subtotal - calc.taxOffset))} บาท (ตัด {fmt(Math.min(calc.subtotal, calc.taxOffset))} บาทที่หักมัดจำในใบนี้ ซึ่งเสีย VAT ไปแล้วตอนรับมัดจำ)
@@ -109,40 +123,20 @@ export default function InvoiceTotalsCard({
             )}
           </div>
         )}
-        <div style={{ ...row, fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}>
-          <span>รวมเรียกเก็บงวดนี้</span><span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(calc.total)}</span>
+        <div id="inv-billing-total" style={{ ...row, fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}>
+          <span>รวมงวดนี้ (หลัง VAT) <span style={{ ...small, fontWeight: 600 }}>= ยอดใบกำกับ</span></span>
+          <span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(calc.billingTotal)}</span>
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', paddingTop: 8, borderTop: '1px dashed var(--border)' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text2)' }}>
-          <input type="checkbox" checked={includeWht} onChange={e => setIncludeWht(e.target.checked)} />
-          หัก ณ ที่จ่ายสำหรับใบนี้
-        </label>
-        {includeWht && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <input type="number" min="0" max="100" step="any" className="input input-sm" style={{ width: 60 }}
-              value={whtPct} onChange={e => setWhtPct(e.target.value)} />
-            <span style={small}>%</span>
-          </div>
-        )}
-      </div>
-      <div style={{ ...small, fontSize: 11 }}>
-        การตั้งค่านี้ผูกกับใบแจ้งหนี้นี้ใบเดียว — ตอนกดยืนยันชำระ ระบบจะหัก ณ ที่จ่ายตามนี้เสมอ ไม่ว่า % เริ่มต้นของไซท์จะเปลี่ยนไปภายหลังหรือไม่
-      </div>
-
-      {showDeposit && (
-        <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 6, display: 'grid', gap: 2 }}>
-          <div style={small}>ประมาณการเงินที่จะได้รับจริงของใบนี้</div>
-          <div style={row}><span>รวมเรียกเก็บงวดนี้</span><span className="font-mono">{fmt(calc.total)}</span></div>
-          {calc.wht > 0 && <div style={row}><span>หัก ณ ที่จ่าย (คิดจาก {fmt(calc.whtBase)})</span><span className="font-mono">− {fmt(calc.wht)}</span></div>}
-          {calc.retention > 0 && <div style={row}><span>หักประกันผลงาน</span><span className="font-mono">− {fmt(calc.retention)}</span></div>}
-          <div style={row}><span>หักมัดจำ</span><span className="font-mono">− {fmt(calc.depositAmount)}</span></div>
-          <div id="inv-deposit-received" style={{ ...row, fontWeight: 700, borderTop: '1px solid var(--border)', paddingTop: 4 }}>
-            <span>รับจริง</span><span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(calc.net)}</span>
-          </div>
+      <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 6, display: 'grid', gap: 2 }}>
+        {calc.retention > 0 && <div style={row}><span>หักประกันผลงาน</span><span className="font-mono">− {fmt(calc.retention)}</span></div>}
+        <div id="inv-deposit-received" style={{ ...row, fontWeight: 700 }}>
+          <span>ประมาณการรับจริง <span style={{ ...small, fontWeight: 400 }}>(ยอดใบกำกับ{calc.wht > 0 ? ' − ณ ที่จ่าย' : ''}{calc.retention > 0 ? ' − ประกัน' : ''}{!showDeposit && legacyDepositPct > 0 ? ' · ยังไม่รวมมัดจำที่ระบบหักตอนชำระ' : ''})</span></span>
+          <span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(calc.net)}</span>
         </div>
-      )}
+        <div style={{ ...small, fontSize: 11 }}>บรรทัดนี้ใช้ดูในหน้านี้เท่านั้น ไม่พิมพ์ลงเอกสาร</div>
+      </div>
     </div>
   )
 }

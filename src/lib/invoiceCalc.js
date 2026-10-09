@@ -148,6 +148,19 @@ export function invoiceTaxOffsetUsed(invoice) {
 }
 
 /**
+ * The amount the invoice document bills ("ยอดใบกำกับ"). An invoice that chose its deposit deduction shows the deposit
+ * taken off BEFORE VAT: (subtotal - deposit) + VAT = stored total (subtotal + vat) - deposit. Older invoices and deposit
+ * invoices keep their stored total. The stored `total` itself is never rewritten, so the tax-offset bookkeeping that
+ * reads it back (getQuotationDepositTaxOffset, invoiceTaxOffsetUsed) keeps working.
+ */
+export function invoiceBillingTotal(invoice) {
+  const total = parseFloat(invoice?.total) || 0
+  if (!invoice || invoice.is_deposit || invoice.deposit_deduction_amount == null) return total
+  const deposit = Math.max(0, parseFloat(invoice.deposit_deduction_amount) || 0)
+  return round2(Math.max(0, total - deposit))
+}
+
+/**
  * Offset to use for an invoice that already exists: one that chose its deduction (deposit_deduction_amount set) uses
  * exactly what it took when created; an older invoice keeps the previous behaviour (`legacyOffset` = whatever deposit
  * tax is still unused on the quotation right now).
