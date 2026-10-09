@@ -1716,6 +1716,33 @@ describe('costOpening', () => {
     c.item = { ...c.item, addon_template_id: 't2', addon_width_m: 2 }
     expect(costOpening(c).addonBom).toBeNull()
   })
+  it('string width/height (DB numerics) cost the same as numbers', () => {
+    const c = ctxBase()
+    c.item = { ...c.item, width_m: '2', height_m: '1' }
+    expect(costOpening(c).total).toBeCloseTo(584)
+  })
+  it('a missing main height is flagged no_dimension, never a silent 0', () => {
+    const c = ctxBase()
+    c.item = { ...c.item, height_m: undefined }
+    const r = costOpening(c)
+    expect(r.unresolved).toContainEqual({ name: 'ขนาดช่องเปิด', reason: 'no_dimension', source: 'main' })
+  })
+  it('every unresolved entry has exactly name/reason/source, joint failures included', () => {
+    const c = ctxBase()
+    c.jointsByTemplate = { t1: [{ ...joints[0], main_family: 'missing' }] }
+    c.project = { ...c.project, default_series_id: undefined }
+    const r = costOpening(c)
+    expect(r.unresolved.length).toBeGreaterThan(0)
+    r.unresolved.forEach(u => expect(Object.keys(u).sort()).toEqual(['name', 'reason', 'source']))
+    const c2 = ctxBase()
+    c2.jointsByTemplate = { t1: [{ ...joints[0], main_family: 'missing' }] }
+    expect(costOpening(c2).unresolved).toContainEqual({ name: 'bar', reason: 'no_main_profile', source: 'joint' })
+  })
+  it('an infill id missing from infillTypesById is flagged unknown_infill', () => {
+    const c = ctxBase()
+    c.item = { ...c.item, infill_type_id: 'ghost' }
+    expect(costOpening(c).unresolved).toContainEqual({ name: 'วัสดุอุดช่อง', reason: 'unknown_infill', source: 'main' })
+  })
 })
 ```
 
@@ -1748,11 +1775,16 @@ function prepareComponents({ template, components, joints, index, seriesId, thic
 // ctx: { item, project, template, addonTemplate, componentsByTemplate, hardwareByTemplate, jointsByTemplate,
 //        typesById, infillTypesById, index, settings, asOf }
 export function costOpening(ctx) {
-  const { item, project, template, addonTemplate, index, settings, asOf } = ctx
+  const { item: rawItem, project, template, addonTemplate, index, settings, asOf } = ctx
+  // DB numerics can arrive as strings; the engine adds width + height, so coerce once here.
+  const item = { ...rawItem, width_m: Number(rawItem.width_m) || 0, height_m: Number(rawItem.height_m) || 0, panel_count: Math.max(1, Math.floor(Number(rawItem.panel_count)) || 1) }
   const byT = (m, id) => (m && m[id]) || []
   const resolved = resolveItemInputs(item, project, template, ctx.typesById)
   const pricing = makeCatalogPricing({ index, seriesId: resolved.series_id, finishId: resolved.finish_id, asOf })
   const issues = []
+  const own = []
+  if (!(item.width_m > 0 && item.height_m > 0)) own.push({ name: 'ขนาดช่องเปิด', reason: 'no_dimension', source: 'main' })
+  if (resolved.infill_type_id && !(ctx.infillTypesById || {})[resolved.infill_type_id]) own.push({ name: 'วัสดุอุดช่อง', reason: 'unknown_infill', source: 'main' })
 
   const main = buildEngineOpening(item, project, template, ctx.typesById, ctx.infillTypesById)
   const prepared = prepareComponents({ template, components: byT(ctx.componentsByTemplate, template.id), joints: byT(ctx.jointsByTemplate, template.id), index, seriesId: resolved.series_id, thicknessMm: resolved.thickness_mm, sashThicknessMm: resolved.sash_thickness_mm })
@@ -1776,7 +1808,13 @@ export function costOpening(ctx) {
   return {
     resolved, bom, addonBom, extras, issues,
     total: combined.totalCost + extras.cost,
-    unresolved: [...bom.unresolvedDetails, ...(addonBom ? addonBom.unresolvedDetails : []), ...extras.unresolved, ...issues],
+    unresolved: [
+      ...own,
+      ...bom.unresolvedDetails.map(d => ({ ...d, source: 'main' })),
+      ...(addonBom ? addonBom.unresolvedDetails.map(d => ({ ...d, source: 'addon' })) : []),
+      ...extras.unresolved.map(d => ({ ...d, source: 'extras' })),
+      ...issues.map(i => ({ name: i.role_name, reason: i.reason, source: 'joint' })),
+    ],
   }
 }
 ```
