@@ -1,36 +1,64 @@
 // src/pages/estimation/StalePriceBanner.jsx
 // "มีราคาใหม่ N รายการ" (mockup screen 4): lines whose price row would differ if the project's price date were today.
-// Read-only; the refresh button arrives with Task 17.
+// The refresh button (edit rights only, never automatic) moves the project's price date to today after a confirm
+// dialog that lists the changes and says every item is re-priced.
 import { useState } from 'react'
-import { priceRowLabel } from './projectDefaults.js'
+import { supabase } from '../../lib/supabase.js'
+import { ConfirmDialog } from '../../components/Modal.jsx'
+import { localDateString } from '../../lib/localDate.js'
+import { changesView, refreshWarning, refreshPatch } from './staleView.js'
 
-export default function StalePriceBanner({ changes, itemsById, index, priceAsOf }) {
+function ChangesTable({ rows }) {
+  return (
+    <table style={{ marginTop: 8, width: '100%', fontSize: 12 }}>
+      <thead><tr><th>รายการ</th><th>ชิ้นส่วน</th><th>ราคาเดิม</th><th>ราคาใหม่</th></tr></thead>
+      <tbody>{rows.map((r, i) => <tr key={i}><td>{r.item}</td><td>{r.part}</td><td>{r.before}</td><td>{r.after}</td></tr>)}</tbody>
+    </table>
+  )
+}
+
+export default function StalePriceBanner({ changes, itemsById, index, priceAsOf, projectId, canEdit, onRefreshed }) {
   const [open, setOpen] = useState(false)
+  const [confirm, setConfirm] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
   if (!changes.length) return null
-  const itemCount = new Set(changes.map(c => c.opening_id)).size
+  const { itemCount, rows } = changesView(changes, itemsById, index)
+
+  const refresh = async () => {
+    if (busy) return
+    setBusy(true); setError('')
+    try {
+      const { error: e } = await supabase.from('estimation_projects').update(refreshPatch()).eq('id', projectId)
+      if (e) throw e
+      setConfirm(false)
+      if (onRefreshed) await onRefreshed()
+    } catch (e) {
+      setError('อัปเดตราคาไม่สำเร็จ: ' + ((e && e.message) || String(e)) + ' (ราคาของโปรเจกต์ยังไม่เปลี่ยน ลองใหม่อีกครั้ง)')
+    } finally { setBusy(false) }
+  }
+
   return (
     <div style={{ padding: 12, background: 'var(--blue-bg, #e8f1ff)', border: '1px solid var(--blue, #4a90e2)', borderRadius: 8, fontSize: 13 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span>💡 <b>มีราคาใหม่ {itemCount} รายการ</b> (โปรเจกต์ล็อกราคา ณ {priceAsOf})</span>
-        <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(o => !o)}>{open ? 'ซ่อน' : 'ดูรายการ'}</button>
+        <span style={{ display: 'flex', gap: 6 }}>
+          <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(o => !o)}>{open ? 'ซ่อน' : 'ดูรายการ'}</button>
+          {canEdit && <button type="button" className="btn btn-sm btn-primary" onClick={() => { setError(''); setConfirm(true) }}>อัปเดตเป็นราคาปัจจุบัน</button>}
+        </span>
       </div>
-      {open && (
-        <table style={{ marginTop: 8, width: '100%' }}>
-          <thead><tr><th>รายการ</th><th>ชิ้นส่วน</th><th>ราคาเดิม</th><th>ราคาใหม่</th></tr></thead>
-          <tbody>
-            {changes.map((c, i) => {
-              const it = itemsById[c.opening_id]
-              return (
-                <tr key={i}>
-                  <td>{it ? `${it.opening_no}${it.item_name ? ` · ${it.item_name}` : ''}` : c.opening_id}</td>
-                  <td>{c.name}</td>
-                  <td>{priceRowLabel(index, c.before)}</td>
-                  <td>{priceRowLabel(index, c.after)}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+      {error && !confirm && <div className="alert alert-error" style={{ marginTop: 8 }}>{error}</div>}
+      {open && <ChangesTable rows={rows} />}
+      {confirm && (
+        <ConfirmDialog title="อัปเดตเป็นราคาปัจจุบัน" confirmDisabled={busy} onCancel={() => !busy && setConfirm(false)} onConfirm={refresh}
+          message={(
+            <div>
+              <div style={{ fontWeight: 700 }}>{refreshWarning(priceAsOf, localDateString(new Date()))}</div>
+              <div style={{ fontSize: 12, marginTop: 6 }}>รายการที่ราคาเปลี่ยน ({itemCount} รายการ):</div>
+              <div style={{ maxHeight: 240, overflow: 'auto' }}><ChangesTable rows={rows} /></div>
+              {error && <div className="alert alert-error" style={{ marginTop: 8 }}>{error}</div>}
+            </div>
+          )} />
       )}
     </div>
   )

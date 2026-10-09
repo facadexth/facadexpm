@@ -24,6 +24,7 @@ import AvailabilityBanner from './estimation/AvailabilityBanner.jsx'
 import StalePriceBanner from './estimation/StalePriceBanner.jsx'
 import ItemsTable from './estimation/ItemsTable.jsx'
 import ItemModal from './estimation/ItemModal.jsx'
+import QuickQuote from './estimation/QuickQuote.jsx'
 import ProjectBomView from './estimation/ProjectBomView.jsx'
 import { newProjectRow, packageRowsFor, hardwareBanners, availabilityIssues, costItems, bomsForStale, currentPreviewSigs } from './estimation/projectDefaults.js'
 
@@ -48,6 +49,7 @@ export default function Estimation(props) {
   const [showProjectForm, setShowProjectForm] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [itemModal, setItemModal] = useState(null)   // null | { id: string | null }
+  const [quickOpen, setQuickOpen] = useState(false)
   const [tab, setTab] = useState('items')   // 'items' | 'bom'
 
   const project = (projects || []).find(p => p.id === selectedProjectId) || null
@@ -101,7 +103,7 @@ export default function Estimation(props) {
         <div style={{ display: 'grid', gap: 4 }}>
           {(projects || []).map(p => (
             <button key={p.id} className={`btn btn-sm ${selectedProjectId === p.id ? 'btn-primary' : 'btn-ghost'}`} style={{ justifyContent: 'flex-start' }}
-              onClick={() => { setSelectedProjectId(p.id); setItemModal(null) }}>
+              onClick={() => { setSelectedProjectId(p.id); setItemModal(null); setQuickOpen(false) }}>
               {p.name}
             </button>
           ))}
@@ -116,11 +118,13 @@ export default function Estimation(props) {
             <ProjectDefaultsPanel project={project} index={index} seriesTypes={catalog.seriesTypes} infillTypes={infillTypes} packages={hw.packages}
               items={projectOpenings} templatesById={base.templatesById} canEdit={canEdit} onSaved={refetchProjects} />
             <AvailabilityBanner issues={issues} hardware={hwBanners} typeNames={typeNames} />
-            <StalePriceBanner changes={stale} itemsById={Object.fromEntries(projectOpenings.map(o => [o.id, o]))} index={index} priceAsOf={project.price_as_of} />
+            <StalePriceBanner changes={stale} itemsById={Object.fromEntries(projectOpenings.map(o => [o.id, o]))} index={index} priceAsOf={project.price_as_of}
+              projectId={project.id} canEdit={canEdit} onRefreshed={refetchProjects} />
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" className={`btn btn-sm ${tab === 'items' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('items')}>รายการ</button>
               <button type="button" className={`btn btn-sm ${tab === 'bom' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('bom')}>BOM ทั้งโครงการ</button>
               {tab === 'items' && canEdit && <button className="btn btn-primary btn-sm" onClick={() => setItemModal({ id: null })}>+ เพิ่มรายการ</button>}
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setQuickOpen(true)}>ลองคิดราคา</button>
             </div>
             {tab === 'bom' && costCtx && (
               <ProjectBomView key={project.id} project={project} items={projectOpenings} costs={costs} base={costCtx} index={index} seriesTypes={catalog.seriesTypes}
@@ -128,6 +132,8 @@ export default function Estimation(props) {
             )}
             {tab === 'items' && <ItemsTable items={projectOpenings} costs={costs} previewSigs={previewSigs} project={project} index={index} templatesById={base.templatesById} canEdit={canEdit}
               onOpen={id => setItemModal({ id })} onQuantitySaved={refetchOpenings} />}
+
+            {quickOpen && costCtx && <QuickQuote project={project} ctx={costCtx} templates={templates} today={today} onClose={() => setQuickOpen(false)} />}
 
             {itemModal && costCtx && (
               <ItemModal key={itemModal.id || 'new'} opening={itemModal.id ? projectOpenings.find(o => o.id === itemModal.id) || null : null}
