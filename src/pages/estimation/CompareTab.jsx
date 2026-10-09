@@ -8,7 +8,6 @@ import { useTenant } from '../../hooks/useTenant.js'
 import { useUserRole } from '../../hooks/useUserRole.js'
 import { canEditPage } from '../../lib/permissions.js'
 import { canSendToQuotation } from './sendToQuotationGate.js'
-import { usePriceStructure } from '../../hooks/usePriceStructure.js'
 import { buildComparison, buildAgreedSnapshotRow } from '../../lib/priceCompare.js'
 import { revisionLabel } from '../../lib/quotationExport.js'
 
@@ -34,19 +33,18 @@ export function lastSentSnapshot(snapshots, quotationId) {
 }
 
 // Hook + button for Estimation.jsx: the tab exists only when the send-button gate passes and a quotation is linked.
-export function useCompareAccess(project, canEdit) {
+export function useCompareAccess(project, canEdit, ps) {
   const { hasModuleAccess } = useTenant()
   const { isAtLeast, role } = useUserRole()
-  const ps = usePriceStructure(project ? project.id : null)
   const allowed = canSendToQuotation({
     canEditEstimation: canEdit, hasEstimation: hasModuleAccess('estimation'), hasQuotations: hasModuleAccess('quotations'),
     isAdmin: isAtLeast('ADMIN'), canEditQuotations: canEditPage(role, 'quotations'),
   })
-  return { show: allowed && !!(ps.link && ps.link.quotation_id), ps }
+  return { show: allowed && !!(ps && ps.link && ps.link.quotation_id), ps: ps || {} }
 }
 
-export function CompareTabButton({ active, onClick, project, canEdit }) {
-  const { show } = useCompareAccess(project, canEdit)
+export function CompareTabButton({ active, onClick, project, canEdit, ps }) {
+  const { show } = useCompareAccess(project, canEdit, ps)
   if (!show) return null
   return <button type="button" className={`btn btn-sm ${active ? 'btn-primary' : 'btn-ghost'}`} onClick={onClick}>เทียบราคาจริง</button>
 }
@@ -167,9 +165,9 @@ export async function runCompare({ client, project, quotationId, snapshots, line
   return { quotation: q.data, comparison, label: snapshotLabel(row) }
 }
 
-export default function CompareTab({ project, canEdit, items, client = supabase }) {
+export default function CompareTab({ project, canEdit, items, ps: psProp, client = supabase }) {
   const itemsById = useMemo(() => Object.fromEntries((items || []).map(i => [i.id, i])), [items])
-  const { show, ps } = useCompareAccess(project, canEdit)
+  const { show, ps } = useCompareAccess(project, canEdit, psProp)
   const quotationId = ps.link ? ps.link.quotation_id : null
   const [quotation, setQuotation] = useState(null)
   const [fresh, setFresh] = useState(null)       // { rows, extras, summary, label } from a pull in this session

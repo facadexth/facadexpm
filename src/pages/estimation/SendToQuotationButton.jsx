@@ -5,14 +5,12 @@ import { useTenant } from '../../hooks/useTenant.js'
 import { useUserRole } from '../../hooks/useUserRole.js'
 import { canEditPage } from '../../lib/permissions.js'
 import { canSendToQuotation } from './sendToQuotationGate.js'
-import { usePriceStructure } from '../../hooks/usePriceStructure.js'
 import { resolveItemInputs } from '../../lib/estimationInherit.js'
 import { descriptionContext } from './itemForm.js'
 import SendToQuotationDialog from './SendToQuotationDialog.jsx'
 
-export default function SendToQuotationButton({ project, items, result, index, templatesById, infillTypesById, packageItems, canEdit }) {
+export default function SendToQuotationButton({ project, items, result, index, templatesById, infillTypesById, packageItems, canEdit, ps = {} }) {
   const { tenant, hasModuleAccess } = useTenant()
-  const ps = usePriceStructure(project.id)
   const [open, setOpen] = useState(false)
   const { isAtLeast, role } = useUserRole()
   const allowed = canSendToQuotation({
@@ -35,13 +33,13 @@ export default function SendToQuotationButton({ project, items, result, index, t
   const linked = !!(ps.link && ps.link.quotation_id)
   return (
     <>
-      <button type="button" className="btn btn-primary btn-sm" disabled={ps.loading} onClick={() => setOpen(true)}>
+      <button type="button" className="btn btn-primary btn-sm" disabled={!!ps.loading} onClick={() => setOpen(true)}>
         {linked ? 'อัปเดตราคาไปใบเสนอราคา' : 'ส่งไปใบเสนอราคา'}
       </button>
       {open && (
         <SendToQuotationDialog project={project} items={items} result={result} descriptionCtxById={descriptionCtxById}
           link={ps.link} snapshots={ps.snapshots} tenant={tenant}
-          onClose={() => setOpen(false)} onDone={() => ps.refetch()} />
+          onClose={() => setOpen(false)} onDone={() => ps.refetch && ps.refetch()} />
       )}
     </>
   )
