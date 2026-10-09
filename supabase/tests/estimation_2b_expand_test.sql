@@ -126,7 +126,43 @@ BEGIN
   RAISE NOTICE 'Test 1 (columns, defaults, checks): TEST PASSED';
 END $$;
 
--- ── Test 2: delete behaviour ──
+-- ── Test 2: other tenants and a tenant without the module see and write nothing ──
+-- (runs BEFORE the delete test so every table still holds a row for tenant A: an empty table would pass vacuously)
+DO $$
+DECLARE n INT; t TEXT; raised BOOLEAN; tbl TEXT;
+BEGIN
+  SET LOCAL role = 'authenticated';
+  SET LOCAL request.jwt.claims = '{"email":"__est2_a__@example.com"}';
+  SELECT count(*) INTO n FROM estimation_settings;
+  IF n <> 1 THEN RAISE EXCEPTION 'tenant A should see its settings row, saw %', n; END IF;
+  SELECT count(*) INTO n FROM estimation_layout_templates;
+  IF n <> 2 THEN RAISE EXCEPTION 'tenant A should see its 2 layout templates, saw %', n; END IF;
+  SELECT count(*) INTO n FROM estimation_project_stock;
+  IF n <> 1 THEN RAISE EXCEPTION 'tenant A should see its stock override, saw %', n; END IF;
+  SELECT count(*) INTO n FROM alu_profile_files;
+  IF n <> 1 THEN RAISE EXCEPTION 'tenant A should see its profile file row, saw %', n; END IF;
+  SELECT count(*) INTO n FROM bom_template_joints;
+  IF n <> 2 THEN RAISE EXCEPTION 'tenant A should see its 2 joints, saw %', n; END IF;
+
+  FOREACH t IN ARRAY ARRAY['b','c'] LOOP
+    PERFORM set_config('request.jwt.claims', format('{"email":"__est2_%s__@example.com"}', t), true);
+    FOREACH tbl IN ARRAY ARRAY['estimation_settings','estimation_layout_templates','estimation_project_stock','bom_template_joints','alu_profile_files'] LOOP
+      EXECUTE format('SELECT count(*) FROM %I', tbl) INTO n;
+      IF n <> 0 THEN RAISE EXCEPTION 'tenant % sees % rows of %', t, n, tbl; END IF;
+    END LOOP;
+  END LOOP;
+
+  -- tenant C has no estimation module: it cannot create settings either
+  PERFORM set_config('request.jwt.claims', '{"email":"__est2_c__@example.com"}', true);
+  raised := false;
+  BEGIN INSERT INTO estimation_settings DEFAULT VALUES; EXCEPTION WHEN insufficient_privilege THEN raised := true; END;
+  IF NOT raised THEN RAISE EXCEPTION 'tenant without the estimation module could insert settings'; END IF;
+
+  RESET role;
+  RAISE NOTICE 'Test 2 (isolation and module gate): TEST PASSED';
+END $$;
+
+-- ── Test 3: delete behaviour ──
 DO $$
 DECLARE prof UUID; tpl UUID; joint UUID; proj UUID; part UUID; n INT;
 BEGIN
@@ -162,34 +198,5 @@ BEGIN
   IF n <> 0 THEN RAISE EXCEPTION 'joints should go with their template'; END IF;
 
   RESET role;
-  RAISE NOTICE 'Test 2 (delete behaviour): TEST PASSED';
-END $$;
-
--- ── Test 3: other tenants and a tenant without the module see and write nothing ──
-DO $$
-DECLARE n INT; t TEXT; tb_ UUID; raised BOOLEAN; tbl TEXT;
-BEGIN
-  SET LOCAL role = 'authenticated';
-  SET LOCAL request.jwt.claims = '{"email":"__est2_a__@example.com"}';
-  SELECT count(*) INTO n FROM estimation_settings;
-  IF n <> 1 THEN RAISE EXCEPTION 'tenant A should see its settings row, saw %', n; END IF;
-  SELECT count(*) INTO n FROM estimation_layout_templates;
-  IF n <> 2 THEN RAISE EXCEPTION 'tenant A should see its 2 layout templates, saw %', n; END IF;
-
-  FOREACH t IN ARRAY ARRAY['b','c'] LOOP
-    PERFORM set_config('request.jwt.claims', format('{"email":"__est2_%s__@example.com"}', t), true);
-    FOREACH tbl IN ARRAY ARRAY['estimation_settings','estimation_layout_templates','estimation_project_stock','bom_template_joints','alu_profile_files'] LOOP
-      EXECUTE format('SELECT count(*) FROM %I', tbl) INTO n;
-      IF n <> 0 THEN RAISE EXCEPTION 'tenant % sees % rows of %', t, n, tbl; END IF;
-    END LOOP;
-  END LOOP;
-
-  -- tenant C has no estimation module: it cannot create settings either
-  PERFORM set_config('request.jwt.claims', '{"email":"__est2_c__@example.com"}', true);
-  raised := false;
-  BEGIN INSERT INTO estimation_settings DEFAULT VALUES; EXCEPTION WHEN insufficient_privilege THEN raised := true; END;
-  IF NOT raised THEN RAISE EXCEPTION 'tenant without the estimation module could insert settings'; END IF;
-
-  RESET role;
-  RAISE NOTICE 'Test 3 (isolation and module gate): TEST PASSED';
+  RAISE NOTICE 'Test 3 (delete behaviour): TEST PASSED';
 END $$;
