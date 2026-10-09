@@ -7,6 +7,7 @@ import { useClients } from '../../hooks/useSupabase.js'
 import { Modal } from '../../components/Modal.jsx'
 import { buildLines, revisionLabel, compareWithLastSent } from '../../lib/quotationExport.js'
 import { preparePlan, loadLinkedQuotation, pushToQuotation, buildSnapshotPayload } from '../../lib/estimationQuotationApi.js'
+import { invalidateQuotationAttachments } from './useQuotationAttachments.js'
 import { projectFactors } from '../../lib/priceStructureInputs.js'
 
 export const DEFAULT_VALID_DAYS = 30
@@ -140,6 +141,7 @@ export default function SendToQuotationDialog({ project, items, result, descript
         },
         snapshotPayload: buildSnapshotPayload({ result, items, factors: projectFactors(project) }),
       })
+      invalidateQuotationAttachments(r.quotationId)
       setDoneLabel(r.label); setConfirming(false)
       if (onDone) await onDone(r.label)
     } catch (e) {

@@ -202,6 +202,15 @@ export function cachedLoad(key, load) {
   return cache.get(key)
 }
 
+// Drops every cached load for a quotation. The send path calls it after pushToQuotation succeeds: a push can change
+// the line map and openings without changing the quotation's revision/updated_at (draft overwrite), so the key alone
+// cannot notice it.
+export function invalidateQuotationAttachments(quotationId) {
+  if (quotationId == null) return
+  const prefix = `${quotationId}|`
+  for (const k of [...cache.keys()]) if (k.startsWith(prefix)) cache.delete(k)
+}
+
 export function useQuotationAttachments(quotation, hasModuleAccess) {
   const enabled = canLoadAttachments(quotation, hasModuleAccess)
   const key = enabled ? attachmentsCacheKey(quotation) : null
