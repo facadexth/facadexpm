@@ -33,6 +33,10 @@ import UnitSelect from '../components/UnitSelect.jsx'
 import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX, ScaleToFit } from '../hooks/usePaginatedDocument.jsx'
 import { resolveDocumentStyle } from '../lib/documentStyle.js'
 import { removeBlockOrClear } from '../lib/rowEditing.js'
+// Estimation attachment pages ("แบบแนบ"): loaded ONLY for tenants with the estimation module and a linked
+// quotation -- everyone else gets null from the hook without a single query (see useQuotationAttachments.js).
+import { useQuotationAttachments } from './estimation/useQuotationAttachments.js'
+import AttachmentPages from './estimation/AttachmentPages.jsx'
 
 const clientOpts = (clients) => (clients || []).map(c => ({
   value: c.id, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
@@ -620,7 +624,7 @@ function AcceptQuotationModal({ quotation, totals, clients, sites, hasModuleAcce
 // a brand-new component type and unmounts/remounts the whole subtree --
 // including the <img crossOrigin> logo below -- even when nothing it reads
 // actually changed. Real props instead of closed-over variables.
-function QuotationHeader({ tenant, tag, revisionSuffix, quotationNumber, date, validUntil, siteName, clientName, clientAddress, clientTaxId, pageNumber, totalPages, style }) {
+export function QuotationHeader({ tenant, tag, revisionSuffix, quotationNumber, date, validUntil, siteName, clientName, clientAddress, clientTaxId, pageNumber, totalPages, style, subtitle }) {
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'stretch', gap: style.headerRowGap }}>
@@ -651,6 +655,8 @@ function QuotationHeader({ tenant, tag, revisionSuffix, quotationNumber, date, v
           <div style={{ fontSize: style.addressSize, color: '#6a6f85', marginBottom: 4 }}>หน้า {pageNumber}/{totalPages}</div>
           <div style={{ fontSize: style.addressSize, fontWeight: 700, color: style.accent, border: `1px solid ${style.accent}`, borderRadius: 4, padding: '2px 8px', display: 'inline-block', marginBottom: 6 }}>{tag || 'ต้นฉบับ'}</div>
           <div style={{ fontSize: style.titleSize, fontWeight: 800 }}>ใบเสนอราคา</div>
+          {/* Optional (attachment pages only): absent -> nothing rendered, output unchanged. */}
+          {subtitle && <div style={{ fontSize: style.addressSize + 2, fontWeight: 700, color: style.accent, marginTop: 2 }}>{subtitle}</div>}
         </div>
       </div>
 
@@ -677,7 +683,7 @@ function QuotationHeader({ tenant, tag, revisionSuffix, quotationNumber, date, v
 // Extracted so a past revision's snapshot can render through the exact
 // same markup as the live document, not a separate summary — the only
 // difference is which data feeds it and the doc-info tag.
-export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, pricingMode, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange, extraRemeasureKey }) {
+export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, pricingMode, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange, extraRemeasureKey, extraPages, extraPageCount = 0 }) {
   // item_description แนบเข้ากับ item ด้านบนแค่โดยตำแหน่ง ไม่มี FK จริง (ดู
   // comment ที่ EMPTY_ITEM_DESCRIPTION) -- ถ้าไม่มีคนพิมพ์อะไรลงไปเลย (เช่น
   // ตอน add จากรายการสินค้าที่ตัว catalog item เองไม่มี description) ไม่ควร
@@ -987,7 +993,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
               boxShadow: pages.length > 1 ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
             }}
           >
-            <QuotationHeader {...headerProps} pageNumber={pageIndex + 1} totalPages={pages.length} />
+            <QuotationHeader {...headerProps} pageNumber={pageIndex + 1} totalPages={pages.length + extraPageCount} />
 
             {pageItems.length > 0 && (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: style.tableMarginTop }}>
@@ -1000,13 +1006,29 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
           </div>
         )
       })}
+      {/* Optional attachment pages (estimation "แบบแนบ"): appended INSIDE the exported element so print/PDF
+          include them; numbering runs on from the quotation's own pages. extraPages is either an array of
+          { key, node } or a function ({ quotationPageCount, renderHeader }) => node. Absent / extraPageCount 0
+          -> nothing here, and the output above is byte-identical to before (Quotations.characterization test). */}
+      {extraPageCount > 0 && extraPages && (
+        <div className="quotation-extra-pages" style={{ marginTop: 16, pageBreakBefore: 'always', breakBefore: 'page' }}>
+          {typeof extraPages === 'function'
+            ? extraPages({
+              quotationPageCount: pages.length,
+              renderHeader: ({ pageNumber, totalPages }) => <QuotationHeader {...headerProps} subtitle="แบบแนบ" pageNumber={pageNumber} totalPages={totalPages} />,
+            })
+            : extraPages.map(p => <Fragment key={p.key}>{p.node}</Fragment>)}
+        </div>
+      )}
       {measurementNode}
     </div>
   )
 }
 
-function QuotationDocumentModal({ qt, tenant, onClose }) {
+function QuotationDocumentModal({ qt, tenant, onClose, hasModuleAccess }) {
   const elementId = `qt-doc-${qt.id}`
+  // null (and no query at all) unless the tenant has estimation AND this quotation has an enabled link.
+  const attachments = useQuotationAttachments(qt, hasModuleAccess)
   const { data: receipt } = useDocumentReceipt('quotation', qt.id)
   const [signatureUrl, setSignatureUrl] = useState(null)
   useEffect(() => {
@@ -1068,6 +1090,14 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
             paymentTerms={qt.payment_terms} notes={qt.notes} bankAccount={qt.bank_accounts}
             clientSignature={receipt && signatureUrl ? { url: signatureUrl, signerName: receipt.signer_name, signedAt: receipt.signed_at } : null}
             onPageCountChange={setPageCount}
+            {...(attachments ? {
+              extraPageCount: attachments.extraPageCount,
+              extraPages: ({ quotationPageCount, renderHeader }) => {
+                const x = attachments.buildExtra(quotationPageCount)
+                return <AttachmentPages pages={x.plan.pages} ctx={x.ctx} imageUrls={x.imageUrls} totalPages={x.plan.totalPages} renderHeader={renderHeader}
+                  documentNumber={`${qt.quotation_number}${(qt.revision || 1) > 1 ? `-R${qt.revision}` : ''}`} />
+              },
+            } : {})}
           />
         </ScaleToFit>
       </div>
@@ -1083,7 +1113,7 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
           items={[
             { label: '🖨️ พิมพ์', onClick: handlePrint },
             { label: '📄 บันทึกเป็น PDF', onClick: () => handleDownload('pdf', downloadPDF) },
-            { label: '🖼️ บันทึกเป็น JPG', onClick: () => handleDownload('jpg', downloadJPG), disabled: pageCount > 1, disabledTitle: 'เอกสารหลายหน้า บันทึกเป็น PDF แทน' },
+            { label: '🖼️ บันทึกเป็น JPG', onClick: () => handleDownload('jpg', downloadJPG), disabled: pageCount + (attachments?.extraPageCount || 0) > 1, disabledTitle: 'เอกสารหลายหน้า บันทึกเป็น PDF แทน' },
           ]}
         />
       </div>
@@ -1759,7 +1789,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
         />
       )}
 
-      {docRow && <QuotationDocumentModal qt={docRow} tenant={tenant} onClose={() => setDocRow(null)} />}
+      {docRow && <QuotationDocumentModal qt={docRow} tenant={tenant} hasModuleAccess={hasModuleAccess} onClose={() => setDocRow(null)} />}
 
       {linkTarget && (
         <SignLinkModal documentType="quotation" documentId={linkTarget.id} onClose={() => setLinkTarget(null)} />
