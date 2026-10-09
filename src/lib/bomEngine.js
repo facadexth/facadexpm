@@ -34,28 +34,6 @@ function computeComponentLength(rule, deductionMm, widthM, heightM) {
   throw new Error(`Unknown length_rule_type: ${rule}`)
 }
 
-// Today's behaviour as a pricing object: the profile is matched by (family, series text, thickness)
-// and costed as kg x the colour's price_per_kg. Kept until Phase 2b retires the legacy tables.
-export function legacyPricing(profiles, finish) {
-  return {
-    kind: 'legacy',
-    profileLine({ role_name, family, length_m, quantity, thickness_mm, opening }) {
-      const profile = (profiles || []).find(p => p.family === family && p.series === opening.series && p.thickness_mm === thickness_mm) || null
-      const resolved = !!profile
-      const weight_kg = resolved ? length_m * quantity * profile.linear_weight_kg_per_m : 0
-      const cost = resolved ? weight_kg * finish.price_per_kg : 0
-      return {
-        role_name, family, series: opening.series, thickness_mm, length_m, quantity, weight_kg, cost, resolved,
-        reason: resolved ? null : 'no_profile', price_row_id: null,
-      }
-    },
-    hardwarePrice(h) {
-      return { unit_price: h.reference_unit_price, source: 'reference', price_row_id: null }
-    },
-    setLines() { return [] },
-  }
-}
-
 // A component may carry its own thickness (frame vs sash, only where the type allows it; see assembly.applyRoleThickness);
 // otherwise the opening's single thickness applies.
 function priceProfileLine({ role_name, family, length_m, quantity, pricing, opening, thickness_mm, cut_style }) {
@@ -63,8 +41,7 @@ function priceProfileLine({ role_name, family, length_m, quantity, pricing, open
   return { ...line, cut_style: cut_style || 'square' }
 }
 
-// `pricing` comes from legacyPricing() or aluCatalogPricing.makeCatalogPricing(); callers of the
-// latter must pass a real asOf date (a null asOf lets future-dated price rows through).
+// `pricing` comes from aluCatalogPricing.makeCatalogPricing(); callers must pass a real asOf date (a null asOf lets future-dated price rows through).
 export function computeBomForOpening(opening, template, components, hardware, pricing, infillType) {
   const { rowCount, columnCount, cells } = resolveGrid(template, opening)
 
@@ -107,7 +84,7 @@ export function computeBomForOpening(opening, template, components, hardware, pr
     const hp = pricing.hardwarePrice(h)
     // Catalog pricing falls back to a 0 reference price when nothing is priced: surface that, never hide it.
     // (Legacy pricing is left alone so the old Estimation screen behaves exactly as before.)
-    const unresolved = pricing.kind !== 'legacy' && hp.source === 'reference' && !(hp.unit_price > 0)
+    const unresolved = hp.source === 'reference' && !(hp.unit_price > 0)
     return { name: h.name, part_id: h.part_id || null, quantity, cost: quantity * hp.unit_price, price_source: hp.source, price_row_id: hp.price_row_id, unresolved }
   })
   const unresolvedHardwareLines = hardwareLines.filter(l => l.unresolved)

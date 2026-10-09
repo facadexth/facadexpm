@@ -1455,14 +1455,6 @@ export function useBomTemplateConstraints() {
   })
 }
 
-export function useAluminumFinishes() {
-  return useQuery(async () => {
-    const { data, error } = await supabase.from('aluminum_finishes').select('*').order('name')
-    if (error) throw error
-    return data
-  })
-}
-
 export function useInfillTypes() {
   return useQuery(async () => {
     const { data, error } = await supabase.from('infill_types').select('*').order('name')

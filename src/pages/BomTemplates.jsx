@@ -8,7 +8,7 @@
 import AluminumProfiles from './AluminumProfiles.jsx'
 import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useBomTemplates, useAluminumFinishes, useInfillTypes } from '../hooks/useSupabase.js'
+import { useBomTemplates, useInfillTypes } from '../hooks/useSupabase.js'
 import { useBomTemplateComponents, useBomTemplateHardware, useBomTemplateConstraints } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -23,35 +23,6 @@ import HardwarePackagesTab from './bomTemplates/HardwarePackagesTab.jsx'
 import {
   catalogFamilies, templateTypeOptions, typeAllowsMixed, hardwarePartOptions, relinkAfterJointRemoved, validateComponentRows, orderJointIds,
 } from './bomTemplates/helpers.js'
-
-function FinishForm({ initial, onSave, onCancel, loading }) {
-  const [form, setForm, clearDraft] = useDraftForm('aluminum-finish-form', { name: '', price_per_kg: '', active: true, ...initial }, !initial?.id)
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  return (
-    <form onSubmit={e => { e.preventDefault(); clearDraft(); onSave(form) }}>
-      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
-        <div>
-          <label className="label">ชื่อสีผิว ★</label>
-          <input className="input" required value={form.name} onChange={e => set('name', e.target.value)} placeholder="เช่น POWDER COATING SAHARA" />
-        </div>
-        <div>
-          <label className="label">ราคา/กก. ★</label>
-          <input className="input" required type="number" min="0" step="0.01" value={form.price_per_kg} onChange={e => set('price_per_kg', e.target.value)} />
-        </div>
-        {initial?.id && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
-            <input type="checkbox" checked={form.active} onChange={e => set('active', e.target.checked)} />
-            ใช้งานอยู่
-          </label>
-        )}
-      </div>
-      <div className="modal-footer">
-        <button type="button" className="btn btn-ghost" onClick={() => { clearDraft(); onCancel() }}>ยกเลิก</button>
-        <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? '⏳ กำลังบันทึก...' : '✅ บันทึก'}</button>
-      </div>
-    </form>
-  )
-}
 
 const MATERIAL_KIND_LABELS = { glass: 'กระจก', mesh: 'ตาข่าย', solid_panel: 'แผ่นทึบ', acp: 'อลูมิเนียมคอมโพสิต (ACP)' }
 
@@ -537,38 +508,12 @@ export default function BomTemplates(props) {
   const [view, setView] = useState('templates')
 
   const { data: templates, refetch: refetchTemplates } = useBomTemplates()
-  const { data: finishes, refetch: refetchFinishes } = useAluminumFinishes()
   const { data: infillTypes, refetch: refetchInfillTypes } = useInfillTypes()
-
-  const [showFinishForm, setShowFinishForm] = useState(false)
-  const [editFinish, setEditFinish] = useState(null)
-  const [savingFinish, setSavingFinish] = useState(false)
-  const [deleteFinishId, setDeleteFinishId] = useState(null)
 
   const [showInfillForm, setShowInfillForm] = useState(false)
   const [editInfill, setEditInfill] = useState(null)
   const [savingInfill, setSavingInfill] = useState(false)
   const [deleteInfillId, setDeleteInfillId] = useState(null)
-
-  const handleSaveFinish = async (form) => {
-    setSavingFinish(true)
-    try {
-      const payload = { name: form.name, price_per_kg: parseFloat(form.price_per_kg) || 0, active: form.active !== false }
-      const { error } = editFinish
-        ? await supabase.from('aluminum_finishes').update(payload).eq('id', editFinish.id)
-        : await supabase.from('aluminum_finishes').insert(payload)
-      if (error) throw error
-      setShowFinishForm(false); setEditFinish(null); refetchFinishes()
-    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + e.message) }
-    finally { setSavingFinish(false) }
-  }
-
-  const handleDeleteFinish = async () => {
-    if (!deleteFinishId) return
-    const { error } = await supabase.from('aluminum_finishes').delete().eq('id', deleteFinishId)
-    if (!error) { setDeleteFinishId(null); refetchFinishes() }
-    else alert('ลบไม่สำเร็จ (อาจมีการใช้งานผูกอยู่): ' + error.message)
-  }
 
   const handleSaveInfill = async (form) => {
     setSavingInfill(true)
@@ -606,37 +551,6 @@ export default function BomTemplates(props) {
 
       {view === 'profiles' && <AluminumProfiles />}
 
-      {view === 'finishes' && (
-        <>
-          {canEdit && <button className="btn btn-primary" style={{ marginBottom: 14 }} onClick={() => { setEditFinish(null); setShowFinishForm(true) }}>+ เพิ่มสีผิว</button>}
-          <div className="card">
-            <div className="table-wrap">
-              <table>
-                <thead><tr><th>ชื่อสีผิว</th><th>ราคา/กก.</th><th>สถานะ</th><th></th></tr></thead>
-                <tbody>
-                  {(finishes || []).map(f => (
-                    <tr key={f.id}>
-                      <td style={{ fontWeight: 600 }}>{f.name}</td>
-                      <td className="font-mono">{fmt(f.price_per_kg)}</td>
-                      <td>{f.active ? <span className="badge badge-paid">ใช้งานอยู่</span> : <span className="badge badge-finished">ปิดใช้งาน</span>}</td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        {canEdit && (
-                          <>
-                            <button className="btn btn-sm btn-ghost" onClick={() => { setEditFinish(f); setShowFinishForm(true) }}>แก้ไข</button>
-                            <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => setDeleteFinishId(f.id)}>ลบ</button>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                  {!(finishes || []).length && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีสีผิว</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
-
       {view === 'infill_types' && (
         <>
           {canEdit && <button className="btn btn-primary" style={{ marginBottom: 14 }} onClick={() => { setEditInfill(null); setShowInfillForm(true) }}>+ เพิ่มวัสดุอุดช่อง</button>}
@@ -668,13 +582,6 @@ export default function BomTemplates(props) {
           </div>
         </>
       )}
-
-      {showFinishForm && (
-        <Modal title={editFinish ? `แก้ไข ${editFinish.name}` : 'เพิ่มสีผิวใหม่'} onClose={() => { setShowFinishForm(false); setEditFinish(null) }} maxWidth={420}>
-          <FinishForm initial={editFinish || {}} onSave={handleSaveFinish} onCancel={() => { setShowFinishForm(false); setEditFinish(null) }} loading={savingFinish} />
-        </Modal>
-      )}
-      {deleteFinishId && <ConfirmDialog title="ลบสีผิว" message="ยืนยันการลบ?" onConfirm={handleDeleteFinish} onCancel={() => setDeleteFinishId(null)} />}
 
       {showInfillForm && (
         <Modal title={editInfill ? `แก้ไข ${editInfill.name}` : 'เพิ่มวัสดุอุดช่องใหม่'} onClose={() => { setShowInfillForm(false); setEditInfill(null) }} maxWidth={420}>
