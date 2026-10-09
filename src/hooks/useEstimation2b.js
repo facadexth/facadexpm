@@ -34,6 +34,7 @@ export function groupByTemplate(rows) {
   return m
 }
 
+const EMPTY_ROWS = []
 
 // Project hardware packages (Ruling 20): raw rows only, so create/update/delete helpers never see expanded rows.
 export function useHardwarePackages() {
@@ -49,16 +50,33 @@ export function useHardwarePackages() {
     pk.refetch && pk.refetch()
     return data
   }
-  // Replaces the package's rows with `rows` ([{ type_id, hardware_set_id|null }]).
+  // Makes the package's rows equal `rows` ([{ type_id, hardware_set_id|null }]) by diff: insert new types,
+  // update changed sets by row id, and delete removed types LAST, only after every insert/update succeeded.
   async function saveItems(packageId, rows) {
-    const { error: de } = await supabase.from('alu_hardware_package_items').delete().eq('package_id', packageId)
-    if (de) throw de
-    if (rows && rows.length) {
-      const { error } = await supabase.from('alu_hardware_package_items')
-        .insert(rows.map(r => ({ package_id: packageId, type_id: r.type_id, hardware_set_id: r.hardware_set_id || null })))
+    const wanted = new Map()
+    for (const r of rows || []) wanted.set(r.type_id, r.hardware_set_id || null)   // last one wins
+    const { data: existing, error: le } = await supabase.from('alu_hardware_package_items')
+      .select('id, type_id, hardware_set_id').eq('package_id', packageId)
+    if (le) throw le
+    const have = new Map((existing || []).map(r => [r.type_id, r]))
+    const toInsert = [...wanted].filter(([t]) => !have.has(t))
+      .map(([type_id, hardware_set_id]) => ({ package_id: packageId, type_id, hardware_set_id }))
+    if (toInsert.length) {
+      const { error } = await supabase.from('alu_hardware_package_items').insert(toInsert)
+      if (error) throw error
+    }
+    for (const [t, setId] of wanted) {
+      const row = have.get(t)
+      if (!row || (row.hardware_set_id || null) === setId) continue
+      const { error } = await supabase.from('alu_hardware_package_items').update({ hardware_set_id: setId }).eq('id', row.id)
+      if (error) throw error
+    }
+    const removed = (existing || []).filter(r => !wanted.has(r.type_id)).map(r => r.id)
+    if (removed.length) {
+      const { error } = await supabase.from('alu_hardware_package_items').delete().in('id', removed)
       if (error) throw error
     }
     it.refetch && it.refetch()
   }
-  return { packages: pk.data || [], items: it.data || [], loading: pk.loading || it.loading, error: pk.error || it.error, savePackage, saveItems }
+  return { packages: pk.data || EMPTY_ROWS, items: it.data || EMPTY_ROWS, loading: pk.loading || it.loading, error: pk.error || it.error, savePackage, saveItems }
 }
