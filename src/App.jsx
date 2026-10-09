@@ -23,6 +23,8 @@ import NotificationBell from './components/NotificationBell.jsx'
 import { usePendingCounts } from './hooks/usePendingCounts.js'
 import { visiblePendingItems, badgeByTab, badgeForTab, formatBadge } from './lib/pendingItems.js'
 import Login      from './pages/Login.jsx'
+import ResetPassword from './components/ResetPassword.jsx'
+import { isRecoveryUrl } from './lib/passwordReset.js'
 import Dashboard   from './pages/Dashboard.jsx'
 
 const Sites             = lazy(() => import('./pages/Sites.jsx'))
@@ -243,8 +245,13 @@ function PageLoadingFallback() {
   )
 }
 
+// The password-recovery email link opens the app with `#...&type=recovery`. Read it at import time: the Supabase client
+// consumes (and removes) the hash right after start-up, possibly before the auth listener below is registered.
+const OPENED_FROM_RECOVERY_LINK = typeof window !== 'undefined' && isRecoveryUrl(window.location.hash)
+
 export default function App() {
   const [session,  setSession]  = useState(undefined) // undefined = loading
+  const [recovering, setRecovering] = useState(OPENED_FROM_RECOVERY_LINK) // showing the 'ตั้งรหัสผ่านใหม่' screen
   const { counts: pendingCounts, refetch: refetchPending } = usePendingCounts(!!session)
   const [activeTab, setActiveTab] = useState('dashboard')
   const [navState, setNavState] = useState({})
@@ -293,7 +300,10 @@ export default function App() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((e, s) => {
+      if (e === 'PASSWORD_RECOVERY') setRecovering(true)
+      setSession(s)
+    })
     return () => subscription.unsubscribe()
   }, [])
 
@@ -415,6 +425,9 @@ export default function App() {
       <div style={{ color: 'var(--text3)', fontSize: 14 }}>กำลังโหลด...</div>
     </div>
   )
+
+  // Opened from a password-recovery email: ask for the new password before showing the app
+  if (session && recovering) return <ResetPassword onDone={() => setRecovering(false)} />
 
   // Not logged in
   if (!session) return <><UpdatePrompt /><Login /></>
