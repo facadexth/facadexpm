@@ -367,16 +367,17 @@ export default function Estimation(props) {
   const project = (projects || []).find(p => p.id === selectedProjectId) || null
   const projectOpenings = useMemo(() => (openings || []).filter(o => o.project_id === selectedProjectId), [openings, selectedProjectId])
   const index = catalog.index
+  const hwReady = !hw.loading && !hw.error
 
   // Everything costOpening needs except the item itself; rebuilt only when a source table changes.
   const base = useMemo(() => {
-    if (!index) return null
+    if (!index || !hwReady) return null
     return {
       templatesById: Object.fromEntries((templates || []).map(t => [t.id, t])),
       componentsByTemplate: groupByTemplate(components), hardwareByTemplate: groupByTemplate(hardware), jointsByTemplate: groupByTemplate(joints),
       typesById: index.types, infillTypesById: Object.fromEntries((infillTypes || []).map(g => [g.id, g])), index, settings,
     }
-  }, [index, templates, components, hardware, joints, infillTypes, settings])
+  }, [index, hwReady, templates, components, hardware, joints, infillTypes, settings])
 
   const packageItems = useMemo(() => (project ? packageRowsFor(project, hw.items) : null), [project, hw.items])
   const pkg = project && project.hardware_package_id ? hw.packages.find(p => p.id === project.hardware_package_id) : null
@@ -403,6 +404,7 @@ export default function Estimation(props) {
   }
 
   if (catalog.error) return <div className="alert alert-error">โหลดแคตตาล็อกอลูมิเนียมไม่สำเร็จ: {catalog.error}</div>
+  if (hw.error) return <div className="alert alert-error">โหลดชุดอุปกรณ์ไม่สำเร็จ: {String(hw.error)}</div>
   if (!index || !base) return <div style={{ color: 'var(--text3)', padding: 20 }}>กำลังโหลดแคตตาล็อก...</div>
 
   return (

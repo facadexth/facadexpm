@@ -40,7 +40,7 @@ export default function ItemsTable({ items, costs, project, index, templatesById
             {items.map(o => {
               const cost = costs[o.id]
               const status = itemStatus(o, cost)
-              const priced = cost && status !== 'unresolved'
+              const priced = cost && status !== 'unresolved' && Number.isFinite(cost.total)
               const tpl = templatesById[o.template_id]
               const seriesId = o.series_id || project.default_series_id
               const series = seriesId ? index.series[seriesId] : null
@@ -55,8 +55,8 @@ export default function ItemsTable({ items, costs, project, index, templatesById
                   <td><span title={status === 'unresolved' ? reasons : undefined} style={{ color: STATUS[status][1], fontWeight: 600 }}>{STATUS[status][0]}</span></td>
                   <td className="font-mono">{o.width_m} x {o.height_m} m</td>
                   <td><QuantityCell key={`${o.id}-${o.quantity}`} item={o} canEdit={canEdit} onSaved={onQuantitySaved} /></td>
-                  <td className="font-mono" title={priced ? undefined : reasons}>{cost && cost.unresolved.length === 0 ? fmt(cost.total) : '—'}</td>
-                  <td className="font-mono" title={priced ? undefined : reasons}>{cost && cost.unresolved.length === 0 ? fmt(cost.total * qty) : '—'}</td>
+                  <td className="font-mono" title={priced ? undefined : reasons}>{priced ? fmt(cost.total) : '—'}</td>
+                  <td className="font-mono" title={priced ? undefined : reasons}>{priced ? fmt(cost.total * qty) : '—'}</td>
                   <td><button className="btn btn-sm btn-ghost">แก้ไข</button></td>
                 </tr>
               )

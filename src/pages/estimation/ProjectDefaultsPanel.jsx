@@ -27,8 +27,9 @@ export default function ProjectDefaultsPanel({ project, index, seriesTypes, infi
   const [saving, setSaving] = useState(false)
   const [confirm, setConfirm] = useState(null)   // { patch, affected }
 
-  // A different project (or fresh data after a save) resets the form.
-  useEffect(() => { setDraft(reconcileDraft(draftFromProject(project), index, seriesTypes)) }, [project, index, seriesTypes])
+  // Reset only for another project or after our own successful save, never on a plain refetch (unsaved edits stay).
+  const [saveTick, setSaveTick] = useState(0)
+  useEffect(() => { setDraft(reconcileDraft(draftFromProject(project), index, seriesTypes)) }, [project.id, saveTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const change = (k, v) => setDraft(d => reconcileDraft({ ...d, [k]: v }, index, seriesTypes))
   const patch = useMemo(() => buildPatch(project, draft), [project, draft])
@@ -40,7 +41,7 @@ export default function ProjectDefaultsPanel({ project, index, seriesTypes, infi
   const thicknesses = draft.default_series_id ? thicknessesForSeries(index, draft.default_series_id) : []
   const singleThickness = thicknesses.length === 1
   const showSash = mixedThicknessAllowed(seriesTypes, draft.default_series_id)
-  const pkgOpts = packagesForSeries(packages, draft.default_series_id)
+  const pkgOpts = [...packagesForSeries(packages, draft.default_series_id)]
   const chosenPkg = draft.hardware_package_id ? (packages || []).find(p => p.id === draft.hardware_package_id) : null
   if (chosenPkg && !pkgOpts.some(p => p.id === chosenPkg.id)) pkgOpts.push(chosenPkg)
 
@@ -56,7 +57,8 @@ export default function ProjectDefaultsPanel({ project, index, seriesTypes, infi
     try {
       const { error: e } = await supabase.from('estimation_projects').update(p).eq('id', project.id)
       if (e) throw e
-      onSaved()
+      await onSaved()
+      setSaveTick(t => t + 1)
     } catch (e) { alert('บันทึกไม่สำเร็จ: ' + e.message) }
     finally { setSaving(false); setConfirm(null) }
   }
@@ -106,6 +108,7 @@ export default function ProjectDefaultsPanel({ project, index, seriesTypes, infi
         {showSash && (
           <Field label="ความหนากรอบบาน (มม.)" hint="ซีรีส์นี้มีประเภทที่ใช้ความหนาวงกบกับกรอบบานไม่เท่ากันได้">
             <select className="input" disabled={dis} value={sashDisplayValue(draft)} onChange={e => change('default_sash_thickness_mm', e.target.value)}>
+              {!sashDisplayValue(draft) && <option value="">— เลือก —</option>}
               {thicknesses.map(t => <option key={t} value={String(t)}>{t}</option>)}
             </select>
           </Field>

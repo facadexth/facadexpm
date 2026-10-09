@@ -40,8 +40,21 @@ describe('draft + reconcile', () => {
     expect(mixed.default_sash_thickness_mm).toBe('1.2')
     const none = reconcileDraft({ ...draftFromProject({}), default_series_id: 's2', default_sash_thickness_mm: '1' }, index, seriesTypes)
     expect(none.default_sash_thickness_mm).toBe('')
-    expect(sashDisplayValue({ default_sash_thickness_mm: '', default_thickness_mm: '1.5' })).toBe('1.5')
+    expect(sashDisplayValue({ default_sash_thickness_mm: '', default_thickness_mm: '1.5' })).toBe('')
     expect(sashDisplayValue({ default_sash_thickness_mm: '1.2', default_thickness_mm: '1.5' })).toBe('1.2')
+  })
+  it('a blank sash is filled with the frame value; a saved sash stays when the frame changes; no frame = blank', () => {
+    const base = { ...draftFromProject({}), default_series_id: 's1' }
+    expect(reconcileDraft({ ...base, default_thickness_mm: '1.5' }, index, seriesTypes).default_sash_thickness_mm).toBe('1.5')
+    expect(reconcileDraft({ ...base, default_thickness_mm: '1.5', default_sash_thickness_mm: '1.2' }, index, seriesTypes).default_sash_thickness_mm).toBe('1.2')
+    expect(reconcileDraft({ ...base, default_thickness_mm: '1.2', default_sash_thickness_mm: '1.5' }, index, seriesTypes).default_sash_thickness_mm).toBe('1.5')
+    expect(reconcileDraft(base, index, seriesTypes).default_sash_thickness_mm).toBe('')
+  })
+  it('no sash value and no write when the series allows no mixed thickness', () => {
+    const project = { default_series_id: 's2' }
+    const d = reconcileDraft({ ...draftFromProject(project), default_thickness_mm: '1' }, index, seriesTypes)
+    expect(d.default_sash_thickness_mm).toBe('')
+    expect(buildPatch(project, d)).not.toHaveProperty('default_sash_thickness_mm')
   })
 })
 

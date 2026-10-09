@@ -5,9 +5,9 @@ import { seriesLabelFull } from '../../lib/aluCatalog.js'
 import { DEFAULT_DESCRIPTION_FORMAT } from '../../lib/descriptionFormat.js'
 import { localDateString } from '../../lib/localDate.js'
 import { costOpening } from '../../lib/openingCost.js'
-import { resolveItemInputs, typeAvailability } from '../../lib/estimationInherit.js'
+import { typeAvailability } from '../../lib/estimationInherit.js'
 import { missingHardwareTypeIds } from '../../lib/projectHardware.js'
-import { previewSignature } from '../../lib/framePreview.js'
+import { reasonText } from '../../lib/reasonText.js'
 
 const str = v => (v === null || v === undefined ? '' : String(v))
 const numOrNull = v => {
@@ -67,12 +67,16 @@ export function reconcileDraft(draft, index, seriesTypes) {
   const opts = d.default_series_id ? thicknessesForSeries(index, d.default_series_id) : []
   if (opts.length === 1) d.default_thickness_mm = String(opts[0])
   else if (!opts.includes(Number(d.default_thickness_mm))) d.default_thickness_mm = ''
-  if (!mixedThicknessAllowed(seriesTypes, d.default_series_id) || !opts.includes(Number(d.default_sash_thickness_mm))) d.default_sash_thickness_mm = ''
+  const mixed = mixedThicknessAllowed(seriesTypes, d.default_series_id)
+  if (!mixed || !opts.includes(Number(d.default_sash_thickness_mm))) d.default_sash_thickness_mm = ''
+  // Ruling 21: where the sash select is shown the saved value is a real number. Only a blank is filled (from the frame);
+  // an existing sash never follows later frame changes. No frame yet = stays blank (saved as NULL).
+  if (mixed && d.default_sash_thickness_mm === '' && d.default_thickness_mm !== '') d.default_sash_thickness_mm = d.default_thickness_mm
   return d
 }
 
-// What the sash select shows: the saved sash value, else the frame value (never an "equal to frame" option).
-export const sashDisplayValue = draft => draft.default_sash_thickness_mm || draft.default_thickness_mm || ''
+// What the sash select shows: the draft's sash value ('' = the "— เลือก —" placeholder).
+export const sashDisplayValue = draft => draft.default_sash_thickness_mm || ''
 
 export function validateDraft(draft) {
   const labour = numOrNull(draft.labour_per_sqm)
@@ -150,31 +154,14 @@ export function availabilityIssues({ items, project, templatesById, index, serie
   return out
 }
 
-export const REASON_TEXT = {
-  no_as_of: 'ไม่มีวันที่ราคา', no_series: 'ยังไม่ได้เลือกซีรีส์', no_finish: 'ยังไม่ได้เลือกสี', no_profile: 'ไม่พบหน้าตัดที่ซีรีส์/ความหนานี้',
-  no_provider: 'ไม่พบโรงรีด', finish_other_provider: 'สีเป็นของโรงรีดอื่น', no_kg_price: 'ไม่มีราคาต่อ กก.', no_weight: 'ไม่มีน้ำหนักต่อเมตร',
-  no_dimension: 'ยังไม่ระบุขนาด', unknown_infill: 'ไม่พบวัสดุอุดช่อง', unknown_addon_template: 'ไม่พบแบบชุดต่อเติม',
-  no_hardware_price: 'อุปกรณ์ไม่มีราคา', no_part_price: 'ชิ้นส่วนไม่มีราคา', unknown_set: 'ไม่พบชุดอุปกรณ์', not_hardware_set: 'ไม่ใช่ชุดอุปกรณ์',
-  empty_set: 'ชุดอุปกรณ์ว่าง', unknown_joint: 'ไม่พบข้อต่อ', bad_manual_deduction: 'ค่าหักข้อต่อไม่ถูกต้อง', no_main_profile: 'ไม่พบหน้าตัดหลักของข้อต่อ',
-  rule_not_cuttable: 'ตัดมุมไม่ได้',
-}
-export const reasonText = code => REASON_TEXT[code] || String(code || '')
-
 export function unresolvedSummary(unresolved) {
   return (unresolved || []).map(u => `${u.name || '?'}: ${reasonText(u.reason)}`).join('\n')
 }
 
-// 'unresolved' | 'old_preview' | 'ok'. Old preview = a saved drawing whose signature no longer matches the item.
+// 'unresolved' | 'ok' ('old_preview' stays a known status in ItemsTable).
+// Task 15 re-enables the old-drawing check with the shared signature helper.
 export function itemStatus(item, cost) {
   if (!cost || (cost.unresolved || []).length) return 'unresolved'
-  if (item.preview_svg_out && item.preview_sig) {
-    const sig = previewSignature({
-      template_id: item.template_id, width_m: item.width_m, height_m: item.height_m, panel_count: item.panel_count,
-      addon_template_id: item.addon_template_id, addon_width_m: item.addon_width_m, addon_height_m: item.addon_height_m,
-      addon_panel_count: item.addon_panel_count, addon_position: item.addon_position, addon_offset_m: item.addon_offset_m,
-    })
-    if (sig !== item.preview_sig) return 'old_preview'
-  }
   return 'ok'
 }
 
@@ -217,6 +204,3 @@ export function priceRowLabel(index, id) {
   if (pt) return `${(Number(pt.list_price) * (1 - Number(pt.discount_pct || 0) / 100)).toLocaleString('en-US', { minimumFractionDigits: 2 })} บาท (ตั้งแต่ ${pt.effective_from})`
   return 'ราคาที่ถูกลบแล้ว'
 }
-
-// The effective series of an item (own, else the project's) - used for the table column.
-export const itemSeriesId = (item, project, template, typesById, packageItems) => resolveItemInputs(item, project, template, typesById, packageItems).series_id
