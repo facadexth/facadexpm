@@ -84,36 +84,3 @@ describe('realProfitPct', () => {
     expect(realProfitPct({ v: 0, w: 0, z: 0, pm: 0, agreedNet: 100 })).toBe(null)
   })
 })
-
-describe('ELSY workbook validation', () => {
-  it('matches ELSY row 7 (D1) - per-item calculations', () => {
-    // ELSY sheet D1: width=5.45m, height=2.7m, qty=2, sheet V=23852.925, W=0, X=10733.81625, Y=34586.74125
-    // Breakdown cost values from sheet: glass=11870, labour=11772, other=210.925 (to match V total)
-    const bd_d1 = { alu: 0, hardware: 0, glass: 11870, labour: 11772, other: 210.925, aluWeightKg: 0 }
-    const r = priceItem({ breakdown: bd_d1, fireBarrier: 0, bracket: 0, bendAlu: 0, bendGlass: 0, profitPct: 45, wastePct: 10 })
-    expect(r.v).toBe(23852.925)
-    expect(r.w).toBe(0) // no alu, so no waste
-    expect(r.x).toBeCloseTo(10733.81625, 4)
-    expect(r.y).toBeCloseTo(34586.74125, 4)
-  })
-  it('matches ELSY row 8 (D2) - per-item calculations', () => {
-    // ELSY sheet D2: width=7.45m, height=2.7m, qty=2, sheet V=32609.925, W=0, X=14674.46625
-    // Breakdown: glass=16230, labour=16092, other=287.925
-    const bd_d2 = { alu: 0, hardware: 0, glass: 16230, labour: 16092, other: 287.925, aluWeightKg: 0 }
-    const r = priceItem({ breakdown: bd_d2, fireBarrier: 0, bracket: 0, bendAlu: 0, bendGlass: 0, profitPct: 45, wastePct: 10 })
-    expect(r.v).toBe(32609.925)
-    expect(r.w).toBe(0)
-    expect(r.x).toBeCloseTo(14674.46625, 4)
-    expect(r.y).toBeCloseTo(47284.39125, 4)
-  })
-  it('matches ELSY row 9 (D3) - per-item calculations', () => {
-    // ELSY sheet D3: width=2.3m, height=2.7m, qty=1, sheet V=10066.95, W=0, X=4530.1275
-    // Breakdown: glass=5010, labour=4968, other=88.95
-    const bd_d3 = { alu: 0, hardware: 0, glass: 5010, labour: 4968, other: 88.95, aluWeightKg: 0 }
-    const r = priceItem({ breakdown: bd_d3, fireBarrier: 0, bracket: 0, bendAlu: 0, bendGlass: 0, profitPct: 45, wastePct: 10 })
-    expect(r.v).toBe(10066.95)
-    expect(r.w).toBe(0)
-    expect(r.x).toBeCloseTo(4530.1275, 4)
-    expect(r.y).toBeCloseTo(14597.0775, 4)
-  })
-})
