@@ -12,10 +12,12 @@
 // ============================================================
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, useMyWorkerName, useBankAccounts, useSiteDepositBalance, useQuotationDepositTaxOffset, getQuotationDepositTaxOffset, logDocumentPrint } from '../hooks/useSupabase.js'
+import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, useMyWorkerName, useBankAccounts, useSiteDepositBalance, useQuotationDepositTaxOffset, getQuotationDepositTaxOffset, logDocumentPrint, useInvoiceDepositChoiceReady } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { calcDepositDeduction, round2 } from '../lib/depositCalc.js'
+import { resolveDepositChoice } from '../lib/invoiceDeposit.js'
+import InvoiceDepositBox, { useDepositChoiceState } from '../components/InvoiceDepositBox.jsx'
 import { thaiBahtText } from '../lib/thaiBahtText.js'
 import { sanitizeStorageFileName } from '../lib/storageKey.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -316,6 +318,18 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   const [includeWht, setIncludeWht] = useState(true)
   const [whtPct, setWhtPct] = useState(site?.default_tax_withheld_pct ?? 3)
 
+  // หักมัดจำสำหรับใบนี้ -- เลือกตอนสร้างใบ (ไม่หัก / % ของยอดก่อน VAT / มูลค่าเป็นบาท) ผูกกับใบนี้ใบเดียว
+  // กล่องนี้โผล่เมื่อ migration 2026-10-09-07 ลงแล้ว + โมดูลมัดจำเปิดอยู่ + ไซต์ยังมีมัดจำคงเหลือ
+  // ไม่งั้นใช้พฤติกรรมเดิม (คำนวณตอนกดยืนยันชำระ)
+  const depositChoiceReady = useInvoiceDepositChoiceReady()
+  const depositModule = hasModuleAccess('client_deposits')
+  const { data: depositBalance } = useSiteDepositBalance(depositModule && depositChoiceReady ? quotation.site_id : null)
+  const depositRemaining = depositBalance?.remaining_balance || 0
+  const showDepositBox = depositModule && depositChoiceReady && depositRemaining > 0
+  const siteDepositPct = Number(site?.default_deposit_pct) || 0
+  const depositChoice = useDepositChoiceState(siteDepositPct)
+  const [showTargetCard, setShowTargetCard] = useState(false)
+
   useEffect(() => {
     if (unitsByQuotationItem && !lines) {
       setLines(buildLineState(items, unitsByQuotationItem, discountMultiplier(quotation)))
@@ -356,6 +370,9 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   // up to its own total by a satang.
   const invoiceItemsForTotals = billedLines.map(l => ({ line_total: round2(drawAmount(l.units, l.unitPrice)) }))
   const totals = calcInvoiceTotals(invoiceItemsForTotals, { hasVat: quotation.has_vat, priceIncludesVat: quotation.price_includes_vat, depositTaxOffset: depositTaxOffset || 0 })
+  const deposit = showDepositBox
+    ? resolveDepositChoice({ subtotal: totals.subtotal, mode: depositChoice.mode, text: depositChoice.text, balance: depositRemaining })
+    : null
   const isSplit = quotation.pricing_mode === 'split'
   const materialLabor = isSplit
     ? sumMaterialLabor(billedLines.map(l => ({ draw_qty: drawQty(l.units), unit_price_material: l.unitPriceMaterial, unit_price_labor: l.unitPriceLabor })))
@@ -423,6 +440,8 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
         // ค่านี้เสมอตอนกดยืนยันชำระ แทนที่จะไปอ่าน sites.default_tax_withheld_pct
         // สดๆ ตอนนั้น ซึ่งอาจเปลี่ยนไปแล้วนับจากตอนสร้างใบนี้
         wht_pct: effectiveWhtPct,
+        // เลือกตอนสร้างใบ (0 = ตั้งใจไม่หัก) -- ไม่ส่งคอลัมน์นี้ถ้า migration ยังไม่ลง/ไม่มีมัดจำคงเหลือ
+        ...(deposit ? { deposit_deduction_amount: deposit.amount, deposit_deduction_pct: deposit.pct } : {}),
       }).select().single()
       if (invError) throw invError
       createdInvoiceNumber = invoice.invoice_number
@@ -554,15 +573,29 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
             deposit. handleMarkPaid computes the real amount the same way
             (calcDepositDeduction) when this invoice is actually marked
             paid. */}
-        {hasModuleAccess('client_deposits') && site?.default_deposit_pct > 0 && (
+        {!showDepositBox && hasModuleAccess('client_deposits') && site?.default_deposit_pct > 0 && (
           <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>
             📐 ตอนกดยืนยันชำระใบแจ้งหนี้นี้ ระบบจะหักเงินมัดจำอัตโนมัติ {site.default_deposit_pct}% ของยอดก่อน VAT ของใบนี้ —
             หรือหักเท่าที่มัดจำคงเหลืออยู่ ถ้าน้อยกว่านั้น
           </div>
         )}
 
+        {showDepositBox && (
+          <InvoiceDepositBox
+            choice={depositChoice} subtotal={totals.subtotal} vat={totals.vat} total={totals.total}
+            taxOffset={depositTaxOffset || 0} whtPct={effectiveWhtPct}
+            retentionPct={Number(site?.default_retention_pct) || 0}
+            balance={depositRemaining} siteDepositPct={siteDepositPct}
+          />
+        )}
+
         <div className="card card-body" style={{ marginTop: 12, display: 'grid', gap: 8 }}>
-          <label className="label" style={{ marginBottom: 0 }}>กรอกยอดที่ต้องการเรียกเก็บ (สุทธิ หลัง VAT และหัก ณ ที่จ่ายตามที่ตั้งไว้ด้านบน)</label>
+          <button type="button" onClick={() => setShowTargetCard(v => !v)} aria-expanded={showTargetCard} aria-controls="inv-target-card"
+            style={{ display: 'flex', justifyContent: 'space-between', gap: 8, width: '100%', textAlign: 'left', background: 'none', border: 0, padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer' }}>
+            <span className="label" style={{ marginBottom: 0 }}>กรอกยอดที่ต้องการเรียกเก็บ (สุทธิ หลัง VAT และหัก ณ ที่จ่ายตามที่ตั้งไว้ด้านบน)</span>
+            <span style={{ fontSize: 12, color: 'var(--accent)', whiteSpace: 'nowrap' }}>{showTargetCard ? '▴ ซ่อน' : '▾ แสดง'}</span>
+          </button>
+          <div id="inv-target-card" hidden={!showTargetCard} style={{ display: showTargetCard ? 'grid' : 'none', gap: 8 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <input
               type="number" min="0" step="any" className="input input-sm" style={{ width: 160 }}
@@ -574,6 +607,7 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
           </div>
           <div style={{ fontSize: 12, color: 'var(--text3)' }}>
             ยอดสุทธิที่จะได้จริงจากรายการที่เลือกอยู่ตอนนี้: <strong style={{ color: 'var(--accent)' }}>{fmt(achievedNet)}</strong> บาท
+          </div>
           </div>
         </div>
       </div>
@@ -1109,6 +1143,11 @@ function computeDepositDeduction(invoice, depositBalance) {
     return { amount: income.deposit_deduction, pct, isEstimate: false }
   }
   if (invoice.status === 'void') return { amount: 0, pct: 0, isEstimate: false }
+  // เลือกไว้ตอนสร้างใบ (migration 2026-10-09-07) -- เป็นยอดที่ตั้งใจ ไม่ใช่ประมาณการ (0 = ตั้งใจไม่หัก)
+  if (invoice.deposit_deduction_amount != null) {
+    const chosen = Number(invoice.deposit_deduction_amount) || 0
+    return { amount: chosen, pct: invoice.subtotal > 0 ? round2(chosen / invoice.subtotal * 100) : 0, isEstimate: false }
+  }
   const defaultPct = invoice.sites?.default_deposit_pct || 0
   if (defaultPct > 0 && depositBalance?.remaining_balance > 0) {
     const amount = calcDepositDeduction(invoice.subtotal, defaultPct, depositBalance.remaining_balance)
@@ -1619,8 +1658,11 @@ function MarkPaidModal({ invoice, onConfirm, onCancel }) {
   const { hasModuleAccess } = useTenant()
   const depositEligible = !invoice.is_deposit && hasModuleAccess('client_deposits')
   const { data: depositBalance } = useSiteDepositBalance(depositEligible ? invoice.site_id : null)
+  const chosenDeposit = invoice.deposit_deduction_amount != null ? Number(invoice.deposit_deduction_amount) || 0 : null
   const suggestedDeposit = depositBalance
-    ? calcDepositDeduction(invoice.subtotal, invoice.sites?.default_deposit_pct || 0, depositBalance.remaining_balance)
+    ? (chosenDeposit != null
+        ? Math.min(chosenDeposit, Math.max(0, depositBalance.remaining_balance || 0))
+        : calcDepositDeduction(invoice.subtotal, invoice.sites?.default_deposit_pct || 0, depositBalance.remaining_balance))
     : 0
   // Pre-fill once the real balance loads, then leave it alone -- a plain
   // `value={suggestedDeposit}` would snap the user's edit back to the
@@ -1650,7 +1692,7 @@ function MarkPaidModal({ invoice, onConfirm, onCancel }) {
               value={depositInput ?? ''} onChange={e => setDepositInput(e.target.value)}
             />
             <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>
-              ค่าเริ่มต้น {fmt(suggestedDeposit)} บาท ({invoice.sites?.default_deposit_pct || 0}% ของยอดก่อน VAT) — มัดจำคงเหลืออยู่ {fmt(depositBalance.remaining_balance)} บาท
+              ค่าเริ่มต้น {fmt(suggestedDeposit)} บาท ({chosenDeposit != null ? 'ยอดที่เลือกไว้ตอนสร้างใบ' : `${invoice.sites?.default_deposit_pct || 0}% ของยอดก่อน VAT`}) — มัดจำคงเหลืออยู่ {fmt(depositBalance.remaining_balance)} บาท
               {' '}เช่น ถ้ายอดนี้เคยถูกหัก ณ ที่จ่ายไปแล้วบางส่วนตอนรับมัดจำ จะลดยอดหักมัดจำตรงนี้ลงเพื่อไม่ให้ซ้ำซ้อนกันก็ได้
             </div>
           </div>
@@ -1839,7 +1881,9 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
             const balance = Math.max(0, depositBalance.remaining_balance || 0)
             depositAmt = depositOverride != null
               ? Math.min(Math.max(0, depositOverride), balance)
-              : calcDepositDeduction(noVat, site.default_deposit_pct || 0, depositBalance.remaining_balance)
+              : invoice.deposit_deduction_amount != null
+                ? Math.min(Number(invoice.deposit_deduction_amount) || 0, balance)
+                : calcDepositDeduction(noVat, site.default_deposit_pct || 0, depositBalance.remaining_balance)
           }
         }
 

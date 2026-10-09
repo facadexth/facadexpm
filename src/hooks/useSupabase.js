@@ -1805,6 +1805,36 @@ export function useSplitPaymentReady() {
   return data
 }
 
+// ── Invoice deposit choice (2026-10-09-07) ─────────
+// invoices.deposit_deduction_amount exists only once that migration is live. Selecting the column fails with 42703
+// before then, so "no error" means the create-invoice form may show the deposit box and write the column. One call per
+// session; a failed call is not cached so the next form retries.
+let invoiceDepositChoiceProbe = null
+/** Test helper: forget the cached probe. */
+export function resetInvoiceDepositChoiceProbe() { invoiceDepositChoiceProbe = null }
+export function invoiceDepositChoiceReadyProbe() {
+  if (!invoiceDepositChoiceProbe) {
+    invoiceDepositChoiceProbe = Promise.resolve()
+      .then(() => supabase.from('invoices').select('deposit_deduction_amount').limit(1))
+      .then(({ error }) => {
+        if (error) { invoiceDepositChoiceProbe = null; return false }
+        return true
+      })
+      .catch(() => { invoiceDepositChoiceProbe = null; return false })
+  }
+  return invoiceDepositChoiceProbe
+}
+/** true = the invoice deposit-choice columns exist; false = not live / unknown. */
+export function useInvoiceDepositChoiceReady() {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    let alive = true
+    invoiceDepositChoiceReadyProbe().then(v => { if (alive) setReady(v) })
+    return () => { alive = false }
+  }, [])
+  return ready
+}
+
 // ── PO un-receive reverses stock (2026-10-09-06) ─────────
 // po_unreceive_reverses_stock() exists only once that migration is live. Only the confirm-dialog sentence depends on
 // it, so every failure means "don't show it" (false) and never throws. One call per session (cached promise); a
