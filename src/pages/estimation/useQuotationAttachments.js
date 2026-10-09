@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { resolveItemInputs } from '../../lib/estimationInherit.js'
 import { planAttachmentPages, hardwareSchedule, colourLegend } from '../../lib/attachmentPages.js'
+import { revisionLabel } from '../../lib/quotationExport.js'
 
 const byId = rows => Object.fromEntries((rows || []).map(r => [r.id, r]))
 const uniq = arr => [...new Set((arr || []).filter(v => v != null && v !== ''))]
@@ -82,7 +83,16 @@ export function buildAttachmentCtx({ series, finishes, infills, setRows, setItem
 
 // Pure: items + ctx + view -> the object the Quotation page consumes. buildExtra(n) takes the quotation's own
 // measured page count (known only after its pagination); the number of attachment pages does not depend on n.
-export function assembleAttachments({ items, ctx, view }) {
+// Document number on the attachment pages: QT-xxxx-R{revision}-{sub} from the latest 'sent' snapshot (owner
+// decision 10); without a snapshot, the quotation's own -R{revision} suffix (none for revision 1).
+export function attachmentDocumentNumber(quotation, snapshot) {
+  const no = (quotation && quotation.quotation_number) || ''
+  if (snapshot && snapshot.revision != null && snapshot.sub_no != null) return `${no}-${revisionLabel(snapshot.revision, snapshot.sub_no)}`
+  const rev = (quotation && quotation.revision) || 1
+  return rev > 1 ? `${no}-R${rev}` : no
+}
+
+export function assembleAttachments({ items, ctx, view, documentNumber }) {
   const schedule = hardwareSchedule({ items, setsById: ctx.setsById, partsBySet: ctx.partsBySet, providersById: ctx.providersById })
   const legend = colourLegend(items, ctx)
   const options = { view: view || 'both' }
@@ -95,66 +105,76 @@ export function assembleAttachments({ items, ctx, view }) {
     const n = Number.isFinite(Number(totalQuotationPages)) ? Number(totalQuotationPages) : 0
     if (!memo.has(n)) {
       const plan = planAttachmentPages({ items, options, totalQuotationPages: n, schedule, legend })
-      memo.set(n, { plan, items, ctx, imageUrls, extraPageCount: plan.pages.length })
+      memo.set(n, { plan, items, ctx, imageUrls, extraPageCount: plan.pages.length, documentNumber })
     }
     return memo.get(n)
   }
-  return { plan: plan0, items, ctx, imageUrls, extraPageCount, schedule, legend, buildExtra }
+  return { plan: plan0, items, ctx, imageUrls, extraPageCount, schedule, legend, documentNumber, buildExtra }
 }
 
 const must = res => { if (res && res.error) throw res.error; return res ? res.data : null }
 
 // Loads everything for one quotation. Zero queries unless canLoadAttachments(); one query (the link) when
-// there is nothing to attach. Never throws.
-export async function loadQuotationAttachments({ supabase: sb = supabase, quotation, hasModuleAccess }) {
+// there is nothing to attach. THROWS on a query error (the cache must not keep a transient failure);
+// loadQuotationAttachments below is the never-throwing wrapper. Every Supabase call lives in this function.
+async function loadQuotationAttachmentsOrThrow({ supabase: sb = supabase, quotation, hasModuleAccess }) {
   if (!canLoadAttachments(quotation, hasModuleAccess)) return null
+  // quotation_id is not unique on the link table: take the most recently pushed link.
+  const links = must(await sb.from('estimation_quotation_links').select('*').eq('quotation_id', quotation.id)
+    .order('last_pushed_at', { ascending: false, nullsFirst: false }).limit(1)) || []
+  const link = links[0]
+  if (!showsPages(link)) return null
+  const pid = link.project_id
+  const [projects, lines, openings, snapshots] = await Promise.all([
+    sb.from('estimation_projects').select('*').eq('id', pid).limit(1).then(must),
+    sb.from('estimation_quotation_lines').select('*').eq('project_id', pid).then(must),
+    sb.from('estimation_openings').select('*').eq('project_id', pid).then(must),
+    sb.from('estimation_price_snapshots').select('revision,sub_no').eq('quotation_id', quotation.id).eq('kind', 'sent')
+      .order('created_at', { ascending: false }).limit(1).then(must),
+  ])
+  const project = (projects || [])[0]
+  if (!project) return null
+  let quotationItems = quotation.quotation_items
+  if (!Array.isArray(quotationItems)) {
+    quotationItems = must(await sb.from('quotation_items').select('id, sort_order').eq('quotation_id', quotation.id).order('sort_order')) || []
+  }
+  const mappedIds = new Set((lines || []).map(l => l.opening_id))
+  const mapped = (openings || []).filter(o => mappedIds.has(o.id))
+  if (mapped.length === 0) return null
+  const templateIds = uniq(mapped.map(o => o.template_id))
+  const [templates, types, pkgItems] = await Promise.all([
+    templateIds.length ? sb.from('bom_templates').select('*').in('id', templateIds).then(must) : [],
+    sb.from('door_window_types').select('*').then(must),
+    project.hardware_package_id ? sb.from('alu_hardware_package_items').select('*').eq('package_id', project.hardware_package_id).then(must) : null,
+  ])
+  const items = buildAttachmentItems({
+    openings: mapped, lines, quotationItems, project,
+    templatesById: byId(templates), typesById: byId(types), packageItems: project.hardware_package_id ? (pkgItems || []) : null,
+  })
+  if (items.length === 0) return null
+  const seriesIds = uniq(items.map(i => i.series_id))
+  const finishIds = uniq(items.map(i => i.alu_finish_id))
+  const infillIds = uniq(items.map(i => i.infill_type_id))
+  const setIds = uniq(items.filter(i => !i.no_hardware_set).map(i => i.hardware_set_id))
+  const [series, finishes, infills, setItems] = await Promise.all([
+    seriesIds.length ? sb.from('alu_series').select('*').in('id', seriesIds).then(must) : [],
+    finishIds.length ? sb.from('alu_finishes').select('*').in('id', finishIds).then(must) : [],
+    infillIds.length ? sb.from('infill_types').select('*').in('id', infillIds).then(must) : [],
+    setIds.length ? sb.from('alu_part_set_items').select('*').in('set_id', setIds).then(must) : [],
+  ])
+  const partIds = uniq([...setIds, ...(setItems || []).map(r => r.part_id)])
+  const parts = partIds.length ? (must(await sb.from('alu_parts').select('*').in('id', partIds)) || []) : []
+  const setRows = parts.filter(p => setIds.includes(p.id))
+  const providerIds = uniq(setRows.map(s => s.provider_id))
+  const providers = providerIds.length ? (must(await sb.from('alu_providers').select('*').in('id', providerIds)) || []) : []
+  const ctx = buildAttachmentCtx({ series, finishes, infills, setRows, setItems, parts, providers })
+  return assembleAttachments({ items, ctx, view: link.attach_view, documentNumber: attachmentDocumentNumber(quotation, (snapshots || [])[0]) })
+}
+
+// Never throws: errors -> null + console.warn.
+export async function loadQuotationAttachments(args) {
   try {
-    const links = must(await sb.from('estimation_quotation_links').select('*').eq('quotation_id', quotation.id).limit(1)) || []
-    const link = links[0]
-    if (!showsPages(link)) return null
-    const pid = link.project_id
-    const [projects, lines, openings] = await Promise.all([
-      sb.from('estimation_projects').select('*').eq('id', pid).limit(1).then(must),
-      sb.from('estimation_quotation_lines').select('*').eq('project_id', pid).then(must),
-      sb.from('estimation_openings').select('*').eq('project_id', pid).then(must),
-    ])
-    const project = (projects || [])[0]
-    if (!project) return null
-    let quotationItems = quotation.quotation_items
-    if (!Array.isArray(quotationItems)) {
-      quotationItems = must(await sb.from('quotation_items').select('id, sort_order').eq('quotation_id', quotation.id).order('sort_order')) || []
-    }
-    const mappedIds = new Set((lines || []).map(l => l.opening_id))
-    const mapped = (openings || []).filter(o => mappedIds.has(o.id))
-    if (mapped.length === 0) return null
-    const templateIds = uniq(mapped.map(o => o.template_id))
-    const [templates, types, pkgItems] = await Promise.all([
-      templateIds.length ? sb.from('bom_templates').select('*').in('id', templateIds).then(must) : [],
-      sb.from('door_window_types').select('*').then(must),
-      project.hardware_package_id ? sb.from('alu_hardware_package_items').select('*').eq('package_id', project.hardware_package_id).then(must) : null,
-    ])
-    const items = buildAttachmentItems({
-      openings: mapped, lines, quotationItems, project,
-      templatesById: byId(templates), typesById: byId(types), packageItems: project.hardware_package_id ? (pkgItems || []) : null,
-    })
-    if (items.length === 0) return null
-    const seriesIds = uniq(items.map(i => i.series_id))
-    const finishIds = uniq(items.map(i => i.alu_finish_id))
-    const infillIds = uniq(items.map(i => i.infill_type_id))
-    const setIds = uniq(items.filter(i => !i.no_hardware_set).map(i => i.hardware_set_id))
-    const [series, finishes, infills, setItems] = await Promise.all([
-      seriesIds.length ? sb.from('alu_series').select('*').in('id', seriesIds).then(must) : [],
-      finishIds.length ? sb.from('alu_finishes').select('*').in('id', finishIds).then(must) : [],
-      infillIds.length ? sb.from('infill_types').select('*').in('id', infillIds).then(must) : [],
-      setIds.length ? sb.from('alu_part_set_items').select('*').in('set_id', setIds).then(must) : [],
-    ])
-    const partIds = uniq([...setIds, ...(setItems || []).map(r => r.part_id)])
-    const parts = partIds.length ? (must(await sb.from('alu_parts').select('*').in('id', partIds)) || []) : []
-    const setRows = parts.filter(p => setIds.includes(p.id))
-    const providerIds = uniq(setRows.map(s => s.provider_id))
-    const providers = providerIds.length ? (must(await sb.from('alu_providers').select('*').in('id', providerIds)) || []) : []
-    const ctx = buildAttachmentCtx({ series, finishes, infills, setRows, setItems, parts, providers })
-    return assembleAttachments({ items, ctx, view: link.attach_view })
+    return await loadQuotationAttachmentsOrThrow(args)
   } catch (e) {
     console.warn('quotation attachments: not shown', e)
     return null
@@ -162,15 +182,22 @@ export async function loadQuotationAttachments({ supabase: sb = supabase, quotat
 }
 
 // One load per quotation id (+ revision, so a re-push is picked up); concurrent callers share the promise.
+// Only successful results (incl. "nothing to attach") stay cached; a failed load is dropped so the next
+// open retries it.
 const cache = new Map()
 const MAX_CACHE = 20
 export function attachmentsCacheKey(quotation) {
   return `${quotation.id}|${quotation.revision ?? ''}|${quotation.updated_at ?? ''}|${(quotation.quotation_items || []).length}`
 }
-function cachedLoad(key, load) {
+export function cachedLoad(key, load) {
   if (!cache.has(key)) {
     if (cache.size >= MAX_CACHE) cache.delete(cache.keys().next().value)
-    cache.set(key, load().catch(() => null))
+    const p = load().catch(e => {
+      if (cache.get(key) === p) cache.delete(key)
+      console.warn('quotation attachments: not shown', e)
+      return null
+    })
+    cache.set(key, p)
   }
   return cache.get(key)
 }
@@ -182,7 +209,7 @@ export function useQuotationAttachments(quotation, hasModuleAccess) {
   useEffect(() => {
     if (!key) return undefined
     let cancelled = false
-    cachedLoad(key, () => loadQuotationAttachments({ quotation, hasModuleAccess }))
+    cachedLoad(key, () => loadQuotationAttachmentsOrThrow({ quotation, hasModuleAccess }))
       .then(value => { if (!cancelled) setState({ key, value }) })
     return () => { cancelled = true }
     // key captures the quotation identity; hasModuleAccess is re-created every render by useTenant()

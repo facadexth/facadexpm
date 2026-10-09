@@ -141,9 +141,10 @@ export default function AttachmentPages({ pages = [], ctx = {}, imageUrls = {}, 
   const total = totalPages ?? (pages.length ? pages[pages.length - 1].pageNo : 0)
   return (
     <>
-      {pages.map(p => (
+      {pages.map((p, i) => (
+        // No forced break after the LAST page (html2pdf would add a full blank filler page), as QuotationPaper does.
         <div key={p.pageNo} className="attachment-page"
-          style={{ width: PAGE_WIDTH_PX, height: PAGE_HEIGHT_PX + 2 * PAGE_PADDING_V_PX, padding: PAGE_PADDING_CSS, boxSizing: 'border-box', background: '#fff', color: '#000', display: 'flex', flexDirection: 'column', overflow: 'hidden', breakAfter: 'page', pageBreakAfter: 'always' }}>
+          style={{ width: PAGE_WIDTH_PX, height: PAGE_HEIGHT_PX + 2 * PAGE_PADDING_V_PX, padding: PAGE_PADDING_CSS, boxSizing: 'border-box', background: '#fff', color: '#000', display: 'flex', flexDirection: 'column', overflow: 'hidden', breakAfter: i < pages.length - 1 ? 'page' : 'auto', pageBreakAfter: i < pages.length - 1 ? 'always' : 'auto' }}>
           {renderHeader ? renderHeader({ pageNumber: p.pageNo, totalPages: total }) : null}
           <div style={{ marginTop: 14, flex: 1, minHeight: 0 }}>
             {p.kind === 'items' && (

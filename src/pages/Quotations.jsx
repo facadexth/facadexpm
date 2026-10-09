@@ -1095,7 +1095,7 @@ function QuotationDocumentModal({ qt, tenant, onClose, hasModuleAccess }) {
               extraPages: ({ quotationPageCount, renderHeader }) => {
                 const x = attachments.buildExtra(quotationPageCount)
                 return <AttachmentPages pages={x.plan.pages} ctx={x.ctx} imageUrls={x.imageUrls} totalPages={x.plan.totalPages} renderHeader={renderHeader}
-                  documentNumber={`${qt.quotation_number}${(qt.revision || 1) > 1 ? `-R${qt.revision}` : ''}`} />
+                  documentNumber={x.documentNumber || `${qt.quotation_number}${(qt.revision || 1) > 1 ? `-R${qt.revision}` : ''}`} />
               },
             } : {})}
           />

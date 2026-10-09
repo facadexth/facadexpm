@@ -7,9 +7,11 @@ import { renderToString, renderToStaticMarkup } from 'react-dom/server'
 
 // Recording fake: every from(table) is logged; the chain resolves to fakeData[table] (or []).
 const calls = []
+const callOps = []
 let fakeData = {}
 function chain(table) {
   const q = { table, ops: [] }
+  callOps.push(q)
   const b = {
     select: (...a) => { q.ops.push(['select', ...a]); return b },
     eq: (...a) => { q.ops.push(['eq', ...a]); return b },
@@ -22,6 +24,10 @@ function chain(table) {
         if (op === 'eq') rows = rows.filter(r => r[col] === val)
         if (op === 'in') rows = rows.filter(r => val.includes(r[col]))
       }
+      for (const [op, col, opts] of q.ops) {
+        if (op === 'order') rows = [...rows].sort((a, b) => ((a[col] ?? '') < (b[col] ?? '') ? -1 : (a[col] ?? '') > (b[col] ?? '') ? 1 : 0) * (opts && opts.ascending === false ? -1 : 1))
+      }
+      for (const [op, n] of q.ops) if (op === 'limit') rows = rows.slice(0, n)
       return Promise.resolve({ data: rows, error: null }).then(res, rej)
     },
   }
@@ -65,9 +71,11 @@ const { useTenant } = await import('../hooks/useTenant.js')
 const { default: AttachmentPages } = await import('./estimation/AttachmentPages.jsx')
 const {
   loadQuotationAttachments, buildAttachmentItems, assembleAttachments, buildAttachmentCtx, canLoadAttachments, useQuotationAttachments,
+  attachmentDocumentNumber, cachedLoad,
 } = await import('./estimation/useQuotationAttachments.js')
+const { readFileSync } = await import('node:fs')
 
-beforeEach(() => { calls.length = 0; fromSpy.mockClear(); fakeData = {}; tenantModules = []; splitAt = null })
+beforeEach(() => { calls.length = 0; callOps.length = 0; fromSpy.mockClear(); fakeData = {}; tenantModules = []; splitAt = null })
 
 const quotation = { id: 'q1', quotation_number: 'QT26-00001', revision: 2, quotation_items: FIXTURE.items.map((r, i) => ({ ...r, sort_order: i })) }
 
@@ -162,7 +170,7 @@ describe('(iii) estimation module but nothing to attach: only the link lookup', 
   it('a query error becomes null (never thrown into the page)', async () => {
     tenantModules = ['estimation']
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const broken = { from: () => ({ select: () => ({ eq: () => ({ limit: () => Promise.resolve({ data: null, error: new Error('relation does not exist') }) }) }) }) }
+    const broken = { from: () => ({ select: () => ({ eq: () => ({ order: () => ({ limit: () => Promise.resolve({ data: null, error: new Error('relation does not exist') }) }) }) }) }) }
     const { hasModuleAccess } = useTenant()
     expect(await loadQuotationAttachments({ supabase: broken, quotation, hasModuleAccess })).toBeNull()
     expect(warn).toHaveBeenCalled()
@@ -299,5 +307,94 @@ describe('(v) buildAttachmentItems (pure)', () => {
   it('without a package the legacy project default set applies', () => {
     const items = buildAttachmentItems({ ...base, packageItems: null, project: { ...base.project, hardware_package_id: null, default_hardware_set_id: 'H9' } })
     expect(items[0].hardware_set_id).toBe('H9')
+  })
+})
+
+describe('fix round 1', () => {
+  const ctx0 = { seriesById: {}, finishesById: {}, infillById: {}, setsById: {}, partsBySet: {}, providersById: {} }
+  const many = Array.from({ length: 9 }, (_, i) => ({ id: 'i' + i, opening_no: 'W' + i, preview_svg_out: svg }))
+
+  it('only the LAST attachment page has no forced page break (no blank trailing PDF page)', () => {
+    const att = assembleAttachments({ items: many, ctx: ctx0, view: 'both' })
+    const x = att.buildExtra(1)
+    expect(x.plan.pages.length).toBeGreaterThan(2)
+    const html = renderToStaticMarkup(<AttachmentPages pages={x.plan.pages} ctx={ctx0} totalPages={x.plan.totalPages} />)
+    const styles = [...html.matchAll(/class="attachment-page" style="([^"]*)"/g)].map(m => m[1])
+    expect(styles.length).toBe(x.plan.pages.length)
+    styles.slice(0, -1).forEach(st => { expect(st).toContain('break-after:page'); expect(st).toContain('page-break-after:always') })
+    expect(styles.at(-1)).toContain('break-after:auto')
+    expect(styles.at(-1)).toContain('page-break-after:auto')
+    expect(styles.at(-1)).not.toContain('always')
+  })
+
+  it('document number: R{revision}-{sub} from the latest sent snapshot, else -R{revision}', () => {
+    expect(attachmentDocumentNumber({ quotation_number: 'QT-1', revision: 2 }, { revision: 2, sub_no: 3 })).toBe('QT-1-R2-3')
+    expect(attachmentDocumentNumber({ quotation_number: 'QT-1', revision: 2 }, undefined)).toBe('QT-1-R2')
+    expect(attachmentDocumentNumber({ quotation_number: 'QT-1', revision: 1 }, null)).toBe('QT-1')
+  })
+
+  it('loader reads the latest sent snapshot (same gate) and puts the label on buildExtra', async () => {
+    tenantModules = ['estimation']
+    fakeData = {
+      ...estimation,
+      estimation_price_snapshots: [
+        { quotation_id: 'q1', kind: 'sent', revision: 1, sub_no: 4, created_at: '2026-10-01' },
+        { quotation_id: 'q1', kind: 'sent', revision: 2, sub_no: 1, created_at: '2026-10-05' },
+        { quotation_id: 'q1', kind: 'agreed', revision: 2, sub_no: 9, created_at: '2026-10-09' },
+        { quotation_id: 'other', kind: 'sent', revision: 7, sub_no: 7, created_at: '2026-10-09' },
+      ],
+    }
+    const { hasModuleAccess } = useTenant()
+    const res = await loadQuotationAttachments({ quotation, hasModuleAccess })
+    expect(res.documentNumber).toBe('QT26-00001-R2-1')
+    expect(res.buildExtra(1).documentNumber).toBe('QT26-00001-R2-1')
+    const snapQ = callOps.find(q => q.table === 'estimation_price_snapshots')
+    expect(snapQ.ops).toEqual([['select', 'revision,sub_no'], ['eq', 'quotation_id', 'q1'], ['eq', 'kind', 'sent'], ['order', 'created_at', { ascending: false }], ['limit', 1]])
+    fakeData = { ...estimation }
+    expect((await loadQuotationAttachments({ quotation, hasModuleAccess })).documentNumber).toBe('QT26-00001-R2')
+  })
+
+  it('link lookup takes the most recently pushed link of the quotation', async () => {
+    tenantModules = ['estimation']
+    const l = estimation.estimation_quotation_links[0]
+    fakeData = { ...estimation, estimation_quotation_links: [
+      { ...l, id: 'old', project_id: 'P-old', last_pushed_at: '2026-10-01' },
+      { ...l, id: 'new', last_pushed_at: '2026-10-08' },
+    ] }
+    const { hasModuleAccess } = useTenant()
+    const res = await loadQuotationAttachments({ quotation, hasModuleAccess })
+    expect(res).not.toBeNull()
+    const linkQ = callOps.find(q => q.table === 'estimation_quotation_links')
+    expect(linkQ.ops).toContainEqual(['order', 'last_pushed_at', { ascending: false, nullsFirst: false }])
+    expect(callOps.find(q => q.table === 'estimation_projects').ops).toContainEqual(['eq', 'id', 'P1'])
+  })
+
+  it('cache keeps results (incl. null = nothing to attach) but drops a failed load so it is retried', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const nullLoad = vi.fn(async () => null)
+    expect(await cachedLoad('k-null', nullLoad)).toBeNull()
+    expect(await cachedLoad('k-null', nullLoad)).toBeNull()
+    expect(nullLoad).toHaveBeenCalledTimes(1)
+    let fail = true
+    const flaky = vi.fn(async () => { if (fail) throw new Error('network'); return { ok: 1 } })
+    expect(await cachedLoad('k-flaky', flaky)).toBeNull()
+    fail = false
+    expect(await cachedLoad('k-flaky', flaky)).toEqual({ ok: 1 })
+    expect(await cachedLoad('k-flaky', flaky)).toEqual({ ok: 1 })
+    expect(flaky).toHaveBeenCalledTimes(2)
+    warn.mockRestore()
+  })
+
+  it('guard: the hook module never imports useTenant and has no Supabase call outside the loader', () => {
+    // code only: line comments stripped (the header comment explains why useTenant() is not called)
+    const src = readFileSync(new URL('./estimation/useQuotationAttachments.js', import.meta.url), 'utf8').replace(/^\s*\/\/.*$/gm, '')
+    expect(src).not.toMatch(/import[^\n]*useTenant/)
+    expect(src).not.toMatch(/useTenant\s*\(/)
+    const start = src.indexOf('async function loadQuotationAttachmentsOrThrow')
+    expect(start).toBeGreaterThan(-1)
+    const end = src.indexOf('\n}\n', start)
+    const outside = src.slice(0, start) + src.slice(end)
+    expect(src.slice(start, end)).toMatch(/\.from\(/)
+    expect(outside).not.toMatch(/\.from\(|\.rpc\(|\.storage\b/)
   })
 })
