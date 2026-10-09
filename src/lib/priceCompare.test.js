@@ -8,6 +8,25 @@ const qrow = (id, unit, qty = 1, extra = {}) => ({ id, item_type: 'item', unit_p
 const lines = ids => ids.map(i => ({ opening_id: i, item_row_id: 'r-' + i }))
 const noNaN = o => { const j = JSON.stringify(o); expect(j).not.toContain('NaN'); expect(j).not.toContain('undefined') }
 
+describe('buildComparison final-fix cases', () => {
+  it('both discount_amount and discount_pct stored: the percentage wins, like calcQuotationTotals', () => {
+    const c = buildComparison({
+      snapshot: snap([sItem('a', { price: 20000 })]), quotation: { discount_pct: 5, discount_amount: 3000 }, lines: lines(['a']), quotationItems: [qrow('r-a', 20000)],
+    })
+    expect(c.rows[0].discountShare).toBeCloseTo(1000, 6)
+  })
+  it('a map row whose opening was deleted (opening_id null) is listed as removed and its row is not "added"', () => {
+    const c = buildComparison({
+      snapshot: snap([sItem('a'), sItem('b')]), quotation: {},
+      lines: [...lines(['a']), { opening_id: null, item_row_id: 'r-b' }],
+      quotationItems: [qrow('r-a', 12000), qrow('r-b', 12000)],
+    })
+    expect(c.rows.map(r => r.openingId)).toEqual(['a'])
+    expect(c.extras.removed.map(r => r.openingId)).toEqual(['b'])
+    expect(c.extras.added).toEqual([])
+  })
+})
+
 describe('buildComparison', () => {
   it('returns null without a snapshot', () => {
     expect(buildComparison({ snapshot: null, quotation: {}, lines: [], quotationItems: [] })).toBeNull()

@@ -28,8 +28,9 @@ export function buildComparison({ snapshot, quotation, lines, quotationItems }) 
 
   const subtotal = itemRows.reduce((s, r) => s + lineTotalOf(r), 0)
   let discount = 0
-  if (num(q.discount_amount) > 0) discount = num(q.discount_amount)
-  else if (num(q.discount_pct) > 0) discount = subtotal * num(q.discount_pct) / 100
+  // Same priority as calcQuotationTotals: a stored percentage wins over a stored amount.
+  if (q.discount_pct) discount = subtotal * num(q.discount_pct) / 100
+  else if (num(q.discount_amount) > 0) discount = num(q.discount_amount)
   // Capped at the subtotal so shares never exceed line totals. The discount-% base (and pro-rata base) deliberately
   // includes user-added rows: the bill discount applies to the whole quotation, not only to generated lines.
   discount = Math.min(discount, subtotal)
