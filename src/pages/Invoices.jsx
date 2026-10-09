@@ -12,12 +12,12 @@
 // ============================================================
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, useMyWorkerName, useBankAccounts, useSiteDepositBalance, useQuotationDepositTaxOffset, getQuotationDepositTaxOffset, logDocumentPrint, useInvoiceDepositChoiceReady } from '../hooks/useSupabase.js'
+import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, useMyWorkerName, useBankAccounts, useSiteDepositBalance, useQuotationDepositTaxOffset, getQuotationDepositTaxOffset, logDocumentPrint, useInvoiceDepositChoiceReady, useSiteReservedDeposit } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { calcDepositDeduction, round2 } from '../lib/depositCalc.js'
-import { resolveDepositChoice } from '../lib/invoiceDeposit.js'
-import InvoiceDepositBox, { useDepositChoiceState } from '../components/InvoiceDepositBox.jsx'
+import { computeInvoiceNet, solveRawForNet, availableDeposit } from '../lib/invoiceNet.js'
+import InvoiceTotalsCard, { useDepositChoiceState } from '../components/InvoiceTotalsCard.jsx'
 import { thaiBahtText } from '../lib/thaiBahtText.js'
 import { sanitizeStorageFileName } from '../lib/storageKey.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -26,7 +26,7 @@ import { auditLog } from '../lib/audit.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { format, startOfYear, endOfYear } from 'date-fns'
-import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, sumMaterialLabor, VAT_RATE, chosenTaxOffset, effectiveInvoiceTaxOffset } from '../lib/invoiceCalc.js'
+import { isCountable, waterfall, openQty, drawQty, drawAmount, calcInvoiceTotals, sumMaterialLabor, VAT_RATE, effectiveInvoiceTaxOffset } from '../lib/invoiceCalc.js'
 import { calcQuotationTotals } from '../lib/quotationCalc.js'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
@@ -330,7 +330,12 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   const depositModule = hasModuleAccess('client_deposits')
   const { data: depositBalance } = useSiteDepositBalance(depositModule && depositChoiceReady ? quotation.site_id : null)
   const depositRemaining = depositBalance?.remaining_balance || 0
-  const showDepositBox = depositModule && depositChoiceReady && depositRemaining > 0
+  // มัดจำที่ใบอื่นที่ยังไม่ชำระ "จอง" ไว้แล้ว (ตัวคงเหลือของไซท์ลดตอนกดชำระเท่านั้น) -- หักซ้ำไม่ได้
+  const { data: reservedData } = useSiteReservedDeposit(depositModule && depositChoiceReady ? quotation.site_id : null)
+  const reserved = reservedData || { total: 0, invoices: [] }
+  const depositFree = availableDeposit(depositRemaining, reserved.total)
+  // รอข้อมูลที่จองไว้โหลดก่อน ไม่งั้นจะเห็นมัดจำเต็มชั่วขณะแล้วบันทึกเกินได้
+  const showDepositBox = depositModule && depositChoiceReady && depositRemaining > 0 && !!reservedData
   const siteDepositPct = Number(site?.default_deposit_pct) || 0
   const depositChoice = useDepositChoiceState(siteDepositPct)
   const [showTargetCard, setShowTargetCard] = useState(false)
@@ -374,54 +379,33 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
   // actually stored, or a printed invoice's line items visibly fail to add
   // up to its own total by a satang.
   const invoiceItemsForTotals = billedLines.map(l => ({ line_total: round2(drawAmount(l.units, l.unitPrice)) }))
-  const totalsOpts = { hasVat: quotation.has_vat, priceIncludesVat: quotation.price_includes_vat }
-  // ฐานของ % มัดจำ = มูลค่างวดนี้ก่อน VAT โดยยังไม่ตัดฐานภาษี (กันวนกับ VAT ในราคาที่รวม VAT แล้ว)
-  const baseTotals = calcInvoiceTotals(invoiceItemsForTotals, { ...totalsOpts, depositTaxOffset: 0 })
-  const deposit = showDepositBox
-    ? resolveDepositChoice({ subtotal: baseTotals.subtotal, mode: depositChoice.mode, text: depositChoice.text, balance: depositRemaining })
-    : null
-  // ฐาน VAT / ณ ที่จ่ายลดเฉพาะส่วนที่หักมัดจำจริงในใบนี้ (ไม่หัก = VAT เต็มยอด) และไม่เกินภาษีมัดจำที่ยังไม่ถูกใช้
-  // ถ้ากล่องหักมัดจำไม่โผล่ (migration ยังไม่ลง / ไม่มีมัดจำคงเหลือ) ใช้พฤติกรรมเดิม: ลดเต็มที่ยังเหลือ
-  const taxOffset = deposit ? chosenTaxOffset(deposit.amount, depositTaxOffset || 0) : (depositTaxOffset || 0)
-  const totals = calcInvoiceTotals(invoiceItemsForTotals, { ...totalsOpts, depositTaxOffset: taxOffset })
+  // ทุกตัวเลขของการ์ดสรุปและช่อง "กรอกยอดที่ต้องการเรียกเก็บ" มาจากสูตรเดียวกัน (lib/invoiceNet.js)
+  const rawDrawn = invoiceItemsForTotals.reduce((s, it) => s + it.line_total, 0)
+  const effectiveWhtPct = includeWht ? (parseFloat(whtPct) || 0) : 0
+  const netParams = {
+    hasVat: quotation.has_vat, priceIncludesVat: quotation.price_includes_vat,
+    whtPct: effectiveWhtPct, retentionPct: Number(site?.default_retention_pct) || 0,
+    availableOffset: depositTaxOffset || 0,
+    deposit: { enabled: showDepositBox, mode: depositChoice.mode, text: depositChoice.text, balance: depositFree },
+  }
+  const calc = computeInvoiceNet({ ...netParams, raw: rawDrawn })
+  const totals = { subtotal: calc.subtotal, vat: calc.vat, total: calc.total }
+  const deposit = calc.dep
   const isSplit = quotation.pricing_mode === 'split'
   const materialLabor = isSplit
     ? sumMaterialLabor(billedLines.map(l => ({ draw_qty: drawQty(l.units), unit_price_material: l.unitPriceMaterial, unit_price_labor: l.unitPriceLabor })))
     : null
-  // ยอดสุทธิจริงที่จะได้รับ ณ ตอนนี้ (หลัง VAT ถ้ามี แล้วหักภาษี ณ ที่จ่ายถ้าติ๊กไว้)
-  // -- โชว์ไว้ให้เห็นผลจริงหลังกดเติมอัตโนมัติ หรือหลังปรับมือเองต่อ
-  //
-  // หัก ณ ที่จ่ายคิดจากมูลค่างานก่อน VAT (subtotal) เสมอ ไม่ใช่จากยอดรวมหลัง VAT
-  // -- ตามหลักจริง (WHT คิดจากค่าจ้าง/ค่าบริการ ไม่รวม VAT) ดังนั้น
-  // net = total (รวม VAT ถ้ามี) - subtotal*wht% ตัวอย่างที่ user ใช้เอง:
-  // VAT 7% หัก ณ ที่จ่าย 3% -> net = subtotal*(1.07-0.03) = subtotal*1.04
-  // (เทียบเท่ากับ 100000/1.04 ที่ user คำนวณด้วยเครื่องคิดเลขเอง)
-  const effectiveWhtPct = includeWht ? (parseFloat(whtPct) || 0) : 0
-  const achievedNet = round2(totals.total - totals.subtotal * effectiveWhtPct / 100)
+  // ยอดที่จะได้รับจริง ณ ตอนนี้ (หลัง VAT, หัก ณ ที่จ่าย, ประกันผลงาน และมัดจำที่เลือกไว้) -- โชว์ให้เห็นผลหลังเติมอัตโนมัติ
+  const achievedNet = calc.net
 
-  // กรอกยอดสุทธิที่ต้องการ -> คำนวณย้อนกลับเป็นยอดที่ต้องกด โดยกลับสมการ
-  // achievedNet ด้านบนตามความสัมพันธ์ระหว่าง drawn amount (target) กับ
-  // subtotal/total ในแต่ละกรณีของ calcInvoiceTotals:
-  //   ไม่มี VAT:        target = subtotal = total  -> net = target(1-wht)
-  //   VAT รวมในราคา:    target = total             -> net = target(1 - wht/(1+VAT_RATE))
-  //   VAT แยกจากราคา:   target = subtotal          -> net = target(1+VAT_RATE-wht)
-  // แล้วกระจายเท่าๆ กันตามสัดส่วนมูลค่าที่เหลือของแต่ละรายการ
-  // (ครอบที่ 100% ของยอดที่เหลือทั้งหมด ไม่มีทางเกิน)
+  // กรอกยอดที่ต้องการ -> คำนวณย้อนกลับเป็นยอดที่ต้องกด (ค้นหาแบบแบ่งครึ่งบนสูตรเดียวกับการ์ดสรุป จึงรวมมัดจำและ
+  // ฐานภาษีที่ตัดไว้ด้วย) แล้วกระจายเท่าๆ กันตามสัดส่วนมูลค่าที่เหลือของแต่ละรายการ (ครอบที่ 100% ของยอดที่เหลือ)
   const applyTargetFill = () => {
     const net = parseFloat(targetNet)
     if (!net || net <= 0) return
-    const whtFraction = effectiveWhtPct / 100
-    let target
-    if (!quotation.has_vat) {
-      target = net / (1 - whtFraction)
-    } else if (quotation.price_includes_vat) {
-      target = net / (1 - whtFraction / (1 + VAT_RATE))
-    } else {
-      target = net / (1 + VAT_RATE - whtFraction)
-    }
-
     const totalOpenValue = lines.reduce((s, l) => s + openQty(l.units) * l.unitPrice, 0)
     if (totalOpenValue <= 0) return
+    const target = solveRawForNet(net, netParams, totalOpenValue)
     const pct = Math.min(1, target / totalOpenValue)
 
     setMode('easy')
@@ -543,34 +527,21 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
         </div>
 
         <InvoiceItemsEditor lines={lines} onChange={setLines} mode={mode} onModeChange={setMode} />
-        {/* Policy description, not a live number -- the actual amount
-            depends on the deposit balance remaining AT payment time (could
-            shift between now and then), so showing a computed figure here
-            would just go stale. State the RULE instead: % of this
-            invoice's own subtotal, capped at whatever's left in the
-            deposit. handleMarkPaid computes the real amount the same way
-            (calcDepositDeduction) when this invoice is actually marked
-            paid. */}
-        {!showDepositBox && hasModuleAccess('client_deposits') && site?.default_deposit_pct > 0 && (
-          <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>
-            📐 ตอนกดยืนยันชำระใบแจ้งหนี้นี้ ระบบจะหักเงินมัดจำอัตโนมัติ {site.default_deposit_pct}% ของยอดก่อน VAT ของใบนี้ —
-            หรือหักเท่าที่มัดจำคงเหลืออยู่ ถ้าน้อยกว่านั้น
-          </div>
-        )}
-
-        {showDepositBox && (
-          <InvoiceDepositBox
-            choice={depositChoice} subtotal={baseTotals.subtotal} vat={totals.vat} total={totals.total}
-            taxOffset={taxOffset} whtPct={effectiveWhtPct}
-            retentionPct={Number(site?.default_retention_pct) || 0}
-            balance={depositRemaining} siteDepositPct={siteDepositPct}
-          />
-        )}
+        <InvoiceTotalsCard
+          calc={calc} hasVat={quotation.has_vat} isSplit={isSplit} materialLabor={materialLabor}
+          showDeposit={showDepositBox} choice={depositChoice} siteDepositPct={siteDepositPct}
+          remaining={depositRemaining} reservedTotal={reserved.total} reservedInvoices={reserved.invoices}
+          free={depositFree} availableOffset={depositTaxOffset || 0}
+          includeWht={includeWht} setIncludeWht={setIncludeWht} whtPct={whtPct} setWhtPct={setWhtPct}
+          legacyDepositPct={!showDepositBox && depositModule ? siteDepositPct : 0}
+        />
 
         <div className="card card-body" style={{ marginTop: 12, display: 'grid', gap: 8 }}>
           <button type="button" onClick={() => setShowTargetCard(v => !v)} aria-expanded={showTargetCard} aria-controls="inv-target-card"
             style={{ display: 'flex', justifyContent: 'space-between', gap: 8, width: '100%', textAlign: 'left', background: 'none', border: 0, padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer' }}>
-            <span className="label" style={{ marginBottom: 0 }}>กรอกยอดที่ต้องการเรียกเก็บ (สุทธิ หลัง VAT และหัก ณ ที่จ่ายตามที่ตั้งไว้ด้านบน)</span>
+            <span className="label" style={{ marginBottom: 0 }}>{showDepositBox
+              ? 'กรอกยอดที่ต้องการเรียกเก็บ (สุทธิ หลัง VAT หัก ณ ที่จ่าย และหักมัดจำตามที่ตั้งไว้ด้านบน)'
+              : 'กรอกยอดที่ต้องการเรียกเก็บ (สุทธิ หลัง VAT และหัก ณ ที่จ่ายตามที่ตั้งไว้ด้านบน)'}</span>
             <span style={{ fontSize: 12, color: 'var(--accent)', whiteSpace: 'nowrap' }}>{showTargetCard ? '▴ ซ่อน' : '▾ แสดง'}</span>
           </button>
           <div id="inv-target-card" hidden={!showTargetCard} style={{ display: showTargetCard ? 'grid' : 'none', gap: 8 }}>
@@ -589,46 +560,6 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
           </div>
         </div>
 
-        {/* สรุปยอด / VAT / หัก ณ ที่จ่าย อยู่ล่างสุด: เลือกมัดจำก่อน แล้วค่อยเห็นผลต่อ VAT */}
-        <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>
-          {isSplit && (
-            <>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมค่าของ</span><span className="font-mono">{fmt(materialLabor.material)}</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมค่าแรง</span><span className="font-mono">{fmt(materialLabor.labor)}</span></div>
-            </>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมงวดนี้ (ก่อน VAT)</span><span className="font-mono">{fmt(totals.subtotal)}</span></div>
-          {quotation.has_vat && (
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>VAT (7%)</span><span className="font-mono">{fmt(totals.vat)}</span></div>
-              {taxOffset > 0 && (
-                <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-                  คิดจาก {fmt(Math.max(0, totals.subtotal - taxOffset))} บาท (ตัด {fmt(Math.min(totals.subtotal, taxOffset))} บาทที่หักมัดจำในใบนี้ ซึ่งเสีย VAT ไปแล้วตอนรับมัดจำ)
-                </div>
-              )}
-              {showDepositBox && taxOffset === 0 && depositTaxOffset > 0 && (
-                <div style={{ fontSize: 11, color: 'var(--text3)' }}>คิดจากยอดเต็มของงวดนี้ (ใบนี้ไม่หักมัดจำ)</div>
-              )}
-            </div>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}><span>รวมเรียกเก็บงวดนี้</span><span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totals.total)}</span></div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--border)' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text2)' }}>
-              <input type="checkbox" checked={includeWht} onChange={e => setIncludeWht(e.target.checked)} />
-              หัก ณ ที่จ่ายสำหรับใบนี้
-            </label>
-            {includeWht && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <input type="number" min="0" max="100" step="any" className="input input-sm" style={{ width: 60 }}
-                  value={whtPct} onChange={e => setWhtPct(e.target.value)} />
-                <span style={{ fontSize: 12, color: 'var(--text3)' }}>%</span>
-              </div>
-            )}
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
-            การตั้งค่านี้ผูกกับใบแจ้งหนี้นี้ใบเดียว — ตอนกดยืนยันชำระ ระบบจะหัก ณ ที่จ่ายตามนี้เสมอ ไม่ว่า % เริ่มต้นของไซท์จะเปลี่ยนไปภายหลังหรือไม่
-          </div>
-        </div>
       </div>
       <div className="modal-footer">
         <button type="button" className="btn btn-ghost" onClick={onClose}>ยกเลิก</button>

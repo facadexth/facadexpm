@@ -1,20 +1,33 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import InvoiceDepositBox, { useDepositChoiceState } from 'SRC/components/InvoiceDepositBox.jsx'
-import { resolveDepositChoice } from 'SRC/lib/invoiceDeposit.js'
+import InvoiceTotalsCard, { useDepositChoiceState } from 'SRC/components/InvoiceTotalsCard.jsx'
+import { computeInvoiceNet } from 'SRC/lib/invoiceNet.js'
 
 const BAL = 78210
-// Host = what CreateInvoiceModal does: the choice state at the top, the box given the invoice figures.
+// Host = what CreateInvoiceModal does: choice state at the top, one calc from the shared pipeline, one merged card.
+// window.__reserved (default 0) = deposit already promised by other unpaid invoices.
 function Host() {
   const [sub, setSub] = React.useState(150000)
+  const [includeWht, setIncludeWht] = React.useState(true)
+  const [whtPct, setWhtPct] = React.useState(3)
   const choice = useDepositChoiceState(30)
-  const vat = Math.round(Math.max(0, sub - BAL) * 0.07 * 100) / 100
-  const dep = resolveDepositChoice({ subtotal: sub, mode: choice.mode, text: choice.text, balance: BAL })
+  const reservedTotal = window.__reserved || 0
+  const free = Math.max(0, BAL - reservedTotal)
+  const calc = computeInvoiceNet({
+    raw: sub, hasVat: true, priceIncludesVat: false, whtPct: includeWht ? Number(whtPct) || 0 : 0, retentionPct: 0, availableOffset: BAL,
+    deposit: { enabled: true, mode: choice.mode, text: choice.text, balance: free },
+  })
   return (
     <div>
       <input id="sub" type="text" value={sub} onChange={e => setSub(Number(e.target.value) || 0)} />
-      <span id="resolved">{dep.amount}</span>
-      <InvoiceDepositBox choice={choice} subtotal={sub} vat={vat} total={sub + vat} taxOffset={BAL} whtPct={3} retentionPct={0} balance={BAL} siteDepositPct={30} />
+      <span id="resolved">{calc.depositAmount}</span>
+      <InvoiceTotalsCard
+        calc={calc} hasVat isSplit={false} materialLabor={null}
+        showDeposit choice={choice} siteDepositPct={30} remaining={BAL}
+        reservedTotal={reservedTotal} reservedInvoices={reservedTotal ? [{ invoice_number: 'IN2610-002', amount: reservedTotal }] : []}
+        free={free} availableOffset={BAL}
+        includeWht={includeWht} setIncludeWht={setIncludeWht} whtPct={whtPct} setWhtPct={setWhtPct} legacyDepositPct={0}
+      />
     </div>
   )
 }

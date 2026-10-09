@@ -1824,6 +1824,31 @@ export function invoiceDepositChoiceReadyProbe() {
   }
   return invoiceDepositChoiceProbe
 }
+/**
+ * Deposit already promised by this site's UNPAID invoices (invoices.deposit_deduction_amount). The deposit balance
+ * view only drops when an invoice is marked paid, so without this a second invoice could promise the same deposit again.
+ * Only call with a siteId once the deposit-choice columns exist (see useInvoiceDepositChoiceReady). Returns
+ * { total, invoices: [{ invoice_number, amount }] }.
+ */
+export function useSiteReservedDeposit(siteId) {
+  return useQuery(async () => {
+    if (!siteId) return { total: 0, invoices: [] }
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('invoice_number, status, is_deposit, deposit_deduction_amount')
+      .eq('site_id', siteId)
+      .eq('status', 'unpaid')
+      .eq('is_deposit', false)
+      .gt('deposit_deduction_amount', 0)
+    if (error) throw error
+    const rows = data || []
+    return {
+      total: Math.round(rows.reduce((s, r) => s + (Number(r.deposit_deduction_amount) || 0), 0) * 100) / 100,
+      invoices: rows.map(r => ({ invoice_number: r.invoice_number, amount: Number(r.deposit_deduction_amount) || 0 })),
+    }
+  }, [siteId])
+}
+
 /** true = the invoice deposit-choice columns exist; false = not live / unknown. */
 export function useInvoiceDepositChoiceReady() {
   const [ready, setReady] = useState(false)
