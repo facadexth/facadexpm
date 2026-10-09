@@ -1,0 +1,68 @@
+// src/pages/estimation/ItemCostSummary.jsx
+// Cost of one set of the item, from costOpening(). An unresolved price reads "—" with the reason, never 0, and the
+// total is withheld ("ราคายังไม่ครบ" + every unresolved entry) until everything is priced.
+import { fmt } from '../../lib/supabase.js'
+import { reasonText, unresolvedText } from '../../lib/reasonText.js'
+
+const Row = ({ label, value, note, bad }) => (
+  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, color: bad ? 'var(--red)' : 'inherit' }}>
+    <span>{label}{note && <span style={{ fontSize: 12 }}> · {note}</span>}</span>
+    <span className="font-mono" style={{ whiteSpace: 'nowrap' }}>{value}</span>
+  </div>
+)
+const money = (ok, v) => (ok ? fmt(v) : '—')
+
+function BomRows({ bom, index }) {
+  const profile = [...bom.profileLines, ...bom.gridLines]
+  return (
+    <>
+      {profile.map((l, i) => {
+        const p = l.profile_id ? index.profiles[l.profile_id] : null
+        const die = p && p.drawing_no ? ` (${p.drawing_no})` : ''
+        return <Row key={`p${i}`} label={`${l.role_name}${die} ${Number(l.length_m).toFixed(3)} ม. × ${l.quantity}`} value={money(l.resolved, l.cost)} bad={!l.resolved} note={l.resolved ? null : `ไม่พบ: ${reasonText(l.reason)}`} />
+      })}
+      {bom.hardwareLines.map((l, i) => <Row key={`h${i}`} label={`${l.name} × ${Number(l.quantity).toFixed(2).replace(/\.00$/, '')}`} value={money(!l.unresolved, l.cost)} bad={l.unresolved} note={l.unresolved ? `ไม่พบ: ${reasonText('no_hardware_price')}` : null} />)}
+      {(bom.hardwareSetLines || []).map((l, i) => <Row key={`s${i}`} label={`ชุดอุปกรณ์: ${l.name} × ${l.quantity}`} value={money(l.resolved, l.cost)} bad={!l.resolved} note={l.resolved ? null : `ไม่พบ: ${reasonText(l.reason || 'no_part_price')}`} />)}
+      <Row label="เผื่อเสียเศษ" value={fmt(bom.wasteCost)} />
+      <Row label={`วัสดุอุดช่อง (${bom.infillArea_sqm.toFixed(2)} ตร.ม.)`} value={fmt(bom.infillCost)} />
+      <Row label="ค่าแรง" value={fmt(bom.laborCost)} />
+      <Row label="ซิลิโคน" value={fmt(bom.siliconeCost)} />
+      <Row label="สักหลาด" value={fmt(bom.feltCost)} />
+      {bom.extraLinesCost !== 0 && <Row label="รายการเพิ่มเติม" value={fmt(bom.extraLinesCost)} />}
+    </>
+  )
+}
+
+const Section = ({ title, children }) => (
+  <div style={{ display: 'grid', gap: 2 }}>
+    <div style={{ fontWeight: 700, fontSize: 13, marginTop: 4 }}>{title}</div>
+    {children}
+  </div>
+)
+
+export default function ItemCostSummary({ cost, index, addonName }) {
+  if (!cost) return <div className="card" style={{ padding: 12, fontSize: 13, color: 'var(--text3)' }}>เลือกประเภทและเทมเพลตเพื่อคิดราคา</div>
+  const unresolved = cost.unresolved || []
+  return (
+    <div className="card" style={{ padding: 12, display: 'grid', gap: 6, background: 'var(--bg2)' }}>
+      <div style={{ fontWeight: 700 }}>ต้นทุนต่อ 1 ชุด</div>
+      <Section title="ชุดหลัก"><BomRows bom={cost.bom} index={index} /></Section>
+      {cost.addonBom && <Section title={`ของเพิ่มเติม${addonName ? `: ${addonName}` : ''}`}><BomRows bom={cost.addonBom} index={index} /></Section>}
+      {cost.extras.lines.length > 0 && (
+        <Section title={`อุปกรณ์ติดตั้ง (${cost.extras.points} จุดยึด)`}>
+          {cost.extras.lines.map(l => <Row key={l.key} label={`${l.name} × ${l.quantity}`} value={money(l.resolved, l.cost)} bad={!l.resolved} note={l.resolved ? null : `ไม่พบ: ${reasonText(l.reason)}`} />)}
+        </Section>
+      )}
+      <div style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6 }}>
+        {unresolved.length === 0 && Number.isFinite(cost.total)
+          ? <Row label={<b>รวมต่อชุด</b>} value={<b>{fmt(cost.total)}</b>} />
+          : (
+            <div style={{ display: 'grid', gap: 2 }}>
+              <Row label={<b>รวมต่อชุด</b>} value={<b>ราคายังไม่ครบ</b>} bad />
+              {unresolved.map((u, i) => <div key={i} style={{ fontSize: 12, color: 'var(--red)' }}>• {u.name || '?'}{u.source === 'addon' ? ' (ของเพิ่มเติม)' : ''}: {unresolvedText(u)}</div>)}
+            </div>
+          )}
+      </div>
+    </div>
+  )
+}
