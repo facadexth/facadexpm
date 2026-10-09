@@ -7,10 +7,11 @@
 // ADMIN+ only -- kept as an internal check here too (defense-in-depth,
 // on top of whatever gate the caller itself has).
 // ============================================================
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
-import { useSiteOverview, useSiteExpensesByCategory, useQuotations } from '../hooks/useSupabase.js'
+import { useSiteOverview, useSiteExpensesByCategory, useQuotations, useInvoices } from '../hooks/useSupabase.js'
 import { calcQuotationTotals } from '../lib/quotationCalc.js'
+import { summarizeQuotationBilling } from '../lib/quotationBilling.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { depositStatusFor } from '../lib/depositCalc.js'
 import { retentionStatusFor } from '../lib/retentionStatus.js'
@@ -25,19 +26,21 @@ export default function SiteOverviewContent({ siteId }) {
   const { data: siteExpenses } = useSiteExpensesByCategory(isAdmin ? siteId : null)
   const categoryData = useMemo(() => groupSmallSlices(categoryBreakdown(siteExpenses)), [siteExpenses])
 
-  const [showContractBreakdown, setShowContractBreakdown] = useState(false)
   const { data: siteQuotations } = useQuotations(
     isAdmin && site?.id ? { siteId: site.id, status: 'accepted' } : { status: '__none__' }
   )
-  const contractBreakdown = useMemo(() => (siteQuotations || [])
-    .map(q => ({
-      id: q.id, quotation_number: q.quotation_number, date: q.date,
-      total: calcQuotationTotals(q.quotation_items, {
+  const { data: siteInvoices } = useInvoices(isAdmin && site?.id ? { siteId: site.id } : { status: '__none__' })
+  // one row per accepted quotation of this site (original job + any extra-work quotations) with how much is billed
+  const quotationBilling = useMemo(() => summarizeQuotationBilling(
+    (siteQuotations || []).map(q => {
+      const tot = calcQuotationTotals(q.quotation_items, {
         hasVat: q.has_vat, priceIncludesVat: q.price_includes_vat,
         discountAmount: q.discount_amount, discountPct: q.discount_pct,
-      }).total,
-    }))
-    .sort((a, b) => (a.date || '').localeCompare(b.date || '')), [siteQuotations])
+      })
+      return { id: q.id, quotation_number: q.quotation_number, date: q.date, subtotal: tot.subtotal, total: tot.total }
+    }),
+    siteInvoices,
+  ), [siteQuotations, siteInvoices])
 
   if (!isAdmin) return null
 
@@ -57,32 +60,6 @@ export default function SiteOverviewContent({ siteId }) {
             <div>
               <div style={{ fontSize: 11, color: 'var(--text3)' }}>มูลค่าสัญญา</div>
               <div className="font-mono" style={{ fontWeight: 700 }}>{fmt(site.contract_value)}</div>
-              {contractBreakdown.length > 1 && (
-                <>
-                  <button type="button" onClick={() => setShowContractBreakdown(v => !v)}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--accent)', cursor: 'pointer', background: 'none', border: 'none', padding: 0, marginTop: 5, fontFamily: 'inherit' }}>
-                    ดูรายละเอียด ({contractBreakdown.length} ใบเสนอราคา)
-                    <span style={{ display: 'inline-block', transition: 'transform .15s', transform: showContractBreakdown ? 'rotate(180deg)' : 'none' }}>▾</span>
-                  </button>
-                  {showContractBreakdown && (
-                    <div style={{ marginTop: 8, display: 'grid', gap: 5 }}>
-                      {contractBreakdown.map(q => (
-                        <div key={q.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'center', background: 'var(--bg3)', borderRadius: 7, padding: '7px 10px', fontSize: 12 }}>
-                          <div>
-                            <div style={{ fontWeight: 600 }}>{q.quotation_number}</div>
-                            <div style={{ fontSize: 10, color: 'var(--text3)' }}>รับเข้าไซท์งาน {fmtDate(q.date)}</div>
-                          </div>
-                          <div className="font-mono" style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{fmt(q.total)}</div>
-                        </div>
-                      ))}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, borderTop: '1px dashed var(--border)', paddingTop: 8, marginTop: 2 }}>
-                        <div style={{ color: 'var(--accent)', fontWeight: 800, fontSize: 12.5 }}>รวม</div>
-                        <div className="font-mono" style={{ color: 'var(--accent)', fontWeight: 800, fontSize: 13.5 }}>{fmt(site.contract_value)}</div>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
             </div>
             <div>
               <div style={{ fontSize: 11, color: 'var(--text3)' }}>รายรับ</div>
@@ -109,6 +86,55 @@ export default function SiteOverviewContent({ siteId }) {
               <div style={{ fontSize: 12 }}>{site.end_date ? fmtDate(site.end_date) : '—'}</div>
             </div>
           </div>
+
+          {quotationBilling.rows.length > 0 && (
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>
+                ใบเสนอราคาของไซท์นี้ ({quotationBilling.rows.length})
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ color: 'var(--text3)', textAlign: 'right' }}>
+                      <th style={{ textAlign: 'left', fontWeight: 600, padding: '4px 6px' }}>ใบเสนอราคา</th>
+                      <th style={{ fontWeight: 600, padding: '4px 6px' }}>มูลค่า</th>
+                      <th style={{ fontWeight: 600, padding: '4px 6px' }}>เบิกแล้ว</th>
+                      <th style={{ fontWeight: 600, padding: '4px 6px' }}>คงเหลือ</th>
+                      <th style={{ fontWeight: 600, padding: '4px 6px' }}>% เบิก</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quotationBilling.rows.map(q => (
+                      <tr key={q.id} style={{ borderTop: '1px solid var(--border)' }}>
+                        <td style={{ padding: '6px' }}>
+                          <div style={{ fontWeight: 600 }}>{q.quotation_number}</div>
+                          <div style={{ fontSize: 10, color: 'var(--text3)' }}>รับเข้าไซท์งาน {fmtDate(q.date)}</div>
+                        </td>
+                        <td className="font-mono" style={{ textAlign: 'right', padding: '6px', whiteSpace: 'nowrap' }}>{fmt(q.total)}</td>
+                        <td className="font-mono" style={{ textAlign: 'right', padding: '6px', whiteSpace: 'nowrap' }}>{fmt(q.billedTotal)}</td>
+                        <td className="font-mono" style={{ textAlign: 'right', padding: '6px', whiteSpace: 'nowrap' }}>{fmt(q.remainingTotal)}</td>
+                        <td className="font-mono" style={{ textAlign: 'right', padding: '6px', whiteSpace: 'nowrap' }}>{q.pct.toFixed(1)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {quotationBilling.rows.length > 1 && (
+                    <tfoot>
+                      <tr style={{ borderTop: '1px dashed var(--border)', color: 'var(--accent)', fontWeight: 800 }}>
+                        <td style={{ padding: '6px' }}>รวม</td>
+                        <td className="font-mono" style={{ textAlign: 'right', padding: '6px', whiteSpace: 'nowrap' }}>{fmt(quotationBilling.sum.total)}</td>
+                        <td className="font-mono" style={{ textAlign: 'right', padding: '6px', whiteSpace: 'nowrap' }}>{fmt(quotationBilling.sum.billedTotal)}</td>
+                        <td className="font-mono" style={{ textAlign: 'right', padding: '6px', whiteSpace: 'nowrap' }}>{fmt(quotationBilling.sum.remainingTotal)}</td>
+                        <td className="font-mono" style={{ textAlign: 'right', padding: '6px', whiteSpace: 'nowrap' }}>{quotationBilling.sum.pct.toFixed(1)}%</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                เบิกแล้ว = ใบแจ้งหนี้ที่ออกแล้วและไม่ void (ไม่รวมใบมัดจำ) คิดเป็นสัดส่วนของมูลค่าใบเสนอราคา · มูลค่ารวม VAT
+              </div>
+            </div>
+          )}
 
           {site.deposit?.total_deposit > 0 && (
             <div>
