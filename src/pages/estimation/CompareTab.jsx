@@ -9,17 +9,17 @@ import { useUserRole } from '../../hooks/useUserRole.js'
 import { canEditPage } from '../../lib/permissions.js'
 import { canSendToQuotation } from './sendToQuotationGate.js'
 import { usePriceStructure } from '../../hooks/usePriceStructure.js'
-import { buildComparison, nextAgreedSubNo } from '../../lib/priceCompare.js'
+import { buildComparison, buildAgreedSnapshotRow } from '../../lib/priceCompare.js'
 import { revisionLabel } from '../../lib/quotationExport.js'
 
-const SNAPSHOT_COLS = ['project_id', 'quotation_id', 'kind', 'revision', 'sub_no', 'price_as_of', 'factors', 'items', 'totals']
-const pick = (obj, cols) => Object.fromEntries(cols.filter(c => obj[c] !== undefined).map(c => [c, obj[c]]))
 const QUOTATION_COLS = 'id, status, revision, has_vat, price_includes_vat, discount_amount, discount_pct'
 const ITEM_COLS = 'id, quotation_id, item_type, description, unit_price, quantity, line_total'
 
 const f = n => (n == null || !Number.isFinite(Number(n)) ? '—' : fmt(Number(n)))
 const pct = n => (n == null || !Number.isFinite(Number(n)) ? '—' : `${Number(n).toFixed(1)}%`)
-const signed = n => (n == null || !Number.isFinite(Number(n)) ? '—' : Number(n) === 0 ? '—' : `${n > 0 ? '+' : ''}${fmt(Number(n))}`)
+const RED = 'var(--red, #c0392b)'
+const neg = n => (Number(n) < 0 ? RED : undefined)
+const signed = n => (n == null || !Number.isFinite(Number(n)) ? '—' : Number(n) === 0 ? '0' : `${n > 0 ? '+' : ''}${fmt(Number(n))}`)
 const pts = n => (n == null || !Number.isFinite(Number(n)) ? '—' : `${n > 0 ? '+' : ''}${Number(n).toFixed(1)} จุด`)
 const dateOf = s => { try { return format(new Date(s), 'yyyy-MM-dd HH:mm') } catch { return '' } }
 export const CONFIRM_SENT_TEXT = 'ใบเสนอราคายังไม่ได้ถูกยอมรับ ต้องการเทียบกับราคาปัจจุบันไหม'
@@ -53,7 +53,7 @@ export function CompareTabButton({ active, onClick, project, canEdit }) {
 
 const TH = ['รายการ', 'จำนวน', 'เสนอ', 'ตกลง (ต่อชุด)', 'ส่วนลดท้ายบิล (กระจาย)', 'ตกลงจริง', 'ต่าง บาท', 'ต่าง %', 'ต้นทุนฐาน', 'กำไรที่ตั้ง', 'กำไรจริง', 'เทียบที่ตั้ง']
 
-function ComparisonTable({ rows, extras, summary }) {
+function ComparisonTable({ rows, extras, summary, itemsById }) {
   const n = { textAlign: 'right' }
   return (
     <>
@@ -63,18 +63,18 @@ function ComparisonTable({ rows, extras, summary }) {
           <tbody>
             {rows.map(r => (
               <tr key={r.openingId}>
-                <td><b>{r.name || '—'}</b></td>
+                <td><b>{r.name || '—'}</b> {(itemsById && itemsById[r.openingId] && itemsById[r.openingId].item_name) || ''}</td>
                 <td style={n}>{f(r.quantity)}</td>
                 <td style={n}>{f(r.offeredPrice)}</td>
                 <td style={n}>{f(r.agreedUnit)}</td>
                 <td style={n}>{r.discountShare ? `−${f(r.discountShare)}` : '—'}</td>
                 <td style={n}><b>{f(r.agreedNet)}</b></td>
-                <td style={{ ...n, color: r.diff < 0 ? 'var(--red, #c0392b)' : undefined }}>{signed(r.diff)}</td>
-                <td style={n}>{pct(r.diffPct)}</td>
+                <td style={{ ...n, color: neg(r.diff) }}>{signed(r.diff)}</td>
+                <td style={{ ...n, color: neg(r.diffPct) }}>{pct(r.diffPct)}</td>
                 <td style={n}>{f(r.costBase)}</td>
                 <td style={n}>{pct(r.setProfitPct)}</td>
                 <td style={n}><b>{pct(r.realProfitPct)}</b></td>
-                <td style={n}>{pts(r.profitDiffPts)}</td>
+                <td style={n}><span className={`badge ${r.profitDiffPts < 0 ? 'badge-red' : ''}`} style={{ padding: '2px 8px', borderRadius: 10, border: '1px solid currentColor', color: neg(r.profitDiffPts) }}>{pts(r.profitDiffPts)}</span></td>
               </tr>
             ))}
             {!rows.length && <tr><td colSpan={TH.length} style={{ color: 'var(--text3)' }}>ไม่มีรายการที่เทียบได้</td></tr>}
@@ -100,6 +100,7 @@ function ComparisonTable({ rows, extras, summary }) {
         <div className="card" style={{ padding: 12 }}>
           <div style={{ fontSize: 12, color: 'var(--text3)' }}>กำไรทั้งโปรเจกต์: ตั้งไว้ → จริง</div>
           <b style={{ fontSize: 18 }}>{pct(summary.setProfitPct)} → {pct(summary.realProfitPct)}</b>
+          <div style={{ fontSize: 12, color: 'var(--text3)' }}>กำไรจริงคิดทับรวมต้นทุนของทุกรายการ</div>
         </div>
       </div>
     </>
@@ -107,7 +108,7 @@ function ComparisonTable({ rows, extras, summary }) {
 }
 
 // Presentational part (also what the smoke test renders).
-export function CompareView({ quotation, shown, shownLabel, history, onPick, confirming, busy, error, notice, onPull, onConfirm, onCancel, canPull }) {
+export function CompareView({ itemsById, quotation, shown, shownLabel, history, onPick, confirming, busy, error, notice, onPull, onConfirm, onCancel, canPull }) {
   const status = quotation ? quotation.status : null
   const accepted = status === 'accepted'
   const sentStatus = status === 'sent'
@@ -143,14 +144,31 @@ export function CompareView({ quotation, shown, shownLabel, history, onPick, con
       {shown
         ? <>
             {shownLabel && <div style={{ fontSize: 12, color: 'var(--text3)' }}>{shownLabel}</div>}
-            <ComparisonTable rows={shown.rows || []} extras={shown.extras} summary={shown.summary || {}} />
+            <ComparisonTable rows={shown.rows || []} extras={shown.extras} summary={shown.summary || {}} itemsById={itemsById} />
           </>
         : <div style={{ fontSize: 13, color: 'var(--text3)' }}>ยังไม่เคยดึงราคาที่ตกลง</div>}
     </div>
   )
 }
 
-export default function CompareTab({ project, canEdit }) {
+// Loads the quotation fresh, builds the comparison and appends ONE 'agreed' snapshot. The only write.
+export async function runCompare({ client, project, quotationId, snapshots, lines }) {
+  const q = await client.from('quotations').select(QUOTATION_COLS).eq('id', quotationId).maybeSingle()
+  if (q.error) throw q.error
+  if (!q.data) throw Object.assign(new Error('quotation missing'), { userMessage: 'ไม่พบใบเสนอราคา (อาจถูกลบไปแล้ว)' })
+  const it = await client.from('quotation_items').select(ITEM_COLS).eq('quotation_id', quotationId)
+  if (it.error) throw it.error
+  const sent = lastSentSnapshot(snapshots, quotationId)
+  const comparison = buildComparison({ snapshot: sent, quotation: q.data, lines, quotationItems: it.data || [] })
+  if (!comparison) throw Object.assign(new Error('no snapshot'), { userMessage: 'ยังไม่เคยส่งราคาไปใบเสนอราคา จึงไม่มีราคาที่เสนอไว้ให้เทียบ' })
+  const row = buildAgreedSnapshotRow({ projectId: project.id, quotation: q.data, sentSnapshot: sent, comparison, priorSnapshots: snapshots })
+  const ins = await client.from('estimation_price_snapshots').insert(row)
+  if (ins.error) throw ins.error
+  return { quotation: q.data, comparison, label: snapshotLabel(row) }
+}
+
+export default function CompareTab({ project, canEdit, items, client = supabase }) {
+  const itemsById = useMemo(() => Object.fromEntries((items || []).map(i => [i.id, i])), [items])
   const { show, ps } = useCompareAccess(project, canEdit)
   const quotationId = ps.link ? ps.link.quotation_id : null
   const [quotation, setQuotation] = useState(null)
@@ -164,13 +182,13 @@ export default function CompareTab({ project, canEdit }) {
   useEffect(() => {
     if (!quotationId) { setQuotation(null); return }
     let alive = true
-    supabase.from('quotations').select(QUOTATION_COLS).eq('id', quotationId).maybeSingle().then(({ data, error: e }) => {
+    client.from('quotations').select(QUOTATION_COLS).eq('id', quotationId).maybeSingle().then(({ data, error: e }) => {
       if (!alive) return
       if (e) setError(e.message || 'อ่านใบเสนอราคาไม่สำเร็จ')
       else setQuotation(data || null)
     })
     return () => { alive = false }
-  }, [quotationId])
+  }, [quotationId, client])
 
   const history = useMemo(() => (ps.snapshots || []).filter(s => s.kind === 'agreed' && s.quotation_id === quotationId).slice().reverse(), [ps.snapshots, quotationId])
   const stored = useMemo(() => {
@@ -186,34 +204,19 @@ export default function CompareTab({ project, canEdit }) {
   async function run() {
     setBusy(true); setError(''); setNotice(''); setConfirming(false)
     try {
-      const q = await supabase.from('quotations').select(QUOTATION_COLS).eq('id', quotationId).single()
-      if (q.error) throw q.error
-      const it = await supabase.from('quotation_items').select(ITEM_COLS).eq('quotation_id', quotationId)
-      if (it.error) throw it.error
-      const sent = lastSentSnapshot(ps.snapshots, quotationId)
-      const cmp = buildComparison({ snapshot: sent, quotation: q.data, lines: ps.lines, quotationItems: it.data || [] })
-      if (!cmp) { setError('ยังไม่เคยส่งราคาไปใบเสนอราคา จึงไม่มีราคาที่เสนอไว้ให้เทียบ'); return }
-      const revision = q.data.revision || 1
-      const subNo = nextAgreedSubNo(ps.snapshots, quotationId, revision)
-      const row = pick({
-        project_id: project.id, quotation_id: quotationId, kind: 'agreed', revision, sub_no: subNo,
-        price_as_of: sent.price_as_of || null, factors: sent.factors || {}, items: cmp.rows,
-        totals: { ...cmp.summary, extras: cmp.extras },
-      }, SNAPSHOT_COLS)
-      const ins = await supabase.from('estimation_price_snapshots').insert(row)
-      if (ins.error) throw ins.error
-      setQuotation(q.data)
-      setFresh({ ...cmp, label: `เทียบเมื่อสักครู่ · ${snapshotLabel({ revision, sub_no: subNo })}` })
+      const out = await runCompare({ client, project, quotationId, snapshots: ps.snapshots, lines: ps.lines })
+      setQuotation(out.quotation)
+      setFresh({ ...out.comparison, label: `เทียบเมื่อสักครู่ · ${out.label}` })
       setPickedId(null)
-      setNotice(`เก็บผลเทียบเป็น ${snapshotLabel({ revision, sub_no: subNo })} แล้ว`)
+      setNotice(`เก็บผลเทียบเป็น ${out.label} แล้ว`)
       if (ps.refetch) await ps.refetch()
     } catch (e) {
-      setError(`เทียบราคาไม่สำเร็จ: ${(e && e.message) || e}`)
+      setError(e && e.userMessage ? e.userMessage : `เทียบราคาไม่สำเร็จ: ${(e && e.message) || e}`)
     } finally { setBusy(false) }
   }
   const onPull = () => { if (quotation && quotation.status === 'sent') setConfirming(true); else run() }
   return (
-    <CompareView quotation={quotation} shown={shown} shownLabel={shown ? shown.label : ''} history={history}
+    <CompareView itemsById={itemsById} quotation={quotation} shown={shown} shownLabel={shown ? shown.label : ''} history={history}
       onPick={id => { setFresh(null); setPickedId(id) }} confirming={confirming} busy={busy} error={error} notice={notice}
       onPull={onPull} onConfirm={run} onCancel={() => setConfirming(false)} canPull={!!quotation} />
   )

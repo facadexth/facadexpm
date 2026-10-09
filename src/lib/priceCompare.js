@@ -30,6 +30,8 @@ export function buildComparison({ snapshot, quotation, lines, quotationItems }) 
   let discount = 0
   if (num(q.discount_amount) > 0) discount = num(q.discount_amount)
   else if (num(q.discount_pct) > 0) discount = subtotal * num(q.discount_pct) / 100
+  // Capped at the subtotal so shares never exceed line totals. The discount-% base (and pro-rata base) deliberately
+  // includes user-added rows: the bill discount applies to the whole quotation, not only to generated lines.
   discount = Math.min(discount, subtotal)
   const inclVat = !!q.price_includes_vat
 
@@ -72,4 +74,19 @@ export function buildComparison({ snapshot, quotation, lines, quotationItems }) 
     rows, extras: { removed, added },
     summary: { offeredTotal, agreedTotal, reductionPct: offeredTotal > 0 ? (offeredTotal - agreedTotal) / offeredTotal * 100 : null, setProfitPct, realProfitPct: realSum },
   }
+}
+
+const SNAPSHOT_COLS = ['project_id', 'quotation_id', 'kind', 'revision', 'sub_no', 'price_as_of', 'factors', 'items', 'totals']
+
+// The exact object inserted into estimation_price_snapshots for a comparison (column whitelist applied here).
+export function buildAgreedSnapshotRow({ projectId, quotation, sentSnapshot, comparison, priorSnapshots }) {
+  const rev = Number(quotation && quotation.revision)
+  const revision = Number.isFinite(rev) && rev >= 1 ? Math.floor(rev) : 1
+  const row = {
+    project_id: projectId, quotation_id: quotation.id, kind: 'agreed', revision,
+    sub_no: nextAgreedSubNo(priorSnapshots, quotation.id, revision),
+    price_as_of: sentSnapshot.price_as_of || null, factors: sentSnapshot.factors || {},
+    items: comparison.rows, totals: { ...comparison.summary, extras: comparison.extras },
+  }
+  return Object.fromEntries(SNAPSHOT_COLS.map(c => [c, row[c]]))
 }

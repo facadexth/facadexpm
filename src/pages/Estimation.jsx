@@ -138,7 +138,7 @@ export default function Estimation(props) {
               <PriceStructureTab key={project.id} project={project} items={projectOpenings} costs={costs} index={index} infillTypes={infillTypes}
                 templatesById={base.templatesById} packageItems={packageItems} canEdit={canEdit} onProjectSaved={refetchProjects} onItemsSaved={refetchOpenings} />
             )}
-            {tab === 'compare' && <CompareTab key={project.id} project={project} canEdit={canEdit} />}
+            {tab === 'compare' && <CompareTab key={project.id} project={project} items={projectOpenings} canEdit={canEdit} />}
             {tab === 'items' && <ItemsTable items={projectOpenings} costs={costs} previewSigs={previewSigs} project={project} index={index} templatesById={base.templatesById} canEdit={canEdit}
               onOpen={id => setItemModal({ id })} onQuantitySaved={refetchOpenings} />}
 

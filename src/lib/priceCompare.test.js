@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { buildComparison, nextAgreedSubNo } from './priceCompare.js'
+import { buildComparison, nextAgreedSubNo, buildAgreedSnapshotRow } from './priceCompare.js'
 
 // cost base per set: v 8000 + w 500 + z 500 + pm 1000 = 10000; price 10000 -> real 0.25 of v... use profitPct for "set"
 const sItem = (id, o = {}) => ({ opening_id: id, opening_no: id.toUpperCase(), v: 8000, w: 500, z: 500, pm: 1000, price: 12000, quantity: 1, profitPct: 25, ...o })
 const snap = items => ({ kind: 'sent', quotation_id: 'q1', revision: 1, sub_no: 1, items })
 const qrow = (id, unit, qty = 1, extra = {}) => ({ id, item_type: 'item', unit_price: unit, quantity: qty, line_total: unit * qty, ...extra })
 const lines = ids => ids.map(i => ({ opening_id: i, item_row_id: 'r-' + i }))
-const noNaN = o => expect(JSON.stringify(o)).not.toMatch(/NaN|null.*undefined/)
+const noNaN = o => { const j = JSON.stringify(o); expect(j).not.toContain('NaN'); expect(j).not.toContain('undefined') }
 
 describe('buildComparison', () => {
   it('returns null without a snapshot', () => {
@@ -111,5 +111,22 @@ describe('nextAgreedSubNo', () => {
     expect(nextAgreedSubNo(s, 'q1', 2)).toBe(3)
     expect(nextAgreedSubNo(s, 'q1', 3)).toBe(1)
     expect(nextAgreedSubNo(null, 'q1', 1)).toBe(1)
+  })
+})
+
+describe('buildAgreedSnapshotRow', () => {
+  const sent = { kind: 'sent', quotation_id: 'q1', revision: 2, sub_no: 1, price_as_of: '2026-10-01', factors: { pmPct: 5 }, items: [sItem('a')], extra: 'x' }
+  const comparison = buildComparison({ snapshot: sent, quotation: {}, lines: lines(['a']), quotationItems: [qrow('r-a', 12000)] })
+  const prior = [{ kind: 'agreed', quotation_id: 'q1', revision: 2, sub_no: 1 }]
+  it('contains only whitelisted columns with the right values', () => {
+    const r = buildAgreedSnapshotRow({ projectId: 'p1', quotation: { id: 'q1', revision: 2 }, sentSnapshot: sent, comparison, priorSnapshots: prior })
+    expect(Object.keys(r).sort()).toEqual(['factors', 'items', 'kind', 'price_as_of', 'project_id', 'quotation_id', 'revision', 'sub_no', 'totals'])
+    expect(r).toMatchObject({ project_id: 'p1', quotation_id: 'q1', kind: 'agreed', revision: 2, sub_no: 2, price_as_of: '2026-10-01', factors: { pmPct: 5 } })
+    expect(r.items).toBe(comparison.rows)
+    expect(r.totals).toEqual({ ...comparison.summary, extras: comparison.extras })
+  })
+  it('sub_no restarts per revision; bad revision falls back to 1', () => {
+    expect(buildAgreedSnapshotRow({ projectId: 'p1', quotation: { id: 'q1', revision: 3 }, sentSnapshot: sent, comparison, priorSnapshots: prior }).sub_no).toBe(1)
+    expect(buildAgreedSnapshotRow({ projectId: 'p1', quotation: { id: 'q1', revision: null }, sentSnapshot: sent, comparison, priorSnapshots: [] }).revision).toBe(1)
   })
 })
