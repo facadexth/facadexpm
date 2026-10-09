@@ -158,6 +158,11 @@ function InvoiceItemsEditor({ lines, onChange, mode, onModeChange }) {
         <button type="button" className={`btn btn-sm ${mode === 'easy' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => onModeChange('easy')}>โหมดง่าย</button>
         <button type="button" className={`btn btn-sm ${mode === 'advanced' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => onModeChange('advanced')}>โหมดละเอียด</button>
       </div>
+      {mode === 'advanced' && !lines.some(l => isCountable(l.totalQty) && l.units.length > 1) && (
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>
+          โหมดละเอียดแยก % รายชิ้นให้เฉพาะรายการที่มีจำนวน 2–20 ชิ้น (จำนวนเต็ม) ใบนี้ไม่มีรายการแบบนั้น หน้าจอจึงเหมือนโหมดง่าย
+        </div>
+      )}
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 13, fontWeight: 600 }}>
         <input type="checkbox" checked={allChecked} onChange={e => toggleAll(e.target.checked)} />
         เลือกทั้งหมด
@@ -540,13 +545,17 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
             </>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมงวดนี้ (ก่อน VAT)</span><span className="font-mono">{fmt(totals.subtotal)}</span></div>
-          {quotation.has_vat && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>VAT (7%)</span><span className="font-mono">{fmt(totals.vat)}</span></div>}
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}><span>รวมเรียกเก็บงวดนี้</span><span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totals.total)}</span></div>
-          {quotation.has_vat && depositTaxOffset > 0 && (
-            <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 6, paddingTop: 6, borderTop: '1px dashed var(--border)' }}>
-              📐 หัก VAT เฉพาะส่วนที่ยังไม่เคยเสียภาษีจากใบมัดจำก่อนหน้า — คิด VAT จาก {fmt(Math.max(0, totals.subtotal - depositTaxOffset))} บาทเท่านั้น (ไม่ใช่ {fmt(totals.subtotal)} เต็มยอด) เพื่อไม่ให้ซ้ำซ้อนกับ VAT ที่เก็บไปแล้วตอนรับมัดจำ {fmt(depositTaxOffset)} บาท
+          {quotation.has_vat && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>VAT (7%)</span><span className="font-mono">{fmt(totals.vat)}</span></div>
+              {depositTaxOffset > 0 && (
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                  คิดจาก {fmt(Math.max(0, totals.subtotal - depositTaxOffset))} บาท (ตัด {fmt(Math.min(totals.subtotal, depositTaxOffset))} บาทที่เสีย VAT ไปแล้วตอนรับมัดจำ)
+                </div>
+              )}
             </div>
           )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}><span>รวมเรียกเก็บงวดนี้</span><span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totals.total)}</span></div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--border)' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text2)' }}>
               <input type="checkbox" checked={includeWht} onChange={e => setIncludeWht(e.target.checked)} />
