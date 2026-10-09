@@ -78,3 +78,37 @@ describe('applyRoleThickness', () => {
     expect(applyRoleThickness([{ role_name: 'x', thickness_mm: 2 }], { allowMixed: true, sashThicknessMm: 1.5 })[0].thickness_mm).toBeNull()
   })
 })
+
+describe('applyJoints: main bar thickness and mitre', () => {
+  const comp = (o = {}) => ({ role_name: 'r', profile_family: 'x', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 1, ...o })
+  const sashIndex = buildCatalogIndex({
+    series: [{ id: 's1', provider_id: 'pA' }],
+    profiles: [{ id: 'sbox', provider_id: 'pA', family: 'กล่องเฉพาะบาน', thickness_mm: 1.5, depth_mm: 30, width_mm: 80, primary_contact: 'width' }],
+    seriesProfiles: [{ series_id: 's1', profile_id: 'sbox' }],
+  })
+  const j = o => joint({ main_family: 'กล่องเฉพาะบาน', ...o })
+  const go = (components, jo, idx = sashIndex) => applyJoints({ components, joints: [jo], index: idx, seriesId: 's1', thicknessMm: 2 })
+  it('the main bar is looked up at the thickness of its own components (sash 1.5 while the frame is 2)', () => {
+    const r = go([comp({ role_name: 'main', profile_family: 'กล่องเฉพาะบาน', thickness_mm: 1.5 }), comp({ joint_id: 'j1' })], j())
+    expect(r.issues).toEqual([])
+    expect(r.components[1].length_deduction_mm).toBe(60)
+  })
+  it('with no component of the main family, the frame thickness is used', () => {
+    expect(go([comp({ joint_id: 'j1' })], j()).issues[0].reason).toBe('no_main_profile')
+  })
+  it('a main-family component without its own thickness uses the frame thickness', () => {
+    const r = go([comp({ profile_family: 'กล่องเฉพาะบาน', thickness_mm: null }), comp({ joint_id: 'j1' })], j())
+    expect(r.issues[0].reason).toBe('no_main_profile')
+  })
+  it('a mitre joint marks the main-family bars 45 degrees as well; others stay square', () => {
+    const r = go([comp({ role_name: 'main', profile_family: 'กล่องเฉพาะบาน' }), comp({ role_name: 'sec', joint_id: 'j1' }), comp({ role_name: 'other', profile_family: 'zzz' })], j({ cut_style: 'miter45' }))
+    expect(r.components.map(c => c.cut_style)).toEqual(['miter45', 'miter45', 'square'])
+    expect(r.components[0].length_deduction_mm).toBe(0)
+    expect(r.components[1].length_deduction_mm).toBe(0)
+  })
+  it('a main bar keeps a non-square cut from its own joint', () => {
+    const joints = [j({ cut_style: 'miter45' }), j({ id: 'j2', cut_style: 'notch', notch_width_mm: 5, notch_depth_mm: 5, secondary_family: 'q' })]
+    const r = applyJoints({ components: [comp({ role_name: 'main', profile_family: 'กล่องเฉพาะบาน', joint_id: 'j2', thickness_mm: 1.5 }), comp({ joint_id: 'j1' })], joints, index: sashIndex, seriesId: 's1', thicknessMm: 2 })
+    expect(r.components[0].cut_style).toBe('notch')
+  })
+})

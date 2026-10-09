@@ -108,7 +108,7 @@ export function computeBomForOpening(opening, template, components, hardware, pr
     // Catalog pricing falls back to a 0 reference price when nothing is priced: surface that, never hide it.
     // (Legacy pricing is left alone so the old Estimation screen behaves exactly as before.)
     const unresolved = pricing.kind !== 'legacy' && hp.source === 'reference' && !(hp.unit_price > 0)
-    return { name: h.name, quantity, cost: quantity * hp.unit_price, price_source: hp.source, price_row_id: hp.price_row_id, unresolved }
+    return { name: h.name, part_id: h.part_id || null, quantity, cost: quantity * hp.unit_price, price_source: hp.source, price_row_id: hp.price_row_id, unresolved }
   })
   const unresolvedHardwareLines = hardwareLines.filter(l => l.unresolved)
 

@@ -93,3 +93,11 @@ describe('diffAgainst', () => {
     expect(diffAgainst(null, null)).toBeNull()
   })
 })
+
+describe('Follow-up A: an item whose template is missing', () => {
+  it('makes the row incomplete, so a diff against a complete base is null', () => {
+    const r = compareProviders({ ...base, items: [item, { ...item, id: 'i2', template_id: 'gone', quantity: 2 }], candidates: [{ providerId: 'A', seriesId: 'sA', finishId: 'fA' }] })
+    expect(r[0]).toMatchObject({ itemsPriced: 1, unresolvedLines: 2, complete: false })
+    expect(diffAgainst({ complete: true, aluminium: 1000 }, r[0])).toBeNull()
+  })
+})

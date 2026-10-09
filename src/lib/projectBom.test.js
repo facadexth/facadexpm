@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { mergeSettings } from './estimationSettings.js'
-import { buildProjectBom, stockLengthFor } from './projectBom.js'
+import { buildProjectBom, stockLengthFor, stockForProject } from './projectBom.js'
 
 const S = mergeSettings(null)
 const pl = (o = {}) => ({ role_name: 'r', profile_id: 'p1', length_m: 2, quantity: 2, resolved: true, cut_style: 'square', ...o })
@@ -66,5 +66,46 @@ describe('buildProjectBom', () => {
     const r = run([{ opening_no: 'D1', quantity: 0, finish_id: 'f1', bom: bom([pl({ quantity: 1 })]) }])
     expect(r.profiles[0].cut_total_m).toBe(2)
     expect(run([])).toMatchObject({ profiles: [], parts: [], unresolved: [], sealant: { tubes: 0 } })
+  })
+})
+
+describe('costOpening problems surface in the project BOM', () => {
+  it('joint issues, no_dimension, unknown infill and add-on problems are listed with the opening; profile-line problems are not doubled', () => {
+    const unresolved = [
+      { name: 'bar', reason: 'no_main_profile', source: 'joint' },
+      { name: 'ขนาดช่องเปิด', reason: 'no_dimension', source: 'main' },
+      { name: 'วัสดุอุดช่อง', reason: 'unknown_infill', source: 'main' },
+      { name: 'ชุดต่อเติม', reason: 'unknown_addon_template', source: 'addon' },
+      { name: 'ชุดต่อเติม', reason: 'no_dimension', source: 'addon' },
+      { name: 'วงกบ', reason: 'no_profile', source: 'main' },
+      { name: 'ล้อ', reason: 'no_hardware_price', source: 'main' },
+    ]
+    const r = run([{ opening_no: 'D1', quantity: 1, finish_id: 'f1', bom: bom([pl({ resolved: false, profile_id: undefined, role_name: 'วงกบ', reason: 'no_profile' })]), unresolved }])
+    expect(r.unresolved).toEqual([
+      { opening_no: 'D1', name: 'วงกบ', reason: 'no_profile' },
+      { opening_no: 'D1', name: 'bar', reason: 'no_main_profile' },
+      { opening_no: 'D1', name: 'ขนาดช่องเปิด', reason: 'no_dimension' },
+      { opening_no: 'D1', name: 'วัสดุอุดช่อง', reason: 'unknown_infill' },
+      { opening_no: 'D1', name: 'ชุดต่อเติม', reason: 'unknown_addon_template' },
+      { opening_no: 'D1', name: 'ชุดต่อเติม', reason: 'no_dimension' },
+    ])
+  })
+})
+
+describe('hardware merged by part_id', () => {
+  it('two lines with the same part_id merge even if the names differ; a part marked accessory in partsById is tagged', () => {
+    const hw = n => ({ hardwareLines: [{ name: n, part_id: 'ps1', quantity: 1, cost: 10, unresolved: false }, { name: 'ไม่มีรหัส', quantity: 1, cost: 5, unresolved: false }] })
+    const r = buildProjectBom({ entries: [{ opening_no: 'D1', quantity: 1, bom: bom([], hw('ล้อ A')) }, { opening_no: 'D2', quantity: 1, bom: bom([], hw('ล้อ B')) }], settings: S, partsById: { ps1: { kind: 'accessory' } } })
+    expect(r.parts).toHaveLength(2)
+    expect(r.parts.find(p => p.key === 'ps1')).toMatchObject({ quantity: 2, cost: 20, kind: 'accessory' })
+    expect(r.parts.find(p => p.name === 'ไม่มีรหัส')).toMatchObject({ quantity: 2, kind: 'hardware' })
+  })
+})
+
+describe('stockForProject', () => {
+  it('keeps only this project\'s per-profile lengths and its own default length', () => {
+    const rows = [{ project_id: 'a', profile_id: 'p1', length_m: '5.8' }, { project_id: 'b', profile_id: 'p1', length_m: '9' }, { project_id: 'a', profile_id: 'p2', length_m: 6 }]
+    expect(stockForProject(rows, 'a', { stock_length_m: '6.2' })).toEqual({ byProfile: { p1: 5.8, p2: 6 }, projectM: 6.2 })
+    expect(stockForProject(null, 'a', null)).toEqual({ byProfile: {}, projectM: null })
   })
 })

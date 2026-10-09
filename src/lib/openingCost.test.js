@@ -120,3 +120,16 @@ describe('costOpening', () => {
     expect(costOpening(c).unresolved).toContainEqual({ name: 'วัสดุอุดช่อง', reason: 'unknown_infill', source: 'main' })
   })
 })
+
+describe('costOpening reports an add-on it could not cost', () => {
+  it('unknown add-on template, zero add-on size; a normal add-on adds nothing', () => {
+    const c = ctxBase()
+    c.item = { ...c.item, addon_template_id: 't2', addon_width_m: 2, addon_height_m: 0.5 }
+    expect(costOpening(c).unresolved).toContainEqual({ name: 'ชุดต่อเติม', reason: 'unknown_addon_template', source: 'addon' })
+    c.addonTemplate = T({ id: 't2' })
+    c.componentsByTemplate = { t1: comps.slice(0, 1), t2: comps.slice(0, 1) }
+    expect(costOpening(c).unresolved).toEqual([])
+    c.item = { ...c.item, addon_height_m: 0 }
+    expect(costOpening(c).unresolved).toContainEqual({ name: 'ชุดต่อเติม', reason: 'no_dimension', source: 'addon' })
+  })
+})

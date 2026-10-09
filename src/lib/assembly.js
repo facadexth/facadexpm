@@ -33,13 +33,20 @@ export function applyJoints({ components, joints, index, seriesId, thicknessMm }
   const jointsById = {}
   for (const j of joints || []) jointsById[j.id] = j
   const issues = []
+  // the thickness each profile family is built at (a sash-role bar may differ from the frame); first component wins
+  const familyThickness = {}
+  for (const c of components || []) {
+    if (c.profile_family && !(c.profile_family in familyThickness)) familyThickness[c.profile_family] = c.thickness_mm != null ? c.thickness_mm : thicknessMm
+  }
+  const miterMains = new Set((joints || []).filter(j => j.cut_style === 'miter45').map(j => j.main_family))
   const out = (components || []).map(c => {
     if (!c.joint_id) return { ...c, cut_style: c.cut_style || 'square' }
     const joint = jointsById[c.joint_id]
     const rule = SHORTEN[c.length_rule_type]
     if (!rule) { issues.push({ role_name: c.role_name, reason: 'rule_not_cuttable' }); return { ...c, cut_style: 'square' } }
-    // the main bar is looked up at the frame thickness (the opening's own); a sash-role bar's thickness does not move it
-    const main = joint ? resolveCatalogProfile(index, seriesId, joint.main_family, thicknessMm).profile : null
+    // the main bar is looked up at the thickness of its own components (frame by default, sash where the main bars are
+    // sash-role); the secondary bar's own thickness does not move it
+    const main = joint ? resolveCatalogProfile(index, seriesId, joint.main_family, familyThickness[joint.main_family] ?? thicknessMm).profile : null
     const ded = jointDeductionMm(joint, main)
     if (ded.mm === null) { issues.push({ role_name: c.role_name, reason: ded.reason }); return { ...c, cut_style: 'square' } }
     const ends = Number(c.joint_ends) === 1 ? 1 : 2
@@ -49,7 +56,9 @@ export function applyJoints({ components, joints, index, seriesId, thicknessMm }
       cut_style: joint.cut_style || 'square', notch_width_mm: joint.notch_width_mm ?? null, notch_depth_mm: joint.notch_depth_mm ?? null,
     }
   })
-  return { components: out, issues }
+  // a mitre joint cuts the main bars at 45 degrees too (their lengths are unchanged); an own non-square cut is kept
+  const withMitreMains = out.map(c => (miterMains.has(c.profile_family) && (c.cut_style || 'square') === 'square' ? { ...c, cut_style: 'miter45' } : c))
+  return { components: withMitreMains, issues }
 }
 
 // Government-style specs fix the frame and the sash separately (e.g. frame 2.0 mm, sash 1.5 mm). A template component

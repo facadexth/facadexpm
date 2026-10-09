@@ -101,7 +101,7 @@ function mirrorPreview(p) {
 
 // opts (all optional): main_axis 'vertical' | 'horizontal' (default vertical: the left/right bars run full height),
 // view 'out' | 'in', frame_mm, part_labels { top, bottom, left, right } (text placed on the main unit's four bars),
-// addon { template, width_m, height_m, panel_count, position, offset_m, frame_mm }.
+// addon { template, width_m, height_m, panel_count, position, offset_m, frame_mm, main_axis (default: the main axis) }.
 export function buildFramePreview({ template, width_m, height_m, panel_count, addon, main_axis, view, frame_mm, part_labels }) {
   if (!template || !positive(width_m) || !positive(height_m)) return null
   const addonOk = addon && addon.template && positive(addon.width_m) && positive(addon.height_m)
@@ -118,7 +118,7 @@ export function buildFramePreview({ template, width_m, height_m, panel_count, ad
   const py = v => MARGIN + (v - minY) * scale
 
   const units = []
-  if (addonOk) units.push(drawUnit('addon', addon.template, addon.width_m, addon.height_m, addon.panel_count, scale, px(ar.x), py(ar.y), { main_axis: axis, frame_mm: addon.frame_mm }))
+  if (addonOk) units.push(drawUnit('addon', addon.template, addon.width_m, addon.height_m, addon.panel_count, scale, px(ar.x), py(ar.y), { main_axis: addon.main_axis ? (addon.main_axis === 'horizontal' ? 'horizontal' : 'vertical') : axis, frame_mm: addon.frame_mm }))
   units.push(drawUnit('main', template, width_m, height_m, panel_count, scale, px(0), py(0), { main_axis: axis, frame_mm }))
 
   const main = units[units.length - 1]
@@ -195,7 +195,19 @@ export function previewSvgString(p, { style = 'double', finishColor = '#f4f4f2' 
 }
 
 // Cheap signature of every input that changes the saved drawing; the item stores it with the snapshot so a
-// later edit can be detected ("the saved preview is older than the item").
-export function previewSignature({ template_id, width_m, height_m, panel_count, addon_template_id, addon_width_m, addon_height_m, addon_panel_count, addon_position, addon_offset_m, main_axis, frame_mm, addon_frame_mm }) {
-  return JSON.stringify([template_id ?? null, width_m ?? null, height_m ?? null, panel_count ?? 1, addon_template_id ?? null, addon_width_m ?? null, addon_height_m ?? null, addon_panel_count ?? 1, addon_position ?? null, addon_offset_m === '' ? null : (addon_offset_m ?? null), main_axis ?? 'vertical', frame_mm ?? null, addon_frame_mm ?? null])
+// later edit can be detected ("the saved preview is older than the item"). Normalised: form strings and DB
+// numbers give the same string, and an add-on's fields are ignored while there is no add-on.
+export function previewSignature({ template_id, width_m, height_m, panel_count, addon_template_id, addon_width_m, addon_height_m, addon_panel_count, addon_position, addon_offset_m, main_axis, frame_mm, addon_frame_mm, preview_kind, grid_row_weights, addon_preview_kind, addon_grid_row_weights, addon_main_axis }) {
+  const num = v => (v === null || v === undefined || String(v).trim() === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null))
+  const hasAddon = !(addon_template_id === null || addon_template_id === undefined || String(addon_template_id).trim() === '')
+  const a = hasAddon
+    ? [addon_template_id, num(addon_width_m), num(addon_height_m), num(addon_panel_count) ?? 1, addon_position ?? null, num(addon_offset_m), num(addon_frame_mm)]
+    : [null, null, null, 1, null, null, null]
+  return JSON.stringify([
+    template_id ?? null, num(width_m), num(height_m), num(panel_count) ?? 1,
+    ...a.slice(0, 6),
+    main_axis ?? 'vertical', num(frame_mm), a[6],
+    preview_kind ?? 'fixed', Array.isArray(grid_row_weights) ? grid_row_weights : null,
+    hasAddon ? (addon_preview_kind ?? null) : null, hasAddon && Array.isArray(addon_grid_row_weights) ? addon_grid_row_weights : null, hasAddon ? (addon_main_axis ?? null) : null,
+  ])
 }

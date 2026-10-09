@@ -33,7 +33,8 @@ describe('componentRowsForInsert', () => {
       { id: 'old', tenant_id: 'x', created_at: 'y', role_name: 'bar', profile_family: 'bar', length_rule_type: 'width', length_deduction_mm: '0', quantity_basis: 'fixed', quantity_value: '2', joint_index: '1', joint_ends: '1', thickness_mm: '' },
       { role_name: 'top', profile_family: 'box', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 1, joint_index: '' },
     ], 't1', [{ id: 'jA' }, { id: 'jB' }])
-    expect(out[0]).toMatchObject({ template_id: 't1', joint_id: 'jB', joint_ends: 1, thickness_mm: null, quantity_value: 2, sort_order: 0 })
+    expect(out[0]).toMatchObject({ template_id: 't1', joint_id: 'jB', joint_ends: 1, thickness_role: null, quantity_value: 2, sort_order: 0 })
+    expect(out[0]).not.toHaveProperty('thickness_mm')
     expect(out[0]).not.toHaveProperty('id')
     expect(out[0]).not.toHaveProperty('joint_index')
     expect(out[1]).toMatchObject({ joint_id: null, joint_ends: 2, sort_order: 1 })
@@ -48,5 +49,14 @@ describe('jointIndexForLoad', () => {
     const joints = [{ id: 'b', sort_order: 1 }, { id: 'a', sort_order: 0 }]
     const out = jointIndexForLoad([{ joint_id: 'b' }, { joint_id: 'a' }, { joint_id: null }, { joint_id: 'gone' }], joints)
     expect(out.map(c => c.joint_index)).toEqual(['1', '0', '', ''])
+  })
+})
+
+describe('componentRowsForInsert whitelist', () => {
+  it('only the real bom_template_components columns reach the insert, whatever the editor row carries', () => {
+    const [row] = componentRowsForInsert([{ foo: 1, bar: 'x', thickness_mm: 2, joint_index: '0', id: 'old', role_name: 'a', profile_family: 'f', length_rule_type: 'width', quantity_basis: 'fixed', thickness_role: 'sash' }], 't', [{ id: 'j' }])
+    expect(Object.keys(row).sort()).toEqual(['template_id', 'role_name', 'profile_family', 'length_rule_type', 'length_deduction_mm', 'quantity_basis', 'quantity_value', 'joint_id', 'joint_ends', 'thickness_role', 'sort_order'].sort())
+    expect(row).toMatchObject({ thickness_role: 'sash', length_deduction_mm: 0, quantity_value: 0, joint_id: 'j', joint_ends: 2 })
+    expect(componentRowsForInsert([{ thickness_role: 'frame' }], 't', [])[0].thickness_role).toBeNull()
   })
 })

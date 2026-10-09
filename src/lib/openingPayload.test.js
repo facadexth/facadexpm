@@ -67,3 +67,16 @@ describe('validateForm', () => {
     expect(validateForm(filled({ labour_per_sqm: '0', profit_pct: '0' }))).toBeNull()
   })
 })
+
+describe('validateForm hardening', () => {
+  it('rejects a zero or negative thickness and a negative add-on offset; blank stays allowed', () => {
+    expect(validateForm(filled({ thickness_mm: '0' }))).toBe('ความหนาต้องมากกว่า 0')
+    expect(validateForm(filled({ sash_thickness_mm: '-1' }))).toBe('ความหนาต้องมากกว่า 0')
+    expect(validateForm(filled({ thickness_mm: '1.5', sash_thickness_mm: '' }))).toBeNull()
+    const ao = { has_addon: true, addon_template_id: 't2', addon_width_m: '1', addon_height_m: '1' }
+    expect(validateForm(filled({ ...ao, addon_offset_m: '-0.1' }))).toBe('ระยะขอบของชุดต่อเติมต้องไม่ติดลบ')
+    expect(validateForm(filled({ ...ao, addon_offset_m: '' }))).toBeNull()
+    expect(validateForm(filled({ ...ao, addon_offset_m: '0' }))).toBeNull()
+    expect(validateForm(filled({ has_addon: false, addon_offset_m: '-5' }))).toBeNull()
+  })
+})

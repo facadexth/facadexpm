@@ -1,7 +1,8 @@
 // src/lib/layoutTemplates.js
 // Layout templates ("แม่แบบรูปแบบ"): a main type + optional add-on type, position and proportions. They store NO series,
 // colour, price or profile: those come from whatever series the item uses. Pure.
-export const ADDON_POSITIONS = ['top', 'bottom', 'left', 'right']
+import { ADDON_POSITIONS } from './framePreview.js'
+export { ADDON_POSITIONS }
 
 const offers = (seriesTypes, seriesId, typeId) => (seriesTypes || []).some(st => st.series_id === seriesId && st.type_id === typeId)
 

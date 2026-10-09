@@ -45,6 +45,9 @@ export function costOpening(ctx) {
     addonBom = computeBomForOpening(ao.opening, addonTemplate, aPrepared.components, byT(ctx.hardwareByTemplate, addonTemplate.id), pricing, ao.infillType)
   }
 
+  // an add-on the item asks for but that could not be costed must be said, never silently left out of the total
+  if (item.addon_template_id && !hasAddon) own.push({ name: 'ชุดต่อเติม', reason: addonTemplate ? 'no_dimension' : 'unknown_addon_template', source: 'addon' })
+
   const units = [{ width_m: Number(item.width_m), height_m: Number(item.height_m) }]
   if (hasAddon) units.push({ width_m: Number(item.addon_width_m), height_m: Number(item.addon_height_m) })
   const extras = openingExtras({ units, settings, partsById: index.parts, pricing })

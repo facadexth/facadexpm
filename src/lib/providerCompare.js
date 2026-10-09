@@ -21,7 +21,7 @@ export function compareProviders(ctx) {
     let itemsPriced = 0
     for (const item of items || []) {
       const template = (templatesById || {})[item.template_id]
-      if (!template) continue
+      if (!template) { unresolvedLines += Number(item.quantity) > 0 ? Number(item.quantity) : 1; continue }
       // the same item, forced onto the candidate series + colour; hardware is not part of this comparison
       const forced = { ...item, series_id: cand.seriesId, alu_finish_id: cand.finishId, no_hardware_set: true, hardware_set_id: null }
       const addonTemplate = item.addon_template_id ? (templatesById || {})[item.addon_template_id] : null

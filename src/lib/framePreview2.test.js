@@ -122,7 +122,7 @@ describe('previewSvgString', () => {
 
 describe('previewSignature', () => {
   it('changes with any input that changes the drawing and is stable otherwise', () => {
-    const a = { template_id: 't', width_m: 2, height_m: 1.5, panel_count: 2 }
+    const a = { template_id: 't', width_m: 2, height_m: 1.5, panel_count: 2, addon_template_id: 'x', addon_width_m: 1, addon_height_m: 0.5 }
     expect(previewSignature(a)).toBe(previewSignature({ ...a }))
     expect(previewSignature(a)).not.toBe(previewSignature({ ...a, width_m: 2.1 }))
     expect(previewSignature(a)).not.toBe(previewSignature({ ...a, addon_position: 'bottom' }))
@@ -139,7 +139,7 @@ describe('fix round 1: svg safety, signature completeness, empty offset', () => 
     expect(previewSvgString(p, { style: 'solid', finishColor: '#2b2f33' })).toContain('fill="#2b2f33"')
   })
   it('signature tells centred from offset 0 and sees frame widths', () => {
-    const a = { template_id: 't', width_m: 2, height_m: 1.5, panel_count: 2 }
+    const a = { template_id: 't', width_m: 2, height_m: 1.5, panel_count: 2, addon_template_id: 'x', addon_width_m: 1, addon_height_m: 0.5 }
     expect(previewSignature({ ...a, addon_offset_m: null })).not.toBe(previewSignature({ ...a, addon_offset_m: 0 }))
     expect(previewSignature({ ...a, addon_offset_m: '' })).toBe(previewSignature({ ...a, addon_offset_m: null }))
     expect(previewSignature({ ...a, frame_mm: 40 })).not.toBe(previewSignature({ ...a, frame_mm: 44.45 }))
@@ -156,5 +156,31 @@ describe('fix round 1: svg safety, signature completeness, empty offset', () => 
     const svg = previewSvgString(buildFramePreview({ ...withAddon({ position: 'right' }), view: 'in', template: tpl({ preview_kind: 'swing' }), part_labels: { left: 'L' } }))
     expect(svg.startsWith('<svg')).toBe(true)
     expect(svg).not.toMatch(/NaN|undefined/)
+  })
+})
+
+describe('Follow-up A: normalised, complete signature', () => {
+  const a = { template_id: 't', width_m: 1.2, height_m: 1.5, panel_count: 2 }
+  it('form strings and DB numbers give the same signature; a stale hidden add-on value does not matter', () => {
+    expect(previewSignature({ ...a, width_m: '1.20', height_m: '1.50', panel_count: '2' })).toBe(previewSignature(a))
+    expect(previewSignature({ ...a, addon_offset_m: '' })).toBe(previewSignature({ ...a, addon_offset_m: null }))
+    expect(previewSignature({ ...a, frame_mm: '' })).toBe(previewSignature({ ...a, frame_mm: null }))
+    expect(previewSignature({ ...a, addon_position: 'top', addon_width_m: '1', addon_panel_count: 3, addon_offset_m: 0.2, addon_frame_mm: 40, addon_main_axis: 'horizontal' })).toBe(previewSignature(a))
+    expect(previewSignature({ ...a, addon_template_id: 'x', addon_width_m: '1.0' })).toBe(previewSignature({ ...a, addon_template_id: 'x', addon_width_m: 1 }))
+  })
+  it('preview kind, row weights and the add-on axis change it', () => {
+    const s = previewSignature(a)
+    expect(previewSignature({ ...a, preview_kind: 'slide' })).not.toBe(s)
+    expect(previewSignature({ ...a, grid_row_weights: [1, 2] })).not.toBe(s)
+    const w = { ...a, addon_template_id: 'x', addon_width_m: 1, addon_height_m: 1 }
+    expect(previewSignature({ ...w, addon_main_axis: 'horizontal' })).not.toBe(previewSignature(w))
+    expect(previewSignature({ ...w, addon_preview_kind: 'swing' })).not.toBe(previewSignature(w))
+    expect(previewSignature({ ...w, addon_grid_row_weights: [1, 1] })).not.toBe(previewSignature(w))
+  })
+  it('an add-on can have its own main axis for the seams', () => {
+    const p = buildFramePreview(withAddon({ main_axis: 'horizontal' }))
+    const [ad, mn] = p.units
+    expect(ad.seams[0].y1).toBe(ad.seams[0].y2)
+    expect(mn.seams[0].x1).toBe(mn.seams[0].x2)
   })
 })

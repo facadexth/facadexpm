@@ -77,3 +77,11 @@ describe('bomTemplatesForType / layoutTemplateFromItem', () => {
     expect(layoutTemplateFromItem({ name: 'x', mainTypeId: 'slide', addonTypeId: 'f', position: 'top', widthM: 2, heightM: 1, addonWidthM: 1, addonHeightM: 0.3, offsetM: 9 }).addon_offset_ratio).toBe(1)
   })
 })
+
+describe('ADDON_POSITIONS', () => {
+  it('is the same list the preview uses', async () => {
+    const fp = await import('./framePreview.js')
+    const lt = await import('./layoutTemplates.js')
+    expect(lt.ADDON_POSITIONS).toBe(fp.ADDON_POSITIONS)
+  })
+})

@@ -32,15 +32,15 @@ export function componentRowsForInsert(rows, templateId, insertedJoints) {
   return (rows || []).map((r, i) => {
     const idx = r.joint_index === '' || r.joint_index === null || r.joint_index === undefined ? null : Number(r.joint_index)
     const joint = idx !== null && Number.isInteger(idx) ? (insertedJoints || [])[idx] : null
-    const { joint_index, id, tenant_id, created_at, ...rest } = r
-    void joint_index; void id; void tenant_id; void created_at
+    // an explicit whitelist: editor-only fields (joint_index, thickness_mm, ...) must never reach PostgREST
     return {
-      ...rest, template_id: templateId,
+      template_id: templateId, role_name: r.role_name, profile_family: r.profile_family, length_rule_type: r.length_rule_type,
       length_deduction_mm: parseFloat(r.length_deduction_mm) || 0,
+      quantity_basis: r.quantity_basis,
       quantity_value: parseFloat(r.quantity_value) || 0,
-      thickness_mm: numOrNull(r.thickness_mm),
       joint_id: joint ? joint.id : null,
       joint_ends: Number(r.joint_ends) === 1 ? 1 : 2,
+      thickness_role: r.thickness_role === 'sash' ? 'sash' : null,
       sort_order: i,
     }
   })

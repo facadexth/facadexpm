@@ -78,9 +78,15 @@ export function validateForm(form) {
   if (!String(form.opening_no).trim()) return 'กรอกเลขช่อง'
   if (!form.template_id) return 'เลือก template'
   if (!(numOrNull(form.width_m) > 0) || !(numOrNull(form.height_m) > 0)) return 'กรอกขนาดกว้างและสูงให้มากกว่า 0'
+  for (const k of ['thickness_mm', 'sash_thickness_mm']) {
+    const n = numOrNull(form[k])
+    if (n !== null && n <= 0) return 'ความหนาต้องมากกว่า 0'
+  }
   if (form.has_addon) {
     if (!form.addon_template_id) return 'เลือก template ของชุดต่อเติม'
     if (!(numOrNull(form.addon_width_m) > 0) || !(numOrNull(form.addon_height_m) > 0)) return 'กรอกขนาดชุดต่อเติมให้มากกว่า 0'
+    const off = numOrNull(form.addon_offset_m)
+    if (off !== null && off < 0) return 'ระยะขอบของชุดต่อเติมต้องไม่ติดลบ'
   }
   const labour = numOrNull(form.labour_per_sqm)
   if (labour !== null && labour < 0) return 'ค่าแรงต้องไม่ติดลบ'

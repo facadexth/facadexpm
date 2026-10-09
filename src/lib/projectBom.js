@@ -22,7 +22,18 @@ export function stockLengthFor(profileId, stock, settings) {
 
 const bomsOf = e => [e.bom, e.addonBom].filter(Boolean)
 
-export function buildProjectBom({ entries, settings, stock, profilesById, finishesById }) {
+// Stock lengths that apply to ONE project: the per-profile rows of that project and its own default length.
+export function stockForProject(rows, projectId, project) {
+  const byProfile = {}
+  for (const r of rows || []) if (r.project_id === projectId) byProfile[r.profile_id] = Number(r.length_m)
+  const pm = Number(project && project.stock_length_m)
+  return { byProfile, projectM: pm > 0 ? pm : null }
+}
+
+// costOpening().unresolved entries that never show up as an unresolved profile line
+const surfaced = u => u.source === 'joint' || u.reason === 'no_dimension' || u.reason === 'unknown_infill' || u.reason === 'unknown_addon_template'
+
+export function buildProjectBom({ entries, settings, stock, profilesById, finishesById, partsById }) {
   const groups = new Map()
   const unresolved = []
   const hardware = new Map()
@@ -30,6 +41,7 @@ export function buildProjectBom({ entries, settings, stock, profilesById, finish
 
   for (const e of entries || []) {
     const q = Number(e.quantity) > 0 ? Number(e.quantity) : 1
+    const costProblems = (e.unresolved || []).filter(surfaced)
     for (const bom of bomsOf(e)) {
       for (const line of [...bom.profileLines, ...bom.gridLines]) {
         if (!line.resolved || !line.profile_id) { unresolved.push({ opening_no: e.opening_no, name: line.role_name, reason: line.reason || 'no_profile' }); continue }
@@ -43,9 +55,13 @@ export function buildProjectBom({ entries, settings, stock, profilesById, finish
         g.openings.add(e.opening_no)
         groups.set(key, g)
       }
-      for (const l of bom.hardwareLines) addPart(hardware, l.name, l.name, null, l.quantity * q, l.cost * q, !l.unresolved, 'hardware')
+      for (const l of bom.hardwareLines) {
+        const kind = l.part_id && partsById && partsById[l.part_id] && partsById[l.part_id].kind === 'accessory' ? 'accessory' : 'hardware'
+        addPart(hardware, l.part_id || l.name, l.name, null, l.quantity * q, l.cost * q, !l.unresolved, kind)
+      }
       for (const l of bom.hardwareSetLines || []) addPart(hardware, l.code || l.name, l.name, l.code, l.quantity * q, l.cost * q, l.resolved, 'hardware')
     }
+    for (const u of costProblems) unresolved.push({ opening_no: e.opening_no, name: u.name, reason: u.reason })
     if (e.extras) {
       for (const l of e.extras.lines) addPart(hardware, `extra:${l.key}:${l.part_id}`, l.name, null, l.quantity * q, l.cost * q, l.resolved, 'accessory')
       sealant_m += e.extras.sealant_m * q

@@ -38,3 +38,10 @@ describe('cut style on profile lines', () => {
     expect(computeBomForOpening(opening, t, [], [], legacyPricing([P12], FINISH), null).gridLines[0].cut_style).toBe('square')
   })
 })
+
+describe('hardware lines carry part_id', () => {
+  it('part_id is passed through, null when absent', () => {
+    const r = computeBomForOpening(opening, tpl, [], [{ name: 'a', part_id: 'p1', quantity_basis: 'fixed', quantity_value: 1 }, { name: 'b', quantity_basis: 'fixed', quantity_value: 1 }], legacyPricing([P12], FINISH), null)
+    expect(r.hardwareLines.map(l => l.part_id)).toEqual(['p1', null])
+  })
+})
