@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildPlanSeries } from './scurveCalc.js'
+import { buildPlanSeries, buildActualSeries } from './scurveCalc.js'
 
 describe('buildPlanSeries', () => {
   it('ramps linearly across a single leaf\'s own date span instead of jumping at the end', () => {
@@ -47,5 +47,28 @@ describe('buildPlanSeries', () => {
     // overlap and aren't processed as one leaf fully before the next --
     // mergeCumulativeSeries' forward-fill assumes a single ascending pointer.
     expect(series.every((p, i) => i === 0 || p.date > series[i - 1].date)).toBe(true)
+  })
+})
+
+describe('buildActualSeries', () => {
+  it('sums ex-VAT + VAT cumulatively by date', () => {
+    const s = buildActualSeries([
+      { date: '2026-08-05', amount_no_vat: '200000', vat: '14000', income_type: 'ปกติ' },
+      { date: '2026-08-20', amount_no_vat: 100000, vat: 7000, income_type: 'ปกติ' },
+    ])
+    expect(s).toEqual([{ date: '2026-08-05', value: 214000 }, { date: '2026-08-20', value: 321000 }])
+  })
+  it('does not count a deposit receipt as billing', () => {
+    const s = buildActualSeries([
+      { date: '2026-09-09', amount_no_vat: '78210', vat: '5474.70', income_type: 'มัดจำ' },
+    ])
+    expect(s).toEqual([])
+  })
+  it('keeps progress billings next to a deposit and ignores only the deposit', () => {
+    const s = buildActualSeries([
+      { date: '2026-09-09', amount_no_vat: 78210, vat: 5474.7, income_type: 'มัดจำ' },
+      { date: '2026-10-09', amount_no_vat: 150000, vat: 5025.3, income_type: 'ปกติ' },
+    ])
+    expect(s).toEqual([{ date: '2026-10-09', value: 155025.3 }])
   })
 })

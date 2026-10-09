@@ -110,9 +110,14 @@ function buildCumulativeSeries(rows, dateKey, amountFn) {
   })
 }
 
-/** Cumulative actual billing: invoice totals (ex-VAT + VAT) from incomes. */
+/**
+ * Cumulative actual billing: invoice totals (ex-VAT + VAT) from incomes.
+ * A deposit receipt (income_type 'มัดจำ') is not progress billing, so it is left out: the work it pays for is billed
+ * later in full by the progress invoices (the deposit is only deducted from what those invoices collect).
+ */
 export function buildActualSeries(incomes) {
-  return buildCumulativeSeries(incomes, 'date', (r) => (Number(r.amount_no_vat) || 0) + (Number(r.vat) || 0))
+  const billings = (incomes || []).filter((r) => r.income_type !== 'มัดจำ')
+  return buildCumulativeSeries(billings, 'date', (r) => (Number(r.amount_no_vat) || 0) + (Number(r.vat) || 0))
 }
 
 /** Cumulative cost: expense amounts. */
