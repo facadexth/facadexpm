@@ -94,6 +94,35 @@ BEGIN
     IF state <> '23505' THEN RAISE EXCEPTION 'expected 23505, got %', state; END IF;
   END;
 
+  -- upper limit 1000 on the settings defaults (check is evaluated before any unique index)
+  BEGIN INSERT INTO estimation_settings (default_waste_pct) VALUES (1001);
+    RAISE EXCEPTION 'default_waste_pct = 1001 was allowed';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  BEGIN INSERT INTO estimation_settings (default_profit_pct) VALUES (1001);
+    RAISE EXCEPTION 'default_profit_pct = 1001 was allowed';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  BEGIN INSERT INTO estimation_settings (default_pm_pct) VALUES (1001);
+    RAISE EXCEPTION 'default_pm_pct = 1001 was allowed';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+
+  -- deleting an opening nulls opening_id and KEEPS the line row with its generated row ids; several NULLs are allowed
+  DECLARE op2 UUID; op3 UUID; lid UUID; r RECORD;
+  BEGIN
+    INSERT INTO estimation_openings (project_id, opening_no, template_id, width_m, height_m) VALUES (proj, 'D2', tpl, 1, 1) RETURNING id INTO op2;
+    INSERT INTO estimation_openings (project_id, opening_no, template_id, width_m, height_m) VALUES (proj, 'D3', tpl, 1, 1) RETURNING id INTO op3;
+    INSERT INTO estimation_quotation_lines (project_id, opening_id, item_row_id, description_row_id) VALUES (proj, op2, i1, i2) RETURNING id INTO lid;
+    INSERT INTO estimation_quotation_lines (project_id, opening_id, item_row_id, description_row_id) VALUES (proj, op3, i1, i2);
+    DELETE FROM estimation_openings WHERE id IN (op2, op3);
+    SELECT * INTO r FROM estimation_quotation_lines WHERE id = lid;
+    IF NOT FOUND THEN RAISE EXCEPTION 'deleting an opening deleted its line row'; END IF;
+    IF r.opening_id IS NOT NULL OR r.item_row_id IS DISTINCT FROM i1 OR r.description_row_id IS DISTINCT FROM i2 THEN
+      RAISE EXCEPTION 'expected opening_id NULL with the row ids kept';
+    END IF;
+    SELECT count(*) INTO n FROM estimation_quotation_lines WHERE project_id = proj AND opening_id IS NULL;
+    IF n <> 2 THEN RAISE EXCEPTION 'expected 2 null-opening lines, got %', n; END IF;
+    DELETE FROM estimation_quotation_lines WHERE project_id = proj AND opening_id IS NULL;
+  END;
+
   RESET role;
   UPDATE _ps_fx SET a_proj = proj, a_open = op;
   RAISE NOTICE 'Test 1 (rules): TEST PASSED';
