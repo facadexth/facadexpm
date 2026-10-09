@@ -8,8 +8,9 @@ import ProjectFactorsPanel from './ProjectFactorsPanel.jsx'
 import PriceStructureTable from './PriceStructureTable.jsx'
 import { avgAluPerKg } from './priceStructureTabModel.js'
 import PieChart from './PieChart.jsx'
+import SendToQuotationButton from './SendToQuotationButton.jsx'
 
-export default function PriceStructureTab({ project, items, costs, infillTypes, canEdit, onProjectSaved, onItemsSaved, actions }) {
+export default function PriceStructureTab({ project, items, costs, infillTypes, canEdit, onProjectSaved, onItemsSaved, actions, index, templatesById, packageItems }) {
   const infillTypesById = useMemo(() => Object.fromEntries((infillTypes || []).map(g => [g.id, g])), [infillTypes])
   const result = useMemo(() => priceProject({ items: buildPriceInputs({ items, costs, project }), factors: projectFactors(project) }), [items, costs, project])
   const w = weightSummary(result.totals)
@@ -19,7 +20,9 @@ export default function PriceStructureTab({ project, items, costs, infillTypes, 
     <div style={{ display: 'grid', gap: 12 }}>
       <ProjectFactorsPanel project={project} canEdit={canEdit} onSaved={onProjectSaved} />
       <PriceStructureTable items={items} rows={result.rows} costs={costs} infillTypesById={infillTypesById} canEdit={canEdit} onItemsSaved={onItemsSaved}
-        total={result.totals.lineTotal} actions={actions} />
+        total={result.totals.lineTotal}
+        actions={<>{actions}<SendToQuotationButton project={project} items={items} result={result} index={index} templatesById={templatesById}
+          infillTypesById={infillTypesById} packageItems={packageItems} canEdit={canEdit} /></>} />
       <div className="card" style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
         <div>
           <PieChart title="สัดส่วนรวมต้นทุนตามหมวด (SUMPRODUCT ต้นทุน × จำนวน)" data={costPieData(result.rows)} />

@@ -126,3 +126,31 @@ describe('snapshotFor', () => {
     expect(Object.keys(s.items[0])).toEqual(['description', 'unit', 'quantity', 'unit_price', 'unit_price_material', 'unit_price_labor', 'line_total'])
   })
 })
+
+describe('Task 8 contract fixes', () => {
+  it('split description rows are 0, not null', () => {
+    const [l] = mk([row('o1', 1000)], { enabled: true, materialPct: 80 })
+    expect(l.desc.unit_price_material).toBe(0); expect(l.desc.unit_price_labor).toBe(0)
+  })
+  it('NaN / undefined / blank split pct falls back to 80, out of range is clamped', () => {
+    expect(mk([row('o1', 1000)], { enabled: true, materialPct: NaN })[0].item.unit_price_material).toBe(800)
+    expect(mk([row('o1', 1000)], { enabled: true })[0].item.unit_price_material).toBe(800)
+    expect(mk([row('o1', 1000)], { enabled: true, materialPct: '' })[0].item.unit_price_material).toBe(800)
+    expect(mk([row('o1', 1000)], { enabled: true, materialPct: 150 })[0].item.unit_price_labor).toBe(0)
+    expect(mk([row('o1', 1000)], { enabled: true, materialPct: -5 })[0].item.unit_price_material).toBe(0)
+  })
+  it('duplicate openings produce a single pair', () => {
+    const r = row('o1', 100)
+    const { lines } = buildLines({ rows: [r, r], items: [{ id: 'o1' }], descriptionCtxById: {}, descriptionFormat: [], split: {} })
+    expect(lines).toHaveLength(1)
+  })
+  it('planPush with a null quotation revision is numeric', () => {
+    const p = planPush({ ...base, quotation: { id: 'q', status: 'sent', revision: null } })
+    expect(p.newRevision).toBe(2)
+    expect(planPush({ ...base, quotation: { id: 'q', status: 'draft', revision: null } }).newRevision).toBe(1)
+  })
+  it('kept pair gets consecutive sort orders', () => {
+    const p = planPush({ ...base, newLines: [L('b')], existingLines: [ex('a', 'i1', 'd1')], existingRowIds: new Set(['i1', 'd1']), invoiceRefs: new Set(['i1']) })
+    expect(p.keepOrder).toEqual([{ id: 'i1', sort_order: 2 }, { id: 'd1', sort_order: 3 }])
+  })
+})

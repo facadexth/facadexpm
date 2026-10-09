@@ -10,7 +10,14 @@ export function buildLines({ rows, items, descriptionCtxById, descriptionFormat,
   const byId = new Map((items || []).map(i => [i.id, i]))
   const lines = []
   const skipped = []
+  const seen = new Set()
+  const splitOn = !!(split && split.enabled)
+  const rawPct = split && split.materialPct
+  const pctNum = rawPct === null || rawPct === undefined || rawPct === '' ? NaN : Number(rawPct)
+  const pct = Number.isFinite(pctNum) ? Math.min(100, Math.max(0, pctNum)) : 80
   ;(rows || []).forEach((r, index) => {
+    if (seen.has(r.id)) return   // a duplicated opening must never produce two pairs
+    seen.add(r.id)
     const it = byId.get(r.id) || {}
     if (!r.resolved || r.price == null) { skipped.push({ openingId: r.id, opening_no: it.opening_no ?? null }); return }
     const ctx = (descriptionCtxById || {})[r.id] || {}
@@ -19,14 +26,14 @@ export function buildLines({ rows, items, descriptionCtxById, descriptionFormat,
     const price = num(r.price)
     const quantity = num(r.quantity)
     let material = null, labour = null
-    if (split && split.enabled) {
-      material = Math.round(price * num(split.materialPct) / 100)
+    if (splitOn) {
+      material = Math.round(price * pct / 100)
       labour = price - material
     }
     lines.push({
       openingId: r.id,
       item: { description: title, unit: 'ชุด', quantity, unit_price: price, unit_price_material: material, unit_price_labor: labour, line_total: price * quantity, item_type: 'item' },
-      desc: { description: buildItemDescription(ctx, descriptionFormat), unit: null, quantity: 0, unit_price: 0, unit_price_material: null, unit_price_labor: null, line_total: 0, item_type: 'item_description' },
+      desc: { description: buildItemDescription(ctx, descriptionFormat), unit: null, quantity: 0, unit_price: 0, unit_price_material: splitOn ? 0 : null, unit_price_labor: splitOn ? 0 : null, line_total: 0, item_type: 'item_description' },
     })
   })
   return { lines, skipped }
@@ -61,7 +68,7 @@ export function planPush({ quotation, link, existingLines = [], newLines = [], e
 
   const existingBy = new Map(existingLines.map(e => [e.openingId, e]))
   const newIds = new Set(newLines.map(l => l.openingId))
-  const updates = [], inserts = [], deletes = [], keeps = []
+  const updates = [], inserts = [], deletes = [], keeps = [], keepOrder = []
   let order = 0
   for (const l of newLines) {
     const e = existingBy.get(l.openingId) || {}
@@ -78,7 +85,7 @@ export function planPush({ quotation, link, existingLines = [], newLines = [], e
     if (!live.length) continue
     if (live.some(id => invoiceRefs.has(id))) {
       keeps.push({ openingId: e.openingId, itemRowId: e.itemRowId, descRowId: e.descRowId, rowIds: live, reason: 'มีใบแจ้งหนี้อ้างอิงรายการนี้ จึงเก็บไว้ในใบเสนอราคา', sort_order: order })
-      live.forEach(() => { order++ })
+      live.forEach(id => { keepOrder.push({ id, sort_order: order++ }) })   // consecutive: the kept pair stays together
     } else live.forEach(id => deletes.push({ id, openingId: e.openingId }))
   }
   const userRowOrder = []
@@ -86,7 +93,7 @@ export function planPush({ quotation, link, existingLines = [], newLines = [], e
     const sort_order = order++
     if (u.sort_order !== sort_order) userRowOrder.push({ id: u.id, sort_order })
   }
-  return { action, bumpRevision, newRevision, setStatus, needsAcceptedConfirm, statusWarning, subNo, updates, inserts, deletes, keeps, userRowOrder }
+  return { action, bumpRevision, newRevision, setStatus, needsAcceptedConfirm, statusWarning, subNo, updates, inserts, deletes, keeps, keepOrder, userRowOrder }
 }
 
 // The exact quotation_revisions.snapshot shape written by Quotations.jsx handleSave.

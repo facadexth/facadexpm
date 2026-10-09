@@ -1,0 +1,41 @@
+// The "ส่งไปใบเสนอราคา" button for the price tab. Hidden unless the tenant has BOTH the estimation and quotations
+// modules and the user can edit. Owns the dialog's open state and builds the per-item description context.
+import { useMemo, useState } from 'react'
+import { useTenant } from '../../hooks/useTenant.js'
+import { usePriceStructure } from '../../hooks/usePriceStructure.js'
+import { resolveItemInputs } from '../../lib/estimationInherit.js'
+import { descriptionContext } from './itemForm.js'
+import SendToQuotationDialog from './SendToQuotationDialog.jsx'
+
+export default function SendToQuotationButton({ project, items, result, index, templatesById, infillTypesById, packageItems, canEdit }) {
+  const { tenant, hasModuleAccess } = useTenant()
+  const ps = usePriceStructure(project.id)
+  const [open, setOpen] = useState(false)
+  const allowed = canEdit && hasModuleAccess('estimation') && hasModuleAccess('quotations')
+
+  const descriptionCtxById = useMemo(() => {
+    const out = {}
+    if (!allowed || !index || !index.types) return out
+    for (const it of items || []) {
+      const template = (templatesById || {})[it.template_id] || null
+      const resolved = resolveItemInputs(it, project, template, index.types, packageItems)
+      out[it.id] = descriptionContext({ item: it, resolved, index, template, infillTypesById })
+    }
+    return out
+  }, [allowed, items, project, index, templatesById, infillTypesById, packageItems])
+
+  if (!allowed) return null
+  const linked = !!(ps.link && ps.link.quotation_id)
+  return (
+    <>
+      <button type="button" className="btn btn-primary btn-sm" disabled={ps.loading} onClick={() => setOpen(true)}>
+        {linked ? 'อัปเดตราคาไปใบเสนอราคา' : 'ส่งไปใบเสนอราคา'}
+      </button>
+      {open && (
+        <SendToQuotationDialog project={project} items={items} result={result} descriptionCtxById={descriptionCtxById}
+          link={ps.link} snapshots={ps.snapshots} tenant={tenant}
+          onClose={() => setOpen(false)} onDone={() => ps.refetch()} />
+      )}
+    </>
+  )
+}
