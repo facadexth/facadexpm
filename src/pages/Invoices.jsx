@@ -1299,6 +1299,9 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
   const wht = computeWithholding(invoice, effectiveInvoiceTaxOffset(invoice, depositTaxOffset))
   const { data: depositBalance } = useSiteDepositBalance(hasModuleAccess('client_deposits') ? invoice.site_id : null)
   const deposit = computeDepositDeduction(invoice, depositBalance)
+  // เหมือนใบแจ้งหนี้: ใบที่เลือกยอดหักมัดจำไว้ตอนสร้าง แสดงหักมัดจำก่อน VAT (receipt.amount = invoice.total ก่อนหักมัดจำ)
+  const chosenDeposit = !invoice.is_deposit && invoice.deposit_deduction_amount != null ? Number(invoice.deposit_deduction_amount) || 0 : 0
+  const depositBeforeVat = chosenDeposit > 0
   const [titleVariant, setTitleVariant] = useState('receipt')
   const variant = RECEIPT_TITLE_OPTIONS.find(o => o.value === titleVariant)
 
@@ -1343,10 +1346,13 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
                 { label: 'โครงการ', value: invoice.sites?.name || '—' },
               ]}
               clientName={client?.name} clientAddress={client?.address} clientTaxId={client?.tax_id}
-              items={items} totalsLabel="รวมรับชำระ" totalsAmount={receipt.amount}
+              items={items} totalsLabel="รวมรับชำระ" totalsAmount={depositBeforeVat ? invoiceBillingTotal(invoice) : receipt.amount}
               subtotal={invoice.subtotal} vat={invoice.vat} hasVat={invoice.has_vat}
               withholdingTaxPct={wht.pct} withholdingTaxAmount={wht.amount} isWithholdingEstimate={wht.isEstimate}
-              depositDeductionPct={deposit.pct} depositDeductionAmount={deposit.amount} isDepositEstimate={deposit.isEstimate}
+              depositDeductionPct={depositBeforeVat ? round2(chosenDeposit / (invoice.subtotal || 1) * 100) : deposit.pct}
+              depositDeductionAmount={depositBeforeVat ? chosenDeposit : deposit.amount}
+              isDepositEstimate={depositBeforeVat ? false : deposit.isEstimate}
+              depositBeforeVat={depositBeforeVat}
               notesBlock={null}
               signatures={['ผู้รับเงิน', 'ผู้จ่ายเงิน']}
               onPageCountChange={setPageCount}
