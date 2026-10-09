@@ -543,46 +543,6 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
         </div>
 
         <InvoiceItemsEditor lines={lines} onChange={setLines} mode={mode} onModeChange={setMode} />
-        <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>
-          {isSplit && (
-            <>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมค่าของ</span><span className="font-mono">{fmt(materialLabor.material)}</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมค่าแรง</span><span className="font-mono">{fmt(materialLabor.labor)}</span></div>
-            </>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมงวดนี้ (ก่อน VAT)</span><span className="font-mono">{fmt(totals.subtotal)}</span></div>
-          {quotation.has_vat && (
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>VAT (7%)</span><span className="font-mono">{fmt(totals.vat)}</span></div>
-              {taxOffset > 0 && (
-                <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-                  คิดจาก {fmt(Math.max(0, totals.subtotal - taxOffset))} บาท (ตัด {fmt(Math.min(totals.subtotal, taxOffset))} บาทที่หักมัดจำในใบนี้ ซึ่งเสีย VAT ไปแล้วตอนรับมัดจำ)
-                </div>
-              )}
-              {showDepositBox && taxOffset === 0 && depositTaxOffset > 0 && (
-                <div style={{ fontSize: 11, color: 'var(--text3)' }}>คิดจากยอดเต็มของงวดนี้ (ใบนี้ไม่หักมัดจำ)</div>
-              )}
-            </div>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}><span>รวมเรียกเก็บงวดนี้</span><span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totals.total)}</span></div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--border)' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text2)' }}>
-              <input type="checkbox" checked={includeWht} onChange={e => setIncludeWht(e.target.checked)} />
-              หัก ณ ที่จ่ายสำหรับใบนี้
-            </label>
-            {includeWht && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <input type="number" min="0" max="100" step="any" className="input input-sm" style={{ width: 60 }}
-                  value={whtPct} onChange={e => setWhtPct(e.target.value)} />
-                <span style={{ fontSize: 12, color: 'var(--text3)' }}>%</span>
-              </div>
-            )}
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
-            การตั้งค่านี้ผูกกับใบแจ้งหนี้นี้ใบเดียว — ตอนกดยืนยันชำระ ระบบจะหัก ณ ที่จ่ายตามนี้เสมอ ไม่ว่า % เริ่มต้นของไซท์จะเปลี่ยนไปภายหลังหรือไม่
-          </div>
-        </div>
-
         {/* Policy description, not a live number -- the actual amount
             depends on the deposit balance remaining AT payment time (could
             shift between now and then), so showing a computed figure here
@@ -626,6 +586,47 @@ function CreateInvoiceModal({ quotation, site, onClose, onSaved }) {
           <div style={{ fontSize: 12, color: 'var(--text3)' }}>
             ยอดสุทธิที่จะได้จริงจากรายการที่เลือกอยู่ตอนนี้: <strong style={{ color: 'var(--accent)' }}>{fmt(achievedNet)}</strong> บาท
           </div>
+          </div>
+        </div>
+
+        {/* สรุปยอด / VAT / หัก ณ ที่จ่าย อยู่ล่างสุด: เลือกมัดจำก่อน แล้วค่อยเห็นผลต่อ VAT */}
+        <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginTop: 12 }}>
+          {isSplit && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมค่าของ</span><span className="font-mono">{fmt(materialLabor.material)}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมค่าแรง</span><span className="font-mono">{fmt(materialLabor.labor)}</span></div>
+            </>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>รวมงวดนี้ (ก่อน VAT)</span><span className="font-mono">{fmt(totals.subtotal)}</span></div>
+          {quotation.has_vat && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>VAT (7%)</span><span className="font-mono">{fmt(totals.vat)}</span></div>
+              {taxOffset > 0 && (
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                  คิดจาก {fmt(Math.max(0, totals.subtotal - taxOffset))} บาท (ตัด {fmt(Math.min(totals.subtotal, taxOffset))} บาทที่หักมัดจำในใบนี้ ซึ่งเสีย VAT ไปแล้วตอนรับมัดจำ)
+                </div>
+              )}
+              {showDepositBox && taxOffset === 0 && depositTaxOffset > 0 && (
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>คิดจากยอดเต็มของงวดนี้ (ใบนี้ไม่หักมัดจำ)</div>
+              )}
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}><span>รวมเรียกเก็บงวดนี้</span><span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totals.total)}</span></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--border)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text2)' }}>
+              <input type="checkbox" checked={includeWht} onChange={e => setIncludeWht(e.target.checked)} />
+              หัก ณ ที่จ่ายสำหรับใบนี้
+            </label>
+            {includeWht && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input type="number" min="0" max="100" step="any" className="input input-sm" style={{ width: 60 }}
+                  value={whtPct} onChange={e => setWhtPct(e.target.value)} />
+                <span style={{ fontSize: 12, color: 'var(--text3)' }}>%</span>
+              </div>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+            การตั้งค่านี้ผูกกับใบแจ้งหนี้นี้ใบเดียว — ตอนกดยืนยันชำระ ระบบจะหัก ณ ที่จ่ายตามนี้เสมอ ไม่ว่า % เริ่มต้นของไซท์จะเปลี่ยนไปภายหลังหรือไม่
           </div>
         </div>
       </div>
