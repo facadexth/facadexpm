@@ -86,7 +86,10 @@ const EMPTY_TEMPLATE_FORM = {
 }
 
 function TemplateEditor({ template, joints, catalog, types, components, hardware, constraints, onSaved, onDeleted, canEdit }) {
-  const isNew = !template?.id
+  // A template inserted by a save that failed later is switched to its saved id, so a retry updates instead of inserting again.
+  const [createdId, setCreatedId] = useState(null)
+  const rowId = template?.id || createdId
+  const isNew = !rowId
   const [form, setForm] = useState(() => isNew ? EMPTY_TEMPLATE_FORM : {
     name: template.name, category: template.category, waste_pct: String(template.waste_pct),
     infill_width_deduction_mm: String(template.infill_width_deduction_mm), infill_height_deduction_mm: String(template.infill_height_deduction_mm),
@@ -161,19 +164,32 @@ function TemplateEditor({ template, joints, catalog, types, components, hardware
       // nothing is written until everything checks out
       const problem = validateJoints(jointRows) || validateComponentRows(rows, jointRows)
       if (problem) { alert(problem); return }
-      let templateId = template?.id
+      let templateId = rowId
+      // Remember the old rows BEFORE writing anything: if either read fails, stop here (otherwise the old rows
+      // would never be deleted and the BOM would be silently doubled).
+      let oldComp = []
+      let oldJoints = []
+      if (!isNew) {
+        const rc = await supabase.from('bom_template_components').select('id').eq('template_id', templateId)
+        const rj = await supabase.from('bom_template_joints').select('id').eq('template_id', templateId)
+        if (rc.error || rj.error) {
+          alert('อ่านข้อมูลเดิมของเทมเพลตไม่สำเร็จ จึงยังไม่ได้บันทึกอะไร กรุณาลองใหม่: ' + (rc.error || rj.error).message)
+          return
+        }
+        oldComp = (rc.data || []).map(r => r.id)
+        oldJoints = (rj.data || []).map(r => r.id)
+      }
       if (isNew) {
         const { data, error } = await supabase.from('bom_templates').insert(payload).select('id').single()
         if (error) throw error
         templateId = data.id
+        setCreatedId(data.id)
       } else {
         const { error } = await supabase.from('bom_templates').update(payload).eq('id', templateId)
         if (error) throw error
       }
 
-      // Never leave the template empty: remember the old rows, write the new ones first, delete the old ones last.
-      const oldComp = isNew ? [] : ((await supabase.from('bom_template_components').select('id').eq('template_id', templateId)).data || []).map(r => r.id)
-      const oldJoints = isNew ? [] : ((await supabase.from('bom_template_joints').select('id').eq('template_id', templateId)).data || []).map(r => r.id)
+      // Never leave the template empty: write the new rows first, delete the old ones last.
       const newJointIds = []
       const newCompIds = []
       const rollback = async () => {
@@ -439,7 +455,7 @@ function TemplateEditor({ template, joints, catalog, types, components, hardware
 
       {canEdit && tab !== 3 && (
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          {!isNew && <button type="button" className="btn btn-ghost" style={{ color: 'var(--red)' }} onClick={() => onDeleted(template.id)}>🗑️ ลบ Template</button>}
+          {!isNew && <button type="button" className="btn btn-ghost" style={{ color: 'var(--red)' }} onClick={() => onDeleted(rowId)}>🗑️ ลบ Template</button>}
           <button type="button" className="btn btn-primary" disabled={saving || !form.name} onClick={handleSave}>{saving ? '⏳ กำลังบันทึก...' : '💾 บันทึก'}</button>
         </div>
       )}

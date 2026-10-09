@@ -38,7 +38,7 @@ export default function BomProfilesTable({ profiles, overrides, canEdit, onSaveS
             <tr key={g.key}>
               <td>{g.die_no ? <b>{g.die_no}</b> : null} {g.name}<div style={{ fontSize: 11, color: 'var(--text3)' }}>{g.openings.join(', ')}</div></td>
               <td>{g.finish_name || '—'}</td>
-              <td style={{ fontSize: 12 }}>{g.cuts.map(c => <div key={`${c.length_m}|${c.style}`} className="font-mono">{m3(c.length_m)} × {c.quantity} <span style={{ color: 'var(--text3)' }}>{c.style === 'miter45' ? '45°' : '90°'}</span></div>)}</td>
+              <td style={{ fontSize: 12 }}>{g.cuts.map(c => <div key={`${c.length_m}|${c.style}`} className="font-mono">{m3(c.length_m)} × {c.quantity} <span style={{ color: 'var(--text3)' }}>{c.style === 'miter45' ? '45° (ยาวด้านนอก)' : '90°'}</span></div>)}</td>
               <td className="font-mono">{m2(g.cut_total_m)}</td>
               <td><StockCell key={`${g.key}|${g.stock_length_m}`} group={g} overridden={Object.prototype.hasOwnProperty.call(overrides, g.profile_id)} canEdit={canEdit} onSave={onSaveStock} /></td>
               <td className="font-mono">{g.unplaced.length ? <span style={{ color: 'var(--red)' }}>วางไม่ได้ {g.unplaced.length} ชิ้น (ยาวเกินเส้น)</span> : g.count}</td>

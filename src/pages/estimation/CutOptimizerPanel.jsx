@@ -28,10 +28,10 @@ export default function CutOptimizerPanel({ profiles, seriesMap, index, settings
           <select className="input" value={group.key} onChange={e => setKey(e.target.value)}>
             {profiles.map(g => <option key={g.key} value={g.key}>{g.die_no ? `${g.die_no} ` : ''}{g.name}{g.finish_name ? ` · ${g.finish_name}` : ''}</option>)}
           </select></div>
-        <div style={{ fontSize: 12, color: 'var(--text2)' }}>ค่าใบเลื่อย 90°: {settings.kerf_square_mm} มม. · 45°: {settings.kerf_miter_mm} มม. · เศษขั้นต่ำที่เก็บใช้ต่อ: {settings.min_keep_offcut_m} ม. (แก้ที่ตั้งค่า)</div>
+        <div style={{ fontSize: 12, color: 'var(--text2)' }}>ค่าใบเลื่อย 90°: {settings.kerf_square_mm} มม. · 45°: {settings.kerf_miter_mm} มม. (ชิ้น 45° วัดความยาวด้านนอก) · เศษขั้นต่ำที่เก็บใช้ต่อ: {settings.min_keep_offcut_m} ม. (แก้ที่ตั้งค่า)</div>
       </div>
       <div style={{ fontSize: 12 }} className="font-mono">
-        {group.cuts.map(c => `${Number(c.length_m).toFixed(3)}×${c.quantity}${c.style === 'miter45' ? ' (45°)' : ''}`).join(' · ')}
+        {group.cuts.map(c => `${Number(c.length_m).toFixed(3)}×${c.quantity}${c.style === 'miter45' ? ' (45° ยาวด้านนอก)' : ''}`).join(' · ')}
       </div>
       <div className="table-wrap">
         <table>

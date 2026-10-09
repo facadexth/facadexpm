@@ -113,3 +113,12 @@ describe('fix round 1: left-out add-on or infill makes the row incomplete', () =
     expect(r[0].complete).toBe(false)
   })
 })
+
+describe('final fix: one throwing item', () => {
+  it('becomes an unresolved entry for that item and the other items are still priced', () => {
+    const bad = { ...item, id: 'bad', opening_no: 'W9', width_m: Symbol('boom'), quantity: 2 }
+    const r = compareProviders({ ...base, items: [item, bad], candidates: [{ providerId: 'A', seriesId: 'sA', finishId: 'fA' }] })
+    expect(r[0]).toMatchObject({ itemsPriced: 1, unresolvedLines: 2, complete: false, aluminium: 2 * 2 * 100 * 3 })
+    expect(r[0].failedItems).toEqual([{ id: 'bad', opening_no: 'W9', text: 'คิดราคาไม่ได้' }])
+  })
+})

@@ -43,6 +43,7 @@ export default function PreviewPanel({ inputs, labels, availability, addonPartia
         : <div style={{ color: 'var(--text3)', fontSize: 13, padding: 24, textAlign: 'center', border: '1px dashed var(--border)', borderRadius: 8 }}>เลือกประเภทและกรอกขนาดเพื่อดูภาพ</div>}
       {caption && <div className="font-mono" style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'center' }}>{caption}</div>}
       {style === 'parts' && preview && !labels && <div style={{ fontSize: 12, color: 'var(--text3)' }}>ยังบอกความยาวชิ้นส่วนไม่ได้ (เทมเพลตไม่มีเส้นวงกบตามกว้าง/สูง หรือยังคิดราคาไม่ได้)</div>}
+      {style === 'parts' && preview && labels && <div style={{ fontSize: 12, color: 'var(--text3)' }}>ชิ้นที่ตัด 45° บอกความยาวด้านนอก</div>}
       {addonPartial && <div style={{ fontSize: 12, color: 'var(--text3)' }}>ของเพิ่มเติมยังกรอกไม่ครบ ยังไม่วาดและยังไม่คิดราคา</div>}
       {availability === 'ok' && <span style={{ color: 'var(--green)', fontSize: 12, fontWeight: 600 }}>ซีรีส์นี้ผลิตประเภทนี้ได้</span>}
       {availability === 'not_offered' && <span style={{ color: 'var(--red)', fontSize: 12, fontWeight: 600 }}>ซีรีส์นี้ไม่ผลิตประเภทนี้</span>}

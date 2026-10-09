@@ -81,7 +81,7 @@ export default function ProviderCompare({ project, items, base, index, seriesTyp
                   <td className="font-mono">{row.diff ? `${row.diff.amount > 0 ? '+' : ''}${fmt(row.diff.amount)} (${row.diff.pct > 0 ? '+' : ''}${row.diff.pct.toFixed(1)}%)` : '—'}</td>
                   <td>{row.pending ? <span style={{ color: 'var(--text3)' }}>{fixed ? 'ยังไม่ได้ตั้งซีรีส์/สีของโปรเจกต์' : 'เลือกซีรีส์และสี'}</span>
                     : row.complete ? <span style={{ color: 'var(--green)' }}>คิดครบ</span>
-                      : <span style={{ color: 'var(--red)' }}>คิดไม่ได้ {row.unresolvedLines} รายการ (ไม่มีหน้าตัด/ราคา)</span>}</td>
+                      : <span style={{ color: 'var(--red)' }}>คิดไม่ได้ {row.unresolvedLines} รายการ (ไม่มีหน้าตัด/ราคา){(row.failedItems || []).length > 0 && ` · คิดราคาไม่ได้: ${row.failedItems.map(f => f.opening_no || f.id).join(', ')}`}</span>}</td>
                   <td>{canEdit && row.canApply && <button type="button" className="btn btn-sm btn-ghost" onClick={() => startApply(row)}>ใช้โรงรีดนี้</button>}</td>
                 </tr>
               )

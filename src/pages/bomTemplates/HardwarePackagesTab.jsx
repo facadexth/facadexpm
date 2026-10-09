@@ -30,8 +30,8 @@ export default function HardwarePackagesTab({ types, typesById, index, canEdit }
     setSaving(true)
     try {
       const saved = await savePackage({ id: pkgId === 'new' ? undefined : pkgId, name: name.trim(), series_id: seriesId || null })
+      setPkgId(saved.id)   // before saveItems: a retry after a failure then updates this package instead of inserting a duplicate
       await saveItems(saved.id, itemRowsForSave(rows))
-      setPkgId(saved.id)
       setRows(r => r.filter(x => x.choice !== SET_UNASSIGNED))
     } catch (e) { alert('บันทึกไม่สำเร็จ: ' + e.message) }
     finally { setSaving(false) }
