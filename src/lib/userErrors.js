@@ -11,7 +11,7 @@ export function friendlyUserError(e, { adminsFull = false } = {}) {
   if (msg.includes('row-level security policy')) {
     return adminsFull
       ? 'บันทึกไม่สำเร็จ: เกินจำนวน Admin ที่แพ็กเกจปัจจุบันอนุญาต กรุณาติดต่อผู้ดูแลระบบเพื่ออัปเกรดแพ็กเกจ'
-      : 'บันทึกไม่สำเร็จ: ระบบไม่อนุญาตให้ทำรายการนี้ กรุณารีเฟรชหน้าแล้วลองใหม่ ถ้ายังไม่ได้ให้ติดต่อ support@changpm.app หรือ LINE @302yljzw'
+      : 'บันทึกไม่สำเร็จ: ระบบไม่อนุญาตให้ทำรายการนี้ กรุณารีเฟรชหน้าแล้วลองใหม่ ถ้ายังไม่ได้ให้ติดต่อ support@changpm.app หรือ LINE @changpm'
   }
   return 'Error: ' + msg
 }

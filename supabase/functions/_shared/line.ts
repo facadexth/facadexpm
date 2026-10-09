@@ -40,7 +40,7 @@ if (!rawAccessToken || !rawChannelSecret) {
 export const LINE_CHANNEL_ACCESS_TOKEN = rawAccessToken.replace(/\s+/g, '')
 export const LINE_CHANNEL_SECRET = rawChannelSecret.replace(/\s+/g, '')
 export const LINE_BOT_USER_ID = 'Uc21ab4c845be0f5d3b90e0daa1f5cf72'
-export const LINE_BASIC_ID = '302yljzw'
+export const LINE_BASIC_ID = 'changpm'
 
 export async function verifyLineSignature(channelSecret: string, rawBody: string, signatureHeader: string | null): Promise<boolean> {
   if (!signatureHeader) return false
