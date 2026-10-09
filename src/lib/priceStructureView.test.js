@@ -47,7 +47,7 @@ describe('priceStructureView', () => {
     expect(weightSummary({ aluWeightNet: 10.456, aluWeightWithWaste: 11.5019 })).toEqual({ net: 10.46, withWaste: 11.5 })
   })
   it('labels and columnValue', () => {
-    expect(COLUMN_LABELS.bendGlass).toBe('ดัดโค้ง กระจก')
+    expect(COLUMN_LABELS.bendGlass).toBe('ดัดโค้ง GL')
     expect(PRICE_LABELS.pm).toBe('PM')
     expect(columnValue(withB({ other: 4 }), 'other')).toBe(4)
   })

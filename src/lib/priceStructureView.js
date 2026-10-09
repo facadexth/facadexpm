@@ -4,8 +4,8 @@ const EXTRA = new Set(['fireBarrier', 'bracket', 'bendAlu', 'bendGlass'])
 
 export const COLUMN_LABELS = {
   alu: 'อลูมิเนียม', hardware: 'อุปกรณ์', glass: 'กระจก', labour: 'ค่าแรง',
-  fireBarrier: 'Fire Barrier', bracket: 'Bracket', bendAlu: 'ดัดโค้ง ALU', bendGlass: 'ดัดโค้ง กระจก',
-  other: 'วัสดุเสริม (ซิลิโคน/สักหลาด)',
+  fireBarrier: 'Fire Barrier', bracket: 'Bracket', bendAlu: 'ดัดโค้ง ALU', bendGlass: 'ดัดโค้ง GL',
+  other: 'วัสดุเสริม ซิลิโคน สักหลาด',
 }
 export const PRICE_LABELS = { v: 'รวมต้นทุน', w: 'เผื่อเสียเศษ', x: 'กำไร', z: 'ค่าขนส่ง', pm: 'PM' }
 
