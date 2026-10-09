@@ -8,7 +8,8 @@ import LinkEditor from '../../components/LinkEditor.jsx'
 import { Modal } from '../../components/Modal.jsx'
 import { emptyForm, buildPayload, missingRequired, friendlyDbError } from '../../lib/catalogForm.js'
 import { seriesLabelFull } from '../../lib/aluCatalog.js'
-import { TYPE_FIELDS } from './TypesTab.jsx'
+import { typeFields, typeErrorText } from './TypesTab.jsx'
+import { typePickerOptions } from '../../lib/catalogTypeForm.js'
 
 const BASIS_LABEL = { per_kg: 'ต่อกก.', per_piece: 'ต่อเส้น', both: 'ทั้งสองแบบ' }
 
@@ -49,9 +50,18 @@ export default function HierarchyTab({ canEdit }) {
 
   // Types offered: active ones, plus any inactive type this series is already linked to.
   const linkedTypeIds = new Set((seriesTypes.data || []).filter(l => l.series_id === seriesId).map(l => l.type_id))
-  const typeOptions = (types.data || [])
-    .filter(t => t.active !== false || linkedTypeIds.has(t.id))
-    .map(t => ({ id: t.id, label: t.active === false ? `${t.name} (ปิดใช้งาน)` : t.name }))
+  const typeOptions = typePickerOptions(types.data || [], linkedTypeIds)
+    .map(o => ({ id: o.id, label: o.label, note: o.hasChildren ? 'ซีรีส์จะผลิตประเภทย่อยทั้งหมดของประเภทนี้' : null }))
+  const TYPE_FIELDS = typeFields(types.data || [])
+  const typeLabelById = Object.fromEntries(typeOptions.map(o => [o.id, o.label]))
+  const myLinks = pickedSeries ? (seriesTypes.data || []).filter(l => l.series_id === pickedSeries.id && typeLabelById[l.type_id]) : []
+
+  const setMixed = async (link, checked) => {
+    if (!canEdit) return
+    const { error: err } = await supabase.from('alu_series_types').update({ allow_mixed_thickness: checked }).eq('id', link.id)
+    if (err) { alert('บันทึกไม่สำเร็จ: ' + friendlyDbError(err)); return }
+    seriesTypes.refetch()
+  }
 
   const saveNewType = async (form) => {
     if (!canEdit || savingType) return
@@ -68,7 +78,7 @@ export default function HierarchyTab({ canEdit }) {
       }
       setAddingType(false)
       types.refetch(); seriesTypes.refetch()
-    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + friendlyDbError(e)) }
+    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + (typeErrorText(e) || friendlyDbError(e))) }
     finally { setSavingType(false) }
   }
 
@@ -113,6 +123,7 @@ export default function HierarchyTab({ canEdit }) {
 
       <div>
         {pickedSeries ? (
+          <>
           <LinkEditor
             title={
               <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -125,6 +136,23 @@ export default function HierarchyTab({ canEdit }) {
             childOptions={typeOptions}
             links={seriesTypes.data} onChanged={seriesTypes.refetch} canEdit={canEdit}
           />
+          {myLinks.length > 0 && (
+            <div className="card" style={{ padding: 14, marginBottom: 16 }}>
+              <div style={{ fontWeight: 600, marginBottom: 8 }}>ความหนาวงกบกับบาน</div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {myLinks.map(l => (
+                  <div key={l.id}>
+                    <div style={{ fontSize: 12, color: 'var(--text3)' }}>{typeLabelById[l.type_id]}</div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: canEdit ? 'pointer' : 'default', fontSize: 13 }}>
+                      <input type="checkbox" disabled={!canEdit} checked={!!l.allow_mixed_thickness} onChange={e => setMixed(l, e.target.checked)} />
+                      อนุญาตให้วงกบกับบานใช้ความหนาต่างกัน (งานราชการ เช่น วงกบ 2.0 / บาน 1.5)
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          </>
         ) : (
           <div className="card" style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>
             เลือกซีรีส์เพื่อดูประเภทที่ทำได้

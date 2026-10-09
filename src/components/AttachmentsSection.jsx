@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { sanitizeStorageFileName } from '../lib/storageKey.js'
 
-export default function AttachmentsSection({ table, bucket, foreignKey, entityId, tenantId }) {
+export default function AttachmentsSection({ table, bucket, foreignKey, entityId, tenantId, accept = '.pdf,.xlsx,.xls,.jpg,.jpeg,.png' }) {
   const [attachments, setAttachments] = useState([])
   const [uploading, setUploading] = useState(false)
 
@@ -72,7 +72,7 @@ export default function AttachmentsSection({ table, bucket, foreignKey, entityId
           </div>
         ))}
       </div>
-      <input type="file" onChange={handleUpload} disabled={uploading} accept=".pdf,.xlsx,.xls,.jpg,.jpeg,.png" />
+      <input type="file" onChange={handleUpload} disabled={uploading} accept={accept} />
     </div>
   )
 }

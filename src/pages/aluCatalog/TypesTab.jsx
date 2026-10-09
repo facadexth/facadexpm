@@ -1,31 +1,64 @@
 // src/pages/aluCatalog/TypesTab.jsx
-// Door/window types shared by every extruder (บานเลื่อน บานเปิด …) and our own labour rate.
+// Door/window types shared by every extruder, as a tree of up to three levels (กลุ่มหลัก > แบบ > แบบย่อย)
+// and our own labour rate. Only leaf types can be chosen on templates / items (Ruling 18).
+import { useMemo } from 'react'
 import { useCatalogTable } from '../../hooks/useAluCatalog.js'
 import CatalogCrud, { ActiveBadge } from '../../components/CatalogCrud.jsx'
+import { flattenTypeTree, parentOptions, categoryForParent, thaiTypeError } from '../../lib/catalogTypeForm.js'
 
-export const TYPE_FIELDS = [
+const CATEGORY_LABEL = { door: 'ประตู', window: 'หน้าต่าง', curtain_wall: 'ผนังกระจก' }
+
+// `types` = all type rows (the parent picker needs them); Hierarchy's quick-add passes the same.
+export const typeFields = (types) => [
   { key: 'name', label: 'ชื่อประเภท', type: 'text', required: true, placeholder: 'เช่น บานเลื่อน' },
+  { key: 'parent_id', label: 'อยู่ใต้ประเภท', type: 'select', emptyLabel: '— ระดับบนสุด —',
+    options: (form, row) => parentOptions(types, row ? row.id : null),
+    sets: (value) => { const c = categoryForParent(types, value); return c ? { category: c } : {} },
+    hint: 'แสดงเฉพาะระดับ 1–2 · มีได้สูงสุด 3 ระดับ' },
   { key: 'category', label: 'ประเภทหลัก', type: 'select', required: true, default: 'window',
-    options: [{ value: 'door', label: 'ประตู' }, { value: 'window', label: 'หน้าต่าง' }] },
+    disabled: form => !!form.parent_id,
+    options: Object.entries(CATEGORY_LABEL).map(([value, label]) => ({ value, label })) },
   { key: 'default_labour_per_sqm', label: 'เรทค่าแรง (บาท/ตร.ม.) · ค่าแรง = เรท × พื้นที่', type: 'number', min: 0,
-    hint: 'เรทค่าแรงของเราเอง ไม่ได้นำเข้าจากโรงรีด' },
+    hint: 'เว้นว่าง = ใช้ของประเภทแม่ · เรทค่าแรงของเราเอง ไม่ได้นำเข้าจากโรงรีด' },
   { key: 'active', label: 'ใช้งานอยู่', type: 'checkbox', default: true },
 ]
 
+export const typeErrorText = e => thaiTypeError(e && e.message)
+
 export default function TypesTab({ canEdit }) {
   const types = useCatalogTable('door_window_types')
+  const fields = useMemo(() => typeFields(types.data || []), [types.data])
+  const flat = useMemo(() => flattenTypeTree(types.data || []), [types.data])
+  const meta = Object.fromEntries(flat.map(r => [r.type.id, r]))
+  const byId = Object.fromEntries((types.data || []).map(t => [t.id, t]))
   if (types.error) return <div style={{ color: 'var(--red)' }}>โหลดข้อมูลไม่สำเร็จ: {types.error}</div>
   return (
     <CatalogCrud
-      title="🚪 ประเภทบาน" table="door_window_types" fields={TYPE_FIELDS} rows={types.data}
-      onChanged={types.refetch} canEdit={canEdit} deleteWarning="ลบประเภทนี้แล้ว ซีรีส์ทุกซีรีส์จะไม่มีประเภทนี้อีก และจะลบการผูกอุปกรณ์ที่ผูกไว้กับประเภทนี้โดยเฉพาะในซีรีส์ด้วย (อุปกรณ์เหล่านั้นจะไม่เปลี่ยนเป็น “ทุกประเภท”) ย้อนกลับไม่ได้ ถ้าแค่เลิกใช้ ให้ปิด “ใช้งานอยู่” แทน"
+      title="🚪 ประเภทบาน" table="door_window_types" fields={fields} rows={types.data ? flat.map(r => r.type) : null}
+      onChanged={types.refetch} canEdit={canEdit} mapError={typeErrorText}
+      deleteWarning="ลบประเภทนี้แล้ว ซีรีส์ทุกซีรีส์จะไม่มีประเภทนี้อีก และจะลบการผูกอุปกรณ์ที่ผูกไว้กับประเภทนี้โดยเฉพาะในซีรีส์ด้วย (อุปกรณ์เหล่านั้นจะไม่เปลี่ยนเป็น “ทุกประเภท”) ย้อนกลับไม่ได้ ถ้ามีประเภทย่อย ต้องลบประเภทย่อยก่อน ถ้าแค่เลิกใช้ ให้ปิด “ใช้งานอยู่” แทน"
       addLabel="+ เพิ่มประเภท" emptyText="ยังไม่มีประเภทบาน"
       columns={[
-        { key: 'name', label: 'ชื่อ', render: r => <strong>{r.name}</strong> },
-        { key: 'category', label: 'ประเภทหลัก', render: r => (r.category === 'door' ? 'ประตู' : 'หน้าต่าง') },
-        { key: 'default_labour_per_sqm', label: 'เรทค่าแรง บาท/ตร.ม.' },
+        { key: 'name', label: 'ชื่อ', render: r => {
+          const m = meta[r.id]
+          return (
+            <span style={{ paddingLeft: ((m?.level || 1) - 1) * 24 }}>
+              {m?.level > 1 ? '└ ' : ''}{m?.level > 1 ? r.name : <strong>{r.name}</strong>}
+              {m?.selectable && <span className="badge badge-paid" style={{ marginLeft: 8 }}>ใช้เลือกได้</span>}
+            </span>
+          )
+        } },
+        { key: 'category', label: 'กลุ่ม', render: r => CATEGORY_LABEL[r.category] || r.category },
+        { key: 'default_labour_per_sqm', label: 'เรทค่าแรง บาท/ตร.ม.', render: r => (
+          r.default_labour_per_sqm == null
+            ? (r.parent_id ? <span style={{ fontSize: 12, color: 'var(--text3)' }}>ใช้ของประเภทแม่</span> : '—')
+            : r.default_labour_per_sqm
+        ) },
         { key: 'active', label: 'สถานะ', render: r => <ActiveBadge active={r.active} /> },
       ]}
+      rowActions={(r, api) => (canEdit && (meta[r.id]?.level || 1) < 3
+        ? <button className="btn btn-sm btn-ghost" onClick={() => api.openNew({ parent_id: r.id, category: byId[r.id]?.category || 'window' })}>+ เพิ่มประเภทย่อย</button>
+        : null)}
     />
   )
 }

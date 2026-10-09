@@ -37,10 +37,11 @@ export function missingRequired(fields, form) {
   return fields.filter(f => f.required && f.type !== 'checkbox' && isBlank(form[f.key])).map(f => f.label)
 }
 
-export function resolveOptions(field, form) {
+// `row` is the row being edited (null when adding) for option lists that must exclude it.
+export function resolveOptions(field, form, row = null) {
   const o = field.options
   if (!o) return []
-  return typeof o === 'function' ? o(form) : o
+  return typeof o === 'function' ? o(form, row) : o
 }
 
 // Pickers offer active rows only, but editing an old record must still show

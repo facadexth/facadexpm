@@ -16,13 +16,15 @@ export function ActiveBadge({ active }) {
     : <span className="badge badge-finished">ปิดใช้งาน</span>
 }
 
-export function CrudForm({ fields, initial, onSave, onCancel, loading }) {
+export function CrudForm({ fields, initial, onSave, onCancel, loading, row = null }) {
   const [form, setForm] = useState(initial)
-  // a field may declare clears: [keys] -- dependent fields reset when it changes
+  // a field may declare clears: [keys] -- dependent fields reset when it changes,
+  // and sets(value, form) -> partial form -- dependent fields take a value derived from it.
   const set = (k, v) => setForm(f => {
     const next = { ...f, [k]: v }
-    const clears = fields.find(x => x.key === k)?.clears || []
-    for (const c of clears) next[c] = ''
+    const def = fields.find(x => x.key === k)
+    for (const c of def?.clears || []) next[c] = ''
+    if (def?.sets) Object.assign(next, def.sets(v, next))
     return next
   })
 
@@ -37,9 +39,9 @@ export function CrudForm({ fields, initial, onSave, onCancel, loading }) {
     }
     if (f.type === 'select') {
       return (
-        <select className="input" required={f.required} value={form[f.key]} onChange={e => set(f.key, e.target.value)}>
-          <option value="">{f.required ? '— เลือก —' : '—'}</option>
-          {resolveOptions(f, form).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        <select className="input" required={f.required} disabled={f.disabled ? f.disabled(form) : false} value={form[f.key]} onChange={e => set(f.key, e.target.value)}>
+          <option value="">{f.required ? '— เลือก —' : (f.emptyLabel || '—')}</option>
+          {resolveOptions(f, form, row).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       )
     }
@@ -60,7 +62,7 @@ export function CrudForm({ fields, initial, onSave, onCancel, loading }) {
           <div key={f.key}>
             {f.type !== 'checkbox' && <label className="label">{f.label}{f.required ? ' ★' : ''}</label>}
             {renderInput(f)}
-            {f.hint && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{f.hint}</div>}
+            {(typeof f.hint === 'function' ? f.hint(form) : f.hint) && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{typeof f.hint === 'function' ? f.hint(form) : f.hint}</div>}
           </div>
         ))}
       </div>
@@ -75,8 +77,12 @@ export function CrudForm({ fields, initial, onSave, onCancel, loading }) {
 export default function CatalogCrud({
   title, table, fields, columns, rows, onChanged, canEdit, deleteWarning, duplicateMessage,
   scope = {}, addLabel = '+ เพิ่ม', emptyText = 'ยังไม่มีข้อมูล', validate, rowActions, allowEdit = true,
+  mapError, beforeDelete,   // optional: mapError(e) -> Thai text or null; beforeDelete(row) -> awaited before the row is deleted
 }) {
   const [editing, setEditing] = useState(null)   // null | 'new' | row
+  const [newDefaults, setNewDefaults] = useState({})   // prefill for 'new' (e.g. a child's parent_id)
+  const openNew = (values = {}) => { setNewDefaults(values); setEditing('new') }
+  const errText = e => (mapError && mapError(e)) || friendlyDbError(e, duplicateMessage)
   const [deleteId, setDeleteId] = useState(null)
   const [saving, setSaving] = useState(false)
 
@@ -102,13 +108,16 @@ export default function CatalogCrud({
         if (error) throw error
       }
       close(); onChanged()
-    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + friendlyDbError(e, duplicateMessage)) }
+    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + errText(e)) }
     finally { setSaving(false) }
   }
 
   const handleDelete = async () => {
+    if (beforeDelete && deleteRow) {
+      try { await beforeDelete(deleteRow) } catch (e) { alert('ลบไม่สำเร็จ: ' + errText(e)); return }
+    }
     const { error } = await supabase.from(table).delete().eq('id', deleteId)
-    if (error) { alert('ลบไม่สำเร็จ: ' + friendlyDbError(error, duplicateMessage)); return }
+    if (error) { alert('ลบไม่สำเร็จ: ' + errText(error)); return }
     setDeleteId(null); onChanged()
   }
 
@@ -116,7 +125,7 @@ export default function CatalogCrud({
     <div style={{ marginBottom: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
         <h3 style={{ margin: 0, fontSize: 15 }}>{title}</h3>
-        {canEdit && <button className="btn btn-sm btn-primary" onClick={() => setEditing('new')}>{addLabel}</button>}
+        {canEdit && <button className="btn btn-sm btn-primary" onClick={() => openNew()}>{addLabel}</button>}
       </div>
       <div className="card">
         <div className="table-wrap">
@@ -127,7 +136,7 @@ export default function CatalogCrud({
                 <tr key={row.id}>
                   {columns.map(c => <td key={c.key}>{c.render ? c.render(row) : (row[c.key] ?? '—')}</td>)}
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    {rowActions && rowActions(row)}
+                    {rowActions && rowActions(row, { openNew })}
                     {canEdit && (
                       <>
                         {allowEdit && <button className="btn btn-sm btn-ghost" onClick={() => setEditing(row)}>แก้ไข</button>}
@@ -146,8 +155,8 @@ export default function CatalogCrud({
       {editing && (
         <Modal title={editing === 'new' ? `${addLabel.replace('+ ', '')}` : 'แก้ไขข้อมูล'} onClose={close} maxWidth={480}>
           <CrudForm
-            fields={fields} loading={saving} onSave={handleSave} onCancel={close}
-            initial={editing === 'new' ? emptyForm(fields, scope) : formFromRow(fields, editing)}
+            fields={fields} loading={saving} onSave={handleSave} onCancel={close} row={editing === 'new' ? null : editing}
+            initial={editing === 'new' ? emptyForm(fields, { ...scope, ...newDefaults }) : formFromRow(fields, editing)}
           />
         </Modal>
       )}

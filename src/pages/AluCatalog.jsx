@@ -12,6 +12,7 @@ import TypesTab from './aluCatalog/TypesTab.jsx'
 import ProfilesTab from './aluCatalog/ProfilesTab.jsx'
 import PartsTab from './aluCatalog/PartsTab.jsx'
 import PricesTab from './aluCatalog/PricesTab.jsx'
+import SettingsTab from './aluCatalog/SettingsTab.jsx'
 
 const TABS = [
   { id: 'hierarchy', label: '🏭 โรงรีด · ซีรีส์' },
@@ -19,6 +20,7 @@ const TABS = [
   { id: 'profiles',  label: '📏 หน้าตัด · สี · ความยาว' },
   { id: 'parts',     label: '🔩 ชิ้นส่วนอื่น' },
   { id: 'prices',    label: '💰 ราคา' },
+  { id: 'settings',  label: '⚙️ ค่ามาตรฐาน' },
 ]
 
 export default function AluCatalog() {
@@ -38,6 +40,7 @@ export default function AluCatalog() {
       {tab === 'profiles' && <ProfilesTab canEdit={canEdit} />}
       {tab === 'parts' && <PartsTab canEdit={canEdit} />}
       {tab === 'prices' && <PricesTab canEdit={canEdit} />}
+      {tab === 'settings' && <SettingsTab canEdit={canEdit} />}
     </div>
   )
 }

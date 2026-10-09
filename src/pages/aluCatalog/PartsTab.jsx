@@ -6,6 +6,7 @@ import { useCatalogTable } from '../../hooks/useAluCatalog.js'
 import CatalogCrud, { ActiveBadge } from '../../components/CatalogCrud.jsx'
 import LinkEditor from '../../components/LinkEditor.jsx'
 import { optionList } from '../../lib/catalogForm.js'
+import { typePickerOptions } from '../../lib/catalogTypeForm.js'
 import { seriesLabelFull } from '../../lib/aluCatalog.js'
 
 const KIND_LABEL = { hardware: 'อุปกรณ์', hardware_set: 'ชุดอุปกรณ์', accessory: 'อะไหล่/อุปกรณ์เสริม' }
@@ -37,7 +38,8 @@ export default function PartsTab({ canEdit }) {
   const linkedToSeries = new Set((seriesParts.data || []).filter(l => l.series_id === seriesId).map(l => l.part_id))
   const seriesPartChoices = (parts.data || []).filter(p => p.active !== false || linkedToSeries.has(p.id))
   const shownParts = (parts.data || []).filter(p => !kindFilter || p.kind === kindFilter)
-  const typeOptions = (types.data || []).map(t => ({ value: t.id, label: t.active === false ? `${t.name} (ปิดใช้งาน)` : t.name }))
+  // tree order, full path labels; inactive types stay listed so existing links remain editable
+  const typeOptions = typePickerOptions(types.data || [], new Set((types.data || []).map(t => t.id))).map(o => ({ value: o.id, label: o.label }))
   const partLabel = p => (p.code ? `${p.code} · ${p.name}` : p.name)
   const inactiveTag = p => (p.active === false ? ' (ปิดใช้งาน)' : '')
 
@@ -101,7 +103,7 @@ export default function PartsTab({ canEdit }) {
       </div>
       {seriesId && (
         <LinkEditor
-          title="อุปกรณ์/ชุดอุปกรณ์ที่ซีรีส์นี้ใช้" hint="เลือกประเภทบานเพื่อจำกัดให้ใช้กับประเภทนั้นเท่านั้น เว้นว่างคือใช้กับทุกประเภท (ชุดอุปกรณ์ 'ใช้กับชุด')"
+          title="อุปกรณ์/ชุดอุปกรณ์ที่ซีรีส์นี้ใช้" hint="เลือกประเภทบานเพื่อจำกัดให้ใช้กับประเภทนั้นเท่านั้น เว้นว่างคือใช้กับทุกประเภท (ชุดอุปกรณ์ 'ใช้กับชุด') · ถ้าเลือกประเภทที่มีประเภทย่อย จะใช้กับประเภทย่อยทั้งหมดของประเภทนี้"
           linkTable="alu_series_parts" parentKey="series_id" parentId={seriesId} childKey="part_id"
           childOptions={seriesPartChoices.map(p => ({ id: p.id, label: `${partLabel(p)} · ${KIND_LABEL[p.kind]}${inactiveTag(p)}` }))}
           links={seriesParts.data} onChanged={seriesParts.refetch} canEdit={canEdit}

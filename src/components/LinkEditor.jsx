@@ -69,6 +69,7 @@ export default function LinkEditor({ title, hint, linkTable, parentKey, parentId
                 <input type="checkbox" disabled={!canEdit} checked={!!link} onChange={() => toggle(child)} />
                 {child.label}
               </label>
+              {link && child.note && <span style={{ fontSize: 12, color: 'var(--text3)' }}>{child.note}</span>}
               {link && extraWithTable && <ExtraInput key={link.id + String(link[extra.key])} extra={extraWithTable} link={link} canEdit={canEdit} onSaved={onChanged} />}
             </div>
           )

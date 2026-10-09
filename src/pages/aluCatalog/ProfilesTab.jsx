@@ -8,13 +8,31 @@ import CatalogCrud, { ActiveBadge } from '../../components/CatalogCrud.jsx'
 import LinkEditor from '../../components/LinkEditor.jsx'
 import { optionList } from '../../lib/catalogForm.js'
 import { seriesLabelFull } from '../../lib/aluCatalog.js'
+import AttachmentsSection from '../../components/AttachmentsSection.jsx'
+import { useTenant } from '../../hooks/useTenant.js'
+import { supabase } from '../../lib/supabase.js'
+import { jointDeductionMm } from '../../lib/assembly.js'
+import { profileSketchSvg } from '../../lib/profileSketch.js'
+import { sketchShapeFor, sameShapeProfiles } from '../../lib/catalogTypeForm.js'
 
 const PROFILE_FIELDS = [
   { key: 'name', label: 'ชื่อหน้าตัด', type: 'text', required: true, placeholder: 'เช่น กล่องร่อง' },
-  { key: 'drawing_no', label: 'Drawing No', type: 'text' },
+  { key: 'drawing_no', label: 'DIE NO. (รหัสแม่พิมพ์ของโรงรีด)', type: 'text' },
+  { key: 'shape_group', label: 'กลุ่มรูปร่าง เช่น กล่องเรียบ', type: 'text', placeholder: 'เช่น กล่องเรียบ' },
   { key: 'family', label: 'กลุ่ม (family) สำหรับผูก BOM template', type: 'text', placeholder: 'เช่น กล่องร่อง' },
   { key: 'thickness_mm', label: 'ความหนา (มม.)', type: 'number', min: 0 },
   { key: 'linear_weight_kg_per_m', label: 'น้ำหนัก (กก./เมตร)', type: 'number', required: true, min: 0, step: '0.0001' },
+  { key: 'width_mm', label: 'ความกว้างรวมหน้าตัด (มม.)', type: 'number', min: 0, step: '0.01' },
+  { key: 'depth_mm', label: 'ความสูง/ลึกรวมหน้าตัด (มม.)', type: 'number', min: 0, step: '0.01' },
+  { key: 'primary_contact', label: 'พื้นผิวสัมผัสหลัก (หน้าที่เส้นรองมาชน)', type: 'select', required: true, default: 'width',
+    options: [
+      { value: 'width', label: 'หน้ากว้าง เช่น 101.6 (ปกติ) — เส้นรองหักตามความสูง/ลึก' },
+      { value: 'depth', label: 'หน้าแคบ — เส้นรองหักตามความกว้าง' },
+    ],
+    hint: form => {
+      const r = jointDeductionMm({}, { width_mm: form.width_mm, depth_mm: form.depth_mm, primary_contact: form.primary_contact })
+      return r.mm ? `เส้นรองจะหักข้างละ ${r.mm} มม.` : 'กรอกความกว้างและความสูง/ลึก เพื่อดูค่าหักที่จุดชน'
+    } },
   { key: 'default_length_m', label: 'ความยาวมาตรฐาน (เมตร)', type: 'number', default: 6.4, min: 0 },
   { key: 'image_url', label: 'ลิงก์รูปหน้าตัด', type: 'text' },
   { key: 'active', label: 'ใช้งานอยู่', type: 'checkbox', default: true },
@@ -38,6 +56,7 @@ export default function ProfilesTab({ canEdit }) {
   const variants = useCatalogTable('alu_profile_variants', 'id')
   const series = useCatalogTable('alu_series')
   const seriesProfiles = useCatalogTable('alu_series_profiles', 'id')
+  const { tenant } = useTenant()
   const [providerId, setProviderId] = useState('')
   const [profileId, setProfileId] = useState('')
   const [seriesId, setSeriesId] = useState('')
@@ -60,6 +79,22 @@ export default function ProfilesTab({ canEdit }) {
     .filter(l => l.profile_id === profileId)
     .map(l => ({ link: l, s: mySeries.find(s => s.id === l.series_id) }))
     .filter(x => x.s)
+
+  const sketch = pickedProfile ? profileSketchSvg({
+    width_mm: pickedProfile.width_mm, depth_mm: pickedProfile.depth_mm, wall_mm: pickedProfile.thickness_mm,
+    shape: sketchShapeFor(pickedProfile.shape_group),
+  }) : ''
+  const sameShape = pickedProfile ? sameShapeProfiles(profiles.data, pickedProfile) : []
+
+  // Deleting a profile cascades its file rows but not the stored objects: remove those first.
+  const removeProfileFiles = async (row) => {
+    const { data, error: e1 } = await supabase.from('alu_profile_files').select('file_path').eq('profile_id', row.id)
+    if (e1) throw e1
+    const paths = (data || []).map(f => f.file_path)
+    if (!paths.length) return
+    const { error: e2 } = await supabase.storage.from('alu-profile-files').remove(paths)
+    if (e2) throw e2
+  }
 
   const VARIANT_FIELDS = [
     { key: 'finish_id', label: 'สี', type: 'select', required: true, options: form => optionList(myFinishes, f => f.name, form.finish_id) },
@@ -98,12 +133,12 @@ export default function ProfilesTab({ canEdit }) {
               title="📏 หน้าตัดอลูมิเนียม" table="alu_profiles" fields={PROFILE_FIELDS} rows={myProfiles}
               scope={{ provider_id: providerId }} onChanged={profiles.refetch} canEdit={canEdit}
               deleteWarning="ลบแล้วจะลบความยาว/สี การผูกกับซีรีส์ และราคาของหน้าตัดนี้ทั้งหมดด้วย (ย้อนกลับไม่ได้) ถ้าแค่เลิกใช้ ให้ปิด “ใช้งานอยู่” แทน"
-              addLabel="+ เพิ่มหน้าตัด" emptyText="โรงรีดนี้ยังไม่มีหน้าตัด"
+              addLabel="+ เพิ่มหน้าตัด" emptyText="โรงรีดนี้ยังไม่มีหน้าตัด" beforeDelete={removeProfileFiles}
               columns={[
                 { key: 'name', label: 'ชื่อ', render: r => (
                   <span><strong>{r.name}</strong>{r.family ? <div style={{ fontSize: 11, color: 'var(--text3)' }}>กลุ่ม: {r.family}</div> : null}</span>
                 ) },
-                { key: 'drawing_no', label: 'Drawing No' },
+                { key: 'drawing_no', label: 'DIE NO.' },
                 { key: 'thickness_mm', label: 'หนา (มม.)' },
                 { key: 'linear_weight_kg_per_m', label: 'กก./ม.', render: r => (
                   noWeight(r)
@@ -143,6 +178,34 @@ export default function ProfilesTab({ canEdit }) {
                     { key: 'length_m', label: 'ยาว (ม.)' },
                   ]}
                 />
+                <div className="card" style={{ padding: 14, marginBottom: 16 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>ภาพหน้าตัดคร่าวๆ จากมิติ · {profileName[pickedProfile.id]}</div>
+                  {sketch
+                    ? <div style={{ maxWidth: 240 }} dangerouslySetInnerHTML={{ __html: sketch }} />
+                    : <div style={{ color: 'var(--text3)', fontSize: 13 }}>กรอกความกว้างและความสูง/ลึกของหน้าตัดเพื่อดูภาพ</div>}
+                  <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>ภาพที่ระบบวาดจากมิติเป็นแบบคร่าวๆ ใช้ดูสัดส่วน ส่วนรายละเอียดจริงดูจากไฟล์แบบที่แนบ</div>
+                  {pickedProfile.shape_group && (
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{pickedProfile.shape_group}: หน้าตัดอื่นในกลุ่มรูปร่างเดียวกัน (1 DIE NO. = 1 รายการ)</div>
+                      {sameShape.length ? (
+                        <div className="table-wrap"><table>
+                          <thead><tr><th>DIE NO.</th><th>T (มม.)</th><th>น้ำหนัก (กก./ม.)</th></tr></thead>
+                          <tbody>{sameShape.map(p => (
+                            <tr key={p.id}><td>{p.drawing_no || '—'}</td><td>{p.thickness_mm ?? '—'}</td><td>{p.linear_weight_kg_per_m ?? '—'}</td></tr>
+                          ))}</tbody>
+                        </table></div>
+                      ) : <div style={{ color: 'var(--text3)', fontSize: 12 }}>ยังไม่มีหน้าตัดอื่นในกลุ่มนี้</div>}
+                    </div>
+                  )}
+                </div>
+                <div className="card" style={{ padding: 14, marginBottom: 16 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>แนบไฟล์แบบ · {profileName[pickedProfile.id]}</div>
+                  {tenant?.id && canEdit ? (
+                    <AttachmentsSection key={pickedProfile.id} table="alu_profile_files" bucket="alu-profile-files" foreignKey="profile_id" entityId={pickedProfile.id}
+                      tenantId={tenant.id} accept=".pdf,.dwg,.dxf,.svg,.png,.jpg,.jpeg" />
+                  ) : <div style={{ color: 'var(--text3)', fontSize: 12 }}>เฉพาะผู้มีสิทธิ์แก้ไขแคตตาล็อกเท่านั้นที่แนบไฟล์ได้</div>}
+                  <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>1 ไฟล์ = 1 หน้าตัด แยกไฟล์ catalog/DWG ก่อนอัปโหลด · เก็บและดาวน์โหลดเท่านั้น ไม่มีภาพตัวอย่างของไฟล์ DWG</div>
+                </div>
                 <div className="card" style={{ padding: 14, marginBottom: 16 }}>
                   <div style={{ fontWeight: 600, marginBottom: 8 }}>ซีรีส์ที่ใช้หน้าตัดนี้</div>
                   {usedBy.length ? usedBy.map(({ link, s }) => (
