@@ -2417,6 +2417,35 @@ describe('previewSignature', () => {
     expect(previewSignature(a)).not.toBe(previewSignature({ ...a, main_axis: 'horizontal' }))
   })
 })
+
+describe('fix round 1: svg safety, signature completeness, empty offset', () => {
+  it('finishColor is validated before it reaches an attribute', () => {
+    const p = buildFramePreview(base)
+    const bad = previewSvgString(p, { style: 'solid', finishColor: '" onload="x' })
+    expect(bad).not.toContain('onload')
+    expect(bad).toContain('fill="#f4f4f2"')
+    expect(previewSvgString(p, { style: 'solid', finishColor: '#2b2f33' })).toContain('fill="#2b2f33"')
+  })
+  it('signature tells centred from offset 0 and sees frame widths', () => {
+    const a = { template_id: 't', width_m: 2, height_m: 1.5, panel_count: 2 }
+    expect(previewSignature({ ...a, addon_offset_m: null })).not.toBe(previewSignature({ ...a, addon_offset_m: 0 }))
+    expect(previewSignature({ ...a, addon_offset_m: '' })).toBe(previewSignature({ ...a, addon_offset_m: null }))
+    expect(previewSignature({ ...a, frame_mm: 40 })).not.toBe(previewSignature({ ...a, frame_mm: 44.45 }))
+    expect(previewSignature({ ...a, addon_frame_mm: 40 })).not.toBe(previewSignature({ ...a, addon_frame_mm: 44.45 }))
+    expect(previewSignature({ ...a, frame_mm: 40 })).toBe(previewSignature({ ...a, frame_mm: 40 }))
+  })
+  it('an empty-string offset centres the add-on like null', () => {
+    const e = buildFramePreview(withAddon({ offset_m: '' }))
+    const n = buildFramePreview(withAddon({ offset_m: null }))
+    expect(e.units[0].outer.x).toBeCloseTo(n.units[0].outer.x)
+    expect(e.units[0].outer.x).toBeCloseTo(e.units[1].outer.x + (e.units[1].outer.w - e.units[0].outer.w) / 2)
+  })
+  it('a mirrored preview serialises without NaN or undefined', () => {
+    const svg = previewSvgString(buildFramePreview({ ...withAddon({ position: 'right' }), view: 'in', template: tpl({ preview_kind: 'swing' }), part_labels: { left: 'L' } }))
+    expect(svg.startsWith('<svg')).toBe(true)
+    expect(svg).not.toMatch(/NaN|undefined/)
+  })
+})
 ```
 
 - [ ] **Step 2: Run it to confirm it fails**
@@ -2536,7 +2565,7 @@ export function buildFramePreview({ template, width_m, height_m, panel_count, ad
   const position = addonOk && ADDON_POSITIONS.includes(addon.position) ? addon.position : 'top'
   const axis = main_axis === 'horizontal' ? 'horizontal' : 'vertical'
 
-  const ar = addonOk ? addonRect(position, addon.offset_m == null ? null : Number(addon.offset_m), width_m, height_m, addon.width_m, addon.height_m) : null
+  const ar = addonOk ? addonRect(position, addon.offset_m === '' || addon.offset_m == null ? null : Number(addon.offset_m), width_m, height_m, addon.width_m, addon.height_m) : null
   const minX = addonOk ? Math.min(0, ar.x) : 0
   const minY = addonOk ? Math.min(0, ar.y) : 0
   const totalW = (addonOk ? Math.max(width_m, ar.x + addon.width_m) : width_m) - minX
@@ -2588,6 +2617,7 @@ const n2 = n => Math.round(n * 100) / 100
 
 export function previewSvgString(p, { style = 'double', finishColor = '#f4f4f2' } = {}) {
   if (!p) return ''
+  if (!/^#[0-9a-f]{3,8}$/i.test(String(finishColor))) finishColor = '#f4f4f2'
   const frameFill = style === 'cad' ? 'none' : style === 'solid' ? finishColor : FRAME
   const glassFill = style === 'cad' ? 'none' : GLASS
   const parts = []
@@ -2623,8 +2653,8 @@ export function previewSvgString(p, { style = 'double', finishColor = '#f4f4f2' 
 
 // Cheap signature of every input that changes the saved drawing; the item stores it with the snapshot so a
 // later edit can be detected ("the saved preview is older than the item").
-export function previewSignature({ template_id, width_m, height_m, panel_count, addon_template_id, addon_width_m, addon_height_m, addon_panel_count, addon_position, addon_offset_m, main_axis }) {
-  return JSON.stringify([template_id ?? null, width_m ?? null, height_m ?? null, panel_count ?? 1, addon_template_id ?? null, addon_width_m ?? null, addon_height_m ?? null, addon_panel_count ?? 1, addon_position ?? null, addon_offset_m ?? 0, main_axis ?? 'vertical'])
+export function previewSignature({ template_id, width_m, height_m, panel_count, addon_template_id, addon_width_m, addon_height_m, addon_panel_count, addon_position, addon_offset_m, main_axis, frame_mm, addon_frame_mm }) {
+  return JSON.stringify([template_id ?? null, width_m ?? null, height_m ?? null, panel_count ?? 1, addon_template_id ?? null, addon_width_m ?? null, addon_height_m ?? null, addon_panel_count ?? 1, addon_position ?? null, addon_offset_m === '' ? null : (addon_offset_m ?? null), main_axis ?? 'vertical', frame_mm ?? null, addon_frame_mm ?? null])
 }
 ```
 
