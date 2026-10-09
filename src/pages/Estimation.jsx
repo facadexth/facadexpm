@@ -23,6 +23,7 @@ import ProjectDefaultsPanel from './estimation/ProjectDefaultsPanel.jsx'
 import AvailabilityBanner from './estimation/AvailabilityBanner.jsx'
 import StalePriceBanner from './estimation/StalePriceBanner.jsx'
 import ItemsTable from './estimation/ItemsTable.jsx'
+import PriceStructureTab from './estimation/PriceStructureTab.jsx'
 import ItemModal from './estimation/ItemModal.jsx'
 import QuickQuote from './estimation/QuickQuote.jsx'
 import ProjectBomView from './estimation/ProjectBomView.jsx'
@@ -50,7 +51,7 @@ export default function Estimation(props) {
   const [newProjectName, setNewProjectName] = useState('')
   const [itemModal, setItemModal] = useState(null)   // null | { id: string | null }
   const [quickOpen, setQuickOpen] = useState(false)
-  const [tab, setTab] = useState('items')   // 'items' | 'bom'
+  const [tab, setTab] = useState('items')   // 'items' | 'bom' | 'price'
 
   const project = (projects || []).find(p => p.id === selectedProjectId) || null
   const projectOpenings = useMemo(() => (openings || []).filter(o => o.project_id === selectedProjectId), [openings, selectedProjectId])
@@ -123,12 +124,17 @@ export default function Estimation(props) {
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" className={`btn btn-sm ${tab === 'items' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('items')}>รายการ</button>
               <button type="button" className={`btn btn-sm ${tab === 'bom' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('bom')}>BOM ทั้งโครงการ</button>
+              <button type="button" className={`btn btn-sm ${tab === 'price' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('price')}>โครงสร้างราคา</button>
               {tab === 'items' && canEdit && <button className="btn btn-primary btn-sm" onClick={() => setItemModal({ id: null })}>+ เพิ่มรายการ</button>}
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setQuickOpen(true)}>ลองคิดราคา</button>
             </div>
             {tab === 'bom' && costCtx && (
               <ProjectBomView key={project.id} project={project} items={projectOpenings} costs={costs} base={costCtx} index={index} seriesTypes={catalog.seriesTypes}
                 settings={settings} canEdit={canEdit} onProjectSaved={refetchProjects} />
+            )}
+            {tab === 'price' && (
+              <PriceStructureTab key={project.id} project={project} items={projectOpenings} costs={costs} index={index} infillTypes={infillTypes}
+                templatesById={base.templatesById} canEdit={canEdit} onProjectSaved={refetchProjects} onItemsSaved={refetchOpenings} />
             )}
             {tab === 'items' && <ItemsTable items={projectOpenings} costs={costs} previewSigs={previewSigs} project={project} index={index} templatesById={base.templatesById} canEdit={canEdit}
               onOpen={id => setItemModal({ id })} onQuantitySaved={refetchOpenings} />}
