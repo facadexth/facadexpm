@@ -47,7 +47,7 @@ Owner-given answers are marked **(owner)**; the rest are mine, each with what it
 17. **`price_as_of`** is set from the user's LOCAL date at project creation (`localDateString(new Date())`); the DB default (`current_date`, UTC) is only a fallback.
 18. **(owner, 2026-10-09) Three-level types.** `door_window_types.parent_id`, up to three levels: กลุ่มหลัก (ประตู / หน้าต่าง / ผนังกระจก; category gains `curtain_wall`) → แบบ (บานเลื่อน) → แบบย่อย (รางล่าง / รางบน). Only a type with no active children can be chosen on templates, layout templates and items (`selectableTypes`). A series link or part link on a type applies to all its descendants; a link on a deeper type applies to it alone; the nearest linked ancestor's mixed-thickness flag wins. *Wrong if:* the owner wants a child to remove a parent's parts (no "exclude" rule yet) or wants to quote a non-leaf directly.
 19. **Types tab shows a tree** (indented, up to three levels); labels everywhere read "ประตู › บานเลื่อน › รางล่าง" (`typeLabel`). A child takes its category from its parent. A legacy template pointing at a type that now has children keeps pricing but shows a warning in the template editor. Labour rate falls back to the nearest ancestor's.
-20. **(owner, 2026-10-09) Project hardware.** The single project "ชุดอุปกรณ์" default is replaced by a table of hardware sets per type (`estimation_project_hardware`); items take their set from it by type (nearest mapped type in the chain wins). A type with no mapping still prices without a set and is warned about (owner can ask for "cannot price" instead); the old `default_hardware_set_id` applies only to projects that have no mapping rows, so existing projects price unchanged. *Wrong if:* the owner wants an unmapped type to block pricing.
+20. **(owner, 2026-10-09) Project hardware = a package.** A named package (`alu_hardware_packages` + `alu_hardware_package_items`) bundles one hardware set per type (nearest type in the chain wins). It is created in a subtab of the BOM template screen ("ชุดอุปกรณ์โครงการ"); the project page has one select-only field (`estimation_projects.hardware_package_id`); items take their set from the package by type. A type the package does not cover still prices without a set and is warned about (owner can ask for "cannot price" instead). The old `default_hardware_set_id` applies only to projects without a package, so existing projects price unchanged. *Wrong if:* the owner wants an unmapped type to block pricing, or wants per-project overrides of single types (not built).
 21. **(owner, 2026-10-09) No "same as frame" choice for the sash thickness.** The sash select (project page and item form) lists real thicknesses only (the series' offered thicknesses), preselected to the frame thickness's value when nothing else is set, and the chosen number is saved explicitly. It is shown only where the type allows mixed thickness. `sash_thickness_mm` NULL stays valid in the DB and engine for old rows and non-mixed types (it means the frame thickness); the UI just never offers it. The frame field is labelled "ความหนา วงกบ (มม.)" in the item form.
 22. **Type pick in the item form is cascading dropdowns** (กลุ่มหลัก → แบบ → แบบย่อย), the next dropdown appearing only when the chosen type has children; the saved value is the leaf. Item-form columns are balanced (left: fields, add-on, description; right: preview, layout templates).
 
@@ -62,7 +62,7 @@ Owner-given answers are marked **(owner)**; the rest are mine, each with what it
 ## File Structure
 
 New pure libs (`src/lib/`, each with a `.test.js` beside it): `estimationCatalogViews`, `localDate`, `assembly`, `estimationSettings`, `openingExtras`, `cutOptimizer`, `projectBom`, `openingCost`, `providerCompare`, `layoutTemplates`, `descriptionFormat`, `openingPayload`, `templateSave`, `profileSketch`, `typeTree`. Changed libs: `aluCatalogPricing` (3 index keys), `bomEngine` (role thickness + cut style), `estimationInherit` (+ its test: sash thickness inherits), `framePreview` (rewritten, backward compatible).
-New hook file: `src/hooks/useEstimation2b.js`. New/changed screens: `src/pages/aluCatalog/{ProfilesTab,HierarchyTab,SettingsTab}.jsx`, `src/pages/BomTemplates.jsx` (+ `src/pages/bomTemplates/JointsTab.jsx`), `src/pages/Estimation.jsx` (split into `src/pages/estimation/*`). SQL: `supabase/migrations/2026-10-12-01-estimation-2b-expand.sql`, `supabase/migrations/2026-10-12-02-estimation-type-parent.sql` (Task 11A), `supabase/tests/estimation_2b_expand_test.sql`, and (Task 18) `supabase/migrations/2026-10-13-01-estimation-contract.sql`.
+New hook file: `src/hooks/useEstimation2b.js`. New/changed screens: `src/pages/aluCatalog/{ProfilesTab,HierarchyTab,SettingsTab}.jsx`, `src/pages/BomTemplates.jsx` (+ `src/pages/bomTemplates/JointsTab.jsx`), `src/pages/Estimation.jsx` (split into `src/pages/estimation/*`). SQL: `supabase/migrations/2026-10-12-01-estimation-2b-expand.sql`, `supabase/migrations/2026-10-12-02-estimation-type-parent.sql` (Task 11A), `supabase/migrations/2026-10-12-03-estimation-hardware-packages.sql` (Task 11B), `supabase/tests/estimation_2b_expand_test.sql`, and (Task 18) `supabase/migrations/2026-10-13-01-estimation-contract.sql`.
 
 ## Follow-up A (already on the branch)
 
@@ -3650,61 +3650,83 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 (The owner-run script lives in the git-ignored `.superpowers` folder only.)
 
-### Task 11B: Project hardware — one hardware set per type, filled into items automatically (migration #4, `projectHardware` lib)
+### Task 11B: Project hardware packages — hardware sets per type, chosen once per project, filled into items automatically (migration #4, `projectHardware` lib)
 
-Owner request (mockup v22 comment, screen 1): replace the single "ชุดอุปกรณ์" project default by a **project hardware** table: hardware sets per door/window type, and each item gets its set automatically from its type.
+Owner request (mockup comments on screen 1, v22–v25): a **project hardware** = a named package that bundles the hardware set for each door/window type. It is created and edited in a subtab of the BOM template screen ("ชุดอุปกรณ์โครงการ", screen 5); the project page only has a select-only field "ชุดอุปกรณ์ของโปรเจกต์" that picks one package; each item then gets its hardware set automatically from its type.
 
 **Files:**
-- Create: `supabase/migrations/2026-10-12-03-estimation-project-hardware.sql`, `supabase/tests/estimation_project_hardware_test.sql`, `src/lib/projectHardware.js`, `src/lib/projectHardware.test.js`
-- Modify: `src/lib/estimationInherit.js` (+ its test), `src/hooks/useEstimation2b.js` (load the project's rows; add `useProjectHardware(projectId)` returning `{ rows, save }`)
-- Depends on Task 11A (`typeAndAncestorIds`). Isolation: new estimation-only table with the standard RLS loop.
+- Create: `supabase/migrations/2026-10-12-03-estimation-hardware-packages.sql`, `supabase/tests/estimation_hardware_packages_test.sql`, `src/lib/projectHardware.js`, `src/lib/projectHardware.test.js`
+- Modify: `src/lib/estimationInherit.js` (+ its test), `src/hooks/useEstimation2b.js` (load packages and their rows; add `useHardwarePackages()` returning `{ packages, items, savePackage, saveItems }`)
+- Depends on Task 11A (`typeAndAncestorIds`). Isolation: two new estimation-only tables with the standard RLS loop; one nullable column on `estimation_projects` (an estimation-only table).
 
 **Interfaces:**
-- Produces: `hardwareSetStatus(rows, typesById, typeId, legacyDefaultId)` → `{ set_id, status }` with `status` ∈ `'set'` (a set is mapped), `'none'` (mapped to "no hardware set" on purpose), `'missing'` (nothing mapped for this type or its ancestors), `'legacy'` (the project has no mapping rows at all, so the old `default_hardware_set_id` applies); `missingHardwareTypeIds(rows, typesById, typeIds)`.
-- `resolveItemInputs(item, project, template, typesById, projectHardware)` and `buildEngineOpening(raw, project, tpl, types, infills, projectHardware)` gain ONE optional trailing argument; omitting it keeps today's behaviour exactly.
+- Produces: `hardwareSetStatus(packageItems, typesById, typeId, legacyDefaultId)` → `{ set_id, status }`, `status` ∈ `'set'` (a set is mapped), `'none'` (mapped to "no hardware set" on purpose), `'missing'` (the chosen package has nothing for this type or its ancestors), `'legacy'` (the project has no package: `packageItems` is null/undefined, so the old `default_hardware_set_id` applies); `missingHardwareTypeIds(packageItems, typesById, typeIds)`; `packagesForSeries(packages, seriesId)`.
+- `resolveItemInputs(item, project, template, typesById, packageItems)` and `buildEngineOpening(raw, project, tpl, types, infills, packageItems)` gain ONE optional trailing argument. `packageItems` is the array of rows of the project's chosen package (`[]` = a chosen package that maps nothing), or null/omitted when the project has no package (today's behaviour exactly).
 
 Rules (Ruling 20):
-1. A mapping row is `(project, type) → hardware set or NULL`. NULL = "ไม่ใช้ชุดอุปกรณ์" on purpose. The nearest type in the chain type → parent → grandparent that has a row wins (so a set on บานเลื่อน covers รางล่าง and รางบน).
-2. Item resolution: `no_hardware_set` → none; else the item's own `hardware_set_id`; else the project mapping for the item's template type; else nothing. The old `estimation_projects.default_hardware_set_id` is used ONLY while the project has no mapping rows (so existing projects keep pricing the same); the new screen no longer shows it.
-3. A type with no mapping (`'missing'`) still prices, without a set; the project page warns "ประเภท … ยังไม่ได้กำหนดชุดอุปกรณ์" and the item form shows the same warning. It is NOT an unresolved line (some types, e.g. fixed panes, need no set; owner may overturn, see the mockup question). A mapped set whose parts lack prices is unresolved exactly as today.
-4. The set picker lists only hardware sets (`kind = 'hardware_set'`) linked to the chosen series for that type (`hardwareSetsForSeries(index, seriesId, typeId)`), i.e. only the brands that fit the series.
-5. Changing the project's series keeps the rows; a row whose set the new series does not offer is flagged in the picker "ซีรีส์นี้ไม่มีชุดนี้" and counts as `'missing'` for the warning (the screen computes this; the lib stays catalog-free).
+1. `alu_hardware_packages(name, series_id NULL = any series)` and `alu_hardware_package_items(package_id, type_id, hardware_set_id NULL = "no hardware set" on purpose)`, unique `(package_id, type_id)`. The nearest type in the chain type → parent → grandparent that has a row wins (a set on บานเลื่อน covers its 2-/3-panel children).
+2. `estimation_projects.hardware_package_id` (nullable, `ON DELETE SET NULL`). The project page offers `packagesForSeries(packages, project series)` (series NULL or equal) plus "— ไม่ใช้ —" (NULL), select only.
+3. Item resolution: `no_hardware_set` → none; else the item's own `hardware_set_id`; else the package's set for the template's type; else nothing. The old `default_hardware_set_id` is used ONLY while the project has no package, so existing projects price unchanged; the new UI no longer shows it.
+4. A type with no row (`'missing'`) still prices, without a set; the project page and the item form warn "ประเภท … ยังไม่ได้กำหนดชุดอุปกรณ์". It is NOT an unresolved line (some types, e.g. fixed panes, need no set; the owner may overturn). A mapped set whose parts lack prices is unresolved as today.
+5. The package editor's set picker lists only `kind = 'hardware_set'` parts linked to the package's series for that type (`hardwareSetsForSeries`); with series NULL it lists every active hardware set.
+6. If the project's series changes to one a package does not belong to, the project keeps the package id but the page flags "ชุดนี้ไม่ใช่ของซีรีส์ที่เลือก" and every type counts as `'missing'` for the warning (screen computes it; the lib stays catalog-free).
 
-- [ ] **Step 1: Migration** `supabase/migrations/2026-10-12-03-estimation-project-hardware.sql`
+- [ ] **Step 1: Migration** `supabase/migrations/2026-10-12-03-estimation-hardware-packages.sql`
 
 ```sql
--- Project hardware: a hardware set per door/window type for one estimation project. Additive; estimation-only.
-CREATE TABLE estimation_project_hardware (
+-- Project hardware packages: a hardware set per door/window type, chosen once per estimation project. Additive; estimation-only.
+CREATE TABLE alu_hardware_packages (
+  id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id  UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  name       TEXT NOT NULL,
+  series_id  UUID REFERENCES alu_series(id) ON DELETE SET NULL,    -- NULL = usable with any series
+  active     BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, name)
+);
+CREATE TABLE alu_hardware_package_items (
   id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   tenant_id       UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
-  project_id      UUID NOT NULL REFERENCES estimation_projects(id) ON DELETE CASCADE,
+  package_id      UUID NOT NULL REFERENCES alu_hardware_packages(id) ON DELETE CASCADE,
   type_id         UUID NOT NULL REFERENCES door_window_types(id) ON DELETE CASCADE,
-  hardware_set_id UUID REFERENCES alu_parts(id) ON DELETE CASCADE,   -- NULL = no hardware set on purpose
+  hardware_set_id UUID REFERENCES alu_parts(id) ON DELETE CASCADE,  -- NULL = no hardware set on purpose
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (project_id, type_id)
+  UNIQUE (package_id, type_id)
 );
-CREATE INDEX idx_estimation_project_hardware_tenant_id ON estimation_project_hardware(tenant_id);
-CREATE INDEX idx_estimation_project_hardware_type_id   ON estimation_project_hardware(type_id);
-CREATE INDEX idx_estimation_project_hardware_set_id    ON estimation_project_hardware(hardware_set_id);
-ALTER TABLE estimation_project_hardware ENABLE ROW LEVEL SECURITY;
-CREATE POLICY admin_full_access ON estimation_project_hardware FOR ALL TO authenticated
-  USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('estimation'))
-  WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('estimation'));
+ALTER TABLE estimation_projects
+  ADD COLUMN IF NOT EXISTS hardware_package_id UUID REFERENCES alu_hardware_packages(id) ON DELETE SET NULL;
+
+CREATE INDEX idx_alu_hardware_packages_series_id      ON alu_hardware_packages(series_id);
+CREATE INDEX idx_alu_hardware_package_items_type_id   ON alu_hardware_package_items(type_id);
+CREATE INDEX idx_alu_hardware_package_items_set_id    ON alu_hardware_package_items(hardware_set_id);
+CREATE INDEX idx_estimation_projects_hw_package       ON estimation_projects(hardware_package_id);
+
+DO $$
+DECLARE t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['alu_hardware_packages','alu_hardware_package_items'] LOOP
+    EXECUTE format('CREATE INDEX idx_%s_tenant_id ON %I(tenant_id)', t, t);
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format($p$CREATE POLICY admin_full_access ON %I FOR ALL TO authenticated
+      USING (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('estimation'))
+      WITH CHECK (is_admin_or_owner() AND tenant_id = current_tenant_id() AND has_module_access('estimation'))$p$, t);
+  END LOOP;
+END $$;
 ```
 
-- [ ] **Step 2: SQL test** `supabase/tests/estimation_project_hardware_test.sql` with the same fixture header as `estimation_type_parent_test.sql` (names `__PHW TEST A/B/C__`). Blocks: (1) as tenant A: insert a project, a type, a hardware-set part (`kind='hardware_set'`), a row (set) and a second row for another type with `hardware_set_id` NULL (both succeed); a duplicate `(project, type)` raises `unique_violation`; (2) isolation, BEFORE any delete: as tenant C (no `estimation`) `SELECT count(*)` is 0 and `INSERT` raises; tenant B cannot see A's rows (count 0); (3) deletes: deleting the type removes its row; deleting the part removes the rows that used it; deleting the project removes its rows. Owner script `run-project-hardware-tests.sh` copied from `run-type-parent-tests.sh` (new file names; persistence check on table `estimation_project_hardware`; leftover `tenants like '__PHW TEST%'`). Agents never run it against Supabase.
+- [ ] **Step 2: SQL test** `supabase/tests/estimation_hardware_packages_test.sql` with the same fixture header as `estimation_type_parent_test.sql` (names `__HWP TEST A/B/C__`). Blocks: (1) as tenant A: insert a series, a type, a `hardware_set` part, a package (series NULL) with one row (set) and one row for a second type with `hardware_set_id` NULL (both succeed); a duplicate `(package, type)` raises `unique_violation`; a duplicate package name raises; an estimation project can take `hardware_package_id`; (2) isolation, BEFORE any delete: tenant C (no `estimation`) sees 0 rows in both tables and `INSERT` raises; tenant B sees none of A's rows; (3) deletes: deleting the type removes its rows; deleting the part removes the rows that used it; deleting the package removes its rows and sets the project's `hardware_package_id` to NULL; deleting a series sets the package's `series_id` to NULL. Owner script `run-hardware-packages-tests.sh` copied from `run-type-parent-tests.sh` (new file names; persistence check on table `alu_hardware_packages`; leftover `tenants like '__HWP TEST%'`). Agents never run it against Supabase.
 
 - [ ] **Step 3: Failing tests** `src/lib/projectHardware.test.js`
 
 ```js
 import { describe, it, expect } from 'vitest'
-import { hardwareSetStatus, missingHardwareTypeIds } from './projectHardware.js'
+import { hardwareSetStatus, missingHardwareTypeIds, packagesForSeries } from './projectHardware.js'
 
 const types = {
   slide: { id: 'slide', parent_id: null }, low: { id: 'low', parent_id: 'slide' }, top: { id: 'top', parent_id: 'slide' },
   swing: { id: 'swing', parent_id: null }, fixed: { id: 'fixed', parent_id: null },
 }
-const rows = [
+const items = [
   { type_id: 'slide', hardware_set_id: 'HW-A' },
   { type_id: 'top', hardware_set_id: 'HW-B' },
   { type_id: 'fixed', hardware_set_id: null },
@@ -3712,34 +3734,51 @@ const rows = [
 
 describe('hardwareSetStatus', () => {
   it('uses the type\'s own row, else the nearest ancestor\'s', () => {
-    expect(hardwareSetStatus(rows, types, 'top', 'OLD')).toEqual({ set_id: 'HW-B', status: 'set' })
-    expect(hardwareSetStatus(rows, types, 'low', 'OLD')).toEqual({ set_id: 'HW-A', status: 'set' })
-    expect(hardwareSetStatus(rows, types, 'slide', 'OLD')).toEqual({ set_id: 'HW-A', status: 'set' })
+    expect(hardwareSetStatus(items, types, 'top', 'OLD')).toEqual({ set_id: 'HW-B', status: 'set' })
+    expect(hardwareSetStatus(items, types, 'low', 'OLD')).toEqual({ set_id: 'HW-A', status: 'set' })
+    expect(hardwareSetStatus(items, types, 'slide', 'OLD')).toEqual({ set_id: 'HW-A', status: 'set' })
   })
   it('a row with no set means "no hardware set" on purpose, not missing', () => {
-    expect(hardwareSetStatus(rows, types, 'fixed', 'OLD')).toEqual({ set_id: null, status: 'none' })
+    expect(hardwareSetStatus(items, types, 'fixed', 'OLD')).toEqual({ set_id: null, status: 'none' })
   })
-  it('a type with no row anywhere in its chain is missing (and does NOT fall back to the old project default)', () => {
-    expect(hardwareSetStatus(rows, types, 'swing', 'OLD')).toEqual({ set_id: null, status: 'missing' })
+  it('a type with no row in a chosen package is missing and does NOT fall back to the old project default', () => {
+    expect(hardwareSetStatus(items, types, 'swing', 'OLD')).toEqual({ set_id: null, status: 'missing' })
+    expect(hardwareSetStatus([], types, 'swing', 'OLD')).toEqual({ set_id: null, status: 'missing' })
   })
-  it('with no rows at all the old project default applies, so existing projects price the same', () => {
-    expect(hardwareSetStatus([], types, 'swing', 'OLD')).toEqual({ set_id: 'OLD', status: 'legacy' })
-    expect(hardwareSetStatus(null, types, 'swing', null)).toEqual({ set_id: null, status: 'legacy' })
+  it('with no package at all (null / undefined) the old project default applies, so existing projects price the same', () => {
+    expect(hardwareSetStatus(null, types, 'swing', 'OLD')).toEqual({ set_id: 'OLD', status: 'legacy' })
+    expect(hardwareSetStatus(undefined, types, 'swing', null)).toEqual({ set_id: null, status: 'legacy' })
   })
   it('no type gives nothing to resolve', () => {
-    expect(hardwareSetStatus(rows, types, null, 'OLD')).toEqual({ set_id: null, status: 'missing' })
-    expect(hardwareSetStatus([], types, null, 'OLD')).toEqual({ set_id: 'OLD', status: 'legacy' })
+    expect(hardwareSetStatus(items, types, null, 'OLD')).toEqual({ set_id: null, status: 'missing' })
+    expect(hardwareSetStatus(null, types, null, 'OLD')).toEqual({ set_id: 'OLD', status: 'legacy' })
   })
 })
 
 describe('missingHardwareTypeIds', () => {
   it('lists distinct type ids that are missing, in the order given', () => {
-    expect(missingHardwareTypeIds(rows, types, ['low', 'swing', 'fixed', 'swing', null])).toEqual(['swing'])
+    expect(missingHardwareTypeIds(items, types, ['low', 'swing', 'fixed', 'swing', null])).toEqual(['swing'])
   })
-  it('lists nothing for a project with no rows (legacy) or no types', () => {
-    expect(missingHardwareTypeIds([], types, ['swing'])).toEqual([])
-    expect(missingHardwareTypeIds(rows, types, [])).toEqual([])
-    expect(missingHardwareTypeIds(rows, types, null)).toEqual([])
+  it('lists nothing for a project without a package or without types', () => {
+    expect(missingHardwareTypeIds(null, types, ['swing'])).toEqual([])
+    expect(missingHardwareTypeIds(items, types, [])).toEqual([])
+    expect(missingHardwareTypeIds(items, types, null)).toEqual([])
+  })
+})
+
+describe('packagesForSeries', () => {
+  const pk = [
+    { id: 'a', name: 'B', series_id: 's1', active: true },
+    { id: 'b', name: 'A', series_id: null, active: true },
+    { id: 'c', name: 'C', series_id: 's2', active: true },
+    { id: 'd', name: 'D', series_id: 's1', active: false },
+  ]
+  it('lists active packages of that series or of any series, sorted by name', () => {
+    expect(packagesForSeries(pk, 's1').map(p => p.id)).toEqual(['b', 'a'])
+  })
+  it('with no series chosen only any-series packages are offered; null input is empty', () => {
+    expect(packagesForSeries(pk, null).map(p => p.id)).toEqual(['b'])
+    expect(packagesForSeries(null, 's1')).toEqual([])
   })
 })
 ```
@@ -3750,38 +3789,45 @@ describe('missingHardwareTypeIds', () => {
 
 ```js
 // src/lib/projectHardware.js
-// Project hardware: a hardware set per door/window type for one project (Ruling 20). Pure.
+// Project hardware packages: a hardware set per door/window type, chosen once per project (Ruling 20). Pure.
 import { typeAndAncestorIds } from './typeTree.js'
 
-// rows: this project's estimation_project_hardware rows. legacyDefaultId: estimation_projects.default_hardware_set_id.
-export function hardwareSetStatus(rows, typesById, typeId, legacyDefaultId) {
-  const list = Array.isArray(rows) ? rows : []
-  if (list.length === 0) return { set_id: legacyDefaultId || null, status: 'legacy' }
+// packageItems: rows of the project's chosen package, or null/undefined when the project has none.
+// legacyDefaultId: estimation_projects.default_hardware_set_id (used only while there is no package).
+export function hardwareSetStatus(packageItems, typesById, typeId, legacyDefaultId) {
+  if (!Array.isArray(packageItems)) return { set_id: legacyDefaultId || null, status: 'legacy' }
   for (const id of typeAndAncestorIds(typesById, typeId)) {
-    const r = list.find(x => x.type_id === id)
+    const r = packageItems.find(x => x.type_id === id)
     if (r) return r.hardware_set_id ? { set_id: r.hardware_set_id, status: 'set' } : { set_id: null, status: 'none' }
   }
   return { set_id: null, status: 'missing' }
 }
 
-// Distinct type ids (first-seen order) that have no mapping; none for a project still on the old default.
-export function missingHardwareTypeIds(rows, typesById, typeIds) {
+// Distinct type ids (first-seen order) the chosen package does not cover; none for a project without a package.
+export function missingHardwareTypeIds(packageItems, typesById, typeIds) {
   const out = []
   for (const id of typeIds || []) {
-    if (id && !out.includes(id) && hardwareSetStatus(rows, typesById, id, null).status === 'missing') out.push(id)
+    if (id && !out.includes(id) && hardwareSetStatus(packageItems, typesById, id, null).status === 'missing') out.push(id)
   }
   return out
 }
+
+// Active packages the project's series may use (a package with no series fits any), sorted by name.
+export function packagesForSeries(packages, seriesId) {
+  return (packages || [])
+    .filter(p => p.active !== false && (!p.series_id || p.series_id === seriesId))
+    .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), 'th'))
+}
 ```
 
-- [ ] **Step 6: `estimationInherit`.** In `resolveItemInputs` add the trailing parameter `projectHardware` and compute `const hw = hardwareSetStatus(projectHardware, typesById, template && template.type_id, pj.default_hardware_set_id)`; set `hardware_set_id: it.no_hardware_set ? null : first(it.hardware_set_id, hw.set_id)`. `buildEngineOpening` passes its new trailing `projectHardware` through; `buildEngineAddonOpening` is unchanged (an add-on never has a hardware set). Add tests to `estimationInherit.test.js`: item set wins over the mapping; `no_hardware_set` beats the mapping; mapping used for the template's type (and a child of a mapped parent); `'missing'` gives null; `projectHardware` omitted gives today's project default (the existing tests must pass untouched).
+- [ ] **Step 6: `estimationInherit`.** In `resolveItemInputs` add the trailing parameter `packageItems` and compute `const hw = hardwareSetStatus(packageItems, typesById, template && template.type_id, pj.default_hardware_set_id)`; set `hardware_set_id: it.no_hardware_set ? null : first(it.hardware_set_id, hw.set_id)`. `buildEngineOpening` passes its new trailing `packageItems` through; `buildEngineAddonOpening` is unchanged (an add-on never has a hardware set). Add tests to `estimationInherit.test.js`: item set wins over the package; `no_hardware_set` beats the package; the package's set is used for the template's type (and for a child of a mapped parent); `'missing'` gives null; `packageItems` omitted gives today's project default (the existing tests pass untouched).
 
 - [ ] **Step 7: Full run and commit**
 
 ```bash
 npx vitest run && npm run build
-git add supabase/migrations/2026-10-12-03-estimation-project-hardware.sql supabase/tests/estimation_project_hardware_test.sql src/lib src/hooks
-git commit -m "feat(estimation): project hardware, a hardware set per type filled into items automatically
+git add supabase/migrations/2026-10-12-03-estimation-hardware-packages.sql supabase/tests/estimation_hardware_packages_test.sql src/lib src/hooks
+git commit -m "feat(estimation): project hardware packages, a hardware set per type filled into items automatically
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ```
@@ -3825,7 +3871,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 - Consumes: `useCatalogTable('door_window_types')`, `useEstimationCatalog()` (families from `index.seriesProfilesBySeries` + profiles; parts), `useTemplateJoints` (Task 11), `jointRowsForInsert`, `validateJoints`, `componentRowsForInsert`, `jointIndexForLoad` (Task 11), `seriesForType` + `allowsMixedThickness` (Task 2).
 - Produces: templates with `type_id`, `preview_kind`, `main_axis`, joints and component joint/thickness links.
 
-Mockup screen 5 (three tabs). Steps:
+Mockup screen 5 (FOUR tabs: the fourth, "ชุดอุปกรณ์โครงการ", edits `alu_hardware_packages` and `alu_hardware_package_items` through `useHardwarePackages` (Task 11B): package select + name + series select + "+ ชุดอุปกรณ์โครงการใหม่", and a table type → hardware set (types from `buildTypeTree`, any level; sets from `hardwareSetsForSeries` for the package series, or every active hardware set when the series is "ทุกซีรีส์"; "— ยังไม่กำหนด —" = no row, "— ไม่ใช้ชุดอุปกรณ์ —" = row with NULL set); it does not depend on the template being edited). Steps:
 
 - [ ] **Step 1: Template fields.** Add selects `ประเภท (จากแคตตาล็อก)` → `type_id` (options = `selectableTypes(types)` labelled with `typeLabel`; if the saved `type_id` is not selectable because it now has children, keep it in the list and show a warning pill "ประเภทนี้มีประเภทย่อย เลือกประเภทย่อย"), `รูปแบบภาพตัวอย่าง` → `preview_kind` (`fixed` "บานติดตาย", `slide` "บานเลื่อน", `swing` "บานสวิง"), and `เส้นหลักของกรอบ (วิ่งเต็ม)` → `main_axis` (`vertical` "เส้นตั้ง ซ้าย/ขวา", `horizontal` "เส้นนอน บน/ล่าง"). Include them in the `payload` that is inserted/updated.
 - [ ] **Step 2: Hardware lines.** Add a `part_id` select per hardware line (active parts of kind `hardware`, `accessory` or `hardware_set`, shown as `P-0007 ชื่อ`), "— ไม่ผูก (ใช้ราคาอ้างอิง) —" first. Keep `reference_unit_price` as the fallback.
@@ -3845,7 +3891,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ### Task 14: Estimation project page — defaults, extruder, price date, banners
 
-**Project hardware (Task 11B, mockup v22 screen 1):** the single "ชุดอุปกรณ์" select is replaced by a table of the types the project uses (rows = `selectableTypes` used by its items, plus any type the owner adds) with one set select per row (options = `hardwareSetsForSeries(index, projectSeriesId, typeId)` for that type, grouped by brand, plus "— ยังไม่กำหนด —" = no row and "— ไม่ใช้ชุดอุปกรณ์ —" = row with NULL), saved through `useProjectHardware`. Show the amber banner for `missingHardwareTypeIds(...)` ("ประเภท … ยังไม่ได้กำหนดชุดอุปกรณ์ คิดราคาโดยไม่มีชุด"). Pass the rows to every `buildEngineOpening` / `resolveItemInputs` call.
+**Project hardware (Task 11B, mockup v25 screen 1):** the single "ชุดอุปกรณ์" default is replaced by a select-only field "ชุดอุปกรณ์ของโปรเจกต์" listing `packagesForSeries(packages, project series)` plus "— ไม่ใช้ —", saved to `estimation_projects.hardware_package_id`. Show the amber banner for `missingHardwareTypeIds(...)` ("ประเภท … ยังไม่ได้กำหนดชุดอุปกรณ์ คิดราคาโดยไม่มีชุด") and, if the chosen package belongs to another series, "ชุดนี้ไม่ใช่ของซีรีส์ที่เลือก". Pass the package's rows (or null when none) to every `buildEngineOpening` / `resolveItemInputs` call.
 
 **Files:**
 - Modify: `src/pages/Estimation.jsx` (becomes a thin shell; move the opening editor out in Task 15)
@@ -3885,7 +3931,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 Mockup screen 2 (all of it). Steps:
 
-Hardware field (mockup screen 2): while "ใช้ค่าโปรเจกต์" is ticked the select is disabled and shows the set resolved by `hardwareSetStatus` for the chosen template type (follows type changes); status `missing` shows the warning "ประเภทนี้ยังไม่ได้กำหนดชุดในโปรเจกต์"; unticking lets the owner pick any set the series offers for the type.
+Hardware field (mockup screen 2): while "ใช้ค่าโปรเจกต์" is ticked the select is disabled and shows the set resolved by `hardwareSetStatus` (from the project's package) for the chosen template type (follows type changes); status `missing` shows the warning "ประเภทนี้ยังไม่ได้กำหนดชุดในโปรเจกต์"; unticking lets the owner pick any set the series offers for the type.
 
 Layout (mockup v24): two balanced columns. Left = item fields, add-on, quotation description; right = preview, layout-template cards and the save-snapshot options. The type field is three cascading selects built from `buildTypeTree(types)` (Ruling 22), the saved `template.type_id` is always the leaf. The frame field label is "ความหนา วงกบ (มม.)" and the sash select never offers "same as frame" (Ruling 21).
 
@@ -4025,7 +4071,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ## Deploy checklist (the order matters)
 
-1. Owner applies Phase 1 migrations 01–03, then 2026-10-11-01, then 2026-10-12-01, then 2026-10-12-02 (type parents; test script `run-type-parent-tests.sh`), then 2026-10-12-03 (project hardware; `run-project-hardware-tests.sh`) (each only after its test script is green).
+1. Owner applies Phase 1 migrations 01–03, then 2026-10-11-01, then 2026-10-12-01, then 2026-10-12-02 (type parents; test script `run-type-parent-tests.sh`), then 2026-10-12-03 (hardware packages; `run-hardware-packages-tests.sh`) (each only after its test script is green).
 2. Deploy the code. Open and save every existing item once (so `series_id` / `alu_finish_id` are set).
 3. Only then apply `2026-10-13-01-estimation-contract.sql` (it refuses while any item still uses the legacy columns).
 4. Rebase the branch onto the current `origin/main` (the PO release moved it) before the final merge; resolve conflicts in `src/App.jsx` / `src/hooks/useSupabase.js` by hand.
