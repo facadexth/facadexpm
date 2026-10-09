@@ -8,7 +8,7 @@
 
 **Tech Stack:** React 18 + Vite, vitest, Supabase (RLS, tenant_id on every table), plain JS libs. No new dependencies.
 
-**Spec:** `docs/superpowers/specs/2026-10-08-aluminium-cost-catalog-design.md` (the spec's later decisions are in the Rulings below, which came from the owner's mockup comments). Visual spec for every screen: the published mockup https://claude.ai/artifact/BA92PnZB9eSNX1TzyynbbD (v20, 9 screens). Predecessors: `2026-10-08-aluminium-cost-catalog-phase-1.md`, `2026-10-09-aluminium-cost-catalog-phase-2a-engine.md`.
+**Spec:** `docs/superpowers/specs/2026-10-08-aluminium-cost-catalog-design.md` (the spec's later decisions are in the Rulings below, which came from the owner's mockup comments). Visual spec for every screen: the published mockup https://claude.ai/artifact/BA92PnZB9eSNX1TzyynbbD (v21, 9 screens). Predecessors: `2026-10-08-aluminium-cost-catalog-phase-1.md`, `2026-10-09-aluminium-cost-catalog-phase-2a-engine.md`.
 
 ## Global Constraints
 
@@ -18,8 +18,8 @@
 - **Pure functions only in `src/lib`:** no I/O, no `Date.now()` / `new Date()` inside them (callers pass dates in); dates are `'YYYY-MM-DD'` strings.
 - **Unresolved, never silent 0.** A price or dimension that cannot be found is listed with a reason code; no total may hide it.
 - **No upserts, no PostgREST embeds** in new code: load tables separately (`fetchCatalogRows` / `useCatalogTable`) and join client-side; settings use insert-or-update by looking up the row first.
-- **Do NOT modify** `src/pages/AluminumProfiles.jsx` or `src/pages/PurchaseOrders.jsx` (legacy aluminium profiles stay PO-side).
-- **Mockup-first rule already satisfied** for the screens in Tasks 12–17; build them to match mockup v20. Anything the mockup does not show: stop and ask, do not invent UI.
+- **Do NOT modify** `src/pages/AluminumProfiles.jsx` or `src/pages/PurchaseOrders.jsx` (legacy aluminium profiles stay PO-side). The only edit allowed to the shared `src/components/AttachmentsSection.jsx` is an optional `accept` prop whose default is today's value.
+- **Mockup-first rule already satisfied** for the screens in Tasks 12–17; build them to match mockup v21. Anything the mockup does not show: stop and ask, do not invent UI.
 - **Out of scope (owner, 2026-10-09):** shop drawings / DXF / DWG export (a later extension; do not mould `framePreview` for it), the quotation export and the quotation attachment (Phase 3), data import, the PO linkage. This plan only STORES the preview snapshots and the description format that Phase 3 will use.
 - Thai UI copy for every user-visible string. Commit messages end with the line `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 - Run unit tests with `npx vitest run <file>`; whole suite `npm test`; build `npm run build`.
@@ -30,17 +30,17 @@ Owner-given answers are marked **(owner)**; the rest are mine, each with what it
 
 1. **(owner) Price lock stays by `effective_from`** (`price_as_of`). Quotations hold 30–60 days; emergencies are handled by the refresh-price button (Task 17). No `price_locked_at`.
 2. **(owner) Hardware vs accessory** are the existing `alu_parts.kind` values (`hardware`/`hardware_set` vs `accessory`); series↔part links are the existing `alu_series_parts` (`type_id` NULL = every type). No schema change. A part may link to several types of one series (the unique index already allows it).
-3. **(owner) Thickness per role** (frame vs sash) is allowed only where the series+type link says so: `alu_series_types.allow_mixed_thickness`. A template component may carry its own `thickness_mm`; the engine ignores it when the flag is off (`applyRoleThickness`).
+3. **(owner) Frame and sash thickness are separate** (government specs, e.g. frame 2.0 mm / sash 1.5 mm, are the common traditional case on every extruder's standard series). The item has `thickness_mm` (frame / main) and `sash_thickness_mm` (NULL = same as the frame); the project has `default_thickness_mm` and `default_sash_thickness_mm`; both inherit by NULL. A template component is tagged `thickness_role = 'sash'` (NULL = frame/main). Sash thickness applies only where the series+type link allows it (`alu_series_types.allow_mixed_thickness`); otherwise every component uses the single thickness (`applyRoleThickness`). A joint's main bar is always looked up at the frame thickness.
 4. **(owner) One die = one item.** `alu_profiles.drawing_no` is the extruder's DIE NO. (relabelled in the UI); equal shape with different thickness is a different profile row. `shape_group` only groups profiles and shares the drawing/dimensions; it carries no price. The same die no. from two extruders is two rows. *Wrong if:* shape groups must also hold shared prices — then they need their own table.
-5. **(owner) Joint logic is per template.** Main bar = full length, secondary bar shortened by the main bar's **primary contact surface** (`depth` by default, `width` per profile; manual override per joint). Which bar is main is set in the template (`bom_template_joints.main_family`; `bom_templates.main_axis` drives the preview). Sliding frame: the two vertical bars are main.
-6. **(owner) Cut optimizer is whole-project only**; saw kerf differs for 90° (`kerf_square_mm`) and 45° (`kerf_miter_mm`); all constants are tenant-wide in `estimation_settings`. *The kerf defaults 3 / 5 mm are placeholders*: the owner must enter his saw's real values.
+5. **(owner) Joint logic is per template.** Main bar = full length. Each profile records its **primary contact surface** = the face a butting bar rests against; the secondary bar is shortened, per end, by the dimension **perpendicular** to that face. Example from the owner: กล่องเรียบ 101.6 × 44.45 — contact on the 101.6 face (the normal case, `primary_contact = 'width'`, the default) shortens the secondary bar by 44.45 (`depth_mm`); contact on the narrow face (`'depth'`) shortens it by 101.6 (`width_mm`). Overridable per joint (manual mm). Which bar is main is set in the template (`bom_template_joints.main_family`; `bom_templates.main_axis` drives the preview). Sliding frame: the two vertical bars are main (waterproofing).
+6. **(owner) Cut optimizer is whole-project only**; saw kerf differs for 90° (`kerf_square_mm`, default 3 mm, placeholder) and 45° (`kerf_miter_mm`, default 10 mm = the owner's estimate; he says the real distance must be checked); all constants are tenant-wide in `estimation_settings`. **A 45° piece's length is always its OUTER (long-point) length**; mixing in the shorter inner length causes large errors (owner warning), so the joint UI, the parts-style preview and the cut list must all label mitred pieces as outer length.
 7. **Offcuts never reduce cost.** Reusable offcuts (≥ `min_keep_offcut_m`) are only reported. *Wrong if:* the owner stocks and reuses offcuts — then cost needs a credit rule.
 8. **Accessories (shim, screw, plug) are off until linked** in the settings tab (`*_part_id` NULL = no line), so a template that already lists them is not double-counted. One of each per fixing point (every 0.6 m, at least 2 per side; owner). The add-on is its own frame for fixing points and sealant length.
 9. **Sealant** is shown as quantity (tubes, one total length rounded up once; 300 ml tube = 10 m, owner). Its cost stays the engine's existing silicone line (`silicone_price_per_m`); the settings `sealant_part_id` exists only so a later phase can price tubes. *Wrong if:* the owner wants tube pricing now — then silicone cost must be zeroed per template to avoid double counting.
 10. **Extruder comparison** is aluminium-only and read-only: the owner picks a series + colour per candidate extruder; items keep their size, template and thickness (a candidate lacking that thickness/profile is listed as unresolved lines, never priced as 0). Per-item series overrides are ignored in the comparison. The project's `primary_provider_id` is a default for pickers, not a hard filter.
 11. **Saved preview** is always the double-line style with no part-length labels, in both views (out/in), stored as SVG text with a signature of the inputs; a stale signature shows a "ภาพเก่ากว่าข้อมูล" hint and a re-save button. The live preview keeps all four styles (double, solid, CAD, parts) as the owner asked to keep them for now.
 12. **Layout templates store types, position and proportions only** (ratios against the main size), never series, colour, price or profile. Which BOM template builds a type is looked up at use time (`bomTemplatesForType`).
-13. **Profile drawing upload:** reuse the storage pattern of `src/components/AttachmentsSection.jsx`. If it needs a NEW storage bucket, STOP and ask — creating a bucket is infrastructure the owner applies.
+13. **Profile drawing files (owner):** the owner has supplier catalogue PDFs and the company's own DWG approval drawings; each file is attached to ONE profile (he splits multi-profile files himself). Migration #2 adds the table `alu_profile_files` and the private bucket `alu-profile-files` (the owner applies it with the migration); the screen reuses `AttachmentsSection` with a new optional `accept` prop (default unchanged). DWG/PDF are stored and downloaded only; nothing parses them and DWG has no preview.
 14. **Preview decoration** (handle, travel arrow, swing arc) comes from `bom_templates.preview_kind` (`fixed`/`slide`/`swing`), set in the template editor.
 15. **Stock length order:** per-profile project override > project `stock_length_m` > tenant default (6.4 m).
 16. **Quantity (sets) is not in the item form** (owner); it is edited in the items table of the project page.
@@ -51,12 +51,12 @@ Owner-given answers are marked **(owner)**; the rest are mine, each with what it
 1. A tenant without the `estimation` module (possibly not an aluminium business) must see and change nothing: DB policies on all four new tables and every UI entry. Test: Task 1 SQL test 3 and Task 12–17 gating checklist.
 2. An item with missing inputs (no series, a thickness the series lacks, an unlinked joint, an unpriced accessory) shows reason codes and an unresolved list; the total never silently treats it as 0 (Task 7 tests).
 3. A saved preview snapshot must not silently outlive an edit: the signature changes with every input that changes the drawing (Task 10 tests) and the form shows the stale hint.
-4. Cut optimizer edge inputs: a cut longer than the bar, zero/negative/fractional quantities, 45° vs 90° kerf, a candidate bar shorter than the longest cut, and nothing to cut (Task 5 tests).
+4. Cut optimizer edge inputs: a cut longer than the bar, zero/negative/fractional quantities, 45° vs 90° kerf, a candidate bar shorter than the longest cut, and nothing to cut (Task 5 tests). A mitred piece must always be listed with its outer length (Ruling 6); the joint tab and the parts preview must say so.
 5. The contract migration must refuse to run while any item still relies on the legacy columns, and must not run before the new code is deployed (Task 18 guard + deploy checklist).
 
 ## File Structure
 
-New pure libs (`src/lib/`, each with a `.test.js` beside it): `estimationCatalogViews`, `localDate`, `assembly`, `estimationSettings`, `openingExtras`, `cutOptimizer`, `projectBom`, `openingCost`, `providerCompare`, `layoutTemplates`, `descriptionFormat`, `openingPayload`, `templateSave`, `profileSketch`. Changed libs: `aluCatalogPricing` (3 index keys), `bomEngine` (role thickness + cut style), `framePreview` (rewritten, backward compatible).
+New pure libs (`src/lib/`, each with a `.test.js` beside it): `estimationCatalogViews`, `localDate`, `assembly`, `estimationSettings`, `openingExtras`, `cutOptimizer`, `projectBom`, `openingCost`, `providerCompare`, `layoutTemplates`, `descriptionFormat`, `openingPayload`, `templateSave`, `profileSketch`. Changed libs: `aluCatalogPricing` (3 index keys), `bomEngine` (role thickness + cut style), `estimationInherit` (+ its test: sash thickness inherits), `framePreview` (rewritten, backward compatible).
 New hook file: `src/hooks/useEstimation2b.js`. New/changed screens: `src/pages/aluCatalog/{ProfilesTab,HierarchyTab,SettingsTab}.jsx`, `src/pages/BomTemplates.jsx` (+ `src/pages/bomTemplates/JointsTab.jsx`), `src/pages/Estimation.jsx` (split into `src/pages/estimation/*`). SQL: `supabase/migrations/2026-10-12-01-estimation-2b-expand.sql`, `supabase/tests/estimation_2b_expand_test.sql`, and (Task 18) `supabase/migrations/2026-10-13-01-estimation-contract.sql`.
 
 ## Task order and gates
@@ -76,9 +76,9 @@ Tasks 1–10 are SQL + pure code (no UI) and can be reviewed without a browser. 
 
 **Interfaces:**
 - Consumes: the Phase 1 tables (`alu_profiles`, `alu_series_types`, `alu_parts`, `alu_providers`, `door_window_types`), the 2a columns, and the original `bom_templates`, `bom_template_components`, `estimation_projects`, `estimation_openings`.
-- Produces (exact names, used by every later task): `alu_profiles.{shape_group,width_mm,depth_mm,primary_contact,drawing_file_url}`; `alu_series_types.allow_mixed_thickness`; `bom_templates.{main_axis,preview_kind}`; table `bom_template_joints`; `bom_template_components.{joint_id,joint_ends,thickness_mm}`; table `estimation_settings`; `estimation_projects.{primary_provider_id,stock_length_m,description_format}`; table `estimation_project_stock`; `estimation_openings.{addon_position,addon_offset_m,preview_svg_out,preview_svg_in,preview_sig,preview_saved_at}`; table `estimation_layout_templates`.
+- Produces (exact names, used by every later task): `alu_profiles.{shape_group,width_mm,depth_mm,primary_contact}` (`primary_contact` = the face a butting bar rests against, default `width`); table `alu_profile_files` + private bucket `alu-profile-files`; `alu_series_types.allow_mixed_thickness`; `bom_templates.{main_axis,preview_kind}`; table `bom_template_joints`; `bom_template_components.{joint_id,joint_ends,thickness_role}`; table `estimation_settings`; `estimation_projects.{primary_provider_id,default_sash_thickness_mm,stock_length_m,description_format}`; table `estimation_project_stock`; `estimation_openings.{sash_thickness_mm,addon_position,addon_offset_m,preview_svg_out,preview_svg_in,preview_sig,preview_saved_at}`; table `estimation_layout_templates`.
 
-Agents do NOT run any of this against a database. Verify by reading: every new table has `tenant_id UUID NOT NULL DEFAULT current_tenant_id()`, RLS enabled and the `admin_full_access` policy with `has_module_access('estimation')`, every UNIQUE includes what it must, every new FK has an index.
+Agents do NOT run any of this against a database. Verify by reading: every new table has `tenant_id UUID NOT NULL DEFAULT current_tenant_id()`, RLS enabled and the `admin_full_access` policy with `has_module_access('estimation')`, every UNIQUE includes what it must, every new FK has an index, and the storage policy for `alu-profile-files` is tenant-prefixed and module-gated.
 
 - [ ] **Step 1: Create the migration** with exactly:
 
@@ -89,16 +89,46 @@ Agents do NOT run any of this against a database. Verify by reading: every new t
 -- FacadeX only: every new table is gated by has_module_access('estimation'), like the rest of the catalog.
 -- Needs migrations 2026-10-10-01..03 and 2026-10-11-01. The matching contract step is a separate file applied at deploy time.
 
--- 1. Profile dimensions. drawing_no (already there) is the extruder's DIE NO.; one die = one profile row.
---    primary_contact says which dimension a butting bar is shortened by (default: the depth).
+-- 1. Profile dimensions and files. drawing_no (already there) is the extruder's DIE NO.; one die = one profile row.
+--    primary_contact = the face a butting bar rests against; the bar is shortened by the dimension perpendicular to it:
+--      'width' (default) = the wide face (e.g. 101.6) -> shortened by depth_mm (44.45); 'depth' = the narrow face -> by width_mm.
 ALTER TABLE alu_profiles
-  ADD COLUMN shape_group      TEXT,
-  ADD COLUMN width_mm         NUMERIC CHECK (width_mm IS NULL OR width_mm > 0),
-  ADD COLUMN depth_mm         NUMERIC CHECK (depth_mm IS NULL OR depth_mm > 0),
-  ADD COLUMN primary_contact  TEXT NOT NULL DEFAULT 'depth' CHECK (primary_contact IN ('depth','width')),
-  ADD COLUMN drawing_file_url TEXT;
+  ADD COLUMN shape_group     TEXT,
+  ADD COLUMN width_mm        NUMERIC CHECK (width_mm IS NULL OR width_mm > 0),
+  ADD COLUMN depth_mm        NUMERIC CHECK (depth_mm IS NULL OR depth_mm > 0),
+  ADD COLUMN primary_contact TEXT NOT NULL DEFAULT 'width' CHECK (primary_contact IN ('width','depth'));
 
--- 2. Frame and sash may use different thicknesses only where the series + type allows it.
+-- Drawing files per profile (supplier catalogue PDFs, the company's own DWG for approval drawings, DXF/SVG/images).
+-- Columns match what src/components/AttachmentsSection.jsx reads and writes. One file = one profile (the owner splits
+-- multi-profile PDFs / DWGs himself before uploading). Private bucket, tenant-prefixed path, one FOR ALL policy on both
+-- the table and the bucket (see 2026-09-02-04-invoice-photos.sql for why not split per command).
+CREATE TABLE alu_profile_files (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id   UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
+  profile_id  UUID NOT NULL REFERENCES alu_profiles(id) ON DELETE CASCADE,
+  file_path   TEXT NOT NULL,
+  file_name   TEXT NOT NULL,
+  uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_alu_profile_files_profile_id ON alu_profile_files(profile_id);
+
+INSERT INTO storage.buckets (id, name, public) VALUES ('alu-profile-files', 'alu-profile-files', false)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY alu_profile_files_tenant_access ON storage.objects FOR ALL TO authenticated
+  USING (
+    bucket_id = 'alu-profile-files'
+    AND is_admin_or_owner() AND has_module_access('estimation')
+    AND (storage.foldername(name))[1] = current_tenant_id()::text
+  )
+  WITH CHECK (
+    bucket_id = 'alu-profile-files'
+    AND is_admin_or_owner() AND has_module_access('estimation')
+    AND (storage.foldername(name))[1] = current_tenant_id()::text
+  );
+
+-- 2. Frame and sash may use different thicknesses (government specs: frame 2.0 mm, sash 1.5 mm) only where the
+--    series + type allows it. A component is tagged thickness_role 'sash' (NULL = frame/main) in step 4.
 ALTER TABLE alu_series_types
   ADD COLUMN allow_mixed_thickness BOOLEAN NOT NULL DEFAULT false;
 
@@ -125,9 +155,9 @@ CREATE TABLE bom_template_joints (
 );
 
 ALTER TABLE bom_template_components
-  ADD COLUMN joint_id     UUID REFERENCES bom_template_joints(id) ON DELETE SET NULL,
-  ADD COLUMN joint_ends   SMALLINT NOT NULL DEFAULT 2 CHECK (joint_ends IN (1,2)),
-  ADD COLUMN thickness_mm NUMERIC CHECK (thickness_mm IS NULL OR thickness_mm > 0);
+  ADD COLUMN joint_id       UUID REFERENCES bom_template_joints(id) ON DELETE SET NULL,
+  ADD COLUMN joint_ends     SMALLINT NOT NULL DEFAULT 2 CHECK (joint_ends IN (1,2)),
+  ADD COLUMN thickness_role TEXT CHECK (thickness_role IS NULL OR thickness_role = 'sash');
 
 -- 5. Tenant-wide constants (one row per tenant; every value is universal across projects).
 CREATE TABLE estimation_settings (
@@ -135,7 +165,7 @@ CREATE TABLE estimation_settings (
   tenant_id           UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
   stock_length_m      NUMERIC NOT NULL DEFAULT 6.4 CHECK (stock_length_m > 0),
   kerf_square_mm      NUMERIC NOT NULL DEFAULT 3   CHECK (kerf_square_mm >= 0),
-  kerf_miter_mm       NUMERIC NOT NULL DEFAULT 5   CHECK (kerf_miter_mm >= 0),
+  kerf_miter_mm       NUMERIC NOT NULL DEFAULT 10  CHECK (kerf_miter_mm >= 0),
   min_keep_offcut_m   NUMERIC NOT NULL DEFAULT 0.5 CHECK (min_keep_offcut_m >= 0),
   sealant_m_per_tube  NUMERIC NOT NULL DEFAULT 10  CHECK (sealant_m_per_tube > 0),
   fixing_pitch_m      NUMERIC NOT NULL DEFAULT 0.6 CHECK (fixing_pitch_m > 0),
@@ -150,7 +180,8 @@ CREATE TABLE estimation_settings (
 
 -- 6. Project: main extruder, description format, stock length, and per-profile stock length overrides.
 ALTER TABLE estimation_projects
-  ADD COLUMN primary_provider_id UUID REFERENCES alu_providers(id) ON DELETE SET NULL,
+  ADD COLUMN primary_provider_id    UUID REFERENCES alu_providers(id) ON DELETE SET NULL,
+  ADD COLUMN default_sash_thickness_mm NUMERIC CHECK (default_sash_thickness_mm IS NULL OR default_sash_thickness_mm > 0),
   ADD COLUMN stock_length_m      NUMERIC CHECK (stock_length_m IS NULL OR stock_length_m > 0),
   ADD COLUMN description_format  JSONB NOT NULL DEFAULT '["item_name","type","size","alu_color"]'::jsonb;
 
@@ -165,6 +196,7 @@ CREATE TABLE estimation_project_stock (
 
 -- 7. Items: add-on position/offset and the saved preview snapshots (always the double-line drawing).
 ALTER TABLE estimation_openings
+  ADD COLUMN sash_thickness_mm NUMERIC CHECK (sash_thickness_mm IS NULL OR sash_thickness_mm > 0),
   ADD COLUMN addon_position  TEXT CHECK (addon_position IS NULL OR addon_position IN ('top','bottom','left','right')),
   ADD COLUMN addon_offset_m  NUMERIC CHECK (addon_offset_m IS NULL OR addon_offset_m >= 0),
   ADD COLUMN preview_svg_out TEXT,
@@ -207,7 +239,7 @@ CREATE INDEX idx_estimation_settings_plug_part        ON estimation_settings(plu
 DO $$
 DECLARE t TEXT;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['bom_template_joints','estimation_settings','estimation_project_stock','estimation_layout_templates'] LOOP
+  FOREACH t IN ARRAY ARRAY['bom_template_joints','estimation_settings','estimation_project_stock','estimation_layout_templates','alu_profile_files'] LOOP
     EXECUTE format('CREATE INDEX idx_%s_tenant_id ON %I(tenant_id)', t, t);
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format($p$CREATE POLICY admin_full_access ON %I FOR ALL TO authenticated
@@ -262,8 +294,8 @@ BEGIN
   -- profile dimensions
   INSERT INTO alu_profiles (provider_id, name, drawing_no, thickness_mm, linear_weight_kg_per_m, width_mm, depth_mm, shape_group)
     VALUES (prov, 'กล่องเรียบ', 'U1613', 1.5, 0.871, 101.6, 44.45, 'กล่องเรียบ') RETURNING id, primary_contact INTO prof, pc;
-  IF pc <> 'depth' THEN RAISE EXCEPTION 'primary_contact should default to depth, got %', pc; END IF;
-  UPDATE alu_profiles SET primary_contact = 'width' WHERE id = prof;
+  IF pc <> 'width' THEN RAISE EXCEPTION 'primary_contact should default to width, got %', pc; END IF;
+  UPDATE alu_profiles SET primary_contact = 'depth' WHERE id = prof;
   raised := false; BEGIN UPDATE alu_profiles SET primary_contact = 'diagonal' WHERE id = prof; EXCEPTION WHEN check_violation THEN raised := true; END;
   IF NOT raised THEN RAISE EXCEPTION 'bad primary_contact was allowed'; END IF;
   raised := false; BEGIN UPDATE alu_profiles SET width_mm = 0 WHERE id = prof; EXCEPTION WHEN check_violation THEN raised := true; END;
@@ -290,10 +322,15 @@ BEGIN
   raised := false; BEGIN UPDATE bom_template_joints SET cut_style = 'bevel' WHERE id = joint; EXCEPTION WHEN check_violation THEN raised := true; END;
   IF NOT raised THEN RAISE EXCEPTION 'bad cut_style was allowed'; END IF;
 
-  INSERT INTO bom_template_components (template_id, role_name, profile_family, length_rule_type, quantity_basis, joint_id, thickness_mm)
-    VALUES (tpl, 'ตัวนอน', 'ตัวนอน', 'width', 'fixed', joint, 2) RETURNING id INTO comp;
+  INSERT INTO bom_template_components (template_id, role_name, profile_family, length_rule_type, quantity_basis, joint_id, thickness_role)
+    VALUES (tpl, 'ตัวนอน', 'ตัวนอน', 'width', 'fixed', joint, 'sash') RETURNING id INTO comp;
+  raised := false; BEGIN UPDATE bom_template_components SET thickness_role = 'frame' WHERE id = comp; EXCEPTION WHEN check_violation THEN raised := true; END;
+  IF NOT raised THEN RAISE EXCEPTION 'thickness_role other than sash was allowed'; END IF;
   raised := false; BEGIN UPDATE bom_template_components SET joint_ends = 3 WHERE id = comp; EXCEPTION WHEN check_violation THEN raised := true; END;
   IF NOT raised THEN RAISE EXCEPTION 'joint_ends = 3 was allowed'; END IF;
+
+  -- profile files: one row per uploaded file, removed with the profile (the storage object is removed by the app)
+  INSERT INTO alu_profile_files (profile_id, file_path, file_name) VALUES (prof, 'x/y/1-a.pdf', 'a.pdf');
 
   -- settings: defaults, one row per tenant
   INSERT INTO estimation_settings DEFAULT VALUES RETURNING stock_length_m INTO ds;
@@ -308,7 +345,9 @@ BEGIN
   INSERT INTO estimation_projects (name) VALUES ('EST2 PROJ') RETURNING id INTO proj;
   SELECT count(*) INTO n FROM estimation_projects WHERE id = proj AND description_format = '["item_name","type","size","alu_color"]'::jsonb AND stock_length_m IS NULL;
   IF n <> 1 THEN RAISE EXCEPTION 'project description_format default wrong'; END IF;
-  UPDATE estimation_projects SET primary_provider_id = prov, stock_length_m = 6 WHERE id = proj;
+  UPDATE estimation_projects SET primary_provider_id = prov, stock_length_m = 6, default_sash_thickness_mm = 1.5 WHERE id = proj;
+  raised := false; BEGIN UPDATE estimation_projects SET default_sash_thickness_mm = 0 WHERE id = proj; EXCEPTION WHEN check_violation THEN raised := true; END;
+  IF NOT raised THEN RAISE EXCEPTION 'default_sash_thickness_mm = 0 was allowed'; END IF;
   raised := false; BEGIN UPDATE estimation_projects SET stock_length_m = 0 WHERE id = proj; EXCEPTION WHEN check_violation THEN raised := true; END;
   IF NOT raised THEN RAISE EXCEPTION 'project stock_length_m = 0 was allowed'; END IF;
   INSERT INTO estimation_project_stock (project_id, profile_id, length_m) VALUES (proj, prof, 6.0);
@@ -316,8 +355,10 @@ BEGIN
   IF NOT raised THEN RAISE EXCEPTION 'two stock lengths for one profile in one project were allowed'; END IF;
 
   -- item: add-on position, offset, saved previews
-  INSERT INTO estimation_openings (project_id, opening_no, template_id, width_m, height_m, addon_position, addon_offset_m, preview_svg_out, preview_sig)
-    VALUES (proj, 'D1', tpl, 2, 2, 'bottom', 0.5, '<svg/>', 'sig') RETURNING id INTO op;
+  INSERT INTO estimation_openings (project_id, opening_no, template_id, width_m, height_m, thickness_mm, sash_thickness_mm, addon_position, addon_offset_m, preview_svg_out, preview_sig)
+    VALUES (proj, 'D1', tpl, 2, 2, 2, 1.5, 'bottom', 0.5, '<svg/>', 'sig') RETURNING id INTO op;
+  raised := false; BEGIN UPDATE estimation_openings SET sash_thickness_mm = 0 WHERE id = op; EXCEPTION WHEN check_violation THEN raised := true; END;
+  IF NOT raised THEN RAISE EXCEPTION 'sash_thickness_mm = 0 was allowed'; END IF;
   raised := false; BEGIN UPDATE estimation_openings SET addon_position = 'diagonal' WHERE id = op; EXCEPTION WHEN check_violation THEN raised := true; END;
   IF NOT raised THEN RAISE EXCEPTION 'bad addon_position was allowed'; END IF;
   raised := false; BEGIN UPDATE estimation_openings SET addon_offset_m = -1 WHERE id = op; EXCEPTION WHEN check_violation THEN raised := true; END;
@@ -356,10 +397,12 @@ BEGIN
   SELECT count(*) INTO n FROM bom_template_components WHERE template_id = tpl AND joint_id IS NULL;
   IF n <> 1 THEN RAISE EXCEPTION 'component should survive its joint being deleted'; END IF;
 
-  -- deleting a profile removes that project's stock length override
+  -- deleting a profile removes that project's stock length override and its file rows
   DELETE FROM alu_profiles WHERE id = prof;
   SELECT count(*) INTO n FROM estimation_project_stock WHERE project_id = proj;
   IF n <> 0 THEN RAISE EXCEPTION 'stock override should go with its profile'; END IF;
+  SELECT count(*) INTO n FROM alu_profile_files WHERE profile_id = prof;
+  IF n <> 0 THEN RAISE EXCEPTION 'file rows should go with their profile'; END IF;
 
   -- deleting a part clears the settings link instead of failing
   DELETE FROM alu_parts WHERE id = part;
@@ -389,7 +432,7 @@ BEGIN
 
   FOREACH t IN ARRAY ARRAY['b','c'] LOOP
     PERFORM set_config('request.jwt.claims', format('{"email":"__est2_%s__@example.com"}', t), true);
-    FOREACH tbl IN ARRAY ARRAY['estimation_settings','estimation_layout_templates','estimation_project_stock','bom_template_joints'] LOOP
+    FOREACH tbl IN ARRAY ARRAY['estimation_settings','estimation_layout_templates','estimation_project_stock','bom_template_joints','alu_profile_files'] LOOP
       EXECUTE format('SELECT count(*) FROM %I', tbl) INTO n;
       IF n <> 0 THEN RAISE EXCEPTION 'tenant % sees % rows of %', t, n, tbl; END IF;
     END LOOP;
@@ -438,7 +481,7 @@ npx supabase db query --project-ref "$REF" --linked=false \
 
 ```
 
-- [ ] **Step 4: Re-read both SQL files against the Interfaces list** (column names, CHECK lists, `ON DELETE` actions: joints SET NULL on components, project stock CASCADE on profile and project, settings part links SET NULL, layout types CASCADE). Fix any mismatch.
+- [ ] **Step 4: Re-read both SQL files against the Interfaces list** (column names, CHECK lists, `ON DELETE` actions: joints SET NULL on components, project stock and profile files CASCADE on profile, settings part links SET NULL, layout types CASCADE). Fix any mismatch.
 
 - [ ] **Step 5: Commit**
 
@@ -452,21 +495,24 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 **Owner action (later, not an agent step):** `! bash .superpowers/sdd/2026-10-09-aluminium-cost-catalog-phase-2b-screens/run-estimation-2b-tests.sh` — expect `ESTIMATION 2B TESTS PASSED`, `leftover = 0`.
 
 
-### Task 2: Catalog index keys, series views, local date
+### Task 2: Catalog index keys, series views, sash-thickness inheritance, local date
 
 **Files:**
 - Create: `src/lib/estimationCatalogViews.js`
 - Create: `src/lib/estimationCatalogViews.test.js`
 - Create: `src/lib/aluCatalogIndex2b.test.js`
+- Create: `src/lib/estimationInheritSash.test.js`
 - Create: `src/lib/localDate.js`
 - Create: `src/lib/localDate.test.js`
 - Modify: `src/lib/aluCatalogPricing.js (3 lines)`
+- Modify: `src/lib/estimationInherit.js (1 line)`
+- Modify: `src/lib/estimationInherit.test.js (3 expected objects)`
 
 **Interfaces:**
 - Consumes: `buildCatalogIndex(rows)` from Phase 2a; `useEstimationCatalog()` already loads `types`, `seriesTypes`, `seriesParts`.
 - Produces: `index.types`, `index.seriesTypesBySeries`, `index.seriesPartsBySeries`; `thicknessesForSeries`, `partsForSeries`, `hardwareSetsForSeries`, `hardwareForSeries`, `accessoriesForSeries`, `typesForSeries`, `seriesForType`, `allowsMixedThickness`; `localDateString(date)`.
 
-What the screens may offer for a series (thicknesses, hardware sets, accessories, types) and the local-date helper for `price_as_of`.
+What the screens may offer for a series (thicknesses, hardware sets, accessories, types), the sash thickness that inherits like every other default, and the local-date helper for `price_as_of`.
 
 - [ ] **Step 1: Write the failing test** — create `src/lib/estimationCatalogViews.test.js` with exactly:
 
@@ -564,7 +610,26 @@ describe('buildCatalogIndex Phase 2b keys', () => {
 })
 ```
 
-- [ ] **Step 3: Write the failing test** — create `src/lib/localDate.test.js` with exactly:
+- [ ] **Step 3: Write the failing test** — create `src/lib/estimationInheritSash.test.js` with exactly:
+
+```js
+// src/lib/estimationInheritSash.test.js -- the sash thickness inherits like every other default (item -> project -> none).
+import { describe, it, expect } from 'vitest'
+import { resolveItemInputs } from './estimationInherit.js'
+
+describe('resolveItemInputs sash thickness', () => {
+  it('item value wins, then the project default, else null (null = same as the frame)', () => {
+    expect(resolveItemInputs({ sash_thickness_mm: 1.5 }, { default_sash_thickness_mm: 2 }, null, {}).sash_thickness_mm).toBe(1.5)
+    expect(resolveItemInputs({}, { default_sash_thickness_mm: '2' }, null, {}).sash_thickness_mm).toBe(2)
+    expect(resolveItemInputs({}, {}, null, {}).sash_thickness_mm).toBeNull()
+  })
+  it('the frame thickness is unaffected', () => {
+    expect(resolveItemInputs({ thickness_mm: 2 }, { default_sash_thickness_mm: 1.5 }, null, {}).thickness_mm).toBe(2)
+  })
+})
+```
+
+- [ ] **Step 4: Write the failing test** — create `src/lib/localDate.test.js` with exactly:
 
 ```js
 import { describe, it, expect } from 'vitest'
@@ -583,12 +648,12 @@ describe('localDateString', () => {
 })
 ```
 
-- [ ] **Step 4: Run it to confirm it fails**
+- [ ] **Step 5: Run it to confirm it fails**
 
-Run: `npx vitest run src/lib/estimationCatalogViews.test.js src/lib/aluCatalogIndex2b.test.js src/lib/localDate.test.js`
+Run: `npx vitest run src/lib/estimationCatalogViews.test.js src/lib/aluCatalogIndex2b.test.js src/lib/estimationInheritSash.test.js src/lib/localDate.test.js`
 Expected: FAIL (module / export not found).
 
-- [ ] **Step 5: Write the implementation** — create `src/lib/estimationCatalogViews.js` with exactly:
+- [ ] **Step 6: Write the implementation** — create `src/lib/estimationCatalogViews.js` with exactly:
 
 ```js
 // src/lib/estimationCatalogViews.js
@@ -647,7 +712,7 @@ export function allowsMixedThickness(index, seriesId, typeId) {
 }
 ```
 
-- [ ] **Step 6: Write the implementation** — create `src/lib/localDate.js` with exactly:
+- [ ] **Step 7: Write the implementation** — create `src/lib/localDate.js` with exactly:
 
 ```js
 // src/lib/localDate.js
@@ -662,7 +727,15 @@ export function localDateString(d) {
 }
 ```
 
-- [ ] **Step 7: Add the three index keys** — in `src/lib/aluCatalogPricing.js`, inside `buildCatalogIndex`, directly after the line `parts: byId(rows.parts),` insert:
+- [ ] **Step 8: Add the sash thickness to inheritance** — in `src/lib/estimationInherit.js`, in `resolveItemInputs`, directly after the `thickness_mm: firstNum(it.thickness_mm, pj.default_thickness_mm),` line add:
+
+```js
+    sash_thickness_mm: firstNum(it.sash_thickness_mm, pj.default_sash_thickness_mm),
+```
+
+The three exact-equality expectations in `src/lib/estimationInherit.test.js` (`an empty item inherits everything...`, `explicit item values win`, `missing everywhere gives nulls...`) now also receive `sash_thickness_mm: null`: add `sash_thickness_mm: null,` right after the `thickness_mm: <value>,` entry in each of those three expected objects (nothing else in that file changes).
+
+- [ ] **Step 9: Add the three index keys** — in `src/lib/aluCatalogPricing.js`, inside `buildCatalogIndex`, directly after the line `parts: byId(rows.parts),` insert:
 
 ```js
     types: byId(rows.types),
@@ -670,15 +743,15 @@ export function localDateString(d) {
     seriesPartsBySeries: groupBy(rows.seriesParts, 'series_id'),
 ```
 
-- [ ] **Step 8: Run the tests, then the whole suite and the build**
+- [ ] **Step 10: Run the tests, then the whole suite and the build**
 
-Run: `npx vitest run src/lib/estimationCatalogViews.test.js src/lib/aluCatalogIndex2b.test.js src/lib/localDate.test.js` — Expected: all PASS.
+Run: `npx vitest run src/lib/estimationCatalogViews.test.js src/lib/aluCatalogIndex2b.test.js src/lib/estimationInheritSash.test.js src/lib/localDate.test.js` — Expected: all PASS.
 Run: `npm test` and `npm run build` — Expected: all existing tests still pass, build OK.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add src/lib/estimationCatalogViews.js src/lib/estimationCatalogViews.test.js src/lib/aluCatalogIndex2b.test.js src/lib/localDate.js src/lib/localDate.test.js src/lib/aluCatalogPricing.js
+git add src/lib/estimationCatalogViews.js src/lib/estimationCatalogViews.test.js src/lib/aluCatalogIndex2b.test.js src/lib/estimationInheritSash.test.js src/lib/estimationInherit.js src/lib/estimationInherit.test.js src/lib/localDate.js src/lib/localDate.test.js src/lib/aluCatalogPricing.js
 git commit -m "feat(estimation): series views (thicknesses, sets, accessories, types) and local date helper
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
@@ -695,9 +768,9 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `resolveCatalogProfile(index, seriesId, family, thicknessMm)` (Phase 2a).
-- Produces: `jointDeductionMm(joint, mainProfile)`, `applyJoints({components, joints, index, seriesId, thicknessMm}) -> {components, issues}`, `applyRoleThickness(components, allowMixed)`; every profile line from `computeBomForOpening` now carries `cut_style` (`square` default).
+- Produces: `jointDeductionMm(joint, mainProfile)`, `applyJoints({components, joints, index, seriesId, thicknessMm}) -> {components, issues}`, `applyRoleThickness(components, {allowMixed, sashThicknessMm})`; every profile line from `computeBomForOpening` now carries `cut_style` (`square` default).
 
-The owner's joint rule: the main bar runs full length; the secondary bar is shortened by the main bar's primary contact surface (auto) or a manual value, per end. The engine itself stays "one opening in, one BOM out": callers run `applyJoints` first, so it sees ordinary deductions.
+The owner's joint rule: the main bar runs full length; the secondary bar is shortened, per end, by the dimension perpendicular to the main bar's primary contact surface (auto) or a manual value. Sash-role components take the sash thickness where the series+type allows it. The engine itself stays "one opening in, one BOM out": callers run `applyJoints` first, so it sees ordinary deductions.
 
 - [ ] **Step 1: Write the failing test** — create `src/lib/assembly.test.js` with exactly:
 
@@ -709,18 +782,21 @@ import { jointDeductionMm, applyJoints, applyRoleThickness } from './assembly.js
 const index = buildCatalogIndex({
   series: [{ id: 's1', provider_id: 'pA' }],
   profiles: [
-    { id: 'box', provider_id: 'pA', family: 'กล่องเรียบ', thickness_mm: 1.5, depth_mm: 44.45, width_mm: 101.6, primary_contact: 'depth' },
-    { id: 'boxw', provider_id: 'pA', family: 'กล่องกว้าง', thickness_mm: 1.5, depth_mm: 44.45, width_mm: 101.6, primary_contact: 'width' },
+    { id: 'box', provider_id: 'pA', family: 'กล่องเรียบ', thickness_mm: 1.5, depth_mm: 44.45, width_mm: 101.6, primary_contact: 'width' },
+    { id: 'boxn', provider_id: 'pA', family: 'กล่องแคบ', thickness_mm: 1.5, depth_mm: 44.45, width_mm: 101.6, primary_contact: 'depth' },
     { id: 'nodim', provider_id: 'pA', family: 'ไม่มีมิติ', thickness_mm: 1.5 },
   ],
-  seriesProfiles: ['box', 'boxw', 'nodim'].map(profile_id => ({ series_id: 's1', profile_id })),
+  seriesProfiles: ['box', 'boxn', 'nodim'].map(profile_id => ({ series_id: 's1', profile_id })),
 })
 const joint = (o = {}) => ({ id: 'j1', main_family: 'กล่องเรียบ', secondary_family: 'x', deduction_mode: 'auto', cut_style: 'square', ...o })
 
 describe('jointDeductionMm', () => {
-  it('auto uses the main bar primary contact surface: depth by default, width when set', () => {
+  it('auto: a bar butting the WIDE face (101.6) is shortened by the depth (44.45); butting the narrow face by the width', () => {
     expect(jointDeductionMm(joint(), index.profiles.box)).toEqual({ mm: 44.45, source: 'auto' })
-    expect(jointDeductionMm(joint(), index.profiles.boxw)).toEqual({ mm: 101.6, source: 'auto' })
+    expect(jointDeductionMm(joint(), index.profiles.boxn)).toEqual({ mm: 101.6, source: 'auto' })
+  })
+  it('a profile with no primary_contact set behaves as the default (wide face)', () => {
+    expect(jointDeductionMm(joint(), { width_mm: 101.6, depth_mm: 44.45 }).mm).toBe(44.45)
   })
   it('manual wins and must be a number >= 0; 0 is allowed', () => {
     expect(jointDeductionMm(joint({ deduction_mode: 'manual', deduction_mm: 3 }), null)).toEqual({ mm: 3, source: 'manual' })
@@ -758,17 +834,25 @@ describe('applyJoints', () => {
     expect(run({ ...base, joint_id: 'j1' }, joint({ main_family: 'ไม่มีมิติ' })).issues[0].reason).toBe('no_dimension')
     expect(run({ ...base, joint_id: 'j1', length_rule_type: 'perimeter' }).issues[0].reason).toBe('rule_not_cuttable')
   })
-  it('the component\'s own thickness picks the main profile', () => {
-    const r = run({ ...base, joint_id: 'j1', thickness_mm: 2 })
-    expect(r.issues[0].reason).toBe('no_main_profile')
+  it('the main bar is looked up at the frame thickness, whatever thickness the secondary bar has', () => {
+    expect(run({ ...base, joint_id: 'j1', thickness_mm: 2 }).issues).toEqual([])
+    const other = applyJoints({ components: [{ ...base, joint_id: 'j1' }], joints: [joint()], index, seriesId: 's1', thicknessMm: 2 })
+    expect(other.issues[0].reason).toBe('no_main_profile')
   })
 })
 
 describe('applyRoleThickness', () => {
-  it('keeps role thickness only where mixed thickness is allowed', () => {
-    const cs = [{ role_name: 'a', thickness_mm: 2 }, { role_name: 'b', thickness_mm: null }]
-    expect(applyRoleThickness(cs, true)).toEqual(cs)
-    expect(applyRoleThickness(cs, false)).toEqual([{ role_name: 'a', thickness_mm: null }, { role_name: 'b', thickness_mm: null }])
+  const cs = [{ role_name: 'frame' }, { role_name: 'sash', thickness_role: 'sash' }]
+  it('sash-role components get the sash thickness where mixed thickness is allowed; the frame keeps the opening thickness', () => {
+    expect(applyRoleThickness(cs, { allowMixed: true, sashThicknessMm: 1.5 }).map(c => c.thickness_mm)).toEqual([null, 1.5])
+  })
+  it('without permission, or without a sash thickness, every component uses the opening thickness', () => {
+    expect(applyRoleThickness(cs, { allowMixed: false, sashThicknessMm: 1.5 }).map(c => c.thickness_mm)).toEqual([null, null])
+    expect(applyRoleThickness(cs, { allowMixed: true, sashThicknessMm: null }).map(c => c.thickness_mm)).toEqual([null, null])
+    expect(applyRoleThickness(cs).map(c => c.thickness_mm)).toEqual([null, null])
+  })
+  it('an old thickness_mm on a component never leaks through', () => {
+    expect(applyRoleThickness([{ role_name: 'x', thickness_mm: 2 }], { allowMixed: true, sashThicknessMm: 1.5 })[0].thickness_mm).toBeNull()
   })
 })
 ```
@@ -834,8 +918,11 @@ import { resolveCatalogProfile } from './aluCatalogPricing.js'
 
 const finitePos = n => Number.isFinite(n) && n >= 0
 
-// Deduction (mm) taken off ONE end of the secondary bar. Auto = the main bar's primary contact surface
-// (its depth by default, its width when the profile says so); a mitre needs no deduction; manual wins.
+// Deduction (mm) taken off ONE end of the secondary bar. The profile records its PRIMARY CONTACT SURFACE: the face the
+// secondary bar butts against. The bar is shortened by the dimension perpendicular to that face:
+//   primary_contact 'width' (default) = it butts the wide face  -> shortened by depth_mm   (e.g. 101.6 face -> 44.45)
+//   primary_contact 'depth'           = it butts the narrow face -> shortened by width_mm
+// A mitre needs no deduction here; manual wins.
 export function jointDeductionMm(joint, mainProfile) {
   if (!joint) return { mm: null, reason: 'unknown_joint' }
   if (joint.deduction_mode === 'manual') {
@@ -845,7 +932,7 @@ export function jointDeductionMm(joint, mainProfile) {
   }
   if (joint.cut_style === 'miter45') return { mm: 0, source: 'miter' }
   if (!mainProfile) return { mm: null, reason: 'no_main_profile' }
-  const dim = Number(mainProfile.primary_contact === 'width' ? mainProfile.width_mm : mainProfile.depth_mm)
+  const dim = Number(mainProfile.primary_contact === 'depth' ? mainProfile.width_mm : mainProfile.depth_mm)
   return dim > 0 ? { mm: dim, source: 'auto' } : { mm: null, reason: 'no_dimension' }
 }
 
@@ -863,8 +950,8 @@ export function applyJoints({ components, joints, index, seriesId, thicknessMm }
     const joint = jointsById[c.joint_id]
     const rule = SHORTEN[c.length_rule_type]
     if (!rule) { issues.push({ role_name: c.role_name, reason: 'rule_not_cuttable' }); return { ...c, cut_style: 'square' } }
-    const thickness = c.thickness_mm != null ? c.thickness_mm : thicknessMm
-    const main = joint ? resolveCatalogProfile(index, seriesId, joint.main_family, thickness).profile : null
+    // the main bar is looked up at the frame thickness (the opening's own); a sash-role bar's thickness does not move it
+    const main = joint ? resolveCatalogProfile(index, seriesId, joint.main_family, thicknessMm).profile : null
     const ded = jointDeductionMm(joint, main)
     if (ded.mm === null) { issues.push({ role_name: c.role_name, reason: ded.reason }); return { ...c, cut_style: 'square' } }
     const ends = Number(c.joint_ends) === 1 ? 1 : 2
@@ -877,10 +964,13 @@ export function applyJoints({ components, joints, index, seriesId, thicknessMm }
   return { components: out, issues }
 }
 
-// A component may carry its own thickness (frame vs sash) only where the series+type allows it;
-// otherwise the override is dropped so the opening's single thickness applies.
-export function applyRoleThickness(components, allowMixed) {
-  return (components || []).map(c => (allowMixed || c.thickness_mm == null ? c : { ...c, thickness_mm: null }))
+// Government-style specs fix the frame and the sash separately (e.g. frame 2.0 mm, sash 1.5 mm). A template component
+// is tagged thickness_role 'sash' (or NULL = frame/main). Where the series+type allows mixed thickness and a sash
+// thickness is set, sash-role components are priced at that thickness; every other case uses the opening thickness.
+// The engine reads the resulting component.thickness_mm (NULL = the opening thickness).
+export function applyRoleThickness(components, { allowMixed, sashThicknessMm } = {}) {
+  const sash = Number(sashThicknessMm)
+  return (components || []).map(c => ({ ...c, thickness_mm: c.thickness_role === 'sash' && allowMixed && sash > 0 ? sash : null }))
 }
 ```
 
@@ -932,7 +1022,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 - Consumes: `pricing.hardwarePrice({part_id, reference_unit_price})` from `makeCatalogPricing`.
 - Produces: `DEFAULT_SETTINGS`, `mergeSettings(row)`; `fixingPointsForSide`, `frameFixingPoints`, `sealantTubes`, `openingExtras({units, settings, partsById, pricing})`.
 
-Owner rules: shim + screw + plastic plug at every fixing point (every 60 cm, at least 2 per side); sealant length = opening perimeter, converted to 300 ml tubes (10 m each) once per project. Off until the parts are linked (Ruling 8).
+Owner rules: shim + screw + plastic plug at every fixing point (every 60 cm, at least 2 per side); sealant length = opening perimeter, converted to 300 ml tubes (10 m each) once per project. Off until the parts are linked (Ruling 8). The 45° kerf default is 10 mm (owner estimate) and mitred pieces are always listed by outer length (Ruling 6).
 
 - [ ] **Step 1: Write the failing test** — create `src/lib/estimationSettings.test.js` with exactly:
 
@@ -958,7 +1048,7 @@ describe('mergeSettings', () => {
     expect(s.stock_length_m).toBe(6.4)
     expect(s.sealant_m_per_tube).toBe(10)
     expect(s.fixing_pitch_m).toBe(0.6)
-    expect(s.kerf_miter_mm).toBe(5)
+    expect(s.kerf_miter_mm).toBe(10)
     expect(s.fixing_min_per_side).toBe(2)
   })
   it('part links pass through, empty becomes null', () => {
@@ -1034,11 +1124,12 @@ Expected: FAIL (module / export not found).
 ```js
 // src/lib/estimationSettings.js
 // Tenant-wide estimation constants (one row in estimation_settings; every value is universal, not per project).
-// The kerf numbers are PLACEHOLDERS until the owner sets his saw's real values.
+// The kerf numbers are PLACEHOLDERS until the owner measures his saw: a 45 degree cut wastes more (owner estimate ~10 mm).
+// A mitred piece's length must always be its OUTER (long-point) length; mixing inner and outer lengths causes large errors.
 export const DEFAULT_SETTINGS = {
   stock_length_m: 6.4,
   kerf_square_mm: 3,
-  kerf_miter_mm: 5,
+  kerf_miter_mm: 10,
   min_keep_offcut_m: 0.5,
   sealant_m_per_tube: 10,
   fixing_pitch_m: 0.6,
@@ -1517,7 +1608,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `resolveItemInputs`, `buildEngineOpening`, `buildEngineAddonOpening` (2a); `makeCatalogPricing`; `computeBomForOpening`, `combineOpeningBoms`; `applyJoints`, `applyRoleThickness` (Task 3); `allowsMixedThickness` (Task 2); `openingExtras` (Task 4).
-- Produces: `costOpening(ctx) -> {resolved, bom, addonBom, extras, issues, total, unresolved}` where `ctx = {item, project, template, addonTemplate, componentsByTemplate, hardwareByTemplate, jointsByTemplate, typesById, infillTypesById, index, settings, asOf}` (the three `...ByTemplate` maps are `{[templateId]: rows[]}`).
+- Produces: `costOpening(ctx) -> {resolved, bom, addonBom, extras, issues, total, unresolved}` where `ctx = {item, project, template, addonTemplate, componentsByTemplate, hardwareByTemplate, jointsByTemplate, typesById, infillTypesById, index, settings, asOf}` (the three `...ByTemplate` maps are `{[templateId]: rows[]}`); `resolved` now includes `sash_thickness_mm`.
 
 The single costing entry point. The item form, the project BOM, the stale-price check and the quick calculator all call it so they cannot disagree. `total` = main BOM + add-on BOM + accessory extras; hardware-set cost is inside `bom.totalCost` (priced once per opening, Phase 2a ruling).
 
@@ -1536,7 +1627,7 @@ const index = buildCatalogIndex({
   seriesTypes: [{ series_id: 's1', type_id: 'tSlide', allow_mixed_thickness: true }, { series_id: 's1', type_id: 'tFixed' }],
   finishes: [{ id: 'f1', provider_id: 'A' }],
   profiles: [
-    { id: 'box', provider_id: 'A', family: 'box', thickness_mm: 1.5, linear_weight_kg_per_m: 1, depth_mm: 40, primary_contact: 'depth' },
+    { id: 'box', provider_id: 'A', family: 'box', thickness_mm: 1.5, linear_weight_kg_per_m: 1, depth_mm: 40, primary_contact: 'width' },
     { id: 'bar', provider_id: 'A', family: 'bar', thickness_mm: 1.5, linear_weight_kg_per_m: 1 },
     { id: 'bar2', provider_id: 'A', family: 'bar', thickness_mm: 2, linear_weight_kg_per_m: 2 },
   ],
@@ -1576,12 +1667,21 @@ describe('costOpening', () => {
     expect(r.issues).toEqual([{ role_name: 'bar', reason: 'no_main_profile' }])
     expect(r.unresolved.some(u => u.reason === 'no_main_profile')).toBe(true)
   })
-  it('a component thickness is used only where the series+type allows mixed thickness', () => {
+  it('a sash-role component is priced at the sash thickness only where the series+type allows mixed thickness', () => {
     const c = ctxBase()
-    c.componentsByTemplate = { t1: [{ ...comps[0], thickness_mm: 2, profile_family: 'bar' }] }
-    expect(costOpening(c).bom.profileLines[0].thickness_mm).toBe(2)
+    c.project = { ...c.project, default_thickness_mm: 1.5, default_sash_thickness_mm: 2 }
+    c.componentsByTemplate = { t1: [{ ...comps[0], thickness_role: 'sash', profile_family: 'bar' }, { ...comps[0], role_name: 'frame', profile_family: 'bar' }] }
+    const r = costOpening(c)
+    expect(r.bom.profileLines.map(l => l.thickness_mm)).toEqual([2, 1.5])
     c.template = T({ type_id: 'tFixed' })
-    expect(costOpening(c).bom.profileLines[0].thickness_mm).toBe(1.5)
+    expect(costOpening(c).bom.profileLines.map(l => l.thickness_mm)).toEqual([1.5, 1.5])
+  })
+  it('an item\'s own sash thickness wins over the project default', () => {
+    const c = ctxBase()
+    c.project = { ...c.project, default_sash_thickness_mm: 1.5 }
+    c.item = { ...c.item, sash_thickness_mm: 2 }
+    c.componentsByTemplate = { t1: [{ ...comps[0], thickness_role: 'sash', profile_family: 'bar' }] }
+    expect(costOpening(c).bom.profileLines[0].thickness_mm).toBe(2)
   })
   it('adds the add-on BOM and the accessory extras (shim x fixing points) to the total', () => {
     const c = ctxBase()
@@ -1633,9 +1733,9 @@ import { openingExtras } from './openingExtras.js'
 
 const positive = n => Number.isFinite(Number(n)) && Number(n) > 0
 
-function prepareComponents({ template, components, joints, index, seriesId, thicknessMm }) {
-  const allow = template.type_id ? allowsMixedThickness(index, seriesId, template.type_id) : false
-  return applyJoints({ components: applyRoleThickness(components, allow), joints, index, seriesId, thicknessMm })
+function prepareComponents({ template, components, joints, index, seriesId, thicknessMm, sashThicknessMm }) {
+  const allowMixed = template.type_id ? allowsMixedThickness(index, seriesId, template.type_id) : false
+  return applyJoints({ components: applyRoleThickness(components, { allowMixed, sashThicknessMm }), joints, index, seriesId, thicknessMm })
 }
 
 // ctx: { item, project, template, addonTemplate, componentsByTemplate, hardwareByTemplate, jointsByTemplate,
@@ -1648,7 +1748,7 @@ export function costOpening(ctx) {
   const issues = []
 
   const main = buildEngineOpening(item, project, template, ctx.typesById, ctx.infillTypesById)
-  const prepared = prepareComponents({ template, components: byT(ctx.componentsByTemplate, template.id), joints: byT(ctx.jointsByTemplate, template.id), index, seriesId: resolved.series_id, thicknessMm: resolved.thickness_mm })
+  const prepared = prepareComponents({ template, components: byT(ctx.componentsByTemplate, template.id), joints: byT(ctx.jointsByTemplate, template.id), index, seriesId: resolved.series_id, thicknessMm: resolved.thickness_mm, sashThicknessMm: resolved.sash_thickness_mm })
   issues.push(...prepared.issues)
   const bom = computeBomForOpening(main.opening, template, prepared.components, byT(ctx.hardwareByTemplate, template.id), pricing, main.infillType)
 
@@ -1657,7 +1757,7 @@ export function costOpening(ctx) {
   if (hasAddon) {
     const addon = { width_m: Number(item.addon_width_m), height_m: Number(item.addon_height_m), panel_count: item.addon_panel_count || 1, quantity: 1, extra_lines: [] }
     const ao = buildEngineAddonOpening(item, project, addon, addonTemplate, ctx.typesById, ctx.infillTypesById)
-    const aPrepared = prepareComponents({ template: addonTemplate, components: byT(ctx.componentsByTemplate, addonTemplate.id), joints: byT(ctx.jointsByTemplate, addonTemplate.id), index, seriesId: resolved.series_id, thicknessMm: resolved.thickness_mm })
+    const aPrepared = prepareComponents({ template: addonTemplate, components: byT(ctx.componentsByTemplate, addonTemplate.id), joints: byT(ctx.jointsByTemplate, addonTemplate.id), index, seriesId: resolved.series_id, thicknessMm: resolved.thickness_mm, sashThicknessMm: resolved.sash_thickness_mm })
     issues.push(...aPrepared.issues)
     addonBom = computeBomForOpening(ao.opening, addonTemplate, aPrepared.components, byT(ctx.hardwareByTemplate, addonTemplate.id), pricing, ao.infillType)
   }
@@ -1697,7 +1797,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `computeBomForOpening`, `makeCatalogPricing`, `buildEngineOpening`.
-- Produces: `compareProviders({project, items, templatesById, componentsByTemplate, typesById, infillTypesById, index, candidates, asOf}) -> rows`, `diffAgainst(baseRow, row) -> {amount, pct} | null`.
+- Produces: `compareProviders({project, items, templatesById, componentsByTemplate, jointsByTemplate, typesById, infillTypesById, index, settings, candidates, asOf}) -> rows` (built on `costOpening`, so joints and sash thickness behave as in the item form), `diffAgainst(baseRow, row) -> {amount, pct} | null`.
 
 Read-only "what if this project were built with extruder B": the same items priced in a candidate series + colour. Aluminium only (Ruling 10). `diffAgainst` returns null unless both rows are complete, so an incomplete extruder never looks cheaper.
 
@@ -1706,6 +1806,7 @@ Read-only "what if this project were built with extruder B": the same items pric
 ```js
 import { describe, it, expect } from 'vitest'
 import { buildCatalogIndex } from './aluCatalogPricing.js'
+import { mergeSettings } from './estimationSettings.js'
 import { compareProviders, diffAgainst } from './providerCompare.js'
 
 const index = buildCatalogIndex({
@@ -1725,7 +1826,7 @@ const index = buildCatalogIndex({
 const template = { id: 't1', waste_pct: 0, grid_row_weights: [1], labor_price_per_sqm: 0, silicone_price_per_m: 0, felt_price_per_m: 0, infill_width_deduction_mm: 0, infill_height_deduction_mm: 0 }
 const components = { t1: [{ role_name: 'top', profile_family: 'box', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 2 }] }
 const item = { id: 'i1', template_id: 't1', width_m: 2, height_m: 1, panel_count: 1, quantity: 3, thickness_mm: 1.5 }
-const base = { project: { price_as_of: '2026-06-01' }, items: [item], templatesById: { t1: template }, componentsByTemplate: components, typesById: {}, infillTypesById: {}, index, asOf: '2026-06-01' }
+const base = { project: { price_as_of: '2026-06-01' }, items: [item], templatesById: { t1: template }, componentsByTemplate: components, jointsByTemplate: {}, typesById: {}, infillTypesById: {}, index, settings: mergeSettings(null), asOf: '2026-06-01' }
 
 describe('compareProviders', () => {
   it('prices the same items in each candidate series and colour, x quantity', () => {
@@ -1772,16 +1873,16 @@ Expected: FAIL (module / export not found).
 // src/lib/providerCompare.js
 // "Compare extruders" for a whole project: recompute the ALUMINIUM cost of every item as if it were built in a
 // candidate extruder's series and colour. Read-only: nothing in the project changes. Pure.
-// Candidate = { providerId, seriesId, finishId } (the screen lets the owner pick the series + colour per extruder).
-// Items keep their own size, template and thickness; a candidate series that lacks that thickness or profile
-// makes the line unresolved (reason from the pricing), and the row says how many lines could not be priced.
-import { computeBomForOpening } from './bomEngine.js'
-import { makeCatalogPricing } from './aluCatalogPricing.js'
-import { buildEngineOpening } from './estimationInherit.js'
+// Candidate = { providerId, seriesId, finishId } (the screen lets the owner pick the series + colour per candidate).
+// Items keep their size, template and thickness (frame and sash); a candidate series that lacks a thickness or
+// profile makes those lines unresolved, and the row says how many lines could not be priced.
+// Built on costOpening so joints, role thickness and inheritance behave exactly as in the item form.
+import { costOpening } from './openingCost.js'
 
-export function compareProviders({ project, items, templatesById, componentsByTemplate, typesById, infillTypesById, index, candidates, asOf }) {
-  return (candidates || []).map(cand => {
-    const pricing = makeCatalogPricing({ index, seriesId: cand.seriesId, finishId: cand.finishId, asOf })
+// ctx: { project, items, templatesById, componentsByTemplate, jointsByTemplate, typesById, infillTypesById, index, settings, candidates, asOf }
+export function compareProviders(ctx) {
+  const { items, templatesById, index } = ctx
+  return (ctx.candidates || []).map(cand => {
     let aluminium = 0
     let unresolvedLines = 0
     let itemsPriced = 0
@@ -1790,9 +1891,13 @@ export function compareProviders({ project, items, templatesById, componentsByTe
       if (!template) continue
       // the same item, forced onto the candidate series + colour; hardware is not part of this comparison
       const forced = { ...item, series_id: cand.seriesId, alu_finish_id: cand.finishId, no_hardware_set: true, hardware_set_id: null }
-      const { opening, infillType } = buildEngineOpening(forced, project, template, typesById, infillTypesById)
-      const bom = computeBomForOpening(opening, template, (componentsByTemplate || {})[template.id] || [], [], pricing, infillType)
-      const lines = [...bom.profileLines, ...bom.gridLines]
+      const addonTemplate = item.addon_template_id ? (templatesById || {})[item.addon_template_id] : null
+      const r = costOpening({
+        item: forced, project: ctx.project, template, addonTemplate,
+        componentsByTemplate: ctx.componentsByTemplate, hardwareByTemplate: {}, jointsByTemplate: ctx.jointsByTemplate,
+        typesById: ctx.typesById, infillTypesById: ctx.infillTypesById, index, settings: ctx.settings, asOf: ctx.asOf,
+      })
+      const lines = [...r.bom.profileLines, ...r.bom.gridLines, ...(r.addonBom ? [...r.addonBom.profileLines, ...r.addonBom.gridLines] : [])]
       const qty = Number(item.quantity) > 0 ? Number(item.quantity) : 1
       aluminium += lines.reduce((s, l) => s + l.cost, 0) * qty
       unresolvedLines += lines.filter(l => !l.resolved).length * qty
@@ -2436,7 +2541,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `useCatalogTable`, `fetchCatalogRows`, `mergeSettings`.
-- Produces: `emptyForm`, `formFromOpening`, `buildOpeningPayload(form, {projectId, previews, savedAt})`, `validateForm`; `jointRowsForInsert`, `validateJoints`, `componentRowsForInsert`, `jointIndexForLoad`; `profileSketchSvg`; hooks `useEstimationSettings`, `saveEstimationSettings`, `useLayoutTemplates`, `useTemplateJoints`, `useProjectStock`, `groupByTemplate`.
+- Produces: `emptyForm`, `formFromOpening`, `buildOpeningPayload(form, {projectId, previews, savedAt})` (frame `thickness_mm` and `sash_thickness_mm`), `validateForm`; `jointRowsForInsert`, `validateJoints`, `componentRowsForInsert`, `jointIndexForLoad`; `profileSketchSvg`; hooks `useEstimationSettings`, `saveEstimationSettings`, `useLayoutTemplates`, `useTemplateJoints`, `useProjectStock`, `groupByTemplate`.
 
 The item form state <-> row mapping (inherit = NULL, explicit "none" flags, labour 0 is a real value, no quantity), the helpers that keep component->joint links correct when a template is saved by delete + reinsert, the profile cross-section sketch, and the data hooks the screens use. The hooks file has no unit test (it only wires Supabase); the build must pass.
 
@@ -2451,7 +2556,7 @@ const filled = (o = {}) => ({ ...emptyForm(), opening_no: 'D1', template_id: 't1
 describe('buildOpeningPayload', () => {
   it('blank inherit fields become NULL, never empty strings or 0', () => {
     const p = buildOpeningPayload(filled(), { projectId: 'p1' })
-    expect(p).toMatchObject({ project_id: 'p1', series_id: null, alu_finish_id: null, thickness_mm: null, infill_type_id: null, hardware_set_id: null, labour_per_sqm: null, profit_pct: null, item_name: null })
+    expect(p).toMatchObject({ project_id: 'p1', series_id: null, alu_finish_id: null, thickness_mm: null, sash_thickness_mm: null, infill_type_id: null, hardware_set_id: null, labour_per_sqm: null, profit_pct: null, item_name: null })
     expect(p.no_infill).toBe(false)
     expect(p).not.toHaveProperty('quantity')
     expect(p).not.toHaveProperty('preview_svg_out')
@@ -2460,6 +2565,11 @@ describe('buildOpeningPayload', () => {
     const p = buildOpeningPayload(filled({ labour_per_sqm: '0', profit_pct: '0' }), { projectId: 'p1' })
     expect(p.labour_per_sqm).toBe(0)
     expect(p.profit_pct).toBe(0)
+  })
+  it('frame and sash thickness are separate numbers; blank sash = same as frame (NULL)', () => {
+    const p = buildOpeningPayload(filled({ thickness_mm: '2', sash_thickness_mm: '1.5' }), { projectId: 'p1' })
+    expect(p).toMatchObject({ thickness_mm: 2, sash_thickness_mm: 1.5 })
+    expect(buildOpeningPayload(filled({ thickness_mm: '2' }), { projectId: 'p1' }).sash_thickness_mm).toBeNull()
   })
   it('"none" flags win over a leftover selection', () => {
     const p = buildOpeningPayload(filled({ no_infill: true, infill_type_id: 'g1', no_hardware_set: true, hardware_set_id: 'h1' }), { projectId: 'p1' })
@@ -2616,7 +2726,7 @@ const str = v => (v === null || v === undefined ? '' : String(v))
 export function emptyForm() {
   return {
     opening_no: '', item_name: '', item_description: '', template_id: '',
-    series_id: '', alu_finish_id: '', thickness_mm: '',
+    series_id: '', alu_finish_id: '', thickness_mm: '', sash_thickness_mm: '',
     infill_type_id: '', no_infill: false, hardware_set_id: '', no_hardware_set: false,
     width_m: '', height_m: '', panel_count: '1',
     has_addon: false, addon_template_id: '', addon_width_m: '', addon_height_m: '', addon_panel_count: '1', addon_position: 'top', addon_offset_m: '',
@@ -2627,7 +2737,7 @@ export function emptyForm() {
 export function formFromOpening(o) {
   return {
     opening_no: str(o.opening_no), item_name: str(o.item_name), item_description: str(o.item_description), template_id: str(o.template_id),
-    series_id: str(o.series_id), alu_finish_id: str(o.alu_finish_id), thickness_mm: str(o.thickness_mm),
+    series_id: str(o.series_id), alu_finish_id: str(o.alu_finish_id), thickness_mm: str(o.thickness_mm), sash_thickness_mm: str(o.sash_thickness_mm),
     infill_type_id: str(o.infill_type_id), no_infill: !!o.no_infill, hardware_set_id: str(o.hardware_set_id), no_hardware_set: !!o.no_hardware_set,
     width_m: str(o.width_m), height_m: str(o.height_m), panel_count: str(o.panel_count || 1),
     has_addon: !!o.addon_template_id, addon_template_id: str(o.addon_template_id), addon_width_m: str(o.addon_width_m), addon_height_m: str(o.addon_height_m),
@@ -2648,6 +2758,7 @@ export function buildOpeningPayload(form, { projectId, previews = null, savedAt 
     series_id: form.series_id || null,
     alu_finish_id: form.alu_finish_id || null,
     thickness_mm: numOrNull(form.thickness_mm),
+    sash_thickness_mm: numOrNull(form.sash_thickness_mm),
     no_infill: !!form.no_infill,
     infill_type_id: form.no_infill ? null : (form.infill_type_id || null),
     no_hardware_set: !!form.no_hardware_set,
@@ -2852,7 +2963,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ### Task 12: Catalog screens — profile dimensions + die no. + drawing, mixed thickness, settings tab
 
 **Files:**
-- Modify: `src/pages/aluCatalog/ProfilesTab.jsx`, `src/pages/aluCatalog/HierarchyTab.jsx`, `src/pages/AluCatalog.jsx`
+- Modify: `src/pages/aluCatalog/ProfilesTab.jsx`, `src/pages/aluCatalog/HierarchyTab.jsx`, `src/pages/AluCatalog.jsx`, `src/components/AttachmentsSection.jsx` (optional `accept` prop only)
 - Create: `src/pages/aluCatalog/SettingsTab.jsx`
 - Read first: `src/components/CatalogCrud.jsx` (supports `type: 'select'`; check `number` step / min), `src/components/AttachmentsSection.jsx` (upload pattern, Ruling 13), `src/lib/catalogForm.js`
 
@@ -2862,16 +2973,16 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 Mockup screen 8 + the template/type notes. Steps:
 
-- [ ] **Step 1: ProfilesTab.** In `PROFILE_FIELDS`: relabel `drawing_no` to `DIE NO. (รหัสแม่พิมพ์ของโรงรีด)`; add `shape_group` (text, "กลุ่มรูปร่าง เช่น กล่องเรียบ"), `width_mm` and `depth_mm` (number, step `0.01`, min 0, labels "ความกว้างรวมหน้าตัด (มม.)" / "ความสูง/ลึกรวมหน้าตัด (มม.)"), `primary_contact` (select: `depth` = "ความสูง/ลึก (ปกติ)", `width` = "ความกว้าง (บางกรณี)", label "พื้นผิวสัมผัสหลัก ใช้หักที่จุดชน", default `depth`). Show the sketch (`profileSketchSvg` via `dangerouslySetInnerHTML` is acceptable here: the string is built only from numbers) under the form, using `thickness_mm` as `wall_mm` and `shape: 'u'` when `shape_group` contains "กล่องเรียบ" else `'box'`. Also list, read-only, the other profiles that share the same `shape_group` (DIE NO., thickness, weight) so the owner sees the dies of one shape.
-- [ ] **Step 2: Drawing upload.** Add a file input (DXF / SVG / PDF / PNG / JPG) that stores the file with the pattern from `AttachmentsSection.jsx` and saves its URL in `drawing_file_url`; show it as a link. If that pattern needs a new storage bucket or storage policy, STOP and report (Ruling 13). The attached file is a reference only; nothing reads it.
-- [ ] **Step 3: HierarchyTab — mixed thickness.** Under the series-types links of the selected series, add one checkbox per linked type: "อนุญาตให้กรอบกับบานใช้ความหนาต่างกัน" bound to `alu_series_types.allow_mixed_thickness` (update the existing link row by id; no upsert). Disabled when the user cannot edit.
-- [ ] **Step 4: SettingsTab** (new tab "ค่ามาตรฐาน" in `AluCatalog.jsx`, same gating as the other tabs). One form for `estimation_settings`: stock length (ม.), kerf ตัดฉาก 90° (มม.), kerf ตัด 45° (มม.), min keep offcut (ม.), sealant (ม./หลอด 300 มล.), fixing pitch (ม.), min fixing points per side, and four part selects (sealant, shim, screw, plug) listing active `accessory` parts or "— ไม่ใช้ —". Show the hint: "kerf เป็นค่าสมมติ ใส่ค่าจริงของเลื่อย". Load with `useEstimationSettings`, save with `saveEstimationSettings` (insert-or-update). Empty numeric inputs fall back to the default (never save NaN / blank).
+- [ ] **Step 1: ProfilesTab.** In `PROFILE_FIELDS`: relabel `drawing_no` to `DIE NO. (รหัสแม่พิมพ์ของโรงรีด)`; add `shape_group` (text, "กลุ่มรูปร่าง เช่น กล่องเรียบ"), `width_mm` and `depth_mm` (number, step `0.01`, min 0, labels "ความกว้างรวมหน้าตัด (มม.)" / "ความสูง/ลึกรวมหน้าตัด (มม.)"), `primary_contact` (select, label "พื้นผิวสัมผัสหลัก (หน้าที่เส้นรองมาชน)": `width` = "หน้ากว้าง เช่น 101.6 (ปกติ) — เส้นรองหักตามความสูง/ลึก", `depth` = "หน้าแคบ — เส้นรองหักตามความกว้าง", default `width`; show beside it the live result, e.g. "เส้นรองจะหักข้างละ 44.45 มม.", computed with `jointDeductionMm`). Show the sketch (`profileSketchSvg` via `dangerouslySetInnerHTML` is acceptable here: the string is built only from numbers) under the form, using `thickness_mm` as `wall_mm` and `shape: 'u'` when `shape_group` contains "กล่องเรียบ" else `'box'`. Also list, read-only, the other profiles that share the same `shape_group` (DIE NO., thickness, weight) so the owner sees the dies of one shape.
+- [ ] **Step 2: Drawing files.** Under the profile form render `<AttachmentsSection table="alu_profile_files" bucket="alu-profile-files" foreignKey="profile_id" entityId={profile.id} tenantId={...} accept=".pdf,.dwg,.dxf,.svg,.png,.jpg,.jpeg" />` (get `tenantId` the way the other pages that use `AttachmentsSection` do). Add the optional `accept` prop to `src/components/AttachmentsSection.jsx` (default = today's `.pdf,.xlsx,.xls,.jpg,.jpeg,.png`, so nothing else changes). Add the hint "1 ไฟล์ = 1 หน้าตัด แยกไฟล์ catalog/DWG ก่อนอัปโหลด". Files are stored and downloaded only; DWG has no preview. The migration (Task 1) already creates the table and bucket.
+- [ ] **Step 3: HierarchyTab — mixed thickness.** Under the series-types links of the selected series, add one checkbox per linked type: "อนุญาตให้วงกบกับบานใช้ความหนาต่างกัน (งานราชการ เช่น วงกบ 2.0 / บาน 1.5)" bound to `alu_series_types.allow_mixed_thickness` (update the existing link row by id; no upsert). Disabled when the user cannot edit.
+- [ ] **Step 4: SettingsTab** (new tab "ค่ามาตรฐาน" in `AluCatalog.jsx`, same gating as the other tabs). One form for `estimation_settings`: stock length (ม.), kerf ตัดฉาก 90° (มม.), kerf ตัด 45° (มม.), min keep offcut (ม.), sealant (ม./หลอด 300 มล.), fixing pitch (ม.), min fixing points per side, and four part selects (sealant, shim, screw, plug) listing active `accessory` parts or "— ไม่ใช้ —". Show the hints: "kerf เป็นค่าสมมติ ใส่ค่าจริงของเลื่อย" and, beside the 45° field, "ตัด 45° เสียมากกว่า (ประมาณ 10 มม.) ให้วัดจริง และระบุความยาวชิ้น 45° เป็นความยาวด้านนอกเสมอ". Load with `useEstimationSettings`, save with `saveEstimationSettings` (insert-or-update). Empty numeric inputs fall back to the default (never save NaN / blank).
 - [ ] **Step 5: Build and commit**
 
 ```bash
 npm run build && npm test
-git add src/pages/aluCatalog src/pages/AluCatalog.jsx
-git commit -m "feat(alu-catalog): profile dimensions, die no., drawing upload, mixed-thickness flag and settings tab
+git add src/pages/aluCatalog src/pages/AluCatalog.jsx src/components/AttachmentsSection.jsx
+git commit -m "feat(alu-catalog): profile dimensions, die no., drawing files, mixed-thickness flag and settings tab
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ```
@@ -2892,8 +3003,8 @@ Mockup screen 5 (three tabs). Steps:
 - [ ] **Step 1: Template fields.** Add selects `ประเภท (จากแคตตาล็อก)` → `type_id`, `รูปแบบภาพตัวอย่าง` → `preview_kind` (`fixed` "บานติดตาย", `slide` "บานเลื่อน", `swing` "บานสวิง"), and `เส้นหลักของกรอบ (วิ่งเต็ม)` → `main_axis` (`vertical` "เส้นตั้ง ซ้าย/ขวา", `horizontal` "เส้นนอน บน/ล่าง"). Include them in the `payload` that is inserted/updated.
 - [ ] **Step 2: Hardware lines.** Add a `part_id` select per hardware line (active parts of kind `hardware`, `accessory` or `hardware_set`, shown as `P-0007 ชื่อ`), "— ไม่ผูก (ใช้ราคาอ้างอิง) —" first. Keep `reference_unit_price` as the fallback.
 - [ ] **Step 3: Family list.** Replace the `profile-family-options` datalist (read from legacy `aluminum_profiles`) with the distinct families of the catalog (`alu_series_profiles.family` or the profile's `family`).
-- [ ] **Step 4: Components.** Add per component row: `joint_index` select ("ไม่มีจุดชน" + the template's joints by name), `joint_ends` (1 or 2), and `thickness_mm` (shown only when the template's type is offered by at least one series with `allowsMixedThickness` true; otherwise hidden and saved as NULL). Rows are loaded through `jointIndexForLoad(components, joints)`.
-- [ ] **Step 5: Joints tab** (`JointsTab.jsx`, tabs "ส่วนประกอบและอุปกรณ์" / "รายละเอียดการประกอบ (จุดชน)" / "รายละเอียดการบาก" as in the mockup). Joint rows: `name`, `main_family`, `secondary_family` (selects of families), `deduction_mode` (`auto` "อัตโนมัติ: พื้นผิวสัมผัสหลักของเส้นหลัก" / `manual` "กำหนดเอง (มม.)" + `deduction_mm`), `cut_style` (`square` "ตัดตรง 90°", `notch` "บากมน (notch)", `miter45` "ตัด 45°"). The notch tab edits `notch_width_mm` / `notch_depth_mm` of the selected joint and draws the code-drawn sketch (port the mockup's `drawNotch`). Show the main/secondary rule as a one-line hint.
+- [ ] **Step 4: Components.** Add per component row: `joint_index` select ("ไม่มีจุดชน" + the template's joints by name), `joint_ends` (1 or 2), and `thickness_role` (select "ความหนา: ตามวงกบ" = NULL / "ตามบาน" = `sash`; shown only when the template's type is offered by at least one series with `allowsMixedThickness` true; otherwise hidden and saved as NULL). Rows are loaded through `jointIndexForLoad(components, joints)`.
+- [ ] **Step 5: Joints tab** (`JointsTab.jsx`, tabs "ส่วนประกอบและอุปกรณ์" / "รายละเอียดการประกอบ (จุดชน)" / "รายละเอียดการบาก" as in the mockup). Joint rows: `name`, `main_family`, `secondary_family` (selects of families), `deduction_mode` (`auto` "อัตโนมัติ: พื้นผิวสัมผัสหลักของเส้นหลัก" / `manual` "กำหนดเอง (มม.)" + `deduction_mm`), `cut_style` (`square` "ตัดตรง 90°", `notch` "บากมน (notch)", `miter45` "ตัด 45°"). The notch tab edits `notch_width_mm` / `notch_depth_mm` of the selected joint and draws the code-drawn sketch (port the mockup's `drawNotch`). Show the main/secondary rule as a one-line hint, and for `miter45` the warning "ความยาวชิ้นตัด 45° ใช้ความยาวด้านนอกเสมอ".
 - [ ] **Step 6: Save order (critical).** In `handleSave`, after the template row is written: validate with `validateJoints` (show the Thai message, do not write); delete components; delete joints; insert joints from `jointRowsForInsert(jointRows, templateId)` with `.select('id')` ordered by `sort_order`; then insert components from `componentRowsForInsert(rows, templateId, insertedJoints)`. Then hardware and constraints as today. A component must never be inserted before its joints.
 - [ ] **Step 7: Build and commit**
 
@@ -2917,7 +3028,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 Mockup screens 1, 3, 4, and the items table of the project page. Steps:
 
-- [ ] **Step 1: Defaults panel.** Fields: main extruder (`primary_provider_id`; "ไม่กำหนด (เลือกต่อรายการ)" allowed), series (label `ชื่อซีรีส์ · ชื่อโรงรีด`; options filtered to the main extruder when set), colour (the series' provider's `alu_finishes`), thickness (`thicknessesForSeries`; a single thickness is auto-selected and the select locked with the hint), infill, hardware set (`hardwareSetsForSeries(index, seriesId, null)`), labour ฿/ตร.ม., profit %, price date (read-only text, `price_as_of`), description format (ordered chips from `DESCRIPTION_TOKENS` stored in `description_format`, with a live sample from `buildItemDescription`). Blank = NULL (labour 0 is a value). Saving writes only changed columns.
+- [ ] **Step 1: Defaults panel.** Fields: main extruder (`primary_provider_id`; "ไม่กำหนด (เลือกต่อรายการ)" allowed), series (label `ชื่อซีรีส์ · ชื่อโรงรีด`; options filtered to the main extruder when set), colour (the series' provider's `alu_finishes`), frame thickness (`thicknessesForSeries`; a single thickness is auto-selected and the select locked with the hint) and sash thickness (`default_sash_thickness_mm`, same choices, "เท่ากับวงกบ" = blank; shown only when at least one type of the series allows mixed thickness), infill, hardware set (`hardwareSetsForSeries(index, seriesId, null)`), labour ฿/ตร.ม., profit %, price date (read-only text, `price_as_of`), description format (ordered chips from `DESCRIPTION_TOKENS` stored in `description_format`, with a live sample from `buildItemDescription`). Blank = NULL (labour 0 is a value). Saving writes only changed columns.
 - [ ] **Step 2: New project.** `price_as_of` is set from `localDateString(new Date())` in the insert (Ruling 17); never leave it to the DB default.
 - [ ] **Step 3: Changing the default series** lists the items it affects (`itemsAffectedByDefaultSeries`) in a confirm dialog before saving; the warning banner (`AvailabilityBanner`) lists items whose template or add-on type the series does not offer (`typeAvailability`), with the offering series, as in mockup screen 3. It never blocks saving.
 - [ ] **Step 4: Items table** columns: เลขช่อง, ชื่อรายการ, ประเภท, ซีรีส์, สถานะ (unresolved / ภาพเก่า / ok), ขนาด, จำนวนชุด (editable inline; updates `quantity` only), ราคา/ชุด (from `costOpening(...).total`), รวม. An unresolved item shows its reasons in a tooltip and its price cell reads "—", never 0.
@@ -2945,7 +3056,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 Mockup screen 2 (all of it). Steps:
 
-- [ ] **Step 1: Fields.** Item no., item name and description (separate; description auto-filled from `buildItemDescription` with a "สร้างใหม่" button, editable), template (grouped by type), size (กว้าง/สูง ม.), panels, series / colour / thickness / infill / hardware set each with "ใช้ค่าโปรเจกต์" (empty = inherit; infill and set also have an explicit "ไม่ใช้" = `no_infill` / `no_hardware_set`), per-item labour and profit override, extra lines. **No quantity field.** Thickness choices come from `thicknessesForSeries` of the resolved series; hardware-set choices from `hardwareSetsForSeries(index, seriesId, template.type_id)`; show the inherited value as a hint. Seed and save with `emptyForm` / `formFromOpening` / `validateForm` / `buildOpeningPayload` (Task 11).
+- [ ] **Step 1: Fields.** Item no., item name and description (separate; description auto-filled from `buildItemDescription` with a "สร้างใหม่" button, editable), template (grouped by type), size (กว้าง/สูง ม.), panels, series / colour / thickness / infill / hardware set each with "ใช้ค่าโปรเจกต์" (empty = inherit; infill and set also have an explicit "ไม่ใช้" = `no_infill` / `no_hardware_set`), per-item labour and profit override, extra lines. **No quantity field.** Thickness choices (frame, and sash when the template's type allows mixed thickness in the resolved series, `allowsMixedThickness`) come from `thicknessesForSeries` of the resolved series; hardware-set choices from `hardwareSetsForSeries(index, seriesId, template.type_id)`; show the inherited value as a hint. Seed and save with `emptyForm` / `formFromOpening` / `validateForm` / `buildOpeningPayload` (Task 11).
 - [ ] **Step 2: Add-on.** Template choice from `addonTemplatesForSeries` (2a), size, panels, **position** (บน/ล่าง/ซ้าย/ขวา) and **offset** (ม. from the left or top; blank = centred). Partly filled = "no add-on yet", not an error.
 - [ ] **Step 3: Layout templates.** `LayoutTemplatePicker` shows thumbnail cards for `availableLayoutTemplates(...)` of the chosen main type: each card renders a small `buildFramePreview` of the template applied to the current size (`applyLayoutTemplate`), greyed with the reason text when unusable. Clicking applies add-on type/position/size/offset/panels; the add-on BOM template is the first of `bomTemplatesForType`, changeable. A "บันทึกเป็นแม่แบบรูปแบบ" checkbox + name saves a row from `layoutTemplateFromItem` into `estimation_layout_templates` AFTER the item saves successfully; a duplicate name error is shown in Thai and does not undo the item.
 - [ ] **Step 4: Live preview.** `PreviewPanel` calls `buildFramePreview` with `main_axis` and `preview_kind` from the template, `frame_mm` from the main frame profile's visible width (`resolveCatalogProfile(...).profile.width_mm`; omit when unknown), `view` (out/in toggle), and for the "parts" style `part_labels` built from `costOpening` (profile die no. and cut length per side). Styles: double, solid, CAD, parts (all four stay, Ruling 11); render the geometry as SVG using CSS variables for theming (see the mockup's `unit()`), and draw `seams`, `decor`, `dims`, `labels`.
