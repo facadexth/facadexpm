@@ -19,6 +19,7 @@ export function resolveItemInputs(item, project, template, typesById) {
     infill_type_id: it.no_infill ? null : first(it.infill_type_id, pj.default_infill_id),
     hardware_set_id: it.no_hardware_set ? null : first(it.hardware_set_id, pj.default_hardware_set_id),
     thickness_mm: firstNum(it.thickness_mm, pj.default_thickness_mm),
+    sash_thickness_mm: firstNum(it.sash_thickness_mm, pj.default_sash_thickness_mm),
     labour_per_sqm: firstNum(it.labour_per_sqm, pj.labour_per_sqm, typeLabour),
     profit_pct: firstNum(it.profit_pct, pj.profit_pct),
   }

@@ -9,13 +9,13 @@ const tpl = { id: 'tp1', type_id: 't1' }
 describe('resolveItemInputs', () => {
   it('an empty item inherits everything from the project', () => {
     expect(resolveItemInputs({}, project, tpl, types)).toEqual({
-      series_id: 's1', finish_id: 'f1', infill_type_id: 'i1', hardware_set_id: 'h1', thickness_mm: 1.2, labour_per_sqm: 250, profit_pct: 15,
+      series_id: 's1', finish_id: 'f1', infill_type_id: 'i1', hardware_set_id: 'h1', thickness_mm: 1.2, sash_thickness_mm: null, labour_per_sqm: 250, profit_pct: 15,
     })
   })
   it('explicit item values win', () => {
     const item = { series_id: 's2', alu_finish_id: 'f2', infill_type_id: 'i2', hardware_set_id: 'h2', thickness_mm: 1.5, labour_per_sqm: 100, profit_pct: 20 }
     expect(resolveItemInputs(item, project, tpl, types)).toEqual({
-      series_id: 's2', finish_id: 'f2', infill_type_id: 'i2', hardware_set_id: 'h2', thickness_mm: 1.5, labour_per_sqm: 100, profit_pct: 20,
+      series_id: 's2', finish_id: 'f2', infill_type_id: 'i2', hardware_set_id: 'h2', thickness_mm: 1.5, sash_thickness_mm: null, labour_per_sqm: 100, profit_pct: 20,
     })
   })
   it('"no infill" / "no hardware set" flags beat the project default (Review Focus 4)', () => {
@@ -36,7 +36,7 @@ describe('resolveItemInputs', () => {
   })
   it('missing everywhere gives nulls, never undefined', () => {
     expect(resolveItemInputs({}, {}, null, {})).toEqual({
-      series_id: null, finish_id: null, infill_type_id: null, hardware_set_id: null, thickness_mm: null, labour_per_sqm: null, profit_pct: null,
+      series_id: null, finish_id: null, infill_type_id: null, hardware_set_id: null, thickness_mm: null, sash_thickness_mm: null, labour_per_sqm: null, profit_pct: null,
     })
   })
 })
