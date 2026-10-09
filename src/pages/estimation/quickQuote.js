@@ -3,7 +3,7 @@
 // per-set cost at the project's price date and today. Nothing here saves anything: the item is a plain object.
 import { selectableTypes, typeLabel } from '../../lib/typeTree.js'
 import { bomTemplatesForType } from '../../lib/layoutTemplates.js'
-import { emptyForm, buildOpeningPayload } from '../../lib/openingPayload.js'
+import { emptyForm, buildOpeningPayload, SET_COST_LABELS } from '../../lib/openingPayload.js'
 import { thicknessesForSeries } from '../../lib/estimationCatalogViews.js'
 import { costOpening } from '../../lib/openingCost.js'
 import { seriesChoices, finishChoices } from './projectDefaults.js'
@@ -52,6 +52,8 @@ export function quickMissing(q, template, showSash) {
 // labour and profit stay blank = inherited from the project (hardware by the package for the template's type).
 export function buildQuickItem(q) {
   const { project_id, ...item } = buildOpeningPayload({ ...emptyForm(), ...q, opening_no: 'quick' }, { projectId: null })
+  // The per-set price-structure costs are not part of a quick quote.
+  for (const [k] of SET_COST_LABELS) item[k] = null
   return { ...item, id: 'quick' }
 }
 

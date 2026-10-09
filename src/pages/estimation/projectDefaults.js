@@ -3,6 +3,7 @@
 import { thicknessesForSeries, seriesForType } from '../../lib/estimationCatalogViews.js'
 import { seriesLabelFull } from '../../lib/aluCatalog.js'
 import { DEFAULT_DESCRIPTION_FORMAT } from '../../lib/descriptionFormat.js'
+import { mergeSettings } from '../../lib/estimationSettings.js'
 import { localDateString } from '../../lib/localDate.js'
 import { costOpening } from '../../lib/openingCost.js'
 import { typeAvailability } from '../../lib/estimationInherit.js'
@@ -110,7 +111,14 @@ export function buildPatch(project, draft) {
 }
 
 // The insert row of a new project: the price date is the viewer's local date, never the DB default (Ruling 17).
-export const newProjectRow = (name, now = new Date()) => ({ name: String(name).trim(), price_as_of: localDateString(now) })
+// The factors are seeded from the tenant defaults (settings, optional); the transport total starts blank.
+export const newProjectRow = (name, settings, now = new Date()) => {
+  const s = mergeSettings(settings)
+  return {
+    name: String(name).trim(), price_as_of: localDateString(now),
+    waste_pct: s.default_waste_pct, profit_pct: s.default_profit_pct, pm_pct: s.default_pm_pct, round_step: s.default_round_step, transport_total: null,
+  }
+}
 
 // Whole numbers >= 1 only; blanks, fractions, 0 and negatives are refused (null).
 export function parseQuantity(text) {

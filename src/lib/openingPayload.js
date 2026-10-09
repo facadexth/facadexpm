@@ -25,6 +25,9 @@ export const metresFromMm = v => {
   return n === null ? null : Math.round(n * 1e3) / 1e6
 }
 
+// Per-set baht amounts of the price structure (blank = NULL = none).
+export const SET_COST_LABELS = [['fire_barrier_cost', 'Fire Barrier'], ['bracket_cost', 'Bracket'], ['bend_alu_cost', 'ดัดอลูมิเนียม'], ['bend_glass_cost', 'ดัดกระจก']]
+
 export function emptyForm() {
   return {
     opening_no: '', item_name: '', item_description: '', template_id: '',
@@ -33,6 +36,7 @@ export function emptyForm() {
     width_m: '', height_m: '', panel_count: '1',
     has_addon: false, addon_template_id: '', addon_width_m: '', addon_height_m: '', addon_panel_count: '1', addon_position: 'top', addon_offset_m: '',
     labour_per_sqm: '', profit_pct: '', extra_lines: [],
+    fire_barrier_cost: '', bracket_cost: '', bend_alu_cost: '', bend_glass_cost: '',
   }
 }
 
@@ -45,6 +49,7 @@ export function formFromOpening(o) {
     has_addon: !!o.addon_template_id, addon_template_id: str(o.addon_template_id), addon_width_m: mmText(o.addon_width_m), addon_height_m: mmText(o.addon_height_m),
     addon_panel_count: str(o.addon_panel_count || 1), addon_position: o.addon_position || 'top', addon_offset_m: mmText(o.addon_offset_m),
     labour_per_sqm: str(o.labour_per_sqm), profit_pct: str(o.profit_pct), extra_lines: Array.isArray(o.extra_lines) ? o.extra_lines : [],
+    fire_barrier_cost: str(o.fire_barrier_cost), bracket_cost: str(o.bracket_cost), bend_alu_cost: str(o.bend_alu_cost), bend_glass_cost: str(o.bend_glass_cost),
   }
 }
 
@@ -76,6 +81,10 @@ export function buildOpeningPayload(form, { projectId, previews = null, savedAt 
     addon_offset_m: addon ? metresFromMm(form.addon_offset_m) : null,
     labour_per_sqm: numOrNull(form.labour_per_sqm),
     profit_pct: numOrNull(form.profit_pct),
+    fire_barrier_cost: numOrNull(form.fire_barrier_cost),
+    bracket_cost: numOrNull(form.bracket_cost),
+    bend_alu_cost: numOrNull(form.bend_alu_cost),
+    bend_glass_cost: numOrNull(form.bend_glass_cost),
     extra_lines: (form.extra_lines || []).map(l => ({ description: String(l.description || ''), amount: Number(l.amount) || 0 })),
   }
   if (previews) {
@@ -104,6 +113,12 @@ export function validateForm(form) {
   }
   const labour = numOrNull(form.labour_per_sqm)
   if (labour !== null && labour < 0) return 'ค่าแรงต้องไม่ติดลบ'
+  for (const [k, label] of SET_COST_LABELS) {
+    const raw = form[k]
+    if (raw === null || raw === undefined || String(raw).trim() === '') continue
+    const n = Number(raw)
+    if (!Number.isFinite(n) || n < 0) return `${label}ต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป`
+  }
   const profit = numOrNull(form.profit_pct)
   if (profit !== null && (profit < 0 || profit > 1000)) return 'กำไร (%) ต้องอยู่ระหว่าง 0 ถึง 1000'
   return null

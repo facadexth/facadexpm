@@ -138,3 +138,16 @@ describe('quick view: series types and hardware', () => {
     expect(quickOk({ unresolved: [], total: 12 })).toBe(true)
   })
 })
+
+describe('quick calculator ignores the per-set item costs', () => {
+  it('the four price-structure fields are not part of the draft and never change the result', () => {
+    expect(Object.keys(emptyQuick())).not.toEqual(expect.arrayContaining(['fire_barrier_cost']))
+    const q = { template_id: 'tS', series_id: 'sA', alu_finish_id: 'fA', thickness_mm: '1.4', width_m: '1500', height_m: '1200', panel_count: '1' }
+    const extra = { fire_barrier_cost: '500', bracket_cost: '200', bend_alu_cost: '300', bend_glass_cost: '400' }
+    const project = { id: 'p', default_series_id: 'sA', default_finish_id: 'fA', default_thickness_mm: 1.4, price_as_of: '2026-10-09' }
+    const args = { template: tS, project, ctx, today: '2026-10-09' }
+    expect(quickCosts({ q: { ...q, ...extra }, ...args })).toEqual(quickCosts({ q, ...args }))
+    const item = buildQuickItem({ ...q, ...extra })
+    for (const k of Object.keys(extra)) expect(item[k] ?? null).toBeNull()
+  })
+})

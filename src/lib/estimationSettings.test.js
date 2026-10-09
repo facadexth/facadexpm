@@ -27,3 +27,16 @@ describe('mergeSettings', () => {
     expect(mergeSettings({ screw_part_id: '' }).screw_part_id).toBeNull()
   })
 })
+
+describe('price-structure defaults', () => {
+  it('no row gives 10 / 45 / 2 / 100', () => {
+    const s = mergeSettings({})
+    expect([s.default_waste_pct, s.default_profit_pct, s.default_pm_pct, s.default_round_step]).toEqual([10, 45, 2, 100])
+  })
+  it('0 is allowed for the percentages, not for the round step; bad values fall back', () => {
+    expect(mergeSettings({ default_waste_pct: '0', default_profit_pct: 0, default_pm_pct: '3' })).toMatchObject({ default_waste_pct: 0, default_profit_pct: 0, default_pm_pct: 3 })
+    expect(mergeSettings({ default_round_step: 0 }).default_round_step).toBe(100)
+    expect(mergeSettings({ default_round_step: 50 }).default_round_step).toBe(50)
+    expect(mergeSettings({ default_waste_pct: -1, default_pm_pct: 'x' })).toMatchObject({ default_waste_pct: 10, default_pm_pct: 2 })
+  })
+})

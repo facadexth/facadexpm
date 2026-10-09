@@ -82,7 +82,13 @@ describe('buildPatch', () => {
 
 describe('small rules', () => {
   it('a new project takes its price date from the local date', () => {
-    expect(newProjectRow('  บ้าน ', new Date(2026, 9, 9, 3, 0))).toEqual({ name: 'บ้าน', price_as_of: '2026-10-09' })
+    expect(newProjectRow('  บ้าน ', undefined, new Date(2026, 9, 9, 3, 0))).toMatchObject({ name: 'บ้าน', price_as_of: '2026-10-09' })
+  })
+  it('a new project is seeded with the factor defaults; transport stays NULL', () => {
+    const now = new Date(2026, 9, 9, 3, 0)
+    expect(newProjectRow('x', undefined, now)).toEqual({ name: 'x', price_as_of: '2026-10-09', waste_pct: 10, profit_pct: 45, pm_pct: 2, round_step: 100, transport_total: null })
+    const r = newProjectRow('x', { default_waste_pct: 8, default_profit_pct: 30, default_pm_pct: 1, default_round_step: 50 }, now)
+    expect(r).toMatchObject({ waste_pct: 8, profit_pct: 30, pm_pct: 1, round_step: 50, transport_total: null })
   })
   it('quantity refuses blanks, fractions, 0 and negatives', () => {
     expect(['', ' ', '0', '1.5', '-2', 'abc', '2e3'].map(parseQuantity)).toEqual([null, null, null, null, null, null, null])

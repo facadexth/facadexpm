@@ -87,7 +87,7 @@ export default function Estimation(props) {
 
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) return
-    const { error } = await supabase.from('estimation_projects').insert(newProjectRow(newProjectName))
+    const { error } = await supabase.from('estimation_projects').insert(newProjectRow(newProjectName, settings))
     if (error) { alert('สร้างไม่สำเร็จ: ' + error.message); return }
     setNewProjectName(''); setShowProjectForm(false); refetchProjects()
   }

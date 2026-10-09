@@ -105,6 +105,13 @@ export default function ItemFields({ form, m, update, dis }) {
         <Field label="กำไร (%)"><input className="input" type="number" min="0" disabled={dis} value={form.profit_pct} onChange={e => update({ profit_pct: e.target.value })} placeholder={m.inherit.profit} /></Field>
       </div>
 
+      <div style={grid(140)}>
+        <Field label="Fire Barrier (บาท/ชุด)"><input className="input" type="number" min="0" disabled={dis} value={form.fire_barrier_cost ?? ''} onChange={e => update({ fire_barrier_cost: e.target.value })} /></Field>
+        <Field label="Bracket (บาท/ชุด)"><input className="input" type="number" min="0" disabled={dis} value={form.bracket_cost ?? ''} onChange={e => update({ bracket_cost: e.target.value })} /></Field>
+        <Field label="ดัดอลูมิเนียม (บาท/ชุด)"><input className="input" type="number" min="0" disabled={dis} value={form.bend_alu_cost ?? ''} onChange={e => update({ bend_alu_cost: e.target.value })} /></Field>
+        <Field label="ดัดกระจก (บาท/ชุด)"><input className="input" type="number" min="0" disabled={dis} value={form.bend_glass_cost ?? ''} onChange={e => update({ bend_glass_cost: e.target.value })} /></Field>
+      </div>
+
       <div>
         <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13 }}>รายการเพิ่มเติม (Fire Barrier, ดัดโค้ง ฯลฯ)</div>
         <div style={{ display: 'grid', gap: 6 }}>

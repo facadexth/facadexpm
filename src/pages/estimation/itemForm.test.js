@@ -188,3 +188,29 @@ describe('description context', () => {
     expect(ctx).toMatchObject({ item_name: 'W-03', type_name: 'หน้าต่าง บานเลื่อน 2 บาน', series_label: 'Demo 40 · โรงรีด A', finish_name: 'ขาว', thickness_mm: 1.4 })
   })
 })
+
+describe('four per-set item costs (price structure)', () => {
+  const KEYS = ['fire_barrier_cost', 'bracket_cost', 'bend_alu_cost', 'bend_glass_cost']
+  const base = { ...emptyForm(), opening_no: '1', template_id: 't', width_m: '1000', height_m: '1000' }
+  it('empty form has the four as blank strings', () => {
+    for (const k of KEYS) expect(emptyForm()[k]).toBe('')
+  })
+  it('round trip keeps the values; blank -> null; a row without the keys reads as blank', () => {
+    const row = { fire_barrier_cost: '120.5', bracket_cost: 0, bend_alu_cost: null }
+    const f = formFromOpening({ ...row, opening_no: '1' })
+    expect(f.fire_barrier_cost).toBe('120.5')
+    expect(f.bracket_cost).toBe('0')
+    expect(f.bend_alu_cost).toBe('')
+    expect(f.bend_glass_cost).toBe('')
+    const p = buildOpeningPayload({ ...base, ...f }, { projectId: 'p' })
+    expect(p).toMatchObject({ fire_barrier_cost: 120.5, bracket_cost: 0, bend_alu_cost: null, bend_glass_cost: null })
+  })
+  it('negative or non-numeric is a validation error, blank and 0 are fine', () => {
+    expect(validateItemForm(base)).toBeNull()
+    expect(validateItemForm({ ...base, bracket_cost: '0' })).toBeNull()
+    for (const k of KEYS) {
+      expect(validateItemForm({ ...base, [k]: '-5' })).toBeTruthy()
+      expect(validateItemForm({ ...base, [k]: 'abc' })).toBeTruthy()
+    }
+  })
+})
