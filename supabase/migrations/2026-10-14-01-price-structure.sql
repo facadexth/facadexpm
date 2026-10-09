@@ -7,9 +7,9 @@ ALTER TABLE estimation_projects
   ADD COLUMN round_step      NUMERIC NOT NULL DEFAULT 100 CHECK (round_step > 0);
 
 ALTER TABLE estimation_settings
-  ADD COLUMN default_waste_pct  NUMERIC CHECK (default_waste_pct IS NULL OR default_waste_pct >= 0),
-  ADD COLUMN default_profit_pct NUMERIC CHECK (default_profit_pct IS NULL OR default_profit_pct >= 0),
-  ADD COLUMN default_pm_pct     NUMERIC CHECK (default_pm_pct IS NULL OR default_pm_pct >= 0),
+  ADD COLUMN default_waste_pct  NUMERIC CHECK (default_waste_pct IS NULL OR (default_waste_pct >= 0 AND default_waste_pct <= 1000)),
+  ADD COLUMN default_profit_pct NUMERIC CHECK (default_profit_pct IS NULL OR (default_profit_pct >= 0 AND default_profit_pct <= 1000)),
+  ADD COLUMN default_pm_pct     NUMERIC CHECK (default_pm_pct IS NULL OR (default_pm_pct >= 0 AND default_pm_pct <= 1000)),
   ADD COLUMN default_round_step NUMERIC CHECK (default_round_step IS NULL OR default_round_step > 0);
 
 ALTER TABLE estimation_openings
@@ -38,11 +38,13 @@ CREATE TABLE estimation_quotation_lines (
   id                 UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   tenant_id          UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
   project_id         UUID NOT NULL REFERENCES estimation_projects(id) ON DELETE CASCADE,
-  opening_id         UUID NOT NULL REFERENCES estimation_openings(id) ON DELETE CASCADE,
+  -- Deleting an opening must NOT delete this row (it is the only record of which quotation rows we generated): the
+  -- opening is nulled and the app treats a null opening as "removed from the project" on the next send.
+  opening_id         UUID REFERENCES estimation_openings(id) ON DELETE SET NULL,
   item_row_id        UUID REFERENCES quotation_items(id) ON DELETE SET NULL,
   description_row_id UUID REFERENCES quotation_items(id) ON DELETE SET NULL,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (project_id, opening_id)
+  UNIQUE (project_id, opening_id)   -- several NULL openings per project are allowed
 );
 CREATE TABLE estimation_price_snapshots (
   id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
