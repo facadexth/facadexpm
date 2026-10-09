@@ -25,3 +25,11 @@ describe('profit cell model', () => {
     expect(avgAluPerKg(100, 0)).toBeNull(); expect(avgAluPerKg(100, 4)).toBe(25)
   })
 })
+
+describe('profit upper limit', () => {
+  it('rejects more than 1000 with a Thai message, accepts exactly 1000', () => {
+    const r = nextProfitCellState('1001', 20)
+    expect(r.action).toBe('error'); expect(r.message).toContain('1,000')
+    expect(nextProfitCellState('1000', 20)).toEqual({ action: 'write', value: 1000 })
+  })
+})

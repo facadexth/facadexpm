@@ -81,5 +81,10 @@ describe('validateFactors', () => {
     expect(validateFactors({ waste_pct: '-1', round_step: '10' })).toBeTruthy()
     expect(validateFactors({ waste_pct: '1', round_step: '0' })).toBeTruthy()
     expect(validateFactors({ waste_pct: '1', profit_pct: '', round_step: '10' })).toBeNull()
+    for (const k of ['waste_pct', 'profit_pct', 'pm_pct']) {
+      expect(validateFactors({ [k]: '1001', round_step: '10' })).toContain('1,000')
+      expect(validateFactors({ [k]: '1000', round_step: '10' })).toBeNull()
+    }
+    expect(validateFactors({ transport_total: '5000000', round_step: '10' })).toBeNull()
   })
 })

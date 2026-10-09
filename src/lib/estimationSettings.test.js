@@ -40,3 +40,11 @@ describe('price-structure defaults', () => {
     expect(mergeSettings({ default_waste_pct: -1, default_pm_pct: 'x' })).toMatchObject({ default_waste_pct: 10, default_pm_pct: 2 })
   })
 })
+
+describe('mergeSettings upper limit (final-fix 5)', () => {
+  it('default pct above 1000 falls back to the default, exactly 1000 is kept; round step has no upper cap', () => {
+    expect(mergeSettings({ default_waste_pct: 1001, default_profit_pct: 5000, default_pm_pct: 1001 })).toMatchObject({ default_waste_pct: 10, default_profit_pct: 45, default_pm_pct: 2 })
+    expect(mergeSettings({ default_waste_pct: 1000 }).default_waste_pct).toBe(1000)
+    expect(mergeSettings({ default_round_step: 5000 }).default_round_step).toBe(5000)
+  })
+})

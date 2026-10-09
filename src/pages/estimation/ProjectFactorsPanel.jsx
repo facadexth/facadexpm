@@ -9,6 +9,7 @@ const FIELDS = [
   ['transport_total', 'ค่าขนส่งทั้งโปรเจกต์ (บาท)'],
   ['round_step', 'ปัดราคาขายขึ้นทีละ (บาท)'],
 ]
+const PCT_FIELDS = ['waste_pct', 'profit_pct', 'pm_pct']
 export const FACTOR_COLUMNS = FIELDS.map(f => f[0])
 
 const show = v => (v === null || v === undefined ? '' : String(v))
@@ -20,6 +21,7 @@ export function validateFactors(draft) {
     if (raw === '') { if (k === 'round_step') return `${label}: ต้องมากกว่า 0`; continue }
     const x = Number(raw)
     if (!Number.isFinite(x) || x < 0) return `${label}: ต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป`
+    if (PCT_FIELDS.includes(k) && x > 1000) return `${label}: ต้องไม่เกิน 1,000`
     if (k === 'round_step' && !(x > 0)) return `${label}: ต้องมากกว่า 0`
   }
   return null
@@ -55,7 +57,7 @@ export default function ProjectFactorsPanel({ project, canEdit, onSaved }) {
         {FIELDS.map(([k, label]) => (
           <div key={k}>
             <label className="label">{label}</label>
-            <input className="input" type="number" min="0" step="any" disabled={!canEdit} value={draft[k]} onChange={e => setDraft(d => ({ ...d, [k]: e.target.value }))} />
+            <input className="input" type="number" min="0" max={PCT_FIELDS.includes(k) ? 1000 : undefined} step="any" disabled={!canEdit} value={draft[k]} onChange={e => setDraft(d => ({ ...d, [k]: e.target.value }))} />
           </div>
         ))}
       </div>
