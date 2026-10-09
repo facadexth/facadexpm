@@ -3,6 +3,8 @@
 // A project default is used when the item leaves the field NULL. Infill and hardware set also have an
 // explicit "none" flag on the item, because NULL already means "inherit".
 
+import { typeLabourDefault } from './typeTree.js'
+
 const isSet = v => v !== null && v !== undefined && v !== ''
 const first = (...vals) => { for (const v of vals) if (isSet(v)) return v; return null }
 // Numeric columns can arrive as strings from the DB; the engine only accepts finite numbers, and 0 is a real value.
@@ -11,8 +13,8 @@ const firstNum = (...vals) => { for (const v of vals) { if (!isSet(v)) continue;
 export function resolveItemInputs(item, project, template, typesById) {
   const it = item || {}
   const pj = project || {}
-  const type = template && template.type_id ? (typesById || {})[template.type_id] : null
-  const typeLabour = type && Number(type.default_labour_per_sqm) > 0 ? Number(type.default_labour_per_sqm) : null
+  const rate = template && template.type_id ? typeLabourDefault(typesById, template.type_id) : null
+  const typeLabour = rate > 0 ? rate : null
   return {
     series_id: first(it.series_id, pj.default_series_id),
     finish_id: first(it.alu_finish_id, pj.default_finish_id),

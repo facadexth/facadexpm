@@ -147,3 +147,14 @@ describe('buildEngineAddonOpening', () => {
     expect(buildEngineAddonOpening(item, project, addon, addonTpl, t, {}).opening.labour_per_sqm).toBe(250)
   })
 })
+
+describe('labour default through ancestors', () => {
+  it('a grandchild with no rate of its own or its parent uses the top-level rate', () => {
+    const ts = {
+      top: { id: 'top', default_labour_per_sqm: 300, parent_id: null },
+      mid: { id: 'mid', default_labour_per_sqm: null, parent_id: 'top' },
+      leaf: { id: 'leaf', default_labour_per_sqm: null, parent_id: 'mid' },
+    }
+    expect(resolveItemInputs({}, {}, { id: 'x', type_id: 'leaf' }, ts).labour_per_sqm).toBe(300)
+  })
+})

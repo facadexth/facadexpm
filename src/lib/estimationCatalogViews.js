@@ -2,6 +2,8 @@
 // What the screens may offer for a series (and optionally a type). Pure; reads the index built by
 // buildCatalogIndex (Task 2 adds types / seriesTypesBySeries / seriesPartsBySeries to it).
 
+import { typeAndAncestorIds } from './typeTree.js'
+
 const byName = (a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), 'th')
 
 // Distinct thicknesses (mm, ascending) of the active profiles a series offers. One value = the screen locks it.
@@ -16,12 +18,13 @@ export function thicknessesForSeries(index, seriesId) {
 }
 
 // Parts of one kind ('hardware' | 'hardware_set' | 'accessory') linked to the series. A link with
-// type_id NULL means "every type"; with a typeId only NULL links and that type's links count; with no
+// type_id NULL means "every type"; with a typeId only NULL links and links on that type or its ancestors count; with no
 // typeId every link of the series counts.
 export function partsForSeries(index, seriesId, typeId, kind) {
   const out = new Map()
+  const ids = typeId ? typeAndAncestorIds(index.types, typeId) : null
   for (const l of index.seriesPartsBySeries[seriesId] || []) {
-    if (typeId && l.type_id && l.type_id !== typeId) continue
+    if (ids && l.type_id && !ids.includes(l.type_id)) continue
     const p = index.parts[l.part_id]
     if (p && p.active !== false && p.kind === kind) out.set(p.id, p)
   }

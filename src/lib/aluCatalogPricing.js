@@ -4,6 +4,7 @@
 // price history. Pure: callers load the catalog tables once (useEstimationCatalog) and pass them in.
 // Spec: 2026-10-08-aluminium-cost-catalog-design.md, Decision 7.
 import { resolveAluPrice, resolvePartPrice } from './aluPrice.js'
+import { expandSeriesTypes } from './typeTree.js'
 
 function byId(list) {
   const m = {}
@@ -25,7 +26,7 @@ export function buildCatalogIndex(rows = {}) {
     finishes: byId(rows.finishes),
     parts: byId(rows.parts),
     types: byId(rows.types),
-    seriesTypesBySeries: groupBy(rows.seriesTypes, 'series_id'),
+    seriesTypesBySeries: groupBy(expandSeriesTypes(rows.seriesTypes, rows.types), 'series_id'),
     seriesPartsBySeries: groupBy(rows.seriesParts, 'series_id'),
     seriesProfilesBySeries: groupBy(rows.seriesProfiles, 'series_id'),
     setItemsBySet: groupBy(rows.setItems, 'set_id'),

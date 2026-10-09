@@ -62,3 +62,32 @@ describe('estimationCatalogViews', () => {
     expect(allowsMixedThickness(index, 's2', 't9')).toBe(false)
   })
 })
+
+describe('estimationCatalogViews with parent / child types', () => {
+  const tree = buildCatalogIndex({
+    series: [{ id: 's1', name: 'S1' }, { id: 's2', name: 'S2' }],
+    types: [
+      { id: 'door', name: 'ประตู', parent_id: null },
+      { id: 'slide', name: 'บานเลื่อน', parent_id: 'door' },
+      { id: 'low', name: 'รางล่าง', parent_id: 'slide' },
+      { id: 'top', name: 'รางบน', parent_id: 'slide' },
+    ],
+    seriesTypes: [{ series_id: 's1', type_id: 'door', allow_mixed_thickness: false }, { series_id: 's2', type_id: 'slide', allow_mixed_thickness: true }],
+    parts: [{ id: 'hp', name: 'P', kind: 'hardware' }, { id: 'hl', name: 'L', kind: 'hardware' }],
+    seriesParts: [{ series_id: 's1', type_id: 'slide', part_id: 'hp' }, { series_id: 's1', type_id: 'low', part_id: 'hl' }],
+  })
+  it('a part linked to a parent type shows for its grandchild', () => {
+    expect(hardwareForSeries(tree, 's1', 'top').map(p => p.id)).toEqual(['hp'])
+  })
+  it('a part linked to one child does not show for its sibling', () => {
+    expect(hardwareForSeries(tree, 's1', 'low').map(p => p.id).sort()).toEqual(['hl', 'hp'])
+    expect(hardwareForSeries(tree, 's1', 'top').map(p => p.id)).not.toContain('hl')
+  })
+  it('seriesForType finds a series linked only to the top-level type', () => {
+    expect(seriesForType(tree, 'low').map(s => s.id)).toEqual(['s1', 's2'])
+  })
+  it('a descendant inherits the mixed-thickness flag of its nearest linked ancestor', () => {
+    expect(allowsMixedThickness(tree, 's2', 'low')).toBe(true)
+    expect(allowsMixedThickness(tree, 's1', 'low')).toBe(false)
+  })
+})

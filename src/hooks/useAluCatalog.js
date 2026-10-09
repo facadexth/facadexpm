@@ -20,5 +20,7 @@ export function useEstimationCatalog() {
     return Object.fromEntries(entries)
   }, [])
   const index = useMemo(() => (query.data ? buildCatalogIndex(query.data) : null), [query.data])
-  return { ...query, index }
+  // Series-type links already expanded to descendants: pass THIS (never the raw table rows) to typeAvailability etc.
+  const seriesTypes = useMemo(() => (index ? Object.values(index.seriesTypesBySeries).flat() : []), [index])
+  return { ...query, index, seriesTypes }
 }
