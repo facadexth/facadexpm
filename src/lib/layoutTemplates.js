@@ -5,8 +5,10 @@ export const ADDON_POSITIONS = ['top', 'bottom', 'left', 'right']
 
 const offers = (seriesTypes, seriesId, typeId) => (seriesTypes || []).some(st => st.series_id === seriesId && st.type_id === typeId)
 
+const ratio = (v, fallback) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : fallback }
+
 // Layout templates for the chosen main type, usable ones first. `reason` says why a card is greyed out.
-export function availableLayoutTemplates(templates, { mainTypeId, seriesId, seriesTypes }) {
+export function availableLayoutTemplates(templates, { mainTypeId, seriesId, seriesTypes } = {}) {
   const rows = (templates || [])
     .filter(t => t.active !== false && (!mainTypeId || t.main_type_id === mainTypeId))
     .map(t => {
@@ -20,19 +22,20 @@ export function availableLayoutTemplates(templates, { mainTypeId, seriesId, seri
 
 const r2 = n => Math.round(n * 100) / 100
 
-// Proportions -> metres for a given main size. Top/bottom add-ons are sized against the main width and
-// offset along it; left/right add-ons are sized against the main height and offset along it.
+// Proportions -> metres for a given main size. Add-on WIDTH ratio is always against the main width
+// and HEIGHT ratio always against the main height, for all positions. Only the OFFSET ratio runs along
+// the shared side: width for top/bottom, height for left/right.
 export function applyLayoutTemplate(tpl, mainWidthM, mainHeightM) {
   if (!tpl || !(mainWidthM > 0) || !(mainHeightM > 0)) return null
   const out = { main_panel_count: tpl.main_panel_count || 1, addon_type_id: null, addon_position: null, addon_width_m: null, addon_height_m: null, addon_offset_m: 0, addon_panel_count: 1 }
   if (!tpl.addon_type_id || !ADDON_POSITIONS.includes(tpl.addon_position)) return out
   const horizontal = tpl.addon_position === 'top' || tpl.addon_position === 'bottom'
   const along = horizontal ? mainWidthM : mainHeightM
-  const aw = horizontal ? mainWidthM * Number(tpl.addon_width_ratio) : mainWidthM * Number(tpl.addon_width_ratio)
-  const ah = mainHeightM * Number(tpl.addon_height_ratio)
+  const aw = mainWidthM * ratio(tpl.addon_width_ratio, 1)
+  const ah = mainHeightM * ratio(tpl.addon_height_ratio, 0.33)
   return {
     ...out, addon_type_id: tpl.addon_type_id, addon_position: tpl.addon_position,
-    addon_width_m: r2(aw), addon_height_m: r2(ah), addon_offset_m: r2(along * Number(tpl.addon_offset_ratio || 0)),
+    addon_width_m: r2(aw), addon_height_m: r2(ah), addon_offset_m: r2(along * Math.min(1, Math.max(0, Number(tpl.addon_offset_ratio) || 0))),
     addon_panel_count: tpl.addon_panel_count || 1,
   }
 }
@@ -41,7 +44,7 @@ export function applyLayoutTemplate(tpl, mainWidthM, mainHeightM) {
 export const bomTemplatesForType = (bomTemplates, typeId) => (bomTemplates || []).filter(t => t.active !== false && t.type_id === typeId)
 
 // The values to save when the owner ticks "save as layout template" in the item form.
-// Ratios are taken against the item's own sizes; positions/offsets are clamped so the template re-applies cleanly.
+// Ratios are taken against the item's own sizes; the offset ratio is clamped to 0..1 so the template re-applies cleanly.
 export function layoutTemplateFromItem({ name, mainTypeId, addonTypeId, position, widthM, heightM, addonWidthM, addonHeightM, offsetM, mainPanels, addonPanels }) {
   const base = { name: String(name || '').trim(), main_type_id: mainTypeId, main_panel_count: mainPanels || 1, active: true }
   if (!base.name || !mainTypeId || !(widthM > 0) || !(heightM > 0)) return null

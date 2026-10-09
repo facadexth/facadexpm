@@ -22,6 +22,9 @@ describe('availableLayoutTemplates', () => {
   it('a series that lacks the main type itself is not usable', () => {
     expect(availableLayoutTemplates(tpls, { mainTypeId: 'swing', seriesId: 's1', seriesTypes })[0].reason).toBe('main_type_not_offered')
   })
+  it('without options does not throw', () => {
+    expect(availableLayoutTemplates(tpls)).toHaveLength(3)
+  })
 })
 
 describe('applyLayoutTemplate', () => {
@@ -39,6 +42,24 @@ describe('applyLayoutTemplate', () => {
     expect(applyLayoutTemplate(tpls[1], 2, 1.5).addon_type_id).toBeNull()
     expect(applyLayoutTemplate(tpls[0], 0, 1.5)).toBeNull()
     expect(applyLayoutTemplate(null, 2, 1.5)).toBeNull()
+  })
+  it('save-then-apply round trip for left and right returns same addon dimensions', () => {
+    const t = layoutTemplateFromItem({ name: 'left-test', mainTypeId: 'swing', addonTypeId: 'fixed', position: 'left', widthM: 2, heightM: 1.5, addonWidthM: 0.4, addonHeightM: 0.45, offsetM: 0.75, mainPanels: 1, addonPanels: 1 })
+    const result = applyLayoutTemplate(t, 2, 1.5)
+    expect(result.addon_width_m).toBe(0.4)
+    expect(result.addon_height_m).toBe(0.45)
+    expect(result.addon_offset_m).toBe(0.75)
+  })
+  it('template with null addon_width_ratio and addon_height_ratio applies with finite defaults', () => {
+    const result = applyLayoutTemplate({ main_type_id: 'slide', addon_type_id: 'fixed', addon_position: 'top', addon_width_ratio: null, addon_height_ratio: null, addon_offset_ratio: 0 }, 2, 1.5)
+    expect(Number.isFinite(result.addon_width_m)).toBe(true)
+    expect(Number.isFinite(result.addon_height_m)).toBe(true)
+    expect(result.addon_width_m).toBe(2)
+    expect(result.addon_height_m).toBe(0.5)
+  })
+  it('offset ratio of 1.5 is clamped to 1', () => {
+    const result = applyLayoutTemplate({ ...tpls[0], addon_offset_ratio: 1.5 }, 2, 1.5)
+    expect(result.addon_offset_m).toBe(2)
   })
 })
 
