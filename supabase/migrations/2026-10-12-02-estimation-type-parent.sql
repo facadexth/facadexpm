@@ -8,7 +8,7 @@ ALTER TABLE door_window_types
 CREATE INDEX IF NOT EXISTS idx_door_window_types_parent_id ON door_window_types(parent_id);
 
 CREATE OR REPLACE FUNCTION door_window_types_check_parent() RETURNS trigger
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SET search_path = public AS $$
 DECLARE p1 RECORD; p2 RECORD; depth_above INT := 0; height INT := 1;
 BEGIN
   IF TG_OP = 'UPDATE' THEN
