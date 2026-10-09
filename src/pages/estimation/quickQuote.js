@@ -7,7 +7,9 @@ import { emptyForm, buildOpeningPayload } from '../../lib/openingPayload.js'
 import { thicknessesForSeries } from '../../lib/estimationCatalogViews.js'
 import { costOpening } from '../../lib/openingCost.js'
 import { seriesChoices, finishChoices } from './projectDefaults.js'
-import { reconcileItemForm, showSashField } from './itemForm.js'
+import { reconcileItemForm, showSashField, inheritedHardware } from './itemForm.js'
+import { typeAvailability } from '../../lib/estimationInherit.js'
+import { seriesForType } from '../../lib/estimationCatalogViews.js'
 
 export const emptyQuick = () => ({ template_id: '', series_id: '', alu_finish_id: '', thickness_mm: '', sash_thickness_mm: '', width_m: '', height_m: '', panel_count: '1' })
 
@@ -66,3 +68,19 @@ export function quickCosts({ q, template, project, ctx, today }) {
 }
 
 export const quickMoney = v => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+// A cost is a price only when nothing is unresolved and the total is a number (never 0 for "unknown").
+export const quickOk = cost => !!cost && (cost.unresolved || []).length === 0 && Number.isFinite(cost.total)
+
+// Everything under the form: what is missing, whether the series builds the template's type (price suppressed when
+// not), the hardware set the project's package gives this type (warning when the type is not in the package), the costs.
+export function quickView({ q, template, project, ctx, today, seriesTypes }) {
+  const showSash = quickShowSash(ctx.index, q.series_id, template)
+  const missing = quickMissing(q, template, showSash)
+  const availability = typeAvailability(template, q.series_id, seriesTypes)
+  const offeredBy = availability === 'not_offered' ? seriesForType(ctx.index, template.type_id).map(x => x.name) : []
+  const hardware = template && template.type_id ? inheritedHardware({ packageItems: ctx.packageItems, index: ctx.index, typeId: template.type_id, project }) : null
+  const hardwareWarning = hardware && hardware.status === 'missing' ? 'ประเภทนี้ยังไม่ได้กำหนดชุดในโปรเจกต์ ราคาไม่รวมชุดอุปกรณ์' : null
+  const results = missing || availability === 'not_offered' ? [] : quickCosts({ q, template, project, ctx, today })
+  return { showSash, missing, availability, offeredBy, hardware, hardwareWarning, results }
+}

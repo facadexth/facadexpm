@@ -28,13 +28,21 @@ export default function StalePriceBanner({ changes, itemsById, index, priceAsOf,
   const refresh = async () => {
     if (busy) return
     setBusy(true); setError('')
+    let updated = false
     try {
       const { error: e } = await supabase.from('estimation_projects').update(refreshPatch()).eq('id', projectId)
       if (e) throw e
-      setConfirm(false)
-      if (onRefreshed) await onRefreshed()
+      updated = true
     } catch (e) {
       setError('อัปเดตราคาไม่สำเร็จ: ' + ((e && e.message) || String(e)) + ' (ราคาของโปรเจกต์ยังไม่เปลี่ยน ลองใหม่อีกครั้ง)')
+      setBusy(false)
+      return
+    }
+    try {
+      if (updated && onRefreshed) await onRefreshed()
+      setConfirm(false)
+    } catch {
+      setError('อัปเดตแล้ว แต่โหลดข้อมูลใหม่ไม่สำเร็จ กรุณารีเฟรชหน้า')
     } finally { setBusy(false) }
   }
 
@@ -50,7 +58,7 @@ export default function StalePriceBanner({ changes, itemsById, index, priceAsOf,
       {error && !confirm && <div className="alert alert-error" style={{ marginTop: 8 }}>{error}</div>}
       {open && <ChangesTable rows={rows} />}
       {confirm && (
-        <ConfirmDialog title="อัปเดตเป็นราคาปัจจุบัน" confirmDisabled={busy} onCancel={() => !busy && setConfirm(false)} onConfirm={refresh}
+        <ConfirmDialog maxWidth={640} title="อัปเดตเป็นราคาปัจจุบัน" confirmDisabled={busy} onCancel={() => !busy && setConfirm(false)} onConfirm={refresh}
           message={(
             <div>
               <div style={{ fontWeight: 700 }}>{refreshWarning(priceAsOf, localDateString(new Date()))}</div>

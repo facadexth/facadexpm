@@ -4,7 +4,7 @@ import { buildCatalogIndex } from '../../lib/aluCatalogPricing.js'
 import { mergeSettings } from '../../lib/estimationSettings.js'
 import {
   emptyQuick, quickTemplateGroups, quickSeriesOptions, quickFinishOptions, quickThicknessOptions, quickShowSash,
-  reconcileQuick, quickMissing, buildQuickItem, quickCosts,
+  reconcileQuick, quickMissing, buildQuickItem, quickCosts, quickView, quickOk,
 } from './quickQuote.js'
 import { changesView, refreshWarning, refreshPatch } from './staleView.js'
 
@@ -74,7 +74,7 @@ describe('throw-away item', () => {
   it('costs at the project date and, only when different, at today; unresolved is never a number total of 0', () => {
     const two = quickCosts({ q, template: tS, project, ctx, today: '2026-10-09' })
     expect(two.map(r => [r.key, r.asOf])).toEqual([['project', '2026-10-01'], ['today', '2026-10-09']])
-    for (const r of two) { expect(r.cost.unresolved.length).toBeGreaterThan(0); expect(r.cost.unresolved.some(u => u.reason === 'no_kg_price' || u.reason === 'no_price' || u.reason === 'no_variant' || u.reason)).toBe(true) }
+    for (const r of two) { expect(r.cost.unresolved.length).toBeGreaterThan(0); expect(r.cost.unresolved.some(u => u.source === 'main' && typeof u.reason === 'string' && u.reason.length > 0 && u.name)).toBe(true); expect(quickOk(r.cost)).toBe(false) }
     expect(quickCosts({ q, template: tS, project, ctx, today: '2026-10-01' })).toHaveLength(1)
   })
   it('the component imports no Supabase path', () => {
@@ -82,6 +82,11 @@ describe('throw-away item', () => {
     const imports = src.split('\n').filter(l => /^\s*(import|from)\b|^\} from/.test(l)).join('\n')
     expect(imports).not.toMatch(/supabase|useSupabase|hooks\//i)
     expect(src).not.toMatch(/\.(insert|update|upsert|delete|rpc)\(/)
+    for (const f of ['ItemFields.jsx', 'projectDefaults.js', '../../lib/openingPayload.js']) {
+      const t = readFileSync(new URL('./' + f, import.meta.url), 'utf8')
+      expect(t, f).not.toMatch(/\.(insert|update|upsert|delete)\(/)
+      expect(t.split('\n').filter(l => /^\s*import\b/.test(l)).join('\n'), f).not.toMatch(/supabase/i)
+    }
   })
 })
 
@@ -97,5 +102,39 @@ describe('refresh dialog view-model', () => {
   it('warns that ALL items are re-priced and writes only the price date', () => {
     expect(refreshWarning('2026-10-01', '2026-10-09')).toMatch(/ทุกรายการ/)
     expect(refreshPatch(new Date(2026, 9, 9, 12))).toEqual({ price_as_of: '2026-10-09' })
+  })
+})
+
+describe('quick view: series types and hardware', () => {
+  const q = { ...emptyQuick(), template_id: 'tS', series_id: 'sB', alu_finish_id: 'fB', thickness_mm: '2', width_m: '1000', height_m: '1000' }
+  const st = [{ series_id: 'sA', type_id: 'slide' }, { series_id: 'sB', type_id: 'fixed' }]
+  const qA = { ...q, series_id: 'sA', alu_finish_id: 'fA', thickness_mm: '1.4', sash_thickness_mm: '1.4' }
+  const view = (over = {}, c = ctx) => quickView({ q, template: tS, project, ctx: c, today: '2026-10-09', seriesTypes: st, ...over })
+  it('suppresses the price and names the series that build the type when not offered', () => {
+    const v = view()
+    expect(v.availability).toBe('not_offered')
+    expect(v.results).toEqual([])
+    expect(v.offeredBy).toEqual(['Demo 40'])
+  })
+  it('prices when offered, and unknown (no series types) behaves as before', () => {
+    const ok = view({ q: qA })
+    expect(ok.availability).toBe('ok')
+    expect(ok.results.length).toBe(2)
+    expect(view({ q: { ...qA, series_id: '' }, template: { ...tS, type_id: null } }).availability).toBe('unknown')
+  })
+  it('hardware: set / none / missing / no package', () => {
+    const withIdx = pk => ({ ...ctx, packageItems: pk, index: { ...index, parts: { hw1: { id: 'hw1', name: 'ชุดเลื่อน' } } } })
+    const set = view({ q: qA }, withIdx([{ type_id: 'slide', hardware_set_id: 'hw1' }]))
+    expect(set.hardware.label).toBe('ชุดเลื่อน'); expect(set.hardwareWarning).toBeNull()
+    const none = view({ q: qA }, withIdx([{ type_id: 'slide', hardware_set_id: null }]))
+    expect(none.hardware.label).toBe('ไม่ใช้ชุดอุปกรณ์'); expect(none.hardwareWarning).toBeNull()
+    const miss = view({ q: qA }, withIdx([{ type_id: 'fixed', hardware_set_id: 'hw1' }]))
+    expect(miss.hardwareWarning).toBe('ประเภทนี้ยังไม่ได้กำหนดชุดในโปรเจกต์ ราคาไม่รวมชุดอุปกรณ์')
+  })
+  it('an unresolved cost is never an ok total', () => {
+    const r = view({ q: qA }).results[0]
+    expect(quickOk(r.cost)).toBe(false)
+    expect(quickOk({ unresolved: [], total: 0 / 0 })).toBe(false)
+    expect(quickOk({ unresolved: [], total: 12 })).toBe(true)
   })
 })

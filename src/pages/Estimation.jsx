@@ -133,7 +133,7 @@ export default function Estimation(props) {
             {tab === 'items' && <ItemsTable items={projectOpenings} costs={costs} previewSigs={previewSigs} project={project} index={index} templatesById={base.templatesById} canEdit={canEdit}
               onOpen={id => setItemModal({ id })} onQuantitySaved={refetchOpenings} />}
 
-            {quickOpen && costCtx && <QuickQuote project={project} ctx={costCtx} templates={templates} today={today} onClose={() => setQuickOpen(false)} />}
+            {quickOpen && costCtx && <QuickQuote project={project} ctx={costCtx} templates={templates} seriesTypes={catalog.seriesTypes} today={today} onClose={() => setQuickOpen(false)} />}
 
             {itemModal && costCtx && (
               <ItemModal key={itemModal.id || 'new'} opening={itemModal.id ? projectOpenings.find(o => o.id === itemModal.id) || null : null}

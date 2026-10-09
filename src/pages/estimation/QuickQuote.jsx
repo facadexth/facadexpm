@@ -6,13 +6,13 @@ import { Modal } from '../../components/Modal.jsx'
 import { unresolvedText } from '../../lib/reasonText.js'
 import { Field, Options } from './ItemFields.jsx'
 import {
-  emptyQuick, quickTemplateGroups, quickSeriesOptions, quickFinishOptions, quickThicknessOptions, quickShowSash,
-  reconcileQuick, quickMissing, quickCosts, quickMoney,
+  emptyQuick, quickTemplateGroups, quickSeriesOptions, quickFinishOptions, quickThicknessOptions,
+  reconcileQuick, quickView, quickOk, quickMoney,
 } from './quickQuote.js'
 
 function Result({ r }) {
   const unresolved = r.cost ? r.cost.unresolved || [] : []
-  const ok = r.cost && unresolved.length === 0 && Number.isFinite(r.cost.total)
+  const ok = quickOk(r.cost)
   return (
     <div className="card" style={{ padding: 10, display: 'grid', gap: 3, background: 'var(--bg2)' }}>
       <div style={{ fontSize: 12, color: 'var(--text3)' }}>{r.label} (ณ {r.asOf})</div>
@@ -23,7 +23,7 @@ function Result({ r }) {
   )
 }
 
-export default function QuickQuote({ project, ctx, templates, today, onClose }) {
+export default function QuickQuote({ project, ctx, templates, seriesTypes, today, onClose }) {
   const { index, templatesById } = ctx
   const [q, setQ] = useState(emptyQuick)
   const template = templatesById[q.template_id] || null
@@ -32,9 +32,8 @@ export default function QuickQuote({ project, ctx, templates, today, onClose }) 
     const next = { ...prev, ...patch }
     return reconcileQuick(prev, next, { index, template: templatesById[next.template_id] || null })
   })
-  const showSash = quickShowSash(index, q.series_id, template)
-  const missing = quickMissing(q, template, showSash)
-  const results = useMemo(() => (missing ? [] : quickCosts({ q, template, project, ctx, today })), [missing, q, template, project, ctx, today])
+  const v = useMemo(() => quickView({ q, template, project, ctx, today, seriesTypes }), [q, template, project, ctx, today, seriesTypes])
+  const { showSash, missing, results } = v
   const input = (k, label, extra) => (
     <Field label={label}><input className="input" type="number" min="0" step="1" value={q[k]} onChange={e => set({ [k]: e.target.value })} {...extra} /></Field>
   )
@@ -81,6 +80,11 @@ export default function QuickQuote({ project, ctx, templates, today, onClose }) 
           {input('height_m', 'สูง (มม.) ★')}
           {input('panel_count', 'จำนวนช่อง (บาน)', { min: '1' })}
         </div>
+        {v.availability === 'not_offered' && (
+          <div style={{ fontSize: 13, color: 'var(--red)' }}>⚠ ซีรีส์นี้ไม่ผลิตประเภทนี้{v.offeredBy.length ? ` · ซีรีส์ที่ผลิต: ${v.offeredBy.join(', ')}` : ' · ยังไม่มีซีรีส์ที่ผลิตประเภทนี้'}</div>
+        )}
+        {v.hardware && <div style={{ fontSize: 12, color: 'var(--text3)' }}>ชุดอุปกรณ์: {v.hardware.label}{v.hardware.hint ? ` · ${v.hardware.hint}` : ''}</div>}
+        {v.hardwareWarning && <div style={{ fontSize: 12, color: 'var(--red)' }}>⚠ {v.hardwareWarning}</div>}
         {missing && <div style={{ fontSize: 13, color: 'var(--text3)' }}>{missing} เพื่อดูราคา</div>}
         {results.map(r => <Result key={r.key} r={r} />)}
       </div>

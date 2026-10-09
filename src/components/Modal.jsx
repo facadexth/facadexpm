@@ -94,9 +94,9 @@ export function Modal({ title, onClose, children, maxWidth = 600 }) {
 }
 
 /** Confirm dialog พร้อม danger styling */
-export function ConfirmDialog({ title, message, onConfirm, onCancel, danger = false, confirmDisabled = false }) {
+export function ConfirmDialog({ title, message, onConfirm, onCancel, danger = false, confirmDisabled = false, maxWidth = 400 }) {
   return (
-    <Modal title={title} onClose={onCancel} maxWidth={400}>
+    <Modal title={title} onClose={onCancel} maxWidth={maxWidth}>
       <div className="modal-body">
         <div style={{ color: 'var(--text2)', lineHeight: 1.6 }}>{message}</div>
       </div>
