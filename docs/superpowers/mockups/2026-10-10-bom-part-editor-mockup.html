@@ -1,0 +1,347 @@
+<title>BOM Template คลิกชิ้นส่วน</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* layout: preview card left, edit panel right, component table below; selection is shared between the three */
+:root{
+  --bg:#f4f5f3; --panel:#ffffff; --fg:#1c2220; --muted:#5b6560; --line:#d6dbd6;
+  --accent:#1f6f5b; --accent-soft:#dcefe8; --warn:#9a5b00; --warn-soft:#fbefd9;
+  --draw:#26302c; --draw-fill:#e9eeea; --hl:#e4a11b; --hl-fill:#fbe7b5; --code:#edf0ed;
+  --font:'IBM Plex Sans Thai','Noto Sans Thai',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141917; --panel:#1c2220; --fg:#e6ebe8; --muted:#9aa5a0; --line:#2f3a36; --accent:#58c4a3; --accent-soft:#1d3a31;
+  --warn:#f0b35a; --warn-soft:#3a2d16; --draw:#cdd7d2; --draw-fill:#232b28; --hl:#f0b35a; --hl-fill:#4a3a18; --code:#242c29; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141917; --panel:#1c2220; --fg:#e6ebe8; --muted:#9aa5a0; --line:#2f3a36; --accent:#58c4a3; --accent-soft:#1d3a31;
+  --warn:#f0b35a; --warn-soft:#3a2d16; --draw:#cdd7d2; --draw-fill:#232b28; --hl:#f0b35a; --hl-fill:#4a3a18; --code:#242c29; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);padding-inline:16px;padding-block:20px;line-height:1.55;font-size:14px}
+main{max-width:1100px;margin:0 auto;display:grid;gap:14px}
+h1{font-size:22px;margin:0;text-wrap:balance} h2{font-size:15px;margin:0 0 8px}
+.sub{color:var(--muted);margin:2px 0 0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.top{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:14px}
+@media(max-width:820px){.top{grid-template-columns:minmax(0,1fr)}}
+.bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:8px}
+.bar label{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center}
+input,select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:5px 8px;min-width:0}
+input[type=number]{width:84px;font-family:var(--mono)}
+input.dedin{width:64px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{font:inherit;border:0;background:var(--bg);color:var(--fg);padding:4px 10px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--accent);color:#fff}
+svg{width:100%;height:auto;display:block;max-height:340px}
+.part{fill:var(--draw-fill);stroke:var(--draw);stroke-width:1.2;cursor:pointer;transition:fill .12s}
+.part:hover{fill:var(--hl-fill)}
+.part.dimp{fill:var(--draw-fill);opacity:.45}
+.mkt.big{font-size:11px}
+#pv2{max-height:360px}
+.part.grp{fill:var(--hl-fill);stroke:var(--hl);stroke-width:1.2;opacity:.7}
+.parthead{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+tr.ph td{background:var(--code);font-weight:600}
+.part.sel{fill:var(--hl-fill);stroke:var(--hl);stroke-width:2.4}
+.glass{fill:none;stroke:var(--muted);stroke-dasharray:3 3;stroke-width:.8}
+.dim{stroke:var(--muted);stroke-width:.8;fill:none} .dimt{fill:var(--muted);font:11px var(--mono)}
+.lab{fill:var(--fg);font:600 11px var(--font);pointer-events:none}
+.hint{font-size:12px;color:var(--muted);margin-top:6px}
+.f{display:grid;gap:3px;margin-bottom:9px} .f>span{font-size:12px;color:var(--muted)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.res{background:var(--accent-soft);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:13px;display:grid;gap:2px}
+.res b{font-family:var(--font)}
+.tag{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;background:var(--warn-soft);color:var(--warn);font-weight:600}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{font-size:11px;color:var(--muted);letter-spacing:.03em}
+tr.pick{cursor:pointer} tr.pick:hover td{background:var(--code)} tr.sel td{background:var(--hl-fill)}
+td.n{font-family:var(--mono);text-align:right}
+.note{background:var(--warn-soft);border-radius:8px;padding:10px 12px;font-size:13px}
+fieldset.ln{border:1px solid var(--line);border-radius:8px;margin:0 0 10px;padding:8px 10px}
+fieldset.ln legend{font-size:12px;color:var(--muted);padding:0 6px}
+button.x{font:inherit;border:0;background:none;color:var(--warn);cursor:pointer;padding:0 4px}
+button.add{font:inherit;width:100%;border:1px dashed var(--accent);background:var(--accent-soft);color:var(--accent);border-radius:8px;padding:7px;cursor:pointer;margin-bottom:10px}
+.mk{stroke:#fff;stroke-width:1.5;cursor:pointer} .mkT{fill:#2a8a5f} .mkB{fill:#c4571a} .mkt{fill:#fff;font:700 8px var(--font);pointer-events:none}
+.calc{font-size:12px;color:var(--muted);line-height:1.45}
+.f .h{color:var(--muted);font-size:11px;line-height:1.35}
+.pinfo{background:var(--code);border-radius:6px;padding:6px 8px;margin-bottom:8px}
+.extra{fill:#6b8fd6;stroke:none;opacity:.9}.extra.xsel{fill:#d6336c}
+fieldset.ln.on{border-color:var(--accent)}
+.endrow{display:grid;gap:4px;margin:4px 0;padding:6px 8px;background:var(--code);border-radius:6px}
+.endc{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-right:10px}
+.endc label{display:flex;gap:4px;align-items:center;font-size:12px;color:var(--muted)}
+.res.tot{background:var(--code)}
+.empty{color:var(--muted);padding:22px 4px;text-align:center}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+<main>
+  <header>
+    <h1>BOM Template: คลิกชิ้นส่วนใน Preview เพื่อกำหนดสูตร</h1>
+    <p class="sub">แท็บ "ส่วนประกอบและอุปกรณ์" ของหน้า BOM Template เท่านั้น ไม่แตะฟอร์มรายการ · ข้อมูลในหน้านี้เป็นตัวอย่างเพื่อดูการทำงาน (โปรไฟล์ MNG จากภาพที่ส่งมา ส่วนค่าอื่นเป็นค่าสมมติ)</p>
+  </header>
+
+  <div class="top">
+    <section class="card">
+      <h2>Template: บานเลื่อนสวน 2 บาน (หน้าต่าง) · ภาพตัวอย่าง</h2>
+      <div class="bar">
+        <label>กว้าง (มม.) <input id="W" type="number" value="1800" min="300" step="50"></label>
+        <label>สูง (มม.) <input id="H" type="number" value="1200" min="300" step="50"></label>
+        <span class="seg" role="group" aria-label="มุมมอง"><button type="button" id="vOut" aria-pressed="true">ด้านนอก</button><button type="button" id="vIn" aria-pressed="false">ด้านใน</button></span>
+      </div>
+      <svg id="pv" viewBox="0 0 520 360" role="img" aria-label="ภาพตัวอย่างวงกบและบานเลื่อน"></svg>
+      <h2 id="zt" style="margin:12px 0 4px">ภาพขยาย</h2><svg id="pv2" viewBox="0 0 520 340" role="img" aria-label="ภาพขยายของ part ที่เลือก"></svg>
+      <p class="hint">คลิกชิ้นในภาพ หรือคลิกแถวในตาราง · ภาพบนเป็นภาพรวม (คลิกเลือกชิ้น) ภาพล่างขยาย part ที่เลือก กดจุดที่ปลายในภาพขยายเพื่อสลับ: เขียว "สุด" = วิ่งสุด, ส้ม "ชน" = วิ่งชน ทุกปลายของทุกชิ้นตั้งแยกกัน (เฟรมข้างซ้าย/ขวา บน/ล่าง บานซ้าย/บานขวา) ชิ้นในภาพสั้นลงตามปลายที่ชน (วาดขยายให้เห็น ตัวเลขใช้มม.จริง) ชิ้นที่ซ้ำกัน (เฟรมข้างซ้าย/ขวา) ไฮไลต์พร้อมกัน เพราะเป็นแถวเดียวกันในสูตร</p>
+    </section>
+
+    <section class="card" aria-live="polite">
+      <h2>แก้ชิ้นที่เลือก</h2>
+      <div id="panel"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>ส่วนประกอบ (ตารางเดิม แต่ละตำแหน่งมีได้หลายโปรไฟล์)</h2>
+    <div class="tw"><table id="tbl"></table></div>
+    <p class="hint" style="margin-top:10px"><span class="tag">ข้อจำกัด</span> ตำแหน่งที่ภาพไม่ได้วาด (เช่น ฝาเปิดปิดของกริดช่องแสง) คลิกในภาพไม่ได้ ต้องเลือกจากตารางเหมือนเดิม · ความยาวที่คิดในหน้านี้เป็นระยะรวมต่อชุดตามสูตร ไม่ใช่การจัดตัดทั้งโปรเจกต์</p>
+  </section>
+
+  <section class="note">
+    <b>คำถามให้คอมเมนต์:</b> (000000000000) รางบน/ล่างต่อบาน = (ช่องเปิดวงกบ − เสากุญแจ × 2 − เสาเกี่ยว × 2 + เสาเกี่ยว × 1) ÷ 2 ตามสูตรที่คุณเขียน ระยะซ้อนใช้ความกว้างเสาเกี่ยวโดยอัตโนมัติ แก้ทับได้ · (00000000000) ค่าหักวงกบของบานเลื่อนคำนวณอัตโนมัติจากระยะชนของโปรไฟล์วงกบ (เปลี่ยนโปรไฟล์วงกบแล้วความยาวบานเปลี่ยนตาม) แก้เองต่อ series ได้ กด ↺ เพื่อกลับไปใช้ค่าอัตโนมัติ · (0000000000) บานเลื่อนอยู่ในช่องเปิดของวงกบ ความยาวเสาและรางต้องหักวงกบ ค่าเริ่มต้น: เสา = สูง − (เฟรมบน + เฟรมล่าง) รางต่อบาน = (กว้าง − 2 × เฟรมข้าง) × 0.5 แล้วหักระยะชนเสา (ค่าหักแก้ได้ ยังไม่รวมระยะเคลียร์และระยะซ้อนบาน) · (000000000) ภาพรวมที่บานซ้อนกัน: ด้านนอกบานซ้ายอยู่บนสุด ด้านในบานขวาอยู่บนสุด ส่วนที่ถูกบังไม่แสดง (ถ้าบานนอกต้องเป็นบานขวา บอกได้) · (00000000) ที่มุมที่สองชิ้นมาพบกัน มีชิ้นเดียววิ่งสุด อีกชิ้นวิ่งชนเสมอ (สลับด้านหนึ่ง อีกด้านเปลี่ยนให้อัตโนมัติ) ค่าเริ่มต้นของบานเลื่อน: เสาวิ่งสุด ขวางบน/ล่างวิ่งชนเสา (หักตามระยะชนของเสา ความยาวรางจึงสั้นกว่าสูตร Excel เดิมเท่าระยะชน 2 ปลาย) · เมื่อสลับ ชิ้นที่กลายเป็นชนจะชี้ไปชนชิ้นที่วิ่งสุดอัตโนมัติ · (0000000) แต่ละโปรไฟล์เก็บ 2 ค่า: ความกว้างเต็ม (เช่น เฟรมข้าง 51.3) กับ ระยะชน หลัง notch (เช่น 38.1) ค่าหักเริ่มต้นของทุกปลายที่ชนโปรไฟล์นั้นใช้ระยะชน และแก้ทับต่อปลายได้ · การตบฝาเข้าร่องไม่เปลี่ยนระยะชน (ฝาใช้ค่าหักเริ่มต้นเหมือนกล่อง) · (000000) ค่าหักของแต่ละปลายที่วิ่งชนกรอกเองได้ ค่าเริ่มต้นมาจากความกว้างโปรไฟล์ที่เลือกชน (ตามที่คุณบอก ให้กำหนดใน combination นั้น) · (00000) ฝา/คิ้วที่เพิ่มเข้ามาตั้งสูตร ระยะหัก และวิ่งสุด/วิ่งชนแยกได้ทุกตัว ค่าเริ่มต้นคัดลอกจากโปรไฟล์แรก (ตามที่คุณบอก) · (0000) ถ้าตำแหน่งที่ถูกชนมีหลายโปรไฟล์ (เฟรมล่าง + ฝาครอบ) ใช้ความกว้างของโปรไฟล์ตัวแรก (ตอนนี้) หรือรวมทุกตัว · ค่าความกว้างโปรไฟล์ในตัวอย่างเป็น 38.1 / 35.8 (ตามภาพ MNG) ต้องยืนยันว่าตรงกับด้านที่ชนจริง · (000) บานเลื่อน 2 บานนับเป็น part เดียวจำนวน 2 (ตอนนี้ใช่) หรือแยกบานซ้าย/บานขวา · วงกบมีกี่วงต่อ template · ตัวคูณความยาว (เช่น 0.5 ของกว้าง) เป็นช่องใหม่ที่ต้องเพิ่มในระบบ · (00) กำหนดวิ่งสุด/วิ่งชนแยกทีละปลายพอไหม หรืออยากกำหนดต่อเส้น และต้องระบุว่าชนกับเส้นไหน (ตอนนี้ระบุได้) · (0) ฝาหรือคิ้วที่เพิ่มเข้ามาใช้ความยาวเท่ากล่องเสมอ หรือต้องกำหนดสูตรและระยะหักแยกกัน (ตอนนี้ให้กำหนดแยกได้ทุกตัว) ·
+    (1) แผงด้านข้างพอไหม หรืออยากให้แก้ในภาพโดยตรง (popup ที่ชิ้น) · (2) อยากเห็นน้ำหนักและจำนวนเส้น 6.4 ม. ในแผงด้วยไหม (ในภาพมีให้ดูแล้ว) · (3) ชิ้นที่หักจากจุดชน (บรรทัด "หักอัตโนมัติ") ให้แก้ตรงนี้ได้ หรือยังให้ไปแก้ที่แท็บ "รายละเอียดการประกอบ" · (4) ต้องการให้ไฮไลต์ชิ้นเมื่อเอาเมาส์ชี้แถวในตารางด้วยไหม
+  </section>
+</main>
+
+<script>
+(function(){
+  var FAMS = {
+    'เฟรมบน (ติดกล่อง) M4870F 1.5': {kg:1.188,w:58.1,bw:38.1}, 'เฟรมข้าง (ติดกล่อง) M4869F 1.5': {kg:1.041,w:51.3,bw:38.1},
+    'เฟรมล่างหน้าต่าง (ติดกล่อง) MN-M4573 1.5': {kg:1.119,w:55.6,bw:35.8}, 'ฝาครอบเฟรมล่างหน้าต่าง MN-M4576': {kg:0.26,w:12,bw:12},
+    'บานเลื่อนบน 1.5 (ตัวอย่าง)': {kg:0.541,w:25,bw:25}, 'บานเลื่อนล่าง 1.5 (ตัวอย่าง)': {kg:0.709,w:25,bw:25},
+    'เสากุญแจ 1.5 (ตัวอย่าง)': {kg:0.693,w:25,bw:25}, 'เสาเกี่ยว 1.5 (ตัวอย่าง)': {kg:0.774,w:25,bw:25}, 'คิ้ว (ตัวอย่าง)': {kg:0.12,w:6,bw:6}
+  };
+  var RULES = {width:'กว้าง', height:'สูง', width_minus:'กว้าง − ระยะหัก', height_minus:'สูง − ระยะหัก', perimeter:'เส้นรอบรูป'};
+  var NAMES = {frameTop:'เฟรมบน', frameBot:'เฟรมล่าง', frameSide:'เฟรมข้าง', sashTop:'บานเลื่อนบน', sashBot:'บานเลื่อนล่าง', lockStile:'เสากุญแจ', hookStile:'เสาเกี่ยว'};
+  var ORIENT = {frameTop:'h', frameBot:'h', frameSide:'v', sashTop:'h', sashBot:'h', lockStile:'v', hookStile:'v'};
+  var INST = {frameTop:1, frameBot:1, frameSide:2, sashTop:1, sashBot:1, lockStile:1, hookStile:1};
+  var ILAB = {frameSide:['ซ้าย','ขวา']};
+  var PARTS = [
+    {id:'frame', name:'วงกบ', count:1, ids:['frameTop','frameBot','frameSide']},
+    {id:'sash', name:'บานเลื่อน', count:2, overlap:25, overlapAuto:true, ids:['sashTop','sashBot','lockStile','hookStile']}
+  ];
+  var ORDER = ['frameTop','frameBot','frameSide','sashTop','sashBot','lockStile','hookStile'];
+  var partOf = function(id){return PARTS.find(function(p){return p.ids.indexOf(id)>=0})};
+  var nInst = function(id){return INST[id]*partOf(id).count};
+  function ln(fam,rule,mult,qty,th){return {fam:fam,rule:rule,ded:0,mult:mult,basis:'fixed',qty:qty,th:th||'',ends:null}}
+  var comps = {
+    frameTop:{role:'เฟรมบน', lines:[ln('เฟรมบน (ติดกล่อง) M4870F 1.5','width',1,1)], note:''},
+    frameBot:{role:'เฟรมล่าง', lines:[ln('เฟรมล่างหน้าต่าง (ติดกล่อง) MN-M4573 1.5','width',1,1), ln('ฝาครอบเฟรมล่างหน้าต่าง MN-M4576','width',1,1)], note:''},
+    frameSide:{role:'เฟรมข้าง', lines:[ln('เฟรมข้าง (ติดกล่อง) M4869F 1.5','height',1,1)], note:''},
+    sashTop:{role:'บานเลื่อนบน', lines:[Object.assign(ln('บานเลื่อนบน 1.5 (ตัวอย่าง)','width_minus',0.5,1,'sash'),{ded:76.2,dedAuto:true})], note:'บานอยู่ในช่องเปิดของวงกบ: หักเฟรมข้าง 2 × 38.1 = 76.2 ก่อน แล้ว × 0.5 ต่อบาน แล้วหักระยะชนเสาที่ปลาย (แก้ค่าได้)'},
+    sashBot:{role:'บานเลื่อนล่าง', lines:[Object.assign(ln('บานเลื่อนล่าง 1.5 (ตัวอย่าง)','width_minus',0.5,1,'sash'),{ded:76.2,dedAuto:true})], note:'บานอยู่ในช่องเปิดของวงกบ: หักเฟรมข้าง 2 × 38.1 = 76.2 ก่อน แล้ว × 0.5 ต่อบาน แล้วหักระยะชนเสาที่ปลาย (แก้ค่าได้)'},
+    lockStile:{role:'เสากุญแจ', lines:[Object.assign(ln('เสากุญแจ 1.5 (ตัวอย่าง)','height_minus',1,1,'sash'),{ded:73.9,dedAuto:true})], note:'บานอยู่ในช่องเปิดของวงกบ: หักเฟรมบน 38.1 + เฟรมล่าง 35.8 = 73.9 (แก้ค่าได้ เช่น เผื่อระยะเคลียร์)'},
+    hookStile:{role:'เสาเกี่ยว', lines:[Object.assign(ln('เสาเกี่ยว 1.5 (ตัวอย่าง)','height_minus',1,1,'sash'),{ded:73.9,dedAuto:true})], note:'บานอยู่ในช่องเปิดของวงกบ: หักเฟรมบน 38.1 + เฟรมล่าง 35.8 = 73.9 (แก้ค่าได้ เช่น เผื่อระยะเคลียร์)'}
+  };
+  function defPair(id){
+    if(id==='frameTop')return [{m:'butt',to:'frameSide:0',v:null},{m:'butt',to:'frameSide:0',v:null}];
+    if(id==='frameBot')return [{m:'butt',to:'frameSide:0',v:null},{m:'butt',to:'frameSide:0',v:null}];
+    if(id==='frameSide')return [{m:'through',to:'frameTop:0',v:null},{m:'through',to:'frameBot:0',v:null}];
+    // บานเลื่อน: เสาวิ่งสุด ขวาง(ราง)บน/ล่างวิ่งชนเสา แต่ละปลายชนเสาตัวที่อยู่ปลายนั้น
+    if(id==='sashTop'||id==='sashBot')return [{m:'butt',to:'hookStile:0',v:null},{m:'butt',to:'lockStile:0',v:null}];
+    return [{m:'through',to:'sashTop:0',v:null},{m:'through',to:'sashBot:0',v:null}]}
+  function copyPair(p){return [{m:p[0].m,to:p[0].to,v:p[0].v},{m:p[1].m,to:p[1].to,v:p[1].v}]}
+  function ensure(id){comps[id].lines.forEach(function(l,i){var a=l.ends||(l.ends=[]);
+    while(a.length<nInst(id))a.push((i>0&&comps[id].lines[0].ends[a.length])?copyPair(comps[id].lines[0].ends[a.length]):defPair(id));a.length=nInst(id)})}
+  ORDER.forEach(ensure);
+  // two pieces meet at every corner: exactly one runs through, the other butts
+  function partner(id,k,e){
+    if(id==='frameTop')return ['frameSide',e,0];
+    if(id==='frameBot')return ['frameSide',e,1];
+    if(id==='frameSide')return [k===0?(e===0?'frameTop':'frameBot'):(e===0?'frameTop':'frameBot'),0,k];
+    if(id==='sashTop')return [e===0?'hookStile':'lockStile',k,0];
+    if(id==='sashBot')return [e===0?'hookStile':'lockStile',k,1];
+    if(id==='hookStile')return [e===0?'sashTop':'sashBot',k,0];
+    if(id==='lockStile')return [e===0?'sashTop':'sashBot',k,1];
+    return null}
+  function setEnd(id,li,k,e,m){
+    var c=comps[id];ensure(id);var L=c.lines[Math.min(li,c.lines.length-1)];L.ends[k][e].m=m;
+    var pt=partner(id,k,e);if(!pt)return;var c2=comps[pt[0]];if(!c2||pt[1]>=nInst(pt[0]))return;ensure(pt[0]);
+    var l2=c2.lines[Math.min(li,c2.lines.length-1)],e2=l2.ends[pt[1]];if(!e2||!e2[pt[2]])return;
+    var flip=(m==='through'?'butt':'through');e2[pt[2]].m=flip;
+    if(flip==='butt'){e2[pt[2]].to=id+':'+Math.min(li,c.lines.length-1);e2[pt[2]].v=null}}
+  var sel='frameBot', selLine=0, view='out';
+  var $=function(id){return document.getElementById(id)};
+  var esc=function(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
+  var W=function(){return Math.max(1,+$('W').value||0)}, H=function(){return Math.max(1,+$('H').value||0)};
+  function lineOf(ref){var a=String(ref).split(':'),c=comps[a[0]];return c&&c.lines[+a[1]||0]}
+  function faceOf(ref){var l=lineOf(ref);var p=l&&FAMS[l.fam];return p?(p.bw!==undefined?p.bw:(p.w||0)):0} // ระยะชน = ความกว้างหลัง notch ของโปรไฟล์ที่ถูกชน (ไม่ใช่ความกว้างเต็ม)
+  function refName(ref){var a=String(ref).split(':'),c=comps[a[0]];return NAMES[a[0]]+(c&&c.lines.length>1?' › โปรไฟล์ที่ '+((+a[1]||0)+1):'')}
+  function dedOf(e){return e.m==='butt'?((e.v===null||e.v===undefined)?faceOf(e.to):e.v):0}
+  function autoDed(id){
+    if(id==='sashTop'||id==='sashBot')return 2*faceOf('frameSide:0');
+    if(id==='lockStile'||id==='hookStile')return faceOf('frameTop:0')+faceOf('frameBot:0');
+    return null}
+  function dedNow(id,l){return (l.dedAuto&&autoDed(id)!==null)?autoDed(id):l.ded}
+  function ovl(id){if(id!=='sashTop'&&id!=='sashBot')return 0;var P=partOf(id);return P.overlapAuto?faceOf('hookStile:0'):(P.overlap||0)}
+  function baseOf(l,id){var w=W(),h=H();return l.rule==='width'?w:l.rule==='height'?h:l.rule==='width_minus'?w-dedNow(id,l)+ovl(id):l.rule==='height_minus'?h-dedNow(id,l):2*(w+h)}
+  function pieceLens(id,l){ensure(id);return l.ends.map(function(pr){return Math.max(0,baseOf(l,id)*l.mult-dedOf(pr[0])-dedOf(pr[1]))})}
+  function calcLine(id,l){
+    var lens=pieceLens(id,l),per=l.qty*(l.basis==='per_cell'?2:1),total=0;
+    lens.forEach(function(x){total+=x*per});total/=1000;
+    var kg=(FAMS[l.fam]||{kg:0}).kg;
+    return {lens:lens,n:lens.length*per,total:total,kg:kg*total,bars:Math.ceil(total/6.4-1e-9)};
+  }
+  function groupsOf(id,l){var r=calcLine(id,l),per=l.qty*(l.basis==='per_cell'?2:1),m={},kg=(FAMS[l.fam]||{kg:0}).kg;
+    r.lens.forEach(function(x){var key=Math.round(x*10)/10;m[key]=(m[key]||0)+per});
+    return Object.keys(m).map(Number).sort(function(a,b){return b-a}).map(function(len){var n=m[len],tot=len*n/1000;return {len:len,n:n,total:tot,kg:kg*tot}})}
+  function calcPos(id){var t={total:0,kg:0,bars:0};comps[id].lines.forEach(function(l){var r=calcLine(id,l);t.total+=r.total;t.kg+=r.kg;t.bars+=r.bars});return t}
+  function fmt(x,d){return x.toLocaleString('th-TH',{minimumFractionDigits:d,maximumFractionDigits:d})}
+  function ilabel(id,k){var a=ILAB[id];if(a&&nInst(id)===a.length)return a[k];if(partOf(id).id==='sash')return 'บาน'+(k%2?'ขวา':'ซ้าย');return nInst(id)>1?('ชิ้นที่ '+(k+1)):''}
+
+  function draw(){drawOverview();drawZoom()}
+  function endPx(e,sc,mn,mx){return Math.min(mx,Math.max(mn,dedOf(e)*sc))}
+  // piece geometry shared by the overview and the zoom: [id,k,orient,fx,fy,len,thick]
+  function geomFrame(x0,y0,pw,ph,t){return [['frameTop',0,'h',x0,y0,pw,t],['frameBot',0,'h',x0,y0+ph-t,pw,t],['frameSide',0,'v',x0,y0,ph,t],['frameSide',1,'v',x0+pw-t,y0,ph,t]]}
+  function geomSash(sx,sy,sw,sh,s,k){return [['sashTop',k,'h',sx,sy,sw,s],['sashBot',k,'h',sx,sy+sh-s,sw,s],[k?'hookStile':'lockStile',k,'v',k?sx:sx+sw-s,sy,sh,s],[k?'lockStile':'hookStile',k,'v',k?sx+sw-s:sx,sy,sh,s]]}
+  function renderPieces(specs,o){
+    var out='',mk='',selPart=partOf(sel);
+    specs.forEach(function(g){var id=g[0],k=g[1],orient=g[2],fx=g[3],fy=g[4],len=g[5],thick=g[6];ensure(id);
+      var lines=comps[id].lines,lab=NAMES[id]+(ilabel(id,k)?' '+ilabel(id,k):'');
+      var cls='part'+(sel===id?' sel':(selPart.ids.indexOf(id)>=0?(o.zoom?' dimp':' grp'):''));
+      function ins(e){if(e.m!=='butt')return 0;if(o.flush){var tid=String(e.to).split(':')[0];return Math.min(len/3,o.flush(tid))}return endPx(e,o.sc,o.minPx,len/3)}
+      function span(pr){var a=ins(pr[0]),b=ins(pr[1]);return [a,Math.max(2,len-a-b)]}
+      var sp=span(lines[0].ends[k]),rx,ry,rw,rh;
+      if(orient==='h'){rx=fx+sp[0];ry=fy;rw=sp[1];rh=thick}else{rx=fx;ry=fy+sp[0];rw=thick;rh=sp[1]}
+      out+='<rect class="'+cls+'" data-id="'+id+'" tabindex="0" role="button" aria-label="'+esc(lab)+'" x="'+o.X(rx,rw).toFixed(1)+'" y="'+ry.toFixed(1)+'" width="'+rw.toFixed(1)+'" height="'+rh.toFixed(1)+'"><title>'+esc(lab)+'</title></rect>';
+      for(var i=1;i<lines.length;i++){var s2=span(lines[i].ends[k]),bx,by,bw,bh,tk=Math.max(3,thick*.28);
+        if(orient==='h'){bx=fx+s2[0];by=fy+thick-tk;bw=s2[1];bh=tk}else{bx=fx+thick-tk;by=fy+s2[0];bw=tk;bh=s2[1]}
+        out+='<rect class="extra'+(sel===id&&selLine===i?' xsel':'')+'" x="'+o.X(bx,bw).toFixed(1)+'" y="'+by.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+bh.toFixed(1)+'" pointer-events="none"/>'}
+      if(o.zoom&&sel===id){
+        var L=lines[Math.min(selLine,lines.length-1)],pr=L.ends[k];
+        var p0=orient==='h'?[fx+(o.sc*0+12),fy+thick/2]:[fx+thick/2,fy+12],p1=orient==='h'?[fx+len-12,fy+thick/2]:[fx+thick/2,fy+len-12];
+        [p0,p1].forEach(function(p,e){var th=pr[e].m==='through';
+          mk+='<circle data-k="'+k+'" data-e="'+e+'" tabindex="0" role="button" aria-label="'+esc(lab)+' ปลายที่ '+(e+1)+': '+(th?'วิ่งสุด':'วิ่งชน')+' กดเพื่อสลับ" cx="'+o.X(p[0],0).toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="12" class="mk '+(th?'mkT':'mkB')+'"><title>'+esc(lab)+' ปลายที่ '+(e+1)+': '+(th?'วิ่งสุด':'วิ่งชน')+' (กดเพื่อสลับ)</title></circle><text class="mkt big" x="'+o.X(p[0],0).toFixed(1)+'" y="'+(p[1]+4).toFixed(1)+'" text-anchor="middle">'+(th?'สุด':'ชน')+'</text>'});
+      }
+    });
+    return out+mk;
+  }
+  function drawOverview(){
+    var w=W(),h=H(),box=420,sc=Math.min(box/w,300/h),pw=w*sc,ph=h*sc,x0=(520-pw)/2+8,y0=18,t=Math.max(10,Math.min(pw,ph)*.045),s=t*.8;
+    var mir=view==='in',X=function(x,wd){return mir?(x0*2+pw)-x-wd:x};
+    var inW=pw-2*t,inH=ph-2*t,pwid=inW/2+s/2,ix=x0+t,iy=y0+t;
+    var specs=geomFrame(x0,y0,pw,ph,t);
+    // บานที่อยู่ด้านที่มองเห็นวาดทับอยู่บนสุด (ด้านนอก: บานซ้ายอยู่ด้านนอก ด้านใน: บานขวา) ส่วนของอีกบานที่ถูกบังจึงไม่เห็น
+    (mir?[0,1]:[1,0]).forEach(function(k){specs=specs.concat(geomSash(ix+(k?inW-pwid:0),iy,pwid,inH,s,k))});
+    var body=renderPieces(specs,{X:X,sc:sc*1.8,minPx:6,zoom:false,flush:function(tid){return partOf(tid)&&partOf(tid).id==='frame'?t:s}});
+    var dims='<line class="dim" x1="'+x0+'" y1="'+(y0+ph+16)+'" x2="'+(x0+pw)+'" y2="'+(y0+ph+16)+'"/><text class="dimt" x="'+(x0+pw/2)+'" y="'+(y0+ph+30)+'" text-anchor="middle">'+w+'</text>'+
+      '<line class="dim" x1="'+(x0+pw+16)+'" y1="'+y0+'" x2="'+(x0+pw+16)+'" y2="'+(y0+ph)+'"/><text class="dimt" x="'+(x0+pw+22)+'" y="'+(y0+ph/2)+'">'+h+'</text>';
+    $('pv').innerHTML=body+dims;
+  }
+  function drawZoom(){
+    var P=partOf(sel),w=W(),h=H(),mir=view==='in',specs=[],vb='0 0 520 340',sc2,X=function(x,wd){return mir?520-x-wd:x};
+    $('zt').textContent='ภาพขยาย: '+P.name+(P.count>1?' × '+P.count:'')+' · ชิ้นที่เลือก: '+comps[sel].role+(P.id==='sash'?' · ช่องเปิดวงกบ '+fmt(W()-2*faceOf('frameSide:0'),1)+' × '+fmt(H()-faceOf('frameTop:0')-faceOf('frameBot:0'),1)+' มม.':'');
+    if(P.id==='frame'){
+      var pw=470,ph=Math.min(280,pw*h/w),t=30;sc2=pw/w;
+      specs=geomFrame(25,25,pw,ph,t);
+    }else{
+      var gap=30,sw=(520-60-gap)/2,sh=Math.min(290,sw*h/(w/2)),s=26;sc2=sw/(w/2);
+      specs=geomSash(30,25,sw,sh,s,0).concat(geomSash(30+sw+gap,25,sw,sh,s,1));
+    }
+    var tz=(P.id==='frame')?30:26;$('pv2').innerHTML=renderPieces(specs,{X:X,sc:sc2*2.2,minPx:12,zoom:true,flush:function(tid){return partOf(tid)&&partOf(tid).id===P.id?tz:(P.id==='frame'?30:26)}});
+  }
+
+
+  function explain(id,l,k){
+    var w=W(),h=H(),isW=(l.rule==='width'||l.rule==='width_minus'),base=isW?w:(l.rule==='perimeter'?2*(w+h):h),steps=[],cur=base,pair=l.ends[k];
+    steps.push((l.rule==='perimeter'?'เส้นรอบรูป ':(isW?'กว้าง ':'สูง '))+fmt(base,1));
+    if(l.rule==='width_minus'||l.rule==='height_minus'){var d=dedNow(id,l);steps.push('− หักวงกบ/ระยะหัก '+fmt(d,1));cur-=d}
+    var o=ovl(id);if(l.rule==='width_minus'&&o){steps.push('+ ระยะซ้อนบาน '+fmt(o,1));cur+=o}
+    if(l.mult!==1){steps=['('+steps.join(' ')+') × '+l.mult];cur*=l.mult}
+    var lab=ORIENT[id]==='h'?['ซ้าย','ขวา']:['บน','ล่าง'];
+    [0,1].forEach(function(e){var p=pair[e];if(p.m==='butt'){var d2=dedOf(p);steps.push('− ปลาย'+lab[e]+' ชน '+refName(p.to).replace(' › โปรไฟล์ที่ ',' ๆ')+' '+fmt(d2,1));cur-=d2}else steps.push('ปลาย'+lab[e]+' วิ่งสุด');});
+    return steps.join(' ')+' = <b>'+fmt(Math.max(0,cur),1)+'</b> มม.'}
+  function resHtml(id,l){var r=calcLine(id,l);return '<span class="calc">ที่มา ('+(ilabel(id,0)||'ชิ้นแรก')+'): '+explain(id,l,0)+'</span><span><b>ความยาวต่อชิ้น × ปริมาณ (มม.)</b> '+groupsOf(id,l).map(function(g){return fmt(g.len,1)+' × '+fmt(g.n,g.n%1?1:0)}).join(' + ')+'</span><span><b>รวม</b> '+fmt(r.total,2)+' ม. · <b>น้ำหนัก</b> '+fmt(r.kg,2)+' กก. · <b>เส้น 6.4 ม.</b> '+r.bars+'</span>'}
+  function targetOpts(cur){var h='';ORDER.forEach(function(id){comps[id].lines.forEach(function(l,i){var ref=id+':'+i;h+='<option value="'+ref+'"'+(ref===cur?' selected':'')+'>ชน '+esc(refName(ref))+' ('+faceOf(ref)+' มม.)</option>'})});return h}
+  function endsHtml(id,l,i){
+    ensure(id);var lab=ORIENT[id]==='h'?['ซ้าย','ขวา']:['บน','ล่าง'];
+    return l.ends.map(function(pair,k){
+      return '<div class="endrow"><b>'+(ilabel(id,k)||'ชิ้น')+'</b>'+[0,1].map(function(e){var p=pair[e];
+        return '<span class="endc"><label>ปลาย'+lab[e]+' <select data-i="'+i+'" data-k="'+k+'" data-e="'+e+'" data-f="m"><option value="through"'+(p.m==='through'?' selected':'')+'>วิ่งสุด</option><option value="butt"'+(p.m==='butt'?' selected':'')+'>วิ่งชน</option></select></label>'+
+        (p.m==='butt'?'<select data-i="'+i+'" data-k="'+k+'" data-e="'+e+'" data-f="to" aria-label="ชนกับ (ใช้เติมค่าหักเริ่มต้น)">'+targetOpts(p.to)+'</select><label>หัก <input type="number" min="0" step="any" class="dedin" data-i="'+i+'" data-k="'+k+'" data-e="'+e+'" data-f="v" value="'+dedOf(p)+'"> มม.'+((p.v===null||p.v===undefined)?'':' (แก้เอง)')+'</label>':'')+'</span>'}).join('')+'</div>'}).join('');
+  }
+  function lineHtml(id,l,i,n){
+    var dedOn=(l.rule==='width_minus'||l.rule==='height_minus');
+    return '<fieldset class="ln'+(i===selLine?' on':'')+'" data-i="'+i+'"><legend>โปรไฟล์ที่ '+(i+1)+(i===selLine?' · ปลายที่เห็นในภาพ':'')+(n>1?' <button type="button" class="x" data-del="'+i+'" aria-label="ลบโปรไฟล์ที่ '+(i+1)+'">✕</button>':'')+'</legend>'+
+      '<div class="f"><span>อลูมิเนียม (ตระกูลโปรไฟล์)'+(i>0?' · เริ่มต้นเหมือนโปรไฟล์ที่ 1':'')+'</span><select data-lk="fam">'+Object.keys(FAMS).map(function(k){return '<option'+(k===l.fam?' selected':'')+'>'+esc(k)+'</option>'}).join('')+'</select></div>'+
+      '<div class="row2 pinfo"><div class="f"><span>ความกว้างเต็มของโปรไฟล์ (มม.)</span><input data-pw="w" data-n="1" type="number" min="0" step="any" value="'+((FAMS[l.fam]||{}).w||0)+'"></div><div class="f"><span>ระยะชน เมื่อถูกชน หลัง notch (มม.)</span><input data-pw="bw" data-n="1" type="number" min="0" step="any" value="'+faceOf(id+':'+i)+'"></div></div>'+
+      '<div class="row2"><div class="f"><span>วิธีคิดความยาว</span><select data-lk="rule">'+Object.keys(RULES).map(function(k){return '<option value="'+k+'"'+(k===l.rule?' selected':'')+'>'+RULES[k]+'</option>'}).join('')+'</select></div>'+
+      '<div class="f"><span>ระยะหัก (มม.)'+(dedOn&&autoDed(id)!==null?(l.dedAuto?' · <span class="tag">อัตโนมัติจากวงกบ</span>':' · แก้เอง <button type="button" class="x" data-auto="1" title="กลับไปใช้ค่าอัตโนมัติจากวงกบ">↺</button>'):'')+'</span><input data-lk="ded" data-n="1" type="number" min="0" step="any" value="'+(dedOn?dedNow(id,l):l.ded)+'"'+(dedOn?'':' disabled')+'></div></div>'+
+      '<div class="f"><span>สัดส่วนของความยาวที่ใช้ <span class="tag">ใหม่</span></span><input data-lk="mult" data-n="1" type="number" min="0" step="any" value="'+l.mult+'"><small class="h">ปกติ 1 = ยาวเต็ม · 0.5 = ครึ่งหนึ่ง (เช่น รางบานเลื่อนแต่ละบานยาวครึ่งของความกว้างที่เหลือ)</small></div>'+
+      '<div class="row2"><div class="f"><span>จำนวนท่อนต่อ 1 ชิ้นในภาพ</span><input data-lk="qty" data-n="1" type="number" min="0" step="any" value="'+l.qty+'"><small class="h">ปกติ 1 · ใส่ 2 ถ้าตำแหน่งนี้ใช้ 2 ท่อนซ้อนกัน จำนวนบานหรือวงกบตั้งที่ Part ด้านบน</small></div>'+
+      '<div class="f"><span>ความหนา</span><select data-lk="th"><option value=""'+(l.th===''?' selected':'')+'>ตามกรอบ</option><option value="sash"'+(l.th==='sash'?' selected':'')+'>ตามบาน (sash)</option></select></div></div>'+
+      '<div class="f"><span>การชนที่ปลาย: เมื่อวิ่งชน กำหนดค่าหักเองได้ (เติมจากความกว้างโปรไฟล์ที่ชนให้ก่อน) · กดจุดในภาพเพื่อสลับสุด/ชน เมื่อโปรไฟล์นี้เป็นตัวที่เห็นในภาพ</span>'+endsHtml(id,l,i)+'</div>'+
+      '<div class="res" data-res="'+i+'">'+resHtml(id,l)+'</div></fieldset>';
+  }
+  function posTot(id){var t=calcPos(id);return '<span><b>รวมตำแหน่งนี้</b> '+fmt(t.total,2)+' ม. · '+fmt(t.kg,2)+' กก. · '+t.bars+' เส้น</span>'}
+  function panel(){
+    var c=comps[sel],P=partOf(sel);if(selLine>=c.lines.length)selLine=0;
+    $('panel').innerHTML=
+      '<div class="parthead"><div class="f"><span>Part (sub assembly)</span><input id="p_part" value="'+esc(P.name)+'"></div><div class="f"><span>จำนวน part ต่อ 1 ชุด</span><input id="p_pcnt" type="number" min="1" value="'+P.count+'"></div></div>'+
+      (P.id==='sash'?'<div class="f"><span>ระยะซ้อนบาน (มม.) '+(P.overlapAuto?'<span class="tag">อัตโนมัติ = ความกว้างเสาเกี่ยว</span>':'แก้เอง <button type="button" class="x" id="p_ovlauto" title="กลับไปใช้ค่าอัตโนมัติ">↺</button>')+'</span><input id="p_ovl" type="number" min="0" step="any" value="'+ovl('sashTop')+'"><small class="h">รางบน/ล่างต่อบาน = (ช่องเปิดวงกบ − เสากุญแจ × 2 − เสาเกี่ยว × 2 + ระยะซ้อน) ÷ 2 โดยค่าอัตโนมัติ = เสาเกี่ยว × 1 เพราะเสาเกี่ยวสองบานซ้อนกัน</small></div>':'')+
+      '<p class="hint" style="margin:-4px 0 8px">ไฮไลต์ในภาพ: '+P.ids.map(function(i){return NAMES[i]}).join(' · ')+'</p>'+
+      '<div class="f"><span>ตำแหน่ง (ชื่อชิ้นส่วนในภาพ)</span><input id="p_role" value="'+esc(c.role)+'"></div>'+
+      c.lines.map(function(l,i){return lineHtml(sel,l,i,c.lines.length)}).join('')+
+      '<button type="button" class="add" id="addLn">+ เพิ่มโปรไฟล์ในตำแหน่งนี้ (เช่น ฝา หรือ คิ้ว)</button>'+
+      '<div class="res tot" id="posTot">'+posTot(sel)+'</div>'+(c.note?'<p class="hint">'+esc(c.note)+'</p>':'');
+    $('p_role').addEventListener('input',function(){c.role=this.value;table()});
+    $('p_part').addEventListener('input',function(){P.name=this.value;table()});
+    if($('p_ovl'))$('p_ovl').addEventListener('input',function(){P.overlap=Math.max(0,+this.value||0);P.overlapAuto=false;live()});
+    if($('p_ovlauto'))$('p_ovlauto').addEventListener('click',function(){P.overlapAuto=true;refresh()});
+    $('p_pcnt').addEventListener('input',function(){P.count=Math.max(1,+this.value||1);ORDER.forEach(ensure);refresh()});
+    $('addLn').addEventListener('click',function(){var f=c.lines[0],n=ln('คิ้ว (ตัวอย่าง)',f.rule,f.mult,f.qty,f.th);n.ded=f.ded;n.ends=f.ends.map(copyPair);c.lines.push(n);selLine=c.lines.length-1;refresh()});
+    Array.prototype.forEach.call($('panel').querySelectorAll('[data-del]'),function(b){b.addEventListener('click',function(){c.lines.splice(+b.getAttribute('data-del'),1);selLine=0;refresh()})});
+    Array.prototype.forEach.call($('panel').querySelectorAll('fieldset.ln'),function(fs){fs.addEventListener('focusin',function(){var i=+fs.getAttribute('data-i');if(i!==selLine){selLine=i;draw();Array.prototype.forEach.call($('panel').querySelectorAll('fieldset.ln'),function(f2){f2.className='ln'+(+f2.getAttribute('data-i')===selLine?' on':'')})}})});
+    Array.prototype.forEach.call($('panel').querySelectorAll('[data-auto]'),function(b){b.addEventListener('click',function(){var i=+b.closest('fieldset').getAttribute('data-i');c.lines[i].dedAuto=true;refresh()})});
+    Array.prototype.forEach.call($('panel').querySelectorAll('[data-pw]'),function(e){
+      var fs=e.closest('fieldset'),i=+fs.getAttribute('data-i'),k=e.getAttribute('data-pw');
+      e.addEventListener('input',function(){var P=FAMS[c.lines[i].fam];P[k]=Math.max(0,+e.value||0);if(k==='w'&&P.bw===undefined)P.bw=P[k];live()});
+    });
+    Array.prototype.forEach.call($('panel').querySelectorAll('[data-lk]'),function(e){
+      var fs=e.closest('fieldset'),i=+fs.getAttribute('data-i'),k=e.getAttribute('data-lk'),num=e.getAttribute('data-n');
+      e.addEventListener(num?'input':'change',function(){c.lines[i][k]=num?(+e.value||0):e.value;if(k==='ded')c.lines[i].dedAuto=false;if(k==='rule'||k==='fam'){refresh();return}live()});
+    });
+    Array.prototype.forEach.call($('panel').querySelectorAll('[data-f]'),function(e){
+      var f=e.getAttribute('data-f');
+      if(f==='v'){e.addEventListener('input',function(){var i=+e.getAttribute('data-i'),k=+e.getAttribute('data-k'),en=+e.getAttribute('data-e');c.lines[i].ends[k][en].v=Math.max(0,+e.value||0);selLine=i;live()});return}
+      e.addEventListener('change',function(){var i=+e.getAttribute('data-i'),k=+e.getAttribute('data-k'),en=+e.getAttribute('data-e');if(f==='m'){setEnd(sel,i,k,en,e.value)}else{var p=c.lines[i].ends[k][en];p[f]=e.value;if(f==='to')p.v=null}selLine=i;refresh()});
+    });
+  }
+  function live(){draw();table();var c=comps[sel];c.lines.forEach(function(l,i){var el=document.querySelector('[data-res="'+i+'"]');if(el)el.innerHTML=resHtml(sel,l)});if($('posTot'))$('posTot').innerHTML=posTot(sel)}
+  function endTxt(l){return l.ends.map(function(p){return (p[0].m==='through'?'สุด':'ชน')+'/'+(p[1].m==='through'?'สุด':'ชน')}).join(' · ')}
+  function table(){
+    var h='<tr><th>ตำแหน่ง</th><th>อลูมิเนียม</th><th>วิธีคิด</th><th>× ความยาว</th><th>ปลาย (แต่ละชิ้น)</th><th>จำนวน/ชิ้นที่วาด</th><th>ความหนา</th><th>ความยาวต่อชิ้น × ปริมาณ (มม.)</th><th>ยาวรวม (ม.)</th><th>น้ำหนัก (กก.)</th></tr>';
+    PARTS.forEach(function(P){
+      var tt=0,kk=0;P.ids.forEach(function(id){comps[id].lines.forEach(function(l){var r=calcLine(id,l);tt+=r.total;kk+=r.kg})});
+      h+='<tr class="ph"><td colspan="8">Part: '+esc(P.name)+' × '+P.count+'</td><td class="n">'+fmt(tt,2)+'</td><td class="n">'+fmt(kk,2)+'</td></tr>';
+      P.ids.forEach(function(id){comps[id].lines.forEach(function(l,i){var gs=groupsOf(id,l);
+        gs.forEach(function(g,gi){
+          var first=gi===0,attr='class="pick'+(id===sel?' sel':'')+'" data-id="'+id+'" data-li="'+i+'" tabindex="0"';
+          h+='<tr '+attr+'>'+(first?'<td>'+(i===0?esc(comps[id].role):'<span class="sub">↳ ในตำแหน่งเดียวกัน</span>')+'</td><td>'+esc(l.fam)+'</td><td>'+RULES[l.rule]+'</td><td class="n">'+l.mult+'</td><td>'+endTxt(l)+'</td><td class="n">'+l.qty+'</td><td>'+(l.th==='sash'?'บาน':'กรอบ')+'</td>':'<td colspan="7"><span class="sub">↳ ความยาวไม่เท่ากัน เพิ่มบรรทัดให้</span></td>')+
+            '<td class="n">'+fmt(g.len,1)+' × '+fmt(g.n,g.n%1?1:0)+'</td><td class="n">'+fmt(g.total,2)+'</td><td class="n">'+fmt(g.kg,2)+'</td></tr>'})})});
+    });
+    $('tbl').innerHTML=h;
+  }
+  function refresh(){draw();table();panel()}
+  function pick(id,li){sel=id;selLine=li||0;refresh()}
+  function toggle(k,e){var L=comps[sel].lines[Math.min(selLine,comps[sel].lines.length-1)];setEnd(sel,selLine,k,e,L.ends[k][e].m==='through'?'butt':'through');refresh()}
+  $('pv').addEventListener('click',function(ev){var t=ev.target,gk=t.getAttribute&&t.getAttribute('data-e');if(gk!==null&&gk!==undefined){toggle(+t.getAttribute('data-k'),+gk);return}var id=t.getAttribute&&t.getAttribute('data-id');if(id)pick(id,0)});
+  $('pv').addEventListener('keydown',function(ev){if(ev.key==='Enter'||ev.key===' '){var t=ev.target,gk=t.getAttribute&&t.getAttribute('data-e');if(gk!==null&&gk!==undefined){ev.preventDefault();toggle(+t.getAttribute('data-k'),+gk);return}var id=t.getAttribute&&t.getAttribute('data-id');if(id){ev.preventDefault();pick(id,0)}}});
+  ['pv','pv2'].forEach(function(sid){var elx=$(sid);if(sid==='pv')return;
+    elx.addEventListener('click',function(ev){var t=ev.target,gk=t.getAttribute&&t.getAttribute('data-e');if(gk!==null&&gk!==undefined){toggle(+t.getAttribute('data-k'),+gk);return}var id=t.getAttribute&&t.getAttribute('data-id');if(id)pick(id,0)});
+    elx.addEventListener('keydown',function(ev){if(ev.key==='Enter'||ev.key===' '){var t=ev.target,gk=t.getAttribute&&t.getAttribute('data-e');if(gk!==null&&gk!==undefined){ev.preventDefault();toggle(+t.getAttribute('data-k'),+gk);return}var id=t.getAttribute&&t.getAttribute('data-id');if(id){ev.preventDefault();pick(id,0)}}});
+  });
+  $('tbl').addEventListener('click',function(e){var tr=e.target.closest&&e.target.closest('tr.pick');if(tr)pick(tr.getAttribute('data-id'),+tr.getAttribute('data-li'))});
+  $('tbl').addEventListener('keydown',function(e){if(e.key==='Enter'){var tr=e.target.closest&&e.target.closest('tr.pick');if(tr)pick(tr.getAttribute('data-id'),+tr.getAttribute('data-li'))}});
+  ['W','H'].forEach(function(id){$(id).addEventListener('input',live)});
+  $('vOut').addEventListener('click',function(){view='out';$('vOut').setAttribute('aria-pressed','true');$('vIn').setAttribute('aria-pressed','false');draw()});
+  $('vIn').addEventListener('click',function(){view='in';$('vIn').setAttribute('aria-pressed','true');$('vOut').setAttribute('aria-pressed','false');draw()});
+  refresh();
+})();
+</script>
