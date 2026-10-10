@@ -23,6 +23,7 @@ Success = for the example in the mockup the editor and the cost engine give the 
 9. Preview in the editor: top **overview** (click to select), below a **zoom of the selected part** where the end markers (green "สุด", orange "ชน") are clicked to toggle; the overview and zoom draw every joint flush; overlapping sashes are drawn with the visible sash on top (outside view: left sash outside; inside view swaps).
 
 10. **Confirmed 2026-10-10:** the outside sash is the **left** sash (the inside view swaps); joints are drawn **flush in both the overview and the zoom**.
+12. **Added 2026-10-10:** the editor's drawing is also **the item preview and the quotation attachment drawing** for these templates (the saved snapshots that the attachment pages use are drawn with the same flush-joint renderer; no second drawing logic).
 11. The configuration explored in the mockup is not specific to this layout: it is the **generic editor model for every type**. This spec builds it and delivers the sliding window first; the other types are configured later with the same model (section 10).
 
 Still open with the owner: real butt distances, full widths, hook overlap and clearance per profile / series (the mockup uses sample numbers 38.1 / 35.8 / 25).
@@ -31,7 +32,7 @@ Still open with the owner: real butt distances, full widths, hook overlap and cl
 
 In scope: new template layout kind `sliding_2` (sliding window, 2 sashes, no transom); parts / positions / profile lines / per-piece per-end data; butt distance on profiles; engine support for a length factor and end deductions; an expander that compiles the new model into the engine's flat component list; the click editor with overview + zoom; "start from the sliding-window layout" action; migrations, tests.
 
-Out of scope (later): other layouts (swing door, fixed light, transom/light-grid, curtain wall, folding door, louver) and their Excel formulas; showing these templates in the item form's preview and in the quotation attachment drawings (they keep the old preview); glass, labour and hardware in the new model (hardware stays in the existing tabs); importing the Excel formulas; clearance and sash-overlap defaults beyond the editable fields; per-part colours.
+Out of scope (later): other layouts (swing door, fixed light, transom/light-grid, curtain wall, folding door, louver) and their Excel formulas; glass, labour and hardware in the new model (hardware stays in the existing tabs); importing the Excel formulas; clearance and sash-overlap defaults beyond the editable fields; per-part colours.
 
 ## 4. Data model (new migration `2026-10-15-01-bom-part-editor.sql`, additive; the owner applies it)
 
@@ -59,6 +60,10 @@ No column is added to or removed from quotations, invoices or any standard modul
 Per the approved mockup: width/height test inputs and outside/inside toggle; overview SVG (click a piece to select); zoom SVG of the selected part with clickable end markers; side panel: part name and count (+ sash overlap, auto/manual), position name, one fieldset per profile (profile family, profile info — full width and butt distance —, length rule, deduction (auto/manual badge, ↺ reset), length factor, quantity, thickness role, per-end controls with target and deduction, step-by-step "ที่มา" line, result), button "+ เพิ่มโปรไฟล์ในตำแหน่งนี้"; components table grouped by part with "length × quantity" lines and part totals. Legacy templates keep the current tab untouched. A button "สร้างจากแบบบานเลื่อน 2 บาน (ไม่มีช่องแสง)" creates the parts/positions/lines with the defaults of decision 6; profile families are chosen by the owner. Saving writes the new tables and then regenerates nothing else (expansion happens at costing time).
 
 Editing the butt distance / full width of a profile happens in the editor's profile-info boxes and writes `alu_profiles` (same table as the catalogue; the catalogue's profile screen also gains the butt-distance field).
+
+## 6b. Preview in the item form and the quotation attachment
+
+For a template with `layout_kind` and an item **without an add-on**, the item form's live preview and the saved snapshots (`estimation_openings.preview_svg_out/in`, outside and inside) are drawn by the same geometry as the editor overview (flush joints, visible sash on top, real run of every piece, dimension lines), as an SVG string built by a new pure renderer (only `svg`, `rect`, `line`, `text`, `polyline` elements, `xmlns` and fixed width/height, so the attachment pages' `safeSvgDataUri` accepts it and the attachment code needs no change). The preview signature includes the layout kind, the model and the expanded end deductions, so an edited template or a changed butt distance marks old snapshots "ภาพเก่า". Items with an add-on, templates without `layout_kind` and the "parts" style keep the legacy renderer. The item preview offers the double-line and solid styles for these templates.
 
 ## 7. Compatibility and isolation
 
@@ -107,6 +112,6 @@ Series variants (Big Frame, Big Frame 3 rails, box-rim 4", box-rim 3 rails, EURO
 
 - The engine's length formula gains two inputs; mitigated by defaults and the unchanged old tests.
 - Per-end data multiplies rows (pieces × ends × profiles); acceptable at template size.
-- The item-form preview and the quotation attachment drawings still use the legacy preview for these templates until a follow-up; their dimensions come from the same opening, so only the end-flush detail differs.
+- Add-on (light grid) combinations and the "parts" / CAD preview styles are not covered by the new renderer yet; they fall back to the legacy renderer.
 - Sample numbers in the mockup are not real: the owner must enter butt distances and widths per profile, the hook overlap and any clearance per series.
 - Pending owner answers: outer sash side (default left); the "ภาพขยายวงกบชนแทน" comment.

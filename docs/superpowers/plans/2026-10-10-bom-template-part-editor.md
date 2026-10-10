@@ -27,7 +27,7 @@
 - Ruling PE-3: **profile numbers are edited in the catalogue, not in the template editor.** The editor shows (read-only) the full width and butt distance of the profile resolved at a "ซีรีส์/ความหนาที่ใช้ทดสอบ" pair of selects, with a link to the catalogue; the catalogue's profile screen gets the new `butt_distance_mm` field. (Deviates from spec §6's last paragraph to avoid ambiguity when a family has many profiles; cost if wrong: add inline edit later.)
 - Ruling PE-4: butt distance lookup order = `alu_profiles.butt_distance_mm` → legacy `assembly.jointDeductionMm` automatic rule (width/depth + primary contact) → issue `no_butt_distance` (shown as unresolved, deduction 0), never a silent 0.
 - Ruling PE-5: the hook-stile overlap defaults (`overlap_mode = 'auto_hook'`) to the hook stile profile's butt distance (falls back to `width_mm`).
-- Ruling PE-6: the item-form preview and quotation attachment drawings keep the legacy renderer; a `layout_kind` template has no flat components, so the legacy `frameFamily` returns null and the default frame width is used (must not crash).
+- Ruling PE-6: for a `layout_kind` template **without an add-on** the item-form live preview and the saved snapshots (so the quotation attachment pages) use the new geometry via a pure SVG-string renderer (owner request 2026-10-10: "live preview … ใช้แนบใบเสนอราคาได้เลย"); items with an add-on, legacy templates and the "parts"/CAD styles keep the legacy renderer; a `layout_kind` template has no flat components, so the legacy `frameFamily` returns null (must not crash).
 
 ## Review Focus
 
@@ -45,16 +45,18 @@ Create:
 - `src/lib/partExpand.js` (+test) — model → engine components
 - `src/lib/partSave.js` (+test) — model ↔ database rows
 - `src/lib/partGeometry.js` (+test) — overview/zoom geometry (flush joints, occlusion, markers)
+- `src/lib/partPreviewSvg.js` (+test) — pure SVG string for the item preview and the saved snapshots
 - `src/hooks/useBomPartModel.js`
 - `src/pages/bomTemplates/PartEditor.jsx`, `PartPreview.jsx`, `PartSidePanel.jsx`, `PartTable.jsx` (+ `PartEditor.smoke.test.jsx`)
 
 Modify:
 - `src/lib/bomEngine.js` (+test) — factor and end deduction
+- `src/lib/itemPreviewSignature.js` (+test), `src/pages/estimation/PreviewPanel.jsx`, `useItemModel.js` — new renderer for `layout_kind` templates
 - `src/lib/openingCost.js` (+test) — branch to `expandParts`; `src/pages/Estimation.jsx` and `src/pages/estimation/ProviderCompare.jsx` — pass `partModelByTemplate`
 - `src/lib/reasonText.js` — new reason texts
 - `src/pages/BomTemplates.jsx` — `layout_kind` in form/payload, new tab body, save/load
 - `src/pages/aluCatalog/ProfilesTab.jsx`, `src/lib/catalogForm.js` — `butt_distance_mm` field
-- `docs/handover-aluminium-cost-catalog.md` — part editor section
+- `docs/handover-aluminium-cost-catalog.md` — part editor section (incl. that previews/attachments for these templates use the new drawing)
 
 ---
 
@@ -172,9 +174,22 @@ Rules (port the mockup's `baseOf/dedNow/autoDed/ovl/pieceLens/groupsOf/explain`)
 
 ---
 
-### Task 10: Handover, ledger, whole-branch review
+### Task 10: Item preview and quotation attachment drawings
 
-**Files:** Modify `docs/handover-aluminium-cost-catalog.md` (new section "Part editor": what was built, SQL order — `2026-10-15-01` after the Phase 3 migrations, test script first —, owner click-through list in Thai, data the owner must enter [butt distances, full widths, hook overlap, clearance per profile/series], deferred items [item-form preview and attachment drawings still legacy; other types per spec §10]), memory file and `MEMORY.md` line.
+**Files:** Create `src/lib/partPreviewSvg.js`, `src/lib/partPreviewSvg.test.js`; Modify `src/lib/itemPreviewSignature.js` (+ `itemPreviewSignature.test.js`), `src/pages/estimation/PreviewPanel.jsx`, `src/pages/estimation/useItemModel.js`, `src/pages/estimation/itemForm.js` (only where it builds the snapshot), `src/pages/estimation/projectDefaults.js` (`currentPreviewSigs`).
+
+**Interfaces:** `partSvgString({ model, widthMm, heightMm, view, buttOf, style = 'double' }) → string | null` built from `overviewSpecs` (Task 8) plus dimension lines (width below, height right, in mm as the legacy drawing shows metres — match the legacy dimension text format used by `previewSvgString`); only `svg`, `rect`, `line`, `text`, `polyline`; root `<svg xmlns="http://www.w3.org/2000/svg" width=".." height=".." viewBox="..">`; no markers, no scripts, no `on*` attributes, no `style` elements (inline `fill`/`stroke` attributes). `snapshotPreviews(item, template, addonTemplate, resolved, views, partCtx)` gains an optional `partCtx = { model, buttOf }`; for `template.layout_kind` without add-on and with a model it returns the new strings and `sig`, otherwise the legacy path runs exactly as today. `itemPreviewSignature` appends a fingerprint of `layout_kind`, the model JSON and the expanded end deductions when a model is passed (legacy signature string unchanged when not).
+
+- [ ] **Step 1: Failing tests:** (a) `partSvgString` output passes `safeSvgDataUri` from `src/lib/attachmentPages.js` (non-null) for both views and contains `<rect` for every piece and the dimension texts; (b) outside vs inside differ (mirrored, visible sash swaps); (c) a butt end shortens the drawn piece (compare two models); (d) legacy `snapshotPreviews` result for a legacy template is byte-identical to before (reuse an existing test case); (e) a `layout_kind` template without add-on returns the new strings; with an add-on returns the legacy strings; (f) the signature changes when an end mode, a deduction or the butt distance changes and is unchanged for legacy inputs; (g) `PreviewPanel` renders the new drawing for a `layout_kind` template (`renderToString`, no `NaN`/`undefined`) and offers only the double-line and solid styles; legacy templates still offer the four styles.
+- [ ] **Step 2–4:** run (FAIL) → implement → run → full suite → `npm run build`. Wire `partCtx` from `useItemModel`/`snapshotFor` (the model and `buttOf` are already in the costing ctx from Task 5) and make the "ภาพเก่า" check (`currentPreviewSigs`) pass the same context so stored snapshots compare correctly.
+- [ ] **Step 5: Attachment check:** a test builds the attachment plan (`planAttachmentPages`, `itemViews`) for an item whose `preview_svg_out/in` come from `partSvgString` and asserts both views are present (not `noPreview`) — proving the quotation attachment shows the new drawing without any change to `attachmentPages.js`.
+- [ ] **Step 6: Commit** `feat: item preview and quotation attachment use the part-editor drawing`.
+
+---
+
+### Task 11: Handover, ledger, whole-branch review
+
+**Files:** Modify `docs/handover-aluminium-cost-catalog.md` (new section "Part editor": what was built, SQL order — `2026-10-15-01` after the Phase 3 migrations, test script first —, owner click-through list in Thai, data the owner must enter [butt distances, full widths, hook overlap, clearance per profile/series], deferred items [add-on combinations and the parts/CAD preview styles still legacy; other types per spec §10]), memory file and `MEMORY.md` line.
 
 - [ ] **Step 1:** write the section; **deploy order: apply the migration before deploying the code** (the engine and loaders read the new columns).
 - [ ] **Step 2:** `npx vitest run` and `npm run build`; report counts.
