@@ -13,6 +13,7 @@ import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { supabase, fmt, fmtShort, fmtDate } from '../lib/supabase.js'
 import { Modal } from '../components/Modal.jsx'
+import { GuideProgressCard } from '../components/GuideProgressCard.jsx'
 import { startOfYear, endOfYear, startOfMonth, endOfMonth, addMonths, format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { getEffectiveTheme } from '../lib/theme.js'
@@ -376,6 +377,7 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
 
   return (
     <div>
+      <GuideProgressCard navigateTo={navigateTo} />
       {/* ── Period selector + KPI cards, capped so this region alone can't
           push the table below it out of usable view on a short monitor
           -- see .page-toolbar-scroll in index.css. Charts stay outside

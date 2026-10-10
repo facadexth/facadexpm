@@ -55,6 +55,7 @@ const Estimation   = lazy(() => import('./pages/Estimation.jsx'))
 const TenantManagement = lazy(() => import('./pages/TenantManagement.jsx'))
 const LineAdminChat = lazy(() => import('./pages/LineAdminChat.jsx'))
 const CommunicationCenter = lazy(() => import('./pages/CommunicationCenter.jsx'))
+const StartingGuide = lazy(() => import('./pages/StartingGuide.jsx'))
 
 const TABS = [
   { id: 'dashboard',         label: '📊 ภาพรวม',              minRole: 'WORKER', module: null },
@@ -90,6 +91,7 @@ const TABS = [
     // is reachable by everyone; the OWNER-only content stays gated inside
     // the page, not at this tab-routing level.
     { id: 'settings',        label: 'ทั่วไป',          minRole: 'WORKER', module: null },
+    { id: 'starting_guide',  label: '🚀 เริ่มต้นใช้งาน', minRole: 'OWNER', module: null },
     { id: 'hr',              label: '👷 บุคคล',        minRole: 'WORKER', module: 'payroll' },
     { id: 'categories',      label: '🏷️ หมวดหมู่',    minRole: 'ADMIN', module: null },
     { id: 'clients',         label: '🏢 ลูกค้า',      minRole: 'ADMIN', module: null },
@@ -408,6 +410,7 @@ export default function App() {
         case 'user_management': return <UserManagement {...props} />
         case 'communication_center': return <CommunicationCenter {...props} />
         case 'settings':   return <Settings   {...props} />
+        case 'starting_guide': return <StartingGuide {...props} />
         case 'tenant_management': return <TenantManagement {...props} />
         case 'line_admin_chat': return <LineAdminChat {...props} />
         case 'estimation':    return <Estimation    {...props} />
