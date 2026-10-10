@@ -386,3 +386,33 @@ describe('computeBomForOpening -- catalog pricing', () => {
     expect(r.hardwareSetLines.find(l => l.name === 'Lock').price_row_id).toBe('pp1')
   })
 })
+
+describe('computeBomForOpening -- length_factor and end_deduction_mm', () => {
+  const lenOf = (extra, widthM = 1.8) => {
+    const components = [{ role_name: 'Rail', profile_family: 'Frame-General', length_rule_type: 'width_minus', length_deduction_mm: 51.2, quantity_basis: 'fixed', quantity_value: 1, ...extra }]
+    return computeBomForOpening(baseOpening({ width_m: widthM }), baseTemplate(), components, [], stubPricing([PROFILE], FINISH), GLASS).profileLines[0].length_m
+  }
+  const OLD = 1.8 - 0.0512
+
+  it('(a) factor 0.5 and end deduction 50 mm: (1.8 - 0.0512) x 0.5 - 0.05 = 0.8244', () => {
+    expect(lenOf({ length_factor: 0.5, end_deduction_mm: 50 })).toBeCloseTo(0.8244, 6)
+  })
+  it('(b) neither field gives exactly the old length', () => {
+    expect(lenOf({})).toBe(OLD)
+  })
+  it('(c) DB numeric strings behave as numbers', () => {
+    expect(lenOf({ length_factor: '0.5', end_deduction_mm: '25' })).toBeCloseTo(OLD * 0.5 - 0.025, 9)
+  })
+  it('(d) null, empty, NaN, zero factor and negative end deduction fall back to 1 / 0', () => {
+    expect(lenOf({ length_factor: null, end_deduction_mm: null })).toBe(OLD)
+    expect(lenOf({ length_factor: '', end_deduction_mm: '' })).toBe(OLD)
+    expect(lenOf({ length_factor: NaN, end_deduction_mm: NaN })).toBe(OLD)
+    expect(lenOf({ length_factor: 0 })).toBe(OLD)
+    expect(lenOf({ length_factor: -2 })).toBe(OLD)
+    expect(lenOf({ end_deduction_mm: -10 })).toBe(OLD)
+    expect(lenOf({ end_deduction_mm: 0 })).toBe(OLD)
+  })
+  it('(e) explicit factor 1 and end deduction 0 equals absent', () => {
+    expect(lenOf({ length_factor: 1, end_deduction_mm: 0 })).toBe(lenOf({}))
+  })
+})

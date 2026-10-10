@@ -24,14 +24,19 @@ export function resolveGrid(template, opening) {
   return { rowCount, columnCount, cells }
 }
 
-function computeComponentLength(rule, deductionMm, widthM, heightM) {
+const factorOf = v => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 1)
+const endOf = v => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 0)
+
+function computeComponentLength(rule, deductionMm, widthM, heightM, factor = 1, endDeductionMm = 0) {
   const deductionM = deductionMm / 1000
-  if (rule === 'width') return widthM
-  if (rule === 'height') return heightM
-  if (rule === 'width_minus') return widthM - deductionM
-  if (rule === 'height_minus') return heightM - deductionM
-  if (rule === 'perimeter') return 2 * (widthM + heightM)
-  throw new Error(`Unknown length_rule_type: ${rule}`)
+  let base
+  if (rule === 'width') base = widthM
+  else if (rule === 'height') base = heightM
+  else if (rule === 'width_minus') base = widthM - deductionM
+  else if (rule === 'height_minus') base = heightM - deductionM
+  else if (rule === 'perimeter') base = 2 * (widthM + heightM)
+  else throw new Error(`Unknown length_rule_type: ${rule}`)
+  return base * factor - endDeductionMm / 1000
 }
 
 // A component may carry its own thickness (frame vs sash, only where the type allows it; see assembly.applyRoleThickness);
@@ -66,7 +71,7 @@ export function computeBomForOpening(opening, template, components, hardware, pr
 
   // Explicit components (Business logic Step 3).
   const profileLines = (components || []).map(c => {
-    const length_m = computeComponentLength(c.length_rule_type, c.length_deduction_mm, opening.width_m, opening.height_m)
+    const length_m = computeComponentLength(c.length_rule_type, c.length_deduction_mm, opening.width_m, opening.height_m, factorOf(c.length_factor), endOf(c.end_deduction_mm))
     const quantity = c.quantity_basis === 'per_cell' ? c.quantity_value * rowCount * columnCount : c.quantity_value
     return priceProfileLine({ role_name: c.role_name, family: c.profile_family, length_m, quantity, pricing, opening, thickness_mm: c.thickness_mm, cut_style: c.cut_style })
   })
