@@ -1,0 +1,74 @@
+/* BOM template part editor — ported from the approved mockup (docs/superpowers/mockups/2026-10-10-bom-part-editor-mockup.html v24).
+   Scoped under .pe; mockup tokens are mapped onto the app's theme variables, the drawing highlight and marker colours are the mockup's. */
+.pe {
+  --pe-panel: var(--bg2); --pe-fg: var(--text); --pe-muted: var(--text3); --pe-line: var(--border);
+  --pe-accent: var(--accent); --pe-accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --pe-warn: #f0b35a; --pe-warn-soft: #3a2d16;
+  --pe-draw: var(--text2); --pe-draw-fill: var(--bg3); --pe-hl: #f0b35a; --pe-hl-fill: #4a3a18; --pe-code: var(--bg3);
+  display: grid; gap: 14px; font-size: 14px; line-height: 1.55; color: var(--pe-fg);
+}
+/* the app is dark by default; light palette = the mockup's light values */
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .pe { --pe-warn: #9a5b00; --pe-warn-soft: #fbefd9; --pe-hl: #e4a11b; --pe-hl-fill: #fbe7b5; } }
+:root[data-theme="light"] .pe { --pe-warn: #9a5b00; --pe-warn-soft: #fbefd9; --pe-hl: #e4a11b; --pe-hl-fill: #fbe7b5; }
+.pe h2 { font-size: 15px; margin: 0 0 8px; }
+.pe .sub { color: var(--pe-muted); }
+.pe .card2 { background: var(--pe-panel); border: 1px solid var(--pe-line); border-radius: 10px; padding: 14px; min-width: 0; }
+.pe .top { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; }
+@media (max-width: 820px) { .pe .top { grid-template-columns: minmax(0, 1fr); } }
+.pe .bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 8px; }
+.pe .bar label { font-size: 12px; color: var(--pe-muted); display: flex; gap: 6px; align-items: center; }
+.pe input, .pe select { font: inherit; color: var(--pe-fg); background: var(--bg); border: 1px solid var(--pe-line); border-radius: 6px; padding: 5px 8px; min-width: 0; }
+.pe input:disabled, .pe select:disabled { opacity: .75; }
+.pe input[type=number] { width: 84px; font-family: ui-monospace, Menlo, monospace; }
+.pe input.dedin { width: 64px; }
+.pe .seg { display: inline-flex; border: 1px solid var(--pe-line); border-radius: 6px; overflow: hidden; }
+.pe .seg button { font: inherit; border: 0; background: var(--bg); color: var(--pe-fg); padding: 4px 10px; cursor: pointer; }
+.pe .seg button[aria-pressed=true] { background: var(--pe-accent); color: #fff; }
+.pe svg { width: 100%; height: auto; display: block; max-height: 340px; }
+.pe svg.zoom { max-height: 360px; }
+.pe .part { fill: var(--pe-draw-fill); stroke: var(--pe-draw); stroke-width: 1.2; cursor: pointer; transition: fill .12s; }
+.pe .part:hover { fill: var(--pe-hl-fill); }
+.pe .part.dimp { fill: var(--pe-draw-fill); opacity: .45; }
+.pe .part.grp { fill: var(--pe-hl-fill); stroke: var(--pe-hl); stroke-width: 1.2; opacity: .7; }
+.pe .part.sel { fill: var(--pe-hl-fill); stroke: var(--pe-hl); stroke-width: 2.4; }
+.pe .dim { stroke: var(--pe-muted); stroke-width: .8; fill: none; }
+.pe .dimt { fill: var(--pe-muted); font: 11px ui-monospace, Menlo, monospace; }
+.pe .hint { font-size: 12px; color: var(--pe-muted); margin-top: 6px; }
+.pe .parthead { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pe .f { display: grid; gap: 3px; margin-bottom: 9px; }
+.pe .f > span { font-size: 12px; color: var(--pe-muted); }
+.pe .f .h { color: var(--pe-muted); font-size: 11px; line-height: 1.35; }
+.pe .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pe .res { background: var(--pe-accent-soft); border-radius: 8px; padding: 10px 12px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; display: grid; gap: 2px; }
+.pe .res b { font-family: inherit; font-weight: 700; }
+.pe .res.tot { background: var(--pe-code); }
+.pe .tag { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--pe-warn-soft); color: var(--pe-warn); font-weight: 600; }
+.pe .tw { overflow-x: auto; }
+.pe table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.pe th, .pe td { padding: 6px 8px; border-bottom: 1px solid var(--pe-line); text-align: left; white-space: nowrap; }
+.pe th { font-size: 11px; color: var(--pe-muted); letter-spacing: .03em; }
+.pe tr.ph td { background: var(--pe-code); font-weight: 600; }
+.pe tr.pick { cursor: pointer; }
+.pe tr.pick:hover td { background: var(--pe-code); }
+.pe tr.sel td { background: var(--pe-hl-fill); }
+.pe td.n { font-family: ui-monospace, Menlo, monospace; text-align: right; }
+.pe .note { background: var(--pe-warn-soft); color: var(--pe-fg); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+.pe fieldset.ln { border: 1px solid var(--pe-line); border-radius: 8px; margin: 0 0 10px; padding: 8px 10px; }
+.pe fieldset.ln.on { border-color: var(--pe-accent); }
+.pe fieldset.ln legend { font-size: 12px; color: var(--pe-muted); padding: 0 6px; }
+.pe button.x { font: inherit; border: 0; background: none; color: var(--pe-warn); cursor: pointer; padding: 0 4px; }
+.pe button.add { font: inherit; width: 100%; border: 1px dashed var(--pe-accent); background: var(--pe-accent-soft); color: var(--pe-accent); border-radius: 8px; padding: 7px; cursor: pointer; margin-bottom: 10px; }
+.pe .mk { stroke: #fff; stroke-width: 1.5; cursor: pointer; }
+.pe .mk.ro { cursor: default; }
+.pe .mkT { fill: #2a8a5f; } .pe .mkB { fill: #c4571a; }
+.pe .mkt { fill: #fff; font: 700 11px sans-serif; pointer-events: none; }
+.pe .calc { font-size: 12px; color: var(--pe-muted); line-height: 1.45; font-family: inherit; }
+.pe .pinfo { background: var(--pe-code); border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; }
+.pe .extra { fill: #6b8fd6; stroke: none; opacity: .9; }
+.pe .extra.xsel { fill: #d6336c; }
+.pe .endrow { display: grid; gap: 4px; margin: 4px 0; padding: 6px 8px; background: var(--pe-code); border-radius: 6px; }
+.pe .endc { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-right: 10px; }
+.pe .endc label { display: flex; gap: 4px; align-items: center; font-size: 12px; color: var(--pe-muted); }
+.pe .empty { color: var(--pe-muted); padding: 22px 4px; text-align: center; }
+.pe .warnline { color: var(--pe-warn); font-family: inherit; font-size: 12px; }
+.pe :focus-visible { outline: 2px solid var(--pe-accent); outline-offset: 2px; }
