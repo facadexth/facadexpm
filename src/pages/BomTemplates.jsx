@@ -19,6 +19,9 @@ import { useCatalogTable, useEstimationCatalog } from '../hooks/useAluCatalog.js
 import { useTemplateJoints } from '../hooks/useEstimation2b.js'
 import { jointRowsForInsert, validateJoints, componentRowsForInsert, jointIndexForLoad, templatePayload } from '../lib/templateSave.js'
 import { loadModel, validateModel, saveModel } from '../lib/partSave.js'
+import { startModel } from '../lib/partModel.js'
+import PartEditor from './bomTemplates/PartEditor.jsx'
+import { defaultTestPick } from './bomTemplates/partEditorView.js'
 import JointsTab from './bomTemplates/JointsTab.jsx'
 import HardwarePackagesTab from './bomTemplates/HardwarePackagesTab.jsx'
 import {
@@ -87,7 +90,7 @@ const EMPTY_TEMPLATE_FORM = {
   active: true,
 }
 
-function TemplateEditor({ template, joints, catalog, types, components, hardware, constraints, onSaved, onDeleted, canEdit }) {
+export function TemplateEditor({ template, joints, catalog, types, components, hardware, constraints, onSaved, onDeleted, canEdit }) {
   // A template inserted by a save that failed later is switched to its saved id, so a retry updates instead of inserting again.
   const [createdId, setCreatedId] = useState(null)
   const rowId = template?.id || createdId
@@ -124,6 +127,15 @@ function TemplateEditor({ template, joints, catalog, types, components, hardware
   }, []) // eslint-disable-line react-hooks/exhaustive-deps -- once per opened template (the editor is keyed by id)
 
   const index = catalog.index
+  // Part editor test series / thickness (Ruling PE-3): UI-only, never saved.
+  const [testPick, setTestPick] = useState(() => defaultTestPick(catalog.index, template?.type_id || ''))
+  // "สร้างจากแบบบานเลื่อน 2 บาน": a new or legacy-empty template becomes a part-editor template with the layout's
+  // default model right away (so Save never waits on a load that will not happen).
+  const startFromLayout = (kind) => {
+    set('layout_kind', kind)
+    setModel(startModel(kind))
+    setModelError(null)
+  }
   const familyOptions = catalogFamilies(index)
   const typesById = Object.fromEntries((types || []).map(t => [t.id, t]))
   const typeOpts = templateTypeOptions(types || [], typesById, template?.type_id || '')
@@ -385,8 +397,21 @@ function TemplateEditor({ template, joints, catalog, types, components, hardware
         </div>
       </div>
 
+      {form.layout_kind ? (
+        model
+          ? <PartEditor model={model} onChange={setModel} index={index} canEdit={canEdit} templateName={form.name}
+              testSeriesId={testPick.seriesId} testThicknessMm={testPick.thicknessMm} onTestChange={setTestPick} />
+          : <div style={{ color: modelError ? 'var(--red)' : 'var(--text3)', padding: 12 }}>
+              {modelError ? 'โหลดข้อมูลชิ้นส่วนของเทมเพลตไม่สำเร็จ กรุณารีโหลดหน้านี้: ' + modelError : 'กำลังโหลดข้อมูลชิ้นส่วนของเทมเพลต...'}
+            </div>
+      ) : (
       <div>
         <div style={{ fontWeight: 700, marginBottom: 8 }}>ชิ้นส่วนอลูมิเนียม (Components)</div>
+        {canEdit && !rows.length && (
+          <button type="button" className="btn btn-sm btn-ghost" style={{ marginBottom: 8, border: '1px dashed var(--accent)' }} onClick={() => startFromLayout('sliding_2')}>
+            สร้างจากแบบบานเลื่อน 2 บาน (ไม่มีช่องแสง)
+          </button>
+        )}
         <div style={{ display: 'grid', gap: 6 }}>
           {rows.map((r, i) => (
             <div key={i} style={{ display: 'grid', gap: 4 }}>
@@ -426,6 +451,7 @@ function TemplateEditor({ template, joints, catalog, types, components, hardware
           {canEdit && <button type="button" className="btn btn-sm btn-ghost" style={{ justifySelf: 'start' }} onClick={addComponent}>+ เพิ่มชิ้นส่วน</button>}
         </div>
       </div>
+      )}
 
       <div>
         <div style={{ fontWeight: 700, marginBottom: 8 }}>อุปกรณ์ (Hardware)</div>
