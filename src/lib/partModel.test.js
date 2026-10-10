@@ -177,3 +177,66 @@ describe('groupsOf', () => {
     expect(groupsOf([1000.04, 1100], 2)).toEqual([{ len: 1100, n: 2 }, { len: 1000, n: 2 }])
   })
 })
+
+import {
+  numOrNull, clampSelection, updateLine, updatePart, setPositionName, updateEnd, addLineAndSelect, removeLineAndSelect,
+} from './partModel'
+
+describe('editor state helpers', () => {
+  it('numOrNull returns a real Number or null, never a string', () => {
+    expect(numOrNull('12.5')).toBe(12.5)
+    expect(numOrNull(' 0 ')).toBe(0)
+    expect(numOrNull(3)).toBe(3)
+    expect(numOrNull('')).toBeNull()
+    expect(numOrNull('   ')).toBeNull()
+    expect(numOrNull(null)).toBeNull()
+    expect(numOrNull(undefined)).toBeNull()
+    expect(numOrNull('abc')).toBeNull()
+    expect(numOrNull(NaN)).toBeNull()
+    expect(typeof numOrNull('7')).toBe('number')
+  })
+  it('clampSelection keeps a valid selection and repairs a stale one', () => {
+    const m = startModel('sliding_2')
+    expect(clampSelection(m, { key: 'sash_top', line: 0 })).toEqual({ key: 'sash_top', line: 0 })
+    expect(clampSelection(m, { key: 'sash_top', line: 3 })).toEqual({ key: 'sash_top', line: 0 })
+    expect(clampSelection(m, { key: 'nope', line: 0 })).toEqual({ key: 'frame_top', line: 0 })
+    expect(clampSelection(null, { key: 'sash_top', line: 0 })).toEqual({ key: null, line: 0 })
+  })
+  it('add profile copies line 0 and selects the new line; remove selects line 0', () => {
+    const m = startModel('sliding_2')
+    m.lines.frame_bottom[0].profile_family = 'FB'
+    const a = addLineAndSelect(m, 'frame_bottom')
+    expect(a.sel).toEqual({ key: 'frame_bottom', line: 1 })
+    expect(a.model.lines.frame_bottom).toHaveLength(2)
+    expect(a.model.lines.frame_bottom[1]).toEqual(m.lines.frame_bottom[0])
+    expect(m.lines.frame_bottom).toHaveLength(1)   // immutable
+    const r = removeLineAndSelect(a.model, 'frame_bottom', 1)
+    expect(r.sel).toEqual({ key: 'frame_bottom', line: 0 })
+    expect(r.model.lines.frame_bottom).toHaveLength(1)
+  })
+  it('part count change re-fits the ends of every piece (ensureEnds)', () => {
+    const m = setPartCount(startModel('sliding_2'), 'sash', 3)
+    for (const k of ['sash_top', 'sash_bottom', 'key_stile', 'hook_stile']) expect(m.lines[k][0].ends).toHaveLength(3)
+    expect(m.lines.frame_side[0].ends).toHaveLength(2)
+    const back = setPartCount(m, 'sash', 1)
+    expect(back.lines.sash_top[0].ends).toHaveLength(1)
+    expect(validateCorners(back)).toEqual([])
+  })
+  it('updateLine / updatePart / setPositionName are immutable patches', () => {
+    const m = startModel('sliding_2')
+    const a = updateLine(m, 'sash_top', 0, { length_deduction_mm: 10, deduction_auto: false })
+    expect(a.lines.sash_top[0]).toMatchObject({ length_deduction_mm: 10, deduction_auto: false })
+    expect(m.lines.sash_top[0].deduction_auto).toBe(true)
+    const b = updatePart(m, 'sash', { overlap_mode: 'manual', overlap_mm: 20 })
+    expect(b.parts.find(p => p.key === 'sash')).toMatchObject({ overlap_mode: 'manual', overlap_mm: 20 })
+    expect(setPositionName(m, 'key_stile', 'เสาล็อก').names.key_stile).toBe('เสาล็อก')
+  })
+  it('updateEnd: a new target resets the deduction; a typed deduction is stored as a number', () => {
+    const m = startModel('sliding_2')
+    const a = updateEnd(m, 'sash_top', 0, 0, 0, { deduction_mm: '12.5' })
+    expect(a.lines.sash_top[0].ends[0][0].deduction_mm).toBe(12.5)
+    const b = updateEnd(a, 'sash_top', 0, 0, 0, { to: { key: 'key_stile', line: 0 } })
+    expect(b.lines.sash_top[0].ends[0][0]).toMatchObject({ to: { key: 'key_stile', line: 0 }, deduction_mm: null })
+    expect(updateEnd(m, 'sash_top', 0, 0, 0, { deduction_mm: '' }).lines.sash_top[0].ends[0][0].deduction_mm).toBeNull()
+  })
+})

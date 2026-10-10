@@ -232,3 +232,24 @@ describe('explainPiece', () => {
     expect(s).toBe('สูง 1,200.0 ปลายบน วิ่งสุด ปลายล่าง วิ่งสุด = 1,200.0 มม.')
   })
 })
+
+import { lineDeductions, sashOverlap, endDeduction } from './partExpand.js'
+
+describe('editor read-outs', () => {
+  it('sources map every component back to its position line and pieces', () => {
+    const m = setEndMode(owner(), 'frame_side', 0, 0, 0, 'butt')
+    const { components, sources } = expandParts({ model: m, buttOf, widthOf })
+    expect(sources).toHaveLength(components.length)
+    const side = sources.filter((s) => s.key === 'frame_side')
+    expect(side).toEqual([{ key: 'frame_side', line: 0, pieces: [0] }, { key: 'frame_side', line: 0, pieces: [1] }])
+    expect(sources.find((s) => s.key === 'sash_top')).toEqual({ key: 'sash_top', line: 0, pieces: [0, 1] })
+  })
+  it('lineDeductions / sashOverlap / endDeduction give the expander numbers', () => {
+    const m = owner()
+    expect(lineDeductions({ model: m, buttOf, widthOf, key: 'sash_top', lineIdx: 0 })).toEqual({ pre: 76.2, hasAuto: true, overlap: 25 })
+    expect(lineDeductions({ model: m, buttOf, widthOf, key: 'key_stile', lineIdx: 0 }).pre).toBeCloseTo(73.9, 6)
+    expect(lineDeductions({ model: m, buttOf, widthOf, key: 'frame_top', lineIdx: 0 })).toEqual({ pre: 0, hasAuto: false, overlap: 0 })
+    expect(sashOverlap({ model: m, buttOf, widthOf })).toBe(25)
+    expect(endDeduction({ model: m, buttOf, widthOf, end: m.lines.frame_top[0].ends[0][0] })).toEqual({ mm: 38.1, problem: null })
+  })
+})

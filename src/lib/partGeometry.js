@@ -47,7 +47,7 @@ const emptyZoom = () => ({ box: { ...ZOOM_BOX }, pieces: [], markers: [], title:
 const partOfKey = (layout, key) => layout.positions[key]?.part
 const partRec = (model, partKey) => model.parts?.find((p) => p.key === partKey) || {}
 
-function pieceLabel(model, layout, key, piece) {
+export function pieceLabel(model, layout, key, piece) {
   const pos = layout.positions[key]
   const n = pieceCount(model, key)
   if (pos.labels && n === pos.labels.length) return pos.labels[piece]

@@ -221,3 +221,66 @@ export function groupsOf(lengthsMm, perPiece = 1) {
   }
   return [...m.entries()].map(([len, n]) => ({ len, n })).sort((a, b) => b.len - a.len)
 }
+
+// ---------------------------------------------------------------- editor state helpers (UI)
+
+// A numeric input's text -> a real Number, or null when blank / not a number. Never a string (validateModel needs numbers).
+export function numOrNull(v) {
+  if (v === null || v === undefined) return null
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
+  const s = String(v).trim()
+  if (s === '') return null
+  const n = Number(s)
+  return Number.isFinite(n) ? n : null
+}
+
+// Selection = { key, line }. Clamps to an existing position/line of the model (first position, line 0 otherwise).
+export function clampSelection(model, sel) {
+  const layout = model && LAYOUTS[model.layout_kind]
+  if (!layout) return { key: null, line: 0 }
+  const key = sel && model.lines?.[sel.key] ? sel.key : layout.order.find((k) => model.lines?.[k]) || null
+  const n = key ? model.lines[key].length : 0
+  const line = sel && sel.key === key && Number.isInteger(sel.line) && sel.line >= 0 && sel.line < n ? sel.line : 0
+  return { key, line }
+}
+
+export function updateLine(model, key, lineIdx, patch) {
+  const next = clone(model)
+  const line = next.lines[key]?.[lineIdx]
+  if (line) Object.assign(line, clone(patch))
+  return next
+}
+
+export function updatePart(model, partKey, patch) {
+  const next = clone(model)
+  const part = next.parts.find((p) => p.key === partKey)
+  if (part) Object.assign(part, clone(patch))
+  return next
+}
+
+export function setPositionName(model, key, name) {
+  const next = clone(model)
+  next.names = { ...(next.names || {}), [key]: name }
+  return next
+}
+
+// Patch one end of one piece ({ to } resets the deduction to the target's default; { deduction_mm } overrides it).
+export function updateEnd(model, key, lineIdx, piece, end, patch) {
+  const next = ensureEnds(model)
+  const e = next.lines[key]?.[lineIdx]?.ends[piece]?.[end]
+  if (!e) return next
+  if ('to' in patch) { e.to = patch.to ? { key: patch.to.key, line: patch.to.line } : null; e.deduction_mm = null }
+  if ('deduction_mm' in patch) e.deduction_mm = numOrNull(patch.deduction_mm)
+  return next
+}
+
+// "+ เพิ่มโปรไฟล์ในตำแหน่งนี้": copy line 0 and select the new line.
+export function addLineAndSelect(model, key) {
+  const next = addLine(model, key)
+  return { model: next, sel: { key, line: next.lines[key].length - 1 } }
+}
+
+// Remove a line and select line 0 of the same position (mockup).
+export function removeLineAndSelect(model, key, idx) {
+  return { model: removeLine(model, key, idx), sel: { key, line: 0 } }
+}

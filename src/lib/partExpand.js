@@ -81,13 +81,14 @@ export function expandParts({ model, buttOf, widthOf }) {
   const ctx = makeCtx({ model, buttOf, widthOf })
   const { layout, issue, posName } = ctx
   const components = []
+  const sources = []   // parallel to components: { key, line, pieces } (which line and pieces each row came from)
   const keys = [...layout.order, ...Object.keys(model.lines).filter((k) => !layout.order.includes(k) && layout.positions[k])]
 
   for (const key of keys) {
     const lines = model.lines[key] || []
     const name = posName(key)
     const n = pieceCount(model, key)
-    lines.forEach((line) => {
+    lines.forEach((line, li) => {
       if (!line.profile_family) { issue(name, 'no_profile_family'); return }
       const deducting = DEDUCTING_RULES.has(line.length_rule_type)
       const lengthDed = deducting ? r6(ctx.preDed(key, line, () => issue(name, 'no_butt_distance')) - ctx.overlap(key, line)) : 0
@@ -103,11 +104,12 @@ export function expandParts({ model, buttOf, widthOf }) {
         }
         const k = Math.round(sum * 100) / 100
         const g = groups.find((x) => x.key === k)
-        if (g) g.count++
-        else groups.push({ key: k, sum: r6(sum), count: 1, first: piece })
+        if (g) { g.count++; g.pieces.push(piece) }
+        else groups.push({ key: k, sum: r6(sum), count: 1, first: piece, pieces: [piece] })
       }
 
       for (const g of groups) {
+        sources.push({ key, line: li, pieces: g.pieces })
         components.push({
           role_name: groups.length > 1 ? `${name} ${ctx.pieceLabel(key, g.first)}` : name,
           profile_family: line.profile_family,
@@ -126,7 +128,30 @@ export function expandParts({ model, buttOf, widthOf }) {
   }
 
   for (const v of validateCorners(model)) issue(posName(v.key), 'corner_violation')
-  return { components, issues: ctx.issues }
+  return { components, issues: ctx.issues, sources }
+}
+
+// The deductions of one profile line as the expander applies them (for the editor's fields):
+// { pre: deduction before the factor, hasAuto: the position has an automatic deduction, overlap: sash overlap added back }.
+export function lineDeductions({ model, buttOf, widthOf, key, lineIdx }) {
+  if (!validModel(model)) return { pre: 0, hasAuto: false, overlap: 0 }
+  const ctx = makeCtx({ model, buttOf, widthOf })
+  const line = model.lines[key]?.[lineIdx]
+  if (!line) return { pre: 0, hasAuto: false, overlap: 0 }
+  const hasAuto = ctx.autoDed(key, () => {}) != null
+  return { pre: ctx.preDed(key, line, () => {}), hasAuto, overlap: ctx.overlap(key, line) }
+}
+
+// The overlap the sash part uses (auto = hook stile butt distance, else width; manual = overlap_mm). 0 for other parts.
+export function sashOverlap({ model, buttOf, widthOf }) {
+  if (!validModel(model)) return 0
+  return makeCtx({ model, buttOf, widthOf }).overlap('sash_top', { length_rule_type: 'width_minus' })
+}
+
+// Default deduction of one end (override, else the butted profile's butt distance); { mm, problem }.
+export function endDeduction({ model, buttOf, widthOf, end }) {
+  if (!validModel(model)) return { mm: 0, problem: null }
+  return makeCtx({ model, buttOf, widthOf }).endDed(end)
 }
 
 // Locale-free "1,234.5" (one decimal by default) so output is deterministic.
