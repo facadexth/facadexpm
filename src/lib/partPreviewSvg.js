@@ -7,9 +7,10 @@
 // Safe by construction for attachmentPages.safeSvgDataUri (it is later shown as a data-URI <img>): only svg, rect,
 // line and text elements, inline fill/stroke attributes, no style elements, markers, scripts or on* attributes.
 //
-// The drawing depends on: the model, widthMm, heightMm, view and style. `buttOf` is accepted for interface symmetry
-// but the geometry ignores it — the overview shortens a butt end by the DRAWN thickness of the piece it butts
-// (overviewSpecs is called without widthOf, so thicknesses are drawing constants), never by catalog butt distances.
+// The drawing depends on: the model, widthMm, heightMm, view, style and the drawn profile widths (drawnWidths) —
+// widthOf is the same openingCost.widthOfFor lookup the part editor's overview passes, so the item / quotation drawing
+// is the editor's live overview (Ruling PE-9). `buttOf` is accepted for interface symmetry but the geometry ignores
+// it: the overview shortens a butt end by the DRAWN thickness of the piece it butts, never by catalog butt distances.
 import { overviewSpecs } from './partGeometry.js'
 
 const INK = '#1f2328'
@@ -42,14 +43,26 @@ function dimSvg(d, text) {
 
 const rect = (x, y, w, h, attrs) => `<rect x="${n2(x)}" y="${n2(y)}" width="${n2(w)}" height="${n2(h)}" ${attrs}/>`
 
+// The catalogue widths the overview actually draws with: [[positionKey, line-0 family, width mm | null]] sorted by key
+// (overviewSpecs reads only line 0's family per position; a missing or non-positive width falls back to the constant).
+export function drawnWidths(model, widthOf) {
+  const lines = (model && model.lines) || {}
+  return Object.keys(lines).sort().map(key => {
+    const fam = lines[key]?.[0]?.profile_family || ''
+    const w = fam && typeof widthOf === 'function' ? Number(widthOf(fam)) : NaN
+    return [key, fam, Number.isFinite(w) && w > 0 ? w : null]
+  })
+}
+
 /**
- * @param {{ model, widthMm, heightMm, view?: 'out'|'in', buttOf?, style?: 'double'|'solid' }} args
+ * @param {{ model, widthMm, heightMm, view?: 'out'|'in', buttOf?, widthOf?, style?: 'double'|'solid' }} args
  * @returns {string|null} null when there is nothing to draw (no drawable model or no size).
  */
-export function partSvgString({ model, widthMm, heightMm, view = 'out', buttOf, style = 'double' } = {}) {
+// eslint-disable-next-line no-unused-vars
+export function partSvgString({ model, widthMm, heightMm, view = 'out', buttOf, widthOf, style = 'double' } = {}) {
   const W = Number(widthMm), H = Number(heightMm)
   if (!(W > 0) || !(H > 0)) return null
-  const ov = overviewSpecs({ model, widthMm: W, heightMm: H, view: view === 'in' ? 'in' : 'out' })
+  const ov = overviewSpecs({ model, widthMm: W, heightMm: H, view: view === 'in' ? 'in' : 'out', widthOf })
   if (!ov.pieces.length) return null
   const fills = FILL[style] || FILL.double
   const b = ov.box

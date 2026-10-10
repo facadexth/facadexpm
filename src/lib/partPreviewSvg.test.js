@@ -71,6 +71,20 @@ describe('partSvgString', () => {
   })
 })
 
+describe('PE-9: the item drawing is the editor overview', () => {
+  it('piece rects equal overviewSpecs (what PartPreview draws) for the same model / size / view / widthOf', () => {
+    const widthOf = f => ({ FR: 50.8, SA: 44.45, TRIM: 12 }[f] ?? null)
+    for (const view of ['out', 'in']) {
+      const svg = partSvgString({ model: withExtra, widthMm: 2400, heightMm: 1500, view, widthOf })
+      const pieces = overviewSpecs({ model: withExtra, widthMm: 2400, heightMm: 1500, view, widthOf }).pieces
+      const r = v => Math.round(v * 100) / 100
+      expect(rects(svg).slice(1)).toEqual(pieces.map(p => [r(p.x), r(p.y), r(p.w), r(p.h)]))
+      // and widthOf really changes the drawing (true-scale bars, not the constant)
+      expect(svg).not.toBe(partSvgString({ model: withExtra, widthMm: 2400, heightMm: 1500, view }))
+    }
+  })
+})
+
 describe('(step 5) the quotation attachment shows the part-editor drawing unchanged', () => {
   it('planAttachmentPages / itemViews keep both views of an item whose previews come from partSvgString', () => {
     const item = {

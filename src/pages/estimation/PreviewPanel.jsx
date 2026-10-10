@@ -1,7 +1,7 @@
 // src/pages/estimation/PreviewPanel.jsx
 // Live drawing of the item (mockup screen 2, right column): four styles (Ruling 11) and outside / inside view.
 // inputs = itemPreviewInputs(...) of the live item; labels = partLabels(...) for the "parts" style.
-// part = { model, buttOf, widthMm, heightMm } for a layout_kind template without add-on (useItemModel): the part editor's
+// part = { model, buttOf, widthOf, widthMm, heightMm } for a layout_kind template without add-on (useItemModel): the part editor's
 // drawing (partSvgString, the same one the saved snapshot and the quotation attachment use) in double-line or solid only.
 import { useState, useMemo } from 'react'
 import { buildFramePreview } from '../../lib/framePreview.js'

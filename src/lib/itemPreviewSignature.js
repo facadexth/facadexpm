@@ -5,8 +5,7 @@
 import { buildFramePreview, previewSvgString, previewSignature } from './framePreview.js'
 import { resolveCatalogProfile } from './aluCatalogPricing.js'
 import { resolveItemInputs } from './estimationInherit.js'
-import { partSvgString } from './partPreviewSvg.js'
-import { expandParts } from './partExpand.js'
+import { partSvgString, drawnWidths } from './partPreviewSvg.js'
 import { LAYOUTS } from './partModel.js'
 import { partPreviewCtx } from './openingCost.js'
 
@@ -82,14 +81,11 @@ export function partPreviewModel(item, template, addonTemplate, partCtx) {
 const stableJson = v => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x)
   ? Object.fromEntries(Object.keys(x).sort().map(key => [key, x[key]])) : x))
 
-// Fingerprint of the part drawing's inputs beyond the legacy signature: layout_kind, the whole model and the expanded
-// deductions (butt distances from the catalog). The drawing itself ignores butt distances (partPreviewSvg.js), so the
-// deductions part is conservative: a catalog butt-distance change marks the drawing old although its pixels are equal.
+// Fingerprint of the part drawing's inputs beyond the legacy signature: the whole model (layout_kind, end modes,
+// deduction overrides, names...) and the catalogue widths the drawing is scaled with. Exact: the drawing ignores butt
+// distances (partPreviewSvg.js), so a catalogue butt-distance change alone does not make the saved drawing old.
 function partFingerprint(model, partCtx) {
-  const buttOf = typeof partCtx.buttOf === 'function' ? partCtx.buttOf : () => null
-  const { components } = expandParts({ model, buttOf, widthOf: partCtx.widthOf })
-  const ded = components.map(c => [c.role_name, c.length_deduction_mm, c.end_deduction_mm])
-  return stableJson([model.layout_kind, model, ded])
+  return stableJson([model.layout_kind, model, drawnWidths(model, partCtx.widthOf)])
 }
 
 // Signature of everything that changes the saved drawing, from the row's values + both templates + frame widths.
@@ -129,7 +125,7 @@ export function snapshotPreviews(item, template, addonTemplate, resolved, views 
     const w = positive(it.width_m), h = positive(it.height_m)
     if (!w || !h) return null
     const mm = m => Math.round(m * 1e6) / 1e3
-    const draw = view => partSvgString({ model, widthMm: mm(w), heightMm: mm(h), view, buttOf: partCtx.buttOf, style: 'double' })
+    const draw = view => partSvgString({ model, widthMm: mm(w), heightMm: mm(h), view, buttOf: partCtx.buttOf, widthOf: partCtx.widthOf, style: 'double' })
     const out = views.out ? draw('out') : null
     const inn = views.in ? draw('in') : null
     if (!out && !inn) return null

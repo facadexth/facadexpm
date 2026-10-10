@@ -168,7 +168,7 @@ describe('part-editor drawing in the saved snapshot (layout_kind templates)', ()
     expect(snapshotPreviews(rowA, tp, fixed, { frame_mm: null }, undefined, { model: null })).toEqual(golden.layoutAddon)
   })
 
-  it('(f) the signature follows end modes, deductions and butt distances; stable for equal inputs', () => {
+  it('(f) the signature follows end modes, deduction overrides and drawn widths; not an unused butt distance', () => {
     const sig = m => itemPreviewSignature(row, tp, null, { frame_mm: null }, m)
     const base = sig(partCtx)
     expect(sig({ model: JSON.parse(JSON.stringify(model)), buttOf: () => 20 })).toBe(base)
@@ -177,7 +177,13 @@ describe('part-editor drawing in the saved snapshot (layout_kind templates)', ()
     expect(sig({ model: reordered, buttOf: () => 20 })).toBe(base)
     expect(sig({ ...partCtx, model: setEndMode(model, 'frame_top', 0, 0, 0, 'through') })).not.toBe(base)
     expect(sig({ ...partCtx, model: updateEnd(model, 'frame_top', 0, 0, 0, { deduction_mm: 7 }) })).not.toBe(base)
-    expect(sig({ ...partCtx, buttOf: () => 21 })).not.toBe(base)
+    // the drawing ignores butt distances: a catalogue butt-distance change alone keeps the saved drawing current
+    expect(sig({ ...partCtx, buttOf: () => 21 })).toBe(base)
+    // a drawn (catalogue) profile width changes the drawing, so the signature
+    const wide = sig({ ...partCtx, widthOf: f => (f === 'FR' ? 50 : 40) })
+    expect(wide).not.toBe(base)
+    expect(sig({ ...partCtx, widthOf: f => (f === 'FR' ? 50 : 40) })).toBe(wide)
+    expect(sig({ ...partCtx, widthOf: f => (f === 'FR' ? 51 : 40) })).not.toBe(wide)
     expect(sig({ ...partCtx, model: { ...model, layout_kind: 'other' } })).not.toBe(base)
     // stored row (strings) gives the same signature as the save-time payload
     expect(itemPreviewSignature({ ...row, width_m: '1.8', height_m: '1.2' }, tp, null, { frame_mm: null }, partCtx)).toBe(base)
@@ -188,5 +194,12 @@ describe('part-editor drawing in the saved snapshot (layout_kind templates)', ()
     c.index = { ...index, types: {} }
     const snap = snapshotFor(row, { project: {}, ctx: c, views: { out: true, in: true } })
     expect(snap.out).toBe(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'out' }))
+  })
+
+  it('snapshot draws with partCtx.widthOf (true-scale bars)', () => {
+    const widthOf = f => (f === 'FR' ? 60 : 45)
+    const snap = snapshotPreviews(row, tp, null, {}, undefined, { ...partCtx, widthOf })
+    expect(snap.out).toBe(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'out', widthOf }))
+    expect(snap.out).not.toBe(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'out' }))
   })
 })

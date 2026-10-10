@@ -40,7 +40,7 @@ export function useItemModel({ form, path, addonTypeId, project, ctx, templates,
     // a layout_kind template without add-on is drawn from its part model (the same drawing the saved snapshot uses)
     const partCtx = inputs ? partPreviewCtx(ctx, template, resolved) : null
     const partModel = partCtx ? partPreviewModel(item, template, addonTemplate, partCtx) : null
-    const part = partModel ? { model: partModel, buttOf: partCtx.buttOf, widthMm: Math.round(item.width_m * 1e6) / 1e3, heightMm: Math.round(item.height_m * 1e6) / 1e3 } : null
+    const part = partModel ? { model: partModel, buttOf: partCtx.buttOf, widthOf: partCtx.widthOf, widthMm: Math.round(item.width_m * 1e6) / 1e3, heightMm: Math.round(item.height_m * 1e6) / 1e3 } : null
     const labels = template && cost ? partLabels({ components: (ctx.componentsByTemplate || {})[template.id], joints: (ctx.jointsByTemplate || {})[template.id], bom: cost.bom, index }) : null
 
     const { levels, leafId } = cascadeLevels(tree, path)
