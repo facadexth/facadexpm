@@ -123,6 +123,9 @@ body {
   font-size: 14px;
   line-height: 1.5;
   overflow-x: hidden;
+  /* clip, not hidden: hidden turns body into a scroll container, which makes
+     position:sticky (header + tab bar) stick to body instead of the window */
+  overflow-x: clip;
   max-width: 100vw;
 }
 
