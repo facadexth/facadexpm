@@ -8,6 +8,10 @@ export const REASON_TEXT = {
   no_hardware_price: 'อุปกรณ์ไม่มีราคา', no_part_price: 'ชิ้นส่วนไม่มีราคา', unknown_set: 'ไม่พบชุดอุปกรณ์', not_hardware_set: 'ไม่ใช่ชุดอุปกรณ์',
   empty_set: 'ชุดอุปกรณ์ว่าง', unknown_joint: 'ไม่พบข้อต่อ', bad_manual_deduction: 'ค่าหักข้อต่อไม่ถูกต้อง', no_main_profile: 'ไม่พบหน้าตัดหลักของข้อต่อ',
   rule_not_cuttable: 'ตัดมุมไม่ได้',
+  // part-model templates (partExpand)
+  no_butt_distance: 'โปรไฟล์ที่ชนไม่มีระยะชน (ตั้งที่แคตตาล็อก)', no_butt_target: 'ปลายชนยังไม่ได้เลือกว่าชนโปรไฟล์ไหน',
+  no_profile_family: 'ตำแหน่งนี้ยังไม่ได้เลือกโปรไฟล์', corner_violation: 'มุมต่อไม่ถูกต้อง (ต้องวิ่งสุด 1 ชิ้น ชน 1 ชิ้น)',
+  no_model: 'ยังไม่มีแบบชิ้นส่วนของเทมเพลต',
 }
 export const reasonText = code => REASON_TEXT[code] || String(code || '')
 

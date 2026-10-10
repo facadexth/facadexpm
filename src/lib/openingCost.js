@@ -5,19 +5,76 @@
 import { computeBomForOpening, combineOpeningBoms } from './bomEngine.js'
 import { makeCatalogPricing } from './aluCatalogPricing.js'
 import { resolveItemInputs, buildEngineOpening, buildEngineAddonOpening } from './estimationInherit.js'
-import { applyJoints, applyRoleThickness } from './assembly.js'
+import { applyJoints, applyRoleThickness, jointDeductionMm } from './assembly.js'
+import { resolveCatalogProfile } from './aluCatalogPricing.js'
+import { expandParts } from './partExpand.js'
 import { allowsMixedThickness } from './estimationCatalogViews.js'
 import { openingExtras } from './openingExtras.js'
 
 const positive = n => Number.isFinite(Number(n)) && Number(n) > 0
 
-function prepareComponents({ template, components, joints, index, seriesId, thicknessMm, sashThicknessMm }) {
+const numOrNull = v => (v === null || v === undefined || String(v).trim() === '' || !Number.isFinite(Number(v)) ? null : Number(v))
+
+// The catalog profile of `family` at the item's series and the family's thickness (thicknessMmByFamily, else thicknessMm).
+function profileFor({ index, seriesId, thicknessMmByFamily, thicknessMm }, family) {
+  const fam = String(family ?? '').trim()
+  const t = (thicknessMmByFamily && thicknessMmByFamily[fam] != null) ? thicknessMmByFamily[fam] : thicknessMm
+  if (!index || !seriesId || !fam || !(Number(t) > 0)) return null
+  return resolveCatalogProfile(index, seriesId, fam, Number(t)).profile
+}
+
+// Ruling PE-4: butt distance (mm) of a family = alu_profiles.butt_distance_mm, else the legacy automatic joint rule
+// (assembly.jointDeductionMm: depth for a wide-face contact, width for a narrow one), else null (partExpand then lists
+// no_butt_distance). Returns family -> mm | null.
+export function buttOfFor(opts) {
+  return family => {
+    const p = profileFor(opts, family)
+    if (!p) return null
+    const own = numOrNull(p.butt_distance_mm)
+    if (own !== null && own >= 0) return own
+    return jointDeductionMm({ deduction_mode: 'auto', cut_style: 'square' }, p).mm
+  }
+}
+
+// family -> the resolved profile's full width_mm | null (the hook-stile overlap fallback, Ruling PE-5).
+export function widthOfFor(opts) {
+  return family => {
+    const w = numOrNull(profileFor(opts, family)?.width_mm)
+    return w !== null && w > 0 ? w : null
+  }
+}
+
+// A part-model template (layout_kind set): components come from its model (Ruling PE-2), role thickness applies as for
+// flat components, joints do not (expanded rows carry no joint_id). The expander's issues travel the joint-issue path.
+function preparePartComponents({ template, model, index, seriesId, thicknessMm, allowMixed, sashThicknessMm }) {
+  const sash = Number(sashThicknessMm)
+  const thicknessMmByFamily = {}
+  for (const lines of Object.values((model && model.lines) || {})) {
+    for (const l of lines || []) {
+      const f = String(l.profile_family ?? '').trim()
+      if (f && !(f in thicknessMmByFamily)) thicknessMmByFamily[f] = l.thickness_role === 'sash' && allowMixed && sash > 0 ? sash : thicknessMm
+    }
+  }
+  const opts = { index, seriesId, thicknessMmByFamily, thicknessMm }
+  const { components, issues } = expandParts({ model, buttOf: buttOfFor(opts), widthOf: widthOfFor(opts) })
+  return {
+    components: applyRoleThickness(components, { allowMixed, sashThicknessMm }),
+    issues: issues.map(i => (i.reason === 'no_model' && !i.role_name ? { ...i, role_name: template.name || '' } : i)),
+  }
+}
+
+function prepareComponents({ template, components, joints, partModelByTemplate, index, seriesId, thicknessMm, sashThicknessMm }) {
   const allowMixed = template.type_id ? allowsMixedThickness(index, seriesId, template.type_id) : false
+  if (template.layout_kind) {
+    const model = (partModelByTemplate && partModelByTemplate[template.id]) || null
+    return preparePartComponents({ template, model, index, seriesId, thicknessMm, allowMixed, sashThicknessMm })
+  }
   return applyJoints({ components: applyRoleThickness(components, { allowMixed, sashThicknessMm }), joints, index, seriesId, thicknessMm })
 }
 
 // ctx: { item, project, template, addonTemplate, componentsByTemplate, hardwareByTemplate, jointsByTemplate,
-//        typesById, infillTypesById, index, settings, asOf, packageItems? }
+//        typesById, infillTypesById, index, settings, asOf, packageItems?, partModelByTemplate? }
+// partModelByTemplate: { [templateId]: model } (partSave.modelFromRows) for templates with layout_kind; ignored otherwise.
 export function costOpening(ctx) {
   const { item: rawItem, project, template, addonTemplate, index, settings, asOf } = ctx
   // DB numerics can arrive as strings; the engine adds width + height, so coerce once here.
@@ -32,7 +89,7 @@ export function costOpening(ctx) {
   if (resolved.infill_type_id && !(ctx.infillTypesById || {})[resolved.infill_type_id]) own.push({ name: 'วัสดุอุดช่อง', reason: 'unknown_infill', source: 'main' })
 
   const main = buildEngineOpening(item, project, template, ctx.typesById, ctx.infillTypesById, ctx.packageItems)
-  const prepared = prepareComponents({ template, components: byT(ctx.componentsByTemplate, template.id), joints: byT(ctx.jointsByTemplate, template.id), index, seriesId: resolved.series_id, thicknessMm: resolved.thickness_mm, sashThicknessMm: resolved.sash_thickness_mm })
+  const prepared = prepareComponents({ template, components: byT(ctx.componentsByTemplate, template.id), joints: byT(ctx.jointsByTemplate, template.id), partModelByTemplate: ctx.partModelByTemplate, index, seriesId: resolved.series_id, thicknessMm: resolved.thickness_mm, sashThicknessMm: resolved.sash_thickness_mm })
   issues.push(...prepared.issues)
   const bom = computeBomForOpening(main.opening, template, prepared.components, byT(ctx.hardwareByTemplate, template.id), pricing, main.infillType)
 
@@ -41,7 +98,7 @@ export function costOpening(ctx) {
   if (hasAddon) {
     const addon = { width_m: Number(item.addon_width_m), height_m: Number(item.addon_height_m), panel_count: item.addon_panel_count || 1, quantity: 1, extra_lines: [] }
     const ao = buildEngineAddonOpening(item, project, addon, addonTemplate, ctx.typesById, ctx.infillTypesById)
-    const aPrepared = prepareComponents({ template: addonTemplate, components: byT(ctx.componentsByTemplate, addonTemplate.id), joints: byT(ctx.jointsByTemplate, addonTemplate.id), index, seriesId: resolved.series_id, thicknessMm: resolved.thickness_mm, sashThicknessMm: resolved.sash_thickness_mm })
+    const aPrepared = prepareComponents({ template: addonTemplate, components: byT(ctx.componentsByTemplate, addonTemplate.id), joints: byT(ctx.jointsByTemplate, addonTemplate.id), partModelByTemplate: ctx.partModelByTemplate, index, seriesId: resolved.series_id, thicknessMm: resolved.thickness_mm, sashThicknessMm: resolved.sash_thickness_mm })
     issues.push(...aPrepared.issues)
     addonBom = computeBomForOpening(ao.opening, addonTemplate, aPrepared.components, byT(ctx.hardwareByTemplate, addonTemplate.id), pricing, ao.infillType)
   }

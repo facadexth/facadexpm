@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { buildCatalogIndex } from './aluCatalogPricing.js'
 import { mergeSettings } from './estimationSettings.js'
-import { costOpening } from './openingCost.js'
+import { costOpening, buttOfFor, widthOfFor } from './openingCost.js'
+import { startModel } from './partModel.js'
 
 const index = buildCatalogIndex({
   providers: [{ id: 'A', price_basis: 'per_kg' }],
@@ -142,5 +143,144 @@ describe('costOpening with a project hardware package', () => {
     expect(costOpening({ ...c, packageItems: [] }).resolved.hardware_set_id).toBeNull()
     expect(costOpening({ ...c, packageItems: [{ type_id: 'tSlide', hardware_set_id: 'setA' }] }).resolved.hardware_set_id).toBe('setA')
     expect(costOpening({ ...c, packageItems: [{ type_id: 'tSlide', hardware_set_id: null }] }).resolved.hardware_set_id).toBeNull()
+  })
+})
+
+// ---- part-model templates (layout_kind) ----
+
+const pIndex = buildCatalogIndex({
+  providers: [{ id: 'A', price_basis: 'per_kg' }],
+  series: [{ id: 's1', provider_id: 'A' }],
+  types: [{ id: 'tSlide' }],
+  seriesTypes: [{ series_id: 's1', type_id: 'tSlide', allow_mixed_thickness: true }],
+  finishes: [{ id: 'f1', provider_id: 'A' }],
+  profiles: [
+    { id: 'fh', provider_id: 'A', family: 'fh', thickness_mm: 1.5, linear_weight_kg_per_m: 1, butt_distance_mm: 20, depth_mm: 99 },
+    { id: 'fs', provider_id: 'A', family: 'fs', thickness_mm: 1.5, linear_weight_kg_per_m: 1, butt_distance_mm: '25' },
+    { id: 'sr', provider_id: 'A', family: 'sr', thickness_mm: 1.5, linear_weight_kg_per_m: 1, butt_distance_mm: 10 },
+    { id: 'sr2', provider_id: 'A', family: 'sr', thickness_mm: 2, linear_weight_kg_per_m: 2, butt_distance_mm: 12 },
+    { id: 'ks', provider_id: 'A', family: 'ks', thickness_mm: 1.5, linear_weight_kg_per_m: 1, butt_distance_mm: 30 },
+    { id: 'hs', provider_id: 'A', family: 'hs', thickness_mm: 1.5, linear_weight_kg_per_m: 1, depth_mm: 35, width_mm: 60, primary_contact: 'width' },
+    { id: 'hd', provider_id: 'A', family: 'hd', thickness_mm: 1.5, linear_weight_kg_per_m: 1, depth_mm: 35, width_mm: 60, primary_contact: 'depth' },
+    { id: 'z0', provider_id: 'A', family: 'zero', thickness_mm: 1.5, linear_weight_kg_per_m: 1, butt_distance_mm: 0, depth_mm: 40 },
+    { id: 'bare', provider_id: 'A', family: 'bare', thickness_mm: 1.5, linear_weight_kg_per_m: 1 },
+  ],
+  seriesProfiles: ['fh', 'fs', 'sr', 'sr2', 'ks', 'hs', 'hd', 'z0', 'bare'].map(profile_id => ({ series_id: 's1', profile_id })),
+  kgPrices: [{ id: 'k1', provider_id: 'A', finish_id: 'f1', price_per_kg: 100, effective_from: '2026-01-01' }],
+})
+
+describe('buttOfFor (Ruling PE-4: profile butt distance, else the legacy joint rule, else null)', () => {
+  const buttOf = buttOfFor({ index: pIndex, seriesId: 's1', thicknessMmByFamily: { sr: 2 }, thicknessMm: 1.5 })
+  it('the profile\'s own butt_distance_mm wins over its depth (strings and 0 included)', () => {
+    expect(buttOf('fh')).toBe(20)
+    expect(buttOf('fs')).toBe(25)
+    expect(buttOf('zero')).toBe(0)
+  })
+  it('looks the profile up at the family\'s own thickness', () => {
+    expect(buttOf('sr')).toBe(12)
+    expect(buttOfFor({ index: pIndex, seriesId: 's1', thicknessMm: 1.5 })('sr')).toBe(10)
+  })
+  it('falls back to the legacy automatic rule: depth for a wide-face contact, width for a narrow-face contact', () => {
+    expect(buttOf('hs')).toBe(35)
+    expect(buttOf('hd')).toBe(60)
+  })
+  it('null when neither exists, for an unknown family, without a series or a thickness', () => {
+    expect(buttOf('bare')).toBeNull()
+    expect(buttOf('ghost')).toBeNull()
+    expect(buttOf('')).toBeNull()
+    expect(buttOfFor({ index: pIndex, seriesId: null, thicknessMm: 1.5 })('fh')).toBeNull()
+    expect(buttOfFor({ index: pIndex, seriesId: 's1' })('fh')).toBeNull()
+    expect(buttOfFor({ index: null, seriesId: 's1', thicknessMm: 1.5 })('fh')).toBeNull()
+  })
+  it('widthOfFor gives the resolved profile\'s width_mm or null', () => {
+    const widthOf = widthOfFor({ index: pIndex, seriesId: 's1', thicknessMm: 1.5 })
+    expect(widthOf('hs')).toBe(60)
+    expect(widthOf('bare')).toBeNull()
+  })
+})
+
+const FAMS = { frame_top: 'fh', frame_bottom: 'fh', frame_side: 'fs', sash_top: 'sr', sash_bottom: 'sr', key_stile: 'ks', hook_stile: 'hs' }
+const partModel = (fams = FAMS) => {
+  const m = startModel('sliding_2')
+  for (const [k, f] of Object.entries(fams)) m.lines[k][0].profile_family = f
+  return m
+}
+const pCtx = (model = partModel()) => ({
+  item: { width_m: 2, height_m: 1, panel_count: 1, quantity: 1, template_id: 'tp' },
+  project: { default_series_id: 's1', default_finish_id: 'f1', default_thickness_mm: 1.5 },
+  template: T({ id: 'tp', name: 'บานเลื่อน 2', layout_kind: 'sliding_2' }), componentsByTemplate: {}, hardwareByTemplate: {}, jointsByTemplate: {},
+  partModelByTemplate: model ? { tp: model } : {},
+  typesById: pIndex.types, infillTypesById: {}, index: pIndex, settings: mergeSettings(null), asOf: '2026-06-01',
+})
+
+describe('costOpening for a part-model template (layout_kind)', () => {
+  it('expands the model into engine components and prices them', () => {
+    const r = costOpening(pCtx())
+    const rows = r.bom.profileLines.map(l => [l.role_name, l.family, Math.round(l.length_m * 1e6) / 1e6, l.quantity])
+    // frame top/bottom 2000 - 2 x 25 (side frame butt) ; side frames 1000 through
+    // sash rails ((2000 - 2 x 25 + 35 hook overlap) x 0.5) - 35 (hook end, legacy depth rule) - 30 (key end) = 927.5
+    // stiles 1000 - (20 + 20)
+    expect(rows).toEqual([
+      ['เฟรมบน', 'fh', 1.95, 1], ['เฟรมล่าง', 'fh', 1.95, 1], ['เฟรมข้าง', 'fs', 1, 2],
+      ['บานเลื่อนบน', 'sr', 0.9275, 2], ['บานเลื่อนล่าง', 'sr', 0.9275, 2],
+      ['เสากุญแจ', 'ks', 0.96, 2], ['เสาเกี่ยว', 'hs', 0.96, 2],
+    ])
+    expect(r.bom.profileLines.every(l => l.resolved)).toBe(true)
+    expect(r.unresolved).toEqual([])
+    expect(r.total).toBeCloseTo(100 * (1.95 * 2 + 2 + 0.9275 * 4 + 0.96 * 4))
+  })
+  it('a butted profile without any butt distance is unresolved (no_butt_distance), never a silent 0', () => {
+    const r = costOpening(pCtx(partModel({ ...FAMS, key_stile: 'bare' })))
+    expect(r.unresolved).toContainEqual({ name: 'บานเลื่อนบน', reason: 'no_butt_distance', source: 'joint' })
+    expect(r.unresolved).toContainEqual({ name: 'บานเลื่อนล่าง', reason: 'no_butt_distance', source: 'joint' })
+    expect(r.issues).toContainEqual({ role_name: 'บานเลื่อนบน', reason: 'no_butt_distance' })
+  })
+  it('sash-role lines are priced at the sash thickness where the series+type allows it', () => {
+    const m = partModel()
+    m.lines.key_stile[0].thickness_role = null
+    m.lines.hook_stile[0].thickness_role = null
+    const c = pCtx(m)
+    c.project = { ...c.project, default_sash_thickness_mm: 2 }
+    const r = costOpening(c)
+    const rail = r.bom.profileLines.find(l => l.role_name === 'บานเลื่อนบน')
+    expect(rail.thickness_mm).toBe(2)
+    expect(rail.length_m).toBeCloseTo(0.9275)
+    expect(r.bom.profileLines.find(l => l.role_name === 'เฟรมบน').thickness_mm).toBe(1.5)
+    expect(r.unresolved).toEqual([])
+  })
+  it('a position without a profile family and a corner violation are listed', () => {
+    const m = partModel({ ...FAMS, key_stile: '' })
+    m.lines.frame_side[0].ends[0][0] = { mode: 'butt', to: null, deduction_mm: 5 }
+    const r = costOpening(pCtx(m))
+    expect(r.unresolved).toContainEqual({ name: 'เสากุญแจ', reason: 'no_profile_family', source: 'joint' })
+    expect(r.unresolved.some(u => u.reason === 'corner_violation' && u.source === 'joint')).toBe(true)
+  })
+  it('a layout_kind template with no model in ctx does not throw and says no_model', () => {
+    for (const c of [pCtx(null), { ...pCtx(), partModelByTemplate: undefined }]) {
+      const r = costOpening(c)
+      expect(r.bom.profileLines).toEqual([])
+      expect(r.unresolved).toContainEqual({ name: 'บานเลื่อน 2', reason: 'no_model', source: 'joint' })
+    }
+  })
+  it('the add-on template may be a part-model template too', () => {
+    const c = pCtx()
+    c.template = T({ id: 't1' })
+    c.componentsByTemplate = { t1: [] }
+    c.addonTemplate = T({ id: 'tp', layout_kind: 'sliding_2' })
+    c.item = { ...c.item, template_id: 't1', addon_template_id: 'tp', addon_width_m: 2, addon_height_m: 1 }
+    const r = costOpening(c)
+    expect(r.addonBom.profileLines).toHaveLength(7)
+    expect(r.unresolved).toEqual([])
+  })
+})
+
+describe('isolation: a template without layout_kind is untouched by part models', () => {
+  it('costs byte-for-byte as before, even with partModelByTemplate in ctx (also for the template\'s own id)', () => {
+    const before = costOpening(ctxBase())
+    const withModels = costOpening({ ...ctxBase(), partModelByTemplate: { t1: partModel(), tp: partModel() } })
+    expect(JSON.stringify(withModels)).toBe(JSON.stringify(before))
+    expect(withModels.total).toBeCloseTo(584)
+    const j = ctxBase(); j.jointsByTemplate = { t1: [{ ...joints[0], main_family: 'missing' }] }
+    expect(JSON.stringify(costOpening({ ...j, partModelByTemplate: { t1: partModel() } }))).toBe(JSON.stringify(costOpening(j)))
   })
 })
