@@ -46,6 +46,27 @@ describe('partnerEnd', () => {
   })
 })
 
+describe('partnerEnd explicit table', () => {
+  it('matches the mockup partner()', () => {
+    expect(partnerEnd('sash_bottom', 1, 0)).toEqual({ key: 'hook_stile', piece: 1, end: 1 })
+    expect(partnerEnd('sash_bottom', 1, 1)).toEqual({ key: 'key_stile', piece: 1, end: 1 })
+    expect(partnerEnd('sash_top', 0, 0)).toEqual({ key: 'hook_stile', piece: 0, end: 0 })
+    expect(partnerEnd('key_stile', 1, 0)).toEqual({ key: 'sash_top', piece: 1, end: 1 })
+    expect(partnerEnd('key_stile', 1, 1)).toEqual({ key: 'sash_bottom', piece: 1, end: 1 })
+    expect(partnerEnd('hook_stile', 0, 0)).toEqual({ key: 'sash_top', piece: 0, end: 0 })
+    expect(partnerEnd('hook_stile', 0, 1)).toEqual({ key: 'sash_bottom', piece: 0, end: 0 })
+  })
+})
+
+describe('parts', () => {
+  it('overlap fields satisfy the DB check', () => {
+    for (const p of startModel('sliding_2').parts) {
+      expect(['auto_hook', 'manual']).toContain(p.overlap_mode)
+      expect(p.overlap_mm).toBeGreaterThanOrEqual(0)
+    }
+  })
+})
+
 describe('setEndMode', () => {
   it('flips and retargets the frame partner', () => {
     const m = startModel('sliding_2')
@@ -67,13 +88,17 @@ describe('setEndMode', () => {
     setEndMode(m, 'frame_bottom', 0, 0, 0, 'through')
     expect(m).toEqual(snap)
   })
-  it('clamps partner line to existing lines', () => {
-    let m = addLine(startModel('sliding_2'), 'frame_bottom')
-    m = addLine(m, 'frame_bottom')
+  it('pairs lines by equal index only; extra lines are free-standing', () => {
+    let m = startModel('sliding_2')
+    m = addLine(addLine(m, 'frame_bottom'), 'frame_bottom')
+    const before = JSON.parse(JSON.stringify(m.lines.frame_side))
     const n = setEndMode(m, 'frame_bottom', 2, 0, 0, 'through')
-    expect(n.lines.frame_side[0].ends[0][1].to).toEqual({ key: 'frame_bottom', line: 2 })
-    const k = setEndMode(startModel('sliding_2'), 'frame_bottom', 2, 0, 0, 'through')
-    expect(k.lines.frame_side[0].ends[0][1].to).toEqual({ key: 'frame_bottom', line: 0 })
+    expect(n.lines.frame_bottom[2].ends[0][0].mode).toBe('through')
+    expect(n.lines.frame_side).toEqual(before)
+    expect(validateCorners(n)).toEqual([])
+    const k = setEndMode(m, 'frame_bottom', 0, 0, 0, 'through')
+    expect(k.lines.frame_side[0].ends[0][1]).toEqual({ mode: 'butt', to: { key: 'frame_bottom', line: 0 }, deduction_mm: null })
+    expect(validateCorners(k)).toEqual([])
   })
 })
 
@@ -99,6 +124,9 @@ describe('ensureEnds / setPartCount', () => {
       expect(n.lines[k][0].ends.slice(0, 2)).toEqual(m.lines[k][0].ends)
     }
     expect(m.lines.sash_top[0].ends).toHaveLength(2)
+    const snap = JSON.parse(JSON.stringify(m))
+    setPartCount(m, 'sash', 4)
+    expect(m).toEqual(snap)
     expect(setPartCount(n, 'sash', 0).parts.find(p => p.key === 'sash').count).toBe(1)
   })
   it('new piece on later lines copies line 0 pair', () => {
@@ -124,9 +152,22 @@ describe('addLine / removeLine', () => {
     m.lines.frame_top[0].ends[0][1].to = { key: 'frame_side', line: 1 }
     const n = removeLine(m, 'frame_side', 1)
     expect(n.lines.frame_side).toHaveLength(1)
-    expect(n.lines.frame_top[0].ends[0][1].to).toBeNull()
+    expect(n.lines.frame_top[0].ends[0][1].to).toEqual({ key: 'frame_side', line: 0 })
     expect(n.lines.frame_top[0].ends[0][0].to).toEqual({ key: 'frame_side', line: 0 })
     expect(removeLine(n, 'frame_side', 0).lines.frame_side).toHaveLength(1)
+  })
+  it('retargets removed/later/earlier targets', () => {
+    let m = addLine(addLine(startModel('sliding_2'), 'frame_side'), 'frame_side')
+    m = JSON.parse(JSON.stringify(m))
+    const t = m.lines.frame_top[0].ends
+    t[0][0].to = { key: 'frame_side', line: 1 }
+    t[0][1].to = { key: 'frame_side', line: 2 }
+    t[0][0].to = { key: 'frame_side', line: 1 }
+    m.lines.frame_bottom[0].ends[0][0].to = { key: 'frame_side', line: 0 }
+    const n = removeLine(m, 'frame_side', 1)
+    expect(n.lines.frame_top[0].ends[0][0].to).toEqual({ key: 'frame_side', line: 0 })
+    expect(n.lines.frame_top[0].ends[0][1].to).toEqual({ key: 'frame_side', line: 1 })
+    expect(n.lines.frame_bottom[0].ends[0][0].to).toEqual({ key: 'frame_side', line: 0 })
   })
 })
 

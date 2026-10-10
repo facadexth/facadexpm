@@ -13,12 +13,15 @@
 // }
 // Position keys: frame_top, frame_bottom, frame_side, sash_top, sash_bottom, key_stile, hook_stile.
 // Corner rule: at every corner exactly one piece runs through and the other butts.
+// Line pairing rule: line i of a position pairs ONLY with line i of its corner partner position;
+// a partner without line i is free-standing (extra profiles like covers/trims): nothing is flipped, no validation.
+// A butt end with to:null is legal only when deduction_mm is set (partExpand reports no_butt_target otherwise).
 // All functions are immutable: they return new models and never touch their input.
 
 export const LAYOUTS = {
   sliding_2: {
     parts: [
-      { key: 'frame', name: 'วงกบ', count: 1, overlap_mode: 'none', overlap_mm: 0,
+      { key: 'frame', name: 'วงกบ', count: 1, overlap_mode: 'manual', overlap_mm: 0,
         positions: ['frame_top', 'frame_bottom', 'frame_side'] },
       { key: 'sash', name: 'บานเลื่อน', count: 2, overlap_mode: 'auto_hook', overlap_mm: 0,
         positions: ['sash_top', 'sash_bottom', 'key_stile', 'hook_stile'] },
@@ -133,14 +136,12 @@ export function partnerEnd(key, piece, end) {
 export function setEndMode(model, key, lineIdx, piece, end, mode) {
   const next = ensureEnds(model)
   const lines = next.lines[key]
-  const li = Math.min(lineIdx, lines.length - 1)
-  const target = lines[li].ends[piece]?.[end]
+  const li = lineIdx
+  const target = lines[li]?.ends[piece]?.[end]
   if (!target) return next
   target.mode = mode
   const pt = partnerEnd(key, piece, end)
-  const plines = pt && next.lines[pt.key]
-  const pli = plines ? Math.min(lineIdx, plines.length - 1) : 0
-  const pEnd = plines && piece !== undefined && plines[pli].ends[pt.piece]?.[pt.end]
+  const pEnd = pt && next.lines[pt.key]?.[li]?.ends[pt.piece]?.[pt.end]
   if (mode === 'through') {
     target.to = null
     target.deduction_mm = null
@@ -150,7 +151,7 @@ export function setEndMode(model, key, lineIdx, piece, end, mode) {
       pEnd.deduction_mm = null
     }
   } else {
-    if (!target.to && pEnd) target.to = { key: pt.key, line: pli }
+    if (!target.to && pEnd) target.to = { key: pt.key, line: li }
     if (pEnd) {
       pEnd.mode = 'through'
       pEnd.to = null
@@ -196,7 +197,7 @@ export function removeLine(model, key, idx) {
       for (const pair of line.ends) {
         for (const e of pair) {
           if (e.to && e.to.key === key) {
-            if (e.to.line === idx) e.to = null
+            if (e.to.line === idx) e.to = next.lines[key].length ? { key, line: 0 } : null
             else if (e.to.line > idx) e.to = { key, line: e.to.line - 1 }
           }
         }
