@@ -216,17 +216,18 @@ body {
 .kpi-value { font-size: 24px; font-weight: 700; }
 .kpi-sub { color: var(--text3); font-size: 11px; margin-top: 3px; }
 
-/* Toolbar/filters/KPI-cards region above a page's main table -- opt-in
-   per page (wrap only that page's own toolbar+filters+cards block, not a
-   blanket rule, since most pages don't have this card-heavy pattern).
-   On a short monitor this region alone can eat over half the viewport
-   height, leaving the table cramped below it; capping it to a fraction
-   of viewport height with its own scroll keeps that fixed regardless of
-   how many cards/filters a given page has. */
-.page-toolbar-scroll { max-height: 42vh; overflow-y: auto; padding-right: 2px; }
+/* Toolbar/filters/KPI-cards/chart region above a page's main table.
+   It scrolls away with the page (no inner scroll box), so once the user
+   scrolls down the table gets almost the whole screen -- see
+   .table-wrap below. Class kept so pages need no change. */
+.page-toolbar-scroll { }
 
 /* Tables */
 .table-wrap { overflow-x: auto; max-height: 560px; overflow-y: auto; }
+/* Any table on a main page (inside .app-main, not in a modal) fills the
+   screen below the sticky header once the page is scrolled to it. */
+.app-main .table-wrap { max-height: max(360px, calc(100vh - 150px)); }
+.modal .table-wrap { max-height: 560px; }
 /* Opt-in modifier for a page's MAIN list table (never a table embedded in
    a modal, where 100vh doesn't correspond to the modal's own bounds) --
    lets it grow to fill whatever vertical space is actually left instead
@@ -234,7 +235,7 @@ body {
    monitors and can feel cramped on short ones. The offset is an
    approximation (header + nav + a typical toolbar/filter row), not
    computed per page. */
-.table-wrap-fill { max-height: calc(100vh - 340px); }
+.table-wrap-fill { max-height: max(360px, calc(100vh - 150px)); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 thead th {
   padding: 10px 14px; text-align: center; background: var(--bg3);
