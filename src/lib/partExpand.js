@@ -45,7 +45,7 @@ function makeCtx({ model, buttOf, widthOf }) {
     const part = partOf(key)
     if (part.overlap_mode === 'auto_hook') {
       const fam = famOf('hook_stile', 0)
-      return butt(fam) ?? (fam ? widthOf(fam) : null) ?? 0
+      return butt(fam) ?? (fam ? widthOf?.(fam) : null) ?? 0
     }
     return Number(part.overlap_mm) || 0
   }
