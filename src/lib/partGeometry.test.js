@@ -183,3 +183,94 @@ describe('zoomSpecs', () => {
     expect(a.markers).toHaveLength(2)
   })
 })
+
+describe('empty-model safety and edge inputs', () => {
+  const allFinite = (r) => {
+    const nums = []
+    for (const p of r.pieces) nums.push(p.x, p.y, p.w, p.h)
+    for (const k of r.markers || []) nums.push(k.x, k.y)
+    for (const d of r.dims || []) nums.push(d.x1, d.y1, d.x2, d.y2, d.tx, d.ty, d.value)
+    for (const v of Object.values(r.box)) nums.push(v)
+    if (r.opening) nums.push(r.opening.widthMm, r.opening.heightMm)
+    return nums.every(Number.isFinite)
+  }
+  for (const [name, m] of [['null', null], ['undefined', undefined], ['{}', {}], ['unknown layout', { layout_kind: 'nope', lines: {}, parts: [] }], ['no parts', { layout_kind: 'sliding_2', lines: {} }]]) {
+    it(`${name} model returns empty specs without throwing`, () => {
+      const o = overviewSpecs({ model: m, widthMm: 1800, heightMm: 1200, view: 'out', buttOf })
+      expect(o.pieces).toEqual([])
+      expect(o.dims).toEqual([])
+      expect(o.box.w).toBeGreaterThan(0)
+      expect(o.box.h).toBeGreaterThan(0)
+      const z = zoomSpecs({ model: m, selected: { key: 'frame_top', line: 0 }, view: 'in', widthMm: 1800, heightMm: 1200, buttOf })
+      expect(z).toMatchObject({ pieces: [], markers: [], title: '', opening: null })
+      expect(z.box.w).toBeGreaterThan(0)
+    })
+  }
+  it('no arguments at all does not throw', () => {
+    expect(overviewSpecs().pieces).toEqual([])
+    expect(zoomSpecs().markers).toEqual([])
+  })
+  for (const [w, h] of [[0, 0], [-500, 1200], [1800, -1], [NaN, NaN], [undefined, null], ['abc', '1200'], [1, 100000], [100000, 1]]) {
+    it(`odd size ${w} × ${h} gives finite output in both views and both zooms`, () => {
+      for (const view of ['out', 'in']) {
+        const o = overviewSpecs({ model: model(), widthMm: w, heightMm: h, view, buttOf })
+        expect(o.pieces.length).toBeGreaterThan(0)
+        expect(allFinite(o)).toBe(true)
+        for (const [pk, key] of [['frame', 'frame_side'], ['sash', 'hook_stile']]) {
+          const z = zoomSpecs({ model: model(), partKey: pk, selected: { key, line: 0 }, view, widthMm: w, heightMm: h, buttOf })
+          expect(allFinite(z)).toBe(true)
+          expect(z.markers).toHaveLength(4)
+        }
+      }
+    })
+  }
+  it('missing lines: positions without lines draw nothing, the rest still draws', () => {
+    const m = model()
+    delete m.lines.frame_top
+    m.lines.sash_top = []
+    const o = ov(m)
+    expect(o.pieces.some((p) => p.key === 'frame_top' || p.key === 'sash_top')).toBe(false)
+    expect(o.pieces.some((p) => p.key === 'frame_side')).toBe(true)
+    expect(allFinite(o)).toBe(true)
+    const z = zoomSpecs({ model: m, selected: { key: 'frame_top', line: 0 }, view: 'out', widthMm: 1800, heightMm: 1200, buttOf })
+    expect(z.markers).toEqual([])
+    expect(allFinite(z)).toBe(true)
+    const noLines = { ...model(), lines: {} }
+    expect(ov(noLines).pieces).toEqual([])
+  })
+  it('missing ends on a line are treated as through and do not throw', () => {
+    const m = model()
+    m.lines.frame_top[0].ends = []
+    const o = ov(m)
+    const top = find(o.pieces, 'frame_top', 0)
+    expect(top.x).toBeCloseTo(o.box.frameX, 9)
+    expect(allFinite(o)).toBe(true)
+  })
+  it('sash count 0 draws no sash and does not throw', () => {
+    const m = model()
+    m.parts.find((p) => p.key === 'sash').count = 0
+    for (const view of ['out', 'in']) {
+      const o = ov(m, view)
+      expect(o.pieces.every((p) => p.key.startsWith('frame'))).toBe(true)
+      expect(allFinite(o)).toBe(true)
+      const z = zoomSpecs({ model: m, partKey: 'sash', selected: { key: 'key_stile', line: 0 }, view, widthMm: 1800, heightMm: 1200, buttOf })
+      expect(z.pieces).toEqual([])
+      expect(z.markers).toEqual([])
+      expect(allFinite(z)).toBe(true)
+    }
+  })
+  for (const n of [3, 5]) {
+    it(`sash count ${n} draws two sashes with finite numbers`, () => {
+      const m = setPartCount(model(), 'sash', n)
+      for (const view of ['out', 'in']) {
+        const o = ov(m, view)
+        expect(o.pieces.filter((p) => p.key === 'key_stile')).toHaveLength(2)
+        expect(allFinite(o)).toBe(true)
+        const z = zoomSpecs({ model: m, partKey: 'sash', selected: { key: 'key_stile', line: 0 }, view, widthMm: 1800, heightMm: 1200, buttOf })
+        expect(z.markers).toHaveLength(4)
+        expect(z.title).toContain(`× ${n}`)
+        expect(allFinite(z)).toBe(true)
+      }
+    })
+  }
+})

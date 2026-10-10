@@ -34,11 +34,15 @@ const ZOOM_BOX = { w: 520, h: 340 }
 const fmt1 = (x) => x.toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v))
 
+// Layout of a drawable model, or null (null/undefined/{}/unknown layout/missing lines or parts → empty specs).
 function layoutOf(model) {
-  const layout = model && LAYOUTS[model.layout_kind]
-  if (!layout || !model.lines) throw new Error('partGeometry: invalid model')
+  const layout = model && typeof model === 'object' ? LAYOUTS[model.layout_kind] : null
+  if (!layout || !model.lines || typeof model.lines !== 'object' || !Array.isArray(model.parts)) return null
   return layout
 }
+
+const emptyOverview = () => ({ box: { ...OVERVIEW_BOX, frameX: 0, frameY: 0, frameW: 0, frameH: 0, scale: 0 }, pieces: [], dims: [] })
+const emptyZoom = () => ({ box: { ...ZOOM_BOX }, pieces: [], markers: [], title: '', opening: null })
 
 const partOfKey = (layout, key) => layout.positions[key]?.part
 const partRec = (model, partKey) => model.parts?.find((p) => p.key === partKey) || {}
@@ -130,6 +134,7 @@ const sashOrder = (n, mirror) => (mirror ? [0, 1] : [1, 0]).filter((k) => k < n)
 // `buttOf` is accepted for interface symmetry with zoomSpecs but the overview does not need it.
 export function overviewSpecs({ model, widthMm, heightMm, view = 'out', widthOf } = {}) {
   const layout = layoutOf(model)
+  if (!layout) return emptyOverview()
   const W = Math.max(1, Number(widthMm) || 0), H = Math.max(1, Number(heightMm) || 0)
   const sc = Math.min(420 / W, 300 / H)
   const pw = W * sc, ph = H * sc
@@ -176,6 +181,7 @@ function openingOf(model, buttOf, W, H) {
  */
 export function zoomSpecs({ model, partKey, selected, view = 'out', widthMm, heightMm, buttOf } = {}) {
   const layout = layoutOf(model)
+  if (!layout) return emptyZoom()
   const sel = typeof selected === 'string' ? { key: selected, line: 0 } : (selected || null)
   const pk = partKey || (sel && partOfKey(layout, sel.key)) || 'frame'
   const W = Math.max(1, Number(widthMm) || 0), H = Math.max(1, Number(heightMm) || 0)
