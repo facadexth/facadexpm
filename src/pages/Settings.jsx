@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAppSetting, saveAppSetting, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature, useBankAccounts, setDefaultBankAccount, useCheckinLocations } from '../hooks/useSupabase.js'
+import { useAppSetting, saveAppSetting, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature, useBankAccounts, setDefaultBankAccount, useCheckinLocations, usePlatformAdmin } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { PAGE_LABELS, DEFAULT_PERMISSIONS, loadPermissions, savePermissions } from '../lib/permissions.js'
@@ -517,6 +517,8 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   // no nav at all -- there's nothing to pick between.
   const [activeSection, setActiveSection] = useState(null)
   const isOwner = isAtLeast('OWNER')
+  // Document-style customizer is a platform-admin tool now (tenants will pick from templates later).
+  const { data: isPlatformAdmin } = usePlatformAdmin()
   const isAdminPlus = isAtLeast('ADMIN')
 
   // The OWNER's own name (user_roles.display_name). Only the OWNER can write
@@ -558,7 +560,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     { id: 'checkin_location', label: '📍 เช็คอิน/เช็คเอาท์ตำแหน่งที่ตั้ง', show: isOwner },
     { id: 'signature', label: '🖊️ ลายเซ็นของฉัน', show: isAdminPlus },
     { id: 'company_profile', label: '🏢 ข้อมูลบริษัท', show: isOwner },
-    { id: 'doc_style', label: '🎨 รูปแบบเอกสาร', show: isOwner },
+    { id: 'doc_style', label: '🎨 รูปแบบเอกสาร', show: isOwner && !!isPlatformAdmin },
     { id: 'bank_accounts', label: '🏦 บัญชีธนาคาร', show: isOwner },
     { id: 'permissions', label: '⚙️ ตั้งค่าสิทธิ์เข้าใช้งาน', show: isOwner },
   ]
@@ -858,7 +860,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       </div>
       )}
 
-      {activeSection === 'doc_style' && isOwner && (
+      {activeSection === 'doc_style' && isOwner && !!isPlatformAdmin && (
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-header"><div className="card-title">🎨 รูปแบบเอกสาร (ใบเสนอราคา/ใบแจ้งหนี้/ใบเสร็จ)</div></div>
         <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20, alignItems: 'start' }}>

@@ -875,7 +875,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
           )
         })()}
 
-        <div style={{ marginTop: style.footerBoxOffset, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20, textAlign: 'center', fontSize: 11.5 }}>
+        <div style={{ marginTop: style.footerBoxOffset, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, textAlign: 'center', fontSize: 11.5 }}>
           <div>
             <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
               {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
@@ -884,6 +884,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
             {myWorkerName && (
               <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>{myWorkerName}</div>
             )}
+            <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>วันที่ ........../........../..........</div>
           </div>
           <div>
             <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
@@ -895,10 +896,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
                 {clientSignature.signerName} · เซ็นเมื่อ {new Date(clientSignature.signedAt).toLocaleDateString('th-TH')}
               </div>
             )}
-          </div>
-          <div>
-            <div style={{ height: 40, border: '1px dashed #ccc', borderRadius: 6 }} />
-            <div style={{ borderTop: '1px solid #999', paddingTop: 8, marginTop: 8 }}>ตราประทับ</div>
+            {!clientSignature && <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>วันที่ ........../........../..........</div>}
           </div>
         </div>
       </div>

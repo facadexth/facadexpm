@@ -691,7 +691,7 @@ function WithholdingCertModal({ payment, onClose }) {
             ขอรับรองว่าข้อความและตัวเลขดังกล่าวข้างต้นถูกต้องตรงกับความจริงทุกประการ
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ height: 24, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
                 {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 22, display: 'block' }} />}
@@ -701,10 +701,6 @@ function WithholdingCertModal({ payment, onClose }) {
               <div style={{ fontSize: 9, color: '#555', marginTop: 2 }}>
                 {new Date(payment.paid_date || payment.payment_date).toLocaleDateString('th-TH')} (วัน เดือน ปี ที่ออกหนังสือรับรองฯ)
               </div>
-            </div>
-            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }}>
-              <div style={{ width: 50, height: 50, border: '1px dashed #999', marginBottom: 3 }} />
-              <div style={{ fontSize: 8.5, color: '#777' }}>ประทับตรานิติบุคคล (ถ้ามี)</div>
             </div>
           </div>
         </div>
