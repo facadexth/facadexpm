@@ -60,3 +60,38 @@ describe('componentRowsForInsert whitelist', () => {
     expect(componentRowsForInsert([{ thickness_role: 'frame' }], 't', [])[0].thickness_role).toBeNull()
   })
 })
+
+import { templatePayload } from './templateSave.js'
+
+describe('templatePayload (characterization: legacy templates write the same bom_templates row as before)', () => {
+  const form = {
+    name: 'T', category: 'window', waste_pct: '10', infill_width_deduction_mm: '5', infill_height_deduction_mm: 'x',
+    labor_price_per_sqm: '100', silicone_price_per_m: '0', felt_price_per_m: '2.5', grid_row_weights: [1, 2],
+    grid_horizontal_rail_family: '', grid_vertical_mullion_family: 'M', type_id: '', preview_kind: 'slide', main_axis: 'vertical', active: true,
+  }
+  // the literal payload handleSave built before the part editor (copied from BomTemplates.jsx at 4bb10a63)
+  const before = f => ({
+    name: f.name, category: f.category,
+    waste_pct: parseFloat(f.waste_pct) || 0,
+    infill_width_deduction_mm: parseFloat(f.infill_width_deduction_mm) || 0,
+    infill_height_deduction_mm: parseFloat(f.infill_height_deduction_mm) || 0,
+    labor_price_per_sqm: parseFloat(f.labor_price_per_sqm) || 0,
+    silicone_price_per_m: parseFloat(f.silicone_price_per_m) || 0,
+    felt_price_per_m: parseFloat(f.felt_price_per_m) || 0,
+    grid_row_weights: f.grid_row_weights,
+    grid_horizontal_rail_family: f.grid_horizontal_rail_family || null,
+    grid_vertical_mullion_family: f.grid_vertical_mullion_family || null,
+    type_id: f.type_id || null,
+    preview_kind: f.preview_kind, main_axis: f.main_axis,
+    active: f.active !== false,
+  })
+  it('a template without layout_kind: identical payload, no layout_kind key at all', () => {
+    expect(templatePayload(form)).toStrictEqual(before(form))
+    expect(templatePayload({ ...form, layout_kind: '' }, null)).toStrictEqual(before(form))
+    expect('layout_kind' in templatePayload({ ...form, layout_kind: null }, undefined)).toBe(false)
+  })
+  it('a part-model template writes layout_kind; clearing a saved one writes null', () => {
+    expect(templatePayload({ ...form, layout_kind: 'sliding_2' })).toStrictEqual({ ...before(form), layout_kind: 'sliding_2' })
+    expect(templatePayload({ ...form, layout_kind: '' }, 'sliding_2')).toStrictEqual({ ...before(form), layout_kind: null })
+  })
+})

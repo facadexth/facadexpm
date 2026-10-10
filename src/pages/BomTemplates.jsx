@@ -6,7 +6,7 @@
 // See docs/superpowers/specs/2026-09-10-bom-template-engine-design.md.
 // ============================================================
 import AluminumProfiles from './AluminumProfiles.jsx'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useBomTemplates, useInfillTypes } from '../hooks/useSupabase.js'
 import { useBomTemplateComponents, useBomTemplateHardware, useBomTemplateConstraints } from '../hooks/useSupabase.js'
@@ -17,7 +17,8 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { useCatalogTable, useEstimationCatalog } from '../hooks/useAluCatalog.js'
 import { useTemplateJoints } from '../hooks/useEstimation2b.js'
-import { jointRowsForInsert, validateJoints, componentRowsForInsert, jointIndexForLoad } from '../lib/templateSave.js'
+import { jointRowsForInsert, validateJoints, componentRowsForInsert, jointIndexForLoad, templatePayload } from '../lib/templateSave.js'
+import { loadModel, validateModel, saveModel } from '../lib/partSave.js'
 import JointsTab from './bomTemplates/JointsTab.jsx'
 import HardwarePackagesTab from './bomTemplates/HardwarePackagesTab.jsx'
 import {
@@ -82,6 +83,7 @@ const EMPTY_TEMPLATE_FORM = {
   grid_row_weights: [1],
   grid_horizontal_rail_family: '', grid_vertical_mullion_family: '',
   type_id: '', preview_kind: 'fixed', main_axis: 'vertical',
+  layout_kind: '',   // '' = legacy template (flat components); a LAYOUTS key = part-editor template (partModel.js)
   active: true,
 }
 
@@ -97,6 +99,7 @@ function TemplateEditor({ template, joints, catalog, types, components, hardware
     grid_row_weights: template.grid_row_weights, grid_horizontal_rail_family: template.grid_horizontal_rail_family || '',
     grid_vertical_mullion_family: template.grid_vertical_mullion_family || '', active: template.active,
     type_id: template.type_id || '', preview_kind: template.preview_kind || 'fixed', main_axis: template.main_axis || 'vertical',
+    layout_kind: template.layout_kind || '',
   })
   const [jointRows, setJointRows] = useState(() => isNew ? [] : joints.filter(j => j.template_id === template.id).sort((a, b) => a.sort_order - b.sort_order))
   const [rows, setRows] = useState(() => isNew ? [] : jointIndexForLoad(
@@ -106,6 +109,19 @@ function TemplateEditor({ template, joints, catalog, types, components, hardware
   const [hwRows, setHwRows] = useState(() => isNew ? [] : hardware.filter(h => h.template_id === template.id).sort((a, b) => a.sort_order - b.sort_order))
   const [constraintRows, setConstraintRows] = useState(() => isNew ? [] : constraints.filter(c => c.template_id === template.id))
   const [saving, setSaving] = useState(false)
+  // Part model (templates with layout_kind): read straight from this template's part rows, never through the
+  // tenant-wide useBomPartModel hook (that hook belongs to the Estimation page; its refetch blanks costs there).
+  // null until loaded; a failed load blocks saving, so it can never be mistaken for "no rows" and saved over.
+  const [model, setModel] = useState(null)
+  const [modelError, setModelError] = useState(null)
+  useEffect(() => {
+    if (!template?.layout_kind) return
+    let live = true
+    loadModel({ supabase, template })
+      .then(m => { if (live) setModel(m) })
+      .catch(e => { if (live) setModelError(e.message) })
+    return () => { live = false }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- once per opened template (the editor is keyed by id)
 
   const index = catalog.index
   const familyOptions = catalogFamilies(index)
@@ -143,33 +159,27 @@ function TemplateEditor({ template, joints, catalog, types, components, hardware
   // pair is two separate network requests and is not itself atomic (same
   // accepted tradeoff used elsewhere in this codebase, e.g.
   // Quotations.jsx/PurchaseOrders.jsx).
+  // A part-editor template (form.layout_kind set) writes its part model (partSave.saveModel) INSTEAD of flat
+  // components/joints (those rows are left untouched and costing ignores them); hardware and constraints save as before.
+  // saveModel is not atomic either (delete the template's parts, then insert parts -> positions -> lines -> ends):
+  // if it fails midway the template has no / partial part rows. The error is alerted, onSaved is NOT called (so the
+  // page does not look saved) and the unsaved model stays in the editor, so pressing save again rewrites it whole.
   const handleSave = async () => {
     setSaving(true)
     try {
-      const payload = {
-        name: form.name, category: form.category,
-        waste_pct: parseFloat(form.waste_pct) || 0,
-        infill_width_deduction_mm: parseFloat(form.infill_width_deduction_mm) || 0,
-        infill_height_deduction_mm: parseFloat(form.infill_height_deduction_mm) || 0,
-        labor_price_per_sqm: parseFloat(form.labor_price_per_sqm) || 0,
-        silicone_price_per_m: parseFloat(form.silicone_price_per_m) || 0,
-        felt_price_per_m: parseFloat(form.felt_price_per_m) || 0,
-        grid_row_weights: form.grid_row_weights,
-        grid_horizontal_rail_family: form.grid_horizontal_rail_family || null,
-        grid_vertical_mullion_family: form.grid_vertical_mullion_family || null,
-        type_id: form.type_id || null,
-        preview_kind: form.preview_kind, main_axis: form.main_axis,
-        active: form.active !== false,
-      }
+      const payload = templatePayload(form, template?.layout_kind)
+      const partMode = !!form.layout_kind
       // nothing is written until everything checks out
-      const problem = validateJoints(jointRows) || validateComponentRows(rows, jointRows)
+      const problem = partMode
+        ? (model ? validateModel(model) : (modelError ? 'โหลดข้อมูลชิ้นส่วนของเทมเพลตไม่สำเร็จ จึงยังไม่ได้บันทึกอะไร กรุณารีโหลดหน้านี้: ' + modelError : 'กำลังโหลดข้อมูลชิ้นส่วนของเทมเพลต กรุณารอสักครู่แล้วกดบันทึกอีกครั้ง'))
+        : (validateJoints(jointRows) || validateComponentRows(rows, jointRows))
       if (problem) { alert(problem); return }
       let templateId = rowId
       // Remember the old rows BEFORE writing anything: if either read fails, stop here (otherwise the old rows
       // would never be deleted and the BOM would be silently doubled).
       let oldComp = []
       let oldJoints = []
-      if (!isNew) {
+      if (!isNew && !partMode) {
         const rc = await supabase.from('bom_template_components').select('id').eq('template_id', templateId)
         const rj = await supabase.from('bom_template_joints').select('id').eq('template_id', templateId)
         if (rc.error || rj.error) {
@@ -189,43 +199,51 @@ function TemplateEditor({ template, joints, catalog, types, components, hardware
         if (error) throw error
       }
 
-      // Never leave the template empty: write the new rows first, delete the old ones last.
-      const newJointIds = []
-      const newCompIds = []
-      const rollback = async () => {
-        if (newCompIds.length) await supabase.from('bom_template_components').delete().in('id', newCompIds)
-        if (newJointIds.length) await supabase.from('bom_template_joints').delete().in('id', newJointIds)
-      }
-      try {
-        let jointIds = []
-        if (jointRows.length) {
-          const { data, error } = await supabase.from('bom_template_joints').insert(jointRowsForInsert(jointRows, templateId)).select('id, sort_order')
-          if (error) throw error
-          newJointIds.push(...(data || []).map(r => r.id))
-          jointIds = orderJointIds(data, jointRows.length)
+      if (partMode) {
+        try {
+          await saveModel({ supabase, templateId, model })
+        } catch (e) {
+          throw new Error(e.message + ' (ข้อมูลชิ้นส่วนของเทมเพลตนี้อาจไม่ครบ กรุณากดบันทึกอีกครั้ง)')
         }
-        if (rows.length) {
-          const { data, error } = await supabase.from('bom_template_components').insert(
-            componentRowsForInsert(rows, templateId, jointIds.map(id => ({ id })))
-          ).select('id')
-          if (error) throw error
-          newCompIds.push(...(data || []).map(r => r.id))
+      } else {
+        // Never leave the template empty: write the new rows first, delete the old ones last.
+        const newJointIds = []
+        const newCompIds = []
+        const rollback = async () => {
+          if (newCompIds.length) await supabase.from('bom_template_components').delete().in('id', newCompIds)
+          if (newJointIds.length) await supabase.from('bom_template_joints').delete().in('id', newJointIds)
         }
-      } catch (e) {
-        await rollback()
-        throw new Error(e.message + ' (ข้อมูลเดิมยังอยู่)')
-      }
-      try {
-        if (oldComp.length) {
-          const { error } = await supabase.from('bom_template_components').delete().in('id', oldComp)
-          if (error) throw error
+        try {
+          let jointIds = []
+          if (jointRows.length) {
+            const { data, error } = await supabase.from('bom_template_joints').insert(jointRowsForInsert(jointRows, templateId)).select('id, sort_order')
+            if (error) throw error
+            newJointIds.push(...(data || []).map(r => r.id))
+            jointIds = orderJointIds(data, jointRows.length)
+          }
+          if (rows.length) {
+            const { data, error } = await supabase.from('bom_template_components').insert(
+              componentRowsForInsert(rows, templateId, jointIds.map(id => ({ id })))
+            ).select('id')
+            if (error) throw error
+            newCompIds.push(...(data || []).map(r => r.id))
+          }
+        } catch (e) {
+          await rollback()
+          throw new Error(e.message + ' (ข้อมูลเดิมยังอยู่)')
         }
-        if (oldJoints.length) {
-          const { error } = await supabase.from('bom_template_joints').delete().in('id', oldJoints)
-          if (error) throw error
+        try {
+          if (oldComp.length) {
+            const { error } = await supabase.from('bom_template_components').delete().in('id', oldComp)
+            if (error) throw error
+          }
+          if (oldJoints.length) {
+            const { error } = await supabase.from('bom_template_joints').delete().in('id', oldJoints)
+            if (error) throw error
+          }
+        } catch (e) {
+          throw new Error(e.message + ' (บันทึกชุดใหม่แล้ว แต่ลบชุดเก่าไม่สำเร็จ อาจมีข้อมูลซ้ำ กรุณารีโหลดหน้านี้และตรวจสอบ)')
         }
-      } catch (e) {
-        throw new Error(e.message + ' (บันทึกชุดใหม่แล้ว แต่ลบชุดเก่าไม่สำเร็จ อาจมีข้อมูลซ้ำ กรุณารีโหลดหน้านี้และตรวจสอบ)')
       }
 
       {
@@ -250,6 +268,12 @@ function TemplateEditor({ template, joints, catalog, types, components, hardware
         if (error) throw error
       }
 
+      if (partMode) {
+        // Show what is now in the tables (this template only; no tenant-wide refetch). The save itself succeeded,
+        // so a failed re-read keeps the in-memory model, which is exactly what was just written.
+        try { setModel(await loadModel({ supabase, template: { id: templateId, layout_kind: form.layout_kind } })) }
+        catch (e) { console.warn('reload part model failed', e) }
+      }
       onSaved()
     } catch (e) { alert('บันทึกไม่สำเร็จ: ' + e.message) }
     finally { setSaving(false) }

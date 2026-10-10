@@ -51,3 +51,26 @@ export function jointIndexForLoad(components, joints) {
   const order = [...(joints || [])].sort((a, b) => a.sort_order - b.sort_order)
   return (components || []).map(c => ({ ...c, joint_index: c.joint_id ? String(order.findIndex(j => j.id === c.joint_id)).replace('-1', '') : '' }))
 }
+
+// The bom_templates row for the editor form. layout_kind (part-editor templates) is sent only when the form has one
+// or the saved row had one (then '' clears it to null): a legacy template sends exactly the payload it always did,
+// with no layout_kind key, so it also keeps saving before the 2026-10-15-01 migration is applied.
+export function templatePayload(form, savedLayoutKind = null) {
+  const payload = {
+    name: form.name, category: form.category,
+    waste_pct: parseFloat(form.waste_pct) || 0,
+    infill_width_deduction_mm: parseFloat(form.infill_width_deduction_mm) || 0,
+    infill_height_deduction_mm: parseFloat(form.infill_height_deduction_mm) || 0,
+    labor_price_per_sqm: parseFloat(form.labor_price_per_sqm) || 0,
+    silicone_price_per_m: parseFloat(form.silicone_price_per_m) || 0,
+    felt_price_per_m: parseFloat(form.felt_price_per_m) || 0,
+    grid_row_weights: form.grid_row_weights,
+    grid_horizontal_rail_family: form.grid_horizontal_rail_family || null,
+    grid_vertical_mullion_family: form.grid_vertical_mullion_family || null,
+    type_id: form.type_id || null,
+    preview_kind: form.preview_kind, main_axis: form.main_axis,
+    active: form.active !== false,
+  }
+  if (form.layout_kind || savedLayoutKind) payload.layout_kind = form.layout_kind || null
+  return payload
+}
