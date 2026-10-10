@@ -132,7 +132,7 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
           </div>
         </div>
         <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
-          <PreviewPanel inputs={m.inputs} labels={m.labels} availability={m.availability} addonPartial={m.addonPartial} />
+          <PreviewPanel inputs={m.inputs} part={m.part} labels={m.labels} availability={m.availability} addonPartial={m.addonPartial} />
           <LayoutTemplatePicker cards={m.cards} selectedId={layoutPick} mainTemplate={m.template} disabled={dis} onPick={pickCard} onClear={() => setLayoutPick(null)}
             save={layoutSave} onSaveChange={setLayoutSave} saveError={layoutError} />
           <SnapshotOptions snap={snap} onChange={setSnap} stale={stale} savedAt={opening && opening.preview_saved_at} onResave={resaveSnapshot} busy={busy} dis={dis} />

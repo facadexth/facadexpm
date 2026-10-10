@@ -3,11 +3,11 @@
 // costOpening, the drawing inputs and part labels, the field options and inherited hints, the layout cards and
 // the generated quotation description. Pure computation wrapped in useMemo; the popup only holds state and saves.
 import { useMemo } from 'react'
-import { costOpening } from '../../lib/openingCost.js'
+import { costOpening, partPreviewCtx } from '../../lib/openingCost.js'
 import { resolveItemInputs, addonTemplatesForSeries, typeAvailability } from '../../lib/estimationInherit.js'
 import { thicknessesForSeries, hardwareSetsForSeries } from '../../lib/estimationCatalogViews.js'
 import { typeLabel } from '../../lib/typeTree.js'
-import { previewFrames, itemPreviewInputs } from '../../lib/itemPreviewSignature.js'
+import { previewFrames, itemPreviewInputs, partPreviewModel } from '../../lib/itemPreviewSignature.js'
 import { buildItemDescription } from '../../lib/descriptionFormat.js'
 import { seriesLabelFull } from '../../lib/aluCatalog.js'
 import { seriesChoices, finishChoices } from './projectDefaults.js'
@@ -37,6 +37,10 @@ export function useItemModel({ form, path, addonTypeId, project, ctx, templates,
     }
     const frames = previewFrames({ template, addonTemplate, ctx, seriesId, thicknessMm: resolved.thickness_mm })
     const inputs = template && item.width_m > 0 && item.height_m > 0 ? itemPreviewInputs(item, template, addonTemplate, frames) : null
+    // a layout_kind template without add-on is drawn from its part model (the same drawing the saved snapshot uses)
+    const partCtx = inputs ? partPreviewCtx(ctx, template, resolved) : null
+    const partModel = partCtx ? partPreviewModel(item, template, addonTemplate, partCtx) : null
+    const part = partModel ? { model: partModel, buttOf: partCtx.buttOf, widthMm: Math.round(item.width_m * 1e6) / 1e3, heightMm: Math.round(item.height_m * 1e6) / 1e3 } : null
     const labels = template && cost ? partLabels({ components: (ctx.componentsByTemplate || {})[template.id], joints: (ctx.jointsByTemplate || {})[template.id], bom: cost.bom, index }) : null
 
     const { levels, leafId } = cascadeLevels(tree, path)
@@ -67,7 +71,7 @@ export function useItemModel({ form, path, addonTypeId, project, ctx, templates,
     const generatedDescription = buildItemDescription(descriptionContext({ item, resolved, index, template, infillTypesById }), pj.description_format)
     const cons = c => (constraints || []).filter(x => x.template_id === c)
     return {
-      template, addonTemplate, item, addonPartial, resolved, cost, frames, inputs, labels, leafId, levels, templateOptions,
+      template, addonTemplate, item, addonPartial, resolved, cost, frames, inputs, part, labels, leafId, levels, templateOptions,
       typeWarn: path.length && !leafId ? 'เลือกประเภทให้ถึงชั้นสุดท้าย' : null,
       templateHint: leafId && !templateOptions.length ? 'ประเภทนี้ยังไม่มีเทมเพลต BOM สร้างได้ที่หน้าเทมเพลต BOM' : null,
       availability: typeAvailability(template, seriesId, seriesTypes),

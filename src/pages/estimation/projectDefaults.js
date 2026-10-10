@@ -5,7 +5,7 @@ import { seriesLabelFull } from '../../lib/aluCatalog.js'
 import { DEFAULT_DESCRIPTION_FORMAT } from '../../lib/descriptionFormat.js'
 import { mergeSettings } from '../../lib/estimationSettings.js'
 import { localDateString } from '../../lib/localDate.js'
-import { costOpening } from '../../lib/openingCost.js'
+import { costOpening, partPreviewCtx } from '../../lib/openingCost.js'
 import { typeAvailability } from '../../lib/estimationInherit.js'
 import { missingHardwareTypeIds } from '../../lib/projectHardware.js'
 import { unresolvedText } from '../../lib/reasonText.js'
@@ -181,7 +181,8 @@ export function itemStatus(item, cost, currentSig) {
 }
 
 // { [itemId]: signature now } for items that have a saved snapshot. costs = costItems(...) (its `resolved` gives the
-// series and thickness the item inherits); base = the costOpening context (templatesById, index, components, joints).
+// series and thickness the item inherits); base = the costOpening context (templatesById, index, components, joints,
+// partModelByTemplate: a layout_kind item signs its part model exactly as snapshotFor does when the item form saves).
 export function currentPreviewSigs({ items, costs, base }) {
   const out = {}
   const byId = (base && base.templatesById) || {}
@@ -192,7 +193,7 @@ export function currentPreviewSigs({ items, costs, base }) {
     if (!template) continue
     const addonTemplate = item.addon_template_id ? byId[item.addon_template_id] || null : null
     const resolved = previewFrames({ template, addonTemplate, ctx: base, seriesId: cost.resolved.series_id, thicknessMm: cost.resolved.thickness_mm })
-    out[item.id] = itemPreviewSignature(item, template, addonTemplate, resolved)
+    out[item.id] = itemPreviewSignature(item, template, addonTemplate, resolved, partPreviewCtx(base, template, cost.resolved))
   }
   return out
 }

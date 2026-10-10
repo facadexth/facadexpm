@@ -46,7 +46,9 @@ export function widthOfFor(opts) {
 
 // A part-model template (layout_kind set): components come from its model (Ruling PE-2), role thickness applies as for
 // flat components, joints do not (expanded rows carry no joint_id). The expander's issues travel the joint-issue path.
-function preparePartComponents({ template, model, index, seriesId, thicknessMm, allowMixed, sashThicknessMm }) {
+// The profile lookup options of a part model: each family at its role's thickness (sash role → the sash thickness when the
+// series allows mixed thickness). Shared by costing and the item preview (partPreviewCtx), so both see the same butt distances.
+function partFamilyOpts({ model, index, seriesId, thicknessMm, allowMixed, sashThicknessMm }) {
   const sash = Number(sashThicknessMm)
   const thicknessMmByFamily = {}
   for (const lines of Object.values((model && model.lines) || {})) {
@@ -55,7 +57,11 @@ function preparePartComponents({ template, model, index, seriesId, thicknessMm, 
       if (f && !(f in thicknessMmByFamily)) thicknessMmByFamily[f] = l.thickness_role === 'sash' && allowMixed && sash > 0 ? sash : thicknessMm
     }
   }
-  const opts = { index, seriesId, thicknessMmByFamily, thicknessMm }
+  return { index, seriesId, thicknessMmByFamily, thicknessMm }
+}
+
+function preparePartComponents({ template, model, index, seriesId, thicknessMm, allowMixed, sashThicknessMm }) {
+  const opts = partFamilyOpts({ model, index, seriesId, thicknessMm, allowMixed, sashThicknessMm })
   const { components, issues } = expandParts({ model, buttOf: buttOfFor(opts), widthOf: widthOfFor(opts) })
   return {
     components: applyRoleThickness(components, { allowMixed, sashThicknessMm }),
@@ -70,6 +76,20 @@ function prepareComponents({ template, components, joints, partModelByTemplate, 
     return preparePartComponents({ template, model, index, seriesId, thicknessMm, allowMixed, sashThicknessMm })
   }
   return applyJoints({ components: applyRoleThickness(components, { allowMixed, sashThicknessMm }), joints, index, seriesId, thicknessMm })
+}
+
+// The item preview's part context of a layout_kind template: { model, buttOf, widthOf } exactly as costOpening expands it
+// (same model, same per-family thickness), or null for a template without layout_kind or without a loaded model.
+// ctx = the costOpening context (index, partModelByTemplate); resolved = resolveItemInputs(...) of the item.
+export function partPreviewCtx(ctx, template, resolved) {
+  if (!template || !template.layout_kind) return null
+  const model = (ctx && ctx.partModelByTemplate && ctx.partModelByTemplate[template.id]) || null
+  if (!model) return null
+  const index = ctx.index
+  const r = resolved || {}
+  const allowMixed = template.type_id && index ? allowsMixedThickness(index, r.series_id, template.type_id) : false
+  const opts = partFamilyOpts({ model, index, seriesId: r.series_id, thicknessMm: r.thickness_mm, allowMixed, sashThicknessMm: r.sash_thickness_mm })
+  return { model, buttOf: buttOfFor(opts), widthOf: widthOfFor(opts) }
 }
 
 // ctx: { item, project, template, addonTemplate, componentsByTemplate, hardwareByTemplate, jointsByTemplate,

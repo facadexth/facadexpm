@@ -4,6 +4,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { renderToString } from 'react-dom/server'
 import { buildCatalogIndex } from '../../lib/aluCatalogPricing.js'
 import { mergeSettings } from '../../lib/estimationSettings.js'
+import { startModel } from '../../lib/partModel.js'
 
 vi.mock('../../lib/supabase.js', () => ({ supabase: {}, fmt: n => (n == null || isNaN(n) ? '—' : Number(n).toFixed(2)) }))
 const { default: ItemModal } = await import('./ItemModal.jsx')
@@ -43,5 +44,16 @@ describe('ItemModal renders', () => {
     expect(html).toContain('เลื่อน + ช่องแสง')
     expect(html).toContain('<svg')
     expect(html).toContain('ราคายังไม่ครบ')
+  })
+  it('a layout_kind item draws the part-editor drawing (two styles only)', () => {
+    const tPart = { ...tSlide, id: 'tP', name: 'เลื่อน 2 บาน (part)', layout_kind: 'sliding_2' }
+    const model = startModel('sliding_2')
+    for (const k of Object.keys(model.lines)) model.lines[k][0].profile_family = 'frame'
+    const pctx = { ...ctx, templatesById: { ...ctx.templatesById, tP: tPart }, partModelByTemplate: { tP: model } }
+    const opening = { id: 'o2', project_id: 'p1', opening_no: 'W-02', template_id: 'tP', width_m: '1.8', height_m: 1.2, panel_count: 2, quantity: 1, extra_lines: [] }
+    const html = renderToString(<ItemModal {...props} ctx={pctx} templates={[tSlide, tFix, tPart]} opening={opening} currentSig={null} />)
+    expect(html).toContain('data:image/svg+xml')
+    expect(html).not.toContain('เส้นเดียว (CAD)')
+    expect(html).not.toMatch(/NaN/)
   })
 })

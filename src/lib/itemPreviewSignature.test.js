@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { buildCatalogIndex } from './aluCatalogPricing.js'
 import { emptyForm, buildOpeningPayload } from './openingPayload.js'
-import { frameFamily, previewFrames, itemPreviewInputs, itemPreviewSignature, snapshotPreviews } from './itemPreviewSignature.js'
+import { frameFamily, previewFrames, itemPreviewInputs, itemPreviewSignature, snapshotPreviews, snapshotFor } from './itemPreviewSignature.js'
+import golden from './itemPreviewSignature.golden.json'
+import { partSvgString } from './partPreviewSvg.js'
+import { startModel, setEndMode, updateEnd } from './partModel.js'
 
 const index = buildCatalogIndex({
   providers: [{ id: 'pA', name: 'A' }],
@@ -129,5 +132,61 @@ describe('a part-model template (layout_kind) has no flat components: the legacy
     expect(inputs).toMatchObject({ template: tp, width_m: 1.8, height_m: 1.2, panel_count: 2, main_axis: 'horizontal', addon: null })
     expect(inputs.frame_mm).toBeUndefined()
     expect(() => snapshotPreviews({ template_id: 'tPart', width_m: 1.8, height_m: 1.2, panel_count: 2 }, tp, null, frames)).not.toThrow()
+  })
+})
+
+// ---- Task 10: part-editor drawing for layout_kind templates --------------------------------------------------
+
+describe('part-editor drawing in the saved snapshot (layout_kind templates)', () => {
+  const tp = { id: 'tPart', main_axis: 'horizontal', preview_kind: 'slide', grid_row_weights: [1], layout_kind: 'sliding_2' }
+  const model = (() => {
+    const m = startModel('sliding_2')
+    for (const k of Object.keys(m.lines)) m.lines[k][0].profile_family = k.startsWith('frame') ? 'FR' : 'SA'
+    return m
+  })()
+  const partCtx = { model, buttOf: () => 20 }
+  const row = { template_id: 'tPart', width_m: 1.8, height_m: 1.2, panel_count: 2 }
+  const rowA = { template_id: 'tPart', width_m: 1.8, height_m: 1.2, panel_count: 2, addon_template_id: 'tFix', addon_width_m: 1.8, addon_height_m: 0.4, addon_position: 'top', addon_panel_count: 1 }
+
+  it('(d) legacy templates: snapshot strings and signature are byte-identical to before Task 10', () => {
+    const legacyRow = { template_id: 'tSlide', width_m: 1.5, height_m: 1, panel_count: 2 }
+    expect(snapshotPreviews(legacyRow, slide, null, { frame_mm: 44.45 })).toEqual(golden.legacy)
+    expect(snapshotPreviews(legacyRow, slide, null, { frame_mm: 44.45 }, undefined, partCtx)).toEqual(golden.legacy)
+    expect(itemPreviewSignature(legacyRow, slide, null, { frame_mm: 44.45 }, partCtx)).toBe(golden.legacy.sig)
+  })
+
+  it('(e) layout_kind without add-on → part drawing; with an add-on → the legacy strings and signature', () => {
+    const snap = snapshotPreviews(row, tp, null, { frame_mm: null }, { out: true, in: true }, partCtx)
+    expect(snap.out).toBe(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'out' }))
+    expect(snap.in).toBe(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'in' }))
+    expect(snap.sig).toBe(itemPreviewSignature(row, tp, null, { frame_mm: null }, partCtx))
+    expect(snap.sig).not.toBe(itemPreviewSignature(row, tp, null, { frame_mm: null }))
+    expect(snapshotPreviews(row, tp, null, { frame_mm: null }, { out: false, in: true }, partCtx).out).toBeNull()
+    expect(snapshotPreviews({ ...row, width_m: null }, tp, null, {}, undefined, partCtx)).toBeNull()
+    expect(snapshotPreviews(rowA, tp, fixed, { frame_mm: null }, undefined, partCtx)).toEqual(golden.layoutAddon)
+    // no model in the context → legacy path
+    expect(snapshotPreviews(rowA, tp, fixed, { frame_mm: null }, undefined, { model: null })).toEqual(golden.layoutAddon)
+  })
+
+  it('(f) the signature follows end modes, deductions and butt distances; stable for equal inputs', () => {
+    const sig = m => itemPreviewSignature(row, tp, null, { frame_mm: null }, m)
+    const base = sig(partCtx)
+    expect(sig({ model: JSON.parse(JSON.stringify(model)), buttOf: () => 20 })).toBe(base)
+    // key order of the stored model does not matter
+    const reordered = Object.fromEntries(Object.entries(JSON.parse(JSON.stringify(model))).reverse())
+    expect(sig({ model: reordered, buttOf: () => 20 })).toBe(base)
+    expect(sig({ ...partCtx, model: setEndMode(model, 'frame_top', 0, 0, 0, 'through') })).not.toBe(base)
+    expect(sig({ ...partCtx, model: updateEnd(model, 'frame_top', 0, 0, 0, { deduction_mm: 7 }) })).not.toBe(base)
+    expect(sig({ ...partCtx, buttOf: () => 21 })).not.toBe(base)
+    expect(sig({ ...partCtx, model: { ...model, layout_kind: 'other' } })).not.toBe(base)
+    // stored row (strings) gives the same signature as the save-time payload
+    expect(itemPreviewSignature({ ...row, width_m: '1.8', height_m: '1.2' }, tp, null, { frame_mm: null }, partCtx)).toBe(base)
+  })
+
+  it('snapshotFor wires the costing context (partModelByTemplate) into the part drawing', () => {
+    const c = { ...ctx, templatesById: { tPart: tp }, packageItems: null, partModelByTemplate: { tPart: model } }
+    c.index = { ...index, types: {} }
+    const snap = snapshotFor(row, { project: {}, ctx: c, views: { out: true, in: true } })
+    expect(snap.out).toBe(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'out' }))
   })
 })

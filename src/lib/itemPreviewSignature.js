@@ -5,6 +5,10 @@
 import { buildFramePreview, previewSvgString, previewSignature } from './framePreview.js'
 import { resolveCatalogProfile } from './aluCatalogPricing.js'
 import { resolveItemInputs } from './estimationInherit.js'
+import { partSvgString } from './partPreviewSvg.js'
+import { expandParts } from './partExpand.js'
+import { LAYOUTS } from './partModel.js'
+import { partPreviewCtx } from './openingCost.js'
 
 const num = v => (v === null || v === undefined || String(v).trim() === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null))
 const intOr1 = v => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n >= 1 ? n : 1 }
@@ -66,8 +70,38 @@ export function itemPreviewInputs(item, template, addonTemplate, resolved) {
   }
 }
 
+// The part model the item is drawn from, or null for the legacy drawing. Only a layout_kind template WITHOUT an add-on
+// (as the legacy drawing counts one) and with a drawable model in partCtx = { model, buttOf, widthOf? } uses it.
+export function partPreviewModel(item, template, addonTemplate, partCtx) {
+  if (!template || !template.layout_kind || hasAddon(item || {}, addonTemplate)) return null
+  const m = partCtx && partCtx.model
+  return m && typeof m === 'object' && LAYOUTS[m.layout_kind] && m.lines && Array.isArray(m.parts) ? m : null
+}
+
+// JSON with sorted object keys at every level, so a model loaded in another key order signs the same.
+const stableJson = v => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x)
+  ? Object.fromEntries(Object.keys(x).sort().map(key => [key, x[key]])) : x))
+
+// Fingerprint of the part drawing's inputs beyond the legacy signature: layout_kind, the whole model and the expanded
+// deductions (butt distances from the catalog). The drawing itself ignores butt distances (partPreviewSvg.js), so the
+// deductions part is conservative: a catalog butt-distance change marks the drawing old although its pixels are equal.
+function partFingerprint(model, partCtx) {
+  const buttOf = typeof partCtx.buttOf === 'function' ? partCtx.buttOf : () => null
+  const { components } = expandParts({ model, buttOf, widthOf: partCtx.widthOf })
+  const ded = components.map(c => [c.role_name, c.length_deduction_mm, c.end_deduction_mm])
+  return stableJson([model.layout_kind, model, ded])
+}
+
 // Signature of everything that changes the saved drawing, from the row's values + both templates + frame widths.
-export function itemPreviewSignature(item, template, addonTemplate, resolved) {
+// partCtx (optional): when the item is drawn from a part model (partPreviewModel) its fingerprint is appended; the legacy
+// signature string is unchanged otherwise.
+export function itemPreviewSignature(item, template, addonTemplate, resolved, partCtx) {
+  const legacy = legacySignature(item, template, addonTemplate, resolved)
+  const model = partPreviewModel(item, template, addonTemplate, partCtx)
+  return model ? `${legacy}|part:${partFingerprint(model, partCtx)}` : legacy
+}
+
+function legacySignature(item, template, addonTemplate, resolved) {
   const it = item || {}
   const r = resolved || {}
   const a = isSet(it.addon_template_id)
@@ -85,8 +119,22 @@ export function itemPreviewSignature(item, template, addonTemplate, resolved) {
 
 // The saved snapshot: always the double-line drawing, never part labels. views: { out, in } booleans.
 // Returns { out, in, sig } for buildOpeningPayload, or null when nothing can (or should) be saved.
-export function snapshotPreviews(item, template, addonTemplate, resolved, views = { out: true, in: true }) {
+// partCtx (optional, { model, buttOf, widthOf? }): a layout_kind template without add-on is drawn by partSvgString
+// (the part editor's overview); everything else takes the legacy path exactly as before.
+export function snapshotPreviews(item, template, addonTemplate, resolved, views = { out: true, in: true }, partCtx = null) {
   if (!views || (!views.out && !views.in)) return null
+  const model = partPreviewModel(item, template, addonTemplate, partCtx)
+  if (model) {
+    const it = item || {}
+    const w = positive(it.width_m), h = positive(it.height_m)
+    if (!w || !h) return null
+    const mm = m => Math.round(m * 1e6) / 1e3
+    const draw = view => partSvgString({ model, widthMm: mm(w), heightMm: mm(h), view, buttOf: partCtx.buttOf, style: 'double' })
+    const out = views.out ? draw('out') : null
+    const inn = views.in ? draw('in') : null
+    if (!out && !inn) return null
+    return { out, in: inn, sig: itemPreviewSignature(item, template, addonTemplate, resolved, partCtx) }
+  }
   const inputs = itemPreviewInputs(item, template, addonTemplate, resolved)
   const draw = view => {
     const p = buildFramePreview({ ...inputs, view })
@@ -99,12 +147,13 @@ export function snapshotPreviews(item, template, addonTemplate, resolved, views 
 }
 
 // The snapshot of a row as the item form saves it (the row = the payload, metres): frames from the series and
-// thickness the row resolves to. ctx = the costOpening context (templatesById, index, packageItems, components, joints).
+// thickness the row resolves to. ctx = the costOpening context (templatesById, index, packageItems, components, joints,
+// partModelByTemplate — a layout_kind template is drawn from its part model, see partPreviewCtx).
 export function snapshotFor(row, { project, ctx, views }) {
   const tpl = ctx.templatesById[row.template_id] || null
   if (!tpl) return null
   const atpl = row.addon_template_id ? ctx.templatesById[row.addon_template_id] || null : null
   const r = resolveItemInputs(row, project, tpl, ctx.index.types, ctx.packageItems)
   const frames = previewFrames({ template: tpl, addonTemplate: atpl, ctx, seriesId: r.series_id, thicknessMm: r.thickness_mm })
-  return snapshotPreviews(row, tpl, atpl, frames, views)
+  return snapshotPreviews(row, tpl, atpl, frames, views, partPreviewCtx(ctx, tpl, r))
 }

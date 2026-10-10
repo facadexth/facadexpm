@@ -4,7 +4,8 @@ import {
   draftFromProject, reconcileDraft, buildPatch, validateDraft, newProjectRow, parseQuantity, seriesChoices, finishChoices,
   sashDisplayValue, packageRowsFor, hardwareBanners, availabilityIssues, itemStatus, bomsForStale, priceRowLabel, unresolvedSummary, currentPreviewSigs,
 } from './projectDefaults.js'
-import { itemPreviewSignature } from '../../lib/itemPreviewSignature.js'
+import { itemPreviewSignature, snapshotFor } from '../../lib/itemPreviewSignature.js'
+import { startModel, setEndMode } from '../../lib/partModel.js'
 
 const index = buildCatalogIndex({
   providers: [{ id: 'A', name: 'โรงรีด A' }, { id: 'B', name: 'โรงรีด B' }],
@@ -150,6 +151,20 @@ describe('status + stale helpers', () => {
     expect(itemStatus({ ...item, preview_sig: saved }, cost, moved.o1)).toBe('old_preview')
     expect(itemStatus({ ...item, preview_svg_out: null, preview_sig: saved }, cost, moved.o1)).toBe('ok')
     expect(itemStatus({ ...item, preview_sig: saved }, { unresolved: [{ reason: 'no_series' }] }, moved.o1)).toBe('unresolved')
+  })
+  it('a layout_kind item saved with the part drawing reads "ok" from the table, "old" once its model changes', () => {
+    const tp = { id: 'tP', type_id: 'tSlide', layout_kind: 'sliding_2', main_axis: 'horizontal' }
+    const model = startModel('sliding_2')
+    for (const k of Object.keys(model.lines)) model.lines[k][0].profile_family = 'box'
+    const base = { templatesById: { tP: tp }, index, componentsByTemplate: {}, jointsByTemplate: {}, packageItems: null, partModelByTemplate: { tP: model } }
+    const row = { id: 'o1', template_id: 'tP', width_m: 1.8, height_m: 1.2, panel_count: 1, series_id: 's1', thickness_mm: 1.5 }
+    const snap = snapshotFor(row, { project: {}, ctx: base, views: { out: true, in: true } })
+    expect(snap.sig).toContain('|part:')
+    const stored = { ...row, width_m: '1.8', height_m: '1.2', preview_svg_out: snap.out, preview_svg_in: snap.in, preview_sig: snap.sig }
+    const cost = { unresolved: [], resolved: { series_id: 's1', thickness_mm: 1.5, sash_thickness_mm: null } }
+    expect(itemStatus(stored, cost, currentPreviewSigs({ items: [stored], costs: { o1: cost }, base }).o1)).toBe('ok')
+    const edited = { ...base, partModelByTemplate: { tP: setEndMode(model, 'frame_top', 0, 0, 0, 'through') } }
+    expect(itemStatus(stored, cost, currentPreviewSigs({ items: [stored], costs: { o1: cost }, base: edited }).o1)).toBe('old_preview')
   })
   it('add-on lines are folded into the BOM handed to listPriceChanges', () => {
     const m = bomsForStale({ a: { bom: { profileLines: [1], gridLines: [], hardwareLines: [], hardwareSetLines: [] }, addonBom: { profileLines: [2], gridLines: [], hardwareLines: [], hardwareSetLines: [] } }, b: null })
