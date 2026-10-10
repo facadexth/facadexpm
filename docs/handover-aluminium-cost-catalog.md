@@ -177,3 +177,7 @@ Add-on combinations and the parts/CAD preview styles are still legacy for part-m
 ## Rulings made in the part-editor arc (owner may overturn)
 
 PE-1..PE-6 (plan header), PE-7 hook takes `templates` and the part path gates on `layout_kind` alone (no model → `no_model`), PE-8 small additive Task 6 reviewed by the controller only, PE-9 item/quotation drawing uses the editor's true-scale widths and the stale-drawing signature is model JSON + drawn widths.
+
+## Deferred minors from the final part-editor review
+
+Two admins saving the same template at once can leave duplicate part sets (no unique key on template_id + part_key); a save that fails midway leaves the template empty until re-saved (costing reports it as incomplete, never 0; invalid models are now rejected before any delete); engine does not clamp a negative piece length (a mistyped width can give a negative line with no warning); if any of the four part tables fails to load, part-model items show "no model" and saved drawings read "ภาพเก่า"; child rows' tenant_id/butt targets are not tied to the parent in the DB (same pattern as the other estimation tables); the SQL test script has never been run and lacks some CHECK cases — run it first (BEGIN…ROLLBACK).
