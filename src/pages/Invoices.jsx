@@ -754,12 +754,13 @@ export function DocumentPaper({ elementId, tenant, tag, title, infoFields, clien
   // of repeating "0" across the qty/price/total columns.
   const renderRow = (it, i) => it.item_type === 'item_description' ? (
     <tr key={it.id || i}>
-      <td colSpan={isSplit ? 5 : 4} style={{ padding: '0 8px 9px 20px', borderBottom: '1px solid #eee', whiteSpace: 'pre-line', fontSize: '0.92em', color: '#6a6f85' }}>{it.description}</td>
+      <td colSpan={isSplit ? 6 : 5} style={{ padding: '0 8px 9px 20px', borderBottom: '1px solid #eee', whiteSpace: 'pre-line', fontSize: '0.92em', color: '#6a6f85' }}>{it.description}</td>
     </tr>
   ) : (
     <tr key={it.id || i}>
       <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee', whiteSpace: 'pre-line' }}>{it.description}</td>
-      <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.draw_qty).replace(/\.00$/, '')} {it.unit || ''}</td>
+      <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.draw_qty).replace(/\.00$/, '')}</td>
+      <td style={{ textAlign: 'center', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.unit || ''}</td>
       {isSplit ? (
         <>
           <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.unit_price_material)}</td>
@@ -779,18 +780,20 @@ export function DocumentPaper({ elementId, tenant, tag, title, infoFields, clien
   // renderTableHeader/renderRow's column order+count exactly.
   const renderColGroup = () => isSplit ? (
     <colgroup>
-      <col style={{ width: '42%' }} />
-      <col style={{ width: '13%' }} />
-      <col style={{ width: '13%' }} />
-      <col style={{ width: '13%' }} />
-      <col style={{ width: '19%' }} />
+      <col style={{ width: '34%' }} />
+      <col style={{ width: '10%' }} />
+      <col style={{ width: '8%' }} />
+      <col style={{ width: '15%' }} />
+      <col style={{ width: '15%' }} />
+      <col style={{ width: '18%' }} />
     </colgroup>
   ) : (
     <colgroup>
-      <col style={{ width: '46%' }} />
-      <col style={{ width: '17%' }} />
-      <col style={{ width: '18%' }} />
+      <col style={{ width: '40%' }} />
+      <col style={{ width: '11%' }} />
+      <col style={{ width: '9%' }} />
       <col style={{ width: '19%' }} />
+      <col style={{ width: '21%' }} />
     </colgroup>
   )
 
@@ -799,6 +802,7 @@ export function DocumentPaper({ elementId, tenant, tag, title, infoFields, clien
     <tr>
       <th style={{ ...thStyle, textAlign: 'left' }}>รายการ</th>
       <th style={thStyle}>จำนวน</th>
+      <th style={{ ...thStyle, textAlign: 'center' }}>หน่วย</th>
       {isSplit ? (
         <>
           <th style={thStyle}>ค่าของ/หน่วย</th>

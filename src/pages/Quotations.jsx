@@ -734,7 +734,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
 
   const revisionSuffix = revision > 1 ? `-R${revision}` : ''
   const headerProps = { tenant, tag, revisionSuffix, quotationNumber, date, validUntil, siteName, clientName, clientAddress, clientTaxId, style }
-  const colCount = (isSplit ? 5 : 4) + 1
+  const colCount = (isSplit ? 6 : 5) + 1
 
   // Item <-> item_description pairing reads from spacing alone, no line or
   // color: the item's own bottom border is dropped when it has one (so it
@@ -765,7 +765,8 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
         <tr key={it.id || i}>
           <td style={{ ...cellStyle, textAlign: 'center', padding: glued ? '9px 4px 2px' : '9px 4px', color: '#6a6f85' }}>{printItemNumbers.get(it)}</td>
           <td style={{ ...cellStyle, whiteSpace: 'pre-line' }}>{it.description}</td>
-          <td style={{ ...cellStyle, textAlign: 'right' }}>{it.quantity} {it.unit || ''}</td>
+          <td style={{ ...cellStyle, textAlign: 'right' }}>{it.quantity}</td>
+          <td style={{ ...cellStyle, textAlign: 'center' }}>{it.unit || ''}</td>
           {isSplit ? (
             <>
               <td style={{ ...cellStyle, textAlign: 'right' }}>{fmt(it.unit_price_material)}</td>
@@ -786,6 +787,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
       <th style={{ ...thStyle, textAlign: 'center', width: 30 }}>ที่</th>
       <th style={{ ...thStyle, textAlign: 'left' }}>รายการ</th>
       <th style={thStyle}>จำนวน</th>
+      <th style={{ ...thStyle, textAlign: 'center' }}>หน่วย</th>
       {isSplit ? (
         <>
           <th style={thStyle}>ค่าของ/หน่วย</th>
