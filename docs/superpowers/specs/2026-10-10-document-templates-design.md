@@ -14,11 +14,13 @@ Owner decisions (quoted intent):
 5. The platform admin does the **final polish before release**: a template is invisible to tenants until the admin publishes it.
 6. Quantity and unit are separate columns (done, commit 06843b0e). Signature block has no seal box and has date lines (done, c18a173c).
 
-Out of scope: the customer signing page (`src/PublicSignPage.jsx` has its own simple paper), the delivery note, the withholding certificate (statutory form), emails/LINE texts.
+**Scope decision (owner, 2026-10-10): templates apply to the QUOTATION only.** Invoice, receipt and tax invoice keep the default classic design (leftmost card); there is no tenant choice for them. This removes the invoice/receipt layout work from phases 2-4 and keeps `DocumentPaper` untouched.
+
+Out of scope: invoice/receipt/tax invoice templates, the customer signing page (`src/PublicSignPage.jsx` has its own simple paper), the delivery note, the withholding certificate (statutory form), emails/LINE texts.
 
 ## 2. Where templates apply
 
-`DocumentPaper` (`src/pages/Invoices.jsx`: invoice, receipt, tax invoice) and `QuotationPaper` (`src/pages/Quotations.jsx`). Both already take `tenant` and call `resolveDocumentStyle(tenant.document_style)`; both render through `usePaginatedDocument`. PDFs are made by html2canvas of the same element, so a layout that renders correctly on screen is what is printed.
+`QuotationPaper` only (`src/pages/Quotations.jsx`). It already takes `tenant`, calls `resolveDocumentStyle(tenant.document_style)` and renders through `usePaginatedDocument`. PDFs are made by html2canvas of the same element, so a layout that renders correctly on screen is what is printed. `DocumentPaper` (invoice, receipt, tax invoice) is not changed.
 
 ## 3. Data model (new migration, applied only after owner review)
 
@@ -62,7 +64,7 @@ Classic path stays byte-for-byte the code that exists today (no regression for c
 - `src/components/documentLayouts/ModernBlocks.jsx` and `PremiumBlocks.jsx`: header band/hero, gallery strip, benefit strip, footer (corner/contact) as render functions receiving `{style, accent, content, tenant}`.
 - `QuotationPaper` and `DocumentPaper` choose blocks by `layout` and pass them to `usePaginatedDocument` (`renderHeader`, extra `renderAfterHeader` for hero+gallery on page 1 only, `renderFooter` for last page). The measuring pass must include hero/gallery heights; images get fixed heights so pagination does not depend on image load; `remeasureKey` includes the image URLs.
 - Premium needs a serif Thai font (Noto Serif Thai). It must be loaded before html2canvas runs, otherwise the PDF falls back silently. Decision needed: self-host the font file in `public/fonts` (no external dependency, recommended) vs Google Fonts.
-- Invoice/receipt/tax invoice use the same layouts but omit the gallery and benefit strip (cover image kept), as agreed in the mockup questions.
+- Only `QuotationPaper` gets the modern/premium blocks. Invoices, receipts and tax invoices always render the classic design.
 
 ## 6. UI
 
@@ -99,5 +101,5 @@ Classic path stays byte-for-byte the code that exists today (no regression for c
 ## 10. Open points for the owner
 1. Image packs: the 25 images were generated with Canva's AI image tool. Confirm that Canva's terms allow using them as default images in a product shown to customers.
 2. Premium serif font: self-host (recommended) or Google Fonts.
-3. Do invoices/receipts/tax invoices use the same 3 templates (proposed yes, without gallery/benefit strip)?
+3. ~~Do invoices/receipts/tax invoices use the same 3 templates?~~ Decided: no, quotation only; the others stay classic.
 4. Limit of 1 cover + 4 gallery images per tenant is enough?
