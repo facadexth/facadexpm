@@ -343,3 +343,24 @@ describe('loadModel', () => {
     await expect(loadModel({ supabase: fakeClient({ failOn: { table: 'bom_template_positions', op: 'select' }, data: { bom_template_parts: [{ id: 'p', template_id: 't1', part_key: 'frame' }] } }), template: T })).rejects.toThrow('boom')
   })
 })
+
+describe('caps are checked before any delete', () => {
+  it('validateModel rejects a part count of 1e10 or 11 and a pieces value over 1000 / non-finite', () => {
+    const big = named(); big.parts[1].count = 1e10
+    expect(validateModel(big)).toMatch(/1 ถึง 10/)
+    const eleven = named(); eleven.parts[1].count = 11
+    expect(validateModel(eleven)).toMatch(/1 ถึง 10/)
+    const ten = setPartCount(named(), 'sash', 10)
+    expect(validateModel(ten)).toBeNull()
+    const q = named(); q.lines.frame_top[0].quantity_value = 1001
+    expect(validateModel(q)).toMatch(/ไม่เกิน 1000/)
+    const inf = named(); inf.lines.frame_top[0].quantity_value = Infinity
+    expect(validateModel(inf)).toMatch(/จำนวนท่อน/)
+  })
+  it('saveModel with such a model makes no call at all (the template is never emptied)', async () => {
+    const c = fakeClient()
+    const big = named(); big.parts[1].count = 1e10
+    await expect(saveModel({ supabase: c, templateId: 't1', model: big })).rejects.toThrow(/1 ถึง 10/)
+    expect(c.calls).toEqual([])
+  })
+})

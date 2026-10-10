@@ -1,7 +1,7 @@
 // src/pages/bomTemplates/PartSidePanel.jsx
 // "แก้ชิ้นที่เลือก" panel (mockup panel()): part name / count, sash overlap (auto / manual + ↺), highlighted pieces,
 // position name, one PartLine per profile, "+ เพิ่มโปรไฟล์ในตำแหน่งนี้", position total and the position note.
-import { commitPartCount, updatePart, setPositionName, addLineAndSelect, removeLineAndSelect, LAYOUTS } from '../../lib/partModel.js'
+import { commitPartCount, MAX_PART_COUNT, updatePart, setPositionName, addLineAndSelect, removeLineAndSelect, LAYOUTS } from '../../lib/partModel.js'
 import NumInput from './NumInput.jsx'
 import PartLine from './PartLine.jsx'
 import { ISSUE_TEXT, fmt, posName, partOfKey, positionNote } from './partEditorView.js'
@@ -25,7 +25,7 @@ export default function PartSidePanel({ model, view, sel, families, canEdit, onC
           <input disabled={!canEdit} value={part.name ?? ''} onChange={e => onChange(updatePart(model, pk, { name: e.target.value }))} />
         </div>
         <div className="f"><span>จำนวน part ต่อ 1 ชุด</span>
-          <NumInput min={1} step={1} disabled={!canEdit} value={part.count} onChange={v => { const m = commitPartCount(model, pk, v); if (m !== model) onChange(m) }} />
+          <NumInput min={1} max={MAX_PART_COUNT} step={1} disabled={!canEdit} value={part.count} onChange={v => { const m = commitPartCount(model, pk, v); if (m !== model) onChange(m) }} />
         </div>
       </div>
       {pk === 'sash' && (

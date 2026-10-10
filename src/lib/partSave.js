@@ -5,7 +5,7 @@
 // missing is filled with the layout's defaults so the result is always a valid model; costing then reports what is
 // incomplete (an empty profile family, a butt end without a target) instead of dropping it.
 // modelToRows / validateModel / saveModel / loadModel are the SAVE half (and a one-template loader for the editor).
-import { LAYOUTS, startModel, ensureEnds, pieceCount, validateCorners } from './partModel.js'
+import { LAYOUTS, startModel, ensureEnds, pieceCount, validateCorners, MAX_PART_COUNT } from './partModel.js'
 
 const num = v => (v === null || v === undefined || String(v).trim() === '' || !Number.isFinite(Number(v)) ? null : Number(v))
 const RULES = new Set(['width', 'height', 'width_minus', 'height_minus', 'perimeter'])
@@ -194,6 +194,7 @@ export function modelToRows(model, templateId, newId = () => crypto.randomUUID()
 }
 
 const END_LABEL = ['ปลายที่ 1', 'ปลายที่ 2']
+const MAX_QUANTITY = 1000   // pieces per drawn piece
 
 // First reason (Thai) why the model cannot be saved, or null. Covers the DB CHECKs and the contracts SQL cannot:
 // a butt target must be a line of this same template (the FK alone allows any template's line), the overlap_mode
@@ -205,7 +206,7 @@ export function validateModel(model) {
     const p = (model.parts || []).find(x => x.key === def.key)
     const pname = (p && String(p.name ?? '').trim()) || def.name
     if (!p) return `ไม่พบส่วน ${def.name}`
-    if (!(Number.isInteger(Number(p.count)) && Number(p.count) >= 1)) return `${pname}: จำนวนต้องเป็นจำนวนเต็มตั้งแต่ 1`
+    if (!(Number.isInteger(Number(p.count)) && Number(p.count) >= 1 && Number(p.count) <= MAX_PART_COUNT)) return `${pname}: จำนวนต้องเป็นจำนวนเต็มตั้งแต่ 1 ถึง ${MAX_PART_COUNT}`
     if (p.overlap_mode !== 'auto_hook' && p.overlap_mode !== 'manual') return `${pname}: เลือกวิธีคิดระยะซ้อน (อัตโนมัติ / กำหนดเอง)`
     if (p.overlap_mode === 'manual' && nonNeg(p.overlap_mm) === null) return `${pname}: กรอกระยะซ้อน (มม.) ตั้งแต่ 0`
     if (p.overlap_mm !== null && p.overlap_mm !== undefined && nonNeg(p.overlap_mm) === null) return `${pname}: ระยะซ้อนต้องไม่ติดลบ`
@@ -222,6 +223,7 @@ export function validateModel(model) {
       if (nonNeg(l.length_deduction_mm) === null) return `${where}: ระยะหักต้องเป็นตัวเลขไม่ติดลบ`
       if (!(isNum(l.length_factor) && l.length_factor > 0)) return `${where}: สัดส่วนของความยาวที่ใช้ต้องมากกว่า 0`
       if (nonNeg(l.quantity_value) === null) return `${where}: จำนวนท่อนต้องเป็นตัวเลขไม่ติดลบ`
+      if (l.quantity_value > MAX_QUANTITY) return `${where}: จำนวนท่อนต้องไม่เกิน ${MAX_QUANTITY}`
       if (l.thickness_role !== null && l.thickness_role !== undefined && l.thickness_role !== 'sash') return `${where}: ความหนาไม่ถูกต้อง`
       for (let piece = 0; piece < n; piece++) {
         for (const end of [0, 1]) {

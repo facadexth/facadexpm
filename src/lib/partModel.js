@@ -39,6 +39,9 @@ export const LAYOUTS = {
   },
 }
 
+// Upper bound of a part's count (the drawing and per-piece ends grow with it; a typo like 5000 must not explode the model).
+export const MAX_PART_COUNT = 10
+
 const clone = (x) => JSON.parse(JSON.stringify(x))
 const layoutOf = (model) => LAYOUTS[model.layout_kind]
 const posOf = (model, key) => layoutOf(model).positions[key]
@@ -211,14 +214,16 @@ export function removeLine(model, key, idx) {
 // A blank, 0, negative, fractional or non-numeric entry returns the SAME model, so retyping never trims the pieces.
 export function commitPartCount(model, partKey, value) {
   const n = typeof value === 'number' ? value : numOrNull(value)
-  if (n === null || !Number.isInteger(n) || n < 1) return model
+  if (n === null || !Number.isInteger(n) || n < 1 || n > MAX_PART_COUNT) return model
   if (model.parts.find((p) => p.key === partKey)?.count === n) return model
   return setPartCount(model, partKey, n)
 }
 
 export function setPartCount(model, partKey, count) {
   const next = clone(model)
-  next.parts.find((p) => p.key === partKey).count = Math.max(1, Math.floor(Number(count)) || 1)
+  const n = Math.max(1, Math.floor(Number(count)) || 1)
+  if (n > MAX_PART_COUNT) return ensureEnds(next)   // ignored: the count stays as it was
+  next.parts.find((p) => p.key === partKey).count = n
   return ensureEnds(next)
 }
 

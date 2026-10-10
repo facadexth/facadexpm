@@ -261,3 +261,17 @@ describe('commitPartCount (part count field)', () => {
     expect(commitPartCount(m, 'sash', 2)).toBe(m)
   })
 })
+
+import { MAX_PART_COUNT } from './partModel'
+
+describe('part count cap', () => {
+  it('setPartCount ignores a count above MAX_PART_COUNT (10)', () => {
+    expect(MAX_PART_COUNT).toBe(10)
+    const m = startModel('sliding_2')
+    const r = setPartCount(m, 'sash', 5000)
+    expect(r.parts.find(p => p.key === 'sash').count).toBe(2)
+    expect(r.lines.sash_top[0].ends).toHaveLength(2)
+    expect(setPartCount(m, 'sash', 10).lines.sash_top[0].ends).toHaveLength(10)
+    expect(commitPartCount(m, 'sash', 11)).toBe(m)
+  })
+})
