@@ -27,7 +27,7 @@ export function resolveGrid(template, opening) {
 const factorOf = v => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 1)
 const endOf = v => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 0)
 
-function computeComponentLength(rule, deductionMm, widthM, heightM, factor = 1, endDeductionMm = 0) {
+export function computeComponentLength(rule, deductionMm, widthM, heightM, factor = 1, endDeductionMm = 0) {
   const deductionM = deductionMm / 1000
   let base
   if (rule === 'width') base = widthM
