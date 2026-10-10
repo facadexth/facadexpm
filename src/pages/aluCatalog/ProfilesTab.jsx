@@ -24,6 +24,8 @@ const PROFILE_FIELDS = [
   { key: 'linear_weight_kg_per_m', label: 'น้ำหนัก (กก./เมตร)', type: 'number', required: true, min: 0, step: '0.0001' },
   { key: 'width_mm', label: 'ความกว้างรวมหน้าตัด (มม.)', type: 'number', min: 0, step: '0.01' },
   { key: 'depth_mm', label: 'ความสูง/ลึกรวมหน้าตัด (มม.)', type: 'number', min: 0, step: '0.01' },
+  { key: 'butt_distance_mm', label: 'ระยะชน เมื่อถูกชน หลัง notch (มม.)', type: 'number', min: 0, step: '0.01', nonNegative: true, omitWhenAbsent: true,
+    hint: 'ความกว้างที่เหลือหลังตัด notch ใช้เป็นค่าหักเริ่มต้นของชิ้นที่วิ่งมาชนเส้นนี้' },
   { key: 'primary_contact', label: 'พื้นผิวสัมผัสหลัก (หน้าที่เส้นรองมาชน)', type: 'select', required: true, default: 'width',
     options: [
       { value: 'width', label: 'หน้ากว้าง เช่น 101.6 (ปกติ) — เส้นรองหักตามความสูง/ลึก' },

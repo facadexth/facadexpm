@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { emptyForm, formFromRow, buildPayload, missingRequired, resolveOptions, optionList, friendlyDbError } from './catalogForm.js'
+import { emptyForm, formFromRow, buildPayload, missingRequired, resolveOptions, optionList, friendlyDbError, invalidNumbers } from './catalogForm.js'
 
 const fields = [
   { key: 'name', label: 'ชื่อ', type: 'text', required: true },
@@ -84,5 +84,37 @@ describe('buildPayload blankAs', () => {
     const f = [{ key: 'discount_pct', type: 'number', blankAs: 0 }]
     expect(buildPayload(f, { discount_pct: '' })).toEqual({ discount_pct: 0 })
     expect(buildPayload(f, { discount_pct: '5' })).toEqual({ discount_pct: 5 })
+  })
+})
+
+describe('butt_distance_mm field (optional column, omit when absent)', () => {
+  const bf = [
+    { key: 'name', label: 'ชื่อ', type: 'text' },
+    { key: 'butt_distance_mm', label: 'ระยะชน', type: 'number', min: 0, nonNegative: true, omitWhenAbsent: true },
+  ]
+  it('is a blank string in the form', () => {
+    expect(emptyForm(bf).butt_distance_mm).toBe('')
+  })
+  it('old row without the key reads blank', () => {
+    expect(formFromRow(bf, { name: 'x' }).butt_distance_mm).toBe('')
+  })
+  it('blank with the key present on the row sends null (clears it)', () => {
+    expect(buildPayload(bf, { name: 'x', butt_distance_mm: '' }, { name: 'x', butt_distance_mm: 5 }).butt_distance_mm).toBeNull()
+    expect(buildPayload(bf, { name: 'x', butt_distance_mm: '' }, { name: 'x', butt_distance_mm: null }).butt_distance_mm).toBeNull()
+  })
+  it('blank on a row without the key, or a new row, omits the key', () => {
+    expect('butt_distance_mm' in buildPayload(bf, { name: 'x', butt_distance_mm: '' }, { name: 'x' })).toBe(false)
+    expect('butt_distance_mm' in buildPayload(bf, { name: 'x', butt_distance_mm: '' })).toBe(false)
+  })
+  it('a typed value is always sent', () => {
+    expect(buildPayload(bf, { name: 'x', butt_distance_mm: '12.5' }, { name: 'x' }).butt_distance_mm).toBe(12.5)
+    expect(buildPayload(bf, { name: 'x', butt_distance_mm: '0' }).butt_distance_mm).toBe(0)
+  })
+  it('negative or non-numeric gives a Thai error; blank and 0 are fine', () => {
+    expect(invalidNumbers(bf, { butt_distance_mm: '-1' })).toBe('ระยะชน ต้องเป็นตัวเลขที่ไม่ติดลบ')
+    expect(invalidNumbers(bf, { butt_distance_mm: 'abc' })).toBe('ระยะชน ต้องเป็นตัวเลขที่ไม่ติดลบ')
+    expect(invalidNumbers(bf, { butt_distance_mm: '' })).toBeNull()
+    expect(invalidNumbers(bf, { butt_distance_mm: '0' })).toBeNull()
+    expect(invalidNumbers(bf, { butt_distance_mm: '7.5' })).toBeNull()
   })
 })

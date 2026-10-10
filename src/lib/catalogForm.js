@@ -22,10 +22,14 @@ export function formFromRow(fields, row) {
   return form
 }
 
-export function buildPayload(fields, form) {
+// `row` = the stored row being edited (null when adding). A field flagged omitWhenAbsent
+// (a column added by a later migration) is left out of the payload when blank and the row
+// never had the key, so environments without the column keep saving.
+export function buildPayload(fields, form, row = null) {
   const payload = {}
   for (const f of fields) {
     const v = form[f.key]
+    if (f.omitWhenAbsent && isBlank(v) && !(row && f.key in row)) continue
     if (f.type === 'checkbox') payload[f.key] = !!v
     else if (f.type === 'number') payload[f.key] = isBlank(v) ? (f.blankAs !== undefined ? f.blankAs : null) : parseFloat(v)
     else payload[f.key] = isBlank(v) ? null : (typeof v === 'string' ? v.trim() : v)
@@ -35,6 +39,17 @@ export function buildPayload(fields, form) {
 
 export function missingRequired(fields, form) {
   return fields.filter(f => f.required && f.type !== 'checkbox' && isBlank(form[f.key])).map(f => f.label)
+}
+
+// Number fields flagged nonNegative: first Thai error message, or null.
+export function invalidNumbers(fields, form) {
+  for (const f of fields) {
+    if (f.type !== 'number' || !f.nonNegative || isBlank(form[f.key])) continue
+    const s = String(form[f.key]).trim()
+    const n = Number(s)
+    if (s === '' || !Number.isFinite(n) || n < 0) return `${f.label} ต้องเป็นตัวเลขที่ไม่ติดลบ`
+  }
+  return null
 }
 
 // `row` is the row being edited (null when adding) for option lists that must exclude it.

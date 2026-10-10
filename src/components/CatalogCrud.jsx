@@ -8,7 +8,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from './Modal.jsx'
-import { emptyForm, formFromRow, buildPayload, missingRequired, resolveOptions, friendlyDbError } from '../lib/catalogForm.js'
+import { emptyForm, formFromRow, buildPayload, invalidNumbers, missingRequired, resolveOptions, friendlyDbError } from '../lib/catalogForm.js'
 
 export function ActiveBadge({ active }) {
   return active
@@ -95,11 +95,11 @@ export default function CatalogCrud({
   const handleSave = async (form) => {
     const missing = missingRequired(fields, form)
     if (missing.length) { alert('กรุณากรอก: ' + missing.join(', ')); return }
-    const problem = validate ? validate(form) : null
+    const problem = invalidNumbers(fields, form) || (validate ? validate(form) : null)
     if (problem) { alert(problem); return }
     setSaving(true)
     try {
-      const payload = buildPayload(fields, form)
+      const payload = buildPayload(fields, form, editing === 'new' ? null : editing)
       if (editing === 'new') {
         const { error } = await supabase.from(table).insert({ ...payload, ...scope })
         if (error) throw error
