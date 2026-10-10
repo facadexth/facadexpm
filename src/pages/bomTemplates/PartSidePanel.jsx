@@ -1,7 +1,7 @@
 // src/pages/bomTemplates/PartSidePanel.jsx
 // "แก้ชิ้นที่เลือก" panel (mockup panel()): part name / count, sash overlap (auto / manual + ↺), highlighted pieces,
 // position name, one PartLine per profile, "+ เพิ่มโปรไฟล์ในตำแหน่งนี้", position total and the position note.
-import { setPartCount, updatePart, setPositionName, addLineAndSelect, removeLineAndSelect, LAYOUTS } from '../../lib/partModel.js'
+import { commitPartCount, updatePart, setPositionName, addLineAndSelect, removeLineAndSelect, LAYOUTS } from '../../lib/partModel.js'
 import NumInput from './NumInput.jsx'
 import PartLine from './PartLine.jsx'
 import { ISSUE_TEXT, fmt, posName, partOfKey, positionNote } from './partEditorView.js'
@@ -25,7 +25,7 @@ export default function PartSidePanel({ model, view, sel, families, canEdit, onC
           <input disabled={!canEdit} value={part.name ?? ''} onChange={e => onChange(updatePart(model, pk, { name: e.target.value }))} />
         </div>
         <div className="f"><span>จำนวน part ต่อ 1 ชุด</span>
-          <NumInput min={1} step={1} disabled={!canEdit} value={part.count} onChange={v => onChange(setPartCount(model, pk, v ?? 1))} />
+          <NumInput min={1} step={1} disabled={!canEdit} value={part.count} onChange={v => { const m = commitPartCount(model, pk, v); if (m !== model) onChange(m) }} />
         </div>
       </div>
       {pk === 'sash' && (
@@ -53,7 +53,7 @@ export default function PartSidePanel({ model, view, sel, families, canEdit, onC
         </button>
       )}
       <div className="res tot">
-        <span><b>รวมตำแหน่งนี้</b> {fmt(tot.totalM, 2)} ม. · {tot.kgMissing && !tot.kg ? '—' : fmt(tot.kg, 2)} กก. · {tot.bars} เส้น</span>
+        <span><b>รวมตำแหน่งนี้</b> {fmt(tot.totalM, 2)} ม. · {tot.kgAny ? fmt(tot.kg, 2) : '—'} กก. · {tot.bars} เส้น</span>
         {issues.map(r => <span key={r} className="warnline">{ISSUE_TEXT[r] || r}</span>)}
       </div>
       {note && <p className="hint">{note}</p>}

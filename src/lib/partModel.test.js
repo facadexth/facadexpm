@@ -240,3 +240,24 @@ describe('editor state helpers', () => {
     expect(updateEnd(m, 'sash_top', 0, 0, 0, { deduction_mm: '' }).lines.sash_top[0].ends[0][0].deduction_mm).toBeNull()
   })
 })
+
+import { commitPartCount } from './partModel'
+
+describe('commitPartCount (part count field)', () => {
+  it('a blank / 0 / negative / fractional entry leaves the model untouched and keeps pieces 2+', () => {
+    let m = startModel('sliding_2')
+    m = updateEnd(m, 'sash_top', 0, 1, 0, { deduction_mm: 7 })   // custom setting on บานขวา
+    for (const v of [null, '', 0, '0', -1, 1.5, 'x', NaN]) {
+      const r = commitPartCount(m, 'sash', v)
+      expect(r).toBe(m)
+      expect(r.lines.sash_top[0].ends).toHaveLength(2)
+      expect(r.lines.sash_top[0].ends[1][0].deduction_mm).toBe(7)
+    }
+  })
+  it('a whole number >= 1 goes through setPartCount (ensureEnds)', () => {
+    const m = startModel('sliding_2')
+    expect(commitPartCount(m, 'sash', 3).lines.sash_top[0].ends).toHaveLength(3)
+    expect(commitPartCount(m, 'sash', '1').lines.sash_top[0].ends).toHaveLength(1)
+    expect(commitPartCount(m, 'sash', 2)).toBe(m)
+  })
+})

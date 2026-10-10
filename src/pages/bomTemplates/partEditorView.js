@@ -111,22 +111,22 @@ export function editorView({ model, index, seriesId, thicknessMm, widthMm, heigh
   }
 
   const positionTotal = (key) => (lines[key] || []).reduce((t, r) => ({
-    totalM: t.totalM + r.totalM, kg: t.kg + (r.kg || 0), bars: t.bars + r.bars, kgMissing: t.kgMissing || (r.kg == null && r.totalM > 0),
-  }), { totalM: 0, kg: 0, bars: 0, kgMissing: false })
+    totalM: t.totalM + r.totalM, kg: t.kg + (r.kg || 0), bars: t.bars + r.bars, kgAny: t.kgAny || r.kg != null,
+  }), { totalM: 0, kg: 0, bars: 0, kgAny: false })
 
   const parts = (layout ? layout.parts : []).map((def) => {
     const rec = model.parts.find((p) => p.key === def.key) || def
     const keys = def.positions
-    const t = keys.reduce((a, k) => { const x = positionTotal(k); return { totalM: a.totalM + x.totalM, kg: a.kg + x.kg } }, { totalM: 0, kg: 0 })
+    const t = keys.reduce((a, k) => { const x = positionTotal(k); return { totalM: a.totalM + x.totalM, kg: a.kg + x.kg, kgAny: a.kgAny || x.kgAny } }, { totalM: 0, kg: 0, kgAny: false })
     return { key: def.key, name: rec.name, count: rec.count, keys, ...t }
   })
 
-  const issuesByName = {}
-  for (const is of exp.issues) (issuesByName[is.role_name] = issuesByName[is.role_name] || new Set()).add(is.reason)
+  // An issue belongs to a position by its key when it carries one, else by the exact position name (the expander
+  // reports issues under the position name, never with a piece label).
   const positionIssues = (key) => {
     const name = posName(model, key)
     const out = new Set()
-    for (const [n, set] of Object.entries(issuesByName)) if (n === name || n.startsWith(name + ' ')) set.forEach((x) => out.add(x))
+    for (const is of exp.issues) if (is.key != null ? is.key === key : is.role_name === name) out.add(is.reason)
     return [...out]
   }
 

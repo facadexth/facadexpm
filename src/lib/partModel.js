@@ -207,6 +207,15 @@ export function removeLine(model, key, idx) {
   return next
 }
 
+// Part-count field commit: only a whole number >= 1 changes the model (setPartCount -> ensureEnds trims/extends ends).
+// A blank, 0, negative, fractional or non-numeric entry returns the SAME model, so retyping never trims the pieces.
+export function commitPartCount(model, partKey, value) {
+  const n = typeof value === 'number' ? value : numOrNull(value)
+  if (n === null || !Number.isInteger(n) || n < 1) return model
+  if (model.parts.find((p) => p.key === partKey)?.count === n) return model
+  return setPartCount(model, partKey, n)
+}
+
 export function setPartCount(model, partKey, count) {
   const next = clone(model)
   next.parts.find((p) => p.key === partKey).count = Math.max(1, Math.floor(Number(count)) || 1)

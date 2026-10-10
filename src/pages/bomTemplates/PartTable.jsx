@@ -10,7 +10,7 @@ export default function PartTable({ model, view, sel, onSelect }) {
       <tr className="ph" key={'p-' + P.key}>
         <td colSpan={8}>Part: {P.name} × {P.count}</td>
         <td className="n">{fmt(P.totalM, 2)}</td>
-        <td className="n">{fmt(P.kg, 2)}</td>
+        <td className="n">{P.kgAny ? fmt(P.kg, 2) : '—'}</td>
       </tr>,
     )
     for (const key of P.keys) {

@@ -114,3 +114,11 @@ describe('BomTemplates tab 0', () => {
     expect(html).toContain('อุปกรณ์ (Hardware)')
   })
 })
+
+describe('part totals without weights', () => {
+  it('the part header shows — (not 0.00) when no profile has a weight', () => {
+    const t = text(render({ testSeriesId: '', testThicknessMm: null }))
+    expect(t).toMatch(/Part: วงกบ × 1[\d.,]+—/)
+    expect(t).toMatch(/รวมตำแหน่งนี้ [\d.,]+ ม\. · — กก\./)
+  })
+})
