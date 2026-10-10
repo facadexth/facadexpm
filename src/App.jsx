@@ -123,6 +123,24 @@ const HIDDEN_TAB_ENTRIES = [
 ]
 const ALL_TAB_ENTRIES = TABS.flatMap(t => t.children ?? [t]).concat(HIDDEN_TAB_ENTRIES)
 
+// Header + tab bar stay pinned together at the top, so a page's main table
+// can scroll up until it touches the tab bar. Publishes the pinned height as
+// --chrome-h (index.css sizes .table-wrap from it).
+function StickyChrome({ children }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const set = () => document.documentElement.style.setProperty('--chrome-h', el.offsetHeight + 'px')
+    set()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(set)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return <div ref={ref} style={{ position: 'sticky', top: 0, zIndex: 100 }}>{children}</div>
+}
+
 // Hover-triggered dropdown for a TABS group entry (e.g. "ไซท์งาน"). Portaled
 // to document.body instead of position:absolute inside <nav>, because the
 // nav has overflow-x:auto -- per the CSS Overflow spec, a non-visible
@@ -450,11 +468,11 @@ export default function App() {
       <TrialBanner tenant={tenant} isTrialActive={isTrialActive} trialDaysRemaining={trialDaysRemaining}
         onChoosePackage={() => setShowUpgradeModal(true)} />
       {/* ── Header ── */}
+      <StickyChrome>
       <header style={{
         background: 'var(--bg2)', borderBottom: '1px solid var(--border)',
         padding: '0 24px', minHeight: 56, display: 'flex',
         alignItems: 'center', justifyContent: 'space-between',
-        position: 'sticky', top: 0, zIndex: 100,
         flexWrap: 'wrap', gap: 8, rowGap: 4,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
@@ -530,6 +548,7 @@ export default function App() {
           </button>
         ))}
       </nav>
+      </StickyChrome>
 
       {/* ── Page Content ── */}
       <main className="app-main" style={{ flex: 1, padding: '20px 24px', maxWidth: 1440, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>

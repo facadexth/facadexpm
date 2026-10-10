@@ -226,7 +226,7 @@ body {
 .table-wrap { overflow-x: auto; max-height: 560px; overflow-y: auto; }
 /* Any table on a main page (inside .app-main, not in a modal) fills the
    screen below the sticky header once the page is scrolled to it. */
-.app-main .table-wrap { max-height: max(360px, calc(100vh - 150px)); }
+.app-main .table-wrap { max-height: max(360px, calc(100vh - var(--chrome-h, 110px) - 24px)); }
 .modal .table-wrap { max-height: 560px; }
 /* Opt-in modifier for a page's MAIN list table (never a table embedded in
    a modal, where 100vh doesn't correspond to the modal's own bounds) --
@@ -235,7 +235,7 @@ body {
    monitors and can feel cramped on short ones. The offset is an
    approximation (header + nav + a typical toolbar/filter row), not
    computed per page. */
-.table-wrap-fill { max-height: max(360px, calc(100vh - 150px)); }
+.table-wrap-fill { max-height: max(360px, calc(100vh - var(--chrome-h, 110px) - 24px)); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 thead th {
   padding: 10px 14px; text-align: center; background: var(--bg3);
@@ -455,7 +455,7 @@ th.sortable:hover { color: var(--accent); }
 /* Settings page side-nav -- lets a card-heavy Settings page switch between
    one section at a time instead of one long scroll (src/pages/Settings.jsx) */
 .settings-layout { display: flex; gap: 24px; align-items: flex-start; }
-.settings-nav { width: 200px; flex-shrink: 0; position: sticky; top: 20px; display: flex; flex-direction: column; gap: 2px; }
+.settings-nav { width: 200px; flex-shrink: 0; position: sticky; top: calc(var(--chrome-h, 110px) + 12px); display: flex; flex-direction: column; gap: 2px; }
 .settings-nav-btn {
   display: block; width: 100%; text-align: left; padding: 10px 12px;
   border-radius: 8px; border: none; background: transparent; color: var(--text2);
