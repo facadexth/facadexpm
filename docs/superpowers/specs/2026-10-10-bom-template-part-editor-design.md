@@ -22,7 +22,10 @@ Success = for the example in the mockup the editor and the cost engine give the 
 8. Ends/lengths are shown as **length per piece × quantity**; pieces with different lengths (e.g. left/right side frame with different ends) appear as extra lines.
 9. Preview in the editor: top **overview** (click to select), below a **zoom of the selected part** where the end markers (green "สุด", orange "ชน") are clicked to toggle; the overview and zoom draw every joint flush; overlapping sashes are drawn with the visible sash on top (outside view: left sash outside; inside view swaps).
 
-Still open with the owner (defaults used): which sash is outside (default left); meaning of the comment "ภาพขยายวงกบชนแทน" (frame zoom joints drawn flush); real butt distances, hook overlap and clearance values (the mockup uses sample numbers 38.1 / 35.8 / 25).
+10. **Confirmed 2026-10-10:** the outside sash is the **left** sash (the inside view swaps); joints are drawn **flush in both the overview and the zoom**.
+11. The configuration explored in the mockup is not specific to this layout: it is the **generic editor model for every type**. This spec builds it and delivers the sliding window first; the other types are configured later with the same model (section 10).
+
+Still open with the owner: real butt distances, full widths, hook overlap and clearance per profile / series (the mockup uses sample numbers 38.1 / 35.8 / 25).
 
 ## 3. Scope
 
@@ -71,7 +74,36 @@ Editing the butt distance / full width of a profile happens in the editor's prof
 - SQL test script (owner-run): constraints, unique keys, RLS isolation, `ON DELETE SET NULL` on `butt_to_profile_id`.
 - Editor tests: pure state logic (toggle coupling, grouping, auto-deduction, save payload) unit-tested; component smoke tests; no `NaN`/`undefined` in the rendered editor.
 
-## 9. Risks and open items
+## 9. Mockup lessons that become requirements
+
+Things that went wrong or had to be changed while iterating the mockup; each is a requirement and a test case:
+
+- A butting piece must point at **the piece it actually butts** (a sash rail butts a stile, not the side frame). When a toggle flips the partner at a corner, the partner's target is set to the piece that now runs through and its deduction goes back to the default; otherwise the cut length and the drawing are wrong.
+- Overview drawing: a butt end is drawn shortened by the **drawn thickness of the piece it butts**, so joints touch exactly; the zoom does the same. Real millimetres are only in the numbers.
+- Overlapping sashes: both sashes overlap by exactly one stile width, the visible sash is drawn last so the hidden sash's lines do not show; the inside view swaps which one is on top.
+- Defaults of the corner rule must already satisfy "one through, one butt" at every corner (frame: top/bottom butt, sides through; sash: stiles through, rails butt).
+- Deductions have two sources (automatic from the frame / butted profile, or typed by the user); the UI shows which one applies and offers a reset.
+- Field names must explain themselves: "สัดส่วนของความยาวที่ใช้" (length factor, 1 = full, 0.5 = half) and "จำนวนท่อนต่อ 1 ชิ้นในภาพ" (pieces per drawn piece; part counts are set on the part).
+- Show how a number was built: each profile shows a "ที่มา" line (e.g. `(กว้าง 1,800 − หักวงกบ 76.2 + ระยะซ้อน 25) × 0.5 − ปลายซ้าย 25 − ปลายขวา 25 = 824.4`).
+- The table shows `length × quantity`; unequal lengths add lines.
+
+## 10. Rollout to every other type (later, same model)
+
+The editor model above covers all types; what differs per type is only the part list, the positions, their default ends and the automatic deductions. Each type is a later, separate piece of work (layout kind + defaults + geometry + tests) done when the owner finishes its formula. From the owner's workbook:
+
+| Type (workbook) | Parts to define | Notes from the workbook |
+|---|---|---|
+| 1 sliding window, 2 sashes | frame, sash × 2 (this spec), optional light grid above | the light grid is the shared "grid" module: groove, open/close box, lid, mullion with R rows × C columns |
+| 2 sliding 2 sashes + 2 fixed | frame, sash × 2, fixed × 2 | extra pieces: dead stile, centre cover, threshold half; hook stile counted ×4 in the price formula |
+| 3 fixed light | grid only | EURO 4", EURO 6", new 4" sets |
+| 4 curtain wall | mullions/transoms by rows × columns, casement | cap option 0.5 / 1 / 0 |
+| 5 casement | frame grid, casement sashes | fraction of area taken by casements |
+| 6 swing door, 7 hanging-rail door | top light grid, side light grid, door leaves | literal numbers in the formula (2, 4) need confirming |
+| folding door, louver | leaf sets | not yet extracted |
+
+Series variants (Big Frame, Big Frame 3 rails, box-rim 4", box-rim 3 rails, EURO ...) are separate profile families bound to the same part/position structure; thickness specs (1.8/1.8, 1.5/1.2, 1.8-, …) choose which profile rows each position uses. Per-type deductions (frame, hook overlap, clearance) are entered per series. Nothing in this arc depends on those types.
+
+## 11. Risks and open items
 
 - The engine's length formula gains two inputs; mitigated by defaults and the unchanged old tests.
 - Per-end data multiplies rows (pieces × ends × profiles); acceptable at template size.
