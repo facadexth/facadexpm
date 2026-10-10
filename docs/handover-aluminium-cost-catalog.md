@@ -132,3 +132,48 @@ P3-1 reuse the existing `profit_pct` (no `markup_pct`); P3-2 the template's own 
 ## Deferred minors
 
 link-insert failure after the quotation insert can orphan one draft (tiny window); step-6 failure then retry adds a second sent snapshot; send gate untested in a browser; attachment: moved-last-set vs notes budget, duplicate part keys, no hardware page when no set is used, `-webkit-line-clamp` unchecked in PDF, part quantities per set not per type; source-guard test bypassable (`supabase['from']`); sumproductRow ignores its `keys` argument; tests do not pin the profit untick write.
+
+---
+
+# Part editor handover — BOM Template part editor (sliding window, 2 sashes, no transom)
+
+Spec: `docs/superpowers/specs/2026-10-10-bom-template-part-editor-design.md`. Plan: `docs/superpowers/plans/2026-10-10-bom-template-part-editor.md`. Approved mockup: `docs/superpowers/mockups/2026-10-10-bom-part-editor-mockup.html`. **Not merged, not pushed.** Nothing has been clicked with real data yet.
+
+## What was built
+
+- **BOM Template → tab "ส่วนประกอบ"**: for a template created from "สร้างจากแบบบานเลื่อน 2 บาน (ไม่มีช่องแสง)" the flat component table is replaced by the part editor: live overview drawing (outside/inside), zoomed part view with clickable end markers (วิ่งสุด ↔ ชน, exactly one of the two pieces at a corner runs through), side panel per position (profile family, length rule, deduction auto/manual, length factor, pieces, thickness role, per-piece per-end target + deduction, "ที่มา" step line), "+ เพิ่มโปรไฟล์ในตำแหน่งนี้", components table grouped by part with "↳ ความยาวไม่เท่ากัน" lines. Legacy templates (no layout kind) are unchanged.
+- **Automatic deductions** from the frame's butt distances (sash rails: 2 × side-frame butt distance − hook overlap, stiles: top + bottom frame butt distance), manual override per line; overlap = hook-stile distance (auto) or manual.
+- **Engine**: two optional columns on template components, `length_factor` (default 1) and `end_deduction_mm` (default 0): `length = rule × factor − end_deduction/1000`. Legacy rows: identical results. The part model is expanded into these flat components at costing time (`partExpand.js`), so pricing, weight, bars, quotations use the unchanged cost engine.
+- **Item preview and quotation attachment drawings** for part-model templates are the same drawing as the editor overview (`partPreviewSvg.js`, same true-scale widths); outside/inside; only double-line and solid styles (parts/CAD styles and add-on combinations stay legacy). Stored drawings are marked "ภาพเก่า" when the model or a drawn width changes.
+- **Catalogue**: new field "ระยะชน เมื่อถูกชน หลัง notch (มม.)" on every aluminium profile.
+- Expander problems (no butt distance, no target, no profile family, corner violation, no model) are shown in the cost summary like joint issues — never silently counted as 0.
+
+## SQL — the owner runs this (agents never ran any), one command per message
+
+After the Phase 3 migrations (through `2026-10-14-02`):
+
+1. Test first (runs migration + tests in one rolled-back transaction): `! bash .superpowers/sdd/2026-10-10-bom-template-part-editor/run-part-editor-tests.sh` — expect `PART EDITOR TESTS PASSED` and leftover = 0.
+2. Apply `supabase/migrations/2026-10-15-01-bom-part-editor.sql`.
+
+**Deploy order: apply the migration BEFORE deploying the code.** Without it the Estimation page still works for legacy templates (the four new tables just fail to load), but saving a typed butt distance fails and part-model templates show "no model".
+
+## Data the owner must enter before the numbers are real
+
+Per profile (and per series/thickness where it differs): **full width, butt distance after notch, hook overlap / clearance**. Without a butt distance the cost summary says "no_butt_distance" (Thai text) and counts 0 for that deduction. Worked example to check (1800 × 1200; side-frame 38.1, top 38.1, bottom 35.8, stiles 25, hook 25): frame top/bottom 1,723.8; side frames 1,200; sash rails 824.4; stiles 1,126.1.
+
+## Owner click-through list
+
+1. Apply migration (test first). Catalogue → profiles: enter butt distances for the frame/sash profiles.
+2. BOM Templates → new template → "สร้างจากแบบบานเลื่อน 2 บาน": pick profiles for each position; check the table numbers against the worked example.
+3. Click an end marker: partner flips, deductions change, lengths split into "ความยาวไม่เท่ากัน" rows. Add a second profile (cover) to a position.
+4. Save, reload: model comes back unchanged. Switch to inside view.
+5. Estimation: add an item with this template; check cost, weight, drawing; add to quotation; check the attachment page drawing.
+6. Open a legacy template and an old project: nothing should look different.
+
+## Deferred / notes
+
+Add-on combinations and the parts/CAD preview styles are still legacy for part-model templates; other window/door types to follow the same pattern (spec §10 table); the owner's formulas for other types are still to be defined. Save is delete-then-insert (non-atomic, last-write-wins if two admins edit the same template at once). The mockup puts the hook stile on the left of every sash, so the meeting stiles are sash 1's key stile and sash 2's hook stile — **owner to confirm** this matches the real window (hook–hook in the middle?). Bar count uses the 6.4 m default length. The editor takes widths at its test series/thickness, the item at its own. Live check in the real app is still owed.
+
+## Rulings made in the part-editor arc (owner may overturn)
+
+PE-1..PE-6 (plan header), PE-7 hook takes `templates` and the part path gates on `layout_kind` alone (no model → `no_model`), PE-8 small additive Task 6 reviewed by the controller only, PE-9 item/quotation drawing uses the editor's true-scale widths and the stale-drawing signature is model JSON + drawn widths.
