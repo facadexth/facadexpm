@@ -117,3 +117,17 @@ describe('itemPreviewInputs / snapshotPreviews', () => {
     expect(both.in).not.toBe(both.out)
   })
 })
+
+describe('a part-model template (layout_kind) has no flat components: the legacy preview helpers do not throw', () => {
+  const tp = { id: 'tPart', main_axis: 'horizontal', preview_kind: 'slide', grid_row_weights: [1], layout_kind: 'sliding_2' }
+  it('frameFamily of nothing is null, previewFrames gives null frames, inputs and a snapshot still come out', () => {
+    expect(frameFamily([], [])).toBeNull()
+    expect(frameFamily(undefined, undefined)).toBeNull()
+    const frames = previewFrames({ template: tp, addonTemplate: null, ctx, seriesId: 's1', thicknessMm: 1.5 })
+    expect(frames).toEqual({ frame_mm: null, addon_frame_mm: null })
+    const inputs = itemPreviewInputs({ template_id: 'tPart', width_m: '1.8', height_m: '1.2', panel_count: 2 }, tp, null, frames)
+    expect(inputs).toMatchObject({ template: tp, width_m: 1.8, height_m: 1.2, panel_count: 2, main_axis: 'horizontal', addon: null })
+    expect(inputs.frame_mm).toBeUndefined()
+    expect(() => snapshotPreviews({ template_id: 'tPart', width_m: 1.8, height_m: 1.2, panel_count: 2 }, tp, null, frames)).not.toThrow()
+  })
+})

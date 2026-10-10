@@ -7,7 +7,7 @@
 // Built on costOpening so joints, role thickness and inheritance behave exactly as in the item form.
 import { costOpening } from './openingCost.js'
 
-// ctx: { project, items, templatesById, componentsByTemplate, jointsByTemplate, typesById, infillTypesById, index, settings, candidates, asOf }
+// ctx: { project, items, templatesById, componentsByTemplate, jointsByTemplate, partModelByTemplate?, typesById, infillTypesById, index, settings, candidates, asOf }
 export function compareProviders(ctx) {
   const { items, templatesById, index } = ctx
   return (ctx.candidates || []).map(cand => {
@@ -29,7 +29,7 @@ export function compareProviders(ctx) {
       try {
         const r = costOpening({
           item: forced, project: ctx.project, template, addonTemplate,
-          componentsByTemplate: ctx.componentsByTemplate, hardwareByTemplate: {}, jointsByTemplate: ctx.jointsByTemplate,
+          componentsByTemplate: ctx.componentsByTemplate, hardwareByTemplate: {}, jointsByTemplate: ctx.jointsByTemplate, partModelByTemplate: ctx.partModelByTemplate,
           typesById: ctx.typesById, infillTypesById: ctx.infillTypesById, index, settings: ctx.settings, asOf: ctx.asOf,
         })
         const lines = [...r.bom.profileLines, ...r.bom.gridLines, ...(r.addonBom ? [...r.addonBom.profileLines, ...r.addonBom.gridLines] : [])]

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { buildCatalogIndex } from './aluCatalogPricing.js'
 import { mergeSettings } from './estimationSettings.js'
 import { compareProviders, diffAgainst } from './providerCompare.js'
+import { startModel } from './partModel.js'
 
 const index = buildCatalogIndex({
   providers: [{ id: 'A', price_basis: 'per_kg' }, { id: 'B', price_basis: 'per_kg' }],
@@ -120,5 +121,22 @@ describe('final fix: one throwing item', () => {
     const r = compareProviders({ ...base, items: [item, bad], candidates: [{ providerId: 'A', seriesId: 'sA', finishId: 'fA' }] })
     expect(r[0]).toMatchObject({ itemsPriced: 1, unresolvedLines: 2, complete: false, aluminium: 2 * 2 * 100 * 3 })
     expect(r[0].failedItems).toEqual([{ id: 'bad', opening_no: 'W9', text: 'คิดราคาไม่ได้' }])
+  })
+})
+
+describe('part-model templates (layout_kind)', () => {
+  const tp = { ...template, id: 'tp', layout_kind: 'sliding_2' }
+  const model = startModel('sliding_2')
+  for (const k of Object.keys(model.lines)) model.lines[k][0].profile_family = 'box'
+  const pBase = { ...base, items: [{ ...item, template_id: 'tp' }], templatesById: { tp } }
+  const cand = [{ providerId: 'A', seriesId: 'sA', finishId: 'fA' }]
+  it('passes partModelByTemplate through to costOpening; without it the item is incomplete (no_model)', () => {
+    const without = compareProviders({ ...pBase, candidates: cand })[0]
+    expect(without).toMatchObject({ aluminium: 0, complete: false })
+    expect(without.unresolvedLines).toBeGreaterThan(0)
+    const withModel = compareProviders({ ...pBase, partModelByTemplate: { tp: model }, candidates: cand })[0]
+    expect(withModel.aluminium).toBeGreaterThan(0)
+    // 'box' has no butt distance in this catalogue: the expander's issues count as unresolved, never a silent 0
+    expect(withModel.complete).toBe(false)
   })
 })

@@ -15,6 +15,7 @@ import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { Modal } from '../components/Modal.jsx'
 import { useEstimationCatalog } from '../hooks/useAluCatalog.js'
+import { useBomPartModel } from '../hooks/useBomPartModel.js'
 import { useEstimationSettings, useTemplateJoints, useHardwarePackages, useLayoutTemplates, groupByTemplate } from '../hooks/useEstimation2b.js'
 import { listPriceChanges } from '../lib/staleProjectPrices.js'
 import { localDateString } from '../lib/localDate.js'
@@ -47,6 +48,7 @@ export default function Estimation(props) {
   const { settings } = useEstimationSettings()
   const { data: joints } = useTemplateJoints()
   const hw = useHardwarePackages()
+  const partModels = useBomPartModel(templates)   // part-editor templates (layout_kind); a load error only leaves them uncosted (no_model)
 
   const [selectedProjectId, setSelectedProjectId] = useState(null)
   const [showProjectForm, setShowProjectForm] = useState(false)
@@ -60,16 +62,17 @@ export default function Estimation(props) {
   const projectOpenings = useMemo(() => (openings || []).filter(o => o.project_id === selectedProjectId), [openings, selectedProjectId])
   const index = catalog.index
   const hwReady = !hw.loading && !hw.error
+  const partModelByTemplate = partModels.loading ? null : partModels.partModelByTemplate
 
   // Everything costOpening needs except the item itself; rebuilt only when a source table changes.
   const base = useMemo(() => {
-    if (!index || !hwReady) return null
+    if (!index || !hwReady || !partModelByTemplate) return null
     return {
       templatesById: Object.fromEntries((templates || []).map(t => [t.id, t])),
       componentsByTemplate: groupByTemplate(components), hardwareByTemplate: groupByTemplate(hardware), jointsByTemplate: groupByTemplate(joints),
-      typesById: index.types, infillTypesById: Object.fromEntries((infillTypes || []).map(g => [g.id, g])), index, settings,
+      typesById: index.types, infillTypesById: Object.fromEntries((infillTypes || []).map(g => [g.id, g])), index, settings, partModelByTemplate,
     }
-  }, [index, hwReady, templates, components, hardware, joints, infillTypes, settings])
+  }, [index, hwReady, templates, components, hardware, joints, infillTypes, settings, partModelByTemplate])
 
   const packageItems = useMemo(() => (project ? packageRowsFor(project, hw.items) : null), [project, hw.items])
   const pkg = project && project.hardware_package_id ? hw.packages.find(p => p.id === project.hardware_package_id) : null
