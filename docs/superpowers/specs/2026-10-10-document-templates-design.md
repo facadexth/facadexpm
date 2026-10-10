@@ -99,7 +99,7 @@ Classic path stays byte-for-byte the code that exists today (no regression for c
 5. Platform admin polishes and publishes; owner checks real documents.
 
 ## 10. Open points for the owner
-1. Image packs: the 25 images were generated with Canva's AI image tool. Confirm that Canva's terms allow using them as default images in a product shown to customers.
-2. Premium serif font: self-host (recommended) or Google Fonts.
+1. ~~Image packs: licence of the Canva AI images.~~ **Decided (owner, 2026-10-10): use the Canva-generated images as the default sample packs, with a T&C.** At the confirm step ("ใช้แบบนี้") a tenant who picks a default pack must accept a short T&C before saving. Draft points (to be reviewed by the owner, not legal advice): the pictures are AI-generated samples; the platform gives no exclusivity and no guarantee that other tenants or third parties do not use similar images; the tenant is responsible for the final document content and may replace them with its own photos at any time; the platform may change or remove sample packs. Store acceptance (tenant id, pack id, time) in `document_content.pack_terms_accepted_at`. Canva's own terms (checked via web search only, not read in full): AI output may be used commercially, no exclusivity, not for sale as stand-alone merchandise.
+2. ~~Premium serif font~~ **Decided: self-host Noto Serif Thai in the app (`public/fonts`).**
 3. ~~Do invoices/receipts/tax invoices use the same 3 templates?~~ Decided: no, quotation only; the others stay classic.
-4. Limit of 1 cover + 4 gallery images per tenant is enough?
+4. ~~Limit of 1 cover + 4 gallery images~~ **Decided: enough.**
