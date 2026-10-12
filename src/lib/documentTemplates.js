@@ -1,10 +1,12 @@
 // Picks how a tenant's QUOTATION is drawn. Pure, no I/O. Spec:
 // docs/superpowers/specs/2026-10-10-document-templates-design.md section 4.
 // Anything unexpected falls back to the classic layout, never a broken page.
-import { resolveDocumentStyle } from './documentStyle'
+import { resolveDocumentStyle } from './documentStyle.js'
 
 export const MAX_GALLERY = 4
 export const MAX_FEATURES = 3
+export const TENANT_IMAGE_BUCKET = 'tenant-doc-images'
+export const DEFAULT_IMAGE_BUCKET = 'document-defaults'
 
 const HEX = /^#[0-9a-fA-F]{6}$/
 
@@ -26,14 +28,15 @@ function resolveContent(raw, pack) {
   const own = raw && typeof raw === 'object' ? raw : {}
   const ownGallery = (Array.isArray(own.gallery) ? own.gallery : [])
     .filter((g) => g && cleanText(g.path))
-    .map((g) => ({ path: g.path, caption: cleanText(g.caption) }))
+    .map((g) => ({ path: g.path, bucket: TENANT_IMAGE_BUCKET, caption: cleanText(g.caption) }))
   const packGallery = (pack && Array.isArray(pack.gallery) ? pack.gallery : [])
     .filter((g) => g && cleanText(g.path))
-    .map((g) => ({ path: g.path, caption: cleanText(g.caption_th) }))
+    .map((g) => ({ path: g.path, bucket: DEFAULT_IMAGE_BUCKET, caption: cleanText(g.caption_th) }))
   const ownFeatures = (Array.isArray(own.features) ? own.features : []).map(cleanText).filter(Boolean)
   const packFeatures = ((pack && pack.features_th) || []).map(cleanText).filter(Boolean)
   return {
     heroPath: cleanText(own.hero_path) || (pack ? pack.hero_path : '') || '',
+    heroBucket: cleanText(own.hero_path) ? TENANT_IMAGE_BUCKET : DEFAULT_IMAGE_BUCKET,
     gallery: (ownGallery.length ? ownGallery : packGallery).slice(0, MAX_GALLERY),
     features: (ownFeatures.length ? ownFeatures : packFeatures).slice(0, MAX_FEATURES),
     tagline: cleanText(own.tagline) || (pack ? cleanText(pack.tagline_th) : ''),
@@ -85,6 +88,7 @@ export function resolveDocumentTemplate({ tenant, templates, packs }) {
     accent,
     content: {
       heroPath: resolved.heroPath,
+      heroBucket: resolved.heroBucket,
       gallery: resolved.gallery,
       features: resolved.features,
       tagline: resolved.tagline,
