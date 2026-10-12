@@ -109,18 +109,22 @@ export default function CommunicationCenter() {
   const [groupBusy, setGroupBusy] = useState(false)
   const [pendingRemoval, setPendingRemoval] = useState(null)
 
+  const RECOVER_MSG = '\nยังไม่มีกลุ่มแจ้งงาน กรุณาเลือกกลุ่มแจ้งงานใหม่'
+
   // Clear the old notify group first, then set the new one (partial unique index).
   const handleSetNotify = async (id) => {
     setGroupBusy(true)
+    let cleared = false
     try {
-      const { error: e1 } = await supabase.from('line_groups').update({ is_notify: false }).eq('is_notify', true)
+      const { error: e1 } = await supabase.from('line_groups').update({ is_notify: false }).eq('tenant_id', tenant.id).eq('is_notify', true)
       if (e1) throw e1
-      const { error: e2 } = await supabase.from('line_groups').update({ is_notify: true }).eq('id', id)
+      cleared = true
+      const { error: e2 } = await supabase.from('line_groups').update({ is_notify: true }).eq('tenant_id', tenant.id).eq('id', id)
       if (e2) throw e2
-      await refetchGroups()
     } catch (e) {
-      alert('Error: ' + e.message)
+      alert('Error: ' + e.message + (cleared ? RECOVER_MSG : ''))
     } finally {
+      await refetchGroups()
       setGroupBusy(false)
     }
   }
@@ -130,18 +134,20 @@ export default function CommunicationCenter() {
     if (!plan.ok) { setPendingRemoval({ id, newNotifyId: '' }); return }
     if (!newNotifyId && !window.confirm('ยกเลิกการเชื่อมกลุ่มนี้?')) return
     setGroupBusy(true)
+    let deleted = false
     try {
-      const { error } = await supabase.from('line_groups').delete().eq('id', id)
+      const { error } = await supabase.from('line_groups').delete().eq('tenant_id', tenant.id).eq('id', id)
       if (error) throw error
+      deleted = true
       if (plan.setNotifyId) {
-        const { error: e2 } = await supabase.from('line_groups').update({ is_notify: true }).eq('id', plan.setNotifyId)
+        const { error: e2 } = await supabase.from('line_groups').update({ is_notify: true }).eq('tenant_id', tenant.id).eq('id', plan.setNotifyId)
         if (e2) throw e2
       }
+    } catch (e) {
+      alert('Error: ' + e.message + (deleted && plan.setNotifyId ? RECOVER_MSG : ''))
+    } finally {
       setPendingRemoval(null)
       await refetchGroups()
-    } catch (e) {
-      alert('Error: ' + e.message)
-    } finally {
       setGroupBusy(false)
     }
   }
@@ -577,6 +583,9 @@ export default function CommunicationCenter() {
                   <span>ใช้ไปแล้ว {groups.length} จาก {limit ?? 'ไม่จำกัด'} กลุ่ม</span>
                   <button type="button" className="btn btn-ghost btn-sm" disabled={loadingGroups} onClick={refetchGroups}>🔄 รีเฟรช</button>
                 </div>
+                {groups.length > 0 && !groups.some(g => g.is_notify) && (
+                  <div style={{ fontSize: 12.5, color: 'var(--red)', marginTop: 6 }}>ยังไม่ได้ตั้งกลุ่มแจ้งงาน — งานประจำวันจะไม่ถูกส่ง กรุณาเลือกกลุ่มแจ้งงาน</div>
+                )}
                 {groups.length === 0 && (
                   <div style={{ fontSize: 12.5, color: 'var(--text3)', marginTop: 6 }}>ยังไม่ได้เชื่อมกลุ่ม</div>
                 )}
