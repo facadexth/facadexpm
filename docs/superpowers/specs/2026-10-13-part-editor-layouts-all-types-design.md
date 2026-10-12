@@ -32,11 +32,13 @@ Out of scope: add-ons (parent spec), hardware pricing rules beyond default count
 | D13 | Every type gets the **zoom + click-to-assign** interaction: part tabs (ทั้งชุด / วงกบ / บาน n…), unselected parts faded, members of the same name inside one part are assigned once, "เสร็จแล้ว" per part collapses it. |
 | D14 | Preview line styles stay the four existing ones: double line (default, used on quotations), double line + piece lengths, solid by colour, CAD (lines only). |
 
-Provisional rulings (the owner can overturn; each is a data default, not code):
-- R1 Door sashes (บานเปิด, บานสวิง, รางแขวน, บานเลื่อนรางล่าง) are butt-jointed (stiles run through, rails butt), as today. Only awning and casement window sashes are mitred (D11).
-- R2 The frameless swing door keeps a top rail (`รางบน`, patch-fitting channel). If the owner says there is none, the part is deleted from the layout default.
+Owner answers 2026-10-13 (second round):
+- D15 Door sashes (บานเปิด, บานสวิง, รางแขวน, บานเลื่อนรางล่าง, บานเฟี้ยม) are **butt-jointed** ("ต่อตรง": stiles run through, rails butt). Only awning and casement window sashes are mitred (D11).
+- D16 Frameless swing door: **perimeter frame (วงกบ) on top and both sides, no threshold**; the leaf itself is frameless glass with patch fittings.
+- D17 Sliding 2 + fixed 2: **equal glass width on all four sashes** — no `Wf` input; the layout computes one sash width so every pane is the same.
+
+Provisional rulings still open (the owner can overturn; each is a data default, not code):
 - R3 In the 3-track sliding layout the fixed sash is the leftmost (viewed from outside); the estimator can mirror it (`fixed_side` input).
-- R4 In sliding 2 + fixed 2 the input `Wf` is the **visible width of each fixed sash**; the two sliding sashes share the rest equally and overlap the fixed sashes' hook stiles by the hook overlap.
 - R5 Curtain-wall cell kinds are saved on the template (`layout_params.cells`) as the type's default picture; an item may override them (the same JSON on the item) because every project façade differs.
 
 ## 3. Generalisations of the part model
@@ -73,7 +75,7 @@ Length rules stay the existing four (`width`, `height`, `width_minus`, `height_m
 | บานเปิดข้าง | `casement_n` | — | W, H, n, open |
 | บานเลื่อนสวน 2 บาน | `sliding_2` (shipped) | — | W, H |
 | บานเลื่อน 3 บาน | `sliding_3track` | — | W, H, fixed_side |
-| บานเลื่อน 2 ตาย 2 | `sliding_2_fixed_2` | — | W, H, Wf |
+| บานเลื่อน 2 ตาย 2 | `sliding_2_fixed_2` | — | W, H |
 | บานกระทุ้ง r ชั้น x c ช่อง (6 types) | `awning_grid` | rows = r, cols = c | W, H, open |
 
 `door_window_types.layout_kind` CHECK list grows to these 13 kinds; `door_window_types.layout_params JSONB` holds the `fixed_by_type` values (set in the catalogue type form next to "แบบชิ้นส่วน").
@@ -104,17 +106,17 @@ Worked example (drawing constants f = 45, m = 60; 1800 × 1200, 2 × 3): sides 2
 
 Three sashes on three tracks: sash 1 = บานฟิก (`fixed: true`, back track, pane marked F), sash 2 = บานกลาง (middle track), sash 3 = บานหน้า (front track); sash width = (inner W + 2·ov) / 3; neighbouring sashes overlap by `ov`; sliding sashes' arrows point toward the fixed sash; `fixed_side` mirrors the whole layout. Frame: `เฟรมบน (3 ราง)` / `เฟรมล่าง (3 ราง)` families default to the 3-track profiles (Excel: รางบนบิ๊กเฟรม 1.5·W, รางล่างบิ๊กเฟรม 2 ราง, ธรณี 3 ราง). Hardware: 2 rollers on each sliding sash, 1 lock.
 
-### 5.6 `sliding_2_fixed_2` — บานเลื่อน 2 ตาย 2 (D10, R4)
+### 5.6 `sliding_2_fixed_2` — บานเลื่อน 2 ตาย 2 (D10, D17)
 
-Frame as sliding (2-track head/sill). Four sashes: `fixed_left` (back track, width Wf + ov, stiles: เสากุญแจ at the frame, เสาเกี่ยว inside), `slide_left` (front track, เสาเกี่ยว overlapping the fixed sash's hook, เสากุญแจตัวผู้ at the centre), `slide_right` (front, เสากุญแจตัวเมีย at the centre, เสาเกี่ยว), `fixed_right` (back, mirror of fixed_left). Sliding sash width = (inner W − 2·Wf)/2 + ov. Rails: บานเลื่อนบน / บานเลื่อนล่าง on every sash; a `ตบธรณี` cover on the sill (Excel W ÷ 2) as a free position. Symbols: arrows on the two sliding sashes pointing toward the fixed sashes (each opens by sliding over its fixed neighbour); fixed panes marked F. The Excel type 2 totals (เสาเกี่ยว 4H, เสากุญแจ 2H + ประกบกลาง H) are reproduced when the centre stiles are assigned เสากุญแจ ×2 (ตัวผู้/ตัวเมีย) and ประกบกลาง is added as a free line on the centre stile — the test checks the 3.3 × 1.0 example of the Excel against the expanded rows.
+Frame as sliding (2-track head/sill). Four sashes of **equal outer width** `w = (inner W + 2·ov) / 4` (two hook overlaps: fixed-left ‖ slide-left and slide-right ‖ fixed-right; the two key stiles meet at the centre without overlap), so every pane has the same glass width (D17). Sashes left→right: `fixed_left` (back track, `fixed: true`, stiles: เสากุญแจ at the frame, เสาเกี่ยว inside), `slide_left` (front track, เสาเกี่ยว overlapping the fixed sash's hook, เสากุญแจตัวผู้ at the centre), `slide_right` (front, เสากุญแจตัวเมีย at the centre, เสาเกี่ยว), `fixed_right` (back, mirror of fixed_left). Rails: บานเลื่อนบน / บานเลื่อนล่าง on every sash (`width_minus`, pre-deduction 2·b(frame_side) − 2·ov, factor ¼); a `ตบธรณี` cover on the sill (Excel W ÷ 2) as a free position. Symbols: arrows on the two sliding sashes pointing toward the fixed sashes (each opens by sliding over its fixed neighbour); fixed panes marked F. The Excel type 2 totals (เสาเกี่ยว 4H, เสากุญแจ 2H + ประกบกลาง H) are reproduced when the centre stiles are assigned เสากุญแจ ×2 (ตัวผู้/ตัวเมีย) and ประกบกลาง is added as a free line on the centre stile — the test checks the 3.3 × 1.0 example of the Excel against the expanded rows.
 
 ### 5.7 `swing_door` — บานเปิด (hinged), บานสวิงเดี่ยว/คู่ (pivot)
 
 Frame: `frame_side` ×2 through, `frame_top` butts; `sill` (ธรณี) present only when `sill = yes` (D4/D5) — when absent the sides run to the floor and the drawing shows a dashed floor line. Leaves (`count: 'leaves'`): stiles through (`เสาบานพับ`, `เสามือจับ`), rails butt (`ราวบนบาน`, `ราวล่างบาน` — same size, D4), butt-jointed (R1). Leaf width = inner W / leaves. Symbol: V, apex at the hinge stile; single leaf hinge = input, double = hinged on both outer stiles; `open` in/out. Hardware: hinged (`pivot: false`) = 3 hinges + 1 handle per leaf; pivot (`pivot: true`) = 1 concealed closer in the head + 2 pivots + 1 handle per leaf (D5). Excel sheet 6 families as defaults: กล่องแจ็คสัน/ฝาแจ็คสัน (head), เสาประตูสวิง (stiles), เสาบนสวิง/เสาล่างสวิง (rails), ธรณีสวิง (sill), คิ้วประตู (beads, free position ×4 per leaf).
 
-### 5.8 `frameless_door` — บานสวิงเปลือยเดี่ยว/คู่ (D6, R2)
+### 5.8 `frameless_door` — บานสวิงเปลือยเดี่ยว/คู่ (D6, D16)
 
-Parts: `top_rail` (รางบน, 1 bar, through), `leaf` × leaves with `glass: true` (no bars). Hardware per leaf: 2 patch fittings (top and bottom edge, hinge side), 1 floor spring, 1 stainless pull handle, 1 floor lock; double door adds nothing on the meeting edge. Symbol: V from the patch side. Aluminium = the top rail only (plus any owner-added free lines).
+Frame: `frame_side` ×2 through, `frame_top` butts into the sides, **no threshold** (dashed floor line in the drawing). Leaves: `leaf` × leaves with `glass: true` (no bars), leaf width = inner W / leaves. Hardware per leaf: 2 patch fittings (flush with the top and bottom edges, hinge side), 1 floor spring, 1 stainless pull handle, 1 floor lock; double door adds nothing on the meeting edge. Symbol: V from the patch side. Aluminium = the three frame members (plus any owner-added free lines).
 
 ### 5.9 `hanging_door` — บานเลื่อนรางแขวน
 
@@ -168,10 +170,11 @@ Each step = one plan task group with its own review; the editor UI changes land 
 
 ## 11. Open questions for the owner
 
-1. R1: should door sashes (บานเปิด / บานสวิง / บานเฟี้ยม) also be mitred, or butt-jointed as drawn?
-2. R2: does the frameless swing door have a top rail at all?
-3. R3/R4: 3-track fixed sash side default; is `Wf` the visible fixed width or the sash outer width?
-4. R5: may an item override the template's curtain-wall cell picture, or is the picture fixed per template (one template per façade pattern)?
-5. Hanging door track length rule: 2·W for one leaf, and for two leaves opening to both sides?
-6. The hardware defaults in §7: confirm counts (3 hinges per leaf, 2 stays per awning sash, 2 rollers per sliding sash, 1 roller pair per folding pair).
-7. Which series each layout's defaults should name when the type is not in the Excel (frameless types, bottom-rail door).
+Answered 2026-10-13: doors butt-jointed (D15); frameless swing door = frame around, no threshold (D16); sliding 2 + fixed 2 = equal glass on every sash (D17).
+
+Still open (the plan builds to the rulings; each is a data default):
+1. R3: 3-track fixed sash side default (left, mirrorable).
+2. R5: may an item override the template's curtain-wall cell picture, or is the picture fixed per template (one template per façade pattern)?
+3. Hanging door track length rule: 2·W for one leaf, and for two leaves opening to both sides?
+4. The hardware defaults in §7: confirm counts (3 hinges per leaf, 2 stays per awning sash, 2 rollers per sliding sash, 1 roller pair per folding pair).
+5. Which series each layout's defaults should name when the type is not in the Excel (frameless types, bottom-rail door).
