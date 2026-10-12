@@ -15,6 +15,8 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SignaturePad from '../components/SignaturePad.jsx'
 import { DEFAULT_DOCUMENT_STYLE, resolveDocumentStyle } from '../lib/documentStyle.js'
 import DocStyleControls from '../components/DocStyleControls.jsx'
+import DocumentTemplatePicker from '../components/DocumentTemplatePicker.jsx'
+import { useDocumentTemplates } from '../hooks/useDocumentTemplates.js'
 import { DOC_STYLE_PREVIEW_SAMPLE } from '../lib/documentPreviewSample.js'
 import { QuotationPaper } from './Quotations.jsx'
 
@@ -494,6 +496,9 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   // no nav at all -- there's nothing to pick between.
   const [activeSection, setActiveSection] = useState(null)
   const isOwner = isAtLeast('OWNER')
+  // published quotation templates (none until a platform admin publishes one); only owners need them here
+  const { templates: pubTemplates, packs: pubPacks } = useDocumentTemplates(isOwner)
+  const hasTemplateChoice = (pubTemplates || []).some(t => t.key !== 'classic')
   // Document-style customizer is a platform-admin tool now (tenants will pick from templates later).
   const { data: isPlatformAdmin } = usePlatformAdmin()
   const isAdminPlus = isAtLeast('ADMIN')
@@ -537,6 +542,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     { id: 'checkin_location', label: '📍 เช็คอิน/เช็คเอาท์ตำแหน่งที่ตั้ง', show: isOwner },
     { id: 'signature', label: '🖊️ ลายเซ็นของฉัน', show: isAdminPlus },
     { id: 'company_profile', label: '🏢 ข้อมูลบริษัท', show: isOwner },
+    { id: 'doc_template', label: '🎨 แบบใบเสนอราคา', show: isOwner && hasTemplateChoice },
     { id: 'doc_style', label: '🎨 รูปแบบเอกสาร', show: isOwner && !!isPlatformAdmin },
     { id: 'bank_accounts', label: '🏦 บัญชีธนาคาร', show: isOwner },
     { id: 'permissions', label: '⚙️ ตั้งค่าสิทธิ์เข้าใช้งาน', show: isOwner },
@@ -890,6 +896,10 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       )}
 
       {/* ── บัญชีธนาคาร ── */}
+      {activeSection === 'doc_template' && isOwner && hasTemplateChoice && (
+        <DocumentTemplatePicker tenant={tenant} templates={pubTemplates} packs={pubPacks} refetchTenant={refetchTenant} />
+      )}
+
       {activeSection === 'bank_accounts' && isOwner && (
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🏦 บัญชีธนาคาร</h2>

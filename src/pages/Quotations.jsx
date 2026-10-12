@@ -31,6 +31,7 @@ import PendingMark from '../components/PendingMark.jsx'
 import { isQuotationExpiring } from '../lib/pendingRules.js'
 import UnitSelect from '../components/UnitSelect.jsx'
 import { resolveDocumentTemplate } from '../lib/documentTemplates.js'
+import { useDocumentTemplates } from '../hooks/useDocumentTemplates.js'
 import { quotationTheme } from '../components/documentLayouts/quotationTheme.js'
 import { ModernHeader, ModernFirstPageExtra, PremiumHeader, PremiumFirstPageExtra, BenefitStrip, ThanksLine, CompactHeader } from '../components/documentLayouts/TemplateBlocks.jsx'
 import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX, ScaleToFit } from '../hooks/usePaginatedDocument.jsx'
@@ -736,7 +737,9 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
   // `template` (a resolved template, see resolveDocumentTemplate) is only passed
   // by previews today; without it the tenant's saved choice decides, and a
   // tenant with no choice gets the classic layout exactly as before.
-  const tpl = template || resolveDocumentTemplate({ tenant })
+  // published templates are only fetched for a tenant that actually chose one
+  const { templates: pubTemplates, packs: pubPacks } = useDocumentTemplates(!!tenant?.document_template_key && !template)
+  const tpl = template || resolveDocumentTemplate({ tenant, templates: pubTemplates, packs: pubPacks })
   const style = tpl.style
   const layout = tpl.layout
   const content = tpl.content
