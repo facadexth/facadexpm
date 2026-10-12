@@ -7,7 +7,7 @@
 // longer identify which tenant sent an event -- signature verification
 // is checked once per request against the shared LINE_CHANNEL_SECRET,
 // then EACH event resolves its own tenant individually (from
-// line_settings.crew_group_id for a group message, or
+// line_groups.group_id for a group message, or
 // workers/user_roles.line_user_id for a DM) before being handled.
 // verify_jwt is OFF for this function (LINE itself calls it,
 // unauthenticated by Supabase's own JWT check) -- signature
@@ -115,6 +115,7 @@ import { TIME_CLOCK_PHRASE, SCHEDULE_MENU_PHRASE, SCHEDULE_MENU_PROMPT, TIME_CLO
 import { jobDonePrompt, jobDoneConfirmation, JOB_DONE_CONFIRM_CHIP } from '../_shared/job-done-messages.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
+import { decideGroupClaim } from '../_shared/line-groups.ts'
 import {
   routeDmEvent, isStartPhrase, logSafeError, ADMIN_CHAT_START_NOTICE, ADMIN_CHAT_END_NOTICE, ADMIN_CHAT_ACK_NOTICE,
   ADMIN_CHAT_NOT_ALLOWED_NOTICE, ADMIN_CHAT_END_QUICK_REPLY,
@@ -1248,8 +1249,8 @@ Deno.serve(async (req) => {
     }
 
     if (sourceGroupId) {
-      const { data: match, error: matchError } = await admin.from('line_settings').select('tenant_id').eq('crew_group_id', sourceGroupId).maybeSingle()
-      if (matchError) { logSafeError('line_settings crew_group_id lookup failed', matchError); continue }
+      const { data: match, error: matchError } = await admin.from('line_groups').select('tenant_id').eq('group_id', sourceGroupId).maybeSingle()
+      if (matchError) { logSafeError('line_groups group_id lookup failed', matchError); continue }
       tenantId = (match?.tenant_id as string | undefined) ?? null
     } else {
       const { data: w, error: workerLookupError } = await admin.from('workers').select('tenant_id').eq('line_user_id', lineUserId).maybeSingle()
@@ -1272,13 +1273,41 @@ Deno.serve(async (req) => {
         if (claimantError) { logSafeError('line_settings group_link_code lookup failed', claimantError); continue }
         if (claimant) {
           if (!(await tenantHasModuleAccess(admin, claimant.tenant_id as string, 'line_bot'))) { continue }
-          const { error } = await admin.from('line_settings').update({ crew_group_id: sourceGroupId, group_link_code: null }).eq('tenant_id', claimant.tenant_id)
-          if (error) {
-            logSafeError('line_settings group claim failed', error)
+          const claimantTenantId = claimant.tenant_id as string
+          const { data: existingRow, error: existingError } = await admin.from('line_groups').select('tenant_id').eq('group_id', sourceGroupId).maybeSingle()
+          const { count, error: countError } = await admin.from('line_groups').select('id', { count: 'exact', head: true }).eq('tenant_id', claimantTenantId)
+          const { data: canAdd, error: canAddError } = await admin.rpc('can_add_line_group', { p_tenant: claimantTenantId })
+          const lookupError = existingError ?? countError ?? canAddError
+          if (lookupError) {
+            logSafeError('line_groups claim pre-check failed', lookupError)
             await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '⚠️ ตั้งกลุ่มไม่สำเร็จ กรุณาลองใหม่หรือแจ้งแอดมิน')
-          } else {
-            await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '✅ ตั้งกลุ่มนี้เป็นกลุ่มทีมงานเรียบร้อยแล้ว')
+            continue
           }
+          const decision = decideGroupClaim({
+            alreadyLinkedTenantId: (existingRow?.tenant_id as string | undefined) ?? null,
+            claimingTenantId: claimantTenantId, canAdd: canAdd === true, existingCount: count ?? 0,
+          })
+          if (decision.action === 'refuse-other-tenant') {
+            // Silent, like the no-match branch -- never reveal that another tenant holds this group.
+            continue
+          }
+          if (decision.action === 'refuse-cap') {
+            // Code stays unconsumed so the owner can retry after upgrading.
+            await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '⚠️ แพ็กเกจของคุณผูกกลุ่ม LINE ได้ครบจำนวนแล้ว หากต้องการเพิ่มกรุณาอัปเกรดแพ็กเกจ')
+            continue
+          }
+          if (decision.action === 'insert') {
+            const { error: insertError } = await admin.from('line_groups').insert({ tenant_id: claimantTenantId, group_id: sourceGroupId, is_notify: decision.isNotify })
+            if (insertError) {
+              logSafeError('line_groups group claim failed', insertError)
+              await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '⚠️ ตั้งกลุ่มไม่สำเร็จ กรุณาลองใหม่หรือแจ้งแอดมิน')
+              continue
+            }
+          }
+          // insert succeeded, or the group was already this tenant's: consume the code.
+          const { error: clearError } = await admin.from('line_settings').update({ group_link_code: null }).eq('tenant_id', claimantTenantId)
+          if (clearError) logSafeError('line_settings group_link_code clear failed', clearError)
+          await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '✅ ตั้งกลุ่มนี้เป็นกลุ่มทีมงานเรียบร้อยแล้ว')
         }
         // No match at all -- not a claim code (or an expired/already-used
         // one), and no way to tell the difference without revealing
@@ -1525,7 +1554,7 @@ Deno.serve(async (req) => {
     }
 
     // A message from the crew group -- by this point tenantId was already
-    // resolved from THIS group matching that tenant's crew_group_id (see
+    // resolved from THIS group matching a line_groups row of that tenant (see
     // above), so there's nothing further to check there.
 
     // Group-photo auto-filing (see handleGroupPhotoAutoFile) -- the one
