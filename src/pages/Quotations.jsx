@@ -32,7 +32,7 @@ import { isQuotationExpiring } from '../lib/pendingRules.js'
 import UnitSelect from '../components/UnitSelect.jsx'
 import { resolveDocumentTemplate } from '../lib/documentTemplates.js'
 import { quotationTheme } from '../components/documentLayouts/quotationTheme.js'
-import { ModernHeader, ModernFirstPageExtra, PremiumHeader, PremiumFirstPageExtra, BenefitStrip, ThanksLine } from '../components/documentLayouts/TemplateBlocks.jsx'
+import { ModernHeader, ModernFirstPageExtra, PremiumHeader, PremiumFirstPageExtra, BenefitStrip, ThanksLine, CompactHeader } from '../components/documentLayouts/TemplateBlocks.jsx'
 import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX, ScaleToFit } from '../hooks/usePaginatedDocument.jsx'
 import { resolveDocumentStyle } from '../lib/documentStyle.js'
 import { removeBlockOrClear } from '../lib/rowEditing.js'
@@ -742,6 +742,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
   const content = tpl.content
   const theme = quotationTheme(layout, style)
   const Header = layout === 'modern' ? ModernHeader : layout === 'premium' ? PremiumHeader : QuotationHeader
+  const LaterHeader = layout !== 'classic' ? CompactHeader : Header
   const FirstExtra = layout === 'modern' ? ModernFirstPageExtra : layout === 'premium' ? PremiumFirstPageExtra : null
   // the serif face must be ready before measuring / html2canvas
   const [fontReady, setFontReady] = useState(layout !== 'premium')
@@ -934,6 +935,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
     items: printableItems,
     keepWithNext: printKeepWithNext,
     renderHeader: () => <Header {...headerProps} pageNumber={1} totalPages={1} />,
+    renderLaterHeader: layout !== 'classic' ? () => <LaterHeader {...headerProps} pageNumber={2} totalPages={2} /> : undefined,
     renderFirstPageExtra: FirstExtra ? () => <FirstExtra content={content} style={style} theme={theme} /> : undefined,
     renderTableHeader,
     renderRow,
@@ -1013,7 +1015,9 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
               boxShadow: pages.length > 1 ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
             }}
           >
-            <Header {...headerProps} pageNumber={pageIndex + 1} totalPages={pages.length} />
+            {pageIndex === 0
+              ? <Header {...headerProps} pageNumber={1} totalPages={pages.length} />
+              : <LaterHeader {...headerProps} pageNumber={pageIndex + 1} totalPages={pages.length} />}
             {pageIndex === 0 && FirstExtra && <FirstExtra content={content} style={style} theme={theme} />}
 
             {pageItems.length > 0 && (

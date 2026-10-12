@@ -103,3 +103,17 @@ Classic path stays byte-for-byte the code that exists today (no regression for c
 2. ~~Premium serif font~~ **Decided: self-host Noto Serif Thai in the app (`public/fonts`).**
 3. ~~Do invoices/receipts/tax invoices use the same 3 templates?~~ Decided: no, quotation only; the others stay classic.
 4. ~~Limit of 1 cover + 4 gallery images~~ **Decided: enough.**
+
+## 11. Draft T&C for default sample image packs (owner to review; not legal advice)
+
+Shown at the "ใช้แบบนี้" confirm step when a tenant picks one of our sample packs; acceptance is stored as `document_content.pack_terms_accepted_at`. Draft wording (Thai):
+
+> **ข้อกำหนดการใช้รูปภาพตัวอย่าง**
+> 1. รูปภาพในชุดตัวอย่างสร้างด้วยปัญญาประดิษฐ์ (AI) เพื่อใช้เป็นภาพประกอบเอกสารเท่านั้น ไม่ใช่ภาพถ่ายงานจริงของบริษัทคุณหรือของผู้ให้บริการ
+> 2. ผู้ให้บริการไม่รับรองว่ารูปภาพนี้เป็นเอกลักษณ์ และไม่รับรองว่าผู้ใช้รายอื่นหรือบุคคลภายนอกจะไม่ใช้รูปที่เหมือนหรือคล้ายกัน
+> 3. คุณรับผิดชอบเนื้อหาของเอกสารที่ออกถึงลูกค้า รวมถึงการนำรูปตัวอย่างไปใช้ และไม่ควรใช้รูปตัวอย่างเพื่อสื่อว่าเป็นผลงานจริงของคุณ
+> 4. คุณเปลี่ยนเป็นรูปของตัวเองหรือเลิกใช้รูปตัวอย่างได้ตลอดเวลาในหน้าตั้งค่า
+> 5. ผู้ให้บริการอาจเปลี่ยนแปลงหรือถอนชุดรูปตัวอย่างได้ หากมีการถอน เอกสารจะแสดงแบบคลาสสิกจนกว่าคุณเลือกรูปใหม่
+> [ ] ฉันอ่านและยอมรับข้อกำหนดนี้
+
+Open for owner: wording of points 3 and 5, and whether a lawyer should review. Canva's own terms (checked via web search only): AI output may be used commercially, no exclusivity, not for resale as stand-alone merchandise.

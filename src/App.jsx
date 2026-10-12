@@ -53,6 +53,7 @@ const Cheques       = lazy(() => import('./pages/Cheques.jsx'))
 const BomTemplates = lazy(() => import('./pages/BomTemplates.jsx'))
 const Estimation   = lazy(() => import('./pages/Estimation.jsx'))
 const TenantManagement = lazy(() => import('./pages/TenantManagement.jsx'))
+const DocumentTemplatesAdmin = lazy(() => import('./pages/DocumentTemplatesAdmin.jsx'))
 const LineAdminChat = lazy(() => import('./pages/LineAdminChat.jsx'))
 const CommunicationCenter = lazy(() => import('./pages/CommunicationCenter.jsx'))
 const StartingGuide = lazy(() => import('./pages/StartingGuide.jsx'))
@@ -102,6 +103,7 @@ const TABS = [
   ] },
   { id: 'tenant_management', label: '🏢 ผู้ดูแลระบบ', minRole: 'WORKER', module: null, platformAdminOnly: true },
   { id: 'line_admin_chat', label: '💬 แชทแอดมิน', minRole: 'WORKER', module: null, platformAdminOnly: true },
+  { id: 'document_templates', label: '🎨 แบบเอกสาร', minRole: 'WORKER', module: null, platformAdminOnly: true },
 ]
 
 // TABS entries are either a plain tab ({id, label, minRole, module}) or a
@@ -431,6 +433,7 @@ export default function App() {
         case 'starting_guide': return <StartingGuide {...props} />
         case 'tenant_management': return <TenantManagement {...props} />
         case 'line_admin_chat': return <LineAdminChat {...props} />
+        case 'document_templates': return <DocumentTemplatesAdmin {...props} />
         case 'estimation':    return <Estimation    {...props} />
         case 'bom_templates': return <BomTemplates   {...props} />
         default:           return <Dashboard  {...props} />

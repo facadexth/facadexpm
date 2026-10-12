@@ -94,6 +94,9 @@ export function usePaginatedDocument({
   // pages keep the full budget. Must have a fixed height (images given explicit
   // heights) so measuring does not depend on image loading.
   renderFirstPageExtra,
+  // Optional shorter header for pages 2+ (the full `renderHeader` stays on page 1). Pages 2+
+  // then get a bigger row budget. Callers must draw the same block on those pages.
+  renderLaterHeader,
   // Optional, parallel to `items`: keepWithNext[i] === true means row i must
   // never land on a different page than row i+1 -- e.g. an item glued to its
   // own item_description (QuotationPaper), which otherwise could measure as
@@ -121,6 +124,7 @@ export function usePaginatedDocument({
   const tableHeaderRef = useRef(null)
   const footerRef = useRef(null)
   const extraRef = useRef(null)
+  const laterHeaderRef = useRef(null)
   const rowRefs = useRef([])
   rowRefs.current = []
 
@@ -128,13 +132,14 @@ export function usePaginatedDocument({
     if (!headerRef.current || !tableHeaderRef.current) return
     const headerHeight = headerRef.current.getBoundingClientRect().height
     const tableHeaderHeight = tableHeaderRef.current.getBoundingClientRect().height
+    const laterHeaderHeight = laterHeaderRef.current ? laterHeaderRef.current.getBoundingClientRect().height : headerHeight
     const extraHeight = extraRef.current ? extraRef.current.getBoundingClientRect().height : 0
     const footerHeight = footerRef.current ? footerRef.current.getBoundingClientRect().height : 0
     const rowHeights = rowRefs.current.map(el => (el ? el.getBoundingClientRect().height : 0))
     // measuredKey records which remeasureKey this measurement was taken
     // under -- see the `measured` check below for why this is load-bearing,
     // not just bookkeeping.
-    setHeights({ headerHeight, tableHeaderHeight, footerHeight, extraHeight, rowHeights, measuredKey: remeasureKey })
+    setHeights({ headerHeight, tableHeaderHeight, footerHeight, extraHeight, laterHeaderHeight, rowHeights, measuredKey: remeasureKey })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, remeasureKey])
 
@@ -180,6 +185,7 @@ export function usePaginatedDocument({
         // measuring rows taller than they actually render.
         <div style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none', top: 0, left: -99999, width: pageWidth, padding: pagePaddingCss, boxSizing: 'border-box', zIndex: -1 }}>
           <div ref={headerRef}>{renderHeader()}</div>
+          {renderLaterHeader && <div ref={laterHeaderRef} style={{ display: 'flow-root' }}>{renderLaterHeader()}</div>}
           {renderFirstPageExtra && <div ref={extraRef} style={{ display: 'flow-root' }}>{renderFirstPageExtra()}</div>}
           {/* table-layout:fixed + an explicit renderColGroup (when the
               caller supplies one) pins every column to the same width
@@ -222,9 +228,10 @@ export function usePaginatedDocument({
     }
   }
 
-  const availableRegular = pageHeight - heights.headerHeight - heights.tableHeaderHeight - tableMarginTop
-  // page 1 also carries the first-page extra block (0 when none)
-  const availableFirst = availableRegular - (heights.extraHeight || 0)
+  // pages 2+ (compact header when the caller gave one)
+  const availableRegular = pageHeight - (heights.laterHeaderHeight ?? heights.headerHeight) - heights.tableHeaderHeight - tableMarginTop
+  // page 1 keeps the full header and also carries the first-page extra block (0 when none)
+  const availableFirst = pageHeight - heights.headerHeight - heights.tableHeaderHeight - tableMarginTop - (heights.extraHeight || 0)
   const budgetFor = (pageIndex) => (pageIndex === 0 ? availableFirst : availableRegular)
 
   const rows = items.map((it, i) => ({ it, h: heights.rowHeights[i] }))

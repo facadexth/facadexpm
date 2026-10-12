@@ -4,8 +4,8 @@
 // the pagination measuring pass never depends on an image finishing loading.
 import { docImageUrl } from './quotationTheme.js'
 
-const HERO_H = 120
-const GALLERY_H = 62
+const HERO_H = 110
+const GALLERY_H = 56
 
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('th-TH') : '—')
 
@@ -149,4 +149,21 @@ export function BenefitStrip({ content, theme, style }) {
 export function ThanksLine({ content, theme }) {
   if (!content?.thanks) return null
   return <div style={{ marginTop: 10, fontStyle: 'italic', fontSize: 11, color: theme.muted, textAlign: 'center' }}>{content.thanks}</div>
+}
+
+// ---- pages 2+: one slim line (logo/company, document number, page) ----
+export function CompactHeader(p) {
+  const { tenant, style, theme, tag, pageNumber, totalPages, quotationNumber, revisionSuffix } = p
+  const modern = theme.layout === 'modern'
+  return (
+    <div style={modern
+      ? { margin: `-${style.pagePaddingV}px -${style.pagePaddingH}px 0`, padding: `14px ${style.pagePaddingH}px`, background: style.accent, color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }
+      : { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingBottom: 10, borderBottom: `1px solid ${theme.rowBorder}`, color: theme.text }}>
+      <div style={{ fontSize: style.nameSize - 3, fontWeight: 700 }}>{tenant?.company_name}</div>
+      <div style={{ textAlign: 'right', fontSize: style.addressSize + 1, opacity: modern ? 0.95 : 1 }}>
+        <strong>ใบเสนอราคา {quotationNumber}{style.showRevisionSuffix ? revisionSuffix : ''}</strong>
+        <span style={{ marginLeft: 12, color: modern ? undefined : theme.muted }}>{tag || 'ต้นฉบับ'} · หน้า {pageNumber}/{totalPages}</span>
+      </div>
+    </div>
+  )
 }
