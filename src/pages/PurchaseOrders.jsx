@@ -539,7 +539,7 @@ function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument, receip
           </div>
         )}
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, display: 'grid', gap: 8 }}>
-          <div><button type="button" className="btn btn-sm btn-ghost" onClick={() => onViewDocument(po)}>📄 ดู PO</button></div>
+          <div><button type="button" className="btn btn-sm btn-ghost" onClick={() => onViewDocument(po)}>📄 Preview</button></div>
           {tenantId && <AttachmentsSection table="purchase_order_attachments" bucket="po-attachments" foreignKey="po_id" entityId={po.id} tenantId={tenantId} />}
         </div>
       </div>
