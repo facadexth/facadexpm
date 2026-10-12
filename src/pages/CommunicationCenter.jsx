@@ -108,6 +108,23 @@ export default function CommunicationCenter() {
   const atCap = limit !== null && groups.length >= limit
   const [groupBusy, setGroupBusy] = useState(false)
   const [pendingRemoval, setPendingRemoval] = useState(null)
+  const [renaming, setRenaming] = useState(null) // { id, value }
+
+  const handleRename = async () => {
+    if (!renaming) return
+    setGroupBusy(true)
+    try {
+      const label = renaming.value.trim() || null
+      const { error } = await supabase.from('line_groups').update({ label }).eq('id', renaming.id).eq('tenant_id', tenant.id)
+      if (error) throw error
+      setRenaming(null)
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      await refetchGroups()
+      setGroupBusy(false)
+    }
+  }
 
   const RECOVER_MSG = '\nยังไม่มีกลุ่มแจ้งงาน กรุณาเลือกกลุ่มแจ้งงานใหม่'
 
@@ -562,7 +579,7 @@ export default function CommunicationCenter() {
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ padding: 16, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
           <div style={{ fontWeight: 700 }}>📡 การเชื่อมต่อ LINE Official Account</div>
-          {!loadingSettings && statusBadge(groups.length > 0, '✅ เชื่อมต่อแล้ว', '❌ ยังไม่เชื่อมต่อ')}
+          {!loadingSettings && !loadingGroups && statusBadge(groups.length > 0, '✅ เชื่อมต่อแล้ว', '❌ ยังไม่เชื่อมต่อ')}
         </div>
         {loadingSettings ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
@@ -592,7 +609,21 @@ export default function CommunicationCenter() {
                 {groups.map(g => (
                   <div key={g.id} style={{ marginTop: 8, padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 600 }}>{g.label || 'กลุ่ม LINE'}</span>
+                      {renaming?.id === g.id ? (
+                        <>
+                          <input className="input" value={renaming.value} maxLength={100} autoFocus onChange={e => setRenaming({ id: g.id, value: e.target.value })} style={{ maxWidth: 220 }} />
+                          <button type="button" className="btn btn-ghost btn-sm" disabled={groupBusy} onClick={handleRename}>บันทึก</button>
+                          <button type="button" className="btn btn-ghost btn-sm" disabled={groupBusy} onClick={() => setRenaming(null)}>ยกเลิก</button>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ fontWeight: 600 }}>{g.label || 'กลุ่ม LINE'}</span>
+                          {isOwner && (
+                            <button type="button" className="btn btn-ghost btn-sm" disabled={groupBusy} onClick={() => setRenaming({ id: g.id, value: g.label || '' })}>✏️ เปลี่ยนชื่อ</button>
+                          )}
+                        </>
+                      )}
+                      {g.created_at && <span style={{ fontSize: 11, color: 'var(--text3)' }}>เชื่อมเมื่อ {new Date(g.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
                       {g.is_notify && <span style={{ fontSize: 11, color: 'var(--green)' }}>กลุ่มแจ้งงาน</span>}
                       {isOwner && (
                         <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
