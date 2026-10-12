@@ -11,11 +11,12 @@ import MultiDayPicker from './MultiDayPicker.jsx'
 import { useDraftForm } from '../../hooks/useDraftForm.js'
 import { supabase } from '../../lib/supabase.js'
 import { SITE_TYPES } from './constants.js'
+import { expandTeamSelection, applyTeamToSelection } from '../../lib/teamAssign.js'
 import teamLeaderBadge from '../../assets/team-leader-badge.png'
 
 const EMPTY_FORM = { days: [], type: 'site', siteId: '', sel: {}, notes: '', leaderShift: {}, taskIds: [] }
 
-export default function AssignWizard({ workers = [], sites = [], initialSiteId = '', onSubmit, onClose, saving }) {
+export default function AssignWizard({ workers = [], sites = [], initialSiteId = '', teams = [], members = [], onSubmit, onClose, saving }) {
   // days persists as a plain array (localStorage-safe) and is only a Set
   // at the edges, where MultiDayPicker requires one.
   const [form, setForm, clearFormDraft] = useDraftForm('assign-wizard', { ...EMPTY_FORM, siteId: initialSiteId })
@@ -33,6 +34,11 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
     if (leaderShift.am === id) delete leaderShift.am
     if (leaderShift.pm === id) delete leaderShift.pm
     return { ...f, sel: n, leaderShift }
+  })
+  const addTeam = (teamId) => setForm(f => {
+    const ids = expandTeamSelection([teamId], members, new Set((workers || []).map(w => w.id)))
+    if (!ids.length) { alert('ทีมนี้ยังไม่มีช่างที่เลือกได้'); return f }
+    return { ...f, sel: applyTeamToSelection(f.sel, ids) }
   })
   const toggleShift = (id, k) => setForm(f => {
     if (!f.sel[id]) return f
@@ -127,6 +133,16 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
         {/* 4. workers */}
         <div>
           <div className="label" style={{ marginBottom: 6 }}>{SITE_TYPES.includes(form.type) ? '4' : '3'} · ช่าง (เลือกหลายคน · ค่าเริ่มต้นเช้า+บ่าย)</div>
+          {teams.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: 12, color: 'var(--text3)' }}>เลือกทีม</span>
+              {teams.map(t => (
+                <button key={t.id} type="button" className="btn btn-sm btn-ghost" onClick={() => addTeam(t.id)}>
+                  {t.name} ({members.filter(m => m.team_id === t.id).length})
+                </button>
+              ))}
+            </div>
+          )}
           <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 4 }}>
             {(workers || []).map(w => {
               const on = !!form.sel[w.id]

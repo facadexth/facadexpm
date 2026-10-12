@@ -18,6 +18,8 @@ import DayView from './assign/DayView.jsx'
 import MySchedule from './assign/MySchedule.jsx'
 import LocationCheckinCard from './assign/LocationCheckinCard.jsx'
 import AssignWizard from './assign/AssignWizard.jsx'
+import TeamManager from './assign/TeamManager.jsx'
+import { useTeams } from '../hooks/useTeams.js'
 import AssignOTWizard from './assign/AssignOTWizard.jsx'
 import CellEditPopup from './assign/CellEditPopup.jsx'
 import { computeRange } from './assign/useAssignRange.js'
@@ -32,6 +34,9 @@ export default function Assign({ navState, openSiteOverview }) {
   const [anchor, setAnchor] = useState(new Date())
   const [wizardOpen, setWizardOpen] = useState(false)
   const [otWizardOpen, setOtWizardOpen] = useState(false)
+  const [teamMgrOpen, setTeamMgrOpen] = useState(false)
+  // useQuery swallows errors -> teams=[] until the tables exist
+  const { teams, members: teamMembers, refetch: refetchTeams } = useTeams()
   const [cellTarget, setCellTarget] = useState(null)   // { worker, date, shift, existing }
   const [saving, setSaving] = useState(false)
   const [pendingRows, setPendingRows] = useState(null) // rows waiting for conflict confirm
@@ -355,6 +360,7 @@ export default function Assign({ navState, openSiteOverview }) {
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => setWizardOpen(true)}>+ Assign งาน</button>}
         {canEdit && <button className="btn btn-ghost" onClick={() => setOtWizardOpen(true)}>⚡ Assign OT</button>}
+        {role === 'OWNER' && <button className="btn btn-ghost" onClick={() => setTeamMgrOpen(true)}>👥 จัดการทีม</button>}
         {(view === 'day' || view === 'week') && (
           <button className="btn btn-ghost" onClick={handleCopyLine}>{copied ? '✅ คัดลอกแล้ว!' : '📋 คัดลอกสำหรับ LINE'}</button>
         )}
@@ -430,9 +436,21 @@ export default function Assign({ navState, openSiteOverview }) {
           workers={workers || []}
           sites={ongoingSites}
           initialSiteId={navState?.siteId || ''}
+          teams={teams}
+          members={teamMembers}
           onSubmit={handleWizardSubmit}
           onClose={() => setWizardOpen(false)}
           saving={saving}
+        />
+      )}
+
+      {teamMgrOpen && (
+        <TeamManager
+          workers={workers || []}
+          teams={teams}
+          members={teamMembers}
+          onChanged={refetchTeams}
+          onClose={() => setTeamMgrOpen(false)}
         />
       )}
 

@@ -17,3 +17,10 @@ export function moveWorkerPlan(workerId, toTeamId, members) {
   if (cur.team_id === toTeamId) return { action: 'noop', fromTeamId: cur.team_id }
   return { action: 'move', fromTeamId: cur.team_id }
 }
+
+// Adds missing workers as am+pm; existing entries are left untouched.
+export function applyTeamToSelection(sel, workerIds) {
+  const next = { ...sel }
+  for (const id of workerIds) if (!next[id]) next[id] = { am: true, pm: true }
+  return next
+}

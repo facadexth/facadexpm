@@ -27,7 +27,7 @@ export default function TeamManager({ workers = [], teams = [], members = [], on
   const countOf = (teamId) => members.filter(m => m.team_id === teamId).length
   const teamMembers = selected ? members.filter(m => m.team_id === selected.id) : []
   const addable = workers
-    .filter(w => w.is_active !== false)
+    .filter(w => w.status !== 'inactive')
     .filter(w => !teamMembers.some(m => m.worker_id === w.id))
     .map(w => ({ value: w.id, label: nameOf(w), keywords: w.name }))
 

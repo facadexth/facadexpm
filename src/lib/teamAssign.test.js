@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { expandTeamSelection, moveWorkerPlan } from './teamAssign.js'
+import { expandTeamSelection, moveWorkerPlan, applyTeamToSelection } from './teamAssign.js'
 
 const members = [
   { worker_id: 'w1', team_id: 'A' }, { worker_id: 'w2', team_id: 'A' },
@@ -30,5 +30,19 @@ describe('moveWorkerPlan', () => {
   })
   it('is a noop when already in that team', () => {
     expect(moveWorkerPlan('w1', 'A', members)).toEqual({ action: 'noop', fromTeamId: 'A' })
+  })
+})
+
+describe('applyTeamToSelection', () => {
+  it('adds missing workers as am+pm and keeps existing choices', () => {
+    const sel = { w1: { am: true, pm: false } }
+    expect(applyTeamToSelection(sel, ['w1', 'w2'])).toEqual({
+      w1: { am: true, pm: false }, w2: { am: true, pm: true },
+    })
+  })
+  it('does not mutate its input and handles an empty list', () => {
+    const sel = { w1: { am: true, pm: true } }
+    applyTeamToSelection(sel, [])
+    expect(sel).toEqual({ w1: { am: true, pm: true } })
   })
 })
