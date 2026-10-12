@@ -1,7 +1,7 @@
 // supabase/functions/line-push-daily-assignments/index.ts
 // Scheduled (Supabase Cron -- see
 // supabase/migrations/2026-09-19-02-line-push-cron.sql) daily push of
-// tomorrow's site assignments to each tenant's LINE crew group -- ONE
+// tomorrow's site assignments to each tenant's LINE notify group -- ONE
 // combined message per tenant per day, grouped by site (same shape as
 // Assign.jsx's "คัดลอกสำหรับ LINE" button, src/pages/assign/lineExport.js),
 // not one message per worker. The original per-worker design burned
@@ -101,9 +101,9 @@ Deno.serve(async (req) => {
   const tomorrow = bangkokTomorrowISO()
 
   const { data: settingsRows, error: settingsError } = await admin
-    .from('line_settings')
-    .select('tenant_id, crew_group_id')
-    .not('crew_group_id', 'is', null)
+    .from('line_groups')
+    .select('tenant_id, group_id')
+    .eq('is_notify', true)
   if (settingsError) return json({ error: settingsError.message }, 500)
 
   let tenantsProcessed = 0
@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
     }
 
     const message = formatDailyAssignmentsPushMessage(tomorrow, [...bySite.values()])
-    const result = await withPushBudget(admin, settings.tenant_id as string, () => sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, settings.crew_group_id as string, message))
+    const result = await withPushBudget(admin, settings.tenant_id as string, () => sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, settings.group_id as string, message))
     if (result.ok) messagesPushed++
     else {
       pushFailures++
