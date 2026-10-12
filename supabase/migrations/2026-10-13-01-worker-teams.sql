@@ -33,8 +33,8 @@ CREATE POLICY owner_writes ON worker_team_members FOR ALL TO authenticated
   USING (is_owner() AND tenant_id = current_tenant_id() AND tenant_can_write())
   WITH CHECK (
     is_owner() AND tenant_id = current_tenant_id() AND tenant_can_write()
-    AND EXISTS (SELECT 1 FROM worker_teams t WHERE t.id = team_id AND t.tenant_id = current_tenant_id())
-    AND EXISTS (SELECT 1 FROM workers w WHERE w.id = worker_id AND w.tenant_id = current_tenant_id())
+    AND EXISTS (SELECT 1 FROM worker_teams t WHERE t.id = worker_team_members.team_id AND t.tenant_id = current_tenant_id())
+    AND EXISTS (SELECT 1 FROM workers w WHERE w.id = worker_team_members.worker_id AND w.tenant_id = current_tenant_id())
   );
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON worker_teams, worker_team_members TO authenticated;

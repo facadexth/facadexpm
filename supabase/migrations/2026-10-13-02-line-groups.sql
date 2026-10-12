@@ -22,7 +22,11 @@ CREATE POLICY owner_updates ON line_groups FOR UPDATE TO authenticated
   WITH CHECK (is_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
 CREATE POLICY owner_deletes ON line_groups FOR DELETE TO authenticated
   USING (is_owner() AND tenant_id = current_tenant_id() AND tenant_can_write());
-GRANT SELECT, UPDATE, DELETE ON line_groups TO authenticated;
+-- Column-level UPDATE only: the owner may change label/is_notify, never tenant_id or
+-- group_id. REVOKE first because default privileges give authenticated table-wide UPDATE.
+GRANT SELECT, DELETE ON line_groups TO authenticated;
+REVOKE UPDATE ON line_groups FROM authenticated;
+GRANT UPDATE (label, is_notify) ON line_groups TO authenticated;
 REVOKE ALL ON line_groups FROM anon;
 
 -- Tier caps (NULL = unlimited). Same pattern as 2026-08-29-14-package-seat-limits.sql.
@@ -37,7 +41,7 @@ UPDATE packages SET max_line_groups = NULL WHERE name = 'Enterprise';
 
 -- Existing linked groups become the notify group, so nothing changes for them.
 INSERT INTO line_groups (tenant_id, group_id, is_notify)
-SELECT tenant_id, crew_group_id, true FROM line_settings WHERE crew_group_id IS NOT NULL
+SELECT tenant_id, crew_group_id, true FROM line_settings WHERE crew_group_id IS NOT NULL AND crew_group_id <> ''
 ON CONFLICT (group_id) DO NOTHING;
 
 -- Server-side check for the webhook (no user JWT there).
