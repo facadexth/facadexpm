@@ -12,7 +12,7 @@ async function count(table) {
 
 async function lineConnected() {
   const [{ data: ls, error: e1 }, { count: roles, error: e2 }] = await Promise.all([
-    supabase.from('line_settings').select('crew_group_id').not('crew_group_id', 'is', null).limit(1),
+    supabase.from('line_groups').select('id').limit(1),
     supabase.from('user_roles').select('user_email', { count: 'exact', head: true }).not('line_user_id', 'is', null),
   ])
   if (e1) throw e1

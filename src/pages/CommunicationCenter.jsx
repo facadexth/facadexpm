@@ -9,6 +9,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { useLineGroups } from '../hooks/useLineGroups.js'
+import { planGroupRemoval } from '../lib/lineGroups.js'
 import { useAppSetting, saveAppSetting } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import {
@@ -47,7 +49,7 @@ function generateLinkCode() {
 
 export default function CommunicationCenter() {
   const { tenant } = useTenant()
-  const { user } = useUserRole()
+  const { user, isAtLeast } = useUserRole()
 
   // ---- My own LINE link (user_roles.line_link_code/line_user_id --
   // same columns+webhook handling the LINE feature already had for any
@@ -95,11 +97,54 @@ export default function CommunicationCenter() {
   const fetchLineSettings = async () => {
     if (!tenant?.id) return
     setLoadingSettings(true)
-    const { data, error } = await supabase.from('line_settings').select('tenant_id, crew_group_id, group_link_code').eq('tenant_id', tenant.id).maybeSingle()
+    const { data, error } = await supabase.from('line_settings').select('tenant_id, group_link_code').eq('tenant_id', tenant.id).maybeSingle()
     if (!error) setLineSettings(data)
     setLoadingSettings(false)
   }
   useEffect(() => { fetchLineSettings() }, [tenant?.id])
+
+  const { groups, limit, loading: loadingGroups, refetch: refetchGroups } = useLineGroups()
+  const isOwner = isAtLeast('OWNER')
+  const atCap = limit !== null && groups.length >= limit
+  const [groupBusy, setGroupBusy] = useState(false)
+  const [pendingRemoval, setPendingRemoval] = useState(null)
+
+  // Clear the old notify group first, then set the new one (partial unique index).
+  const handleSetNotify = async (id) => {
+    setGroupBusy(true)
+    try {
+      const { error: e1 } = await supabase.from('line_groups').update({ is_notify: false }).eq('is_notify', true)
+      if (e1) throw e1
+      const { error: e2 } = await supabase.from('line_groups').update({ is_notify: true }).eq('id', id)
+      if (e2) throw e2
+      await refetchGroups()
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setGroupBusy(false)
+    }
+  }
+
+  const handleUnlink = async (id, newNotifyId) => {
+    const plan = planGroupRemoval(groups, id, newNotifyId)
+    if (!plan.ok) { setPendingRemoval({ id, newNotifyId: '' }); return }
+    if (!newNotifyId && !window.confirm('ยกเลิกการเชื่อมกลุ่มนี้?')) return
+    setGroupBusy(true)
+    try {
+      const { error } = await supabase.from('line_groups').delete().eq('id', id)
+      if (error) throw error
+      if (plan.setNotifyId) {
+        const { error: e2 } = await supabase.from('line_groups').update({ is_notify: true }).eq('id', plan.setNotifyId)
+        if (e2) throw e2
+      }
+      setPendingRemoval(null)
+      await refetchGroups()
+    } catch (e) {
+      alert('Error: ' + e.message)
+    } finally {
+      setGroupBusy(false)
+    }
+  }
 
   const [groupClaimCode, setGroupClaimCode] = useState(null)
   const [generatingGroupCode, setGeneratingGroupCode] = useState(false)
@@ -511,7 +556,7 @@ export default function CommunicationCenter() {
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ padding: 16, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
           <div style={{ fontWeight: 700 }}>📡 การเชื่อมต่อ LINE Official Account</div>
-          {!loadingSettings && statusBadge(!!lineSettings?.crew_group_id, '✅ เชื่อมต่อแล้ว', '❌ ยังไม่เชื่อมต่อ')}
+          {!loadingSettings && statusBadge(groups.length > 0, '✅ เชื่อมต่อแล้ว', '❌ ยังไม่เชื่อมต่อ')}
         </div>
         {loadingSettings ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
@@ -528,14 +573,48 @@ export default function CommunicationCenter() {
             <div style={{ padding: '0 16px 16px' }}>
               <div style={{ marginTop: 14 }}>
                 <label className="label">กลุ่มทีมงาน</label>
-                {lineSettings?.crew_group_id ? (
-                  <div style={{ fontSize: 12.5, color: 'var(--green)' }}>✅ ตั้งค่าแล้ว</div>
-                ) : (
-                  <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>ยังไม่ได้ตั้งค่า</div>
+                <div style={{ fontSize: 12.5, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span>ใช้ไปแล้ว {groups.length} จาก {limit ?? 'ไม่จำกัด'} กลุ่ม</span>
+                  <button type="button" className="btn btn-ghost btn-sm" disabled={loadingGroups} onClick={refetchGroups}>🔄 รีเฟรช</button>
+                </div>
+                {groups.length === 0 && (
+                  <div style={{ fontSize: 12.5, color: 'var(--text3)', marginTop: 6 }}>ยังไม่ได้เชื่อมกลุ่ม</div>
                 )}
-                <button type="button" className="btn btn-ghost btn-sm" disabled={generatingGroupCode} onClick={handleGenerateGroupCode} style={{ marginTop: 6 }}>
-                  {generatingGroupCode ? '⏳...' : lineSettings?.crew_group_id ? '🔄 เปลี่ยนกลุ่มทีมงาน' : '➕ เพิ่มกลุ่มทีมงาน'}
+                {groups.map(g => (
+                  <div key={g.id} style={{ marginTop: 8, padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 600 }}>{g.label || 'กลุ่ม LINE'}</span>
+                      {g.is_notify && <span style={{ fontSize: 11, color: 'var(--green)' }}>กลุ่มแจ้งงาน</span>}
+                      {isOwner && (
+                        <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {!g.is_notify && (
+                            <button type="button" className="btn btn-ghost btn-sm" disabled={groupBusy} onClick={() => handleSetNotify(g.id)}>ตั้งเป็นกลุ่มแจ้งงาน</button>
+                          )}
+                          <button type="button" className="btn btn-ghost btn-sm" disabled={groupBusy} onClick={() => handleUnlink(g.id)}>ยกเลิกการเชื่อม</button>
+                        </span>
+                      )}
+                    </div>
+                    {pendingRemoval?.id === g.id && (
+                      <div style={{ marginTop: 8, fontSize: 12.5 }}>
+                        <div>นี่คือกลุ่มแจ้งงาน เลือกกลุ่มแจ้งงานใหม่ก่อนยกเลิก:</div>
+                        <select className="input" value={pendingRemoval.newNotifyId} onChange={e => setPendingRemoval({ id: g.id, newNotifyId: e.target.value })} style={{ marginTop: 4 }}>
+                          <option value="">-- เลือกกลุ่ม --</option>
+                          {groups.filter(o => o.id !== g.id).map(o => <option key={o.id} value={o.id}>{o.label || 'กลุ่ม LINE'}</option>)}
+                        </select>
+                        <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
+                          <button type="button" className="btn btn-ghost btn-sm" disabled={groupBusy || !pendingRemoval.newNotifyId} onClick={() => handleUnlink(g.id, pendingRemoval.newNotifyId)}>ยืนยันยกเลิกการเชื่อม</button>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPendingRemoval(null)}>ไม่ยกเลิก</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <button type="button" className="btn btn-ghost btn-sm" disabled={generatingGroupCode || atCap} onClick={handleGenerateGroupCode} style={{ marginTop: 8 }}>
+                  {atCap ? 'ครบจำนวนแล้ว' : generatingGroupCode ? '⏳...' : '➕ เพิ่มกลุ่ม'}
                 </button>
+                {atCap && (
+                  <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>ยกเลิกการเชื่อมกลุ่มเดิมก่อน หรืออัปเกรดแพ็กเกจเพื่อเพิ่มกลุ่ม</div>
+                )}
                 {groupClaimCode && (
                   <div style={{ fontSize: 12, marginTop: 8, padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 8 }}>
                     เพิ่มบอทเข้ากลุ่มของคุณ แล้วพิมพ์รหัสนี้ในกลุ่ม:
