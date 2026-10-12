@@ -50,6 +50,22 @@ export async function verifyLineSignature(channelSecret: string, rawBody: string
   return timingSafeEqual(expected, signatureHeader)
 }
 
+// Best-effort group name via LINE's group summary API. Returns null on ANY
+// failure (non-200, timeout, bot not in group) -- callers must never block on it.
+export async function fetchLineGroupName(accessToken: string, groupId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`https://api.line.me/v2/bot/group/${encodeURIComponent(groupId)}/summary`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(3000),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return typeof data.groupName === 'string' && data.groupName.trim() ? data.groupName.trim() : null
+  } catch {
+    return null
+  }
+}
+
 // quickReplyItems works exactly as in sendLineReply: tappable chips under the
 // message, each sending `text` back as if the user typed it.
 export async function sendLinePush(

@@ -103,7 +103,7 @@
 // recognized -- not dependent on ever having posted in the crew group,
 // since group membership is unreliable: people come and go).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { verifyLineSignature, sendLineReply, sendLinePush, LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET } from '../_shared/line.ts'
+import { verifyLineSignature, sendLineReply, sendLinePush, fetchLineGroupName, LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET } from '../_shared/line.ts'
 import { withPushBudget } from '../_shared/push-budget.ts'
 import { todayMenuOptions } from '../_shared/today-menu.ts'
 import { CANCEL_PHRASE, CANCEL_CHIP, CANCEL_REPLY, isCancel } from '../_shared/cancel.ts'
@@ -1297,7 +1297,8 @@ Deno.serve(async (req) => {
             continue
           }
           if (decision.action === 'insert') {
-            const { error: insertError } = await admin.from('line_groups').insert({ tenant_id: claimantTenantId, group_id: sourceGroupId, is_notify: decision.isNotify })
+            const groupName = await fetchLineGroupName(LINE_CHANNEL_ACCESS_TOKEN, sourceGroupId) // null on any failure; never blocks the claim
+            const { error: insertError } = await admin.from('line_groups').insert({ tenant_id: claimantTenantId, group_id: sourceGroupId, is_notify: decision.isNotify, label: groupName })
             if (insertError) {
               logSafeError('line_groups group claim failed', insertError)
               await sendLineReply(LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, '⚠️ ตั้งกลุ่มไม่สำเร็จ กรุณาลองใหม่หรือแจ้งแอดมิน')
