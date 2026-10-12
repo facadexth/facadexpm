@@ -1206,10 +1206,6 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       items.push({ label: po.tax_invoice_mode === 'delivery' ? '🧾 เปลี่ยนเป็นใบกำกับต่อใบสั่งซื้อ' : '🧾 เปลี่ยนเป็นใบกำกับต่อการส่งของ',
         disabled: !!modeLock, disabledTitle: modeLock || undefined, onClick: () => setModeRow(po) })
     }
-    items.push({ label: '👁️ ดูตัวอย่างก่อนพิมพ์', onClick: () => setDocRow({ po, action: null }) })
-    items.push({ label: '🖨️ พิมพ์', onClick: () => setDocRow({ po, action: 'print' }) })
-    items.push({ label: '📄 ดาวน์โหลด PDF', onClick: () => setDocRow({ po, action: 'pdf' }) })
-    items.push({ label: '🖼️ ดาวน์โหลด JPEG', onClick: () => setDocRow({ po, action: 'jpg' }) })
     if (canEdit && po.status === 'received') {
       if (po.expense_id && !taxInvoiceLinks?.get(po.id) && po.tax_invoice_mode !== 'delivery') {
         // A PO with several bills (several receipts, or a bill split by จ่ายบางส่วน) has no single bill to swap the tax invoice on.
