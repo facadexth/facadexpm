@@ -55,7 +55,8 @@ packages.max_line_groups INT   -- NULL = ไม่จำกัด ต่าง�
 
 ## 7. ลำดับ rollout (ปลอดภัยต่อ tenant ที่ใช้งานจริง)
 1. Migration เพิ่มตารางใหม่ + backfill กลุ่มเดิม (ถามเจ้าของก่อน apply, ทดสอบกับ tenant ทดสอบ)
-2. Deploy edge functions ที่อ่านจาก line_groups โดย fallback ไป crew_group_id ถ้าตารางว่าง
+2. Deploy edge functions ที่อ่านจาก line_groups (ไม่มี fallback ไป crew_group_id)
+   - หมายเหตุ: ไอเดีย "fallback ไป crew_group_id" ถูกตัดทิ้งโดยตั้งใจ แล้วใช้ลำดับ deploy ที่เข้มงวด + backfill + query กระทบยอด (reconciliation) หลัง deploy แทน เพราะ fallback จะทำให้มีแหล่งข้อมูลความจริงสองที่ (crew_group_id กับ line_groups) ที่อาจไม่ตรงกัน
 3. Deploy UI ทีม + Assign
 4. ตรวจ ACL ของฟังก์ชัน/ตารางใหม่ (anon ต้องไม่เรียกได้) ตามบทเรียนหลัง restore
 5. ในรอบถัดไปค่อยพิจารณา drop crew_group_id
