@@ -1,10 +1,28 @@
 // Compiles the part-editor model (see partModel.js) into the flat component rows bomEngine already understands.
 // Pure: no I/O. buttOf(family) / widthOf(family) return mm or null.
+// Length per row = (base − pre + overlap) × factor − endDed, where
+//   pre     = AUTO[rule.auto] (line.deduction_auto) else line.length_deduction_mm  (width_minus / height_minus only)
+//   overlap = overlap unit × rule.overlapCount, for positions with rule.overlap 'hook'
+//   endDed  = sum of the butt ends' deductions (0 for every end of a part whose corner is 'mitre').
+// Positions read by rule.auto / rule.overlap go through the layout's roles (layoutRegistry.rolesOf).
 import { LAYOUTS, pieceCount, validateCorners } from './partModel.js'
+import { exprParams, rolesOf } from './layoutRegistry.js'
+import { evalExpr } from './layoutExpr.js'
 
 const r6 = (x) => Math.round(x * 1e6) / 1e6
 const DEDUCTING_RULES = new Set(['width_minus', 'height_minus'])
-const SASH_RAILS = new Set(['sash_top', 'sash_bottom'])
+
+// rule.auto -> { frame, grid }: `frame` = butt distances of the frame members the piece sits between,
+// `grid` = { label, n, role } intermediate bars (n × width of role line 0) for grid layouts.
+// b(role) = butt distance of the role's line 0 (0 when the layout/model has no such position, R-P3); p(name) = param.
+const AUTO = {
+  frame_sides: ({ b }) => ({ frame: 2 * b('frame_side'), grid: null }),
+  sides_only: ({ b }) => ({ frame: 2 * b('frame_side'), grid: null }),
+  frame_top_bottom: ({ b }) => ({ frame: b('frame_top') + b('frame_bottom'), grid: null }),
+  frame_top: ({ b }) => ({ frame: b('frame_top'), grid: null }),
+  grid_cols: ({ b, p }) => ({ frame: 2 * b('frame_side'), grid: { label: 'cols', n: p('cols') - 1, role: 'mullion' } }),
+  grid_rows: ({ b, p }) => ({ frame: b('frame_top') + b('frame_bottom'), grid: { label: 'rows', n: p('rows') - 1, role: 'transom' } }),
+}
 
 function validModel(model) {
   return !!(model && typeof model === 'object' && LAYOUTS[model.layout_kind] && model.lines && typeof model.lines === 'object' && Array.isArray(model.parts))
@@ -12,6 +30,8 @@ function validModel(model) {
 
 function makeCtx({ model, buttOf, widthOf }) {
   const layout = LAYOUTS[model.layout_kind]
+  const roles = rolesOf(layout)
+  const params = exprParams(model)
   const issues = []
   const seen = new Set()
   const posName = (key) => model.names?.[key] || layout.positions[key]?.name || key
@@ -22,39 +42,62 @@ function makeCtx({ model, buttOf, widthOf }) {
     issues.push({ role_name, reason })
   }
   const famOf = (key, line) => model.lines[key]?.[line]?.profile_family || ''
-  const butt = (fam) => {
-    const v = fam ? buttOf(fam) : null
-    return v == null || !Number.isFinite(Number(v)) ? null : Number(v)
-  }
+  const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v))
+  const butt = (fam) => (fam ? num(buttOf(fam)) : null)
+  const width = (fam) => (fam ? num(widthOf?.(fam)) : null)
+  const layoutPart = (key) => layout.parts.find((p) => p.key === layout.positions[key]?.part) || {}
   const partOf = (key) => model.parts.find((p) => p.key === layout.positions[key]?.part) || {}
+  const ruleOf = (key) => layout.positions[key]?.rule || {}
+  const isMitre = (key) => layoutPart(key).corner === 'mitre'
+  const present = (k) => !!(layout.positions[k] && model.lines[k]?.length)
 
-  // Automatic pre-factor deduction; null when the position has none. `onMissing` is called for an unresolved lookup.
-  function autoDed(key, onMissing) {
-    const get = (k) => {
-      const v = butt(famOf(k, 0))
-      if (v == null) { onMissing(); return 0 }
+  // Automatic deduction split into its parts; null when the position has none. `onMissing(reason)` is called for an
+  // unresolved lookup (no_butt_distance / no_profile_width), which then counts 0.
+  function autoParts(key, onMissing) {
+    const fn = Object.prototype.hasOwnProperty.call(AUTO, ruleOf(key).auto) ? AUTO[ruleOf(key).auto] : null
+    if (!fn) return null
+    const lookup = (role, read, reason) => {
+      const k = roles[role]
+      if (!present(k)) return 0
+      const v = read(famOf(k, 0))
+      if (v == null) { onMissing(reason); return 0 }
       return v
     }
-    if (SASH_RAILS.has(key)) return 2 * get('frame_side')
-    if (key === 'key_stile' || key === 'hook_stile') return get('frame_top') + get('frame_bottom')
-    return null
+    const b = (role) => lookup(role, butt, 'no_butt_distance')
+    const p = (name) => (Number.isFinite(params[name]) ? params[name] : 1)
+    const { frame, grid } = fn({ b, p })
+    if (!grid) return { frame, grid: null }
+    const n = Math.max(0, grid.n)
+    return { frame, grid: { label: grid.label, n, w: n > 0 ? lookup(grid.role, width, 'no_profile_width') : 0 } }
   }
 
-  function overlap(key, line) {
-    if (!SASH_RAILS.has(key) || line.length_rule_type !== 'width_minus') return 0
+  function autoDed(key, onMissing) {
+    const a = autoParts(key, onMissing)
+    return a ? a.frame + (a.grid ? a.grid.n * a.grid.w : 0) : null
+  }
+
+  // One overlap of the part (auto = hook stile butt distance, else its width; manual = overlap_mm).
+  function overlapUnit(key) {
     const part = partOf(key)
     if (part.overlap_mode === 'auto_hook') {
-      const fam = famOf('hook_stile', 0)
-      return butt(fam) ?? (fam ? widthOf?.(fam) : null) ?? 0
+      const fam = famOf(roles.hook, 0)
+      return butt(fam) ?? width(fam) ?? 0
     }
     return Number(part.overlap_mm) || 0
+  }
+
+  // Overlap added back before the factor: unit × rule.overlapCount (default 1).
+  function overlap(key, line) {
+    const rule = ruleOf(key)
+    if (rule.overlap !== 'hook' || line.length_rule_type !== 'width_minus') return 0
+    return r6(overlapUnit(key) * evalExpr(rule.overlapCount ?? 1, params))
   }
 
   // Deduction before the factor, before overlap.
   function preDed(key, line, onMissing) {
     if (!DEDUCTING_RULES.has(line.length_rule_type)) return 0
     const a = line.deduction_auto ? autoDed(key, onMissing) : null
-    return a != null ? a : Number(line.length_deduction_mm) || 0
+    return a != null ? r6(a) : Number(line.length_deduction_mm) || 0
   }
 
   // { mm, problem: null|'no_butt_target'|'no_butt_distance' }
@@ -73,7 +116,7 @@ function makeCtx({ model, buttOf, widthOf }) {
     return `ชิ้นที่ ${piece + 1}`
   }
 
-  return { layout, issues, issue, posName, autoDed, overlap, preDed, endDed, pieceLabel }
+  return { layout, roles, issues, issue, posName, autoParts, autoDed, overlapUnit, overlap, preDed, endDed, pieceLabel, isMitre }
 }
 
 export function expandParts({ model, buttOf, widthOf }) {
@@ -91,13 +134,14 @@ export function expandParts({ model, buttOf, widthOf }) {
     lines.forEach((line, li) => {
       if (!line.profile_family) { issue(name, 'no_profile_family'); return }
       const deducting = DEDUCTING_RULES.has(line.length_rule_type)
-      const lengthDed = deducting ? r6(ctx.preDed(key, line, () => issue(name, 'no_butt_distance')) - ctx.overlap(key, line)) : 0
+      const lengthDed = deducting ? r6(ctx.preDed(key, line, (reason) => issue(name, reason)) - ctx.overlap(key, line)) : 0
+      const mitre = ctx.isMitre(key)
 
       const groups = []
       for (let piece = 0; piece < n; piece++) {
         const pair = line.ends?.[piece] || []
         let sum = 0
-        for (const e of [0, 1]) {
+        for (const e of mitre ? [] : [0, 1]) {   // a mitred part's ends are cut 45°: no end deduction, stale ends ignored
           const d = ctx.endDed(pair[e])
           if (d.problem) issue(name, d.problem)
           sum += d.mm
@@ -121,7 +165,7 @@ export function expandParts({ model, buttOf, widthOf }) {
           quantity_value: (Number(line.quantity_value) || 0) * g.count,
           thickness_role: line.thickness_role ?? null,
           sort_order: components.length,
-          cut_style: 'square',
+          cut_style: mitre ? 'mitre' : 'square',
         })
       }
     })
@@ -142,10 +186,13 @@ export function lineDeductions({ model, buttOf, widthOf, key, lineIdx }) {
   return { pre: ctx.preDed(key, line, () => {}), hasAuto, overlap: ctx.overlap(key, line) }
 }
 
-// The overlap the sash part uses (auto = hook stile butt distance, else width; manual = overlap_mm). 0 for other parts.
+// One overlap of the sash part (auto = hook stile butt distance, else width; manual = overlap_mm), read from the first
+// position with rule.overlap 'hook' (before × overlapCount). 0 when the layout has none.
 export function sashOverlap({ model, buttOf, widthOf }) {
   if (!validModel(model)) return 0
-  return makeCtx({ model, buttOf, widthOf }).overlap('sash_top', { length_rule_type: 'width_minus' })
+  const ctx = makeCtx({ model, buttOf, widthOf })
+  const key = ctx.layout.order.find((k) => ctx.layout.positions[k]?.rule?.overlap === 'hook')
+  return key ? ctx.overlapUnit(key) : 0
 }
 
 // Default deduction of one end (override, else the butted profile's butt distance); { mm, problem }.
@@ -176,16 +223,23 @@ export function explainPiece({ model, buttOf, widthOf, key, lineIdx, piece, widt
   let cur = base
   if (DEDUCTING_RULES.has(rule)) {
     const d = ctx.preDed(key, line, () => {})
-    steps.push('− หักวงกบ/ระยะหัก ' + fmtMm(d))
+    const a = line.deduction_auto ? ctx.autoParts(key, () => {}) : null
+    if (a?.grid && a.grid.n > 0) {
+      steps.push('− หักวงกบ/ระยะหัก ' + fmtMm(a.frame))
+      steps.push(`− ซอยกลาง (${a.grid.label}−1) × กว้าง ${a.grid.n} × ${fmtMm(a.grid.w)}`)
+    } else {
+      steps.push('− หักวงกบ/ระยะหัก ' + fmtMm(d))
+    }
     cur -= d
     const o = ctx.overlap(key, line)
     if (o) { steps.push('+ ระยะซ้อนบาน ' + fmtMm(o)); cur += o }
   }
   const factor = line.length_factor ?? 1
-  if (factor !== 1) { steps = ['(' + steps.join(' ') + ') × ' + factor]; cur *= factor }
+  if (factor !== 1) { steps = ['(' + steps.join(' ') + ') × ' + r6(factor)]; cur *= factor }
   const lab = pos.orient === 'h' ? ['ซ้าย', 'ขวา'] : ['บน', 'ล่าง']
   const pair = line.ends?.[piece] || []
-  for (const e of [0, 1]) {
+  if (ctx.isMitre(key)) steps.push('(เข้ามุม 45°)')
+  for (const e of ctx.isMitre(key) ? [] : [0, 1]) {
     const end = pair[e]
     if (end?.mode === 'butt') {
       const d = ctx.endDed(end).mm

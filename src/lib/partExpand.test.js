@@ -253,3 +253,199 @@ describe('editor read-outs', () => {
     expect(endDeduction({ model: m, buttOf, widthOf, end: m.lines.frame_top[0].ends[0][0] })).toEqual({ mm: 38.1, problem: null })
   })
 })
+
+// ---------------------------------------------------------------- Task 3: grids, tees, mitres, multi-sash overlap
+import { registerLayoutForTest } from './layoutRegistry.js'
+import { startModel as start3, setParams, validateCorners } from './partModel.js'
+
+const fillAll = (m, fam = 'F') => { for (const lines of Object.values(m.lines)) for (const l of lines) l.profile_family = fam; return m }
+const FRAME_JOINTS = [
+  { h: 'frame_top', v: ['frame_side', 'frame_side'], vPiece: 'byEnd', vEnd: 0, through: 'v', mode: 'butt' },
+  { h: 'frame_bottom', v: ['frame_side', 'frame_side'], vPiece: 'byEnd', vEnd: 1, through: 'v', mode: 'butt' },
+]
+const FRAME_POS = {
+  frame_top: { part: 'frame', orient: 'h', per: 1, name: 'เฟรมบน', rule: { type: 'width' } },
+  frame_bottom: { part: 'frame', orient: 'h', per: 1, name: 'เฟรมล่าง', rule: { type: 'width' } },
+  frame_side: { part: 'frame', orient: 'v', per: 2, name: 'เฟรมข้าง', labels: ['ซ้าย', 'ขวา'], rule: { type: 'height' } },
+}
+const FRAME_PART = { key: 'frame', name: 'วงกบ', count: 1, overlap_mode: 'manual', overlap_mm: 0, corner: 'butt', track: null }
+
+registerLayoutForTest({
+  kind: 't3_grid',
+  inputs: [{ key: 'rows', label: 'แถว', default: 2 }, { key: 'cols', label: 'คอลัมน์', default: 3 }],
+  parts: [FRAME_PART],
+  positions: {
+    ...FRAME_POS,
+    mullion: { part: 'frame', orient: 'v', per: 'cols-1', name: 'ซอยตั้ง', rule: { type: 'height_minus', auto: 'frame_top_bottom' } },
+    transom: { part: 'frame', orient: 'h', per: '(rows-1)*cols', name: 'ซอยนอน', rule: { type: 'width_minus', auto: 'grid_cols', factor: '1/cols' } },
+  },
+  joints: [...FRAME_JOINTS, { h: 'transom', v: ['mullion', 'mullion'], mode: 'tee', through: 'v' }],
+  order: ['frame_top', 'frame_bottom', 'frame_side', 'mullion', 'transom'],
+})
+
+describe('expandParts — grid (rows 2, cols 3) at 1800 × 1200', () => {
+  const b45 = () => 45, w60 = () => 60
+  const grid = () => fillAll(start3('t3_grid', { rows: 2, cols: 3 }))
+
+  it('mullion: height_minus 90, 2 pieces, 1110; transom: width_minus 210 × 1/3, 3 pieces, 530', () => {
+    const { components, issues } = expandParts({ model: grid(), buttOf: b45, widthOf: w60 })
+    expect(issues).toEqual([])
+    const mul = components.find((c) => c.role_name === 'ซอยตั้ง')
+    expect(mul.length_rule_type).toBe('height_minus')
+    expect(mul.length_deduction_mm).toBe(90)
+    expect(mul.length_factor).toBe(1)
+    expect(mul.end_deduction_mm).toBe(0)
+    expect(mul.quantity_value).toBe(2)
+    expect(computeComponentLength(mul.length_rule_type, mul.length_deduction_mm, 1.8, 1.2, mul.length_factor, mul.end_deduction_mm)).toBeCloseTo(1.11, 9)
+    const tr = components.find((c) => c.role_name === 'ซอยนอน')
+    expect(tr.length_rule_type).toBe('width_minus')
+    expect(tr.length_deduction_mm).toBe(210)
+    expect(tr.length_factor).toBeCloseTo(1 / 3, 12)
+    expect(tr.end_deduction_mm).toBe(0)
+    expect(tr.quantity_value).toBe(3)   // per '(rows-1)*cols' = 1 × 3 (the brief's "6 pieces" does not match its own per)
+    expect(computeComponentLength(tr.length_rule_type, tr.length_deduction_mm, 1.8, 1.2, tr.length_factor, tr.end_deduction_mm)).toBeCloseTo(0.53, 9)
+  })
+
+  it('tee: the mullion runs through both ends, no corner validation on the tee', () => {
+    const m = grid()
+    for (const pair of m.lines.mullion[0].ends) expect(pair.map((e) => e.mode)).toEqual(['through', 'through'])
+    expect(validateCorners(m)).toEqual([])
+  })
+
+  it('a tee end set to butt deducts the vertical profile butt distance', () => {
+    const m = grid()
+    m.lines.transom[0].ends[0][0] = { mode: 'butt', to: { key: 'mullion', line: 0 }, deduction_mm: null }
+    const { components, issues } = expandParts({ model: m, buttOf: b45, widthOf: w60 })
+    expect(issues).toEqual([])
+    expect(components.filter((c) => c.role_name.startsWith('ซอยนอน')).map((c) => c.end_deduction_mm)).toEqual([45, 0])
+  })
+
+  it('missing mullion width → no_profile_width, the grid term counts 0', () => {
+    const { components, issues } = expandParts({ model: grid(), buttOf: b45, widthOf: () => null })
+    expect(issues).toContainEqual({ role_name: 'ซอยนอน', reason: 'no_profile_width' })
+    expect(components.find((c) => c.role_name === 'ซอยนอน').length_deduction_mm).toBe(90)
+  })
+
+  it('lineDeductions and explainPiece on a grid line', () => {
+    const m = grid()
+    expect(lineDeductions({ model: m, buttOf: b45, widthOf: w60, key: 'transom', lineIdx: 0 })).toEqual({ pre: 210, hasAuto: true, overlap: 0 })
+    const s = explainPiece({ model: m, buttOf: b45, widthOf: w60, key: 'transom', lineIdx: 0, piece: 0, widthMm: 1800, heightMm: 1200 })
+    expect(s).toBe('(กว้าง 1,800.0 − หักวงกบ/ระยะหัก 90.0 − ซอยกลาง (cols−1) × กว้าง 2 × 60.0) × 0.333333 ปลายซ้าย วิ่งสุด ปลายขวา วิ่งสุด = 530.0 มม.')
+  })
+})
+
+registerLayoutForTest({
+  kind: 't3_mitre',
+  parts: [FRAME_PART, { key: 'sash', name: 'บาน', count: 1, overlap_mode: 'manual', overlap_mm: 0, corner: 'mitre', track: null }],
+  positions: {
+    ...FRAME_POS,
+    sash_top: { part: 'sash', orient: 'h', per: 1, name: 'บานบน', rule: { type: 'width_minus', auto: 'frame_sides', role: 'sash' } },
+    sash_bottom: { part: 'sash', orient: 'h', per: 1, name: 'บานล่าง', rule: { type: 'width_minus', auto: 'frame_sides', role: 'sash' } },
+    sash_left: { part: 'sash', orient: 'v', per: 1, name: 'บานซ้าย', rule: { type: 'height_minus', auto: 'frame_top_bottom', role: 'sash' } },
+    sash_right: { part: 'sash', orient: 'v', per: 1, name: 'บานขวา', rule: { type: 'height_minus', auto: 'frame_top_bottom', role: 'sash' } },
+  },
+  joints: [
+    ...FRAME_JOINTS,
+    { h: 'sash_top', v: ['sash_left', 'sash_right'], vPiece: 'same', vEnd: 0, through: 'v', mode: 'butt' },
+    { h: 'sash_bottom', v: ['sash_left', 'sash_right'], vPiece: 'same', vEnd: 1, through: 'v', mode: 'butt' },
+  ],
+  order: ['frame_top', 'frame_bottom', 'frame_side', 'sash_top', 'sash_bottom', 'sash_left', 'sash_right'],
+})
+
+describe('expandParts — mitred sash part', () => {
+  it('stale butt ends still give end_deduction_mm 0, cut_style mitre, no corner_violation', () => {
+    const m = fillAll(start3('t3_mitre'))
+    for (const k of ['sash_top', 'sash_bottom', 'sash_left', 'sash_right']) {
+      for (const pair of m.lines[k][0].ends) for (const e of [0, 1]) pair[e] = { mode: 'butt', to: null, deduction_mm: null }
+    }
+    expect(validateCorners(m)).toEqual([])
+    const { components, issues } = expandParts({ model: m, buttOf: () => 45, widthOf: () => 60 })
+    expect(issues).toEqual([])
+    for (const name of ['บานบน', 'บานล่าง', 'บานซ้าย', 'บานขวา']) {
+      const c = components.find((x) => x.role_name === name)
+      expect(c.end_deduction_mm).toBe(0)
+      expect(c.cut_style).toBe('mitre')
+      expect(c.length_deduction_mm).toBe(90)
+    }
+    expect(components.find((x) => x.role_name === 'เฟรมบน').cut_style).toBe('square')
+    const s = explainPiece({ model: m, buttOf: () => 45, widthOf: () => 60, key: 'sash_top', lineIdx: 0, piece: 0, widthMm: 1800, heightMm: 1200 })
+    expect(s).toBe('กว้าง 1,800.0 − หักวงกบ/ระยะหัก 90.0 (เข้ามุม 45°) = 1,710.0 มม.')
+  })
+})
+
+registerLayoutForTest({
+  kind: 't3_multi',
+  inputs: [{ key: 'n', label: 'จำนวนบาน', default: 3 }],
+  roles: { frame_side: 'jamb', hook: 'interlock' },
+  parts: [FRAME_PART, { key: 'sash', name: 'บานเลื่อน', count: 'n', overlap_mode: 'auto_hook', overlap_mm: 0, corner: 'butt', track: 'each' }],
+  positions: {
+    jamb: { part: 'frame', orient: 'v', per: 2, name: 'วงกบข้าง', rule: { type: 'height' } },
+    rail: { part: 'sash', orient: 'h', per: 1, name: 'บานเลื่อนบน', rule: { type: 'width_minus', auto: 'frame_sides', factor: '1/n', overlap: 'hook', overlapCount: 'n-1' } },
+    interlock: { part: 'sash', orient: 'v', per: 1, name: 'เสาเกี่ยว', rule: { type: 'height' } },
+  },
+  order: ['jamb', 'rail', 'interlock'],
+})
+
+describe('expandParts — multi-sash overlap and roles', () => {
+  it("overlapCount 'n-1' with n = 3 and ov 40 adds 80 before the factor 1/3", () => {
+    const m = start3('t3_multi')
+    m.lines.jamb[0].profile_family = 'J'
+    m.lines.rail[0].profile_family = 'R'
+    m.lines.interlock[0].profile_family = 'I'
+    const buttOf3 = (f) => ({ J: 30, I: 40 })[f] ?? null
+    const { components, issues } = expandParts({ model: m, buttOf: buttOf3, widthOf: () => null })
+    expect(issues).toEqual([])
+    const c = components.find((x) => x.role_name === 'บานเลื่อนบน')
+    expect(c.length_deduction_mm).toBe(-20)   // 2·30 − 2·40
+    expect(c.length_factor).toBeCloseTo(1 / 3, 12)
+    expect(c.quantity_value).toBe(3)
+    expect(computeComponentLength(c.length_rule_type, c.length_deduction_mm, 1.8, 1.2, c.length_factor, c.end_deduction_mm)).toBeCloseTo(1.82 / 3, 9)
+    expect(sashOverlap({ model: m, buttOf: buttOf3, widthOf })).toBe(40)
+    expect(lineDeductions({ model: m, buttOf: buttOf3, widthOf, key: 'rail', lineIdx: 0 })).toEqual({ pre: 60, hasAuto: true, overlap: 80 })
+  })
+})
+
+registerLayoutForTest({
+  kind: 't3_door',
+  parts: [FRAME_PART, { key: 'leaf', name: 'บาน', count: 1, overlap_mode: 'manual', overlap_mm: 0, corner: 'butt', track: null }],
+  positions: {
+    frame_top: FRAME_POS.frame_top,
+    frame_side: FRAME_POS.frame_side,
+    stile_a: { part: 'leaf', orient: 'v', per: 2, name: 'เสาบาน', rule: { type: 'height_minus', auto: 'frame_top_bottom' } },
+    stile_b: { part: 'leaf', orient: 'v', per: 2, name: 'เสาบานบน', rule: { type: 'height_minus', auto: 'frame_top' } },
+    rail_a: { part: 'leaf', orient: 'h', per: 1, name: 'บานบน', rule: { type: 'sash_width', auto: 'sides_only', factor: 0.5 } },
+    rail_b: { part: 'leaf', orient: 'h', per: 1, name: 'บานกลาง', rule: { type: 'sash_height', auto: 'frame_top', factor: '1/cols' } },
+  },
+  inputs: [{ key: 'cols', label: 'คอลัมน์', default: 2 }],
+  joints: [FRAME_JOINTS[0]],
+  order: ['frame_top', 'frame_side', 'stile_a', 'stile_b', 'rail_a', 'rail_b'],
+})
+
+describe('expandParts — sill-less door, sash references, param-driven factors', () => {
+  const door = () => fillAll(start3('t3_door'))
+
+  it('R-P3: frame_top_bottom with no frame_bottom position sums frame_top only (no issue)', () => {
+    const { components, issues } = expandParts({ model: door(), buttOf: () => 45, widthOf: () => null })
+    expect(issues).toEqual([])
+    expect(components.find((c) => c.role_name === 'เสาบาน').length_deduction_mm).toBe(45)
+    expect(components.find((c) => c.role_name === 'เสาบานบน').length_deduction_mm).toBe(45)
+    expect(components.find((c) => c.role_name === 'บานบน').length_deduction_mm).toBe(90)
+  })
+
+  it('sash_width / sash_height compile to width_minus / height_minus with the rule auto and factor', () => {
+    const m = door()
+    expect(m.lines.rail_a[0]).toMatchObject({ length_rule_type: 'width_minus', deduction_auto: true, length_factor: 0.5 })
+    expect(m.lines.rail_b[0]).toMatchObject({ length_rule_type: 'height_minus', deduction_auto: true, length_factor: 0.5 })
+  })
+
+  it('R-P7: setParams re-derives line 0 of expression factors; literal factors and extra lines stay', () => {
+    let m = door()
+    m = addLine(m, 'rail_b')
+    m.lines.rail_b[1].length_factor = 0.7
+    const next = setParams(m, { cols: 4 })
+    expect(next.lines.rail_b[0].length_factor).toBe(0.25)
+    expect(next.lines.rail_b[1].length_factor).toBe(0.7)
+    expect(next.lines.rail_a[0].length_factor).toBe(0.5)
+    expect(m.lines.rail_b[0].length_factor).toBe(0.5)   // input untouched
+  })
+})

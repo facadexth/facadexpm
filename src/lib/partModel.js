@@ -14,7 +14,13 @@
 // }
 // Every layout rule (positions, piece counts, line defaults, corners) comes from the layout definition
 // (src/lib/layouts/<kind>.js via layoutRegistry.js); nothing here is specific to one layout.
-// Corner rule: at every corner exactly one piece runs through and the other butts.
+// Corner rule: at every corner exactly one piece runs through and the other butts. Not checked for a part whose corner
+// is 'mitre' (its ends are cut 45°, partExpand ignores their stored modes) nor at 'mitre' / 'tee' joints.
+// Tee joint (a transom meeting a mullion's side): the vertical runs through; the horizontal's ends default to through
+// because the grid rule.auto (grid_cols / grid_rows) already deducts the bars it meets; set to butt it deducts b(vertical).
+// rule.type 'sash_width' / 'sash_height' are editor vocabulary: defaultLine stores them as width_minus / height_minus.
+// Expression factors (rule.factor a string) are re-derived on line 0 by setParams: an owner's edit of such a factor
+// is NOT preserved across a param change (literal factors and extra lines are left alone).
 // Line pairing rule: line i of a position pairs ONLY with line i of its corner partner position;
 // a partner without line i is free-standing (extra profiles like covers/trims): nothing is flipped, no validation.
 // A butt end with to:null is legal only when deduction_mm is set (partExpand reports no_butt_target otherwise).
@@ -76,18 +82,22 @@ function defaultEnd(model, key, end) {
   const j = hj || vJoint(model, key, end)?.joint
   if (!j) return END('through')
   if (j.mode === 'mitre') return END('mitre')
+  if (j.mode === 'tee') return END('through')
   const butts = hj ? j.through === 'v' : j.through === 'h'
   return butts ? END('butt', defaultTarget(model, key, end)) : END('through')
 }
 
 const defaultPair = (model, key) => [defaultEnd(model, key, 0), defaultEnd(model, key, 1)]
 
+// Sash references compile to the stored base types (bomEngine knows only width/height/width_minus/height_minus/perimeter).
+const RULE_TYPE_ALIAS = { sash_width: 'width_minus', sash_height: 'height_minus' }
+
 // Line 0 defaults of a position, from its rule.
 export function defaultLine(model, key) {
   const rule = posOf(model, key).rule || {}
   return {
     profile_family: rule.family ?? '',
-    length_rule_type: rule.type ?? 'width',
+    length_rule_type: RULE_TYPE_ALIAS[rule.type] ?? rule.type ?? 'width',
     length_deduction_mm: 0,
     deduction_auto: !!rule.auto,
     length_factor: evalExpr(rule.factor ?? 1, exprParams(model)),
@@ -131,20 +141,26 @@ export function startModel(kind, params = {}) {
   return ensureEnds(model)
 }
 
-// Layout inputs changed: merge them in and re-derive the per-piece ends (piece counts may follow params).
+// Layout inputs changed: merge them in, re-derive line 0's factor where rule.factor is an expression, and re-derive the
+// per-piece ends (piece counts may follow params).
 export function setParams(model, patch) {
   const next = clone(model)
   next.params = { ...(next.params || {}), ...clone(patch || {}) }
+  const p = exprParams(next)
+  for (const key of Object.keys(next.lines)) {
+    const factor = posOf(next, key)?.rule?.factor
+    if (typeof factor === 'string' && next.lines[key][0]) next.lines[key][0].length_factor = evalExpr(factor, p)
+  }
   return ensureEnds(next)
 }
 
 // The corner partner of one end of one piece (an exact involution), from the layout's joints.
 // Horizontal end e -> { key: v[e], piece: byEnd ? e : piece, end: vEnd }; a vertical end is the inverse search
-// (null on the vertical side of a tee joint). Legacy form partnerEnd(key, piece, end) resolves against sliding_2.
+// (null on both sides of a tee joint: no corner there). Legacy form partnerEnd(key, piece, end) resolves against sliding_2.
 export function partnerEnd(model, key, piece, end) {
   if (typeof model === 'string') return partnerEnd({ layout_kind: 'sliding_2' }, model, key, piece)
   const hj = hJoint(model, key)
-  if (hj) return hj.v[end] ? { key: hj.v[end], piece: hj.vPiece === 'byEnd' ? end : piece, end: hj.vEnd } : null
+  if (hj) return hj.v[end] && hj.mode !== 'tee' ? { key: hj.v[end], piece: hj.vPiece === 'byEnd' ? end : piece, end: hj.vEnd } : null
   const vj = vJoint(model, key, end, piece)
   if (!vj || vj.joint.mode === 'tee') return null
   return { key: vj.joint.h, piece: vj.joint.vPiece === 'byEnd' ? 0 : piece, end: vj.hEnd }
@@ -178,14 +194,21 @@ export function setEndMode(model, key, lineIdx, piece, end, mode) {
   return next
 }
 
+const mitredPart = (model, key) => {
+  const layout = layoutOfModel(model)
+  return layout.parts.find((p) => p.key === layout.positions[key]?.part)?.corner === 'mitre'
+}
+
 export function validateCorners(model) {
   const issues = []
   for (const key of Object.keys(model.lines)) {
+    if (mitredPart(model, key)) continue
     const n = pieceCount(model, key)
     model.lines[key].forEach((line, li) => {
       for (let piece = 0; piece < n; piece++) {
         for (const end of [0, 1]) {
-          const pt = partnerEnd(model, key, piece, end)
+          const pt = partnerEnd(model, key, piece, end)   // null at tee joints
+          if (pt && mitredPart(model, pt.key)) continue
           const pline = pt && model.lines[pt.key]?.[li]
           const a = line.ends[piece]?.[end]
           const b = pline?.ends[pt.piece]?.[pt.end]

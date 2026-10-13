@@ -7,6 +7,7 @@
 //   parts     [{ key, name, count, overlap_mode, overlap_mm, corner, track, fixed?, glass? }]
 //   positions { [positionKey]: { part, orient:'h'|'v', per, name, labels?, rule:{ type, auto?, factor?, overlap?, role?, family? } } }
 //   joints    [{ h, v:[leftKey, rightKey], vPiece:'byEnd'|'same', vEnd:0|1, through:'v'|'h', mode:'butt'|'mitre'|'tee' }]
+//   roles     optional { role: positionKey } overrides of DEFAULT_ROLES (the positions rule.auto / rule.overlap read)
 //   order     position keys in display order
 //   hardware  [{ name, per, qty }]
 //   symbol    drawing hints
@@ -66,6 +67,11 @@ export function exprParams(model) {
   }
   return out
 }
+
+// The position each automatic-deduction role reads (rule.auto / rule.overlap 'hook'); a layout may remap any of them
+// (e.g. curtain_wall: frame_side -> mullion_outer).
+export const DEFAULT_ROLES = Object.freeze({ frame_side: 'frame_side', frame_top: 'frame_top', frame_bottom: 'frame_bottom', mullion: 'mullion', transom: 'transom', hook: 'hook_stile' })
+export const rolesOf = (layout) => ({ ...DEFAULT_ROLES, ...((layout && layout.roles) || {}) })
 
 // Test-only: register a throwaway layout definition (e.g. a grid) under its kind.
 export function registerLayoutForTest(def) {
