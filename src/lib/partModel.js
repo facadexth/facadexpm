@@ -33,11 +33,17 @@ const layoutOfModel = (model) => LAYOUTS[model.layout_kind]
 const posOf = (model, key) => layoutOfModel(model).positions[key]
 const jointsOf = (model) => layoutOfModel(model)?.joints || []
 
+// Upper bound of pieces of one position per line (largest legitimate: (rows+1)·cols transoms = 9·12 = 108).
+export const MAX_PIECES_PER_LINE = 120
+
+const clampInt = (x, max) => (Number.isFinite(x) ? Math.min(max, Math.max(0, Math.round(x))) : 0)
+
+// Expression-driven, so clamped: never negative (cols: 0 -> 'cols-1' = -1), never above MAX_PIECES_PER_LINE.
 export function pieceCount(model, key) {
   const pos = posOf(model, key)
   const p = exprParams(model)
-  const count = model.parts.find((x) => x.key === pos.part)?.count ?? 1
-  return Math.round(evalExpr(pos.per, p) * evalExpr(count, p))
+  const count = clampInt(evalExpr(model.parts.find((x) => x.key === pos.part)?.count ?? 1, p), MAX_PART_COUNT)
+  return clampInt(evalExpr(pos.per, p) * count, MAX_PIECES_PER_LINE)
 }
 
 const END = (mode, to = null) => ({ mode, to, deduction_mm: null })
