@@ -18,9 +18,8 @@ const DEDUCTING_RULES = new Set(['width_minus', 'height_minus'])
 // A frame-only auto: the sum of `count × b(role)` terms.
 const bSum = (...terms) => ({ b }) => ({ frame: terms.reduce((sum, [role, n]) => sum + n * b(role), 0), grid: null })
 // A grid auto: `frame` terms plus (param − 1) intermediate bars of `role`, measured across `label` ('cols' | 'rows').
-const gridAuto = (frameFn, label, param, role) => (ctx) => ({ frame: frameFn(ctx).frame, grid: { label, n: ctx.p(param) - 1, role } })
-// Curtain wall: (param + 1) bars of `role`, measured by their width (not butt distance), across `label`.
-const cwAuto = (label, param, role) => ({ p }) => ({ frame: 0, grid: { label, n: p(param) + 1, role } })
+// `delta` = bars relative to the param: -1 (intermediate bars) by default, +1 for the curtain wall (bars incl. both ends).
+const gridAuto = (frameFn, label, param, role, delta = -1) => (ctx) => ({ frame: frameFn(ctx).frame, grid: { label, n: ctx.p(param) + delta, delta, role } })
 const SIDES = bSum(['frame_side', 2])
 const TOP_BOTTOM = bSum(['frame_top', 1], ['frame_bottom', 1])
 const AUTO = {
@@ -34,8 +33,8 @@ const AUTO = {
   track: bSum(['track', 1]),   // hanging_door: the track rail's butt distance, once
   track_top_bottom: bSum(['track_top', 1], ['track_bottom', 1]),
   track_sides: bSum(['track_side', 2]),
-  cw_cols: cwAuto('cols', 'cols', 'mullion'),   // curtain_wall: (cols+1)·w(mullion)
-  cw_rows: cwAuto('rows', 'rows', 'transom'),   // curtain_wall: (rows+1)·w(transom)
+  cw_cols: gridAuto(() => ({ frame: 0 }), 'cols', 'cols', 'mullion', 1),   // curtain_wall: (cols+1)·w(mullion)
+  cw_rows: gridAuto(() => ({ frame: 0 }), 'rows', 'rows', 'transom', 1),   // curtain_wall: (rows+1)·w(transom)
 }
 
 function validModel(model) {
@@ -82,7 +81,7 @@ function makeCtx({ model, buttOf, widthOf }) {
     const { frame, grid } = fn({ b, p })
     if (!grid) return { frame, grid: null }
     const n = Math.max(0, grid.n)
-    return { frame, grid: { label: grid.label, n, w: n > 0 ? lookup(grid.role, width, 'no_profile_width') : 0 } }
+    return { frame, grid: { label: grid.label, delta: grid.delta, n, w: n > 0 ? lookup(grid.role, width, 'no_profile_width') : 0 } }
   }
 
   function autoDed(key, onMissing) {
@@ -240,7 +239,7 @@ export function explainPiece({ model, buttOf, widthOf, key, lineIdx, piece, widt
     const a = line.deduction_auto ? ctx.autoParts(key, () => {}) : null
     if (a?.grid && a.grid.n > 0) {
       steps.push('− หักวงกบ/ระยะหัก ' + fmtMm(a.frame))
-      steps.push(`− ซอยกลาง (${a.grid.label}−1) × กว้าง ${a.grid.n} × ${fmtMm(a.grid.w)}`)
+      steps.push(`− ซอยกลาง (${a.grid.label}${a.grid.delta > 0 ? '+' : '−'}1) × กว้าง ${a.grid.n} × ${fmtMm(a.grid.w)}`)
     } else {
       steps.push('− หักวงกบ/ระยะหัก ' + fmtMm(d))
     }

@@ -512,3 +512,17 @@ describe('curtain_wall autos cw_cols / cw_rows (widths, not butt distances)', ()
     expect(lineDeductions({ model: m2, buttOf: () => 999, widthOf: w, key: 'sash_side', lineIdx: 0 }).pre).toBe(280)   // 4 × 70
   })
 })
+
+describe('explainPiece grid bar count wording', () => {
+  const fill = (m) => { for (const ls of Object.values(m.lines)) for (const l of ls) l.profile_family = 'F'; return m }
+  it('curtain_wall transom says (cols+1) with 5 bars x 65', () => {
+    const m = fill(startModel('curtain_wall', defaultParams('curtain_wall', { rows: 3, cols: 4 })))
+    const s = explainPiece({ model: m, buttOf: () => 0, widthOf: () => 65, key: 'transom', lineIdx: 0, piece: 0, widthMm: 3600, heightMm: 3000 })
+    expect(s).toContain('(cols+1) × กว้าง 5 × 65.0')
+  })
+  it('fixed_grid transom says (cols−1) with 2 bars x 60', () => {
+    const m = fill(startModel('fixed_grid', defaultParams('fixed_grid', { rows: 2, cols: 3 })))
+    const s = explainPiece({ model: m, buttOf: () => 45, widthOf: () => 60, key: 'transom', lineIdx: 0, piece: 0, widthMm: 1800, heightMm: 1200 })
+    expect(s).toContain('(cols−1) × กว้าง 2 × 60.0')
+  })
+})
