@@ -539,7 +539,7 @@ function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument, receip
           </div>
         )}
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, display: 'grid', gap: 8 }}>
-          <div><button type="button" className="btn btn-sm btn-ghost" onClick={() => onViewDocument(po)}>📄 ดู PO</button></div>
+          <div><button type="button" className="btn btn-sm btn-ghost" onClick={() => onViewDocument(po)}>📄 Preview</button></div>
           {tenantId && <AttachmentsSection table="purchase_order_attachments" bucket="po-attachments" foreignKey="po_id" entityId={po.id} tenantId={tenantId} />}
         </div>
       </div>
@@ -608,6 +608,7 @@ function PODocumentModal({ po, tenant, onClose, autoAction = null }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 18 }}>
             <thead>
               <tr>
+                <th style={{ textAlign: 'center', padding: '9px 4px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff', width: 30 }}>ที่</th>
                 <th style={{ textAlign: 'left', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>รายการ</th>
                 <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>จำนวน</th>
                 <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>ราคา/หน่วย</th>
@@ -615,8 +616,9 @@ function PODocumentModal({ po, tenant, onClose, autoAction = null }) {
               </tr>
             </thead>
             <tbody>
-              {items.map(it => (
+              {items.map((it, idx) => (
                 <tr key={it.id}>
+                  <td style={{ textAlign: 'center', padding: '9px 4px', borderBottom: '1px solid #eee', color: '#6a6f85' }}>{idx + 1}</td>
                   <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>
                     {it.description}
                     {it.aluminum_profiles?.name && (
@@ -1206,10 +1208,6 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       items.push({ label: po.tax_invoice_mode === 'delivery' ? '🧾 เปลี่ยนเป็นใบกำกับต่อใบสั่งซื้อ' : '🧾 เปลี่ยนเป็นใบกำกับต่อการส่งของ',
         disabled: !!modeLock, disabledTitle: modeLock || undefined, onClick: () => setModeRow(po) })
     }
-    items.push({ label: '👁️ ดูตัวอย่างก่อนพิมพ์', onClick: () => setDocRow({ po, action: null }) })
-    items.push({ label: '🖨️ พิมพ์', onClick: () => setDocRow({ po, action: 'print' }) })
-    items.push({ label: '📄 ดาวน์โหลด PDF', onClick: () => setDocRow({ po, action: 'pdf' }) })
-    items.push({ label: '🖼️ ดาวน์โหลด JPEG', onClick: () => setDocRow({ po, action: 'jpg' }) })
     if (canEdit && po.status === 'received') {
       if (po.expense_id && !taxInvoiceLinks?.get(po.id) && po.tax_invoice_mode !== 'delivery') {
         // A PO with several bills (several receipts, or a bill split by จ่ายบางส่วน) has no single bill to swap the tax invoice on.

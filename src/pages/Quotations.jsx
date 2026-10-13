@@ -30,6 +30,10 @@ import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import PendingMark from '../components/PendingMark.jsx'
 import { isQuotationExpiring } from '../lib/pendingRules.js'
 import UnitSelect from '../components/UnitSelect.jsx'
+import { resolveDocumentTemplate } from '../lib/documentTemplates.js'
+import { useDocumentTemplates } from '../hooks/useDocumentTemplates.js'
+import { quotationTheme } from '../components/documentLayouts/quotationTheme.js'
+import { ModernHeader, ModernFirstPageExtra, PremiumHeader, PremiumFirstPageExtra, BenefitStrip, ThanksLine, CompactHeader } from '../components/documentLayouts/TemplateBlocks.jsx'
 import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX, ScaleToFit } from '../hooks/usePaginatedDocument.jsx'
 import { resolveDocumentStyle } from '../lib/documentStyle.js'
 import { removeBlockOrClear } from '../lib/rowEditing.js'
@@ -677,7 +681,7 @@ function QuotationHeader({ tenant, tag, revisionSuffix, quotationNumber, date, v
 // Extracted so a past revision's snapshot can render through the exact
 // same markup as the live document, not a separate summary — the only
 // difference is which data feeds it and the doc-info tag.
-export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, pricingMode, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange, extraRemeasureKey }) {
+export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, pricingMode, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange, extraRemeasureKey, template }) {
   // item_description แนบเข้ากับ item ด้านบนแค่โดยตำแหน่ง ไม่มี FK จริง (ดู
   // comment ที่ EMPTY_ITEM_DESCRIPTION) -- ถ้าไม่มีคนพิมพ์อะไรลงไปเลย (เช่น
   // ตอน add จากรายการสินค้าที่ตัว catalog item เองไม่มี description) ไม่ควร
@@ -730,10 +734,32 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
   const materialLabor = isSplit ? sumMaterialLabor(printableItems) : null
   const mySignature = useMySignatureUrl()
   const { data: myWorkerName } = useMyWorkerName()
-  const style = resolveDocumentStyle(tenant?.document_style)
+  // `template` (a resolved template, see resolveDocumentTemplate) is only passed
+  // by previews today; without it the tenant's saved choice decides, and a
+  // tenant with no choice gets the classic layout exactly as before.
+  // published templates are only fetched for a tenant that actually chose one
+  const { templates: pubTemplates, packs: pubPacks } = useDocumentTemplates(!!tenant?.document_template_key && !template)
+  const tpl = template || resolveDocumentTemplate({ tenant, templates: pubTemplates, packs: pubPacks })
+  const style = tpl.style
+  const layout = tpl.layout
+  const content = tpl.content
+  const theme = quotationTheme(layout, style)
+  const Header = layout === 'modern' ? ModernHeader : layout === 'premium' ? PremiumHeader : QuotationHeader
+  const LaterHeader = layout !== 'classic' ? CompactHeader : Header
+  const FirstExtra = layout === 'modern' ? ModernFirstPageExtra : layout === 'premium' ? PremiumFirstPageExtra : null
+  // the serif face must be ready before measuring / html2canvas
+  const [fontReady, setFontReady] = useState(layout !== 'premium')
+  useEffect(() => {
+    if (layout !== 'premium') { setFontReady(true); return }
+    let alive = true
+    const done = () => { if (alive) setFontReady(true) }
+    if (document.fonts?.load) Promise.all([document.fonts.load('400 12px "Noto Serif Thai"'), document.fonts.load('600 12px "Noto Serif Thai"')]).then(done, done)
+    else done()
+    return () => { alive = false }
+  }, [layout])
 
   const revisionSuffix = revision > 1 ? `-R${revision}` : ''
-  const headerProps = { tenant, tag, revisionSuffix, quotationNumber, date, validUntil, siteName, clientName, clientAddress, clientTaxId, style }
+  const headerProps = { tenant, tag, revisionSuffix, quotationNumber, date, validUntil, siteName, clientName, clientAddress, clientTaxId, style, theme }
   const colCount = (isSplit ? 6 : 5) + 1
 
   // Item <-> item_description pairing reads from spacing alone, no line or
@@ -748,11 +774,11 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
   const renderRow = (it, i) => (
     it.item_type === 'note' ? (
       <tr key={it.id || i}>
-        <td colSpan={colCount} style={{ padding: '10px 8px', borderBottom: '1px solid #eee', fontStyle: 'italic', color: '#6B4E1E', background: '#FFFDF7', whiteSpace: 'pre-line' }}>{it.description}</td>
+        <td colSpan={colCount} style={{ padding: '10px 8px', borderBottom: `1px solid ${theme.rowBorder}`, fontStyle: 'italic', color: '#6B4E1E', background: theme.noteBg, whiteSpace: 'pre-line' }}>{it.description}</td>
       </tr>
     ) : it.item_type === 'item_description' ? (
       <tr key={it.id || i}>
-        <td colSpan={colCount} style={{ padding: '0 8px 16px 22px', borderBottom: '1px solid #eee', fontStyle: 'italic', color: '#666', whiteSpace: 'pre-line' }}>{it.description}</td>
+        <td colSpan={colCount} style={{ padding: '0 8px 16px 22px', borderBottom: `1px solid ${theme.rowBorder}`, fontStyle: 'italic', color: '#666', whiteSpace: 'pre-line' }}>{it.description}</td>
       </tr>
     ) : (() => {
       // Tighter bottom padding + no border when this item has its own
@@ -760,10 +786,10 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
       // that closeness; an item with nothing glued to it keeps the normal
       // symmetric padding and its own separator border, same as before.
       const glued = printHasOwnDescription.has(it)
-      const cellStyle = { padding: glued ? '9px 8px 2px' : '9px 8px', borderBottom: glued ? 'none' : '1px solid #eee' }
+      const cellStyle = { padding: glued ? '9px 8px 2px' : '9px 8px', borderBottom: glued ? 'none' : `1px solid ${theme.rowBorder}` }
       return (
         <tr key={it.id || i}>
-          <td style={{ ...cellStyle, textAlign: 'center', padding: glued ? '9px 4px 2px' : '9px 4px', color: '#6a6f85' }}>{printItemNumbers.get(it)}</td>
+          <td style={{ ...cellStyle, textAlign: 'center', padding: glued ? '9px 4px 2px' : '9px 4px', color: theme.muted }}>{printItemNumbers.get(it)}</td>
           <td style={{ ...cellStyle, whiteSpace: 'pre-line' }}>{it.description}</td>
           <td style={{ ...cellStyle, textAlign: 'right' }}>{it.quantity}</td>
           <td style={{ ...cellStyle, textAlign: 'center' }}>{it.unit || ''}</td>
@@ -781,7 +807,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
     })()
   )
 
-  const thStyle = { textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }
+  const thStyle = { textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: theme.thColor, background: theme.thBg, borderBottom: theme.thBorder }
   const renderTableHeader = () => (
     <tr>
       <th style={{ ...thStyle, textAlign: 'center', width: 30 }}>ที่</th>
@@ -821,36 +847,38 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
       <div style={{ flex: 1 }} />
 
       <div>
-        <div style={{ marginTop: 14, display: 'flex', gap: 24, alignItems: 'flex-start', borderTop: '1px solid #e4e6ef', paddingTop: 14 }}>
+        <div style={{ marginTop: 14, display: 'flex', gap: 24, alignItems: 'flex-start', borderTop: `1px solid ${theme.rowBorder}`, paddingTop: 14 }}>
           <div style={{ flex: 1, fontSize: 12.5, minWidth: 0 }}>
             <div style={{ fontWeight: 700, marginBottom: 8 }}>📄 สรุป</div>
             <div style={{ display: 'grid', gap: 5 }}>
               {isSplit && (
                 <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>รวมค่าของ</span><span>{fmt(materialLabor.material)} บาท</span></div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>รวมค่าแรง</span><span>{fmt(materialLabor.labor)} บาท</span></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: theme.muted }}>รวมค่าของ</span><span>{fmt(materialLabor.material)} บาท</span></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: theme.muted }}>รวมค่าแรง</span><span>{fmt(materialLabor.labor)} บาท</span></div>
                 </>
               )}
               {totals.discount > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>ส่วนลด</span><span>-{fmt(totals.discount)} บาท</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: theme.muted }}>ส่วนลด</span><span>-{fmt(totals.discount)} บาท</span></div>
               )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>{hasVat ? 'มูลค่าที่คำนวณภาษี 7%' : 'รวมก่อน VAT'}</span><span>{fmt(totals.subtotal)} บาท</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: theme.muted }}>{hasVat ? 'มูลค่าที่คำนวณภาษี 7%' : 'รวมก่อน VAT'}</span><span>{fmt(totals.subtotal)} บาท</span></div>
               {hasVat && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#6a6f85' }}>ภาษีมูลค่าเพิ่ม 7%</span><span>{fmt(totals.vat)} บาท</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: theme.muted }}>ภาษีมูลค่าเพิ่ม 7%</span><span>{fmt(totals.vat)} บาท</span></div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 4, paddingTop: 6, borderTop: '1px solid #eee' }}>
-                <span style={{ color: '#6a6f85' }}>จำนวนเงินทั้งสิ้น</span>
-                <span style={{ textAlign: 'right', color: '#6a6f85', fontStyle: 'italic' }}>{thaiBahtText(totals.total)}</span>
+                <span style={{ color: theme.muted }}>จำนวนเงินทั้งสิ้น</span>
+                <span style={{ textAlign: 'right', color: theme.muted, fontStyle: 'italic' }}>{thaiBahtText(totals.total)}</span>
               </div>
             </div>
           </div>
           <div style={{ width: 220, flexShrink: 0 }}>
-            <div style={{ background: `${style.accent}14`, border: `1px solid ${style.accent}55`, borderRadius: 10, padding: '10px 14px' }}>
-              <div style={{ fontSize: 11, color: '#6a6f85' }}>รวมทั้งสิ้น</div>
-              <div style={{ fontWeight: 800, fontSize: 17, color: style.accent }}>{fmt(totals.total)} บาท</div>
+            <div style={{ background: theme.totalBoxBg, border: `1px solid ${theme.totalBoxBorder}`, borderRadius: 10, padding: '10px 14px' }}>
+              <div style={{ fontSize: 11, color: layout === 'classic' ? '#6a6f85' : theme.totalBoxText, opacity: layout === 'classic' ? 1 : 0.85 }}>รวมทั้งสิ้น</div>
+              <div style={{ fontWeight: 800, fontSize: 17, color: theme.totalBoxText }}>{fmt(totals.total)} บาท</div>
             </div>
           </div>
         </div>
+
+        {FirstExtra && <BenefitStrip content={content} theme={theme} style={style} />}
 
         {(paymentTerms || notes || bankAccount) && (() => {
           // Fixed order: หมายเหตุ, then เงื่อนไขการชำระเงิน, then ชำระเงินไปที่
@@ -861,7 +889,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
             paymentTerms && { key: 'terms', label: 'เงื่อนไขการชำระเงิน', text: paymentTerms },
           ].filter(Boolean)
           return (
-            <div style={{ marginTop: 20, fontSize: style.footerTextSize, background: '#f9f9fc', borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
+            <div style={{ marginTop: 20, fontSize: style.footerTextSize, background: theme.notesBoxBg, borderRadius: 8, padding: '12px 16px', lineHeight: 1.8 }}>
               {blocks.map(({ key, label, text }, i) => (
                 <div key={key} style={{ marginBottom: i < blocks.length - 1 || bankAccount ? 10 : 0 }}>
                   <strong style={{ display: 'block', marginBottom: 4, fontSize: style.footerTextSize + 0.5 }}>{label}</strong>
@@ -882,25 +910,26 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
             <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
               {mySignature && <img src={mySignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
             </div>
-            <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้เสนอราคา</div>
+            <div style={{ borderTop: `1px solid ${theme.sigLine}`, paddingTop: 8 }}>ผู้เสนอราคา</div>
             {myWorkerName && (
-              <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>{myWorkerName}</div>
+              <div style={{ marginTop: 2, color: theme.muted, fontSize: 10 }}>{myWorkerName}</div>
             )}
-            <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>วันที่ ........../........../..........</div>
+            <div style={{ marginTop: 2, color: theme.muted, fontSize: 10 }}>วันที่ ........../........../..........</div>
           </div>
           <div>
             <div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
               {clientSignature && <img src={clientSignature.url} alt="" crossOrigin="anonymous" style={{ height: 36, display: 'block' }} />}
             </div>
-            <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้ยอมรับ (ลูกค้า)</div>
+            <div style={{ borderTop: `1px solid ${theme.sigLine}`, paddingTop: 8 }}>ผู้ยอมรับ (ลูกค้า)</div>
             {clientSignature && (
-              <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>
+              <div style={{ marginTop: 2, color: theme.muted, fontSize: 10 }}>
                 {clientSignature.signerName} · เซ็นเมื่อ {new Date(clientSignature.signedAt).toLocaleDateString('th-TH')}
               </div>
             )}
-            {!clientSignature && <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>วันที่ ........../........../..........</div>}
+            {!clientSignature && <div style={{ marginTop: 2, color: theme.muted, fontSize: 10 }}>วันที่ ........../........../..........</div>}
           </div>
         </div>
+        {FirstExtra && <ThanksLine content={content} theme={theme} />}
       </div>
     </>
   )
@@ -908,7 +937,9 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
   const { pages, pageCount, measurementNode } = usePaginatedDocument({
     items: printableItems,
     keepWithNext: printKeepWithNext,
-    renderHeader: () => <QuotationHeader {...headerProps} pageNumber={1} totalPages={1} />,
+    renderHeader: () => <Header {...headerProps} pageNumber={1} totalPages={1} />,
+    renderLaterHeader: layout !== 'classic' ? () => <LaterHeader {...headerProps} pageNumber={2} totalPages={2} /> : undefined,
+    renderFirstPageExtra: FirstExtra ? () => <FirstExtra content={content} style={style} theme={theme} /> : undefined,
     renderTableHeader,
     renderRow,
     renderFooter,
@@ -931,7 +962,7 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
     // revision's page geometry/footer-height reservation for the new one.
     // Matches DocumentPaper's identical extraRemeasureKey pattern
     // (Invoices.jsx).
-    remeasureKey: `${mySignature?.url || ''}|${clientSignature?.url || ''}|${extraRemeasureKey || ''}`,
+    remeasureKey: `${mySignature?.url || ''}|${clientSignature?.url || ''}|${extraRemeasureKey || ''}|${layout}|${fontReady}|${content?.heroPath || ''}|${(content?.gallery || []).length}|${(content?.features || []).length}`,
     pagePaddingCss: `${style.pagePaddingV}px ${style.pagePaddingH}px`,
     pageHeight: (PAGE_HEIGHT_PX + PAGE_PADDING_V_PX * 2) - style.pagePaddingV * 2,
     tableMarginTop: style.tableMarginTop,
@@ -964,14 +995,14 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
   const PAGE_DIV_HEIGHT_PX = PAGE_HEIGHT_PX + PAGE_PADDING_V_PX * 2
 
   return (
-    <div id={elementId} className="printable-document" style={{ fontFamily: 'Sarabun,sans-serif', width: PAGE_WIDTH_PX }}>
+    <div id={elementId} className="printable-document" style={{ fontFamily: theme.fontFamily, width: PAGE_WIDTH_PX }}>
       {pages.map((pageItems, pageIndex) => {
         const isLast = pageIndex === pages.length - 1
         return (
           <div
             key={pageIndex}
             style={{
-              padding: `${style.pagePaddingV}px ${style.pagePaddingH}px`, background: '#fff', color: '#17181f', boxSizing: 'border-box',
+              padding: `${style.pagePaddingV}px ${style.pagePaddingH}px`, background: theme.paperBg, color: theme.text, boxSizing: 'border-box',
               // Fixed height, not minHeight -- a page-div that's allowed to
               // grow past PAGE_DIV_HEIGHT_PX (e.g. from a measurement/
               // render drift) reintroduces the same overflow-past-budget
@@ -987,7 +1018,10 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
               boxShadow: pages.length > 1 ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
             }}
           >
-            <QuotationHeader {...headerProps} pageNumber={pageIndex + 1} totalPages={pages.length} />
+            {pageIndex === 0
+              ? <Header {...headerProps} pageNumber={1} totalPages={pages.length} />
+              : <LaterHeader {...headerProps} pageNumber={pageIndex + 1} totalPages={pages.length} />}
+            {pageIndex === 0 && FirstExtra && <FirstExtra content={content} style={style} theme={theme} />}
 
             {pageItems.length > 0 && (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: style.tableMarginTop }}>

@@ -4,6 +4,19 @@
    first rule in the file. */
 @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap');
 
+/* Noto Serif Thai (OFL), self-hosted for the "premium" quotation template so
+   html2canvas/PDF never depends on an external font host. Variable weight. */
+@font-face {
+  font-family: 'Noto Serif Thai'; font-weight: 100 900; font-display: swap;
+  src: url('/fonts/NotoSerifThai-thai.woff2') format('woff2');
+  unicode-range: U+02D7, U+0303, U+0331, U+0E01-0E5B, U+200C-200D, U+25CC;
+}
+@font-face {
+  font-family: 'Noto Serif Thai'; font-weight: 100 900; font-display: swap;
+  src: url('/fonts/NotoSerifThai-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122;
+}
+
 /* ============================================================
    FACADE X — Global Styles
    ============================================================ */
@@ -123,6 +136,9 @@ body {
   font-size: 14px;
   line-height: 1.5;
   overflow-x: hidden;
+  /* clip, not hidden: hidden turns body into a scroll container, which makes
+     position:sticky (header + tab bar) stick to body instead of the window */
+  overflow-x: clip;
   max-width: 100vw;
 }
 
@@ -216,17 +232,18 @@ body {
 .kpi-value { font-size: 24px; font-weight: 700; }
 .kpi-sub { color: var(--text3); font-size: 11px; margin-top: 3px; }
 
-/* Toolbar/filters/KPI-cards region above a page's main table -- opt-in
-   per page (wrap only that page's own toolbar+filters+cards block, not a
-   blanket rule, since most pages don't have this card-heavy pattern).
-   On a short monitor this region alone can eat over half the viewport
-   height, leaving the table cramped below it; capping it to a fraction
-   of viewport height with its own scroll keeps that fixed regardless of
-   how many cards/filters a given page has. */
-.page-toolbar-scroll { max-height: 42vh; overflow-y: auto; padding-right: 2px; }
+/* Toolbar/filters/KPI-cards/chart region above a page's main table.
+   It scrolls away with the page (no inner scroll box), so once the user
+   scrolls down the table gets almost the whole screen -- see
+   .table-wrap below. Class kept so pages need no change. */
+.page-toolbar-scroll { }
 
 /* Tables */
 .table-wrap { overflow-x: auto; max-height: 560px; overflow-y: auto; }
+/* Any table on a main page (inside .app-main, not in a modal) fills the
+   screen below the sticky header once the page is scrolled to it. */
+.app-main .table-wrap { max-height: max(360px, calc(100vh - var(--chrome-h, 110px) - 24px)); }
+.modal .table-wrap { max-height: 560px; }
 /* Opt-in modifier for a page's MAIN list table (never a table embedded in
    a modal, where 100vh doesn't correspond to the modal's own bounds) --
    lets it grow to fill whatever vertical space is actually left instead
@@ -234,7 +251,7 @@ body {
    monitors and can feel cramped on short ones. The offset is an
    approximation (header + nav + a typical toolbar/filter row), not
    computed per page. */
-.table-wrap-fill { max-height: calc(100vh - 340px); }
+.table-wrap-fill { max-height: max(360px, calc(100vh - var(--chrome-h, 110px) - 24px)); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 thead th {
   padding: 10px 14px; text-align: center; background: var(--bg3);
@@ -454,7 +471,7 @@ th.sortable:hover { color: var(--accent); }
 /* Settings page side-nav -- lets a card-heavy Settings page switch between
    one section at a time instead of one long scroll (src/pages/Settings.jsx) */
 .settings-layout { display: flex; gap: 24px; align-items: flex-start; }
-.settings-nav { width: 200px; flex-shrink: 0; position: sticky; top: 20px; display: flex; flex-direction: column; gap: 2px; }
+.settings-nav { width: 200px; flex-shrink: 0; position: sticky; top: calc(var(--chrome-h, 110px) + 12px); display: flex; flex-direction: column; gap: 2px; }
 .settings-nav-btn {
   display: block; width: 100%; text-align: left; padding: 10px 12px;
   border-radius: 8px; border: none; background: transparent; color: var(--text2);

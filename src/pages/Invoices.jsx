@@ -752,12 +752,22 @@ export function DocumentPaper({ elementId, tenant, tag, title, infoFields, clien
   // billable line of its own (unit_price/draw_qty/line_total all 0, see
   // handleSave), so it prints as one indented, full-width text row instead
   // of repeating "0" across the qty/price/total columns.
+  // Running number per billable line (item_description rows are glued to the
+  // item above and unnumbered), keyed by object identity because renderRow is
+  // called with a page-local index -- same approach as QuotationPaper.
+  const itemNumbers = useMemo(() => {
+    const map = new Map()
+    let n = 0
+    ;(items || []).forEach(it => { if (it.item_type !== 'item_description') map.set(it, ++n) })
+    return map
+  }, [items])
   const renderRow = (it, i) => it.item_type === 'item_description' ? (
     <tr key={it.id || i}>
-      <td colSpan={isSplit ? 6 : 5} style={{ padding: '0 8px 9px 20px', borderBottom: '1px solid #eee', whiteSpace: 'pre-line', fontSize: '0.92em', color: '#6a6f85' }}>{it.description}</td>
+      <td colSpan={isSplit ? 7 : 6} style={{ padding: '0 8px 9px 20px', borderBottom: '1px solid #eee', whiteSpace: 'pre-line', fontSize: '0.92em', color: '#6a6f85' }}>{it.description}</td>
     </tr>
   ) : (
     <tr key={it.id || i}>
+      <td style={{ textAlign: 'center', padding: '9px 4px', borderBottom: '1px solid #eee', color: '#6a6f85' }}>{itemNumbers.get(it)}</td>
       <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee', whiteSpace: 'pre-line' }}>{it.description}</td>
       <td style={{ textAlign: 'right', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{fmt(it.draw_qty).replace(/\.00$/, '')}</td>
       <td style={{ textAlign: 'center', padding: '9px 8px', borderBottom: '1px solid #eee' }}>{it.unit || ''}</td>
@@ -780,7 +790,8 @@ export function DocumentPaper({ elementId, tenant, tag, title, infoFields, clien
   // renderTableHeader/renderRow's column order+count exactly.
   const renderColGroup = () => isSplit ? (
     <colgroup>
-      <col style={{ width: '34%' }} />
+      <col style={{ width: '5%' }} />
+      <col style={{ width: '29%' }} />
       <col style={{ width: '10%' }} />
       <col style={{ width: '8%' }} />
       <col style={{ width: '15%' }} />
@@ -789,7 +800,8 @@ export function DocumentPaper({ elementId, tenant, tag, title, infoFields, clien
     </colgroup>
   ) : (
     <colgroup>
-      <col style={{ width: '40%' }} />
+      <col style={{ width: '5%' }} />
+      <col style={{ width: '35%' }} />
       <col style={{ width: '11%' }} />
       <col style={{ width: '9%' }} />
       <col style={{ width: '19%' }} />
@@ -800,6 +812,7 @@ export function DocumentPaper({ elementId, tenant, tag, title, infoFields, clien
   const thStyle = { textAlign: 'right', padding: `${style.tableHeaderPadding}px 8px`, fontSize: style.tableHeaderSize, fontWeight: style.tableHeaderBold ? 700 : 400, color: style.tableHeaderColor, background: style.tableHeaderBg, borderBottom: `${style.tableHeaderBorder}px solid ${style.accent}` }
   const renderTableHeader = () => (
     <tr>
+      <th style={{ ...thStyle, textAlign: 'center', width: 30 }}>ที่</th>
       <th style={{ ...thStyle, textAlign: 'left' }}>รายการ</th>
       <th style={thStyle}>จำนวน</th>
       <th style={{ ...thStyle, textAlign: 'center' }}>หน่วย</th>

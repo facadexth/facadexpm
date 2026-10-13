@@ -53,6 +53,7 @@ const Cheques       = lazy(() => import('./pages/Cheques.jsx'))
 const BomTemplates = lazy(() => import('./pages/BomTemplates.jsx'))
 const Estimation   = lazy(() => import('./pages/Estimation.jsx'))
 const TenantManagement = lazy(() => import('./pages/TenantManagement.jsx'))
+const DocumentTemplatesAdmin = lazy(() => import('./pages/DocumentTemplatesAdmin.jsx'))
 const LineAdminChat = lazy(() => import('./pages/LineAdminChat.jsx'))
 const CommunicationCenter = lazy(() => import('./pages/CommunicationCenter.jsx'))
 const StartingGuide = lazy(() => import('./pages/StartingGuide.jsx'))
@@ -102,6 +103,7 @@ const TABS = [
   ] },
   { id: 'tenant_management', label: '🏢 ผู้ดูแลระบบ', minRole: 'WORKER', module: null, platformAdminOnly: true },
   { id: 'line_admin_chat', label: '💬 แชทแอดมิน', minRole: 'WORKER', module: null, platformAdminOnly: true },
+  { id: 'document_templates', label: '🎨 แบบเอกสาร', minRole: 'WORKER', module: null, platformAdminOnly: true },
 ]
 
 // TABS entries are either a plain tab ({id, label, minRole, module}) or a
@@ -122,6 +124,24 @@ const HIDDEN_TAB_ENTRIES = [
   { id: 'site_detail', minRole: 'ADMIN', module: null, permKey: 'sites' },
 ]
 const ALL_TAB_ENTRIES = TABS.flatMap(t => t.children ?? [t]).concat(HIDDEN_TAB_ENTRIES)
+
+// Header + tab bar stay pinned together at the top, so a page's main table
+// can scroll up until it touches the tab bar. Publishes the pinned height as
+// --chrome-h (index.css sizes .table-wrap from it).
+function StickyChrome({ children }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const set = () => document.documentElement.style.setProperty('--chrome-h', el.offsetHeight + 'px')
+    set()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(set)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return <div ref={ref} style={{ position: 'sticky', top: 0, zIndex: 100 }}>{children}</div>
+}
 
 // Hover-triggered dropdown for a TABS group entry (e.g. "ไซท์งาน"). Portaled
 // to document.body instead of position:absolute inside <nav>, because the
@@ -413,6 +433,7 @@ export default function App() {
         case 'starting_guide': return <StartingGuide {...props} />
         case 'tenant_management': return <TenantManagement {...props} />
         case 'line_admin_chat': return <LineAdminChat {...props} />
+        case 'document_templates': return <DocumentTemplatesAdmin {...props} />
         case 'estimation':    return <Estimation    {...props} />
         case 'bom_templates': return <BomTemplates   {...props} />
         default:           return <Dashboard  {...props} />
@@ -450,11 +471,11 @@ export default function App() {
       <TrialBanner tenant={tenant} isTrialActive={isTrialActive} trialDaysRemaining={trialDaysRemaining}
         onChoosePackage={() => setShowUpgradeModal(true)} />
       {/* ── Header ── */}
+      <StickyChrome>
       <header style={{
         background: 'var(--bg2)', borderBottom: '1px solid var(--border)',
         padding: '0 24px', minHeight: 56, display: 'flex',
         alignItems: 'center', justifyContent: 'space-between',
-        position: 'sticky', top: 0, zIndex: 100,
         flexWrap: 'wrap', gap: 8, rowGap: 4,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
@@ -530,6 +551,7 @@ export default function App() {
           </button>
         ))}
       </nav>
+      </StickyChrome>
 
       {/* ── Page Content ── */}
       <main className="app-main" style={{ flex: 1, padding: '20px 24px', maxWidth: 1440, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
