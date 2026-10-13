@@ -138,6 +138,8 @@ export function startModel(kind, params = {}) {
     model.lines[key] = [defaultLine(model, key)]
     model.names[key] = layout.positions[key].name
   }
+  // layout.namesWhen { param: { position: name } }: a truthy param renames positions (e.g. sliding_n door)
+  for (const [param, names] of Object.entries(layout.namesWhen || {})) if (model.params[param]) Object.assign(model.names, names)
   return ensureEnds(model)
 }
 
@@ -338,4 +340,44 @@ export function addLineAndSelect(model, key) {
 // Remove a line and select line 0 of the same position (mockup).
 export function removeLineAndSelect(model, key, idx) {
   return { model: removeLine(model, key, idx), sel: { key, line: 0 } }
+}
+
+// ---------------------------------------------------------------- per-piece layout metadata (track / fixed / names)
+
+// layout.mirrorWhen { param: value }: when every entry matches, piece i of an array-valued part field / pieceNames reads index count-1-i.
+function metaIndex(model, partKey, idx) {
+  const mw = layoutOfModel(model)?.mirrorWhen
+  if (!mw || !Object.entries(mw).every(([k, v]) => model.params?.[k] === v)) return idx
+  const part = model.parts.find((p) => p.key === partKey)
+  const n = clampInt(evalExpr(part?.count ?? 1, exprParams(model)), MAX_PART_COUNT)
+  return n > 0 ? n - 1 - idx : idx
+}
+
+const layoutPartOf = (model, partKey) => layoutOfModel(model)?.parts.find((p) => p.key === partKey)
+
+// Track (1-based) a piece of the part slides on: 'alternate' -> 1,2,1,2..; an array -> per piece; otherwise 1.
+export function trackOf(model, partKey, pieceIdx) {
+  const t = layoutPartOf(model, partKey)?.track
+  if (t === 'alternate') return (pieceIdx % 2) + 1
+  if (Array.isArray(t)) return t[metaIndex(model, partKey, pieceIdx)] ?? 1
+  return 1
+}
+
+// Whether a piece of the part is a fixed (non-sliding) pane: part.fixed is a boolean or an array per piece.
+export function isFixedPiece(model, partKey, pieceIdx) {
+  const f = layoutPartOf(model, partKey)?.fixed
+  if (Array.isArray(f)) return !!f[metaIndex(model, partKey, pieceIdx)]
+  return !!f
+}
+
+// Display name of one piece of a position: layout.pieceNames, else the position's labels, else name + index, else name.
+export function pieceLabel(model, key, pieceIdx) {
+  const layout = layoutOfModel(model)
+  const pos = layout?.positions[key]
+  if (!pos) return ''
+  const named = layout.pieceNames?.[key]?.[metaIndex(model, pos.part, pieceIdx)]
+  if (named) return named
+  if (pos.labels?.[pieceIdx]) return pos.labels[pieceIdx]
+  const name = model.names?.[key] || pos.name
+  return pieceCount(model, key) > 1 ? `${name} ${pieceIdx + 1}` : name
 }

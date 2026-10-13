@@ -20,6 +20,9 @@ import sliding_2 from './layouts/sliding_2.js'
 import fixed_grid from './layouts/fixed_grid.js'
 import awning_grid from './layouts/awning_grid.js'
 import casement_n from './layouts/casement_n.js'
+import sliding_n from './layouts/sliding_n.js'
+import sliding_3track from './layouts/sliding_3track.js'
+import sliding_2_fixed_2 from './layouts/sliding_2_fixed_2.js'
 
 function normalize(def) {
   const keys = [...(def.order || []), ...Object.keys(def.positions || {}).filter((k) => !(def.order || []).includes(k))]
@@ -37,6 +40,9 @@ export const LAYOUTS = {
   fixed_grid: normalize(fixed_grid),
   awning_grid: normalize(awning_grid),
   casement_n: normalize(casement_n),
+  sliding_n: normalize(sliding_n),
+  sliding_3track: normalize(sliding_3track),
+  sliding_2_fixed_2: normalize(sliding_2_fixed_2),
 }
 
 export function layoutOf(kind) {
