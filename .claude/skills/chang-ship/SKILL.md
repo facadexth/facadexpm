@@ -12,6 +12,7 @@ Live site https://changpm.app (Cloudflare Workers). Backend: Supabase project **
 2. `npm run deploy` = build, `verify-bundle` (must contain the CHANG ref, must not contain the Tokyo one), `smoke-boot` (Playwright: app starts, login renders), then `wrangler deploy`. Never run bare `wrangler deploy`.
 3. `git push` is harmless: Cloudflare's Git auto-build is disconnected on purpose (it used to overwrite manual deploys and cause stale-chunk blank pages).
 4. "No deploy targets" printed by wrangler is normal (the custom domain is attached in the dashboard).
+5. A fresh git worktree has no `.env` (untracked), so `verify-bundle` stops the deploy with "bundle does not reference the CHANG project". Copy `.env` from the main checkout into the worktree first (check its `VITE_SUPABASE_URL` is the CHANG ref), then rerun `npm run deploy`.
 
 ## 2. Edge functions
 `npx supabase functions deploy <name> --project-ref kntspldhvcjeaubtqtkn --use-api` (no Docker needed).
