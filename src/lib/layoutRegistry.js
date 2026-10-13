@@ -8,6 +8,9 @@
 //   positions { [positionKey]: { part, orient:'h'|'v', per, name, labels?, rule:{ type, auto?, factor?, overlap?, role?, family? } } }
 //   joints    [{ h, v:[leftKey, rightKey], vPiece:'byEnd'|'same', vEnd:0|1, through:'v'|'h', mode:'butt'|'mitre'|'tee' }]
 //   roles     optional { role: positionKey } overrides of DEFAULT_ROLES (the positions rule.auto / rule.overlap read)
+//   positions[k].enabled   optional expression over params: 0 -> the position is absent from the model (swing_door sill)
+//   validParams  optional expression over params that must be > 0 (folding_door 'nL+nR'), else startModel/setParams
+//             throw Error('layout_params_invalid') before any rule is evaluated
 //   order     position keys in display order
 //   hardware  [{ name, per, qty }]
 //   symbol    drawing hints
@@ -23,6 +26,10 @@ import casement_n from './layouts/casement_n.js'
 import sliding_n from './layouts/sliding_n.js'
 import sliding_3track from './layouts/sliding_3track.js'
 import sliding_2_fixed_2 from './layouts/sliding_2_fixed_2.js'
+import swing_door from './layouts/swing_door.js'
+import frameless_door from './layouts/frameless_door.js'
+import hanging_door from './layouts/hanging_door.js'
+import folding_door from './layouts/folding_door.js'
 
 function normalize(def) {
   const keys = [...(def.order || []), ...Object.keys(def.positions || {}).filter((k) => !(def.order || []).includes(k))]
@@ -43,6 +50,10 @@ export const LAYOUTS = {
   sliding_n: normalize(sliding_n),
   sliding_3track: normalize(sliding_3track),
   sliding_2_fixed_2: normalize(sliding_2_fixed_2),
+  swing_door: normalize(swing_door),
+  frameless_door: normalize(frameless_door),
+  hanging_door: normalize(hanging_door),
+  folding_door: normalize(folding_door),
 }
 
 export function layoutOf(kind) {
@@ -120,7 +131,7 @@ export function exprParams(model) {
 
 // The position each automatic-deduction role reads (rule.auto / rule.overlap 'hook'); a layout may remap any of them
 // (e.g. curtain_wall: frame_side -> mullion_outer).
-export const DEFAULT_ROLES = Object.freeze({ frame_side: 'frame_side', frame_top: 'frame_top', frame_bottom: 'frame_bottom', mullion: 'mullion', transom: 'transom', hook: 'hook_stile' })
+export const DEFAULT_ROLES = Object.freeze({ frame_side: 'frame_side', frame_top: 'frame_top', frame_bottom: 'frame_bottom', mullion: 'mullion', transom: 'transom', hook: 'hook_stile', track: 'track_rail', track_top: 'track_top', track_bottom: 'track_bottom', track_side: 'track_side' })
 export const rolesOf = (layout) => ({ ...DEFAULT_ROLES, ...((layout && layout.roles) || {}) })
 
 // Test-only: register a throwaway layout definition (e.g. a grid) under its kind.

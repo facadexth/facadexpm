@@ -26,7 +26,7 @@
 // A butt end with to:null is legal only when deduction_mm is set (partExpand reports no_butt_target otherwise).
 // All functions are immutable: they return new models and never touch their input.
 
-import { LAYOUTS, defaultParams, exprParams } from './layoutRegistry.js'
+import { LAYOUTS, defaultParams, exprParams, rolesOf } from './layoutRegistry.js'
 import { evalExpr } from './layoutExpr.js'
 
 export { LAYOUTS }
@@ -37,7 +37,31 @@ export const MAX_PART_COUNT = 10
 const clone = (x) => JSON.parse(JSON.stringify(x))
 const layoutOfModel = (model) => LAYOUTS[model.layout_kind]
 const posOf = (model, key) => layoutOfModel(model).positions[key]
-const jointsOf = (model) => layoutOfModel(model)?.joints || []
+
+// A position with `enabled: '<expr>'` exists only while the expression is non-zero over the params (swing_door sill).
+const enabledPos = (layout, key, p) => {
+  const e = layout.positions[key]?.enabled
+  return e === undefined || evalExpr(e, p) !== 0
+}
+const isEnabled = (model, key) => enabledPos(layoutOfModel(model), key, exprParams(model))
+
+// Joints between present positions only: a joint that names a disabled position is skipped (its ends become joint-less -> through).
+function jointsOf(model) {
+  const layout = layoutOfModel(model)
+  const joints = layout?.joints || []
+  if (!joints.some((j) => [j.h, ...j.v].some((k) => layout.positions[k]?.enabled !== undefined))) return joints
+  const p = exprParams(model)
+  return joints.filter((j) => [j.h, ...j.v].every((k) => enabledPos(layout, k, p)))
+}
+
+// layout.validParams: an expression over params that must be > 0, checked BEFORE any rule is evaluated (so no division by 0).
+function checkParams(layout, params) {
+  if (layout.validParams === undefined) return
+  const p = exprParams({ params })
+  let ok = false
+  try { ok = evalExpr(layout.validParams, p) > 0 } catch { ok = false }
+  if (!ok) throw new Error('layout_params_invalid')
+}
 
 // Upper bound of pieces of one position per line (largest legitimate: (rows+1)·cols transoms = 9·12 = 108).
 export const MAX_PIECES_PER_LINE = 120
@@ -127,14 +151,17 @@ export function ensureEnds(model) {
 export function startModel(kind, params = {}) {
   const layout = LAYOUTS[kind]
   if (!layout) throw new Error(`unknown layout ${kind}`)
+  const params0 = { ...defaultParams(kind, {}), ...clone(params || {}) }
+  checkParams(layout, params0)
   const model = {
     layout_kind: kind,
     parts: layout.parts.map(({ key, name, count, overlap_mode, overlap_mm }) => ({ key, name, count, overlap_mode, overlap_mm })),
     lines: {},
     names: {},
-    params: { ...defaultParams(kind, {}), ...clone(params || {}) },
+    params: params0,
   }
   for (const key of layout.order) {
+    if (!isEnabled(model, key)) continue
     model.lines[key] = [defaultLine(model, key)]
     model.names[key] = layout.positions[key].name
   }
@@ -148,7 +175,17 @@ export function startModel(kind, params = {}) {
 export function setParams(model, patch) {
   const next = clone(model)
   next.params = { ...(next.params || {}), ...clone(patch || {}) }
+  checkParams(layoutOfModel(next), next.params)
   const p = exprParams(next)
+  // enabled positions follow their expression: drop the ones now off, (re)create the ones now on
+  for (const key of layoutOfModel(next).order) {
+    const on = enabledPos(layoutOfModel(next), key, p)
+    if (!on && next.lines[key]) { delete next.lines[key]; delete next.names[key] }
+    else if (on && !next.lines[key]) {
+      next.lines[key] = [defaultLine(next, key)]
+      next.names[key] = layoutOfModel(next).positions[key].name
+    }
+  }
   for (const key of Object.keys(next.lines)) {
     const factor = posOf(next, key)?.rule?.factor
     if (typeof factor === 'string' && next.lines[key][0]) next.lines[key][0].length_factor = evalExpr(factor, p)
@@ -340,6 +377,32 @@ export function addLineAndSelect(model, key) {
 // Remove a line and select line 0 of the same position (mockup).
 export function removeLineAndSelect(model, key, idx) {
   return { model: removeLine(model, key, idx), sel: { key, line: 0 } }
+}
+
+// ---------------------------------------------------------------- glass panes
+
+// The glass parts of the model (parts with `glass: true`, no aluminium positions): one entry per piece,
+// { part, idx, widthRule, widthMm }. widthRule is what the pane width is made of: the opening less both frame sides
+// (roles.frame_side line 0 butt distance), divided over the part's pieces. widthMm is that number when given the opening
+// ({ widthMm, buttOf }) and the frame side's family has a butt distance, else null. Pure; frameless walls reuse it.
+export function glassParts(model, opening = null) {
+  const layout = layoutOfModel(model)
+  if (!layout) return []
+  const p = exprParams(model)
+  const sideKey = rolesOf(layout).frame_side
+  const fam = model.lines?.[sideKey]?.[0]?.profile_family
+  const raw = opening && fam ? opening.buttOf?.(fam) : null
+  const b = raw == null ? Number.NaN : Number(raw)
+  const out = []
+  for (const part of layout.parts) {
+    if (!part.glass) continue
+    const count = clampInt(evalExpr(model.parts.find((x) => x.key === part.key)?.count ?? part.count, p), MAX_PART_COUNT)
+    for (let idx = 0; idx < count; idx++) {
+      const widthMm = opening && Number.isFinite(b) && Number.isFinite(opening.widthMm) ? (opening.widthMm - 2 * b) / count : null
+      out.push({ part: part.key, idx, widthRule: { auto: 'frame_sides', divisor: count }, widthMm })
+    }
+  }
+  return out
 }
 
 // ---------------------------------------------------------------- per-piece layout metadata (track / fixed / names)

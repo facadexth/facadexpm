@@ -26,3 +26,24 @@ describe('evalExpr', () => {
     expect(() => evalExpr(NaN, {})).toThrow('layout_expr')
   })
 })
+
+describe('functions ceil / max (Task 6)', () => {
+  it('ceil rounds up, max takes the largest of 2+ arguments', () => {
+    expect(evalExpr('ceil(nL/2)+ceil(nR/2)', { nL: 3, nR: 2 })).toBe(3)
+    expect(evalExpr('ceil(0)', {})).toBe(0)
+    expect(evalExpr('max(0,nL-1)*3', { nL: 0 })).toBe(0)
+    expect(evalExpr('max(0, nL-1, 5) * 2', { nL: 9 })).toBe(16)
+    expect(evalExpr('ceil(nL/(nL+1))*3', { nL: 2 })).toBe(3)
+    expect(evalExpr('ceil(max(1,2)/2)', {})).toBe(1)
+  })
+  it('rejects unknown functions, bad arity, stray commas and prototype names', () => {
+    expect(() => evalExpr('floor(1.5)', {})).toThrow('layout_expr')
+    expect(() => evalExpr('toString(1)', {})).toThrow('layout_expr')
+    expect(() => evalExpr('ceil(1,2)', {})).toThrow('layout_expr')
+    expect(() => evalExpr('max(1)', {})).toThrow('layout_expr')
+    expect(() => evalExpr('ceil()', {})).toThrow('layout_expr')
+    expect(() => evalExpr('1,2', {})).toThrow('layout_expr')
+    expect(() => evalExpr('(1,2)', {})).toThrow('layout_expr')
+    expect(() => evalExpr('ceil(1', {})).toThrow('layout_expr')
+  })
+})

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { defaultParams, kinds, LAYOUTS } from '../layoutRegistry.js'
+import { defaultParams, kinds, LAYOUTS, validateLayout } from '../layoutRegistry.js'
 import { startModel, validateCorners, pieceCount, setParams, trackOf, isFixedPiece, pieceLabel } from '../partModel.js'
 import { expandParts } from '../partExpand.js'
 import { computeComponentLength } from '../bomEngine.js'
@@ -290,5 +290,194 @@ describe('sliding_2_fixed_2', () => {
     const stiles = r.components.filter((c) => c.length_rule_type === 'height_minus')
     const total = stiles.reduce((s, c) => s + c.quantity_value * r.len(c), 0)
     expect(total).toBeCloseTo(8000, 6)
+  })
+})
+
+// ---------------------------------------------------------------- doors (Task 6)
+import { glassParts } from '../partModel.js'
+import { evalExpr } from '../layoutExpr.js'
+import { exprParams } from '../layoutRegistry.js'
+
+const doorModel = (kind, patch) => { let m = startModel(kind, defaultParams(kind, {})); if (patch) m = setParams(m, patch); return fill(m) }
+
+describe('swing_door', () => {
+  const rows = (m) => run(m, 1800, 2100)
+  it('snapshot: keys, counts, families, params', () => {
+    const m = startModel('swing_door', defaultParams('swing_door', {}))
+    expect(Object.keys(m.lines)).toEqual(['frame_top', 'sill', 'frame_side', 'leaf_stile_hinge', 'leaf_stile_handle', 'leaf_rail_top', 'leaf_rail_bottom'])
+    expect(m.params).toEqual({ leaves: 1, hinge: 'left', open: 'out', sill: 'yes', pivot: false })
+    expect(counts(m)).toEqual({ frame_top: 1, sill: 1, frame_side: 2, leaf_stile_hinge: 1, leaf_stile_handle: 1, leaf_rail_top: 1, leaf_rail_bottom: 1 })
+    expect(m.lines.frame_top[0].profile_family).toBe('กล่องแจ็คสัน')
+    expect(m.lines.leaf_stile_hinge[0].profile_family).toBe('เสาประตูสวิง')
+    expect(m.lines.leaf_rail_top[0].profile_family).toBe('เสาบนสวิง')
+    expect(m.lines.leaf_rail_bottom[0].profile_family).toBe('เสาล่างสวิง')
+    expect(m.lines.sill[0].profile_family).toBe('ธรณีสวิง')
+    expect(validateCorners(m)).toEqual([])
+  })
+  it('input definitions', () => {
+    const by = Object.fromEntries(LAYOUTS.swing_door.inputs.map((i) => [i.key, i]))
+    expect([by.leaves.min, by.leaves.max, by.leaves.default, by.leaves.estimator, by.leaves.fixed_by_type]).toEqual([1, 2, 1, true, true])
+    expect(by.hinge.only_when).toEqual({ leaves: 1 })
+    expect([by.pivot.type, by.pivot.fixed_by_type, by.pivot.default]).toEqual(['boolean', true, false])
+    expect(by.sill.default).toBe('yes')
+    expect(defaultParams('swing_door', { leaves: 2, pivot: true })).toMatchObject({ leaves: 2, pivot: true })
+  })
+  it('leaves 2, sill yes, 1800 x 2100, b 45: rails 855 (qty 2 each), stiles 2010', () => {
+    const m = doorModel('swing_door', { leaves: 2 })
+    const r = rows(m)
+    expect(r.issues).toEqual([])
+    for (const name of ['เสาบนสวิง', 'เสาล่างสวิง'].map((_, i) => m.names[['leaf_rail_top', 'leaf_rail_bottom'][i]])) {
+      const c = r.row(name)[0]
+      expect(c.quantity_value).toBe(2)
+      expect(r6(r.len(c) + c.end_deduction_mm)).toBe(855)
+    }
+    for (const k of ['leaf_stile_hinge', 'leaf_stile_handle']) {
+      const c = r.row(m.names[k])[0]
+      expect(c.quantity_value).toBe(2)
+      expect(r6(r.len(c))).toBe(2010)
+    }
+    expect(r6(r.len(r.row(m.names.frame_side)[0]))).toBe(2100)
+    expect(r.row(m.names.sill)).toHaveLength(1)
+  })
+  it('sill no: stiles 2055 and no sill row; toggling back restores 2010', () => {
+    let m = doorModel('swing_door', { leaves: 2, sill: 'no' })
+    let r = rows(m)
+    expect(r.issues).toEqual([])
+    expect(r.components.map((c) => c.role_name)).not.toContain('ธรณี (วงกบล่าง)')
+    expect(r6(r.len(r.row(m.names.leaf_stile_hinge)[0]))).toBe(2055)
+    m = fill(setParams(m, { sill: 'yes' }))
+    r = rows(m)
+    expect(r.issues).toEqual([])
+    expect(r6(r.len(r.row(m.names.leaf_stile_hinge)[0]))).toBe(2010)
+    expect(r.row('ธรณี (วงกบล่าง)')).toHaveLength(1)
+  })
+  it('doors are butt-jointed (D15): stiles run through, rails butt, frame top butts into the sides', () => {
+    const m = doorModel('swing_door')
+    expect(m.lines.leaf_stile_hinge[0].ends[0].map((e) => e.mode)).toEqual(['through', 'through'])
+    expect(m.lines.leaf_rail_top[0].ends[0].map((e) => e.mode)).toEqual(['butt', 'butt'])
+    expect(m.lines.frame_top[0].ends[0].map((e) => e.mode)).toEqual(['butt', 'butt'])
+    expect(LAYOUTS.swing_door.parts.every((p) => p.corner === 'butt')).toBe(true)
+  })
+  it('hardware sets by pivot (qty expressions), v_hinge symbol', () => {
+    const hw = (params) => LAYOUTS.swing_door.hardware.map((h) => [h.name, h.per, evalExpr(h.qty, exprParams({ params }))]).filter(([, , q]) => q > 0)
+    expect(hw({ pivot: false })).toEqual([['บานพับ', 'sash', 3], ['มือจับ', 'sash', 1]])
+    expect(hw({ pivot: true })).toEqual([['door closer ฝังวงกบบน', 'sash', 1], ['เดือยบน/ล่าง', 'sash', 2], ['มือจับ', 'sash', 1]])
+    expect(symbolFor(startModel('swing_door', defaultParams('swing_door', {})), 'leaf', 0)).toEqual({ kind: 'v_hinge', hinge: 'left' })
+    const two = doorModel('swing_door', { leaves: 2 })
+    expect([0, 1].map((i) => symbolFor(two, 'leaf', i).hinge)).toEqual(['left', 'right'])
+  })
+})
+
+describe('frameless_door', () => {
+  it('snapshot: only the frame has aluminium positions', () => {
+    const m = startModel('frameless_door', defaultParams('frameless_door', {}))
+    expect(Object.keys(m.lines)).toEqual(['frame_top', 'frame_side'])
+    expect(m.params).toEqual({ leaves: 1, hinge: 'left', open: 'out' })
+    expect(LAYOUTS.frameless_door.parts.find((p) => p.key === 'leaf')).toMatchObject({ glass: true, count: 'leaves', positions: [] })
+    expect(LAYOUTS.frameless_door.inputs.find((i) => i.key === 'leaves').fixed_by_type).toBe(true)
+  })
+  it('three aluminium pieces: sides x 2 and top; glassParts: 2 leaves of 855 at 1800', () => {
+    const m = doorModel('frameless_door', { leaves: 2 })
+    const r = run(m, 1800, 2100)
+    expect(r.issues).toEqual([])
+    expect(r.components.map((c) => [c.role_name, c.quantity_value])).toEqual([['เฟรมบน', 1], ['เฟรมข้าง', 2]])
+    expect(r.components.reduce((s, c) => s + c.quantity_value, 0)).toBe(3)
+    expect(glassParts(m, { widthMm: 1800, buttOf }).map((g) => [g.part, g.idx, g.widthMm])).toEqual([['leaf', 0, 855], ['leaf', 1, 855]])
+  })
+  it('hardware per leaf: patch fitting 2, floor spring 1, stainless handle 1, floor lock 1', () => {
+    expect(LAYOUTS.frameless_door.hardware.map((h) => [h.name, h.qty])).toEqual([['patch fitting', 2], ['floor spring', 1], ['มือจับสแตนเลส', 1], ['กุญแจล็อคพื้น', 1]])
+    expect(LAYOUTS.frameless_door.hardware.every((h) => h.per === 'sash')).toBe(true)
+  })
+})
+
+describe('hanging_door', () => {
+  it('snapshot', () => {
+    const m = startModel('hanging_door', defaultParams('hanging_door', {}))
+    expect(Object.keys(m.lines)).toEqual(['track_rail', 'track_cover', 'frame_side', 'leaf_stile_a', 'leaf_stile_b', 'leaf_rail_top', 'leaf_rail_bottom'])
+    expect(m.params).toEqual({ leaves: 1 })
+    expect(m.lines.track_rail[0].profile_family).toBe('รางแขวนใหญ่')
+    expect(m.lines.track_cover[0].profile_family).toBe('กล่อง 1-3/4')
+    expect(validateCorners(m)).toEqual([])
+  })
+  it('leaves 1, W 2400: track_rail 4800 (factor 2), cover 4800', () => {
+    const m = doorModel('hanging_door')
+    const r = run(m, 2400, 2100)
+    expect(r.issues).toEqual([])
+    expect(r6(r.len(r.row(m.names.track_rail)[0]))).toBe(4800)
+    expect(r6(r.len(r.row(m.names.track_cover)[0]))).toBe(4800)
+  })
+  it('frame_side = H - b(track_rail) once; rails (W - 2 b(frame_side)) / leaves', () => {
+    const m = doorModel('hanging_door', { leaves: 2 })
+    const r = run(m, 2400, 2100)
+    expect(r.issues).toEqual([])
+    expect(r6(r.len(r.row(m.names.frame_side)[0]))).toBe(2055)
+    const rail = r.row(m.names.leaf_rail_top)[0]
+    expect(rail.quantity_value).toBe(2)
+    expect(r6(r.len(rail) + rail.end_deduction_mm)).toBe(1155)
+  })
+  it('hardware and symbol', () => {
+    expect(LAYOUTS.hanging_door.hardware).toEqual([{ name: 'ลูกล้อรางแขวน', per: 'sash', qty: 2 }, { name: 'ไกด์พื้น', per: 'unit', qty: 1 }])
+    expect(symbolFor(startModel('hanging_door', defaultParams('hanging_door', {})), 'leaf', 0).kind).toBe('slide')
+  })
+})
+
+describe('folding_door', () => {
+  const buttTrack = (f) => (f === 'รางบน' || f === 'รางล่าง (ยูฝังพื้น)' ? 60 : 45)
+  const fold = (patch) => doorModel('folding_door', patch)
+  it('snapshot: nL 2 nR 2, 4 leaves', () => {
+    const m = startModel('folding_door', defaultParams('folding_door', {}))
+    expect(m.params).toEqual({ nL: 2, nR: 2 })
+    expect(Object.keys(m.lines)).toEqual(['track_top', 'track_bottom', 'track_side', 'leaf_top', 'leaf_bottom', 'leaf_side', 'leaf_cover_v', 'leaf_cover_h'])
+    expect(counts(m)).toMatchObject({ track_top: 1, track_bottom: 1, track_side: 2, leaf_top: 4, leaf_bottom: 4, leaf_side: 8, leaf_cover_v: 8, leaf_cover_h: 8 })
+    expect(m.lines.track_top[0].profile_family).toBe('รางบน')
+    expect(m.lines.track_bottom[0].profile_family).toBe('รางล่าง (ยูฝังพื้น)')
+    expect(validateCorners(m)).toEqual([])
+  })
+  it('nL 2 nR 2, W 3000 H 2400, b 45 (tracks 60): leaf width 727.5, leaf_side 2280', () => {
+    const m = fold()
+    const r = runWith(m, 3000, 2400, buttTrack)
+    expect(r.issues).toEqual([])
+    const top = r.row(m.names.leaf_top)[0]
+    expect(top.quantity_value).toBe(4)
+    expect(r6(r.len(top) + top.end_deduction_mm)).toBe(727.5)
+    const side = r.row(m.names.leaf_side)[0]
+    expect(side.quantity_value).toBe(8)
+    expect(r6(r.len(side))).toBe(2280)
+    expect(r6(r.len(r.row(m.names.track_side)[0]))).toBe(2280)
+  })
+  it('the two free lines carry the leaf member rules and no corner partner', () => {
+    const m = fold()
+    expect(m.lines.leaf_cover_v[0]).toMatchObject({ length_rule_type: 'height_minus', deduction_auto: true })
+    expect(m.lines.leaf_cover_h[0]).toMatchObject({ length_rule_type: 'width_minus', deduction_auto: true, length_factor: 0.25 })
+    expect(m.lines.leaf_cover_v[0].ends[0].map((e) => e.mode)).toEqual(['through', 'through'])
+    const r = runWith(m, 3000, 2400, buttTrack)
+    expect(r6(r.len(r.row(m.names.leaf_cover_v)[0]))).toBe(2280)
+  })
+  it('nL 0 nR 0 throws layout_params_invalid; one side only works (factor 1/(nL+nR))', () => {
+    expect(() => startModel('folding_door', { nL: 0, nR: 0 })).toThrow('layout_params_invalid')
+    const m = fold({ nL: 3, nR: 0 })
+    expect(m.lines.leaf_top[0].length_factor).toBeCloseTo(1 / 3, 12)
+    expect(counts(m).leaf_top).toBe(3)
+  })
+  it('input definitions: nL, nR 0-6 default 2 estimator', () => {
+    for (const k of ['nL', 'nR']) {
+      const i = LAYOUTS.folding_door.inputs.find((x) => x.key === k)
+      expect([i.min, i.max, i.default, i.estimator, i.integer]).toEqual([0, 6, 2, true, true])
+    }
+    expect(LAYOUTS.folding_door.validParams).toBe('nL+nR')
+  })
+  it('hardware quantities by side counts', () => {
+    const hw = (nL, nR) => Object.fromEntries(LAYOUTS.folding_door.hardware.map((h) => [h.name, evalExpr(h.qty, { nL, nR })]))
+    expect(hw(2, 2)).toEqual({ 'ล้อบน/ล่างบานเฟี้ยม': 4, บานพับ: 6, บานพับวงกบ: 6, มือจับ: 2 })
+    expect(hw(3, 0)).toEqual({ 'ล้อบน/ล่างบานเฟี้ยม': 4, บานพับ: 6, บานพับวงกบ: 3, มือจับ: 1 })
+    expect(hw(1, 0)).toEqual({ 'ล้อบน/ล่างบานเฟี้ยม': 2, บานพับ: 0, บานพับวงกบ: 3, มือจับ: 1 })
+    expect(symbolFor(fold(), 'leaf', 0).kind).toBe('fold')
+  })
+})
+
+describe('every registered layout passes validateLayout', () => {
+  it('all 11', () => {
+    const real = ['sliding_2', 'fixed_grid', 'awning_grid', 'casement_n', 'sliding_n', 'sliding_3track', 'sliding_2_fixed_2', 'swing_door', 'frameless_door', 'hanging_door', 'folding_door']
+    for (const k of real) { expect(kinds()).toContain(k); expect([k, validateLayout(LAYOUTS[k])]).toEqual([k, []]) }
   })
 })

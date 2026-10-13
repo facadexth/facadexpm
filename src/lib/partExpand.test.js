@@ -457,3 +457,43 @@ describe('expandParts — sill-less door, sash references, param-driven factors'
     expect(m.lines.rail_b[0].length_factor).toBe(0.5)   // input untouched
   })
 })
+
+// ---------------------------------------------------------------- Task 6: role-driven track autos
+registerLayoutForTest({
+  kind: 'test_t6_track',
+  inputs: [],
+  parts: [FRAME_PART, { key: 'leaf', name: 'บาน', count: 1, overlap_mode: 'manual', overlap_mm: 0, corner: 'butt', track: null }],
+  positions: {
+    track_rail: { part: 'frame', orient: 'h', per: 1, name: 'ราง', corner: 'free', rule: { type: 'width' } },
+    track_top: { part: 'frame', orient: 'h', per: 1, name: 'รางบน', corner: 'free', rule: { type: 'width' } },
+    track_bottom: { part: 'frame', orient: 'h', per: 1, name: 'รางล่าง', corner: 'free', rule: { type: 'width' } },
+    track_side: { part: 'frame', orient: 'v', per: 2, name: 'รางข้าง', corner: 'free', rule: { type: 'height' } },
+    by_track: { part: 'leaf', orient: 'v', per: 1, name: 'A', corner: 'free', rule: { type: 'height_minus', auto: 'track' } },
+    by_tb: { part: 'leaf', orient: 'v', per: 1, name: 'B', corner: 'free', rule: { type: 'height_minus', auto: 'track_top_bottom' } },
+    by_ts: { part: 'leaf', orient: 'h', per: 1, name: 'C', corner: 'free', rule: { type: 'width_minus', auto: 'track_sides' } },
+  },
+  joints: [],
+  order: ['track_rail', 'track_top', 'track_bottom', 'track_side', 'by_track', 'by_tb', 'by_ts'],
+})
+
+describe('role-driven track autos', () => {
+  const FAM = { track_rail: 'R', track_top: 'T', track_bottom: 'B', track_side: 'S' }
+  const bt = (f) => ({ R: 11, T: 20, B: 30, S: 7 }[f] ?? 1)
+  const model = () => {
+    const m = start3('test_t6_track', {})
+    for (const [k, ls] of Object.entries(m.lines)) for (const l of ls) l.profile_family = FAM[k] || 'X'
+    return m
+  }
+  it('track = b(track_rail), track_top_bottom = b(track_top)+b(track_bottom), track_sides = 2 b(track_side)', () => {
+    const { components, issues } = expandParts({ model: model(), buttOf: bt, widthOf: () => null })
+    expect(issues).toEqual([])
+    const ded = (n) => components.find((c) => c.role_name === n).length_deduction_mm
+    expect([ded('A'), ded('B'), ded('C')]).toEqual([11, 50, 14])
+  })
+  it('an absent track role contributes 0 (R-P3)', () => {
+    const m = model()
+    delete m.lines.track_rail
+    const { components } = expandParts({ model: m, buttOf: bt, widthOf: () => null })
+    expect(components.find((c) => c.role_name === 'A').length_deduction_mm).toBe(0)
+  })
+})

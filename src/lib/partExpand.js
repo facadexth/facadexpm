@@ -15,14 +15,23 @@ const DEDUCTING_RULES = new Set(['width_minus', 'height_minus'])
 // rule.auto -> { frame, grid }: `frame` = butt distances of the frame members the piece sits between,
 // `grid` = { label, n, role } intermediate bars (n × width of role line 0) for grid layouts.
 // b(role) = butt distance of the role's line 0 (0 when the layout/model has no such position, R-P3); p(name) = param.
+// A frame-only auto: the sum of `count × b(role)` terms.
+const bSum = (...terms) => ({ b }) => ({ frame: terms.reduce((sum, [role, n]) => sum + n * b(role), 0), grid: null })
+// A grid auto: `frame` terms plus (param − 1) intermediate bars of `role`, measured across `label` ('cols' | 'rows').
+const gridAuto = (frameFn, label, param, role) => (ctx) => ({ frame: frameFn(ctx).frame, grid: { label, n: ctx.p(param) - 1, role } })
+const SIDES = bSum(['frame_side', 2])
+const TOP_BOTTOM = bSum(['frame_top', 1], ['frame_bottom', 1])
 const AUTO = {
-  frame_sides: ({ b }) => ({ frame: 2 * b('frame_side'), grid: null }),
-  sides_only: ({ b }) => ({ frame: 2 * b('frame_side'), grid: null }),
-  frame_top_bottom: ({ b }) => ({ frame: b('frame_top') + b('frame_bottom'), grid: null }),
-  frame_top: ({ b }) => ({ frame: b('frame_top'), grid: null }),
-  grid_cols: ({ b, p }) => ({ frame: 2 * b('frame_side'), grid: { label: 'cols', n: p('cols') - 1, role: 'mullion' } }),
-  grid_n: ({ b, p }) => ({ frame: 2 * b('frame_side'), grid: { label: 'cols', n: p('n') - 1, role: 'mullion' } }),   // casement_n: columns = n
-  grid_rows: ({ b, p }) => ({ frame: b('frame_top') + b('frame_bottom'), grid: { label: 'rows', n: p('rows') - 1, role: 'transom' } }),
+  frame_sides: SIDES,
+  sides_only: SIDES,
+  frame_top_bottom: TOP_BOTTOM,
+  frame_top: bSum(['frame_top', 1]),
+  grid_cols: gridAuto(SIDES, 'cols', 'cols', 'mullion'),
+  grid_n: gridAuto(SIDES, 'cols', 'n', 'mullion'),   // casement_n: columns = n
+  grid_rows: gridAuto(TOP_BOTTOM, 'rows', 'rows', 'transom'),
+  track: bSum(['track', 1]),   // hanging_door: the track rail's butt distance, once
+  track_top_bottom: bSum(['track_top', 1], ['track_bottom', 1]),
+  track_sides: bSum(['track_side', 2]),
 }
 
 function validModel(model) {

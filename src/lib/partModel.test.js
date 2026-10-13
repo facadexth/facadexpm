@@ -362,3 +362,77 @@ describe('sliding_2 frozen behaviour (declarative layout)', () => {
     expect(setParams(r, { bar: 1 }).params).toEqual({ foo: 3, bar: 1 })
   })
 })
+
+// ---------------------------------------------------------------- Task 6: enabled positions, validParams, glassParts
+import { glassParts, partnerEnd as partnerEnd6, validateCorners as validateCorners6, startModel as start6, setParams as setParams6, pieceCount as pieceCount6 } from './partModel'
+
+describe('enabled positions (swing_door sill)', () => {
+  it('sill yes: the sill position exists with joints to both frame sides', () => {
+    const m = start6('swing_door', { sill: 'yes' })
+    expect(Object.keys(m.lines)).toContain('sill')
+    expect(m.names.sill).toBe('ธรณี (วงกบล่าง)')
+    expect(m.lines.frame_side[0].ends.map((p) => p[1].mode)).toEqual(['through', 'through'])
+    expect(m.lines.sill[0].ends[0].map((e) => e.mode)).toEqual(['butt', 'butt'])
+    expect(partnerEnd6(m, 'sill', 0, 0)).toEqual({ key: 'frame_side', piece: 0, end: 1 })
+  })
+  it('sill no: no lines, no name, the frame sides have a free bottom end, no corner issues', () => {
+    const m = start6('swing_door', { sill: 'no' })
+    expect(m.lines.sill).toBeUndefined()
+    expect(m.names.sill).toBeUndefined()
+    expect(partnerEnd6(m, 'frame_side', 0, 1)).toBeNull()
+    expect(m.lines.frame_side[0].ends.map((p) => p[1])).toEqual([{ mode: 'through', to: null, deduction_mm: null }, { mode: 'through', to: null, deduction_mm: null }])
+    expect(validateCorners6(m)).toEqual([])
+  })
+  it('setParams toggles it both ways: removed on no, recreated with the default line on yes', () => {
+    const yes = start6('swing_door', { sill: 'yes' })
+    const no = setParams6(yes, { sill: 'no' })
+    expect(no.lines.sill).toBeUndefined()
+    expect(no.names.sill).toBeUndefined()
+    expect(yes.lines.sill).toBeDefined()   // input untouched
+    const back = setParams6(no, { sill: 'yes' })
+    expect(back.lines.sill).toHaveLength(1)
+    expect(back.lines.sill[0].profile_family).toBe('ธรณีสวิง')
+    expect(back.lines.sill[0].ends).toHaveLength(1)
+    expect(back.names.sill).toBe('ธรณี (วงกบล่าง)')
+    expect(validateCorners6(back)).toEqual([])
+  })
+  it('an owner-edited sill line survives an unrelated setParams while enabled', () => {
+    let m = start6('swing_door', { sill: 'yes' })
+    m.lines.sill[0].profile_family = 'X'
+    m = setParams6(m, { open: 'in' })
+    expect(m.lines.sill[0].profile_family).toBe('X')
+  })
+})
+
+describe('validParams', () => {
+  it('folding_door with nL + nR = 0 throws layout_params_invalid in startModel and in setParams, before any division', () => {
+    expect(() => start6('folding_door', { nL: 0, nR: 0 })).toThrow('layout_params_invalid')
+    const ok = start6('folding_door', { nL: 1, nR: 0 })
+    expect(() => setParams6(ok, { nL: 0 })).toThrow('layout_params_invalid')
+    expect(pieceCount6(ok, 'leaf_top')).toBe(1)
+  })
+  it('layouts without validParams are unaffected', () => {
+    expect(() => start6('sliding_2')).not.toThrow()
+  })
+})
+
+describe('glassParts', () => {
+  it('lists the glass parts with piece index and width rule; frameless_door has one glass part of `leaves` pieces', () => {
+    const m = start6('frameless_door', { leaves: 2 })
+    expect(glassParts(m)).toEqual([
+      { part: 'leaf', idx: 0, widthRule: { auto: 'frame_sides', divisor: 2 }, widthMm: null },
+      { part: 'leaf', idx: 1, widthRule: { auto: 'frame_sides', divisor: 2 }, widthMm: null },
+    ])
+  })
+  it('with the opening: (W - 2 b(frame_side)) / leaves', () => {
+    const m = start6('frameless_door', { leaves: 2 })
+    m.lines.frame_side[0].profile_family = 'S'
+    expect(glassParts(m, { widthMm: 1800, buttOf: () => 45 }).map((g) => g.widthMm)).toEqual([855, 855])
+    expect(glassParts(setParams6(m, { leaves: 1 }), { widthMm: 900, buttOf: (f) => (f === 'S' ? 40 : 0) }).map((g) => g.widthMm)).toEqual([820])
+  })
+  it('width is null when the frame side has no butt distance; layouts with no glass give []', () => {
+    const m = start6('frameless_door', { leaves: 1 })
+    expect(glassParts(m, { widthMm: 900, buttOf: () => null })[0].widthMm).toBeNull()
+    expect(glassParts(start6('sliding_2'))).toEqual([])
+  })
+})
