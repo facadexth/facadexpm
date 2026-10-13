@@ -186,7 +186,7 @@ Two admins saving the same template at once can leave duplicate part sets (no un
 
 # Layouts for every type handover (2026-10-13) — part editor for all 23 catalogue leaf types
 
-Spec: `docs/superpowers/specs/2026-10-13-part-editor-layouts-all-types-design.md`. Plan: `docs/superpowers/plans/2026-10-13-part-editor-layouts-all-types.md`. Approved mockup of the 22 drawings: `docs/reference/type-previews-mockup.html`. Branch `feat/alu-cost-catalog`, 18 commits `9d778ff8..ee93f509` (suite 1847 -> 2199 passing, build OK). **Not merged, not pushed, nothing deployed, and no agent ran any SQL.** Nothing of the 12 new kinds has been clicked on real data; the screenshots in `.playwright-mcp/t10-local-*.png` (main checkout) come from a local harness, not from CHANG.
+Spec: `docs/superpowers/specs/2026-10-13-part-editor-layouts-all-types-design.md`. Plan: `docs/superpowers/plans/2026-10-13-part-editor-layouts-all-types.md`. Approved mockup of the 22 drawings: `docs/reference/type-previews-mockup.html`. Branch `feat/alu-cost-catalog`, 23 commits after `9d778ff8` (19 for the plan up to `3b3b8628`, then the final-review fix wave `10aed1cc`, `c7a11ad0`, `f6907aa7` and this handover correction; suite 1847 -> 2218 passing, build OK). **Not merged, not pushed, nothing deployed, and no agent ran any SQL.** Nothing of the 12 new kinds has been clicked on real data; the screenshots in `.playwright-mcp/t10-local-*.png` (main checkout) come from a local harness, not from CHANG.
 
 ## What was built
 
@@ -194,29 +194,32 @@ Spec: `docs/superpowers/specs/2026-10-13-part-editor-layouts-all-types-design.md
 - **Engine generalisations** (spec section 3): expression-driven piece counts / factors / overlaps (`layoutExpr.js`), grid deductions, tee joints, mitred corners, optional positions (door sill), per-track sliding (`trackOf`), per-cell kinds for curtain walls (`layoutCells.js`).
 - **Editor/UI**: one interactive drawing per new kind (part tabs, fading, click-to-assign, "เสร็จแล้ว" ticks, shown on the overview badge), inputs panel from the layout, Thai issue texts. Item form: the layout's `estimator` inputs, curtain-wall cells clickable on the item preview; saved drawings are not made stale by the ticks.
 - **Drawing**: `partGeometry.js` + `partGeometryBodies.js` (bars) and `partSvgSymbols.js` / `partSymbols.js` (opening symbols, dashed in/out view, hinge sides, slide arrows). The `sliding_2` drawing is byte-identical to before (pinned by a sha256 test).
-- **Hardware defaults** (`src/lib/hardwareDefaults.js`): when a template is created from a layout, the layout's declared hardware is written once as `bom_template_hardware` lines (see rulings R-11a).
+- **Hardware defaults** (`src/lib/hardwareDefaults.js`): when a template is created from a layout, the layout's declared hardware is written once as `bom_template_hardware` lines (see rulings R-11a, R-F4).
+- **Final-review fix wave** (rulings R-F1..R-F5 below): sliding_n / sliding_3track sashes are left / middle / right parts so the stile families are right for n >= 3; `fixed_by_type` means "the type MAY pin it"; the "ความยาวชิ้น" drawing style prints cut lengths; curtain wall k = 1 saves; swing-door beads; a dedicated message when a template's kind no longer matches its type; a template whose part rows are missing is reported incomplete.
 
 ## The 13 kinds (catalogue type -> kind)
 
-"Fixed by type" = inputs marked `fixed_by_type` in the layout file: their value comes from `door_window_types.layout_params` and overrides anything stored on the template. "Estimator" = inputs the item form shows (W and H are always implicit). Defaults in brackets. Thai labels are `layoutLabels` in the registry (the catalogue type form's select).
+"Fixed by type" = inputs marked `fixed_by_type` in the layout file, i.e. inputs the type **may** pin. An input is fixed only when the type's `door_window_types.layout_params` actually **sets that key** (R-F2; `model.fixedKeys`): then the value comes from the type, overrides anything stored on the template, is read-only in the editor and hidden on the item. When the type leaves it blank, the template sets it, and if it is also an estimator input the item may change it. "Estimator" = inputs the item form shows (W and H are always implicit), minus the keys the type pins. Defaults in brackets. Thai labels are `layoutLabels` in the registry (the catalogue type form's select).
 
 | layout_kind | Thai label | Catalogue type(s) (leaf) | Fixed by type | Estimator inputs |
 |---|---|---|---|---|
 | `sliding_2` | บานเลื่อนสวน 2 บาน | บานเลื่อนสวน 2 บาน (shipped, unchanged) | - | - (W, H only) |
-| `sliding_n` | บานเลื่อน n บาน | บานเลื่อนรางล่าง (door) | `door` (true for the bottom-rail door: threshold rail, no bottom frame) | `n` [2], 2-6 |
+| `sliding_n` | บานเลื่อน n บาน | บานเลื่อนรางล่าง (door) | `door` (true for the bottom-rail door: threshold rail, no bottom frame) | `n` [2], 2-6 — sashes are parts บานซ้าย / บานกลาง × (n-2) / บานขวา (R-F1) |
 | `sliding_3track` | บานเลื่อน 3 ราง | บานเลื่อน 3 บาน | - | `fixed_side` [left] left/right |
 | `sliding_2_fixed_2` | บานเลื่อน 2 ตาย 2 | บานเลื่อน 2 ตาย 2 | - | - |
 | `fixed_grid` | บานติดตาย (ซอยกลาง) | บานติดตาย | - | `rows` [2] 1-8, `cols` [3] 1-12 |
-| `awning_grid` | บานกระทุ้ง (ชั้น × ช่อง) | the 6 types บานกระทุ้ง r ชั้น x c ช่อง | `rows` = r, `cols` = c | `rows`, `cols` (read-only on the item when fixed by type), `open` [out] out/in |
-| `casement_n` | บานเปิดข้าง | บานเปิดข้าง; บานเปิดข้างเดี่ยว (new type, n = 1) | none declared in code (see the note below) | `n` [2] 1-8, `hinge` [left] (shown only when n = 1), `open` [out] |
-| `swing_door` | ประตูบานเปิด/สวิง | บานเปิด (hinged); บานสวิงเดี่ยว / บานสวิงคู่ (pivot) | `leaves` [1] 1-2 (1 / 2 for the swing types), `pivot` (true for บานสวิง*) | `leaves`, `hinge` [left] (only when 1 leaf), `open` [out], `sill` [yes] yes/no |
-| `frameless_door` | ประตูสวิงเปลือย | บานสวิงเปลือยเดี่ยว / คู่ | `leaves` 1 / 2 | `leaves`, `hinge` (only when 1 leaf), `open` |
-| `hanging_door` | ประตูเลื่อนรางแขวน | บานเลื่อนรางแขวน | `leaves` [1] 1-2 | `leaves` |
+| `awning_grid` | บานกระทุ้ง (ชั้น × ช่อง) | the 6 types บานกระทุ้ง r ชั้น x c ช่อง | `rows` = r, `cols` = c | `open` [out] out/in (`rows` / `cols` are never on the item; in the template editor they are read-only only when the type pins them) |
+| `casement_n` | บานเปิดข้าง | บานเปิดข้าง; บานเปิดข้างเดี่ยว (new type, n = 1) | `n` (บานเปิดข้างเดี่ยว: 1; บานเปิดข้าง: leave blank) | `n` [2] 1-8 unless the type pins it, `hinge` [left] (shown only when n = 1), `open` [out] |
+| `swing_door` | ประตูบานเปิด/สวิง | บานเปิด (hinged); บานสวิงเดี่ยว / บานสวิงคู่ (pivot) | `leaves` [1] 1-2 (1 / 2 for the swing types; leave blank for บานเปิด), `pivot` (true for บานสวิง*) | `leaves` (only when the type does not pin it), `hinge` [left] (only when 1 leaf), `open` [out], `sill` [yes] yes/no |
+| `frameless_door` | ประตูสวิงเปลือย | บานสวิงเปลือยเดี่ยว / คู่ | `leaves` 1 / 2 | `leaves` (only when the type does not pin it), `hinge` (only when 1 leaf), `open` |
+| `hanging_door` | ประตูเลื่อนรางแขวน | บานเลื่อนรางแขวน | `leaves` [1] 1-2 (leave blank so the item chooses) | `leaves` (only when the type does not pin it) |
 | `folding_door` | บานเฟี้ยม | บานเฟี้ยม | - | `nL` [2], `nR` [2], each 0-5, not both 0 |
 | `curtain_wall` | Curtain wall | STICK WALL; UNITIZED CURTAIN WALL | `unitized` (false / true) | `rows` [3], `cols` [4], `spandrel` [none] none/top/bottom, `k` [0.5] (0.5 / 1 / 0), `cells` (per-cell kind map) |
 | `frameless_wall` | ผนังกระจกเปลือย | ผนังกระจกบานเปลือย | - | `cols` [3] 1-12 |
 
-That is 17 named types + the 6 กระทุ้ง types = 23 leaf types. **Note (code wins over spec section 4):** the spec fixes `n = 1` by type for บานเปิดข้างเดี่ยว, but in the code `n` on `casement_n` is an estimator input only (not `fixed_by_type`), so the type form cannot pin it; the single-sash type is therefore the same layout with `n` typed on the item (1) — the owner may want `n` marked `fixed_by_type` (one word in `casement_n.js`). Curtain wall also has the extra estimator inputs `spandrel`, `k` that the spec table did not list.
+That is 17 named types + the 6 กระทุ้ง types = 23 leaf types. **Casement (R-12a, done):** `n` on `casement_n` is both `fixed_by_type` and `estimator`, so the type บานเปิดข้างเดี่ยว sets `n = 1` in the type form (read-only in its templates, not shown on its items), while บานเปิดข้าง leaves `n` blank and each item sets it. Curtain wall also has the extra estimator inputs `spandrel`, `k` that the spec table did not list; at `k = 1` the four plate / cover lines are absent (they come back when `k` changes).
+
+**Swing door beads (I5):** `swing_door` has two free positions คิ้วประตู (ตั้ง) / คิ้วประตู (นอน), 2 + 2 per leaf, family `คิ้วประตู` (spec 5.7 / Excel sheet 6); the vertical ones take the stile length (through), the horizontal ones the leaf width (through, no end deduction) — set deductions per line if the Excel cuts them shorter.
 
 Position/part names per kind (วงกบ, บาน, ซอยกลาง, ราง, ...) and their default profile families are in each layout file; the default hardware per kind is the `hardware` array in the same file (counts listed in the owner questions below).
 
@@ -247,11 +250,23 @@ What it does: widens **both** `door_window_types.layout_kind` (new column) **and
 
 0. **Before the migration (R-10b, could not run — the agent's browser was logged out):** log in to the dev server (http://localhost:3001), open an existing `sliding_2` template in the part editor and an existing item that uses it; confirm the drawing and costing rows look as before and the browser console shows no errors.
 1. Apply the migration (dry-run first, above).
-2. **Catalogue -> type form:** set `layout_kind` + fixed params on each type: STICK WALL / UNITIZED CURTAIN WALL -> `curtain_wall` (`unitized` false / true); ผนังกระจกบานเปลือย -> `frameless_wall`; บานเปิด -> `swing_door`; บานสวิงเดี่ยว / คู่ -> `swing_door` (`pivot` true, leaves 1 / 2); บานสวิงเปลือยเดี่ยว / คู่ -> `frameless_door` (leaves 1 / 2); บานเฟี้ยม -> `folding_door`; บานเลื่อนรางแขวน -> `hanging_door`; บานเลื่อนรางล่าง -> `sliding_n` (`door` true); บานติดตาย -> `fixed_grid`; บานเปิดข้างเดี่ยว / บานเปิดข้าง -> `casement_n`; บานเลื่อนสวน 2 บาน -> `sliding_2`; บานเลื่อน 3 บาน -> `sliding_3track`; บานเลื่อน 2 ตาย 2 -> `sliding_2_fixed_2`; the 6 กระทุ้ง types -> `awning_grid` (rows = r, cols = c).
+2. **Catalogue -> type form:** before changing the แบบชิ้นส่วน of a type that already has templates, run the check below — a template whose kind differs from its type's kind no longer opens in the editor (it shows "แบบชิ้นส่วนของเทมเพลตนี้ (...) ไม่ตรงกับประเภท (...) — แก้แบบชิ้นส่วนที่ประเภทในแคตตาล็อก หรือสร้างเทมเพลตใหม่", R-F5) and costs nothing. The type form does not warn (it does not load the templates), so use the query:
+   ```sql
+   -- templates whose kind differs from their type's kind
+   select t.id, t.name, t.layout_kind, d.name as type_name, d.layout_kind as type_kind
+   from bom_templates t join door_window_types d on d.id = t.type_id
+   where t.layout_kind is distinct from d.layout_kind and d.layout_kind is not null;
+   ```
+   Then set `layout_kind` + fixed params on each type (a fixed param left blank is not fixed: the template / item choose it): STICK WALL / UNITIZED CURTAIN WALL -> `curtain_wall` (`unitized` false / true); ผนังกระจกบานเปลือย -> `frameless_wall`; บานเปิด -> `swing_door`; บานสวิงเดี่ยว / คู่ -> `swing_door` (`pivot` true, leaves 1 / 2); บานสวิงเปลือยเดี่ยว / คู่ -> `frameless_door` (leaves 1 / 2); บานเฟี้ยม -> `folding_door`; บานเลื่อนรางแขวน -> `hanging_door`; บานเลื่อนรางล่าง -> `sliding_n` (`door` true); บานติดตาย -> `fixed_grid`; บานเปิดข้างเดี่ยว / บานเปิดข้าง -> `casement_n`; บานเลื่อนสวน 2 บาน -> `sliding_2`; บานเลื่อน 3 บาน -> `sliding_3track`; บานเลื่อน 2 ตาย 2 -> `sliding_2_fixed_2`; the 6 กระทุ้ง types -> `awning_grid` (rows = r, cols = c).
 3. **One template per kind group**, assigning one profile family per part position, then save, reload and confirm preview + costing rows are unchanged after reload: fixed_grid; awning 2x2; casement 2; sliding 3; swing door with 2 leaves; folding 2+2; curtain wall with one awning cell and one spandrel cell (click cells in the preview).
-4. Confirm the **default hardware** lines appear on each newly created template (and are editable; the family/part is left empty for you to pick).
+4. Confirm the **default hardware** lines appear on each newly created template (and are editable; the family/part is left empty for you to pick). They are **fixed totals** computed from the template's own values at creation (e.g. 2 rollers × n of the template), and they **never follow the item's values** (an item with n = 4 on an n = 2 template still gets the template's hardware lines, R-F4). `fixed_grid`, `frameless_wall` and a curtain wall whose cells are all glass (the default) get no lines.
 5. **Item form:** enter `n`, `nL,nR`, `cols`, `leaves`...; click curtain-wall cells; save; reopen; check the drawing, the weight and the costing rows; add to a quotation and look at the attachment drawing.
-6. **sliding_2 templates can be re-pointed to `sliding_n`** (n = 2 gives identical numbers, proven by tests) to get the richer drawing with glass and slide arrows (R-8a: the old type keeps its plain drawing so its frozen tests stay green).
+6. **sliding_2 templates can be re-pointed to `sliding_n`** (n = 2 gives the same per-family totals, proven by tests) to get the richer drawing with glass and slide arrows (R-8a: the old type keeps its plain drawing so its frozen tests stay green). The **type's** `layout_kind` must change to `sliding_n` too (else the template is refused as a mismatch), and the template's part rows must be re-made: after the update below, open the template: the frame lines keep their families, the sash parts (บานซ้าย / บานขวา) come back with blank families (I7) — assign the left sash's families (the right / middle sashes follow them) and save:
+   ```sql
+   -- re-point one sliding_2 template to sliding_n (n = 2 reproduces the numbers); the type must say sliding_n too
+   update bom_templates set layout_kind = 'sliding_n', layout_params = '{"n":2}' where id = '<template id>';
+   update door_window_types set layout_kind = 'sliding_n' where id = '<its type id>';
+   ```
 7. Open a legacy template and an old project: nothing should look different.
 8. Fill the data the new numbers depend on: butt distance, width and hook overlap on every profile used by the new kinds (same rule as the part-editor handover above); without a butt distance the cost summary says so and counts 0.
 
@@ -297,6 +312,14 @@ Persistence / UI:
 - **R-10b** That read-only live check is deferred to the owner (click-through step 0); component tests + harness screenshots stand in. [a runtime-only regression on the live data path surfaces at acceptance]
 - **R-11a** `bom_template_hardware` has no `source` / `quantity_rule` columns and none were added: `hardwareDefaults` returns `{quantity, per, part_id: null, source: 'layout_default'}` and creation maps it to `{quantity_basis: 'fixed', quantity_value: total, reference_unit_price: 0, part_id: null}`; `per_sash` is resolved into the total at creation with the clamped part count; rows are inserted once on CREATE only; unevaluable rows are skipped and reported. [a hardware line count the owner edits by hand in the hardware tab]
 
+Final whole-branch review (fix wave):
+- **R-F1** `sliding_n` and `sliding_3track` model the sashes as three parts — `sash_left` (key + hook stile), `sash_mid` (count n-2, two hook stiles), `sash_right` (hook + key); 3-track `sash_fixed` / `sash_middle` / `sash_front` — so n sashes give 2 key + 2(n-1) hook stiles (spec 5.4 / 5.5) and each position has one family. `layout.sequence` orders them left to right (tracks alternate along it; 3-track `fixed_side: right` reverses it); the middle / right positions take the left sash's family while theirs is blank (`rule.familyFrom`), so a template saved at n = 2 prices an item with n = 3. n = 2 keeps sliding_2's per-family totals. [the drawing / tab naming of the middle sashes; the profile counts are the spec's]
+- **R-F2** An input is fixed only when the type's `layout_params` contain that key (`model.fixedKeys`); otherwise it is editable in the template and, when estimator, on the item. Applied with R-12a. [nothing; this is the spec's section 4 reading]
+- **R-12a** `casement_n` input `n` is `fixed_by_type` and `estimator` (บานเปิดข้างเดี่ยว pins n = 1). [the single-casement type shows an editable n]
+- **R-F3** The "เส้นคู่ + ความยาวชิ้น" style prints each piece's cut length from the expansion (what costing prices) and omits the label where none is available and on decorative free-line strips; sliding_2's legacy drawing untouched. [a label missing on an unpriced piece]
+- **R-F4** Hardware defaults stay fixed totals written at template creation, never following item values (an owner decision, below). [owner adds a per-item hardware rule later]
+- **R-F5** A template whose kind no longer matches its type (or an unknown kind) shows a dedicated message naming both kinds instead of "reload"; the type form has no warning (templates are not loaded there) — the handover's check query covers it. [a less helpful message]
+
 Also applied without a number (from the task reports): "เสร็จแล้ว" is stored per part key, so all sash instances of a part share one flag; an awning 2x2 shows 7 tabs (the ซอยกลาง part counts); changing an item's template resets its `layout_params`; `layout_params` is sent only when non-empty; the item form refuses to save when the params are refused by the layout (e.g. folding 0 + 0); the migration SQL test is `supabase/tests/layouts_all_types_test.sql`.
 
 ## Owner to confirm / open questions
@@ -304,15 +327,18 @@ Also applied without a number (from the task reports): "เสร็จแล้
 Spec section 11 (the plan built to rulings; each is a data default, so a different answer is an edit, not a rebuild):
 1. **R3** 3-track: which side is the fixed sash by default (built: left, mirrorable per item via `fixed_side`).
 2. **R5** May an item override the template's curtain-wall cell picture, or is the picture fixed per template (one template per façade pattern)? (Built: the item may override; cells saved to `estimation_openings.layout_params.cells`.)
-3. **Hanging door track length**: built as 2·W for one leaf; confirm for two leaves opening to both sides. (The drawn rail is 1.5W but costed 2W — see deferred minors.)
-4. **Hardware default counts** (now written into new templates; the `hardware` array of each layout file): sliding 2 rollers per sash + 1 lock per unit; 3-track 2x2 rollers + 3 tracks; 2+2 four rollers + 1 lock; awning / casement 2 stays (awning) or 2 hinges (casement) + 1 handle per sash; swing door 3 hinges + 1 handle per leaf, or (pivot) 1 door closer + 2 pivots per leaf; frameless door 2 patch fittings + 1 floor spring + 1 handle + 1 floor lock per leaf; hanging door 2 hanging rollers per leaf + 1 floor guide; folding door rollers 2·(ceil(nL/2)+ceil(nR/2)), hinges 3 per fold, frame hinges 3 per side, handle 1 per side; curtain wall 2 stays + 1 handle per awning cell; fixed_grid and frameless_wall none. Confirm or edit (spec asked: 3 hinges per leaf, 2 stays per awning sash, 2 rollers per sliding sash, 1 roller pair per folding pair).
-5. **Series for types not in the Excel** (frameless types, bottom-rail door): which profile series should the defaults name.
+3. **Hanging door track length**: built as 2·W for one leaf; confirm for two leaves opening to both sides. (The drawn rail is 1.5W but costed 2W; the "ความยาวชิ้น" style prints no length on it, R-F3.)
+4. **I4 / R-F4 — hardware never follows the item:** default hardware lines are fixed totals from the template's values at creation; an item that changes n / leaves / cells keeps the template's hardware quantities (a curtain wall template with default all-glass cells gets no awning hardware even if an item adds awning cells). Confirm this is acceptable, or ask for a per-item hardware rule.
+5. **Hardware default counts** (now written into new templates; the `hardware` array of each layout file): sliding 2 rollers per sash + 1 lock per unit; 3-track 2x2 rollers + 3 tracks; 2+2 four rollers + 1 lock; awning / casement 2 stays (awning) or 2 hinges (casement) + 1 handle per sash; swing door 3 hinges + 1 handle per leaf, or (pivot) 1 door closer + 2 pivots per leaf; frameless door 2 patch fittings + 1 floor spring + 1 handle + 1 floor lock per leaf; hanging door 2 hanging rollers per leaf + 1 floor guide; folding door rollers 2·(ceil(nL/2)+ceil(nR/2)), hinges 3 per fold, frame hinges 3 per side, handle 1 per side; curtain wall 2 stays + 1 handle per awning cell; fixed_grid and frameless_wall none. Confirm or edit (spec asked: 3 hinges per leaf, 2 stays per awning sash, 2 rollers per sliding sash, 1 roller pair per folding pair).
+6. **Series for types not in the Excel** (frameless types, bottom-rail door): which profile series should the defaults name.
 
 Inferred or guessed in the build (from the ledger; please confirm):
-6. `hanging_door` leaf stiles use `auto: 'track'` — inferred.
-7. Free-line default families on `frameless_door` and `folding_door` (บังใบ, คิ้วบาน, ...) are guesses; the frameless hardware names (`patch fitting`, `floor spring`) are guesses. `fixed_by_type` on hanging_door / frameless leaves goes beyond the brief.
-8. Curtain-wall sash families **บานหน้าต่างยูโร / คิ้วยูโร** are placeholders; the unitized family set covers only **Fe-Mullion / Int-Tran** — fill the rest.
-9. Door leaf thickness = the sash class (R-9a); the door closer is 1 per leaf.
+7. `hanging_door` leaf stiles use `auto: 'track'` — inferred.
+8. Free-line default families on `frameless_door` and `folding_door` (บังใบ, คิ้วบาน, ...) are guesses; the frameless hardware names (`patch fitting`, `floor spring`) are guesses. `fixed_by_type` on hanging_door / frameless leaves goes beyond the brief.
+9. Curtain-wall sash families **บานหน้าต่างยูโร / คิ้วยูโร** are placeholders; the unitized family set covers only **Fe-Mullion / Int-Tran** — fill the rest.
+10. Door leaf thickness = the sash class (R-9a); the door closer is 1 per leaf.
+11. Swing-door beads คิ้วประตู: lengths built as stile height / leaf width with no end deduction (I5) — confirm against Excel sheet 6.
+12. sliding_n / 3-track middle and right sashes follow the left / fixed sash's families until set (R-F1); a template made before the migration with no part rows now loads with blank families and is reported incomplete instead of priced from the Excel defaults (I7).
 
 ## Deferred minors (the final whole-branch review triages these; complete, not pretty)
 
@@ -342,7 +368,6 @@ Layouts (data):
 
 Geometry / SVG:
 - `symbolFor` dual return shape (a 4th arg changes the type) — a separate `drawingSymbol()` export would be clearer.
-- The `lengths` style prints the drawn length on decorative free-line strips (hanging rail drawn 1.5W costed 2W; ตบธรณี; curtain-wall plates) — mark them `decorative: true` and skip the text (owner-visible).
 - No `esc()` helper in the SVG `text()` (nothing user-controlled reaches the SVG today).
 - `defaultThick` has per-kind branches (a table would be data-driven); zoom fades all `hardwareMarks` regardless of part; `sliding_2` glass rect inset is approximate (returned, not drawn); hook overlap 50 (`th(hook)`) vs the mockup's fixed 40; two no-throw-only tests; symbol kinds `arrow` / `split` go beyond the brief's enum.
 - `slideDir` hard-codes the three direction literals instead of importing `SLIDE_DIRECTIONS`.
