@@ -66,6 +66,13 @@ export async function fetchLineGroupName(accessToken: string, groupId: string): 
   }
 }
 
+// MASTER SWITCH (owner order 2026-10-13): every LINE *push* is off until the
+// quota problem is solved (LINE bills pushes per recipient, all tenants share
+// one monthly quota). Replies (sendLineReply) are free and unaffected. Set
+// to true and redeploy every function that imports this file to turn pushes
+// back on; the per-tenant budget in push-budget.ts still applies after that.
+export const LINE_PUSH_ENABLED = false
+
 // quickReplyItems works exactly as in sendLineReply: tappable chips under the
 // message, each sending `text` back as if the user typed it.
 export async function sendLinePush(
@@ -74,6 +81,7 @@ export async function sendLinePush(
   text: string,
   quickReplyItems?: Array<{ label: string; text: string }>,
 ): Promise<{ ok: boolean; status: number }> {
+  if (!LINE_PUSH_ENABLED) return { ok: false, status: 503 }
   const message: Record<string, unknown> = { type: 'text', text }
   if (quickReplyItems && quickReplyItems.length > 0) {
     message.quickReply = {
