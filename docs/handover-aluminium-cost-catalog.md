@@ -181,3 +181,200 @@ PE-1..PE-6 (plan header), PE-7 hook takes `templates` and the part path gates on
 ## Deferred minors from the final part-editor review
 
 Two admins saving the same template at once can leave duplicate part sets (no unique key on template_id + part_key); a save that fails midway leaves the template empty until re-saved (costing reports it as incomplete, never 0; invalid models are now rejected before any delete); engine does not clamp a negative piece length (a mistyped width can give a negative line with no warning); if any of the four part tables fails to load, part-model items show "no model" and saved drawings read "ภาพเก่า"; child rows' tenant_id/butt targets are not tied to the parent in the DB (same pattern as the other estimation tables); the SQL test script has never been run and lacks some CHECK cases — run it first (BEGIN…ROLLBACK).
+
+---
+
+# Layouts for every type handover (2026-10-13) — part editor for all 23 catalogue leaf types
+
+Spec: `docs/superpowers/specs/2026-10-13-part-editor-layouts-all-types-design.md`. Plan: `docs/superpowers/plans/2026-10-13-part-editor-layouts-all-types.md`. Approved mockup of the 22 drawings: `docs/reference/type-previews-mockup.html`. Branch `feat/alu-cost-catalog`, 18 commits `9d778ff8..ee93f509` (suite 1847 -> 2199 passing, build OK). **Not merged, not pushed, nothing deployed, and no agent ran any SQL.** Nothing of the 12 new kinds has been clicked on real data; the screenshots in `.playwright-mcp/t10-local-*.png` (main checkout) come from a local harness, not from CHANG.
+
+## What was built
+
+- **13 layout kinds**, one file each under `src/lib/layouts/` (the shipped `sliding_2` plus 12 new), registered in `src/lib/layoutRegistry.js`. The part editor, the item form, the preview drawing, costing (`partExpand.js`) and the saved rows all work from the kind; the cost engine itself is unchanged.
+- **Engine generalisations** (spec section 3): expression-driven piece counts / factors / overlaps (`layoutExpr.js`), grid deductions, tee joints, mitred corners, optional positions (door sill), per-track sliding (`trackOf`), per-cell kinds for curtain walls (`layoutCells.js`).
+- **Editor/UI**: one interactive drawing per new kind (part tabs, fading, click-to-assign, "เสร็จแล้ว" ticks, shown on the overview badge), inputs panel from the layout, Thai issue texts. Item form: the layout's `estimator` inputs, curtain-wall cells clickable on the item preview; saved drawings are not made stale by the ticks.
+- **Drawing**: `partGeometry.js` + `partGeometryBodies.js` (bars) and `partSvgSymbols.js` / `partSymbols.js` (opening symbols, dashed in/out view, hinge sides, slide arrows). The `sliding_2` drawing is byte-identical to before (pinned by a sha256 test).
+- **Hardware defaults** (`src/lib/hardwareDefaults.js`): when a template is created from a layout, the layout's declared hardware is written once as `bom_template_hardware` lines (see rulings R-11a).
+
+## The 13 kinds (catalogue type -> kind)
+
+"Fixed by type" = inputs marked `fixed_by_type` in the layout file: their value comes from `door_window_types.layout_params` and overrides anything stored on the template. "Estimator" = inputs the item form shows (W and H are always implicit). Defaults in brackets. Thai labels are `layoutLabels` in the registry (the catalogue type form's select).
+
+| layout_kind | Thai label | Catalogue type(s) (leaf) | Fixed by type | Estimator inputs |
+|---|---|---|---|---|
+| `sliding_2` | บานเลื่อนสวน 2 บาน | บานเลื่อนสวน 2 บาน (shipped, unchanged) | - | - (W, H only) |
+| `sliding_n` | บานเลื่อน n บาน | บานเลื่อนรางล่าง (door) | `door` (true for the bottom-rail door: threshold rail, no bottom frame) | `n` [2], 2-6 |
+| `sliding_3track` | บานเลื่อน 3 ราง | บานเลื่อน 3 บาน | - | `fixed_side` [left] left/right |
+| `sliding_2_fixed_2` | บานเลื่อน 2 ตาย 2 | บานเลื่อน 2 ตาย 2 | - | - |
+| `fixed_grid` | บานติดตาย (ซอยกลาง) | บานติดตาย | - | `rows` [2] 1-8, `cols` [3] 1-12 |
+| `awning_grid` | บานกระทุ้ง (ชั้น × ช่อง) | the 6 types บานกระทุ้ง r ชั้น x c ช่อง | `rows` = r, `cols` = c | `rows`, `cols` (read-only on the item when fixed by type), `open` [out] out/in |
+| `casement_n` | บานเปิดข้าง | บานเปิดข้าง; บานเปิดข้างเดี่ยว (new type, n = 1) | none declared in code (see the note below) | `n` [2] 1-8, `hinge` [left] (shown only when n = 1), `open` [out] |
+| `swing_door` | ประตูบานเปิด/สวิง | บานเปิด (hinged); บานสวิงเดี่ยว / บานสวิงคู่ (pivot) | `leaves` [1] 1-2 (1 / 2 for the swing types), `pivot` (true for บานสวิง*) | `leaves`, `hinge` [left] (only when 1 leaf), `open` [out], `sill` [yes] yes/no |
+| `frameless_door` | ประตูสวิงเปลือย | บานสวิงเปลือยเดี่ยว / คู่ | `leaves` 1 / 2 | `leaves`, `hinge` (only when 1 leaf), `open` |
+| `hanging_door` | ประตูเลื่อนรางแขวน | บานเลื่อนรางแขวน | `leaves` [1] 1-2 | `leaves` |
+| `folding_door` | บานเฟี้ยม | บานเฟี้ยม | - | `nL` [2], `nR` [2], each 0-5, not both 0 |
+| `curtain_wall` | Curtain wall | STICK WALL; UNITIZED CURTAIN WALL | `unitized` (false / true) | `rows` [3], `cols` [4], `spandrel` [none] none/top/bottom, `k` [0.5] (0.5 / 1 / 0), `cells` (per-cell kind map) |
+| `frameless_wall` | ผนังกระจกเปลือย | ผนังกระจกบานเปลือย | - | `cols` [3] 1-12 |
+
+That is 17 named types + the 6 กระทุ้ง types = 23 leaf types. **Note (code wins over spec section 4):** the spec fixes `n = 1` by type for บานเปิดข้างเดี่ยว, but in the code `n` on `casement_n` is an estimator input only (not `fixed_by_type`), so the type form cannot pin it; the single-sash type is therefore the same layout with `n` typed on the item (1) — the owner may want `n` marked `fixed_by_type` (one word in `casement_n.js`). Curtain wall also has the extra estimator inputs `spandrel`, `k` that the spec table did not list.
+
+Position/part names per kind (วงกบ, บาน, ซอยกลาง, ราง, ...) and their default profile families are in each layout file; the default hardware per kind is the `hardware` array in the same file (counts listed in the owner questions below).
+
+## Params columns
+
+All three are `JSONB NOT NULL DEFAULT '{}'`, CHECK object, added by the migration:
+
+- `door_window_types.layout_kind` (new column, nullable, 13-kind CHECK) and `door_window_types.layout_params`: the `fixed_by_type` values of the type (set in the catalogue type form next to "แบบชิ้นส่วน"). They override the template's and are applied again at creation.
+- `bom_templates.layout_params`: the template's input defaults (e.g. `{rows, cols}`), plus `cells` (curtain-wall cell kinds `"row,col" -> glass|awning|spandrel`, 0-based), plus the reserved key **`_done`** = the part keys the owner ticked "เสร็จแล้ว" (UI only: not an input, dropped by `coerceParams`, never reaches an expression, ignored by the stale-drawing signature).
+- `estimation_openings.layout_params`: item overrides for `estimator` inputs only, and `cells` (spec question R5: the item may override the template's cell picture — built that way, still to be confirmed).
+- **Omit-when-absent (works before the migration)**: a model without params (`sliding_2`) writes no `layout_params` key to `bom_templates`; an item with no layout values writes no `layout_params` key to `estimation_openings`. So legacy sliding_2 templates and items keep saving before the migration; every new kind needs the migration to save at all (the `bom_templates` CHECK admits only `sliding_2` until then).
+- Numbers are coerced and clamped on load (numeric strings from JSON are accepted; out-of-range values are clamped to the input's min/max; unknown keys are dropped).
+
+## SQL — the owner runs this (agents never ran any), one command per message
+
+Prerequisite: the catalogue / part-editor migrations through `2026-10-15-01` are already on CHANG. The new migration is order-independent with the parent plan's `2026-10-16-01` (it creates `door_window_types.layout_kind` with `ADD COLUMN IF NOT EXISTS`, and replaces any one-kind CHECK with the 13-kind list). It is additive and re-runnable.
+
+1. Dry-run: the migration plus its tests in one rolled-back transaction (expect `LAYOUTS TESTS PASSED`; the check afterwards must show `applied = 0, leftover = 0`):
+   `! bash .superpowers/sdd/2026-10-13-part-editor-layouts-all-types/run-layouts-tests.sh`
+2. Apply for real:
+   `npx supabase db query --project-ref kntspldhvcjeaubtqtkn --linked=false -f supabase/migrations/2026-10-17-01-layouts-all-types.sql`
+
+What it does: widens **both** `door_window_types.layout_kind` (new column) **and** `bom_templates.layout_kind` CHECK to the 13 kinds (R-P1: the parent plan only mentioned the first; without the second no template of a new kind could be saved), and adds the three `layout_params` columns with object CHECKs. The standing `x.*` grep was done: only `expenses_view` uses `e.*`; no view selects from `door_window_types`, `bom_templates` or `estimation_openings` with `.*`, so no view needs recreating.
+
+**Deploy order: apply the migration BEFORE the code.** If the code goes first, only `sliding_2` keeps working.
+
+## Owner click-through list (nothing of the new kinds has been clicked on real data)
+
+0. **Before the migration (R-10b, could not run — the agent's browser was logged out):** log in to the dev server (http://localhost:3001), open an existing `sliding_2` template in the part editor and an existing item that uses it; confirm the drawing and costing rows look as before and the browser console shows no errors.
+1. Apply the migration (dry-run first, above).
+2. **Catalogue -> type form:** set `layout_kind` + fixed params on each type: STICK WALL / UNITIZED CURTAIN WALL -> `curtain_wall` (`unitized` false / true); ผนังกระจกบานเปลือย -> `frameless_wall`; บานเปิด -> `swing_door`; บานสวิงเดี่ยว / คู่ -> `swing_door` (`pivot` true, leaves 1 / 2); บานสวิงเปลือยเดี่ยว / คู่ -> `frameless_door` (leaves 1 / 2); บานเฟี้ยม -> `folding_door`; บานเลื่อนรางแขวน -> `hanging_door`; บานเลื่อนรางล่าง -> `sliding_n` (`door` true); บานติดตาย -> `fixed_grid`; บานเปิดข้างเดี่ยว / บานเปิดข้าง -> `casement_n`; บานเลื่อนสวน 2 บาน -> `sliding_2`; บานเลื่อน 3 บาน -> `sliding_3track`; บานเลื่อน 2 ตาย 2 -> `sliding_2_fixed_2`; the 6 กระทุ้ง types -> `awning_grid` (rows = r, cols = c).
+3. **One template per kind group**, assigning one profile family per part position, then save, reload and confirm preview + costing rows are unchanged after reload: fixed_grid; awning 2x2; casement 2; sliding 3; swing door with 2 leaves; folding 2+2; curtain wall with one awning cell and one spandrel cell (click cells in the preview).
+4. Confirm the **default hardware** lines appear on each newly created template (and are editable; the family/part is left empty for you to pick).
+5. **Item form:** enter `n`, `nL,nR`, `cols`, `leaves`...; click curtain-wall cells; save; reopen; check the drawing, the weight and the costing rows; add to a quotation and look at the attachment drawing.
+6. **sliding_2 templates can be re-pointed to `sliding_n`** (n = 2 gives identical numbers, proven by tests) to get the richer drawing with glass and slide arrows (R-8a: the old type keeps its plain drawing so its frozen tests stay green).
+7. Open a legacy template and an old project: nothing should look different.
+8. Fill the data the new numbers depend on: butt distance, width and hook overlap on every profile used by the new kinds (same rule as the part-editor handover above); without a butt distance the cost summary says so and counts 0.
+
+## How to add a layout (a 14th kind)
+
+1. One file `src/lib/layouts/<kind>.js` in the schema documented at the top of `src/lib/layoutRegistry.js` (kind, inputs with `estimator` / `fixed_by_type` / `only_when`, parts, positions with rules, joints, `roles`, `enabled`, `validParams`, `cells`, `familiesWhen`, `order`, `hardware`, `symbol`; `_done` is a reserved params key, never an input name).
+2. One `import` and one entry in `LAYOUTS` in the registry, and the Thai label in `layoutLabels`.
+3. `layoutRegistry.test.js` runs `validateLayout` over every registered layout (no extra test needed for the structure); add numbers in `src/lib/layouts/layouts.test.js` (worked examples: `startModel` snapshot, `expandParts` lengths with constant butt distances and with a profile index).
+4. Geometry: a body in `src/lib/partGeometryBodies.js`, plus the matrix in `src/lib/partGeometry.test.js` (bar counts, every bar inside the opening, no overlaps except declared hook overlaps). Symbol / hardware marks in `partSvgSymbols.js` (`symbol` field of the layout; kinds `v_hinge`, `slide`, `fold`, plus `arrow` / `split`).
+5. Add the kind to the CHECK list of **both** `door_window_types.layout_kind` and `bom_templates.layout_kind`. The 13-kind CHECK is closed: a 14th kind needs a **new migration** (do not edit `2026-10-17-01`).
+6. If a new input should be saved, make sure it is an `inputs` entry (unknown keys are dropped by `coerceParams`).
+
+## Rulings made in this arc (owner may overturn; the "if wrong" cost is in brackets)
+
+Pre-flight (plan defects):
+- **R-P1** The migration also widens `bom_templates.layout_kind` CHECK (plan only covered `door_window_types`); test asserts both. [one extra constraint rewrite, harmless]
+- **R-P2** Task 2 also updated `partGeometry.js:90` to the new `partnerEnd(model, ...)` (plan miscounted callers). [nothing: compile fix]
+- **R-P3** `autoDed` treats an absent role position as 0 (frame_top_bottom on a sill-less door = b(frame_top)). [door stile lengths off by one butt distance; tests would show it]
+- **R-P4** `src/lib/partSymbols.js` is created in Task 4 (minimal `symbolFor`), extended in Task 8. [file placement only]
+- **R-P5** Expression identifiers for cell counts are `cells_awning` / `cells_spandrel`. [naming only]
+- **R-P6** `exprParams(model)` maps selects / booleans to numbers (yes/no -> 1/0) for every expression field. [naming only]
+- **R-P7** `length_factor` of line 0 is re-derived on `setParams` when the rule factor is an expression; owner overrides of expression-driven factors are not kept across param changes. [factor drift on grids; tests caught it]
+
+Engine / layouts:
+- **R-3a** Tee joints default the horizontal ends to `through` (end deduction 0) because the grid pre-deduction already removes the full mullion/transom widths; a hand-set butt end still deducts b(vertical). Geometry insets transoms by the mullion width regardless of end mode. [transom long by (w - b) per end for profiles whose butt distance < width; visible in the expand table, adjustable]
+- **R-3b** Transom count = (rows-1)·cols (rows 2, cols 3 -> 3 pieces; the spec's "6 x 530" was rows 3). [nothing: arithmetic]
+- **R-3c** The cut-style token for mitred pieces is `miter45` (the app vocabulary), not the plan's `mitre`; the layout `corner: 'mitre'` mode name stays. [a string rename]
+- **R-4a** `only_when` is a supported input key (show the input only while every listed param equals the value); the UI honours it (casement / swing / frameless `hinge`). [an input shown unnecessarily]
+- **R-4b** `casement_n` side members keep one position name `เสาบาน` (labels เสาบานพับ / เสามือจับ), since a position has one name and BOM role_name = position name. [Thai label only]
+- **R-5a** `sliding_2_fixed_2` uses `roles.hook = 'stile_b'` (one role position = one hook family for the whole part). [overlap off by (b(stile_b) - b(stile_a)) x 2 / 4 per rail when hook profiles are mixed; visible in the expand table]
+- **R-6a** byEnd joints map horizontal piece p, end e <-> vertical piece p·perV + e. [sliding_2 snapshots would fail at once]
+- **R-6b** `folding_door` nL / nR are capped at 5 each (sum <= MAX_PART_COUNT 10) instead of the plan's 0-6. [owner cannot enter 6+6 leaves; raise MAX_PART_COUNT later]
+- **R-7a** Curtain-wall transom count = (rows+1)·cols (rows 3, cols 4 -> 16; the plan's 12 was an arithmetic error). [nothing: arithmetic]
+
+Drawing:
+- **R-8a** The `sliding_2` drawing stays exactly as shipped (no glass / arrows) because the plan freezes its tests; re-point templates to `sliding_n` for the richer drawing. [plainer preview for the one old type until re-pointed]
+
+Persistence / UI:
+- **R-9a** Door leaf members (swing, hanging, folding) use thickness role `sash`, not `leaf` — the DB CHECK admits only NULL (frame) and `sash`; the owner can still override per line. [door leaves priced at sash instead of frame thickness; one data edit to revert]
+- **R-9b** `modelFromRows` still returns null for an unknown kind (frozen test); `loadModel` returns `{error:'unknown_layout'}`; costing's `no_model` is a loud refusal. [less specific error label on an impossible path]
+- **R-9c** Expression-count parts (awning sashes, folding leaves, curtain-wall cells) are not editable (`setPartCount` no-op, count never persisted as a number; the UI hides the field). [owner cannot hand-override a computed sash count]
+- **R-10a** The brief's live check against CHANG was limited to read-only checks of existing sliding_2 templates/items (new-kind saves are impossible before the migration and were not attempted); the implementer never applies the migration. [a UI defect on a new kind surfaces at owner acceptance; component tests are the net]
+- **R-10b** That read-only live check is deferred to the owner (click-through step 0); component tests + harness screenshots stand in. [a runtime-only regression on the live data path surfaces at acceptance]
+- **R-11a** `bom_template_hardware` has no `source` / `quantity_rule` columns and none were added: `hardwareDefaults` returns `{quantity, per, part_id: null, source: 'layout_default'}` and creation maps it to `{quantity_basis: 'fixed', quantity_value: total, reference_unit_price: 0, part_id: null}`; `per_sash` is resolved into the total at creation with the clamped part count; rows are inserted once on CREATE only; unevaluable rows are skipped and reported. [a hardware line count the owner edits by hand in the hardware tab]
+
+Also applied without a number (from the task reports): "เสร็จแล้ว" is stored per part key, so all sash instances of a part share one flag; an awning 2x2 shows 7 tabs (the ซอยกลาง part counts); changing an item's template resets its `layout_params`; `layout_params` is sent only when non-empty; the item form refuses to save when the params are refused by the layout (e.g. folding 0 + 0); the migration SQL test is `supabase/tests/layouts_all_types_test.sql`.
+
+## Owner to confirm / open questions
+
+Spec section 11 (the plan built to rulings; each is a data default, so a different answer is an edit, not a rebuild):
+1. **R3** 3-track: which side is the fixed sash by default (built: left, mirrorable per item via `fixed_side`).
+2. **R5** May an item override the template's curtain-wall cell picture, or is the picture fixed per template (one template per façade pattern)? (Built: the item may override; cells saved to `estimation_openings.layout_params.cells`.)
+3. **Hanging door track length**: built as 2·W for one leaf; confirm for two leaves opening to both sides. (The drawn rail is 1.5W but costed 2W — see deferred minors.)
+4. **Hardware default counts** (now written into new templates; the `hardware` array of each layout file): sliding 2 rollers per sash + 1 lock per unit; 3-track 2x2 rollers + 3 tracks; 2+2 four rollers + 1 lock; awning / casement 2 stays (awning) or 2 hinges (casement) + 1 handle per sash; swing door 3 hinges + 1 handle per leaf, or (pivot) 1 door closer + 2 pivots per leaf; frameless door 2 patch fittings + 1 floor spring + 1 handle + 1 floor lock per leaf; hanging door 2 hanging rollers per leaf + 1 floor guide; folding door rollers 2·(ceil(nL/2)+ceil(nR/2)), hinges 3 per fold, frame hinges 3 per side, handle 1 per side; curtain wall 2 stays + 1 handle per awning cell; fixed_grid and frameless_wall none. Confirm or edit (spec asked: 3 hinges per leaf, 2 stays per awning sash, 2 rollers per sliding sash, 1 roller pair per folding pair).
+5. **Series for types not in the Excel** (frameless types, bottom-rail door): which profile series should the defaults name.
+
+Inferred or guessed in the build (from the ledger; please confirm):
+6. `hanging_door` leaf stiles use `auto: 'track'` — inferred.
+7. Free-line default families on `frameless_door` and `folding_door` (บังใบ, คิ้วบาน, ...) are guesses; the frameless hardware names (`patch fitting`, `floor spring`) are guesses. `fixed_by_type` on hanging_door / frameless leaves goes beyond the brief.
+8. Curtain-wall sash families **บานหน้าต่างยูโร / คิ้วยูโร** are placeholders; the unitized family set covers only **Fe-Mullion / Int-Tran** — fill the rest.
+9. Door leaf thickness = the sash class (R-9a); the door closer is 1 per leaf.
+
+## Deferred minors (the final whole-branch review triages these; complete, not pretty)
+
+Engine (partModel / partExpand / layoutExpr):
+- `partnerEnd` legacy `(key, piece, end)` overload sniffs `typeof` and hard-codes sliding_2 — drop once the old tests may be migrated.
+- `startModel` / `layoutOfModel` use `LAYOUTS[kind]` not `layoutOf` — a kind like `'toString'` gives a TypeError instead of `unknown_layout`; same for `setParams` with an unknown kind.
+- Missing `cols` / `rows` param silently becomes 1 in grid `autoDed` (no issue raised).
+- `overlapCount` result is not clamped >= 0.
+- `isMitre` (partExpand) and `mitredPart` (partModel) duplicate the "part is mitred" check; `explainPiece` evaluates `ctx.isMitre(key)` twice.
+- Mitre is read from the layout part's `corner` only — no per-model override.
+- `setParams` does not reset ends whose `to.key` names a position it just disabled (shows as `no_butt_distance` / `both_butt`, not silent).
+- `checkParams` maps every `evalExpr` error to `layout_params_invalid` (layout typos look like user input); `validateLayout` does not parse `enabled` / `validParams`.
+- `jointsOf` recomputes `exprParams` per call.
+- `vJoint` returns the first matching joint — `validateLayout` does not assert that every vertical key/end maps to exactly one joint for grid layouts.
+- `startModel` / `setParams` do not clamp params to input min/max (only `defaultParams` / `coerceParams` and the UI do).
+- `familiesWhen` is applied at `startModel` only (comment should say "start only").
+- `validateModel` accepts `'mitre'` ends on any layout; `paramsFor` applies type fixed values twice (comment).
+- Awning cells > MAX_PART_COUNT 10: sashes clamp to 10 while hardware uses the full count; rows x cols > 10 clamps silently — the UI should warn.
+
+Layouts (data):
+- `grid_n` duplicates the `grid_cols` line (a factory `gridAuto(param)` would remove it); `cwAuto` duplicates `gridAuto`; sash-rule constants repeated across `awning_grid` / `casement_n`; RAIL constants repeated in 3track / fixed_2.
+- `validateLayout` lacks tests for the unknown-order-key branch and the panel-with-positions branch; it does not check `vEnd` in {0,1} / `vPiece` validity; the registry test skips `test_` / `t3_` kinds by name prefix.
+- `symbolFor` swallows count-evaluation errors; casement tests assert `cut_style` only on `sash_top`.
+- `pieceLabel` mirrors `pieceNames` but not `pos.labels` (untested mirrored path); `roles.hook` approximation (R-5a) uncommented; `LAYOUTS_HW` test helper defined after first use.
+- `curtain_wall` symbol is keyed `sash` while the part key is `awning` (`symAt` workaround; re-key the data and `layouts.test.js:91`).
+- `hanging_door` has no `hinge` input, so the outward symbol's hinge-left branch is unreachable.
+
+Geometry / SVG:
+- `symbolFor` dual return shape (a 4th arg changes the type) — a separate `drawingSymbol()` export would be clearer.
+- The `lengths` style prints the drawn length on decorative free-line strips (hanging rail drawn 1.5W costed 2W; ตบธรณี; curtain-wall plates) — mark them `decorative: true` and skip the text (owner-visible).
+- No `esc()` helper in the SVG `text()` (nothing user-controlled reaches the SVG today).
+- `defaultThick` has per-kind branches (a table would be data-driven); zoom fades all `hardwareMarks` regardless of part; `sliding_2` glass rect inset is approximate (returned, not drawn); hook overlap 50 (`th(hook)`) vs the mockup's fixed 40; two no-throw-only tests; symbol kinds `arrow` / `split` go beyond the brief's enum.
+- `slideDir` hard-codes the three direction literals instead of importing `SLIDE_DIRECTIONS`.
+
+Persistence:
+- `defaultParams` / `coerceInput` historically treated only `typeof number` as numeric (now coerces numeric strings; keep serialising numbers).
+- `isPlainObject` is defined twice (`catalogTypeForm`, `layoutRegistry`).
+- `BomTemplates` resolves the type from `types` at mount (assumes loaded; the save-time guard still catches a mismatch).
+- Save remains delete-then-insert and non-atomic (as in the part-editor arc).
+
+UI:
+- `no_profile_width` wording differs between `reasonText.js` and `partEditorView` `ISSUE_TEXT`.
+- `package-lock.json` root version resync 1.0.0 -> 1.20.39 (noise); new dev deps `jsdom`, `@testing-library/react`, `@testing-library/dom` (controller may prefer another approach).
+- `PartEditor` draft is not cleared when the `model` prop is replaced; the tablist lacks arrow-key navigation / `aria-controls`.
+- Two creation tests + the payload test never ran RED; `PARAMS_HINT` wording is folding-specific for any `layout_params_invalid`.
+- The `else if (form._hadLayoutParams)` branch in `buildOpeningPayload` is mostly dead; the template-switch reset is not DOM-tested; an item cannot be returned to "no own params" once it has some (equal values are a no-op in costing).
+- Mitre read from the layout part corner only (see engine) — no per-model override in the editor.
+
+Hardware:
+- A retry after a partially failed create skips (or wipes) the default hardware silently; skipped rows only `console.warn`.
+- `sashCount` re-evaluates `part.count` instead of reading the model; the plan is computed twice in `BomTemplates`; no component test of the create path.
+
+SQL / process:
+- `run-layouts-tests.sh` relies on `set -e` rather than grepping for `PASSED`; the test notice text is `layouts_all_types: TEST PASSED`.
+- The `estimation_openings_layout_params_obj` CHECK is not exercised by the SQL test (column existence only).
+- `task-1-report.md` and `run-layouts-tests.sh` are force-added to git inside the ignored `.superpowers/` (no tracked precedent) — decide whether to untrack the report.
+- Commit trailers of Tasks 9 and 10 name `Claude Opus 5.5` (the model that did the work), not the session's usual line — cosmetic.
+
+## Deferred items from the spec (not built)
+
+- **Sealant quantity** from `jointCount` (`frameless_wall`) is computed but not priced.
+- **Spandrel `panelCells`** is exposed by `layoutCells` but not priced (the infill line is a later task).
+- **Hardware pricing** beyond the default counts: the lines are written with unit price 0 and no part; the owner picks the `alu_parts` family and price.
+- **Add-ons** (the parent spec `2026-10-12-bom-template-by-type-and-addons-design.md`) on top of these layouts.
+- Add-on combinations and the parts/CAD preview styles remain legacy for part-model templates (see the part-editor arc).

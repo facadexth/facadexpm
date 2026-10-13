@@ -40,6 +40,8 @@ Out of scope: editors for other types; changing how quotations/prices are comput
 
 `door_window_types.layout_kind TEXT NULL CHECK (layout_kind IS NULL OR layout_kind IN ('sliding_2'))` (the CHECK list grows with each shipped layout). The owner sets it in the catalogue type form ("แบบชิ้นส่วน"). No type-name matching in code. A type with NULL layout kind keeps today's flat-component template flow.
 
+> See also: the layout kinds for every catalogue type (13 kinds, type-to-kind map, `layout_params`) are specified in `2026-10-13-part-editor-layouts-all-types-design.md`; its migration is `2026-10-17-01-layouts-all-types.sql`, which widens the `layout_kind` CHECK (on `door_window_types` and `bom_templates`) to those 13 kinds.
+
 ### 4.2 Add-on piece sets (template level: "what are the bars of an add-on of kind K in mode M")
 
 ```
@@ -93,6 +95,8 @@ Clone = new rows only; no schema. `cloneTemplate` copies `bom_templates` (new na
 ### 5.1 Layout registry (code)
 
 `src/lib/layoutRegistry.js` exports for each layout kind: `inputs` (what the estimator types: for `sliding_2` width, height), `defaultAddonPieces(mode, kind)` (the piece set defaults of §5.3 with empty profiles), `addonKinds`, and the existing `LAYOUTS[...]` model from `partModel.js`. Adding a type later = one registry entry + its part model + tests.
+
+> See also: the 13 registered layouts and how to add one are in `2026-10-13-part-editor-layouts-all-types-design.md` (one file per kind under `src/lib/layouts/`); its migration is `2026-10-17-01-layouts-all-types.sql`.
 
 ### 5.2 Create page flow
 
