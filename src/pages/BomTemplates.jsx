@@ -21,6 +21,7 @@ import { jointRowsForInsert, validateJoints, componentRowsForInsert, jointIndexF
 import { loadModel, validateModel, saveModel, templateParamsPayload } from '../lib/partSave.js'
 import { reasonText } from '../lib/reasonText.js'
 import { startModel, LAYOUTS } from '../lib/partModel.js'
+import { hardwareDefaultsPlan, hardwareDefaultRows } from '../lib/hardwareDefaults.js'
 import { defaultParams, layoutLabels } from '../lib/layoutRegistry.js'
 import { PARAMS_HINT } from './bomTemplates/partEditorView.js'
 import PartEditor from './bomTemplates/PartEditor.jsx'
@@ -283,10 +284,18 @@ export function TemplateEditor({ template, joints, catalog, types, components, h
         const { error } = await supabase.from('bom_template_hardware').delete().eq('template_id', templateId)
         if (error) throw error
       }
-      if (hwRows.length) {
-        const { error } = await supabase.from('bom_template_hardware').insert(
-          hwRows.map((h, i) => ({ ...h, part_id: h.part_id || null, template_id: templateId, reference_unit_price: parseFloat(h.reference_unit_price) || 0, quantity_value: parseFloat(h.quantity_value) || 0, sort_order: i }))
-        )
+      // A NEW part-editor template starts with the hardware its layout declares (editable lines afterwards, no part picked yet).
+      // Create only: an existing template's hardware is exactly what the owner left in the tab.
+      const hwDefaults = isNew && partMode && model ? hardwareDefaultRows(form.layout_kind, model.params, hwRows.length) : []
+      if (isNew && partMode && model) {
+        const { skipped } = hardwareDefaultsPlan(form.layout_kind, model.params)
+        if (skipped.length) console.warn('hardware defaults skipped', skipped)
+      }
+      if (hwRows.length || hwDefaults.length) {
+        const { error } = await supabase.from('bom_template_hardware').insert([
+          ...hwRows.map((h, i) => ({ ...h, part_id: h.part_id || null, template_id: templateId, reference_unit_price: parseFloat(h.reference_unit_price) || 0, quantity_value: parseFloat(h.quantity_value) || 0, sort_order: i })),
+          ...hwDefaults.map(h => ({ ...h, template_id: templateId })),
+        ])
         if (error) throw error
       }
 
