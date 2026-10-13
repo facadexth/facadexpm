@@ -128,6 +128,11 @@ describe('validateLayout', () => {
     expect(validateLayout({ ...base, order: base.order.slice(1) }).join()).toMatch(/exactly once/)
     expect(validateLayout({ ...base, order: [...base.order, 'mullion'] }).join()).toMatch(/exactly once/)
   })
+  it('rejects an unknown symbol.direction', () => {
+    const base = LAYOUTS.sliding_n
+    expect(validateLayout({ ...base, symbol: { ...base.symbol, direction: 'sideways' } }).join()).toMatch(/symbol.direction/)
+    for (const d of ['halves', 'toward_fixed', 'outward']) expect(validateLayout({ ...base, symbol: { ...base.symbol, direction: d } })).toEqual([])
+  })
 })
 
 describe('defaultParams clamping', () => {

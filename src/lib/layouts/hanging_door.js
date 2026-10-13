@@ -26,5 +26,5 @@ export default {
   ],
   order: ['track_rail', 'track_cover', 'frame_side', 'leaf_stile_a', 'leaf_stile_b', 'leaf_rail_top', 'leaf_rail_bottom'],
   hardware: [{ name: 'ลูกล้อรางแขวน', per: 'sash', qty: 2 }, { name: 'ไกด์พื้น', per: 'unit', qty: 1 }],
-  symbol: { leaf: 'slide', direction: 'halves' },   // single: toward the open side; double: outward from the middle
+  symbol: { leaf: 'slide', direction: 'outward' },   // single: toward the open side; double: outward from the middle
 }

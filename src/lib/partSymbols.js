@@ -45,21 +45,27 @@ export function foldSymbols(model) {
   return { leaves, arrows, split: nL > 0 && nR > 0 }
 }
 
-// Slide direction of a sliding piece (outside view): toward the nearest fixed piece when the part has fixed pieces
-// (sliding_3track / sliding_2_fixed_2: the sliding sash runs over its fixed neighbour); else `halves`: overlapping sashes on
-// tracks run toward the middle (left half →, right half ←), rail-hung leaves without tracks part outward (single → →).
+// Slide direction of a sliding piece (outside view), from layout.symbol.direction (layoutRegistry.SLIDE_DIRECTIONS):
+//   'halves' (also unknown / missing) -> left half of the pieces +1 (→), right half −1 (←), by piece index;
+//   'toward_fixed' -> toward the nearest fixed piece (partModel.isFixedPiece; none fixed -> halves);
+//   'outward' -> a single leaf toward its open side (params.hinge 'left' → −1, else +1), several leaves part from the middle.
+function halves(pieceIdx, count) {
+  return pieceIdx < count / 2 ? 1 : -1
+}
 function slideDir(model, partKey, pieceIdx, count) {
-  const fixed = []
-  for (let i = 0; i < count; i++) if (isFixedPiece(model, partKey, i)) fixed.push(i)
-  if (fixed.length) {
+  const direction = LAYOUTS[model.layout_kind]?.symbol?.direction
+  if (direction === 'toward_fixed') {
+    const fixed = []
+    for (let i = 0; i < count; i++) if (isFixedPiece(model, partKey, i)) fixed.push(i)
+    if (!fixed.length) return halves(pieceIdx, count)
     const near = fixed.reduce((a, b) => (Math.abs(b - pieceIdx) < Math.abs(a - pieceIdx) ? b : a))
     return Math.sign(near - pieceIdx) || 1
   }
-  const layout = LAYOUTS[model.layout_kind]
-  const tracked = !!layout.parts.find((p) => p.key === partKey)?.track
-  if (count <= 1) return 1
-  const leftHalf = pieceIdx < count / 2
-  return tracked ? (leftHalf ? 1 : -1) : (leftHalf ? -1 : 1)
+  if (direction === 'outward') {
+    if (count <= 1) return model.params?.hinge === 'left' ? -1 : 1
+    return -halves(pieceIdx, count)
+  }
+  return halves(pieceIdx, count)
 }
 
 /**

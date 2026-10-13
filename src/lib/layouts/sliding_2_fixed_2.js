@@ -36,5 +36,5 @@ export default {
   ],
   order: ['frame_top', 'frame_bottom', 'frame_side', 'sash_top', 'sash_bottom', 'stile_a', 'stile_b', 'sill_cover'],
   hardware: [{ name: 'ลูกล้อ', per: 'unit', qty: 4 }, { name: 'กุญแจ', per: 'unit', qty: 1 }],
-  symbol: { sash: 'slide', direction: 'halves', fixedMark: 'F' },
+  symbol: { sash: 'slide', direction: 'toward_fixed', fixedMark: 'F' },   // each sliding sash runs over its fixed neighbour
 }

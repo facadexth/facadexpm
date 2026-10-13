@@ -69,3 +69,30 @@ describe('symbolFor with a view (Task 8)', () => {
     expect(symbolFor(startModel('sliding_2'), 'sash', 0)).toEqual({ kind: 'slide', hinge: null })
   })
 })
+
+// ---------------------------------------------------------------- Task 8 fix round 1: direction read from layout.symbol
+import { LAYOUTS as LAYOUTS_SYM, registerLayoutForTest } from './layoutRegistry.js'
+
+describe('slide direction comes from layout.symbol.direction (fix round 1)', () => {
+  const m = (kind, params = {}) => startModel(kind, { ...defaultParams(kind, {}), ...params })
+  it('the data names the direction explicitly', () => {
+    expect(LAYOUTS_SYM.sliding_2_fixed_2.symbol.direction).toBe('toward_fixed')
+    expect(LAYOUTS_SYM.hanging_door.symbol.direction).toBe('outward')
+    expect(LAYOUTS_SYM.sliding_n.symbol.direction).toBe('halves')
+  })
+  it('sliding_2_fixed_2 pieces 1 and 2 point at their fixed neighbours', () => {
+    const f = m('sliding_2_fixed_2')
+    expect([1, 2].map((i) => symbolFor(f, 'sash', i, { view: 'out' }).dir)).toEqual([-1, 1])
+  })
+  it('hanging_door: two leaves part outward, a single leaf runs →', () => {
+    const two = m('hanging_door', { leaves: 2 })
+    expect([0, 1].map((i) => symbolFor(two, 'leaf', i, { view: 'out' }).dir)).toEqual([-1, 1])
+    expect(symbolFor(m('hanging_door', { leaves: 1 }), 'leaf', 0, { view: 'out' }).dir).toBe(1)
+  })
+  it('halves on a part without a track is still halves (no track inference)', () => {
+    const base = LAYOUTS_SYM.hanging_door
+    registerLayoutForTest({ ...base, kind: 'test_halves_no_track', symbol: { leaf: 'slide', direction: 'halves' } })
+    const t = startModel('test_halves_no_track', { leaves: 2 })
+    expect([0, 1].map((i) => symbolFor(t, 'leaf', i, { view: 'out' }).dir)).toEqual([1, -1])
+  })
+})

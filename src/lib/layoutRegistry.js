@@ -16,7 +16,10 @@
 //   parts[].panel  infill panel part (no aluminium, no positions): contributes layoutCells.panelCells only
 //   order     position keys in display order
 //   hardware  [{ name, per, qty }]
-//   symbol    drawing hints
+//   symbol    drawing hints: { [partKey]: 'v_hinge'|'slide'|'fold', hinge?, direction?, fixedMark? }
+//             direction (slide only, partSymbols.symbolFor): 'halves' (default) = left half of the pieces →, right half ←;
+//             'toward_fixed' = each sliding piece points at the nearest fixed piece (part.fixed); 'outward' = a single leaf
+//             runs toward its open side (params.hinge 'left' → ←, else →), two or more part outward from the middle.
 // `per`, `count`, `factor`, `overlapCount` may be expressions (strings) over params — see layoutExpr.js / exprParams().
 //
 // Registered definitions are normalized copies: each part also gets a derived `positions` array (its position keys
@@ -100,6 +103,8 @@ export function defaultParams(kind, typeParams) {
   return out
 }
 
+export const SLIDE_DIRECTIONS = Object.freeze(['halves', 'toward_fixed', 'outward'])
+
 // Definition check (run for every registered layout in the tests). Returns a list of problem strings ([] = valid).
 export function validateLayout(def) {
   const errs = []
@@ -117,6 +122,8 @@ export function validateLayout(def) {
       seen.add(id)
     }
   }
+  const dir = def.symbol?.direction
+  if (dir !== undefined && !SLIDE_DIRECTIONS.includes(dir)) errs.push(`symbol.direction ${dir}: must be one of ${SLIDE_DIRECTIONS.join(' | ')}`)
   const order = def.order || []
   for (const p of def.parts || []) {
     if (p.panel && (p.glass || (p.positions || Object.keys(pos).filter((k) => pos[k].part === p.key)).length)) errs.push(`part ${p.key}: a panel part has no positions and is not glass`)
