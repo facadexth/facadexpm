@@ -80,11 +80,12 @@ export function inputVisible(inp, params) {
 }
 
 // Inputs of the inputs panel. Template editor: every input except `cells` (that one is the click cycling on the
-// preview); fixed_by_type inputs are shown read-only by the panel. Item form ({ item: true }): estimator inputs the type
-// does not fix (awning rows / cols are the type's), again without cells.
-export function visibleInputs(kind, params, { item = false } = {}) {
+// preview); the ones the type pins (fixedKeys = model.fixedKeys, R-F2) are shown read-only by the panel. Item form
+// ({ item: true }): estimator inputs the type does not pin, again without cells (awning rows / cols are not estimator
+// inputs: never on the item).
+export function visibleInputs(kind, params, { item = false, fixedKeys = [] } = {}) {
   return inputsOf(kind).filter((inp) => inp.type !== 'cells'
-    && (!item || (inp.estimator && !inp.fixed_by_type))
+    && (!item || (inp.estimator && !fixedKeys.includes(inp.key)))
     && inputVisible(inp, params))
 }
 

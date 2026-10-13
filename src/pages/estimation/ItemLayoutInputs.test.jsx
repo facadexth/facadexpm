@@ -33,9 +33,9 @@ const index = buildCatalogIndex({
 const baseT = { type_id: 'win', active: true, grid_row_weights: [1], waste_pct: 5, labor_price_per_sqm: 0, silicone_price_per_m: 0, felt_price_per_m: 0, infill_width_deduction_mm: 0, infill_height_deduction_mm: 0, main_axis: 'vertical', preview_kind: 'fixed' }
 const project = { id: 'p1', default_series_id: 'sA', default_finish_id: 'fA', default_thickness_mm: 1.4, price_as_of: '2026-10-01', description_format: ['item_name', 'size'] }
 
-function setup(kind, params = {}, openingExtra = {}) {
+function setup(kind, params = {}, openingExtra = {}, fixedKeys = null) {
   const t = { ...baseT, id: 'tK', name: 'แบบ ' + kind, layout_kind: kind }
-  const model = startModel(kind, params)
+  const model = fixedKeys ? { ...startModel(kind, params), fixedKeys } : startModel(kind, params)
   const ctx = { templatesById: { tK: t }, componentsByTemplate: {}, hardwareByTemplate: {}, jointsByTemplate: {}, typesById: index.types, infillTypesById: {}, index, settings: mergeSettings(null), packageItems: null, partModelByTemplate: { tK: model } }
   const opening = { id: 'o1', project_id: 'p1', opening_no: 'W-01', template_id: 'tK', width_m: 2.4, height_m: 1.8, panel_count: 1, quantity: 1, extra_lines: [], ...openingExtra }
   const props = { project, ctx, templates: [t], constraints: [], infillTypes: [], layoutTemplates: [], seriesTypes: [], canEdit: true, onClose() {}, onSaved() {}, onLayoutSaved() {} }
@@ -58,6 +58,14 @@ describe('item form layout inputs', () => {
     fireEvent.click(screen.getByRole('button', { name: /บันทึกรายการ/ }))
     await vi.waitFor(() => expect(calls.find(c => c.table === 'estimation_openings')).toBeTruthy())
     expect(calls.find(c => c.table === 'estimation_openings').payload.layout_params).toEqual({ n: 3 })
+  })
+  it('swing door: leaves is shown when the type sets none, hidden when the type pins it (R-F2)', () => {
+    setup('swing_door', { leaves: 1 })
+    expect(panel().getByLabelText(/จำนวนบาน/).value).toBe('1')
+    expect(panel().queryByLabelText(/เดือยบน/)).toBeNull()   // pivot is not an estimator input
+    cleanup()
+    setup('swing_door', { leaves: 2, pivot: true }, {}, ['leaves', 'pivot'])
+    expect(panel().queryByLabelText(/จำนวนบาน/)).toBeNull()
   })
   it('awning_grid shows no rows / cols (the type fixes them), only the opening direction', () => {
     setup('awning_grid', { rows: 2, cols: 2 })

@@ -463,7 +463,7 @@ describe('Review Focus 1: a sliding_2 template saved before layout_params', () =
     const type = { id: 'ty', layout_kind: 'awning_grid', layout_params: { rows: 3, cols: 4 } }
     const back = modelFromRows({ template: { id: 't1', layout_kind: 'awning_grid', layout_params: {} }, type })
     expect(back.params).toEqual({ rows: 3, cols: 4, open: 'out' })
-    expect(back).toEqual(startModel('awning_grid', { rows: 3, cols: 4 }))
+    expect(back).toEqual({ ...startModel('awning_grid', { rows: 3, cols: 4 }), fixedKeys: ['rows', 'cols'] })   // R-F2: the keys the type pins
   })
   it('the type\'s fixed_by_type values win over the template\'s stored ones; other params stay the template\'s', () => {
     const type = { id: 'ty', layout_kind: 'awning_grid', layout_params: { rows: 3 } }

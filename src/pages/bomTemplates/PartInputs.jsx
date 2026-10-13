@@ -1,14 +1,13 @@
 // src/pages/bomTemplates/PartInputs.jsx
 // Inputs panel of the part editor (spec §6, mockup v5 card inputs): the layout's inputs (inputsOf) for the template's
-// defaults. fixed_by_type values are shown read-only (they come from the type); `cells` is not a field (it is the cell
+// defaults. Inputs the type pins (model.fixedKeys, R-F2) are shown read-only (their value comes from the type); `cells` is not a field (it is the cell
 // click cycling on the preview); only_when inputs follow the params (R-4a). Changes go up as a patch; the editor runs
 // setParams and shows PARAMS_HINT instead of the drawing when the layout refuses them (folding 0 + 0); `invalid` then
 // hides the clamp warning. Also the clamp warning (CLAMP_TEXT).
 import NumInput from './NumInput.jsx'
 import { visibleInputs, clampedParts, CLAMP_TEXT } from './partEditorView.js'
 
-export function LayoutInput({ inp, value, disabled, onChange }) {
-  const fixed = !!inp.fixed_by_type
+export function LayoutInput({ inp, value, disabled, fixed = false, onChange }) {
   const label = inp.label + (fixed ? ' (ตามประเภท)' : '')
   if (inp.type === 'boolean') {
     return (
@@ -43,7 +42,7 @@ export default function PartInputs({ model, params, invalid, canEdit, onChange }
     <fieldset className="pinputs" aria-label="ค่าของแบบชิ้นส่วน">
       <legend>ค่าของแบบชิ้นส่วน (ค่าเริ่มต้นของเทมเพลต)</legend>
       {inputs.map(inp => (
-        <LayoutInput key={inp.key} inp={inp} value={params[inp.key]} disabled={!canEdit} onChange={v => onChange({ [inp.key]: v })} />
+        <LayoutInput key={inp.key} inp={inp} value={params[inp.key]} disabled={!canEdit} fixed={(model.fixedKeys || []).includes(inp.key)} onChange={v => onChange({ [inp.key]: v })} />
       ))}
       {clamped.map(c => <div key={c.key} className="warnline" title={`${c.name} ${c.raw} บาน`}>{CLAMP_TEXT}</div>)}
     </fieldset>

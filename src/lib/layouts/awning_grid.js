@@ -8,8 +8,8 @@ export default {
   ...fixed_grid,
   kind: 'awning_grid',
   inputs: [
-    { key: 'rows', label: 'จำนวนแถว', type: 'number', min: 1, max: 8, integer: true, default: 2, estimator: true, fixed_by_type: true },
-    { key: 'cols', label: 'จำนวนช่อง', type: 'number', min: 1, max: 12, integer: true, default: 2, estimator: true, fixed_by_type: true },
+    { key: 'rows', label: 'จำนวนแถว', type: 'number', min: 1, max: 8, integer: true, default: 2, fixed_by_type: true },
+    { key: 'cols', label: 'จำนวนช่อง', type: 'number', min: 1, max: 12, integer: true, default: 2, fixed_by_type: true },
     { key: 'open', label: 'เปิด', type: 'select', options: [{ value: 'out', label: 'เปิดออก' }, { value: 'in', label: 'เปิดเข้า' }], default: 'out', estimator: true },
   ],
   parts: [

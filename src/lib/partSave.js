@@ -6,7 +6,7 @@
 // incomplete (an empty profile family, a butt end without a target) instead of dropping it.
 // modelToRows / validateModel / saveModel / loadModel are the SAVE half (and a one-template loader for the editor).
 import { LAYOUTS, startModel, ensureEnds, pieceCount, validateCorners, presentPositions, lineFamily, MAX_PART_COUNT } from './partModel.js'
-import { coerceParams, defaultParams, inputsOf, exprParams } from './layoutRegistry.js'
+import { coerceParams, defaultParams, inputsOf, exprParams, fixedKeysOf } from './layoutRegistry.js'
 import { evalExpr } from './layoutExpr.js'
 
 const num = v => (v === null || v === undefined || String(v).trim() === '' || !Number.isFinite(Number(v)) ? null : Number(v))
@@ -150,6 +150,9 @@ export function modelFromRows({ template, type, parts, positions, lines, ends } 
   const done = doneOf(layout, template.layout_params)
   const out = ensureEnds(model)
   if (done) out.done = done
+  // the inputs the type pins (R-F2): read-only in the editor, never taken from the item (absent when the type pins none)
+  const fixedKeys = fixedKeysOf(kind, type && type.layout_params)
+  if (fixedKeys.length) out.fixedKeys = fixedKeys
   return out
 }
 

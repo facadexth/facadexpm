@@ -3,7 +3,8 @@
 // Definition shape (storage shape, see layouts/sliding_2.js):
 //   kind      ASCII snake_case kind key
 //   inputs    ordered extra inputs [{ key, label, default, estimator?, fixed_by_type? }] (W/H are implicit);
-//             `estimator` = shown on the item form, `fixed_by_type` = value comes from door_window_types.layout_params
+//             `estimator` = shown on the item form, `fixed_by_type` = the type MAY pin it in door_window_types.layout_params;
+//             it is fixed only when the type sets that key (fixedKeysOf -> model.fixedKeys, R-F2), else editable
 //   parts     [{ key, name, count, overlap_mode, overlap_mm, corner, track, fixed?, glass? }]
 //   positions { [positionKey]: { part, orient:'h'|'v', per, name, labels?, rule:{ type, auto?, factor?, overlap?, role?, family? } } }
 //   joints    [{ h, v:[leftKey, rightKey], vPiece:'byEnd'|'same', vEnd:0|1, through:'v'|'h', mode:'butt'|'mitre'|'tee' }]
@@ -146,6 +147,14 @@ export function coerceParams(kind, params) {
     if (v !== INVALID) out[inp.key] = v
   }
   return out
+}
+
+// The input keys the TYPE pins (Ruling R-F2): inputs marked fixed_by_type whose key the type's layout_params actually set
+// (coerced). An input marked fixed_by_type that the type leaves blank is not fixed: the template sets it and, when it is
+// an estimator input (swing / hanging door `leaves`, casement `n`), the item may too. model.fixedKeys carries this list.
+export function fixedKeysOf(kind, typeParams) {
+  const tp = coerceParams(kind, typeParams)
+  return inputsOf(kind).filter((inp) => inp.fixed_by_type && Object.prototype.hasOwnProperty.call(tp, inp.key)).map((inp) => inp.key)
 }
 
 // Layout input defaults, overridden by the type's layout_params for inputs marked fixed_by_type; clamped to min/max.

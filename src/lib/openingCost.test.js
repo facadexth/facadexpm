@@ -397,3 +397,41 @@ describe('door leaves are priced at the sash thickness (ruling R-9a)', () => {
     expect(r.bom.profileLines.filter(l => l.family === 'fh').length).toBeGreaterThan(0)
   })
 })
+
+describe('fixed_by_type inputs are fixed only when the type pins them (final fix wave, R-F2 / R-12a)', () => {
+  const rowsOfModel = async (m) => {
+    const { modelToRows } = await import('./partSave.js')
+    let i = 0
+    return modelToRows(m, 'tp', () => `r${++i}`)
+  }
+  const load = async (kind, typeParams, base = {}) => {
+    const { modelFromRows } = await import('./partSave.js')
+    const m = famAll(startModel(kind, base), {})
+    return modelFromRows({ template: { id: 'tp', layout_kind: kind, layout_params: m.params }, type: { id: 'ty', layout_kind: kind, layout_params: typeParams }, ...(await rowsOfModel(m)) })
+  }
+  const leaves = (r) => qty(r, 'เสาบานพับ')
+  it('swing door: a type that sets no leaves lets the item price 2 leaves', async () => {
+    const m = await load('swing_door', {})
+    expect(m.fixedKeys).toBeUndefined()
+    expect(leaves(costOpening(kCtx(m, 'swing_door')))).toBe(1)
+    expect(leaves(costOpening(kCtx(m, 'swing_door', { layout_params: { leaves: 2 } })))).toBe(2)
+  })
+  it('swing door: a type with leaves 2 pins it; the item cannot change it', async () => {
+    const m = await load('swing_door', { leaves: 2 })
+    expect(m.fixedKeys).toEqual(['leaves'])
+    expect(leaves(costOpening(kCtx(m, 'swing_door')))).toBe(2)
+    expect(leaves(costOpening(kCtx(m, 'swing_door', { layout_params: { leaves: 1 } })))).toBe(2)
+    expect(modelForItem(m, { layout_params: { leaves: 1 } })).toBe(m)
+  })
+  it('casement: type { n: 1 } pins n (บานเปิดข้างเดี่ยว); a type without n lets the item set it (บานเปิดข้าง)', async () => {
+    const one = await load('casement_n', { n: 1 })
+    expect(one.params.n).toBe(1)
+    expect(one.fixedKeys).toEqual(['n'])
+    expect(modelForItem(one, { layout_params: { n: 3 } })).toBe(one)
+    const free = await load('casement_n', {})
+    expect(modelForItem(free, { layout_params: { n: 3 } }).params.n).toBe(3)
+    const { LAYOUTS } = await import('./layoutRegistry.js')
+    const n = LAYOUTS.casement_n.inputs.find(i => i.key === 'n')
+    expect([n.estimator, n.fixed_by_type]).toEqual([true, true])
+  })
+})

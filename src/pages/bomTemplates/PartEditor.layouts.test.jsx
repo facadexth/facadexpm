@@ -83,11 +83,23 @@ describe('part tabs (awning 2 × 2)', () => {
     mount(startModel('awning_grid', { rows: 2, cols: 2 }))
     expect(screen.queryByText(CLAMP_TEXT)).toBeNull()
   })
-  it('awning rows / cols (fixed_by_type) are shown read-only', () => {
-    mount(startModel('awning_grid', { rows: 2, cols: 2 }))
+  it('awning rows / cols are read-only only when the type pins them (model.fixedKeys, R-F2)', () => {
+    // adjusted (final fix wave, R-F2): read-only follows the keys the type sets, not the fixed_by_type flag
+    mount({ ...startModel('awning_grid', { rows: 2, cols: 2 }), fixedKeys: ['rows', 'cols'] })
     expect(screen.getByLabelText(/จำนวนแถว/).disabled).toBe(true)
     expect(screen.getByLabelText(/จำนวนช่อง/).disabled).toBe(true)
     expect(screen.getByLabelText(/^เปิด/).disabled).toBe(false)
+    cleanup()
+    mount(startModel('awning_grid', { rows: 2, cols: 2 }))
+    expect(screen.getByLabelText(/จำนวนแถว/).disabled).toBe(false)
+    expect(screen.getByLabelText(/จำนวนช่อง/).disabled).toBe(false)
+  })
+  it('PartInputs disables only the keys the type pins: swing door leaves pinned, pivot not', () => {
+    mount({ ...startModel('swing_door', { leaves: 2 }), fixedKeys: ['leaves'] })
+    expect(screen.getByLabelText(/จำนวนบาน/).disabled).toBe(true)
+    expect(screen.getByLabelText(/จำนวนบาน/).closest('label').textContent).toContain('(ตามประเภท)')
+    expect(screen.getByLabelText(/เดือยบน/).disabled).toBe(false)
+    expect(screen.getByLabelText(/เดือยบน/).closest('label').textContent).not.toContain('(ตามประเภท)')
   })
   it('"เสร็จแล้ว" on a part tab marks the tab ✓ and stores the part key in model.done', () => {
     const { container } = mount(startModel('awning_grid', { rows: 2, cols: 2 }))

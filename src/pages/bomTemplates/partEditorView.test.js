@@ -53,11 +53,15 @@ describe('inputs panel', () => {
     expect(visibleInputs('casement_n', { n: 2 }).map(i => i.key)).toEqual(['n', 'open'])
     expect(visibleInputs('curtain_wall', {}).map(i => i.key)).toEqual(['rows', 'cols', 'spandrel', 'k', 'unitized'])
   })
-  it('item: estimator inputs that the type does not fix, no cells', () => {
+  it('item: estimator inputs that the type does not pin, no cells (R-F2: fixed only when the type sets the key)', () => {
     expect(visibleInputs('awning_grid', { rows: 2, cols: 2 }, { item: true }).map(i => i.key)).toEqual(['open'])
     expect(visibleInputs('sliding_n', { n: 2 }, { item: true }).map(i => i.key)).toEqual(['n'])
-    expect(visibleInputs('swing_door', { leaves: 1 }, { item: true }).map(i => i.key)).toEqual(['hinge', 'open', 'sill'])
-    expect(visibleInputs('swing_door', { leaves: 2 }, { item: true }).map(i => i.key)).toEqual(['open', 'sill'])
+    // adjusted (final fix wave, R-F2): leaves is the item's unless the type pins it
+    expect(visibleInputs('swing_door', { leaves: 1 }, { item: true }).map(i => i.key)).toEqual(['leaves', 'hinge', 'open', 'sill'])
+    expect(visibleInputs('swing_door', { leaves: 1 }, { item: true, fixedKeys: ['leaves', 'pivot'] }).map(i => i.key)).toEqual(['hinge', 'open', 'sill'])
+    expect(visibleInputs('swing_door', { leaves: 2 }, { item: true, fixedKeys: ['leaves'] }).map(i => i.key)).toEqual(['open', 'sill'])
+    expect(visibleInputs('casement_n', { n: 2 }, { item: true }).map(i => i.key)).toEqual(['n', 'open'])
+    expect(visibleInputs('casement_n', { n: 1 }, { item: true, fixedKeys: ['n'] }).map(i => i.key)).toEqual(['hinge', 'open'])
     expect(visibleInputs('curtain_wall', {}, { item: true }).map(i => i.key)).toEqual(['rows', 'cols', 'spandrel', 'k'])
   })
 })

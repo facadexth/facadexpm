@@ -22,7 +22,7 @@ import { loadModel, validateModel, saveModel, templateParamsPayload } from '../l
 import { reasonText } from '../lib/reasonText.js'
 import { startModel, LAYOUTS } from '../lib/partModel.js'
 import { hardwareDefaultsPlan, hardwareDefaultRows } from '../lib/hardwareDefaults.js'
-import { defaultParams, layoutLabels } from '../lib/layoutRegistry.js'
+import { defaultParams, fixedKeysOf, layoutLabels } from '../lib/layoutRegistry.js'
 import { PARAMS_HINT } from './bomTemplates/partEditorView.js'
 import PartEditor from './bomTemplates/PartEditor.jsx'
 import { defaultTestPick } from './bomTemplates/partEditorView.js'
@@ -144,7 +144,11 @@ export function TemplateEditor({ template, joints, catalog, types, components, h
   const [paramsInvalid, setParamsInvalid] = useState(false)   // the editor holds params its layout refused (not saved)
   const startFromLayout = (kind, type = null) => {
     let m
-    try { m = startModel(kind, defaultParams(kind, type && type.layout_params)) } catch (e) {
+    try {
+      m = startModel(kind, defaultParams(kind, type && type.layout_params))
+      const fixedKeys = fixedKeysOf(kind, type && type.layout_params)   // the inputs the type pins (R-F2), read-only in the editor
+      if (fixedKeys.length) m = { ...m, fixedKeys }
+    } catch (e) {
       if (e && e.message === 'layout_params_invalid') { setStartError(`${PARAMS_HINT} ที่ประเภท (แคตตาล็อก)`); return }
       throw e
     }

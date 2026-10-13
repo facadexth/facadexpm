@@ -252,8 +252,9 @@ export function itemLayoutInputs(baseModel, layoutParams) {
   const kind = baseModel.layout_kind
   const own = coerceParams(kind, layoutParams)
   const values = { ...(baseModel.params || {}) }
-  for (const inp of inputsOf(kind)) if (inp.estimator && !inp.fixed_by_type && inp.key in own) values[inp.key] = own[inp.key]
-  const inputs = visibleInputs(kind, values, { item: true })
+  const fixedKeys = baseModel.fixedKeys || []   // the inputs the type pins (R-F2)
+  for (const inp of inputsOf(kind)) if (inp.estimator && !fixedKeys.includes(inp.key) && inp.key in own) values[inp.key] = own[inp.key]
+  const inputs = visibleInputs(kind, values, { item: true, fixedKeys })
   const cells = !!LAYOUTS[kind].cells
   if (!inputs.length && !cells) return null
   const model = modelForItem(baseModel, { layout_params: layoutParams })

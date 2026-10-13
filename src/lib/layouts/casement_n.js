@@ -8,7 +8,8 @@ const { frame_top, frame_bottom, frame_side, mullion } = fixed_grid.positions
 export default {
   kind: 'casement_n',
   inputs: [
-    { key: 'n', label: 'จำนวนบาน', type: 'number', min: 1, max: 8, integer: true, default: 2, estimator: true },
+    // R-12a: the type may pin n (บานเปิดข้างเดี่ยว n = 1); when it does not, the item sets n (บานเปิดข้าง)
+    { key: 'n', label: 'จำนวนบาน', type: 'number', min: 1, max: 8, integer: true, default: 2, estimator: true, fixed_by_type: true },
     { key: 'hinge', label: 'บานพับด้าน', type: 'select', options: [{ value: 'left', label: 'ซ้าย' }, { value: 'right', label: 'ขวา' }], default: 'left', only_when: { n: 1 }, estimator: true },
     { key: 'open', label: 'เปิด', type: 'select', options: [{ value: 'out', label: 'เปิดออก' }, { value: 'in', label: 'เปิดเข้า' }], default: 'out', estimator: true },
   ],

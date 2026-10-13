@@ -63,16 +63,17 @@ function partFamilyOpts({ model, index, seriesId, thicknessMm, allowMixed, sashT
 }
 
 // The template's model as this item uses it: the item's estimation_openings.layout_params (coerced) override the
-// template's params for inputs marked `estimator` and not `fixed_by_type` only (a fixed_by_type input such as awning
-// rows/cols is the type's; anything else is the template's). Returns the same model object when nothing changes, a
+// template's params for inputs marked `estimator` that the type does not pin (model.fixedKeys, R-F2: swing / hanging
+// door `leaves` and casement `n` are the item's unless the type sets them; anything else is the template's). Returns the same model object when nothing changes, a
 // new one (setParams: piece counts and factors follow) otherwise, { error: 'layout_params_invalid' } when the layout
 // refuses the combination, and the input unchanged for a missing / refused model.
 export function modelForItem(model, item) {
   if (!model || model.error || !model.layout_kind) return model
   const lp = coerceParams(model.layout_kind, item && item.layout_params)
   const patch = {}
+  const fixed = model.fixedKeys || []
   for (const inp of inputsOf(model.layout_kind)) {
-    if (!inp.estimator || inp.fixed_by_type || !(inp.key in lp)) continue
+    if (!inp.estimator || fixed.includes(inp.key) || !(inp.key in lp)) continue
     if (JSON.stringify(lp[inp.key]) !== JSON.stringify((model.params || {})[inp.key])) patch[inp.key] = lp[inp.key]
   }
   if (!Object.keys(patch).length) return model
