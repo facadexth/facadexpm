@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { lineTotal, calcQuotationTotals, sumMaterialLabor } from './quotationCalc.js'
+import { lineTotal, calcQuotationTotals, sumMaterialLabor, normalizeSnapshotItems } from './quotationCalc.js'
 
 describe('lineTotal', () => {
   it('multiplies quantity by unit price', () => {
@@ -71,5 +71,41 @@ describe('sumMaterialLabor', () => {
 
   it('empty items list sums to zero', () => {
     expect(sumMaterialLabor([])).toEqual({ material: 0, labor: 0 })
+  })
+})
+
+describe('normalizeSnapshotItems', () => {
+  it('keeps an explicit item_type untouched', () => {
+    const rows = [
+      { description: 'a', quantity: '1', unit: 'ชุด', unit_price: '10', line_total: '10', item_type: 'item' },
+      { description: 'b', quantity: '0', unit: null, unit_price: '0', line_total: '0', item_type: 'note' },
+      { description: 'c', quantity: '0', unit: null, unit_price: '0', line_total: '0', item_type: 'item_description' },
+    ]
+    expect(normalizeSnapshotItems(rows).map(r => r.item_type)).toEqual(['item', 'note', 'item_description'])
+  })
+
+  it('infers item_description for a legacy row with no quantity, unit or price', () => {
+    const rows = [
+      { description: 'งานรื้อถอน', quantity: '1', unit: 'งาน', unit_price: '12000', line_total: '12000' },
+      { description: 'รื้อพร้อมเตรียมหน้างาน', quantity: '0', unit: null, unit_price: '0', line_total: '0' },
+      { description: 'ค่าอลูมิเนียม', quantity: 1, unit: 'ชุด', unit_price: 70000, line_total: 70000 },
+      { description: 'สีเทา', quantity: 0, unit: '', unit_price: null, line_total: null },
+    ]
+    expect(normalizeSnapshotItems(rows).map(r => r.item_type)).toEqual(['item', 'item_description', 'item', 'item_description'])
+  })
+
+  it('keeps a legacy zero-quantity row as an item when it carries a unit or a price', () => {
+    const rows = [
+      { description: 'x', quantity: '0', unit: 'ชุด', unit_price: '0', line_total: '0' },
+      { description: 'y', quantity: '0', unit: null, unit_price: '500', line_total: '0' },
+    ]
+    expect(normalizeSnapshotItems(rows).map(r => r.item_type)).toEqual(['item', 'item'])
+  })
+
+  it('returns an empty array for a missing list and does not mutate inputs', () => {
+    expect(normalizeSnapshotItems(null)).toEqual([])
+    const row = { description: 'z', quantity: '0', unit: null, unit_price: '0', line_total: '0' }
+    normalizeSnapshotItems([row])
+    expect(row.item_type).toBeUndefined()
   })
 })

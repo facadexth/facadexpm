@@ -21,7 +21,7 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import { format, startOfYear, endOfYear, addDays, differenceInDays } from 'date-fns'
-import { lineTotal, calcQuotationTotals, sumMaterialLabor } from '../lib/quotationCalc.js'
+import { lineTotal, calcQuotationTotals, sumMaterialLabor, normalizeSnapshotItems } from '../lib/quotationCalc.js'
 import { SiteForm, siteFormToPayload } from './Sites.jsx'
 import { downloadPDF, downloadJPG } from '../lib/pdf.js'
 import SignLinkModal from '../components/SignLinkModal.jsx'
@@ -1134,6 +1134,10 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
   const selected = (revisions || []).find(r => r.id === selectedId) || revisions?.[0]
   const elementId = selected ? `qt-hist-doc-${selected.id}` : null
   const s = selected?.snapshot
+  // Memoized because QuotationPaper keys its item numbering and page
+  // packing by row object identity -- a fresh array every render would
+  // re-paginate on each pass and lose the numbers.
+  const snapshotItems = useMemo(() => normalizeSnapshotItems(s?.items), [s])
   const [historyPageCount, setHistoryPageCount] = useState(1)
   const scaleRef = useRef(null)
   const handlePrint = () => {
@@ -1193,7 +1197,7 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
                 elementId={elementId} tenant={tenant} quotationNumber={quotation.quotation_number}
                 tag={`ฉบับแก้ไขครั้งที่ ${selected.revision} (ประวัติ)`}
                 date={s.date} validUntil={s.valid_until} revision={selected.revision} siteName={null}
-                clientName={s.client_name} items={s.items || []}
+                clientName={s.client_name} items={snapshotItems}
                 hasVat={s.has_vat} priceIncludesVat={s.price_includes_vat}
                 discountAmount={s.discount_amount} discountPct={s.discount_pct} pricingMode={s.pricing_mode}
                 paymentTerms={s.payment_terms} notes={s.notes} bankAccount={s.bank_account}
@@ -1353,6 +1357,9 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
             items: (editRow.quotation_items || []).map(it => ({
               description: it.description, unit: it.unit, quantity: it.quantity, unit_price: it.unit_price,
               unit_price_material: it.unit_price_material, unit_price_labor: it.unit_price_labor, line_total: it.line_total,
+              // Without item_type a note / item_description row renders in the
+              // history viewer as a 0-quantity item (see normalizeSnapshotItems).
+              item_type: it.item_type || 'item',
             })),
           }
           const { error: snapError } = await supabase.from('quotation_revisions').insert({
