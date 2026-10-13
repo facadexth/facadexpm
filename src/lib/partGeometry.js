@@ -26,7 +26,16 @@
 // Mapping mockup → repo: frameTop→frame_top, frameBot→frame_bottom, frameSide→frame_side,
 // sashTop→sash_top, sashBot→sash_bottom, lockStile→key_stile, hookStile→hook_stile.
 // Mockup aspect quirk not ported: the zoom keeps the window's aspect ratio (the mockup stretched it).
-import { LAYOUTS, partnerEnd, pieceCount } from './partModel.js'
+//
+// Task 8 (every other layout kind): overviewSpecs / zoomSpecs dispatch to the per-kind bodies of partGeometryBodies.js, drawn
+// in MILLIMETRES (frame at [0,W] × [0,H], box.scale 1, box.viewBox the drawing's mm viewBox incl. margins), with the same
+// flush-butt rule as below (a butt end is shortened by the drawn thickness of its corner partner; tee transoms, mullions,
+// free lines and mitred sashes keep their body run). sliding_2 keeps the frozen pixel-box drawing below, byte for byte.
+import { LAYOUTS, partnerEnd, pieceCount, trackOf, isFixedPiece, pieceLabel as modelPieceLabel } from './partModel.js'
+import { exprParams, rolesOf } from './layoutRegistry.js'
+import { evalExpr } from './layoutExpr.js'
+import { symbolFor } from './partSymbols.js'
+import { BODIES, defaultThick } from './partGeometryBodies.js'
 
 const OVERVIEW_BOX = { w: 520, h: 360 }
 const ZOOM_BOX = { w: 520, h: 340 }
@@ -47,9 +56,19 @@ const emptyZoom = () => ({ box: { ...ZOOM_BOX }, pieces: [], markers: [], title:
 const partOfKey = (layout, key) => layout.positions[key]?.part
 const partRec = (model, partKey) => model.parts?.find((p) => p.key === partKey) || {}
 
+// The piece suffix shown after the position name ('' when the position has one piece).
+// sliding_2 keeps its frozen wording ("บานซ้าย"/"บานขวา"); every other kind is a thin adapter over partModel.pieceLabel
+// (layout.pieceNames, mirror-aware, then labels): its "<name>" / "<name> n" fallbacks become '' / "ชิ้นที่ n".
 export function pieceLabel(model, layout, key, piece) {
   const pos = layout.positions[key]
   const n = pieceCount(model, key)
+  if (model.layout_kind !== 'sliding_2') {
+    const full = modelPieceLabel(model, key, piece)
+    const name = model.names?.[key] || pos.name
+    if (full === name) return ''
+    if (full === `${name} ${piece + 1}`) return `ชิ้นที่ ${piece + 1}`
+    return full
+  }
   if (pos.labels && n === pos.labels.length) return pos.labels[piece]
   if (pos.part === 'sash') return 'บาน' + (piece % 2 ? 'ขวา' : 'ซ้าย')
   return n > 1 ? `ชิ้นที่ ${piece + 1}` : ''
@@ -135,6 +154,7 @@ const sashOrder = (n, mirror) => (mirror ? [0, 1] : [1, 0]).filter((k) => k < n)
 export function overviewSpecs({ model, widthMm, heightMm, view = 'out', widthOf } = {}) {
   const layout = layoutOf(model)
   if (!layout) return emptyOverview()
+  if (BODIES[model.layout_kind]) return overviewMm({ model, layout, widthMm, heightMm, view, widthOf })
   const W = Math.max(1, Number(widthMm) || 0), H = Math.max(1, Number(heightMm) || 0)
   const sc = Math.min(420 / W, 300 / H)
   const pw = W * sc, ph = H * sc
@@ -156,7 +176,11 @@ export function overviewSpecs({ model, widthMm, heightMm, view = 'out', widthOf 
     { kind: 'width', x1: x0, y1: y0 + ph + 16, x2: x0 + pw, y2: y0 + ph + 16, tx: x0 + pw / 2, ty: y0 + ph + 30, anchor: 'middle', value: W },
     { kind: 'height', x1: x0 + pw + 16, y1: y0, x2: x0 + pw + 16, y2: y0 + ph, tx: x0 + pw + 22, ty: y0 + ph / 2, anchor: 'start', value: H },
   ]
-  return { box: { ...OVERVIEW_BOX, frameX: x0, frameY: y0, frameW: pw, frameH: ph, scale: sc }, pieces, dims }
+  const legacy = legacyExtras({ model, layout, pieces, nSash, mirror, X, sash: (k) => {
+    const x = ix + (k ? inW - pwid : 0)
+    return { x: x + th('hook_stile'), y: iy + th('sash_top'), w: pwid - th('hook_stile') - th('key_stile'), h: inH - th('sash_top') - th('sash_bottom') }
+  } })
+  return { box: { ...OVERVIEW_BOX, frameX: x0, frameY: y0, frameW: pw, frameH: ph, scale: sc }, pieces, dims, ...legacy }
 }
 
 // Frame opening from the frame profiles' butt distances (mockup faceOf). Missing → 0, unresolved: true.
@@ -179,9 +203,10 @@ function openingOf(model, buttOf, W, H) {
  * @returns {{ box:{w,h}, pieces:Array, markers:Array<{key,piece,end,x,y,mode}>, title:string,
  *   opening:{widthMm,heightMm,unresolved,text}|null }}
  */
-export function zoomSpecs({ model, partKey, selected, view = 'out', widthMm, heightMm, buttOf } = {}) {
+export function zoomSpecs({ model, partKey, partIdx, selected, view = 'out', widthMm, heightMm, buttOf, widthOf } = {}) {
   const layout = layoutOf(model)
   if (!layout) return emptyZoom()
+  if (BODIES[model.layout_kind]) return zoomMm({ model, layout, partKey, partIdx, selected, view, widthMm, heightMm, widthOf })
   const sel = typeof selected === 'string' ? { key: selected, line: 0 } : (selected || null)
   const pk = partKey || (sel && partOfKey(layout, sel.key)) || 'frame'
   const W = Math.max(1, Number(widthMm) || 0), H = Math.max(1, Number(heightMm) || 0)
@@ -229,4 +254,179 @@ export function zoomSpecs({ model, partKey, selected, view = 'out', widthMm, hei
   if (sel && layout.positions[sel.key]) title += ' · ชิ้นที่เลือก: ' + (model.names?.[sel.key] || layout.positions[sel.key].name)
   if (opening) title += ' · ' + opening.text
   return { box: { ...ZOOM_BOX }, pieces, markers, title, opening }
+}
+
+// ---------------------------------------------------------------- Task 8: shared piece metadata
+
+// { part, partIdx, track, mitre } of one piece: partIdx = piece ÷ (pieces per part instance); track only for parts that
+// declare one (partModel.trackOf); mitre for members of a part whose corner is 'mitre' (free positions excepted).
+function pieceMeta(model, layout, key, piece) {
+  const pos = layout.positions[key]
+  const lp = layout.parts.find((p) => p.key === pos.part) || {}
+  let per = 1
+  try { per = Math.max(1, Math.round(evalExpr(pos.per ?? 1, exprParams(model)))) } catch { per = 1 }
+  const partIdx = Math.floor(piece / per)
+  return { part: pos.part, partIdx, track: lp.track ? trackOf(model, pos.part, partIdx) : null, mitre: lp.corner === 'mitre' && pos.corner !== 'free' }
+}
+
+const swapHinge = (h) => (h === 'left' ? 'right' : h === 'right' ? 'left' : h)
+
+// sliding_2 (frozen pixel box): metadata on the pieces + the sash panes and slide symbols, for the brief's common shape.
+// The sliding_2 SVG does not draw these (its output is pinned byte for byte).
+function legacyExtras({ model, layout, pieces, nSash, mirror, X, sash }) {
+  for (const p of pieces) Object.assign(p, pieceMeta(model, layout, p.key, p.piece))
+  const glass = [], symbols = []
+  for (let k = 0; k < nSash; k++) {
+    const r = sash(k)
+    const g = { ...r, x: X(r.x, r.w) }
+    glass.push({ ...g, fixed: isFixedPiece(model, 'sash', k), kind: 'glass', part: 'sash', partIdx: k })
+    const s = symbolFor(model, 'sash', k, { view: mirror ? 'in' : 'out' })
+    symbols.push({ ...s, ...g, dir: mirror ? -s.dir : s.dir, part: 'sash', partIdx: k })
+  }
+  return { glass, symbols, hardwareMarks: [] }
+}
+
+// ---------------------------------------------------------------- Task 8: millimetre drawing for every other kind
+
+function sizeOf(widthMm, heightMm) {
+  return { W: Math.max(1, Number(widthMm) || 0), H: Math.max(1, Number(heightMm) || 0) }
+}
+
+// The body context: drawn thickness per position (widthOf in mm, else the mockup constants), counts, symbols, params.
+function bodyCtx(model, layout, W, H, widthOf, view) {
+  const kind = model.layout_kind
+  const ep = exprParams(model)
+  const th = (key) => {
+    if (widthOf) {
+      const fam = model.lines[key]?.[0]?.profile_family
+      const mm = fam ? num(widthOf(fam)) : null
+      if (mm != null && mm > 0) return mm
+    }
+    return defaultThick(kind, key, model.params)
+  }
+  const has = (key) => !!(layout.positions[key] && model.lines[key]?.length)
+  const count = (key) => {
+    if (!has(key)) return 0
+    try { return pieceCount(model, key) } catch { return 0 }
+  }
+  const partCount = (partKey) => {
+    try { return Math.max(0, Math.min(10, Math.round(evalExpr(model.parts.find((p) => p.key === partKey)?.count ?? 1, ep)))) } catch { return 0 }
+  }
+  return {
+    model, layout, kind, W, H, th, has, count, partCount,
+    sw: Math.max(W, H) / 220,
+    params: model.params || {},
+    roles: rolesOf(layout),
+    int: (k, dflt) => (Number.isFinite(ep[k]) ? Math.max(dflt, Math.round(ep[k])) : dflt),
+    sym: (partKey, idx) => symbolFor(model, partKey, idx, { view }),   // hinge / dir are outside-view geometry; dashed follows the view
+    fixed: (partKey, idx) => isFixedPiece(model, partKey, idx),
+    track: (partKey, idx) => trackOf(model, partKey, idx),
+  }
+}
+
+// Body specs -> pieces (one per piece per line, drawing order), the sliding_2 rule for butt ends, mirrored for the inside view.
+function piecesMm(model, layout, specs, th, X) {
+  const out = []
+  for (const g of specs) {
+    const lines = model.lines[g.key] || []
+    const ins = (pair, e) => {
+      if (g.run === 'fixed') return 0
+      const end = pair?.[e] || THROUGH
+      if (end.mode !== 'butt') return 0
+      const pt = partnerEnd(model, g.key, g.piece, e)
+      const target = pt?.key || end.to?.key
+      return Math.min(g.len / 3, target ? th(target) : 0)
+    }
+    const name = model.names?.[g.key] || layout.positions[g.key].name
+    const label = [name, pieceLabel(model, layout, g.key, g.piece)].filter(Boolean).join(' ')
+    const meta = pieceMeta(model, layout, g.key, g.piece)
+    lines.forEach((line, li) => {
+      const pair = line?.ends?.[g.piece]
+      const a = ins(pair, g.flip ? 1 : 0), b = ins(pair, g.flip ? 0 : 1)
+      const len = Math.max(1, g.len - a - b)
+      let x, y, w, h
+      if (li === 0) {
+        if (g.orient === 'h') { x = g.fx + a; y = g.fy; w = len; h = g.thick } else { x = g.fx; y = g.fy + a; w = g.thick; h = len }
+      } else {
+        const tk = Math.max(3, g.thick * 0.28)
+        if (g.orient === 'h') { x = g.fx + a; y = g.fy + g.thick - tk; w = len; h = tk } else { x = g.fx + g.thick - tk; y = g.fy + a; w = tk; h = len }
+      }
+      const mx = X(x, w)
+      const p = { key: g.key, piece: g.piece, orient: g.orient, x: mx.x, y, w, h, role: li === 0 ? 'main' : 'extra', line: li, label, ...meta }
+      if (g.mside) p.mside = mx.mirror ? swapHinge(g.mside) : g.mside
+      if (g.flip || mx.mirror) p.endsRight = !!g.flip !== mx.mirror   // end 0 drawn on the right
+      out.push(p)
+    })
+  }
+  return out
+}
+
+function overviewMm({ model, layout, widthMm, heightMm, view, widthOf }) {
+  const { W, H } = sizeOf(widthMm, heightMm)
+  const mirror = view === 'in'
+  const c = bodyCtx(model, layout, W, H, widthOf, mirror ? 'in' : 'out')
+  const X = (x, w) => ({ x: mirror ? W - x - w : x, mirror })
+  const body = BODIES[model.layout_kind](c)
+  const pieces = piecesMm(model, layout, body.specs, c.th, X)
+  const mx = (r) => (mirror ? { ...r, x: W - r.x - r.w } : { ...r })
+  const glass = body.glass.map(mx)
+  const symbols = body.symbols.map((s) => (mirror ? { ...mx(s), hinge: swapHinge(s.hinge), dir: s.dir ? -s.dir : s.dir } : { ...s }))
+  const hardwareMarks = body.marks.map((k) => (k.x1 !== undefined ? (mirror ? { ...k, x1: W - k.x1, x2: W - k.x2 } : { ...k }) : mx(k)))
+  const sw = c.sw
+  const dims = [
+    { kind: 'width', x1: 0, y1: H + sw * 14, x2: W, y2: H + sw * 14, tx: W / 2, ty: H + sw * 14 + sw * 11, anchor: 'middle', value: W },
+    { kind: 'height', x1: W + sw * 14, y1: 0, x2: W + sw * 14, y2: H, tx: W + sw * 17, ty: H / 2, anchor: 'start', value: H },
+    ...body.dims.map((d) => {
+      const x1 = mirror ? W - d.x2 : d.x1, x2 = mirror ? W - d.x1 : d.x2, y = d.y1 - sw * 8
+      return { ...d, x1, x2, y1: y, y2: y, tx: (x1 + x2) / 2, ty: y - sw * 2, anchor: 'middle' }
+    }),
+  ]
+  const xs = [0, W, ...pieces.flatMap((p) => [p.x, p.x + p.w])]
+  const minX = Math.min(...xs), maxX = Math.max(...xs)
+  const m = Math.max(W, H) * 0.12
+  // box.x / box.y / box.w / box.h = the mm viewBox (margins for the dimension lines; hanging_door's rail widens it)
+  return {
+    box: { x: minX - m, y: -m, w: maxX - minX + 2 * m, h: H + 2 * m, frameX: 0, frameY: 0, frameW: W, frameH: H, scale: 1, sw, units: 'mm' },
+    pieces, glass, symbols, hardwareMarks, dims,
+  }
+}
+
+// Zoom = the overview with every piece outside the chosen part instance faded to 0.25 (mockup openZoom: part tabs are
+// model.parts × count, `partIdx` null = every instance of the part, `partKey` null = ทั้งชุด) and end markers on the
+// selected position's pieces in that instance (mode 'mitre' for mitred members: their ends are cut 45°, not toggled).
+function zoomMm({ model, layout, partKey, partIdx, selected, view, widthMm, heightMm, widthOf }) {
+  const ov = overviewMm({ model, layout, widthMm, heightMm, view, widthOf })
+  const sel = typeof selected === 'string' ? { key: selected, line: 0 } : (selected || null)
+  const pk = partKey === undefined ? (sel && partOfKey(layout, sel.key)) || null : partKey
+  const idx = Number.isInteger(partIdx) ? partIdx : null
+  const inPart = (x) => !pk || (x.part === pk && (idx === null || x.partIdx === idx))
+  const pieces = ov.pieces.map((p) => ({ ...p, opacity: inPart(p) ? 1 : 0.25, selected: !!sel && p.key === sel.key && p.line === (sel.line || 0) && inPart(p) }))
+  const fade = (x) => ({ ...x, opacity: inPart(x) ? 1 : 0.25 })
+  const markers = []
+  if (sel && model.lines[sel.key]?.length) {
+    const li = Math.min(Math.max(0, sel.line || 0), model.lines[sel.key].length - 1)
+    for (const p of pieces) {
+      if (!p.selected || p.line !== li) continue
+      const len = p.orient === 'h' ? p.w : p.h
+      const inset = Math.min(len / 4, ov.box.sw * 8)
+      const pts = p.orient === 'h'
+        ? [[p.x + inset, p.y + p.h / 2], [p.x + p.w - inset, p.y + p.h / 2]]
+        : [[p.x + p.w / 2, p.y + inset], [p.x + p.w / 2, p.y + p.h - inset]]
+      if (p.orient === 'h' && p.endsRight) pts.reverse()
+      pts.forEach(([x, y], e) => {
+        const mode = p.mitre ? 'mitre' : model.lines[sel.key][li]?.ends?.[p.piece]?.[e]?.mode === 'butt' ? 'butt' : 'through'
+        markers.push({ key: p.key, piece: p.piece, end: e, x, y, mode })
+      })
+    }
+  }
+  const part = pk ? partRec(model, pk) : {}
+  const partName = pk ? part.name || layout.parts.find((p) => p.key === pk)?.name || pk : 'ทั้งชุด'
+  let count = 1
+  try { count = pk ? Math.round(evalExpr(part.count ?? 1, exprParams(model))) : 1 } catch { count = 1 }
+  let title = 'ภาพขยาย: ' + partName + (idx !== null ? ` ${idx + 1}` : count > 1 ? ' × ' + count : '')
+  if (sel && layout.positions[sel.key]) title += ' · ชิ้นที่เลือก: ' + (model.names?.[sel.key] || layout.positions[sel.key].name)
+  return {
+    box: ov.box, pieces, glass: ov.glass.map(fade), symbols: ov.symbols.map(fade), hardwareMarks: ov.hardwareMarks.map((k) => ({ ...k, opacity: pk ? 0.25 : 1 })),
+    dims: ov.dims, markers, title, opening: null, partKey: pk, partIdx: idx,
+  }
 }

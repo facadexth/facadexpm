@@ -274,3 +274,263 @@ describe('empty-model safety and edge inputs', () => {
     })
   }
 })
+
+// ---------------------------------------------------------------- Task 8: every layout kind
+import { startModel as start8, setEndMode as setEnd8 } from './partModel'
+import { kinds, defaultParams, LAYOUTS as LAYOUTS8 } from './layoutRegistry'
+import { expandParts } from './partExpand'
+import { pieceLabel } from './partGeometry'
+
+// the accepted mockup's default size per kind (docs/reference/type-previews-mockup.html TYPES[].def)
+const SIZE8 = {
+  sliding_2: [1800, 1200], fixed_grid: [1800, 1200], awning_grid: [1200, 1200], casement_n: [1500, 1200],
+  sliding_n: [1800, 1200], sliding_3track: [2700, 1200], sliding_2_fixed_2: [2400, 1200],
+  swing_door: [1000, 2100], frameless_door: [1000, 2100], hanging_door: [2400, 2100], folding_door: [3000, 2400],
+  curtain_wall: [3600, 3000], frameless_wall: [3600, 3000],
+}
+const filled8 = (kind, params = {}) => {
+  const m = start8(kind, { ...defaultParams(kind, {}), ...params })
+  for (const k of Object.keys(m.lines)) for (const l of m.lines[k]) if (!l.profile_family) l.profile_family = 'X'
+  return m
+}
+const expandedPieces = (m) => expandParts({ model: m, buttOf: () => 20, widthOf: () => 40 }).components.reduce((a, c) => a + c.quantity_value, 0)
+const toMm = (box, p) => ({ x: (p.x - box.frameX) / box.scale, y: (p.y - box.frameY) / box.scale, w: p.w / box.scale, h: p.h / box.scale })
+const ov8 = (m, view = 'out', extra = {}) => { const [W, H] = SIZE8[m.layout_kind]; return overviewSpecs({ model: m, widthMm: W, heightMm: H, view, ...extra }) }
+
+describe('Task 8 — overviewSpecs for every layout kind', () => {
+  it('the matrix covers all 13 registered kinds', () => {
+    expect(Object.keys(SIZE8).sort()).toEqual(kinds().sort())
+    expect(kinds()).toHaveLength(13)
+  })
+  for (const kind of Object.keys(SIZE8)) {
+    describe(kind, () => {
+      it('piece count equals the expander piece count (sum of quantity_value)', () => {
+        const m = filled8(kind)
+        const total = expandedPieces(m)
+        expect(total).toBeGreaterThan(0)
+        for (const view of ['out', 'in']) expect(ov8(m, view).pieces).toHaveLength(total)
+      })
+      it('every piece lies inside [0,W]×[0,H] (hanging_door tracks within [-0.25W, 1.25W]) with finite numbers', () => {
+        const m = filled8(kind)
+        const [W, H] = SIZE8[kind]
+        for (const view of ['out', 'in']) {
+          const o = ov8(m, view)
+          for (const p of o.pieces) {
+            const q = toMm(o.box, p)
+            for (const v of Object.values(q)) expect(Number.isFinite(v)).toBe(true)
+            const track = kind === 'hanging_door' && p.part === 'track'
+            expect(q.x).toBeGreaterThanOrEqual((track ? -0.25 * W : 0) - 1e-6)
+            expect(q.x + q.w).toBeLessThanOrEqual((track ? 1.25 * W : W) + 1e-6)
+            expect(q.y).toBeGreaterThanOrEqual(-1e-6)
+            expect(q.y + q.h).toBeLessThanOrEqual(H + 1e-6)
+            expect(q.w).toBeGreaterThan(0)
+            expect(q.h).toBeGreaterThan(0)
+          }
+        }
+      })
+      it('no two pieces of different part instances on the same track overlap', () => {
+        const o = ov8(filled8(kind))
+        const tracked = o.pieces.filter((p) => p.track != null)
+        for (let i = 0; i < tracked.length; i++) for (let j = i + 1; j < tracked.length; j++) {
+          const a = tracked[i], b = tracked[j]
+          if (a.track !== b.track || a.part !== b.part || a.partIdx === b.partIdx) continue
+          expect(overlapArea(a, b)).toBeLessThan(1e-6)
+        }
+      })
+      it('pieces carry part / partIdx / track / mitre; mitre exactly on mitred parts', () => {
+        const m = filled8(kind)
+        const layout = LAYOUTS8[kind]
+        for (const p of ov8(m).pieces) {
+          const part = layout.parts.find((x) => x.key === layout.positions[p.key].part)
+          expect(p.part).toBe(part.key)
+          expect(Number.isInteger(p.partIdx)).toBe(true)
+          expect(p.mitre).toBe(part.corner === 'mitre' && layout.positions[p.key].corner !== 'free')
+        }
+      })
+      it('returns glass / symbols / hardwareMarks / dims arrays with finite numbers', () => {
+        const o = ov8(filled8(kind))
+        for (const k of ['glass', 'symbols', 'hardwareMarks', 'dims']) expect(Array.isArray(o[k])).toBe(true)
+        expect(o.dims.length).toBeGreaterThanOrEqual(2)
+        for (const g of [...o.glass, ...o.symbols]) for (const k of ['x', 'y', 'w', 'h']) if (g[k] !== undefined) expect(Number.isFinite(g[k])).toBe(true)
+      })
+    })
+  }
+})
+
+describe('Task 8 — layout specifics', () => {
+  it('fixed_grid: transoms span mullion face to mullion face even when an end is set to butt (R-3a)', () => {
+    let m = filled8('fixed_grid')
+    m = setEnd8(m, 'transom', 0, 0, 1, 'butt')
+    const { pieces } = ov8(m)
+    const mull = pieces.filter((p) => p.key === 'mullion').sort((a, b) => a.x - b.x)
+    const tr = pieces.filter((p) => p.key === 'transom').sort((a, b) => a.x - b.x)
+    expect(tr).toHaveLength(3)
+    expect(tr[0].x + tr[0].w).toBeCloseTo(mull[0].x, 9)
+    expect(tr[1].x).toBeCloseTo(mull[0].x + mull[0].w, 9)
+    expect(tr[1].x + tr[1].w).toBeCloseTo(mull[1].x, 9)
+    // drawing constants: frame 45, mullion 60 → cell width (1800 − 90 − 120) / 3 = 530
+    expect(tr[0].w).toBeCloseTo(530, 9)
+    expect(mull[0].h).toBeCloseTo(1110, 9)
+  })
+  it('fixed_grid: six fixed glass cells with F', () => {
+    const { glass } = ov8(filled8('fixed_grid'))
+    expect(glass).toHaveLength(6)
+    expect(glass.every((g) => g.fixed && g.kind === 'glass')).toBe(true)
+  })
+  it('awning_grid: mitred sashes, V apex top on each sash', () => {
+    const o = ov8(filled8('awning_grid'))
+    expect(o.pieces.filter((p) => p.part === 'sash').every((p) => p.mitre)).toBe(true)
+    const v = o.symbols.filter((s) => s.kind === 'v_hinge')
+    expect(v).toHaveLength(4)
+    expect(v.every((s) => s.hinge === 'top' && s.dashed === false)).toBe(true)
+  })
+  it('casement_n n=2: hinges left,right; the inside view mirrors them and flips dashed', () => {
+    const m = filled8('casement_n')
+    const h = (view) => ov8(m, view).symbols.filter((s) => s.kind === 'v_hinge').sort((a, b) => a.x - b.x).map((s) => [s.hinge, s.dashed])
+    expect(h('out')).toEqual([['left', false], ['right', false]])
+    expect(h('in')).toEqual([['left', true], ['right', true]])
+    const o = ov8(m, 'in'), out = ov8(m, 'out')
+    const s0in = o.symbols.find((s) => s.partIdx === 0), s0out = out.symbols.find((s) => s.partIdx === 0)
+    expect(s0in.hinge).toBe('right')
+    expect(s0in.x).toBeCloseTo(1500 - s0out.x - s0out.w, 9)
+  })
+  it('sliding_n: tracks alternate, the front track is drawn last, arrows point to the middle', () => {
+    const o = ov8(filled8('sliding_n'))
+    const sashes = o.pieces.filter((p) => p.part === 'sash')
+    expect(sashes.at(-1).track).toBe(1)
+    const dirs = o.symbols.filter((s) => s.kind === 'slide').sort((a, b) => a.x - b.x).map((s) => s.dir)
+    expect(dirs).toEqual([1, -1])
+  })
+  it('sliding_3track: the fixed sash gets F and no arrow; sliding sashes point toward it, mirrored when fixed_side = right', () => {
+    for (const [side, dir] of [['left', -1], ['right', 1]]) {
+      const o = ov8(filled8('sliding_3track', { fixed_side: side }))
+      const fixed = o.glass.filter((g) => g.fixed)
+      expect(fixed).toHaveLength(1)
+      const slides = o.symbols.filter((s) => s.kind === 'slide')
+      expect(slides).toHaveLength(2)
+      expect(slides.every((s) => s.dir === dir)).toBe(true)
+      expect(o.symbols.filter((s) => s.kind === 'none')).toHaveLength(1)
+      // the fixed pane sits on the fixed side
+      const xs = o.glass.map((g) => g.x)
+      expect(fixed[0].x).toBe(side === 'left' ? Math.min(...xs) : Math.max(...xs))
+    }
+  })
+  it('sliding_2_fixed_2: outer two fixed with F, inner two slide toward their fixed neighbour', () => {
+    const o = ov8(filled8('sliding_2_fixed_2'))
+    expect(o.glass.filter((g) => g.fixed)).toHaveLength(2)
+    expect(o.symbols.filter((s) => s.kind === 'slide').sort((a, b) => a.x - b.x).map((s) => s.dir)).toEqual([-1, 1])
+  })
+  it('swing_door: sill-less draws a floor dashed line, pivot draws the door closer in the head, hinged draws 3 hinge ticks', () => {
+    const kinds8 = (m) => ov8(m).hardwareMarks.map((h) => h.kind)
+    expect(kinds8(filled8('swing_door', { sill: 'no' }))).toContain('floor_line')
+    expect(kinds8(filled8('swing_door', { sill: 'yes' }))).not.toContain('floor_line')
+    const piv = ov8(filled8('swing_door', { pivot: true }))
+    const closer = piv.hardwareMarks.find((h) => h.kind === 'closer')
+    const head = piv.pieces.find((p) => p.key === 'frame_top')
+    expect(closer.y).toBeGreaterThanOrEqual(head.y)
+    expect(closer.y + closer.h).toBeLessThanOrEqual(head.y + head.h + 1e-9)
+    expect(kinds8(filled8('swing_door')).filter((k) => k === 'hinge')).toHaveLength(3)
+    expect(kinds8(filled8('swing_door'))).toContain('handle')
+  })
+  it('frameless_door: frameless glass leaf, patch fittings flush top and bottom on the hinge side, pull handle and floor lock', () => {
+    const o = ov8(filled8('frameless_door'))
+    const leaf = o.glass.find((g) => g.kind === 'frameless')
+    expect(leaf).toBeTruthy()
+    const patches = o.hardwareMarks.filter((h) => h.kind === 'patch')
+    expect(patches).toHaveLength(2)
+    expect(Math.min(...patches.map((p) => p.y))).toBeCloseTo(leaf.y, 9)
+    expect(Math.max(...patches.map((p) => p.y + p.h))).toBeCloseTo(leaf.y + leaf.h, 9)
+    expect(patches.every((p) => p.x === leaf.x)).toBe(true)   // hinge left
+    const k = o.hardwareMarks.map((h) => h.kind)
+    expect(k).toContain('pull')
+    expect(k).toContain('floor_lock')
+    expect(k).toContain('floor_line')
+  })
+  it('hanging_door: the rail runs past the opening, two leaves slide outward', () => {
+    const o = ov8(filled8('hanging_door', { leaves: 2 }))
+    const rail = o.pieces.find((p) => p.key === 'track_rail')
+    expect(rail.x).toBeCloseTo(-600, 9)
+    expect(rail.w).toBeCloseTo(3600, 9)
+    expect(o.symbols.filter((s) => s.kind === 'slide').sort((a, b) => a.x - b.x).map((s) => s.dir)).toEqual([-1, 1])
+  })
+  it('folding_door nL 2 nR 1: alternating V per side, two arrows, a split line', () => {
+    const o = ov8(filled8('folding_door', { nL: 2, nR: 1 }))
+    const v = o.symbols.filter((s) => s.kind === 'fold').sort((a, b) => a.x - b.x)
+    expect(v.map((s) => s.hinge)).toEqual(['left', 'right', 'right'])
+    expect(o.symbols.filter((s) => s.kind === 'arrow').map((s) => s.dir).sort()).toEqual([-1, 1])
+    expect(o.symbols.filter((s) => s.kind === 'split')).toHaveLength(1)
+    const o2 = ov8(filled8('folding_door', { nL: 3, nR: 0 }))
+    expect(o2.symbols.filter((s) => s.kind === 'split')).toHaveLength(0)
+    expect(o2.symbols.filter((s) => s.kind === 'arrow')).toHaveLength(1)
+  })
+  it('curtain_wall: cells follow cellKinds (awning = mitred sash + V top, spandrel = spandrel glass); unitized adds rows+cols unit joints', () => {
+    const m = filled8('curtain_wall', { cells: { '0,1': 'awning', '2,3': 'spandrel' } })
+    const o = ov8(m)
+    expect(o.glass.filter((g) => g.kind === 'spandrel')).toHaveLength(1)
+    expect(o.symbols.filter((s) => s.kind === 'v_hinge' && s.hinge === 'top')).toHaveLength(1)
+    expect(o.pieces.filter((p) => p.part === 'awning')).toHaveLength(4)
+    expect(o.hardwareMarks.filter((h) => h.kind === 'unit_joint')).toHaveLength(0)
+    const u = ov8(filled8('curtain_wall', { unitized: true }))
+    expect(u.hardwareMarks.filter((h) => h.kind === 'unit_joint')).toHaveLength(3 + 4)
+  })
+  it('frameless_wall: cols frameless panes and cols-1 silicone joints', () => {
+    const o = ov8(filled8('frameless_wall'))
+    expect(o.glass.filter((g) => g.kind === 'frameless')).toHaveLength(3)
+    expect(o.hardwareMarks.filter((h) => h.kind === 'silicone')).toHaveLength(2)
+  })
+  it('widthOf draws true widths in mm', () => {
+    const o = ov8(filled8('fixed_grid'), 'out', { widthOf: (f) => (f === 'กล่องเรียบ' ? 70 : null) })
+    expect(o.pieces.find((p) => p.key === 'frame_side').w).toBeCloseTo(70, 9)
+    expect(o.pieces.find((p) => p.key === 'mullion').w).toBeCloseTo(60, 9)
+  })
+  it('folding_door with nL + nR = 0 in a hand-made model returns finite empty-ish specs', () => {
+    const m = filled8('folding_door')
+    m.params = { ...m.params, nL: 0, nR: 0 }
+    expect(() => ov8(m)).not.toThrow()
+  })
+})
+
+describe('Task 8 — zoomSpecs for the new kinds', () => {
+  it('awning_grid sash 2 tab: its pieces at full opacity, the others faded to 0.25, the selected position highlighted', () => {
+    const m = filled8('awning_grid')
+    const z = zoomSpecs({ model: m, partKey: 'sash', partIdx: 1, selected: { key: 'sash_top', line: 0 }, view: 'out', widthMm: 1200, heightMm: 1200 })
+    const mine = z.pieces.filter((p) => p.part === 'sash' && p.partIdx === 1)
+    expect(mine).toHaveLength(4)
+    expect(mine.every((p) => p.opacity === 1)).toBe(true)
+    expect(z.pieces.filter((p) => !(p.part === 'sash' && p.partIdx === 1)).every((p) => p.opacity === 0.25)).toBe(true)
+    expect(z.pieces.filter((p) => p.selected).map((p) => `${p.key}:${p.partIdx}`)).toEqual(['sash_top:1'])
+    expect(z.title).toContain('บานกระทุ้ง 2')
+    expect(z.markers.length).toBe(2)
+    expect(z.markers.every((k) => k.mode === 'mitre')).toBe(true)
+  })
+  it('the whole-set tab (no partKey) fades nothing; the frame tab fades sashes and grid', () => {
+    const m = filled8('awning_grid')
+    const all = zoomSpecs({ model: m, partKey: null, selected: null, view: 'out', widthMm: 1200, heightMm: 1200 })
+    expect(all.pieces.every((p) => p.opacity === 1)).toBe(true)
+    const fr = zoomSpecs({ model: m, partKey: 'frame', selected: { key: 'frame_top', line: 0 }, view: 'out', widthMm: 1200, heightMm: 1200 })
+    expect(fr.pieces.filter((p) => p.part !== 'frame').every((p) => p.opacity === 0.25)).toBe(true)
+    expect(fr.markers.map((k) => k.mode)).toEqual(['butt', 'butt'])
+  })
+  it('does not mutate the model', () => {
+    const m = filled8('curtain_wall', { cells: { '0,0': 'awning' } })
+    const snap = JSON.stringify(m)
+    ov8(m, 'in')
+    zoomSpecs({ model: m, partKey: 'awning', partIdx: 0, selected: { key: 'sash_side', line: 0 }, view: 'in', widthMm: 3600, heightMm: 3000 })
+    expect(JSON.stringify(m)).toBe(snap)
+  })
+})
+
+describe('Task 8 — pieceLabel adapter', () => {
+  it('sliding_2 keeps its legacy wording; other kinds read partModel.pieceLabel (pieceNames, labels)', () => {
+    const s2 = start8('sliding_2')
+    expect(pieceLabel(s2, LAYOUTS8.sliding_2, 'sash_top', 1)).toBe('บานขวา')
+    expect(pieceLabel(s2, LAYOUTS8.sliding_2, 'frame_side', 0)).toBe('ซ้าย')
+    expect(pieceLabel(s2, LAYOUTS8.sliding_2, 'frame_top', 0)).toBe('')
+    const f2 = start8('sliding_2_fixed_2')
+    expect(pieceLabel(f2, LAYOUTS8.sliding_2_fixed_2, 'stile_b', 1)).toBe('เสากุญแจตัวผู้')
+    const g = start8('fixed_grid')
+    expect(pieceLabel(g, LAYOUTS8.fixed_grid, 'transom', 2)).toBe('ชิ้นที่ 3')
+    expect(pieceLabel(g, LAYOUTS8.fixed_grid, 'frame_top', 0)).toBe('')
+    expect(ov8(filled8('sliding_2_fixed_2')).pieces.find((p) => p.key === 'stile_b' && p.piece === 1).label).toBe('เสาขวาของบาน เสากุญแจตัวผู้')
+  })
+})

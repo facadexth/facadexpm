@@ -11,7 +11,14 @@
 // widthOf is the same openingCost.widthOfFor lookup the part editor's overview passes, so the item / quotation drawing
 // is the editor's live overview (Ruling PE-9). `buttOf` is accepted for interface symmetry but the geometry ignores
 // it: the overview shortens a butt end by the DRAWN thickness of the piece it butts, never by catalog butt distances.
+//
+// Task 8: every other layout kind is drawn from the millimetre overview (partGeometry → partGeometryBodies) by
+// partSvgSymbols.js: glass / F labels / spandrels, pieces in the four D14 styles (double default, lengths, solid, cad with
+// non-scaling 1.3 strokes), mitre corners, V / slide / fold symbols (dashed = opens away from the viewer), hardware marks
+// and dimensions; viewBox in mm, width/height in px. sliding_2 keeps the frozen output below byte for byte for 'double' and
+// 'solid' ('lengths' adds piece lengths, 'cad' draws outlines only).
 import { overviewSpecs } from './partGeometry.js'
+import { glassSvg, pieceSvg, symbolSvg, markSvg, dimSvg as mmDimSvg } from './partSvgSymbols.js'
 
 const INK = '#1f2328'
 const SASH_INK = '#2f4f6f'
@@ -22,6 +29,7 @@ const FILL = {
   double: { frame: '#ffffff', sash: '#ffffff' },
   solid: { frame: '#c3cad1', sash: '#e4e9ee' },
 }
+const STYLES = ['double', 'lengths', 'solid', 'cad']
 const MARGIN = 12      // left / top
 const DIM_ROOM = 30    // right / bottom: the dimension line (16 px out) + its ticks
 const n2 = n => Math.round(n * 100) / 100
@@ -64,6 +72,7 @@ export function partSvgString({ model, widthMm, heightMm, view = 'out', buttOf, 
   if (!(W > 0) || !(H > 0)) return null
   const ov = overviewSpecs({ model, widthMm: W, heightMm: H, view: view === 'in' ? 'in' : 'out', widthOf })
   if (!ov.pieces.length) return null
+  if (ov.box.units === 'mm') return mmSvg(ov, STYLES.includes(style) ? style : 'double')
   const fills = FILL[style] || FILL.double
   const b = ov.box
 
@@ -77,11 +86,32 @@ export function partSvgString({ model, widthMm, heightMm, view = 'out', buttOf, 
   for (const p of ov.pieces) {
     const sash = !p.key.startsWith('frame_')
     if (p.role === 'extra') parts.push(rect(p.x, p.y, p.w, p.h, `fill="${EXTRA}" stroke="none"`))
-    else parts.push(rect(p.x, p.y, p.w, p.h, `fill="${sash ? fills.sash : fills.frame}" stroke="${sash ? SASH_INK : INK}" stroke-width="1.2"`))
+    else parts.push(rect(p.x, p.y, p.w, p.h, `fill="${style === 'cad' ? 'none' : sash ? fills.sash : fills.frame}" stroke="${sash ? SASH_INK : INK}" stroke-width="1.2"`))
+    if (style === 'lengths' && p.role === 'main') parts.push(lengthText(p, ov.box.scale))
   }
   for (const d of ov.dims) parts.push(dimSvg(d, metres(d.value)))
 
   const vx = n2(b.frameX - MARGIN), vy = n2(b.frameY - MARGIN)
   const vw = n2(b.frameW + MARGIN + DIM_ROOM), vh = n2(b.frameH + MARGIN + DIM_ROOM)
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${vw}" height="${vh}" viewBox="${vx} ${vy} ${vw} ${vh}">${parts.join('')}</svg>`
+}
+
+// sliding_2 'lengths': the drawn length in mm (pixel length ÷ scale) on each main piece.
+function lengthText(p, scale) {
+  const cx = n2(p.x + p.w / 2), cy = n2(p.y + p.h / 2)
+  const rot = p.h > p.w ? ` transform="rotate(-90 ${cx} ${cy})"` : ''
+  return `<text x="${cx}" y="${n2(cy + 3)}" font-size="8" fill="${INK}" text-anchor="middle"${rot}>${Math.round(Math.max(p.w, p.h) / (scale || 1))}</text>`
+}
+
+// Every other layout kind: the millimetre overview, drawn back to front (glass, pieces, symbols, hardware, dimensions).
+function mmSvg(ov, style) {
+  const b = ov.box, sw = b.sw
+  const parts = []
+  for (const g of ov.glass) parts.push(glassSvg(g, style, sw))
+  for (const p of ov.pieces) parts.push(pieceSvg(p, style, sw))
+  for (const s of ov.symbols) parts.push(symbolSvg(s, sw))
+  for (const k of ov.hardwareMarks) parts.push(markSvg(k, sw))
+  for (const d of ov.dims) parts.push(mmDimSvg(d, sw))
+  const px = Math.min(420 / b.frameW, 300 / b.frameH)
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${n2(b.w * px)}" height="${n2(b.h * px)}" viewBox="${n2(b.x)} ${n2(b.y)} ${n2(b.w)} ${n2(b.h)}">${parts.join('')}</svg>`
 }

@@ -1,0 +1,318 @@
+<title>Live Preview ทุก Type</title>
+<style>
+:root{--bg:#f6f4ef;--fg:#1e1c18;--mut:#6c665b;--line:#d9d3c6;--card:#ffffff;--head:#ece7db;--acc:#8a4b1f;--alu:#8d8f93;--alu2:#5f6165;--glass:#cfe4ee;--glassd:#b6d3e0;--sym:#1d4e89;--ok:#1f6b3a;--warn:#9a6a00;--chip:#efe9dc}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#15140f;--fg:#ece7da;--mut:#a49d8d;--line:#3a372e;--card:#1f1d16;--head:#2a2719;--acc:#e0a06a;--alu:#a8aab0;--alu2:#d5d7dc;--glass:#24404d;--glassd:#1b3340;--sym:#8fc1ff;--ok:#7bd28f;--warn:#e6c267;--chip:#2c2a20;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#15140f;--fg:#ece7da;--mut:#a49d8d;--line:#3a372e;--card:#1f1d16;--head:#2a2719;--acc:#e0a06a;--alu:#a8aab0;--alu2:#d5d7dc;--glass:#24404d;--glassd:#1b3340;--sym:#8fc1ff;--ok:#7bd28f;--warn:#e6c267;--chip:#2c2a20;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:"Sarabun",system-ui,sans-serif;font-size:14px;line-height:1.45;margin:0;padding:0 16px}
+main{max-width:1240px;margin:0 auto;padding-block:20px 48px}
+h1{font-size:24px;margin:0 0 4px;text-wrap:balance} h2{font-size:18px;margin:28px 0 8px;color:var(--acc)}
+p{margin:4px 0;max-width:80ch} .mut{color:var(--mut)}
+.bar{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:12px 0}
+.bar label{display:inline-flex;align-items:center;gap:6px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap} .tabs button{background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:4px 12px;color:var(--fg);cursor:pointer;font:inherit}
+.tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 12px 10px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card h3{margin:0;font-size:15px;display:flex;justify-content:space-between;gap:8px;align-items:baseline} .card h3 small{color:var(--mut);font-weight:400;font-size:12px}
+.card svg{width:100%;height:auto;max-height:280px;display:block;background:var(--bg);border-radius:6px;border:1px solid var(--line)}
+.in{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-size:12px} .in label{display:flex;justify-content:space-between;align-items:center;gap:6px;color:var(--mut)}
+.in input{width:68px;font:inherit;font-size:12px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg);text-align:right}
+.in select{font:inherit;font-size:12px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg)}
+.parts{font-size:12px;color:var(--mut);display:flex;flex-wrap:wrap;gap:3px 8px} .parts span{background:var(--chip);border-radius:4px;padding:0 6px}
+.note{font-size:12px;color:var(--mut);border-top:1px dashed var(--line);padding-top:6px}
+.ref{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:10px 0}
+.ref ul{margin:4px 0 0 18px;padding:0} .ref li{margin:2px 0}
+.leg{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--mut);align-items:center}
+.sw{display:inline-block;width:22px;height:10px;vertical-align:middle;border-radius:2px;margin-right:4px}
+code{background:var(--chip);padding:0 4px;border-radius:3px}
+.card .act{display:flex;gap:8px;flex-wrap:wrap;align-items:center} .btn{background:var(--acc);color:#fff;border:0;border-radius:6px;padding:5px 12px;font:inherit;cursor:pointer} .btn.sec{background:var(--chip);color:var(--fg);border:1px solid var(--line)}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:9}
+.zm{background:var(--card);color:var(--fg);border-radius:12px;max-width:1180px;width:100%;max-height:94vh;overflow:auto;display:grid;grid-template-columns:minmax(0,1.4fr) minmax(280px,1fr);gap:14px;padding:16px}
+@media(max-width:860px){.zm{grid-template-columns:1fr}}
+.zm h3{margin:0 0 6px;font-size:17px} .zm svg{width:100%;height:auto;max-height:62vh;background:var(--bg);border:1px solid var(--line);border-radius:8px}
+.ptabs{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0} .ptabs button{background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font:inherit;color:var(--fg);cursor:pointer} .ptabs button.on{background:var(--sym);color:#fff;border-color:var(--sym)} .ptabs button.done{text-decoration:line-through;opacity:.7}
+.side{display:flex;flex-direction:column;gap:8px;min-width:0} .fld{display:grid;grid-template-columns:1fr 1.3fr;gap:6px 10px;align-items:center;font-size:13px} .fld label{color:var(--mut)} .fld select,.fld input{font:inherit;font-size:13px;padding:4px 6px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--fg);width:100%}
+.complist{font-size:12px;border-top:1px solid var(--line);padding-top:6px;max-height:34vh;overflow:auto} .complist div{display:flex;justify-content:space-between;gap:8px;padding:3px 4px;border-radius:4px;cursor:pointer} .complist div.on{background:var(--chip)} .complist .ok{color:var(--ok)} .complist .todo{color:var(--warn)}
+.sel-bar{stroke:var(--acc)!important;stroke-width:3px!important} .hov{cursor:pointer}
+.hint{font-size:12px;color:var(--mut)}
+a{color:var(--acc)}
+</style>
+<main>
+<h1>Live Preview ทุก Type (ยังไม่รวม add-on)</h1>
+<p class="mut">Mockup: ภาพด้านหน้า (elevation) ของแต่ละ type ในแคตตาล็อก เปลี่ยนตัวเลขแล้วภาพวาดใหม่ทันที ความกว้างของชิ้นอลูมิเนียมในภาพเป็นค่าตัวอย่าง ในแอปจริงอ่านจากหน้าตัดโปรไฟล์ที่เลือก สัญลักษณ์การเปิดใช้ตามธรรมเนียมแบบสถาปัตยกรรม (ดูกล่องอ้างอิงด้านล่าง)</p>
+<div class="bar">
+ <span class="tabs" id="tabs"></span>
+ <label>มุมมอง <select id="view"><option value="out">จากด้านนอกอาคาร</option><option value="in">จากด้านในอาคาร</option></select></label>
+ <label>แบบเส้น <select id="style"><option value="double">เส้นคู่ (ตามที่ใช้ในใบเสนอราคา)</option><option value="lengths">เส้นคู่ + ความยาวชิ้น</option><option value="solid">ทึบตามสี</option><option value="cad">CAD (เส้นอย่างเดียว)</option></select></label>
+ <label><input type="checkbox" id="sym" checked> สัญลักษณ์การเปิด</label>
+ <label><input type="checkbox" id="dims" checked> เส้นบอกขนาด</label>
+ <label><input type="checkbox" id="names"> ชื่อชิ้นส่วนในภาพ</label>
+</div>
+<div class="leg">
+ <span><i class="sw" style="background:var(--card);border:1.5px solid var(--fg)"></i>วงกบ / เฟรม / เสาแบ่ง (เส้นคู่)</span>
+ <span><i class="sw" style="background:var(--card);border:1.5px solid var(--sym)"></i>กรอบบาน (บานเปิด บานเลื่อน บานประตู)</span>
+ <span><i class="sw" style="background:var(--glass)"></i>กระจก</span>
+ <span><i class="sw" style="background:var(--glassd)"></i>กระจกบานติดตาย (F)</span>
+ <span style="color:var(--sym)">— — V = ด้านแหลมคือด้านบานพับ · เส้นทึบ = เปิดเข้าหาผู้มอง · เส้นประ = เปิดออกจากผู้มอง · ลูกศร = ทิศเลื่อน</span>
+</div>
+<div class="grid" id="grid"></div>
+
+<h2>ธรรมเนียมการเขียนแบบที่ใช้ในภาพ (อ้างอิงจากอินเทอร์เน็ต)</h2>
+<div class="ref">
+<ul>
+<li><b>บานเปิด / บานสวิง / บานกระทุ้ง:</b> เส้นทแยงสองเส้นบรรจบเป็นรูป V ตื้น ๆ พาดบาน ปลายแหลมอยู่ด้านบานพับ บานเปิดข้าง = แหลมที่วงกบข้าง บานกระทุ้ง (บานพับบน) = แหลมที่ด้านบน บานกระทุ้งล่าง (hopper) = แหลมที่ธรณี · เส้นทึบ = บานเปิดเข้าหาผู้มอง เส้นประ = เปิดออกจากผู้มอง (ภาพเดียวกันจึงกลับกันเมื่อดูจากในหรือนอกอาคาร) — <a href="https://learnarchitecture.online/blogs/architecture-design/window-cad-blocks" target="_blank" rel="noopener">learnarchitecture.online</a>, <a href="https://planacad.com/blog/floor-plan-symbols-decoded/" target="_blank" rel="noopener">planacad.com</a>, <a href="https://en.wikipedia.org/wiki/Casement_window" target="_blank" rel="noopener">Wikipedia: Casement window</a></li>
+<li><b>บานเลื่อน / รางแขวน:</b> ลูกศรบนบานบอกทิศที่เลื่อน บานติดตายเป็นสี่เหลี่ยมไม่มีสัญลักษณ์ (ในแบบมักเขียน F) — <a href="https://smallhouseplan.com/architectural-symbols/" target="_blank" rel="noopener">smallhouseplan.com</a>, <a href="https://illustrarch.com/articles/65648-10-common-architectural-symbols.html" target="_blank" rel="noopener">illustrarch.com</a></li>
+<li><b>บานเฟี้ยม:</b> แต่ละบานมี V สลับด้านเพราะบานพับต่อกันเป็นคู่ ปลายลูกศรบอกด้านที่พับเก็บ (ตีความจากธรรมเนียมบานเปิด ไม่พบมาตรฐานเดียวที่ทุกสำนักใช้ตรงกัน)</li>
+<li><b>Curtain wall:</b> ภาพด้านหน้าเป็นตารางเสา (mullion) แนวตั้ง และราว (transom) แนวนอน ช่องที่เป็นกระจกมองทะลุ (vision) กับช่องทึบ (spandrel) แยกด้วยสีเติม แบบ unitized วาดรอยต่อยูนิตเพิ่ม — <a href="https://help.idecad.com/ideCAD/curtain-wall-settings" target="_blank" rel="noopener">ideCAD curtain wall</a></li>
+<li><b>บานเปลือย (frameless):</b> ไม่มีกรอบอลูมิเนียม แสดงเป็นกระจกชนกันเว้นร่องซิลิโคน บานสวิงเปลือยมี patch fitting ที่มุมบน-ล่าง (วาดเป็นสี่เหลี่ยมเล็ก)</li>
+</ul>
+<p class="mut">ในแอปจริง ภาพนี้จะเป็นตัวเดียวกับ preview ของ part editor (คลิกชิ้นส่วนเพื่อกำหนดโปรไฟล์ได้) และใบเสนอราคาใช้ภาพเดียวกัน</p>
+</div>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const F={W:{l:'กว้าง',u:'มม.',min:300,max:8000,step:10},H:{l:'สูง',u:'มม.',min:300,max:6000,step:10},
+ Wf:{l:'กว้างบานติดตาย/ข้าง',u:'มม.',min:200,max:1500,step:10},rows:{l:'ชั้น (แถว)',u:'',min:1,max:8,step:1},cols:{l:'ช่อง (คอลัมน์)',u:'',min:1,max:12,step:1},
+ n:{l:'จำนวนบาน',u:'',min:1,max:8,step:1},leaves:{l:'จำนวนบานประตู',u:'',min:1,max:2,step:1},nL:{l:'พับเก็บซ้าย (บาน)',u:'',min:0,max:6,step:1},nR:{l:'พับเก็บขวา (บาน)',u:'',min:0,max:6,step:1},
+ sill:{l:'ธรณี (วงกบล่าง)',sel:{yes:'มี',no:'ไม่มี'}},
+ hinge:{l:'บานพับด้าน',sel:{left:'ซ้าย',right:'ขวา'}},open:{l:'ทิศเปิด',sel:{out:'เปิดออกนอก',in:'เปิดเข้าใน'}},
+ spandrel:{l:'ช่องทึบ (spandrel)',sel:{none:'ไม่มี',top:'แถวบน',bottom:'แถวล่าง'}},fold:{l:'พับเก็บด้าน',sel:{left:'ซ้าย',right:'ขวา',both:'สองข้าง'}}};
+const T=(group,parent,name,o)=>Object.assign({group,parent,name},o);
+const TYPES=[
+ T('curtain_wall',null,'STICK WALL',{body:'cw',def:{W:3600,H:3000,rows:3,cols:4,spandrel:'none',cells:{}},inputs:['W','H','rows','cols','spandrel'],click:1}),
+ T('curtain_wall',null,'UNITIZED CURTAIN WALL',{body:'cw',unit:1,def:{W:3600,H:3000,rows:3,cols:4,spandrel:'top',cells:{}},inputs:['W','H','rows','cols','spandrel'],click:1}),
+ T('curtain_wall',null,'ผนังกระจกบานเปลือย',{body:'cw',frameless:1,def:{W:3600,H:3000,rows:1,cols:3},inputs:['W','H','cols']}),
+ T('door',null,'บานเปิด',{body:'door',def:{W:900,H:2100,leaves:1,hinge:'left',open:'in',sill:'yes'},inputs:['W','H','leaves','hinge','open','sill']}),
+ T('door',null,'บานเฟี้ยม',{body:'fold',def:{W:3000,H:2400,nL:2,nR:2},inputs:['W','H','nL','nR']}),
+ T('door',null,'บานเลื่อนรางแขวน',{body:'rail',def:{W:2400,H:2100,leaves:2},inputs:['W','H','leaves']}),
+ T('door',null,'บานเลื่อนรางล่าง',{body:'sliding',door:1,def:{W:2400,H:2100,n:2},inputs:['W','H','n']}),
+ T('door','บานสวิง','บานสวิงเดี่ยว',{body:'door',swing:1,def:{W:1000,H:2100,leaves:1,hinge:'left',open:'out',sill:'no'},inputs:['W','H','hinge','open','sill']}),
+ T('door','บานสวิง','บานสวิงคู่',{body:'door',swing:1,def:{W:1800,H:2100,leaves:2,open:'out',sill:'no'},inputs:['W','H','open','sill']}),
+ T('door','บานสวิง','บานสวิงเปลือยเดี่ยว',{body:'door',frameless:1,def:{W:1000,H:2100,leaves:1,hinge:'left',open:'out'},inputs:['W','H','hinge','open']}),
+ T('door','บานสวิง','บานสวิงเปลือยคู่',{body:'door',frameless:1,def:{W:1800,H:2100,leaves:2,open:'out'},inputs:['W','H','open']}),
+ T('window',null,'บานติดตาย',{body:'grid',def:{W:1800,H:1200,rows:2,cols:3},inputs:['W','H','rows','cols']}),
+ T('window',null,'บานเปิดข้างเดี่ยว',{body:'casement',def:{W:700,H:1200,n:1,hinge:'left',open:'out'},inputs:['W','H','hinge','open']}),
+ T('window',null,'บานเปิดข้าง',{body:'casement',def:{W:1500,H:1200,n:2,open:'out'},inputs:['W','H','n','open']}),
+ T('window','บานเลื่อน','บานเลื่อนสวน 2 บาน',{body:'sliding',def:{W:1800,H:1200,n:2},inputs:['W','H']}),
+ T('window','บานเลื่อน','บานเลื่อน 3 บาน',{body:'sliding3',def:{W:2700,H:1200},inputs:['W','H']}),
+ T('window','บานเลื่อน','บานเลื่อน 2 ตาย 2',{body:'slidingFixed',def:{W:2400,H:1200,Wf:500},inputs:['W','H','Wf']}),
+];
+[[1,1],[1,2],[1,3],[1,4],[2,1],[2,2]].forEach(([r,c])=>TYPES.push(T('window','บานกระทุ้ง',`บานกระทุ้ง ${r} ชั้น x ${c} ช่อง = ${r*c} บาน`,{body:'awning',def:{W:600*c,H:600*r,rows:r,cols:c,open:'out'},inputs:['W','H','open'],fixed:{rows:r,cols:c}})));
+const GROUPS={all:'ทั้งหมด',curtain_wall:'ผนังกระจก',door:'ประตู',window:'หน้าต่าง'};
+let group='all'; const state=TYPES.map(t=>({...t.def}));
+
+// ---------- drawing ----------
+const NS='http://www.w3.org/2000/svg';
+function Draw(W,H){ // mm coordinate space, viewBox fitted
+  const m=Math.max(W,H)*0.12; this.vb=[-m,-m,W+2*m,H+2*m]; this.el=document.createElementNS(NS,'svg');
+  this.el.setAttribute('viewBox',this.vb.join(' ')); this.parts={}; this.sw=Math.max(W,H)/220; this.labels=[];
+  this.bars=[]; this.curPart='วงกบ'; this.curIdx=0; this.sashN=0; this.ia=null; // ia = interactive context {sel, partFilter, onPick, assign}
+}
+Draw.prototype.rect=function(x,y,w,h,fill,stroke){const r=document.createElementNS(NS,'rect');r.setAttribute('x',x);r.setAttribute('y',y);r.setAttribute('width',Math.max(w,0));r.setAttribute('height',Math.max(h,0));r.setAttribute('fill',fill);if(stroke){r.setAttribute('stroke',stroke);r.setAttribute('stroke-width',this.sw*0.6)}this.el.appendChild(r);return r};
+Draw.prototype.line=function(pts,stroke,dash,w){const p=document.createElementNS(NS,'polyline');p.setAttribute('points',pts.map(q=>q.join(',')).join(' '));p.setAttribute('fill','none');p.setAttribute('stroke',stroke);p.setAttribute('stroke-width',this.sw*(w||1));if(dash)p.setAttribute('stroke-dasharray',`${this.sw*4} ${this.sw*3}`);p.setAttribute('stroke-linejoin','round');this.el.appendChild(p);return p};
+Draw.prototype.text=function(x,y,s,size,fill,anchor){const t=document.createElementNS(NS,'text');t.setAttribute('x',x);t.setAttribute('y',y);t.setAttribute('font-size',this.sw*(size||9));t.setAttribute('fill',fill||'var(--mut)');t.setAttribute('text-anchor',anchor||'middle');t.setAttribute('font-family','Sarabun,system-ui,sans-serif');t.textContent=s;this.el.appendChild(t);return t};
+const INK='#1f2328',SASH_INK='#2f4f6f';
+Draw.prototype.bar=function(name,x,y,w,h,kind){this.parts[name]=(this.parts[name]||0)+1;const meta={name,part:this.curPart,idx:this.curIdx,x,y,w,h,orient:h>w?'v':'h'};this.bars.push(meta);return this._bar(meta,kind)};
+Draw.prototype._bar=function(meta,kind){const {name,x,y,w,h}=meta;const st=opt.style;let r;
+  if(st==='solid')r=this.rect(x,y,w,h,kind==='sash'?'var(--alu2)':'var(--alu)');
+  else{r=this.rect(x,y,w,h,st==='cad'?'none':'var(--card)',kind==='sash'?SASH_INK:INK);r.setAttribute('stroke-width',1.3);r.setAttribute('vector-effect','non-scaling-stroke');r.setAttribute('stroke','var(--fg)');if(kind==='sash')r.setAttribute('stroke','var(--sym)')}
+  meta.el=r;
+  if(this.ia){const ia=this.ia,key=compKey(meta);const inPart=!ia.partFilter||ia.partFilter===partKey(meta);
+    if(!inPart)r.setAttribute('opacity','0.25');else{r.classList.add('hov');r.onclick=()=>ia.onPick(meta)}
+    if(ia.sel===key)r.classList.add('sel-bar');
+    const a=ia.assign&&ia.assign[key];if(a&&inPart){this.labels.push([x+w/2,y+h/2,`${a.family} ${a.thick}`])}}
+  else if(opt.names)this.labels.push([x+w/2,y+h/2,name]);
+  if(st==='lengths'){const L=Math.round(Math.max(w,h));const vert=h>w;const t=this.text(x+w/2,y+h/2+this.sw*2.5,`${L}`,6.5,'var(--fg)');if(vert)t.setAttribute('transform',`rotate(-90 ${x+w/2} ${y+h/2})`);t.setAttribute('paint-order','stroke');t.setAttribute('stroke','var(--card)');t.setAttribute('stroke-width',this.sw*1.2)}};
+Draw.prototype.glass=function(x,y,w,h,fixed){const st=opt.style;if(st==='cad'){const r=this.rect(x,y,w,h,'none','var(--mut)');r.setAttribute('vector-effect','non-scaling-stroke');r.setAttribute('stroke-width',0.6)}else this.rect(x,y,w,h,fixed?'var(--glassd)':'var(--glass)');if(fixed)this.text(x+w/2,y+h/2+this.sw*3,'F',9,'var(--mut)');};
+// opening symbol: V with apex on the hinge side; dashed when the sash opens away from the viewer
+Draw.prototype.vsym=function(x,y,w,h,hingeSide,away){if(!opt.sym)return;const c='var(--sym)';let pts;
+  if(hingeSide==='left')pts=[[x+w,y],[x,y+h/2],[x+w,y+h]];else if(hingeSide==='right')pts=[[x,y],[x+w,y+h/2],[x,y+h]];
+  else if(hingeSide==='top')pts=[[x,y+h],[x+w/2,y],[x+w,y+h]];else pts=[[x,y],[x+w/2,y+h],[x+w,y]];
+  this.line(pts,c,away,0.9)};
+Draw.prototype.arrow=function(x,y,dir,len){if(!opt.sym)return;const c='var(--sym)',a=this.sw*5,x2=x+dir*len;this.line([[x,y],[x2,y]],c,false,1.1);this.line([[x2-dir*a,y-a*0.7],[x2,y],[x2-dir*a,y+a*0.7]],c,false,1.1)};
+Draw.prototype.dim=function(x1,y1,x2,y2,label,off){if(!opt.dims)return;const c='var(--mut)',t=this.sw*3,v=x1===x2;const ox=v?off:0,oy=v?0:off;
+  this.line([[x1+ox,y1+oy],[x2+ox,y2+oy]],c,false,0.5);this.line(v?[[x1+ox-t,y1],[x1+ox+t,y1]]:[[x1,y1+oy-t],[x1,y1+oy+t]],c,false,0.5);this.line(v?[[x2+ox-t,y2],[x2+ox+t,y2]]:[[x2,y2+oy-t],[x2,y2+oy+t]],c,false,0.5);
+  const tx=v?x1+ox-this.sw*2:(x1+x2)/2,ty=v?(y1+y2)/2:y1+oy-this.sw*2;const tt=this.text(tx,ty,label,8,c,v?'end':'middle');if(v){tt.setAttribute('transform',`rotate(-90 ${tx} ${ty})`);tt.setAttribute('text-anchor','middle')}};
+const partKey=m=>m.part==='บาน'?`บาน ${m.idx}`:m.part;
+const compKey=m=>`${partKey(m)}|${m.name}`;
+Draw.prototype.finish=function(){for(const [x,y,s] of this.labels){const t=this.text(x,y+this.sw*2.5,s,6.5,'var(--fg)');t.setAttribute('paint-order','stroke');t.setAttribute('stroke','var(--card)');t.setAttribute('stroke-width',this.sw*1.2)}return this.el};
+
+const away=(open)=>opt.view==='out'?open==='in':open==='out'; // dashed when the sash opens away from the viewer
+const PW={frame:45,sash:50,mull:60,cwm:65,cwt:65,track:60,doorStile:100,doorRail:100,doorKick:200,trk:80};
+
+function sashBox(d,x,y,w,h,names,sw,mitre){ // a sash: 4 members + glass; mitre = 45° corners; returns inner glass rect
+  const prevP=d.curPart,prevI=d.curIdx;d.curPart='บาน';d.curIdx=++d.sashN;try{return sashBox_(d,x,y,w,h,names,sw,mitre)}finally{d.curPart=prevP;d.curIdx=prevI}}
+function sashBox_(d,x,y,w,h,names,sw,mitre){
+  if(mitre){d.bar(names[0],x,y,w,sw);d.bar(names[1],x,y+h-sw,w,sw);d.bar(names[2],x,y,sw,h);d.bar(names[3],x+w-sw,y,sw,h);
+    const c='var(--fg)';d.line([[x,y],[x+sw,y+sw]],c,false,0.5);d.line([[x+w,y],[x+w-sw,y+sw]],c,false,0.5);d.line([[x,y+h],[x+sw,y+h-sw]],c,false,0.5);d.line([[x+w,y+h],[x+w-sw,y+h-sw]],c,false,0.5);
+    d.parts['เข้ามุม 45°']=(d.parts['เข้ามุม 45°']||0)+4}
+  else{d.bar(names[2],x,y,sw,h);d.bar(names[3],x+w-sw,y,sw,h);d.bar(names[0],x+sw,y,w-2*sw,sw);d.bar(names[1],x+sw,y+h-sw,w-2*sw,sw)}
+  d.glass(x+sw,y+sw,w-2*sw,h-2*sw);return [x+sw,y+sw,w-2*sw,h-2*sw]}
+function frame4(d,W,H,f,names){d.bar(names[2],0,0,f,H);d.bar(names[3],W-f,0,f,H);d.bar(names[0],f,0,W-2*f,f);d.bar(names[1],f,H-f,W-2*f,f)}
+// vertical mullions run full height; horizontal transoms butt into them (owner rule)
+function gridBars(d,x0,y0,iw,ih,R,C,m,vname,hname){const cw=(iw-(C-1)*m)/C,ch=(ih-(R-1)*m)/R;
+  for(let i=1;i<C;i++)d.bar(vname,x0+i*cw+(i-1)*m,y0,m,ih);
+  for(let i=0;i<C;i++)for(let j=1;j<R;j++)d.bar(hname,x0+i*(cw+m),y0+j*ch+(j-1)*m,cw,m);
+  return {cw,ch,cell:(i,j)=>[x0+i*(cw+m),y0+j*(ch+m),cw,ch]}}
+function dims(d,W,H){d.dim(0,H,W,H,`${W}`,d.sw*14);d.dim(W,0,W,H,`${H}`,d.sw*14)}
+const WIN=['วงกบบน','วงกบล่าง','วงกบข้าง','วงกบข้าง'];
+const BODY={
+ grid(d,s,t){const W=s.W,H=s.H,f=PW.frame;frame4(d,W,H,f,WIN);const g=gridBars(d,f,f,W-2*f,H-2*f,s.rows,s.cols,PW.mull,'ซอยกลางตั้ง (วิ่งเต็ม)','ซอยกลางนอน (ชน)');
+  for(let i=0;i<s.cols;i++)for(let j=0;j<s.rows;j++){const c=g.cell(i,j);d.glass(c[0],c[1],c[2],c[3],true)}dims(d,W,H);},
+ cw(d,s,t){const W=s.W,H=s.H,R=s.rows,C=s.cols;
+  if(t.frameless){const f=PW.frame,g=12,iw=W-2*f,ih=H-2*f,cw=(iw-(C-1)*g)/C;frame4(d,W,H,f,['วงกบบน','วงกบล่าง','วงกบข้าง','วงกบข้าง']);d.rect(f,f,iw,ih,'var(--line)');for(let i=0;i<C;i++)d.glass(f+i*(cw+g),f,cw,ih,false);
+   d.parts['กระจกเปลือยเต็มสูง']=C;d.parts['ร่องซิลิโคนแนวตั้ง']=C-1;dims(d,W,H);return}
+  const m=PW.cwm,tr=PW.cwt,cw=(W-(C+1)*m)/C,ch=(H-(R+1)*tr)/R;
+  for(let i=0;i<=C;i++)d.bar('เสา mullion (วิ่งเต็ม)',i*(cw+m),0,m,H);
+  for(let i=0;i<C;i++)for(let j=0;j<=R;j++)d.bar('ราว transom (ชน)',m+i*(cw+m),j*(ch+tr),cw,tr);
+  const cells=s.cells||{};const kindOf=(j,i)=>cells[`${j},${i}`]||(((s.spandrel==='top'&&j===0)||(s.spandrel==='bottom'&&j===R-1))?'sp':'glass');
+  for(let i=0;i<C;i++)for(let j=0;j<R;j++){const key=`${j},${i}`,kind=kindOf(j,i),sp=kind==='sp';
+   const x=m+i*(cw+m),y=tr+j*(ch+tr);let r;
+   if(kind==='awn'){const g=sashBox(d,x,y,cw,ch,['ราวบนบานกระทุ้ง (บานพับ)','ราวล่างบานกระทุ้ง (มือจับ)','เสาบานกระทุ้ง','เสาบานกระทุ้ง'],PW.sash,true);d.vsym(g[0],g[1],g[2],g[3],'top',away('out'));r=d.rect(x,y,cw,ch,'transparent');d.parts['บานกระทุ้งในผนัง']=(d.parts['บานกระทุ้งในผนัง']||0)+1}
+   else if(sp){d.rect(x,y,cw,ch,'var(--alu)');r=d.rect(x+cw*0.06,y+ch*0.1,cw*0.88,ch*0.8,'var(--head)');d.parts['แผงทึบ spandrel']=(d.parts['แผงทึบ spandrel']||0)+1}
+   else{d.glass(x,y,cw,ch,true);r=d.rect(x,y,cw,ch,'transparent')}
+   if(t.click){r.style.cursor='pointer';r.setAttribute('data-key',key);r.onclick=()=>{const next={glass:'awn',awn:'sp',sp:'glass'};s.cells={...cells,[key]:next[kind]};render()}}}
+  if(t.unit){for(let i=1;i<=C;i++)d.line([[i*(cw+m)+m/2,0],[i*(cw+m)+m/2,H]],'var(--card)',true,0.8);for(let j=1;j<=R;j++)d.line([[0,j*(ch+tr)+tr/2],[W,j*(ch+tr)+tr/2]],'var(--card)',true,0.8);d.parts['รอยต่อยูนิต']=(C-1)+(R-1)}
+  dims(d,W,H);},
+ door(d,s,t){const W=s.W,H=s.H,L=s.leaves,f=PW.frame,fl=t.frameless,sillH=s.sill==='yes'?f:0;
+  let x0=0,y0=0,iw=W,ih=H;
+  if(!fl){d.bar('วงกบข้าง',0,0,f,H);d.bar('วงกบข้าง',W-f,0,f,H);d.bar('วงกบบน',f,0,W-2*f,f);if(sillH){d.bar('ธรณี (วงกบล่าง)',f,H-f,W-2*f,f)}else{d.line([[f,H],[W-f,H]],'var(--mut)',true,0.6)}x0=f;y0=f;iw=W-2*f;ih=H-f-sillH-(sillH?0:10)}
+  else{d.bar('รางบน (patch fitting)',0,0,W,30);y0=30;ih=H-30-10}
+  const lw=iw/L,st=PW.doorStile,rl=PW.doorRail;
+  for(let i=0;i<L;i++){const x=x0+i*lw,hinge=L===1?s.hinge:(i===0?'left':'right'),hs=hinge==='left';
+   if(fl){const gx=x+(i?6:0),gw=lw-(L>1?6:0);d.glass(gx,y0,gw,ih,false);d.parts['บานกระจกเปลือย']=(d.parts['บานกระจกเปลือย']||0)+1;
+    const pw=gw*0.22,ph=d.sw*9,px=hs?gx:gx+gw-pw;d.rect(px,y0,pw,ph,'var(--alu2)');d.rect(px,y0+ih-ph,pw,ph,'var(--alu2)');d.parts['patch fitting บน/ล่าง']=(d.parts['patch fitting บน/ล่าง']||0)+2;
+    const bx=hs?gx+gw*0.86:gx+gw*0.14,bw=d.sw*3;d.rect(bx-bw/2,y0+ih*0.33,bw,ih*0.34,'var(--alu2)');d.rect(bx-bw*2,y0+ih*0.36,bw*4,bw,'var(--alu2)');d.rect(bx-bw*2,y0+ih*0.64,bw*4,bw,'var(--alu2)');d.parts['มือจับสแตนเลส']=(d.parts['มือจับสแตนเลส']||0)+1;
+    const lx=hs?gx+gw*0.86:gx+gw*0.14;d.rect(lx-d.sw*5,y0+ih-d.sw*7,d.sw*10,d.sw*7,'var(--fg)');d.parts['กุญแจล็อคพื้น']=(d.parts['กุญแจล็อคพื้น']||0)+1;
+    d.vsym(gx,y0,gw,ih,hinge,away(s.open));continue}
+   const g=sashBox(d,x,y0,lw,ih,['ราวบนบาน','ราวล่างบาน','เสาบานพับ','เสามือจับ'],st,false);d.vsym(g[0],g[1],g[2],g[3],hinge,away(s.open));
+   if(t.swing){const cx=x+lw/2;d.rect(cx-lw*0.18,y0-f*0.8,lw*0.36,f*0.6,'var(--head)').setAttribute('stroke','var(--fg)');d.text(cx,y0-f*0.25,'door closer',5.5,'var(--fg)');
+     const px=hs?x+st*0.5:x+lw-st*0.5;d.rect(px-d.sw*2.5,y0-d.sw*2.5,d.sw*5,d.sw*5,'var(--fg)');d.rect(px-d.sw*2.5,y0+ih-d.sw*2.5,d.sw*5,d.sw*5,'var(--fg)');d.parts['door closer ฝังวงกบบน']=(d.parts['door closer ฝังวงกบบน']||0)+1;d.parts['เดือยบน/ล่าง']=(d.parts['เดือยบน/ล่าง']||0)+2}
+   else{const hx=hs?x+st*0.5:x+lw-st*0.5;for(const hy of [0.12,0.5,0.88])d.rect(hx-d.sw*2,y0+ih*hy-d.sw*8,d.sw*4,d.sw*16,'var(--fg)');d.parts['บานพับ']=(d.parts['บานพับ']||0)+3}
+   const kx=hs?x+lw-st*0.5:x+st*0.5;d.rect(kx-d.sw*2.5,y0+ih*0.5-d.sw*14,d.sw*5,d.sw*28,'var(--fg)');d.parts['มือจับ']=(d.parts['มือจับ']||0)+1}
+  dims(d,W,H);if(L>1)d.dim(x0,y0,x0+lw,y0,`${Math.round(lw)} ต่อบาน`,-d.sw*8);},
+ casement(d,s,t){const W=s.W,H=s.H,n=s.n,f=PW.frame;frame4(d,W,H,f,WIN);const g=gridBars(d,f,f,W-2*f,H-2*f,1,n,PW.mull,'เสาแบ่งช่อง','');
+  for(let i=0;i<n;i++){const c=g.cell(i,0),hinge=n===1?s.hinge:(i<n/2?'left':'right');const r=sashBox(d,c[0],c[1],c[2],c[3],['ราวบนบาน','ราวล่างบาน','เสาบานพับ','เสามือจับ'],PW.sash,true);d.vsym(r[0],r[1],r[2],r[3],hinge,away(s.open))}
+  d.parts['บานพับ/แขนค้ำ']=n*2;d.parts['มือจับ']=n;dims(d,W,H);},
+ awning(d,s,t){const W=s.W,H=s.H,R=t.fixed.rows,C=t.fixed.cols,f=PW.frame;frame4(d,W,H,f,WIN);const g=gridBars(d,f,f,W-2*f,H-2*f,R,C,PW.mull,'ซอยกลางตั้ง (วิ่งเต็ม)','ซอยกลางนอน (ชน)');
+  for(let i=0;i<C;i++)for(let j=0;j<R;j++){const c=g.cell(i,j);const r=sashBox(d,c[0],c[1],c[2],c[3],['ราวบนบาน (บานพับ)','ราวล่างบาน (มือจับ)','เสาบานข้าง','เสาบานข้าง'],PW.sash,true);d.vsym(r[0],r[1],r[2],r[3],'top',away(s.open))}
+  d.parts['แขนค้ำกระทุ้ง']=R*C*2;d.parts['มือจับ']=R*C;dims(d,W,H);},
+ sliding(d,s,t){const W=s.W,H=s.H,n=s.n,f=PW.frame,sw=PW.sash,ov=40,bot=t.door?18:f;
+  d.bar('เฟรมข้าง',0,0,f,H);d.bar('เฟรมข้าง',W-f,0,f,H);d.bar(t.door?'รางบน':'เฟรมบน',f,0,W-2*f,f);d.bar(t.door?'รางล่าง (ธรณี)':'เฟรมล่าง',f,H-bot,W-2*f,bot);
+  const iw=W-2*f,pw=(iw+(n-1)*ov)/n;
+  for(let i=0;i<n;i++){const x=f+i*(pw-ov),front=(i%2===0);const names=['บานเลื่อนบน','บานเลื่อนล่าง',i===0?'เสากุญแจ':'เสาเกี่ยว',i===n-1?'เสากุญแจ':'เสาเกี่ยว'];
+   const g=sashBox(d,x,f,pw,H-f-bot,names,sw,false);if(!front)d.rect(x,f,pw,H-f-bot,'rgba(0,0,0,0.08)');
+   const dir=i<n/2?1:-1;d.arrow(g[0]+g[2]/2-dir*g[2]*0.18,g[1]+g[3]*0.5,dir,g[2]*0.36);d.text(g[0]+g[2]/2,g[1]+g[3]*0.5+d.sw*14,front?'บานหน้า':'บานหลัง',7)}
+  d.parts['ลูกล้อ']=n*2;d.parts['กุญแจ/มือจับ']=1;dims(d,W,H);},
+ sliding3(d,s,t){const W=s.W,H=s.H,f=PW.frame,sw=PW.sash,ov=40;frame4(d,W,H,f,['เฟรมบน (3 ราง)','เฟรมล่าง (3 ราง)','เฟรมข้าง','เฟรมข้าง']);
+  const iw=W-2*f,pw=(iw+2*ov)/3,lab=['บานฟิก (รางหลัง)','บานกลาง (รางกลาง)','บานหน้า (รางหน้า)'];
+  for(let i=0;i<3;i++){const x=f+i*(pw-ov);const names=['บานเลื่อนบน','บานเลื่อนล่าง',i===0?'เสากุญแจ':'เสาเกี่ยว',i===2?'เสากุญแจ':'เสาเกี่ยว'];
+   const g=sashBox(d,x,f,pw,H-2*f,names,sw,false);if(i<2)d.rect(x,f,pw,H-2*f,`rgba(0,0,0,${0.14-0.07*i})`);
+   if(i===0){d.glass(g[0],g[1],g[2],g[3],true)}else d.arrow(g[0]+g[2]/2+g[2]*0.18,g[1]+g[3]*0.5,-1,g[2]*0.36);d.text(g[0]+g[2]/2,g[1]+g[3]*0.5+d.sw*14,lab[i],7)}
+  d.parts['ลูกล้อ']=4;d.parts['กุญแจ/มือจับ']=1;d.parts['ราง']=3;dims(d,W,H);},
+ slidingFixed(d,s,t){const W=s.W,H=s.H,f=PW.frame,sw=PW.sash,Wf=s.Wf,ov=40;frame4(d,W,H,f,['เฟรมบน (2 ราง)','เฟรมล่าง (2 ราง)','วงกบ (เฟรมข้าง)','วงกบ (เฟรมข้าง)']);
+  const iw=W-2*f,ws=(iw-2*Wf+2*ov)/2+ov; // sliding sash width: hooks overlap the fixed sashes' hooks and meet at the centre
+  const sashes=[
+   {x:f,w:Wf+ov,back:1,names:['บานเลื่อนบน','บานเลื่อนล่าง','เสากุญแจ','เสาเกี่ยว'],lab:'บานตาย',fixed:1},
+   {x:f+Wf,w:iw/2-Wf+ov,back:0,names:['บานเลื่อนบน','บานเลื่อนล่าง','เสาเกี่ยว','เสากุญแจตัวผู้'],lab:'บานเลื่อน',dir:-1},
+   {x:f+iw/2-ov,w:iw/2-Wf+ov,back:0,names:['บานเลื่อนบน','บานเลื่อนล่าง','เสากุญแจตัวเมีย','เสาเกี่ยว'],lab:'บานเลื่อน',dir:1},
+   {x:W-f-Wf-ov,w:Wf+ov,back:1,names:['บานเลื่อนบน','บานเลื่อนล่าง','เสาเกี่ยว','เสากุญแจ'],lab:'บานตาย',fixed:1}];
+  for(const sb of sashes.filter(q=>q.back).concat(sashes.filter(q=>!q.back))){const g=sashBox(d,sb.x,f,sb.w,H-2*f,sb.names,sw,false);if(sb.back)d.rect(sb.x,f,sb.w,H-2*f,'rgba(0,0,0,0.08)');
+   if(sb.fixed)d.glass(g[0],g[1],g[2],g[3],true);else d.arrow(g[0]+g[2]/2-sb.dir*g[2]*0.18,g[1]+g[3]*0.5,sb.dir,g[2]*0.36);d.text(g[0]+g[2]/2,g[1]+g[3]*0.5+d.sw*14,sb.lab,7)}
+  d.parts['ลูกล้อ']=4;d.parts['ตบธรณี']=1;dims(d,W,H);d.dim(f,0,f+Wf,0,`${Wf}`,-d.sw*8);
+  d.text(W/2,H+d.sw*26,'ซ้าย→ขวา: วงกบ · เสากุญแจ · เสาเกี่ยว‖เสาเกี่ยว · เสากุญแจตัวผู้ · เสากุญแจตัวเมีย · เสาเกี่ยว‖เสาเกี่ยว · เสากุญแจ · วงกบ',6,'var(--mut)');},
+ rail(d,s,t){const W=s.W,H=s.H,L=s.leaves,trk=PW.trk,sw=PW.sash;
+  d.bar('รางแขวนใหญ่',-W*0.25,0,W*1.5,trk);d.bar('กล่อง 1-3/4 (ฝารางแขวน)',-W*0.25,trk,W*1.5,25);
+  d.bar('วงกบข้าง',0,trk+25,PW.frame,H-trk-25);d.bar('วงกบข้าง',W-PW.frame,trk+25,PW.frame,H-trk-25);
+  const x0=PW.frame,iw=W-2*PW.frame,lw=iw/L;
+  for(let i=0;i<L;i++){const x=x0+i*lw;const g=sashBox(d,x,trk+25,lw,H-trk-25-10,['เสาบนสวิง (ราวบนบาน)','เสาล่างสวิง (ราวล่างบาน)','เสาประตูสวิง','เสาประตูสวิง'],sw,false);
+   const dir=L===1?1:(i===0?-1:1);d.arrow(g[0]+g[2]/2-dir*g[2]*0.18,g[1]+g[3]*0.5,dir,g[2]*0.36);for(const hx of [0.2,0.8]){d.rect(x+lw*hx-d.sw*3,trk+25-d.sw*4,d.sw*6,d.sw*8,'var(--fg)')}}
+  d.bar('ไกด์พื้น',W*0.5-30,H-10,60,10);d.parts['ลูกล้อรางแขวน']=L*2;dims(d,W,H);d.text(W*1.1,trk*1.9,'รางยื่นเลยช่องเปิด = ระยะเลื่อน',7,'var(--mut)','middle')},
+ fold(d,s,t){const W=s.W,H=s.H,nL=s.nL,nR=s.nR,n=nL+nR,trk=PW.track,sw=PW.sash,f=PW.frame;
+  d.bar('รางข้าง',0,0,f,H);d.bar('รางข้าง',W-f,0,f,H);d.bar('รางบน',f,0,W-2*f,trk);d.bar('รางล่าง (ยูฝังพื้น)',f,H-30,W-2*f,30);
+  if(n<1){d.text(W/2,H/2,'ใส่จำนวนบานซ้าย/ขวา',9);return}
+  const iw=W-2*f,pw=iw/n;
+  for(let i=0;i<n;i++){const x=f+i*pw;const g=sashBox(d,x,trk,pw,H-trk-30,['กรอบบาน (บน)','กรอบบาน (ล่าง)','กรอบบาน (ข้าง)','กรอบบาน (ข้าง)'],sw,false);
+   const left=i<nL;const k=left?i:i-nL;const hinge=left?(k%2===0?'left':'right'):(k%2===0?'right':'left');
+   d.vsym(g[0],g[1],g[2],g[3],hinge,false);
+   const pairEdge=left?(k%2===0&&i+1<nL):(k%2===0&&i+1<n);if(pairEdge){for(const hy of [0.15,0.5,0.85])d.rect(x+pw-d.sw*2,trk+(H-trk-30)*hy-d.sw*7,d.sw*4,d.sw*14,'var(--fg)')}}
+  const y=trk+(H-trk-30)*0.5;if(nL)d.arrow(f+nL*pw*0.7,y+d.sw*24,-1,nL*pw*0.5);if(nR)d.arrow(f+nL*pw+nR*pw*0.3,y+d.sw*24,1,nR*pw*0.5);
+  if(nL&&nR)d.line([[f+nL*pw,trk],[f+nL*pw,H-30]],'var(--sym)',true,0.8);
+  d.parts['บานพับต่อบาน']=Math.max(n-1-(nL&&nR?1:0),0)*3;d.parts['ล้อบน/ล่างบานเฟี้ยม']=(Math.ceil(nL/2)+Math.ceil(nR/2))*2;d.parts['บังใบ/คิ้วบาน']=n;
+  dims(d,W,H);d.dim(f,0,f+pw,0,`${Math.round(pw)} ต่อบาน`,-d.sw*8);if(nL)d.dim(f,H,f+nL*pw,H,`ซ้าย ${nL} บาน`,d.sw*24);if(nR)d.dim(f+nL*pw,H,W-f,H,`ขวา ${nR} บาน`,d.sw*24);},
+};
+const opt={view:'out',sym:true,dims:true,names:false,style:'double'};
+
+function render(){const g=$('#grid');g.innerHTML='';
+  TYPES.forEach((t,i)=>{if(group!=='all'&&t.group!==group)return;const s=state[i];
+   const card=document.createElement('div');card.className='card';
+   card.innerHTML=`<h3><span>${t.name}</span><small>${GROUPS[t.group]}${t.parent?' · '+t.parent:''}</small></h3>`;
+   const d=new Draw(s.W,s.H);BODY[t.body](d,s,t);const svg=d.finish();svg.classList.add('hov');svg.onclick=e=>{if(!t.click||!e.target.getAttribute('data-key'))openZoom(i)};card.appendChild(svg);
+   const act=document.createElement('div');act.className='act';act.innerHTML=`<button class="btn">ขยาย part / กำหนดโปรไฟล์</button><span class="hint">${assignSummary(i,d)}</span>`;act.querySelector('button').onclick=()=>openZoom(i);card.appendChild(act);
+   const inp=document.createElement('div');inp.className='in';
+   for(const k of t.inputs){const F0=F[k];const lab=document.createElement('label');lab.innerHTML=`<span>${F0.l}${F0.u?' ('+F0.u+')':''}</span>`;
+    if(F0.sel){const sel=document.createElement('select');for(const [v,l] of Object.entries(F0.sel)){const o=document.createElement('option');o.value=v;o.textContent=l;if(s[k]===v)o.selected=true;sel.appendChild(o)}sel.onchange=()=>{s[k]=sel.value;render()};lab.appendChild(sel)}
+    else{const e=document.createElement('input');e.type='number';e.min=F0.min;e.max=F0.max;e.step=F0.step;e.value=s[k];e.oninput=()=>{const v=Number(e.value);if(v>=F0.min&&v<=F0.max){s[k]=v;render()}};lab.appendChild(e)}
+    inp.appendChild(lab)}
+   if(t.fixed)inp.insertAdjacentHTML('beforeend',`<label><span>ชั้น × ช่อง</span><b>${t.fixed.rows} × ${t.fixed.cols} (ตามชื่อ type)</b></label>`);
+   card.appendChild(inp);
+   const parts=document.createElement('div');parts.className='parts';parts.innerHTML='<b>ชิ้นส่วนในภาพ:</b> '+Object.entries(d.parts).map(([k,v])=>`<span>${k} × ${v}</span>`).join('');card.appendChild(parts);
+   const note=document.createElement('div');note.className='note';note.textContent=NOTE[t.body]||'';card.appendChild(note);
+   g.appendChild(card)})}
+const NOTE={sliding3:'บานเลื่อน 3 บาน 3 ราง: บานฟิก (รางหลัง) · บานกลาง · บานหน้า เลื่อนซ้อนไปทางบานฟิก',
+ grid:'บานติดตาย: ซอยกลางแนวตั้งวิ่งเต็มความสูง ซอยกลางแนวนอนวิ่งชนเสา ช่องกระจกเขียน F',
+ cw:'Curtain wall: เสา mullion วิ่งเต็มความสูง ราว transom ชนเสา คลิกช่องเพื่อวนรอบ กระจก → บานกระทุ้ง → spandrel → กระจก (ตัวเลือก spandrel ด้านล่างคือค่าตั้งต้นทั้งแถว) · บานเปลือย: วงกบรอบ กระจกเต็มสูง ร่องซิลิโคนแนวตั้งเท่านั้น ไม่มีอุปกรณ์',
+ door:'บานเปิด: ราวบน/ล่างบานขนาดเท่ากัน เลือกมี/ไม่มีธรณีได้ · บานสวิง: ไม่มีบานพับ ใช้ door closer ฝังในวงกบบน + เดือยบน/ล่าง · บานสวิงเปลือย: patch fitting ชิดบน/ล่าง มือจับสแตนเลส กุญแจล็อคพื้น',
+ casement:'บานเปิดข้าง: กรอบบานเข้ามุม 45° บานพับสลับด้านให้คู่เปิดชนกันตรงกลาง บานเดี่ยวเลือกด้านบานพับได้',
+ awning:'บานกระทุ้ง: กรอบบานเข้ามุม 45° ปลายแหลมอยู่ด้านบน (บานพับบน) ซอยกลางตั้งวิ่งเต็ม ซอยนอนชน จำนวนชั้น × ช่องมาจากชื่อ type',
+ sliding:'บานเลื่อน: บานหน้า/บานหลังสลับกัน เสาเกี่ยวซ้อนกันตรงกลาง ลูกศรบอกทิศเลื่อน 3 บานเลื่อนเข้ากลางหรือไปข้างเดียวก็ได้ (ภาพนี้เลื่อนเข้ากลาง)',
+ slidingFixed:'บานเลื่อน 2 ตาย 2: 4 บาน บานตายอยู่รางหลัง บานเลื่อนรางหน้า เสาเกี่ยวของแต่ละบานซ้อนกัน เสากุญแจตัวผู้/ตัวเมียชนกันตรงกลาง',
+ rail:'รางแขวน: รางยื่นเลยช่องเปิดข้างละเท่ากับความกว้างบาน ไม่มีธรณี มีไกด์พื้นเล็ก ๆ',
+ fold:'บานเฟี้ยม: กำหนดจำนวนบานที่พับเก็บซ้าย/ขวาแยกกัน บานคี่ในแต่ละข้างจะเหลือบานสวิง 1 บาน เส้นประกลาง = จุดแยกสองชุด'};
+// ---------- part zoom: click a component, assign its profile (mirrors the BOM template part editor) ----------
+const FAMILIES=['กล่องร่อง','กล่องเรียบ','กล่องเปิดปิด','ฝาเปิดปิด','ตบร่อง','ตบเรียบ','เฟรมบน','เฟรมล่าง','เฟรมข้าง','เสากุญแจ','เสาเกี่ยว','เสาตาย','บานเลื่อนบน','บานเลื่อนล่าง','ประกบกลาง','ตบธรณี','กล่องแจ็คสัน','ฝาแจ็คสัน','เสาประตูสวิง','เสาบนสวิง','เสาล่างสวิง','คิ้วประตู','ธรณีสวิง','รางแขวนใหญ่','กล่อง 1-3/4 x 1- 1-3/4','คิ้วลอยเทเล็ก','คิ้วลอยเทใหญ่','กรอบในกระทุ้ง+คิ้ว','กรอบนอกกระทุ้ง','รางบนบิ๊กเฟรม','รางล่างบิ๊กเฟรม','รางข้างบานเลื่อน','เสากุญแจบานเลื่อน','เสาเกี่ยวบานเลื่อน','ขวางบนบานเลื่อน','ขวางล่างบานเลื่อน','กล่องริมพร้อมเดรนยูโร','กล่องริมยูโร','คิ้วยูโร','ซอยกลาง 2" ยูโร','ซอยกลาง 4" ยูโร','บานหน้าต่างยูโร','บานประตูยูโร','NO.9010','NO.9023','NO.9019','NO.3112','NO.9013','NO.9014','NO.9015','Gutter 13-0292a','Sill13-0593a','Fe-Mullion 13-0594a','Ma-Mullion 13-0595a','casement 13-0599a','casem-base 13-0598a','รางบน','รางล่าง','รางข้าง','กรอบบาน 4"','คิ้วบาน 4"','บังใบนอก 4"','บังใบใน 4"'];
+const THICK=['1.0','1.2','1.3','1.5','1.75','1.8','2.0','2.5'];
+function partsOf(d){const m=new Map();for(const b of d.bars){const k=partKey(b);if(!m.has(k))m.set(k,[]);const arr=m.get(k);let c=arr.find(c=>c.name===b.name);if(!c){c={name:b.name,n:0,orient:b.orient,len:Math.round(Math.max(b.w,b.h)),key:compKey(b)};arr.push(c)}c.n++}return m}
+function assignSummary(i,d){const a=state[i].assign||{};const parts=partsOf(d);let tot=0,done=0;for(const comps of parts.values())for(const c of comps){tot++;if(a[c.key])done++}return done?`กำหนดแล้ว ${done}/${tot} ชิ้น`:`ยังไม่กำหนดโปรไฟล์ (${tot} ชิ้น)`}
+function refOf(s,c){const W=s.W,H=s.H;const cands=c.orient==='h'?[['W',W],['W ÷ 2',W/2],['W ÷ 3',W/3],['W ÷ 4',W/4]]:[['H',H],['H ÷ 2',H/2],['H ÷ 3',H/3]];
+  let best=null;for(const [lab,v] of cands){const dd=v-c.len;if(dd>=-1&&(best===null||dd<best[1]))best=[lab,dd]}if(!best)best=[cands[0][0],cands[0][1]-c.len];
+  const dd=Math.round(best[1]);return dd<=0?`= ${best[0]}`:`${best[0]} − ${dd} (ระยะชน/ซ้อน)`}
+let zoom=null; // {i, sel, part}
+function openZoom(i){zoom={i,sel:null,part:null};renderZoom()}
+function renderZoom(){let ov=$('#ov');if(!zoom){if(ov)ov.remove();return}
+  const i=zoom.i,t=TYPES[i],s=state[i];s.assign=s.assign||{};s.done=s.done||[];
+  if(!ov){ov=document.createElement('div');ov.id='ov';ov.className='ov';ov.onclick=e=>{if(e.target===ov){zoom=null;renderZoom();render()}};document.body.appendChild(ov)}
+  ov.innerHTML='';const box=document.createElement('div');box.className='zm';
+  const left=document.createElement('div');left.innerHTML=`<h3>${t.name} <small class="hint">— คลิกชิ้นส่วนในภาพเพื่อกำหนดโปรไฟล์ · part ที่ไม่ได้เลือกจะจาง</small></h3>`;
+  const d=new Draw(s.W,s.H);d.ia={sel:zoom.sel,partFilter:zoom.part,assign:s.assign,onPick:m=>{zoom.sel=compKey(m);if(!zoom.part)zoom.part=partKey(m);renderZoom()}};BODY[t.body](d,s,t);
+  const parts=partsOf(d);
+  const tabs=document.createElement('div');tabs.className='ptabs';const all=document.createElement('button');all.textContent='ทั้งชุด';all.className=zoom.part?'':'on';all.onclick=()=>{zoom.part=null;renderZoom()};tabs.appendChild(all);
+  for(const [k,comps] of parts){const b=document.createElement('button');const isDone=s.done.includes(k);b.textContent=`${k} (${comps.length} ชนิด) ${isDone?'✓':''}`;b.className=(zoom.part===k?'on ':'')+(isDone?'done':'');b.onclick=()=>{zoom.part=k;renderZoom()};tabs.appendChild(b)}
+  left.appendChild(tabs);left.appendChild(d.finish());
+  const side=document.createElement('div');side.className='side';
+  const sel=zoom.sel?[...parts.values()].flat().find(c=>c.key===zoom.sel):null;
+  if(sel){const a=s.assign[sel.key]||{};side.innerHTML=`<h3>${sel.name}</h3><div class="hint">part: ${sel.key.split('|')[0]} · ${sel.orient==='h'?'แนวนอน':'แนวตั้ง'} · ${sel.n} ท่อน ยาว ≈ ${sel.len} มม. (อ้างอิง ${refOf(s,sel)})</div>`;
+    const f=document.createElement('div');f.className='fld';
+    f.innerHTML=`<label>โปรไฟล์ (family)</label><select id="zf"><option value="">— เลือก —</option>${FAMILIES.map(x=>`<option ${a.family===x?'selected':''}>${x}</option>`).join('')}</select>
+      <label>ความหนา (มม.)</label><select id="zt">${THICK.map(x=>`<option ${(a.thick||'1.5')===x?'selected':''}>${x}</option>`).join('')}</select>
+      <label>ความยาวอ้างอิง</label><select id="zr"><option>${sel.orient==='h'?'กว้าง (W)':'สูง (H)'}</option><option>กว้างบาน</option><option>สูงบาน</option><option>กำหนดเอง</option></select>
+      <label>ตัวคูณ</label><input id="zmul" type="number" step="0.01" value="${a.mult??1}">
+      <label>หักปลาย (มม./ปลาย)</label><input id="zd" type="number" step="0.1" value="${a.ded??''}" placeholder="อัตโนมัติจากระยะชน">
+      <label>จำนวนท่อน</label><input id="zn" type="number" step="1" value="${a.n??sel.n}">`;
+    side.appendChild(f);
+    const btns=document.createElement('div');btns.className='act';btns.innerHTML=`<button class="btn">บันทึกชิ้นนี้</button><button class="btn sec">ล้าง</button>`;
+    btns.children[0].onclick=()=>{const fam=$('#zf').value;if(!fam)return;s.assign[sel.key]={family:fam,thick:$('#zt').value,mult:Number($('#zmul').value)||1,ded:$('#zd').value===''?null:Number($('#zd').value),n:Number($('#zn').value)||sel.n};renderZoom()};
+    btns.children[1].onclick=()=>{delete s.assign[sel.key];renderZoom()};side.appendChild(btns)}
+  else side.innerHTML=`<h3>ยังไม่ได้เลือกชิ้นส่วน</h3><div class="hint">คลิกชิ้นอลูมิเนียมในภาพ หรือเลือกจากรายการด้านล่าง ชิ้นชื่อเดียวกันใน part เดียวกัน (เช่น วงกบข้าง 2 ท่อน) กำหนดครั้งเดียว</div>`;
+  const list=document.createElement('div');list.className='complist';
+  for(const [k,comps] of parts){if(zoom.part&&zoom.part!==k)continue;const isDone=s.done.includes(k);
+    const h=document.createElement('div');h.innerHTML=`<b>${k}</b><label><input type="checkbox" ${isDone?'checked':''}> เสร็จแล้ว</label>`;h.querySelector('input').onchange=()=>{s.done=isDone?s.done.filter(x=>x!==k):[...s.done,k];renderZoom()};list.appendChild(h);
+    if(isDone)continue;
+    for(const c of comps){const a=s.assign[c.key];const row=document.createElement('div');row.className=zoom.sel===c.key?'on':'';row.innerHTML=`<span>${c.name} × ${c.n}</span><span class="${a?'ok':'todo'}">${a?`${a.family} ${a.thick}`:'ยังไม่กำหนด'}</span>`;row.onclick=()=>{zoom.sel=c.key;zoom.part=k;renderZoom()};list.appendChild(row)}}
+  side.appendChild(list);
+  const close=document.createElement('div');close.className='act';close.innerHTML=`<button class="btn sec">ปิด</button><span class="hint">ในแอปจริง: บันทึกเป็น BOM template ของ type นี้ ระยะชนอ่านจากโปรไฟล์ที่เลือกอัตโนมัติ</span>`;close.querySelector('button').onclick=()=>{zoom=null;renderZoom();render()};side.appendChild(close);
+  box.appendChild(left);box.appendChild(side);ov.appendChild(box)}
+const tabs=$('#tabs');for(const [k,v] of Object.entries(GROUPS)){const b=document.createElement('button');b.textContent=v;b.className=k===group?'on':'';b.onclick=()=>{group=k;[...tabs.children].forEach(c=>c.className='');b.className='on';render()};tabs.appendChild(b)}
+$('#view').onchange=e=>{opt.view=e.target.value;render()};$('#style').onchange=e=>{opt.style=e.target.value;render()};$('#sym').onchange=e=>{opt.sym=e.target.checked;render()};$('#dims').onchange=e=>{opt.dims=e.target.checked;render()};$('#names').onchange=e=>{opt.names=e.target.checked;render()};
+render();
+</script>

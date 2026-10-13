@@ -100,3 +100,85 @@ describe('(step 5) the quotation attachment shows the part-editor drawing unchan
     expect(it0.views[0].src).toMatch(/^data:image\/svg\+xml/)
   })
 })
+
+// ---------------------------------------------------------------- Task 8: every layout kind, four styles
+import { createHash } from 'node:crypto'
+import { kinds, defaultParams } from './layoutRegistry.js'
+
+const SIZE8 = {
+  sliding_2: [1800, 1200], fixed_grid: [1800, 1200], awning_grid: [1200, 1200], casement_n: [1500, 1200],
+  sliding_n: [1800, 1200], sliding_3track: [2700, 1200], sliding_2_fixed_2: [2400, 1200],
+  swing_door: [1000, 2100], frameless_door: [1000, 2100], hanging_door: [2400, 2100], folding_door: [3000, 2400],
+  curtain_wall: [3600, 3000], frameless_wall: [3600, 3000],
+}
+const m8 = (kind, params = {}) => startModel(kind, { ...defaultParams(kind, {}), ...params })
+const svg8 = (kind, params = {}, extra = {}) => { const [W, H] = SIZE8[kind]; return partSvgString({ model: m8(kind, params), widthMm: W, heightMm: H, ...extra }) }
+const count = (s, re) => (s.match(re) || []).length
+
+describe('Task 8 — partSvgString for every layout kind', () => {
+  it('sliding_2 output is byte-identical to before Task 8 (pinned sha256)', () => {
+    const sha = (s) => createHash('sha256').update(s).digest('hex')
+    const widthOf = (f) => ({ FR: 50.8, SA: 44.45 }[f] ?? null)
+    expect(sha(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'out' }))).toBe('331d0fcb1002fd3c682af344394b55d4c8b7d5b978b5dbf705c9027e31acee4e')
+    expect(sha(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'in' }))).toBe('b020ee5a91b10850c47e8188d5b88b467d80388988b3a84a99b1efbb75cf111a')
+    expect(sha(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'out', style: 'solid' }))).toBe('bc63630ba25e6bbf1598989c703ad6760dc2856128c230b66e58aaef020697d0')
+    expect(sha(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'in', widthOf }))).toBe('00400b744d7d8191d93accb2480992d205dd1dcd9d1b5ba8e616e2b99f46cda4')
+  })
+  for (const kind of Object.keys(SIZE8)) {
+    it(`${kind}: four styles × two views are safe, finite, deterministic strings`, () => {
+      expect(kinds()).toContain(kind)
+      const seen = new Set()
+      for (const style of ['double', 'lengths', 'solid', 'cad']) for (const view of ['out', 'in']) {
+        const s = svg8(kind, {}, { style, view })
+        expect(typeof s).toBe('string')
+        expect(safeSvgDataUri(s)).not.toBeNull()
+        expect(s).not.toMatch(/NaN|undefined|Infinity|<style|<script|marker|\son[a-z]+=/i)
+        expect(s.match(/<(\w+)/g).every((t) => ['<svg', '<rect', '<line', '<text', '<polyline'].includes(t))).toBe(true)
+        expect(s).toBe(svg8(kind, {}, { style, view }))
+        if (view === 'out') seen.add(s)
+      }
+      expect(seen.size).toBe(4)   // the four styles differ (a symmetric drawing may look the same from both sides)
+    })
+  }
+  it('cad style draws lines only with non-scaling 1.3 strokes; lengths adds piece length texts', () => {
+    const cad = svg8('fixed_grid', {}, { style: 'cad' })
+    expect(cad).toContain('vector-effect="non-scaling-stroke"')
+    expect(cad).toContain('stroke-width="1.3"')
+    expect(cad).not.toMatch(/<rect [^>]*data-role="piece"[^>]*fill="#/)
+    const dbl = svg8('fixed_grid', {}, { style: 'double' })
+    const len = svg8('fixed_grid', {}, { style: 'lengths' })
+    expect(count(len, /<text/g)).toBeGreaterThan(count(dbl, /<text/g))
+    expect(len).toContain('>530</text>')
+  })
+  it('curtain_wall with cells { "0,1": awning, "2,3": spandrel } draws one V polyline and one spandrel rect', () => {
+    const s = svg8('curtain_wall', { cells: { '0,1': 'awning', '2,3': 'spandrel' } })
+    expect(count(s, /<polyline/g)).toBe(1)
+    expect(count(s, /data-kind="spandrel"/g)).toBe(1)
+  })
+  it('unitized curtain wall draws unit joints as double lines', () => {
+    const s = svg8('curtain_wall', { unitized: true })
+    expect(count(s, /data-kind="unit_joint"/g)).toBe(2 * (3 + 4))
+  })
+  it('fixed panes carry an F label; sill-less doors a dashed floor line; dashed V when opening away', () => {
+    expect(svg8('fixed_grid')).toContain('>F</text>')
+    expect(svg8('sliding_3track')).toContain('>F</text>')
+    expect(svg8('swing_door', { sill: 'no' })).toMatch(/data-kind="floor_line"[^>]*stroke-dasharray/)
+    expect(svg8('swing_door', { sill: 'yes' })).not.toContain('data-kind="floor_line"')
+    expect(svg8('swing_door', { open: 'out' }, { view: 'out' })).not.toMatch(/<polyline[^>]*stroke-dasharray/)
+    expect(svg8('swing_door', { open: 'in' }, { view: 'out' })).toMatch(/<polyline[^>]*stroke-dasharray/)
+  })
+  it('door hardware: closer box for pivot doors, patch fittings / pull / floor lock for frameless doors', () => {
+    expect(svg8('swing_door', { pivot: true })).toContain('data-kind="closer"')
+    const fl = svg8('frameless_door')
+    for (const k of ['patch', 'pull', 'floor_lock']) expect(fl).toContain(`data-kind="${k}"`)
+  })
+  it('mitred sashes draw their 45° corners (4 diagonals per sash)', () => {
+    expect(count(svg8('awning_grid'), /data-kind="mitre"/g)).toBe(4 * 4)
+    expect(count(svg8('fixed_grid'), /data-kind="mitre"/g)).toBe(0)
+  })
+  it('returns null for folding_door with no leaves (hand-made model)', () => {
+    const m = m8('folding_door')
+    m.params = { ...m.params, nL: 0, nR: 0 }
+    expect(() => partSvgString({ model: m, widthMm: 3000, heightMm: 2400 })).not.toThrow()
+  })
+})
