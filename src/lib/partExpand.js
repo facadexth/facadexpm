@@ -5,7 +5,7 @@
 //   overlap = overlap unit × rule.overlapCount, for positions with rule.overlap 'hook'
 //   endDed  = sum of the butt ends' deductions (0 for every end of a part whose corner is 'mitre').
 // Positions read by rule.auto / rule.overlap go through the layout's roles (layoutRegistry.rolesOf).
-import { LAYOUTS, pieceCount, validateCorners } from './partModel.js'
+import { LAYOUTS, pieceCount, validateCorners, lineFamily } from './partModel.js'
 import { exprParams, rolesOf } from './layoutRegistry.js'
 import { evalExpr } from './layoutExpr.js'
 
@@ -54,7 +54,7 @@ function makeCtx({ model, buttOf, widthOf }) {
     seen.add(k)
     issues.push({ role_name, reason })
   }
-  const famOf = (key, line) => model.lines[key]?.[line]?.profile_family || ''
+  const famOf = (key, line) => lineFamily(model, key, line)   // own family, else the layout's rule.familyFrom (line 0)
   const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v))
   const butt = (fam) => (fam ? num(buttOf(fam)) : null)
   const width = (fam) => (fam ? num(widthOf?.(fam)) : null)
@@ -145,7 +145,9 @@ export function expandParts({ model, buttOf, widthOf }) {
     const name = posName(key)
     const n = pieceCount(model, key)
     lines.forEach((line, li) => {
-      if (!line.profile_family) { issue(name, 'no_profile_family'); return }
+      if (n === 0) return   // no piece (sliding_n middle sashes at n = 2, a grid with one column): nothing to price
+      const family = lineFamily(model, key, li)
+      if (!family) { issue(name, 'no_profile_family'); return }
       const deducting = DEDUCTING_RULES.has(line.length_rule_type)
       const lengthDed = deducting ? r6(ctx.preDed(key, line, (reason) => issue(name, reason)) - ctx.overlap(key, line)) : 0
       const mitre = ctx.isMitre(key)
@@ -169,7 +171,7 @@ export function expandParts({ model, buttOf, widthOf }) {
         sources.push({ key, line: li, pieces: g.pieces })
         components.push({
           role_name: groups.length > 1 ? `${name} ${ctx.pieceLabel(key, g.first)}` : name,
-          profile_family: line.profile_family,
+          profile_family: family,
           length_rule_type: line.length_rule_type,
           length_deduction_mm: lengthDed,
           length_factor: line.length_factor ?? 1,

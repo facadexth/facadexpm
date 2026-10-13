@@ -2,7 +2,7 @@
 // Drawing-only metadata (spec G9): costing never reads it.
 import { LAYOUTS, exprParams } from './layoutRegistry.js'
 import { evalExpr } from './layoutExpr.js'
-import { MAX_PART_COUNT, isFixedPiece } from './partModel.js'
+import { MAX_PART_COUNT, isFixedPiece, sequenceIndex, sequenceOf } from './partModel.js'
 
 const NONE = { kind: 'none', hinge: null }
 
@@ -52,11 +52,17 @@ export function foldSymbols(model) {
 function halves(pieceIdx, count) {
   return pieceIdx < count / 2 ? 1 : -1
 }
+// A part of the layout's sequence row (sliding_n / sliding_3track: left / middle / right sash parts) is placed by its index
+// in that row (partModel.sequenceOf, mirror-aware) and the row's pieces are the ones counted.
 function slideDir(model, partKey, pieceIdx, count) {
   const direction = LAYOUTS[model.layout_kind]?.symbol?.direction
+  const seq = sequenceIndex(model, partKey, pieceIdx)
+  const row = seq ? sequenceOf(model) : null
+  if (seq) { pieceIdx = seq.index; count = seq.total }
+  const fixedAt = (i) => (row ? isFixedPiece(model, row[i].part, row[i].idx) : isFixedPiece(model, partKey, i))
   if (direction === 'toward_fixed') {
     const fixed = []
-    for (let i = 0; i < count; i++) if (isFixedPiece(model, partKey, i)) fixed.push(i)
+    for (let i = 0; i < count; i++) if (fixedAt(i)) fixed.push(i)
     if (!fixed.length) return halves(pieceIdx, count)
     const near = fixed.reduce((a, b) => (Math.abs(b - pieceIdx) < Math.abs(a - pieceIdx) ? b : a))
     return Math.sign(near - pieceIdx) || 1

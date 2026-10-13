@@ -4,7 +4,7 @@
 // 'unit' lines are evaluated once. qty is a number or an expression over the layout params (exprParams of the
 // started model). A line whose expression cannot be evaluated is skipped and reported, never inserted; a line that
 // evaluates to 0 or less (the other pivot set) is simply left out.
-import { startModel, MAX_PART_COUNT } from './partModel.js'
+import { startModel, sequenceOf, MAX_PART_COUNT } from './partModel.js'
 import { layoutOf, exprParams } from './layoutRegistry.js'
 import { evalExpr } from './layoutExpr.js'
 
@@ -12,6 +12,9 @@ import { evalExpr } from './layoutExpr.js'
 const SASH_PART_KEYS = ['sash', 'leaf']
 
 function sashCount(model, layout, p) {
+  // sliding_n / sliding_3track: the sashes are the parts of the layout's sequence row (left / middle / right)
+  const seq = sequenceOf(model)
+  if (seq) return seq.length
   const part = layout.parts.find(x => SASH_PART_KEYS.includes(x.key))
   if (!part) return 1
   const n = Math.round(evalExpr(part.count, p))

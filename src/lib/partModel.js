@@ -436,10 +436,15 @@ export function glassParts(model, opening = null) {
 
 // ---------------------------------------------------------------- per-piece layout metadata (track / fixed / names)
 
+// Whether the layout's mirrorWhen { param: value } matches the model's params (sliding_3track fixed on the right).
+export function isMirrored(model) {
+  const mw = layoutOfModel(model)?.mirrorWhen
+  return !!mw && Object.entries(mw).every(([k, v]) => model.params?.[k] === v)
+}
+
 // layout.mirrorWhen { param: value }: when every entry matches, piece i of an array-valued part field / pieceNames reads index count-1-i.
 function metaIndex(model, partKey, idx) {
-  const mw = layoutOfModel(model)?.mirrorWhen
-  if (!mw || !Object.entries(mw).every(([k, v]) => model.params?.[k] === v)) return idx
+  if (!isMirrored(model)) return idx
   const part = model.parts.find((p) => p.key === partKey)
   const n = clampInt(evalExpr(part?.count ?? 1, exprParams(model)), MAX_PART_COUNT)
   return n > 0 ? n - 1 - idx : idx
@@ -447,12 +452,51 @@ function metaIndex(model, partKey, idx) {
 
 const layoutPartOf = (model, partKey) => layoutOfModel(model)?.parts.find((p) => p.key === partKey)
 
-// Track (1-based) a piece of the part slides on: 'alternate' -> 1,2,1,2..; an array -> per piece; otherwise 1.
+// layout.sequence: the part keys that together form ONE row of sliding sashes, left to right (sliding_n: left / middle ×
+// (n−2) / right; sliding_3track: fixed / middle / front). layout.mirrorWhen reverses the row (3-track fixed on the right).
+// Returns [{ part, idx }] left to right (every instance of every listed part, counts over the params, clamped), or null
+// when the layout has no sequence.
+export function sequenceOf(model) {
+  const layout = layoutOfModel(model)
+  if (!layout || !Array.isArray(layout.sequence)) return null
+  const p = exprParams(model)
+  const out = []
+  for (const key of layout.sequence) {
+    let n = 0
+    try { n = clampInt(evalExpr(model.parts?.find((x) => x.key === key)?.count ?? layout.parts.find((x) => x.key === key)?.count ?? 1, p), MAX_PART_COUNT) } catch { n = 0 }
+    for (let idx = 0; idx < n; idx++) out.push({ part: key, idx })
+  }
+  if (isMirrored(model)) out.reverse()
+  return out
+}
+
+// { index, total } of one piece of a sequence part in its row (left to right), or null when the part is not in a sequence.
+export function sequenceIndex(model, partKey, pieceIdx) {
+  const seq = layoutOfModel(model)?.sequence
+  if (!Array.isArray(seq) || !seq.includes(partKey)) return null
+  const row = sequenceOf(model)
+  const i = row.findIndex((x) => x.part === partKey && x.idx === pieceIdx)
+  return i < 0 ? null : { index: i, total: row.length }
+}
+
+// Track (1-based) a piece of the part slides on: 'alternate' -> 1,2,1,2.. (by the piece's place in the layout's sequence
+// row when the part belongs to one, else by piece index); a number -> that track; an array -> per piece; otherwise 1.
 export function trackOf(model, partKey, pieceIdx) {
   const t = layoutPartOf(model, partKey)?.track
-  if (t === 'alternate') return (pieceIdx % 2) + 1
+  if (t === 'alternate') return ((sequenceIndex(model, partKey, pieceIdx)?.index ?? pieceIdx) % 2) + 1
+  if (typeof t === 'number' && Number.isFinite(t)) return t
   if (Array.isArray(t)) return t[metaIndex(model, partKey, pieceIdx)] ?? 1
   return 1
+}
+
+// The profile family a line is priced with: its own, else (line 0 only) the family of line 0 of the position named by
+// the layout's rule.familyFrom (sliding_n / sliding_3track: the middle and right sashes follow the left / fixed sash
+// unless the owner picks their own). '' when neither is set.
+export function lineFamily(model, key, li = 0) {
+  const own = String(model?.lines?.[key]?.[li]?.profile_family ?? '').trim()
+  if (own || li !== 0) return own
+  const from = layoutOfModel(model)?.positions[key]?.rule?.familyFrom
+  return from && from !== key ? String(model.lines?.[from]?.[0]?.profile_family ?? '').trim() : ''
 }
 
 // Whether a piece of the part is a fixed (non-sliding) pane: part.fixed is a boolean or an array per piece.

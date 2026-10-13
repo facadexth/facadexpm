@@ -14,6 +14,12 @@
 //   cells     optional marker: per-cell kinds (layoutCells.js); exprParams then adds cells_awning / cells_spandrel
 //   familiesWhen optional { param: { position: family } }: a truthy param sets line 0's family at start (curtain_wall unitized)
 //   parts[].panel  infill panel part (no aluminium, no positions): contributes layoutCells.panelCells only
+//   parts[].track  'alternate' (1,2,1,2 by piece, or by place in the sequence row), a number (that track) or an array per piece
+//   sequence  optional [partKey, ...]: parts that together form ONE row of sliding sashes, left to right (sliding_n:
+//             sash_left / sash_mid ×(n−2) / sash_right; sliding_3track: fixed / middle / front). partModel.sequenceOf lists
+//             the row (mirrorWhen reverses it); tracks, slide arrows, the drawing and per-sash hardware read it (R-F1).
+//   positions[k].rule.familyFrom  optional position key: a blank family on line 0 is priced / drawn with that position's
+//             line-0 family (partModel.lineFamily) — the sliding_n middle / right sashes follow the left sash by default.
 //   order     position keys in display order
 //   hardware  [{ name, per, qty }]
 //   symbol    drawing hints: { [partKey]: 'v_hinge'|'slide'|'fold', hinge?, direction?, fixedMark? }

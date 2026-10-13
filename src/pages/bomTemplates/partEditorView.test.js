@@ -20,8 +20,10 @@ describe('partTabs', () => {
     // curtain wall without awning cells: no บานกระทุ้ง tab, no spandrel (panel) tab
     expect(partTabs(startModel('curtain_wall')).map(t => t.partKey)).toEqual([null, 'frame'])
   })
-  it('sliding_n with n = 3 gives three sash tabs', () => {
-    expect(partTabs(startModel('sliding_n', { n: 3 })).filter(t => t.partKey === 'sash')).toHaveLength(3)
+  it('sliding_n with n = 3 gives three sash tabs (R-F1: บานซ้าย / บานกลาง / บานขวา; n = 4 numbers the middle ones)', () => {
+    expect(partTabs(startModel('sliding_n', { n: 3 })).filter(t => t.partKey?.startsWith('sash')).map(t => t.label)).toEqual(['บานซ้าย', 'บานกลาง', 'บานขวา'])
+    expect(partTabs(startModel('sliding_n', { n: 4 })).filter(t => t.partKey?.startsWith('sash')).map(t => t.label)).toEqual(['บานซ้าย', 'บานกลาง 1', 'บานกลาง 2', 'บานขวา'])
+    expect(partTabs(startModel('sliding_n', { n: 2 })).filter(t => t.partKey?.startsWith('sash')).map(t => t.label)).toEqual(['บานซ้าย', 'บานขวา'])
   })
 })
 

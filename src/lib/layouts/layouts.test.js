@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { defaultParams, kinds, LAYOUTS, validateLayout } from '../layoutRegistry.js'
 import { panelCells, jointCount } from '../layoutCells.js'
-import { startModel, validateCorners, pieceCount, setParams, trackOf, isFixedPiece, pieceLabel } from '../partModel.js'
+import { startModel, validateCorners, pieceCount, setParams, trackOf, isFixedPiece, pieceLabel, sequenceOf } from '../partModel.js'
 import { expandParts } from '../partExpand.js'
 import { computeComponentLength } from '../bomEngine.js'
 import { symbolFor } from '../partSymbols.js'
@@ -153,45 +153,91 @@ const runWith = (m, wm, hm, bo) => {
   return { components, issues, len, row: (name) => components.filter((c) => c.role_name === name) }
 }
 
+// R-F1 (spec §5.4/§5.5): the sashes are three parts; per-family stile totals are 2 key + 2(n−1) hook.
+// Families by role: K = key stile, H = hook stile (butt 40 = ov), R = rail; the middle / right / front positions inherit them.
+const SN_FAM = { left_key_stile: 'K', left_hook_stile: 'H', left_top: 'R', left_bottom: 'R' }
+const S3_FAM = { fixed_key_stile: 'K', fixed_hook_stile: 'H', fixed_top: 'R', fixed_bottom: 'R' }
+const famModel = (kind, patch, fams) => {
+  let m = startModel(kind, defaultParams(kind, {}))
+  if (patch) m = setParams(m, patch)
+  for (const [k, ls] of Object.entries(m.lines)) for (const l of ls) l.profile_family = fams[k] || (LAYOUTS[kind].positions[k].rule.familyFrom ? '' : l.profile_family || 'F')
+  return m
+}
+// per-family totals: { family: { pieces, mm } } over the expanded rows
+const perFamily = (r) => {
+  const out = {}
+  for (const c of r.components) {
+    const f = (out[c.profile_family] = out[c.profile_family] || { pieces: 0, mm: 0 })
+    f.pieces += c.quantity_value
+    f.mm = r6(f.mm + c.quantity_value * r.len(c))
+  }
+  return out
+}
+
 describe('sliding_n', () => {
-  it('snapshot (n 2): same position keys as sliding_2, sash count follows n', () => {
+  it('snapshot (n 2): frame keys of sliding_2, three sash parts (left / middle n−2 / right), middle has no pieces', () => {
     const m = startModel('sliding_n', defaultParams('sliding_n', {}))
-    expect(Object.keys(m.lines)).toEqual(Object.keys(startModel('sliding_2').lines))
     expect(m.params).toEqual({ n: 2, door: false })
-    expect(counts(m)).toEqual({ frame_top: 1, frame_bottom: 1, frame_side: 2, sash_top: 2, sash_bottom: 2, key_stile: 2, hook_stile: 2 })
+    expect(m.parts.map((p) => [p.key, p.name, p.count])).toEqual([['frame', 'วงกบ', 1], ['sash_left', 'บานซ้าย', 1], ['sash_mid', 'บานกลาง', 'n-2'], ['sash_right', 'บานขวา', 1]])
+    expect(counts(m)).toEqual({
+      frame_top: 1, frame_bottom: 1, frame_side: 2,
+      left_top: 1, left_bottom: 1, left_key_stile: 1, left_hook_stile: 1,
+      mid_top: 0, mid_bottom: 0, mid_hook_a: 0, mid_hook_b: 0,
+      right_top: 1, right_bottom: 1, right_hook_stile: 1, right_key_stile: 1,
+    })
     expect(validateCorners(m)).toEqual([])
-    expect(setParams(m, { n: 6 }).parts.find((p) => p.key === 'sash').count).toBe('n')
-    expect(pieceCount(setParams(m, { n: 6 }), 'sash_top')).toBe(6)
+    expect(pieceCount(setParams(m, { n: 6 }), 'mid_top')).toBe(4)
+    expect(LAYOUTS.sliding_n.roles.hook).toBe('left_hook_stile')
   })
-  it('n 2 reproduces sliding_2 at 1800 x 1200 exactly (1723.8 / 1200 / 824.4 / 1126.1)', () => {
-    const FAM = { frame_top: 'FT', frame_bottom: 'FB', frame_side: 'FS', sash_top: 'ST', sash_bottom: 'SB', key_stile: 'KS', hook_stile: 'HS' }
+  it('n 2 keeps sliding_2\'s per-family totals at 1800 x 1200 (1723.8 / 1200 / 824.4 / 1126.1)', () => {
+    // adjusted (final fix wave, R-F1): the rows are now per part, so the old toEqual(components) becomes per-family totals
+    const FAM = { frame_top: 'FT', frame_bottom: 'FB', frame_side: 'FS', left_top: 'ST', left_bottom: 'SB', left_key_stile: 'KS', left_hook_stile: 'HS' }
     const bo = (f) => (f in BUTT ? BUTT[f] : null)
-    const a = runWith(slidingModel('sliding_n', null, FAM), 1800, 1200, bo)
-    const b = (() => { const m = startModel('sliding_2'); for (const [k, f] of Object.entries(FAM)) m.lines[k][0].profile_family = f; return runWith(m, 1800, 1200, bo) })()
+    const a = runWith(famModel('sliding_n', null, FAM), 1800, 1200, bo)
+    const b = (() => { const m = startModel('sliding_2'); for (const [k, f] of Object.entries({ frame_top: 'FT', frame_bottom: 'FB', frame_side: 'FS', sash_top: 'ST', sash_bottom: 'SB', key_stile: 'KS', hook_stile: 'HS' })) m.lines[k][0].profile_family = f; return runWith(m, 1800, 1200, bo) })()
     expect(a.issues).toEqual([])
-    expect(a.components).toEqual(b.components)
+    expect(perFamily(a)).toEqual(perFamily(b))
+    expect(Object.keys(perFamily(a)).sort()).toEqual(['FB', 'FS', 'FT', 'HS', 'KS', 'SB', 'ST'])
     expect(a.len(a.row('เฟรมบน')[0])).toBeCloseTo(1723.8, 6)
     expect(a.len(a.row('เฟรมข้าง')[0])).toBeCloseTo(1200, 6)
-    expect(a.len(a.row('บานเลื่อนบน')[0])).toBeCloseTo(824.4, 6)
-    expect(a.len(a.row('เสากุญแจ')[0])).toBeCloseTo(1126.1, 6)
+    expect(a.len(a.row('บานเลื่อนบน (บานซ้าย)')[0])).toBeCloseTo(824.4, 6)
+    expect(a.len(a.row('บานเลื่อนบน (บานขวา)')[0])).toBeCloseTo(824.4, 6)
+    expect(a.len(a.row('เสากุญแจ (บานซ้าย)')[0])).toBeCloseTo(1126.1, 6)
+    expect(a.len(a.row('เสากุญแจ (บานขวา)')[0])).toBeCloseTo(1126.1, 6)
   })
-  it('n 3 at 2700 x 1200, ov 40, b 45: rail (2700 - 90 + 80) / 3 = 896.67, 3 rails, 3 + 3 stiles', () => {
-    const m = slidingModel('sliding_n', { n: 3 }, { hook_stile: 'H' })
-    const r = runWith(m, 2700, 1200, b45ov40)
+  it('n 3 at 2700 x 1200, ov 40, b 45: rail (2700 - 90 + 80) / 3 = 896.67, 3 rails each, key 2 / hook 4', () => {
+    const r = runWith(famModel('sliding_n', { n: 3 }, SN_FAM), 2700, 1200, b45ov40)
     expect(r.issues).toEqual([])
-    const top = r.row('บานเลื่อนบน')[0]
-    expect(top.quantity_value).toBe(3)
-    expect(top.length_deduction_mm).toBe(10)   // 90 - 2 x 40
-    expect(top.length_factor).toBeCloseTo(1 / 3, 9)
-    expect(r6(r.len(top) + top.end_deduction_mm)).toBe(r6(2690 / 3))
+    const tops = r.components.filter((c) => c.role_name.startsWith('บานเลื่อนบน'))
+    expect(tops.reduce((s, c) => s + c.quantity_value, 0)).toBe(3)
+    for (const top of tops) {
+      expect(top.length_deduction_mm).toBe(10)   // 90 - 2 x 40
+      expect(top.length_factor).toBeCloseTo(1 / 3, 9)
+      expect(r6(r.len(top) + top.end_deduction_mm)).toBe(r6(2690 / 3))
+    }
     expect(r6(2690 / 3)).toBe(896.666667)
-    expect(r.row('เสากุญแจ')[0].quantity_value).toBe(3)
-    expect(r.row('เสาเกี่ยว')[0].quantity_value).toBe(3)
+    const fam = perFamily(r)
+    expect([fam.K.pieces, fam.H.pieces, fam.R.pieces]).toEqual([2, 4, 6])
   })
-  it('trackOf alternates 1,2,1,2 and no piece is fixed', () => {
+  it('n 4: key 2 / hook 6; n 2: key 2 / hook 2; n 6: key 2 / hook 10', () => {
+    for (const [n, hook] of [[2, 2], [4, 6], [6, 10]]) {
+      const fam = perFamily(runWith(famModel('sliding_n', { n }, SN_FAM), 2700, 1200, b45ov40))
+      expect([n, fam.K.pieces, fam.H.pieces, fam.R.pieces]).toEqual([n, 2, hook, 2 * n])
+    }
+  })
+  it('the middle / right sashes follow the left sash\'s families until the owner picks their own (familyFrom)', () => {
+    const m = famModel('sliding_n', { n: 3 }, { ...SN_FAM, mid_hook_b: 'H2' })
+    const r = runWith(m, 2700, 1200, (f) => ({ H: 40, H2: 40 }[f] ?? 45))
+    expect(r.issues).toEqual([])
+    const fam = perFamily(r)
+    expect([fam.K.pieces, fam.H.pieces, fam.H2.pieces]).toEqual([2, 3, 1])
+  })
+  it('trackOf alternates 1,2,1,2 along the row and no piece is fixed', () => {
     const m = slidingModel('sliding_n', { n: 4 })
-    expect([0, 1, 2, 3].map((i) => trackOf(m, 'sash', i))).toEqual([1, 2, 1, 2])
-    expect([0, 1, 2, 3].map((i) => isFixedPiece(m, 'sash', i))).toEqual([false, false, false, false])
+    const row = [['sash_left', 0], ['sash_mid', 0], ['sash_mid', 1], ['sash_right', 0]]
+    expect(row.map(([p, i]) => trackOf(m, p, i))).toEqual([1, 2, 1, 2])
+    expect(row.map(([p, i]) => isFixedPiece(m, p, i))).toEqual([false, false, false, false])
+    expect(trackOf(slidingModel('sliding_n', { n: 3 }), 'sash_right', 0)).toBe(1)
     expect(trackOf(m, 'frame', 0)).toBe(1)
   })
   it('door: true renames frame_bottom / frame_top; hardware and symbol', () => {
@@ -201,7 +247,7 @@ describe('sliding_n', () => {
     const w = startModel('sliding_n', defaultParams('sliding_n', {}))
     expect(w.names.frame_bottom).toBe('เฟรมล่าง')
     expect(LAYOUTS_HW('sliding_n')).toEqual([{ name: 'ลูกล้อ', per: 'sash', qty: 2 }, { name: 'กุญแจ/มือจับ', per: 'unit', qty: 1 }])
-    expect(symbolFor(w, 'sash', 0).kind).toBe('slide')
+    expect(symbolFor(w, 'sash_left', 0).kind).toBe('slide')
   })
   it('input definitions: n 2-6 estimator, door fixed_by_type', () => {
     const [n, door] = LAYOUTS.sliding_n.inputs
@@ -214,38 +260,45 @@ describe('sliding_n', () => {
 const LAYOUTS_HW = (k) => LAYOUTS[k].hardware
 
 describe('sliding_3track', () => {
-  it('snapshot: 3 sashes, frame names and families, params', () => {
+  it('snapshot: fixed / middle / front parts, frame names and families, params', () => {
     const m = startModel('sliding_3track', defaultParams('sliding_3track', {}))
     expect(m.params).toEqual({ fixed_side: 'left' })
-    expect(counts(m).sash_top).toBe(3)
+    expect(m.parts.map((p) => [p.key, p.name])).toEqual([['frame', 'วงกบ'], ['sash_fixed', 'บานฟิก'], ['sash_middle', 'บานกลาง'], ['sash_front', 'บานหน้า']])
+    expect(['fixed_top', 'middle_top', 'front_top'].map((k) => counts(m)[k])).toEqual([1, 1, 1])
     expect(m.names.frame_top).toBe('เฟรมบน (3 ราง)')
     expect(m.names.frame_bottom).toBe('เฟรมล่าง (3 ราง)')
     expect(m.lines.frame_top[0].profile_family).toBe('รางบนบิ๊กเฟรม')
     expect(m.lines.frame_bottom[0].profile_family).toBe('รางล่างบิ๊กเฟรม 2 ราง')
     expect(validateCorners(m)).toEqual([])
   })
-  it('same numbers as sliding_n 3 at 2700 x 1200 (ov 40, b 45): rail 896.67', () => {
-    const m = slidingModel('sliding_3track', null, { hook_stile: 'H' })
-    const r = runWith(m, 2700, 1200, b45ov40)
-    expect(r.issues).toEqual([])
-    const top = r.row('บานเลื่อนบน')[0]
-    expect(top.quantity_value).toBe(3)
-    expect(r6(r.len(top) + top.end_deduction_mm)).toBe(r6(2690 / 3))
+  it('same rails as sliding_n 3 at 2700 x 1200 (ov 40, b 45): 896.67; key 2 / hook 4 (mirrored too)', () => {
+    for (const fixed_side of ['left', 'right']) {
+      const r = runWith(famModel('sliding_3track', { fixed_side }, S3_FAM), 2700, 1200, b45ov40)
+      expect(r.issues).toEqual([])
+      const tops = r.components.filter((c) => c.role_name.startsWith('บานเลื่อนบน'))
+      expect(tops.reduce((s, c) => s + c.quantity_value, 0)).toBe(3)
+      for (const top of tops) expect(r6(r.len(top) + top.end_deduction_mm)).toBe(r6(2690 / 3))
+      const fam = perFamily(r)
+      expect([fixed_side, fam.K.pieces, fam.H.pieces, fam.R.pieces]).toEqual([fixed_side, 2, 4, 6])
+    }
   })
-  it('track metadata [3,2,1] and fixed piece 0', () => {
+  it('stiles per sash (spec §5.5): fixed = key + hook, middle = hook + hook, front = hook + key', () => {
+    const P = LAYOUTS.sliding_3track.parts.map((p) => [p.key, p.positions.filter((k) => LAYOUTS.sliding_3track.positions[k].orient === 'v')])
+    expect(P.slice(1)).toEqual([['sash_fixed', ['fixed_key_stile', 'fixed_hook_stile']], ['sash_middle', ['middle_hook_a', 'middle_hook_b']], ['sash_front', ['front_hook_stile', 'front_key_stile']]])
+  })
+  it('tracks 3 / 2 / 1 and the fixed sash; the row reverses when fixed_side = right', () => {
     const m = startModel('sliding_3track', defaultParams('sliding_3track', {}))
-    expect([0, 1, 2].map((i) => trackOf(m, 'sash', i))).toEqual([3, 2, 1])
-    expect([0, 1, 2].map((i) => isFixedPiece(m, 'sash', i))).toEqual([true, false, false])
-  })
-  it('fixed_side right mirrors track and fixed', () => {
-    const m = setParams(startModel('sliding_3track', defaultParams('sliding_3track', {})), { fixed_side: 'right' })
-    expect(isFixedPiece(m, 'sash', 2)).toBe(true)
-    expect(isFixedPiece(m, 'sash', 0)).toBe(false)
-    expect([0, 1, 2].map((i) => trackOf(m, 'sash', i))).toEqual([1, 2, 3])
+    expect(['sash_fixed', 'sash_middle', 'sash_front'].map((p) => trackOf(m, p, 0))).toEqual([3, 2, 1])
+    expect(['sash_fixed', 'sash_middle', 'sash_front'].map((p) => isFixedPiece(m, p, 0))).toEqual([true, false, false])
+    expect(sequenceOf(m).map((x) => x.part)).toEqual(['sash_fixed', 'sash_middle', 'sash_front'])
+    const r = setParams(m, { fixed_side: 'right' })
+    expect(sequenceOf(r).map((x) => x.part)).toEqual(['sash_front', 'sash_middle', 'sash_fixed'])
+    expect(sequenceOf(r).map((x) => trackOf(r, x.part, x.idx))).toEqual([1, 2, 3])
+    expect(isFixedPiece(r, 'sash_fixed', 0)).toBe(true)
   })
   it('hardware: wheels 2 x 2 on the sliding sashes, 3 rails (info), symbol slide', () => {
     expect(LAYOUTS_HW('sliding_3track')).toEqual(expect.arrayContaining([{ name: 'ลูกล้อ', per: 'unit', qty: '2*2' }, { name: 'ราง', per: 'unit', qty: 3 }]))
-    expect(symbolFor(startModel('sliding_3track', defaultParams('sliding_3track', {})), 'sash', 0).kind).toBe('slide')
+    expect(symbolFor(startModel('sliding_3track', defaultParams('sliding_3track', {})), 'sash_middle', 0).kind).toBe('slide')
   })
 })
 

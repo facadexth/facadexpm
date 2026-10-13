@@ -396,10 +396,20 @@ describe('Task 8 — layout specifics', () => {
   })
   it('sliding_n: tracks alternate, the front track is drawn last, arrows point to the middle', () => {
     const o = ov8(filled8('sliding_n'))
-    const sashes = o.pieces.filter((p) => p.part === 'sash')
+    const sashes = o.pieces.filter((p) => p.part.startsWith('sash'))   // R-F1: sash_left / sash_mid / sash_right
     expect(sashes.at(-1).track).toBe(1)
     const dirs = o.symbols.filter((s) => s.kind === 'slide').sort((a, b) => a.x - b.x).map((s) => s.dir)
     expect(dirs).toEqual([1, -1])
+  })
+  it('sliding_n n 3 (R-F1): key stiles stand at the two frame sides, hook stiles inside, left to right', () => {
+    const o = ov8(filled8('sliding_n', { n: 3 }))
+    const stiles = o.pieces.filter((p) => p.orient === 'v' && p.part !== 'frame' && p.line === 0).sort((a, b) => a.x - b.x)
+    // neighbouring hook stiles overlap by one hook width (same x), so only the outer two and the inner set are ordered
+    const ends = (ps) => [ps[0].key, ps.at(-1).key, ps.slice(1, -1).map((p) => p.key).sort()]
+    expect(ends(stiles)).toEqual(['left_key_stile', 'right_key_stile', ['left_hook_stile', 'mid_hook_a', 'mid_hook_b', 'right_hook_stile']])
+    const s3 = ov8(filled8('sliding_3track', { fixed_side: 'right' })).pieces.filter((p) => p.orient === 'v' && p.part !== 'frame').sort((a, b) => a.x - b.x)
+    expect(ends(s3)).toEqual(['front_key_stile', 'fixed_key_stile', ['fixed_hook_stile', 'front_hook_stile', 'middle_hook_a', 'middle_hook_b']])
+    expect(s3.at(-1).x).toBeGreaterThan(s3.find((p) => p.key === 'fixed_hook_stile').x)
   })
   it('sliding_3track: the fixed sash gets F and no arrow; sliding sashes point toward it, mirrored when fixed_side = right', () => {
     for (const [side, dir] of [['left', -1], ['right', 1]]) {

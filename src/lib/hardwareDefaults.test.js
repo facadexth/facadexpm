@@ -31,6 +31,11 @@ describe('hardwareDefaults', () => {
   it('sliding_2 yields exactly what its layout declares: wheels 4, lock 1', () => {
     expect(byName(hardwareDefaults('sliding_2', {}))).toEqual({ 'ลูกล้อ': 4, 'กุญแจ/มือจับ': 1 })
   })
+  it('sliding_n counts every sash of its left / middle / right parts (R-F1): wheels 2 per sash', () => {
+    expect(byName(hardwareDefaults('sliding_n', { n: 2 }))).toEqual({ 'ลูกล้อ': 4, 'กุญแจ/มือจับ': 1 })
+    expect(byName(hardwareDefaults('sliding_n', { n: 3 }))).toEqual({ 'ลูกล้อ': 6, 'กุญแจ/มือจับ': 1 })
+    expect(byName(hardwareDefaults('sliding_n', { n: 5 }))).toEqual({ 'ลูกล้อ': 10, 'กุญแจ/มือจับ': 1 })
+  })
   it('a layout with no hardware gives nothing', () => {
     expect(hardwareDefaults('fixed_grid', { rows: 2, cols: 2 })).toEqual([])
   })

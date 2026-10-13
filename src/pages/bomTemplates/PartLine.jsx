@@ -58,8 +58,11 @@ export default function PartLine({ model, view, posKey, line, i, n, selLine, fam
   const set = patch => onChange(updateLine(model, posKey, i, patch))
   const fam = String(line.profile_family ?? '').trim()
   const famOpts = fam && !families.includes(fam) ? [fam, ...families] : families
-  const w = fam ? view.widthOf(fam) : null
-  const b = fam ? view.buttOf(fam) : null
+  // a blank family that follows another position (layout rule.familyFrom: sliding_n middle / right sashes)
+  const inherited = !fam && r.family ? r.family : ''
+  const eff = fam || inherited
+  const w = eff ? view.widthOf(eff) : null
+  const b = eff ? view.buttOf(eff) : null
   return (
     <fieldset className={'ln' + (i === selLine ? ' on' : '')} onFocus={() => { if (i !== selLine) onSelLine(i) }}>
       <legend>โปรไฟล์ที่ {i + 1}{i === selLine ? ' · ปลายที่เห็นในภาพ' : ''}
@@ -68,7 +71,7 @@ export default function PartLine({ model, view, posKey, line, i, n, selLine, fam
       <div className="f">
         <span>อลูมิเนียม (ตระกูลโปรไฟล์){i > 0 ? ' · เริ่มต้นเหมือนโปรไฟล์ที่ 1' : ''}</span>
         <select disabled={!canEdit} value={fam} onChange={e => set({ profile_family: e.target.value })}>
-          <option value="">— เลือกอลูมิเนียม —</option>
+          <option value="">{inherited ? `ตามบานแรก (${inherited})` : '— เลือกอลูมิเนียม —'}</option>
           {famOpts.map(f => <option key={f} value={f}>{f}</option>)}
         </select>
       </div>

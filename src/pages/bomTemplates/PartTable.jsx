@@ -26,7 +26,7 @@ export default function PartTable({ model, view, sel, onSelect }) {
         const head = (
           <>
             <td>{i === 0 ? posName(model, key) : <span className="sub">↳ ในตำแหน่งเดียวกัน</span>}</td>
-            <td>{l.profile_family || <span className="sub">—</span>}</td>
+            <td>{l.profile_family || (r.family ? <span className="sub">{r.family} (ตามบานแรก)</span> : <span className="sub">—</span>)}</td>
             <td>{RULE_LABELS[l.length_rule_type] || l.length_rule_type}</td>
             <td className="n">{l.length_factor ?? '—'}</td>
             <td>{endText(l)}</td>

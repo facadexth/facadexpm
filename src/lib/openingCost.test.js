@@ -302,7 +302,8 @@ const kCtx = (model, kind, item = {}) => ({
 const qty = (r, role) => r.bom.profileLines.filter(l => l.role_name.startsWith(role)).reduce((s, l) => s + l.quantity, 0)
 
 describe('costOpening: the item\'s layout_params override the template\'s for estimator inputs only', () => {
-  const slidingN = () => famAll(startModel('sliding_n'), { frame_side: 'fs', key_stile: 'ks', hook_stile: 'hs' })
+  // R-F1: the left sash's families; the middle / right sashes follow them (familyFrom), so only the left ones are set
+  const slidingN = () => { const m = famAll(startModel('sliding_n'), { frame_side: 'fs', left_key_stile: 'ks', left_hook_stile: 'hs' }); for (const k of ['mid_top', 'mid_bottom', 'mid_hook_a', 'mid_hook_b', 'right_top', 'right_bottom', 'right_hook_stile', 'right_key_stile']) if (m.lines[k]) m.lines[k][0].profile_family = ''; return m }
   it('sliding_n template (n 2) priced for an item with layout_params { n: 3 } has three sashes', () => {
     const two = costOpening(kCtx(slidingN(), 'sliding_n'))
     expect(qty(two, 'บานเลื่อนบน')).toBe(2)
@@ -310,8 +311,8 @@ describe('costOpening: the item\'s layout_params override the template\'s for es
       const three = costOpening(kCtx(slidingN(), 'sliding_n', { layout_params: lp }))
       expect(qty(three, 'บานเลื่อนบน')).toBe(3)
       expect(qty(three, 'บานเลื่อนล่าง')).toBe(3)
-      expect(qty(three, 'เสากุญแจ')).toBe(3)
-      expect(qty(three, 'เสาเกี่ยว')).toBe(3)
+      expect(qty(three, 'เสากุญแจ')).toBe(2)   // R-F1: two outer key stiles
+      expect(qty(three, 'เสาเกี่ยว')).toBe(4)   // and 2(n-1) hook stiles (เสาเกี่ยว… names start with it)
       expect(three.total).toBeGreaterThan(two.total)
     }
   })
@@ -351,7 +352,7 @@ describe('costOpening: the item\'s layout_params override the template\'s for es
     c.addonTemplate = T({ id: 'tp', layout_kind: 'sliding_n' })
     c.item = { ...c.item, template_id: 't1', addon_template_id: 'tp', addon_width_m: 2, addon_height_m: 1 }
     const r = costOpening(c)
-    expect(r.addonBom.profileLines.filter(l => l.role_name === 'บานเลื่อนบน').reduce((s, l) => s + l.quantity, 0)).toBe(2)
+    expect(r.addonBom.profileLines.filter(l => l.role_name.startsWith('บานเลื่อนบน')).reduce((s, l) => s + l.quantity, 0)).toBe(2)
   })
 })
 

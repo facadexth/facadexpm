@@ -5,7 +5,7 @@
 // missing is filled with the layout's defaults so the result is always a valid model; costing then reports what is
 // incomplete (an empty profile family, a butt end without a target) instead of dropping it.
 // modelToRows / validateModel / saveModel / loadModel are the SAVE half (and a one-template loader for the editor).
-import { LAYOUTS, startModel, ensureEnds, pieceCount, validateCorners, presentPositions, MAX_PART_COUNT } from './partModel.js'
+import { LAYOUTS, startModel, ensureEnds, pieceCount, validateCorners, presentPositions, lineFamily, MAX_PART_COUNT } from './partModel.js'
 import { coerceParams, defaultParams, inputsOf, exprParams } from './layoutRegistry.js'
 import { evalExpr } from './layoutExpr.js'
 
@@ -289,7 +289,7 @@ export function validateModel(model) {
     const n = pieceCount(model, key)
     for (const [li, l] of lines.entries()) {
       const where = lines.length > 1 ? `${pos} (โปรไฟล์ที่ ${li + 1})` : pos
-      if (!String(l.profile_family ?? '').trim()) return `${where}: เลือกกลุ่มโปรไฟล์`
+      if (n > 0 && !lineFamily(model, key, li)) return `${where}: เลือกกลุ่มโปรไฟล์`   // a position without pieces prices nothing
       if (!RULES.has(l.length_rule_type)) return `${where}: เลือกวิธีคิดความยาว`
       if (nonNeg(l.length_deduction_mm) === null) return `${where}: ระยะหักต้องเป็นตัวเลขไม่ติดลบ`
       if (!(isNum(l.length_factor) && l.length_factor > 0)) return `${where}: สัดส่วนของความยาวที่ใช้ต้องมากกว่า 0`

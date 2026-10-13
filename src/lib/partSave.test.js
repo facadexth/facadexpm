@@ -581,3 +581,24 @@ describe('"เสร็จแล้ว" per part is saved in layout_params._done
     expect(templateParamsPayload(startModel('sliding_2'))).toEqual({})
   })
 })
+
+describe('sliding_n left / middle / right sash parts (final fix wave, R-F1)', () => {
+  const leftOnly = (n) => {
+    const m = startModel('sliding_n', { n })
+    for (const [k, f] of Object.entries({ frame_top: 'FT', frame_bottom: 'FB', frame_side: 'FS', left_top: 'R', left_bottom: 'R', left_key_stile: 'K', left_hook_stile: 'H' })) m.lines[k][0].profile_family = f
+    return m
+  }
+  it('n 2: the middle positions have no piece and the right ones follow the left families, so it saves', () => {
+    expect(validateModel(leftOnly(2))).toBeNull()
+    expect(validateModel(leftOnly(4))).toBeNull()
+  })
+  it('round-trips; an item raising n to 3 prices the middle sash with the inherited families (no issue)', () => {
+    const back = trip(leftOnly(2))
+    expect(back).toEqual(leftOnly(2))
+    const { components, issues } = expandParts({ model: setParamsFor(back, { n: 3 }), buttOf: () => 20, widthOf: () => 40 })
+    expect(issues).toEqual([])
+    const by = (f) => components.filter(c => c.profile_family === f).reduce((s, c) => s + c.quantity_value, 0)
+    expect([by('K'), by('H'), by('R')]).toEqual([2, 4, 6])
+  })
+})
+import { setParams as setParamsFor } from './partModel.js'

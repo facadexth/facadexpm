@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { startModel, setParams } from './partModel.js'
+import { startModel, setParams, sequenceOf } from './partModel.js'
 import { defaultParams } from './layoutRegistry.js'
 import { symbolFor } from './partSymbols.js'
 
@@ -41,13 +41,16 @@ describe('symbolFor with a view (Task 8)', () => {
     expect(symbolFor(m('swing_door', { open: 'in' }), 'leaf', 0, { view: 'out' })).toMatchObject({ kind: 'v_hinge', hinge: 'left', dashed: true })
     expect(symbolFor(m('swing_door', { open: 'in' }), 'leaf', 0, { view: 'in' }).dashed).toBe(false)
   })
-  it('slide: halves → left half +1, right half −1', () => {
-    expect(all(m('sliding_n', { n: 4 }), 'sash', 4).map((s) => [s.kind, s.dir])).toEqual([['slide', 1], ['slide', 1], ['slide', -1], ['slide', -1]])
+  // R-F1: sliding_n / sliding_3track sashes are the parts of the layout's sequence row (left → right, mirror-aware)
+  const row = (model) => sequenceOf(model).map(({ part, idx }) => symbolFor(model, part, idx, { view: 'out' }))
+  it('slide: halves → left half +1, right half −1 (along the sequence row: left / middle × 2 / right)', () => {
+    expect(row(m('sliding_n', { n: 4 })).map((s) => [s.kind, s.dir])).toEqual([['slide', 1], ['slide', 1], ['slide', -1], ['slide', -1]])
+    expect(sequenceOf(m('sliding_n', { n: 4 }))).toEqual([{ part: 'sash_left', idx: 0 }, { part: 'sash_mid', idx: 0 }, { part: 'sash_mid', idx: 1 }, { part: 'sash_right', idx: 0 }])
   })
   it('slide toward_fixed: the fixed piece is none (fixed), the others point at it; mirrored with fixed_side right', () => {
-    expect(all(m('sliding_3track'), 'sash', 3).map((s) => [s.kind, s.dir])).toEqual([['none', 0], ['slide', -1], ['slide', -1]])
-    expect(all(m('sliding_3track', { fixed_side: 'right' }), 'sash', 3).map((s) => [s.kind, s.dir])).toEqual([['slide', 1], ['slide', 1], ['none', 0]])
-    expect(symbolFor(m('sliding_3track'), 'sash', 0, { view: 'out' }).fixed).toBe(true)
+    expect(row(m('sliding_3track')).map((s) => [s.kind, s.dir])).toEqual([['none', 0], ['slide', -1], ['slide', -1]])
+    expect(row(m('sliding_3track', { fixed_side: 'right' })).map((s) => [s.kind, s.dir])).toEqual([['slide', 1], ['slide', 1], ['none', 0]])
+    expect(symbolFor(m('sliding_3track'), 'sash_fixed', 0, { view: 'out' }).fixed).toBe(true)
   })
   it('sliding_2_fixed_2: each sliding sash points at its fixed neighbour', () => {
     expect(all(m('sliding_2_fixed_2'), 'sash', 4).map((s) => [s.kind, s.dir])).toEqual([['none', 0], ['slide', -1], ['slide', 1], ['none', 0]])

@@ -8,7 +8,7 @@ import { computeComponentLength } from '../../lib/bomEngine.js'
 import { buttOfFor, widthOfFor } from '../../lib/openingCost.js'
 import { resolveCatalogProfile } from '../../lib/aluCatalogPricing.js'
 import { thicknessesForSeries } from '../../lib/estimationCatalogViews.js'
-import { LAYOUTS, validateCorners, MAX_PART_COUNT } from '../../lib/partModel.js'
+import { LAYOUTS, validateCorners, lineFamily, MAX_PART_COUNT } from '../../lib/partModel.js'
 import { exprParams, inputsOf } from '../../lib/layoutRegistry.js'
 import { evalExpr } from '../../lib/layoutExpr.js'
 import { pieceLabel as geomPieceLabel } from '../../lib/partGeometry.js'
@@ -99,7 +99,7 @@ export function toggleDone(model, partKey) {
 export function assignedCount(model) {
   const layout = layoutOf(model)
   const keys = layout ? layout.order.filter((k) => model.lines?.[k]) : []
-  return { done: keys.filter((k) => String(model.lines[k][0]?.profile_family ?? '').trim()).length, total: keys.length }
+  return { done: keys.filter((k) => lineFamily(model, k, 0)).length, total: keys.length }
 }
 
 export const fmt = (x, d = 1) => (x == null || !Number.isFinite(Number(x)) ? '—' : fmtMm(Number(x), d))
@@ -158,8 +158,8 @@ export function editorView({ model, index, seriesId, thicknessMm, widthMm, heigh
   // per position line: groups of length × quantity
   const lines = {}
   for (const key of layout ? layout.order : []) {
-    lines[key] = (model.lines[key] || []).map((l) => {
-      const fam = String(l.profile_family ?? '').trim()
+    lines[key] = (model.lines[key] || []).map((l, li) => {
+      const fam = lineFamily(model, key, li)   // own family, else the layout's familyFrom (sliding_n middle / right sashes)
       const p = profileOf(fam)
       const kgPerM = p && Number(p.linear_weight_kg_per_m) > 0 ? Number(p.linear_weight_kg_per_m) : null
       return { family: fam, unresolved: fam ? null : 'no_profile_family', kgPerM, raw: [] }

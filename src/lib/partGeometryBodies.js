@@ -18,6 +18,7 @@
 // dims[i] = extra dimension lines { kind: 'leaf'|'side', x1, y1, x2, y2, value, label } (W and H are added by the caller).
 import { cellKinds } from './layoutCells.js'
 import { foldSymbols } from './partSymbols.js'
+import { sequenceOf, isMirrored } from './partModel.js'
 
 const FIXED = { run: 'fixed' }
 const H_ = (key, piece, fx, fy, len, thick, o = {}) => ({ key, piece, orient: 'h', fx, fy, len, thick, ...o })
@@ -114,40 +115,54 @@ const awning_grid = (c) => sashGrid(c, c.int('rows', 1), c.int('cols', 1))
 const casement_n = (c) => sashGrid(c, 1, c.int('n', 1))
 
 // Sliding sashes on tracks: rects left to right, drawn back track first (front last, so it covers the hook overlap).
-function slidingSashes(c, rects, stilesOf) {
+// sashOf(i) = { part, idx, top, bottom, left: [key, piece], right: [key, piece], flip } of the i-th sash from the left.
+function slidingSashes(c, rects, sashOf) {
   const out = []
-  const order = rects.map((r, i) => i).sort((a, b) => (c.track('sash', b) - c.track('sash', a)) || a - b)
+  const tr = (i) => { const s = sashOf(i); return c.track(s.part, s.idx) }
+  const order = rects.map((r, i) => i).sort((a, b) => (tr(b) - tr(a)) || a - b)
   for (const i of order) {
-    const { left, right, flip } = stilesOf(i)
-    const box = sashBox(c, rects[i], { top: 'sash_top', bottom: 'sash_bottom', piece: i, left, right }, { flip })
-    out.push({ i, box })
+    const s = sashOf(i)
+    const box = sashBox(c, rects[i], { top: s.top, bottom: s.bottom, piece: s.idx, left: s.left, right: s.right }, { flip: s.flip })
+    out.push({ s, box })
   }
   return out
 }
 
-function slidingBody(c, rects, stilesOf, frameExtras = []) {
+function slidingBody(c, rects, sashOf, frameExtras = []) {
   const out = { ...empty(), specs: [...frame4(c), ...frameExtras] }
-  for (const { i, box } of slidingSashes(c, rects, stilesOf)) {
+  for (const { s, box } of slidingSashes(c, rects, sashOf)) {
     out.specs.push(...box.specs)
-    out.glass.push({ ...box.inner, fixed: c.fixed('sash', i), kind: 'glass', part: 'sash', partIdx: i })
-    out.symbols.push(symAt(c, 'sash', i, box.inner))
+    out.glass.push({ ...box.inner, fixed: c.fixed(s.part, s.idx), kind: 'glass', part: s.part, partIdx: s.idx })
+    out.symbols.push(symAt(c, s.part, s.idx, box.inner))
   }
   return out
 }
 
-// sliding_n / sliding_3track: sash width (inner + (n−1)·overlap) / n, sash i at x = side + i·(width − overlap) (mockup sliding).
-// Left half: key stile at the frame (left), hook on the right (its rails' end 0 = hook stands right → flip).
-function evenSliding(c, n) {
-  const { W, H, th } = c
+// sliding_n / sliding_3track (R-F1): the sashes are the instances of the layout's sequence parts, left to right
+// (partModel.sequenceOf, reversed when mirrored). Sash width (inner + (n−1)·overlap) / n, sash i at x = side + i·(width − overlap)
+// (mockup sliding). Each part's rails / stiles come from its own rail joint (v = [left stile, right stile] as defined);
+// a mirrored row (3-track fixed on the right) swaps them, so its rails' end 0 stands on the right (flip).
+function evenSliding(c) {
+  const { W, H, th, layout, model } = c
+  const row = sequenceOf(model) || []
+  const n = row.length
+  if (n < 1) return { ...empty(), specs: frame4(c) }
   const s = th('frame_side'), t = th('frame_top'), b = th('frame_bottom'), ov = th(c.roles.hook)
   const iw = W - 2 * s, pw = (iw + (n - 1) * ov) / n
   const rects = Array.from({ length: n }, (_, i) => ({ x: s + i * (pw - ov), y: t, w: pw, h: H - t - b }))
-  return slidingBody(c, rects, (i) => (i < n / 2
-    ? { left: ['key_stile', i], right: ['hook_stile', i], flip: true }
-    : { left: ['hook_stile', i], right: ['key_stile', i], flip: false }))
+  const mirror = isMirrored(model)
+  const sashOf = (i) => {
+    const { part, idx } = row[i]
+    const keys = layout.parts.find((p) => p.key === part)?.positions || []
+    const [top, bottom] = keys.filter((k) => layout.positions[k].orient === 'h')
+    const v = layout.joints.find((j) => j.h === top)?.v || []
+    const [l, r] = mirror ? [v[1], v[0]] : [v[0], v[1]]
+    return { part, idx, top, bottom, left: [l, idx], right: [r, idx], flip: mirror }
+  }
+  return slidingBody(c, rects, sashOf)
 }
-const sliding_n = (c) => evenSliding(c, c.count('sash_top'))
-const sliding_3track = (c) => evenSliding(c, c.count('sash_top'))
+const sliding_n = (c) => evenSliding(c)
+const sliding_3track = (c) => evenSliding(c)
 
 // sliding_2_fixed_2 (mockup slidingFixed, equal sashes as the data's ¼ rails): hooks overlap at the two fixed/sliding
 // meetings, the two sliding sashes meet key to key in the middle. stile_a = left stile, stile_b = right stile of every sash.
@@ -160,7 +175,7 @@ function sliding_2_fixed_2(c) {
   const rects = xs.slice(0, n).map((x) => ({ x, y: t, w: pw, h }))
   // ตบธรณี (free, W × 0.5 in costing): drawn as a thin strip on the sill's inner edge
   const sill = c.has('sill_cover') ? [H_('sill_cover', 0, s, H - b, iw, Math.min(th('sill_cover'), b), FIXED)] : []
-  return slidingBody(c, rects, (i) => ({ left: ['stile_a', i], right: ['stile_b', i], flip: false }), sill)
+  return slidingBody(c, rects, (i) => ({ part: 'sash', idx: i, top: 'sash_top', bottom: 'sash_bottom', left: ['stile_a', i], right: ['stile_b', i], flip: false }), sill)
 }
 
 // Mockup door (swing): leaves = inner W / leaves, hinge stile on the hinge side; pivot → closer box in the head + top/bottom

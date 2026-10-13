@@ -31,7 +31,7 @@
 // in MILLIMETRES (frame at [0,W] × [0,H], box.scale 1, box.viewBox the drawing's mm viewBox incl. margins), with the same
 // flush-butt rule as below (a butt end is shortened by the drawn thickness of its corner partner; tee transoms, mullions,
 // free lines and mitred sashes keep their body run). sliding_2 keeps the frozen pixel-box drawing below, byte for byte.
-import { LAYOUTS, partnerEnd, pieceCount, trackOf, isFixedPiece, pieceLabel as modelPieceLabel } from './partModel.js'
+import { LAYOUTS, partnerEnd, pieceCount, trackOf, isFixedPiece, lineFamily, pieceLabel as modelPieceLabel } from './partModel.js'
 import { exprParams, rolesOf } from './layoutRegistry.js'
 import { evalExpr } from './layoutExpr.js'
 import { symbolFor } from './partSymbols.js'
@@ -298,7 +298,7 @@ function bodyCtx(model, layout, W, H, widthOf, view) {
   const ep = exprParams(model)
   const th = (key) => {
     if (widthOf) {
-      const fam = model.lines[key]?.[0]?.profile_family
+      const fam = lineFamily(model, key, 0)   // own family, else the layout's familyFrom
       const mm = fam ? num(widthOf(fam)) : null
       if (mm != null && mm > 0) return mm
     }

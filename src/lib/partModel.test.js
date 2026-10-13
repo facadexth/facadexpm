@@ -477,7 +477,7 @@ describe('expression part counts are not editable (fix round 1, spec §6)', () =
     expect(commitPartCount(m, 'sash', 5)).toBe(m)
     expect(m.parts.find(p => p.key === 'sash').count).toBe('rows*cols')
     const n = startModel('sliding_n')
-    expect(setPartCount(n, 'sash', 4)).toBe(n)
+    expect(setPartCount(n, 'sash_mid', 4)).toBe(n)   // R-F1: the middle sashes' count is 'n-2'
     // a literal-count part is still editable
     expect(setPartCount(startModel('sliding_2'), 'sash', 3).parts.find(p => p.key === 'sash').count).toBe(3)
   })
