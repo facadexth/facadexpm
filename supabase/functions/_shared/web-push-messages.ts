@@ -25,6 +25,10 @@ export function issueReportPush(workerName: string, message: string): PushPayloa
   return { title: '🚧 แจ้งปัญหาหน้างาน', body: `${workerName}: ${clip(message, 80)}`, tab: 'sites' }
 }
 
+export function workerOffboardedPush(workerName: string): PushPayload {
+  return { title: '⚠️ ช่างพ้นสภาพ ยังอยู่ในกลุ่ม LINE', body: `${clip(workerName, 60)} พ้นสภาพแล้ว กรุณาลบออกจากกลุ่ม LINE`, tab: 'communication_center' }
+}
+
 export function testPush(): PushPayload {
   return { title: '✅ ทดสอบแจ้งเตือน', body: 'แจ้งเตือนบนเครื่องนี้ใช้งานได้ปกติ', tab: 'settings' }
 }

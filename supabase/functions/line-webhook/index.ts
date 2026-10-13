@@ -193,13 +193,21 @@ async function alertOwnersOfInactiveWorker(
     const hoursSince = (Date.now() - new Date(worker.line_offboarding_alerted_at).getTime()) / (60 * 60 * 1000)
     if (hoursSince < 24) return
   }
-  if (!(await isPushEnabled(admin, settings.tenant_id, 'line_push_offboarding'))) return
-  const { data: owners } = await admin
+  const lineOn = await isPushEnabled(admin, settings.tenant_id, 'line_push_offboarding')
+  const webOn = await isPushEnabled(admin, settings.tenant_id, 'web_push_worker_offboarded')
+  if (!lineOn && !webOn) return
+  const { data: owners } = lineOn ? await admin
     .from('user_roles')
     .select('line_user_id')
     .eq('tenant_id', settings.tenant_id)
     .eq('role', 'OWNER')
-    .not('line_user_id', 'is', null)
+    .not('line_user_id', 'is', null) : { data: [] as Array<{ line_user_id: string }> }
+  if (webOn) {
+    try {
+      const [{ sendWebPushToTenantAdmins }, { workerOffboardedPush }] = await Promise.all([import('../_shared/web-push.ts'), import('../_shared/web-push-messages.ts')])
+      await sendWebPushToTenantAdmins(admin, settings.tenant_id, workerOffboardedPush(worker.name))
+    } catch (e) { console.error('web push failed', (e as Error).message) }
+  }
   for (const owner of owners ?? []) {
     await withPushBudget(admin, settings.tenant_id, () => sendLinePush(settings.channel_access_token, owner.line_user_id as string, `⚠️ ${worker.name} (พ้นสภาพพนักงานแล้ว) ยังคงส่งข้อความในระบบ LINE อยู่ กรุณาลบออกจากกลุ่มทีมงานด้วยครับ`))
   }

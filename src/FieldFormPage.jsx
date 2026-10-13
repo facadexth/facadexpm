@@ -135,6 +135,12 @@ const LEAVE_TYPES = [
   { value: 'leave_personal', label: '🏖️ ลากิจ' },
   { value: 'leave_sick', label: '🤒 ลาป่วย' },
 ]
+const LEAVE_STATUS = {
+  pending: { label: 'รอตรวจสอบ', color: 'var(--yellow)' },
+  approved: { label: 'อนุมัติแล้ว', color: 'var(--green)' },
+  rejected: { label: 'ไม่อนุมัติ', color: 'var(--red)' },
+}
+const SHIFT_LABEL = { morning: ' (ช่วงเช้า)', evening: ' (ช่วงบ่าย)' }
 
 const LEAVE_SHIFTS = [
   { value: 'full_day', label: 'เต็มวัน' },
@@ -382,6 +388,25 @@ export default function FieldFormPage({ token }) {
                 <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
                   <div style={{ fontSize: 11, color: 'var(--text3)' }}>ลาป่วยคงเหลือ</div>
                   <div style={{ fontSize: 18, fontWeight: 700, color: state.remainingSick < 0 ? 'var(--red)' : 'var(--text)' }}>{state.remainingSick} วัน</div>
+                </div>
+              </div>
+            )}
+            {(state.recentRequests || []).length > 0 && (
+              <div>
+                <div className="label">ผลการลาของฉัน</div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {state.recentRequests.map((r, i) => {
+                    const st = LEAVE_STATUS[r.status] || LEAVE_STATUS.pending
+                    return (
+                      <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{r.leave_type === 'leave_sick' ? 'ลาป่วย' : 'ลากิจ'}{SHIFT_LABEL[r.shift] || ''}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{r.date_from === r.date_to ? r.date_from : `${r.date_from} ถึง ${r.date_to}`}</div>
+                        </div>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: st.color }}>{st.label}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}

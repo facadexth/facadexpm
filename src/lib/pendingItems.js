@@ -9,6 +9,8 @@ export const PENDING_ITEMS = [
   // an ADMIN, who cannot open it, is sent to the Sites page, where each day's reports are.
   { key: 'issues_open',         icon: '🚧', label: 'แจ้งปัญหาจากหน้างานที่ยังไม่แก้',        tab: 'communication_center', fallbackTabs: ['sites'] },
   { key: 'cheques_due',         icon: '🏦', label: 'เช็คใกล้ครบกำหนด',                    tab: 'cheques' },
+  // OWNER only in practice: the Communication Center is owner-only and there is no fallback page.
+  { key: 'offboarded_in_group', icon: '⚠️', label: 'ช่างพ้นสภาพ รอลบออกจากกลุ่ม LINE', tab: 'communication_center' },
   { key: 'quotations_followup', icon: '📋', label: 'ใบเสนอราคาใกล้หมดวันยืนราคา',          tab: 'quotations' },
 ]
 

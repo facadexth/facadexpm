@@ -32,3 +32,11 @@ export function isChequeAwaitingAction(cheque, thresholdDays, todayISO) {
 export function parseChequeWindowDays(settingValue, fallback = 3) {
   return /^[0-9]+$/.test(String(settingValue ?? '').trim()) ? Number(String(settingValue).trim()) : fallback
 }
+
+//   offboarded worker  status 'inactive', the bot noticed them still in the LINE group
+//                      (line_offboarding_alerted_at), and nobody has marked them removed since
+//                      (line_group_removed_at is empty or older than that notice)
+export function isOffboardedInGroup(worker) {
+  if (worker?.status !== 'inactive' || !worker.line_offboarding_alerted_at) return false
+  return !worker.line_group_removed_at || worker.line_group_removed_at < worker.line_offboarding_alerted_at
+}

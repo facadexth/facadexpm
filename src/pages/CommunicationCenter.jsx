@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useLineGroups } from '../hooks/useLineGroups.js'
+import OffboardedInGroupCard from './OffboardedInGroupCard.jsx'
 import { planGroupRemoval } from '../lib/lineGroups.js'
 import { useAppSetting, saveAppSetting } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
@@ -470,6 +471,8 @@ export default function CommunicationCenter() {
   return (
     <div>
       <h2 style={{ marginBottom: 16, fontSize: 18, fontWeight: 700 }}>💬 การสื่อสาร — บอทไลน์ทีมงาน</h2>
+
+      <OffboardedInGroupCard />
 
       {/* ---- Command guide ---- */}
       <div className="card" style={{ marginBottom: 20 }}>
