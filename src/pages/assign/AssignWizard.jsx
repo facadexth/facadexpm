@@ -35,9 +35,24 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
     if (leaderShift.pm === id) delete leaderShift.pm
     return { ...f, sel: n, leaderShift }
   })
-  const addTeam = (teamId) => setForm(f => {
-    const ids = expandTeamSelection([teamId], members, new Set((workers || []).map(w => w.id)))
+  // Tab: pick workers one by one, or whole teams. Same `sel` underneath,
+  // so ticks made in one tab show up in the other.
+  const [pickTab, setPickTab] = useState('person')
+  const activeIds = useMemo(() => new Set((workers || []).map(w => w.id)), [workers])
+  const teamIds = (teamId) => expandTeamSelection([teamId], members, activeIds)
+  const toggleTeam = (teamId) => setForm(f => {
+    const ids = teamIds(teamId)
     if (!ids.length) { alert('ทีมนี้ยังไม่มีช่างที่เลือกได้'); return f }
+    if (ids.every(id => f.sel[id])) {
+      const sel = { ...f.sel }
+      const leaderShift = { ...f.leaderShift }
+      for (const id of ids) {
+        delete sel[id]
+        if (leaderShift.am === id) delete leaderShift.am
+        if (leaderShift.pm === id) delete leaderShift.pm
+      }
+      return { ...f, sel, leaderShift }
+    }
     return { ...f, sel: applyTeamToSelection(f.sel, ids) }
   })
   const toggleShift = (id, k) => setForm(f => {
@@ -134,16 +149,38 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
         <div>
           <div className="label" style={{ marginBottom: 6 }}>{SITE_TYPES.includes(form.type) ? '4' : '3'} · ช่าง (เลือกหลายคน · ค่าเริ่มต้นเช้า+บ่าย)</div>
           {teams.length > 0 && (
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ fontSize: 12, color: 'var(--text3)' }}>เลือกทีม</span>
-              {teams.map(t => (
-                <button key={t.id} type="button" className="btn btn-sm btn-ghost" onClick={() => addTeam(t.id)}>
-                  {t.name} ({members.filter(m => m.team_id === t.id).length})
-                </button>
+            <div role="tablist" style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+              {[{ k: 'person', l: '👤 บุคคล' }, { k: 'team', l: '👥 ทีม' }].map(t => (
+                <button key={t.k} type="button" role="tab" aria-selected={pickTab === t.k} onClick={() => setPickTab(t.k)}
+                  className={`btn btn-sm ${pickTab === t.k ? 'btn-primary' : 'btn-ghost'}`} style={{ flex: 1 }}>{t.l}</button>
               ))}
             </div>
           )}
-          <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 4 }}>
+          {teams.length > 0 && pickTab === 'team' && (
+            <div style={{ display: 'grid', gap: 4 }}>
+              {teams.map(t => {
+                const ids = teamIds(t.id)
+                const picked = ids.filter(id => form.sel[id]).length
+                const all = ids.length > 0 && picked === ids.length
+                return (
+                  <label key={t.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '8px 10px', borderRadius: 6,
+                    background: picked ? 'rgba(var(--accent-rgb), .15)' : 'rgba(255,255,255,.04)',
+                    border: picked ? '1px solid var(--accent)' : '1px solid transparent',
+                  }}>
+                    <input type="checkbox" checked={all} ref={el => { if (el) el.indeterminate = picked > 0 && !all }}
+                      onChange={() => toggleTeam(t.id)} style={{ width: 16, height: 16 }} />
+                    <span style={{ fontSize: 13, flex: 1 }}>{t.name}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text3)' }}>{picked}/{ids.length} คน</span>
+                  </label>
+                )
+              })}
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                เลือกแล้ว {selCount} คน — สลับไปแท็บบุคคลเพื่อเอาบางคนออก หรือปรับกะ/หัวหน้าทีม
+              </div>
+            </div>
+          )}
+          {(teams.length === 0 || pickTab === 'person') && <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 4 }}>
             {(workers || []).map(w => {
               const on = !!form.sel[w.id]
               return (
@@ -183,8 +220,8 @@ export default function AssignWizard({ workers = [], sites = [], initialSiteId =
               )
             })}
             {!(workers || []).length && <div style={{ fontSize: 12, color: 'var(--text3)' }}>ยังไม่มีช่าง</div>}
-          </div>
-          {needsSite && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>คลิกไอคอนหมวก 🪖 ข้างกะเพื่อตั้งหัวหน้าทีม (ได้ 1 คนต่อกะ)</div>}
+          </div>}
+          {needsSite && (teams.length === 0 || pickTab === 'person') && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>คลิกไอคอนหมวก 🪖 ข้างกะเพื่อตั้งหัวหน้าทีม (ได้ 1 คนต่อกะ)</div>}
         </div>
 
         {/* งานที่กำลังทำ (ถ้ามี) -- ผูกลูกทีมที่ assign ครั้งนี้เข้ากับการ์ด
