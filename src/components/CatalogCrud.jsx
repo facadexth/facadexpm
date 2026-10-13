@@ -29,6 +29,8 @@ export function CrudForm({ fields, initial, onSave, onCancel, loading, row = nul
   })
 
   const renderInput = (f) => {
+    // a field may render its own input (e.g. a JSON object field): render({ value, set, form })
+    if (f.render) return f.render({ value: form[f.key], set: v => set(f.key, v), form })
     if (f.type === 'checkbox') {
       return (
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
@@ -58,7 +60,7 @@ export function CrudForm({ fields, initial, onSave, onCancel, loading, row = nul
   return (
     <form onSubmit={e => { e.preventDefault(); onSave(form) }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
-        {fields.map(f => (
+        {fields.filter(f => !(f.hidden && f.hidden(form))).map(f => (
           <div key={f.key}>
             {f.type !== 'checkbox' && <label className="label">{f.label}{f.required ? ' ★' : ''}</label>}
             {renderInput(f)}

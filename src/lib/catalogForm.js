@@ -25,14 +25,17 @@ export function formFromRow(fields, row) {
 // `row` = the stored row being edited (null when adding). A field flagged omitWhenAbsent
 // (a column added by a later migration) is left out of the payload when blank and the row
 // never had the key, so environments without the column keep saving.
+// A field may declare serialize(value, form) -> the value to send (null / '' = blank; e.g. a JSON object field), and
+// blankAs = what a blank sends instead of null (a NOT NULL column).
 export function buildPayload(fields, form, row = null) {
   const payload = {}
   for (const f of fields) {
-    const v = form[f.key]
+    const v = f.serialize ? f.serialize(form[f.key], form) : form[f.key]
     if (f.omitWhenAbsent && isBlank(v) && !(row && f.key in row)) continue
+    const blank = () => (f.blankAs !== undefined ? f.blankAs : null)
     if (f.type === 'checkbox') payload[f.key] = !!v
-    else if (f.type === 'number') payload[f.key] = isBlank(v) ? (f.blankAs !== undefined ? f.blankAs : null) : parseFloat(v)
-    else payload[f.key] = isBlank(v) ? null : (typeof v === 'string' ? v.trim() : v)
+    else if (f.type === 'number') payload[f.key] = isBlank(v) ? blank() : parseFloat(v)
+    else payload[f.key] = isBlank(v) ? blank() : (typeof v === 'string' ? v.trim() : v)
   }
   return payload
 }

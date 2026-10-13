@@ -5,11 +5,16 @@
 // missing is filled with the layout's defaults so the result is always a valid model; costing then reports what is
 // incomplete (an empty profile family, a butt end without a target) instead of dropping it.
 // modelToRows / validateModel / saveModel / loadModel are the SAVE half (and a one-template loader for the editor).
-import { LAYOUTS, startModel, ensureEnds, pieceCount, validateCorners, MAX_PART_COUNT } from './partModel.js'
+import { LAYOUTS, startModel, ensureEnds, pieceCount, validateCorners, presentPositions, MAX_PART_COUNT } from './partModel.js'
+import { coerceParams, defaultParams, inputsOf, exprParams } from './layoutRegistry.js'
+import { evalExpr } from './layoutExpr.js'
 
 const num = v => (v === null || v === undefined || String(v).trim() === '' || !Number.isFinite(Number(v)) ? null : Number(v))
 const RULES = new Set(['width', 'height', 'width_minus', 'height_minus', 'perimeter'])
 const bySort = (a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0)
+// A part whose layout count is an expression over params ('n', 'rows*cols', 'cells_awning') follows the params: the
+// stored count column (INT >= 1) only records its value at save time and is never read back.
+const exprCount = def => !!def && typeof def.count === 'string'
 
 function lineFromRow(row, def) {
   const ded = num(row.length_deduction_mm)
@@ -22,19 +27,49 @@ function lineFromRow(row, def) {
     deduction_auto: typeof row.deduction_auto === 'boolean' ? row.deduction_auto : def.deduction_auto,
     length_factor: factor !== null && factor > 0 ? factor : 1,
     quantity_value: qty !== null && qty >= 0 ? qty : 1,
-    thickness_role: row.thickness_role === 'sash' ? 'sash' : null,
+    // the column allows only 'sash' / NULL: a layout's own non-sash role (door leaves: 'leaf', which costs at the frame
+    // thickness exactly like NULL) is written as NULL and comes back as the layout's role
+    thickness_role: row.thickness_role === 'sash' ? 'sash' : (def.thickness_role && def.thickness_role !== 'sash' ? def.thickness_role : null),
     ends: [],
   }
 }
 
-// { template, parts, positions, lines, ends } -> model | null. null only for a template without a (known) layout_kind.
+// The params a template's model is built with: the layout defaults (with the type's fixed_by_type values), then the
+// template's own stored layout_params (coerced: JSON may hold numeric strings / unknown keys), then the type's
+// fixed_by_type values again (they are the type's, the template cannot override them). A template saved before
+// layout_params existed (no column, or {}) therefore gets defaultParams(kind, type.layout_params) (Review Focus 1).
+function paramsFor(kind, template, type) {
+  const typeParams = coerceParams(kind, type && type.layout_params)
+  const fixed = {}
+  for (const inp of inputsOf(kind)) if (inp.fixed_by_type && inp.key in typeParams) fixed[inp.key] = typeParams[inp.key]
+  return { ...defaultParams(kind, typeParams), ...coerceParams(kind, template.layout_params), ...fixed }
+}
+
+// A template whose type names another layout_kind is refused, never re-mapped (Review Focus 4). A type without a
+// layout_kind (column not there yet, or null) is no mismatch.
+const mismatch = (template, type) => !!(type && type.layout_kind && type.layout_kind !== template.layout_kind)
+
+// { template, type?, parts, positions, lines, ends } -> model | { error } | null. null only for a template without a
+// (known) layout_kind. { error: 'layout_mismatch' } when `type` (the template's door_window_types row) has another
+// layout_kind; { error: 'layout_params_invalid' } when the stored params are refused by the layout (folding 0 + 0).
 // The row arrays may hold every tenant row: only the rows reached from this template are used.
-export function modelFromRows({ template, parts, positions, lines, ends } = {}) {
+// Positions switched off by the params (swing_door sill when sill = 'no') are absent from the model; rows stored for
+// them are ignored.
+export function modelFromRows({ template, type, parts, positions, lines, ends } = {}) {
   const kind = template && template.layout_kind
   if (!kind || !LAYOUTS[kind]) return null
+  if (mismatch(template, type)) return { error: 'layout_mismatch' }
   const layout = LAYOUTS[kind]
-  const model = startModel(kind)   // defaults for every part / position / line / end
-  const defaults = startModel(kind)
+  const params = paramsFor(kind, template, type)
+  let model, defaults
+  try {
+    model = startModel(kind, params)   // defaults for every part / position / line / end
+    defaults = startModel(kind, params)
+  } catch (e) {
+    if (e && e.message === 'layout_params_invalid') return { error: 'layout_params_invalid' }
+    throw e
+  }
+  const present = layout.order.filter(k => model.lines[k])
 
   // parts of this template, first row per part_key by sort_order
   const partRows = {}
@@ -44,7 +79,7 @@ export function modelFromRows({ template, parts, positions, lines, ends } = {}) 
   model.parts = model.parts.map(p => {
     const r = partRows[p.key]
     if (!r) return p
-    const count = Math.floor(Number(r.count))
+    const count = exprCount(layout.parts.find(d => d.key === p.key)) ? Number.NaN : Math.floor(Number(r.count))
     const overlap = num(r.overlap_mm)
     return {
       key: p.key,
@@ -75,7 +110,7 @@ export function modelFromRows({ template, parts, positions, lines, ends } = {}) 
     if (!key) continue
     ;(lineRowsByKey[key] = lineRowsByKey[key] || []).push(r)
   }
-  for (const key of layout.order) {
+  for (const key of present) {
     const pr = posRows[key]
     if (pr && String(pr.name ?? '').trim()) model.names[key] = String(pr.name).trim()
     const rows = lineRowsByKey[key]
@@ -97,6 +132,9 @@ export function modelFromRows({ template, parts, positions, lines, ends } = {}) 
       if (!(piece >= 0) || (end !== 0 && end !== 1)) continue
       const d = num(r.deduction_mm)
       pairs[piece] = pairs[piece] || [null, null]
+      // a mitred end (awning / casement sashes) is stored as 'through' (the column allows through / butt only) and comes
+      // back as the layout's mitre; partExpand ignores the stored modes of a mitred part anyway
+      if (defaults.lines[key][0].ends[piece]?.[end]?.mode === 'mitre') { pairs[piece][end] = { mode: 'mitre', to: null, deduction_mm: null }; continue }
       pairs[piece][end] = {
         mode: r.mode === 'butt' ? 'butt' : 'through',
         to: r.mode === 'butt' && r.butt_to_profile_id && where[r.butt_to_profile_id] ? { ...where[r.butt_to_profile_id] } : null,
@@ -106,7 +144,7 @@ export function modelFromRows({ template, parts, positions, lines, ends } = {}) 
     model.lines[key][line].ends = Array.from(pairs, p => [0, 1].map(e => (p && p[e]) || { ...defPair[e], to: defPair[e].to ? { ...defPair[e].to } : null }))
   }
   // a line without any end rows: line 0 gets the default pairs, later lines copy line 0 (ensureEnds)
-  for (const key of layout.order) {
+  for (const key of present) {
     model.lines[key].forEach((l, i) => {
       if (!l.ends.length && i === 0) l.ends = defaults.lines[key][0].ends.map(p => p.map(e => ({ ...e, to: e.to ? { ...e.to } : null })))
     })
@@ -114,11 +152,14 @@ export function modelFromRows({ template, parts, positions, lines, ends } = {}) 
   return ensureEnds(model)
 }
 
-// { [templateId]: model } for every template with a layout_kind (the shape costOpening's ctx.partModelByTemplate expects).
-export function partModelsByTemplate({ templates, parts, positions, lines, ends } = {}) {
+// { [templateId]: model | { error } } for every template with a layout_kind (the shape costOpening's
+// ctx.partModelByTemplate expects; costOpening reports an { error } entry by its reason). typesById: door_window_types
+// by id, so each template is checked against / defaulted from its own type (template.type_id).
+export function partModelsByTemplate({ templates, typesById, parts, positions, lines, ends } = {}) {
   const out = {}
   for (const t of templates || []) {
-    const m = modelFromRows({ template: t, parts, positions, lines, ends })
+    const type = (t && t.type_id && typesById && typesById[t.type_id]) || null
+    const m = modelFromRows({ template: t, type, parts, positions, lines, ends })
     if (m) out[t.id] = m
   }
   return out
@@ -134,6 +175,13 @@ const isNum = v => typeof v === 'number' && Number.isFinite(v)
 const nonNeg = v => (isNum(v) && v >= 0 ? v : null)
 const lineExists = (model, to) => !!(to && model.lines[to.key] && Number.isInteger(to.line) && to.line >= 0 && to.line < model.lines[to.key].length)
 
+// The value of an expression count for the INT >= 1 column (1..MAX_PART_COUNT; 1 when it cannot be evaluated).
+function savedCount(model, expr) {
+  let n
+  try { n = Math.round(evalExpr(expr, exprParams(model))) } catch { n = 1 }
+  return Number.isFinite(n) ? Math.min(MAX_PART_COUNT, Math.max(1, n)) : 1
+}
+
 // model -> { parts, positions, lines, ends } insert rows (the inverse of modelFromRows). Ids are generated here so
 // one insert per table wires every FK (part_id, position_id, position_profile_id, butt_to_profile_id).
 // Explicit column whitelist (editor-only keys never reach PostgREST; tenant_id is left to its DB default).
@@ -143,7 +191,7 @@ export function modelToRows(model, templateId, newId = () => crypto.randomUUID()
   if (!layout) throw new Error(`unknown layout ${model.layout_kind}`)
   const m = ensureEnds(model)
   const out = { parts: [], positions: [], lines: [], ends: [] }
-  const lineIds = {}   // key -> [row id per line]
+  const lineIds = {}   // key -> [row id per line]; only positions present in the model (a disabled one has no lines)
   for (const key of layout.order) lineIds[key] = (m.lines[key] || []).map(() => newId())
 
   m.parts.forEach((p, pi) => {
@@ -153,12 +201,12 @@ export function modelToRows(model, templateId, newId = () => crypto.randomUUID()
     out.parts.push({
       id: partId, template_id: templateId, part_key: p.key,
       name: String(p.name ?? '').trim() || def.name,
-      count: Math.max(1, Math.floor(Number(p.count)) || 1),
+      count: exprCount(def) && p.count === def.count ? savedCount(m, def.count) : Math.max(1, Math.floor(Number(p.count)) || 1),
       overlap_mode: p.overlap_mode === 'manual' ? 'manual' : 'auto_hook',
       overlap_mm: nonNeg(p.overlap_mm),
       sort_order: pi,
     })
-    for (const key of layout.order.filter(k => layout.positions[k].part === p.key)) {
+    for (const key of layout.order.filter(k => layout.positions[k].part === p.key && m.lines[k])) {
       const posId = newId()
       out.positions.push({
         id: posId, part_id: partId, position_key: key,
@@ -193,6 +241,14 @@ export function modelToRows(model, templateId, newId = () => crypto.randomUUID()
   return out
 }
 
+// The bom_templates columns a model carries besides its part rows: { layout_params } (coerced, known keys only) when
+// the model has params, {} when it has none (sliding_2) so the payload never names a column the database may lack.
+// Kept apart from modelToRows, whose result is exactly the four part tables.
+export function templateParamsPayload(model) {
+  const params = coerceParams(model.layout_kind, model.params)
+  return Object.keys(params).length ? { layout_params: params } : {}
+}
+
 const END_LABEL = ['ปลายที่ 1', 'ปลายที่ 2']
 const MAX_QUANTITY = 1000   // pieces per drawn piece
 
@@ -206,12 +262,13 @@ export function validateModel(model) {
     const p = (model.parts || []).find(x => x.key === def.key)
     const pname = (p && String(p.name ?? '').trim()) || def.name
     if (!p) return `ไม่พบส่วน ${def.name}`
-    if (!(Number.isInteger(Number(p.count)) && Number(p.count) >= 1 && Number(p.count) <= MAX_PART_COUNT)) return `${pname}: จำนวนต้องเป็นจำนวนเต็มตั้งแต่ 1 ถึง ${MAX_PART_COUNT}`
+    if (exprCount(def) && p.count === def.count) { /* follows the params (pieceCount clamps it) */ }
+    else if (!(Number.isInteger(Number(p.count)) && Number(p.count) >= 1 && Number(p.count) <= MAX_PART_COUNT)) return `${pname}: จำนวนต้องเป็นจำนวนเต็มตั้งแต่ 1 ถึง ${MAX_PART_COUNT}`
     if (p.overlap_mode !== 'auto_hook' && p.overlap_mode !== 'manual') return `${pname}: เลือกวิธีคิดระยะซ้อน (อัตโนมัติ / กำหนดเอง)`
     if (p.overlap_mode === 'manual' && nonNeg(p.overlap_mm) === null) return `${pname}: กรอกระยะซ้อน (มม.) ตั้งแต่ 0`
     if (p.overlap_mm !== null && p.overlap_mm !== undefined && nonNeg(p.overlap_mm) === null) return `${pname}: ระยะซ้อนต้องไม่ติดลบ`
   }
-  for (const key of layout.order) {
+  for (const key of presentPositions(model)) {
     const lines = model.lines?.[key]
     const pos = (String(model.names?.[key] ?? '').trim()) || layout.positions[key].name
     if (!Array.isArray(lines) || !lines.length) return `${pos}: ต้องมีโปรไฟล์อย่างน้อย 1 เส้น`
@@ -224,12 +281,12 @@ export function validateModel(model) {
       if (!(isNum(l.length_factor) && l.length_factor > 0)) return `${where}: สัดส่วนของความยาวที่ใช้ต้องมากกว่า 0`
       if (nonNeg(l.quantity_value) === null) return `${where}: จำนวนท่อนต้องเป็นตัวเลขไม่ติดลบ`
       if (l.quantity_value > MAX_QUANTITY) return `${where}: จำนวนท่อนต้องไม่เกิน ${MAX_QUANTITY}`
-      if (l.thickness_role !== null && l.thickness_role !== undefined && l.thickness_role !== 'sash') return `${where}: ความหนาไม่ถูกต้อง`
+      if (l.thickness_role !== null && l.thickness_role !== undefined && l.thickness_role !== 'sash' && l.thickness_role !== layout.positions[key].rule?.role) return `${where}: ความหนาไม่ถูกต้อง`
       for (let piece = 0; piece < n; piece++) {
         for (const end of [0, 1]) {
           const e = l.ends?.[piece]?.[end]
           const at = `${where} ชิ้นที่ ${piece + 1} ${END_LABEL[end]}`
-          if (!e || (e.mode !== 'through' && e.mode !== 'butt')) return `${at}: เลือกวิ่งผ่านหรือชน`
+          if (!e || (e.mode !== 'through' && e.mode !== 'butt' && e.mode !== 'mitre')) return `${at}: เลือกวิ่งผ่านหรือชน`
           if (e.deduction_mm !== null && e.deduction_mm !== undefined && nonNeg(e.deduction_mm) === null) return `${at}: ระยะหักปลายต้องไม่ติดลบ`
           if (e.mode !== 'butt') continue
           if (e.to) { if (!lineExists(model, e.to)) return `${at}: ชิ้นที่ชนไม่มีอยู่แล้ว เลือกชิ้นที่ชนใหม่` }
@@ -253,10 +310,17 @@ export function validateModel(model) {
 // requests): if an insert fails after the delete, the template is left with no / partial part rows until the
 // next successful save. The caller must show the error and keep the unsaved model in the editor so the user can
 // retry (a retry deletes and rewrites everything); costing reports a partial model as missing profiles, not 0.
+// A model with params first writes them to bom_templates.layout_params (templateParamsPayload), before any part row is
+// touched; a model without params (sliding_2) sends nothing there, so it keeps saving before the 2026-10-17-01 migration.
 export async function saveModel({ supabase, templateId, model }) {
   const problem = validateModel(model)
   if (problem) throw new Error(problem)
   const rows = modelToRows(model, templateId)
+  const tpl = templateParamsPayload(model)
+  if ('layout_params' in tpl) {
+    const { error } = await supabase.from('bom_templates').update(tpl).eq('id', templateId)
+    if (error) throw new Error(error.message)
+  }
   {
     const { error } = await supabase.from(PART_TABLES.parts).delete().eq('template_id', templateId)
     if (error) throw new Error(error.message)
@@ -269,10 +333,14 @@ export async function saveModel({ supabase, templateId, model }) {
 }
 
 // Reads ONE template's part rows (parts by template_id, then each child table by its parents' ids) and returns
-// its model; null for a template without layout_kind (no query). Throws on a read error, so a failed load can never
-// be mistaken for "no rows" and saved over the real data.
-export async function loadModel({ supabase, template }) {
-  if (!template || !template.layout_kind || !LAYOUTS[template.layout_kind]) return null
+// its model; null for a template without layout_kind (no query); { error: 'unknown_layout' } for a layout_kind this
+// code does not know and { error: 'layout_mismatch' } when `type` (the template's door_window_types row) names another
+// layout_kind (both without a query). Throws on a read error, so a failed load can never be mistaken for "no rows" and
+// saved over the real data.
+export async function loadModel({ supabase, template, type = null }) {
+  if (!template || !template.layout_kind) return null
+  if (!LAYOUTS[template.layout_kind]) return { error: 'unknown_layout' }
+  if (mismatch(template, type)) return { error: 'layout_mismatch' }
   const read = async (table, col, vals) => {
     if (Array.isArray(vals) && !vals.length) return []
     const q = supabase.from(table).select('*')
@@ -284,5 +352,5 @@ export async function loadModel({ supabase, template }) {
   const positions = await read(PART_TABLES.positions, 'part_id', parts.map(r => r.id))
   const lines = await read(PART_TABLES.lines, 'position_id', positions.map(r => r.id))
   const ends = await read(PART_TABLES.ends, 'position_profile_id', lines.map(r => r.id))
-  return modelFromRows({ template, parts, positions, lines, ends })
+  return modelFromRows({ template, type, parts, positions, lines, ends })
 }

@@ -77,13 +77,44 @@ export const inputsOf = (kind) => layoutOf(kind).inputs
 
 export const kinds = () => Object.keys(LAYOUTS)
 
-// Coerce one input value to its definition: numbers clamp to min/max (whole numbers rounded), selects must be an option;
-// anything invalid falls back to the input's default.
+// Thai label of each kind (the type form's layout_kind select).
+export const layoutLabels = Object.freeze({
+  sliding_2: 'บานเลื่อนสวน 2 บาน',
+  sliding_n: 'บานเลื่อน n บาน',
+  sliding_3track: 'บานเลื่อน 3 ราง',
+  sliding_2_fixed_2: 'บานเลื่อน 2 ตาย 2',
+  fixed_grid: 'บานติดตาย (ซอยกลาง)',
+  awning_grid: 'บานกระทุ้ง (ชั้น × ช่อง)',
+  casement_n: 'บานเปิดข้าง',
+  swing_door: 'ประตูบานเปิด/สวิง',
+  frameless_door: 'ประตูสวิงเปลือย',
+  hanging_door: 'ประตูเลื่อนรางแขวน',
+  folding_door: 'บานเฟี้ยม',
+  curtain_wall: 'Curtain wall',
+  frameless_wall: 'ผนังกระจกเปลือย',
+})
+
+const INVALID = Symbol('invalid')
+const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+
+// Coerce one input value to its definition, or INVALID. The one coercion behind defaultParams and coerceParams.
+// Values may come from JSON columns or form text: numeric strings ("2", "0.5") become numbers, clamped to min/max and
+// rounded when integer; booleans accept true/false/1/0 and their strings; a select must be one of its options (a numeric
+// option also matches its text); cells must be an object (deep-copied).
 function coerceInput(inp, v) {
-  if (inp.type === 'select') return (inp.options || []).some((o) => o.value === v) ? v : inp.default
+  if (inp.type === 'cells') return isPlainObject(v) ? JSON.parse(JSON.stringify(v)) : INVALID
+  if (inp.type === 'boolean') {
+    if (v === true || v === 1 || v === 'true' || v === '1') return true
+    if (v === false || v === 0 || v === 'false' || v === '0') return false
+    return INVALID
+  }
+  if (inp.type === 'select') {
+    const opt = (inp.options || []).find((o) => o.value === v || (typeof o.value === 'number' && typeof v === 'string' && v.trim() !== '' && Number(v) === o.value))
+    return opt ? opt.value : INVALID
+  }
   if (inp.type === 'number' || inp.min !== undefined || inp.max !== undefined) {
-    let n = typeof v === 'number' ? v : Number.NaN
-    if (!Number.isFinite(n)) return inp.default
+    let n = typeof v === 'number' ? v : (typeof v === 'string' && v.trim() !== '' ? Number(v) : Number.NaN)
+    if (!Number.isFinite(n)) return INVALID
     if (inp.integer) n = Math.round(n)
     if (inp.min !== undefined) n = Math.max(inp.min, n)
     if (inp.max !== undefined) n = Math.min(inp.max, n)
@@ -92,13 +123,30 @@ function coerceInput(inp, v) {
   return v
 }
 
+// Stored / typed params (bom_templates / estimation_openings / door_window_types .layout_params, or form state) -> the
+// kind's params: known input keys only, each coerced (see coerceInput); an invalid value is dropped so the caller's
+// defaults apply. A non-object gives {}. Throws unknown_layout for an unknown kind.
+export function coerceParams(kind, params) {
+  const out = {}
+  const src = isPlainObject(params) ? params : {}
+  for (const inp of inputsOf(kind)) {
+    if (!Object.prototype.hasOwnProperty.call(src, inp.key)) continue
+    const v = coerceInput(inp, src[inp.key])
+    if (v !== INVALID) out[inp.key] = v
+  }
+  return out
+}
+
 // Layout input defaults, overridden by the type's layout_params for inputs marked fixed_by_type; clamped to min/max.
 export function defaultParams(kind, typeParams) {
   const out = {}
-  const tp = typeParams || {}
+  const tp = coerceParams(kind, typeParams)
   for (const inp of inputsOf(kind)) {
-    if (inp.default !== undefined) out[inp.key] = coerceInput(inp, typeof inp.default === 'object' ? JSON.parse(JSON.stringify(inp.default)) : inp.default)
-    if (inp.fixed_by_type && Object.prototype.hasOwnProperty.call(tp, inp.key)) out[inp.key] = coerceInput(inp, tp[inp.key])
+    if (inp.default !== undefined) {
+      const v = coerceInput(inp, typeof inp.default === 'object' ? JSON.parse(JSON.stringify(inp.default)) : inp.default)
+      out[inp.key] = v === INVALID ? inp.default : v
+    }
+    if (inp.fixed_by_type && Object.prototype.hasOwnProperty.call(tp, inp.key)) out[inp.key] = tp[inp.key]
   }
   return out
 }

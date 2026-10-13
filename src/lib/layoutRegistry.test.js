@@ -142,3 +142,49 @@ describe('defaultParams clamping', () => {
     expect(defaultParams('awning_grid', {})).toEqual({ rows: 2, cols: 2, open: 'out' })
   })
 })
+
+// ---- Task 9: coerceParams / layoutLabels ----
+import { coerceParams, layoutLabels } from './layoutRegistry.js'
+
+describe('coerceParams (stored JSON -> typed params)', () => {
+  it('numeric strings become numbers, clamped to min/max and rounded when integer', () => {
+    expect(coerceParams('awning_grid', { rows: '2', cols: '0.5' })).toEqual({ rows: 2, cols: 1 })
+    expect(coerceParams('awning_grid', { rows: 99 })).toEqual({ rows: 8 })
+    expect(coerceParams('sliding_n', { n: '3' })).toEqual({ n: 3 })
+  })
+  it('unknown keys and invalid values are dropped (the defaults then apply)', () => {
+    expect(coerceParams('awning_grid', { rows: 2, junk: 1, open: 'sideways' })).toEqual({ rows: 2 })
+    expect(coerceParams('awning_grid', { rows: 'abc', cols: '' })).toEqual({})
+    expect(coerceParams('sliding_2', { anything: 1 })).toEqual({})
+  })
+  it('booleans from true/false/1/0 (and their strings); selects keep their option value, numeric options from text', () => {
+    expect(coerceParams('sliding_n', { door: 'true' })).toEqual({ door: true })
+    expect(coerceParams('sliding_n', { door: 0 })).toEqual({ door: false })
+    expect(coerceParams('swing_door', { pivot: 1, sill: 'no' })).toEqual({ pivot: true, sill: 'no' })
+    expect(coerceParams('curtain_wall', { k: '1', unitized: 'false' })).toEqual({ k: 1, unitized: false })
+  })
+  it('cells stay an object (a non-object is dropped); null / non-object input gives {}', () => {
+    const cells = { '0,1': 'awning' }
+    const out = coerceParams('curtain_wall', { cells })
+    expect(out).toEqual({ cells })
+    expect(out.cells).not.toBe(cells)
+    expect(coerceParams('curtain_wall', { cells: 'x' })).toEqual({})
+    expect(coerceParams('curtain_wall', null)).toEqual({})
+    expect(coerceParams('curtain_wall', [1, 2])).toEqual({})
+  })
+  it('throws unknown_layout for an unknown kind', () => {
+    expect(() => coerceParams('nope', {})).toThrow(/unknown_layout/)
+  })
+  it('defaultParams shares the coercion: a numeric string from the type is taken', () => {
+    expect(defaultParams('awning_grid', { rows: '3', cols: '4' })).toEqual({ rows: 3, cols: 4, open: 'out' })
+  })
+})
+
+describe('layoutLabels', () => {
+  it('has a Thai label for every registered kind', () => {
+    expect(Object.keys(layoutLabels).sort()).toEqual(kinds().filter(k => !k.startsWith('test_')).sort())
+    expect(layoutLabels.sliding_2).toBe('บานเลื่อนสวน 2 บาน')
+    expect(layoutLabels.awning_grid).toBe('บานกระทุ้ง (ชั้น × ช่อง)')
+    expect(layoutLabels.frameless_wall).toBe('ผนังกระจกเปลือย')
+  })
+})

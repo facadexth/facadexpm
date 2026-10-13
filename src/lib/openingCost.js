@@ -10,6 +10,8 @@ import { resolveCatalogProfile } from './aluCatalogPricing.js'
 import { expandParts } from './partExpand.js'
 import { allowsMixedThickness } from './estimationCatalogViews.js'
 import { openingExtras } from './openingExtras.js'
+import { setParams } from './partModel.js'
+import { coerceParams, inputsOf } from './layoutRegistry.js'
 
 const positive = n => Number.isFinite(Number(n)) && Number(n) > 0
 
@@ -60,7 +62,32 @@ function partFamilyOpts({ model, index, seriesId, thicknessMm, allowMixed, sashT
   return { index, seriesId, thicknessMmByFamily, thicknessMm }
 }
 
+// The template's model as this item uses it: the item's estimation_openings.layout_params (coerced) override the
+// template's params for inputs marked `estimator` and not `fixed_by_type` only (a fixed_by_type input such as awning
+// rows/cols is the type's; anything else is the template's). Returns the same model object when nothing changes, a
+// new one (setParams: piece counts and factors follow) otherwise, { error: 'layout_params_invalid' } when the layout
+// refuses the combination, and the input unchanged for a missing / refused model.
+export function modelForItem(model, item) {
+  if (!model || model.error || !model.layout_kind) return model
+  const lp = coerceParams(model.layout_kind, item && item.layout_params)
+  const patch = {}
+  for (const inp of inputsOf(model.layout_kind)) {
+    if (!inp.estimator || inp.fixed_by_type || !(inp.key in lp)) continue
+    if (JSON.stringify(lp[inp.key]) !== JSON.stringify((model.params || {})[inp.key])) patch[inp.key] = lp[inp.key]
+  }
+  if (!Object.keys(patch).length) return model
+  try { return setParams(model, patch) } catch (e) {
+    if (e && e.message === 'layout_params_invalid') return { error: 'layout_params_invalid' }
+    throw e
+  }
+}
+
+// Glass / panel parts (frameless leaves and panes: part.glass; curtain-wall spandrels: part.panel) have no positions,
+// so they expand to no aluminium rows. Their infill (glassParts / layoutCells.panelCells) is NOT priced here yet: a
+// later infill task prices it from those helpers.
 function preparePartComponents({ template, model, index, seriesId, thicknessMm, allowMixed, sashThicknessMm }) {
+  // a model refused at load (partSave: layout_mismatch / layout_params_invalid) or by the item's params
+  if (model && model.error) return { components: [], issues: [{ role_name: template.name || '', reason: model.error }] }
   const opts = partFamilyOpts({ model, index, seriesId, thicknessMm, allowMixed, sashThicknessMm })
   const { components, issues } = expandParts({ model, buttOf: buttOfFor(opts), widthOf: widthOfFor(opts) })
   return {
@@ -69,22 +96,24 @@ function preparePartComponents({ template, model, index, seriesId, thicknessMm, 
   }
 }
 
-function prepareComponents({ template, components, joints, partModelByTemplate, index, seriesId, thicknessMm, sashThicknessMm }) {
+// item: the item whose layout_params apply (main template only; null for the add-on).
+function prepareComponents({ template, components, joints, partModelByTemplate, index, seriesId, thicknessMm, sashThicknessMm, item = null }) {
   const allowMixed = template.type_id ? allowsMixedThickness(index, seriesId, template.type_id) : false
   if (template.layout_kind) {
-    const model = (partModelByTemplate && partModelByTemplate[template.id]) || null
+    const model = modelForItem((partModelByTemplate && partModelByTemplate[template.id]) || null, item)
     return preparePartComponents({ template, model, index, seriesId, thicknessMm, allowMixed, sashThicknessMm })
   }
   return applyJoints({ components: applyRoleThickness(components, { allowMixed, sashThicknessMm }), joints, index, seriesId, thicknessMm })
 }
 
 // The item preview's part context of a layout_kind template: { model, buttOf, widthOf } exactly as costOpening expands it
-// (same model, same per-family thickness), or null for a template without layout_kind or without a loaded model.
-// ctx = the costOpening context (index, partModelByTemplate); resolved = resolveItemInputs(...) of the item.
-export function partPreviewCtx(ctx, template, resolved) {
+// (same model, same per-family thickness), or null for a template without layout_kind or without a usable model.
+// ctx = the costOpening context (index, partModelByTemplate); resolved = resolveItemInputs(...) of the item;
+// item (optional) = the item, whose layout_params adjust the model as in costing (modelForItem).
+export function partPreviewCtx(ctx, template, resolved, item = null) {
   if (!template || !template.layout_kind) return null
-  const model = (ctx && ctx.partModelByTemplate && ctx.partModelByTemplate[template.id]) || null
-  if (!model) return null
+  const model = modelForItem((ctx && ctx.partModelByTemplate && ctx.partModelByTemplate[template.id]) || null, item)
+  if (!model || model.error) return null
   const index = ctx.index
   const r = resolved || {}
   const allowMixed = template.type_id && index ? allowsMixedThickness(index, r.series_id, template.type_id) : false
@@ -94,7 +123,9 @@ export function partPreviewCtx(ctx, template, resolved) {
 
 // ctx: { item, project, template, addonTemplate, componentsByTemplate, hardwareByTemplate, jointsByTemplate,
 //        typesById, infillTypesById, index, settings, asOf, packageItems?, partModelByTemplate? }
-// partModelByTemplate: { [templateId]: model } (partSave.modelFromRows) for templates with layout_kind; ignored otherwise.
+// partModelByTemplate: { [templateId]: model | { error } } (partSave.partModelsByTemplate) for templates with layout_kind;
+// ignored otherwise. An { error } entry is reported by its reason (layout_mismatch ...), never priced.
+// item.layout_params (estimation_openings) adjust the main template's model (modelForItem).
 export function costOpening(ctx) {
   const { item: rawItem, project, template, addonTemplate, index, settings, asOf } = ctx
   // DB numerics can arrive as strings; the engine adds width + height, so coerce once here.
@@ -109,7 +140,7 @@ export function costOpening(ctx) {
   if (resolved.infill_type_id && !(ctx.infillTypesById || {})[resolved.infill_type_id]) own.push({ name: 'วัสดุอุดช่อง', reason: 'unknown_infill', source: 'main' })
 
   const main = buildEngineOpening(item, project, template, ctx.typesById, ctx.infillTypesById, ctx.packageItems)
-  const prepared = prepareComponents({ template, components: byT(ctx.componentsByTemplate, template.id), joints: byT(ctx.jointsByTemplate, template.id), partModelByTemplate: ctx.partModelByTemplate, index, seriesId: resolved.series_id, thicknessMm: resolved.thickness_mm, sashThicknessMm: resolved.sash_thickness_mm })
+  const prepared = prepareComponents({ template, components: byT(ctx.componentsByTemplate, template.id), joints: byT(ctx.jointsByTemplate, template.id), partModelByTemplate: ctx.partModelByTemplate, index, seriesId: resolved.series_id, thicknessMm: resolved.thickness_mm, sashThicknessMm: resolved.sash_thickness_mm, item: rawItem })
   issues.push(...prepared.issues)
   const bom = computeBomForOpening(main.opening, template, prepared.components, byT(ctx.hardwareByTemplate, template.id), pricing, main.infillType)
 

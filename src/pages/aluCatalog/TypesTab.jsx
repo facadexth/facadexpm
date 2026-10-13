@@ -4,7 +4,8 @@
 import { useMemo } from 'react'
 import { useCatalogTable } from '../../hooks/useAluCatalog.js'
 import CatalogCrud, { ActiveBadge } from '../../components/CatalogCrud.jsx'
-import { flattenTypeTree, parentOptions, categoryForParent, thaiTypeError } from '../../lib/catalogTypeForm.js'
+import { flattenTypeTree, parentOptions, categoryForParent, thaiTypeError, typeLayoutFields, typeLayoutInputs } from '../../lib/catalogTypeForm.js'
+import { layoutLabels } from '../../lib/layoutRegistry.js'
 
 const CATEGORY_LABEL = { door: 'ประตู', window: 'หน้าต่าง', curtain_wall: 'ผนังกระจก' }
 
@@ -21,8 +22,33 @@ export const typeFields = (types) => [
     options: Object.entries(CATEGORY_LABEL).map(([value, label]) => ({ value, label })) },
   { key: 'default_labour_per_sqm', label: 'เรทค่าแรง (บาท/ตร.ม.) · ค่าแรง = เรท × พื้นที่', type: 'number', min: 0,
     hint: 'เว้นว่าง = ใช้ของประเภทแม่ · เรทค่าแรงของเราเอง ไม่ได้นำเข้าจากโรงรีด' },
+  ...typeLayoutFields().map(f => (f.key === 'layout_params' ? { ...f, render: props => <LayoutParamsInputs {...props} /> } : f)),
   { key: 'active', label: 'ใช้งานอยู่', type: 'checkbox', default: true },
 ]
+
+// The kind's fixed_by_type inputs (catalogTypeForm.typeLayoutInputs); values stay form text / booleans until
+// typeLayoutParamsPayload serialises them. The template editor and item form show them read-only (Task 10).
+export function LayoutParamsInputs({ value, set, form }) {
+  const values = value && typeof value === 'object' ? value : {}
+  const put = (k, v) => set({ ...values, [k]: v })
+  return (
+    <fieldset style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', display: 'grid', gap: 8 }}>
+      {typeLayoutInputs(form.layout_kind).map(i => (
+        <label key={i.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+          {i.type === 'boolean'
+            ? <><input type="checkbox" checked={values[i.key] === true} onChange={e => put(i.key, e.target.checked)} />{i.label}</>
+            : i.type === 'select'
+              ? <>{i.label}<select className="input" value={values[i.key] ?? ''} onChange={e => put(i.key, e.target.value)}>
+                  <option value="">ค่าเริ่มต้น</option>
+                  {(i.options || []).map(o => <option key={String(o.value)} value={String(o.value)}>{o.label}</option>)}
+                </select></>
+              : <>{i.label}<input className="input" type="number" min={i.min} max={i.max} step={i.integer ? 1 : 'any'} style={{ width: 100 }}
+                  placeholder={i.default !== undefined ? String(i.default) : ''} value={values[i.key] ?? ''} onChange={e => put(i.key, e.target.value)} /></>}
+        </label>
+      ))}
+    </fieldset>
+  )
+}
 
 export const typeErrorText = e => thaiTypeError(e && e.message)
 
@@ -50,6 +76,7 @@ export default function TypesTab({ canEdit }) {
           )
         } },
         { key: 'category', label: 'กลุ่ม', render: r => CATEGORY_LABEL[r.category] || r.category },
+        { key: 'layout_kind', label: 'แบบชิ้นส่วน', render: r => (r.layout_kind ? layoutLabels[r.layout_kind] || r.layout_kind : '—') },
         { key: 'default_labour_per_sqm', label: 'เรทค่าแรง บาท/ตร.ม.', render: r => (
           r.default_labour_per_sqm == null
             ? (r.parent_id ? <span style={{ fontSize: 12, color: 'var(--text3)' }}>ใช้ของประเภทแม่</span> : '—')

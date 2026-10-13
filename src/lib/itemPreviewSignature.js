@@ -151,5 +151,5 @@ export function snapshotFor(row, { project, ctx, views }) {
   const atpl = row.addon_template_id ? ctx.templatesById[row.addon_template_id] || null : null
   const r = resolveItemInputs(row, project, tpl, ctx.index.types, ctx.packageItems)
   const frames = previewFrames({ template: tpl, addonTemplate: atpl, ctx, seriesId: r.series_id, thicknessMm: r.thickness_mm })
-  return snapshotPreviews(row, tpl, atpl, frames, views, partPreviewCtx(ctx, tpl, r))
+  return snapshotPreviews(row, tpl, atpl, frames, views, partPreviewCtx(ctx, tpl, r, row))
 }

@@ -284,3 +284,100 @@ describe('isolation: a template without layout_kind is untouched by part models'
     expect(JSON.stringify(costOpening({ ...j, partModelByTemplate: { t1: partModel() } }))).toBe(JSON.stringify(costOpening(j)))
   })
 })
+
+// ---- Task 9: every layout kind; the item's layout_params ----
+import { partPreviewCtx, modelForItem } from './openingCost.js'
+import { cycleCellKind } from './partModel.js'
+
+const famAll = (m, fams) => {
+  const out = JSON.parse(JSON.stringify(m))
+  for (const k of Object.keys(out.lines)) out.lines[k][0].profile_family = fams[k] || (k.startsWith('frame') ? 'fh' : 'sr')
+  return out
+}
+const kCtx = (model, kind, item = {}) => ({
+  ...pCtx(model),
+  template: T({ id: 'tp', name: `แบบ ${kind}`, layout_kind: kind }),
+  item: { width_m: 2, height_m: 1.5, panel_count: 1, quantity: 1, template_id: 'tp', ...item },
+})
+const qty = (r, role) => r.bom.profileLines.filter(l => l.role_name.startsWith(role)).reduce((s, l) => s + l.quantity, 0)
+
+describe('costOpening: the item\'s layout_params override the template\'s for estimator inputs only', () => {
+  const slidingN = () => famAll(startModel('sliding_n'), { frame_side: 'fs', key_stile: 'ks', hook_stile: 'hs' })
+  it('sliding_n template (n 2) priced for an item with layout_params { n: 3 } has three sashes', () => {
+    const two = costOpening(kCtx(slidingN(), 'sliding_n'))
+    expect(qty(two, 'บานเลื่อนบน')).toBe(2)
+    for (const lp of [{ n: 3 }, { n: '3' }]) {
+      const three = costOpening(kCtx(slidingN(), 'sliding_n', { layout_params: lp }))
+      expect(qty(three, 'บานเลื่อนบน')).toBe(3)
+      expect(qty(three, 'บานเลื่อนล่าง')).toBe(3)
+      expect(qty(three, 'เสากุญแจ')).toBe(3)
+      expect(qty(three, 'เสาเกี่ยว')).toBe(3)
+      expect(three.total).toBeGreaterThan(two.total)
+    }
+  })
+  it('a non-estimator / fixed_by_type input on the item is ignored: rows on awning_grid, door on sliding_n', () => {
+    const awning = famAll(startModel('awning_grid', { rows: 2, cols: 2 }), {})
+    const base = costOpening(kCtx(awning, 'awning_grid'))
+    const withRows = costOpening(kCtx(awning, 'awning_grid', { layout_params: { rows: 3, cols: 1 } }))
+    expect(JSON.stringify(withRows.bom.profileLines)).toBe(JSON.stringify(base.bom.profileLines))
+    expect(withRows.total).toBe(base.total)
+    const door = costOpening(kCtx(slidingN(), 'sliding_n', { layout_params: { door: true } }))
+    expect(JSON.stringify(door.bom)).toBe(JSON.stringify(costOpening(kCtx(slidingN(), 'sliding_n')).bom))
+  })
+  it('modelForItem: same model object when the item changes nothing; unknown keys dropped', () => {
+    const m = slidingN()
+    expect(modelForItem(m, {})).toBe(m)
+    expect(modelForItem(m, { layout_params: { n: 2, junk: 1 } })).toBe(m)
+    expect(modelForItem(m, { layout_params: { rows: 4 } })).toBe(m)
+    expect(modelForItem(m, { layout_params: { n: 9 } }).params.n).toBe(6)   // clamped to the input max
+    expect(modelForItem(null, { layout_params: { n: 3 } })).toBeNull()
+  })
+  it('an item param set the layout refuses (folding 0 + 0) is reported, never thrown', () => {
+    const fold = famAll(startModel('folding_door'), {})
+    const r = costOpening(kCtx(fold, 'folding_door', { layout_params: { nL: 0, nR: 0 } }))
+    expect(r.unresolved).toContainEqual({ name: 'แบบ folding_door', reason: 'layout_params_invalid', source: 'joint' })
+    expect(r.bom.profileLines).toEqual([])
+  })
+  it('the item preview draws the same item-adjusted model (partPreviewCtx with the item)', () => {
+    const c = kCtx(slidingN(), 'sliding_n', { layout_params: { n: 3 } })
+    const resolved = costOpening(c).resolved
+    expect(partPreviewCtx(c, c.template, resolved, c.item).model.params.n).toBe(3)
+    expect(partPreviewCtx(c, c.template, resolved).model.params.n).toBe(2)
+  })
+  it('only the main template takes the item params; an add-on part template keeps its own', () => {
+    const c = kCtx(slidingN(), 'sliding_n', { layout_params: { n: 3 } })
+    c.template = T({ id: 't1' })
+    c.componentsByTemplate = { t1: [] }
+    c.addonTemplate = T({ id: 'tp', layout_kind: 'sliding_n' })
+    c.item = { ...c.item, template_id: 't1', addon_template_id: 'tp', addon_width_m: 2, addon_height_m: 1 }
+    const r = costOpening(c)
+    expect(r.addonBom.profileLines.filter(l => l.role_name === 'บานเลื่อนบน').reduce((s, l) => s + l.quantity, 0)).toBe(2)
+  })
+})
+
+describe('costOpening: refusals and glass / panel parts', () => {
+  it('a model refused at load (layout_mismatch) is reported with the template name, no rows', () => {
+    const c = kCtx(null, 'sliding_2')
+    c.partModelByTemplate = { tp: { error: 'layout_mismatch' } }
+    const r = costOpening(c)
+    expect(r.bom.profileLines).toEqual([])
+    expect(r.unresolved).toContainEqual({ name: 'แบบ sliding_2', reason: 'layout_mismatch', source: 'joint' })
+    expect(partPreviewCtx(c, c.template, r.resolved)).toBeNull()
+  })
+  it('frameless_door costs its three frame pieces and no leaf rows (the leaves are glass)', () => {
+    const m = famAll(startModel('frameless_door', { leaves: 2 }), { frame_side: 'fs' })
+    const r = costOpening(kCtx(m, 'frameless_door'))
+    expect(r.bom.profileLines.map(l => l.role_name).every(n => n.startsWith('เฟรม'))).toBe(true)
+    expect(r.bom.profileLines.reduce((s, l) => s + l.quantity, 0)).toBe(3)
+    expect(r.unresolved).toEqual([])
+  })
+  it('a curtain wall with a spandrel (panel) cell costs without throwing and prices no panel aluminium', () => {
+    let m = startModel('curtain_wall')
+    m = cycleCellKind(cycleCellKind(m, 0, 0), 0, 0)   // glass -> awning -> spandrel
+    m = famAll(m, {})
+    const r = costOpening(kCtx(m, 'curtain_wall'))
+    expect(r.bom.profileLines.length).toBeGreaterThan(0)
+    expect(r.bom.profileLines.some(l => /spandrel|แผงทึบ/i.test(l.role_name))).toBe(false)
+    expect(Number.isFinite(r.total)).toBe(true)
+  })
+})

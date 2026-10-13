@@ -193,7 +193,7 @@ export function currentPreviewSigs({ items, costs, base }) {
     if (!template) continue
     const addonTemplate = item.addon_template_id ? byId[item.addon_template_id] || null : null
     const resolved = previewFrames({ template, addonTemplate, ctx: base, seriesId: cost.resolved.series_id, thicknessMm: cost.resolved.thickness_mm })
-    out[item.id] = itemPreviewSignature(item, template, addonTemplate, resolved, partPreviewCtx(base, template, cost.resolved))
+    out[item.id] = itemPreviewSignature(item, template, addonTemplate, resolved, partPreviewCtx(base, template, cost.resolved, item))
   }
   return out
 }

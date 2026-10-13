@@ -19,6 +19,7 @@ import { useCatalogTable, useEstimationCatalog } from '../hooks/useAluCatalog.js
 import { useTemplateJoints } from '../hooks/useEstimation2b.js'
 import { jointRowsForInsert, validateJoints, componentRowsForInsert, jointIndexForLoad, templatePayload } from '../lib/templateSave.js'
 import { loadModel, validateModel, saveModel } from '../lib/partSave.js'
+import { reasonText } from '../lib/reasonText.js'
 import { startModel } from '../lib/partModel.js'
 import PartEditor from './bomTemplates/PartEditor.jsx'
 import { defaultTestPick } from './bomTemplates/partEditorView.js'
@@ -120,8 +121,11 @@ export function TemplateEditor({ template, joints, catalog, types, components, h
   useEffect(() => {
     if (!template?.layout_kind) return
     let live = true
-    loadModel({ supabase, template })
-      .then(m => { if (live) setModel(m) })
+    // with its type: a template whose type names another layout_kind is refused (never re-mapped), and a template saved
+    // before layout_params takes the type's fixed values (TemplatesView opens the editor only once types are loaded)
+    const type = (template.type_id && (types || []).find(t => t.id === template.type_id)) || null
+    loadModel({ supabase, template, type })
+      .then(m => { if (!live) return; if (m && m.error) setModelError(reasonText(m.error)); else setModel(m) })
       .catch(e => { if (live) setModelError(e.message) })
     return () => { live = false }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps -- once per opened template (the editor is keyed by id)
@@ -182,7 +186,10 @@ export function TemplateEditor({ template, joints, catalog, types, components, h
       const payload = templatePayload(form, template?.layout_kind)
       const partMode = !!form.layout_kind
       // nothing is written until everything checks out
-      const problem = partMode
+      const formType = typesById[form.type_id]
+      const problem = partMode && formType && formType.layout_kind && formType.layout_kind !== form.layout_kind
+        ? reasonText('layout_mismatch')
+        : partMode
         ? (model ? validateModel(model) : (modelError ? 'โหลดข้อมูลชิ้นส่วนของเทมเพลตไม่สำเร็จ จึงยังไม่ได้บันทึกอะไร กรุณารีโหลดหน้านี้: ' + modelError : 'กำลังโหลดข้อมูลชิ้นส่วนของเทมเพลต กรุณารอสักครู่แล้วกดบันทึกอีกครั้ง'))
         : (validateJoints(jointRows) || validateComponentRows(rows, jointRows))
       if (problem) { alert(problem); return }
@@ -283,7 +290,10 @@ export function TemplateEditor({ template, joints, catalog, types, components, h
       if (partMode) {
         // Show what is now in the tables (this template only; no tenant-wide refetch). The save itself succeeded,
         // so a failed re-read keeps the in-memory model, which is exactly what was just written.
-        try { setModel(await loadModel({ supabase, template: { id: templateId, layout_kind: form.layout_kind } })) }
+        try {
+          const m = await loadModel({ supabase, template: { id: templateId, layout_kind: form.layout_kind, layout_params: model.params || {} }, type: typesById[form.type_id] || null })
+          if (m && !m.error) setModel(m)
+        }
         catch (e) { console.warn('reload part model failed', e) }
       }
       onSaved()

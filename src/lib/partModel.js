@@ -46,6 +46,13 @@ const enabledPos = (layout, key, p) => {
 }
 const isEnabled = (model, key) => enabledPos(layoutOfModel(model), key, exprParams(model))
 
+// The layout's positions that exist under the model's params, in display order (order minus `enabled` = 0 positions).
+export function presentPositions(model) {
+  const layout = layoutOfModel(model)
+  const p = exprParams(model)
+  return layout.order.filter((key) => enabledPos(layout, key, p))
+}
+
 // Joints between present positions only: a joint that names a disabled position is skipped (its ends become joint-less -> through).
 function jointsOf(model) {
   const layout = layoutOfModel(model)

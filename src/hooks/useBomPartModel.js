@@ -9,8 +9,9 @@ import { useMemo } from 'react'
 import { useCatalogTable } from './useAluCatalog.js'
 import { partModelsByTemplate } from '../lib/partSave.js'
 
-// templates: the bom_templates rows (their layout_kind decides which get a model).
-export function useBomPartModel(templates) {
+// templates: the bom_templates rows (their layout_kind decides which get a model); typesById: door_window_types by id
+// (each template is checked against its type's layout_kind and defaulted from its layout_params; optional).
+export function useBomPartModel(templates, typesById = null) {
   const parts = useCatalogTable('bom_template_parts', 'sort_order')
   const positions = useCatalogTable('bom_template_positions', 'sort_order')
   const lines = useCatalogTable('bom_template_position_profiles', 'sort_order')
@@ -21,8 +22,8 @@ export function useBomPartModel(templates) {
   // issues); with nothing loaded a layout_kind template has no model and costOpening says no_model.
   const complete = !!(parts.data && positions.data && lines.data && ends.data) && !error
   const partModelByTemplate = useMemo(
-    () => (complete ? partModelsByTemplate({ templates, parts: parts.data, positions: positions.data, lines: lines.data, ends: ends.data }) : {}),
-    [complete, templates, parts.data, positions.data, lines.data, ends.data],
+    () => (complete ? partModelsByTemplate({ templates, typesById, parts: parts.data, positions: positions.data, lines: lines.data, ends: ends.data }) : {}),
+    [complete, templates, typesById, parts.data, positions.data, lines.data, ends.data],
   )
   return {
     partModelByTemplate, loading, error,

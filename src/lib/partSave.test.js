@@ -284,6 +284,7 @@ function fakeClient({ failOn = null, data = {} } = {}) {
       return {
         delete() { return { eq(col, val) { calls.push(['delete', table, col, val]); return Promise.resolve(result('delete')) } } },
         insert(rows) { calls.push(['insert', table, rows.length]); return Promise.resolve(result('insert')) },
+        update(row) { return { eq(col, val) { calls.push(['update', table, row, col, val]); return Promise.resolve(result('update')) } } },
         select() {
           const q = { filters: [] }
           const done = () => { calls.push(['select', table, ...q.filters]); const r = result('select'); return r }
@@ -362,5 +363,172 @@ describe('caps are checked before any delete', () => {
     const big = named(); big.parts[1].count = 1e10
     await expect(saveModel({ supabase: c, templateId: 't1', model: big })).rejects.toThrow(/1 ถึง 10/)
     expect(c.calls).toEqual([])
+  })
+})
+
+// ---- Task 9: layout_params, type/template layout_kind, disabled positions ----
+import { templateParamsPayload } from './partSave.js'
+import { cycleCellKind } from './partModel.js'
+import { expandParts } from './partExpand.js'
+
+const filled = (m) => {
+  const out = JSON.parse(JSON.stringify(m))
+  for (const k of Object.keys(out.lines)) out.lines[k][0].profile_family = `F-${k}`
+  return out
+}
+// save then load, the way BomTemplates does it: part rows + the bom_templates row's layout_params
+const trip = (m, kind = m.layout_kind, extra = {}) =>
+  modelFromRows({ template: { id: 't1', layout_kind: kind, ...templateParamsPayload(m) }, ...modelToRows(m, 't1', seqId()), ...extra })
+
+describe('layout_params round-trip (Task 9)', () => {
+  it('awning_grid keeps its params: rows 2 cols 2 and rows 3 cols 1', () => {
+    for (const p of [{ rows: 2, cols: 2 }, { rows: 3, cols: 1, open: 'in' }]) {
+      const m = filled(startModel('awning_grid', p))
+      const back = trip(m)
+      expect(back).toEqual(m)
+      expect(back.params).toMatchObject(p)
+    }
+  })
+  it('curtain_wall keeps its cells (and the awning / spandrel piece counts that follow them)', () => {
+    let m = startModel('curtain_wall')
+    m = cycleCellKind(m, 0, 1)                    // glass -> awning
+    m = cycleCellKind(cycleCellKind(m, 2, 0), 2, 0)   // glass -> awning -> spandrel
+    m = filled(m)
+    expect(m.params.cells).toEqual({ '0,1': 'awning', '2,0': 'spandrel' })
+    expect(trip(m)).toEqual(m)
+  })
+  it('templateParamsPayload: {} for a model without params (sliding_2), else the coerced params', () => {
+    expect(templateParamsPayload(startModel('sliding_2'))).toEqual({})
+    const m = startModel('awning_grid', { rows: 3 })
+    expect(templateParamsPayload({ ...m, params: { ...m.params, junk: 1 } })).toEqual({ layout_params: { rows: 3, cols: 2, open: 'out' } })
+  })
+  it('stored params arrive as JSON with numeric strings and unknown keys: coerced, clamped, dropped', () => {
+    const m = filled(startModel('awning_grid', { rows: 3, cols: 1 }))
+    const rows = modelToRows(m, 't1', seqId())
+    const back = modelFromRows({ template: { id: 't1', layout_kind: 'awning_grid', layout_params: { rows: '3', cols: '1', junk: 'x' } }, ...rows })
+    expect(back).toEqual(m)
+    const big = modelFromRows({ template: { id: 't1', layout_kind: 'awning_grid', layout_params: { rows: 99 } } })
+    expect(big.params.rows).toBe(8)
+  })
+  it('stored params the layout refuses (folding nL 0 nR 0) give { error: layout_params_invalid }, never a throw', () => {
+    expect(modelFromRows({ template: { id: 't1', layout_kind: 'folding_door', layout_params: { nL: 0, nR: 0 } } })).toEqual({ error: 'layout_params_invalid' })
+  })
+})
+
+describe('disabled positions (swing_door sill: no) round-trip', () => {
+  const noSill = () => filled(startModel('swing_door', { sill: 'no' }))
+  it('the model has no sill; rows have no sill position; load gives the same model', () => {
+    const m = noSill()
+    expect(m.lines.sill).toBeUndefined()
+    const rows = modelToRows(m, 't1', seqId())
+    expect(rows.positions.map(p => p.position_key)).not.toContain('sill')
+    expect(trip(m)).toEqual(m)
+  })
+  it('validateModel accepts it (only present positions need a profile) and saveModel writes it', async () => {
+    expect(validateModel(noSill())).toBeNull()
+    const withSill = filled(startModel('swing_door'))
+    expect(withSill.lines.sill).toBeDefined()
+    expect(validateModel(withSill)).toBeNull()
+    expect(trip(withSill)).toEqual(withSill)
+    const c = fakeClient()
+    await saveModel({ supabase: c, templateId: 't1', model: noSill() })
+    expect(c.calls.map(x => `${x[0]} ${x[1]}`)).toContain('insert bom_template_piece_ends')
+  })
+  it('stale sill rows under a template whose params now say sill: no are ignored', () => {
+    const rows = modelToRows(filled(startModel('swing_door')), 't1', seqId())
+    const back = modelFromRows({ template: { id: 't1', layout_kind: 'swing_door', layout_params: { sill: 'no' } }, ...rows })
+    expect(back.lines.sill).toBeUndefined()
+    expect(back.names.sill).toBeUndefined()
+    expect(back.params.sill).toBe('no')
+  })
+})
+
+describe('Review Focus 1: a sliding_2 template saved before layout_params', () => {
+  const buttOf = () => 20
+  const widthOf = () => 40
+  it('no layout_params column, {} or a type with {}: params {} and the same expansion', () => {
+    const m = named()
+    const rows = modelToRows(m, 't1', seqId())
+    const ref = expandParts({ model: m, buttOf, widthOf })
+    for (const template of [{ id: 't1', layout_kind: 'sliding_2' }, { id: 't1', layout_kind: 'sliding_2', layout_params: {} }]) {
+      for (const type of [undefined, null, { id: 'ty', layout_params: {} }, { id: 'ty', layout_kind: 'sliding_2', layout_params: {} }, { id: 'ty' }]) {
+        const back = modelFromRows({ template, type, ...rows })
+        expect(back).toEqual(m)
+        expect(back.params).toEqual({})
+        expect(expandParts({ model: back, buttOf, widthOf })).toEqual(ref)
+      }
+    }
+  })
+  it('a template with {} takes its params from defaultParams(kind, type.layout_params)', () => {
+    const type = { id: 'ty', layout_kind: 'awning_grid', layout_params: { rows: 3, cols: 4 } }
+    const back = modelFromRows({ template: { id: 't1', layout_kind: 'awning_grid', layout_params: {} }, type })
+    expect(back.params).toEqual({ rows: 3, cols: 4, open: 'out' })
+    expect(back).toEqual(startModel('awning_grid', { rows: 3, cols: 4 }))
+  })
+  it('the type\'s fixed_by_type values win over the template\'s stored ones; other params stay the template\'s', () => {
+    const type = { id: 'ty', layout_kind: 'awning_grid', layout_params: { rows: 3 } }
+    const back = modelFromRows({ template: { id: 't1', layout_kind: 'awning_grid', layout_params: { rows: 2, cols: 1, open: 'in' } }, type })
+    expect(back.params).toEqual({ rows: 3, cols: 1, open: 'in' })
+  })
+})
+
+describe('Review Focus 4: template / type layout_kind must agree', () => {
+  it('modelFromRows refuses a mismatch with { error: layout_mismatch }, never re-maps', () => {
+    const rows = modelToRows(named(), 't1', seqId())
+    expect(modelFromRows({ template: T, type: { id: 'ty', layout_kind: 'sliding_n' }, ...rows })).toEqual({ error: 'layout_mismatch' })
+    // a type without a layout_kind (column absent or null) is not a mismatch
+    expect(modelFromRows({ template: T, type: { id: 'ty', layout_kind: null }, ...rows })).toEqual(named())
+  })
+  it('loadModel: mismatch -> layout_mismatch and unknown kind -> unknown_layout, without querying', async () => {
+    const c = fakeClient()
+    expect(await loadModel({ supabase: c, template: T, type: { id: 'ty', layout_kind: 'awning_grid' } })).toEqual({ error: 'layout_mismatch' })
+    expect(await loadModel({ supabase: c, template: { id: 't1', layout_kind: 'nope' } })).toEqual({ error: 'unknown_layout' })
+    expect(c.calls).toEqual([])
+    expect(await loadModel({ supabase: c, template: T, type: { id: 'ty', layout_kind: 'sliding_2' } })).toEqual(startModel('sliding_2'))
+  })
+  it('partModelsByTemplate passes each template its type (typesById) and keeps the refusal for costing to report', () => {
+    const r = rowsOf(named(), 'tA')
+    const out = partModelsByTemplate({
+      templates: [{ id: 'tA', layout_kind: 'sliding_2', type_id: 'ok' }, { id: 'tB', layout_kind: 'sliding_2', type_id: 'bad' }],
+      typesById: { ok: { id: 'ok', layout_kind: 'sliding_2' }, bad: { id: 'bad', layout_kind: 'sliding_n' } }, ...r,
+    })
+    expect(out.tA).toEqual(named())
+    expect(out.tB).toEqual({ error: 'layout_mismatch' })
+  })
+})
+
+describe('saveModel writes the template layout_params (Task 9)', () => {
+  it('a model with params updates bom_templates.layout_params BEFORE touching the part rows', async () => {
+    const c = fakeClient()
+    const m = filled(startModel('awning_grid', { rows: 3, cols: 1 }))
+    await saveModel({ supabase: c, templateId: 't1', model: m })
+    expect(c.calls[0]).toEqual(['update', 'bom_templates', { layout_params: { rows: 3, cols: 1, open: 'out' } }, 'id', 't1'])
+    expect(c.calls[1]).toEqual(['delete', 'bom_template_parts', 'template_id', 't1'])
+  })
+  it('a failed params update stops before the delete', async () => {
+    const c = fakeClient({ failOn: { table: 'bom_templates', op: 'update' } })
+    await expect(saveModel({ supabase: c, templateId: 't1', model: filled(startModel('awning_grid')) })).rejects.toThrow('boom bom_templates')
+    expect(c.calls).toHaveLength(1)
+  })
+  it('sliding_2 (no params) never sends layout_params, so it saves before the migration is applied', async () => {
+    const c = fakeClient()
+    await saveModel({ supabase: c, templateId: 't1', model: named() })
+    expect(c.calls.some(x => x[1] === 'bom_templates')).toBe(false)
+  })
+})
+
+describe('every layout kind saves and loads (Task 9)', () => {
+  it('a filled default model of each kind validates and round-trips exactly (mitred ends, leaf roles, expression counts)', async () => {
+    const { kinds } = await import('./layoutRegistry.js')
+    for (const kind of kinds()) {
+      const m = filled(startModel(kind))
+      expect([kind, validateModel(m)]).toEqual([kind, null])
+      const rows = modelToRows(m, 't1', seqId())
+      // what the DB CHECKs allow: count INT >= 1, mode through/butt, thickness_role sash/NULL
+      expect(rows.parts.every(p => Number.isInteger(p.count) && p.count >= 1)).toBe(true)
+      expect(rows.ends.every(e => ['through', 'butt'].includes(e.mode))).toBe(true)
+      expect(rows.lines.every(l => l.thickness_role === null || l.thickness_role === 'sash')).toBe(true)
+      expect([kind, trip(m)]).toEqual([kind, m])
+    }
   })
 })

@@ -1,5 +1,6 @@
 // Pure helpers for the catalog "ประเภทบาน" tree screens and the profile form. No React, no database.
 import { buildTypeTree, selectableTypes, typeLabel, typeAndAncestorIds } from './typeTree.js'
+import { LAYOUTS, kinds, layoutLabels, inputsOf, coerceParams } from './layoutRegistry.js'
 
 const asRows = types => (Array.isArray(types) ? types : Object.values(types || {})).filter(Boolean)
 const byId = types => Object.fromEntries(asRows(types).map(t => [t.id, t]))
@@ -92,4 +93,52 @@ export function sameShapeProfiles(profiles, profile) {
   return asRows(profiles)
     .filter(p => p.id !== profile.id && p.provider_id === profile.provider_id && String(p.shape_group || '').trim() === g)
     .sort((a, b) => (Number(a.thickness_mm) || 0) - (Number(b.thickness_mm) || 0))
+}
+
+// ---- layout kind of a type (door_window_types.layout_kind / layout_params, migration 2026-10-17-01) ----
+
+// The type form's layout_kind select: every registered kind with its Thai label.
+export const layoutKindOptions = () => kinds().filter(k => layoutLabels[k]).map(k => ({ value: k, label: layoutLabels[k] }))
+
+const knownKind = kind => !!kind && Object.prototype.hasOwnProperty.call(LAYOUTS, kind)
+
+// The inputs a type fixes for its templates and items (fixed_by_type): awning rows/cols, swing / frameless / hanging
+// leaves, swing pivot, sliding door, curtain-wall unitized. [] for no kind, an unknown kind or a kind without any.
+export const typeLayoutInputs = kind => (knownKind(kind) ? inputsOf(kind).filter(i => i.fixed_by_type) : [])
+
+const isPlainObject = v => v !== null && typeof v === 'object' && !Array.isArray(v)
+const blankValue = v => v === '' || v === null || v === undefined
+
+// The form's layout_params (text from number inputs, booleans from checkboxes) -> the JSON to save: the kind's
+// fixed_by_type keys only, numbers as numbers (clamped), booleans as booleans, blanks left out; null when nothing is left.
+export function typeLayoutParamsPayload(kind, values) {
+  const inputs = typeLayoutInputs(kind)
+  if (!inputs.length || !isPlainObject(values)) return null
+  const src = {}
+  for (const i of inputs) if (!blankValue(values[i.key])) src[i.key] = values[i.key]
+  const out = coerceParams(kind, src)
+  return Object.keys(out).length ? out : null
+}
+
+// The kind changed: keep only the values the new kind fixes by type.
+export function typeLayoutParamsForKind(kind, values) {
+  const out = {}
+  if (!isPlainObject(values)) return out
+  for (const i of typeLayoutInputs(kind)) if (Object.prototype.hasOwnProperty.call(values, i.key)) out[i.key] = values[i.key]
+  return out
+}
+
+// CatalogCrud fields for the two columns. Both omitWhenAbsent: a type form with no kind sends neither key, so saving
+// keeps working before the migration; a row that has the columns sends layout_kind null / layout_params {} when cleared
+// (layout_params is NOT NULL). The view adds `render` to the layout_params field (TypesTab).
+export function typeLayoutFields() {
+  return [
+    { key: 'layout_kind', label: 'แบบชิ้นส่วน', type: 'select', emptyLabel: '— ไม่กำหนด —', options: layoutKindOptions(), omitWhenAbsent: true,
+      sets: (value, form) => ({ layout_params: typeLayoutParamsForKind(value, form.layout_params) }),
+      hint: 'เทมเพลตของประเภทนี้จะใช้แบบชิ้นส่วนนี้' },
+    { key: 'layout_params', label: 'ค่าที่ประเภทกำหนด', type: 'layout_params', default: {}, omitWhenAbsent: true, blankAs: {},
+      serialize: (value, form) => typeLayoutParamsPayload(form.layout_kind, value),
+      hidden: form => !typeLayoutInputs(form.layout_kind).length,
+      hint: 'ค่าเหล่านี้ใช้กับทุกเทมเพลตและทุกรายการของประเภทนี้ (เว้นว่าง = ค่าเริ่มต้นของแบบ)' },
+  ]
 }

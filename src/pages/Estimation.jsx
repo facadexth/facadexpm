@@ -48,7 +48,7 @@ export default function Estimation(props) {
   const { settings } = useEstimationSettings()
   const { data: joints } = useTemplateJoints()
   const hw = useHardwarePackages()
-  const partModels = useBomPartModel(templates)   // part-editor templates (layout_kind); a load error only leaves them uncosted (no_model)
+  const partModels = useBomPartModel(templates, catalog.index ? catalog.index.types : null)   // part-editor templates (layout_kind); a load error only leaves them uncosted (no_model)
 
   const [selectedProjectId, setSelectedProjectId] = useState(null)
   const [showProjectForm, setShowProjectForm] = useState(false)
