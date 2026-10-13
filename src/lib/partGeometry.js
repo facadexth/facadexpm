@@ -87,7 +87,7 @@ function piecesOf({ model, layout, specs, th, X }) {
     const ins = (pair, e) => {
       const end = pair?.[e] || THROUGH
       if (end.mode !== 'butt') return 0
-      const pt = partnerEnd(g.key, g.piece, e)
+      const pt = partnerEnd(model, g.key, g.piece, e)
       const target = pt?.key || end.to?.key
       return Math.min(g.len / 3, target ? th(target) : 0)
     }

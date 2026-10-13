@@ -275,3 +275,90 @@ describe('part count cap', () => {
     expect(commitPartCount(m, 'sash', 11)).toBe(m)
   })
 })
+
+// ---------------------------------------------------------------- Task 2: declarative layouts, sliding_2 frozen
+import { setParams, defaultTarget } from './partModel'
+
+// Literal snapshot of startModel('sliding_2') taken BEFORE the declarative refactor, plus the new `params: {}`.
+const SLIDING_2_SNAPSHOT = {
+  layout_kind: 'sliding_2',
+  parts: [
+    { key: 'frame', name: 'วงกบ', count: 1, overlap_mode: 'manual', overlap_mm: 0 },
+    { key: 'sash', name: 'บานเลื่อน', count: 2, overlap_mode: 'auto_hook', overlap_mm: 0 },
+  ],
+  lines: {
+    frame_top: [{ profile_family: '', length_rule_type: 'width', length_deduction_mm: 0, deduction_auto: false, length_factor: 1, quantity_value: 1, thickness_role: null, ends: [[{ mode: 'butt', to: { key: 'frame_side', line: 0 }, deduction_mm: null }, { mode: 'butt', to: { key: 'frame_side', line: 0 }, deduction_mm: null }]] }],
+    frame_bottom: [{ profile_family: '', length_rule_type: 'width', length_deduction_mm: 0, deduction_auto: false, length_factor: 1, quantity_value: 1, thickness_role: null, ends: [[{ mode: 'butt', to: { key: 'frame_side', line: 0 }, deduction_mm: null }, { mode: 'butt', to: { key: 'frame_side', line: 0 }, deduction_mm: null }]] }],
+    frame_side: [{ profile_family: '', length_rule_type: 'height', length_deduction_mm: 0, deduction_auto: false, length_factor: 1, quantity_value: 1, thickness_role: null, ends: [[{ mode: 'through', to: null, deduction_mm: null }, { mode: 'through', to: null, deduction_mm: null }], [{ mode: 'through', to: null, deduction_mm: null }, { mode: 'through', to: null, deduction_mm: null }]] }],
+    sash_top: [{ profile_family: '', length_rule_type: 'width_minus', length_deduction_mm: 0, deduction_auto: true, length_factor: 0.5, quantity_value: 1, thickness_role: 'sash', ends: [[{ mode: 'butt', to: { key: 'hook_stile', line: 0 }, deduction_mm: null }, { mode: 'butt', to: { key: 'key_stile', line: 0 }, deduction_mm: null }], [{ mode: 'butt', to: { key: 'hook_stile', line: 0 }, deduction_mm: null }, { mode: 'butt', to: { key: 'key_stile', line: 0 }, deduction_mm: null }]] }],
+    sash_bottom: [{ profile_family: '', length_rule_type: 'width_minus', length_deduction_mm: 0, deduction_auto: true, length_factor: 0.5, quantity_value: 1, thickness_role: 'sash', ends: [[{ mode: 'butt', to: { key: 'hook_stile', line: 0 }, deduction_mm: null }, { mode: 'butt', to: { key: 'key_stile', line: 0 }, deduction_mm: null }], [{ mode: 'butt', to: { key: 'hook_stile', line: 0 }, deduction_mm: null }, { mode: 'butt', to: { key: 'key_stile', line: 0 }, deduction_mm: null }]] }],
+    key_stile: [{ profile_family: '', length_rule_type: 'height_minus', length_deduction_mm: 0, deduction_auto: true, length_factor: 1, quantity_value: 1, thickness_role: 'sash', ends: [[{ mode: 'through', to: null, deduction_mm: null }, { mode: 'through', to: null, deduction_mm: null }], [{ mode: 'through', to: null, deduction_mm: null }, { mode: 'through', to: null, deduction_mm: null }]] }],
+    hook_stile: [{ profile_family: '', length_rule_type: 'height_minus', length_deduction_mm: 0, deduction_auto: true, length_factor: 1, quantity_value: 1, thickness_role: 'sash', ends: [[{ mode: 'through', to: null, deduction_mm: null }, { mode: 'through', to: null, deduction_mm: null }], [{ mode: 'through', to: null, deduction_mm: null }, { mode: 'through', to: null, deduction_mm: null }]] }],
+  },
+  names: { frame_top: 'เฟรมบน', frame_bottom: 'เฟรมล่าง', frame_side: 'เฟรมข้าง', sash_top: 'บานเลื่อนบน', sash_bottom: 'บานเลื่อนล่าง', key_stile: 'เสากุญแจ', hook_stile: 'เสาเกี่ยว' },
+  params: {},
+}
+
+// Every (key, piece, end) -> partner of the pre-refactor hard-coded partnerEnd, captured before the refactor.
+const SLIDING_2_PARTNERS = [
+  ['frame_top', 0, 0, 'frame_side', 0, 0], ['frame_top', 0, 1, 'frame_side', 1, 0],
+  ['frame_bottom', 0, 0, 'frame_side', 0, 1], ['frame_bottom', 0, 1, 'frame_side', 1, 1],
+  ['frame_side', 0, 0, 'frame_top', 0, 0], ['frame_side', 0, 1, 'frame_bottom', 0, 0],
+  ['frame_side', 1, 0, 'frame_top', 0, 1], ['frame_side', 1, 1, 'frame_bottom', 0, 1],
+  ['sash_top', 0, 0, 'hook_stile', 0, 0], ['sash_top', 0, 1, 'key_stile', 0, 0],
+  ['sash_top', 1, 0, 'hook_stile', 1, 0], ['sash_top', 1, 1, 'key_stile', 1, 0],
+  ['sash_bottom', 0, 0, 'hook_stile', 0, 1], ['sash_bottom', 0, 1, 'key_stile', 0, 1],
+  ['sash_bottom', 1, 0, 'hook_stile', 1, 1], ['sash_bottom', 1, 1, 'key_stile', 1, 1],
+  ['key_stile', 0, 0, 'sash_top', 0, 1], ['key_stile', 0, 1, 'sash_bottom', 0, 1],
+  ['key_stile', 1, 0, 'sash_top', 1, 1], ['key_stile', 1, 1, 'sash_bottom', 1, 1],
+  ['hook_stile', 0, 0, 'sash_top', 0, 0], ['hook_stile', 0, 1, 'sash_bottom', 0, 0],
+  ['hook_stile', 1, 0, 'sash_top', 1, 0], ['hook_stile', 1, 1, 'sash_bottom', 1, 0],
+]
+
+describe('sliding_2 frozen behaviour (declarative layout)', () => {
+  it('startModel deep-equals the pre-refactor snapshot plus params: {}', () => {
+    expect(startModel('sliding_2')).toEqual(SLIDING_2_SNAPSHOT)
+    expect(startModel('sliding_2', {})).toEqual(SLIDING_2_SNAPSHOT)
+  })
+  it('partnerEnd(model, ...) reproduces the old table and is an exact involution', () => {
+    const m = startModel('sliding_2')
+    expect(partnerEnd(m, 'sash_top', 1, 0)).toEqual({ key: 'hook_stile', piece: 1, end: 0 })
+    for (const [key, piece, end, pk, pp, pe] of SLIDING_2_PARTNERS) {
+      const p = partnerEnd(m, key, piece, end)
+      expect(p).toEqual({ key: pk, piece: pp, end: pe })
+      expect(partnerEnd(m, p.key, p.piece, p.end)).toEqual({ key, piece, end })
+    }
+    let n = 0
+    for (const key of KEYS) for (let piece = 0; piece < pieceCount(m, key); piece++) for (const end of [0, 1]) {
+      const p = partnerEnd(m, key, piece, end)
+      expect(partnerEnd(m, p.key, p.piece, p.end)).toEqual({ key, piece, end })
+      n++
+    }
+    expect(n).toBe(SLIDING_2_PARTNERS.length)
+  })
+  it('pieceCount without params equals the old numbers (and follows the part count)', () => {
+    const m = startModel('sliding_2')
+    delete m.params   // a model saved before params existed
+    expect(Object.fromEntries(KEYS.map(k => [k, pieceCount(m, k)]))).toEqual({ frame_top: 1, frame_bottom: 1, frame_side: 2, sash_top: 2, sash_bottom: 2, key_stile: 2, hook_stile: 2 })
+    expect(pieceCount(setPartCount(m, 'sash', 3), 'key_stile')).toBe(3)
+    expect(pieceCount(setPartCount(m, 'frame', 2), 'frame_side')).toBe(4)
+  })
+  it('defaultTarget(model, key, end) gives the default butt target', () => {
+    const m = startModel('sliding_2')
+    expect(defaultTarget(m, 'frame_top', 0)).toEqual({ key: 'frame_side', line: 0 })
+    expect(defaultTarget(m, 'frame_bottom', 1)).toEqual({ key: 'frame_side', line: 0 })
+    expect(defaultTarget(m, 'sash_top', 0)).toEqual({ key: 'hook_stile', line: 0 })
+    expect(defaultTarget(m, 'sash_bottom', 1)).toEqual({ key: 'key_stile', line: 0 })
+  })
+  it('setParams merges params immutably and re-runs ensureEnds', () => {
+    const m = startModel('sliding_2')
+    const broken = JSON.parse(JSON.stringify(m))
+    broken.lines.sash_top[0].ends.length = 1
+    const r = setParams(broken, { foo: 3 })
+    expect(r.params).toEqual({ foo: 3 })
+    expect(r.lines.sash_top[0].ends).toEqual(m.lines.sash_top[0].ends)
+    expect(broken.params).toEqual({})
+    expect(broken.lines.sash_top[0].ends).toHaveLength(1)
+    expect(setParams(r, { bar: 1 }).params).toEqual({ foo: 3, bar: 1 })
+  })
+})
