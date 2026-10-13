@@ -1,6 +1,7 @@
 // src/pages/bomTemplates/PartTable.jsx
 // Components table grouped by part (mockup table()): one row per profile line, extra "↳ ความยาวไม่เท่ากัน" rows for
 // pieces of a different length, part totals in the part header row. Click / Enter on a row selects that line.
+// A part ticked "เสร็จแล้ว" (model.done) shows its header only.
 import { RULE_LABELS, ISSUE_TEXT, fmt, fmtCount, posName, endText } from './partEditorView.js'
 
 export default function PartTable({ model, view, sel, onSelect }) {
@@ -8,11 +9,12 @@ export default function PartTable({ model, view, sel, onSelect }) {
   for (const P of view.parts) {
     rows.push(
       <tr className="ph" key={'p-' + P.key}>
-        <td colSpan={8}>Part: {P.name} × {P.count}</td>
+        <td colSpan={8}>Part: {P.name} × {P.count}{P.done ? ' ✓ เสร็จแล้ว (ซ่อนรายการ)' : ''}</td>
         <td className="n">{fmt(P.totalM, 2)}</td>
         <td className="n">{P.kgAny ? fmt(P.kg, 2) : '—'}</td>
       </tr>,
     )
+    if (P.done) continue   // "เสร็จแล้ว" collapses the part (D13); untick it on the part tab to see its rows again
     for (const key of P.keys) {
       (model.lines[key] || []).forEach((l, i) => {
         const r = view.lines[key]?.[i] || { groups: [] }

@@ -20,6 +20,11 @@
 //             direction (slide only, partSymbols.symbolFor): 'halves' (default) = left half of the pieces →, right half ←;
 //             'toward_fixed' = each sliding piece points at the nearest fixed piece (part.fixed); 'outward' = a single leaf
 //             runs toward its open side (params.hinge 'left' → ←, else →), two or more part outward from the middle.
+//   inputs[].only_when  optional { param: value }: the editor / item form show the input only while every listed param
+//             equals its value (casement / swing / frameless door `hinge` when there is one sash / leaf)
+// Reserved stored key: bom_templates.layout_params._done = the part keys the owner ticked "เสร็จแล้ว" in the editor
+// (model.done, UI meaning only; partSave.templateParamsPayload / modelFromRows). It is not an input, so coerceParams drops
+// it and it never reaches exprParams or any layout expression.
 // `per`, `count`, `factor`, `overlapCount` may be expressions (strings) over params — see layoutExpr.js / exprParams().
 //
 // Registered definitions are normalized copies: each part also gets a derived `positions` array (its position keys

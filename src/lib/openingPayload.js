@@ -37,8 +37,11 @@ export function emptyForm() {
     has_addon: false, addon_template_id: '', addon_width_m: '', addon_height_m: '', addon_panel_count: '1', addon_position: 'top', addon_offset_m: '',
     labour_per_sqm: '', profit_pct: '', extra_lines: [],
     fire_barrier_cost: '', bracket_cost: '', bend_alu_cost: '', bend_glass_cost: '',
+    layout_params: {},
   }
 }
+
+const isPlainObject = v => v !== null && typeof v === 'object' && !Array.isArray(v)
 
 export function formFromOpening(o) {
   return {
@@ -50,6 +53,7 @@ export function formFromOpening(o) {
     addon_panel_count: str(o.addon_panel_count || 1), addon_position: o.addon_position || 'top', addon_offset_m: mmText(o.addon_offset_m),
     labour_per_sqm: str(o.labour_per_sqm), profit_pct: str(o.profit_pct), extra_lines: Array.isArray(o.extra_lines) ? o.extra_lines : [],
     fire_barrier_cost: str(o.fire_barrier_cost), bracket_cost: str(o.bracket_cost), bend_alu_cost: str(o.bend_alu_cost), bend_glass_cost: str(o.bend_glass_cost),
+    layout_params: isPlainObject(o.layout_params) ? JSON.parse(JSON.stringify(o.layout_params)) : {},
   }
 }
 
@@ -87,6 +91,10 @@ export function buildOpeningPayload(form, { projectId, previews = null, savedAt 
     bend_glass_cost: numOrNull(form.bend_glass_cost),
     extra_lines: (form.extra_lines || []).map(l => ({ description: String(l.description || ''), amount: Number(l.amount) || 0 })),
   }
+  // The item's layout inputs (estimation_openings.layout_params, e.g. { n: 3 } or curtain-wall { cells }): sent only when
+  // the item has some, so an item of a kind without inputs keeps saving before the 2026-10-17-01 migration adds the column
+  // (the omitWhenAbsent convention of the catalogue forms). Costing reads it through openingCost.modelForItem.
+  if (isPlainObject(form.layout_params) && Object.keys(form.layout_params).length) payload.layout_params = JSON.parse(JSON.stringify(form.layout_params))
   if (previews) {
     payload.preview_svg_out = previews.out || null
     payload.preview_svg_in = previews.in || null

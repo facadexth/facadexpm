@@ -372,6 +372,7 @@ function overviewMm({ model, layout, widthMm, heightMm, view, widthOf }) {
   const glass = body.glass.map(mx)
   const symbols = body.symbols.map((s) => (mirror ? { ...mx(s), hinge: swapHinge(s.hinge), dir: s.dir ? -s.dir : s.dir } : { ...s }))
   const hardwareMarks = body.marks.map((k) => (k.x1 !== undefined ? (mirror ? { ...k, x1: W - k.x1, x2: W - k.x2 } : { ...k }) : mx(k)))
+  const cells = (body.cells || []).map(mx)   // curtain-wall cell click targets { x, y, w, h, r, c, kind }
   const sw = c.sw
   const dims = [
     { kind: 'width', x1: 0, y1: H + sw * 14, x2: W, y2: H + sw * 14, tx: W / 2, ty: H + sw * 14 + sw * 11, anchor: 'middle', value: W },
@@ -387,7 +388,7 @@ function overviewMm({ model, layout, widthMm, heightMm, view, widthOf }) {
   // box.x / box.y / box.w / box.h = the mm viewBox (margins for the dimension lines; hanging_door's rail widens it)
   return {
     box: { x: minX - m, y: -m, w: maxX - minX + 2 * m, h: H + 2 * m, frameX: 0, frameY: 0, frameW: W, frameH: H, scale: 1, sw, units: 'mm' },
-    pieces, glass, symbols, hardwareMarks, dims,
+    pieces, glass, symbols, hardwareMarks, dims, cells,
   }
 }
 
@@ -427,6 +428,6 @@ function zoomMm({ model, layout, partKey, partIdx, selected, view, widthMm, heig
   if (sel && layout.positions[sel.key]) title += ' · ชิ้นที่เลือก: ' + (model.names?.[sel.key] || layout.positions[sel.key].name)
   return {
     box: ov.box, pieces, glass: ov.glass.map(fade), symbols: ov.symbols.map(fade), hardwareMarks: ov.hardwareMarks.map((k) => ({ ...k, opacity: pk ? 0.25 : 1 })),
-    dims: ov.dims, markers, title, opening: null, partKey: pk, partIdx: idx,
+    dims: ov.dims, cells: ov.cells, markers, title, opening: null, partKey: pk, partIdx: idx,
   }
 }

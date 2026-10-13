@@ -147,7 +147,19 @@ export function modelFromRows({ template, type, parts, positions, lines, ends } 
       if (!l.ends.length && i === 0) l.ends = defaults.lines[key][0].ends.map(p => p.map(e => ({ ...e, to: e.to ? { ...e.to } : null })))
     })
   }
-  return ensureEnds(model)
+  const done = doneOf(layout, template.layout_params)
+  const out = ensureEnds(model)
+  if (done) out.done = done
+  return out
+}
+
+// Reserved key of bom_templates.layout_params holding the "เสร็จแล้ว" part keys (model.done).
+export const DONE_KEY = '_done'
+// The stored _done list, known part keys only (null when absent or empty).
+function doneOf(layout, stored) {
+  const raw = stored && typeof stored === 'object' && Array.isArray(stored[DONE_KEY]) ? stored[DONE_KEY] : []
+  const keys = raw.filter((k, i) => typeof k === 'string' && layout.parts.some((p) => p.key === k) && raw.indexOf(k) === i)
+  return keys.length ? keys : null
 }
 
 // { [templateId]: model | { error } } for every template with a layout_kind (the shape costOpening's
@@ -243,8 +255,11 @@ export function modelToRows(model, templateId, newId = () => crypto.randomUUID()
 // The bom_templates columns a model carries besides its part rows: { layout_params } (coerced, known keys only) when
 // the model has params, {} when it has none (sliding_2) so the payload never names a column the database may lack.
 // Kept apart from modelToRows, whose result is exactly the four part tables.
+// model.done (the editor's "เสร็จแล้ว" part keys, UI meaning only) rides along under the reserved key `_done`; coerceParams
+// drops it, so it never reaches the expression params (see layoutRegistry.js).
 export function templateParamsPayload(model) {
   const params = coerceParams(model.layout_kind, model.params)
+  if (Array.isArray(model.done) && model.done.length) params[DONE_KEY] = [...model.done]
   return Object.keys(params).length ? { layout_params: params } : {}
 }
 

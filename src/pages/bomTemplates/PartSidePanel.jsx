@@ -4,7 +4,7 @@
 import { commitPartCount, MAX_PART_COUNT, updatePart, setPositionName, addLineAndSelect, removeLineAndSelect, LAYOUTS } from '../../lib/partModel.js'
 import NumInput from './NumInput.jsx'
 import PartLine from './PartLine.jsx'
-import { ISSUE_TEXT, fmt, posName, partOfKey, positionNote } from './partEditorView.js'
+import { ISSUE_TEXT, fmt, posName, partOfKey, positionNote, partCountOf } from './partEditorView.js'
 
 export default function PartSidePanel({ model, view, sel, families, canEdit, onChange, onSelect }) {
   const layout = LAYOUTS[model.layout_kind]
@@ -18,6 +18,8 @@ export default function PartSidePanel({ model, view, sel, families, canEdit, onC
   const posKeys = layout.parts.find(p => p.key === pk)?.positions || []
   const onSelLine = (i) => onSelect({ key, line: i })
   const auto = part.overlap_mode === 'auto_hook'
+  const layoutPart = layout.parts.find(p => p.key === pk) || {}
+  const cnt = partCountOf(model, pk)   // an expression count (n, rows*cols, cells) is computed, not typed (R-9c)
   return (
     <>
       <div className="parthead">
@@ -25,10 +27,12 @@ export default function PartSidePanel({ model, view, sel, families, canEdit, onC
           <input disabled={!canEdit} value={part.name ?? ''} onChange={e => onChange(updatePart(model, pk, { name: e.target.value }))} />
         </div>
         <div className="f"><span>จำนวน part ต่อ 1 ชุด</span>
-          <NumInput min={1} max={MAX_PART_COUNT} step={1} disabled={!canEdit} value={part.count} onChange={v => { const m = commitPartCount(model, pk, v); if (m !== model) onChange(m) }} />
+          {cnt.expr
+            ? <b className="cnt">{cnt.count} <small className="h">ตามแบบ (คิดจากค่าของแบบชิ้นส่วน)</small></b>
+            : <NumInput min={1} max={MAX_PART_COUNT} step={1} disabled={!canEdit} value={part.count} onChange={v => { const m = commitPartCount(model, pk, v); if (m !== model) onChange(m) }} />}
         </div>
       </div>
-      {pk === 'sash' && (
+      {pk === 'sash' && layoutPart.overlap_mode === 'auto_hook' && (
         <div className="f">
           <span>ระยะซ้อนบาน (มม.) {auto
             ? <span className="tag">อัตโนมัติ = ความกว้างเสาเกี่ยว</span>

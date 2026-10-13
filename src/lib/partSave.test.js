@@ -556,3 +556,28 @@ describe('expression part counts are never persisted from a typed number (fix ro
     }
   })
 })
+
+describe('"เสร็จแล้ว" per part is saved in layout_params._done (Task 10)', () => {
+  it('templateParamsPayload carries model.done as _done; modelFromRows restores it; coerceParams never passes it on', async () => {
+    const { coerceParams, exprParams } = await import('./layoutRegistry.js')
+    const m = { ...filled(startModel('awning_grid', { rows: 2, cols: 2 })), done: ['frame', 'sash'] }
+    const pay = templateParamsPayload(m)
+    expect(pay.layout_params._done).toEqual(['frame', 'sash'])
+    expect(coerceParams('awning_grid', pay.layout_params)).not.toHaveProperty('_done')
+    const back = trip(m)
+    expect(back.done).toEqual(['frame', 'sash'])
+    expect(back.params).not.toHaveProperty('_done')
+    expect(exprParams(back)).not.toHaveProperty('_done')
+  })
+  it('no done -> no _done key and no done on the loaded model; unknown part keys are dropped', () => {
+    const m = filled(startModel('awning_grid'))
+    expect(templateParamsPayload(m).layout_params).not.toHaveProperty('_done')
+    expect(trip(m)).not.toHaveProperty('done')
+    const rows = modelToRows(m, 't1', seqId())
+    const back = modelFromRows({ template: { id: 't1', layout_kind: 'awning_grid', layout_params: { ...m.params, _done: ['sash', 'nope', 3] } }, ...rows })
+    expect(back.done).toEqual(['sash'])
+  })
+  it('sliding_2 still sends nothing to bom_templates', () => {
+    expect(templateParamsPayload(startModel('sliding_2'))).toEqual({})
+  })
+})

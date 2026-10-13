@@ -18,9 +18,11 @@ import { useDraftForm } from '../hooks/useDraftForm.js'
 import { useCatalogTable, useEstimationCatalog } from '../hooks/useAluCatalog.js'
 import { useTemplateJoints } from '../hooks/useEstimation2b.js'
 import { jointRowsForInsert, validateJoints, componentRowsForInsert, jointIndexForLoad, templatePayload } from '../lib/templateSave.js'
-import { loadModel, validateModel, saveModel } from '../lib/partSave.js'
+import { loadModel, validateModel, saveModel, templateParamsPayload } from '../lib/partSave.js'
 import { reasonText } from '../lib/reasonText.js'
-import { startModel } from '../lib/partModel.js'
+import { startModel, LAYOUTS } from '../lib/partModel.js'
+import { defaultParams, layoutLabels } from '../lib/layoutRegistry.js'
+import { PARAMS_HINT } from './bomTemplates/partEditorView.js'
 import PartEditor from './bomTemplates/PartEditor.jsx'
 import { defaultTestPick } from './bomTemplates/partEditorView.js'
 import JointsTab from './bomTemplates/JointsTab.jsx'
@@ -135,13 +137,25 @@ export function TemplateEditor({ template, joints, catalog, types, components, h
   const [testPick, setTestPick] = useState(() => defaultTestPick(catalog.index, template?.type_id || ''))
   // "สร้างจากแบบบานเลื่อน 2 บาน": a new or legacy-empty template becomes a part-editor template with the layout's
   // default model right away (so Save never waits on a load that will not happen).
-  const startFromLayout = (kind) => {
+  // A type with a layout_kind starts its own layout with the type's fixed values (defaultParams); a layout the type's
+  // params refuse (folding 0 + 0) is not started: the hint says what to fix on the type.
+  const [startError, setStartError] = useState(null)
+  const [paramsInvalid, setParamsInvalid] = useState(false)   // the editor holds params its layout refused (not saved)
+  const startFromLayout = (kind, type = null) => {
+    let m
+    try { m = startModel(kind, defaultParams(kind, type && type.layout_params)) } catch (e) {
+      if (e && e.message === 'layout_params_invalid') { setStartError(`${PARAMS_HINT} ที่ประเภท (แคตตาล็อก)`); return }
+      throw e
+    }
+    setStartError(null)
     set('layout_kind', kind)
-    setModel(startModel(kind))
+    setModel(m)
     setModelError(null)
   }
   const familyOptions = catalogFamilies(index)
   const typesById = Object.fromEntries((types || []).map(t => [t.id, t]))
+  const formTypeRow = typesById[form.type_id] || null
+  const typeKind = formTypeRow && formTypeRow.layout_kind && LAYOUTS[formTypeRow.layout_kind] ? formTypeRow.layout_kind : null
   const typeOpts = templateTypeOptions(types || [], typesById, template?.type_id || '')
   const showThickness = typeAllowsMixed(index, form.type_id)
   const partOpts = hardwarePartOptions(index?.parts)
@@ -190,7 +204,7 @@ export function TemplateEditor({ template, joints, catalog, types, components, h
       const problem = partMode && formType && formType.layout_kind && formType.layout_kind !== form.layout_kind
         ? reasonText('layout_mismatch')
         : partMode
-        ? (model ? validateModel(model) : (modelError ? 'โหลดข้อมูลชิ้นส่วนของเทมเพลตไม่สำเร็จ จึงยังไม่ได้บันทึกอะไร กรุณารีโหลดหน้านี้: ' + modelError : 'กำลังโหลดข้อมูลชิ้นส่วนของเทมเพลต กรุณารอสักครู่แล้วกดบันทึกอีกครั้ง'))
+        ? (paramsInvalid ? PARAMS_HINT : model ? validateModel(model) : (modelError ? 'โหลดข้อมูลชิ้นส่วนของเทมเพลตไม่สำเร็จ จึงยังไม่ได้บันทึกอะไร กรุณารีโหลดหน้านี้: ' + modelError : 'กำลังโหลดข้อมูลชิ้นส่วนของเทมเพลต กรุณารอสักครู่แล้วกดบันทึกอีกครั้ง'))
         : (validateJoints(jointRows) || validateComponentRows(rows, jointRows))
       if (problem) { alert(problem); return }
       let templateId = rowId
@@ -291,7 +305,7 @@ export function TemplateEditor({ template, joints, catalog, types, components, h
         // Show what is now in the tables (this template only; no tenant-wide refetch). The save itself succeeded,
         // so a failed re-read keeps the in-memory model, which is exactly what was just written.
         try {
-          const m = await loadModel({ supabase, template: { id: templateId, layout_kind: form.layout_kind, layout_params: model.params || {} }, type: typesById[form.type_id] || null })
+          const m = await loadModel({ supabase, template: { id: templateId, layout_kind: form.layout_kind, layout_params: templateParamsPayload(model).layout_params || {} }, type: typesById[form.type_id] || null })
           if (m && !m.error) setModel(m)
         }
         catch (e) { console.warn('reload part model failed', e) }
@@ -409,7 +423,7 @@ export function TemplateEditor({ template, joints, catalog, types, components, h
 
       {form.layout_kind ? (
         model
-          ? <PartEditor model={model} onChange={setModel} index={index} canEdit={canEdit} templateName={form.name}
+          ? <PartEditor model={model} onChange={setModel} index={index} canEdit={canEdit} templateName={form.name} onParamsInvalid={setParamsInvalid}
               testSeriesId={testPick.seriesId} testThicknessMm={testPick.thicknessMm} onTestChange={setTestPick} />
           : <div style={{ color: modelError ? 'var(--red)' : 'var(--text3)', padding: 12 }}>
               {modelError ? 'โหลดข้อมูลชิ้นส่วนของเทมเพลตไม่สำเร็จ กรุณารีโหลดหน้านี้: ' + modelError : 'กำลังโหลดข้อมูลชิ้นส่วนของเทมเพลต...'}
@@ -417,11 +431,17 @@ export function TemplateEditor({ template, joints, catalog, types, components, h
       ) : (
       <div>
         <div style={{ fontWeight: 700, marginBottom: 8 }}>ชิ้นส่วนอลูมิเนียม (Components)</div>
-        {canEdit && !rows.length && (
-          <button type="button" className="btn btn-sm btn-ghost" style={{ marginBottom: 8, border: '1px dashed var(--accent)' }} onClick={() => startFromLayout('sliding_2')}>
-            สร้างจากแบบบานเลื่อน 2 บาน (ไม่มีช่องแสง)
-          </button>
-        )}
+        {canEdit && !rows.length && (typeKind && typeKind !== 'sliding_2'
+          ? (
+            <button type="button" className="btn btn-sm btn-ghost" style={{ marginBottom: 8, border: '1px dashed var(--accent)' }} onClick={() => startFromLayout(typeKind, formTypeRow)}>
+              สร้างจากแบบ{layoutLabels[typeKind]} (ตามประเภทที่เลือก)
+            </button>
+          ) : (
+            <button type="button" className="btn btn-sm btn-ghost" style={{ marginBottom: 8, border: '1px dashed var(--accent)' }} onClick={() => startFromLayout('sliding_2', formTypeRow)}>
+              สร้างจากแบบบานเลื่อน 2 บาน (ไม่มีช่องแสง)
+            </button>
+          ))}
+        {startError && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 8 }}>{startError}</div>}
         <div style={{ display: 'grid', gap: 6 }}>
           {rows.map((r, i) => (
             <div key={i} style={{ display: 'grid', gap: 4 }}>

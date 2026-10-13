@@ -17,6 +17,8 @@ import PreviewPanel from './PreviewPanel.jsx'
 import LayoutTemplatePicker from './LayoutTemplatePicker.jsx'
 import SnapshotOptions from './SnapshotOptions.jsx'
 import ItemCostSummary from './ItemCostSummary.jsx'
+import { cycleCell } from '../../lib/layoutCells.js'
+import { PARAMS_HINT } from '../bomTemplates/partEditorView.js'
 
 export default function ItemModal({ opening, project, ctx, templates, constraints, infillTypes, layoutTemplates, seriesTypes, currentSig, canEdit, onClose, onSaved, onLayoutSaved }) {
   const { index, templatesById } = ctx
@@ -37,8 +39,16 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
   const rowId = (opening && opening.id) || savedId
 
   // fills only (single thickness, blank sash on a frame change / new item); never clears an own value
-  const update = patch => setForm(f => reconcileItemForm(f, { ...f, ...patch }, { index, project, template: templatesById[patch.template_id ?? f.template_id], isNew: !rowId }))
+  // another template drops the item's layout inputs (they belong to the old template's layout)
+  const update = patch => setForm(f => {
+    const p = patch.template_id !== undefined && patch.template_id !== f.template_id && patch.layout_params === undefined ? { ...patch, layout_params: {} } : patch
+    return reconcileItemForm(f, { ...f, ...p }, { index, project, template: templatesById[p.template_id ?? f.template_id], isNew: !rowId })
+  })
   const m = useItemModel({ form, path, addonTypeId, project, ctx, templates, constraints, infillTypes, layoutTemplates, seriesTypes })
+  // curtain wall: a click on a cell of the item preview cycles it into the item's layout_params.cells (estimator input)
+  const onCell = m.part && m.layoutInputs && m.layoutInputs.cells && !dis
+    ? (r, c) => update({ layout_params: { ...(form.layout_params || {}), cells: cycleCell(m.part.model, r, c).params.cells } })
+    : null
 
   // the quotation description follows the item until the owner types in it ("สร้างใหม่" brings it back)
   useEffect(() => { if (!descTouched) setForm(f => (f.item_description === m.generatedDescription ? f : { ...f, item_description: m.generatedDescription })) }, [m.generatedDescription, descTouched])
@@ -132,7 +142,8 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
           </div>
         </div>
         <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
-          <PreviewPanel inputs={m.inputs} part={m.part} labels={m.labels} availability={m.availability} addonPartial={m.addonPartial} />
+          <PreviewPanel inputs={m.inputs} part={m.part} labels={m.labels} availability={m.availability} addonPartial={m.addonPartial}
+            onCell={onCell} hint={m.layoutInputs && m.layoutInputs.invalid ? PARAMS_HINT : null} />
           <LayoutTemplatePicker cards={m.cards} selectedId={layoutPick} mainTemplate={m.template} disabled={dis} onPick={pickCard} onClear={() => setLayoutPick(null)}
             save={layoutSave} onSaveChange={setLayoutSave} saveError={layoutError} />
           <SnapshotOptions snap={snap} onChange={setSnap} stale={stale} savedAt={opening && opening.preview_saved_at} onResave={resaveSnapshot} busy={busy} dis={dis} />

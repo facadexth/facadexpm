@@ -2,6 +2,8 @@
 // Left column of the item popup (mockup screen 2): number / name, type cascade + BOM template, size, series,
 // thicknesses, colour, infill, hardware set, labour / profit and extra lines. No quantity (Ruling 16).
 // Every field the project can supply shows "ใช้ค่าโปรเจกต์" (empty = inherit) and the inherited value as a hint.
+// A layout_kind template adds its layout inputs under the size (ItemLayoutInputs, Task 10).
+import ItemLayoutInputs from './ItemLayoutInputs.jsx'
 
 export const Field = ({ label, hint, warn, children }) => (
   <div style={{ minWidth: 0 }}>
@@ -53,6 +55,7 @@ export default function ItemFields({ form, m, update, dis }) {
         <Field label="สูง (มม.) ★"><input className="input" type="number" min="0" step="1" disabled={dis} value={form.height_m} onChange={e => update({ height_m: e.target.value })} /></Field>
         <Field label="จำนวนช่อง (บาน)"><input className="input" type="number" min="1" step="1" disabled={dis} value={form.panel_count} onChange={e => update({ panel_count: e.target.value })} /></Field>
       </div>
+      <ItemLayoutInputs li={m.layoutInputs} form={form} update={update} dis={dis} />
 
       <div style={grid(180)}>
         <Field label="ซีรีส์">

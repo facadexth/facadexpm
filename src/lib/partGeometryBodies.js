@@ -14,6 +14,7 @@
 //   (outside view; 'arrow' spans x..x+w and points `dir`; 'split' is a dashed vertical at x from y to y+h)
 // marks[i] = hardware / drawing marks: rect kinds { kind, x, y, w, h } (closer, pivot, hinge, handle, patch, pull,
 //   floor_lock, hanger, floor_guide, silicone) or line kinds { kind, x1, y1, x2, y2 } (floor_line, unit_joint). Drawing-only (G9).
+// cells[i] (curtain_wall only) = { x, y, w, h, r, c, kind } the whole cell, for click-to-cycle (Task 10).
 // dims[i] = extra dimension lines { kind: 'leaf'|'side', x1, y1, x2, y2, value, label } (W and H are added by the caller).
 import { cellKinds } from './layoutCells.js'
 import { foldSymbols } from './partSymbols.js'
@@ -292,7 +293,7 @@ function curtain_wall(c) {
   const R = c.int('rows', 1), C = c.int('cols', 1)
   const m = th('mullion'), tr = th('transom')
   const cw = (W - (C + 1) * m) / C, ch = (H - (R + 1) * tr) / R
-  const out = empty()
+  const out = { ...empty(), cells: [] }
   if (c.has('mullion')) for (let i = 0; i <= C; i++) out.specs.push(V_('mullion', i, i * (cw + m), 0, H, m, FIXED))
   if (c.has('transom')) for (let i = 0; i < C; i++) for (let j = 0; j <= R; j++) out.specs.push(H_('transom', i * (R + 1) + j, m + i * (cw + m), j * (ch + tr), cw, tr, FIXED))
   const thin = (key, host) => Math.min(th(key), host)
@@ -308,6 +309,7 @@ function curtain_wall(c) {
   for (let r = 0; r < R; r++) for (let col = 0; col < C; col++) {
     const cell = { x: m + col * (cw + m), y: tr + r * (ch + tr), w: cw, h: ch }
     const kind = kinds[`${r},${col}`] || 'glass'
+    out.cells.push({ ...cell, r, c: col, kind })   // click target of the cell (editor / item preview cycle its kind)
     if (kind === 'spandrel') { out.glass.push({ ...cell, fixed: false, kind: 'spandrel' }); continue }
     if (kind !== 'awning') { out.glass.push({ ...cell, fixed: true, kind: 'glass' }); continue }
     const k = a++

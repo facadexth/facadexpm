@@ -13,7 +13,7 @@ import { seriesLabelFull } from '../../lib/aluCatalog.js'
 import { seriesChoices, finishChoices } from './projectDefaults.js'
 import {
   typeTreeOf, cascadeLevels, templatesForType, addonTypeOptions, liveItem, showSashField, inheritedHardware,
-  partLabels, layoutCards, descriptionContext, evaluateConstraints, withCurrent, costRowFlags,
+  partLabels, layoutCards, descriptionContext, evaluateConstraints, withCurrent, costRowFlags, itemLayoutInputs,
 } from './itemForm.js'
 
 const optionsOf = rows => rows.map(r => ({ value: r.id, label: r.name + (r.active === false ? ' (ปิดใช้งาน)' : '') }))
@@ -41,6 +41,8 @@ export function useItemModel({ form, path, addonTypeId, project, ctx, templates,
     const partCtx = inputs ? partPreviewCtx(ctx, template, resolved, item) : null
     const partModel = partCtx ? partPreviewModel(item, template, addonTemplate, partCtx) : null
     const part = partModel ? { model: partModel, buttOf: partCtx.buttOf, widthOf: partCtx.widthOf, widthMm: Math.round(item.width_m * 1e6) / 1e3, heightMm: Math.round(item.height_m * 1e6) / 1e3 } : null
+    // the layout's item inputs under W / H (and whether the preview cycles curtain-wall cells)
+    const layoutInputs = template && template.layout_kind ? itemLayoutInputs((ctx.partModelByTemplate || {})[template.id] || null, form.layout_params) : null
     const labels = template && cost ? partLabels({ components: (ctx.componentsByTemplate || {})[template.id], joints: (ctx.jointsByTemplate || {})[template.id], bom: cost.bom, index }) : null
 
     const { levels, leafId } = cascadeLevels(tree, path)
@@ -71,7 +73,7 @@ export function useItemModel({ form, path, addonTypeId, project, ctx, templates,
     const generatedDescription = buildItemDescription(descriptionContext({ item, resolved, index, template, infillTypesById }), pj.description_format)
     const cons = c => (constraints || []).filter(x => x.template_id === c)
     return {
-      template, addonTemplate, item, addonPartial, resolved, cost, frames, inputs, part, labels, leafId, levels, templateOptions,
+      template, addonTemplate, item, addonPartial, resolved, cost, frames, inputs, part, labels, layoutInputs, leafId, levels, templateOptions,
       typeWarn: path.length && !leafId ? 'เลือกประเภทให้ถึงชั้นสุดท้าย' : null,
       templateHint: leafId && !templateOptions.length ? 'ประเภทนี้ยังไม่มีเทมเพลต BOM สร้างได้ที่หน้าเทมเพลต BOM' : null,
       availability: typeAvailability(template, seriesId, seriesTypes),

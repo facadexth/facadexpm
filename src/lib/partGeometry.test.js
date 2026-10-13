@@ -534,3 +534,19 @@ describe('Task 8 — pieceLabel adapter', () => {
     expect(ov8(filled8('sliding_2_fixed_2')).pieces.find((p) => p.key === 'stile_b' && p.piece === 1).label).toBe('เสาขวาของบาน เสากุญแจตัวผู้')
   })
 })
+
+describe('Task 10 — curtain-wall cell click targets', () => {
+  it('overviewSpecs returns one cell per grid cell with its row, column and kind, mirrored for the inside view', async () => {
+    const { cycleCellKind } = await import('./partModel')
+    const m = cycleCellKind(filled8('curtain_wall', { rows: 2, cols: 3 }), 0, 1)
+    const o = ov8(m)
+    expect(o.cells).toHaveLength(6)
+    expect(o.cells.find(c => c.r === 0 && c.c === 1).kind).toBe('awning')
+    expect(o.cells.filter(c => c.kind === 'glass')).toHaveLength(5)
+    const W = o.box.frameW
+    const out = o.cells.find(c => c.r === 1 && c.c === 0)
+    const inn = ov8(m, 'in').cells.find(c => c.r === 1 && c.c === 0)
+    expect(inn.x).toBeCloseTo(W - out.x - out.w, 6)
+    expect(ov8(filled8('fixed_grid')).cells).toEqual([])
+  })
+})

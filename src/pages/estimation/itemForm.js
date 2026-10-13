@@ -9,6 +9,9 @@ import { hardwareSetStatus } from '../../lib/projectHardware.js'
 import { availableLayoutTemplates, applyLayoutTemplate, bomTemplatesForType, layoutTemplateFromItem } from '../../lib/layoutTemplates.js'
 import { seriesLabelFull } from '../../lib/aluCatalog.js'
 import { frameFamily } from '../../lib/itemPreviewSignature.js'
+import { coerceParams, inputsOf, LAYOUTS } from '../../lib/layoutRegistry.js'
+import { modelForItem } from '../../lib/openingCost.js'
+import { visibleInputs, clampedParts } from '../bomTemplates/partEditorView.js'
 
 const num = v => (v === null || v === undefined || String(v).trim() === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null))
 const pos = v => { const n = num(v); return n !== null && n > 0 }
@@ -237,4 +240,23 @@ export function descriptionContext({ item, resolved, index, template, infillType
     thickness_mm: r.thickness_mm, infill_name: r.infill_type_id && (infillTypesById || {})[r.infill_type_id] ? infillTypesById[r.infill_type_id].name : '',
     hardware_set_name: r.hardware_set_id && index.parts[r.hardware_set_id] ? index.parts[r.hardware_set_id].name : '',
   }
+}
+
+// The item form's layout inputs (Task 10): for a layout_kind template whose model is loaded, the estimator inputs the
+// type does not fix (awning rows / cols are the type's, never shown), only_when applied, `cells` excluded (cycled on the
+// preview). values = template params overridden by the item's own (coerced) layout_params, exactly as costing applies
+// them (openingCost.modelForItem); invalid = the layout refuses them (folding 0 + 0); clamped = parts above 10 pieces.
+// null for a legacy template, a missing / refused template model, or a kind without such inputs and without cells.
+export function itemLayoutInputs(baseModel, layoutParams) {
+  if (!baseModel || baseModel.error || !LAYOUTS[baseModel.layout_kind]) return null
+  const kind = baseModel.layout_kind
+  const own = coerceParams(kind, layoutParams)
+  const values = { ...(baseModel.params || {}) }
+  for (const inp of inputsOf(kind)) if (inp.estimator && !inp.fixed_by_type && inp.key in own) values[inp.key] = own[inp.key]
+  const inputs = visibleInputs(kind, values, { item: true })
+  const cells = !!LAYOUTS[kind].cells
+  if (!inputs.length && !cells) return null
+  const model = modelForItem(baseModel, { layout_params: layoutParams })
+  const invalid = !!(model && model.error)
+  return { kind, inputs, values, invalid, clamped: invalid ? [] : clampedParts(model), cells }
 }

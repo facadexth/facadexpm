@@ -3,30 +3,59 @@
 // follow the owner-approved mockup v24 (docs/superpowers/mockups/2026-10-10-bom-part-editor-mockup.html): preview card
 // (test size, outside/inside, overview + zoom) left, "แก้ชิ้นที่เลือก" panel right, components table below; the
 // selection is shared by the three. Test size / view / series / thickness are UI-only and never saved (Ruling PE-3).
-import { useState } from 'react'
-import { clampSelection, setEndMode } from '../../lib/partModel.js'
+// Every other layout kind (Task 10, mockup v5 / spec §6): the inputs panel (PartInputs: template defaults, fixed_by_type
+// read-only, refused params -> PARAMS_HINT and no drawing), the D14 line style, part tabs with "เสร็จแล้ว" (PartTabs,
+// model.done), one millimetre drawing with the other parts faded, curtain-wall cell cycling, and the assigned badge.
+// sliding_2 renders exactly as before (no inputs, tabs or style select).
+import { useState, useEffect } from 'react'
+import { clampSelection, setEndMode, setParams, cycleCellKind } from '../../lib/partModel.js'
+import { coerceParams } from '../../lib/layoutRegistry.js'
 import { catalogFamilies } from './helpers.js'
-import { editorView, testOptions, posName, partOfKey } from './partEditorView.js'
+import { editorView, testOptions, posName, partOfKey, partTabs, toggleDone, assignedCount, PARAMS_HINT } from './partEditorView.js'
 import NumInput from './NumInput.jsx'
 import PartPreview from './PartPreview.jsx'
+import PartInputs from './PartInputs.jsx'
+import PartTabs from './PartTabs.jsx'
 import PartSidePanel from './PartSidePanel.jsx'
 import PartTable from './PartTable.jsx'
 import './partEditor.css'
 
 const CORNER_WHY = { both_through: 'วิ่งสุดทั้งสองชิ้น', both_butt: 'วิ่งชนทั้งสองชิ้น' }
+// D14 line styles (mockup v5 "แบบเส้น")
+const STYLES = [['double', 'เส้นคู่ (ตามที่ใช้ในใบเสนอราคา)'], ['lengths', 'เส้นคู่ + ความยาวชิ้น'], ['solid', 'ทึบตามสี'], ['cad', 'CAD (เส้นอย่างเดียว)']]
 
-export default function PartEditor({ model, onChange, index, canEdit, testSeriesId, testThicknessMm, onTestChange, templateName, initialSelection }) {
+export default function PartEditor({ model, onChange, index, canEdit, testSeriesId, testThicknessMm, onTestChange, templateName, initialSelection, onParamsInvalid }) {
   const [size, setSize] = useState({ w: 1800, h: 1200 })
   const [view, setView] = useState('out')
+  const [style, setStyle] = useState('double')
+  const [tabId, setTabId] = useState('all')
+  const [draft, setDraft] = useState(null)   // params the layout refused (folding 0 + 0): shown in the inputs, never in the model
   const [rawSel, setSel] = useState(initialSelection || { key: 'frame_bottom', line: 0 })   // mockup starts on เฟรมล่าง
+  const mm = model.layout_kind !== 'sliding_2'
+  useEffect(() => { if (onParamsInvalid) onParamsInvalid(!!draft) }, [draft]) // eslint-disable-line react-hooks/exhaustive-deps
   const sel = clampSelection(model, rawSel)
   const families = catalogFamilies(index)
   const data = editorView({ model, index, seriesId: testSeriesId, thicknessMm: testThicknessMm, widthMm: size.w, heightMm: size.h })
   const { series, thicknesses } = testOptions(index, testSeriesId)
   const pk = partOfKey(model, sel.key)
   const partKeys = data.parts.find(p => p.key === pk)?.keys || []
-  const pick = (key) => setSel({ key, line: 0 })
+  const pick = (key, line = 0) => setSel({ key, line })
   const edit = (m) => { if (canEdit) onChange(m) }
+  const tab = mm ? (partTabs(model).find(t => t.id === tabId) || null) : null
+  const badge = mm ? assignedCount(model) : null
+  // inputs panel -> setParams (coerced: clamped to min / max, whole numbers); a refusal keeps the model and shows the hint
+  const changeParams = (patch) => {
+    if (!canEdit) return
+    const next = { ...(draft || model.params), ...coerceParams(model.layout_kind, patch) }
+    try {
+      const m = setParams(model, next)
+      setDraft(null)
+      onChange(m)
+    } catch (e) {
+      if (e && e.message === 'layout_params_invalid') setDraft(next)
+      else throw e
+    }
+  }
 
   return (
     <div className="pe">
@@ -46,6 +75,13 @@ export default function PartEditor({ model, onChange, index, canEdit, testSeries
               <button type="button" aria-pressed={view === 'out'} onClick={() => setView('out')}>ด้านนอก</button>
               <button type="button" aria-pressed={view === 'in'} onClick={() => setView('in')}>ด้านใน</button>
             </span>
+            {mm && (
+              <label>แบบเส้น{' '}
+                <select aria-label="แบบเส้น" value={style} onChange={e => setStyle(e.target.value)}>
+                  {STYLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </label>
+            )}
           </div>
           <div className="bar">
             <label>ซีรีส์ที่ใช้ทดสอบ{' '}
@@ -61,9 +97,19 @@ export default function PartEditor({ model, onChange, index, canEdit, testSeries
               </select>
             </label>
           </div>
-          <PartPreview model={model} sel={sel} partKeys={partKeys} view={view} widthMm={size.w} heightMm={size.h}
-            widthOf={data.widthOf} buttOf={data.buttOf} canEdit={canEdit} onPick={pick}
-            onToggle={(key, piece, end, mode) => edit(setEndModeAt(model, key, sel.line, piece, end, mode))} />
+          {mm && <PartInputs model={model} params={draft || model.params || {}} invalid={!!draft} canEdit={canEdit} onChange={changeParams} />}
+          {mm && !draft && (
+            <>
+              <PartTabs model={model} tab={tab ? tab.id : 'all'} canEdit={canEdit} onTab={setTabId} onToggleDone={(k) => edit(toggleDone(model, k))} />
+              <p className="hint" style={{ margin: '0 0 4px' }}>กำหนดโปรไฟล์แล้ว {badge.done}/{badge.total} ตำแหน่ง</p>
+            </>
+          )}
+          {draft
+            ? <div className="empty" role="status">{PARAMS_HINT}</div>
+            : <PartPreview model={model} sel={sel} partKeys={partKeys} view={view} widthMm={size.w} heightMm={size.h}
+                widthOf={data.widthOf} buttOf={data.buttOf} canEdit={canEdit} onPick={pick} style={style} tab={tab}
+                onCell={(r, c) => edit(cycleCellKind(model, r, c))}
+                onToggle={(key, piece, end, mode) => edit(setEndModeAt(model, key, sel.line, piece, end, mode))} />}
         </section>
         <section className="card2" aria-live="polite">
           <h2>แก้ชิ้นที่เลือก</h2>

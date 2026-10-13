@@ -21,6 +21,7 @@ function EndRows({ model, view, posKey, line, i, families, canEdit, onChange, on
       <b>{pieceLabel(model, posKey, k) || 'ชิ้น'}</b>
       {[0, 1].map(e => {
         const p = pair[e]
+        if (p.mode === 'mitre') return <span className="endc" key={e}>ปลาย{lab[e]}: <b>เข้ามุม 45°</b> (ตามแบบ)</span>
         const butt = p.mode === 'butt'
         const toVal = p.to ? `${p.to.key}:${p.to.line}` : ''
         return (

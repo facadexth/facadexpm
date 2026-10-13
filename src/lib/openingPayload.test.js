@@ -93,3 +93,15 @@ describe('validateForm hardening', () => {
     expect(validateForm(filled({ has_addon: false, addon_offset_m: '-5' }))).toBeNull()
   })
 })
+
+describe('layout_params (Task 10)', () => {
+  it('sent only when the item has layout inputs; round-trips through formFromOpening', () => {
+    expect(buildOpeningPayload(filled(), { projectId: 'p1' })).not.toHaveProperty('layout_params')
+    expect(buildOpeningPayload(filled({ layout_params: {} }), { projectId: 'p1' })).not.toHaveProperty('layout_params')
+    const p = buildOpeningPayload(filled({ layout_params: { n: 3, cells: { '0,1': 'awning' } } }), { projectId: 'p1' })
+    expect(p.layout_params).toEqual({ n: 3, cells: { '0,1': 'awning' } })
+    expect(formFromOpening(p).layout_params).toEqual({ n: 3, cells: { '0,1': 'awning' } })
+    expect(formFromOpening({ opening_no: 'W' }).layout_params).toEqual({})
+    expect(emptyForm().layout_params).toEqual({})
+  })
+})
