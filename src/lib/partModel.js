@@ -28,6 +28,7 @@
 
 import { LAYOUTS, defaultParams, exprParams, rolesOf } from './layoutRegistry.js'
 import { evalExpr } from './layoutExpr.js'
+import { cycleCell } from './layoutCells.js'
 
 export { LAYOUTS }
 
@@ -172,7 +173,17 @@ export function startModel(kind, params = {}) {
   }
   // layout.namesWhen { param: { position: name } }: a truthy param renames positions (e.g. sliding_n door)
   for (const [param, names] of Object.entries(layout.namesWhen || {})) if (model.params[param]) Object.assign(model.names, names)
+  // layout.familiesWhen { param: { position: family } }: a truthy param sets line 0's family (curtain_wall unitized set)
+  for (const [param, fams] of Object.entries(layout.familiesWhen || {})) {
+    if (!model.params[param]) continue
+    for (const [key, fam] of Object.entries(fams)) if (model.lines[key]?.[0]) model.lines[key][0].profile_family = fam
+  }
   return ensureEnds(model)
+}
+
+// Cell (r, c) of a cells layout takes its next kind (glass -> awning -> spandrel); piece counts follow, so ends are re-derived.
+export function cycleCellKind(model, r, c) {
+  return setParams(model, { cells: cycleCell(model, r, c).params.cells })
 }
 
 // Layout inputs changed: merge them in, re-derive line 0's factor where rule.factor is an expression, and re-derive the

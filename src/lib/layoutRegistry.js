@@ -11,6 +11,9 @@
 //   positions[k].enabled   optional expression over params: 0 -> the position is absent from the model (swing_door sill)
 //   validParams  optional expression over params that must be > 0 (folding_door 'nL+nR'), else startModel/setParams
 //             throw Error('layout_params_invalid') before any rule is evaluated
+//   cells     optional marker: per-cell kinds (layoutCells.js); exprParams then adds cells_awning / cells_spandrel
+//   familiesWhen optional { param: { position: family } }: a truthy param sets line 0's family at start (curtain_wall unitized)
+//   parts[].panel  infill panel part (no aluminium, no positions): contributes layoutCells.panelCells only
 //   order     position keys in display order
 //   hardware  [{ name, per, qty }]
 //   symbol    drawing hints
@@ -30,6 +33,9 @@ import swing_door from './layouts/swing_door.js'
 import frameless_door from './layouts/frameless_door.js'
 import hanging_door from './layouts/hanging_door.js'
 import folding_door from './layouts/folding_door.js'
+import curtain_wall from './layouts/curtain_wall.js'
+import frameless_wall from './layouts/frameless_wall.js'
+import { cellParams } from './layoutCells.js'   // layoutCells imports nothing from here (no cycle)
 
 function normalize(def) {
   const keys = [...(def.order || []), ...Object.keys(def.positions || {}).filter((k) => !(def.order || []).includes(k))]
@@ -54,6 +60,8 @@ export const LAYOUTS = {
   frameless_door: normalize(frameless_door),
   hanging_door: normalize(hanging_door),
   folding_door: normalize(folding_door),
+  curtain_wall: normalize(curtain_wall),
+  frameless_wall: normalize(frameless_wall),
 }
 
 export function layoutOf(kind) {
@@ -86,7 +94,7 @@ export function defaultParams(kind, typeParams) {
   const out = {}
   const tp = typeParams || {}
   for (const inp of inputsOf(kind)) {
-    if (inp.default !== undefined) out[inp.key] = coerceInput(inp, inp.default)
+    if (inp.default !== undefined) out[inp.key] = coerceInput(inp, typeof inp.default === 'object' ? JSON.parse(JSON.stringify(inp.default)) : inp.default)
     if (inp.fixed_by_type && Object.prototype.hasOwnProperty.call(tp, inp.key)) out[inp.key] = coerceInput(inp, tp[inp.key])
   }
   return out
@@ -110,6 +118,9 @@ export function validateLayout(def) {
     }
   }
   const order = def.order || []
+  for (const p of def.parts || []) {
+    if (p.panel && (p.glass || (p.positions || Object.keys(pos).filter((k) => pos[k].part === p.key)).length)) errs.push(`part ${p.key}: a panel part has no positions and is not glass`)
+  }
   for (const k of Object.keys(pos)) if (order.filter((x) => x === k).length !== 1) errs.push(`order must list ${k} exactly once`)
   for (const k of order) if (!pos[k]) errs.push(`order lists unknown position ${k}`)
   return errs
@@ -120,12 +131,20 @@ export function validateLayout(def) {
 export function exprParams(model) {
   const out = {}
   const params = (model && model.params) || {}
+  const layout = model && Object.prototype.hasOwnProperty.call(LAYOUTS, model.layout_kind) ? LAYOUTS[model.layout_kind] : null
   for (const [k, v] of Object.entries(params)) {
     if (typeof v === 'number' && Number.isFinite(v)) out[k] = v
     else if (typeof v === 'boolean') out[k] = v ? 1 : 0
     else if (v === 'yes') out[k] = 1
     else if (v === 'no') out[k] = 0
+    else if (typeof v === 'string' && layout) {
+      // a select whose options are numbers (curtain_wall k) stays numeric even if the UI stored the option as text
+      const inp = layout.inputs.find((i) => i.key === k && i.type === 'select')
+      const opt = inp && inp.options.find((o) => typeof o.value === 'number' && String(o.value) === v)
+      if (opt) out[k] = opt.value
+    }
   }
+  if (layout && layout.cells) Object.assign(out, cellParams(params))
   return out
 }
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { defaultParams, kinds, LAYOUTS, validateLayout } from '../layoutRegistry.js'
+import { panelCells, jointCount } from '../layoutCells.js'
 import { startModel, validateCorners, pieceCount, setParams, trackOf, isFixedPiece, pieceLabel } from '../partModel.js'
 import { expandParts } from '../partExpand.js'
 import { computeComponentLength } from '../bomEngine.js'
@@ -294,7 +295,7 @@ describe('sliding_2_fixed_2', () => {
 })
 
 // ---------------------------------------------------------------- doors (Task 6)
-import { glassParts } from '../partModel.js'
+import { glassParts, cycleCellKind } from '../partModel.js'
 import { evalExpr } from '../layoutExpr.js'
 import { exprParams } from '../layoutRegistry.js'
 
@@ -489,8 +490,121 @@ describe('folding_door leaf cap (R-6b)', () => {
 })
 
 describe('every registered layout passes validateLayout', () => {
-  it('all 11', () => {
-    const real = ['sliding_2', 'fixed_grid', 'awning_grid', 'casement_n', 'sliding_n', 'sliding_3track', 'sliding_2_fixed_2', 'swing_door', 'frameless_door', 'hanging_door', 'folding_door']
+  it('all 13', () => {
+    const real = ['sliding_2', 'fixed_grid', 'awning_grid', 'casement_n', 'sliding_n', 'sliding_3track', 'sliding_2_fixed_2', 'swing_door', 'frameless_door', 'hanging_door', 'folding_door', 'curtain_wall', 'frameless_wall']
     for (const k of real) { expect(kinds()).toContain(k); expect([k, validateLayout(LAYOUTS[k])]).toEqual([k, []]) }
+  })
+})
+
+describe('curtain_wall and frameless_wall (Task 7)', () => {
+  const W = { 'NO.9010': 65, 'NO.9023': 65 }
+  const wOf = (f) => W[f] ?? 65
+  const bZero = () => 0
+  const runCw = (m, wm, hm) => {
+    const { components, issues } = expandParts({ model: m, buttOf: bZero, widthOf: wOf })
+    const row = (name) => components.filter((c) => c.role_name === name)
+    const len = (c) => computeComponentLength(c.length_rule_type, c.length_deduction_mm, wm / 1000, hm / 1000, c.length_factor, c.end_deduction_mm) * 1000
+    return { components, issues, row, len }
+  }
+  const cw = (patch) => setParams(startModel('curtain_wall', defaultParams('curtain_wall', {})), patch || {})
+
+  it('snapshot: defaults rows 3 cols 4, line keys and piece counts', () => {
+    const m = cw()
+    expect(m.params).toEqual({ rows: 3, cols: 4, spandrel: 'none', cells: {}, k: 0.5, unitized: false })
+    expect(Object.keys(m.lines)).toEqual(['mullion', 'transom', 'plate_w', 'plate_h', 'cover_w', 'cover_h', 'sash_top', 'sash_bottom', 'sash_side'])
+    expect(counts(m)).toEqual({ mullion: 5, transom: 16, plate_w: 1, plate_h: 1, cover_w: 1, cover_h: 1, sash_top: 0, sash_bottom: 0, sash_side: 0 })
+    expect(m.lines.mullion[0].profile_family).toBe('NO.9010')
+    expect(m.lines.transom[0].profile_family).toBe('NO.9023')
+    expect(validateCorners(m)).toEqual([])
+    expect(defaultParams('curtain_wall', {}).cells).not.toBe(defaultParams('curtain_wall', {}).cells)   // defaults are not shared
+  })
+  it('3600 x 3000: mullions 5 x 3000, transoms (rows+1)*cols = 16 x 818.75 (brief says 12 = rows*cols; per expression wins), no sash rows without awning cells', () => {
+    const r = runCw(fill(cw()), 3600, 3000)
+    expect(r.issues).toEqual([])
+    const mu = r.row('เสา mullion')[0]
+    expect([mu.quantity_value, r6(r.len(mu))]).toEqual([5, 3000])
+    const tr = r.row('ราว transom')[0]
+    expect([tr.quantity_value, r6(r.len(tr))]).toEqual([16, 818.75])
+    expect(r.components.some((c) => c.cut_style === 'miter45')).toBe(false)
+  })
+  it('one awning cell: rails 818.75 (x1 each), sides (3000 - 4 x 65)/3 = 913.33 (x2), mitred', () => {
+    const m = fill(cycleCellKind(cw(), 1, 2))
+    const r = runCw(m, 3600, 3000)
+    expect(r.issues).toEqual([])
+    const top = r.row(m.names.sash_top)[0]
+    const bot = r.row(m.names.sash_bottom)[0]
+    const side = r.row(m.names.sash_side)[0]
+    expect([top.quantity_value, bot.quantity_value, side.quantity_value]).toEqual([1, 1, 2])
+    expect([r6(r.len(top)), r6(r.len(bot))]).toEqual([818.75, 818.75])
+    expect(r.len(side)).toBeCloseTo(913.3333, 3)
+    expect([top, bot, side].map((c) => c.cut_style)).toEqual(['miter45', 'miter45', 'miter45'])
+    expect(validateCorners(m)).toEqual([])
+  })
+  it('three awning cells: sash quantities follow cells_awning; hardware 2 + 1 per awning cell', () => {
+    let m = cw()
+    for (const [r, c] of [[0, 0], [1, 1], [2, 3]]) m = cycleCellKind(m, r, c)
+    const r = runCw(fill(m), 3600, 3000)
+    expect(r.row(m.names.sash_side)[0].quantity_value).toBe(6)
+    expect(r.row(m.names.sash_top)[0].quantity_value).toBe(3)
+    const hw = Object.fromEntries(LAYOUTS.curtain_wall.hardware.map((h) => [h.name, evalExpr(h.qty, exprParams(m))]))
+    expect(hw).toEqual({ แขนค้ำกระทุ้ง: 6, มือจับ: 3 })
+  })
+  it('awning cells above MAX_PART_COUNT clamp to 10 sashes', () => {
+    let m = cw({ rows: 4, cols: 4 })
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) m = cycleCellKind(m, r, c)
+    expect(exprParams(m).cells_awning).toBe(16)
+    expect(pieceCount(m, 'sash_top')).toBe(10)
+  })
+  it('spandrel top: 4 panel cells, spandrel part has no positions and is not glass; no aluminium rows from it', () => {
+    const m = cw({ spandrel: 'top' })
+    expect(panelCells(m)).toHaveLength(4)
+    const p = LAYOUTS.curtain_wall.parts.find((x) => x.key === 'spandrel')
+    expect(p).toMatchObject({ panel: true, glass: false, count: 'cells_spandrel', positions: [] })
+    expect(exprParams(m).cells_spandrel).toBe(4)
+    expect(glassParts(m)).toEqual([])
+  })
+  it('pressure plate and cover: width line (R+1)(1-k) and height line (C+1)(1-k); sum = (W(R+1)+H(C+1))(1-k)', () => {
+    for (const [k, kk] of [[undefined, 0.5], [1, 1], [0, 0]]) {
+      const m = fill(k === undefined ? cw() : cw({ k }))
+      const r = runCw(m, 3600, 3000)
+      const total = r.len(r.row(m.names.plate_w)[0]) + r.len(r.row(m.names.plate_h)[0])
+      expect(r6(total)).toBe(r6((3600 * 4 + 3000 * 5) * (1 - kk)))
+      expect(r6(r.len(r.row(m.names.cover_w)[0]) + r.len(r.row(m.names.cover_h)[0]))).toBe(r6((3600 * 4 + 3000 * 5) * (1 - kk)))
+    }
+    expect(cw().lines.plate_w[0].profile_family).toBe('NO.9019')
+    expect(cw().lines.cover_h[0].profile_family).toBe('NO.3112')
+    expect(cw({ k: 1 }).lines.plate_w[0].length_factor).toBe(0)
+  })
+  it('k stored as text still evaluates numerically', () => {
+    expect(exprParams({ layout_kind: 'curtain_wall', params: { rows: 1, cols: 1, k: '0.5' } }).k).toBe(0.5)
+    expect(exprParams({ layout_kind: 'curtain_wall', params: { k: 'junk' } }).k).toBeUndefined()
+  })
+  it('unitized switches mullion and transom families (familiesWhen), others keep theirs', () => {
+    const m = startModel('curtain_wall', defaultParams('curtain_wall', { unitized: true }))
+    expect(m.params.unitized).toBe(true)
+    expect([m.lines.mullion[0].profile_family, m.lines.transom[0].profile_family]).toEqual(['Fe-Mullion', 'Int-Tran'])
+    expect(m.lines.plate_w[0].profile_family).toBe('NO.9019')
+    expect(cw().lines.mullion[0].profile_family).toBe('NO.9010')
+  })
+  it('a layout with cells declared only: other layouts get no cells_* params', () => {
+    expect(exprParams(startModel('fixed_grid', defaultParams('fixed_grid', {}))).cells_awning).toBeUndefined()
+  })
+
+  it('frameless_wall cols 3 at 3600: frame 4 rows, 3 panes of 1170, 2 joints', () => {
+    const m = fill(startModel('frameless_wall', defaultParams('frameless_wall', {})))
+    expect(m.params).toEqual({ cols: 3 })
+    expect(Object.keys(m.lines)).toEqual(['frame_top', 'frame_bottom', 'frame_side'])
+    expect(counts(m)).toEqual({ frame_top: 1, frame_bottom: 1, frame_side: 2 })
+    expect(LAYOUTS.frameless_wall.parts.find((p) => p.key === 'pane')).toMatchObject({ glass: true, count: 'cols', positions: [] })
+    expect(glassParts(m, { widthMm: 3600, buttOf }).map((g) => [g.part, g.idx, g.widthMm])).toEqual([['pane', 0, 1170], ['pane', 1, 1170], ['pane', 2, 1170]])
+    expect(jointCount(m)).toBe(2)
+    expect(jointCount(setParams(m, { cols: 5 }))).toBe(4)
+    expect(glassParts(setParams(m, { cols: 5 }))).toHaveLength(5)
+    expect(validateCorners(m)).toEqual([])
+    expect(validateLayout(LAYOUTS.frameless_wall)).toEqual([])
+  })
+  it('validateLayout rejects a panel part that has positions or is glass', () => {
+    const bad = { ...LAYOUTS.curtain_wall, parts: LAYOUTS.curtain_wall.parts.map((p) => (p.key === 'spandrel' ? { ...p, glass: true } : p)) }
+    expect(validateLayout(bad).join()).toMatch(/panel part/)
   })
 })

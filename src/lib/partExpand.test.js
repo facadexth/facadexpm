@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { expandParts, explainPiece } from './partExpand.js'
 import { computeComponentLength } from './bomEngine.js'
 import { startModel, setEndMode, setPartCount, addLine } from './partModel.js'
+import { defaultParams } from './layoutRegistry.js'
 
 const BUTT = { FS: 38.1, FT: 38.1, FB: 35.8, KS: 25, HS: 25 }
 const buttOf = (f) => (f in BUTT ? BUTT[f] : null)
@@ -495,5 +496,19 @@ describe('role-driven track autos', () => {
     delete m.lines.track_rail
     const { components } = expandParts({ model: m, buttOf: bt, widthOf: () => null })
     expect(components.find((c) => c.role_name === 'A').length_deduction_mm).toBe(0)
+  })
+})
+
+describe('curtain_wall autos cw_cols / cw_rows (widths, not butt distances)', () => {
+  it('cw_cols = (cols+1)·w(mullion), cw_rows = (rows+1)·w(transom)', () => {
+    const m = startModel('curtain_wall', defaultParams('curtain_wall', { rows: 3, cols: 4 }))
+    for (const ls of Object.values(m.lines)) for (const l of ls) l.profile_family = 'F'
+    m.lines.mullion[0].profile_family = 'MU'
+    m.lines.transom[0].profile_family = 'TR'
+    const w = (f) => ({ MU: 50, TR: 70 }[f] ?? 1)
+    const x = lineDeductions({ model: m, buttOf: () => 999, widthOf: w, key: 'transom', lineIdx: 0 })
+    expect(x).toMatchObject({ pre: 250, hasAuto: true })   // 5 × 50, the butt distance (999) is ignored
+    const m2 = setParams(m, { cells: { '0,0': 'awning' } })
+    expect(lineDeductions({ model: m2, buttOf: () => 999, widthOf: w, key: 'sash_side', lineIdx: 0 }).pre).toBe(280)   // 4 × 70
   })
 })
