@@ -83,7 +83,8 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
   const stale = !!(storedSnapshot && currentSig && currentSig !== opening.preview_sig)
 
   const handleSave = async () => {
-    const invalid = validateItemForm(form) || (layoutSave.on && !layoutSave.name.trim() ? 'ตั้งชื่อแม่แบบรูปแบบ' : null)
+    // the template editor blocks refused layout params too (folding 0 + 0 would leave the aluminium unpriced)
+    const invalid = validateItemForm(form) || (m.layoutInputs && m.layoutInputs.invalid ? PARAMS_HINT : null) || (layoutSave.on && !layoutSave.name.trim() ? 'ตั้งชื่อแม่แบบรูปแบบ' : null)
     if (invalid) { setError(invalid); return }
     setError(null); setLayoutError(null); setBusy(true)
     try {

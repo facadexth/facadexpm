@@ -54,6 +54,8 @@ export function formFromOpening(o) {
     labour_per_sqm: str(o.labour_per_sqm), profit_pct: str(o.profit_pct), extra_lines: Array.isArray(o.extra_lines) ? o.extra_lines : [],
     fire_barrier_cost: str(o.fire_barrier_cost), bracket_cost: str(o.bracket_cost), bend_alu_cost: str(o.bend_alu_cost), bend_glass_cost: str(o.bend_glass_cost),
     layout_params: isPlainObject(o.layout_params) ? JSON.parse(JSON.stringify(o.layout_params)) : {},
+    // the row already had params: clearing them (another template) must send {} so the old ones do not stay behind
+    _hadLayoutParams: isPlainObject(o.layout_params) && Object.keys(o.layout_params).length > 0,
   }
 }
 
@@ -94,7 +96,9 @@ export function buildOpeningPayload(form, { projectId, previews = null, savedAt 
   // The item's layout inputs (estimation_openings.layout_params, e.g. { n: 3 } or curtain-wall { cells }): sent only when
   // the item has some, so an item of a kind without inputs keeps saving before the 2026-10-17-01 migration adds the column
   // (the omitWhenAbsent convention of the catalogue forms). Costing reads it through openingCost.modelForItem.
-  if (isPlainObject(form.layout_params) && Object.keys(form.layout_params).length) payload.layout_params = JSON.parse(JSON.stringify(form.layout_params))
+  // An item whose row had params always sends the key ({} clears them; that row proves the column exists).
+  if (isPlainObject(form.layout_params) && (Object.keys(form.layout_params).length || form._hadLayoutParams)) payload.layout_params = JSON.parse(JSON.stringify(form.layout_params))
+  else if (form._hadLayoutParams) payload.layout_params = {}
   if (previews) {
     payload.preview_svg_out = previews.out || null
     payload.preview_svg_in = previews.in || null

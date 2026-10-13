@@ -84,8 +84,10 @@ const stableJson = v => JSON.stringify(v, (k, x) => (x && typeof x === 'object' 
 // Fingerprint of the part drawing's inputs beyond the legacy signature: the whole model (layout_kind, end modes,
 // deduction overrides, names...) and the catalogue widths the drawing is scaled with. Exact: the drawing ignores butt
 // distances (partPreviewSvg.js), so a catalogue butt-distance change alone does not make the saved drawing old.
+// model.done (the editor's "เสร็จแล้ว" ticks) is UI-only and never changes the drawing, so it is left out of the signature.
 function partFingerprint(model, partCtx) {
-  return stableJson([model.layout_kind, model, drawnWidths(model, partCtx.widthOf)])
+  const { done, ...drawn } = model   // eslint-disable-line no-unused-vars
+  return stableJson([model.layout_kind, drawn, drawnWidths(model, partCtx.widthOf)])
 }
 
 // Signature of everything that changes the saved drawing, from the row's values + both templates + frame widths.

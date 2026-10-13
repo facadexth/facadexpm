@@ -203,3 +203,15 @@ describe('part-editor drawing in the saved snapshot (layout_kind templates)', ()
     expect(snap.out).not.toBe(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'out' }))
   })
 })
+
+describe('"เสร็จแล้ว" ticks do not make saved drawings stale (Task 10 fix round 1)', () => {
+  it('two models differing only in done sign the same; a real change still differs', () => {
+    const tpl = { id: 'tA', layout_kind: 'awning_grid', main_axis: 'vertical', preview_kind: 'fixed', grid_row_weights: [1] }
+    const row = { template_id: 'tA', width_m: 1.8, height_m: 1.2, panel_count: 1 }
+    const m = startModel('awning_grid', { rows: 2, cols: 2 })
+    const sig = (model) => itemPreviewSignature(row, tpl, null, { frame_mm: null }, { model, buttOf: () => 20 })
+    expect(sig({ ...m, done: ['frame', 'sash'] })).toBe(sig(m))
+    expect(sig({ ...m, done: ['sash'] })).toBe(sig({ ...m, done: [] }))
+    expect(sig(setEndMode(m, 'frame_top', 0, 0, 0, 'through'))).not.toBe(sig(m))
+  })
+})

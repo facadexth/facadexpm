@@ -85,6 +85,21 @@ describe('item form layout inputs', () => {
     expect(screen.getAllByText(/ใส่จำนวนบานซ้าย\/ขวา/).length).toBeGreaterThan(0)
     expect(container.querySelector('img[src^="data:image/svg+xml"]')).toBeNull()
   })
+  it('folding door 0 + 0: saving is refused with the hint and nothing is written', async () => {
+    setup('folding_door')
+    fireEvent.change(panel().getByLabelText(/จำนวนบานพับซ้าย/), { target: { value: '0' } })
+    fireEvent.change(panel().getByLabelText(/จำนวนบานพับขวา/), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: /บันทึกรายการ/ }))
+    await vi.waitFor(() => expect(document.querySelector('.alert-error')?.textContent || '').toMatch(/ใส่จำนวนบานซ้าย\/ขวา/))
+    expect(calls.find(c => c.table === 'estimation_openings')).toBeUndefined()
+  })
+  it('an item with stored layout_params shows and re-saves them (formFromOpening carries them)', async () => {
+    setup('sliding_n', { n: 2 }, { layout_params: { n: 3 } })
+    expect(panel().getByLabelText(/จำนวนบาน/).value).toBe('3')
+    fireEvent.click(screen.getByRole('button', { name: /บันทึกรายการ/ }))
+    await vi.waitFor(() => expect(calls.find(c => c.table === 'estimation_openings')).toBeTruthy())
+    expect(calls[0].payload.layout_params).toEqual({ n: 3 })
+  })
   it('curtain wall: clicking a cell on the item preview cycles it and saves layout_params.cells', async () => {
     const { container } = setup('curtain_wall', { rows: 2, cols: 2 })
     const cell = () => container.querySelector('[data-cell="1,0"]')

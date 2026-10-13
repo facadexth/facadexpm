@@ -105,3 +105,16 @@ describe('layout_params (Task 10)', () => {
     expect(emptyForm().layout_params).toEqual({})
   })
 })
+
+describe('layout_params cleared on template change (fix round 1)', () => {
+  it('a row that had params sends {} once they are cleared', () => {
+    const f = formFromOpening({ opening_no: 'W', template_id: 't1', width_m: 1, height_m: 1, layout_params: { n: 3 } })
+    expect(buildOpeningPayload({ ...f, layout_params: {} }, { projectId: 'p' }).layout_params).toEqual({})
+  })
+  it('a row that never had params omits the key (pre-migration path unchanged)', () => {
+    const f = formFromOpening({ opening_no: 'W', template_id: 't1', width_m: 1, height_m: 1 })
+    expect(buildOpeningPayload(f, { projectId: 'p' })).not.toHaveProperty('layout_params')
+    const g = formFromOpening({ opening_no: 'W', template_id: 't1', width_m: 1, height_m: 1, layout_params: {} })
+    expect(buildOpeningPayload(g, { projectId: 'p' })).not.toHaveProperty('layout_params')
+  })
+})
