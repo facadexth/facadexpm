@@ -185,6 +185,10 @@ export function setEndMode(model, key, lineIdx, piece, end, mode) {
     }
   } else {
     if (!target.to && pEnd) target.to = { key: pt.key, line: li }
+    else if (!target.to && !pt) {   // no corner partner (tee): butt into the joint's default target, same line when it has one
+      const dt = defaultTarget(model, key, end)
+      if (dt) target.to = { key: dt.key, line: next.lines[dt.key]?.[li] ? li : 0 }
+    }
     if (pEnd) {
       pEnd.mode = 'through'
       pEnd.to = null

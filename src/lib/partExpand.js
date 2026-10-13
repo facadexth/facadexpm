@@ -165,7 +165,7 @@ export function expandParts({ model, buttOf, widthOf }) {
           quantity_value: (Number(line.quantity_value) || 0) * g.count,
           thickness_role: line.thickness_role ?? null,
           sort_order: components.length,
-          cut_style: mitre ? 'mitre' : 'square',
+          cut_style: mitre ? 'miter45' : 'square',   // templateSave / DB cut_style vocabulary
         })
       }
     })

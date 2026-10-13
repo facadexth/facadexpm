@@ -320,6 +320,14 @@ describe('expandParts — grid (rows 2, cols 3) at 1800 × 1200', () => {
     expect(components.filter((c) => c.role_name.startsWith('ซอยนอน')).map((c) => c.end_deduction_mm)).toEqual([45, 0])
   })
 
+  it('setEndMode butt on a tee end targets the vertical and deducts its butt distance', () => {
+    const m = setEndMode(grid(), 'transom', 0, 0, 0, 'butt')
+    expect(m.lines.transom[0].ends[0][0]).toEqual({ mode: 'butt', to: { key: 'mullion', line: 0 }, deduction_mm: null })
+    const { components, issues } = expandParts({ model: m, buttOf: b45, widthOf: w60 })
+    expect(issues).toEqual([])
+    expect(components.filter((c) => c.role_name.startsWith('ซอยนอน')).map((c) => c.end_deduction_mm)).toEqual([45, 0])
+  })
+
   it('missing mullion width → no_profile_width, the grid term counts 0', () => {
     const { components, issues } = expandParts({ model: grid(), buttOf: b45, widthOf: () => null })
     expect(issues).toContainEqual({ role_name: 'ซอยนอน', reason: 'no_profile_width' })
@@ -353,7 +361,7 @@ registerLayoutForTest({
 })
 
 describe('expandParts — mitred sash part', () => {
-  it('stale butt ends still give end_deduction_mm 0, cut_style mitre, no corner_violation', () => {
+  it('stale butt ends still give end_deduction_mm 0, cut_style miter45, no corner_violation', () => {
     const m = fillAll(start3('t3_mitre'))
     for (const k of ['sash_top', 'sash_bottom', 'sash_left', 'sash_right']) {
       for (const pair of m.lines[k][0].ends) for (const e of [0, 1]) pair[e] = { mode: 'butt', to: null, deduction_mm: null }
@@ -364,7 +372,7 @@ describe('expandParts — mitred sash part', () => {
     for (const name of ['บานบน', 'บานล่าง', 'บานซ้าย', 'บานขวา']) {
       const c = components.find((x) => x.role_name === name)
       expect(c.end_deduction_mm).toBe(0)
-      expect(c.cut_style).toBe('mitre')
+      expect(c.cut_style).toBe('miter45')
       expect(c.length_deduction_mm).toBe(90)
     }
     expect(components.find((x) => x.role_name === 'เฟรมบน').cut_style).toBe('square')
