@@ -176,3 +176,14 @@ export function orderJointIds(inserted, count) {
   return out
 }
 
+
+// The editor's message when a template's part model cannot be opened for a reason a reload does not fix (Ruling R-F5):
+// layout_mismatch = the template was made with another แบบชิ้นส่วน than its type now says (the type's kind was changed);
+// unknown_layout = a kind this version does not know. null for any other error (the caller keeps the "reload" wording).
+// labels: kind -> Thai label (layoutRegistry.layoutLabels).
+export function layoutLoadText(error, templateKind, typeKind, labels = {}) {
+  const lab = k => (k && labels[k]) || k || '—'
+  if (error === 'layout_mismatch') return `แบบชิ้นส่วนของเทมเพลตนี้ (${lab(templateKind)}) ไม่ตรงกับประเภท (${lab(typeKind)}) — แก้แบบชิ้นส่วนที่ประเภทในแคตตาล็อก หรือสร้างเทมเพลตใหม่`
+  if (error === 'unknown_layout') return `ไม่รู้จักแบบชิ้นส่วนของเทมเพลตนี้ (${templateKind || '—'}) — โปรแกรมรุ่นนี้ยังเปิดเทมเพลตนี้ไม่ได้ กรุณาแจ้งผู้ดูแลระบบ`
+  return null
+}

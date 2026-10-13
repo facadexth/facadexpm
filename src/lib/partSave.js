@@ -112,7 +112,10 @@ export function modelFromRows({ template, type, parts, positions, lines, ends } 
     const pr = posRows[key]
     if (pr && String(pr.name ?? '').trim()) model.names[key] = String(pr.name).trim()
     const rows = lineRowsByKey[key]
-    if (!rows || !rows.length) continue   // keep the default line (empty family -> reported by the expander)
+    // no stored line (a save cut short after the delete, a hand edit): keep the default line but WITHOUT the layout's
+    // default family (I7), so costing reports no_profile_family instead of pricing Excel defaults as if complete.
+    // (startModel of a NEW template keeps the default families; setParams-created positions keep them too.)
+    if (!rows || !rows.length) { for (const l of model.lines[key]) l.profile_family = ''; continue }
     const def = defaults.lines[key][0]
     model.lines[key] = rows.map((r, i) => { where[r.id] = { key, line: i }; return lineFromRow(r, def) })
   }

@@ -107,7 +107,7 @@ export default function PartEditor({ model, onChange, index, canEdit, testSeries
           {draft
             ? <div className="empty" role="status">{PARAMS_HINT}</div>
             : <PartPreview model={model} sel={sel} partKeys={partKeys} view={view} widthMm={size.w} heightMm={size.h}
-                widthOf={data.widthOf} buttOf={data.buttOf} canEdit={canEdit} onPick={pick} style={style} tab={tab}
+                widthOf={data.widthOf} buttOf={data.buttOf} canEdit={canEdit} onPick={pick} style={style} tab={tab} lengths={data.lengthsByPiece}
                 onCell={(r, c) => edit(cycleCellKind(model, r, c))}
                 onToggle={(key, piece, end, mode) => edit(setEndModeAt(model, key, sel.line, piece, end, mode))} />}
         </section>

@@ -37,7 +37,8 @@ export default function PartPreview(props) {
 
 const CELL_NAME = { glass: 'กระจก', awning: 'บานกระทุ้ง', spandrel: 'แผงทึบ' }
 
-function MmPreview({ model, sel, view, widthMm, heightMm, widthOf, canEdit, onPick, onToggle, style = 'double', tab = null, onCell }) {
+// lengths: { [key]: [cut mm per piece] } (partEditorView lengthsByPiece) printed by the 'lengths' style (R-F3).
+function MmPreview({ model, sel, view, widthMm, heightMm, widthOf, canEdit, onPick, onToggle, style = 'double', tab = null, onCell, lengths = null }) {
   const zm = zoomSpecs({ model, partKey: tab ? tab.partKey : null, partIdx: tab ? tab.partIdx : null, selected: sel, view, widthMm, heightMm, widthOf })
   const b = zm.box
   if (!b.w || !zm.pieces.length) return <div className="empty">ยังวาดภาพไม่ได้</div>
@@ -61,7 +62,7 @@ function MmPreview({ model, sel, view, widthMm, heightMm, widthOf, canEdit, onPi
             <g key={'p' + i} className={'pp' + (p.selected ? ' sel' : '') + (p.role === 'extra' ? ' ex' : '')} data-id={p.key} data-part={p.part} data-idx={p.partIdx}
               opacity={p.opacity} role={live ? 'button' : undefined} tabIndex={live ? 0 : -1} aria-label={p.label}
               {...(live ? activate(() => onPick(p.key, p.role === 'extra' ? p.line : 0)) : {})}
-              dangerouslySetInnerHTML={html(pieceSvg(p, style, sw))} />
+              dangerouslySetInnerHTML={html(pieceSvg(p, style, sw, p.role === 'main' ? lengths?.[p.key]?.[p.piece] ?? null : null))} />
           )
         })}
         {zm.symbols.map((s, i) => <g key={'s' + i} opacity={s.opacity} pointerEvents="none" dangerouslySetInnerHTML={html(symbolSvg(s, sw))} />)}

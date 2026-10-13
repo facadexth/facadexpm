@@ -36,7 +36,7 @@ export function defaultThick(kind, key, params) {
   if (key === 'track_cover') return 25
   if (key.startsWith('plate_')) return 30
   if (key.startsWith('cover_')) return 20
-  if (key === 'sill_cover' || key.startsWith('leaf_cover')) return 15
+  if (key === 'sill_cover' || key.startsWith('leaf_cover') || key.startsWith('leaf_bead')) return 15
   if (key.startsWith('leaf_') && kind === 'swing_door') return 100
   return 50
 }
@@ -196,6 +196,10 @@ function swing_door(c) {
     const hinge = ['leaf_stile_hinge', i], handle = ['leaf_stile_handle', i]
     const box = sashBox(c, r, { top: 'leaf_rail_top', bottom: 'leaf_rail_bottom', piece: i, left: hl ? hinge : handle, right: hl ? handle : hinge }, { flip: !hl })
     out.specs.push(...box.specs)
+    // คิ้วประตู (free lines): thin strips on the inner edges of the leaf frame, 2 vertical + 2 horizontal per leaf
+    const bi = box.inner, bv = Math.min(th('leaf_bead_v'), bi.w / 4), bh = Math.min(th('leaf_bead_h'), bi.h / 4)
+    if (c.has('leaf_bead_v')) out.specs.push(V_('leaf_bead_v', 2 * i, bi.x, bi.y, bi.h, bv, FIXED), V_('leaf_bead_v', 2 * i + 1, bi.x + bi.w - bv, bi.y, bi.h, bv, FIXED))
+    if (c.has('leaf_bead_h')) out.specs.push(H_('leaf_bead_h', 2 * i, bi.x + bv, bi.y, bi.w - 2 * bv, bh, FIXED), H_('leaf_bead_h', 2 * i + 1, bi.x + bv, bi.y + bi.h - bh, bi.w - 2 * bv, bh, FIXED))
     out.glass.push({ ...box.inner, fixed: false, kind: 'glass', part: 'leaf', partIdx: i })
     out.symbols.push(symAt(c, 'leaf', i, box.inner))
     const hx = hl ? r.x + st * 0.5 : r.x + lw - st * 0.5

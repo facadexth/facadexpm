@@ -12,6 +12,7 @@ import { LAYOUTS, validateCorners, lineFamily, MAX_PART_COUNT } from '../../lib/
 import { exprParams, inputsOf } from '../../lib/layoutRegistry.js'
 import { evalExpr } from '../../lib/layoutExpr.js'
 import { pieceLabel as geomPieceLabel } from '../../lib/partGeometry.js'
+import { cutLengthsByPiece } from '../../lib/partPreviewSvg.js'
 import { DEFAULT_SETTINGS } from '../../lib/estimationSettings.js'
 
 export const RULE_LABELS = { width: 'กว้าง', height: 'สูง', width_minus: 'กว้าง − ระยะหัก', height_minus: 'สูง − ระยะหัก', perimeter: 'เส้นรอบรูป' }
@@ -214,6 +215,8 @@ export function editorView({ model, index, seriesId, thicknessMm, widthMm, heigh
   return {
     W, H, buttOf, widthOf, profileOf, lines, parts, positionTotal, positionIssues,
     issues: exp.issues,
+    // cut length per drawn piece for the 'lengths' drawing style (R-F3), from this same expansion
+    lengthsByPiece: cutLengthsByPiece({ model, widthMm: W, heightMm: H, exp }),
     corners: model ? validateCorners(model) : [],
     explain: (key, lineIdx, piece) => explainPiece({ model, buttOf, widthOf, key, lineIdx, piece, widthMm: W, heightMm: H }),
     deductions: (key, lineIdx) => lineDeductions({ model, buttOf, widthOf, key, lineIdx }),

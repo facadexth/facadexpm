@@ -104,6 +104,7 @@ describe('(step 5) the quotation attachment shows the part-editor drawing unchan
 // ---------------------------------------------------------------- Task 8: every layout kind, four styles
 import { createHash } from 'node:crypto'
 import { kinds, defaultParams } from './layoutRegistry.js'
+import { cutLengthsByPiece } from './partPreviewSvg.js'
 
 const SIZE8 = {
   sliding_2: [1800, 1200], fixed_grid: [1800, 1200], awning_grid: [1200, 1200], casement_n: [1500, 1200],
@@ -114,6 +115,7 @@ const SIZE8 = {
 const m8 = (kind, params = {}) => startModel(kind, { ...defaultParams(kind, {}), ...params })
 const svg8 = (kind, params = {}, extra = {}) => { const [W, H] = SIZE8[kind]; return partSvgString({ model: m8(kind, params), widthMm: W, heightMm: H, ...extra }) }
 const count = (s, re) => (s.match(re) || []).length
+const filledFam = (m) => { const o = JSON.parse(JSON.stringify(m)); for (const ls of Object.values(o.lines)) for (const l of ls) l.profile_family = l.profile_family || 'X'; return o }
 
 describe('Task 8 — partSvgString for every layout kind', () => {
   it('sliding_2 output is byte-identical to before Task 8 (pinned sha256)', () => {
@@ -129,12 +131,15 @@ describe('Task 8 — partSvgString for every layout kind', () => {
       expect(kinds()).toContain(kind)
       const seen = new Set()
       for (const style of ['double', 'lengths', 'solid', 'cad']) for (const view of ['out', 'in']) {
-        const s = svg8(kind, {}, { style, view })
+        // adjusted (final fix wave, R-F3): 'lengths' prints cut lengths only when they are given
+        const [W, H] = SIZE8[kind]
+        const lengthsByPiece = style === 'lengths' ? cutLengthsByPiece({ model: filledFam(m8(kind)), buttOf: () => 20, widthOf: () => 40, widthMm: W, heightMm: H }) : null
+        const s = svg8(kind, {}, { style, view, lengthsByPiece })
         expect(typeof s).toBe('string')
         expect(safeSvgDataUri(s)).not.toBeNull()
         expect(s).not.toMatch(/NaN|undefined|Infinity|<style|<script|marker|\son[a-z]+=/i)
         expect(s.match(/<(\w+)/g).every((t) => ['<svg', '<rect', '<line', '<text', '<polyline'].includes(t))).toBe(true)
-        expect(s).toBe(svg8(kind, {}, { style, view }))
+        expect(s).toBe(svg8(kind, {}, { style, view, lengthsByPiece }))
         if (view === 'out') seen.add(s)
       }
       expect(seen.size).toBe(4)   // the four styles differ (a symmetric drawing may look the same from both sides)
@@ -146,9 +151,31 @@ describe('Task 8 — partSvgString for every layout kind', () => {
     expect(cad).toContain('stroke-width="1.3"')
     expect(cad).not.toMatch(/<rect [^>]*data-role="piece"[^>]*fill="#/)
     const dbl = svg8('fixed_grid', {}, { style: 'double' })
-    const len = svg8('fixed_grid', {}, { style: 'lengths' })
+    const lengthsByPiece = cutLengthsByPiece({ model: m8('fixed_grid'), buttOf: () => 45, widthOf: () => 60, widthMm: 1800, heightMm: 1200 })
+    const len = svg8('fixed_grid', {}, { style: 'lengths', lengthsByPiece })
     expect(count(len, /<text/g)).toBeGreaterThan(count(dbl, /<text/g))
     expect(len).toContain('>530</text>')
+  })
+  it('lengths prints the CUT length from the expansion, not the drawn one (R-F3): fixed_grid top frame 1740, never 1680', () => {
+    // butt 30 / width 60: the top frame is cut 1800 − 2 × 30 = 1740 but drawn 1800 − 2 × 60 = 1680
+    const opts = { model: m8('fixed_grid'), widthMm: 1800, heightMm: 1200, widthOf: () => 60 }
+    const lengthsByPiece = cutLengthsByPiece({ ...opts, buttOf: () => 30 })
+    expect(lengthsByPiece.frame_top).toEqual([1740])
+    const s = partSvgString({ ...opts, style: 'lengths', lengthsByPiece })
+    expect(s).toContain('>1740</text>')
+    expect(s).not.toContain('>1680</text>')
+    const fn = partSvgString({ ...opts, style: 'lengths', lengthsByPiece: (key) => (key === 'frame_top' ? 1740 : null) })
+    expect(count(fn, />1740<\/text>/g)).toBe(1)
+    const none = partSvgString({ ...opts, style: 'lengths' })
+    expect(count(none, /<text/g)).toBe(count(partSvgString({ ...opts, style: 'double' }), /<text/g))
+    expect(none).not.toMatch(/>1(740|680)<\/text>/)
+  })
+  it('decorative free-line strips get no cut length (hanging-door rail, curtain-wall plates)', () => {
+    const hang = cutLengthsByPiece({ model: m8('hanging_door'), buttOf: () => 20, widthOf: () => 40, widthMm: 2400, heightMm: 2100 })
+    expect(hang.track_rail).toBeUndefined()
+    expect(hang.frame_side).toHaveLength(2)
+    const cw = cutLengthsByPiece({ model: m8('curtain_wall'), buttOf: () => 20, widthOf: () => 40, widthMm: 3600, heightMm: 3000 })
+    expect([cw.plate_w, cw.cover_h, cw.mullion?.length]).toEqual([undefined, undefined, 5])
   })
   it('curtain_wall with cells { "0,1": awning, "2,3": spandrel } draws one V polyline and one spandrel rect', () => {
     const s = svg8('curtain_wall', { cells: { '0,1': 'awning', '2,3': 'spandrel' } })

@@ -463,7 +463,10 @@ describe('Review Focus 1: a sliding_2 template saved before layout_params', () =
     const type = { id: 'ty', layout_kind: 'awning_grid', layout_params: { rows: 3, cols: 4 } }
     const back = modelFromRows({ template: { id: 't1', layout_kind: 'awning_grid', layout_params: {} }, type })
     expect(back.params).toEqual({ rows: 3, cols: 4, open: 'out' })
-    expect(back).toEqual({ ...startModel('awning_grid', { rows: 3, cols: 4 }), fixedKeys: ['rows', 'cols'] })   // R-F2: the keys the type pins
+    // adjusted (final fix wave): + fixedKeys (R-F2: the keys the type pins); no part rows -> blank families (I7)
+    const want = startModel('awning_grid', { rows: 3, cols: 4 })
+    for (const ls of Object.values(want.lines)) for (const l of ls) l.profile_family = ''
+    expect(back).toEqual({ ...want, fixedKeys: ['rows', 'cols'] })
   })
   it('the type\'s fixed_by_type values win over the template\'s stored ones; other params stay the template\'s', () => {
     const type = { id: 'ty', layout_kind: 'awning_grid', layout_params: { rows: 3 } }
@@ -602,3 +605,25 @@ describe('sliding_n left / middle / right sash parts (final fix wave, R-F1)', ()
   })
 })
 import { setParams as setParamsFor } from './partModel.js'
+
+describe('a template whose part rows are missing is not priced as complete (final fix wave, I7)', () => {
+  it('fixed_grid with zero rows: every line blank, costing reports no_profile_family', () => {
+    const m = modelFromRows({ template: { id: 't1', layout_kind: 'fixed_grid', layout_params: { rows: 2, cols: 3 } }, parts: [], positions: [], lines: [], ends: [] })
+    expect(Object.values(m.lines).flat().every(l => l.profile_family === '')).toBe(true)
+    const { issues } = expandParts({ model: m, buttOf: () => 20, widthOf: () => 40 })
+    expect(issues.some(i => i.reason === 'no_profile_family')).toBe(true)
+    // a NEW template still starts with the Excel default families
+    expect(startModel('fixed_grid').lines.frame_top[0].profile_family).toBe('กล่องเรียบ')
+  })
+  it('only the positions without rows are blanked; a normal round-trip is unchanged', () => {
+    const m = startModel('fixed_grid', { rows: 2, cols: 3 })
+    expect(trip(m)).toEqual(m)   // default families saved as rows come back as they were
+    const rows = modelToRows(m, 't1', seqId())
+    const mullionPos = rows.positions.find(p => p.position_key === 'mullion').id
+    const partial = { ...rows, lines: rows.lines.filter(l => l.position_id !== mullionPos) }
+    const back = modelFromRows({ template: { id: 't1', layout_kind: 'fixed_grid', ...templateParamsPayload(m) }, ...partial })
+    expect(back.lines.mullion[0].profile_family).toBe('')
+    expect(back.lines.frame_top[0].profile_family).toBe('กล่องเรียบ')
+    expect(expandParts({ model: back, buttOf: () => 20, widthOf: () => 40 }).issues).toContainEqual({ role_name: 'ซอยกลางตั้ง', reason: 'no_profile_family' })
+  })
+})

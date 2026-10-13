@@ -8,7 +8,7 @@
 // drawing when the item's layout params are refused (folding 0 + 0).
 import { useState, useMemo } from 'react'
 import { buildFramePreview } from '../../lib/framePreview.js'
-import { partSvgString } from '../../lib/partPreviewSvg.js'
+import { partSvgString, cutLengthsByPiece } from '../../lib/partPreviewSvg.js'
 import { overviewSpecs } from '../../lib/partGeometry.js'
 import { safeSvgDataUri } from '../../lib/attachmentPages.js'
 import PreviewSvg from './PreviewSvg.jsx'
@@ -55,7 +55,8 @@ export default function PreviewPanel({ inputs, labels, availability, addonPartia
   const [view, setView] = useState('out')
   const styles = part ? (part.model.layout_kind === 'sliding_2' ? PART_STYLES : MM_STYLES) : STYLES
   const style = styles.some(([v]) => v === chosenStyle) ? chosenStyle : 'double'
-  const partSrc = useMemo(() => (part ? safeSvgDataUri(partSvgString({ ...part, view, style })) : null), [part, view, style])
+  // 'lengths' prints each piece's cut length from the same expansion costing uses (R-F3), never the drawn length
+  const partSrc = useMemo(() => (part ? safeSvgDataUri(partSvgString({ ...part, view, style, lengthsByPiece: style === 'lengths' ? cutLengthsByPiece(part) : null })) : null), [part, view, style])
   const preview = useMemo(() => {
     if (!inputs || part || hint) return null
     return buildFramePreview({ ...inputs, view, part_labels: style === 'parts' ? labels || undefined : undefined })

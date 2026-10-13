@@ -7,7 +7,8 @@
 // Awning cell count can exceed partModel.MAX_PART_COUNT (10): pieceCount clamps the sash part count to 10.
 const PL = { type: 'width', family: 'NO.9019' }
 const CV = { type: 'width', family: 'NO.3112' }
-// Excel: (W(R+1) + H(C+1)) (1-k) — one width line and one height line per member.
+// Excel: (W(R+1) + H(C+1)) (1-k) — one width line and one height line per member. enabled '1-k': at k = 1 the four lines
+// are absent (a factor of 0 could not be saved), and setParams brings them back when k changes.
 const W_LINE = '(rows+1)*(1-k)'
 const H_LINE = '(cols+1)*(1-k)'
 const RAIL = { type: 'width_minus', auto: 'cw_cols', factor: '1/cols', role: 'sash', family: 'บานหน้าต่างยูโร' }
@@ -32,10 +33,10 @@ export default {
   positions: {
     mullion: { part: 'frame', orient: 'v', per: 'cols+1', name: 'เสา mullion', rule: { type: 'height', family: 'NO.9010' } },
     transom: { part: 'frame', orient: 'h', per: '(rows+1)*cols', name: 'ราว transom', rule: { type: 'width_minus', auto: 'cw_cols', factor: '1/cols', family: 'NO.9023' } },
-    plate_w: { part: 'frame', orient: 'h', per: 1, name: 'แผ่นกด (แนวนอน)', corner: 'free', rule: { ...PL, factor: W_LINE } },
-    plate_h: { part: 'frame', orient: 'v', per: 1, name: 'แผ่นกด (แนวตั้ง)', corner: 'free', rule: { type: 'height', family: 'NO.9019', factor: H_LINE } },
-    cover_w: { part: 'frame', orient: 'h', per: 1, name: 'ฝาปิด (แนวนอน)', corner: 'free', rule: { ...CV, factor: W_LINE } },
-    cover_h: { part: 'frame', orient: 'v', per: 1, name: 'ฝาปิด (แนวตั้ง)', corner: 'free', rule: { type: 'height', family: 'NO.3112', factor: H_LINE } },
+    plate_w: { part: 'frame', orient: 'h', per: 1, name: 'แผ่นกด (แนวนอน)', corner: 'free', enabled: '1-k', rule: { ...PL, factor: W_LINE } },
+    plate_h: { part: 'frame', orient: 'v', per: 1, name: 'แผ่นกด (แนวตั้ง)', corner: 'free', enabled: '1-k', rule: { type: 'height', family: 'NO.9019', factor: H_LINE } },
+    cover_w: { part: 'frame', orient: 'h', per: 1, name: 'ฝาปิด (แนวนอน)', corner: 'free', enabled: '1-k', rule: { ...CV, factor: W_LINE } },
+    cover_h: { part: 'frame', orient: 'v', per: 1, name: 'ฝาปิด (แนวตั้ง)', corner: 'free', enabled: '1-k', rule: { type: 'height', family: 'NO.3112', factor: H_LINE } },
     sash_top: { part: 'awning', orient: 'h', per: 1, name: 'ราวบนบาน (บานพับ)', rule: { ...RAIL } },
     sash_bottom: { part: 'awning', orient: 'h', per: 1, name: 'ราวล่างบาน (มือจับ)', rule: { ...RAIL } },
     sash_side: { part: 'awning', orient: 'v', per: 2, name: 'เสาบาน', labels: ['ซ้าย', 'ขวา'], rule: { type: 'height_minus', auto: 'cw_rows', factor: '1/rows', role: 'sash', family: 'คิ้วยูโร' } },

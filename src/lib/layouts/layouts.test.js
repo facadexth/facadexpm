@@ -358,9 +358,11 @@ describe('swing_door', () => {
   const rows = (m) => run(m, 1800, 2100)
   it('snapshot: keys, counts, families, params', () => {
     const m = startModel('swing_door', defaultParams('swing_door', {}))
-    expect(Object.keys(m.lines)).toEqual(['frame_top', 'sill', 'frame_side', 'leaf_stile_hinge', 'leaf_stile_handle', 'leaf_rail_top', 'leaf_rail_bottom'])
+    // adjusted (final fix wave, I5): + the door beads คิ้วประตู (free lines, 2 vertical + 2 horizontal per leaf)
+    expect(Object.keys(m.lines)).toEqual(['frame_top', 'sill', 'frame_side', 'leaf_stile_hinge', 'leaf_stile_handle', 'leaf_rail_top', 'leaf_rail_bottom', 'leaf_bead_v', 'leaf_bead_h'])
     expect(m.params).toEqual({ leaves: 1, hinge: 'left', open: 'out', sill: 'yes', pivot: false })
-    expect(counts(m)).toEqual({ frame_top: 1, sill: 1, frame_side: 2, leaf_stile_hinge: 1, leaf_stile_handle: 1, leaf_rail_top: 1, leaf_rail_bottom: 1 })
+    expect(counts(m)).toEqual({ frame_top: 1, sill: 1, frame_side: 2, leaf_stile_hinge: 1, leaf_stile_handle: 1, leaf_rail_top: 1, leaf_rail_bottom: 1, leaf_bead_v: 2, leaf_bead_h: 2 })
+    expect([m.lines.leaf_bead_v[0].profile_family, m.lines.leaf_bead_h[0].profile_family]).toEqual(['คิ้วประตู', 'คิ้วประตู'])
     expect(m.lines.frame_top[0].profile_family).toBe('กล่องแจ็คสัน')
     expect(m.lines.leaf_stile_hinge[0].profile_family).toBe('เสาประตูสวิง')
     expect(m.lines.leaf_rail_top[0].profile_family).toBe('เสาบนสวิง')
@@ -392,6 +394,10 @@ describe('swing_door', () => {
     }
     expect(r6(r.len(r.row(m.names.frame_side)[0]))).toBe(2100)
     expect(r.row(m.names.sill)).toHaveLength(1)
+    // คิ้วประตู ×4 per leaf (I5): 2 × 2 along the stiles (2010, through) and 2 × 2 along the rails (leaf width 855)
+    const bv = r.row(m.names.leaf_bead_v)[0], bh = r.row(m.names.leaf_bead_h)[0]
+    expect([bv.quantity_value, r6(r.len(bv)), bv.profile_family]).toEqual([4, 2010, 'คิ้วประตู'])
+    expect([bh.quantity_value, r6(r.len(bh)), bh.end_deduction_mm]).toEqual([4, 855, 0])
   })
   it('sill no: stiles 2055 and no sill row; toggling back restores 2010', () => {
     let m = doorModel('swing_door', { leaves: 2, sill: 'no' })
@@ -617,7 +623,8 @@ describe('curtain_wall and frameless_wall (Task 7)', () => {
     expect(glassParts(m)).toEqual([])
   })
   it('pressure plate and cover: width line (R+1)(1-k) and height line (C+1)(1-k); sum = (W(R+1)+H(C+1))(1-k)', () => {
-    for (const [k, kk] of [[undefined, 0.5], [1, 1], [0, 0]]) {
+    // adjusted (final fix wave, I3): k = 1 removes the four lines (enabled '1-k'), see the next test
+    for (const [k, kk] of [[undefined, 0.5], [0, 0]]) {
       const m = fill(k === undefined ? cw() : cw({ k }))
       const r = runCw(m, 3600, 3000)
       const total = r.len(r.row(m.names.plate_w)[0]) + r.len(r.row(m.names.plate_h)[0])
@@ -626,7 +633,18 @@ describe('curtain_wall and frameless_wall (Task 7)', () => {
     }
     expect(cw().lines.plate_w[0].profile_family).toBe('NO.9019')
     expect(cw().lines.cover_h[0].profile_family).toBe('NO.3112')
-    expect(cw({ k: 1 }).lines.plate_w[0].length_factor).toBe(0)
+  })
+  it('k = 1: no plate / cover positions and the template validates; k back to 0.5 restores them with the former factors (I3)', async () => {
+    const { validateModel } = await import('../partSave.js')
+    const one = cw({ k: 1 })
+    for (const key of ['plate_w', 'plate_h', 'cover_w', 'cover_h']) expect(one.lines[key]).toBeUndefined()
+    expect(validateModel(fill(one))).toBeNull()
+    expect(runCw(fill(one), 3600, 3000).components.map((c) => c.role_name)).not.toContain('แผ่นกด (แนวนอน)')
+    const half = setParams(one, { k: 0.5 })
+    expect(['plate_w', 'plate_h', 'cover_w', 'cover_h'].map((key) => half.lines[key][0].length_factor)).toEqual([2, 2.5, 2, 2.5])
+    expect(half.lines.plate_w[0].profile_family).toBe('NO.9019')
+    expect(validateModel(fill(half))).toBeNull()
+    expect(setParams(one, { k: '0.5' }).lines.cover_h).toHaveLength(1)
   })
   it('k stored as text still evaluates numerically', () => {
     expect(exprParams({ layout_kind: 'curtain_wall', params: { rows: 1, cols: 1, k: '0.5' } }).k).toBe(0.5)

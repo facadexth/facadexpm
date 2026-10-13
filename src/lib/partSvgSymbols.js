@@ -38,8 +38,10 @@ export function glassSvg(g, style, sw) {
 }
 
 // A piece in one of the four D14 styles (mockup Draw._bar): double = white with a 1.3 px outline (default, quotations),
-// lengths = double + the drawn length, solid = filled tones without outline, cad = outline only.
-export function pieceSvg(p, style, sw) {
+// lengths = double + the piece's CUT length (R-F3: `lengthMm`, from the expanded rows — partPreviewSvg.cutLengthsByPiece;
+// no label when it is not given, e.g. an unpriced piece or a decorative free-line strip), solid = filled tones without
+// outline, cad = outline only.
+export function pieceSvg(p, style, sw, lengthMm = null) {
   if (p.role === 'extra') return rect(p.x, p.y, p.w, p.h, `data-role="extra" fill="${EXTRA}" stroke="none"`)
   const sash = !FRAME_PARTS.has(p.part)
   const ink = sash ? SASH_INK : INK
@@ -52,8 +54,8 @@ export function pieceSvg(p, style, sw) {
     const a = `data-kind="mitre" stroke="${ink}" stroke-width="0.8" ${NS}`
     out.push(line(p.x, yo, p.x + t, yi, a), line(p.x + p.w, yo, p.x + p.w - t, yi, a))
   }
-  if (style === 'lengths') {
-    const L = Math.round(Math.max(p.w, p.h)), cx = p.x + p.w / 2, cy = p.y + p.h / 2, ty = cy + sw * 2.5
+  if (style === 'lengths' && typeof lengthMm === 'number' && Number.isFinite(lengthMm)) {
+    const L = Math.round(lengthMm), cx = p.x + p.w / 2, cy = p.y + p.h / 2, ty = cy + sw * 2.5
     const rot = p.h > p.w ? ` transform="rotate(-90 ${n2(cx)} ${n2(cy)})"` : ''
     out.push(text(cx, ty, String(L), sw * 6.5, INK, `${rot} paint-order="stroke" stroke="#ffffff" stroke-width="${n2(sw * 1.2)}"`))
   }

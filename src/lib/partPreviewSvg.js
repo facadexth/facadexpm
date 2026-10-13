@@ -19,6 +19,9 @@
 // 'solid' ('lengths' adds piece lengths, 'cad' draws outlines only).
 import { overviewSpecs } from './partGeometry.js'
 import { glassSvg, pieceSvg, symbolSvg, markSvg, dimSvg as mmDimSvg } from './partSvgSymbols.js'
+import { LAYOUTS } from './partModel.js'
+import { expandParts } from './partExpand.js'
+import { computeComponentLength } from './bomEngine.js'
 
 const INK = '#1f2328'
 const SASH_INK = '#2f4f6f'
@@ -62,17 +65,42 @@ export function drawnWidths(model, widthOf) {
   })
 }
 
+// The cut length (mm) of every drawn piece of line 0, { [positionKey]: [mm per piece] }, from an expansion of the model
+// (expandParts components + sources) at W × H — what costing prices, not the drawn length (R-F3). Pieces without a row
+// (no family, unresolved) are left out, and so are free-line positions (corner 'free' on the position or its part:
+// hanging-door rails, ตบธรณี, curtain-wall plates / covers, door beads), whose drawn strip is decorative.
+// exp: an expandParts result already at hand (the editor's view), else it is expanded here with buttOf / widthOf.
+export function cutLengthsByPiece({ model, buttOf, widthOf, widthMm, heightMm, exp = null }) {
+  const layout = model && LAYOUTS[model.layout_kind]
+  const W = Number(widthMm), H = Number(heightMm)
+  if (!layout || !(W > 0) || !(H > 0)) return {}
+  const e = exp || expandParts({ model, buttOf: typeof buttOf === 'function' ? buttOf : () => null, widthOf })
+  const out = {}
+  e.components.forEach((c, i) => {
+    const src = e.sources?.[i]
+    if (!src || src.line !== 0) return
+    const pos = layout.positions[src.key]
+    if (!pos || pos.corner === 'free' || layout.parts.find((p) => p.key === pos.part)?.corner === 'free') return
+    const mm = Math.max(0, computeComponentLength(c.length_rule_type, c.length_deduction_mm, W / 1000, H / 1000, c.length_factor, c.end_deduction_mm) * 1000)
+    const arr = (out[src.key] = out[src.key] || [])
+    for (const piece of src.pieces) arr[piece] = mm
+  })
+  return out
+}
+
 /**
- * @param {{ model, widthMm, heightMm, view?: 'out'|'in', buttOf?, widthOf?, style?: 'double'|'solid' }} args
+ * @param {{ model, widthMm, heightMm, view?: 'out'|'in', buttOf?, widthOf?, style?: 'double'|'solid', lengthsByPiece? }} args
+ * lengthsByPiece ('lengths' style, every kind but sliding_2): { [key]: number[] } or (key, piece) => mm — the cut length
+ * printed on each piece (cutLengthsByPiece); without it the style prints no lengths.
  * @returns {string|null} null when there is nothing to draw (no drawable model or no size).
  */
 // eslint-disable-next-line no-unused-vars
-export function partSvgString({ model, widthMm, heightMm, view = 'out', buttOf, widthOf, style = 'double' } = {}) {
+export function partSvgString({ model, widthMm, heightMm, view = 'out', buttOf, widthOf, style = 'double', lengthsByPiece = null } = {}) {
   const W = Number(widthMm), H = Number(heightMm)
   if (!(W > 0) || !(H > 0)) return null
   const ov = overviewSpecs({ model, widthMm: W, heightMm: H, view: view === 'in' ? 'in' : 'out', widthOf })
   if (!ov.pieces.length) return null
-  if (ov.box.units === 'mm') return mmSvg(ov, STYLES.includes(style) ? style : 'double')
+  if (ov.box.units === 'mm') return mmSvg(ov, STYLES.includes(style) ? style : 'double', lengthLookup(lengthsByPiece))
   const fills = FILL[style] || FILL.double
   const b = ov.box
 
@@ -103,12 +131,19 @@ function lengthText(p, scale) {
   return `<text x="${cx}" y="${n2(cy + 3)}" font-size="8" fill="${INK}" text-anchor="middle"${rot}>${Math.round(Math.max(p.w, p.h) / (scale || 1))}</text>`
 }
 
+// (key, piece) -> mm | null, from a lengthsByPiece map or function.
+export function lengthLookup(lengths) {
+  if (typeof lengths === 'function') return (key, piece) => { const v = lengths(key, piece); return typeof v === 'number' && Number.isFinite(v) ? v : null }
+  if (lengths && typeof lengths === 'object') return (key, piece) => { const v = lengths[key]?.[piece]; return typeof v === 'number' && Number.isFinite(v) ? v : null }
+  return () => null
+}
+
 // Every other layout kind: the millimetre overview, drawn back to front (glass, pieces, symbols, hardware, dimensions).
-function mmSvg(ov, style) {
+function mmSvg(ov, style, lengthOf) {
   const b = ov.box, sw = b.sw
   const parts = []
   for (const g of ov.glass) parts.push(glassSvg(g, style, sw))
-  for (const p of ov.pieces) parts.push(pieceSvg(p, style, sw))
+  for (const p of ov.pieces) parts.push(pieceSvg(p, style, sw, p.role === 'main' ? lengthOf(p.key, p.piece) : null))
   for (const s of ov.symbols) parts.push(symbolSvg(s, sw))
   for (const k of ov.hardwareMarks) parts.push(markSvg(k, sw))
   for (const d of ov.dims) parts.push(mmDimSvg(d, sw))

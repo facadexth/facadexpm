@@ -25,6 +25,9 @@ export default {
     leaf_stile_handle: { part: 'leaf', orient: 'v', per: 1, name: 'เสามือจับ', rule: { type: 'height_minus', auto: 'frame_top_bottom', role: 'sash', family: 'เสาประตูสวิง' } },
     leaf_rail_top: { part: 'leaf', orient: 'h', per: 1, name: 'ราวบนบาน', rule: { type: 'width_minus', auto: 'frame_sides', factor: '1/leaves', role: 'sash', family: 'เสาบนสวิง' } },
     leaf_rail_bottom: { part: 'leaf', orient: 'h', per: 1, name: 'ราวล่างบาน', rule: { type: 'width_minus', auto: 'frame_sides', factor: '1/leaves', role: 'sash', family: 'เสาล่างสวิง' } },
+    // คิ้วประตู (glazing beads, spec §5.7 / Excel sheet 6): free lines ×4 per leaf — 2 along the stiles, 2 along the rails
+    leaf_bead_v: { part: 'leaf', orient: 'v', per: 2, name: 'คิ้วประตู (ตั้ง)', corner: 'free', rule: { type: 'height_minus', auto: 'frame_top_bottom', role: 'sash', family: 'คิ้วประตู' } },
+    leaf_bead_h: { part: 'leaf', orient: 'h', per: 2, name: 'คิ้วประตู (นอน)', corner: 'free', rule: { type: 'width_minus', auto: 'frame_sides', factor: '1/leaves', role: 'sash', family: 'คิ้วประตู' } },
   },
   joints: [
     { h: 'frame_top', v: ['frame_side', 'frame_side'], vPiece: 'byEnd', vEnd: 0, through: 'v', mode: 'butt' },
@@ -32,7 +35,7 @@ export default {
     { h: 'leaf_rail_top', v: ['leaf_stile_hinge', 'leaf_stile_handle'], vPiece: 'same', vEnd: 0, through: 'v', mode: 'butt' },
     { h: 'leaf_rail_bottom', v: ['leaf_stile_hinge', 'leaf_stile_handle'], vPiece: 'same', vEnd: 1, through: 'v', mode: 'butt' },
   ],
-  order: ['frame_top', 'sill', 'frame_side', 'leaf_stile_hinge', 'leaf_stile_handle', 'leaf_rail_top', 'leaf_rail_bottom'],
+  order: ['frame_top', 'sill', 'frame_side', 'leaf_stile_hinge', 'leaf_stile_handle', 'leaf_rail_top', 'leaf_rail_bottom', 'leaf_bead_v', 'leaf_bead_h'],
   // two alternative sets selected by the boolean input `pivot` (1/0 in expressions)
   hardware: [
     { name: 'บานพับ', per: 'sash', qty: '(1-pivot)*3' },
