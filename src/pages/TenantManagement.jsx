@@ -28,6 +28,7 @@ function QuotaModal({ pkg, onClose, onSaved }) {
   const [maxWorkers, setMaxWorkers] = useState(pkg.max_workers ?? '')
   const [maxSites, setMaxSites] = useState(pkg.max_sites ?? '')
   const [maxDocScans, setMaxDocScans] = useState(pkg.max_document_scans_per_month ?? '')
+  const [maxLineGroups, setMaxLineGroups] = useState(pkg.max_line_groups ?? '')
   const [saving, setSaving] = useState(false)
 
   const handleSave = async () => {
@@ -38,6 +39,7 @@ function QuotaModal({ pkg, onClose, onSaved }) {
         max_workers: maxWorkers === '' ? null : parseInt(maxWorkers, 10),
         max_sites: maxSites === '' ? null : parseInt(maxSites, 10),
         max_document_scans_per_month: maxDocScans === '' ? null : parseInt(maxDocScans, 10),
+        max_line_groups: maxLineGroups === '' ? null : parseInt(maxLineGroups, 10),
       }).eq('id', pkg.id)
       if (error) throw error
       onSaved()
@@ -71,6 +73,11 @@ function QuotaModal({ pkg, onClose, onSaved }) {
           <label className="label">สแกนเอกสาร AI สูงสุด/เดือน</label>
           <input type="number" min="0" className="input" placeholder="ไม่จำกัด"
             value={maxDocScans} onChange={e => setMaxDocScans(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">กลุ่ม LINE ที่ผูกได้สูงสุด</label>
+          <input type="number" min="0" className="input" placeholder="ไม่จำกัด"
+            value={maxLineGroups} onChange={e => setMaxLineGroups(e.target.value)} />
         </div>
       </div>
       <div className="modal-footer">
@@ -262,7 +269,7 @@ export default function TenantManagement() {
 
       <h3 style={{ margin: '28px 0 12px', fontSize: 15, fontWeight: 700 }}>Quota ต่อ Package</h3>
       <p style={{ color: 'var(--text3)', fontSize: 12, marginBottom: 16 }}>
-        จำกัดจำนวน Admin/Owner, พนักงาน, ไซท์งาน "กำลังดำเนินการ" และโควต้าสแกนเอกสาร AI ต่อเดือน ต่อ tenant ตาม package —
+        จำกัดจำนวน Admin/Owner, พนักงาน, ไซท์งาน "กำลังดำเนินการ" และโควต้าสแกนเอกสาร AI ต่อเดือน และจำนวนกลุ่ม LINE ต่อ tenant ตาม package —
         บังคับจริงที่ระดับฐานข้อมูล เปลี่ยนที่นี่มีผลทันทีกับทุก tenant ใน package นั้น
       </p>
       <div className="card">
@@ -276,6 +283,7 @@ export default function TenantManagement() {
                 <th className="sortable" onClick={() => togglePkgSort('max_workers')}>พนักงาน{psi('max_workers')}</th>
                 <th className="sortable" onClick={() => togglePkgSort('max_sites')}>ไซท์งาน (Ongoing){psi('max_sites')}</th>
                 <th className="sortable" onClick={() => togglePkgSort('max_document_scans_per_month')}>สแกนเอกสาร AI/เดือน{psi('max_document_scans_per_month')}</th>
+                <th className="sortable" onClick={() => togglePkgSort('max_line_groups')}>กลุ่ม LINE{psi('max_line_groups')}</th>
                 <th></th>
               </tr>
             </thead>
@@ -288,13 +296,14 @@ export default function TenantManagement() {
                   <td>{quotaLabel(p.max_workers)}</td>
                   <td>{quotaLabel(p.max_sites)}</td>
                   <td>{quotaLabel(p.max_document_scans_per_month)}</td>
+                  <td>{quotaLabel(p.max_line_groups)}</td>
                   <td>
                     <button className="btn btn-sm btn-ghost" onClick={() => setQuotaPkg(p)}>แก้ไข Quota</button>
                   </td>
                 </tr>
               ))}
               {!(packages || []).length && (
-                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีข้อมูล</td></tr>
+                <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีข้อมูล</td></tr>
               )}
             </tbody>
           </table>
