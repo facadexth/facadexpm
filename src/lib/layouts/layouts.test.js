@@ -462,7 +462,7 @@ describe('folding_door', () => {
   it('input definitions: nL, nR 0-6 default 2 estimator', () => {
     for (const k of ['nL', 'nR']) {
       const i = LAYOUTS.folding_door.inputs.find((x) => x.key === k)
-      expect([i.min, i.max, i.default, i.estimator, i.integer]).toEqual([0, 6, 2, true, true])
+      expect([i.min, i.max, i.default, i.estimator, i.integer]).toEqual([0, 5, 2, true, true])
     }
     expect(LAYOUTS.folding_door.validParams).toBe('nL+nR')
   })
@@ -472,6 +472,19 @@ describe('folding_door', () => {
     expect(hw(3, 0)).toEqual({ 'ล้อบน/ล่างบานเฟี้ยม': 4, บานพับ: 6, บานพับวงกบ: 3, มือจับ: 1 })
     expect(hw(1, 0)).toEqual({ 'ล้อบน/ล่างบานเฟี้ยม': 2, บานพับ: 0, บานพับวงกบ: 3, มือจับ: 1 })
     expect(symbolFor(fold(), 'leaf', 0).kind).toBe('fold')
+  })
+})
+
+describe('folding_door leaf cap (R-6b)', () => {
+  it('nL, nR max 5 so the sum never exceeds MAX_PART_COUNT: 5+5 gives 10 leaves with factor 1/10', () => {
+    const m = doorModel('folding_door', { nL: 5, nR: 5 })
+    expect(counts(m).leaf_top).toBe(10)
+    expect(m.lines.leaf_top[0].length_factor).toBeCloseTo(0.1, 12)
+    const r = run(m, 5000, 2400)
+    const top = r.row(m.names.leaf_top)[0]
+    expect(top.quantity_value).toBe(10)
+    expect(r6(r.len(top) + top.end_deduction_mm)).toBe(r6((5000 - 90) / 10))
+    expect(defaultParams('folding_door', { nL: 6, nR: 6 })).toEqual({ nL: 2, nR: 2 })   // not fixed_by_type: type params are ignored
   })
 })
 

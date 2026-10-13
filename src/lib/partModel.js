@@ -80,13 +80,18 @@ const END = (mode, to = null) => ({ mode, to, deduction_mm: null })
 
 // The joint where the horizontal `key` meets its verticals, or the joint + horizontal end where vertical `key`'s `end` meets one.
 const hJoint = (model, key) => jointsOf(model).find((j) => j.h === key) || null
+// Pieces of a vertical position per instance of its part (the joint's byEnd stride: 2 for frame sides).
+const perOf = (model, key) => Math.max(1, Math.round(evalExpr(posOf(model, key).per, exprParams(model))))
+// With `piece` given, a byEnd joint matches vertical piece q only at horizontal end q % perV (horizontal piece floor(q / perV)).
 function vJoint(model, key, end, piece = null) {
   for (const j of jointsOf(model)) {
     if (j.vEnd !== end) continue
+    const byEnd = j.vPiece === 'byEnd'
+    const perV = byEnd && piece !== null ? perOf(model, key) : 1
     for (const hEnd of [0, 1]) {
       if (j.v[hEnd] !== key) continue
-      if (piece !== null && j.vPiece === 'byEnd' && hEnd !== piece) continue
-      return { joint: j, hEnd }
+      if (piece !== null && byEnd && hEnd !== piece % perV) continue
+      return { joint: j, hEnd, hPiece: piece !== null && byEnd ? Math.floor(piece / perV) : piece }
     }
   }
   return null
@@ -199,10 +204,10 @@ export function setParams(model, patch) {
 export function partnerEnd(model, key, piece, end) {
   if (typeof model === 'string') return partnerEnd({ layout_kind: 'sliding_2' }, model, key, piece)
   const hj = hJoint(model, key)
-  if (hj) return hj.v[end] && hj.mode !== 'tee' ? { key: hj.v[end], piece: hj.vPiece === 'byEnd' ? end : piece, end: hj.vEnd } : null
+  if (hj) return hj.v[end] && hj.mode !== 'tee' ? { key: hj.v[end], piece: hj.vPiece === 'byEnd' ? piece * perOf(model, hj.v[end]) + end : piece, end: hj.vEnd } : null
   const vj = vJoint(model, key, end, piece)
   if (!vj || vj.joint.mode === 'tee') return null
-  return { key: vj.joint.h, piece: vj.joint.vPiece === 'byEnd' ? 0 : piece, end: vj.hEnd }
+  return { key: vj.joint.h, piece: vj.hPiece ?? piece, end: vj.hEnd }
 }
 
 export function setEndMode(model, key, lineIdx, piece, end, mode) {

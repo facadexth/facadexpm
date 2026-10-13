@@ -1,6 +1,7 @@
 // ประตูบานเฟี้ยม (D1) — nL leaves folding to the left, nR to the right, in a track frame (top, bottom U, two sides).
 // startModel / setParams throw 'layout_params_invalid' when nL + nR = 0 (validParams; the editor shows "ใส่จำนวนบานซ้าย/ขวา").
-// nL + nR can reach 12 (inputs 0-6 each) but a part's count is capped at MAX_PART_COUNT (10) by pieceCount.
+// nL and nR are capped at 5 each so nL + nR <= 10 = MAX_PART_COUNT (pieceCount clamps a part's count to 10; a larger sum would
+// silently lose leaves while the factor stays 1/(nL+nR)).
 // The two free positions (บังใบ, คิ้วบาน) have no joint: the owner may delete them. Their default families are guesses.
 // Schema: see layoutRegistry.js.
 const LEAF_W = { type: 'width_minus', auto: 'track_sides', factor: '1/(nL+nR)', role: 'leaf' }
@@ -8,8 +9,8 @@ const LEAF_H = { type: 'height_minus', auto: 'track_top_bottom', role: 'leaf' }
 export default {
   kind: 'folding_door',
   inputs: [
-    { key: 'nL', label: 'จำนวนบานพับซ้าย', type: 'number', min: 0, max: 6, integer: true, default: 2, estimator: true },
-    { key: 'nR', label: 'จำนวนบานพับขวา', type: 'number', min: 0, max: 6, integer: true, default: 2, estimator: true },
+    { key: 'nL', label: 'จำนวนบานพับซ้าย', type: 'number', min: 0, max: 5, integer: true, default: 2, estimator: true },
+    { key: 'nR', label: 'จำนวนบานพับขวา', type: 'number', min: 0, max: 5, integer: true, default: 2, estimator: true },
   ],
   validParams: 'nL+nR',
   parts: [

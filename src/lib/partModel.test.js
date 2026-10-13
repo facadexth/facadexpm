@@ -436,3 +436,36 @@ describe('glassParts', () => {
     expect(glassParts(start6('sliding_2'))).toEqual([])
   })
 })
+
+// ---------------------------------------------------------------- R-6a: byEnd partners index per piece
+describe('byEnd partners with more than one piece (folding_door 2+2)', () => {
+  const m = () => start6('folding_door', { nL: 2, nR: 2 })
+  it('partnerEnd maps horizontal piece p end e <-> vertical piece p*2+e', () => {
+    expect(partnerEnd6(m(), 'leaf_top', 2, 0)).toEqual({ key: 'leaf_side', piece: 4, end: 0 })
+    expect(partnerEnd6(m(), 'leaf_top', 2, 1)).toEqual({ key: 'leaf_side', piece: 5, end: 0 })
+    expect(partnerEnd6(m(), 'leaf_side', 5, 1)).toEqual({ key: 'leaf_bottom', piece: 2, end: 1 })
+    expect(partnerEnd6(m(), 'leaf_side', 4, 0)).toEqual({ key: 'leaf_top', piece: 2, end: 0 })
+  })
+  it('full involution over every position, piece and end', () => {
+    const model = m()
+    let n = 0
+    for (const key of Object.keys(model.lines)) {
+      for (let piece = 0; piece < pieceCount6(model, key); piece++) {
+        for (const end of [0, 1]) {
+          const pt = partnerEnd6(model, key, piece, end)
+          if (!pt) continue
+          expect(partnerEnd6(model, pt.key, pt.piece, pt.end)).toEqual({ key, piece, end })
+          n++
+        }
+      }
+    }
+    expect(n).toBeGreaterThan(0)
+  })
+  it('setEndMode on leaf_top piece 2 end 0 flips leaf_side piece 4 and leaves piece 0 alone; corners valid', () => {
+    const next = setEndMode(m(), 'leaf_top', 0, 2, 0, 'through')
+    expect(next.lines.leaf_top[0].ends[2][0].mode).toBe('through')
+    expect(next.lines.leaf_side[0].ends[4][0]).toMatchObject({ mode: 'butt', to: { key: 'leaf_top', line: 0 } })
+    expect(next.lines.leaf_side[0].ends[0][0].mode).toBe('through')
+    expect(validateCorners6(next)).toEqual([])
+  })
+})
