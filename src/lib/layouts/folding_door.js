@@ -4,8 +4,8 @@
 // silently lose leaves while the factor stays 1/(nL+nR)).
 // The two free positions (บังใบ, คิ้วบาน) have no joint: the owner may delete them. Their default families are guesses.
 // Schema: see layoutRegistry.js.
-const LEAF_W = { type: 'width_minus', auto: 'track_sides', factor: '1/(nL+nR)', role: 'leaf' }
-const LEAF_H = { type: 'height_minus', auto: 'track_top_bottom', role: 'leaf' }
+const LEAF_W = { type: 'width_minus', auto: 'track_sides', factor: '1/(nL+nR)', role: 'sash' }
+const LEAF_H = { type: 'height_minus', auto: 'track_top_bottom', role: 'sash' }
 export default {
   kind: 'folding_door',
   inputs: [

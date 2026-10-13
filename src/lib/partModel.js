@@ -315,7 +315,12 @@ export function removeLine(model, key, idx) {
 
 // Part-count field commit: only a whole number >= 1 changes the model (setPartCount -> ensureEnds trims/extends ends).
 // A blank, 0, negative, fractional or non-numeric entry returns the SAME model, so retyping never trims the pieces.
+// A part whose layout count is an expression over params ('n', 'rows*cols') is not editable: its count follows the
+// params (spec §6: read-only when fixed by the layout), so both setters return the model unchanged for it.
+const exprCountPart = (model, partKey) => typeof layoutOfModel(model)?.parts.find((p) => p.key === partKey)?.count === 'string'
+
 export function commitPartCount(model, partKey, value) {
+  if (exprCountPart(model, partKey)) return model
   const n = typeof value === 'number' ? value : numOrNull(value)
   if (n === null || !Number.isInteger(n) || n < 1 || n > MAX_PART_COUNT) return model
   if (model.parts.find((p) => p.key === partKey)?.count === n) return model
@@ -323,6 +328,7 @@ export function commitPartCount(model, partKey, value) {
 }
 
 export function setPartCount(model, partKey, count) {
+  if (exprCountPart(model, partKey)) return model
   const next = clone(model)
   const n = Math.max(1, Math.floor(Number(count)) || 1)
   if (n > MAX_PART_COUNT) return ensureEnds(next)   // ignored: the count stays as it was

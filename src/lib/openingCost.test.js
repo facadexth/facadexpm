@@ -381,3 +381,18 @@ describe('costOpening: refusals and glass / panel parts', () => {
     expect(Number.isFinite(r.total)).toBe(true)
   })
 })
+
+describe('door leaves are priced at the sash thickness (ruling R-9a)', () => {
+  it('a swing_door leaf uses the series sash thickness; the frame keeps the main thickness', () => {
+    const m = startModel('swing_door')   // leaf members (role sash) -> sr, everything else (frame, sill) -> fh
+    for (const k of Object.keys(m.lines)) m.lines[k][0].profile_family = m.lines[k][0].thickness_role === 'sash' ? 'sr' : 'fh'
+    const c = kCtx(m, 'swing_door')
+    c.project = { ...c.project, default_sash_thickness_mm: 2 }
+    const r = costOpening(c)
+    const leaf = r.bom.profileLines.filter(l => l.family === 'sr')
+    expect(leaf.length).toBeGreaterThan(0)
+    expect(leaf.every(l => l.thickness_mm === 2)).toBe(true)
+    expect(r.bom.profileLines.filter(l => l.family === 'fh').every(l => l.thickness_mm === 1.5)).toBe(true)
+    expect(r.bom.profileLines.filter(l => l.family === 'fh').length).toBeGreaterThan(0)
+  })
+})

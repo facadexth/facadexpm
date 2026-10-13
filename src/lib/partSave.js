@@ -27,9 +27,7 @@ function lineFromRow(row, def) {
     deduction_auto: typeof row.deduction_auto === 'boolean' ? row.deduction_auto : def.deduction_auto,
     length_factor: factor !== null && factor > 0 ? factor : 1,
     quantity_value: qty !== null && qty >= 0 ? qty : 1,
-    // the column allows only 'sash' / NULL: a layout's own non-sash role (door leaves: 'leaf', which costs at the frame
-    // thickness exactly like NULL) is written as NULL and comes back as the layout's role
-    thickness_role: row.thickness_role === 'sash' ? 'sash' : (def.thickness_role && def.thickness_role !== 'sash' ? def.thickness_role : null),
+    thickness_role: row.thickness_role === 'sash' ? 'sash' : null,
     ends: [],
   }
 }
@@ -201,7 +199,8 @@ export function modelToRows(model, templateId, newId = () => crypto.randomUUID()
     out.parts.push({
       id: partId, template_id: templateId, part_key: p.key,
       name: String(p.name ?? '').trim() || def.name,
-      count: exprCount(def) && p.count === def.count ? savedCount(m, def.count) : Math.max(1, Math.floor(Number(p.count)) || 1),
+      // an expression count follows the params: the layout's value is written whatever the model holds (never a typed number)
+      count: exprCount(def) ? savedCount(m, def.count) : Math.max(1, Math.floor(Number(p.count)) || 1),
       overlap_mode: p.overlap_mode === 'manual' ? 'manual' : 'auto_hook',
       overlap_mm: nonNeg(p.overlap_mm),
       sort_order: pi,
@@ -281,7 +280,7 @@ export function validateModel(model) {
       if (!(isNum(l.length_factor) && l.length_factor > 0)) return `${where}: สัดส่วนของความยาวที่ใช้ต้องมากกว่า 0`
       if (nonNeg(l.quantity_value) === null) return `${where}: จำนวนท่อนต้องเป็นตัวเลขไม่ติดลบ`
       if (l.quantity_value > MAX_QUANTITY) return `${where}: จำนวนท่อนต้องไม่เกิน ${MAX_QUANTITY}`
-      if (l.thickness_role !== null && l.thickness_role !== undefined && l.thickness_role !== 'sash' && l.thickness_role !== layout.positions[key].rule?.role) return `${where}: ความหนาไม่ถูกต้อง`
+      if (l.thickness_role !== null && l.thickness_role !== undefined && l.thickness_role !== 'sash') return `${where}: ความหนาไม่ถูกต้อง`
       for (let piece = 0; piece < n; piece++) {
         for (const end of [0, 1]) {
           const e = l.ends?.[piece]?.[end]

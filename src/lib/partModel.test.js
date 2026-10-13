@@ -469,3 +469,16 @@ describe('byEnd partners with more than one piece (folding_door 2+2)', () => {
     expect(validateCorners6(next)).toEqual([])
   })
 })
+
+describe('expression part counts are not editable (fix round 1, spec §6)', () => {
+  it('setPartCount / commitPartCount return the same model for a part whose layout count is an expression', () => {
+    const m = startModel('awning_grid', { rows: 2, cols: 2 })
+    expect(setPartCount(m, 'sash', 5)).toBe(m)
+    expect(commitPartCount(m, 'sash', 5)).toBe(m)
+    expect(m.parts.find(p => p.key === 'sash').count).toBe('rows*cols')
+    const n = startModel('sliding_n')
+    expect(setPartCount(n, 'sash', 4)).toBe(n)
+    // a literal-count part is still editable
+    expect(setPartCount(startModel('sliding_2'), 'sash', 3).parts.find(p => p.key === 'sash').count).toBe(3)
+  })
+})

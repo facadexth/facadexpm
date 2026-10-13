@@ -532,3 +532,27 @@ describe('every layout kind saves and loads (Task 9)', () => {
     }
   })
 })
+
+describe('expression part counts are never persisted from a typed number (fix round 1)', () => {
+  it('a tampered awning sash count is written as the layout value and reloads as the expression', () => {
+    const m = filled(startModel('awning_grid', { rows: 2, cols: 2 }))
+    const tampered = JSON.parse(JSON.stringify(m))
+    tampered.parts.find(p => p.key === 'sash').count = 7
+    const rows = modelToRows(tampered, 't1', seqId())
+    expect(rows.parts.find(p => p.part_key === 'sash').count).toBe(4)   // rows*cols, not 7
+    const back = modelFromRows({ template: { id: 't1', layout_kind: 'awning_grid', ...templateParamsPayload(tampered) }, ...rows })
+    expect(back.parts.find(p => p.key === 'sash').count).toBe('rows*cols')
+    expect(back).toEqual(m)
+  })
+  it('door leaves carry the sash thickness role and keep it through save / load (ruling R-9a)', () => {
+    for (const kind of ['swing_door', 'hanging_door', 'folding_door']) {
+      const m = filled(startModel(kind))
+      const leafKeys = Object.keys(m.lines).filter(k => m.lines[k][0].thickness_role !== null)
+      expect(leafKeys.length).toBeGreaterThan(0)
+      expect(leafKeys.every(k => m.lines[k][0].thickness_role === 'sash')).toBe(true)
+      const rows = modelToRows(m, 't1', seqId())
+      expect(rows.lines.filter(l => l.thickness_role === 'sash')).toHaveLength(leafKeys.length)
+      expect(trip(m)).toEqual(m)
+    }
+  })
+})
