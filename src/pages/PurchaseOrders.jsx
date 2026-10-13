@@ -608,6 +608,7 @@ function PODocumentModal({ po, tenant, onClose, autoAction = null }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 18 }}>
             <thead>
               <tr>
+                <th style={{ textAlign: 'center', padding: '9px 4px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff', width: 30 }}>ที่</th>
                 <th style={{ textAlign: 'left', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>รายการ</th>
                 <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>จำนวน</th>
                 <th style={{ textAlign: 'right', padding: '9px 8px', fontSize: 11, color: '#4a4d63', background: '#f4f3ff', borderBottom: '2px solid #6c63ff' }}>ราคา/หน่วย</th>
@@ -615,8 +616,9 @@ function PODocumentModal({ po, tenant, onClose, autoAction = null }) {
               </tr>
             </thead>
             <tbody>
-              {items.map(it => (
+              {items.map((it, idx) => (
                 <tr key={it.id}>
+                  <td style={{ textAlign: 'center', padding: '9px 4px', borderBottom: '1px solid #eee', color: '#6a6f85' }}>{idx + 1}</td>
                   <td style={{ padding: '9px 8px', borderBottom: '1px solid #eee' }}>
                     {it.description}
                     {it.aluminum_profiles?.name && (
