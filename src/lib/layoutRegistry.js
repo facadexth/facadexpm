@@ -17,6 +17,9 @@
 // in `order`), which the editor UI reads.
 
 import sliding_2 from './layouts/sliding_2.js'
+import fixed_grid from './layouts/fixed_grid.js'
+import awning_grid from './layouts/awning_grid.js'
+import casement_n from './layouts/casement_n.js'
 
 function normalize(def) {
   const keys = [...(def.order || []), ...Object.keys(def.positions || {}).filter((k) => !(def.order || []).includes(k))]
@@ -31,6 +34,9 @@ function normalize(def) {
 // kind -> normalized definition. A plain object: registerLayoutForTest adds keys to it.
 export const LAYOUTS = {
   sliding_2: normalize(sliding_2),
+  fixed_grid: normalize(fixed_grid),
+  awning_grid: normalize(awning_grid),
+  casement_n: normalize(casement_n),
 }
 
 export function layoutOf(kind) {
@@ -43,15 +49,53 @@ export const inputsOf = (kind) => layoutOf(kind).inputs
 
 export const kinds = () => Object.keys(LAYOUTS)
 
-// Layout input defaults, overridden by the type's layout_params for inputs marked fixed_by_type.
+// Coerce one input value to its definition: numbers clamp to min/max (whole numbers rounded), selects must be an option;
+// anything invalid falls back to the input's default.
+function coerceInput(inp, v) {
+  if (inp.type === 'select') return (inp.options || []).some((o) => o.value === v) ? v : inp.default
+  if (inp.type === 'number' || inp.min !== undefined || inp.max !== undefined) {
+    let n = typeof v === 'number' ? v : Number.NaN
+    if (!Number.isFinite(n)) return inp.default
+    if (inp.integer) n = Math.round(n)
+    if (inp.min !== undefined) n = Math.max(inp.min, n)
+    if (inp.max !== undefined) n = Math.min(inp.max, n)
+    return n
+  }
+  return v
+}
+
+// Layout input defaults, overridden by the type's layout_params for inputs marked fixed_by_type; clamped to min/max.
 export function defaultParams(kind, typeParams) {
   const out = {}
   const tp = typeParams || {}
   for (const inp of inputsOf(kind)) {
-    if (inp.default !== undefined) out[inp.key] = inp.default
-    if (inp.fixed_by_type && Object.prototype.hasOwnProperty.call(tp, inp.key)) out[inp.key] = tp[inp.key]
+    if (inp.default !== undefined) out[inp.key] = coerceInput(inp, inp.default)
+    if (inp.fixed_by_type && Object.prototype.hasOwnProperty.call(tp, inp.key)) out[inp.key] = coerceInput(inp, tp[inp.key])
   }
   return out
+}
+
+// Definition check (run for every registered layout in the tests). Returns a list of problem strings ([] = valid).
+export function validateLayout(def) {
+  const errs = []
+  const pos = def.positions || {}
+  const partKeys = new Set((def.parts || []).map((p) => p.key))
+  for (const [k, p] of Object.entries(pos)) if (!partKeys.has(p.part)) errs.push(`position ${k}: unknown part ${p.part}`)
+  const seen = new Set()
+  for (const j of def.joints || []) {
+    if (pos[j.h]?.orient !== 'h') errs.push(`joint ${j.h}: h must be a horizontal position`)
+    ;(j.v || []).forEach((v, e) => { if (pos[v]?.orient !== 'v') errs.push(`joint ${j.h}: v[${e}] ${v} must be a vertical position`) })
+    if (j.mode === 'tee') continue   // the vertical side of a tee has no corner
+    for (const v of new Set(j.v || [])) {
+      const id = `${v}/${j.vEnd}`
+      if (seen.has(id)) errs.push(`vertical ${v} end ${j.vEnd} is mapped by more than one joint`)
+      seen.add(id)
+    }
+  }
+  const order = def.order || []
+  for (const k of Object.keys(pos)) if (order.filter((x) => x === k).length !== 1) errs.push(`order must list ${k} exactly once`)
+  for (const k of order) if (!pos[k]) errs.push(`order lists unknown position ${k}`)
+  return errs
 }
 
 // The numeric view of model.params that every layout expression is evaluated against:

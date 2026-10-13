@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { LAYOUTS, layoutOf, inputsOf, defaultParams, kinds, exprParams, registerLayoutForTest } from './layoutRegistry.js'
+import { LAYOUTS, layoutOf, inputsOf, defaultParams, kinds, exprParams, registerLayoutForTest, validateLayout } from './layoutRegistry.js'
 import { startModel, pieceCount, partnerEnd, validateCorners, setParams, MAX_PIECES_PER_LINE, MAX_PART_COUNT } from './partModel.js'
 
 describe('layoutRegistry', () => {
@@ -110,5 +110,30 @@ describe('pieceCount clamps expression-driven counts', () => {
     expect(pieceCount(m, 'mullion')).toBe(MAX_PIECES_PER_LINE)
     expect(m.lines.mullion[0].ends).toHaveLength(MAX_PIECES_PER_LINE)
     expect(pieceCount(m, 'panel_side')).toBe(2 * MAX_PART_COUNT)
+  })
+})
+
+describe('validateLayout', () => {
+  it('every registered layout is a valid definition', () => {
+    for (const k of kinds()) if (!k.startsWith('test_') && !k.startsWith('t3_')) expect([k, validateLayout(LAYOUTS[k])]).toEqual([k, []])
+    expect(kinds()).toEqual(expect.arrayContaining(['sliding_2', 'fixed_grid', 'awning_grid', 'casement_n']))
+  })
+  it('rejects bad definitions', () => {
+    const base = LAYOUTS.fixed_grid
+    expect(validateLayout({ ...base, positions: { ...base.positions, mullion: { ...base.positions.mullion, part: 'zzz' } } })[0]).toMatch(/unknown part/)
+    expect(validateLayout({ ...base, joints: [{ h: 'mullion', v: ['frame_side', 'frame_side'], mode: 'butt' }] })[0]).toMatch(/horizontal/)
+    expect(validateLayout({ ...base, joints: [{ h: 'frame_top', v: ['transom', 'frame_side'], mode: 'butt' }] })[0]).toMatch(/vertical/)
+    const dup = [...base.joints, { h: 'transom', v: ['frame_side', 'frame_side'], vPiece: 'byEnd', vEnd: 0, mode: 'butt' }]
+    expect(validateLayout({ ...base, joints: dup }).join()).toMatch(/more than one joint/)
+    expect(validateLayout({ ...base, order: base.order.slice(1) }).join()).toMatch(/exactly once/)
+    expect(validateLayout({ ...base, order: [...base.order, 'mullion'] }).join()).toMatch(/exactly once/)
+  })
+})
+
+describe('defaultParams clamping', () => {
+  it('clamps fixed_by_type values to min/max and rounds whole numbers', () => {
+    expect(defaultParams('awning_grid', { rows: 99, cols: 0 })).toEqual({ rows: 8, cols: 1, open: 'out' })
+    expect(defaultParams('awning_grid', { rows: 2.6, cols: 'x' })).toEqual({ rows: 3, cols: 2, open: 'out' })
+    expect(defaultParams('awning_grid', {})).toEqual({ rows: 2, cols: 2, open: 'out' })
   })
 })

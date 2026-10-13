@@ -21,6 +21,7 @@ const AUTO = {
   frame_top_bottom: ({ b }) => ({ frame: b('frame_top') + b('frame_bottom'), grid: null }),
   frame_top: ({ b }) => ({ frame: b('frame_top'), grid: null }),
   grid_cols: ({ b, p }) => ({ frame: 2 * b('frame_side'), grid: { label: 'cols', n: p('cols') - 1, role: 'mullion' } }),
+  grid_n: ({ b, p }) => ({ frame: 2 * b('frame_side'), grid: { label: 'cols', n: p('n') - 1, role: 'mullion' } }),   // casement_n: columns = n
   grid_rows: ({ b, p }) => ({ frame: b('frame_top') + b('frame_bottom'), grid: { label: 'rows', n: p('rows') - 1, role: 'transom' } }),
 }
 
