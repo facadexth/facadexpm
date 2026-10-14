@@ -310,6 +310,37 @@ BEGIN
   SELECT count(DISTINCT site_id) INTO v_n FROM line_site_photos WHERE tenant_id = t_tenant;
   IF v_n < 3 THEN RAISE EXCEPTION 'T5b FAIL: photos on only % sites', v_n; END IF;
 
+  -- ── T6 ── reset wipes everything (including a table that does not exist yet today), re-seed is identical
+  -- cross-tenant sentinel: a site of the OTHER tenant must survive both resets
+  INSERT INTO sites (tenant_id, site_number, name) VALUES (t_other, 'ZZ-0000-001', '__other site__');
+  CREATE TABLE zz_future_demo (id SERIAL PRIMARY KEY, tenant_id UUID NOT NULL, note TEXT);
+  INSERT INTO zz_future_demo (tenant_id, note) VALUES (t_tenant, 'must be wiped'), (t_other, 'must stay');
+  SELECT string_agg(quotation_number, ',' ORDER BY quotation_number) INTO v_q1 FROM quotations WHERE tenant_id = t_tenant;
+  d1 := reset_demo_tenant(t_tenant);
+  SELECT count(*) INTO v_n FROM zz_future_demo WHERE tenant_id = t_tenant;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T6 FAIL: future table not wiped'; END IF;
+  SELECT count(*) INTO v_n FROM zz_future_demo WHERE tenant_id = t_other;
+  IF v_n <> 1 THEN RAISE EXCEPTION 'T6 FAIL: other tenant row deleted'; END IF;
+  IF (d1->'deleted'->>'quotations')::int <> 18 THEN RAISE EXCEPTION 'T6 FAIL: deleted.quotations=%', d1->'deleted'->>'quotations'; END IF;
+  s2 := d1->'seeded';
+  IF s2 <> s1 THEN RAISE EXCEPTION 'T6 FAIL: second seed differs: % vs %', s1, s2; END IF;
+  -- same document numbers both times
+  SELECT string_agg(quotation_number, ',' ORDER BY quotation_number) INTO v_q2 FROM quotations WHERE tenant_id = t_tenant;
+  IF v_q1 IS NULL OR v_q1 <> v_q2 THEN RAISE EXCEPTION 'T6 FAIL: quotation numbers differ after reset: % vs %', v_q1, v_q2; END IF;
+  -- Kanban photos are re-seeded too
+  SELECT count(*) INTO v_n FROM line_site_photos WHERE tenant_id = t_tenant;
+  IF v_n < 20 THEN RAISE EXCEPTION 'T6 FAIL: photos not re-seeded'; END IF;
+  -- no tenant-scoped table still holds rows for the demo tenant after a bare delete pass
+  -- (run the delete loop again through reset on an already-reset tenant: deleted counts must equal the seed counts, nothing more)
+  d1 := reset_demo_tenant(t_tenant);
+  IF (d1->'deleted'->>'sites')::int <> 11 THEN RAISE EXCEPTION 'T6 FAIL: expected 11 sites deleted (10 + ส่วนกลาง), got %', d1->'deleted'->>'sites'; END IF;
+  -- other tenant untouched by the whole exercise: its sentinel site is still there and it has exactly one site
+  SELECT count(*) INTO v_n FROM sites WHERE tenant_id = t_other AND site_number = 'ZZ-0000-001' AND name = '__other site__';
+  IF v_n <> 1 THEN RAISE EXCEPTION 'T6 FAIL: other tenant sentinel site missing'; END IF;
+  SELECT count(*) INTO v_n FROM sites WHERE tenant_id = t_other;
+  IF v_n <> 1 THEN RAISE EXCEPTION 'T6 FAIL: other tenant sites=% (expected only the sentinel)', v_n; END IF;
+  DROP TABLE zz_future_demo;
+
   RAISE EXCEPTION 'RESULT: demo_tenant_seed_test ALL PASSED';
 END $$;
 ROLLBACK;
