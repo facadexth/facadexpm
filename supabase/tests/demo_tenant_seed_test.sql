@@ -68,6 +68,36 @@ BEGIN
   SELECT count(*) INTO v_n FROM app_settings WHERE tenant_id = t_tenant AND key = 'is_demo_tenant';
   IF v_n <> 1 THEN RAISE EXCEPTION 'T1 FAIL: marker not re-inserted after reset'; END IF;
 
+  -- ── T2 ── core data
+  -- reset_demo_tenant already seeds once (T1 above); a second seed_demo_tenant would double rows.
+  -- Reset again so the tenant is clean and the single seed summary comes from the reset.
+  s1 := reset_demo_tenant(t_tenant) -> 'seeded';
+  IF COALESCE((s1->>'clients')::int, -1) <> 8 THEN RAISE EXCEPTION 'T2 FAIL: clients=%', s1->>'clients'; END IF;
+  IF COALESCE((s1->>'suppliers')::int, -1) <> 8 THEN RAISE EXCEPTION 'T2 FAIL: suppliers=%', s1->>'suppliers'; END IF;
+  IF COALESCE((s1->>'catalog_items')::int, -1) <> 15 THEN RAISE EXCEPTION 'T2 FAIL: catalog=%', s1->>'catalog_items'; END IF;
+  SELECT count(*) INTO v_n FROM sites WHERE tenant_id = t_tenant AND NOT is_default;
+  IF v_n <> 10 THEN RAISE EXCEPTION 'T2 FAIL: sites=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM sites WHERE tenant_id = t_tenant AND status = 'Ongoing' AND NOT is_default;
+  IF v_n <> 5 THEN RAISE EXCEPTION 'T2 FAIL: ongoing=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM sites WHERE tenant_id = t_tenant AND status = 'Completed' AND NOT retention_released;
+  IF v_n <> 2 THEN RAISE EXCEPTION 'T2 FAIL: completed retention pending=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM sites WHERE tenant_id = t_tenant AND lat IS NULL AND NOT is_default;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T2 FAIL: site without lat/lng'; END IF;
+  SELECT count(DISTINCT site_number), count(*) INTO v_n, v_n2 FROM sites WHERE tenant_id = t_tenant;
+  IF v_n <> v_n2 THEN RAISE EXCEPTION 'T2 FAIL: duplicate site numbers'; END IF;
+  SELECT count(*) INTO v_n FROM site_phases WHERE tenant_id = t_tenant;
+  IF v_n <> 40 THEN RAISE EXCEPTION 'T2 FAIL: phases=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM phase_tasks WHERE tenant_id = t_tenant;
+  IF v_n < 80 THEN RAISE EXCEPTION 'T2 FAIL: tasks=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM expense_categories WHERE tenant_id = t_tenant;
+  IF v_n <> 8 THEN RAISE EXCEPTION 'T2 FAIL: categories=% (defaults not replaced)', v_n; END IF;
+  SELECT count(*) INTO v_n FROM expense_categories WHERE tenant_id = t_tenant AND use_for_cost_deduction AND code_prefix IS NOT NULL;
+  IF v_n <> 4 THEN RAISE EXCEPTION 'T2 FAIL: deduction categories=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM bank_accounts WHERE tenant_id = t_tenant AND is_default;
+  IF v_n <> 1 THEN RAISE EXCEPTION 'T2 FAIL: bank account'; END IF;
+  SELECT count(*) INTO v_n FROM tenants WHERE id = t_tenant AND tax_id = '0125599000001' AND address IS NOT NULL AND document_template_key = 'classic';
+  IF v_n <> 1 THEN RAISE EXCEPTION 'T2 FAIL: tenant profile not filled'; END IF;
+
   RAISE EXCEPTION 'RESULT: demo_tenant_seed_test ALL PASSED';
 END $$;
 ROLLBACK;
