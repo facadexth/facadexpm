@@ -746,6 +746,73 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION demo_seed_people(UUID) FROM PUBLIC, anon, authenticated;
 
+-- Kanban card photos. Files were uploaded once to the private bucket
+-- line-site-photos at <tenant>/demo/NN-slug.jpg (they survive resets);
+-- the seed only writes the rows the Kanban board reads.
+CREATE OR REPLACE FUNCTION demo_seed_photos(p_tenant UUID)
+RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  -- file, phase (1-4), caption
+  v_files TEXT[][] := ARRAY[
+    ARRAY['01-foundation-rebar.jpg','1','ผูกเหล็กฐานราก F3 เสร็จแล้ว รอเทคอนกรีต'],
+    ARRAY['02-concrete-pour.jpg','1','เทคอนกรีตคานคอดิน โซน A'],
+    ARRAY['03-columns-beams.jpg','1','เสาและคานชั้น 1 ถอดแบบแล้ว'],
+    ARRAY['04-roof-trusses.jpg','2','ติดตั้งโครงหลังคาเหล็กแล้ว 80%'],
+    ARRAY['05-blockwork.jpg','2','ก่อผนังอิฐมวลเบา ชั้น 2 ด้านหน้า'],
+    ARRAY['06-electrical-conduit.jpg','3','เดินท่อร้อยสายไฟในฝ้า โซนห้องนอน'],
+    ARRAY['07-plumbing-pvc.jpg','3','วางท่อน้ำทิ้งใต้พื้นห้องน้ำ'],
+    ARRAY['08-plastering.jpg','3','ฉาบปูนผนังภายในเสร็จ รอทาสีรองพื้น'],
+    ARRAY['09-tiling.jpg','4','ปูกระเบื้องพื้นห้องรับแขก'],
+    ARRAY['10-painting.jpg','4','ทาสีทับหน้าผนังภายใน รอบที่ 2'],
+    ARRAY['11-house-exterior.jpg','4','งานภายนอกเสร็จ รอส่งมอบ'],
+    ARRAY['12-renovation-interior.jpg','4','รื้อฝ้าและเตรียมจุดไฟใหม่']];
+  ph1 INT[] := ARRAY[1,2,3]; ph2 INT[] := ARRAY[4,5]; ph3 INT[] := ARRAY[6,7,8]; ph4 INT[] := ARRAY[9,10,11,12]; v_arr INT[];
+  s RECORD; t RECORD; i INT; j INT; v_worker UUID; v_workers UUID[]; v_n INT := 0; v_date DATE;
+BEGIN
+  SELECT array_agg(id ORDER BY name) INTO v_workers FROM workers WHERE tenant_id = p_tenant AND position IN ('โฟร์แมน');
+  IF v_workers IS NULL THEN RAISE EXCEPTION 'demo_seed_photos: no foreman workers'; END IF;
+  -- assigned photos: for each Ongoing site, each done/in_progress task gets the photo of its phase
+  -- (cycling inside the phase), newest-site-first, until every file has been used at least once
+  FOR s IN SELECT id FROM sites WHERE tenant_id = p_tenant AND status = 'Ongoing' AND lat IS NOT NULL ORDER BY start_date DESC LOOP
+    FOR t IN SELECT pt.id, pt.due_date, ph.sort_order AS phase_no, pt.sort_order AS task_no
+             FROM phase_tasks pt JOIN site_phases ph ON ph.id = pt.phase_id
+             WHERE pt.site_id = s.id AND pt.status IN ('done','in_progress') ORDER BY ph.sort_order, pt.sort_order LOOP
+      v_arr := CASE t.phase_no WHEN 1 THEN ph1 WHEN 2 THEN ph2 WHEN 3 THEN ph3 ELSE ph4 END;
+      i := v_arr[1 + (t.task_no - 1) % cardinality(v_arr)];
+      v_date := least(COALESCE(t.due_date, current_date), current_date);
+      v_worker := v_workers[1 + (v_n % cardinality(v_workers))];
+      INSERT INTO line_site_photos (tenant_id, worker_id, site_id, date, photo_path, description, created_at, task_id)
+      VALUES (p_tenant, v_worker, s.id, v_date, p_tenant::text || '/demo/' || v_files[i][1], v_files[i][3],
+              least((v_date + time '16:30') AT TIME ZONE 'Asia/Bangkok', now() - interval '5 minutes'), t.id);
+      v_n := v_n + 1;
+    END LOOP;
+  END LOOP;
+  -- unassigned photos on the newest site (the "unassigned" tray in the Kanban): 3 files from phase 4
+  FOR i IN 10..12 LOOP
+    INSERT INTO line_site_photos (tenant_id, worker_id, site_id, date, photo_path, description, created_at, task_id)
+    SELECT p_tenant, v_workers[1], id, current_date - (13 - i), p_tenant::text || '/demo/' || v_files[i][1], v_files[i][3],
+           least(((current_date - (13 - i)) + time '15:10') AT TIME ZONE 'Asia/Bangkok', now() - interval '5 minutes'), NULL
+    FROM sites WHERE tenant_id = p_tenant AND status = 'Ongoing' AND lat IS NOT NULL ORDER BY start_date DESC LIMIT 1;
+  END LOOP;
+  -- guarantee every file is referenced at least once (sites with few done tasks may skip some)
+  FOR i IN 1..12 LOOP
+    IF NOT EXISTS (SELECT 1 FROM line_site_photos WHERE tenant_id = p_tenant AND photo_path = p_tenant::text || '/demo/' || v_files[i][1]) THEN
+      INSERT INTO line_site_photos (tenant_id, worker_id, site_id, date, photo_path, description, created_at, task_id)
+      SELECT p_tenant, v_workers[1], pt.site_id, least(COALESCE(pt.due_date, current_date), current_date),
+             p_tenant::text || '/demo/' || v_files[i][1], v_files[i][3],
+             least((least(COALESCE(pt.due_date, current_date), current_date) + time '16:40') AT TIME ZONE 'Asia/Bangkok', now() - interval '5 minutes'), pt.id
+      FROM phase_tasks pt JOIN site_phases ph ON ph.id = pt.phase_id JOIN sites st ON st.id = pt.site_id
+      WHERE st.tenant_id = p_tenant AND st.status = 'Ongoing' AND st.lat IS NOT NULL AND pt.status IN ('done','in_progress') AND ph.sort_order = v_files[i][2]::int
+      ORDER BY st.start_date DESC, pt.sort_order LIMIT 1;
+    END IF;
+  END LOOP;
+  RETURN jsonb_build_object(
+    'photos', (SELECT count(*) FROM line_site_photos WHERE tenant_id = p_tenant),
+    'photos_assigned', (SELECT count(*) FROM line_site_photos WHERE tenant_id = p_tenant AND task_id IS NOT NULL),
+    'photos_unassigned', (SELECT count(*) FROM line_site_photos WHERE tenant_id = p_tenant AND task_id IS NULL));
+END $$;
+REVOKE ALL ON FUNCTION demo_seed_photos(UUID) FROM PUBLIC, anon, authenticated;
+
 -- ── seed entry point (sections are added by later tasks) ───────
 CREATE OR REPLACE FUNCTION seed_demo_tenant(p_tenant_id UUID)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -758,6 +825,7 @@ BEGIN
   v_out := v_out || demo_seed_sales(p_tenant_id);
   v_out := v_out || demo_seed_purchasing(p_tenant_id);
   v_out := v_out || demo_seed_people(p_tenant_id);
+  v_out := v_out || demo_seed_photos(p_tenant_id);
   -- sections: ... (Tasks 3-5)
   PERFORM set_config('request.jwt.claims', COALESCE(v_claims, ''), true);
   RETURN v_out;

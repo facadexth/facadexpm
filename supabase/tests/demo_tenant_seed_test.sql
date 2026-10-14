@@ -289,6 +289,27 @@ BEGIN
   SELECT count(*) INTO v_n FROM worker_checkins WHERE tenant_id = t_tenant AND extract(hour FROM checkin_at AT TIME ZONE 'Asia/Bangkok') NOT BETWEEN 7 AND 8;
   IF v_n <> 0 THEN RAISE EXCEPTION 'T5 FAIL: % check-ins outside 07:00-08:59 Bangkok', v_n; END IF;
 
+  -- ── T5b ── Kanban photos
+  IF COALESCE((s1->>'photos')::int, -1) < 20 THEN RAISE EXCEPTION 'T5b FAIL: photos=%', s1->>'photos'; END IF;
+  SELECT count(*) INTO v_n FROM line_site_photos WHERE tenant_id = t_tenant AND task_id IS NOT NULL;
+  IF v_n < 15 THEN RAISE EXCEPTION 'T5b FAIL: assigned photos=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM line_site_photos WHERE tenant_id = t_tenant AND task_id IS NULL;
+  IF v_n <> 3 THEN RAISE EXCEPTION 'T5b FAIL: unassigned photos=%', v_n; END IF;
+  -- every assigned photo sits on a task of the same site, and that task is done or in progress
+  SELECT count(*) INTO v_n FROM line_site_photos p JOIN phase_tasks t ON t.id = p.task_id
+    WHERE p.tenant_id = t_tenant AND (t.site_id <> p.site_id OR t.status = 'not_started');
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T5b FAIL: % photos on a wrong-site or not-started task', v_n; END IF;
+  -- paths live under the tenant's own folder and use the fixed demo keys
+  SELECT count(*) INTO v_n FROM line_site_photos WHERE tenant_id = t_tenant AND photo_path !~ ('^' || t_tenant::text || '/demo/[0-9]{2}-[a-z-]+\.jpg$');
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T5b FAIL: % photo paths outside <tenant>/demo/', v_n; END IF;
+  SELECT count(DISTINCT photo_path) INTO v_n FROM line_site_photos WHERE tenant_id = t_tenant;
+  IF v_n <> 12 THEN RAISE EXCEPTION 'T5b FAIL: expected all 12 demo files referenced, got %', v_n; END IF;
+  SELECT count(*) INTO v_n FROM line_site_photos WHERE tenant_id = t_tenant AND (date > current_date OR created_at > now() OR worker_id IS NULL OR description IS NULL);
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T5b FAIL: photo with future date, no worker or no caption'; END IF;
+  -- at least 3 Ongoing sites have photos (the Kanban demo opens any of them)
+  SELECT count(DISTINCT site_id) INTO v_n FROM line_site_photos WHERE tenant_id = t_tenant;
+  IF v_n < 3 THEN RAISE EXCEPTION 'T5b FAIL: photos on only % sites', v_n; END IF;
+
   RAISE EXCEPTION 'RESULT: demo_tenant_seed_test ALL PASSED';
 END $$;
 ROLLBACK;
