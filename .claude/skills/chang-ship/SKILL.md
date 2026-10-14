@@ -32,6 +32,9 @@ Every web deploy: bump `package.json` version and prepend a Thai entry to `src/c
 
 ## 4. Verify on the live site (Chrome tool)
 - The app is a PWA in `prompt` mode: after a deploy the open tab keeps the old bundle. `registration.update()`, wait (install can take 10-20 s), click the "รีเฟรชเพื่ออัปเดต" banner and then the "🔄 รีเฟรชเพื่ออัปเดต" button in the modal; compare the loaded `index-*.js` against `fetch('/?x='+Date.now(), {cache:'no-store'})`. Repeat if a newer deploy landed meanwhile.
+- Faster from the console: `reg.update()`, poll until `reg.waiting` exists (10-25 s), `reg.waiting.postMessage({type:'SKIP_WAITING'})`, wait ~8 s (the app may reload itself on controllerchange), then reload. Sending SKIP_WAITING while still `installing` does nothing.
+- Changing `location.hash` alone does not re-run mount-time hash handling; set the hash and `location.reload()`.
+- UI trap: a smooth `scrollIntoView` is cancelled when the page grows underneath it (sections loading) -- use `behavior:'auto'`, re-check a few times, and give the target `scrollMarginTop` for the sticky header.
 - Use the tab group the tool gives you; the logged-in profile is the owner's, so only read and click through screens, never enter credentials or change data you were not asked to.
 - Call an edge function from the page with the user's own session: `localStorage` key `sb-*-auth-token` → `access_token` → `fetch(.../functions/v1/<fn>, {headers:{Authorization:'Bearer '+t}})`; do not print the token.
 - State plainly what was verified live and what was only tested in the database or by unit tests.
