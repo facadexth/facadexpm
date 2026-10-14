@@ -1296,15 +1296,53 @@ export function useAllLaborPayments(filters = {}) {
  * security boundary is the platform_admins check inside
  * platform_list_tenants()/platform_set_tenant_package() themselves.
  */
+/**
+ * Is the CURRENT session's email in platform_admins? Reads the session
+ * fresh every call so a logout -> login as another account in the same
+ * tab re-evaluates (the old useQuery(..., []) version checked once per
+ * page load and kept showing the platform-admin tabs to a non-admin).
+ */
+export async function checkPlatformAdmin() {
+  const { data: { session } } = await supabase.auth.getSession()
+  const email = session?.user?.email
+  if (!email) return false
+  const { data, error } = await supabase
+    .from('platform_admins').select('user_email').eq('user_email', email).maybeSingle()
+  if (error) throw error
+  return !!data
+}
+
 export function usePlatformAdmin() {
-  return useQuery(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user?.email) return false
-    const { data, error } = await supabase
-      .from('platform_admins').select('user_email').eq('user_email', user.email).maybeSingle()
-    if (error) throw error
-    return !!data
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  // Same pattern as useUserRole: re-check on every auth change, but only
+  // the FIRST check shows as loading -- ProtectedPage unmounts its
+  // children while a gate is loading, and onAuthStateChange also fires
+  // on routine token refresh / tab refocus.
+  const fetch = useCallback(async () => {
+    try {
+      setData(await checkPlatformAdmin())
+      setError(null)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
   }, [])
+
+  useEffect(() => {
+    fetch()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'INITIAL_SESSION') return // the mount fetch above covers it
+      if (event === 'SIGNED_OUT') { setData(false); return }
+      fetch()
+    })
+    return () => subscription.unsubscribe()
+  }, [fetch])
+
+  return { data, loading, error, refetch: fetch }
 }
 
 export function usePlatformTenants() {
