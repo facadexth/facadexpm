@@ -49,7 +49,7 @@ END $$;
 REVOKE ALL ON FUNCTION demo_impersonate(UUID) FROM PUBLIC, anon, authenticated;
 
 -- first day of the month k months ago (k=0 → this month)
-CREATE OR REPLACE FUNCTION demo_m(k INT) RETURNS DATE LANGUAGE sql IMMUTABLE AS $$
+CREATE OR REPLACE FUNCTION demo_m(k INT) RETURNS DATE LANGUAGE sql STABLE AS $$
   SELECT (date_trunc('month', current_date) - make_interval(months => k))::date;
 $$;
 
