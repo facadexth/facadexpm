@@ -275,11 +275,13 @@ CREATE OR REPLACE FUNCTION demo_invoice(p_tenant UUID, p_quotation UUID, p_date 
 RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   q RECORD; v_inv UUID; v_item UUID; v_sub NUMERIC := 0; v_line NUMERIC; v_draw NUMERIC; u RECORD; qi RECORD; i INT := 0;
-  v_dep_pct NUMERIC := (p_opts->>'deposit_pct')::numeric; v_dep_ded NUMERIC := COALESCE((p_opts->>'deposit_deduction')::numeric, 0);
+  v_dep_pct NUMERIC := (p_opts->>'deposit_pct')::numeric; v_dep_ded NUMERIC := 0; v_remaining NUMERIC;
   v_void BOOLEAN := COALESCE((p_opts->>'void')::boolean, false); v_vat NUMERIC; v_total NUMERIC; v_num TEXT;
-  v_tax NUMERIC; v_ret NUMERIC; v_income UUID; v_received NUMERIC; v_client TEXT; v_qsub NUMERIC; v_seq INT; v_rseq INT; v_tseq INT; v_iseq INT;
+  v_tax NUMERIC; v_ret NUMERIC; v_income UUID; v_received NUMERIC; v_qsub NUMERIC; v_seq INT; v_rseq INT; v_tseq INT; v_iseq INT;
 BEGIN
-  SELECT qu.*, s.default_tax_withheld_pct, s.default_retention_pct, c.name AS client_name
+  -- nothing in the demo may be dated after today (demo is reset on arbitrary dates)
+  p_date := least(p_date, current_date); p_paid := CASE WHEN p_paid IS NULL THEN NULL ELSE least(p_paid, current_date) END;
+  SELECT qu.*, s.default_deposit_pct, s.default_tax_withheld_pct, s.default_retention_pct, c.name AS client_name
     INTO q FROM quotations qu JOIN sites s ON s.id = qu.site_id JOIN clients c ON c.id = qu.client_id WHERE qu.id = p_quotation;
   IF q.id IS NULL THEN RAISE EXCEPTION 'demo_invoice: quotation % has no site', p_quotation; END IF;
   -- demo is reset on arbitrary dates; literal seqs collided, so compute the next number per month
@@ -289,7 +291,7 @@ BEGIN
   INSERT INTO invoices (tenant_id, invoice_number, quotation_id, site_id, date, status, has_vat, price_includes_vat, subtotal, vat, total,
                         bank_account_id, wht_pct, is_deposit, deposit_pct, deposit_deduction_amount, deposit_deduction_pct, notes)
   VALUES (p_tenant, v_num, p_quotation, q.site_id, p_date, 'unpaid', true, false, 0, 0, 0, q.bank_account_id, 3,
-          v_dep_pct IS NOT NULL, v_dep_pct, NULLIF(v_dep_ded, 0), NULL,
+          v_dep_pct IS NOT NULL, v_dep_pct, NULL, NULL,
           CASE WHEN COALESCE((p_opts->>'due_days')::int, 0) > 0 THEN 'ครบกำหนดชำระ ' || to_char(p_date + (p_opts->>'due_days')::int, 'DD/MM/YYYY') ELSE NULL END)
   RETURNING id INTO v_inv;
   IF v_dep_pct IS NOT NULL THEN
@@ -316,6 +318,13 @@ BEGIN
       END LOOP;
       v_sub := v_sub + v_line;
     END LOOP;
+  END IF;
+  -- deposit already paid on this quotation is deducted proportionally from each later draw, never below zero
+  IF v_dep_pct IS NULL AND NOT v_void AND COALESCE(q.default_deposit_pct, 0) > 0 THEN
+    v_remaining := COALESCE((SELECT sum(subtotal) FROM invoices WHERE quotation_id = p_quotation AND is_deposit AND status = 'paid'), 0)
+                 - COALESCE((SELECT sum(deposit_deduction_amount) FROM invoices WHERE quotation_id = p_quotation AND id <> v_inv), 0);
+    v_dep_ded := greatest(0, least(round(v_sub * q.default_deposit_pct / 100, 2), v_remaining));
+    UPDATE invoices SET deposit_deduction_amount = NULLIF(v_dep_ded, 0) WHERE id = v_inv;
   END IF;
   v_vat := round(v_sub * 0.07, 2); v_total := v_sub + v_vat;
   UPDATE invoices SET subtotal = v_sub, vat = v_vat, total = v_total, status = CASE WHEN v_void THEN 'void' ELSE 'unpaid' END WHERE id = v_inv;
@@ -346,7 +355,7 @@ REVOKE ALL ON FUNCTION demo_invoice(UUID, UUID, DATE, INT, NUMERIC, NUMERIC, DAT
 CREATE OR REPLACE FUNCTION demo_seed_sales(p_tenant UUID)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
-  q UUID; s RECORD; v_sub NUMERIC; v_dep NUMERIC; v_seq INT; v_m0 DATE := demo_m(0);
+  q UUID; s RECORD; v_sub NUMERIC;
   -- standard line sets by site size
   L_HOUSE JSONB := '[{"name":"งานฐานรากและเสาเข็ม","qty":1,"price":380000},{"desc":"เสาเข็มเจาะ ขนาด 0.35 ม. ลึก 21 ม. จำนวน 24 ต้น"},{"name":"งานโครงสร้าง ค.ส.ล.","qty":280,"price":4200},{"name":"งานก่ออิฐฉาบปูน","qty":620,"price":650},{"name":"งานโครงหลังคาและมุงหลังคา","qty":210,"price":1850},{"desc":"กระเบื้องหลังคาคอนกรีต สีเทาเข้ม พร้อมฉนวนกันความร้อน"},{"name":"งานระบบไฟฟ้า","qty":48,"price":1200},{"name":"งานระบบประปา-สุขาภิบาล","qty":22,"price":1500},{"name":"งานทาสีภายใน-ภายนอก","qty":900,"price":180},{"name":"งานปูกระเบื้อง","qty":260,"price":550},{"name":"งานประตู-หน้าต่าง","qty":18,"price":8500},{"note":"ระยะเวลาก่อสร้าง 180 วัน นับจากวันเซ็นสัญญา"}]'::jsonb;
   L_COMM JSONB := '[{"name":"งานรื้อถอน","qty":1,"price":45000},{"name":"งานฐานรากและเสาเข็ม","qty":1,"price":520000},{"name":"งานโครงสร้าง ค.ส.ล.","qty":540,"price":4200},{"desc":"พื้น post-tension ชั้น 2-3 รับน้ำหนัก 400 กก./ตร.ม."},{"name":"งานก่ออิฐฉาบปูน","qty":1100,"price":650},{"name":"งานระบบไฟฟ้า","qty":96,"price":1200},{"name":"งานระบบประปา-สุขาภิบาล","qty":36,"price":1500},{"name":"งานฝ้าเพดาน","qty":500,"price":420},{"name":"งานทาสีภายใน-ภายนอก","qty":1600,"price":180},{"name":"งานปูกระเบื้อง","qty":520,"price":550},{"name":"งานประตู-หน้าต่าง","qty":20,"price":8500},{"name":"งานรั้วและประตูรั้ว","qty":40,"price":3200},{"name":"งานถนนและลานจอดรถ","qty":300,"price":950},{"note":"ผู้ว่าจ้างเป็นผู้ขออนุญาตก่อสร้าง"}]'::jsonb;
@@ -365,8 +374,7 @@ BEGIN
                 WHEN s.name = 'รีโนเวทบ้าน คุณนภา' THEN L_RENO ELSE L_HOUSE END,
            CASE WHEN s.name IN ('บ้านคุณวิชัย ลาดพร้าว','คลับเฮาส์ หมู่บ้านพฤกษา') THEN '{"revision_snapshot":true}'::jsonb ELSE '{}'::jsonb END);
     SELECT sum(line_total) INTO v_sub FROM quotation_items WHERE quotation_id = q AND item_type = 'item';
-    v_dep := CASE WHEN s.default_deposit_pct > 0 THEN round(v_sub * s.default_deposit_pct / 100, 2) ELSE 0 END;
-    -- invoices per site status. Sequence numbers: 10 + rn keeps them unique inside a month across sites.
+    -- invoices per site status (document numbers are computed per month inside demo_invoice)
     IF s.status = 'Completed' THEN
       PERFORM demo_invoice(p_tenant, q, s.start_date + 20, 10 + s.rn, 0, 40, s.start_date + 35);
       PERFORM demo_invoice(p_tenant, q, s.start_date + 65, 10 + s.rn, 40, 80, s.start_date + 80);
@@ -381,15 +389,15 @@ BEGIN
         PERFORM demo_invoice(p_tenant, q, s.start_date + 30, 10 + s.rn, 0, 30, s.start_date + 45);
         PERFORM demo_invoice(p_tenant, q, s.start_date + 75, 10 + s.rn, 30, 55, s.start_date + 90);
         PERFORM demo_invoice(p_tenant, q, s.start_date + 120, 10 + s.rn, 55, 75, s.start_date + 135);
-        PERFORM demo_invoice(p_tenant, q, current_date - 25, 20 + s.rn, 75, 85, NULL, jsonb_build_object('due_days', 15, 'deposit_deduction', v_dep));
+        PERFORM demo_invoice(p_tenant, q, greatest(s.start_date + 150, current_date - 25), 20 + s.rn, 75, 85, NULL, '{"due_days":15}'::jsonb);
       ELSIF s.name = 'อาคารพาณิชย์ 3 ชั้น งามวงศ์วาน' THEN -- 70%: 2 paid, 1 unpaid overdue, plus 1 void (re-issued)
         PERFORM demo_invoice(p_tenant, q, s.start_date + 40, 10 + s.rn, 0, 35, s.start_date + 55);
         PERFORM demo_invoice(p_tenant, q, s.start_date + 95, 10 + s.rn, 35, 60, s.start_date + 110);
-        PERFORM demo_invoice(p_tenant, q, current_date - 40, 20 + s.rn, 60, 70, NULL, '{"void":true}'::jsonb);
-        PERFORM demo_invoice(p_tenant, q, current_date - 35, 30 + s.rn, 60, 70, NULL, '{"due_days":30}'::jsonb);
+        PERFORM demo_invoice(p_tenant, q, greatest(s.start_date + 125, current_date - 40), 20 + s.rn, 60, 70, NULL, '{"void":true}'::jsonb);
+        PERFORM demo_invoice(p_tenant, q, greatest(s.start_date + 130, current_date - 35), 30 + s.rn, 60, 70, NULL, '{"due_days":30}'::jsonb);
       ELSIF s.name = 'คลับเฮาส์ หมู่บ้านพฤกษา' THEN        -- 45%: 1 paid, 1 unpaid (not yet due)
         PERFORM demo_invoice(p_tenant, q, s.start_date + 35, 10 + s.rn, 0, 30, s.start_date + 50);
-        PERFORM demo_invoice(p_tenant, q, current_date - 5, 20 + s.rn, 30, 45, NULL, '{"due_days":30}'::jsonb);
+        PERFORM demo_invoice(p_tenant, q, greatest(s.start_date + 65, current_date - 5), 20 + s.rn, 30, 45, NULL, '{"due_days":30}'::jsonb);
       ELSIF s.name = 'โกดังสินค้า บางบัวทอง' THEN          -- 30%: 1 paid draw
         PERFORM demo_invoice(p_tenant, q, s.start_date + 40, 10 + s.rn, 0, 30, s.start_date + 55);
       ELSE                                                  -- รีโนเวท 15%: 1 unpaid (fresh)

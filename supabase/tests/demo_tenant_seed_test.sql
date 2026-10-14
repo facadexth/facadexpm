@@ -155,6 +155,22 @@ BEGIN
     AND abs(s.contract_value - (SELECT sum(line_total) * 1.07 FROM quotation_items x WHERE x.quotation_id = q.id AND x.item_type = 'item')) > 1;
   IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: % sites whose contract_value != accepted quotation', v_n; END IF;
 
+  SELECT count(*) INTO v_n FROM invoices WHERE tenant_id = t_tenant AND (date > current_date OR paid_date > current_date);
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: % invoices dated in the future', v_n; END IF;
+  SELECT count(*) INTO v_n FROM receipts r JOIN invoices i ON i.id = r.invoice_id WHERE i.tenant_id = t_tenant AND r.date > current_date;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: receipt in the future'; END IF;
+  SELECT count(*) INTO v_n FROM incomes WHERE tenant_id = t_tenant AND (date > current_date OR received_amount <= 0);
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: income in the future or non-positive'; END IF;
+  SELECT count(*) INTO v_n FROM incomes WHERE tenant_id = t_tenant AND deposit_deduction > 0;
+  IF v_n < 3 THEN RAISE EXCEPTION 'T3 FAIL: expected >=3 incomes with a deposit deduction, got %', v_n; END IF;
+  SELECT count(*) INTO v_n FROM invoices WHERE tenant_id = t_tenant AND deposit_deduction_amount > subtotal;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: deposit deduction exceeds subtotal'; END IF;
+  -- draws of one quotation are in date order: a later prior_pct never has an earlier invoice date
+  SELECT count(*) INTO v_n FROM invoice_item_draws d1 JOIN invoice_items x1 ON x1.id = d1.invoice_item_id JOIN invoices i1 ON i1.id = x1.invoice_id
+    JOIN invoice_item_draws d2 ON d2.quotation_item_unit_id = d1.quotation_item_unit_id JOIN invoice_items x2 ON x2.id = d2.invoice_item_id JOIN invoices i2 ON i2.id = x2.invoice_id
+    WHERE i1.tenant_id = t_tenant AND d2.prior_pct > d1.prior_pct AND i2.date < i1.date;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: % draw pairs out of date order', v_n; END IF;
+
   RAISE EXCEPTION 'RESULT: demo_tenant_seed_test ALL PASSED';
 END $$;
 ROLLBACK;
