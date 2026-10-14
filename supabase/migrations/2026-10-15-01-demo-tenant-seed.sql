@@ -600,7 +600,7 @@ DECLARE
 BEGIN
   SELECT array_agg(id ORDER BY start_date)
     INTO v_sites FROM sites WHERE tenant_id = p_tenant AND status = 'Ongoing' AND lat IS NOT NULL;  -- excludes the default "ส่วนกลาง" site (Ongoing, no coordinates)
-  IF cardinality(v_sites) < 3 THEN RAISE EXCEPTION 'demo_seed_people: needs at least 3 Ongoing sites with coordinates'; END IF;
+  IF v_sites IS NULL OR cardinality(v_sites) < 3 THEN RAISE EXCEPTION 'demo_seed_people: needs at least 3 Ongoing sites with coordinates'; END IF;
 
   INSERT INTO app_settings (tenant_id, key, value) VALUES
     (p_tenant, 'sign_physical_enabled', 'true'), (p_tenant, 'checkin_radius_m', '200'), (p_tenant, 'cheque_reminder_days', '3'),
