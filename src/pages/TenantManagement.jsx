@@ -180,6 +180,25 @@ export default function TenantManagement() {
   const [statusTenant, setStatusTenant] = useState(null)
   const [quotaPkg, setQuotaPkg] = useState(null)
   const [toast, setToast] = useState(null)
+  const [resetTenant, setResetTenant] = useState(null)   // tenant row awaiting confirm
+  const [resetting, setResetting] = useState(false)
+
+  const handleResetDemo = async () => {
+    if (!resetTenant) return
+    setResetting(true)
+    try {
+      const { data, error } = await supabase.rpc('reset_demo_tenant', { p_tenant_id: resetTenant.id })
+      if (error) throw error
+      const seeded = data?.seeded || {}
+      setToast(`รีเซ็ตเดโม่ ${resetTenant.company_name} แล้ว: ไซท์ ${seeded.sites ?? '-'} ใบเสนอราคา ${seeded.quotations ?? '-'} ใบแจ้งหนี้ ${seeded.invoices ?? '-'} รายจ่าย ${seeded.expenses ?? '-'} ช่าง ${seeded.workers ?? '-'}`)
+      setResetTenant(null)
+      refetch?.()
+    } catch (err) {
+      alert('รีเซ็ตไม่สำเร็จ: ' + (err.message || err))
+    } finally {
+      setResetting(false)
+    }
+  }
 
   // ตารางบริษัท (tenants)
   const [tenantSortCol, setTenantSortCol] = useState('company_name')
@@ -257,8 +276,11 @@ export default function TenantManagement() {
                   </td>
                   <td>{PLAN_LABELS[t.plan] || t.plan}</td>
                   <td style={{ fontSize: 12 }}>{t.plan_expires_at ? fmtDate(t.plan_expires_at) : (t.trial_ends_at ? `Trial: ${fmtDate(t.trial_ends_at)}` : '—')}</td>
-                  <td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="btn btn-sm btn-ghost" onClick={() => setStatusTenant(t)}>จัดการสถานะ</button>
+                    {t.is_demo && (
+                      <button className="btn btn-sm btn-ghost" style={{ marginLeft: 6 }} onClick={() => setResetTenant(t)}>🔄 รีเซ็ตเดโม่</button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -273,6 +295,19 @@ export default function TenantManagement() {
       {statusTenant && (
         <StatusModal tenant={statusTenant} onClose={() => setStatusTenant(null)}
           onSaved={() => { setStatusTenant(null); refetch(); setToast('บันทึกแล้ว'); setTimeout(() => setToast(null), 2000) }} />
+      )}
+
+      {resetTenant && (
+        <Modal title="รีเซ็ตข้อมูลเดโม่" maxWidth={480} onClose={() => !resetting && setResetTenant(null)}>
+          <div className="modal-body">
+            <p>ลบข้อมูลทั้งหมดของ <strong>{resetTenant.company_name}</strong> แล้วใส่ข้อมูลตัวอย่างชุดเดิมใหม่ ใช้เวลาไม่กี่วินาที บัญชีผู้ใช้ของ tenant นี้ไม่ถูกแตะ</p>
+            <p style={{ color: 'var(--text3)', fontSize: 12 }}>ทำได้เฉพาะ tenant ที่ติดธง is_demo_tenant เท่านั้น ฐานข้อมูลจะปฏิเสธ tenant อื่น</p>
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-ghost" disabled={resetting} onClick={() => setResetTenant(null)}>ยกเลิก</button>
+            <button className="btn btn-primary" disabled={resetting} onClick={handleResetDemo}>{resetting ? 'กำลังรีเซ็ต…' : 'ยืนยันรีเซ็ต'}</button>
+          </div>
+        </Modal>
       )}
 
       <h3 style={{ margin: '28px 0 12px', fontSize: 15, fontWeight: 700 }}>Quota ต่อ Package</h3>
