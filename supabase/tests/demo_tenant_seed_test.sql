@@ -171,6 +171,51 @@ BEGIN
     WHERE i1.tenant_id = t_tenant AND d2.prior_pct > d1.prior_pct AND i2.date < i1.date;
   IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: % draw pairs out of date order', v_n; END IF;
 
+  -- ── T4 ── purchasing, expenses, cheques, stock
+  IF COALESCE((s1->>'purchase_orders')::int, -1) <> 12 THEN RAISE EXCEPTION 'T4 FAIL: pos=%', s1->>'purchase_orders'; END IF;
+  SELECT count(*) INTO v_n FROM purchase_orders WHERE tenant_id = t_tenant AND status = 'draft';
+  IF v_n <> 1 THEN RAISE EXCEPTION 'T4 FAIL: draft pos=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM purchase_orders WHERE tenant_id = t_tenant AND status = 'received' AND (expense_id IS NULL OR received_date IS NULL);
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T4 FAIL: received PO without expense/received_date'; END IF;
+  SELECT count(*) INTO v_n FROM purchase_orders WHERE tenant_id = t_tenant AND po_number !~ ('^PO' || to_char(date, 'YYMM') || '-[0-9]{3}$');
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T4 FAIL: po number/date mismatch'; END IF;
+  SELECT count(*) INTO v_n FROM expenses WHERE tenant_id = t_tenant;
+  IF v_n < 150 THEN RAISE EXCEPTION 'T4 FAIL: expenses=%', v_n; END IF;
+  SELECT count(DISTINCT to_char(date, 'YYYY-MM')) INTO v_n FROM expenses WHERE tenant_id = t_tenant;
+  IF v_n < 8 THEN RAISE EXCEPTION 'T4 FAIL: expenses cover only % months', v_n; END IF;
+  SELECT count(*) INTO v_n FROM expenses WHERE tenant_id = t_tenant AND status = 'pending' AND due_date BETWEEN current_date AND current_date + 30;
+  IF v_n < 5 THEN RAISE EXCEPTION 'T4 FAIL: too few pending expenses for the forecast (%)', v_n; END IF;
+  SELECT count(*) INTO v_n FROM expenses WHERE tenant_id = t_tenant AND category_id IS NULL;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T4 FAIL: expense without category'; END IF;
+  SELECT count(*) INTO v_n FROM cheques WHERE tenant_id = t_tenant;
+  IF v_n <> 6 THEN RAISE EXCEPTION 'T4 FAIL: cheques=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM cheques WHERE tenant_id = t_tenant AND status = 'issued' AND check_date BETWEEN current_date AND current_date + 3;
+  IF v_n <> 1 THEN RAISE EXCEPTION 'T4 FAIL: cheque due within 3 days=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM expenses e JOIN cheques c ON c.id = e.cheque_id WHERE e.tenant_id = t_tenant
+    AND e.status <> CASE c.status WHEN 'cashed' THEN 'check_cleared' ELSE 'check_issued' END;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T4 FAIL: % cheque-linked expenses out of sync with cheque status', v_n; END IF;
+  SELECT count(*) INTO v_n FROM inventory_items WHERE tenant_id = t_tenant;
+  IF v_n <> 12 THEN RAISE EXCEPTION 'T4 FAIL: inventory items=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM inventory_items WHERE tenant_id = t_tenant AND code !~ '^[A-Z]{3}-[0-9]{4}$';
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T4 FAIL: inventory code format'; END IF;
+  -- ledger == balances, nothing negative
+  SELECT count(*) INTO v_n FROM (
+    SELECT inventory_item_id, site_id, sum(CASE movement_type WHEN 'transfer_out' THEN -quantity WHEN 'sale_out' THEN -quantity ELSE quantity END) AS q FROM stock_movements WHERE tenant_id = t_tenant GROUP BY 1, 2) l
+    FULL JOIN (SELECT * FROM inventory_stock_balances WHERE tenant_id = t_tenant) b ON b.inventory_item_id = l.inventory_item_id AND b.site_id = l.site_id  -- tenant filter inside the subquery: in the ON clause it counted other tenants' balances as orphans
+    WHERE b.id IS NULL OR l.inventory_item_id IS NULL OR abs(b.quantity_on_hand - l.q) > 0.0001;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T4 FAIL: % (item,site) pairs where balance != ledger', v_n; END IF;
+  SELECT count(*) INTO v_n FROM inventory_stock_balances WHERE tenant_id = t_tenant AND (quantity_on_hand < 0 OR weighted_average_cost < 0);
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T4 FAIL: negative balance or cost'; END IF;
+  SELECT count(*) INTO v_n FROM stock_movements WHERE tenant_id = t_tenant AND movement_type = 'purchase_in' AND reference_type = 'purchase_order';
+  IF v_n < 7 THEN RAISE EXCEPTION 'T4 FAIL: purchase_in movements=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM stock_movements WHERE tenant_id = t_tenant AND movement_type IN ('transfer_out','transfer_in');
+  IF v_n < 4 THEN RAISE EXCEPTION 'T4 FAIL: transfers=%', v_n; END IF;
+  -- bell: draft PO and cheque due
+  PERFORM set_config('request.jwt.claims', json_build_object('email', owner_email, 'role', 'authenticated')::text, true);
+  IF COALESCE((pending_counts()->>'po_draft')::int, 0) <> 1 THEN RAISE EXCEPTION 'T4 FAIL: pending_counts.po_draft=%', pending_counts()->>'po_draft'; END IF;
+  IF COALESCE((pending_counts()->>'cheques_due')::int, 0) < 1 THEN RAISE EXCEPTION 'T4 FAIL: pending_counts.cheques_due'; END IF;
+  PERFORM set_config('request.jwt.claims', json_build_object('email', admin_email, 'role', 'authenticated')::text, true);
+
   RAISE EXCEPTION 'RESULT: demo_tenant_seed_test ALL PASSED';
 END $$;
 ROLLBACK;

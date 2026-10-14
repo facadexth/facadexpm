@@ -428,6 +428,162 @@ END $$;
 REVOKE ALL ON FUNCTION demo_seed_sales(UUID) FROM PUBLIC, anon, authenticated;
 
 
+CREATE OR REPLACE FUNCTION demo_seed_purchasing(p_tenant UUID)
+RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_central UUID; v_site UUID; v_sup UUID; v_cat UUID; v_po UUID; v_exp UUID; v_chq UUID; v_item UUID; k INT; i INT; j INT;
+  v_date DATE; v_amt NUMERIC; v_sub NUMERIC; v_qty NUMERIC; v_price NUMERIC; v_bal NUMERIC; v_wac NUMERIC; v_status TEXT; v_seq INT;
+  v_cats TEXT[] := ARRAY['งานโครงสร้าง (ปูน/เหล็ก)','งานสถาปัตย์','ไฟฟ้า/ประปา','วัสดุสิ้นเปลือง','ค่าแรง','ค่าเดินทาง','เครื่องมือ','เบ็ดเตล็ด'];
+  v_sups TEXT[] := ARRAY['บจก. ไทยวัสดุก่อสร้าง','ร้านเจริญเหล็ก','หจก. ปูนดี ซัพพลาย','ร้านไฟฟ้าสมบูรณ์','บจก. สุขภัณฑ์ไทย','ร้านสีสวย','บจก. เครื่องมือช่าง โปร','ร้านอิฐบล็อก บางใหญ่'];
+  v_desc TEXT[] := ARRAY['ปูนซีเมนต์และทราย','เหล็กเส้นและลวดผูก','อิฐมวลเบาและปูนก่อ','สายไฟและท่อร้อยสาย','ท่อ PVC และข้อต่อ','สีรองพื้นและสีทับหน้า','ค่าเช่าเครื่องตบดิน','ค่าแรงรายวันเหมาช่วง','น้ำมันรถขนของ','กระเบื้องและกาวซีเมนต์','ไม้แบบและตะปู','ค่าขนส่งวัสดุ'];
+  -- inventory items: name, base unit, category prefix, unit cost
+  v_inv TEXT[][] := ARRAY[
+    ARRAY['ปูนซีเมนต์ปอร์ตแลนด์ 50 กก.','ถุง','STR','165'], ARRAY['เหล็กเส้นกลม RB9','เส้น','STR','185'],
+    ARRAY['เหล็กข้ออ้อย DB12','เส้น','STR','320'], ARRAY['เหล็กข้ออ้อย DB16','เส้น','STR','560'],
+    ARRAY['อิฐมอญ','ก้อน','ARC','1.2'], ARRAY['อิฐมวลเบา 7.5 ซม.','ก้อน','ARC','14'],
+    ARRAY['ทรายหยาบ','คิว','STR','650'], ARRAY['หิน 3/4','คิว','STR','720'],
+    ARRAY['ไม้แบบ 1x6 นิ้ว','แผ่น','SUP','95'], ARRAY['ลวดผูกเหล็ก','กก.','SUP','42'],
+    ARRAY['สายไฟ THW 2.5 ตร.มม.','ม้วน','MEP','1850'], ARRAY['ท่อ PVC 4 นิ้ว','เส้น','MEP','310']];
+  v_items UUID[] := '{}'; v_costs NUMERIC[] := '{}';
+  v_sites UUID[]; v_site_names TEXT[]; v_site_status TEXT[]; v_site_start DATE[];
+BEGIN
+  SELECT id INTO v_central FROM sites WHERE tenant_id = p_tenant AND is_default;
+  SELECT array_agg(id ORDER BY start_date), array_agg(name ORDER BY start_date), array_agg(status ORDER BY start_date), array_agg(start_date ORDER BY start_date)
+    INTO v_sites, v_site_names, v_site_status, v_site_start
+    FROM sites WHERE tenant_id = p_tenant AND NOT is_default AND status IN ('Ongoing','Completed','On Hold');
+
+  -- inventory items
+  FOR i IN 1..12 LOOP
+    SELECT id INTO v_cat FROM expense_categories WHERE tenant_id = p_tenant AND code_prefix = v_inv[i][3];
+    INSERT INTO inventory_items (tenant_id, name, base_unit, active, unit_conversion_mode, category_id, code, item_kind)
+    VALUES (p_tenant, v_inv[i][1], v_inv[i][2], true, 'plain', v_cat, v_inv[i][3] || '-' || lpad(i::text, 4, '0'), 'raw_material')
+    RETURNING id INTO v_item;
+    v_items := v_items || v_item; v_costs := v_costs || v_inv[i][4]::numeric;
+  END LOOP;
+
+  -- 12 purchase orders: 7 received (stock in at ส่วนกลาง), 3 ordered, 1 draft, 1 cancelled
+  FOR k IN 1..12 LOOP
+    v_status := CASE WHEN k <= 7 THEN 'received' WHEN k <= 10 THEN 'ordered' WHEN k = 11 THEN 'draft' ELSE 'cancelled' END;
+    v_date := CASE WHEN k <= 7 THEN demo_m(8 - k) + 5 + k WHEN k <= 10 THEN current_date - (k - 7) * 4 WHEN k = 11 THEN current_date - 1 ELSE demo_m(2) + 12 END;
+    i := ((k - 1) % 3) + 1;                       -- supplier: rotate the 3 material suppliers
+    v_site := v_sites[((k - 1) % cardinality(v_sites)) + 1];
+    SELECT id INTO v_sup FROM suppliers WHERE tenant_id = p_tenant AND name = v_sups[i];
+    SELECT id INTO v_cat FROM expense_categories WHERE tenant_id = p_tenant AND name = v_cats[1];
+    INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status, has_vat, price_includes_vat, ordered_by, notes, received_date)
+    VALUES (p_tenant, 'PO' || to_char(v_date, 'YYMM') || '-' || lpad(k::text, 3, '0'), v_site, v_sup, v_cat, v_date, v_status, true, false,
+            demo_owner_email(p_tenant), CASE WHEN v_status = 'cancelled' THEN 'ซัพพลายเออร์ส่งของไม่ทัน ยกเลิกและสั่งเจ้าอื่น' ELSE NULL END,
+            CASE WHEN v_status = 'received' THEN v_date + 3 ELSE NULL END)
+    RETURNING id INTO v_po;
+    v_sub := 0;
+    FOR j IN 1..3 LOOP                              -- 3 lines per PO, items rotate through the list
+      i := ((k + j * 4 - 1) % 12) + 1;
+      v_qty := 20 + ((k * 7 + j * 11) % 60); v_price := v_costs[i] * (0.95 + ((k + j) % 5) * 0.025);
+      INSERT INTO purchase_order_items (tenant_id, po_id, description, quantity, unit, unit_price, line_total, sort_order, inventory_item_id, discount_pct)
+      VALUES (p_tenant, v_po, v_inv[i][1], v_qty, v_inv[i][2], round(v_price, 2), round(v_qty * v_price, 2), j - 1, v_items[i], 0);
+      v_sub := v_sub + round(v_qty * v_price, 2);
+      IF v_status = 'received' THEN
+        -- ledger + weighted average, same arithmetic as record_stock_movement purchase_in
+        SELECT quantity_on_hand, weighted_average_cost INTO v_bal, v_wac FROM inventory_stock_balances WHERE inventory_item_id = v_items[i] AND site_id = v_central;
+        IF v_bal IS NULL THEN
+          INSERT INTO inventory_stock_balances (tenant_id, inventory_item_id, site_id, quantity_on_hand, weighted_average_cost) VALUES (p_tenant, v_items[i], v_central, v_qty, round(v_price, 4));
+        ELSE
+          UPDATE inventory_stock_balances SET quantity_on_hand = v_bal + v_qty,
+            weighted_average_cost = round((v_bal * v_wac + v_qty * v_price) / (v_bal + v_qty), 4), updated_at = (v_date + 3)::timestamptz
+            WHERE inventory_item_id = v_items[i] AND site_id = v_central;
+        END IF;
+        INSERT INTO stock_movements (tenant_id, inventory_item_id, site_id, movement_type, quantity, unit_cost, reference_type, reference_id, notes, created_by, created_at)
+        VALUES (p_tenant, v_items[i], v_central, 'purchase_in', v_qty, round(v_price, 2), 'purchase_order', v_po, 'รับของตาม PO', demo_owner_email(p_tenant), (v_date + 3)::timestamptz);
+      END IF;
+    END LOOP;
+    IF v_status = 'received' THEN
+      INSERT INTO expenses (tenant_id, date, description, site_id, category_id, supplier_id, supplier, amount_no_vat, vat, amount, payment_method,
+                            status, invoice_no, po_id, billing_date, due_date)
+      SELECT p_tenant, v_date + 3, 'รับของตามใบสั่งซื้อ ' || po_number, v_site, v_cat, v_sup, v_sups[((k - 1) % 3) + 1], v_sub, round(v_sub * 0.07, 2), round(v_sub * 1.07, 2),
+             CASE WHEN s.credit_days > 0 THEN 'transfer' ELSE 'cash' END,
+             CASE WHEN s.credit_days > 0 AND v_date + 3 + s.credit_days > current_date THEN 'pending' WHEN s.credit_days > 0 THEN 'paid' ELSE 'paid' END,
+             'INV-' || to_char(v_date, 'YYMM') || '-' || lpad((500 + k)::text, 4, '0'), v_po, v_date + 3, v_date + 3 + COALESCE(s.credit_days, 0)
+      FROM purchase_orders po JOIN suppliers s ON s.id = po.supplier_id WHERE po.id = v_po
+      RETURNING id INTO v_exp;
+      UPDATE purchase_orders SET expense_id = v_exp WHERE id = v_po;
+    END IF;
+  END LOOP;
+
+  -- transfers from ส่วนกลาง to the two most active sites, and one count adjustment
+  FOR j IN 1..4 LOOP
+    i := j * 2; v_site := v_sites[cardinality(v_sites) - (j % 2)];   -- last two sites by start date = newest Ongoing
+    SELECT quantity_on_hand, weighted_average_cost INTO v_bal, v_wac FROM inventory_stock_balances WHERE inventory_item_id = v_items[i] AND site_id = v_central;
+    IF v_bal IS NOT NULL AND v_bal >= 10 THEN
+      v_qty := floor(v_bal / 2);
+      UPDATE inventory_stock_balances SET quantity_on_hand = quantity_on_hand - v_qty, updated_at = now() WHERE inventory_item_id = v_items[i] AND site_id = v_central;
+      INSERT INTO stock_movements (tenant_id, inventory_item_id, site_id, movement_type, quantity, unit_cost, reference_type, notes, created_by, created_at)
+      VALUES (p_tenant, v_items[i], v_central, 'transfer_out', v_qty, v_wac, 'transfer', 'โอนไปหน้างาน', demo_owner_email(p_tenant), (current_date - 10 + j)::timestamptz);
+      INSERT INTO inventory_stock_balances (tenant_id, inventory_item_id, site_id, quantity_on_hand, weighted_average_cost)
+      VALUES (p_tenant, v_items[i], v_site, v_qty, v_wac)
+      ON CONFLICT (inventory_item_id, site_id) DO UPDATE SET quantity_on_hand = inventory_stock_balances.quantity_on_hand + EXCLUDED.quantity_on_hand, updated_at = now();
+      INSERT INTO stock_movements (tenant_id, inventory_item_id, site_id, movement_type, quantity, unit_cost, reference_type, notes, created_by, created_at)
+      VALUES (p_tenant, v_items[i], v_site, 'transfer_in', v_qty, v_wac, 'transfer', 'รับโอนจากส่วนกลาง', demo_owner_email(p_tenant), (current_date - 10 + j)::timestamptz);
+    END IF;
+  END LOOP;
+  -- adjustment: physical count found 3 fewer bags of cement at ส่วนกลาง
+  SELECT quantity_on_hand, weighted_average_cost INTO v_bal, v_wac FROM inventory_stock_balances WHERE inventory_item_id = v_items[1] AND site_id = v_central;
+  IF v_bal IS NOT NULL AND v_bal >= 3 THEN
+    UPDATE inventory_stock_balances SET quantity_on_hand = v_bal - 3, updated_at = now() WHERE inventory_item_id = v_items[1] AND site_id = v_central;
+    INSERT INTO stock_movements (tenant_id, inventory_item_id, site_id, movement_type, quantity, unit_cost, reference_type, notes, created_by, created_at)
+    VALUES (p_tenant, v_items[1], v_central, 'adjustment', -3, v_wac, 'manual_adjustment', 'นับสต๊อกประจำเดือน ถุงแตก 3 ถุง', demo_owner_email(p_tenant), (current_date - 2)::timestamptz);
+  END IF;
+
+  -- cheques: 3 cashed (past), 3 issued (one due in 2 days)
+  FOR k IN 1..6 LOOP
+    INSERT INTO cheques (tenant_id, cheque_no, bank, status, check_date, cashed_at, created_by, notes)
+    VALUES (p_tenant, lpad((1000200 + k * 7)::text, 8, '0'), CASE WHEN k % 2 = 0 THEN 'ธนาคารกสิกรไทย' ELSE 'ธนาคารกรุงเทพ' END,
+            CASE WHEN k <= 3 THEN 'cashed' ELSE 'issued' END,
+            CASE WHEN k <= 3 THEN demo_m(4 - k) + 10 + k WHEN k = 4 THEN current_date + 2 WHEN k = 5 THEN current_date + 12 ELSE current_date + 25 END,
+            CASE WHEN k <= 3 THEN (demo_m(4 - k) + 11 + k)::timestamptz ELSE NULL END, demo_owner_email(p_tenant), NULL)
+    RETURNING id INTO v_chq;
+    -- one supplier bill paid by each cheque (expense status is synced from the cheque by trigger)
+    SELECT id INTO v_sup FROM suppliers WHERE tenant_id = p_tenant AND name = v_sups[((k - 1) % 8) + 1];
+    SELECT id INTO v_cat FROM expense_categories WHERE tenant_id = p_tenant AND name = v_cats[((k - 1) % 4) + 1];
+    v_amt := 18000 + k * 6500;
+    INSERT INTO expenses (tenant_id, date, description, site_id, category_id, supplier_id, supplier, amount_no_vat, vat, amount, payment_method, status, cheque_id, invoice_no)
+    VALUES (p_tenant, CASE WHEN k <= 3 THEN demo_m(4 - k) + 3 + k ELSE current_date - 20 + k * 3 END, 'ค่าวัสดุ ' || v_desc[((k - 1) % 12) + 1] || ' (จ่ายเช็ค)',
+            v_sites[((k - 1) % cardinality(v_sites)) + 1], v_cat, v_sup, v_sups[((k - 1) % 8) + 1], v_amt, round(v_amt * 0.07, 2), round(v_amt * 1.07, 2),
+            'check', 'check_issued', v_chq, 'BILL-' || lpad((7000 + k)::text, 5, '0'));
+  END LOOP;
+
+  -- general expenses: months 8..0, 3-6 per active site per month; status by age
+  v_seq := 0;
+  FOR k IN REVERSE 8..0 LOOP
+    FOR i IN 1..cardinality(v_sites) LOOP
+      CONTINUE WHEN v_site_start[i] > demo_m(k) + 27;                                       -- site not started yet
+      CONTINUE WHEN v_site_status[i] = 'Completed' AND v_site_start[i] + 190 < demo_m(k);   -- long finished
+      FOR j IN 1..(3 + ((k + i) % 4)) LOOP
+        v_seq := v_seq + 1;
+        v_date := least(demo_m(k) + ((v_seq * 7 + j * 3) % 27) + 1, current_date);
+        v_amt := round((2500 + random() * 38000)::numeric, 0);
+        SELECT id INTO v_cat FROM expense_categories WHERE tenant_id = p_tenant AND name = v_cats[((v_seq + j) % 8) + 1];
+        SELECT id INTO v_sup FROM suppliers WHERE tenant_id = p_tenant AND name = v_sups[((v_seq) % 8) + 1];
+        INSERT INTO expenses (tenant_id, date, description, site_id, category_id, supplier_id, supplier, amount_no_vat, vat, amount, payment_method, status, due_date, payer)
+        VALUES (p_tenant, v_date, v_desc[((v_seq + j) % 12) + 1], v_sites[i], v_cat,
+                CASE WHEN (v_seq % 3) = 0 THEN NULL ELSE v_sup END, CASE WHEN (v_seq % 3) = 0 THEN NULL ELSE v_sups[((v_seq) % 8) + 1] END,
+                v_amt, round(v_amt * 0.07, 2), round(v_amt * 1.07, 2),
+                CASE (v_seq % 4) WHEN 0 THEN 'cash' ELSE 'transfer' END,
+                CASE WHEN v_date >= current_date - 20 AND (v_seq % 3) <> 0 THEN 'pending' ELSE 'paid' END,
+                CASE WHEN v_date >= current_date - 20 AND (v_seq % 3) <> 0 THEN v_date + 30 ELSE NULL END,
+                CASE (v_seq % 5) WHEN 0 THEN 'สมหญิง' ELSE 'บริษัท' END);
+      END LOOP;
+    END LOOP;
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'purchase_orders', (SELECT count(*) FROM purchase_orders WHERE tenant_id = p_tenant),
+    'expenses', (SELECT count(*) FROM expenses WHERE tenant_id = p_tenant),
+    'cheques', (SELECT count(*) FROM cheques WHERE tenant_id = p_tenant),
+    'inventory_items', (SELECT count(*) FROM inventory_items WHERE tenant_id = p_tenant),
+    'stock_movements', (SELECT count(*) FROM stock_movements WHERE tenant_id = p_tenant),
+    'balances', (SELECT count(*) FROM inventory_stock_balances WHERE tenant_id = p_tenant));
+END $$;
+REVOKE ALL ON FUNCTION demo_seed_purchasing(UUID) FROM PUBLIC, anon, authenticated;
+
 -- ── seed entry point (sections are added by later tasks) ───────
 CREATE OR REPLACE FUNCTION seed_demo_tenant(p_tenant_id UUID)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -438,6 +594,7 @@ BEGIN
   PERFORM demo_impersonate(p_tenant_id);
   v_out := v_out || demo_seed_core(p_tenant_id);
   v_out := v_out || demo_seed_sales(p_tenant_id);
+  v_out := v_out || demo_seed_purchasing(p_tenant_id);
   -- sections: ... (Tasks 3-5)
   PERFORM set_config('request.jwt.claims', COALESCE(v_claims, ''), true);
   RETURN v_out;
