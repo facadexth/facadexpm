@@ -588,7 +588,7 @@ REVOKE ALL ON FUNCTION demo_seed_purchasing(UUID) FROM PUBLIC, anon, authenticat
 CREATE OR REPLACE FUNCTION demo_seed_people(p_tenant UUID)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
-  v_w UUID[] := '{}'; v_wid UUID; v_team_a UUID; v_team_b UUID; v_office UUID; v_site UUID; v_sites UUID[]; v_lat NUMERIC[]; v_lng NUMERIC[];
+  v_w UUID[] := '{}'; v_wid UUID; v_team_a UUID; v_team_b UUID; v_office UUID; v_site UUID; v_sites UUID[]; v_pay_date DATE; v_paid_date DATE; v_today_ok BOOLEAN := (now() AT TIME ZONE 'Asia/Bangkok')::time > time '08:00';
   i INT; k INT; d DATE; dow INT; v_type TEXT; v_shift TEXT; v_dist NUMERIC; v_cat UUID; v_sub UUID; v_contract UUID; v_gross NUMERIC; v_wht NUMERIC; v_ret NUMERIC;
   v_sal NUMERIC; v_ss NUMERIC; v_leave NUMERIC; v_ot NUMERIC; v_month INT; v_year INT; m DATE; v_num INT := 0;
   v_names TEXT[] := ARRAY['สมชาย ใจดี','ประยุทธ์ มานะ','วีระ แก้วใส','สุรชัย ทองดี','อนันต์ ศรีสุข','บุญมี พรหมมา','ธงชัย รักงาน','สมศักดิ์ เพียรดี','กิตติ บุญช่วย','นพดล ยอดช่าง','สุเทพ มั่นคง','วิชิต แสงทอง'];
@@ -598,8 +598,9 @@ DECLARE
   v_subs TEXT[] := ARRAY['ทีมช่างปูน นายสมบัติ','หจก. ไฟฟ้าสยาม เซอร์วิส','ทีมช่างเหล็ก นายวิรัตน์'];
   v_sub_ids UUID[] := '{}';
 BEGIN
-  SELECT array_agg(id ORDER BY start_date), array_agg(lat ORDER BY start_date), array_agg(lng ORDER BY start_date)
-    INTO v_sites, v_lat, v_lng FROM sites WHERE tenant_id = p_tenant AND status = 'Ongoing' AND lat IS NOT NULL;  -- excludes the default "ส่วนกลาง" site (Ongoing, no coordinates)
+  SELECT array_agg(id ORDER BY start_date)
+    INTO v_sites FROM sites WHERE tenant_id = p_tenant AND status = 'Ongoing' AND lat IS NOT NULL;  -- excludes the default "ส่วนกลาง" site (Ongoing, no coordinates)
+  IF cardinality(v_sites) < 3 THEN RAISE EXCEPTION 'demo_seed_people: needs at least 3 Ongoing sites with coordinates'; END IF;
 
   INSERT INTO app_settings (tenant_id, key, value) VALUES
     (p_tenant, 'sign_physical_enabled', 'true'), (p_tenant, 'checkin_radius_m', '200'), (p_tenant, 'cheque_reminder_days', '3'),
@@ -636,17 +637,18 @@ BEGIN
       FOREACH v_shift IN ARRAY ARRAY['morning','evening'] LOOP
         INSERT INTO worker_assignments (tenant_id, worker_id, site_id, date, type, shift, is_team_leader, confirmed_at, confirmed_by, checkin_location_id)
         VALUES (p_tenant, v_w[i], CASE WHEN v_type IN ('site','factory') THEN v_site ELSE NULL END, d, v_type, v_shift, i IN (1, 7),
-                CASE WHEN v_type = 'site' AND d >= current_date - 13 THEN least((d + time '07:58')::timestamptz, now() - interval '5 minutes') ELSE NULL END,
-                CASE WHEN v_type = 'site' AND d >= current_date - 13 THEN 'checkin' ELSE NULL END,
+                CASE WHEN v_type = 'site' AND d >= current_date - 13 AND (d < current_date OR v_today_ok) THEN least((d + time '07:58') AT TIME ZONE 'Asia/Bangkok', now() - interval '5 minutes') ELSE NULL END,
+                CASE WHEN v_type = 'site' AND d >= current_date - 13 AND (d < current_date OR v_today_ok) THEN 'checkin' ELSE NULL END,
                 CASE WHEN v_type = 'office' THEN v_office ELSE NULL END);
       END LOOP;
       -- GPS check-in for the last two weeks of site shifts, within 50 m
-      IF v_type = 'site' AND d >= current_date - 13 THEN
+      -- today's check-in is only seeded once it is past 08:00 in Bangkok (so it stays inside 07:00-08:59 and not in the future)
+      IF v_type = 'site' AND d >= current_date - 13 AND (d < current_date OR v_today_ok) THEN
         v_dist := 15 + (i * 7 + extract(doy FROM d)::int) % 35;
         INSERT INTO worker_checkins (tenant_id, worker_id, site_id, date, checkin_at, checkin_lat, checkin_lng, checkin_distance_m, checkout_at, checkout_lat, checkout_lng, checkout_distance_m)
-        SELECT p_tenant, v_w[i], v_site, d, least((d + time '07:55' + make_interval(mins => (i * 3) % 20))::timestamptz, now() - interval '5 minutes'),  -- never in the future (today)
+        SELECT p_tenant, v_w[i], v_site, d, least((d + time '07:55' + make_interval(mins => (i * 3) % 20)) AT TIME ZONE 'Asia/Bangkok', now() - interval '5 minutes'),  -- never in the future (today)
                s.lat + v_dist / 111320.0, s.lng, v_dist,
-               CASE WHEN d < current_date THEN (d + time '17:05' + make_interval(mins => (i * 5) % 25))::timestamptz ELSE NULL END,
+               CASE WHEN d < current_date THEN (d + time '17:05' + make_interval(mins => (i * 5) % 25)) AT TIME ZONE 'Asia/Bangkok' ELSE NULL END,
                CASE WHEN d < current_date THEN s.lat + v_dist / 111320.0 ELSE NULL END, CASE WHEN d < current_date THEN s.lng ELSE NULL END,
                CASE WHEN d < current_date THEN v_dist ELSE NULL END
         FROM sites s WHERE s.id = v_site;
@@ -702,20 +704,22 @@ BEGIN
     -- payments: contracts 1,3,4 → one paid progress payment; contract 2 → two paid + retention release; contract 1 also one pending
     FOR k IN 1..(CASE WHEN i = 2 THEN 3 WHEN i = 1 THEN 2 WHEN i = 3 THEN 1 ELSE 0 END) LOOP
       v_num := v_num + 1;
+      v_pay_date := least(demo_m(4 - i) + 20 + k * 25, current_date - 3);
+      v_paid_date := least(demo_m(4 - i) + 22 + k * 25, current_date - 1);
       v_gross := CASE WHEN i = 2 AND k = 3 THEN round(185000 * 0.05, 2) ELSE round((ARRAY[420000, 185000, 260000, 310000])[i] * CASE WHEN i = 2 THEN 0.5 ELSE 0.4 END, 2) END;
       v_wht := round(v_gross * 3 / 100, 2);
       v_ret := CASE WHEN i = 2 AND k = 3 THEN 0 ELSE round(v_gross * 5 / 100, 2) END;
       INSERT INTO labor_payments (tenant_id, contract_id, payment_number, payment_date, work_description, progress_pct, gross_amount, withholding_tax, retention_amount, net_amount,
                                   is_retention_release, status, paid_date)
-      VALUES (p_tenant, v_contract, 'P' || to_char(demo_m(4 - i) + 20 + k * 25, 'YYMM') || '-' || lpad(v_num::text, 3, '0'), demo_m(4 - i) + 20 + k * 25,
+      VALUES (p_tenant, v_contract, 'P' || to_char(v_pay_date, 'YYMM') || '-' || lpad(v_num::text, 3, '0'), v_pay_date,
               CASE WHEN i = 2 AND k = 3 THEN 'คืนเงินประกันผลงาน' ELSE 'งวดที่ ' || k END, CASE WHEN i = 2 THEN least(100, k * 50) ELSE 40 * k END,
               v_gross, v_wht, v_ret, v_gross - v_wht - v_ret, (i = 2 AND k = 3),
-              CASE WHEN i = 1 AND k = 2 THEN 'pending' ELSE 'paid' END, CASE WHEN i = 1 AND k = 2 THEN NULL ELSE demo_m(4 - i) + 22 + k * 25 END);
+              CASE WHEN i = 1 AND k = 2 THEN 'pending' ELSE 'paid' END, CASE WHEN i = 1 AND k = 2 THEN NULL ELSE v_paid_date END);
       IF NOT (i = 1 AND k = 2) THEN
         INSERT INTO expenses (tenant_id, date, description, site_id, category_id, supplier, amount, amount_no_vat, vat, payment_method, status, is_subcontract, invoice_no)
-        VALUES (p_tenant, demo_m(4 - i) + 22 + k * 25, 'ค่าแรงเหมาช่วง ' || v_subs[((i - 1) % 3) + 1] || ' ' || CASE WHEN i = 2 AND k = 3 THEN 'คืนเงินประกัน' ELSE 'งวดที่ ' || k END,
+        VALUES (p_tenant, v_paid_date, 'ค่าแรงเหมาช่วง ' || v_subs[((i - 1) % 3) + 1] || ' ' || CASE WHEN i = 2 AND k = 3 THEN 'คืนเงินประกัน' ELSE 'งวดที่ ' || k END,
                 v_site, v_cat, v_subs[((i - 1) % 3) + 1], v_gross - v_ret, v_gross - v_ret, 0, 'transfer', 'paid', true,
-                'P' || to_char(demo_m(4 - i) + 20 + k * 25, 'YYMM') || '-' || lpad(v_num::text, 3, '0'));
+                'P' || to_char(v_pay_date, 'YYMM') || '-' || lpad(v_num::text, 3, '0'));
       END IF;
     END LOOP;
   END LOOP;

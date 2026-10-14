@@ -282,6 +282,13 @@ BEGIN
   SELECT count(*) INTO v_n FROM worker_checkins WHERE tenant_id = t_tenant AND checkin_at > now();
   IF v_n <> 0 THEN RAISE EXCEPTION 'T5 FAIL: checkin in the future'; END IF;
 
+  SELECT count(*) INTO v_n FROM labor_payments WHERE tenant_id = t_tenant AND (payment_date > current_date OR paid_date > current_date);
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T5 FAIL: % labor payments dated in the future', v_n; END IF;
+  SELECT count(*) INTO v_n FROM expenses WHERE tenant_id = t_tenant AND is_subcontract AND date > current_date;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T5 FAIL: subcontract expense in the future'; END IF;
+  SELECT count(*) INTO v_n FROM worker_checkins WHERE tenant_id = t_tenant AND extract(hour FROM checkin_at AT TIME ZONE 'Asia/Bangkok') NOT BETWEEN 7 AND 8;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T5 FAIL: % check-ins outside 07:00-08:59 Bangkok', v_n; END IF;
+
   RAISE EXCEPTION 'RESULT: demo_tenant_seed_test ALL PASSED';
 END $$;
 ROLLBACK;
