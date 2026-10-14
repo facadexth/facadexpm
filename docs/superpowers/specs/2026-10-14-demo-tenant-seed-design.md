@@ -97,7 +97,9 @@ GRANT EXECUTE TO authenticated; first statement checks
 `EXISTS (SELECT 1 FROM platform_admins WHERE user_email = auth.email())` and
 the demo marker.
 
-Impersonation: the body does
+Impersonation (as built, 2026-10-14): the seed uses `set_config('request.jwt.claims', ..., true)` only and does NOT `SET LOCAL ROLE authenticated`; the sentence below is superseded. Consequence handled in the final review: client/supplier/subcontractor numbers are also set explicitly, and a BEFORE trigger on app_settings stops tenants from writing the `is_demo_tenant` marker.
+
+Original text: the body does
 `PERFORM set_config('request.jwt.claims', json_build_object('email', v_owner_email, 'role', 'authenticated', 'sub', v_owner_uid)::text, true)`
 and `SET LOCAL ROLE authenticated` before inserting, so RLS policies, the
 numbering triggers (where still used) and `current_tenant_id()` behave exactly
