@@ -330,7 +330,7 @@ BEGIN
   -- Kanban photos are re-seeded too
   SELECT count(*) INTO v_n FROM line_site_photos WHERE tenant_id = t_tenant;
   IF v_n < 20 THEN RAISE EXCEPTION 'T6 FAIL: photos not re-seeded'; END IF;
-  -- second reset on the already-reset tenant: it must delete exactly what the first re-seed created, and nothing else
+  -- second reset on the re-seeded tenant: spot-checks that the seeded quotations, sites and photos were deleted and that the other tenant's future-table row survived
   d1 := reset_demo_tenant(t_tenant);
   IF COALESCE((d1->'deleted'->>'sites')::int, -1) <> 11 THEN RAISE EXCEPTION 'T6 FAIL: expected 11 sites deleted (10 + ส่วนกลาง), got %', d1->'deleted'->>'sites'; END IF;
   IF COALESCE((d1->'deleted'->>'quotations')::int, -1) <> 18 THEN RAISE EXCEPTION 'T6 FAIL: second reset deleted.quotations=%', d1->'deleted'->>'quotations'; END IF;
