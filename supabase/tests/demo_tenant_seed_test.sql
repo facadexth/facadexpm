@@ -210,11 +210,77 @@ BEGIN
   IF v_n < 7 THEN RAISE EXCEPTION 'T4 FAIL: purchase_in movements=%', v_n; END IF;
   SELECT count(*) INTO v_n FROM stock_movements WHERE tenant_id = t_tenant AND movement_type IN ('transfer_out','transfer_in');
   IF v_n < 4 THEN RAISE EXCEPTION 'T4 FAIL: transfers=%', v_n; END IF;
-  -- bell: draft PO and cheque due
-  PERFORM set_config('request.jwt.claims', json_build_object('email', owner_email, 'role', 'authenticated')::text, true);
-  IF COALESCE((pending_counts()->>'po_draft')::int, 0) <> 1 THEN RAISE EXCEPTION 'T4 FAIL: pending_counts.po_draft=%', pending_counts()->>'po_draft'; END IF;
-  IF COALESCE((pending_counts()->>'cheques_due')::int, 0) < 1 THEN RAISE EXCEPTION 'T4 FAIL: pending_counts.cheques_due'; END IF;
-  PERFORM set_config('request.jwt.claims', json_build_object('email', admin_email, 'role', 'authenticated')::text, true);
+  -- bell: draft PO and cheque due (counted directly: pending_counts() is SECURITY INVOKER and counts across tenants when run as postgres)
+  SELECT count(*) INTO v_n FROM purchase_orders WHERE tenant_id = t_tenant AND status = 'draft';
+  IF v_n <> 1 THEN RAISE EXCEPTION 'T4 FAIL: draft POs for the bell=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM cheques WHERE tenant_id = t_tenant AND status <> 'cashed' AND check_date <= current_date + 3;
+  IF v_n < 1 THEN RAISE EXCEPTION 'T4 FAIL: no cheque due for the bell'; END IF;
+
+  -- ── T5 ── people
+  IF COALESCE((s1->>'workers')::int, -1) <> 12 THEN RAISE EXCEPTION 'T5 FAIL: workers=%', s1->>'workers'; END IF;
+  SELECT count(*) INTO v_n FROM workers WHERE tenant_id = t_tenant AND email = worker_email;
+  IF v_n <> 1 THEN RAISE EXCEPTION 'T5 FAIL: worker login not linked'; END IF;
+  SELECT count(*) INTO v_n FROM worker_teams WHERE tenant_id = t_tenant;
+  IF v_n <> 2 THEN RAISE EXCEPTION 'T5 FAIL: teams=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM worker_team_members WHERE tenant_id = t_tenant;
+  IF v_n <> 12 THEN RAISE EXCEPTION 'T5 FAIL: team members=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM worker_assignments WHERE tenant_id = t_tenant;
+  IF v_n < 1000 THEN RAISE EXCEPTION 'T5 FAIL: assignments=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM worker_assignments WHERE tenant_id = t_tenant AND type = 'site' AND site_id IS NULL;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T5 FAIL: site assignment without site'; END IF;
+  SELECT count(*) INTO v_n FROM worker_assignments WHERE tenant_id = t_tenant AND date > current_date;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T5 FAIL: assignment in the future'; END IF;
+  SELECT count(*) INTO v_n FROM worker_checkins WHERE tenant_id = t_tenant;
+  IF v_n < 100 THEN RAISE EXCEPTION 'T5 FAIL: checkins=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM worker_checkins WHERE tenant_id = t_tenant AND checkin_distance_m > 200;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T5 FAIL: checkin outside radius'; END IF;
+  SELECT count(*) INTO v_n FROM worker_ot WHERE tenant_id = t_tenant;
+  IF v_n < 12 THEN RAISE EXCEPTION 'T5 FAIL: ot=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM leave_requests WHERE tenant_id = t_tenant AND status = 'pending';
+  IF v_n <> 2 THEN RAISE EXCEPTION 'T5 FAIL: pending leave=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM leave_requests WHERE tenant_id = t_tenant;
+  IF v_n <> 6 THEN RAISE EXCEPTION 'T5 FAIL: leave=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM company_holidays WHERE tenant_id = t_tenant AND date >= current_date;
+  IF v_n < 2 THEN RAISE EXCEPTION 'T5 FAIL: upcoming holidays=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM salary_records WHERE tenant_id = t_tenant;
+  IF v_n <> 24 THEN RAISE EXCEPTION 'T5 FAIL: salary records=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM salary_records WHERE tenant_id = t_tenant AND abs(net_pay - (base_salary - social_security_ded - leave_deduction + ot_amount)) > 0.01;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T5 FAIL: % salary records break the net formula', v_n; END IF;
+  SELECT count(*) INTO v_n FROM labor_subcontractors WHERE tenant_id = t_tenant;
+  IF v_n <> 3 THEN RAISE EXCEPTION 'T5 FAIL: subcontractors=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM labor_contracts WHERE tenant_id = t_tenant;
+  IF v_n <> 4 THEN RAISE EXCEPTION 'T5 FAIL: contracts=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM labor_payments WHERE tenant_id = t_tenant;
+  IF v_n <> 6 THEN RAISE EXCEPTION 'T5 FAIL: payments=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM labor_payments WHERE tenant_id = t_tenant AND status = 'paid';
+  SELECT count(*) INTO v_n2 FROM expenses WHERE tenant_id = t_tenant AND is_subcontract;
+  IF v_n <> 5 OR v_n2 <> 5 THEN RAISE EXCEPTION 'T5 FAIL: paid payments=% subcontract expenses=%', v_n, v_n2; END IF;
+  SELECT count(*) INTO v_n FROM labor_payments WHERE tenant_id = t_tenant AND abs(net_amount - (gross_amount - withholding_tax - retention_amount)) > 0.01;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T5 FAIL: labor payment net formula'; END IF;
+  SELECT count(*) INTO v_n FROM labor_payments WHERE tenant_id = t_tenant AND is_retention_release;
+  IF v_n <> 1 THEN RAISE EXCEPTION 'T5 FAIL: retention release=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM line_groups WHERE tenant_id = t_tenant;
+  IF v_n <> 1 THEN RAISE EXCEPTION 'T5 FAIL: line groups=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM line_issue_reports WHERE tenant_id = t_tenant AND status = 'open';
+  IF v_n <> 2 THEN RAISE EXCEPTION 'T5 FAIL: open issues=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM app_settings WHERE tenant_id = t_tenant AND key IN ('sign_physical_enabled','checkin_radius_m','cheque_reminder_days','require_checkin_confirmation','regular_shift_end_time');
+  IF v_n <> 5 THEN RAISE EXCEPTION 'T5 FAIL: app settings=%', v_n; END IF;
+  -- team pattern: on the latest Monday, all six members of team A are on one site and the foreman is the leader
+  SELECT count(DISTINCT site_id) INTO v_n FROM worker_assignments a JOIN worker_team_members m ON m.worker_id = a.worker_id
+    WHERE a.tenant_id = t_tenant AND a.type = 'site' AND a.shift = 'morning' AND a.date = current_date - ((extract(isodow FROM current_date)::int + 6) % 7)
+      AND m.team_id = (SELECT id FROM worker_teams WHERE tenant_id = t_tenant ORDER BY name LIMIT 1);
+  IF v_n <> 1 THEN RAISE EXCEPTION 'T5 FAIL: team A not on a single site on the latest Monday (distinct sites=%)', v_n; END IF;
+  SELECT count(*) INTO v_n FROM worker_assignments WHERE tenant_id = t_tenant AND is_team_leader AND type = 'site';
+  IF v_n < 20 THEN RAISE EXCEPTION 'T5 FAIL: too few team-leader site shifts (%)', v_n; END IF;
+  -- individual pattern: at least one worker was assigned alone (no teammate on the same site that day)
+  SELECT count(*) INTO v_n FROM worker_assignments a
+    WHERE a.tenant_id = t_tenant AND a.type = 'site' AND a.shift = 'morning' AND extract(isodow FROM a.date) IN (2, 4)
+      AND NOT EXISTS (SELECT 1 FROM worker_assignments b JOIN worker_team_members mb ON mb.worker_id = b.worker_id
+                      JOIN worker_team_members ma ON ma.worker_id = a.worker_id AND ma.team_id = mb.team_id
+                      WHERE b.tenant_id = t_tenant AND b.date = a.date AND b.shift = a.shift AND b.site_id = a.site_id AND b.worker_id <> a.worker_id);
+  IF v_n < 10 THEN RAISE EXCEPTION 'T5 FAIL: too few individual (solo) site assignments (%)', v_n; END IF;
+  SELECT count(*) INTO v_n FROM worker_checkins WHERE tenant_id = t_tenant AND checkin_at > now();
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T5 FAIL: checkin in the future'; END IF;
 
   RAISE EXCEPTION 'RESULT: demo_tenant_seed_test ALL PASSED';
 END $$;

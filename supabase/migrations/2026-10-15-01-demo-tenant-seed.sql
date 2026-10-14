@@ -584,6 +584,164 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION demo_seed_purchasing(UUID) FROM PUBLIC, anon, authenticated;
 
+-- ── people: workers, teams, assignments, payroll, subcontractors ──
+CREATE OR REPLACE FUNCTION demo_seed_people(p_tenant UUID)
+RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_w UUID[] := '{}'; v_wid UUID; v_team_a UUID; v_team_b UUID; v_office UUID; v_site UUID; v_sites UUID[]; v_lat NUMERIC[]; v_lng NUMERIC[];
+  i INT; k INT; d DATE; dow INT; v_type TEXT; v_shift TEXT; v_dist NUMERIC; v_cat UUID; v_sub UUID; v_contract UUID; v_gross NUMERIC; v_wht NUMERIC; v_ret NUMERIC;
+  v_sal NUMERIC; v_ss NUMERIC; v_leave NUMERIC; v_ot NUMERIC; v_month INT; v_year INT; m DATE; v_num INT := 0;
+  v_names TEXT[] := ARRAY['สมชาย ใจดี','ประยุทธ์ มานะ','วีระ แก้วใส','สุรชัย ทองดี','อนันต์ ศรีสุข','บุญมี พรหมมา','ธงชัย รักงาน','สมศักดิ์ เพียรดี','กิตติ บุญช่วย','นพดล ยอดช่าง','สุเทพ มั่นคง','วิชิต แสงทอง'];
+  v_nick TEXT[] := ARRAY['ชาย','ยุทธ','วี','ชัย','นันต์','มี','ธง','ศักดิ์','กิต','นพ','เทพ','ชิต'];
+  v_pos TEXT[] := ARRAY['โฟร์แมน','ช่างปูน','ช่างปูน','ช่างเหล็ก','ช่างไฟ','กรรมกร','โฟร์แมน','ช่างปูน','ช่างเหล็ก','ช่างไฟ','ช่างประปา','กรรมกร'];
+  v_salary NUMERIC[] := ARRAY[28000,16500,16000,17500,18000,12000,26000,16000,17000,18500,17000,12500];
+  v_subs TEXT[] := ARRAY['ทีมช่างปูน นายสมบัติ','หจก. ไฟฟ้าสยาม เซอร์วิส','ทีมช่างเหล็ก นายวิรัตน์'];
+  v_sub_ids UUID[] := '{}';
+BEGIN
+  SELECT array_agg(id ORDER BY start_date), array_agg(lat ORDER BY start_date), array_agg(lng ORDER BY start_date)
+    INTO v_sites, v_lat, v_lng FROM sites WHERE tenant_id = p_tenant AND status = 'Ongoing' AND lat IS NOT NULL;  -- excludes the default "ส่วนกลาง" site (Ongoing, no coordinates)
+
+  INSERT INTO app_settings (tenant_id, key, value) VALUES
+    (p_tenant, 'sign_physical_enabled', 'true'), (p_tenant, 'checkin_radius_m', '200'), (p_tenant, 'cheque_reminder_days', '3'),
+    (p_tenant, 'require_checkin_confirmation', 'false'), (p_tenant, 'regular_shift_end_time', '17:00')
+  ON CONFLICT DO NOTHING;
+  INSERT INTO checkin_locations (tenant_id, name, lat, lng, active) VALUES (p_tenant, 'สำนักงาน รัตนาธิเบศร์', 13.8640, 100.5110, true) RETURNING id INTO v_office;
+
+  FOR i IN 1..12 LOOP
+    INSERT INTO workers (tenant_id, name, nickname, position, monthly_salary, has_social_security, annual_leave_days, annual_sick_leave_days, status, show_in_assign, email)
+    VALUES (p_tenant, v_names[i], v_nick[i], v_pos[i], v_salary[i], true, 6, 30, 'active', true, CASE WHEN i = 1 THEN demo_worker_email(p_tenant) ELSE NULL END)
+    RETURNING id INTO v_wid;
+    v_w := v_w || v_wid;
+  END LOOP;
+  INSERT INTO worker_teams (tenant_id, name) VALUES (p_tenant, 'ทีม A (โฟร์แมนสมชาย)') RETURNING id INTO v_team_a;
+  INSERT INTO worker_teams (tenant_id, name) VALUES (p_tenant, 'ทีม B (โฟร์แมนธงชัย)') RETURNING id INTO v_team_b;
+  FOR i IN 1..12 LOOP
+    INSERT INTO worker_team_members (tenant_id, team_id, worker_id) VALUES (p_tenant, CASE WHEN i <= 6 THEN v_team_a ELSE v_team_b END, v_w[i]);
+  END LOOP;
+  INSERT INTO company_holidays (tenant_id, date, name) VALUES
+    (p_tenant, current_date + 9, 'วันหยุดประจำปีบริษัท'), (p_tenant, current_date + 40, 'วันหยุดชดเชย'), (p_tenant, current_date - 30, 'วันหยุดตามประกาศ');
+
+  -- assignments: last 10 weeks, Mon-Sat two shifts, team A on the newest site, team B on the second newest; Sundays = holiday
+  FOR d IN SELECT generate_series(current_date - 69, current_date, '1 day')::date LOOP
+    dow := extract(isodow FROM d);
+    FOR i IN 1..12 LOOP
+      v_site := CASE WHEN i <= 6 THEN v_sites[cardinality(v_sites)] ELSE v_sites[cardinality(v_sites) - 1] END;
+      -- individual pattern: workers 4 and 10 are assigned alone (not with their team) on Tue/Thu
+      IF i IN (4, 10) AND dow IN (2, 4) THEN v_site := v_sites[cardinality(v_sites) - 2]; END IF;
+      v_type := CASE WHEN dow = 7 THEN 'holiday'
+                     WHEN (i + extract(doy FROM d)::int) % 23 = 0 THEN 'leave_personal'
+                     WHEN (i + extract(doy FROM d)::int) % 31 = 0 THEN 'leave_sick'
+                     WHEN i IN (1, 7) AND dow = 6 THEN 'office'
+                     WHEN (i + extract(doy FROM d)::int) % 9 = 0 AND NOT (i IN (4, 10) AND dow IN (2, 4)) THEN 'factory' ELSE 'site' END;
+      FOREACH v_shift IN ARRAY ARRAY['morning','evening'] LOOP
+        INSERT INTO worker_assignments (tenant_id, worker_id, site_id, date, type, shift, is_team_leader, confirmed_at, confirmed_by, checkin_location_id)
+        VALUES (p_tenant, v_w[i], CASE WHEN v_type IN ('site','factory') THEN v_site ELSE NULL END, d, v_type, v_shift, i IN (1, 7),
+                CASE WHEN v_type = 'site' AND d >= current_date - 13 THEN least((d + time '07:58')::timestamptz, now() - interval '5 minutes') ELSE NULL END,
+                CASE WHEN v_type = 'site' AND d >= current_date - 13 THEN 'checkin' ELSE NULL END,
+                CASE WHEN v_type = 'office' THEN v_office ELSE NULL END);
+      END LOOP;
+      -- GPS check-in for the last two weeks of site shifts, within 50 m
+      IF v_type = 'site' AND d >= current_date - 13 THEN
+        v_dist := 15 + (i * 7 + extract(doy FROM d)::int) % 35;
+        INSERT INTO worker_checkins (tenant_id, worker_id, site_id, date, checkin_at, checkin_lat, checkin_lng, checkin_distance_m, checkout_at, checkout_lat, checkout_lng, checkout_distance_m)
+        SELECT p_tenant, v_w[i], v_site, d, least((d + time '07:55' + make_interval(mins => (i * 3) % 20))::timestamptz, now() - interval '5 minutes'),  -- never in the future (today)
+               s.lat + v_dist / 111320.0, s.lng, v_dist,
+               CASE WHEN d < current_date THEN (d + time '17:05' + make_interval(mins => (i * 5) % 25))::timestamptz ELSE NULL END,
+               CASE WHEN d < current_date THEN s.lat + v_dist / 111320.0 ELSE NULL END, CASE WHEN d < current_date THEN s.lng ELSE NULL END,
+               CASE WHEN d < current_date THEN v_dist ELSE NULL END
+        FROM sites s WHERE s.id = v_site;
+      END IF;
+      -- OT on some weekday site shifts
+      IF v_type = 'site' AND dow < 6 AND (i * 11 + extract(doy FROM d)::int) % 37 = 0 THEN
+        INSERT INTO worker_ot (tenant_id, worker_id, site_id, date, start_time, end_time, ot_hours, is_overnight)
+        VALUES (p_tenant, v_w[i], v_site, d, '17:30', '19:30', 2, false);
+      END IF;
+    END LOOP;
+  END LOOP;
+
+  -- leave requests: 2 pending (bell), 3 approved, 1 rejected
+  INSERT INTO leave_requests (tenant_id, worker_id, leave_type, date_from, date_to, reason, status, requested_at, shift) VALUES
+    (p_tenant, v_w[3], 'leave_personal', current_date + 3, current_date + 3, 'ไปติดต่อราชการ', 'pending', now() - interval '2 hours', 'full_day'),
+    (p_tenant, v_w[9], 'leave_sick', current_date + 1, current_date + 2, 'ไข้หวัด มีใบรับรองแพทย์', 'pending', now() - interval '1 day', 'full_day'),
+    (p_tenant, v_w[5], 'leave_personal', current_date - 20, current_date - 20, 'ธุระครอบครัว', 'approved', (current_date - 25)::timestamptz, 'morning'),
+    (p_tenant, v_w[8], 'leave_sick', current_date - 12, current_date - 11, 'ปวดหลัง', 'approved', (current_date - 13)::timestamptz, 'full_day'),
+    (p_tenant, v_w[11], 'leave_personal', current_date - 6, current_date - 6, 'งานบวชญาติ', 'approved', (current_date - 10)::timestamptz, 'full_day'),
+    (p_tenant, v_w[6], 'leave_personal', current_date - 2, current_date - 2, 'ขอลาด่วน', 'rejected', (current_date - 3)::timestamptz, 'full_day');
+  UPDATE leave_requests SET reviewed_by = demo_owner_email(p_tenant), reviewed_at = requested_at + interval '3 hours' WHERE tenant_id = p_tenant AND status <> 'pending';
+
+  -- payroll: last two full months, formulas from src/pages/Payroll.jsx
+  FOR k IN 1..2 LOOP
+    m := demo_m(k); v_month := extract(month FROM m); v_year := extract(year FROM m);
+    FOR i IN 1..12 LOOP
+      v_sal := v_salary[i];
+      v_ss := least(750, round(v_sal * 0.05, 2));
+      SELECT COALESCE(count(*) FILTER (WHERE type = 'leave_personal'), 0) * 0.5 INTO v_leave FROM worker_assignments
+        WHERE worker_id = v_w[i] AND date >= m AND date < m + interval '1 month';
+      SELECT COALESCE(sum(ot_hours), 0) INTO v_ot FROM worker_ot WHERE worker_id = v_w[i] AND date >= m AND date < m + interval '1 month';
+      INSERT INTO salary_records (tenant_id, worker_id, month, year, base_salary, social_security_ded, leave_deduction, ot_amount, net_pay, paid_date)
+      VALUES (p_tenant, v_w[i], v_month, v_year, v_sal, v_ss, round(v_leave * v_sal / 30, 2), round(v_ot * v_sal / 30 / 8 * 1.5, 2),
+              round(v_sal - v_ss - round(v_leave * v_sal / 30, 2) + round(v_ot * v_sal / 30 / 8 * 1.5, 2), 2), (m + interval '1 month' - interval '1 day')::date);
+    END LOOP;
+  END LOOP;
+
+  -- labor subcontractors: 3, contracts 4, payments 6 (5 paid with expenses, 1 pending; one retention release)
+  SELECT id INTO v_cat FROM expense_categories WHERE tenant_id = p_tenant AND name = 'ค่าแรง';
+  FOR i IN 1..3 LOOP
+    INSERT INTO labor_subcontractors (tenant_id, name, contact_person, phone, id_card_number, address)
+    VALUES (p_tenant, v_subs[i], (ARRAY['นายสมบัติ ขยันงาน','คุณพรทิพย์ (ธุรการ)','นายวิรัตน์ เหล็กกล้า'])[i], '08' || lpad((90000000 + i * 54321)::text, 8, '0'),
+            (ARRAY['1100500000011','0105560000077','3100200000033'])[i], (ARRAY['22 ม.3 ต.บางรักพัฒนา อ.บางบัวทอง นนทบุรี','150 ถ.ติวานนท์ อ.เมืองนนทบุรี','8/1 ซ.วัดกู้ ปากเกร็ด นนทบุรี'])[i])
+    RETURNING id INTO v_sub;
+    v_sub_ids := v_sub_ids || v_sub;
+  END LOOP;
+  FOR i IN 1..4 LOOP
+    v_sub := v_sub_ids[((i - 1) % 3) + 1]; v_site := v_sites[((i - 1) % cardinality(v_sites)) + 1];
+    INSERT INTO labor_contracts (tenant_id, subcontractor_id, site_id, work_description, contract_amount, retention_pct, withholding_tax_pct, status, start_date)
+    VALUES (p_tenant, v_sub, v_site, (ARRAY['เหมาค่าแรงงานก่ออิฐฉาบปูน ชั้น 1-2','เหมาค่าแรงเดินระบบไฟฟ้าทั้งหลัง','เหมาค่าแรงงานเหล็กโครงหลังคา','เหมาค่าแรงงานปูนภายนอก'])[i],
+            (ARRAY[420000, 185000, 260000, 310000])[i], 5, 3, CASE WHEN i = 2 THEN 'completed' ELSE 'active' END, demo_m(4 - i) + 5)
+    RETURNING id INTO v_contract;
+    -- payments: contracts 1,3,4 → one paid progress payment; contract 2 → two paid + retention release; contract 1 also one pending
+    FOR k IN 1..(CASE WHEN i = 2 THEN 3 WHEN i = 1 THEN 2 WHEN i = 3 THEN 1 ELSE 0 END) LOOP
+      v_num := v_num + 1;
+      v_gross := CASE WHEN i = 2 AND k = 3 THEN round(185000 * 0.05, 2) ELSE round((ARRAY[420000, 185000, 260000, 310000])[i] * CASE WHEN i = 2 THEN 0.5 ELSE 0.4 END, 2) END;
+      v_wht := round(v_gross * 3 / 100, 2);
+      v_ret := CASE WHEN i = 2 AND k = 3 THEN 0 ELSE round(v_gross * 5 / 100, 2) END;
+      INSERT INTO labor_payments (tenant_id, contract_id, payment_number, payment_date, work_description, progress_pct, gross_amount, withholding_tax, retention_amount, net_amount,
+                                  is_retention_release, status, paid_date)
+      VALUES (p_tenant, v_contract, 'P' || to_char(demo_m(4 - i) + 20 + k * 25, 'YYMM') || '-' || lpad(v_num::text, 3, '0'), demo_m(4 - i) + 20 + k * 25,
+              CASE WHEN i = 2 AND k = 3 THEN 'คืนเงินประกันผลงาน' ELSE 'งวดที่ ' || k END, CASE WHEN i = 2 THEN least(100, k * 50) ELSE 40 * k END,
+              v_gross, v_wht, v_ret, v_gross - v_wht - v_ret, (i = 2 AND k = 3),
+              CASE WHEN i = 1 AND k = 2 THEN 'pending' ELSE 'paid' END, CASE WHEN i = 1 AND k = 2 THEN NULL ELSE demo_m(4 - i) + 22 + k * 25 END);
+      IF NOT (i = 1 AND k = 2) THEN
+        INSERT INTO expenses (tenant_id, date, description, site_id, category_id, supplier, amount, amount_no_vat, vat, payment_method, status, is_subcontract, invoice_no)
+        VALUES (p_tenant, demo_m(4 - i) + 22 + k * 25, 'ค่าแรงเหมาช่วง ' || v_subs[((i - 1) % 3) + 1] || ' ' || CASE WHEN i = 2 AND k = 3 THEN 'คืนเงินประกัน' ELSE 'งวดที่ ' || k END,
+                v_site, v_cat, v_subs[((i - 1) % 3) + 1], v_gross - v_ret, v_gross - v_ret, 0, 'transfer', 'paid', true,
+                'P' || to_char(demo_m(4 - i) + 20 + k * 25, 'YYMM') || '-' || lpad(v_num::text, 3, '0'));
+      END IF;
+    END LOOP;
+  END LOOP;
+
+  -- LINE group (name only) and two open issue reports from the field
+  INSERT INTO line_groups (tenant_id, group_id, label, is_notify) VALUES (p_tenant, 'Cdemo' || replace(p_tenant::text, '-', ''), 'กลุ่มช่าง สร้างดี', true);
+  INSERT INTO line_issue_reports (tenant_id, site_id, worker_id, message, status, created_at) VALUES
+    (p_tenant, v_sites[cardinality(v_sites)], v_w[1], 'เหล็ก DB16 หน้างานไม่พอ ขาดอีก 40 เส้น ขอเบิกเพิ่มด่วน', 'open', now() - interval '5 hours'),
+    (p_tenant, v_sites[cardinality(v_sites) - 1], v_w[7], 'น้ำท่วมขังหลุมฐานราก F3 ต้องสูบน้ำก่อนเทคอนกรีต', 'open', now() - interval '1 day');
+
+  RETURN jsonb_build_object(
+    'workers', (SELECT count(*) FROM workers WHERE tenant_id = p_tenant),
+    'teams', (SELECT count(*) FROM worker_teams WHERE tenant_id = p_tenant),
+    'assignments', (SELECT count(*) FROM worker_assignments WHERE tenant_id = p_tenant),
+    'checkins', (SELECT count(*) FROM worker_checkins WHERE tenant_id = p_tenant),
+    'ot', (SELECT count(*) FROM worker_ot WHERE tenant_id = p_tenant),
+    'leave_requests', (SELECT count(*) FROM leave_requests WHERE tenant_id = p_tenant),
+    'salary_records', (SELECT count(*) FROM salary_records WHERE tenant_id = p_tenant),
+    'subcontractors', (SELECT count(*) FROM labor_subcontractors WHERE tenant_id = p_tenant),
+    'labor_contracts', (SELECT count(*) FROM labor_contracts WHERE tenant_id = p_tenant),
+    'labor_payments', (SELECT count(*) FROM labor_payments WHERE tenant_id = p_tenant),
+    'line_groups', (SELECT count(*) FROM line_groups WHERE tenant_id = p_tenant),
+    'issue_reports', (SELECT count(*) FROM line_issue_reports WHERE tenant_id = p_tenant));
+END $$;
+REVOKE ALL ON FUNCTION demo_seed_people(UUID) FROM PUBLIC, anon, authenticated;
+
 -- ── seed entry point (sections are added by later tasks) ───────
 CREATE OR REPLACE FUNCTION seed_demo_tenant(p_tenant_id UUID)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -595,6 +753,7 @@ BEGIN
   v_out := v_out || demo_seed_core(p_tenant_id);
   v_out := v_out || demo_seed_sales(p_tenant_id);
   v_out := v_out || demo_seed_purchasing(p_tenant_id);
+  v_out := v_out || demo_seed_people(p_tenant_id);
   -- sections: ... (Tasks 3-5)
   PERFORM set_config('request.jwt.claims', COALESCE(v_claims, ''), true);
   RETURN v_out;
