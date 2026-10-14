@@ -24,13 +24,15 @@ export function pdfOptions({ margin = 10, scale = 2, filename } = {}) {
  * Build the PDF for an element: the picture html2pdf paints, plus an invisible text
  * layer (src/lib/pdfTextLayer.js) so the PDF can be searched, selected and indexed
  * (Drive, Gmail, accounting tools). Best-effort: if the font cannot be fetched or the
- * layer throws, the picture-only PDF is still produced. Resolves to the html2pdf worker
- * holding the finished jsPDF (`.save()` / `.outputPdf()`).
+ * layer throws, the picture-only PDF is still produced. Resolves to `{ worker }`, the
+ * html2pdf worker holding the finished jsPDF (`.save()` / `.outputPdf()`). Wrapped in
+ * an object on purpose: the worker is a thenable, so returning it bare from an async
+ * function would hand the caller the chain's resolved value (undefined), not the worker.
  */
 export async function buildPDF(html2pdf, element, options) {
   const fontB64 = await loadTextLayerFont()
   let lines = null, containerRect = null, pageSize = null, margin = null
-  return html2pdf().set(options).from(element)
+  const worker = html2pdf().set(options).from(element)
     .toContainer()
     .then(function () {
       if (!fontB64) return
@@ -53,6 +55,7 @@ export async function buildPDF(html2pdf, element, options) {
         writeTextLayer(pdf, lines, containerRect, pageSize, margin, TEXT_LAYER_FONT)
       } catch (err) { console.warn('pdf text layer: writing failed', err?.message) }
     })
+  return { worker }
 }
 
 export async function downloadPDF(elementId, filename, { margin = 10, scale = 2 } = {}) {
@@ -60,7 +63,8 @@ export async function downloadPDF(elementId, filename, { margin = 10, scale = 2 
   const element = document.getElementById(elementId)
   if (!element) { console.error('element not found:', elementId); return }
 
-  await (await buildPDF(html2pdf, element, pdfOptions({ margin, scale, filename }))).save()
+  const { worker } = await buildPDF(html2pdf, element, pdfOptions({ margin, scale, filename }))
+  await worker.save()
 }
 
 /**
