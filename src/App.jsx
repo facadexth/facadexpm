@@ -21,7 +21,7 @@ import ManualModal from './components/ManualModal.jsx'
 import ChunkErrorBoundary from './components/ChunkErrorBoundary.jsx'
 import NotificationBell from './components/NotificationBell.jsx'
 import { usePendingCounts } from './hooks/usePendingCounts.js'
-import { visiblePendingItems, badgeByTab, badgeForTab, formatBadge } from './lib/pendingItems.js'
+import { visiblePendingItems, badgeByTab, badgeForTab, formatBadge, resolvePendingTab, parsePushHash } from './lib/pendingItems.js'
 import Login      from './pages/Login.jsx'
 import ResetPassword from './components/ResetPassword.jsx'
 import { isRecoveryUrl } from './lib/passwordReset.js'
@@ -342,10 +342,18 @@ export default function App() {
   // fresh intent distinct from "the page just reloaded on its own."
   // Tapping a Web Push notification: an open app gets a message from the service worker,
   // a closed one is launched at /#tab=<id>. Both go through the access check below.
+  // The tap is only recorded here; it is acted on once role/tenant/platform-admin gates have
+  // loaded (effect below), so the page can be chosen per user (e.g. an issue report opens the
+  // Communication Center for the owner, the Sites page for an admin) and arrive pre-filtered.
+  const [pushIntent, setPushIntent] = useState(null)
   useEffect(() => {
-    const m = /^#tab=([\w-]+)$/.exec(window.location.hash)
-    if (m) { setActiveTab(m[1]); history.replaceState(null, '', window.location.pathname) }
-    const onMsg = (e) => { if (e.data?.type === 'chang-open-tab' && typeof e.data.tab === 'string') setActiveTab(e.data.tab) }
+    const parsed = parsePushHash(window.location.hash)
+    if (parsed) { setPushIntent(parsed); history.replaceState(null, '', window.location.pathname) }
+    const onMsg = (e) => {
+      if (e.data?.type === 'chang-open-tab' && typeof e.data.tab === 'string') {
+        setPushIntent({ tab: e.data.tab, pending: typeof e.data.pending === 'string' ? e.data.pending : null })
+      }
+    }
     navigator.serviceWorker?.addEventListener('message', onMsg)
     return () => navigator.serviceWorker?.removeEventListener('message', onMsg)
   }, [])
@@ -382,6 +390,17 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roleLoading, tenantLoading, platformAdminLoading, session, activeTab, isAtLeast, hasModuleAccess, role, isPlatformAdmin])
+
+  const canSeeTab = (tabId) => { const entry = ALL_TAB_ENTRIES.find(t => t.id === tabId); return !!entry && passesGates(entry) }
+
+  // Act on a recorded notification tap once the gates can answer canSeeTab.
+  useEffect(() => {
+    if (!pushIntent || roleLoading || tenantLoading || platformAdminLoading || !session) return
+    const tab = resolvePendingTab(pushIntent.pending, canSeeTab, pushIntent.tab)
+    setPushIntent(null)
+    navigateTo(tab, pushIntent.pending ? { pending: pushIntent.pending } : {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pushIntent, roleLoading, tenantLoading, platformAdminLoading, session])
 
   const navigateTo = (tab, state = {}) => {
     // Explicit navigation is fresh user intent -- safe to let a future
@@ -461,7 +480,6 @@ export default function App() {
     .filter(tab => tab.children ? tab.children.length > 0 : passesGates(tab))
 
   // Things waiting for action, limited to pages this user can actually open.
-  const canSeeTab = (tabId) => { const entry = ALL_TAB_ENTRIES.find(t => t.id === tabId); return !!entry && passesGates(entry) }
   const pendingItems = visiblePendingItems(pendingCounts, canSeeTab)
   const pendingByTab = badgeByTab(pendingItems)
 
@@ -495,7 +513,7 @@ export default function App() {
           <span className="header-date" style={{ color: 'var(--text3)', fontSize: 12, whiteSpace: 'nowrap' }}>
             {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
           </span>
-          <NotificationBell items={pendingItems} onRefresh={refetchPending} onOpenItem={item => navigateTo(item.tab)} />
+          <NotificationBell items={pendingItems} onRefresh={refetchPending} onOpenItem={item => navigateTo(item.tab, { pending: item.key, pendingCount: item.count })} />
           <button
             className="btn btn-ghost btn-sm"
             style={{ fontSize: 12 }}

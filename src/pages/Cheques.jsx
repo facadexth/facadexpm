@@ -6,7 +6,7 @@
 //    cheque_cascade_status, see supabase/schema.sql)
 // ✅ Shows total amount + expense count linked to each cheque
 // ============================================================
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { supabase, fmt } from '../lib/supabase.js'
 import { useCheques, useQuery, useAppSetting } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
@@ -17,6 +17,8 @@ import { useDraftForm } from '../hooks/useDraftForm.js'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { THAI_BANKS } from '../lib/thaiBanks.js'
 import PendingMark from '../components/PendingMark.jsx'
+import { usePendingFocus } from '../hooks/usePendingFocus.js'
+import PendingFocusChip from '../components/PendingFocusChip.jsx'
 import { isChequeAwaitingAction, parseChequeWindowDays } from '../lib/pendingRules.js'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
 
@@ -65,7 +67,7 @@ function ChequeForm({ initial = EMPTY_FORM, onSave, onCancel, loading }) {
   )
 }
 
-export default function Cheques() {
+export default function Cheques({ navState }) {
   const { tenant } = useTenant()
   const { data: cheques, refetch } = useCheques()
   // เปิด/ปิดวิธีเซ็นรับแต่ละแบบ -- ตั้งค่าได้ที่หน้าตั้งค่า (Settings.jsx)
@@ -150,6 +152,11 @@ export default function Cheques() {
   const [bankFilter, setBankFilter] = useState('')
   const [sortCol, setSortCol] = useState('check_date')
   const [sortDir, setSortDir] = useState('desc')
+  // Bell/push "cheques due": only the cheques the bell counted, soonest first.
+  const dueFocus = usePendingFocus(navState, 'cheques_due')
+  useEffect(() => {
+    if (dueFocus.active) { setStatusFilter(''); setSortCol('check_date'); setSortDir('asc') }
+  }, [dueFocus.active])
 
   const bankOptions = useMemo(() =>
     [...new Set((cheques || []).map(c => c.bank).filter(Boolean))].sort(),
@@ -160,6 +167,7 @@ export default function Cheques() {
       .map(c => ({ ...c, _total: totalsByCheque[c.id]?.total ?? 0, _supplier: [...(suppliersByCheque[c.id] || [])].join(', ') }))
       .filter(c => !search || c.cheque_no?.toLowerCase().includes(search.toLowerCase()))
       .filter(c => !statusFilter || c.status === statusFilter)
+      .filter(c => !dueFocus.active || isChequeAwaitingAction(c, chequeWindowDays, todayIso))
       .filter(c => !bankFilter || c.bank === bankFilter)
     return [...rows].sort((a, b) => {
       const va = a[sortCol] ?? ''
@@ -168,7 +176,7 @@ export default function Cheques() {
       return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cheques, totalsByCheque, search, statusFilter, bankFilter, sortCol, sortDir])
+  }, [cheques, totalsByCheque, search, statusFilter, bankFilter, sortCol, sortDir, dueFocus.active, chequeWindowDays, todayIso])
 
   const toggleSort = (col) => {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -213,7 +221,7 @@ export default function Cheques() {
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         <button className="btn btn-primary" onClick={() => { setEditCheque(null); setShowForm(true) }}>+ เพิ่มเช็ค</button>
         <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหาเลขที่เช็ค..." value={search} onChange={e => setSearch(e.target.value)} />
-        <select className="select select-sm" style={{ width: 160 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+        <select className="select select-sm" style={{ width: 160 }} value={statusFilter} onChange={e => { dueFocus.clear(); setStatusFilter(e.target.value) }}>
           <option value="">ทุกสถานะ</option>
           <option value="issued">📄 ยังไม่ขึ้นเงิน</option>
           <option value="received">✍️ รับเช็คแล้ว</option>
@@ -223,6 +231,7 @@ export default function Cheques() {
           <option value="">ทุกธนาคาร</option>
           {bankOptions.map(b => <option key={b} value={b}>{b}</option>)}
         </select>
+        <PendingFocusChip focus={dueFocus} pendingKey="cheques_due" />
       </div>
 
       <div className="card">

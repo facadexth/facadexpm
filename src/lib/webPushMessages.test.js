@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { leaveRequestPush, materialRequestPush, issueReportPush, testPush, quotationExpiryPush, workerOffboardedPush } from '../../supabase/functions/_shared/web-push-messages.ts'
 import { TABS_FOR_TEST } from './webPush.js'
+import { PENDING_ITEMS } from './pendingItems.js'
 
 describe('Web Push wording', () => {
   it('leave request names the worker, the kind of leave and the dates, and opens the HR page', () => {
@@ -37,5 +38,15 @@ describe('Web Push wording', () => {
   it('every notification points at a real app page', () => {
     const tabs = [leaveRequestPush('a', 'b', '', 'c'), materialRequestPush('a', 'b'), issueReportPush('a', 'b'), testPush(), quotationExpiryPush('QT-1', '2026-10-11', 7), workerOffboardedPush('สมศักดิ์')].map((p) => p.tab)
     for (const t of tabs) expect(TABS_FOR_TEST).toContain(t)
+  })
+  it('every notification about a bell item names that item so the page opens filtered', () => {
+    const keys = PENDING_ITEMS.map((i) => i.key)
+    expect(leaveRequestPush('a', 'b', '', 'c').pending).toBe('leave_pending')
+    expect(materialRequestPush('a', 'b').pending).toBe('po_draft')
+    expect(issueReportPush('a', 'b').pending).toBe('issues_open')
+    expect(workerOffboardedPush('a').pending).toBe('offboarded_in_group')
+    expect(quotationExpiryPush('QT-1', '2026-10-11', 7).pending).toBe('quotations_followup')
+    expect(testPush().pending).toBeUndefined()
+    for (const p of [leaveRequestPush('a', 'b', '', 'c'), materialRequestPush('a', 'b'), issueReportPush('a', 'b'), workerOffboardedPush('a'), quotationExpiryPush('QT-1', '2026-10-11', 7)]) expect(keys).toContain(p.pending)
   })
 })

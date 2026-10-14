@@ -5,12 +5,14 @@
 // senders, and the one real LINE-specific reminder toggle. Everything
 // here was previously only reachable by hand-run SQL.
 // ============================================================
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useLineGroups } from '../hooks/useLineGroups.js'
 import OffboardedInGroupCard from './OffboardedInGroupCard.jsx'
+import { usePendingFocus } from '../hooks/usePendingFocus.js'
+import PendingFocusChip from '../components/PendingFocusChip.jsx'
 import { planGroupRemoval } from '../lib/lineGroups.js'
 import { useAppSetting, saveAppSetting } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
@@ -48,7 +50,7 @@ function generateLinkCode() {
   return code
 }
 
-export default function CommunicationCenter() {
+export default function CommunicationCenter({ navState }) {
   const { tenant } = useTenant()
   const { user, isAtLeast } = useUserRole()
 
@@ -389,6 +391,17 @@ export default function CommunicationCenter() {
   // policy for it already existed too, just unused.
   const [issueReports, setIssueReports] = useState([])
   const [loadingIssues, setLoadingIssues] = useState(true)
+  // Bell/push: scroll to the section the notification was about; issues also filter to open ones.
+  const issuesFocus = usePendingFocus(navState, 'issues_open')
+  const offboardFocus = usePendingFocus(navState, 'offboarded_in_group')
+  const issuesCardRef = useRef(null)
+  const offboardCardRef = useRef(null)
+  useEffect(() => {
+    if (issuesFocus.active && !loadingIssues) issuesCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [issuesFocus.active, loadingIssues])
+  useEffect(() => {
+    if (offboardFocus.active) offboardCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [offboardFocus.active])
   const [resolvingIssueId, setResolvingIssueId] = useState(null)
 
   const fetchIssueReports = async () => {
@@ -472,7 +485,10 @@ export default function CommunicationCenter() {
     <div>
       <h2 style={{ marginBottom: 16, fontSize: 18, fontWeight: 700 }}>💬 การสื่อสาร — บอทไลน์ทีมงาน</h2>
 
-      <OffboardedInGroupCard />
+      <div ref={offboardCardRef}>
+        <PendingFocusChip focus={offboardFocus} pendingKey="offboarded_in_group" style={{ marginBottom: 8 }} />
+        <OffboardedInGroupCard />
+      </div>
 
       {/* ---- Command guide ---- */}
       <div className="card" style={{ marginBottom: 20 }}>
@@ -786,9 +802,10 @@ export default function CommunicationCenter() {
       </div>
 
       {/* ---- Issue reports ---- */}
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>
-          🚧 แจ้งปัญหาหน้างาน {issueReports.filter(r => r.status === 'open').length > 0 && `(${issueReports.filter(r => r.status === 'open').length} ยังไม่แก้ไข)`}
+      <div className="card" style={{ marginBottom: 20 }} ref={issuesCardRef}>
+        <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span>🚧 แจ้งปัญหาหน้างาน {issueReports.filter(r => r.status === 'open').length > 0 && `(${issueReports.filter(r => r.status === 'open').length} ยังไม่แก้ไข)`}</span>
+          <PendingFocusChip focus={issuesFocus} pendingKey="issues_open" />
         </div>
         {loadingIssues ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
@@ -808,7 +825,7 @@ export default function CommunicationCenter() {
                 </tr>
               </thead>
               <tbody>
-                {issueReports.map(r => (
+                {issueReports.filter(r => !issuesFocus.active || isIssueOpen(r)).map(r => (
                   <tr key={r.id} style={{ opacity: r.status === 'resolved' ? 0.55 : 1 }}>
                     <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>{isIssueOpen(r) && <PendingMark label="ยังไม่แก้ไข" />}{r.workers?.nickname || r.workers?.name || '-'}</td>
                     <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>{r.sites?.name || '-'}</td>

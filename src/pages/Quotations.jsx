@@ -28,6 +28,8 @@ import SignLinkModal from '../components/SignLinkModal.jsx'
 import DocumentReceiptModal from '../components/DocumentReceiptModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import PendingMark from '../components/PendingMark.jsx'
+import { usePendingFocus } from '../hooks/usePendingFocus.js'
+import PendingFocusChip from '../components/PendingFocusChip.jsx'
 import { isQuotationExpiring } from '../lib/pendingRules.js'
 import UnitSelect from '../components/UnitSelect.jsx'
 import { resolveDocumentTemplate } from '../lib/documentTemplates.js'
@@ -1241,6 +1243,9 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   const [dateTo,   setDateTo]   = useState(ytdTo)
   const [clientId, setClientId] = useState('')
   const [status,   setStatus]   = useState('')
+  // Bell/push "quotations near the end of their validity": the rows the bell counted
+  // (sent, not on hold, valid_until within 7 days), ignoring the YTD range, soonest first.
+  const followupFocus = usePendingFocus(navState, 'quotations_followup')
   const [showAdd,  setShowAdd]  = useState(false)
   const [editRow,  setEditRow]  = useState(null)
   const [dupInitial, setDupInitial] = useState(null)
@@ -1270,16 +1275,21 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
       discountAmount: qt.discount_amount, discountPct: qt.discount_pct,
     }).total,
     status:           qt => qt.status || '',
+    valid_until:      qt => qt.valid_until || '',
   }
+  const TODAY_BKK = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10)
+  useEffect(() => {
+    if (followupFocus.active) { setStatus(''); setDateFrom(''); setDateTo(''); setSortCol('valid_until'); setSortDir('asc') }
+  }, [followupFocus.active])
   const sortedQuotations = useMemo(() => {
     const acc = SORT_ACCESSORS[sortCol]
-    return [...(quotations || [])].sort((a, b) => {
+    return (quotations || []).filter(qt => !followupFocus.active || isQuotationExpiring(qt, TODAY_BKK)).sort((a, b) => {
       const va = acc(a), vb = acc(b)
       if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
       return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quotations, sortCol, sortDir])
+  }, [quotations, sortCol, sortDir, followupFocus.active, TODAY_BKK])
   const toggleSort = (col) => {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortCol(col); setSortDir('asc') }
@@ -1451,7 +1461,6 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
 
   // วันยืนราคา: เลื่อนอีก 7 วัน / พักใบเสนอราคา / ยกเลิกพัก
   // (ใบที่ส่งแล้วและเลยวันยืนราคาจะถูกพักอัตโนมัติทุกคืน -- ดู migration 2026-10-04-07)
-  const TODAY_BKK = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10)
   const plusDays = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
   const updateQuotation = async (id, payload, toast) => {
     const { error } = await supabase.from('quotations').update(payload).eq('id', id)
@@ -1643,10 +1652,11 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
         <div style={{ minWidth: 200 }}>
           <SearchableSelect value={clientId} onChange={setClientId} placeholder="ทุกลูกค้า" options={clientOpts(clients)} />
         </div>
-        <select className="select select-sm" style={{ width: 160 }} value={status} onChange={e => setStatus(e.target.value)}>
+        <select className="select select-sm" style={{ width: 160 }} value={status} onChange={e => { followupFocus.clear(); setStatus(e.target.value) }}>
           <option value="">ทุกสถานะ</option>
           {QT_STATUSES.map(s => <option key={s} value={s}>{QT_STATUS_LABELS[s]}</option>)}
         </select>
+        <PendingFocusChip focus={followupFocus} pendingKey="quotations_followup" />
       </div>
 
       <div className="card">

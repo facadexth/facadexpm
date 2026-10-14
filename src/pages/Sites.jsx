@@ -8,6 +8,8 @@
 // ✅ Labor cost แยกช่างบริษัท vs sub-contract
 // ============================================================
 import { useState, useMemo, useEffect } from 'react'
+import { usePendingFocus } from '../hooks/usePendingFocus.js'
+import PendingFocusChip from '../components/PendingFocusChip.jsx'
 import { supabase } from '../lib/supabase.js'
 import { fetchAllRows } from '../lib/fetchAllRows.js'
 import { useSites, useLaborCost, useClients, useSeatStatus, useCategories, useSiteCostEstimates, saveSiteCostEstimates, usePhaseTasks } from '../hooks/useSupabase.js'
@@ -492,7 +494,7 @@ function SiteCompleteModal({ site, onClose, onDone }) {
   )
 }
 
-export default function Sites({ navigateTo, openSiteOverview }) {
+export default function Sites({ navigateTo, openSiteOverview, navState }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'sites')
   const { tenant, hasModuleAccess } = useTenant()
@@ -516,6 +518,9 @@ export default function Sites({ navigateTo, openSiteOverview }) {
   const [showImport,  setShowImport]  = useState(false)
   const [toast,       setToast]       = useState(null)
   const [statusFilter, setStatusFilter] = useState('Ongoing')
+  // An ADMIN cannot open the Communication Center, so an issue-report notification lands here;
+  // the reports themselves are inside each site's daily report.
+  const issuesFocus = usePendingFocus(navState, 'issues_open')
   const [search,      setSearch]      = useState('')
   const [sortCol,     setSortCol]     = useState('last_activity_date')
   const [sortDir,     setSortDir]     = useState('desc')
@@ -609,6 +614,7 @@ export default function Sites({ navigateTo, openSiteOverview }) {
         <select className="select select-sm" style={{ width: 140 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
           {['All', ...STATUS_OPTS].map(s => <option key={s} value={s}>{s}</option>)}
         </select>
+        <PendingFocusChip focus={issuesFocus} pendingKey="issues_open" hint="เปิดไซท์ → รายงานประจำวัน เพื่อดูรายละเอียด" />
         <div style={{ display: 'flex', gap: 4 }}>
           <button className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('table')}>📋 ตาราง</button>
           <button className={`btn btn-sm ${viewMode === 'gantt' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('gantt')}>📊 Gantt</button>

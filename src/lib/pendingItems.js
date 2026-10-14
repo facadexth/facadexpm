@@ -49,3 +49,23 @@ export function formatBadge(n) {
   if (!n || n < 1) return ''
   return n > 99 ? '99+' : String(n)
 }
+
+export function pendingItemByKey(key) {
+  return PENDING_ITEMS.find(i => i.key === key) || null
+}
+
+// Which page a notification about `key` opens for THIS user: the item's own page, then
+// its fallbacks, whichever the user can see first. Unknown key or nothing visible ->
+// the tab the push payload named (the app's access gate redirects if even that is closed).
+export function resolvePendingTab(key, canSeeTab, fallbackTab = null) {
+  const item = pendingItemByKey(key)
+  if (!item) return fallbackTab
+  return [item.tab, ...(item.fallbackTabs || [])].find(canSeeTab) || fallbackTab
+}
+
+// A closed app is launched from a Web Push tap at `/#tab=<id>&pending=<key>` (push-handler.js).
+export function parsePushHash(hash) {
+  const m = /^#tab=([\w-]+)(?:&pending=([\w-]+))?$/.exec(hash || '')
+  if (!m) return null
+  return { tab: m[1], pending: pendingItemByKey(m[2]) ? m[2] : null }
+}

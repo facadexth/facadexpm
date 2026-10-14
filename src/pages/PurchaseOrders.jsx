@@ -5,6 +5,8 @@
 // ✅ Status: ordered -> received (auto-creates expense) | cancelled
 // ============================================================
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { usePendingFocus } from '../hooks/usePendingFocus.js'
+import PendingFocusChip from '../components/PendingFocusChip.jsx'
 import { supabase } from '../lib/supabase.js'
 import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits, useActiveTaxInvoiceLinks, usePoMoneyIndex, usePoLedger, useDeliveryTaxInvoiceReady, useActiveReceiptTaxInvoiceLinks, usePoUnreceiveReversesStock } from '../hooks/useSupabase.js'
 import { fileToExtractionPayload, buildExampleExtracted, applyScanVatBasis, clearScanVatBasis, scanLinesTotalExVat } from '../lib/poDocumentExtraction.js'
@@ -841,7 +843,8 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const [dateTo,   setDateTo]   = useState(ytdTo)
   const [siteId,     setSiteId]     = useState('')
   const [supplierId, setSupplierId] = useState('')
-  const [status,      setStatus]    = useState('')
+  const [status,      setStatus]    = useState(navState?.pending === 'po_draft' ? 'draft' : '')
+  const draftFocus = usePendingFocus(navState, 'po_draft')
   const [search,  setSearch]  = useState('')
   const [sortCol, setSortCol] = useState('date')
   const [sortDir, setSortDir] = useState('desc')
@@ -926,6 +929,11 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   useEffect(() => {
     if (navState?.poId) { setDateFrom(''); setDateTo('') }
   }, [navState?.poId])
+
+  // Bell/push "PO drafts": every draft, whatever its date (the YTD range would hide old ones).
+  useEffect(() => {
+    if (draftFocus.active) { setStatus('draft'); setDateFrom(''); setDateTo('') }
+  }, [draftFocus.active])
 
   useEffect(() => {
     if (navState?.poId && pos) {
@@ -1273,10 +1281,11 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
         <div style={{ minWidth: 190 }}>
           <SearchableSelect value={supplierId} onChange={setSupplierId} placeholder="ทุก Supplier" options={supplierOpts(suppliers)} />
         </div>
-        <select className="select select-sm" style={{ width: 190 }} value={status} onChange={e => setStatus(e.target.value)}>
+        <select className="select select-sm" style={{ width: 190 }} value={status} onChange={e => { draftFocus.clear(); setStatus(e.target.value) }}>
           <option value="">ทุกสถานะ</option>
           {PO_STATUSES.map(s => <option key={s} value={s}>{PO_STATUS_LABELS[s]}</option>)}
         </select>
+        <PendingFocusChip focus={{ ...draftFocus, clear: () => { draftFocus.clear(); setStatus('') } }} pendingKey="po_draft" />
         <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาเลขที่ / ไซท์งาน / Supplier..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 

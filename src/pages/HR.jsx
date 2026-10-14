@@ -14,6 +14,8 @@ import { useAllActiveWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs,
 import { fmt } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import PendingMark from '../components/PendingMark.jsx'
+import { usePendingFocus } from '../hooks/usePendingFocus.js'
+import PendingFocusChip from '../components/PendingFocusChip.jsx'
 import { isLeavePending } from '../lib/pendingRules.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import { auditLog } from '../lib/audit.js'
@@ -360,12 +362,15 @@ function SalarySlipModal({ record, month, year, onClose }) {
 }
 
 // ── HR Main Component ─────────────────────────────────────────
-export default function HR() {
+export default function HR({ navState }) {
   const now = new Date()
   const { role, user, isAtLeast } = useUserRole()
   const { tenant, hasModuleAccess } = useTenant()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'hr')
-  const [innerTab, setInnerTab] = useState('workers')
+  const [innerTab, setInnerTab] = useState(navState?.pending === 'leave_pending' ? 'requests' : 'workers')
+  // Bell/push "leave requests waiting": open the requests tab showing only pending ones.
+  const leaveFocus = usePendingFocus(navState, 'leave_pending')
+  useEffect(() => { if (navState?.pending === 'leave_pending') setInnerTab('requests') }, [navState])
 
   // Workers state
   const { data: workers, refetch: refetchWorkers } = useAllActiveWorkers()
@@ -1168,7 +1173,10 @@ export default function HR() {
           ) : (
             <>
               <div className="card">
-                <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>🏖️ คำขอลา</div>
+                <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span>🏖️ คำขอลา</span>
+                  <PendingFocusChip focus={leaveFocus} pendingKey="leave_pending" />
+                </div>
                 <div className="table-wrap">
                   <table>
                     <thead>
@@ -1183,7 +1191,7 @@ export default function HR() {
                       </tr>
                     </thead>
                     <tbody>
-                      {leaveRequests.map(r => (
+                      {leaveRequests.filter(r => !leaveFocus.active || isLeavePending(r)).map(r => (
                         <tr key={r.id}>
                           <td style={{ fontWeight: 600 }}>{isLeavePending(r) && <PendingMark />}{r.workers?.nickname || r.workers?.name}</td>
                           <td>{r.leave_type === 'leave_sick' ? '🤒 ลาป่วย' : '🏖️ ลากิจ'}</td>
