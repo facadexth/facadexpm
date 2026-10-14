@@ -10,7 +10,7 @@ DECLARE
   admin_email TEXT := '__demo_test_admin__@example.com';
   owner_email TEXT := '__demo_test_owner__@example.com';
   worker_email TEXT := '__demo_test_worker__@example.com';
-  s1 JSONB; s2 JSONB; d1 JSONB; v_q1 TEXT; v_q2 TEXT;
+  s1 JSONB; s2 JSONB; d1 JSONB; v_q1 TEXT; v_q2 TEXT; cs RECORD; v_loc UUID;
 BEGIN
   SELECT id INTO t_owner FROM auth.users ORDER BY created_at ASC LIMIT 1;
   INSERT INTO platform_admins (user_email) VALUES (admin_email);
@@ -68,6 +68,22 @@ BEGIN
   SELECT count(*) INTO v_n FROM app_settings WHERE tenant_id = t_tenant AND key = 'is_demo_tenant';
   IF v_n <> 1 THEN RAISE EXCEPTION 'T1 FAIL: marker not re-inserted after reset'; END IF;
 
+  -- the marker cannot be written by a tenant (RLS lets owners write any key; the trigger blocks this one)
+  PERFORM set_config('request.jwt.claims', json_build_object('email', owner_email, 'role', 'authenticated')::text, true);
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    INSERT INTO app_settings (tenant_id, key, value) VALUES (t_other, 'is_demo_tenant', 'true');
+    RESET ROLE;
+    RAISE EXCEPTION 'T1 FAIL: tenant could insert the demo marker';
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+    IF v_msg NOT LIKE 'demo_marker_protected%' THEN RAISE EXCEPTION 'T1 FAIL: expected demo_marker_protected, got %', v_msg; END IF;
+  END;
+  PERFORM set_config('request.jwt.claims', json_build_object('email', admin_email, 'role', 'authenticated')::text, true);
+  SELECT count(*) INTO v_n FROM app_settings WHERE tenant_id = t_other AND key = 'is_demo_tenant';
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T1 FAIL: marker leaked onto the other tenant'; END IF;
+
   -- ── T2 ── core data
   -- reset_demo_tenant already seeds once (T1 above); a second seed_demo_tenant would double rows.
   -- Reset again so the tenant is clean and the single seed summary comes from the reset.
@@ -95,8 +111,17 @@ BEGIN
   IF v_n <> 4 THEN RAISE EXCEPTION 'T2 FAIL: deduction categories=%', v_n; END IF;
   SELECT count(*) INTO v_n FROM bank_accounts WHERE tenant_id = t_tenant AND is_default;
   IF v_n <> 1 THEN RAISE EXCEPTION 'T2 FAIL: bank account'; END IF;
+  SELECT count(*) INTO v_n FROM tenants WHERE id = t_tenant AND trial_ends_at < now();
+  IF v_n <> 1 THEN RAISE EXCEPTION 'T2 FAIL: trial_ends_at still in the future (trial banner would show)'; END IF;
   SELECT count(*) INTO v_n FROM tenants WHERE id = t_tenant AND tax_id = '0125599000001' AND address IS NOT NULL AND document_template_key = 'classic';
   IF v_n <> 1 THEN RAISE EXCEPTION 'T2 FAIL: tenant profile not filled'; END IF;
+
+  SELECT count(*) INTO v_n FROM clients WHERE tenant_id = t_tenant AND client_number ~ '^CL-[0-9]{4}-[0-9]{3}$';
+  SELECT count(DISTINCT client_number) INTO v_n2 FROM clients WHERE tenant_id = t_tenant;
+  IF v_n <> 8 OR v_n2 <> 8 THEN RAISE EXCEPTION 'T2 FAIL: client numbers malformed or not distinct (% / %)', v_n, v_n2; END IF;
+  SELECT count(*) INTO v_n FROM suppliers WHERE tenant_id = t_tenant AND supplier_number ~ '^SP-[0-9]{4}-[0-9]{3}$';
+  SELECT count(DISTINCT supplier_number) INTO v_n2 FROM suppliers WHERE tenant_id = t_tenant;
+  IF v_n <> 8 OR v_n2 <> 8 THEN RAISE EXCEPTION 'T2 FAIL: supplier numbers malformed or not distinct (% / %)', v_n, v_n2; END IF;
 
   -- ── T3 ── sales chain
   IF COALESCE((s1->>'quotations')::int, -1) <> 18 THEN RAISE EXCEPTION 'T3 FAIL: quotations=%', s1->>'quotations'; END IF;
@@ -163,6 +188,11 @@ BEGIN
   IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: income in the future or non-positive'; END IF;
   SELECT count(*) INTO v_n FROM incomes WHERE tenant_id = t_tenant AND deposit_deduction > 0;
   IF v_n < 3 THEN RAISE EXCEPTION 'T3 FAIL: expected >=3 incomes with a deposit deduction, got %', v_n; END IF;
+  SELECT count(*) INTO v_n FROM invoices WHERE tenant_id = t_tenant AND deposit_deduction_amount > 0;
+  IF v_n < 1 THEN RAISE EXCEPTION 'T3 FAIL: no invoice with a deposit deduction to check VAT on'; END IF;
+  SELECT count(*) INTO v_n FROM invoices WHERE tenant_id = t_tenant AND deposit_deduction_amount > 0
+    AND abs(vat - round((subtotal - deposit_deduction_amount) * 0.07, 2)) > 0.01;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: % invoices whose VAT is not on (subtotal - deposit deduction)', v_n; END IF;
   SELECT count(*) INTO v_n FROM invoices WHERE tenant_id = t_tenant AND deposit_deduction_amount > subtotal;
   IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: deposit deduction exceeds subtotal'; END IF;
   -- draws of one quotation are in date order: a later prior_pct never has an earlier invoice date
@@ -181,6 +211,16 @@ BEGIN
   IF v_n <> 0 THEN RAISE EXCEPTION 'T4 FAIL: po number/date mismatch'; END IF;
   SELECT count(*) INTO v_n FROM expenses WHERE tenant_id = t_tenant;
   IF v_n < 150 THEN RAISE EXCEPTION 'T4 FAIL: expenses=%', v_n; END IF;
+  -- Completed sites made a profit (billed = received + deposit deducted, >= 10% above cost) and spent nothing after their end_date
+  FOR cs IN SELECT s.name, s.end_date,
+             COALESCE((SELECT sum(n.received_amount + COALESCE(n.deposit_deduction, 0)) FROM incomes n WHERE n.site_id = s.id), 0) AS billed,
+             COALESCE((SELECT sum(e.amount_no_vat) FROM expenses e WHERE e.site_id = s.id), 0) AS cost,
+             (SELECT count(*) FROM expenses e WHERE e.site_id = s.id AND e.date > s.end_date) AS late
+           FROM sites s WHERE s.tenant_id = t_tenant AND s.status = 'Completed' LOOP
+    RAISE NOTICE 'T4 completed site %: billed % cost % margin %%%', cs.name, cs.billed, cs.cost, round((cs.billed - cs.cost) / NULLIF(cs.billed, 0) * 100, 1);
+    IF cs.billed < cs.cost * 1.10 THEN RAISE EXCEPTION 'T4 FAIL: completed site % billed % vs cost % (< 10%% profit)', cs.name, cs.billed, cs.cost; END IF;
+    IF cs.late <> 0 THEN RAISE EXCEPTION 'T4 FAIL: completed site % has % expenses after its end_date', cs.name, cs.late; END IF;
+  END LOOP;
   SELECT count(DISTINCT to_char(date, 'YYYY-MM')) INTO v_n FROM expenses WHERE tenant_id = t_tenant;
   IF v_n < 8 THEN RAISE EXCEPTION 'T4 FAIL: expenses cover only % months', v_n; END IF;
   SELECT count(*) INTO v_n FROM expenses WHERE tenant_id = t_tenant AND status = 'pending' AND due_date BETWEEN current_date AND current_date + 30;
@@ -248,6 +288,9 @@ BEGIN
   IF v_n <> 0 THEN RAISE EXCEPTION 'T5 FAIL: % salary records break the net formula', v_n; END IF;
   SELECT count(*) INTO v_n FROM labor_subcontractors WHERE tenant_id = t_tenant;
   IF v_n <> 3 THEN RAISE EXCEPTION 'T5 FAIL: subcontractors=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM labor_subcontractors WHERE tenant_id = t_tenant AND subcontractor_number ~ '^LC-[0-9]{4}-[0-9]{3}$';
+  SELECT count(DISTINCT subcontractor_number) INTO v_n2 FROM labor_subcontractors WHERE tenant_id = t_tenant;
+  IF v_n <> 3 OR v_n2 <> 3 THEN RAISE EXCEPTION 'T5 FAIL: subcontractor numbers malformed or not distinct (% / %)', v_n, v_n2; END IF;
   SELECT count(*) INTO v_n FROM labor_contracts WHERE tenant_id = t_tenant;
   IF v_n <> 4 THEN RAISE EXCEPTION 'T5 FAIL: contracts=%', v_n; END IF;
   SELECT count(*) INTO v_n FROM labor_payments WHERE tenant_id = t_tenant;
@@ -330,11 +373,20 @@ BEGIN
   -- Kanban photos are re-seeded too
   SELECT count(*) INTO v_n FROM line_site_photos WHERE tenant_id = t_tenant;
   IF v_n < 20 THEN RAISE EXCEPTION 'T6 FAIL: photos not re-seeded'; END IF;
+  -- the kept user_roles row points at a checkin location the reset deletes; a push subscription must survive
+  SELECT id INTO v_loc FROM checkin_locations WHERE tenant_id = t_tenant LIMIT 1;
+  IF v_loc IS NULL THEN RAISE EXCEPTION 'T6 FAIL: demo has no checkin location to point at'; END IF;
+  UPDATE user_roles SET assigned_checkin_location_id = v_loc WHERE tenant_id = t_tenant AND user_email = owner_email;
+  INSERT INTO push_subscriptions (tenant_id, user_email, endpoint, p256dh_key, auth_key) VALUES (t_tenant, owner_email, 'https://example.invalid/__demo_test__', 'k', 'a');
   -- second reset on the re-seeded tenant: spot-checks that the seeded quotations, sites and photos were deleted and that the other tenant's future-table row survived
   d1 := reset_demo_tenant(t_tenant);
   IF COALESCE((d1->'deleted'->>'sites')::int, -1) <> 11 THEN RAISE EXCEPTION 'T6 FAIL: expected 11 sites deleted (10 + ส่วนกลาง), got %', d1->'deleted'->>'sites'; END IF;
   IF COALESCE((d1->'deleted'->>'quotations')::int, -1) <> 18 THEN RAISE EXCEPTION 'T6 FAIL: second reset deleted.quotations=%', d1->'deleted'->>'quotations'; END IF;
   IF COALESCE((d1->'deleted'->>'line_site_photos')::int, -1) < 20 THEN RAISE EXCEPTION 'T6 FAIL: second reset deleted.line_site_photos=%', d1->'deleted'->>'line_site_photos'; END IF;
+  SELECT count(*) INTO v_n FROM push_subscriptions WHERE tenant_id = t_tenant;
+  IF v_n <> 1 OR d1->'deleted' ? 'push_subscriptions' THEN RAISE EXCEPTION 'T6 FAIL: push_subscriptions not kept by reset'; END IF;
+  SELECT count(*) INTO v_n FROM user_roles WHERE tenant_id = t_tenant AND assigned_checkin_location_id IS NOT NULL;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T6 FAIL: user_roles still points at a deleted checkin location'; END IF;
   SELECT count(*) INTO v_n FROM zz_future_demo;
   IF v_n <> 1 THEN RAISE EXCEPTION 'T6 FAIL: zz_future_demo has % rows after second reset (expected only the t_other sentinel)', v_n; END IF;
   -- other tenant untouched by the whole exercise: its sentinel site is still there and it has exactly one site

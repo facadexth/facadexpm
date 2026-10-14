@@ -10,7 +10,7 @@
 
 -- ── guard + helpers ─────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION demo_tenant_guard(p_tenant UUID)
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM platform_admins WHERE user_email = auth.email()) THEN
     RAISE EXCEPTION 'demo_not_platform_admin' USING ERRCODE = '42501';
@@ -22,11 +22,11 @@ END $$;
 REVOKE ALL ON FUNCTION demo_tenant_guard(UUID) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION demo_owner_email(p_tenant UUID)
-RETURNS TEXT LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+RETURNS TEXT LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp AS $$
   SELECT user_email FROM user_roles WHERE tenant_id = p_tenant AND role = 'OWNER' ORDER BY created_at LIMIT 1;
 $$;
 CREATE OR REPLACE FUNCTION demo_worker_email(p_tenant UUID)
-RETURNS TEXT LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+RETURNS TEXT LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp AS $$
   SELECT user_email FROM user_roles WHERE tenant_id = p_tenant AND role = 'WORKER' ORDER BY created_at LIMIT 1;
 $$;
 REVOKE ALL ON FUNCTION demo_owner_email(UUID) FROM PUBLIC, anon, authenticated;
@@ -38,7 +38,7 @@ REVOKE ALL ON FUNCTION demo_worker_email(UUID) FROM PUBLIC, anon, authenticated;
 -- Same pattern as supabase/tests/*.sql. The caller's claims are restored
 -- by the public entry points before they return.
 CREATE OR REPLACE FUNCTION demo_impersonate(p_tenant UUID)
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE v_email TEXT := demo_owner_email(p_tenant); v_uid UUID;
 BEGIN
   IF v_email IS NULL THEN RAISE EXCEPTION 'demo_no_owner: tenant % has no OWNER role', p_tenant; END IF;
@@ -54,7 +54,7 @@ CREATE OR REPLACE FUNCTION demo_m(k INT) RETURNS DATE LANGUAGE sql STABLE AS $$
 $$;
 
 CREATE OR REPLACE FUNCTION demo_seed_core(p_tenant UUID)
-RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_bank UUID; v_client UUID; v_site UUID; v_phase UUID; i INT; j INT; k INT;
   v_phase_names TEXT[] := ARRAY['งานเตรียมการและฐานราก','งานโครงสร้าง','งานสถาปัตย์และระบบ','งานตกแต่งและส่งมอบ'];
@@ -114,6 +114,7 @@ BEGIN
 
   -- company profile
   UPDATE tenants SET
+    trial_ends_at = least(trial_ends_at, now() - interval '1 day'),   -- never show the free-trial banner
     address = '99/12 หมู่ 5 ถ.รัตนาธิเบศร์ ต.บางกระสอ อ.เมืองนนทบุรี จ.นนทบุรี 11000',
     tax_id = '0125599000001', phone = '02-000-0000', website = 'www.sangdee-demo.co.th',
     default_payment_terms = 'ชำระมัดจำ 30% เมื่อเซ็นสัญญา ส่วนที่เหลือแบ่งจ่ายตามงวดงาน หักประกันผลงาน 5% คืนภายใน 90 วันหลังส่งมอบ',
@@ -133,16 +134,16 @@ BEGIN
   INSERT INTO units (tenant_id, name) SELECT p_tenant, u FROM unnest(ARRAY['งาน','ตร.ม.','จุด','ชุด','เมตร','ถุง','เส้น','ก้อน','คิว','กล่อง']) u;
 
   FOR i IN 1..8 LOOP
-    INSERT INTO clients (tenant_id, name, client_type, tax_id, phone, address, province, contact_person)
-    VALUES (p_tenant, v_client_names[i], v_client_types[i], v_client_tax[i], '08' || lpad((10000000 + i * 1234567)::text, 8, '0'),
+    INSERT INTO clients (tenant_id, client_number, name, client_type, tax_id, phone, address, province, contact_person)
+    VALUES (p_tenant, 'CL-' || to_char(current_date, 'YYYY') || '-' || lpad(i::text, 3, '0'), v_client_names[i], v_client_types[i], v_client_tax[i], '08' || lpad((10000000 + i * 1234567)::text, 8, '0'),
             (ARRAY['12/3 ซ.ลาดพร้าว 71 แขวงวังทองหลาง กรุงเทพฯ 10310','45 ม.2 ต.บางกระสอ อ.เมืองนนทบุรี 11000','88/9 ม.7 ต.บางพูด อ.ปากเกร็ด นนทบุรี 11120','1 อาคารพฤกษา ถ.แจ้งวัฒนะ ปากเกร็ด นนทบุรี 11120','55 ถ.บางกรวย-ไทรน้อย อ.ไทรน้อย นนทบุรี 11150','210 ถ.งามวงศ์วาน อ.เมืองนนทบุรี 11000','9/9 ม.4 ต.ละหาร อ.บางบัวทอง นนทบุรี 11110','23 ซ.ลาดพร้าว 101 แขวงคลองจั่น กรุงเทพฯ 10240'])[i],
             (ARRAY['กรุงเทพมหานคร','นนทบุรี','นนทบุรี','นนทบุรี','นนทบุรี','นนทบุรี','นนทบุรี','กรุงเทพมหานคร'])[i],
             CASE WHEN v_client_types[i] = 'DEVELOPER' THEN 'คุณประสิทธิ์ (ฝ่ายจัดซื้อ)' ELSE NULL END);
   END LOOP;
 
   FOR i IN 1..8 LOOP
-    INSERT INTO suppliers (tenant_id, name, category, credit_days, default_payment_method, phone, payment_terms, tax_id)
-    VALUES (p_tenant, v_sup[i][1], to_jsonb(ARRAY[v_sup[i][2]]), v_sup[i][3]::int, v_sup[i][4], '02-5' || lpad((10000 + i * 777)::text, 5, '0'),
+    INSERT INTO suppliers (tenant_id, supplier_number, name, category, credit_days, default_payment_method, phone, payment_terms, tax_id)
+    VALUES (p_tenant, 'SP-' || to_char(current_date, 'YYYY') || '-' || lpad(i::text, 3, '0'), v_sup[i][1], to_jsonb(ARRAY[v_sup[i][2]]), v_sup[i][3]::int, v_sup[i][4], '02-5' || lpad((10000 + i * 777)::text, 5, '0'),
             CASE WHEN v_sup[i][3]::int > 0 THEN 'เครดิต ' || v_sup[i][3] || ' วัน' ELSE 'เงินสด' END,
             '01255' || lpad((60000000 + i * 1111)::text, 8, '0'));
   END LOOP;
@@ -199,7 +200,7 @@ REVOKE ALL ON FUNCTION demo_seed_core(UUID) FROM PUBLIC, anon, authenticated;
 -- One quotation with items. p_lines: [{"name":..,"qty":..,"price":..} | {"desc":..} | {"note":..}]
 CREATE OR REPLACE FUNCTION demo_quotation(p_tenant UUID, p_site_name TEXT, p_client_name TEXT, p_date DATE, p_seq INT,
                                           p_status TEXT, p_lines JSONB, p_opts JSONB DEFAULT '{}'::jsonb)
-RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_q UUID; v_site UUID; v_client UUID; v_bank UUID; l JSONB; i INT := 0; v_cat UUID; v_unit TEXT; v_item UUID;
   v_qty NUMERIC; v_price NUMERIC; v_snapshot JSONB; v_qseq INT;
@@ -272,7 +273,7 @@ REVOKE ALL ON FUNCTION demo_quotation(UUID, TEXT, TEXT, DATE, INT, TEXT, JSONB, 
 -- moving every unit from p_prior% to p_target% (mirrors Invoices.jsx handleSave + handleMarkPaid).
 CREATE OR REPLACE FUNCTION demo_invoice(p_tenant UUID, p_quotation UUID, p_date DATE, p_seq INT, p_prior NUMERIC, p_target NUMERIC,
                                         p_paid DATE, p_opts JSONB DEFAULT '{}'::jsonb)
-RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   q RECORD; v_inv UUID; v_item UUID; v_sub NUMERIC := 0; v_line NUMERIC; v_draw NUMERIC; u RECORD; qi RECORD; i INT := 0;
   v_dep_pct NUMERIC := (p_opts->>'deposit_pct')::numeric; v_dep_ded NUMERIC := 0; v_remaining NUMERIC;
@@ -326,7 +327,7 @@ BEGIN
     v_dep_ded := greatest(0, least(round(v_sub * q.default_deposit_pct / 100, 2), v_remaining));
     UPDATE invoices SET deposit_deduction_amount = NULLIF(v_dep_ded, 0) WHERE id = v_inv;
   END IF;
-  v_vat := round(v_sub * 0.07, 2); v_total := v_sub + v_vat;
+  v_vat := round((v_sub - v_dep_ded) * 0.07, 2); v_total := v_sub + v_vat;
   UPDATE invoices SET subtotal = v_sub, vat = v_vat, total = v_total, status = CASE WHEN v_void THEN 'void' ELSE 'unpaid' END WHERE id = v_inv;
   IF p_paid IS NOT NULL AND NOT v_void THEN
     -- demo is reset on arbitrary dates; literal seqs collided, so compute the next number per month
@@ -353,7 +354,7 @@ END $$;
 REVOKE ALL ON FUNCTION demo_invoice(UUID, UUID, DATE, INT, NUMERIC, NUMERIC, DATE, JSONB) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION demo_seed_sales(p_tenant UUID)
-RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   q UUID; s RECORD; v_sub NUMERIC;
   -- standard line sets by site size
@@ -429,7 +430,7 @@ REVOKE ALL ON FUNCTION demo_seed_sales(UUID) FROM PUBLIC, anon, authenticated;
 
 
 CREATE OR REPLACE FUNCTION demo_seed_purchasing(p_tenant UUID)
-RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_central UUID; v_site UUID; v_sup UUID; v_cat UUID; v_po UUID; v_exp UUID; v_chq UUID; v_item UUID; k INT; i INT; j INT;
   v_date DATE; v_amt NUMERIC; v_sub NUMERIC; v_qty NUMERIC; v_price NUMERIC; v_bal NUMERIC; v_wac NUMERIC; v_status TEXT; v_seq INT;
@@ -445,12 +446,17 @@ DECLARE
     ARRAY['ไม้แบบ 1x6 นิ้ว','แผ่น','SUP','95'], ARRAY['ลวดผูกเหล็ก','กก.','SUP','42'],
     ARRAY['สายไฟ THW 2.5 ตร.มม.','ม้วน','MEP','1850'], ARRAY['ท่อ PVC 4 นิ้ว','เส้น','MEP','310']];
   v_items UUID[] := '{}'; v_costs NUMERIC[] := '{}';
-  v_sites UUID[]; v_site_names TEXT[]; v_site_status TEXT[]; v_site_start DATE[];
+  v_sites UUID[]; v_site_names TEXT[]; v_site_status TEXT[]; v_site_start DATE[]; v_site_end DATE[]; v_site_val NUMERIC[]; v_open UUID[];
+  v_budget NUMERIC; v_rows INT; v_end DATE; v_months INT;
 BEGIN
   SELECT id INTO v_central FROM sites WHERE tenant_id = p_tenant AND is_default;
-  SELECT array_agg(id ORDER BY start_date), array_agg(name ORDER BY start_date), array_agg(status ORDER BY start_date), array_agg(start_date ORDER BY start_date)
-    INTO v_sites, v_site_names, v_site_status, v_site_start
+  SELECT array_agg(id ORDER BY start_date), array_agg(name ORDER BY start_date), array_agg(status ORDER BY start_date), array_agg(start_date ORDER BY start_date),
+         array_agg(end_date ORDER BY start_date), array_agg(contract_value_no_vat ORDER BY start_date)
+    INTO v_sites, v_site_names, v_site_status, v_site_start, v_site_end, v_site_val
     FROM sites WHERE tenant_id = p_tenant AND NOT is_default AND status IN ('Ongoing','Completed','On Hold');
+
+  -- PO / cheque expenses go only to Ongoing sites, so finished sites never spend after their end_date
+  SELECT array_agg(id ORDER BY start_date) INTO v_open FROM sites WHERE tenant_id = p_tenant AND NOT is_default AND status = 'Ongoing';
 
   -- inventory items
   FOR i IN 1..12 LOOP
@@ -466,7 +472,7 @@ BEGIN
     v_status := CASE WHEN k <= 7 THEN 'received' WHEN k <= 10 THEN 'ordered' WHEN k = 11 THEN 'draft' ELSE 'cancelled' END;
     v_date := CASE WHEN k <= 7 THEN demo_m(8 - k) + 5 + k WHEN k <= 10 THEN current_date - (k - 7) * 4 WHEN k = 11 THEN current_date - 1 ELSE demo_m(2) + 12 END;
     i := ((k - 1) % 3) + 1;                       -- supplier: rotate the 3 material suppliers
-    v_site := v_sites[((k - 1) % cardinality(v_sites)) + 1];
+    v_site := v_open[((k - 1) % cardinality(v_open)) + 1];
     SELECT id INTO v_sup FROM suppliers WHERE tenant_id = p_tenant AND name = v_sups[i];
     SELECT id INTO v_cat FROM expense_categories WHERE tenant_id = p_tenant AND name = v_cats[1];
     INSERT INTO purchase_orders (tenant_id, po_number, site_id, supplier_id, category_id, date, status, has_vat, price_includes_vat, ordered_by, notes, received_date)
@@ -546,20 +552,30 @@ BEGIN
     v_amt := 18000 + k * 6500;
     INSERT INTO expenses (tenant_id, date, description, site_id, category_id, supplier_id, supplier, amount_no_vat, vat, amount, payment_method, status, cheque_id, invoice_no)
     VALUES (p_tenant, CASE WHEN k <= 3 THEN demo_m(4 - k) + 3 + k ELSE current_date - 20 + k * 3 END, 'ค่าวัสดุ ' || v_desc[((k - 1) % 12) + 1] || ' (จ่ายเช็ค)',
-            v_sites[((k - 1) % cardinality(v_sites)) + 1], v_cat, v_sup, v_sups[((k - 1) % 8) + 1], v_amt, round(v_amt * 0.07, 2), round(v_amt * 1.07, 2),
+            v_open[((k - 1) % cardinality(v_open)) + 1], v_cat, v_sup, v_sups[((k - 1) % 8) + 1], v_amt, round(v_amt * 0.07, 2), round(v_amt * 1.07, 2),
             'check', 'check_issued', v_chq, 'BILL-' || lpad((7000 + k)::text, 5, '0'));
   END LOOP;
 
-  -- general expenses: months 8..0, 3-6 per active site per month; status by age
+  -- general expenses: months 8..0, 4-7 per active site per month; status by age.
+  -- Completed sites stop at their end_date, the On Hold site after 2 months; each site's monthly
+  -- budget is 62% of its contract spread over its active months, so finished sites show a profit.
   v_seq := 0;
   FOR k IN REVERSE 8..0 LOOP
     FOR i IN 1..cardinality(v_sites) LOOP
       CONTINUE WHEN v_site_start[i] > demo_m(k) + 27;                                       -- site not started yet
-      CONTINUE WHEN v_site_status[i] = 'Completed' AND v_site_start[i] + 190 < demo_m(k);   -- long finished
-      FOR j IN 1..(3 + ((k + i) % 4)) LOOP
+      v_end := CASE WHEN v_site_status[i] = 'Completed' THEN least(v_site_end[i], current_date)
+                    WHEN v_site_status[i] = 'On Hold' THEN least((v_site_start[i] + interval '2 months')::date, current_date)
+                    ELSE current_date END;
+      CONTINUE WHEN demo_m(k) > v_end;                                                      -- finished (or paused) by then
+      v_months := greatest(1, (extract(year FROM v_end)::int - extract(year FROM v_site_start[i])::int) * 12
+                              + extract(month FROM v_end)::int - extract(month FROM v_site_start[i])::int + 1);
+      v_budget := COALESCE(v_site_val[i], 0) * 0.62 / v_months;
+      v_rows := 4 + ((k + i) % 4);
+      FOR j IN 1..v_rows LOOP
         v_seq := v_seq + 1;
-        v_date := least(demo_m(k) + ((v_seq * 7 + j * 3) % 27) + 1, current_date);
-        v_amt := round((2500 + random() * 38000)::numeric, 0);
+        v_date := least(demo_m(k) + ((v_seq * 7 + j * 3) % 27) + 1, current_date, v_end);
+        v_date := greatest(v_date, v_site_start[i]);
+        v_amt := greatest(500, round((v_budget / v_rows * (0.7 + random() * 0.6))::numeric, 0));
         SELECT id INTO v_cat FROM expense_categories WHERE tenant_id = p_tenant AND name = v_cats[((v_seq + j) % 8) + 1];
         SELECT id INTO v_sup FROM suppliers WHERE tenant_id = p_tenant AND name = v_sups[((v_seq) % 8) + 1];
         INSERT INTO expenses (tenant_id, date, description, site_id, category_id, supplier_id, supplier, amount_no_vat, vat, amount, payment_method, status, due_date, payer)
@@ -586,7 +602,7 @@ REVOKE ALL ON FUNCTION demo_seed_purchasing(UUID) FROM PUBLIC, anon, authenticat
 
 -- ── people: workers, teams, assignments, payroll, subcontractors ──
 CREATE OR REPLACE FUNCTION demo_seed_people(p_tenant UUID)
-RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_w UUID[] := '{}'; v_wid UUID; v_team_a UUID; v_team_b UUID; v_office UUID; v_site UUID; v_sites UUID[]; v_pay_date DATE; v_paid_date DATE; v_today_ok BOOLEAN := (now() AT TIME ZONE 'Asia/Bangkok')::time > time '08:00';
   i INT; k INT; d DATE; dow INT; v_type TEXT; v_shift TEXT; v_dist NUMERIC; v_cat UUID; v_sub UUID; v_contract UUID; v_gross NUMERIC; v_wht NUMERIC; v_ret NUMERIC;
@@ -689,8 +705,8 @@ BEGIN
   -- labor subcontractors: 3, contracts 4, payments 6 (5 paid with expenses, 1 pending; one retention release)
   SELECT id INTO v_cat FROM expense_categories WHERE tenant_id = p_tenant AND name = 'ค่าแรง';
   FOR i IN 1..3 LOOP
-    INSERT INTO labor_subcontractors (tenant_id, name, contact_person, phone, id_card_number, address)
-    VALUES (p_tenant, v_subs[i], (ARRAY['นายสมบัติ ขยันงาน','คุณพรทิพย์ (ธุรการ)','นายวิรัตน์ เหล็กกล้า'])[i], '08' || lpad((90000000 + i * 54321)::text, 8, '0'),
+    INSERT INTO labor_subcontractors (tenant_id, subcontractor_number, name, contact_person, phone, id_card_number, address)
+    VALUES (p_tenant, 'LC-' || to_char(current_date, 'YYYY') || '-' || lpad(i::text, 3, '0'), v_subs[i], (ARRAY['นายสมบัติ ขยันงาน','คุณพรทิพย์ (ธุรการ)','นายวิรัตน์ เหล็กกล้า'])[i], '08' || lpad((90000000 + i * 54321)::text, 8, '0'),
             (ARRAY['1100500000011','0105560000077','3100200000033'])[i], (ARRAY['22 ม.3 ต.บางรักพัฒนา อ.บางบัวทอง นนทบุรี','150 ถ.ติวานนท์ อ.เมืองนนทบุรี','8/1 ซ.วัดกู้ ปากเกร็ด นนทบุรี'])[i])
     RETURNING id INTO v_sub;
     v_sub_ids := v_sub_ids || v_sub;
@@ -750,7 +766,7 @@ REVOKE ALL ON FUNCTION demo_seed_people(UUID) FROM PUBLIC, anon, authenticated;
 -- line-site-photos at <tenant>/demo/NN-slug.jpg (they survive resets);
 -- the seed only writes the rows the Kanban board reads.
 CREATE OR REPLACE FUNCTION demo_seed_photos(p_tenant UUID)
-RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   -- file, phase (1-4), caption
   v_files TEXT[][] := ARRAY[
@@ -813,9 +829,24 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION demo_seed_photos(UUID) FROM PUBLIC, anon, authenticated;
 
+-- ── the demo marker can only be written by definer code, never by a tenant ──
+CREATE OR REPLACE FUNCTION app_settings_protect_demo_marker()
+RETURNS trigger LANGUAGE plpgsql SET search_path = public, pg_temp AS $$
+BEGIN
+  IF current_user IN ('authenticated', 'anon') AND (
+       (TG_OP IN ('INSERT', 'UPDATE') AND NEW.key = 'is_demo_tenant')
+    OR (TG_OP IN ('UPDATE', 'DELETE') AND OLD.key = 'is_demo_tenant')) THEN
+    RAISE EXCEPTION 'demo_marker_protected' USING ERRCODE = '42501';
+  END IF;
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+END $$;
+DROP TRIGGER IF EXISTS app_settings_protect_demo_marker ON app_settings;
+CREATE TRIGGER app_settings_protect_demo_marker BEFORE INSERT OR UPDATE OR DELETE ON app_settings
+  FOR EACH ROW EXECUTE FUNCTION app_settings_protect_demo_marker();
+
 -- ── seed entry point (sections are added by later tasks) ───────
 CREATE OR REPLACE FUNCTION seed_demo_tenant(p_tenant_id UUID)
-RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE v_claims TEXT := current_setting('request.jwt.claims', true); v_out JSONB := '{}'::jsonb;
 BEGIN
   PERFORM demo_tenant_guard(p_tenant_id);
@@ -843,19 +874,22 @@ GRANT EXECUTE ON FUNCTION seed_demo_tenant(UUID) TO authenticated;
 -- cycle or an unknown blocker: the function raises with the table list
 -- and the whole transaction rolls back, so the demo is never half-empty.
 CREATE OR REPLACE FUNCTION reset_demo_tenant(p_tenant_id UUID)
-RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_claims TEXT := current_setting('request.jwt.claims', true);
-  v_keep TEXT[] := ARRAY['tenants','user_roles','tenant_modules','tenant_status_log','platform_admins','packages','package_modules'];
+  v_keep TEXT[] := ARRAY['tenants','user_roles','tenant_modules','tenant_status_log','payment_intents','subscription_receipts','push_subscriptions'];
   v_tables TEXT[]; v_remaining TEXT[]; v_t TEXT; v_deleted JSONB := '{}'::jsonb;
   v_pass INT := 0; v_progress BOOLEAN; v_n BIGINT; v_err TEXT; v_errs JSONB := '{}'::jsonb; v_seed JSONB;
 BEGIN
   PERFORM demo_tenant_guard(p_tenant_id);
+  -- user_roles is kept but points at checkin_locations, which is deleted below
+  UPDATE user_roles SET assigned_checkin_location_id = NULL WHERE tenant_id = p_tenant_id;
   SELECT array_agg(c.table_name::text ORDER BY c.table_name) INTO v_tables
   FROM information_schema.columns c
   JOIN information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'
   WHERE c.table_schema = 'public' AND c.column_name = 'tenant_id'
-    AND NOT (c.table_name = ANY (v_keep)) AND c.table_name NOT LIKE 'contractor_type%';
+    AND NOT (c.table_name = ANY (v_keep)) AND c.table_name NOT LIKE 'contractor_type%'
+    AND c.table_name NOT LIKE 'platform_%' AND c.table_name NOT LIKE 'package%';
   v_remaining := v_tables;
   LOOP
     v_pass := v_pass + 1; v_progress := false;
@@ -897,7 +931,7 @@ RETURNS TABLE (
   package_id UUID, package_name TEXT, price_monthly NUMERIC, price_yearly NUMERIC, created_at TIMESTAMPTZ,
   is_demo BOOLEAN
 )
-LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public, pg_temp AS $$
   SELECT t.id, t.company_name, t.plan, t.trial_ends_at, t.plan_expires_at, t.package_id, p.name,
          p.price_monthly, p.price_yearly, t.created_at,
          EXISTS (SELECT 1 FROM app_settings a WHERE a.tenant_id = t.id AND a.key = 'is_demo_tenant' AND a.value = 'true') AS is_demo
