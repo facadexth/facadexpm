@@ -321,19 +321,22 @@ BEGIN
   IF v_n <> 0 THEN RAISE EXCEPTION 'T6 FAIL: future table not wiped'; END IF;
   SELECT count(*) INTO v_n FROM zz_future_demo WHERE tenant_id = t_other;
   IF v_n <> 1 THEN RAISE EXCEPTION 'T6 FAIL: other tenant row deleted'; END IF;
-  IF (d1->'deleted'->>'quotations')::int <> 18 THEN RAISE EXCEPTION 'T6 FAIL: deleted.quotations=%', d1->'deleted'->>'quotations'; END IF;
+  IF COALESCE((d1->'deleted'->>'quotations')::int, -1) <> 18 THEN RAISE EXCEPTION 'T6 FAIL: deleted.quotations=%', d1->'deleted'->>'quotations'; END IF;
   s2 := d1->'seeded';
-  IF s2 <> s1 THEN RAISE EXCEPTION 'T6 FAIL: second seed differs: % vs %', s1, s2; END IF;
+  IF s1 IS NULL OR s2 IS DISTINCT FROM s1 THEN RAISE EXCEPTION 'T6 FAIL: second seed differs: % vs %', s1, s2; END IF;
   -- same document numbers both times
   SELECT string_agg(quotation_number, ',' ORDER BY quotation_number) INTO v_q2 FROM quotations WHERE tenant_id = t_tenant;
   IF v_q1 IS NULL OR v_q1 <> v_q2 THEN RAISE EXCEPTION 'T6 FAIL: quotation numbers differ after reset: % vs %', v_q1, v_q2; END IF;
   -- Kanban photos are re-seeded too
   SELECT count(*) INTO v_n FROM line_site_photos WHERE tenant_id = t_tenant;
   IF v_n < 20 THEN RAISE EXCEPTION 'T6 FAIL: photos not re-seeded'; END IF;
-  -- no tenant-scoped table still holds rows for the demo tenant after a bare delete pass
-  -- (run the delete loop again through reset on an already-reset tenant: deleted counts must equal the seed counts, nothing more)
+  -- second reset on the already-reset tenant: it must delete exactly what the first re-seed created, and nothing else
   d1 := reset_demo_tenant(t_tenant);
-  IF (d1->'deleted'->>'sites')::int <> 11 THEN RAISE EXCEPTION 'T6 FAIL: expected 11 sites deleted (10 + ส่วนกลาง), got %', d1->'deleted'->>'sites'; END IF;
+  IF COALESCE((d1->'deleted'->>'sites')::int, -1) <> 11 THEN RAISE EXCEPTION 'T6 FAIL: expected 11 sites deleted (10 + ส่วนกลาง), got %', d1->'deleted'->>'sites'; END IF;
+  IF COALESCE((d1->'deleted'->>'quotations')::int, -1) <> 18 THEN RAISE EXCEPTION 'T6 FAIL: second reset deleted.quotations=%', d1->'deleted'->>'quotations'; END IF;
+  IF COALESCE((d1->'deleted'->>'line_site_photos')::int, -1) < 20 THEN RAISE EXCEPTION 'T6 FAIL: second reset deleted.line_site_photos=%', d1->'deleted'->>'line_site_photos'; END IF;
+  SELECT count(*) INTO v_n FROM zz_future_demo;
+  IF v_n <> 1 THEN RAISE EXCEPTION 'T6 FAIL: zz_future_demo has % rows after second reset (expected only the t_other sentinel)', v_n; END IF;
   -- other tenant untouched by the whole exercise: its sentinel site is still there and it has exactly one site
   SELECT count(*) INTO v_n FROM sites WHERE tenant_id = t_other AND site_number = 'ZZ-0000-001' AND name = '__other site__';
   IF v_n <> 1 THEN RAISE EXCEPTION 'T6 FAIL: other tenant sentinel site missing'; END IF;
