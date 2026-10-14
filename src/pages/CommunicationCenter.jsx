@@ -498,7 +498,7 @@ export default function CommunicationCenter({ navState }) {
     <div>
       <h2 style={{ marginBottom: 16, fontSize: 18, fontWeight: 700 }}>💬 การสื่อสาร — บอทไลน์ทีมงาน</h2>
 
-      <div ref={offboardCardRef}>
+      <div ref={offboardCardRef} style={{ scrollMarginTop: 120 }}>
         <PendingFocusChip focus={offboardFocus} pendingKey="offboarded_in_group" style={{ marginBottom: 8 }} />
         <OffboardedInGroupCard />
       </div>
@@ -815,7 +815,7 @@ export default function CommunicationCenter({ navState }) {
       </div>
 
       {/* ---- Issue reports ---- */}
-      <div className="card" style={{ marginBottom: 20 }} ref={issuesCardRef}>
+      <div className="card" style={{ marginBottom: 20, scrollMarginTop: 120 }} ref={issuesCardRef}>
         <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span>🚧 แจ้งปัญหาหน้างาน {issueReports.filter(r => r.status === 'open').length > 0 && `(${issueReports.filter(r => r.status === 'open').length} ยังไม่แก้ไข)`}</span>
           <PendingFocusChip focus={issuesFocus} pendingKey="issues_open" />
