@@ -195,6 +195,222 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION demo_seed_core(UUID) FROM PUBLIC, anon, authenticated;
 
+-- ── sales: quotations, invoices, receipts, incomes ───────────
+-- One quotation with items. p_lines: [{"name":..,"qty":..,"price":..} | {"desc":..} | {"note":..}]
+CREATE OR REPLACE FUNCTION demo_quotation(p_tenant UUID, p_site_name TEXT, p_client_name TEXT, p_date DATE, p_seq INT,
+                                          p_status TEXT, p_lines JSONB, p_opts JSONB DEFAULT '{}'::jsonb)
+RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_q UUID; v_site UUID; v_client UUID; v_bank UUID; l JSONB; i INT := 0; v_cat UUID; v_unit TEXT; v_item UUID;
+  v_qty NUMERIC; v_price NUMERIC; v_snapshot JSONB;
+BEGIN
+  SELECT id INTO v_client FROM clients WHERE tenant_id = p_tenant AND name = p_client_name;
+  IF v_client IS NULL THEN RAISE EXCEPTION 'demo_quotation: client % not found', p_client_name; END IF;
+  IF p_site_name IS NOT NULL AND NOT COALESCE((p_opts->>'site_name_only')::boolean, false) THEN
+    SELECT id INTO v_site FROM sites WHERE tenant_id = p_tenant AND name = p_site_name;
+    IF v_site IS NULL THEN RAISE EXCEPTION 'demo_quotation: site % not found', p_site_name; END IF;
+  END IF;
+  SELECT id INTO v_bank FROM bank_accounts WHERE tenant_id = p_tenant AND is_default LIMIT 1;
+  INSERT INTO quotations (tenant_id, quotation_number, client_id, site_id, site_name, date, valid_until, status, has_vat, price_includes_vat,
+                          payment_terms, notes, revision, ever_sent, bank_account_id, pricing_mode, created_by, sent_at, follow_up_after_days, on_hold, held_at)
+  VALUES (p_tenant, 'QT' || to_char(p_date, 'YYMM') || '-' || lpad(p_seq::text, 3, '0'), v_client, v_site, p_site_name, p_date,
+          COALESCE((p_opts->>'valid_until')::date, p_date + 30), p_status, true, false,
+          'ชำระมัดจำ 30% เมื่อเซ็นสัญญา ส่วนที่เหลือแบ่งจ่ายตามงวดงาน', 'ราคานี้ยังไม่รวมค่าขออนุญาตก่อสร้าง',
+          CASE WHEN COALESCE((p_opts->>'revision_snapshot')::boolean, false) THEN 2 ELSE 1 END,
+          p_status <> 'draft', v_bank, 'combined', demo_owner_email(p_tenant),
+          CASE WHEN p_status <> 'draft' THEN (p_date + 1)::timestamptz ELSE NULL END, 7,
+          COALESCE((p_opts->>'on_hold')::boolean, false), CASE WHEN COALESCE((p_opts->>'on_hold')::boolean, false) THEN now() - interval '3 days' ELSE NULL END)
+  RETURNING id INTO v_q;
+  FOR l IN SELECT * FROM jsonb_array_elements(p_lines) LOOP
+    IF l ? 'name' THEN
+      SELECT id, unit INTO v_cat, v_unit FROM catalog_items WHERE tenant_id = p_tenant AND name = l->>'name';
+      IF v_cat IS NULL THEN RAISE EXCEPTION 'demo_quotation: catalog item % not found', l->>'name'; END IF;
+      v_qty := (l->>'qty')::numeric; v_price := (l->>'price')::numeric;
+      INSERT INTO quotation_items (tenant_id, quotation_id, catalog_item_id, description, unit, quantity, unit_price, line_total, sort_order, item_type)
+      VALUES (p_tenant, v_q, v_cat, l->>'name', v_unit, v_qty, v_price, v_qty * v_price, i, 'item') RETURNING id INTO v_item;
+      -- units exactly as src/lib/invoiceCalc.js buildUnitSeedRows: integer qty 1..20 → one unit each, else one unit of the whole qty
+      IF v_qty = trunc(v_qty) AND v_qty > 0 AND v_qty <= 20 THEN
+        INSERT INTO quotation_item_units (tenant_id, quotation_item_id, unit_index, unit_qty, cumulative_pct)
+        SELECT p_tenant, v_item, g, 1, 0 FROM generate_series(0, v_qty::int - 1) g;
+      ELSE
+        INSERT INTO quotation_item_units (tenant_id, quotation_item_id, unit_index, unit_qty, cumulative_pct) VALUES (p_tenant, v_item, 0, v_qty, 0);
+      END IF;
+    ELSIF l ? 'desc' THEN
+      INSERT INTO quotation_items (tenant_id, quotation_id, description, quantity, unit_price, line_total, sort_order, item_type)
+      VALUES (p_tenant, v_q, l->>'desc', 0, 0, 0, i, 'item_description');
+    ELSE
+      INSERT INTO quotation_items (tenant_id, quotation_id, description, quantity, unit_price, line_total, sort_order, item_type)
+      VALUES (p_tenant, v_q, l->>'note', 0, 0, 0, i, 'note');
+    END IF;
+    i := i + 1;
+  END LOOP;
+  IF COALESCE((p_opts->>'revision_snapshot')::boolean, false) THEN
+    -- revision 1 snapshot: same lines, first item 10% cheaper (what the client negotiated away)
+    SELECT jsonb_build_object('client_id', v_client, 'client_name', p_client_name, 'date', p_date - 7, 'valid_until', p_date + 23,
+      'has_vat', true, 'price_includes_vat', false, 'discount_amount', 0, 'discount_pct', 0, 'pricing_mode', 'combined',
+      'payment_terms', 'ชำระมัดจำ 30% เมื่อเซ็นสัญญา', 'notes', NULL, 'bank_account', NULL,
+      'items', jsonb_agg(jsonb_build_object('description', x.description, 'unit', x.unit, 'quantity', x.quantity,
+                 'unit_price', CASE WHEN x.sort_order = 0 THEN round(x.unit_price * 1.1, 2) ELSE x.unit_price END,
+                 'unit_price_material', NULL, 'unit_price_labor', NULL,
+                 'line_total', CASE WHEN x.sort_order = 0 THEN round(x.line_total * 1.1, 2) ELSE x.line_total END,
+                 'item_type', x.item_type) ORDER BY x.sort_order))
+    INTO v_snapshot FROM quotation_items x WHERE x.quotation_id = v_q;
+    INSERT INTO quotation_revisions (tenant_id, quotation_id, revision, snapshot, created_at) VALUES (p_tenant, v_q, 1, v_snapshot, (p_date + 3)::timestamptz);
+  END IF;
+  IF v_site IS NOT NULL AND p_status = 'accepted' THEN
+    UPDATE sites SET contract_value_no_vat = (SELECT sum(line_total) FROM quotation_items WHERE quotation_id = v_q AND item_type = 'item'),
+                     contract_value = (SELECT sum(line_total) * 1.07 FROM quotation_items WHERE quotation_id = v_q AND item_type = 'item')
+    WHERE id = v_site;
+  END IF;
+  RETURN v_q;
+END $$;
+REVOKE ALL ON FUNCTION demo_quotation(UUID, TEXT, TEXT, DATE, INT, TEXT, JSONB, JSONB) FROM PUBLIC, anon, authenticated;
+
+-- One invoice from a quotation: either a deposit invoice (opts.deposit_pct) or a progress draw
+-- moving every unit from p_prior% to p_target% (mirrors Invoices.jsx handleSave + handleMarkPaid).
+CREATE OR REPLACE FUNCTION demo_invoice(p_tenant UUID, p_quotation UUID, p_date DATE, p_seq INT, p_prior NUMERIC, p_target NUMERIC,
+                                        p_paid DATE, p_opts JSONB DEFAULT '{}'::jsonb)
+RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  q RECORD; v_inv UUID; v_item UUID; v_sub NUMERIC := 0; v_line NUMERIC; v_draw NUMERIC; u RECORD; qi RECORD; i INT := 0;
+  v_dep_pct NUMERIC := (p_opts->>'deposit_pct')::numeric; v_dep_ded NUMERIC := COALESCE((p_opts->>'deposit_deduction')::numeric, 0);
+  v_void BOOLEAN := COALESCE((p_opts->>'void')::boolean, false); v_vat NUMERIC; v_total NUMERIC; v_num TEXT;
+  v_tax NUMERIC; v_ret NUMERIC; v_income UUID; v_received NUMERIC; v_client TEXT; v_qsub NUMERIC;
+BEGIN
+  SELECT qu.*, s.default_tax_withheld_pct, s.default_retention_pct, c.name AS client_name
+    INTO q FROM quotations qu JOIN sites s ON s.id = qu.site_id JOIN clients c ON c.id = qu.client_id WHERE qu.id = p_quotation;
+  IF q.id IS NULL THEN RAISE EXCEPTION 'demo_invoice: quotation % has no site', p_quotation; END IF;
+  v_num := 'IN' || to_char(p_date, 'YYMM') || '-' || lpad(p_seq::text, 3, '0');
+  SELECT sum(line_total) INTO v_qsub FROM quotation_items WHERE quotation_id = p_quotation AND item_type = 'item';
+  INSERT INTO invoices (tenant_id, invoice_number, quotation_id, site_id, date, status, has_vat, price_includes_vat, subtotal, vat, total,
+                        bank_account_id, wht_pct, is_deposit, deposit_pct, deposit_deduction_amount, deposit_deduction_pct, notes)
+  VALUES (p_tenant, v_num, p_quotation, q.site_id, p_date, 'unpaid', true, false, 0, 0, 0, q.bank_account_id, 3,
+          v_dep_pct IS NOT NULL, v_dep_pct, NULLIF(v_dep_ded, 0), NULL,
+          CASE WHEN COALESCE((p_opts->>'due_days')::int, 0) > 0 THEN 'ครบกำหนดชำระ ' || to_char(p_date + (p_opts->>'due_days')::int, 'DD/MM/YYYY') ELSE NULL END)
+  RETURNING id INTO v_inv;
+  IF v_dep_pct IS NOT NULL THEN
+    v_line := round(v_qsub * v_dep_pct / 100, 2);
+    INSERT INTO invoice_items (tenant_id, invoice_id, description, unit, unit_price, draw_qty, line_total, sort_order, item_type)
+    VALUES (p_tenant, v_inv, 'เงินมัดจำ ' || v_dep_pct || '% ของมูลค่างานตามใบเสนอราคา ' || q.quotation_number, 'งวด', v_line, 1, v_line, 0, 'item');
+    v_sub := v_line;
+  ELSE
+    FOR qi IN SELECT * FROM quotation_items WHERE quotation_id = p_quotation AND item_type = 'item' ORDER BY sort_order LOOP
+      v_line := 0; v_draw := 0;
+      FOR u IN SELECT * FROM quotation_item_units WHERE quotation_item_id = qi.id ORDER BY unit_index LOOP
+        v_line := v_line + round((p_target - p_prior) / 100 * u.unit_qty * qi.unit_price, 2);
+        v_draw := v_draw + (p_target - p_prior) / 100 * u.unit_qty;
+      END LOOP;
+      INSERT INTO invoice_items (tenant_id, invoice_id, quotation_item_id, description, unit, unit_price, draw_qty, line_total, sort_order, item_type)
+      VALUES (p_tenant, v_inv, qi.id, qi.description, qi.unit, qi.unit_price, v_draw, v_line, i, 'item') RETURNING id INTO v_item;
+      i := i + 1;
+      FOR u IN SELECT * FROM quotation_item_units WHERE quotation_item_id = qi.id ORDER BY unit_index LOOP
+        INSERT INTO invoice_item_draws (tenant_id, invoice_item_id, quotation_item_unit_id, prior_pct, target_pct, amount)
+        VALUES (p_tenant, v_item, u.id, p_prior, p_target, round((p_target - p_prior) / 100 * u.unit_qty * qi.unit_price, 2));
+        IF NOT v_void THEN
+          UPDATE quotation_item_units SET cumulative_pct = p_target, updated_at = p_date::timestamptz WHERE id = u.id;
+        END IF;
+      END LOOP;
+      v_sub := v_sub + v_line;
+    END LOOP;
+  END IF;
+  v_vat := round(v_sub * 0.07, 2); v_total := v_sub + v_vat;
+  UPDATE invoices SET subtotal = v_sub, vat = v_vat, total = v_total, status = CASE WHEN v_void THEN 'void' ELSE 'unpaid' END WHERE id = v_inv;
+  IF p_paid IS NOT NULL AND NOT v_void THEN
+    INSERT INTO receipts (tenant_id, receipt_number, tax_invoice_number, invoice_id, date, amount)
+    VALUES (p_tenant, 'RE' || to_char(p_paid, 'YYMM') || '-' || lpad(p_seq::text, 3, '0'),
+            'TR' || to_char(p_paid, 'YYMM') || '-' || lpad(p_seq::text, 3, '0'), v_inv, p_paid, v_total);
+    v_tax := round(greatest(0, v_sub - v_dep_ded) * 3 / 100, 2);
+    v_ret := CASE WHEN v_dep_pct IS NOT NULL THEN 0 ELSE round(v_sub * COALESCE(q.default_retention_pct, 0) / 100, 2) END;
+    v_received := round(v_sub + v_vat - v_tax - v_ret - v_dep_ded, 2);
+    INSERT INTO incomes (tenant_id, invoice_no, source_invoice_id, date, site_id, client_name, description, amount_no_vat, vat,
+                         tax_withheld, retention, income_type, deposit_deduction, received_amount)
+    VALUES (p_tenant, 'IV' || to_char(p_paid, 'YYMM') || '-' || lpad(p_seq::text, 3, '0'), v_inv, p_paid, q.site_id, q.client_name,
+            v_num || ' — ' || q.quotation_number, v_sub, v_vat, v_tax, v_ret,
+            CASE WHEN v_dep_pct IS NOT NULL THEN 'มัดจำ' ELSE 'ปกติ' END, v_dep_ded, v_received)
+    RETURNING id INTO v_income;
+    UPDATE invoices SET status = 'paid', paid_date = p_paid, income_id = v_income WHERE id = v_inv;
+  END IF;
+  RETURN v_inv;
+END $$;
+REVOKE ALL ON FUNCTION demo_invoice(UUID, UUID, DATE, INT, NUMERIC, NUMERIC, DATE, JSONB) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION demo_seed_sales(p_tenant UUID)
+RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  q UUID; s RECORD; v_sub NUMERIC; v_dep NUMERIC; v_seq INT; v_m0 DATE := demo_m(0);
+  -- standard line sets by site size
+  L_HOUSE JSONB := '[{"name":"งานฐานรากและเสาเข็ม","qty":1,"price":380000},{"desc":"เสาเข็มเจาะ ขนาด 0.35 ม. ลึก 21 ม. จำนวน 24 ต้น"},{"name":"งานโครงสร้าง ค.ส.ล.","qty":280,"price":4200},{"name":"งานก่ออิฐฉาบปูน","qty":620,"price":650},{"name":"งานโครงหลังคาและมุงหลังคา","qty":210,"price":1850},{"desc":"กระเบื้องหลังคาคอนกรีต สีเทาเข้ม พร้อมฉนวนกันความร้อน"},{"name":"งานระบบไฟฟ้า","qty":48,"price":1200},{"name":"งานระบบประปา-สุขาภิบาล","qty":22,"price":1500},{"name":"งานทาสีภายใน-ภายนอก","qty":900,"price":180},{"name":"งานปูกระเบื้อง","qty":260,"price":550},{"name":"งานประตู-หน้าต่าง","qty":18,"price":8500},{"note":"ระยะเวลาก่อสร้าง 180 วัน นับจากวันเซ็นสัญญา"}]'::jsonb;
+  L_COMM JSONB := '[{"name":"งานรื้อถอน","qty":1,"price":45000},{"name":"งานฐานรากและเสาเข็ม","qty":1,"price":520000},{"name":"งานโครงสร้าง ค.ส.ล.","qty":540,"price":4200},{"desc":"พื้น post-tension ชั้น 2-3 รับน้ำหนัก 400 กก./ตร.ม."},{"name":"งานก่ออิฐฉาบปูน","qty":1100,"price":650},{"name":"งานระบบไฟฟ้า","qty":96,"price":1200},{"name":"งานระบบประปา-สุขาภิบาล","qty":36,"price":1500},{"name":"งานฝ้าเพดาน","qty":500,"price":420},{"name":"งานทาสีภายใน-ภายนอก","qty":1600,"price":180},{"name":"งานปูกระเบื้อง","qty":520,"price":550},{"name":"งานประตู-หน้าต่าง","qty":20,"price":8500},{"name":"งานรั้วและประตูรั้ว","qty":40,"price":3200},{"name":"งานถนนและลานจอดรถ","qty":300,"price":950},{"note":"ผู้ว่าจ้างเป็นผู้ขออนุญาตก่อสร้าง"}]'::jsonb;
+  L_SMALL JSONB := '[{"name":"งานรื้อถอน","qty":1,"price":25000},{"name":"งานโครงสร้าง ค.ส.ล.","qty":40,"price":4200},{"name":"งานก่ออิฐฉาบปูน","qty":90,"price":650},{"desc":"ผนังก่ออิฐมวลเบา หนา 7.5 ซม."},{"name":"งานระบบไฟฟ้า","qty":12,"price":1200},{"name":"งานระบบประปา-สุขาภิบาล","qty":6,"price":1500},{"name":"งานปูกระเบื้อง","qty":45,"price":550},{"name":"งานทาสีภายใน-ภายนอก","qty":180,"price":180},{"name":"งานประตู-หน้าต่าง","qty":3,"price":8500}]'::jsonb;
+  L_RENO JSONB := '[{"name":"งานรื้อถอน","qty":1,"price":60000},{"desc":"รื้อพื้น ผนังเบา ฝ้า และระบบไฟเดิมทั้งชั้น 1"},{"name":"งานก่ออิฐฉาบปูน","qty":150,"price":650},{"name":"งานระบบไฟฟ้า","qty":30,"price":1200},{"name":"งานระบบประปา-สุขาภิบาล","qty":10,"price":1500},{"name":"งานฝ้าเพดาน","qty":120,"price":420},{"name":"งานปูกระเบื้อง","qty":140,"price":550},{"name":"งานทาสีภายใน-ภายนอก","qty":400,"price":180},{"name":"งานสุขภัณฑ์","qty":2,"price":12000},{"name":"งานประตู-หน้าต่าง","qty":6,"price":8500}]'::jsonb;
+BEGIN
+  -- accepted quotations, one per non-cancelled site (9). Sequence numbers restart per month;
+  -- dates are the site's start month so the QT prefix matches.
+  FOR s IN SELECT name, start_date, status, default_deposit_pct, (row_number() OVER (ORDER BY start_date))::int AS rn,
+                  (SELECT c.name FROM clients c WHERE c.id = x.client_id) AS client
+           FROM sites x WHERE tenant_id = p_tenant AND NOT is_default AND status <> 'Cancelled' ORDER BY start_date LOOP
+    q := demo_quotation(p_tenant, s.name, s.client, s.start_date - 14, s.rn,
+           'accepted',
+           CASE WHEN s.name IN ('อาคารพาณิชย์ 3 ชั้น งามวงศ์วาน','โกดังสินค้า บางบัวทอง','สำนักงานขาย โครงการเดอะพาร์ค') THEN L_COMM
+                WHEN s.name IN ('ต่อเติมครัว คุณสมศักดิ์','ร้านกาแฟ เดอะ การ์เด้น') THEN L_SMALL
+                WHEN s.name = 'รีโนเวทบ้าน คุณนภา' THEN L_RENO ELSE L_HOUSE END,
+           CASE WHEN s.name IN ('บ้านคุณวิชัย ลาดพร้าว','คลับเฮาส์ หมู่บ้านพฤกษา') THEN '{"revision_snapshot":true}'::jsonb ELSE '{}'::jsonb END);
+    SELECT sum(line_total) INTO v_sub FROM quotation_items WHERE quotation_id = q AND item_type = 'item';
+    v_dep := CASE WHEN s.default_deposit_pct > 0 THEN round(v_sub * s.default_deposit_pct / 100, 2) ELSE 0 END;
+    -- invoices per site status. Sequence numbers: 10 + rn keeps them unique inside a month across sites.
+    IF s.status = 'Completed' THEN
+      PERFORM demo_invoice(p_tenant, q, s.start_date + 20, 10 + s.rn, 0, 40, s.start_date + 35);
+      PERFORM demo_invoice(p_tenant, q, s.start_date + 65, 10 + s.rn, 40, 80, s.start_date + 80);
+      PERFORM demo_invoice(p_tenant, q, s.start_date + 110, 10 + s.rn, 80, 100, s.start_date + 125);
+    ELSIF s.status = 'On Hold' THEN
+      PERFORM demo_invoice(p_tenant, q, s.start_date + 20, 10 + s.rn, 0, 20, s.start_date + 40);
+    ELSE -- Ongoing: progress decides how many draws exist and which are still unpaid
+      IF s.default_deposit_pct > 0 THEN
+        PERFORM demo_invoice(p_tenant, q, s.start_date + 2, 10 + s.rn, 0, 0, s.start_date + 5, jsonb_build_object('deposit_pct', s.default_deposit_pct));
+      END IF;
+      IF s.name = 'บ้านคุณวิชัย ลาดพร้าว' THEN            -- 85%: 3 paid draws, 4th unpaid and overdue, deposit deducted on the last
+        PERFORM demo_invoice(p_tenant, q, s.start_date + 30, 10 + s.rn, 0, 30, s.start_date + 45);
+        PERFORM demo_invoice(p_tenant, q, s.start_date + 75, 10 + s.rn, 30, 55, s.start_date + 90);
+        PERFORM demo_invoice(p_tenant, q, s.start_date + 120, 10 + s.rn, 55, 75, s.start_date + 135);
+        PERFORM demo_invoice(p_tenant, q, current_date - 25, 20 + s.rn, 75, 85, NULL, jsonb_build_object('due_days', 15, 'deposit_deduction', v_dep));
+      ELSIF s.name = 'อาคารพาณิชย์ 3 ชั้น งามวงศ์วาน' THEN -- 70%: 2 paid, 1 unpaid overdue, plus 1 void (re-issued)
+        PERFORM demo_invoice(p_tenant, q, s.start_date + 40, 10 + s.rn, 0, 35, s.start_date + 55);
+        PERFORM demo_invoice(p_tenant, q, s.start_date + 95, 10 + s.rn, 35, 60, s.start_date + 110);
+        PERFORM demo_invoice(p_tenant, q, current_date - 40, 20 + s.rn, 60, 70, NULL, '{"void":true}'::jsonb);
+        PERFORM demo_invoice(p_tenant, q, current_date - 35, 30 + s.rn, 60, 70, NULL, '{"due_days":30}'::jsonb);
+      ELSIF s.name = 'คลับเฮาส์ หมู่บ้านพฤกษา' THEN        -- 45%: 1 paid, 1 unpaid (not yet due)
+        PERFORM demo_invoice(p_tenant, q, s.start_date + 35, 10 + s.rn, 0, 30, s.start_date + 50);
+        PERFORM demo_invoice(p_tenant, q, current_date - 5, 20 + s.rn, 30, 45, NULL, '{"due_days":30}'::jsonb);
+      ELSIF s.name = 'โกดังสินค้า บางบัวทอง' THEN          -- 30%: 1 paid draw
+        PERFORM demo_invoice(p_tenant, q, s.start_date + 40, 10 + s.rn, 0, 30, s.start_date + 55);
+      ELSE                                                  -- รีโนเวท 15%: 1 unpaid (fresh)
+        PERFORM demo_invoice(p_tenant, q, current_date - 3, 20 + s.rn, 0, 15, NULL, '{"due_days":15}'::jsonb);
+      END IF;
+    END IF;
+  END LOOP;
+
+  -- open pipeline: 3 drafts, 4 sent (one about to expire, one on hold), 2 rejected -- no site link
+  PERFORM demo_quotation(p_tenant, 'บ้านพักอาศัย 2 ชั้น บางใหญ่', 'คุณอรุณ ตั้งใจดี', current_date - 2, 30, 'draft', L_HOUSE, '{"site_name_only":true}');
+  PERFORM demo_quotation(p_tenant, 'ต่อเติมโรงจอดรถ คุณวิชัย', 'คุณวิชัย ศรีสุข', current_date - 1, 31, 'draft', L_SMALL, '{"site_name_only":true}');
+  PERFORM demo_quotation(p_tenant, 'ปรับปรุงสำนักงาน ชั้น 2', 'บจก. งามวงศ์วาน เทรดดิ้ง', current_date, 32, 'draft', L_RENO, '{"site_name_only":true}');
+  PERFORM demo_quotation(p_tenant, 'บ้านแฝด 2 หลัง โครงการพฤกษา', 'บจก. พฤกษา พร็อพเพอร์ตี้', current_date - 25, 33, 'sent', L_HOUSE, jsonb_build_object('site_name_only', true, 'valid_until', current_date + 5));
+  PERFORM demo_quotation(p_tenant, 'คลังสินค้าหลัง 2 บางบัวทอง', 'หจก. บางบัวทอง โลจิสติกส์', current_date - 12, 34, 'sent', L_COMM, '{"site_name_only":true}');
+  PERFORM demo_quotation(p_tenant, 'ร้านอาหารริมน้ำ ปากเกร็ด', 'คุณสมศักดิ์ มั่นคง', current_date - 40, 35, 'sent', L_SMALL, jsonb_build_object('site_name_only', true, 'on_hold', true, 'valid_until', current_date - 10));
+  PERFORM demo_quotation(p_tenant, 'รีโนเวทคอนโด คุณนภา', 'คุณนภา พงศ์ไพบูลย์', current_date - 8, 36, 'sent', L_RENO, '{"site_name_only":true}');
+  PERFORM demo_quotation(p_tenant, 'อาคารสำนักงานขาย เฟส 2', 'บจก. เดอะพาร์ค ดีเวลลอปเมนท์', demo_m(2) + 10, 40, 'rejected', L_COMM, '{"site_name_only":true}');
+  PERFORM demo_quotation(p_tenant, 'บ้านพักตากอากาศ', 'คุณอรุณ ตั้งใจดี', demo_m(3) + 15, 41, 'rejected', L_HOUSE, '{"site_name_only":true}');
+
+  RETURN jsonb_build_object(
+    'quotations', (SELECT count(*) FROM quotations WHERE tenant_id = p_tenant),
+    'revisions', (SELECT count(*) FROM quotation_revisions WHERE tenant_id = p_tenant),
+    'invoices', (SELECT count(*) FROM invoices WHERE tenant_id = p_tenant),
+    'invoices_paid', (SELECT count(*) FROM invoices WHERE tenant_id = p_tenant AND status = 'paid'),
+    'receipts', (SELECT count(*) FROM receipts WHERE tenant_id = p_tenant),
+    'incomes', (SELECT count(*) FROM incomes WHERE tenant_id = p_tenant));
+END $$;
+REVOKE ALL ON FUNCTION demo_seed_sales(UUID) FROM PUBLIC, anon, authenticated;
+
+
 -- ── seed entry point (sections are added by later tasks) ───────
 CREATE OR REPLACE FUNCTION seed_demo_tenant(p_tenant_id UUID)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -204,6 +420,7 @@ BEGIN
   PERFORM setseed(0.42);
   PERFORM demo_impersonate(p_tenant_id);
   v_out := v_out || demo_seed_core(p_tenant_id);
+  v_out := v_out || demo_seed_sales(p_tenant_id);
   -- sections: ... (Tasks 3-5)
   PERFORM set_config('request.jwt.claims', COALESCE(v_claims, ''), true);
   RETURN v_out;

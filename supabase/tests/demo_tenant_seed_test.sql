@@ -98,6 +98,63 @@ BEGIN
   SELECT count(*) INTO v_n FROM tenants WHERE id = t_tenant AND tax_id = '0125599000001' AND address IS NOT NULL AND document_template_key = 'classic';
   IF v_n <> 1 THEN RAISE EXCEPTION 'T2 FAIL: tenant profile not filled'; END IF;
 
+  -- ── T3 ── sales chain
+  IF COALESCE((s1->>'quotations')::int, -1) <> 18 THEN RAISE EXCEPTION 'T3 FAIL: quotations=%', s1->>'quotations'; END IF;
+  SELECT count(*) INTO v_n FROM quotations WHERE tenant_id = t_tenant AND status = 'accepted' AND site_id IS NOT NULL;
+  IF v_n <> 9 THEN RAISE EXCEPTION 'T3 FAIL: accepted with site=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM quotations WHERE tenant_id = t_tenant AND status = 'sent';
+  IF v_n <> 4 THEN RAISE EXCEPTION 'T3 FAIL: sent=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM quotations WHERE tenant_id = t_tenant AND on_hold;
+  IF v_n <> 1 THEN RAISE EXCEPTION 'T3 FAIL: on_hold=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM quotation_items WHERE tenant_id = t_tenant AND item_type IN ('item_description','note');
+  IF v_n < 10 THEN RAISE EXCEPTION 'T3 FAIL: too few description/note lines=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM quotation_revisions WHERE tenant_id = t_tenant;
+  IF v_n <> 2 THEN RAISE EXCEPTION 'T3 FAIL: revisions=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM quotation_revisions WHERE tenant_id = t_tenant AND NOT (snapshot->'items'->0 ? 'item_type');
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: revision snapshot without item_type'; END IF;
+  -- numbers: unique per tenant, month prefix matches the date
+  SELECT count(*) INTO v_n FROM quotations WHERE tenant_id = t_tenant AND quotation_number !~ ('^QT' || to_char(date, 'YYMM') || '-[0-9]{3}$');
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: quotation number/date mismatch'; END IF;
+  SELECT count(*) - count(DISTINCT quotation_number) INTO v_n FROM quotations WHERE tenant_id = t_tenant;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: duplicate quotation numbers'; END IF;
+  SELECT count(*) - count(DISTINCT invoice_number) INTO v_n FROM invoices WHERE tenant_id = t_tenant;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: duplicate invoice numbers'; END IF;
+  -- invoices
+  SELECT count(*) INTO v_n FROM invoices WHERE tenant_id = t_tenant;
+  IF v_n < 24 THEN RAISE EXCEPTION 'T3 FAIL: invoices=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM invoices WHERE tenant_id = t_tenant AND status = 'unpaid';
+  IF v_n <> 4 THEN RAISE EXCEPTION 'T3 FAIL: unpaid=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM invoices WHERE tenant_id = t_tenant AND status = 'void';
+  IF v_n <> 1 THEN RAISE EXCEPTION 'T3 FAIL: void=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM invoices WHERE tenant_id = t_tenant AND is_deposit;
+  IF v_n <> 3 THEN RAISE EXCEPTION 'T3 FAIL: deposit invoices=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM invoices i WHERE i.tenant_id = t_tenant
+    AND abs(i.subtotal - (SELECT COALESCE(sum(line_total), 0) FROM invoice_items x WHERE x.invoice_id = i.id)) > 0.01;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: % invoices whose subtotal != items', v_n; END IF;
+  SELECT count(*) INTO v_n FROM invoices i WHERE i.tenant_id = t_tenant AND abs(i.total - (i.subtotal + i.vat)) > 0.01;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: total != subtotal+vat'; END IF;
+  -- paid chain
+  SELECT count(*) INTO v_n FROM invoices WHERE tenant_id = t_tenant AND status = 'paid';
+  SELECT count(*) INTO v_n2 FROM incomes WHERE tenant_id = t_tenant AND source_invoice_id IS NOT NULL;
+  IF v_n <> v_n2 OR v_n < 18 THEN RAISE EXCEPTION 'T3 FAIL: paid=% incomes=%', v_n, v_n2; END IF;
+  SELECT count(*) INTO v_n2 FROM receipts r JOIN invoices i ON i.id = r.invoice_id WHERE i.tenant_id = t_tenant;
+  IF v_n <> v_n2 THEN RAISE EXCEPTION 'T3 FAIL: receipts=% paid=%', v_n2, v_n; END IF;
+  SELECT count(*) INTO v_n FROM incomes n JOIN invoices i ON i.id = n.source_invoice_id WHERE n.tenant_id = t_tenant
+    AND abs(n.received_amount - (i.subtotal + i.vat - n.tax_withheld - n.retention - COALESCE(n.deposit_deduction, 0))) > 0.01;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: % incomes break the received_amount formula', v_n; END IF;
+  SELECT count(*) INTO v_n FROM incomes WHERE tenant_id = t_tenant AND income_type = 'มัดจำ';
+  IF v_n <> 3 THEN RAISE EXCEPTION 'T3 FAIL: deposit incomes=%', v_n; END IF;
+  SELECT count(*) INTO v_n FROM invoices i WHERE i.tenant_id = t_tenant AND i.status = 'paid' AND (i.income_id IS NULL OR i.paid_date IS NULL);
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: paid invoice without income_id/paid_date'; END IF;
+  -- draws: cumulative pct never exceeds 100 and matches the last draw
+  SELECT count(*) INTO v_n FROM quotation_item_units WHERE tenant_id = t_tenant AND cumulative_pct > 100;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: cumulative_pct > 100'; END IF;
+  -- site contract value equals accepted quotation total (incl. VAT)
+  SELECT count(*) INTO v_n FROM quotations q JOIN sites s ON s.id = q.site_id
+    WHERE q.tenant_id = t_tenant AND q.status = 'accepted'
+    AND abs(s.contract_value - (SELECT sum(line_total) * 1.07 FROM quotation_items x WHERE x.quotation_id = q.id AND x.item_type = 'item')) > 1;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'T3 FAIL: % sites whose contract_value != accepted quotation', v_n; END IF;
+
   RAISE EXCEPTION 'RESULT: demo_tenant_seed_test ALL PASSED';
 END $$;
 ROLLBACK;
