@@ -396,12 +396,22 @@ export default function CommunicationCenter({ navState }) {
   const offboardFocus = usePendingFocus(navState, 'offboarded_in_group')
   const issuesCardRef = useRef(null)
   const offboardCardRef = useRef(null)
+  // Scroll only once every section above the issues card has loaded (each one grows the
+  // page as it arrives), and once more a moment later for anything that settles late; a
+  // scroll fired while the page was still filling in landed at the top (seen live).
+  const sectionsAboveIssuesLoaded = !loadingMyRole && !loadingSettings && !loadingWorkers && !loadingUnlinked && !loadingIssues
   useEffect(() => {
-    if (issuesFocus.active && !loadingIssues) issuesCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [issuesFocus.active, loadingIssues])
+    if (!issuesFocus.active || !sectionsAboveIssuesLoaded) return
+    const go = () => issuesCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const t1 = setTimeout(go, 50)
+    const t2 = setTimeout(go, 800)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [issuesFocus.active, sectionsAboveIssuesLoaded])
   useEffect(() => {
-    if (offboardFocus.active) offboardCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [offboardFocus.active])
+    if (!offboardFocus.active || loadingMyRole) return
+    const t = setTimeout(() => offboardCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+    return () => clearTimeout(t)
+  }, [offboardFocus.active, loadingMyRole])
   const visibleIssueReports = issueReports.filter(r => !issuesFocus.active || isIssueOpen(r))
   const [resolvingIssueId, setResolvingIssueId] = useState(null)
 
