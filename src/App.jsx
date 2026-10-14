@@ -395,12 +395,12 @@ export default function App() {
 
   // Act on a recorded notification tap once the gates can answer canSeeTab.
   useEffect(() => {
-    if (!pushIntent || roleLoading || tenantLoading || platformAdminLoading || !session) return
+    if (!pushIntent || roleLoading || tenantLoading || platformAdminLoading || !session || !role) return
     const tab = resolvePendingTab(pushIntent.pending, canSeeTab, pushIntent.tab)
     setPushIntent(null)
     navigateTo(tab, pushIntent.pending ? { pending: pushIntent.pending } : {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pushIntent, roleLoading, tenantLoading, platformAdminLoading, session])
+  }, [pushIntent, roleLoading, tenantLoading, platformAdminLoading, session, role])
 
   const navigateTo = (tab, state = {}) => {
     // Explicit navigation is fresh user intent -- safe to let a future

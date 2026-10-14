@@ -1279,8 +1279,9 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
   }
   const TODAY_BKK = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10)
   useEffect(() => {
-    if (followupFocus.active) { setStatus(''); setDateFrom(''); setDateTo(''); setSortCol('valid_until'); setSortDir('asc') }
+    if (followupFocus.active) { setStatus(''); setClientId(''); setDateFrom(''); setDateTo(''); setSortCol('valid_until'); setSortDir('asc') }
   }, [followupFocus.active])
+  const endFollowupFocus = () => { followupFocus.clear(); setDateFrom(ytdFrom); setDateTo(ytdTo); setSortCol('date'); setSortDir('desc') }
   const sortedQuotations = useMemo(() => {
     const acc = SORT_ACCESSORS[sortCol]
     return (quotations || []).filter(qt => !followupFocus.active || isQuotationExpiring(qt, TODAY_BKK)).sort((a, b) => {
@@ -1656,7 +1657,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
           <option value="">ทุกสถานะ</option>
           {QT_STATUSES.map(s => <option key={s} value={s}>{QT_STATUS_LABELS[s]}</option>)}
         </select>
-        <PendingFocusChip focus={followupFocus} pendingKey="quotations_followup" />
+        <PendingFocusChip focus={{ ...followupFocus, clear: endFollowupFocus }} pendingKey="quotations_followup" />
       </div>
 
       <div className="card">

@@ -155,8 +155,9 @@ export default function Cheques({ navState }) {
   // Bell/push "cheques due": only the cheques the bell counted, soonest first.
   const dueFocus = usePendingFocus(navState, 'cheques_due')
   useEffect(() => {
-    if (dueFocus.active) { setStatusFilter(''); setSortCol('check_date'); setSortDir('asc') }
+    if (dueFocus.active) { setStatusFilter(''); setSearch(''); setBankFilter(''); setSortCol('check_date'); setSortDir('asc') }
   }, [dueFocus.active])
+  const endDueFocus = () => { dueFocus.clear(); setSortDir('desc') }
 
   const bankOptions = useMemo(() =>
     [...new Set((cheques || []).map(c => c.bank).filter(Boolean))].sort(),
@@ -231,7 +232,7 @@ export default function Cheques({ navState }) {
           <option value="">ทุกธนาคาร</option>
           {bankOptions.map(b => <option key={b} value={b}>{b}</option>)}
         </select>
-        <PendingFocusChip focus={dueFocus} pendingKey="cheques_due" />
+        <PendingFocusChip focus={{ ...dueFocus, clear: endDueFocus }} pendingKey="cheques_due" />
       </div>
 
       <div className="card">

@@ -932,8 +932,9 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
 
   // Bell/push "PO drafts": every draft, whatever its date (the YTD range would hide old ones).
   useEffect(() => {
-    if (draftFocus.active) { setStatus('draft'); setDateFrom(''); setDateTo('') }
+    if (draftFocus.active) { setStatus('draft'); setDateFrom(''); setDateTo(''); setSiteId(''); setSupplierId(''); setSearch('') }
   }, [draftFocus.active])
+  const endDraftFocus = () => { draftFocus.clear(); setStatus(''); setDateFrom(ytdFrom); setDateTo(ytdTo) }
 
   useEffect(() => {
     if (navState?.poId && pos) {
@@ -1285,7 +1286,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
           <option value="">ทุกสถานะ</option>
           {PO_STATUSES.map(s => <option key={s} value={s}>{PO_STATUS_LABELS[s]}</option>)}
         </select>
-        <PendingFocusChip focus={{ ...draftFocus, clear: () => { draftFocus.clear(); setStatus('') } }} pendingKey="po_draft" />
+        <PendingFocusChip focus={{ ...draftFocus, clear: endDraftFocus }} pendingKey="po_draft" />
         <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาเลขที่ / ไซท์งาน / Supplier..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 

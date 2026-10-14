@@ -439,6 +439,7 @@ export default function HR({ navState }) {
   useEffect(() => { fetchRequests() }, [canEdit, hasModuleAccess('line_bot')])
 
   const pendingRequestCount = leaveRequests.filter(r => r.status === 'pending').length
+  const visibleLeaveRequests = leaveRequests.filter(r => !leaveFocus.active || isLeavePending(r))
 
   // Check-in/check-out log -- worker_checkins, written by the GPS-based
   // /f/<token> flow (line-webhook + field-form, see FieldFormPage.jsx's
@@ -1191,7 +1192,7 @@ export default function HR({ navState }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {leaveRequests.filter(r => !leaveFocus.active || isLeavePending(r)).map(r => (
+                      {visibleLeaveRequests.map(r => (
                         <tr key={r.id}>
                           <td style={{ fontWeight: 600 }}>{isLeavePending(r) && <PendingMark />}{r.workers?.nickname || r.workers?.name}</td>
                           <td>{r.leave_type === 'leave_sick' ? '🤒 ลาป่วย' : '🏖️ ลากิจ'}</td>
@@ -1213,7 +1214,7 @@ export default function HR({ navState }) {
                           </td>
                         </tr>
                       ))}
-                      {!leaveRequests.length && (
+                      {!visibleLeaveRequests.length && (
                         <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีคำขอลา</td></tr>
                       )}
                     </tbody>

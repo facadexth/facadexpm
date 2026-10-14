@@ -402,6 +402,7 @@ export default function CommunicationCenter({ navState }) {
   useEffect(() => {
     if (offboardFocus.active) offboardCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [offboardFocus.active])
+  const visibleIssueReports = issueReports.filter(r => !issuesFocus.active || isIssueOpen(r))
   const [resolvingIssueId, setResolvingIssueId] = useState(null)
 
   const fetchIssueReports = async () => {
@@ -809,7 +810,7 @@ export default function CommunicationCenter({ navState }) {
         </div>
         {loadingIssues ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
-        ) : !issueReports.length ? (
+        ) : !visibleIssueReports.length ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>ไม่มีรายการ — ยังไม่มีการแจ้งปัญหาเข้ามา</div>
         ) : (
           <div className="table-wrap">
@@ -825,7 +826,7 @@ export default function CommunicationCenter({ navState }) {
                 </tr>
               </thead>
               <tbody>
-                {issueReports.filter(r => !issuesFocus.active || isIssueOpen(r)).map(r => (
+                {visibleIssueReports.map(r => (
                   <tr key={r.id} style={{ opacity: r.status === 'resolved' ? 0.55 : 1 }}>
                     <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>{isIssueOpen(r) && <PendingMark label="ยังไม่แก้ไข" />}{r.workers?.nickname || r.workers?.name || '-'}</td>
                     <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>{r.sites?.name || '-'}</td>

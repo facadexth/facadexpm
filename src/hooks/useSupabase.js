@@ -2,7 +2,7 @@
 // Custom hook สำหรับ fetch ข้อมูลจาก Supabase
 // รองรับ loading / error state และ refetch
 // ============================================================
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { fetchAllRows } from '../lib/fetchAllRows.js'
 import { buildDepositMap } from '../lib/depositMath.js'
@@ -1321,14 +1321,21 @@ export function usePlatformAdmin() {
   // the FIRST check shows as loading -- ProtectedPage unmounts its
   // children while a gate is loading, and onAuthStateChange also fires
   // on routine token refresh / tab refocus.
+  // Overlapping checks (mount + token refresh, or logout then login) may resolve out of
+  // order; only the newest one may write, so an old account's answer never lands on the new one.
+  const seq = useRef(0)
   const fetch = useCallback(async () => {
+    const mine = ++seq.current
     try {
-      setData(await checkPlatformAdmin())
+      const ok = await checkPlatformAdmin()
+      if (mine !== seq.current) return
+      setData(ok)
       setError(null)
     } catch (err) {
+      if (mine !== seq.current) return
       setError(err.message)
     } finally {
-      setLoading(false)
+      if (mine === seq.current) setLoading(false)
     }
   }, [])
 
@@ -1336,7 +1343,7 @@ export function usePlatformAdmin() {
     fetch()
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'INITIAL_SESSION') return // the mount fetch above covers it
-      if (event === 'SIGNED_OUT') { setData(false); return }
+      if (event === 'SIGNED_OUT') { seq.current++; setData(false); return }
       fetch()
     })
     return () => subscription.unsubscribe()

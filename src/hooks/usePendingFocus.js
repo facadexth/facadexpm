@@ -7,7 +7,8 @@ import { useState, useEffect } from 'react'
 export function usePendingFocus(navState, key) {
   const wanted = navState?.pending === key
   const [active, setActive] = useState(wanted)
-  // A new navState object = a new tap, so re-arm even if the user cleared the last one.
-  useEffect(() => { if (wanted) setActive(true) }, [navState]) // eslint-disable-line react-hooks/exhaustive-deps
+  // A new navState object = a new navigation: a tap re-arms the focus even if the user cleared
+  // the last one; a plain tab click (navState {}) ends it.
+  useEffect(() => { setActive(wanted) }, [navState]) // eslint-disable-line react-hooks/exhaustive-deps
   return { active, count: active && wanted ? navState?.pendingCount : undefined, clear: () => setActive(false) }
 }
