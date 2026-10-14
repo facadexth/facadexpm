@@ -202,7 +202,7 @@ CREATE OR REPLACE FUNCTION demo_quotation(p_tenant UUID, p_site_name TEXT, p_cli
 RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_q UUID; v_site UUID; v_client UUID; v_bank UUID; l JSONB; i INT := 0; v_cat UUID; v_unit TEXT; v_item UUID;
-  v_qty NUMERIC; v_price NUMERIC; v_snapshot JSONB;
+  v_qty NUMERIC; v_price NUMERIC; v_snapshot JSONB; v_qseq INT;
 BEGIN
   SELECT id INTO v_client FROM clients WHERE tenant_id = p_tenant AND name = p_client_name;
   IF v_client IS NULL THEN RAISE EXCEPTION 'demo_quotation: client % not found', p_client_name; END IF;
@@ -211,9 +211,11 @@ BEGIN
     IF v_site IS NULL THEN RAISE EXCEPTION 'demo_quotation: site % not found', p_site_name; END IF;
   END IF;
   SELECT id INTO v_bank FROM bank_accounts WHERE tenant_id = p_tenant AND is_default LIMIT 1;
+  -- demo is reset on arbitrary dates; literal seqs collided, so compute the next number per month
+  v_qseq := COALESCE((SELECT max(substring(quotation_number from '-(\d{3})$')::int) FROM quotations WHERE tenant_id = p_tenant AND quotation_number LIKE 'QT' || to_char(p_date, 'YYMM') || '-%'), 0) + 1;
   INSERT INTO quotations (tenant_id, quotation_number, client_id, site_id, site_name, date, valid_until, status, has_vat, price_includes_vat,
                           payment_terms, notes, revision, ever_sent, bank_account_id, pricing_mode, created_by, sent_at, follow_up_after_days, on_hold, held_at)
-  VALUES (p_tenant, 'QT' || to_char(p_date, 'YYMM') || '-' || lpad(p_seq::text, 3, '0'), v_client, v_site, p_site_name, p_date,
+  VALUES (p_tenant, 'QT' || to_char(p_date, 'YYMM') || '-' || lpad(v_qseq::text, 3, '0'), v_client, v_site, p_site_name, p_date,
           COALESCE((p_opts->>'valid_until')::date, p_date + 30), p_status, true, false,
           'ชำระมัดจำ 30% เมื่อเซ็นสัญญา ส่วนที่เหลือแบ่งจ่ายตามงวดงาน', 'ราคานี้ยังไม่รวมค่าขออนุญาตก่อสร้าง',
           CASE WHEN COALESCE((p_opts->>'revision_snapshot')::boolean, false) THEN 2 ELSE 1 END,
@@ -275,12 +277,14 @@ DECLARE
   q RECORD; v_inv UUID; v_item UUID; v_sub NUMERIC := 0; v_line NUMERIC; v_draw NUMERIC; u RECORD; qi RECORD; i INT := 0;
   v_dep_pct NUMERIC := (p_opts->>'deposit_pct')::numeric; v_dep_ded NUMERIC := COALESCE((p_opts->>'deposit_deduction')::numeric, 0);
   v_void BOOLEAN := COALESCE((p_opts->>'void')::boolean, false); v_vat NUMERIC; v_total NUMERIC; v_num TEXT;
-  v_tax NUMERIC; v_ret NUMERIC; v_income UUID; v_received NUMERIC; v_client TEXT; v_qsub NUMERIC;
+  v_tax NUMERIC; v_ret NUMERIC; v_income UUID; v_received NUMERIC; v_client TEXT; v_qsub NUMERIC; v_seq INT; v_rseq INT; v_tseq INT; v_iseq INT;
 BEGIN
   SELECT qu.*, s.default_tax_withheld_pct, s.default_retention_pct, c.name AS client_name
     INTO q FROM quotations qu JOIN sites s ON s.id = qu.site_id JOIN clients c ON c.id = qu.client_id WHERE qu.id = p_quotation;
   IF q.id IS NULL THEN RAISE EXCEPTION 'demo_invoice: quotation % has no site', p_quotation; END IF;
-  v_num := 'IN' || to_char(p_date, 'YYMM') || '-' || lpad(p_seq::text, 3, '0');
+  -- demo is reset on arbitrary dates; literal seqs collided, so compute the next number per month
+  v_seq := COALESCE((SELECT max(substring(invoice_number from '-(\d{3})$')::int) FROM invoices WHERE tenant_id = p_tenant AND invoice_number LIKE 'IN' || to_char(p_date, 'YYMM') || '-%'), 0) + 1;
+  v_num := 'IN' || to_char(p_date, 'YYMM') || '-' || lpad(v_seq::text, 3, '0');
   SELECT sum(line_total) INTO v_qsub FROM quotation_items WHERE quotation_id = p_quotation AND item_type = 'item';
   INSERT INTO invoices (tenant_id, invoice_number, quotation_id, site_id, date, status, has_vat, price_includes_vat, subtotal, vat, total,
                         bank_account_id, wht_pct, is_deposit, deposit_pct, deposit_deduction_amount, deposit_deduction_pct, notes)
@@ -316,15 +320,20 @@ BEGIN
   v_vat := round(v_sub * 0.07, 2); v_total := v_sub + v_vat;
   UPDATE invoices SET subtotal = v_sub, vat = v_vat, total = v_total, status = CASE WHEN v_void THEN 'void' ELSE 'unpaid' END WHERE id = v_inv;
   IF p_paid IS NOT NULL AND NOT v_void THEN
+    -- demo is reset on arbitrary dates; literal seqs collided, so compute the next number per month
+    v_rseq := COALESCE((SELECT max(substring(receipt_number from '-(\d{3})$')::int) FROM receipts WHERE tenant_id = p_tenant AND receipt_number LIKE 'RE' || to_char(p_paid, 'YYMM') || '-%'), 0) + 1;
+    v_tseq := COALESCE((SELECT max(substring(tax_invoice_number from '-(\d{3})$')::int) FROM receipts WHERE tenant_id = p_tenant AND tax_invoice_number LIKE 'TR' || to_char(p_paid, 'YYMM') || '-%'), 0) + 1;
     INSERT INTO receipts (tenant_id, receipt_number, tax_invoice_number, invoice_id, date, amount)
-    VALUES (p_tenant, 'RE' || to_char(p_paid, 'YYMM') || '-' || lpad(p_seq::text, 3, '0'),
-            'TR' || to_char(p_paid, 'YYMM') || '-' || lpad(p_seq::text, 3, '0'), v_inv, p_paid, v_total);
+    VALUES (p_tenant, 'RE' || to_char(p_paid, 'YYMM') || '-' || lpad(v_rseq::text, 3, '0'),
+            'TR' || to_char(p_paid, 'YYMM') || '-' || lpad(v_tseq::text, 3, '0'), v_inv, p_paid, v_total);
     v_tax := round(greatest(0, v_sub - v_dep_ded) * 3 / 100, 2);
     v_ret := CASE WHEN v_dep_pct IS NOT NULL THEN 0 ELSE round(v_sub * COALESCE(q.default_retention_pct, 0) / 100, 2) END;
     v_received := round(v_sub + v_vat - v_tax - v_ret - v_dep_ded, 2);
+    -- demo is reset on arbitrary dates; literal seqs collided, so compute the next number per month
+    v_iseq := COALESCE((SELECT max(substring(invoice_no from '-(\d{3})$')::int) FROM incomes WHERE tenant_id = p_tenant AND invoice_no LIKE 'IV' || to_char(p_paid, 'YYMM') || '-%'), 0) + 1;
     INSERT INTO incomes (tenant_id, invoice_no, source_invoice_id, date, site_id, client_name, description, amount_no_vat, vat,
                          tax_withheld, retention, income_type, deposit_deduction, received_amount)
-    VALUES (p_tenant, 'IV' || to_char(p_paid, 'YYMM') || '-' || lpad(p_seq::text, 3, '0'), v_inv, p_paid, q.site_id, q.client_name,
+    VALUES (p_tenant, 'IV' || to_char(p_paid, 'YYMM') || '-' || lpad(v_iseq::text, 3, '0'), v_inv, p_paid, q.site_id, q.client_name,
             v_num || ' — ' || q.quotation_number, v_sub, v_vat, v_tax, v_ret,
             CASE WHEN v_dep_pct IS NOT NULL THEN 'มัดจำ' ELSE 'ปกติ' END, v_dep_ded, v_received)
     RETURNING id INTO v_income;
