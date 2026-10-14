@@ -191,8 +191,9 @@ export default function TenantManagement() {
       if (error) throw error
       const seeded = data?.seeded || {}
       setToast(`รีเซ็ตเดโม่ ${resetTenant.company_name} แล้ว: ไซท์ ${seeded.sites ?? '-'} ใบเสนอราคา ${seeded.quotations ?? '-'} ใบแจ้งหนี้ ${seeded.invoices ?? '-'} รายจ่าย ${seeded.expenses ?? '-'} ช่าง ${seeded.workers ?? '-'}`)
+      setTimeout(() => setToast(null), 5000)
       setResetTenant(null)
-      refetch?.()
+      refetch()
     } catch (err) {
       alert('รีเซ็ตไม่สำเร็จ: ' + (err.message || err))
     } finally {
