@@ -221,6 +221,16 @@ BEGIN
     IF cs.billed < cs.cost * 1.10 THEN RAISE EXCEPTION 'T4 FAIL: completed site % billed % vs cost % (< 10%% profit)', cs.name, cs.billed, cs.cost; END IF;
     IF cs.late <> 0 THEN RAISE EXCEPTION 'T4 FAIL: completed site % has % expenses after its end_date', cs.name, cs.late; END IF;
   END LOOP;
+  -- Ongoing sites: spend stays below 80% of the contract and near what has been billed or is being billed
+  FOR cs IN SELECT s.name, s.contract_value_no_vat AS cv,
+             COALESCE((SELECT sum(e.amount_no_vat) FROM expenses e WHERE e.site_id = s.id), 0) AS cost,
+             COALESCE((SELECT sum(n.amount_no_vat) FROM incomes n WHERE n.site_id = s.id), 0)
+               + COALESCE((SELECT sum(i.subtotal) FROM invoices i WHERE i.site_id = s.id AND i.status = 'unpaid'), 0) AS billed
+           FROM sites s WHERE s.tenant_id = t_tenant AND s.status = 'Ongoing' AND NOT s.is_default LOOP
+    RAISE NOTICE 'T4 ongoing site %: cost % billed % contract %', cs.name, cs.cost, cs.billed, cs.cv;
+    IF cs.cost > 0.80 * cs.cv THEN RAISE EXCEPTION 'T4 FAIL: ongoing site % spent % > 80%% of contract %', cs.name, cs.cost, cs.cv; END IF;
+    IF cs.cost > 1.15 * cs.billed + 0.05 * cs.cv THEN RAISE EXCEPTION 'T4 FAIL: ongoing site % spent % vs billed % (contract %)', cs.name, cs.cost, cs.billed, cs.cv; END IF;
+  END LOOP;
   SELECT count(DISTINCT to_char(date, 'YYYY-MM')) INTO v_n FROM expenses WHERE tenant_id = t_tenant;
   IF v_n < 8 THEN RAISE EXCEPTION 'T4 FAIL: expenses cover only % months', v_n; END IF;
   SELECT count(*) INTO v_n FROM expenses WHERE tenant_id = t_tenant AND status = 'pending' AND due_date BETWEEN current_date AND current_date + 30;

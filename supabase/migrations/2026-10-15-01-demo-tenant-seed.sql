@@ -446,13 +446,17 @@ DECLARE
     ARRAY['ไม้แบบ 1x6 นิ้ว','แผ่น','SUP','95'], ARRAY['ลวดผูกเหล็ก','กก.','SUP','42'],
     ARRAY['สายไฟ THW 2.5 ตร.มม.','ม้วน','MEP','1850'], ARRAY['ท่อ PVC 4 นิ้ว','เส้น','MEP','310']];
   v_items UUID[] := '{}'; v_costs NUMERIC[] := '{}';
-  v_sites UUID[]; v_site_names TEXT[]; v_site_status TEXT[]; v_site_start DATE[]; v_site_end DATE[]; v_site_val NUMERIC[]; v_open UUID[];
+  v_sites UUID[]; v_site_names TEXT[]; v_site_status TEXT[]; v_site_start DATE[]; v_site_end DATE[]; v_site_val NUMERIC[]; v_site_p NUMERIC[]; v_open UUID[];
   v_budget NUMERIC; v_rows INT; v_end DATE; v_months INT;
 BEGIN
   SELECT id INTO v_central FROM sites WHERE tenant_id = p_tenant AND is_default;
   SELECT array_agg(id ORDER BY start_date), array_agg(name ORDER BY start_date), array_agg(status ORDER BY start_date), array_agg(start_date ORDER BY start_date),
-         array_agg(end_date ORDER BY start_date), array_agg(contract_value_no_vat ORDER BY start_date)
-    INTO v_sites, v_site_names, v_site_status, v_site_start, v_site_end, v_site_val
+         array_agg(end_date ORDER BY start_date), array_agg(contract_value_no_vat ORDER BY start_date),
+         -- progress 0..1 from the task board; Completed sites are fully done
+         array_agg(CASE WHEN status = 'Completed' THEN 1::numeric ELSE COALESCE(
+           (SELECT (count(*) FILTER (WHERE t.status = 'done') + 0.5 * count(*) FILTER (WHERE t.status = 'in_progress'))::numeric / NULLIF(count(*), 0)
+            FROM phase_tasks t WHERE t.site_id = sites.id), 0) END ORDER BY start_date)
+    INTO v_sites, v_site_names, v_site_status, v_site_start, v_site_end, v_site_val, v_site_p
     FROM sites WHERE tenant_id = p_tenant AND NOT is_default AND status IN ('Ongoing','Completed','On Hold');
 
   -- PO / cheque expenses go only to Ongoing sites, so finished sites never spend after their end_date
@@ -569,8 +573,8 @@ BEGIN
       CONTINUE WHEN demo_m(k) > v_end;                                                      -- finished (or paused) by then
       v_months := greatest(1, (extract(year FROM v_end)::int - extract(year FROM v_site_start[i])::int) * 12
                               + extract(month FROM v_end)::int - extract(month FROM v_site_start[i])::int + 1);
-      v_budget := COALESCE(v_site_val[i], 0) * 0.62 / v_months;
-      v_rows := 4 + ((k + i) % 4);
+      v_budget := COALESCE(v_site_val[i], 0) * 0.62 * v_site_p[i] / v_months;   -- scaled by progress
+      v_rows := greatest(1, least(4 + ((k + i) % 4), floor(v_budget / 1500)::int));   -- rows >= 1,500 THB each: fewer rows, not smaller amounts
       FOR j IN 1..v_rows LOOP
         v_seq := v_seq + 1;
         v_date := least(demo_m(k) + ((v_seq * 7 + j * 3) % 27) + 1, current_date, v_end);
