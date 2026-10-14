@@ -20,6 +20,22 @@ describe('placeLine', () => {
     expect(p.page).toBe(1)
     expect(p.y).toBeCloseTo(10 + 10 * 190 / 718, 5)
   })
+  it('uses the floored canvas cut when the canvas geometry is known', () => {
+    // html2canvas: canvas.width = floor(718.109 * 2) = 1436; html2pdf: cut = floor(1436 * 277/190) = 2093 canvas px
+    const c = { left: 100, top: 50, width: 718.109375 }
+    const canvas = { width: 1436, scale: 2 }
+    const cutPx = Math.floor(1436 * 277 / 190) / 2 // 1046.5 container px
+    const above = placeLine({ left: 100, top: 50 + cutPx - 12, width: 10, height: 10 }, c, pageSize, margin, canvas)
+    const below = placeLine({ left: 100, top: 50 + cutPx + 2, width: 10, height: 10 }, c, pageSize, margin, canvas)
+    expect(above.page).toBe(0)
+    expect(below.page).toBe(1)
+    expect(below.y).toBeCloseTo(10 + 2 * (190 * 2 / 1436), 5)
+  })
+  it('x uses the LEFT margin (html2pdf order top,left,bottom,right)', () => {
+    const p = placeLine({ left: 100, top: 50, width: 10, height: 10 }, container, pageSize, [1, 2, 3, 4])
+    expect(p.x).toBeCloseTo(2, 5)
+    expect(p.y).toBeCloseTo(1, 5)
+  })
   it('a line straddling the cut goes with its larger half', () => {
     const pagePx = 718 * 277 / 190
     const mostlyAbove = placeLine({ left: 0, top: 50 + pagePx - 15, width: 10, height: 20 }, container, pageSize, margin)

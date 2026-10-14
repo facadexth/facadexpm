@@ -48,11 +48,14 @@ export async function buildPDF(html2pdf, element, options) {
     })
     .toPdf()
     .get('pdf')
-    .then(pdf => {
+    .then(function (pdf) {
       if (!lines || !fontB64) return
       try {
+        // The real page cut is in canvas pixels (html2pdf floors it), so hand the
+        // canvas width and html2canvas scale over for exact page/offset maths.
+        const canvas = this.prop.canvas ? { width: this.prop.canvas.width, scale: this.opt.html2canvas?.scale || 1 } : null
         registerTextLayerFont(pdf, fontB64)
-        writeTextLayer(pdf, lines, containerRect, pageSize, margin, TEXT_LAYER_FONT)
+        writeTextLayer(pdf, lines, containerRect, pageSize, margin, TEXT_LAYER_FONT, canvas)
       } catch (err) { console.warn('pdf text layer: writing failed', err?.message) }
     })
   return { worker }

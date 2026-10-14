@@ -15,10 +15,19 @@
 
 const PT_PER_MM = 72 / 25.4
 
-/** Where one line box lands in the PDF: page index (0-based) and mm coordinates. */
-export function placeLine(rect, containerRect, pageSize, margin) {
-  const ratio = pageSize.inner.width / containerRect.width
-  const pagePx = containerRect.width * (pageSize.inner.height / pageSize.inner.width)
+/**
+ * Where one line box lands in the PDF: page index (0-based) and mm coordinates.
+ * `canvas` = { width, scale } of html2pdf's rendered canvas, when known: html2canvas
+ * floors the canvas width and html2pdf floors the page height in canvas px, so the
+ * exact cut is floor(canvas.width * inner.ratio) / scale container px, and 1 container
+ * px = inner.width * scale / canvas.width mm. Without it the ideal maths is used
+ * (drifts ~0.08 mm per page on A4 at scale 2).
+ */
+export function placeLine(rect, containerRect, pageSize, margin, canvas = null) {
+  const ratio = canvas ? pageSize.inner.width * canvas.scale / canvas.width : pageSize.inner.width / containerRect.width
+  const pagePx = canvas
+    ? Math.floor(canvas.width * (pageSize.inner.height / pageSize.inner.width)) / canvas.scale
+    : containerRect.width * (pageSize.inner.height / pageSize.inner.width)
   const xPx = rect.left - containerRect.left
   const yPx = rect.top - containerRect.top
   // Use the line's vertical middle to pick the page, so a line box that straddles the
@@ -26,7 +35,7 @@ export function placeLine(rect, containerRect, pageSize, margin) {
   const page = Math.max(0, Math.floor((yPx + rect.height / 2) / pagePx))
   return {
     page,
-    x: margin[3] + xPx * ratio,
+    x: margin[1] + xPx * ratio, // html2pdf margin order: [top, left, bottom, right]
     y: margin[0] + (yPx - page * pagePx) * ratio,
     width: rect.width * ratio,
     height: rect.height * ratio,
@@ -88,14 +97,14 @@ export function collectTextLines(root, doc = root.ownerDocument) {
 }
 
 /** Write the collected lines into `pdf` as invisible text. Pages beyond the PDF are skipped. */
-export function writeTextLayer(pdf, lines, containerRect, pageSize, margin, fontName) {
+export function writeTextLayer(pdf, lines, containerRect, pageSize, margin, fontName, canvas = null) {
   const pages = pdf.getNumberOfPages()
-  const ratio = pageSize.inner.width / containerRect.width
+  const ratio = canvas ? pageSize.inner.width * canvas.scale / canvas.width : pageSize.inner.width / containerRect.width
   pdf.setFont(fontName, 'normal')
   let written = 0
   for (const line of lines) {
     const rect = { left: line.left, top: line.top, width: line.right - line.left, height: line.bottom - line.top }
-    const pos = placeLine(rect, containerRect, pageSize, margin)
+    const pos = placeLine(rect, containerRect, pageSize, margin, canvas)
     if (pos.page >= pages) continue
     const sizePt = Math.max(1, line.fontPx * ratio * PT_PER_MM)
     pdf.setPage(pos.page + 1)
@@ -111,15 +120,20 @@ export function writeTextLayer(pdf, lines, containerRect, pageSize, margin, font
 
 let fontPromise = null
 /** Sarabun Regular (OFL) as base64, fetched once per session; null if unavailable. */
-export function loadTextLayerFont(url = '/fonts/Sarabun-Regular.ttf') {
+export function loadTextLayerFont(url = '/fonts/Sarabun-Regular.ttf', timeoutMs = 5000) {
   if (!fontPromise) {
-    fontPromise = fetch(url).then(async r => {
+    // Bounded wait: on a stalled connection the PDF must still come out (picture-only)
+    // instead of hanging on the font.
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null
+    const timer = ctrl && setTimeout(() => ctrl.abort(), timeoutMs)
+    fontPromise = fetch(url, ctrl ? { signal: ctrl.signal } : undefined).then(async r => {
       if (!r.ok) throw new Error(`font ${r.status}`)
       const bytes = new Uint8Array(await r.arrayBuffer())
       let bin = ''
       for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000))
       return btoa(bin)
     }).catch(err => { console.warn('pdf text layer: font not loaded', err?.message); fontPromise = null; return null })
+      .finally(() => { if (timer) clearTimeout(timer) })
   }
   return fontPromise
 }
