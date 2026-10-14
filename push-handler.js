@@ -7,20 +7,23 @@ self.addEventListener('push', (event) => {
     body: data.body || '',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
-    data: { tab: data.tab || null },
+    data: { tab: data.tab || null, pending: data.pending || null },
   }))
 })
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   const tab = event.notification.data?.tab
+  const pending = event.notification.data?.pending || null
   event.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
     const win = wins[0]
     if (win) {
-      if (tab) win.postMessage({ type: 'chang-open-tab', tab })
+      if (tab) win.postMessage({ type: 'chang-open-tab', tab, pending })
       return win.focus()
     }
-    return self.clients.openWindow(tab ? `/#tab=${encodeURIComponent(tab)}` : '/')
+    // Same shape App.jsx parses (parsePushHash in src/lib/pendingItems.js).
+    const hash = tab ? `#tab=${encodeURIComponent(tab)}${pending ? `&pending=${encodeURIComponent(pending)}` : ''}` : ''
+    return self.clients.openWindow(`/${hash}`)
   })())
 })
