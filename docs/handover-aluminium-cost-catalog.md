@@ -403,3 +403,116 @@ SQL / process:
 - **Hardware pricing** beyond the default counts: the lines are written with unit price 0 and no part; the owner picks the `alu_parts` family and price.
 - **Add-ons** (the parent spec `2026-10-12-bom-template-by-type-and-addons-design.md`) on top of these layouts.
 - Add-on combinations and the parts/CAD preview styles remain legacy for part-model templates (see the part-editor arc).
+
+---
+
+# Inline add-ons + sliding_2 options handover (2026-10-15)
+
+Plan: `docs/superpowers/plans/2026-10-15-sliding2-addons.md` (spec: `docs/superpowers/specs/2026-10-12-bom-template-by-type-and-addons-design.md`, as amended by the plan's rulings). Mockups: item form https://claude.ai/artifact/Lj7rVrfvoYahQ2cEVZXGdw (v2, owner thread resolved); template editor mockup v12. Branch `feat/alu-cost-catalog`, plan commit `ae999a91`, code commits `a4585321..1ea35071` (17 commits). Suite 2218 -> 2431 passing (163 files), build OK. **Not merged, not pushed, nothing deployed, and no agent ran any SQL.** Nothing here has been clicked on real data (no live check of the item PreviewPanel or an attachment PDF with a real item).
+
+## What was built
+
+- **Migration `supabase/migrations/2026-10-18-01-item-addons.sql`** (additive, re-runnable): tables `bom_template_addon_pieces` (piece sets per template, keyed by mode / kind / position, `note` <= 120 chars) and `estimation_item_addons` (the item's add-ons, including the `align` column: `'start'` / `'end'`, AO-13) with RLS. SQL test: `supabase/tests/item_addons_test.sql`, runner `.superpowers/sdd/2026-10-15-sliding2-addons/run-addons-tests.sh`.
+- **Libs:** `src/lib/addonModel.js` (layout, dims, piece-set defaults, validation, labels), `src/lib/addonExpand.js` (`expandAddons` -> attach units, merge overrides / sideButt / components / notes, glass, issues), `src/lib/addonSave.js` (`pieceSetsToRows`, `saveAddonPieces`, `saveItemAddons`, mm->m at 6 dp).
+- **Engine:** `bomEngine.js` honours `fixed_length_mm` on components; `partExpand.js` `expandParts({ overrides, sideButt })` (family / fixed-length override per position, AO-10) plus rule `minus` / `plusWidth` (S-1); both are byte-identical when absent.
+- **Costing:** `openingCost.js` `costOpening` returns `addonBoms` / `addonMerge` (attach units are priced in the same item, AO-3; merge add-ons grow the main unit's extras envelope); roll-ups widened to include them: `priceStructure.js`, `projectBom.js`, `src/pages/estimation/projectBomHelpers.js`, `providerCompare.js`; `reasonText.js` has the new issue texts; `openingPayload.js` never writes legacy add-on columns for new add-ons.
+- **Hooks:** `src/hooks/useItemAddons.js`, `src/hooks/useTemplateAddonPieces.js` (wired in `Estimation.jsx` and `BomTemplates.jsx`).
+- **Template UI (sliding_2 only):** `src/pages/bomTemplates/addon/` (`AddonBox`, `AddonZoom`, `AddonPieceTable`, `AddonEffects`, `addonView.js`, `addonTemplateGlue.js`) mounted in `PartEditor.jsx` / `PartPreview.jsx` / `PartSidePanel.jsx`; styles appended to `partEditor.css`; `partSave.js` saves the piece sets with the template. Golden render fixtures `partEditor-sliding2*.html` pin the editor without add-ons.
+- **Item form:** `src/pages/estimation/ItemAddons.jsx`, `itemSave.js` (`addonSavePlan` refuses to write while the saved list is loading or failed, so it can never wipe rows), `itemForm.js` (`addons`, `convertLegacyAddon`, AO-7 validation), `ItemModal.jsx`, `useItemModel.js`, `ItemCostSummary.jsx` (one line per add-on).
+- **Drawings / signature / attachments:** `partPreviewSvg.js` `partSvgString({ addons })` and `partViewBox` (shared outline, separate attach frame, moved dimension lines, "รวม W x H มม."), `PreviewPanel.jsx`, `itemPreviewSignature.js` `addonSignature` (so a drawing goes stale when add-ons change). The no-add-on drawing is still byte-identical (sha256 pin).
+- **sliding_2 options (S-1):** `src/lib/layouts/sliding_2.js` + `layoutRegistry.js` + `projectDefaults.js`: inputs `door`, `one_fixed`, `fixed_side`; new hardware defaults; position ธรณีกันบานเลื่อน (sill guard).
+
+## SQL — the owner runs these (agents never ran any), one command per message, both BEFORE the code deploy
+
+Order matters: **the sliding_2 options make every sliding_2 template save write `bom_templates.layout_params`, a column created by `2026-10-17-01-layouts-all-types.sql`. The code must not ship before 2026-10-17-01 is applied**, or every sliding_2 template save fails. (Project notes saying that branch's migrations are already on CHANG were not checked live; the dry-run below shows the truth.) The two migrations are otherwise independent of each other.
+
+1. `! bash .superpowers/sdd/2026-10-13-part-editor-layouts-all-types/run-layouts-tests.sh` (dry-run; expect `LAYOUTS TESTS PASSED`, `applied = 0, leftover = 0`)
+2. `npx supabase db query --project-ref kntspldhvcjeaubtqtkn --linked=false -f supabase/migrations/2026-10-17-01-layouts-all-types.sql`
+3. `! bash .superpowers/sdd/2026-10-15-sliding2-addons/run-addons-tests.sh` (dry-run; expect `ADDONS TESTS PASSED`, `leftover = 0`)
+4. `npx supabase db query --project-ref kntspldhvcjeaubtqtkn --linked=false -f supabase/migrations/2026-10-18-01-item-addons.sql`
+
+Then deploy only per `.claude/skills/chang-ship/SKILL.md`. The `align` column sits inside `CREATE TABLE IF NOT EXISTS`: on a database where the table already exists without it, add `ALTER TABLE estimation_item_addons ADD COLUMN IF NOT EXISTS align ...` before any re-run (see deferred minors).
+
+## Owner click-through list (nothing has been clicked on real data)
+
+1. Template editor: เปิด template ชนิด sliding_2 -> ในกล่องช่องแสงกด "+ เพิ่มช่องแสง" -> เลือก ร่วมวงกบ, ตำแหน่งบน -> คลิกที่ช่องแสงนั้นให้เปิดภาพขยาย -> ที่แถว ext กำหนดโปรไฟล์ กล่องร่องวิ่งยาว ให้ เฟรมบานหลักข้างช่องแสง -> ในตารางต้องเห็น เฟรมข้าง ยาว 1600 และหมายเหตุ ตบเรียบ -> เพิ่มช่องแสงแบบ แยกวงกบ อีกอัน -> บันทึก template -> ปิดแล้วเปิดใหม่ ค่าที่แก้ต้องยังอยู่ (หมายเหตุ: หน้านี้ต้อง reload หน้าหลังบันทึกชุดชิ้นส่วนก่อนหน้า Estimation จะเห็นชุดใหม่).
+2. Item form: เปิดรายการที่ใช้ template นั้น -> เพิ่มช่องแสงแบบเดียวกันสองอัน -> ดูบรรทัดต้นทุน (แต่ละช่องแสงมีบรรทัดของตัวเอง ยอดรวมต้องเท่ากับผลรวมบรรทัด) และภาพวาด (โครงร่วมกัน, กรอบแยก, ขนาด "รวม ... มม.") -> บันทึก -> เปิดซ้ำ ต้องได้ช่องแสงครบ -> ออกใบแนบ PDF (attachment) ดูว่าภาพมีช่องแสงและไม่ขึ้น "ภาพเก่า".
+3. รายการเก่าที่มีชุดต่อเติมแบบเดิม (legacy add-on): กด "แปลงเป็นช่องแสงแบบใหม่" -> ต้องได้ช่องแสงแบบแยกวงกบ 1 อัน ขนาดตรงกับของเดิม และชุดเดิมถูกล้าง; ถ้ามีทั้งเก่าและใหม่พร้อมกันต้องบันทึกไม่ได้ (AO-7).
+4. Type form: เลือก ประตู + เลื่อน 1 ฟิก 1 (และเลือกด้านฟิก) -> template ใหม่ต้องมีแถวฮาร์ดแวร์ ลูกล้อ 2 / มือจับล็อค 1 / กุญแจ 1 ต่อชุด และชิ้นส่วน ธรณีกันบานเลื่อน; เลื่อนสวน (ค่าเริ่มต้น) ต้องได้เหมือนเดิม.
+
+## Data the owner must enter before the numbers are real
+
+Defaults are data, not blockers (AO-12); any family left blank prints `no_profile_family` and is not priced.
+- **Profiles per piece set** (open the zoom of each add-on kind/side): กล่องร่องวิ่งยาว (ext substitution), เฟรมข้างไม่ติดกล่อง (overlay side), คิ้วเท (bead on a top add-on), เฟรมด้านไกล (far frame), ซอย (mullion for multi-row / multi-column glass).
+- **Butt distances** of every family used in those sets, including กล่องร่องวิ่งยาว (the sash deduction reads it, AO-10) and ซอย (divider qty > 0 on left/right uses it, AO-2).
+- **ธรณีกันบานเลื่อน family** and the **width of เสากุญแจ** (the sill-guard length uses `w[เสากุญแจ]`).
+
+## Rulings made in this arc (owner may overturn; the "if wrong" cost is in brackets)
+
+From the plan:
+- **AO-1** Merge add-on: the main frame's far member keeps its length; the two members beside the add-on are cut once at the overall length via an override, no extra bar. [piece lengths; data/override fix]
+- **AO-2** With a merge add-on on side S and a divider row qty > 0, the sash deduction on S uses the divider's butt distance; divider qty 0 leaves it unchanged. [sash deduction on left/right; data]
+- **AO-3** Attach add-ons are priced inside the same item and drawn in the same attachment, using the main template's rates (waste, labour, silicone, felt) and the item's infill; no hardware rows. [attach price slightly off; rates are per template]
+- **AO-5** Limits: <= 6 add-ons per item, rows <= 6, cols <= 12, len/thick in (0, 20] m. [constants]
+- **AO-7** An item with a legacy add-on cannot also have new ones; legacy wins in costing with `addon_conflict`; the form offers แปลงเป็นช่องแสงแบบใหม่. [one form rule]
+- **AO-9** (owner) Sliding top/bottom merge: the main side profile is substituted (เฟรมข้างติดกล่อง -> กล่องร่องวิ่งยาว) and cut at `th`; the add-on gets 2 overlay side pieces; no divider; the main's facing member stays with a machining note (ตบเรียบ / ตบร่อง); a top add-on adds a bead (คิ้วเท). Piece sets are keyed by (mode, kind, position); left/right defaults follow the spec. [piece-set defaults; data]
+- **AO-10** A merge `ext` row with a family means substitution of the main position's line 0; the substituted family's butt distance feeds other pieces' automatic deductions; family null keeps the main's. [deductions; data]
+- **AO-11** Per-piece machining notes (<= 120 chars) show in the effects table and as a bracket suffix on the BOM `role_name`; never change a price. [cosmetic]
+- **AO-12** Open questions are editable defaults: overlay side length `h`, bead length `len - 2*b[overlay side]`, bottom add-on bead qty 0, far frame `len - 2*b[overlay side]` family null, awning add-ons = fixed pieces (no sash pieces yet). [data edits]
+- **AO-13** (owner, item-form mockup) Add-ons are placed flush with one end of the whole stack (เสมอบน/ล่าง, เสมอซ้าย/ขวา) via `align`; `offset_mm` stays as an optional shift, hidden in the item form. [one column + one select, default 'start']
+- **S-1** (owner 2026-10-14/15) sliding_2 inputs `door`, `one_fixed` (0 เลื่อนสวน / 1 เลื่อน 1 ฟิก 1), `fixed_side`; hardware defaults ลูกล้อ `4 - 2*one_fixed`, มือจับล็อค `2 - one_fixed`, กุญแจ `door*(2 - one_fixed)`, all per unit; new position ธรณีกันบานเลื่อน; the `sliding_1_fixed_1` draft is folded in. [defaults for new templates only]
+
+From the ledger (controller rulings):
+- .superpowers is not git-ignored in this worktree; ledger / briefs stay uncommitted. [stray scratch files in a commit, trivially reverted]
+- Task 3: `ext` length = envelope x factor - deduction (other pieces are (ref - deduction) x factor); keep as the brief says. [an ext factor other than 1 gives a slightly different length; data-fixable]
+- Task 4: mm -> m is mm/1000 rounded to 6 dp (no integer rounding of mm), so 1723.8 -> 1.7238. [none]
+- Task 5: roll-ups widened to sum attach units (otherwise dropped). [a roll-up double counts; caught by review]
+- Task 5: attach units are frames and count in `openingExtras` units; merge add-ons grow the main unit's envelope to tw x th. [sealant / fixing-point lines over or under by the add-on frame]
+- Task 6: the add-on UI is gated to sliding_2 (other kinds' piece defaults are spec-only, unreconciled with Excel). [a one-line gate change]
+- Task 6b: add-ons on the perpendicular axis count in the stack for `checkRange` (consistent with the drawing); `align` kept when the position changes. [range warnings]
+- Task 7: legacy AddonFields shown only for items that already have a legacy add-on on part-editor templates (new items use the new add-ons). [owner can still create legacy add-ons on flat templates]
+- Task 9: the frozen `partModel.test.js` params expectations were narrowly edited (the freeze protects pieces / lines / ends / expand / drawing, not the params object), with a new test proving the snapshot minus params is unchanged. [params-shape regression on sliding_2 templates saved before the options; omit-when-absent keeps old rows loading]
+- Task 9: `sill_guard` sits on the frame part, 1 piece per unit (the brief's `part: 'sash'` was a slip); the drawing keeps both slide arrows under เลื่อน 1 ฟิก 1. [a drawing detail]
+- Also: `addon_not_loaded` shows on every layout_kind item with a load error (honest: cannot know which have add-ons); items without an id are exempt.
+
+## Deferred / not built
+
+- Type picker wizard, reference uploads, clone of add-on sets/items.
+- Awning add-on sash pieces (awning add-ons cost as fixed; the form notes "ชนิดกระทุ้งตอนนี้คิดเหมือนติดตาย").
+- Left/right profile rulings for merge add-ons (defaults follow the spec; owner rulings pending).
+- Bead on bottom add-ons (qty 0 by default).
+- Add-on UI gated to sliding_2 (other layout kinds not yet).
+- Drawing arrows under เลื่อน 1 ฟิก 1 (both arrows drawn, `fixed_side` does not affect the picture); drawing overrides (ext lengths, family changes) are not shown.
+- Estimation page does not reload piece sets after saving them in the editor (reload the page).
+- The part editor's deduction field (`lineDeductions().pre`) omits the sill guard's after-factor term (total and ที่มา are correct).
+- Migration `align` inside `CREATE TABLE IF NOT EXISTS` needs `ADD COLUMN IF NOT EXISTS align` before any re-run on a database where the table already exists.
+- Hardware ลูกล้อ is now per unit (fixed expression); it no longer follows an edited sash count on new templates.
+- The wording differs from the mockup: ช่องแสง / ร่วมวงกบ / แยกวงกบ vs Add-on / มีผลกับ type หลัก / แปะเพิ่ม.
+
+## Deferred minors (complete, one line each)
+
+- T1: SQL test 5 re-runs a pasted copy of the DO block instead of the migration file (could drift).
+- T1: reject cases assert SQLSTATE only, not the constraint name.
+- T2: `pieceQty` returns null for rule 'fixed' with `qty_fixed` null (expander coerces with `Number()||0`).
+- T2: offset message wording; `refValue` of an unknown ref is 0; thin test edges (offset layout, left main_facing note null).
+- T3: NaN can reach `merge.overrides.lengthMm` on malformed add-on dims (contained: partExpand drops non-finite, `addon_out_of_range` raised); add a `Number.isFinite` guard.
+- T3: null `deduction_mm` on a row is silently 0 (`validatePieceRows` rejects < 0 only).
+- T3: attach glass butt fallback 0 without an issue when frame_side qty is 0; ext glass-butt lookup ignores ext qty; fixture built at describe time.
+- T3: a family override does not flow through `familyFrom` chains (sliding_n middle sashes); sliding_2 unaffected, matters for the per-type rollout.
+- T4: `saveAddonPieces` inserts rows as passed (callers must use `pieceSetsToRows`); `pieceRowsToSets` strips instead of whitelists.
+- T4: hooks return a fresh `{}` each render while loading (use a module-level EMPTY); `useTemplateAddonPieces` has no refetch.
+- T5: refetch may flash plain totals if `useQuery` clears data on refetch (check after Task 7's refetch).
+- T5: conflict test relative; attach units reuse the main template's grid / labour / silicone / felt rates.
+- T5: `mainFrameUnit` envelope can be NaN on bad merge dims (add a finite fallback to plain size); envelope includes flagged merge add-ons.
+- T6: inside-view zoom not mirrored (mockup neither); qty-0 pieces not drawn; effects table 3 columns vs 4.
+- T6: unknown ref shows the first option; delete closes the zoom; glue tests written after the code.
+- T6: load-failed text may show twice in the callout (LOAD_FAILED + saveError).
+- T6b: shuffle test mostly skipped by `continue`; `checkRange` counts attach add-ons in the perpendicular stack (kept).
+- T6b: migration `align` column inside `CREATE TABLE IF NOT EXISTS` has no re-run note (the final fix wave adds `ADD COLUMN IF NOT EXISTS align` + comment).
+- T7: default new add-on position บน vs mockup ล่าง; "ใหม่" tag / box styling; range warning wording; merge add-on shown as one glass line (agreed).
+- T7: ItemModal smoke add-on test does not assert absence of `undefined`; snapshot / signature ignored add-ons until Task 8 (done there).
+- T7: `addonSavePlan` `loading` arg never passed by ItemModal (page maps loading to an undefined map); no component-level test of the effect-driven recovery path.
+- T8: no garbage-add-on test for `partSvgString`; inside-view mirror test asserts only the viewBox.
+- T8: `addonGeometry` computed twice per render; `AO_NUM` vs `drawableAddons` coerce negatives differently (signature over-sensitive).
+- T9: stale frozen-test title ("plus params: {}"); editor deduction field omits the sill guard after-factor term.
+- T9: 2026-10-17-01 must precede the deploy (stated above); ลูกล้อ per unit no longer follows an edited sash count; drawing keeps both arrows under เลื่อน 1 ฟิก 1.
