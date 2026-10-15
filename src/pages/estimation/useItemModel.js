@@ -17,7 +17,7 @@ import {
 } from './itemForm.js'
 
 // The live item's stand-in id: costOpening reads inline add-ons from ctx.itemAddonsByOpening[item.id], so the form's
-// add-ons (not the saved ones) are costed under this key. Only the cost uses it; the drawing and snapshot are unchanged.
+// add-ons (not the saved ones) are costed under this key. The drawing (part.addons) and the snapshot take live.addons directly.
 const LIVE_ID = '__item_form__'
 
 const optionsOf = rows => rows.map(r => ({ value: r.id, label: r.name + (r.active === false ? ' (ปิดใช้งาน)' : '') }))
@@ -48,7 +48,8 @@ export function useItemModel({ form, path, addonTypeId, project, ctx, templates,
     // a layout_kind template without add-on is drawn from its part model (the same drawing the saved snapshot uses)
     const partCtx = inputs ? partPreviewCtx(ctx, template, resolved, item) : null
     const partModel = partCtx ? partPreviewModel(item, template, addonTemplate, partCtx) : null
-    const part = partModel ? { model: partModel, buttOf: partCtx.buttOf, widthOf: partCtx.widthOf, widthMm: Math.round(item.width_m * 1e6) / 1e3, heightMm: Math.round(item.height_m * 1e6) / 1e3 } : null
+    // the drawing shows the form's live add-ons (the same list the saved snapshot draws and signs, see ItemModal)
+    const part = partModel ? { model: partModel, buttOf: partCtx.buttOf, widthOf: partCtx.widthOf, widthMm: Math.round(item.width_m * 1e6) / 1e3, heightMm: Math.round(item.height_m * 1e6) / 1e3, addons: live.addons, overrides: partCtx.overrides || null } : null
     // the layout's item inputs under W / H (and whether the preview cycles curtain-wall cells)
     const layoutInputs = template && template.layout_kind ? itemLayoutInputs((ctx.partModelByTemplate || {})[template.id] || null, form.layout_params) : null
     const labels = template && cost ? partLabels({ components: (ctx.componentsByTemplate || {})[template.id], joints: (ctx.jointsByTemplate || {})[template.id], bom: cost.bom, index }) : null

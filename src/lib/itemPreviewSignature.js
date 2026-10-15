@@ -93,10 +93,24 @@ function partFingerprint(model, partCtx) {
 // Signature of everything that changes the saved drawing, from the row's values + both templates + frame widths.
 // partCtx (optional): when the item is drawn from a part model (partPreviewModel) its fingerprint is appended; the legacy
 // signature string is unchanged otherwise.
+// partCtx.addons (inline add-ons, mm, the list the drawing draws) append addonSignature(...) when non-empty.
 export function itemPreviewSignature(item, template, addonTemplate, resolved, partCtx) {
   const legacy = legacySignature(item, template, addonTemplate, resolved)
   const model = partPreviewModel(item, template, addonTemplate, partCtx)
-  return model ? `${legacy}|part:${partFingerprint(model, partCtx)}` : legacy
+  return model ? `${legacy}|part:${partFingerprint(model, partCtx)}${addonSignature(partCtx.addons)}` : legacy
+}
+
+// The inline add-ons' part of the signature: '' for none, else '|ao:' + JSON of the list with exactly the drawn fields in
+// a fixed key order (numbers as numbers; align defaults to 'start', offset to 0, as layoutAddons reads them). The ONE
+// helper both the item form (snapshotFor, live add-ons) and the items table (currentPreviewSigs, saved add-ons) sign with.
+const AO_NUM = v => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Number(v) : null)
+export function addonSignature(addons) {
+  if (!Array.isArray(addons) || !addons.length) return ''
+  return '|ao:' + JSON.stringify(addons.map(a => ({
+    mode: a?.mode ?? null, kind: a?.kind ?? null, position: a?.position ?? null,
+    len_mm: AO_NUM(a?.len_mm), thick_mm: AO_NUM(a?.thick_mm), offset_mm: AO_NUM(a?.offset_mm) ?? 0,
+    align: a?.align === 'end' ? 'end' : 'start', rows: AO_NUM(a?.rows), cols: AO_NUM(a?.cols),
+  })))
 }
 
 function legacySignature(item, template, addonTemplate, resolved) {
@@ -117,8 +131,8 @@ function legacySignature(item, template, addonTemplate, resolved) {
 
 // The saved snapshot: always the double-line drawing, never part labels. views: { out, in } booleans.
 // Returns { out, in, sig } for buildOpeningPayload, or null when nothing can (or should) be saved.
-// partCtx (optional, { model, buttOf, widthOf? }): a layout_kind template without add-on is drawn by partSvgString
-// (the part editor's overview); everything else takes the legacy path exactly as before.
+// partCtx (optional, { model, buttOf, widthOf?, addons?, overrides? }): a layout_kind template without (legacy) add-on is drawn
+// by partSvgString (the part editor's overview, with its inline add-ons); everything else takes the legacy path as before.
 export function snapshotPreviews(item, template, addonTemplate, resolved, views = { out: true, in: true }, partCtx = null) {
   if (!views || (!views.out && !views.in)) return null
   const model = partPreviewModel(item, template, addonTemplate, partCtx)
@@ -127,7 +141,7 @@ export function snapshotPreviews(item, template, addonTemplate, resolved, views 
     const w = positive(it.width_m), h = positive(it.height_m)
     if (!w || !h) return null
     const mm = m => Math.round(m * 1e6) / 1e3
-    const draw = view => partSvgString({ model, widthMm: mm(w), heightMm: mm(h), view, buttOf: partCtx.buttOf, widthOf: partCtx.widthOf, style: 'double' })
+    const draw = view => partSvgString({ model, widthMm: mm(w), heightMm: mm(h), view, buttOf: partCtx.buttOf, widthOf: partCtx.widthOf, style: 'double', addons: partCtx.addons || null, overrides: partCtx.overrides || null })
     const out = views.out ? draw('out') : null
     const inn = views.in ? draw('in') : null
     if (!out && !inn) return null
@@ -147,11 +161,15 @@ export function snapshotPreviews(item, template, addonTemplate, resolved, views 
 // The snapshot of a row as the item form saves it (the row = the payload, metres): frames from the series and
 // thickness the row resolves to. ctx = the costOpening context (templatesById, index, packageItems, components, joints,
 // partModelByTemplate — a layout_kind template is drawn from its part model, see partPreviewCtx).
-export function snapshotFor(row, { project, ctx, views }) {
+// addons (optional, mm): the inline add-ons to draw and sign — the item form passes its live ones (the payload has no
+// id yet); omitted, a saved row takes its saved ones from ctx.itemAddonsByOpening[row.id] (partPreviewCtx / addonPlan),
+// exactly what currentPreviewSigs signs.
+export function snapshotFor(row, { project, ctx, views, addons }) {
   const tpl = ctx.templatesById[row.template_id] || null
   if (!tpl) return null
   const atpl = row.addon_template_id ? ctx.templatesById[row.addon_template_id] || null : null
   const r = resolveItemInputs(row, project, tpl, ctx.index.types, ctx.packageItems)
   const frames = previewFrames({ template: tpl, addonTemplate: atpl, ctx, seriesId: r.series_id, thicknessMm: r.thickness_mm })
-  return snapshotPreviews(row, tpl, atpl, frames, views, partPreviewCtx(ctx, tpl, r, row))
+  const partCtx = partPreviewCtx(ctx, tpl, r, row)
+  return snapshotPreviews(row, tpl, atpl, frames, views, partCtx && addons !== undefined ? { ...partCtx, addons: Array.isArray(addons) ? addons : [] } : partCtx)
 }

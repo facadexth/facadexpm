@@ -22,6 +22,7 @@ import { glassSvg, pieceSvg, symbolSvg, markSvg, dimSvg as mmDimSvg } from './pa
 import { LAYOUTS } from './partModel.js'
 import { expandParts } from './partExpand.js'
 import { computeComponentLength } from './bomEngine.js'
+import { layoutAddons } from './addonModel.js'
 
 const INK = '#1f2328'
 const SASH_INK = '#2f4f6f'
@@ -95,12 +96,13 @@ export function cutLengthsByPiece({ model, buttOf, widthOf, widthMm, heightMm, e
  * @returns {string|null} null when there is nothing to draw (no drawable model or no size).
  */
 // eslint-disable-next-line no-unused-vars
-export function partSvgString({ model, widthMm, heightMm, view = 'out', buttOf, widthOf, style = 'double', lengthsByPiece = null } = {}) {
+export function partSvgString({ model, widthMm, heightMm, view = 'out', buttOf, widthOf, style = 'double', lengthsByPiece = null, addons = null, overrides = null } = {}) {
   const W = Number(widthMm), H = Number(heightMm)
   if (!(W > 0) || !(H > 0)) return null
   const ov = overviewSpecs({ model, widthMm: W, heightMm: H, view: view === 'in' ? 'in' : 'out', widthOf })
   if (!ov.pieces.length) return null
-  if (ov.box.units === 'mm') return mmSvg(ov, STYLES.includes(style) ? style : 'double', lengthLookup(lengthsByPiece))
+  const ao = addonGeometry(ov.box, addons, W, H, view === 'in' ? 'in' : 'out')
+  if (ov.box.units === 'mm') return mmSvg(ov, STYLES.includes(style) ? style : 'double', lengthLookup(lengthsByPiece), ao)
   const fills = FILL[style] || FILL.double
   const b = ov.box
 
@@ -116,6 +118,15 @@ export function partSvgString({ model, widthMm, heightMm, view = 'out', buttOf, 
     if (p.role === 'extra') parts.push(rect(p.x, p.y, p.w, p.h, `fill="${EXTRA}" stroke="none"`))
     else parts.push(rect(p.x, p.y, p.w, p.h, `fill="${style === 'cad' ? 'none' : sash ? fills.sash : fills.frame}" stroke="${sash ? SASH_INK : INK}" stroke-width="1.2"`))
     if (style === 'lengths' && p.role === 'main') parts.push(lengthText(p, ov.box.scale))
+  }
+  if (ao) {
+    const t = Math.max(side, top, bottom) || null
+    parts.push(addonSvg(ao, { t, sw: 1.2, ns: '', style, fills, outline: 2 }))
+    for (const d of ov.dims) parts.push(dimSvg(shiftDim(d, b, ao.ext), metres(d.value)))
+    const vx = b.frameX - MARGIN - ao.ext.left, vy = b.frameY - MARGIN - ao.ext.top
+    const vw = b.frameW + MARGIN + DIM_ROOM + ao.ext.left + ao.ext.right, vh = b.frameH + MARGIN + DIM_ROOM + ao.ext.top + ao.ext.bottom + AO_TEXT_ROOM
+    parts.push(`<text x="${n2(vx + vw / 2)}" y="${n2(vy + vh - 6)}" font-size="11" fill="${DIM}" text-anchor="middle">${overallText(ao)}</text>`)
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${n2(vw)}" height="${n2(vh)}" viewBox="${n2(vx)} ${n2(vy)} ${n2(vw)} ${n2(vh)}">${parts.join('')}</svg>`
   }
   for (const d of ov.dims) parts.push(dimSvg(d, metres(d.value)))
 
@@ -139,14 +150,134 @@ export function lengthLookup(lengths) {
 }
 
 // Every other layout kind: the millimetre overview, drawn back to front (glass, pieces, symbols, hardware, dimensions).
-function mmSvg(ov, style, lengthOf) {
+// ao: addonGeometry(...) or null (no add-ons: the frozen output).
+function mmSvg(ov, style, lengthOf, ao = null) {
   const b = ov.box, sw = b.sw
   const parts = []
   for (const g of ov.glass) parts.push(glassSvg(g, style, sw))
   for (const p of ov.pieces) parts.push(pieceSvg(p, style, sw, p.role === 'main' ? lengthOf(p.key, p.piece) : null))
   for (const s of ov.symbols) parts.push(symbolSvg(s, sw))
   for (const k of ov.hardwareMarks) parts.push(markSvg(k, sw))
-  for (const d of ov.dims) parts.push(mmDimSvg(d, sw))
+  if (ao) {
+    const frames = ov.pieces.filter(p => p.role === 'main' && FRAME_PART.has(p.part)).map(p => Math.min(p.w, p.h)).filter(v => v > 0)
+    parts.push(addonSvg(ao, { t: frames.length ? Math.min(...frames) : null, sw: 1.3, ns: ' vector-effect="non-scaling-stroke"', style, fills: style === 'solid' ? FILL.solid : FILL.double, mm: true, outline: 2 }))
+  }
+  for (const d of ov.dims) parts.push(mmDimSvg(ao ? shiftDim(d, b, ao.ext) : d, sw))
   const px = Math.min(420 / b.frameW, 300 / b.frameH)
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${n2(b.w * px)}" height="${n2(b.h * px)}" viewBox="${n2(b.x)} ${n2(b.y)} ${n2(b.w)} ${n2(b.h)}">${parts.join('')}</svg>`
+  const v = ao ? mmViewBox(b, ao) : b
+  if (ao) parts.push(`<text x="${n2(v.x + v.w / 2)}" y="${n2(v.y + v.h - sw * 4)}" font-size="${n2(sw * 8)}" fill="${DIM}" text-anchor="middle">${overallText(ao)}</text>`)
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${n2(v.w * px)}" height="${n2(v.h * px)}" viewBox="${n2(v.x)} ${n2(v.y)} ${n2(v.w)} ${n2(v.h)}">${parts.join('')}</svg>`
+}
+
+// ---------------------------------------------------------------- inline add-ons
+
+const AO_POSITIONS = ['top', 'bottom', 'left', 'right']
+const AO_TEXT_ROOM = 18      // px under the sliding_2 drawing for the overall size line
+const AO_MAX_GRID = 12       // grid bars drawn per direction
+const AO_SYM = '#2563eb'
+const FRAME_PART = new Set(['frame'])
+const MIRROR = { left: 'right', right: 'left', top: 'top', bottom: 'bottom' }
+const intIn = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.floor(Number(v)) || lo))
+
+// The drawable add-ons (numbers coerced; unknown mode / position or a non-positive size dropped), or [] for none.
+function drawableAddons(addons) {
+  if (!Array.isArray(addons)) return []
+  return addons.filter(a => a && typeof a === 'object' && (a.mode === 'merge' || a.mode === 'attach') && AO_POSITIONS.includes(a.position)
+    && Number(a.len_mm) > 0 && Number(a.thick_mm) > 0)
+    .map(a => ({
+      mode: a.mode, kind: a.kind === 'awning' ? 'awning' : 'fixed', position: a.position, len_mm: Number(a.len_mm), thick_mm: Number(a.thick_mm),
+      offset_mm: Number(a.offset_mm) > 0 ? Number(a.offset_mm) : 0, align: a.align === 'end' ? 'end' : 'start', rows: intIn(a.rows, 1, 6), cols: intIn(a.cols, 1, AO_MAX_GRID),
+    }))
+}
+
+// The add-on rectangles in the drawing's own units (box.scale per mm; mirrored for the inside view), the main frame box,
+// how far they reach past it on each side, the mm envelope and the main size. null when there is nothing to draw.
+function addonGeometry(box, addons, widthMm, heightMm, view) {
+  const list = drawableAddons(addons)
+  const sc = Number(box && box.scale) || 0
+  if (!list.length || !(sc > 0)) return null
+  const { rects, envelope } = layoutAddons({ widthMm, heightMm, addons: list })
+  const frame = { x: box.frameX, y: box.frameY, w: box.frameW, h: box.frameH }
+  const out = rects.filter(r => !r.main).map(r => {
+    const a = list[r.i], w = r.w * sc, h = r.h * sc
+    let x = frame.x + r.x * sc
+    if (view === 'in') x = 2 * frame.x + frame.w - x - w
+    return { a, side: view === 'in' ? MIRROR[a.position] : a.position, x, y: frame.y + r.y * sc, w, h }
+  })
+  const ext = {
+    left: Math.max(0, frame.x - Math.min(...out.map(r => r.x))),
+    top: Math.max(0, frame.y - Math.min(...out.map(r => r.y))),
+    right: Math.max(0, Math.max(...out.map(r => r.x + r.w)) - (frame.x + frame.w)),
+    bottom: Math.max(0, Math.max(...out.map(r => r.y + r.h)) - (frame.y + frame.h)),
+  }
+  return { rects: out, frame, ext, envelope, main: { w: widthMm, h: heightMm }, view }
+}
+
+// The millimetre drawing's viewBox grown by the add-ons (and the overall size line); the box's own without add-ons.
+// PreviewPanel lays the curtain-wall cell targets over the <img> in this same viewBox.
+export function partViewBox({ box, addons = null, widthMm, heightMm, view = 'out' }) {
+  const ao = addonGeometry(box, addons, Number(widthMm), Number(heightMm), view === 'in' ? 'in' : 'out')
+  return ao ? mmViewBox(box, ao) : { x: box.x, y: box.y, w: box.w, h: box.h }
+}
+function mmViewBox(b, ao) {
+  return { x: b.x - ao.ext.left, y: b.y - ao.ext.top, w: b.w + ao.ext.left + ao.ext.right, h: b.h + ao.ext.top + ao.ext.bottom + b.sw * 14 }
+}
+
+// A main dimension line outside the frame moves out past the add-ons on its side.
+function shiftDim(d, b, ext) {
+  const x0 = b.frameX, x1 = b.frameX + b.frameW, y0 = b.frameY, y1 = b.frameY + b.frameH
+  const dx = d.x1 >= x1 && d.x2 >= x1 ? ext.right : d.x1 <= x0 && d.x2 <= x0 ? -ext.left : 0
+  const dy = d.y1 >= y1 && d.y2 >= y1 ? ext.bottom : d.y1 <= y0 && d.y2 <= y0 ? -ext.top : 0
+  return dx || dy ? { ...d, x1: d.x1 + dx, x2: d.x2 + dx, y1: d.y1 + dy, y2: d.y2 + dy } : d
+}
+
+const overallText = ao => `รวม ${Math.round(ao.envelope.w)} × ${Math.round(ao.envelope.h)} มม.`
+
+// u: { t: frame bar thickness (drawing units) | null, sw: stroke width, ns: extra stroke attribute, style, fills, mm?, outline }
+function addonSvg(ao, u) {
+  const out = []
+  const cad = u.style === 'cad'
+  const bar = (x, y, w, h) => {
+    if (!(w > 0 && h > 0)) return
+    if (u.mm && u.style === 'solid') out.push(rect(x, y, w, h, `fill="${u.fills.frame}" stroke="none"`))
+    else out.push(rect(x, y, w, h, `fill="${cad ? 'none' : u.fills.frame}" stroke="${INK}" stroke-width="${u.sw}"${u.ns}`))
+  }
+  for (const r of ao.rects) {
+    const t = Math.min(u.t > 0 ? u.t : Math.min(r.w, r.h) * 0.07, Math.min(r.w, r.h) / 4)
+    // the sides with a frame bar: attach = all four; merge = all but the one against the main (its own frame member)
+    const facing = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' }[r.side]
+    const has = s => r.a.mode === 'attach' || s !== facing
+    const inner = {
+      x: r.x + (has('left') ? t : 0), y: r.y + (has('top') ? t : 0),
+      w: r.w - (has('left') ? t : 0) - (has('right') ? t : 0), h: r.h - (has('top') ? t : 0) - (has('bottom') ? t : 0),
+    }
+    out.push(rect(inner.x, inner.y, Math.max(0, inner.w), Math.max(0, inner.h), cad ? `fill="none" stroke="${DIM}" stroke-width="0.6"${u.ns}` : `fill="${GLASS}" stroke="none"`))
+    // verticals run through, horizontals sit between them
+    if (has('left')) bar(r.x, r.y, t, r.h)
+    if (has('right')) bar(r.x + r.w - t, r.y, t, r.h)
+    if (has('top')) bar(inner.x, r.y, inner.w, t)
+    if (has('bottom')) bar(inner.x, r.y + r.h - t, inner.w, t)
+    // grid: cols − 1 mullions, rows − 1 rails across the glass
+    const g = `stroke="${INK}" stroke-width="${u.sw}"${u.ns}`
+    const { cols, rows } = r.a
+    for (let i = 1; i < cols; i++) { const x = inner.x + (inner.w * i) / cols; out.push(`<line x1="${n2(x)}" y1="${n2(inner.y)}" x2="${n2(x)}" y2="${n2(inner.y + inner.h)}" ${g}/>`) }
+    for (let j = 1; j < rows; j++) { const y = inner.y + (inner.h * j) / rows; out.push(`<line x1="${n2(inner.x)}" y1="${n2(y)}" x2="${n2(inner.x + inner.w)}" y2="${n2(y)}" ${g}/>`) }
+    // awning: a V per pane, apex on the hinge (top); dashed from inside (it opens away from the viewer)
+    if (r.a.kind === 'awning') {
+      const dash = ao.view === 'in' ? ` stroke-dasharray="${n2(t * 0.6 || 4)} ${n2(t * 0.4 || 3)}"` : ''
+      for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+        const cw = inner.w / cols, ch = inner.h / rows, x0 = inner.x + cw * i, y0 = inner.y + ch * j
+        out.push(`<polyline points="${n2(x0)},${n2(y0 + ch)} ${n2(x0 + cw / 2)},${n2(y0)} ${n2(x0 + cw)},${n2(y0 + ch)}" fill="none" stroke="${AO_SYM}" stroke-width="${n2(u.sw * 0.7)}"${dash}${u.ns}/>`)
+      }
+    }
+  }
+  // one outer outline shared by the main unit and its merge add-ons (กรอบร่วม)
+  const merge = ao.rects.filter(r => r.a.mode === 'merge')
+  if (merge.length) {
+    const all = [ao.frame, ...merge]
+    const x0 = Math.min(...all.map(r => r.x)), y0 = Math.min(...all.map(r => r.y))
+    const x1 = Math.max(...all.map(r => r.x + r.w)), y1 = Math.max(...all.map(r => r.y + r.h))
+    out.push(rect(x0, y0, x1 - x0, y1 - y0, `fill="none" stroke="${INK}" stroke-width="${u.outline}"${u.ns}`))
+  }
+  return out.join('')
 }

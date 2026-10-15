@@ -1,14 +1,16 @@
 // src/pages/estimation/PreviewPanel.jsx
 // Live drawing of the item (mockup screen 2, right column): four styles (Ruling 11) and outside / inside view.
 // inputs = itemPreviewInputs(...) of the live item; labels = partLabels(...) for the "parts" style.
-// part = { model, buttOf, widthOf, widthMm, heightMm } for a layout_kind template without add-on (useItemModel): the part editor's
+// part = { model, buttOf, widthOf, widthMm, heightMm, addons?, overrides? } for a layout_kind template without legacy add-on
+// (useItemModel; addons = the form's live inline add-ons, drawn around the main unit with the overall size line): the part editor's
 // drawing (partSvgString, the same one the saved snapshot and the quotation attachment use) in double-line or solid only
 // for sliding_2; every other layout kind offers the four D14 styles (Task 10). onCell(r, c) (curtain wall): transparent
 // cell targets over the drawing, in the drawing's own mm viewBox, cycle the item's cells. hint: shown instead of the
 // drawing when the item's layout params are refused (folding 0 + 0).
 import { useState, useMemo } from 'react'
 import { buildFramePreview } from '../../lib/framePreview.js'
-import { partSvgString, cutLengthsByPiece } from '../../lib/partPreviewSvg.js'
+import { partSvgString, cutLengthsByPiece, partViewBox } from '../../lib/partPreviewSvg.js'
+import { layoutAddons, addonDims } from '../../lib/addonModel.js'
 import { overviewSpecs } from '../../lib/partGeometry.js'
 import { safeSvgDataUri } from '../../lib/attachmentPages.js'
 import PreviewSvg from './PreviewSvg.jsx'
@@ -35,8 +37,9 @@ function Chips({ items, value, onChange }) {
 // Click targets of the curtain-wall cells, laid over the <img> (same viewBox as partSvgString's mm drawing).
 function CellTargets({ part, view, onCell }) {
   const ov = overviewSpecs({ model: part.model, widthMm: part.widthMm, heightMm: part.heightMm, view, widthOf: part.widthOf })
-  const b = ov.box
   if (!ov.cells || !ov.cells.length) return null
+  // the drawing's viewBox grows with the add-ons; the cells keep their mm coordinates inside it
+  const b = partViewBox({ box: ov.box, addons: part.addons, widthMm: part.widthMm, heightMm: part.heightMm, view })
   return (
     <svg viewBox={`${r2(b.x)} ${r2(b.y)} ${r2(b.w)} ${r2(b.h)}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} aria-label="ช่องของผนัง (คลิกเพื่อเปลี่ยนชนิด)">
       {ov.cells.map(c => (
@@ -48,6 +51,16 @@ function CellTargets({ part, view, onCell }) {
       ))}
     </svg>
   )
+}
+
+// mockup v2 `dims` line under the drawing: "บานหลัก W × H · รวม tw × th · ช่องแสง 1: w × h · …" (mm); null without add-ons.
+export function addonDimsLine(part) {
+  const list = (part && part.addons) || []
+  if (!list.length) return null
+  const env = layoutAddons({ widthMm: part.widthMm, heightMm: part.heightMm, addons: list }).envelope
+  const r = n => Math.round(Number(n) || 0)
+  return [`บานหลัก ${r(part.widthMm)} × ${r(part.heightMm)}`, `รวม ${r(env.w)} × ${r(env.h)}`,
+    ...list.map((x, i) => { const d = addonDims(x); return `ช่องแสง ${i + 1}: ${r(d.w)} × ${r(d.h)}` })].join(' · ') + ' มม.'
 }
 
 export default function PreviewPanel({ inputs, labels, availability, addonPartial, part, onCell, hint }) {
@@ -63,6 +76,7 @@ export default function PreviewPanel({ inputs, labels, availability, addonPartia
   }, [inputs, part, view, style, labels])
 
   const a = inputs && inputs.addon
+  const dims = part && partSrc ? addonDimsLine(part) : null
   const caption = !inputs || !(preview || partSrc) ? null
     : a ? `ชุดหลัก ${mm(inputs.width_m)} × ${mm(inputs.height_m)} มม. + ของเพิ่มเติม ${mm(a.width_m)} × ${mm(a.height_m)} มม. (${POSITION[a.position] || 'บน'})`
       : `พื้นที่ ${(inputs.width_m * inputs.height_m).toFixed(2)} ตร.ม.`
@@ -84,6 +98,7 @@ export default function PreviewPanel({ inputs, labels, availability, addonPartia
         : preview
         ? <PreviewSvg preview={preview} style={style} label="ภาพตัวอย่างวงกบและบาน" />
         : <div style={{ color: 'var(--text3)', fontSize: 13, padding: 24, textAlign: 'center', border: '1px dashed var(--border)', borderRadius: 8 }}>เลือกประเภทและกรอกขนาดเพื่อดูภาพ</div>}
+      {dims && <div className="font-mono" data-testid="addon-dims" style={{ fontSize: 12, color: 'var(--text2)', textAlign: 'center' }}>{dims}</div>}
       {caption && <div className="font-mono" style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'center' }}>{caption}</div>}
       {style === 'parts' && preview && !labels && <div style={{ fontSize: 12, color: 'var(--text3)' }}>ยังบอกความยาวชิ้นส่วนไม่ได้ (เทมเพลตไม่มีเส้นวงกบตามกว้าง/สูง หรือยังคิดราคาไม่ได้)</div>}
       {style === 'parts' && preview && labels && <div style={{ fontSize: 12, color: 'var(--text3)' }}>ชิ้นที่ตัด 45° บอกความยาวด้านนอก</div>}

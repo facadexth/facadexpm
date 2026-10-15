@@ -166,6 +166,27 @@ describe('status + stale helpers', () => {
     const edited = { ...base, partModelByTemplate: { tP: setEndMode(model, 'frame_top', 0, 0, 0, 'through') } }
     expect(itemStatus(stored, cost, currentPreviewSigs({ items: [stored], costs: { o1: cost }, base: edited }).o1)).toBe('old_preview')
   })
+  it('inline add-ons: the table signs the saved add-ons exactly as the item form signed its live ones', () => {
+    const tp = { id: 'tP', type_id: 'tSlide', layout_kind: 'sliding_2', main_axis: 'horizontal' }
+    const model = startModel('sliding_2')
+    for (const k of Object.keys(model.lines)) model.lines[k][0].profile_family = 'box'
+    const addons = [
+      { mode: 'merge', kind: 'fixed', position: 'top', len_mm: 1800, thick_mm: 400, offset_mm: 0, align: 'start', rows: 1, cols: 3 },
+      { mode: 'attach', kind: 'awning', position: 'right', len_mm: 1200, thick_mm: 500, offset_mm: 0, align: 'end', rows: 2, cols: 1 },
+    ]
+    const base = { templatesById: { tP: tp }, index, componentsByTemplate: {}, jointsByTemplate: {}, packageItems: null, partModelByTemplate: { tP: model }, addonPiecesByTemplate: {} }
+    const payload = { template_id: 'tP', width_m: 1.8, height_m: 1.2, panel_count: 1, series_id: 's1', thickness_mm: 1.5 }
+    // item form: the payload has no id yet, its live add-ons are passed explicitly
+    const snap = snapshotFor(payload, { project: {}, ctx: base, views: { out: true, in: true }, addons })
+    expect(snap.sig).toContain('|ao:')
+    const stored = { ...payload, id: 'o1', width_m: '1.8', height_m: '1.2', preview_svg_out: snap.out, preview_svg_in: snap.in, preview_sig: snap.sig }
+    const cost = { unresolved: [], resolved: { series_id: 's1', thickness_mm: 1.5, sash_thickness_mm: null } }
+    const withSaved = { ...base, itemAddonsByOpening: { o1: addons.map(a => ({ ...a })) } }
+    expect(currentPreviewSigs({ items: [stored], costs: { o1: cost }, base: withSaved }).o1).toBe(snap.sig)
+    expect(itemStatus(stored, cost, currentPreviewSigs({ items: [stored], costs: { o1: cost }, base: withSaved }).o1)).toBe('ok')
+    const moved = { ...base, itemAddonsByOpening: { o1: [{ ...addons[0], thick_mm: 450 }, addons[1]] } }
+    expect(itemStatus(stored, cost, currentPreviewSigs({ items: [stored], costs: { o1: cost }, base: moved }).o1)).toBe('old_preview')
+  })
   it('add-on lines are folded into the BOM handed to listPriceChanges', () => {
     const m = bomsForStale({ a: { bom: { profileLines: [1], gridLines: [], hardwareLines: [], hardwareSetLines: [] }, addonBom: { profileLines: [2], gridLines: [], hardwareLines: [], hardwareSetLines: [] } }, b: null })
     expect(m.a.profileLines).toEqual([1, 2])

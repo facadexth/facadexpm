@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildCatalogIndex } from './aluCatalogPricing.js'
 import { emptyForm, buildOpeningPayload } from './openingPayload.js'
-import { frameFamily, previewFrames, itemPreviewInputs, itemPreviewSignature, snapshotPreviews, snapshotFor } from './itemPreviewSignature.js'
+import { frameFamily, previewFrames, itemPreviewInputs, itemPreviewSignature, snapshotPreviews, snapshotFor, addonSignature } from './itemPreviewSignature.js'
 import golden from './itemPreviewSignature.golden.json'
 import { partSvgString } from './partPreviewSvg.js'
 import { startModel, setEndMode, updateEnd } from './partModel.js'
@@ -213,5 +213,54 @@ describe('"เสร็จแล้ว" ticks do not make saved drawings stale (
     expect(sig({ ...m, done: ['frame', 'sash'] })).toBe(sig(m))
     expect(sig({ ...m, done: ['sash'] })).toBe(sig({ ...m, done: [] }))
     expect(sig(setEndMode(m, 'frame_top', 0, 0, 0, 'through'))).not.toBe(sig(m))
+  })
+})
+
+// ---- inline add-ons (ช่องแสง) in the drawing and the signature -------------------------------------------------
+describe('inline add-ons in the saved snapshot and its signature', () => {
+  const tp = { id: 'tPart', main_axis: 'horizontal', preview_kind: 'slide', grid_row_weights: [1], layout_kind: 'sliding_2' }
+  const model = (() => {
+    const m = startModel('sliding_2')
+    for (const k of Object.keys(m.lines)) m.lines[k][0].profile_family = k.startsWith('frame') ? 'FR' : 'SA'
+    return m
+  })()
+  const row = { template_id: 'tPart', width_m: 1.8, height_m: 1.2, panel_count: 2 }
+  const top = { mode: 'merge', kind: 'fixed', position: 'top', len_mm: 1800, thick_mm: 400, offset_mm: 0, align: 'start', rows: 1, cols: 3 }
+  const sig = (addons, extra = {}) => itemPreviewSignature(row, tp, null, { frame_mm: null }, { model, buttOf: () => 20, addons, ...extra })
+
+  it('no add-ons ⇒ the signature string is unchanged; with add-ons it ends in |ao: + the list in fixed key order', () => {
+    const plain = itemPreviewSignature(row, tp, null, { frame_mm: null }, { model, buttOf: () => 20 })
+    expect(sig([])).toBe(plain)
+    expect(sig(null)).toBe(plain)
+    expect(addonSignature([])).toBe('')
+    expect(addonSignature(null)).toBe('')
+    expect(sig([top])).toBe(plain + addonSignature([top]))
+    expect(addonSignature([{ cols: '3', rows: 1, align: 'start', offset_mm: 0, thick_mm: '400', len_mm: 1800, position: 'top', kind: 'fixed', mode: 'merge', id: 'x' }]))
+      .toBe('|ao:[{"mode":"merge","kind":"fixed","position":"top","len_mm":1800,"thick_mm":400,"offset_mm":0,"align":"start","rows":1,"cols":3}]')
+  })
+  it('changes with every add-on field, not with an unrelated catalogue value (butt distance)', () => {
+    const base = sig([top])
+    const changes = { mode: 'attach', kind: 'awning', position: 'bottom', len_mm: 1700, thick_mm: 450, offset_mm: 10, align: 'end', rows: 2, cols: 4 }
+    for (const [k, v] of Object.entries(changes)) expect(sig([{ ...top, [k]: v }])).not.toBe(base)
+    expect(sig([top, top])).not.toBe(base)
+    expect(sig([top], { buttOf: () => 33 })).toBe(base)
+  })
+  it('snapshotPreviews draws the add-ons from partCtx; snapshotFor takes them explicitly (item form)', () => {
+    const partCtx = { model, buttOf: () => 20, addons: [top] }
+    const snap = snapshotPreviews(row, tp, null, { frame_mm: null }, undefined, partCtx)
+    expect(snap.out).toBe(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'out', addons: [top] }))
+    expect(snap.in).toContain('1800 × 1600')
+    expect(snap.sig).toContain('|ao:')
+    const c = { ...ctx, templatesById: { tPart: tp }, packageItems: null, partModelByTemplate: { tPart: model } }
+    c.index = { ...index, types: {} }
+    const formSnap = snapshotFor(row, { project: {}, ctx: c, views: { out: true, in: true }, addons: [top] })
+    expect(formSnap.out).toBe(snap.out)
+    expect(formSnap.sig).toBe(snap.sig)
+    // the resave path: a saved item (id) takes its saved add-ons from the context
+    const saved = snapshotFor({ ...row, id: 'o1' }, { project: {}, ctx: { ...c, itemAddonsByOpening: { o1: [top] }, addonPiecesByTemplate: {} }, views: { out: true, in: true } })
+    expect(saved.out).toBe(snap.out)
+    expect(saved.sig).toBe(snap.sig)
+    // a legacy (non layout_kind) template never draws or signs inline add-ons
+    expect(snapshotFor({ ...row, template_id: 'tSlide' }, { project: {}, ctx: { ...c, templatesById: { tSlide: slide } }, views: { out: true, in: true }, addons: [top] }).sig).not.toContain('|ao:')
   })
 })

@@ -209,3 +209,62 @@ describe('Task 8 — partSvgString for every layout kind', () => {
     expect(() => partSvgString({ model: m, widthMm: 3000, heightMm: 2400 })).not.toThrow()
   })
 })
+
+// ---------------------------------------------------------------- inline add-ons (ช่องแสง) on the drawing
+describe('partSvgString with inline add-ons', () => {
+  const ao = (o) => ({ mode: 'merge', kind: 'fixed', position: 'top', len_mm: 1800, thick_mm: 400, offset_mm: 0, align: 'start', rows: 1, cols: 3, ...o })
+  const topMerge = ao({})
+  const rightAttach = ao({ mode: 'attach', position: 'right', len_mm: 1200, thick_mm: 500, rows: 2, cols: 1 })
+  const draw = (addons, extra = {}) => partSvgString({ model, widthMm: 1800, heightMm: 1200, addons, ...extra })
+  const viewBoxOf = (s) => s.match(/viewBox="([-\d. ]+)"/)[1].split(' ').map(Number)
+
+  it('absent / empty add-ons leave the string byte-identical', () => {
+    for (const view of ['out', 'in']) {
+      const plain = partSvgString({ model, widthMm: 1800, heightMm: 1200, view })
+      expect(draw(null, { view })).toBe(plain)
+      expect(draw([], { view })).toBe(plain)
+      expect(draw(undefined, { view, overrides: {} })).toBe(plain)
+    }
+  })
+  it('top merge: both views safe, the overall size 1800 × 1600, viewBox grows upward, main pieces unchanged', () => {
+    const plain = partSvgString({ model, widthMm: 1800, heightMm: 1200 })
+    for (const view of ['out', 'in']) {
+      const s = draw([topMerge], { view })
+      expect(safeSvgDataUri(s)).not.toBeNull()
+      expect(s).toContain('1800 × 1600')
+      expect(s).not.toMatch(/NaN|undefined|Infinity|<style|<script|marker|\son[a-z]+=/i)
+      expect(s.match(/<(\w+)/g).map((t) => t.slice(1)).every((t) => ['svg', 'g', 'rect', 'line', 'text', 'polyline'].includes(t))).toBe(true)
+    }
+    const s = draw([topMerge])
+    const [, vy] = viewBoxOf(s), [, py] = viewBoxOf(plain)
+    expect(vy).toBeLessThan(py)
+    // every main piece rect of the plain drawing is still there, at the same place
+    for (const r of plain.match(/<rect [^>]+>/g)) expect(s).toContain(r)
+  })
+  it('right attach 500 on 1800 × 1200: overall 2300 × 1200, viewBox grows to the right', () => {
+    for (const view of ['out', 'in']) {
+      const s = draw([rightAttach], { view })
+      expect(safeSvgDataUri(s)).not.toBeNull()
+      expect(s).toContain('2300 × 1200')
+    }
+    const plain = viewBoxOf(partSvgString({ model, widthMm: 1800, heightMm: 1200 }))
+    const out = viewBoxOf(draw([rightAttach]))
+    expect(out[2]).toBeGreaterThan(plain[2])
+    // the inside view mirrors the add-on to the left
+    const inn = viewBoxOf(draw([rightAttach], { view: 'in' }))
+    expect(inn[0]).toBeLessThan(plain[0])
+  })
+  it('merge and attach draw differently; grid lines follow rows / cols; awning adds its V', () => {
+    expect(draw([topMerge])).not.toBe(draw([{ ...topMerge, mode: 'attach' }]))
+    expect(draw([topMerge])).not.toBe(draw([{ ...topMerge, cols: 4 }]))
+    expect(draw([topMerge])).not.toBe(draw([{ ...topMerge, rows: 2 }]))
+    expect(draw([topMerge])).not.toMatch(/<polyline/)
+    expect(draw([{ ...topMerge, kind: 'awning' }])).toMatch(/<polyline/)
+    expect(draw([topMerge], { style: 'solid' })).not.toBe(draw([topMerge]))
+  })
+  it('works for a millimetre layout kind too (safe, overall size)', () => {
+    const s = partSvgString({ model: m8('fixed_grid'), widthMm: 1800, heightMm: 1200, addons: [topMerge] })
+    expect(safeSvgDataUri(s)).not.toBeNull()
+    expect(s).toContain('1800 × 1600')
+  })
+})

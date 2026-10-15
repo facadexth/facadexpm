@@ -112,7 +112,10 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
     setError(null); setLayoutError(null); setBusy(true)
     try {
       const plain = buildOpeningPayload(form, { projectId: project.id })
-      const previews = snap.on ? snapshotFor(plain, { project, ctx, views: { out: snap.out, in: snap.in } }) : null
+      // the snapshot draws and signs the add-ons the item will have after this save: the form's (live) once seeded, else
+      // the saved ones it keeps (not seeded ⇒ the add-on table is not rewritten)
+      const shotAddons = seeded ? m.addons : ((rowId && ctx.itemAddonsByOpening && ctx.itemAddonsByOpening[rowId]) || [])
+      const previews = snap.on ? snapshotFor(plain, { project, ctx, views: { out: snap.out, in: snap.in }, addons: shotAddons }) : null
       const savedAt = previews ? new Date().toISOString() : null
       const payload = buildOpeningPayload(form, { projectId: project.id, previews, savedAt })
       // the row first, then its add-ons (only once loaded, and only when there is something to write or to clear)

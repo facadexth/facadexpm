@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { planAttachmentPages, hardwareSchedule, colourLegend, itemSpecRows, safeSvgDataUri, itemViews } from './attachmentPages.js'
 import { buildFramePreview, previewSvgString } from './framePreview.js'
+import { partSvgString } from './partPreviewSvg.js'
+import { startModel } from './partModel.js'
 
 const mk = (n, extra = {}) => Array.from({ length: n }, (_, i) => ({
   id: 'i' + i, opening_no: 'W' + (i + 1), preview_svg_out: '<svg width="360" height="300" id="o' + i + '"></svg>', preview_svg_in: '<svg width="360" height="300" id="n' + i + '"></svg>', ...extra,
@@ -14,6 +16,20 @@ const leg = n => Array.from({ length: n }, (_, i) => ({ finishId: 'f' + i, name:
 const kindsOf = r => r.pages.map(p => p.kind)
 
 describe('planAttachmentPages', () => {
+  it('an item whose stored previews were drawn with inline add-ons shows both views', () => {
+    const model = startModel('sliding_2')
+    const addons = [
+      { mode: 'merge', kind: 'fixed', position: 'top', len_mm: 1800, thick_mm: 400, offset_mm: 0, align: 'start', rows: 1, cols: 3 },
+      { mode: 'attach', kind: 'awning', position: 'right', len_mm: 1200, thick_mm: 500, offset_mm: 0, align: 'start', rows: 2, cols: 1 },
+    ]
+    const draw = view => partSvgString({ model, widthMm: 1800, heightMm: 1200, view, addons })
+    const item = { id: 'a1', opening_no: 'W1', preview_svg_out: draw('out'), preview_svg_in: draw('in') }
+    const r = planAttachmentPages({ items: [item], options: { view: 'both' }, firstPageNo: 2, totalQuotationPages: 1, schedule: sched(), legend: [] })
+    const it0 = r.pages.find(p => p.kind === 'items').items[0]
+    expect(it0.noPreview).toBe(false)
+    expect(it0.views.map(v => v.side)).toEqual(['out', 'in'])
+    expect(decodeURIComponent(it0.views[0].src.split(',')[1])).toContain('2300 × 1600')
+  })
   it('splits 10 items into 4,4,2 plus hardware', () => {
     const r = planAttachmentPages({ items: mk(10), options: { view: 'both' }, firstPageNo: 3, totalQuotationPages: 2, schedule: sched(4), legend: [] })
     expect(kindsOf(r)).toEqual(['items', 'items', 'items', 'hardware'])
