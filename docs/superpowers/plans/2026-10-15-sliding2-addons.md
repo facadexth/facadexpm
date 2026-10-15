@@ -248,9 +248,24 @@ useItemAddons(openingIds) → { itemAddonsByOpening, loading, error, refetch }
 - [ ] **Step 2: Smoke tests** (`renderToString`, mock supabase as `PartEditor.smoke.test.jsx` does): box renders empty state 'ยังไม่มีช่องแสง'; with one add-on shows the summary line and Thai labels, no `NaN`/`undefined`; collapsed state hides inputs; zoom renders the table header 'ความยาว × ท่อน (มม.)' and the unresolved text when families are null; **golden**: the part editor's render string for a sliding_2 model with no preview add-ons and no sets is identical to the pre-change render (capture the golden string in the test from the current commit before editing: write the test first, commit the fixture, then edit).
 - [ ] **Step 3: Implement**; `npm run build`; controller takes screenshots on the dev server (owner's login may be missing: then say so, do not block). Full suite. Commit `feat: add-on box, zoom editor and piece sets in the part editor`.
 
+
+### Task 6b: Add-on alignment (owner ruling 2026-10-15 on the item-form mockup)
+
+> **Owner comment on mockup https://claude.ai/artifact/Lj7rVrfvoYahQ2cEVZXGdw (thread e6b4bc12):** "ไม่ควร −400 แต่ให้เลือกว่า เสมอบน หรือเสมอล่าง". Ruling **AO-13**: an add-on has no free offset in the UI; it is placed **flush** with one end of the whole stack on its axis: left/right add-ons choose เสมอบน (`align: 'start'`) / เสมอล่าง (`'end'`); top/bottom add-ons choose เสมอซ้าย (`'start'`) / เสมอขวา (`'end'`). "Whole stack" = the main unit plus every add-on on the perpendicular axis (a right add-on flush-bottom with a 400 top add-on present starts at y = main height − len, leaving a 400 gap above when len = main height). `offset_mm` stays in the model and DB as an optional extra shift from that end (≥ 0, default 0) and the item form does not show it. The migration is not applied yet, so the column is added to `2026-10-18-01` directly.
+
+**Files:**
+- Modify: `supabase/migrations/2026-10-18-01-item-addons.sql` (`estimation_item_addons.align TEXT NOT NULL DEFAULT 'start' CHECK (align IN ('start','end'))`), `supabase/tests/item_addons_test.sql` (reject `align 'middle'`, default is 'start')
+- Modify: `src/lib/addonModel.js` + test (`newAddon` adds `align: 'start'`; `layoutAddons` places by `align` against the perpendicular stack, order-independent: `extTop = Σ thick of top add-ons`, `extBottom`, `extLeft`, `extRight`; left/right: `y = align === 'end' ? mainH + extBottom − h − offset : −extTop + offset`; top/bottom: `x = align === 'end' ? mainW + extRight − w − offset : −extLeft + offset`; `validateAddons` rejects an unknown `align` and treats a missing `align` as 'start'; `ALIGN_LABEL = { lr: { start: 'เสมอบน', end: 'เสมอล่าง' }, tb: { start: 'เสมอซ้าย', end: 'เสมอขวา' } }`, `alignLabel(a)`)
+- Modify: `src/lib/addonSave.js` + test (`align` in the item add-on columns both ways, default 'start' when a DB row lacks it)
+- Modify: `src/lib/addonExpand.js` + test (`addon_out_of_range` = `len + offset > the full axis length of the stack` (main + perpendicular add-ons), not just the main edge)
+- Modify: `src/pages/bomTemplates/addon/*` only where a preview add-on shows an offset field: replace with the align select (labels from `alignLabel`)
+
+- [ ] **Step 1: Failing tests:** `layoutAddons` main 1800 × 1200 with a top merge add-on 400 and a right attach add-on len 1200 `align 'end'` ⇒ right rect y = 0 (bottom flush, gap 400 above); `align 'start'` ⇒ y = −400; top add-on len 1000 `align 'end'` with a right add-on thick 500 ⇒ x = 1800 + 500 − 1000 = 1300; `'start'` with a left add-on 300 ⇒ x = −300; add-on list order does not change results (shuffle test); DB round trip keeps `align`; missing `align` reads as 'start'; `validateAddons` rejects `align 'middle'`; expander range uses the stack length.
+- [ ] **Step 2–3:** implement; the SQL test gains the two cases; full suite + build. Commit `feat: add-on alignment (flush start/end) replaces the free offset`.
+
 ### Task 7: Item form — several add-ons (gate: item-form mockup)
 
-> **Gate:** before coding, publish a mockup artifact of the item form add-on list (fields mode/kind/position/len/thick/offset/rows/cols, legacy convert button, overall size line, live drawing) derived from mockup v12's box and the current `ItemModal`; the owner comments asynchronously. Implement to the mockup; if comments arrive later, apply them as a follow-up task.
+> **Gate:** before coding, publish a mockup artifact of the item form add-on list (fields mode/kind/position/len/thick/align/rows/cols (mockup v2: align replaces offset), legacy convert button, overall size line, live drawing) derived from mockup v12's box and the current `ItemModal`; the owner comments asynchronously. Implement to the mockup; if comments arrive later, apply them as a follow-up task.
 
 **Files:**
 - Create: `src/pages/estimation/ItemAddons.jsx`, `ItemAddons.smoke.test.jsx`
