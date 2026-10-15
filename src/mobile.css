@@ -1,0 +1,7 @@
+/* src/mobile.css — PHONE ONLY (spec docs/superpowers/specs/2026-10-15-mobile-view-design.md §2).
+   Everything in this file sits inside ONE @media block; src/mobile.css.test.js fails the build's test run
+   if a rule ever lands outside it or a second media query appears. Laptop and landscape tablet (> 900px)
+   never read a rule from here. Colour and spacing tokens come from src/index.css. */
+@media (max-width: 900px) {
+  :root { --phone-tap: 44px; }
+}
