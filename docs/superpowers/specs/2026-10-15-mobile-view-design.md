@@ -181,18 +181,33 @@ nothing without a map), so rounds can ship independently.
 - Inventory: 11 tables → cards; stock-card charts full width.
 - Communication Center: cards already; tables of commands → cards.
 
-## 8. Rounds (each deploys on its own, each ends with fingerprint diff = empty, changelog + version bump)
+## 8. Rounds (shortened 2026-10-15 at the owner's request)
 
-| Round | Pages | Deliverables |
-|---|---|---|
-| 1 โครง | App shell, Dashboard, Sites (table), Quotations | `useIsPhone`, `mobile.css` + static test, `PhoneDrawer`, breadcrumb, `useBackToClose`, `CardTable`, `PhoneFilters`, `MoreActions`, Modal CSS, fingerprint scripts + baseline, maps for Sites and Quotations, QuotationForm line items |
-| 2 เงิน | Invoices, Deposits, Retention, Income, SalesReport, Expenses, PurchaseOrders, Cheques, SupplierTaxInvoices, SupplierCreditNotes | maps + PhoneFilters on each, Invoice/PO/Expense forms |
-| 3 งานหน้างาน | SiteDetail (Gantt, Kanban, S-curve, tables), Assign, HR (all tabs, Payroll), LaborContractors, Inventory, AluminumProfiles | section 7 |
-| 4 ตั้งค่า/แอดมิน | Settings tabs, Categories, Clients, Suppliers, CatalogItems, UserManagement, CommunicationCenter, DocumentTemplatesAdmin, Estimation, BomTemplates, TenantManagement, LineAdminChat, StartingGuide | maps, sheets, chip strips |
+Two rounds instead of four. What makes it shorter:
 
-Estimate: 2–3 days per round including review and live checks. The
-primitives are built once in round 1; later rounds are mostly one map
-per table plus one `PhoneFilters` per page.
+- **Cards need no map by default.** `CardTable` infers the roles from the
+  table itself (section 4): title = first text column, amount = the last
+  numeric column whose header says ยอด/มูลค่า/ราคา/รวม/คงเหลือ, status =
+  the column whose cells hold a `.badge`, actions = the last column when
+  it holds buttons, sub = the next two text columns. A `map` is only
+  written where the inferred card looks wrong. So most of the ~70 tables
+  are a one-line wrapper swap, not a design each.
+- **Round 2 runs in parallel.** Pages are independent files; after the
+  primitives exist, several implementer subagents each take a page
+  group, and the only serial work left is the screenshot check at 390 px
+  and the fingerprint diff, done once for the whole round.
+- **One fingerprint run per deploy**, not per task: the static CSS test
+  and the `isPhone` gate are the structural guarantee during the work.
+- **Gantt / Kanban / week grid stay as scrollable widgets** (sticky first
+  column + snap), no phone redesign.
+
+| Round | Pages | Deliverables | Estimate |
+|---|---|---|---|
+| 1 โครง | App shell, Dashboard, Sites (table), Quotations (list + form) | `useIsPhone`, `mobile.css` + static test, `PhoneDrawer`, breadcrumb, `useBackToClose`, `CardTable` with role inference, `PhoneFilters`, `MoreActions`, Modal/form CSS, line-item cards, fingerprint scripts + baseline | 1.5–2 days |
+| 2 ทุกหน้าที่เหลือ | every other page (money, site detail, assign, HR, inventory, settings, admin) | wrapper swaps + maps where needed, PhoneFilters on the 10 filter-heavy pages, chip strips, section 7 widgets | 2 days with 3–4 parallel subagents |
+
+Total about 4 working days instead of 10–13. Each round deploys on its
+own after the fingerprint diff is empty and the owner checks on a phone.
 
 ## 9. Testing
 
