@@ -3,11 +3,12 @@
 //   1) aluminium by profile + colour: cut list, bars to buy at the stock length, offcuts
 //   2) hardware / accessories: merged by part
 //   3) sealant: one total length rounded up to tubes
-// Pure. `entries` come from the caller, one per item: { opening_no, quantity, finish_id, bom, addonBom, extras }
+// Pure. `entries` come from the caller, one per item: { opening_no, quantity, finish_id, bom, addonBom, addonBoms?, extras }
 // where bom / addonBom are computeBomForOpening results (profile lines carry profile_id and cut_style) and
 // extras is openingExtras()'s result.
 import { packBars, summarizePacking } from './cutOptimizer.js'
 import { sealantTubes } from './openingExtras.js'
+import { isAddonIssue } from './openingCost.js'
 
 const mm = n => Math.round(Number(n) * 1000) / 1000   // cuts are merged at 1 mm
 
@@ -20,7 +21,8 @@ export function stockLengthFor(profileId, stock, settings) {
   return settings.stock_length_m
 }
 
-const bomsOf = e => [e.bom, e.addonBom].filter(Boolean)
+// addonBoms: the inline attach units ([{ addonIndex, bom }], costOpening) of the item
+const bomsOf = e => [e.bom, e.addonBom, ...(e.addonBoms || []).map(a => a && a.bom)].filter(Boolean)
 
 // Stock lengths that apply to ONE project: the per-profile rows of that project and its own default length.
 export function stockForProject(rows, projectId, project) {
@@ -31,7 +33,7 @@ export function stockForProject(rows, projectId, project) {
 }
 
 // costOpening().unresolved entries that never show up as an unresolved profile line
-const surfaced = u => u.source === 'joint' || u.reason === 'no_dimension' || u.reason === 'unknown_infill' || u.reason === 'unknown_addon_template'
+const surfaced = u => u.source === 'joint' || u.reason === 'no_dimension' || u.reason === 'unknown_infill' || u.reason === 'unknown_addon_template' || isAddonIssue(u)
 
 export function buildProjectBom({ entries, settings, stock, profilesById, finishesById, partsById }) {
   const groups = new Map()

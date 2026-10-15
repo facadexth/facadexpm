@@ -5,9 +5,10 @@
 // Items keep their size, template and thickness (frame and sash); a candidate series that lacks a thickness or
 // profile makes those lines unresolved, and the row says how many lines could not be priced.
 // Built on costOpening so joints, role thickness and inheritance behave exactly as in the item form.
-import { costOpening } from './openingCost.js'
+import { costOpening, costBoms, isAddonIssue } from './openingCost.js'
 
-// ctx: { project, items, templatesById, componentsByTemplate, jointsByTemplate, partModelByTemplate?, typesById, infillTypesById, index, settings, candidates, asOf }
+// ctx: { project, items, templatesById, componentsByTemplate, jointsByTemplate, partModelByTemplate?, addonPiecesByTemplate?,
+//        itemAddonsByOpening?, addonPiecesError?, itemAddonsError?, typesById, infillTypesById, index, settings, candidates, asOf }
 export function compareProviders(ctx) {
   const { items, templatesById, index } = ctx
   return (ctx.candidates || []).map(cand => {
@@ -30,14 +31,15 @@ export function compareProviders(ctx) {
         const r = costOpening({
           item: forced, project: ctx.project, template, addonTemplate,
           componentsByTemplate: ctx.componentsByTemplate, hardwareByTemplate: {}, jointsByTemplate: ctx.jointsByTemplate, partModelByTemplate: ctx.partModelByTemplate,
+          addonPiecesByTemplate: ctx.addonPiecesByTemplate, itemAddonsByOpening: ctx.itemAddonsByOpening, addonPiecesError: ctx.addonPiecesError, itemAddonsError: ctx.itemAddonsError,
           typesById: ctx.typesById, infillTypesById: ctx.infillTypesById, index, settings: ctx.settings, asOf: ctx.asOf,
         })
-        const lines = [...r.bom.profileLines, ...r.bom.gridLines, ...(r.addonBom ? [...r.addonBom.profileLines, ...r.addonBom.gridLines] : [])]
+        const lines = costBoms(r).flatMap(b => [...b.profileLines, ...b.gridLines])
         const qty = Number(item.quantity) > 0 ? Number(item.quantity) : 1
         aluminium += lines.reduce((s, l) => s + l.cost, 0) * qty
         unresolvedLines += lines.filter(l => !l.resolved).length * qty
         // also count unresolved dimensions and joints
-        unresolvedLines += (r.unresolved || []).filter(u => u.reason === 'no_dimension' || u.reason === 'unknown_addon_template' || u.reason === 'unknown_infill' || u.source === 'joint').length * qty
+        unresolvedLines += (r.unresolved || []).filter(u => u.reason === 'no_dimension' || u.reason === 'unknown_addon_template' || u.reason === 'unknown_infill' || u.source === 'joint' || isAddonIssue(u)).length * qty
         itemsPriced += 1
       } catch (e) {
         const q = Number(item.quantity) > 0 ? Number(item.quantity) : 1

@@ -15,6 +15,12 @@ export const REASON_TEXT = {
   no_profile_width: 'ไม่มีความกว้างโปรไฟล์ของซอยกลาง/mullion (ใส่ width_mm ที่แคตตาล็อก)',
   layout_mismatch: 'แบบชิ้นส่วนของเทมเพลตไม่ตรงกับแบบชิ้นส่วนของประเภทบาน', unknown_layout: 'ไม่รู้จักแบบชิ้นส่วนของเทมเพลตนี้',
   layout_params_invalid: 'ค่าของแบบชิ้นส่วนใช้ไม่ได้ (เช่น จำนวนบานรวมเป็น 0)',
+  // inline add-ons ช่องแสง (openingCost.addonPlan / addonExpand)
+  addon_conflict: 'มีชุดต่อเติมแบบเดิมอยู่แล้ว ลบหรือแปลงก่อนจึงใช้ช่องแสงแบบใหม่',
+  addon_not_loaded: 'โหลดข้อมูลช่องแสงไม่สำเร็จ ยังไม่ได้คิดราคาช่องแสง',
+  addon_needs_layout: 'template นี้ไม่ได้ใช้ part editor จึงใส่ช่องแสงไม่ได้',
+  addon_out_of_range: 'ช่องแสงยาวหรือเยื้องเกินขอบบานหลัก',
+  addon_piece_too_small: 'ชิ้นส่วนช่องแสงสั้นกว่าระยะหัก',
 }
 export const reasonText = code => REASON_TEXT[code] || String(code || '')
 

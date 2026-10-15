@@ -11,5 +11,6 @@ export function useItemAddons(openingIds) {
   const ids = useMemo(() => (openingIds || []).filter(Boolean), [openingIds])
   const key = ids.join(',')
   const q = useQuery(() => (ids.length ? loadItemAddons({ supabase, openingIds: ids }) : Promise.resolve({})), [key])
-  return { itemAddonsByOpening: q.data || {}, loading: ids.length ? q.loading : false, error: q.error, refetch: q.refetch }
+  const data = useMemo(() => q.data || {}, [q.data])   // one object per load: costing memos depend on its identity
+  return { itemAddonsByOpening: data, loading: ids.length ? q.loading : false, error: q.error, refetch: q.refetch }
 }

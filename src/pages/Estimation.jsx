@@ -16,6 +16,8 @@ import { canEditPage } from '../lib/permissions.js'
 import { Modal } from '../components/Modal.jsx'
 import { useEstimationCatalog } from '../hooks/useAluCatalog.js'
 import { useBomPartModel } from '../hooks/useBomPartModel.js'
+import { useTemplateAddonPieces } from '../hooks/useTemplateAddonPieces.js'
+import { useItemAddons } from '../hooks/useItemAddons.js'
 import { useEstimationSettings, useTemplateJoints, useHardwarePackages, useLayoutTemplates, groupByTemplate } from '../hooks/useEstimation2b.js'
 import { listPriceChanges } from '../lib/staleProjectPrices.js'
 import { localDateString } from '../lib/localDate.js'
@@ -63,6 +65,15 @@ export default function Estimation(props) {
   const index = catalog.index
   const hwReady = !hw.loading && !hw.error
   const partModelByTemplate = partModels.loading ? null : partModels.partModelByTemplate
+  // Inline add-ons (ช่องแสง): never block costing. While loading the maps are undefined (items cost as plain); a load
+  // error is passed on and costOpening lists addon_not_loaded on the layout_kind items.
+  const addonPieces = useTemplateAddonPieces(templates)
+  const openingIds = useMemo(() => projectOpenings.map(o => o.id), [projectOpenings])
+  const itemAddons = useItemAddons(openingIds)
+  const addonPiecesByTemplate = addonPieces.loading ? undefined : addonPieces.addonPiecesByTemplate
+  const itemAddonsByOpening = itemAddons.loading ? undefined : itemAddons.itemAddonsByOpening
+  const addonPiecesError = addonPieces.error || null
+  const itemAddonsError = itemAddons.error || null
 
   // Everything costOpening needs except the item itself; rebuilt only when a source table changes.
   const base = useMemo(() => {
@@ -71,8 +82,9 @@ export default function Estimation(props) {
       templatesById: Object.fromEntries((templates || []).map(t => [t.id, t])),
       componentsByTemplate: groupByTemplate(components), hardwareByTemplate: groupByTemplate(hardware), jointsByTemplate: groupByTemplate(joints),
       typesById: index.types, infillTypesById: Object.fromEntries((infillTypes || []).map(g => [g.id, g])), index, settings, partModelByTemplate,
+      addonPiecesByTemplate, itemAddonsByOpening, addonPiecesError, itemAddonsError,
     }
-  }, [index, hwReady, templates, components, hardware, joints, infillTypes, settings, partModelByTemplate])
+  }, [index, hwReady, templates, components, hardware, joints, infillTypes, settings, partModelByTemplate, addonPiecesByTemplate, itemAddonsByOpening, addonPiecesError, itemAddonsError])
 
   const packageItems = useMemo(() => (project ? packageRowsFor(project, hw.items) : null), [project, hw.items])
   const pkg = project && project.hardware_package_id ? hw.packages.find(p => p.id === project.hardware_package_id) : null

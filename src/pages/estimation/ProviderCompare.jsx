@@ -23,6 +23,7 @@ export default function ProviderCompare({ project, items, base, index, seriesTyp
     const candidates = providers.map(p => ({ providerId: p.id, ...pickOf(p) }))
     const results = compareProviders({
       project, items, templatesById: base.templatesById, componentsByTemplate: base.componentsByTemplate, jointsByTemplate: base.jointsByTemplate, partModelByTemplate: base.partModelByTemplate,
+      addonPiecesByTemplate: base.addonPiecesByTemplate, itemAddonsByOpening: base.itemAddonsByOpening, addonPiecesError: base.addonPiecesError, itemAddonsError: base.itemAddonsError,
       typesById: base.typesById, infillTypesById: base.infillTypesById, index, settings: base.settings, candidates, asOf: project.price_as_of,
     })
     return comparisonRows(results, primaryId)

@@ -11,3 +11,19 @@ describe('reasonText for the part-model expander issues', () => {
     }
   })
 })
+
+describe('reasonText for the inline add-on (ช่องแสง) reasons', () => {
+  it('gives the exact Thai text for the five add-on codes', () => {
+    const want = {
+      addon_conflict: 'มีชุดต่อเติมแบบเดิมอยู่แล้ว ลบหรือแปลงก่อนจึงใช้ช่องแสงแบบใหม่',
+      addon_not_loaded: 'โหลดข้อมูลช่องแสงไม่สำเร็จ ยังไม่ได้คิดราคาช่องแสง',
+      addon_needs_layout: 'template นี้ไม่ได้ใช้ part editor จึงใส่ช่องแสงไม่ได้',
+      addon_out_of_range: 'ช่องแสงยาวหรือเยื้องเกินขอบบานหลัก',
+      addon_piece_too_small: 'ชิ้นส่วนช่องแสงสั้นกว่าระยะหัก',
+    }
+    for (const [code, text] of Object.entries(want)) {
+      expect(reasonText(code)).toBe(text)
+      expect(unresolvedText({ name: 'ช่องแสง', reason: code, source: 'addon' })).toBe(text)
+    }
+  })
+})

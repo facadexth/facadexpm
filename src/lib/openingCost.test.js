@@ -435,3 +435,217 @@ describe('fixed_by_type inputs are fixed only when the type pins them (final fix
     expect([n.estimator, n.fixed_by_type]).toEqual([true, true])
   })
 })
+
+// ---- Task 5 (sliding_2 add-ons): inline add-ons (ช่องแสง) in costing ----
+import { readFileSync } from 'node:fs'
+import { defaultAddonPieces } from './addonModel.js'
+
+const LONG = 'กล่องร่องวิ่งยาว'
+const aIndex = buildCatalogIndex({
+  providers: [{ id: 'A', price_basis: 'per_kg' }],
+  series: [{ id: 's1', provider_id: 'A' }],
+  types: [{ id: 'tSlide' }],
+  seriesTypes: [{ series_id: 's1', type_id: 'tSlide', allow_mixed_thickness: true }],
+  finishes: [{ id: 'f1', provider_id: 'A' }],
+  profiles: [
+    { id: 'fh', provider_id: 'A', family: 'fh', thickness_mm: 1.5, linear_weight_kg_per_m: 1, butt_distance_mm: 20 },
+    { id: 'fs', provider_id: 'A', family: 'fs', thickness_mm: 1.5, linear_weight_kg_per_m: 1, butt_distance_mm: 25 },
+    { id: 'sr', provider_id: 'A', family: 'sr', thickness_mm: 1.5, linear_weight_kg_per_m: 1, butt_distance_mm: 10 },
+    { id: 'ks', provider_id: 'A', family: 'ks', thickness_mm: 1.5, linear_weight_kg_per_m: 1, butt_distance_mm: 30 },
+    { id: 'hs', provider_id: 'A', family: 'hs', thickness_mm: 1.5, linear_weight_kg_per_m: 1, butt_distance_mm: 35 },
+    { id: 'lg', provider_id: 'A', family: LONG, thickness_mm: 1.5, linear_weight_kg_per_m: 2, butt_distance_mm: 50 },
+  ],
+  seriesProfiles: ['fh', 'fs', 'sr', 'ks', 'hs', 'lg'].map(profile_id => ({ series_id: 's1', profile_id })),
+  kgPrices: [{ id: 'k1', provider_id: 'A', finish_id: 'f1', price_per_kg: 100, effective_from: '2026-01-01' }],
+})
+const ATTACH_FAMS = { frame_top: 'fh', frame_bottom: 'fh', frame_side: 'fs', mullion: 'sr', rail: 'sr' }
+const pieceRows = (mode, position, fams) => defaultAddonPieces({ mode, kind: 'fixed', position, layoutKind: 'sliding_2', buttMm: 10 })
+  .map(r => ({ ...r, profile_family: r.piece_key in fams ? fams[r.piece_key] : 'sr' }))
+const ao = o => ({ mode: 'attach', kind: 'fixed', position: 'top', len_mm: 1800, thick_mm: 400, offset_mm: 0, rows: 1, cols: 3, ...o })
+const aCtx = (addons, rows = [], extra = {}) => ({
+  ...pCtx(),
+  index: aIndex, typesById: aIndex.types,
+  item: { id: 'o1', width_m: 1.8, height_m: 1.2, panel_count: 1, quantity: 1, template_id: 'tp', infill_type_id: 'g1' },
+  infillTypesById: { g1: { id: 'g1', name: 'กระจก', price_per_sqm: 1000 } },
+  itemAddonsByOpening: addons ? { o1: addons } : {}, addonPiecesByTemplate: { tp: rows },
+  ...extra,
+})
+const plainOf = c => costOpening({ ...c, itemAddonsByOpening: {} })
+
+describe('Task 5 (a): parity without add-ons', () => {
+  it('the absolute-total case is unchanged without the new keys and with empty maps', () => {
+    const before = costOpening(ctxBase())
+    expect(before.total).toBeCloseTo(584)
+    const withEmpty = costOpening({ ...ctxBase(), itemAddonsByOpening: {}, addonPiecesByTemplate: {} })
+    expect(JSON.stringify(withEmpty)).toBe(JSON.stringify(before))
+    expect(before.addonBoms).toEqual([])
+    expect(before.addonMerge).toBeNull()
+  })
+  it('a part-model item costs the same with empty / still-loading (undefined) add-on maps', () => {
+    const before = costOpening(pCtx())
+    for (const extra of [{ itemAddonsByOpening: {}, addonPiecesByTemplate: {} }, { itemAddonsByOpening: undefined, addonPiecesByTemplate: undefined }]) {
+      expect(JSON.stringify(costOpening({ ...pCtx(), ...extra }))).toBe(JSON.stringify(before))
+    }
+  })
+  it('the legacy add-on case is unchanged', () => {
+    const c = ctxBase()
+    c.settings = mergeSettings({ shim_part_id: 'shim' })
+    c.addonTemplate = T({ id: 't2' })
+    c.componentsByTemplate = { t1: comps.slice(0, 1), t2: comps.slice(0, 1) }
+    c.item = { ...c.item, id: 'o1', addon_template_id: 't2', addon_width_m: 2, addon_height_m: 0.5 }
+    const before = costOpening(c)
+    expect(before.total).toBeCloseTo(460)
+    expect(JSON.stringify(costOpening({ ...c, itemAddonsByOpening: { other: [ao()] }, addonPiecesByTemplate: {} }))).toBe(JSON.stringify(before))
+  })
+})
+
+describe('Task 5 (b): an attach add-on is its own unit', () => {
+  it('top 1800 × 400, 1 × 3: one addonBom with frame top/bottom/side + mullion; total = main + unit', () => {
+    const c = aCtx([ao()], pieceRows('attach', null, ATTACH_FAMS))
+    const r = costOpening(c)
+    const plain = plainOf(c)
+    expect(r.addonBoms).toHaveLength(1)
+    expect(r.addonBoms[0].addonIndex).toBe(0)
+    const lines = r.addonBoms[0].bom.profileLines
+    expect(lines.map(l => [l.family, Math.round(l.length_m * 1e6) / 1e6, l.quantity])).toEqual([
+      ['fh', 1.78, 1], ['fh', 1.78, 1], ['fs', 0.4, 2], ['sr', 0.38, 2],
+    ])
+    expect(lines.every(l => l.resolved)).toBe(true)
+    expect(r.bom.profileLines).toEqual(plain.bom.profileLines)   // attach never changes the main frame
+    expect(r.addonBoms[0].bom.totalCost).toBeGreaterThan(0)
+    expect(r.total).toBeCloseTo(plain.total + r.addonBoms[0].bom.totalCost)
+    expect(r.unresolved).toEqual([])
+    expect(r.addonMerge.glass).toEqual({ area_sqm: 0, cost: 0, panes: 0 })   // attach glass is in its own BOM
+  })
+  it('an attach piece without a family is listed with source addon and its addonIndex', () => {
+    const r = costOpening(aCtx([ao()], pieceRows('attach', null, { ...ATTACH_FAMS, mullion: null })))
+    expect(r.unresolved).toContainEqual({ name: 'ซอยกลางตั้ง (ช่องแสง 1)', reason: 'no_profile_family', source: 'addon', addonIndex: 0 })
+  })
+  it('an unresolved attach profile line is appended with source addon', () => {
+    const r = costOpening(aCtx([ao()], pieceRows('attach', null, { ...ATTACH_FAMS, mullion: 'ghost' })))
+    expect(r.unresolved.some(u => u.source === 'addon' && u.reason && u.name && u.addonIndex === undefined)).toBe(true)
+  })
+})
+
+describe('Task 5 (c): a merge add-on joins the main frame', () => {
+  it('sliding_2 top add-on, ext family changed: เฟรมข้าง 1.6 m in the long family, note ตบเรียบ, 3 panes', () => {
+    const c = aCtx([ao({ mode: 'merge' })], pieceRows('merge', 'top', { ext: LONG, main_facing: null }))
+    const r = costOpening(c)
+    const side = r.bom.profileLines.find(l => l.role_name === 'เฟรมข้าง')
+    expect(side.length_m).toBeCloseTo(1.6)
+    expect(side.family).toBe(LONG)
+    expect(side.quantity).toBe(2)
+    expect(r.addonMerge.notes.map(n => n.text).join(' ')).toContain('ตบเรียบ')
+    expect(r.addonMerge.glass.panes).toBe(3)
+    // glass panes: (1800 − 2 × 10) / 3 × (400 − 2 × 10)
+    const area = 3 * ((1800 - 20) / 3) * (400 - 20) / 1e6
+    expect(r.addonMerge.glass.area_sqm).toBeCloseTo(area, 9)
+    expect(r.addonMerge.glass.cost).toBeCloseTo(area * 1000, 6)
+    expect(r.addonBoms).toEqual([])
+    // merge pieces are main BOM lines after the main rows, numbered on
+    const mergedRoles = r.addonMerge.components.map(x => x.role_name)
+    expect(mergedRoles.length).toBeGreaterThan(0)
+    expect(r.bom.profileLines.slice(-mergedRoles.length).map(l => l.role_name)).toEqual(mergedRoles)
+    const sorts = r.addonMerge.components.map(x => x.sort_order)
+    expect(Math.min(...sorts)).toBe(r.bom.profileLines.length - mergedRoles.length)
+    expect(r.total).toBeCloseTo(r.bom.totalCost + r.addonMerge.glass.cost + r.extras.cost)
+    expect(r.unresolved).toEqual([])
+  })
+  it('partPreviewCtx returns the item\'s add-ons and the same overrides / sideButt', () => {
+    const c = aCtx([ao({ mode: 'merge' })], pieceRows('merge', 'top', { ext: LONG, main_facing: null }))
+    const r = costOpening(c)
+    const p = partPreviewCtx(c, c.template, r.resolved, c.item)
+    expect(p.addons).toEqual([ao({ mode: 'merge' })])
+    expect(p.overrides).toEqual({ frame_side: { lengthMm: 1600, family: LONG } })
+    expect(p.sideButt).toEqual({})
+    const none = partPreviewCtx(pCtx(), pCtx().template, r.resolved, pCtx().item)
+    expect(none.addons).toEqual([])
+    expect(none.overrides).toEqual({})
+  })
+})
+
+describe('Task 5 (d)–(f): add-ons that are not costed say why', () => {
+  it('(d) legacy + new ⇒ legacy total and addon_conflict', () => {
+    const c = aCtx([ao()], pieceRows('attach', null, ATTACH_FAMS))
+    c.addonTemplate = T({ id: 't2' })
+    c.componentsByTemplate = { t2: [{ role_name: 'top', profile_family: 'fh', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 1 }] }
+    c.item = { ...c.item, addon_template_id: 't2', addon_width_m: 1.8, addon_height_m: 0.4 }
+    const r = costOpening(c)
+    const legacy = plainOf(c)
+    expect(legacy.addonBom).not.toBeNull()
+    expect(r.total).toBeCloseTo(legacy.total)
+    expect(r.addonBoms).toEqual([])
+    expect(r.unresolved).toContainEqual({ name: 'ช่องแสง', reason: 'addon_conflict', source: 'addon' })
+  })
+  it('(e) a load error ⇒ addon_not_loaded once, total as plain', () => {
+    for (const err of [{ itemAddonsError: 'x' }, { addonPiecesError: 'x' }]) {
+      const c = aCtx([ao()], pieceRows('attach', null, ATTACH_FAMS), err)
+      const r = costOpening(c)
+      expect(r.total).toBeCloseTo(plainOf({ ...c, itemAddonsError: null, addonPiecesError: null }).total)
+      expect(r.unresolved.filter(u => u.reason === 'addon_not_loaded')).toEqual([{ name: 'ช่องแสง', reason: 'addon_not_loaded', source: 'addon' }])
+      expect(r.addonBoms).toEqual([])
+    }
+    // a template without layout_kind is not affected by an add-on load error
+    expect(JSON.stringify(costOpening({ ...ctxBase(), itemAddonsError: 'x' }))).toBe(JSON.stringify(costOpening(ctxBase())))
+  })
+  it('(f) a template without layout_kind + add-ons ⇒ addon_needs_layout, plain total', () => {
+    const c = { ...ctxBase(), item: { ...ctxBase().item, id: 'o1' }, itemAddonsByOpening: { o1: [ao()] } }
+    const r = costOpening(c)
+    expect(r.total).toBeCloseTo(584)
+    expect(r.unresolved).toEqual([{ name: 'ช่องแสง', reason: 'addon_needs_layout', source: 'addon' }])
+  })
+})
+
+describe('Task 5 (h): every costing caller gets the add-on maps', () => {
+  const src = f => readFileSync(new URL(f, import.meta.url), 'utf8')
+  it('Estimation.jsx puts the four add-on keys into the shared base ctx (costItems / QuickQuote / ItemModal spread it)', () => {
+    const s = src('../pages/Estimation.jsx')
+    expect(s).toMatch(/useTemplateAddonPieces\(/)
+    expect(s).toMatch(/useItemAddons\(/)
+    const baseBlock = s.slice(s.indexOf('const base = useMemo'), s.indexOf('const packageItems'))
+    for (const k of ['addonPiecesByTemplate', 'itemAddonsByOpening', 'addonPiecesError', 'itemAddonsError', 'partModelByTemplate']) expect(baseBlock).toContain(k)
+  })
+  it('ProviderCompare passes both maps and both errors to compareProviders, which passes them to costOpening', () => {
+    const pc = src('../pages/estimation/ProviderCompare.jsx')
+    const lib = src('./providerCompare.js')
+    for (const k of ['addonPiecesByTemplate', 'itemAddonsByOpening', 'addonPiecesError', 'itemAddonsError']) {
+      expect(pc).toContain(`base.${k}`)
+      expect(lib).toContain(`ctx.${k}`)
+    }
+  })
+})
+
+describe('Task 5: roll-ups read the attach units and the merge glass', async () => {
+  const { costBoms } = await import('./openingCost.js')
+  const { costBreakdown } = await import('./priceStructure.js')
+  const { compareProviders } = await import('./providerCompare.js')
+  const { bomsForStale } = await import('../pages/estimation/projectDefaults.js')
+  const { buildEntries, entriesPieceCount } = await import('../pages/estimation/projectBomHelpers.js')
+  const attachCtx = () => aCtx([ao()], pieceRows('attach', null, ATTACH_FAMS))
+  const aluOf = b => [...b.profileLines, ...b.gridLines].reduce((s, l) => s + l.cost, 0)
+  it('costBoms lists main, legacy add-on and attach units', () => {
+    const r = costOpening(attachCtx())
+    expect(costBoms(r)).toEqual([r.bom, r.addonBoms[0].bom])
+    expect(costBoms(plainOf(attachCtx()))).toHaveLength(1)
+  })
+  it('price structure, stale prices, project BOM and extruder compare include the attach unit', () => {
+    const c = attachCtx()
+    const r = costOpening(c)
+    const unit = r.addonBoms[0].bom
+    expect(costBreakdown(r).alu).toBeCloseTo(aluOf(r.bom) + aluOf(unit))
+    expect(costBreakdown(r).glass).toBeCloseTo(r.bom.infillCost + unit.infillCost)
+    expect(bomsForStale({ o1: r }).o1.profileLines).toHaveLength(r.bom.profileLines.length + unit.profileLines.length)
+    const { entries } = buildEntries([c.item], { o1: r })
+    const pieces = b => b.profileLines.reduce((s, l) => s + l.quantity, 0)
+    expect(entriesPieceCount(entries)).toBe(pieces(r.bom) + pieces(unit))
+    const cmp = compareProviders({ ...c, items: [c.item], templatesById: { tp: c.template }, candidates: [{ providerId: 'A', seriesId: 's1', finishId: 'f1' }] })
+    expect(cmp[0].aluminium).toBeCloseTo(aluOf(r.bom) + aluOf(unit))
+  })
+  it('price structure counts the merge glass; a load error makes the extruder row incomplete', () => {
+    const r = costOpening(aCtx([ao({ mode: 'merge' })], pieceRows('merge', 'top', { ext: LONG, main_facing: null })))
+    expect(costBreakdown(r).glass).toBeCloseTo(r.bom.infillCost + r.addonMerge.glass.cost)
+    const c = aCtx([ao()], pieceRows('attach', null, ATTACH_FAMS), { itemAddonsError: 'x' })
+    const cmp = compareProviders({ ...c, items: [c.item], templatesById: { tp: c.template }, candidates: [{ providerId: 'A', seriesId: 's1', finishId: 'f1' }] })
+    expect(cmp[0].complete).toBe(false)
+  })
+})

@@ -18,7 +18,7 @@ export function buildEntries(items, costs) {
   for (const item of items || []) {
     const r = (costs || {})[item.id]
     if (!r) { skipped.push({ opening_no: item.opening_no, name: item.item_name || null, reason: 'no_template' }); continue }
-    entries.push({ opening_no: item.opening_no, quantity: item.quantity, finish_id: r.resolved.finish_id, bom: r.bom, addonBom: r.addonBom, extras: r.extras, unresolved: r.unresolved })
+    entries.push({ opening_no: item.opening_no, quantity: item.quantity, finish_id: r.resolved.finish_id, bom: r.bom, addonBom: r.addonBom, addonBoms: r.addonBoms || [], extras: r.extras, unresolved: r.unresolved })
   }
   return { entries, skipped }
 }
@@ -28,7 +28,7 @@ export function entriesPieceCount(entries) {
   let n = 0
   for (const e of entries || []) {
     const q = Number(e.quantity) > 0 ? Number(e.quantity) : 1
-    for (const bom of [e.bom, e.addonBom]) {
+    for (const bom of [e.bom, e.addonBom, ...(e.addonBoms || []).map(a => a && a.bom)]) {
       if (!bom) continue
       for (const l of [...bom.profileLines, ...bom.gridLines]) if (l.resolved && l.profile_id) n += (Number(l.quantity) || 0) * q
     }
@@ -40,7 +40,7 @@ export function entriesPieceCount(entries) {
 export function seriesByGroup(entries) {
   const m = {}
   for (const e of entries || []) {
-    for (const bom of [e.bom, e.addonBom]) {
+    for (const bom of [e.bom, e.addonBom, ...(e.addonBoms || []).map(a => a && a.bom)]) {
       if (!bom) continue
       for (const l of [...bom.profileLines, ...bom.gridLines]) {
         if (!l.resolved || !l.profile_id) continue

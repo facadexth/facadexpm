@@ -8,6 +8,7 @@ import { resolveItemInputs, buildEngineOpening, buildEngineAddonOpening } from '
 import { applyJoints, applyRoleThickness, jointDeductionMm } from './assembly.js'
 import { resolveCatalogProfile } from './aluCatalogPricing.js'
 import { expandParts } from './partExpand.js'
+import { expandAddons } from './addonExpand.js'
 import { allowsMixedThickness } from './estimationCatalogViews.js'
 import { openingExtras } from './openingExtras.js'
 import { setParams } from './partModel.js'
@@ -86,31 +87,89 @@ export function modelForItem(model, item) {
 // Glass / panel parts (frameless leaves and panes: part.glass; curtain-wall spandrels: part.panel) have no positions,
 // so they expand to no aluminium rows. Their infill (glassParts / layoutCells.panelCells) is NOT priced here yet: a
 // later infill task prices it from those helpers.
-function preparePartComponents({ template, model, index, seriesId, thicknessMm, allowMixed, sashThicknessMm }) {
+// addon (optional, main template only): { addons, pieceRows, main: { widthMm, heightMm } } — the item's inline add-ons
+// (addonExpand.js). Their merge overrides / sideButt go into expandParts, their merge pieces are appended after the
+// main rows; `expansion` (attach units, merge glass / notes, add-on issues) comes back for costOpening.
+function preparePartComponents({ template, model, index, seriesId, thicknessMm, allowMixed, sashThicknessMm, addon = null }) {
   // a model refused at load (partSave: layout_mismatch / layout_params_invalid) or by the item's params
-  if (model && model.error) return { components: [], issues: [{ role_name: template.name || '', reason: model.error }] }
+  if (model && model.error) return { components: [], issues: [{ role_name: template.name || '', reason: model.error }], expansion: null }
   const opts = partFamilyOpts({ model, index, seriesId, thicknessMm, allowMixed, sashThicknessMm })
-  const { components, issues } = expandParts({ model, buttOf: buttOfFor(opts), widthOf: widthOfFor(opts) })
+  const buttOf = buttOfFor(opts)
+  const expansion = addon ? expandItemAddons(addon, buttOf, template.layout_kind) : null
+  const { components, issues } = expandParts({ model, buttOf, widthOf: widthOfFor(opts), overrides: expansion ? expansion.merge.overrides : undefined, sideButt: expansion ? expansion.merge.sideButt : undefined })
+  const thick = { allowMixed, sashThicknessMm }
+  const merged = expansion ? expansion.merge.components.map((c, i) => ({ ...c, sort_order: components.length + i })) : []
   return {
-    components: applyRoleThickness(components, { allowMixed, sashThicknessMm }),
+    components: applyRoleThickness([...components, ...merged], thick),
     issues: issues.map(i => (i.reason === 'no_model' && !i.role_name ? { ...i, role_name: template.name || '' } : i)),
+    expansion,
+    attach: expansion ? expansion.attach.map(u => ({ ...u, components: applyRoleThickness(u.components, thick) })) : [],
   }
 }
 
+// expandAddons with an override lengthMm that is not a finite number dropped (the key, not the whole override).
+function expandItemAddons({ addons, pieceRows, main }, buttOf, layoutKind) {
+  const exp = expandAddons({ addons, pieceRows: pieceRows || [], main, buttOf, layoutKind })
+  const overrides = {}
+  for (const [pos, ov] of Object.entries(exp.merge.overrides || {})) {
+    const o = { ...ov }
+    if ('lengthMm' in o && !(o.lengthMm != null && Number.isFinite(Number(o.lengthMm)))) delete o.lengthMm
+    overrides[pos] = o
+  }
+  return { ...exp, merge: { ...exp.merge, overrides } }
+}
+
 // item: the item whose layout_params apply (main template only; null for the add-on).
-function prepareComponents({ template, components, joints, partModelByTemplate, index, seriesId, thicknessMm, sashThicknessMm, item = null }) {
+function prepareComponents({ template, components, joints, partModelByTemplate, index, seriesId, thicknessMm, sashThicknessMm, item = null, addon = null }) {
   const allowMixed = template.type_id ? allowsMixedThickness(index, seriesId, template.type_id) : false
   if (template.layout_kind) {
     const model = modelForItem((partModelByTemplate && partModelByTemplate[template.id]) || null, item)
-    return preparePartComponents({ template, model, index, seriesId, thicknessMm, allowMixed, sashThicknessMm })
+    return preparePartComponents({ template, model, index, seriesId, thicknessMm, allowMixed, sashThicknessMm, addon })
   }
   return applyJoints({ components: applyRoleThickness(components, { allowMixed, sashThicknessMm }), joints, index, seriesId, thicknessMm })
 }
 
-// The item preview's part context of a layout_kind template: { model, buttOf, widthOf } exactly as costOpening expands it
-// (same model, same per-family thickness), or null for a template without layout_kind or without a usable model.
-// ctx = the costOpening context (index, partModelByTemplate); resolved = resolveItemInputs(...) of the item;
-// item (optional) = the item, whose layout_params adjust the model as in costing (modelForItem).
+const ADDON_NAME = 'ช่องแสง'
+const ADDON_ITEM_REASONS = new Set(['addon_not_loaded', 'addon_conflict', 'addon_needs_layout'])
+
+// Every BOM of a costOpening result: main, legacy add-on, then each attach unit (inline add-ons). Consumers that roll up
+// lines (project BOM, price structure, stale prices, extruder compare) read this, so an attach unit is never left out.
+// Merge pieces are already main BOM lines; merge glass is r.addonMerge.glass (not in any BOM).
+export function costBoms(r) {
+  if (!r) return []
+  return [r.bom, r.addonBom, ...(r.addonBoms || []).map(a => a && a.bom)].filter(Boolean)
+}
+
+// A costOpening().unresolved entry that is an inline add-on problem never shown as an unresolved profile line
+// (expander issues carry addonIndex; item-level ones are addon_not_loaded / addon_conflict / addon_needs_layout).
+export function isAddonIssue(u) {
+  return !!u && u.source === 'addon' && (u.addonIndex !== undefined || ADDON_ITEM_REASONS.has(u.reason))
+}
+
+// Which inline add-ons (estimation_item_addons, mm) of `item` are costed, and the item-level add-on issues:
+// a load error (ctx.addonPiecesError / itemAddonsError) on a layout_kind template ⇒ addon_not_loaded, nothing costed;
+// a legacy add-on (item.addon_template_id) as well ⇒ addon_conflict, legacy path only; a template without layout_kind
+// ⇒ addon_needs_layout. Maps still loading (absent) are not an error: no add-ons, no issue.
+export function addonPlan(ctx, template, item) {
+  const c = ctx || {}
+  const t = template || {}
+  const it = item || {}
+  const issue = reason => ({ addons: [], issues: [{ name: ADDON_NAME, reason, source: 'addon' }] })
+  if (t.layout_kind && (c.addonPiecesError || c.itemAddonsError)) return issue('addon_not_loaded')
+  const raw = it.id != null && c.itemAddonsByOpening ? c.itemAddonsByOpening[it.id] : null
+  const addons = Array.isArray(raw) ? raw : []
+  if (!addons.length) return { addons: [], issues: [] }
+  if (it.addon_template_id) return issue('addon_conflict')
+  if (!t.layout_kind) return issue('addon_needs_layout')
+  return { addons, issues: [] }
+}
+
+// The item preview's part context of a layout_kind template: { model, buttOf, widthOf, addons, overrides, sideButt }
+// exactly as costOpening expands it (same model, same per-family thickness, the item's costed add-ons and their merge
+// overrides / sideButt; [] / {} without add-ons), or null for a template without layout_kind or without a usable model.
+// ctx = the costOpening context (index, partModelByTemplate, addonPiecesByTemplate, itemAddonsByOpening);
+// resolved = resolveItemInputs(...) of the item; item (optional) = the item, whose layout_params adjust the model as in
+// costing (modelForItem).
 export function partPreviewCtx(ctx, template, resolved, item = null) {
   if (!template || !template.layout_kind) return null
   const model = modelForItem((ctx && ctx.partModelByTemplate && ctx.partModelByTemplate[template.id]) || null, item)
@@ -119,14 +178,27 @@ export function partPreviewCtx(ctx, template, resolved, item = null) {
   const r = resolved || {}
   const allowMixed = template.type_id && index ? allowsMixedThickness(index, r.series_id, template.type_id) : false
   const opts = partFamilyOpts({ model, index, seriesId: r.series_id, thicknessMm: r.thickness_mm, allowMixed, sashThicknessMm: r.sash_thickness_mm })
-  return { model, buttOf: buttOfFor(opts), widthOf: widthOfFor(opts) }
+  const buttOf = buttOfFor(opts)
+  const { addons } = addonPlan(ctx, template, item)
+  const exp = addons.length
+    ? expandItemAddons({ addons, pieceRows: (ctx.addonPiecesByTemplate || {})[template.id], main: mainMm(item) }, buttOf, template.layout_kind)
+    : null
+  return { model, buttOf, widthOf: widthOfFor(opts), addons, overrides: exp ? exp.merge.overrides : {}, sideButt: exp ? exp.merge.sideButt : {} }
 }
 
+const mainMm = item => ({ widthMm: (Number(item && item.width_m) || 0) * 1000, heightMm: (Number(item && item.height_m) || 0) * 1000 })
+
 // ctx: { item, project, template, addonTemplate, componentsByTemplate, hardwareByTemplate, jointsByTemplate,
-//        typesById, infillTypesById, index, settings, asOf, packageItems?, partModelByTemplate? }
+//        typesById, infillTypesById, index, settings, asOf, packageItems?, partModelByTemplate?,
+//        addonPiecesByTemplate?, itemAddonsByOpening?, addonPiecesError?, itemAddonsError? }
 // partModelByTemplate: { [templateId]: model | { error } } (partSave.partModelsByTemplate) for templates with layout_kind;
 // ignored otherwise. An { error } entry is reported by its reason (layout_mismatch ...), never priced.
 // item.layout_params (estimation_openings) adjust the main template's model (modelForItem).
+// Inline add-ons (ช่องแสง): itemAddonsByOpening[item.id] (mm, addonSave.loadItemAddons) on a layout_kind template, with
+// the template's piece rows addonPiecesByTemplate[template.id] (addonSave.loadAddonPieces). See addonPlan for when they
+// are costed. attach add-ons → addonBoms [{ addonIndex, bom }] (each its own opening at the item's infill, no hardware);
+// merge add-ons → frame overrides / sideButt in the main expansion, their pieces in the main BOM, their glass in
+// addonMerge.glass { area_sqm, cost, panes } (item infill price per sqm; 0 without infill, as the main unit).
 export function costOpening(ctx) {
   const { item: rawItem, project, template, addonTemplate, index, settings, asOf } = ctx
   // DB numerics can arrive as strings; the engine adds width + height, so coerce once here.
@@ -140,10 +212,35 @@ export function costOpening(ctx) {
   if (!(item.width_m > 0 && item.height_m > 0)) own.push({ name: 'ขนาดช่องเปิด', reason: 'no_dimension', source: 'main' })
   if (resolved.infill_type_id && !(ctx.infillTypesById || {})[resolved.infill_type_id]) own.push({ name: 'วัสดุอุดช่อง', reason: 'unknown_infill', source: 'main' })
 
+  const plan = addonPlan(ctx, template, rawItem)
+  const addonIssues = [...plan.issues]
+  const addonInput = plan.addons.length ? { addons: plan.addons, pieceRows: byT(ctx.addonPiecesByTemplate, template.id), main: mainMm(item) } : null
+
   const main = buildEngineOpening(item, project, template, ctx.typesById, ctx.infillTypesById, ctx.packageItems)
-  const prepared = prepareComponents({ template, components: byT(ctx.componentsByTemplate, template.id), joints: byT(ctx.jointsByTemplate, template.id), partModelByTemplate: ctx.partModelByTemplate, index, seriesId: resolved.series_id, thicknessMm: resolved.thickness_mm, sashThicknessMm: resolved.sash_thickness_mm, item: rawItem })
+  const prepared = prepareComponents({ template, components: byT(ctx.componentsByTemplate, template.id), joints: byT(ctx.jointsByTemplate, template.id), partModelByTemplate: ctx.partModelByTemplate, index, seriesId: resolved.series_id, thicknessMm: resolved.thickness_mm, sashThicknessMm: resolved.sash_thickness_mm, item: rawItem, addon: addonInput })
   issues.push(...prepared.issues)
   const bom = computeBomForOpening(main.opening, template, prepared.components, byT(ctx.hardwareByTemplate, template.id), pricing, main.infillType)
+
+  // inline add-ons: attach units are their own openings; merge glass is priced at the item's infill
+  const expansion = prepared.expansion || null
+  const addonBoms = []
+  let addonMerge = null
+  if (expansion) {
+    addonIssues.push(...expansion.issues.map(i => ({ name: i.role_name, reason: i.reason, source: 'addon', addonIndex: i.addonIndex })))
+    for (const u of prepared.attach) {
+      const opening = { ...main.opening, width_m: u.opening.width_m, height_m: u.opening.height_m, panel_count: u.opening.panel_count, hardware_set_id: null, extra_lines: [] }
+      addonBoms.push({ addonIndex: u.addonIndex, bom: computeBomForOpening(opening, template, u.components, [], pricing, main.infillType) })
+    }
+    const attachIdx = new Set(prepared.attach.map(u => u.addonIndex))
+    const mg = expansion.glass.filter(g => !attachIdx.has(g.addonIndex))
+    const area_sqm = mg.reduce((s, g) => s + (Number(g.count) || 0) * (Number(g.widthMm) || 0) * (Number(g.heightMm) || 0) / 1e6, 0)
+    const pricePerSqm = main.infillType ? Number(main.infillType.price_per_sqm) || 0 : 0
+    addonMerge = {
+      components: prepared.components.filter(c => c.addon_index != null),
+      notes: expansion.merge.notes,
+      glass: { area_sqm, cost: area_sqm * pricePerSqm, panes: mg.reduce((s, g) => s + (Number(g.count) || 0), 0) },
+    }
+  }
 
   let addonBom = null
   const hasAddon = item.addon_template_id && addonTemplate && positive(item.addon_width_m) && positive(item.addon_height_m)
@@ -162,13 +259,18 @@ export function costOpening(ctx) {
   if (hasAddon) units.push({ width_m: Number(item.addon_width_m), height_m: Number(item.addon_height_m) })
   const extras = openingExtras({ units, settings, partsById: index.parts, pricing })
   const combined = combineOpeningBoms(bom, addonBom)
+  combined.addonBoms = addonBoms
+  combined.addonMerge = addonMerge
+  combined.totalCost += addonBoms.reduce((s, a) => s + a.bom.totalCost, 0) + (addonMerge ? addonMerge.glass.cost : 0)
   return {
-    resolved, bom, addonBom, extras, issues,
+    resolved, bom, addonBom, addonBoms, addonMerge, extras, issues,
     total: combined.totalCost + extras.cost,
     unresolved: [
       ...own,
       ...bom.unresolvedDetails.map(d => ({ ...d, source: 'main' })),
       ...(addonBom ? addonBom.unresolvedDetails.map(d => ({ ...d, source: 'addon' })) : []),
+      ...addonBoms.flatMap(a => a.bom.unresolvedDetails.map(d => ({ ...d, source: 'addon' }))),
+      ...addonIssues,
       ...extras.unresolved.map(d => ({ ...d, source: 'extras' })),
       ...issues.map(i => ({ name: i.role_name, reason: i.reason, source: 'joint' })),
     ],

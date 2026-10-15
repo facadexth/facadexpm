@@ -11,5 +11,6 @@ export function useTemplateAddonPieces(templates) {
   const ids = useMemo(() => (templates || []).filter(t => t && t.layout_kind).map(t => t.id), [templates])
   const key = ids.join(',')
   const q = useQuery(() => (ids.length ? loadAddonPieces({ supabase, templateIds: ids }) : Promise.resolve({})), [key])
-  return { addonPiecesByTemplate: q.data || {}, loading: ids.length ? q.loading : false, error: q.error }
+  const data = useMemo(() => q.data || {}, [q.data])   // one object per load: costing memos depend on its identity
+  return { addonPiecesByTemplate: data, loading: ids.length ? q.loading : false, error: q.error }
 }

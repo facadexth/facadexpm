@@ -217,10 +217,11 @@ export function bomsForStale(costs) {
   const m = {}
   for (const [id, r] of Object.entries(costs || {})) {
     if (!r) continue
-    const a = r.addonBom
-    m[id] = a ? {
-      profileLines: [...r.bom.profileLines, ...a.profileLines], gridLines: [...r.bom.gridLines, ...a.gridLines],
-      hardwareLines: [...r.bom.hardwareLines, ...a.hardwareLines], hardwareSetLines: [...(r.bom.hardwareSetLines || []), ...(a.hardwareSetLines || [])],
+    // the legacy add-on and the inline attach units (addonBoms)
+    const extra = [r.addonBom, ...(r.addonBoms || []).map(a => a && a.bom)].filter(Boolean)
+    m[id] = extra.length ? {
+      profileLines: [r.bom, ...extra].flatMap(b => b.profileLines), gridLines: [r.bom, ...extra].flatMap(b => b.gridLines),
+      hardwareLines: [r.bom, ...extra].flatMap(b => b.hardwareLines), hardwareSetLines: [r.bom, ...extra].flatMap(b => b.hardwareSetLines || []),
     } : r.bom
   }
   return m

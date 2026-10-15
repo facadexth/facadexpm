@@ -8,12 +8,13 @@ const sum = (rows, k) => (rows || []).reduce((s, r) => s + n(r[k]), 0)
 
 // The engine's own template waste is deliberately left out (Ruling P3-2): the project's waste % applies instead.
 export function costBreakdown(cost) {
-  const boms = [cost && cost.bom, cost && cost.addonBom].filter(Boolean)
+  // main, legacy add-on and the inline attach units (costOpening.addonBoms); merge glass is cost.addonMerge.glass
+  const boms = [cost && cost.bom, cost && cost.addonBom, ...((cost && cost.addonBoms) || []).map(a => a && a.bom)].filter(Boolean)
   const profile = b => [...(b.profileLines || []), ...(b.gridLines || [])]
   return {
     alu: boms.reduce((s, b) => s + sum(profile(b), 'cost'), 0),
     hardware: boms.reduce((s, b) => s + sum(b.hardwareLines, 'cost') + sum(b.hardwareSetLines, 'cost'), 0),
-    glass: boms.reduce((s, b) => s + n(b.infillCost), 0),
+    glass: boms.reduce((s, b) => s + n(b.infillCost), 0) + n(cost && cost.addonMerge && cost.addonMerge.glass && cost.addonMerge.glass.cost),
     labour: boms.reduce((s, b) => s + n(b.laborCost), 0),
     other: boms.reduce((s, b) => s + n(b.siliconeCost) + n(b.feltCost) + n(b.extraLinesCost), 0) + n(cost && cost.extras && cost.extras.cost),
     aluWeightKg: boms.reduce((s, b) => s + sum(profile(b), 'weight_kg'), 0),
