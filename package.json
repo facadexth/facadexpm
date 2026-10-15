@@ -1,6 +1,6 @@
 {
   "name": "facadex-dashboard",
-  "version": "1.20.46",
+  "version": "1.20.47",
   "private": true,
   "scripts": {
     "dev": "vite",
