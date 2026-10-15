@@ -25,7 +25,8 @@ export async function saveItemWithAddons({ supabase, rowId, payload, addons, mai
 // save = rewrite the add-on table on save (form has add-ons, or the item had some so an empty list clears them).
 export function addonSavePlan({ map, error = null, loading = false, itemId = null, formAddons = [], seeded = false, hadAddons = false }) {
   if (!itemId) return { ready: true, seed: null, save: (formAddons || []).length > 0 || hadAddons }
-  const ready = !!map && !error && !loading
+  // an existing item missing from a loaded map was not part of that load (e.g. the map predates it): never read as "none"
+  const ready = !!map && !error && !loading && Object.prototype.hasOwnProperty.call(map, itemId)
   if (!ready) return { ready: false, seed: null, save: false }
   if (!seeded) {
     const saved = map[itemId] || []

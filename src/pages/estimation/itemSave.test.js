@@ -86,6 +86,11 @@ describe('addonSavePlan (never write an add-on list that was not loaded)', () =>
     expect(addonSavePlan({ map: { o1: [] }, itemId: 'o1', formAddons: [], seeded: true, hadAddons: true }).save).toBe(true)
     expect(addonSavePlan({ map: { o1: [] }, itemId: 'o1', formAddons: [], seeded: true, hadAddons: false }).save).toBe(false)
   })
+  it('M-2: a loaded map without the item id is not ready (no seed, no save); a new item stays ready', () => {
+    expect(addonSavePlan({ map: { other: saved }, itemId: 'o1', formAddons: [], seeded: false })).toEqual({ ready: false, seed: null, save: false })
+    expect(addonSavePlan({ map: { other: saved }, itemId: 'o1', formAddons: [addon], seeded: true, hadAddons: true })).toEqual({ ready: false, seed: null, save: false })
+    expect(addonSavePlan({ map: { other: saved }, itemId: null, formAddons: [addon] })).toEqual({ ready: true, seed: null, save: true })
+  })
   it('a new item saves only when it has add-ons', () => {
     expect(addonSavePlan({ map: undefined, itemId: null, formAddons: [addon] })).toEqual({ ready: true, seed: null, save: true })
     expect(addonSavePlan({ map: undefined, itemId: null, formAddons: [] }).save).toBe(false)
