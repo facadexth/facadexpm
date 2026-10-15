@@ -122,9 +122,10 @@ export function partSvgString({ model, widthMm, heightMm, view = 'out', buttOf, 
   if (ao) {
     const t = Math.max(side, top, bottom) || null
     parts.push(addonSvg(ao, { t, sw: 1.2, ns: '', style, fills, outline: 2 }))
-    for (const d of ov.dims) parts.push(dimSvg(shiftDim(d, b, ao.ext), metres(d.value)))
+    for (const d of addonDims(ao, 16, AO_DIM_STEP)) parts.push(dimSvg(d, metres(d.value)))
     const vx = b.frameX - MARGIN - ao.ext.left, vy = b.frameY - MARGIN - ao.ext.top
-    const vw = b.frameW + MARGIN + DIM_ROOM + ao.ext.left + ao.ext.right, vh = b.frameH + MARGIN + DIM_ROOM + ao.ext.top + ao.ext.bottom + AO_TEXT_ROOM
+    const vw = b.frameW + MARGIN + DIM_ROOM + ao.ext.left + ao.ext.right + (ao.axes.ys.length > 2 ? AO_DIM_STEP : 0)
+    const vh = b.frameH + MARGIN + DIM_ROOM + ao.ext.top + ao.ext.bottom + AO_TEXT_ROOM + (ao.axes.xs.length > 2 ? AO_DIM_STEP : 0)
     parts.push(`<text x="${n2(vx + vw / 2)}" y="${n2(vy + vh - 6)}" font-size="11" fill="${DIM}" text-anchor="middle">${overallText(ao)}</text>`)
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${n2(vw)}" height="${n2(vh)}" viewBox="${n2(vx)} ${n2(vy)} ${n2(vw)} ${n2(vh)}">${parts.join('')}</svg>`
   }
@@ -162,7 +163,12 @@ function mmSvg(ov, style, lengthOf, ao = null) {
     const frames = ov.pieces.filter(p => p.role === 'main' && FRAME_PART.has(p.part)).map(p => Math.min(p.w, p.h)).filter(v => v > 0)
     parts.push(addonSvg(ao, { t: frames.length ? Math.min(...frames) : null, sw: 1.3, ns: ' vector-effect="non-scaling-stroke"', style, fills: style === 'solid' ? FILL.solid : FILL.double, mm: true, outline: 2 }))
   }
-  for (const d of ov.dims) parts.push(mmDimSvg(ao ? shiftDim(d, b, ao.ext) : d, sw))
+  if (ao) {
+    for (const d of ov.dims) if (d.kind !== 'width' && d.kind !== 'height') parts.push(mmDimSvg(shiftDim(d, b, ao.ext), sw))
+    for (const d of addonDims(ao, sw * 14, sw * 12)) parts.push(mmDimSvg(d, sw))
+  } else {
+    for (const d of ov.dims) parts.push(mmDimSvg(d, sw))
+  }
   const px = Math.min(420 / b.frameW, 300 / b.frameH)
   const v = ao ? mmViewBox(b, ao) : b
   if (ao) parts.push(`<text x="${n2(v.x + v.w / 2)}" y="${n2(v.y + v.h - sw * 4)}" font-size="${n2(sw * 8)}" fill="${DIM}" text-anchor="middle">${overallText(ao)}</text>`)
@@ -173,6 +179,7 @@ function mmSvg(ov, style, lengthOf, ao = null) {
 
 const AO_POSITIONS = ['top', 'bottom', 'left', 'right']
 const AO_TEXT_ROOM = 18      // px under the sliding_2 drawing for the overall size line
+const AO_DIM_STEP = 18       // px between the chain dimension line and the whole-unit line (sliding_2 drawing)
 const AO_MAX_GRID = 12       // grid bars drawn per direction
 const AO_SYM = '#2563eb'
 const FRAME_PART = new Set(['frame'])
@@ -210,7 +217,32 @@ function addonGeometry(box, addons, widthMm, heightMm, view) {
     right: Math.max(0, Math.max(...out.map(r => r.x + r.w)) - (frame.x + frame.w)),
     bottom: Math.max(0, Math.max(...out.map(r => r.y + r.h)) - (frame.y + frame.h)),
   }
-  return { rects: out, frame, ext, envelope, main: { w: widthMm, h: heightMm }, view }
+  // the dimension chain along each axis: the envelope edges, the frame edges and the edges of the add-ons on that axis
+  const env = { x0: frame.x - ext.left, x1: frame.x + frame.w + ext.right, y0: frame.y - ext.top, y1: frame.y + frame.h + ext.bottom }
+  const uniq = (vs, lo, hi) => [...new Set(vs.map(v => Math.round(v * 100) / 100))].filter(v => v >= lo - 0.01 && v <= hi + 0.01).sort((a, c) => a - c)
+  const axes = {
+    xs: uniq([env.x0, env.x1, frame.x, frame.x + frame.w, ...out.filter(r => r.side === 'left' || r.side === 'right').flatMap(r => [r.x, r.x + r.w])], env.x0, env.x1),
+    ys: uniq([env.y0, env.y1, frame.y, frame.y + frame.h, ...out.filter(r => r.side === 'top' || r.side === 'bottom').flatMap(r => [r.y, r.y + r.h])], env.y0, env.y1),
+    env, scale: sc,
+  }
+  return { rects: out, frame, ext, envelope, main: { w: widthMm, h: heightMm }, view, axes }
+}
+
+// Dimension lines of a drawing with add-ons (owner 2026-10-15: main unit, each additional unit and the whole unit).
+// First line out from the envelope: the chain along the axis (the main unit and every add-on on that axis, each with
+// its own size); a second line `step` further out: the whole unit, drawn only when the chain has more than one
+// segment (otherwise main = whole and one line says it). Values in mm; positions in the drawing's units.
+function addonDims(ao, gap, step) {
+  const { xs, ys, env, scale } = ao.axes
+  const mm = v => Math.round((v / scale) * 10) / 10
+  const out = []
+  const yA = env.y1 + gap, yB = yA + step
+  for (let i = 1; i < xs.length; i++) out.push({ kind: 'width', x1: xs[i - 1], y1: yA, x2: xs[i], y2: yA, value: mm(xs[i] - xs[i - 1]) })
+  if (xs.length > 2) out.push({ kind: 'width', x1: env.x0, y1: yB, x2: env.x1, y2: yB, value: mm(env.x1 - env.x0) })
+  const xA = env.x1 + gap, xB = xA + step
+  for (let i = 1; i < ys.length; i++) out.push({ kind: 'height', x1: xA, y1: ys[i - 1], x2: xA, y2: ys[i], value: mm(ys[i] - ys[i - 1]) })
+  if (ys.length > 2) out.push({ kind: 'height', x1: xB, y1: env.y0, x2: xB, y2: env.y1, value: mm(env.y1 - env.y0) })
+  return out
 }
 
 // The millimetre drawing's viewBox grown by the add-ons (and the overall size line); the box's own without add-ons.
@@ -220,7 +252,8 @@ export function partViewBox({ box, addons = null, widthMm, heightMm, view = 'out
   return ao ? mmViewBox(box, ao) : { x: box.x, y: box.y, w: box.w, h: box.h }
 }
 function mmViewBox(b, ao) {
-  return { x: b.x - ao.ext.left, y: b.y - ao.ext.top, w: b.w + ao.ext.left + ao.ext.right, h: b.h + ao.ext.top + ao.ext.bottom + b.sw * 14 }
+  const ex = ao.axes.ys.length > 2 ? b.sw * 12 : 0, ey = ao.axes.xs.length > 2 ? b.sw * 12 : 0
+  return { x: b.x - ao.ext.left, y: b.y - ao.ext.top, w: b.w + ao.ext.left + ao.ext.right + ex, h: b.h + ao.ext.top + ao.ext.bottom + b.sw * 14 + ey }
 }
 
 // A main dimension line outside the frame moves out past the add-ons on its side.

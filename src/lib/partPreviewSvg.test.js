@@ -262,6 +262,29 @@ describe('partSvgString with inline add-ons', () => {
     expect(draw([{ ...topMerge, kind: 'awning' }])).toMatch(/<polyline/)
     expect(draw([topMerge], { style: 'solid' })).not.toBe(draw([topMerge]))
   })
+  it('dimensions show the main unit, each add-on and the whole unit (owner 2026-10-15)', () => {
+    const labels = (s) => (s.match(/>([\d.]+ ม\.)</g) || []).map((m) => m.slice(1, -1))
+    // top merge 400 on 1800 x 1200: vertical chain 0.40 + 1.20, whole 1.60; horizontal 1.80 alone (main = whole)
+    const top = labels(draw([topMerge]))
+    expect(top.filter((l) => l === '0.40 ม.')).toHaveLength(1)
+    expect(top.filter((l) => l === '1.20 ม.')).toHaveLength(1)
+    expect(top.filter((l) => l === '1.60 ม.')).toHaveLength(1)
+    expect(top.filter((l) => l === '1.80 ม.')).toHaveLength(1)
+    // right attach 500: horizontal chain 1.80 + 0.50, whole 2.30; vertical 1.20 alone
+    const right = labels(draw([rightAttach]))
+    expect(right.filter((l) => l === '0.50 ม.')).toHaveLength(1)
+    expect(right.filter((l) => l === '1.80 ม.')).toHaveLength(1)
+    expect(right.filter((l) => l === '2.30 ม.')).toHaveLength(1)
+    expect(right.filter((l) => l === '1.20 ม.')).toHaveLength(1)
+    // both: 2 chains + 2 whole lines, and the whole-unit lines sit further out than the chain
+    const both = draw([topMerge, rightAttach])
+    expect(labels(both).sort()).toEqual(['0.40 ม.', '0.50 ม.', '1.20 ม.', '1.60 ม.', '1.80 ม.', '2.30 ม.'])
+    // the inside view mirrors the chain, same labels
+    expect(labels(draw([topMerge, rightAttach], { view: 'in' })).sort()).toEqual(labels(both).sort())
+    // the mm drawing kinds get the same three levels
+    const mm = labels(partSvgString({ model: m8('fixed_grid'), widthMm: 1800, heightMm: 1200, addons: [topMerge, rightAttach] }))
+    expect(mm.sort()).toEqual(['0.40 ม.', '0.50 ม.', '1.20 ม.', '1.60 ม.', '1.80 ม.', '2.30 ม.'])
+  })
   it('works for a millimetre layout kind too (safe, overall size)', () => {
     const s = partSvgString({ model: m8('fixed_grid'), widthMm: 1800, heightMm: 1200, addons: [topMerge] })
     expect(safeSvgDataUri(s)).not.toBeNull()
