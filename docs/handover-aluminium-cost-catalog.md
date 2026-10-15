@@ -431,7 +431,21 @@ Order matters: **the sliding_2 options make every sliding_2 template save write 
 3. `! bash .superpowers/sdd/2026-10-15-sliding2-addons/run-addons-tests.sh` (dry-run; expect `ADDONS TESTS PASSED`, `leftover = 0`)
 4. `npx supabase db query --project-ref kntspldhvcjeaubtqtkn --linked=false -f supabase/migrations/2026-10-18-01-item-addons.sql`
 
-Then deploy only per `.claude/skills/chang-ship/SKILL.md`. The `align` column sits inside `CREATE TABLE IF NOT EXISTS`: on a database where the table already exists without it, add `ALTER TABLE estimation_item_addons ADD COLUMN IF NOT EXISTS align ...` before any re-run (see deferred minors).
+Then deploy only per `.claude/skills/chang-ship/SKILL.md`. 2026-10-18-01 now adds `align` itself when the table already exists without it (`ADD COLUMN IF NOT EXISTS` + a guarded, same-named CHECK `estimation_item_addons_align_check`), so a re-run is safe.
+
+What breaks if a migration is missing when the code ships (from the whole-branch review):
+- **If 2026-10-17-01 is missing:** sliding_2 template saves fail at `bom_templates.update({ layout_params })`, and items with the new options fail to save.
+- **If 2026-10-18-01 is missing:** both add-on loads fail, every layout_kind item shows `addon_not_loaded`, provider compare marks them incomplete, add-on editing is blocked; costs still compute.
+
+## Final review fixes (2026-10-15, after the whole-branch review)
+
+- **I-1** Default 2·butt deductions were 0 in production (bars about 76 mm too long). Assigning / changing a set's side family in the template zoom (attach `frame_side`; merge `ao_frame_side`, else `ext`) now fills every 2·butt row still at 0 (attach frame_top / frame_bottom / mullion / rail; merge divider / ao_bead / ao_frame_far / mullion / rail) with 2·butt of that family at the editor's test series (`addonModel.fillDefaultDeductions`). At cost time a costed 2·butt piece still at 0 while the side family has a butt > 0 raises the new issue **`addon_deduction_zero`** ("ระยะหักของชิ้นช่องแสงยังเป็น 0 ตรวจใน template"), also shown as a chip on the zoom table row, so a 0 never passes silently. Rows the owner already set to a non-zero value are never touched.
+- **I-2** Attach units no longer inherit the main template's grid (`grid_vertical_mullion_family`, `grid_horizontal_rail_family`, `grid_row_weights`): only the expander's mullion / rail bars are priced.
+- **I-3** Add-on loads chunk ids (100 per request) and page each chunk (`fetchAllRows`, ordered by id).
+- **I-4** The Estimation page keeps the last loaded add-on maps through a refetch (no plain-cost flash); send-to-quotation is disabled with "กำลังโหลดข้อมูลช่องแสง" while either map loads.
+- **M-1** Migration re-runnable for `align` (above). **M-2** An existing item missing from a loaded add-on map is "not ready" in the item form (no seed, no save).
+
+**Owner data check (I-2 trigger):** before deploy, look for live sliding_2 templates whose Grid mullion / rail families are filled (BOM template form, Grid section). Before this fix those families were added again on top of every attach add-on's own bars; after it they price the main unit only. Also expect `addon_deduction_zero` on any piece set saved earlier with 0 deductions: open the zoom and re-pick the side family (or type the deductions).
 
 ## Owner click-through list (nothing has been clicked on real data)
 
@@ -485,7 +499,6 @@ From the ledger (controller rulings):
 - Drawing arrows under เลื่อน 1 ฟิก 1 (both arrows drawn, `fixed_side` does not affect the picture); drawing overrides (ext lengths, family changes) are not shown.
 - Estimation page does not reload piece sets after saving them in the editor (reload the page).
 - The part editor's deduction field (`lineDeductions().pre`) omits the sill guard's after-factor term (total and ที่มา are correct).
-- Migration `align` inside `CREATE TABLE IF NOT EXISTS` needs `ADD COLUMN IF NOT EXISTS align` before any re-run on a database where the table already exists.
 - Hardware ลูกล้อ is now per unit (fixed expression); it no longer follows an edited sash count on new templates.
 - The wording differs from the mockup: ช่องแสง / ร่วมวงกบ / แยกวงกบ vs Add-on / มีผลกับ type หลัก / แปะเพิ่ม.
 
