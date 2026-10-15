@@ -53,4 +53,25 @@ describe('useBackToClose (moved out of Modal, same contract)', () => {
     unmount()
     expect(back).not.toHaveBeenCalled()
   })
+
+  it('close with X, then open another overlay: ONE back press closes the new one (no leaked suppression)', () => {
+    vi.spyOn(window.history, 'back').mockImplementation(() => window.dispatchEvent(new PopStateEvent('popstate')))
+    const first = renderHook(() => useBackToClose(() => {}))
+    first.unmount()                                            // closed with X → its own back() popstate has no listener
+    const onClose = vi.fn()
+    renderHook(() => useBackToClose(onClose))
+    window.dispatchEvent(new PopStateEvent('popstate'))        // the user's real back press
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('nested: the inner overlay closing with X does not close the outer one', () => {
+    vi.spyOn(window.history, 'back').mockImplementation(() => window.dispatchEvent(new PopStateEvent('popstate')))
+    const outerClose = vi.fn()
+    renderHook(() => useBackToClose(outerClose))
+    const inner = renderHook(() => useBackToClose(() => {}))
+    inner.unmount()
+    expect(outerClose).not.toHaveBeenCalled()
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    expect(outerClose).toHaveBeenCalledTimes(1)
+  })
 })

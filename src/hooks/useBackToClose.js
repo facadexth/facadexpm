@@ -20,6 +20,10 @@ import { useEffect, useRef } from 'react'
 // เลย ณ ตอนที่เขียน) จึงไม่แก้ตอนนี้ -- ถ้าจะเพิ่ม modal ซ้อน modal ในอนาคต
 // ต้องกลับมาดูจุดนี้ใหม่
 let suppressPopstateCount = 0
+// จำนวน overlay ที่ยังฟัง popstate อยู่ -- ใช้ตัดสินว่าการ history.back() ตอนเก็บกวาดของตัวเองมีใครรับ
+// popstate นั้นหรือไม่ ถ้าไม่มี (ปิด overlay เดียวด้วย X) ห้าม increment counter ไม่งั้น count จะค้าง
+// และกลืน back-press จริงของ overlay ถัดไป (พบตอนย้ายมาใช้กับลิ้นชักเมนูมือถือ 2026-10-15)
+let activeListeners = 0
 
 /**
  * Push one history entry while the overlay is open; the phone back button then closes it instead of leaving
@@ -58,10 +62,13 @@ export function useBackToClose(onClose) {
       if (onClose() === false) { closedByBackRef.current = false; window.history.pushState({ modalOpen: true }, ''); return }
     }
     window.addEventListener('popstate', handlePopState)
+    activeListeners += 1
     return () => {
       window.removeEventListener('popstate', handlePopState)
+      activeListeners -= 1
       if (!closedByBackRef.current && window.history.state?.modalOpen) {
-        suppressPopstateCount += 1
+        // only another still-open overlay could receive the popstate this back() causes
+        if (activeListeners > 0) suppressPopstateCount += 1
         window.history.back()
       }
     }
