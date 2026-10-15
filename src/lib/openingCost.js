@@ -9,6 +9,7 @@ import { applyJoints, applyRoleThickness, jointDeductionMm } from './assembly.js
 import { resolveCatalogProfile } from './aluCatalogPricing.js'
 import { expandParts } from './partExpand.js'
 import { expandAddons } from './addonExpand.js'
+import { layoutAddons } from './addonModel.js'
 import { allowsMixedThickness } from './estimationCatalogViews.js'
 import { openingExtras } from './openingExtras.js'
 import { setParams } from './partModel.js'
@@ -155,6 +156,8 @@ export function addonPlan(ctx, template, item) {
   const t = template || {}
   const it = item || {}
   const issue = reason => ({ addons: [], issues: [{ name: ADDON_NAME, reason, source: 'addon' }] })
+  // an item without an id (QuickQuote throw-away, a new item in the form) has no saved add-ons: nothing failed to load
+  if (it.id == null) return { addons: [], issues: [] }
   if (t.layout_kind && (c.addonPiecesError || c.itemAddonsError)) return issue('addon_not_loaded')
   const raw = it.id != null && c.itemAddonsByOpening ? c.itemAddonsByOpening[it.id] : null
   const addons = Array.isArray(raw) ? raw : []
@@ -184,6 +187,15 @@ export function partPreviewCtx(ctx, template, resolved, item = null) {
     ? expandItemAddons({ addons, pieceRows: (ctx.addonPiecesByTemplate || {})[template.id], main: mainMm(item) }, buttOf, template.layout_kind)
     : null
   return { model, buttOf, widthOf: widthOfFor(opts), addons, overrides: exp ? exp.merge.overrides : {}, sideButt: exp ? exp.merge.sideButt : {} }
+}
+
+// The main unit's frame in metres: the item's width × height, or the envelope of its costed merge add-ons.
+function mainFrameUnit(item, addons) {
+  const merge = (addons || []).filter(a => a && a.mode === 'merge' && ['top', 'bottom', 'left', 'right'].includes(a.position))
+  if (!merge.length) return { width_m: Number(item.width_m), height_m: Number(item.height_m) }
+  const { widthMm, heightMm } = mainMm(item)
+  const env = layoutAddons({ widthMm, heightMm, addons: merge }).envelope
+  return { width_m: env.w / 1000, height_m: env.h / 1000 }
 }
 
 const mainMm = item => ({ widthMm: (Number(item && item.width_m) || 0) * 1000, heightMm: (Number(item && item.height_m) || 0) * 1000 })
@@ -255,8 +267,11 @@ export function costOpening(ctx) {
   // an add-on the item asks for but that could not be costed must be said, never silently left out of the total
   if (item.addon_template_id && !hasAddon) own.push({ name: 'ชุดต่อเติม', reason: addonTemplate ? 'no_dimension' : 'unknown_addon_template', source: 'addon' })
 
-  const units = [{ width_m: Number(item.width_m), height_m: Number(item.height_m) }]
+  // frames for openingExtras (fixing points, sealant): a merge add-on grows the main frame to the merge envelope;
+  // each attach unit is its own frame, like the legacy add-on
+  const units = [mainFrameUnit(item, expansion ? plan.addons : [])]
   if (hasAddon) units.push({ width_m: Number(item.addon_width_m), height_m: Number(item.addon_height_m) })
+  for (const u of (expansion ? prepared.attach : [])) units.push({ width_m: u.opening.width_m, height_m: u.opening.height_m })
   const extras = openingExtras({ units, settings, partsById: index.parts, pricing })
   const combined = combineOpeningBoms(bom, addonBom)
   combined.addonBoms = addonBoms

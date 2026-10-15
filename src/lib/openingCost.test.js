@@ -649,3 +649,43 @@ describe('Task 5: roll-ups read the attach units and the merge glass', async () 
     expect(cmp[0].complete).toBe(false)
   })
 })
+
+describe('Task 5 fix: add-on frames in openingExtras; items without an id', async () => {
+  const { openingExtras } = await import('./openingExtras.js')
+  const settings = mergeSettings({ shim_part_id: 'shim' })
+  const ext = units => openingExtras({ units, settings, partsById: aIndex.parts, pricing: { hardwarePrice: () => ({ source: 'reference', unit_price: 0 }) } })
+  it('attach add-on ⇒ extras over two frames (main + attach unit)', () => {
+    const r = costOpening(aCtx([ao()], pieceRows('attach', null, ATTACH_FAMS), { settings }))
+    const want = ext([{ width_m: 1.8, height_m: 1.2 }, { width_m: 1.8, height_m: 0.4 }])
+    expect(r.extras.points).toBe(want.points)
+    expect(r.extras.sealant_m).toBeCloseTo(10.4)
+    expect(r.extras.points).toBeGreaterThan(ext([{ width_m: 1.8, height_m: 1.2 }]).points)
+  })
+  it('merge top 1800 × 400 on 1800 × 1200 ⇒ the main frame is 1.8 × 1.6', () => {
+    const r = costOpening(aCtx([ao({ mode: 'merge' })], pieceRows('merge', 'top', { ext: LONG, main_facing: null }), { settings }))
+    const want = ext([{ width_m: 1.8, height_m: 1.6 }])
+    expect(r.extras.points).toBe(want.points)
+    expect(r.extras.sealant_m).toBeCloseTo(6.8)
+  })
+  it('no add-ons ⇒ extras unchanged (absolute numbers)', () => {
+    const r = costOpening(aCtx(null, [], { settings }))
+    expect(r.extras.sealant_m).toBeCloseTo(6)
+    expect(r.extras.points).toBe(ext([{ width_m: 1.8, height_m: 1.2 }]).points)
+    // the legacy case: main 2 × 1 + add-on 2 × 0.5 ⇒ 30 points (as before)
+    const c = ctxBase()
+    c.settings = mergeSettings({ shim_part_id: 'shim' })
+    c.addonTemplate = T({ id: 't2' })
+    c.componentsByTemplate = { t1: comps.slice(0, 1), t2: comps.slice(0, 1) }
+    c.item = { ...c.item, addon_template_id: 't2', addon_width_m: 2, addon_height_m: 0.5 }
+    expect(costOpening({ ...c, itemAddonsByOpening: {} }).extras.points).toBe(30)
+  })
+  it('an item without an id gets no addon_not_loaded on a load error', () => {
+    for (const id of [undefined, null]) {
+      const c = aCtx(null, [], { itemAddonsError: 'x', addonPiecesError: 'y' })
+      c.item = { ...c.item, id }
+      const r = costOpening(c)
+      expect(r.unresolved.some(u => u.reason === 'addon_not_loaded')).toBe(false)
+      expect(JSON.stringify(r)).toBe(JSON.stringify(costOpening({ ...c, itemAddonsError: null, addonPiecesError: null })))
+    }
+  })
+})
