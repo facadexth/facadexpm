@@ -206,6 +206,8 @@ describe('stock lines always go to the central site "ส่วนกลาง" (
     expect(stockSiteLookup(sites)).toEqual({ site: 'C' })
     expect(stockSiteLookup(undefined)).toBeUndefined()
     expect(stockSiteLookup([{ id: 'J1', name: 'x' }])).toEqual({ site: '' })
+    // the is_default flag wins over the name (a tenant may have renamed its default site)
+    expect(stockSiteLookup([{ id: 'D', name: 'คลังหลัก', is_default: true }, { id: 'C', name: 'ส่วนกลาง' }])).toEqual({ site: 'D' })
   })
   it('deriveLineSite: central for a stock line, nothing for a non-stock line or without a lookup', () => {
     const lk = stockSiteLookup(sites)

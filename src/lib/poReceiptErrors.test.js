@@ -1,6 +1,6 @@
 // src/lib/poReceiptErrors.test.js
 import { describe, it, expect } from 'vitest'
-import { mapPoReceiptRpcError, buildPoMoneyIndex, poMoneyLockText, poLedgerSummary, PO_RECEIPT_LOCKED_TEXT, PO_HAS_DEPOSIT_TEXT, depositSelectableForPo, isMissingColumnError, PO_RECEIPT_ERROR_TEXT, receiveRoute, receiveDialogDeposits, canOfferCreateDeposit, DB_NOT_UPDATED_TEXT, RECEIVE_NOT_READY_TEXT, poHasMultipleBills, isMissingEmbedError, poCancelReversesStock } from './poReceiptErrors.js'
+import { centralStockSiteId, mapPoReceiptRpcError, buildPoMoneyIndex, poMoneyLockText, poLedgerSummary, PO_RECEIPT_LOCKED_TEXT, PO_HAS_DEPOSIT_TEXT, depositSelectableForPo, isMissingColumnError, PO_RECEIPT_ERROR_TEXT, receiveRoute, receiveDialogDeposits, canOfferCreateDeposit, DB_NOT_UPDATED_TEXT, RECEIVE_NOT_READY_TEXT, poHasMultipleBills, isMissingEmbedError, poCancelReversesStock } from './poReceiptErrors.js'
 import { RECEIVE_DELIVERY_DISCOUNT_TEXT } from './deliveryTaxInvoiceText.js'
 import { readFileSync } from 'node:fs'
 
@@ -265,4 +265,13 @@ describe('receiveRoute for po-mode POs is unchanged by the delivery work', () =>
       expect(receiveRoute(po('partially_received'), pre)).toEqual({ kind: 'disabled', reason: RECEIVE_NOT_READY_TEXT })
     })
   }
+})
+
+describe('centralStockSiteId', () => {
+  it('is_default first, then the name ส่วนกลาง, else empty', () => {
+    expect(centralStockSiteId([{ id: 'D', name: 'คลังหลัก', is_default: true }, { id: 'C', name: ' ส่วนกลาง ' }])).toBe('D')
+    expect(centralStockSiteId([{ id: 'J', name: 'site' }, { id: 'C', name: ' ส่วนกลาง ' }])).toBe('C')
+    expect(centralStockSiteId([{ id: 'J', name: 'site' }])).toBe('')
+    expect(centralStockSiteId(undefined)).toBe('')
+  })
 })

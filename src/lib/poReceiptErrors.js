@@ -62,9 +62,11 @@ export const PO_RECEIPT_ERROR_TEXT = {
 }
 export const CENTRAL_SITE_MISSING_TEXT = PO_RECEIPT_ERROR_TEXT.central_site_missing
 
-/** The tenant's central stock site (name "ส่วนกลาง", trimmed) or '' — every purchase_in from a PO goes there. */
+/** The tenant's central stock site: the is_default site (one per tenant, seeded as "ส่วนกลาง" at signup), else a
+ *  site named "ส่วนกลาง" (trimmed), else '' — every purchase_in from a PO goes there (central_stock_site_id in SQL). */
 export function centralStockSiteId(sites) {
-  return (sites || []).find(s => String(s.name || '').trim() === 'ส่วนกลาง')?.id || ''
+  const list = sites || []
+  return list.find(s => s.is_default)?.id || list.find(s => String(s.name || '').trim() === 'ส่วนกลาง')?.id || ''
 }
 
 /** Sentence for the cancel / un-receive confirm dialogs once 2026-10-09-06 is live. */
