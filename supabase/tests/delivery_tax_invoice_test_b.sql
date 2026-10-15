@@ -8,7 +8,7 @@
 BEGIN;
 DO $$
 DECLARE
-  t_owner UUID; t_tenant UUID; t2 UUID; t_site UUID; t_sup UUID; t_sup2 UUID; t_cat UUID; site_t2 UUID; sup_t2 UUID; cat_t2 UUID;
+  t_owner UUID; t_tenant UUID; t2 UUID; t_site UUID; t_central UUID; t_sup UUID; t_sup2 UUID; t_cat UUID; site_t2 UUID; sup_t2 UUID; cat_t2 UUID;
   iI UUID; iJ UUID; iK UUID; iL UUID; iM UUID;
   email TEXT := '__test_dtib_owner__@example.com'; w_email TEXT := '__test_dtib_worker__@example.com';
   poD1 UUID; a1 UUID; a2 UUID; poD2 UUID; b1 UUID; poX UUID; x1 UUID; poP UUID; p1 UUID; poD3 UUID; k1 UUID; k2 UUID; poF UUID; f1 UUID; poT2 UUID;
@@ -22,6 +22,7 @@ BEGIN
   INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at) VALUES ('__TEST dtib__', t_owner, 'trial', now() + interval '14 days') RETURNING id INTO t_tenant;
   INSERT INTO user_roles (user_email, role, status, tenant_id) VALUES (email, 'OWNER', 'approved', t_tenant), (w_email, 'WORKER', 'approved', t_tenant);
   INSERT INTO sites (tenant_id, site_number, name) VALUES (t_tenant, '__DTIB-1__', '__dtib site__') RETURNING id INTO t_site;
+  INSERT INTO sites (tenant_id, site_number, name) VALUES (t_tenant, '__DTIB-C__', 'ส่วนกลาง') RETURNING id INTO t_central;  -- 2026-10-15-01: stock from receipts goes here
   INSERT INTO suppliers (tenant_id, name, default_tax_invoice_mode) VALUES (t_tenant, '__dtib cac__', 'delivery') RETURNING id INTO t_sup;
   INSERT INTO suppliers (tenant_id, name) VALUES (t_tenant, '__dtib other__') RETURNING id INTO t_sup2;
   INSERT INTO expense_categories (tenant_id, name) VALUES (t_tenant, '__dtib cat__') RETURNING id INTO t_cat;
@@ -79,7 +80,7 @@ BEGIN
   -- B1 a receipt draft links one lot of a two-lot PO
   hdr := jsonb_build_object('supplier_id', t_sup, 'invoice_no', 'DTIB-1', 'invoice_date', v_bkk, 'net_before_vat', 600, 'vat', 42);
   inv1 := save_supplier_tax_invoice_receipt_draft(NULL, hdr,
-    jsonb_build_array(jsonb_build_object('description', 'เหล็ก ล็อต 1', 'qty', 2.5, 'unit', 'kg', 'unit_price', 240, 'inventory_item_id', iI, 'site_id', t_site, 'base_qty', 2.5)),
+    jsonb_build_array(jsonb_build_object('description', 'เหล็ก ล็อต 1', 'qty', 2.5, 'unit', 'kg', 'unit_price', 240, 'inventory_item_id', iI, 'site_id', t_central, 'base_qty', 2.5)),
     ARRAY[rc1]);
   IF (SELECT count(*) FROM supplier_tax_invoice_receipts WHERE invoice_id = inv1 AND receipt_id = rc1 AND po_id = poD1 AND active) <> 1 THEN RAISE EXCEPTION 'B1 FAIL: link row'; END IF;
   -- B1b not eligible: other supplier, 'po' mode PO, other tenant; B1c the same receipt twice
@@ -119,7 +120,7 @@ BEGIN
   j := post_supplier_tax_invoice(inv1, v_rev);
   IF (j->>'lines_posted')::int <> 1 OR (j->>'receipts_reversed')::int <> 1 OR (j->>'expenses_stamped')::int <> 1 THEN RAISE EXCEPTION 'B5 FAIL: result %', j; END IF;
   RESET role;
-  SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = iI AND site_id = t_site;
+  SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = iI AND site_id = t_central;
   IF v_q <> 2.5 OR abs(v_w - 240) > 1e-9 THEN RAISE EXCEPTION 'B5 FAIL: I % @ %', v_q, v_w; END IF;
   IF (SELECT invoice_no FROM expenses WHERE id = bill1) <> 'DTIB-1' THEN RAISE EXCEPTION 'B5 FAIL: bill1 not stamped'; END IF;
   IF NOT EXISTS (SELECT 1 FROM supplier_tax_invoice_expense_stamps WHERE invoice_id = inv1 AND expense_id = bill1 AND po_id = poD1 AND prev_invoice_no = 'DN-1' AND stamped_invoice_no = 'DTIB-1') THEN
@@ -145,8 +146,8 @@ BEGIN
   inv2 := save_supplier_tax_invoice_receipt_draft(NULL,
     jsonb_build_object('supplier_id', t_sup, 'invoice_no', 'DTIB-2', 'invoice_date', v_bkk, 'net_before_vat', 1390, 'vat', 108),
     jsonb_build_array(
-      jsonb_build_object('description', 'เหล็ก ล็อต 2', 'qty', 4, 'unit', 'kg', 'unit_price', 97.5, 'inventory_item_id', iI, 'site_id', t_site, 'base_qty', 4),
-      jsonb_build_object('description', 'J', 'qty', 5, 'unit', 'kg', 'unit_price', 200, 'inventory_item_id', iJ, 'site_id', t_site, 'base_qty', 5)),
+      jsonb_build_object('description', 'เหล็ก ล็อต 2', 'qty', 4, 'unit', 'kg', 'unit_price', 97.5, 'inventory_item_id', iI, 'site_id', t_central, 'base_qty', 4),
+      jsonb_build_object('description', 'J', 'qty', 5, 'unit', 'kg', 'unit_price', 200, 'inventory_item_id', iJ, 'site_id', t_central, 'base_qty', 5)),
     ARRAY[rc2, rc3]);
   j := preview_supplier_tax_invoice(inv2);
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(j->'checks') c WHERE (c->>'blocking')::boolean) THEN RAISE EXCEPTION 'B7 FAIL: blocking %', j->'checks'; END IF;
@@ -165,9 +166,9 @@ BEGIN
   IF (SELECT invoice_no FROM expenses WHERE id = x_exp) <> 'DTIB-2' OR (SELECT notes FROM expenses WHERE id = x_exp) IS NOT NULL THEN RAISE EXCEPTION 'B7 FAIL: unrelated expense touched'; END IF;
   IF (SELECT invoice_no FROM expenses WHERE id = bill1) <> 'DTIB-1' THEN RAISE EXCEPTION 'B7 FAIL: other invoice bill touched'; END IF;
   IF (SELECT match_diff FROM supplier_tax_invoices WHERE id = inv2) <> 0 THEN RAISE EXCEPTION 'B7 FAIL: match_diff'; END IF;
-  SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = iI AND site_id = t_site;
+  SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = iI AND site_id = t_central;
   IF v_q <> 6.5 OR abs(v_w - 990 / 6.5) > 1e-9 THEN RAISE EXCEPTION 'B7 FAIL: I % @ %', v_q, v_w; END IF;
-  SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = iJ AND site_id = t_site;
+  SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = iJ AND site_id = t_central;
   IF v_q <> 5 OR abs(v_w - 200) > 1e-9 THEN RAISE EXCEPTION 'B7 FAIL: J % @ %', v_q, v_w; END IF;
   SET LOCAL role = 'authenticated';
 
@@ -185,9 +186,9 @@ BEGIN
   END IF;
   IF (SELECT invoice_no FROM expenses WHERE id = bill1) <> 'DTIB-1' THEN RAISE EXCEPTION 'B9 FAIL: other invoice restored'; END IF;
   IF (SELECT invoice_no FROM expenses WHERE id = x_exp) <> 'DTIB-2' OR (SELECT notes FROM expenses WHERE id = x_exp) IS NOT NULL THEN RAISE EXCEPTION 'B9 FAIL: unrelated expense touched'; END IF;
-  SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = iI AND site_id = t_site;
+  SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = iI AND site_id = t_central;
   IF v_q <> 6.5 OR abs(v_w - 1000 / 6.5) > 1e-9 THEN RAISE EXCEPTION 'B9 FAIL: I % @ %', v_q, v_w; END IF;
-  SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = iJ AND site_id = t_site;
+  SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = iJ AND site_id = t_central;
   IF v_q <> 5 OR abs(v_w - 200) > 1e-9 THEN RAISE EXCEPTION 'B9 FAIL: J % @ %', v_q, v_w; END IF;
   IF EXISTS (SELECT 1 FROM supplier_tax_invoice_receipts WHERE invoice_id = inv2 AND active) OR NOT EXISTS (SELECT 1 FROM supplier_tax_invoice_receipts WHERE invoice_id = inv1 AND active) THEN
     RAISE EXCEPTION 'B9 FAIL: links';
@@ -198,7 +199,7 @@ BEGIN
   j := void_supplier_tax_invoice(inv1, 'ทดสอบ');
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(j->'warnings') w WHERE w->>'code' = 'void_inexact') THEN RAISE EXCEPTION 'B10 FAIL: expected void_inexact %', j; END IF;
   RESET role;
-  SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = iI AND site_id = t_site;
+  SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = iI AND site_id = t_central;
   IF v_q <> 6 OR abs(v_w - 1000 / 6.0) > 1e-6 THEN RAISE EXCEPTION 'B10 FAIL: I % @ %', v_q, v_w; END IF;
   IF (SELECT invoice_no FROM expenses WHERE id = bill1) <> 'DN-1' THEN RAISE EXCEPTION 'B10 FAIL: bill1'; END IF;
   SET LOCAL role = 'authenticated';
@@ -219,7 +220,7 @@ BEGIN
 
   -- B12 'po' mode is unchanged (short; the full regression runs separately)
   invP := save_supplier_tax_invoice_draft(NULL, jsonb_build_object('supplier_id', t_sup, 'invoice_no', 'DTIB-P', 'invoice_date', v_bkk, 'net_before_vat', 50, 'vat', 3.5),
-    jsonb_build_array(jsonb_build_object('description', 'M', 'qty', 1, 'unit', 'kg', 'unit_price', 50, 'inventory_item_id', iM, 'site_id', t_site, 'base_qty', 1)), ARRAY[poP]);
+    jsonb_build_array(jsonb_build_object('description', 'M', 'qty', 1, 'unit', 'kg', 'unit_price', 50, 'inventory_item_id', iM, 'site_id', t_central, 'base_qty', 1)), ARRAY[poP]);
   j := preview_supplier_tax_invoice(invP);
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(j->'checks') c WHERE (c->>'blocking')::boolean) OR j ? 'basis' THEN RAISE EXCEPTION 'B12 FAIL: preview %', j; END IF;
   j := post_supplier_tax_invoice(invP, (j->>'revision')::int);
@@ -230,7 +231,7 @@ BEGIN
 
   -- B13 a lot of a "stock from invoice" PO: nothing to reverse, the invoice adds stock
   invF := save_supplier_tax_invoice_receipt_draft(NULL, jsonb_build_object('supplier_id', t_sup, 'invoice_no', 'DTIB-F', 'invoice_date', v_bkk, 'net_before_vat', 100, 'vat', 7),
-    jsonb_build_array(jsonb_build_object('description', 'I', 'qty', 1, 'unit', 'kg', 'unit_price', 100, 'inventory_item_id', iI, 'site_id', t_site, 'base_qty', 1)), ARRAY[rcF]);
+    jsonb_build_array(jsonb_build_object('description', 'I', 'qty', 1, 'unit', 'kg', 'unit_price', 100, 'inventory_item_id', iI, 'site_id', t_central, 'base_qty', 1)), ARRAY[rcF]);
   j := preview_supplier_tax_invoice(invF);
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(j->'checks') c WHERE c->>'code' = 'receipt_stock_from_invoice' AND NOT (c->>'blocking')::boolean AND c->>'receipt_id' = rcF::text) THEN
     RAISE EXCEPTION 'B13 FAIL: checks %', j->'checks';
@@ -239,16 +240,16 @@ BEGIN
   IF (j->>'receipts_reversed')::int <> 0 OR (j->>'lines_posted')::int <> 1 THEN RAISE EXCEPTION 'B13 FAIL: %', j; END IF;
 
   -- B14 reversal to exactly 0 (WAC kept) and below 0 (allowed, reported)
-  PERFORM record_stock_movement(iK, t_site, 'sale_out', 2, 100, 'invoice', NULL, NULL);
-  PERFORM record_stock_movement(iL, t_site, 'sale_out', 1, 50, 'invoice', NULL, NULL);
+  PERFORM record_stock_movement(iK, t_central, 'sale_out', 2, 100, 'invoice', NULL, NULL);
+  PERFORM record_stock_movement(iL, t_central, 'sale_out', 1, 50, 'invoice', NULL, NULL);
   invK := save_supplier_tax_invoice_receipt_draft(NULL, jsonb_build_object('supplier_id', t_sup, 'invoice_no', 'DTIB-K', 'invoice_date', v_bkk, 'net_before_vat', 200, 'vat', 14, 'match_note', 'ส่งไม่ครบ 1 ชิ้น'),
-    jsonb_build_array(jsonb_build_object('description', 'K', 'qty', 2, 'unit', 'kg', 'unit_price', 100, 'inventory_item_id', iK, 'site_id', t_site, 'base_qty', 2)), ARRAY[rcK1]);
+    jsonb_build_array(jsonb_build_object('description', 'K', 'qty', 2, 'unit', 'kg', 'unit_price', 100, 'inventory_item_id', iK, 'site_id', t_central, 'base_qty', 2)), ARRAY[rcK1]);
   j := preview_supplier_tax_invoice(invK);
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(j->'checks') c WHERE (c->>'blocking')::boolean)
      OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(j->'checks') c WHERE c->>'code' = 'match_outside_tolerance') THEN RAISE EXCEPTION 'B14 FAIL: K checks %', j->'checks'; END IF;
   j := post_supplier_tax_invoice(invK, (j->>'revision')::int);
   RESET role;
-  SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = iK AND site_id = t_site;
+  SELECT quantity_on_hand, weighted_average_cost INTO v_q, v_w FROM inventory_stock_balances WHERE inventory_item_id = iK AND site_id = t_central;
   IF v_q <> 0 OR abs(v_w - 100) > 1e-9 THEN RAISE EXCEPTION 'B14 FAIL: K % @ %', v_q, v_w; END IF;
   SET LOCAL role = 'authenticated';
   invL := save_supplier_tax_invoice_receipt_draft(NULL, jsonb_build_object('supplier_id', t_sup, 'invoice_no', 'DTIB-L', 'invoice_date', v_bkk, 'net_before_vat', 50, 'vat', 3.5),

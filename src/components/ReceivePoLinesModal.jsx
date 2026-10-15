@@ -18,7 +18,7 @@ import { bangkokTodayIso } from '../lib/photoUpload.js'
 const fmtPct = n => String(Math.round(n * 100) / 100)
 const depGross = d => round2(Number(d.expense.amount_no_vat) + Number(d.expense.vat))
 
-export default function ReceivePoLinesModal({ po, stockPlanFor, stockBalances, onDone, onClose, offerInvoiceNext = false }) {
+export default function ReceivePoLinesModal({ po, stockPlanFor, stockBalances, stockSiteId = '', onDone, onClose, offerInvoiceNext = false }) {
   const today = bangkokTodayIso()
   const { data: ledger, error: ledgerError } = usePoLedger(po.id)
   const { data: depRows, error: depError } = useSupplierDeposits(po.supplier_id)
@@ -230,7 +230,7 @@ export default function ReceivePoLinesModal({ po, stockPlanFor, stockBalances, o
             {stock.map(p => {
               if (!(p.baseQty > 0)) return <div key={p.poItemId} style={{ marginTop: 4, color: 'var(--red)' }}>⚠️ {p.name}: จำนวนลงสต็อกเป็น 0 — แก้รายการก่อนรับของ</div>
               if (p.unconverted) return <div key={p.poItemId} style={{ marginTop: 4, color: 'var(--red)' }}>⚠️ {p.name}: ไม่พบข้อมูลหน้าตัด/ขนาดที่ต้องใช้แปลงหน่วย — จะบันทึกเป็น {fmt(p.baseQty)} {p.baseUnit} (อาจไม่ถูกต้อง) กรุณาตรวจสอบก่อนยืนยัน</div>
-              const bal = (stockBalances || []).find(b => b.inventory_item_id === p.inventoryItemId && b.site_id === po.site_id)
+              const bal = (stockBalances || []).find(b => b.inventory_item_id === p.inventoryItemId && b.site_id === stockSiteId)
               const oldQty = Number(bal?.quantity_on_hand || 0)
               const newWac = computeWeightedAverageCost(oldQty, Number(bal?.weighted_average_cost || 0), p.baseQty, p.unitCostPerBase)
               return <div key={p.poItemId} style={{ marginTop: 4 }}>📦 {p.name}: +{fmt(p.baseQty)} {p.baseUnit} → คงเหลือ {fmt(oldQty + p.baseQty)} {p.baseUnit} @ เฉลี่ย {fmt(newWac)}/{p.baseUnit}</div>
