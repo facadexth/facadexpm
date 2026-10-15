@@ -6,8 +6,11 @@
 // parts at opacity 0.25), drawn with the same partSvgSymbols markup as the item / quotation drawing in the chosen D14
 // style, pieces clickable (selects { key, line }), curtain-wall cells clickable (cycle glass → awning → spandrel), end
 // markers on the selected position (mitred ends show 45° and do not toggle).
+// Preview add-ons (ช่องแสง, Task 6 / mockup v12) are drawn around the UNCHANGED sliding_2 overview: the viewBox grows
+// to hold them, a selected add-on fades the main unit, clicking an add-on selects it. No add-ons → the same markup as before.
 import { overviewSpecs, zoomSpecs } from '../../lib/partGeometry.js'
 import { glassSvg, pieceSvg, symbolSvg, markSvg, dimSvg } from '../../lib/partSvgSymbols.js'
+import { overviewAddonRects } from './addon/addonView.js'
 
 const f1 = x => Number(x).toFixed(1)
 const activate = fn => ({
@@ -90,14 +93,18 @@ function MmPreview({ model, sel, view, widthMm, heightMm, widthOf, canEdit, onPi
   )
 }
 
-function Sliding2Preview({ model, sel, partKeys, view, widthMm, heightMm, widthOf, buttOf, canEdit, onPick, onToggle }) {
+function Sliding2Preview({ model, sel, partKeys, view, widthMm, heightMm, widthOf, buttOf, canEdit, onPick, onToggle, addons = [], addonSel = null, onAddonPick }) {
   const ov = overviewSpecs({ model, widthMm, heightMm, view, widthOf })
   const zm = zoomSpecs({ model, selected: sel, view, widthMm, heightMm, buttOf })
   const labelOf = (m) => zm.pieces.find(p => p.key === m.key && p.piece === m.piece && p.role === 'main')?.label || ''
+  const ao = addons.length ? overviewAddonRects({ box: ov.box, addons, widthMm, heightMm, view }) : null
+  const vb = ao ? [ao.viewBox.x, ao.viewBox.y, ao.viewBox.w, ao.viewBox.h].map(f1).join(' ') : `0 0 ${ov.box.w} ${ov.box.h}`
+  const main = <Pieces pieces={ov.pieces} sel={sel} partKeys={partKeys} zoom={false} onPick={onPick} />
   return (
     <>
-      <svg viewBox={`0 0 ${ov.box.w} ${ov.box.h}`} role="img" aria-label="ภาพตัวอย่างวงกบและบานเลื่อน">
-        <Pieces pieces={ov.pieces} sel={sel} partKeys={partKeys} zoom={false} onPick={onPick} />
+      <svg viewBox={vb} role="img" aria-label="ภาพตัวอย่างวงกบและบานเลื่อน">
+        {ao && addonSel != null ? <g opacity="0.28">{main}</g> : main}
+        {ao && <AddonOverlay rects={ao.rects} box={ov.box} sel={addonSel} onPick={onAddonPick} />}
         {ov.dims.map((d, i) => (
           <g key={i}>
             <line className="dim" x1={f1(d.x1)} y1={f1(d.y1)} x2={f1(d.x2)} y2={f1(d.y2)} />
@@ -127,4 +134,34 @@ function Sliding2Preview({ model, sel, partKeys, view, widthMm, heightMm, widthO
       <p className="hint">คลิกชิ้นในภาพ หรือคลิกแถวในตาราง · ภาพบนเป็นภาพรวม (คลิกเลือกชิ้น) ภาพล่างขยาย part ที่เลือก กดจุดที่ปลายในภาพขยายเพื่อสลับ: เขียว "สุด" = วิ่งสุด, ส้ม "ชน" = วิ่งชน ทุกปลายของทุกชิ้นตั้งแยกกัน (เฟรมข้างซ้าย/ขวา บน/ล่าง บานซ้าย/บานขวา) ชิ้นในภาพสั้นลงตามปลายที่ชน (วาดขยายให้เห็น ตัวเลขใช้มม.จริง) ชิ้นที่ซ้ำกัน (เฟรมข้างซ้าย/ขวา) ไฮไลต์พร้อมกัน เพราะเป็นแถวเดียวกันในสูตร</p>
     </>
   )
+}
+
+// Preview add-ons in the overview (mockup v12 renderPreview): attach = own frame + glass grid, merge = glass grid with the
+// divider on the edge facing the main unit; a transparent hit rectangle on top selects the add-on.
+function AddonOverlay({ rects, box, sel, onPick }) {
+  return rects.map(r => {
+    const fr = Math.max(3, Math.min(r.w, r.h) * 0.06)
+    const att = r.mode === 'attach'
+    const g = att ? { x: r.x + fr, y: r.y + fr, w: Math.max(0, r.w - 2 * fr), h: Math.max(0, r.h - 2 * fr) } : r
+    const e = 0.5
+    const dv = r.y + r.h <= box.frameY + e ? { x: r.x, y: r.y + r.h - fr, w: r.w, h: fr }
+      : r.y >= box.frameY + box.frameH - e ? { x: r.x, y: r.y, w: r.w, h: fr }
+      : r.x + r.w <= box.frameX + e ? { x: r.x + r.w - fr, y: r.y, w: fr, h: r.h } : { x: r.x, y: r.y, w: fr, h: r.h }
+    const cols = Math.max(1, Math.round(Number(r.cols) || 1)), rows = Math.max(1, Math.round(Number(r.rows) || 1))
+    const name = `ช่องแสง ${r.i + 1}`
+    return (
+      <g key={r.i} className="ao" data-mode={r.mode}>
+        {att && <rect className="aofr" x={f1(r.x)} y={f1(r.y)} width={f1(r.w)} height={f1(r.h)} />}
+        <rect className="aogl" x={f1(g.x)} y={f1(g.y)} width={f1(g.w)} height={f1(g.h)} />
+        {Array.from({ length: cols - 1 }, (_, c) => { const x = g.x + (g.w * (c + 1)) / cols; return <line key={'c' + c} className="aogr" x1={f1(x)} y1={f1(g.y)} x2={f1(x)} y2={f1(g.y + g.h)} /> })}
+        {Array.from({ length: rows - 1 }, (_, k) => { const y = g.y + (g.h * (k + 1)) / rows; return <line key={'r' + k} className="aogr" x1={f1(g.x)} y1={f1(y)} x2={f1(g.x + g.w)} y2={f1(y)} /> })}
+        {!att && <rect className="aofr" x={f1(dv.x)} y={f1(dv.y)} width={f1(dv.w)} height={f1(dv.h)} />}
+        <text className="aolab" x={f1(r.x + r.w / 2)} y={f1(r.y + r.h / 2 + 4)} textAnchor="middle">{name}{att ? ' (แยกวงกบ)' : ''}</text>
+        <rect className={'aohit' + (sel === r.i ? ' sel' : '')} data-addon={r.i} tabIndex={0} role="button" aria-label={`${name}: คลิกเพื่อดูภาพขยายและกำหนดชิ้นส่วน`}
+          x={f1(r.x)} y={f1(r.y)} width={f1(r.w)} height={f1(r.h)} {...(onPick ? activate(() => onPick(r.i)) : {})}>
+          <title>คลิกเพื่อดูภาพขยายและกำหนดชิ้นส่วนของช่องแสงนี้</title>
+        </rect>
+      </g>
+    )
+  })
 }

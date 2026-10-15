@@ -95,3 +95,33 @@
 .pe .mkM { fill: #6b7280; }
 .pe .parthead .cnt { font-family: ui-monospace, Menlo, monospace; }
 .pe .mkt2 { fill: #fff; font-weight: 700; font-family: sans-serif; pointer-events: none; }
+/* Task 6 (mockup v12): add-on ช่องแสง box under the size bar, overview add-ons, zoom card */
+.pe .aobox { border: 1px solid var(--pe-line); border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; }
+.pe .aobox > .lg { display: block; font-weight: 500; margin-bottom: 6px; }
+.pe .aobox .lg .hint { font-weight: 400; }
+.pe .addon { background: var(--bg); border: 1px solid var(--pe-line); border-radius: 6px; padding: 10px; margin-bottom: 8px; }
+.pe .addon-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.pe .addon.done { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 8px 10px; font-size: 13px; }
+.pe .addon.done .aoact { margin-left: auto; }
+.pe .fld { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 150px) 40px; gap: 8px; align-items: center; margin-bottom: 8px; }
+.pe .fld input[type=number], .pe .fld select, .pe .fld input[type=text] { width: 100%; }
+.pe .fld label { font-size: 12px; color: var(--pe-muted); min-width: 0; }
+.pe .u { color: var(--pe-muted); font-size: 12px; }
+.pe .btn-s { font: inherit; font-size: 12px; border: 1px solid var(--pe-line); background: var(--pe-panel); color: var(--pe-fg); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+.pe .btn-s[aria-pressed=true] { background: var(--pe-accent-soft); border-color: var(--pe-accent); color: var(--pe-accent); }
+.pe .btn-s:disabled { opacity: .5; cursor: not-allowed; }
+.pe .callout { border-left: 3px solid var(--pe-warn); background: var(--pe-warn-soft); padding: 8px 12px; border-radius: 0 6px 6px 0; margin: 8px 0 0; font-size: 13px; }
+.pe .aoh3 { margin: 0 0 8px; font-size: 14px; }
+.pe .ao .aofr { fill: var(--pe-draw-fill); stroke: var(--pe-draw); stroke-width: 1.2; }
+.pe .ao .aogl { fill: color-mix(in srgb, var(--pe-accent) 10%, transparent); stroke: var(--pe-draw); stroke-width: .6; }
+.pe .ao .aogr { stroke: var(--pe-draw); stroke-width: 3; }
+.pe .ao .aolab { fill: var(--pe-fg); font-size: 11px; pointer-events: none; paint-order: stroke; stroke: var(--pe-panel); stroke-width: 3px; }
+.pe .ao .aohit { fill: transparent; stroke: none; cursor: pointer; }
+.pe .ao .aohit:hover { stroke: var(--pe-hl); stroke-width: 2; }
+.pe .ao .aohit.sel { stroke: var(--pe-accent); stroke-width: 3; }
+.pe .pc { fill: var(--pe-draw-fill); stroke: var(--pe-draw); stroke-width: 1.2; cursor: pointer; }
+.pe .pc:hover { fill: var(--pe-hl-fill); }
+.pe .pc.mainp { fill: color-mix(in srgb, var(--pe-hl) 30%, var(--pe-draw-fill)); }
+.pe .pc.sel { fill: var(--pe-hl-fill); stroke: var(--pe-hl); stroke-width: 2.4; }
+.pe .pc.glass { fill: color-mix(in srgb, var(--pe-accent) 8%, transparent); stroke-width: .6; }
+.pe .pc.ghost { cursor: default; pointer-events: none; }

@@ -27,6 +27,7 @@ import { PARAMS_HINT } from './bomTemplates/partEditorView.js'
 import PartEditor from './bomTemplates/PartEditor.jsx'
 import { defaultTestPick } from './bomTemplates/partEditorView.js'
 import JointsTab from './bomTemplates/JointsTab.jsx'
+import { useAddonTemplateState } from './bomTemplates/addon/addonTemplateGlue.js'
 import HardwarePackagesTab from './bomTemplates/HardwarePackagesTab.jsx'
 import {
   catalogFamilies, templateTypeOptions, typeAllowsMixed, hardwarePartOptions, relinkAfterJointRemoved, validateComponentRows, orderJointIds,
@@ -124,12 +125,14 @@ export function TemplateEditor({ template, joints, catalog, types, components, h
   const [modelError, setModelError] = useState(null)
   // a load refusal a reload cannot fix (layout_mismatch / unknown_layout, R-F5): shown as is, blocks saving
   const [layoutProblem, setLayoutProblem] = useState(null)
+  const addon = useAddonTemplateState(template)   // add-on ช่องแสง piece sets (saved) + preview add-ons (UI only)
   useEffect(() => {
     if (!template?.layout_kind) return
     let live = true
     // with its type: a template whose type names another layout_kind is refused (never re-mapped), and a template saved
     // before layout_params takes the type's fixed values (TemplatesView opens the editor only once types are loaded)
     const type = (template.type_id && (types || []).find(t => t.id === template.type_id)) || null
+    addon.load(template.id)   // piece sets alongside the model; a failed load blocks writing them
     loadModel({ supabase, template, type })
       .then(m => {
         if (!live) return
@@ -221,7 +224,8 @@ export function TemplateEditor({ template, joints, catalog, types, components, h
         : partMode
         ? (paramsInvalid ? PARAMS_HINT : model ? validateModel(model) : layoutProblem ? layoutProblem : (modelError ? 'โหลดข้อมูลชิ้นส่วนของเทมเพลตไม่สำเร็จ จึงยังไม่ได้บันทึกอะไร กรุณารีโหลดหน้านี้: ' + modelError : 'กำลังโหลดข้อมูลชิ้นส่วนของเทมเพลต กรุณารอสักครู่แล้วกดบันทึกอีกครั้ง'))
         : (validateJoints(jointRows) || validateComponentRows(rows, jointRows))
-      if (problem) { alert(problem); return }
+      const aoProblem = partMode && !problem ? addon.problem() : null
+      if (problem || aoProblem) { alert(problem || aoProblem); return }
       let templateId = rowId
       // Remember the old rows BEFORE writing anything: if either read fails, stop here (otherwise the old rows
       // would never be deleted and the BOM would be silently doubled).
@@ -250,6 +254,7 @@ export function TemplateEditor({ template, joints, catalog, types, components, h
       if (partMode) {
         try {
           await saveModel({ supabase, templateId, model })
+          await addon.save(templateId)   // only when a piece set was edited (addonTemplateGlue)
         } catch (e) {
           throw new Error(e.message + ' (ข้อมูลชิ้นส่วนของเทมเพลตนี้อาจไม่ครบ กรุณากดบันทึกอีกครั้ง)')
         }
@@ -330,6 +335,7 @@ export function TemplateEditor({ template, joints, catalog, types, components, h
         try {
           const m = await loadModel({ supabase, template: { id: templateId, layout_kind: form.layout_kind, layout_params: templateParamsPayload(model).layout_params || {} }, type: typesById[form.type_id] || null })
           if (m && !m.error) setModel(m)
+          await addon.load(templateId)
         }
         catch (e) { console.warn('reload part model failed', e) }
       }
@@ -446,7 +452,7 @@ export function TemplateEditor({ template, joints, catalog, types, components, h
 
       {form.layout_kind ? (
         model
-          ? <PartEditor model={model} onChange={setModel} index={index} canEdit={canEdit} templateName={form.name} onParamsInvalid={setParamsInvalid}
+          ? <PartEditor model={model} onChange={setModel} index={index} canEdit={canEdit} templateName={form.name} onParamsInvalid={setParamsInvalid} {...addon.editorProps}
               testSeriesId={testPick.seriesId} testThicknessMm={testPick.thicknessMm} onTestChange={setTestPick} />
           : <div role={layoutProblem || modelError ? 'alert' : undefined} style={{ color: layoutProblem || modelError ? 'var(--red)' : 'var(--text3)', padding: 12 }}>
               {layoutProblem || (modelError ? 'โหลดข้อมูลชิ้นส่วนของเทมเพลตไม่สำเร็จ กรุณารีโหลดหน้านี้: ' + modelError : 'กำลังโหลดข้อมูลชิ้นส่วนของเทมเพลต...')}

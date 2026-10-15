@@ -7,6 +7,9 @@
 // read-only, refused params -> PARAMS_HINT and no drawing), the D14 line style, part tabs with "เสร็จแล้ว" (PartTabs,
 // model.done), one millimetre drawing with the other parts faded, curtain-wall cell cycling, and the assigned badge.
 // sliding_2 renders exactly as before (no inputs, tabs or style select).
+// Add-ons ช่องแสง (Task 6, mockup v12, sliding_2 only, only when onPreviewAddonsChange is passed): the add-on box under the
+// size bar, preview add-ons around the overview, the effects card and the zoom card of the selected add-on. previewAddons
+// are UI-only; addonSets ({ [setKey]: { rows, dirty } }) are the template's piece sets, saved by BomTemplates.
 import { useState, useEffect } from 'react'
 import { clampSelection, setEndMode, setParams, cycleCellKind } from '../../lib/partModel.js'
 import { coerceParams } from '../../lib/layoutRegistry.js'
@@ -18,13 +21,18 @@ import PartInputs from './PartInputs.jsx'
 import PartTabs from './PartTabs.jsx'
 import PartSidePanel from './PartSidePanel.jsx'
 import PartTable from './PartTable.jsx'
+import AddonBox from './addon/AddonBox.jsx'
+import AddonZoom from './addon/AddonZoom.jsx'
+import AddonEffects from './addon/AddonEffects.jsx'
+import { setRowsFor, editSetRow } from './addon/addonView.js'
 import './partEditor.css'
 
 const CORNER_WHY = { both_through: 'วิ่งสุดทั้งสองชิ้น', both_butt: 'วิ่งชนทั้งสองชิ้น' }
 // D14 line styles (mockup v5 "แบบเส้น")
 const STYLES = [['double', 'เส้นคู่ (ตามที่ใช้ในใบเสนอราคา)'], ['lengths', 'เส้นคู่ + ความยาวชิ้น'], ['solid', 'ทึบตามสี'], ['cad', 'CAD (เส้นอย่างเดียว)']]
 
-export default function PartEditor({ model, onChange, index, canEdit, testSeriesId, testThicknessMm, onTestChange, templateName, initialSelection, onParamsInvalid }) {
+export default function PartEditor({ model, onChange, index, canEdit, testSeriesId, testThicknessMm, onTestChange, templateName, initialSelection, onParamsInvalid,
+  addonSets, onAddonSetsChange, previewAddons, onPreviewAddonsChange, addonError = null, initialAddonSel = null }) {
   const [size, setSize] = useState({ w: 1800, h: 1200 })
   const [view, setView] = useState('out')
   const [style, setStyle] = useState('double')
@@ -32,6 +40,12 @@ export default function PartEditor({ model, onChange, index, canEdit, testSeries
   const [draft, setDraft] = useState(null)   // params the layout refused (folding 0 + 0): shown in the inputs, never in the model
   const [rawSel, setSel] = useState(initialSelection || { key: 'frame_bottom', line: 0 })   // mockup starts on เฟรมล่าง
   const mm = model.layout_kind !== 'sliding_2'
+  const [aoSel, setAoSel] = useState(initialAddonSel)   // preview add-on whose zoom card is open (UI only)
+  const [aoPiece, setAoPiece] = useState(0)             // selected row of its piece set
+  const aoList = !mm && onPreviewAddonsChange ? (previewAddons || []) : []
+  const aoIdx = aoSel != null && aoSel < aoList.length ? aoSel : null
+  const aoMain = { widthMm: size.w, heightMm: size.h }
+  const pickAddon = (i) => { setAoSel(i); setAoPiece(0) }
   useEffect(() => { if (onParamsInvalid) onParamsInvalid(!!draft) }, [draft]) // eslint-disable-line react-hooks/exhaustive-deps
   const sel = clampSelection(model, rawSel)
   const families = catalogFamilies(index)
@@ -83,6 +97,7 @@ export default function PartEditor({ model, onChange, index, canEdit, testSeries
               </label>
             )}
           </div>
+          {!mm && onPreviewAddonsChange && <AddonBox addons={aoList} onChange={onPreviewAddonsChange} main={aoMain} sel={aoIdx} onSelect={pickAddon} error={addonError} />}
           <div className="bar">
             <label>ซีรีส์ที่ใช้ทดสอบ{' '}
               <select value={testSeriesId || ''} onChange={e => onTestChange({ seriesId: e.target.value, thicknessMm: null })}>
@@ -108,6 +123,7 @@ export default function PartEditor({ model, onChange, index, canEdit, testSeries
             ? <div className="empty" role="status">{PARAMS_HINT}</div>
             : <PartPreview model={model} sel={sel} partKeys={partKeys} view={view} widthMm={size.w} heightMm={size.h}
                 widthOf={data.widthOf} buttOf={data.buttOf} canEdit={canEdit} onPick={pick} style={style} tab={tab} lengths={data.lengthsByPiece}
+                addons={aoList} addonSel={aoIdx} onAddonPick={pickAddon}
                 onCell={(r, c) => edit(cycleCellKind(model, r, c))}
                 onToggle={(key, piece, end, mode) => edit(setEndModeAt(model, key, sel.line, piece, end, mode))} />}
         </section>
@@ -123,6 +139,19 @@ export default function PartEditor({ model, onChange, index, canEdit, testSeries
         <PartTable model={model} view={data} sel={sel} onSelect={setSel} />
         <p className="hint" style={{ marginTop: 10 }}><span className="tag">ข้อจำกัด</span> ความยาวที่คิดในหน้านี้เป็นระยะรวมต่อชุดตามสูตร ไม่ใช่การจัดตัดทั้งโปรเจกต์ · ขนาด ซีรีส์ และความหนาด้านบนใช้ทดสอบเท่านั้น ไม่ถูกบันทึก</p>
       </section>
+      {aoList.length > 0 && (
+        <section className="card2">
+          <h2>ภาพรวมทั้งชุด (รวมช่องแสง): ผลต่อชิ้นงาน (ตัวเลขตัวอย่าง)</h2>
+          <AddonEffects addons={aoList} addonSets={addonSets} main={aoMain} buttOf={data.buttOf} layoutKind={model.layout_kind} model={model} />
+        </section>
+      )}
+      {aoIdx != null && (() => {
+        const a = aoList[aoIdx]
+        const set = setRowsFor(addonSets, a, model.layout_kind)
+        return <AddonZoom addon={a} ai={aoIdx} rows={set.rows} isDefault={set.isDefault} dirty={set.dirty} families={families}
+          canEdit={canEdit && !!onAddonSetsChange} pieceIdx={aoPiece} onPick={setAoPiece} main={aoMain} buttOf={data.buttOf}
+          layoutKind={model.layout_kind} model={model} onEditRow={(i, patch) => onAddonSetsChange(editSetRow(addonSets, a, model.layout_kind, i, patch))} />
+      })()}
     </div>
   )
 }
