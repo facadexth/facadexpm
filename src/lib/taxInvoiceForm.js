@@ -75,7 +75,11 @@ export function validateFormForSave(form) {
     if (!String(l.description || '').trim() || !(num(l.qty) > 0)) errs.push(`รายการที่ ${n}: กรอกรายละเอียดและจำนวนมากกว่า 0`)
     else if (badNumber(l.unit_price) || (num(l.unit_price) ?? 0) < 0 || badNumber(l.discount_pct) || (num(l.discount_pct) ?? 0) < 0 || (num(l.discount_pct) ?? 0) > 100) {
       errs.push(`รายการที่ ${n}: ราคาหรือส่วนลดไม่ถูกต้อง`)
-    } else if (l.inventory_item_id && (!l.site_id || !(num(l.base_qty) > 0))) errs.push(`รายการที่ ${n}: เลือกไซท์งาน และกรอกจำนวนในหน่วยหลัก`)
+    } else if (l.inventory_item_id) {
+      // The site is never typed: stock always goes to the central site (stockSiteLookup).
+      if (!l.site_id) errs.push(`รายการที่ ${n}: ไม่พบไซท์งานชื่อ "${CENTRAL_SITE_NAME}" สำหรับเก็บสต็อก กรุณาสร้างไซท์งานชื่อนี้ก่อน`)
+      if (!(num(l.base_qty) > 0)) errs.push(`รายการที่ ${n}: กรอกจำนวนในหน่วยหลัก`)
+    }
   })
   return errs
 }
@@ -94,15 +98,46 @@ export function computeAutoVat(net) {
   return Number.isFinite(n) && n >= 0 ? String(round2(n * VAT_RATE)) : ''
 }
 
-/** Recompute a line after a change. `lookups` = { itemById: Map, unitFactors: [], commonSite }.
+/** Every stock line goes to the tenant's central stock site "ส่วนกลาง" (owner rule: stock is kept centrally,
+ *  expenses stay per job site). The form has no site field. `sites` = the tenant's sites (undefined while loading). */
+export const CENTRAL_SITE_NAME = 'ส่วนกลาง'
+export function stockSiteLookup(sites) {
+  if (!sites) return undefined
+  const central = sites.find(s => (s.name || '').trim() === CENTRAL_SITE_NAME)
+  return { site: central?.id || '' }
+}
+
+export function deriveLineSite(inventoryItemId, lookup) {
+  if (!inventoryItemId || !lookup) return ''
+  return lookup.site || ''
+}
+
+/** Put every stock line on the central site. Returns the same array (and the same line objects) when nothing
+ *  changes, so a state update can be skipped; without a lookup (sites still loading) nothing is touched. */
+export function applySitesToLines(lines, lookup) {
+  if (!lookup) return lines
+  let changed = false
+  const out = lines.map(l => {
+    if (!l.inventory_item_id) return l
+    const site = deriveLineSite(l.inventory_item_id, lookup)
+    if (site === (l.site_id || '')) return l
+    changed = true
+    return { ...l, site_id: site }
+  })
+  return changed ? out : lines
+}
+
+/** Recompute a line after a change. `lookups` = { itemById: Map, unitFactors: [], siteLookup (stockSiteLookup) }.
+ *  - the site is the central stock site (deriveLineSite); while sites load a stored site is kept;
  *  - changing the stock item always drops a typed base quantity (base_manual false) and recomputes;
  *  - a typed (manual) base is kept when qty/unit change, but flagged base_stale so the UI says so. */
-export function applyLineChange(line, patch, { itemById, unitFactors, commonSite } = {}) {
+export function applyLineChange(line, patch, { itemById, unitFactors, siteLookup } = {}) {
   const next = { ...line, ...patch }
   if (!next.inventory_item_id) return { ...next, site_id: '', base_qty: '', base_manual: false, base_stale: false }
   const itemChanged = 'inventory_item_id' in patch && patch.inventory_item_id !== line.inventory_item_id
   if (itemChanged) { next.base_manual = false; next.base_stale = false }
-  if (!next.site_id && commonSite) next.site_id = commonSite
+  const derived = deriveLineSite(next.inventory_item_id, siteLookup)
+  if (derived) next.site_id = derived
   if (!next.base_manual) {
     const factor = (unitFactors || []).find(f => f.inventory_item_id === next.inventory_item_id && f.unit_name === next.unit) || null
     const r = lineBase(next, itemById?.get(next.inventory_item_id), factor)

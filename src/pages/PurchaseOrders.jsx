@@ -41,6 +41,7 @@ import CreatePoDepositModal from '../components/CreatePoDepositModal.jsx'
 import ReceivePoLinesModal from '../components/ReceivePoLinesModal.jsx'
 import ReceiveDepositBlock from '../components/ReceiveDepositBlock.jsx'
 import { mapReceiveRpcError, canConfirmReceive } from '../lib/receiveDeposits.js'
+import { centralStockSiteId, CENTRAL_SITE_MISSING_TEXT } from '../lib/poReceiptErrors.js'
 import { setCreditNotePrefill, poItemToCreditLine } from '../lib/creditNotePrefill.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
@@ -870,6 +871,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const filters = { from: dateFrom, to: dateTo, siteId, supplierId, status }
   const { data: pos, refetch } = usePurchaseOrders(filters)
   const { data: sites, refetch: refetchSites }      = useSites()
+  const centralSiteId = centralStockSiteId(sites)
   const { data: categories } = useCategories()
   const { data: suppliers, refetch: refetchSuppliers }  = useSuppliers()
   const { data: inventoryItems, refetch: refetchInventoryItems } = useInventoryItems()
@@ -1079,6 +1081,10 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
 
   const handleReceive = async () => {
     if (!receiveRow || receiving || !canConfirmReceive(depositSel)) return
+    // Stock is kept centrally: a PO that posts stock needs the tenant's "ส่วนกลาง" site (checked before any write).
+    if (!receiveRow.stock_from_invoice && receiveStockPlan(receiveRow).length > 0 && !centralSiteId) {
+      alert(CENTRAL_SITE_MISSING_TEXT); return
+    }
     setReceiving(true)
     const { subtotal, vat } = calcPoTotals(receiveRow.purchase_order_items, receiveRow.has_vat, receiveRow.price_includes_vat)
     const depositApps = depositSel?.valid ? depositSel.applications : []
@@ -1101,7 +1107,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       if (!receiveRow.stock_from_invoice) {
         for (const plan of receiveStockPlan(receiveRow)) {
           const { error: moveErr } = await supabase.rpc('record_stock_movement', {
-            p_inventory_item_id: plan.inventoryItemId, p_site_id: receiveRow.site_id, p_movement_type: 'purchase_in',
+            p_inventory_item_id: plan.inventoryItemId, p_site_id: centralSiteId, p_movement_type: 'purchase_in',
             p_quantity: plan.baseQty, p_unit_cost: plan.unitCostPerBase,
             p_reference_type: 'purchase_order', p_reference_id: receiveRow.id, p_notes: null,
           })
@@ -1367,7 +1373,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
           }} />
       )}
       {receiveRow && receiveKind === 'new' && (
-        <ReceivePoLinesModal key={receiveRow.id} po={receiveRow} stockPlanFor={receiveStockPlan} stockBalances={stockBalances}
+        <ReceivePoLinesModal key={receiveRow.id} po={receiveRow} stockPlanFor={receiveStockPlan} stockBalances={stockBalances} stockSiteId={centralSiteId}
           onClose={() => setReceiveRow(null)}
           offerInvoiceNext={receiveRow.tax_invoice_mode === 'delivery' && deliveryReady === true}
           onDone={async (res, opts) => {
@@ -1419,7 +1425,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                         </div>
                       )
                     }
-                    const bal = (stockBalances || []).find(b => b.inventory_item_id === plan.inventoryItemId && b.site_id === receiveRow.site_id)
+                    const bal = (stockBalances || []).find(b => b.inventory_item_id === plan.inventoryItemId && b.site_id === centralSiteId)
                     const oldQty = bal?.quantity_on_hand || 0
                     const oldWac = bal?.weighted_average_cost || 0
                     const newQty = oldQty + plan.baseQty

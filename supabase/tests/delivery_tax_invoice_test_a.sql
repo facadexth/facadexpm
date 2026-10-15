@@ -6,7 +6,7 @@
 BEGIN;
 DO $$
 DECLARE
-  t_owner UUID; t_tenant UUID; t2 UUID; t_site UUID; t_sup UUID; t_cat UUID; t_item UUID;
+  t_owner UUID; t_tenant UUID; t2 UUID; t_site UUID; t_central UUID; t_sup UUID; t_cat UUID; t_item UUID;
   email TEXT := '__test_dtia_owner__@example.com'; email2 TEXT := '__test_dtia_owner2__@example.com';
   poD UUID; d1 UUID; d2 UUID; poP UUID; p1 UUID; rc1 UUID; bill1 UUID; inv1 UUID; inv2 UUID; inv3 UUID; j JSONB;
   poR UUID; poQ UUID; q1 UUID; rcQ UUID; inv5 UUID;
@@ -17,6 +17,7 @@ BEGIN
   INSERT INTO tenants (company_name, owner_user_id, plan, trial_ends_at) VALUES ('__TEST dtia 2__', t_owner, 'trial', now() + interval '14 days') RETURNING id INTO t2;
   INSERT INTO user_roles (user_email, role, status, tenant_id) VALUES (email, 'OWNER', 'approved', t_tenant), (email2, 'OWNER', 'approved', t2);
   INSERT INTO sites (tenant_id, site_number, name) VALUES (t_tenant, '__DTIA-1__', '__dtia site__') RETURNING id INTO t_site;
+  INSERT INTO sites (tenant_id, site_number, name) VALUES (t_tenant, '__DTIA-C__', 'ส่วนกลาง') RETURNING id INTO t_central;  -- 2026-10-15-01: stock from receipts goes here
   INSERT INTO suppliers (tenant_id, name) VALUES (t_tenant, '__dtia sup__') RETURNING id INTO t_sup;
   INSERT INTO expense_categories (tenant_id, name) VALUES (t_tenant, '__dtia cat__') RETURNING id INTO t_cat;
   INSERT INTO inventory_items (tenant_id, name, base_unit) VALUES (t_tenant, '__dtia item__', 'kg') RETURNING id INTO t_item;

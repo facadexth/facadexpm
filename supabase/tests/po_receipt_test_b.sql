@@ -7,7 +7,7 @@
 BEGIN;
 DO $$
 DECLARE
-  t_owner UUID; t_tenant UUID; t_site UUID; t_sup UUID; t_sup2 UUID; t_cat UUID; t_item UUID;
+  t_owner UUID; t_tenant UUID; t_site UUID; t_central UUID; t_sup UUID; t_sup2 UUID; t_cat UUID; t_item UUID;
   email TEXT := '__test_prb_owner__@example.com'; w_email TEXT := '__test_prb_worker__@example.com';
   t2_tenant UUID; t2_site UUID; t2_sup UUID; t2_cat UUID; t2_po UUID; t2_exp UUID; t2_dep UUID;
   t3_tenant UUID; t3_site UUID; t3_sup UUID; t3_cat UUID; t3_po UUID; email3 TEXT := '__test_prb_owner3__@example.com';
@@ -117,6 +117,14 @@ BEGIN
   BEGIN PERFORM create_po_deposit(poC, 'percent', 10, 'PRB-X1', v_bkk, 'credit', 'paid'); RAISE EXCEPTION 'B2 FAIL: method';
   EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'bad_payment_method%' THEN RAISE EXCEPTION 'B2 FAIL: %', v_msg; END IF; END;
 
+  -- B3a (2026-10-15-01): a receipt that posts stock needs the tenant's "ส่วนกลาง" site; refused before any write
+  BEGIN PERFORM receive_po_lines(poA, ARRAY[a1], v_bkk - 2, '[]'::jsonb, 60000, 4200, jsonb_build_array(jsonb_build_object('po_item_id', a1, 'base_qty', 1, 'unit_cost', 60000)));
+    RAISE EXCEPTION 'B3a FAIL: received without a central site';
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT; IF v_msg NOT LIKE 'central_site_missing%' THEN RAISE EXCEPTION 'B3a FAIL: %', v_msg; END IF; END;
+  SELECT count(*) INTO v_cnt FROM po_receipts WHERE po_id = poA; IF v_cnt <> 0 THEN RAISE EXCEPTION 'B3a FAIL: receipt written'; END IF;
+  INSERT INTO sites (tenant_id, site_number, name) VALUES (t_tenant, '__PRB-C__', ' ส่วนกลาง ') RETURNING id INTO t_central;
+  IF central_stock_site_id(t_tenant) <> t_central THEN RAISE EXCEPTION 'B3a FAIL: central_stock_site_id'; END IF;
+
   -- B3: receive line A1 only, two days ago, own deposit 19,260 by value
   j := receive_po_lines(poA, ARRAY[a1], v_bkk - 2, jsonb_build_array(jsonb_build_object('deposit_id', depA, 'mode', 'value', 'value', 19260)),
                         60000, 4200, jsonb_build_array(jsonb_build_object('po_item_id', a1, 'base_qty', 1, 'unit_cost', 60000)));
@@ -129,7 +137,7 @@ BEGIN
   SELECT status, received_date, expense_id INTO r FROM purchase_orders WHERE id = poA;
   IF r.status <> 'partially_received' OR r.received_date <> v_bkk - 2 OR r.expense_id <> bill1 THEN RAISE EXCEPTION 'B3 FAIL: PO %', row_to_json(r); END IF;
   SELECT m.* INTO r FROM stock_movements m JOIN po_receipt_items pri ON pri.stock_movement_id = m.id WHERE pri.po_item_id = a1;
-  IF r.quantity <> 1 OR r.unit_cost <> 60000 OR r.reference_type <> 'purchase_order' OR r.reference_id <> poA OR r.movement_type <> 'purchase_in'
+  IF r.quantity <> 1 OR r.unit_cost <> 60000 OR r.reference_type <> 'purchase_order' OR r.reference_id <> poA OR r.movement_type <> 'purchase_in' OR r.site_id <> t_central  -- stock goes to ส่วนกลาง, not the PO site
      OR r.created_at <> ((v_bkk - 2) + time '12:00') AT TIME ZONE 'Asia/Bangkok' OR r.notes <> 'PO-PRB-A-R1' THEN RAISE EXCEPTION 'B3 FAIL: movement %', row_to_json(r); END IF;
   SELECT goods_subtotal, goods_vat INTO r FROM po_receipts WHERE id = (j->>'receipt_id')::uuid;
   IF r.goods_subtotal <> 60000 OR r.goods_vat <> 4200 THEN RAISE EXCEPTION 'B3 FAIL: receipt value'; END IF;

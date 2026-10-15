@@ -57,6 +57,14 @@ export const PO_RECEIPT_ERROR_TEXT = {
   ...DELIVERY_RPC_TEXT,
   // 2026-10-09-06: un-receive / cancel of a received PO reverses its stock; refused when the stock was already used
   po_unreceive_stock_insufficient: 'หักสต็อกคืนไม่ได้ — ยอดคงเหลือไม่พอ (ของถูกใช้ไปแล้ว) ปรับสต็อกก่อนแล้วลองใหม่',
+  // 2026-10-15-01: stock received from a PO always goes to the tenant's "ส่วนกลาง" site
+  central_site_missing: 'ไม่พบไซท์งานชื่อ "ส่วนกลาง" สำหรับเก็บสต็อก กรุณาสร้างไซท์งานชื่อนี้ก่อนรับของ',
+}
+export const CENTRAL_SITE_MISSING_TEXT = PO_RECEIPT_ERROR_TEXT.central_site_missing
+
+/** The tenant's central stock site (name "ส่วนกลาง", trimmed) or '' — every purchase_in from a PO goes there. */
+export function centralStockSiteId(sites) {
+  return (sites || []).find(s => String(s.name || '').trim() === 'ส่วนกลาง')?.id || ''
 }
 
 /** Sentence for the cancel / un-receive confirm dialogs once 2026-10-09-06 is live. */

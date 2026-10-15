@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   emptyTaxInvoiceForm, emptyLine, formFromInvoice, toRpcPayload, validateFormForSave,
   poRowsFor, computeAutoVat, applyLineChange, reconcileBaseManual, missingPoIds, missingReceiptIds,
+  stockSiteLookup, deriveLineSite, applySitesToLines, CENTRAL_SITE_NAME,
 } from './taxInvoiceForm.js'
 
 describe('taxInvoiceForm', () => {
@@ -49,7 +50,9 @@ describe('taxInvoiceForm', () => {
     const f = emptyTaxInvoiceForm('2026-09-30')
     expect(validateFormForSave(f)).toEqual(expect.arrayContaining(['เลือกซัพพลายเออร์', 'กรอกเลขที่ใบกำกับ', 'กรอกยอดก่อน VAT']))
     const g = { ...f, supplier_id: 'A', invoice_no: 'X', net_before_vat: '10', lines: [{ key: 1, description: 'x', qty: '1', unit_price: '10', inventory_item_id: 'X', site_id: '', base_qty: '' }] }
-    expect(validateFormForSave(g)).toEqual(['รายการที่ 1: เลือกไซท์งาน และกรอกจำนวนในหน่วยหลัก'])
+    expect(validateFormForSave(g)).toEqual([`รายการที่ 1: ไม่พบไซท์งานชื่อ "${CENTRAL_SITE_NAME}" สำหรับเก็บสต็อก กรุณาสร้างไซท์งานชื่อนี้ก่อน`, 'รายการที่ 1: กรอกจำนวนในหน่วยหลัก'])
+    const h = { ...g, lines: [{ ...g.lines[0], site_id: 'S' }] }
+    expect(validateFormForSave(h)).toEqual(['รายการที่ 1: กรอกจำนวนในหน่วยหลัก'])
   })
   it('validation rejects non-finite / negative numbers', () => {
     const base = { ...emptyTaxInvoiceForm('2026-09-30'), supplier_id: 'A', invoice_no: 'X', net_before_vat: '10' }
@@ -98,10 +101,10 @@ describe('computeAutoVat', () => {
 describe('applyLineChange (base quantity never goes stale silently)', () => {
   const itemById = new Map([['X', { id: 'X', base_unit: 'kg', unit_conversion_mode: 'plain' }], ['Y', { id: 'Y', base_unit: 'kg', unit_conversion_mode: 'plain' }]])
   const unitFactors = [{ inventory_item_id: 'Y', unit_name: 'bag', factor_to_base: 25 }]
-  const lk = { itemById, unitFactors, commonSite: 'S1' }
+  const lk = { itemById, unitFactors, siteLookup: stockSiteLookup([{ id: 'S1', name: 'ส่วนกลาง' }]) }
   const base = { ...emptyLine(), description: 'a', qty: '2', unit: 'kg', unit_price: '10' }
 
-  it('choosing an item fills the site (common site) and the base qty from the conversion', () => {
+  it('choosing an item fills the site (central stock site) and the base qty from the conversion', () => {
     const l = applyLineChange(base, { inventory_item_id: 'X' }, lk)
     expect(l).toMatchObject({ inventory_item_id: 'X', site_id: 'S1', base_qty: '2', base_manual: false, base_stale: false })
   })
@@ -193,5 +196,45 @@ describe('normalizeLinkKind', () => {
     expect(normalizeLinkKind(f)).toMatchObject({ link_kind: 'delivery', po_ids: [], receipt_ids: ['r1'] })
     expect(normalizeLinkKind({ ...f, link_kind: 'po' })).toMatchObject({ link_kind: 'po', po_ids: ['P1'], receipt_ids: [] })
     expect(normalizeLinkKind({ ...f, link_kind: undefined })).toMatchObject({ link_kind: 'po', receipt_ids: [] })
+  })
+})
+
+describe('stock lines always go to the central site "ส่วนกลาง" (no site field)', () => {
+  const sites = [{ id: 'J1', name: 'บ้านคุณนัตตี้' }, { id: 'C', name: ' ส่วนกลาง ' }, { id: 'J2', name: 'SOAP OPERA' }]
+
+  it('lookup finds the central site by name (trimmed); undefined while sites load; empty when missing', () => {
+    expect(stockSiteLookup(sites)).toEqual({ site: 'C' })
+    expect(stockSiteLookup(undefined)).toBeUndefined()
+    expect(stockSiteLookup([{ id: 'J1', name: 'x' }])).toEqual({ site: '' })
+  })
+  it('deriveLineSite: central for a stock line, nothing for a non-stock line or without a lookup', () => {
+    const lk = stockSiteLookup(sites)
+    expect(deriveLineSite('X', lk)).toBe('C')
+    expect(deriveLineSite('', lk)).toBe('')
+    expect(deriveLineSite('X', undefined)).toBe('')
+  })
+  it('applyLineChange puts a stock line on the central site, whatever site it had (e.g. from a receipt)', () => {
+    const itemById = new Map([['X', { id: 'X', base_unit: 'kg', unit_conversion_mode: 'plain' }]])
+    const lk = { itemById, unitFactors: [], siteLookup: stockSiteLookup(sites) }
+    const base = { ...emptyLine(), description: 'a', qty: '2', unit: 'kg', unit_price: '10', site_id: 'J1' }
+    expect(applyLineChange(base, { inventory_item_id: 'X' }, lk).site_id).toBe('C')
+    // sites still loading: the stored site is kept
+    expect(applyLineChange(base, { inventory_item_id: 'X' }, { itemById, unitFactors: [] }).site_id).toBe('J1')
+    // dropping the stock item drops the site
+    expect(applyLineChange({ ...base, inventory_item_id: 'X', site_id: 'C' }, { inventory_item_id: '' }, lk).site_id).toBe('')
+  })
+  it('applySitesToLines moves every stock line to central, keeps the array when nothing changes', () => {
+    const lines = [
+      { ...emptyLine(), inventory_item_id: 'X', site_id: 'J1' },
+      { ...emptyLine(), inventory_item_id: '', site_id: '' },
+      { ...emptyLine(), inventory_item_id: 'Y', site_id: 'C' },
+    ]
+    const out = applySitesToLines(lines, stockSiteLookup(sites))
+    expect(out.map(l => l.site_id)).toEqual(['C', '', 'C'])
+    expect(out[1]).toBe(lines[1]); expect(out[2]).toBe(lines[2])
+    expect(applySitesToLines(out, stockSiteLookup(sites))).toBe(out)
+    expect(applySitesToLines(lines, undefined)).toBe(lines)
+    // no central site in the tenant: stock lines have no site and validation blocks the save
+    expect(applySitesToLines(out, stockSiteLookup([])).map(l => l.site_id)).toEqual(['', '', ''])
   })
 })

@@ -1,3 +1,4 @@
+import { collectTextLines, writeTextLayer, loadTextLayerFont, registerTextLayerFont, TEXT_LAYER_FONT } from './pdfTextLayer.js'
 // count = จำนวนครั้งที่เคยพิมพ์เอกสารนี้มาก่อน (ไม่รวมครั้งนี้) -- ครั้งแรก
 // (count===0) คือ "ต้นฉบับ" ตัวจริง ครั้งต่อๆ ไปคือสำเนา เลขลำดับนับรวมครั้งนี้
 // ด้วย (count+1) ดู useDocumentPrintCount/logDocumentPrint ใน useSupabase.js
@@ -9,18 +10,64 @@ export function printTagFor(count) {
  * สร้าง PDF จาก HTML element
  * ใช้ html2pdf.js ซึ่งรองรับ Thai font ผ่าน canvas rendering
  */
+export function pdfOptions({ margin = 10, scale = 2, filename } = {}) {
+  return {
+    margin:      [margin, margin, margin, margin],
+    filename:    filename || 'document.pdf',
+    image:       { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale, useCORS: true, letterRendering: true, backgroundColor: '#ffffff' },
+    jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' },
+  }
+}
+
+/**
+ * Build the PDF for an element: the picture html2pdf paints, plus an invisible text
+ * layer (src/lib/pdfTextLayer.js) so the PDF can be searched, selected and indexed
+ * (Drive, Gmail, accounting tools). Best-effort: if the font cannot be fetched or the
+ * layer throws, the picture-only PDF is still produced. Resolves to `{ worker }`, the
+ * html2pdf worker holding the finished jsPDF (`.save()` / `.outputPdf()`). Wrapped in
+ * an object on purpose: the worker is a thenable, so returning it bare from an async
+ * function would hand the caller the chain's resolved value (undefined), not the worker.
+ */
+export async function buildPDF(html2pdf, element, options) {
+  const fontB64 = await loadTextLayerFont()
+  let lines = null, containerRect = null, pageSize = null, margin = null
+  const worker = html2pdf().set(options).from(element)
+    .toContainer()
+    .then(function () {
+      if (!fontB64) return
+      try {
+        // this.prop.container is html2pdf's own clone (page-break spacers applied),
+        // laid out at the page's inner width; measure there, not on the live element.
+        const container = this.prop.container
+        containerRect = container.getBoundingClientRect()
+        pageSize = this.prop.pageSize
+        margin = this.opt.margin
+        lines = collectTextLines(container)
+      } catch (err) { console.warn('pdf text layer: measuring failed', err?.message); lines = null }
+    })
+    .toPdf()
+    .get('pdf')
+    .then(function (pdf) {
+      if (!lines || !fontB64) return
+      try {
+        // The real page cut is in canvas pixels (html2pdf floors it), so hand the
+        // canvas width and html2canvas scale over for exact page/offset maths.
+        const canvas = this.prop.canvas ? { width: this.prop.canvas.width, scale: this.opt.html2canvas?.scale || 1 } : null
+        registerTextLayerFont(pdf, fontB64)
+        writeTextLayer(pdf, lines, containerRect, pageSize, margin, TEXT_LAYER_FONT, canvas)
+      } catch (err) { console.warn('pdf text layer: writing failed', err?.message) }
+    })
+  return { worker }
+}
+
 export async function downloadPDF(elementId, filename, { margin = 10, scale = 2 } = {}) {
   const html2pdf = (await import('html2pdf.js')).default
   const element = document.getElementById(elementId)
   if (!element) { console.error('element not found:', elementId); return }
 
-  await html2pdf().set({
-    margin:      [margin, margin, margin, margin],
-    filename:    filename || 'document.pdf',
-    image:       { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale, useCORS: true, letterRendering: true, backgroundColor: '#ffffff' },
-    jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' }
-  }).from(element).save()
+  const { worker } = await buildPDF(html2pdf, element, pdfOptions({ margin, scale, filename }))
+  await worker.save()
 }
 
 /**

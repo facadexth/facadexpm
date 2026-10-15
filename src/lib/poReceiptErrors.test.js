@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs'
 describe('mapPoReceiptRpcError', () => {
   it('maps every new code to Thai and never shows the raw code', () => {
     for (const code of ['line_already_received', 'po_not_receivable', 'received_date_in_future', 'bad_received_date', 'deposit_exceeds_receipt',
-      'deposit_vat_exceeds_receipt', 'bad_stock_plan', 'stock_cost_mismatch', 'po_has_deposit', 'po_has_receipts', 'deposit_invoice_no_taken',
+      'deposit_vat_exceeds_receipt', 'bad_stock_plan', 'stock_cost_mismatch', 'po_has_deposit', 'po_has_receipts', 'deposit_invoice_no_taken', 'central_site_missing',
       'deposit_invoice_no_required', 'bill_not_pending', 'bad_split_amount', 'expense_is_receipt_bill', 'expense_is_split_part', 'po_status_rpc_only',
       'totals_mismatch', 'deposit_exceeds_remaining', 'po_tax_invoiced', 'insufficient_privilege',
       'deposit_other_po', 'deposit_linked_to_po', 'bill_changed', 'bad_lines', 'deposit_in_use', 'cross_tenant_reference', 'deposit_expense_is_po_generated',
