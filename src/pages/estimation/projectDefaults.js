@@ -240,3 +240,16 @@ export function priceRowLabel(index, id) {
   if (pt) return `${(Number(pt.list_price) * (1 - Number(pt.discount_pct || 0) / 100)).toLocaleString('en-US', { minimumFractionDigits: 2 })} บาท (ตั้งแต่ ${pt.effective_from})`
   return 'ราคาที่ถูกลบแล้ว'
 }
+
+// The add-on maps costing reads (useTemplateAddonPieces / useItemAddons): undefined only before a hook's FIRST load
+// (items then cost as plain); during a refetch the last loaded map stays, so add-on items never flash to a plain cost.
+// addonsLoading = either hook is (re)loading: actions that write costs (send to quotation) wait for it.
+export function addonCostMaps({ addonPieces, itemAddons }) {
+  const p = addonPieces || {}
+  const i = itemAddons || {}
+  return {
+    addonPiecesByTemplate: p.loaded ? p.addonPiecesByTemplate : undefined,
+    itemAddonsByOpening: i.loaded ? i.itemAddonsByOpening : undefined,
+    addonsLoading: !!(p.loading || i.loading),
+  }
+}

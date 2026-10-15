@@ -32,7 +32,7 @@ import CompareTab, { CompareTabButton } from './estimation/CompareTab.jsx'
 import ItemModal from './estimation/ItemModal.jsx'
 import QuickQuote from './estimation/QuickQuote.jsx'
 import ProjectBomView from './estimation/ProjectBomView.jsx'
-import { newProjectRow, packageRowsFor, hardwareBanners, availabilityIssues, costItems, bomsForStale, currentPreviewSigs } from './estimation/projectDefaults.js'
+import { newProjectRow, packageRowsFor, hardwareBanners, availabilityIssues, costItems, bomsForStale, currentPreviewSigs, addonCostMaps } from './estimation/projectDefaults.js'
 
 export default function Estimation(props) {
   const { isAtLeast, role } = useUserRole()
@@ -65,13 +65,13 @@ export default function Estimation(props) {
   const index = catalog.index
   const hwReady = !hw.loading && !hw.error
   const partModelByTemplate = partModels.loading ? null : partModels.partModelByTemplate
-  // Inline add-ons (ช่องแสง): never block costing. While loading the maps are undefined (items cost as plain); a load
-  // error is passed on and costOpening lists addon_not_loaded on the layout_kind items.
+  // Inline add-ons (ช่องแสง): never block costing. Before the first load the maps are undefined (items cost as plain);
+  // a refetch keeps the last loaded maps (addonCostMaps); a load error is passed on and costOpening lists
+  // addon_not_loaded on the layout_kind items. While either is loading, send-to-quotation waits (addonsLoading).
   const addonPieces = useTemplateAddonPieces(templates)
   const openingIds = useMemo(() => projectOpenings.map(o => o.id), [projectOpenings])
   const itemAddons = useItemAddons(openingIds)
-  const addonPiecesByTemplate = addonPieces.loading ? undefined : addonPieces.addonPiecesByTemplate
-  const itemAddonsByOpening = itemAddons.loading ? undefined : itemAddons.itemAddonsByOpening
+  const { addonPiecesByTemplate, itemAddonsByOpening, addonsLoading } = addonCostMaps({ addonPieces, itemAddons })
   const addonPiecesError = addonPieces.error || null
   const itemAddonsError = itemAddons.error || null
 
@@ -153,7 +153,7 @@ export default function Estimation(props) {
             )}
             {tab === 'price' && (
               <PriceStructureTab key={project.id} project={project} items={projectOpenings} costs={costs} index={index} infillTypes={infillTypes}
-                templatesById={base.templatesById} packageItems={packageItems} canEdit={canEdit} ps={ps} onProjectSaved={refetchProjects} onItemsSaved={refetchOpenings} />
+                templatesById={base.templatesById} packageItems={packageItems} canEdit={canEdit} ps={ps} addonsLoading={addonsLoading} onProjectSaved={refetchProjects} onItemsSaved={refetchOpenings} />
             )}
             {tab === 'compare' && <CompareTab key={project.id} ps={ps} project={project} items={projectOpenings} canEdit={canEdit} />}
             {tab === 'items' && <ItemsTable items={projectOpenings} costs={costs} previewSigs={previewSigs} project={project} index={index} templatesById={base.templatesById} canEdit={canEdit}

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { buildCatalogIndex } from '../../lib/aluCatalogPricing.js'
 import {
   draftFromProject, reconcileDraft, buildPatch, validateDraft, newProjectRow, parseQuantity, seriesChoices, finishChoices,
-  sashDisplayValue, packageRowsFor, hardwareBanners, availabilityIssues, itemStatus, bomsForStale, priceRowLabel, unresolvedSummary, currentPreviewSigs,
+  sashDisplayValue, packageRowsFor, hardwareBanners, availabilityIssues, itemStatus, bomsForStale, priceRowLabel, unresolvedSummary, currentPreviewSigs, addonCostMaps,
 } from './projectDefaults.js'
 import { itemPreviewSignature, snapshotFor } from '../../lib/itemPreviewSignature.js'
 import { startModel, setEndMode } from '../../lib/partModel.js'
@@ -195,5 +195,24 @@ describe('status + stale helpers', () => {
   it('price rows read as money with their start date; no id is "no price"', () => {
     expect(priceRowLabel(index, 'k1')).toContain('100.00')
     expect(priceRowLabel(index, null)).toBe('ไม่มีราคา')
+  })
+})
+
+describe('I-4: addonCostMaps keeps the last loaded maps while refetching', () => {
+  const pieces = { tp: [{ piece_key: 'ext' }] }
+  const items = { o1: [{ mode: 'merge' }] }
+  it('before the first load: undefined maps, loading', () => {
+    expect(addonCostMaps({ addonPieces: { loaded: false, loading: true, addonPiecesByTemplate: {} }, itemAddons: { loaded: false, loading: true, itemAddonsByOpening: {} } }))
+      .toEqual({ addonPiecesByTemplate: undefined, itemAddonsByOpening: undefined, addonsLoading: true })
+  })
+  it('during a refetch: the previous maps (same objects), still loading', () => {
+    const r = addonCostMaps({ addonPieces: { loaded: true, loading: true, addonPiecesByTemplate: pieces }, itemAddons: { loaded: true, loading: true, itemAddonsByOpening: items } })
+    expect(r.addonPiecesByTemplate).toBe(pieces)
+    expect(r.itemAddonsByOpening).toBe(items)
+    expect(r.addonsLoading).toBe(true)
+  })
+  it('loaded and idle: the maps, not loading; either hook loading ⇒ loading', () => {
+    expect(addonCostMaps({ addonPieces: { loaded: true, loading: false, addonPiecesByTemplate: pieces }, itemAddons: { loaded: true, loading: false, itemAddonsByOpening: items } }).addonsLoading).toBe(false)
+    expect(addonCostMaps({ addonPieces: { loaded: true, loading: false, addonPiecesByTemplate: pieces }, itemAddons: { loaded: true, loading: true, itemAddonsByOpening: items } }).addonsLoading).toBe(true)
   })
 })

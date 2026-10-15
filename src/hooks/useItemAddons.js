@@ -12,5 +12,7 @@ export function useItemAddons(openingIds) {
   const key = ids.join(',')
   const q = useQuery(() => (ids.length ? loadItemAddons({ supabase, openingIds: ids }) : Promise.resolve({})), [key])
   const data = useMemo(() => q.data || {}, [q.data])   // one object per load: costing memos depend on its identity
-  return { itemAddonsByOpening: data, loading: ids.length ? q.loading : false, error: q.error, refetch: q.refetch }
+  // loaded: a first load finished. useQuery keeps the last data while it refetches, so after that the map stays the last
+  // loaded one until replaced (callers must not treat a refetch as "no add-ons").
+  return { itemAddonsByOpening: data, loaded: !ids.length || q.data != null, loading: ids.length ? q.loading : false, error: q.error, refetch: q.refetch }
 }

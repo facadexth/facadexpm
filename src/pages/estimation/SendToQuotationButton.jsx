@@ -9,7 +9,10 @@ import { resolveItemInputs } from '../../lib/estimationInherit.js'
 import { descriptionContext } from './itemForm.js'
 import SendToQuotationDialog from './SendToQuotationDialog.jsx'
 
-export default function SendToQuotationButton({ project, items, result, index, templatesById, infillTypesById, packageItems, canEdit, ps = {} }) {
+// the costs read the add-on maps: never send while they are (re)loading (Estimation addonCostMaps.addonsLoading)
+const ADDONS_LOADING = 'กำลังโหลดข้อมูลช่องแสง'
+
+export default function SendToQuotationButton({ project, items, result, index, templatesById, infillTypesById, packageItems, canEdit, ps = {}, addonsLoading = false }) {
   const { tenant, hasModuleAccess } = useTenant()
   const [open, setOpen] = useState(false)
   const { isAtLeast, role } = useUserRole()
@@ -33,9 +36,11 @@ export default function SendToQuotationButton({ project, items, result, index, t
   const linked = !!(ps.link && ps.link.quotation_id)
   return (
     <>
-      <button type="button" className="btn btn-primary btn-sm" disabled={!!ps.loading} onClick={() => setOpen(true)}>
+      <button type="button" className="btn btn-primary btn-sm" disabled={!!ps.loading || addonsLoading} onClick={() => setOpen(true)}
+        title={addonsLoading ? ADDONS_LOADING : undefined}>
         {linked ? 'อัปเดตราคาไปใบเสนอราคา' : 'ส่งไปใบเสนอราคา'}
       </button>
+      {addonsLoading && <span className="sub" style={{ fontSize: 12, color: 'var(--text3)' }}>{ADDONS_LOADING}</span>}
       {open && (
         <SendToQuotationDialog project={project} items={items} result={result} descriptionCtxById={descriptionCtxById}
           link={ps.link} snapshots={ps.snapshots} tenant={tenant}

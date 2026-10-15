@@ -12,5 +12,6 @@ export function useTemplateAddonPieces(templates) {
   const key = ids.join(',')
   const q = useQuery(() => (ids.length ? loadAddonPieces({ supabase, templateIds: ids }) : Promise.resolve({})), [key])
   const data = useMemo(() => q.data || {}, [q.data])   // one object per load: costing memos depend on its identity
-  return { addonPiecesByTemplate: data, loading: ids.length ? q.loading : false, error: q.error }
+  // loaded: a first load finished; the map then stays the last loaded one through refetches (see useItemAddons)
+  return { addonPiecesByTemplate: data, loaded: !ids.length || q.data != null, loading: ids.length ? q.loading : false, error: q.error }
 }
