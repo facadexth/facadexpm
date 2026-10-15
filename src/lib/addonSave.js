@@ -91,6 +91,7 @@ export function itemAddonsFromRows(rows) {
     id: r.id, mode: r.mode, kind: r.kind, position: r.position,
     len_mm: toMm(r.len_m), thick_mm: toMm(r.thick_m), offset_mm: toMm(r.offset_m), align: r.align === 'end' ? 'end' : 'start',
     rows: Number(r.rows), cols: Number(r.cols),
+    fake_rows: r.fake_rows == null ? 1 : Number(r.fake_rows), fake_cols: r.fake_cols == null ? 1 : Number(r.fake_cols),
   }))
 }
 
@@ -98,7 +99,7 @@ export function itemAddonsToRows(addons, openingId) {
   return (addons || []).map((a, i) => ({
     opening_id: openingId, mode: a.mode, kind: a.kind, position: a.position,
     len_m: m6(a.len_mm), thick_m: m6(a.thick_mm), offset_m: m6(a.offset_mm || 0), align: a.align === 'end' ? 'end' : 'start',
-    rows: Number(a.rows), cols: Number(a.cols), sort_order: i,
+    rows: Number(a.rows), cols: Number(a.cols), fake_rows: a.fake_rows == null ? 1 : Number(a.fake_rows), fake_cols: a.fake_cols == null ? 1 : Number(a.fake_cols), sort_order: i,
   }))
 }
 

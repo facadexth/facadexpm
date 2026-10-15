@@ -65,8 +65,8 @@ describe('snapshot signature: item form save == items table recomputation', () =
 
 describe('inline add-ons round trip (form -> rows -> form)', () => {
   const addons = [
-    { mode: 'merge', kind: 'fixed', position: 'top', len_mm: 1723.8, thick_mm: 400, offset_mm: 0, align: 'start', rows: 1, cols: 3 },
-    { mode: 'attach', kind: 'awning', position: 'right', len_mm: 1200, thick_mm: 512.5, offset_mm: 0, align: 'end', rows: 2, cols: 1 },
+    { mode: 'merge', kind: 'fixed', position: 'top', len_mm: 1723.8, thick_mm: 400, offset_mm: 0, align: 'start', rows: 1, cols: 3, fake_rows: 2, fake_cols: 3 },
+    { mode: 'attach', kind: 'awning', position: 'right', len_mm: 1200, thick_mm: 512.5, offset_mm: 0, align: 'end', rows: 2, cols: 1, fake_rows: 1, fake_cols: 1 },
   ]
   const form = { ...emptyForm(), opening_no: 'W1', template_id: 'tS', width_m: '1723.8', height_m: '1200', panel_count: '2', addons }
 

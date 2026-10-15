@@ -10,7 +10,7 @@ const mk = (position, extra = {}) => ({ ...newAddon({ position, mainWidthMm: 180
 describe('newAddon / addonDims', () => {
   it('top takes the main width as its length', () => {
     expect(newAddon({ position: 'top', mainWidthMm: 1800, mainHeightMm: 1200 })).toEqual({
-      mode: 'merge', kind: 'fixed', position: 'top', len_mm: 1800, thick_mm: 400, offset_mm: 0, align: 'start', rows: 1, cols: 3,
+      mode: 'merge', kind: 'fixed', position: 'top', len_mm: 1800, thick_mm: 400, offset_mm: 0, align: 'start', rows: 1, cols: 3, fake_rows: 1, fake_cols: 1,
     })
   })
   it('left takes the main height', () => {
@@ -281,5 +281,21 @@ describe('I-1: side family + default 2·butt deductions', () => {
     expect(deductionStillZero({ ...top, deduction_mm: 76.2 }, 38.1)).toBe(false)
     expect(deductionStillZero(top, 0)).toBe(false)
     expect(deductionStillZero(side, 38.1)).toBe(false)
+  })
+})
+
+describe('fake dividers (ซอยหลอก, owner 2026-10-15)', () => {
+  const base = newAddon({ mainWidthMm: 1800, mainHeightMm: 1200 })
+  it('newAddon starts without fake dividers (1 x 1)', () => {
+    expect(base.fake_rows).toBe(1)
+    expect(base.fake_cols).toBe(1)
+  })
+  it('validateAddons accepts 1..12, absent, and refuses 0 / 13 / fractions', () => {
+    expect(validateAddons([base])).toBeNull()
+    expect(validateAddons([{ ...base, fake_rows: undefined, fake_cols: undefined }])).toBeNull()
+    expect(validateAddons([{ ...base, fake_rows: 12, fake_cols: 12 }])).toBeNull()
+    expect(validateAddons([{ ...base, fake_rows: 0 }])).toMatch(/ซอยหลอกแนวนอน/)
+    expect(validateAddons([{ ...base, fake_cols: 13 }])).toMatch(/ซอยหลอกแนวตั้ง/)
+    expect(validateAddons([{ ...base, fake_cols: 2.5 }])).toMatch(/ซอยหลอกแนวตั้ง/)
   })
 })

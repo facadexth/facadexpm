@@ -110,6 +110,8 @@ export function addonSignature(addons) {
     mode: a?.mode ?? null, kind: a?.kind ?? null, position: a?.position ?? null,
     len_mm: AO_NUM(a?.len_mm), thick_mm: AO_NUM(a?.thick_mm), offset_mm: AO_NUM(a?.offset_mm) ?? 0,
     align: a?.align === 'end' ? 'end' : 'start', rows: AO_NUM(a?.rows), cols: AO_NUM(a?.cols),
+    // fake dividers (ซอยหลอก) only when drawn, so signatures from before the field exist unchanged
+    ...(AO_NUM(a?.fake_rows) > 1 || AO_NUM(a?.fake_cols) > 1 ? { fake_rows: AO_NUM(a?.fake_rows) || 1, fake_cols: AO_NUM(a?.fake_cols) || 1 } : {}),
   })))
 }
 

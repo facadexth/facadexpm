@@ -285,6 +285,33 @@ describe('partSvgString with inline add-ons', () => {
     const mm = labels(partSvgString({ model: m8('fixed_grid'), widthMm: 1800, heightMm: 1200, addons: [topMerge, rightAttach] }))
     expect(mm.sort()).toEqual(['0.40 ม.', '0.50 ม.', '1.20 ม.', '1.60 ม.', '1.80 ม.', '2.30 ม.'])
   })
+  it('grid dividers are bars as wide as the frame; fake dividers (ซอยหลอก) are half-width bars per pane, drawing only', () => {
+    const rects = (s) => (s.match(/<rect /g) || []).length
+    const one = draw([{ ...topMerge, cols: 1 }]), three = draw([topMerge])
+    expect(rects(three)).toBe(rects(one) + 2)                       // 2 mullions as rects, no <line> grid
+    expect(three).not.toMatch(/<line [^>]*stroke="#1f2937"/)
+    const fake = draw([{ ...topMerge, fake_cols: 2, fake_rows: 2 }])
+    expect(rects(fake)).toBe(rects(three) + 3 * 2)                  // per pane: 1 vertical + 1 horizontal fake bar
+    expect(draw([{ ...topMerge, fake_cols: 1, fake_rows: 1 }])).toBe(three)
+    expect(draw([{ ...topMerge, fake_cols: 'x' }])).toBe(three)     // bad value = none
+    // the fake bar is half the frame bar: widths of the vertical bars
+    const widths = [...fake.matchAll(/<rect x="[-\d.]+" y="[-\d.]+" width="([\d.]+)" height="([\d.]+)"/g)].map((m) => [Number(m[1]), Number(m[2])])
+    const tall = widths.filter(([w, h]) => h > w && w < 20).map(([w]) => w).sort((a, b) => a - b)
+    expect(tall[0] * 2).toBeCloseTo(tall[tall.length - 1], 1)
+  })
+  it('sliding_2 เลื่อน 1 ฟิก 1 puts an F in the glass corner of the fixed sash; default params draw none', () => {
+    const base = partSvgString({ model, widthMm: 1800, heightMm: 1200 })
+    expect(base).not.toContain('>F</text>')
+    const left = partSvgString({ model: { ...model, params: { ...model.params, one_fixed: 1, fixed_side: 'left' } }, widthMm: 1800, heightMm: 1200 })
+    const right = partSvgString({ model: { ...model, params: { ...model.params, one_fixed: 1, fixed_side: 'right' } }, widthMm: 1800, heightMm: 1200 })
+    expect(left).toContain('>F</text>')
+    expect(right).toContain('>F</text>')
+    const fx = (s) => Number(s.match(/<text x="([-\d.]+)" y="[-\d.]+" font-size="12" font-weight="700"/)[1])
+    expect(fx(left)).toBeLessThan(fx(right))
+    // the inside view mirrors it
+    const leftIn = partSvgString({ model: { ...model, params: { ...model.params, one_fixed: 1, fixed_side: 'left' } }, widthMm: 1800, heightMm: 1200, view: 'in' })
+    expect(fx(leftIn)).toBeGreaterThan(fx(left))
+  })
   it('works for a millimetre layout kind too (safe, overall size)', () => {
     const s = partSvgString({ model: m8('fixed_grid'), widthMm: 1800, heightMm: 1200, addons: [topMerge] })
     expect(safeSvgDataUri(s)).not.toBeNull()

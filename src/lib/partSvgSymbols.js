@@ -33,7 +33,8 @@ export function glassSvg(g, style, sw) {
   const fill = g.kind === 'frameless' ? GLASS.frameless : g.fixed ? GLASS.fixed : GLASS.glass
   if (style === 'cad') out.push(rect(g.x, g.y, g.w, g.h, `data-kind="${g.kind}" fill="none" stroke="${DIM}" stroke-width="0.6" ${NS}`))
   else out.push(rect(g.x, g.y, g.w, g.h, `data-kind="${g.kind}" fill="${fill}" stroke="${g.kind === 'frameless' ? '#8bb8cc' : 'none'}"${g.kind === 'frameless' ? ` stroke-width="0.8" ${NS}` : ''}`))
-  if (g.fixed) out.push(text(g.x + g.w / 2, g.y + g.h / 2 + sw * 3, 'F', sw * 9, DIM))
+  // owner 2026-10-15: the fixed mark sits in the glass corner, not the centre
+  if (g.fixed) out.push(text(g.x + sw * 7, g.y + sw * 11, 'F', sw * 9, DIM))
   return out.join('')
 }
 

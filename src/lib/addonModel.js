@@ -1,7 +1,7 @@
 // Pure model for inline add-ons ("ช่องแสง") on a main window. No I/O, no React, no imports.
 //
 // Add-on shape: { mode: 'merge'|'attach', kind: 'fixed'|'awning', position: 'top'|'bottom'|'left'|'right',
-//   len_mm, thick_mm, offset_mm, align: 'start'|'end', rows, cols }
+//   len_mm, thick_mm, offset_mm, align: 'start'|'end', rows, cols, fake_rows, fake_cols (ซอยหลอก per pane, 1 = none) }
 // merge = shares the main frame (ร่วมวงกบ); attach = its own frame beside the main (แยกวงกบ).
 // Piece row shape = the migration's column names (piece_key, profile_family, ref_input, length_factor, deduction_mm,
 //   qty_rule, qty_fixed, thickness_role, note, sort_order) plus mode, kind, position (position is null for attach rows).
@@ -22,6 +22,7 @@ export const alignLabel = (a) => (isHorizontal(a && a.position) ? ALIGN_LABEL.tb
 export const MAX_ADDONS = 6
 export const MAX_ROWS = 6
 export const MAX_COLS = 12
+export const MAX_FAKE = 12   // fake dividers (ซอยหลอก) per glass pane, each direction
 export const MAX_LEN_MM = 20000
 
 export const PIECE_KEYS = {
@@ -51,7 +52,7 @@ const numOrNull = (v) => (v === '' || v == null || !Number.isFinite(Number(v)) ?
 
 export function newAddon({ mode = 'merge', kind = 'fixed', position = 'top', mainWidthMm, mainHeightMm }) {
   const len_mm = isHorizontal(position) ? mainWidthMm : mainHeightMm
-  return { mode, kind, position, len_mm, thick_mm: 400, offset_mm: 0, align: 'start', rows: 1, cols: 3 }
+  return { mode, kind, position, len_mm, thick_mm: 400, offset_mm: 0, align: 'start', rows: 1, cols: 3, fake_rows: 1, fake_cols: 1 }
 }
 
 export function addonDims(a) {
@@ -197,6 +198,9 @@ function validateOneAddon(a, n) {
   if (a.align != null && !ADDON_ALIGNS.includes(a.align)) return `${at} ต้องเลือกแนวเสมอให้ถูกต้อง`
   if (!intIn(a.rows, 1, MAX_ROWS)) return `${at} จำนวนแถวต้องเป็นจำนวนเต็ม 1 ถึง ${MAX_ROWS}`
   if (!intIn(a.cols, 1, MAX_COLS)) return `${at} จำนวนช่องต้องเป็นจำนวนเต็ม 1 ถึง ${MAX_COLS}`
+  // fake dividers are optional on the object (older rows, legacy conversions): absent = none
+  if (a.fake_rows != null && !intIn(a.fake_rows, 1, MAX_FAKE)) return `${at} ซอยหลอกแนวนอนต้องเป็นจำนวนเต็ม 1 ถึง ${MAX_FAKE}`
+  if (a.fake_cols != null && !intIn(a.fake_cols, 1, MAX_FAKE)) return `${at} ซอยหลอกแนวตั้งต้องเป็นจำนวนเต็ม 1 ถึง ${MAX_FAKE}`
   return null
 }
 

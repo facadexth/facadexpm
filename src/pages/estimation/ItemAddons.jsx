@@ -5,7 +5,7 @@
 // box with "แปลงเป็นช่องแสงแบบใหม่" instead of the list. Mounted only for a template with layout_kind.
 import { useState } from 'react'
 import {
-  newAddon, alignLabel, ADDON_MODES, ADDON_KINDS, ADDON_POSITIONS, ADDON_MODE_LABEL, ADDON_KIND_LABEL, ADDON_POSITION_LABEL, MAX_ADDONS, MAX_ROWS, MAX_COLS,
+  newAddon, alignLabel, ADDON_MODES, ADDON_KINDS, ADDON_POSITIONS, ADDON_MODE_LABEL, ADDON_KIND_LABEL, ADDON_POSITION_LABEL, MAX_ADDONS, MAX_ROWS, MAX_COLS, MAX_FAKE,
 } from '../../lib/addonModel.js'
 import { addonRangeWarnings, addonSize } from './itemForm.js'
 import { Field } from './ItemFields.jsx'
@@ -19,6 +19,7 @@ const isH = p => p === 'top' || p === 'bottom'
 export const addonSummary = a => [
   ADDON_MODE_LABEL[a.mode] || '?', ADDON_KIND_LABEL[a.kind] || '?', ADDON_POSITION_LABEL[a.position] || '?', `${addonSize(a)} มม.`,
   `${shown(a.rows) === '' ? '?' : a.rows} × ${shown(a.cols) === '' ? '?' : a.cols} ช่อง`, alignLabel(a)[a.align === 'end' ? 'end' : 'start'],
+  ...(Number(a.fake_rows) > 1 || Number(a.fake_cols) > 1 ? [`ซอยหลอก ${Number(a.fake_rows) || 1} × ${Number(a.fake_cols) || 1}`] : []),
   // a converted legacy add-on keeps its offset (no field for it any more): shown so it is not hidden
   ...(Number(a.offset_mm) ? [`เยื้อง ${Number(a.offset_mm)}`] : []),
 ].join(' · ')
@@ -60,6 +61,8 @@ function AddonRow({ a, i, done, warn, dis, onPatch, onToggle, onRemove }) {
           </Field>
           <Field label="ชั้น (rows)"><input className="input" type="number" min="1" max={MAX_ROWS} step="1" disabled={dis} value={shown(a.rows)} onChange={e => onPatch({ rows: numIn(e.target.value) })} /></Field>
           <Field label="ช่อง (cols)"><input className="input" type="number" min="1" max={MAX_COLS} step="1" disabled={dis} value={shown(a.cols)} onChange={e => onPatch({ cols: numIn(e.target.value) })} /></Field>
+          <Field label="ซอยหลอก แนวนอน (ชั้นต่อช่อง)"><input className="input" type="number" min="1" max={MAX_FAKE} step="1" disabled={dis} value={shown(a.fake_rows ?? 1)} onChange={e => onPatch({ fake_rows: numIn(e.target.value) })} /></Field>
+          <Field label="ซอยหลอก แนวตั้ง (ช่องต่อช่อง)"><input className="input" type="number" min="1" max={MAX_FAKE} step="1" disabled={dis} value={shown(a.fake_cols ?? 1)} onChange={e => onPatch({ fake_cols: numIn(e.target.value) })} /></Field>
         </div>
       )}
       {warn && <div style={{ fontSize: 12, color: 'var(--yellow)' }}>⚠ {warn}</div>}
@@ -114,7 +117,7 @@ export default function ItemAddons({ addons, main, onChange, onConvert, legacy =
       ))}
       <div style={{ fontSize: 12, color: 'var(--text3)' }}>
         {list.length
-          ? `${list.length} ชิ้น (สูงสุด ${MAX_ADDONS}) · ชนิดกระทุ้งตอนนี้คิดเหมือนติดตาย (ยังไม่มีชิ้นบานกระทุ้ง)`
+          ? `${list.length} ชิ้น (สูงสุด ${MAX_ADDONS}) · ชนิดกระทุ้งตอนนี้คิดเหมือนติดตาย (ยังไม่มีชิ้นบานกระทุ้ง) · ซอยหลอกวาดในภาพเท่านั้น ยังไม่คิดราคา`
           : 'ยังไม่มีช่องแสง กด + เพิ่มช่องแสง'}
       </div>
     </div>

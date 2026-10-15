@@ -119,6 +119,11 @@ export function partSvgString({ model, widthMm, heightMm, view = 'out', buttOf, 
     else parts.push(rect(p.x, p.y, p.w, p.h, `fill="${style === 'cad' ? 'none' : sash ? fills.sash : fills.frame}" stroke="${sash ? SASH_INK : INK}" stroke-width="1.2"`))
     if (style === 'lengths' && p.role === 'main') parts.push(lengthText(p, ov.box.scale))
   }
+  // เลื่อน 1 ฟิก 1 (owner 2026-10-15): an F in the glass corner of the fixed sash (sash 0 = left in the outside view;
+  // ov.glass is already mirrored for the inside view). Nothing under the default params, so the frozen output holds.
+  const fixedK = model.layout_kind === 'sliding_2' && Number(model.params && model.params.one_fixed) === 1 ? (model.params.fixed_side === 'right' ? 1 : 0) : -1
+  const fg = fixedK >= 0 && Array.isArray(ov.glass) ? ov.glass[fixedK] : null
+  if (fg && fg.w > 0 && fg.h > 0) parts.push(`<text x="${n2(fg.x + 5)}" y="${n2(fg.y + 14)}" font-size="12" font-weight="700" fill="${INK}">F</text>`)
   if (ao) {
     const t = Math.max(side, top, bottom) || null
     parts.push(addonSvg(ao, { t, sw: 1.2, ns: '', style, fills, outline: 2 }))
@@ -194,6 +199,7 @@ function drawableAddons(addons) {
     .map(a => ({
       mode: a.mode, kind: a.kind === 'awning' ? 'awning' : 'fixed', position: a.position, len_mm: Number(a.len_mm), thick_mm: Number(a.thick_mm),
       offset_mm: Number(a.offset_mm) > 0 ? Number(a.offset_mm) : 0, align: a.align === 'end' ? 'end' : 'start', rows: intIn(a.rows, 1, 6), cols: intIn(a.cols, 1, AO_MAX_GRID),
+      fake_rows: intIn(a.fake_rows, 1, AO_MAX_GRID), fake_cols: intIn(a.fake_cols, 1, AO_MAX_GRID),
     }))
 }
 
@@ -290,11 +296,24 @@ function addonSvg(ao, u) {
     if (has('right')) bar(r.x + r.w - t, r.y, t, r.h)
     if (has('top')) bar(inner.x, r.y, inner.w, t)
     if (has('bottom')) bar(inner.x, r.y + r.h - t, inner.w, t)
-    // grid: cols − 1 mullions, rows − 1 rails across the glass
-    const g = `stroke="${INK}" stroke-width="${u.sw}"${u.ns}`
-    const { cols, rows } = r.a
-    for (let i = 1; i < cols; i++) { const x = inner.x + (inner.w * i) / cols; out.push(`<line x1="${n2(x)}" y1="${n2(inner.y)}" x2="${n2(x)}" y2="${n2(inner.y + inner.h)}" ${g}/>`) }
-    for (let j = 1; j < rows; j++) { const y = inner.y + (inner.h * j) / rows; out.push(`<line x1="${n2(inner.x)}" y1="${n2(y)}" x2="${n2(inner.x + inner.w)}" y2="${n2(y)}" ${g}/>`) }
+    // grid (owner 2026-10-15): cols − 1 mullions and rows − 1 rails drawn as bars as wide as the frame; the mullions run
+    // through, the rails sit between them. Fake dividers (ซอยหลอก): per pane, fake_cols − 1 / fake_rows − 1 bars at half.
+    const { cols, rows, fake_cols, fake_rows } = r.a
+    const cw = inner.w / cols, ch = inner.h / rows
+    for (let i = 1; i < cols; i++) bar(inner.x + cw * i - t / 2, inner.y, t, inner.h)
+    for (let j = 1; j < rows; j++) for (let i = 0; i < cols; i++) {
+      const x0 = inner.x + cw * i + (i ? t / 2 : 0), x1 = inner.x + cw * (i + 1) - (i < cols - 1 ? t / 2 : 0)
+      bar(x0, inner.y + ch * j - t / 2, x1 - x0, t)
+    }
+    if (fake_cols > 1 || fake_rows > 1) {
+      const ft = t / 2
+      for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+        const px = inner.x + cw * i + (i ? t / 2 : 0), py = inner.y + ch * j + (j ? t / 2 : 0)
+        const pw = cw - (i ? t / 2 : 0) - (i < cols - 1 ? t / 2 : 0), ph = ch - (j ? t / 2 : 0) - (j < rows - 1 ? t / 2 : 0)
+        for (let a = 1; a < fake_cols; a++) bar(px + (pw * a) / fake_cols - ft / 2, py, ft, ph)
+        for (let b2 = 1; b2 < fake_rows; b2++) bar(px, py + (ph * b2) / fake_rows - ft / 2, pw, ft)
+      }
+    }
     // awning: a V per pane, apex on the hinge (top); dashed from inside (it opens away from the viewer)
     if (r.a.kind === 'awning') {
       const dash = ao.view === 'in' ? ` stroke-dasharray="${n2(t * 0.6 || 4)} ${n2(t * 0.4 || 3)}"` : ''
