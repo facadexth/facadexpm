@@ -171,6 +171,13 @@ describe('expandAddons — issues and edge cases', () => {
     expect(r.attach[0].components.length).toBeGreaterThan(0)
   })
 
+  it('range uses the full stack length: right len 1600 fits only with a 400 top add-on present', () => {
+    const right = add({ mode: 'merge', position: 'right', len_mm: 1600, align: 'end' })
+    expect(run([right], rowsFor('merge', 'fixed', 'right')).issues.map((i) => i.reason)).toContain('addon_out_of_range')
+    const withTop = run([add({ position: 'top' }), right], [...rowsFor('merge', 'fixed', 'top'), ...rowsFor('merge', 'fixed', 'right')])
+    expect(withTop.issues.filter((i) => i.reason === 'addon_out_of_range')).toEqual([])
+  })
+
   it('thick ≤ 0 ⇒ addon_out_of_range', () => {
     const r = run([add({ mode: 'attach', thick_mm: 0 })], rowsFor('attach', 'fixed', null))
     expect(r.issues).toContainEqual({ role_name: 'ช่องแสง 1', reason: 'addon_out_of_range', addonIndex: 0 })

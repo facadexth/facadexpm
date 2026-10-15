@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS estimation_item_addons (
   len_m      NUMERIC NOT NULL CHECK (len_m > 0 AND len_m <= 20),
   thick_m    NUMERIC NOT NULL CHECK (thick_m > 0 AND thick_m <= 20),
   offset_m   NUMERIC NOT NULL DEFAULT 0 CHECK (offset_m >= 0),
+  align      TEXT NOT NULL DEFAULT 'start' CHECK (align IN ('start','end')),
   rows       INT NOT NULL DEFAULT 1 CHECK (rows BETWEEN 1 AND 6),
   cols       INT NOT NULL DEFAULT 1 CHECK (cols BETWEEN 1 AND 12),
   sort_order INT NOT NULL DEFAULT 0

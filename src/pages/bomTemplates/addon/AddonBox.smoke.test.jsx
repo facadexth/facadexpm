@@ -44,6 +44,15 @@ describe('AddonBox', () => {
     expect(t).toContain('กว้าง (ตามแนวขอบ)')
     expect(html).toContain('value="1800"')
   })
+  it('alignment select replaces the offset input', () => {
+    const t = text(renderToString(<AddonBox addons={[ao()]} onChange={noop} main={main} sel={null} onSelect={noop} />))
+    expect(t).not.toContain('ระยะจากขอบ')
+    expect(t).toContain('เสมอซ้าย')
+    expect(t).toContain('เสมอขวา')
+    const l = text(renderToString(<AddonBox addons={[ao({ position: 'left', len_mm: 1200, align: 'end' })]} onChange={noop} main={main} sel={null} onSelect={noop} />))
+    expect(l).toContain('เสมอบน')
+    expect(l).toContain('เสมอล่าง')
+  })
   it('collapsed: the summary line, no inputs', () => {
     const html = renderToString(<AddonBox addons={[ao({ done: true })]} onChange={noop} main={main} sel={0} onSelect={noop} />)
     const t = text(html)

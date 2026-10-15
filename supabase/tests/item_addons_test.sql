@@ -46,7 +46,7 @@ BEGIN
 
   INSERT INTO estimation_item_addons (opening_id, mode, kind, position, len_m, thick_m)
     VALUES (op, 'merge', 'fixed', 'top', 1.5, 0.4);
-  SELECT count(*) INTO n FROM estimation_item_addons WHERE opening_id = op AND offset_m = 0 AND rows = 1 AND cols = 1;
+  SELECT count(*) INTO n FROM estimation_item_addons WHERE opening_id = op AND offset_m = 0 AND align = 'start' AND rows = 1 AND cols = 1;
   IF n <> 1 THEN RAISE EXCEPTION 'item add-on row or defaults wrong'; END IF;
 
   RESET role;
@@ -122,6 +122,7 @@ BEGIN
     ('thick_m 0',       format(pre, 'mode, kind, position, len_m, thick_m', '''merge'',''fixed'',''top'',1,0')),
     ('thick_m 21',      format(pre, 'mode, kind, position, len_m, thick_m', '''merge'',''fixed'',''top'',1,21')),
     ('offset_m -1',     format(pre, 'mode, kind, position, len_m, thick_m, offset_m', '''merge'',''fixed'',''top'',1,0.4,-1')),
+    ('align middle',    format(pre, 'mode, kind, position, len_m, thick_m, align', '''merge'',''fixed'',''top'',1,0.4,''middle''')),
     ('position middle', format(pre, 'mode, kind, position, len_m, thick_m', '''merge'',''fixed'',''middle'',1,0.4')),
     ('mode x',          format(pre, 'mode, kind, position, len_m, thick_m', '''x'',''fixed'',''top'',1,0.4')),
     ('kind x',          format(pre, 'mode, kind, position, len_m, thick_m', '''merge'',''x'',''top'',1,0.4'))

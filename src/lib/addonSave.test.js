@@ -33,6 +33,17 @@ const row = (o = {}) => ({
 })
 const attachRow = (o = {}) => row({ mode: 'attach', position: null, piece_key: 'frame_top', ref_input: 'w', ...o })
 
+describe('item add-on align round trip', () => {
+  it('keeps align both ways', () => {
+    const rows = itemAddonsToRows([{ mode: 'merge', kind: 'fixed', position: 'right', len_mm: 1000, thick_mm: 400, offset_mm: 0, align: 'end', rows: 1, cols: 1 }], 'o1')
+    expect(rows[0].align).toBe('end')
+    expect(itemAddonsFromRows([{ ...rows[0], id: 'x' }])[0].align).toBe('end')
+  })
+  it('a row without align reads as start', () => {
+    expect(itemAddonsFromRows([{ id: 'x', mode: 'merge', kind: 'fixed', position: 'top', len_m: 1, thick_m: 0.4, offset_m: 0, rows: 1, cols: 1, sort_order: 0 }])[0].align).toBe('start')
+  })
+})
+
 describe('piece sets <-> rows', () => {
   it('round trips and drops unknown / bookkeeping columns', () => {
     const db = [
@@ -110,7 +121,7 @@ const addon = (o = {}) => ({ mode: 'merge', kind: 'fixed', position: 'top', len_
 describe('item add-ons', () => {
   it('mm -> m (6 dp) with sort_order and whitelisted columns', () => {
     const rows = itemAddonsToRows([addon({ thick_mm: 400, len_mm: 1723.8, extra: 1 }), addon()], 'o1')
-    expect(rows[0]).toEqual({ opening_id: 'o1', mode: 'merge', kind: 'fixed', position: 'top', len_m: 1.7238, thick_m: 0.4, offset_m: 0, rows: 1, cols: 3, sort_order: 0 })
+    expect(rows[0]).toEqual({ opening_id: 'o1', mode: 'merge', kind: 'fixed', position: 'top', len_m: 1.7238, thick_m: 0.4, offset_m: 0, align: 'start', rows: 1, cols: 3, sort_order: 0 })
     expect(rows[1].sort_order).toBe(1)
   })
   it('m (strings) -> mm, sorted, ids kept', () => {
@@ -119,8 +130,9 @@ describe('item add-ons', () => {
       { id: 'a', opening_id: 'o', mode: 'attach', kind: 'awning', position: 'left', len_m: 1, thick_m: 0.4, offset_m: 0.05, rows: 2, cols: 2, sort_order: 0 },
     ])
     expect(out.map(x => x.id)).toEqual(['a', 'b'])
-    expect(out[1]).toEqual({ id: 'b', mode: 'merge', kind: 'fixed', position: 'top', len_mm: 1723.8, thick_mm: 400, offset_mm: 0, rows: 1, cols: 3 })
+    expect(out[1]).toEqual({ id: 'b', mode: 'merge', kind: 'fixed', position: 'top', len_mm: 1723.8, thick_mm: 400, offset_mm: 0, align: 'start', rows: 1, cols: 3 })
     expect(out[0].offset_mm).toBe(50)
+    expect(out[0].align).toBe('start')
   })
   it('saveItemAddons: delete then insert; 7 add-ons => zero calls and a Thai message', async () => {
     const c = fakeClient()

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   newAddon, addonDims, layoutAddons, refValue, extRef, setKey, defaultAddonPieces, pieceQty,
-  validateAddons, validatePieceRows, PIECE_KEYS, REF_INPUTS, QTY_RULES, ADDON_MODES, ADDON_KINDS, ADDON_POSITIONS,
+  validateAddons, validatePieceRows, ALIGN_LABEL, alignLabel, PIECE_KEYS, REF_INPUTS, QTY_RULES, ADDON_MODES, ADDON_KINDS, ADDON_POSITIONS,
 } from './addonModel'
 
 const MAIN = { widthMm: 1800, heightMm: 1200 }
@@ -10,7 +10,7 @@ const mk = (position, extra = {}) => ({ ...newAddon({ position, mainWidthMm: 180
 describe('newAddon / addonDims', () => {
   it('top takes the main width as its length', () => {
     expect(newAddon({ position: 'top', mainWidthMm: 1800, mainHeightMm: 1200 })).toEqual({
-      mode: 'merge', kind: 'fixed', position: 'top', len_mm: 1800, thick_mm: 400, offset_mm: 0, rows: 1, cols: 3,
+      mode: 'merge', kind: 'fixed', position: 'top', len_mm: 1800, thick_mm: 400, offset_mm: 0, align: 'start', rows: 1, cols: 3,
     })
   })
   it('left takes the main height', () => {
@@ -54,6 +54,56 @@ describe('layoutAddons', () => {
     const r = lay([mk('right')])
     expect(r.rects[1].x).toBe(1800)
     expect(r.envelope.w).toBe(2200)
+  })
+})
+
+describe('layoutAddons alignment (AO-13)', () => {
+  const lay = (addons) => layoutAddons({ ...MAIN, addons })
+  const right1200 = (align) => mk('right', { len_mm: 1200, align })
+  it("right add-on flush bottom with a 400 top add-on ⇒ y = 0, gap 400 above", () => {
+    const r = lay([mk('top'), right1200('end')])
+    expect(r.rects[2]).toMatchObject({ x: 1800, y: 0, w: 400, h: 1200 })
+  })
+  it("right add-on flush top ⇒ y = -400", () => {
+    expect(lay([mk('top'), right1200('start')]).rects[2].y).toBe(-400)
+  })
+  it("top add-on len 1000 end with a right add-on thick 500 ⇒ x = 1300", () => {
+    const r = lay([mk('top', { len_mm: 1000, align: 'end' }), mk('right', { thick_mm: 500 })])
+    expect(r.rects[1].x).toBe(1800 + 500 - 1000)
+  })
+  it("top add-on start with a left add-on 300 ⇒ x = -300", () => {
+    const r = lay([mk('top', { len_mm: 1000, align: 'start' }), mk('left', { thick_mm: 300 })])
+    expect(r.rects[1].x).toBe(-300)
+  })
+  it('missing align reads as start; offset shifts from the flush end', () => {
+    const a = { ...mk('top', { len_mm: 1000, offset_mm: 50 }) }
+    delete a.align
+    expect(lay([a]).rects[1].x).toBe(50)
+    expect(lay([mk('top', { len_mm: 1000, align: 'end', offset_mm: 50 })]).rects[1].x).toBe(1800 - 1000 - 50)
+  })
+  it('add-on list order does not change any rect', () => {
+    const list = [mk('top'), right1200('end'), mk('left', { thick_mm: 300, len_mm: 800, align: 'end' }), mk('bottom', { len_mm: 900, align: 'end', thick_mm: 250 }), mk('top', { thick_mm: 200, len_mm: 700, align: 'end' })]
+    const base = lay(list)
+    const byAddon = (r) => Object.fromEntries(r.rects.filter((x) => !x.main).map((x) => [x.i, x]))
+    const perms = [[4, 3, 2, 1, 0], [2, 0, 4, 1, 3], [1, 4, 0, 3, 2]]
+    for (const p of perms) {
+      const shuffled = p.map((k) => list[k])
+      const r = lay(shuffled)
+      // same side keeps list order, so only compare when relative order of same-side add-ons is kept: the two top add-ons are 0 and 4
+      const rel = p.indexOf(0) < p.indexOf(4)
+      if (!rel) continue
+      for (const [newI, orig] of p.entries()) {
+        const { i, ...a } = byAddon(r)[newI]
+        const { i: j, ...b } = byAddon(base)[orig]
+        expect(a).toEqual(b)
+      }
+      expect(r.envelope).toEqual(base.envelope)
+    }
+  })
+  it('alignLabel by orientation', () => {
+    expect(alignLabel(mk('left'))).toEqual({ start: 'เสมอบน', end: 'เสมอล่าง' })
+    expect(alignLabel(mk('top'))).toEqual({ start: 'เสมอซ้าย', end: 'เสมอขวา' })
+    expect(ALIGN_LABEL.lr.end).toBe('เสมอล่าง')
   })
 })
 
@@ -164,6 +214,7 @@ describe('validateAddons', () => {
     bad([mk('top', { len_mm: 20001 })])
     bad([mk('top', { thick_mm: 0 })])
     bad([mk('top', { offset_mm: -1 })])
+    bad([mk('top', { align: 'middle' })])
     bad([mk('top', { position: 'middle' })])
     bad([mk('top', { mode: 'glue' })])
     bad([mk('top', { kind: 'sliding' })])

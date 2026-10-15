@@ -5,7 +5,7 @@
 import NumInput from '../NumInput.jsx'
 import {
   newAddon, validateAddons, ADDON_MODES, ADDON_KINDS, ADDON_POSITIONS, ADDON_KIND_LABEL, ADDON_POSITION_LABEL,
-  MAX_ADDONS, MAX_ROWS, MAX_COLS,
+  MAX_ADDONS, MAX_ROWS, MAX_COLS, ADDON_ALIGNS, alignLabel,
 } from '../../../lib/addonModel.js'
 import { addonSummary } from './addonView.js'
 
@@ -72,7 +72,11 @@ export default function AddonBox({ addons, onChange, main, sel, onSelect, error 
           </div>
           {num(i, `${isH(a.position) ? 'กว้าง' : 'สูง'} (ตามแนวขอบ)`, a.len_mm, 'len_mm', 'มม.')}
           {num(i, `${isH(a.position) ? 'สูง' : 'กว้าง'} (ความหนาของแถบ)`, a.thick_mm, 'thick_mm', 'มม.')}
-          {num(i, 'ระยะจากขอบ', a.offset_mm, 'offset_mm', 'มม.')}
+          <div className="fld"><label htmlFor={`ao${i}a`}>การจัดแนว</label>
+            <select id={`ao${i}a`} value={a.align === 'end' ? 'end' : 'start'} onChange={e => put(i, { align: e.target.value })}>
+              {ADDON_ALIGNS.map(v => <option key={v} value={v}>{alignLabel(a)[v]}</option>)}
+            </select><span />
+          </div>
           {num(i, 'กี่ชั้น', a.rows, 'rows', 'ชั้น', { step: 1, min: 1, max: MAX_ROWS, whole: true })}
           {num(i, 'กี่ช่อง', a.cols, 'cols', 'ช่อง', { step: 1, min: 1, max: MAX_COLS, whole: true })}
         </div>

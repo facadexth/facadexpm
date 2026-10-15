@@ -78,7 +78,7 @@ const toMm = (m) => Math.round(Number(m) * 1000 * 1000) / 1000
 export function itemAddonsFromRows(rows) {
   return [...(rows || [])].sort(bySort).map(r => ({
     id: r.id, mode: r.mode, kind: r.kind, position: r.position,
-    len_mm: toMm(r.len_m), thick_mm: toMm(r.thick_m), offset_mm: toMm(r.offset_m),
+    len_mm: toMm(r.len_m), thick_mm: toMm(r.thick_m), offset_mm: toMm(r.offset_m), align: r.align === 'end' ? 'end' : 'start',
     rows: Number(r.rows), cols: Number(r.cols),
   }))
 }
@@ -86,7 +86,7 @@ export function itemAddonsFromRows(rows) {
 export function itemAddonsToRows(addons, openingId) {
   return (addons || []).map((a, i) => ({
     opening_id: openingId, mode: a.mode, kind: a.kind, position: a.position,
-    len_m: m6(a.len_mm), thick_m: m6(a.thick_mm), offset_m: m6(a.offset_mm || 0),
+    len_m: m6(a.len_mm), thick_m: m6(a.thick_mm), offset_m: m6(a.offset_mm || 0), align: a.align === 'end' ? 'end' : 'start',
     rows: Number(a.rows), cols: Number(a.cols), sort_order: i,
   }))
 }

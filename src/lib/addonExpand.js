@@ -63,11 +63,13 @@ function pieceComponent(r, a, ai, ctx, sortOrder) {
   }
 }
 
-function checkRange(a, ai, ctx) {
-  const edge = isH(a.position) ? ctx.main.widthMm : ctx.main.heightMm
+// len + offset must fit the whole axis of the stack: the main edge plus every perpendicular add-on's thickness.
+function checkRange(a, ai, ctx, list) {
+  let axis = isH(a.position) ? ctx.main.widthMm : ctx.main.heightMm
+  for (const o of list) if (isAddon(o) && isH(o.position) !== isH(a.position)) axis += Math.max(0, num(o.thick_mm) ?? 0)
   const thick = num(a.thick_mm)
   const end = (num(a.offset_mm) ?? 0) + (num(a.len_mm) ?? 0)
-  if (thick == null || thick <= 0 || end > edge) ctx.issue(`ช่องแสง ${ai + 1}`, 'addon_out_of_range', ai)
+  if (thick == null || thick <= 0 || end > axis) ctx.issue(`ช่องแสง ${ai + 1}`, 'addon_out_of_range', ai)
 }
 
 function pushGlass(a, ai, b, ctx) {
@@ -148,7 +150,7 @@ export function expandAddons(input) {
     : { w: ctx.main.widthMm, h: ctx.main.heightMm }
   list.forEach((a, ai) => {
     if (!isAddon(a)) return
-    checkRange(a, ai, ctx)
+    checkRange(a, ai, ctx, list)
     const rows = piecesFor(a, pieceRows, layoutKind)
     if (a.mode === 'attach') expandAttach(a, ai, rows, ctx)
     else expandMerge(a, ai, rows, ctx, env)

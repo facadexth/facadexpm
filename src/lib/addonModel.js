@@ -1,12 +1,13 @@
 // Pure model for inline add-ons ("ช่องแสง") on a main window. No I/O, no React, no imports.
 //
 // Add-on shape: { mode: 'merge'|'attach', kind: 'fixed'|'awning', position: 'top'|'bottom'|'left'|'right',
-//   len_mm, thick_mm, offset_mm, rows, cols }
+//   len_mm, thick_mm, offset_mm, align: 'start'|'end', rows, cols }
 // merge = shares the main frame (ร่วมวงกบ); attach = its own frame beside the main (แยกวงกบ).
 // Piece row shape = the migration's column names (piece_key, profile_family, ref_input, length_factor, deduction_mm,
 //   qty_rule, qty_fixed, thickness_role, note, sort_order) plus mode, kind, position (position is null for attach rows).
 // Geometry: the main window sits at (0,0) with size widthMm x heightMm; add-ons stack outward per side in list order,
-//   so top/left add-ons sit at negative y/x. All functions are immutable: they never touch their inputs.
+//   so top/left add-ons sit at negative y/x. Along its own edge an add-on is flush (align) with the start (top/left) or
+//   end (bottom/right) of the whole stack = main plus the perpendicular add-ons; offset_mm shifts it inward from there. All functions are immutable: they never touch their inputs.
 // Validators return the first Thai problem string, or null when everything is fine. Callers coerce strings to numbers first.
 
 export const ADDON_MODES = ['merge', 'attach']
@@ -15,6 +16,9 @@ export const ADDON_POSITIONS = ['top', 'bottom', 'left', 'right']
 export const ADDON_MODE_LABEL = { merge: 'ร่วมวงกบ', attach: 'แยกวงกบ' }
 export const ADDON_KIND_LABEL = { fixed: 'ติดตาย', awning: 'กระทุ้ง' }
 export const ADDON_POSITION_LABEL = { top: 'บน', bottom: 'ล่าง', left: 'ซ้าย', right: 'ขวา' }
+export const ADDON_ALIGNS = ['start', 'end']
+export const ALIGN_LABEL = { lr: { start: 'เสมอบน', end: 'เสมอล่าง' }, tb: { start: 'เสมอซ้าย', end: 'เสมอขวา' } }
+export const alignLabel = (a) => (isHorizontal(a && a.position) ? ALIGN_LABEL.tb : ALIGN_LABEL.lr)
 export const MAX_ADDONS = 6
 export const MAX_ROWS = 6
 export const MAX_COLS = 12
@@ -47,7 +51,7 @@ const numOrNull = (v) => (v === '' || v == null || !Number.isFinite(Number(v)) ?
 
 export function newAddon({ mode = 'merge', kind = 'fixed', position = 'top', mainWidthMm, mainHeightMm }) {
   const len_mm = isHorizontal(position) ? mainWidthMm : mainHeightMm
-  return { mode, kind, position, len_mm, thick_mm: 400, offset_mm: 0, rows: 1, cols: 3 }
+  return { mode, kind, position, len_mm, thick_mm: 400, offset_mm: 0, align: 'start', rows: 1, cols: 3 }
 }
 
 export function addonDims(a) {
@@ -56,17 +60,23 @@ export function addonDims(a) {
 
 // Add-ons on the same side stack outward in list order; `envelope` is the bounding box of the main plus every rect.
 export function layoutAddons({ widthMm, heightMm, addons }) {
+  const list = addons || []
+  const ext = { top: 0, bottom: 0, left: 0, right: 0 }
+  for (const a of list) ext[a.position] += isHorizontal(a.position) ? addonDims(a).h : addonDims(a).w
   const used = { top: 0, bottom: 0, left: 0, right: 0 }
   const rects = [{ main: true, x: 0, y: 0, w: widthMm, h: heightMm }]
-  ;(addons || []).forEach((a, i) => {
+  list.forEach((a, i) => {
     const { w, h } = addonDims(a)
     const off = numOrNull(a.offset_mm) ?? 0
+    const end = a.align === 'end'
     const gap = used[a.position]
     used[a.position] += isHorizontal(a.position) ? h : w
-    if (a.position === 'top') rects.push({ i, x: off, y: -gap - h, w, h })
-    else if (a.position === 'bottom') rects.push({ i, x: off, y: heightMm + gap, w, h })
-    else if (a.position === 'left') rects.push({ i, x: -gap - w, y: off, w, h })
-    else rects.push({ i, x: widthMm + gap, y: off, w, h })
+    const x = end ? widthMm + ext.right - w - off : -ext.left + off
+    const y = end ? heightMm + ext.bottom - h - off : -ext.top + off
+    if (a.position === 'top') rects.push({ i, x, y: -gap - h, w, h })
+    else if (a.position === 'bottom') rects.push({ i, x, y: heightMm + gap, w, h })
+    else if (a.position === 'left') rects.push({ i, x: -gap - w, y, w, h })
+    else rects.push({ i, x: widthMm + gap, y, w, h })
   })
   const x0 = Math.min(...rects.map((r) => r.x))
   const y0 = Math.min(...rects.map((r) => r.y))
@@ -152,6 +162,7 @@ function validateOneAddon(a, n) {
   if (!isNum(a.len_mm) || a.len_mm <= 0 || a.len_mm > MAX_LEN_MM) return `${at} ความยาวต้องมากกว่า 0 และไม่เกิน ${MAX_LEN_MM} มม.`
   if (!isNum(a.thick_mm) || a.thick_mm <= 0 || a.thick_mm > MAX_LEN_MM) return `${at} ความสูงช่องแสงต้องมากกว่า 0 และไม่เกิน ${MAX_LEN_MM} มม.`
   if (!isNum(a.offset_mm) || a.offset_mm < 0 || a.offset_mm > MAX_LEN_MM) return `${at} ระยะเลื่อนต้องไม่ติดลบ`
+  if (a.align != null && !ADDON_ALIGNS.includes(a.align)) return `${at} ต้องเลือกแนวเสมอให้ถูกต้อง`
   if (!intIn(a.rows, 1, MAX_ROWS)) return `${at} จำนวนแถวต้องเป็นจำนวนเต็ม 1 ถึง ${MAX_ROWS}`
   if (!intIn(a.cols, 1, MAX_COLS)) return `${at} จำนวนช่องต้องเป็นจำนวนเต็ม 1 ถึง ${MAX_COLS}`
   return null
