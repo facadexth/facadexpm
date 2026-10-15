@@ -526,3 +526,77 @@ describe('explainPiece grid bar count wording', () => {
     expect(s).toContain('(cols−1) × กว้าง 2 × 60.0')
   })
 })
+
+describe('expandParts — overrides and sideButt (add-ons)', () => {
+  const LONG = 'กล่องร่องวิ่งยาว'
+  const buttO = (f) => (f === LONG ? 50 : buttOf(f))
+  const base = expandParts({ model: owner(), buttOf: buttO, widthOf })
+  const byPos = (comps, name) => comps.find((c) => c.role_name === name)
+
+  it('lengthMm sets fixed_length_mm on the position line 0 only; other components identical', () => {
+    const r = expandParts({ model: owner(), buttOf: buttO, widthOf, overrides: { frame_side: { lengthMm: 1600 } } })
+    expect(r.issues).toEqual([])
+    expect(byPos(r.components, 'เฟรมข้าง').fixed_length_mm).toBe(1600)
+    expect(r.components.filter((c) => 'fixed_length_mm' in c)).toHaveLength(1)
+    const strip = (c) => { const { fixed_length_mm, ...rest } = c; return rest }   // eslint-disable-line no-unused-vars
+    expect(r.components.map(strip)).toEqual(base.components)
+  })
+
+  it('lengthMm leaves lines ≥ 1 unchanged', () => {
+    const m = addLine(owner(), 'frame_side')
+    m.lines.frame_side[1].profile_family = 'FS'
+    const r = expandParts({ model: m, buttOf: buttO, widthOf, overrides: { frame_side: { lengthMm: 1600 } } })
+    const fs = r.components.filter((c, i) => r.sources[i].key === 'frame_side')
+    expect(fs.map((c) => c.fixed_length_mm)).toEqual([1600, undefined])
+  })
+
+  it('family replaces line 0 everywhere: own component, butt ends and sash auto deduction (AO-10)', () => {
+    const r = expandParts({ model: owner(), buttOf: buttO, widthOf, overrides: { frame_side: { family: LONG } } })
+    expect(r.issues).toEqual([])
+    expect(byPos(r.components, 'เฟรมข้าง').profile_family).toBe(LONG)
+    expect(one(r.components, 'FT').end_deduction_mm).toBeCloseTo(100, 6)   // frame top butts both side frames
+    // sash rail: width_minus (2 × 50) − hook overlap 25
+    expect(one(r.components, 'ST').length_deduction_mm).toBeCloseTo(2 * 50 - 25, 6)
+    expect(one(r.components, 'ST').length_deduction_mm - one(base.components, 'ST').length_deduction_mm).toBeCloseTo(2 * (50 - 38.1), 6)
+    expect(one(r.components, 'KS')).toEqual(one(base.components, 'KS'))
+  })
+
+  it('family override on a position without a family prices it', () => {
+    const m = owner()
+    m.lines.frame_side[0].profile_family = ''
+    expect(expandParts({ model: m, buttOf: buttO, widthOf }).issues).toContainEqual({ role_name: 'เฟรมข้าง', reason: 'no_profile_family' })
+    const r = expandParts({ model: m, buttOf: buttO, widthOf, overrides: { frame_side: { family: LONG } } })
+    expect(r.issues).toEqual([])
+  })
+
+  it('sideButt.top replaces the frame top butt in the stile deduction: 25 + 35.8 = 60.8', () => {
+    const r = expandParts({ model: owner(), buttOf: buttO, widthOf, sideButt: { top: 25 } })
+    for (const f of ['KS', 'HS']) expect(one(r.components, f).length_deduction_mm).toBeCloseTo(60.8, 6)
+    expect(one(r.components, 'ST')).toEqual(one(base.components, 'ST'))
+    expect(one(r.components, 'FT')).toEqual(one(base.components, 'FT'))   // explicit butt ends are not AUTO lookups
+  })
+
+  it('sideButt.left / right replace one side each in frame_sides', () => {
+    const left = expandParts({ model: owner(), buttOf: buttO, widthOf, sideButt: { left: 25 } })
+    expect(one(left.components, 'ST').length_deduction_mm).toBeCloseTo(25 + 38.1 - 25, 6)
+    const both = expandParts({ model: owner(), buttOf: buttO, widthOf, sideButt: { left: 25, right: 20 } })
+    expect(one(both.components, 'ST').length_deduction_mm).toBeCloseTo(25 + 20 - 25, 6)
+  })
+
+  describe('no overrides ⇒ identical output', () => {
+    const fill = (kind, params) => {
+      const m = startModel(kind, params)
+      for (const k of Object.keys(m.lines)) if (m.lines[k][0]) m.lines[k][0].profile_family = k === 'frame_top' ? 'FT' : k === 'frame_bottom' ? 'FB' : 'FS'
+      return m
+    }
+    for (const [kind, params] of [['sliding_2', {}], ['sliding_n', { n: 3 }], ['swing_door', { leaves: 2 }]]) {
+      it(kind, () => {
+        const plain = expandParts({ model: fill(kind, params), buttOf, widthOf })
+        expect(plain.components.length).toBeGreaterThan(0)
+        expect(expandParts({ model: fill(kind, params), buttOf, widthOf, overrides: {}, sideButt: {} })).toEqual(plain)
+        expect(expandParts({ model: fill(kind, params), buttOf, widthOf, overrides: undefined, sideButt: undefined })).toEqual(plain)
+        expect(JSON.stringify(expandParts({ model: fill(kind, params), buttOf, widthOf, overrides: {} }))).toBe(JSON.stringify(plain))
+      })
+    }
+  })
+})

@@ -20,13 +20,14 @@ const bSum = (...terms) => ({ b }) => ({ frame: terms.reduce((sum, [role, n]) =>
 // A grid auto: `frame` terms plus (param − 1) intermediate bars of `role`, measured across `label` ('cols' | 'rows').
 // `delta` = bars relative to the param: -1 (intermediate bars) by default, +1 for the curtain wall (bars incl. both ends).
 const gridAuto = (frameFn, label, param, role, delta = -1) => (ctx) => ({ frame: frameFn(ctx).frame, grid: { label, n: ctx.p(param) + delta, delta, role } })
-const SIDES = bSum(['frame_side', 2])
-const TOP_BOTTOM = bSum(['frame_top', 1], ['frame_bottom', 1])
+// sb = sideButt (add-on dividers, AO-2): a given mm replaces that side's frame butt; left/right are the two frame_side ends.
+const SIDES = ({ b, sb }) => ({ frame: (sb.left ?? b('frame_side')) + (sb.right ?? b('frame_side')), grid: null })
+const TOP_BOTTOM = ({ b, sb }) => ({ frame: (sb.top ?? b('frame_top')) + (sb.bottom ?? b('frame_bottom')), grid: null })
 const AUTO = {
   frame_sides: SIDES,
   sides_only: SIDES,
   frame_top_bottom: TOP_BOTTOM,
-  frame_top: bSum(['frame_top', 1]),
+  frame_top: ({ b, sb }) => ({ frame: sb.top ?? b('frame_top'), grid: null }),
   grid_cols: gridAuto(SIDES, 'cols', 'cols', 'mullion'),
   grid_n: gridAuto(SIDES, 'cols', 'n', 'mullion'),   // casement_n: columns = n
   grid_rows: gridAuto(TOP_BOTTOM, 'rows', 'rows', 'transom'),
@@ -41,7 +42,20 @@ function validModel(model) {
   return !!(model && typeof model === 'object' && LAYOUTS[model.layout_kind] && model.lines && typeof model.lines === 'object' && Array.isArray(model.parts))
 }
 
-function makeCtx({ model, buttOf, widthOf }) {
+// Only finite numbers survive; anything else falls back to the frame member's butt.
+function cleanSideButt(sideButt) {
+  const sb = {}
+  for (const k of ['top', 'bottom', 'left', 'right']) {
+    const v = sideButt?.[k]
+    if (v != null && v !== '' && Number.isFinite(Number(v))) sb[k] = Number(v)
+  }
+  return sb
+}
+
+// overrides = { [positionKey]: { family?, lengthMm? } } (add-ons): `family` replaces line 0's family for every reader.
+function makeCtx({ model, buttOf, widthOf, overrides, sideButt }) {
+  const ov = overrides && typeof overrides === 'object' ? overrides : {}
+  const sb = cleanSideButt(sideButt)
   const layout = LAYOUTS[model.layout_kind]
   const roles = rolesOf(layout)
   const params = exprParams(model)
@@ -54,7 +68,12 @@ function makeCtx({ model, buttOf, widthOf }) {
     seen.add(k)
     issues.push({ role_name, reason })
   }
-  const famOf = (key, line) => lineFamily(model, key, line)   // own family, else the layout's rule.familyFrom (line 0)
+  // own family, else the layout's rule.familyFrom (line 0); an override family wins on line 0
+  const famOf = (key, line) => (line === 0 && ov[key]?.family ? String(ov[key].family) : lineFamily(model, key, line))
+  const fixedLength = (key, line) => {
+    const v = line === 0 ? ov[key]?.lengthMm : null
+    return v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null
+  }
   const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v))
   const butt = (fam) => (fam ? num(buttOf(fam)) : null)
   const width = (fam) => (fam ? num(widthOf?.(fam)) : null)
@@ -78,7 +97,7 @@ function makeCtx({ model, buttOf, widthOf }) {
     }
     const b = (role) => lookup(role, butt, 'no_butt_distance')
     const p = (name) => (Number.isFinite(params[name]) ? params[name] : 1)
-    const { frame, grid } = fn({ b, p })
+    const { frame, grid } = fn({ b, p, sb })
     if (!grid) return { frame, grid: null }
     const n = Math.max(0, grid.n)
     return { frame, grid: { label: grid.label, delta: grid.delta, n, w: n > 0 ? lookup(grid.role, width, 'no_profile_width') : 0 } }
@@ -129,12 +148,13 @@ function makeCtx({ model, buttOf, widthOf }) {
     return `ชิ้นที่ ${piece + 1}`
   }
 
-  return { layout, roles, issues, issue, posName, autoParts, autoDed, overlapUnit, overlap, preDed, endDed, pieceLabel, isMitre }
+  return { layout, roles, issues, issue, posName, famOf, fixedLength, autoParts, autoDed, overlapUnit, overlap, preDed, endDed, pieceLabel, isMitre }
 }
 
-export function expandParts({ model, buttOf, widthOf }) {
+// overrides / sideButt: optional (add-ons, see addonExpand.js); absent ⇒ output unchanged.
+export function expandParts({ model, buttOf, widthOf, overrides, sideButt }) {
   if (!validModel(model)) return { components: [], issues: [{ role_name: '', reason: 'no_model' }] }
-  const ctx = makeCtx({ model, buttOf, widthOf })
+  const ctx = makeCtx({ model, buttOf, widthOf, overrides, sideButt })
   const { layout, issue, posName } = ctx
   const components = []
   const sources = []   // parallel to components: { key, line, pieces } (which line and pieces each row came from)
@@ -146,7 +166,8 @@ export function expandParts({ model, buttOf, widthOf }) {
     const n = pieceCount(model, key)
     lines.forEach((line, li) => {
       if (n === 0) return   // no piece (sliding_n middle sashes at n = 2, a grid with one column): nothing to price
-      const family = lineFamily(model, key, li)
+      const family = ctx.famOf(key, li)
+      const fixed = ctx.fixedLength(key, li)
       if (!family) { issue(name, 'no_profile_family'); return }
       const deducting = DEDUCTING_RULES.has(line.length_rule_type)
       const lengthDed = deducting ? r6(ctx.preDed(key, line, (reason) => issue(name, reason)) - ctx.overlap(key, line)) : 0
@@ -181,6 +202,7 @@ export function expandParts({ model, buttOf, widthOf }) {
           thickness_role: line.thickness_role ?? null,
           sort_order: components.length,
           cut_style: mitre ? 'miter45' : 'square',   // templateSave / DB cut_style vocabulary
+          ...(fixed != null ? { fixed_length_mm: fixed } : {}),
         })
       }
     })
