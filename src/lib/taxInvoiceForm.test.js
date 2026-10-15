@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   emptyTaxInvoiceForm, emptyLine, formFromInvoice, toRpcPayload, validateFormForSave,
   poRowsFor, computeAutoVat, applyLineChange, reconcileBaseManual, missingPoIds, missingReceiptIds,
+  buildSiteLookup, posFromReceipts, deriveLineSite, applySitesToLines,
 } from './taxInvoiceForm.js'
 
 describe('taxInvoiceForm', () => {
@@ -49,7 +50,9 @@ describe('taxInvoiceForm', () => {
     const f = emptyTaxInvoiceForm('2026-09-30')
     expect(validateFormForSave(f)).toEqual(expect.arrayContaining(['เลือกซัพพลายเออร์', 'กรอกเลขที่ใบกำกับ', 'กรอกยอดก่อน VAT']))
     const g = { ...f, supplier_id: 'A', invoice_no: 'X', net_before_vat: '10', lines: [{ key: 1, description: 'x', qty: '1', unit_price: '10', inventory_item_id: 'X', site_id: '', base_qty: '' }] }
-    expect(validateFormForSave(g)).toEqual(['รายการที่ 1: เลือกไซท์งาน และกรอกจำนวนในหน่วยหลัก'])
+    expect(validateFormForSave(g)).toEqual(['รายการที่ 1: เลือกใบสั่งซื้อหรือการรับของก่อน (ไซท์ของสต็อกมาจากใบสั่งซื้อ)', 'รายการที่ 1: กรอกจำนวนในหน่วยหลัก'])
+    const h = { ...g, lines: [{ ...g.lines[0], site_id: 'S' }] }
+    expect(validateFormForSave(h)).toEqual(['รายการที่ 1: กรอกจำนวนในหน่วยหลัก'])
   })
   it('validation rejects non-finite / negative numbers', () => {
     const base = { ...emptyTaxInvoiceForm('2026-09-30'), supplier_id: 'A', invoice_no: 'X', net_before_vat: '10' }
@@ -193,5 +196,62 @@ describe('normalizeLinkKind', () => {
     expect(normalizeLinkKind(f)).toMatchObject({ link_kind: 'delivery', po_ids: [], receipt_ids: ['r1'] })
     expect(normalizeLinkKind({ ...f, link_kind: 'po' })).toMatchObject({ link_kind: 'po', po_ids: ['P1'], receipt_ids: [] })
     expect(normalizeLinkKind({ ...f, link_kind: undefined })).toMatchObject({ link_kind: 'po', receipt_ids: [] })
+  })
+})
+
+describe('stock line site comes from the selected purchase orders (no site field)', () => {
+  const po = (id, site, items) => ({ id, site_id: site, purchase_order_items: items.map(i => ({ inventory_item_id: i })) })
+  const pos = [po('p1', 'S1', ['X', null]), po('p2', 'S2', ['Y', 'Z']), po('p3', 'S3', ['Z'])]
+
+  it('item on exactly one PO → that PO site; ambiguous or unknown → first selected PO site', () => {
+    const lk = buildSiteLookup(pos)
+    expect(deriveLineSite('X', lk)).toBe('S1')
+    expect(deriveLineSite('Y', lk)).toBe('S2')
+    expect(deriveLineSite('Z', lk)).toBe('S1')   // on p2 (S2) and p3 (S3): ambiguous → fallback
+    expect(deriveLineSite('W', lk)).toBe('S1')   // not ordered anywhere → fallback
+    expect(deriveLineSite('', lk)).toBe('')      // non-stock line never gets a site
+  })
+  it('same item on two POs of the same site is not ambiguous', () => {
+    const lk = buildSiteLookup([po('a', 'S9', ['X']), po('b', 'S9', ['X']), po('c', 'S1', ['Q'])])
+    expect(deriveLineSite('X', lk)).toBe('S9')
+  })
+  it('no selection → empty lookup, nothing derived', () => {
+    expect(deriveLineSite('X', buildSiteLookup([]))).toBe('')
+    expect(deriveLineSite('X', undefined)).toBe('')
+  })
+  it('receipts map to their PO site and the items received', () => {
+    const receipts = [
+      { id: 'r1', purchase_orders: { id: 'p1', site_id: 'S1' }, po_receipt_items: [{ purchase_order_items: { inventory_item_id: 'X' } }] },
+      { id: 'r2', purchase_orders: { id: 'p2', site_id: 'S2' }, po_receipt_items: [{ purchase_order_items: { inventory_item_id: 'Y' } }, { purchase_order_items: null }] },
+    ]
+    const lk = buildSiteLookup(posFromReceipts(receipts))
+    expect(deriveLineSite('X', lk)).toBe('S1')
+    expect(deriveLineSite('Y', lk)).toBe('S2')
+    expect(deriveLineSite('Q', lk)).toBe('S1')
+  })
+  it('applyLineChange fills the site from the lookup and re-derives when the item changes', () => {
+    const itemById = new Map([['X', { id: 'X', base_unit: 'kg', unit_conversion_mode: 'plain' }], ['Y', { id: 'Y', base_unit: 'kg', unit_conversion_mode: 'plain' }]])
+    const lk = { itemById, unitFactors: [], siteLookup: buildSiteLookup(pos) }
+    const base = { ...emptyLine(), description: 'a', qty: '2', unit: 'kg', unit_price: '10' }
+    const l1 = applyLineChange(base, { inventory_item_id: 'X' }, lk)
+    expect(l1.site_id).toBe('S1')
+    const l2 = applyLineChange(l1, { inventory_item_id: 'Y' }, lk)
+    expect(l2.site_id).toBe('S2')
+    // without a lookup (nothing selected yet) a stored site is kept, an empty one stays empty
+    expect(applyLineChange({ ...l1, site_id: 'OLD' }, { qty: '3' }, { itemById, unitFactors: [] }).site_id).toBe('OLD')
+    expect(applyLineChange(base, { inventory_item_id: 'X' }, { itemById, unitFactors: [] }).site_id).toBe('')
+  })
+  it('applySitesToLines re-derives every stock line, keeps the array when nothing changes', () => {
+    const lines = [
+      { ...emptyLine(), inventory_item_id: 'X', site_id: 'OLD' },
+      { ...emptyLine(), inventory_item_id: '', site_id: '' },
+      { ...emptyLine(), inventory_item_id: 'Y', site_id: 'S2' },
+    ]
+    const out = applySitesToLines(lines, buildSiteLookup(pos))
+    expect(out.map(l => l.site_id)).toEqual(['S1', '', 'S2'])
+    expect(out[2]).toBe(lines[2])
+    expect(applySitesToLines(out, buildSiteLookup(pos))).toBe(out)
+    // no selection: untouched
+    expect(applySitesToLines(lines, buildSiteLookup([]))).toBe(lines)
   })
 })

@@ -6,7 +6,7 @@
 // ============================================================
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  useReceivedPosForSupplier, useSuppliers, useSites, useCategories, useInventoryItems, useAllInventoryItems,
+  useReceivedPosForSupplier, useSuppliers, useCategories, useInventoryItems, useAllInventoryItems,
   useInventoryItemUnitFactors, useSupplierDocumentExamples, extractPoDocument, useSupplierDeposits,
   useActiveTaxInvoiceLinks, useDeliveryReceipts, useActiveReceiptTaxInvoiceLinks,
 } from '../hooks/useSupabase.js'
@@ -16,6 +16,7 @@ import { round2 } from '../lib/depositMath.js'
 import { lineAmount, evaluateMatch, proposePos, lineBase } from '../lib/supplierTaxInvoice.js'
 import {
   emptyLine, validateFormForSave, poRowsFor, computeAutoVat, applyLineChange, reconcileBaseManual, missingPoIds, missingReceiptIds, normalizeLinkKind,
+  buildSiteLookup, posFromReceipts, applySitesToLines,
 } from '../lib/taxInvoiceForm.js'
 import { evaluateDeliveryMatch, receiptSelectionTotals, receiptPickerRows, receiptLabel, splitDeliveryPoIds } from '../lib/deliveryTaxInvoice.js'
 import { NO_RECEIPTS_TEXT, DELIVERY_PO_IN_PO_INVOICE_TEXT } from '../lib/deliveryTaxInvoiceText.js'
@@ -42,7 +43,6 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
   const touched = useRef({ date: !!invoiceId, vat: !!invoiceId })
 
   const { data: suppliers } = useSuppliers()
-  const { data: sites } = useSites()
   const { data: categories } = useCategories()
   const { data: inventoryItems, refetch: refetchItems } = useInventoryItems()
   const { data: allItems, refetch: refetchAllItems } = useAllInventoryItems()
@@ -97,14 +97,21 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
     ? evaluateDeliveryMatch({ netBeforeVat: form.net_before_vat, grandTotal: grandNum, receipts: selectedReceipts, lineAmounts: form.lines.map(lineAmount) })
     : evaluateMatch({ netBeforeVat: form.net_before_vat, poSubtotals: selectedPos.map(poSubtotal), lineAmounts: form.lines.map(lineAmount) })
   const unlinkedInMonth = kind === 'po' ? proposal.proposed.filter(p => !form.po_ids.includes(p.id)) : []
-  const siteIds = kind === 'delivery' ? selectedReceipts.map(r => r.purchase_orders?.site_id) : selectedPos.map(p => p.site_id)
-  const commonSite = siteIds.length && siteIds.every(x => x === siteIds[0]) ? siteIds[0] || '' : ''
+  // Stock lines have no site field: the site comes from the matched POs / receipts (buildSiteLookup, tested).
+  const siteLookup = useMemo(() => buildSiteLookup(kind === 'delivery' ? posFromReceipts(selectedReceipts) : selectedPos),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [kind, form.po_ids, form.receipt_ids, posRows, receiptRows])
 
   // Line changes go through applyLineChange (pure, tested). Lookups come from a ref so a change made
   // after an await (quick create) never uses stale closures.
   const lookupsRef = useRef({})
-  lookupsRef.current = { itemById, unitFactors: unitFactors || [], commonSite }
+  lookupsRef.current = { itemById, unitFactors: unitFactors || [], siteLookup }
   const updateLine = (key, patch) => setForm(f => ({ ...f, lines: f.lines.map(l => (l.key === key ? applyLineChange(l, patch, lookupsRef.current) : l)) }))
+
+  // Selection changed (PO ticked / receipt added): every stock line follows the new selection.
+  useEffect(() => {
+    setForm(f => { const lines = applySitesToLines(f.lines, siteLookup); return lines === f.lines ? f : { ...f, lines } })
+  }, [siteLookup])
 
   // Saved invoice: once the lookups are loaded, a stored base quantity that equals the conversion is not "typed".
   const reconciled = useRef(false)
@@ -197,7 +204,6 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
     return fn(normalizeLinkKind(form))
   }
 
-  const siteOpts = (sites || []).map(s => ({ value: s.id, label: s.name, keywords: s.name }))
   const itemOpts = (inventoryItems || []).map(it => ({ value: it.id, label: `${it.name} (${it.base_unit})`, keywords: it.name }))
   const catOpts = (categories || []).map(c => ({ value: c.id, label: c.name, keywords: c.name }))
 
@@ -430,11 +436,6 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
                           />
                           {l.inventory_item_id && (
                             <div style={{ display: 'grid', gap: 6, marginTop: 6 }}>
-                              <div>
-                                <label className="label" style={{ fontSize: 11.5 }}>ไซท์งาน ★</label>
-                                <SearchableSelect value={l.site_id} onChange={v => updateLine(l.key, { site_id: v })} disabled={!!busy}
-                                  placeholder="— เลือกไซท์ —" options={siteOpts} />
-                              </div>
                               <div>
                                 <label className="label" style={{ fontSize: 11.5 }}>จำนวนในหน่วยหลัก ({item?.base_unit || '—'}) ★</label>
                                 <input className="input input-sm" type="number" min="0" step="any" value={l.base_qty}

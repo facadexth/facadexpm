@@ -75,7 +75,11 @@ export function validateFormForSave(form) {
     if (!String(l.description || '').trim() || !(num(l.qty) > 0)) errs.push(`รายการที่ ${n}: กรอกรายละเอียดและจำนวนมากกว่า 0`)
     else if (badNumber(l.unit_price) || (num(l.unit_price) ?? 0) < 0 || badNumber(l.discount_pct) || (num(l.discount_pct) ?? 0) < 0 || (num(l.discount_pct) ?? 0) > 100) {
       errs.push(`รายการที่ ${n}: ราคาหรือส่วนลดไม่ถูกต้อง`)
-    } else if (l.inventory_item_id && (!l.site_id || !(num(l.base_qty) > 0))) errs.push(`รายการที่ ${n}: เลือกไซท์งาน และกรอกจำนวนในหน่วยหลัก`)
+    } else if (l.inventory_item_id) {
+      // The site is never typed: it comes from the selected purchase orders (buildSiteLookup).
+      if (!l.site_id) errs.push(`รายการที่ ${n}: เลือกใบสั่งซื้อหรือการรับของก่อน (ไซท์ของสต็อกมาจากใบสั่งซื้อ)`)
+      if (!(num(l.base_qty) > 0)) errs.push(`รายการที่ ${n}: กรอกจำนวนในหน่วยหลัก`)
+    }
   })
   return errs
 }
@@ -94,15 +98,63 @@ export function computeAutoVat(net) {
   return Number.isFinite(n) && n >= 0 ? String(round2(n * VAT_RATE)) : ''
 }
 
-/** Recompute a line after a change. `lookups` = { itemById: Map, unitFactors: [], commonSite }.
+/** Which site a stock line belongs to, from the purchase orders the invoice is matched to (the form has no
+ *  site field, owner decision 2026-10-15): the site of the one PO that ordered the item; when the item is on
+ *  POs of different sites or on none of them, the site of the first selected PO.
+ *  `pos` = [{ site_id, purchase_order_items: [{ inventory_item_id }] }] in selection order. */
+export function buildSiteLookup(pos) {
+  const sitesByItem = new Map()
+  for (const po of pos || []) {
+    for (const it of po?.purchase_order_items || []) {
+      if (!it?.inventory_item_id) continue
+      if (!sitesByItem.has(it.inventory_item_id)) sitesByItem.set(it.inventory_item_id, new Set())
+      sitesByItem.get(it.inventory_item_id).add(po.site_id || '')
+    }
+  }
+  const siteByItem = new Map()
+  for (const [item, sites] of sitesByItem) if (sites.size === 1) siteByItem.set(item, [...sites][0])
+  return { siteByItem, fallbackSite: (pos || [])[0]?.site_id || '' }
+}
+
+/** Receipts (delivery-kind invoice) seen as POs for buildSiteLookup: the receipt's PO site and the items it received. */
+export function posFromReceipts(receipts) {
+  return (receipts || []).map(r => ({
+    site_id: r?.purchase_orders?.site_id || '',
+    purchase_order_items: (r?.po_receipt_items || []).map(ri => ri?.purchase_order_items).filter(Boolean),
+  }))
+}
+
+export function deriveLineSite(inventoryItemId, lookup) {
+  if (!inventoryItemId || !lookup) return ''
+  return lookup.siteByItem?.get(inventoryItemId) || lookup.fallbackSite || ''
+}
+
+/** Re-derive the site of every stock line from the current selection. Returns the same array (and the same
+ *  line objects) when nothing changes, so a state update can be skipped. No selection = nothing touched. */
+export function applySitesToLines(lines, lookup) {
+  if (!lookup || !lookup.fallbackSite) return lines
+  let changed = false
+  const out = lines.map(l => {
+    if (!l.inventory_item_id) return l
+    const site = deriveLineSite(l.inventory_item_id, lookup)
+    if (!site || site === l.site_id) return l
+    changed = true
+    return { ...l, site_id: site }
+  })
+  return changed ? out : lines
+}
+
+/** Recompute a line after a change. `lookups` = { itemById: Map, unitFactors: [], siteLookup (buildSiteLookup) }.
+ *  - the site is derived from the selected POs (deriveLineSite); without a selection a stored site is kept;
  *  - changing the stock item always drops a typed base quantity (base_manual false) and recomputes;
  *  - a typed (manual) base is kept when qty/unit change, but flagged base_stale so the UI says so. */
-export function applyLineChange(line, patch, { itemById, unitFactors, commonSite } = {}) {
+export function applyLineChange(line, patch, { itemById, unitFactors, siteLookup, commonSite } = {}) {
   const next = { ...line, ...patch }
   if (!next.inventory_item_id) return { ...next, site_id: '', base_qty: '', base_manual: false, base_stale: false }
   const itemChanged = 'inventory_item_id' in patch && patch.inventory_item_id !== line.inventory_item_id
   if (itemChanged) { next.base_manual = false; next.base_stale = false }
-  if (!next.site_id && commonSite) next.site_id = commonSite
+  const derived = deriveLineSite(next.inventory_item_id, siteLookup) || commonSite || ''
+  if (derived) next.site_id = derived
   if (!next.base_manual) {
     const factor = (unitFactors || []).find(f => f.inventory_item_id === next.inventory_item_id && f.unit_name === next.unit) || null
     const r = lineBase(next, itemById?.get(next.inventory_item_id), factor)
