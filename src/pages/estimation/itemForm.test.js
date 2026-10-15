@@ -5,6 +5,7 @@ import {
   evaluateConstraints, typeTreeOf, typePath, cascadeLevels, pickInPath, templatesForType, addonTypeOptions, liveItem,
   validateItemForm, reconcileItemForm, showSashField, inheritedHardware, partLabels, layoutCards, applyCardToForm,
   layoutRowFromItem, layoutSaveErrorText, descriptionContext, withCurrent, costRowFlags,
+  convertLegacyAddon, liveAddons, addonCostLines, addonRangeWarnings,
 } from './itemForm.js'
 import { formFromOpening, buildOpeningPayload } from '../../lib/openingPayload.js'
 
@@ -212,5 +213,65 @@ describe('four per-set item costs (price structure)', () => {
       expect(validateItemForm({ ...base, [k]: '-5' })).toBeTruthy()
       expect(validateItemForm({ ...base, [k]: 'abc' })).toBeTruthy()
     }
+  })
+})
+
+describe('inline add-ons (ช่องแสง) on the item form', () => {
+  const base = { ...emptyForm(), opening_no: 'W1', template_id: 't', width_m: '1800', height_m: '1200' }
+  const tPart = { id: 't', layout_kind: 'sliding_2' }
+  const ao = (over = {}) => ({ mode: 'merge', kind: 'fixed', position: 'top', len_mm: 1800, thick_mm: 400, offset_mm: 0, align: 'start', rows: 1, cols: 3, ...over })
+  const legacy = { ...base, has_addon: true, addon_template_id: 'tF', addon_width_m: '1800', addon_height_m: '400', addon_panel_count: '3', addon_position: 'top', addon_offset_m: '25' }
+
+  it('an empty form has no add-ons', () => {
+    expect(emptyForm().addons).toEqual([])
+  })
+  it('legacy + new add-ons are rejected with the Thai message', () => {
+    expect(validateItemForm({ ...legacy, addons: [ao()] }, { template: tPart })).toBe('มีชุดต่อเติมแบบเดิมอยู่ ให้แปลงหรือลบก่อน')
+    expect(validateItemForm({ ...legacy, addons: [] }, { template: tPart })).toBeNull()
+  })
+  it('add-ons on a template without layout_kind are refused', () => {
+    expect(validateItemForm({ ...base, addons: [ao()] }, { template: { id: 't' } })).toBe('template นี้ไม่ได้ใช้ part editor จึงใส่ช่องแสงไม่ได้')
+    expect(validateItemForm({ ...base, addons: [] }, { template: { id: 't' } })).toBeNull()
+  })
+  it('add-ons are validated by validateAddons (its Thai message as-is)', () => {
+    expect(validateItemForm({ ...base, addons: [ao(), ao({ len_mm: null })] }, { template: tPart })).toMatch(/^ช่องแสงที่ 2 ความยาว/)
+    expect(validateItemForm({ ...base, addons: [ao(), ao({ position: 'right', len_mm: 1200, align: 'end' })] }, { template: tPart })).toBeNull()
+  })
+  it('convertLegacyAddon: a top add-on becomes one attach add-on, legacy fields cleared', () => {
+    const f = convertLegacyAddon(legacy)
+    expect(f.addons).toEqual([{ mode: 'attach', kind: 'fixed', position: 'top', len_mm: 1800, thick_mm: 400, offset_mm: 25, align: 'start', rows: 1, cols: 3 }])
+    expect(f).toMatchObject({ has_addon: false, addon_template_id: '', addon_width_m: '', addon_height_m: '', addon_panel_count: '1', addon_offset_m: '' })
+    expect(legacy.has_addon).toBe(true)   // pure
+    expect(validateItemForm(f, { template: tPart })).toBeNull()
+    expect(buildOpeningPayload(f, { projectId: 'p' })).toMatchObject({ addon_template_id: null, addon_width_m: null, addon_height_m: null, addon_offset_m: null })
+  })
+  it('convertLegacyAddon: a left add-on runs along the height (len = height, thick = width)', () => {
+    const f = convertLegacyAddon({ ...legacy, addon_position: 'left', addon_width_m: '350', addon_height_m: '1200', addon_panel_count: '', addon_offset_m: '' })
+    expect(f.addons).toEqual([{ mode: 'attach', kind: 'fixed', position: 'left', len_mm: 1200, thick_mm: 350, offset_mm: 0, align: 'start', rows: 1, cols: 1 }])
+  })
+  it('liveAddons keeps the costable add-ons and maps their index back to the form', () => {
+    const { addons, indexOf } = liveAddons([ao({ len_mm: null }), ao({ position: 'bottom' })])
+    expect(addons).toHaveLength(1)
+    expect(addons[0].position).toBe('bottom')
+    expect(indexOf).toEqual([1])
+  })
+  it('addonCostLines: one line per attach add-on plus the merge glass, labelled by form number', () => {
+    const cost = {
+      addonBoms: [{ addonIndex: 0, bom: { totalCost: 1234.5 } }, { addonIndex: 1, bom: { totalCost: 100 } }],
+      addonMerge: { glass: { area_sqm: 0.72, cost: 612, panes: 3 } },
+    }
+    const lines = addonCostLines(cost, [1, 3])
+    expect(lines.map(l => [l.label, l.value])).toEqual([
+      ['ช่องแสง 2 (แยกวงกบ)', 1234.5],
+      ['ช่องแสง 4 (แยกวงกบ)', 100],
+      ['กระจกช่องแสง (ร่วมวงกบ) 0.72 ตร.ม.', 612],
+    ])
+    expect(addonCostLines({ addonBoms: [], addonMerge: null }, [])).toEqual([])
+  })
+  it('addonRangeWarnings: longer than the edge (main + perpendicular add-ons)', () => {
+    const main = { widthMm: 1800, heightMm: 1200 }
+    expect(addonRangeWarnings([ao({ len_mm: 1800 })], main)).toEqual([null])
+    expect(addonRangeWarnings([ao({ len_mm: 2300 }), ao({ position: 'right', len_mm: 1200, thick_mm: 500 })], main)).toEqual([null, null])
+    expect(addonRangeWarnings([ao({ len_mm: 2400 }), ao({ position: 'right', len_mm: 1200, thick_mm: 500 })], main)[0]).toBe('ช่องแสง 1 ยาวเกินขอบ (2300 มม.)')
   })
 })

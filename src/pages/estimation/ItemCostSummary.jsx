@@ -3,6 +3,7 @@
 // total is withheld ("ราคายังไม่ครบ" + every unresolved entry) until everything is priced.
 import { fmt } from '../../lib/supabase.js'
 import { reasonText, unresolvedText } from '../../lib/reasonText.js'
+import { addonCostLines } from './itemForm.js'
 
 const Row = ({ label, value, note, bad }) => (
   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, color: bad ? 'var(--red)' : 'inherit' }}>
@@ -41,14 +42,32 @@ const Section = ({ title, children }) => (
   </div>
 )
 
-export default function ItemCostSummary({ cost, flags, index, addonName }) {
+// addonIndexOf (useItemModel): costed inline add-on index -> its row in the form, so lines and issues say "ช่องแสง N"
+// as the estimator numbered them. Attach add-ons are one line each (their own BOM), merge glass one line; merge frame
+// pieces are already lines of the main BOM, so the rows still sum to the total.
+// expander names carry the costed index ("คิ้วเท (ช่องแสง 1)" / "ช่องแสง 1"): renumbered to the form's row
+const issueName = (u, indexOf) => {
+  if (u.addonIndex === undefined || u.addonIndex === null) return u.name || '?'
+  const piece = String(u.name || '').replace(/\s*\(ช่องแสง \d+\)$/, '').replace(/^ช่องแสง \d+$/, '')
+  return `ช่องแสง ${((indexOf || [])[u.addonIndex] ?? u.addonIndex) + 1}${piece ? ` ${piece}` : ''}`
+}
+
+export default function ItemCostSummary({ cost, flags, index, addonName, addonIndexOf }) {
   if (!cost) return <div className="card" style={{ padding: 12, fontSize: 13, color: 'var(--text3)' }}>เลือกประเภทและเทมเพลตเพื่อคิดราคา</div>
   const unresolved = cost.unresolved || []
+  const addonLines = addonCostLines(cost, addonIndexOf)
+  const notes = (cost.addonMerge && cost.addonMerge.notes) || []
   return (
     <div className="card" style={{ padding: 12, display: 'grid', gap: 6, background: 'var(--bg2)' }}>
       <div style={{ fontWeight: 700 }}>ต้นทุนต่อ 1 ชุด</div>
       <Section title="ชุดหลัก"><BomRows bom={cost.bom} index={index} flags={flags && flags.main} /></Section>
       {cost.addonBom && <Section title={`ของเพิ่มเติม${addonName ? `: ${addonName}` : ''}`}><BomRows bom={cost.addonBom} index={index} flags={flags && flags.addon} /></Section>}
+      {addonLines.length > 0 && (
+        <Section title="ช่องแสง">
+          {addonLines.map(l => <Row key={l.key} label={l.label} value={fmt(l.value)} />)}
+          {notes.map((n, i) => <div key={`n${i}`} style={{ fontSize: 12, color: 'var(--text3)' }}>หมายเหตุ ช่องแสง {((addonIndexOf || [])[n.addonIndex] ?? n.addonIndex) + 1}: {n.text}</div>)}
+        </Section>
+      )}
       {cost.extras.lines.length > 0 && (
         <Section title={`อุปกรณ์ติดตั้ง (${cost.extras.points} จุดยึด)`}>
           {cost.extras.lines.map(l => <Row key={l.key} label={`${l.name} × ${l.quantity}`} value={money(l.resolved, l.cost)} bad={!l.resolved} note={l.resolved ? null : `ไม่พบ: ${reasonText(l.reason)}`} />)}
@@ -60,7 +79,7 @@ export default function ItemCostSummary({ cost, flags, index, addonName }) {
           : (
             <div style={{ display: 'grid', gap: 2 }}>
               <Row label={<b>รวมต่อชุด</b>} value={<b>ราคายังไม่ครบ</b>} bad />
-              {unresolved.map((u, i) => <div key={i} style={{ fontSize: 12, color: 'var(--red)' }}>• {u.name || '?'}{u.source === 'addon' ? ' (ของเพิ่มเติม)' : ''}: {unresolvedText(u)}</div>)}
+              {unresolved.map((u, i) => <div key={i} style={{ fontSize: 12, color: 'var(--red)' }}>• {issueName(u, addonIndexOf)}{u.source === 'addon' && !String(issueName(u, addonIndexOf)).startsWith('ช่องแสง') ? ' (ของเพิ่มเติม)' : ''}: {unresolvedText(u)}</div>)}
             </div>
           )}
       </div>

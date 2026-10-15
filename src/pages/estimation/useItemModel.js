@@ -13,8 +13,12 @@ import { seriesLabelFull } from '../../lib/aluCatalog.js'
 import { seriesChoices, finishChoices } from './projectDefaults.js'
 import {
   typeTreeOf, cascadeLevels, templatesForType, addonTypeOptions, liveItem, showSashField, inheritedHardware,
-  partLabels, layoutCards, descriptionContext, evaluateConstraints, withCurrent, costRowFlags, itemLayoutInputs,
+  partLabels, layoutCards, descriptionContext, evaluateConstraints, withCurrent, costRowFlags, itemLayoutInputs, liveAddons,
 } from './itemForm.js'
+
+// The live item's stand-in id: costOpening reads inline add-ons from ctx.itemAddonsByOpening[item.id], so the form's
+// add-ons (not the saved ones) are costed under this key. Only the cost uses it; the drawing and snapshot are unchanged.
+const LIVE_ID = '__item_form__'
 
 const optionsOf = rows => rows.map(r => ({ value: r.id, label: r.name + (r.active === false ? ' (ปิดใช้งาน)' : '') }))
 
@@ -31,9 +35,13 @@ export function useItemModel({ form, path, addonTypeId, project, ctx, templates,
     const resolved = resolveItemInputs(item, pj, template, index.types, packageItems)
     const seriesId = resolved.series_id
 
+    // inline add-ons (ช่องแสง): the form's costable ones; addonIndexOf maps a costed index back to the form's row number
+    const live = liveAddons(form.addons)
+    const costCtx = live.addons.length ? { ...ctx, itemAddonsByOpening: { [LIVE_ID]: live.addons }, itemAddonsError: null } : ctx
+    const costItem = live.addons.length ? { ...item, id: LIVE_ID } : item
     let cost = null
     if (template) {
-      try { cost = costOpening({ ...ctx, item, project: pj, template, addonTemplate, asOf: pj.price_as_of }) } catch { cost = null }
+      try { cost = costOpening({ ...costCtx, item: costItem, project: pj, template, addonTemplate, asOf: pj.price_as_of }) } catch { cost = null }
     }
     const frames = previewFrames({ template, addonTemplate, ctx, seriesId, thicknessMm: resolved.thickness_mm })
     const inputs = template && item.width_m > 0 && item.height_m > 0 ? itemPreviewInputs(item, template, addonTemplate, frames) : null
@@ -73,7 +81,7 @@ export function useItemModel({ form, path, addonTypeId, project, ctx, templates,
     const generatedDescription = buildItemDescription(descriptionContext({ item, resolved, index, template, infillTypesById }), pj.description_format)
     const cons = c => (constraints || []).filter(x => x.template_id === c)
     return {
-      template, addonTemplate, item, addonPartial, resolved, cost, frames, inputs, part, labels, layoutInputs, leafId, levels, templateOptions,
+      template, addonTemplate, item, addonPartial, resolved, cost, addons: live.addons, addonIndexOf: live.indexOf, frames, inputs, part, labels, layoutInputs, leafId, levels, templateOptions,
       typeWarn: path.length && !leafId ? 'เลือกประเภทให้ถึงชั้นสุดท้าย' : null,
       templateHint: leafId && !templateOptions.length ? 'ประเภทนี้ยังไม่มีเทมเพลต BOM สร้างได้ที่หน้าเทมเพลต BOM' : null,
       availability: typeAvailability(template, seriesId, seriesTypes),

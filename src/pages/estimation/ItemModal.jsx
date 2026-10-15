@@ -3,13 +3,17 @@
 // description; right = live preview, layout-template cards, saved-snapshot options and the cost of one set.
 // Saves through buildOpeningPayload; the snapshot signature comes from the shared itemPreviewSignature helper,
 // built from the SAME normalised payload. A layout template is saved only after the item saved.
+// Inline add-ons (ช่องแสง, form.addons in mm) are their own table: saved after the row (itemSave.saveItemWithAddons);
+// the edited item's saved ones come from ctx.itemAddonsByOpening (loaded by the Estimation page), never the row.
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { Modal } from '../../components/Modal.jsx'
 import { emptyForm, formFromOpening, buildOpeningPayload } from '../../lib/openingPayload.js'
 import { snapshotFor } from '../../lib/itemPreviewSignature.js'
 import { bomTemplatesForType } from '../../lib/layoutTemplates.js'
-import { typePath, pickInPath, cascadeLevels, typeTreeOf, templatesForType, reconcileItemForm, validateItemForm, applyCardToForm, layoutRowFromItem, layoutSaveErrorText } from './itemForm.js'
+import { typePath, pickInPath, cascadeLevels, typeTreeOf, templatesForType, reconcileItemForm, validateItemForm, applyCardToForm, layoutRowFromItem, layoutSaveErrorText, convertLegacyAddon, mainMmOf } from './itemForm.js'
+import { saveItemWithAddons } from './itemSave.js'
+import ItemAddons from './ItemAddons.jsx'
 import { useItemModel } from './useItemModel.js'
 import ItemFields from './ItemFields.jsx'
 import AddonFields from './AddonFields.jsx'
@@ -22,7 +26,12 @@ import { PARAMS_HINT } from '../bomTemplates/partEditorView.js'
 
 export default function ItemModal({ opening, project, ctx, templates, constraints, infillTypes, layoutTemplates, seriesTypes, currentSig, canEdit, onClose, onSaved, onLayoutSaved }) {
   const { index, templatesById } = ctx
-  const [form, setForm] = useState(() => (opening ? formFromOpening(opening) : emptyForm()))
+  // the edited item's saved add-ons: ready once the page's map is loaded (undefined while loading); a new item has none
+  const savedAddonsOf = c => (opening && c.itemAddonsByOpening ? c.itemAddonsByOpening[opening.id] || [] : [])
+  const [addonsReady, setAddonsReady] = useState(() => !opening || !!ctx.itemAddonsByOpening)
+  const [form, setForm] = useState(() => (opening ? formFromOpening(opening, savedAddonsOf(ctx)) : emptyForm()))
+  // the add-on table is rewritten only when the form has add-ons or the item had some (deleting the last one clears it)
+  const [hadAddons, setHadAddons] = useState(() => savedAddonsOf(ctx).length > 0)
   const [path, setPath] = useState(() => typePath(index.types, (templatesById[opening && opening.template_id] || {}).type_id))
   const [own, setOwnState] = useState(() => ({ finish: !!(opening && opening.alu_finish_id), infill: !!(opening && opening.infill_type_id), hw: !!(opening && opening.hardware_set_id) }))
   const [addonTypeId, setAddonTypeId] = useState(() => (templatesById[opening && opening.addon_template_id] || {}).type_id || '')
@@ -36,6 +45,16 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
   const [error, setError] = useState(null)
   const [layoutError, setLayoutError] = useState(null)
   const dis = !canEdit || busy
+  const addonsError = opening && ctx.itemAddonsError ? (ctx.itemAddonsError.message || String(ctx.itemAddonsError)) : null
+
+  // the map arrived after the popup opened: take the item's saved add-ons once (later refetches never reset the form)
+  useEffect(() => {
+    if (addonsReady || !ctx.itemAddonsByOpening) return
+    const saved = savedAddonsOf(ctx)
+    setForm(f => ({ ...f, addons: saved.map(a => ({ ...a })) }))
+    setHadAddons(saved.length > 0)
+    setAddonsReady(true)
+  }, [ctx, addonsReady])   // eslint-disable-line react-hooks/exhaustive-deps
   const rowId = (opening && opening.id) || savedId
 
   // fills only (single thickness, blank sash on a frame change / new item); never clears an own value
@@ -84,7 +103,7 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
 
   const handleSave = async () => {
     // the template editor blocks refused layout params too (folding 0 + 0 would leave the aluminium unpriced)
-    const invalid = validateItemForm(form) || (m.layoutInputs && m.layoutInputs.invalid ? PARAMS_HINT : null) || (layoutSave.on && !layoutSave.name.trim() ? 'ตั้งชื่อแม่แบบรูปแบบ' : null)
+    const invalid = validateItemForm(form, { template: templatesById[form.template_id] }) || (m.layoutInputs && m.layoutInputs.invalid ? PARAMS_HINT : null) || (layoutSave.on && !layoutSave.name.trim() ? 'ตั้งชื่อแม่แบบรูปแบบ' : null)
     if (invalid) { setError(invalid); return }
     setError(null); setLayoutError(null); setBusy(true)
     try {
@@ -92,11 +111,12 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
       const previews = snap.on ? snapshotFor(plain, { project, ctx, views: { out: snap.out, in: snap.in } }) : null
       const savedAt = previews ? new Date().toISOString() : null
       const payload = buildOpeningPayload(form, { projectId: project.id, previews, savedAt })
-      const { data, error: e } = rowId
-        ? await supabase.from('estimation_openings').update(payload).eq('id', rowId).select('id').single()
-        : await supabase.from('estimation_openings').insert(payload).select('id').single()
-      if (e) throw e
+      // the row first, then its add-ons (only once loaded, and only when there is something to write or to clear)
+      const saveAddons = addonsReady && !addonsError && ((form.addons || []).length > 0 || hadAddons)
+      const data = await saveItemWithAddons({ supabase, rowId, payload, addons: form.addons, main: mainMmOf(form), saveAddons })
       setSavedId(data.id)
+      if (saveAddons) setHadAddons(true)
+      if (data.addonError) { setError('บันทึกรายการแล้ว แต่บันทึกช่องแสงไม่สำเร็จ: ' + data.addonError.message); onSaved({ close: false }); return }
       if (layoutSave.on) {
         let layoutFail = null
         try {
@@ -135,7 +155,13 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
         <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
           <ItemFields form={form} update={update} dis={dis} m={{ ...m, pickType, own, setOwn }} />
           {m.violations.map((msg, i) => <div key={i} className="alert alert-error" style={{ fontSize: 13 }}>⚠️ {msg}</div>)}
-          <AddonFields form={form} update={update} dis={dis} typeId={addonTypeId} typeOptions={m.addonTypeOptions} templateOptions={m.addonTemplateOptions} onPickType={pickAddonType} violations={m.addonViolations} />
+          {/* also shown when another (non-part-editor) template was picked with add-ons left, so they can be removed */}
+          {((m.template && m.template.layout_kind) || (form.addons || []).length > 0) && (
+            <ItemAddons addons={form.addons} main={mainMmOf(form)} dis={dis} legacy={!!form.has_addon} loading={!addonsReady && !addonsError} error={addonsError}
+              onChange={addons => setForm(f => ({ ...f, addons }))}
+              onConvert={() => { setAddonTypeId(''); setLayoutPick(null); setForm(f => convertLegacyAddon(f)) }} />
+          )}
+          {(!(m.template && m.template.layout_kind) || form.has_addon) && <AddonFields form={form} update={update} dis={dis} typeId={addonTypeId} typeOptions={m.addonTypeOptions} templateOptions={m.addonTemplateOptions} onPickType={pickAddonType} violations={m.addonViolations} />}
           <div style={{ display: 'grid', gap: 6 }}>
             <div style={{ fontWeight: 700, fontSize: 13 }}>คำอธิบายสำหรับใบเสนอราคา <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text3)' }}>ประกอบจากรูปแบบของโปรเจกต์ แก้ข้อความเองได้</span></div>
             <textarea className="input" rows={3} disabled={dis} value={form.item_description} onChange={e => { setDescTouched(true); setForm(f => ({ ...f, item_description: e.target.value })) }} />
@@ -143,12 +169,12 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
           </div>
         </div>
         <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
-          <PreviewPanel inputs={m.inputs} part={m.part} labels={m.labels} availability={m.availability} addonPartial={m.addonPartial}
+          <PreviewPanel inputs={m.inputs} addons={m.addons} part={m.part} labels={m.labels} availability={m.availability} addonPartial={m.addonPartial}
             onCell={onCell} hint={m.layoutInputs && m.layoutInputs.invalid ? PARAMS_HINT : null} />
           <LayoutTemplatePicker cards={m.cards} selectedId={layoutPick} mainTemplate={m.template} disabled={dis} onPick={pickCard} onClear={() => setLayoutPick(null)}
             save={layoutSave} onSaveChange={setLayoutSave} saveError={layoutError} />
           <SnapshotOptions snap={snap} onChange={setSnap} stale={stale} savedAt={opening && opening.preview_saved_at} onResave={resaveSnapshot} busy={busy} dis={dis} />
-          <ItemCostSummary cost={m.cost} flags={m.costFlags} index={index} addonName={m.addonTemplate && m.addonTemplate.name} />
+          <ItemCostSummary cost={m.cost} flags={m.costFlags} index={index} addonName={m.addonTemplate && m.addonTemplate.name} addonIndexOf={m.addonIndexOf} />
         </div>
       </div>
       {error && <div className="alert alert-error" style={{ margin: '0 16px', fontSize: 13 }}>{error}</div>}

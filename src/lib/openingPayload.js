@@ -38,12 +38,15 @@ export function emptyForm() {
     labour_per_sqm: '', profit_pct: '', extra_lines: [],
     fire_barrier_cost: '', bracket_cost: '', bend_alu_cost: '', bend_glass_cost: '',
     layout_params: {},
+    addons: [],
   }
 }
 
 const isPlainObject = v => v !== null && typeof v === 'object' && !Array.isArray(v)
 
-export function formFromOpening(o) {
+// addons = the item's inline add-ons (estimation_item_addons, mm, addonSave.loadItemAddons) — their own table, never
+// columns of this row, so buildOpeningPayload ignores them (the item form saves them after the row: itemSave.js).
+export function formFromOpening(o, addons = []) {
   return {
     opening_no: str(o.opening_no), item_name: str(o.item_name), item_description: str(o.item_description), template_id: str(o.template_id),
     series_id: str(o.series_id), alu_finish_id: str(o.alu_finish_id), thickness_mm: numText(o.thickness_mm), sash_thickness_mm: numText(o.sash_thickness_mm),
@@ -56,6 +59,7 @@ export function formFromOpening(o) {
     layout_params: isPlainObject(o.layout_params) ? JSON.parse(JSON.stringify(o.layout_params)) : {},
     // the row already had params: clearing them (another template) must send {} so the old ones do not stay behind
     _hadLayoutParams: isPlainObject(o.layout_params) && Object.keys(o.layout_params).length > 0,
+    addons: (addons || []).map(a => ({ ...a })),
   }
 }
 

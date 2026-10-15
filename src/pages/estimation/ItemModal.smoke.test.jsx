@@ -56,4 +56,35 @@ describe('ItemModal renders', () => {
     expect(html).not.toContain('เส้นเดียว (CAD)')
     expect(html).not.toMatch(/NaN/)
   })
+  it('a layout_kind item with saved add-ons: the ช่องแสง rows, one cost line per attach add-on, merge glass, issues', () => {
+    const tPart = { ...tSlide, id: 'tP', name: 'เลื่อน 2 บาน (part)', layout_kind: 'sliding_2' }
+    const model = startModel('sliding_2')
+    for (const k of Object.keys(model.lines)) model.lines[k][0].profile_family = 'frame'
+    const addons = [
+      { id: 'a1', mode: 'merge', kind: 'fixed', position: 'top', len_mm: 1800, thick_mm: 400, offset_mm: 0, align: 'start', rows: 1, cols: 3 },
+      { id: 'a2', mode: 'attach', kind: 'fixed', position: 'right', len_mm: 1200, thick_mm: 500, offset_mm: 0, align: 'end', rows: 2, cols: 1 },
+    ]
+    const pctx = { ...ctx, templatesById: { ...ctx.templatesById, tP: tPart }, partModelByTemplate: { tP: model }, itemAddonsByOpening: { o3: addons }, addonPiecesByTemplate: { tP: [] } }
+    const opening = { id: 'o3', project_id: 'p1', opening_no: 'W-03', template_id: 'tP', width_m: '1.8', height_m: 1.2, panel_count: 2, quantity: 1, extra_lines: [] }
+    const html = renderToString(<ItemModal {...props} ctx={pctx} templates={[tSlide, tFix, tPart]} opening={opening} currentSig={null} />).replace(/<!-- -->/g, '')
+    expect(html).toContain('ร่วมวงกบ · ติดตาย · บน · 1800 × 400 มม. · 1 × 3 ช่อง · เสมอซ้าย')
+    expect(html).toContain('แยกวงกบ · ติดตาย · ขวา · 500 × 1200 มม. · 2 × 1 ช่อง · เสมอล่าง')
+    expect(html).toContain('ช่องแสง 2 (แยกวงกบ)')
+    expect(html).toContain('กระจกช่องแสง (ร่วมวงกบ) 0.72 ตร.ม.')
+    expect(html).toContain('ช่องแสง 1 คิ้วเท: ตำแหน่งนี้ยังไม่ได้เลือกโปรไฟล์')
+    expect(html).toContain('หมายเหตุ ช่องแสง 1: ตบเรียบ')
+    expect(html).not.toContain('ของเพิ่มเติม <')
+    expect(html).not.toMatch(/NaN/)
+  })
+  it('add-ons still loading: the box says so; a legacy add-on on a layout_kind item shows the convert box', () => {
+    const tPart = { ...tSlide, id: 'tP', name: 'เลื่อน 2 บาน (part)', layout_kind: 'sliding_2' }
+    const model = startModel('sliding_2')
+    const pctx = { ...ctx, templatesById: { ...ctx.templatesById, tP: tPart }, partModelByTemplate: { tP: model } }
+    const opening = { id: 'o4', project_id: 'p1', opening_no: 'W-04', template_id: 'tP', width_m: '1.8', height_m: 1.2, panel_count: 2, quantity: 1, extra_lines: [] }
+    expect(renderToString(<ItemModal {...props} ctx={pctx} templates={[tSlide, tFix, tPart]} opening={opening} currentSig={null} />)).toContain('กำลังโหลดช่องแสง')
+    const legacy = { ...opening, addon_template_id: 'tF', addon_width_m: 1.8, addon_height_m: 0.4, addon_position: 'top', addon_panel_count: 1 }
+    const html = renderToString(<ItemModal {...props} ctx={{ ...pctx, itemAddonsByOpening: { o4: [] } }} templates={[tSlide, tFix, tPart]} opening={legacy} currentSig={null} />)
+    expect(html).toContain('แปลงเป็นช่องแสงแบบใหม่')
+    expect(html).toContain('ของเพิ่มเติม')   // the legacy fields stay editable
+  })
 })

@@ -166,7 +166,7 @@ export default function Estimation(props) {
                 project={project} ctx={costCtx} templates={templates} constraints={constraints} infillTypes={infillTypes}
                 layoutTemplates={layoutTemplates} seriesTypes={catalog.seriesTypes} currentSig={itemModal.id ? previewSigs[itemModal.id] : null}
                 canEdit={canEdit} onClose={() => setItemModal(null)} onLayoutSaved={refetchLayouts}
-                onSaved={({ close }) => { refetchOpenings(); if (close) setItemModal(null) }} />
+                onSaved={({ close }) => { refetchOpenings(); itemAddons.refetch(); if (close) setItemModal(null) }} />
             )}
           </div>
         )}

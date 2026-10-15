@@ -12,6 +12,7 @@ import { frameFamily } from '../../lib/itemPreviewSignature.js'
 import { coerceParams, inputsOf, LAYOUTS } from '../../lib/layoutRegistry.js'
 import { modelForItem } from '../../lib/openingCost.js'
 import { visibleInputs, clampedParts } from '../bomTemplates/partEditorView.js'
+import { validateAddons, addonDims } from '../../lib/addonModel.js'
 
 const num = v => (v === null || v === undefined || String(v).trim() === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null))
 const pos = v => { const n = num(v); return n !== null && n > 0 }
@@ -91,7 +92,74 @@ export function validateExtraLines(lines) {
   }
   return null
 }
-export const validateItemForm = form => validateForm(form) || validateExtraLines(form.extra_lines)
+// opts.template = the item's main BOM template (its layout_kind decides whether inline add-ons are allowed).
+export function validateItemForm(form, { template = null } = {}) {
+  const base = validateForm(form) || validateExtraLines(form.extra_lines)
+  if (base) return base
+  const addons = form.addons || []
+  if (!addons.length) return null
+  if (form.has_addon && form.addon_template_id) return 'มีชุดต่อเติมแบบเดิมอยู่ ให้แปลงหรือลบก่อน'
+  if (template && !template.layout_kind) return 'template นี้ไม่ได้ใช้ part editor จึงใส่ช่องแสงไม่ได้'
+  return validateAddons(addons, mainMmOf(form))
+}
+
+// ---- inline add-ons (ช่องแสง) ---------------------------------------------------------------------------------
+// The form's main size in mm ({ widthMm, heightMm }, null when not typed).
+export const mainMmOf = form => ({ widthMm: num(form.width_m), heightMm: num(form.height_m) })
+
+// The legacy single add-on ("ชุดต่อเติม": addon_template_id + sizes) as one new attach add-on (AO-7): the legacy
+// width runs along a top / bottom edge, the height along a left / right one; the legacy fields are cleared.
+export function convertLegacyAddon(form) {
+  const pos = ['top', 'bottom', 'left', 'right'].includes(form.addon_position) ? form.addon_position : 'top'
+  const horizontal = pos === 'top' || pos === 'bottom'
+  const w = num(form.addon_width_m)
+  const h = num(form.addon_height_m)
+  const cols = Math.floor(Number(form.addon_panel_count)) >= 1 ? Math.floor(Number(form.addon_panel_count)) : 1
+  const addon = {
+    mode: 'attach', kind: 'fixed', position: pos, len_mm: horizontal ? w : h, thick_mm: horizontal ? h : w,
+    offset_mm: Number(form.addon_offset_m) || 0, align: 'start', rows: 1, cols,
+  }
+  return {
+    ...form, addons: [...(form.addons || []), addon],
+    has_addon: false, addon_template_id: '', addon_width_m: '', addon_height_m: '', addon_panel_count: '1', addon_offset_m: '',
+  }
+}
+
+// The add-ons the live cost and drawing can use (each passes validateAddons on its own) and, per kept add-on, its
+// index in the form (indexOf[i] = form index), so cost lines and issues are numbered as the estimator sees them.
+export function liveAddons(addons) {
+  const kept = []
+  const indexOf = []
+  ;(addons || []).forEach((a, i) => { if (!validateAddons([a])) { kept.push(a); indexOf.push(i) } })
+  return { addons: kept, indexOf }
+}
+
+// Cost-summary lines of the inline add-ons: one per attach add-on (its own BOM total) and one for the merge add-ons'
+// glass (merge frame pieces are already lines of the main BOM), so these plus the main BOM sum to the total.
+export function addonCostLines(cost, indexOf) {
+  const c = cost || {}
+  const n = i => ((indexOf || [])[i] ?? i) + 1
+  const lines = (c.addonBoms || []).map(a => ({ key: `ao${a.addonIndex}`, label: `ช่องแสง ${n(a.addonIndex)} (แยกวงกบ)`, value: a.bom.totalCost }))
+  const g = c.addonMerge && c.addonMerge.glass
+  if (g && g.panes > 0) lines.push({ key: 'aoglass', label: `กระจกช่องแสง (ร่วมวงกบ) ${Number(g.area_sqm).toFixed(2)} ตร.ม.`, value: g.cost })
+  return lines
+}
+
+// Per add-on: a Thai warning when offset + length runs past its edge (the main edge plus every perpendicular
+// add-on's thickness, as addonExpand's range check), else null.
+export function addonRangeWarnings(addons, main) {
+  const list = addons || []
+  const isH = p => p === 'top' || p === 'bottom'
+  return list.map((a, i) => {
+    let edge = isH(a.position) ? num(main && main.widthMm) : num(main && main.heightMm)
+    if (edge === null || num(a.len_mm) === null) return null
+    for (const o of list) if (o && isH(o.position) !== isH(a.position)) edge += Math.max(0, num(o.thick_mm) ?? 0)
+    return (num(a.offset_mm) ?? 0) + num(a.len_mm) > edge ? `ช่องแสง ${i + 1} ยาวเกินขอบ (${edge} มม.)` : null
+  })
+}
+
+// One-line summary of an add-on row (mockup: โหมด · ชนิด · ตำแหน่ง · w × h มม. · rows × cols ช่อง · เสมอ...).
+export const addonSize = a => { const d = addonDims(a); const t = v => (num(v) === null ? '?' : String(num(v))); return `${t(d.w)} × ${t(d.h)}` }
 
 // ---- dependent fields ---------------------------------------------------------------------------------------
 // Fills only, never clears (an own value the series does not offer stays and is shown as "(ไม่มีในซีรีส์นี้)",

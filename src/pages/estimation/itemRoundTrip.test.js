@@ -3,7 +3,8 @@
 import { describe, it, expect } from 'vitest'
 import { buildCatalogIndex } from '../../lib/aluCatalogPricing.js'
 import { mergeSettings } from '../../lib/estimationSettings.js'
-import { emptyForm, buildOpeningPayload } from '../../lib/openingPayload.js'
+import { emptyForm, buildOpeningPayload, formFromOpening } from '../../lib/openingPayload.js'
+import { itemAddonsToRows, itemAddonsFromRows } from '../../lib/addonSave.js'
 import { snapshotFor } from '../../lib/itemPreviewSignature.js'
 import { costItems, currentPreviewSigs, itemStatus } from './projectDefaults.js'
 
@@ -59,5 +60,38 @@ describe('snapshot signature: item form save == items table recomputation', () =
     const moved = { ...row, width_m: '1.2' }
     const sigs2 = currentPreviewSigs({ items: [moved], costs: costItems({ items: [moved], project, base: ctx, asOf: project.price_as_of }), base: ctx })
     expect(itemStatus(moved, { unresolved: [] }, sigs2.o1)).toBe('old_preview')
+  })
+})
+
+describe('inline add-ons round trip (form -> rows -> form)', () => {
+  const addons = [
+    { mode: 'merge', kind: 'fixed', position: 'top', len_mm: 1723.8, thick_mm: 400, offset_mm: 0, align: 'start', rows: 1, cols: 3 },
+    { mode: 'attach', kind: 'awning', position: 'right', len_mm: 1200, thick_mm: 512.5, offset_mm: 0, align: 'end', rows: 2, cols: 1 },
+  ]
+  const form = { ...emptyForm(), opening_no: 'W1', template_id: 'tS', width_m: '1723.8', height_m: '1200', panel_count: '2', addons }
+
+  it('two add-ons come back mm-exact and the opening row carries no add-on of either kind', () => {
+    const payload = buildOpeningPayload(form, { projectId: 'p1' })
+    expect(payload).not.toHaveProperty('addons')
+    expect(payload).toMatchObject({ addon_template_id: null, addon_width_m: null, addon_height_m: null, addon_position: null, addon_offset_m: null, addon_panel_count: 1 })
+    // as Postgres returns them: numerics as text, with ids
+    const rows = itemAddonsToRows(form.addons, 'o1').map((r, i) => ({ ...r, id: `a${i}`, len_m: String(r.len_m), thick_m: String(r.thick_m), offset_m: String(r.offset_m) }))
+    const back = formFromOpening({ ...payload, id: 'o1' }, itemAddonsFromRows(rows))
+    expect(back.addons.map(({ id, ...a }) => a)).toEqual(addons)   // eslint-disable-line no-unused-vars
+    expect(back.width_m).toBe('1723.8')
+    expect(back.has_addon).toBe(false)
+  })
+  it('a legacy-only item round-trips byte-identically (no add-on keys added to the payload)', () => {
+    const row = { id: 'o9', project_id: 'p1', opening_no: 'W9', item_name: null, item_description: null, template_id: 'tS', series_id: null, alu_finish_id: null,
+      thickness_mm: null, sash_thickness_mm: null, no_infill: false, infill_type_id: null, no_hardware_set: false, hardware_set_id: null,
+      width_m: 1.15, height_m: 1.2, panel_count: 2, addon_template_id: 'tF', addon_width_m: 1.15, addon_height_m: 0.35, addon_panel_count: 3,
+      addon_position: 'top', addon_offset_m: 0.025, labour_per_sqm: null, profit_pct: null, fire_barrier_cost: null, bracket_cost: null,
+      bend_alu_cost: null, bend_glass_cost: null, extra_lines: [] }
+    const before = JSON.stringify(buildOpeningPayload({ ...formFromOpening(row) }, { projectId: 'p1' }))
+    const expected = JSON.stringify((({ id, ...r }) => r)(row))   // eslint-disable-line no-unused-vars
+    expect(before).toBe(expected)
+    const f = formFromOpening(row)
+    expect(f.addons).toEqual([])
+    expect(JSON.stringify(buildOpeningPayload(f, { projectId: 'p1' }))).toBe(expected)
   })
 })
