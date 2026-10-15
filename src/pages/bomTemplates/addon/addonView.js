@@ -4,14 +4,14 @@
 // addonModel (refValue, pieceQty, layoutAddons); the drawing helpers only place rectangles, they never price anything.
 import {
   addonDims, layoutAddons, defaultAddonPieces, setKey, pieceQty, refValue, PIECE_LABEL,
-  ADDON_MODE_LABEL, ADDON_KIND_LABEL, ADDON_POSITION_LABEL, ADDON_POSITIONS,
+  ADDON_MODE_LABEL, ADDON_KIND_LABEL, ADDON_POSITION_LABEL, ADDON_POSITIONS, REF_LABEL,
 } from '../../../lib/addonModel.js'
-import { expandAddons } from '../../../lib/addonExpand.js'
+import { expandAddons, pieceTotalM, piecesTotalM, explainAddonPiece } from '../../../lib/addonExpand.js'
 import { reasonText } from '../../../lib/reasonText.js'
 import { ISSUE_TEXT, fmt, posName } from '../partEditorView.js'
 
 // mockup v12 wording (REFS_ALL / QOPTS)
-export const REF_LABEL = { w: 'กว้าง ช่องแสง', h: 'สูง ช่องแสง', len: 'ความยาวตามแนวขอบ ช่องแสง', mw: 'กว้างช่องหลัก', mh: 'สูงช่องหลัก', tw: 'กว้างรวมทั้งชุด', th: 'สูงรวมทั้งชุด' }
+export { REF_LABEL }
 export const QTY_LABEL = { fixed: 'จำนวนคงที่', 'cols-1': 'จำนวนช่อง − 1', 'rows-1': 'จำนวนชั้น − 1', cols: 'จำนวนช่อง', rows: 'จำนวนชั้น', 'rows*cols': 'ชั้น × ช่อง' }
 export const THICK_LABEL = { '': 'ตามกรอบ (เฟรม)', sash: 'ตามบาน (sash)' }
 
@@ -124,7 +124,29 @@ export function overviewAddonRects({ box, addons, widthMm, heightMm, view = 'out
   const xs = [0, ...out.map((r) => r.x - m)], ys = [0, ...out.map((r) => r.y - m)]
   const xe = [box.w, ...out.map((r) => r.x + r.w + m)], ye = [box.h, ...out.map((r) => r.y + r.h + m)]
   const vx = Math.min(...xs), vy = Math.min(...ys)
-  return { rects: out, viewBox: { x: vx, y: vy, w: Math.max(...xe) - vx, h: Math.max(...ye) - vy } }
+  // one outer frame shared by the main unit and its merge add-ons (mockup renderPreview "กรอบร่วม")
+  const shared = [{ x: box.frameX, y: box.frameY, w: box.frameW, h: box.frameH }, ...out.filter((r) => r.mode === 'merge')]
+  const fx = Math.min(...shared.map((r) => r.x)), fy = Math.min(...shared.map((r) => r.y))
+  const frameBox = { x: fx, y: fy, w: Math.max(...shared.map((r) => r.x + r.w)) - fx, h: Math.max(...shared.map((r) => r.y + r.h)) - fy }
+  const env = layoutAddons({ widthMm, heightMm, addons: list }).envelope
+  const TEXT = 20   // room under the drawing for the overall size line
+  return {
+    rects: out, frameBox, envelopeMm: { w: env.w, h: env.h },
+    viewBox: { x: vx, y: vy, w: Math.max(...xe) - vx, h: Math.max(...ye) - vy + TEXT },
+  }
+}
+
+// Preview add-ons whose length still equals the old main edge follow a change of the test size (mockup __peSize).
+export function followMainSize(list, prev, next) {
+  if (!list || !list.length || (prev.w === next.w && prev.h === next.h)) return list
+  let changed = false
+  const out = list.map((a) => {
+    const [from, to] = isH(a.position) ? [prev.w, next.w] : [prev.h, next.h]
+    if (from === to || a.len_mm !== from) return a
+    changed = true
+    return { ...a, len_mm: to }
+  })
+  return changed ? out : list
 }
 
 // ---------------------------------------------------------------- piece sets ({ [setKey]: { rows, dirty } })
@@ -148,6 +170,15 @@ export const allPieceRows = (addonSets) => Object.values(addonSets || {}).flatMa
 
 // ---------------------------------------------------------------- table + effects (from expandAddons)
 
+// Glass / panes of the add-on alone (expandAddons(...).glass): count, per-pane size, rows × cols.
+export function glassInfo({ addon, rows, main, buttOf, layoutKind }) {
+  const g = expandAddons({ addons: [addon], pieceRows: rows, main, buttOf, layoutKind }).glass[0]
+  return g ? { count: g.count, widthMm: g.widthMm, heightMm: g.heightMm, rows: addon.rows, cols: addon.cols } : null
+}
+
+// Metres of every bar in the table (addonExpand.piecesTotalM over the rows' own components).
+export const tableTotalM = (lines) => piecesTotalM((lines || []).map((l) => l.comp))
+
 const issueText = (reason) => (reason === 'no_profile_family' ? ISSUE_TEXT.no_profile_family : reasonText(reason))
 
 function overrideText(model, overrides) {
@@ -166,11 +197,11 @@ export function pieceTableRows({ addon, rows, main, buttOf, layoutKind, model })
       i, key: r.piece_key, label: PIECE_LABEL[r.piece_key] || r.piece_key, family: r.profile_family || null,
       ref: r.ref_input, refLabel: REF_LABEL[r.ref_input] || r.ref_input, factor: num(r.length_factor), ded: num(r.deduction_mm),
       qtyRule: r.qty_rule, qtyLabel: QTY_LABEL[r.qty_rule] || r.qty_rule, qty: comp ? comp.quantity_value : qtyOf(r, addon),
-      length: comp ? comp.fixed_length_mm : null, effect: null, unresolved: issues.length ? [...new Set(issues)].join(' · ') : null,
+      length: comp ? comp.fixed_length_mm : null, totalM: pieceTotalM(comp), comp, explain: explainAddonPiece({ row: r, addon, main }), effect: null, unresolved: issues.length ? [...new Set(issues)].join(' · ') : null,
     }
     if (r.piece_key === 'ext' || r.piece_key === 'main_facing') {
       const parts = [...overrideText(model, exp.merge.overrides), ...exp.merge.notes.map((nt) => `หมายเหตุ: ${nt.text}`)]
-      return { ...base, length: null, unresolved: null, effect: parts.length ? parts.join(' · ') : 'ไม่มีผลกับชิ้นหลัก' }
+      return { ...base, length: null, totalM: null, comp: null, unresolved: null, effect: parts.length ? parts.join(' · ') : 'ไม่มีผลกับชิ้นหลัก' }
     }
     return base
   })

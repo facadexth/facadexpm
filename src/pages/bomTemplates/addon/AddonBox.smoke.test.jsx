@@ -123,3 +123,46 @@ describe('PartEditor with add-on props', () => {
     expect(t).toContain('ความยาว × ท่อน (มม.)')
   })
 })
+
+describe('fix round 1', () => {
+  const zoomWith = (props) => renderToString(
+    <AddonZoom addon={ao({ mode: 'attach' })} ai={0} rows={defaultAddonPieces({ mode: 'attach', kind: 'fixed', position: null }).map(r => ({ ...r, profile_family: 'FS', deduction_mm: r.piece_key === 'frame_top' ? 76.2 : r.deduction_mm }))}
+      isDefault={false} dirty families={Object.keys(FAMS)} canEdit pieceIdx={0} onPick={noop} onEditRow={noop} main={main} buttOf={buttOf} layoutKind="sliding_2" model={startModel('sliding_2')} {...props} />,
+  )
+  it('save / load errors are callouts in the box and the zoom card', () => {
+    expect(text(renderToString(<AddonBox addons={[]} onChange={noop} main={main} sel={null} onSelect={noop} error="บันทึกชิ้นส่วนช่องแสงไม่สำเร็จ: boom" />))).toContain('บันทึกชิ้นส่วนช่องแสงไม่สำเร็จ: boom')
+    const html = zoomWith({ error: 'บันทึกชิ้นส่วนช่องแสงไม่สำเร็จ: boom' })
+    expect(html).toContain('role="alert"')
+    expect(text(html)).toContain('บันทึกชิ้นส่วนช่องแสงไม่สำเร็จ: boom')
+  })
+  it('รวม (ม.) per row, a sum row, ที่มา of the selected piece', () => {
+    const t = text(zoomWith())
+    expect(t).toContain('รวม (ม.)')
+    expect(t).toContain('1,723.8 × 11.72')                  // length × qty, then its metres
+    expect(t).toContain('รวมอลูมิเนียมของช่องแสงนี้5.12')
+    expect(t).toContain('ที่มา: กว้าง ช่องแสง 1,800.0 − หัก 76.2 = 1,723.8 มม. × 1 ท่อน = 1.72 ม.')
+  })
+  it('glass: clickable in the zoom, its own row, a read-only panel', () => {
+    const html = zoomWith({ pieceIdx: 'glass' })
+    const t = text(html)
+    expect(html).toMatch(/<rect class="pc glass sel" data-pc="glass" tabindex="0" role="button"/)
+    expect(html).toContain('<tr class="pick sel" data-pc="glass"')
+    expect(t).toContain('ชิ้นที่เลือก: กระจก / บาน')
+    expect(t).toContain('1 × 3 = 3 ช่อง')
+    expect(t).toContain('574.6 × 323.8')
+    expect(html).not.toContain('id="aoFam"')
+  })
+  it('ext: ที่มา shows the old length and the stretch', () => {
+    const t = text(renderToString(
+      <AddonZoom addon={ao()} ai={0} rows={defaultAddonPieces({ mode: 'merge', kind: 'fixed', position: 'top' })} isDefault dirty={false}
+        families={[]} canEdit pieceIdx={0} onPick={noop} onEditRow={noop} main={main} buttOf={buttOf} layoutKind="sliding_2" model={startModel('sliding_2')} />))
+    expect(t).toContain('(เดิม 1,200.0 มม. ยืดขึ้น 400.0)')
+  })
+  it('overview: shared frame around main + merge add-ons and the overall size', () => {
+    const html = renderToString(
+      <PartEditor model={startModel('sliding_2')} onChange={noop} index={index} canEdit testSeriesId="sA" testThicknessMm={1.5} onTestChange={noop}
+        addonSets={{}} onAddonSetsChange={noop} previewAddons={[ao()]} onPreviewAddonsChange={noop} />)
+    expect(html).toContain('class="aoenv"')
+    expect(text(html)).toContain('ขนาดรวมทั้งชุด (รวมช่องแสง) 1,800 × 1,600 มม. · ช่องหลัก 1,800 × 1,200 มม.')
+  })
+})

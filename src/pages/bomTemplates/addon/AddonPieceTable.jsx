@@ -11,12 +11,12 @@ export function lengthCell(r) {
   return r.qty > 0 ? '—' : 'ไม่ใช้ (0 ท่อน)'
 }
 
-export default function AddonPieceTable({ rows, selIdx, onPick }) {
+export default function AddonPieceTable({ rows, selIdx, onPick, glass = null, totalM = null }) {
   return (
     <div className="tw">
       <table>
         <thead>
-          <tr><th>ชิ้นส่วน</th><th>โปรไฟล์</th><th>อ้างอิงจาก</th><th>× ความยาว</th><th>หัก</th><th>ปริมาณ</th><th>ความยาว × ท่อน (มม.)</th></tr>
+          <tr><th>ชิ้นส่วน</th><th>โปรไฟล์</th><th>อ้างอิงจาก</th><th>× ความยาว</th><th>หัก</th><th>ปริมาณ</th><th>ความยาว × ท่อน (มม.)</th><th>รวม (ม.)</th></tr>
         </thead>
         <tbody>
           {rows.map(r => {
@@ -31,9 +31,19 @@ export default function AddonPieceTable({ rows, selIdx, onPick }) {
                 <td className="n">{fmt(r.ded)}</td>
                 <td>{r.qtyLabel} = {fmtCount(r.qty)}</td>
                 <td className={r.effect ? '' : 'n'}>{cell}{r.unresolved && <span className="warnline">{cell ? ' · ' : ''}{r.unresolved}</span>}</td>
+                <td className="n">{r.totalM != null ? fmt(r.totalM, 2) : '—'}</td>
               </tr>
             )
           })}
+          {glass && (
+            <tr className={'pick' + (selIdx === 'glass' ? ' sel' : '')} data-pc="glass" tabIndex={0}
+              onClick={() => onPick('glass')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick('glass') } }}>
+              <td>กระจก / บาน</td><td>วัสดุอุดช่อง</td><td>—</td><td className="n">—</td><td className="n">—</td>
+              <td>ชั้น × ช่อง = {fmtCount(glass.count)}</td>
+              <td className="n">{fmt(glass.widthMm)} × {fmt(glass.heightMm)} × {fmtCount(glass.count)}</td><td className="n">—</td>
+            </tr>
+          )}
+          <tr className="ph"><td colSpan={7}>รวมอลูมิเนียมของช่องแสงนี้</td><td className="n">{fmt(totalM, 2)}</td></tr>
         </tbody>
       </table>
     </div>

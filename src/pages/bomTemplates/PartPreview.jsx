@@ -11,6 +11,7 @@
 import { overviewSpecs, zoomSpecs } from '../../lib/partGeometry.js'
 import { glassSvg, pieceSvg, symbolSvg, markSvg, dimSvg } from '../../lib/partSvgSymbols.js'
 import { overviewAddonRects } from './addon/addonView.js'
+import { fmtMm } from '../../lib/partExpand.js'
 
 const f1 = x => Number(x).toFixed(1)
 const activate = fn => ({
@@ -104,7 +105,11 @@ function Sliding2Preview({ model, sel, partKeys, view, widthMm, heightMm, widthO
     <>
       <svg viewBox={vb} role="img" aria-label="ภาพตัวอย่างวงกบและบานเลื่อน">
         {ao && addonSel != null ? <g opacity="0.28">{main}</g> : main}
+        {ao && ao.rects.some(r => r.mode === 'merge') && (
+          <rect className="aoenv" x={f1(ao.frameBox.x)} y={f1(ao.frameBox.y)} width={f1(ao.frameBox.w)} height={f1(ao.frameBox.h)}><title>กรอบร่วม: ช่องหลัก + ช่องแสงแบบร่วมวงกบ</title></rect>
+        )}
         {ao && <AddonOverlay rects={ao.rects} box={ov.box} sel={addonSel} onPick={onAddonPick} />}
+        {ao && <text className="dimt" x={f1(ao.viewBox.x + ao.viewBox.w / 2)} y={f1(ao.viewBox.y + ao.viewBox.h - 6)} textAnchor="middle">ขนาดรวมทั้งชุด (รวมช่องแสง) {fmtMm(ao.envelopeMm.w, 0)} × {fmtMm(ao.envelopeMm.h, 0)} มม. · ช่องหลัก {fmtMm(widthMm, 0)} × {fmtMm(heightMm, 0)} มม.</text>}
         {ov.dims.map((d, i) => (
           <g key={i}>
             <line className="dim" x1={f1(d.x1)} y1={f1(d.y1)} x2={f1(d.x2)} y2={f1(d.y2)} />

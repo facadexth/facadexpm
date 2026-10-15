@@ -10,6 +10,7 @@ import { loadAddonPieces, saveAddonPieces, pieceRowsToSets, pieceSetsToRows } fr
 import { validatePieceRows } from '../../../lib/addonModel.js'
 
 export const LOAD_FAILED = 'โหลดชิ้นส่วนช่องแสงของเทมเพลตไม่สำเร็จ จึงยังไม่ได้บันทึกอะไร กรุณารีโหลดหน้านี้'
+export const SAVE_FAILED = 'บันทึกชิ้นส่วนช่องแสงไม่สำเร็จ (ชิ้นส่วนช่องแสงของเทมเพลตนี้อาจไม่ครบ กรุณากดบันทึกอีกครั้ง)'
 export const LOADING = 'กำลังโหลดชิ้นส่วนช่องแสงของเทมเพลต กรุณารอสักครู่แล้วกดบันทึกอีกครั้ง'
 
 export function setsFromRows(rows) {
@@ -54,19 +55,22 @@ export function useAddonTemplateState(template) {
   const [previewAddons, setPreviewAddons] = useState([])
   const [status, setStatus] = useState(() => (template?.id && template?.layout_kind ? 'loading' : 'ready'))
   const [error, setError] = useState(null)
+  const [saveError, setSaveError] = useState(null)   // last refusal / failure of the add-on save, shown in the box + zoom card
   const ready = status === 'ready'
   return {
-    addonSets, previewAddons, status, error,
+    addonSets, previewAddons, status, error, saveError,
     // once at open (alongside loadModel) and again after a save; a failed re-load after a good save keeps the sets
     load: (templateId) => loadAddonSets({ templateId })
       .then((s) => { setAddonSets(s); setStatus('ready'); setError(null) })
       .catch((e) => { if (!ready) { setStatus('error'); setError(e.message) } }),
-    problem: () => addonSaveProblem({ addonSets, status, error }),
-    save: (templateId) => saveAddonSets({ templateId, addonSets }),
+    problem: () => { const p = addonSaveProblem({ addonSets, status, error }); setSaveError(p); return p },
+    save: (templateId) => saveAddonSets({ templateId, addonSets })
+      .then((wrote) => { setSaveError(null); return wrote })
+      .catch((e) => { setSaveError(`${SAVE_FAILED}: ${e.message}`); throw e }),
     editorProps: {
       addonSets, previewAddons, onPreviewAddonsChange: setPreviewAddons,
       onAddonSetsChange: ready ? setAddonSets : undefined,
-      addonError: status === 'error' ? `${LOAD_FAILED}: ${error || ''}` : null,
+      addonError: [status === 'error' ? `${LOAD_FAILED}: ${error || ''} (ชิ้นส่วนช่องแสงแก้ไม่ได้จนกว่าจะโหลดสำเร็จ)` : null, saveError].filter(Boolean).join(' · ') || null,
     },
   }
 }

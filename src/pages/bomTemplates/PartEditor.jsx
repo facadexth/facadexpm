@@ -24,7 +24,7 @@ import PartTable from './PartTable.jsx'
 import AddonBox from './addon/AddonBox.jsx'
 import AddonZoom from './addon/AddonZoom.jsx'
 import AddonEffects from './addon/AddonEffects.jsx'
-import { setRowsFor, editSetRow } from './addon/addonView.js'
+import { setRowsFor, editSetRow, followMainSize } from './addon/addonView.js'
 import './partEditor.css'
 
 const CORNER_WHY = { both_through: 'วิ่งสุดทั้งสองชิ้น', both_butt: 'วิ่งชนทั้งสองชิ้น' }
@@ -46,6 +46,13 @@ export default function PartEditor({ model, onChange, index, canEdit, testSeries
   const aoIdx = aoSel != null && aoSel < aoList.length ? aoSel : null
   const aoMain = { widthMm: size.w, heightMm: size.h }
   const pickAddon = (i) => { setAoSel(i); setAoPiece(0) }
+  // test size; preview add-ons still at the old edge length follow it (mockup __peSize)
+  const resize = (patch) => {
+    const next = { ...size, ...patch }
+    const moved = followMainSize(aoList, size, next)
+    if (moved !== aoList) onPreviewAddonsChange(moved)
+    setSize(next)
+  }
   useEffect(() => { if (onParamsInvalid) onParamsInvalid(!!draft) }, [draft]) // eslint-disable-line react-hooks/exhaustive-deps
   const sel = clampSelection(model, rawSel)
   const families = catalogFamilies(index)
@@ -83,8 +90,8 @@ export default function PartEditor({ model, onChange, index, canEdit, testSeries
         <section className="card2">
           <h2>{templateName ? `Template: ${templateName} · ` : ''}ภาพตัวอย่าง</h2>
           <div className="bar">
-            <label>กว้าง (มม.) <NumInput min={300} step={50} value={size.w} onChange={v => setSize(s => ({ ...s, w: v ?? 0 }))} /></label>
-            <label>สูง (มม.) <NumInput min={300} step={50} value={size.h} onChange={v => setSize(s => ({ ...s, h: v ?? 0 }))} /></label>
+            <label>กว้าง (มม.) <NumInput min={300} step={50} value={size.w} onChange={v => resize({ w: v ?? 0 })} /></label>
+            <label>สูง (มม.) <NumInput min={300} step={50} value={size.h} onChange={v => resize({ h: v ?? 0 })} /></label>
             <span className="seg" role="group" aria-label="มุมมอง">
               <button type="button" aria-pressed={view === 'out'} onClick={() => setView('out')}>ด้านนอก</button>
               <button type="button" aria-pressed={view === 'in'} onClick={() => setView('in')}>ด้านใน</button>
@@ -150,7 +157,7 @@ export default function PartEditor({ model, onChange, index, canEdit, testSeries
         const set = setRowsFor(addonSets, a, model.layout_kind)
         return <AddonZoom addon={a} ai={aoIdx} rows={set.rows} isDefault={set.isDefault} dirty={set.dirty} families={families}
           canEdit={canEdit && !!onAddonSetsChange} pieceIdx={aoPiece} onPick={setAoPiece} main={aoMain} buttOf={data.buttOf}
-          layoutKind={model.layout_kind} model={model} onEditRow={(i, patch) => onAddonSetsChange(editSetRow(addonSets, a, model.layout_kind, i, patch))} />
+          layoutKind={model.layout_kind} model={model} error={addonError} onEditRow={(i, patch) => onAddonSetsChange(editSetRow(addonSets, a, model.layout_kind, i, patch))} />
       })()}
     </div>
   )

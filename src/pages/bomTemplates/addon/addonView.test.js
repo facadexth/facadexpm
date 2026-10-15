@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { zoomPieces, overviewAddonRects, setRowsFor, editSetRow, allPieceRows, pieceTableRows, addonEffects, addonSummary } from './addonView.js'
+import { zoomPieces, overviewAddonRects, setRowsFor, editSetRow, allPieceRows, pieceTableRows, addonEffects, addonSummary, glassInfo, tableTotalM, followMainSize } from './addonView.js'
 import { newAddon, defaultAddonPieces, setKey, pieceQty, ADDON_POSITIONS, ADDON_MODES, PIECE_KEYS } from '../../../lib/addonModel.js'
 import { startModel } from '../../../lib/partModel.js'
 
@@ -151,5 +151,38 @@ describe('piece table and effects (numbers from expandAddons)', () => {
   })
   it('addonSummary is one Thai line', () => {
     expect(addonSummary(addon('merge', 'top'))).toBe('ร่วมวงกบ · ติดตาย · บน · 1,800 × 400 มม. · 1 ชั้น × 3 ช่อง')
+  })
+})
+
+describe('fix round 1: totals, ที่มา, glass, size follow, shared frame', () => {
+  const model = startModel('sliding_2')
+  const main = { widthMm: 1800, heightMm: 1200 }
+  const buttOf = f => ({ FS: 38.1 }[f] ?? null)
+  const att = addon('attach', 'top')
+  const rows = defaultAddonPieces({ mode: 'attach', kind: 'fixed', position: null }).map(r => ({ ...r, profile_family: 'FS', deduction_mm: r.piece_key === 'frame_top' ? 76.2 : r.deduction_mm }))
+  it('rows carry totalM and the ที่มา text from addonExpand; the table total sums them', () => {
+    const t = pieceTableRows({ addon: att, rows, main, buttOf, layoutKind: 'sliding_2', model })
+    const top = t.find(r => r.key === 'frame_top')
+    expect(top.totalM).toBe(1.7238)
+    expect(top.explain).toBe('กว้าง ช่องแสง 1,800.0 − หัก 76.2 = 1,723.8 มม. × 1 ท่อน = 1.72 ม.')
+    expect(t.find(r => r.key === 'frame_side').totalM).toBe(0.8)
+    expect(tableTotalM(t)).toBeCloseTo(5.1238, 6)   // top, bottom (no deduction: 1800), sides, 2 mullions × 400
+  })
+  it('glassInfo comes from expandAddons(...).glass', () => {
+    expect(glassInfo({ addon: att, rows, main, buttOf, layoutKind: 'sliding_2' })).toMatchObject({ count: 3, rows: 1, cols: 3, widthMm: expect.closeTo(574.6, 6), heightMm: expect.closeTo(323.8, 6) })
+  })
+  it('preview add-ons with the default length follow the test size', () => {
+    const list = [addon('merge', 'top'), { ...addon('merge', 'bottom'), len_mm: 900 }, addon('attach', 'left')]
+    const next = followMainSize(list, { w: 1800, h: 1200 }, { w: 2000, h: 1500 })
+    expect(next.map(a => a.len_mm)).toEqual([2000, 900, 1500])
+    expect(followMainSize(list, { w: 1800, h: 1200 }, { w: 1800, h: 1200 })).toBe(list)
+  })
+  it('overview: one shared frame around main + merge add-ons, overall envelope in mm', () => {
+    const box = { w: 520, h: 360, frameX: 58, frameY: 18, frameW: 420, frameH: 280, scale: 420 / 1800 }
+    const r = overviewAddonRects({ box, addons: [addon('merge', 'top'), addon('attach', 'right')], widthMm: 1800, heightMm: 1200 })
+    expect(r.frameBox.y).toBeCloseTo(18 - 400 * box.scale)
+    expect(r.frameBox.h).toBeCloseTo(280 + 400 * box.scale)
+    expect(r.frameBox.w).toBeCloseTo(420)                    // the attach add-on is not inside the shared frame
+    expect(r.envelopeMm).toEqual({ w: 2200, h: 1600 })
   })
 })

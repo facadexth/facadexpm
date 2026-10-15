@@ -7,7 +7,7 @@
 //   that side's frame butt in the main sash deductions (AO-2).
 // Every piece component carries fixed_length_mm = max(0, ref − deduction); the engine applies length_factor.
 // Issue reasons: no_profile_family, no_butt_distance, addon_out_of_range, addon_piece_too_small, addon_conflict.
-import { defaultAddonPieces, setKey, refValue, pieceQty, addonDims, layoutAddons, PIECE_LABEL } from './addonModel.js'
+import { defaultAddonPieces, setKey, refValue, pieceQty, addonDims, layoutAddons, extRef, PIECE_LABEL, REF_LABEL } from './addonModel.js'
 import { LAYOUTS, rolesOf } from './layoutRegistry.js'
 
 const r6 = (x) => Math.round(x * 1e6) / 1e6
@@ -154,4 +154,47 @@ export function expandAddons(input) {
     else expandMerge(a, ai, rows, ctx, env)
   })
   return ctx.out
+}
+
+// Metres of one expanded piece component: fixed_length_mm × length_factor (as bomEngine applies it) × quantity / 1000,
+// 6 dp. null for no component. piecesTotalM sums a list (nulls skipped).
+export function pieceTotalM(c) {
+  if (!c) return null
+  const len = num(c.fixed_length_mm)
+  if (len == null) return null
+  return r6((len * (num(c.length_factor) ?? 1) * (Number(c.quantity_value) || 0)) / 1000)
+}
+export const piecesTotalM = (list) => r6((list || []).reduce((s, c) => s + (pieceTotalM(c) ?? 0), 0))
+
+const f1 = (x) => {
+  const [i, d] = Math.abs(x).toFixed(1).split('.')
+  return (x < 0 ? '−' : '') + i.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + d
+}
+
+// "ที่มา" of one piece row of one add-on (the add-on alone, as the zoom shows it), the same arithmetic as
+// pieceComponent / mergeMainPiece: (ref − deduction) × factor for a bar, envelope span × factor − deduction for ext
+// (with its old length). null for main_facing (never a bar of its own).
+export function explainAddonPiece({ row, addon, main }) {
+  const r = row || {}
+  const a = addon
+  if (!a || !r.piece_key || r.piece_key === 'main_facing') return null
+  const m = { widthMm: num(main?.widthMm) ?? 0, heightMm: num(main?.heightMm) ?? 0 }
+  const factor = num(r.length_factor) ?? 1
+  const ded = num(r.deduction_mm) ?? 0
+  const qty = qtyOf(r, a)
+  const tail = (len) => ` = ${f1(len)} มม. × ${qty} ท่อน = ${(r6((len * qty) / 1000)).toFixed(2)} ม.`
+  if (r.piece_key === 'ext') {
+    const ref = extRef(a.position)
+    const span = Number(refValue(a, ref, m))
+    const len = r6(span * factor - ded)
+    const was = isH(a.position) ? m.heightMm : m.widthMm
+    return `${REF_LABEL[ref]} ${f1(span)}` + (factor !== 1 ? ` × ${factor}` : '') + (ded ? ` − หัก ${f1(ded)}` : '') + tail(len) +
+      ` (เดิม ${f1(was)} มม. ยืดขึ้น ${f1(r6(len - was))})`
+  }
+  const base = Number(refValue(a, r.ref_input, m))
+  const raw = base - ded
+  let expr = `${REF_LABEL[r.ref_input] || r.ref_input} ${f1(base)}` + (ded ? ` − หัก ${f1(ded)}` : '')
+  if (!(raw > 0)) return `${expr} = ${f1(raw)} มม. (สั้นกว่าระยะหัก คิดไม่ได้)`
+  if (factor !== 1) expr = `(${expr}) × ${factor}`
+  return expr + tail(r6(raw * factor))
 }

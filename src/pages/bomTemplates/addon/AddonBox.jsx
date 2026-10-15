@@ -79,7 +79,7 @@ export default function AddonBox({ addons, onChange, main, sel, onSelect, error 
       ))}
       <div><button type="button" className="btn-s" disabled={list.length >= MAX_ADDONS} onClick={add}>+ เพิ่มช่องแสง</button></div>
       {problem && <div className="callout" role="alert">{problem}</div>}
-      {error && <div className="callout" role="alert">{error} (ชิ้นส่วนช่องแสงแก้ไม่ได้จนกว่าจะโหลดสำเร็จ)</div>}
+      {error && <div className="callout" role="alert">{error}</div>}
     </div>
   )
 }

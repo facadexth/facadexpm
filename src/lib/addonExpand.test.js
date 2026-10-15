@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { expandAddons } from './addonExpand.js'
+import { expandAddons, pieceTotalM, piecesTotalM, explainAddonPiece } from './addonExpand.js'
 import { defaultAddonPieces, PIECE_LABEL } from './addonModel.js'
 
 const MAIN = { widthMm: 1800, heightMm: 1200 }
@@ -212,5 +212,34 @@ describe('expandAddons — issues and edge cases', () => {
     expect(r.merge.components).toEqual([])
     expect(r.merge.overrides).toEqual({ frame_side: { lengthMm: 1600 } })
     expect(r.merge.notes).toEqual([{ addonIndex: 0, position: 'top', text: 'ตบเรียบ (รองคิ้วเท)' }])
+  })
+})
+
+describe('pieceTotalM / piecesTotalM / explainAddonPiece (Task 6 fix round)', () => {
+  const main = { widthMm: 1800, heightMm: 1200 }
+  const att = { mode: 'attach', kind: 'fixed', position: 'top', len_mm: 1800, thick_mm: 400, offset_mm: 0, rows: 1, cols: 3 }
+  const mrg = { ...att, mode: 'merge' }
+  const row = (o) => ({ ...defaultAddonPieces({ mode: 'attach', kind: 'fixed', position: null })[0], deduction_mm: 76.2, profile_family: 'F', ...o })
+  it('pieceTotalM = fixed length × factor × qty in metres, 6 dp', () => {
+    expect(pieceTotalM({ fixed_length_mm: 1723.8, quantity_value: 1, length_factor: 1 })).toBe(1.7238)
+    expect(pieceTotalM({ fixed_length_mm: 400, quantity_value: 2 })).toBe(0.8)
+    expect(pieceTotalM({ fixed_length_mm: 1000, quantity_value: 3, length_factor: 0.5 })).toBe(1.5)
+    expect(pieceTotalM(null)).toBe(null)
+    expect(piecesTotalM([{ fixed_length_mm: 1723.8, quantity_value: 1 }, { fixed_length_mm: 400, quantity_value: 2 }, null])).toBe(2.5238)
+  })
+  it('attach frame_top 1800 → 1723.8', () => {
+    expect(explainAddonPiece({ row: row(), addon: att, main })).toBe('กว้าง ช่องแสง 1,800.0 − หัก 76.2 = 1,723.8 มม. × 1 ท่อน = 1.72 ม.')
+  })
+  it('a factor is applied after the deduction (as the engine does)', () => {
+    expect(explainAddonPiece({ row: row({ length_factor: 0.5 }), addon: att, main })).toBe('(กว้าง ช่องแสง 1,800.0 − หัก 76.2) × 0.5 = 861.9 มม. × 1 ท่อน = 0.86 ม.')
+  })
+  it('ext: the stretched main member with its old length', () => {
+    const ext = { ...defaultAddonPieces({ mode: 'merge', kind: 'fixed', position: 'top' })[0] }
+    expect(explainAddonPiece({ row: ext, addon: mrg, main })).toBe('สูงรวมทั้งชุด 1,600.0 = 1,600.0 มม. × 2 ท่อน = 3.20 ม. (เดิม 1,200.0 มม. ยืดขึ้น 400.0)')
+  })
+  it('too short / main_facing', () => {
+    expect(explainAddonPiece({ row: row({ deduction_mm: 5000 }), addon: att, main })).toContain('สั้นกว่าระยะหัก')
+    const mf = defaultAddonPieces({ mode: 'merge', kind: 'fixed', position: 'top' }).find(r => r.piece_key === 'main_facing')
+    expect(explainAddonPiece({ row: mf, addon: mrg, main })).toBe(null)
   })
 })

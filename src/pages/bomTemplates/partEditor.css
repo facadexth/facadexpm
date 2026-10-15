@@ -125,3 +125,5 @@
 .pe .pc.sel { fill: var(--pe-hl-fill); stroke: var(--pe-hl); stroke-width: 2.4; }
 .pe .pc.glass { fill: color-mix(in srgb, var(--pe-accent) 8%, transparent); stroke-width: .6; }
 .pe .pc.ghost { cursor: default; pointer-events: none; }
+.pe .pc.glass.sel { fill: var(--pe-hl-fill); stroke: var(--pe-hl); stroke-width: 2.4; }
+.pe .aoenv { fill: none; stroke: var(--pe-draw); stroke-width: 1.5; stroke-dasharray: 6 3; pointer-events: none; }

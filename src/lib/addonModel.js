@@ -37,6 +37,7 @@ export const PIECE_LABEL = {
   mullion: 'ซอยกลางตั้ง',
   rail: 'ซอยกลางนอน',
 }
+export const REF_LABEL = { w: 'กว้าง ช่องแสง', h: 'สูง ช่องแสง', len: 'ความยาวตามแนวขอบ ช่องแสง', mw: 'กว้างช่องหลัก', mh: 'สูงช่องหลัก', tw: 'กว้างรวมทั้งชุด', th: 'สูงรวมทั้งชุด' }
 export const REF_INPUTS = { merge: ['w', 'h', 'len', 'mw', 'mh', 'tw', 'th'], attach: ['w', 'h'] }
 export const QTY_RULES = ['fixed', 'cols-1', 'rows-1', 'cols', 'rows', 'rows*cols']
 

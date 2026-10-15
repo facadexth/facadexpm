@@ -6,7 +6,7 @@
 import NumInput from '../NumInput.jsx'
 import { addonDims, REF_INPUTS, QTY_RULES, PIECE_LABEL, ADDON_MODE_LABEL, ADDON_KIND_LABEL, ADDON_POSITION_LABEL } from '../../../lib/addonModel.js'
 import { fmt } from '../partEditorView.js'
-import { zoomPieces, pieceTableRows, refOptions, QTY_LABEL, THICK_LABEL } from './addonView.js'
+import { zoomPieces, pieceTableRows, refOptions, glassInfo, tableTotalM, QTY_LABEL, THICK_LABEL } from './addonView.js'
 import AddonPieceTable, { lengthCell } from './AddonPieceTable.jsx'
 
 const f1 = x => Number(x).toFixed(1)
@@ -16,7 +16,7 @@ const NOTE = {
   attach: 'ช่องแสงแบบแยกวงกบ ไม่แตะชิ้นหลัก ที่นี่เห็นเฉพาะช่องแสง (ชิ้นหลักเป็นภาพจาง) คลิกชิ้นส่วนแต่ละชิ้นเพื่อกำหนดโปรไฟล์ อ้างอิงขนาดจาก input ตัวไหน และกี่ท่อน',
 }
 
-function ZoomSvg({ addon, rows, selKey, onPick }) {
+function ZoomSvg({ addon, rows, selKey, onPick }) {   // selKey 'glass' = the panes
   const d = addonDims(addon)
   const w = Number(d.w) || 0, h = Number(d.h) || 0
   if (!(w > 0 && h > 0)) return <div className="empty">ยังวาดภาพไม่ได้ (ขนาดช่องแสงต้องมากกว่า 0)</div>
@@ -31,7 +31,11 @@ function ZoomSvg({ addon, rows, selKey, onPick }) {
   return (
     <svg className="zoom" viewBox={`${-m} ${-m} ${f1(W + 2 * m)} ${f1(H + 2 * m)}`} role="img" aria-label="ภาพขยายช่องแสง (คลิกชิ้นเพื่อเลือก)">
       <rect className="pc ghost" x={f1(ghost.x)} y={f1(ghost.y)} width={f1(ghost.w)} height={f1(ghost.h)} opacity="0.3"><title>ชิ้นหลัก (จาง)</title></rect>
-      <rect className="pc glass ghost" x="0" y="0" width={f1(W)} height={f1(H)} />
+      <rect className={'pc glass' + (selKey === 'glass' ? ' sel' : '')} data-pc="glass" tabIndex={0} role="button" aria-label="กระจก / บาน"
+        x="0" y="0" width={f1(W)} height={f1(H)}
+        onClick={() => onPick('glass')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick('glass') } }}>
+        <title>กระจก / บาน</title>
+      </rect>
       {pieces.map((q, i) => (
         <rect key={i} className={'pc' + (q.key === selKey ? ' sel' : '') + (q.role === 'main' ? ' mainp' : '')} data-pc={q.key} tabIndex={0} role="button"
           aria-label={PIECE_LABEL[q.key] || q.key} x={f1(q.x)} y={f1(q.y)} width={f1(q.w)} height={f1(q.h)}
@@ -86,18 +90,33 @@ function PiecePanel({ addon, row, line, families, canEdit, onEdit, main }) {
         <input id="aoNote" type="text" maxLength={120} disabled={!canEdit} value={row.note || ''} onChange={e => put({ note: e.target.value.slice(0, 120) || null })} /><span />
       </div>
       <div className="res tot">
-        <span><b>ความยาว × ท่อน (มม.)</b> {cell ?? '—'}</span>
+        {line.explain && <span className="calc">ที่มา: {line.explain}</span>}
+        <span><b>ความยาว × ท่อน (มม.)</b> {cell ?? '—'}{line.totalM != null ? ` · รวม ${fmt(line.totalM, 2)} ม.` : ''}</span>
         {line.unresolved && <span className="warnline">{line.unresolved}</span>}
       </div>
     </>
   )
 }
 
-export default function AddonZoom({ addon, ai, rows, isDefault, dirty, families, canEdit, pieceIdx, onPick, onEditRow, main, buttOf, layoutKind, model }) {
+// Panes are not a piece row (spec 4.2: the infill follows the item): read-only readout from expandAddons(...).glass.
+function GlassPanel({ glass }) {
+  return (
+    <>
+      <h3 className="aoh3">ชิ้นที่เลือก: กระจก / บาน</h3>
+      {glass
+        ? <p className="hint" style={{ marginTop: 0 }}>วัสดุอุดช่อง ไม่ใช่อลูมิเนียม จำนวน = ชั้น × ช่อง = {glass.rows} × {glass.cols} = <b>{glass.count}</b> ช่อง · ขนาดช่องละ ≈ <b>{fmt(glass.widthMm)} × {fmt(glass.heightMm)}</b> มม. (หักระยะชนของเฟรมข้างช่องแสง) · ชนิดกระจกใช้ค่าของรายการ</p>
+        : <p className="hint">ยังคิดขนาดกระจกไม่ได้</p>}
+    </>
+  )
+}
+
+export default function AddonZoom({ addon, ai, rows, isDefault, dirty, families, canEdit, pieceIdx, onPick, onEditRow, main, buttOf, layoutKind, model, error = null }) {
   const d = addonDims(addon)
-  const idx = Math.min(Math.max(0, pieceIdx || 0), Math.max(0, rows.length - 1))
+  const isGlass = pieceIdx === 'glass'
+  const idx = isGlass ? -1 : Math.min(Math.max(0, pieceIdx || 0), Math.max(0, rows.length - 1))
   const lines = pieceTableRows({ addon, rows, main, buttOf, layoutKind, model })
-  const row = rows[idx]
+  const glass = glassInfo({ addon, rows, main, buttOf, layoutKind })
+  const row = isGlass ? null : rows[idx]
   return (
     <section className="card2" aria-label="ภาพขยายช่องแสง">
       <h2>
@@ -105,14 +124,15 @@ export default function AddonZoom({ addon, ai, rows, isDefault, dirty, families,
         {isDefault ? <span className="tag">ค่าเริ่มต้น ยังไม่บันทึก</span> : dirty ? <span className="tag">แก้แล้ว</span> : null}
       </h2>
       <p className="hint" style={{ marginTop: -4 }}>{NOTE[addon.mode]}</p>
+      {error && <div className="callout" role="alert">{error}</div>}
       <div className="top">
         <div>
-          <ZoomSvg addon={addon} rows={rows} selKey={row?.piece_key} onPick={i => { if (i >= 0) onPick(i) }} />
+          <ZoomSvg addon={addon} rows={rows} selKey={isGlass ? 'glass' : row?.piece_key} onPick={i => { if (i === 'glass' || i >= 0) onPick(i) }} />
           <p className="hint">ชิ้นที่ซ้ำกัน (เช่น เฟรมข้าง 2 ข้าง ซอยกลางทุกเส้น) ไฮไลต์พร้อมกัน เพราะเป็นแถวเดียวกันในสูตร · ชิ้นที่จำนวนเป็น 0 ไม่วาด เลือกจากตารางได้ · ตัวเลขใช้ขนาดกว้าง × สูงและซีรีส์ที่ใช้ทดสอบด้านบน</p>
         </div>
-        <div>{row && <PiecePanel addon={addon} row={row} line={lines[idx]} families={families} canEdit={canEdit} main={main} onEdit={patch => onEditRow(idx, patch)} />}</div>
+        <div>{isGlass ? <GlassPanel glass={glass} /> : row && <PiecePanel addon={addon} row={row} line={lines[idx]} families={families} canEdit={canEdit} main={main} onEdit={patch => onEditRow(idx, patch)} />}</div>
       </div>
-      <AddonPieceTable rows={lines} selIdx={idx} onPick={onPick} />
+      <AddonPieceTable rows={lines} selIdx={isGlass ? 'glass' : idx} onPick={onPick} glass={glass} totalM={tableTotalM(lines)} />
     </section>
   )
 }
