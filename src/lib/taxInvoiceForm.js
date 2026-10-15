@@ -102,9 +102,13 @@ export function computeAutoVat(net) {
  *  site field, owner decision 2026-10-15): the site of the one PO that ordered the item; when the item is on
  *  POs of different sites or on none of them, the site of the first selected PO.
  *  `pos` = [{ site_id, purchase_order_items: [{ inventory_item_id }] }] in selection order. */
+const poOrderKey = po => `${po?.po_number || ''}\u0000${po?.id || ''}`
 export function buildSiteLookup(pos) {
+  // "first" PO = the lowest PO number (then id), never the tick order: a reopened draft gets its links back
+  // in no particular order, and the fallback must not move the stock between sessions.
+  const ordered = [...(pos || [])].sort((a, b) => (poOrderKey(a) < poOrderKey(b) ? -1 : poOrderKey(a) > poOrderKey(b) ? 1 : 0))
   const sitesByItem = new Map()
-  for (const po of pos || []) {
+  for (const po of ordered) {
     for (const it of po?.purchase_order_items || []) {
       if (!it?.inventory_item_id) continue
       if (!sitesByItem.has(it.inventory_item_id)) sitesByItem.set(it.inventory_item_id, new Set())
@@ -113,12 +117,13 @@ export function buildSiteLookup(pos) {
   }
   const siteByItem = new Map()
   for (const [item, sites] of sitesByItem) if (sites.size === 1) siteByItem.set(item, [...sites][0])
-  return { siteByItem, fallbackSite: (pos || [])[0]?.site_id || '' }
+  return { siteByItem, fallbackSite: ordered[0]?.site_id || '', empty: ordered.length === 0 }
 }
 
 /** Receipts (delivery-kind invoice) seen as POs for buildSiteLookup: the receipt's PO site and the items it received. */
 export function posFromReceipts(receipts) {
   return (receipts || []).map(r => ({
+    id: r?.purchase_orders?.id || '', po_number: r?.purchase_orders?.po_number || '',
     site_id: r?.purchase_orders?.site_id || '',
     purchase_order_items: (r?.po_receipt_items || []).map(ri => ri?.purchase_order_items).filter(Boolean),
   }))
@@ -130,14 +135,16 @@ export function deriveLineSite(inventoryItemId, lookup) {
 }
 
 /** Re-derive the site of every stock line from the current selection. Returns the same array (and the same
- *  line objects) when nothing changes, so a state update can be skipped. No selection = nothing touched. */
+ *  line objects) when nothing changes, so a state update can be skipped. An empty selection CLEARS the sites
+ *  (a stock line must never keep the site of a PO that is no longer linked); the caller skips this while the
+ *  PO / receipt rows are still loading, so a reopened draft keeps its sites until its links are known. */
 export function applySitesToLines(lines, lookup) {
-  if (!lookup || !lookup.fallbackSite) return lines
+  if (!lookup) return lines
   let changed = false
   const out = lines.map(l => {
     if (!l.inventory_item_id) return l
-    const site = deriveLineSite(l.inventory_item_id, lookup)
-    if (!site || site === l.site_id) return l
+    const site = lookup.empty ? '' : deriveLineSite(l.inventory_item_id, lookup)
+    if (site === (l.site_id || '')) return l
     changed = true
     return { ...l, site_id: site }
   })
@@ -148,12 +155,12 @@ export function applySitesToLines(lines, lookup) {
  *  - the site is derived from the selected POs (deriveLineSite); without a selection a stored site is kept;
  *  - changing the stock item always drops a typed base quantity (base_manual false) and recomputes;
  *  - a typed (manual) base is kept when qty/unit change, but flagged base_stale so the UI says so. */
-export function applyLineChange(line, patch, { itemById, unitFactors, siteLookup, commonSite } = {}) {
+export function applyLineChange(line, patch, { itemById, unitFactors, siteLookup } = {}) {
   const next = { ...line, ...patch }
   if (!next.inventory_item_id) return { ...next, site_id: '', base_qty: '', base_manual: false, base_stale: false }
   const itemChanged = 'inventory_item_id' in patch && patch.inventory_item_id !== line.inventory_item_id
   if (itemChanged) { next.base_manual = false; next.base_stale = false }
-  const derived = deriveLineSite(next.inventory_item_id, siteLookup) || commonSite || ''
+  const derived = deriveLineSite(next.inventory_item_id, siteLookup)
   if (derived) next.site_id = derived
   if (!next.base_manual) {
     const factor = (unitFactors || []).find(f => f.inventory_item_id === next.inventory_item_id && f.unit_name === next.unit) || null

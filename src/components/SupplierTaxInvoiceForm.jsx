@@ -98,9 +98,12 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
     : evaluateMatch({ netBeforeVat: form.net_before_vat, poSubtotals: selectedPos.map(poSubtotal), lineAmounts: form.lines.map(lineAmount) })
   const unlinkedInMonth = kind === 'po' ? proposal.proposed.filter(p => !form.po_ids.includes(p.id)) : []
   // Stock lines have no site field: the site comes from the matched POs / receipts (buildSiteLookup, tested).
-  const siteLookup = useMemo(() => buildSiteLookup(kind === 'delivery' ? posFromReceipts(selectedReceipts) : selectedPos),
+  // Undefined while the PO / receipt rows are still loading, so a reopened draft keeps its stored sites until
+  // its links are known (applySitesToLines leaves lines alone without a lookup).
+  const rowsLoaded = kind === 'delivery' ? !!receiptRows : (!form.supplier_id || !!posRows)
+  const siteLookup = useMemo(() => (rowsLoaded ? buildSiteLookup(kind === 'delivery' ? posFromReceipts(selectedReceipts) : selectedPos) : undefined),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [kind, form.po_ids, form.receipt_ids, posRows, receiptRows])
+    [kind, rowsLoaded, form.po_ids, form.receipt_ids, posRows, receiptRows])
 
   // Line changes go through applyLineChange (pure, tested). Lookups come from a ref so a change made
   // after an await (quick create) never uses stale closures.

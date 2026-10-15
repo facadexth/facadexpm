@@ -101,10 +101,10 @@ describe('computeAutoVat', () => {
 describe('applyLineChange (base quantity never goes stale silently)', () => {
   const itemById = new Map([['X', { id: 'X', base_unit: 'kg', unit_conversion_mode: 'plain' }], ['Y', { id: 'Y', base_unit: 'kg', unit_conversion_mode: 'plain' }]])
   const unitFactors = [{ inventory_item_id: 'Y', unit_name: 'bag', factor_to_base: 25 }]
-  const lk = { itemById, unitFactors, commonSite: 'S1' }
+  const lk = { itemById, unitFactors, siteLookup: buildSiteLookup([{ id: 'p', po_number: 'PO1', site_id: 'S1', purchase_order_items: [] }]) }
   const base = { ...emptyLine(), description: 'a', qty: '2', unit: 'kg', unit_price: '10' }
 
-  it('choosing an item fills the site (common site) and the base qty from the conversion', () => {
+  it('choosing an item fills the site (from the selected PO) and the base qty from the conversion', () => {
     const l = applyLineChange(base, { inventory_item_id: 'X' }, lk)
     expect(l).toMatchObject({ inventory_item_id: 'X', site_id: 'S1', base_qty: '2', base_manual: false, base_stale: false })
   })
@@ -200,8 +200,13 @@ describe('normalizeLinkKind', () => {
 })
 
 describe('stock line site comes from the selected purchase orders (no site field)', () => {
-  const po = (id, site, items) => ({ id, site_id: site, purchase_order_items: items.map(i => ({ inventory_item_id: i })) })
+  const po = (id, site, items) => ({ id, po_number: id.toUpperCase(), site_id: site, purchase_order_items: items.map(i => ({ inventory_item_id: i })) })
   const pos = [po('p1', 'S1', ['X', null]), po('p2', 'S2', ['Y', 'Z']), po('p3', 'S3', ['Z'])]
+
+  it('fallback is the lowest PO number, not the tick order (a reopened draft gets links in any order)', () => {
+    expect(buildSiteLookup([pos[2], pos[1], pos[0]]).fallbackSite).toBe('S1')
+    expect(buildSiteLookup([pos[1], pos[2]]).fallbackSite).toBe('S2')
+  })
 
   it('item on exactly one PO → that PO site; ambiguous or unknown → first selected PO site', () => {
     const lk = buildSiteLookup(pos)
@@ -221,8 +226,8 @@ describe('stock line site comes from the selected purchase orders (no site field
   })
   it('receipts map to their PO site and the items received', () => {
     const receipts = [
-      { id: 'r1', purchase_orders: { id: 'p1', site_id: 'S1' }, po_receipt_items: [{ purchase_order_items: { inventory_item_id: 'X' } }] },
-      { id: 'r2', purchase_orders: { id: 'p2', site_id: 'S2' }, po_receipt_items: [{ purchase_order_items: { inventory_item_id: 'Y' } }, { purchase_order_items: null }] },
+      { id: 'r2', purchase_orders: { id: 'p2', po_number: 'PO2', site_id: 'S2' }, po_receipt_items: [{ purchase_order_items: { inventory_item_id: 'Y' } }, { purchase_order_items: null }] },
+      { id: 'r1', purchase_orders: { id: 'p1', po_number: 'PO1', site_id: 'S1' }, po_receipt_items: [{ purchase_order_items: { inventory_item_id: 'X' } }] },
     ]
     const lk = buildSiteLookup(posFromReceipts(receipts))
     expect(deriveLineSite('X', lk)).toBe('S1')
@@ -251,7 +256,11 @@ describe('stock line site comes from the selected purchase orders (no site field
     expect(out.map(l => l.site_id)).toEqual(['S1', '', 'S2'])
     expect(out[2]).toBe(lines[2])
     expect(applySitesToLines(out, buildSiteLookup(pos))).toBe(out)
-    // no selection: untouched
-    expect(applySitesToLines(lines, buildSiteLookup([]))).toBe(lines)
+    // no selection: stock lines lose their site (never keep the site of an unlinked PO); non-stock untouched
+    const cleared = applySitesToLines(out, buildSiteLookup([]))
+    expect(cleared.map(l => l.site_id)).toEqual(['', '', ''])
+    expect(applySitesToLines(cleared, buildSiteLookup([]))).toBe(cleared)
+    // no lookup at all (rows still loading): untouched
+    expect(applySitesToLines(out, undefined)).toBe(out)
   })
 })
