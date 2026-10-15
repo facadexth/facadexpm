@@ -26,6 +26,8 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import QuickAddSelect from '../components/QuickAddSelect.jsx'
+import CardTable from '../components/CardTable.jsx'
+import MoreActions from '../components/MoreActions.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { loadOrigin, fetchRoute, routeErrorMessage } from '../lib/siteRoute.js'
 
@@ -608,14 +610,16 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
       {/* ── Toolbar ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => { setEditSite(null); setShowForm(true) }}>+ เพิ่มไซท์งาน</button>}
-        {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
-        <a className="btn btn-ghost" href="/templates/TEMPLATE_ไซท์งาน.xlsx" download>📄 Template</a>
+        <MoreActions>
+          {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
+          <a className="btn btn-ghost" href="/templates/TEMPLATE_ไซท์งาน.xlsx" download>📄 Template</a>
+        </MoreActions>
         <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อ / รหัส..." value={search} onChange={e => setSearch(e.target.value)} />
         <select className="select select-sm" style={{ width: 140 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
           {['All', ...STATUS_OPTS].map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <PendingFocusChip focus={issuesFocus} pendingKey="issues_open" hint="เปิดไซท์ → รายงานประจำวัน เพื่อดูรายละเอียด" />
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 4 }} data-phone="chips">
           <button className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('table')}>📋 ตาราง</button>
           <button className={`btn btn-sm ${viewMode === 'gantt' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('gantt')}>📊 Gantt</button>
           <button className={`btn btn-sm ${viewMode === 'kanban' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('kanban')}>🗂 Kanban</button>
@@ -635,7 +639,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
       {/* ── Table ── */}
       {viewMode === 'table' && (
       <div className="card">
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead>
               <tr>
@@ -767,7 +771,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
       )}
 

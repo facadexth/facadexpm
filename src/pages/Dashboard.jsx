@@ -384,7 +384,7 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
           this cap (unaffected), matching how they were requested. ── */}
       <div className="page-toolbar-scroll">
         {/* ── Period Selector ── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }} data-phone="chips">
           <span className="label" style={{ marginBottom: 0 }}>ช่วงเวลา:</span>
           {PERIOD_OPTIONS.map(opt => (
             <button

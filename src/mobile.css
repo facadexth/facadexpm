@@ -65,8 +65,13 @@
   .phone-more-btn { min-width: var(--phone-tap); min-height: var(--phone-tap); font-size: 18px; }
   .phone-more-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 250; display: grid; gap: 4px; min-width: 220px; padding: 6px; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
   .phone-more-menu .btn, .phone-more-menu button, .phone-more-menu label { width: 100%; justify-content: flex-start; text-align: left; min-height: var(--phone-tap); }
-  .phone-chips-row { display: flex; gap: 6px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; flex-wrap: nowrap !important; }
-  .phone-chips-row > * { flex: none; }
+  /* pages mark elements with data-phone="…" (attributes only, so the desktop DOM keeps its classes/styles) */
+  [data-phone="chips"] { display: flex; gap: 6px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; flex-wrap: nowrap !important; max-width: 100%; padding-bottom: 4px; }
+  [data-phone="chips"] > * { flex: none; }
+  [data-phone="line-item"] { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 6px 8px !important; background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin: 8px 0; align-items: end !important; }
+  [data-phone="line-item"] > [data-phone="li-no"] { grid-column: 1; text-align: left !important; }
+  [data-phone="line-item"] > [data-phone="li-desc"] { grid-column: 1 / -1; }
+  [data-phone="line-item"] .input, [data-phone="line-item"] .select, [data-phone="line-item"] select { width: 100% !important; min-width: 0; }
 
   /* ---- modals and forms (Modal.jsx; index.css owns the desktop look) ---- */
   .modal-overlay { align-items: stretch; padding: 0; }
@@ -82,10 +87,4 @@
   .btn { min-height: var(--phone-tap); }
   .btn-sm { min-height: 36px; }
   .btn-xs { min-height: 30px; }
-  /* line-item rows (class names added by the forms, no desktop rule exists for them) */
-  .line-items .line-item { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin: 8px 0; align-items: end; }
-  .line-items .line-item > .li-desc { grid-column: 1 / -1; }
-  .line-items .line-item > .li-total { grid-column: 1 / -1; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .line-items .line-item > .li-remove { grid-column: 1 / -1; justify-self: end; }
-  .line-items .line-item .input, .line-items .line-item .select { width: 100% !important; }
 }
