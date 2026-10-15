@@ -28,6 +28,9 @@ import SearchableSelect from '../components/SearchableSelect.jsx'
 import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import CardTable from '../components/CardTable.jsx'
 import MoreActions from '../components/MoreActions.jsx'
+
+// Phone card layout of the sites table (CardTable): inferred roles would pick รหัส as the title, so say it explicitly.
+const SITES_CARD_MAP = { title: 'ชื่อไซท์งาน', sub: ['รหัส'], amount: 'มูลค่าสัญญา', status: 'สถานะ', actions: 'last' }
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { loadOrigin, fetchRoute, routeErrorMessage } from '../lib/siteRoute.js'
 
@@ -639,7 +642,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
       {/* ── Table ── */}
       {viewMode === 'table' && (
       <div className="card">
-        <CardTable>
+        <CardTable map={SITES_CARD_MAP}>
           <table>
             <thead>
               <tr>

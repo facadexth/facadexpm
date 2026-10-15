@@ -16,6 +16,10 @@ export function diffPages(before, after, tolerance = 1) {
     const x = before.pages?.[name], y = after.pages?.[name]
     const diffs = []
     if (!x || !y || x.error || y.error) { report[name] = [{ note: `missing or errored: before=${!!x && !x.error} after=${!!y && !y.error}` }]; continue }
+    // y is measured from the first recorded element (the header), so a banner above the shell (update prompt,
+    // trial banner) that only shifts everything down does not count as a layout change
+    const y0 = { before: x[0]?.rect[1] || 0, after: y[0]?.rect[1] || 0 }
+    const norm = (e, which) => [e.rect[0], e.rect[1] - y0[which], e.rect[2], e.rect[3]]
     const byPath = new Map(x.map(e => [e.path, e]))
     const seen = new Set()
     for (const e of y) {
@@ -23,9 +27,10 @@ export function diffPages(before, after, tolerance = 1) {
       const o = byPath.get(e.path)
       if (!o) { diffs.push({ path: e.path, note: 'new element', tag: e.tag, cls: e.cls }); continue }
       if (o.tag !== e.tag || o.cls !== e.cls) { diffs.push({ path: e.path, note: 'tag/class', before: `${o.tag}.${o.cls}`, after: `${e.tag}.${e.cls}` }); continue }
-      const rectOff = o.rect.some((v, i) => Math.abs(v - e.rect[i]) > tolerance)
+      const ro = norm(o, 'before'), re = norm(e, 'after')
+      const rectOff = ro.some((v, i) => Math.abs(v - re[i]) > tolerance)
       const styleOff = o.st.some((v, i) => v !== e.st[i])
-      if (rectOff || styleOff) diffs.push({ path: e.path, note: rectOff ? 'rect' : 'style', before: rectOff ? o.rect : o.st, after: rectOff ? e.rect : e.st })
+      if (rectOff || styleOff) diffs.push({ path: e.path, note: rectOff ? 'rect' : 'style', before: rectOff ? ro : o.st, after: rectOff ? re : e.st })
     }
     for (const e of x) if (!seen.has(e.path)) diffs.push({ path: e.path, note: 'removed element', tag: e.tag, cls: e.cls })
     if (diffs.length) report[name] = diffs

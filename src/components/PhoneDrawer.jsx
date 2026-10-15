@@ -4,9 +4,10 @@
 // Overlay tap, ✕, and the phone back button (useBackToClose, shared with Modal) close it.
 import { useState } from 'react'
 import { useBackToClose } from '../hooks/useBackToClose.js'
+import { formatBadge } from '../lib/pendingItems.js'
 
 function Badge({ n }) {
-  return n > 0 ? <span className="phone-badge">{n}</span> : null
+  return n > 0 ? <span className="phone-badge">{formatBadge(n)}</span> : null
 }
 
 function DrawerBody({ onClose, tabs, activeTab, byTab, badgeForGroup, onNavigate, onManual, onTheme, theme, onLogout, email, role, companyName }) {

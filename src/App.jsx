@@ -113,6 +113,8 @@ const TABS = [
 // flattens both shapes into one list of plain tabs, so lookups by id don't
 // need to know which shape produced them.
 // Hidden routes: reachable only via navigateTo(), never shown in the nav
+// Breadcrumb text for those routes on the phone shell (they are not in visibleTabs)
+const HIDDEN_TAB_LABELS = { site_detail: '🏗️ รายละเอียดไซท์งาน', starting_guide: '📖 คู่มือเริ่มต้น' }
 // bar (not in TABS), but still need a real gate here or renderPage's
 // ALL_TAB_ENTRIES.find(...) ?? ALL_TAB_ENTRIES[0] fallback would silently
 // grant them Dashboard's (WORKER-level) gate instead of their own.
@@ -562,7 +564,9 @@ export default function App() {
       {/* ── Tab Bar ── */}
       {isPhone ? (
         <div className="phone-crumb">
-          {activeEntry?.group ? <>{activeEntry.group} › <b>{activeEntry.tab.label}</b></> : <b>{activeEntry?.tab.label || ''}</b>}
+          {activeEntry?.group
+            ? <>{activeEntry.group} › <b>{activeEntry.tab.label}</b></>
+            : <b>{activeEntry?.tab.label || HIDDEN_TAB_LABELS[activeTab] || ''}</b>}
         </div>
       ) : (
       <nav style={{

@@ -20,10 +20,27 @@ import { useEffect, useRef } from 'react'
 // เลย ณ ตอนที่เขียน) จึงไม่แก้ตอนนี้ -- ถ้าจะเพิ่ม modal ซ้อน modal ในอนาคต
 // ต้องกลับมาดูจุดนี้ใหม่
 let suppressPopstateCount = 0
-// จำนวน overlay ที่ยังฟัง popstate อยู่ -- ใช้ตัดสินว่าการ history.back() ตอนเก็บกวาดของตัวเองมีใครรับ
-// popstate นั้นหรือไม่ ถ้าไม่มี (ปิด overlay เดียวด้วย X) ห้าม increment counter ไม่งั้น count จะค้าง
-// และกลืน back-press จริงของ overlay ถัดไป (พบตอนย้ายมาใช้กับลิ้นชักเมนูมือถือ 2026-10-15)
-let activeListeners = 0
+
+// 2026-10-15 (review of the mobile shell): history.back() is ASYNC in real browsers, so the popstate it causes
+// arrives after the closing overlay's listener is gone -- and, when another overlay opened in the same commit
+// (StrictMode double-mount in dev, "save closes the form and opens a preview" in prod), that stale popstate
+// used to close the NEW overlay. One module-level listener now consumes every suppressed popstate whether or
+// not an overlay is open, and a stack decides which overlay a real back press closes (the top one only).
+const stack = []
+let listening = false
+function ensureListener() {
+  if (listening || typeof window === 'undefined') return
+  listening = true
+  window.addEventListener('popstate', () => {
+    if (suppressPopstateCount > 0) { suppressPopstateCount -= 1; return }
+    const top = stack[stack.length - 1]
+    if (!top) return
+    // set the flag BEFORE onClose(): if the handler unmounts the overlay synchronously, its cleanup must not
+    // call history.back() a second time (the back press already consumed our entry)
+    top.closedByBack = true
+    if (top.onCloseRef.current() === false) { top.closedByBack = false; window.history.pushState({ modalOpen: true }, '') }
+  })
+}
 
 /**
  * Push one history entry while the overlay is open; the phone back button then closes it instead of leaving
@@ -32,43 +49,23 @@ let activeListeners = 0
  * @param {() => (void|false)} onClose
  */
 export function useBackToClose(onClose) {
-  // ปุ่ม back มือถือ: push history entry ตอนเปิด modal แล้วฟัง popstate --
-  // กด back = ปิด modal เฉยๆ ไม่ back ออกจากหน้าเว็บ. ถ้า modal ถูกปิดด้วยวิธีอื่น
-  // (ปุ่ม X, Escape, ปุ่มยกเลิกในฟอร์มลูก) ต้อง pop entry ที่ push ไว้ทิ้งเองตอน
-  // unmount ไม่งั้นผู้ใช้ต้องกด back 2 ครั้งกว่าจะออกจากหน้าเว็บจริง (ครั้งแรกไป
-  // เจอ entry ค้างของ modal ที่ปิดไปแล้ว)
-  const closedByBackRef = useRef(false)
-
-  // React StrictMode (เปิดใช้ใน main.jsx) รัน effect ซ้ำตอน dev: mount →
-  // cleanup → mount ทันทีแบบ synchronous, แต่ pushState/history.state อัปเดต
-  // แบบ synchronous เช่นกัน ในขณะที่ history.back() ที่ cleanup#1 เรียกไว้เป็น
-  // async task ที่จะ resolve โดยอ้างอิงตำแหน่ง current ณ ตอนที่มัน "ทำงานจริง"
-  // (ไม่ใช่ตำแหน่ง current ตอนที่ถูกเรียก) -- ดังนั้น mount#2 ต้อง pushState
-  // ซ้ำตามปกติเสมอ (ห้าม skip): มันจะกลายเป็น entry ใหม่ที่ current ชี้ไปตอนนั้น
-  // แล้ว back() ของ cleanup#1 จะไปเจาะ entry ใหม่นี้ (ไม่ใช่ entry ก่อนเปิด
-  // modal) พา current กลับมาที่ entry ของ mount#1 พอดี -- คงค่า "มี modal-entry
-  // เดียวอยู่ที่ current" ไว้ถูกต้อง. ถ้า mount#2 skip push (ลองมาแล้ว พังกว่าเดิม)
-  // back() ที่ค้างอยู่จะไปเจาะ entry ก่อนเปิด modal แทน ทำให้กด back จริงครั้ง
-  // ถัดไปหลุดออกจากหน้าเว็บเกินจุดที่ควรหยุด -- ตรงข้ามกับที่ mechanism นี้มีไว้กัน
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+  // ปุ่ม back มือถือ: push history entry ตอนเปิด overlay แล้วให้ listener กลางฟัง popstate --
+  // กด back = ปิด overlay บนสุดเฉยๆ ไม่ back ออกจากหน้าเว็บ. ถ้า overlay ถูกปิดด้วยวิธีอื่น
+  // (ปุ่ม X, Escape, ปุ่มยกเลิกในฟอร์มลูก) ต้อง pop entry ที่ push ไว้ทิ้งเองตอน unmount
+  // ไม่งั้นผู้ใช้ต้องกด back 2 ครั้งกว่าจะออกจากหน้าเว็บจริง -- popstate ที่ back() นั้นทำให้เกิด
+  // ถูกนับไว้ใน suppressPopstateCount และ listener กลางจะกลืนมันไม่ว่าจะมาถึงเมื่อไหร่
   useEffect(() => {
+    ensureListener()
+    const entry = { onCloseRef, closedByBack: false }
+    stack.push(entry)
     window.history.pushState({ modalOpen: true }, '')
-    const handlePopState = () => {
-      if (suppressPopstateCount > 0) { suppressPopstateCount -= 1; return }
-      // onClose() === false: the caller refuses to close now (busy / a child overlay is open). The back press
-      // already consumed this modal's history entry, so push it again; otherwise the next back would leave the page.
-      // set the flag BEFORE onClose(): if the handler throws or unmounts this modal synchronously, cleanup must not
-      // call history.back() a second time (the back press already consumed our entry)
-      closedByBackRef.current = true
-      if (onClose() === false) { closedByBackRef.current = false; window.history.pushState({ modalOpen: true }, ''); return }
-    }
-    window.addEventListener('popstate', handlePopState)
-    activeListeners += 1
     return () => {
-      window.removeEventListener('popstate', handlePopState)
-      activeListeners -= 1
-      if (!closedByBackRef.current && window.history.state?.modalOpen) {
-        // only another still-open overlay could receive the popstate this back() causes
-        if (activeListeners > 0) suppressPopstateCount += 1
+      const i = stack.indexOf(entry)
+      if (i >= 0) stack.splice(i, 1)
+      if (!entry.closedByBack && window.history.state?.modalOpen) {
+        suppressPopstateCount += 1
         window.history.back()
       }
     }

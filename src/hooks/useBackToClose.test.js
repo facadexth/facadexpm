@@ -74,4 +74,38 @@ describe('useBackToClose (moved out of Modal, same contract)', () => {
     window.dispatchEvent(new PopStateEvent('popstate'))
     expect(outerClose).toHaveBeenCalledTimes(1)
   })
+
+  it('async back (real browsers): close with X then open another overlay in the same tick → the new one stays open', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(window.history, 'back').mockImplementation(() => { setTimeout(() => window.dispatchEvent(new PopStateEvent('popstate')), 0) })
+    const first = renderHook(() => useBackToClose(() => {}))
+    first.unmount()                                            // back() queued
+    const onClose = vi.fn()
+    renderHook(() => useBackToClose(onClose))                  // opened before the popstate arrives
+    await vi.runAllTimersAsync()                               // the stale popstate arrives now
+    expect(onClose).not.toHaveBeenCalled()
+    window.dispatchEvent(new PopStateEvent('popstate'))        // the user's real back press
+    expect(onClose).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  it('a real back press closes only the top overlay', () => {
+    vi.spyOn(window.history, 'back').mockImplementation(() => window.dispatchEvent(new PopStateEvent('popstate')))
+    const outer = vi.fn(), inner = vi.fn()
+    renderHook(() => useBackToClose(outer))
+    const h = renderHook(() => useBackToClose(inner))
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    expect(inner).toHaveBeenCalledTimes(1); expect(outer).not.toHaveBeenCalled()
+    h.unmount()                                                // closed by back: no extra back()
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    expect(outer).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses the latest onClose, not the one from the first render', () => {
+    const a = vi.fn(), b = vi.fn()
+    const h = renderHook(({ fn }) => useBackToClose(fn), { initialProps: { fn: a } })
+    h.rerender({ fn: b })
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    expect(a).not.toHaveBeenCalled(); expect(b).toHaveBeenCalledTimes(1)
+  })
 })
