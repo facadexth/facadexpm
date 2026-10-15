@@ -76,8 +76,8 @@ export function validateFormForSave(form) {
     else if (badNumber(l.unit_price) || (num(l.unit_price) ?? 0) < 0 || badNumber(l.discount_pct) || (num(l.discount_pct) ?? 0) < 0 || (num(l.discount_pct) ?? 0) > 100) {
       errs.push(`รายการที่ ${n}: ราคาหรือส่วนลดไม่ถูกต้อง`)
     } else if (l.inventory_item_id) {
-      // The site is never typed: it comes from the selected purchase orders (buildSiteLookup).
-      if (!l.site_id) errs.push(`รายการที่ ${n}: เลือกใบสั่งซื้อหรือการรับของก่อน (ไซท์ของสต็อกมาจากใบสั่งซื้อ)`)
+      // The site is never typed: stock always goes to the central site (stockSiteLookup).
+      if (!l.site_id) errs.push(`รายการที่ ${n}: ไม่พบไซท์งานชื่อ "${CENTRAL_SITE_NAME}" สำหรับเก็บสต็อก กรุณาสร้างไซท์งานชื่อนี้ก่อน`)
       if (!(num(l.base_qty) > 0)) errs.push(`รายการที่ ${n}: กรอกจำนวนในหน่วยหลัก`)
     }
   })
@@ -98,52 +98,28 @@ export function computeAutoVat(net) {
   return Number.isFinite(n) && n >= 0 ? String(round2(n * VAT_RATE)) : ''
 }
 
-/** Which site a stock line belongs to, from the purchase orders the invoice is matched to (the form has no
- *  site field, owner decision 2026-10-15): the site of the one PO that ordered the item; when the item is on
- *  POs of different sites or on none of them, the site of the first selected PO.
- *  `pos` = [{ site_id, purchase_order_items: [{ inventory_item_id }] }] in selection order. */
-const poOrderKey = po => `${po?.po_number || ''}\u0000${po?.id || ''}`
-export function buildSiteLookup(pos) {
-  // "first" PO = the lowest PO number (then id), never the tick order: a reopened draft gets its links back
-  // in no particular order, and the fallback must not move the stock between sessions.
-  const ordered = [...(pos || [])].sort((a, b) => (poOrderKey(a) < poOrderKey(b) ? -1 : poOrderKey(a) > poOrderKey(b) ? 1 : 0))
-  const sitesByItem = new Map()
-  for (const po of ordered) {
-    for (const it of po?.purchase_order_items || []) {
-      if (!it?.inventory_item_id) continue
-      if (!sitesByItem.has(it.inventory_item_id)) sitesByItem.set(it.inventory_item_id, new Set())
-      sitesByItem.get(it.inventory_item_id).add(po.site_id || '')
-    }
-  }
-  const siteByItem = new Map()
-  for (const [item, sites] of sitesByItem) if (sites.size === 1) siteByItem.set(item, [...sites][0])
-  return { siteByItem, fallbackSite: ordered[0]?.site_id || '', empty: ordered.length === 0 }
-}
-
-/** Receipts (delivery-kind invoice) seen as POs for buildSiteLookup: the receipt's PO site and the items it received. */
-export function posFromReceipts(receipts) {
-  return (receipts || []).map(r => ({
-    id: r?.purchase_orders?.id || '', po_number: r?.purchase_orders?.po_number || '',
-    site_id: r?.purchase_orders?.site_id || '',
-    purchase_order_items: (r?.po_receipt_items || []).map(ri => ri?.purchase_order_items).filter(Boolean),
-  }))
+/** Every stock line goes to the tenant's central stock site "ส่วนกลาง" (owner rule: stock is kept centrally,
+ *  expenses stay per job site). The form has no site field. `sites` = the tenant's sites (undefined while loading). */
+export const CENTRAL_SITE_NAME = 'ส่วนกลาง'
+export function stockSiteLookup(sites) {
+  if (!sites) return undefined
+  const central = sites.find(s => (s.name || '').trim() === CENTRAL_SITE_NAME)
+  return { site: central?.id || '' }
 }
 
 export function deriveLineSite(inventoryItemId, lookup) {
   if (!inventoryItemId || !lookup) return ''
-  return lookup.siteByItem?.get(inventoryItemId) || lookup.fallbackSite || ''
+  return lookup.site || ''
 }
 
-/** Re-derive the site of every stock line from the current selection. Returns the same array (and the same
- *  line objects) when nothing changes, so a state update can be skipped. An empty selection CLEARS the sites
- *  (a stock line must never keep the site of a PO that is no longer linked); the caller skips this while the
- *  PO / receipt rows are still loading, so a reopened draft keeps its sites until its links are known. */
+/** Put every stock line on the central site. Returns the same array (and the same line objects) when nothing
+ *  changes, so a state update can be skipped; without a lookup (sites still loading) nothing is touched. */
 export function applySitesToLines(lines, lookup) {
   if (!lookup) return lines
   let changed = false
   const out = lines.map(l => {
     if (!l.inventory_item_id) return l
-    const site = lookup.empty ? '' : deriveLineSite(l.inventory_item_id, lookup)
+    const site = deriveLineSite(l.inventory_item_id, lookup)
     if (site === (l.site_id || '')) return l
     changed = true
     return { ...l, site_id: site }
@@ -151,8 +127,8 @@ export function applySitesToLines(lines, lookup) {
   return changed ? out : lines
 }
 
-/** Recompute a line after a change. `lookups` = { itemById: Map, unitFactors: [], siteLookup (buildSiteLookup) }.
- *  - the site is derived from the selected POs (deriveLineSite); without a selection a stored site is kept;
+/** Recompute a line after a change. `lookups` = { itemById: Map, unitFactors: [], siteLookup (stockSiteLookup) }.
+ *  - the site is the central stock site (deriveLineSite); while sites load a stored site is kept;
  *  - changing the stock item always drops a typed base quantity (base_manual false) and recomputes;
  *  - a typed (manual) base is kept when qty/unit change, but flagged base_stale so the UI says so. */
 export function applyLineChange(line, patch, { itemById, unitFactors, siteLookup } = {}) {

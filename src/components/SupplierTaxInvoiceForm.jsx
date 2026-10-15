@@ -6,7 +6,7 @@
 // ============================================================
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  useReceivedPosForSupplier, useSuppliers, useCategories, useInventoryItems, useAllInventoryItems,
+  useReceivedPosForSupplier, useSuppliers, useSites, useCategories, useInventoryItems, useAllInventoryItems,
   useInventoryItemUnitFactors, useSupplierDocumentExamples, extractPoDocument, useSupplierDeposits,
   useActiveTaxInvoiceLinks, useDeliveryReceipts, useActiveReceiptTaxInvoiceLinks,
 } from '../hooks/useSupabase.js'
@@ -16,7 +16,7 @@ import { round2 } from '../lib/depositMath.js'
 import { lineAmount, evaluateMatch, proposePos, lineBase } from '../lib/supplierTaxInvoice.js'
 import {
   emptyLine, validateFormForSave, poRowsFor, computeAutoVat, applyLineChange, reconcileBaseManual, missingPoIds, missingReceiptIds, normalizeLinkKind,
-  buildSiteLookup, posFromReceipts, applySitesToLines,
+  stockSiteLookup, applySitesToLines,
 } from '../lib/taxInvoiceForm.js'
 import { evaluateDeliveryMatch, receiptSelectionTotals, receiptPickerRows, receiptLabel, splitDeliveryPoIds } from '../lib/deliveryTaxInvoice.js'
 import { NO_RECEIPTS_TEXT, DELIVERY_PO_IN_PO_INVOICE_TEXT } from '../lib/deliveryTaxInvoiceText.js'
@@ -43,6 +43,7 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
   const touched = useRef({ date: !!invoiceId, vat: !!invoiceId })
 
   const { data: suppliers } = useSuppliers()
+  const { data: sites } = useSites()
   const { data: categories } = useCategories()
   const { data: inventoryItems, refetch: refetchItems } = useInventoryItems()
   const { data: allItems, refetch: refetchAllItems } = useAllInventoryItems()
@@ -97,13 +98,9 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
     ? evaluateDeliveryMatch({ netBeforeVat: form.net_before_vat, grandTotal: grandNum, receipts: selectedReceipts, lineAmounts: form.lines.map(lineAmount) })
     : evaluateMatch({ netBeforeVat: form.net_before_vat, poSubtotals: selectedPos.map(poSubtotal), lineAmounts: form.lines.map(lineAmount) })
   const unlinkedInMonth = kind === 'po' ? proposal.proposed.filter(p => !form.po_ids.includes(p.id)) : []
-  // Stock lines have no site field: the site comes from the matched POs / receipts (buildSiteLookup, tested).
-  // Undefined while the PO / receipt rows are still loading, so a reopened draft keeps its stored sites until
-  // its links are known (applySitesToLines leaves lines alone without a lookup).
-  const rowsLoaded = kind === 'delivery' ? !!receiptRows : (!form.supplier_id || !!posRows)
-  const siteLookup = useMemo(() => (rowsLoaded ? buildSiteLookup(kind === 'delivery' ? posFromReceipts(selectedReceipts) : selectedPos) : undefined),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [kind, rowsLoaded, form.po_ids, form.receipt_ids, posRows, receiptRows])
+  // Stock lines have no site field: stock always goes to the central site "ส่วนกลาง" (expenses stay per job
+  // site). undefined while the sites load, so a reopened draft keeps its stored sites until then.
+  const siteLookup = useMemo(() => stockSiteLookup(sites), [sites])
 
   // Line changes go through applyLineChange (pure, tested). Lookups come from a ref so a change made
   // after an await (quick create) never uses stale closures.
@@ -111,7 +108,7 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
   lookupsRef.current = { itemById, unitFactors: unitFactors || [], siteLookup }
   const updateLine = (key, patch) => setForm(f => ({ ...f, lines: f.lines.map(l => (l.key === key ? applyLineChange(l, patch, lookupsRef.current) : l)) }))
 
-  // Selection changed (PO ticked / receipt added): every stock line follows the new selection.
+  // Sites loaded (or a line was prefilled from a receipt with the PO's site): every stock line goes to central.
   useEffect(() => {
     setForm(f => { const lines = applySitesToLines(f.lines, siteLookup); return lines === f.lines ? f : { ...f, lines } })
   }, [siteLookup])
