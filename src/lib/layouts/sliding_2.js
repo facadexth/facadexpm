@@ -3,12 +3,13 @@
 // Options (Task 9) are invisible under the defaults (door false, one_fixed 0): `one_fixed` 1 (เลื่อน 1 ฟิก 1) adds
 // sill_guard (ธรณีกันบานเลื่อน, one free piece on the frame) = (W − 2·b(frame_side) + o) × 0.5 − b(hook) − b(key) + w(key)
 // (rule.minus / rule.plusWidth: terms applied after the factor, see partExpand.js). `door` and `one_fixed` only change the
-// default hardware. The drawing does not mark the fixed sash (part.fixed cannot follow a param): both slide arrows show.
+// hardware: the template's starting rows (hardwareDefaults) and, per item, the delta of the layout hardware between the
+// template's params and the item's (hardwareDefaults.itemHardwareRows, owner 2026-10-15: ประตู/หน้าต่าง is chosen per item). The drawing does not mark the fixed sash (part.fixed cannot follow a param): both slide arrows show.
 export default {
   kind: 'sliding_2',
   inputs: [
     // W/H are implicit (width_m/height_m)
-    { key: 'door', label: 'ประตู / หน้าต่าง', type: 'boolean', default: false, fixed_by_type: true },
+    { key: 'door', label: 'ประตู / หน้าต่าง', type: 'boolean', default: false, fixed_by_type: true, estimator: true },
     { key: 'one_fixed', label: 'รูปแบบบาน', type: 'select', options: [{ value: 0, label: 'เลื่อนสวน (2 บานเลื่อน)' }, { value: 1, label: 'เลื่อน 1 ฟิก 1' }], default: 0, fixed_by_type: true, estimator: true },
     { key: 'fixed_side', label: 'บานฟิกอยู่', type: 'select', options: [{ value: 'left', label: 'ซ้าย' }, { value: 'right', label: 'ขวา' }], default: 'left', only_when: { one_fixed: 1 }, estimator: true },
   ],

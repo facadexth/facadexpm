@@ -86,11 +86,11 @@ describe('item form layout inputs', () => {
     setup('swing_door', { leaves: 2 })
     expect(panel().queryByLabelText(/บานพับด้าน/)).toBeNull()
   })
-  it('sliding_2: รูปแบบบาน is shown, บานฟิกอยู่ only when เลื่อน 1 ฟิก 1, ประตู/หน้าต่าง never (not an estimator input)', () => {
+  it('sliding_2: ประตู/หน้าต่าง and รูปแบบบาน are shown (owner 2026-10-15: door chosen per item), บานฟิกอยู่ only when เลื่อน 1 ฟิก 1', () => {
     setup('sliding_2')
     expect(panel().getByLabelText(/รูปแบบบาน/).tagName).toBe('SELECT')
     expect(panel().queryByLabelText(/บานฟิกอยู่/)).toBeNull()
-    expect(panel().queryByLabelText(/ประตู/)).toBeNull()
+    expect(panel().getByLabelText(/ประตู/)).toBeTruthy()
     cleanup()
     setup('sliding_2', { one_fixed: 1 })
     expect(panel().getByLabelText(/บานฟิกอยู่/)).toBeTruthy()

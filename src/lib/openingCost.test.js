@@ -214,6 +214,17 @@ const pCtx = (model = partModel()) => ({
 })
 
 describe('costOpening for a part-model template (layout_kind)', () => {
+  it('item layout_params door: true adds the outer key hardware line (unpriced) without touching the template rows', () => {
+    const c = pCtx()
+    c.hardwareByTemplate = { tp: [{ id: 'h1', name: 'ลูกล้อ', quantity_basis: 'fixed', quantity_value: 4, part_id: null, reference_unit_price: 10 }] }
+    const r0 = costOpening(c)
+    expect(r0.bom.hardwareLines.map(l => [l.name, l.quantity])).toEqual([['ลูกล้อ', 4]])
+    const r1 = costOpening({ ...c, item: { ...c.item, layout_params: { door: true } } })
+    expect(r1.bom.hardwareLines.map(l => [l.name, l.quantity])).toEqual([['ลูกล้อ', 4], ['กุญแจ/มือจับเรียบ (ด้านนอก)', 2]])
+    expect(r1.unresolved).toContainEqual({ name: 'กุญแจ/มือจับเรียบ (ด้านนอก)', reason: 'no_hardware_price', source: 'main' })
+    const r2 = costOpening({ ...c, item: { ...c.item, layout_params: { one_fixed: 1 } } })
+    expect(r2.bom.hardwareLines.map(l => [l.name, l.quantity])).toEqual([['ลูกล้อ', 2]])
+  })
   it('expands the model into engine components and prices them', () => {
     const r = costOpening(pCtx())
     const rows = r.bom.profileLines.map(l => [l.role_name, l.family, Math.round(l.length_m * 1e6) / 1e6, l.quantity])

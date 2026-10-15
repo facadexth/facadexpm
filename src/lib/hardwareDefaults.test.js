@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { hardwareDefaults, hardwareDefaultsPlan, hardwareDefaultRows } from './hardwareDefaults.js'
+import { hardwareDefaults, hardwareDefaultsPlan, hardwareDefaultRows, itemHardwareRows } from './hardwareDefaults.js'
+import { startModel, setParams } from './partModel.js'
 import { registerLayoutForTest } from './layoutRegistry.js'
 import sliding_2 from './layouts/sliding_2.js'
 
@@ -70,5 +71,39 @@ describe('sliding_2 options hardware (Task 9)', () => {
   })
   it('door, 2 sliding: outer key 2', () => {
     expect(byName(hardwareDefaults('sliding_2', { door: true }))['กุญแจ/มือจับเรียบ (ด้านนอก)']).toBe(2)
+  })
+})
+
+describe('itemHardwareRows (item options move the layout hardware by their delta)', () => {
+  const base = startModel('sliding_2', {})
+  const rows = [
+    { id: 'h1', name: 'ลูกล้อ', quantity_basis: 'fixed', quantity_value: 6, part_id: 'p1' },        // owner edited 4 -> 6
+    { id: 'h2', name: 'มือจับล็อค (ด้านใน)', quantity_basis: 'fixed', quantity_value: 2, part_id: null },
+    { id: 'h3', name: 'สักหลาด', quantity_basis: 'per_perimeter_m', quantity_value: 1, part_id: 'p9' },   // owner's own row
+  ]
+  it('same model (no item override) -> the rows unchanged, same array', () => {
+    expect(itemHardwareRows(rows, base, base)).toBe(rows)
+  })
+  it('door on the item adds the outer key as an unpriced row; the other rows keep the owner\'s quantities', () => {
+    const out = itemHardwareRows(rows, base, setParams(base, { door: true }))
+    expect(out.map(r => [r.name, r.quantity_value, r.part_id])).toEqual([
+      ['ลูกล้อ', 6, 'p1'], ['มือจับล็อค (ด้านใน)', 2, null], ['สักหลาด', 1, 'p9'], ['กุญแจ/มือจับเรียบ (ด้านนอก)', 2, null],
+    ])
+    expect(out[3]).toMatchObject({ quantity_basis: 'fixed', reference_unit_price: 0, source: 'item_option' })
+  })
+  it('เลื่อน 1 ฟิก 1 on the item: wheels 6 - 2 = 4, inner lock 2 - 1 = 1 (delta, not the layout default)', () => {
+    const out = itemHardwareRows(rows, base, setParams(base, { one_fixed: 1 }))
+    expect(out.map(r => [r.name, r.quantity_value])).toEqual([['ลูกล้อ', 4], ['มือจับล็อค (ด้านใน)', 1], ['สักหลาด', 1]])
+    expect(out[0]).toMatchObject({ id: 'h1', part_id: 'p1', source: 'item_option' })
+  })
+  it('a row that would reach 0 is dropped; a template that is a door and an item that is a window removes the key', () => {
+    const doorBase = startModel('sliding_2', { door: true })
+    const doorRows = [{ name: 'กุญแจ/มือจับเรียบ (ด้านนอก)', quantity_basis: 'fixed', quantity_value: 2, part_id: 'k' }]
+    expect(itemHardwareRows(doorRows, doorBase, setParams(doorBase, { door: false }))).toEqual([])
+  })
+  it('a refused or missing model, or a legacy (no layout) template, leaves the rows alone', () => {
+    expect(itemHardwareRows(rows, base, { error: 'layout_params_invalid' })).toBe(rows)
+    expect(itemHardwareRows(rows, null, null)).toBe(rows)
+    expect(itemHardwareRows(undefined, base, base)).toEqual([])
   })
 })

@@ -49,3 +49,38 @@ export function hardwareDefaultRows(kind, params, startAt = 0) {
     name: r.name, reference_unit_price: 0, quantity_basis: 'fixed', quantity_value: r.quantity, part_id: null, sort_order: startAt + i,
   }))
 }
+
+// The template's hardware rows as THIS item uses them. The layout's hardware is evaluated twice — with the template's
+// params and with the item's (modelForItem) — and only the DIFFERENCE is applied, so a quantity the owner edited on the
+// template survives: a row of the same name gets quantity_value + delta (dropped at 0 or less), a layout line the
+// template has no row for (its default was 0, e.g. กุญแจ on a window template) is added unpriced (part_id null →
+// no_hardware_price, never a silent 0). Rows the owner added by hand (names the layout does not declare) are untouched.
+// Same models, a non-layout template or a refused model → the rows unchanged.
+export function itemHardwareRows(rows, baseModel, itemModel) {
+  const list = rows || []
+  if (!baseModel || baseModel.error || !itemModel || itemModel.error || baseModel === itemModel || !itemModel.layout_kind) return list
+  const kind = itemModel.layout_kind
+  if (kind !== baseModel.layout_kind) return list
+  const before = Object.fromEntries(hardwareDefaults(kind, baseModel.params || {}).map(r => [r.name, r.quantity]))
+  const after = Object.fromEntries(hardwareDefaults(kind, itemModel.params || {}).map(r => [r.name, r.quantity]))
+  const names = new Set([...Object.keys(before), ...Object.keys(after)])
+  const delta = {}
+  for (const n of names) {
+    const d = (after[n] || 0) - (before[n] || 0)
+    if (d !== 0) delta[n] = d
+  }
+  if (!Object.keys(delta).length) return list
+  const out = []
+  const seen = new Set()
+  for (const h of list) {
+    if (!(h.name in delta) || h.quantity_basis !== 'fixed') { out.push(h); continue }
+    seen.add(h.name)
+    const q = (Number(h.quantity_value) || 0) + delta[h.name]
+    if (q > 0) out.push({ ...h, quantity_value: q, source: 'item_option' })
+  }
+  for (const n of Object.keys(delta)) {
+    if (seen.has(n) || delta[n] <= 0) continue
+    out.push({ name: n, reference_unit_price: 0, quantity_basis: 'fixed', quantity_value: delta[n], part_id: null, inventory_item_id: null, source: 'item_option' })
+  }
+  return out
+}

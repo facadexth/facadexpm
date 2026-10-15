@@ -3,6 +3,7 @@
 // prices main + add-on through the catalog, and adds the accessory extras. The item form, the project BOM,
 // the stale-price check and the quick calculator all call this, so they cannot disagree. Pure.
 import { computeBomForOpening, combineOpeningBoms } from './bomEngine.js'
+import { itemHardwareRows } from './hardwareDefaults.js'
 import { makeCatalogPricing } from './aluCatalogPricing.js'
 import { resolveItemInputs, buildEngineOpening, buildEngineAddonOpening } from './estimationInherit.js'
 import { applyJoints, applyRoleThickness, jointDeductionMm } from './assembly.js'
@@ -231,7 +232,10 @@ export function costOpening(ctx) {
   const main = buildEngineOpening(item, project, template, ctx.typesById, ctx.infillTypesById, ctx.packageItems)
   const prepared = prepareComponents({ template, components: byT(ctx.componentsByTemplate, template.id), joints: byT(ctx.jointsByTemplate, template.id), partModelByTemplate: ctx.partModelByTemplate, index, seriesId: resolved.series_id, thicknessMm: resolved.thickness_mm, sashThicknessMm: resolved.sash_thickness_mm, item: rawItem, addon: addonInput })
   issues.push(...prepared.issues)
-  const bom = computeBomForOpening(main.opening, template, prepared.components, byT(ctx.hardwareByTemplate, template.id), pricing, main.infillType)
+  // layout templates: the item's options (door / one_fixed ...) move the layout's hardware by their delta (itemHardwareRows)
+  const baseModel = (ctx.partModelByTemplate && ctx.partModelByTemplate[template.id]) || null
+  const hardwareRows = template.layout_kind ? itemHardwareRows(byT(ctx.hardwareByTemplate, template.id), baseModel, modelForItem(baseModel, rawItem)) : byT(ctx.hardwareByTemplate, template.id)
+  const bom = computeBomForOpening(main.opening, template, prepared.components, hardwareRows, pricing, main.infillType)
 
   // inline add-ons: attach units are their own openings; merge glass is priced at the item's infill
   const expansion = prepared.expansion || null
