@@ -3,11 +3,13 @@
 // NOT atomic: the delete and the insert are separate requests, so a failure between them leaves the template (or
 // opening) with no rows until the user saves again. Validation runs first so a bad payload never reaches the delete.
 import { validateAddons, validatePieceRows, setKey } from './addonModel.js'
+import { fetchAllRows } from './fetchAllRows.js'
 
 export const PIECE_COLUMNS = ['mode', 'kind', 'position', 'piece_key', 'profile_family', 'ref_input', 'length_factor', 'deduction_mm', 'qty_rule', 'qty_fixed', 'thickness_role', 'note', 'sort_order']
 const PIECES = 'bom_template_addon_pieces'
 const ITEMS = 'estimation_item_addons'
 const CHUNK = 200
+const IN_CHUNK = 100
 
 const bySort = (a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0)
 
@@ -56,10 +58,19 @@ export async function saveAddonPieces({ supabase, templateId, rows }) {
   await insertChunks(supabase, PIECES, rows)
 }
 
+// ids in chunks of IN_CHUNK (a long .in() list overflows the request URL), each chunk paged by fetchAllRows (PostgREST
+// caps a response at 1000 rows) in a stable id order.
 async function readIn(supabase, table, col, ids) {
-  const { data, error } = await supabase.from(table).select('*').in(col, ids)
-  if (error) throw new Error(error.message)
-  return data || []
+  const out = []
+  for (let i = 0; i < ids.length; i += IN_CHUNK) {
+    const part = ids.slice(i, i + IN_CHUNK)
+    try {
+      out.push(...await fetchAllRows(() => supabase.from(table).select('*').in(col, part).order('id')))
+    } catch (e) {
+      throw new Error(e && e.message ? e.message : String(e))
+    }
+  }
+  return out
 }
 
 export async function loadAddonPieces({ supabase, templateIds }) {

@@ -16,9 +16,22 @@ function fakeClient({ failOn = null, data = {} } = {}) {
         insert(rows) { calls.push(['insert', table, rows.length]); return Promise.resolve(result('insert')) },
         select() {
           const filters = []
+          let inF = null, orderCol = null, rng = null
           const chain = {
-            in(col, vals) { filters.push([col, vals]); return chain },
-            then(res, rej) { calls.push(['select', table, ...filters]); return Promise.resolve(result('select')).then(res, rej) },
+            in(col, vals) { filters.push([col, vals]); inF = [col, vals]; return chain },
+            order(col) { filters.push(['order', col]); orderCol = col; return chain },
+            range(from, to) { filters.push(['range', from, to]); rng = [from, to]; return chain },
+            then(res, rej) {
+              calls.push(['select', table, ...filters])
+              const r = result('select')
+              if (r.data) {
+                let d = inF ? r.data.filter(x => inF[1].includes(x[inF[0]])) : r.data
+                if (orderCol) d = [...d].sort((a, b) => String(a[orderCol]).localeCompare(String(b[orderCol])))
+                if (rng) d = d.slice(rng[0], rng[1] + 1)
+                r.data = d
+              }
+              return Promise.resolve(r).then(res, rej)
+            },
           }
           return chain
         },
@@ -106,7 +119,7 @@ describe('loadAddonPieces', () => {
     expect(Object.keys(r)).toEqual(['a', 'b'])
     expect(r.a).toHaveLength(1)
     expect(r.b).toEqual([])
-    expect(c.calls[0]).toEqual(['select', 'bom_template_addon_pieces', ['template_id', ['a', 'b']]])
+    expect(c.calls[0]).toEqual(['select', 'bom_template_addon_pieces', ['template_id', ['a', 'b']], ['order', 'id'], ['range', 0, 999]])
   })
   it('no ids: no query; read error throws', async () => {
     const c = fakeClient()
@@ -154,5 +167,32 @@ describe('item add-ons', () => {
     expect(r.o1[0].len_mm).toBe(1000)
     expect(r.o2).toEqual([])
     expect(await loadItemAddons({ supabase: fakeClient(), openingIds: [] })).toEqual({})
+  })
+})
+
+describe('I-3: add-on loads are chunked and paged', () => {
+  const ids = Array.from({ length: 250 }, (_, i) => `t${String(i).padStart(3, '0')}`)
+  it('250 template ids ⇒ 3 chunked requests (100 ids each), merged per id, [] for ids without rows', async () => {
+    const c = fakeClient({ data: { bom_template_addon_pieces: [
+      { id: 'r1', template_id: 't000', ...row() }, { id: 'r2', template_id: 't150', ...row() }, { id: 'r3', template_id: 't249', ...row({ sort_order: 1 }) },
+      { id: 'r4', template_id: 't249', ...row({ sort_order: 0 }) },
+    ] } })
+    const r = await loadAddonPieces({ supabase: c, templateIds: ids })
+    expect(c.calls.filter(x => x[0] === 'select')).toHaveLength(3)
+    expect(c.calls.map(x => x[2][1].length)).toEqual([100, 100, 50])
+    expect(Object.keys(r)).toHaveLength(250)
+    expect(r.t000.map(x => x.id)).toEqual(['r1'])
+    expect(r.t150.map(x => x.id)).toEqual(['r2'])
+    expect(r.t249.map(x => x.id)).toEqual(['r4', 'r3'])
+    expect(r.t001).toEqual([])
+  })
+  it('a chunk returning exactly the page size reads the next page', async () => {
+    const many = Array.from({ length: 1000 }, (_, i) => ({ id: `a${String(i).padStart(4, '0')}`, opening_id: 'o1', mode: 'merge', kind: 'fixed', position: 'top', len_m: 1, thick_m: 0.4, offset_m: 0, rows: 1, cols: 1, sort_order: i }))
+    const c = fakeClient({ data: { estimation_item_addons: [...many, { ...many[0], id: 'b0', opening_id: 'o2' }] } })
+    const r = await loadItemAddons({ supabase: c, openingIds: ['o1', 'o2', 'o3'] })
+    expect(c.calls.map(x => x.slice(3))).toEqual([[['order', 'id'], ['range', 0, 999]], [['order', 'id'], ['range', 1000, 1999]]])
+    expect(r.o1).toHaveLength(1000)
+    expect(r.o2.map(x => x.id)).toEqual(['b0'])
+    expect(r.o3).toEqual([])
   })
 })

@@ -13,7 +13,7 @@ function fakeSupabase(selectRows = []) {
   const from = (table) => ({
     delete: () => ({ eq: (c, v) => { calls.push(['delete', table, c, v]); return Promise.resolve({ error: null }) } }),
     insert: (rows) => { calls.push(['insert', table, rows]); return Promise.resolve({ error: null }) },
-    select: () => ({ in: (c, ids) => { calls.push(['select', table, c, ids]); return Promise.resolve({ data: selectRows, error: null }) } }),
+    select: () => ({ in: (c, ids) => { calls.push(['select', table, c, ids]); const q = { order: () => q, range: () => Promise.resolve({ data: selectRows, error: null }) }; return q } }),
   })
   return { from, calls }
 }
