@@ -679,3 +679,14 @@ describe('curtain_wall and frameless_wall (Task 7)', () => {
     expect(validateLayout(bad).join()).toMatch(/panel part/)
   })
 })
+
+describe('part / position keys fit the database CHECK (migration 2026-10-18-03)', () => {
+  it('every layout key matches ^[a-z][a-z0-9_]{0,39}$', async () => {
+    const { LAYOUTS } = await import('../layoutRegistry.js')
+    const re = /^[a-z][a-z0-9_]{0,39}$/
+    for (const L of Object.values(LAYOUTS)) {
+      for (const p of L.parts) expect(p.key).toMatch(re)
+      for (const k of Object.keys(L.positions)) expect(k).toMatch(re)
+    }
+  })
+})
