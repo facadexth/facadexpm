@@ -16,8 +16,8 @@ BEGIN
   IF n <> 2 THEN RAISE EXCEPTION 'fake_rows / fake_cols missing (%)', n; END IF;
   BEGIN
     UPDATE estimation_item_addons SET fake_rows = 13 WHERE false;
-    INSERT INTO estimation_item_addons (opening_id, mode, kind, position, len_m, thick_m, rows, cols, fake_rows, fake_cols)
-      SELECT opening_id, mode, kind, position, len_m, thick_m, rows, cols, 13, 1 FROM estimation_item_addons LIMIT 1;
+    INSERT INTO estimation_item_addons (tenant_id, opening_id, mode, kind, position, len_m, thick_m, rows, cols, fake_rows, fake_cols)
+      SELECT tenant_id, opening_id, mode, kind, position, len_m, thick_m, rows, cols, 13, 1 FROM estimation_item_addons LIMIT 1;
     IF FOUND THEN RAISE EXCEPTION 'fake_rows 13 was accepted'; END IF;
   EXCEPTION WHEN check_violation THEN NULL;
   END;
