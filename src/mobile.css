@@ -67,4 +67,25 @@
   .phone-more-menu .btn, .phone-more-menu button, .phone-more-menu label { width: 100%; justify-content: flex-start; text-align: left; min-height: var(--phone-tap); }
   .phone-chips-row { display: flex; gap: 6px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; flex-wrap: nowrap !important; }
   .phone-chips-row > * { flex: none; }
+
+  /* ---- modals and forms (Modal.jsx; index.css owns the desktop look) ---- */
+  .modal-overlay { align-items: stretch; padding: 0; }
+  .modal:not(.modal-confirm) { max-width: none !important; width: 100vw; height: 100dvh; max-height: none; border-radius: 0; display: flex; flex-direction: column; margin: 0; }
+  .modal:not(.modal-confirm) .modal-header { position: sticky; top: 0; z-index: 2; background: var(--bg2); }
+  .modal:not(.modal-confirm) .modal-body { flex: 1; overflow-y: auto; padding: 14px 16px; }
+  .modal:not(.modal-confirm) .modal-footer { position: sticky; bottom: 0; z-index: 2; background: var(--bg2); padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 8px; flex-wrap: wrap; }
+  .modal:not(.modal-confirm) .modal-footer .btn { flex: 1 1 40%; min-height: var(--phone-tap); }
+  .modal-confirm { margin: auto 16px; max-width: calc(100vw - 32px) !important; }
+  .form-grid-2, .form-grid-3, .form-grid-4 { grid-template-columns: 1fr; }
+  .input, .select, .textarea { font-size: 16px; min-height: var(--phone-tap); box-sizing: border-box; max-width: 100%; }
+  .input-sm, .select.input-sm, .textarea.input-sm { min-height: 40px; font-size: 15px; }
+  .btn { min-height: var(--phone-tap); }
+  .btn-sm { min-height: 36px; }
+  .btn-xs { min-height: 30px; }
+  /* line-item rows (class names added by the forms, no desktop rule exists for them) */
+  .line-items .line-item { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin: 8px 0; align-items: end; }
+  .line-items .line-item > .li-desc { grid-column: 1 / -1; }
+  .line-items .line-item > .li-total { grid-column: 1 / -1; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .line-items .line-item > .li-remove { grid-column: 1 / -1; justify-self: end; }
+  .line-items .line-item .input, .line-items .line-item .select { width: 100% !important; }
 }

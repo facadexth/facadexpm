@@ -14,7 +14,7 @@ import { useBackToClose } from '../hooks/useBackToClose.js'
  * @param {() => (void|false)} onClose  Called by X / Escape / browser back. Returning `false` is honoured ONLY for the
  *   browser back button (modal stays open and its history entry is re-pushed); X and Escape ignore the return value.
  */
-export function Modal({ title, onClose, children, maxWidth = 600 }) {
+export function Modal({ title, onClose, children, maxWidth = 600, className = '' }) {
   // ปุ่ม back มือถือปิด modal แทนที่จะออกจากหน้าเว็บ: กลไกอยู่ใน src/hooks/useBackToClose.js (ย้ายออกไป
   // 2026-10-15 เพื่อให้ลิ้นชักเมนูและแผ่นตัวกรองบนมือถือใช้ร่วมกัน พฤติกรรมเดิมทุกประการ)
   useBackToClose(onClose)
@@ -28,7 +28,7 @@ export function Modal({ title, onClose, children, maxWidth = 600 }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal" style={{ maxWidth: `min(${maxWidth}px, 94vw)` }}>
+      <div className={className ? `modal ${className}` : 'modal'} style={{ maxWidth: `min(${maxWidth}px, 94vw)` }}>
         <div className="modal-header">
           <span className="modal-title" title={typeof title === 'string' ? title : undefined}>{title}</span>
           <button className="modal-close" onClick={onClose}>✕</button>
@@ -42,7 +42,7 @@ export function Modal({ title, onClose, children, maxWidth = 600 }) {
 /** Confirm dialog พร้อม danger styling */
 export function ConfirmDialog({ title, message, onConfirm, onCancel, danger = false, confirmDisabled = false }) {
   return (
-    <Modal title={title} onClose={onCancel} maxWidth={400}>
+    <Modal title={title} onClose={onCancel} maxWidth={400} className="modal-confirm">
       <div className="modal-body">
         <div style={{ color: 'var(--text2)', lineHeight: 1.6 }}>{message}</div>
       </div>
