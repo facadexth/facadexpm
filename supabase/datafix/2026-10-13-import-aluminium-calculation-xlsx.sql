@@ -262,7 +262,7 @@ DECLARE
   v_tenant_name TEXT; v_provider UUID; v_series UUID; v_profile UUID; v_sname TEXT;
   r RECORD; n_prof INT := 0; n_skip INT := 0; n_link INT := 0; n_glass INT := 0; n_gskip INT := 0;
 BEGIN
-  SELECT name INTO v_tenant_name FROM tenants WHERE id = c_tenant;
+  SELECT company_name INTO v_tenant_name FROM tenants WHERE id = c_tenant;
   IF v_tenant_name IS NULL THEN RAISE EXCEPTION 'ABORT: tenant % not found', c_tenant; END IF;
   RAISE NOTICE 'tenant = % (%)', v_tenant_name, c_tenant;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'alu_profiles' AND column_name = 'butt_distance_mm') THEN

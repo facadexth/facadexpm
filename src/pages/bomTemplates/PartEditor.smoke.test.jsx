@@ -102,9 +102,9 @@ describe('BomTemplates tab 0', () => {
     expect(html).not.toContain('สร้างจากแบบบานเลื่อน 2 บาน')
     expect(html).not.toContain('แก้ชิ้นที่เลือก')
   })
-  it('a new template offers "สร้างจากแบบบานเลื่อน 2 บาน (ไม่มีช่องแสง)"', () => {
+  it('a new template offers "สร้างจากแบบบานเลื่อน 2 บาน (เพิ่มช่องแสงได้ในกล่องช่องแสง)"', () => {
     const html = renderToString(<TemplateEditor {...base} template={null} components={[]} />)
-    expect(html).toContain('สร้างจากแบบบานเลื่อน 2 บาน (ไม่มีช่องแสง)')
+    expect(html).toContain('สร้างจากแบบบานเลื่อน 2 บาน (เพิ่มช่องแสงได้ในกล่องช่องแสง)')
     expect(html).toContain('ชิ้นส่วนอลูมิเนียม (Components)')
   })
   it('a layout_kind template shows the part editor slot (loading until its rows arrive)', () => {

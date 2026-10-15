@@ -204,6 +204,6 @@ describe('template creation picks the type layout (BomTemplates)', () => {
     expect(screen.getAllByRole('tab').filter(t => /^บานเฟี้ยม \d/.test(t.textContent))).toHaveLength(4)
     cleanup()
     render(<TemplateEditor {...base} types={types} template={{ ...tpl, type_id: 'old' }} />)
-    expect(screen.getByText(/สร้างจากแบบบานเลื่อน 2 บาน \(ไม่มีช่องแสง\)/)).toBeTruthy()
+    expect(screen.getByText(/สร้างจากแบบบานเลื่อน 2 บาน \(เพิ่มช่องแสงได้ในกล่องช่องแสง\)/)).toBeTruthy()
   })
 })

@@ -467,7 +467,7 @@ export function TemplateEditor({ template, joints, catalog, types, components, h
             </button>
           ) : (
             <button type="button" className="btn btn-sm btn-ghost" style={{ marginBottom: 8, border: '1px dashed var(--accent)' }} onClick={() => startFromLayout('sliding_2', formTypeRow)}>
-              สร้างจากแบบบานเลื่อน 2 บาน (ไม่มีช่องแสง)
+              สร้างจากแบบบานเลื่อน 2 บาน (เพิ่มช่องแสงได้ในกล่องช่องแสง)
             </button>
           ))}
         {startError && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 8 }}>{startError}</div>}
