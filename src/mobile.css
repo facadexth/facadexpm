@@ -45,4 +45,26 @@
   .card-table td[data-role="status"] { grid-column: 1; margin-top: 6px; }
   .card-table td[data-role="actions"] { grid-column: 2; justify-self: end; margin-top: 6px; white-space: nowrap; }
   .card-table td[data-empty="true"] { grid-column: 1 / -1; text-align: center; color: var(--text3); padding: 10px 0; }
+
+  /* ---- toolbars: PhoneFilters sheet, MoreActions menu, chip rows ---- */
+  .phone-filters { display: contents; }
+  .phone-filters-btn { min-height: var(--phone-tap); display: inline-flex; gap: 6px; align-items: center; }
+  .phone-chips { display: flex; gap: 6px; overflow-x: auto; padding: 6px 0; scrollbar-width: none; flex-basis: 100%; min-width: 0; }
+  .phone-chip { flex: none; display: inline-flex; gap: 4px; align-items: center; font-size: 12px; border: 1px solid var(--border); background: var(--bg2); border-radius: 999px; padding: 4px 8px 4px 10px; color: var(--text2); }
+  .phone-chip button { background: none; border: none; color: var(--text3); font-size: 12px; padding: 0 2px; cursor: pointer; }
+  .phone-sheet-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 300; display: flex; align-items: flex-end; }
+  .phone-sheet { width: 100%; max-height: 85vh; overflow-y: auto; background: var(--bg2); border-top: 1px solid var(--border); border-radius: 18px 18px 0 0; padding: 10px 14px calc(14px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -10px 30px rgba(0,0,0,.35); }
+  .phone-sheet-grab { width: 40px; height: 4px; border-radius: 2px; background: var(--text3); margin: 0 auto 10px; }
+  .phone-sheet-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .phone-sheet-body { display: grid; gap: 10px; }
+  .phone-sheet-body .input, .phone-sheet-body .select, .phone-sheet-body .textarea, .phone-sheet-body input:not([type="checkbox"]):not([type="radio"]), .phone-sheet-body select { width: 100%; min-height: var(--phone-tap); font-size: 16px; box-sizing: border-box; }
+  .phone-sheet-body .input-sm { min-height: 40px; }
+  .phone-sheet-foot { display: flex; gap: 8px; margin-top: 12px; }
+  .phone-sheet-foot .btn { flex: 1; min-height: var(--phone-tap); }
+  .phone-more { position: relative; display: inline-block; }
+  .phone-more-btn { min-width: var(--phone-tap); min-height: var(--phone-tap); font-size: 18px; }
+  .phone-more-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 250; display: grid; gap: 4px; min-width: 220px; padding: 6px; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+  .phone-more-menu .btn, .phone-more-menu button, .phone-more-menu label { width: 100%; justify-content: flex-start; text-align: left; min-height: var(--phone-tap); }
+  .phone-chips-row { display: flex; gap: 6px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; flex-wrap: nowrap !important; }
+  .phone-chips-row > * { flex: none; }
 }
