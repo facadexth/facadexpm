@@ -1,4 +1,5 @@
--- Inline add-ons (ช่องแสง) on items, piece sets per template. Additive; re-runnable. Needs 2026-10-15-01.
+-- Inline add-ons (ช่องแสง) on items, piece sets per template. Additive; re-runnable (also over an earlier run of this
+-- file without estimation_item_addons.align: the column and its named check are added when missing). Needs 2026-10-15-01.
 -- Spec 2026-10-12 §4.2/§4.3 as amended by plan 2026-10-15-sliding2-addons.md (AO-9: sets keyed by position; note column).
 -- Independent of 2026-10-17-01-layouts-all-types.sql (does not need it applied, in either order).
 -- No view selects bom_templates.* or estimation_openings.*: re-grepped supabase/migrations and supabase/schema.sql for
@@ -39,11 +40,20 @@ CREATE TABLE IF NOT EXISTS estimation_item_addons (
   len_m      NUMERIC NOT NULL CHECK (len_m > 0 AND len_m <= 20),
   thick_m    NUMERIC NOT NULL CHECK (thick_m > 0 AND thick_m <= 20),
   offset_m   NUMERIC NOT NULL DEFAULT 0 CHECK (offset_m >= 0),
-  align      TEXT NOT NULL DEFAULT 'start' CHECK (align IN ('start','end')),
+  align      TEXT NOT NULL DEFAULT 'start' CONSTRAINT estimation_item_addons_align_check CHECK (align IN ('start','end')),
   rows       INT NOT NULL DEFAULT 1 CHECK (rows BETWEEN 1 AND 6),
   cols       INT NOT NULL DEFAULT 1 CHECK (cols BETWEEN 1 AND 12),
   sort_order INT NOT NULL DEFAULT 0
 );
+-- align came after a first version of this table: a database that ran the earlier file already has the table, so
+-- CREATE TABLE IF NOT EXISTS skips it. Add the column and its (same-named) check when missing.
+ALTER TABLE estimation_item_addons ADD COLUMN IF NOT EXISTS align TEXT NOT NULL DEFAULT 'start';
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'estimation_item_addons_align_check') THEN
+    ALTER TABLE estimation_item_addons ADD CONSTRAINT estimation_item_addons_align_check CHECK (align IN ('start','end'));
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_bom_template_addon_pieces_template_id ON bom_template_addon_pieces(template_id);
 CREATE INDEX IF NOT EXISTS idx_estimation_item_addons_opening_id    ON estimation_item_addons(opening_id);
 
