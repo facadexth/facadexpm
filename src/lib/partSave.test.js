@@ -306,10 +306,11 @@ describe('saveModel', () => {
     const c = fakeClient()
     await saveModel({ supabase: c, templateId: 't1', model: named() })
     expect(c.calls.map(x => `${x[0]} ${x[1]}`)).toEqual([
+      'update bom_templates',   // sliding_2 has params since its Task 9 options (door / one_fixed / fixed_side)
       'delete bom_template_parts', 'insert bom_template_parts', 'insert bom_template_positions',
       'insert bom_template_position_profiles', 'insert bom_template_piece_ends',
     ])
-    expect(c.calls[0]).toEqual(['delete', 'bom_template_parts', 'template_id', 't1'])
+    expect(c.calls[1]).toEqual(['delete', 'bom_template_parts', 'template_id', 't1'])
   })
   for (const [table, op] of [['bom_template_parts', 'delete'], ['bom_template_parts', 'insert'], ['bom_template_positions', 'insert'], ['bom_template_position_profiles', 'insert'], ['bom_template_piece_ends', 'insert']]) {
     it(`stops at the first error (${op} ${table}) and throws it`, async () => {
@@ -397,8 +398,9 @@ describe('layout_params round-trip (Task 9)', () => {
     expect(m.params.cells).toEqual({ '0,1': 'awning', '2,0': 'spandrel' })
     expect(trip(m)).toEqual(m)
   })
-  it('templateParamsPayload: {} for a model without params (sliding_2), else the coerced params', () => {
-    expect(templateParamsPayload(startModel('sliding_2'))).toEqual({})
+  it('templateParamsPayload: {} for a model without params, else the coerced params', () => {
+    expect(templateParamsPayload({ ...startModel('sliding_2'), params: {} })).toEqual({})
+    expect(templateParamsPayload(startModel('sliding_2'))).toEqual({ layout_params: { door: false, one_fixed: 0, fixed_side: 'left' } })
     const m = startModel('awning_grid', { rows: 3 })
     expect(templateParamsPayload({ ...m, params: { ...m.params, junk: 1 } })).toEqual({ layout_params: { rows: 3, cols: 2, open: 'out' } })
   })
@@ -446,7 +448,7 @@ describe('disabled positions (swing_door sill: no) round-trip', () => {
 describe('Review Focus 1: a sliding_2 template saved before layout_params', () => {
   const buttOf = () => 20
   const widthOf = () => 40
-  it('no layout_params column, {} or a type with {}: params {} and the same expansion', () => {
+  it('no layout_params column, {} or a type with {}: the default params and the same expansion', () => {
     const m = named()
     const rows = modelToRows(m, 't1', seqId())
     const ref = expandParts({ model: m, buttOf, widthOf })
@@ -454,7 +456,7 @@ describe('Review Focus 1: a sliding_2 template saved before layout_params', () =
       for (const type of [undefined, null, { id: 'ty', layout_params: {} }, { id: 'ty', layout_kind: 'sliding_2', layout_params: {} }, { id: 'ty' }]) {
         const back = modelFromRows({ template, type, ...rows })
         expect(back).toEqual(m)
-        expect(back.params).toEqual({})
+        expect(back.params).toEqual({ door: false, one_fixed: 0, fixed_side: 'left' })   // Task 9 option defaults: no sill guard, same rows
         expect(expandParts({ model: back, buttOf, widthOf })).toEqual(ref)
       }
     }
@@ -513,10 +515,15 @@ describe('saveModel writes the template layout_params (Task 9)', () => {
     await expect(saveModel({ supabase: c, templateId: 't1', model: filled(startModel('awning_grid')) })).rejects.toThrow('boom bom_templates')
     expect(c.calls).toHaveLength(1)
   })
-  it('sliding_2 (no params) never sends layout_params, so it saves before the migration is applied', async () => {
+  it('a model without params never sends layout_params, so it saves before the migration is applied', async () => {
+    const c = fakeClient()
+    await saveModel({ supabase: c, templateId: 't1', model: filled(startModel('sliding_2_fixed_2')) })   // a kind with no inputs
+    expect(c.calls.some(x => x[1] === 'bom_templates')).toBe(false)
+  })
+  it('sliding_2 sends its Task 9 option params (one_fixed must be stored, also when switched back to 0)', async () => {
     const c = fakeClient()
     await saveModel({ supabase: c, templateId: 't1', model: named() })
-    expect(c.calls.some(x => x[1] === 'bom_templates')).toBe(false)
+    expect(c.calls.filter(x => x[1] === 'bom_templates')).toHaveLength(1)
   })
 })
 
@@ -580,8 +587,8 @@ describe('"เสร็จแล้ว" per part is saved in layout_params._done
     const back = modelFromRows({ template: { id: 't1', layout_kind: 'awning_grid', layout_params: { ...m.params, _done: ['sash', 'nope', 3] } }, ...rows })
     expect(back.done).toEqual(['sash'])
   })
-  it('sliding_2 still sends nothing to bom_templates', () => {
-    expect(templateParamsPayload(startModel('sliding_2'))).toEqual({})
+  it('sliding_2 sends only its option params (no _done key when nothing is ticked)', () => {
+    expect(templateParamsPayload(startModel('sliding_2'))).toEqual({ layout_params: { door: false, one_fixed: 0, fixed_side: 'left' } })
   })
 })
 

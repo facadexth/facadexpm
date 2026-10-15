@@ -600,3 +600,48 @@ describe('expandParts — overrides and sideButt (add-ons)', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------- Task 9: sliding_2 เลื่อน 1 ฟิก 1 — ธรณีกันบานเลื่อน
+describe('sliding_2 sill guard (rule.minus / rule.plusWidth)', () => {
+  const B9 = { FS: 38.1, FT: 38.1, FB: 35.8, HS: 40, KS: 38.1, SG: 20 }
+  const W9 = { KS: 50 }
+  const butt9 = (f) => (f in B9 ? B9[f] : null)
+  const width9 = (f) => (f in W9 ? W9[f] : null)
+  const model9 = (params = { one_fixed: 1 }) => {
+    const m = startModel('sliding_2', params)
+    for (const [k, f] of Object.entries({ ...FAM, sill_guard: 'SG' })) if (m.lines[k]) m.lines[k][0].profile_family = f
+    return m
+  }
+
+  it('default params: no sill guard row, output equals the old 7 rows', () => {
+    const r = expandParts({ model: model9({}), buttOf: butt9, widthOf: width9 })
+    expect(r.components).toHaveLength(7)
+    expect(byFam(r.components, 'SG')).toHaveLength(0)
+  })
+  it('W 1800: (1800 − 76.2 + 40) × 0.5 − 40 − 38.1 + 50 = 853.8 mm, one piece', () => {
+    const r = expandParts({ model: model9(), buttOf: butt9, widthOf: width9 })
+    expect(r.issues).toEqual([])
+    const c = one(r.components, 'SG')
+    expect(c.role_name).toBe('ธรณีกันบานเลื่อน')
+    expect(c.quantity_value).toBe(1)
+    expect(c.end_deduction_mm).toBe(0)
+    expect(c.length_deduction_mm).toBeCloseTo(76.2 - 40 + (40 + 38.1 - 50) / 0.5, 6)
+    expect(computeComponentLength(c.length_rule_type, c.length_deduction_mm, 1.8, 1.2, c.length_factor, c.end_deduction_mm)).toBeCloseTo(0.8538, 9)
+  })
+  it('the sash rows are unchanged by one_fixed', () => {
+    const a = expandParts({ model: model9({}), buttOf: butt9, widthOf: width9 }).components
+    const b = expandParts({ model: model9(), buttOf: butt9, widthOf: width9 }).components
+    expect(b.slice(0, 7)).toEqual(a)
+  })
+  it('missing key stile width ⇒ no_profile_width; missing hook butt ⇒ no_butt_distance', () => {
+    const r = expandParts({ model: model9(), buttOf: butt9, widthOf: () => null })
+    expect(r.issues).toContainEqual({ role_name: 'ธรณีกันบานเลื่อน', reason: 'no_profile_width' })
+    const r2 = expandParts({ model: model9(), buttOf: (f) => (f === 'HS' ? null : butt9(f)), widthOf: width9 })
+    expect(r2.issues).toContainEqual({ role_name: 'ธรณีกันบานเลื่อน', reason: 'no_butt_distance' })
+  })
+  it('explainPiece shows the after-factor terms and the same total', () => {
+    const t = explainPiece({ model: model9(), buttOf: butt9, widthOf: width9, key: 'sill_guard', lineIdx: 0, piece: 0, widthMm: 1800, heightMm: 1200 })
+    expect(t).toMatch(/= 853\.8 มม\.$/)
+    expect(t).toContain('+ กว้าง เสากุญแจ 50.0')
+  })
+})

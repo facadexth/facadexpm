@@ -7,18 +7,19 @@ describe('layoutRegistry', () => {
     expect(kinds()).toContain('sliding_2')
     expect(layoutOf('sliding_2')).toBe(LAYOUTS.sliding_2)
     expect(layoutOf('sliding_2').kind).toBe('sliding_2')
-    expect(inputsOf('sliding_2')).toEqual([])
+    expect(inputsOf('sliding_2').map(i => i.key)).toEqual(['door', 'one_fixed', 'fixed_side'])   // Task 9 options
   })
   it('unknown kinds throw unknown_layout', () => {
     expect(() => layoutOf('nope')).toThrow('unknown_layout')
     expect(() => layoutOf('__proto__')).toThrow('unknown_layout')
   })
-  it('defaultParams(sliding_2, {}) is {}', () => {
-    expect(defaultParams('sliding_2', {})).toEqual({})
+  it('defaultParams(sliding_2, {}) is the Task 9 option defaults (window, 2 sliding, fixed side left)', () => {
+    expect(defaultParams('sliding_2', {})).toEqual({ door: false, one_fixed: 0, fixed_side: 'left' })
+    expect(defaultParams('sliding_2', { door: true, one_fixed: '1' })).toEqual({ door: true, one_fixed: 1, fixed_side: 'left' })
   })
   it('derives each part\'s position keys in display order (the editor UI reads them)', () => {
     expect(LAYOUTS.sliding_2.parts.map(p => [p.key, p.positions])).toEqual([
-      ['frame', ['frame_top', 'frame_bottom', 'frame_side']],
+      ['frame', ['frame_top', 'frame_bottom', 'frame_side', 'sill_guard']],
       ['sash', ['sash_top', 'sash_bottom', 'key_stile', 'hook_stile']],
     ])
   })
@@ -131,6 +132,8 @@ describe('validateLayout', () => {
   it('rejects an unknown symbol.direction', () => {
     const base = LAYOUTS.sliding_n
     expect(validateLayout({ ...base, symbol: { ...base.symbol, direction: 'sideways' } }).join()).toMatch(/symbol.direction/)
+    expect(validateLayout({ ...base, positions: { ...base.positions, mullion: { ...base.positions.mullion, rule: { type: 'width', minus: ['nope'] } } } }).join()).toMatch(/rule.minus names unknown position nope/)
+    expect(validateLayout({ ...base, positions: { ...base.positions, mullion: { ...base.positions.mullion, rule: { type: 'width', plusWidth: 'frame_side' } } } }).join()).toMatch(/rule.plusWidth must be an array/)
     for (const d of ['halves', 'toward_fixed', 'outward']) expect(validateLayout({ ...base, symbol: { ...base.symbol, direction: d } })).toEqual([])
   })
 })

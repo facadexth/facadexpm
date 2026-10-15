@@ -4,6 +4,9 @@
 //   pre     = AUTO[rule.auto] (line.deduction_auto) else line.length_deduction_mm  (width_minus / height_minus only)
 //   overlap = overlap unit × rule.overlapCount, for positions with rule.overlap 'hook'
 //   endDed  = sum of the butt ends' deductions (0 for every end of a part whose corner is 'mitre').
+//   rule.minus / rule.plusWidth (position keys): Σ b(line 0) − Σ w(line 0) taken AFTER the factor (sliding_2 sill guard).
+//             An end deduction cannot be negative (bomEngine clamps it), so the term is folded into length_deduction_mm
+//             divided by the factor: length_deduction_mm = pre − overlap + (Σb(minus) − Σw(plusWidth)) / factor.
 // Positions read by rule.auto / rule.overlap go through the layout's roles (layoutRegistry.rolesOf).
 import { LAYOUTS, pieceCount, validateCorners, lineFamily } from './partModel.js'
 import { exprParams, rolesOf } from './layoutRegistry.js'
@@ -108,9 +111,11 @@ function makeCtx({ model, buttOf, widthOf, overrides, sideButt }) {
     return a ? a.frame + (a.grid ? a.grid.n * a.grid.w : 0) : null
   }
 
-  // One overlap of the part (auto = hook stile butt distance, else its width; manual = overlap_mm).
+  // One overlap of the part (auto = hook stile butt distance, else its width; manual = overlap_mm). A frame-part position
+  // with rule.overlap 'hook' (sliding_2 sill guard) reads the hook position's part instead: the frame has no overlap.
   function overlapUnit(key) {
-    const part = partOf(key)
+    const viaHook = ruleOf(key).overlap === 'hook' && layout.positions[key]?.part === 'frame' && layout.positions[roles.hook]
+    const part = viaHook ? partOf(roles.hook) : partOf(key)
     if (part.overlap_mode === 'auto_hook') {
       const fam = famOf(roles.hook, 0)
       return butt(fam) ?? width(fam) ?? 0
@@ -132,6 +137,34 @@ function makeCtx({ model, buttOf, widthOf, overrides, sideButt }) {
     return a != null ? r6(a) : Number(line.length_deduction_mm) || 0
   }
 
+  // After-factor terms of rule.minus (−b) / rule.plusWidth (+w): [{ key, kind: 'minus'|'plusWidth', mm }] (signed mm);
+  // an absent position is skipped, an unresolved lookup is reported and counts 0.
+  function afterTerms(key, onMissing) {
+    const rule = ruleOf(key)
+    const out = []
+    const add = (keys, kind, read, reason, sign) => {
+      for (const k of Array.isArray(keys) ? keys : []) {
+        if (!present(k)) continue
+        const v = read(famOf(k, 0))
+        if (v == null) onMissing(reason)
+        out.push({ key: k, kind, mm: v == null ? 0 : sign * v })
+      }
+    }
+    add(rule.minus, 'minus', butt, 'no_butt_distance', -1)
+    add(rule.plusWidth, 'plusWidth', width, 'no_profile_width', 1)
+    return out
+  }
+  const afterFactor = (key, onMissing) => afterTerms(key, onMissing).reduce((s, t) => s + t.mm, 0)
+
+  // The after-factor term expressed before the factor (folded into length_deduction_mm); 0 for a zero factor.
+  function afterDed(key, line, onMissing) {
+    const rule = ruleOf(key)
+    if (!rule.minus && !rule.plusWidth) return 0
+    const factor = Number(line.length_factor ?? 1)
+    const t = afterFactor(key, onMissing)
+    return factor ? r6(-t / factor) : 0
+  }
+
   // { mm, problem: null|'no_butt_target'|'no_butt_distance' }
   function endDed(end) {
     if (!end || end.mode !== 'butt') return { mm: 0, problem: null }
@@ -148,7 +181,7 @@ function makeCtx({ model, buttOf, widthOf, overrides, sideButt }) {
     return `ชิ้นที่ ${piece + 1}`
   }
 
-  return { layout, roles, issues, issue, posName, famOf, fixedLength, autoParts, autoDed, overlapUnit, overlap, preDed, endDed, pieceLabel, isMitre }
+  return { layout, roles, issues, issue, posName, famOf, fixedLength, autoParts, autoDed, overlapUnit, overlap, preDed, afterTerms, afterDed, endDed, pieceLabel, isMitre }
 }
 
 // overrides / sideButt: optional (add-ons, see addonExpand.js); absent ⇒ output unchanged.
@@ -170,7 +203,8 @@ export function expandParts({ model, buttOf, widthOf, overrides, sideButt }) {
       const fixed = ctx.fixedLength(key, li)
       if (!family) { issue(name, 'no_profile_family'); return }
       const deducting = DEDUCTING_RULES.has(line.length_rule_type)
-      const lengthDed = deducting ? r6(ctx.preDed(key, line, (reason) => issue(name, reason)) - ctx.overlap(key, line)) : 0
+      const onMissing = (reason) => issue(name, reason)
+      const lengthDed = deducting ? r6(ctx.preDed(key, line, onMissing) - ctx.overlap(key, line) + ctx.afterDed(key, line, onMissing)) : 0
       const mitre = ctx.isMitre(key)
 
       const groups = []
@@ -273,6 +307,12 @@ export function explainPiece({ model, buttOf, widthOf, key, lineIdx, piece, widt
   }
   const factor = line.length_factor ?? 1
   if (factor !== 1) { steps = ['(' + steps.join(' ') + ') × ' + r6(factor)]; cur *= factor }
+  if (DEDUCTING_RULES.has(rule) && factor) {   // rule.minus / rule.plusWidth: after the factor (sliding_2 sill guard)
+    for (const t of ctx.afterTerms(key, () => {})) {
+      steps.push(`${t.mm < 0 ? '−' : '+'} ${t.kind === 'minus' ? 'หัก' : 'กว้าง'} ${ctx.posName(t.key)} ${fmtMm(Math.abs(t.mm))}`)
+      cur += t.mm
+    }
+  }
   const lab = pos.orient === 'h' ? ['ซ้าย', 'ขวา'] : ['บน', 'ล่าง']
   const pair = line.ends?.[piece] || []
   if (ctx.isMitre(key)) steps.push('(เข้ามุม 45°)')

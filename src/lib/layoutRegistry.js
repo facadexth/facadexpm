@@ -9,6 +9,8 @@
 //   positions { [positionKey]: { part, orient:'h'|'v', per, name, labels?, rule:{ type, auto?, factor?, overlap?, role?, family? } } }
 //   joints    [{ h, v:[leftKey, rightKey], vPiece:'byEnd'|'same', vEnd:0|1, through:'v'|'h', mode:'butt'|'mitre'|'tee' }]
 //   roles     optional { role: positionKey } overrides of DEFAULT_ROLES (the positions rule.auto / rule.overlap read)
+//   positions[k].rule.minus / plusWidth  optional position keys: their line-0 butt distance is subtracted / profile
+//             width added AFTER the factor (sliding_2 sill guard; partExpand folds it into length_deduction_mm)
 //   positions[k].enabled   optional expression over params: 0 -> the position is absent from the model (swing_door sill)
 //   validParams  optional expression over params that must be > 0 (folding_door 'nL+nR'), else startModel/setParams
 //             throw Error('layout_params_invalid') before any rule is evaluated
@@ -179,6 +181,14 @@ export function validateLayout(def) {
   const pos = def.positions || {}
   const partKeys = new Set((def.parts || []).map((p) => p.key))
   for (const [k, p] of Object.entries(pos)) if (!partKeys.has(p.part)) errs.push(`position ${k}: unknown part ${p.part}`)
+  for (const [k, p] of Object.entries(pos)) {
+    for (const f of ['minus', 'plusWidth']) {
+      const v = p.rule?.[f]
+      if (v === undefined) continue
+      if (!Array.isArray(v)) errs.push(`position ${k}: rule.${f} must be an array of position keys`)
+      else for (const x of v) if (!pos[x]) errs.push(`position ${k}: rule.${f} names unknown position ${x}`)
+    }
+  }
   const seen = new Set()
   for (const j of def.joints || []) {
     if (pos[j.h]?.orient !== 'h') errs.push(`joint ${j.h}: h must be a horizontal position`)

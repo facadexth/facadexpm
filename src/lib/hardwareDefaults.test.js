@@ -28,8 +28,8 @@ describe('hardwareDefaults', () => {
     const q = byName(hardwareDefaults('curtain_wall', { cells: { '0,0': 'awning', '1,1': 'awning', '2,3': 'awning' } }))
     expect(q).toEqual({ 'แขนค้ำกระทุ้ง': 6, 'มือจับ': 3 })
   })
-  it('sliding_2 yields exactly what its layout declares: wheels 4, lock 1', () => {
-    expect(byName(hardwareDefaults('sliding_2', {}))).toEqual({ 'ลูกล้อ': 4, 'กุญแจ/มือจับ': 1 })
+  it('sliding_2 yields exactly what its layout declares: wheels 4, inner lock 2', () => {
+    expect(byName(hardwareDefaults('sliding_2', {}))).toEqual({ 'ลูกล้อ': 4, 'มือจับล็อค (ด้านใน)': 2 })
   })
   it('sliding_n counts every sash of its left / middle / right parts (R-F1): wheels 2 per sash', () => {
     expect(byName(hardwareDefaults('sliding_n', { n: 2 }))).toEqual({ 'ลูกล้อ': 4, 'กุญแจ/มือจับ': 1 })
@@ -58,5 +58,17 @@ describe('hardwareDefaultRows', () => {
   })
   it('sort_order starts after existing rows when offset given', () => {
     expect(hardwareDefaultRows('sliding_2', {}, 3).map(r => r.sort_order)).toEqual([3, 4])
+  })
+})
+
+describe('sliding_2 options hardware (Task 9)', () => {
+  it('default params (window, 2 sliding): wheels 4, inner lock 2, no outer key (qty 0 row dropped)', () => {
+    expect(byName(hardwareDefaults('sliding_2', {}))).toEqual({ 'ลูกล้อ': 4, 'มือจับล็อค (ด้านใน)': 2 })
+  })
+  it('door, เลื่อน 1 ฟิก 1: wheels 2, inner lock 1, outer key 1', () => {
+    expect(byName(hardwareDefaults('sliding_2', { door: true, one_fixed: 1 }))).toEqual({ 'ลูกล้อ': 2, 'มือจับล็อค (ด้านใน)': 1, 'กุญแจ/มือจับเรียบ (ด้านนอก)': 1 })
+  })
+  it('door, 2 sliding: outer key 2', () => {
+    expect(byName(hardwareDefaults('sliding_2', { door: true }))['กุญแจ/มือจับเรียบ (ด้านนอก)']).toBe(2)
   })
 })

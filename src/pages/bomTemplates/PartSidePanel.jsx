@@ -15,7 +15,7 @@ export default function PartSidePanel({ model, view, sel, families, canEdit, onC
   const tot = view.positionTotal(key)
   const issues = view.positionIssues(key).filter(r => r !== 'no_profile_family' && r !== 'corner_violation')
   const note = positionNote(model, view, key)
-  const posKeys = layout.parts.find(p => p.key === pk)?.positions || []
+  const posKeys = (layout.parts.find(p => p.key === pk)?.positions || []).filter(k => model.lines[k])   // present only (enabled: 0 positions are absent)
   const onSelLine = (i) => onSelect({ key, line: i })
   const auto = part.overlap_mode === 'auto_hook'
   const layoutPart = layout.parts.find(p => p.key === pk) || {}

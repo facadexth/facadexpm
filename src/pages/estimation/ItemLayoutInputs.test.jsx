@@ -86,6 +86,15 @@ describe('item form layout inputs', () => {
     setup('swing_door', { leaves: 2 })
     expect(panel().queryByLabelText(/บานพับด้าน/)).toBeNull()
   })
+  it('sliding_2: รูปแบบบาน is shown, บานฟิกอยู่ only when เลื่อน 1 ฟิก 1, ประตู/หน้าต่าง never (not an estimator input)', () => {
+    setup('sliding_2')
+    expect(panel().getByLabelText(/รูปแบบบาน/).tagName).toBe('SELECT')
+    expect(panel().queryByLabelText(/บานฟิกอยู่/)).toBeNull()
+    expect(panel().queryByLabelText(/ประตู/)).toBeNull()
+    cleanup()
+    setup('sliding_2', { one_fixed: 1 })
+    expect(panel().getByLabelText(/บานฟิกอยู่/)).toBeTruthy()
+  })
   it('folding door 0 + 0 on the item shows the hint instead of the drawing', () => {
     const { container } = setup('folding_door')
     fireEvent.change(panel().getByLabelText(/จำนวนบานพับซ้าย/), { target: { value: '0' } })

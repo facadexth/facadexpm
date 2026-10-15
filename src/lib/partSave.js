@@ -259,7 +259,7 @@ export function modelToRows(model, templateId, newId = () => crypto.randomUUID()
 }
 
 // The bom_templates columns a model carries besides its part rows: { layout_params } (coerced, known keys only) when
-// the model has params, {} when it has none (sliding_2) so the payload never names a column the database may lack.
+// the model has params, {} when it has none (a kind with no inputs) so the payload never names a column the database may lack.
 // Kept apart from modelToRows, whose result is exactly the four part tables.
 // model.done (the editor's "เสร็จแล้ว" part keys, UI meaning only) rides along under the reserved key `_done`; coerceParams
 // drops it, so it never reaches the expression params (see layoutRegistry.js).
@@ -331,7 +331,8 @@ export function validateModel(model) {
 // next successful save. The caller must show the error and keep the unsaved model in the editor so the user can
 // retry (a retry deletes and rewrites everything); costing reports a partial model as missing profiles, not 0.
 // A model with params first writes them to bom_templates.layout_params (templateParamsPayload), before any part row is
-// touched; a model without params (sliding_2) sends nothing there, so it keeps saving before the 2026-10-17-01 migration.
+// touched; a model without params (a kind with no inputs) sends nothing there, so it keeps saving before the 2026-10-17-01
+// migration. sliding_2 has params since its options (door / one_fixed / fixed_side), so it now needs that column.
 export async function saveModel({ supabase, templateId, model }) {
   const problem = validateModel(model)
   if (problem) throw new Error(problem)

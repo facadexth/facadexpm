@@ -296,7 +296,7 @@ const SLIDING_2_SNAPSHOT = {
     hook_stile: [{ profile_family: '', length_rule_type: 'height_minus', length_deduction_mm: 0, deduction_auto: true, length_factor: 1, quantity_value: 1, thickness_role: 'sash', ends: [[{ mode: 'through', to: null, deduction_mm: null }, { mode: 'through', to: null, deduction_mm: null }], [{ mode: 'through', to: null, deduction_mm: null }, { mode: 'through', to: null, deduction_mm: null }]] }],
   },
   names: { frame_top: 'เฟรมบน', frame_bottom: 'เฟรมล่าง', frame_side: 'เฟรมข้าง', sash_top: 'บานเลื่อนบน', sash_bottom: 'บานเลื่อนล่าง', key_stile: 'เสากุญแจ', hook_stile: 'เสาเกี่ยว' },
-  params: {},
+  params: { door: false, one_fixed: 0, fixed_side: 'left' },
 }
 
 // Every (key, piece, end) -> partner of the pre-refactor hard-coded partnerEnd, captured before the refactor.
@@ -319,6 +319,11 @@ describe('sliding_2 frozen behaviour (declarative layout)', () => {
   it('startModel deep-equals the pre-refactor snapshot plus params: {}', () => {
     expect(startModel('sliding_2')).toEqual(SLIDING_2_SNAPSHOT)
     expect(startModel('sliding_2', {})).toEqual(SLIDING_2_SNAPSHOT)
+  })
+  it('startModel minus params still deep-equals the snapshot minus params (Task 9 freeze proof)', () => {
+    const { params: _a, ...got } = startModel('sliding_2')
+    const { params: _b, ...want } = SLIDING_2_SNAPSHOT
+    expect(got).toEqual(want)
   })
   it('partnerEnd(model, ...) reproduces the old table and is an exact involution', () => {
     const m = startModel('sliding_2')
@@ -355,11 +360,11 @@ describe('sliding_2 frozen behaviour (declarative layout)', () => {
     const broken = JSON.parse(JSON.stringify(m))
     broken.lines.sash_top[0].ends.length = 1
     const r = setParams(broken, { foo: 3 })
-    expect(r.params).toEqual({ foo: 3 })
+    expect(r.params).toEqual({ door: false, one_fixed: 0, fixed_side: 'left', foo: 3 })
     expect(r.lines.sash_top[0].ends).toEqual(m.lines.sash_top[0].ends)
-    expect(broken.params).toEqual({})
+    expect(broken.params).toEqual({ door: false, one_fixed: 0, fixed_side: 'left' })
     expect(broken.lines.sash_top[0].ends).toHaveLength(1)
-    expect(setParams(r, { bar: 1 }).params).toEqual({ foo: 3, bar: 1 })
+    expect(setParams(r, { bar: 1 }).params).toEqual({ door: false, one_fixed: 0, fixed_side: 'left', foo: 3, bar: 1 })
   })
 })
 
@@ -480,5 +485,31 @@ describe('expression part counts are not editable (fix round 1, spec §6)', () =
     expect(setPartCount(n, 'sash_mid', 4)).toBe(n)   // R-F1: the middle sashes' count is 'n-2'
     // a literal-count part is still editable
     expect(setPartCount(startModel('sliding_2'), 'sash', 3).parts.find(p => p.key === 'sash').count).toBe(3)
+  })
+})
+
+// ---------------------------------------------------------------- Task 9: sliding_2 options (door / one_fixed / sill guard)
+import { presentPositions as present9, startModel as start9, setParams as setParams9, pieceCount as pieceCount9 } from './partModel'
+
+describe('sliding_2 options (Task 9)', () => {
+  it('default params: no sill_guard, same positions as before', () => {
+    const m = start9('sliding_2')
+    expect(m.lines.sill_guard).toBeUndefined()
+    expect(present9(m)).toEqual(['frame_top', 'frame_bottom', 'frame_side', 'sash_top', 'sash_bottom', 'key_stile', 'hook_stile'])
+  })
+  it('one_fixed 1: sill_guard (ธรณีกันบานเลื่อน) exists with one free piece on the frame part', () => {
+    const m = start9('sliding_2', { one_fixed: 1 })
+    expect(m.names.sill_guard).toBe('ธรณีกันบานเลื่อน')
+    expect(pieceCount9(m, 'sill_guard')).toBe(1)
+    expect(m.lines.sill_guard[0]).toMatchObject({ profile_family: 'ธรณีกันบานเลื่อน', length_rule_type: 'width_minus', deduction_auto: true, length_factor: 0.5, thickness_role: 'sash' })
+    expect(m.lines.sill_guard[0].ends).toEqual([[{ mode: 'through', to: null, deduction_mm: null }, { mode: 'through', to: null, deduction_mm: null }]])
+  })
+  it('setParams toggles sill_guard on and off; the rest of the model is untouched', () => {
+    const m = start9('sliding_2')
+    const on = setParams9(m, { one_fixed: 1 })
+    expect(on.lines.sill_guard).toHaveLength(1)
+    const off = setParams9(on, { one_fixed: 0 })
+    expect(off.lines).toEqual(m.lines)
+    expect(off.names).toEqual(m.names)
   })
 })
