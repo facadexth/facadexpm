@@ -26,6 +26,7 @@ export function resolveGrid(template, opening) {
 
 const factorOf = v => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 1)
 const endOf = v => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 0)
+const isFixedLength = v => v != null && v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0
 
 export function computeComponentLength(rule, deductionMm, widthM, heightM, factor = 1, endDeductionMm = 0) {
   const deductionM = deductionMm / 1000
@@ -71,7 +72,10 @@ export function computeBomForOpening(opening, template, components, hardware, pr
 
   // Explicit components (Business logic Step 3).
   const profileLines = (components || []).map(c => {
-    const length_m = computeComponentLength(c.length_rule_type, c.length_deduction_mm, opening.width_m, opening.height_m, factorOf(c.length_factor), endOf(c.end_deduction_mm))
+    // fixed_length_mm (add-on pieces, overridden main members): a length in mm that replaces the opening's rule.
+    const length_m = isFixedLength(c.fixed_length_mm)
+      ? (Number(c.fixed_length_mm) / 1000) * factorOf(c.length_factor) - endOf(c.end_deduction_mm) / 1000
+      : computeComponentLength(c.length_rule_type, c.length_deduction_mm, opening.width_m, opening.height_m, factorOf(c.length_factor), endOf(c.end_deduction_mm))
     const quantity = c.quantity_basis === 'per_cell' ? c.quantity_value * rowCount * columnCount : c.quantity_value
     return priceProfileLine({ role_name: c.role_name, family: c.profile_family, length_m, quantity, pricing, opening, thickness_mm: c.thickness_mm, cut_style: c.cut_style })
   })

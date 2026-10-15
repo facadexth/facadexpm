@@ -416,3 +416,23 @@ describe('computeBomForOpening -- length_factor and end_deduction_mm', () => {
     expect(lenOf({ length_factor: 1, end_deduction_mm: 0 })).toBe(lenOf({}))
   })
 })
+
+describe('computeBomForOpening -- fixed_length_mm', () => {
+  const comp = (extra) => ({ role_name: 'Fixed', profile_family: 'Frame-General', length_rule_type: 'width', length_deduction_mm: 0, quantity_basis: 'fixed', quantity_value: 1, ...extra })
+  const run = (components) => computeBomForOpening(baseOpening({ width_m: 1.8, height_m: 1.2 }), baseTemplate(), components, [], stubPricing([PROFILE], FINISH), GLASS)
+
+  it('prices the fixed length instead of the opening rule', () => {
+    const r = run([comp({ fixed_length_mm: 1723.8, length_factor: 1, end_deduction_mm: 0 })])
+    expect(r.profileLines[0].length_m).toBeCloseTo(1.7238, 9)
+  })
+
+  it('applies factor and end deduction to the fixed length', () => {
+    const r = run([comp({ fixed_length_mm: 1723.8, length_factor: 0.5, end_deduction_mm: 10 })])
+    expect(r.profileLines[0].length_m).toBeCloseTo(0.8519, 9)
+  })
+
+  it('absent / null fixed_length_mm keeps the rule path', () => {
+    expect(run([comp({})]).profileLines[0].length_m).toBe(1.8)
+    expect(run([comp({ fixed_length_mm: null })]).profileLines[0].length_m).toBe(1.8)
+  })
+})
