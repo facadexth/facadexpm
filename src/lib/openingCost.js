@@ -239,9 +239,12 @@ export function costOpening(ctx) {
   let addonMerge = null
   if (expansion) {
     addonIssues.push(...expansion.issues.map(i => ({ name: i.role_name, reason: i.reason, source: 'addon', addonIndex: i.addonIndex })))
+    // an attach unit is priced from its own expander bars only: the main template's grid (rail / mullion families, row
+    // weights) would add grid lines on top of the unit's mullion / rail pieces (resolveGrid / computeBomForOpening)
+    const unitTemplate = { ...template, grid_vertical_mullion_family: null, grid_horizontal_rail_family: null, grid_row_weights: [1] }
     for (const u of prepared.attach) {
       const opening = { ...main.opening, width_m: u.opening.width_m, height_m: u.opening.height_m, panel_count: u.opening.panel_count, hardware_set_id: null, extra_lines: [] }
-      addonBoms.push({ addonIndex: u.addonIndex, bom: computeBomForOpening(opening, template, u.components, [], pricing, main.infillType) })
+      addonBoms.push({ addonIndex: u.addonIndex, bom: computeBomForOpening(opening, unitTemplate, u.components, [], pricing, main.infillType) })
     }
     const attachIdx = new Set(prepared.attach.map(u => u.addonIndex))
     const mg = expansion.glass.filter(g => !attachIdx.has(g.addonIndex))

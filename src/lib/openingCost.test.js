@@ -527,6 +527,21 @@ describe('Task 5 (b): an attach add-on is its own unit', () => {
   })
 })
 
+describe('I-2: an attach unit never inherits the main template grid', () => {
+  it('grid families + row weights on the template: no gridLines in the attach unit, main unit unchanged', () => {
+    const base = aCtx([ao()], pieceRows('attach', null, ATTACH_FAMS))
+    const grid = { ...base, template: { ...base.template, grid_vertical_mullion_family: 'sr', grid_horizontal_rail_family: 'sr', grid_row_weights: [1, 1] } }
+    const r = costOpening(grid)
+    const plain = costOpening(base)
+    expect(r.addonBoms[0].bom.gridLines).toEqual([])
+    expect(r.addonBoms[0].bom.profileLines).toEqual(plain.addonBoms[0].bom.profileLines)
+    expect(r.addonBoms[0].bom.totalCost).toBeCloseTo(plain.addonBoms[0].bom.totalCost)
+    // the main unit still gets the template grid (2 rows ⇒ 1 rail)
+    expect(r.bom).toEqual(costOpening({ ...grid, itemAddonsByOpening: {} }).bom)
+    expect(r.bom.gridLines.length).toBeGreaterThan(0)
+  })
+})
+
 describe('Task 5 (c): a merge add-on joins the main frame', () => {
   it('sliding_2 top add-on, ext family changed: เฟรมข้าง 1.6 m in the long family, note ตบเรียบ, 3 panes', () => {
     const c = aCtx([ao({ mode: 'merge' })], pieceRows('merge', 'top', { ext: LONG, main_facing: null }))
