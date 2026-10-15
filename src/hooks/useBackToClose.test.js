@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { renderHook } from '@testing-library/react'
+import { renderHook, cleanup } from '@testing-library/react'
 import { useBackToClose } from './useBackToClose.js'
+
+afterEach(cleanup)
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -24,8 +26,19 @@ describe('useBackToClose (moved out of Modal, same contract)', () => {
     expect(window.history.state).toEqual({ modalOpen: true })
   })
 
-  it('closed another way: pops its own entry on unmount', () => {
-    const back = vi.spyOn(window.history, 'back').mockImplementation(() => {})
+  it('closed another way: pops its own entry on unmount (the popstate it causes is swallowed, not a close)', () => {
+    const onClose = vi.fn()
+    // like a browser: back() fires a popstate; the hook must NOT treat its own clean-up popstate as a close
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => window.dispatchEvent(new PopStateEvent('popstate')))
+    const { unmount } = renderHook(() => useBackToClose(onClose))
+    expect(window.history.state).toEqual({ modalOpen: true })
+    unmount()
+    expect(back).toHaveBeenCalledTimes(1)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('(legacy shape) pops its own entry on unmount', () => {
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => window.dispatchEvent(new PopStateEvent('popstate')))
     const { unmount } = renderHook(() => useBackToClose(() => {}))
     expect(window.history.state).toEqual({ modalOpen: true })
     unmount()

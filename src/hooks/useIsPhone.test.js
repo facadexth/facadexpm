@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, cleanup } from '@testing-library/react'
 import { useIsPhone, PHONE_QUERY, isPhoneNow } from './useIsPhone.js'
+
+afterEach(cleanup)
 
 function mockMatchMedia(matches) {
   const listeners = new Set()

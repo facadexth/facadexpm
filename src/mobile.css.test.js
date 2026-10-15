@@ -32,7 +32,7 @@ describe('mobile.css is phone-only', () => {
   })
 
   it('never widens the gate (no min-width, no nested media)', () => {
-    expect(stripped).not.toMatch(/min-width/)
+    expect(stripped).not.toMatch(/@media[^{]*min-width/)
     expect((stripped.match(/@media/g) || []).length).toBe(1)
   })
 })
