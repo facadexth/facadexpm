@@ -20,6 +20,7 @@ describe('reasonText for the inline add-on (ช่องแสง) reasons', () 
       addon_needs_layout: 'template นี้ไม่ได้ใช้ part editor จึงใส่ช่องแสงไม่ได้',
       addon_out_of_range: 'ช่องแสงยาวหรือเยื้องเกินขอบบานหลัก',
       addon_piece_too_small: 'ชิ้นส่วนช่องแสงสั้นกว่าระยะหัก',
+      addon_deduction_zero: 'ระยะหักของชิ้นช่องแสงยังเป็น 0 ตรวจใน template',
     }
     for (const [code, text] of Object.entries(want)) {
       expect(reasonText(code)).toBe(text)

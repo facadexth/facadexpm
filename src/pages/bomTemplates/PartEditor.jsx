@@ -157,7 +157,7 @@ export default function PartEditor({ model, onChange, index, canEdit, testSeries
         const set = setRowsFor(addonSets, a, model.layout_kind)
         return <AddonZoom addon={a} ai={aoIdx} rows={set.rows} isDefault={set.isDefault} dirty={set.dirty} families={families}
           canEdit={canEdit && !!onAddonSetsChange} pieceIdx={aoPiece} onPick={setAoPiece} main={aoMain} buttOf={data.buttOf}
-          layoutKind={model.layout_kind} model={model} error={addonError} onEditRow={(i, patch) => onAddonSetsChange(editSetRow(addonSets, a, model.layout_kind, i, patch))} />
+          layoutKind={model.layout_kind} model={model} error={addonError} onEditRow={(i, patch) => onAddonSetsChange(editSetRow(addonSets, a, model.layout_kind, i, patch, data.buttOf))} />
       })()}
     </div>
   )

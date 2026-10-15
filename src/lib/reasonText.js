@@ -21,6 +21,7 @@ export const REASON_TEXT = {
   addon_needs_layout: 'template นี้ไม่ได้ใช้ part editor จึงใส่ช่องแสงไม่ได้',
   addon_out_of_range: 'ช่องแสงยาวหรือเยื้องเกินขอบบานหลัก',
   addon_piece_too_small: 'ชิ้นส่วนช่องแสงสั้นกว่าระยะหัก',
+  addon_deduction_zero: 'ระยะหักของชิ้นช่องแสงยังเป็น 0 ตรวจใน template',
 }
 export const reasonText = code => REASON_TEXT[code] || String(code || '')
 

@@ -6,8 +6,9 @@
 //   main_facing → a family override of the main member facing the add-on and/or a note; divider → its butt replaces
 //   that side's frame butt in the main sash deductions (AO-2).
 // Every piece component carries fixed_length_mm = max(0, ref − deduction); the engine applies length_factor.
-// Issue reasons: no_profile_family, no_butt_distance, addon_out_of_range, addon_piece_too_small, addon_conflict.
-import { defaultAddonPieces, setKey, refValue, pieceQty, addonDims, layoutAddons, extRef, PIECE_LABEL, REF_LABEL } from './addonModel.js'
+// Issue reasons: no_profile_family, no_butt_distance, addon_out_of_range, addon_piece_too_small, addon_conflict,
+// addon_deduction_zero (a costed 2·butt piece still at deduction 0 while the set's side family has a butt > 0).
+import { defaultAddonPieces, setKey, refValue, pieceQty, addonDims, layoutAddons, extRef, sideFamilyOf, deductionStillZero, PIECE_LABEL, REF_LABEL } from './addonModel.js'
 import { LAYOUTS, rolesOf } from './layoutRegistry.js'
 
 const r6 = (x) => Math.round(x * 1e6) / 1e6
@@ -43,18 +44,24 @@ function makeCtx({ main, buttOf, layoutKind }) {
     if (v == null) { issue(name, 'no_butt_distance', ai); return 0 }
     return v
   }
+  // butt of a set's side family, no issue (the side piece reports its own); 0 when none
+  const sideButt = (rows) => {
+    const fam = sideFamilyOf(rows)
+    return fam ? (num(typeof buttOf === 'function' ? buttOf(fam) : null) ?? 0) : 0
+  }
   const m = { widthMm: num(main?.widthMm) ?? 0, heightMm: num(main?.heightMm) ?? 0 }
-  return { out, issue, buttMm, main: m, roles: rolesOf(LAYOUTS[layoutKind]) }
+  return { out, issue, buttMm, sideButt, main: m, roles: rolesOf(LAYOUTS[layoutKind]) }
 }
 
 // One component for a piece with qty > 0, or null (with an issue when it cannot be priced).
-function pieceComponent(r, a, ai, ctx, sortOrder) {
+function pieceComponent(r, a, ai, ctx, sortOrder, sideButtMm = 0) {
   const qty = qtyOf(r, a)
   if (qty <= 0) return null
   const name = roleName(r.piece_key, ai, r.note)
   if (!r.profile_family) { ctx.issue(name, 'no_profile_family', ai); return null }
   const raw = Number(refValue(a, r.ref_input, ctx.main)) - (num(r.deduction_mm) ?? 0)
   if (!(raw > 0)) { ctx.issue(name, 'addon_piece_too_small', ai); return null }
+  if (deductionStillZero(r, sideButtMm)) ctx.issue(name, 'addon_deduction_zero', ai)
   return {
     role_name: name, profile_family: r.profile_family, length_rule_type: 'width', length_deduction_mm: 0,
     length_factor: num(r.length_factor) ?? 1, end_deduction_mm: 0, fixed_length_mm: r6(Math.max(0, raw)),
@@ -84,8 +91,9 @@ function pushGlass(a, ai, b, ctx) {
 
 function expandAttach(a, ai, rows, ctx) {
   const components = []
+  const sb = ctx.sideButt(rows)
   for (const r of rows) {
-    const c = pieceComponent(r, a, ai, ctx, components.length)
+    const c = pieceComponent(r, a, ai, ctx, components.length, sb)
     if (c) components.push(c)
   }
   const { w, h } = addonDims(a)
@@ -127,9 +135,10 @@ function mergeMainPiece(r, a, ai, ctx, env) {
 
 function expandMerge(a, ai, rows, ctx, env) {
   const { merge } = ctx.out
+  const sb = ctx.sideButt(rows)
   for (const r of rows) {
     if (r.piece_key === 'ext' || r.piece_key === 'main_facing') { mergeMainPiece(r, a, ai, ctx, env); continue }
-    const c = pieceComponent(r, a, ai, ctx, merge.components.length)
+    const c = pieceComponent(r, a, ai, ctx, merge.components.length, sb)
     if (!c) continue
     merge.components.push(c)
     if (r.piece_key === 'divider') merge.sideButt[a.position] = ctx.buttMm(r.profile_family, c.role_name, ai)

@@ -250,3 +250,27 @@ describe('pieceTotalM / piecesTotalM / explainAddonPiece (Task 6 fix round)', ()
     expect(explainAddonPiece({ row: mf, addon: mrg, main })).toBe(null)
   })
 })
+
+describe('I-1: addon_deduction_zero', () => {
+  const zero = (mode, position) => defaultAddonPieces({ mode, kind: 'fixed', position, layoutKind: 'sliding_2', buttMm: 0 })
+    .map((r) => ({ ...r, profile_family: `P_${r.piece_key}` }))
+  it('attach: every costed 2·butt piece still at 0 with a side butt > 0 gets the issue; the bar is still costed', () => {
+    const r = run([add({ mode: 'attach', cols: 3 })], zero('attach', null))
+    const hit = r.issues.filter((x) => x.reason === 'addon_deduction_zero')
+    expect(hit.map((x) => x.role_name)).toEqual([`${PIECE_LABEL.frame_top} (ช่องแสง 1)`, `${PIECE_LABEL.frame_bottom} (ช่องแสง 1)`, `${PIECE_LABEL.mullion} (ช่องแสง 1)`])
+    expect(hit.every((x) => x.addonIndex === 0)).toBe(true)
+    expect(only(r.attach[0].components, 'frame_top').fixed_length_mm).toBe(1800)
+  })
+  it('merge: the costed bead / far frame / mullion at 0 get the issue (sliding_2 top divider has qty 0: not costed)', () => {
+    const r = run([add()], zero('merge', 'top'))
+    const keys = r.issues.filter((x) => x.reason === 'addon_deduction_zero').map((x) => x.role_name)
+    expect(keys).toEqual(['ao_bead', 'ao_frame_far', 'mullion'].map((k) => `${PIECE_LABEL[k]} (ช่องแสง 1)`))
+  })
+  it('absent: deductions filled, side family without butt, or no side family', () => {
+    expect(run([add({ mode: 'attach' })], rowsFor('attach', 'fixed', null)).issues).toEqual([])
+    const noSide = zero('attach', null).map((r) => (r.piece_key === 'frame_side' ? { ...r, profile_family: null } : r))
+    expect(run([add({ mode: 'attach' })], noSide).issues.some((x) => x.reason === 'addon_deduction_zero')).toBe(false)
+    const noButt = zero('attach', null).map((r) => (r.piece_key === 'frame_side' ? { ...r, profile_family: 'NOBUTT' } : r))
+    expect(run([add({ mode: 'attach' })], noButt).issues.some((x) => x.reason === 'addon_deduction_zero')).toBe(false)
+  })
+})

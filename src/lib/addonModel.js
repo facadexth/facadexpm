@@ -137,6 +137,38 @@ export function defaultAddonPieces({ mode, kind, position, layoutKind = 'sliding
   return spec.map((s, i) => row(mode, kind, pos, i, ...s))
 }
 
+// Pieces whose default deduction is 2·butt of the set's side family (defaultAddonPieces b2 rows).
+export const TWO_BUTT_KEYS = {
+  attach: ['frame_top', 'frame_bottom', 'mullion', 'rail'],
+  merge: ['divider', 'ao_bead', 'ao_frame_far', 'mullion', 'rail'],
+}
+// The piece keys that carry a set's side family: attach frame_side; merge ao_frame_side, falling back to ext.
+export const SIDE_KEYS = { attach: ['frame_side'], merge: ['ao_frame_side', 'ext'] }
+export const isTwoButtPiece = (r) => !!(r && TWO_BUTT_KEYS[r.mode] && TWO_BUTT_KEYS[r.mode].includes(r.piece_key))
+
+// The side family of one piece set (rows of one mode), or null.
+export function sideFamilyOf(rows) {
+  const list = (rows || []).filter(Boolean)
+  const mode = list[0] && list[0].mode
+  for (const key of SIDE_KEYS[mode] || []) {
+    const r = list.find((x) => x.piece_key === key && x.profile_family)
+    if (r) return r.profile_family
+  }
+  return null
+}
+
+// Every 2·butt piece whose deduction_mm is still 0 gets 2·buttMm; every other row is returned as is. A missing or
+// non-positive butt changes nothing. Never mutates its input.
+export function fillDefaultDeductions(rows, buttMm) {
+  const b = numOrNull(buttMm)
+  if (!(b > 0)) return rows
+  return (rows || []).map((r) => (isTwoButtPiece(r) && Number(r.deduction_mm) === 0 ? { ...r, deduction_mm: Math.round(2 * b * 1e6) / 1e6 } : r))
+}
+
+// A 2·butt piece still at deduction 0 while its set's side butt is > 0 (addon_deduction_zero).
+export const deductionStillZero = (r, sideButtMm) =>
+  isTwoButtPiece(r) && numOrNull(r.deduction_mm) === 0 && (numOrNull(sideButtMm) ?? 0) > 0
+
 export function pieceQty(r, a) {
   const rows = a.rows
   const cols = a.cols

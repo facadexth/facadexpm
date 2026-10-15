@@ -186,3 +186,40 @@ describe('fix round 1: totals, ที่มา, glass, size follow, shared frame
     expect(r.envelopeMm).toEqual({ w: 2200, h: 1600 })
   })
 })
+
+describe('I-1: assigning the side family fills the 0 default deductions', () => {
+  const buttOf = (f) => ({ FS: 38.1, AOS: 25, EXT: 30 })[f] ?? null
+  it('attach: picking the frame_side family fills frame_top / bottom / mullion / rail at 0 with 2·butt', () => {
+    const a = addon('attach', 'top')
+    const k = setKey('attach', 'fixed', 'top')
+    const rows0 = setRowsFor({}, a, 'sliding_2').rows
+    const idx = rows0.findIndex(r => r.piece_key === 'frame_side')
+    const next = editSetRow({}, a, 'sliding_2', idx, { profile_family: 'FS' }, buttOf)
+    expect(Object.fromEntries(next[k].rows.map(r => [r.piece_key, r.deduction_mm]))).toEqual({ frame_top: 76.2, frame_bottom: 76.2, frame_side: 0, mullion: 76.2, rail: 76.2 })
+  })
+  it('merge: ext family fills; a later ao_frame_side family leaves the non-zero rows alone', () => {
+    const a = addon('merge', 'top')
+    const k = setKey('merge', 'fixed', 'top')
+    const one = editSetRow({}, a, 'sliding_2', 0, { profile_family: 'EXT' }, buttOf)
+    expect(one[k].rows.find(r => r.piece_key === 'divider').deduction_mm).toBe(60)
+    const edited = editSetRow(one, a, 'sliding_2', one[k].rows.findIndex(r => r.piece_key === 'rail'), { deduction_mm: 0 })
+    const two = editSetRow(edited, a, 'sliding_2', edited[k].rows.findIndex(r => r.piece_key === 'ao_frame_side'), { profile_family: 'AOS' }, buttOf)
+    expect(two[k].rows.find(r => r.piece_key === 'divider').deduction_mm).toBe(60)   // already non-zero: untouched
+    expect(two[k].rows.find(r => r.piece_key === 'rail').deduction_mm).toBe(50)      // still 0: 2 × 25
+    expect(two[k].rows.find(r => r.piece_key === 'ext').deduction_mm).toBe(0)
+  })
+  it('editing a non-side row or without buttOf never fills', () => {
+    const a = addon('attach', 'top')
+    const k = setKey('attach', 'fixed', 'top')
+    expect(editSetRow({}, a, 'sliding_2', 0, { profile_family: 'FS' }, buttOf)[k].rows.every(r => r.piece_key === 'frame_top' || r.deduction_mm === 0)).toBe(true)
+    expect(editSetRow({}, a, 'sliding_2', 2, { profile_family: 'FS' })[k].rows.every(r => r.deduction_mm === 0)).toBe(true)
+  })
+  it('the zoom table row shows the deduction-zero chip', () => {
+    const a = addon('attach', 'top')
+    const rows = setRowsFor({}, a, 'sliding_2').rows.map(r => ({ ...r, profile_family: 'FS' }))
+    const lines = pieceTableRows({ addon: a, rows, main: { widthMm: 1800, heightMm: 1200 }, buttOf, layoutKind: 'sliding_2', model: null })
+    const by = Object.fromEntries(lines.map(l => [l.key, l.unresolved]))
+    expect(by.frame_top).toContain('ระยะหักของชิ้นช่องแสงยังเป็น 0 ตรวจใน template')
+    expect(by.frame_side).toBeNull()
+  })
+})

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   newAddon, addonDims, layoutAddons, refValue, extRef, setKey, defaultAddonPieces, pieceQty,
-  validateAddons, validatePieceRows, ALIGN_LABEL, alignLabel, PIECE_KEYS, REF_INPUTS, QTY_RULES, ADDON_MODES, ADDON_KINDS, ADDON_POSITIONS,
+  validateAddons, validatePieceRows, sideFamilyOf, fillDefaultDeductions, isTwoButtPiece, deductionStillZero, ALIGN_LABEL, alignLabel, PIECE_KEYS, REF_INPUTS, QTY_RULES, ADDON_MODES, ADDON_KINDS, ADDON_POSITIONS,
 } from './addonModel'
 
 const MAIN = { widthMm: 1800, heightMm: 1200 }
@@ -245,5 +245,41 @@ describe('validatePieceRows', () => {
     bad(good().map((r, i) => (i === 0 ? { ...r, qty_fixed: -1 } : r)))
     bad(good().map((r, i) => (i === 0 ? { ...r, qty_fixed: 1001 } : r)))
     expect(REF_INPUTS.attach).toEqual(['w', 'h'])
+  })
+})
+
+describe('I-1: side family + default 2·butt deductions', () => {
+  const att = () => defaultAddonPieces({ mode: 'attach', kind: 'fixed', position: null })
+  const mrg = () => defaultAddonPieces({ mode: 'merge', kind: 'fixed', position: 'top', layoutKind: 'sliding_2' })
+  it('isTwoButtPiece: attach frame_top/bottom/mullion/rail; merge divider/ao_bead/ao_frame_far/mullion/rail', () => {
+    expect(att().filter(isTwoButtPiece).map(r => r.piece_key)).toEqual(['frame_top', 'frame_bottom', 'mullion', 'rail'])
+    expect(mrg().filter(isTwoButtPiece).map(r => r.piece_key)).toEqual(['divider', 'ao_bead', 'ao_frame_far', 'mullion', 'rail'])
+  })
+  it('sideFamilyOf: attach frame_side; merge ao_frame_side, else ext; null when none', () => {
+    expect(sideFamilyOf(att().map(r => (r.piece_key === 'frame_side' ? { ...r, profile_family: 'FS' } : r)))).toBe('FS')
+    expect(sideFamilyOf(mrg().map(r => (r.piece_key === 'ext' ? { ...r, profile_family: 'EXT' } : r)))).toBe('EXT')
+    expect(sideFamilyOf(mrg().map(r => ({ ...r, profile_family: r.piece_key === 'ext' ? 'EXT' : r.piece_key === 'ao_frame_side' ? 'AOS' : null })))).toBe('AOS')
+    expect(sideFamilyOf(att())).toBeNull()
+    expect(sideFamilyOf([])).toBeNull()
+  })
+  it('fillDefaultDeductions: 0 rows of the 2·butt pieces get 2·butt (attach set)', () => {
+    const rows = att().map(r => (r.piece_key === 'mullion' ? { ...r, deduction_mm: 12 } : r))
+    const out = fillDefaultDeductions(rows, 38.1)
+    expect(Object.fromEntries(out.map(r => [r.piece_key, r.deduction_mm]))).toEqual({ frame_top: 76.2, frame_bottom: 76.2, frame_side: 0, mullion: 12, rail: 76.2 })
+    expect(rows.find(r => r.piece_key === 'frame_top').deduction_mm).toBe(0)   // input untouched
+  })
+  it('fillDefaultDeductions: merge set, non-2·butt pieces stay 0; butt 0 / null changes nothing', () => {
+    const out = fillDefaultDeductions(mrg(), 25)
+    expect(Object.fromEntries(out.map(r => [r.piece_key, r.deduction_mm]))).toEqual({ ext: 0, divider: 50, main_facing: 0, ao_frame_side: 0, ao_bead: 50, ao_frame_far: 50, mullion: 50, rail: 50 })
+    expect(fillDefaultDeductions(mrg(), 0)).toEqual(mrg())
+    expect(fillDefaultDeductions(mrg(), null)).toEqual(mrg())
+  })
+  it('deductionStillZero: a 2·butt piece at 0 while the side butt > 0', () => {
+    const top = att().find(r => r.piece_key === 'frame_top')
+    const side = att().find(r => r.piece_key === 'frame_side')
+    expect(deductionStillZero(top, 38.1)).toBe(true)
+    expect(deductionStillZero({ ...top, deduction_mm: 76.2 }, 38.1)).toBe(false)
+    expect(deductionStillZero(top, 0)).toBe(false)
+    expect(deductionStillZero(side, 38.1)).toBe(false)
   })
 })
