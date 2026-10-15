@@ -99,4 +99,43 @@
   .btn { min-height: var(--phone-tap); }
   .btn-sm { min-height: 36px; }
   .btn-xs { min-height: 30px; }
+
+  /* ---- dedicated phone cards (components/phone/*.jsx): sites with mini infographics, compact quotations ---- */
+  .pc-list { display: grid; gap: 10px; }
+  .pc-sorts { margin-bottom: 2px; }
+  .pc-chip { font: inherit; font-size: 12px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg2); color: var(--text2); cursor: pointer; }
+  .pc-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; padding: 10px 12px; cursor: pointer; min-width: 0; }
+  .pc-card:active { background: var(--bg3); }
+  .pc-row1 { display: flex; gap: 8px; align-items: flex-start; min-width: 0; }
+  .pc-name { flex: 1; min-width: 0; font-weight: 700; font-size: 14px; line-height: 1.3; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .pc-row1 .badge { flex: none; }
+  .pc-sub { color: var(--text2); font-size: 12px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pc-map { margin-left: 6px; text-decoration: none; }
+  .pc-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 10px 0 6px; }
+  .pc-stat { background: var(--bg3); border-radius: 10px; padding: 6px 8px; min-width: 0; }
+  .pc-stat small { display: block; color: var(--text2); font-size: 10.5px; }
+  .pc-stat b { display: block; font-size: 14px; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pc-good { color: var(--green) !important; }
+  .pc-bad { color: var(--red) !important; }
+  .pc-warn { color: var(--yellow) !important; }
+  .pc-lbl { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--text2); margin-top: 4px; }
+  .pc-lbl span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pc-bar { height: 8px; border-radius: 4px; background: var(--bg4); overflow: hidden; margin: 3px 0 2px; }
+  .pc-bar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+  .pc-bar i.pc-bar-good { background: var(--green); }
+  .pc-bar i.pc-bar-bad { background: var(--red); }
+  .pc-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; font-size: 11.5px; color: var(--text2); }
+  .pc-foot > span:first-child { min-width: 0; }
+  .pc-acts { display: flex; gap: 6px; align-items: center; flex: none; cursor: default; }
+  .pc-acts .actions-cell { display: flex; gap: 6px; align-items: center; flex-wrap: nowrap; }
+  .pc-acts .btn { min-height: 32px; }
+  .pc-compact { padding: 8px 12px; }
+  .pc-compact .pc-row1 { align-items: center; }
+  .pc-no { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+  .pc-amt { margin-left: auto; font-weight: 700; font-size: 15px; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pc-client { font-weight: 600; font-size: 13.5px; color: var(--text); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pc-where { font-weight: 400; color: var(--text2); }
+  .pc-row3 { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 4px; }
+  .pc-meta { min-width: 0; font-size: 11.5px; color: var(--text2); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .pc-empty { text-align: center; color: var(--text3); padding: 24px 0; }
 }

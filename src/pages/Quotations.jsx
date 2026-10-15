@@ -41,6 +41,8 @@ import { resolveDocumentStyle } from '../lib/documentStyle.js'
 import { removeBlockOrClear } from '../lib/rowEditing.js'
 import CardTable from '../components/CardTable.jsx'
 import PhoneFilters from '../components/PhoneFilters.jsx'
+import QuotationPhoneCards from '../components/phone/QuotationPhoneCards.jsx'
+import { useIsPhone } from '../hooks/useIsPhone.js'
 
 const clientOpts = (clients) => (clients || []).map(c => ({
   value: c.id, label: `${c.client_number} · ${c.name}`, keywords: `${c.client_number} ${c.name}`,
@@ -1235,6 +1237,7 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
 }
 
 export default function Quotations({ navigateTo, navState, openSiteOverview }) {
+  const isPhone = useIsPhone()
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'quotations')
   const today = new Date()
@@ -1639,6 +1642,69 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
     )
   }
 
+  // Row actions, shared by the table row and the phone card (same JSX → same desktop DOM)
+  const renderQtActions = qt => (
+      <div className="actions-cell">
+        <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(qt)}>📄</button>
+        {(qt.revision || 1) > 1 && (
+          <button className="btn btn-sm btn-ghost" title="ประวัติการแก้ไข" onClick={() => setHistoryRow(qt)}>🕓</button>
+        )}
+        {canEdit && qt.status === 'draft' && (
+          <>
+            <button className="btn btn-sm btn-primary" onClick={() => handleSetStatus(qt.id, 'sent')}>📤 ส่ง</button>
+            <RowActionsMenu items={[
+              { label: '✏️ แก้ไข', onClick: () => { setEditRow(qt); setShowAdd(true) } },
+              { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
+              { label: '🗑️ ลบ', onClick: () => setDeleteId(qt.id), danger: true },
+            ]} />
+          </>
+        )}
+        {canEdit && qt.status === 'sent' && (
+          <>
+            {qt.on_hold
+              ? <button className="btn btn-sm btn-primary" onClick={() => handleUnhold(qt)} title="เลยวันยืนราคา ระบบพักไว้ — ยกเลิกพักแล้วขยายวันยืนราคาให้ 7 วัน">▶ ยกเลิกพัก</button>
+              : <button className="btn btn-sm btn-primary" onClick={() => setSignTarget(qt)} title="เซ็นรับต่อหน้า (ส่งอุปกรณ์ให้ลูกค้าเซ็นตรงนี้)">🖊️ เซ็นรับ</button>}
+            <RowActionsMenu items={[
+              ...(qt.valid_until && !qt.on_hold ? [{ label: '⏳ เลื่อนวันยืนราคา +7 วัน', onClick: () => handleSnooze(qt) }] : []),
+              qt.on_hold
+                ? { label: '▶ ยกเลิกพัก (Unhold)', onClick: () => handleUnhold(qt) }
+                : { label: '⏸ พักใบเสนอราคา', onClick: () => handleHold(qt) },
+              { label: '🔗 ลิงก์เซ็นรับ', onClick: () => setLinkTarget(qt) },
+              { label: '↩️ แก้ไข (ดึงกลับเป็นร่าง)', onClick: () => handlePullBackToEdit(qt) },
+              { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
+              { label: 'ปฏิเสธ', onClick: () => handleSetStatus(qt.id, 'rejected') },
+              { label: 'หมดอายุ', onClick: () => handleSetStatus(qt.id, 'expired') },
+            ]} />
+          </>
+        )}
+        {canEdit && qt.status === 'accepted' && !qt.site_id && (
+          <>
+            <button className="btn btn-sm btn-primary" onClick={() => setAcceptRow(qt)} title="ลูกค้าเซ็นรับแล้ว เหลือแค่ผูกไซท์งาน">🔗 ผูกไซท์งาน</button>
+            <RowActionsMenu items={[
+              ...(isAtLeast('OWNER') ? [{ label: '✏️ แก้ไข (OWNER)', onClick: () => setOwnerEditTarget(qt) }] : []),
+              { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
+            ]} />
+          </>
+        )}
+        {/* accepted+linked: OWNER-only edit escape hatch (see
+            handlePullBackToEdit's comment on why this is safe
+            even with invoices already issued). rejected/expired
+            below still have no edit path at all -- only
+            duplicate, which never touches the source document. */}
+        {canEdit && qt.status === 'accepted' && qt.site_id && (
+          <RowActionsMenu items={[
+            ...(isAtLeast('OWNER') ? [{ label: '✏️ แก้ไข (OWNER)', onClick: () => setOwnerEditTarget(qt) }] : []),
+            { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
+          ]} />
+        )}
+        {canEdit && (qt.status === 'rejected' || qt.status === 'expired') && (
+          <RowActionsMenu items={[
+            { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
+          ]} />
+        )}
+      </div>
+  )
+
   return (
     <div>
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
@@ -1666,6 +1732,18 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
         <PendingFocusChip focus={{ ...followupFocus, clear: endFollowupFocus }} pendingKey="quotations_followup" />
       </div>
 
+      {isPhone ? (
+        <QuotationPhoneCards
+          rows={sortedQuotations.map(qt => ({
+            qt,
+            total: calcQuotationTotals(qt.quotation_items, { hasVat: qt.has_vat, priceIncludesVat: qt.price_includes_vat, discountAmount: qt.discount_amount, discountPct: qt.discount_pct }).total,
+            items: (qt.quotation_items || []).filter(it => it.item_type === 'item').length,
+            expiring: isQuotationExpiring(qt, TODAY_BKK),
+          }))}
+          todayIso={TODAY_BKK} toggleSort={toggleSort} sortIcon={si} statusLabels={QT_STATUS_LABELS}
+          fmt={fmt} fmtDate={fmtDate} renderActions={renderQtActions} onOpen={qt => setDocRow(qt)} PendingMark={PendingMark}
+        />
+      ) : (
       <div className="card">
         <CardTable>
           <table>
@@ -1721,65 +1799,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
                       )}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <div className="actions-cell">
-                        <button className="btn btn-sm btn-ghost" onClick={() => setDocRow(qt)}>📄</button>
-                        {(qt.revision || 1) > 1 && (
-                          <button className="btn btn-sm btn-ghost" title="ประวัติการแก้ไข" onClick={() => setHistoryRow(qt)}>🕓</button>
-                        )}
-                        {canEdit && qt.status === 'draft' && (
-                          <>
-                            <button className="btn btn-sm btn-primary" onClick={() => handleSetStatus(qt.id, 'sent')}>📤 ส่ง</button>
-                            <RowActionsMenu items={[
-                              { label: '✏️ แก้ไข', onClick: () => { setEditRow(qt); setShowAdd(true) } },
-                              { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
-                              { label: '🗑️ ลบ', onClick: () => setDeleteId(qt.id), danger: true },
-                            ]} />
-                          </>
-                        )}
-                        {canEdit && qt.status === 'sent' && (
-                          <>
-                            {qt.on_hold
-                              ? <button className="btn btn-sm btn-primary" onClick={() => handleUnhold(qt)} title="เลยวันยืนราคา ระบบพักไว้ — ยกเลิกพักแล้วขยายวันยืนราคาให้ 7 วัน">▶ ยกเลิกพัก</button>
-                              : <button className="btn btn-sm btn-primary" onClick={() => setSignTarget(qt)} title="เซ็นรับต่อหน้า (ส่งอุปกรณ์ให้ลูกค้าเซ็นตรงนี้)">🖊️ เซ็นรับ</button>}
-                            <RowActionsMenu items={[
-                              ...(qt.valid_until && !qt.on_hold ? [{ label: '⏳ เลื่อนวันยืนราคา +7 วัน', onClick: () => handleSnooze(qt) }] : []),
-                              qt.on_hold
-                                ? { label: '▶ ยกเลิกพัก (Unhold)', onClick: () => handleUnhold(qt) }
-                                : { label: '⏸ พักใบเสนอราคา', onClick: () => handleHold(qt) },
-                              { label: '🔗 ลิงก์เซ็นรับ', onClick: () => setLinkTarget(qt) },
-                              { label: '↩️ แก้ไข (ดึงกลับเป็นร่าง)', onClick: () => handlePullBackToEdit(qt) },
-                              { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
-                              { label: 'ปฏิเสธ', onClick: () => handleSetStatus(qt.id, 'rejected') },
-                              { label: 'หมดอายุ', onClick: () => handleSetStatus(qt.id, 'expired') },
-                            ]} />
-                          </>
-                        )}
-                        {canEdit && qt.status === 'accepted' && !qt.site_id && (
-                          <>
-                            <button className="btn btn-sm btn-primary" onClick={() => setAcceptRow(qt)} title="ลูกค้าเซ็นรับแล้ว เหลือแค่ผูกไซท์งาน">🔗 ผูกไซท์งาน</button>
-                            <RowActionsMenu items={[
-                              ...(isAtLeast('OWNER') ? [{ label: '✏️ แก้ไข (OWNER)', onClick: () => setOwnerEditTarget(qt) }] : []),
-                              { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
-                            ]} />
-                          </>
-                        )}
-                        {/* accepted+linked: OWNER-only edit escape hatch (see
-                            handlePullBackToEdit's comment on why this is safe
-                            even with invoices already issued). rejected/expired
-                            below still have no edit path at all -- only
-                            duplicate, which never touches the source document. */}
-                        {canEdit && qt.status === 'accepted' && qt.site_id && (
-                          <RowActionsMenu items={[
-                            ...(isAtLeast('OWNER') ? [{ label: '✏️ แก้ไข (OWNER)', onClick: () => setOwnerEditTarget(qt) }] : []),
-                            { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
-                          ]} />
-                        )}
-                        {canEdit && (qt.status === 'rejected' || qt.status === 'expired') && (
-                          <RowActionsMenu items={[
-                            { label: '📋 ทำสำเนาเป็นใบใหม่', onClick: () => handleDuplicate(qt) },
-                          ]} />
-                        )}
-                      </div>
+                      {renderQtActions(qt)}
                     </td>
                   </tr>
                 )
@@ -1791,6 +1811,7 @@ export default function Quotations({ navigateTo, navState, openSiteOverview }) {
           </table>
         </CardTable>
       </div>
+      )}
 
       {deleteId && (
         <ConfirmDialog title="ลบใบเสนอราคา" message="ยืนยันการลบใบเสนอราคานี้?" onConfirm={handleDelete} onCancel={() => setDeleteId(null)} danger />

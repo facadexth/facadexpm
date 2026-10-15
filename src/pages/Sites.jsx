@@ -28,6 +28,8 @@ import SearchableSelect from '../components/SearchableSelect.jsx'
 import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import CardTable from '../components/CardTable.jsx'
 import MoreActions from '../components/MoreActions.jsx'
+import SitePhoneCards from '../components/phone/SitePhoneCards.jsx'
+import { useIsPhone } from '../hooks/useIsPhone.js'
 
 // Phone card layout of the sites table (CardTable): inferred roles would pick รหัส as the title, so say it explicitly.
 const SITES_CARD_MAP = { title: 'ชื่อไซท์งาน', sub: ['รหัส'], amount: 'มูลค่าสัญญา', status: 'สถานะ', actions: 'last' }
@@ -500,6 +502,7 @@ function SiteCompleteModal({ site, onClose, onDone }) {
 }
 
 export default function Sites({ navigateTo, openSiteOverview, navState }) {
+  const isPhone = useIsPhone()
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'sites')
   const { tenant, hasModuleAccess } = useTenant()
@@ -607,6 +610,12 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
     else alert('Error: ' + error.message)
   }
 
+  // Row ⋯ menu, shared by the table row and the phone card
+  const siteMenuItems = s => [
+    ...(s.status === 'Ongoing' ? [{ label: '✅ จบไซท์งาน', onClick: () => handleCompleteClick(s) }] : []),
+    { label: '🗑️ ลบ', onClick: () => setDeleteId(s.id), danger: true },
+  ]
+
   return (
     <div>
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
@@ -640,7 +649,15 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
       )}
 
       {/* ── Table ── */}
-      {viewMode === 'table' && (
+      {viewMode === 'table' && isPhone && (
+        <SitePhoneCards
+          sites={filtered} toggleSort={toggleSort} sortIcon={si} canEdit={canEdit}
+          onOpen={st => navigateTo('site_detail', { siteId: st.id, siteName: st.name })}
+          onEdit={st => { setEditSite(st); setShowForm(true) }}
+          menuItems={siteMenuItems} countdown={countdown} fmtDate={fmtDate} PencilIcon={PencilIcon}
+        />
+      )}
+      {viewMode === 'table' && !isPhone && (
       <div className="card">
         <CardTable map={SITES_CARD_MAP}>
           <table>
@@ -759,10 +776,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
                       {canEdit && (
                         <div className="actions-cell">
                           <button className="btn btn-sm btn-edit" onClick={() => { setEditSite(s); setShowForm(true) }}><PencilIcon /></button>
-                          <RowActionsMenu items={[
-                            ...(s.status === 'Ongoing' ? [{ label: '✅ จบไซท์งาน', onClick: () => handleCompleteClick(s) }] : []),
-                            { label: '🗑️ ลบ', onClick: () => setDeleteId(s.id), danger: true },
-                          ]} />
+                          <RowActionsMenu items={siteMenuItems(s)} />
                         </div>
                       )}
                     </td>
