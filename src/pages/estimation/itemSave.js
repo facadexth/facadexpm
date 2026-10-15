@@ -16,3 +16,20 @@ export async function saveItemWithAddons({ supabase, rowId, payload, addons, mai
   }
   return { id: data.id, addonError }
 }
+
+// When the item form may seed / save its inline add-ons. map = ctx.itemAddonsByOpening (undefined while loading),
+// error = ctx.itemAddonsError, itemId = the edited row (null for a new item), seeded = the form already holds the
+// saved list, hadAddons = the item had saved add-ons (or the form saved some). Ready only when the map is loaded AND
+// there is no load error (useItemAddons keeps `{}` on error, which must never read as "no add-ons").
+// Returns { ready, seed, save }: seed = the saved list to put into the form (once, when ready and not yet seeded),
+// save = rewrite the add-on table on save (form has add-ons, or the item had some so an empty list clears them).
+export function addonSavePlan({ map, error = null, loading = false, itemId = null, formAddons = [], seeded = false, hadAddons = false }) {
+  if (!itemId) return { ready: true, seed: null, save: (formAddons || []).length > 0 || hadAddons }
+  const ready = !!map && !error && !loading
+  if (!ready) return { ready: false, seed: null, save: false }
+  if (!seeded) {
+    const saved = map[itemId] || []
+    return { ready: true, seed: saved, save: false }
+  }
+  return { ready: true, seed: null, save: (formAddons || []).length > 0 || hadAddons }
+}

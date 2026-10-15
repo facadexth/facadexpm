@@ -261,6 +261,9 @@ describe('inline add-ons (ช่องแสง) on the item form', () => {
       addonMerge: { glass: { area_sqm: 0.72, cost: 612, panes: 3 } },
     }
     const lines = addonCostLines(cost, [1, 3])
+    expect(lines.map(l => l.resolved)).toEqual([true, true, true])
+    expect(addonCostLines({ addonBoms: [{ addonIndex: 0, bom: { totalCost: 5, unresolvedDetails: [{ name: 'x' }] } }] }, [0])[0].resolved).toBe(false)
+    expect(addonCostLines({ addonBoms: [{ addonIndex: 0, bom: { totalCost: 5 } }], unresolved: [{ source: 'addon', addonIndex: 0, reason: 'no_profile_family' }] }, [0])[0].resolved).toBe(false)
     expect(lines.map(l => [l.label, l.value])).toEqual([
       ['ช่องแสง 2 (แยกวงกบ)', 1234.5],
       ['ช่องแสง 4 (แยกวงกบ)', 100],

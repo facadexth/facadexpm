@@ -19,6 +19,8 @@ const isH = p => p === 'top' || p === 'bottom'
 export const addonSummary = a => [
   ADDON_MODE_LABEL[a.mode] || '?', ADDON_KIND_LABEL[a.kind] || '?', ADDON_POSITION_LABEL[a.position] || '?', `${addonSize(a)} มม.`,
   `${shown(a.rows) === '' ? '?' : a.rows} × ${shown(a.cols) === '' ? '?' : a.cols} ช่อง`, alignLabel(a)[a.align === 'end' ? 'end' : 'start'],
+  // a converted legacy add-on keeps its offset (no field for it any more): shown so it is not hidden
+  ...(Number(a.offset_mm) ? [`เยื้อง ${Number(a.offset_mm)}`] : []),
 ].join(' · ')
 
 function AddonRow({ a, i, done, warn, dis, onPatch, onToggle, onRemove }) {
@@ -112,7 +114,7 @@ export default function ItemAddons({ addons, main, onChange, onConvert, legacy =
       ))}
       <div style={{ fontSize: 12, color: 'var(--text3)' }}>
         {list.length
-          ? `${list.length} ชิ้น (สูงสุด ${MAX_ADDONS}) · ชิ้นส่วนของแต่ละแบบตั้งใน template`
+          ? `${list.length} ชิ้น (สูงสุด ${MAX_ADDONS}) · ชนิดกระทุ้งตอนนี้คิดเหมือนติดตาย (ยังไม่มีชิ้นบานกระทุ้ง)`
           : 'ยังไม่มีช่องแสง กด + เพิ่มช่องแสง'}
       </div>
     </div>

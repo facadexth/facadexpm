@@ -26,7 +26,13 @@ describe('ItemAddons renders', () => {
     expect(html).toContain('ร่วมวงกบ · ติดตาย · บน · 1800 × 400 มม. · 1 × 3 ช่อง · เสมอซ้าย')
     expect(html).toContain('แยกวงกบ · กระทุ้ง · ขวา · 500 × 1200 มม. · 2 × 1 ช่อง · เสมอล่าง')
     expect(html).toContain('3 ชิ้น (สูงสุด 6)')
+    expect(html).toContain('ชนิดกระทุ้งตอนนี้คิดเหมือนติดตาย (ยังไม่มีชิ้นบานกระทุ้ง)')
+    expect(html).not.toContain('เยื้อง')
     expect(html).not.toMatch(/NaN|undefined/)
+  })
+  it('a non-zero offset (converted legacy add-on) shows in the summary', () => {
+    const html = clean(renderToString(<ItemAddons addons={[{ ...top, mode: 'attach', offset_mm: 25 }]} main={main} onChange={noop} onConvert={noop} />))
+    expect(html).toContain('แยกวงกบ · ติดตาย · บน · 1800 × 400 มม. · 1 × 3 ช่อง · เสมอซ้าย · เยื้อง 25')
   })
   it('a too-long add-on shows the range warning line', () => {
     const html = clean(renderToString(<ItemAddons addons={[{ ...top, len_mm: 2000 }]} main={main} onChange={noop} onConvert={noop} />))

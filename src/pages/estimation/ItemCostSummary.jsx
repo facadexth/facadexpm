@@ -64,7 +64,7 @@ export default function ItemCostSummary({ cost, flags, index, addonName, addonIn
       {cost.addonBom && <Section title={`ของเพิ่มเติม${addonName ? `: ${addonName}` : ''}`}><BomRows bom={cost.addonBom} index={index} flags={flags && flags.addon} /></Section>}
       {addonLines.length > 0 && (
         <Section title="ช่องแสง">
-          {addonLines.map(l => <Row key={l.key} label={l.label} value={fmt(l.value)} />)}
+          {addonLines.map(l => <Row key={l.key} label={l.label} value={money(l.resolved, l.value)} bad={!l.resolved} note={l.resolved ? null : 'ยังมีชิ้นที่ไม่มีราคา'} />)}
           {notes.map((n, i) => <div key={`n${i}`} style={{ fontSize: 12, color: 'var(--text3)' }}>หมายเหตุ ช่องแสง {((addonIndexOf || [])[n.addonIndex] ?? n.addonIndex) + 1}: {n.text}</div>)}
         </Section>
       )}

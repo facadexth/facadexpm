@@ -1,7 +1,7 @@
 // Save order of the item form: the opening row first, then its inline add-ons (estimation_item_addons); a failed
 // add-on save is reported but the opening row stays saved. Fake Supabase client that records every request.
 import { describe, it, expect } from 'vitest'
-import { saveItemWithAddons } from './itemSave.js'
+import { saveItemWithAddons, addonSavePlan } from './itemSave.js'
 
 function fakeClient({ failOn = null } = {}) {
   const calls = []
@@ -65,5 +65,35 @@ describe('saveItemWithAddons', () => {
     const c = fakeClient({ failOn: q => q.table === 'estimation_openings' })
     await expect(saveItemWithAddons({ supabase: c, rowId: 'o1', payload, addons: [addon], main, saveAddons: true })).rejects.toMatchObject({ message: 'boom estimation_openings update' })
     expect(c.calls).toHaveLength(1)
+  })
+})
+
+describe('addonSavePlan (never write an add-on list that was not loaded)', () => {
+  const saved = [addon]
+  it('loading (no map yet) ⇒ not ready, no seed, no save', () => {
+    expect(addonSavePlan({ map: undefined, itemId: 'o1', formAddons: [addon], seeded: false })).toEqual({ ready: false, seed: null, save: false })
+    expect(addonSavePlan({ map: { o1: saved }, loading: true, itemId: 'o1', seeded: true, hadAddons: true })).toEqual({ ready: false, seed: null, save: false })
+  })
+  it('load error with the {} map ⇒ not ready, no seed, no save', () => {
+    expect(addonSavePlan({ map: {}, error: 'boom', itemId: 'o1', formAddons: [], seeded: false })).toEqual({ ready: false, seed: null, save: false })
+    expect(addonSavePlan({ map: {}, error: 'boom', itemId: 'o1', formAddons: [addon], seeded: true, hadAddons: true }).save).toBe(false)
+  })
+  it('a recovered load seeds once with the saved list, then no more seeding', () => {
+    expect(addonSavePlan({ map: { o1: saved }, itemId: 'o1', seeded: false })).toEqual({ ready: true, seed: saved, save: false })
+    expect(addonSavePlan({ map: { o1: saved }, itemId: 'o1', formAddons: saved, seeded: true, hadAddons: true })).toEqual({ ready: true, seed: null, save: true })
+  })
+  it('ready + empty form: saves (clears) only when the item had add-ons', () => {
+    expect(addonSavePlan({ map: { o1: [] }, itemId: 'o1', formAddons: [], seeded: true, hadAddons: true }).save).toBe(true)
+    expect(addonSavePlan({ map: { o1: [] }, itemId: 'o1', formAddons: [], seeded: true, hadAddons: false }).save).toBe(false)
+  })
+  it('a new item saves only when it has add-ons', () => {
+    expect(addonSavePlan({ map: undefined, itemId: null, formAddons: [addon] })).toEqual({ ready: true, seed: null, save: true })
+    expect(addonSavePlan({ map: undefined, itemId: null, formAddons: [] }).save).toBe(false)
+  })
+  it('with the load-error flag set, the save makes no add-on request', async () => {
+    const c = fakeClient()
+    const plan = addonSavePlan({ map: {}, error: 'boom', itemId: 'o1', formAddons: [], seeded: true, hadAddons: false })
+    await saveItemWithAddons({ supabase: c, rowId: 'o1', payload, addons: [], main, saveAddons: plan.save })
+    expect(c.calls.map(x => x.table)).toEqual(['estimation_openings'])
   })
 })

@@ -12,7 +12,7 @@ import { emptyForm, formFromOpening, buildOpeningPayload } from '../../lib/openi
 import { snapshotFor } from '../../lib/itemPreviewSignature.js'
 import { bomTemplatesForType } from '../../lib/layoutTemplates.js'
 import { typePath, pickInPath, cascadeLevels, typeTreeOf, templatesForType, reconcileItemForm, validateItemForm, applyCardToForm, layoutRowFromItem, layoutSaveErrorText, convertLegacyAddon, mainMmOf } from './itemForm.js'
-import { saveItemWithAddons } from './itemSave.js'
+import { saveItemWithAddons, addonSavePlan } from './itemSave.js'
 import ItemAddons from './ItemAddons.jsx'
 import { useItemModel } from './useItemModel.js'
 import ItemFields from './ItemFields.jsx'
@@ -26,12 +26,14 @@ import { PARAMS_HINT } from '../bomTemplates/partEditorView.js'
 
 export default function ItemModal({ opening, project, ctx, templates, constraints, infillTypes, layoutTemplates, seriesTypes, currentSig, canEdit, onClose, onSaved, onLayoutSaved }) {
   const { index, templatesById } = ctx
-  // the edited item's saved add-ons: ready once the page's map is loaded (undefined while loading); a new item has none
-  const savedAddonsOf = c => (opening && c.itemAddonsByOpening ? c.itemAddonsByOpening[opening.id] || [] : [])
-  const [addonsReady, setAddonsReady] = useState(() => !opening || !!ctx.itemAddonsByOpening)
-  const [form, setForm] = useState(() => (opening ? formFromOpening(opening, savedAddonsOf(ctx)) : emptyForm()))
+  // the edited item's saved add-ons (addonSavePlan): seeded into the form only once the page's map is loaded WITHOUT a
+  // load error (undefined while loading; `{}` on error); a new item has none. Until seeded the add-on table is never written.
+  const planOf = (c, extra) => addonSavePlan({ map: c.itemAddonsByOpening, error: c.itemAddonsError, itemId: opening ? opening.id : null, ...extra })
+  const [seed0] = useState(() => planOf(ctx, { seeded: false }).seed)
+  const [seeded, setSeeded] = useState(() => !opening || !!seed0)
+  const [form, setForm] = useState(() => (opening ? formFromOpening(opening, seed0 || []) : emptyForm()))
   // the add-on table is rewritten only when the form has add-ons or the item had some (deleting the last one clears it)
-  const [hadAddons, setHadAddons] = useState(() => savedAddonsOf(ctx).length > 0)
+  const [hadAddons, setHadAddons] = useState(() => !!(seed0 && seed0.length))
   const [path, setPath] = useState(() => typePath(index.types, (templatesById[opening && opening.template_id] || {}).type_id))
   const [own, setOwnState] = useState(() => ({ finish: !!(opening && opening.alu_finish_id), infill: !!(opening && opening.infill_type_id), hw: !!(opening && opening.hardware_set_id) }))
   const [addonTypeId, setAddonTypeId] = useState(() => (templatesById[opening && opening.addon_template_id] || {}).type_id || '')
@@ -47,14 +49,16 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
   const dis = !canEdit || busy
   const addonsError = opening && ctx.itemAddonsError ? (ctx.itemAddonsError.message || String(ctx.itemAddonsError)) : null
 
-  // the map arrived after the popup opened: take the item's saved add-ons once (later refetches never reset the form)
+  // the map arrived (or recovered from a load error) after the popup opened: take the saved add-ons once; later
+  // refetches never reset the form
   useEffect(() => {
-    if (addonsReady || !ctx.itemAddonsByOpening) return
-    const saved = savedAddonsOf(ctx)
-    setForm(f => ({ ...f, addons: saved.map(a => ({ ...a })) }))
-    setHadAddons(saved.length > 0)
-    setAddonsReady(true)
-  }, [ctx, addonsReady])   // eslint-disable-line react-hooks/exhaustive-deps
+    if (seeded) return
+    const { seed } = planOf(ctx, { seeded: false })
+    if (!seed) return
+    setForm(f => ({ ...f, addons: seed.map(a => ({ ...a })) }))
+    setHadAddons(seed.length > 0)
+    setSeeded(true)
+  }, [ctx, seeded])   // eslint-disable-line react-hooks/exhaustive-deps
   const rowId = (opening && opening.id) || savedId
 
   // fills only (single thickness, blank sash on a frame change / new item); never clears an own value
@@ -112,7 +116,7 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
       const savedAt = previews ? new Date().toISOString() : null
       const payload = buildOpeningPayload(form, { projectId: project.id, previews, savedAt })
       // the row first, then its add-ons (only once loaded, and only when there is something to write or to clear)
-      const saveAddons = addonsReady && !addonsError && ((form.addons || []).length > 0 || hadAddons)
+      const saveAddons = seeded && planOf(ctx, { formAddons: form.addons, seeded, hadAddons }).save
       const data = await saveItemWithAddons({ supabase, rowId, payload, addons: form.addons, main: mainMmOf(form), saveAddons })
       setSavedId(data.id)
       if (saveAddons) setHadAddons(true)
@@ -157,7 +161,7 @@ export default function ItemModal({ opening, project, ctx, templates, constraint
           {m.violations.map((msg, i) => <div key={i} className="alert alert-error" style={{ fontSize: 13 }}>⚠️ {msg}</div>)}
           {/* also shown when another (non-part-editor) template was picked with add-ons left, so they can be removed */}
           {((m.template && m.template.layout_kind) || (form.addons || []).length > 0) && (
-            <ItemAddons addons={form.addons} main={mainMmOf(form)} dis={dis} legacy={!!form.has_addon} loading={!addonsReady && !addonsError} error={addonsError}
+            <ItemAddons addons={form.addons} main={mainMmOf(form)} dis={dis} legacy={!!form.has_addon} loading={!seeded && !addonsError} error={addonsError}
               onChange={addons => setForm(f => ({ ...f, addons }))}
               onConvert={() => { setAddonTypeId(''); setLayoutPick(null); setForm(f => convertLegacyAddon(f)) }} />
           )}

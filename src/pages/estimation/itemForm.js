@@ -139,9 +139,12 @@ export function liveAddons(addons) {
 export function addonCostLines(cost, indexOf) {
   const c = cost || {}
   const n = i => ((indexOf || [])[i] ?? i) + 1
-  const lines = (c.addonBoms || []).map(a => ({ key: `ao${a.addonIndex}`, label: `ช่องแสง ${n(a.addonIndex)} (แยกวงกบ)`, value: a.bom.totalCost }))
+  // resolved = every piece of the attach unit is priced and expanded (no unpriced BOM line, no expander issue of that
+  // add-on such as a piece without profile); else the line reads "—", like the main BOM's unpriced lines
+  const issueOf = i => (c.unresolved || []).some(u => u && u.source === 'addon' && u.addonIndex === i)
+  const lines = (c.addonBoms || []).map(a => ({ key: `ao${a.addonIndex}`, label: `ช่องแสง ${n(a.addonIndex)} (แยกวงกบ)`, value: a.bom.totalCost, resolved: !(a.bom.unresolvedDetails || []).length && !issueOf(a.addonIndex) }))
   const g = c.addonMerge && c.addonMerge.glass
-  if (g && g.panes > 0) lines.push({ key: 'aoglass', label: `กระจกช่องแสง (ร่วมวงกบ) ${Number(g.area_sqm).toFixed(2)} ตร.ม.`, value: g.cost })
+  if (g && g.panes > 0) lines.push({ key: 'aoglass', label: `กระจกช่องแสง (ร่วมวงกบ) ${Number(g.area_sqm).toFixed(2)} ตร.ม.`, value: g.cost, resolved: true })
   return lines
 }
 

@@ -70,6 +70,7 @@ describe('ItemModal renders', () => {
     expect(html).toContain('ร่วมวงกบ · ติดตาย · บน · 1800 × 400 มม. · 1 × 3 ช่อง · เสมอซ้าย')
     expect(html).toContain('แยกวงกบ · ติดตาย · ขวา · 500 × 1200 มม. · 2 × 1 ช่อง · เสมอล่าง')
     expect(html).toContain('ช่องแสง 2 (แยกวงกบ)')
+    expect(html).toMatch(/ช่องแสง 2 \(แยกวงกบ\)[^—]*ยังมีชิ้นที่ไม่มีราคา[\s\S]{0,200}—/)   // unpriced attach unit reads "—"
     expect(html).toContain('กระจกช่องแสง (ร่วมวงกบ) 0.72 ตร.ม.')
     expect(html).toContain('ช่องแสง 1 คิ้วเท: ตำแหน่งนี้ยังไม่ได้เลือกโปรไฟล์')
     expect(html).toContain('หมายเหตุ ช่องแสง 1: ตบเรียบ')
@@ -82,6 +83,10 @@ describe('ItemModal renders', () => {
     const pctx = { ...ctx, templatesById: { ...ctx.templatesById, tP: tPart }, partModelByTemplate: { tP: model } }
     const opening = { id: 'o4', project_id: 'p1', opening_no: 'W-04', template_id: 'tP', width_m: '1.8', height_m: 1.2, panel_count: 2, quantity: 1, extra_lines: [] }
     expect(renderToString(<ItemModal {...props} ctx={pctx} templates={[tSlide, tFix, tPart]} opening={opening} currentSig={null} />)).toContain('กำลังโหลดช่องแสง')
+    // a load error keeps the {} map: never read as "no add-ons" — the box shows the error, not an empty list
+    const failed = renderToString(<ItemModal {...props} ctx={{ ...pctx, itemAddonsByOpening: {}, itemAddonsError: 'boom' }} templates={[tSlide, tFix, tPart]} opening={opening} currentSig={null} />)
+    expect(failed).toContain('โหลดช่องแสงไม่สำเร็จ')
+    expect(failed).not.toContain('ยังไม่มีช่องแสง')
     const legacy = { ...opening, addon_template_id: 'tF', addon_width_m: 1.8, addon_height_m: 0.4, addon_position: 'top', addon_panel_count: 1 }
     const html = renderToString(<ItemModal {...props} ctx={{ ...pctx, itemAddonsByOpening: { o4: [] } }} templates={[tSlide, tFix, tPart]} opening={legacy} currentSig={null} />)
     expect(html).toContain('แปลงเป็นช่องแสงแบบใหม่')
