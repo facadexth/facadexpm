@@ -577,6 +577,28 @@ describe('Task 5 (c): a merge add-on joins the main frame', () => {
     expect(r.total).toBeCloseTo(r.bom.totalCost + r.addonMerge.glass.cost + r.extras.cost)
     expect(r.unresolved).toEqual([])
   })
+  // Owner 2026-10-16 (Q11, D6): a merge add-on's area gets labour per m², and its outline silicone (and felt, the same
+  // perimeter rule): main 1800 × 1200 + top add-on 1800 × 400 ⇒ area 1.8 × 1.6, perimeter 2 × (1.8 + 1.6). An attach
+  // unit keeps its own opening (unchanged); without add-ons nothing moves.
+  it('owner 2026-10-16 (D6): labour per m², silicone and felt include the merge add-on area / outline', () => {
+    const rates = { labor_price_per_sqm: 1000, silicone_price_per_m: 10, felt_price_per_m: 5 }
+    const c0 = aCtx([ao({ mode: 'merge' })], pieceRows('merge', 'top', { ext: LONG, main_facing: null }))
+    const c = { ...c0, template: { ...c0.template, ...rates } }
+    const r = costOpening(c)
+    expect(r.bom.laborCost).toBeCloseTo(1.8 * 1.6 * 1000, 6)
+    expect(r.bom.siliconeCost).toBeCloseTo(2 * (1.8 + 1.6) * 10, 6)
+    expect(r.bom.feltCost).toBeCloseTo(2 * (1.8 + 1.6) * 5, 6)
+    const plain = plainOf(c)
+    expect(plain.bom.laborCost).toBeCloseTo(1.8 * 1.2 * 1000, 6)
+    expect(plain.bom.siliconeCost).toBeCloseTo(2 * (1.8 + 1.2) * 10, 6)
+    // member lengths do not move (only the labour / seal bases grow): the same lines as the add-on item at zero rates
+    expect(r.bom.profileLines).toEqual(costOpening(c0).bom.profileLines)
+    // attach: the main unit keeps its own labour, the unit is priced on its own opening
+    const a0 = aCtx([ao()], pieceRows('attach', null, ATTACH_FAMS))
+    const ra = costOpening({ ...a0, template: { ...a0.template, ...rates } })
+    expect(ra.bom.laborCost).toBeCloseTo(1.8 * 1.2 * 1000, 6)
+    expect(ra.addonBoms[0].bom.laborCost).toBeCloseTo(1.8 * 0.4 * 1000, 6)
+  })
   it('partPreviewCtx returns the item\'s add-ons and the same overrides / sideButt', () => {
     const c = aCtx([ao({ mode: 'merge' })], pieceRows('merge', 'top', { ext: LONG, main_facing: null }))
     const r = costOpening(c)

@@ -117,10 +117,15 @@ export function computeBomForOpening(opening, template, components, hardware, pr
 
   // Labour: the opening's effective rate (resolved by the caller: item -> project -> type default; 0 is a
   // real value) wins; null/undefined falls back to the template's own rate.
+  // Merge add-ons (owner 2026-10-16, Q11, D6): the caller may widen the labour area and the silicone / felt perimeter to
+  // the main unit plus its ร่วมวงกบ add-ons (opening.labour_area_sqm, opening.seal_perimeter_m); W × H and 2(W + H)
+  // otherwise. Member lengths and per-perimeter hardware stay on the opening's own W × H.
   const labourRate = Number.isFinite(opening.labour_per_sqm) ? opening.labour_per_sqm : template.labor_price_per_sqm
-  const laborCost = opening.width_m * opening.height_m * labourRate
-  const siliconeCost = perimeter_m * template.silicone_price_per_m
-  const feltCost = perimeter_m * template.felt_price_per_m
+  const labourArea = Number.isFinite(opening.labour_area_sqm) ? opening.labour_area_sqm : opening.width_m * opening.height_m
+  const sealPerimeter = Number.isFinite(opening.seal_perimeter_m) ? opening.seal_perimeter_m : perimeter_m
+  const laborCost = labourArea * labourRate
+  const siliconeCost = sealPerimeter * template.silicone_price_per_m
+  const feltCost = sealPerimeter * template.felt_price_per_m
 
   const extraLinesCost = (opening.extra_lines || []).reduce((s, l) => s + l.amount, 0)
 

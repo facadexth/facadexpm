@@ -10,7 +10,7 @@ import { applyJoints, applyRoleThickness, jointDeductionMm } from './assembly.js
 import { resolveCatalogProfile } from './aluCatalogPricing.js'
 import { expandParts } from './partExpand.js'
 import { expandAddons } from './addonExpand.js'
-import { layoutAddons } from './addonModel.js'
+import { layoutAddons, addonDims } from './addonModel.js'
 import { allowsMixedThickness } from './estimationCatalogViews.js'
 import { openingExtras } from './openingExtras.js'
 import { setParams } from './partModel.js'
@@ -199,6 +199,18 @@ function mainFrameUnit(item, addons) {
   return { width_m: env.w / 1000, height_m: env.h / 1000 }
 }
 
+// Labour / silicone / felt bases of a main unit with costed merge add-ons (owner 2026-10-16, Q11, D6): labour on the
+// main area plus every merge add-on's own area (= the envelope when the add-ons fill it; an L of a top + a left add-on
+// leaves the empty corner out), silicone / felt on the envelope's perimeter (the shared outer frame, the same unit
+// openingExtras seals). {} without merge add-ons, so the engine keeps W × H and 2(W + H).
+function mergeLabourBase(item, addons) {
+  const merge = (addons || []).filter(a => a && a.mode === 'merge' && ['top', 'bottom', 'left', 'right'].includes(a.position))
+  if (!merge.length) return {}
+  const area = merge.reduce((s, a) => { const d = addonDims(a); return s + ((Number(d.w) || 0) * (Number(d.h) || 0)) / 1e6 }, Number(item.width_m) * Number(item.height_m))
+  const env = mainFrameUnit(item, merge)
+  return { labour_area_sqm: area, seal_perimeter_m: 2 * (env.width_m + env.height_m) }
+}
+
 const mainMm = item => ({ widthMm: (Number(item && item.width_m) || 0) * 1000, heightMm: (Number(item && item.height_m) || 0) * 1000 })
 
 // ctx: { item, project, template, addonTemplate, componentsByTemplate, hardwareByTemplate, jointsByTemplate,
@@ -235,7 +247,7 @@ export function costOpening(ctx) {
   // layout templates: the item's options (door / one_fixed ...) move the layout's hardware by their delta (itemHardwareRows)
   const baseModel = (ctx.partModelByTemplate && ctx.partModelByTemplate[template.id]) || null
   const hardwareRows = template.layout_kind ? itemHardwareRows(byT(ctx.hardwareByTemplate, template.id), baseModel, modelForItem(baseModel, rawItem)) : byT(ctx.hardwareByTemplate, template.id)
-  const bom = computeBomForOpening(main.opening, template, prepared.components, hardwareRows, pricing, main.infillType)
+  const bom = computeBomForOpening({ ...main.opening, ...mergeLabourBase(item, prepared.expansion ? plan.addons : []) }, template, prepared.components, hardwareRows, pricing, main.infillType)
 
   // inline add-ons: attach units are their own openings; merge glass is priced at the item's infill
   const expansion = prepared.expansion || null
