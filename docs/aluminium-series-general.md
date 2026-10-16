@@ -250,3 +250,9 @@ No folding door (บานเฟี้ยม), no casement (บานเปิ�
 ## 8. Open questions the drawings cannot settle
 
 These are kept as G1-G10 in the rulebook (section 5b).
+
+## 9. Owner answers to the open questions (artifact Sysev7hj5DpC86WSjBZ59d comments)
+
+- **G1 (2026-10-16): 44.5.** CONFIRMED (owner 2026-10-16): the frame band is drawn and costed at 44.5 mm (the box section's
+  depth), not the 50 mm band of the shop drawings' elevations. Open follow-up: whether the "50" in a dimension chain such as
+  1050 = 50 + 950 + 50 then also reads 44.5 or denotes the shared divider (G7).
