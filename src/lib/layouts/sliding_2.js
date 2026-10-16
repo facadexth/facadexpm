@@ -26,7 +26,8 @@ export default {
     key_stile: { part: 'sash', orient: 'v', per: 1, name: 'เสากุญแจ', rule: { type: 'height_minus', auto: 'frame_top_bottom', role: 'sash' } },
     hook_stile: { part: 'sash', orient: 'v', per: 1, name: 'เสาเกี่ยว', rule: { type: 'height_minus', auto: 'frame_top_bottom', role: 'sash' } },
     sill_guard: { part: 'frame', orient: 'h', per: 1, name: 'ธรณีกันบานเลื่อน', enabled: 'one_fixed', corner: 'free',
-      rule: { type: 'width_minus', auto: 'frame_sides', factor: 0.5, overlap: 'hook', role: 'sash', family: 'ธรณีกันบานเลื่อน', minus: ['hook_stile', 'key_stile'], plusWidth: ['key_stile'] } },
+      // no role: the sill guard is priced at the FRAME thickness (owner, sheet thread; D12 fixed 2026-10-16)
+      rule: { type: 'width_minus', auto: 'frame_sides', factor: 0.5, overlap: 'hook', family: 'ธรณีกันบานเลื่อน', minus: ['hook_stile', 'key_stile'], plusWidth: ['key_stile'] } },
   },
   joints: [
     { h: 'frame_top', v: ['frame_side', 'frame_side'], vPiece: 'byEnd', vEnd: 0, through: 'v', mode: 'butt' },

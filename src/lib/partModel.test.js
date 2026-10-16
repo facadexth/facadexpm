@@ -501,8 +501,15 @@ describe('sliding_2 options (Task 9)', () => {
     const m = start9('sliding_2', { one_fixed: 1 })
     expect(m.names.sill_guard).toBe('ธรณีกันบานเลื่อน')
     expect(pieceCount9(m, 'sill_guard')).toBe(1)
-    expect(m.lines.sill_guard[0]).toMatchObject({ profile_family: 'ธรณีกันบานเลื่อน', length_rule_type: 'width_minus', deduction_auto: true, length_factor: 0.5, thickness_role: 'sash' })
+    expect(m.lines.sill_guard[0]).toMatchObject({ profile_family: 'ธรณีกันบานเลื่อน', length_rule_type: 'width_minus', deduction_auto: true, length_factor: 0.5, thickness_role: null })   // frame thickness (D12)
     expect(m.lines.sill_guard[0].ends).toEqual([[{ mode: 'through', to: null, deduction_mm: null }, { mode: 'through', to: null, deduction_mm: null }]])
+  })
+  // Owner (sheet thread, rulebook K1b, D12; ruled 2026-10-16): the sill guard ธรณีกันบานเลื่อน is priced at the FRAME
+  // thickness (e.g. 2.0), not the sash thickness (1.5): thickness_role null, so applyRoleThickness leaves it on the frame.
+  it('owner 2026-10-16 (D12): the sill guard takes the frame thickness, not the sash thickness', () => {
+    const m = start9('sliding_2', { one_fixed: 1 })
+    expect(m.lines.sill_guard[0].thickness_role).toBeNull()
+    expect(m.lines.sash_top[0].thickness_role).toBe('sash')   // the sashes keep theirs
   })
   it('setParams toggles sill_guard on and off; the rest of the model is untouched', () => {
     const m = start9('sliding_2')
