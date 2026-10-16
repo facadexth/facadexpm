@@ -262,3 +262,8 @@ These are kept as G1-G10 in the rulebook (section 5b).
   (1050 = 50 + 950 + 50), the add-on unit is entered as 1000 mm (outer frame band + glass cell); the shared divider band
   belongs to the main unit. Pending owner confirmation in the thread: whether the main unit's given height already includes
   that shared band (then the whole height = main + add-on input).
+- **G2 (2026-10-16): yes.** CONFIRMED: serie general, between a top add-on and a sliding unit, the divider is ONE กล่องเปิด +
+  ฝาปิด (section 28) and the sliding unit's 2-track head frame is fixed under it; this replaces the "ตบเรียบ + คิ้วเท" set
+  that W-01's merge-top piece set uses now (unblocks D2).
+- **G8 (2026-10-16): the full cell.** CONFIRMED: the 2-track side frame laid on the long box is as long as the full sliding
+  cell height (e.g. 1400), nothing deducted.
