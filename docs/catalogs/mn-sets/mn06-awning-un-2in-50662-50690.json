@@ -1,0 +1,464 @@
+{
+ "source_pdf": "MN_6. ชุดบานกระทุ้ง UN, บานกระทุ้ง 2 MN-50662,MN50690.pdf",
+ "supplier": "บริษัท แม่น้ำเมทอลซัพพลาย จำกัด (MN Metal Supply)",
+ "brand": "MN + CENZA hardware",
+ "catalogue_year": null,
+ "pages": 12,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": "all"
+  },
+  {
+   "page": 2,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 3,
+   "content": "toc",
+   "series": "all"
+  },
+  {
+   "page": 4,
+   "content": "profile table",
+   "series": "UNION (UN) awning"
+  },
+  {
+   "page": 5,
+   "content": "assembly",
+   "series": "UNION (UN) awning"
+  },
+  {
+   "page": 6,
+   "content": "profile table",
+   "series": "2\" MN-M50662 กระทุ้งขึ้น"
+  },
+  {
+   "page": 7,
+   "content": "assembly",
+   "series": "2\" กระทุ้งขึ้น"
+  },
+  {
+   "page": 8,
+   "content": "profile table",
+   "series": "2\" MN-M50690 เปิดข้าง"
+  },
+  {
+   "page": 9,
+   "content": "assembly",
+   "series": "2\" บานเปิดข้าง"
+  },
+  {
+   "page": 10,
+   "content": "other",
+   "series": "note page"
+  },
+  {
+   "page": 11,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 12,
+   "content": "other",
+   "series": "back cover"
+  }
+ ],
+ "series": [
+  {
+   "name": "UNION (UN) awning - CASEMENT UN STANDART",
+   "system": "awning",
+   "app_types": [
+    "บานกระทุ้ง"
+   ],
+   "frame_size_mm": "outer box M30082 101.6x25.4; frame 36.63",
+   "profiles": [
+    {
+     "die_no": "MN-M30082",
+     "name": "MN-M30082 101.6x25.4",
+     "role_family": "กล่องเรียบ",
+     "kg_per_m": 0.8,
+     "width_mm": 101.6,
+     "depth_mm": 25.4,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p30 (กล่องเรียบ: กล่อง 4\"x1\" เรียบ); 4\"x1\" outer box all round (head, sill, jambs)"
+    },
+    {
+     "die_no": "MN-U2211",
+     "name": "MN-U2211 36.63x38.86",
+     "role_family": "กรอบนอกบานกระทุ้ง",
+     "kg_per_m": 0.451,
+     "width_mm": 36.63,
+     "depth_mm": 38.86,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p141 (กรอบนอกบานกระทุ้ง: กรอบนอกบานกระทุ้ง 36.63x38.86); fixed frame inside box"
+    },
+    {
+     "die_no": "MN-U2210",
+     "name": "MN-U2210 36.63x40.23",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "kg_per_m": 0.547,
+     "width_mm": 36.63,
+     "depth_mm": 40.23,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p142 (กรอบในบานกระทุ้ง: กรอบในบานกระทุ้ง 36.63x40.23); opening sash"
+    },
+    {
+     "die_no": "MN-U1882",
+     "name": "MN-U1882 24.31x12.7",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.159,
+     "width_mm": 24.31,
+     "depth_mm": 12.7,
+     "wall_mm": 1.0,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p142 (คิ้ว: คิ้วเล็ก 24.31x12.7); glazing bead"
+    },
+    {
+     "die_no": "MN-U4823",
+     "name": "MN-U4823 36.63x38.86",
+     "role_family": "กรอบนอกบานกระทุ้ง",
+     "kg_per_m": 0.469,
+     "width_mm": 36.63,
+     "depth_mm": 38.86,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p141 (กรอบนอกบานกระทุ้ง: กรอบนอกบานกระทุ้ง มีขอ 36.63x38.86); alternative frame (listed, not on sections)"
+    },
+    {
+     "die_no": "MN-M50667",
+     "name": "MN-M50667 36.5x40.5",
+     "role_family": "กรอบนอกบานกระทุ้ง",
+     "kg_per_m": 0.507,
+     "width_mm": 36.5,
+     "depth_mm": 40.5,
+     "wall_mm": 1.6,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p140 (กรอบนอกบานกระทุ้ง: กรอบนอกบานกระทุ้ง 36.5x40.5 (ร่องคิ้ว 12.5)); heavier alternative frame (listed only)"
+    },
+    {
+     "die_no": "MN-M50668",
+     "name": "MN-M50668 36.5x44",
+     "role_family": "เสาแบ่ง",
+     "kg_per_m": 0.623,
+     "width_mm": 36.5,
+     "depth_mm": 44,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p140 (เสาแบ่ง: เสาแบ่ง 36.5x44); listed only"
+    },
+    {
+     "die_no": "MN-M50671",
+     "name": "MN-M50671 36.5x40.5",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "kg_per_m": 0.61,
+     "width_mm": 36.5,
+     "depth_mm": 40.5,
+     "wall_mm": 1.6,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p140 (กรอบในบานกระทุ้ง: กรอบในบานกระทุ้ง 36.5x40.5); heavier alternative sash (listed only)"
+    },
+    {
+     "die_no": "MN-M50669",
+     "name": "MN-M50669 19x13",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.156,
+     "width_mm": 19,
+     "depth_mm": 13,
+     "wall_mm": 1.1,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p140 (คิ้ว: คิ้ว 19x13); bead for M5066x set (listed only)"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "UNION awning",
+     "page": 5,
+     "joints": "not printed",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "box depth 101.6; frame+sash sit inside box; sections show sash overlapping frame on all 4 sides",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    }
+   ],
+   "hardware": [
+    {
+     "name": "มือจับ",
+     "code": "CHD-02",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "มือจับ",
+     "code": "CHD-04",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "มือจับ",
+     "code": "CHD-07",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "มือจับ",
+     "code": "CHD-01K",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "บานพับ 4 Bar หนา 13 มม.",
+     "code": "CZ-551S",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ขาค้ำล็อค",
+     "code": "CZ-221S-T",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ยางลูกโป่ง",
+     "code": "EPDM51A-5",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ยางอัดกระจก",
+     "code": "MN-006A",
+     "per": null,
+     "qty": null,
+     "page": 4
+    }
+   ],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "บานกระทุ้ง 2\" MN-50662 / MN-50690 (SWING DOOR CASEMENT 2\")",
+   "system": "awning",
+   "app_types": [
+    "บานกระทุ้ง",
+    "บานเปิดข้าง (หน้าต่าง)"
+   ],
+   "frame_size_mm": "outer box M30082 101.6x25.4; frame M50662 45.5x32; sash M50690 48.5",
+   "profiles": [
+    {
+     "die_no": "MN-M30082",
+     "name": "MN-M30082 101.6x25.4",
+     "role_family": "กล่องเรียบ",
+     "kg_per_m": 0.8,
+     "width_mm": 101.6,
+     "depth_mm": 25.4,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p30 (กล่องเรียบ: กล่อง 4\"x1\" เรียบ); outer box all round"
+    },
+    {
+     "die_no": "MN-M50662",
+     "name": "MN-M50662 45.5x32",
+     "role_family": "กรอบนอกบานกระทุ้ง",
+     "kg_per_m": 0.576,
+     "width_mm": 45.5,
+     "depth_mm": 32,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p146 (กรอบนอกบานกระทุ้ง: กรอบนอกบานกระทุ้ง 48.5x32); fixed frame"
+    },
+    {
+     "die_no": "MN-M50690",
+     "name": "MN-M50690 48.5x51",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "kg_per_m": 0.873,
+     "width_mm": 48.5,
+     "depth_mm": 51,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p146 (กรอบในบานกระทุ้ง: กรอบในบานกระทุ้ง 48.5x51 (คิ้ว M50689)); opening sash"
+    },
+    {
+     "die_no": "MN-M50665",
+     "name": "MN-M50665 29.5x21.5",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.295,
+     "width_mm": 29.5,
+     "depth_mm": 21.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p146 (คิ้ว: คิ้ว 29.5x21.5); bead for 12 mm glass (ร่อง 12 มิล)"
+    },
+    {
+     "die_no": "MN-M50689",
+     "name": "MN-M50689 25.5x21.5",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.282,
+     "width_mm": 25.5,
+     "depth_mm": 21.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p146 (คิ้ว: คิ้ว 25.5x21.5); bead for 16 mm glass (ร่อง 16 มิล)"
+    },
+    {
+     "die_no": "MN-M50664",
+     "name": "MN-M50664 18x21.5",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.24,
+     "width_mm": 18,
+     "depth_mm": 21.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p146 (คิ้ว: คิ้ว 18x21.5); bead for 24 mm glass (ร่อง 24 มิล)"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "2\" กระทุ้งขึ้น",
+     "page": 7,
+     "joints": "not printed",
+     "cut_formulas": [],
+     "glass_formula": "glass thickness chosen by bead: M50665 = 12 mm, M50689 = 16 mm, M50664 = 24 mm (printed). Glass size formula not printed.",
+     "clearances_mm": "box 101.6; frame M50662 + sash M50690 + bead M50665 on all sides (sections 1-4)",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    },
+    {
+     "type": "2\" บานเปิดข้าง",
+     "page": 9,
+     "joints": "not printed",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "same profiles as p7, hinged on the side",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    }
+   ],
+   "hardware": [
+    {
+     "name": "มือจับ",
+     "code": "CHD-10",
+     "per": null,
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "มือจับ",
+     "code": "CZ-HD-014",
+     "per": null,
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "มือจับ",
+     "code": "CZ-HD-S21",
+     "per": null,
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "มือจับ",
+     "code": "CZ-HD-S130",
+     "per": null,
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "บานพับ 4 Bar",
+     "code": "CZ-551SS",
+     "per": null,
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "ขาค้ำล็อค",
+     "code": "CZ-221S-T",
+     "per": null,
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "ยางลูกโป่ง",
+     "code": "EPDM51A-5",
+     "per": null,
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "ยางอัดกระจก",
+     "code": "MN-006A",
+     "per": null,
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "บานพับ (เปิดข้าง)",
+     "code": "CZ-PH-11",
+     "per": null,
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "ขาค้ำ (หนา)",
+     "code": "CZ-221S",
+     "per": null,
+     "qty": null,
+     "page": 8
+    }
+   ],
+   "accessories": [],
+   "prices": []
+  }
+ ],
+ "new_families": [],
+ "open_questions": [
+  "ไม่มีสูตรตัด — กรอบนอก/กรอบในบานกระทุ้งต้องหักเท่าไร ต้องขอจาก MN",
+  "กล่อง 4\"x1\" M30082 เป็นวงกบนอกเสมอ ใช่ไหม (แอปต้องนับกล่องด้วย)",
+  "UN: U4823 / M50667 / M50671 เป็นตัวเลือกหนากว่าแทน U2211/U2210 ใช่ไหม",
+  "บานพับ 4 Bar / ขาค้ำ ใช้ขนาดกี่นิ้วตามความสูงบาน"
+ ],
+ "unreadable_pages": [],
+ "notes": "No cut/glass formulas, prices, quantities."
+}

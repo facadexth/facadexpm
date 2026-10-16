@@ -1,0 +1,680 @@
+{
+ "source_pdf": "MN_7. ชุดหน้าต่างบานเปิดชุดยูโร MN-50624,MN-7601.pdf",
+ "supplier": "บริษัท แม่น้ำเมทอลซัพพลาย จำกัด (MN Metal Supply)",
+ "brand": "MN + CENZA hardware",
+ "catalogue_year": null,
+ "pages": 20,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": "all"
+  },
+  {
+   "page": 2,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 3,
+   "content": "toc",
+   "series": "all"
+  },
+  {
+   "page": 4,
+   "content": "profile table",
+   "series": "MN-50624 บานเปิดเดี่ยว"
+  },
+  {
+   "page": 5,
+   "content": "assembly",
+   "series": "MN-50624 บานเปิดเดี่ยว"
+  },
+  {
+   "page": 6,
+   "content": "profile table",
+   "series": "MN-50624 บานเปิดซ้อน"
+  },
+  {
+   "page": 7,
+   "content": "assembly",
+   "series": "MN-50624 บานเปิดซ้อน"
+  },
+  {
+   "page": 8,
+   "content": "profile table",
+   "series": "MN-50624 บานเปิดคู่"
+  },
+  {
+   "page": 9,
+   "content": "assembly",
+   "series": "MN-50624 บานเปิดคู่"
+  },
+  {
+   "page": 10,
+   "content": "profile table",
+   "series": "MN-50624 บานเปิดเดี่ยว+ช่องแสงติดตาย"
+  },
+  {
+   "page": 11,
+   "content": "assembly",
+   "series": "MN-50624 บานเปิดเดี่ยว+ช่องแสงติดตาย"
+  },
+  {
+   "page": 12,
+   "content": "profile table",
+   "series": "MN-7601 บานเปิดข้าง+มุ้ง+ช่องแสง"
+  },
+  {
+   "page": 13,
+   "content": "assembly",
+   "series": "MN-7601 บานเปิดข้าง+มุ้ง+ช่องแสง"
+  },
+  {
+   "page": 14,
+   "content": "profile table",
+   "series": "MN-7601 บานเปิดคู่+มุ้ง+ช่องแสง"
+  },
+  {
+   "page": 15,
+   "content": "assembly",
+   "series": "MN-7601 บานเปิดคู่+มุ้ง+ช่องแสง"
+  },
+  {
+   "page": 16,
+   "content": "other",
+   "series": "note/blank"
+  },
+  {
+   "page": 17,
+   "content": "other",
+   "series": "note/blank"
+  },
+  {
+   "page": 18,
+   "content": "other",
+   "series": "note/blank"
+  },
+  {
+   "page": 19,
+   "content": "other",
+   "series": "note/blank"
+  },
+  {
+   "page": 20,
+   "content": "other",
+   "series": "back cover"
+  }
+ ],
+ "series": [
+  {
+   "name": "MN-50624 casement window (ชุดหน้าต่างบานเปิดชุดยูโร)",
+   "system": "casement",
+   "app_types": [
+    "บานเปิดเดี่ยว",
+    "บานเปิดคู่",
+    "บานเปิดซ้อน (2 บานแบ่งเสา)",
+    "บานเปิด + ช่องแสงติดตาย"
+   ],
+   "frame_size_mm": "outer box M30082 101.6x25.4; frame M51097 45x48; sash M50624 52x74.2",
+   "profiles": [
+    {
+     "die_no": "MN-M30082",
+     "name": "MN-M30082 101.6x25.4",
+     "role_family": "กล่องเรียบ",
+     "kg_per_m": 0.8,
+     "width_mm": 101.6,
+     "depth_mm": 25.4,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p30 (กล่องเรียบ: กล่อง 4\"x1\" เรียบ); outer box all round"
+    },
+    {
+     "die_no": "MN-M51097",
+     "name": "MN-M51097 45x48",
+     "role_family": "กรอบนอกบานเปิด",
+     "kg_per_m": 0.602,
+     "width_mm": 45,
+     "depth_mm": 48,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p150 (กรอบนอกบานกระทุ้ง: กรอบนอก 45x48); fixed frame"
+    },
+    {
+     "die_no": "MN-M50624",
+     "name": "MN-M50624 52x74.2",
+     "role_family": "กรอบในบานเปิด",
+     "kg_per_m": 1.248,
+     "width_mm": 52,
+     "depth_mm": 74.2,
+     "wall_mm": 1.8,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p150 (กรอบในบานกระทุ้ง: กรอบบานเปิด 52x74.2); opening sash"
+    },
+    {
+     "die_no": "MN-M50625",
+     "name": "MN-M50625 28x19.2",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.267,
+     "width_mm": 28,
+     "depth_mm": 19.2,
+     "wall_mm": 1.3,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p150 (คิ้ว: คิ้ว 28x19.2); glazing bead"
+    },
+    {
+     "die_no": "MN-U6358",
+     "name": "MN-U6358 75x40",
+     "role_family": "เสาแบ่ง",
+     "kg_per_m": 1.107,
+     "width_mm": 75,
+     "depth_mm": 40,
+     "wall_mm": 1.8,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p151 (เสาแบ่ง: เสาแบ่งตัว T 75x45); T mullion between two sashes (บานเปิดซ้อน)"
+    },
+    {
+     "die_no": "MN-M50626",
+     "name": "MN-M50626 45x56",
+     "role_family": "กรอบนอกบานเปิด",
+     "kg_per_m": 0.671,
+     "width_mm": 45,
+     "depth_mm": 56,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p150 (กรอบนอกบานกระทุ้ง: กรอบนอก 45x56); meeting member for บานเปิดคู่"
+    },
+    {
+     "die_no": "MN-M30218",
+     "name": "MN-M30218 101.6x25.4",
+     "role_family": "กล่องเปิด",
+     "kg_per_m": 1.061,
+     "width_mm": 101.6,
+     "depth_mm": 25.4,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 10,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p31 (กล่องเปิด: กล่อง 2 ช่อง 99.2x25.4 ร่อง 12.7); transom box between sash and fixed lite"
+    },
+    {
+     "die_no": "MN-M30083",
+     "name": "MN-M30083 101.6x25.4",
+     "role_family": "กล่องร่อง",
+     "kg_per_m": 1.042,
+     "width_mm": 101.6,
+     "depth_mm": 25.4,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 10,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p30 (กล่องร่อง: กล่อง 4\"x1\" ร่อง 12.7); fixed lite box"
+    },
+    {
+     "die_no": "MN-M30084",
+     "name": "MN-M30084 101.6x25.4",
+     "role_family": "กล่องเปิด",
+     "kg_per_m": 0.811,
+     "width_mm": 101.6,
+     "depth_mm": 25.4,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 10,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p30 (กล่องเปิด: กล่อง 4\"x1\" บังใบ 2 ช่อง (99.2) *สิทธิบัตร); fixed lite sill box"
+    },
+    {
+     "die_no": "MN-M30085",
+     "name": "MN-M30085 44.45x25.4",
+     "role_family": "ฝาเปิดปิด",
+     "kg_per_m": 0.334,
+     "width_mm": 44.45,
+     "depth_mm": 25.4,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 10,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p30 (ฝาเปิดปิด: ฝาปิดกล่องเปิด 44.45x25.4 *สิทธิบัตร); bead/cover of open box"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานเปิดเดี่ยว",
+     "page": 5,
+     "joints": "not printed",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "box 101.6; frame M51097 + sash M50624 + bead M50625 on all 4 sides",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    },
+    {
+     "type": "บานเปิดซ้อน (WIDTH/2EQ)",
+     "page": 7,
+     "joints": "not printed",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "U6358 mullion between two frames/sashes",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    },
+    {
+     "type": "บานเปิดคู่ (WIDTH/2EQ)",
+     "page": 9,
+     "joints": "not printed",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "centre M50626 meeting",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    },
+    {
+     "type": "บานเปิดเดี่ยว + ช่องแสงติดตาย",
+     "page": 11,
+     "joints": "fixed lites framed by M30083/M30218/M30084+M30085 boxes",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "see page",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    }
+   ],
+   "hardware": [
+    {
+     "name": "มือจับ",
+     "code": "CZ-HD-SN10",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "เสื้อกุญแจ",
+     "code": "CDQ26",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "บานพับ",
+     "code": "CZ-PH-02",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ขาค้ำ",
+     "code": "121SS (10\")",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "แกน",
+     "code": "009B",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ตัวรับ",
+     "code": "JCKG03",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ยางลูกโป่ง",
+     "code": "EPDM51A-5",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "มือจับ",
+     "code": "BFL-10679",
+     "per": null,
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "บานพับ (friction)",
+     "code": "WJL105",
+     "per": null,
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "แกน",
+     "code": "3531",
+     "per": null,
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "หัวกลอน",
+     "code": "CDG10B",
+     "per": null,
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "ตัวรับหัวกลอน",
+     "code": "LN54",
+     "per": null,
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "พลาสติกปิดกลาง",
+     "code": "#3456B",
+     "per": null,
+     "qty": null,
+     "page": 8
+    },
+    {
+     "name": "มือจับ-มุ้ง",
+     "code": "BFL-0256A",
+     "per": null,
+     "qty": null,
+     "page": 10
+    },
+    {
+     "name": "เสื้อกุญแจ",
+     "code": "BGB30",
+     "per": null,
+     "qty": null,
+     "page": 10
+    },
+    {
+     "name": "บานพับ",
+     "code": "CZ-PH-02A, CZ-PH-03",
+     "per": null,
+     "qty": null,
+     "page": 10
+    },
+    {
+     "name": "ขาค้ำ",
+     "code": "CZ-221S",
+     "per": null,
+     "qty": null,
+     "page": 10
+    },
+    {
+     "name": "แกนบานเปิด",
+     "code": "CZ-009B",
+     "per": null,
+     "qty": null,
+     "page": 10
+    }
+   ],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "MN-7601 euro casement with screen (CASEMENT WINDOW + CLERESTORY)",
+   "system": "casement",
+   "app_types": [
+    "บานเปิดข้าง + มุ้ง + ช่องแสง",
+    "บานเปิดคู่ + มุ้ง + ช่องแสง"
+   ],
+   "frame_size_mm": "U7601 101.6x49.4 frame; U7602 101.6x80 transom/mullion",
+   "profiles": [
+    {
+     "die_no": "MN-U7601",
+     "name": "MN-U7601 101.6x49.4",
+     "role_family": "เฟรมยูโร",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 49.4,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; perimeter frame (head/jamb/sill, sections 3,5,1,2)"
+    },
+    {
+     "die_no": "MN-U7602",
+     "name": "MN-U7602 101.6x80",
+     "role_family": "เสาแบ่ง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 80,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; transom/mullion (section 4)"
+    },
+    {
+     "die_no": "MN-U7714A",
+     "name": "MN-U7714A 39.85x80",
+     "role_family": "กรอบบานยูโร",
+     "kg_per_m": null,
+     "width_mm": 39.85,
+     "depth_mm": 80,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; sash (outer casement) AND screen sash (inner), 65.5 sightline; depth 116.4 = 39.85|9.3|27.4|39.85"
+    },
+    {
+     "die_no": "MN-U7715",
+     "name": "MN-U7715 23.45x28.6",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.303,
+     "width_mm": 23.45,
+     "depth_mm": 28.6,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; bead; kg/m printed on page: 0.303 KG./M."
+    },
+    {
+     "die_no": "MN-U7716",
+     "name": "MN-U7716 21.45x19.1",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.212,
+     "width_mm": 21.45,
+     "depth_mm": 19.1,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; bead; kg/m printed on page: 0.212 KG./M."
+    },
+    {
+     "die_no": "MN-U7604",
+     "name": "MN-U7604 15.3x4.06",
+     "role_family": "ฝาปิด",
+     "kg_per_m": null,
+     "width_mm": 15.3,
+     "depth_mm": 4.06,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; cover strip in frame groove"
+    },
+    {
+     "die_no": "MN-U7622",
+     "name": "MN-U7622 37.95x53.2",
+     "role_family": "เสากลางบานคู่",
+     "kg_per_m": null,
+     "width_mm": 37.95,
+     "depth_mm": 53.2,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 14,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; meeting stile for บานเปิดคู่"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "7601 บานเปิดข้าง + มุ้ง + ช่องแสง",
+     "page": 13,
+     "joints": "not printed; euro sash with CZ-AU01 corner plate (estimated 45°)",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "frame 101.6 (4 gap each side); sash 65.5 visible + 14.5 bead; transom 26.5+24; sill frame 49.4; jamb sash 80; depth 116.4",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    },
+    {
+     "type": "7601 บานเปิดคู่ + มุ้ง + ช่องแสง",
+     "page": 15,
+     "joints": "not printed",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "as p13 with U7622 centre",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    }
+   ],
+   "hardware": [
+    {
+     "name": "มือจับ",
+     "code": "BFL-10679",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "เสื้อกุญแจ",
+     "code": "BGB25",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "มือจับ-มุ้ง",
+     "code": "BFL-0256A",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "เสื้อกุญแจ",
+     "code": "BGB30",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "บานพับ",
+     "code": "WJL105",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "บานพับ",
+     "code": "BFH-13C",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "บานพับมุ้ง",
+     "code": "15-C",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "มุมฉาก",
+     "code": "CZ-AU01",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "แกนพลาสติก",
+     "code": "PA66-25",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "หัวแกน",
+     "code": "K03",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "ตัวรับ",
+     "code": "K04C",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "ยางลูกโป่ง",
+     "code": "EPDM51A-5",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "ยางตัวเจ",
+     "code": "MSC002",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "แกน",
+     "code": "3531",
+     "per": null,
+     "qty": null,
+     "page": 14
+    },
+    {
+     "name": "หัวกลอน",
+     "code": "CDG10B",
+     "per": null,
+     "qty": null,
+     "page": 14
+    },
+    {
+     "name": "ตัวรับหัวกลอน",
+     "code": "LN54",
+     "per": null,
+     "qty": null,
+     "page": 14
+    }
+   ],
+   "accessories": [],
+   "prices": []
+  }
+ ],
+ "new_families": [
+  "กรอบนอกบานเปิด",
+  "กรอบในบานเปิด",
+  "เฟรมยูโร",
+  "เสากลางบานคู่"
+ ],
+ "open_questions": [
+  "ไม่มีสูตรตัด — ระยะหักบานเปิด/มุ้งต้องขอจาก MN",
+  "MN-7601: U7714A ใช้ทั้งบานกระจกและบานมุ้ง ใช่ไหม",
+  "U76xx/U77xx ไม่มีในแคตตาล็อกหน้าตัด 2021 (ยกเว้น U7715 0.303, U7716 0.212 ที่พิมพ์ในคู่มือ)",
+  "ชิ้นมุม M-8-21 (รูปตัว L) ในหน้า 12 คืออะไร (อ่านเบอร์ไม่ชัด)"
+ ],
+ "unreadable_pages": [],
+ "notes": "Partner dies drawn dashed on U7601: U4301, U4296, U7603 (not listed as set members). No cut/glass formulas, prices, quantities."
+}

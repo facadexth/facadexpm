@@ -1,0 +1,623 @@
+{
+ "source_pdf": "MN_3. ชุดบานเลื่อนยูโร U7463, MN-7464 (EURO4).pdf",
+ "supplier": "บริษัท แม่น้ำเมทอลซัพพลาย จำกัด (MN Metal Supply)",
+ "brand": "MN + CENZA hardware",
+ "catalogue_year": null,
+ "pages": 20,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": "all"
+  },
+  {
+   "page": 2,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 3,
+   "content": "toc",
+   "series": "all"
+  },
+  {
+   "page": 4,
+   "content": "profile table",
+   "series": "MN-7464 บานเลื่อนสวน 2 บาน"
+  },
+  {
+   "page": 5,
+   "content": "assembly",
+   "series": "MN-7464 บานเลื่อนสวน 2 บาน"
+  },
+  {
+   "page": 6,
+   "content": "profile table",
+   "series": "MN-7464 บานเลื่อนทางเดียว 4 บาน"
+  },
+  {
+   "page": 7,
+   "content": "assembly",
+   "series": "MN-7464 บานเลื่อนทางเดียว 4 บาน"
+  },
+  {
+   "page": 8,
+   "content": "profile table",
+   "series": "MN-7463 บานเลื่อนสวน 2 บาน+มุ้ง"
+  },
+  {
+   "page": 9,
+   "content": "assembly",
+   "series": "MN-7463 บานเลื่อนสวน 2 บาน+มุ้ง"
+  },
+  {
+   "page": 10,
+   "content": "profile table",
+   "series": "MN-7463 บานเลื่อนสวน 3 บาน"
+  },
+  {
+   "page": 11,
+   "content": "assembly",
+   "series": "MN-7463 บานเลื่อนสวน 3 บาน"
+  },
+  {
+   "page": 12,
+   "content": "profile table",
+   "series": "MN-7463 บานเลื่อนคู่+มุ้ง"
+  },
+  {
+   "page": 13,
+   "content": "assembly",
+   "series": "MN-7463 บานเลื่อนคู่+มุ้ง"
+  },
+  {
+   "page": 14,
+   "content": "profile table",
+   "series": "MN-7463 บานเลื่อน 6 บาน"
+  },
+  {
+   "page": 15,
+   "content": "assembly",
+   "series": "MN-7463 บานเลื่อน 6 บาน"
+  },
+  {
+   "page": 16,
+   "content": "profile table",
+   "series": "MN-7463 บานเลื่อนคู่+มุ้ง+ช่องแสง"
+  },
+  {
+   "page": 17,
+   "content": "assembly",
+   "series": "MN-7463 บานเลื่อนคู่+มุ้ง+ช่องแสง"
+  },
+  {
+   "page": 18,
+   "content": "other",
+   "series": "note page"
+  },
+  {
+   "page": 19,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 20,
+   "content": "other",
+   "series": "back cover"
+  }
+ ],
+ "series": [
+  {
+   "name": "MN-7464 EURO 4\" (2 tracks, frame 61.6)",
+   "system": "sliding window",
+   "app_types": [
+    "บานเลื่อนสวน 2 บาน",
+    "บานเลื่อนทางเดียว 4 บาน"
+   ],
+   "frame_size_mm": "61.6x46.5 (2 tracks); two frames joined by U7472 for 4-track one-way",
+   "profiles": [
+    {
+     "die_no": "MN-U7464",
+     "name": "MN-U7464 61.6x46.5",
+     "role_family": "เฟรมยูโร 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 61.6,
+     "depth_mm": 46.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; frame used on all 4 sides, mitred 45° (printed)"
+    },
+    {
+     "die_no": "MN-U7466",
+     "name": "MN-U7466 70x30",
+     "role_family": "กรอบบานยูโร",
+     "kg_per_m": null,
+     "width_mm": 70,
+     "depth_mm": 30,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; sash member, all 4 sides (head/sill/jamb/interlock sections)"
+    },
+    {
+     "die_no": "MN-U7468",
+     "name": "MN-U7468 36.5x36.8",
+     "role_family": "ตัวเสริมเสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 36.5,
+     "depth_mm": 36.8,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; interlock add-on (section 2)"
+    },
+    {
+     "die_no": "MN-U7552",
+     "name": "MN-U7552 14x16.5",
+     "role_family": "รางสแตนเลส/ราง",
+     "kg_per_m": null,
+     "width_mm": 14,
+     "depth_mm": 16.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; track rail on sill (printed U7550 on p5 section - conflict)"
+    },
+    {
+     "die_no": "MN-U7471",
+     "name": "MN-U7471 14x16.5",
+     "role_family": "ตัวรับเสากุญแจ",
+     "kg_per_m": null,
+     "width_mm": 14,
+     "depth_mm": 16.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; jamb infill/receiver in frame (section 1)"
+    },
+    {
+     "die_no": "MN-U7472",
+     "name": "MN-U7472 23x21",
+     "role_family": "ตัวต่อเฟรม",
+     "kg_per_m": null,
+     "width_mm": 23,
+     "depth_mm": 21,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; H joiner of two U7464 frames (4-track one-way, depth 150)"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "MN-7464 สวน 2 บาน",
+     "page": 5,
+     "joints": "PRINTED: 'การประกอบทั้งวงและบานเป็น 45°' (frame and sash both assembled at 45°); frame corners with มุมเฟรม Y20M03-HLD 14x26, sash corners with เพลทฉากเข้ามุม CZ-AU01 ตัวใหญ่ 65 มม.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "frame depth 61.6 (sections show 70 = 30|10|30 sash zone); head 4 gap + 34.5 + 70 = 108.5; sill 4 + 38.5 + 70 = 112.5; jamb 4 + 34.5 + 70 = 108.5; interlock 71.2; depth at interlock 30/5.8/30 = 65.8; FLUSH HANDLE MULTI POINT LOCK at jamb",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    },
+    {
+     "type": "MN-7464 ทางเดียว 4 บาน (WIDTH/3EQ printed)",
+     "page": 7,
+     "joints": "PRINTED: 'การประกอบทั้งวงและบานเป็น 45°' (frame and sash both assembled at 45°); frame corners with มุมเฟรม Y20M03-HLD 14x26, sash corners with เพลทฉากเข้ามุม CZ-AU01 ตัวใหญ่ 65 มม.; two U7464 frames joined with U7472",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "depth 150 = 30|10|30|10|30|10|30; head 108.5 (4+34.5+70); sill 113.4 (4+39.4+70); jamb 108.5; interlocks 70 sightline",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ) NB elevation is labelled WIDTH/3EQ although 4 panels are drawn."
+    }
+   ],
+   "hardware": [
+    {
+     "name": "มือจับล็อคบานเลื่อน",
+     "code": "BY-BR332",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "แกนมัลติพ้อยท์ล็อค",
+     "code": "CZ-002 + หมุดปรับ",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "รับล็อค",
+     "code": "CZ-LPU03",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ล้อบานเลื่อน",
+     "code": "JLTS34",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "เพลทฉากเข้ามุม ตัวใหญ่ 65 มม.",
+     "code": "CZ-AU01",
+     "per": "per sash corner",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "มุมเฟรม 14x26 มม.",
+     "code": "Y20M03-HLD",
+     "per": "per frame corner",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "กันแมลง",
+     "code": "CZ-IN1",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ตัวระบายน้ำ",
+     "code": "CZ-DWU01",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ตัวระบายน้ำ",
+     "code": "CZ-DWU02",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ตบบน,ตบล่าง",
+     "code": "CZ-BY001, CZ-BY002",
+     "per": null,
+     "qty": null,
+     "page": 4
+    }
+   ],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "MN-7463 EURO 4\" (3 tracks, frame 101.6)",
+   "system": "sliding door",
+   "app_types": [
+    "บานเลื่อนสวน 2 บาน + มุ้ง",
+    "บานเลื่อนสวน 3 บาน",
+    "บานเลื่อนคู่ + มุ้ง",
+    "บานเลื่อน 6 บาน",
+    "บานเลื่อนคู่ + มุ้ง + ช่องแสง"
+   ],
+   "frame_size_mm": "101.6x46.5 (3 tracks)",
+   "profiles": [
+    {
+     "die_no": "MN-U7463",
+     "name": "MN-U7463 101.6x46.5",
+     "role_family": "เฟรมยูโร 3 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 46.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; frame on all 4 sides, mitred 45° (printed)"
+    },
+    {
+     "die_no": "MN-U7469",
+     "name": "MN-U7469 36.5x43.6",
+     "role_family": "ตัวเสริมเสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 36.5,
+     "depth_mm": 43.6,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "estimated",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; wider interlock add-on (screen/3-track)"
+    },
+    {
+     "die_no": "MN-U7466",
+     "name": "MN-U7466 70x30",
+     "role_family": "กรอบบานยูโร",
+     "kg_per_m": null,
+     "width_mm": 70,
+     "depth_mm": 30,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; sash member, all 4 sides (head/sill/jamb/interlock sections)"
+    },
+    {
+     "die_no": "MN-U7468",
+     "name": "MN-U7468 36.5x36.8",
+     "role_family": "ตัวเสริมเสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 36.5,
+     "depth_mm": 36.8,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; interlock add-on (section 2)"
+    },
+    {
+     "die_no": "MN-U7552",
+     "name": "MN-U7552 14x16.5",
+     "role_family": "รางสแตนเลส/ราง",
+     "kg_per_m": null,
+     "width_mm": 14,
+     "depth_mm": 16.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; track rail on sill (printed U7550 on p5 section - conflict)"
+    },
+    {
+     "die_no": "MN-U7471",
+     "name": "MN-U7471 14x16.5",
+     "role_family": "ตัวรับเสากุญแจ",
+     "kg_per_m": null,
+     "width_mm": 14,
+     "depth_mm": 16.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; jamb infill/receiver in frame (section 1)"
+    },
+    {
+     "die_no": "MN-U7467",
+     "name": "MN-U7467 16.8x28.2",
+     "role_family": "ตัวรับเสากุญแจ",
+     "kg_per_m": null,
+     "width_mm": 16.8,
+     "depth_mm": 28.2,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; jamb receiver (p17 section 1) and centre meeting (section 3)"
+    },
+    {
+     "die_no": "MN-U5780",
+     "name": "MN-U5780 22x4.5",
+     "role_family": "ฝาปิด",
+     "kg_per_m": null,
+     "width_mm": 22,
+     "depth_mm": 4.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; cover at centre meeting"
+    },
+    {
+     "die_no": "MN-U7181",
+     "name": "MN-U7181 12x12",
+     "role_family": "ฉาก",
+     "kg_per_m": 0.119,
+     "width_mm": 12,
+     "depth_mm": 12,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "estimated",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p136 (ฉาก: ฉาก 12x12); screen part"
+    },
+    {
+     "die_no": "MN-U7182",
+     "name": "MN-U7182 15x9.6",
+     "role_family": "กรอบมุ้ง",
+     "kg_per_m": 0.081,
+     "width_mm": 15,
+     "depth_mm": 9.6,
+     "wall_mm": 1.0,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "estimated",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p136 (กรอบมุ้ง: ตัว T 15x9.6); screen T"
+    },
+    {
+     "die_no": "MN-U7536",
+     "name": "MN-U7536 101.6x25.4",
+     "role_family": "กล่องเรียบ",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 25.4,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; 4\"x1\" box for transom version; p17 section 1 callout reads MN-U7465 - conflict"
+    },
+    {
+     "die_no": "MN-U4637",
+     "name": "MN-U4637 44.45x15",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.286,
+     "width_mm": 44.45,
+     "depth_mm": 15,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p52 (คิ้ว: คิ้ว 44.45x15); transom glazing adaptor"
+    },
+    {
+     "die_no": "MN-U4638",
+     "name": "MN-U4638 15.88x13.5",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.166,
+     "width_mm": 15.88,
+     "depth_mm": 13.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read",
+     "notes": "kg/m from MN profile catalogue 2021 PDF p52 (คิ้ว: คิ้ว 15.88x13.5)"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "MN-7463 สวน 2 บาน + มุ้ง",
+     "page": 9,
+     "joints": "PRINTED: 'การประกอบทั้งวงและบานเป็น 45°' (frame and sash both assembled at 45°); frame corners with มุมเฟรม Y20M03-HLD 14x26, sash corners with เพลทฉากเข้ามุม CZ-AU01 ตัวใหญ่ 65 มม.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "depth 110 = 30|10|30|10|30; head 4+34.5+70 = 108.5; sill 4+39.4+70 = 113.4; jamb 34.5+70 = 108.5 (+4 gap)",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    },
+    {
+     "type": "MN-7463 สวน 3 บาน",
+     "page": 11,
+     "joints": "PRINTED: 'การประกอบทั้งวงและบานเป็น 45°' (frame and sash both assembled at 45°); frame corners with มุมเฟรม Y20M03-HLD 14x26, sash corners with เพลทฉากเข้ามุม CZ-AU01 ตัวใหญ่ 65 มม.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "as p9; interlocks 70 sightline; depth 35.8/30/35.8",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    },
+    {
+     "type": "MN-7463 บานเลื่อนคู่ + มุ้ง",
+     "page": 13,
+     "joints": "PRINTED: 'การประกอบทั้งวงและบานเป็น 45°' (frame and sash both assembled at 45°); frame corners with มุมเฟรม Y20M03-HLD 14x26, sash corners with เพลทฉากเข้ามุม CZ-AU01 ตัวใหญ่ 65 มม.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "centre 140.5 = 70|0.5|70 with U7467 + U5780",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    },
+    {
+     "type": "MN-7463 6 บาน (WIDTH/6EQ)",
+     "page": 15,
+     "joints": "PRINTED: 'การประกอบทั้งวงและบานเป็น 45°' (frame and sash both assembled at 45°); frame corners with มุมเฟรม Y20M03-HLD 14x26, sash corners with เพลทฉากเข้ามุม CZ-AU01 ตัวใหญ่ 65 มม.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "as p13",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    },
+    {
+     "type": "MN-7463 คู่ + มุ้ง + ช่องแสง (WIDTH/4EQ)",
+     "page": 17,
+     "joints": "PRINTED: 'การประกอบทั้งวงและบานเป็น 45°' (frame and sash both assembled at 45°); frame corners with มุมเฟรม Y20M03-HLD 14x26, sash corners with เพลทฉากเข้ามุม CZ-AU01 ตัวใหญ่ 65 มม.; transom: box on top + U4637/U4638 adaptors over U7463",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "top: 4+25.4+15 = 44.4 box zone; transom 28.58|44.45|28.58 = 101.6; head stack 11.5+34.5+70 = 116; sill 39.4+70 = 113.4; jamb 4+40+70 = 114; centre 140.5",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    }
+   ],
+   "hardware": [
+    {
+     "name": "มือจับล็อคบานเลื่อน",
+     "code": "BY-BR332",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "แกนมัลติพ้อยท์ล็อค",
+     "code": "CZ-002 + หมุดปรับ",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "รับล็อค",
+     "code": "CZ-LPU03",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ล้อบานเลื่อน",
+     "code": "JLTS34",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "เพลทฉากเข้ามุม ตัวใหญ่ 65 มม.",
+     "code": "CZ-AU01",
+     "per": "per sash corner",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "มุมเฟรม 14x26 มม.",
+     "code": "Y20M03-HLD",
+     "per": "per frame corner",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "กันแมลง",
+     "code": "CZ-IN1",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ตัวระบายน้ำ",
+     "code": "CZ-DWU01",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ตัวระบายน้ำ",
+     "code": "CZ-DWU02",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ตบบน,ตบล่าง",
+     "code": "CZ-BY001, CZ-BY002",
+     "per": null,
+     "qty": null,
+     "page": 4
+    }
+   ],
+   "accessories": [],
+   "prices": []
+  }
+ ],
+ "new_families": [
+  "เฟรมยูโร 2 ราง",
+  "เฟรมยูโร 3 ราง",
+  "กรอบบานยูโร",
+  "ตัวเสริมเสาเกี่ยว",
+  "ตัวรับเสากุญแจ",
+  "ตัวต่อเฟรม",
+  "รางสแตนเลส/ราง"
+ ],
+ "open_questions": [
+  "ไม่มีสูตรตัด — ยูโรตัด 45° ทั้งวงกบและบาน (คู่มือเขียน) แต่ไม่บอกระยะหักขนาดบาน ต้องขอจาก MN",
+  "U7550 (ในแบบ) กับ U7552 (ในรายการ) ตัวไหนถูก",
+  "U7465 (ในแบบ) กับ U7536 (ในรายการ) ตัวไหนถูก",
+  "ทุก die ของ EURO 4\" (U74xx) ไม่มีในแคตตาล็อกหน้าตัด 2021 — ไม่มีน้ำหนัก กก./ม.",
+  "บานทางเดียว 4 บาน เขียน WIDTH/3EQ — ควรเป็น 4EQ ใช่ไหม"
+ ],
+ "unreadable_pages": [],
+ "notes": "No cut/glass formulas, prices, quantities. The only assembly rule printed is 45° frame+sash."
+}

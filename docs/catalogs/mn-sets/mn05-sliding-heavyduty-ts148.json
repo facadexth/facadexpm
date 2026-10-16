@@ -1,0 +1,377 @@
+{
+ "source_pdf": "MN_5. ชุดบานเลื่อน HEAVY DUTY MN-TS148.pdf",
+ "supplier": "บริษัท แม่น้ำเมทอลซัพพลาย จำกัด (MN Metal Supply)",
+ "brand": "MN + CENZA hardware",
+ "catalogue_year": null,
+ "pages": 16,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": "MN-TS148"
+  },
+  {
+   "page": 2,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 3,
+   "content": "toc",
+   "series": "MN-TS148"
+  },
+  {
+   "page": 4,
+   "content": "profile table",
+   "series": "MN-TS148 บานคู่"
+  },
+  {
+   "page": 5,
+   "content": "assembly",
+   "series": "MN-TS148 บานคู่"
+  },
+  {
+   "page": 6,
+   "content": "profile table",
+   "series": "MN-TS148 3 บาน"
+  },
+  {
+   "page": 7,
+   "content": "assembly",
+   "series": "MN-TS148 3 บาน"
+  },
+  {
+   "page": 8,
+   "content": "profile table",
+   "series": "MN-TS148 4 บาน"
+  },
+  {
+   "page": 9,
+   "content": "assembly",
+   "series": "MN-TS148 4 บาน"
+  },
+  {
+   "page": 10,
+   "content": "profile table",
+   "series": "MN-TS148 6 บาน"
+  },
+  {
+   "page": 11,
+   "content": "assembly",
+   "series": "MN-TS148 6 บาน"
+  },
+  {
+   "page": 12,
+   "content": "other",
+   "series": "note/blank"
+  },
+  {
+   "page": 13,
+   "content": "other",
+   "series": "note/blank"
+  },
+  {
+   "page": 14,
+   "content": "other",
+   "series": "note/blank"
+  },
+  {
+   "page": 15,
+   "content": "other",
+   "series": "note/blank"
+  },
+  {
+   "page": 16,
+   "content": "other",
+   "series": "back cover"
+  }
+ ],
+ "series": [
+  {
+   "name": "MN-TS148 HEAVY DUTY",
+   "system": "sliding door",
+   "app_types": [
+    "ประตูบานเลื่อนสวน 2 บาน (บานคู่)",
+    "ประตูบานเลื่อน 3 บาน (2 เลื่อน + 1 ติดตาย)",
+    "ประตูบานเลื่อน 4 บาน",
+    "ประตูบานเลื่อน 6 บาน"
+   ],
+   "frame_size_mm": "144.9 deep; head 50, jamb 35, sill 50",
+   "profiles": [
+    {
+     "die_no": "MN-TS14801",
+     "name": "MN-TS14801 144.9x50",
+     "role_family": "เฟรมบน 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 144.9,
+     "depth_mm": 50,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; head"
+    },
+    {
+     "die_no": "MN-TS14804",
+     "name": "MN-TS14804 144.9x35",
+     "role_family": "เฟรมข้าง 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 144.9,
+     "depth_mm": 35,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; jamb (two-cell box)"
+    },
+    {
+     "die_no": "MN-TS14802",
+     "name": "MN-TS14802 144.9x50",
+     "role_family": "เฟรมล่าง 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 144.9,
+     "depth_mm": 50,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; sill, 38 at outside"
+    },
+    {
+     "die_no": "MN-TS14805-1",
+     "name": "MN-TS14805-1 105x57",
+     "role_family": "กรอบบาน",
+     "kg_per_m": null,
+     "width_mm": 105,
+     "depth_mm": 57,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; sash member on all 4 sides (head, sill, jamb, interlock sections all TS14805-1)"
+    },
+    {
+     "die_no": "MN-TS14807",
+     "name": "MN-TS14807 68x68",
+     "role_family": "ตัวเสริมเสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 68,
+     "depth_mm": 68,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; interlock add-on (section 2)"
+    },
+    {
+     "die_no": "MN-TS14810",
+     "name": "MN-TS14810 67.6x17.4",
+     "role_family": "ตัวรับเสากุญแจ",
+     "kg_per_m": null,
+     "width_mm": 67.6,
+     "depth_mm": 17.4,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; jamb receiver (section 1)"
+    },
+    {
+     "die_no": "MN-TS8639",
+     "name": "MN-TS8639 15x6.5",
+     "role_family": "ฝาปิด",
+     "kg_per_m": null,
+     "width_mm": 15,
+     "depth_mm": 6.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "estimated",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; listed only"
+    },
+    {
+     "die_no": "MN-USL001",
+     "name": "MN-USL001 74.7x59.6",
+     "role_family": "กรอบบานติดตาย",
+     "kg_per_m": null,
+     "width_mm": 74.7,
+     "depth_mm": 59.6,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; fixed-panel frame at head & jamb (3/6-panel versions: one fixed panel in inner plane)"
+    },
+    {
+     "die_no": "MN-USL002",
+     "name": "MN-USL002 124x68",
+     "role_family": "กรอบบานติดตาย",
+     "kg_per_m": null,
+     "width_mm": 124,
+     "depth_mm": 68,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; fixed-panel stile meeting the sliding sash (section 2, p7)"
+    },
+    {
+     "die_no": "MN-TS14808",
+     "name": "MN-TS14808 74.7x58.8",
+     "role_family": "กรอบบานติดตาย",
+     "kg_per_m": null,
+     "width_mm": 74.7,
+     "depth_mm": 58.8,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; fixed-panel member at far jamb (section 4, p7)"
+    },
+    {
+     "die_no": "MN-TS14811",
+     "name": "MN-TS14811 23.4x28.5",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 23.4,
+     "depth_mm": 28.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; glazing bead of fixed panel"
+    },
+    {
+     "die_no": "MN-JN14819",
+     "name": "MN-JN14819 63x29.8",
+     "role_family": "ตบธรณี",
+     "kg_per_m": null,
+     "width_mm": 63,
+     "depth_mm": 29.8,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "estimated",
+     "notes": "die not found in MN profile catalogue 2021 - kg/m unknown; listed only"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานคู่ (2 บานเลื่อน)",
+     "page": 5,
+     "joints": "not printed; sash TS14805-1 used on 4 sides (mitre or butt not stated)",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "tracks 8.2|57|14.5|57|8.2 = 144.9; head 50+83.7 = 133.7; sill 27.3+9+105 = 141.3; jamb 35+17.4+97.8 = 150.2; interlock 124 = 19+105; depth 8.2/57/3.5/68/8.2",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    },
+    {
+     "type": "3 บาน",
+     "page": 7,
+     "joints": "not printed; sash TS14805-1 used on 4 sides (mitre or butt not stated); fixed panel built from USL001/USL002/TS14808 in inner plane",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "depth 207.8 = 8.2|57|14.5|57|3.1|68; fixed panel 59.6 at jamb, 61.28 at far jamb; meeting 124 = 23.9+100.1",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    },
+    {
+     "type": "4 บาน (WIDTH/4EQ)",
+     "page": 9,
+     "joints": "not printed; sash TS14805-1 used on 4 sides (mitre or butt not stated)",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "as p5; centre two lock stiles: 60.2 each side; 105 sashes",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    },
+    {
+     "type": "6 บาน (WIDTH/6EQ)",
+     "page": 11,
+     "joints": "not printed; sash TS14805-1 used on 4 sides (mitre or butt not stated)",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "as p7",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือเป็นแบบขยายการติดตั้ง: รายการหน้าตัด + อุปกรณ์ + หน้าตัดตั้ง/นอนพร้อมระยะ)"
+    }
+   ],
+   "hardware": [
+    {
+     "name": "ชุดมือจับ",
+     "code": "CENZA #Z100 SERIES",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ไส้กุญแจ 90 มิล",
+     "code": null,
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "แกนมัลติพ้อยท์ล็อค",
+     "code": "CDG2370",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "แกนโยงลูกล้อ",
+     "code": "H52-10",
+     "per": null,
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "HOOK LOCK -21",
+     "code": "HOOK LOCK -21",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ลูกล้อหน้า",
+     "code": "H50",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ลูกล้อกลาง",
+     "code": "H51",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ลูกล้อหลัง",
+     "code": "H52",
+     "per": null,
+     "qty": null,
+     "page": 4
+    }
+   ],
+   "accessories": [],
+   "prices": [],
+   "notes": "เหมาะสำหรับประตูบานหลักที่กว้างและสูงโปร่ง (printed)"
+  }
+ ],
+ "new_families": [
+  "กรอบบาน (heavy duty all-round sash)",
+  "ตัวเสริมเสาเกี่ยว",
+  "ตัวรับเสากุญแจ",
+  "กรอบบานติดตาย"
+ ],
+ "open_questions": [
+  "ไม่มีสูตรตัด — ต้องขอระยะหัก TS148 จาก MN",
+  "die TS148xx / USL00x / JN14819 ไม่มีในแคตตาล็อกหน้าตัด 2021 — ไม่มีน้ำหนัก กก./ม.",
+  "บาน TS14805-1 มุมตัด 45° หรือชนฉาก ไม่ได้ระบุ",
+  "ลูกล้อ H50/H51/H52 ใช้กี่ตัวต่อบาน (ตามน้ำหนักบาน?)"
+ ],
+ "unreadable_pages": [],
+ "notes": "No cut/glass formulas, prices, quantities."
+}
