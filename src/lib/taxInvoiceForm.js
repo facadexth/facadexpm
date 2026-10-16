@@ -103,7 +103,8 @@ export function computeAutoVat(net) {
 export const CENTRAL_SITE_NAME = 'ส่วนกลาง'
 export function stockSiteLookup(sites) {
   if (!sites) return undefined
-  const central = sites.find(s => (s.name || '').trim() === CENTRAL_SITE_NAME)
+  // the is_default site first (one per tenant, seeded as ส่วนกลาง at signup), then the name as a fallback
+  const central = sites.find(s => s.is_default) || sites.find(s => (s.name || '').trim() === CENTRAL_SITE_NAME)
   return { site: central?.id || '' }
 }
 
