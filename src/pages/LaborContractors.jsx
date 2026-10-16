@@ -8,7 +8,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import {
   useLaborSubcontractors, useLaborContracts,
-  useAllLaborPayments, useSites, useMySignatureUrl, useMyWorkerName,
+  useAllLaborPayments, useSites, useDocumentSigner,
 } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
@@ -523,8 +523,9 @@ function PaymentModal({ contract, onClose }) {
 // the page background and each value is placed in its printed box.
 function WithholdingCertModal({ payment, onClose }) {
   const { tenant } = useTenant()
-  const mySignature = useMySignatureUrl()
-  const { data: myWorkerName } = useMyWorkerName()
+  const signer = useDocumentSigner(payment.created_by ?? null)
+  const mySignature = signer?.url ? { url: signer.url } : null
+  const myWorkerName = signer?.name || null
   const contract = payment.labor_contracts
   const sub = contract?.labor_subcontractors
   const elementId = `wht-cert-${payment.id}`

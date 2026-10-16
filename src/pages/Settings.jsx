@@ -369,7 +369,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   }
 
   // ลายเซ็นส่วนตัว -- วาดครั้งเดียว เอาไปแปะอัตโนมัติในช่องลายเซ็นฝั่งพนักงาน
-  // ของทุกเอกสารที่เปิดดู/พิมพ์จากบัญชีนี้ (ดู useMySignatureUrl ใน
+  // ของเอกสารที่บัญชีนี้เป็นคนทำ (created_by, ดู useDocumentSigner ใน
   // useSupabase.js) ทุก role เข้าถึงได้ ไม่ใช่แค่ ADMIN/OWNER -- เป็นลายเซ็น
   // ของตัวเอง ไม่ใช่การกระทำแทนคนอื่น
   const { data: mySignature, refetch: refetchMySignature } = useMySignature()
@@ -763,7 +763,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🖊️ ลายเซ็นของฉัน</h2>
         <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
-          วาดลายเซ็นเก็บไว้ครั้งเดียว ระบบจะเอาไปแปะอัตโนมัติในช่องลายเซ็นฝั่งพนักงานของทุกเอกสารที่คุณเปิดดู/พิมพ์ (เช่น ผู้เสนอราคา, ผู้ออกใบแจ้งหนี้, ผู้จัดทำ)
+          วาดลายเซ็นเก็บไว้ครั้งเดียว ระบบจะเอาไปแปะอัตโนมัติในช่องลายเซ็นฝั่งพนักงานของเอกสารที่คุณเป็นคนทำ (เช่น ผู้เสนอราคา, ผู้ออกใบแจ้งหนี้, ผู้จัดทำ) ใครเปิดหรือพิมพ์เอกสารนั้นก็เห็นลายเซ็นของคุณ ไม่ใช่ของคนที่เปิด
         </p>
         {mySignature && mySignatureUrl ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>

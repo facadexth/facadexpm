@@ -9,7 +9,7 @@
 // ============================================================
 import { useState, useMemo, useEffect, useRef, Fragment } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt, useMySignatureUrl, useMyWorkerName, useBankAccounts, useUnits, logDocumentPrint } from '../hooks/useSupabase.js'
+import { useQuotations, useCatalogItems, useClients, useSites, useQuotationRevisions, useDocumentReceipt, useDocumentSigner, useBankAccounts, useUnits, logDocumentPrint } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -683,7 +683,7 @@ function QuotationHeader({ tenant, tag, revisionSuffix, quotationNumber, date, v
 // Extracted so a past revision's snapshot can render through the exact
 // same markup as the live document, not a separate summary — the only
 // difference is which data feeds it and the doc-info tag.
-export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, pricingMode, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange, extraRemeasureKey, template }) {
+export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, validUntil, revision, siteName, clientName, clientAddress, clientTaxId, items, hasVat, priceIncludesVat, discountAmount, discountPct, pricingMode, paymentTerms, notes, bankAccount, clientSignature, onPageCountChange, extraRemeasureKey, template, signerEmail }) {
   // item_description แนบเข้ากับ item ด้านบนแค่โดยตำแหน่ง ไม่มี FK จริง (ดู
   // comment ที่ EMPTY_ITEM_DESCRIPTION) -- ถ้าไม่มีคนพิมพ์อะไรลงไปเลย (เช่น
   // ตอน add จากรายการสินค้าที่ตัว catalog item เองไม่มี description) ไม่ควร
@@ -734,8 +734,9 @@ export function QuotationPaper({ elementId, tenant, quotationNumber, tag, date, 
   const totals = calcQuotationTotals(printableItems, { hasVat, priceIncludesVat, discountAmount, discountPct })
   const isSplit = pricingMode === 'split'
   const materialLabor = isSplit ? sumMaterialLabor(printableItems) : null
-  const mySignature = useMySignatureUrl()
-  const { data: myWorkerName } = useMyWorkerName()
+  const signer = useDocumentSigner(signerEmail)
+  const mySignature = signer?.url ? { url: signer.url } : null
+  const myWorkerName = signer?.name || null
   // `template` (a resolved template, see resolveDocumentTemplate) is only passed
   // by previews today; without it the tenant's saved choice decides, and a
   // tenant with no choice gets the classic layout exactly as before.
@@ -1102,6 +1103,7 @@ function QuotationDocumentModal({ qt, tenant, onClose }) {
             hasVat={qt.has_vat} priceIncludesVat={qt.price_includes_vat}
             discountAmount={qt.discount_amount} discountPct={qt.discount_pct} pricingMode={qt.pricing_mode}
             paymentTerms={qt.payment_terms} notes={qt.notes} bankAccount={qt.bank_accounts}
+            signerEmail={qt.created_by ?? null}
             clientSignature={receipt && signatureUrl ? { url: signatureUrl, signerName: receipt.signer_name, signedAt: receipt.signed_at } : null}
             onPageCountChange={setPageCount}
           />
@@ -1197,7 +1199,7 @@ function QuotationHistoryModal({ quotation, tenant, onClose }) {
             <ScaleToFit ref={scaleRef} width={PAGE_WIDTH_PX}>
               <QuotationPaper
                 elementId={elementId} tenant={tenant} quotationNumber={quotation.quotation_number}
-                tag={`ฉบับแก้ไขครั้งที่ ${selected.revision} (ประวัติ)`}
+                tag={`ฉบับแก้ไขครั้งที่ ${selected.revision} (ประวัติ)`} signerEmail={quotation.created_by ?? null}
                 date={s.date} validUntil={s.valid_until} revision={selected.revision} siteName={null}
                 clientName={s.client_name} items={snapshotItems}
                 hasVat={s.has_vat} priceIncludesVat={s.price_includes_vat}

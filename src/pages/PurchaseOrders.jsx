@@ -8,7 +8,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { usePendingFocus } from '../hooks/usePendingFocus.js'
 import PendingFocusChip from '../components/PendingFocusChip.jsx'
 import { supabase } from '../lib/supabase.js'
-import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits, useActiveTaxInvoiceLinks, usePoMoneyIndex, usePoLedger, useDeliveryTaxInvoiceReady, useActiveReceiptTaxInvoiceLinks, usePoUnreceiveReversesStock } from '../hooks/useSupabase.js'
+import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useDocumentSigner, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits, useActiveTaxInvoiceLinks, usePoMoneyIndex, usePoLedger, useDeliveryTaxInvoiceReady, useActiveReceiptTaxInvoiceLinks, usePoUnreceiveReversesStock } from '../hooks/useSupabase.js'
 import { fileToExtractionPayload, buildExampleExtracted, applyScanVatBasis, clearScanVatBasis, scanLinesTotalExVat } from '../lib/poDocumentExtraction.js'
 import ScanDocPreview from '../components/ScanDocPreview.jsx'
 import ScanNotice from '../components/ScanNotice.jsx'
@@ -559,8 +559,9 @@ function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument, receip
 function PODocumentModal({ po, tenant, onClose, autoAction = null }) {
   const items = po.purchase_order_items || []
   const { subtotal, vat, total } = calcPoTotals(items, po.has_vat, po.price_includes_vat)
-  const mySignature = useMySignatureUrl()
-  const { data: myWorkerName } = useMyWorkerName()
+  const signer = useDocumentSigner(po.created_by ?? null)
+  const mySignature = signer?.url ? { url: signer.url } : null
+  const myWorkerName = signer?.name || null
 
   const fileBase = `${po.po_number}${po.sites?.name ? '-' + po.sites.name : ''}`
   useEffect(() => {

@@ -595,6 +595,41 @@ export function useMySignatureUrl() {
   return signature && url ? { url } : null
 }
 
+// ลายเซ็น + ชื่อของ "ผู้จัดทำเอกสาร" (owner 2026-10-16: เอกสารต้องมีลายเซ็นของคนทำ ไม่ใช่ของคนที่เปิด/export)
+// email: undefined = ผู้ใช้ที่ล็อกอินอยู่ (ตัวอย่าง/พรีวิวเอกสารที่ยังไม่บันทึก), null = ไม่ทราบผู้ทำ (เว้นว่าง),
+// string = อีเมลผู้ทำจาก created_by ของเอกสาร อ่านลายเซ็นคนอื่นในบริษัทเดียวกันได้ตาม policy ใน migration
+// 2026-10-17-01 ชื่อใต้ลายเซ็นมาจาก document_signer_name() คืน { url, name } หรือ null
+export async function loadDocumentSigner(email) {
+  let who = email
+  if (who === undefined) {
+    const { data: { session } } = await supabase.auth.getSession()
+    who = session?.user?.email || null
+  }
+  if (!who) return null
+  const [{ data: sig }, { data: name }] = await Promise.all([
+    supabase.from('user_signatures').select('signature_path').eq('user_email', who).maybeSingle(),
+    supabase.rpc('document_signer_name', { p_email: who }),
+  ])
+  let url = null
+  if (sig?.signature_path) {
+    const { data } = await supabase.storage.from('user-signatures').createSignedUrl(sig.signature_path, 300)
+    url = data?.signedUrl || null
+  }
+  return url || name ? { url, name: name || null } : null
+}
+
+export function useDocumentSigner(email) {
+  const [signer, setSigner] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    loadDocumentSigner(email)
+      .then(v => { if (!cancelled) setSigner(v) })
+      .catch(() => { if (!cancelled) setSigner(null) })
+    return () => { cancelled = true }
+  }, [email])
+  return signer
+}
+
 // ชื่อพนักงานที่ผูกกับ user ที่ล็อกอินอยู่ตอนนี้ (workers.email = session
 // email, ตั้งค่าได้จากฟอร์มเพิ่ม/แก้ไขพนักงานในหน้า HR -- ช่อง "ผูกกับ User
 // Account (Login)") ใช้แสดงชื่อใต้เส้นลายเซ็นฝั่งพนักงานในเอกสาร
