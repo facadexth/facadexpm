@@ -18,6 +18,39 @@ const find = (pieces, key, piece, role = 'main', line = 0) => pieces.find((p) =>
 const overlapArea = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y))
 const ov = (m, view = 'out', extra = {}) => overviewSpecs({ model: m, widthMm: 1800, heightMm: 1200, view, buttOf, ...extra })
 
+// Owner 2026-10-16 (Q7, D7; Nakhon Nayok p15 (26)): sliding_2 meets hook stile on hook stile in the middle, the lock
+// (key) stiles at the jambs. The left sash is drawn mirrored (key left, hook right); the right sash keeps hook left, key
+// right. The two hook stiles still overlap (different tracks, U8). Costing is unchanged (each sash one key + one hook).
+describe('sliding_2 meeting stiles (owner 2026-10-16, D7)', () => {
+  const W = { side: 50, top: 50, bottom: 50, rail: 30, key: 40, hook: 20 }
+  const widthOf = (f) => W[f] ?? null
+  for (const view of ['out', 'in']) {
+    it(`${view}: key stiles at the jambs, hook on hook in the middle, rails between their own stiles`, () => {
+      const { pieces } = ov(model(), view, { widthOf })
+      const L = find(pieces, 'frame_side', 0), R = find(pieces, 'frame_side', 1)
+      const left = Math.min(L.x, R.x) + L.w, right = Math.max(L.x, R.x)
+      const stiles = (k) => ({ key: find(pieces, 'key_stile', k), hook: find(pieces, 'hook_stile', k) })
+      const all = [stiles(0), stiles(1)]
+      const outer = all.map((s) => s.key)
+      // one key stile against each jamb
+      expect(Math.min(...outer.map((p) => p.x))).toBeCloseTo(left, 9)
+      expect(Math.max(...outer.map((p) => p.x + p.w))).toBeCloseTo(right, 9)
+      // both hook stiles in the middle, overlapping (same x, they sit on different tracks)
+      const [h0, h1] = all.map((s) => s.hook)
+      expect(h0.x).toBeCloseTo(h1.x, 9)
+      expect(h0.x + h0.w / 2).toBeCloseTo((left + right) / 2, 9)
+      // each rail runs between its own key and hook stile
+      for (const k of [0, 1]) {
+        const { key, hook } = stiles(k)
+        const rail = find(pieces, 'sash_top', k)
+        const lo = Math.min(key.x + key.w, hook.x + hook.w), hi = Math.max(key.x, hook.x)
+        expect(rail.x).toBeCloseTo(lo, 9)
+        expect(rail.x + rail.w).toBeCloseTo(hi, 9)
+      }
+    })
+  }
+})
+
 describe('overviewSpecs — flush joints', () => {
   it('frame_top starts at the right edge of the left side and ends at the left edge of the right side', () => {
     const { pieces } = ov(model())
@@ -26,18 +59,21 @@ describe('overviewSpecs — flush joints', () => {
     expect(top.x + top.w).toBeCloseTo(R.x, 9)
     expect(L.y).toBeCloseTo(top.y, 9) // side runs through the corner
   })
-  it('a sash rail starts at the right edge of the hook stile', () => {
+  it('a sash rail runs between its stiles: right sash hook | key, left sash mirrored key | hook (D7)', () => {
     const { pieces } = ov(model())
-    const hook = find(pieces, 'hook_stile', 0), rail = find(pieces, 'sash_top', 0), key = find(pieces, 'key_stile', 0)
+    const hook = find(pieces, 'hook_stile', 1), rail = find(pieces, 'sash_top', 1), key = find(pieces, 'key_stile', 1)
     expect(rail.x).toBeCloseTo(hook.x + hook.w, 9)
     expect(rail.x + rail.w).toBeCloseTo(key.x, 9)
+    const hook0 = find(pieces, 'hook_stile', 0), rail0 = find(pieces, 'sash_top', 0), key0 = find(pieces, 'key_stile', 0)
+    expect(rail0.x).toBeCloseTo(key0.x + key0.w, 9)
+    expect(rail0.x + rail0.w).toBeCloseTo(hook0.x, 9)
   })
-  it("the two sashes' meeting stiles have the same x and the sashes overlap by one stile width", () => {
+  it("the two sashes' meeting (hook) stiles have the same x and the sashes overlap by one stile width (D7)", () => {
     const { pieces } = ov(model())
-    const k0 = find(pieces, 'key_stile', 0), h1 = find(pieces, 'hook_stile', 1)
-    expect(k0.x).toBeCloseTo(h1.x, 9)
-    const left = find(pieces, 'hook_stile', 0), right = find(pieces, 'key_stile', 1)
-    const s0w = k0.x + k0.w - left.x, s1w = right.x + right.w - h1.x
+    const h0 = find(pieces, 'hook_stile', 0), h1 = find(pieces, 'hook_stile', 1)
+    expect(h0.x).toBeCloseTo(h1.x, 9)
+    const left = find(pieces, 'key_stile', 0), right = find(pieces, 'key_stile', 1)
+    const s0w = h0.x + h0.w - left.x, s1w = right.x + right.w - h1.x
     const opening = right.x + right.w - left.x
     expect(s0w + s1w - opening).toBeCloseTo(h1.w, 9)
   })
@@ -159,8 +195,10 @@ describe('zoomSpecs', () => {
     expect(a.title).toContain('บานเลื่อน × 2')
     expect(a.title).toContain('เสากุญแจ')
     expect(a.title).toContain(a.opening.text)
-    const rail = find(a.pieces, 'sash_top', 0), hook = find(a.pieces, 'hook_stile', 0)
+    const rail = find(a.pieces, 'sash_top', 1), hook = find(a.pieces, 'hook_stile', 1)
     expect(rail.x).toBeCloseTo(hook.x + hook.w, 9)
+    const rail0 = find(a.pieces, 'sash_top', 0), key0 = find(a.pieces, 'key_stile', 0)
+    expect(rail0.x).toBeCloseTo(key0.x + key0.w, 9)   // left sash mirrored (D7)
   })
   it('markers follow a toggled end and the selected line; inside view mirrors them', () => {
     const m = setEndMode(model(), 'frame_top', 0, 0, 0, 'through')

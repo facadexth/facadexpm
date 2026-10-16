@@ -118,13 +118,14 @@ const count = (s, re) => (s.match(re) || []).length
 const filledFam = (m) => { const o = JSON.parse(JSON.stringify(m)); for (const ls of Object.values(o.lines)) for (const l of ls) l.profile_family = l.profile_family || 'X'; return o }
 
 describe('Task 8 — partSvgString for every layout kind', () => {
+  // pins re-taken 2026-10-16 for D7 (owner Q7: left sash mirrored, hook on hook in the middle); otherwise frozen
   it('sliding_2 output is byte-identical to before Task 8 (pinned sha256)', () => {
     const sha = (s) => createHash('sha256').update(s).digest('hex')
     const widthOf = (f) => ({ FR: 50.8, SA: 44.45 }[f] ?? null)
-    expect(sha(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'out' }))).toBe('331d0fcb1002fd3c682af344394b55d4c8b7d5b978b5dbf705c9027e31acee4e')
-    expect(sha(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'in' }))).toBe('b020ee5a91b10850c47e8188d5b88b467d80388988b3a84a99b1efbb75cf111a')
-    expect(sha(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'out', style: 'solid' }))).toBe('bc63630ba25e6bbf1598989c703ad6760dc2856128c230b66e58aaef020697d0')
-    expect(sha(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'in', widthOf }))).toBe('00400b744d7d8191d93accb2480992d205dd1dcd9d1b5ba8e616e2b99f46cda4')
+    expect(sha(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'out' }))).toBe('e098d9ffdc850f53e2ff6ae25e693bbe68d77b3711c6a78e599e7d9d281f4b68')
+    expect(sha(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'in' }))).toBe('5b527808c128489d60c06ad70beae25c07c52a4fe3878f84ddcb5430e6d9d33c')
+    expect(sha(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'out', style: 'solid' }))).toBe('0ee45a1f014bebb1be2ec6a4cc84f107c752d615c1f557109dfbcd1bbcecf971')
+    expect(sha(partSvgString({ model, widthMm: 1800, heightMm: 1200, view: 'in', widthOf }))).toBe('0cb19a138a45f4ef1e8b21f0385c1d096a7aaee45a3ca9ccabe9af43f4cbfbb7')
   })
   for (const kind of Object.keys(SIZE8)) {
     it(`${kind}: four styles × two views are safe, finite, deterministic strings`, () => {

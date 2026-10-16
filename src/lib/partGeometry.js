@@ -85,16 +85,23 @@ function geomFrame(x0, y0, pw, ph, th) {
   ]
 }
 
-// Mockup geomSash: hook stile on the left (rail end 0), key stile on the right (rail end 1) for every sash.
-function geomSash(sx, sy, sw, sh, th, k) {
-  const key = th('key_stile')
+// Mockup geomSash: hook stile on the left (rail end 0), key stile on the right (rail end 1).
+// `mirrored` (owner 2026-10-16, Q7, D7; Nakhon Nayok p15 (26)): the LEFT sash of a 2-sash unit is drawn the other way
+// round, key stile on the left (at the jamb) and hook stile on the right, so the two hook stiles meet (and overlap, U8)
+// in the middle and both key stiles stand at the jambs. Its rails get flip: end 0 (the hook end, joint v[0]) is on the
+// right. Costing is unchanged: every sash still has one key + one hook stile.
+function geomSash(sx, sy, sw, sh, th, k, mirrored = false) {
+  const key = th('key_stile'), hook = th('hook_stile')
+  const flip = mirrored ? { flip: true } : {}
   return [
-    { key: 'sash_top', piece: k, orient: 'h', fx: sx, fy: sy, len: sw, thick: th('sash_top') },
-    { key: 'sash_bottom', piece: k, orient: 'h', fx: sx, fy: sy + sh - th('sash_bottom'), len: sw, thick: th('sash_bottom') },
-    { key: 'key_stile', piece: k, orient: 'v', fx: sx + sw - key, fy: sy, len: sh, thick: key },
-    { key: 'hook_stile', piece: k, orient: 'v', fx: sx, fy: sy, len: sh, thick: th('hook_stile') },
+    { key: 'sash_top', piece: k, orient: 'h', fx: sx, fy: sy, len: sw, thick: th('sash_top'), ...flip },
+    { key: 'sash_bottom', piece: k, orient: 'h', fx: sx, fy: sy + sh - th('sash_bottom'), len: sw, thick: th('sash_bottom'), ...flip },
+    { key: 'key_stile', piece: k, orient: 'v', fx: mirrored ? sx : sx + sw - key, fy: sy, len: sh, thick: key },
+    { key: 'hook_stile', piece: k, orient: 'v', fx: mirrored ? sx + sw - hook : sx, fy: sy, len: sh, thick: hook },
   ]
 }
+// D7: in a 2-sash drawing sash 0 (the left one) is the mirrored one.
+const mirroredSash = (k, n) => n === 2 && k === 0
 
 const THROUGH = { mode: 'through', to: null, deduction_mm: null }
 
@@ -110,8 +117,9 @@ function piecesOf({ model, layout, specs, th, X }) {
       const target = pt?.key || end.to?.key
       return Math.min(g.len / 3, target ? th(target) : 0)
     }
+    // g.flip: the piece's end 0 is on its right (the mirrored left sash's rails, D7)
     const span = (pair) => {
-      const a = ins(pair, 0), b = ins(pair, 1)
+      const a = ins(pair, g.flip ? 1 : 0), b = ins(pair, g.flip ? 0 : 1)
       return [a, Math.max(2, g.len - a - b)]
     }
     const label = [model.names?.[g.key] || layout.positions[g.key].name, pieceLabel(model, layout, g.key, g.piece)].filter(Boolean).join(' ')
@@ -169,7 +177,7 @@ export function overviewSpecs({ model, widthMm, heightMm, view = 'out', widthOf 
   const nSash = Math.min(2, pieceCount(model, 'sash_top'))
   const pwid = nSash === 2 ? inW / 2 + th('hook_stile') / 2 : inW
   let specs = geomFrame(x0, y0, pw, ph, th)
-  for (const k of sashOrder(nSash, mirror)) specs = specs.concat(geomSash(ix + (k ? inW - pwid : 0), iy, pwid, inH, th, k))
+  for (const k of sashOrder(nSash, mirror)) specs = specs.concat(geomSash(ix + (k ? inW - pwid : 0), iy, pwid, inH, th, k, mirroredSash(k, nSash)))
 
   const pieces = piecesOf({ model, layout, specs, th, X })
   const dims = [
@@ -178,7 +186,8 @@ export function overviewSpecs({ model, widthMm, heightMm, view = 'out', widthOf 
   ]
   const legacy = legacyExtras({ model, layout, pieces, nSash, mirror, X, sash: (k) => {
     const x = ix + (k ? inW - pwid : 0)
-    return { x: x + th('hook_stile'), y: iy + th('sash_top'), w: pwid - th('hook_stile') - th('key_stile'), h: inH - th('sash_top') - th('sash_bottom') }
+    const leftStile = mirroredSash(k, nSash) ? th('key_stile') : th('hook_stile')
+    return { x: x + leftStile, y: iy + th('sash_top'), w: pwid - th('hook_stile') - th('key_stile'), h: inH - th('sash_top') - th('sash_bottom') }
   } })
   return { box: { ...OVERVIEW_BOX, frameX: x0, frameY: y0, frameW: pw, frameH: ph, scale: sc }, pieces, dims, ...legacy }
 }
@@ -225,7 +234,7 @@ export function zoomSpecs({ model, partKey, partIdx, selected, view = 'out', wid
     th = () => s
     const total = n * sw + (n - 1) * gap, sx = (ZOOM_BOX.w - total) / 2
     specs = []
-    for (let k = 0; k < n; k++) specs = specs.concat(geomSash(sx + k * (sw + gap), 25, sw, sh, th, k))
+    for (let k = 0; k < n; k++) specs = specs.concat(geomSash(sx + k * (sw + gap), 25, sw, sh, th, k, mirroredSash(k, n)))
   }
   const pieces = piecesOf({ model, layout, specs, th, X })
 
@@ -239,6 +248,7 @@ export function zoomSpecs({ model, partKey, partIdx, selected, view = 'out', wid
       const pts = g.orient === 'h'
         ? [[g.fx + inset, g.fy + g.thick / 2], [g.fx + g.len - inset, g.fy + g.thick / 2]]
         : [[g.fx + g.thick / 2, g.fy + inset], [g.fx + g.thick / 2, g.fy + g.len - inset]]
+      if (g.flip) pts.reverse()   // end 0 of a mirrored left sash's rail is on its right (D7)
       pts.forEach(([x, y], e) => {
         const mode = line?.ends?.[g.piece]?.[e]?.mode === 'butt' ? 'butt' : 'through'
         markers.push({ key: g.key, piece: g.piece, end: e, x: X(x, 0), y, mode })
