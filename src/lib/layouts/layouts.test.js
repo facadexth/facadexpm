@@ -5,6 +5,7 @@ import { startModel, validateCorners, pieceCount, setParams, trackOf, isFixedPie
 import { expandParts } from '../partExpand.js'
 import { computeComponentLength } from '../bomEngine.js'
 import { symbolFor } from '../partSymbols.js'
+import { overviewSpecs } from '../partGeometry.js'
 
 const buttOf = () => 45
 const widthOf = () => 60
@@ -504,6 +505,34 @@ describe('folding_door', () => {
     expect(side.quantity_value).toBe(8)
     expect(r6(r.len(side))).toBe(2280)
     expect(r6(r.len(r.row(m.names.track_side)[0]))).toBe(2280)
+  })
+  // Owner 2026-10-16 (Q1 answer ก, D1): at the track frame's corners the top / bottom tracks run through (full W) and the
+  // side tracks butt between them (H − b(top) − b(bottom)). Before the fix BOTH were shortened (top/bottom W − 2·b(side)).
+  // The drawing reads the same stored end modes, so it must agree: top/bottom drawn over the full width, sides between them.
+  it('owner 2026-10-16 (D1): top/bottom tracks run through, side tracks butt; costing and drawing agree', () => {
+    const m = fold()
+    expect(m.lines.track_top[0].ends[0].map((e) => e.mode)).toEqual(['through', 'through'])
+    expect(m.lines.track_bottom[0].ends[0].map((e) => e.mode)).toEqual(['through', 'through'])
+    expect(m.lines.track_side[0].ends.map((p) => p.map((e) => e.mode))).toEqual([['butt', 'butt'], ['butt', 'butt']])
+    expect(validateCorners(m)).toEqual([])
+    const r = runWith(m, 3000, 2400, buttTrack)
+    expect(r.issues).toEqual([])
+    expect(r6(r.len(r.row(m.names.track_top)[0]))).toBe(3000)
+    expect(r6(r.len(r.row(m.names.track_bottom)[0]))).toBe(3000)
+    const side = r.row(m.names.track_side)[0]
+    expect(side.quantity_value).toBe(2)
+    expect(r6(r.len(side))).toBe(2280)   // 2400 − 60 − 60, deducted once (end deductions), not twice
+    const o = overviewSpecs({ model: m, widthMm: 3000, heightMm: 2400 })
+    const mm = (p) => ({ x: (p.x - o.box.frameX) / o.box.scale, y: (p.y - o.box.frameY) / o.box.scale, w: p.w / o.box.scale, h: p.h / o.box.scale })
+    const top = mm(o.pieces.find((p) => p.key === 'track_top'))
+    expect(top.x).toBeCloseTo(0, 6)
+    expect(top.w).toBeCloseTo(3000, 6)
+    const sides = o.pieces.filter((p) => p.key === 'track_side').map(mm)
+    const tTop = mm(o.pieces.find((p) => p.key === 'track_top')).h, tBot = mm(o.pieces.find((p) => p.key === 'track_bottom')).h
+    for (const s of sides) {
+      expect(s.y).toBeCloseTo(tTop, 6)
+      expect(s.h).toBeCloseTo(2400 - tTop - tBot, 6)
+    }
   })
   it('the two free lines carry the leaf member rules and no corner partner', () => {
     const m = fold()
