@@ -256,3 +256,9 @@ These are kept as G1-G10 in the rulebook (section 5b).
 - **G1 (2026-10-16): 44.5.** CONFIRMED (owner 2026-10-16): the frame band is drawn and costed at 44.5 mm (the box section's
   depth), not the 50 mm band of the shop drawings' elevations. Open follow-up: whether the "50" in a dimension chain such as
   1050 = 50 + 950 + 50 then also reads 44.5 or denotes the shared divider (G7).
+- **G6 (2026-10-16): per edge.** CONFIRMED: add-on glass = pane opening (mullion widths subtracted) + 6 mm glass bite on
+  EACH edge, i.e. +12 on the width and +12 on the height of every pane.
+- **G7 (2026-10-16): no, the add-on size counts only the add-on unit.** CONFIRMED: following the Nakhon Nayok drawing
+  (1050 = 50 + 950 + 50), the add-on unit is entered as 1000 mm (outer frame band + glass cell); the shared divider band
+  belongs to the main unit. Pending owner confirmation in the thread: whether the main unit's given height already includes
+  that shared band (then the whole height = main + add-on input).
