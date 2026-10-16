@@ -317,4 +317,26 @@ describe('partSvgString with inline add-ons', () => {
     expect(safeSvgDataUri(s)).not.toBeNull()
     expect(s).toContain('1800 × 1600')
   })
+  // owner 2026-10-16: a frame member never ends against one in line with it with nothing between (W-01: the add-on's
+  // side frame stood on the main side frame at 1.20 m). Flush merge add-on → the main member runs on through it.
+  it('merge add-ons: a flush side runs through the main frame; a non-flush one stops against the main frame member', () => {
+    const near = (a, b) => Math.abs(a - b) < 0.05
+    // bars only: the shared outline and the glass span the whole unit
+    for (const [label, m] of [['sliding_2', model], ['fixed_grid', m8('fixed_grid')]]) {
+      for (const view of ['out', 'in']) {
+        const b = overviewSpecs({ model: m, widthMm: 1800, heightMm: 1200, view }).box
+        const R = rects(partSvgString({ model: m, widthMm: 1800, heightMm: 1200, view, addons: [topMerge] }))
+        for (const x of [b.frameX, b.frameX + b.frameW]) {
+          const through = R.find(([rx, ry, rw, rh]) => rw < b.frameW / 10 && (near(rx, x) || near(rx + rw, x)) && ry < b.frameY - 1 && near(ry + rh, b.frameY + b.frameH))
+          expect(through, `${label} ${view} side at x ${x}`).toBeTruthy()
+        }
+        const L = rects(partSvgString({ model: m, widthMm: 1800, heightMm: 1200, view, addons: [ao({ position: 'left', len_mm: 1200, thick_mm: 400, rows: 3, cols: 1 })] }))
+        const across = (y) => L.find(([rx, ry, rw, rh]) => rh < b.frameH / 10 && near(ry, y) && rx < b.frameX - 1 && rx + rw > b.frameX + 1)
+          || L.find(([rx, ry, rw, rh]) => rh < b.frameH / 10 && near(ry, y) && rx < b.frameX + b.frameW - 1 && rx + rw > b.frameX + b.frameW + 1)
+        expect(across(b.frameY), `${label} ${view} top runs across the main side`).toBeTruthy()
+        const N = rects(partSvgString({ model: m, widthMm: 1800, heightMm: 1200, view, addons: [ao({ len_mm: 1200, offset_mm: 300 })] }))
+        expect(N.some(([, ry, rw, rh]) => rw < b.frameW / 10 && ry < b.frameY - 1 && ry + rh > b.frameY + 1), `${label} ${view} narrow add-on`).toBe(false)
+      }
+    }
+  })
 })

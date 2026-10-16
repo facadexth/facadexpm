@@ -291,11 +291,27 @@ function addonSvg(ao, u) {
       w: r.w - (has('left') ? t : 0) - (has('right') ? t : 0), h: r.h - (has('top') ? t : 0) - (has('bottom') ? t : 0),
     }
     out.push(rect(inner.x, inner.y, Math.max(0, inner.w), Math.max(0, inner.h), cad ? `fill="none" stroke="${DIM}" stroke-width="0.6"${u.ns}` : `fill="${GLASS}" stroke="none"`))
-    // verticals run through, horizontals sit between them
-    if (has('left')) bar(r.x, r.y, t, r.h)
-    if (has('right')) bar(r.x + r.w - t, r.y, t, r.h)
-    if (has('top')) bar(inner.x, r.y, inner.w, t)
-    if (has('bottom')) bar(inner.x, r.y + r.h - t, inner.w, t)
+    // verticals run through, horizontals sit between them. Merge (owner 2026-10-16): a frame member never ends against a
+    // member in line with it with nothing between. Where an add-on's frame bar is in line with the main frame's (flush
+    // with its edge), it is the main member extended (costing: ext, the whole length) and runs on through the main frame;
+    // where it is not, it stops against the main frame member that crosses it.
+    const F = ao.frame, eq = (a, b) => Math.abs(a - b) < 0.01
+    const merged = r.a.mode === 'merge', tb = r.side === 'top' || r.side === 'bottom'
+    const vBar = (x, flush) => {
+      if (!(merged && tb && flush)) return bar(x, r.y, t, r.h)
+      const y0 = Math.min(r.y, F.y), y1 = Math.max(r.y + r.h, F.y + F.h)
+      bar(x, y0, t, y1 - y0)
+    }
+    const hBar = (y, flush) => {
+      if (!(merged && !tb && flush)) return bar(inner.x, y, inner.w, t)
+      // through the main frame up to its far side, which keeps running through at its corner
+      const x0 = r.side === 'left' ? inner.x : F.x + t, x1 = r.side === 'left' ? F.x + F.w - t : inner.x + inner.w
+      bar(x0, y, x1 - x0, t)
+    }
+    if (has('left')) vBar(r.x, eq(r.x, F.x))
+    if (has('right')) vBar(r.x + r.w - t, eq(r.x + r.w, F.x + F.w))
+    if (has('top')) hBar(r.y, eq(r.y, F.y))
+    if (has('bottom')) hBar(r.y + r.h - t, eq(r.y + r.h, F.y + F.h))
     // grid (owner 2026-10-15): cols − 1 mullions and rows − 1 rails drawn as bars as wide as the frame; the mullions run
     // through, the rails sit between them. Fake dividers (ซอยหลอก): per pane, fake_cols − 1 / fake_rows − 1 bars at half.
     const { cols, rows, fake_cols, fake_rows } = r.a
