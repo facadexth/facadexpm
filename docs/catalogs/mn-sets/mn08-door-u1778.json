@@ -1,0 +1,349 @@
+{
+ "source_pdf": "MN_8. ชุดประตูบานเปิด MN-U1778.pdf",
+ "catalogue_year": null,
+ "pages": 16,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": "MN-1778"
+  },
+  {
+   "page": 2,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 3,
+   "content": "toc",
+   "series": "MN-1778"
+  },
+  {
+   "page": 4,
+   "content": "profile table",
+   "series": "MN-1778 บานเดี่ยว"
+  },
+  {
+   "page": 5,
+   "content": "section drawing",
+   "series": "บานเดี่ยว"
+  },
+  {
+   "page": 6,
+   "content": "profile table",
+   "series": "บานคู่ multipoint"
+  },
+  {
+   "page": 7,
+   "content": "section drawing",
+   "series": "บานคู่ multipoint"
+  },
+  {
+   "page": 8,
+   "content": "profile table",
+   "series": "บานเปิด+ช่องแสง"
+  },
+  {
+   "page": 9,
+   "content": "section drawing",
+   "series": "บานเดี่ยว+ช่องแสง"
+  },
+  {
+   "page": 10,
+   "content": "profile table",
+   "series": "บานเปิด+ช่องแสง (multipoint)"
+  },
+  {
+   "page": 11,
+   "content": "section drawing",
+   "series": "บานคู่+ช่องแสง"
+  },
+  {
+   "page": 12,
+   "content": "other",
+   "series": "notes (blank lines)"
+  },
+  {
+   "page": 13,
+   "content": "other",
+   "series": "notes"
+  },
+  {
+   "page": 14,
+   "content": "other",
+   "series": "notes"
+  },
+  {
+   "page": 15,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 16,
+   "content": "other",
+   "series": "back cover"
+  }
+ ],
+ "series": [
+  {
+   "name": "ชุดประตูบานเปิดวงกบไม้ รุ่น MN-1778 (SWINGING DOOR MN-1778)",
+   "system": "swing door",
+   "app_types": [
+    "ประตูบานเปิดเดี่ยว",
+    "ประตูบานเปิดคู่",
+    "ประตูบานเปิด + ช่องแสง"
+   ],
+   "frame_size_mm": "101.6x44.45 (frame face 44.45, leaf 36.4 deep)",
+   "profiles": [
+    {
+     "die_no": "U1778",
+     "name": "วงกบประตูบังใบ (ลักษณะวงกบไม้) 101.6x44.45",
+     "role_family": "วงกบประตู",
+     "kg_per_m": 1.062,
+     "width_mm": 101.6,
+     "depth_mm": 44.45,
+     "wall_mm": 1.8,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p69 (วงกบประตูบังใบ ใช้ตัวกันชน U2256)",
+     "notes": "steps 39.1 + 62.5; stop leg 11.1; 33.35 rebate depth"
+    },
+    {
+     "die_no": "MN-M41078",
+     "name": "กรอบบาน (เสาบานพับ) 79.6x36.4",
+     "role_family": "กรอบบาน",
+     "kg_per_m": 1.289,
+     "width_mm": 79.6,
+     "depth_mm": 36.4,
+     "wall_mm": 1.8,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p76 (กรอบบาน 79.6x36.4)",
+     "notes": "hinge stile; 12.2 glass slot side"
+    },
+    {
+     "die_no": "MN-M30037",
+     "name": "กรอบบานมีขอ (เสากุญแจ / เสากลางบานคู่) 93.3x36.4",
+     "role_family": "กรอบบาน",
+     "kg_per_m": 1.426,
+     "width_mm": 93.3,
+     "depth_mm": 36.4,
+     "wall_mm": 1.8,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p76 (กรอบบานมีขอ 93.3x36.4)",
+     "notes": "lock stile with lip; in double door both meeting stiles are M30037"
+    },
+    {
+     "die_no": "MN-U3224A",
+     "name": "ขวางบน/ขวางล่าง 34.4x65",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": 0.937,
+     "width_mm": 65,
+     "depth_mm": 34.4,
+     "wall_mm": 1.4,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p78 (ขวาง 34.4x65)",
+     "notes": "used for BOTH top and bottom rail of the leaf"
+    },
+    {
+     "die_no": "MN-U3226",
+     "name": "ตัวหนีบกระจก 11.4x11.8",
+     "role_family": "ตัวหนีบกระจก",
+     "kg_per_m": 0.098,
+     "width_mm": 11.4,
+     "depth_mm": 11.8,
+     "wall_mm": 1.0,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p78 (ตัวหนีบเล็ก 11.4x11.8)"
+    },
+    {
+     "die_no": "MN-U6307",
+     "name": "วงกบบังใบ 2 ทาง (เสาแบ่ง/ทับหลัง) 101.6x44.45",
+     "role_family": "วงกบประตู",
+     "kg_per_m": 0.685,
+     "width_mm": 101.6,
+     "depth_mm": 44.45,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p72 (วงกบบังใบ 2 ทาง 101.6x44.45)",
+     "notes": "38.8 + 62.8, 10.3 slot, 21.05 glazing pocket; transom over door and mullion door/side-light"
+    },
+    {
+     "die_no": "U2256",
+     "name": "ตัวกันชน / คิ้วรับกระจกช่องแสง 41.2x14.1",
+     "role_family": "ตัวกันชน",
+     "kg_per_m": 0.248,
+     "width_mm": 41.2,
+     "depth_mm": 14.1,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p72 (ตัวกันชน (ฝาปิดบังใบ) 41.2x14.1)",
+     "notes": "clips into U1778/U6307 rebate to glaze fixed lights"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานเปิดเดี่ยว (วงกบไม้ 4\") single swing door",
+     "page": 5,
+     "joints": "Frame U1778 on head + 2 jambs only, no sill (door bottom rail clears floor). Leaf: stiles M41078 (hinge) and M30037 (lock) run full height; top and bottom rails U3224A (65) sit between the stiles (elevation shows square butt corners, not mitred) - butt vs mitre not dimensioned, estimated.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "wall to frame 4 (sealant + backer) all round; frame rebate to leaf top 4; leaf bottom to floor 5; frame depth 101.6 = 36.4 (leaf zone) + 62.5; hinge jamb: 4 | 44.45 frame | 68.5 to glass line; lock jamb: 72.2 | 44.45 | 4",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    },
+    {
+     "type": "บานเปิดคู่ multipoint lock",
+     "page": 7,
+     "joints": "Same frame (head+jambs, no sill). Two leaves; meeting stiles both M30037 with 10 mm gap between them; hinge stiles M41078.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "meeting gap 10; dims each side of gap 76.3; jambs 4 | 44.45 | 68.5; head 4 gap; floor 5",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    },
+    {
+     "type": "บานเปิดเดี่ยว + ช่องแสงข้าง + ช่องแสงบน multipoint",
+     "page": 9,
+     "joints": "Transom U6307 runs over the door between the jambs; mullion U6307 between door and side lights (runs full height - estimated from elevation). Fixed lights glazed directly in U1778/U6307 with bead U2256 + glass clip; under the side light U1778 is also used as a sill (section 5), the door opening has no sill.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "door leaf under transom: 4 gap (section 6: 4 | 21.05); side light sill U1778 sits 4 above floor (sealant); 101.6 depth = 28.5 + 10.3 + 62.8 for U6307",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    },
+    {
+     "type": "บานเปิดคู่ + ช่องแสงข้าง 2 ข้าง + ช่องแสงบน",
+     "page": 11,
+     "joints": "Double leaf (M30037 meeting, 10 gap) under transom U6307; side lights each side separated by U6307 mullions; outer frame U1778 incl. sill under side lights.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "meeting 76.3 | 10 | 76.3; mullion side 44.45 | 67.9 to glass line; jamb 4 | 44.45",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    }
+   ],
+   "hardware": [
+    {
+     "name": "โช้คประตูไม้ (door closer)",
+     "code": "980",
+     "per": "per leaf",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "บานพับ",
+     "code": "CZ-PH01S",
+     "per": "per leaf",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "บานพับ",
+     "code": "CZ-PH05",
+     "per": "per leaf",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "บานพับ",
+     "code": "CZ-PH06",
+     "per": "per leaf",
+     "qty": null,
+     "page": 4,
+     "notes": "3 hinge alternatives shown; qty not printed"
+    },
+    {
+     "name": "มือจับ",
+     "code": "CZ-MZS SERIE",
+     "per": "per leaf",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ไส้กุญแจ (cylinder)",
+     "code": "KC / TC / TD",
+     "per": "per lock",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "มือจับ (double door)",
+     "code": "CZ-MZS SERIE + DUMMY",
+     "per": "per pair",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "เสื้อกุญแจ multipoint",
+     "code": "MSC32-I / MSC32-III",
+     "per": "per active leaf",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "กลอน (flush bolt)",
+     "code": "MCX320",
+     "per": "per passive leaf",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "เบ้ารับกลอน บน+ล่าง",
+     "code": "-",
+     "per": "per passive leaf",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "แกนบานเปิด (rod)",
+     "code": "CZ-009B",
+     "per": null,
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "รับล็อค (keeper)",
+     "code": "009",
+     "per": null,
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "ตัวรับหัวแกน",
+     "code": "JCKG03",
+     "per": null,
+     "qty": null,
+     "page": 8
+    }
+   ],
+   "accessories": [],
+   "prices": []
+  }
+ ],
+ "new_families": [
+  "ตัวหนีบกระจก",
+  "ตัวกันชน"
+ ],
+ "open_questions": [
+  "คู่มือไม่มีสูตรตัดเลย — ร้านใช้สูตรตัดขวาง U3224A = W - ? (หักเสาบาน 2 ข้าง) อย่างไร ช่วยให้สูตรจริง",
+  "บานต่อมุมแบบชนตรง (ขวางอยู่ระหว่างเสา) ใช่หรือไม่ ไม่ใช่ตัด 45°",
+  "ช่องใต้บาน 5 มม. และช่องบน 4 มม. ใช้จริงตามนี้หรือไม่",
+  "บานพับ 3 แบบ (PH01S/PH05/PH06) ใช้กี่ตัวต่อบาน"
+ ],
+ "unreadable_pages": [],
+ "supplier": "บริษัท แม่น้ำเมทอลซัพพลาย จำกัด (Mae Num Metal Supply Co.,Ltd.); hardware by CENZA Architectural Supply Co.,Ltd.",
+ "brand": "MN METAL SUPPLY / CENZA"
+}

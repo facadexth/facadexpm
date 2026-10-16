@@ -1,0 +1,506 @@
+{
+ "source_pdf": "MN_14. ชุดประตูบานเลื่อน AUTOMATIC.pdf",
+ "catalogue_year": null,
+ "pages": 16,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": "AUTOMATIC / รางแขวน"
+  },
+  {
+   "page": 2,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 3,
+   "content": "toc",
+   "series": "I p1, II p5"
+  },
+  {
+   "page": 4,
+   "content": "profile table",
+   "series": "I MN-U6359"
+  },
+  {
+   "page": 5,
+   "content": "section drawing",
+   "series": "I MN-U6359"
+  },
+  {
+   "page": 6,
+   "content": "profile table",
+   "series": "I DAIKEN"
+  },
+  {
+   "page": 7,
+   "content": "section drawing",
+   "series": "I DAIKEN"
+  },
+  {
+   "page": 8,
+   "content": "profile table",
+   "series": "II AUTOMATIC MN-U3393"
+  },
+  {
+   "page": 9,
+   "content": "section drawing",
+   "series": "II 3 ช่อง"
+  },
+  {
+   "page": 10,
+   "content": "profile table",
+   "series": "II AUTOMATIC"
+  },
+  {
+   "page": 11,
+   "content": "section drawing",
+   "series": "II 4 ช่อง"
+  },
+  {
+   "page": 12,
+   "content": "other",
+   "series": "notes"
+  },
+  {
+   "page": 13,
+   "content": "other",
+   "series": "notes"
+  },
+  {
+   "page": 14,
+   "content": "other",
+   "series": "notes"
+  },
+  {
+   "page": 15,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 16,
+   "content": "other",
+   "series": "back cover"
+  }
+ ],
+ "series": [
+  {
+   "name": "I ชุดประตูรางแขวนทั่วไป (MN-U6359 + DAIKEN semi-auto)",
+   "system": "sliding door",
+   "app_types": [
+    "ประตูบานเลื่อนรางแขวน"
+   ],
+   "frame_size_mm": "101.6",
+   "profiles": [
+    {
+     "die_no": "M40301",
+     "name": "เฟรมบน 101.6x36",
+     "role_family": "เฟรมบน 2 ราง",
+     "kg_per_m": 1.113,
+     "width_mm": 101.6,
+     "depth_mm": 36,
+     "wall_mm": 1.8,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p124 (เฟรมบน 2 ราง 101.6x36)"
+    },
+    {
+     "die_no": "MN-M42879",
+     "name": "เสาบาน 63.5x38",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": 1.145,
+     "width_mm": 63.5,
+     "depth_mm": 38,
+     "wall_mm": 1.8,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p84 (เสาบาน 63.5x38)"
+    },
+    {
+     "die_no": "MN-U5311",
+     "name": "คิ้ว 13x15 (17.8)",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.176,
+     "width_mm": 17.8,
+     "depth_mm": 15,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p52 (คิ้ว 17.2x15.3)"
+    },
+    {
+     "die_no": "M40302",
+     "name": "เฟรมข้าง 101.6x35",
+     "role_family": "เฟรมข้าง 2 ราง",
+     "kg_per_m": 1.218,
+     "width_mm": 101.6,
+     "depth_mm": 35,
+     "wall_mm": 1.8,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p124 (เฟรมข้าง 101.6x35 มีร่องรับบาน)"
+    },
+    {
+     "die_no": "MN-M41496",
+     "name": "เสาบาน 76x38 (63)",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": 1.229,
+     "width_mm": 76,
+     "depth_mm": 38,
+     "wall_mm": 1.8,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p84 (เสาบาน 76x38)"
+    },
+    {
+     "die_no": "MN-U6360",
+     "name": "แผ่นปิด 4.9x59.3",
+     "role_family": "ฝาปิด",
+     "kg_per_m": 0.217,
+     "width_mm": 4.9,
+     "depth_mm": 59.3,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p84 (แผ่น 59.3x4.9)"
+    },
+    {
+     "die_no": "MN-U6359",
+     "name": "ขวางมีคิ้ว 35x72.4",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": 1.059,
+     "width_mm": 72.4,
+     "depth_mm": 35,
+     "wall_mm": 1.8,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p84 (ขวางมีคิ้ว 35x72.4)"
+    },
+    {
+     "die_no": "MN-M42884",
+     "name": "ขวาง 35x66.2",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": 0.973,
+     "width_mm": 66.2,
+     "depth_mm": 35,
+     "wall_mm": 1.8,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p84 (ขวาง 35x66.2)"
+    },
+    {
+     "die_no": "MN-U6357",
+     "name": "เสาประกบ 37.55x47.2",
+     "role_family": "เสาเกี่ยว",
+     "kg_per_m": 0.495,
+     "width_mm": 37.55,
+     "depth_mm": 47.2,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p84 (เสาประกบ 47.2x37.55)"
+    },
+    {
+     "die_no": "M4031",
+     "name": "(label on p5 drawing, head)",
+     "role_family": "เฟรมบน",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 5,
+     "confidence": "estimated",
+     "kg_source": "not in 2021 profile catalogue",
+     "notes": "not on p4 list, not in 2021 catalogue — maybe M40301 misprint"
+    },
+    {
+     "die_no": "MN-M30087",
+     "name": "กรอบบานยูโร 90x38",
+     "role_family": "กรอบบาน",
+     "kg_per_m": 1.498,
+     "width_mm": 90,
+     "depth_mm": 38,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 5,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p133 (กรอบบานยูโร 90x38 (ใช้ M30089+M30090))",
+     "notes": "label on p5 drawing"
+    },
+    {
+     "die_no": "MN-M30088",
+     "name": "เสาเกี่ยว 50.8x47.2",
+     "role_family": "เสาเกี่ยว",
+     "kg_per_m": 0.568,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 5,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p133 (เสาเกี่ยว 50.8x47.2)"
+    },
+    {
+     "die_no": "MN-M30089",
+     "name": "รางรองกระจก",
+     "role_family": "ตัวเสริมกล่อง",
+     "kg_per_m": 0.435,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 5,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p133 (รางรองกระจก 25x39.95)"
+    },
+    {
+     "die_no": "MN-M30090",
+     "name": "ตัวเสริม 36x18.2",
+     "role_family": "ตัวเสริมกล่อง",
+     "kg_per_m": 0.313,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 5,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p133 (ตัวเสริม 36x18.2 (ร่อง 16))"
+    },
+    {
+     "die_no": "MN-U3393",
+     "name": "เสาบานกว้าง 101x48",
+     "role_family": "เสาบานประตู",
+     "kg_per_m": 1.626,
+     "width_mm": 101,
+     "depth_mm": 48,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p62 (เสาบานกว้าง 101x46)",
+     "notes": "2021 catalogue lists 101x46; drawings dimension 46"
+    },
+    {
+     "die_no": "U1971",
+     "name": "ขวางล่างประตู 44x80",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": 1.503,
+     "width_mm": 80,
+     "depth_mm": 44,
+     "wall_mm": 2.3,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p61 (ขวางล่างประตู 44x80 หนา 2.3)"
+    },
+    {
+     "die_no": "M3843",
+     "name": "คิ้วบานประตู 12.5/15.75 x13.1",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.165,
+     "width_mm": 17.4,
+     "depth_mm": 13.1,
+     "wall_mm": 1.1,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p66 (คิ้วบานประตู 17.4x15.1)"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "ชุดบานรางแขวน MN-U6359 (2 ตาย + 2 เลื่อน)",
+     "page": 5,
+     "joints": "Head: track TLG121 in a box (labelled M4031) ; sliding leaves of M30087 with interlock M30088 hang on rollers TLG114; fixed panels on the outer plane; jamb M40302; centre meeting stiles M30089 (90 + 90). NOTE the drawing labels (M30087-M30090, M4031) differ from the p4 profile list (M40301, M42879, U6359 …).",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "head zone 36 + leaf 128 (92 rail); leaf bottom 90/95 with 10 floor gap (estimated); depth 101.6 = 6.5 + 38 + 12.6 + 38 + 6.5; jamb 35 | 79 = 114; leaf stile 90; centre 90 | 90 = 181",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    },
+    {
+     "type": "บานเลื่อนกึ่งอัตโนมัติ DAIKEN (บานเดี่ยวเลื่อนหน้าผนัง)",
+     "page": 7,
+     "joints": "Single leaf U3393 stiles + U1971 rails top/bottom + bead M3843, hung on DAIKEN sliding rail set under a cover sheet fixed to the wall; floor guide pin.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "leaf rail 80 + 13.1; 48 | 100 = 150.2 (estimated); leaf to fixed stile 101 | 12.6",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    }
+   ],
+   "hardware": [
+    {
+     "name": "มือจับล็อคบานเลื่อน",
+     "code": "005-01, 005-03, 005-04",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ราง",
+     "code": "TLG121",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ล้อบานเลื่อน",
+     "code": "TLG114",
+     "per": "per leaf",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "Sliding door closer DAIKEN",
+     "code": "HCS-80 / HCS-8015",
+     "per": "per leaf",
+     "qty": 1,
+     "page": 6
+    }
+   ],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "II ชุดประตูบานเลื่อน AUTOMATIC MN-U3393",
+   "system": "sliding door",
+   "app_types": [
+    "ประตูบานเลื่อนอัตโนมัติ"
+   ],
+   "frame_size_mm": "leaf 101x46, jamb 101.6x44.45",
+   "profiles": [
+    {
+     "die_no": "MN-U3393",
+     "name": "เสาบานกว้าง 101x48",
+     "role_family": "เสาบานประตู",
+     "kg_per_m": 1.626,
+     "width_mm": 101,
+     "depth_mm": 48,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p62 (เสาบานกว้าง 101x46)",
+     "notes": "2021 catalogue lists 101x46; drawings dimension 46"
+    },
+    {
+     "die_no": "U1971",
+     "name": "ขวางล่างประตู 44x80",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": 1.503,
+     "width_mm": 80,
+     "depth_mm": 44,
+     "wall_mm": 2.3,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p61 (ขวางล่างประตู 44x80 หนา 2.3)"
+    },
+    {
+     "die_no": "M3843",
+     "name": "คิ้วบานประตู 12.5/15.75 x13.1",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.165,
+     "width_mm": 17.4,
+     "depth_mm": 13.1,
+     "wall_mm": 1.1,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p66 (คิ้วบานประตู 17.4x15.1)"
+    },
+    {
+     "die_no": "U1970",
+     "name": "ขวางบนประตู 44x51",
+     "role_family": "ขวางบน",
+     "kg_per_m": 1.164,
+     "width_mm": 51,
+     "depth_mm": 44,
+     "wall_mm": 2.3,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p61 (ขวางบนประตู 44x51 หนา 2.3)"
+    },
+    {
+     "die_no": "U1719",
+     "name": "กล่อง 4\" ตัว C 101.6x44.45",
+     "role_family": "กล่องเรียบ",
+     "kg_per_m": 1.151,
+     "width_mm": 101.6,
+     "depth_mm": 44.45,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p17 (กล่อง 4\" ตัว C (เรียบ))",
+     "notes": "jamb / fixed frame"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "ประตูบานเลื่อน AUTOMATIC MN-U3393 3 ช่อง",
+     "page": 9,
+     "joints": "Fixed panel + sliding leaves of U3393 stiles, U1971 rails, M3843 beads; automatic operator under cover sheet; jambs U1719.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "jamb 44.45 | 101 | 12.6; leaves 46 deep",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    },
+    {
+     "type": "ประตูบานเลื่อน AUTOMATIC MN-U3393 4 ช่อง (2 ตาย + 2 เลื่อนแยกกลาง)",
+     "page": 11,
+     "joints": "Jambs U1719 (44.45, wall gap 5); fixed panels and sliding leaves all U3393 stiles 101 + M3843 12.6, rails U1971 80 + bead 13.1 top & bottom; operator HOKUYO DBSX-7 on the wall behind cover sheet; floor guide.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "leaf top 20 below cover sheet; leaf bottom 5 above floor; depth 150.2 = 46 + 5 + 46 + 53.2; centre meeting gap 4 (101 | 4 | 101)",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    }
+   ],
+   "hardware": [
+    {
+     "name": "ชุดอุปกรณ์รางบานเลื่อนอัตโนมัติ HOKUYO",
+     "code": "DBSX-7 (150kg x 2 door)",
+     "per": "per opening",
+     "qty": 1,
+     "page": 8
+    },
+    {
+     "name": "sensor/unit (photo label)",
+     "code": "DSX-51",
+     "per": null,
+     "qty": null,
+     "page": 8
+    }
+   ],
+   "accessories": [],
+   "prices": []
+  }
+ ],
+ "new_families": [
+  "เสาบานประตู"
+ ],
+ "open_questions": [
+  "หน้า 5 ใช้รหัส M30087-M30090/M4031 แต่หน้า 4 รายการเป็น M40301/M42879/U6359 — ชุดรางแขวนใช้หน้าตัดชุดไหนจริง",
+  "ไม่มีสูตรตัด — ความสูงบาน = H - ? ใต้ฝาครอบเครื่อง Automatic",
+  "U3393 หนา 46 หรือ 48",
+  "เครื่อง HOKUYO DBSX-7 / DAIKEN ราคาและรวมในชุดหรือไม่"
+ ],
+ "unreadable_pages": [],
+ "supplier": "บริษัท แม่น้ำเมทอลซัพพลาย จำกัด (Mae Num Metal Supply Co.,Ltd.); hardware by CENZA Architectural Supply Co.,Ltd.",
+ "brand": "MN METAL SUPPLY / CENZA"
+}

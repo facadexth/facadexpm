@@ -1,0 +1,252 @@
+{
+ "source_pdf": "MN_12. ชุดคานผลักประตูหนีไฟ MN-30457,MN-30458.pdf",
+ "catalogue_year": null,
+ "pages": 12,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": "MN-30457/30458"
+  },
+  {
+   "page": 2,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 3,
+   "content": "toc",
+   "series": "-"
+  },
+  {
+   "page": 4,
+   "content": "profile table",
+   "series": "บานเดี่ยว"
+  },
+  {
+   "page": 5,
+   "content": "section drawing",
+   "series": "บานเดี่ยว"
+  },
+  {
+   "page": 6,
+   "content": "profile table",
+   "series": "บานคู่"
+  },
+  {
+   "page": 7,
+   "content": "section drawing",
+   "series": "บานคู่"
+  },
+  {
+   "page": 8,
+   "content": "other",
+   "series": "notes"
+  },
+  {
+   "page": 9,
+   "content": "other",
+   "series": "notes"
+  },
+  {
+   "page": 10,
+   "content": "other",
+   "series": "notes"
+  },
+  {
+   "page": 11,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 12,
+   "content": "other",
+   "series": "back cover"
+  }
+ ],
+ "series": [
+  {
+   "name": "ชุดคานผลักประตูหนีไฟ รุ่น MN-30457, MN-30458 (PANIC EXIT DEVICE)",
+   "system": "swing door",
+   "app_types": [
+    "ประตูบานเปิดเดี่ยว",
+    "ประตูบานเปิดคู่",
+    "ประตูหนีไฟ"
+   ],
+   "frame_size_mm": "101.6x44.45 frame; leaf 46 deep",
+   "profiles": [
+    {
+     "die_no": "MN-M30018",
+     "name": "วงกบประตูบังใบ 101.6x44.45 (ครีบ 9.45)",
+     "role_family": "วงกบประตู",
+     "kg_per_m": 1.122,
+     "width_mm": 101.6,
+     "depth_mm": 44.45,
+     "wall_mm": 1.7,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p70 (วงกบประตูบังใบ (48.5/53.1))",
+     "notes": "48.5 + 53.1; alternative to U7205"
+    },
+    {
+     "die_no": "MN-U7205",
+     "name": "วงกบประตูบังใบ 101.6x44.45 (ครีบ 11.7)",
+     "role_family": "วงกบประตู",
+     "kg_per_m": 1.073,
+     "width_mm": 101.6,
+     "depth_mm": 44.45,
+     "wall_mm": 1.7,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p68 (วงกบประตูบังใบ 101.6x44.45 (48.5/53.1))",
+     "notes": "the frame used in the drawings"
+    },
+    {
+     "die_no": "MN-M30459",
+     "name": "คิ้ว/ร่องรับกระจก 15x28.5",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 15,
+     "depth_mm": 28.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue",
+     "notes": "17.4; clips on the leaf members both sides of glass"
+    },
+    {
+     "die_no": "MN-M30457",
+     "name": "เสาบาน/ขวาง 101.6x46",
+     "role_family": "เสาบานประตู",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 46,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue"
+    },
+    {
+     "die_no": "MN-M30458",
+     "name": "เสาบานกว้าง 127x46",
+     "role_family": "เสาบานประตู",
+     "kg_per_m": null,
+     "width_mm": 127,
+     "depth_mm": 46,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue",
+     "notes": "wider stile option"
+    },
+    {
+     "die_no": "M3893",
+     "name": "ขวางบน/ขวางล่าง 43.5x101.6",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": 1.845,
+     "width_mm": 101.6,
+     "depth_mm": 43.5,
+     "wall_mm": 2.3,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p64 (ขวางล่าง 43.5x101.6)",
+     "notes": "used top and bottom in the drawings"
+    },
+    {
+     "die_no": "MN-U2514",
+     "name": "ขวางล่าง 44x130",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": 2.143,
+     "width_mm": 130,
+     "depth_mm": 44,
+     "wall_mm": 2.3,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p65 (ขวางล่าง 44x130)",
+     "notes": "option"
+    },
+    {
+     "die_no": "M3397",
+     "name": "ขวางล่าง 43.5x150",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": 2.445,
+     "width_mm": 150,
+     "depth_mm": 43.5,
+     "wall_mm": 2.3,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p65 (ขวางล่าง 43.5x150)",
+     "notes": "option"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานเปิดเดี่ยว ประตูหนีไฟ + คานผลัก",
+     "page": 5,
+     "joints": "Frame U7205 head + 2 jambs, no sill. Leaf stiles M30457 (101.6) with rails M3893 (101.6 high) top and bottom; glass in M30459 channels clipped to the members. Panic bar mounted across the leaf on the inside (push side).",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "wall gap 4; head: frame 32.75 + 4 gap; leaf bottom 6 above floor; depth 55.35 (frame outside) + 46 (leaf); hinge jamb 4 | 30.25 | 6.1 | 124.8 (leaf incl. bead); lock jamb 124.8 | 10 | 30.25 | 4",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    },
+    {
+     "type": "บานเปิดคู่ ประตูหนีไฟ + คานผลัก 2 ชุด",
+     "page": 7,
+     "joints": "Two leaves, square meeting stiles M30457 (no astragal); panic bar on each leaf.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "meeting gap not dimensioned; jambs as single door",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    }
+   ],
+   "hardware": [
+    {
+     "name": "โช้คประตู",
+     "code": "680",
+     "per": "per leaf",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "บานพับ",
+     "code": "CZ-PH06",
+     "per": "per leaf",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "PANIC EXIT DEVICE (คานผลัก)",
+     "code": "-",
+     "per": "per leaf",
+     "qty": 1,
+     "page": 4,
+     "notes": "model not printed"
+    }
+   ],
+   "accessories": [],
+   "prices": []
+  }
+ ],
+ "new_families": [
+  "เสาบานประตู"
+ ],
+ "open_questions": [
+  "M30457/M30458/M30459 ไม่มีในแคตตาล็อก 2021 — ขอน้ำหนัก กก./ม.",
+  "ขวางล่าง 3 ขนาด (M3893 101.6 / U2514 130 / M3397 150) เลือกอย่างไร",
+  "บานต่อมุมแบบไหน (ขวางชนระหว่างเสา?)",
+  "คานผลักรุ่นอะไร ไม่ระบุรหัส"
+ ],
+ "unreadable_pages": [],
+ "supplier": "บริษัท แม่น้ำเมทอลซัพพลาย จำกัด (Mae Num Metal Supply Co.,Ltd.); hardware by CENZA Architectural Supply Co.,Ltd.",
+ "brand": "MN METAL SUPPLY / CENZA"
+}

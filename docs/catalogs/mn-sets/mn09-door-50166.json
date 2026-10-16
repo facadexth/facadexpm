@@ -1,0 +1,200 @@
+{
+ "source_pdf": "MN_9. ชุดประตูบานเปิดเดี่ยว MN-50166.pdf",
+ "catalogue_year": null,
+ "pages": 8,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": "MN-50166"
+  },
+  {
+   "page": 2,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 3,
+   "content": "toc",
+   "series": "MN-50166"
+  },
+  {
+   "page": 4,
+   "content": "profile table",
+   "series": "MN-50166"
+  },
+  {
+   "page": 5,
+   "content": "section drawing",
+   "series": "บานเปิดเดี่ยว + ช่องแสงติดตาย"
+  },
+  {
+   "page": 6,
+   "content": "other",
+   "series": "notes"
+  },
+  {
+   "page": 7,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 8,
+   "content": "other",
+   "series": "back cover"
+  }
+ ],
+ "series": [
+  {
+   "name": "ชุดประตูบานเปิดเดี่ยว + ช่องแสงติดตาย รุ่น MN-50166",
+   "system": "swing door",
+   "app_types": [
+    "ประตูบานเปิดเดี่ยว",
+    "ประตูบานเปิด + ช่องแสง"
+   ],
+   "frame_size_mm": "101.6x48 (box 25 + fin 23)",
+   "profiles": [
+    {
+     "die_no": "MN-M3850",
+     "name": "วงกบมีครีบ 101.6x48 (กล่อง 25 + ครีบ 23)",
+     "role_family": "วงกบประตู",
+     "kg_per_m": 1.187,
+     "width_mm": 101.6,
+     "depth_mm": 48,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p79 (วงกบมีครีบ 101.6x48 (ใช้ M50165))",
+     "notes": "12.7 rebate; takes bead M50165 on the fixed-light side; used head, jambs and sill under fixed light"
+    },
+    {
+     "die_no": "MN-M92887",
+     "name": "วงกบครีบคู่ (เสาแบ่ง/ทับหลัง) 101.6x71",
+     "role_family": "วงกบประตู",
+     "kg_per_m": 1.786,
+     "width_mm": 101.6,
+     "depth_mm": 71,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p79 (วงกบครีบคู่ 101.6x71)",
+     "notes": "23 + 25 + 23; 32.6 to fin"
+    },
+    {
+     "die_no": "MN-M50166",
+     "name": "กรอบบานประตู 96x35",
+     "role_family": "กรอบบาน",
+     "kg_per_m": 0.999,
+     "width_mm": 96,
+     "depth_mm": 35,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p79 (กรอบบาน 96x35)",
+     "notes": "15 lip; 12.5 bead pocket; all four sides of leaf (mitred corners on elevation)"
+    },
+    {
+     "die_no": "MN-M50165",
+     "name": "ตัวหนีบ/คิ้ว 18.8x27.5",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.274,
+     "width_mm": 18.8,
+     "depth_mm": 27.5,
+     "wall_mm": 1.3,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p79 (ตัวหนีบ/คิ้ว 18.8x27.5)"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานเปิดเดี่ยว + ช่องแสงติดตาย (ข้าง + บน)",
+     "page": 5,
+     "joints": "Outer frame M3850 head/jambs and sill only under the fixed light; door opening has no sill. Transom M92887 runs across the full width above door and side light (estimated); mullion M92887 between door and side light. Leaf M50166 on all 4 sides with MITRED corners (elevation shows 45° corner lines on the leaf only). Glass held by bead M50165.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "wall gap 4; leaf bottom to floor 4 (section 9); leaf face 96; frame visible face 18.2 hinge side; lock side dims read 18 | 2.4 | 23 (blurry, estimated); frame depth 101.6 = 34.6 + 67; leaf zone 107.6 = 35 + 72.6",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    }
+   ],
+   "hardware": [
+    {
+     "name": "บานพับ",
+     "code": "CZ-PH02A",
+     "per": "per leaf",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "เสื้อกุญแจ ขนาด 35x85",
+     "code": "-",
+     "per": "per leaf",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "มือจับ",
+     "code": "CZ-MZS SERIE",
+     "per": "per leaf",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ไส้กุญแจ",
+     "code": "-",
+     "per": "per leaf",
+     "qty": null,
+     "page": 4
+    }
+   ],
+   "accessories": [
+    {
+     "name": "ยางลูกโป่ง",
+     "code": "EPDM51A-5",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ยางตัวเจ",
+     "code": "MN227",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ยางลูกโป่ง",
+     "code": "PDA 88",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ยางอัดกระจก 6 มิล",
+     "code": "MN006-A",
+     "per": null,
+     "qty": null,
+     "page": 4
+    }
+   ],
+   "prices": []
+  }
+ ],
+ "new_families": [
+  "วงกบประตู (ครีบคู่/เสาแบ่ง)"
+ ],
+ "open_questions": [
+  "บาน M50166 ตัดมุม 45° ทั้ง 4 มุมใช่หรือไม่ (รูปด้านหน้าเป็นเส้นทแยง)",
+  "ทับหลัง M92887 วิ่งยาวตลอดความกว้าง แล้วเสาแบ่งชนใต้ทับหลัง ใช่หรือไม่",
+  "ช่องใต้บาน 4 มม. ไม่มีธรณีประตู ใช้จริงหรือไม่",
+  "ขนาดช่องข้างบานด้านกุญแจ (18 / 2.4 / 23) อ่านไม่ชัด"
+ ],
+ "unreadable_pages": [],
+ "supplier": "บริษัท แม่น้ำเมทอลซัพพลาย จำกัด (Mae Num Metal Supply Co.,Ltd.); hardware by CENZA Architectural Supply Co.,Ltd.",
+ "brand": "MN METAL SUPPLY / CENZA"
+}

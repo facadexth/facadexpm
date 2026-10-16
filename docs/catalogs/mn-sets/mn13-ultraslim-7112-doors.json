@@ -1,0 +1,1073 @@
+{
+ "source_pdf": "MN_13. ชุด ULTRA SLIM MN-7112 ชุดประตูบานเปิด MN-30457,mn-3513-mn-30083.pdf",
+ "catalogue_year": null,
+ "pages": 24,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": "ULTRA SLIM / MN-30457 / MN-3513-30083"
+  },
+  {
+   "page": 2,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 3,
+   "content": "toc",
+   "series": "I p1, II p9, III p13"
+  },
+  {
+   "page": 4,
+   "content": "profile table",
+   "series": "I ULTRA SLIM บานเปิด"
+  },
+  {
+   "page": 5,
+   "content": "section drawing",
+   "series": "I ULTRA SLIM บานเปิด"
+  },
+  {
+   "page": 6,
+   "content": "profile table",
+   "series": "I ULTRA SLIM รางแขวน"
+  },
+  {
+   "page": 7,
+   "content": "section drawing",
+   "series": "I ULTRA SLIM รางแขวน"
+  },
+  {
+   "page": 8,
+   "content": "profile table",
+   "series": "I รางแขวนติดผนัง"
+  },
+  {
+   "page": 9,
+   "content": "section drawing",
+   "series": "I รางแขวนติดผนัง"
+  },
+  {
+   "page": 10,
+   "content": "profile table",
+   "series": "I ชุดรางแขวน MN-U7112"
+  },
+  {
+   "page": 11,
+   "content": "section drawing",
+   "series": "I ชุดรางแขวน MN-U7112"
+  },
+  {
+   "page": 12,
+   "content": "profile table",
+   "series": "II MN-30457-MN-4203"
+  },
+  {
+   "page": 13,
+   "content": "section drawing",
+   "series": "II"
+  },
+  {
+   "page": 14,
+   "content": "profile table",
+   "series": "II (leaf U3512/U3513)"
+  },
+  {
+   "page": 15,
+   "content": "section drawing",
+   "series": "II"
+  },
+  {
+   "page": 16,
+   "content": "profile table",
+   "series": "III MN-3513-MN-30083 เดี่ยว+ช่องแสง"
+  },
+  {
+   "page": 17,
+   "content": "section drawing",
+   "series": "III"
+  },
+  {
+   "page": 18,
+   "content": "profile table",
+   "series": "III บานคู่"
+  },
+  {
+   "page": 19,
+   "content": "section drawing",
+   "series": "III บานคู่"
+  },
+  {
+   "page": 20,
+   "content": "profile table",
+   "series": "III MN-30083-MN-30458"
+  },
+  {
+   "page": 21,
+   "content": "section drawing",
+   "series": "III MN-30083-MN-30458"
+  },
+  {
+   "page": 22,
+   "content": "other",
+   "series": "notes"
+  },
+  {
+   "page": 23,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 24,
+   "content": "other",
+   "series": "back cover"
+  }
+ ],
+ "series": [
+  {
+   "name": "I ชุด ULTRA SLIM MN-7112 (บานเปิด + รางแขวน)",
+   "system": "swing door",
+   "app_types": [
+    "ประตูบานเปิดเดี่ยว",
+    "ประตูบานเปิด + ช่องแสง",
+    "ประตูบานเลื่อนรางแขวน",
+    "ผนังกระจกภายใน (partition)"
+   ],
+   "frame_size_mm": "45x21 / 42.7x20 solid T-slot bars",
+   "profiles": [
+    {
+     "die_no": "MN-U7112",
+     "name": "เส้นตันร่อง T 45x21 (วงกบรอบ)",
+     "role_family": "วงกบ ultra slim",
+     "kg_per_m": 1.457,
+     "width_mm": 45,
+     "depth_mm": 21,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p35 (เส้นตัน ร่อง T 12.5 45x21)",
+     "notes": "T slot 12.5, 5.2; perimeter frame and fixed-light sill"
+    },
+    {
+     "die_no": "MN-U7113",
+     "name": "เส้นตันร่อง T 42.7x20 (เสาบาน/ทับหลังช่องแสง)",
+     "role_family": "เสาบาน ultra slim",
+     "kg_per_m": 1.328,
+     "width_mm": 42.7,
+     "depth_mm": 20,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p35 (เส้นตัน ร่อง T 42.7x20)"
+    },
+    {
+     "die_no": "MN-U7114",
+     "name": "ตัว H ร่อง T 42.7x30 (เสาแบ่ง)",
+     "role_family": "เสาแบ่ง ultra slim",
+     "kg_per_m": 1.76,
+     "width_mm": 42.7,
+     "depth_mm": 30,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p35 (ตัว H ร่อง T 42.7x30)",
+     "notes": "6 web"
+    },
+    {
+     "die_no": "MN-U7116",
+     "name": "ตัวเล็ก 15.1x17.5 (คิ้วกด)",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.296,
+     "width_mm": 15.1,
+     "depth_mm": 17.5,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p35 (ตัวเล็ก 15.1x17.5)"
+    },
+    {
+     "die_no": "MN-U7115",
+     "name": "ร่อง T 42.7x20 (คู่ U7116)",
+     "role_family": "ธรณีช่องแสง ultra slim",
+     "kg_per_m": 0.799,
+     "width_mm": 42.7,
+     "depth_mm": 20,
+     "wall_mm": 2.5,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p35 (ร่อง T 42.7x20 (คู่ U7116))"
+    },
+    {
+     "die_no": "MN-U7118",
+     "name": "ตัว U ร่อง T 42.7x45 (ขวางบนบาน)",
+     "role_family": "ขวางบน",
+     "kg_per_m": 1.679,
+     "width_mm": 42.7,
+     "depth_mm": 45,
+     "wall_mm": 4.0,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p35 (ตัว U ร่อง T 42.7x45)"
+    },
+    {
+     "die_no": "MN-U7246",
+     "name": "ตัว U ร่อง T 42.7x75 (ขวางล่างบาน ใส่โช้คฝังพื้นในบาน)",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": 2.386,
+     "width_mm": 42.7,
+     "depth_mm": 75,
+     "wall_mm": 5.0,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p35 (ตัว U ร่อง T 42.7x75)"
+    },
+    {
+     "die_no": "MN-U7117",
+     "name": "42.7x65 (ร่อง 3)",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": null,
+     "width_mm": 42.7,
+     "depth_mm": 65,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue",
+     "notes": "shown in profile list; not used in p5 drawing"
+    },
+    {
+     "die_no": "MN-U6867",
+     "name": "ตัวปิดรางแขวน 15x58.5",
+     "role_family": "ฝาปิด",
+     "kg_per_m": 0.254,
+     "width_mm": 15,
+     "depth_mm": 58.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p83 (ตัวปิด 15x58.5)"
+    },
+    {
+     "die_no": "MN-U6937",
+     "name": "รางแขวน (printed ราง No. 6937 on p6, MN-U6937 on p7)",
+     "role_family": "รางแขวน",
+     "kg_per_m": 0.767,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.5,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p83 (รางแขวน 33x33.7)",
+     "notes": "matched to U6937 rail 33x33.7 in 2021 catalogue"
+    },
+    {
+     "die_no": "MN-U7373",
+     "name": "มือจับ/ตัวประกบบานเลื่อน 31.75x15",
+     "role_family": "มือจับ",
+     "kg_per_m": null,
+     "width_mm": 31.75,
+     "depth_mm": 15,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue"
+    },
+    {
+     "die_no": "MN-3610",
+     "name": "รางคาราแทคใหญ่ (big carriage rail)",
+     "role_family": "รางแขวน",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue"
+    },
+    {
+     "die_no": "MN-U7374",
+     "name": "มือจับ (single hanging leaf)",
+     "role_family": "มือจับ",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue"
+    },
+    {
+     "die_no": "44.45 square tube",
+     "name": "ท่อเหลี่ยม 44.45x44.45 (รับราง)",
+     "role_family": "ท่อเหลี่ยม",
+     "kg_per_m": null,
+     "width_mm": 44.45,
+     "depth_mm": 44.45,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue",
+     "notes": "no die number"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "ULTRA SLIM บานเปิดเดี่ยว + ช่องแสงข้าง 2 ช่อง",
+     "page": 5,
+     "joints": "Perimeter U7112 (45x21) head, jambs and sill under fixed lights; no sill at the door. Leaf: top rail U7118 (45), bottom rail U7246 (75, houses floor closer DORINT 893), stiles U7113 (20) — rails sit between stiles (estimated). Door/fixed mullion U7113 + U7112 pair; fixed/fixed mullion U7114 (30). Fixed-light sill U7112 + U7116 + U7115.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "wall 4; leaf to frame 4 at head and both stiles (21 | 4 | 20); leaf bottom 12.5 to floor; handle zone 64; profile depth 45 frame / 42.7 leaf",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    },
+    {
+     "type": "ULTRA SLIM รางแขวน 4 ช่อง (2 ตาย + 2 เลื่อนแยก)",
+     "page": 7,
+     "joints": "Fixed panels framed U7112/U7113 with U7114 at head, sliding leaves hang from rail 6937 (cover U6867) via U7118 top rail; bottom rail U7118 inverted; centre meeting with pulls U7373.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "head 53.8 = 30 + 19.8 (+4); sliding top 20.8 + hanger 61.15/81.95; leaf bottom 45 + 4 floor gap (49); fixed bottom 20 + 4 (24); plan 42.7 | 5 | 45 = 92.7; centre 68 | 20 | 20 | 68",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    },
+    {
+     "type": "ULTRA SLIM รางแขวนบานเดี่ยวติดผนัง (wall-hung single)",
+     "page": 9,
+     "joints": "Single leaf U7118 top and bottom, hung from MN-3610 carriage rail fixed via 44.45 tube; handle U7374.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "100 from wall to leaf line; 16.25 | 12.5 | 16.25; leaf bottom guide 45-49 (estimated)",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    },
+    {
+     "type": "ULTRA SLIM รางแขวนชุด MN-U7112 (1 ตาย + 1 เลื่อน)",
+     "page": 11,
+     "joints": "Fixed U7112/U7113/U7115/U7116 + sliding leaf U7118 hung from MN-3610.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "42.7 | 4.7 | 57.3; leaf bottom 45",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    }
+   ],
+   "hardware": [
+    {
+     "name": "โช้คฝังพื้นในบาน",
+     "code": "DORINT NO.893",
+     "per": "per leaf",
+     "qty": 1,
+     "page": 4
+    },
+    {
+     "name": "เสื้อกุญแจ 45x85",
+     "code": "Mortise Lock",
+     "per": "per leaf",
+     "qty": 1,
+     "page": 4
+    },
+    {
+     "name": "ไส้กุญแจ",
+     "code": "TC",
+     "per": "per leaf",
+     "qty": 1,
+     "page": 4
+    },
+    {
+     "name": "มือจับ",
+     "code": "6072-AZ64",
+     "per": "per leaf",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "มือจับ",
+     "code": "-",
+     "per": null,
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "เสื้อกุญแจ",
+     "code": "-",
+     "per": null,
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "ไส้กุญแจ",
+     "code": "KC, TC, TD",
+     "per": null,
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "ล้อบานเลื่อน",
+     "code": "AD-70B",
+     "per": "per leaf",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "ล้อรางแขวน",
+     "code": "CZ-TT80",
+     "per": "per leaf",
+     "qty": null,
+     "page": 8
+    }
+   ],
+   "accessories": [
+    {
+     "name": "ยางอัด",
+     "code": "03",
+     "per": null,
+     "qty": null,
+     "page": 4
+    }
+   ],
+   "prices": []
+  },
+  {
+   "name": "II ชุดประตูบานเปิด + ช่องแสงสลิม MN-30457 (MN-30457-MN-4203)",
+   "system": "swing door",
+   "app_types": [
+    "ประตูบานเปิดเดี่ยว",
+    "ประตูบานเปิด + ช่องแสง"
+   ],
+   "frame_size_mm": "101.6x20 thin frame",
+   "profiles": [
+    {
+     "die_no": "MN-U4203",
+     "name": "กรอบบาง 101.6x20 ร่อง 16",
+     "role_family": "กล่องร่อง",
+     "kg_per_m": 0.995,
+     "width_mm": 101.6,
+     "depth_mm": 20,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p33 (กรอบบาง 101.6x20 ร่อง 16)"
+    },
+    {
+     "die_no": "MN-U4204",
+     "name": "กรอบบาง 101.6x20 เรียบ (วงกบประตู)",
+     "role_family": "กล่องเรียบ",
+     "kg_per_m": 0.858,
+     "width_mm": 101.6,
+     "depth_mm": 20,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p33 (กรอบบาง 101.6x20 เรียบ)"
+    },
+    {
+     "die_no": "MN-U4206",
+     "name": "ฝาร่อง 91.4x16.5 (ร่อง 14)",
+     "role_family": "ฝาตบร่อง",
+     "kg_per_m": 0.513,
+     "width_mm": 91.4,
+     "depth_mm": 16.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p33 (ฝาร่อง 91.4x16.5 (ร่อง 14))"
+    },
+    {
+     "die_no": "MN-U4210",
+     "name": "กล่อง 101.6x36 ร่อง 16 (ทับหลัง/เสาแบ่ง)",
+     "role_family": "กล่องร่อง",
+     "kg_per_m": 1.432,
+     "width_mm": 101.6,
+     "depth_mm": 36,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p34 (กล่อง 101.6x36 ร่อง 16)"
+    },
+    {
+     "die_no": "MN-U4207",
+     "name": "กรอบขั้น 100.1x20 (ธรณีช่องแสง)",
+     "role_family": "กล่องเปิด",
+     "kg_per_m": 0.728,
+     "width_mm": 100.1,
+     "depth_mm": 20,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p34 (กรอบขั้น 100.1x20)"
+    },
+    {
+     "die_no": "MN-U4208",
+     "name": "ฝาปิด 44.8x19.7",
+     "role_family": "ฝาเปิดปิด",
+     "kg_per_m": 0.441,
+     "width_mm": 44.8,
+     "depth_mm": 19.7,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p34 (ฝาปิด 44.8x19.7)"
+    },
+    {
+     "die_no": "MN-U4209",
+     "name": "ตัวหนีบ/คิ้ว 21.56x28.52",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.326,
+     "width_mm": 21.56,
+     "depth_mm": 28.52,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 14,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p34 (ตัวหนีบ/คิ้ว 21.56x28.52)"
+    },
+    {
+     "die_no": "MN-M30457",
+     "name": "เสาบาน 101.6x40",
+     "role_family": "เสาบานประตู",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 40,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "estimated",
+     "kg_source": "not in 2021 profile catalogue",
+     "notes": "drawn 40 here; 46 in the MN_12 manual"
+    },
+    {
+     "die_no": "MN-U4212",
+     "name": "ขวางล่าง 44x70 มีขอ",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": 1.377,
+     "width_mm": 70,
+     "depth_mm": 44,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p62 (ขวางล่าง 44x70 มีขอ)"
+    },
+    {
+     "die_no": "MN-M30459",
+     "name": "คิ้ว/ร่องกระจก 15x28.5",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 15,
+     "depth_mm": 28.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue"
+    },
+    {
+     "die_no": "MN-U3512",
+     "name": "กรอบบานมีขอ 90.3x36.5 (เสากุญแจ/เสากลาง)",
+     "role_family": "กรอบบาน",
+     "kg_per_m": 1.223,
+     "width_mm": 90.3,
+     "depth_mm": 36.5,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 14,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p76 (กรอบบานมีขอ 90.3x43)"
+    },
+    {
+     "die_no": "MN-U3513",
+     "name": "กรอบบาน 76.3x36.5 (เสาบานพับ)",
+     "role_family": "กรอบบาน",
+     "kg_per_m": 1.116,
+     "width_mm": 76.3,
+     "depth_mm": 36.5,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 14,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p76 (กรอบบาน 76.3x36.5)"
+    },
+    {
+     "die_no": "MN-U3225",
+     "name": "ขวางบน/ล่าง 34x97.2",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": null,
+     "width_mm": 97.2,
+     "depth_mm": 34,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 14,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue"
+    },
+    {
+     "die_no": "MN-U3226",
+     "name": "ตัวหนีบกระจก 11.4x11.8",
+     "role_family": "ตัวหนีบกระจก",
+     "kg_per_m": 0.098,
+     "width_mm": 11.4,
+     "depth_mm": 11.8,
+     "wall_mm": 1.0,
+     "std_length_m": null,
+     "page": 14,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p78 (ตัวหนีบเล็ก 11.4x11.8)"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานเปิดเดี่ยว + ช่องแสงสลิม MN-30457 (ช่องแสงข้าง 2 แถว + ขวางกลาง)",
+     "page": 13,
+     "joints": "Door frame U4204 (20) head + jamb, no sill; leaf stiles M30457 with rails U4212 top/bottom, glass in M30459. Fixed lights: frame U4203 + cover U4206, transom/mullion U4210 (36) + U4208, sill U4207 + U4208; partition wall with gypsum board shown at jamb.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "wall 4; jamb 4 | 20 | 4 | 126.99 (leaf + bead); leaf top 4 below frame; leaf bottom ~10 above floor (blurry, estimated); fixed depth 101.6 = 42.05 + 17.5 + 42.05; leaf depth 27.8 + 46 + 27.8",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    },
+    {
+     "type": "บานเปิดเดี่ยว + ช่องแสงสลิม MN-30457-MN-4203 (leaf U3513/U3512)",
+     "page": 15,
+     "joints": "Thin frame U4203/U4204/U4209 with leaf from U3513 (hinge) / U3512 (lock), rails U3225, clip U3226; fixed lights U4210/U4208/U4207.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "glass line 73.3 both sides of meeting/lock stile (estimated); 36.5 | 65.1 depth",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    }
+   ],
+   "hardware": [
+    {
+     "name": "โช้คฝังพื้น",
+     "code": "DC-FH-100",
+     "per": "per leaf",
+     "qty": 1,
+     "page": 12
+    },
+    {
+     "name": "เสื้อกุญแจ ขนาด 45x85",
+     "code": "-",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "มือจับ",
+     "code": "CZ-300A",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "มือจับ",
+     "code": "CZ-500A",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "ไส้กุญแจ",
+     "code": "-",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "โช้คประตูไม้",
+     "code": "980",
+     "per": null,
+     "qty": null,
+     "page": 14
+    },
+    {
+     "name": "บานพับ",
+     "code": "CZ-PH06",
+     "per": null,
+     "qty": null,
+     "page": 14
+    },
+    {
+     "name": "เสื้อกุญแจ",
+     "code": "30x85, 35x85",
+     "per": null,
+     "qty": null,
+     "page": 14
+    }
+   ],
+   "accessories": [
+    {
+     "name": "ยาง",
+     "code": "EPDM 79S",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "ยางวาง",
+     "code": "MN004 (#267)",
+     "per": null,
+     "qty": null,
+     "page": 12
+    },
+    {
+     "name": "ยางอัดกระจก 6 มิล",
+     "code": "MN006-A",
+     "per": null,
+     "qty": null,
+     "page": 12
+    }
+   ],
+   "prices": []
+  },
+  {
+   "name": "III ชุดประตูบานเปิด MN-3513-MN-30083 (วงกบบาง 25 มม.)",
+   "system": "swing door",
+   "app_types": [
+    "ประตูบานเปิดเดี่ยว",
+    "ประตูบานเปิดคู่",
+    "ประตูบานเปิด + ช่องแสง"
+   ],
+   "frame_size_mm": "101.6x25.4",
+   "profiles": [
+    {
+     "die_no": "MN-M30083",
+     "name": "กล่อง 4\"x1\" ร่อง 12.7 (101.6x25.4)",
+     "role_family": "กล่องร่อง",
+     "kg_per_m": 1.042,
+     "width_mm": 101.6,
+     "depth_mm": 25.4,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p30 (กล่อง 4\"x1\" ร่อง 12.7)"
+    },
+    {
+     "die_no": "MN-M30084",
+     "name": "กล่อง 4\"x1\" บังใบ (ใช้ M30085)",
+     "role_family": "กล่องเปิด",
+     "kg_per_m": 0.811,
+     "width_mm": 101.6,
+     "depth_mm": 25.4,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p30 (กล่อง 4\"x1\" บังใบ 2 ช่อง (99.2) *สิทธิบัตร)"
+    },
+    {
+     "die_no": "MN-M30218",
+     "name": "กล่อง 2 ช่อง 101.6x25.4 ร่อง 12.7 (ใช้ M30085)",
+     "role_family": "กล่องเปิด",
+     "kg_per_m": 1.061,
+     "width_mm": 101.6,
+     "depth_mm": 25.4,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p31 (กล่อง 2 ช่อง 99.2x25.4 ร่อง 12.7)"
+    },
+    {
+     "die_no": "MN-M30085",
+     "name": "ฝาปิดกล่องเปิด 44.45x25.4",
+     "role_family": "ฝาเปิดปิด",
+     "kg_per_m": 0.334,
+     "width_mm": 44.45,
+     "depth_mm": 25.4,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p30 (ฝาปิดกล่องเปิด 44.45x25.4 *สิทธิบัตร)"
+    },
+    {
+     "die_no": "MN-M30220",
+     "name": "ตัวหนีบ/กันชน 21.53x16.5",
+     "role_family": "ตัวหนีบกระจก",
+     "kg_per_m": 0.212,
+     "width_mm": 21.53,
+     "depth_mm": 16.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p31 (ตัวหนีบกระจก 19x21.53)",
+     "notes": "door stop in M30083 groove"
+    },
+    {
+     "die_no": "MN-M30219",
+     "name": "ตัวหนีบกระจก 21.53x19",
+     "role_family": "ตัวหนีบกระจก",
+     "kg_per_m": 0.217,
+     "width_mm": 21.53,
+     "depth_mm": 19,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 20,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p31 (ตัวหนีบกระจก 19x21.53)"
+    },
+    {
+     "die_no": "MN-U3512",
+     "name": "กรอบบานมีขอ 90.3x36.5",
+     "role_family": "กรอบบาน",
+     "kg_per_m": 1.223,
+     "width_mm": 90.3,
+     "depth_mm": 36.5,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p76 (กรอบบานมีขอ 90.3x43)"
+    },
+    {
+     "die_no": "MN-U3513",
+     "name": "กรอบบาน 76.3x36.5",
+     "role_family": "กรอบบาน",
+     "kg_per_m": 1.116,
+     "width_mm": 76.3,
+     "depth_mm": 36.5,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p76 (กรอบบาน 76.3x36.5)"
+    },
+    {
+     "die_no": "MN-U3225",
+     "name": "ขวาง 34x97.2",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": null,
+     "width_mm": 97.2,
+     "depth_mm": 34,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue"
+    },
+    {
+     "die_no": "MN-U3226",
+     "name": "ตัวหนีบกระจก 11.4x11.8",
+     "role_family": "ตัวหนีบกระจก",
+     "kg_per_m": 0.098,
+     "width_mm": 11.4,
+     "depth_mm": 11.8,
+     "wall_mm": 1.0,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p78 (ตัวหนีบเล็ก 11.4x11.8)"
+    },
+    {
+     "die_no": "MN-M30458",
+     "name": "เสาบานกว้าง 127x46",
+     "role_family": "เสาบานประตู",
+     "kg_per_m": null,
+     "width_mm": 127,
+     "depth_mm": 46,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 20,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue"
+    },
+    {
+     "die_no": "MN-U2514",
+     "name": "ขวาง 130x44",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": 2.143,
+     "width_mm": 130,
+     "depth_mm": 44,
+     "wall_mm": 2.3,
+     "std_length_m": null,
+     "page": 20,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p65 (ขวางล่าง 44x130)"
+    },
+    {
+     "die_no": "MN-M30459",
+     "name": "คิ้ว/ร่องกระจก 15x28.5",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 15,
+     "depth_mm": 28.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 20,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานเปิดเดี่ยว + ช่องแสง MN-3513-MN-30083",
+     "page": 17,
+     "joints": "Frame M30083 (25.4) head + jambs with stop M30220 clipped in the groove; no sill at the door. Leaf: hinge stile U3513, lock stile U3512, rails U3225 (97.2) top & bottom, glass clip U3226. Mullion = M30218 + M30085 (44.45 | 12.7 | 44.45); fixed-light sill M30084 + M30085.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "wall 4; head 25.4 + 4; jamb 4 | 25.4 | 16.5 | 62.8; lock 66.8 | 16.5 | 25.4; depth 101.6 = 36.5 + 62.8 (leaf zone)",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    },
+    {
+     "type": "บานเปิดคู่ MN-3513-MN-30083",
+     "page": 19,
+     "joints": "Frame M30083 + M30220; leaves U3513 hinge stiles and U3512 meeting stiles (gap 10); rails U3225 + U3226.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "jamb 4 | 25.4 | 77; meeting 73.3 | 10 | 73.3; depth 36.5 + 62.8",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    },
+    {
+     "type": "บานเปิดเดี่ยว + ช่องแสงบน MN-30083-MN-30458",
+     "page": 21,
+     "joints": "Frame M30083/M30084/M30218 + M30085, clip M30219; leaf stiles M30458 (127) with rails U2514 (130) and channel M30459; transom over the door; pivot 8C-5.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "jamb 25.4 | 16.5 | 129.9; depth 44 | 53.6 (estimated)",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    }
+   ],
+   "hardware": [
+    {
+     "name": "โช้ค",
+     "code": "2800",
+     "per": null,
+     "qty": null,
+     "page": 16
+    },
+    {
+     "name": "บานพับ",
+     "code": "CZ-PH06",
+     "per": null,
+     "qty": null,
+     "page": 16
+    },
+    {
+     "name": "เสื้อกุญแจ",
+     "code": "30x85, 35x85",
+     "per": null,
+     "qty": null,
+     "page": 16
+    },
+    {
+     "name": "มือจับ",
+     "code": "CZ-300A",
+     "per": null,
+     "qty": null,
+     "page": 16
+    },
+    {
+     "name": "มือจับ",
+     "code": "CZ-500A",
+     "per": null,
+     "qty": null,
+     "page": 16
+    },
+    {
+     "name": "ไส้กุญแจ",
+     "code": "-",
+     "per": null,
+     "qty": null,
+     "page": 16
+    },
+    {
+     "name": "โช้คประตูไม้",
+     "code": "980",
+     "per": null,
+     "qty": null,
+     "page": 20
+    },
+    {
+     "name": "จุดหมุนนิวสตาร์ (pivot)",
+     "code": "8C-5",
+     "per": null,
+     "qty": null,
+     "page": 20
+    },
+    {
+     "name": "เสื้อกุญแจ ขนาด 45x85",
+     "code": "-",
+     "per": null,
+     "qty": null,
+     "page": 20
+    }
+   ],
+   "accessories": [
+    {
+     "name": "ยาง",
+     "code": "EPDM 79S",
+     "per": null,
+     "qty": null,
+     "page": 16
+    },
+    {
+     "name": "ยางวาง",
+     "code": "MN004 (#267)",
+     "per": null,
+     "qty": null,
+     "page": 16
+    },
+    {
+     "name": "ยางอัดกระจก 6 มิล",
+     "code": "MN006-A",
+     "per": null,
+     "qty": null,
+     "page": 16
+    },
+    {
+     "name": "ยางอัด",
+     "code": "03",
+     "per": null,
+     "qty": null,
+     "page": 20
+    }
+   ],
+   "prices": []
+  }
+ ],
+ "new_families": [
+  "วงกบ ultra slim",
+  "เสาบาน ultra slim",
+  "เสาแบ่ง ultra slim",
+  "ธรณีช่องแสง ultra slim",
+  "รางแขวน",
+  "มือจับ",
+  "เสาบานประตู",
+  "ตัวหนีบกระจก"
+ ],
+ "open_questions": [
+  "ไม่มีสูตรตัดเลยทั้ง 3 ชุด — ขอสูตรร้าน (เช่น ULTRA SLIM ขวางบาน = W - 2x45 - 8 ?)",
+  "ULTRA SLIM ต่อมุมแบบไหน (ชนตรง + สกรูร่อง T ?)",
+  "U7117, U7373, U7374, MN-3610, U3225 ไม่มีในแคตตาล็อก 2021 — ขอน้ำหนัก",
+  "M30457 หน้าตัดในเล่มนี้ลึก 40 แต่เล่ม MN_12 เขียน 46 อันไหนถูก"
+ ],
+ "unreadable_pages": [],
+ "supplier": "บริษัท แม่น้ำเมทอลซัพพลาย จำกัด (Mae Num Metal Supply Co.,Ltd.); hardware by CENZA Architectural Supply Co.,Ltd.",
+ "brand": "MN METAL SUPPLY / CENZA"
+}

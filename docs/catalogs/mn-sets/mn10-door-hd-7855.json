@@ -1,0 +1,271 @@
+{
+ "source_pdf": "MN_10. ชุดประตูบานเปิด HEAVY DUTY 4,5 MN-7855.pdf",
+ "catalogue_year": "2026 (drawing date 07/07/2026)",
+ "pages": 12,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": "MN-7855"
+  },
+  {
+   "page": 2,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 3,
+   "content": "toc",
+   "series": "MN-7855"
+  },
+  {
+   "page": 4,
+   "content": "profile table",
+   "series": "บานเดี่ยว"
+  },
+  {
+   "page": 5,
+   "content": "section drawing",
+   "series": "บานเดี่ยว"
+  },
+  {
+   "page": 6,
+   "content": "profile table",
+   "series": "บานคู่"
+  },
+  {
+   "page": 7,
+   "content": "section drawing",
+   "series": "บานคู่"
+  },
+  {
+   "page": 8,
+   "content": "other",
+   "series": "notes"
+  },
+  {
+   "page": 9,
+   "content": "other",
+   "series": "notes"
+  },
+  {
+   "page": 10,
+   "content": "other",
+   "series": "notes"
+  },
+  {
+   "page": 11,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 12,
+   "content": "other",
+   "series": "back cover"
+  }
+ ],
+ "series": [
+  {
+   "name": "ชุดประตูบานเปิด HEAVY DUTY 4\", 5\" รุ่น MN-7855",
+   "system": "swing door",
+   "app_types": [
+    "ประตูบานเปิดเดี่ยว",
+    "ประตูบานเปิดคู่"
+   ],
+   "frame_size_mm": "101.6x64.45 frame; leaf 125x52",
+   "profiles": [
+    {
+     "die_no": "MN-D001",
+     "name": "กรอบบานประตู HEAVY DUTY 125x52",
+     "role_family": "กรอบบาน",
+     "kg_per_m": null,
+     "width_mm": 125,
+     "depth_mm": 52,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue",
+     "notes": "2 mm wall; glass side takes bead M50625, meeting edge takes D003 (dashed on drawing); same profile all 4 sides, mitred"
+    },
+    {
+     "die_no": "MN-D002",
+     "name": "วงกบประตู 101.6x64.45 (กล่อง 44.45 + ครีบกันชน 20)",
+     "role_family": "วงกบประตู",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 64.45,
+     "wall_mm": 1.8,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue",
+     "notes": "41.5 stop leg"
+    },
+    {
+     "die_no": "MN-D003",
+     "name": "เสาประกบบานคู่ (astragal) 49.8x53.7",
+     "role_family": "บังใบใน",
+     "kg_per_m": null,
+     "width_mm": 49.8,
+     "depth_mm": 53.7,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue",
+     "notes": "15 / 24.3 / 48.3; fixed on passive leaf in double door"
+    },
+    {
+     "die_no": "MN-D004",
+     "name": "ตัวเสริม/ตัวปิด 22x27.5",
+     "role_family": "ตัวเสริมกล่อง",
+     "kg_per_m": null,
+     "width_mm": 22,
+     "depth_mm": 27.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue",
+     "notes": "6.5, 13, 13.6; not used in the section drawings"
+    },
+    {
+     "die_no": "MN-M50625",
+     "name": "คิ้วบาน 28x19.2",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.267,
+     "width_mm": 28,
+     "depth_mm": 19.2,
+     "wall_mm": 1.3,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p150 (คิ้ว 28x19.2)"
+    },
+    {
+     "die_no": "MN-D005",
+     "name": "ธรณีประตู 45x30",
+     "role_family": "ธรณี",
+     "kg_per_m": null,
+     "width_mm": 45,
+     "depth_mm": 30,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue",
+     "notes": "41.5 wide top, 20/10 step, 15 lip; set into a floor recess"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานเปิดเดี่ยว 4\",5\"",
+     "page": 5,
+     "joints": "Frame D002 head + 2 jambs, MITRED at the head corners (elevation 45° lines); leaf D001 all 4 sides MITRED. Bottom: threshold D005 in a floor recess under the leaf.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "wall gap 4; head: frame 38.35 + leaf 125; leaf bottom 5 above D005; overall depth 108.3 = 52 (leaf) + 56.3; hinge jamb 4 | 44.45 | 20 | 15 to leaf; lock jamb 97.4 | 15 | 20 | 44.45 | 4",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only. Page 7 still has placeholder text 'Lorem ipsum'; DATE 07/07/2026."
+    },
+    {
+     "type": "บานเปิดคู่ 4\",5\"",
+     "page": 7,
+     "joints": "Two D001 leaves; astragal D003 (53.7) fixed to the passive leaf covers the meeting joint; lock body MSD38/I in the active leaf (label small, estimated).",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "hinge side 4 | 44.45 | 118.9; meeting 97.4 | 15 | 53.7 | 15 | 97.4",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    }
+   ],
+   "hardware": [
+    {
+     "name": "บานพับ",
+     "code": "WD12",
+     "per": "per leaf",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "มือจับ",
+     "code": "BL-20W48",
+     "per": "per leaf",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "เสื้อกุญแจ",
+     "code": "MSC32/I",
+     "per": "per active leaf",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ไส้กุญแจ 35x45",
+     "code": "-",
+     "per": "per lock",
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ตัวรับ/ล็อค",
+     "code": "K03 K04",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "-",
+     "code": "SK20",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "แกน",
+     "code": "3531",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "กลอน (double)",
+     "code": "SCQ10",
+     "per": "per passive leaf",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "กลอน (double)",
+     "code": "CDQ10B",
+     "per": "per passive leaf",
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "พลาสติกปิดกรอบบาน 7855",
+     "code": "-",
+     "per": "per leaf",
+     "qty": null,
+     "page": 6
+    }
+   ],
+   "accessories": [],
+   "prices": []
+  }
+ ],
+ "new_families": [
+  "ธรณี (D005)"
+ ],
+ "open_questions": [
+  "หน้าตัด D001-D005 ไม่มีในแคตตาล็อก 2021 — ขอน้ำหนัก กก./ม. และความหนาจาก MN",
+  "ชื่อ 4\",5\" หมายถึงอะไร (วงกบ 4\" แต่บาน 125 = 5\" ?)",
+  "บานและวงกบตัด 45° ทุกมุมใช่หรือไม่",
+  "D004 ใช้ตรงไหน (ไม่มีในรูปติดตั้ง)"
+ ],
+ "unreadable_pages": [],
+ "supplier": "บริษัท แม่น้ำเมทอลซัพพลาย จำกัด (Mae Num Metal Supply Co.,Ltd.); hardware by CENZA Architectural Supply Co.,Ltd.",
+ "brand": "MN METAL SUPPLY / CENZA"
+}

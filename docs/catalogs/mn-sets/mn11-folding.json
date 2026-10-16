@@ -1,0 +1,837 @@
+{
+ "source_pdf": "MN_11. ชุดบานเฟี้ยม,ชุดบานเฟี้ยมนอก.pdf",
+ "catalogue_year": null,
+ "pages": 40,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": "FOLDING DOOR"
+  },
+  {
+   "page": 2,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 3,
+   "content": "toc",
+   "series": "I ชุดบานเฟี้ยม p1 / II ชุดบานเฟี้ยมนอก p25"
+  },
+  {
+   "page": 4,
+   "content": "profile table",
+   "series": "I บานเฟี้ยมเปิดด้านเดียว 3 บาน"
+  },
+  {
+   "page": 5,
+   "content": "section drawing",
+   "series": "I บานเฟี้ยมเปิดด้านเดียว 3 บาน"
+  },
+  {
+   "page": 6,
+   "content": "profile table",
+   "series": "I บานเฟี้ยมเปิดด้านเดียว 4 บาน"
+  },
+  {
+   "page": 7,
+   "content": "section drawing",
+   "series": "I บานเฟี้ยมเปิดด้านเดียว 4 บาน"
+  },
+  {
+   "page": 8,
+   "content": "profile table",
+   "series": "I บานเฟี้ยม 4 บาน (1+3)"
+  },
+  {
+   "page": 9,
+   "content": "section drawing",
+   "series": "I บานเฟี้ยม 4 บาน (1+3)"
+  },
+  {
+   "page": 10,
+   "content": "profile table",
+   "series": "I บานเฟี้ยมเปิดด้านเดียว 5 บาน"
+  },
+  {
+   "page": 11,
+   "content": "section drawing",
+   "series": "I บานเฟี้ยมเปิดด้านเดียว 5 บาน"
+  },
+  {
+   "page": 12,
+   "content": "profile table",
+   "series": "I บานเฟี้ยม 5 บาน (2+3)"
+  },
+  {
+   "page": 13,
+   "content": "section drawing",
+   "series": "I บานเฟี้ยม 5 บาน (2+3)"
+  },
+  {
+   "page": 14,
+   "content": "profile table",
+   "series": "I บานเฟี้ยมเปิดด้านเดียว 6 บาน"
+  },
+  {
+   "page": 15,
+   "content": "section drawing",
+   "series": "I บานเฟี้ยมเปิดด้านเดียว 6 บาน"
+  },
+  {
+   "page": 16,
+   "content": "profile table",
+   "series": "I บานเฟี้ยม 6 บาน (1+5)"
+  },
+  {
+   "page": 17,
+   "content": "section drawing",
+   "series": "I บานเฟี้ยม 6 บาน (1+5)"
+  },
+  {
+   "page": 18,
+   "content": "profile table",
+   "series": "I บานเฟี้ยมเปิดด้านเดียว 7 บาน"
+  },
+  {
+   "page": 19,
+   "content": "section drawing",
+   "series": "I บานเฟี้ยมเปิดด้านเดียว 7 บาน"
+  },
+  {
+   "page": 20,
+   "content": "profile table",
+   "series": "I บานเฟี้ยม 7 บาน (4+3)"
+  },
+  {
+   "page": 21,
+   "content": "section drawing",
+   "series": "I บานเฟี้ยม 7 บาน (4+3)"
+  },
+  {
+   "page": 22,
+   "content": "profile table",
+   "series": "I บานเฟี้ยม 8 บาน (3+5)"
+  },
+  {
+   "page": 23,
+   "content": "section drawing",
+   "series": "I บานเฟี้ยม 8 บาน (3+5)"
+  },
+  {
+   "page": 24,
+   "content": "profile table",
+   "series": "I บานเฟี้ยม 8 บาน (4+4)"
+  },
+  {
+   "page": 25,
+   "content": "section drawing",
+   "series": "I บานเฟี้ยม 8 บาน (4+4)"
+  },
+  {
+   "page": 26,
+   "content": "profile table",
+   "series": "I บานเฟี้ยม 9 บาน (4+5)"
+  },
+  {
+   "page": 27,
+   "content": "section drawing",
+   "series": "I บานเฟี้ยม 9 บาน (4+5)"
+  },
+  {
+   "page": 28,
+   "content": "profile table",
+   "series": "II บานเฟี้ยมยูโร 4 บาน (3+1)"
+  },
+  {
+   "page": 29,
+   "content": "section drawing",
+   "series": "II บานเฟี้ยมยูโร 4 บาน (3+1)"
+  },
+  {
+   "page": 30,
+   "content": "profile table",
+   "series": "II บานเฟี้ยมยูโรเปิดบานเดียว 5 บาน"
+  },
+  {
+   "page": 31,
+   "content": "section drawing",
+   "series": "II บานเฟี้ยมยูโรเปิดบานเดียว 5 บาน"
+  },
+  {
+   "page": 32,
+   "content": "profile table",
+   "series": "II บานเฟี้ยมยูโร 6 บาน (3+3)"
+  },
+  {
+   "page": 33,
+   "content": "section drawing",
+   "series": "II บานเฟี้ยมยูโร 6 บาน (3+3)"
+  },
+  {
+   "page": 34,
+   "content": "profile table",
+   "series": "II บานเฟี้ยมยูโร 8 บาน (3+5)"
+  },
+  {
+   "page": 35,
+   "content": "section drawing",
+   "series": "II บานเฟี้ยมยูโร 8 บาน (3+5)"
+  },
+  {
+   "page": 36,
+   "content": "other",
+   "series": "notes"
+  },
+  {
+   "page": 37,
+   "content": "other",
+   "series": "notes"
+  },
+  {
+   "page": 38,
+   "content": "other",
+   "series": "notes"
+  },
+  {
+   "page": 39,
+   "content": "other",
+   "series": "blank"
+  },
+  {
+   "page": 40,
+   "content": "other",
+   "series": "back cover"
+  }
+ ],
+ "series": [
+  {
+   "name": "I ชุดบานเฟี้ยม (FOLDING DOOR, top-hung, 101.6 frame)",
+   "system": "folding",
+   "app_types": [
+    "บานเฟี้ยม"
+   ],
+   "frame_size_mm": "101.6x50.8 head/sill, panel 41x72",
+   "profiles": [
+    {
+     "die_no": "MN-M50263",
+     "name": "รางบนบานเฟี้ยม 101.6x50.8",
+     "role_family": "รางบน",
+     "kg_per_m": 2.362,
+     "width_mm": 101.6,
+     "depth_mm": 50.8,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p87 (รางบนบานเฟี้ยม 101.6x50.8)",
+     "notes": "3 mm at roller track"
+    },
+    {
+     "die_no": "MN-M30335",
+     "name": "ตัวประกบรางบน 48.4x46.4",
+     "role_family": "ตบรางบน",
+     "kg_per_m": 0.52,
+     "width_mm": 48.4,
+     "depth_mm": 46.4,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p87 (ตัวประกบ 46.4x48.4)",
+     "notes": "17.5 / 25.4"
+    },
+    {
+     "die_no": "MN-M50288",
+     "name": "กรอบบานเฟี้ยม 41x72",
+     "role_family": "กรอบบาน",
+     "kg_per_m": 1.268,
+     "width_mm": 72,
+     "depth_mm": 41,
+     "wall_mm": 1.8,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p89 (กรอบบานเฟี้ยม 41x72)",
+     "notes": "same profile for stiles and top/bottom rails of each panel"
+    },
+    {
+     "die_no": "MN-M50291",
+     "name": "คิ้วบาน 24x19.2",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.23,
+     "width_mm": 24,
+     "depth_mm": 19.2,
+     "wall_mm": 1.3,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p89 (คิ้วบาน 24x19.2)",
+     "notes": "14.5"
+    },
+    {
+     "die_no": "MN-M30253",
+     "name": "รางล่าง/ธรณี 101.6x50.8 (25.4)",
+     "role_family": "รางล่าง",
+     "kg_per_m": 1.666,
+     "width_mm": 101.6,
+     "depth_mm": 50.8,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p87 (รางล่าง/ธรณี 101.6x50.8)",
+     "notes": "set in a floor recess"
+    },
+    {
+     "die_no": "MN-M50238",
+     "name": "รางข้าง 101.6x34.4 (25.4)",
+     "role_family": "รางข้าง",
+     "kg_per_m": 1.242,
+     "width_mm": 101.6,
+     "depth_mm": 34.4,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p87 (รางข้าง 101.6x34.4)"
+    },
+    {
+     "die_no": "MN-M50156",
+     "name": "ตัวปิดรางข้าง 25.65x25",
+     "role_family": "ตบรางข้าง",
+     "kg_per_m": 0.309,
+     "width_mm": 25.65,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p87 (ตัวปิด 25.65x25)"
+    },
+    {
+     "die_no": "MN-M50289",
+     "name": "บังใบบานเฟี้ยม 47.5x86",
+     "role_family": "บังใบนอก",
+     "kg_per_m": 1.354,
+     "width_mm": 86,
+     "depth_mm": 47.5,
+     "wall_mm": 1.8,
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p89 (บังใบบานเฟี้ยม 47.5x86)",
+     "notes": "lock-side stile next to the jamb / leading panel"
+    },
+    {
+     "die_no": "MN-M50290",
+     "name": "บังใบบานเฟี้ยม 47.5x86 (กลับด้าน)",
+     "role_family": "บังใบใน",
+     "kg_per_m": 1.354,
+     "width_mm": 86,
+     "depth_mm": 47.5,
+     "wall_mm": 1.8,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read",
+     "kg_source": "mn-aluminium-profile-2021 PDF p89 (บังใบบานเฟี้ยม 47.5x86 (กลับด้าน))",
+     "notes": "added only in split layouts (1+3, 1+5, 3+5 …) where two panel stacks meet"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "ทุกแบบ (3-9 บาน, เปิดด้านเดียว / แยก 2 ฝั่ง) — section p5",
+     "page": 5,
+     "joints": "Outer frame: top track M50263 + adaptor M30335 at head, side jambs M50238 + cover M50156, bottom track M30253 recessed into the floor. Each panel is a box of M50288 (stiles + rails, joint type not drawn), glass held by M50291 beads. Leading (lock) edge uses M50289; in split layouts the two stacks meet on M50289 + M50290. Panels hang from top roller FTT01 and are guided by bottom roller FBT01.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "not dimensioned except overall depth 101.6 (sections at 1:4 on A4); panel stile 72 x 41",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only. Hardware placement per panel is printed on each elevation: hinged-to-jamb panel gets FH-01/FH-01ST (top) + FH-01 (middle) + FH-01 (bottom); panel-to-panel hinges FH-02 (top) + FH-02H (middle) + FH-02 (bottom); carrying panels FTT01 top + FBT01 bottom; operating panel T28/T29 + CDQ20 + CZ-008A; end panel 300A/400A (lever) — read from p5/p9, small print, estimated."
+    },
+    {
+     "type": "บานเฟี้ยมเปิดด้านเดียว 3 บาน",
+     "page": 5,
+     "joints": "as p5 section; elevation labels give hinge/roller positions",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no formulas printed"
+    },
+    {
+     "type": "บานเฟี้ยมเปิดด้านเดียว 4 บาน",
+     "page": 7,
+     "joints": "as p5 section; elevation labels give hinge/roller positions",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no formulas printed"
+    },
+    {
+     "type": "บานเฟี้ยม 4 บาน (1+3)",
+     "page": 9,
+     "joints": "as p5 section; elevation labels give hinge/roller positions",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no formulas printed"
+    },
+    {
+     "type": "บานเฟี้ยมเปิดด้านเดียว 5 บาน",
+     "page": 11,
+     "joints": "as p5 section; elevation labels give hinge/roller positions",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no formulas printed"
+    },
+    {
+     "type": "บานเฟี้ยม 5 บาน (2+3)",
+     "page": 13,
+     "joints": "as p5 section; elevation labels give hinge/roller positions",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no formulas printed"
+    },
+    {
+     "type": "บานเฟี้ยมเปิดด้านเดียว 6 บาน",
+     "page": 15,
+     "joints": "as p5 section; elevation labels give hinge/roller positions",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no formulas printed"
+    },
+    {
+     "type": "บานเฟี้ยม 6 บาน (1+5)",
+     "page": 17,
+     "joints": "as p5 section; elevation labels give hinge/roller positions",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no formulas printed"
+    },
+    {
+     "type": "บานเฟี้ยมเปิดด้านเดียว 7 บาน",
+     "page": 19,
+     "joints": "as p5 section; elevation labels give hinge/roller positions",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no formulas printed"
+    },
+    {
+     "type": "บานเฟี้ยม 7 บาน (4+3)",
+     "page": 21,
+     "joints": "as p5 section; elevation labels give hinge/roller positions",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no formulas printed"
+    },
+    {
+     "type": "บานเฟี้ยม 8 บาน (3+5)",
+     "page": 23,
+     "joints": "as p5 section; elevation labels give hinge/roller positions",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no formulas printed"
+    },
+    {
+     "type": "บานเฟี้ยม 8 บาน (4+4)",
+     "page": 25,
+     "joints": "as p5 section; elevation labels give hinge/roller positions",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no formulas printed"
+    },
+    {
+     "type": "บานเฟี้ยม 9 บาน (4+5)",
+     "page": 27,
+     "joints": "as p5 section; elevation labels give hinge/roller positions",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no formulas printed"
+    }
+   ],
+   "hardware": [
+    {
+     "name": "ล้อบน",
+     "code": "FTT01",
+     "per": "per carrying panel",
+     "qty": 1,
+     "page": 4
+    },
+    {
+     "name": "ล้อล่าง",
+     "code": "FBT01",
+     "per": "per carrying panel",
+     "qty": 1,
+     "page": 4
+    },
+    {
+     "name": "ล้อบน (split layouts)",
+     "code": "FST-01",
+     "per": null,
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "ล้อล่าง (split layouts)",
+     "code": "FBT-01",
+     "per": null,
+     "qty": null,
+     "page": 6
+    },
+    {
+     "name": "บานพับ",
+     "code": "FH-01, FH-01ST",
+     "per": "per jamb hinge line",
+     "qty": 3,
+     "page": 4,
+     "notes": "top FH-01/FH-01ST, middle FH-01, bottom FH-01 (elevation p5, estimated)"
+    },
+    {
+     "name": "บานพับ",
+     "code": "FH-02, FH-03H (FH-02H on elevations)",
+     "per": "per panel-to-panel hinge line",
+     "qty": 3,
+     "page": 4,
+     "notes": "top FH-02, middle FH-02H, bottom FH-02 (estimated)"
+    },
+    {
+     "name": "มือจับ",
+     "code": "T28, T29, T31",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "เสื้อกุญแจ",
+     "code": "CDQ20",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ก้านหลังเต่า",
+     "code": "CZ-008A",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "มือจับ",
+     "code": "CZ-300A + Dummy",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "เสื้อกุญแจ 30x85",
+     "code": "Mortise",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "ไส้กุญแจ 62 มม.",
+     "code": "TC",
+     "per": null,
+     "qty": null,
+     "page": 4
+    },
+    {
+     "name": "เส้นล็อคบานเฟี้ยม",
+     "code": "CZ-FC-14",
+     "per": "split layouts only",
+     "qty": null,
+     "page": 8
+    }
+   ],
+   "accessories": [],
+   "prices": [],
+   "notes": "marketing text: panels up to 3 m high"
+  },
+  {
+   "name": "II ชุดบานเฟี้ยมนอก / บานเฟี้ยมยูโร (FQ series)",
+   "system": "folding",
+   "app_types": [
+    "บานเฟี้ยม"
+   ],
+   "frame_size_mm": "74.5 deep; panel 65x68.3",
+   "profiles": [
+    {
+     "die_no": "FQ-160-004",
+     "name": "วงกบบานเฟี้ยมยูโร 74.5x64.3 (42.3)",
+     "role_family": "รางบน",
+     "kg_per_m": null,
+     "width_mm": 74.5,
+     "depth_mm": 64.3,
+     "wall_mm": 1.6,
+     "std_length_m": null,
+     "page": 28,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue",
+     "notes": "head and jambs"
+    },
+    {
+     "die_no": "FQ-160-003",
+     "name": "ธรณีบานเฟี้ยมยูโร 74.5x15.5",
+     "role_family": "รางล่าง",
+     "kg_per_m": null,
+     "width_mm": 74.5,
+     "depth_mm": 15.5,
+     "wall_mm": 1.6,
+     "std_length_m": null,
+     "page": 28,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue"
+    },
+    {
+     "die_no": "FQ-168-174",
+     "name": "กรอบบานยูโร 65x68.3 (ร่อง 22.5)",
+     "role_family": "กรอบบาน",
+     "kg_per_m": null,
+     "width_mm": 68.3,
+     "depth_mm": 65,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 28,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue",
+     "notes": "all 4 sides of each panel"
+    },
+    {
+     "die_no": "FQ-168-175",
+     "name": "บังใบ/ตัวประกบ 65x33.4 (19.2)",
+     "role_family": "บังใบใน",
+     "kg_per_m": null,
+     "width_mm": 65,
+     "depth_mm": 33.4,
+     "wall_mm": 1.4,
+     "std_length_m": null,
+     "page": 28,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue"
+    },
+    {
+     "die_no": "FQ-168-238",
+     "name": "ฝาปิด 35x30.55",
+     "role_family": "ฝาปิด",
+     "kg_per_m": null,
+     "width_mm": 35,
+     "depth_mm": 30.55,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 28,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue"
+    },
+    {
+     "die_no": "FQ-168-176",
+     "name": "ตัวประกบ 34.5x31",
+     "role_family": "บังใบนอก",
+     "kg_per_m": null,
+     "width_mm": 34.5,
+     "depth_mm": 31,
+     "wall_mm": 1.4,
+     "std_length_m": null,
+     "page": 28,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue"
+    },
+    {
+     "die_no": "FQ-168-177",
+     "name": "แผ่นปิด 19.4x4",
+     "role_family": "ฝาปิด",
+     "kg_per_m": null,
+     "width_mm": 19.4,
+     "depth_mm": 4,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 28,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue"
+    },
+    {
+     "die_no": "FQ-168-178",
+     "name": "ยาง/ตัวปิด 11.25x5.7",
+     "role_family": "ฝาปิด",
+     "kg_per_m": null,
+     "width_mm": 11.25,
+     "depth_mm": 5.7,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 28,
+     "confidence": "estimated",
+     "kg_source": "not in 2021 profile catalogue"
+    },
+    {
+     "die_no": "FQ-089-026",
+     "name": "วงกบข้างด้านกุญแจ 74.4x33.35",
+     "role_family": "รางข้าง",
+     "kg_per_m": null,
+     "width_mm": 74.4,
+     "depth_mm": 33.35,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 30,
+     "confidence": "read",
+     "kg_source": "not in 2021 profile catalogue",
+     "notes": "only in the 5-panel one-side layout"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานเฟี้ยมยูโร (เปิดออกนอก) — section p29",
+     "page": 29,
+     "joints": "Frame FQ-160-004 head + jambs, low sill FQ-160-003 on the floor; panels FQ-168-174 on 4 sides; meeting/lock stiles FQ-168-175/176/177; cover FQ-168-238 at the jamb.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "head: frame 42.3 + 10 gap + panel 68.3; bottom: panel 68.3 + 4 gap + sill 15.5; depth 74.5 = 65 + 9.5 (21.25 | 22.5 | 21.25); panel-to-panel 74.25 | 74.35; jamb 64.3 | 58.3; lock 97.6 | 6 | 71.2",
+     "sash_overlap_mm": null,
+     "notes": "ไม่มีสูตรตัดพิมพ์ในคู่มือ (คู่มือมีแต่รูปตัดติดตั้ง). Not printed: cut lengths, glass sizes. Gaps below are read from the section drawings only."
+    },
+    {
+     "type": "บานเฟี้ยมยูโร 4 บาน (3+1)",
+     "page": 29,
+     "joints": "as p29",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no formulas printed"
+    },
+    {
+     "type": "บานเฟี้ยมยูโรเปิดบานเดียว 5 บาน",
+     "page": 31,
+     "joints": "as p29",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no formulas printed"
+    },
+    {
+     "type": "บานเฟี้ยมยูโร 6 บาน (3+3)",
+     "page": 33,
+     "joints": "as p29",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no formulas printed"
+    },
+    {
+     "type": "บานเฟี้ยมยูโร 8 บาน (3+5)",
+     "page": 35,
+     "joints": "as p29",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no formulas printed"
+    }
+   ],
+   "hardware": [
+    {
+     "name": "ล้อบน",
+     "code": "TR5",
+     "per": null,
+     "qty": null,
+     "page": 28
+    },
+    {
+     "name": "บานพับ",
+     "code": "HG4",
+     "per": null,
+     "qty": null,
+     "page": 28
+    },
+    {
+     "name": "บานพับมือจับ",
+     "code": "HG5",
+     "per": null,
+     "qty": null,
+     "page": 28
+    },
+    {
+     "name": "ล้อล่าง",
+     "code": "BR6",
+     "per": null,
+     "qty": null,
+     "page": 28
+    },
+    {
+     "name": "มือจับ",
+     "code": "L4",
+     "per": null,
+     "qty": null,
+     "page": 28
+    },
+    {
+     "name": "ไส้กุญแจ",
+     "code": "30485",
+     "per": null,
+     "qty": null,
+     "page": 28
+    },
+    {
+     "name": "ไส้กุญแจ",
+     "code": "LK101",
+     "per": null,
+     "qty": null,
+     "page": 28
+    },
+    {
+     "name": "มือจับลอย",
+     "code": "JCZ11",
+     "per": null,
+     "qty": null,
+     "page": 28
+    },
+    {
+     "name": "ไส้กุญแจ (CDQ)",
+     "code": "JCH03",
+     "per": null,
+     "qty": null,
+     "page": 28
+    }
+   ],
+   "accessories": [],
+   "prices": []
+  }
+ ],
+ "new_families": [
+  "ตัวประกบรางบน",
+  "รางข้าง",
+  "ตบรางข้าง",
+  "บังใบใน/บังใบนอก (บานเฟี้ยม)"
+ ],
+ "open_questions": [
+  "ไม่มีสูตรตัดบานเฟี้ยมเลย — ความกว้างบาน = (W - ?)/n ร้านใช้ค่าหักเท่าไร",
+  "กรอบบาน M50288 ต่อมุมแบบ 45° หรือชนตรง",
+  "หน้าตัด FQ ไม่มีในแคตตาล็อก 2021 — ขอน้ำหนัก กก./ม.",
+  "จำนวนบานพับต่อแนว 3 ตัวทุกความสูงหรือไม่ (บานสูงถึง 3 ม.)"
+ ],
+ "unreadable_pages": [],
+ "supplier": "บริษัท แม่น้ำเมทอลซัพพลาย จำกัด (Mae Num Metal Supply Co.,Ltd.); hardware by CENZA Architectural Supply Co.,Ltd.",
+ "brand": "MN METAL SUPPLY / CENZA"
+}
