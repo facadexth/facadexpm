@@ -599,6 +599,16 @@ describe('Task 5 (c): a merge add-on joins the main frame', () => {
     expect(ra.bom.laborCost).toBeCloseTo(1.8 * 1.2 * 1000, 6)
     expect(ra.addonBoms[0].bom.laborCost).toBeCloseTo(1.8 * 0.4 * 1000, 6)
   })
+  // Review 2026-10-16: a top and a left merge add-on that both reach the corner overlap there; the corner is charged once.
+  // Main 1800 × 1200, top 2100 × 400 at x −300, left 300 × 1600 at y −400 ⇒ the union is the 2.1 × 1.6 envelope.
+  it('D6: overlapping merge add-ons (top + left reaching the corner) are charged labour once over their union', () => {
+    const rates = { labor_price_per_sqm: 1000 }
+    const adds = [ao({ mode: 'merge', len_mm: 2100 }), ao({ mode: 'merge', position: 'left', len_mm: 1600, thick_mm: 300 })]
+    const rows = [...pieceRows('merge', 'top', { ext: LONG, main_facing: null }), ...pieceRows('merge', 'left', { ext: LONG, main_facing: null })]
+    const c0 = aCtx(adds, rows)
+    const r = costOpening({ ...c0, template: { ...c0.template, ...rates } })
+    expect(r.bom.laborCost).toBeCloseTo(2.1 * 1.6 * 1000, 6)
+  })
   it('partPreviewCtx returns the item\'s add-ons and the same overrides / sideButt', () => {
     const c = aCtx([ao({ mode: 'merge' })], pieceRows('merge', 'top', { ext: LONG, main_facing: null }))
     const r = costOpening(c)

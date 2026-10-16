@@ -203,10 +203,26 @@ function mainFrameUnit(item, addons) {
 // main area plus every merge add-on's own area (= the envelope when the add-ons fill it; an L of a top + a left add-on
 // leaves the empty corner out), silicone / felt on the envelope's perimeter (the shared outer frame, the same unit
 // openingExtras seals). {} without merge add-ons, so the engine keeps W × H and 2(W + H).
+// Area (mm²) covered by axis-aligned rects [{ x, y, w, h }], overlaps counted once (coordinate compression).
+function unionAreaMm2(rects) {
+  const rs = rects.filter(r => r.w > 0 && r.h > 0)
+  const xs = [...new Set(rs.flatMap(r => [r.x, r.x + r.w]))].sort((a, b) => a - b)
+  const ys = [...new Set(rs.flatMap(r => [r.y, r.y + r.h]))].sort((a, b) => a - b)
+  let area = 0
+  for (let i = 1; i < xs.length; i++) for (let j = 1; j < ys.length; j++) {
+    const cx = (xs[i - 1] + xs[i]) / 2, cy = (ys[j - 1] + ys[j]) / 2
+    if (rs.some(r => cx > r.x && cx < r.x + r.w && cy > r.y && cy < r.y + r.h)) area += (xs[i] - xs[i - 1]) * (ys[j] - ys[j - 1])
+  }
+  return area
+}
+
 function mergeLabourBase(item, addons) {
   const merge = (addons || []).filter(a => a && a.mode === 'merge' && ['top', 'bottom', 'left', 'right'].includes(a.position))
   if (!merge.length) return {}
-  const area = merge.reduce((s, a) => { const d = addonDims(a); return s + ((Number(d.w) || 0) * (Number(d.h) || 0)) / 1e6 }, Number(item.width_m) * Number(item.height_m))
+  // the union of the main unit and its merge add-ons: a top and a left add-on that both reach the corner overlap there,
+  // and that corner is one piece of work, charged once (review 2026-10-16)
+  const { rects } = layoutAddons({ widthMm: Number(item.width_m) * 1000, heightMm: Number(item.height_m) * 1000, addons: merge })
+  const area = unionAreaMm2(rects) / 1e6
   const env = mainFrameUnit(item, merge)
   return { labour_area_sqm: area, seal_perimeter_m: 2 * (env.width_m + env.height_m) }
 }
