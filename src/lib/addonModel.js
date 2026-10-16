@@ -121,11 +121,14 @@ export function defaultAddonPieces({ mode, kind, position, layoutKind = 'sliding
       ['mullion', 'h', b2, 'cols-1', 0], ['rail', 'w', b2, 'rows-1', 0],
     ]
   } else if (layoutKind === 'sliding_2' && (position === 'top' || position === 'bottom')) {
+    // ao_frame_side (owner 2026-10-16, Q5, D4): the overlay side (เฟรมข้างไม่ติดกล่อง แปะทับ) is only as long as the
+    // sash = main unit height (mh), not the add-on height: series file J4, p15 A43, the 2-track side lies on the long
+    // jamb only over the sliding cell. Whether anything is deducted from mh is still open (question G8).
     const top = position === 'top'
     spec = [
       ['ext', 'th', 0, 'fixed', 2], ['divider', 'len', b2, 'fixed', 0],
       ['main_facing', 'len', 0, 'fixed', 0, top ? 'ตบเรียบ (รองคิ้วเท)' : 'ตบร่อง'],
-      ['ao_frame_side', 'h', 0, 'fixed', 2], ['ao_bead', 'len', b2, 'fixed', top ? 1 : 0],
+      ['ao_frame_side', 'mh', 0, 'fixed', 2], ['ao_bead', 'len', b2, 'fixed', top ? 1 : 0],
       ['ao_frame_far', 'len', b2, 'fixed', 1], ['mullion', 'h', b2, 'cols-1', 0], ['rail', 'len', b2, 'rows-1', 0],
     ]
   } else {

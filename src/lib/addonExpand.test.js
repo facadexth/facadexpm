@@ -82,7 +82,7 @@ describe('expandAddons — merge (sliding_2)', () => {
     expect(of(components, 'divider')).toHaveLength(0)
     expect(of(components, 'ext')).toHaveLength(0)
     expect(of(components, 'main_facing')).toHaveLength(0)
-    expect(only(components, 'ao_frame_side')).toMatchObject({ fixed_length_mm: 400, quantity_value: 2 })
+    expect(only(components, 'ao_frame_side')).toMatchObject({ fixed_length_mm: 1200, quantity_value: 2 })   // mh (D4)
     for (const k of ['ao_bead', 'ao_frame_far']) {
       expect(only(components, k).fixed_length_mm).toBeCloseTo(1723.8, 6)
       expect(only(components, k).quantity_value).toBe(1)
@@ -94,6 +94,18 @@ describe('expandAddons — merge (sliding_2)', () => {
     expect(r.glass[0]).toMatchObject({ addonIndex: 0, count: 3 })
     expect(r.glass[0].widthMm).toBeCloseTo(574.6, 6)
     expect(r.glass[0].heightMm).toBeCloseTo(323.8, 6)
+  })
+
+  // Owner 2026-10-16 (Q5, D4): the overlay side frame (เฟรมข้างไม่ติดกล่อง แปะทับ) is only as long as the sash (main
+  // unit) height, not the add-on height. Series file J4: on p15 A43 the 2-track side lies on the long jamb only over the
+  // sliding cell, i.e. the main unit's height (mh), for a top and a bottom add-on alike.
+  it('owner 2026-10-16 (D4): the overlay side frame is as long as the main unit (sash) height, not the add-on', () => {
+    for (const position of ['top', 'bottom']) {
+      const rows = defaultAddonPieces({ mode: 'merge', kind: 'fixed', position, layoutKind: 'sliding_2', buttMm: 38.1 })
+      expect(rows.find((x) => x.piece_key === 'ao_frame_side')).toMatchObject({ ref_input: 'mh', qty_fixed: 2 })
+      const r = run([add({ position, thick_mm: 400 })], rowsFor('merge', 'fixed', position))
+      expect(only(r.merge.components, 'ao_frame_side')).toMatchObject({ fixed_length_mm: 1200, quantity_value: 2 })
+    }
   })
 
   it('bottom: no bead, note ตบร่อง', () => {

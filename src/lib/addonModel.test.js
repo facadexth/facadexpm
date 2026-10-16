@@ -150,7 +150,7 @@ describe('defaultAddonPieces', () => {
     expect(by(rows, 'divider').qty_fixed).toBe(0)
     expect(by(rows, 'main_facing')).toMatchObject({ note: 'ตบเรียบ (รองคิ้วเท)', qty_fixed: 0, ref_input: 'len' })
     expect(by(rows, 'ao_bead')).toMatchObject({ qty_fixed: 1, deduction_mm: 76.2 })
-    expect(by(rows, 'ao_frame_side')).toMatchObject({ ref_input: 'h', qty_fixed: 2 })
+    expect(by(rows, 'ao_frame_side')).toMatchObject({ ref_input: 'mh', qty_fixed: 2 })   // D4, owner 2026-10-16
     expect(by(rows, 'rail').ref_input).toBe('len')
     expect(by(rows, 'mullion').ref_input).toBe('h')
     expect(rows.every((r) => r.position === 'top')).toBe(true)
