@@ -1,0 +1,2586 @@
+{
+ "source_pdf": "DOC/ALUMNIUM CATALOG/แคตล็อคหน้าตัด ORM.pdf",
+ "supplier": "Great Aluminum (Line@ @greataluminum; ORM sales 096-765-8363)",
+ "brand": "ORM ALUMINIUM",
+ "catalogue_year": "2023 (every page 'Update : 01/02/2023'); TIS 744-2563 tested, TIS 284-2562 manufactured",
+ "pages": 62,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": null
+  },
+  {
+   "page": 2,
+   "content": "assembly",
+   "series": "801"
+  },
+  {
+   "page": 3,
+   "content": "section drawing",
+   "series": "801"
+  },
+  {
+   "page": 4,
+   "content": "section drawing",
+   "series": "801"
+  },
+  {
+   "page": 5,
+   "content": "section drawing",
+   "series": "801"
+  },
+  {
+   "page": 6,
+   "content": "section drawing",
+   "series": "801"
+  },
+  {
+   "page": 7,
+   "content": "section drawing",
+   "series": "801"
+  },
+  {
+   "page": 8,
+   "content": "section drawing",
+   "series": "801"
+  },
+  {
+   "page": 9,
+   "content": "section drawing",
+   "series": "802"
+  },
+  {
+   "page": 10,
+   "content": "section drawing",
+   "series": "802"
+  },
+  {
+   "page": 11,
+   "content": "section drawing",
+   "series": "802"
+  },
+  {
+   "page": 12,
+   "content": "section drawing",
+   "series": "802"
+  },
+  {
+   "page": 13,
+   "content": "section drawing",
+   "series": "802"
+  },
+  {
+   "page": 14,
+   "content": "assembly",
+   "series": "803"
+  },
+  {
+   "page": 15,
+   "content": "assembly",
+   "series": "803"
+  },
+  {
+   "page": 16,
+   "content": "section drawing",
+   "series": "803"
+  },
+  {
+   "page": 17,
+   "content": "section drawing",
+   "series": "803"
+  },
+  {
+   "page": 18,
+   "content": "section drawing",
+   "series": "803"
+  },
+  {
+   "page": 19,
+   "content": "assembly",
+   "series": "812"
+  },
+  {
+   "page": 20,
+   "content": "assembly",
+   "series": "812"
+  },
+  {
+   "page": 21,
+   "content": "assembly",
+   "series": "812"
+  },
+  {
+   "page": 22,
+   "content": "assembly",
+   "series": "812"
+  },
+  {
+   "page": 23,
+   "content": "section drawing",
+   "series": "812"
+  },
+  {
+   "page": 24,
+   "content": "section drawing",
+   "series": "812"
+  },
+  {
+   "page": 25,
+   "content": "section drawing",
+   "series": "812"
+  },
+  {
+   "page": 26,
+   "content": "assembly",
+   "series": "804"
+  },
+  {
+   "page": 27,
+   "content": "assembly",
+   "series": "804"
+  },
+  {
+   "page": 28,
+   "content": "assembly",
+   "series": "804"
+  },
+  {
+   "page": 29,
+   "content": "assembly",
+   "series": "804"
+  },
+  {
+   "page": 30,
+   "content": "section drawing",
+   "series": "804"
+  },
+  {
+   "page": 31,
+   "content": "section drawing",
+   "series": "804"
+  },
+  {
+   "page": 32,
+   "content": "section drawing",
+   "series": "804"
+  },
+  {
+   "page": 33,
+   "content": "section drawing",
+   "series": "811"
+  },
+  {
+   "page": 34,
+   "content": "section drawing",
+   "series": "811"
+  },
+  {
+   "page": 35,
+   "content": "section drawing",
+   "series": "811"
+  },
+  {
+   "page": 36,
+   "content": "assembly",
+   "series": "805"
+  },
+  {
+   "page": 37,
+   "content": "assembly",
+   "series": "805"
+  },
+  {
+   "page": 38,
+   "content": "section drawing",
+   "series": "805"
+  },
+  {
+   "page": 39,
+   "content": "section drawing",
+   "series": "805"
+  },
+  {
+   "page": 40,
+   "content": "section drawing",
+   "series": "805"
+  },
+  {
+   "page": 41,
+   "content": "section drawing",
+   "series": "805"
+  },
+  {
+   "page": 42,
+   "content": "section drawing",
+   "series": "805"
+  },
+  {
+   "page": 43,
+   "content": "section drawing",
+   "series": "805"
+  },
+  {
+   "page": 44,
+   "content": "assembly",
+   "series": "806"
+  },
+  {
+   "page": 45,
+   "content": "section drawing",
+   "series": "806"
+  },
+  {
+   "page": 46,
+   "content": "section drawing",
+   "series": "806"
+  },
+  {
+   "page": 47,
+   "content": "section drawing",
+   "series": "806"
+  },
+  {
+   "page": 48,
+   "content": "assembly",
+   "series": "807"
+  },
+  {
+   "page": 49,
+   "content": "assembly",
+   "series": "807"
+  },
+  {
+   "page": 50,
+   "content": "section drawing",
+   "series": "807"
+  },
+  {
+   "page": 51,
+   "content": "section drawing",
+   "series": "807"
+  },
+  {
+   "page": 52,
+   "content": "section drawing",
+   "series": "807"
+  },
+  {
+   "page": 53,
+   "content": "assembly",
+   "series": "809"
+  },
+  {
+   "page": 54,
+   "content": "section drawing",
+   "series": "809"
+  },
+  {
+   "page": 55,
+   "content": "section drawing",
+   "series": "809"
+  },
+  {
+   "page": 56,
+   "content": "section drawing",
+   "series": "809"
+  },
+  {
+   "page": 57,
+   "content": "section drawing",
+   "series": "809"
+  },
+  {
+   "page": 58,
+   "content": "section drawing",
+   "series": "810"
+  },
+  {
+   "page": 59,
+   "content": "section drawing",
+   "series": "810"
+  },
+  {
+   "page": 60,
+   "content": "section drawing",
+   "series": "810"
+  },
+  {
+   "page": 61,
+   "content": "assembly",
+   "series": "813"
+  },
+  {
+   "page": 62,
+   "content": "section drawing",
+   "series": "813"
+  }
+ ],
+ "series": [
+  {
+   "name": "801 บานเลื่อน 9 ซม. (เอเชีย)",
+   "system": "sliding window",
+   "app_types": [
+    "บานเลื่อนสวน 2 บาน",
+    "บานเลื่อน 4 บาน"
+   ],
+   "frame_size_mm": "90x30",
+   "profiles": [
+    {
+     "die_no": "801-01",
+     "name": "เฟรมล่างบานเลื่อน ธรณีต่ำ 9 ซม.",
+     "role_family": "เฟรมล่าง 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 31.0,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2/1.5",
+     "std_length_m": null,
+     "page": 3,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-02",
+     "name": "เฟรมล่างบานเลื่อน ธรณีสูง 9 ซม.",
+     "role_family": "เฟรมล่าง 2 ราง ธรณีสูง",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 50.0,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2/1.5",
+     "std_length_m": null,
+     "page": 3,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-03",
+     "name": "เฟรมบนบานเลื่อน 9 ซม.",
+     "role_family": "เฟรมบน 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 30.0,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2/1.5",
+     "std_length_m": null,
+     "page": 3,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-04",
+     "name": "เฟรมข้างบานเลื่อน 20 มม. 9 ซม.",
+     "role_family": "เฟรมข้าง 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 20.0,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2/1.5",
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-05",
+     "name": "เฟรมข้างบานเลื่อน 30 มม. 9 ซม.",
+     "role_family": "เฟรมข้าง 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 30.0,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2/1.5",
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-06",
+     "name": "เสากุญแจ / เกี่ยว 53 มม.",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": null,
+     "width_mm": 53.0,
+     "depth_mm": 25.5,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2/1.5",
+     "std_length_m": null,
+     "page": 4,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-07",
+     "name": "เสากุญแจ / เกี่ยว 65 มม.",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": null,
+     "width_mm": 65.0,
+     "depth_mm": 25.5,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2/1.5",
+     "std_length_m": null,
+     "page": 5,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-08",
+     "name": "ขวางล่าง / ขวางบน บานเลื่อน",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": null,
+     "width_mm": 65.0,
+     "depth_mm": 22.5,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2/1.5",
+     "std_length_m": null,
+     "page": 5,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-09",
+     "name": "ตบเสาเกี่ยว 53 มม.",
+     "role_family": "ตบเสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 31.26,
+     "depth_mm": 31.01,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 5,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-10",
+     "name": "ตบเสาเกี่ยว 65 มม.",
+     "role_family": "ตบเสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 39.0,
+     "depth_mm": 31.01,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 5,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-11",
+     "name": "ตบเสาเกี่ยวสองทาง 53 มม.",
+     "role_family": "ตบเสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 31.26,
+     "depth_mm": 37.55,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-12",
+     "name": "ตบเสาเกี่ยวสองทาง 65 มม.",
+     "role_family": "ตบเสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 39.0,
+     "depth_mm": 37.55,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-13",
+     "name": "ตบธรณีต่ำ",
+     "role_family": "ตบธรณี",
+     "kg_per_m": null,
+     "width_mm": 35.54,
+     "depth_mm": 14.0,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-14",
+     "name": "ตบธรณีสูง",
+     "role_family": "ตบธรณี",
+     "kg_per_m": null,
+     "width_mm": 35.54,
+     "depth_mm": 34.3,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-15",
+     "name": "เดือยเสากุญแจ",
+     "role_family": "อื่นๆ",
+     "kg_per_m": null,
+     "width_mm": 13.9,
+     "depth_mm": 13.49,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 7,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-16",
+     "name": "ชนกลางบานเลื่อน",
+     "role_family": "เสาชน (บานแยก)",
+     "kg_per_m": null,
+     "width_mm": 24.0,
+     "depth_mm": 19.89,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 7,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-17",
+     "name": "สติฟฟิเนอร์เสริมเสาบานเลื่อน",
+     "role_family": "สติฟเนอร์",
+     "kg_per_m": null,
+     "width_mm": 15.0,
+     "depth_mm": 40.0,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 7,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-18",
+     "name": "ฝาปิดสติฟฟิเนอร์",
+     "role_family": "ฝาปิด",
+     "kg_per_m": null,
+     "width_mm": 15.0,
+     "depth_mm": null,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 7,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-19",
+     "name": "สแน็บ ORM",
+     "role_family": "สแน็บ (ตัวต่อเฟรม)",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 17.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 7,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-20",
+     "name": "ซอยกลางบานเลื่อน",
+     "role_family": "ขวางกลาง",
+     "kg_per_m": null,
+     "width_mm": 32.0,
+     "depth_mm": 22.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 7,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-21",
+     "name": "สแน็บ ORM 9 ซม. และ 4 นิ้ว",
+     "role_family": "สแน็บ (ตัวต่อเฟรม)",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 11.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read"
+    },
+    {
+     "die_no": "801-22",
+     "name": "ชุดเข้ามุม 90 องศา",
+     "role_family": "เสามุม",
+     "kg_per_m": null,
+     "width_mm": 25.5,
+     "depth_mm": 25.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "2-panel and 4-panel sliding",
+     "page": 2,
+     "joints": "Head 801-03, sill 801-02 (high) / 801-01 (low), jambs 801-04; 801-08 used for BOTH top and bottom sash rails; 801-07 used for lock stile and interlock stile, interlock formed by snap-on 801-10 (ตบเสาเกี่ยว); 801-15 dowel (เดือยเสากุญแจ) closes lock stile against jamb; 4-panel centre uses 801-07 + 801-16 (ชนกลาง); 801-14 sill cover on high sill.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "Elevation shows W and H as overall frame size only; no cut formulas printed."
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "802 บานเลื่อน 4 นิ้ว (เอเชีย) 2 ราง และ 3 ราง",
+   "system": "sliding window",
+   "app_types": [
+    "บานเลื่อนสวน 2 บาน",
+    "บานเลื่อน 3 ราง",
+    "บานเลื่อน 4 บาน"
+   ],
+   "frame_size_mm": "101.6x30",
+   "profiles": [
+    {
+     "die_no": "802-01",
+     "name": "3 รางเฟรมล่างบานเลื่อน ธรณีต่ำ 4 นิ้ว",
+     "role_family": "เฟรมล่าง 3 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 30.0,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2",
+     "std_length_m": null,
+     "page": 9,
+     "confidence": "read"
+    },
+    {
+     "die_no": "802-02",
+     "name": "3 ราง เฟรมล่างบานเลื่อน ธรณีสูง 4 นิ้ว",
+     "role_family": "เฟรมล่าง 3 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 50.0,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2",
+     "std_length_m": null,
+     "page": 9,
+     "confidence": "read"
+    },
+    {
+     "die_no": "802-03",
+     "name": "3 ราง เฟรมบนบานเลื่อน 4 นิ้ว",
+     "role_family": "เฟรมบน 3 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 30.0,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2",
+     "std_length_m": null,
+     "page": 9,
+     "confidence": "read"
+    },
+    {
+     "die_no": "802-04",
+     "name": "3 ราง เฟรมข้างบานเลื่อน 20 มม. 4 นิ้ว",
+     "role_family": "เฟรมข้าง 3 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 20.0,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2",
+     "std_length_m": null,
+     "page": 10,
+     "confidence": "read"
+    },
+    {
+     "die_no": "802-05",
+     "name": "3 ราง เฟรมข้างบานเลื่อน 30 มม. 4 นิ้ว",
+     "role_family": "เฟรมข้าง 3 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 30.0,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2",
+     "std_length_m": null,
+     "page": 10,
+     "confidence": "read"
+    },
+    {
+     "die_no": "802-06",
+     "name": "เฟรมบานตาย 4 นิ้ว",
+     "role_family": "เฟรมบานตาย",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 25.0,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2/1.5",
+     "std_length_m": null,
+     "page": 10,
+     "confidence": "read"
+    },
+    {
+     "die_no": "802-07",
+     "name": "ตบบานตาย 4 นิ้ว",
+     "role_family": "ตบบานตาย",
+     "kg_per_m": null,
+     "width_mm": 83.2,
+     "depth_mm": 5.3,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 11,
+     "confidence": "read"
+    },
+    {
+     "die_no": "802-08",
+     "name": "ตบบานตาย ชุดบานเลื่อน 4 นิ้ว",
+     "role_family": "ตบบานตาย",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 8.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 11,
+     "confidence": "read"
+    },
+    {
+     "die_no": "802-09",
+     "name": "3 ราง ตบเฟรมข้างบานตาย 4 นิ้ว",
+     "role_family": "ตบบานตาย",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 8.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 11,
+     "confidence": "read"
+    },
+    {
+     "die_no": "802-10",
+     "name": "3 ราง เฟรมล่างบานเลื่อน ภายใน 4 นิ้ว",
+     "role_family": "เฟรมล่าง 3 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2",
+     "std_length_m": null,
+     "page": 11,
+     "confidence": "read"
+    },
+    {
+     "die_no": "802-11",
+     "name": "เฟรมล่างบานเลื่อน ธรณีต่ำ 4 นิ้ว",
+     "role_family": "เฟรมล่าง 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 31.0,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2/1.5",
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read"
+    },
+    {
+     "die_no": "802-12",
+     "name": "เฟรมล่างบานเลื่อน ธรณีสูง 4 นิ้ว",
+     "role_family": "เฟรมล่าง 2 ราง ธรณีสูง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 50.0,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2/1.5",
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read"
+    },
+    {
+     "die_no": "802-13",
+     "name": "เฟรมบนบานเลื่อน 4 นิ้ว",
+     "role_family": "เฟรมบน 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 30.0,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2/1.5",
+     "std_length_m": null,
+     "page": 12,
+     "confidence": "read"
+    },
+    {
+     "die_no": "802-15",
+     "name": "เฟรมข้างบานเลื่อน 30 มม. 4 นิ้ว",
+     "role_family": "เฟรมข้าง 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 30.0,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2/1.5",
+     "std_length_m": null,
+     "page": 13,
+     "confidence": "read"
+    },
+    {
+     "die_no": "802-16",
+     "name": "ตบเฟรมข้างบานตาย 4 นิ้ว",
+     "role_family": "ตบบานตาย",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 8.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 13,
+     "confidence": "read"
+    },
+    {
+     "die_no": "802-17",
+     "name": "เฟรมข้างบานเลื่อน 20 มม. 4 นิ้ว",
+     "role_family": "เฟรมข้าง 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 20.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 13,
+     "confidence": "read"
+    },
+    {
+     "die_no": "802-18",
+     "name": "สแน็บ ORM 4 นิ้ว",
+     "role_family": "สแน็บ (ตัวต่อเฟรม)",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 17.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 13,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "803 บานติดตายและบานกระทุ้ง 9 ซม.",
+   "system": "awning",
+   "app_types": [
+    "หน้าต่างบานกระทุ้ง",
+    "ช่องแสงบานติดตาย"
+   ],
+   "frame_size_mm": "90x25 (fixed frame) / 63x43.7 (awning frame)",
+   "profiles": [
+    {
+     "die_no": "803-01",
+     "name": "เฟรมบานตาย 9 ซม.",
+     "role_family": "เฟรมบานตาย",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 25.0,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2/1.5",
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read"
+    },
+    {
+     "die_no": "803-02",
+     "name": "กรอบบานกระทุ้งไม่มีเสากลาง",
+     "role_family": "กรอบนอกบานกระทุ้ง",
+     "kg_per_m": null,
+     "width_mm": 63.0,
+     "depth_mm": 43.7,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2/1.5",
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read"
+    },
+    {
+     "die_no": "803-03",
+     "name": "ซอยกลางบานกระทุ้ง",
+     "role_family": "เสากลาง",
+     "kg_per_m": null,
+     "width_mm": 65.0,
+     "depth_mm": 43.7,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2",
+     "std_length_m": null,
+     "page": 17,
+     "confidence": "read"
+    },
+    {
+     "die_no": "803-04",
+     "name": "คิ้วบานตาย / บานกระทุ้ง ร่อง 12.6",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 27.4,
+     "depth_mm": 24.71,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 17,
+     "confidence": "read"
+    },
+    {
+     "die_no": "803-05",
+     "name": "คิ้วบานตาย / บานกระทุ้ง ร่อง 16.9",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 23.02,
+     "depth_mm": 24.71,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 17,
+     "confidence": "read"
+    },
+    {
+     "die_no": "803-06",
+     "name": "ตบบานตาย 9 ซม.",
+     "role_family": "ตบบานตาย",
+     "kg_per_m": null,
+     "width_mm": 71.6,
+     "depth_mm": 5.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 17,
+     "confidence": "read"
+    },
+    {
+     "die_no": "803-07",
+     "name": "ตบบานตาย ชุดบานเลื่อน 9 ซม.",
+     "role_family": "ตบบานตาย",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 11.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 17,
+     "confidence": "read"
+    },
+    {
+     "die_no": "803-08",
+     "name": "ตบเฟรมข้างบานตาย 9 ซม.",
+     "role_family": "ตบบานตาย",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 8.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 18,
+     "confidence": "read"
+    },
+    {
+     "die_no": "803-09",
+     "name": "กรอบบานกระทุ้ง",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "kg_per_m": null,
+     "width_mm": 43.7,
+     "depth_mm": 43.0,
+     "wall_mm": 1.2,
+     "wall_options_mm": "1.2/1.5",
+     "std_length_m": null,
+     "page": 18,
+     "confidence": "read"
+    },
+    {
+     "die_no": "803-10",
+     "name": "กรอบบานกระทุ้งตัวใหญ่",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "kg_per_m": null,
+     "width_mm": 43.7,
+     "depth_mm": 51.5,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 18,
+     "confidence": "read"
+    },
+    {
+     "die_no": "803-11",
+     "name": "คิ้วบังฝน",
+     "role_family": "คิ้วบังฝน",
+     "kg_per_m": null,
+     "width_mm": 18.0,
+     "depth_mm": 13.2,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 18,
+     "confidence": "read"
+    },
+    {
+     "die_no": "803-14",
+     "name": "ตบเรียบเฟรมบานตาย 9 ซม.",
+     "role_family": "ตบบานตาย",
+     "kg_per_m": null,
+     "width_mm": 71.6,
+     "depth_mm": 5.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 18,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "fixed light + awning",
+     "page": 14,
+     "joints": "Frame 803-01 / 802-06 with snap covers (ตบบานตาย); awning frame 803-02 / 803-03 mullion, sash 803-09/803-10, beads 803-04/803-05, rain drip 803-11.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "fixed grid",
+     "page": 15,
+     "joints": "801/803 fixed frames with 803-07/803-08 covers.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "812 ยูโร บานเปิด/บานกระทุ้ง/ช่องแสง 4 นิ้ว",
+   "system": "casement",
+   "app_types": [
+    "หน้าต่างบานเปิด",
+    "ประตูบานเปิดยูโร",
+    "หน้าต่างบานกระทุ้ง",
+    "ช่องแสงบานติดตาย"
+   ],
+   "frame_size_mm": "101.6x66.45",
+   "profiles": [
+    {
+     "die_no": "812-05",
+     "name": "เสาแบ่งกลางยูโร",
+     "role_family": "เสากลาง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 88.45,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 23,
+     "confidence": "read"
+    },
+    {
+     "die_no": "812-06",
+     "name": "เสาข้างยูโร",
+     "role_family": "เสาข้าง (เฟรมยูโร)",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 66.45,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 23,
+     "confidence": "read"
+    },
+    {
+     "die_no": "812-07",
+     "name": "กรอบบานหน้าต่างยูโร",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "kg_per_m": null,
+     "width_mm": 43.9,
+     "depth_mm": 75.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 24,
+     "confidence": "read"
+    },
+    {
+     "die_no": "812-08",
+     "name": "กรอบบานประตูยูโร",
+     "role_family": "กรอบบานประตู",
+     "kg_per_m": null,
+     "width_mm": 43.9,
+     "depth_mm": 100.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 24,
+     "confidence": "read"
+    },
+    {
+     "die_no": "812-09",
+     "name": "กรอบบานไม่มีเสากลางยูโร",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "kg_per_m": null,
+     "width_mm": 43.8,
+     "depth_mm": 75.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 24,
+     "confidence": "read"
+    },
+    {
+     "die_no": "812-10",
+     "name": "คิ้วบานยูโร ร่อง 12.7 มม.",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 27.2,
+     "depth_mm": 26.48,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 24,
+     "confidence": "read"
+    },
+    {
+     "die_no": "812-11",
+     "name": "คิ้วบานยูโร ร่อง 26 มม.",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 14.0,
+     "depth_mm": 22.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 25,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "casement window + euro swing door",
+     "page": 19,
+     "joints": "Side 812-06, centre post 812-05, sash 812-07 / door 812-08 / 812-09, beads 812-10/812-11.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "euro door",
+     "page": 20,
+     "joints": null,
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "fixed + awning euro",
+     "page": 21,
+     "joints": null,
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "fixed euro",
+     "page": 22,
+     "joints": null,
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "804 บานเลื่อนยูโร 9 ซม.",
+   "system": "sliding door",
+   "app_types": [
+    "ประตูบานเลื่อน 2 บาน",
+    "ประตูบานเลื่อน 4 บาน",
+    "บานเลื่อน 3 บาน"
+   ],
+   "frame_size_mm": "90x30",
+   "profiles": [
+    {
+     "die_no": "804-01",
+     "name": "เฟรมล่างบานเลื่อนยูโร แบบถอดราง 9 ซม.",
+     "role_family": "เฟรมล่าง 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 45.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 30,
+     "confidence": "read"
+    },
+    {
+     "die_no": "804-03",
+     "name": "รางล้อเฟรมล่าง",
+     "role_family": "รางล้อ",
+     "kg_per_m": null,
+     "width_mm": 15.4,
+     "depth_mm": 10.55,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 30,
+     "confidence": "read"
+    },
+    {
+     "die_no": "804-04",
+     "name": "เฟรมบนบานเลื่อนยูโร 9 ซม.",
+     "role_family": "เฟรมบน 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 30.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 30,
+     "confidence": "read"
+    },
+    {
+     "die_no": "804-05",
+     "name": "เฟรมข้างบานเลื่อนยูโร 9 ซม.",
+     "role_family": "เฟรมข้าง 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 20.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 31,
+     "confidence": "read"
+    },
+    {
+     "die_no": "804-06",
+     "name": "เสากุญแจ / ขวางบานเลื่อนยูโร",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": null,
+     "width_mm": 65.0,
+     "depth_mm": 28.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 31,
+     "confidence": "read"
+    },
+    {
+     "die_no": "804-07",
+     "name": "ตบเสาเกี่ยวบานเลื่อนยูโร",
+     "role_family": "ตบเสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 39.2,
+     "depth_mm": 37.9,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 31,
+     "confidence": "read"
+    },
+    {
+     "die_no": "804-14",
+     "name": "เสากุญแจ/ขวาง ยูโร (ตัวใหม่)",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": null,
+     "width_mm": 65.0,
+     "depth_mm": 28.0,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 31,
+     "confidence": "read"
+    },
+    {
+     "die_no": "804-08",
+     "name": "ตบเฟรมข้างบานตาย บานเลื่อนยูโร 9 ซม.",
+     "role_family": "ตบบานตาย",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 8.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 32,
+     "confidence": "read"
+    },
+    {
+     "die_no": "804-09",
+     "name": "เดือยเสากุญแจ บานเลื่อนยูโร",
+     "role_family": "อื่นๆ",
+     "kg_per_m": null,
+     "width_mm": 13.1,
+     "depth_mm": 15.4,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 32,
+     "confidence": "read"
+    },
+    {
+     "die_no": "804-10",
+     "name": "ชนกลาง บานเลื่อนยูโร",
+     "role_family": "เสาชน (บานแยก)",
+     "kg_per_m": null,
+     "width_mm": 24.6,
+     "depth_mm": 22.0,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 32,
+     "confidence": "read"
+    },
+    {
+     "die_no": "804-11",
+     "name": "ร่องกระจก 13.4",
+     "role_family": "ร่องกระจก (อะแดปเตอร์)",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": 13.4,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 32,
+     "confidence": "read"
+    },
+    {
+     "die_no": "804-12",
+     "name": "ร่องกระจก 9.5",
+     "role_family": "ร่องกระจก (อะแดปเตอร์)",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": 9.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 32,
+     "confidence": "read"
+    },
+    {
+     "die_no": "804-13",
+     "name": "ตบธรณี บานเลื่อนยูโร",
+     "role_family": "ตบธรณี",
+     "kg_per_m": null,
+     "width_mm": 46.74,
+     "depth_mm": 19.1,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 32,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "2/4-panel euro sliding",
+     "page": 26,
+     "joints": null,
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "4-panel",
+     "page": 27,
+     "joints": null,
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "2-panel",
+     "page": 28,
+     "joints": null,
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "3-panel",
+     "page": 29,
+     "joints": "Sill 804-01 with removable roller rail 804-03; 804-06/804-14 used for stiles and rails (เสากุญแจ/ขวาง); glazing adaptors 804-11 (13.4) / 804-12 (9.5).",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "811 บานเลื่อนยูโร 2 ราง 64.8 / 3 ราง 4 นิ้ว",
+   "system": "sliding door",
+   "app_types": [
+    "ประตูบานเลื่อน",
+    "บานเลื่อน 3 ราง"
+   ],
+   "frame_size_mm": "64.8x45 / 101.6x45",
+   "profiles": [
+    {
+     "die_no": "811-01",
+     "name": "เฟรมบน-ล่าง บานเลื่อนยูโร 3 ราง 4 นิ้ว",
+     "role_family": "เฟรมบน 3 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 45.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 33,
+     "confidence": "read"
+    },
+    {
+     "die_no": "811-02",
+     "name": "เฟรมบน-ล่าง บานเลื่อนยูโร 2 ราง 64.8 มม.",
+     "role_family": "เฟรมบน 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 64.8,
+     "depth_mm": 45.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 33,
+     "confidence": "read"
+    },
+    {
+     "die_no": "811-03",
+     "name": "เฟรมข้าง บานเลื่อนยูโร 3 ราง 4 นิ้ว",
+     "role_family": "เฟรมข้าง 3 ราง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 28.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 33,
+     "confidence": "read"
+    },
+    {
+     "die_no": "811-04",
+     "name": "เฟรมข้าง บานเลื่อนยูโร 2 ราง 64.8 มม.",
+     "role_family": "เฟรมข้าง 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 64.8,
+     "depth_mm": 28.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read"
+    },
+    {
+     "die_no": "811-05",
+     "name": "ตัวต่อรางล่าง บานเลื่อนยูโร 2 และ 3 ราง",
+     "role_family": "ตัวต่อราง",
+     "kg_per_m": null,
+     "width_mm": 24.4,
+     "depth_mm": 35.95,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read"
+    },
+    {
+     "die_no": "811-06",
+     "name": "ตัวต่อรางข้าง บานเลื่อนยูโร 2 และ 3 ราง",
+     "role_family": "ตัวต่อราง",
+     "kg_per_m": null,
+     "width_mm": 17.15,
+     "depth_mm": 28.0,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read"
+    },
+    {
+     "die_no": "811-07",
+     "name": "ตบเสาเกี่ยว บานเลื่อนยูโร 2 และ 3 ราง",
+     "role_family": "ตบเสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 38.9,
+     "depth_mm": 34.2,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read"
+    },
+    {
+     "die_no": "811-08",
+     "name": "ตบเสาเกี่ยวสองทาง ยูโร 2 และ 3 ราง",
+     "role_family": "ตบเสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 38.89,
+     "depth_mm": 40.4,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 35,
+     "confidence": "read"
+    },
+    {
+     "die_no": "811-09",
+     "name": "ฝาปิดเฟรมบนล่าง บานเลื่อนยูโร 2 และ 3 ราง",
+     "role_family": "ฝาปิด",
+     "kg_per_m": null,
+     "width_mm": 15.4,
+     "depth_mm": null,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 35,
+     "confidence": "read"
+    },
+    {
+     "die_no": "811-10",
+     "name": "ตบเฟรมบานตายยูโร 2 ราง 64.8 มม.",
+     "role_family": "ตบบานตาย",
+     "kg_per_m": null,
+     "width_mm": 64.8,
+     "depth_mm": 31.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 35,
+     "confidence": "read"
+    },
+    {
+     "die_no": "811-11",
+     "name": "เฟรมบานตายยูโร 2 ราง 64.8 มม.",
+     "role_family": "เฟรมบานตาย",
+     "kg_per_m": null,
+     "width_mm": 64.8,
+     "depth_mm": 37.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 35,
+     "confidence": "read"
+    },
+    {
+     "die_no": "811-12",
+     "name": "บังใบบังปูนบานยูโร",
+     "role_family": "บังใบบังปูน",
+     "kg_per_m": null,
+     "width_mm": 43.2,
+     "depth_mm": 10.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 35,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "805 บานเฟี้ยม 9 ซม. / 4 นิ้ว",
+   "system": "folding",
+   "app_types": [
+    "ประตูบานเฟี้ยม"
+   ],
+   "frame_size_mm": "90x75 / 101.6x75",
+   "profiles": [
+    {
+     "die_no": "805-01",
+     "name": "รางบนบานเฟี้ยม",
+     "role_family": "รางบนบานเฟี้ยม",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 75.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 38,
+     "confidence": "read"
+    },
+    {
+     "die_no": "805-02",
+     "name": "รางข้างบานเฟี้ยม",
+     "role_family": "รางข้างบานเฟี้ยม",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 41.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 38,
+     "confidence": "read"
+    },
+    {
+     "die_no": "805-03",
+     "name": "รางล่างบานเฟี้ยม",
+     "role_family": "รางล่างบานเฟี้ยม",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 42.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 39,
+     "confidence": "read"
+    },
+    {
+     "die_no": "805-04",
+     "name": "กรอบบานเฟี้ยม",
+     "role_family": "กรอบบานเฟี้ยม",
+     "kg_per_m": null,
+     "width_mm": 52.0,
+     "depth_mm": 65.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 39,
+     "confidence": "read"
+    },
+    {
+     "die_no": "805-05",
+     "name": "คิ้วบานเฟี้ยม",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 19.7,
+     "depth_mm": 17.9,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 39,
+     "confidence": "read"
+    },
+    {
+     "die_no": "805-06",
+     "name": "บังใบบานเฟี้ยม",
+     "role_family": "บังใบ",
+     "kg_per_m": null,
+     "width_mm": 15.5,
+     "depth_mm": 25.4,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 39,
+     "confidence": "read"
+    },
+    {
+     "die_no": "805-07",
+     "name": "รางล่างบานเฟี้ยมไม่มีบังใบ",
+     "role_family": "รางล่างบานเฟี้ยม",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 15.63,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 40,
+     "confidence": "read"
+    },
+    {
+     "die_no": "805-10",
+     "name": "ซอยกลางบานเฟี้ยม",
+     "role_family": "ขวางกลาง",
+     "kg_per_m": null,
+     "width_mm": 52.0,
+     "depth_mm": 63.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 40,
+     "confidence": "read"
+    },
+    {
+     "die_no": "805-11",
+     "name": "เสากลางเฟี้ยมบานคู่",
+     "role_family": "เสากลาง",
+     "kg_per_m": null,
+     "width_mm": 52.0,
+     "depth_mm": 25.5,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 41,
+     "confidence": "read"
+    },
+    {
+     "die_no": "805-12",
+     "name": "รางบนบานเฟี้ยม 4 นิ้ว",
+     "role_family": "รางบนบานเฟี้ยม",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 75.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 41,
+     "confidence": "read"
+    },
+    {
+     "die_no": "805-13",
+     "name": "รางข้างบานเฟี้ยม 4 นิ้ว",
+     "role_family": "รางข้างบานเฟี้ยม",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 41.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 42,
+     "confidence": "read"
+    },
+    {
+     "die_no": "805-14",
+     "name": "รางล่างบานเฟี้ยม 4 นิ้ว",
+     "role_family": "รางล่างบานเฟี้ยม",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 42.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 42,
+     "confidence": "read"
+    },
+    {
+     "die_no": "805-15",
+     "name": "รางล่างบานเฟี้ยมไม่มีบังใบ 4 นิ้ว",
+     "role_family": "รางล่างบานเฟี้ยม",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 16.5,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 43,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "folding door",
+     "page": 36,
+     "joints": "Top track 805-01/805-12, side 805-02/805-13, bottom 805-03/805-14 (805-07/805-15 flush), panel frame 805-04, mid rail 805-10, centre post 805-11, bead 805-05, stop 805-06.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "folding door 4-panel",
+     "page": 37,
+     "joints": null,
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "806 ประตูบานสวิง",
+   "system": "swing door",
+   "app_types": [
+    "ประตูบานสวิง (เปลือย/กรอบ)"
+   ],
+   "frame_size_mm": "101.6x38",
+   "profiles": [
+    {
+     "die_no": "806-01",
+     "name": "เฟรมข้างสวิง",
+     "role_family": "เฟรมประตู",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 38.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 45,
+     "confidence": "read"
+    },
+    {
+     "die_no": "806-02",
+     "name": "กล่องแจ็คสัน",
+     "role_family": "กล่องแจ็คสัน (ซ่อนโช๊ค)",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 48.95,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 45,
+     "confidence": "read"
+    },
+    {
+     "die_no": "806-03",
+     "name": "ฝาแจ็คสัน",
+     "role_family": "ฝาปิด",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": null,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 45,
+     "confidence": "read"
+    },
+    {
+     "die_no": "806-04",
+     "name": "กรอบในบานสวิง",
+     "role_family": "กรอบบานประตู",
+     "kg_per_m": null,
+     "width_mm": 44.0,
+     "depth_mm": 76.22,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 46,
+     "confidence": "read"
+    },
+    {
+     "die_no": "806-05",
+     "name": "ตบเสาบานสวิง",
+     "role_family": "ตบเสาบานสวิง",
+     "kg_per_m": null,
+     "width_mm": 40.6,
+     "depth_mm": null,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 46,
+     "confidence": "read"
+    },
+    {
+     "die_no": "806-06",
+     "name": "แป้นรับหางปลา",
+     "role_family": "อื่นๆ",
+     "kg_per_m": null,
+     "width_mm": 40.4,
+     "depth_mm": null,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 46,
+     "confidence": "read"
+    },
+    {
+     "die_no": "806-07",
+     "name": "คิ้วเหลี่ยมประตูสวิง",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 16.85,
+     "depth_mm": 17.9,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 47,
+     "confidence": "read"
+    },
+    {
+     "die_no": "806-09",
+     "name": "ซอยกลางประตูสวิง",
+     "role_family": "ขวางกลาง",
+     "kg_per_m": null,
+     "width_mm": 44.0,
+     "depth_mm": 50.8,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 47,
+     "confidence": "read"
+    },
+    {
+     "die_no": "806-10",
+     "name": "ธรณีสวิง",
+     "role_family": "ธรณี",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 13.5,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 47,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "double swing door",
+     "page": 44,
+     "joints": "Side 806-01, head box 806-02 + cover 806-03 (closer box), door frame 806-04 + stile cover 806-05, mid rail 806-09, threshold 806-10.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "807 ประตูบานเปิด (วงกบไม้) / มีช่องแสง",
+   "system": "swing door",
+   "app_types": [
+    "ประตูบานเปิดเดี่ยว",
+    "ประตูบานเปิดคู่",
+    "ประตูบานเปิดมีช่องแสง"
+   ],
+   "frame_size_mm": "90x44.45 / 101.6x41.45",
+   "profiles": [
+    {
+     "die_no": "807-01",
+     "name": "กรอบในบานประตูเปิด",
+     "role_family": "กรอบบานประตู",
+     "kg_per_m": null,
+     "width_mm": 74.7,
+     "depth_mm": 37.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 50,
+     "confidence": "read"
+    },
+    {
+     "die_no": "807-02",
+     "name": "คิ้วเหลี่ยมประตูเปิด",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 12.2,
+     "depth_mm": 14.9,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 50,
+     "confidence": "read"
+    },
+    {
+     "die_no": "807-04",
+     "name": "บังใบประตูเปิด",
+     "role_family": "บังใบ",
+     "kg_per_m": null,
+     "width_mm": 18.9,
+     "depth_mm": 19.2,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 50,
+     "confidence": "read"
+    },
+    {
+     "die_no": "807-05",
+     "name": "กรอบนอกบานประตูเปิด",
+     "role_family": "เฟรมประตู",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 44.45,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 50,
+     "confidence": "read"
+    },
+    {
+     "die_no": "807-06",
+     "name": "ซอยกลางช่องแสงประตูเปิด",
+     "role_family": "ขวางกลาง (ทับหลังประตู)",
+     "kg_per_m": null,
+     "width_mm": 90.0,
+     "depth_mm": 44.45,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 51,
+     "confidence": "read"
+    },
+    {
+     "die_no": "807-07",
+     "name": "คิ้วซอยกลางช่องแสงประตูเปิด",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 41.1,
+     "depth_mm": 12.88,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 51,
+     "confidence": "read"
+    },
+    {
+     "die_no": "807-08",
+     "name": "แบ่งกลางบานประตูเปิด",
+     "role_family": "ขวางกลาง",
+     "kg_per_m": null,
+     "width_mm": 74.7,
+     "depth_mm": 37.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 51,
+     "confidence": "read"
+    },
+    {
+     "die_no": "807-09",
+     "name": "บังใบร่องซีลรุฟ ชุดบานเปิด",
+     "role_family": "บังใบ",
+     "kg_per_m": null,
+     "width_mm": 43.19,
+     "depth_mm": 22.0,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 52,
+     "confidence": "read"
+    },
+    {
+     "die_no": "807-10",
+     "name": "กรอบนอกบานประตูเปิด 4 นิ้ว (วงกบไม้)",
+     "role_family": "เฟรมประตู",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 41.45,
+     "wall_mm": 1.5,
+     "wall_options_mm": "1.5",
+     "std_length_m": null,
+     "page": 52,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "door with transom light",
+     "page": 48,
+     "joints": "Frame 807-05 / 807-10, transom 807-06 + bead 807-07, door 807-01, mid rail 807-08, stops 807-04/807-09.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "double door",
+     "page": 49,
+     "joints": null,
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "809 เคอร์เทนวอลล์ (สติ๊กวอลล์)",
+   "system": "curtain wall",
+   "app_types": [
+    "ผนังกระจก curtain wall"
+   ],
+   "frame_size_mm": "mullion 63.5x119.6 / 148.4",
+   "profiles": [
+    {
+     "die_no": "809-01",
+     "name": "เสา 6 นิ้ว (สติ๊กวอลล์)",
+     "role_family": "เสาม่าน (mullion)",
+     "kg_per_m": null,
+     "width_mm": 63.5,
+     "depth_mm": 148.4,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 54,
+     "confidence": "read"
+    },
+    {
+     "die_no": "809-02",
+     "name": "เสา 4 นิ้ว (สติ๊กวอลล์)",
+     "role_family": "เสาม่าน (mullion)",
+     "kg_per_m": null,
+     "width_mm": 63.5,
+     "depth_mm": 119.6,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 54,
+     "confidence": "read"
+    },
+    {
+     "die_no": "809-03",
+     "name": "ทรานซั่ม 4 นิ้ว (สติ๊กวอลล์)",
+     "role_family": "คานม่าน (transom)",
+     "kg_per_m": null,
+     "width_mm": 63.5,
+     "depth_mm": 119.6,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 55,
+     "confidence": "read"
+    },
+    {
+     "die_no": "809-04",
+     "name": "สลิปทรานซั่ม (สติ๊กวอลล์)",
+     "role_family": "คานม่าน (transom)",
+     "kg_per_m": null,
+     "width_mm": 74.0,
+     "depth_mm": 56.95,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 55,
+     "confidence": "read"
+    },
+    {
+     "die_no": "809-05",
+     "name": "กรอบในกระทุ้ง ปีกยาว (สติ๊กวอลล์)",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "kg_per_m": null,
+     "width_mm": 40.0,
+     "depth_mm": 78.6,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 56,
+     "confidence": "read"
+    },
+    {
+     "die_no": "809-06",
+     "name": "กรอบในกระทุ้ง ปีกสั้น (สติ๊กวอลล์)",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "kg_per_m": null,
+     "width_mm": 40.0,
+     "depth_mm": 54.32,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 56,
+     "confidence": "read"
+    },
+    {
+     "die_no": "809-07",
+     "name": "ฝาปิด-ทรานซั่ม 4 นิ้ว (สติ๊กวอลล์)",
+     "role_family": "ฝาปิด",
+     "kg_per_m": null,
+     "width_mm": 83.2,
+     "depth_mm": 7.45,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 56,
+     "confidence": "read"
+    },
+    {
+     "die_no": "809-08",
+     "name": "เพลทเพรสเชอร์เพลท (สติ๊กวอลล์)",
+     "role_family": "เพรสเชอร์เพลท",
+     "kg_per_m": null,
+     "width_mm": 63.5,
+     "depth_mm": 10.0,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 56,
+     "confidence": "read"
+    },
+    {
+     "die_no": "809-09",
+     "name": "ฝาปิด-เพลทเพรสเชอร์เพลท (สติ๊กวอลล์)",
+     "role_family": "ฝาครอบเสาม่าน (cap)",
+     "kg_per_m": null,
+     "width_mm": 23.16,
+     "depth_mm": 6.58,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 56,
+     "confidence": "read"
+    },
+    {
+     "die_no": "809-10",
+     "name": "กรอบนอกกระทุ้ง (สติ๊กวอลล์)",
+     "role_family": "กรอบนอกบานกระทุ้ง",
+     "kg_per_m": null,
+     "width_mm": 46.5,
+     "depth_mm": 32.0,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 57,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "stick curtain wall with awning vent",
+     "page": 53,
+     "joints": "Mullion 809-01/809-02, transom 809-03 / slip transom 809-04, pressure plate 809-08 + cap 809-09, vent 809-10 outer + 809-05/809-06 inner.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "810 กลุ่มมาตรฐานและอื่นๆ (มุ้ง, รางแขวน, คิ้ว)",
+   "system": "other",
+   "app_types": [
+    "มุ้งลวด",
+    "ประตูบานแขวน"
+   ],
+   "frame_size_mm": null,
+   "profiles": [
+    {
+     "die_no": "810-01",
+     "name": "กรอบมุ้งบานเลื่อน",
+     "role_family": "กรอบมุ้ง",
+     "kg_per_m": null,
+     "width_mm": 42.9,
+     "depth_mm": 12.9,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 58,
+     "confidence": "read"
+    },
+    {
+     "die_no": "810-02",
+     "name": "เส้นคาดกลางมุ้งบานเลื่อน",
+     "role_family": "กรอบมุ้ง",
+     "kg_per_m": null,
+     "width_mm": 20.0,
+     "depth_mm": 7.0,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 58,
+     "confidence": "read"
+    },
+    {
+     "die_no": "810-03",
+     "name": "ชนกลางมุ้งบานเลื่อน",
+     "role_family": "กรอบมุ้ง",
+     "kg_per_m": null,
+     "width_mm": 18.5,
+     "depth_mm": 20.1,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 58,
+     "confidence": "read"
+    },
+    {
+     "die_no": "810-04",
+     "name": "[ ] 1-3/4\"x1-3/4\"",
+     "role_family": "กล่องเรียบ",
+     "kg_per_m": null,
+     "width_mm": 44.45,
+     "depth_mm": 44.45,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 58,
+     "confidence": "read"
+    },
+    {
+     "die_no": "810-05",
+     "name": "ชนกลางรางแขวน",
+     "role_family": "อื่นๆ",
+     "kg_per_m": null,
+     "width_mm": 57.5,
+     "depth_mm": 28.3,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 58,
+     "confidence": "read"
+    },
+    {
+     "die_no": "810-06",
+     "name": "ก้านซีกรุฟ",
+     "role_family": "อื่นๆ",
+     "kg_per_m": null,
+     "width_mm": 19.5,
+     "depth_mm": 4.5,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 58,
+     "confidence": "read"
+    },
+    {
+     "die_no": "810-07",
+     "name": "ร่องซีกรุฟ",
+     "role_family": "อื่นๆ",
+     "kg_per_m": null,
+     "width_mm": 23.8,
+     "depth_mm": 6.3,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 58,
+     "confidence": "read"
+    },
+    {
+     "die_no": "810-08",
+     "name": "ฉากย้ำมุม",
+     "role_family": "อื่นๆ",
+     "kg_per_m": null,
+     "width_mm": 50.0,
+     "depth_mm": 50.0,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 59,
+     "confidence": "read"
+    },
+    {
+     "die_no": "810-09",
+     "name": "คิ้วลอยเหล่าง เหลี่ยม",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 39.3,
+     "depth_mm": 15.0,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 59,
+     "confidence": "read"
+    },
+    {
+     "die_no": "810-10",
+     "name": "คิ้วลอยเทบน เหลี่ยม",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 16.05,
+     "depth_mm": 15.0,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 59,
+     "confidence": "read"
+    },
+    {
+     "die_no": "810-11",
+     "name": "คิ้วลูกฟัก",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 25.4,
+     "depth_mm": 4.0,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 59,
+     "confidence": "read"
+    },
+    {
+     "die_no": "810-12",
+     "name": "รางแขวนใหญ่",
+     "role_family": "รางแขวน",
+     "kg_per_m": null,
+     "width_mm": 47.2,
+     "depth_mm": 35.2,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 59,
+     "confidence": "read"
+    },
+    {
+     "die_no": "810-13",
+     "name": "เส้นประตูมีริม",
+     "role_family": "กรอบมุ้ง",
+     "kg_per_m": null,
+     "width_mm": 35.86,
+     "depth_mm": 14.86,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 60,
+     "confidence": "read"
+    },
+    {
+     "die_no": "810-14",
+     "name": "เส้นหน้าต่างมีริม",
+     "role_family": "กรอบมุ้ง",
+     "kg_per_m": null,
+     "width_mm": 26.2,
+     "depth_mm": 14.6,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 60,
+     "confidence": "read"
+    },
+    {
+     "die_no": "810-15",
+     "name": "เส้นเสียบมุ้งบานเลื่อน",
+     "role_family": "กรอบมุ้ง",
+     "kg_per_m": null,
+     "width_mm": 15.65,
+     "depth_mm": 14.7,
+     "wall_mm": null,
+     "wall_options_mm": null,
+     "std_length_m": null,
+     "page": 60,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "813 รางใส่กระจก (ราวกันตกกระจก)",
+   "system": "other",
+   "app_types": [
+    "ราวกันตกกระจก"
+   ],
+   "frame_size_mm": "109x65",
+   "profiles": [
+    {
+     "die_no": "813-01",
+     "name": "รางราวกันตก",
+     "role_family": "รางราวกันตก (กระจก)",
+     "kg_per_m": null,
+     "width_mm": 109.0,
+     "depth_mm": 65.0,
+     "wall_mm": 2.0,
+     "wall_options_mm": "2.0",
+     "std_length_m": null,
+     "page": 62,
+     "confidence": "read"
+    },
+    {
+     "die_no": "813-02",
+     "name": "ลิ่มล็อคกระจก",
+     "role_family": "ลิ่มล็อคกระจก",
+     "kg_per_m": null,
+     "width_mm": 20.0,
+     "depth_mm": 58.0,
+     "wall_mm": 2.0,
+     "wall_options_mm": "2.0",
+     "std_length_m": null,
+     "page": 62,
+     "confidence": "read"
+    },
+    {
+     "die_no": "813-03",
+     "name": "ฝาปิดรางราวกันตก",
+     "role_family": "ฝาปิด",
+     "kg_per_m": null,
+     "width_mm": 16.8,
+     "depth_mm": 7.7,
+     "wall_mm": 2.0,
+     "wall_options_mm": "2.0",
+     "std_length_m": null,
+     "page": 62,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "glass balustrade",
+     "page": 61,
+     "joints": "Base channel 813-01 with wedge 813-02 and cover 813-03; detail drawing shows silicone, neoprene setting block, gasket, anchor bolts.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  }
+ ],
+ "new_families": [
+  "กรอบบานประตู",
+  "กรอบบานเฟี้ยม",
+  "กรอบมุ้ง",
+  "กล่องแจ็คสัน (ซ่อนโช๊ค)",
+  "ขวางกลาง",
+  "ขวางกลาง (ทับหลังประตู)",
+  "คานม่าน (transom)",
+  "คิ้วบังฝน",
+  "ตบบานตาย",
+  "ตบเสาบานสวิง",
+  "ตบเสาเกี่ยว",
+  "ตัวต่อราง",
+  "บังใบ",
+  "บังใบบังปูน",
+  "ฝาครอบเสาม่าน (cap)",
+  "รางข้างบานเฟี้ยม",
+  "รางบนบานเฟี้ยม",
+  "รางราวกันตก (กระจก)",
+  "รางล่างบานเฟี้ยม",
+  "รางล้อ",
+  "รางแขวน",
+  "ร่องกระจก (อะแดปเตอร์)",
+  "ลิ่มล็อคกระจก",
+  "สติฟเนอร์",
+  "สแน็บ (ตัวต่อเฟรม)",
+  "อื่นๆ",
+  "เพรสเชอร์เพลท",
+  "เฟรมข้าง 3 ราง",
+  "เฟรมบน 3 ราง",
+  "เฟรมบานตาย",
+  "เฟรมประตู",
+  "เฟรมล่าง 2 ราง ธรณีสูง",
+  "เฟรมล่าง 3 ราง",
+  "เสากลาง",
+  "เสาข้าง (เฟรมยูโร)",
+  "เสาชน (บานแยก)",
+  "เสามุม",
+  "เสาม่าน (mullion)"
+ ],
+ "open_questions": [
+  "แคตตาล็อก ORM ไม่มีน้ำหนัก กก./ม. เลย มีแค่ความหนา 1.2/1.5 ต้องขอตารางน้ำหนักหรือราคาต่อเส้นจาก ORM/Great Aluminum",
+  "ORM ขายเป็นราคาต่อเส้น หรือต่อกิโล และเส้นยาวกี่เมตร (6.0 / 6.4?)",
+  "ไม่มีสูตรตัดเลยเหมือนกัน ชุด 801 ใช้ 801-08 เป็นทั้งขวางบนและขวางล่าง และ 801-07 เป็นทั้งเสากุญแจและเสาเกี่ยว (ใส่ตบ 801-10) ถูกต้องไหม",
+  "รหัสที่ข้ามไปในแคตตาล็อก (802-14, 803-12/13, 804-02, 805-08/09, 806-08, 807-03) ยังผลิตอยู่ไหม",
+  "บริษัทใช้ ORM ชุดไหนจริง (801 เอเชีย 9 ซม. / 802 4 นิ้ว / 804-811 ยูโร) เพื่อผูกกับประเภทบานในแอป"
+ ],
+ "unreadable_pages": [],
+ "notes": "Text layer only holds a few captions; all values read from the rendered drawings. Dimensions are overall section sizes printed on each drawing (first = wide face). wall_mm = thinnest printed option; wall_options_mm lists all printed thicknesses."
+}

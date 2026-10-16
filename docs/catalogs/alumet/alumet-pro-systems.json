@@ -1,0 +1,233 @@
+{
+ "source_pdf": "Alumet Pro Systems.pdf",
+ "supplier": "Alumet Co., Ltd. (อลูเม็ท)",
+ "brand": "ALUMET PRO SYSTEM (Pro System 01) / ALUMET ARCH",
+ "catalogue_year": "not printed",
+ "pages": 20,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": "ALUMET ARCH Door & Window Solutions"
+  },
+  {
+   "page": 2,
+   "content": "other",
+   "series": "why Alumet"
+  },
+  {
+   "page": 3,
+   "content": "other",
+   "series": "intro"
+  },
+  {
+   "page": 4,
+   "content": "series overview",
+   "series": "Alumet Pro System / Pro Premium System"
+  },
+  {
+   "page": 5,
+   "content": "other",
+   "series": "intro"
+  },
+  {
+   "page": 6,
+   "content": "series overview",
+   "series": "ALUMET PRO SYSTEMS"
+  },
+  {
+   "page": 7,
+   "content": "other",
+   "series": "9 benefits"
+  },
+  {
+   "page": 8,
+   "content": "series overview",
+   "series": "PRO-FX01"
+  },
+  {
+   "page": 9,
+   "content": "section drawing",
+   "series": "PRO-FX01"
+  },
+  {
+   "page": 10,
+   "content": "series overview",
+   "series": "PRO-SL01"
+  },
+  {
+   "page": 11,
+   "content": "section drawing",
+   "series": "PRO-SL01"
+  },
+  {
+   "page": 12,
+   "content": "section drawing",
+   "series": "PRO-SL01"
+  },
+  {
+   "page": 13,
+   "content": "section drawing",
+   "series": "PRO-SL01 (elevations)"
+  },
+  {
+   "page": 14,
+   "content": "series overview",
+   "series": "PRO-CS01"
+  },
+  {
+   "page": 15,
+   "content": "section drawing",
+   "series": "PRO-CS01"
+  },
+  {
+   "page": 16,
+   "content": "series overview",
+   "series": "PRO-BF01"
+  },
+  {
+   "page": 17,
+   "content": "section drawing",
+   "series": "PRO-BF01"
+  },
+  {
+   "page": 18,
+   "content": "other",
+   "series": "specification table"
+  },
+  {
+   "page": 19,
+   "content": "other",
+   "series": "blank (red)"
+  },
+  {
+   "page": 20,
+   "content": "other",
+   "series": "back cover"
+  }
+ ],
+ "series": [
+  {
+   "name": "PRO-FX01 Fixed Window",
+   "system": "fixed",
+   "app_types": [
+    "บานติดตาย"
+   ],
+   "frame_size_mm": "visible face 20 mm all round",
+   "spec": {
+    "max": "W 120 cm x H 250 cm",
+    "performance": "water 150 Pa, air 200 Pa, wind 1600 Pa"
+   },
+   "profiles": [],
+   "assembly": [
+    {
+     "type": "PRO-FX01 Fixed Window",
+     "page": 9,
+     "joints": null,
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "brochure only: face widths (20 mm) and performance; no die numbers, no kg/m"
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "PRO-SL01 Sliding Door & Window",
+   "system": "sliding window",
+   "app_types": [
+    "บานเลื่อน",
+    "บานเลื่อนรางล่าง"
+   ],
+   "frame_size_mm": "visible faces: frame 20 mm, interlock 50 mm, top/bottom rail 65 mm",
+   "spec": {
+    "max_2_leaf": "W 200 cm x H 240 cm",
+    "max_4_leaf": "W 400 cm x H 240 cm",
+    "types": "2-leaf on 2 rails; 2-leaf on 2 rails + fixed light; 4-leaf on 2 rails",
+    "performance": "water 200 Pa, air 400 Pa, wind 800 Pa",
+    "buildings": "up to 8 storeys"
+   },
+   "profiles": [],
+   "assembly": [
+    {
+     "type": "PRO-SL01 Sliding Door & Window",
+     "page": 13,
+     "joints": null,
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "head and jamb share one section (p.11)"
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "PRO-CS01 Casement Window (top-hung / bottom-hung)",
+   "system": "awning",
+   "app_types": [
+    "บานกระทุ้ง"
+   ],
+   "frame_size_mm": "visible faces: frame 20 mm, sash 52.6 mm",
+   "spec": {
+    "max": "W 80 cm x H 120 cm",
+    "performance": "water 150 Pa, air 200 Pa, wind 1600 Pa"
+   },
+   "profiles": [],
+   "assembly": [
+    {
+     "type": "PRO-CS01 Casement Window (top-hung / bottom-hung)",
+     "page": 15,
+     "joints": null,
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "printed 'Bottom-Hung Window' — check: Thai text says บานกระทุ้ง"
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "PRO-BF01 Bi-folding Door",
+   "system": "folding",
+   "app_types": [
+    "บานเฟี้ยม"
+   ],
+   "frame_size_mm": "visible faces: 14.5 / 47.5 / 82 / 80 / 20 mm",
+   "spec": {
+    "max": "panel W 70 cm, H 300 cm",
+    "max_panel_height_benefit": "3.5 m"
+   },
+   "profiles": [],
+   "assembly": [
+    {
+     "type": "PRO-BF01 Bi-folding Door",
+     "page": 17,
+     "joints": null,
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "interior and exterior bi-fold, floor-recessed track"
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  }
+ ],
+ "new_families": [],
+ "open_questions": [
+  "เล่มนี้เป็นโบรชัวร์ ไม่มีรหัสหน้าตัด/น้ำหนัก — ต้องขอไฟล์ AutoCAD จาก AIDC (aidc@alumetgroup.com) ถ้าจะใช้ชุด PRO-SL01/FX01/CS01/BF01",
+  "ชุด Pro System 01 นี้ยังขายอยู่ไหม หรือถูกแทนด้วย Pro Smart / Iconiq แล้ว"
+ ],
+ "unreadable_pages": []
+}

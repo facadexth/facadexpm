@@ -1,0 +1,2348 @@
+{
+ "source_pdf": "สูตรตัดลดบาน Smart Plus 2022.pdf",
+ "supplier": "บริษัท รัตนดำรงค์ จำกัด (RD Aluminium)",
+ "brand": "SMART PLUS",
+ "catalogue_year": "2022",
+ "pages": 18,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cut formula",
+   "series": "ชุดบานเลื่อน สมาร์ทพลัส 2 ราง แบ่ง 2 ขาเตี้ย"
+  },
+  {
+   "page": 2,
+   "content": "cut formula",
+   "series": "2 ราง แบ่ง 2 ขาสูง"
+  },
+  {
+   "page": 3,
+   "content": "cut formula",
+   "series": "2 ราง แบ่ง 4 ขาเตี้ย"
+  },
+  {
+   "page": 4,
+   "content": "cut formula",
+   "series": "2 ราง แบ่ง 4 ขาสูง"
+  },
+  {
+   "page": 5,
+   "content": "cut formula",
+   "series": "3 ราง แบ่ง 3"
+  },
+  {
+   "page": 6,
+   "content": "cut formula",
+   "series": "3 ราง แบ่ง 2 เสริมมุ้งนิรภัย"
+  },
+  {
+   "page": 7,
+   "content": "cut formula",
+   "series": "ชุดบานเปิด+บานกระทุ้ง สมาร์ทพลัส (บานเดียว)"
+  },
+  {
+   "page": 8,
+   "content": "cut formula",
+   "series": "ชุดบานเปิด EURO (บานเดียว)"
+  },
+  {
+   "page": 9,
+   "content": "cut formula",
+   "series": "ชุดบานเปิด EURO (คู่ไม่มีเสากลาง)"
+  },
+  {
+   "page": 10,
+   "content": "cut formula",
+   "series": "บานเลื่อน EURO 1.5 3 ราง มุ้ง แบ่ง 2"
+  },
+  {
+   "page": 11,
+   "content": "cut formula",
+   "series": "บานเลื่อน EURO 1.5 3 ราง แบ่ง 3"
+  },
+  {
+   "page": 12,
+   "content": "cut formula",
+   "series": "บานเลื่อน EURO 1.5 3 ราง มุ้ง แบ่ง 4"
+  },
+  {
+   "page": 13,
+   "content": "cut formula",
+   "series": "ประตูบานเปิด EURO (บานเดียว)"
+  },
+  {
+   "page": 14,
+   "content": "cut formula",
+   "series": "ประตูบานเปิด EURO (คู่ไม่มีเสากลาง)"
+  },
+  {
+   "page": 15,
+   "content": "cut formula",
+   "series": "บานเฟี้ยม 3-3-0"
+  },
+  {
+   "page": 16,
+   "content": "cut formula",
+   "series": "บานเฟี้ยม 6-3-3"
+  },
+  {
+   "page": 17,
+   "content": "cut formula",
+   "series": "บานเฟี้ยม 4-2-2"
+  },
+  {
+   "page": 18,
+   "content": "cut formula",
+   "series": "บานเฟี้ยม 3-2-1"
+  }
+ ],
+ "conventions": {
+  "W": "overall frame width (ความกว้าง)",
+  "H": "overall frame height (ความสูง)",
+  "หาร n": "applies to the whole expression: 'W - 245 mm. หาร 2' = (W - 245) / 2",
+  "ระยะตัด จาก กรอบบาน / เสาบานเฟี้ยม / กรอบมุ้ง": "bead lengths are taken from the finished sash/panel/screen size, not the window (cross-checked: H-bead = sash - 2*(sash face - 22 bead), W-bead = H-bead - 44)",
+  "วัดตัดตามระยะจริง": "no formula - measure on site",
+  "per-sheet units": "qty_per_unit = pieces per one window as printed"
+ },
+ "series": [
+  {
+   "name": "ชุดบานเลื่อน สมาร์ทพลัส (SEMI EURO 1.2)",
+   "system": "sliding window",
+   "app_types": [
+    "บานเลื่อนสวน 2 บาน",
+    "บานเลื่อน 2 ตาย 2",
+    "บานเลื่อน 3 บาน"
+   ],
+   "frame_size_mm": "101.6",
+   "profiles": [],
+   "assembly": [
+    {
+     "type": "ชุดบานเลื่อน 2 ราง (แบ่ง 2) (ขาเตี้ย)",
+     "page": 1,
+     "panels": 2,
+     "joints": "เฟรมข้าง (15104) runs full H; เฟรมบน/ล่าง butt between jambs (W-50 = 2 x 25 jamb face). Sash stiles (15105) run full sash height; rails (15106) butt between stiles. All straight cuts (no mitre stated).",
+     "cut_formulas": [
+      {
+       "die_no": "15104",
+       "member": "เฟรมข้าง",
+       "formula_as_printed": "H - 0 mm.",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15100",
+       "member": "เฟรมบน",
+       "formula_as_printed": "W - 50 mm.",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15101",
+       "member": "เฟรมล่างขาเตี้ย",
+       "formula_as_printed": "W - 50 mm.",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15105",
+       "member": "เสาเกี่ยว + เสากุญแจ",
+       "formula_as_printed": "H - 55 mm.",
+       "formula_normalised": "H - 55",
+       "qty_per_unit": 4,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15106",
+       "member": "ขวางบน + ขวางล่าง",
+       "formula_as_printed": "W - 245 mm. หาร 2",
+       "formula_normalised": "(W - 245) / 2",
+       "qty_per_unit": 4,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15109",
+       "member": "ตบเกี่ยว",
+       "formula_as_printed": "H - 55 mm.",
+       "formula_normalised": "H - 55",
+       "qty_per_unit": 2,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15110",
+       "member": "เดือยกุญแจ",
+       "formula_as_printed": "H - 41 mm.",
+       "formula_normalised": "H - 41",
+       "qty_per_unit": 2,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15112",
+       "member": "ฝาปิดเดือยกุญแจ",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15157",
+       "member": "Transmission Rod",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "drawing: frame jamb face 25; sash stile 64; jamb gap 1.5; top 12; wheel zone 10 + 20; bottom 2; สักหลาด 5x4",
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "ชุดบานเลื่อน 2 ราง (แบ่ง 2) (ขาสูง)",
+     "page": 2,
+     "panels": 2,
+     "joints": "เฟรมข้าง (15104) runs full H; เฟรมบน/ล่าง butt between jambs (W-50 = 2 x 25 jamb face). Sash stiles (15105) run full sash height; rails (15106) butt between stiles. All straight cuts (no mitre stated).",
+     "cut_formulas": [
+      {
+       "die_no": "15104",
+       "member": "เฟรมข้าง",
+       "formula_as_printed": "H - 0 mm.",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15100",
+       "member": "เฟรมบน",
+       "formula_as_printed": "W - 50 mm.",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15103",
+       "member": "เฟรมล่างขาสูง",
+       "formula_as_printed": "W - 50 mm.",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15105",
+       "member": "เสาเกี่ยว + เสากุญแจ",
+       "formula_as_printed": "H - 55 mm.",
+       "formula_normalised": "H - 55",
+       "qty_per_unit": 4,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15106",
+       "member": "ขวางบน + ขวางล่าง",
+       "formula_as_printed": "W - 245 mm. หาร 2",
+       "formula_normalised": "(W - 245) / 2",
+       "qty_per_unit": 4,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15109",
+       "member": "ตบเกี่ยว",
+       "formula_as_printed": "H - 55 mm.",
+       "formula_normalised": "H - 55",
+       "qty_per_unit": 2,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15110",
+       "member": "เดือยกุญแจ",
+       "formula_as_printed": "H - 41 mm.",
+       "formula_normalised": "H - 41",
+       "qty_per_unit": 2,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15112",
+       "member": "ฝาปิดเดือยกุญแจ",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15157",
+       "member": "Transmission Rod",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "drawing: frame jamb face 25; sash stile 64; jamb gap 1.5; top 12; wheel zone 10 + 20; bottom 2; สักหลาด 5x4",
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "ชุดบานเลื่อน 2 ราง (แบ่ง 4) (ขาเตี้ย)",
+     "page": 3,
+     "panels": 4,
+     "joints": "เฟรมข้าง (15104) runs full H; เฟรมบน/ล่าง butt between jambs (W-50 = 2 x 25 jamb face). Sash stiles (15105) run full sash height; rails (15106) butt between stiles. All straight cuts (no mitre stated).",
+     "cut_formulas": [
+      {
+       "die_no": "15104",
+       "member": "เฟรมข้าง",
+       "formula_as_printed": "H - 0 mm.",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15100",
+       "member": "เฟรมบน",
+       "formula_as_printed": "W - 50 mm.",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15101",
+       "member": "เฟรมล่างขาเตี้ย",
+       "formula_as_printed": "W - 50 mm.",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15105",
+       "member": "เสาเกี่ยว + เสากุญแจ",
+       "formula_as_printed": "H - 55 mm.",
+       "formula_normalised": "H - 55",
+       "qty_per_unit": 8,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15106",
+       "member": "ขวางบน + ขวางล่าง",
+       "formula_as_printed": "W - 440 mm. หาร 4",
+       "formula_normalised": "(W - 440) / 4",
+       "qty_per_unit": 8,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15107",
+       "member": "ตบธรณีขาเตี้ย",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15109",
+       "member": "ตบเกี่ยว",
+       "formula_as_printed": "H - 55 mm.",
+       "formula_normalised": "H - 55",
+       "qty_per_unit": 4,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15110",
+       "member": "เดือยกุญแจ",
+       "formula_as_printed": "H - 41 mm.",
+       "formula_normalised": "H - 41",
+       "qty_per_unit": 2,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15111",
+       "member": "ชนกลางบานเลื่อน",
+       "formula_as_printed": "H - 55 mm.",
+       "formula_normalised": "H - 55",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15112",
+       "member": "ฝาปิดเดือยกุญแจ",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15157",
+       "member": "Transmission Rod",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "drawing: frame jamb face 25; sash stile 64; jamb gap 1.5; top 12; wheel zone 10 + 20; bottom 2; สักหลาด 5x4",
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "ชุดบานเลื่อน 2 ราง (แบ่ง 4) (ขาสูง)",
+     "page": 4,
+     "panels": 4,
+     "joints": "เฟรมข้าง (15104) runs full H; เฟรมบน/ล่าง butt between jambs (W-50 = 2 x 25 jamb face). Sash stiles (15105) run full sash height; rails (15106) butt between stiles. All straight cuts (no mitre stated).",
+     "cut_formulas": [
+      {
+       "die_no": "15104",
+       "member": "เฟรมข้าง",
+       "formula_as_printed": "H - 0 mm.",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15100",
+       "member": "เฟรมบน",
+       "formula_as_printed": "W - 50 mm.",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15103",
+       "member": "เฟรมล่างขาสูง",
+       "formula_as_printed": "W - 50 mm.",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15105",
+       "member": "เสาเกี่ยว + เสากุญแจ",
+       "formula_as_printed": "H - 55 mm.",
+       "formula_normalised": "H - 55",
+       "qty_per_unit": 8,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15106",
+       "member": "ขวางบน + ขวางล่าง",
+       "formula_as_printed": "W - 440 mm. หาร 4",
+       "formula_normalised": "(W - 440) / 4",
+       "qty_per_unit": 8,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15108",
+       "member": "ตบธรณีขาสูง",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15109",
+       "member": "ตบเกี่ยว",
+       "formula_as_printed": "H - 55 mm.",
+       "formula_normalised": "H - 55",
+       "qty_per_unit": 4,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15110",
+       "member": "เดือยกุญแจ",
+       "formula_as_printed": "H - 41 mm.",
+       "formula_normalised": "H - 41",
+       "qty_per_unit": 2,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15111",
+       "member": "ชนกลางบานเลื่อน",
+       "formula_as_printed": "H - 55 mm.",
+       "formula_normalised": "H - 55",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15112",
+       "member": "ฝาปิดเดือยกุญแจ",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15157",
+       "member": "Transmission Rod",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "drawing: frame jamb face 25; sash stile 64; jamb gap 1.5; top 12; wheel zone 10 + 20; bottom 2; สักหลาด 5x4",
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "ชุดบานเลื่อน 3 ราง (แบ่ง 3)",
+     "page": 5,
+     "panels": 3,
+     "joints": "as 2-track: jambs full H, head/sill butt (W-50); stiles full, rails butt; straight cuts",
+     "cut_formulas": [
+      {
+       "die_no": "15140",
+       "member": "เฟรมข้าง 3 ราง",
+       "formula_as_printed": "H - 0 mm.",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15125",
+       "member": "เฟรมบน 3 ราง",
+       "formula_as_printed": "W - 50 mm.",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15126",
+       "member": "เฟรมล่าง 3 ราง",
+       "formula_as_printed": "W - 50 mm.",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15105",
+       "member": "เสาเกี่ยว + เสากุญแจ",
+       "formula_as_printed": "H - 45 mm.",
+       "formula_normalised": "H - 45",
+       "qty_per_unit": 6,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15106",
+       "member": "ขวางบน + ขวางล่าง",
+       "formula_as_printed": "W - 309 mm. หาร 3",
+       "formula_normalised": "(W - 309) / 3",
+       "qty_per_unit": 6,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15109",
+       "member": "ตบเกี่ยว",
+       "formula_as_printed": "H - 45 mm.",
+       "formula_normalised": "H - 45",
+       "qty_per_unit": 4,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15110",
+       "member": "เดือยกุญแจ",
+       "formula_as_printed": "H - 32 mm.",
+       "formula_normalised": "H - 32",
+       "qty_per_unit": 2,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15112",
+       "member": "ฝาปิดเดือยกุญแจ",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15157",
+       "member": "Transmission Rod",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "drawing: 25 jamb, 64 stile, 1.5 gap",
+     "sash_overlap_mm": null,
+     "notes": "3-track uses H-45 (2-track H-55) and dowel H-32 (2-track H-41)"
+    },
+    {
+     "type": "ชุดบานเลื่อน 3 ราง (แบ่ง 2) (เสริมมุ้งนิรภัย)",
+     "page": 6,
+     "panels": 2,
+     "joints": "frame/sash as above; safety-screen frame 15132 mitred 45° with 2\"x6mm corner cleat",
+     "cut_formulas": [
+      {
+       "die_no": "15140",
+       "member": "เฟรมข้าง 3 ราง",
+       "formula_as_printed": "H - 0 mm.",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15125",
+       "member": "เฟรมบน 3 ราง",
+       "formula_as_printed": "W - 50 mm.",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15126",
+       "member": "เฟรมล่าง 3 ราง",
+       "formula_as_printed": "W - 50 mm.",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15105",
+       "member": "เสาเกี่ยว + เสากุญแจ",
+       "formula_as_printed": "H - 45 mm.",
+       "formula_normalised": "H - 45",
+       "qty_per_unit": 4,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15106",
+       "member": "ขวางบน + ขวางล่าง",
+       "formula_as_printed": "W - 245 mm. หาร 2",
+       "formula_normalised": "(W - 245) / 2",
+       "qty_per_unit": 4,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15109",
+       "member": "ตบเกี่ยว",
+       "formula_as_printed": "H - 45 mm.",
+       "formula_normalised": "H - 45",
+       "qty_per_unit": 2,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15128",
+       "member": "ตบเกี่ยว 2 ทาง",
+       "formula_as_printed": "H - 45 mm.",
+       "formula_normalised": "H - 45",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15132",
+       "member": "กรอบมุ้งนิรภัย",
+       "formula_as_printed": "H - 45 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "H - 45",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15132",
+       "member": "กรอบมุ้งนิรภัย",
+       "formula_as_printed": "W + 14 mm. หาร 2 ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "(W + 14) / 2",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15133",
+       "member": "คิ้วตบกรอบมุ้งนิรภัย",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": 4,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15110",
+       "member": "เดือยกุญแจ",
+       "formula_as_printed": "H - 32 mm.",
+       "formula_normalised": "H - 32",
+       "qty_per_unit": 3,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15112",
+       "member": "ฝาปิดเดือยกุญแจ",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15157",
+       "member": "Transmission Rod",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "drawing: screen 15132 70 face, 15.50 offsets",
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ]
+  },
+  {
+   "name": "ชุดบานเปิด+บานกระทุ้ง สมาร์ทพลัส (SEMI EURO, frame 15113)",
+   "system": "casement",
+   "app_types": [
+    "บานเปิดข้าง",
+    "บานกระทุ้ง 1 ชั้น x 1 ช่อง = 1 บาน"
+   ],
+   "frame_size_mm": "101.6 x 47",
+   "profiles": [],
+   "assembly": [
+    {
+     "type": "บานเปิด (บานเดียว) - สูตร บานเปิด",
+     "page": 7,
+     "panels": 1,
+     "joints": "frame กล่องก้าน: verticals H-0 run through, horizontals W-50 butt (straight). Sash mitred 45° with 2\"x6mm cleat. Beads straight, from sash.",
+     "cut_formulas": [
+      {
+       "die_no": "15113",
+       "member": "กล่องก้าน",
+       "formula_as_printed": "H - 0 mm. ( ตัดตรง )",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15113",
+       "member": "กล่องก้าน",
+       "formula_as_printed": "W - 50 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15116",
+       "member": "กรอบบานกระทุ้ง 65 มิล",
+       "formula_as_printed": "H - 35 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "H - 35",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15116",
+       "member": "กรอบบานกระทุ้ง 65 มิล",
+       "formula_as_printed": "W - 43 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "W - 43",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15115",
+       "member": "คิ้วตบกระจก",
+       "formula_as_printed": "H - 86 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Hs - 86",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15115",
+       "member": "คิ้วตบกระจก",
+       "formula_as_printed": "W - 130 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Ws - 130",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15138",
+       "member": "ใบบังฝน",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "casement sash width W-43 vs awning W-32 (same frame)"
+    },
+    {
+     "type": "บานกระทุ้ง (บานเดียว) - สูตร บานกระทุ้ง",
+     "page": 7,
+     "panels": 1,
+     "joints": "as above",
+     "cut_formulas": [
+      {
+       "die_no": "15113",
+       "member": "กล่องก้าน",
+       "formula_as_printed": "H - 0 mm. ( ตัดตรง )",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15113",
+       "member": "กล่องก้าน",
+       "formula_as_printed": "W - 50 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15116",
+       "member": "กรอบบานกระทุ้ง 65 มิล",
+       "formula_as_printed": "H - 35 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "H - 35",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15116",
+       "member": "กรอบบานกระทุ้ง 65 มิล",
+       "formula_as_printed": "W - 32 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "W - 32",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15115",
+       "member": "คิ้วตบกระจก",
+       "formula_as_printed": "H - 86 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Hs - 86",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15115",
+       "member": "คิ้วตบกระจก",
+       "formula_as_printed": "W - 130 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Ws - 130",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15138",
+       "member": "ใบบังฝน",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ]
+  },
+  {
+   "name": "ชุดบานเปิด EURO สมาร์ทพลัส (window, frame 15131 HOLLOW)",
+   "system": "casement",
+   "app_types": [
+    "บานเปิดข้าง",
+    "บานกระทุ้ง 1 ชั้น x 1 ช่อง = 1 บาน",
+    "บานกระทุ้ง 1 ชั้น x 2 ช่อง = 2 บาน"
+   ],
+   "frame_size_mm": "101.6 x 47.05",
+   "profiles": [],
+   "assembly": [
+    {
+     "type": "ชุดบานเปิด (บานเดียว)",
+     "page": 8,
+     "panels": 1,
+     "joints": "frame straight (H-0 through, W-50 butt); sash 45° + 2\"x6mm cleat; choose sash 65 C-groove (15114) OR 80 (15117)",
+     "cut_formulas": [
+      {
+       "die_no": "15131",
+       "member": "กล่องก้าน ( HOLLOW )",
+       "formula_as_printed": "H - 0 mm. ( ตัดตรง )",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15131",
+       "member": "กล่องก้าน ( HOLLOW )",
+       "formula_as_printed": "W - 50 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15114",
+       "member": "กรอบบานกระทุ้ง 65 มิล C กรุฟ",
+       "formula_as_printed": "H - 35 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "H - 35",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15114",
+       "member": "กรอบบานกระทุ้ง 65 มิล C กรุฟ",
+       "formula_as_printed": "W - 37 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "W - 37",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15117",
+       "member": "กรอบบานกระทุ้ง 80 มิล",
+       "formula_as_printed": "H - 35 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "H - 35",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15117",
+       "member": "กรอบบานกระทุ้ง 80 มิล",
+       "formula_as_printed": "W - 37 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "W - 37",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15115",
+       "member": "คิ้วตบกระจก(กรอบบาน 65 มิล)",
+       "formula_as_printed": "H - 86 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Hs - 86",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15115",
+       "member": "คิ้วตบกระจก(กรอบบาน 65 มิล)",
+       "formula_as_printed": "W - 130 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Ws - 130",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15115",
+       "member": "คิ้วตบกระจก(กรอบบาน 80 มิล)",
+       "formula_as_printed": "H - 116 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Hs - 116",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15115",
+       "member": "คิ้วตบกระจก(กรอบบาน 80 มิล)",
+       "formula_as_printed": "W - 160 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Ws - 160",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15138",
+       "member": "ใบบังฝน",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "drawing: 18.5 frame-to-sash",
+     "sash_overlap_mm": null,
+     "notes": "cut sheet prints 15115 WT 0.271 (2024 catalogue 0.267)"
+    },
+    {
+     "type": "ชุดบานเปิด (บานเปิดคู่ไม่มีเสากลาง)",
+     "page": 9,
+     "panels": 2,
+     "joints": "as single; centre adapter 15124 straight",
+     "cut_formulas": [
+      {
+       "die_no": "15131",
+       "member": "กล่องก้าน ( HOLLOW )",
+       "formula_as_printed": "H - 0 mm. ( ตัดตรง )",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15131",
+       "member": "กล่องก้าน ( HOLLOW )",
+       "formula_as_printed": "W - 50 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15114",
+       "member": "กรอบบานกระทุ้ง 65 มิล C กรุฟ",
+       "formula_as_printed": "H - 35 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "H - 35",
+       "qty_per_unit": 4,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15114",
+       "member": "กรอบบานกระทุ้ง 65 มิล C กรุฟ",
+       "formula_as_printed": "W - 35 mm.หาร 2 ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "(W - 35) / 2",
+       "qty_per_unit": 4,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15117",
+       "member": "กรอบบานกระทุ้ง 80 มิล",
+       "formula_as_printed": "H - 35 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "H - 35",
+       "qty_per_unit": 4,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15117",
+       "member": "กรอบบานกระทุ้ง 80 มิล",
+       "formula_as_printed": "W - 35 mm.หาร 2 ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "(W - 35) / 2",
+       "qty_per_unit": 4,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15115",
+       "member": "คิ้วตบกระจก(กรอบบาน 65 มิล)",
+       "formula_as_printed": "H - 86 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Hs - 86",
+       "qty_per_unit": 4,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15115",
+       "member": "คิ้วตบกระจก(กรอบบาน 65 มิล)",
+       "formula_as_printed": "W - 130 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Ws - 130",
+       "qty_per_unit": 4,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15115",
+       "member": "คิ้วตบกระจก(กรอบบาน 80 มิล)",
+       "formula_as_printed": "H - 116 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Hs - 116",
+       "qty_per_unit": 4,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15115",
+       "member": "คิ้วตบกระจก(กรอบบาน 80 มิล)",
+       "formula_as_printed": "W - 160 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Ws - 160",
+       "qty_per_unit": 4,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15124",
+       "member": "อแดปเตอร์บานคู่ (catalogue: บังใบบานเปิดคู่)",
+       "formula_as_printed": "H - 55 mm. ( ตัดตรง )",
+       "formula_normalised": "H - 55",
+       "qty_per_unit": 1,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15138",
+       "member": "ใบบังฝน",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "drawing: 27.5 / 18.5 frame, centre 3",
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ]
+  },
+  {
+   "name": "ชุดบานเลื่อน EURO หนา 1.5 มิล สมาร์ทพลัส",
+   "system": "sliding door",
+   "app_types": [
+    "บานเลื่อน 3 บาน",
+    "บานเลื่อนสวน 2 บาน",
+    "บานเลื่อน 2 ตาย 2",
+    "บานเลื่อนรางล่าง"
+   ],
+   "frame_size_mm": "101.6 x 45 (15135)",
+   "profiles": [],
+   "assembly": [
+    {
+     "type": "ชุดบานเลื่อน 3 ราง (มุ้งนิรภัย)(แบ่ง 2) ตัดประกอบ 45 องศา",
+     "page": 10,
+     "panels": 2,
+     "joints": "frame 15135 used on all four sides, mitred 45° (H-0 / W-0) joined with 22 mm spigot, or Crimping with corner 15152; sash 15146 mitred 45° with spigot; screen 15132 mitred with 2\"x6mm cleat; covers/beads straight",
+     "cut_formulas": [
+      {
+       "die_no": "15135",
+       "member": "เฟรมล่าง 3 ราง HOLLOW หนา 1.5 มิล",
+       "formula_as_printed": "H - 0 mm. ( ตัด 45° ) ใช้สปีก็อต 22 มิล ยึดมุม",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15135",
+       "member": "เฟรมล่าง 3 ราง HOLLOW หนา 1.5 มิล",
+       "formula_as_printed": "W - 0 mm. ( ตัด 45° ) ใช้สปีก็อต 22 มิล ยึดมุม",
+       "formula_normalised": "W",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15146",
+       "member": "กรอบบานเลื่อน Euro หนา 1.5 มิล",
+       "formula_as_printed": "H - 70 mm. ( ตัด 45° ) ใช้สปีก็อต 22 มิล ยึดมุม",
+       "formula_normalised": "H - 70",
+       "qty_per_unit": 4,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15146",
+       "member": "กรอบบานเลื่อน Euro หนา 1.5 มิล",
+       "formula_as_printed": "W + 20 mm.หาร 2 ( ตัด 45° ) ใช้สปีก็อต 22 มิล ยึดมุม",
+       "formula_normalised": "(W + 20) / 2",
+       "qty_per_unit": 4,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15132",
+       "member": "กรอบมุ้งนิรภัย",
+       "formula_as_printed": "H - 70 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "H - 70",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15132",
+       "member": "กรอบมุ้งนิรภัย",
+       "formula_as_printed": "W + 20 mm.หาร 2 ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "(W + 20) / 2",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15133",
+       "member": "คิ้วตบกรอบมุ้งนิรภัย",
+       "formula_as_printed": "H - 107 mm. ( ตัดตรง ) ระยะตัด จาก กรอบมุ้ง",
+       "formula_normalised": "Hm - 107",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "screen frame"
+      },
+      {
+       "die_no": "15133",
+       "member": "คิ้วตบกรอบมุ้งนิรภัย",
+       "formula_as_printed": "H - 140 mm. ( ตัดตรง ) ระยะตัด จาก กรอบมุ้ง",
+       "formula_normalised": "Wm - 140 ?",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "screen frame",
+       "notes": "printed 'H' twice; second row is probably the W bead (open question)"
+      },
+      {
+       "die_no": "15158",
+       "member": "ตบเกี่ยว หนา 1.5 มิล",
+       "formula_as_printed": "H - 70 mm. ( ตัดตรง )",
+       "formula_normalised": "H - 70",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15159",
+       "member": "ตบเกี่ยว 2 ทาง หนา 1.5 มิล",
+       "formula_as_printed": "H - 70 mm. ( ตัดตรง )",
+       "formula_normalised": "H - 70",
+       "qty_per_unit": 1,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15149",
+       "member": "ตบเลื่อน",
+       "formula_as_printed": "W - 88 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 88",
+       "qty_per_unit": 3,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15150",
+       "member": "ตบข้าง",
+       "formula_as_printed": "H - 88 mm. ( ตัดตรง )",
+       "formula_normalised": "H - 88",
+       "qty_per_unit": 6,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15150",
+       "member": "ตบข้าง",
+       "formula_as_printed": "W - 88 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 88",
+       "qty_per_unit": 3,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15151",
+       "member": "ใบบังฝนบานเลื่อน",
+       "formula_as_printed": "W - 42 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 42",
+       "qty_per_unit": 1,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15157",
+       "member": "Transmission Rod",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "drawing: 21 frame face, 70 sash, 1.5; สักหลาด/ล้อ 13x20-7; 15151 at top",
+     "sash_overlap_mm": null,
+     "notes": "header says profiles drawn are 'EURO หนา 1.2 มิล' but title is 1.5 mm"
+    },
+    {
+     "type": "ชุดบานเลื่อน 3 ราง (แบ่ง 3) ตัดประกอบ 45 องศา",
+     "page": 11,
+     "panels": 3,
+     "joints": "as p.10",
+     "cut_formulas": [
+      {
+       "die_no": "15135",
+       "member": "เฟรมล่าง 3 ราง HOLLOW หนา 1.5 มิล",
+       "formula_as_printed": "H - 0 mm. ( ตัด 45° ) ใช้สปีก็อต 22 มิล ยึดมุม",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15135",
+       "member": "เฟรมล่าง 3 ราง HOLLOW หนา 1.5 มิล",
+       "formula_as_printed": "W - 0 mm. ( ตัด 45° ) ใช้สปีก็อต 22 มิล ยึดมุม",
+       "formula_normalised": "W",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15146",
+       "member": "กรอบบานเลื่อน Euro หนา 1.5 มิล",
+       "formula_as_printed": "H - 70 mm. ( ตัด 45° ) ใช้สปีก็อต 22 มิล ยึดมุม",
+       "formula_normalised": "H - 70",
+       "qty_per_unit": 6,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15146",
+       "member": "กรอบบานเลื่อน Euro หนา 1.5 มิล",
+       "formula_as_printed": "W + 85 mm.หาร 3 ( ตัด 45° ) ใช้สปีก็อต 22 มิล ยึดมุม",
+       "formula_normalised": "(W + 85) / 3",
+       "qty_per_unit": 6,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15158",
+       "member": "ตบเกี่ยว",
+       "formula_as_printed": "H - 70 mm. ( ตัดตรง )",
+       "formula_normalised": "H - 70",
+       "qty_per_unit": 4,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15149",
+       "member": "ตบเลื่อน",
+       "formula_as_printed": "W - 88 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 88",
+       "qty_per_unit": 3,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15150",
+       "member": "ตบข้าง",
+       "formula_as_printed": "H - 88 mm. ( ตัดตรง )",
+       "formula_normalised": "H - 88",
+       "qty_per_unit": 6,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15150",
+       "member": "ตบข้าง",
+       "formula_as_printed": "W - 88 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 88",
+       "qty_per_unit": 3,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15151",
+       "member": "ใบบังฝนบานเลื่อน",
+       "formula_as_printed": "W - 42 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 42",
+       "qty_per_unit": 1,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15157",
+       "member": "Transmission Rod",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "drawing: overlaps 195 / 75 shown",
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "ชุดบานเลื่อน 3 ราง (มุ้งนิรภัย)(แบ่ง 4) ตัดประกอบ 45 องศา",
+     "page": 12,
+     "panels": 4,
+     "joints": "as p.10; centre meeting 15163",
+     "cut_formulas": [
+      {
+       "die_no": "15135",
+       "member": "เฟรมล่าง 3 ราง HOLLOW หนา 1.5 มิล",
+       "formula_as_printed": "H - 0 mm. ( ตัด 45° ) ใช้สปีก็อต 22 มิล ยึดมุม",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15135",
+       "member": "เฟรมล่าง 3 ราง HOLLOW หนา 1.5 มิล",
+       "formula_as_printed": "W - 0 mm. ( ตัด 45° ) ใช้สปีก็อต 22 มิล ยึดมุม",
+       "formula_normalised": "W",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15146",
+       "member": "กรอบบานเลื่อน Euro หนา 1.5 มิล",
+       "formula_as_printed": "H - 70 mm. ( ตัด 45° ) ใช้สปีก็อต 22 มิล ยึดมุม",
+       "formula_normalised": "H - 70",
+       "qty_per_unit": 8,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15146",
+       "member": "กรอบบานเลื่อน Euro หนา 1.5 มิล",
+       "formula_as_printed": "W + 86 mm.หาร 4 ( ตัด 45° ) ใช้สปีก็อต 22 มิล ยึดมุม",
+       "formula_normalised": "(W + 86) / 4",
+       "qty_per_unit": 8,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15132",
+       "member": "กรอบมุ้งนิรภัย",
+       "formula_as_printed": "H - 70 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "H - 70",
+       "qty_per_unit": 4,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15132",
+       "member": "กรอบมุ้งนิรภัย",
+       "formula_as_printed": "W + 86 mm.หาร 4 ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "(W + 86) / 4",
+       "qty_per_unit": 4,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15133",
+       "member": "คิ้วตบกรอบมุ้งนิรภัย",
+       "formula_as_printed": "H - 107 mm. ( ตัดตรง ) ระยะตัด จาก กรอบมุ้ง",
+       "formula_normalised": "Hm - 107",
+       "qty_per_unit": 4,
+       "cut": "straight",
+       "reference": "screen frame"
+      },
+      {
+       "die_no": "15133",
+       "member": "คิ้วตบกรอบมุ้งนิรภัย",
+       "formula_as_printed": "H - 140 mm. ( ตัดตรง ) ระยะตัด จาก กรอบมุ้ง",
+       "formula_normalised": "Wm - 140 ?",
+       "qty_per_unit": 4,
+       "cut": "straight",
+       "reference": "screen frame",
+       "notes": "printed 'H' twice"
+      },
+      {
+       "die_no": "15158",
+       "member": "ตบเกี่ยว",
+       "formula_as_printed": "H - 70 mm. ( ตัดตรง )",
+       "formula_normalised": "H - 70",
+       "qty_per_unit": 4,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15159",
+       "member": "ตบเกี่ยว 2 ทาง หนา 1.5 มิล",
+       "formula_as_printed": "H - 70 mm. ( ตัดตรง )",
+       "formula_normalised": "H - 70",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15163",
+       "member": "ชนกลางบานเลื่อน หนา 1.5 มิล",
+       "formula_as_printed": "H - 70 mm. ( ตัดตรง )",
+       "formula_normalised": "H - 70",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15112",
+       "member": "ฝาปิดเดือยกุญแจ",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      },
+      {
+       "die_no": "15149",
+       "member": "ตบเลื่อน",
+       "formula_as_printed": "W - 88 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 88",
+       "qty_per_unit": 3,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15150",
+       "member": "ตบข้าง",
+       "formula_as_printed": "H - 88 mm. ( ตัดตรง )",
+       "formula_normalised": "H - 88",
+       "qty_per_unit": 6,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15150",
+       "member": "ตบข้าง",
+       "formula_as_printed": "W - 88 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 88",
+       "qty_per_unit": 3,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15151",
+       "member": "ใบบังฝนบานเลื่อน",
+       "formula_as_printed": "W - 42 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 42",
+       "qty_per_unit": 1,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15179",
+       "member": "เส้นเสริม C กรูฟ หนา 1.5 มิล",
+       "formula_as_printed": "H - 70 mm. ( ตัดตรง )",
+       "formula_normalised": "H - 70",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15157",
+       "member": "Transmission Rod",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ]
+  },
+  {
+   "name": "ชุดประตูบานเปิด EURO สมาร์ทพลัส (wood-frame 15142)",
+   "system": "swing door",
+   "app_types": [
+    "บานเปิด"
+   ],
+   "frame_size_mm": "101.6 x 47",
+   "profiles": [],
+   "assembly": [
+    {
+     "type": "ชุดประตูบานเปิด (บานเดียว)",
+     "page": 13,
+     "panels": 1,
+     "joints": "frame straight (H-0 through, W-50 butt); door sash 80 (15141) OR 100 (15144) mitred 45° with cleat; beads straight from sash",
+     "cut_formulas": [
+      {
+       "die_no": "15142",
+       "member": "วงกบไม้ หนา 1.5 มิล",
+       "formula_as_printed": "H - 0 mm. ( ตัดตรง )",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15142",
+       "member": "วงกบไม้ หนา 1.5 มิล",
+       "formula_as_printed": "W - 50 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15141",
+       "member": "กรอบบานกระทุ้ง 80 มิล",
+       "formula_as_printed": "H - 35 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "H - 35",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15141",
+       "member": "กรอบบานกระทุ้ง 80 มิล",
+       "formula_as_printed": "W - 37 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "W - 37",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15144",
+       "member": "กรอบบานกระทุ้ง 100 มิล",
+       "formula_as_printed": "H - 35 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "H - 35",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15144",
+       "member": "กรอบบานกระทุ้ง 100 มิล",
+       "formula_as_printed": "W - 37 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "W - 37",
+       "qty_per_unit": 2,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15145",
+       "member": "คิ้วตบกระจก(กรอบบาน 80 มิล)",
+       "formula_as_printed": "H - 116 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Hs - 116",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15145",
+       "member": "คิ้วตบกระจก(กรอบบาน 80 มิล)",
+       "formula_as_printed": "W - 160 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Ws - 160",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15145",
+       "member": "คิ้วตบกระจก(กรอบบาน 100 มิล)",
+       "formula_as_printed": "H - 156 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Hs - 156",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15145",
+       "member": "คิ้วตบกระจก(กรอบบาน 100 มิล)",
+       "formula_as_printed": "W - 200 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Ws - 200",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15138",
+       "member": "ใบบังฝน",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "drawing: 18.5 frame-to-sash",
+     "sash_overlap_mm": null,
+     "notes": "cut sheet prints 15141 WT 1.123 (2024 catalogue 1.100)"
+    },
+    {
+     "type": "ชุดประตูบานเปิด (บานเปิดคู่ไม่มีเสากลาง)",
+     "page": 14,
+     "panels": 2,
+     "joints": "as single",
+     "cut_formulas": [
+      {
+       "die_no": "15142",
+       "member": "วงกบไม้ หนา 1.5 มิล",
+       "formula_as_printed": "H - 0 mm. ( ตัดตรง )",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15142",
+       "member": "วงกบไม้ หนา 1.5 มิล",
+       "formula_as_printed": "W - 50 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 50",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15141",
+       "member": "กรอบบานกระทุ้ง 80 มิล",
+       "formula_as_printed": "H - 35 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "H - 35",
+       "qty_per_unit": 4,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15141",
+       "member": "กรอบบานกระทุ้ง 80 มิล",
+       "formula_as_printed": "W - 40 mm.หาร 2 ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "(W - 40) / 2",
+       "qty_per_unit": 4,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15144",
+       "member": "กรอบบานกระทุ้ง 100 มิล",
+       "formula_as_printed": "H - 35 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "H - 35",
+       "qty_per_unit": 4,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15144",
+       "member": "กรอบบานกระทุ้ง 100 มิล",
+       "formula_as_printed": "W - 40 mm.หาร 2 ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "(W - 40) / 2",
+       "qty_per_unit": 4,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15145",
+       "member": "คิ้วตบกระจก(กรอบบาน 80 มิล)",
+       "formula_as_printed": "H - 116 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Hs - 116",
+       "qty_per_unit": 4,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15145",
+       "member": "คิ้วตบกระจก(กรอบบาน 80 มิล)",
+       "formula_as_printed": "W - 160 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Ws - 160",
+       "qty_per_unit": 4,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15145",
+       "member": "คิ้วตบกระจก(กรอบบาน 100 มิล)",
+       "formula_as_printed": "H - 156 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Hs - 156",
+       "qty_per_unit": 4,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15145",
+       "member": "คิ้วตบกระจก(กรอบบาน 100 มิล)",
+       "formula_as_printed": "W - 200 mm. ( ตัดตรง ) ระยะตัด จาก กรอบบานกระทุ้ง",
+       "formula_normalised": "Ws - 200",
+       "qty_per_unit": 4,
+       "cut": "straight",
+       "reference": "sash"
+      },
+      {
+       "die_no": "15124",
+       "member": "บังใบบานเปิดคู่",
+       "formula_as_printed": "H - 55 mm. ( ตัดตรง )",
+       "formula_normalised": "H - 55",
+       "qty_per_unit": 1,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15138",
+       "member": "ใบบังฝน",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": 1,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ]
+  },
+  {
+   "name": "ชุดบานเฟี้ยม สมาร์ทพลัส (ตัดเสาบาน 45°)",
+   "system": "folding",
+   "app_types": [
+    "บานเฟี้ยม"
+   ],
+   "frame_size_mm": "101.6; head 70",
+   "profiles": [],
+   "assembly": [
+    {
+     "type": "ชุดบานเฟี้ยม (3-3-0)",
+     "page": 15,
+     "panels": 3,
+     "joints": "frame head/sill W-40 butt between jambs (H-0, straight). Panel stiles/rails 15171 mitred 45° with corner cleat 2\"x6mm. Beads straight, measured from the panel (เสาบานเฟี้ยม).",
+     "cut_formulas": [
+      {
+       "die_no": "15167",
+       "member": "เฟรมบนบานเฟี้ยม",
+       "formula_as_printed": "W - 40 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 40",
+       "qty_per_unit": 1,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15168",
+       "member": "เฟรมล่างบานเฟี้ยม",
+       "formula_as_printed": "W - 40 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 40",
+       "qty_per_unit": 1,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15169",
+       "member": "เฟรมข้างบานเฟี้ยม",
+       "formula_as_printed": "H - 0 mm. ( ตัดตรง )",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15171",
+       "member": "เสาบานเฟี้ยม หนา 1.5 มิล",
+       "formula_as_printed": "H - 86 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "H - 86",
+       "qty_per_unit": 6,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15171",
+       "member": "เสาบานเฟี้ยม หนา 1.5 มิล",
+       "formula_as_printed": "W - 72 mm.หาร 3 ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "(W - 72) / 3",
+       "qty_per_unit": 6,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15173",
+       "member": "คิ้วนอกบานเฟี้ยมร่องกระจก12.7 มิล",
+       "formula_as_printed": "H - 128 mm. ( ตัดตรง ) ระยะตัด จาก เสาบานเฟี้ยม",
+       "formula_normalised": "Hp - 128",
+       "qty_per_unit": 6,
+       "cut": "straight",
+       "reference": "panel (Hp = panel height)"
+      },
+      {
+       "die_no": "15173",
+       "member": "คิ้วนอกบานเฟี้ยมร่องกระจก12.7 มิล",
+       "formula_as_printed": "W - 160 mm. ( ตัดตรง ) ระยะตัด จาก เสาบานเฟี้ยม",
+       "formula_normalised": "Wp - 160",
+       "qty_per_unit": 6,
+       "cut": "straight",
+       "reference": "panel (Wp = panel width)"
+      },
+      {
+       "die_no": "15174",
+       "member": "คิ้วในบานเฟี้ยมร่องกระจก12.7 มิล",
+       "formula_as_printed": "H - 128 mm. ( ตัดตรง ) ระยะตัด จาก เสาบานเฟี้ยม",
+       "formula_normalised": "Hp - 128",
+       "qty_per_unit": 6,
+       "cut": "straight",
+       "reference": "panel"
+      },
+      {
+       "die_no": "15174",
+       "member": "คิ้วในบานเฟี้ยมร่องกระจก12.7 มิล",
+       "formula_as_printed": "W - 160 mm. ( ตัดตรง ) ระยะตัด จาก เสาบานเฟี้ยม",
+       "formula_normalised": "Wp - 160",
+       "qty_per_unit": 6,
+       "cut": "straight",
+       "reference": "panel"
+      },
+      {
+       "die_no": "15177",
+       "member": "บังใบบานเฟี้ยม",
+       "formula_as_printed": "H - 90 mm. ( ตัดตรง )",
+       "formula_normalised": "H - 90",
+       "qty_per_unit": 1,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15156",
+       "member": "ตบปิดกล่องก้าน",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "drawing: panel 52 face, 8 gaps between panels, head 50/sill 20",
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "ชุดบานเฟี้ยม (6-3-3)",
+     "page": 16,
+     "panels": 6,
+     "joints": "frame head/sill W-40 butt between jambs (H-0, straight). Panel stiles/rails 15171 mitred 45° with corner cleat 2\"x6mm. Beads straight, measured from the panel (เสาบานเฟี้ยม).",
+     "cut_formulas": [
+      {
+       "die_no": "15167",
+       "member": "เฟรมบนบานเฟี้ยม",
+       "formula_as_printed": "W - 40 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 40",
+       "qty_per_unit": 1,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15168",
+       "member": "เฟรมล่างบานเฟี้ยม",
+       "formula_as_printed": "W - 40 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 40",
+       "qty_per_unit": 1,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15169",
+       "member": "เฟรมข้างบานเฟี้ยม",
+       "formula_as_printed": "H - 0 mm. ( ตัดตรง )",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15171",
+       "member": "เสาบานเฟี้ยม หนา 1.5 มิล",
+       "formula_as_printed": "H - 86 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "H - 86",
+       "qty_per_unit": 12,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15171",
+       "member": "เสาบานเฟี้ยม หนา 1.5 มิล",
+       "formula_as_printed": "W - 134 mm.หาร 6 ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "(W - 134) / 6",
+       "qty_per_unit": 12,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15173",
+       "member": "คิ้วนอกบานเฟี้ยมร่องกระจก12.7 มิล",
+       "formula_as_printed": "H - 128 mm. ( ตัดตรง ) ระยะตัด จาก เสาบานเฟี้ยม",
+       "formula_normalised": "Hp - 128",
+       "qty_per_unit": 12,
+       "cut": "straight",
+       "reference": "panel (Hp = panel height)"
+      },
+      {
+       "die_no": "15173",
+       "member": "คิ้วนอกบานเฟี้ยมร่องกระจก12.7 มิล",
+       "formula_as_printed": "W - 160 mm. ( ตัดตรง ) ระยะตัด จาก เสาบานเฟี้ยม",
+       "formula_normalised": "Wp - 160",
+       "qty_per_unit": 12,
+       "cut": "straight",
+       "reference": "panel (Wp = panel width)"
+      },
+      {
+       "die_no": "15174",
+       "member": "คิ้วในบานเฟี้ยมร่องกระจก12.7 มิล",
+       "formula_as_printed": "H - 128 mm. ( ตัดตรง ) ระยะตัด จาก เสาบานเฟี้ยม",
+       "formula_normalised": "Hp - 128",
+       "qty_per_unit": 12,
+       "cut": "straight",
+       "reference": "panel"
+      },
+      {
+       "die_no": "15174",
+       "member": "คิ้วในบานเฟี้ยมร่องกระจก12.7 มิล",
+       "formula_as_printed": "W - 160 mm. ( ตัดตรง ) ระยะตัด จาก เสาบานเฟี้ยม",
+       "formula_normalised": "Wp - 160",
+       "qty_per_unit": 12,
+       "cut": "straight",
+       "reference": "panel"
+      },
+      {
+       "die_no": "15181",
+       "member": "แกนกลางบังใบบานเฟี้ยม",
+       "formula_as_printed": "H - 78 mm. ( ตัดตรง )",
+       "formula_normalised": "H - 78",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window",
+       "notes": "die 15181 (WT 0.647, 50.30 x 48) not in 2024 catalogue; 2024 lists 15196 V2"
+      },
+      {
+       "die_no": "15156",
+       "member": "ตบปิดกล่องก้าน",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "drawing: panel 52 face, 8 gaps between panels, head 50/sill 20",
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "ชุดบานเฟี้ยม (4-2-2)",
+     "page": 17,
+     "panels": 4,
+     "joints": "frame head/sill W-40 butt between jambs (H-0, straight). Panel stiles/rails 15171 mitred 45° with corner cleat 2\"x6mm. Beads straight, measured from the panel (เสาบานเฟี้ยม).",
+     "cut_formulas": [
+      {
+       "die_no": "15167",
+       "member": "เฟรมบนบานเฟี้ยม",
+       "formula_as_printed": "W - 40 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 40",
+       "qty_per_unit": 1,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15168",
+       "member": "เฟรมล่างบานเฟี้ยม",
+       "formula_as_printed": "W - 40 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 40",
+       "qty_per_unit": 1,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15169",
+       "member": "เฟรมข้างบานเฟี้ยม",
+       "formula_as_printed": "H - 0 mm. ( ตัดตรง )",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15171",
+       "member": "เสาบานเฟี้ยม หนา 1.5 มิล",
+       "formula_as_printed": "H - 86 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "H - 86",
+       "qty_per_unit": 8,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15171",
+       "member": "เสาบานเฟี้ยม หนา 1.5 มิล",
+       "formula_as_printed": "W - 128 mm.หาร 4 ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "(W - 128) / 4",
+       "qty_per_unit": 8,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15173",
+       "member": "คิ้วนอกบานเฟี้ยมร่องกระจก12.7 มิล",
+       "formula_as_printed": "H - 128 mm. ( ตัดตรง ) ระยะตัด จาก เสาบานเฟี้ยม",
+       "formula_normalised": "Hp - 128",
+       "qty_per_unit": 8,
+       "cut": "straight",
+       "reference": "panel (Hp = panel height)"
+      },
+      {
+       "die_no": "15173",
+       "member": "คิ้วนอกบานเฟี้ยมร่องกระจก12.7 มิล",
+       "formula_as_printed": "W - 160 mm. ( ตัดตรง ) ระยะตัด จาก เสาบานเฟี้ยม",
+       "formula_normalised": "Wp - 160",
+       "qty_per_unit": 8,
+       "cut": "straight",
+       "reference": "panel (Wp = panel width)"
+      },
+      {
+       "die_no": "15174",
+       "member": "คิ้วในบานเฟี้ยมร่องกระจก12.7 มิล",
+       "formula_as_printed": "H - 128 mm. ( ตัดตรง ) ระยะตัด จาก เสาบานเฟี้ยม",
+       "formula_normalised": "Hp - 128",
+       "qty_per_unit": 8,
+       "cut": "straight",
+       "reference": "panel"
+      },
+      {
+       "die_no": "15174",
+       "member": "คิ้วในบานเฟี้ยมร่องกระจก12.7 มิล",
+       "formula_as_printed": "W - 160 mm. ( ตัดตรง ) ระยะตัด จาก เสาบานเฟี้ยม",
+       "formula_normalised": "Wp - 160",
+       "qty_per_unit": 8,
+       "cut": "straight",
+       "reference": "panel"
+      },
+      {
+       "die_no": "15178",
+       "member": "แกนกลางบานเฟี้ยม",
+       "formula_as_printed": "H - 78 mm. ( ตัดตรง )",
+       "formula_normalised": "H - 78",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15156",
+       "member": "ตบปิดกล่องก้าน",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "drawing: panel 52 face, 8 gaps between panels, head 50/sill 20",
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "ชุดบานเฟี้ยม (3-2-1)",
+     "page": 18,
+     "panels": 3,
+     "joints": "frame head/sill W-40 butt between jambs (H-0, straight). Panel stiles/rails 15171 mitred 45° with corner cleat 2\"x6mm. Beads straight, measured from the panel (เสาบานเฟี้ยม).",
+     "cut_formulas": [
+      {
+       "die_no": "15167",
+       "member": "เฟรมบนบานเฟี้ยม",
+       "formula_as_printed": "W - 40 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 40",
+       "qty_per_unit": 1,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15168",
+       "member": "เฟรมล่างบานเฟี้ยม",
+       "formula_as_printed": "W - 40 mm. ( ตัดตรง )",
+       "formula_normalised": "W - 40",
+       "qty_per_unit": 1,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15169",
+       "member": "เฟรมข้างบานเฟี้ยม",
+       "formula_as_printed": "H - 0 mm. ( ตัดตรง )",
+       "formula_normalised": "H",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15171",
+       "member": "เสาบานเฟี้ยม หนา 1.5 มิล",
+       "formula_as_printed": "H - 86 mm. ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "H - 86",
+       "qty_per_unit": 6,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15171",
+       "member": "เสาบานเฟี้ยม หนา 1.5 มิล",
+       "formula_as_printed": "W - 135 mm.หาร 3 ( ตัด 45° ) ใช้ฉาก 2 นิ้ว X 6 มิล ยึดมุม",
+       "formula_normalised": "(W - 135) / 3",
+       "qty_per_unit": 6,
+       "cut": "45°",
+       "reference": "window"
+      },
+      {
+       "die_no": "15173",
+       "member": "คิ้วนอกบานเฟี้ยมร่องกระจก12.7 มิล",
+       "formula_as_printed": "H - 128 mm. ( ตัดตรง ) ระยะตัด จาก เสาบานเฟี้ยม",
+       "formula_normalised": "Hp - 128",
+       "qty_per_unit": 6,
+       "cut": "straight",
+       "reference": "panel (Hp = panel height)"
+      },
+      {
+       "die_no": "15173",
+       "member": "คิ้วนอกบานเฟี้ยมร่องกระจก12.7 มิล",
+       "formula_as_printed": "W - 160 mm. ( ตัดตรง ) ระยะตัด จาก เสาบานเฟี้ยม",
+       "formula_normalised": "Wp - 160",
+       "qty_per_unit": 6,
+       "cut": "straight",
+       "reference": "panel (Wp = panel width)"
+      },
+      {
+       "die_no": "15174",
+       "member": "คิ้วในบานเฟี้ยมร่องกระจก12.7 มิล",
+       "formula_as_printed": "H - 128 mm. ( ตัดตรง ) ระยะตัด จาก เสาบานเฟี้ยม",
+       "formula_normalised": "Hp - 128",
+       "qty_per_unit": 6,
+       "cut": "straight",
+       "reference": "panel"
+      },
+      {
+       "die_no": "15174",
+       "member": "คิ้วในบานเฟี้ยมร่องกระจก12.7 มิล",
+       "formula_as_printed": "W - 160 mm. ( ตัดตรง ) ระยะตัด จาก เสาบานเฟี้ยม",
+       "formula_normalised": "Wp - 160",
+       "qty_per_unit": 6,
+       "cut": "straight",
+       "reference": "panel"
+      },
+      {
+       "die_no": "15178",
+       "member": "แกนกลางบานเฟี้ยม",
+       "formula_as_printed": "H - 78 mm. ( ตัดตรง )",
+       "formula_normalised": "H - 78",
+       "qty_per_unit": 1,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15181",
+       "member": "แกนกลางบังใบบานเฟี้ยม",
+       "formula_as_printed": "H - 78 mm. ( ตัดตรง )",
+       "formula_normalised": "H - 78",
+       "qty_per_unit": 2,
+       "cut": "straight",
+       "reference": "window"
+      },
+      {
+       "die_no": "15156",
+       "member": "ตบปิดกล่องก้าน",
+       "formula_as_printed": "วัดตัดตามระยะจริง",
+       "formula_normalised": "measure on site",
+       "qty_per_unit": null,
+       "cut": "straight?",
+       "reference": "window"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "drawing: panel 52 face, 8 gaps between panels, head 50/sill 20",
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ]
+  }
+ ],
+ "weights_printed_on_cut_sheets_that_differ_from_2024": [
+  {
+   "die_no": "15115",
+   "cut_sheet": 0.271,
+   "catalogue_2024": 0.267,
+   "page": 8
+  },
+  {
+   "die_no": "15141",
+   "cut_sheet": 1.123,
+   "catalogue_2024": 1.1,
+   "page": 13
+  },
+  {
+   "die_no": "15171",
+   "cut_sheet": 1.226,
+   "catalogue_2024": 1.266,
+   "page": 15
+  },
+  {
+   "die_no": "15181",
+   "cut_sheet": 0.647,
+   "catalogue_2024": null,
+   "page": 16
+  }
+ ],
+ "new_families": [
+  "แกนกลางบังใบบานเฟี้ยม",
+  "กรอบบานเฟี้ยม",
+  "ตบเลื่อน (ตบราง)",
+  "เดือยกุญแจ",
+  "ฝาปิดเดือยกุญแจ",
+  "ตบเกี่ยว",
+  "ตบเกี่ยว 2 ทาง",
+  "ก้านส่งล็อก (Transmission Rod)"
+ ],
+ "open_questions": [
+  "15133 คิ้วตบกรอบมุ้ง หน้า 10/12 พิมพ์ 'H - 107' และ 'H - 140' ทั้งสองแถว — แถวที่สองคือ W - 140 ใช่ไหม",
+  "'W - 245 mm. หาร 2' หมายถึง (W - 245) ÷ 2 ทั้งก้อนใช่ไหม (ผมตีความแบบนี้ทุกสูตร)",
+  "คิ้วตบกระจก 'ระยะตัดจากกรอบบาน' = คิดจากขนาดบาน (ไม่ใช่ขนาดวงกบ) ใช่ไหม เช่น บานสูง 1,165 → คิ้ว 1,079",
+  "บานกระทุ้ง/บานเปิดคู่ในหน้า 7–9 ใช้ W-37 (เดี่ยว) แต่ (W-35)÷2 (คู่) — ส่วนประตูคู่ใช้ (W-40)÷2 ถูกต้องตามที่ช่างใช้จริงไหม",
+  "ชุดบานเลื่อน 3 ราง ใช้ H-45 แต่ 2 ราง ใช้ H-55 และสูตรนี้ปี 2022 ยังใช้ได้กับโปรไฟล์ปี 2024 ไหม (เช่น 15181 ไม่มีในแค็ตตาล็อก 2024)"
+ ],
+ "unreadable_pages": []
+}

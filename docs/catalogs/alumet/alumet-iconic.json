@@ -1,0 +1,366 @@
+{
+ "source_pdf": "ALUMET ICONIC.pdf",
+ "supplier": "Alumet Co., Ltd. (อลูเม็ท)",
+ "brand": "ALUMET ICONIQ EURO SERIES",
+ "catalogue_year": "not printed (same content as Iconiq 2024 without profile pages)",
+ "pages": 33,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": "ICONIQ EURO SERIES (ALUMET ICONIC print)"
+  },
+  {
+   "page": 2,
+   "content": "toc",
+   "series": "ICONIQ EURO SERIES (ALUMET ICONIC print)"
+  },
+  {
+   "page": 3,
+   "content": "series overview",
+   "series": "sliding"
+  },
+  {
+   "page": 4,
+   "content": "series overview",
+   "series": "sliding (spec)"
+  },
+  {
+   "page": 5,
+   "content": "assembly",
+   "series": "sliding – บานเลื่อนสลับ เสริมบานมุ้งนิรภัย"
+  },
+  {
+   "page": 6,
+   "content": "other",
+   "series": "blank page"
+  },
+  {
+   "page": 7,
+   "content": "assembly",
+   "series": "sliding – บานเลื่อนแบ่ง 3"
+  },
+  {
+   "page": 8,
+   "content": "assembly",
+   "series": "sliding – บานเลื่อนแบ่ง 4 เปิดทางเดียว"
+  },
+  {
+   "page": 9,
+   "content": "assembly",
+   "series": "sliding – บานเลื่อนแบ่ง 4 เปิดกลาง"
+  },
+  {
+   "page": 10,
+   "content": "assembly",
+   "series": "sliding – บานเลื่อนแบ่ง 6 เปิดกลางชนมุม"
+  },
+  {
+   "page": 11,
+   "content": "series overview",
+   "series": "casement & awning"
+  },
+  {
+   "page": 12,
+   "content": "series overview",
+   "series": "casement & awning (spec)"
+  },
+  {
+   "page": 13,
+   "content": "other",
+   "series": "casement & awning (functionality)"
+  },
+  {
+   "page": 14,
+   "content": "other",
+   "series": "casement & awning (functionality)"
+  },
+  {
+   "page": 15,
+   "content": "other",
+   "series": "casement & awning (functionality)"
+  },
+  {
+   "page": 16,
+   "content": "other",
+   "series": "casement & awning (functionality)"
+  },
+  {
+   "page": 17,
+   "content": "other",
+   "series": "casement & awning (functionality)"
+  },
+  {
+   "page": 18,
+   "content": "other",
+   "series": "casement & awning (functionality)"
+  },
+  {
+   "page": 19,
+   "content": "other",
+   "series": "casement & awning (functionality)"
+  },
+  {
+   "page": 20,
+   "content": "other",
+   "series": "casement & awning (functionality)"
+  },
+  {
+   "page": 21,
+   "content": "assembly",
+   "series": "casement & awning (shop drawing)"
+  },
+  {
+   "page": 22,
+   "content": "assembly",
+   "series": "casement & awning (shop drawing)"
+  },
+  {
+   "page": 23,
+   "content": "assembly",
+   "series": "casement & awning (shop drawing)"
+  },
+  {
+   "page": 24,
+   "content": "assembly",
+   "series": "casement & awning (shop drawing)"
+  },
+  {
+   "page": 25,
+   "content": "assembly",
+   "series": "casement & awning (shop drawing)"
+  },
+  {
+   "page": 26,
+   "content": "assembly",
+   "series": "casement & awning (shop drawing)"
+  },
+  {
+   "page": 27,
+   "content": "series overview",
+   "series": "fixed"
+  },
+  {
+   "page": 28,
+   "content": "series overview",
+   "series": "fixed (spec)"
+  },
+  {
+   "page": 29,
+   "content": "other",
+   "series": "fixed (functionality)"
+  },
+  {
+   "page": 30,
+   "content": "assembly",
+   "series": "fixed"
+  },
+  {
+   "page": 31,
+   "content": "assembly",
+   "series": "fixed"
+  },
+  {
+   "page": 32,
+   "content": "other",
+   "series": "colours"
+  },
+  {
+   "page": 33,
+   "content": "other",
+   "series": "wood colours"
+  }
+ ],
+ "same_as": "alumet-iconiq-euro-2024.json — this PDF is a shortened reprint (no profile/section-list pages). All die numbers, kg/m and section dims live in the 2024 file.",
+ "series": [
+  {
+   "name": "ICONIQ EURO SERIES – SLIDING SYSTEM",
+   "system": "sliding door",
+   "app_types": [
+    "บานเลื่อน",
+    "บานเลื่อนรางล่าง"
+   ],
+   "frame_size_mm": "101.6x48",
+   "profiles": [],
+   "assembly": [
+    {
+     "type": "บานเลื่อนสลับ เสริมบานมุ้งนิรภัย (2 บาน + มุ้ง)",
+     "page": 5,
+     "joints": "Sash iS-0201 80x30 mitred 45° all round (functionality p.16 'กรอบบานเข้ามุม 45°'); interlock made by clipping iS-0207 (ตบเกี่ยว) onto the stile + iS-0209 screw cover; lock stile gets SS-0117/iS-0103 in frame jamb. Frame: iS-0101 head & sill, iS-0102 jambs, iS-0104 roller track covers, iS-0105 drain cover, iS-0106 head weather hood, iS-0114 sill cover, iS-0115 anti-sag insert in sill, iS-0107 plaster-edge cover.",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "section A: head 40 (25+15) above sash, sash 80, glass bite 10, bottom 8 + 40; section B: jamb 25 + gap 4, sash 80, meeting 81.5 with 10 + 1.5 + 10 offsets",
+     "sash_overlap_mm": null,
+     "notes": "No cut formulas printed — only section dimensions. Same drawing reprinted in ALUMET ICONIC (03) p5. (same drawing as Iconiq 2024 p.24)"
+    },
+    {
+     "type": "บานเลื่อนแบ่ง 3 เสริมบานมุ้งนิรภัย (FIXED + 2 sliding, frame 214 = 2 × 101.6 joined)",
+     "page": 7,
+     "joints": "two iS-0101 heads joined with iS-0112; iS-0110/iS-0110 at jambs",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "frame depth 214; jamb 25+4; sash 80; meeting 81.5",
+     "sash_overlap_mm": null,
+     "notes": " (same drawing as Iconiq 2024 p.25)"
+    },
+    {
+     "type": "บานเลื่อนแบ่ง 4 เปิดทางเดียว (frame 139)",
+     "page": 8,
+     "joints": "iS-0111 joins extra rails; iS-0109/iS-0110 single-rail jamb",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "25+4, 80, 81.5, 81.5, 81.5, 80, 4+25",
+     "sash_overlap_mm": null,
+     "notes": " (same drawing as Iconiq 2024 p.27)"
+    },
+    {
+     "type": "บานเลื่อนแบ่ง 4 เปิดกลาง เสริมบานมุ้งนิรภัย",
+     "page": 9,
+     "joints": "centre meeting via iS-0210 ชนกลาง (gap 2)",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "25+4, 80, 81.5, 80 | 2 | 80, 81.5, 80, 4+25",
+     "sash_overlap_mm": null,
+     "notes": " (same drawing as Iconiq 2024 p.28)"
+    },
+    {
+     "type": "บานเลื่อนแบ่ง 6 เปิดกลางชนมุม 90° (ไร้เสามุม)",
+     "page": 10,
+     "joints": "corner sash meeting through iS-0212 (บานล็อก) + iS-0213 (บานรอง)",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "corner 61.5 + 6.9",
+     "sash_overlap_mm": null,
+     "notes": " (same drawing as Iconiq 2024 p.29)"
+    }
+   ],
+   "hardware": [
+    {
+     "name": "Handle by CMECH",
+     "code": null,
+     "per": null,
+     "qty": null,
+     "page": 5
+    }
+   ],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "ICONIQ EURO SERIES – CASEMENT & AWNING SYSTEM",
+   "system": "casement",
+   "app_types": [
+    "บานกระทุ้ง",
+    "บานเปิด",
+    "บานสวิง"
+   ],
+   "frame_size_mm": "101.6x43.5",
+   "profiles": [],
+   "assembly": [
+    {
+     "type": "บานกระทุ้งเดี่ยว คิ้ว 12.7",
+     "page": 21,
+     "joints": "frame iC-0101 (head+jambs) + iC-0102 sill; sash iC-0201 80x40 mitred (crimp cleat iO-0207 + 030038 multipoint rod); SC-X105 covers C-groove; SC-X202 screen adaptor",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "frame face 18, gap 7, sash overlap 11.5, sash 80 (per side)",
+     "sash_overlap_mm": "11.5",
+     "notes": "Dims allow deriving sash = frame − 2×(18+7−11.5) = frame − 27 but this is NOT printed — verify with Alumet. (same drawing as Iconiq 2024 p.48)"
+    },
+    {
+     "type": "บานกระทุ้งเดี่ยว ต่อช่องแสงล่าง (คิ้วใน)",
+     "page": 22,
+     "joints": "iF-0104 ตบช่องแสง under iC-0102; fixed part iF-0102 sill",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "14.5, 14.5, 25; section C: 25 + 20 (SC-X106)",
+     "sash_overlap_mm": "11.5",
+     "notes": " (same drawing as Iconiq 2024 p.49)"
+    },
+    {
+     "type": "หน้าต่างบานเปิดเดี่ยว คิ้ว 20",
+     "page": 23,
+     "joints": "as awning, hinges on jamb",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "18 / 7 / 11.5 / 80",
+     "sash_overlap_mm": "11.5",
+     "notes": " (same drawing as Iconiq 2024 p.50)"
+    },
+    {
+     "type": "หน้าต่างบานเปิดคู่ คิ้ว 12.7",
+     "page": 24,
+     "joints": "no centre post; SC-0212 เสริมเสาบานเปิดคู่ on meeting stiles",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "18, 80 | 5 gap | 80, 18",
+     "sash_overlap_mm": "11.5",
+     "notes": " (same drawing as Iconiq 2024 p.51)"
+    },
+    {
+     "type": "ประตูบานเปิดเดี่ยว คิ้ว 12.7",
+     "page": 25,
+     "joints": "door sash iO-0201 100x40; bottom frame iO-0101 (43.5)",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "18 / 7 / 11.5 / 100",
+     "sash_overlap_mm": "11.5",
+     "notes": " (same drawing as Iconiq 2024 p.52)"
+    },
+    {
+     "type": "ประตูบานเปิดคู่ คิ้ว 33.5",
+     "page": 26,
+     "joints": "iO-0201 + SC-0212 meeting; sill iO-0102 + iC-0102",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "18,100 | 5 | 100,18",
+     "sash_overlap_mm": "11.5",
+     "notes": " (same drawing as Iconiq 2024 p.53)"
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "ICONIQ EURO SERIES – FIXED GLAZING SYSTEM",
+   "system": "fixed",
+   "app_types": [
+    "บานติดตาย"
+   ],
+   "frame_size_mm": "101.6x39.5",
+   "profiles": [],
+   "assembly": [
+    {
+     "type": "บานช่องแสงเดี่ยว คิ้ว 33.5",
+     "page": 30,
+     "joints": "iF-0101 head+jambs, iF-0102 sill, bead iO-0205 inside",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "frame 25 + bead 14.5 each side",
+     "sash_overlap_mm": null,
+     "notes": "glass size would be W − 2×(25+14.5) − clearance — NOT printed (same drawing as Iconiq 2024 p.60)"
+    },
+    {
+     "type": "บานช่องแสงแบ่งซอย 2 ช่อง คิ้ว 20",
+     "page": 31,
+     "joints": "vertical mullion iF-0103 (25 + 14.5 beads each side)",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "25 | 14.5 | 14.5 25 14.5 | 14.5 | 25",
+     "sash_overlap_mm": null,
+     "notes": " (same drawing as Iconiq 2024 p.61)"
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  }
+ ],
+ "new_families": [],
+ "open_questions": [
+  "ไฟล์นี้ซ้ำกับ Iconiq 2024 (ไม่มีหน้ารายการหน้าตัด) — ใช้ไฟล์ 2024 เป็นหลักได้เลยไหม",
+  "แบบ 'บานเลื่อนสลับ ต่อช่องแสงบน' มีในเล่ม 2024 แต่ไม่มีในเล่มนี้ — ไม่เป็นไรใช่ไหม"
+ ],
+ "unreadable_pages": []
+}

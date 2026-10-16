@@ -1,0 +1,3956 @@
+{
+ "source_pdf": "Alumet_Mini_Catalogue.pdf",
+ "supplier": "Alumet Co., Ltd. (อลูเม็ท)",
+ "brand": "ALUMET PRO – Mini Catalogue Aluminium Profile (standard Thai profiles)",
+ "catalogue_year": "not printed",
+ "pages": 47,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": "ALUMET PRO Mini Catalogue"
+  },
+  {
+   "page": 2,
+   "content": "other",
+   "series": "quote / awards"
+  },
+  {
+   "page": 3,
+   "content": "other",
+   "series": "company intro"
+  },
+  {
+   "page": 4,
+   "content": "other",
+   "series": "image"
+  },
+  {
+   "page": 5,
+   "content": "toc",
+   "series": "content"
+  },
+  {
+   "page": 6,
+   "content": "other",
+   "series": "alloy 6063-T5 chemistry & mechanical"
+  },
+  {
+   "page": 7,
+   "content": "other",
+   "series": "film thickness per colour"
+  },
+  {
+   "page": 8,
+   "content": "other",
+   "series": "divider"
+  },
+  {
+   "page": 9,
+   "content": "toc",
+   "series": "index of section numbers"
+  },
+  {
+   "page": 10,
+   "content": "series overview",
+   "series": "SL Sliding door & window"
+  },
+  {
+   "page": 11,
+   "content": "cut formula",
+   "series": "SL บานเลื่อนชุดมาตรฐาน"
+  },
+  {
+   "page": 12,
+   "content": "cut formula",
+   "series": "SL บานเลื่อนชุดบิ๊กเฟรม"
+  },
+  {
+   "page": 13,
+   "content": "profile table",
+   "series": "SL (anodize)"
+  },
+  {
+   "page": 14,
+   "content": "profile table",
+   "series": "SL (anodize)"
+  },
+  {
+   "page": 15,
+   "content": "profile table",
+   "series": "SL (anodize)"
+  },
+  {
+   "page": 16,
+   "content": "profile table",
+   "series": "SL (anodize)"
+  },
+  {
+   "page": 17,
+   "content": "profile table",
+   "series": "SL (powder coat)"
+  },
+  {
+   "page": 18,
+   "content": "profile table",
+   "series": "SL (powder coat)"
+  },
+  {
+   "page": 19,
+   "content": "profile table",
+   "series": "SL (powder coat)"
+  },
+  {
+   "page": 20,
+   "content": "profile table",
+   "series": "SL (powder coat)"
+  },
+  {
+   "page": 21,
+   "content": "series overview",
+   "series": "CAS casement window"
+  },
+  {
+   "page": 22,
+   "content": "cut formula",
+   "series": "CAS บานกระทุ้งชุดมาตรฐาน"
+  },
+  {
+   "page": 23,
+   "content": "cut formula",
+   "series": "CAS บานกระทุ้งชุดยูเนี่ยน"
+  },
+  {
+   "page": 24,
+   "content": "profile table",
+   "series": "CAS (anodize)"
+  },
+  {
+   "page": 25,
+   "content": "profile table",
+   "series": "CAS (powder coat)"
+  },
+  {
+   "page": 26,
+   "content": "series overview",
+   "series": "SH shopfront & door"
+  },
+  {
+   "page": 27,
+   "content": "cut formula",
+   "series": "SH ชุดบานสวิง"
+  },
+  {
+   "page": 28,
+   "content": "section drawing",
+   "series": "SH ชุดช่องแสง"
+  },
+  {
+   "page": 29,
+   "content": "profile table",
+   "series": "SH (anodize)"
+  },
+  {
+   "page": 30,
+   "content": "profile table",
+   "series": "SH (anodize)"
+  },
+  {
+   "page": 31,
+   "content": "profile table",
+   "series": "SH (anodize)"
+  },
+  {
+   "page": 32,
+   "content": "profile table",
+   "series": "SH (powder coat)"
+  },
+  {
+   "page": 33,
+   "content": "profile table",
+   "series": "SH (powder coat)"
+  },
+  {
+   "page": 34,
+   "content": "profile table",
+   "series": "SH (powder coat)"
+  },
+  {
+   "page": 35,
+   "content": "series overview",
+   "series": "OP opening door"
+  },
+  {
+   "page": 36,
+   "content": "profile table",
+   "series": "OP (anodize)"
+  },
+  {
+   "page": 37,
+   "content": "profile table",
+   "series": "OP (powder coat)"
+  },
+  {
+   "page": 38,
+   "content": "series overview",
+   "series": "CUR curtain wall"
+  },
+  {
+   "page": 39,
+   "content": "profile table",
+   "series": "CUR (anodize)"
+  },
+  {
+   "page": 40,
+   "content": "profile table",
+   "series": "CUR (powder coat)"
+  },
+  {
+   "page": 41,
+   "content": "series overview",
+   "series": "MC miscellaneous"
+  },
+  {
+   "page": 42,
+   "content": "profile table",
+   "series": "MC (anodize)"
+  },
+  {
+   "page": 43,
+   "content": "profile table",
+   "series": "MC (anodize + powder)"
+  },
+  {
+   "page": 44,
+   "content": "profile table",
+   "series": "MC (powder coat)"
+  },
+  {
+   "page": 45,
+   "content": "other",
+   "series": "standard colours"
+  },
+  {
+   "page": 46,
+   "content": "other",
+   "series": "project reference"
+  },
+  {
+   "page": 47,
+   "content": "other",
+   "series": "back cover"
+  }
+ ],
+ "weight_basis": "Tables print WEIGHT (KG/BAR) MIN-MAX per wall thickness, separately for anodize and powder coat; bar length printed per row (6.4 m for most, 6.0/6.1 m for some). kg_per_m below = derived (estimated).",
+ "series": [
+  {
+   "name": "SL – Sliding door & window (บานเลื่อนชุดมาตรฐาน 2 ราง 95 มม. / 2 ราง 3\" / 2 รางติดกล่อง 3\"-4\" / 3 ราง / บิ๊กเฟรม)",
+   "system": "sliding window",
+   "app_types": [
+    "บานเลื่อน",
+    "บานเลื่อนรางล่าง"
+   ],
+   "frame_size_mm": "95 (standard 2-rail), 3\" (76.2), 4\" box (101.6), big-frame 101.6",
+   "profiles": [
+    {
+     "die_no": "259",
+     "name": "ฉากกันตก",
+     "role_family": "ฉากกันตก",
+     "kg_per_m": 0.15,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.5,
+     "std_length_m": 6.0,
+     "page": 13,
+     "confidence": "estimated",
+     "page_powder": 17,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "0.8-1.0",
+       "powder_kg_per_bar": "0.85-1.05"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.5 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4001",
+     "name": "เฟรมบน",
+     "role_family": "เฟรมบน",
+     "kg_per_m": 0.633,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 13,
+     "confidence": "estimated",
+     "page_powder": 17,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "3.9-4.2",
+       "powder_kg_per_bar": "3.9-4.2"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "4.2-4.5",
+       "powder_kg_per_bar": "4.1-4.4"
+      },
+      {
+       "thickness_mm": "1.2 Over",
+       "anodize_kg_per_bar": null,
+       "powder_kg_per_bar": "4.4-4.7"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "5.4-5.8",
+       "powder_kg_per_bar": "5.6-6.1"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4002",
+     "name": "เฟรมล่าง",
+     "role_family": "เฟรมล่าง",
+     "kg_per_m": 0.477,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 13,
+     "confidence": "estimated",
+     "page_powder": 17,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "2.9-3.2",
+       "powder_kg_per_bar": "3.0-3.4"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "3.2-3.6",
+       "powder_kg_per_bar": "3.4-3.8"
+      },
+      {
+       "thickness_mm": "1.2 Over",
+       "anodize_kg_per_bar": "3.6-4.0",
+       "powder_kg_per_bar": "3.8-4.2"
+      },
+      {
+       "thickness_mm": "1.5 Under",
+       "anodize_kg_per_bar": "4.0-4.3",
+       "powder_kg_per_bar": "4.2-4.5"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4003",
+     "name": "เฟรมข้าง",
+     "role_family": "เฟรมข้าง",
+     "kg_per_m": 0.477,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 13,
+     "confidence": "estimated",
+     "page_powder": 17,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "2.9-3.2",
+       "powder_kg_per_bar": "3.0-3.4"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "3.2-3.5",
+       "powder_kg_per_bar": "3.4-3.7"
+      },
+      {
+       "thickness_mm": "1.5 Under",
+       "anodize_kg_per_bar": "3.9-4.3",
+       "powder_kg_per_bar": "4.1-4.5"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "4.3-4.7",
+       "powder_kg_per_bar": "4.3-4.7"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4010",
+     "name": "ตบธรณี",
+     "role_family": "ตบธรณีบานเลื่อน",
+     "kg_per_m": 0.172,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 13,
+     "confidence": "estimated",
+     "page_powder": 17,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "1.0-1.2",
+       "powder_kg_per_bar": "1.05-1.25"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "1.2-1.4",
+       "powder_kg_per_bar": "1.25-1.45"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4033",
+     "name": "ตบธรณีขาสูง",
+     "role_family": "ตบธรณีบานเลื่อน",
+     "kg_per_m": 0.341,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.4,
+     "std_length_m": 6.4,
+     "page": 13,
+     "confidence": "estimated",
+     "page_powder": 17,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.4",
+       "anodize_kg_per_bar": "2.18",
+       "powder_kg_per_bar": "2.28"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.4 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4034",
+     "name": "เฟรมล่างขาสูง",
+     "role_family": "เฟรมล่าง",
+     "kg_per_m": 0.831,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 13,
+     "confidence": "estimated",
+     "page_powder": 17,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "5.32",
+       "powder_kg_per_bar": "5.58"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4869",
+     "name": "เฟรมข้างติดกล่อง",
+     "role_family": "รางข้างติดกล่อง",
+     "kg_per_m": 0.789,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 13,
+     "confidence": "estimated",
+     "page_powder": 17,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "4.9-5.2",
+       "powder_kg_per_bar": "5.0-5.3"
+      },
+      {
+       "thickness_mm": "1.2 Over",
+       "anodize_kg_per_bar": "5.2-5.5",
+       "powder_kg_per_bar": "5.2-5.5"
+      },
+      {
+       "thickness_mm": "1.3",
+       "anodize_kg_per_bar": "5.5-5.8",
+       "powder_kg_per_bar": "5.5-5.8"
+      },
+      {
+       "thickness_mm": "1.3 Over",
+       "anodize_kg_per_bar": null,
+       "powder_kg_per_bar": "5.8-6.1"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "5.9-6.3",
+       "powder_kg_per_bar": "6.2-6.6"
+      },
+      {
+       "thickness_mm": "1.5 Over",
+       "anodize_kg_per_bar": "6.3-6.6",
+       "powder_kg_per_bar": "6.6-7.0"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4870",
+     "name": "เฟรมบนติดกล่อง",
+     "role_family": "รางบนติดกล่อง",
+     "kg_per_m": 0.938,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 13,
+     "confidence": "estimated",
+     "page_powder": 17,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "5.8-6.2",
+       "powder_kg_per_bar": "5.8-6.2"
+      },
+      {
+       "thickness_mm": "1.0 Over",
+       "anodize_kg_per_bar": null,
+       "powder_kg_per_bar": "6.1-6.5"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "6.2-6.5",
+       "powder_kg_per_bar": "6.5-6.8"
+      },
+      {
+       "thickness_mm": "1.2 Over",
+       "anodize_kg_per_bar": "6.5-6.8",
+       "powder_kg_per_bar": "6.8-7.15"
+      },
+      {
+       "thickness_mm": "1.5 Under",
+       "anodize_kg_per_bar": "6.8-7.2",
+       "powder_kg_per_bar": "7.15-7.6"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "7.2-7.6",
+       "powder_kg_per_bar": "7.6-8.0"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4871",
+     "name": "เฟรมล่างติดกล่อง",
+     "role_family": "รางล่างติดกล่อง",
+     "kg_per_m": 0.883,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 13,
+     "confidence": "estimated",
+     "page_powder": 17,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "5.5-5.8",
+       "powder_kg_per_bar": "5.5-5.8"
+      },
+      {
+       "thickness_mm": "1.0 Over",
+       "anodize_kg_per_bar": null,
+       "powder_kg_per_bar": "5.8-6.1"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "5.8-6.2",
+       "powder_kg_per_bar": "6.1-6.5"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "6.8-7.2",
+       "powder_kg_per_bar": "7.1-7.55"
+      },
+      {
+       "thickness_mm": "1.5 Over",
+       "anodize_kg_per_bar": "7.2-7.6",
+       "powder_kg_per_bar": "7.55-8.0"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4872",
+     "name": "ตบธรณีขาสูง (ติดกล่อง 4\")",
+     "role_family": "ตบธรณีบานเลื่อน",
+     "kg_per_m": 0.237,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 13,
+     "confidence": "estimated",
+     "page_powder": 18,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "1.52",
+       "powder_kg_per_bar": "1.59"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4004",
+     "name": "เฟรมบน 3\"",
+     "role_family": "เฟรมบน 3\"",
+     "kg_per_m": 0.539,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 14,
+     "confidence": "estimated",
+     "page_powder": 18,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "3.3-3.6",
+       "powder_kg_per_bar": "3.5-3.8"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "3.7-4.0",
+       "powder_kg_per_bar": "3.9-4.2"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4005",
+     "name": "เฟรมล่าง 3\"",
+     "role_family": "เฟรมล่าง 3\"",
+     "kg_per_m": 0.398,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 14,
+     "confidence": "estimated",
+     "page_powder": 18,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "2.4-2.7",
+       "powder_kg_per_bar": "2.5-2.85"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "2.7-3.0",
+       "powder_kg_per_bar": "2.85-3.2"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4006",
+     "name": "เฟรมข้าง 3\"",
+     "role_family": "เฟรมข้าง 3\"",
+     "kg_per_m": 0.414,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 14,
+     "confidence": "estimated",
+     "page_powder": 18,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "2.5-2.8",
+       "powder_kg_per_bar": "2.6-2.95"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "2.8-3.1",
+       "powder_kg_per_bar": "2.95-3.3"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "020070",
+     "name": "เฟรมบนติดกล่อง 3\"",
+     "role_family": "รางบนติดกล่อง",
+     "kg_per_m": 0.927,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 14,
+     "confidence": "estimated",
+     "page_powder": 18,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "5.93",
+       "powder_kg_per_bar": "6.22"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "020071",
+     "name": "เฟรมข้างติดกล่อง 3\"",
+     "role_family": "รางข้างติดกล่อง",
+     "kg_per_m": 0.78,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 14,
+     "confidence": "estimated",
+     "page_powder": 18,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "4.99",
+       "powder_kg_per_bar": "5.24"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "020072",
+     "name": "เฟรมล่างติดกล่อง 3\"",
+     "role_family": "รางล่างติดกล่อง",
+     "kg_per_m": 0.784,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 14,
+     "confidence": "estimated",
+     "page_powder": 18,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "5.02",
+       "powder_kg_per_bar": "5.28"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "14008",
+     "name": "เฟรมล่าง 3 ราง (มีตบธรณี)",
+     "role_family": "ธรณี 3 ราง",
+     "kg_per_m": 0.631,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.3,
+     "std_length_m": 6.4,
+     "page": 14,
+     "confidence": "estimated",
+     "page_powder": 18,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.3",
+       "anodize_kg_per_bar": "4.04",
+       "powder_kg_per_bar": "4.25"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.3 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "14009",
+     "name": "เฟรมข้าง 3 ราง",
+     "role_family": "เฟรมข้าง",
+     "kg_per_m": 0.741,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.3,
+     "std_length_m": 6.4,
+     "page": 14,
+     "confidence": "estimated",
+     "page_powder": 18,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.3",
+       "anodize_kg_per_bar": "4.74",
+       "powder_kg_per_bar": "4.97"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.3 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "14010",
+     "name": "เฟรมบน 3 ราง",
+     "role_family": "เฟรมบน",
+     "kg_per_m": 0.886,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.3,
+     "std_length_m": 6.4,
+     "page": 14,
+     "confidence": "estimated",
+     "page_powder": 18,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.3",
+       "anodize_kg_per_bar": "5.67",
+       "powder_kg_per_bar": "5.95"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.3 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "020043",
+     "name": "เฟรมล่าง 3 ราง (ภายใน)",
+     "role_family": "รางล่างชุด4\"ใหม่ 3ราง",
+     "kg_per_m": 0.642,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 14,
+     "confidence": "estimated",
+     "page_powder": 18,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "4.11",
+       "powder_kg_per_bar": "4.31"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.5 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "020052",
+     "name": "เฟรมล่าง 3 ราง (ภายนอก)",
+     "role_family": "รางล่างชุด4\"ใหม่ 3ราง",
+     "kg_per_m": 0.677,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.3,
+     "std_length_m": 6.4,
+     "page": 14,
+     "confidence": "estimated",
+     "page_powder": 18,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.3",
+       "anodize_kg_per_bar": "4.33",
+       "powder_kg_per_bar": "4.55"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.3 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "2006",
+     "name": "กรอบมุ้ง",
+     "role_family": "กรอบมุ้งบานเลื่อน",
+     "kg_per_m": 0.266,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 14,
+     "confidence": "estimated",
+     "page_powder": 18,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "1.6-1.8",
+       "powder_kg_per_bar": "1.7-1.9"
+      },
+      {
+       "thickness_mm": "1.0 Over",
+       "anodize_kg_per_bar": "1.8-2.0",
+       "powder_kg_per_bar": "1.9-2.1"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "2.0-2.2",
+       "powder_kg_per_bar": "2.1-2.3"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4011",
+     "name": "เสากุญแจ",
+     "role_family": "เสากุญแจบานเลื่อน",
+     "kg_per_m": 0.477,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 14,
+     "confidence": "estimated",
+     "page_powder": 18,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "2.9-3.2",
+       "powder_kg_per_bar": "3.0-3.4"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "3.1-3.4",
+       "powder_kg_per_bar": "3.3-3.6"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "4.0-4.3",
+       "powder_kg_per_bar": "4.2-4.5"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4012",
+     "name": "เสาเกี่ยว",
+     "role_family": "เสาเกี่ยวบานเลื่อน",
+     "kg_per_m": 0.477,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 14,
+     "confidence": "estimated",
+     "page_powder": 18,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "2.9-3.2",
+       "powder_kg_per_bar": "3.0-3.4"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "3.1-3.4",
+       "powder_kg_per_bar": "3.3-3.6"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "4.0-4.3",
+       "powder_kg_per_bar": "4.2-4.5"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4013",
+     "name": "เสาตาย",
+     "role_family": "เสาตายบานเลื่อน",
+     "kg_per_m": 0.352,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "estimated",
+     "page_powder": 19,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "2.1-2.4",
+       "powder_kg_per_bar": "2.2-2.5"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "2.7-3.0",
+       "powder_kg_per_bar": "2.9-3.2"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4014",
+     "name": "ขวางบน",
+     "role_family": "ขวางบนบานเลื่อน",
+     "kg_per_m": 0.359,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "estimated",
+     "page_powder": 19,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "2.2-2.4",
+       "powder_kg_per_bar": "2.3-2.5"
+      },
+      {
+       "thickness_mm": "1.0 Over",
+       "anodize_kg_per_bar": "2.4-2.6",
+       "powder_kg_per_bar": "2.5-2.8"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "3.0-3.3",
+       "powder_kg_per_bar": "3.1-3.5"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4015",
+     "name": "ขวางล่าง",
+     "role_family": "ขวางล่างบานเลื่อน",
+     "kg_per_m": 0.477,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "estimated",
+     "page_powder": 19,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "2.9-3.2",
+       "powder_kg_per_bar": "3.0-3.3"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "3.1-3.4",
+       "powder_kg_per_bar": "3.25-3.6"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "4.0-4.3",
+       "powder_kg_per_bar": "4.2-4.5"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4016",
+     "name": "ประกบกลาง",
+     "role_family": "ประกบกลาง",
+     "kg_per_m": 0.234,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "estimated",
+     "page_powder": 19,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "1.4-1.6",
+       "powder_kg_per_bar": "1.3-1.5"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4017",
+     "name": "ชนกลางมุ้ง",
+     "role_family": "ชนกลางมุ้ง",
+     "kg_per_m": 0.148,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "estimated",
+     "page_powder": 19,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "0.8-1.1",
+       "powder_kg_per_bar": "0.8-1.2"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4018",
+     "name": "เส้นแบ่งกลาง",
+     "role_family": "เส้นต่อกลาง",
+     "kg_per_m": 0.367,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "estimated",
+     "page_powder": 19,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "2.2-2.5",
+       "powder_kg_per_bar": "2.3-2.6"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "14003",
+     "name": "เสากุญแจตัวเมีย",
+     "role_family": "เสากุญแจบานเลื่อน",
+     "kg_per_m": 0.784,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "estimated",
+     "page_powder": 19,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "5.02",
+       "powder_kg_per_bar": "5.27"
+      },
+      {
+       "thickness_mm": "1.7",
+       "anodize_kg_per_bar": "5.5",
+       "powder_kg_per_bar": "5.77"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.5 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "14004",
+     "name": "เสากุญแจตัวผู้",
+     "role_family": "เสากุญแจบานเลื่อน",
+     "kg_per_m": 0.894,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.65,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "estimated",
+     "page_powder": 19,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.65 (ano) / 1.7 (pc)",
+       "anodize_kg_per_bar": "5.72",
+       "powder_kg_per_bar": "6.01"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.65 (ano) / 1.7 (pc) mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "14005",
+     "name": "เสาเกี่ยว 2\"",
+     "role_family": "เสาเกี่ยวบานเลื่อน",
+     "kg_per_m": 0.909,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.7,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "estimated",
+     "page_powder": 19,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.7",
+       "anodize_kg_per_bar": "5.82",
+       "powder_kg_per_bar": "6.12"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.7 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "14007",
+     "name": "เสาเกี่ยว 2 หน้า",
+     "role_family": "เสาเกี่ยวบานเลื่อน",
+     "kg_per_m": 0.762,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "estimated",
+     "page_powder": 19,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "4.88",
+       "powder_kg_per_bar": "5.13"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.5 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "14091",
+     "name": "เสาเกี่ยวมีมือจับ",
+     "role_family": "เสาเกี่ยวบานเลื่อน",
+     "kg_per_m": 1.187,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.7,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "estimated",
+     "page_powder": 19,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.7",
+       "anodize_kg_per_bar": "7.60",
+       "powder_kg_per_bar": "7.98"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.7 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4050",
+     "name": "ถาดรางน้ำ (บิ๊กเฟรม)",
+     "role_family": "ถาดรางน้ำ",
+     "kg_per_m": 0.433,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.0,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "estimated",
+     "page_powder": 19,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "2.77",
+       "powder_kg_per_bar": "2.91"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 2.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4055",
+     "name": "เฟรมล่างบิ๊กเฟรม",
+     "role_family": "รางล่างบิ๊กเฟรม",
+     "kg_per_m": 1.705,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 3.0,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "estimated",
+     "page_powder": 19,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "3.0",
+       "anodize_kg_per_bar": "10.91",
+       "powder_kg_per_bar": "11.46"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 3.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4056",
+     "name": "เฟรมบนบิ๊กเฟรม",
+     "role_family": "รางบนบิ๊กเฟรม",
+     "kg_per_m": 1.286,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.0,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "estimated",
+     "page_powder": 19,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "8.23",
+       "powder_kg_per_bar": "8.64"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 2.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4058",
+     "name": "เฟรมข้างบิ๊กเฟรม",
+     "role_family": "รางข้าง",
+     "kg_per_m": 1.203,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 16,
+     "confidence": "estimated",
+     "page_powder": 20,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "7.70",
+       "powder_kg_per_bar": "8.08"
+      },
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "8.77",
+       "powder_kg_per_bar": "9.21"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "020099",
+     "name": "เฟรมล่าง 2 ราง บิ๊กเฟรมไม่มีมุ้ง",
+     "role_family": "รางล่างบิ๊กเฟรม2ราง",
+     "kg_per_m": 1.086,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 16,
+     "confidence": "estimated",
+     "page_powder": 20,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "6.95",
+       "powder_kg_per_bar": "7.30"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "020132",
+     "name": "เฟรมบนบิ๊กเฟรมมีมุ้ง",
+     "role_family": "รางบนบิ๊กเฟรม",
+     "kg_per_m": 1.45,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 16,
+     "confidence": "estimated",
+     "page_powder": 20,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "9.28",
+       "powder_kg_per_bar": "9.74"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "020133",
+     "name": "เฟรมล่างบิ๊กเฟรมมีมุ้ง",
+     "role_family": "รางล่างบิ๊กเฟรม",
+     "kg_per_m": 1.373,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 16,
+     "confidence": "estimated",
+     "page_powder": 20,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "8.79",
+       "powder_kg_per_bar": "9.23"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "020134",
+     "name": "เฟรมข้างขวาบิ๊กเฟรมมีมุ้ง",
+     "role_family": "รางข้าง",
+     "kg_per_m": 1.459,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 16,
+     "confidence": "estimated",
+     "page_powder": 20,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "9.34",
+       "powder_kg_per_bar": "9.81"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "020135",
+     "name": "เฟรมข้างซ้ายบิ๊กเฟรมมีมุ้ง",
+     "role_family": "รางข้าง",
+     "kg_per_m": 1.459,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 16,
+     "confidence": "estimated",
+     "page_powder": 20,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "9.34",
+       "powder_kg_per_bar": "9.81"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4051",
+     "name": "เสากุญแจตัวผู้บิ๊กเฟรม",
+     "role_family": "เสากุญแจบานเลื่อน",
+     "kg_per_m": 1.109,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 16,
+     "confidence": "estimated",
+     "page_powder": 20,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "7.10",
+       "powder_kg_per_bar": "7.45"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4052",
+     "name": "ขวางล่างในบิ๊กเฟรม",
+     "role_family": "ขวางล่างบานเลื่อน",
+     "kg_per_m": 0.992,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 16,
+     "confidence": "estimated",
+     "page_powder": 20,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "6.35",
+       "powder_kg_per_bar": "6.67"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4053",
+     "name": "ขวางล่างนอกบิ๊กเฟรม",
+     "role_family": "ขวางล่างบานเลื่อน",
+     "kg_per_m": 1.48,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 16,
+     "confidence": "estimated",
+     "page_powder": 20,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "9.47",
+       "powder_kg_per_bar": "9.94"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4054",
+     "name": "เสากุญแจตัวเมียบิ๊กเฟรม",
+     "role_family": "เสากุญแจบานเลื่อน",
+     "kg_per_m": 1.298,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 16,
+     "confidence": "estimated",
+     "page_powder": 20,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "8.31",
+       "powder_kg_per_bar": "8.72"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4057",
+     "name": "เสาตายบิ๊กเฟรม",
+     "role_family": "เสาตายบานเลื่อน",
+     "kg_per_m": 0.798,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 16,
+     "confidence": "estimated",
+     "page_powder": 20,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "5.11",
+       "powder_kg_per_bar": "5.37"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4059",
+     "name": "เสาเกี่ยวบิ๊กเฟรม",
+     "role_family": "เสาเกี่ยวบานเลื่อน",
+     "kg_per_m": 1.409,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 16,
+     "confidence": "estimated",
+     "page_powder": 20,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "9.02",
+       "powder_kg_per_bar": "9.48"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4060",
+     "name": "ขวางบนบิ๊กเฟรม",
+     "role_family": "ขวางบนบานเลื่อน",
+     "kg_per_m": 0.725,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 16,
+     "confidence": "estimated",
+     "page_powder": 20,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "4.64",
+       "powder_kg_per_bar": "4.87"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานเลื่อนชุดมาตรฐาน (2 บาน + fixed, fly screen)",
+     "page": 11,
+     "joints": "Section A-A: head KP255A, sill KP254A (plastic/rubber?), sash rails 4022 top / 4023 bottom with roller, 4010 sill cover; screen frame 2006. Section B-B: jamb 4021 + KP253A, lock stile 4020, interlock 4019/4016, screen 2006/4015",
+     "cut_formulas": [
+      {
+       "member": "sash height (h)",
+       "formula_as_printed": "h = H-28",
+       "formula_normalised": "H - 28"
+      },
+      {
+       "member": "sash width (w, each)",
+       "formula_as_printed": "w = (W-14.14)/จำนวนบาน +17.15",
+       "formula_normalised": "(W - 14.14)/n + 17.15"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "head 19 + 6, bottom 9 + 4; interlock 34.3; wool-pile gap 3",
+     "sash_overlap_mm": "34.3 (dimension printed at interlock)",
+     "notes": "Drawing die numbers 4019-4023 are not in this catalogue's weight tables (tables list 4001-4018). Glass 6 mm."
+    },
+    {
+     "type": "บานเลื่อนชุดบิ๊กเฟรม (2 บาน + fixed, fly screen)",
+     "page": 12,
+     "joints": "jambs 020048 + 020037; lock stile 4051, interlock 020038; rails 4060 top, 4052/4053 bottom; head 020047, sill 020049; frame 101.6",
+     "cut_formulas": [
+      {
+       "member": "sash height (h)",
+       "formula_as_printed": "h = H-24",
+       "formula_normalised": "H - 24"
+      },
+      {
+       "member": "sash width (w, each)",
+       "formula_as_printed": "w = (W-45)/จำนวนบาน +25.5",
+       "formula_normalised": "(W - 45)/n + 25.5"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "head 9, bottom 15; jamb 22.5 / 35; stile 48",
+     "sash_overlap_mm": "48 (stile width printed at interlock)",
+     "notes": "020036/020037/020038/020047/020048/020049 appear in drawing but weights not listed in tables"
+    }
+   ],
+   "hardware": [
+    {
+     "name": "KP253A / KP254A / KP255A (accessory codes in drawing)",
+     "code": "KP253A, KP254A, KP255A",
+     "per": null,
+     "qty": null,
+     "page": 11
+    },
+    {
+     "name": "ROLLER",
+     "code": null,
+     "per": "sash",
+     "qty": null,
+     "page": 11
+    }
+   ],
+   "accessories": [
+    {
+     "name": "WOOL PILE, GASKET",
+     "page": 11
+    }
+   ],
+   "prices": []
+  },
+  {
+   "name": "CAS – Casement window (มาตรฐาน / ยูเนี่ยน / บานเปลือย)",
+   "system": "awning",
+   "app_types": [
+    "บานกระทุ้ง"
+   ],
+   "frame_size_mm": "set in 4\" box 3013 (standard); AL261 frame (union)",
+   "profiles": [
+    {
+     "die_no": "5080",
+     "name": "กรอบนอกขาเท่า",
+     "role_family": "กรอบนอกกระทุ้ง",
+     "kg_per_m": 0.375,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.7,
+     "std_length_m": 6.4,
+     "page": 24,
+     "confidence": "estimated",
+     "page_powder": 25,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.7",
+       "anodize_kg_per_bar": "2.2-2.6",
+       "powder_kg_per_bar": "2.3-2.7"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.7 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "5076",
+     "name": "กรอบบานกระทุ้ง",
+     "role_family": "กรอบในกระทุ้ง+คิ้ว",
+     "kg_per_m": 0.586,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 24,
+     "confidence": "estimated",
+     "page_powder": 25,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "3.6-3.9",
+       "powder_kg_per_bar": "3.8-4.1"
+      },
+      {
+       "thickness_mm": "1.7",
+       "anodize_kg_per_bar": "3.9-4.2",
+       "powder_kg_per_bar": "4.1-4.4"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.5 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "5005",
+     "name": "คิ้วกระทุ้ง",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.133,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 24,
+     "confidence": "estimated",
+     "page_powder": 25,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "0.8-0.9",
+       "powder_kg_per_bar": "0.85-0.95"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "AL261",
+     "name": "กรอบนอกขาเท่ายูเนี่ยน",
+     "role_family": "กรอบนอกกระทุ้ง",
+     "kg_per_m": 0.367,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 24,
+     "confidence": "estimated",
+     "page_powder": 25,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "2.2-2.5",
+       "powder_kg_per_bar": "2.3-2.6"
+      },
+      {
+       "thickness_mm": "1.8 Over",
+       "anodize_kg_per_bar": "2.5-2.8",
+       "powder_kg_per_bar": "2.6-3.0"
+      },
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "3.3-3.6",
+       "powder_kg_per_bar": "3.5-3.8"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "5025",
+     "name": "กรอบบานกระทุ้งยูเนี่ยน",
+     "role_family": "กรอบในกระทุ้ง+คิ้ว",
+     "kg_per_m": 0.531,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 24,
+     "confidence": "estimated",
+     "page_powder": 25,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.5 Under",
+       "anodize_kg_per_bar": null,
+       "powder_kg_per_bar": "3.0-3.4"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "3.2-3.6",
+       "powder_kg_per_bar": "3.4-3.8"
+      },
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "4.2-4.6",
+       "powder_kg_per_bar": "4.4-4.8"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.5 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "AL262",
+     "name": "คิ้วกระทุ้งยูเนี่ยน",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.137,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 24,
+     "confidence": "estimated",
+     "page_powder": 25,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "0.8-0.95",
+       "powder_kg_per_bar": "0.85-1.0"
+      },
+      {
+       "thickness_mm": "1.1",
+       "anodize_kg_per_bar": "0.95-1.1",
+       "powder_kg_per_bar": "1.0-1.15"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "9296",
+     "name": "กรอบนอกกระทุ้งเปลือย",
+     "role_family": "กรอบนอกกระทุ้ง",
+     "kg_per_m": 0.42,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.0,
+     "std_length_m": 6.4,
+     "page": 24,
+     "confidence": "estimated",
+     "page_powder": 25,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "2.69",
+       "powder_kg_per_bar": "2.82"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 2.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "9295",
+     "name": "กรอบบานกระทุ้งเปลือย",
+     "role_family": "กรอบในกระทุ้ง+คิ้ว",
+     "kg_per_m": 0.887,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.0,
+     "std_length_m": 6.4,
+     "page": 24,
+     "confidence": "estimated",
+     "page_powder": 25,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "5.68",
+       "powder_kg_per_bar": "5.96"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 2.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานกระทุ้งชุดมาตรฐาน (ติดในกล่องเรียบ 4\" 3013)",
+     "page": 22,
+     "joints": "outer box 3013, frame 5004 (not in table), sash 5076, bead 5005, mullion 5009 (not in table)",
+     "cut_formulas": [
+      {
+       "member": "sash/opening height",
+       "formula_as_printed": "H=h-124.9",
+       "formula_normalised": "H_inner = H - 124.9 (label letters appear swapped; overall H minus 2×62.45)"
+      },
+      {
+       "member": "sash/opening width",
+       "formula_as_printed": "W=W-124.9",
+       "formula_normalised": "W_inner = W - 124.9"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "62.45 each side = 57.45 box + 5 gap",
+     "sash_overlap_mm": null,
+     "notes": "formula letters printed ambiguously (H=h-124.9, W=W-124.9) — means inner = outer − 124.9"
+    },
+    {
+     "type": "บานกระทุ้งชุดยูเนี่ยน",
+     "page": 23,
+     "joints": "frame AL261 all round, sash 5025, bead AL262",
+     "cut_formulas": [
+      {
+       "member": "sash height (h)",
+       "formula_as_printed": "h=H-58",
+       "formula_normalised": "H - 58"
+      },
+      {
+       "member": "sash width (w)",
+       "formula_as_printed": "w=W-54",
+       "formula_normalised": "W - 54"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "top/bottom 29 each; sides 25.08 and 28.57 printed",
+     "sash_overlap_mm": null,
+     "notes": ""
+    }
+   ],
+   "hardware": [],
+   "accessories": [
+    {
+     "name": "GASKET, WOOL PILE, SILICONE SEALANT",
+     "page": 23
+    }
+   ],
+   "prices": []
+  },
+  {
+   "name": "SH – Shopfront & door (ช่องแสง 4\" / ช่องแสง 3\" / บานสวิง)",
+   "system": "swing door",
+   "app_types": [
+    "บานสวิง",
+    "บานติดตาย"
+   ],
+   "frame_size_mm": "4\" (101.6x44.45) and 3\" boxes",
+   "profiles": [
+    {
+     "die_no": "3012",
+     "name": "กล่องร่อง 4\"",
+     "role_family": "กล่องร่อง",
+     "kg_per_m": 0.789,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 29,
+     "confidence": "estimated",
+     "page_powder": 32,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "4.9-5.2",
+       "powder_kg_per_bar": "4.9-5.2"
+      },
+      {
+       "thickness_mm": "1.0 Over",
+       "anodize_kg_per_bar": null,
+       "powder_kg_per_bar": "5.1-5.4"
+      },
+      {
+       "thickness_mm": "1.1",
+       "anodize_kg_per_bar": "5.2-5.5",
+       "powder_kg_per_bar": "5.4-5.8"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "5.5-5.8",
+       "powder_kg_per_bar": "5.8-6.1"
+      },
+      {
+       "thickness_mm": "1.5 Under",
+       "anodize_kg_per_bar": "6.4-6.8",
+       "powder_kg_per_bar": "6.7-7.2"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "6.8-7.2",
+       "powder_kg_per_bar": "7.1-7.6"
+      },
+      {
+       "thickness_mm": "1.5 Over",
+       "anodize_kg_per_bar": "7.5-8.0",
+       "powder_kg_per_bar": "7.9-8.4"
+      },
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "8.3-8.8",
+       "powder_kg_per_bar": "8.7-9.25"
+      },
+      {
+       "thickness_mm": "1.8 Over",
+       "anodize_kg_per_bar": "8.8-9.2",
+       "powder_kg_per_bar": "9.2-9.7"
+      },
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "9.2-10.0",
+       "powder_kg_per_bar": "9.6-10.5"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3013",
+     "name": "กล่องเรียบ 4\"",
+     "role_family": "กล่องเรียบ",
+     "kg_per_m": 0.633,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 29,
+     "confidence": "estimated",
+     "page_powder": 32,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "3.9-4.2",
+       "powder_kg_per_bar": "3.9-4.2"
+      },
+      {
+       "thickness_mm": "1.0 Over",
+       "anodize_kg_per_bar": null,
+       "powder_kg_per_bar": "4.1-4.4"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "4.2-4.5",
+       "powder_kg_per_bar": "4.4-4.7"
+      },
+      {
+       "thickness_mm": "1.5 Under",
+       "anodize_kg_per_bar": "4.9-5.2",
+       "powder_kg_per_bar": "5.1-5.5"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "5.2-5.5",
+       "powder_kg_per_bar": "5.5-5.8"
+      },
+      {
+       "thickness_mm": "1.5 Over",
+       "anodize_kg_per_bar": "5.5-5.8",
+       "powder_kg_per_bar": "5.8-6.1"
+      },
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "6.5-6.9",
+       "powder_kg_per_bar": "6.8-7.25"
+      },
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "6.9-7.2",
+       "powder_kg_per_bar": "7.25-7.6"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3014",
+     "name": "ตบร่อง",
+     "role_family": "ตบร่อง",
+     "kg_per_m": 0.367,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 29,
+     "confidence": "estimated",
+     "page_powder": 32,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "2.2-2.5",
+       "powder_kg_per_bar": "2.3-2.6"
+      },
+      {
+       "thickness_mm": "1.0 Over",
+       "anodize_kg_per_bar": "2.5-2.8",
+       "powder_kg_per_bar": "2.6-3.0"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "2.9-3.2",
+       "powder_kg_per_bar": "3.0-3.4"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "3.5-3.8",
+       "powder_kg_per_bar": "3.7-4.0"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3015",
+     "name": "ตบเรียบ",
+     "role_family": "ตบเรียบ",
+     "kg_per_m": 0.258,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 29,
+     "confidence": "estimated",
+     "page_powder": 32,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "1.5-1.8",
+       "powder_kg_per_bar": "1.6-1.9"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "1.8-2.1",
+       "powder_kg_per_bar": "1.9-2.2"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "2.5-2.8",
+       "powder_kg_per_bar": "2.6-2.9"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3016",
+     "name": "กล่องเปิด-ปิด 4\"",
+     "role_family": "กล่องเปิดปิด",
+     "kg_per_m": 0.648,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 29,
+     "confidence": "estimated",
+     "page_powder": 32,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "4.0-4.3",
+       "powder_kg_per_bar": "4.2-4.5"
+      },
+      {
+       "thickness_mm": "1.0 Over",
+       "anodize_kg_per_bar": "4.3-4.6",
+       "powder_kg_per_bar": "4.5-4.8"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "4.6-4.9",
+       "powder_kg_per_bar": "4.8-5.2"
+      },
+      {
+       "thickness_mm": "1.2 Over",
+       "anodize_kg_per_bar": "4.9-5.2",
+       "powder_kg_per_bar": "5.2-5.5"
+      },
+      {
+       "thickness_mm": "1.5 Under",
+       "anodize_kg_per_bar": "5.2-5.5",
+       "powder_kg_per_bar": "5.5-5.8"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "5.5-5.8",
+       "powder_kg_per_bar": "5.8-6.1"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3017",
+     "name": "ฝาเปิด-ปิด 4\"",
+     "role_family": "ฝาเปิดปิด",
+     "kg_per_m": 0.266,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 30,
+     "confidence": "estimated",
+     "page_powder": 33,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "1.6-1.8",
+       "powder_kg_per_bar": "1.7-1.9"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "1.8-2.0",
+       "powder_kg_per_bar": "1.9-2.1"
+      },
+      {
+       "thickness_mm": "1.2 Over",
+       "anodize_kg_per_bar": "2.0-2.2",
+       "powder_kg_per_bar": null
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "2.2-2.5",
+       "powder_kg_per_bar": "2.3-2.6"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3018",
+     "name": "คิ้วลอยเทเล็ก",
+     "role_family": "คิ้วลอยเทเล็ก",
+     "kg_per_m": 0.109,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 30,
+     "confidence": "estimated",
+     "page_powder": 33,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "0.6-0.8",
+       "powder_kg_per_bar": "0.6-0.8"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3019",
+     "name": "คิ้วลอยเทใหญ่",
+     "role_family": "คิ้วลอยเทใหญ่",
+     "kg_per_m": 0.188,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 30,
+     "confidence": "estimated",
+     "page_powder": 33,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "1.1-1.3",
+       "powder_kg_per_bar": "1.1-1.3"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3058",
+     "name": "คิ้วเทเล็ก",
+     "role_family": "คิ้วลอยเทเล็ก",
+     "kg_per_m": 0.125,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 30,
+     "confidence": "estimated",
+     "page_powder": 33,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "0.75-0.85",
+       "powder_kg_per_bar": "0.8-0.9"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3060",
+     "name": "รางแขวน",
+     "role_family": "รางแขวนใหญ่",
+     "kg_per_m": 0.727,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.9,
+     "std_length_m": 6.0,
+     "page": 30,
+     "confidence": "estimated",
+     "page_powder": 33,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.9",
+       "anodize_kg_per_bar": "4.36",
+       "powder_kg_per_bar": "4.57"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.9 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3063",
+     "name": "คิ้วเทใหญ่",
+     "role_family": "คิ้วลอยเทใหญ่",
+     "kg_per_m": 0.109,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 30,
+     "confidence": "estimated",
+     "page_powder": 33,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "0.6-0.8",
+       "powder_kg_per_bar": "0.65-0.85"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3064",
+     "name": "เสามุม 2 ทาง",
+     "role_family": "เสามุม 2 ทาง",
+     "kg_per_m": 2.261,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.5,
+     "std_length_m": 6.4,
+     "page": 30,
+     "confidence": "estimated",
+     "page_powder": 33,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "2.5",
+       "anodize_kg_per_bar": "14.47",
+       "powder_kg_per_bar": "15.19"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 2.5 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3116",
+     "name": "เสามุม 135",
+     "role_family": "เสามุม 135",
+     "kg_per_m": 1.034,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.3,
+     "std_length_m": 6.4,
+     "page": 30,
+     "confidence": "estimated",
+     "page_powder": 33,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.3",
+       "anodize_kg_per_bar": "6.62",
+       "powder_kg_per_bar": "6.95"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.3 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "4024",
+     "name": "ขาบานเปลือย",
+     "role_family": "ขาบานเปลือย",
+     "kg_per_m": 2.68,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 3.6,
+     "std_length_m": 6.1,
+     "page": 30,
+     "confidence": "estimated",
+     "page_powder": 33,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "3.6",
+       "anodize_kg_per_bar": "16.35",
+       "powder_kg_per_bar": "17.17"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 3.6 mm ÷ 6.1 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "837",
+     "name": "กล่องไม้ขีด",
+     "role_family": "กล่องไม้ขีด",
+     "kg_per_m": 1.0,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.0,
+     "page": 30,
+     "confidence": "estimated",
+     "page_powder": 33,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "5.8-6.2",
+       "powder_kg_per_bar": "6.1-6.5"
+      },
+      {
+       "thickness_mm": "1.5 Under",
+       "anodize_kg_per_bar": "6.1-6.5",
+       "powder_kg_per_bar": "6.4-6.8"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "6.5-7.0",
+       "powder_kg_per_bar": "6.8-7.4"
+      },
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "8.8-9.7",
+       "powder_kg_per_bar": "9.2-10.2"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3001",
+     "name": "กล่องร่อง 3\"",
+     "role_family": "กล่องร่อง 3\"",
+     "kg_per_m": 0.669,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 30,
+     "confidence": "estimated",
+     "page_powder": 33,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "4.28",
+       "powder_kg_per_bar": "4.50"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "6.37",
+       "powder_kg_per_bar": "6.69"
+      },
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "7.55",
+       "powder_kg_per_bar": "7.93"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3002",
+     "name": "กล่องเรียบ 3\"",
+     "role_family": "กล่องเรียบ 3\"",
+     "kg_per_m": 0.491,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 30,
+     "confidence": "estimated",
+     "page_powder": 33,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "3.14",
+       "powder_kg_per_bar": "3.29"
+      },
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "3.72",
+       "powder_kg_per_bar": "3.90"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "4.74",
+       "powder_kg_per_bar": "4.98"
+      },
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "5.56",
+       "powder_kg_per_bar": "5.83"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3003",
+     "name": "ตบร่อง 3\"",
+     "role_family": "ตบร่อง 3\"",
+     "kg_per_m": 0.316,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 31,
+     "confidence": "estimated",
+     "page_powder": 33,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "2.02",
+       "powder_kg_per_bar": "2.12"
+      },
+      {
+       "thickness_mm": "1.3",
+       "anodize_kg_per_bar": "2.3",
+       "powder_kg_per_bar": "2.42"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "3.01",
+       "powder_kg_per_bar": "3.17"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3004",
+     "name": "ตบเรียบ 3\"",
+     "role_family": "ตบเรียบ 3\"",
+     "kg_per_m": 0.194,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 31,
+     "confidence": "estimated",
+     "page_powder": 34,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "1.24",
+       "powder_kg_per_bar": "1.3"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3005",
+     "name": "กล่องเปิด 3\"",
+     "role_family": "กล่องเปิดปิด 3\"",
+     "kg_per_m": 0.6,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 31,
+     "confidence": "estimated",
+     "page_powder": 34,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "3.84",
+       "powder_kg_per_bar": "4.03"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3006",
+     "name": "ฝาเปิด 3\"",
+     "role_family": "ฝาเปิดปิด 3\"",
+     "kg_per_m": 0.325,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 31,
+     "confidence": "estimated",
+     "page_powder": 34,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "2.08",
+       "powder_kg_per_bar": "2.18"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.5 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3020",
+     "name": "คิ้วประตู",
+     "role_family": "คิ้วประตู",
+     "kg_per_m": 0.117,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.0,
+     "page": 31,
+     "confidence": "estimated",
+     "page_powder": 34,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "0.6-0.8",
+       "powder_kg_per_bar": "0.65-0.85"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3026",
+     "name": "กล่องแจ็กสัน",
+     "role_family": "กล่องแจ็คสัน",
+     "kg_per_m": 0.773,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 31,
+     "confidence": "estimated",
+     "page_powder": 34,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "4.8-5.1",
+       "powder_kg_per_bar": "5.0-5.3"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "5.1-5.5",
+       "powder_kg_per_bar": "5.3-5.8"
+      },
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "6.8-7.2",
+       "powder_kg_per_bar": "7.1-7.6"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3027",
+     "name": "ฝาแจ็กสัน",
+     "role_family": "ฝาแจ็คสัน",
+     "kg_per_m": 0.344,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 31,
+     "confidence": "estimated",
+     "page_powder": 34,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "2.0-2.4",
+       "powder_kg_per_bar": "2.1-2.5"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "2.6-2.9",
+       "powder_kg_per_bar": "2.7-3.1"
+      },
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "3.2-3.5",
+       "powder_kg_per_bar": "3.3-3.7"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3030",
+     "name": "เสาประตู",
+     "role_family": "เสาประตูสวิง",
+     "kg_per_m": 0.688,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 31,
+     "confidence": "estimated",
+     "page_powder": 34,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "4.2-4.6",
+       "powder_kg_per_bar": "4.4-4.8"
+      },
+      {
+       "thickness_mm": "1.5 Under",
+       "anodize_kg_per_bar": "4.6-5.0",
+       "powder_kg_per_bar": "4.8-5.2"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "5.0-5.5",
+       "powder_kg_per_bar": "5.2-5.8"
+      },
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "6.5-6.9",
+       "powder_kg_per_bar": "6.8-7.3"
+      },
+      {
+       "thickness_mm": "2.0 Over",
+       "anodize_kg_per_bar": "6.9-7.3",
+       "powder_kg_per_bar": "7.25-7.7"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3031",
+     "name": "เสาประตูบน",
+     "role_family": "เสาบนสวิง",
+     "kg_per_m": 0.719,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 31,
+     "confidence": "estimated",
+     "page_powder": 34,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "4.4-4.8",
+       "powder_kg_per_bar": "4.6-5.0"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "5.0-5.4",
+       "powder_kg_per_bar": "5.25-5.7"
+      },
+      {
+       "thickness_mm": "1.5 Over",
+       "anodize_kg_per_bar": "5.4-5.8",
+       "powder_kg_per_bar": "5.7-6.1"
+      },
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "6.4-6.8",
+       "powder_kg_per_bar": "6.7-7.15"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3032",
+     "name": "เสาประตูล่าง",
+     "role_family": "เสาล่างสวิง",
+     "kg_per_m": 0.875,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 31,
+     "confidence": "estimated",
+     "page_powder": 34,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "5.4-5.8",
+       "powder_kg_per_bar": "5.7-6.1"
+      },
+      {
+       "thickness_mm": "1.5 Under",
+       "anodize_kg_per_bar": "5.8-6.2",
+       "powder_kg_per_bar": "6.1-6.5"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "6.2-6.5",
+       "powder_kg_per_bar": "6.5-6.9"
+      },
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "7.5-8.0",
+       "powder_kg_per_bar": "7.9-8.4"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3047",
+     "name": "ซอยลูกฟัก",
+     "role_family": "ซอยลูกฟัก",
+     "kg_per_m": 0.383,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 31,
+     "confidence": "estimated",
+     "page_powder": 34,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "2.3-2.6",
+       "powder_kg_per_bar": "2.4-2.75"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3062",
+     "name": "มือจับยาว",
+     "role_family": "มือจับยาว",
+     "kg_per_m": 0.695,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.0,
+     "std_length_m": 6.4,
+     "page": 31,
+     "confidence": "estimated",
+     "page_powder": 34,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "4.3-4.6",
+       "powder_kg_per_bar": "4.5-4.8"
+      },
+      {
+       "thickness_mm": "2.3",
+       "anodize_kg_per_bar": "4.6-4.9",
+       "powder_kg_per_bar": "4.8-5.15"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 2.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3067",
+     "name": "ธรณีสวิง",
+     "role_family": "ธรณีสวิง",
+     "kg_per_m": 0.773,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 31,
+     "confidence": "estimated",
+     "page_powder": 34,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "4.8-5.1",
+       "powder_kg_per_bar": "5.0-5.4"
+      },
+      {
+       "thickness_mm": "1.5 Under",
+       "anodize_kg_per_bar": "5.1-5.4",
+       "powder_kg_per_bar": "5.4-5.7"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "5.4-5.7",
+       "powder_kg_per_bar": "5.7-6.0"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "ชุดบานสวิง 2 บาน",
+     "page": 27,
+     "joints": "wall box 3013, transom 3026 Jackson box with overhead door closer + 3027 cover, door stiles 3030, top rail 3031, bottom rail 3032, bead 3020, handle 3062, threshold 3067",
+     "cut_formulas": [
+      {
+       "member": "door leaf height (h)",
+       "formula_as_printed": "h=H-69",
+       "formula_normalised": "H - 69"
+      },
+      {
+       "member": "door leaf width (w, each)",
+       "formula_as_printed": "w=W- 88.9 / จำนวนบาน -5.5",
+       "formula_normalised": "(W - 88.9)/n - 5.5  (fraction layout ambiguous)"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "top 49 (44 box + 4 + 1?), bottom 20 (7 gap); side 44 box + 4; meeting gap 3",
+     "sash_overlap_mm": null,
+     "notes": "W in plan is labelled H on the page"
+    },
+    {
+     "type": "ชุดช่องแสง 4\"",
+     "page": 28,
+     "joints": "3012 grooved box all round, 3017 cover? / 3018; setting blocks; 3014 ตบร่อง at mullion",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "box 44.45 deep x 101.6",
+     "sash_overlap_mm": null,
+     "notes": "no formula printed"
+    }
+   ],
+   "hardware": [
+    {
+     "name": "Overhead door closer",
+     "code": null,
+     "per": "door",
+     "qty": 1,
+     "page": 27
+    }
+   ],
+   "accessories": [
+    {
+     "name": "SETTING BLOCK, GASKET",
+     "page": 28
+    }
+   ],
+   "prices": []
+  },
+  {
+   "name": "OP – Opening door (บานเปิดมีตึ่ง / ไม่มีตึ่ง)",
+   "system": "swing door",
+   "app_types": [
+    "บานเปิด",
+    "บานเปิดข้าง"
+   ],
+   "frame_size_mm": "วงกบไม้ 3097/3174",
+   "profiles": [
+    {
+     "die_no": "3097",
+     "name": "วงกบไม้",
+     "role_family": "วงกบไม้",
+     "kg_per_m": 0.969,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 36,
+     "confidence": "estimated",
+     "page_powder": 37,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "6.0-6.4",
+       "powder_kg_per_bar": "6.3-6.7"
+      },
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "6.6-7.0",
+       "powder_kg_per_bar": "6.9-7.4"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3174",
+     "name": "วงกบไม้มีตึ่ง",
+     "role_family": "วงกบไม้",
+     "kg_per_m": 1.087,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 36,
+     "confidence": "estimated",
+     "page_powder": 37,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "6.96",
+       "powder_kg_per_bar": "7.31"
+      },
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "7.58",
+       "powder_kg_per_bar": "7.96"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3185",
+     "name": "คิ้วช่องแสงบานเปิด",
+     "role_family": "คิ้วช่องแสงเฟรม",
+     "kg_per_m": 0.252,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 36,
+     "confidence": "estimated",
+     "page_powder": 37,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "1.61",
+       "powder_kg_per_bar": "1.69"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3092",
+     "name": "เสาประตูบานเปิด 1.5\"",
+     "role_family": "เสาประตูบานเปิด",
+     "kg_per_m": 0.848,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.0,
+     "std_length_m": 6.4,
+     "page": 36,
+     "confidence": "estimated",
+     "page_powder": 37,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "5.43",
+       "powder_kg_per_bar": "5.70"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 2.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3094",
+     "name": "เสาประตูบน-ล่างบานเปิด 2.5\"",
+     "role_family": "ขวางบน-ล่างประตูบานเปิด",
+     "kg_per_m": 1.006,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.4,
+     "std_length_m": 6.4,
+     "page": 36,
+     "confidence": "estimated",
+     "page_powder": 37,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.4",
+       "anodize_kg_per_bar": "6.44",
+       "powder_kg_per_bar": "6.76"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.4 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3096",
+     "name": "เสาประตูบานเปิด 1.5\" มีบังใบ",
+     "role_family": "เสาประตูบานเปิด",
+     "kg_per_m": 0.911,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.9,
+     "std_length_m": 6.4,
+     "page": 36,
+     "confidence": "estimated",
+     "page_powder": 37,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.9",
+       "anodize_kg_per_bar": "5.83",
+       "powder_kg_per_bar": "6.12"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.9 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3093",
+     "name": "เสาประตูบนล่างบานเปิด 3.6\"",
+     "role_family": "ขวางบน-ล่างประตูบานเปิด",
+     "kg_per_m": 1.262,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.4,
+     "std_length_m": 6.4,
+     "page": 36,
+     "confidence": "estimated",
+     "page_powder": 37,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.4",
+       "anodize_kg_per_bar": "8.08",
+       "powder_kg_per_bar": "8.49"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.4 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "010013",
+     "name": "เสาประตูบานเปิด 3\"",
+     "role_family": "เสาประตูบานเปิด",
+     "kg_per_m": 1.095,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.7,
+     "std_length_m": 6.4,
+     "page": 36,
+     "confidence": "estimated",
+     "page_powder": 37,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.7",
+       "anodize_kg_per_bar": "7.01",
+       "powder_kg_per_bar": "7.37"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.7 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "020143",
+     "name": "เสาประตูบานเปิด 3\" มีบังใบ",
+     "role_family": "เสาประตูบานเปิด",
+     "kg_per_m": 1.098,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 36,
+     "confidence": "estimated",
+     "page_powder": 37,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "7.03",
+       "powder_kg_per_bar": "7.38"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.5 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3095",
+     "name": "คิ้วประตูบานเปิด",
+     "role_family": "คิ้วประตู",
+     "kg_per_m": 0.098,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 36,
+     "confidence": "estimated",
+     "page_powder": 37,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "0.63",
+       "powder_kg_per_bar": "0.66"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    }
+   ],
+   "assembly": [],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "CUR – Curtain wall stick 1\"3/4 (44.45) / 2\" (50.8) / 2\"1/2 (63.5)",
+   "system": "curtain wall",
+   "app_types": [
+    "STICK WALL"
+   ],
+   "frame_size_mm": "44.45 / 50.8 / 63.5 face",
+   "profiles": [
+    {
+     "die_no": "9013",
+     "name": "เสาเคอร์เทนวอลล์ 1\"3/4 x 3\"",
+     "role_family": "NO.9013",
+     "kg_per_m": 1.477,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 39,
+     "confidence": "estimated",
+     "page_powder": 40,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "9.45",
+       "powder_kg_per_bar": "9.92"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "9015",
+     "name": "ไส้เคอร์เทนวอลล์ 1\"3/4",
+     "role_family": "NO.9015",
+     "kg_per_m": 0.38,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.0,
+     "std_length_m": 6.4,
+     "page": 39,
+     "confidence": "estimated",
+     "page_powder": 40,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "2.43",
+       "powder_kg_per_bar": "2.55"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 2.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "9014",
+     "name": "ฝาเคอร์เทนวอลล์กว้าง 1\"3/4 x 1/2\"",
+     "role_family": "NO.9014",
+     "kg_per_m": 0.264,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.3,
+     "std_length_m": 6.4,
+     "page": 39,
+     "confidence": "estimated",
+     "page_powder": 40,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.3",
+       "anodize_kg_per_bar": "1.69",
+       "powder_kg_per_bar": "1.77"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.3 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "9064",
+     "name": "เสาเคอร์เทนวอลล์ 2\" x 2\"",
+     "role_family": "เสา CW",
+     "kg_per_m": 1.944,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.5,
+     "std_length_m": 6.4,
+     "page": 39,
+     "confidence": "estimated",
+     "page_powder": 40,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "2.5",
+       "anodize_kg_per_bar": "12.44",
+       "powder_kg_per_bar": "13.06"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 2.5 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "19013",
+     "name": "เสาเคอร์เทนวอลล์ 2\" x 3\"",
+     "role_family": "เสา CW",
+     "kg_per_m": 1.441,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.7,
+     "std_length_m": 6.4,
+     "page": 39,
+     "confidence": "estimated",
+     "page_powder": 40,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.7",
+       "anodize_kg_per_bar": "9.22",
+       "powder_kg_per_bar": "9.68"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.7 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "230009",
+     "name": "เสาเคอร์เทนวอลล์ 2\" x 4\"",
+     "role_family": "เสา CW",
+     "kg_per_m": 1.677,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.7,
+     "std_length_m": 6.4,
+     "page": 39,
+     "confidence": "estimated",
+     "page_powder": 40,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.7",
+       "anodize_kg_per_bar": "10.73",
+       "powder_kg_per_bar": "11.26"
+      },
+      {
+       "thickness_mm": "2.5",
+       "anodize_kg_per_bar": "14.44",
+       "powder_kg_per_bar": "15.17"
+      },
+      {
+       "thickness_mm": "3.0",
+       "anodize_kg_per_bar": "16.76",
+       "powder_kg_per_bar": "17.59"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.7 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "9017",
+     "name": "ไส้เคอร์เทนวอลล์ ร่องยางสามเหลี่ยม 2\"",
+     "role_family": "ไส้ CW",
+     "kg_per_m": 0.534,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.5,
+     "std_length_m": 6.4,
+     "page": 39,
+     "confidence": "estimated",
+     "page_powder": 40,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "2.5",
+       "anodize_kg_per_bar": "3.42",
+       "powder_kg_per_bar": "3.59"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 2.5 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "9063",
+     "name": "ไส้เคอร์เทนวอลล์ ร่องยางสี่เหลี่ยม 2\"",
+     "role_family": "ไส้ CW",
+     "kg_per_m": 0.505,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.7,
+     "std_length_m": 6.4,
+     "page": 39,
+     "confidence": "estimated",
+     "page_powder": 40,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "2.7",
+       "anodize_kg_per_bar": "3.23",
+       "powder_kg_per_bar": "3.39"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 2.7 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "9018",
+     "name": "ฝาเคอร์เทนวอลล์กว้าง 2\" x 1\"",
+     "role_family": "ฝา CW",
+     "kg_per_m": 0.422,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.5,
+     "std_length_m": 6.4,
+     "page": 39,
+     "confidence": "estimated",
+     "page_powder": 40,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "2.70",
+       "powder_kg_per_bar": "2.84"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.5 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "9023",
+     "name": "เสาเคอร์เทนวอลล์ 2\"1/2 x 2\"",
+     "role_family": "NO.9023",
+     "kg_per_m": 2.0,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.0,
+     "std_length_m": 6.4,
+     "page": 39,
+     "confidence": "estimated",
+     "page_powder": 40,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "12.80",
+       "powder_kg_per_bar": "13.44"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 2.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "230011",
+     "name": "เสาเคอร์เทนวอลล์ 2\"1/2 x 3\"",
+     "role_family": "เสา CW",
+     "kg_per_m": 2.931,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 3.0,
+     "std_length_m": 6.4,
+     "page": 39,
+     "confidence": "estimated",
+     "page_powder": 40,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "3.0",
+       "anodize_kg_per_bar": "18.76",
+       "powder_kg_per_bar": "19.7"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 3.0 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "9010",
+     "name": "เสาเคอร์เทนวอลล์ 2\"1/2 x 4\"",
+     "role_family": "NO.9010",
+     "kg_per_m": 2.928,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.5,
+     "std_length_m": 6.4,
+     "page": 39,
+     "confidence": "estimated",
+     "page_powder": 40,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "2.5",
+       "anodize_kg_per_bar": "18.74",
+       "powder_kg_per_bar": "19.68"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 2.5 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "19035",
+     "name": "เสาเคอร์เทนวอลล์ 2\"1/2 x 4\"1/2",
+     "role_family": "เสา CW",
+     "kg_per_m": 3.203,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.5,
+     "std_length_m": 6.4,
+     "page": 39,
+     "confidence": "estimated",
+     "page_powder": 40,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "2.5",
+       "anodize_kg_per_bar": "20.50",
+       "powder_kg_per_bar": "21.52"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 2.5 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "9065",
+     "name": "เสาเคอร์เทนวอลล์ 2\"1/2 x 5\"",
+     "role_family": "เสา CW",
+     "kg_per_m": 2.969,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.2,
+     "std_length_m": 6.4,
+     "page": 39,
+     "confidence": "estimated",
+     "page_powder": 40,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "2.2",
+       "anodize_kg_per_bar": "19.00",
+       "powder_kg_per_bar": "19.95"
+      },
+      {
+       "thickness_mm": "2.8",
+       "anodize_kg_per_bar": "23.29",
+       "powder_kg_per_bar": "24.45"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 2.2 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "9019",
+     "name": "ไส้เคอร์เทนวอลล์ 2\"1/2 x 2\"1/2",
+     "role_family": "NO.9019",
+     "kg_per_m": 0.569,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.3,
+     "std_length_m": 6.4,
+     "page": 39,
+     "confidence": "estimated",
+     "page_powder": 40,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.3",
+       "anodize_kg_per_bar": "3.64",
+       "powder_kg_per_bar": "3.82"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.3 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "3112",
+     "name": "ฝาเคอร์เทนวอลล์กว้าง 2\"1/2 x 1\"",
+     "role_family": "NO.3112",
+     "kg_per_m": 0.561,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.8,
+     "std_length_m": 6.4,
+     "page": 39,
+     "confidence": "estimated",
+     "page_powder": 40,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.8",
+       "anodize_kg_per_bar": "3.59",
+       "powder_kg_per_bar": "3.77"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.8 mm ÷ 6.4 m (catalogue prints kg/bar, not kg/m)"
+    }
+   ],
+   "assembly": [],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "MC – Miscellaneous (ท่อกลม / กล่องสี่เหลี่ยม)",
+   "system": "other",
+   "app_types": [],
+   "frame_size_mm": null,
+   "profiles": [
+    {
+     "die_no": "501",
+     "name": "ท่อกลม 3/8\" (9.52)",
+     "role_family": "ท่อกลม",
+     "kg_per_m": 0.073,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.0,
+     "page": 42,
+     "confidence": "estimated",
+     "page_powder": 43,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "0.44",
+       "powder_kg_per_bar": "0.46"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "503",
+     "name": "ท่อกลม 1/2\" (12.70)",
+     "role_family": "ท่อกลม",
+     "kg_per_m": 0.098,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.0,
+     "page": 42,
+     "confidence": "estimated",
+     "page_powder": 43,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "0.59",
+       "powder_kg_per_bar": "0.62"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "509",
+     "name": "ท่อกลม 5/8\" (15.87)",
+     "role_family": "ท่อกลม",
+     "kg_per_m": 0.127,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.0,
+     "page": 42,
+     "confidence": "estimated",
+     "page_powder": 43,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "0.76",
+       "powder_kg_per_bar": "0.80"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "513",
+     "name": "ท่อกลม 3/4\" (19.05)",
+     "role_family": "ท่อกลม",
+     "kg_per_m": 0.153,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.0,
+     "page": 42,
+     "confidence": "estimated",
+     "page_powder": 43,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "0.92",
+       "powder_kg_per_bar": "0.97"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "519",
+     "name": "ท่อกลม 1\" (25.40)",
+     "role_family": "ท่อกลม",
+     "kg_per_m": 0.208,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.0,
+     "page": 42,
+     "confidence": "estimated",
+     "page_powder": 43,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "1.25",
+       "powder_kg_per_bar": "1.31"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "701",
+     "name": "กล่องสี่เหลี่ยม 1/2\" x 1/2\" (12.7x12.7)",
+     "role_family": "กล่องสี่เหลี่ยม",
+     "kg_per_m": 0.129,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.0,
+     "page": 42,
+     "confidence": "estimated",
+     "page_powder": 44,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "0.70-0.85",
+       "powder_kg_per_bar": "0.75-0.9"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "705",
+     "name": "กล่องสี่เหลี่ยม 3/4\" x 3/4\" (19.05x19.05)",
+     "role_family": "กล่องสี่เหลี่ยม",
+     "kg_per_m": 0.192,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.0,
+     "page": 42,
+     "confidence": "estimated",
+     "page_powder": 44,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "1.0-1.3",
+       "powder_kg_per_bar": "1.05-1.35"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "709",
+     "name": "กล่องสี่เหลี่ยม 1\" x 1\" (25.4x25.4)",
+     "role_family": "กล่องสี่เหลี่ยม",
+     "kg_per_m": 0.258,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.0,
+     "page": 42,
+     "confidence": "estimated",
+     "page_powder": 44,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "1.4-1.7",
+       "powder_kg_per_bar": "1.45-1.8"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "715",
+     "name": "กล่องสี่เหลี่ยม 1\"1/4 x 1\"1/4 (31.75x31.75)",
+     "role_family": "กล่องสี่เหลี่ยม",
+     "kg_per_m": 0.367,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.1,
+     "std_length_m": 6.0,
+     "page": 42,
+     "confidence": "estimated",
+     "page_powder": 44,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.1",
+       "anodize_kg_per_bar": "2.0-2.4",
+       "powder_kg_per_bar": "2.1-2.5"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.1 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "718",
+     "name": "กล่องสี่เหลี่ยม 1\"1/2 x 1\"1/2 (38.1x38.1)",
+     "role_family": "กล่องสี่เหลี่ยม",
+     "kg_per_m": 0.442,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.1,
+     "std_length_m": 6.0,
+     "page": 42,
+     "confidence": "estimated",
+     "page_powder": 44,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.1",
+       "anodize_kg_per_bar": "2.4-2.9",
+       "powder_kg_per_bar": "2.5-3.05"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.1 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "724",
+     "name": "กล่องสี่เหลี่ยม 1\"3/4 x 1\"3/4 (44.45x44.45)",
+     "role_family": "กล่อง 1-3/4 x 1- 1-3/4",
+     "kg_per_m": 0.467,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.0,
+     "page": 42,
+     "confidence": "estimated",
+     "page_powder": 44,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "2.5-3.1",
+       "powder_kg_per_bar": "2.6-3.25"
+      },
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "3.5-4.3",
+       "powder_kg_per_bar": "3.65-4.5"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "743",
+     "name": "กล่องสี่เหลี่ยม 4\" x 4\" (101.6x101.6)",
+     "role_family": "กล่องสี่เหลี่ยม",
+     "kg_per_m": 3.167,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 3.0,
+     "std_length_m": 6.0,
+     "page": 42,
+     "confidence": "estimated",
+     "page_powder": 44,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "3.0",
+       "anodize_kg_per_bar": "18-20",
+       "powder_kg_per_bar": "19-21"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 3.0 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "749",
+     "name": "กล่องสี่เหลี่ยม 2\" x 2\" (50.8x50.8)",
+     "role_family": "กล่องสี่เหลี่ยม",
+     "kg_per_m": 1.033,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.0,
+     "std_length_m": 6.0,
+     "page": 42,
+     "confidence": "estimated",
+     "page_powder": 44,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "5.9-6.5",
+       "powder_kg_per_bar": "6.2-6.85"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 2.0 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "802",
+     "name": "กล่องสี่เหลี่ยม 1\" x 1/2\" (25.4x12.7)",
+     "role_family": "กล่องสี่เหลี่ยม",
+     "kg_per_m": 0.192,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.0,
+     "std_length_m": 6.0,
+     "page": 42,
+     "confidence": "estimated",
+     "page_powder": 44,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.0",
+       "anodize_kg_per_bar": "1.0-1.3",
+       "powder_kg_per_bar": "1.05-1.4"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.0 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "808",
+     "name": "กล่องสี่เหลี่ยม 1\"1/2 x 1\" (38.1x25.4)",
+     "role_family": "กล่องสี่เหลี่ยม",
+     "kg_per_m": 0.375,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.12,
+     "std_length_m": 6.0,
+     "page": 42,
+     "confidence": "estimated",
+     "page_powder": 44,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.12 (ano) / 1.1 (pc)",
+       "anodize_kg_per_bar": "2.0-2.5",
+       "powder_kg_per_bar": "2.1-2.65"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.12 (ano) / 1.1 (pc) mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "812",
+     "name": "กล่องสี่เหลี่ยม 1\"3/4 x 1\" (44.45x25.4)",
+     "role_family": "กล่องสี่เหลี่ยม",
+     "kg_per_m": 0.392,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.1,
+     "std_length_m": 6.0,
+     "page": 42,
+     "confidence": "estimated",
+     "page_powder": 44,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.1",
+       "anodize_kg_per_bar": "2.1-2.6",
+       "powder_kg_per_bar": "2.2-2.75"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.1 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "816",
+     "name": "กล่องสี่เหลี่ยม 2\" x 1\" (50.8x25.4)",
+     "role_family": "กล่องสี่เหลี่ยม",
+     "kg_per_m": 0.467,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.0,
+     "page": 43,
+     "confidence": "estimated",
+     "page_powder": 44,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "2.5-3.1",
+       "powder_kg_per_bar": "2.6-3.3"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "820",
+     "name": "กล่องสี่เหลี่ยม 3\" x 1\" (76.2x25.4)",
+     "role_family": "กล่องสี่เหลี่ยม",
+     "kg_per_m": 0.633,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.0,
+     "page": 43,
+     "confidence": "estimated",
+     "page_powder": 44,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "3.4-4.2",
+       "powder_kg_per_bar": "3.55-4.4"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "823",
+     "name": "กล่องสี่เหลี่ยม 3\" x 1\"3/4 (76.2x44.45)",
+     "role_family": "กล่องสี่เหลี่ยม",
+     "kg_per_m": 0.758,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.2,
+     "std_length_m": 6.0,
+     "page": 43,
+     "confidence": "estimated",
+     "page_powder": 44,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.2",
+       "anodize_kg_per_bar": "4.1-5.0",
+       "powder_kg_per_bar": "4.3-5.25"
+      },
+      {
+       "thickness_mm": "1.6",
+       "anodize_kg_per_bar": "5.5-6.7",
+       "powder_kg_per_bar": "5.75-7.05"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.2 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "831",
+     "name": "กล่องสี่เหลี่ยม 4\" x 1\" (101.6x25.4)",
+     "role_family": "กล่องสี่เหลี่ยม",
+     "kg_per_m": 1.0,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.5,
+     "std_length_m": 6.0,
+     "page": 43,
+     "confidence": "estimated",
+     "page_powder": 44,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "1.5",
+       "anodize_kg_per_bar": "5.7-6.3",
+       "powder_kg_per_bar": "6.0-6.6"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 1.5 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    },
+    {
+     "die_no": "841",
+     "name": "กล่องสี่เหลี่ยม 4\" x 2\" (101.6x50.8)",
+     "role_family": "กล่องสี่เหลี่ยม",
+     "kg_per_m": 1.55,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.0,
+     "std_length_m": 6.0,
+     "page": 43,
+     "confidence": "estimated",
+     "page_powder": 44,
+     "weights_by_thickness": [
+      {
+       "thickness_mm": "2.0",
+       "anodize_kg_per_bar": "8.6-10",
+       "powder_kg_per_bar": "9.0-10.5"
+      }
+     ],
+     "kg_per_m_basis": "midpoint of anodize kg/bar at 2.0 mm ÷ 6.0 m (catalogue prints kg/bar, not kg/m)"
+    }
+   ],
+   "assembly": [],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  }
+ ],
+ "finishes": {
+  "anodize": [
+   "E&A-M Moonlight Silver",
+   "E&A-B Moonlight Silver",
+   "502 Platinum",
+   "504 Champagne",
+   "506 Neo Copper",
+   "510 Golden Sand",
+   "512 Sukhothai Gold",
+   "514 Burgundy Brown",
+   "518 Onyx Black"
+  ],
+  "powder": [
+   "8911 Milky White",
+   "8815 Charcoal Black",
+   "8809 Choco Brown"
+  ],
+  "film_thickness_note": "p.7 shows which micron classes (10/12/14/15/25 anodize, 60-80 powder) each colour is offered in",
+  "page": [
+   7,
+   45
+  ]
+ },
+ "new_families": [
+  "ฉากกันตก",
+  "ถาดรางน้ำ",
+  "เสามุม 2 ทาง",
+  "เสามุม 135",
+  "ขาบานเปลือย",
+  "เสาประตูบานเปิด",
+  "ขวางบน-ล่างประตูบานเปิด",
+  "คิ้วช่องแสงเฟรม",
+  "เสา CW",
+  "ไส้ CW",
+  "ฝา CW",
+  "ท่อกลม",
+  "กล่องสี่เหลี่ยม"
+ ],
+ "open_questions": [
+  "น้ำหนักในเล่มเป็น กก./เส้น (6.4 ม.) แยกตามความหนา — ในแอปจะเก็บ kg/m ต่อความหนาไหม (1 รหัสมีหลายความหนา)",
+  "ตัวเลขหลังความหนา เช่น '1.2 Over', '1.5 Under' แปลว่าอะไร (เกรดหนากว่า/บางกว่ามาตรฐาน?)",
+  "สูตรบานเลื่อนมาตรฐาน w=(W-14.14)/n+17.15 ใช้รหัส 4019-4023 ซึ่งไม่มีในตารางน้ำหนัก — ยังผลิตอยู่ไหม",
+  "บานกระทุ้งมาตรฐานพิมพ์ 'H=h-124.9' (ตัวอักษรสลับ) — ยืนยันว่าเป็น ขนาดใน = ขนาดนอก − 124.9",
+  "สูตรบานสวิง w=W-88.9/จำนวนบาน-5.5 — วงเล็บอยู่ตรงไหน"
+ ],
+ "unreadable_pages": []
+}

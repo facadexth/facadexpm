@@ -1,0 +1,110 @@
+{
+ "source_pdf": "Aero Louver Brochure.pdf",
+ "supplier": "K.C. Interframe Co., Ltd. (distributor)",
+ "brand": "Aero Louvre",
+ "catalogue_year": null,
+ "pages": 6,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": "Aero Louvre"
+  },
+  {
+   "page": 2,
+   "content": "series overview",
+   "series": "Aero Louvre"
+  },
+  {
+   "page": 3,
+   "content": "series overview",
+   "series": "Aero Framing"
+  },
+  {
+   "page": 4,
+   "content": "other",
+   "series": "fall prevention / framing & screening options"
+  },
+  {
+   "page": 5,
+   "content": "hardware",
+   "series": "handles / key lock"
+  },
+  {
+   "page": 6,
+   "content": "other",
+   "series": "distributor back cover"
+  }
+ ],
+ "series": [
+  {
+   "name": "Aero Louvre (glass louvre window) + Aero Framing System 101.6 mm",
+   "system": "louvre",
+   "app_types": [],
+   "frame_size_mm": "101.6 (frame depth); louvre gallery 102 mm and 152 mm blades",
+   "profiles": [],
+   "assembly": [
+    {
+     "type": "louvre window in Aero frame",
+     "page": 4,
+     "joints": "not shown",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "Weather Bar and Louvre Fixing Adapter let the gallery fit other window systems; restrictor disc limits blade opening (AS5203 fall prevention); tested AS2047"
+    }
+   ],
+   "hardware": [
+    {
+     "name": "Standard Handle",
+     "code": null,
+     "per": "per louvre gallery",
+     "qty": null,
+     "page": 5
+    },
+    {
+     "name": "Ring Pull Handle (pole operated, >2.1 m)",
+     "code": null,
+     "per": "per louvre gallery",
+     "qty": null,
+     "page": 5
+    },
+    {
+     "name": "Key Lock (non-handle side, specify at order)",
+     "code": null,
+     "per": "per louvre gallery",
+     "qty": null,
+     "page": 5
+    }
+   ],
+   "accessories": [
+    {
+     "name": "Stainless steel security screen 304",
+     "page": 4
+    },
+    {
+     "name": "Fall-prevention stainless screen",
+     "page": 4
+    },
+    {
+     "name": "Insect screen profile for 152 mm louvre",
+     "page": 4
+    },
+    {
+     "name": "Integrated security bars (option)",
+     "page": 4
+    }
+   ],
+   "prices": []
+  }
+ ],
+ "new_families": [
+  "บานเกล็ด (louvre gallery)"
+ ],
+ "open_questions": [
+  "ใน DB ยังไม่มีประเภท 'บานเกล็ด' — จะเพิ่มประเภทนี้ไหม ถ้าเราขาย Aero Louvre",
+  "ไม่มีหน้าตัดโปรไฟล์/น้ำหนัก/ราคา — ต้องขอ price list จาก K.C. Interframe"
+ ],
+ "unreadable_pages": []
+}

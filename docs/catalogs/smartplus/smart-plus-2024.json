@@ -1,0 +1,2041 @@
+{
+ "source_pdf": "SMART PLUS 2024.pdf",
+ "supplier": "บริษัท รัตนดำรงค์ จำกัด (Rattanadamrong Co., Ltd. / RD Aluminium)",
+ "brand": "SMART PLUS",
+ "catalogue_year": "2024",
+ "pages": 64,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": ""
+  },
+  {
+   "page": 2,
+   "content": "other",
+   "series": "company profile RD Aluminium"
+  },
+  {
+   "page": 3,
+   "content": "other",
+   "series": "finishes / standard colours"
+  },
+  {
+   "page": 4,
+   "content": "other",
+   "series": "product features"
+  },
+  {
+   "page": 5,
+   "content": "toc",
+   "series": ""
+  },
+  {
+   "page": 6,
+   "content": "series overview",
+   "series": "SEMI EURO sliding"
+  },
+  {
+   "page": 7,
+   "content": "profile table",
+   "series": "SEMI EURO sliding"
+  },
+  {
+   "page": 8,
+   "content": "profile table",
+   "series": "SEMI EURO sliding"
+  },
+  {
+   "page": 9,
+   "content": "profile table",
+   "series": "SEMI EURO sliding"
+  },
+  {
+   "page": 10,
+   "content": "profile table",
+   "series": "SEMI EURO sliding"
+  },
+  {
+   "page": 11,
+   "content": "profile table",
+   "series": "SEMI EURO sliding"
+  },
+  {
+   "page": 12,
+   "content": "section drawing",
+   "series": "SEMI EURO sliding"
+  },
+  {
+   "page": 13,
+   "content": "section drawing",
+   "series": "SEMI EURO sliding"
+  },
+  {
+   "page": 14,
+   "content": "section drawing",
+   "series": "SEMI EURO sliding"
+  },
+  {
+   "page": 15,
+   "content": "section drawing",
+   "series": "SEMI EURO sliding"
+  },
+  {
+   "page": 16,
+   "content": "section drawing",
+   "series": "SEMI EURO sliding"
+  },
+  {
+   "page": 17,
+   "content": "section drawing",
+   "series": "SEMI EURO sliding"
+  },
+  {
+   "page": 18,
+   "content": "section drawing",
+   "series": "SEMI EURO sliding"
+  },
+  {
+   "page": 19,
+   "content": "section drawing",
+   "series": "SEMI EURO sliding"
+  },
+  {
+   "page": 20,
+   "content": "series overview",
+   "series": "SEMI EURO casement/fixed"
+  },
+  {
+   "page": 21,
+   "content": "profile table",
+   "series": "SEMI EURO casement/fixed"
+  },
+  {
+   "page": 22,
+   "content": "profile table",
+   "series": "SEMI EURO casement/fixed"
+  },
+  {
+   "page": 23,
+   "content": "profile table",
+   "series": "SEMI EURO casement/fixed"
+  },
+  {
+   "page": 24,
+   "content": "profile table",
+   "series": "SEMI EURO casement/fixed"
+  },
+  {
+   "page": 25,
+   "content": "section drawing",
+   "series": "SEMI EURO casement/fixed"
+  },
+  {
+   "page": 26,
+   "content": "section drawing",
+   "series": "SEMI EURO casement/fixed"
+  },
+  {
+   "page": 27,
+   "content": "section drawing",
+   "series": "SEMI EURO casement/fixed"
+  },
+  {
+   "page": 28,
+   "content": "section drawing",
+   "series": "SEMI EURO casement/fixed"
+  },
+  {
+   "page": 29,
+   "content": "section drawing",
+   "series": "SEMI EURO casement/fixed"
+  },
+  {
+   "page": 30,
+   "content": "series overview",
+   "series": "EURO sliding"
+  },
+  {
+   "page": 31,
+   "content": "profile table",
+   "series": "EURO sliding"
+  },
+  {
+   "page": 32,
+   "content": "profile table",
+   "series": "EURO sliding"
+  },
+  {
+   "page": 33,
+   "content": "profile table",
+   "series": "EURO sliding"
+  },
+  {
+   "page": 34,
+   "content": "profile table",
+   "series": "EURO sliding"
+  },
+  {
+   "page": 35,
+   "content": "section drawing",
+   "series": "EURO sliding"
+  },
+  {
+   "page": 36,
+   "content": "section drawing",
+   "series": "EURO sliding"
+  },
+  {
+   "page": 37,
+   "content": "section drawing",
+   "series": "EURO sliding"
+  },
+  {
+   "page": 38,
+   "content": "section drawing",
+   "series": "EURO sliding"
+  },
+  {
+   "page": 39,
+   "content": "section drawing",
+   "series": "EURO sliding"
+  },
+  {
+   "page": 40,
+   "content": "section drawing",
+   "series": "EURO sliding"
+  },
+  {
+   "page": 41,
+   "content": "section drawing",
+   "series": "EURO sliding"
+  },
+  {
+   "page": 42,
+   "content": "section drawing",
+   "series": "EURO sliding"
+  },
+  {
+   "page": 43,
+   "content": "series overview",
+   "series": "EURO casement/fixed"
+  },
+  {
+   "page": 44,
+   "content": "profile table",
+   "series": "EURO casement/fixed"
+  },
+  {
+   "page": 45,
+   "content": "profile table",
+   "series": "EURO casement/fixed"
+  },
+  {
+   "page": 46,
+   "content": "profile table",
+   "series": "EURO casement/fixed"
+  },
+  {
+   "page": 47,
+   "content": "profile table",
+   "series": "EURO casement/fixed"
+  },
+  {
+   "page": 48,
+   "content": "section drawing",
+   "series": "EURO casement/fixed"
+  },
+  {
+   "page": 49,
+   "content": "section drawing",
+   "series": "EURO casement/fixed"
+  },
+  {
+   "page": 50,
+   "content": "section drawing",
+   "series": "EURO casement/fixed"
+  },
+  {
+   "page": 51,
+   "content": "section drawing",
+   "series": "EURO casement/fixed"
+  },
+  {
+   "page": 52,
+   "content": "section drawing",
+   "series": "EURO casement/fixed"
+  },
+  {
+   "page": 53,
+   "content": "series overview",
+   "series": "EURO bi-folding"
+  },
+  {
+   "page": 54,
+   "content": "profile table",
+   "series": "EURO bi-folding"
+  },
+  {
+   "page": 55,
+   "content": "profile table",
+   "series": "EURO bi-folding"
+  },
+  {
+   "page": 56,
+   "content": "profile table",
+   "series": "EURO bi-folding"
+  },
+  {
+   "page": 57,
+   "content": "profile table",
+   "series": "EURO bi-folding"
+  },
+  {
+   "page": 58,
+   "content": "other",
+   "series": "EURO bi-folding panel layouts 2-2-0 ... 6-3-3, 90° corner"
+  },
+  {
+   "page": 59,
+   "content": "section drawing",
+   "series": "EURO bi-folding"
+  },
+  {
+   "page": 60,
+   "content": "section drawing",
+   "series": "EURO bi-folding"
+  },
+  {
+   "page": 61,
+   "content": "section drawing",
+   "series": "EURO bi-folding"
+  },
+  {
+   "page": 62,
+   "content": "other",
+   "series": "project photos"
+  },
+  {
+   "page": 63,
+   "content": "other",
+   "series": "reference projects"
+  },
+  {
+   "page": 64,
+   "content": "other",
+   "series": "back cover / address"
+  }
+ ],
+ "finishes": [
+  {
+   "name": "Standard White",
+   "type": "powder coat",
+   "page": 3
+  },
+  {
+   "name": "Standard Black",
+   "type": "powder coat",
+   "page": 3
+  },
+  {
+   "name": "Black Sahara",
+   "type": "sahara effect (powder)",
+   "page": 3
+  },
+  {
+   "name": "Grey Sahara",
+   "type": "sahara effect (powder)",
+   "page": 3
+  },
+  {
+   "name": "Champagne",
+   "type": "anodizing (AA10-AA25 film classes listed)",
+   "page": 3
+  }
+ ],
+ "series": [
+  {
+   "name": "SEMI EURO — ชุดบานเลื่อน (SLIDING WINDOWS & DOOR) 2 ราง / 3 ราง",
+   "system": "sliding window",
+   "app_types": [
+    "บานเลื่อนสวน 2 บาน",
+    "บานเลื่อน 2 ตาย 2",
+    "บานเลื่อน 3 บาน",
+    "บานเลื่อนรางล่าง"
+   ],
+   "frame_size_mm": "101.6 x 47 (head 15100); sill low 30.5 / high 50; wall 1.2",
+   "spec": {
+    "glass_mm": "5-8",
+    "glass_groove_mm": 9.5,
+    "wall_mm": 1.2,
+    "multipoint_lock": "รองรับ",
+    "insect_screen": "มุ้งลวด / มุ้งลวดนิรภัย รองรับ",
+    "page": 6
+   },
+   "profiles": [
+    {
+     "die_no": "15100",
+     "name": "เฟรมบน",
+     "role_family": "เฟรมบน 2 ราง",
+     "kg_per_m": 0.992,
+     "width_mm": 101.6,
+     "depth_mm": 47.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 7,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15101",
+     "name": "เฟรมล่างขาเตี้ย",
+     "role_family": "เฟรมล่าง 2 ราง",
+     "kg_per_m": 0.869,
+     "width_mm": 101.6,
+     "depth_mm": 30.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 7,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15134",
+     "name": "เฟรมล่าง (Hollow)",
+     "role_family": "เฟรมล่าง 2 ราง",
+     "kg_per_m": 1.153,
+     "width_mm": 101.6,
+     "depth_mm": 30.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 7,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15103",
+     "name": "เฟรมล่างขาสูง",
+     "role_family": "เฟรมล่าง 2 ราง",
+     "kg_per_m": 1.0,
+     "width_mm": 101.6,
+     "depth_mm": 50.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15104",
+     "name": "เฟรมข้าง",
+     "role_family": "เฟรมข้าง 2 ราง",
+     "kg_per_m": 0.701,
+     "width_mm": 101.6,
+     "depth_mm": 25.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15125",
+     "name": "เฟรมบน 3 ราง",
+     "role_family": "เฟรมบน 3 ราง",
+     "kg_per_m": 0.98,
+     "width_mm": 101.6,
+     "depth_mm": 38.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15126",
+     "name": "เฟรมล่าง 3 ราง",
+     "role_family": "เฟรมล่าง 3 ราง",
+     "kg_per_m": 0.859,
+     "width_mm": 101.6,
+     "depth_mm": 35.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 9,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15140",
+     "name": "เฟรมข้าง 3 ราง",
+     "role_family": "เฟรมข้าง 3 ราง",
+     "kg_per_m": 0.701,
+     "width_mm": 101.6,
+     "depth_mm": 25.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 9,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15139",
+     "name": "เฟรมล่าง 3 ราง ขาเตี้ย (ภายใน)",
+     "role_family": "เฟรมล่าง 3 ราง",
+     "kg_per_m": 0.497,
+     "width_mm": 101.6,
+     "depth_mm": 12.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 9,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15105",
+     "name": "เสาเกี่ยว+เสากุญแจ",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": 0.704,
+     "width_mm": 65.0,
+     "depth_mm": 26.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 10,
+     "confidence": "read",
+     "also_family": "เสาเกี่ยว"
+    },
+    {
+     "die_no": "15136",
+     "name": "เสาเกี่ยว+เสากุญแจ หนา 1.5 mm.",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": 0.891,
+     "width_mm": 65.0,
+     "depth_mm": 26.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 10,
+     "confidence": "read",
+     "also_family": "เสาเกี่ยว"
+    },
+    {
+     "die_no": "15106",
+     "name": "ขวางบน+ขวางล่าง",
+     "role_family": "ขวางบน",
+     "kg_per_m": 0.625,
+     "width_mm": 65.0,
+     "depth_mm": 22.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 10,
+     "confidence": "read",
+     "also_family": "ขวางล่าง"
+    },
+    {
+     "die_no": "15137",
+     "name": "ขวางบน+ขวางล่าง หนา 1.5 mm.",
+     "role_family": "ขวางบน",
+     "kg_per_m": 0.816,
+     "width_mm": 65.0,
+     "depth_mm": 22.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 10,
+     "confidence": "read",
+     "also_family": "ขวางล่าง"
+    },
+    {
+     "die_no": "15107",
+     "name": "ตบธรณีขาเตี้ย",
+     "role_family": "ตบธรณี",
+     "kg_per_m": 0.227,
+     "width_mm": 55.2,
+     "depth_mm": 14.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 10,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15108",
+     "name": "ตบธรณีขาสูง",
+     "role_family": "ตบธรณี",
+     "kg_per_m": 0.227,
+     "width_mm": 55.2,
+     "depth_mm": 34.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 10,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15109",
+     "name": "ตบเกี่ยว",
+     "role_family": "ตบเกี่ยว",
+     "kg_per_m": 0.283,
+     "width_mm": 40.2,
+     "depth_mm": 32.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 10,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15110",
+     "name": "เดือยกุญแจ",
+     "role_family": "เดือยกุญแจ",
+     "kg_per_m": 0.134,
+     "width_mm": 15.0,
+     "depth_mm": 14.2,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 10,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15111",
+     "name": "ชนกลางบานเลื่อน",
+     "role_family": "ชนกลางบานเลื่อน",
+     "kg_per_m": 0.19,
+     "width_mm": 15.0,
+     "depth_mm": 17.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 10,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15112",
+     "name": "ฝาปิดเดือยกุญแจ",
+     "role_family": "ฝาปิดเดือยกุญแจ",
+     "kg_per_m": 0.094,
+     "width_mm": 15.0,
+     "depth_mm": 11.2,
+     "wall_mm": 1.0,
+     "std_length_m": null,
+     "page": 10,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15127",
+     "name": "เสาตบมุมบานเลื่อน",
+     "role_family": "เสาเข้ามุม",
+     "kg_per_m": 0.994,
+     "width_mm": 80.0,
+     "depth_mm": 26.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 11,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15130",
+     "name": "ตบเกี่ยวโหนก",
+     "role_family": "ตบเกี่ยว",
+     "kg_per_m": 0.706,
+     "width_mm": 72.5,
+     "depth_mm": 40.2,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 11,
+     "confidence": "read",
+     "conf_dims": "estimated"
+    },
+    {
+     "die_no": "15157",
+     "name": "Transmission Rod (printed 'Transmissiob Rod')",
+     "role_family": "ก้านส่งล็อก (Transmission Rod)",
+     "kg_per_m": 0.145,
+     "width_mm": 19.5,
+     "depth_mm": 4.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 11,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15128",
+     "name": "ตบเกี่ยว 2 ทาง",
+     "role_family": "ตบเกี่ยว 2 ทาง",
+     "kg_per_m": 0.459,
+     "width_mm": 40.2,
+     "depth_mm": 38.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 11,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15132",
+     "name": "กรอบมุ้งนิรภัย",
+     "role_family": "กรอบมุ้งบานเลื่อน",
+     "kg_per_m": 0.717,
+     "width_mm": 70.0,
+     "depth_mm": 26.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 11,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15129",
+     "name": "ล.ลิงตบเกี่ยวมุ้ง",
+     "role_family": "ตบเกี่ยวมุ้ง",
+     "kg_per_m": 0.103,
+     "width_mm": 12.5,
+     "depth_mm": 11.7,
+     "wall_mm": 1.0,
+     "std_length_m": null,
+     "page": 11,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15133",
+     "name": "คิ้วตบกรอบมุ้งนิรภัย",
+     "role_family": "คิ้วตบกรอบมุ้ง",
+     "kg_per_m": 0.117,
+     "width_mm": 18.0,
+     "depth_mm": 12.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 11,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "ประตูบานเลื่อน 2 ราง แบ่ง 2 (ช่องแสง)",
+     "page": 12,
+     "joints": "drawing only - see smart-plus-cut-formulas-2022.json",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "jamb 15104 face 25; sash stile 15105 width 65; rail 15106 65 high; jamb-side gap 1.5 (Detail A); glass bead 15115 22 in transom box 15113",
+     "sash_overlap_mm": null,
+     "notes": "transom (ช่องแสง) above uses กล่องก้าน 15113 + ตบก้าน 15102 + คิ้ว 15115"
+    },
+    {
+     "type": "ประตูบานเลื่อน 2 ราง แบ่ง 4 (ช่องแสง)",
+     "page": 13,
+     "joints": "see smart-plus-cut-formulas-2022.json",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "centre meeting gap 1.1 between sashes (131.1 over two stiles + 15111)",
+     "sash_overlap_mm": null,
+     "notes": "fixed-fixed-slide-slide; ชนกลาง 15111 at centre"
+    },
+    {
+     "type": "หน้าต่างบานเลื่อน 2 ราง แบ่ง 2 / แบ่ง 4 (ช่องแสง)",
+     "page": 14,
+     "joints": "see smart-plus-cut-formulas-2022.json",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "p.14-15; high sill 15103 + ตบธรณีขาสูง 15108 on p.15"
+    },
+    {
+     "type": "บานเลื่อน 3 ราง แบ่ง 2 / แบ่ง 3 / ภายใน / เข้ามุม 90",
+     "page": 16,
+     "joints": "see smart-plus-cut-formulas-2022.json",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "p.16 with safety screen 15132/15133/15128; p.18 inner sill 15139; p.19 90° corner uses 15130 + 15127 + 15198"
+    }
+   ],
+   "hardware": [],
+   "accessories": [
+    {
+     "name": "สักหลาด ขนาด 5x4",
+     "where": "interlock / sash",
+     "page": "17-cut sheet"
+    }
+   ],
+   "prices": []
+  },
+  {
+   "name": "SEMI EURO — ชุดบานหน้าต่าง & ประตู บานเปิด & บานปิดตาย (CASEMENT WINDOWS & DOOR & FIXED)",
+   "system": "casement",
+   "app_types": [
+    "บานกระทุ้ง 1 ชั้น x 1 ช่อง = 1 บาน",
+    "บานเปิดข้าง",
+    "บานเปิด",
+    "บานติดตาย"
+   ],
+   "frame_size_mm": "101.6 x 47 (กล่องก้าน 15113: 25 + 22 fin); วงกบไม้ 47; wall 1.2",
+   "spec": {
+    "glass_mm": "5-10",
+    "glass_groove_mm": "12.4, 12.9",
+    "frame_box_height_mm": 25,
+    "wood_frame_height_mm": 47,
+    "wall_mm": 1.2,
+    "page": 20
+   },
+   "profiles": [
+    {
+     "die_no": "15113",
+     "name": "กล่องก้าน",
+     "role_family": "กล่องก้าน (เฟรมบานเปิด)",
+     "kg_per_m": 0.775,
+     "width_mm": 101.6,
+     "depth_mm": 47.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 21,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15200",
+     "name": "กล่องก้าน C กรูฟ",
+     "role_family": "กล่องก้าน (เฟรมบานเปิด)",
+     "kg_per_m": 0.795,
+     "width_mm": 101.6,
+     "depth_mm": 47.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 21,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15102",
+     "name": "ตบก้าน",
+     "role_family": "ตบก้าน",
+     "kg_per_m": 0.587,
+     "width_mm": 101.6,
+     "depth_mm": 32.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 21,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15131",
+     "name": "กล่องก้าน (HOLLOW)",
+     "role_family": "กล่องก้าน (เฟรมบานเปิด)",
+     "kg_per_m": 0.938,
+     "width_mm": 101.6,
+     "depth_mm": 47.05,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 22,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15121",
+     "name": "วงกบไม้",
+     "role_family": "วงกบไม้",
+     "kg_per_m": 0.874,
+     "width_mm": 101.6,
+     "depth_mm": 47.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 22,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15122",
+     "name": "กล่องก้าน 2 ทาง",
+     "role_family": "กล่องก้าน 2 ทาง (เสากลาง)",
+     "kg_per_m": 1.242,
+     "width_mm": 101.6,
+     "depth_mm": 74.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 22,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15116",
+     "name": "กรอบบานกระทุ้ง 65 มิล",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "kg_per_m": 0.671,
+     "width_mm": 48.5,
+     "depth_mm": 65.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 23,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15114",
+     "name": "กรอบบานกระทุ้ง 65 มิล C กรูฟ",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "kg_per_m": 0.743,
+     "width_mm": 48.5,
+     "depth_mm": 65.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 23,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15118",
+     "name": "ซอยลูกฟัก",
+     "role_family": "ซอยลูกฟัก",
+     "kg_per_m": 0.686,
+     "width_mm": 48.5,
+     "depth_mm": 63.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 23,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15117",
+     "name": "กรอบบานกระทุ้ง 80 มิล",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "kg_per_m": 0.852,
+     "width_mm": 48.5,
+     "depth_mm": 80.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 23,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15123",
+     "name": "กรอบบาน 100 มิล",
+     "role_family": "กรอบบานประตู",
+     "kg_per_m": 0.993,
+     "width_mm": 48.5,
+     "depth_mm": 100.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 23,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15115",
+     "name": "คิ้วตบกระจก",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.267,
+     "width_mm": 32.5,
+     "depth_mm": 24.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 24,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15124",
+     "name": "บังใบบานเปิดคู่",
+     "role_family": "บังใบบานเปิดคู่",
+     "kg_per_m": 0.534,
+     "width_mm": 47.2,
+     "depth_mm": 42.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 24,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15138",
+     "name": "บังใบฝน",
+     "role_family": "ใบบังฝน",
+     "kg_per_m": 0.061,
+     "width_mm": 12.0,
+     "depth_mm": 16.0,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 24,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15153",
+     "name": "ตบล่างประตูภายใน หนา 1.5 มิล",
+     "role_family": "ตบธรณี",
+     "kg_per_m": 0.326,
+     "width_mm": 47.2,
+     "depth_mm": 20.5,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 24,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15187",
+     "name": "ฉากเข้ามุม บานเปิด, บานเฟี้ยม",
+     "role_family": "ฉากเข้ามุม",
+     "kg_per_m": 1.488,
+     "width_mm": 55.0,
+     "depth_mm": 55.0,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 24,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15188",
+     "name": "ฉากเข้ามุม บานเปิดกรอบ 65 มิล C กรูฟ",
+     "role_family": "ฉากเข้ามุม",
+     "kg_per_m": 1.142,
+     "width_mm": 50.0,
+     "depth_mm": 50.0,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 24,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15179",
+     "name": "เส้นเสริม C กรูฟ หนา 1.5 มิล",
+     "role_family": "เส้นเสริม C กรูฟ",
+     "kg_per_m": 0.162,
+     "width_mm": 23.0,
+     "depth_mm": 7.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 24,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15189",
+     "name": "ฉากเข้ามุม บานเปิด กรอบ 80 มิล",
+     "role_family": "ฉากเข้ามุม",
+     "kg_per_m": 1.465,
+     "width_mm": 55.0,
+     "depth_mm": 55.0,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 24,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "หน้าต่างบานเปิด, บานกระทุ้ง (ช่องแสง) (ไม่มี C กรูฟ)",
+     "page": 25,
+     "joints": "see smart-plus-cut-formulas-2022.json",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "frame face 25, bead 22, sash 65 (15116), sash-to-frame step 4.2; awning sash 20.2 reveal",
+     "sash_overlap_mm": null,
+     "notes": "p.26 same with hollow frame 15131 + C-groove sash 15114"
+    },
+    {
+     "type": "หน้าต่างบานเปิดคู่ไม่มีเสากลาง (ช่องแสง)",
+     "page": 27,
+     "joints": "see smart-plus-cut-formulas-2022.json",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "18.5 frame-to-sash; centre gap 3 with บังใบ 15124",
+     "sash_overlap_mm": null,
+     "notes": "sash 15117 (80)"
+    },
+    {
+     "type": "ประตูบานเปิด / บานเปิดภายใน (ช่องแสง)",
+     "page": 28,
+     "joints": "see smart-plus-cut-formulas-2022.json",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "wood-frame 15121 47 face; door sash 15123 100; inner-opening sill 15153",
+     "sash_overlap_mm": null,
+     "notes": "mid rail ซอยลูกฟัก 15118"
+    },
+    {
+     "type": "บานติดตาย",
+     "page": 29,
+     "joints": "not stated",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "15113/15131 + 15102 + 15115"
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "EURO PROFILE — ชุดบานเลื่อน (SLIDING WINDOWS & DOOR) หนา 1.5",
+   "system": "sliding door",
+   "app_types": [
+    "บานเลื่อนสวน 2 บาน",
+    "บานเลื่อน 2 ตาย 2",
+    "บานเลื่อน 3 บาน",
+    "บานเลื่อนรางล่าง"
+   ],
+   "frame_size_mm": "101.6 x 45 (3-track hollow 15135) or 67 x 43 (2-track 15190); sill low 18 / high 45; wall 1.5",
+   "spec": {
+    "glass_mm": "5-12",
+    "glass_groove_mm": "9.5, 15.1",
+    "frame_width_mm": "67, 101.6",
+    "wall_mm": 1.5,
+    "page": 30
+   },
+   "profiles": [
+    {
+     "die_no": "15135",
+     "name": "เฟรม 3 ราง HOLLOW",
+     "role_family": "เฟรม 3 ราง (ใช้ทั้ง 4 ด้าน)",
+     "kg_per_m": 1.958,
+     "width_mm": 101.6,
+     "depth_mm": 45.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 31,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15162",
+     "name": "เฟรมข้าง+เฟรมบน 3 ราง หนา 1.5 มิล",
+     "role_family": "เฟรมบน 3 ราง",
+     "kg_per_m": 1.405,
+     "width_mm": 101.6,
+     "depth_mm": 21.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 31,
+     "confidence": "read",
+     "also_family": "เฟรมข้าง 3 ราง"
+    },
+    {
+     "die_no": "15182",
+     "name": "เฟรมข้าง 3 ราง หนา 1.5 มิล",
+     "role_family": "เฟรมข้าง 3 ราง",
+     "kg_per_m": 1.932,
+     "width_mm": 101.6,
+     "depth_mm": 25.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 31,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15184",
+     "name": "เฟรมล่าง 3 ราง ภายใน หนา 1.5 มิล",
+     "role_family": "เฟรมล่าง 3 ราง",
+     "kg_per_m": 0.72,
+     "width_mm": 101.6,
+     "depth_mm": 18.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 32,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15164",
+     "name": "ตบเรียบ หนา 1.5 มิล",
+     "role_family": "ตบเรียบ",
+     "kg_per_m": 0.656,
+     "width_mm": 101.6,
+     "depth_mm": 7.2,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 32,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15190",
+     "name": "เฟรม 2 ราง HOLLOW",
+     "role_family": "เฟรม 2 ราง (ใช้ทั้ง 4 ด้าน)",
+     "kg_per_m": 1.279,
+     "width_mm": 67.0,
+     "depth_mm": 43.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 32,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15158",
+     "name": "ตบเกี่ยวหนา 1.5 มิล",
+     "role_family": "ตบเกี่ยว",
+     "kg_per_m": 0.468,
+     "width_mm": 42.0,
+     "depth_mm": 31.8,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 33,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15146",
+     "name": "กรอบบานเลื่อน 70 มิล",
+     "role_family": "กรอบบานเลื่อน (บานเลื่อนยูโร)",
+     "kg_per_m": 1.028,
+     "width_mm": 70.0,
+     "depth_mm": 26.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 33,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15147",
+     "name": "กรอบบานเลื่อนเปิดคิ้ว 70 มิล",
+     "role_family": "กรอบบานเลื่อน (บานเลื่อนยูโร)",
+     "kg_per_m": 0.955,
+     "width_mm": 70.0,
+     "depth_mm": 26.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 33,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15159",
+     "name": "ตบเกี่ยว 2 ทาง หนา 1.5 มิล",
+     "role_family": "ตบเกี่ยว 2 ทาง",
+     "kg_per_m": 0.729,
+     "width_mm": 42.0,
+     "depth_mm": 38.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 33,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15152",
+     "name": "ฉากเข้ามุม บานเลื่อน EURO หนา 1.5 มิล",
+     "role_family": "ฉากเข้ามุม",
+     "kg_per_m": 1.035,
+     "width_mm": 60.0,
+     "depth_mm": 60.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 33,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15192",
+     "name": "กรอบมุ้งนิรภัย หนา 2.0 มิล",
+     "role_family": "กรอบมุ้งบานเลื่อน",
+     "kg_per_m": 1.104,
+     "width_mm": 70.0,
+     "depth_mm": 26.0,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 33,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15197",
+     "name": "เสาเข้ามุม 90 บานเลื่อน",
+     "role_family": "เสาเข้ามุม",
+     "kg_per_m": 0.607,
+     "width_mm": 39.0,
+     "depth_mm": 36.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15149",
+     "name": "ตบเลื่อน",
+     "role_family": "ตบเลื่อน (ตบราง)",
+     "kg_per_m": 0.13,
+     "width_mm": 12.0,
+     "depth_mm": 12.8,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15163",
+     "name": "ชนกลางบานเลื่อน หนา 1.5 มิล",
+     "role_family": "ชนกลางบานเลื่อน",
+     "kg_per_m": 0.343,
+     "width_mm": 26.0,
+     "depth_mm": 12.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read",
+     "conf_dims": "estimated"
+    },
+    {
+     "die_no": "15150",
+     "name": "ตบข้าง",
+     "role_family": "ตบรางข้าง",
+     "kg_per_m": 0.074,
+     "width_mm": 12.0,
+     "depth_mm": 8.8,
+     "wall_mm": 1.0,
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15161",
+     "name": "คิ้วรับแท็กสแตนเลส",
+     "role_family": "คิ้วรับแท็กสแตนเลส",
+     "kg_per_m": 0.083,
+     "width_mm": 12.0,
+     "depth_mm": 9.3,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15198",
+     "name": "เสารับแรงบานเลื่อน (สติฟฟ์เนอร์)",
+     "role_family": "เสารับแรง (สติฟเนอร์)",
+     "kg_per_m": 0.59,
+     "width_mm": 24.5,
+     "depth_mm": 38.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15183",
+     "name": "เดือยกุญแจ หนา 1.5 มิล",
+     "role_family": "เดือยกุญแจ",
+     "kg_per_m": 0.163,
+     "width_mm": 15.0,
+     "depth_mm": 14.2,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15151",
+     "name": "ใบบังฝนบานเลื่อน",
+     "role_family": "ใบบังฝน",
+     "kg_per_m": 0.145,
+     "width_mm": 12.0,
+     "depth_mm": 24.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15191",
+     "name": "อแดปเตอร์ต่อเฟรม EURO",
+     "role_family": "อแดปเตอร์ต่อเฟรม",
+     "kg_per_m": 0.143,
+     "width_mm": 24.6,
+     "depth_mm": 22.1,
+     "wall_mm": 1.0,
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15148",
+     "name": "คิ้วตบกรอบบานเลื่อน หนา 1.5 มิล",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.148,
+     "width_mm": 16.0,
+     "depth_mm": 14.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15112",
+     "name": "ฝาปิดเดือยกุญแจ",
+     "role_family": "ฝาปิดเดือยกุญแจ",
+     "kg_per_m": 0.094,
+     "width_mm": 15.0,
+     "depth_mm": 11.2,
+     "wall_mm": 1.0,
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15179",
+     "name": "เส้นเสริม C กรูฟ หนา 1.5 มิล",
+     "role_family": "เส้นเสริม C กรูฟ",
+     "kg_per_m": 0.162,
+     "width_mm": 23.0,
+     "depth_mm": 7.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15133",
+     "name": "คิ้วตบกรอบมุ้งนิรภัย",
+     "role_family": "คิ้วตบกรอบมุ้ง",
+     "kg_per_m": 0.117,
+     "width_mm": 18.0,
+     "depth_mm": 12.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15157",
+     "name": "Transmission Rod",
+     "role_family": "ก้านส่งล็อก (Transmission Rod)",
+     "kg_per_m": 0.145,
+     "width_mm": 19.5,
+     "depth_mm": 4.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 34,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานเลื่อน 2 ราง แบ่ง 2 / แบ่ง 4 (กรณีทำประตู)",
+     "page": 35,
+     "joints": "see smart-plus-cut-formulas-2022.json (EURO frame mitred 45° with 22 mm spigot, or Crimping with corner 15152)",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "sash 15146 face 70; meeting 75 (two 15158); frame 15190 21 face + 1.5 gap",
+     "sash_overlap_mm": null,
+     "notes": "p.36 แบ่ง 4 centre 141.5 with 15163; p.37 4 ราง แบ่ง 4 frame width 135 with adapter 15191; p.38 2 ราง แบ่ง 4"
+    },
+    {
+     "type": "บานเลื่อน 3 ราง แบ่ง 4 / แบ่ง 3 / ภายใน / เข้ามุม 90°",
+     "page": 39,
+     "joints": "see smart-plus-cut-formulas-2022.json",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "p.39 safety screen 15192 + กรณีประกอบเฟรม 45° detail; p.41 กรณีใช้เฟรม 15135 + inner sill 15184; p.42 90° corner with 15197/15198"
+    }
+   ],
+   "hardware": [],
+   "accessories": [
+    {
+     "name": "สปีก็อต 22 มิล (corner spigot)",
+     "page": "cut sheet 17 p.10"
+    },
+    {
+     "name": "ฉากเข้ามุม Crimping 15152",
+     "page": 33
+    }
+   ],
+   "prices": []
+  },
+  {
+   "name": "EURO PROFILE — ชุดหน้าต่าง & ประตู บานเปิด & บานติดตาย (CASEMENT) หนา 1.5",
+   "system": "casement",
+   "app_types": [
+    "บานกระทุ้ง 1 ชั้น x 1 ช่อง = 1 บาน",
+    "บานเปิดข้าง",
+    "บานเปิด",
+    "บานติดตาย"
+   ],
+   "frame_size_mm": "101.6; กล่องก้าน 25; วงกบไม้ 47; wall 1.5",
+   "spec": {
+    "glass_mm": "5-10",
+    "glass_groove_mm": "12.4, 12.9, 35",
+    "wall_mm": 1.5,
+    "page": 43
+   },
+   "profiles": [
+    {
+     "die_no": "15155",
+     "name": "กล่องก้าน หนา 1.5 มิล (HOLLOW)",
+     "role_family": "กล่องก้าน (เฟรมบานเปิด)",
+     "kg_per_m": 1.305,
+     "width_mm": 101.6,
+     "depth_mm": 25.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 44,
+     "confidence": "read",
+     "conf_dims": "estimated"
+    },
+    {
+     "die_no": "15160",
+     "name": "ตบก้าน C กรูฟ หนา 1.5 มิล",
+     "role_family": "ตบก้าน",
+     "kg_per_m": 0.848,
+     "width_mm": 101.6,
+     "depth_mm": 35.3,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 44,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15193",
+     "name": "ตบก้าน C กรูฟ 2 ทาง หนา 1.5 มิล",
+     "role_family": "ตบก้าน",
+     "kg_per_m": 0.854,
+     "width_mm": 101.6,
+     "depth_mm": 35.3,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 44,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15142",
+     "name": "วงกบไม้ หนา 1.5 มิล",
+     "role_family": "วงกบไม้",
+     "kg_per_m": 1.588,
+     "width_mm": 101.6,
+     "depth_mm": 47.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 45,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15143",
+     "name": "กล่องก้าน 2 ทาง หนา 1.5 มิล",
+     "role_family": "กล่องก้าน 2 ทาง (เสากลาง)",
+     "kg_per_m": 1.632,
+     "width_mm": 101.6,
+     "depth_mm": 74.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 45,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15145",
+     "name": "คิ้วตบกระจก หนา 1.5 มิล",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.356,
+     "width_mm": 27.9,
+     "depth_mm": 24.5,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 45,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15138",
+     "name": "ใบบังฝน",
+     "role_family": "ใบบังฝน",
+     "kg_per_m": 0.061,
+     "width_mm": 12.0,
+     "depth_mm": 16.0,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 45,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15141",
+     "name": "กรอบบานกระทุ้ง 80 มิล หนา 1.5 มิล",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "kg_per_m": 1.1,
+     "width_mm": 48.5,
+     "depth_mm": 80.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 46,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15154",
+     "name": "กรอบมุ้งนิรภัยบานเปิด หนา 1.5 มิล",
+     "role_family": "กรอบมุ้งบานเปิด",
+     "kg_per_m": 0.983,
+     "width_mm": 29.5,
+     "depth_mm": 80.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 46,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15144",
+     "name": "กรอบบาน 100 มิล หนา 1.5 มิล",
+     "role_family": "กรอบบานประตู",
+     "kg_per_m": 1.244,
+     "width_mm": 48.5,
+     "depth_mm": 100.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 46,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15118",
+     "name": "ซอยลูกฟัก",
+     "role_family": "ซอยลูกฟัก",
+     "kg_per_m": 0.686,
+     "width_mm": 48.5,
+     "depth_mm": 63.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 46,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15187",
+     "name": "ฉากเข้ามุม บานเปิด,บานเฟี้ยม",
+     "role_family": "ฉากเข้ามุม",
+     "kg_per_m": 1.488,
+     "width_mm": 55.0,
+     "depth_mm": 55.0,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 47,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15124",
+     "name": "บังใบบานเปิดคู่",
+     "role_family": "บังใบบานเปิดคู่",
+     "kg_per_m": 0.534,
+     "width_mm": 47.2,
+     "depth_mm": 42.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 47,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15153",
+     "name": "ตบล่างประตูภายใน หนา 1.5 มิล",
+     "role_family": "ตบธรณี",
+     "kg_per_m": 0.326,
+     "width_mm": 47.2,
+     "depth_mm": 20.5,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 47,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15180",
+     "name": "คิ้วกระจกร่อง 35 มิล หนา 1.5 มิล",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.34,
+     "width_mm": 34.3,
+     "depth_mm": 22.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 47,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15199",
+     "name": "บังใบบานเปิดคู่มุ้งนิรภัย",
+     "role_family": "บังใบบานเปิดคู่",
+     "kg_per_m": 0.524,
+     "width_mm": 28.4,
+     "depth_mm": 43.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 47,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15189",
+     "name": "ฉากเข้ามุม บานเปิดกรอบ 80 มิล",
+     "role_family": "ฉากเข้ามุม",
+     "kg_per_m": 1.465,
+     "width_mm": 55.0,
+     "depth_mm": 55.0,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 47,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15156",
+     "name": "ตบปิดกล่องก้าน",
+     "role_family": "ตบปิดกล่องก้าน",
+     "kg_per_m": 0.058,
+     "width_mm": 17.8,
+     "depth_mm": 4.0,
+     "wall_mm": 1.0,
+     "std_length_m": null,
+     "page": 47,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15148",
+     "name": "คิ้วตบกรอบบานเลื่อน หนา 1.5 มิล",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 16.0,
+     "depth_mm": 14.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 47,
+     "confidence": "read",
+     "note": "no WT printed on p.47; p.34 gives 0.148"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "หน้าต่างบานเปิด, บานกระทุ้ง (ช่องแสง) (มุ้งนิรภัย)",
+     "page": 48,
+     "joints": "see smart-plus-cut-formulas-2022.json",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "sash 15141 + screen 15154"
+    },
+    {
+     "type": "หน้าต่างบานเปิดคู่ไม่มีเสากลาง (มุ้งนิรภัย)",
+     "page": 49,
+     "joints": "see smart-plus-cut-formulas-2022.json",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "80 sash, 18.5 to frame, 2.5 centre",
+     "sash_overlap_mm": null,
+     "notes": "กรณีใส่กระจกมู่ลี่ uses 15180 (35 groove)"
+    },
+    {
+     "type": "ประตูบานเปิด / ภายใน / คู่ไม่มีเสากลาง",
+     "page": 50,
+     "joints": "see smart-plus-cut-formulas-2022.json",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "18.5 frame-to-sash, sash 100, mid rail 63",
+     "sash_overlap_mm": null,
+     "notes": "p.51 double door"
+    },
+    {
+     "type": "บานติดตาย (กรณีใส่กระจกมู่ลี่)",
+     "page": 52,
+     "joints": "not stated",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "15155 + 15193 + 15156 + 15145"
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "EURO PROFILE — ชุดประตูบานเฟี้ยม (BI-FOLDING & DOOR)",
+   "system": "folding",
+   "app_types": [
+    "บานเฟี้ยม"
+   ],
+   "frame_size_mm": "101.6; head 70; sill 40; turtle-back sill 20; wall 1.5 / 2.0",
+   "spec": {
+    "glass_mm": "5-12",
+    "glass_groove_mm": "12.7, 25",
+    "wall_mm": "1.5, 2.0",
+    "page": 53
+   },
+   "layouts": [
+    "2-2-0",
+    "3-3-0",
+    "3-2-1",
+    "4-4-0",
+    "4-2-2",
+    "4-3-1",
+    "5-5-0",
+    "5-4-1",
+    "5-3-2",
+    "6-3-3",
+    "เข้ามุม 90° บานคี่+บานคี่",
+    "เข้ามุม 90° บานคี่+บานคู่"
+   ],
+   "profiles": [
+    {
+     "die_no": "15167",
+     "name": "เฟรมบนบานเฟี้ยม",
+     "role_family": "เฟรมบนบานเฟี้ยม",
+     "kg_per_m": 2.745,
+     "width_mm": 101.6,
+     "depth_mm": 70.0,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 54,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15169",
+     "name": "เฟรมข้างบานเฟี้ยม",
+     "role_family": "เฟรมข้างบานเฟี้ยม",
+     "kg_per_m": 1.464,
+     "width_mm": 101.6,
+     "depth_mm": 40.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 54,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15168",
+     "name": "เฟรมล่างบานเฟี้ยม",
+     "role_family": "เฟรมล่างบานเฟี้ยม",
+     "kg_per_m": 1.293,
+     "width_mm": 101.6,
+     "depth_mm": 40.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 54,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15194",
+     "name": "เฟรมล่างหลังเต่าบานเฟี้ยม",
+     "role_family": "เฟรมล่างบานเฟี้ยม",
+     "kg_per_m": 0.739,
+     "width_mm": 101.6,
+     "depth_mm": 20.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 55,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15170",
+     "name": "เฟรมล่างภายในบานเฟี้ยม",
+     "role_family": "เฟรมล่างบานเฟี้ยม",
+     "kg_per_m": 0.38,
+     "width_mm": 60.0,
+     "depth_mm": 17.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 55,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15171",
+     "name": "เสาบานเฟี้ยม หนา 1.5 มิล",
+     "role_family": "กรอบบานเฟี้ยม",
+     "kg_per_m": 1.266,
+     "width_mm": 52.0,
+     "depth_mm": 64.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 55,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15172",
+     "name": "เสาบานเฟี้ยม หนา 2.0 มิล",
+     "role_family": "กรอบบานเฟี้ยม",
+     "kg_per_m": 1.592,
+     "width_mm": 52.0,
+     "depth_mm": 64.0,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 55,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15195",
+     "name": "เสาบานเฟี้ยมเข้ามุม 90°",
+     "role_family": "เสาเข้ามุม",
+     "kg_per_m": 0.931,
+     "width_mm": 52.0,
+     "depth_mm": 60.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 56,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15177",
+     "name": "ใบบังบานเฟี้ยม",
+     "role_family": "บังใบบานเฟี้ยม",
+     "kg_per_m": 0.184,
+     "width_mm": 21.25,
+     "depth_mm": 15.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 56,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15178",
+     "name": "แกนกลางบานเฟี้ยม",
+     "role_family": "แกนกลางบานเฟี้ยม",
+     "kg_per_m": 0.592,
+     "width_mm": 52.0,
+     "depth_mm": 25.7,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 56,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15173",
+     "name": "คิ้วนอกบานเฟี้ยมร่องกระจก 12.7 มิล",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.345,
+     "width_mm": 33.35,
+     "depth_mm": 19.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 56,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15196",
+     "name": "แกนกลางบังใบบานเฟี้ยม V2/บังใบเข้ามุม 90°",
+     "role_family": "แกนกลางบังใบบานเฟี้ยม",
+     "kg_per_m": 0.505,
+     "width_mm": 50.3,
+     "depth_mm": 30.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 56,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15174",
+     "name": "คิ้วในบานเฟี้ยมร่องกระจก 12.7 มิล",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.28,
+     "width_mm": 17.15,
+     "depth_mm": 19.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 56,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15175",
+     "name": "คิ้วนอกบานเฟี้ยมร่องกระจก 25.0 มิล",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.34,
+     "width_mm": 33.35,
+     "depth_mm": 19.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 57,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15176",
+     "name": "คิ้วในบานเฟี้ยมร่องกระจก 25.0 มิล",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.276,
+     "width_mm": 17.15,
+     "depth_mm": 19.0,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 57,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15185",
+     "name": "คิ้วนอกบานเฟี้ยมหนา 1.20 มิล",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.266,
+     "width_mm": 33.35,
+     "depth_mm": 19.0,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 57,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15186",
+     "name": "คิ้วในบานเฟี้ยมหนา 1.20 มิล",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.217,
+     "width_mm": 17.15,
+     "depth_mm": 18.6,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 57,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15187",
+     "name": "ฉากเข้ามุม บานเปิด, บานเฟี้ยม",
+     "role_family": "ฉากเข้ามุม",
+     "kg_per_m": 1.488,
+     "width_mm": 55.0,
+     "depth_mm": 55.0,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 57,
+     "confidence": "read"
+    },
+    {
+     "die_no": "15156",
+     "name": "ตบปิดกล่องก้าน",
+     "role_family": "ตบปิดกล่องก้าน",
+     "kg_per_m": 0.058,
+     "width_mm": 17.8,
+     "depth_mm": 4.0,
+     "wall_mm": 1.0,
+     "std_length_m": null,
+     "page": 57,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "เฟี้ยม 2-2-0 / 3-3-0 / 3-2-1",
+     "page": 59,
+     "joints": "see smart-plus-cut-formulas-2022.json",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "panel 52+8 gaps; 80 panel width shown",
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "เฟี้ยม 4-2-2 / 6-3-3 / กรณีทำบานคี่",
+     "page": 60,
+     "joints": "see smart-plus-cut-formulas-2022.json",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "centre 8 + 19.7 + 19.7 (4-2-2); 30 centre (6-3-3)",
+     "sash_overlap_mm": null,
+     "notes": "centre posts 15178 / 15196"
+    },
+    {
+     "type": "กรณีใช้เฟรมล่างหลังเต่า / ฝังพื้น / เข้ามุม 90°",
+     "page": 61,
+     "joints": "not stated",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "15194 turtle-back sill or 15170 floor-recessed sill; 90° corner uses 15195 + 15196"
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  }
+ ],
+ "new_families": [
+  "เฟรมบน 3 ราง",
+  "เฟรมล่าง 3 ราง",
+  "เฟรมข้าง 3 ราง",
+  "เฟรม 3 ราง (ใช้ทั้ง 4 ด้าน)",
+  "เฟรม 2 ราง (ใช้ทั้ง 4 ด้าน)",
+  "ตบเกี่ยว",
+  "ตบเกี่ยว 2 ทาง",
+  "เดือยกุญแจ",
+  "ฝาปิดเดือยกุญแจ",
+  "ชนกลางบานเลื่อน",
+  "ก้านส่งล็อก (Transmission Rod)",
+  "ตบเกี่ยวมุ้ง",
+  "คิ้วตบกรอบมุ้ง",
+  "เสาเข้ามุม",
+  "กล่องก้าน (เฟรมบานเปิด)",
+  "กล่องก้าน 2 ทาง (เสากลาง)",
+  "ตบก้าน",
+  "กรอบบานประตู",
+  "บังใบบานเปิดคู่",
+  "ใบบังฝน",
+  "ฉากเข้ามุม",
+  "เส้นเสริม C กรูฟ",
+  "กรอบบานเลื่อน (บานเลื่อนยูโร)",
+  "ตบเลื่อน (ตบราง)",
+  "คิ้วรับแท็กสแตนเลส",
+  "เสารับแรง (สติฟเนอร์)",
+  "อแดปเตอร์ต่อเฟรม",
+  "กรอบมุ้งบานเปิด",
+  "ตบปิดกล่องก้าน",
+  "เฟรมบนบานเฟี้ยม",
+  "เฟรมล่างบานเฟี้ยม",
+  "เฟรมข้างบานเฟี้ยม",
+  "กรอบบานเฟี้ยม",
+  "บังใบบานเฟี้ยม",
+  "แกนกลางบานเฟี้ยม",
+  "แกนกลางบังใบบานเฟี้ยม"
+ ],
+ "open_questions": [
+  "ใช้ 15105 ตัวเดียวเป็นทั้งเสาเกี่ยวและเสากุญแจ และ 15106 เป็นทั้งขวางบน/ล่าง ใช่ไหม (ในแอปต้องผูก 1 die กับ 2 family)",
+  "แค็ตตาล็อกนี้ไม่มีราคาและไม่มีความยาวเส้นมาตรฐาน — ซื้อจากรัตนดำรงค์ราคาต่อกิโลหรือต่อเส้น ยาวเส้นละกี่เมตร",
+  "Smart Plus มีเกรด 1.2 (SEMI EURO) และ 1.5 (EURO) — ร้านเราใช้ชุดไหนเป็นหลักกับแต่ละประเภทงาน",
+  "15148 หน้า 47 ไม่มีน้ำหนักพิมพ์ (หน้า 34 ให้ 0.148) ใช้ค่าเดียวกันได้ไหม"
+ ],
+ "unreadable_pages": []
+}

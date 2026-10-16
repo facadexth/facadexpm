@@ -1,0 +1,846 @@
+{
+ "source_pdf": "ALUMET PRO Smart X.pdf",
+ "supplier": "Alumet Co., Ltd. (อลูเม็ท)",
+ "brand": "ALUMET PRO SMART X",
+ "catalogue_year": "not printed (newer than Pro Smart 2021)",
+ "pages": 27,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": "PRO SMART X"
+  },
+  {
+   "page": 2,
+   "content": "series overview",
+   "series": "PRO SMART X"
+  },
+  {
+   "page": 3,
+   "content": "toc",
+   "series": "PRO SMART X (section list)"
+  },
+  {
+   "page": 4,
+   "content": "series overview",
+   "series": "sliding"
+  },
+  {
+   "page": 5,
+   "content": "series overview",
+   "series": "sliding (spec)"
+  },
+  {
+   "page": 6,
+   "content": "profile table",
+   "series": "sliding"
+  },
+  {
+   "page": 7,
+   "content": "profile table",
+   "series": "sliding"
+  },
+  {
+   "page": 8,
+   "content": "profile table",
+   "series": "sliding"
+  },
+  {
+   "page": 9,
+   "content": "hardware",
+   "series": "sliding"
+  },
+  {
+   "page": 10,
+   "content": "assembly",
+   "series": "sliding – ประตูบานเลื่อนสลับ ใส่มุ้งสแตนเลส"
+  },
+  {
+   "page": 11,
+   "content": "assembly",
+   "series": "sliding – หน้าต่างบานเลื่อนแบ่ง 4 ต่อช่องแสงบน-ล่าง"
+  },
+  {
+   "page": 12,
+   "content": "series overview",
+   "series": "casement & awning"
+  },
+  {
+   "page": 13,
+   "content": "series overview",
+   "series": "casement & awning (spec)"
+  },
+  {
+   "page": 14,
+   "content": "profile table",
+   "series": "casement & awning"
+  },
+  {
+   "page": 15,
+   "content": "profile table",
+   "series": "casement & awning"
+  },
+  {
+   "page": 16,
+   "content": "hardware",
+   "series": "casement & awning"
+  },
+  {
+   "page": 17,
+   "content": "assembly",
+   "series": "casement – บานกระทุ้งเดี่ยว"
+  },
+  {
+   "page": 18,
+   "content": "assembly",
+   "series": "casement – บานเปิดคู่ ต่อช่องแสงล่าง ใส่มุ้งนิรภัย"
+  },
+  {
+   "page": 19,
+   "content": "assembly",
+   "series": "casement – บานเปิดเรียง 2 ช่อง"
+  },
+  {
+   "page": 20,
+   "content": "series overview",
+   "series": "fixed"
+  },
+  {
+   "page": 21,
+   "content": "series overview",
+   "series": "fixed (spec)"
+  },
+  {
+   "page": 22,
+   "content": "profile table",
+   "series": "fixed"
+  },
+  {
+   "page": 23,
+   "content": "assembly",
+   "series": "fixed – บานช่องแสงเดี่ยว"
+  },
+  {
+   "page": 24,
+   "content": "assembly",
+   "series": "fixed – บานช่องแสงแบ่ง 4 ช่อง"
+  },
+  {
+   "page": 25,
+   "content": "other",
+   "series": "colours"
+  },
+  {
+   "page": 26,
+   "content": "other",
+   "series": "contact"
+  },
+  {
+   "page": 27,
+   "content": "other",
+   "series": "back cover"
+  }
+ ],
+ "series": [
+  {
+   "name": "PRO SMART X – SLIDING SYSTEM",
+   "system": "sliding door",
+   "app_types": [
+    "บานเลื่อน",
+    "บานเลื่อนรางล่าง"
+   ],
+   "frame_size_mm": "101.6x43 (3-rail)",
+   "spec": {
+    "glass_mm": "5-14",
+    "glass_groove_mm": "9.5, 16",
+    "wall_mm": "1.5",
+    "max_h_mm": "3000",
+    "max_sash_w_mm": "1200",
+    "screen": "nylon / safety / pleated",
+    "multipoint": "yes"
+   },
+   "profiles": [
+    {
+     "die_no": "SS-X101",
+     "name": "เฟรมบนบานเลื่อน 3 ราง สมาร์ท เอ็กซ์",
+     "role_family": "เฟรมบน",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 43,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read",
+     "note": "83.4 inner; 25 + 18"
+    },
+    {
+     "die_no": "SS-X102",
+     "name": "เฟรมล่างบานเลื่อน 3 ราง สมาร์ท เอ็กซ์",
+     "role_family": "เฟรมล่าง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 43,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SS-X103",
+     "name": "เฟรมข้างกล่องเรียบ สมาร์ท เอ็กซ์",
+     "role_family": "เฟรมข้าง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SS-0117",
+     "name": "ฝาปิดเสริมเสากุญแจตัวผู้ สมาร์ท",
+     "role_family": "ฝาปิดเสริมเสากุญแจ",
+     "kg_per_m": null,
+     "width_mm": 10.7,
+     "depth_mm": 18.8,
+     "wall_mm": 1,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SS-0120",
+     "name": "เสริมปีกเฟรมข้างกล่องเรียบ สมาร์ท",
+     "role_family": "เสริมปีกเฟรมข้าง",
+     "kg_per_m": null,
+     "width_mm": 12.7,
+     "depth_mm": 20.5,
+     "wall_mm": 1,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SS-0145",
+     "name": "ตบธรณี สมาร์ท",
+     "role_family": "ตบธรณีบานเลื่อน",
+     "kg_per_m": null,
+     "width_mm": 34.8,
+     "depth_mm": 19,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 6,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SS-X104",
+     "name": "ตบเฟรม 3 รางบานเลื่อน ต่อช่องแสง สมาร์ท เอ็กซ์",
+     "role_family": "ตบเฟรมช่องแสงบน",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 26.35,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 7,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SS-X201",
+     "name": "เสากุญแจบานเลื่อน สมาร์ท เอ็กซ์",
+     "role_family": "เสากุญแจบานเลื่อน",
+     "kg_per_m": null,
+     "width_mm": 26,
+     "depth_mm": 63.8,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 7,
+     "confidence": "read",
+     "note": "lock stile; 16 groove, SS-X204 insert reduces to 9.5"
+    },
+    {
+     "die_no": "SS-X202",
+     "name": "เสากุญแจมือจับบานเลื่อน สมาร์ท เอ็กซ์",
+     "role_family": "เสากุญแจ (มือจับในตัว)",
+     "kg_per_m": null,
+     "width_mm": 51,
+     "depth_mm": 63.8,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 7,
+     "confidence": "read",
+     "note": "26 + 25 handle fin"
+    },
+    {
+     "die_no": "SS-X203",
+     "name": "ขวางบน-ล่างบานเลื่อน สมาร์ท เอ็กซ์",
+     "role_family": "ขวางบนบานเลื่อน",
+     "kg_per_m": null,
+     "width_mm": 23.9,
+     "depth_mm": 65,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 7,
+     "confidence": "read",
+     "also_roles": [
+      "ขวางล่างบานเลื่อน"
+     ]
+    },
+    {
+     "die_no": "SS-X204",
+     "name": "เสริมร่องกระจก 9.5 มม. บานเลื่อน สมาร์ท เอ็กซ์",
+     "role_family": "เสริมร่องกระจก 9.5",
+     "kg_per_m": null,
+     "width_mm": 23.9,
+     "depth_mm": 13.6,
+     "wall_mm": 1.1,
+     "std_length_m": null,
+     "page": 7,
+     "confidence": "read"
+    },
+    {
+     "die_no": "030038",
+     "name": "ก้านสไลด์มัลติพอยท์ล็อก",
+     "role_family": "ก้านมัลติพอยท์ล็อก",
+     "kg_per_m": null,
+     "width_mm": 19,
+     "depth_mm": 2.2,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 7,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SS-0141",
+     "name": "เสริมเสากุญแจตัวผู้ มัลติพอยท์ล็อก สมาร์ท",
+     "role_family": "เสริมเสากุญแจตัวผู้",
+     "kg_per_m": null,
+     "width_mm": 26,
+     "depth_mm": 33.5,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 7,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SS-0139",
+     "name": "ตบเสาเกี่ยว มัลติพอยท์ล็อก สมาร์ท",
+     "role_family": "ตบเกี่ยว (ทำเสาเกี่ยว)",
+     "kg_per_m": null,
+     "width_mm": 30.9,
+     "depth_mm": 37,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read",
+     "note": "clips on SS-X201 or SS-X203"
+    },
+    {
+     "die_no": "SS-0140",
+     "name": "ตบเสาเกี่ยว 2 ทาง มัลติพอยท์ล็อก สมาร์ท",
+     "role_family": "ตบเกี่ยว 2 ทาง",
+     "kg_per_m": null,
+     "width_mm": 35.8,
+     "depth_mm": 37,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SS-X207",
+     "name": "เสริมเสามือจับใหญ่ บานเลื่อน สมาร์ท เอ็กซ์",
+     "role_family": "เสริมเสามือจับ",
+     "kg_per_m": null,
+     "width_mm": 33.3,
+     "depth_mm": 60,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read",
+     "note": "top 18.6, wall 1.8 noted"
+    },
+    {
+     "die_no": "SS-X205",
+     "name": "เสริมมุ้งนิรภัยบานเลื่อน สมาร์ท เอ็กซ์",
+     "role_family": "เสริมมุ้งบานเลื่อน",
+     "kg_per_m": null,
+     "width_mm": 15.2,
+     "depth_mm": 11.3,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SS-X206",
+     "name": "ฝาปิดเสริมมุ้งนิรภัย บานเลื่อน สมาร์ท เอ็กซ์",
+     "role_family": "ฝาปิดเสริมมุ้ง",
+     "kg_per_m": null,
+     "width_mm": 15.2,
+     "depth_mm": 7.45,
+     "wall_mm": 1.1,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SC-0103",
+     "name": "เสริมช่องแสงกระทุ้ง สมาร์ท",
+     "role_family": "เสริมช่องแสงเฟรมข้าง",
+     "kg_per_m": null,
+     "width_mm": 38.7,
+     "depth_mm": 21.1,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read"
+    },
+    {
+     "die_no": "2044",
+     "name": "เสริมมุ้ง บานเลื่อน",
+     "role_family": "เสริมมุ้งบานเลื่อน",
+     "kg_per_m": null,
+     "width_mm": 12.5,
+     "depth_mm": 14.5,
+     "wall_mm": 1,
+     "std_length_m": null,
+     "page": 8,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "ประตูบานเลื่อนสลับ ใส่มุ้งสแตนเลส (3 ราง)",
+     "page": 10,
+     "joints": "sash stiles SS-X201 (lock) / SS-X201+SS-0139 (interlock), rails SS-X203; frame SS-X101/SS-X102 head-sill, SS-X103 jambs with SS-0120+SS-0117",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "head 25 + 10 to sash, sash 66; jamb 25 + 4; sash widths 63 / 63.5 (interlock zone)",
+     "sash_overlap_mm": null,
+     "notes": "no cut formula printed"
+    },
+    {
+     "type": "หน้าต่างบานเลื่อนแบ่ง 4 ต่อช่องแสงบน-ล่าง ใส่มุ้งไนล่อน",
+     "page": 11,
+     "joints": "SS-X104 adaptor to fixed SF-X101/SF-0102 above and below; centre lock SS-0141+SS-0117; 2044 screen",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "fixed: 25 + 14.5 bead; sliding 25 + 4 + 63 / 63.5 / 63 + 1.5 + 63",
+     "sash_overlap_mm": null,
+     "notes": ""
+    }
+   ],
+   "hardware": [
+    {
+     "name": "ฝาปิดเสากุญแจ (ขาว/ดำ)",
+     "code": "SLM001",
+     "per": "set",
+     "qty": null,
+     "page": 9
+    },
+    {
+     "name": "ตัวกันชน",
+     "code": "SLM004",
+     "per": null,
+     "qty": null,
+     "page": 9
+    },
+    {
+     "name": "ยางกันลม",
+     "code": "SLM005",
+     "per": null,
+     "qty": null,
+     "page": 9
+    },
+    {
+     "name": "ฝาปิดน้ำเข้า",
+     "code": "DWM006",
+     "per": null,
+     "qty": null,
+     "page": 9
+    },
+    {
+     "name": "ฝาปิดน้ำออก",
+     "code": "DWM007",
+     "per": null,
+     "qty": null,
+     "page": 9
+    },
+    {
+     "name": "ตัวรับกลอน",
+     "code": "SLM022",
+     "per": null,
+     "qty": null,
+     "page": 9
+    },
+    {
+     "name": "ตะขอล็อก (ดำ)",
+     "code": "SLM0XX",
+     "per": null,
+     "qty": null,
+     "page": 9
+    },
+    {
+     "name": "มือจับมัลติพอยท์ / ล้อตลับ (แนะนำ G-U, CMECH, HYDA, KINLONG, PBM, GUT)",
+     "code": null,
+     "per": null,
+     "qty": null,
+     "page": 9
+    }
+   ],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "PRO SMART X – CASEMENT & AWNING SYSTEM",
+   "system": "casement",
+   "app_types": [
+    "บานกระทุ้ง",
+    "บานเปิด"
+   ],
+   "frame_size_mm": "101.6x43 (spec) / 101.6x43.5 (drawing)",
+   "spec": {
+    "glass_mm": "5-10",
+    "glass_groove_mm": "12.7",
+    "wall_mm": "1.2",
+    "max_h_mm": "1200",
+    "max_sash_w_mm": "800"
+   },
+   "profiles": [
+    {
+     "die_no": "SC-X101",
+     "name": "เฟรมบน-ข้างบานกระทุ้ง สมาร์ท เอ็กซ์",
+     "role_family": "กรอบนอกกระทุ้ง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 43.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 14,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SC-X105",
+     "name": "ฝาปิดร่อง C-18 สมาร์ท เอ็กซ์",
+     "role_family": "ฝาปิดร่อง C",
+     "kg_per_m": null,
+     "width_mm": 15.4,
+     "depth_mm": 3.93,
+     "wall_mm": 0.8,
+     "std_length_m": null,
+     "page": 14,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SC-X106",
+     "name": "เสริมช่องแสงเฟรมบานกระทุ้ง สมาร์ท เอ็กซ์",
+     "role_family": "เสริมช่องแสงเฟรมกระทุ้ง",
+     "kg_per_m": null,
+     "width_mm": 38.7,
+     "depth_mm": 22.95,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 14,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SC-X102",
+     "name": "เฟรมล่างบานกระทุ้ง สมาร์ท เอ็กซ์",
+     "role_family": "กรอบนอกกระทุ้ง (ล่าง)",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 43.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 14,
+     "confidence": "read"
+    },
+    {
+     "die_no": "A30274",
+     "name": "คิ้วช่องแสงเฟรมกระทุ้ง พรีเมี่ยม",
+     "role_family": "คิ้วช่องแสงเฟรม",
+     "kg_per_m": null,
+     "width_mm": 22,
+     "depth_mm": 22,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 14,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SC-X103",
+     "name": "ซอยเฟรมบานกระทุ้ง สมาร์ท เอ็กซ์",
+     "role_family": "ซอยกลาง (เฟรมกระทุ้ง)",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 69,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 14,
+     "confidence": "read",
+     "weight_text_printed_nearby": "สีชุบ 1.25-1.45 / สีพ่น 1.30-1.50 (placement unclear — these equal SF-0102 in Pro Smart 2021, likely belongs to the bead, not SC-X103)"
+    },
+    {
+     "die_no": "SC-X104",
+     "name": "ตบเฟรมบานกระทุ้ง สมาร์ท เอ็กซ์",
+     "role_family": "ตบเฟรมกระทุ้ง (ต่อช่องแสง)",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 30.9,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 15,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SC-X201",
+     "name": "กรอบบานกระทุ้ง สมาร์ท เอ็กซ์",
+     "role_family": "กรอบในกระทุ้ง+คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 38.7,
+     "depth_mm": 80,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 15,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SC-X202",
+     "name": "เสริมมุ้งบานกระทุ้ง สมาร์ท เอ็กซ์",
+     "role_family": "เสริมมุ้งบานกระทุ้ง",
+     "kg_per_m": null,
+     "width_mm": 15.2,
+     "depth_mm": 14.6,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 15,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SC-0212",
+     "name": "เสริมเสาบานเปิดคู่ สมาร์ท",
+     "role_family": "เสริมเสาบานเปิดคู่",
+     "kg_per_m": null,
+     "width_mm": 34.7,
+     "depth_mm": 45,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 15,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SF-0102",
+     "name": "คิ้วช่องแสง-กระทุ้ง สมาร์ท",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 20.3,
+     "depth_mm": 14.6,
+     "wall_mm": 1.1,
+     "std_length_m": null,
+     "page": 15,
+     "confidence": "read"
+    },
+    {
+     "die_no": "030038",
+     "name": "ก้านสไลด์มัลติพอยท์ล็อก",
+     "role_family": "ก้านมัลติพอยท์ล็อก",
+     "kg_per_m": null,
+     "width_mm": 19,
+     "depth_mm": 2.2,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 15,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "หน้าต่างบานกระทุ้งเดี่ยว",
+     "page": 17,
+     "joints": "frame SC-X101 + SC-X102 sill, SC-X105 C-groove cover; sash SC-X201, bead SF-0102",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "frame face 25, 7 gap, 11.5 overlap, sash 80",
+     "sash_overlap_mm": "11.5",
+     "notes": ""
+    },
+    {
+     "type": "หน้าต่างบานเปิดคู่ ต่อช่องแสงล่าง ใส่มุ้งนิรภัย",
+     "page": 18,
+     "joints": "SC-0213 (printed) meeting post?; SF-X103 transom; SC-X106 + SF-X101 fixed",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "25/7/11.5/80 | 8 | 4 | 80; fixed 25+20 / 14.5",
+     "sash_overlap_mm": "11.5",
+     "notes": "drawing labels SC-0213 which is not in this catalogue's list (exists in Pro Smart 2021)"
+    },
+    {
+     "type": "หน้าต่างบานเปิดเรียง 2 ช่อง",
+     "page": 19,
+     "joints": "SC-X104 between two frames",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "25/7/11.5/80 ... 32 at mullion",
+     "sash_overlap_mm": "11.5",
+     "notes": ""
+    }
+   ],
+   "hardware": [
+    {
+     "name": "มือจับล็อก, บานพับ, โฟร์บาร์ (แนะนำ G-U, CMECH, HYDA, KINLONG, PBM)",
+     "code": null,
+     "per": "sash",
+     "qty": null,
+     "page": 16
+    }
+   ],
+   "accessories": [
+    {
+     "name": "ยางลูกโป่ง ฐานแข็ง ฐาน 4-5 มม. สูง 6-8 มม.",
+     "page": 16
+    },
+    {
+     "name": "ฉากอลูมิเนียม 2x2 นิ้ว หนา 6 มม. และ หนา 3 มม. (ประกอบบาน)",
+     "page": 16
+    },
+    {
+     "name": "ฉากประคองมุม สแตนเลส 6.5 หรือ 6.7 มม. หนา 1 มม.",
+     "page": 16
+    }
+   ],
+   "prices": []
+  },
+  {
+   "name": "PRO SMART X – FIXED GLAZING SYSTEM",
+   "system": "fixed",
+   "app_types": [
+    "บานติดตาย"
+   ],
+   "frame_size_mm": "101.6x40",
+   "spec": {
+    "glass_mm": "5-10",
+    "glass_groove_mm": "12.7",
+    "wall_mm": "1.2",
+    "max_h_mm": "3000",
+    "max_w_mm": "1200"
+   },
+   "profiles": [
+    {
+     "die_no": "SF-X101",
+     "name": "เฟรมช่องแสง สมาร์ท เอ็กซ์",
+     "role_family": "เฟรมบน",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 39.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 22,
+     "confidence": "read",
+     "also_roles": [
+      "เฟรมข้าง",
+      "เฟรมล่าง"
+     ],
+     "note": "14.5 + 25; 52.5 hollow"
+    },
+    {
+     "die_no": "SF-X102",
+     "name": "เฟรมซอยช่องแสง สมาร์ท เอ็กซ์",
+     "role_family": "ซอยกลาง (ช่องแสง)",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 54,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 22,
+     "confidence": "read"
+    },
+    {
+     "die_no": "SF-X103",
+     "name": "ตบช่องแสง สมาร์ท เอ็กซ์",
+     "role_family": "ตบช่องแสง",
+     "kg_per_m": null,
+     "width_mm": 83.29,
+     "depth_mm": 20.1,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 22,
+     "confidence": "read",
+     "conf_dims": "estimated"
+    },
+    {
+     "die_no": "SF-0102",
+     "name": "คิ้วช่องแสง-กระทุ้ง สมาร์ท",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 20.3,
+     "depth_mm": 14.6,
+     "wall_mm": 1.1,
+     "std_length_m": null,
+     "page": 22,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานช่องแสงเดี่ยว",
+     "page": 23,
+     "joints": "SF-X101 all four sides, bead SF-0102",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "25 + 14.5",
+     "sash_overlap_mm": null,
+     "notes": ""
+    },
+    {
+     "type": "บานช่องแสงแบ่ง 4 ช่อง",
+     "page": 24,
+     "joints": "SF-X102 transom (horizontal), SF-X103 vertical mullion (ตบ) between frames",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": "25 + 14.5 | 14.5 25 14.5",
+     "sash_overlap_mm": null,
+     "notes": ""
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  }
+ ],
+ "finishes": {
+  "anodised": [
+   "E&A",
+   "502 Platinum",
+   "504 Champagne",
+   "510 Golden Sand",
+   "512 Sukhothai Gold",
+   "514 Burgundy Brown",
+   "518 Onyx Black"
+  ],
+  "powder": [
+   "8859 Shadow Grey",
+   "8816 Midnight Black",
+   "8823 Choco Fudge",
+   "8911 Milky White",
+   "8515 Jewel Sand",
+   "8819 Black Pearl",
+   "8820 Sapphire Grey",
+   "8825 Truffle Brown"
+  ],
+  "page": 25
+ },
+ "new_families": [
+  "เสริมปีกเฟรมข้าง",
+  "เสริมร่องกระจก 9.5",
+  "เสริมเสากุญแจตัวผู้",
+  "เสริมเสามือจับ",
+  "เสากุญแจ (มือจับในตัว)"
+ ],
+ "open_questions": [
+  "Pro Smart X ไม่พิมพ์น้ำหนัก kg/m เลย — ใช้น้ำหนักจากใบราคา/ใบส่งของได้ไหม",
+  "ตัวเลข 'สีชุบ 1.25-1.45 / สีพ่น 1.30-1.50' พิมพ์ใต้ SC-X103 แต่น่าจะเป็นของคิ้ว SF-0102 — ยืนยัน",
+  "ไม่มีสูตรตัดในเล่ม — ขอคู่มือตัดประกอบ Pro Smart X จาก Alumet"
+ ],
+ "unreadable_pages": []
+}

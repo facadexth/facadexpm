@@ -1,0 +1,1909 @@
+{
+ "source_pdf": "Fuji Eurotech 2024.pdf",
+ "supplier": "Fuji Metal Co., Ltd. (บริษัท ฟูจิ เมททอล จำกัด, Samut Sakhon) - bought via KC",
+ "brand": "FUJI EURO PROFILE (EcoTECH A/C-CLASS + EUROTECH)",
+ "catalogue_year": "2024 (inside cover says 2022)",
+ "pages": 49,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "profile table",
+   "series": "all EUROTECH (poster with kg/m + glass adaptor tables)"
+  },
+  {
+   "page": 2,
+   "content": "cover",
+   "series": null
+  },
+  {
+   "page": 3,
+   "content": "other",
+   "series": "about Fuji Metal"
+  },
+  {
+   "page": 4,
+   "content": "toc",
+   "series": null
+  },
+  {
+   "page": 5,
+   "content": "cover",
+   "series": "EcoTECH A-CLASS"
+  },
+  {
+   "page": 6,
+   "content": "other",
+   "series": "A-CLASS photo"
+  },
+  {
+   "page": 7,
+   "content": "profile table",
+   "series": "EcoTECH A-CLASS"
+  },
+  {
+   "page": 8,
+   "content": "profile table",
+   "series": "EcoTECH A-CLASS"
+  },
+  {
+   "page": 9,
+   "content": "cover",
+   "series": "EcoTECH C-CLASS"
+  },
+  {
+   "page": 10,
+   "content": "other",
+   "series": "C-CLASS photo"
+  },
+  {
+   "page": 11,
+   "content": "profile table",
+   "series": "EcoTECH C-CLASS"
+  },
+  {
+   "page": 12,
+   "content": "profile table",
+   "series": "EcoTECH C-CLASS"
+  },
+  {
+   "page": 13,
+   "content": "hardware",
+   "series": "EcoTECH accessories"
+  },
+  {
+   "page": 14,
+   "content": "other",
+   "series": "photo"
+  },
+  {
+   "page": 15,
+   "content": "series overview",
+   "series": "EUROTECH Sliding"
+  },
+  {
+   "page": 16,
+   "content": "profile table",
+   "series": "EUROTECH Sliding"
+  },
+  {
+   "page": 17,
+   "content": "profile table",
+   "series": "EUROTECH Sliding"
+  },
+  {
+   "page": 18,
+   "content": "profile table",
+   "series": "EUROTECH Sliding"
+  },
+  {
+   "page": 19,
+   "content": "profile table",
+   "series": "EUROTECH Sliding"
+  },
+  {
+   "page": 20,
+   "content": "profile table",
+   "series": "EUROTECH Sliding"
+  },
+  {
+   "page": 21,
+   "content": "section drawing",
+   "series": "EUROTECH Sliding"
+  },
+  {
+   "page": 22,
+   "content": "section drawing",
+   "series": "EUROTECH Sliding"
+  },
+  {
+   "page": 23,
+   "content": "section drawing",
+   "series": "EUROTECH Sliding"
+  },
+  {
+   "page": 24,
+   "content": "section drawing",
+   "series": "EUROTECH Sliding"
+  },
+  {
+   "page": 25,
+   "content": "series overview",
+   "series": "EUROTECH Awning/Casement/Fixed"
+  },
+  {
+   "page": 26,
+   "content": "profile table",
+   "series": "EUROTECH Awning/Casement/Fixed"
+  },
+  {
+   "page": 27,
+   "content": "profile table",
+   "series": "EUROTECH Awning/Casement/Fixed"
+  },
+  {
+   "page": 28,
+   "content": "profile table",
+   "series": "EUROTECH Awning/Casement/Fixed"
+  },
+  {
+   "page": 29,
+   "content": "profile table",
+   "series": "EUROTECH Awning/Casement/Fixed"
+  },
+  {
+   "page": 30,
+   "content": "profile table",
+   "series": "EUROTECH Awning/Casement/Fixed"
+  },
+  {
+   "page": 31,
+   "content": "profile table",
+   "series": "EUROTECH Awning/Casement/Fixed"
+  },
+  {
+   "page": 32,
+   "content": "assembly",
+   "series": "EUROTECH Awning/Casement (transom & mullion combos)"
+  },
+  {
+   "page": 33,
+   "content": "section drawing",
+   "series": "EUROTECH Awning/Casement/Fixed"
+  },
+  {
+   "page": 34,
+   "content": "section drawing",
+   "series": "EUROTECH Awning/Casement/Fixed"
+  },
+  {
+   "page": 35,
+   "content": "section drawing",
+   "series": "EUROTECH Awning/Casement/Fixed"
+  },
+  {
+   "page": 36,
+   "content": "section drawing",
+   "series": "EUROTECH Awning/Casement/Fixed"
+  },
+  {
+   "page": 37,
+   "content": "series overview",
+   "series": "EUROTECH Bi-fold"
+  },
+  {
+   "page": 38,
+   "content": "profile table",
+   "series": "EUROTECH Bi-fold"
+  },
+  {
+   "page": 39,
+   "content": "profile table",
+   "series": "EUROTECH Bi-fold"
+  },
+  {
+   "page": 40,
+   "content": "profile table",
+   "series": "EUROTECH Bi-fold"
+  },
+  {
+   "page": 41,
+   "content": "profile table",
+   "series": "EUROTECH Bi-fold"
+  },
+  {
+   "page": 42,
+   "content": "assembly",
+   "series": "EUROTECH Bi-fold (configurations)"
+  },
+  {
+   "page": 43,
+   "content": "assembly",
+   "series": "EUROTECH Bi-fold (configurations)"
+  },
+  {
+   "page": 44,
+   "content": "assembly",
+   "series": "EUROTECH Bi-fold (configurations)"
+  },
+  {
+   "page": 45,
+   "content": "section drawing",
+   "series": "EUROTECH Bi-fold"
+  },
+  {
+   "page": 46,
+   "content": "section drawing",
+   "series": "EUROTECH Bi-fold"
+  },
+  {
+   "page": 47,
+   "content": "section drawing",
+   "series": "EUROTECH Bi-fold"
+  },
+  {
+   "page": 48,
+   "content": "other",
+   "series": "standard colours"
+  },
+  {
+   "page": 49,
+   "content": "other",
+   "series": "back cover"
+  }
+ ],
+ "series": [
+  {
+   "name": "EcoTECH A-CLASS",
+   "system": "sliding window",
+   "app_types": [
+    "บานเลื่อนสวน 2 บาน",
+    "ประตูบานเลื่อนสวน 2 บาน"
+   ],
+   "frame_size_mm": "99-101.6 x 38-50, wall 0.7",
+   "profiles": [
+    {
+     "die_no": "F7380",
+     "name": "เฟรมบน",
+     "role_family": "เฟรมบน 2 ราง",
+     "kg_per_m": 0.55,
+     "width_mm": 99,
+     "depth_mm": 38,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7381",
+     "name": "เฟรมข้าง",
+     "role_family": "เฟรมข้าง 2 ราง",
+     "kg_per_m": 0.471,
+     "width_mm": 101.6,
+     "depth_mm": 25,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7399",
+     "name": "เฟรมล่าง (หน้าต่าง)",
+     "role_family": "เฟรมล่าง 2 ราง",
+     "kg_per_m": 0.639,
+     "width_mm": 99,
+     "depth_mm": 50,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "note": "PDF p7 prints die as 'F7381' (misprint); KC catalogue (PDF 11 p5) gives F7399"
+    },
+    {
+     "die_no": "F7400",
+     "name": "เฟรมล่าง (ประตู)",
+     "role_family": "เฟรมล่าง 2 ราง (ประตู)",
+     "kg_per_m": 0.585,
+     "width_mm": 99,
+     "depth_mm": 40,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "note": "PDF p7 prints 'F7381' (misprint); KC catalogue gives F7400"
+    },
+    {
+     "die_no": "F7382",
+     "name": "เสากุญแจ",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": 0.366,
+     "width_mm": 47.2,
+     "depth_mm": 26,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 8,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7383",
+     "name": "ขวางบน",
+     "role_family": "ขวางบน",
+     "kg_per_m": 0.315,
+     "width_mm": 40,
+     "depth_mm": 22.9,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 8,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7384",
+     "name": "เสาเกี่ยว",
+     "role_family": "เสาเกี่ยว",
+     "kg_per_m": 0.342,
+     "width_mm": 30,
+     "depth_mm": 26,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 8,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7388",
+     "name": "ขวางล่าง",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": 0.42,
+     "width_mm": 66.1,
+     "depth_mm": 22.9,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 8,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7398",
+     "name": "ตบธรณีบานเลื่อน",
+     "role_family": "ตบธรณี",
+     "kg_per_m": 0.147,
+     "width_mm": 30,
+     "depth_mm": 50.3,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": null,
+     "confidence": "read",
+     "note": "only in KC catalogue PDF 11 p5; shown in section p4"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานเลื่อน 2 บาน 2 ราง",
+     "page": 7,
+     "joints": "not printed in this PDF; section in KC catalogue (PDF 11 p4) shows head F7380, sill F7399/F7400, jambs F7381, rails F7383/F7388, stiles F7382/F7384",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "economy 0.7 mm series; no cut dimensions printed"
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "EcoTECH C-CLASS",
+   "system": "sliding window",
+   "app_types": [
+    "บานเลื่อนสวน 2 บาน",
+    "ประตูบานเลื่อนสวน 2 บาน"
+   ],
+   "frame_size_mm": "99-101.6 x 38-50, wall 1.0-1.2",
+   "profiles": [
+    {
+     "die_no": "F7320",
+     "name": "เฟรมบน",
+     "role_family": "เฟรมบน 2 ราง",
+     "kg_per_m": 0.803,
+     "width_mm": 99,
+     "depth_mm": 38,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 11,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7321",
+     "name": "เฟรมข้าง",
+     "role_family": "เฟรมข้าง 2 ราง",
+     "kg_per_m": 0.75,
+     "width_mm": 101.6,
+     "depth_mm": 25,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 11,
+     "confidence": "read",
+     "note": "this PDF draws it 38 high; KC catalogue table says 25"
+    },
+    {
+     "die_no": "F7319",
+     "name": "เฟรมล่าง (หน้าต่าง)",
+     "role_family": "เฟรมล่าง 2 ราง",
+     "kg_per_m": 0.954,
+     "width_mm": 99,
+     "depth_mm": 50,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 11,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7318",
+     "name": "เฟรมล่าง (ประตู)",
+     "role_family": "เฟรมล่าง 2 ราง (ประตู)",
+     "kg_per_m": 0.868,
+     "width_mm": 99,
+     "depth_mm": 40,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 11,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7322",
+     "name": "เสากุญแจ",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": 0.54,
+     "width_mm": 50,
+     "depth_mm": 26,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 12,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7326",
+     "name": "ขวางบน",
+     "role_family": "ขวางบน",
+     "kg_per_m": 0.487,
+     "width_mm": 45,
+     "depth_mm": 22.9,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 12,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7325",
+     "name": "เสาเกี่ยว",
+     "role_family": "เสาเกี่ยว",
+     "kg_per_m": 0.497,
+     "width_mm": 30,
+     "depth_mm": 26,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 12,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7323",
+     "name": "ขวางล่าง",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": 0.604,
+     "width_mm": 65,
+     "depth_mm": 22.9,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 12,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานเลื่อน 2 บาน 2 ราง",
+     "page": 11,
+     "joints": "not printed; KC catalogue PDF 11 p6 section: head F7320, sill F7318 + F7398, jamb F7321, top rail F7326, bottom rail F7323, lock stile F7322, interlock F7325",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "same shapes as A-CLASS, thicker wall"
+    }
+   ],
+   "hardware": [
+    {
+     "name": "ยางปิดประคองเสากุญแจ",
+     "code": "FJH-001",
+     "per": "per sash",
+     "qty": null,
+     "page": 13
+    },
+    {
+     "name": "ยางปิดประคองเสาเกี่ยว",
+     "code": "FJH-002",
+     "per": "per sash",
+     "qty": null,
+     "page": 13
+    },
+    {
+     "name": "ยางกันลม",
+     "code": "FJH-003",
+     "per": null,
+     "qty": null,
+     "page": 13
+    },
+    {
+     "name": "เพลทกันยก",
+     "code": "FJH-004",
+     "per": null,
+     "qty": null,
+     "page": 13
+    }
+   ],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "EUROTECH Sliding Door & Window (2 & 3 track)",
+   "system": "sliding door",
+   "app_types": [
+    "บานเลื่อนสวน 2 บาน",
+    "บานเลื่อนสวน 3 บาน",
+    "ประตูบานเลื่อน",
+    "บานเลื่อนเปิดกลาง 4 บาน",
+    "บานเลื่อนเข้ามุม"
+   ],
+   "frame_size_mm": "101.6 (3 track) / 63.6 (2 track) x 45 sill / 21 jamb, wall 1.5; glass 5-20",
+   "profiles": [
+    {
+     "die_no": "F7976",
+     "name": "เฟรมล่างบานเลื่อน 3 ราง",
+     "role_family": "เฟรมล่าง 3 ราง",
+     "kg_per_m": 1.905,
+     "width_mm": 101.6,
+     "depth_mm": 45,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read",
+     "note": "wall 1.3/1.5; section p21 also uses it as head"
+    },
+    {
+     "die_no": "F7977",
+     "name": "เฟรมล่างบานเลื่อน 2 ราง",
+     "role_family": "เฟรมล่าง 2 ราง",
+     "kg_per_m": 1.212,
+     "width_mm": 63.6,
+     "depth_mm": 45,
+     "wall_mm": 1.3,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read",
+     "note": "section p24 also uses it as head"
+    },
+    {
+     "die_no": "F7978",
+     "name": "เฟรมข้างบานเลื่อน 3 ราง",
+     "role_family": "เฟรมข้าง 3 ราง",
+     "kg_per_m": 0.766,
+     "width_mm": 101.6,
+     "depth_mm": 21,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7979",
+     "name": "เฟรมข้างบานเลื่อน 2 ราง",
+     "role_family": "เฟรมข้าง 2 ราง",
+     "kg_per_m": 0.549,
+     "width_mm": 63.6,
+     "depth_mm": 21,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7982",
+     "name": "ตบเกี่ยวทางเดียว หน้าต่าง",
+     "role_family": "ตบเกี่ยว",
+     "kg_per_m": 0.333,
+     "width_mm": 36,
+     "depth_mm": 39.7,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7983",
+     "name": "ตบเกี่ยวทางเดียว ประตู",
+     "role_family": "ตบเกี่ยว (ประตู)",
+     "kg_per_m": 0.383,
+     "width_mm": 36,
+     "depth_mm": 46.8,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7984",
+     "name": "ตบเกี่ยวสองทาง หน้าต่าง",
+     "role_family": "ตบเกี่ยวสองทาง",
+     "kg_per_m": 0.551,
+     "width_mm": 43,
+     "depth_mm": 39.7,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 17,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7985",
+     "name": "ตบเกี่ยวสองทาง ประตู",
+     "role_family": "ตบเกี่ยวสองทาง (ประตู)",
+     "kg_per_m": 0.653,
+     "width_mm": 43,
+     "depth_mm": 46.8,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 17,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7980",
+     "name": "กรอบบานเลื่อน ประตู",
+     "role_family": "กรอบบานเลื่อนยูโร",
+     "kg_per_m": 1.211,
+     "width_mm": 29,
+     "depth_mm": 78,
+     "wall_mm": 2.0,
+     "std_length_m": null,
+     "page": 17,
+     "confidence": "read",
+     "note": "poster p1 lists F7980B 1.221"
+    },
+    {
+     "die_no": "F7981",
+     "name": "กรอบบานเลื่อน หน้าต่าง",
+     "role_family": "กรอบบานเลื่อนยูโร",
+     "kg_per_m": 0.913,
+     "width_mm": 29,
+     "depth_mm": 66,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 17,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7986",
+     "name": "ตบรับล็อคเฟรมข้าง",
+     "role_family": "ตบรับล็อค",
+     "kg_per_m": 0.214,
+     "width_mm": 17,
+     "depth_mm": 18,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 17,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7987",
+     "name": "คิ้วมุ้งบานเลื่อน",
+     "role_family": "คิ้วมุ้ง",
+     "kg_per_m": 0.128,
+     "width_mm": 7.8,
+     "depth_mm": 17.75,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 17,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7988",
+     "name": "ตบปิดร่อง",
+     "role_family": "ตบปิดร่อง",
+     "kg_per_m": 0.048,
+     "width_mm": 13.6,
+     "depth_mm": 3.6,
+     "wall_mm": 1.0,
+     "std_length_m": null,
+     "page": 18,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7989",
+     "name": "กล่องต่อเฟรมข้างบานเลื่อน",
+     "role_family": "ตัวต่อเฟรม",
+     "kg_per_m": 0.251,
+     "width_mm": 11.8,
+     "depth_mm": 21,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 18,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7990",
+     "name": "ต่อเฟรมล่างบานเลื่อน",
+     "role_family": "ตัวต่อเฟรม",
+     "kg_per_m": 0.818,
+     "width_mm": 56.3,
+     "depth_mm": 45,
+     "wall_mm": 1.3,
+     "std_length_m": null,
+     "page": 18,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7991",
+     "name": "ตบธรณีบานเลื่อน",
+     "role_family": "ตบธรณี",
+     "kg_per_m": 0.24,
+     "width_mm": 21.25,
+     "depth_mm": 22.2,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 18,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7992",
+     "name": "ตบฝังเฟรมบานเลื่อน",
+     "role_family": "ตบฝังเฟรม",
+     "kg_per_m": 0.421,
+     "width_mm": 24.4,
+     "depth_mm": 46,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 18,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7993",
+     "name": "ตบปิดร่องรางเลื่อน",
+     "role_family": "ตบปิดร่อง",
+     "kg_per_m": 0.049,
+     "width_mm": 8.9,
+     "depth_mm": 6.9,
+     "wall_mm": 1.0,
+     "std_length_m": null,
+     "page": 18,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7994",
+     "name": "เส้นรางเลื่อน",
+     "role_family": "รางเลื่อน",
+     "kg_per_m": 0.083,
+     "width_mm": 8.9,
+     "depth_mm": 11.15,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 18,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7995",
+     "name": "กระดูกต่อเฟรม",
+     "role_family": "ตัวต่อเฟรม",
+     "kg_per_m": 0.638,
+     "width_mm": 89.5,
+     "depth_mm": 16.8,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 19,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7996",
+     "name": "คิ้วลอยช่องแสง",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.384,
+     "width_mm": 49,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 19,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7919",
+     "name": "คิ้วกรอบบาน",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.164,
+     "width_mm": 13.2,
+     "depth_mm": 18,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 19,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7913B",
+     "name": "ขาเสริมมุ้ง",
+     "role_family": "ขาเสริมมุ้ง",
+     "kg_per_m": 0.281,
+     "width_mm": 36,
+     "depth_mm": 25.5,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 19,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7918B",
+     "name": "เสาต่อหักมุม 90",
+     "role_family": "เสาเข้ามุม",
+     "kg_per_m": 0.669,
+     "width_mm": 29,
+     "depth_mm": 35.6,
+     "wall_mm": 1.4,
+     "std_length_m": null,
+     "page": 19,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7923B",
+     "name": "ตบสักกะหลาดกรอบมุ้ง",
+     "role_family": "ตบสักหลาด",
+     "kg_per_m": 0.102,
+     "width_mm": 18.5,
+     "depth_mm": 16.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 19,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7923C",
+     "name": "ต่อชนกลาง",
+     "role_family": "ชนกลาง",
+     "kg_per_m": 0.338,
+     "width_mm": 28.9,
+     "depth_mm": 30.4,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 19,
+     "confidence": "read",
+     "note": "poster p1 names it F7925C; sections p21-24 label the centre joint F7925"
+    },
+    {
+     "die_no": "F7950B",
+     "name": "คิ้วกรอบบานเลื่อนกระจก 12 มิล",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.124,
+     "width_mm": 12.9,
+     "depth_mm": 17.8,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 19,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7951B",
+     "name": "เสารับแรงบานเลื่อน",
+     "role_family": "เสารับแรง",
+     "kg_per_m": 1.802,
+     "width_mm": 66,
+     "depth_mm": 48.8,
+     "wall_mm": 2.5,
+     "std_length_m": null,
+     "page": 20,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7917",
+     "name": "คิ้วกรอบบาน",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.123,
+     "width_mm": 13.3,
+     "depth_mm": 17.6,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 20,
+     "confidence": "read",
+     "note": "poster p1 says 0.124"
+    },
+    {
+     "die_no": "F304",
+     "name": "ตัวเสริมเฟรมล่างบานเลื่อน",
+     "role_family": "ตัวเสริมเฟรมล่าง",
+     "kg_per_m": 0.071,
+     "width_mm": 9.5,
+     "depth_mm": 9.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 20,
+     "confidence": "read",
+     "note": "poster p1 says F303"
+    },
+    {
+     "die_no": "F7966B",
+     "name": "แบ่งบานมุ้งบานเลื่อน",
+     "role_family": "แบ่งบานมุ้ง",
+     "kg_per_m": 0.663,
+     "width_mm": 60,
+     "depth_mm": 29,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 20,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7902",
+     "name": "เฟรมบานเลื่อน 3 รางเตี้ย",
+     "role_family": "เฟรมล่าง 3 ราง (เตี้ย)",
+     "kg_per_m": 1.029,
+     "width_mm": 101.6,
+     "depth_mm": 20,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 20,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7857",
+     "name": "อแดปเตอร์บานเลื่อนดิจิตอล",
+     "role_family": "อแดปเตอร์ล็อคดิจิตอล",
+     "kg_per_m": 0.599,
+     "width_mm": 55.8,
+     "depth_mm": 29,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 20,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7855",
+     "name": "ชนกลางบานเลื่อน",
+     "role_family": "ชนกลาง",
+     "kg_per_m": 1.117,
+     "width_mm": 49,
+     "depth_mm": 36,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 20,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7867",
+     "name": "กรอบบานเลื่อน ประตูตัวบาง",
+     "role_family": "กรอบบานเลื่อนยูโร",
+     "kg_per_m": 0.998,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 1,
+     "confidence": "estimated",
+     "note": "poster p1 only, tiny print"
+    },
+    {
+     "die_no": "F7869",
+     "name": "เฟรมล่างบานเลื่อน 3 ราง (ตัวหนา)",
+     "role_family": "เฟรมล่าง 3 ราง",
+     "kg_per_m": 2.338,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 1,
+     "confidence": "estimated",
+     "note": "poster p1 only"
+    },
+    {
+     "die_no": "F7870",
+     "name": "เฟรมข้างบานเลื่อน 3 ราง (ตัวหนา)",
+     "role_family": "เฟรมข้าง 3 ราง",
+     "kg_per_m": 0.915,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 1,
+     "confidence": "estimated",
+     "note": "poster p1 only"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "ประตูบานเลื่อน 3 ราง (2 และ 3 บาน, เปิดกลาง)",
+     "page": 21,
+     "joints": "sash mitred 45 deg with spigot + corner bracket; outer frame 90 deg butt. Head uses the SAME die as the sill (F7976) + F7988 cover; jamb F7978; sill F7976 + F304 + F7952 + F7991 threshold",
+     "cut_formulas": [
+      {
+       "member": "sash rail/stile face",
+       "formula_as_printed": null,
+       "formula_normalised": "sash face width 78 (door F7980) / 66 (window F7981) - read from section, no formula printed"
+      },
+      {
+       "member": "sash height (estimated from section dims)",
+       "formula_as_printed": null,
+       "formula_normalised": "H - 21 - 13 - 8.5 - 19 - 21  (head 21 + gap 13 above sash; 8.5 + 19 + 21 below) = H - 82.5  [estimated, verify]"
+      },
+      {
+       "member": "sash gap to jamb",
+       "formula_as_printed": null,
+       "formula_normalised": "jamb 21 + gap 7 to sash edge each side  [estimated]"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "(5) shim each side of frame; 7 mm jamb-to-sash; 13 mm head gap",
+     "sash_overlap_mm": "interlock F7983/F7985 + F7988; centre opening 78|7|78 via F7925",
+     "notes": "no cut list printed; the numbers are dimension strings on the sections"
+    },
+    {
+     "type": "ประตูบานเลื่อน 2 ราง",
+     "page": 24,
+     "joints": "head F7977 (same die as sill), jamb F7979, sill shows die F7904 (not in profile list). Printed note: กรณีใช้เฟรมข้างเป็นเฟรมบน *ระยะห่างเฟรมล่าง 19 mm (jamb F7979 used as head, 21 + 10 + 8). Recessed sill option: pocket 50 deep x 76 wide with F7992",
+     "cut_formulas": [
+      {
+       "member": "sash height when jamb used as head (estimated)",
+       "formula_as_printed": "*ระยะห่างเฟรมล่าง 19 mm",
+       "formula_normalised": "bottom clearance 19 mm above sill; other terms not printed"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "19 mm sash-to-sill clearance (printed)",
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "บานเลื่อนเข้ามุม / ลดระดับพื้น",
+     "page": 23,
+     "joints": "corner post F7918B (90 deg); recessed floor with F7992",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ],
+   "hardware": [],
+   "accessories": [
+    {
+     "name": "glass adaptor F7919 / F7917 / F7950(B)",
+     "note": "poster p1 glass-pocket table: F7919 13.3, F7917 15, F7950 22; screen คิ้ว F7987 safety screen 4 / normal screen 5",
+     "page": 1
+    }
+   ],
+   "prices": []
+  },
+  {
+   "name": "EUROTECH Awning / Casement / Fixed",
+   "system": "awning",
+   "app_types": [
+    "บานกระทุ้ง",
+    "บานเปิด",
+    "บานเปิดคู่",
+    "บานติดตาย",
+    "ช่องแสง"
+   ],
+   "frame_size_mm": "101.6 x 45 (25 body), wall 1.5; glass 5-33; door sill 25",
+   "profiles": [
+    {
+     "die_no": "F7937",
+     "name": "เฟรมบานตายคิ้วใน",
+     "role_family": "เฟรมบานตาย",
+     "kg_per_m": 1.102,
+     "width_mm": 101.6,
+     "depth_mm": 45,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 26,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7938",
+     "name": "เฟรมบานกระทุ้ง สำหรับมุ้งนิรภัย",
+     "role_family": "กรอบนอกบานกระทุ้ง (มุ้งนิรภัย)",
+     "kg_per_m": 1.247,
+     "width_mm": 101.6,
+     "depth_mm": 45,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 26,
+     "confidence": "read",
+     "note": "poster p1: F7938B 1.192"
+    },
+    {
+     "die_no": "F7939",
+     "name": "เฟรมบานกระทุ้ง",
+     "role_family": "กรอบนอกบานกระทุ้ง",
+     "kg_per_m": 1.206,
+     "width_mm": 101.6,
+     "depth_mm": 45,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 26,
+     "confidence": "read",
+     "note": "poster p1: F7939B 1.151"
+    },
+    {
+     "die_no": "F7940",
+     "name": "กล่องก้านคิ้วนอก",
+     "role_family": "กล่องร่อง (ก้านคิ้วนอก)",
+     "kg_per_m": 1.505,
+     "width_mm": 101.6,
+     "depth_mm": 65,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 27,
+     "confidence": "read",
+     "note": "poster p1: F7940B 1.562"
+    },
+    {
+     "die_no": "F7854",
+     "name": "เฟรมแบ่งบานคิ้วนอก",
+     "role_family": "ซอยกลาง",
+     "kg_per_m": 1.194,
+     "width_mm": 101.6,
+     "depth_mm": 55,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 27,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7942",
+     "name": "ตบเฟรมแบ่งบานคิ้วนอก",
+     "role_family": "ฝาตบร่อง",
+     "kg_per_m": 0.711,
+     "width_mm": 95.4,
+     "depth_mm": 34,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 27,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7997",
+     "name": "กล่องก้านสลับ",
+     "role_family": "กล่องร่อง (ก้านสลับ)",
+     "kg_per_m": 1.459,
+     "width_mm": 101.6,
+     "depth_mm": 65,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 28,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7998",
+     "name": "กล่องก้านบานตายคิ้วใน",
+     "role_family": "กล่องร่อง (บานตาย)",
+     "kg_per_m": 1.456,
+     "width_mm": 101.6,
+     "depth_mm": 65,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 28,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7999",
+     "name": "เฟรมแบ่งบานคิ้วใน",
+     "role_family": "ซอยกลาง",
+     "kg_per_m": 1.184,
+     "width_mm": 101.6,
+     "depth_mm": 55,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 29,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7852",
+     "name": "ตบเฟรมแบ่งบานคิ้วใน",
+     "role_family": "ฝาตบร่อง",
+     "kg_per_m": 0.687,
+     "width_mm": 95.4,
+     "depth_mm": 26.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 29,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7853",
+     "name": "คิ้วสำหรับกระจกมู่ลี่",
+     "role_family": "คิ้ว (มู่ลี่)",
+     "kg_per_m": 0.22,
+     "width_mm": 22.3,
+     "depth_mm": 23.3,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 29,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7851",
+     "name": "ตบเรียบร่องซีกรุ๊ป",
+     "role_family": "ตบร่อง",
+     "kg_per_m": 0.046,
+     "width_mm": 14.8,
+     "depth_mm": 2.75,
+     "wall_mm": 1.0,
+     "std_length_m": null,
+     "page": 29,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7943",
+     "name": "กรอบบานกระทุ้ง",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "kg_per_m": 1.28,
+     "width_mm": 49,
+     "depth_mm": 80,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 30,
+     "confidence": "read",
+     "note": "poster p1: F7943B 1.179"
+    },
+    {
+     "die_no": "F7944B",
+     "name": "กรอบมุ้งนิรภัย",
+     "role_family": "กรอบมุ้ง",
+     "kg_per_m": 0.893,
+     "width_mm": 32.7,
+     "depth_mm": 80,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 30,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7945",
+     "name": "เสารับล็อคเปิดกลาง",
+     "role_family": "เสากลางบานเปิดคู่",
+     "kg_per_m": 0.69,
+     "width_mm": 40.7,
+     "depth_mm": 40.3,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 30,
+     "confidence": "read",
+     "note": "poster p1: F7945C 0.593"
+    },
+    {
+     "die_no": "F7946",
+     "name": "คิ้วตบในบานตาย",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.208,
+     "width_mm": 24.6,
+     "depth_mm": 22.7,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 30,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7947",
+     "name": "คิ้วตบนอกบานตาย",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.225,
+     "width_mm": 19.8,
+     "depth_mm": 25,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 30,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7948",
+     "name": "กันสาด",
+     "role_family": "กันสาด",
+     "kg_per_m": 0.141,
+     "width_mm": 20.5,
+     "depth_mm": 16.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 30,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7935",
+     "name": "คิ้วกรอบบานเฟี้ยมกระจก 5-6 มิล",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.276,
+     "width_mm": 28,
+     "depth_mm": 23.2,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 31,
+     "confidence": "read",
+     "note": "p40 prints 0.285 / 29.2x20 for the same die"
+    },
+    {
+     "die_no": "F7949",
+     "name": "คิ้วกรอบบานเฟี้ยมกระจก 12 มิล",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.252,
+     "width_mm": 21.2,
+     "depth_mm": 23.2,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 31,
+     "confidence": "read",
+     "note": "poster calls it คิ้วกระจก 10-16 มิล"
+    },
+    {
+     "die_no": "F7958",
+     "name": "เสารับล็อคเปิดกลางบานมุ้ง",
+     "role_family": "เสากลางบานมุ้ง",
+     "kg_per_m": 0.542,
+     "width_mm": 40.5,
+     "depth_mm": 28.2,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 31,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7959",
+     "name": "กล่องค้ำบานมุ้ง",
+     "role_family": "กล่องค้ำมุ้ง",
+     "kg_per_m": 0.435,
+     "width_mm": 30,
+     "depth_mm": 23.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 31,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7960",
+     "name": "ตบธรณี",
+     "role_family": "ตบธรณี",
+     "kg_per_m": 0.488,
+     "width_mm": 52.6,
+     "depth_mm": 24.75,
+     "wall_mm": 1.4,
+     "std_length_m": null,
+     "page": 31,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7967",
+     "name": "คิ้วตบในบานตาย ร่อง 22 มิล",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.192,
+     "width_mm": 24,
+     "depth_mm": 22.9,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 31,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7856",
+     "name": "อแดปเตอร์ประตูดิจิตอล",
+     "role_family": "อแดปเตอร์ล็อคดิจิตอล",
+     "kg_per_m": 0.751,
+     "width_mm": 62.5,
+     "depth_mm": 49,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 31,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7858",
+     "name": "เฟรมบานตายคิ้วในมีรูระบายน้ำ",
+     "role_family": "เฟรมบานตาย",
+     "kg_per_m": 1.181,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 1,
+     "confidence": "estimated",
+     "note": "poster only"
+    },
+    {
+     "die_no": "F7859",
+     "name": "เฟรมบานกระทุ้งไม่มีรูระบายน้ำ",
+     "role_family": "กรอบนอกบานกระทุ้ง",
+     "kg_per_m": 0.935,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 1,
+     "confidence": "estimated",
+     "note": "poster only"
+    },
+    {
+     "die_no": "F7860",
+     "name": "คิ้วตบนอกในบานตาย",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.412,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 1,
+     "confidence": "estimated",
+     "note": "poster only"
+    },
+    {
+     "die_no": "F7861",
+     "name": "ตบเฟรมแบ่งบาน",
+     "role_family": "ฝาตบร่อง",
+     "kg_per_m": 0.643,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 1,
+     "confidence": "estimated",
+     "note": "poster only"
+    },
+    {
+     "die_no": "F7862",
+     "name": "คิ้วตบนอกเฟรม",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.303,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 1,
+     "confidence": "estimated",
+     "note": "poster only"
+    },
+    {
+     "die_no": "F7863",
+     "name": "อแดปเตอร์เสาประตูภายใน",
+     "role_family": "อแดปเตอร์",
+     "kg_per_m": 0.344,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 1,
+     "confidence": "estimated",
+     "note": "poster only"
+    },
+    {
+     "die_no": "F7864",
+     "name": "เสาประตู 10 cm.",
+     "role_family": "เสาประตู",
+     "kg_per_m": 1.77,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 1,
+     "confidence": "estimated",
+     "note": "poster only"
+    },
+    {
+     "die_no": "F7865",
+     "name": "แผงประตู",
+     "role_family": "แผงประตู",
+     "kg_per_m": 1.396,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 1,
+     "confidence": "estimated",
+     "note": "poster only"
+    },
+    {
+     "die_no": "F7868",
+     "name": "กล่องก้านสองทางคิ้วนอก (ติดมุ้ง)",
+     "role_family": "กล่องร่อง",
+     "kg_per_m": 1.605,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 1,
+     "confidence": "estimated",
+     "note": "poster only"
+    },
+    {
+     "die_no": "F7871",
+     "name": "เฟรมบานตายคิ้วใน (ตัวหนา)",
+     "role_family": "เฟรมบานตาย",
+     "kg_per_m": 1.276,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 1,
+     "confidence": "estimated",
+     "note": "poster only"
+    },
+    {
+     "die_no": "F7872",
+     "name": "เฟรมบานตายคิ้วในมีรูระบายน้ำ (ตัวหนา)",
+     "role_family": "เฟรมบานตาย",
+     "kg_per_m": 1.446,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 1,
+     "confidence": "estimated",
+     "note": "poster only"
+    },
+    {
+     "die_no": "F7873",
+     "name": "คิ้วตบนอกในบานตายกระจก 10-16 มิล",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.412,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 1,
+     "confidence": "estimated",
+     "note": "poster only"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานกระทุ้งเดี่ยว",
+     "page": 33,
+     "joints": "sash F7943 mitred 45 with spigot; frame F7939 90 deg; bead F7935; drip F7948 on head, F7952 at sill",
+     "cut_formulas": [
+      {
+       "member": "sash outer size (estimated)",
+       "formula_as_printed": null,
+       "formula_normalised": "W - 2*19 , H - 2*19  (19 = frame edge to sash edge, same on all 4 sides)  [estimated from dims]"
+      },
+      {
+       "member": "glass (estimated)",
+       "formula_as_printed": null,
+       "formula_normalised": "sash outer - 2*(80 - 13)  (sash face 80, glass bite 13)  [estimated]"
+      }
+     ],
+     "glass_formula": "not printed",
+     "clearances_mm": "shim (5); 4 mm gasket gaps",
+     "sash_overlap_mm": "6 (sash laps frame)",
+     "notes": "dimension strings 19 / 80 / 6 / 13 read from section"
+    },
+    {
+     "type": "บานกระทุ้งคู่ + กล่องก้าน",
+     "page": 34,
+     "joints": "mullion F7940 25 wide; sashes overlap 6 each side leaving 13 visible",
+     "cut_formulas": [
+      {
+       "member": "each sash width (estimated)",
+       "formula_as_printed": null,
+       "formula_normalised": "(W - 2*19 - 13) / 2  [estimated]"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": "6",
+     "notes": null
+    },
+    {
+     "type": "บานเปิดคู่",
+     "page": 35,
+     "joints": "centre lock post F7945, sashes 80 | 5 | 80",
+     "cut_formulas": [
+      {
+       "member": "each sash width (estimated)",
+       "formula_as_printed": null,
+       "formula_normalised": "(W - 2*19 - 5) / 2  [estimated]"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "บานติดตายคู่",
+     "page": 36,
+     "joints": "head F7937 sightline 45, mullion F7998 sightline 65, glass bite 8",
+     "cut_formulas": [
+      {
+       "member": "glass (estimated)",
+       "formula_as_printed": null,
+       "formula_normalised": "each edge: frame edge + 45 - 8 = 37 in; at mullion 65/2 - 8  [estimated]"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "transom/mullion combos on p32: F7997, F7998, F7940; F7854+F7852, F7854+F7942, F7999+F7852"
+    }
+   ],
+   "hardware": [],
+   "accessories": [
+    {
+     "name": "glass adaptors for F7943 sash",
+     "note": "poster: F7949 3.3 (with safety screen), F7935 14, F7949 22, F7853 37 (mm glass pocket)",
+     "page": 1
+    }
+   ],
+   "prices": []
+  },
+  {
+   "name": "EUROTECH Bi-fold Door",
+   "system": "folding",
+   "app_types": [
+    "ประตูบานเฟี้ยม"
+   ],
+   "frame_size_mm": "101.6 (head 75, sill 45, jamb 18), wall 1.5-3; up to 4.0 m high, 10 leaves; glass 5-33",
+   "profiles": [
+    {
+     "die_no": "F7968",
+     "name": "เฟรมบนบานเฟี้ยม",
+     "role_family": "เฟรมบนบานเฟี้ยม",
+     "kg_per_m": 2.767,
+     "width_mm": 101.6,
+     "depth_mm": 75,
+     "wall_mm": 3.0,
+     "std_length_m": null,
+     "page": 38,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7969",
+     "name": "เฟรมล่างบานเฟี้ยม",
+     "role_family": "เฟรมล่างบานเฟี้ยม",
+     "kg_per_m": 1.533,
+     "width_mm": 101.6,
+     "depth_mm": 45,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 38,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7970",
+     "name": "เฟรมข้างบานเฟี้ยม",
+     "role_family": "เฟรมข้างบานเฟี้ยม",
+     "kg_per_m": 0.934,
+     "width_mm": 101.6,
+     "depth_mm": 18,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 38,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7972",
+     "name": "กรอบบานเฟี้ยม",
+     "role_family": "กรอบบานเฟี้ยม",
+     "kg_per_m": 1.466,
+     "width_mm": 49,
+     "depth_mm": 80,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 39,
+     "confidence": "read",
+     "note": "poster p1: F7972B 1.491"
+    },
+    {
+     "die_no": "F7975",
+     "name": "บังใบ",
+     "role_family": "บังใบ",
+     "kg_per_m": 0.452,
+     "width_mm": 49,
+     "depth_mm": 36.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 39,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7971",
+     "name": "คิ้วตบเฟรมข้าง",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.4,
+     "width_mm": 45.6,
+     "depth_mm": 20,
+     "wall_mm": 1.3,
+     "std_length_m": null,
+     "page": 39,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7974",
+     "name": "ชนกลางบานคู่",
+     "role_family": "ชนกลาง",
+     "kg_per_m": 0.799,
+     "width_mm": 49,
+     "depth_mm": 32,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 39,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7932",
+     "name": "รางยู",
+     "role_family": "รางยู",
+     "kg_per_m": 0.303,
+     "width_mm": 38,
+     "depth_mm": 18.5,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 39,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7963",
+     "name": "รับล็อคเสาเข้ามุมบานคู่",
+     "role_family": "เสารับล็อค",
+     "kg_per_m": 0.438,
+     "width_mm": 49,
+     "depth_mm": 26.5,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 40,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7973",
+     "name": "ตบปิดเรียบบานเฟี้ยม",
+     "role_family": "ตบเรียบ",
+     "kg_per_m": 0.19,
+     "width_mm": 42,
+     "depth_mm": null,
+     "wall_mm": 1.4,
+     "std_length_m": null,
+     "page": 40,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7964",
+     "name": "เสาเข้ามุมบานเฟี้ยม",
+     "role_family": "เสาเข้ามุม",
+     "kg_per_m": 1.03,
+     "width_mm": 49,
+     "depth_mm": 49,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 40,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7962",
+     "name": "รับล็อคบานคู่ + บานคี่",
+     "role_family": "เสารับล็อค",
+     "kg_per_m": 0.874,
+     "width_mm": 49,
+     "depth_mm": 53,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 41,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7961",
+     "name": "รับล็อคเฟรมข้างบานคู่",
+     "role_family": "เสารับล็อค",
+     "kg_per_m": 0.496,
+     "width_mm": 58.1,
+     "depth_mm": 19,
+     "wall_mm": 1.2,
+     "std_length_m": null,
+     "page": 41,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7965",
+     "name": "ลูกฟักแบ่งบาน",
+     "role_family": "ลูกฟัก",
+     "kg_per_m": 0.905,
+     "width_mm": 49,
+     "depth_mm": 58,
+     "wall_mm": 1.5,
+     "std_length_m": null,
+     "page": 41,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7952",
+     "name": "แผ่นยึดเฟรมล่าง",
+     "role_family": "แผ่นยึดเฟรมล่าง",
+     "kg_per_m": 0.467,
+     "width_mm": 97,
+     "depth_mm": 5,
+     "wall_mm": 1.3,
+     "std_length_m": null,
+     "page": 41,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F7866",
+     "name": "บังใบใส่ CDQ",
+     "role_family": "บังใบ",
+     "kg_per_m": 0.425,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 1,
+     "confidence": "estimated",
+     "note": "poster only"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานเฟี้ยม (2P..10P, คู่/คี่, เข้ามุม)",
+     "page": 45,
+     "joints": "leaf F7972 mitred 45; frame 90. Vertical: head F7968, 6 gap to leaf, leaf face 80; sill F7969 + F7952 + F7973. Horizontal: jamb F7970 18 + 9.5 gap; hinge joint 8 between leaves; meeting joints: คี่+คี่ 80|23|80 (F7975), คู่+คี่ 80|58|80 (F7962), คู่+คู่ 80|71|80 (F7974); corner F7964",
+     "cut_formulas": [
+      {
+       "member": "total leaf width (estimated)",
+       "formula_as_printed": null,
+       "formula_normalised": "W - 2*(18 + 9.5) - (n-1)*8  for one fold set ending at a jamb  [estimated]"
+      },
+      {
+       "member": "leaf height (estimated)",
+       "formula_as_printed": null,
+       "formula_normalised": "not derivable: head/sill clearances partly shown (6 at head)"
+      }
+     ],
+     "glass_formula": null,
+     "clearances_mm": "9.5 jamb gap, 8 hinge gap, 6 head gap",
+     "sash_overlap_mm": null,
+     "notes": "F7971/F7973 not used when a pleated screen (มุ้งจีบ) is fitted (printed). Configurations on p42-44 (2P 2-0 .. 10P 5-5)."
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  }
+ ],
+ "finishes": [
+  "Powder coat Standard White",
+  "Standard Black",
+  "Black Sahara",
+  "Grey Sahara",
+  "Wood grain Golden Teak",
+  "Natural Anodised",
+  "Black Anodised"
+ ],
+ "new_families": [
+  "ตบเกี่ยวสองทาง",
+  "กรอบบานเลื่อนยูโร",
+  "ตบรับล็อค",
+  "คิ้วมุ้ง",
+  "ตบปิดร่อง",
+  "ตัวต่อเฟรม",
+  "ตบฝังเฟรม",
+  "รางเลื่อน",
+  "ขาเสริมมุ้ง",
+  "เสาเข้ามุม",
+  "ชนกลาง",
+  "เสารับแรง",
+  "แบ่งบานมุ้ง",
+  "อแดปเตอร์ล็อคดิจิตอล",
+  "เฟรมบานตาย",
+  "กันสาด",
+  "กรอบมุ้ง",
+  "เสากลางบานเปิดคู่",
+  "เฟรมบนบานเฟี้ยม",
+  "เฟรมล่างบานเฟี้ยม",
+  "เฟรมข้างบานเฟี้ยม",
+  "กรอบบานเฟี้ยม",
+  "บังใบ",
+  "รางยู",
+  "เสารับล็อค",
+  "ลูกฟัก",
+  "แผ่นยึดเฟรมล่าง"
+ ],
+ "open_questions": [
+  "ราคา Fuji ซื้อผ่าน KC คิดเป็นบาทต่อกิโล หรือบาทต่อเส้น? แคตตาล็อกไม่มีราคาเลย",
+  "บริษัทใช้ซีรีส์ไหนจริง: EcoTECH A-CLASS (0.7 มม.), C-CLASS (1.0-1.2) หรือ EUROTECH (1.5)?",
+  "สูตรตัดไม่ได้พิมพ์ไว้ ตัวเลขที่ใส่เป็นการอ่านจากหน้าตัด (estimated) — ช่างที่ใช้ Fuji มีสูตรตัดจริงไหม?",
+  "หน้า 7 พิมพ์รหัสเฟรมล่างเป็น F7381 ซ้ำ — ใช้ F7399 (หน้าต่าง) / F7400 (ประตู) ตามแคตตาล็อก KC ถูกไหม?",
+  "หลายรหัสมีรุ่น B/C บนโปสเตอร์หน้า 1 น้ำหนักต่างจากหน้าใน (เช่น F7943 1.280 vs F7943B 1.179) — ของที่ซื้อจริงเป็นรุ่นไหน?",
+  "EcoTECH A/C-CLASS ไม่มีเฟรมข้าง/ขวางสำหรับมุ้งในเล่มนี้ — ใช้มุ้งตัวไหน?"
+ ],
+ "unreadable_pages": []
+}

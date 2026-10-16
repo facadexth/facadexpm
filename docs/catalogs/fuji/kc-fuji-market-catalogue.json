@@ -1,0 +1,3387 @@
+{
+ "source_pdf": "KC ฟูจิแคตตาลอกตัวตลาด.pdf",
+ "supplier": "Fuji Metal Co., Ltd. via KC (เค.ซี.อินเตอร์เฟรม)",
+ "brand": "FUJI METAL - Aluminium Profiles (market / ตัวตลาด range)",
+ "catalogue_year": "not printed (มอก. licences dated 2563-2564)",
+ "pages": 36,
+ "page_index": [
+  {
+   "page": 1,
+   "content": "cover",
+   "series": null
+  },
+  {
+   "page": 2,
+   "content": "other",
+   "series": "about"
+  },
+  {
+   "page": 3,
+   "content": "toc",
+   "series": null
+  },
+  {
+   "page": 4,
+   "content": "section drawing",
+   "series": "EcoTech A-CLASS"
+  },
+  {
+   "page": 5,
+   "content": "profile table",
+   "series": "EcoTech A-CLASS"
+  },
+  {
+   "page": 6,
+   "content": "section drawing",
+   "series": "EcoTech C-CLASS"
+  },
+  {
+   "page": 7,
+   "content": "profile table",
+   "series": "EcoTech C-CLASS"
+  },
+  {
+   "page": 8,
+   "content": "section drawing",
+   "series": "ชุดบานเลื่อน 4 นิ้ว"
+  },
+  {
+   "page": 9,
+   "content": "profile table",
+   "series": "ชุดบานเลื่อน 4 นิ้ว"
+  },
+  {
+   "page": 10,
+   "content": "profile table",
+   "series": "ชุดบานเลื่อน 4 นิ้ว (เสริมกล่อง) + เส้นกลาง"
+  },
+  {
+   "page": 11,
+   "content": "section drawing",
+   "series": "Shopfront fixed (กล่อง 4 นิ้ว)"
+  },
+  {
+   "page": 12,
+   "content": "section drawing",
+   "series": "Swing door (ประตูสวิง)"
+  },
+  {
+   "page": 13,
+   "content": "section drawing",
+   "series": "Hanging sliding door 1 บาน"
+  },
+  {
+   "page": 14,
+   "content": "section drawing",
+   "series": "Hanging sliding door 4 บาน"
+  },
+  {
+   "page": 15,
+   "content": "profile table",
+   "series": "ชุดบานสวิง / Shopfront"
+  },
+  {
+   "page": 16,
+   "content": "profile table",
+   "series": "ชุดบานสวิง / Shopfront"
+  },
+  {
+   "page": 17,
+   "content": "section drawing",
+   "series": "ชุดบานกระทุ้ง ยูเนี่ยน"
+  },
+  {
+   "page": 18,
+   "content": "section drawing",
+   "series": "ชุดบานกระทุ้ง ยูเนี่ยน (คู่ + ซอย)"
+  },
+  {
+   "page": 19,
+   "content": "profile table",
+   "series": "ชุดบานกระทุ้ง ยูเนี่ยน"
+  },
+  {
+   "page": 20,
+   "content": "profile table",
+   "series": "Standard profiles"
+  },
+  {
+   "page": 21,
+   "content": "profile table",
+   "series": "Standard profiles"
+  },
+  {
+   "page": 22,
+   "content": "profile table",
+   "series": "Standard profiles"
+  },
+  {
+   "page": 23,
+   "content": "profile table",
+   "series": "Standard profiles"
+  },
+  {
+   "page": 24,
+   "content": "profile table",
+   "series": "Standard profiles"
+  },
+  {
+   "page": 25,
+   "content": "profile table",
+   "series": "Standard profiles"
+  },
+  {
+   "page": 26,
+   "content": "profile table",
+   "series": "Standard profiles"
+  },
+  {
+   "page": 27,
+   "content": "profile table",
+   "series": "Standard profiles"
+  },
+  {
+   "page": 28,
+   "content": "profile table",
+   "series": "Standard profiles"
+  },
+  {
+   "page": 29,
+   "content": "profile table",
+   "series": "Standard profiles"
+  },
+  {
+   "page": 30,
+   "content": "profile table",
+   "series": "Standard profiles"
+  },
+  {
+   "page": 31,
+   "content": "profile table",
+   "series": "ชุดตู้กับข้าว"
+  },
+  {
+   "page": 32,
+   "content": "profile table",
+   "series": "ชุดตู้กับข้าว"
+  },
+  {
+   "page": 33,
+   "content": "profile table",
+   "series": "ชุดอื่นๆ"
+  },
+  {
+   "page": 34,
+   "content": "other",
+   "series": "มอก.284 licence"
+  },
+  {
+   "page": 35,
+   "content": "other",
+   "series": "มอก.218 licence"
+  },
+  {
+   "page": 36,
+   "content": "other",
+   "series": "back cover"
+  }
+ ],
+ "weight_note": "Apart from EcoTech A/C-CLASS and a few items marked kg/m, this catalogue prints WEIGHT PER BAR (kg per 6.0/6.1/6.4 m length) as a range, per finish (ผิวชุบ anodised / ผิวพ่นสี painted) and per wall thickness 0.80 / 1.00 / 1.20 mm. Those are stored in kg_per_bar; kg_per_m is left null (not printed).",
+ "series": [
+  {
+   "name": "EcoTech A-CLASS",
+   "system": "sliding window",
+   "app_types": [
+    "บานเลื่อนสวน 2 บาน",
+    "ประตูบานเลื่อนสวน 2 บาน"
+   ],
+   "frame_size_mm": "99/101.6, wall 0.70",
+   "profiles": [
+    {
+     "die_no": "F7380",
+     "name": "เฟรมบน",
+     "role_family": "เฟรมบน 2 ราง",
+     "kg_per_m": 0.55,
+     "width_mm": 99,
+     "depth_mm": 38,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "pcs_per_bundle": 2
+    },
+    {
+     "die_no": "F7381",
+     "name": "เฟรมข้าง",
+     "role_family": "เฟรมข้าง 2 ราง",
+     "kg_per_m": 0.471,
+     "width_mm": 101.6,
+     "depth_mm": 25,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "pcs_per_bundle": 2
+    },
+    {
+     "die_no": "F7399",
+     "name": "เฟรมล่าง หน้าต่าง",
+     "role_family": "เฟรมล่าง 2 ราง",
+     "kg_per_m": 0.639,
+     "width_mm": 99,
+     "depth_mm": 50,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "pcs_per_bundle": 2
+    },
+    {
+     "die_no": "F7400",
+     "name": "เฟรมล่าง ประตู",
+     "role_family": "เฟรมล่าง 2 ราง (ประตู)",
+     "kg_per_m": 0.585,
+     "width_mm": 99,
+     "depth_mm": 40,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "pcs_per_bundle": 2
+    },
+    {
+     "die_no": "F7382",
+     "name": "เสากุญแจ",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": 0.366,
+     "width_mm": 47.2,
+     "depth_mm": 26,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7384",
+     "name": "เสาเกี่ยว",
+     "role_family": "เสาเกี่ยว",
+     "kg_per_m": 0.342,
+     "width_mm": 30,
+     "depth_mm": 26,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7383",
+     "name": "ขวางบน",
+     "role_family": "ขวางบน",
+     "kg_per_m": 0.315,
+     "width_mm": 40,
+     "depth_mm": 22.9,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7388",
+     "name": "ขวางล่าง",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": 0.42,
+     "width_mm": 66.1,
+     "depth_mm": 22.9,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7398",
+     "name": "ตบธรณีบานเลื่อน",
+     "role_family": "ตบธรณี",
+     "kg_per_m": 0.147,
+     "width_mm": 30,
+     "depth_mm": 50.3,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 5,
+     "confidence": "read",
+     "pcs_per_bundle": 10
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานเลื่อน 2 บาน",
+     "page": 4,
+     "joints": "head F7380, sill F7400 (sloped), jambs F7381, top rail F7383, bottom rail F7388 on roller, F7398 threshold cover, lock stile F7382, interlock F7384",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no dimensions or cut formulas printed"
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "EcoTech C-CLASS",
+   "system": "sliding window",
+   "app_types": [
+    "บานเลื่อนสวน 2 บาน",
+    "ประตูบานเลื่อนสวน 2 บาน"
+   ],
+   "frame_size_mm": "99/101.6, wall 1.0-1.2",
+   "profiles": [
+    {
+     "die_no": "F7320",
+     "name": "เฟรมบน",
+     "role_family": "เฟรมบน 2 ราง",
+     "kg_per_m": 0.803,
+     "width_mm": 99,
+     "depth_mm": 38,
+     "wall_mm": 1.0,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "pcs_per_bundle": 2
+    },
+    {
+     "die_no": "F7321",
+     "name": "เฟรมข้าง",
+     "role_family": "เฟรมข้าง 2 ราง",
+     "kg_per_m": 0.75,
+     "width_mm": 101.6,
+     "depth_mm": 25,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "pcs_per_bundle": 2
+    },
+    {
+     "die_no": "F7319",
+     "name": "เฟรมล่าง หน้าต่าง",
+     "role_family": "เฟรมล่าง 2 ราง",
+     "kg_per_m": 0.954,
+     "width_mm": 99,
+     "depth_mm": 50,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "pcs_per_bundle": 2
+    },
+    {
+     "die_no": "F7318",
+     "name": "เฟรมล่าง ประตู",
+     "role_family": "เฟรมล่าง 2 ราง (ประตู)",
+     "kg_per_m": 0.868,
+     "width_mm": 99,
+     "depth_mm": 40,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "pcs_per_bundle": 2
+    },
+    {
+     "die_no": "F7322",
+     "name": "เสากุญแจ",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": 0.54,
+     "width_mm": 50,
+     "depth_mm": 26,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7325",
+     "name": "เสาเกี่ยว",
+     "role_family": "เสาเกี่ยว",
+     "kg_per_m": 0.497,
+     "width_mm": 30,
+     "depth_mm": 26,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7326",
+     "name": "ขวางบน",
+     "role_family": "ขวางบน",
+     "kg_per_m": 0.487,
+     "width_mm": 45,
+     "depth_mm": 22.9,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7323",
+     "name": "ขวางล่าง",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": 0.604,
+     "width_mm": 65,
+     "depth_mm": 22.9,
+     "wall_mm": 1.2,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7398",
+     "name": "ตบธรณีบานเลื่อน",
+     "role_family": "ตบธรณี",
+     "kg_per_m": 0.147,
+     "width_mm": 30,
+     "depth_mm": 50.3,
+     "wall_mm": 0.7,
+     "std_length_m": 6.4,
+     "page": 7,
+     "confidence": "read",
+     "pcs_per_bundle": 10
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานเลื่อน 2 บาน",
+     "page": 6,
+     "joints": "head F7320, sill F7318 + F7398, jamb F7321, F7326 top rail, F7323 bottom rail, F7322 lock stile, F7325 interlock",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no dims"
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "ชุดบานเลื่อน (standard 4\" sliding, F70xx / F715x)",
+   "system": "sliding window",
+   "app_types": [
+    "บานเลื่อนสวน 2 บาน",
+    "บานเลื่อนสวน 4 บาน (มีบานตาย)"
+   ],
+   "frame_size_mm": "95 (or 101.6 เสริมกล่อง)",
+   "profiles": [
+    {
+     "die_no": "F7010",
+     "name": "เฟรมล่าง",
+     "role_family": "เฟรมล่าง 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 95,
+     "depth_mm": 22.2,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 9,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.70-2.00",
+      "anod_1.0": "2.80-3.10",
+      "anod_1.2": "3.20-3.50",
+      "paint_0.8": "1.90-2.20",
+      "paint_1.0": "2.60-2.90",
+      "paint_1.2": "3.00-3.30"
+     },
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7011",
+     "name": "เฟรมบน",
+     "role_family": "เฟรมบน 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 95,
+     "depth_mm": 26,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 9,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.70-2.00",
+      "anod_1.0": "3.00-3.40",
+      "anod_1.2": "3.50-3.80",
+      "paint_0.8": "1.90-2.20",
+      "paint_1.0": "3.20-3.60",
+      "paint_1.2": "3.70-4.00"
+     },
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7012",
+     "name": "เฟรมข้าง",
+     "role_family": "เฟรมข้าง 2 ราง",
+     "kg_per_m": null,
+     "width_mm": 95,
+     "depth_mm": 16.2,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 9,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.70-2.00",
+      "anod_1.0": "2.70-3.00",
+      "anod_1.2": "3.00-3.30",
+      "paint_0.8": "1.90-2.20",
+      "paint_1.0": "2.60-2.90",
+      "paint_1.2": "3.00-3.30"
+     },
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7013",
+     "name": "เสากุญแจ",
+     "role_family": "เสากุญแจ",
+     "kg_per_m": null,
+     "width_mm": 50,
+     "depth_mm": 26,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 9,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.80-2.20",
+      "anod_1.0": "2.60-2.80",
+      "anod_1.2": "2.90-3.20",
+      "paint_0.8": "2.00-2.40",
+      "paint_1.0": "2.50-2.80",
+      "paint_1.2": "2.90-3.20"
+     },
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7014",
+     "name": "เสาตาย",
+     "role_family": "เสาตาย",
+     "kg_per_m": null,
+     "width_mm": 33.15,
+     "depth_mm": 26,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 9,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.20-1.60",
+      "anod_1.0": "1.60-1.80",
+      "anod_1.2": "1.90-2.30",
+      "paint_0.8": "1.30-1.80",
+      "paint_1.0": "1.90-2.20",
+      "paint_1.2": "2.30-2.50"
+     },
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7015",
+     "name": "เสาเกี่ยว",
+     "role_family": "เสาเกี่ยว",
+     "kg_per_m": null,
+     "width_mm": 34.4,
+     "depth_mm": 32.15,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 9,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.80-2.20",
+      "anod_1.0": "2.60-2.80",
+      "anod_1.2": "2.90-3.20",
+      "paint_0.8": "2.00-2.40",
+      "paint_1.0": "2.50-2.80",
+      "paint_1.2": "2.90-3.20"
+     },
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7016",
+     "name": "ขวางบนบานเลื่อน",
+     "role_family": "ขวางบน",
+     "kg_per_m": null,
+     "width_mm": 35,
+     "depth_mm": 26.8,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 9,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.30-1.40",
+      "anod_1.0": "1.80-2.20",
+      "anod_1.2": "2.30-2.60",
+      "paint_0.8": "1.40-1.50",
+      "paint_1.0": "1.90-2.30",
+      "paint_1.2": "2.30-2.60"
+     },
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7017",
+     "name": "ขวางล่างบานเลื่อน",
+     "role_family": "ขวางล่าง",
+     "kg_per_m": null,
+     "width_mm": 60,
+     "depth_mm": 24.4,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 9,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.70-1.90",
+      "anod_1.0": "2.60-2.80",
+      "anod_1.2": "2.90-3.20",
+      "paint_0.8": "1.90-2.20",
+      "paint_1.0": "2.60-2.90",
+      "paint_1.2": "3.00-3.30"
+     },
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7018",
+     "name": "ต่อกลางบานเลื่อน",
+     "role_family": "ขวางกลาง",
+     "kg_per_m": null,
+     "width_mm": 31.8,
+     "depth_mm": 22,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 9,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.20-1.30",
+      "anod_1.0": "1.90-2.30",
+      "anod_1.2": "2.50-2.80",
+      "paint_0.8": "1.30-1.40",
+      "paint_1.0": "2.10-2.30",
+      "paint_1.2": "2.50-2.80"
+     },
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7019",
+     "name": "ชนกลางบานเลื่อน",
+     "role_family": "ชนกลาง",
+     "kg_per_m": null,
+     "width_mm": 38.1,
+     "depth_mm": 16.4,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 9,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "0.70-0.90",
+      "anod_1.0": "1.10-1.30",
+      "anod_1.2": "1.40-1.60",
+      "paint_0.8": "0.80-1.00",
+      "paint_1.0": "1.15-1.35",
+      "paint_1.2": "1.40-1.70"
+     },
+     "pcs_per_bundle": 10
+    },
+    {
+     "die_no": "F7020",
+     "name": "ตบธรณีบานเลื่อน",
+     "role_family": "ตบธรณี",
+     "kg_per_m": null,
+     "width_mm": 50.64,
+     "depth_mm": 12.2,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 9,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "0.70-0.80",
+      "anod_1.0": "0.90-1.20",
+      "anod_1.2": "1.40-1.60",
+      "paint_0.8": "0.80-0.90",
+      "paint_1.0": "1.10-1.20",
+      "paint_1.2": "1.40-1.60"
+     },
+     "pcs_per_bundle": 10
+    },
+    {
+     "die_no": "F7021",
+     "name": "กรอบมุ้งบานเลื่อน",
+     "role_family": "กรอบมุ้ง",
+     "kg_per_m": null,
+     "width_mm": 42.45,
+     "depth_mm": 11.8,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 9,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.00-1.20",
+      "anod_1.0": "1.20-1.40",
+      "anod_1.2": "1.60-1.80",
+      "paint_0.8": "1.10-1.30",
+      "paint_1.0": "1.40-1.60",
+      "paint_1.2": "1.70-1.90"
+     },
+     "pcs_per_bundle": 10
+    },
+    {
+     "die_no": "F7023",
+     "name": "ชนกลางมุ้ง",
+     "role_family": "ชนกลางมุ้ง",
+     "kg_per_m": null,
+     "width_mm": 17.8,
+     "depth_mm": 15.8,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 9,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "0.60-0.80",
+      "paint_0.8": "0.80-0.90"
+     },
+     "pcs_per_bundle": 20
+    },
+    {
+     "die_no": "F7150",
+     "name": "เฟรมล่างเสริมกล่อง",
+     "role_family": "เฟรมล่าง 2 ราง (เสริมกล่อง)",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 55.3,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 10,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "3.60-4.00",
+      "anod_1.0": "4.50-5.00",
+      "anod_1.2": "5.40-5.80",
+      "paint_0.8": "3.80-4.20",
+      "paint_1.0": "4.80-5.20",
+      "paint_1.2": "5.40-5.80"
+     },
+     "pcs_per_bundle": 2
+    },
+    {
+     "die_no": "F7151",
+     "name": "เฟรมบนเสริมกล่อง",
+     "role_family": "เฟรมบน 2 ราง (เสริมกล่อง)",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 58.1,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 10,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "3.60-4.00",
+      "anod_1.0": "5.00-5.50",
+      "anod_1.2": "5.80-6.30",
+      "paint_0.8": "3.80-4.30",
+      "paint_1.0": "5.20-5.80",
+      "paint_1.2": "6.00-6.50"
+     },
+     "pcs_per_bundle": 2
+    },
+    {
+     "die_no": "F7152",
+     "name": "เฟรมข้างเสริมกล่อง",
+     "role_family": "เฟรมข้าง 2 ราง (เสริมกล่อง)",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 51.4,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 10,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "3.60-4.00",
+      "anod_1.0": "4.30-4.80",
+      "anod_1.2": "4.90-5.30",
+      "paint_0.8": "3.80-4.30",
+      "paint_1.0": "4.60-5.00",
+      "paint_1.2": "5.10-5.50"
+     },
+     "pcs_per_bundle": 2
+    },
+    {
+     "die_no": "F2031",
+     "name": "เส้นกลางเล็ก",
+     "role_family": "เส้นกลาง (ลายกระจก)",
+     "kg_per_m": null,
+     "width_mm": 16,
+     "depth_mm": 5,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 10,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_thin": "0.15-0.20"
+     },
+     "pcs_per_bundle": 50
+    },
+    {
+     "die_no": "F2032",
+     "name": "เส้นกลางใหญ่",
+     "role_family": "เส้นกลาง (ลายกระจก)",
+     "kg_per_m": null,
+     "width_mm": 18,
+     "depth_mm": 6,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 10,
+     "confidence": "read",
+     "kg_per_bar": {
+      "thin": "0.22-0.25",
+      "medium": "0.30-0.40",
+      "thick": "0.60-0.70"
+     },
+     "note": "40/30/30 pcs per pack"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานเลื่อน 2-4 บาน + มุ้ง",
+     "page": 8,
+     "joints": "head F7151, sill F7150, jamb F7152, top rail F7016, bottom rail F7017, lock stile F7013, interlock F7015, screen F7021",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "isometric + elevation only"
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "ชุดบานสวิง / Shopfront (กล่อง 4 นิ้ว F90xx) + บานแขวน",
+   "system": "swing door",
+   "app_types": [
+    "ประตูสวิง",
+    "ประตูบานเปิดเดี่ยว/คู่ (กรอบกล่อง)",
+    "บานติดตาย (กล่อง 4 นิ้ว)",
+    "ประตูบานเลื่อนแขวน"
+   ],
+   "frame_size_mm": "101.6 x 44.45 box",
+   "profiles": [
+    {
+     "die_no": "F9030",
+     "name": "กล่องเรียบ",
+     "role_family": "กล่องเรียบ",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 44.45,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "2.20-2.50",
+      "anod_1.0": "3.00-3.30",
+      "anod_1.2": "3.90-4.20",
+      "paint_0.8": "2.30-2.80",
+      "paint_1.0": "3.30-3.60",
+      "paint_1.2": "3.90-4.30"
+     },
+     "pcs_per_bundle": 4
+    },
+    {
+     "die_no": "F9031",
+     "name": "กล่องร่อง",
+     "role_family": "กล่องร่อง",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 44.45,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "3.20-3.50",
+      "anod_1.0": "4.10-4.40",
+      "anod_1.2": "4.80-5.20",
+      "paint_0.8": "3.40-3.80",
+      "paint_1.0": "4.30-4.60",
+      "paint_1.2": "4.90-5.20"
+     },
+     "pcs_per_bundle": 4
+    },
+    {
+     "die_no": "F9032",
+     "name": "กล่องเปิด",
+     "role_family": "กล่องเปิด",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 44.45,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "2.80-3.20",
+      "anod_1.0": "4.10-4.30",
+      "paint_0.8": "3.00-3.50",
+      "paint_1.0": "3.40-3.70",
+      "paint_1.2": "4.20-4.50"
+     },
+     "pcs_per_bundle": 4,
+     "note": "paint 1.2 column marked หนา 1.10 mm"
+    },
+    {
+     "die_no": "F9033",
+     "name": "ฝาปิดกล่องเปิด",
+     "role_family": "ฝาปิด",
+     "kg_per_m": null,
+     "width_mm": 44.5,
+     "depth_mm": 20.09,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.00-1.20",
+      "anod_1.0": "1.50-1.70",
+      "anod_1.2": "1.90-2.10",
+      "paint_0.8": "1.10-1.30",
+      "paint_1.0": "1.40-1.70",
+      "paint_1.2": "1.70-2.00"
+     },
+     "pcs_per_bundle": 10
+    },
+    {
+     "die_no": "F9034",
+     "name": "ตบร่อง",
+     "role_family": "ฝาตบร่อง",
+     "kg_per_m": null,
+     "width_mm": 83.2,
+     "depth_mm": 6.5,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.30-1.60",
+      "anod_1.0": "2.30-2.50",
+      "anod_1.2": "2.50-2.80",
+      "paint_0.8": "1.40-1.80",
+      "paint_1.0": "2.30-2.50",
+      "paint_1.2": "2.50-2.80"
+     },
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F9035",
+     "name": "ตบเรียบ",
+     "role_family": "ตบเรียบ",
+     "kg_per_m": null,
+     "width_mm": 83.2,
+     "depth_mm": 6.5,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.10-1.20",
+      "anod_1.0": "1.40-1.60",
+      "anod_1.2": "1.70-1.90",
+      "paint_0.8": "1.20-1.40",
+      "paint_1.0": "1.50-1.70",
+      "paint_1.2": "1.70-1.90"
+     },
+     "pcs_per_bundle": 10
+    },
+    {
+     "die_no": "F9036",
+     "name": "กล่องแจ๊คสัน",
+     "role_family": "กล่องแจ๊คสัน (กล่องโช้ค)",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 42.95,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "3.30-3.60",
+      "anod_1.0": "3.60-4.00",
+      "anod_1.2": "4.50-4.90",
+      "paint_0.8": "3.60-3.90",
+      "paint_1.0": "3.90-4.30",
+      "paint_1.2": "4.50-5.00"
+     },
+     "pcs_per_bundle": 4
+    },
+    {
+     "die_no": "F9037",
+     "name": "ฝาแจ๊คสัน",
+     "role_family": "ฝาปิดกล่องแจ๊คสัน",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 42.92,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.80-2.10",
+      "anod_1.0": "2.20-2.40",
+      "anod_1.2": "2.50-2.80",
+      "paint_0.8": "2.00-2.30",
+      "paint_1.0": "2.30-2.50",
+      "paint_1.2": "2.50-2.80"
+     },
+     "pcs_per_bundle": 10
+    },
+    {
+     "die_no": "F9038",
+     "name": "เสาประตูข้าง",
+     "role_family": "เสาประตูข้าง",
+     "kg_per_m": null,
+     "width_mm": 46,
+     "depth_mm": 53.99,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "3.00-3.40",
+      "anod_1.0": "4.00-4.30",
+      "anod_1.2": "4.40-4.70",
+      "paint_0.8": "3.20-3.70",
+      "paint_1.0": "3.90-4.30",
+      "paint_1.2": "4.50-4.90"
+     },
+     "pcs_per_bundle": 4
+    },
+    {
+     "die_no": "F9039",
+     "name": "เสาประตูบน",
+     "role_family": "ขวางบนประตู",
+     "kg_per_m": null,
+     "width_mm": 44,
+     "depth_mm": 51,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "3.00-3.40",
+      "anod_1.0": "3.40-3.60",
+      "anod_1.2": "4.40-4.70",
+      "paint_0.8": "3.20-3.70",
+      "paint_1.0": "3.90-4.30",
+      "paint_1.2": "4.50-4.90"
+     },
+     "pcs_per_bundle": 4
+    },
+    {
+     "die_no": "F9040",
+     "name": "เสาประตูล่าง",
+     "role_family": "ขวางล่างประตู",
+     "kg_per_m": null,
+     "width_mm": 44,
+     "depth_mm": 80,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 15,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "3.80-4.00",
+      "anod_1.0": "4.50-5.00",
+      "anod_1.2": "5.40-5.70",
+      "paint_0.8": "4.00-4.30",
+      "paint_1.0": "4.90-5.30",
+      "paint_1.2": "5.50-5.90"
+     },
+     "pcs_per_bundle": 2
+    },
+    {
+     "die_no": "F9041",
+     "name": "คิ้วประตู",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 15.7,
+     "depth_mm": 14.7,
+     "wall_mm": null,
+     "std_length_m": 6.1,
+     "page": 16,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "0.40-0.55",
+      "paint_0.8": "0.50-0.70"
+     },
+     "pcs_per_bundle": 20
+    },
+    {
+     "die_no": "F9043",
+     "name": "คิ้วลอยล่างมน",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 39.83,
+     "depth_mm": 14.85,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 16,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "0.80-1.10",
+      "paint_0.8": "0.80-1.10"
+     },
+     "pcs_per_bundle": 10,
+     "note": "printed 'คิ้วลอยเกล่างมน'"
+    },
+    {
+     "die_no": "F9044",
+     "name": "คิ้วลอยเทบนมน",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 16.59,
+     "depth_mm": 15.15,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 16,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "0.45-0.60",
+      "paint_0.8": "0.50-0.70"
+     },
+     "pcs_per_bundle": 20
+    },
+    {
+     "die_no": "F7874",
+     "name": "คิ้วล่างเหลี่ยม (ร่องกระจก 12.70)",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.205,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 0.9,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read",
+     "pcs_per_bundle": 10
+    },
+    {
+     "die_no": "F7875",
+     "name": "คิ้วบนเหลี่ยม (ร่องกระจก 12.70)",
+     "role_family": "คิ้ว",
+     "kg_per_m": 0.127,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read",
+     "pcs_per_bundle": 10
+    },
+    {
+     "die_no": "F9072",
+     "name": "ธรณีสวิงขาสูง",
+     "role_family": "ธรณี",
+     "kg_per_m": null,
+     "width_mm": 101.6,
+     "depth_mm": 12.7,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 16,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "3.30-3.60",
+      "anod_1.0": "3.80-4.00",
+      "paint_0.8": "3.50-3.80",
+      "paint_1.0": "4.05-4.25"
+     },
+     "pcs_per_bundle": 5
+    },
+    {
+     "die_no": "F9077",
+     "name": "รางแขวนใหญ่",
+     "role_family": "รางแขวน",
+     "kg_per_m": null,
+     "width_mm": 48,
+     "depth_mm": 36.17,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 16,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "2.20-2.50",
+      "anod_1.0": "2.90-3.10",
+      "paint_0.8": "2.40-2.70",
+      "paint_1.0": "2.90-3.20"
+     },
+     "pcs_per_bundle": 4
+    },
+    {
+     "die_no": "F7876",
+     "name": "ชนกลางรางแขวน",
+     "role_family": "ชนกลาง",
+     "kg_per_m": 0.557,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.4,
+     "std_length_m": null,
+     "page": 16,
+     "confidence": "read",
+     "pcs_per_bundle": 4
+    },
+    {
+     "die_no": "F555",
+     "name": "กล่อง 1 3/4\" x 1 3/4\"",
+     "role_family": "กล่องเรียบ (เสา)",
+     "kg_per_m": null,
+     "width_mm": 44.45,
+     "depth_mm": 44.45,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 23,
+     "confidence": "read",
+     "kg_per_bar": {
+      "0.60": "1.70-2.00",
+      "0.85": "2.40-2.60",
+      "1.00": "2.80-3.00"
+     },
+     "note": "used as post in hanging-door section p13"
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานติดตาย shopfront",
+     "page": 11,
+     "joints": "F9031 box head/jamb/mullion with F9034 snap cover, sill F9032 + F9033",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "ประตูสวิง (floor spring)",
+     "page": 12,
+     "joints": "transom F9036 + F9037 (jackson box), door rails F9039 top / F9040 bottom, stiles F9038, bead F9041, jamb F9030, threshold F9072",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    },
+    {
+     "type": "ประตูบานเลื่อนแขวน 1 บาน / 4 บาน",
+     "page": 13,
+     "joints": "track F9077 on F9030 / F9036 head; leaf F9038/F9039/F9040 + F9041; jamb glazing F9043/F9044; meeting F7876; post F555",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": null
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "ชุดบานกระทุ้ง ยูเนี่ยน (F3100)",
+   "system": "awning",
+   "app_types": [
+    "บานกระทุ้ง",
+    "บานเปิด",
+    "บานกระทุ้งคู่ + ซอยกลาง"
+   ],
+   "frame_size_mm": "36.6 x 38.9",
+   "profiles": [
+    {
+     "die_no": "F169",
+     "name": "ฉากข้อต่อกระทุ้ง 25.4x25.4 (หนา 1.50)",
+     "role_family": "ฉากข้อต่อ",
+     "kg_per_m": null,
+     "width_mm": 25.4,
+     "depth_mm": 25.4,
+     "wall_mm": 1.5,
+     "std_length_m": 6.0,
+     "page": 19,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "1.20-1.35"
+     }
+    },
+    {
+     "die_no": "F170",
+     "name": "ฉากข้อต่อกระทุ้ง (หนา 1.20)",
+     "role_family": "ฉากข้อต่อ",
+     "kg_per_m": null,
+     "width_mm": 25.4,
+     "depth_mm": 25.4,
+     "wall_mm": 1.2,
+     "std_length_m": 6.0,
+     "page": 19,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "1.50-1.70"
+     },
+     "note": "thickness/weight pairing as printed (heavier with thinner wall) - check"
+    },
+    {
+     "die_no": "F172",
+     "name": "ฉากข้อต่อกระทุ้ง (หนา 3.00)",
+     "role_family": "ฉากข้อต่อ",
+     "kg_per_m": null,
+     "width_mm": 25.4,
+     "depth_mm": 25.4,
+     "wall_mm": 3.0,
+     "std_length_m": 6.0,
+     "page": 19,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "2.30-2.60"
+     }
+    },
+    {
+     "die_no": "F3100",
+     "name": "กรอบนอกยูเนี่ยน",
+     "role_family": "กรอบนอกบานกระทุ้ง",
+     "kg_per_m": null,
+     "width_mm": 36.6,
+     "depth_mm": 38.9,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 19,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.80-2.10",
+      "anod_1.0": "2.10-2.30",
+      "anod_1.2": "2.50-3.00",
+      "paint_0.8": "2.00-2.20",
+      "paint_1.0": "2.20-2.50",
+      "paint_1.2": "2.50-3.00"
+     },
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F3101",
+     "name": "กรอบในยูเนี่ยน",
+     "role_family": "กรอบในบานกระทุ้ง",
+     "kg_per_m": null,
+     "width_mm": 36.5,
+     "depth_mm": 40,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 19,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "2.80-3.10",
+      "anod_1.0": "3.10-3.30",
+      "anod_1.2": "3.40-3.80",
+      "paint_0.8": "3.00-3.40",
+      "paint_1.0": "3.40-3.60",
+      "paint_1.2": "3.60-4.00"
+     },
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F3102",
+     "name": "คิ้วกระทุ้งยูเนี่ยน",
+     "role_family": "คิ้ว",
+     "kg_per_m": null,
+     "width_mm": 24.3,
+     "depth_mm": 12.7,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 19,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "0.80-1.00",
+      "paint_0.8": "0.80-1.10"
+     },
+     "pcs_per_bundle": 10
+    },
+    {
+     "die_no": "F7877",
+     "name": "ซอยกลางกระทุ้งยูเนี่ยน",
+     "role_family": "ซอยกลาง",
+     "kg_per_m": 0.562,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.4,
+     "std_length_m": null,
+     "page": 19,
+     "confidence": "read",
+     "pcs_per_bundle": 6
+    },
+    {
+     "die_no": "F7878",
+     "name": "ซอยกลางใช้น๊อตยูเนี่ยน",
+     "role_family": "ซอยกลาง",
+     "kg_per_m": 0.658,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 1.4,
+     "std_length_m": null,
+     "page": 19,
+     "confidence": "read",
+     "pcs_per_bundle": 6
+    }
+   ],
+   "assembly": [
+    {
+     "type": "บานกระทุ้งเดี่ยว / คู่ + ซอย",
+     "page": 17,
+     "joints": "frame F3100 all 4 sides, sash F3101, bead F3102; transom F7877, mullion F7878; corner cleat ฉากข้อต่อ F169/F170/F172",
+     "cut_formulas": [],
+     "glass_formula": null,
+     "clearances_mm": null,
+     "sash_overlap_mm": null,
+     "notes": "no dims"
+    }
+   ],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "Standard profiles (ลูกฟูก, โพลี, ไม้อัด, ระแนง, กล่อง, ฉาก, ตัวยู, ท่อ, เส้นแบน, ชุดอื่นๆ)",
+   "system": "other",
+   "app_types": [],
+   "frame_size_mm": null,
+   "profiles": [
+    {
+     "die_no": "F1100",
+     "name": "ลูกฟูกลอนเล็ก",
+     "role_family": "ลูกฟูก",
+     "kg_per_m": null,
+     "width_mm": 109.2,
+     "depth_mm": 5.7,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 20,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "0.90-1.20"
+     }
+    },
+    {
+     "die_no": "F1111",
+     "name": "ลูกฟูกลอนใหญ่",
+     "role_family": "ลูกฟูก",
+     "kg_per_m": null,
+     "width_mm": 147.76,
+     "depth_mm": 5.86,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 20,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.20-1.50",
+      "coat_0.8": "1.50-1.70"
+     }
+    },
+    {
+     "die_no": "F1125",
+     "name": "ลูกฟูก 2 หน้า เรียบ",
+     "role_family": "ลูกฟูก",
+     "kg_per_m": null,
+     "width_mm": 108,
+     "depth_mm": 6.6,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 20,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "2.70-2.90",
+      "coat_0.8": "3.00-3.30"
+     }
+    },
+    {
+     "die_no": "F1127",
+     "name": "ลูกฟูก 2 หน้า ลอน",
+     "role_family": "ลูกฟูก",
+     "kg_per_m": null,
+     "width_mm": 93,
+     "depth_mm": 5.8,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 20,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.70-2.00",
+      "coat_0.8": "2.00-2.30"
+     }
+    },
+    {
+     "die_no": "F1130",
+     "name": "ลูกฟูกเรียบ 4 นิ้ว",
+     "role_family": "ลูกฟูก",
+     "kg_per_m": null,
+     "width_mm": 111.7,
+     "depth_mm": 3.0,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 20,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_0.8": "1.50-1.90",
+      "coat_0.8": "1.80-2.20"
+     }
+    },
+    {
+     "die_no": "F1109",
+     "name": "ป.ปลาโพลี",
+     "role_family": "โครงโพลีคาร์บอเนต",
+     "kg_per_m": null,
+     "width_mm": 9.8,
+     "depth_mm": 24.8,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 21,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "0.40-0.50"
+     }
+    },
+    {
+     "die_no": "F0131",
+     "name": "โครงโพลี-แคมปิ้งตัวใหญ่",
+     "role_family": "โครงโพลีคาร์บอเนต",
+     "kg_per_m": null,
+     "width_mm": 7.3,
+     "depth_mm": 48.5,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 21,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "0.80-1.00"
+     }
+    },
+    {
+     "die_no": "F0132",
+     "name": "โครงโพลี-แคมปิ้งตัวเล็ก",
+     "role_family": "โครงโพลีคาร์บอเนต",
+     "kg_per_m": null,
+     "width_mm": 6.4,
+     "depth_mm": 29.81,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 21,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "0.35-0.50"
+     }
+    },
+    {
+     "die_no": "F0858",
+     "name": "ชุด ป.ปลาต่อกลาง (ไม้อัด)",
+     "role_family": "ไม้อัด",
+     "kg_per_m": null,
+     "width_mm": 9.8,
+     "depth_mm": 5.9,
+     "wall_mm": null,
+     "std_length_m": 4.88,
+     "page": 21,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "0.12-0.15"
+     }
+    },
+    {
+     "die_no": "F0859",
+     "name": "ต่อกลางไม้อัด",
+     "role_family": "ไม้อัด",
+     "kg_per_m": null,
+     "width_mm": 10.8,
+     "depth_mm": 6.0,
+     "wall_mm": null,
+     "std_length_m": 4.88,
+     "page": 21,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "0.12-0.15"
+     },
+     "note": "printed 0.12-.015"
+    },
+    {
+     "die_no": "F1185",
+     "name": "ตัวซีกันแดด",
+     "role_family": "ระแนง",
+     "kg_per_m": null,
+     "width_mm": 85,
+     "depth_mm": 15.5,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 22,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "0.90-1.00",
+      "coat": "1.20-1.30"
+     }
+    },
+    {
+     "die_no": "F1152",
+     "name": "ตัวแซด 4 นิ้ว",
+     "role_family": "ระแนง",
+     "kg_per_m": null,
+     "width_mm": 131.85,
+     "depth_mm": 33.2,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 22,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "1.70-2.00",
+      "coat": "2.00-2.30"
+     }
+    },
+    {
+     "die_no": "F1155",
+     "name": "ตัวแซด 1 3/4 นิ้ว",
+     "role_family": "ระแนง",
+     "kg_per_m": null,
+     "width_mm": 57.87,
+     "depth_mm": 16.7,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 22,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "0.55-0.65",
+      "coat": "0.85-0.90"
+     }
+    },
+    {
+     "die_no": "F1172",
+     "name": "ตัวยู 1 3/4 นิ้ว",
+     "role_family": "ระแนง / ตัวยู",
+     "kg_per_m": null,
+     "width_mm": 44.45,
+     "depth_mm": 12.7,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 22,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "0.60-0.70"
+     }
+    },
+    {
+     "die_no": "F1156",
+     "name": "ตัวแซด 1 นิ้ว",
+     "role_family": "ระแนง",
+     "kg_per_m": null,
+     "width_mm": 35.31,
+     "depth_mm": 16.17,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 22,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "0.40-0.60",
+      "coat": "0.70-0.90"
+     }
+    },
+    {
+     "die_no": "F7314",
+     "name": "ฝาตบกล่องระแนง",
+     "role_family": "ระแนง",
+     "kg_per_m": null,
+     "width_mm": 25.4,
+     "depth_mm": 25.4,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 22,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_1.2": "0.69-0.75"
+     },
+     "note": "printed 0.69-075"
+    },
+    {
+     "die_no": "F7315",
+     "name": "กล่องระแนง 25.4",
+     "role_family": "ระแนง",
+     "kg_per_m": null,
+     "width_mm": 25.4,
+     "depth_mm": 25.4,
+     "wall_mm": 1.4,
+     "std_length_m": 6.0,
+     "page": 22,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_1.2": "2.05-2.25"
+     }
+    },
+    {
+     "die_no": "F7316",
+     "name": "กล่องระแนง 50x20",
+     "role_family": "ระแนง",
+     "kg_per_m": null,
+     "width_mm": 50,
+     "depth_mm": 20,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 22,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "2.15-2.36"
+     }
+    },
+    {
+     "die_no": "F7317",
+     "name": "กล่องระแนง 50x10",
+     "role_family": "ระแนง",
+     "kg_per_m": null,
+     "width_mm": 50,
+     "depth_mm": 10,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 22,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "2.00-2.20"
+     }
+    },
+    {
+     "die_no": "F605",
+     "name": "กล่อง 1/2\"x1\"",
+     "role_family": "กล่อง",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 23,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.47": "0.52-0.60"
+     }
+    },
+    {
+     "die_no": "F510",
+     "name": "กล่อง 3/4\"x3/4\"",
+     "role_family": "กล่อง",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 23,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.55": "0.65-0.75"
+     }
+    },
+    {
+     "die_no": "F645",
+     "name": "กล่อง 3/4\"x1\"",
+     "role_family": "กล่อง",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 23,
+     "confidence": "read",
+     "kg_per_bar": {
+      "1.20": "4.10-5.00"
+     }
+    },
+    {
+     "die_no": "F520",
+     "name": "กล่อง 1\"x1\"",
+     "role_family": "กล่อง",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 23,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.56": "0.90-1.20",
+      "t0.80": "1.30-1.50"
+     }
+    },
+    {
+     "die_no": "F620",
+     "name": "กล่อง 1\"x1 1/2\"",
+     "role_family": "กล่อง",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 23,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.70": "1.10-1.50"
+     }
+    },
+    {
+     "die_no": "F626",
+     "name": "กล่อง 1\"x1 3/4\"",
+     "role_family": "กล่อง",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 23,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.50": "1.10-1.50",
+      "t1.00": "2.30-2.50"
+     }
+    },
+    {
+     "die_no": "F633",
+     "name": "กล่อง 1\"x2\"",
+     "role_family": "กล่อง",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 23,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.54": "1.20-1.50"
+     }
+    },
+    {
+     "die_no": "F640",
+     "name": "กล่อง 1\"x3\"",
+     "role_family": "กล่อง",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 23,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.75": "2.20-2.60"
+     }
+    },
+    {
+     "die_no": "F650",
+     "name": "กล่อง 1\"x4\"",
+     "role_family": "กล่อง",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 23,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.94": "3.80-4.30"
+     }
+    },
+    {
+     "die_no": "F540",
+     "name": "กล่อง 1 1/2\"x1 1/2\"",
+     "role_family": "กล่อง",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 23,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.53": "1.30-1.50"
+     }
+    },
+    {
+     "die_no": "F660",
+     "name": "กล่อง 1 3/4\"x3\"",
+     "role_family": "กล่อง",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 23,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.80": "3.10-3.50",
+      "t1.00": "3.80-4.40"
+     }
+    },
+    {
+     "die_no": "F666",
+     "name": "กล่อง 1 3/4\"x4\"",
+     "role_family": "กล่อง",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 23,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.92": "4.50-5.00",
+      "t1.14": "5.30-5.80"
+     }
+    },
+    {
+     "die_no": "F653",
+     "name": "กล่อง 2\"x4\"",
+     "role_family": "กล่อง",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 23,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t1.10": "5.00-5.80"
+     }
+    },
+    {
+     "die_no": "F103",
+     "name": "ฉาก 3/8\"",
+     "role_family": "ฉาก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 24,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t1.00": "0.25-0.30"
+     }
+    },
+    {
+     "die_no": "F111",
+     "name": "ฉาก 1/2\"",
+     "role_family": "ฉาก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 24,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.90": "0.30-0.40"
+     }
+    },
+    {
+     "die_no": "F125",
+     "name": "ฉาก 5/8\"",
+     "role_family": "ฉาก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 24,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.57": "0.30-0.40"
+     }
+    },
+    {
+     "die_no": "F140",
+     "name": "ฉาก 3/4\"",
+     "role_family": "ฉาก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 24,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.50": "0.30-0.40",
+      "t0.80": "0.50-0.60"
+     }
+    },
+    {
+     "die_no": "F165",
+     "name": "ฉาก 1\"",
+     "role_family": "ฉาก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 24,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.58": "0.45-0.60",
+      "t0.80": "0.60-0.70"
+     }
+    },
+    {
+     "die_no": "F181",
+     "name": "ฉาก 1 1/4\"",
+     "role_family": "ฉาก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 24,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.50": "0.50-0.60"
+     }
+    },
+    {
+     "die_no": "F187",
+     "name": "ฉาก 1 1/2\"",
+     "role_family": "ฉาก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 24,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.60": "0.60-0.70"
+     }
+    },
+    {
+     "die_no": "F191",
+     "name": "ฉาก 1 1/2\"",
+     "role_family": "ฉาก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 24,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t1.00": "1.20-1.50",
+      "t1.20": "1.50-1.70",
+      "t1.50": "1.80-2.20"
+     }
+    },
+    {
+     "die_no": "F204",
+     "name": "ฉาก 2\" (หนา 1.25)",
+     "role_family": "ฉาก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 24,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "1.80-2.20"
+     }
+    },
+    {
+     "die_no": "F202",
+     "name": "ฉาก 2\" (หนา 2.18)",
+     "role_family": "ฉาก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 24,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "4.00-4.40"
+     }
+    },
+    {
+     "die_no": "F199",
+     "name": "ฉาก 2\" (หนา 4.84)",
+     "role_family": "ฉาก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 24,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "7.50-7.80"
+     }
+    },
+    {
+     "die_no": "F203",
+     "name": "ฉากข้อต่อลอน 50x50",
+     "role_family": "ฉากข้อต่อ",
+     "kg_per_m": 1.291,
+     "width_mm": 50,
+     "depth_mm": 50,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 24,
+     "confidence": "read",
+     "note": "1.291 Kg/M printed; thickness label 6.00 mm"
+    },
+    {
+     "die_no": "F240",
+     "name": "ฉาก 1/2\"x1 1/4\" (ฉากเสริม)",
+     "role_family": "ฉาก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 25,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.60": "0.40-0.50",
+      "t0.70": "0.50-0.55"
+     }
+    },
+    {
+     "die_no": "F230",
+     "name": "ฉาก 1/2\"x1 1/2\"",
+     "role_family": "ฉาก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 25,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.45": "0.30-0.40"
+     }
+    },
+    {
+     "die_no": "F242",
+     "name": "ฉาก 1/2\"x2\"",
+     "role_family": "ฉาก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 25,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.56": "0.40-0.60"
+     }
+    },
+    {
+     "die_no": "F243",
+     "name": "ฉาก 1/2\"x3\"",
+     "role_family": "ฉาก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 25,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.57": "0.80-1.00"
+     }
+    },
+    {
+     "die_no": "F244",
+     "name": "ฉาก 1/2\"x4\"",
+     "role_family": "ฉาก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 25,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.60": "1.00-1.30"
+     }
+    },
+    {
+     "die_no": "F1118",
+     "name": "ฉากกันตก 5 หุน",
+     "role_family": "ฉากกันตก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 26,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.70": "0.55-0.60"
+     }
+    },
+    {
+     "die_no": "F7008",
+     "name": "ฉากกันตก 5 หุน",
+     "role_family": "ฉากกันตก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 26,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "0.60-0.70"
+     }
+    },
+    {
+     "die_no": "F7009",
+     "name": "ฉากกันตก 6 หุน",
+     "role_family": "ฉากกันตก",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.4,
+     "page": 26,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t1.00": "0.60-0.75"
+     }
+    },
+    {
+     "die_no": "F310",
+     "name": "ตัวยู 1/2\"",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 27,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.40": "0.30-0.40"
+     }
+    },
+    {
+     "die_no": "F329",
+     "name": "ตัวยู 1/2\"x1\" เรียบ",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 27,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.40": "0.30-0.40",
+      "t0.80": "0.60-0.70"
+     }
+    },
+    {
+     "die_no": "F920",
+     "name": "ตัวยู 1/2\"x1\" ลาย",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 27,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.45": "0.30-0.40"
+     }
+    },
+    {
+     "die_no": "F301",
+     "name": "ตัวยู 3/8\"",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 27,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.45": "0.18-0.22",
+      "t0.83": "0.30-0.40"
+     }
+    },
+    {
+     "die_no": "F311",
+     "name": "ตัวยู 1/2\"",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 27,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.90": "0.50-0.60"
+     }
+    },
+    {
+     "die_no": "F305",
+     "name": "ตัวยู 3/4\"",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 27,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t1.10": "0.90-1.00"
+     }
+    },
+    {
+     "die_no": "F381",
+     "name": "ตัวยู 3/4\"x4\"",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 27,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.80": "1.70-2.00"
+     }
+    },
+    {
+     "die_no": "F7281",
+     "name": "ตัวยู 1\"x1\"",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 27,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t2.60": "2.60-3.20"
+     }
+    },
+    {
+     "die_no": "F7293",
+     "name": "ตัวยูยึดพื้น 1\"x1 1/4\"",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 27,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t2.60": "3.20-3.90"
+     }
+    },
+    {
+     "die_no": "F390",
+     "name": "ตัวยูยึดพื้น 1\"x2\"",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 27,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t2.00": "3.60-4.40"
+     }
+    },
+    {
+     "die_no": "F4256",
+     "name": "ตัวยู 2\"x1\"",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 27,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t1.10": "2.00-2.30"
+     }
+    },
+    {
+     "die_no": "F351",
+     "name": "ตัวยูใหญ่",
+     "role_family": "ตัวยู",
+     "kg_per_m": null,
+     "width_mm": 78.8,
+     "depth_mm": 39.5,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 27,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t1.30": "3.00-3.60"
+     }
+    },
+    {
+     "die_no": "F003",
+     "name": "ท่อกลม 3/8\"",
+     "role_family": "ท่อกลม",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 28,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.78": "0.30-0.40"
+     }
+    },
+    {
+     "die_no": "F404",
+     "name": "ท่อกลม 3/8\"",
+     "role_family": "ท่อกลม",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 28,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_1.2": "0.55-0.60"
+     }
+    },
+    {
+     "die_no": "F411",
+     "name": "ท่อกลม 1/2\"",
+     "role_family": "ท่อกลม",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 28,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t1.00": "0.55-0.65"
+     }
+    },
+    {
+     "die_no": "F413",
+     "name": "ท่อกลม 1/2\"",
+     "role_family": "ท่อกลม",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 28,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_1.2": "0.70-0.80"
+     }
+    },
+    {
+     "die_no": "F412",
+     "name": "ท่อกลม 1/2\"",
+     "role_family": "ท่อกลม",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 28,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t1.20": "0.60-0.70"
+     }
+    },
+    {
+     "die_no": "F425",
+     "name": "ท่อกลม 5/8\"",
+     "role_family": "ท่อกลม",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 28,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t1.50": "1.00-1.25"
+     }
+    },
+    {
+     "die_no": "F429",
+     "name": "ท่อกลม 3/4\"",
+     "role_family": "ท่อกลม",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 28,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.75": "0.75-0.90"
+     }
+    },
+    {
+     "die_no": "F430",
+     "name": "ท่อกลม 3/4\"",
+     "role_family": "ท่อกลม",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 28,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t1.20": "1.00-1.20"
+     }
+    },
+    {
+     "die_no": "F1331",
+     "name": "ท่อกลม 1\" ลอน",
+     "role_family": "ท่อกลม",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 28,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.85": "0.85-0.95"
+     }
+    },
+    {
+     "die_no": "F442",
+     "name": "ท่อกลม 1\"",
+     "role_family": "ท่อกลม",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 28,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.86": "1.00-1.30"
+     }
+    },
+    {
+     "die_no": "F443",
+     "name": "ท่อกลม 1\"",
+     "role_family": "ท่อกลม",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 28,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_1.2": "1.40-1.60"
+     }
+    },
+    {
+     "die_no": "F448",
+     "name": "ท่อกลม 1 1/4\"",
+     "role_family": "ท่อกลม",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 28,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "1.60-1.80"
+     }
+    },
+    {
+     "die_no": "F447",
+     "name": "ท่อกลม 1 1/4\"",
+     "role_family": "ท่อกลม",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 28,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_1.0": "2.30-2.60"
+     }
+    },
+    {
+     "die_no": "F451",
+     "name": "ท่อกลม 1 1/2\"",
+     "role_family": "ท่อกลม",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 28,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "2.30-2.50"
+     }
+    },
+    {
+     "die_no": "F453",
+     "name": "ท่อกลม 1 1/2\"",
+     "role_family": "ท่อกลม",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 28,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_1.0": "3.00-3.30"
+     }
+    },
+    {
+     "die_no": "F456",
+     "name": "ท่อกลม 1 3/4\"",
+     "role_family": "ท่อกลม",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 28,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod": "3.30-3.50"
+     }
+    },
+    {
+     "die_no": "F459",
+     "name": "ท่อกลม 2\"",
+     "role_family": "ท่อกลม",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 28,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t1.30": "3.00-3.30"
+     }
+    },
+    {
+     "die_no": "F714",
+     "name": "เส้นแบน 1/2\" (หนา 0.80 / 1.00)",
+     "role_family": "เส้นแบน",
+     "kg_per_m": 0.034,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 29,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.80": "0.60-0.70"
+     },
+     "note": "same die printed twice: per-bar 0.60-0.70 (t0.80) and 0.034 kg/m (t1.00) - small print"
+    },
+    {
+     "die_no": "F709",
+     "name": "เส้นแบน 1/2\" (หนา 1.80)",
+     "role_family": "เส้นแบน",
+     "kg_per_m": 0.058,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 29,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F722",
+     "name": "เส้นแบน 3/4\"",
+     "role_family": "เส้นแบน",
+     "kg_per_m": 0.164,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 29,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.83": "0.90-1.10"
+     },
+     "note": "also 0.164 kg/m at t3.17"
+    },
+    {
+     "die_no": "F715",
+     "name": "เส้นแบน 3/4\" (หนา 1.80)",
+     "role_family": "เส้นแบน",
+     "kg_per_m": 0.1,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 29,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F720",
+     "name": "เส้นแบน 1\" (หนา 1.00)",
+     "role_family": "เส้นแบน",
+     "kg_per_m": 0.069,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 29,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F726",
+     "name": "เส้นแบน 1\" (หนา 1.85)",
+     "role_family": "เส้นแบน",
+     "kg_per_m": 0.127,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 29,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F750",
+     "name": "เส้นแบน 2\" (หนา 3.00)",
+     "role_family": "เส้นแบน",
+     "kg_per_m": 0.413,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 29,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F743",
+     "name": "เส้นแบน 2\" (หนา 3.17)",
+     "role_family": "เส้นแบน",
+     "kg_per_m": 0.437,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 29,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F766",
+     "name": "เส้นแบน 4\" (หนา 3.00)",
+     "role_family": "เส้นแบน",
+     "kg_per_m": 0.826,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 29,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F761",
+     "name": "เส้นแบน 4\" (หนา 9.52)",
+     "role_family": "เส้นแบน",
+     "kg_per_m": 2.621,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 29,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F771",
+     "name": "เส้นแบน 6\" (หนา 6.00)",
+     "role_family": "เส้นแบน",
+     "kg_per_m": 7.867,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 29,
+     "confidence": "read",
+     "note": "7.867 kg/m looks too heavy for 152x6 mm (~2.5); check"
+    },
+    {
+     "die_no": "F6114",
+     "name": "เส้นแบนท้องปลิง 3/4\"",
+     "role_family": "เส้นแบน",
+     "kg_per_m": 0.12,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.5,
+     "std_length_m": 6.0,
+     "page": 30,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F150",
+     "name": "เส้นแบนท้องปลิง 3/4\"",
+     "role_family": "เส้นแบน",
+     "kg_per_m": 0.088,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.3,
+     "std_length_m": 6.0,
+     "page": 30,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F4165",
+     "name": "เส้นแบนท้องปลิง 5/8\"",
+     "role_family": "เส้นแบน",
+     "kg_per_m": 0.08,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": 2.7,
+     "std_length_m": 6.0,
+     "page": 30,
+     "confidence": "read"
+    },
+    {
+     "die_no": "F2000",
+     "name": "เส้นหน้าต่างมีปีก",
+     "role_family": "เส้นหน้าต่าง (ไม้กันแมลง)",
+     "kg_per_m": null,
+     "width_mm": 25,
+     "depth_mm": 14.08,
+     "wall_mm": null,
+     "std_length_m": 6.1,
+     "page": 33,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_thin": "0.48-0.60",
+      "anod_t0.40": "0.70-0.80",
+      "paint_thin": "0.70-0.80",
+      "paint_t0.40": "0.90-1.00"
+     }
+    },
+    {
+     "die_no": "F2010",
+     "name": "เส้นหน้าต่างไม่มีปีก",
+     "role_family": "เส้นหน้าต่าง",
+     "kg_per_m": null,
+     "width_mm": 19.1,
+     "depth_mm": 13.48,
+     "wall_mm": null,
+     "std_length_m": 6.1,
+     "page": 33,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_thin": "0.48-0.60",
+      "anod_t0.41": "0.70-0.80",
+      "paint_thin": "0.70-0.80",
+      "paint_t0.40": "0.90-1.00"
+     }
+    },
+    {
+     "die_no": "F2020",
+     "name": "เส้นประตูมีปีก",
+     "role_family": "เส้นประตู",
+     "kg_per_m": null,
+     "width_mm": 36,
+     "depth_mm": 14.7,
+     "wall_mm": null,
+     "std_length_m": 6.1,
+     "page": 33,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_thin": "0.70-0.80",
+      "anod_t0.43": "1.00-1.20",
+      "paint_thin": "0.90-1.00",
+      "paint_t0.40": "1.20-1.40"
+     }
+    },
+    {
+     "die_no": "F2025",
+     "name": "เส้นประตูไม่มีปีก",
+     "role_family": "เส้นประตู",
+     "kg_per_m": null,
+     "width_mm": 26.2,
+     "depth_mm": 14.0,
+     "wall_mm": null,
+     "std_length_m": 6.1,
+     "page": 33,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_thin": "0.70-0.80",
+      "anod_t0.50": "1.00-1.20",
+      "paint_thin": "0.90-1.00",
+      "paint_t0.50": "1.20-1.40"
+     }
+    },
+    {
+     "die_no": "F1090",
+     "name": "กรอบรูปไม่มีปีก",
+     "role_family": "กรอบรูป",
+     "kg_per_m": null,
+     "width_mm": 26.9,
+     "depth_mm": 13.89,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 33,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_thin": "0.50-0.58",
+      "anod_t0.40": "0.90-1.00",
+      "paint_thin": "0.60-0.70",
+      "paint_t0.40": "1.00-1.20"
+     }
+    },
+    {
+     "die_no": "F1091",
+     "name": "กรอบรูปมีปีก",
+     "role_family": "กรอบรูป",
+     "kg_per_m": null,
+     "width_mm": 33.21,
+     "depth_mm": 14.25,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 33,
+     "confidence": "read",
+     "kg_per_bar": {
+      "anod_thin": "0.60-0.68",
+      "anod_t0.45": "0.90-1.00",
+      "paint_thin": "0.60-0.70",
+      "paint_t0.45": "1.00-1.20"
+     }
+    },
+    {
+     "die_no": "F1250",
+     "name": "ตัวซีรางม่าน",
+     "role_family": "รางม่าน",
+     "kg_per_m": null,
+     "width_mm": 25,
+     "depth_mm": 12.8,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 33,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.66": "0.60-0.75"
+     }
+    },
+    {
+     "die_no": "F1518",
+     "name": "ตัวที 1\"x1 1/2\"",
+     "role_family": "ตัวที",
+     "kg_per_m": null,
+     "width_mm": 25.4,
+     "depth_mm": 38.1,
+     "wall_mm": null,
+     "std_length_m": 6.1,
+     "page": 33,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.75": "0.85-0.95"
+     }
+    },
+    {
+     "die_no": "F1511",
+     "name": "ตัวทีแบน 1\"x1\"",
+     "role_family": "ตัวที",
+     "kg_per_m": null,
+     "width_mm": 25.4,
+     "depth_mm": 25.4,
+     "wall_mm": null,
+     "std_length_m": 6.25,
+     "page": 33,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t0.36": "0.38-0.40",
+      "t0.70": "0.58-0.60"
+     }
+    },
+    {
+     "die_no": "F7276",
+     "name": "ข้อต่อร้อยน๊อต",
+     "role_family": "ข้อต่อ",
+     "kg_per_m": 0.906,
+     "width_mm": 65,
+     "depth_mm": 20.7,
+     "wall_mm": 2.0,
+     "std_length_m": 6.0,
+     "page": 33,
+     "confidence": "read"
+    }
+   ],
+   "assembly": [],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  },
+  {
+   "name": "ชุดตู้กับข้าว (kitchen cabinet)",
+   "system": "other",
+   "app_types": [],
+   "frame_size_mm": null,
+   "profiles": [
+    {
+     "die_no": "F1667",
+     "name": "ต่อกลางกระจก 2 หุน",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 31,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "0.39-0.45"
+     }
+    },
+    {
+     "die_no": "F1668",
+     "name": "กรอบรูปใหญ่",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 31,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "1.60-1.80"
+     }
+    },
+    {
+     "die_no": "F1669",
+     "name": "เสานอนเล็ก",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 31,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "1.00-1.10"
+     }
+    },
+    {
+     "die_no": "F1670",
+     "name": "ตัวแอลขาซิงค์",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 31,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "0.74-0.81"
+     }
+    },
+    {
+     "die_no": "F1671",
+     "name": "กรอบรูปหน้าเว้า",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 31,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "0.90-1.00"
+     }
+    },
+    {
+     "die_no": "F1672",
+     "name": "คิ้วมนปีกเดียว",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 31,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "1.60-1.80"
+     }
+    },
+    {
+     "die_no": "F1673",
+     "name": "เสานอก",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 31,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "1.00-1.20"
+     }
+    },
+    {
+     "die_no": "F1674",
+     "name": "เสาใน",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 31,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "1.00-1.20"
+     }
+    },
+    {
+     "die_no": "F1675",
+     "name": "คิ้วมนเล็ก",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 31,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "1.20-1.30"
+     }
+    },
+    {
+     "die_no": "F1676",
+     "name": "คิ้วมนเล็กมีร่องกระจก",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 31,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "1.10-1.30"
+     }
+    },
+    {
+     "die_no": "F1101",
+     "name": "รางล่าง",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 31,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "0.34-0.37"
+     }
+    },
+    {
+     "die_no": "F1103",
+     "name": "รางหนีบ",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 31,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "0.65-0.75"
+     }
+    },
+    {
+     "die_no": "F1105",
+     "name": "รางบนตื้น",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 31,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "0.40-0.50"
+     }
+    },
+    {
+     "die_no": "F7284",
+     "name": "รางหนีบ",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 31,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "0.70-0.80"
+     }
+    },
+    {
+     "die_no": "F7285",
+     "name": "รางบน",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 32,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "0.50-0.60"
+     }
+    },
+    {
+     "die_no": "F7286",
+     "name": "รางล่าง",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 32,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "0.50-0.60"
+     }
+    },
+    {
+     "die_no": "F552",
+     "name": "คิ้วตู้โชว์",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 32,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "0.90-1.00"
+     }
+    },
+    {
+     "die_no": "F7289",
+     "name": "รางหนีบ",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 32,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "0.90-1.00"
+     }
+    },
+    {
+     "die_no": "F7290",
+     "name": "รางบน",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 32,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "1.10-1.20"
+     }
+    },
+    {
+     "die_no": "F7291",
+     "name": "รางล่าง",
+     "role_family": "ตู้กับข้าว",
+     "kg_per_m": null,
+     "width_mm": null,
+     "depth_mm": null,
+     "wall_mm": null,
+     "std_length_m": 6.0,
+     "page": 32,
+     "confidence": "read",
+     "kg_per_bar": {
+      "t<0.80": "0.60-0.70"
+     }
+    }
+   ],
+   "assembly": [],
+   "hardware": [],
+   "accessories": [],
+   "prices": []
+  }
+ ],
+ "new_families": [
+  "เสาตาย",
+  "ขวางกลาง",
+  "ชนกลาง",
+  "ชนกลางมุ้ง",
+  "กรอบมุ้ง",
+  "เส้นกลาง (ลายกระจก)",
+  "กล่องแจ๊คสัน (กล่องโช้ค)",
+  "ฝาปิดกล่องแจ๊คสัน",
+  "เสาประตูข้าง",
+  "ขวางบนประตู",
+  "ขวางล่างประตู",
+  "รางแขวน",
+  "ฉากข้อต่อ",
+  "ฉากกันตก",
+  "ลูกฟูก",
+  "ระแนง",
+  "กล่อง",
+  "ฉาก",
+  "ตัวยู",
+  "ท่อกลม",
+  "เส้นแบน",
+  "ตู้กับข้าว"
+ ],
+ "open_questions": [
+  "แคตตาล็อก KC ให้น้ำหนักเป็น 'กิโลต่อเส้น' เป็นช่วง (เช่น 1.70-2.00) ไม่ใช่ กก./ม. — จะคิดต้นทุนจากค่ากลาง / ค่าสูง / หรือชั่งจริงตามบิล?",
+  "ราคา KC ขายเป็นบาทต่อกิโลหรือบาทต่อเส้น? แต่ละความหนา (0.8/1.0/1.2) ราคาต่างกันไหม?",
+  "ปกติบริษัทสั่งความหนาไหน และผิวชุบ (anodised) หรือพ่นสี?",
+  "F771 เส้นแบน 6\" พิมพ์ 7.867 กก./ม. ดูหนักเกินจริง — ถามผู้ขายยืนยัน",
+  "แคตตาล็อกนี้ไม่มีสูตรตัดและไม่มีราคา — KC มีใบราคาหรือสูตรตัดแยกไหม?"
+ ],
+ "unreadable_pages": []
+}
