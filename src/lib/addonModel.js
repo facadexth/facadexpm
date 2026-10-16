@@ -169,6 +169,48 @@ export function fillDefaultDeductions(rows, buttMm) {
   return (rows || []).map((r) => (isTwoButtPiece(r) && Number(r.deduction_mm) === 0 ? { ...r, deduction_mm: Math.round(2 * b * 1e6) / 1e6 } : r))
 }
 
+// Pieces that deduct the butt of a different member than the set's side (owner 2026-10-16, Q4 answer ก, D3): on a
+// merge add-on the far frame (ao_frame_far) and the คิ้วเท (ao_bead) butt between the extended long box (ext,
+// กล่องร่องวิ่งยาว), not the overlay side (ao_frame_side); the overlay is only the fallback when ext has no family.
+// The divider, mullions and rails keep the set's side family (divider: D2 still waits for the owner).
+export const BUTT_SOURCE_KEYS = { merge: { ao_bead: ['ext', 'ao_frame_side'], ao_frame_far: ['ext', 'ao_frame_side'] } }
+const buttKeysOf = (mode, pieceKey) => BUTT_SOURCE_KEYS[mode]?.[pieceKey] || SIDE_KEYS[mode] || []
+const familyByKeys = (list, keys) => {
+  for (const key of keys) {
+    const r = list.find((x) => x.piece_key === key && x.profile_family)
+    if (r) return r.profile_family
+  }
+  return null
+}
+
+// The family whose butt one piece of a set deducts (2·butt pieces): BUTT_SOURCE_KEYS, else the set's side family.
+export function buttFamilyOf(rows, pieceKey) {
+  const list = (rows || []).filter(Boolean)
+  const mode = list[0] && list[0].mode
+  return familyByKeys(list, buttKeysOf(mode, pieceKey))
+}
+
+// fillDefaultDeductions with each piece's own butt source (buttOf(family) -> mm | null). A 2·butt piece at 0 gets
+// 2·b(its source). A far frame / bead still holding the fallback value 2·b(overlay) is moved to 2·b(ext) once ext has
+// a family (the overlay was assigned first). Every other row is returned as is. Never mutates its input.
+export function fillDeductionsBy(rows, buttOf) {
+  const list = (rows || []).filter(Boolean)
+  if (typeof buttOf !== 'function') return rows
+  const mode = list[0] && list[0].mode
+  const two = (fam) => { const b = fam ? numOrNull(buttOf(fam)) : null; return b > 0 ? Math.round(2 * b * 1e6) / 1e6 : null }
+  return (rows || []).map((r) => {
+    if (!isTwoButtPiece(r)) return r
+    const keys = buttKeysOf(mode, r.piece_key)
+    const want = two(familyByKeys(list, keys))
+    if (want == null) return r
+    const d = Number(r.deduction_mm)
+    if (d === 0) return { ...r, deduction_mm: want }
+    const ownSource = !!BUTT_SOURCE_KEYS[mode]?.[r.piece_key]   // only the ext-first pieces move off their fallback
+    const fallback = ownSource ? two(familyByKeys(list, keys.slice(1))) : null
+    return fallback != null && d === fallback && want !== fallback ? { ...r, deduction_mm: want } : r
+  })
+}
+
 // A 2·butt piece still at deduction 0 while its set's side butt is > 0 (addon_deduction_zero).
 export const deductionStillZero = (r, sideButtMm) =>
   isTwoButtPiece(r) && numOrNull(r.deduction_mm) === 0 && (numOrNull(sideButtMm) ?? 0) > 0

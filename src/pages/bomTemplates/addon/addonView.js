@@ -3,7 +3,7 @@
 // piece table, effects). No React. Every length / quantity shown comes from addonExpand.expandAddons or
 // addonModel (refValue, pieceQty, layoutAddons); the drawing helpers only place rectangles, they never price anything.
 import {
-  addonDims, layoutAddons, defaultAddonPieces, setKey, pieceQty, refValue, sideFamilyOf, fillDefaultDeductions, deductionStillZero, SIDE_KEYS, PIECE_LABEL,
+  addonDims, layoutAddons, defaultAddonPieces, setKey, pieceQty, refValue, buttFamilyOf, fillDeductionsBy, deductionStillZero, SIDE_KEYS, PIECE_LABEL,
   ADDON_MODE_LABEL, ADDON_KIND_LABEL, ADDON_POSITION_LABEL, ADDON_POSITIONS, REF_LABEL,
 } from '../../../lib/addonModel.js'
 import { expandAddons, pieceTotalM, piecesTotalM, explainAddonPiece } from '../../../lib/addonExpand.js'
@@ -161,14 +161,14 @@ export function setRowsFor(addonSets, addon, layoutKind) {
 
 // The first edit of a default set copies the defaults; every edit marks the set dirty. Never mutates its input.
 // Assigning / changing the family of a side piece (attach frame_side; merge ao_frame_side / ext) fills every 2·butt
-// piece of the set still at deduction 0 with 2·butt of the set's side family (buttOf = the editor's test series).
+// piece of the set still at deduction 0 with 2·butt of the family it butts (buttOf = the editor's test series): the
+// set's side family, except the merge far frame / คิ้วเท which butt ext first (owner 2026-10-16, D3, fillDeductionsBy).
 export function editSetRow(addonSets, addon, layoutKind, idx, patch, buttOf = null) {
   const { key, rows } = setRowsFor(addonSets, addon, layoutKind)
   let next = rows.map((r, i) => (i === idx ? { ...r, ...patch } : r))
   const row = next[idx]
   if (row && patch && 'profile_family' in patch && (SIDE_KEYS[row.mode] || []).includes(row.piece_key) && typeof buttOf === 'function') {
-    const fam = sideFamilyOf(next)
-    if (fam) next = fillDefaultDeductions(next, num(buttOf(fam)))
+    next = fillDeductionsBy(next, (f) => num(buttOf(f)))
   }
   return { ...(addonSets || {}), [key]: { rows: next, dirty: true } }
 }
@@ -196,10 +196,13 @@ function overrideText(model, overrides) {
 // One line per row of the set: the row's own expansion (the add-on with just that row), so each length / qty / issue
 // belongs to that row. ext / main_facing are not bars of their own: they show their effect on the main unit.
 export function pieceTableRows({ addon, rows, main, buttOf, layoutKind, model }) {
-  // the side butt comes from the whole set (each row below is expanded alone, without its set's side piece)
-  const sideFam = sideFamilyOf(rows)
-  const sideButt = sideFam && typeof buttOf === 'function' ? num(buttOf(sideFam)) ?? 0 : 0
+  // the butt each row deducts comes from the whole set (each row below is expanded alone, without its set's side piece)
+  const buttFor = (pieceKey) => {
+    const fam = buttFamilyOf(rows, pieceKey)
+    return fam && typeof buttOf === 'function' ? num(buttOf(fam)) ?? 0 : 0
+  }
   return (rows || []).map((r, i) => {
+    const sideButt = buttFor(r.piece_key)
     const exp = expandAddons({ addons: [addon], pieceRows: [r], main, buttOf, layoutKind })
     const comp = (exp.attach[0]?.components || [])[0] || exp.merge.components[0] || null
     const issues = exp.issues.filter((x) => x.reason !== 'addon_out_of_range').map((x) => issueText(x.reason))

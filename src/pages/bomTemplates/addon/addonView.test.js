@@ -208,6 +208,31 @@ describe('I-1: assigning the side family fills the 0 default deductions', () => 
     expect(two[k].rows.find(r => r.piece_key === 'rail').deduction_mm).toBe(50)      // still 0: 2 × 25
     expect(two[k].rows.find(r => r.piece_key === 'ext').deduction_mm).toBe(0)
   })
+  // Owner 2026-10-16 (Q4 answer ก, D3): the far frame and the คิ้วเท of a merge add-on deduct 2·b of the extended long
+  // box (ext, กล่องร่องวิ่งยาว), not of the overlay side; the overlay is only the fallback while ext has no family.
+  it('owner 2026-10-16 (D3): merge far frame and bead deduct the ext butt, not the overlay side', () => {
+    const a = addon('merge', 'top')
+    const k = setKey('merge', 'fixed', 'top')
+    const ded = (sets, key) => sets[k].rows.find(r => r.piece_key === key).deduction_mm
+    const rows0 = setRowsFor({}, a, 'sliding_2').rows
+    // overlay first (AOS 25), then ext (EXT 30): far / bead move to 2 × 30, the rest keep 2 × 25
+    const one = editSetRow({}, a, 'sliding_2', rows0.findIndex(r => r.piece_key === 'ao_frame_side'), { profile_family: 'AOS' }, buttOf)
+    expect(ded(one, 'ao_frame_far')).toBe(50)
+    const two = editSetRow(one, a, 'sliding_2', rows0.findIndex(r => r.piece_key === 'ext'), { profile_family: 'EXT' }, buttOf)
+    expect(ded(two, 'ao_frame_far')).toBe(60)
+    expect(ded(two, 'ao_bead')).toBe(60)
+    expect(ded(two, 'mullion')).toBe(50)
+    expect(ded(two, 'rail')).toBe(50)
+    // ext first, then the overlay: far / bead stay at 2 × 30
+    const x = editSetRow({}, a, 'sliding_2', rows0.findIndex(r => r.piece_key === 'ext'), { profile_family: 'EXT' }, buttOf)
+    const y = editSetRow(x, a, 'sliding_2', rows0.findIndex(r => r.piece_key === 'ao_frame_side'), { profile_family: 'AOS' }, buttOf)
+    expect(ded(y, 'ao_frame_far')).toBe(60)
+    expect(ded(y, 'ao_bead')).toBe(60)
+    // the zero chip of a far frame follows the ext butt too
+    const rows = rows0.map(r => ({ ...r, profile_family: r.piece_key === 'ext' ? 'EXT' : 'AOS' }))
+    const lines = pieceTableRows({ addon: a, rows, main: { widthMm: 1800, heightMm: 1200 }, buttOf, layoutKind: 'sliding_2', model: null })
+    expect(lines.find(l => l.key === 'ao_frame_far').unresolved).toContain('ระยะหักของชิ้นช่องแสงยังเป็น 0 ตรวจใน template')
+  })
   it('editing a non-side row or without buttOf never fills', () => {
     const a = addon('attach', 'top')
     const k = setKey('attach', 'fixed', 'top')
