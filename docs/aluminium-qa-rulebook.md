@@ -6,6 +6,8 @@ For a QA agent that judges whether CHANG's aluminium drawings (`partSvgString`, 
 - **CONFIRMED** = traceable to an owner statement (date and source given).
 - **INFERRED** = an agent's or spec-writer's guess (source given) with the cost if it is wrong.
 
+**Owner answers 2026-10-16.** The owner answered all 12 questions of section 5 on 2026-10-16. Every rule they settle is now tagged "CONFIRMED (owner 2026-10-16)". Answer 3 points to the Nakhon Nayok shop drawings for serie general (ทั่วไป). What those drawings show (profiles, joins of stacked units, how the live preview must draw them) is in **`docs/aluminium-series-general.md`**. Read it before judging any ทั่วไป drawing or add-on. Where the code disagrees with an answer or with the drawings, see section 7 ("Code vs owner answers — defects to fix").
+
 Agent rulings in the handover (R-*, PE-*, AO-* without "(owner)", P3-*, numbered rulings without "(owner)") are INFERRED even when they look obvious. "Owner accepted mockup v5" (2026-10-13) confirms the *drawing* conventions it shows, not the lengths.
 
 **Do not flag** (known conventions, explained in section 2): meeting stiles of sliding sashes drawn overlapping / coincident (U8); covers, beads, plates and overlay frames drawn on top of another member (U9); a `sliding_2` drawing with no glass tint or slide arrows (R-8a: frozen legacy drawing); hardware lines with unit price 0 and no part (owner said 2026-10-15 linking is not needed yet); every butt deduction showing 0 with `no_butt_distance` on CHANG (imported profiles have no `width_mm` / `butt_distance_mm` yet; data, not a bug).
@@ -80,7 +82,7 @@ Consequences the QA agent must check:
 - U1a. A ร่วมวงกบ top/bottom add-on flush with the main side: the main side frame is ONE bar from the add-on's outer edge to the main sill (drawing) and ONE BOM piece at `th` (costing: `ext` override `lengthMm = th`). Left/right add-on: the main head and sill are one bar each at `tw`.
 - U1b. A ร่วมวงกบ add-on NOT flush with a main side (shorter `len` or offset): its own side bars stop on the main frame member that crosses them (the main head for a top add-on). The main side keeps `H`.
 - U1c. Any drawing in which two collinear bars of the same orientation meet end to end with no crossing member between them is a defect, except: free trims (U9) and frame-to-frame contact between two separate frames (see U1d).
-- U1d. (INFERRED, from addonSvg code; cost if wrong: every แยกวงกบ drawing is wrong) An แยกวงกบ add-on is a separate frame: its side bars (through, `h`) sit on the main frame's corner, i.e. collinear with the main side with only the two frames' head/sill between at the corner region. The code accepts this. Ask the owner (Q3).
+- U1d. CONFIRMED (owner 2026-10-16, Q3): "Depends on the series. For serie general an add-on can NOT stand on the old frame; it must become a shared frame (วงกบร่วมกัน) + adapter." Serie general (ทั่วไป): a แยกวงกบ add-on whose side bars stand on the main frame, and the double bar (main frame member + add-on frame member back to back) at the joint, are **defects**. The drawings show one shared box member at every joint: a top light over a unit uses กล่องเปิด + ฝาปิด; glass under a unit uses กล่องเรียบ + ฝาตบร่อง; side by side uses one กล่องร่อง mullion + ฝาตบร่อง. The outer jambs run the whole stack (series file §3.11 J1-J6, p15 A43 sections 28/30/22/23). Other series: still open, do not flag.
 
 ### U2. Every corner has exactly one through member (CONFIRMED, owner 2026-10-10, part-editor spec §2 decision 4)
 "At a corner exactly one of the two pieces runs through; changing one flips the other automatically." Not applied to mitred parts (U5) or tee joints (U4). `validateCorners(model)` reports `corner_violation`, `both_through`, `both_butt`.
@@ -89,8 +91,8 @@ Consequences the QA agent must check:
 - U3a. Sliding frames: the two side frames run through, head and sill butt between them (waterproofing). CONFIRMED (owner, handover Ruling 5 and part-editor spec decision 6, 2026-10-10).
 - U3b. Sliding sashes: stiles (เสากุญแจ, เสาเกี่ยว) run through, rails butt into the stiles. CONFIRMED (owner, part-editor spec decision 6, 2026-10-10).
 - U3c. Door leaves (บานเปิด, บานสวิง, รางแขวน, บานเลื่อนรางล่าง, บานเฟี้ยม): "ต่อตรง", stiles run through, rails butt. CONFIRMED (owner D15, 2026-10-13).
-- U3d. Frames of non-sliding kinds (fixed_grid, awning_grid, casement_n, frameless_wall, swing_door, frameless_door): sides through, head/sill butt (layout joints `through: 'v'`). INFERRED (spec 5.1 / 5.7 / 5.8 by the spec writer; the owner only ruled sliding). Cost if wrong: head/sill 2·b too short and sides 2·b too long per unit (total aluminium nearly equal, cut list wrong).
-- U3e. Folding door track frame: spec 5.10 says top/bottom tracks run through and side tracks butt; the code's joint says `through: 'v'` (top/bottom butt into sides) AND the side rule is `height_minus` `track_top_bottom`, so BOTH members are shortened at each corner. INFERRED, and the code contradicts its own spec. Cost if wrong: 4 corners each short by one butt distance (at b = 40: top/bottom 80 mm too short each). Ask the owner (Q1). QA: flag it.
+- U3d. Frames of non-sliding kinds (fixed_grid, awning_grid, casement_n, frameless_wall, swing_door, frameless_door): sides through, head/sill butt, the same as sliding. CONFIRMED (owner 2026-10-16, Q2 "yes"). The code agrees (layout joints `through: 'v'`).
+- U3e. Folding door (บานเฟี้ยม) track frame: **top/bottom tracks run through, side tracks butt** between them. CONFIRMED (owner 2026-10-16, Q1 answer (ก); same as spec 5.10). The code is wrong: the joint says `through: 'v'`, so top/bottom butt into the sides, AND the side rule is `height_minus` `track_top_bottom`. Both members are shortened at each corner (at b = 40: top/bottom 80 mm too short each). QA: flag it (defect D1).
 
 ### U4. Grids: verticals run through, horizontals butt (CONFIRMED, owner D7, 2026-10-13)
 "Vertical mullions run full height; horizontal transoms butt into them. The same rule applies to every grid (curtain wall, awning grids)." Code: tee joints, mullion `height_minus` `frame_top_bottom`; transom `width_minus` with `grid_*` auto (frame sides + (cols−1)·w(mullion)) / cols, ends `through` because the pre-deduction already removed the mullion widths (R-3a, INFERRED: uses mullion WIDTH, not its butt distance; cost if wrong: transom long by (w − b) per end for profiles whose butt < width). Add-on grids: mullions through, rails between, drawn as wide as the frame (CONFIRMED owner 2026-10-15, commit 96b8520d).
@@ -109,10 +111,15 @@ Consequences the QA agent must check:
 ### U7. Sash sits inside the frame opening (CONFIRMED for sliding, owner 2026-10-10 decision 7)
 Stile = `H − b(frame_top) − b(frame_bottom)`. Rail per sash (2 sashes) = `[W − b(left) − b(right) − 2·b(key) − 2·b(hook) + o] ÷ 2`, written in code as `(W − 2·b(frame_side) + o) × 0.5 − b(hook) − b(key)`. Owner sample: 1800 × 1200, b(side) 38.1, b(top) 38.1, b(bottom) 35.8, stiles 25, hook 25 -> frame 1723.8 / 1200, rails 824.4, stiles 1126.1.
 - U7a. `o` = `b(hook)` else `w(hook)` (PE-5, INFERRED; the owner's formula says "+ hook stile × 1" without saying width or butt). Cost if wrong: each rail off by (w − b)/2.
-- U7b. Other kinds use the same "inside the frame opening, zero clearance" approach (sash outer size = frame inner opening or grid cell). INFERRED (spec writer). Cost if wrong: every sash member too long by the real clearance (typically a few mm per side). Ask (Q8).
+- U7b. Other kinds use the same "inside the frame opening, zero clearance" approach (sash outer size = frame inner opening or grid cell). Owner 2026-10-16 (Q8): "depends on the series; read it from the drawings". For serie general the drawings show **sub-frames inside the grid cell**, not sashes cut to the cell:
+  - **Awning:** inner frame กรอบใน + sash. The sight line from the box face to the glass is 66 per side.
+  - **Sliding:** a 2-track sub-frame whose side shows 19 beyond the 44.5 box. Hook stile 34.4.
+  - **Door leaf:** stile 54, top rail 52, bottom rail 80.
+
+  No gap is dimensioned (series file §5). So zero clearance stays INFERRED. The general-series awning also misses the กรอบใน member entirely (defect D9). Exact gaps: questions G3, G4.
 
 ### U8. Sliding sash overlap in the drawing (CONFIRMED, owner 2026-10-10 decisions 9-10)
-Neighbouring sashes on different tracks physically overlap at the hook stiles. The drawing shows them overlapping by one stile width, visible sash drawn last (on top); outside view: the LEFT sash is the outside one; inside view swaps it. Coincident / overlapping meeting stiles are the convention: do NOT flag. Which stiles meet in the middle is still open: `sliding_2` puts the hook stile on the left of every sash (middle = sash 1 key + sash 2 hook) while `sliding_n` / `sliding_3track` put hook-hook in the middle (spec 5.4). INFERRED (open "owner to confirm" in the handover). Costing is the same (2 key + 2 hook at n = 2); the drawing differs. Ask (Q7).
+Neighbouring sashes on different tracks physically overlap at the hook stiles. The drawing shows them overlapping by one stile width, visible sash drawn last (on top); outside view: the LEFT sash is the outside one; inside view swaps it. Coincident / overlapping meeting stiles are the convention: do NOT flag. Which stiles meet in the middle: **เสาเกี่ยว hooks onto เสาเกี่ยว, lock stiles at the jambs**. CONFIRMED (owner 2026-10-16, Q7; SEEN on the Nakhon Nayok drawings p15/p3 section 26). `sliding_n` / `sliding_3track` already do this. `sliding_2` puts the hook stile on the left of every sash, so the left sash has its hook at the frame and the middle is key + hook. That is a drawing defect (D7). Costing is the same (2 key + 2 hook at n = 2).
 
 ### U9. Clip-on members drawn on top (CONFIRMED where owner-ruled, else INFERRED)
 Positions with `corner: 'free'` and add-on overlay pieces sit ON another member; overlap in the drawing is intentional, they have no corner partner and no end deduction: ธรณีกันบานเลื่อน, ตบธรณี, คิ้วเท and เฟรมข้างไม่ติดกล่อง (overlay, "แปะทับ") on a sliding top/bottom merge (CONFIRMED, owner AO-9 2026-10-15), คิ้วประตู, บังใบ, คิ้วบาน, แผ่นกด, ฝาปิด, รางแขวน + กล่อง 1-3/4 (INFERRED, from layouts / spec). Do not count them in U1 / U2 checks.
@@ -167,7 +174,7 @@ Drawing must show: 4 frame bars (sides full height), 2 sashes each `inW/2 + hook
 Inputs: `n` 2-6 (item), `door` (type). Parts บานซ้าย (key at frame + hook), บานกลาง ×(n−2) (hook + hook), บานขวา (hook + key at frame) -> 2 key + 2(n−1) hook stiles (R-F1 INFERRED / spec 5.4). Tracks alternate 1,2,1,2.
 Rail = `(W − 2·b(FS) + (n−1)·o) / n − b(left stile) − b(right stile)`; stile = `H − b(FT) − b(FB)`; frame as sliding_2. With `door`: bottom frame named รางล่าง (ธรณี), top รางบน.
 1800 × 1200, n 2, b 40, o 40: เฟรมบน/ล่าง 1720 ×1+1; เฟรมข้าง 1200 ×2; rails `(1800 − 80 + 40)/2 − 80` = 800 ×4; stiles 1120 ×4 (2 key, 2 hook). n = 2 reproduces sliding_2's per-family totals (test). Code test n 3 at 2700: rail before end deductions `(2700 − 90 + 80)/3` = 896.67.
-Hardware (INFERRED, handover owner-to-confirm #5): ลูกล้อ 2 per sash, กุญแจ/มือจับ 1 per unit -> n 2: 4 / 1.
+Hardware (CONFIRMED owner 2026-10-16, Q12 "yes"): ลูกล้อ 2 per sash, กุญแจ/มือจับ 1 per unit -> n 2: 4 / 1.
 Drawing: n sashes, glass, slide arrows left half → right half ←, hook-hook overlaps between sashes.
 Families: sliding families of series ทั่วไป (gen script `sliding` map) INFERRED; owner question #6 (which series for the bottom-rail door) still open.
 
@@ -213,7 +220,8 @@ Drawing: V apex at the hinge stile of each sash.
 Inputs: `leaves` 1-2 (type pins for สวิง), `hinge` (1 leaf), `open`, `sill` yes/no (CONFIRMED D4/D5), `pivot` (type). Rails top/bottom same size, no kick rail (CONFIRMED D4). Leaves butt-jointed (CONFIRMED D15). Pivot door: no hinges, concealed head closer + top/bottom pivots (CONFIRMED D5).
 Head / sill = `W − 2·b(FS)` (butt); sides `H` (through); leaf stiles = `H − b(FT) − b(sill)` (sill absent -> head only, R-P3 INFERRED); leaf rails = `(W − 2·b(FS)) / leaves − b(hinge stile) − b(handle stile)`; beads คิ้วประตู ตั้ง ×2 per leaf = stile length, นอน ×2 per leaf = `(W − 2·b(FS)) / leaves` (I5 INFERRED).
 900 × 2100, 1 leaf, sill yes, b 40: head 820, sill 820, sides 2100 ×2, stiles 2020 ×2, rails `820 − 80` = 740 ×2, beads 2020 ×2 and 820 ×2.
-QA note: the horizontal bead (820) is longer than the rail (740) and the vertical bead equals the full stile; a bead sits inside the leaf's glass opening, so both are probably too long (by 2·b(stile) and 2·rail width). INFERRED both ways; ask (Q9).
+Bead lengths stay as set: vertical = stile length, horizontal = leaf width. CONFIRMED (owner 2026-10-16, Q9 answer (ก)). Do not flag the 820 bead against the 740 rail. The Nakhon Nayok drawings show คิ้วประตูสวิง on all four sides inside the leaf (p33 sections 61-65), so the physical bead is shorter. The owner chose the current (longer) cut on purpose. Note only, no defect.
+Serie general, SEEN on p33: the doors in the reference set are floor-pivot doors with no sill, a กล่องแจ็คสัน head with a concealed closer, top rail 52 and bottom rail 80. The unequal rails conflict with D4's "rails same size" for this series (question G5).
 Hardware (INFERRED counts, D5 items CONFIRMED): hinged: บานพับ 3 + มือจับ 1 per leaf; pivot: door closer 1 + เดือยบน/ล่าง 2 + มือจับ 1 per leaf (closer per leaf INFERRED).
 Drawing: frame (dashed floor line when no sill), V apex at hinge stile; 2 leaves hinged on the outer stiles.
 
@@ -227,7 +235,7 @@ Known gap: glass leaf not priced (U13.7).
 ### 3.10 `hanging_door` — บานเลื่อนรางแขวน
 Track (รางแขวนใหญ่ + กล่อง 1-3/4 cover) free, `W × 2`; frame sides `H − b(track)` hung under the track; leaf stiles `H − b(track)` (through, `auto: 'track'` INFERRED, handover #7); leaf rails `(W − 2·b(FS)) / leaves − 2·b(stile)` (butt, D15 CONFIRMED).
 900 × 2100, 1 leaf, b 40: track 1800 ×1, cover 1800 ×1, sides 2060 ×2, stiles 2060 ×2, rails 740 ×2.
-INFERRED: track 2·W also for 2 leaves (open owner question 3; the drawing shows 1.5·W, costing 2·W); leaf width = frame inner width (a top-hung leaf normally covers the opening plus an overlap on the wall); leaf as tall as the frame sides (no floor gap). Ask (Q10).
+Track 2·W for 1 and 2 leaves, leaf width = inner opening: CONFIRMED (owner 2026-10-16, Q10 "yes"). This is consistent with the Nakhon Nayok drawing p29 IA3: track cover 2800 ≈ 2 × 1400, leaf 1350, leaf 2400 under a 150 track. Leaf as tall as the frame sides (no floor gap) stays INFERRED. The 2-leaf drawing still shows 1.5·W of track against 2·W in costing: report that as a drawing mismatch only.
 Hardware (INFERRED): ลูกล้อรางแขวน 2 per leaf, ไกด์พื้น 1.
 Drawing: slide arrow toward the open side (1 leaf), outward from the middle (2 leaves).
 
@@ -264,22 +272,27 @@ Worked example (W-01 shape): main 1800 × 1200 sliding_2 with the owner sample b
 | ext -> main เฟรมข้าง substituted to กล่องร่องวิ่งยาว | `th` = H + thick | 2 | 1600 (replaces 1200) | CONFIRMED (AO-9, U1) |
 | divider (คานกั้น) | `len − 2·b` | 0 | — (no divider on sliding top/bottom) | CONFIRMED (AO-9) |
 | main_facing = main เฟรมบน kept, note ตบเรียบ (รองคิ้วเท) | stays `W − 2·b(FS)` | (1) | 1723.8 | CONFIRMED (AO-9) |
-| ao_frame_side เฟรมข้างไม่ติดกล่อง (แปะทับ, overlay) | `h` | 2 | 400 | structure CONFIRMED; length `h` INFERRED (AO-12) |
-| ao_bead คิ้วเท | `len − 2·b(overlay side)` | 1 | 1740 | piece CONFIRMED; length INFERRED |
-| ao_frame_far (the add-on's outer head) | `len − 2·b(overlay side)` | 1 | 1740 | INFERRED (family null until the owner assigns) |
+| ao_frame_side เฟรมข้างไม่ติดกล่อง (แปะทับ, overlay) | code: `h` (400). **Required: the sash (main unit) height, not the add-on height** | 2 | code 400 | structure CONFIRMED; length CONFIRMED (owner 2026-10-16, Q5) — code defect D4 |
+| ao_bead คิ้วเท | code: `len − 2·b(overlay side)`. **Required: `len − 2·b(ext)` (the long box)** | 1 | code 1740; required 1723.8 at b(ext) 38.1 | CONFIRMED (owner 2026-10-16, Q4 (ก)) — code defect D3 |
+| ao_frame_far (the add-on's outer head) | code: `len − 2·b(overlay side)`. **Required: `len − 2·b(ext)`** | 1 | code 1740; required 1723.8 | deduction CONFIRMED (owner 2026-10-16, Q4); family still null — code defect D3 |
 | mullion ซอยกลางตั้ง | `h − 2·b` | cols − 1 = 2 | 340 | INFERRED |
 | rail ซอยกลางนอน | `len − 2·b` | rows − 1 = 0 | — | INFERRED |
-| glass | `((w − 2·b)/cols) × ((h − 2·b)/rows)` | 3 | 580 × 340 | INFERRED |
+| glass | code: `((w − 2·b)/cols) × ((h − 2·b)/rows)`. **Required: `(w − 2·b − (cols−1)·w(mullion))/cols + bite` × the same for rows, bite ≈ 6 mm** | 3 | code 580 × 340 | CONFIRMED (owner 2026-10-16, Q6) — code defect D5; bite per edge vs per pane: question G6 |
 
 Main sash rails / stiles unchanged (824.4 / 1126.1): no divider -> AO-2 does not apply (CONFIRMED by AO-9 "sash deduction unchanged").
 **Merge, bottom (sliding_2):** same but note ตบร่อง on the main เฟรมล่าง, คิ้วเท qty 0 (AO-12 INFERRED); ext 1600, overlay 400 ×2, far 1740, mullions 340 ×2.
 **Merge, left/right (spec defaults, INFERRED; owner left/right rulings pending):** ext -> main head and sill at `tw` = 2200 (both butting the sides -> 2123.8 each); divider ×1 `len − 2·b` = 1140; overlay side / bead / far frame qty 0; mullions `h − 2·b` = 1140 ×2 (h = 1200 for a left add-on); main sash deduction on that side uses the divider's butt (AO-2): rails 828.45 instead of 824.4; the substituted family's butt also drives the stile deduction (AO-10: stiles 1123.8). Glass 3 × 107.9 × 1123.8 (cols 3 across a 400 mm add-on: three very narrow panes; QA: plausible only if the user really asked for cols 3).
 **Attach (แยกวงกบ), any side:** own opening `w × h` = 1.8 × 0.4; frame_top / frame_bottom `w − 2·b` = 1740 ×1 each; frame_side `h` = 400 ×2 (through); mullion `h − 2·b` = 340 ×(cols − 1); rail `w − 2·b` ×(rows − 1); glass 3 × 580 × 340; no hardware; main unit untouched (CONFIRMED structure, owner spec D2 2026-10-12; costing rules AO-3 INFERRED).
-Known INFERRED gaps the QA agent should check and report:
-- A1. Non-flush merge add-on: costing still sets `ext` = `th` (main sides 1600) while the drawing (commit 9ebb1a8b) keeps the main side at H and stops the add-on's sides on the main head. Costing and drawing disagree; by U1b the drawing is right and the BOM should keep the main side at H and give the add-on its own structural sides.
-- A2. Glass panes ignore mullion widths: `(w − 2·b)/cols` should probably be `(w − 2·b − (cols−1)·w(mullion))/cols`. Over-prices glass by `(cols−1)·w(mullion) × pane height`.
-- A3. Far frame and bead deduct 2·b of the OVERLAY side, but physically they butt between the extended main sides (กล่องร่องวิ่งยาว) under the overlays. Ask (Q4).
-- A4. Merge add-on area gets no labour / silicone / felt (the engine uses the main W × H); attach units do. Ask (Q11).
+Gaps the QA agent should check and report:
+- A1. (INFERRED) Non-flush merge add-on: costing still sets `ext` = `th` (main sides 1600). The drawing (commit 9ebb1a8b) keeps the main side at H and stops the add-on's sides on the main head. Costing and drawing disagree. By U1b the drawing is right: the BOM should keep the main side at H and give the add-on its own structural sides.
+- A2. CONFIRMED (owner 2026-10-16, Q6): add-on glass deducts the mullion widths and adds glass bite of about 6 mm. The code does neither (D5).
+- A3. CONFIRMED (owner 2026-10-16, Q4 (ก)): far frame and คิ้วเท deduct the butt of the extended กล่องร่อง (ext), not the overlay. The code uses the overlay (D3).
+- A4. CONFIRMED (owner 2026-10-16, Q11): the merge add-on area gets labour per m² and silicone (and felt) too. The engine uses only the main W × H (D6).
+- A5. CONFIRMED (owner 2026-10-16, Q3) + SEEN (series file §3.11): in serie general a top/bottom add-on is separated from the main unit by **one shared box transom** with an adapter cap:
+  - Top add-on over a sliding unit: กล่องเปิด + ฝาปิด, with the sliding head track screwed under it.
+  - Bottom add-on: กล่องเรียบ + ฝาตบร่อง, with the sliding sill on top.
+
+  The code's sliding_2 top/bottom set has `divider` qty 0 and no adapter piece. AO-9 may hold for another series. For ทั่วไป it misses a box bar and a cap per add-on (D2). Ask G2 before changing W-01.
 
 ---
 
@@ -290,13 +303,13 @@ Known INFERRED gaps the QA agent should check and report:
 | U1 | No in-line continuation; a profile ends against a crossing member | CONFIRMED | owner 2026-10-16, commit 9ebb1a8b |
 | U1a | Flush merge add-on: main member runs through, one piece at `th`/`tw` | CONFIRMED | owner 2026-10-16 + AO-9 |
 | U1b | Non-flush merge add-on: its sides stop on the main frame member | CONFIRMED | owner 2026-10-16 (commit message) |
-| U1d | Attach frame may sit on the main frame (separate frames) | INFERRED | addonSvg code; every attach drawing |
+| U1d | Serie general: no add-on stands on an old frame; one shared box + adapter at every joint (other series open) | CONFIRMED | owner 2026-10-16 Q3 + Nakhon Nayok drawings |
 | U2 | Exactly one through member per butt corner | CONFIRMED | owner 2026-10-10 decision 4 |
 | U3a | Sliding frame: sides through, head/sill butt | CONFIRMED | owner Ruling 5 / decision 6 |
 | U3b | Sliding sash: stiles through, rails butt | CONFIRMED | owner decision 6 |
 | U3c | Door leaves butt-jointed, stiles through | CONFIRMED | owner D15 2026-10-13 |
-| U3d | Non-sliding frames: sides through, head/sill butt | INFERRED | spec writer; cut list per corner |
-| U3e | Folding track corners shortened on both members | INFERRED | code vs spec 5.10 conflict; 4 × b per unit |
+| U3d | Non-sliding frames: sides through, head/sill butt | CONFIRMED | owner 2026-10-16 Q2 |
+| U3e | Folding: top/bottom tracks through, sides butt (code shortens both: D1) | CONFIRMED | owner 2026-10-16 Q1 (ก) |
 | U4 | Grid verticals through, horizontals butt | CONFIRMED | owner D7 |
 | U4a | Transom pre-deduction uses mullion width, ends through | INFERRED | R-3a; (w − b) per end |
 | U5a | Awning/casement sashes mitred, nothing else | CONFIRMED | owner D11, D15 |
@@ -308,9 +321,9 @@ Known INFERRED gaps the QA agent should check and report:
 | U6d | Butt end points at the member it really butts | INFERRED | part-editor spec §9 (mockup lessons); wrong deductions |
 | U7 | Sliding stile / rail formulas (owner sample 1723.8 / 1200 / 824.4 / 1126.1) | CONFIRMED | owner 2026-10-10 decision 7 |
 | U7a | Overlap unit = b(hook) else w(hook) | INFERRED | PE-5; (w − b)/2 per rail |
-| U7b | Zero clearance between sash/leaf and opening/cell | INFERRED | spec writer; members too long |
+| U7b | Zero clearance between sash/leaf and opening/cell (series-dependent; general = sub-frames, gaps not dimensioned) | INFERRED | owner 2026-10-16 Q8 "read the drawings"; members too long |
 | U8 | Sash overlap drawn on top, left sash outside, inside view swaps | CONFIRMED | owner 2026-10-10 decisions 9-10 |
-| U8a | Meeting stiles: sliding_2 key+hook vs sliding_n hook+hook | INFERRED | open owner question; drawing only |
+| U8a | Meeting stiles hook-on-hook, keys at the jambs (sliding_2 drawing wrong: D7) | CONFIRMED | owner 2026-10-16 Q7 + drawings p15 (26) |
 | U9 | Clip-on pieces (sill guard, ตบธรณี, คิ้วเท, overlay side) drawn on top | CONFIRMED | owner AO-9 / S-1 / D10 |
 | U9a | Other free lines (คิ้วประตู, บังใบ, คิ้วบาน, plates, covers, track) are clip-on | INFERRED | layouts / spec |
 | U10a | Outside/inside views mirror; symbols swap dashed/solid | CONFIRMED | owner-accepted mockup v5 |
@@ -325,7 +338,7 @@ Known INFERRED gaps the QA agent should check and report:
 | C5 | Hardware set from the project's package by type | CONFIRMED | owner Ruling 20 |
 | C6 | Layout hardware follows item options by delta | CONFIRMED | owner 2026-10-15 |
 | C7 | Infill from template grid, layout glass/spandrel unpriced | INFERRED | known gap; glass cost |
-| C8 | Labour = W × H × rate, silicone/felt = perimeter × rate, main only | INFERRED | A4; labour on merge add-ons |
+| C8 | Labour = area × rate, silicone/felt = perimeter × rate, **including merge add-on area** (code: main only, D6) | CONFIRMED | owner 2026-10-16 Q11 |
 | C9 | Fixing points every 0.6 m, min 2 per side; 1 tube = 10 m | CONFIRMED | owner (Ruling 8/9 inputs) |
 | C10 | Shim/screw/plug off until linked; offcuts never reduce cost; stock 6.4 m | INFERRED | Rulings 7, 8, 15 |
 | C11 | Attach units priced in the same item at main rates, no hardware | INFERRED | AO-3 |
@@ -344,33 +357,51 @@ Known INFERRED gaps the QA agent should check and report:
 | K7 | casement single type n = 1 | CONFIRMED | owner D8 |
 | K7a | casement hinge alternation for n ≥ 2 | INFERRED | spec 5.3 |
 | K8 | swing: rails same size, sill yes/no, pivot = closer + pivots no hinges | CONFIRMED | owner D4, D5 |
-| K8a | swing bead lengths (stile height / leaf width) | INFERRED | I5; beads too long |
+| K8a | swing bead lengths (stile height / leaf width) as set | CONFIRMED | owner 2026-10-16 Q9 (ก) |
 | K8b | stile without sill deducts head only | INFERRED | R-P3 |
 | K9 | frameless door: frame top + sides, no sill, patch fittings, pull handle, floor lock | CONFIRMED | owner D6, D16 |
 | K9a | frameless door floor spring + counts | INFERRED | handover #8 |
-| K10 | hanging door: track 2·W, stiles H − b(track), leaf = inner width | INFERRED | spec 5.9, handover #3/#7 |
+| K10 | hanging door: track 2·W (1 and 2 leaves), leaf = inner width | CONFIRMED | owner 2026-10-16 Q10 + drawing p29 IA3 |
 | K11 | folding: nL / nR separate, split line, odd count leaves a swing leaf | CONFIRMED | owner D1 |
 | K11a | folding free lines and their families | INFERRED | handover #8 |
 | K12 | curtain wall cell cycle glass → awning → spandrel | CONFIRMED | owner D2 |
 | K12a | curtain wall k semantics, item overrides cells, unitized families | INFERRED | R5, handover #9 |
 | K13 | frameless wall: 4-side frame, vertical silicone joints only | CONFIRMED | owner D3, D12 |
-| H1 | Hardware default counts for all kinds except sliding_2 | INFERRED | handover owner-to-confirm #5 |
+| H1 | Hardware default counts for all kinds | CONFIRMED | owner 2026-10-16 Q12 |
 | H2 | Hardware lines are fixed totals at template creation (pre-delta) | INFERRED | R-F4 (handover #4) |
 | A0 | Merge sliding top/bottom: substitute side to กล่องร่องวิ่งยาว cut at th, 2 overlay sides, no divider, ตบเรียบ/ตบร่อง, top bead | CONFIRMED | owner AO-9 2026-10-15 |
-| A0a | Overlay side `h`, bead/far `len − 2·b(overlay)`, bottom bead 0, far frame family null | INFERRED | AO-12 |
+| A0a | Overlay side = sash (main) height; bead/far `len − 2·b(ext)` (code: `h` and b(overlay): D3, D4); bottom bead 0 and far family null stay INFERRED | CONFIRMED | owner 2026-10-16 Q4, Q5 |
 | A0b | Merge left/right defaults (divider ×1, AO-2 sash deduction) | INFERRED | spec 5.3, AO-2; owner rulings pending |
 | A0c | Attach = own frame, main untouched | CONFIRMED | owner spec D2 2026-10-12 |
 | A0d | Add-on dividers drawn frame-width; fake dividers half width, no price | CONFIRMED | owner 2026-10-15 |
 | A1 | Non-flush merge: BOM must not extend the main side | INFERRED | derived from U1b; main sides over-priced by thick × 2 |
-| A2 | Add-on glass should deduct mullion widths | INFERRED | glass over-priced |
-| A3 | Far frame / bead deduct b of the extended side, not the overlay | INFERRED | 2·(b(ext) − b(overlay)) per piece |
-| A4 | Merge add-on area gets labour/silicone | INFERRED | labour under-priced |
+| A2 | Add-on glass deducts mullion widths, adds glass bite ≈ 6 mm (code: neither, D5) | CONFIRMED | owner 2026-10-16 Q6 |
+| A3 | Far frame / bead deduct b of the extended side, not the overlay (code: overlay, D3) | CONFIRMED | owner 2026-10-16 Q4 (ก) |
+| A4 | Merge add-on area gets labour/silicone (code: no, D6) | CONFIRMED | owner 2026-10-16 Q11 |
 
-Count: 42 CONFIRMED, 36 INFERRED (78 rules).
+| A5 | Serie general top/bottom add-on: one shared box transom + adapter cap (กล่องเปิด + ฝาปิด on top, กล่องเรียบ + ฝาตบร่อง below) | CONFIRMED | owner 2026-10-16 Q3 + drawings p15 (28) (30) |
+
+Count: 55 CONFIRMED, 24 INFERRED (79 rules). On 2026-10-16, 12 rules moved to CONFIRMED by the owner's answers and A5 was added. U7b stays INFERRED: the owner said "read the drawings" and the drawings give no gap.
 
 ---
 
-## 5. Questions for the owner
+## 5. Questions for the owner (all answered 2026-10-16)
+
+Answers (CONFIRMED, owner 2026-10-16):
+1. (ก) top/bottom tracks run through, side tracks butt. U3e, defect D1.
+2. Yes. U3d.
+3. "Depends on the series. For serie general an add-on can NOT stand on the old frame; it must become a shared frame (วงกบร่วมกัน) + adapter. See the rules and how to draw the live preview in the Nakhon Nayok shop drawing." U1d, A5, `docs/aluminium-series-general.md`, defects D2, D8.
+4. (ก) far frame and คิ้วเท deduct the butt of the extended กล่องร่อง. A3, defect D3.
+5. The overlay side frame is only as long as the sash height, not the full add-on height. Drawings p15 A43: the 2-track side lies on the long jamb only over the sliding cell. A0a, defect D4.
+6. Yes, subtract the mullion widths, but add glass bite of about 6 mm. A2, defect D5.
+7. Hook-on-hook in the middle. U8a, defect D7.
+8. Depends on the series; read it from the drawings for serie general. U7b, series file §5.
+9. (ก) beads as currently set. K8a.
+10. Yes. K10.
+11. Yes. C8/A4, defect D6.
+12. Yes. H1.
+
+Original questions, kept for reference:
 
 1. บานเฟี้ยม: ที่มุมวงกบ ให้ รางบน/รางล่าง วิ่งสุด แล้ว รางข้าง ชน ใช่ไหม? (ตอนนี้โปรแกรมหักทั้งสองตัว ทำให้มุมขาด) — ตอบ: (ก) รางบน/ล่าง วิ่งสุด รางข้างชน (ข) รางข้างวิ่งสุด รางบน/ล่างชน
 2. วงกบของบานติดตาย บานกระทุ้ง บานเปิดข้าง ประตูบานเปิด/สวิง และผนังกระจกเปลือย ใช้กติกาเดียวกับบานเลื่อน คือ เฟรมข้างวิ่งสุด เฟรมบน/ล่างชน ใช่ไหม? (ใช่ / ไม่ใช่)
@@ -384,6 +415,19 @@ Count: 42 CONFIRMED, 36 INFERRED (78 rules).
 10. ประตูรางแขวน ใบบานกว้างเท่าช่องเปิดภายในวงกบ และรางยาว 2 เท่าความกว้าง ทั้งแบบ 1 บานและ 2 บาน ใช่ไหม? (ใช่ / ไม่ใช่)
 11. ช่องแสงร่วมวงกบ ต้องคิดค่าแรงต่อ ตร.ม. และค่าซิลิโคนรวมพื้นที่ช่องแสงด้วยใช่ไหม? (ใช่ / ไม่ใช่)
 12. จำนวนอุปกรณ์ตั้งต้น (บานพับ 3 ต่อใบประตู, แขนค้ำ 2 ต่อบานกระทุ้ง, บานพับ 2 ต่อบานเปิดข้าง, ลูกล้อ 2 ต่อบานเลื่อน, โช้ค 1 ต่อใบประตูสวิง) ถูกต้องใช่ไหม? (ใช่ / ไม่ใช่ จะแก้รายการไหน)
+
+### 5b. New questions (2026-10-16): things the Nakhon Nayok drawings could not settle
+
+G1. (ทุกแบบ, p15 / p42) รูปด้านเขียนแถบวงกบ 50 มม. แต่รูปตัดกล่องหน้า 44.5 มม. ในโปรแกรมให้วาดและคิดความกว้างวงกบเท่าไหร่? (50 / 44.5)
+G2. (บานเลื่อน + ช่องแสงบน, p15 รูปตัด 28) ซีรีส์ทั่วไป ระหว่างช่องแสงกับบานเลื่อน ต้องมี กล่องเปิด + ฝาปิด 1 เส้น (คานกั้น) แล้วรางบนบานเลื่อนยึดใต้ แทนวิธี "ตบเรียบ + คิ้วเท" ที่ตั้งไว้ให้ W-01 ใช่ไหม? (ใช่ / ไม่ใช่)
+G3. (บานกระทุ้ง, p16 รูปตัด 14) ระยะ 66 มม. แบ่งเป็น กรอบใน กี่ มม. และ กรอบนอก กี่ มม. และเว้นช่องรอบบานกี่ มม.?
+G4. (ประตูสวิง, p33 รูปตัด 61-65) ใบประตูเว้นห่างจากวงกบ/ใบข้างกี่ มม. ต่อด้าน?
+G5. (ประตูสวิง, p33 รูปตัด 62/63) ขวางบน 52 ขวางล่าง 80 ไม่เท่ากัน ใช้กับซีรีส์ทั่วไปทุกงานไหม? (ใช่ / เฉพาะงานนี้)
+G6. (ช่องแสง) ระยะอมกระจก 6 มม. คือ บวกต่อขอบ (บานละ +12) หรือบวกรวมทั้งบาน (+6)?
+G7. (ทุกแบบ, p15 A43) ตัวเลขขนาดช่องแสงที่ลูกค้าให้ (เช่น 1050) นับรวมแถบคานกั้นที่ใช้ร่วมด้วยใช่ไหม? (ใช่ เหมือนในแบบ / ไม่ใช่ นับเฉพาะช่อง)
+G8. (บานเลื่อน, p15 รูปตัด 22) เฟรมข้าง 2 ราง ที่แปะทับ ยาวเท่าความสูงช่องบานเลื่อนเต็ม (เช่น 1400) หรือหักอะไรออก?
+G9. (ประตูอัตโนมัติ / บานเลื่อนเปลือย / บานเกล็ด, p34, p40, p18) ต้องเพิ่มแบบเหล่านี้ในโปรแกรมไหม? (ใช่ / ยังไม่ต้อง)
+G10. (A42 p14, IA21 p37) ตารางเขียน "บานกระทุ้ง" / "สวิงคู่" แต่รูปเป็นบานเลื่อน / สวิงเดี่ยว ยึดอย่างไหน? (รูป / ตาราง)
 
 ---
 
@@ -420,3 +464,27 @@ Run code without writing files: `node --input-type=module -e "import { … } fro
 | A0, A0a-d | `defaultAddonPieces({ mode, kind, position, layoutKind:'sliding_2', buttMm })` rows (ref, deduction, qty rule, note) match section 3.14; `expandAddons` gives `merge.notes` ตบเรียบ (รองคิ้วเท) / ตบร่อง, components with `fixed_length_mm`; `explainAddonPiece({ row, addon, main })` text; divider qty 0 on sliding top/bottom; `sideButt` set only when a divider qty > 0. Fake dividers: no component, only rects at half width. | Overlay sides drawn on the long side bar; bead on the main head; ซอยหลอก thin bars. |
 | A2 | `expandAddons(...).glass[i].widthMm === (w − 2·b)/cols` (no mullion width): report. | Panes drawn narrower than priced. |
 | A3 | Far frame / bead `deduction_mm` = 2·b(overlay family) after `fillDefaultDeductions`; compare with 2·b(ext family). | — |
+
+---
+
+## 7. Code vs owner answers — defects to fix (2026-10-16)
+
+Severity: **High** = wrong money or wrong cut list on every affected item; **Medium** = wrong on some items or drawing-only but customer-visible; **Low** = cosmetic or edge case. Line numbers at HEAD `292a5a59`. Nothing below is fixed yet.
+
+| ID | Where (file:line) | Current behaviour | Required behaviour | Owner answer / source | Severity |
+|---|---|---|---|---|---|
+| D1 | `src/lib/layouts/folding_door.js:31-32` (joints `through: 'v'`) with `:23` (side `height_minus` `track_top_bottom`) | Top/bottom tracks butt into the sides (`W − 2·b`) AND the sides are `H − b(top) − b(bottom)`: both members short at all 4 corners | Top/bottom tracks run through (`W`, ends `through`); sides butt (`H − b(top) − b(bottom)`). Joints `through: 'h'` | Q1 (ก) | High |
+| D2 | `src/lib/addonModel.js:123-130` (sliding_2 top/bottom set) | `divider` qty 0; no adapter piece in `PIECE_KEYS` (`:28-31`); no series in `setKey` (`:104`) or `defaultAddonPieces` (`:113`) | Serie general: divider qty 1 (top: กล่องเปิด, bottom: กล่องเรียบ, `len − 2·b(ext)`) + an adapter piece (top ฝาปิด, bottom ฝาตบร่อง, same length). Defaults must depend on the template's series | Q3 + drawings p15 (28) (30) | High (ask G2 first) |
+| D3 | `src/lib/addonModel.js:147` (`SIDE_KEYS.merge = ['ao_frame_side','ext']`) used by `fillDefaultDeductions` `:163-167`; `src/lib/addonExpand.js:146-149` (glass butt) | `ao_bead`, `ao_frame_far` (and divider, glass) deduct 2·b of the overlay side | Deduct 2·b of the extended กล่องร่อง (`ext`) first; overlay only as a fallback | Q4 (ก) | Medium |
+| D4 | `src/lib/addonModel.js:128` (`['ao_frame_side','h',0,'fixed',2]`) | Overlay side = add-on height `h` (400) | Overlay side = main unit (sash) height (`mh`), placed over the main unit, not the add-on (series file J4) | Q5 + p15 A43 | High |
+| D5 | `src/lib/addonExpand.js:82-90` (`pushGlass`) | Pane = `(w − 2·b)/cols × (h − 2·b)/rows`; no mullion/rail width, no bite | Pane = `(w − 2·b − (cols−1)·w(mullion))/cols + bite` × `(h − 2·b − (rows−1)·w(rail))/rows + bite`, bite ≈ 6 mm (per edge or per pane: G6) | Q6 | Medium |
+| D6 | `src/lib/bomEngine.js:120-123` fed by `src/lib/openingCost.js:238` (`main.opening`) | Labour `W × H × rate`, silicone/felt `2(W + H) × rate` on the main unit only; merge add-ons add nothing | Merge items: labour on the envelope area (main + merge add-ons), silicone/felt on the envelope perimeter | Q11 | Medium |
+| D7 | `src/lib/partGeometry.js:88-96` (`geomSash`: hook left, key right for every sash); `src/lib/layouts/sliding_2.js:34-35` (joints `['hook_stile','key_stile']` for both pieces) | Left sash has its hook at the left jamb; middle = key + hook | Lock stiles at both jambs, hook-on-hook in the middle (sash 0: key left, hook right; sash 1: hook left, key right) | Q7 + p15 (26) | Medium (drawing only; costing equal) |
+| D8 | `src/lib/partPreviewSvg.js:288` (`has = s => r.a.mode === 'attach' \|\| s !== facing`); `src/lib/addonModel.js:118-121` (attach pieces) | An แยกวงกบ add-on gets 4 bars, so the joint shows the main bar and the add-on bar back to back, and costs its own head/sill there | Serie general: no attach mode (UI should offer only ร่วมวงกบ, or convert attach to a shared box + adapter). Other series: unchanged until the owner rules | Q3 + drawings E2/J3 | Medium |
+| D9 | `src/lib/layouts/awning_grid.js` (no inner-frame position) and `scripts/gen-templates-all-types.mjs:41` | General-series awning = grid + mitred sash only | Serie general adds a กรอบในบานกระทุ้ง (4 pieces per awning cell) + คิ้วบานกระทุ้ง, screwed into the grid box | drawings p16 (3) (4) (14) (15) | Medium |
+| D10 | `scripts/gen-templates-all-types.mjs:27` and `:41` (`transom: 'กล่องร่อง'`) | General-series transom family is กล่องร่อง, with no cap or cover lines | Transom = กล่องเปิด + ฝาปิด + ฝาตบร่อง (p42 (9)); sill = กล่องเปิด + ฝาปิด (p42 (11)); mullion = กล่องร่อง + ฝาตบร่อง (p42 (17)); awning-row bottom/mullion = กล่องเรียบ + ฝาตบร่อง / ฝาตบเรียบ (p16 (15) (16)) | drawings | Medium (template data) |
+| D11 | `src/lib/partPreviewSvg.js:229-231` (`addonGeometry` axes) / `:241` (`addonDims`) | The chain splits at the main frame's outer edge, so the shared bar is counted in the main unit | Serie general: the shared bar is counted in the top/left unit's segment (p15 A43: 1050 / 1450 / 600) | drawings E4/J6; G7 | Low-Medium (labels; matters if users type drawing sizes) |
+| D12 | `src/lib/layouts/sliding_2.js:28-29` (`sill_guard` rule `role: 'sash'`) | Sill guard priced at sash thickness | Frame thickness (already K1b) | owner sheet thread | Medium (pre-existing) |
+
+Agreeing with the answers, no defect: Q2 (`fixed_grid.js:21-22` and reuses, sides through), Q9 (`swing_door.js:29-30` beads), Q10 (`hanging_door` track 2·W), Q12 (`hardwareDefaults`).
+
