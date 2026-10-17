@@ -273,7 +273,7 @@ Requirements (write each one as a plpgsql trigger or function):
     - The children's weights must sum to the parent's `weight_pts` within ±0.01.
     - Inserts the children with the same `phase_id`, `subtask_id`, `site_id`, `tenant_id` and `zone`, status `not_started`, and the parent's `sort_order` plus an index.
     - Then sets the parent's status from its children with the derived flag set.
-11. **`boq_from_quotation`** (AFTER UPDATE OF status, site_id ON `quotations` when `NEW.status = 'accepted' AND NEW.site_id IS NOT NULL`):
+11. **`boq_insert_for_quotation(p_quotation_id uuid) RETURNS int`** (SECURITY DEFINER, granted to no one) does the insert described here and returns rows added; trigger **`boq_from_quotation`** (AFTER UPDATE OF status, site_id ON `quotations` when `NEW.status = 'accepted' AND NEW.site_id IS NOT NULL`):
     - Insert `boq_items` from `quotation_items` with `item_type = 'item' AND quantity > 0`, using `ON CONFLICT (site_id, quotation_item_id) DO NOTHING`.
     - `code` = the running number for the site, as text (max numeric code + row_number).
     - `description` = the first line of the item description, capped at 200 characters.
@@ -334,7 +334,7 @@ Formulas (spec §3):
 
 Data migration in the same file, after the functions:
 1. For every node, give the top-level, non-issue cards `weight_pts = round(100.0/n, 2)`. The first card by (sort_order, created_at) gets the remainder so the node sums to exactly 100. Issue cards get 0.
-2. BOQ backfill: for each accepted quotation with a site, run the same insert as the trigger function. Factor it into an internal function `boq_insert_for_quotation(uuid)` reused by both.
+2. BOQ backfill: for each accepted quotation with a site, call `boq_insert_for_quotation(quotation_id)` (defined in migration 08, Task 2 item 11).
 3. PLAN v1: for every site with a phase that is not an issue phase and no PLAN yet, call `snapshot_site_plan(site_id, 'สร้างอัตโนมัติตอนเปิดใช้ระบบ ' || to_char(current_date,'YYYY-MM-DD'), true, 'system')`.
 4. Take the first snapshot: `SELECT snapshot_site_progress()`.
 
@@ -470,7 +470,7 @@ Rules (mockup screen 5):
 - "ดึงจากใบเสนอราคาอีกครั้ง" calls `rpc('boq_refresh_from_quotations', {p_site_id})`. Add this RPC to migration 08:
   - SECURITY DEFINER, `is_site_staff()` plus tenant check;
   - it runs `boq_insert_for_quotation` for every accepted quotation of the site.
-  - Note: `boq_insert_for_quotation` is defined in 09. Define it in 08 instead and have 09 reuse it. **Ruling for the implementer of Task 2: define `boq_insert_for_quotation(uuid)` in 08 and use it from the trigger.**
+  - `boq_insert_for_quotation` is defined in 08 (Task 2 item 11); this RPC also belongs in 08 — add it when implementing this task and keep the 08 test's inlined body in sync.
 - No prices are shown, ever. BOQ rows carry none.
 - Test: renders rows with sums from mocked cards, the amber state, and the refresh RPC call.
 
