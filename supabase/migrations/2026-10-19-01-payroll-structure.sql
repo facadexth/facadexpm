@@ -1,4 +1,4 @@
--- supabase/migrations/2026-10-17-01-payroll-structure.sql
+-- supabase/migrations/2026-10-19-01-payroll-structure.sql
 -- Payroll rework, part 1: configurable pay items, periods with a DB-enforced
 -- lock, per-item salary lines, advances, SCB bank-export settings.
 -- Spec: docs/superpowers/specs/2026-10-17-payroll-payslip-design.md

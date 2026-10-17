@@ -1,4 +1,4 @@
--- supabase/migrations/2026-10-17-04-payroll-backfill.sql
+-- supabase/migrations/2026-10-19-04-payroll-backfill.sql
 -- Converts pre-rework salary_records (fixed money columns) into
 -- salary_record_lines so old months open in the new grid and payslip.
 -- Paid months (every record has paid_date) become 'closed'.

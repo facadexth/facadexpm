@@ -1,4 +1,4 @@
--- supabase/migrations/2026-10-17-02-payroll-rpcs.sql
+-- supabase/migrations/2026-10-19-02-payroll-rpcs.sql
 -- Payroll rework, part 2: the only write paths for salary_records / lines /
 -- period state / advance approval. Each checks role + tenant itself.
 

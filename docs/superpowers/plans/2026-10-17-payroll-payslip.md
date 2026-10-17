@@ -67,10 +67,10 @@
 | `src/pages/hr/Payslip.jsx` | A5 payslip render + modal + download |
 | `src/pages/hr/BankExportModal.jsx` | Export dialog for a confirmed/closed month |
 | `src/pages/hr/BankExportSettings.jsx` | Settings card: SCB debit account, product, fee |
-| `supabase/migrations/2026-10-17-01-payroll-structure.sql` | tables, columns, triggers, RLS, default-item seed |
-| `supabase/migrations/2026-10-17-02-payroll-rpcs.sql` | save/confirm/close/reopen, manual line, advances |
-| `supabase/migrations/2026-10-17-03-labor-cost-divide-30.sql` | views to ÷30 + daily_wage |
-| `supabase/migrations/2026-10-17-04-payroll-backfill.sql` | `payroll_backfill_lines` + demo seed/reset hooks |
+| `supabase/migrations/2026-10-19-01-payroll-structure.sql` | tables, columns, triggers, RLS, default-item seed |
+| `supabase/migrations/2026-10-19-02-payroll-rpcs.sql` | save/confirm/close/reopen, manual line, advances |
+| `supabase/migrations/2026-10-19-03-labor-cost-divide-30.sql` | views to ÷30 + daily_wage |
+| `supabase/migrations/2026-10-19-04-payroll-backfill.sql` | `payroll_backfill_lines` + demo seed/reset hooks |
 
 `src/pages/Payroll.jsx` is deleted. In `src/pages/HR.jsx`, `SalaryForm`, `calcNet`, `SalarySlipModal`, `handleCalcFromAssign` and `handleConfirmCalc` are removed and replaced by the components above.
 
@@ -193,7 +193,7 @@ Expected: PASS (4 tests).
 
 ```js
 // src/lib/payroll/defaultItems.js
-// JS mirror of seed_default_pay_items() (migration 2026-10-17-01). ids are the
+// JS mirror of seed_default_pay_items() (migration 2026-10-19-01). ids are the
 // system_key so tests can reference items by key; the DB uses uuids and stores
 // percent_of_item references as params.of_item_id = <uuid>.
 export const DEFAULT_PAY_ITEMS = [
@@ -571,7 +571,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 2: Schema migration — pay items, periods, lines, advances, locks, RLS
 
 **Files:**
-- Create: `supabase/migrations/2026-10-17-01-payroll-structure.sql`
+- Create: `supabase/migrations/2026-10-19-01-payroll-structure.sql`
 
 **Interfaces:**
 - Consumes: the existing `current_tenant_id()`, `is_admin_or_owner()`, `is_owner()`, `has_module_access(text)`, and the tables `workers`, `salary_records`, `tenants`.
@@ -585,7 +585,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 1: Write the migration**
 
 ```sql
--- supabase/migrations/2026-10-17-01-payroll-structure.sql
+-- supabase/migrations/2026-10-19-01-payroll-structure.sql
 -- Payroll rework, part 1: configurable pay items, periods with a DB-enforced
 -- lock, per-item salary lines, advances, SCB bank-export settings.
 -- Spec: docs/superpowers/specs/2026-10-17-payroll-payslip-design.md
@@ -949,7 +949,7 @@ Expected: `tenants_without_items = 0`, `items_per_tenant = 11`, `records_without
 - [ ] **Step 4: Commit (do not apply)**
 
 ```bash
-git add supabase/migrations/2026-10-17-01-payroll-structure.sql
+git add supabase/migrations/2026-10-19-01-payroll-structure.sql
 git commit -m "feat(payroll): schema for pay items, periods, lines, advances, bank settings
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -960,7 +960,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 3: RPC migration — save draft, manual line, state transitions, advances
 
 **Files:**
-- Create: `supabase/migrations/2026-10-17-02-payroll-rpcs.sql`
+- Create: `supabase/migrations/2026-10-19-02-payroll-rpcs.sql`
 
 **Interfaces:**
 - Consumes: Task 2 tables and functions.
@@ -976,7 +976,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 1: Write the migration**
 
 ```sql
--- supabase/migrations/2026-10-17-02-payroll-rpcs.sql
+-- supabase/migrations/2026-10-19-02-payroll-rpcs.sql
 -- Payroll rework, part 2: the only write paths for salary_records / lines /
 -- period state / advance approval. Each checks role + tenant itself.
 
@@ -1218,7 +1218,7 @@ Expected: net 14250, three `ok` notices plus `worker cannot approve ok`, status 
 - [ ] **Step 3: Commit (do not apply)**
 
 ```bash
-git add supabase/migrations/2026-10-17-02-payroll-rpcs.sql
+git add supabase/migrations/2026-10-19-02-payroll-rpcs.sql
 git commit -m "feat(payroll): RPCs for draft save, manual lines, period states, advance approval
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -1229,7 +1229,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 4: Costing views use ÷30 and daily wage
 
 **Files:**
-- Create: `supabase/migrations/2026-10-17-03-labor-cost-divide-30.sql`
+- Create: `supabase/migrations/2026-10-19-03-labor-cost-divide-30.sql`
 
 **Interfaces:**
 - Consumes: Task 2 `workers.pay_type`, `workers.daily_wage`.
@@ -1256,7 +1256,7 @@ The rate expression to use everywhere:
 In `workers_with_rate`, the alias is the table itself, so use `pay_type`/`daily_wage` without the `w.` prefix.
 
 ```sql
--- supabase/migrations/2026-10-17-03-labor-cost-divide-30.sql
+-- supabase/migrations/2026-10-19-03-labor-cost-divide-30.sql
 -- One daily rate everywhere: monthly_salary / 30 (owner decision 2026-10-16),
 -- daily_wage for pay_type='daily'. Lowers site labor cost ~13% for all months
 -- (live views) — accepted by the owner. Also fixes social_security_amount
@@ -1327,7 +1327,7 @@ Expected: new ≈ old × 26/30, which is about 0.867. Note both numbers in the c
 - [ ] **Step 5: Commit (do not apply)**
 
 ```bash
-git add supabase/migrations/2026-10-17-03-labor-cost-divide-30.sql
+git add supabase/migrations/2026-10-19-03-labor-cost-divide-30.sql
 git commit -m "feat(payroll): costing views use salary/30 and daily wage
 
 Labor cost total on CHANG: <old> -> <new> (dry run).
@@ -1340,7 +1340,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 5: Backfill old salary records into lines + demo seed/reset
 
 **Files:**
-- Create: `supabase/migrations/2026-10-17-04-payroll-backfill.sql`
+- Create: `supabase/migrations/2026-10-19-04-payroll-backfill.sql`
 
 **Interfaces:**
 - Consumes: Task 2 tables and seed function.
@@ -1377,7 +1377,7 @@ Old columns map to default items like this:
 Then, if Σ lines ≠ old net_pay, an adjustment line `ปรับยอดจากระบบเดิม` (pay_item_id NULL) holds the difference. That way the amount actually paid never changes. Every such row is reported.
 
 ```sql
--- supabase/migrations/2026-10-17-04-payroll-backfill.sql
+-- supabase/migrations/2026-10-19-04-payroll-backfill.sql
 -- Converts pre-rework salary_records (fixed money columns) into
 -- salary_record_lines so old months open in the new grid and payslip.
 -- Paid months (every record has paid_date) become 'closed'.
@@ -1479,7 +1479,7 @@ Expected: no `demo_reset_stuck` error, 11 items, at least 1 closed period, and `
 - [ ] **Step 5: Commit (do not apply)**
 
 ```bash
-git add supabase/migrations/2026-10-17-04-payroll-backfill.sql
+git add supabase/migrations/2026-10-19-04-payroll-backfill.sql
 git commit -m "feat(payroll): backfill old salary records into lines; demo seed/reset aware of payroll lock
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -3311,7 +3311,7 @@ Show the owner three things:
 - the old and new labor-cost totals from Task 4;
 - the contribution check from Task 5 Step 1.
 
-After they say go, apply these on CHANG in order with `apply_migration`: `2026-10-17-01-payroll-structure`, `-02-payroll-rpcs`, `-03-labor-cost-divide-30`, `-04-payroll-backfill`. Then run the real backfill:
+After they say go, apply these on CHANG in order with `apply_migration`: `2026-10-19-01-payroll-structure`, `-02-payroll-rpcs`, `-03-labor-cost-divide-30`, `-04-payroll-backfill`. Then run the real backfill:
 
 ```sql
 SELECT t.company_name, payroll_backfill_lines(t.id, true) FROM tenants t;

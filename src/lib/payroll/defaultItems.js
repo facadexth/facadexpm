@@ -1,4 +1,4 @@
-// JS mirror of seed_default_pay_items() (migration 2026-10-17-01). ids are the
+// JS mirror of seed_default_pay_items() (migration 2026-10-19-01). ids are the
 // system_key so tests can reference items by key; the DB uses uuids and stores
 // percent_of_item references as params.of_item_id = <uuid>.
 export const DEFAULT_PAY_ITEMS = [

@@ -1,4 +1,4 @@
--- supabase/migrations/2026-10-17-03-labor-cost-divide-30.sql
+-- supabase/migrations/2026-10-19-03-labor-cost-divide-30.sql
 -- One daily rate everywhere: monthly_salary / 30 (owner decision 2026-10-16),
 -- daily_wage for pay_type='daily'. Lowers site labor cost ~13% for all months
 -- (live views) — accepted by the owner. Also fixes social_security_amount
