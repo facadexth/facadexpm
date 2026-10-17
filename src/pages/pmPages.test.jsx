@@ -4,6 +4,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, cleanup, fireEvent } from '@testing-library/react'
 import { setCurrentRole } from '../lib/roles.js'
+import { saveDraft, clearDraft } from '../hooks/useDraftForm.js'
 
 const PM_SITE = {
   id: 's1', site_number: 'S-001', name: 'Tower A', short_name: 'TA', status: 'Ongoing',
@@ -15,6 +16,8 @@ const PM_SITE = {
 let phone = false
 let sitesData = [PM_SITE]
 let poData = []
+// The page's own useUserRole instance; null = not resolved yet (the global role may already be PM).
+let hookRole = 'PM'
 let stockData = []
 const rpcCalls = []
 const fromCalls = []
@@ -23,7 +26,7 @@ let tableRows = {}
 let rpcRows = {}
 vi.mock('../hooks/useIsPhone.js', () => ({ useIsPhone: () => phone, PHONE_QUERY: '(max-width: 900px)' }))
 vi.mock('../hooks/useUserRole.js', () => ({
-  useUserRole: () => ({ role: 'PM', user: { email: 'pm@x.co' }, loading: false, isAtLeast: r => ({ OWNER: 3, ADMIN: 2, PM: 1.5, WORKER: 1 })[r] <= 1.5 }),
+  useUserRole: () => ({ role: hookRole, user: { email: 'pm@x.co' }, loading: false, isAtLeast: r => ({ OWNER: 3, ADMIN: 2, PM: 1.5, WORKER: 1 })[r] <= 1.5 }),
 }))
 vi.mock('../hooks/useTenant.js', () => ({ useTenant: () => ({ tenant: { id: 't1' }, hasModuleAccess: () => true }) }))
 vi.mock('recharts', () => {
@@ -102,7 +105,7 @@ beforeEach(() => {
   fromCalls.length = 0
   window.matchMedia = q => ({ matches: phone && q.includes('max-width'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })
 })
-afterEach(() => { cleanup(); setCurrentRole(null); phone = false; sitesData = [PM_SITE]; poData = []; stockData = []; tableRows = {}; rpcRows = {} })
+afterEach(() => { cleanup(); setCurrentRole(null); phone = false; sitesData = [PM_SITE]; poData = []; stockData = []; hookRole = 'PM'; clearDraft('purchase-order-form-open'); tableRows = {}; rpcRows = {} })
 
 describe.each([false, true])('PM pages (phone=%s)', isPhone => {
   beforeEach(() => { phone = isPhone })
@@ -314,5 +317,21 @@ describe.each([false, true])('PM purchase orders / inventory (phone=%s)', isPhon
     expect(container.textContent).not.toContain('ตัดสต็อกจากใบแจ้งหนี้')
     expect(container.textContent).not.toContain('รายงานภาษี')
     expect(container.querySelector('.btn-edit')).toBeNull()
+  })
+})
+
+describe('PM never reopens the PO add form', () => {
+  it('a stale add-form flag does not open PurchaseOrderForm, even before the page\'s role resolves', () => {
+    poData = [PM_PO]
+    saveDraft('purchase-order-form-open', true)
+    hookRole = null   // this instance has not resolved yet; App already set the global role to PM
+    const r1 = render(<PurchaseOrders navigateTo={() => {}} navState={{}} openSiteOverview={() => {}} />)
+    expect(r1.container.textContent).not.toContain('เพิ่มใบสั่งซื้อ')
+    expect(r1.container.textContent).not.toContain('รายการสินค้า ★')
+    r1.unmount()
+    hookRole = 'PM'
+    const r2 = render(<PurchaseOrders navigateTo={() => {}} navState={{}} openSiteOverview={() => {}} />)
+    expect(r2.container.textContent).toContain('PO-2026-001')
+    expect(r2.container.textContent).not.toContain('รายการสินค้า ★')
   })
 })

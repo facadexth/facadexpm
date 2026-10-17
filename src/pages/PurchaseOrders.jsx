@@ -16,7 +16,7 @@ import { SCAN_REMINDER, SCAN_VAT_INCLUSIVE_NOTICE, showVatInclusiveNotice } from
 import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, computePoItemBaseQty } from '../lib/inventoryCost.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
-import { isPm, canSeeMoney } from '../lib/roles.js'
+import { isPm, canSeeMoney, getCurrentRole } from '../lib/roles.js'
 import { useDraftForm, readDraft, saveDraft, clearDraft } from '../hooks/useDraftForm.js'
 
 // useDraftForm already survives an Android tab-discard reload for the form's
@@ -1025,7 +1025,8 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   // done anything, so a mid-scan Android reload lands back in the form with
   // the draft restored instead of on the bare list.
   useEffect(() => {
-    if (!pm && readDraft(ADD_FORM_OPEN_KEY)) { setEditRow(null); setShowAdd(true) }
+    // global role too: this runs once, and a hook instance's role can still be null here
+    if (!pm && !isPm(getCurrentRole()) && readDraft(ADD_FORM_OPEN_KEY)) { setEditRow(null); setShowAdd(true) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -1302,7 +1303,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     return items
   }
 
-  if (showAdd) {
+  if (showAdd && !pm) {
     return (
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>

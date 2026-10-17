@@ -4,7 +4,7 @@
 // ============================================================
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { setCurrentRole } from '../lib/roles.js'
+import { setCurrentRole, getCurrentRole } from '../lib/roles.js'
 
 // Role hierarchy: higher number = more access. PM sits between WORKER and
 // ADMIN: it passes WORKER gates and fails ADMIN/OWNER gates; the few
@@ -40,9 +40,12 @@ function writeRoleCache(userEmail, role) {
 }
 
 export function useUserRole() {
-  const [role, setRole]       = useState(null)
+  // Seed from the module store App's instance already filled, so a page that
+  // mounts after the role resolved knows it on its first render (a mount-only
+  // effect gated on the role would otherwise see null and run the wrong branch).
+  const [role, setRole]       = useState(() => getCurrentRole())
   const [user, setUser]       = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => getCurrentRole() == null)
   // Only the very FIRST fetch should show as "loading" -- every later
   // call comes from onAuthStateChange re-validating the session, which
   // Supabase fires automatically on tab refocus/token refresh (e.g.
@@ -53,7 +56,9 @@ export function useUserRole() {
   // found via the Android document-scan investigation, where the file
   // picker's own return-to-tab was enough to trigger this and lose the
   // selection every time.
-  const hasLoadedOnce = useRef(false)
+  // Seeded with a known role, the first fetch is a background revalidation too:
+  // flipping loading back to true would unmount ProtectedPage's children.
+  const hasLoadedOnce = useRef(getCurrentRole() != null)
 
   const fetchRole = useCallback(async () => {
     if (!hasLoadedOnce.current) setLoading(true)
