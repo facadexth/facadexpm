@@ -25,7 +25,7 @@ function useYearToDate(workerId, year, month) {
   useEffect(() => {
     let off = false
     supabase.from('salary_record_lines')
-      .select('side, amount, pay_items(method), salary_records!inner(worker_id, year, month, payroll_periods!inner(status))')
+      .select('side, amount, pay_items(method, system_key), salary_records!inner(worker_id, year, month, payroll_periods!inner(status))')
       .eq('salary_records.worker_id', workerId).eq('salary_records.year', year).lte('salary_records.month', month)
       .eq('salary_records.payroll_periods.status', 'closed')
       .then(({ data }) => {
@@ -33,6 +33,8 @@ function useYearToDate(workerId, year, month) {
         setYtd({
           earnings: data.filter(l => l.side === 'earning').reduce((s, l) => s + Number(l.amount), 0),
           sso: data.filter(l => l.pay_items?.method === 'sso').reduce((s, l) => s + Number(l.amount), 0),
+          // money the company keeps back for the worker's retirement (the "หักเงินสมทบ" line)
+          contrib: data.filter(l => l.pay_items?.system_key === 'contribution_deduct').reduce((s, l) => s + Number(l.amount), 0),
         })
       })
       .catch(() => {})
@@ -106,7 +108,7 @@ export function PayslipSheet({ record, year, month, period }) {
         <span>ลาป่วย <b>{fv(f.leaveSickDays)}</b> วัน</span>
         <span>OT <b>{fv(f.otHours)}</b> ชม.</span>
         {f.holidayShifts ? <span>กะวันหยุด <b>{f.holidayShifts}</b></span> : null}
-        {ytd && <span>สะสมทั้งปี: เงินได้ <b>{fmt(ytd.earnings)}</b> · ประกันสังคม <b>{fmt(ytd.sso)}</b></span>}
+        {ytd && <span>สะสมปี {year + 543}: เงินได้ <b>{fmt(ytd.earnings)}</b> · ประกันสังคม <b>{fmt(ytd.sso)}</b> · เงินสมทบ <b>{fmt(ytd.contrib)}</b></span>}
       </div>
       <div className="ft">
         <div className="net">
