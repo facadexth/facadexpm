@@ -545,37 +545,6 @@ export default function HR({ navState }) {
     ...(canEdit ? [{ id: 'audit', label: '📋 ประวัติการแก้ไข' }] : []),
   ]
 
-  const payrollSettings = (
-    <>
-      {canEdit && (
-        <div className="card" style={{ marginTop: 24, padding: '14px 18px' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>⚙️ ตั้งค่าการนับค่าแรง</div>
-          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, cursor: 'pointer' }}>
-            <input type="checkbox" style={{ marginTop: 3 }} checked={requireConfirmVal === 'true'} disabled={requireConfirmVal == null || savingRequireConfirm} onChange={handleToggleRequireConfirm} />
-            <span>
-              <span style={{ fontWeight: 600 }}>นับค่าแรง/ค่าเดินทางเฉพาะกะที่ยืนยันแล้ว</span>
-              <span style={{ display: 'block', color: 'var(--text3)', fontSize: 12, marginTop: 2, lineHeight: 1.6 }}>
-                {requireConfirmVal === 'true'
-                  ? 'เปิดอยู่: กะที่จัดลงไซต์จะนับเป็นค่าแรงและค่าเดินทางต่อเมื่อช่างเช็คอินจริงผ่าน LINE หรือแอดมินกด "ยืนยันเอง" (โบนัสวันหยุดก็นับเฉพาะกะที่ยืนยัน)'
-                  : 'ปิดอยู่: ทุกกะที่จัดลงไซต์นับเป็นค่าแรงและค่าเดินทางทันที ไม่ต้องรอเช็คอิน เปิดเมื่อพร้อมใช้ระบบเช็คอินจริง'}
-              </span>
-            </span>
-          </label>
-        </div>
-      )}
-        {canEdit && (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-            <label className="label" style={{ marginBottom: 0 }}>ตัวคูณโบนัสวันหยุด (ค่าเริ่มต้น 1.5)</label>
-            <input type="number" className="input input-sm" style={{ width: 90 }} min="1" step="0.1"
-              value={multiplierInput} onChange={e => setMultiplierInput(e.target.value)} />
-            <button className="btn btn-sm btn-ghost" onClick={handleSaveMultiplier} disabled={savingMultiplier}>
-              {savingMultiplier ? '⏳...' : '💾 บันทึก'}
-            </button>
-          </div>
-        )}
-    </>
-  )
-
   return (
     <div>
       {/* Inner tab bar */}
@@ -654,6 +623,23 @@ export default function HR({ navState }) {
           </div>
 
 
+          {canEdit && (
+            <div className="card" style={{ marginTop: 24, padding: '14px 18px' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>⚙️ ตั้งค่าการนับค่าแรง</div>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, cursor: 'pointer' }}>
+                <input type="checkbox" style={{ marginTop: 3 }} checked={requireConfirmVal === 'true'} disabled={requireConfirmVal == null || savingRequireConfirm} onChange={handleToggleRequireConfirm} />
+                <span>
+                  <span style={{ fontWeight: 600 }}>นับค่าแรง/ค่าเดินทางเฉพาะกะที่ยืนยันแล้ว</span>
+                  <span style={{ display: 'block', color: 'var(--text3)', fontSize: 12, marginTop: 2, lineHeight: 1.6 }}>
+                    {requireConfirmVal === 'true'
+                      ? 'เปิดอยู่: กะที่จัดลงไซต์จะนับเป็นค่าแรงและค่าเดินทางต่อเมื่อช่างเช็คอินจริงผ่าน LINE หรือแอดมินกด "ยืนยันเอง" (โบนัสวันหยุดก็นับเฉพาะกะที่ยืนยัน)'
+                      : 'ปิดอยู่: ทุกกะที่จัดลงไซต์นับเป็นค่าแรงและค่าเดินทางทันที ไม่ต้องรอเช็คอิน เปิดเมื่อพร้อมใช้ระบบเช็คอินจริง'}
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
+
           <div style={{ marginTop: 24 }}>
             <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -661,6 +647,16 @@ export default function HR({ navState }) {
               </div>
               {canEdit && <button className="btn btn-sm btn-primary" onClick={() => setShowHolidayForm(true)}>+ เพิ่มวันหยุด</button>}
             </div>
+            {canEdit && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                <label className="label" style={{ marginBottom: 0 }}>ตัวคูณโบนัสวันหยุด (ค่าเริ่มต้น 1.5)</label>
+                <input type="number" className="input input-sm" style={{ width: 90 }} min="1" step="0.1"
+                  value={multiplierInput} onChange={e => setMultiplierInput(e.target.value)} />
+                <button className="btn btn-sm btn-ghost" onClick={handleSaveMultiplier} disabled={savingMultiplier}>
+                  {savingMultiplier ? '⏳...' : '💾 บันทึก'}
+                </button>
+              </div>
+            )}
             <div className="card">
               <div className="table-wrap">
                 <table>
@@ -690,7 +686,7 @@ export default function HR({ navState }) {
         </div>
       )}
 
-      {innerTab === 'payroll' && <PayrollMonth canEdit={canEdit} settingsSlot={payrollSettings} />}
+      {innerTab === 'payroll' && <PayrollMonth canEdit={canEdit} />}
       {innerTab === 'advances' && <AdvancesPanel canEdit={canEdit} />}
 
       {/* ── Requests Tab (ขอลา from LINE crew bot) ── */}

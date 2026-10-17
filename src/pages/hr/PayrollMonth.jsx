@@ -17,7 +17,7 @@ const STATUS = {
 }
 const WARN = { negative_net: 'ยอดสุทธิติดลบ', missing_daily_wage: 'ยังไม่ได้ตั้งค่าแรงรายวัน' }
 
-export default function PayrollMonth({ canEdit, settingsSlot }) {
+export default function PayrollMonth({ canEdit }) {
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
@@ -36,9 +36,9 @@ export default function PayrollMonth({ canEdit, settingsSlot }) {
   const total = item => records.reduce((s, r) => s + cell(r, item), 0)
   const totalNet = records.reduce((s, r) => s + Number(r.net_pay || 0), 0)
 
-  const run = async fn => {
+  const run = async (fn, doRefetch = true) => {
     setBusy(true)
-    try { await fn(); await refetch() }
+    try { await fn(); if (doRefetch) await refetch() }
     catch (e) { alert(e.message) }
     finally { setBusy(false) }
   }
@@ -47,31 +47,45 @@ export default function PayrollMonth({ canEdit, settingsSlot }) {
     // save_payroll_draft refuses an empty run, so never offer to save one.
     if (!result.run.length) { alert('ไม่มีพนักงานที่ต้องคิดเงินเดือนเดือนนี้'); return }
     setPreview(result)
-  })
+  }, false)
   const onSavePreview = () => {
     if (!preview?.run.length) return
     return run(async () => { await saveDraft(year, month, preview.run); setPreview(null) })
   }
-  const onManual = (rec, item, value) => run(() => setManualLine(rec.id, item.id, null, value === '' ? null : (parseFloat(value) || 0)))
-  const onReopen = () => { const r = prompt('เหตุผลที่เปิดงวดใหม่'); if (r) run(() => reopenMonth(year, month, r)) }
+  const onManual = (rec, item, value) => {
+    const v = value.trim()
+    if (v !== '' && !Number.isFinite(Number(v))) { alert('กรุณาใส่ตัวเลข'); return }
+    return run(() => setManualLine(rec.id, item.id, null, v === '' ? null : Number(v)))
+  }
+  const onReopen = () => { const r = prompt('เหตุผลที่เปิดงวดใหม่'); if (r?.trim()) run(() => reopenMonth(year, month, r.trim())) }
   const gaps = data?.assignGaps || []
   const onConfirm = () => {
-    if (gaps.length && !confirm(`Assign ยังไม่ครบ ${gaps.length} คน (${gaps.map(g => g.name).join(', ')}) ยืนยันเงินเดือนต่อไหม`)) return
+    // Warnings only, none of these block confirming.
+    const noWage = (data?.workers || []).filter(w => w.pay_type === 'daily' && !(Number(w.daily_wage) > 0)).map(w => w.name)
+    const negative = records.filter(r => Number(r.net_pay) < 0).map(r => r.workers?.name || '?')
+    const noBank = records.filter(r => !r.workers?.bank_code || !r.workers?.bank_account_no).map(r => r.workers?.name || '?')
+    const lines = []
+    if (noWage.length) lines.push(`ยังไม่ตั้งค่าแรงรายวัน ${noWage.length} คน (${noWage.join(', ')})`)
+    if (negative.length) lines.push(`ยอดสุทธิติดลบ ${negative.length} คน (${negative.join(', ')})`)
+    if (noBank.length) lines.push(`ยังไม่มีบัญชีธนาคาร ${noBank.length} คน (${noBank.join(', ')})`)
+    if (gaps.length) lines.push(`Assign ยังไม่ครบ ${gaps.length} คน (${gaps.map(g => g.name).join(', ')})`)
+    if (lines.length && !confirm(`คำเตือน:\n- ${lines.join('\n- ')}\n\nยืนยันต่อไหม`)) return
     run(() => confirmMonth(year, month))
   }
   const warnings = (preview?.run || []).filter(r => r.warnings.length)
 
-  if (loading) return <div>⏳ กำลังโหลด...</div>
+  if (loading && !data) return <div>⏳ กำลังโหลด...</div>
   if (error) return <div className="card" style={{ color: 'var(--red)' }}>โหลดเงินเดือนไม่สำเร็จ: {error}</div>
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      {settingsSlot}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <select className="select select-sm" value={month} onChange={e => { setMonth(+e.target.value); setPaidDate(monthRange(year, +e.target.value).to) }}>
           {MONTHS_TH.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
         </select>
-        <input className="input input-sm" type="number" style={{ width: 90 }} value={year} onChange={e => setYear(+e.target.value)} />
+        <select className="select select-sm" value={year} onChange={e => { setYear(+e.target.value); setPaidDate(monthRange(+e.target.value, month).to) }}>
+          {Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i).map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
         <span>{periodLabel(year, month)}</span>
         <span style={{ fontWeight: 700, color: STATUS[status].color }}>● {STATUS[status].label}</span>
         {status === 'draft' && data?.period?.reopen_reason && <span style={{ fontSize: 12, color: 'var(--text3)' }}>เปิดงวดใหม่: {data.period.reopen_reason}</span>}
@@ -101,7 +115,7 @@ export default function PayrollMonth({ canEdit, settingsSlot }) {
                 {items.map(i => (
                   <td key={i.id} style={{ textAlign: 'right' }}>
                     {i.method === 'manual_monthly' && canEdit && status === 'draft'
-                      ? <input className="input input-sm" style={{ width: 90, textAlign: 'right' }} defaultValue={cell(r, i) || ''}
+                      ? <input key={cell(r, i)} className="input input-sm" style={{ width: 90, textAlign: 'right' }} defaultValue={cell(r, i) || ''}
                           onBlur={e => { if (String(cell(r, i) || '') !== e.target.value) onManual(r, i, e.target.value) }} />
                       : (cell(r, i) ? fmt(cell(r, i)) : '–')}
                   </td>
