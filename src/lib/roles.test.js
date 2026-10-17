@@ -1,10 +1,17 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { canManageSites, canSeeMoney, canManageTeams, canApproveLeave, roleMeetsTab, setCurrentRole, getCurrentRole } from './roles.js'
+import { canManageSites, canSeeMoney, canManageTeams, canApproveLeave, canManagePlan, roleMeetsTab, setCurrentRole, getCurrentRole } from './roles.js'
 import { getPageLevel } from './permissions.js'
 
 beforeEach(() => { try { localStorage.clear() } catch { /* no storage */ } })
 
 describe('roles', () => {
+  it('only OWNER and PM manage PLAN versions', () => {
+    expect(canManagePlan('OWNER')).toBe(true)
+    expect(canManagePlan('PM')).toBe(true)
+    expect(canManagePlan('ADMIN')).toBe(false)
+    expect(canManagePlan('WORKER')).toBe(false)
+    expect(canManagePlan(null)).toBe(false)
+  })
   it('PM manages sites, teams and leave but never sees money', () => {
     expect(canManageSites('PM')).toBe(true)
     expect(canSeeMoney('PM')).toBe(false)

@@ -902,6 +902,30 @@ export function useSitePhases({ includeIssues = false } = {}) {
   return { data: visible, loading, error, refetch }
 }
 
+/** PLAN versions of one site (immutable snapshots, newest first) + their items by plan id.
+ *  Fails soft: before the migration is applied (or on any error) `plans` is [] and
+ *  `error` is set, so callers can tell "no PLAN yet" (error null) from "could not load". */
+export function useSitePlans(siteId) {
+  const { data, loading, error, refetch } = useQuery(async () => {
+    if (!siteId) return { plans: [], items: {} }
+    const { data: plans, error: pErr } = await supabase
+      .from('site_plans')
+      .select('id, version, note, is_auto, created_by, created_at')
+      .eq('site_id', siteId)
+      .order('version', { ascending: false })
+    if (pErr) throw pErr
+    const items = {}
+    if (plans.length) {
+      const { data: rows, error: iErr } = await supabase
+        .from('site_plan_items').select('*').in('plan_id', plans.map(p => p.id))
+      if (iErr) throw iErr
+      ;(rows || []).forEach(r => { (items[r.plan_id] ||= []).push(r) })
+    }
+    return { plans, items }
+  }, [siteId])
+  return { plans: data?.plans ?? [], items: data?.items ?? {}, loading, error, reload: refetch }
+}
+
 /** ขั้นตอนย่อย (Subtask) ทุกไซท์ ทุกชั้น -- ซ้อนกันได้ไม่จำกัดชั้นผ่าน
  *  parent_subtask_id (null = ลูกตรงของ phase_id) -- group/จัดชั้นฝั่ง
  *  client ด้วย src/pages/sites/subtaskCalc.js's groupSubtasksByParent. */

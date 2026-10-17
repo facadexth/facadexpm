@@ -28,3 +28,6 @@ export function roleMeetsTab(role, tab) {
 let currentRole = null
 export function setCurrentRole(role) { currentRole = role ?? null }
 export function getCurrentRole() { return currentRole }
+
+// Saving a PLAN version: OWNER and PM (ADMIN cannot). Mirrors can_manage_plan() in the DB.
+export const canManagePlan = role => role === 'OWNER' || role === 'PM'

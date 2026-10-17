@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
-import { useSitePhases, usePhaseTasks, useSubtasks, useIncomes, useExpenses } from '../../hooks/useSupabase.js'
+import { useSitePhases, usePhaseTasks, useSubtasks, useIncomes, useExpenses, useSitePlans } from '../../hooks/useSupabase.js'
 import { supabase } from '../../lib/supabase.js'
 import { ConfirmDialog } from '../../components/Modal.jsx'
 import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrows, computeDependencyArrowsByRow, computeMonthTicks, computeFocusRange, computeAxisTicks, dateAtPercent, phaseOverlapsRange, STATUS_COLOR, PHASE_TEMPLATE, expandRangeForTransactions } from './ganttTimeline.js'
@@ -19,7 +19,8 @@ import { siteProgress } from './progressCalc.js'
 import { getEffectiveTheme } from '../../lib/theme.js'
 import LandscapeView from '../../components/LandscapeView.jsx'
 import { useUserRole } from '../../hooks/useUserRole.js'
-import { canSeeMoney } from '../../lib/roles.js'
+import { canSeeMoney, canManagePlan } from '../../lib/roles.js'
+import PlanVersionsDialog, { PlanBar } from './PlanVersionsDialog.jsx'
 
 const ROW_H = 34
 const EDIT_H = 320
@@ -83,6 +84,9 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   const singleSiteId = sites.length === 1 ? sites[0].id : NIL_SITE_ID
   const { data: incomesForRange } = useIncomes({ siteId: singleSiteId })
   const { data: expensesForRange } = useExpenses({ siteId: singleSiteId })
+  // PLAN versions: single-site view only (the portfolio passes no site id -> nothing fetched)
+  const planSiteId = sites.length === 1 ? sites[0].id : null
+  const sitePlans = useSitePlans(planSiteId)
 
   // แก้ไข/เพิ่ม/ลบขั้นตอนแบบ inline (ใช้เฉพาะมุมมองไซท์เดียว) -- hooks ต้อง
   // อยู่บนสุดเสมอ ไม่ผูกกับ branch ไหน
@@ -91,6 +95,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   const [saving, setSaving] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null) // { kind: 'phase'|'subtask', id }
   const [applyingTemplate, setApplyingTemplate] = useState(false)
+  const [planDialogOpen, setPlanDialogOpen] = useState(false)
 
   // id ของ phase/subtask ที่กางลูกอยู่ (Set รวม id ทั้งสองตารางในที่เดียว
   // เพราะไม่มีทางชนกัน -- ดู subtaskCalc.js's groupSubtasksByParent)
@@ -478,6 +483,12 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
 
     return (
       <>
+        <PlanBar plans={sitePlans.plans} loading={sitePlans.loading} loadError={sitePlans.error}
+          canManage={canManagePlan(role)} onOpen={() => setPlanDialogOpen(true)} />
+        {planDialogOpen && (
+          <PlanVersionsDialog siteId={site.id} phases={phases} plans={sitePlans.plans}
+            canSave={canManagePlan(role)} onClose={() => setPlanDialogOpen(false)} onSaved={sitePlans.reload} />
+        )}
         <div className="kpi-grid kpi-grid-4">
           <div className="kpi-card green">
             <div className="kpi-label">ความคืบหน้ารวม</div>
