@@ -609,6 +609,29 @@ REVOKE ALL ON FUNCTION public.boq_from_quotation() FROM PUBLIC, anon, authentica
 CREATE TRIGGER trg_boq_from_quotation AFTER UPDATE OF status, site_id ON quotations
   FOR EACH ROW WHEN (NEW.status = 'accepted' AND NEW.site_id IS NOT NULL) EXECUTE FUNCTION boq_from_quotation();
 
+-- 12. re-pull BOQ lines from the site's accepted quotations (BOQ tab button).
+-- Definer so a PM (who cannot read quotations) can use it; returns only a count, never a price.
+CREATE OR REPLACE FUNCTION public.boq_refresh_from_quotations(p_site_id uuid)
+  RETURNS int LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE q record; n int := 0;
+BEGIN
+  IF NOT is_site_staff() THEN
+    RAISE EXCEPTION 'ไม่มีสิทธิ์ดึง BOQ จากใบเสนอราคา' USING ERRCODE = '42501';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND tenant_id = current_tenant_id()) THEN
+    RAISE EXCEPTION 'ไม่พบไซต์งาน' USING ERRCODE = 'P0002';
+  END IF;
+  FOR q IN SELECT id FROM quotations
+            WHERE site_id = p_site_id AND tenant_id = current_tenant_id() AND status = 'accepted'
+            ORDER BY created_at, id LOOP
+    n := n + boq_insert_for_quotation(q.id);
+  END LOOP;
+  RETURN n;
+END $$;
+REVOKE ALL ON FUNCTION public.boq_refresh_from_quotations(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.boq_refresh_from_quotations(uuid) TO authenticated;
+
 -- deferred minor from Task 1 review
 REVOKE TRUNCATE ON site_plans, site_plan_items, progress_reports FROM authenticated, anon;
 -- ===== end of inlined bodies =====
@@ -1075,6 +1098,37 @@ BEGIN
   r := r || jsonb_build_object('h_reaccept_no_duplicates_MUST2', n);
   SELECT boq_insert_for_quotation(v_quot) INTO n;
   r := r || jsonb_build_object('h_direct_rerun_rows_MUST0', n);
+
+  -- ===== boq_refresh_from_quotations (BOQ tab button) =====
+  INSERT INTO quotation_items (tenant_id, quotation_id, description, unit, quantity, sort_order, item_type)
+    VALUES (v_tenant, v_quot, 'เพิ่มภายหลัง', 'ชุด', 3, 4, 'item');
+  PERFORM set_config('request.jwt.claims', json_build_object('email', v_pm, 'role', 'authenticated', 'sub', gen_random_uuid())::text, true);
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    SELECT boq_refresh_from_quotations(v_site) INTO n;
+    r := r || jsonb_build_object('rf_pm_refresh_adds_MUST1', n);
+    SELECT boq_refresh_from_quotations(v_site) INTO n;
+    r := r || jsonb_build_object('rf_pm_rerun_adds_MUST0', n);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('rf_pm_refresh_MUST1', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    PERFORM boq_refresh_from_quotations(v_fsite);
+    r := r || jsonb_build_object('rf_pm_foreign_site_MUSTP0002', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('rf_pm_foreign_site_MUSTP0002', SQLSTATE);
+  END;
+  RESET ROLE;
+  PERFORM set_config('request.jwt.claims', json_build_object('email', v_wk, 'role', 'authenticated', 'sub', gen_random_uuid())::text, true);
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    PERFORM boq_refresh_from_quotations(v_site);
+    r := r || jsonb_build_object('rf_worker_MUST42501', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('rf_worker_MUST42501', SQLSTATE);
+  END;
+  RESET ROLE;
+  PERFORM set_config('request.jwt.claims', '', true);
+  SELECT has_function_privilege('authenticated', 'public.boq_refresh_from_quotations(uuid)', 'EXECUTE')
+     AND NOT has_function_privilege('anon', 'public.boq_refresh_from_quotations(uuid)', 'EXECUTE') INTO b;
+  r := r || jsonb_build_object('rf_grants_MUSTtrue', b);
 
   SELECT has_table_privilege('authenticated', 'public.site_plans', 'TRUNCATE')
       OR has_table_privilege('authenticated', 'public.site_plan_items', 'TRUNCATE')

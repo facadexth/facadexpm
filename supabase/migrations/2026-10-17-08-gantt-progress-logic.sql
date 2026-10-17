@@ -493,6 +493,29 @@ REVOKE ALL ON FUNCTION public.boq_from_quotation() FROM PUBLIC, anon, authentica
 CREATE TRIGGER trg_boq_from_quotation AFTER UPDATE OF status, site_id ON quotations
   FOR EACH ROW WHEN (NEW.status = 'accepted' AND NEW.site_id IS NOT NULL) EXECUTE FUNCTION boq_from_quotation();
 
+-- 12. re-pull BOQ lines from the site's accepted quotations (BOQ tab button).
+-- Definer so a PM (who cannot read quotations) can use it; returns only a count, never a price.
+CREATE OR REPLACE FUNCTION public.boq_refresh_from_quotations(p_site_id uuid)
+  RETURNS int LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE q record; n int := 0;
+BEGIN
+  IF NOT is_site_staff() THEN
+    RAISE EXCEPTION 'ไม่มีสิทธิ์ดึง BOQ จากใบเสนอราคา' USING ERRCODE = '42501';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND tenant_id = current_tenant_id()) THEN
+    RAISE EXCEPTION 'ไม่พบไซต์งาน' USING ERRCODE = 'P0002';
+  END IF;
+  FOR q IN SELECT id FROM quotations
+            WHERE site_id = p_site_id AND tenant_id = current_tenant_id() AND status = 'accepted'
+            ORDER BY created_at, id LOOP
+    n := n + boq_insert_for_quotation(q.id);
+  END LOOP;
+  RETURN n;
+END $$;
+REVOKE ALL ON FUNCTION public.boq_refresh_from_quotations(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.boq_refresh_from_quotations(uuid) TO authenticated;
+
 -- deferred minor from Task 1 review
 REVOKE TRUNCATE ON site_plans, site_plan_items, progress_reports FROM authenticated, anon;
 COMMIT;

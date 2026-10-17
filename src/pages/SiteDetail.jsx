@@ -16,17 +16,21 @@ import LandscapeView, { usePhoneLike } from '../components/LandscapeView.jsx'
 import PhoneSection from '../components/PhoneSection.jsx'
 import { useIsPhone } from '../hooks/useIsPhone.js'
 import DailyReport from './sites/DailyReport.jsx'
+import BoqTab from './sites/BoqTab.jsx'
+import { useProgressSchemaReady } from '../lib/progressSchema.js'
 
 export default function SiteDetail({ navState, navigateTo }) {
   const siteId = navState?.siteId
   const siteName = navState?.siteName
-  const [tab, setTab] = useState(navState?.tab || 'overview') // 'overview' | 'gantt' | 'kanban' | 'daily_report'
+  const [tab, setTab] = useState(navState?.tab || 'overview') // 'overview' | 'gantt' | 'kanban' | 'boq' | 'daily_report'
   const [phasesRefreshKey, setPhasesRefreshKey] = useState(0)
   const [kanbanInitialLeafId, setKanbanInitialLeafId] = useState(null) // ตั้งค่าเมื่อคลิก leaf บนแท็บ Gantt เพื่อ deep-link ไปยัง chip ที่ตรงกันในแท็บ Kanban
 
   const isPhone = useIsPhone()
   const phoneLike = usePhoneLike()
   const { role } = useUserRole()
+  const progressReady = useProgressSchemaReady()
+  const showBoq = progressReady && canManageSites(role) // OWNER/ADMIN/PM; hidden until migration 07 is live
   const canEdit = canManageSites(role) && canEditPage(role, 'sites')
   // the S-curve plots incomes/expenses against contract value -- money, so PM never gets it
   const showMoney = canSeeMoney(role)
@@ -63,6 +67,12 @@ export default function SiteDetail({ navState, navigateTo }) {
           className={`btn btn-sm ${tab === 'kanban' ? 'btn-primary' : 'btn-ghost'}`}
           onClick={() => setTab('kanban')}
         >🗂 Kanban</button>
+        {showBoq && (
+          <button
+            className={`btn btn-sm ${tab === 'boq' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setTab('boq')}
+          >📦 BOQ</button>
+        )}
         <button
           className={`btn btn-sm ${tab === 'daily_report' ? 'btn-primary' : 'btn-ghost'}`}
           onClick={() => setTab('daily_report')}
@@ -118,6 +128,8 @@ export default function SiteDetail({ navState, navigateTo }) {
           />
         )
       )}
+
+      {tab === 'boq' && showBoq && <BoqTab siteId={siteId} />}
 
       {tab === 'daily_report' && (
         siteError ? (
