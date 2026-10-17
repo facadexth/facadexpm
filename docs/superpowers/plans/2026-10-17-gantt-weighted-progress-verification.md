@@ -1,6 +1,7 @@
 # Gantt weighted progress: release verification (1.22.0)
 
-Date: 2026-10-17. Branch `feat/gantt-weighted-progress`. Nothing is applied or deployed yet.
+Date: 2026-10-17, refreshed 2026-10-18 after the card-kinds rework (BOQ cards vs general cards).
+Branch `feat/gantt-weighted-progress`. Nothing is applied or deployed yet.
 
 ## Base
 
@@ -14,6 +15,57 @@ Date: 2026-10-17. Branch `feat/gantt-weighted-progress`. Nothing is applied or d
   `2026-10-19-01..04` (payroll). None of them is numbered 07, 08 or 09, so they don't collide with ours.
   Note: 04 and 05 now have two files each (stock and Part A). All four are already applied.
 - Version 1.22.0 (live is 1.21.2): `package.json`, `package-lock.json` (both entries), `src/changelog.json`.
+- Re-checked 2026-10-18: live `build-info.json` is still `809be98b` (v1.21.2), which is already in this
+  branch, so nothing new to merge and the version stays 1.22.0.
+
+## Card kinds (2026-10-18 rework)
+
+The owner's rule replaced hand-entered points:
+
+- **BOQ card** (`progress_mode = 'quantity'`): linked to one BOQ line with a qty. Only these count toward
+  a node's %. Their points are split automatically by value (each card's share of the node's BOQ value,
+  from the BOQ lines' quotation prices). PM sees points and % shares only, never a price.
+- **General card** (`progress_mode = 'status'`): for assigning and paying work. Always 0 points and never
+  counts toward %. Only general cards can be split (any status); a split parent's status comes from its
+  children.
+- **Node with no BOQ card**: counts by status, done/not done (100 only when all its top-level non-issue
+  cards are done, else 0; with no cards, the phase status).
+- Issue phases and issue cards never count.
+
+UI (Kanban, BOQ tab):
+
+- The card form asks "ชนิดงาน": งาน BOQ (นับ %) / งานทั่วไป (ไม่นับ %). There is no points field.
+- A new card defaults to BOQ when the site has at least one BOQ line, else general.
+- In an issue phase a new card offers only the general kind.
+- The board header shows "ความคืบหน้า n%" and a caption:
+  - "คิดจากการ์ด BOQ n ใบ · แต้มแบ่งตามมูลค่า" when the node has top-level non-issue BOQ cards;
+  - "คิดจากสถานะเฟส" otherwise.
+  - The caption appears only once the schema probe is ready.
+- BOQ cards show "BOQ · N แต้ม". General cards are dashed and show "งานทั่วไป · ไม่นับ %".
+- The BOQ tab has a "สัดส่วนงาน" column (%) from `boq_value_shares`. It calls that RPC only once the
+  schema probe is ready.
+
+Data migration 09 leaves every existing card a general card with 0 points (`b_cards_not_general_zero` 0)
+and writes no card or phase row (`b_cards_changed` 0, `b_phases_changed` 0). So a phase with cards and no
+BOQ card now shows 100 only when all its cards are done. That changes today's % on 7 phases (table below).
+
+### Per-site "% change" report (from the 09 dry run, RESULT `pct_change_report`, 2026-10-18)
+
+49 phases with cards compared on 18 sites (143 cards); 7 change (`phases_changed` 7, report rows = 7).
+Old = the app today: round(100 × done ÷ top-level non-issue cards); new = the card-kinds rule.
+
+| Site | Phase | Old % | New % |
+|---|---|---|---|
+| FX-2026-001 | ผลิต | 14 | 0 |
+| FX-2026-094 | เก็บงานรอบสุดท้าย | 25 | 0 |
+| SD-2026-001 (demo) | งานตกแต่งและส่งมอบ | 33 | 0 |
+| SD-2026-002 (demo) | งานสถาปัตย์และระบบ | 67 | 0 |
+| SD-2026-003 (demo) | งานโครงสร้าง | 67 | 0 |
+| SD-2026-005 (demo) | งานเตรียมการและฐานราก | 33 | 0 |
+| SD-2026-009 (demo) | งานเตรียมการและฐานราก | 67 | 0 |
+
+Only 2 real-customer phases change (both partly done, no BOQ card yet). The other 5 are demo tenant
+(สร้างดี) phases. Once the PM turns the right cards into BOQ cards, those phases count by value again.
 
 ## Verified
 
@@ -22,12 +74,16 @@ Date: 2026-10-17. Branch `feat/gantt-weighted-progress`. Nothing is applied or d
 | `npx vitest run` after the merge and version bump | 135 files, 1519 tests passed |
 | `npx vitest run` after the final-review fixes | 135 files, 1536 tests passed |
 | `npm run build` | OK (after the final-review fixes, build info commit fff3c130) |
+| `npx vitest run` after the card-kinds rework + UI polish (2026-10-18) | 135 files, 1562 passed, 2 failed: the known `src/pages/pmPages.test.jsx` "Assign shows the crew…" UTC-today bug |
+| `TZ=UTC npx vitest run src/pages/pmPages.test.jsx` | 31/31 passed |
+| `npm run build` (2026-10-18) | OK, build info commit 71d29729 |
 | Inlined migration bodies in the tests (text between `BEGIN;` and `COMMIT;`) are byte-identical to the migration files | 07 in tests 07/08/09, 08 in tests 08/09, 09 in test 09: all identical, each found exactly once |
-| 07 rolled-back test on CHANG | 55 keys, 48/48 MUST keys as expected |
-| 08 rolled-back test on CHANG (after the final-review fixes) | 113 keys, 112/112 MUST keys as expected |
-| 09 rolled-back test on CHANG (after the final-review fixes) | 113 keys, 104/104 MUST keys as expected |
+| 07 rolled-back test on CHANG (2026-10-18, card kinds) | 62 keys, 55/55 MUST keys as expected |
+| 08 rolled-back test on CHANG (2026-10-18, card kinds) | 147 keys, 146/146 MUST keys as expected |
+| 09 rolled-back test on CHANG (2026-10-18, card kinds) | 149 keys, 140/140 MUST keys as expected |
 | SQL as PM / ADMIN / OWNER / WORKER (RLS, grants, VO value privacy) | covered by the 07/08/09 assertions above |
-| Today's % unchanged by the weight data migration | 09: `b_phases_changed_MUST0` = 0, `b_phase_pct_mismatches_MUST0` = 0 |
+| 09 writes no card or phase row; every card stays general with 0 points | 09: `b_cards_changed_MUST0` 0, `b_phases_changed_MUST0` 0, `b_cards_not_general_zero_MUST0` 0 |
+| % changes are listed for the owner | 09: `phases_changed` 7, `b_report_rows_equal_phases_changed_MUSTtrue` true (table above) |
 | Fixture parity between JS and SQL progress maths | 09: `a_fixture_mismatches_MUST0` = 0 |
 
 Each test ends with `RAISE EXCEPTION 'RESULT …'`, so all its work is rolled back (exit code 1 is expected).
@@ -44,8 +100,9 @@ Each test ends with `RAISE EXCEPTION 'RESULT …'`, so all its work is rolled ba
 - A card with progress reports (cancelled or not) can't be deleted while its site exists; deleting
   the site still cascades.
 - Locks on parent rows use `FOR NO KEY UPDATE` (no deadlock with the child FK's KEY SHARE).
-- `weight_pts` / `parent_task_id` / `boq_item_id` changes are staff only; split only for
-  `not_started` cards; `cancelled_by` is always the caller; quotation → BOQ fires only when status or
+- `weight_pts` / `parent_task_id` / `boq_item_id` changes are staff only (a sent `weight_pts` is
+  ignored and recomputed); split only for general cards (card kinds replaced the old not_started-only rule);
+  `cancelled_by` is always the caller; quotation → BOQ fires only when status or
   site changes.
 - Datafixes run as the table owner that change `weight_pts`, `planned_qty`, `progress_mode`,
   `parent_task_id` or `boq_item_id` on cards must set `app.derived_status = '1'` (is_local) first.
@@ -68,19 +125,25 @@ Each test ends with `RAISE EXCEPTION 'RESULT …'`, so all its work is rolled ba
   `i2_pm_lowers_planned_with_done` → `110 in_progress`; `i3_delete_card_with_reports` →
   `22023 ยกเลิกยอดให้หมดก่อนลบการ์ด`, `i3_site_delete_cascades_card` 0; `i4_no_key_update_locks` true;
   `a2_worker_weight/boq_item/parent` → `22023 แก้แต้ม/งานหลัก/รายการ BOQ …`;
-  `e_split_started_card` → `22023 แตกงานได้เฉพาะงานที่ยังไม่เริ่ม`; `d_cancelled_by_is_caller` true;
-  `f2_quotation_touch_no_repull` 0.
-- **09** (live data dry run): 18 sites with cards, 49 phases and 143 cards compared, 0 mismatches.
-  Weight patterns `1:100 3:33.34+33.33+33.33 4:25×4 6:16.65+16.67×5 7:14.26+14.29×6`.
-  Per-site rounding examples: 33→33.34, 67→66.67, 14→14.26 (these are display rounding of the same
-  fraction, not a real change; `b_phase_pct_mismatches` = 0). PLAN v1 rows 147 (147 sites with a phase),
-  BOQ rows 168, today's snapshot rows 147, `f_cron_job` = 1. Same numbers after the final-review fixes.
-  Demo seed with the INSERT gate: `demo_seed_core` ok, every seeded site gets PLAN v1, flag restored
-  (`demo_flag_restored` true); equal shares at n = 155 sum to 100 with every share > 0.
+  `d_cancelled_by_is_caller` true; `f2_quotation_touch_no_repull` 0.
+  Card-kinds keys (2026-10-18): `v_three_cards_by_value` → `CA:70 CB:15 CC:15 CG general:0`;
+  `v_pm_value_shares` → `VA:40.39 VB:8.65 VC:25.96 VM:25`, sum 100, keys only (no price), worker 42501;
+  `v_pm_sends_points_ignored` 52.5; `v_split_boq_card` / `v_boq_card_as_child` / `v_child_of_boq_card` →
+  `22023 แตกงานได้เฉพาะงานทั่วไป`; `v_delete_boq_line_with_cards` →
+  `22023 รายการ BOQ นี้มีการ์ดผูกอยู่ ย้ายหรือลบการ์ดก่อน`; `v_flip_to_general_clears_line_and_qty` true;
+  `e_split_done_children` 3 (a done general card can be split); `k_unpriced_equal_shares` →
+  `Q:33.34 F:33.33 Q3:33.33`.
+- **09** (live data dry run, 2026-10-18, card kinds): 18 sites with cards, 49 phases and 143 cards
+  compared; 7 phases change % (table above), 0 card or phase rows written. PLAN v1 rows 147 (147 sites
+  with a phase), BOQ rows 168, today's snapshot rows 147, `f_cron_job` = 1, `a_fixture_mismatches` 0
+  (JS/SQL parity on fx1–fx18). Demo seed: `demo_seed_core` ok, 10 demo sites with PLAN v1, 40 demo
+  phases follow the all-done rule (`demo_phase_pct_all_done_rule_mismatches` 0), flag restored.
+  `k_boq_node_points_sum` 100, `k_general_card_in_boq_node_pts` 0.
 
 ## NOT verified
 
-- Clicks in the live UI (Gantt PLAN layer, S-curve งานจริง %, BOQ tab, VO phase form, quantity cards).
+- Clicks in the live UI (Gantt PLAN layer, S-curve งานจริง %, BOQ tab and สัดส่วนงาน, VO phase form,
+  card kinds form, board header caption, BOQ cards).
   The migrations aren't applied, so the live app can't show any of it yet.
 - LINE replies ("งานเสร็จ" blocked-card messages). `line-webhook` isn't deployed. The message
   mapping is covered only by vitest (`src/lib/lineTaskRules.test.js`).
