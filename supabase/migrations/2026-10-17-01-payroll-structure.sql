@@ -8,7 +8,8 @@ CREATE OR REPLACE FUNCTION payroll_bypass_on()
 RETURNS BOOLEAN LANGUAGE sql STABLE SET search_path = public, pg_temp AS $$
   SELECT COALESCE(current_setting('chang.payroll_bypass', true), '') = 'on';
 $$;
-REVOKE ALL ON FUNCTION payroll_bypass_on() FROM PUBLIC, anon;
+-- called only from SECURITY DEFINER functions and triggers, never by clients
+REVOKE ALL ON FUNCTION payroll_bypass_on() FROM PUBLIC, anon, authenticated;
 
 -- ── pay_items ──
 CREATE TABLE pay_items (
@@ -35,22 +36,30 @@ CREATE UNIQUE INDEX pay_items_one_system_method ON pay_items (tenant_id, method)
 CREATE UNIQUE INDEX pay_items_system_key ON pay_items (tenant_id, system_key) WHERE system_key IS NOT NULL;
 CREATE INDEX pay_items_tenant ON pay_items (tenant_id, sort_order);
 
--- SECURITY DEFINER because it calls payroll_bypass_on(), which authenticated cannot execute
+-- SECURITY DEFINER trigger fn; called only as a trigger, never by clients
 CREATE OR REPLACE FUNCTION pay_items_protect_system()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
-  IF payroll_bypass_on() THEN RETURN OLD; END IF;
-  IF OLD.method IN ('base_pay','ot','sso','unpaid_leave','advances') THEN
-    RAISE EXCEPTION 'รายการระบบลบไม่ได้ (ซ่อนได้แทน)' USING ERRCODE = 'check_violation';
+  IF payroll_bypass_on() THEN RETURN COALESCE(NEW, OLD); END IF;
+  IF TG_OP = 'DELETE' THEN
+    -- tenant being deleted: let the cascade through
+    IF NOT EXISTS (SELECT 1 FROM tenants WHERE id = OLD.tenant_id) THEN RETURN OLD; END IF;
+    IF OLD.method IN ('base_pay','ot','sso','unpaid_leave','advances') THEN
+      RAISE EXCEPTION 'รายการระบบลบไม่ได้ (ซ่อนได้แทน)' USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN OLD;
   END IF;
-  IF TG_OP = 'UPDATE' AND NEW.method IS DISTINCT FROM OLD.method
+  IF NEW.method IS DISTINCT FROM OLD.method
      AND OLD.method IN ('base_pay','ot','sso','unpaid_leave','advances') THEN
     RAISE EXCEPTION 'เปลี่ยนวิธีคิดของรายการระบบไม่ได้' USING ERRCODE = 'check_violation';
   END IF;
-  RETURN COALESCE(NEW, OLD);
+  IF NEW.system_key IS DISTINCT FROM OLD.system_key THEN
+    RAISE EXCEPTION 'เปลี่ยนรหัสระบบของรายการไม่ได้' USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
 END $$;
-REVOKE ALL ON FUNCTION pay_items_protect_system() FROM PUBLIC, anon;
-CREATE TRIGGER pay_items_protect_system BEFORE DELETE OR UPDATE OF method ON pay_items
+REVOKE ALL ON FUNCTION pay_items_protect_system() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER pay_items_protect_system BEFORE DELETE OR UPDATE ON pay_items
   FOR EACH ROW EXECUTE FUNCTION pay_items_protect_system();
 
 -- ── per-worker amounts for fixed_per_worker items ──
@@ -161,7 +170,7 @@ BEGIN
   RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION salary_records_set_period() FROM PUBLIC, anon, authenticated;
-CREATE TRIGGER salary_records_set_period BEFORE INSERT OR UPDATE OF year, month ON salary_records
+CREATE TRIGGER salary_records_set_period BEFORE INSERT OR UPDATE ON salary_records
   FOR EACH ROW EXECUTE FUNCTION salary_records_set_period();
 
 CREATE OR REPLACE FUNCTION payroll_assert_open(p_period UUID)
@@ -179,6 +188,8 @@ REVOKE ALL ON FUNCTION payroll_assert_open(UUID) FROM PUBLIC, anon, authenticate
 CREATE OR REPLACE FUNCTION salary_records_lock()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
+  -- tenant being deleted: let the cascade through
+  IF TG_OP = 'DELETE' AND NOT EXISTS (SELECT 1 FROM tenants WHERE id = OLD.tenant_id) THEN RETURN OLD; END IF;
   IF TG_OP IN ('UPDATE','DELETE') THEN PERFORM payroll_assert_open(OLD.period_id); END IF;
   IF TG_OP IN ('INSERT','UPDATE') THEN PERFORM payroll_assert_open(NEW.period_id); RETURN NEW; END IF;
   RETURN OLD;
@@ -313,7 +324,7 @@ CREATE POLICY request_advance ON salary_advances FOR INSERT TO authenticated
     AND status = 'pending' AND approved_by IS NULL AND requested_by = auth.email()
     AND (is_admin_or_owner() OR worker_id IN (SELECT id FROM workers WHERE email = auth.email())));
 CREATE POLICY admin_delete_open ON salary_advances FOR DELETE TO authenticated
-  USING (tenant_id = current_tenant_id() AND is_admin_or_owner() AND status IN ('pending','rejected'));
+  USING (tenant_id = current_tenant_id() AND has_module_access('payroll') AND is_admin_or_owner() AND status IN ('pending','rejected'));
 
 CREATE POLICY admin_all ON payroll_bank_settings FOR ALL TO authenticated
   USING (tenant_id = current_tenant_id() AND has_module_access('payroll') AND is_admin_or_owner())
