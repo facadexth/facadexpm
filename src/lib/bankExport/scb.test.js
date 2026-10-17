@@ -54,6 +54,7 @@ describe('buildScbPayrollFile', () => {
     expect(txn[4]).toBe('014')
     expect(txn[5]).toBe('0111')
     expect(txn[7]).toBe('')
+    expect(r.content.split('\r\n')[2]).toBe(`TXNDET|EMP002|${SCB_EMP}||014|0111|23109.50||OUR|N||Y|a@b.co|นาย พรชัย คอนแก้ว||||N|||Y|N||||E|a@b.co|`)
   })
   it('leaves out bad rows and lists why', () => {
     const bad = [
@@ -66,7 +67,27 @@ describe('buildScbPayrollFile', () => {
     const r = buildScbPayrollFile({ settings, valueDate: '2026-10-30', now, rows: [...rows, ...bad] })
     expect(r.errors.map(e => e.ref)).toEqual(['E3', 'E4', 'E5', 'E6', 'E7'])
     expect(r.count).toBe(2)
-    expect(r.content.split('\r\n')).toHaveLength(5)
+    const lines = r.content.split('\r\n')
+    expect(lines).toHaveLength(5)
+    expect(lines[1]).toBe(`BCHDET|171026143005|SPN|20261030|${DEBIT}|${DEBIT}|45689.50|2||`)
+    expect(lines[4]).toBe('TRAILR|1|2|45689.50')
+    expect(r.total).toBe(45689.5)
+  })
+  it('rejects refs the bank would refuse and names the ref', () => {
+    const mk = ref => ({ ...rows[0], ref })
+    const r = buildScbPayrollFile({ settings, valueDate: '2026-10-30', now, rows: [mk('A'.repeat(21)), mk('EMP_01'), mk('EMP\t1'), mk('EMP-01/A (2)'), mk('ช่าง1')] })
+    expect(r.errors.map(e => e.ref)).toEqual(['A'.repeat(21), 'EMP_01', 'EMP\t1', 'ช่าง1'])
+    expect(r.errors[1].message).toBe('รหัสอ้างอิง/รหัสพนักงาน "EMP_01" มีตัวอักษรที่ธนาคารไม่รับ หรือยาวเกิน 20 ตัว')
+    expect(r.count).toBe(1)
+  })
+  it('rejects control characters in name and email', () => {
+    const r = buildScbPayrollFile({ settings, valueDate: '2026-10-30', now, rows: [{ ...rows[0], name: 'นาย\nก' }, { ...rows[0], ref: 'X2', email: 'a@b.co\r' }] })
+    expect(r.errors.map(e => e.ref)).toEqual(['EMP001', 'X2'])
+    expect(r.count).toBe(0)
+  })
+  it('rejects unknown bank codes for SPN/SPS', () => {
+    const r = buildScbPayrollFile({ settings, valueDate: '2026-10-30', now, rows: [{ ...rows[0], ref: 'U1', bank_code: '999' }] })
+    expect(r.errors).toEqual([{ ref: 'U1', name: rows[0].name, message: 'ไม่รู้จักรหัสธนาคาร 999' }])
   })
   it('rejects bad settings and value dates', () => {
     expect(() => buildScbPayrollFile({ settings: { ...settings, debit_account: '1234567890' }, valueDate: '2026-10-30', now, rows })).toThrow('บัญชีต้นทาง')

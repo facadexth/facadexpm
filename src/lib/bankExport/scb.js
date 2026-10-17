@@ -1,10 +1,12 @@
 // SCB Business Anywhere (CPX) payroll upload file. Layout: reference doc §2.
 // Pipe-delimited, UTF-8 without BOM, CRLF between lines, none after TRAILR.
-import { scbCheckDigitOk, validateAccount } from './banks.js'
+import { BANKS, scbCheckDigitOk, validateAccount } from './banks.js'
 
 const pad = n => String(n).padStart(2, '0')
 const money = n => (Math.round(Number(n) * 100) / 100).toFixed(2)
 const BANNED = /[!"#$%&*+;<=>?@[\\\]^_`{|}~]/
+const CTRL = /[\x00-\x1F\x7F]/
+const REF_OK = /^[A-Za-z0-9 \-():\/',.^#]{1,20}$/ // reference §2.2 col F (| excluded: breaks the pipe format)
 const NEXT_DAY = ['SPN']
 const PRODUCTS = ['SPN', 'SPS', 'PAY']
 
@@ -13,10 +15,12 @@ const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())
 
 function rowError(r, product) {
   if (!r.bank_code || !r.account) return 'ยังไม่มีเลขบัญชี'
-  if (!r.name || BANNED.test(r.name) || r.name.length > 140 || r.name.startsWith(' ')) return 'ชื่อบัญชีมีอักขระที่ธนาคารไม่รับ'
-  if (r.ref && (r.ref.length > 20 || r.ref.includes('|'))) return 'รหัสอ้างอิงยาวเกิน 20 ตัวหรือมี |'
+  if (!r.name || BANNED.test(r.name) || CTRL.test(r.name) || r.name.length > 140 || r.name.startsWith(' ')) return 'ชื่อบัญชีมีอักขระที่ธนาคารไม่รับ'
+  if (r.ref && (!REF_OK.test(r.ref) || CTRL.test(r.ref))) return `รหัสอ้างอิง/รหัสพนักงาน "${r.ref}" มีตัวอักษรที่ธนาคารไม่รับ หรือยาวเกิน 20 ตัว`
+  if (r.email && (CTRL.test(r.email) || r.email.includes('|'))) return 'อีเมลมีอักขระที่ธนาคารไม่รับ'
   if (!(Number(r.amount) > 0)) return 'ยอดจ่ายต้องมากกว่า 0'
   if (product === 'PAY' && r.bank_code !== '014') return 'PAY จ่ายได้เฉพาะบัญชีไทยพาณิชย์'
+  if (product !== 'PAY' && !BANKS.some(b => b.code === r.bank_code)) return `ไม่รู้จักรหัสธนาคาร ${r.bank_code}`
   const acct = validateAccount(r.bank_code, r.account)
   if (acct) return acct
   if (product !== 'PAY') {

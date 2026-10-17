@@ -1,6 +1,7 @@
 // Builds the SCB upload file for a confirmed/closed month. Workers that can't
 // go in the file (no account, bad branch…) are listed so the admin pays them by hand.
 import { useMemo, useState } from 'react'
+import { useUserRole } from '../../hooks/useUserRole.js'
 import { Modal } from '../../components/Modal.jsx'
 import { useBankSettings } from '../../hooks/usePayroll.js'
 import { buildScbPayrollFile } from '../../lib/bankExport/scb.js'
@@ -8,10 +9,11 @@ import { fmt } from '../../lib/supabase.js'
 import { monthRange } from '../../lib/payroll/period.js'
 
 export default function BankExportModal({ records, year, month, onClose }) {
-  const { data: settings, loading } = useBankSettings()
+  const { data: settings, loading, error } = useBankSettings()
+  const { isAtLeast } = useUserRole()
   const [valueDate, setValueDate] = useState(monthRange(year, month).to)
   const rows = useMemo(() => records.map(r => ({
-    ref: (r.workers?.employee_code || '').slice(0, 20),
+    ref: r.workers?.employee_code || '',
     name: r.workers?.bank_account_name || r.workers?.name,
     bank_code: r.workers?.bank_code || '',
     account: r.workers?.bank_account_no || '',
@@ -37,7 +39,10 @@ export default function BankExportModal({ records, year, month, onClose }) {
     <Modal title="ไฟล์จ่ายเงินเดือน SCB" onClose={onClose} maxWidth={560}>
       <div className="modal-body" style={{ display: 'grid', gap: 10 }}>
         {loading && <div>⏳</div>}
-        {!loading && !settings && <div>ยังไม่ได้ตั้งค่าบัญชีต้นทาง ไปที่ ตั้งค่า → ไฟล์จ่ายเงินเดือน (SCB)</div>}
+        {!loading && error && <div style={{ color: 'var(--red)' }}>โหลดการตั้งค่าไม่สำเร็จ: {error}</div>}
+        {!loading && !error && !settings && (isAtLeast('OWNER')
+          ? <div>ยังไม่ได้ตั้งค่าบัญชีต้นทาง ไปที่ ตั้งค่า → ไฟล์จ่ายเงินเดือน (SCB)</div>
+          : <div>ให้เจ้าของบริษัทตั้งค่าบัญชีต้นทางที่ ตั้งค่า → ไฟล์จ่ายเงินเดือน (SCB) ก่อน</div>)}
         {settings && (
           <>
             <label className="label">วันที่โอน</label>
