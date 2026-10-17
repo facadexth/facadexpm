@@ -1,6 +1,7 @@
 -- PM (site manager) role. Sibling of ADMIN: runs sites, never reads money.
 -- Spec: docs/superpowers/specs/2026-10-17-gantt-weighted-progress-design.md §13
--- Rolled-back check: supabase/tests/2026-10-17-04-pm-role.test.sql
+-- Depends on: 2026-10-17-04-rls-self-recursion-fix.sql (user_role_held_admin_seat, site_was_ongoing).
+-- Rolled-back check: supabase/tests/2026-10-17-05-pm-role.test.sql
 -- Every ALTER POLICY / recreated function below is the live definition
 -- (pg_policies / pg_get_functiondef, read 2026-10-17) with only the role
 -- check changed.
@@ -94,10 +95,17 @@ $function$;
 -- user_roles: OWNER may add/promote PM, subject to the admin seat limit.
 ALTER POLICY owner_inserts ON user_roles
   WITH CHECK ((( SELECT is_owner() AS is_owner) AND (tenant_id = ( SELECT current_tenant_id() AS current_tenant_id)) AND ( SELECT tenant_can_write() AS tenant_can_write) AND ((role <> ALL (ARRAY['OWNER'::text, 'ADMIN'::text, 'PM'::text])) OR tenant_under_seat_limit('admins'::text))));
+-- owner_updates must not read user_roles inside its own policy (42P17 infinite
+-- recursion, fixed by 2026-10-17-04): the old-row seat lookup goes through the
+-- SECURITY DEFINER helper from 04, widened here to count PM as an admin seat.
+CREATE OR REPLACE FUNCTION public.user_role_held_admin_seat(p_role_id uuid) RETURNS boolean
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$ SELECT EXISTS (SELECT 1 FROM user_roles WHERE id = p_role_id AND role IN ('OWNER','ADMIN','PM') AND tenant_id = current_tenant_id()) $$;
+REVOKE ALL ON FUNCTION public.user_role_held_admin_seat(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.user_role_held_admin_seat(uuid) TO authenticated;
+
 ALTER POLICY owner_updates ON user_roles
-  WITH CHECK ((( SELECT is_owner() AS is_owner) AND (tenant_id = ( SELECT current_tenant_id() AS current_tenant_id)) AND ( SELECT tenant_can_write() AS tenant_can_write) AND ((role <> ALL (ARRAY['OWNER'::text, 'ADMIN'::text, 'PM'::text])) OR (EXISTS ( SELECT 1
-   FROM user_roles old
-  WHERE ((old.id = user_roles.id) AND (old.role = ANY (ARRAY['OWNER'::text, 'ADMIN'::text, 'PM'::text]))))) OR tenant_under_seat_limit('admins'::text))));
+  WITH CHECK ((( SELECT is_owner() AS is_owner) AND (tenant_id = ( SELECT current_tenant_id() AS current_tenant_id)) AND ( SELECT tenant_can_write() AS tenant_can_write) AND ((role <> ALL (ARRAY['OWNER'::text, 'ADMIN'::text, 'PM'::text])) OR user_role_held_admin_seat(id) OR tenant_under_seat_limit('admins'::text))));
 
 -- Site-ops policies: ( SELECT is_admin_or_owner() ) -> ( SELECT is_site_staff() ).
 -- clients / suppliers: reads only; their writes stay admin.

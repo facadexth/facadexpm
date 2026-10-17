@@ -3,8 +3,8 @@
 -- RLS admin-only); these SECURITY DEFINER functions return only non-money
 -- columns, filter tenant_id = current_tenant_id() themselves and return
 -- nothing unless is_site_staff() (OWNER/ADMIN/PM).
--- Depends on: 2026-10-17-04-pm-role.sql (is_site_staff, can_manage_teams).
--- Rolled-back check: supabase/tests/2026-10-17-05-pm-ops-rpcs.test.sql
+-- Depends on: 2026-10-17-05-pm-role.sql (is_site_staff, can_manage_teams).
+-- Rolled-back check: supabase/tests/2026-10-17-06-pm-ops-rpcs.test.sql
 -- RETURNS TABLE types follow information_schema.columns (read 2026-10-17):
 -- sites.travel_minutes, workers.annual_leave_days and
 -- workers.annual_sick_leave_days are integer.
@@ -44,7 +44,7 @@ BEGIN
   END IF;
   -- Ongoing seat rule from the sites admin_updates policy
   IF p_patch ? 'status' AND p_patch->>'status' = 'Ongoing'
-     AND NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND status = 'Ongoing')
+     AND NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND status = 'Ongoing' AND tenant_id = current_tenant_id())
      AND NOT tenant_under_seat_limit('sites') THEN
     RAISE EXCEPTION 'site seat limit reached' USING ERRCODE = '54000';
   END IF;

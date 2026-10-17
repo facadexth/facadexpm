@@ -1,20 +1,40 @@
--- Rolled-back check for supabase/migrations/2026-10-17-04-pm-role.sql.
--- Run: npx supabase db query --linked -f supabase/tests/2026-10-17-04-pm-role.test.sql
--- db query has no \i, so the migration body is inlined below (without its
--- BEGIN/COMMIT). Keep it in sync with the migration file. The DO block ends
--- in RAISE EXCEPTION 'RESULT ...', so nothing persists. Never run the
--- migration file alone as a test.
--- Expected: every *_MUST0 is 0, *_MUSTfalse is false, *_MUSTfail holds an
--- error, site-ops counts equal the demo tenant's real counts, w_* writes ok/1.
+-- Rolled-back check for supabase/migrations/2026-10-17-06-pm-ops-rpcs.sql.
+-- Run: npx supabase db query --linked -f supabase/tests/2026-10-17-06-pm-ops-rpcs.test.sql
+-- db query has no \i, so the migration bodies are inlined below, in apply
+-- order: the 04 recursion hotfix (owned by branch fix/rls-self-recursion),
+-- then 05, then 06. Each is byte-identical to its file between BEGIN; and
+-- COMMIT;. Keep them in sync. The DO block ends in RAISE EXCEPTION
+-- 'RESULT ...', so nothing persists.
+-- Expected: *_MUST0 is 0, *_MUSTfalse is false, *_MUSTtrue is true,
+-- *_eq_real is true, w_* writes 'ok'.
 BEGIN;
 
--- ===== inlined migration body =====
--- PM (site manager) role. Sibling of ADMIN: runs sites, never reads money.
--- Spec: docs/superpowers/specs/2026-10-17-gantt-weighted-progress-design.md §13
--- Rolled-back check: supabase/tests/2026-10-17-04-pm-role.test.sql
--- Every ALTER POLICY / recreated function below is the live definition
--- (pg_policies / pg_get_functiondef, read 2026-10-17) with only the role
--- check changed.
+-- ===== inlined 2026-10-17-04-rls-self-recursion-fix.sql (hotfix branch fix/rls-self-recursion) body =====
+
+CREATE OR REPLACE FUNCTION public.site_was_ongoing(p_site_id uuid) RETURNS boolean
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$ SELECT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND status = 'Ongoing' AND tenant_id = current_tenant_id()) $$;
+
+CREATE OR REPLACE FUNCTION public.user_role_held_admin_seat(p_role_id uuid) RETURNS boolean
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$ SELECT EXISTS (SELECT 1 FROM user_roles WHERE id = p_role_id AND role IN ('OWNER','ADMIN') AND tenant_id = current_tenant_id()) $$;
+
+REVOKE ALL ON FUNCTION public.site_was_ongoing(uuid), public.user_role_held_admin_seat(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.site_was_ongoing(uuid), public.user_role_held_admin_seat(uuid) TO authenticated;
+
+ALTER POLICY admin_updates ON public.sites
+  USING (((SELECT is_admin_or_owner()) AND (tenant_id = (SELECT current_tenant_id())) AND (SELECT tenant_can_write())))
+  WITH CHECK (((SELECT is_admin_or_owner()) AND (tenant_id = (SELECT current_tenant_id())) AND (SELECT tenant_can_write())
+    AND ((status IS DISTINCT FROM 'Ongoing'::text) OR site_was_ongoing(id) OR tenant_under_seat_limit('sites'::text))));
+
+ALTER POLICY owner_updates ON public.user_roles
+  USING (((SELECT is_owner()) AND (tenant_id = (SELECT current_tenant_id())) AND (SELECT tenant_can_write())))
+  WITH CHECK (((SELECT is_owner()) AND (tenant_id = (SELECT current_tenant_id())) AND (SELECT tenant_can_write())
+    AND ((role <> ALL (ARRAY['OWNER'::text, 'ADMIN'::text])) OR user_role_held_admin_seat(id) OR tenant_under_seat_limit('admins'::text))));
+
+-- ===== end of 04 body =====
+
+-- ===== inlined 2026-10-17-05-pm-role.sql body =====
 
 ALTER TABLE user_roles DROP CONSTRAINT user_roles_role_check;
 ALTER TABLE user_roles ADD CONSTRAINT user_roles_role_check
@@ -104,10 +124,17 @@ $function$;
 -- user_roles: OWNER may add/promote PM, subject to the admin seat limit.
 ALTER POLICY owner_inserts ON user_roles
   WITH CHECK ((( SELECT is_owner() AS is_owner) AND (tenant_id = ( SELECT current_tenant_id() AS current_tenant_id)) AND ( SELECT tenant_can_write() AS tenant_can_write) AND ((role <> ALL (ARRAY['OWNER'::text, 'ADMIN'::text, 'PM'::text])) OR tenant_under_seat_limit('admins'::text))));
+-- owner_updates must not read user_roles inside its own policy (42P17 infinite
+-- recursion, fixed by 2026-10-17-04): the old-row seat lookup goes through the
+-- SECURITY DEFINER helper from 04, widened here to count PM as an admin seat.
+CREATE OR REPLACE FUNCTION public.user_role_held_admin_seat(p_role_id uuid) RETURNS boolean
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$ SELECT EXISTS (SELECT 1 FROM user_roles WHERE id = p_role_id AND role IN ('OWNER','ADMIN','PM') AND tenant_id = current_tenant_id()) $$;
+REVOKE ALL ON FUNCTION public.user_role_held_admin_seat(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.user_role_held_admin_seat(uuid) TO authenticated;
+
 ALTER POLICY owner_updates ON user_roles
-  WITH CHECK ((( SELECT is_owner() AS is_owner) AND (tenant_id = ( SELECT current_tenant_id() AS current_tenant_id)) AND ( SELECT tenant_can_write() AS tenant_can_write) AND ((role <> ALL (ARRAY['OWNER'::text, 'ADMIN'::text, 'PM'::text])) OR (EXISTS ( SELECT 1
-   FROM user_roles old
-  WHERE ((old.id = user_roles.id) AND (old.role = ANY (ARRAY['OWNER'::text, 'ADMIN'::text, 'PM'::text]))))) OR tenant_under_seat_limit('admins'::text))));
+  WITH CHECK ((( SELECT is_owner() AS is_owner) AND (tenant_id = ( SELECT current_tenant_id() AS current_tenant_id)) AND ( SELECT tenant_can_write() AS tenant_can_write) AND ((role <> ALL (ARRAY['OWNER'::text, 'ADMIN'::text, 'PM'::text])) OR user_role_held_admin_seat(id) OR tenant_under_seat_limit('admins'::text))));
 
 -- Site-ops policies: ( SELECT is_admin_or_owner() ) -> ( SELECT is_site_staff() ).
 -- clients / suppliers: reads only; their writes stay admin.
@@ -416,40 +443,265 @@ BEGIN
 END;
 $function$;
 
+-- ===== end of 05 body =====
 
--- ===== end of migration body =====
+-- ===== inlined 2026-10-17-06-pm-ops-rpcs.sql body =====
+
+CREATE OR REPLACE FUNCTION public.pm_sites()
+RETURNS TABLE(id uuid, site_number text, name text, short_name text, status text, start_date date, end_date date,
+              client_id uuid, client_name text, location text, map_url text, lat numeric, lng numeric,
+              distance_km numeric, travel_minutes integer, is_default boolean, notes text, created_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT s.id, s.site_number, s.name, s.short_name, s.status, s.start_date, s.end_date,
+         s.client_id, COALESCE(c.name, s.client_name), s.location, s.map_url, s.lat, s.lng,
+         s.distance_km, s.travel_minutes, s.is_default, s.notes, s.created_at
+  FROM sites s LEFT JOIN clients c ON c.id = s.client_id
+  WHERE s.tenant_id = current_tenant_id() AND is_site_staff()
+  ORDER BY s.created_at DESC
+$$;
+
+CREATE OR REPLACE FUNCTION public.pm_update_site(p_site_id uuid, p_patch jsonb)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE k text;
+  allowed text[] := ARRAY['name','short_name','status','start_date','end_date','location','map_url','lat','lng','distance_km','travel_minutes','notes'];
+BEGIN
+  IF NOT is_site_staff() OR NOT tenant_can_write() THEN
+    RAISE EXCEPTION 'not allowed' USING ERRCODE = '42501';
+  END IF;
+  FOR k IN SELECT jsonb_object_keys(p_patch) LOOP
+    IF NOT k = ANY (allowed) THEN RAISE EXCEPTION 'field not allowed: %', k USING ERRCODE = '22023'; END IF;
+  END LOOP;
+  -- Finishing a site moves leftover stock and stamps end_date (the OWNER/ADMIN
+  -- finish flow), so a PM may not set Completed; an already-Completed site may stay so.
+  IF p_patch->>'status' = 'Completed'
+     AND NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND status = 'Completed') THEN
+    RAISE EXCEPTION 'PM cannot complete a site' USING ERRCODE = '22023';
+  END IF;
+  -- Ongoing seat rule from the sites admin_updates policy
+  IF p_patch ? 'status' AND p_patch->>'status' = 'Ongoing'
+     AND NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND status = 'Ongoing' AND tenant_id = current_tenant_id())
+     AND NOT tenant_under_seat_limit('sites') THEN
+    RAISE EXCEPTION 'site seat limit reached' USING ERRCODE = '54000';
+  END IF;
+  UPDATE sites s SET
+    name           = CASE WHEN p_patch ? 'name' THEN p_patch->>'name' ELSE s.name END,
+    short_name     = CASE WHEN p_patch ? 'short_name' THEN NULLIF(p_patch->>'short_name','') ELSE s.short_name END,
+    status         = CASE WHEN p_patch ? 'status' THEN p_patch->>'status' ELSE s.status END,
+    start_date     = CASE WHEN p_patch ? 'start_date' THEN (p_patch->>'start_date')::date ELSE s.start_date END,
+    end_date       = CASE WHEN p_patch ? 'end_date' THEN (p_patch->>'end_date')::date ELSE s.end_date END,
+    location       = CASE WHEN p_patch ? 'location' THEN p_patch->>'location' ELSE s.location END,
+    map_url        = CASE WHEN p_patch ? 'map_url' THEN p_patch->>'map_url' ELSE s.map_url END,
+    lat            = CASE WHEN p_patch ? 'lat' THEN (p_patch->>'lat')::numeric ELSE s.lat END,
+    lng            = CASE WHEN p_patch ? 'lng' THEN (p_patch->>'lng')::numeric ELSE s.lng END,
+    distance_km    = CASE WHEN p_patch ? 'distance_km' THEN (p_patch->>'distance_km')::numeric ELSE s.distance_km END,
+    travel_minutes = CASE WHEN p_patch ? 'travel_minutes' THEN (p_patch->>'travel_minutes')::integer ELSE s.travel_minutes END,
+    notes          = CASE WHEN p_patch ? 'notes' THEN p_patch->>'notes' ELSE s.notes END,
+    updated_at     = now()
+  WHERE s.id = p_site_id AND s.tenant_id = current_tenant_id();
+  IF NOT FOUND THEN RAISE EXCEPTION 'site not found' USING ERRCODE = 'P0002'; END IF;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.pm_workers()
+RETURNS TABLE(id uuid, name text, nickname text, "position" text, status text, email text, show_in_assign boolean,
+              line_user_id text, annual_leave_days integer, annual_sick_leave_days integer)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT w.id, w.name, w.nickname, w.position, w.status, w.email, w.show_in_assign,
+         w.line_user_id, w.annual_leave_days, w.annual_sick_leave_days
+  FROM workers w
+  WHERE w.tenant_id = current_tenant_id() AND is_site_staff()
+  ORDER BY w.name
+$$;
+
+CREATE OR REPLACE FUNCTION public.pm_purchase_orders()
+RETURNS TABLE(id uuid, po_number text, site_id uuid, supplier_id uuid, supplier_name text, date date, status text,
+              notes text, received_date date, ordered_by text, created_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT po.id, po.po_number, po.site_id, po.supplier_id, sp.name, po.date, po.status,
+         po.notes, po.received_date, po.ordered_by, po.created_at
+  FROM purchase_orders po LEFT JOIN suppliers sp ON sp.id = po.supplier_id
+  WHERE po.tenant_id = current_tenant_id() AND is_site_staff() AND has_module_access('purchase_orders')
+  ORDER BY po.created_at DESC
+$$;
+
+CREATE OR REPLACE FUNCTION public.pm_purchase_order_items(p_po_id uuid)
+RETURNS TABLE(id uuid, po_id uuid, description text, quantity numeric, unit text, sort_order integer,
+              inventory_item_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT i.id, i.po_id, i.description, i.quantity, i.unit, i.sort_order, i.inventory_item_id
+  FROM purchase_order_items i JOIN purchase_orders po ON po.id = i.po_id
+  WHERE i.po_id = p_po_id
+    AND po.tenant_id = current_tenant_id() AND i.tenant_id = current_tenant_id()
+    AND is_site_staff() AND has_module_access('purchase_orders')
+  ORDER BY i.sort_order, i.id
+$$;
+
+CREATE OR REPLACE FUNCTION public.pm_inventory_on_hand(p_site_id uuid DEFAULT NULL)
+RETURNS TABLE(inventory_item_id uuid, code text, name text, base_unit text, site_id uuid,
+              quantity_on_hand numeric, updated_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT b.inventory_item_id, it.code, it.name, it.base_unit, b.site_id, b.quantity_on_hand, b.updated_at
+  FROM inventory_stock_balances b JOIN inventory_items it ON it.id = b.inventory_item_id
+  WHERE b.tenant_id = current_tenant_id() AND it.tenant_id = current_tenant_id()
+    AND (p_site_id IS NULL OR b.site_id = p_site_id)
+    AND is_site_staff() AND has_module_access('purchase_orders')
+  ORDER BY it.name, b.site_id
+$$;
+
+-- Used by the worker_team_members policy: a PM cannot SELECT workers.
+CREATE OR REPLACE FUNCTION public.worker_in_my_tenant(p_worker_id uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$ SELECT EXISTS (SELECT 1 FROM workers WHERE id = p_worker_id AND tenant_id = current_tenant_id()) $$;
+
+REVOKE ALL ON FUNCTION public.pm_sites(), public.pm_update_site(uuid, jsonb), public.pm_workers(),
+  public.pm_purchase_orders(), public.pm_purchase_order_items(uuid), public.pm_inventory_on_hand(uuid),
+  public.worker_in_my_tenant(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.pm_sites(), public.pm_update_site(uuid, jsonb), public.pm_workers(),
+  public.pm_purchase_orders(), public.pm_purchase_order_items(uuid), public.pm_inventory_on_hand(uuid),
+  public.worker_in_my_tenant(uuid) TO authenticated;
+
+-- Teams: OWNER or PM manage them (was is_owner()). The live worker_team_members
+-- with_check (read 2026-10-17) checked the worker with EXISTS on workers, which a
+-- PM cannot read, so it now calls worker_in_my_tenant().
+ALTER POLICY owner_writes ON worker_teams
+  USING (( SELECT can_manage_teams() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT tenant_can_write() ))
+  WITH CHECK (( SELECT can_manage_teams() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT tenant_can_write() ));
+ALTER POLICY owner_writes ON worker_team_members
+  USING (( SELECT can_manage_teams() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT tenant_can_write() ))
+  WITH CHECK (( SELECT can_manage_teams() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT tenant_can_write() )
+    AND EXISTS (SELECT 1 FROM worker_teams t WHERE t.id = worker_team_members.team_id AND t.tenant_id = ( SELECT current_tenant_id() ))
+    AND worker_in_my_tenant(worker_id));
+
+-- ===== end of 06 body =====
 
 DO $$
 DECLARE
-  v_tenant uuid; v_email text := 'pm-test@example.invalid'; r jsonb := '{}';
-  n int; v_site uuid; v_worker uuid; v_leave uuid; v_phase uuid; v_task uuid;
+  v_tenant uuid; r jsonb := '{}'; n int; b boolean;
+  v_pm text := 'pm-test@example.invalid'; v_admin text := 'pm-test-admin@example.invalid';
+  v_wk text := 'pm-test-worker@example.invalid';
+  v_site uuid; v_worker uuid; v_po uuid; v_team uuid; v_open uuid; v_done uuid;
+  real_sites int; real_workers int; real_pos int; real_po_items int; real_bal int; real_bal_site int;
+  v_other_po uuid; v_other_site uuid; real_other_po_items int; real_other_bal int;
+  money text[] := ARRAY['monthly_salary','contract_value','contract_value_no_vat','unit_price','line_total',
+                        'weighted_average_cost','cost_labor','cost_other','discount_pct','has_vat'];
 BEGIN
-  SELECT id INTO v_tenant FROM tenants WHERE company_name ILIKE '%สร้างดี%' LIMIT 1;  -- demo tenant
+  -- as the table owner: the demo tenant's real counts
+  SELECT id INTO v_tenant FROM tenants WHERE company_name ILIKE '%สร้างดี%' LIMIT 1;
   SELECT id INTO v_site FROM sites WHERE tenant_id = v_tenant ORDER BY created_at LIMIT 1;
+  SELECT id INTO v_open FROM sites WHERE tenant_id = v_tenant AND status <> 'Completed' ORDER BY created_at LIMIT 1;
+  SELECT id INTO v_done FROM sites WHERE tenant_id = v_tenant AND status = 'Completed' ORDER BY created_at LIMIT 1;
   SELECT id INTO v_worker FROM workers WHERE tenant_id = v_tenant ORDER BY created_at LIMIT 1;
-  SELECT id INTO v_leave FROM leave_requests WHERE tenant_id = v_tenant ORDER BY requested_at LIMIT 1;
-  r := r || jsonb_build_object('tenant', v_tenant, 'have_site', v_site IS NOT NULL,
-         'have_worker', v_worker IS NOT NULL, 'have_leave', v_leave IS NOT NULL);
-  INSERT INTO user_roles (user_email, role, tenant_id, status) VALUES (v_email, 'PM', v_tenant, 'approved');
-  PERFORM set_config('request.jwt.claims', json_build_object('email', v_email, 'role', 'authenticated', 'sub', gen_random_uuid())::text, true);
+  SELECT po_id INTO v_po FROM purchase_order_items WHERE tenant_id = v_tenant GROUP BY po_id ORDER BY count(*) DESC LIMIT 1;
+  SELECT count(*) INTO real_sites FROM sites WHERE tenant_id = v_tenant;
+  SELECT count(*) INTO real_workers FROM workers WHERE tenant_id = v_tenant;
+  SELECT count(*) INTO real_pos FROM purchase_orders WHERE tenant_id = v_tenant;
+  SELECT count(*) INTO real_po_items FROM purchase_order_items WHERE po_id = v_po;
+  SELECT count(*) INTO real_bal FROM inventory_stock_balances WHERE tenant_id = v_tenant;
+  SELECT count(*) INTO real_bal_site FROM inventory_stock_balances b
+    WHERE b.tenant_id = v_tenant AND b.site_id = (SELECT id FROM sites WHERE tenant_id = v_tenant AND is_default LIMIT 1);
+  -- another tenant's PO (with items) and site (with stock), for the cross-tenant checks
+  SELECT po_id INTO v_other_po FROM purchase_order_items WHERE tenant_id <> v_tenant GROUP BY po_id ORDER BY count(*) DESC LIMIT 1;
+  SELECT b.site_id INTO v_other_site FROM inventory_stock_balances b JOIN sites s ON s.id = b.site_id
+    WHERE b.tenant_id <> v_tenant AND s.tenant_id = b.tenant_id GROUP BY b.site_id ORDER BY count(*) DESC LIMIT 1;
+  SELECT count(*) INTO real_other_po_items FROM purchase_order_items WHERE po_id = v_other_po;
+  SELECT count(*) INTO real_other_bal FROM inventory_stock_balances WHERE site_id = v_other_site;
+  r := r || jsonb_build_object('other_po_found', v_other_po IS NOT NULL, 'real_other_po_items', real_other_po_items,
+         'other_site_found', v_other_site IS NOT NULL, 'real_other_site_bal', real_other_bal);
+  r := r || jsonb_build_object('tenant', v_tenant, 'real_sites', real_sites, 'real_workers', real_workers,
+         'real_pos', real_pos, 'real_po_items', real_po_items, 'real_bal', real_bal, 'real_bal_default_site', real_bal_site);
+  -- worker_team_members PK is (worker_id) and every demo worker already has a
+  -- team; free v_worker so the PM insert below tests RLS, not the PK (rolled back).
+  DELETE FROM worker_team_members WHERE worker_id = v_worker;
+  INSERT INTO user_roles (user_email, role, tenant_id, status) VALUES
+    (v_pm, 'PM', v_tenant, 'approved'), (v_admin, 'ADMIN', v_tenant, 'approved'), (v_wk, 'WORKER', v_tenant, 'approved');
+
+  -- ===== PM =====
+  PERFORM set_config('request.jwt.claims', json_build_object('email', v_pm, 'role', 'authenticated', 'sub', gen_random_uuid())::text, true);
   SET LOCAL ROLE authenticated;
-  r := r || jsonb_build_object('current_tenant_ok', current_tenant_id() = v_tenant);
+  r := r || jsonb_build_object('pm_current_tenant_ok', current_tenant_id() = v_tenant,
+         'pm_has_module_purchase_orders', has_module_access('purchase_orders'));
 
-  -- site ops: must equal the demo tenant's real counts
-  SELECT count(*) INTO n FROM site_phases;  r := r || jsonb_build_object('site_phases', n);
-  SELECT count(*) INTO n FROM phase_tasks;  r := r || jsonb_build_object('phase_tasks', n);
-  SELECT count(*) INTO n FROM phase_subtasks; r := r || jsonb_build_object('phase_subtasks', n);
-  SELECT count(*) INTO n FROM worker_assignments; r := r || jsonb_build_object('worker_assignments', n);
-  SELECT count(*) INTO n FROM worker_ot; r := r || jsonb_build_object('worker_ot', n);
-  SELECT count(*) INTO n FROM leave_requests; r := r || jsonb_build_object('leave_requests', n);
-  SELECT count(*) INTO n FROM line_site_photos; r := r || jsonb_build_object('line_site_photos', n);
-  SELECT count(*) INTO n FROM site_attachments; r := r || jsonb_build_object('site_attachments', n);
-  SELECT count(*) INTO n FROM worker_checkins; r := r || jsonb_build_object('worker_checkins', n);
-  SELECT count(*) INTO n FROM units; r := r || jsonb_build_object('units', n);
-  SELECT count(*) INTO n FROM clients; r := r || jsonb_build_object('clients', n);
-  SELECT count(*) INTO n FROM suppliers; r := r || jsonb_build_object('suppliers', n);
+  SELECT count(*), COALESCE(bool_or(to_jsonb(s) ?| money), false) INTO n, b FROM pm_sites() s;
+  r := r || jsonb_build_object('pm_sites', n, 'pm_sites_eq_real', n = real_sites, 'pm_sites_money_keys_MUSTfalse', b);
+  SELECT count(*), COALESCE(bool_or(to_jsonb(w) ? 'monthly_salary'), false) INTO n, b FROM pm_workers() w;
+  r := r || jsonb_build_object('pm_workers', n, 'pm_workers_eq_real', n = real_workers, 'pm_workers_salary_key_MUSTfalse', b);
+  SELECT COALESCE(bool_or(to_jsonb(w) ?| money), false) INTO b FROM pm_workers() w;
+  r := r || jsonb_build_object('pm_workers_money_keys_MUSTfalse', b);
+  SELECT count(*), COALESCE(bool_or(to_jsonb(p) ?| money), false) INTO n, b FROM pm_purchase_orders() p;
+  r := r || jsonb_build_object('pm_pos', n, 'pm_pos_eq_real', n = real_pos, 'pm_pos_money_keys_MUSTfalse', b);
+  SELECT count(*), COALESCE(bool_or(to_jsonb(i) ?| money), false) INTO n, b FROM pm_purchase_order_items(v_po) i;
+  r := r || jsonb_build_object('pm_po_items', n, 'pm_po_items_eq_real', n = real_po_items, 'pm_po_items_money_keys_MUSTfalse', b);
+  SELECT count(*), COALESCE(bool_or(to_jsonb(i) ?| money), false) INTO n, b FROM pm_inventory_on_hand() i;
+  r := r || jsonb_build_object('pm_on_hand', n, 'pm_on_hand_eq_real', n = real_bal, 'pm_on_hand_money_keys_MUSTfalse', b);
+  SELECT count(*) INTO n FROM pm_inventory_on_hand((SELECT id FROM pm_sites() WHERE is_default LIMIT 1));
+  r := r || jsonb_build_object('pm_on_hand_default_site_eq_real', n = real_bal_site);
 
-  -- money: all must be 0
+  BEGIN
+    PERFORM pm_update_site(v_site, '{"notes":"x","short_name":"PMT","travel_minutes":15}');
+    SELECT notes = 'x' AND short_name = 'PMT' AND travel_minutes = 15 INTO b FROM pm_sites() WHERE id = v_site;
+    r := r || jsonb_build_object('w_pm_update_site', 'ok', 'pm_update_site_applied_MUSTtrue', b);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_pm_update_site', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    PERFORM pm_update_site(v_site, '{"contract_value":1}');
+    r := r || jsonb_build_object('pm_update_site_contract_value_22023_MUSTtrue', false);
+  EXCEPTION WHEN SQLSTATE '22023' THEN r := r || jsonb_build_object('pm_update_site_contract_value_22023_MUSTtrue', true);
+  END;
+  BEGIN
+    PERFORM pm_update_site(v_open, '{"status":"Completed"}');
+    r := r || jsonb_build_object('pm_update_site_complete_22023_MUSTtrue', false);
+  EXCEPTION WHEN SQLSTATE '22023' THEN r := r || jsonb_build_object('pm_update_site_complete_22023_MUSTtrue', SQLERRM = 'PM cannot complete a site');
+  END;
+  SELECT status <> 'Completed' INTO b FROM pm_sites() WHERE id = v_open;
+  r := r || jsonb_build_object('pm_complete_rejected_status_kept_MUSTtrue', b);
+  IF v_done IS NOT NULL THEN
+    BEGIN
+      PERFORM pm_update_site(v_done, '{"status":"Completed","notes":"z"}');
+      r := r || jsonb_build_object('w_pm_update_site_keep_completed', 'ok');
+    EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_pm_update_site_keep_completed', SQLSTATE || ' ' || SQLERRM);
+    END;
+  ELSE
+    r := r || jsonb_build_object('w_pm_update_site_keep_completed', 'ok (no Completed site in demo tenant, skipped)');
+  END IF;
+  BEGIN
+    PERFORM pm_update_site(gen_random_uuid(), '{"notes":"x"}');
+    r := r || jsonb_build_object('pm_update_site_unknown_P0002_MUSTtrue', false);
+  EXCEPTION WHEN SQLSTATE 'P0002' THEN r := r || jsonb_build_object('pm_update_site_unknown_P0002_MUSTtrue', true);
+  END;
+
+  -- cross-tenant: the demo-tenant PM gets nothing from another tenant
+  SELECT count(*) INTO n FROM pm_purchase_order_items(v_other_po);
+  r := r || jsonb_build_object('pm_other_tenant_po_items_MUST0', n);
+  SELECT count(*) INTO n FROM pm_inventory_on_hand(v_other_site);
+  r := r || jsonb_build_object('pm_other_tenant_on_hand_MUST0', n);
+  BEGIN
+    PERFORM pm_update_site(v_other_site, '{"notes":"x"}');
+    r := r || jsonb_build_object('pm_update_site_other_tenant_P0002_MUSTtrue', false);
+  EXCEPTION WHEN SQLSTATE 'P0002' THEN r := r || jsonb_build_object('pm_update_site_other_tenant_P0002_MUSTtrue', true);
+  END;
+
+  BEGIN
+    INSERT INTO worker_teams (tenant_id, name) VALUES (v_tenant, 'PM test team') RETURNING id INTO v_team;
+    r := r || jsonb_build_object('w_pm_worker_teams_insert', 'ok');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_pm_worker_teams_insert', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    INSERT INTO worker_team_members (team_id, worker_id, tenant_id) VALUES (v_team, v_worker, v_tenant);
+    r := r || jsonb_build_object('w_pm_worker_team_members_insert', 'ok');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_pm_worker_team_members_insert', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    INSERT INTO worker_team_members (team_id, worker_id, tenant_id) VALUES (v_team, gen_random_uuid(), v_tenant);
+    r := r || jsonb_build_object('w_pm_member_foreign_worker_MUSTfail', 'ok');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_pm_member_foreign_worker_MUSTfail', SQLSTATE || ' ' || SQLERRM);
+  END;
+
+  -- money: all must still be 0 for PM
   SELECT count(*) INTO n FROM sites;     r := r || jsonb_build_object('sites_MUST0', n);
   SELECT count(*) INTO n FROM workers;   r := r || jsonb_build_object('workers_MUST0', n);
   SELECT count(*) INTO n FROM incomes;   r := r || jsonb_build_object('incomes_MUST0', n);
@@ -464,56 +716,45 @@ BEGIN
   SELECT count(*) INTO n FROM site_financial_summary; r := r || jsonb_build_object('sfs_MUST0', n);
   SELECT count(*) INTO n FROM labor_payments; r := r || jsonb_build_object('labor_payments_MUST0', n);
   SELECT count(*) INTO n FROM app_settings; r := r || jsonb_build_object('app_settings_MUST0', n);
-  r := r || jsonb_build_object('is_pm', is_pm(), 'is_site_staff', is_site_staff(),
-         'can_manage_teams', can_manage_teams(), 'is_admin_or_owner_MUSTfalse', is_admin_or_owner());
 
-  -- PM writes (each in its own subtransaction; SQLERRM recorded on failure)
+  -- ===== ADMIN: site staff, so pm_* return rows; cannot manage teams =====
+  PERFORM set_config('request.jwt.claims', json_build_object('email', v_admin, 'role', 'authenticated', 'sub', gen_random_uuid())::text, true);
+  SELECT count(*) INTO n FROM pm_sites(); r := r || jsonb_build_object('admin_pm_sites_eq_real', n = real_sites);
+  SELECT count(*) INTO n FROM pm_workers(); r := r || jsonb_build_object('admin_pm_workers_eq_real', n = real_workers);
   BEGIN
-    INSERT INTO site_phases (site_id, name, tenant_id) VALUES (v_site, 'PM test phase', v_tenant) RETURNING id INTO v_phase;
-    r := r || jsonb_build_object('w_site_phases_insert', 'ok');
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_site_phases_insert', SQLSTATE || ' ' || SQLERRM);
-  END;
-  BEGIN
-    UPDATE site_phases SET status = 'in_progress' WHERE id = v_phase;
-    GET DIAGNOSTICS n = ROW_COUNT; r := r || jsonb_build_object('w_site_phases_update_rows', n);
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_site_phases_update_rows', SQLSTATE || ' ' || SQLERRM);
-  END;
-  BEGIN
-    INSERT INTO phase_tasks (phase_id, site_id, name, tenant_id) VALUES (v_phase, v_site, 'PM test task', v_tenant) RETURNING id INTO v_task;
-    r := r || jsonb_build_object('w_phase_tasks_insert', 'ok');
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_phase_tasks_insert', SQLSTATE || ' ' || SQLERRM);
-  END;
-  BEGIN
-    UPDATE phase_tasks SET status = 'in_progress' WHERE id = v_task;
-    GET DIAGNOSTICS n = ROW_COUNT; r := r || jsonb_build_object('w_phase_tasks_status_rows', n);
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_phase_tasks_status_rows', SQLSTATE || ' ' || SQLERRM);
-  END;
-  BEGIN
-    INSERT INTO worker_assignments (worker_id, site_id, date, shift, type, tenant_id)
-      VALUES (v_worker, v_site, DATE '2099-01-01', 'morning', 'site', v_tenant);
-    r := r || jsonb_build_object('w_worker_assignments_insert', 'ok');
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_worker_assignments_insert', SQLSTATE || ' ' || SQLERRM);
-  END;
-  IF v_leave IS NOT NULL THEN
-    BEGIN
-      UPDATE leave_requests SET status = 'approved', reviewed_by = v_email, reviewed_at = now() WHERE id = v_leave;
-      GET DIAGNOSTICS n = ROW_COUNT; r := r || jsonb_build_object('w_leave_requests_status_rows', n);
-    EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_leave_requests_status_rows', SQLSTATE || ' ' || SQLERRM);
-    END;
-  END IF;
-
-  -- PM must not write money / sites / users
-  BEGIN
-    UPDATE sites SET name = name WHERE tenant_id = v_tenant;
-    GET DIAGNOSTICS n = ROW_COUNT; r := r || jsonb_build_object('w_sites_update_rows_MUST0', n);
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_sites_update_rows_MUST0', SQLSTATE || ' ' || SQLERRM);
-  END;
-  BEGIN
-    INSERT INTO user_roles (user_email, role, tenant_id) VALUES ('pm-test-2@example.invalid', 'WORKER', v_tenant);
-    r := r || jsonb_build_object('w_user_roles_insert_MUSTfail', 'ok');
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_user_roles_insert_MUSTfail', SQLSTATE || ' ' || SQLERRM);
+    INSERT INTO worker_teams (tenant_id, name) VALUES (v_tenant, 'ADMIN test team');
+    r := r || jsonb_build_object('w_admin_worker_teams_insert_MUSTfail', 'ok');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_admin_worker_teams_insert_MUSTfail', SQLSTATE || ' ' || SQLERRM);
   END;
 
+  -- ===== WORKER: every pm_* returns 0, pm_update_site raises 42501 =====
+  PERFORM set_config('request.jwt.claims', json_build_object('email', v_wk, 'role', 'authenticated', 'sub', gen_random_uuid())::text, true);
+  r := r || jsonb_build_object('worker_current_tenant_ok', current_tenant_id() = v_tenant);
+  SELECT count(*) INTO n FROM pm_sites(); r := r || jsonb_build_object('worker_pm_sites_MUST0', n);
+  SELECT count(*) INTO n FROM pm_workers(); r := r || jsonb_build_object('worker_pm_workers_MUST0', n);
+  SELECT count(*) INTO n FROM pm_purchase_orders(); r := r || jsonb_build_object('worker_pm_pos_MUST0', n);
+  SELECT count(*) INTO n FROM pm_purchase_order_items(v_po); r := r || jsonb_build_object('worker_pm_po_items_MUST0', n);
+  SELECT count(*) INTO n FROM pm_inventory_on_hand(); r := r || jsonb_build_object('worker_pm_on_hand_MUST0', n);
+  BEGIN
+    PERFORM pm_update_site(v_site, '{"notes":"y"}');
+    r := r || jsonb_build_object('worker_pm_update_site_42501_MUSTtrue', false);
+  EXCEPTION WHEN SQLSTATE '42501' THEN r := r || jsonb_build_object('worker_pm_update_site_42501_MUSTtrue', true);
+  END;
+
+  -- ===== anon: no EXECUTE =====
+  RESET ROLE;
+  SELECT has_function_privilege('anon', 'public.pm_sites()', 'EXECUTE')
+      OR has_function_privilege('anon', 'public.pm_update_site(uuid,jsonb)', 'EXECUTE')
+      OR has_function_privilege('anon', 'public.pm_workers()', 'EXECUTE')
+      OR has_function_privilege('anon', 'public.pm_purchase_orders()', 'EXECUTE')
+      OR has_function_privilege('anon', 'public.pm_purchase_order_items(uuid)', 'EXECUTE')
+      OR has_function_privilege('anon', 'public.pm_inventory_on_hand(uuid)', 'EXECUTE')
+      OR has_function_privilege('anon', 'public.worker_in_my_tenant(uuid)', 'EXECUTE') INTO b;
+  r := r || jsonb_build_object('anon_execute_any_MUSTfalse', b);
+
+  -- check: this RAISE is load-bearing. It aborts the DO block so none of the
+  -- rows written above survive, and it is how the RESULT reaches the output.
+  -- The ROLLBACK below then undoes the inlined DDL. Never remove either.
   RAISE EXCEPTION 'RESULT %', r;
 END $$;
 ROLLBACK;
