@@ -8,7 +8,7 @@
 // ============================================================
 import { useState, useMemo, useEffect, Fragment } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices, useInvoiceNumbers, useSiteCostEstimates, usePmStockOnHand } from '../hooks/useSupabase.js'
+import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices, useInvoiceNumbers, useSiteCostEstimates, usePmStockOnHand, useFirstReceipts, useStockDocuments } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -293,7 +293,7 @@ function CogsSettingsPanel({ settings, categories, onSaved }) {
   )
 }
 
-function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite, defaultSettings, siteCostEstimates, expanded, onToggle, onConfirmed }) {
+function InvoiceDeductionRow({ invoice, categories, items, balances, firstReceipts, centralSite, defaultSettings, siteCostEstimates, expanded, onToggle, onConfirmed }) {
   const [materialPct, setMaterialPct] = useState(String(defaultSettings?.material_pct ?? 70))
   // ถ้าไซท์งานของใบแจ้งหนี้นี้เคยกรอก "ต้นทุนประมาณการ" ไว้ (หน้าไซท์งาน,
   // คีย์ด้วยหมวดหมู่สินค้าคงคลังเดียวกัน) ใช้สัดส่วนของไซท์นั้นเป็นค่าเริ่มต้น
@@ -318,7 +318,7 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
   const numericSplits = Object.fromEntries(Object.entries(splits).map(([k, v]) => [k, parseFloat(v) || 0]))
   const plan = expanded ? computeInvoiceDeductionPlan({
     invoiceSubtotal: invoice.subtotal, materialPct: parseFloat(materialPct) || 0, categorySplits: numericSplits,
-    siteId: invoice.site_id, centralSiteId: centralSite?.id || null, items: items || [], balances: balances || [],
+    siteId: invoice.site_id, centralSiteId: centralSite?.id || null, items: items || [], balances: balances || [], firstReceivedAt: firstReceipts || {},
   }) : null
 
   const sum = Object.values(splits).reduce((s, v) => s + (parseFloat(v) || 0), 0)
@@ -348,18 +348,22 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
 
       if (rmAlreadyDone && fgAlreadyDone) { alert('ใบแจ้งหนี้นี้ถูกตัดสต็อกไปแล้ว — กำลังรีเฟรชรายการ'); onConfirmed(); return }
 
-      let didSomething = false
+      // The server dates every row to the invoice date (not today), so the
+      // stock card puts the deduction in the invoice's month.
+      if (!invoice.date) { alert('ใบแจ้งหนี้นี้ไม่มีวันที่ — กรุณาใส่วันที่ในใบแจ้งหนี้ก่อนตัดสต็อก'); return }
 
-      if (!rmAlreadyDone && plan && plan.steps.length) {
-        didSomething = true
-        for (const step of plan.steps) {
-          const { error } = await supabase.rpc('record_stock_movement', {
-            p_inventory_item_id: step.inventoryItemId, p_site_id: step.siteId, p_movement_type: step.type,
-            p_quantity: step.quantity, p_unit_cost: step.unitCost,
-            p_reference_type: 'invoice', p_reference_id: invoice.id, p_notes: null,
-          })
-          if (error) throw error
-        }
+      // Every movement is collected here and posted in ONE call
+      // (post_invoice_stock_deduction, one transaction: all or nothing), which
+      // also issues the DP (finished goods) / DM (raw material) document numbers.
+      // One call per movement took 30+ minutes for an invoice spread over
+      // ~2,400 central-stock items and left it half-posted if the tab closed.
+      const movements = []
+      const mv = (inventoryItemId, siteId, type, quantity, unitCost, notes) => movements.push({
+        inventory_item_id: inventoryItemId, site_id: siteId, movement_type: type, quantity, unit_cost: unitCost, notes,
+      })
+
+      if (!rmAlreadyDone && plan) {
+        for (const step of plan.steps) mv(step.inventoryItemId, step.siteId, step.type, step.quantity, step.unitCost, null)
       }
 
       // Finished-goods "produce and sell" (additive to the raw-material
@@ -390,7 +394,6 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
           }))
 
         if (billedLines.length) {
-          didSomething = true
           const quotationItemIds = billedLines.map(l => l.quotationItemId)
           const { data: existingFg, error: fgErr } = await supabase
             .from('inventory_items').select('id, quotation_item_id')
@@ -412,29 +415,23 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
               itemId = created.id
               itemIdByQuotationItemId.set(step.quotationItemId, itemId)
             }
-            const { error: inErr } = await supabase.rpc('record_stock_movement', {
-              p_inventory_item_id: itemId, p_site_id: invoice.site_id, p_movement_type: 'purchase_in',
-              p_quantity: 1, p_unit_cost: step.value,
-              p_reference_type: 'invoice', p_reference_id: invoice.id, p_notes: `PI-${invoice.invoice_number}`,
-            })
-            if (inErr) throw inErr
-            const { error: outErr } = await supabase.rpc('record_stock_movement', {
-              p_inventory_item_id: itemId, p_site_id: invoice.site_id, p_movement_type: 'sale_out',
-              p_quantity: 1, p_unit_cost: step.value,
-              p_reference_type: 'invoice', p_reference_id: invoice.id, p_notes: `PO-${invoice.invoice_number}`,
-            })
-            if (outErr) throw outErr
+            mv(itemId, invoice.site_id, 'purchase_in', 1, step.value, `PI-${invoice.invoice_number}`)
+            mv(itemId, invoice.site_id, 'sale_out', 1, step.value, `PO-${invoice.invoice_number}`)
           }
         }
       }
 
-      if (!didSomething) { alert('ไม่มีรายการให้ตัดสต็อก'); return }
+      if (!movements.length) { alert('ไม่มีรายการให้ตัดสต็อก'); return }
+
+      const { data: posted, error: postErr } = await supabase.rpc('post_invoice_stock_deduction', { p_invoice_id: invoice.id, p_movements: movements })
+      if (postErr) throw postErr
+      alert(`ตัดสต็อกแล้ว — ${[posted?.dp, posted?.dm].filter(Boolean).join(' / ')}`)
 
       if (plan && plan.totalShortfall > 0.01) {
         alert(`ตัดสต็อกสำเร็จบางส่วน — ขาดอีก ${fmt(plan.totalShortfall)} บาท (สต็อกไม่พอทั้งที่ไซท์งานและส่วนกลาง)`)
       }
       onConfirmed()
-    } catch (e) { alert('เกิดข้อผิดพลาดระหว่างตัดสต็อก: ' + e.message + ' — บางรายการอาจถูกบันทึกไปแล้ว กรุณาตรวจสอบที่แท็บ "ประวัติการเคลื่อนไหว" ก่อนลองใหม่') }
+    } catch (e) { alert('เกิดข้อผิดพลาดระหว่างตัดสต็อก: ' + e.message + ' — ยังไม่มีการตัดสต็อกจากการกดครั้งนี้ ลองใหม่ได้') }
     finally { setConfirming(false) }
   }
 
@@ -474,13 +471,26 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
               <div style={{ fontWeight: 700, marginBottom: 6 }}>ตัวอย่างการตัดสต็อก</div>
               {plan.categoryResults.map(cr => {
                 const cat = (categories || []).find(c => c.id === cr.categoryId)
+                // One sale_out per item cut (site or central) -- the FIFO pick list.
+                const cuts = plan.steps.filter(st => st.categoryId === cr.categoryId && st.type === 'sale_out')
                 return (
-                  <div key={cr.categoryId} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>{cat?.name || cr.categoryId}</span>
-                    <span className="font-mono">
-                      {fmt(cr.deductedValue)} / {fmt(cr.targetValue)} บาท
-                      {cr.shortfall > 0.01 && <span style={{ color: 'var(--red)' }}> (ขาด {fmt(cr.shortfall)})</span>}
-                    </span>
+                  <div key={cr.categoryId} style={{ marginBottom: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{cat?.name || cr.categoryId}</span>
+                      <span className="font-mono">
+                        {fmt(cr.deductedValue)} / {fmt(cr.targetValue)} บาท
+                        {cr.shortfall > 0.01 && <span style={{ color: 'var(--red)' }}> (ขาด {fmt(cr.shortfall)})</span>}
+                      </span>
+                    </div>
+                    {cuts.map((st, i) => {
+                      const it = (items || []).find(x => x.id === st.inventoryItemId)
+                      return (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text3)', paddingLeft: 14 }}>
+                          <span>{it?.code ? `${it.code} ` : ''}{it?.name || st.inventoryItemId}</span>
+                          <span className="font-mono">{fmtQty(st.quantity)} {it?.base_unit || ''} · {fmt(st.quantity * st.unitCost)} บาท</span>
+                        </div>
+                      )
+                    })}
                   </div>
                 )
               })}
@@ -489,8 +499,8 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
               </div>
             </div>
           )}
-          <button className="btn btn-sm btn-primary" style={{ justifySelf: 'start' }} disabled={confirming || !validSum} onClick={confirm}>
-            {confirming ? '⏳' : '✅ ยืนยันตัดสต็อก'}
+          <button className="btn btn-sm btn-primary" style={{ justifySelf: 'start' }} disabled={confirming || !validSum || !firstReceipts} onClick={confirm}>
+            {confirming ? '⏳' : !firstReceipts ? '⏳ กำลังโหลดลำดับ FIFO...' : '✅ ยืนยันตัดสต็อก'}
           </button>
         </div>
       )}
@@ -523,7 +533,6 @@ function fmtQty(n) { return (Math.round(n * 100) / 100).toLocaleString('th-TH') 
 // code the raw-material rows for that invoice will show once you jump
 // there via the cross-link below.
 function isProductionRef(notes) { return notes ? /^P[IO]-/.test(notes) : false }
-function invoiceNumberFromProductionRef(notes) { return notes.replace(/^P[IO]-/, '') }
 
 // Generic in/out labels for the tax-report ledger (report 1/2/3 all share
 // this table) -- MOVEMENT_TYPE_LABELS above says "รับเข้าจากใบสั่งซื้อ" for
@@ -592,6 +601,26 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
   const { tenant } = useTenant()
   const { data: movements } = useStockMovements({ dateTo })
   const { data: allItems } = useAllInventoryItems()
+  const { data: stockDocuments } = useStockDocuments()
+
+  // DP/DM document lookups. Invoice numbers are resolved from reference_id
+  // (never from the PI-/PO- notes text, which goes stale if an invoice is
+  // renumbered after its cut -- IN2608-065 -> IN2608-006 did exactly that).
+  const docNumberById = useMemo(() => new Map((stockDocuments || []).map(d => [d.id, d.doc_number])), [stockDocuments])
+  const docsByInvoice = useMemo(() => {
+    const m = new Map()
+    for (const d of stockDocuments || []) m.set(d.invoice_id, { ...m.get(d.invoice_id), [d.doc_type.toLowerCase()]: d.doc_number })
+    return m
+  }, [stockDocuments])
+  const invoiceNumberById = useMemo(() => new Map((invoiceNumbers || []).map(i => [i.id, i.invoice_number])), [invoiceNumbers])
+  const invoiceFilterFor = (invoiceId) => ({ invoiceId, invoiceNumber: invoiceNumberById.get(invoiceId) || '', ...docsByInvoice.get(invoiceId) })
+  const docLabel = (mv) => {
+    const doc = docNumberById.get(mv.stockDocumentId)
+    if (!doc) return null
+    const inv = mv.referenceType === 'invoice' ? invoiceNumberById.get(mv.referenceId) : null
+    return inv ? `${doc} · ${inv}` : doc
+  }
+  const filterLabel = (f) => [reportKind === 'finished_goods' ? f.dp : f.dm, f.invoiceNumber].filter(Boolean).join(' · ')
 
   const effectiveCategoryId = reportKind === 'finished_goods' ? null : (categoryFilter || null)
 
@@ -600,17 +629,9 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
     itemKindFilter: reportKind, categoryId: effectiveCategoryId,
   }), [movements, allItems, dateFrom, dateTo, reportKind, effectiveCategoryId])
 
-  // A movement matches the active invoice reference filter either by its
-  // literal notes (finished-goods rows: "PI-IN2608-065"/"PO-IN2608-065")
-  // OR by resolving reference_id through the invoiceNumbers lookup --
-  // raw-material movements carry reference_type/reference_id but no
-  // notes (p_notes is null on that path), so matching on notes alone
-  // would silently show zero materials for every jump-to-materials click.
-  const movementMatchesInvoice = (mv, invoiceNo) => {
-    if (mv.notes?.includes(invoiceNo)) return true
-    if (mv.referenceType !== 'invoice') return false
-    return (invoiceNumbers || []).some(inv => inv.id === mv.referenceId && inv.invoice_number === invoiceNo)
-  }
+  // referenceFilter is { invoiceId, invoiceNumber, dp, dm } -- matched on
+  // reference_id, so a later invoice renumber can't hide the movements.
+  const movementMatchesInvoice = (mv, f) => mv.referenceType === 'invoice' && mv.referenceId === f.invoiceId
 
   // When a reference filter is active: keep only rows that actually have a
   // movement referencing that invoice, and within those rows, keep only
@@ -631,9 +652,9 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, referenceFilter, itemFilter, reportKind, invoiceNumbers])
 
-  const jumpToMaterials = (notes) => {
+  const jumpToMaterials = (mv) => {
     setReportKind('raw_material')
-    setReferenceFilter(invoiceNumberFromProductionRef(notes))
+    setReferenceFilter(invoiceFilterFor(mv.referenceId))
   }
 
   // From report 2's detail view: jump to report 3 filtered to just this
@@ -668,20 +689,22 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
     const events = []
     for (const row of finishedGoodsRows) {
       for (const mv of row.movements) {
-        if (mv.type !== 'purchase_in' || !isProductionRef(mv.notes)) continue
+        if (mv.type !== 'purchase_in' || mv.referenceType !== 'invoice' || !isProductionRef(mv.notes)) continue
+        const docs = docsByInvoice.get(mv.referenceId) || {}
         events.push({
-          itemId: row.itemId, code: row.code, name: row.name, unit: row.unit,
-          invoiceNumber: invoiceNumberFromProductionRef(mv.notes), date: mv.date, value: mv.value,
+          itemId: row.itemId, code: row.code, name: row.name, unit: row.unit, invoiceId: mv.referenceId,
+          invoiceNumber: invoiceNumberById.get(mv.referenceId) || mv.notes.replace(/^P[IO]-/, ''),
+          dp: docs.dp || '', dm: docs.dm || '', date: mv.date, value: mv.value,
         })
       }
     }
     return events
-  }, [finishedGoodsRows])
+  }, [finishedGoodsRows, docsByInvoice, invoiceNumberById])
 
   const sortedFgEvents = useMemo(() => {
     const q = fgSearch.trim().toLowerCase()
     const filtered = q
-      ? productionEvents.filter(e => e.code.toLowerCase().includes(q) || e.name.toLowerCase().includes(q) || e.invoiceNumber.toLowerCase().includes(q))
+      ? productionEvents.filter(e => [e.dp, e.dm, e.code, e.name, e.invoiceNumber].some(v => v.toLowerCase().includes(q)))
       : productionEvents
     return [...filtered].sort((a, b) => {
       const va = a[fgSortCol] ?? ''
@@ -694,7 +717,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
   const sortedRmEvents = useMemo(() => {
     const q = rmSearch.trim().toLowerCase()
     const filtered = q
-      ? productionEvents.filter(e => e.code.toLowerCase().includes(q) || e.name.toLowerCase().includes(q) || e.invoiceNumber.toLowerCase().includes(q))
+      ? productionEvents.filter(e => [e.dp, e.dm, e.code, e.name, e.invoiceNumber].some(v => v.toLowerCase().includes(q)))
       : productionEvents
     return [...filtered].sort((a, b) => {
       const va = a[rmSortCol] ?? ''
@@ -781,13 +804,13 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
               <td>{new Date(mv.date).toLocaleDateString('th-TH')}</td>
               <td>{LEDGER_MOVEMENT_LABELS[mv.type] || mv.type}</td>
               <td>
-                {interactive && isProductionRef(mv.notes) ? (
+                {interactive && isProductionRef(mv.notes) && mv.referenceType === 'invoice' ? (
                   <button className="btn-ghost" style={{ padding: 0, color: 'var(--accent)', textDecoration: 'underline' }}
-                    onClick={() => jumpToMaterials(mv.notes)} title="ดูรายการวัตถุดิบที่ตัดสำหรับใบแจ้งหนี้นี้">
-                    {mv.notes} →
+                    onClick={() => jumpToMaterials(mv)} title="ดูรายการวัตถุดิบที่ตัดสำหรับใบแจ้งหนี้นี้">
+                    {docLabel(mv) || mv.notes} →
                   </button>
                 ) : (
-                  mv.notes || resolveMovementReference({ reference_type: mv.referenceType, reference_id: mv.referenceId, notes: mv.notes }, { pos, invoices: invoiceNumbers, sites })
+                  docLabel(mv) || mv.notes || resolveMovementReference({ reference_type: mv.referenceType, reference_id: mv.referenceId, notes: mv.notes }, { pos, invoices: invoiceNumbers, sites })
                 )}
               </td>
               <td className="font-mono">{mv.direction === 'in' ? fmtQty(mv.qty) : ''}</td>
@@ -872,13 +895,13 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
         )}
         {referenceFilter && !(reportKind === 'all' && itemFilter) && (
           <span className="badge" style={{ background: 'var(--accent-soft, rgba(0,0,0,0.1))', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, fontSize: 12.5 }}>
-            ← กลับไปที่รายการ · กำลังดูเฉพาะใบแจ้งหนี้: {referenceFilter}
+            ← กลับไปที่รายการ · กำลังดู: {filterLabel(referenceFilter)}
             <button className="btn-ghost" style={{ padding: 0, lineHeight: 1 }} onClick={() => setReferenceFilter(null)}>✕</button>
           </span>
         )}
         {itemFilter && (
           <span className="badge" style={{ background: 'var(--accent-soft, rgba(0,0,0,0.1))', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, fontSize: 12.5 }}>
-            ← กลับไปที่ใบแจ้งหนี้ {referenceFilter} · กำลังดูเฉพาะ: {itemFilter.code} — {itemFilter.name}
+            ← กลับไปที่ {filterLabel(referenceFilter)} · กำลังดูเฉพาะ: {itemFilter.code} — {itemFilter.name}
             <button className="btn-ghost" style={{ padding: 0, lineHeight: 1 }} onClick={clearItemFilter}>✕</button>
           </span>
         )}
@@ -897,7 +920,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
               <thead>
                 <tr>
                   <th className="sortable" onClick={() => fgToggleSort('date')}>วันที่ตัด{fgSi('date')}</th>
-                  <th className="sortable" onClick={() => fgToggleSort('code')}>รหัส{fgSi('code')}</th>
+                  <th className="sortable" onClick={() => fgToggleSort('dp')}>เลขที่เอกสาร{fgSi('dp')}</th>
                   <th className="sortable" onClick={() => fgToggleSort('name')}>รายการ{fgSi('name')}</th>
                   <th className="sortable" onClick={() => fgToggleSort('invoiceNumber')}>เลขที่ใบแจ้งหนี้{fgSi('invoiceNumber')}</th>
                   <th className="sortable" onClick={() => fgToggleSort('value')}>มูลค่า{fgSi('value')}</th>
@@ -906,9 +929,9 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
               </thead>
               <tbody>
                 {sortedFgEvents.map((e, i) => (
-                  <tr key={i} style={{ cursor: 'pointer' }} onClick={() => setReferenceFilter(e.invoiceNumber)}>
+                  <tr key={i} style={{ cursor: 'pointer' }} onClick={() => setReferenceFilter(invoiceFilterFor(e.invoiceId))}>
                     <td>{new Date(e.date).toLocaleDateString('th-TH')}</td>
-                    <td>{e.code}</td>
+                    <td>{e.dp || e.code}</td>
                     <td>{e.name}</td>
                     <td>{e.invoiceNumber}</td>
                     <td className="font-mono">{fmt(e.value)}</td>
@@ -931,7 +954,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
               <thead>
                 <tr>
                   <th className="sortable" onClick={() => rmToggleSort('date')}>วันที่ตัด{rmSi('date')}</th>
-                  <th className="sortable" onClick={() => rmToggleSort('code')}>รหัส{rmSi('code')}</th>
+                  <th className="sortable" onClick={() => rmToggleSort('dm')}>เลขที่เอกสาร{rmSi('dm')}</th>
                   <th className="sortable" onClick={() => rmToggleSort('name')}>รายการ{rmSi('name')}</th>
                   <th className="sortable" onClick={() => rmToggleSort('invoiceNumber')}>เลขที่ใบแจ้งหนี้{rmSi('invoiceNumber')}</th>
                   <th className="sortable" onClick={() => rmToggleSort('value')}>มูลค่า{rmSi('value')}</th>
@@ -940,9 +963,9 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
               </thead>
               <tbody>
                 {sortedRmEvents.map((e, i) => (
-                  <tr key={i} style={{ cursor: 'pointer' }} onClick={() => setReferenceFilter(e.invoiceNumber)}>
+                  <tr key={i} style={{ cursor: 'pointer' }} onClick={() => setReferenceFilter(invoiceFilterFor(e.invoiceId))}>
                     <td>{new Date(e.date).toLocaleDateString('th-TH')}</td>
-                    <td>{e.code}</td>
+                    <td>{e.dm || '—'}</td>
                     <td>{e.name}</td>
                     <td>{e.invoiceNumber}</td>
                     <td className="font-mono">{fmt(e.value)}</td>
@@ -1022,7 +1045,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
                 </p>
                 <p className="report-period">รอบระยะเวลา {new Date(dateFrom).toLocaleDateString('th-TH')} — {new Date(dateTo).toLocaleDateString('th-TH')}</p>
                 {reportKind === 'raw_material' && referenceFilter && (
-                  <p className="report-source">สำหรับใบแจ้งหนี้: {referenceFilter}</p>
+                  <p className="report-source">เลขที่เอกสาร: {filterLabel(referenceFilter)}</p>
                 )}
                 {reportKind === 'all' && itemFilter && (
                   <p className="report-source">กำลังดูเฉพาะ: {itemFilter.code} — {itemFilter.name}</p>
@@ -1153,6 +1176,7 @@ function InventoryFull() {
   const deductionCategories = useMemo(() => (categories || []).filter(c => c.use_for_cost_deduction), [categories])
   const { data: factors, refetch: refetchFactors } = useInventoryItemUnitFactors()
   const { data: balances, refetch: refetchBalances } = useStockBalances()
+  const { data: firstReceipts, refetch: refetchFirstReceipts } = useFirstReceipts()
   const [movementItemFilter, setMovementItemFilter] = useState('')
   const [movementTypeFilter, setMovementTypeFilter] = useState('')
   const [movementSiteFilter, setMovementSiteFilter] = useState('')
@@ -1456,10 +1480,10 @@ function InventoryFull() {
           {(unprocessedInvoices || []).map(inv => (
             <InvoiceDeductionRow
               key={`${inv.id}-${JSON.stringify(cogsSettings)}`} invoice={inv} categories={deductionCategories} items={items} balances={balances}
-              centralSite={centralSite} defaultSettings={cogsSettings} siteCostEstimates={siteCostEstimates}
+              centralSite={centralSite} defaultSettings={cogsSettings} siteCostEstimates={siteCostEstimates} firstReceipts={firstReceipts}
               expanded={expandedInvoiceId === inv.id}
               onToggle={() => setExpandedInvoiceId(id => id === inv.id ? null : inv.id)}
-              onConfirmed={() => { setExpandedInvoiceId(null); refetchUnprocessedInvoices(); refetchBalances(); refetchItems() }}
+              onConfirmed={() => { setExpandedInvoiceId(null); refetchUnprocessedInvoices(); refetchBalances(); refetchFirstReceipts(); refetchItems() }}
             />
           ))}
           {!(unprocessedInvoices || []).length && (

@@ -1698,6 +1698,25 @@ export function useStockBalances() {
     .order('inventory_item_id')))
 }
 
+/** DP (finished goods) / DM (raw material) documents issued by invoice stock deduction. */
+export function useStockDocuments() {
+  return useQuery(async () => fetchAllRows(() => supabase
+    .from('stock_documents')
+    .select('id, doc_type, doc_number, doc_date, invoice_id')
+    .order('doc_number')))
+}
+
+/** { 'itemId|siteId': first receipt timestamp } -- FIFO order for invoice stock deduction. */
+export function useFirstReceipts() {
+  return useQuery(async () => {
+    const rows = await fetchAllRows(() => supabase
+      .from('inventory_first_receipts')
+      .select('inventory_item_id, site_id, first_received_at')
+      .order('inventory_item_id').order('site_id'))
+    return Object.fromEntries((rows || []).map(r => [`${r.inventory_item_id}|${r.site_id}`, r.first_received_at]))
+  })
+}
+
 /** Append-only stock ledger, newest first -- the stock card. */
 export function useStockMovements(filters = {}) {
   return useQuery(async () => {
