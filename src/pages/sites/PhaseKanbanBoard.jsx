@@ -19,13 +19,18 @@
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../../components/Modal.jsx'
-import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks, useSites, attachPmWorkerNames } from '../../hooks/useSupabase.js'
+import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks, useSites, useBoqItems, attachPmWorkerNames } from '../../hooks/useSupabase.js'
 import { STATUS_COLOR } from './ganttTimeline.js'
 import { groupSubtasksByParent, isLeaf } from './subtaskCalc.js'
-import { nodeProgress, unallocatedPoints } from './progressCalc.js'
+import { nodeProgress, unallocatedPoints, fmtNum } from './progressCalc.js'
 import teamLeaderBadge from '../../assets/team-leader-badge.png'
 import { uploadSitePhotos, bangkokTodayIso } from '../../lib/photoUpload.js'
 import { useTenant } from '../../hooks/useTenant.js'
+import { useUserRole } from '../../hooks/useUserRole.js'
+import { canManagePlan } from '../../lib/roles.js'
+import { auditLog } from '../../lib/audit.js'
+import RecordProgressDialog from './RecordProgressDialog.jsx'
+import SplitTaskDialog from './SplitTaskDialog.jsx'
 
 const ALL_PHASES = '__all__'
 
@@ -37,9 +42,56 @@ const COLUMNS = [
 
 const PHOTO_DRAG_MIME = 'application/x-line-site-photo-id'
 
-const emptyDraft = (phaseId, status, sortOrder) => ({
+const emptyDraft = (phaseId, status, sortOrder, weightPts = '') => ({
   phase_id: phaseId, name: '', zone: '', status, due_date: '', sort_order: sortOrder, assigneeIds: [], leadWorkerId: null,
+  weight_pts: weightPts, progress_mode: 'status', boq_item_id: '', planned_qty: '',
 })
+
+// The weight/quantity fields a card form saves (and audits when they change).
+const WEIGHT_FIELDS = ['weight_pts', 'progress_mode', 'planned_qty', 'boq_item_id']
+const normWeightField = (k, v) => (v == null || v === '' ? null : k === 'weight_pts' || k === 'planned_qty' ? Number(v) : v)
+
+/**
+ * The phase_tasks row a card form saves. Returns { payload, weightFields } or
+ * { error } (a message for the user). orig = the card before editing (null
+ * for a new card). weightFields is null when the weight/quantity columns are
+ * not there yet (progressReady false) or the card is an issue card.
+ * Status: a new quantity card starts not_started (then follows its recorded
+ * quantity); an existing card sends status only when it really changed, only
+ * on a status leaf, and never in the same update as a change of วิธีนับ (the
+ * DB rejects that).
+ */
+export function buildTaskSave({ draft, orig, progressReady, childrenByParent = {}, boqRemaining = () => null }) {
+  const payload = {
+    name: draft.name.trim(), zone: draft.zone.trim() || null,
+    due_date: draft.due_date || null, sort_order: draft.sort_order,
+  }
+  let weightFields = null
+  if (progressReady && !(orig && orig.issue_report_id != null)) {
+    const pts = draft.weight_pts === '' ? 0 : Number(draft.weight_pts)
+    if (!Number.isFinite(pts) || pts < 0) return { error: 'แต้มต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป' }
+    const isQty = draft.progress_mode === 'quantity'
+    let planned = null
+    if (isQty) {
+      planned = Number(draft.planned_qty)
+      if (!(planned > 0)) return { error: 'กรุณาใส่จำนวนในการ์ดนี้ (มากกว่า 0)' }
+      const left = draft.boq_item_id ? boqRemaining(draft.boq_item_id, orig?.id) : null
+      if (left != null && planned > left) return { error: `จำนวนในการ์ดนี้เกินที่เหลือใน BOQ (${fmtNum(left)})` }
+    }
+    weightFields = {
+      weight_pts: pts, progress_mode: draft.progress_mode,
+      boq_item_id: isQty ? (draft.boq_item_id || null) : null, planned_qty: planned,
+    }
+    Object.assign(payload, weightFields)
+  }
+  if (!orig) {
+    payload.status = weightFields?.progress_mode === 'quantity' ? 'not_started' : draft.status
+  } else {
+    const modeChanged = !!weightFields && weightFields.progress_mode !== (orig.progress_mode || 'status')
+    if (draft.status !== orig.status && !modeChanged && isStatusLeafTask(orig, childrenByParent)) payload.status = draft.status
+  }
+  return { payload, weightFields }
+}
 
 export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initialLeafId }) {
   const { data: allPhases } = useSitePhases({ includeIssues: true })
@@ -48,6 +100,8 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const { data: allSubtasks } = useSubtasks()
   const { data: allSites } = useSites()
   const { tenant } = useTenant()
+  const { role } = useUserRole()
+  const { data: boqItems } = useBoqItems(site.id)
 
   // เชนของ id ที่เลือกไว้ต่อชั้น: selectedChain[0] = phase (หรือ ALL_PHASES),
   // selectedChain[1] = subtask ชั้น 1 ที่เลือกใต้ phase นั้น, [2] = ชั้น 2, ...
@@ -59,6 +113,8 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const [saving, setSaving] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [dragOverKey, setDragOverKey] = useState(null) // `${phaseId}:${status}` -- บอร์ดหลายอันโชว์พร้อมกันได้ในโหมด "ทั้งหมด"
+  const [recordingTaskId, setRecordingTaskId] = useState(null) // RecordProgressDialog (quantity card)
+  const [splittingTaskId, setSplittingTaskId] = useState(null) // SplitTaskDialog
 
   // งานเสร็จ ที่ส่งรูปแนบมาผ่านไลน์ (line_site_photos.task_id) -- ต่างจาก
   // รูปภาพหน้างานทั่วไปตรงที่ผูกกับ task โดยตรง เลยเอามาโชว์เป็น badge
@@ -347,6 +403,26 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     return m
   }, [allTasks])
 
+  // Split children by parent card id, every card by id, BOQ lines by id.
+  const childrenByParent = useMemo(() => {
+    const m = {}
+    ;(allTasks || []).forEach((t) => { if (t.parent_task_id) (m[t.parent_task_id] ||= []).push(t) })
+    return m
+  }, [allTasks])
+  const taskById = useMemo(() => Object.fromEntries((allTasks || []).map((t) => [t.id, t])), [allTasks])
+  const boqById = useMemo(() => Object.fromEntries(boqItems.map((b) => [b.id, b])), [boqItems])
+  // Before migration 07 is applied the cards have no weight/quantity columns:
+  // the form then neither shows nor sends them, so the live Kanban keeps working.
+  const progressReady = (allTasks || []).some((t) => 'progress_mode' in t)
+  // BOQ qty left for a card = BOQ planned_qty − Σ planned_qty of the line's other cards.
+  const boqRemaining = (boqId, exceptTaskId) => {
+    const b = boqById[boqId]
+    if (!b) return null
+    const used = (allTasks || []).filter((t) => t.boq_item_id === boqId && t.id !== exceptTaskId)
+      .reduce((s, t) => s + (Number(t.planned_qty) || 0), 0)
+    return Math.round((Number(b.planned_qty) - used) * 10000) / 10000
+  }
+
   const subtasksByParent = useMemo(() => groupSubtasksByParent((allSubtasks || []).filter((s) => s.site_id === site.id)), [allSubtasks, site.id])
 
   // subtask id -> ตัวโหนดเอง (ใช้หา .phase_id ของ subtask ตอนสร้าง phase_tasks ใหม่)
@@ -409,26 +485,30 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
       due_date: task.due_date || '', sort_order: task.sort_order,
       assigneeIds: workerRows.map((r) => r.worker_id),
       leadWorkerId: workerRows.find((r) => r.is_lead)?.worker_id || null,
+      weight_pts: task.weight_pts ?? '', progress_mode: task.progress_mode || 'status',
+      boq_item_id: task.boq_item_id || '', planned_qty: task.planned_qty ?? '',
     })
   }
   const startAdd = (nodeId, status) => {
     const tasks = microtasksByNodeId[nodeId] || []
     const sortOrder = tasks.length ? Math.max(...tasks.map((t) => t.sort_order || 0)) + 1 : 1
     setEditingId(`__new__:${nodeId}:${status}`)
-    setDraft(emptyDraft(nodeId, status, sortOrder))
+    // a new card takes the node's unallocated points by default
+    setDraft(emptyDraft(nodeId, status, sortOrder, progressReady ? unallocatedPoints(tasks) : ''))
   }
   const cancelEdit = () => { setEditingId(null); setDraft(null) }
 
   const saveDraft = async () => {
     if (!draft.name.trim()) { alert('กรุณาตั้งชื่องาน'); return }
+    const isNew = String(editingId).startsWith('__new__')
+    const orig = isNew ? null : taskById[editingId]
+    const built = buildTaskSave({ draft, orig, progressReady, childrenByParent, boqRemaining })
+    if (built.error) { alert(built.error); return }
+    const { payload, weightFields } = built
     setSaving(true)
     try {
-      const payload = {
-        name: draft.name.trim(), zone: draft.zone.trim() || null, status: draft.status,
-        due_date: draft.due_date || null, sort_order: draft.sort_order,
-      }
       let taskId = editingId
-      if (String(editingId).startsWith('__new__')) {
+      if (isNew) {
         // draft.phase_id คือโหนดเป้าหมายจริง (phase หรือ leaf subtask) --
         // phase_tasks ต้องได้ phase_id เป็น phase บรรพบุรุษสูงสุดเสมอ และ
         // subtask_id เฉพาะตอนเป้าหมายเป็น subtask จริงๆ (คอนเวนชันเดียวกับ
@@ -446,6 +526,11 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
       } else {
         const { error } = await supabase.from('phase_tasks').update(payload).eq('id', editingId)
         if (error) throw error
+        if (weightFields) {
+          const before = Object.fromEntries(WEIGHT_FIELDS.map((k) => [k, normWeightField(k, orig[k])]))
+          const after = Object.fromEntries(WEIGHT_FIELDS.map((k) => [k, normWeightField(k, weightFields[k])]))
+          if (WEIGHT_FIELDS.some((k) => before[k] !== after[k])) await auditLog('phase_tasks', editingId, 'update', before, after)
+        }
       }
       if (draft.assigneeIds.length) {
         // upsert(ignoreDuplicates) adds anyone newly checked (with the
@@ -540,8 +625,17 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     unallocated: unallocatedPoints(microtasksByNodeId[nodeId] || []),
   })
 
+  const recordingTask = recordingTaskId ? taskById[recordingTaskId] : null
+  const splittingTask = splittingTaskId ? taskById[splittingTaskId] : null
+
+  const formProps = {
+    progressReady, boqItems, boqRemaining,
+    onSplit: (task) => { cancelEdit(); setSplittingTaskId(task.id) },
+  }
   const boardProps = {
-    canEdit, workers: workers || [], workerById, editingId, draft, setDraft,
+    canEdit, role, childrenByParent, taskById, boqById, formProps,
+    onRecord: (task) => setRecordingTaskId(task.id),
+    workers: workers || [], workerById, editingId, draft, setDraft,
     onToggleAssignee: toggleAssignee, onSetLead: setLead, onStartEdit: startEdit, onStartAdd: startAdd,
     onCancelEdit: cancelEdit, onSaveDraft: saveDraft, onDeleteRequest: setConfirmDeleteId,
     onQuickMove: quickMove, saving, dragOverKey, setDragOverKey,
@@ -716,6 +810,17 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
         </>
       )}
 
+      {recordingTask && (
+        <RecordProgressDialog task={recordingTask}
+          unit={recordingTask.boq_item_id ? boqById[recordingTask.boq_item_id]?.unit : null}
+          canManage={canEdit && canManagePlan(role)}
+          onClose={() => setRecordingTaskId(null)} onSaved={afterWrite} />
+      )}
+
+      {splittingTask && (
+        <SplitTaskDialog task={splittingTask} onClose={() => setSplittingTaskId(null)} onSaved={afterWrite} />
+      )}
+
       {confirmDeleteId && (
         <ConfirmDialog
           title="ลบงานย่อย"
@@ -818,10 +923,115 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   )
 }
 
+const STATUS_LABEL = Object.fromEntries(COLUMNS.map((c) => [c.status, c.label]))
+const hasWeight = (t) => t.weight_pts !== undefined && t.weight_pts !== null
+
+/** A card whose status is set by hand (drag / edit form): a status card with
+ *  no split children. Quantity cards follow their recorded quantity and parent
+ *  cards follow their children, so the DB rejects a direct status change. */
+export function isStatusLeafTask(task, childrenByParent) {
+  return task.progress_mode !== 'quantity' && !(childrenByParent[task.id] || []).length
+}
+
+/** One Kanban card: points pill, quantity meter + "+ บันทึกยอด" (OWNER/PM),
+ *  a parent card's children, assignees and the photo badge. */
+export function TaskCard({
+  task, canEdit, role, childTasks = [], parentName, unit, photoCount = 0,
+  leadWorker = null, otherAssignees = [], onEdit, onViewPhotos, onAssignPhoto, onRecord,
+}) {
+  const isQuantity = task.progress_mode === 'quantity'
+  const isStatusLeaf = isStatusLeafTask(task, { [task.id]: childTasks })
+  const showPoints = hasWeight(task) && task.issue_report_id == null
+  const planned = Number(task.planned_qty) || 0
+  const done = Number(task.done_qty) || 0
+  const qtyPct = planned > 0 ? Math.round(Math.min(done / planned, 1) * 1000) / 10 : 0
+  return (
+    <div
+      draggable={canEdit && isStatusLeaf}
+      onDragStart={canEdit && isStatusLeaf ? (e) => e.dataTransfer.setData('text/plain', task.id) : undefined}
+      onDragOver={canEdit ? (e) => { if (e.dataTransfer.types.includes(PHOTO_DRAG_MIME)) e.preventDefault() } : undefined}
+      onDrop={canEdit ? (e) => {
+        const photoId = e.dataTransfer.getData(PHOTO_DRAG_MIME)
+        if (!photoId) return // not a photo drag -- let it bubble to the column's own onDrop (card-to-column move)
+        e.preventDefault()
+        e.stopPropagation()
+        onAssignPhoto?.(photoId, task.id)
+      } : undefined}
+      onClick={canEdit ? () => onEdit?.(task) : undefined}
+      style={{
+        background: 'var(--bg2)', border: '1px solid var(--border)', borderLeft: `3px solid ${STATUS_COLOR[task.status] || STATUS_COLOR.not_started}`,
+        borderRadius: 9, padding: '11px 13px', marginBottom: 10, boxShadow: 'var(--shadow)', cursor: canEdit ? 'pointer' : 'default',
+      }}>
+      {parentName && <div style={{ fontSize: 10.5, color: 'var(--text3)', marginBottom: 3 }}>↳ งานย่อยของ {parentName}</div>}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6, marginBottom: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>{task.name}</div>
+        {showPoints && (
+          <span style={{ flex: 'none', fontSize: 10, fontWeight: 700, color: 'var(--text2)', background: 'var(--bg3)', borderRadius: 20, padding: '2px 8px' }}>
+            {fmtNum(task.weight_pts)} แต้ม
+          </span>
+        )}
+      </div>
+      {isQuantity && (
+        <div style={{ marginBottom: 8 }}>
+          <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={qtyPct}
+            style={{ height: 6, borderRadius: 3, background: 'var(--bg3)', overflow: 'hidden', marginBottom: 4 }}>
+            <div style={{ width: `${qtyPct}%`, height: '100%', background: STATUS_COLOR[task.status] || 'var(--accent)' }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, color: 'var(--text2)' }}>{`${fmtNum(done)}/${fmtNum(planned)}${unit ? ` ${unit}` : ''} · ${qtyPct}%`}</span>
+            {canEdit && canManagePlan(role) && (
+              <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11, padding: '2px 8px' }}
+                onClick={(e) => { e.stopPropagation(); onRecord?.(task) }}>+ บันทึกยอด</button>
+            )}
+          </div>
+        </div>
+      )}
+      {childTasks.length > 0 && (
+        <div style={{ display: 'grid', gap: 2, marginBottom: 8, padding: '6px 8px', background: 'var(--bg3)', borderRadius: 6 }}>
+          {childTasks.map((c) => (
+            <div key={c.id} style={{ fontSize: 11, display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', flex: 'none', background: STATUS_COLOR[c.status] || STATUS_COLOR.not_started }} />
+              <span style={{ flex: 1, minWidth: 0 }}>{c.name} · {fmtNum(c.weight_pts)} แต้ม · {STATUS_LABEL[c.status] || c.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {task.zone && (
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--blue)', background: 'rgba(78,205,196,.14)', borderRadius: 20, padding: '2px 9px' }}>{task.zone}</span>
+          )}
+          {photoCount > 0 && (
+            <span title="ดูรูปหลักฐานงานเสร็จ" onClick={(e) => onViewPhotos?.(task, e)}
+              style={{ fontSize: 10, fontWeight: 700, color: 'var(--green)', background: 'rgba(var(--green-rgb), .14)', borderRadius: 20, padding: '2px 9px', cursor: 'pointer' }}>
+              📷 {photoCount}
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          {leadWorker && (
+            <span title={`👑 หัวหน้าทีม: ${leadWorker.nickname || leadWorker.name}`}
+              style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--yellow)', color: '#3a2f0e', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--yellow)', boxShadow: '0 0 0 1px var(--bg2)' }}>
+              {(leadWorker.nickname || leadWorker.name || '?').slice(0, 2)}
+            </span>
+          )}
+          {otherAssignees.map((w) => (
+            <span key={w.id} title={w.nickname || w.name} style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--accent)', color: '#fff', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {(w.nickname || w.name || '?').slice(0, 2)}
+            </span>
+          ))}
+          {!leadWorker && !otherAssignees.length && <span style={{ fontSize: 10.5, color: 'var(--text3)' }}>ยังไม่มอบหมาย</span>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function PhaseBoard({
   phaseId, tasks, canEdit, workers, workerById, editingId, draft, setDraft, onToggleAssignee, onSetLead,
   onStartEdit, onStartAdd, onCancelEdit, onSaveDraft, onDeleteRequest, onQuickMove, saving,
   dragOverKey, setDragOverKey, disableAdd, taskPhotoCounts, onViewPhotos, onAssignPhoto, progress,
+  role, childrenByParent, taskById, boqById, onRecord, formProps,
 }) {
   return (
     <>
@@ -848,7 +1058,8 @@ function PhaseBoard({
               e.preventDefault()
               setDragOverKey(null)
               const taskId = e.dataTransfer.getData('text/plain')
-              if (taskId) onQuickMove(taskId, col.status)
+              // quantity and parent cards move only through their own rules (not draggable, and ignored here)
+              if (taskId && taskById[taskId] && isStatusLeafTask(taskById[taskId], childrenByParent)) onQuickMove(taskId, col.status)
             } : undefined}
             style={{
               background: dragOverKey === key ? 'var(--bg3)' : 'transparent',
@@ -860,72 +1071,32 @@ function PhaseBoard({
             </div>
 
             {colTasks.map((task) => {
-              const workerRows = task.phase_task_workers || []
-              const leadRow = workerRows.find((r) => r.is_lead)
-              const leadWorker = leadRow ? workerById[leadRow.worker_id] : null
-              const otherAssignees = workerRows
-                .filter((r) => !r.is_lead)
-                .map((r) => workerById[r.worker_id])
-                .filter(Boolean)
               if (editingId === task.id) {
                 return (
                   <TaskEditPanel key={task.id} draft={draft} setDraft={setDraft} workers={workers}
                     onToggleAssignee={onToggleAssignee} onSetLead={onSetLead} onCancel={onCancelEdit} onSave={onSaveDraft}
-                    onDelete={() => onDeleteRequest(task.id)} saving={saving} />
+                    onDelete={() => onDeleteRequest(task.id)} saving={saving}
+                    task={task} isParent={(childrenByParent[task.id] || []).length > 0} {...formProps} />
                 )
               }
+              const workerRows = task.phase_task_workers || []
+              const leadRow = workerRows.find((r) => r.is_lead)
               return (
-                <div key={task.id}
-                  draggable={canEdit}
-                  onDragStart={canEdit ? (e) => e.dataTransfer.setData('text/plain', task.id) : undefined}
-                  onDragOver={canEdit ? (e) => { if (e.dataTransfer.types.includes(PHOTO_DRAG_MIME)) e.preventDefault() } : undefined}
-                  onDrop={canEdit ? (e) => {
-                    const photoId = e.dataTransfer.getData(PHOTO_DRAG_MIME)
-                    if (!photoId) return // not a photo drag -- let it bubble to the column's own onDrop (card-to-column move)
-                    e.preventDefault()
-                    e.stopPropagation()
-                    onAssignPhoto(photoId, task.id)
-                  } : undefined}
-                  onClick={canEdit ? () => onStartEdit(task) : undefined}
-                  style={{
-                    background: 'var(--bg2)', border: '1px solid var(--border)', borderLeft: `3px solid ${STATUS_COLOR[task.status] || STATUS_COLOR.not_started}`,
-                    borderRadius: 9, padding: '11px 13px', marginBottom: 10, boxShadow: 'var(--shadow)', cursor: canEdit ? 'pointer' : 'default',
-                  }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{task.name}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      {task.zone && (
-                        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--blue)', background: 'rgba(78,205,196,.14)', borderRadius: 20, padding: '2px 9px' }}>{task.zone}</span>
-                      )}
-                      {taskPhotoCounts[task.id] > 0 && (
-                        <span title="ดูรูปหลักฐานงานเสร็จ" onClick={(e) => onViewPhotos(task, e)}
-                          style={{ fontSize: 10, fontWeight: 700, color: 'var(--green)', background: 'rgba(var(--green-rgb), .14)', borderRadius: 20, padding: '2px 9px', cursor: 'pointer' }}>
-                          📷 {taskPhotoCounts[task.id]}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                      {leadWorker && (
-                        <span title={`👑 หัวหน้าทีม: ${leadWorker.nickname || leadWorker.name}`}
-                          style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--yellow)', color: '#3a2f0e', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--yellow)', boxShadow: '0 0 0 1px var(--bg2)' }}>
-                          {(leadWorker.nickname || leadWorker.name || '?').slice(0, 2)}
-                        </span>
-                      )}
-                      {otherAssignees.map((w) => (
-                        <span key={w.id} title={w.nickname || w.name} style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--accent)', color: '#fff', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {(w.nickname || w.name || '?').slice(0, 2)}
-                        </span>
-                      ))}
-                      {!leadWorker && !otherAssignees.length && <span style={{ fontSize: 10.5, color: 'var(--text3)' }}>ยังไม่มอบหมาย</span>}
-                    </div>
-                  </div>
-                </div>
+                <TaskCard key={task.id} task={task} canEdit={canEdit} role={role}
+                  childTasks={childrenByParent[task.id] || []}
+                  parentName={task.parent_task_id ? taskById[task.parent_task_id]?.name : null}
+                  unit={task.boq_item_id ? boqById[task.boq_item_id]?.unit : null}
+                  photoCount={taskPhotoCounts[task.id] || 0}
+                  leadWorker={leadRow ? workerById[leadRow.worker_id] : null}
+                  otherAssignees={workerRows.filter((r) => !r.is_lead).map((r) => workerById[r.worker_id]).filter(Boolean)}
+                  onEdit={onStartEdit} onViewPhotos={onViewPhotos} onAssignPhoto={onAssignPhoto} onRecord={onRecord} />
               )
             })}
 
             {isNewHere && (
               <TaskEditPanel draft={draft} setDraft={setDraft} workers={workers}
-                onToggleAssignee={onToggleAssignee} onSetLead={onSetLead} onCancel={onCancelEdit} onSave={onSaveDraft} saving={saving} isNew />
+                onToggleAssignee={onToggleAssignee} onSetLead={onSetLead} onCancel={onCancelEdit} onSave={onSaveDraft} saving={saving} isNew
+                {...formProps} />
             )}
 
             {canEdit && !editingId && (
@@ -942,12 +1113,29 @@ function PhaseBoard({
   )
 }
 
-function TaskEditPanel({ draft, setDraft, workers, onToggleAssignee, onSetLead, onCancel, onSave, onDelete, saving, isNew }) {
+function TaskEditPanel({
+  draft, setDraft, workers, onToggleAssignee, onSetLead, onCancel, onSave, onDelete, saving, isNew,
+  task, isParent = false, progressReady, boqItems = [], boqRemaining, onSplit,
+}) {
+  const isQuantity = draft.progress_mode === 'quantity'
+  const isIssueCard = task?.issue_report_id != null
+  const showWeightFields = progressReady && !isIssueCard
+  // the DB rejects a mode change on a parent card or a card with recorded quantity
+  const modeLocked = isParent || Number(task?.done_qty) > 0
+  const canSplit = progressReady && !isNew && !!task && !isParent && !task.parent_task_id && !isIssueCard
+    && (task.progress_mode || 'status') === 'status' && !isQuantity
+  const boqLeft = isQuantity && draft.boq_item_id ? boqRemaining?.(draft.boq_item_id, task?.id) : null
+  const boqUnit = boqItems.find((b) => b.id === draft.boq_item_id)?.unit
   return (
     <div style={{ background: 'var(--bg2)', border: '1px solid var(--accent)', borderRadius: 9, padding: 12, marginBottom: 10 }}>
       <input className="input input-sm" style={{ width: '100%', marginBottom: 8, fontWeight: 600 }}
         value={draft.name} placeholder="ชื่องาน" autoFocus
         onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
+      {isQuantity || isParent ? (
+        <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8 }}>
+          {isParent ? 'สถานะคิดจากงานย่อย' : 'สถานะคิดจากยอดที่บันทึก (+ บันทึกยอด บนการ์ด)'}
+        </div>
+      ) : (
       <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
         {COLUMNS.map((c) => (
           <button key={c.status} type="button"
@@ -958,6 +1146,46 @@ function TaskEditPanel({ draft, setDraft, workers, onToggleAssignee, onSetLead, 
           </button>
         ))}
       </div>
+      )}
+      {showWeightFields && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+          <label style={{ fontSize: 11, color: 'var(--text3)' }}>
+            วิธีนับ
+            <select className="select" style={{ width: '100%', marginTop: 2 }} value={draft.progress_mode} disabled={modeLocked}
+              title={modeLocked ? (isParent ? 'งานหลักเปลี่ยนวิธีนับไม่ได้' : 'การ์ดนี้มีรายการบันทึกยอดแล้ว เปลี่ยนวิธีนับไม่ได้') : undefined}
+              onChange={(e) => setDraft((d) => ({ ...d, progress_mode: e.target.value }))}>
+              <option value="status">ตามสถานะ</option>
+              <option value="quantity">ตามจำนวน</option>
+            </select>
+          </label>
+          <label style={{ fontSize: 11, color: 'var(--text3)' }}>
+            แต้ม
+            <input type="number" min="0" step="0.01" className="input input-sm" style={{ width: '100%', marginTop: 2 }}
+              value={draft.weight_pts} onChange={(e) => setDraft((d) => ({ ...d, weight_pts: e.target.value }))} />
+          </label>
+          {isQuantity && (
+            <>
+              <label style={{ fontSize: 11, color: 'var(--text3)', gridColumn: '1 / -1' }}>
+                รายการ BOQ
+                <select className="select" style={{ width: '100%', marginTop: 2 }} value={draft.boq_item_id}
+                  onChange={(e) => setDraft((d) => ({ ...d, boq_item_id: e.target.value }))}>
+                  <option value="">— ไม่ผูกรายการ BOQ —</option>
+                  {boqItems.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {`${b.code} ${b.description} — เหลือ ${fmtNum(boqRemaining?.(b.id, task?.id))}${b.unit ? ` ${b.unit}` : ''}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ fontSize: 11, color: 'var(--text3)', gridColumn: '1 / -1' }}>
+                จำนวนในการ์ดนี้{boqUnit ? ` (${boqUnit})` : ''}{boqLeft != null ? ` · ใส่ได้ไม่เกิน ${fmtNum(boqLeft)}` : ''}
+                <input type="number" min="0" step="any" className="input input-sm" style={{ width: '100%', marginTop: 2 }}
+                  value={draft.planned_qty} onChange={(e) => setDraft((d) => ({ ...d, planned_qty: e.target.value }))} />
+              </label>
+            </>
+          )}
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
         <label style={{ fontSize: 11, color: 'var(--text3)' }}>
           ชั้น/โซน
@@ -998,7 +1226,10 @@ function TaskEditPanel({ draft, setDraft, workers, onToggleAssignee, onSetLead, 
       </div>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         {!isNew && (
-          <button type="button" className="btn btn-sm btn-danger" style={{ marginRight: 'auto' }} disabled={saving} onClick={onDelete}>🗑 ลบ</button>
+          <button type="button" className="btn btn-sm btn-danger" style={{ marginRight: canSplit ? 0 : 'auto' }} disabled={saving} onClick={onDelete}>🗑 ลบ</button>
+        )}
+        {canSplit && (
+          <button type="button" className="btn btn-sm btn-ghost" style={{ marginRight: 'auto' }} disabled={saving} onClick={() => onSplit?.(task)}>✂️ แตกงาน</button>
         )}
         <button type="button" className="btn btn-sm btn-ghost" disabled={saving} onClick={onCancel}>ยกเลิก</button>
         <button type="button" className="btn btn-sm btn-primary" disabled={saving} onClick={onSave}>{saving ? '⏳ กำลังบันทึก...' : '✅ บันทึก'}</button>

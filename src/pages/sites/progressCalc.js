@@ -33,6 +33,8 @@ const isIssueCard = (t) => t.issue_report_id != null
 const hasWeight = (t) => t.weight_pts !== undefined && t.weight_pts !== null
 
 export const round2 = (n) => Math.round(n * 100) / 100
+/** Points / quantities for display: 2 dp, no trailing zeros ("12.5", "120"). */
+export const fmtNum = (n) => String(round2(Number(n) || 0))
 
 /** Points per card; cards without weight_pts split what is left of `pool` equally. */
 function effectiveWeights(cards, pool) {

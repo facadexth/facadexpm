@@ -926,6 +926,38 @@ export function useSitePlans(siteId) {
   return { plans: data?.plans ?? [], items: data?.items ?? {}, loading, error, reload: refetch }
 }
 
+/** BOQ lines of one site (boq_items, sort_order). Fails soft: before the migration
+ *  is applied (or on any error) `data` is [] so the Kanban keeps working. */
+export function useBoqItems(siteId) {
+  const { data, loading, error, refetch } = useQuery(async () => {
+    if (!siteId) return []
+    const { data: rows, error: err } = await supabase
+      .from('boq_items')
+      .select('id, code, description, unit, planned_qty, sort_order')
+      .eq('site_id', siteId)
+      .order('sort_order', { ascending: true })
+    if (err) throw err
+    return rows || []
+  }, [siteId])
+  return { data: data ?? [], loading, error, refetch }
+}
+
+/** Quantity entries of one card (progress_reports), newest first, cancelled rows
+ *  included (shown struck through). Fails soft like useBoqItems. */
+export function useProgressReports(taskId) {
+  const { data, loading, error, refetch } = useQuery(async () => {
+    if (!taskId) return []
+    const { data: rows, error: err } = await supabase
+      .from('progress_reports')
+      .select('id, qty, work_date, note, created_by, created_at, cancelled_at, cancelled_by')
+      .eq('task_id', taskId)
+      .order('created_at', { ascending: false })
+    if (err) throw err
+    return rows || []
+  }, [taskId])
+  return { data: data ?? [], loading, error, refetch }
+}
+
 /** ขั้นตอนย่อย (Subtask) ทุกไซท์ ทุกชั้น -- ซ้อนกันได้ไม่จำกัดชั้นผ่าน
  *  parent_subtask_id (null = ลูกตรงของ phase_id) -- group/จัดชั้นฝั่ง
  *  client ด้วย src/pages/sites/subtaskCalc.js's groupSubtasksByParent. */
