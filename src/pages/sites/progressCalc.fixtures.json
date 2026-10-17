@@ -1,0 +1,125 @@
+[
+  {
+    "name": "equal cards like today",
+    "contract_value": 0,
+    "phases": [
+      { "id": "A", "billing_weight_pct": 100, "status": "in_progress" }
+    ],
+    "subtasks": [],
+    "tasks": [
+      { "id": "a1", "phase_id": "A", "weight_pts": 33.34, "status": "done" },
+      { "id": "a2", "phase_id": "A", "weight_pts": 33.33, "status": "in_progress" },
+      { "id": "a3", "phase_id": "A", "weight_pts": 33.33, "status": "not_started" }
+    ],
+    "expect": { "phases": { "A": 33.34 }, "contract_pct": 33.34, "total_pct": null }
+  },
+  {
+    "name": "new card from unallocated",
+    "contract_value": 0,
+    "phases": [
+      { "id": "A", "billing_weight_pct": 100, "status": "in_progress" }
+    ],
+    "subtasks": [],
+    "tasks": [
+      { "id": "a1", "phase_id": "A", "weight_pts": 50, "status": "done" },
+      { "id": "a2", "phase_id": "A", "weight_pts": 30, "status": "not_started" }
+    ],
+    "expect": { "phases": { "A": 50 }, "contract_pct": 50, "total_pct": null }
+  },
+  {
+    "name": "quantity card",
+    "contract_value": 0,
+    "phases": [
+      { "id": "A", "billing_weight_pct": 100, "status": "in_progress" }
+    ],
+    "subtasks": [],
+    "tasks": [
+      { "id": "a1", "phase_id": "A", "weight_pts": 40, "status": "in_progress", "progress_mode": "quantity", "planned_qty": 120, "done_qty": 45 },
+      { "id": "a2", "phase_id": "A", "weight_pts": 60, "status": "done" }
+    ],
+    "expect": { "phases": { "A": 75 }, "contract_pct": 75, "total_pct": null }
+  },
+  {
+    "name": "split parent",
+    "contract_value": 0,
+    "phases": [
+      { "id": "A", "billing_weight_pct": 100, "status": "in_progress" }
+    ],
+    "subtasks": [],
+    "tasks": [
+      { "id": "p", "phase_id": "A", "weight_pts": 20, "status": "in_progress" },
+      { "id": "p1", "phase_id": "A", "parent_task_id": "p", "weight_pts": 10, "status": "done" },
+      { "id": "p2", "phase_id": "A", "parent_task_id": "p", "weight_pts": 10, "status": "not_started" },
+      { "id": "a2", "phase_id": "A", "weight_pts": 80, "status": "not_started" }
+    ],
+    "expect": { "phases": { "A": 10 }, "contract_pct": 10, "total_pct": null }
+  },
+  {
+    "name": "no cards uses status",
+    "contract_value": 0,
+    "phases": [
+      { "id": "A", "billing_weight_pct": 30, "status": "done" },
+      { "id": "B", "billing_weight_pct": 70, "status": "in_progress" }
+    ],
+    "subtasks": [],
+    "tasks": [],
+    "expect": { "phases": { "A": 100, "B": 0 }, "contract_pct": 30, "total_pct": null }
+  },
+  {
+    "name": "vo two numbers",
+    "contract_value": 900000,
+    "phases": [
+      { "id": "A", "billing_weight_pct": 100, "status": "done" },
+      { "id": "B", "billing_weight_pct": 0, "status": "not_started", "is_vo": true, "vo_value": 100000 }
+    ],
+    "subtasks": [],
+    "tasks": [
+      { "id": "a1", "phase_id": "A", "weight_pts": 100, "status": "done" },
+      { "id": "b1", "phase_id": "B", "weight_pts": 100, "status": "not_started" }
+    ],
+    "expect": { "phases": { "A": 100, "B": 0 }, "contract_pct": 100, "total_pct": 90 }
+  },
+  {
+    "name": "vo without contract value",
+    "contract_value": 0,
+    "phases": [
+      { "id": "A", "billing_weight_pct": 100, "status": "done" },
+      { "id": "B", "billing_weight_pct": 0, "status": "not_started", "is_vo": true, "vo_value": 100000 }
+    ],
+    "subtasks": [],
+    "tasks": [
+      { "id": "a1", "phase_id": "A", "weight_pts": 100, "status": "done" },
+      { "id": "b1", "phase_id": "B", "weight_pts": 100, "status": "not_started" }
+    ],
+    "expect": { "phases": { "A": 100, "B": 0 }, "contract_pct": 100, "total_pct": null }
+  },
+  {
+    "name": "issue excluded",
+    "contract_value": 0,
+    "phases": [
+      { "id": "A", "billing_weight_pct": 100, "status": "done" },
+      { "id": "I", "billing_weight_pct": 0, "status": "not_started", "is_issue_phase": true }
+    ],
+    "subtasks": [],
+    "tasks": [
+      { "id": "a1", "phase_id": "A", "weight_pts": 100, "status": "done" },
+      { "id": "i1", "phase_id": "I", "weight_pts": 0, "status": "not_started", "issue_report_id": "R1" }
+    ],
+    "expect": { "phases": { "A": 100 }, "contract_pct": 100, "total_pct": null }
+  },
+  {
+    "name": "subtasks weighted",
+    "contract_value": 0,
+    "phases": [
+      { "id": "A", "billing_weight_pct": 100, "status": "in_progress" }
+    ],
+    "subtasks": [
+      { "id": "S1", "phase_id": "A", "billing_weight_pct": 25, "status": "done" },
+      { "id": "S2", "phase_id": "A", "billing_weight_pct": 75, "status": "in_progress" }
+    ],
+    "tasks": [
+      { "id": "s2a", "phase_id": "A", "subtask_id": "S2", "weight_pts": 100, "status": "not_started" }
+    ],
+    "expect": { "phases": { "A": 25 }, "contract_pct": 25, "total_pct": null }
+  }
+]
