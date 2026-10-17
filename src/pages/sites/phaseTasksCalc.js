@@ -6,13 +6,19 @@
 // phaseTasksCalc.test.js):
 //   phase "ผลิต" has 5 tasks: 3 done, 1 in_progress, 1 not_started
 //   computePhaseTaskStats -> { total: 5, done: 3, pct: 60, derivedStatus: 'in_progress' }
+//     (pct is the weighted node % from progressCalc.js: 5 cards without
+//     weight_pts share 100 equally, so 3 done = 60; with real points it is
+//     Σ(weight_pts × card progress) / 100)
 //   phase "ติดตั้ง" has 0 tasks -> { total: 0, done: 0, pct: 0, derivedStatus: null }
 //     (caller falls back to phase.status, unaffected by this module)
 // ============================================================
+import { nodeCardsProgress, round2 } from './progressCalc.js'
 
-/** done/total/pct/derivedStatus for one phase's tasks. derivedStatus is
- *  null when the phase has zero tasks -- the caller's cue to fall back
- *  to the phase's own manually-set status instead. */
+/** done/total/pct/derivedStatus for one node's tasks. total/done are card
+ *  counts; pct is the weighted node % (0-100, 2 dp) from progressCalc.js --
+ *  when no top-level non-issue card exists it follows derivedStatus (done
+ *  100, otherwise 0). derivedStatus is null when the node has zero tasks --
+ *  the caller's cue to fall back to the node's own manually-set status. */
 export function computePhaseTaskStats(tasks) {
   const total = tasks.length
   if (total === 0) return { total: 0, done: 0, pct: 0, derivedStatus: null }
@@ -20,7 +26,9 @@ export function computePhaseTaskStats(tasks) {
   const derivedStatus = done === total
     ? 'done'
     : tasks.some((t) => t.status !== 'not_started') ? 'in_progress' : 'not_started'
-  return { total, done, pct: Math.round((done / total) * 100), derivedStatus }
+  const fromCards = nodeCardsProgress(tasks)
+  const pct = fromCards !== null ? round2(fromCards * 100) : (derivedStatus === 'done' ? 100 : 0)
+  return { total, done, pct, derivedStatus }
 }
 
 /** The phase to show on the Day View's per-site mini task board: the

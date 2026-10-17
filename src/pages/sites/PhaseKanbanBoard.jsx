@@ -22,6 +22,7 @@ import { Modal, ConfirmDialog } from '../../components/Modal.jsx'
 import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks, useSites, attachPmWorkerNames } from '../../hooks/useSupabase.js'
 import { STATUS_COLOR } from './ganttTimeline.js'
 import { groupSubtasksByParent, isLeaf } from './subtaskCalc.js'
+import { nodeProgress, unallocatedPoints } from './progressCalc.js'
 import teamLeaderBadge from '../../assets/team-leader-badge.png'
 import { uploadSitePhotos, bangkokTodayIso } from '../../lib/photoUpload.js'
 import { useTenant } from '../../hooks/useTenant.js'
@@ -529,6 +530,16 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     return <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text3)' }}>ไซท์นี้ยังไม่มีขั้นตอนงาน — เพิ่มขั้นตอนก่อนในแท็บ Gantt</div>
   }
 
+  // % ของโหนด (ถ่วงแต้ม, progressCalc.js) + แต้มที่ยังไม่แจก -- คิดจากการ์ด
+  // ทั้งโหนดเสมอ ไม่ใช่เฉพาะชั้น (zone) ที่กรองอยู่. ขั้นตอนแจ้งปัญหาไม่นับ
+  // ความคืบหน้า -> ไม่แสดง (null)
+  const nodeById = { ...byNodeId }
+  phases.forEach((p) => { nodeById[p.id] = p })
+  const progressOf = (nodeId) => (nodeById[nodeId]?.is_issue_phase ? null : {
+    pct: Math.round(nodeProgress(nodeId, { tasksByNode: microtasksByNodeId, subtasksByParent, nodeById }) * 100),
+    unallocated: unallocatedPoints(microtasksByNodeId[nodeId] || []),
+  })
+
   const boardProps = {
     canEdit, workers: workers || [], workerById, editingId, draft, setDraft,
     onToggleAssignee: toggleAssignee, onSetLead: setLead, onStartEdit: startEdit, onStartAdd: startAdd,
@@ -671,7 +682,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
                     ⚠️ พบงานย่อยที่ไม่ได้อยู่ใต้ขั้นตอนย่อยใดๆ — อาจเกิดจากข้อผิดพลาดระหว่างการย้ายข้อมูล (แก้ไข/ย้ายงานเหล่านี้ได้ตามปกติ แต่เพิ่มงานใหม่ที่นี่ไม่ได้แล้ว — เลือกขั้นตอนย่อยจาก chip ด้านบนแทน)
                   </div>
                 )}
-                <PhaseBoard phaseId={phase.id} tasks={microtasksByNodeId[phase.id] || []} disableAdd={!phaseIsLeaf} {...boardProps} />
+                <PhaseBoard phaseId={phase.id} tasks={microtasksByNodeId[phase.id] || []} disableAdd={!phaseIsLeaf} progress={progressOf(phase.id)} {...boardProps} />
               </div>
             )
           })
@@ -701,7 +712,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
               ))}
             </div>
           )}
-          <PhaseBoard phaseId={activeLeafId} tasks={visibleTasks} {...boardProps} />
+          <PhaseBoard phaseId={activeLeafId} tasks={visibleTasks} progress={progressOf(activeLeafId)} {...boardProps} />
         </>
       )}
 
@@ -810,9 +821,20 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
 function PhaseBoard({
   phaseId, tasks, canEdit, workers, workerById, editingId, draft, setDraft, onToggleAssignee, onSetLead,
   onStartEdit, onStartAdd, onCancelEdit, onSaveDraft, onDeleteRequest, onQuickMove, saving,
-  dragOverKey, setDragOverKey, disableAdd, taskPhotoCounts, onViewPhotos, onAssignPhoto,
+  dragOverKey, setDragOverKey, disableAdd, taskPhotoCounts, onViewPhotos, onAssignPhoto, progress,
 }) {
   return (
+    <>
+    {progress && (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10, fontSize: 12 }}>
+        <span style={{ background: 'var(--bg3)', borderRadius: 20, padding: '2px 10px', fontWeight: 700, color: 'var(--text2)' }}>
+          ความคืบหน้า {progress.pct}%
+        </span>
+        {progress.unallocated > 0 && (
+          <span style={{ color: 'var(--text3)' }}>ยังไม่แจก {progress.unallocated} แต้ม</span>
+        )}
+      </div>
+    )}
     <div data-phone="kanban" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
       {COLUMNS.map((col) => {
         const key = `${phaseId}:${col.status}`
@@ -916,6 +938,7 @@ function PhaseBoard({
         )
       })}
     </div>
+    </>
   )
 }
 

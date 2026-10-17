@@ -21,6 +21,15 @@ describe('computePhaseTaskStats', () => {
     expect(computePhaseTaskStats(tasks).derivedStatus).toBe('in_progress')
   })
 
+  it('pct is weighted by weight_pts, not a count (unallocated points count 0)', () => {
+    const tasks = [
+      { id: 'a', weight_pts: 50, status: 'done' },
+      { id: 'b', weight_pts: 30, status: 'not_started' },
+      { id: 'i', weight_pts: 0, status: 'done', issue_report_id: 'R1' },
+    ]
+    expect(computePhaseTaskStats(tasks)).toEqual({ total: 3, done: 2, pct: 50, derivedStatus: 'in_progress' })
+  })
+
   it('returns not_started when every task is still not_started', () => {
     const tasks = [{ status: 'not_started' }, { status: 'not_started' }]
     expect(computePhaseTaskStats(tasks).derivedStatus).toBe('not_started')

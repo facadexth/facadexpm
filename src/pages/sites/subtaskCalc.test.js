@@ -81,6 +81,15 @@ describe('computeNodeStats', () => {
     expect(p1Stats).toEqual({ total: 2, done: 2, pct: 100, derivedStatus: 'done', billingWeightPct: 30, source: 'subtasks' })
   })
 
+  it('pct is the mean of the children weighted by billing_weight_pct', () => {
+    const subtasks = [
+      { id: 's1', phase_id: 'p1', parent_subtask_id: null, billing_weight_pct: 25, status: 'done' },
+      { id: 's2', phase_id: 'p1', parent_subtask_id: null, billing_weight_pct: 75 },
+    ]
+    const subtasksByParent = groupSubtasksByParent(subtasks)
+    expect(computeNodeStats('p1', subtasksByParent, { s2: [{ id: 't', weight_pts: 100, status: 'not_started' }] }).pct).toBe(25)
+  })
+
   it('is in_progress when some but not all children are done, not_started when none have started', () => {
     const subtasks = [
       { id: 's1', phase_id: 'p1', parent_subtask_id: null, billing_weight_pct: 10 },
