@@ -21,6 +21,8 @@
 
 ## Global Constraints
 
+- **Amended after Task 3 review (binding):** `site_phases.vo_value` does not exist — VO values are in `phase_vo_values` (OWNER/ADMIN only). `site_progress_daily` holds `contract_pct` only; `total_pct` is in `site_progress_daily_money` (OWNER/ADMIN only). `site_progress_pct()` returns 0 rows for PM (PM cannot read `sites`), so the UI must compute PM's live % with `progressCalc.js`.
+
 **Roles**
 - Roles: `is_site_staff()` = OWNER/ADMIN/PM; `is_pm()`; `can_manage_teams()`. All three already exist live.
 - New helper `can_manage_plan()` = role IN ('OWNER','PM'). **ADMIN cannot** save a PLAN or record or cancel quantities.
@@ -32,7 +34,7 @@
   - Children of a split card sum to ≤ the parent's points.
   - Split goes one level only.
 - Issue phases and cards (`is_issue_phase`, `issue_report_id IS NOT NULL`) have weight 0, are excluded from all progress, and are exempt from the PLAN gate.
-- VO phases: `site_phases.is_vo = true`, `billing_weight_pct = 0`, optional `vo_value` (baht) and `vo_ref`.
+- VO phases: `site_phases.is_vo = true`, `billing_weight_pct = 0`, optional `vo_ref`; the VO baht value lives in the admin-only table `phase_vo_values(phase_id, vo_value)` (PM can never read it).
 - Site % ตามสัญญา = Σ(w × p) / Σ w over phases that are neither VO nor issue, where w = `billing_weight_pct`.
 - Site % รวม VO = (contract_value × contract% + Σ vo_value × vo%) / (contract_value + Σ vo_value).
   - Show it only when `contract_value > 0` AND at least one VO phase exists.
@@ -415,7 +417,7 @@ Steps: failing test → implement → suite green → commit.
 - Modify: `src/pages/sites/PhaseKanbanBoard.jsx` (card render about :857, drag about :823/:856, card form insert about :434 and edit about :444)
 - Create: `src/pages/sites/RecordProgressDialog.jsx`
 - Create: `src/pages/sites/SplitTaskDialog.jsx`
-- Modify: `src/pages/sites/PhaseManageModal.jsx` (VO toggle plus `vo_ref` and `vo_value`; `vo_value` only when `canSeeMoney(role)`)
+- Modify: `src/pages/sites/PhaseManageModal.jsx` (VO toggle plus `vo_ref`; the VO value field is shown only when `canSeeMoney(role)` and is saved to `phase_vo_values` (upsert on phase_id), never to `site_phases`)
 - Modify: `src/hooks/useSupabase.js` (add `useBoqItems(siteId)` and `useProgressReports(taskId)`)
 - Test: `src/pages/sites/kanbanProgress.test.jsx`
 
