@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
   const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: authHeader } },
   })
-  const { data: isAdminOrOwner, error: adminCheckError } = await userClient.rpc('is_admin_or_owner')
+  const { data: isAdminOrOwner, error: adminCheckError } = await userClient.rpc('is_site_staff')
   if (adminCheckError || !isAdminOrOwner) return json({ error: 'Unauthorized' }, 403)
 
   // RLS-scoped read via the caller's own JWT -- admin_full_access already

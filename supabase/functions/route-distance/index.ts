@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
   const { data: { user }, error: userError } = await admin.auth.getUser(token)
   if (userError || !user?.email) return json({ error: 'Unauthorized' }, 401)
   const { data: role } = await admin.from('user_roles').select('tenant_id, role').eq('user_email', user.email).maybeSingle()
-  if (!role || !['OWNER', 'ADMIN'].includes(role.role as string)) return json({ error: 'Forbidden' }, 403)
+  if (!role || !['OWNER', 'ADMIN', 'PM'].includes(role.role as string)) return json({ error: 'Forbidden' }, 403)
 
   const key = Deno.env.get('ORS_API_KEY')?.trim()
   if (!key) return json({ ok: false, error: 'not_configured' })

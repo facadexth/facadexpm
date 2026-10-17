@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
         }
       }
       if (webOn) {
-        await sendWebPushToTenantAdmins(admin, tenantId, quotationExpiryPush(quotation.quotation_number, quotation.valid_until as string, daysUntil(today, quotation.valid_until as string)))
+        await sendWebPushToTenantAdmins(admin, tenantId, quotationExpiryPush(quotation.quotation_number, quotation.valid_until as string, daysUntil(today, quotation.valid_until as string)), 'money')
       }
 
       // Mark as noticed for THIS valid_until (even with no recipients) so it is not repeated

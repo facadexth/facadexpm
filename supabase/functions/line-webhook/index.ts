@@ -205,7 +205,7 @@ async function alertOwnersOfInactiveWorker(
   if (webOn) {
     try {
       const [{ sendWebPushToTenantAdmins }, { workerOffboardedPush }] = await Promise.all([import('../_shared/web-push.ts'), import('../_shared/web-push-messages.ts')])
-      await sendWebPushToTenantAdmins(admin, settings.tenant_id, workerOffboardedPush(worker.name))
+      await sendWebPushToTenantAdmins(admin, settings.tenant_id, workerOffboardedPush(worker.name), 'ops')
     } catch (e) { console.error('web push failed', (e as Error).message) }
   }
   for (const owner of owners ?? []) {
@@ -1106,7 +1106,7 @@ async function handleAction(
       try {
         if (await isPushEnabled(admin, settings.tenant_id, 'web_push_issue_report')) {
         const [{ sendWebPushToTenantAdmins }, { issueReportPush }] = await Promise.all([import('../_shared/web-push.ts'), import('../_shared/web-push-messages.ts')])
-        await sendWebPushToTenantAdmins(admin, settings.tenant_id, issueReportPush(worker.name, text))
+        await sendWebPushToTenantAdmins(admin, settings.tenant_id, issueReportPush(worker.name, text), 'ops')
         }
       } catch (e) { console.error('web push failed', (e as Error).message) }
       await sendLineReply(settings.channel_access_token, replyToken, '📩 รับแจ้งปัญหาแล้วครับ แอดมินจะติดตามให้')
