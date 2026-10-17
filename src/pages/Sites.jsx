@@ -26,6 +26,13 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import QuickAddSelect from '../components/QuickAddSelect.jsx'
+import CardTable from '../components/CardTable.jsx'
+import MoreActions from '../components/MoreActions.jsx'
+import SitePhoneCards from '../components/phone/SitePhoneCards.jsx'
+import { useIsPhone } from '../hooks/useIsPhone.js'
+
+// Phone card layout of the sites table (CardTable): inferred roles would pick รหัส as the title, so say it explicitly.
+const SITES_CARD_MAP = { title: 'ชื่อไซท์งาน', sub: ['รหัส'], amount: 'มูลค่าสัญญา', status: 'สถานะ', actions: 'last' }
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { loadOrigin, fetchRoute, routeErrorMessage } from '../lib/siteRoute.js'
 
@@ -495,6 +502,7 @@ function SiteCompleteModal({ site, onClose, onDone }) {
 }
 
 export default function Sites({ navigateTo, openSiteOverview, navState }) {
+  const isPhone = useIsPhone()
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'sites')
   const { tenant, hasModuleAccess } = useTenant()
@@ -602,20 +610,28 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
     else alert('Error: ' + error.message)
   }
 
+  // Row ⋯ menu, shared by the table row and the phone card
+  const siteMenuItems = s => [
+    ...(s.status === 'Ongoing' ? [{ label: '✅ จบไซท์งาน', onClick: () => handleCompleteClick(s) }] : []),
+    { label: '🗑️ ลบ', onClick: () => setDeleteId(s.id), danger: true },
+  ]
+
   return (
     <div>
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
       {/* ── Toolbar ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => { setEditSite(null); setShowForm(true) }}>+ เพิ่มไซท์งาน</button>}
-        {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
-        <a className="btn btn-ghost" href="/templates/TEMPLATE_ไซท์งาน.xlsx" download>📄 Template</a>
+        <MoreActions>
+          {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
+          <a className="btn btn-ghost" href="/templates/TEMPLATE_ไซท์งาน.xlsx" download>📄 Template</a>
+        </MoreActions>
         <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อ / รหัส..." value={search} onChange={e => setSearch(e.target.value)} />
         <select className="select select-sm" style={{ width: 140 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
           {['All', ...STATUS_OPTS].map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <PendingFocusChip focus={issuesFocus} pendingKey="issues_open" hint="เปิดไซท์ → รายงานประจำวัน เพื่อดูรายละเอียด" />
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 4 }} data-phone="chips">
           <button className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('table')}>📋 ตาราง</button>
           <button className={`btn btn-sm ${viewMode === 'gantt' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('gantt')}>📊 Gantt</button>
           <button className={`btn btn-sm ${viewMode === 'kanban' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setViewMode('kanban')}>🗂 Kanban</button>
@@ -633,9 +649,17 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
       )}
 
       {/* ── Table ── */}
-      {viewMode === 'table' && (
+      {viewMode === 'table' && isPhone && (
+        <SitePhoneCards
+          sites={filtered} toggleSort={toggleSort} sortIcon={si} canEdit={canEdit}
+          onOpen={st => navigateTo('site_detail', { siteId: st.id, siteName: st.name })}
+          onEdit={st => { setEditSite(st); setShowForm(true) }}
+          menuItems={siteMenuItems} countdown={countdown} fmtDate={fmtDate} PencilIcon={PencilIcon}
+        />
+      )}
+      {viewMode === 'table' && !isPhone && (
       <div className="card">
-        <div className="table-wrap">
+        <CardTable map={SITES_CARD_MAP}>
           <table>
             <thead>
               <tr>
@@ -752,10 +776,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
                       {canEdit && (
                         <div className="actions-cell">
                           <button className="btn btn-sm btn-edit" onClick={() => { setEditSite(s); setShowForm(true) }}><PencilIcon /></button>
-                          <RowActionsMenu items={[
-                            ...(s.status === 'Ongoing' ? [{ label: '✅ จบไซท์งาน', onClick: () => handleCompleteClick(s) }] : []),
-                            { label: '🗑️ ลบ', onClick: () => setDeleteId(s.id), danger: true },
-                          ]} />
+                          <RowActionsMenu items={siteMenuItems(s)} />
                         </div>
                       )}
                     </td>
@@ -767,7 +788,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
       )}
 
