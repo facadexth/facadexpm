@@ -12,6 +12,7 @@ import { usePendingFocus } from '../hooks/usePendingFocus.js'
 import PendingFocusChip from '../components/PendingFocusChip.jsx'
 import { supabase } from '../lib/supabase.js'
 import { fetchAllRows } from '../lib/fetchAllRows.js'
+import { autoShortName } from '../lib/siteShortName.js'
 import { useSites, useLaborCost, useClients, useSeatStatus, useCategories, useSiteCostEstimates, saveSiteCostEstimates, usePhaseTasks } from '../hooks/useSupabase.js'
 import GanttView from './sites/GanttView.jsx'
 import { summarizeTasks } from './sites/phaseTasksCalc.js'
@@ -52,7 +53,7 @@ const COST_TYPES = [
 ]
 
 const EMPTY_FORM = {
-  name: '', client_id: '', location: '',
+  name: '', short_name: '', client_id: '', location: '',
   distance_km: '', travel_minutes: '', map_url: '', lat: '', lng: '',
   status: 'Ongoing', start_date: '', end_date: '',
   has_vat: true, contract_value_no_vat: '', notes: '',
@@ -75,6 +76,7 @@ export function siteFormToPayload(form) {
   const contractValueTotal = Math.round((noVatValue + vatAmount) * 100) / 100
   return {
     name:           form.name,
+    short_name:     (form.short_name || '').trim() || null,
     client_id:      form.client_id || null,
     location:       form.location || null,
     distance_km:    parseFloat(form.distance_km) || null,
@@ -195,6 +197,10 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
               onCreated={onClientCreated}
             />
           </div>
+        </div>
+        <div>
+          <label className="label">ชื่อย่อ (ไม่บังคับ)</label>
+          <input className="input" maxLength={30} value={form.short_name ?? ''} onChange={e => set('short_name', e.target.value)} placeholder={autoShortName(form.name) || 'ใช้ชื่ออัตโนมัติจากชื่อไซท์งาน'} />
         </div>
         <div>
           <label className="label">ที่ตั้งโครงการ</label>
