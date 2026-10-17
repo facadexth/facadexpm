@@ -11,6 +11,7 @@ import { canEditPage } from '../lib/permissions.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import ExcelUpload from '../components/ExcelUpload.jsx'
+import CardTable from '../components/CardTable.jsx'
 
 const EMPTY_PROFILE_FORM = { name: '', family: '', series: '', thickness_mm: '', linear_weight_kg_per_m: '', default_length_m: '6.4' }
 
@@ -143,7 +144,7 @@ export default function AluminumProfiles() {
             <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อหน้าตัด..." value={profileSearch} onChange={e => setProfileSearch(e.target.value)} />
           </div>
           <div className="card">
-            <div className="table-wrap">
+            <CardTable>
               <table>
                 <thead><tr>
                   <th className="sortable" onClick={() => profileToggleSort('name')}>ชื่อหน้าตัด{profileSi('name')}</th>
@@ -178,7 +179,7 @@ export default function AluminumProfiles() {
                   {!sortedProfiles.length && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>{profileSearch ? 'ไม่พบหน้าตัดที่ค้นหา' : 'ยังไม่มีหน้าตัด'}</td></tr>}
                 </tbody>
               </table>
-            </div>
+            </CardTable>
           </div>
         </>
       

@@ -11,6 +11,8 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { isPeakAccountCode, pickPeakFields } from '../lib/peakFields.js'
+import CardTable from '../components/CardTable.jsx'
+const CATEGORIES_CARD_MAP = { title: 'ชื่อหมวด', hide: ['สี'], sub: ['รหัสย่อ', 'รหัสบัญชี PEAK'] }
 
 const PRESET_COLORS = [
   '#6c63ff','#00d4aa','#ff6b6b','#ffd166','#4ecdc4',
@@ -142,7 +144,7 @@ export default function Categories() {
       </p>
 
       <div className="card">
-        <div className="table-wrap">
+        <CardTable map={CATEGORIES_CARD_MAP}>
           <table>
             <thead>
               <tr>
@@ -201,7 +203,7 @@ export default function Categories() {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {showForm && (

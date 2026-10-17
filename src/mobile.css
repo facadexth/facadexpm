@@ -67,6 +67,7 @@
   .phone-more-btn { min-width: var(--phone-tap); min-height: var(--phone-tap); font-size: 18px; }
   .phone-more-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 250; display: grid; gap: 4px; min-width: 220px; padding: 6px; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
   .phone-more-menu .btn, .phone-more-menu button, .phone-more-menu label { width: 100%; justify-content: flex-start; text-align: left; min-height: var(--phone-tap); }
+  .phone-more-menu .btn, .phone-more-menu button { margin: 0 !important; }
   /* pages mark elements with data-phone="…" (attributes only, so the desktop DOM keeps its classes/styles) */
   [data-phone="chips"] { display: flex; gap: 6px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; flex-wrap: nowrap !important; max-width: 100%; padding-bottom: 4px; }
   [data-phone="chips"] > * { flex: none; }

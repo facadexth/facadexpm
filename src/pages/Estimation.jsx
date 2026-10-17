@@ -18,6 +18,7 @@ import { fmt } from '../lib/supabase.js'
 import { computeBomForOpening, combineOpeningBoms } from '../lib/bomEngine.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SearchableSelect from '../components/SearchableSelect.jsx'
+import CardTable from '../components/CardTable.jsx'
 
 function evaluateConstraints(opening, constraints) {
   const violations = []
@@ -382,7 +383,7 @@ export default function Estimation(props) {
               {canEdit && <button className="btn btn-primary btn-sm" onClick={() => { setCreatingOpening(true); setEditingOpeningId(null) }}>+ เพิ่มช่องเปิด</button>}
             </div>
             <div className="card">
-              <div className="table-wrap">
+              <CardTable>
                 <table>
                   <thead><tr><th>เลขช่อง</th><th>Template</th><th>ขนาด</th><th>จำนวน</th><th></th></tr></thead>
                   <tbody>
@@ -398,7 +399,7 @@ export default function Estimation(props) {
                     {!projectOpenings.length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีช่องเปิด</td></tr>}
                   </tbody>
                 </table>
-              </div>
+              </CardTable>
             </div>
 
             {creatingOpening && (

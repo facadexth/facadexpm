@@ -15,6 +15,7 @@ import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
+import CardTable from '../components/CardTable.jsx'
 
 function FinishForm({ initial, onSave, onCancel, loading }) {
   const [form, setForm, clearDraft] = useDraftForm('aluminum-finish-form', { name: '', price_per_kg: '', active: true, ...initial }, !initial?.id)
@@ -465,7 +466,7 @@ export default function BomTemplates(props) {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <div data-phone="chips" style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button className={`btn btn-sm ${view === 'templates' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('templates')}>🧩 BOM Templates</button>
         <button className={`btn btn-sm ${view === 'profiles' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('profiles')}>📏 หน้าตัดอลูมิเนียม</button>
         <button className={`btn btn-sm ${view === 'finishes' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('finishes')}>🎨 สีผิวอลูมิเนียม</button>
@@ -482,7 +483,7 @@ export default function BomTemplates(props) {
         <>
           {canEdit && <button className="btn btn-primary" style={{ marginBottom: 14 }} onClick={() => { setEditFinish(null); setShowFinishForm(true) }}>+ เพิ่มสีผิว</button>}
           <div className="card">
-            <div className="table-wrap">
+            <CardTable>
               <table>
                 <thead><tr><th>ชื่อสีผิว</th><th>ราคา/กก.</th><th>สถานะ</th><th></th></tr></thead>
                 <tbody>
@@ -504,7 +505,7 @@ export default function BomTemplates(props) {
                   {!(finishes || []).length && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีสีผิว</td></tr>}
                 </tbody>
               </table>
-            </div>
+            </CardTable>
           </div>
         </>
       )}
@@ -513,7 +514,7 @@ export default function BomTemplates(props) {
         <>
           {canEdit && <button className="btn btn-primary" style={{ marginBottom: 14 }} onClick={() => { setEditInfill(null); setShowInfillForm(true) }}>+ เพิ่มวัสดุอุดช่อง</button>}
           <div className="card">
-            <div className="table-wrap">
+            <CardTable>
               <table>
                 <thead><tr><th>ชื่อวัสดุ</th><th>ประเภท</th><th>ราคา/ตร.ม.</th><th>สถานะ</th><th></th></tr></thead>
                 <tbody>
@@ -536,7 +537,7 @@ export default function BomTemplates(props) {
                   {!(infillTypes || []).length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีวัสดุอุดช่อง</td></tr>}
                 </tbody>
               </table>
-            </div>
+            </CardTable>
           </div>
         </>
       )}
