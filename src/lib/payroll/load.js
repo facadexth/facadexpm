@@ -7,9 +7,29 @@ import { advancesDueFor, manualFromLines, buildPayrollRun, diffRuns } from './ru
 
 const must = ({ data, error }) => { if (error) throw error; return data }
 
+const PAGE = 1000
+const CHUNK = 100
+
+// Fetch every row of a query, 1000 at a time (PostgREST caps a response).
+// build() must return a fresh query each call; ordering by id keeps pages stable.
+export async function fetchAllPages(build) {
+  const out = []
+  for (let from = 0; ; from += PAGE) {
+    const rows = must(await build().order('id').range(from, from + PAGE - 1))
+    out.push(...rows)
+    if (rows.length < PAGE) return out
+  }
+}
+
+export const chunk = (arr, n = CHUNK) => {
+  const out = []
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n))
+  return out
+}
+
 export async function loadPayrollMonth(year, month) {
   const { from, to } = monthRange(year, month)
-  const [items, workers, amounts, period, records, shifts, otRows, holidays, advances, settingsRows] = await Promise.all([
+  const [items, activeWorkers, amounts, period, records, shifts, otRows, holidays, advances, settingsRows] = await Promise.all([
     supabase.from('pay_items').select('*').order('sort_order').then(must),
     supabase.from('workers_with_rate').select('*').eq('status', 'active').order('name').then(must),
     supabase.from('worker_pay_item_amounts').select('worker_id, pay_item_id, amount').then(must),
@@ -17,14 +37,23 @@ export async function loadPayrollMonth(year, month) {
     supabase.from('salary_records')
       .select('id, worker_id, net_pay, paid_date, facts, workers(name, nickname, position, employee_code, bank_code, bank_account_no, bank_account_name, bank_branch_code), salary_record_lines(*)')
       .eq('year', year).eq('month', month).then(must),
-    supabase.from('worker_assignments').select('worker_id, type, shift, ot_hours, date, confirmed_at').gte('date', from).lte('date', to).then(must),
-    supabase.from('worker_ot').select('worker_id, ot_hours').gte('date', from).lte('date', to).then(must),
+    fetchAllPages(() => supabase.from('worker_assignments').select('id, worker_id, type, shift, ot_hours, date, confirmed_at').gte('date', from).lte('date', to)),
+    fetchAllPages(() => supabase.from('worker_ot').select('id, worker_id, ot_hours').gte('date', from).lte('date', to)),
     supabase.from('company_holidays').select('date').gte('date', from).lte('date', to).then(must),
     supabase.from('salary_advances').select('*').in('status', ['approved', 'settled']).then(must),
     supabase.from('app_settings').select('key, value').in('key', ['holiday_pay_multiplier', 'require_checkin_confirmation']).then(must),
   ])
+  // Ex-workers who still have a record or shifts this month stay in the run.
+  const activeIds = new Set(activeWorkers.map(w => w.id))
+  const extraIds = [...new Set([...records.map(r => r.worker_id), ...shifts.map(s => s.worker_id)])].filter(id => !activeIds.has(id))
+  const extra = []
+  for (const ids of chunk(extraIds)) {
+    extra.push(...must(await supabase.from('workers_with_rate').select('*').in('id', ids)))
+  }
+  const workers = [...activeWorkers, ...extra.map(w => ({ ...w, inactive: true }))]
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), 'th'))
   const setting = k => settingsRows.find(r => r.key === k)?.value
-  const priorLines = await loadAdvanceLines(advances.map(a => a.id))
+  const priorLines = await loadAdvanceLines(advances.filter(a => ['approved', 'settled'].includes(a.status)).map(a => a.id))
   const amountsByWorker = {}
   for (const a of amounts) (amountsByWorker[a.worker_id] ||= {})[a.pay_item_id] = Number(a.amount)
   const manualByWorker = {}
@@ -38,15 +67,18 @@ export async function loadPayrollMonth(year, month) {
   const now = new Date()
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const assignGaps = findAssignGaps({ workers, shifts, holidayDates: holidays.map(h => h.date), year, month, today })
-  return { period, items, workers, records, advances, inputs, assignGaps }
+  return { period, items, workers, records, advances, advanceLines: priorLines, inputs, assignGaps }
 }
 
-async function loadAdvanceLines(advanceIds) {
+export async function loadAdvanceLines(advanceIds) {
   if (!advanceIds.length) return []
-  const rows = await supabase.from('salary_record_lines')
-    .select('advance_id, amount, salary_records!inner(year, month)')
-    .in('advance_id', advanceIds).then(must)
-  return rows.map(r => ({ advance_id: r.advance_id, amount: Number(r.amount), year: r.salary_records.year, month: r.salary_records.month }))
+  const rows = []
+  for (const ids of chunk(advanceIds)) {
+    rows.push(...must(await supabase.from('salary_record_lines')
+      .select('advance_id, amount, salary_record_id, salary_records!inner(year, month)')
+      .in('advance_id', ids)))
+  }
+  return rows.map(r => ({ advance_id: r.advance_id, salary_record_id: r.salary_record_id, amount: Number(r.amount), year: r.salary_records.year, month: r.salary_records.month }))
 }
 
 export async function calculateMonth(year, month) {

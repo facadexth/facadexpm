@@ -61,6 +61,13 @@ describe('calculateWorkerPay', () => {
     const adv = r.lines.find(l => l.advance_id === 'a1')
     expect(adv).toMatchObject({ amount: 0, is_manual: true, note: 'ค่าตำรวจ งวด 5/10' })
   })
+  it('appends the remaining balance to an automatic advance note, not a manual one', () => {
+    const due = [{ advance_id: 'a1', title: 'ค่าตำรวจ', amount: 1000, installment_no: 5, installments: 10, remaining_after: 5000 }]
+    const auto = calculateWorkerPay({ items: ITEMS, worker: monthly(), advancesDue: due })
+    expect(auto.lines.find(l => l.advance_id === 'a1').note).toBe('ค่าตำรวจ งวด 5/10 · คงเหลือ 5,000.00')
+    const man = calculateWorkerPay({ items: ITEMS, worker: monthly(), manual: { 'advances:a1': 300 }, advancesDue: due })
+    expect(man.lines.find(l => l.advance_id === 'a1').note).toBe('ค่าตำรวจ งวด 5/10')
+  })
   it('drops zero lines that are not manual, and derives net', () => {
     const r = calculateWorkerPay({ items: ITEMS, worker: monthly({ monthly_salary: 10000, has_social_security: false }) })
     expect(r.lines.map(l => l.pay_item_id)).toEqual(['salary', 'contribution', 'contribution_deduct'])

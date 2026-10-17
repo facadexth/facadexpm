@@ -782,7 +782,7 @@ export function useAssignmentsRange(from, to) {
     if (!from || !to) return []
     const { data, error } = await supabase
       .from('worker_assignments')
-      .select('id, worker_id, site_id, date, type, shift, ot_hours, notes, confirmed_at, confirmed_by, is_team_leader, workers(name, nickname, monthly_salary), sites(name, site_number, is_default)')
+      .select('id, worker_id, site_id, date, type, shift, ot_hours, notes, confirmed_at, confirmed_by, is_team_leader, workers(name, nickname, monthly_salary, pay_type, daily_wage), sites(name, site_number, is_default)')
       .gte('date', from)
       .lte('date', to)
       .order('date')
@@ -846,7 +846,7 @@ export function useWorkerOTRange(from, to) {
     if (!from || !to) return []
     const { data, error } = await supabase
       .from('worker_ot')
-      .select('id, worker_id, site_id, date, start_time, end_time, ot_hours, is_overnight, notes, workers(name, nickname, monthly_salary), sites(name, site_number)')
+      .select('id, worker_id, site_id, date, start_time, end_time, ot_hours, is_overnight, notes, workers(name, nickname, monthly_salary, pay_type, daily_wage), sites(name, site_number)')
       .gte('date', from)
       .lte('date', to)
       .order('date')

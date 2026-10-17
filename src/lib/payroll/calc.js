@@ -3,6 +3,8 @@
 // Order: single-value items → percent_of_item (dependency order) → SSO → advances.
 import { round2, roundAmount } from './money.js'
 
+const fmtBaht = n => Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
 export const SYSTEM_METHODS = ['base_pay', 'ot', 'sso', 'unpaid_leave', 'advances']
 
 export function dailyRate(worker) {
@@ -127,7 +129,7 @@ export function calculateWorkerPay({ items, worker, amounts = {}, attendance = {
       const key = `${adv.id}:${d.advance_id}`
       const isManual = has(manual, key)
       lines.push(line(adv, round2(isManual ? Number(manual[key]) || 0 : d.amount), {
-        advance_id: d.advance_id, is_manual: isManual, note: `${d.title} งวด ${d.installment_no}/${d.installments}`,
+        advance_id: d.advance_id, is_manual: isManual, note: `${d.title} งวด ${d.installment_no}/${d.installments}${(!isManual && d.remaining_after != null) ? ` · คงเหลือ ${fmtBaht(d.remaining_after)}` : ''}`,
       }))
     }
   }

@@ -2,12 +2,13 @@
 // One month of payroll as a grid like the owner's sheet: one row per worker,
 // one column per pay item. Draft → ยืนยัน → ปิดงวด. All money comes from the
 // engine (lib/payroll); this file only displays and calls RPCs.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useUserRole } from '../../hooks/useUserRole.js'
 import { usePayrollMonth } from '../../hooks/usePayroll.js'
 import { calculateMonth, saveDraft, setManualLine, confirmMonth, unconfirmMonth, closeMonth, reopenMonth } from '../../lib/payroll/load.js'
 import { periodLabel, MONTHS_TH, monthRange } from '../../lib/payroll/period.js'
-import { fmt } from '../../lib/supabase.js'
+import { fmt, supabase } from '../../lib/supabase.js'
+import { dailyRate } from '../../lib/payroll/calc.js'
 import { Modal } from '../../components/Modal.jsx'
 import PayslipModal from './Payslip.jsx'
 import BankExportModal from './BankExportModal.jsx'
@@ -33,11 +34,56 @@ export default function PayrollMonth({ canEdit }) {
   const [exportOpen, setExportOpen] = useState(false)
   const [paidDate, setPaidDate] = useState(monthRange(now.getFullYear(), now.getMonth() + 1).to)
 
+  // Workers (read-only) land on their latest confirmed/closed slip, not an empty current month.
+  useEffect(() => {
+    if (canEdit) return
+    let off = false
+    supabase.from('salary_records')
+      .select('year, month, payroll_periods!inner(status)')
+      .in('payroll_periods.status', ['confirmed', 'closed'])
+      .order('year', { ascending: false }).order('month', { ascending: false }).limit(1)
+      .then(({ data: rows }) => {
+        const r = rows?.[0]
+        if (off || !r) return
+        setYear(r.year); setMonth(r.month); setPaidDate(monthRange(r.year, r.month).to)
+      })
+      .catch(() => {})
+    return () => { off = true }
+  }, [canEdit])
+  const [advEdit, setAdvEdit] = useState(null) // { lineId, value }
+
   const status = data?.period?.status || 'draft'
   const items = useMemo(() => (data?.items || []).filter(i => i.active), [data])
   const records = data?.records || []
   const cell = (rec, item) => rec.salary_record_lines.filter(l => l.pay_item_id === item.id).reduce((s, l) => s + Number(l.amount), 0)
   const total = item => records.reduce((s, r) => s + cell(r, item), 0)
+  const itemIds = useMemo(() => new Set(items.map(i => i.id)), [items])
+  const otherAmt = rec => rec.salary_record_lines.filter(l => !l.pay_item_id || !itemIds.has(l.pay_item_id)).reduce((s, l) => s + Number(l.amount), 0)
+  const workerById = useMemo(() => Object.fromEntries((data?.workers || []).map(w => [w.id, w])), [data])
+  const officeDays = rec => Number(rec.facts?.officeDays) || 0
+  const officeCost = rec => {
+    const w = workerById[rec.worker_id]
+    return w ? Math.round(officeDays(rec) * dailyRate(w) * 100) / 100 : 0
+  }
+  const totalOffice = records.reduce((s, r) => s + officeCost(r), 0)
+  const totalOther = records.reduce((s, r) => s + otherAmt(r), 0)
+  const advanceRemaining = (rec, line) => {
+    const a = (data?.advances || []).find(x => x.id === line.advance_id)
+    if (!a) return null
+    const others = (data?.advanceLines || []).filter(l => l.advance_id === a.id && l.salary_record_id !== rec.id).reduce((s, l) => s + Number(l.amount), 0)
+    return Math.round((Number(a.amount) - others) * 100) / 100
+  }
+  const onAdvance = (rec, item, line, raw) => {
+    const v = raw.trim()
+    setAdvEdit(null)
+    if (v === '') { if (line.is_manual) run(() => setManualLine(rec.id, item.id, line.advance_id, null)); return }
+    const n = Number(v)
+    const remaining = advanceRemaining(rec, line)
+    if (!Number.isFinite(n) || n < 0) { alert('กรุณาใส่ตัวเลขที่ไม่ติดลบ'); return }
+    if (remaining != null && n > remaining) { alert(`ยอดหักเกินยอดเบิกคงเหลือ (เหลือ ${fmt(remaining)})`); return }
+    if (n === Number(line.amount)) return
+    run(() => setManualLine(rec.id, item.id, line.advance_id, n))
+  }
   const totalNet = records.reduce((s, r) => s + Number(r.net_pay || 0), 0)
 
   const run = async (fn, doRefetch = true) => {
@@ -76,6 +122,38 @@ export default function PayrollMonth({ canEdit }) {
     if (lines.length && !confirm(`คำเตือน:\n- ${lines.join('\n- ')}\n\nยืนยันต่อไหม`)) return
     run(() => confirmMonth(year, month))
   }
+  const advanceCell = (rec, item) => {
+    const lines = rec.salary_record_lines.filter(l => l.pay_item_id === item.id)
+    if (!lines.length) return '–'
+    const editable = canEdit && status === 'draft'
+    return (
+      <div style={{ display: 'grid', gap: 2, justifyItems: 'end' }}>
+        {lines.map(l => {
+          const title = (l.note || l.name || '').trim()
+          if (editable && l.advance_id && advEdit?.lineId === l.id) {
+            const remaining = advanceRemaining(rec, l)
+            return (
+              <div key={l.id} style={{ display: 'grid', gap: 2, justifyItems: 'end' }}>
+                <input autoFocus className="input input-sm" style={{ width: 90, textAlign: 'right' }} defaultValue={l.amount}
+                  placeholder="ว่าง = อัตโนมัติ"
+                  onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setAdvEdit(null) }}
+                  onBlur={e => onAdvance(rec, item, l, e.target.value)} />
+                {remaining != null && <small style={{ color: 'var(--text3)' }}>เหลือ {fmt(remaining)}</small>}
+              </div>
+            )
+          }
+          return (
+            <div key={l.id} title={title} style={{ fontSize: 12 }}>
+              {editable && l.advance_id
+                ? <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAdvEdit({ lineId: l.id })} title={`${title} — กดเพื่อแก้ยอดหัก`}>{fmt(l.amount)}{l.is_manual ? ' ✎' : ''}</button>
+                : fmt(l.amount)}
+              {title && <small style={{ color: 'var(--text3)', display: 'block' }}>{title}</small>}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
   const warnings = (preview?.run || []).filter(r => r.warnings.length)
 
   if (loading && !data) return <div>⏳ กำลังโหลด...</div>
@@ -103,33 +181,44 @@ export default function PayrollMonth({ canEdit }) {
         {canEdit && ['confirmed', 'closed'].includes(status) && <button className="btn" onClick={() => setExportOpen(true)}>🏦 ไฟล์ธนาคาร</button>}
       </div>
 
+      {records.length > 0 && (
+        <div style={{ fontSize: 13 }}>
+          ค่าใช้จ่ายส่วนกลาง (วันออฟฟิศ): <b style={{ color: 'var(--blue)' }}>{fmt(totalOffice)}</b> บาท
+        </div>
+      )}
+
       <div className="table-wrap" style={{ overflowX: 'auto' }}>
-        <table style={{ minWidth: 300 + items.length * 110 }}>
+        <table style={{ minWidth: 380 + items.length * 110 }}>
           <thead>
             <tr>
-              <th>ชื่อ</th>
+              <th>ชื่อ</th><th style={{ textAlign: 'right' }}>วันออฟฟิศ</th>
               {items.map(i => <th key={i.id} style={{ textAlign: 'right' }}>{i.name}</th>)}
+              <th style={{ textAlign: 'right' }}>อื่นๆ</th>
               <th style={{ textAlign: 'right' }}>จ่ายสุทธิ</th><th></th>
             </tr>
           </thead>
           <tbody>
             {records.map(r => (
               <tr key={r.id}>
-                <td>{r.workers?.name}{r.workers?.nickname ? ` (${r.workers.nickname})` : ''}</td>
+                <td>{r.workers?.name}{r.workers?.nickname ? ` (${r.workers.nickname})` : ''}{workerById[r.worker_id]?.inactive ? ' (ออกแล้ว)' : ''}</td>
+                <td style={{ textAlign: 'right' }}>{r.facts && Object.keys(r.facts).length ? (officeDays(r) || '–') : '—'}</td>
                 {items.map(i => (
                   <td key={i.id} style={{ textAlign: 'right' }}>
-                    {i.method === 'manual_monthly' && canEdit && status === 'draft'
+                    {i.method === 'advances'
+                      ? advanceCell(r, i)
+                      : i.method === 'manual_monthly' && canEdit && status === 'draft'
                       ? <input key={cell(r, i)} className="input input-sm" style={{ width: 90, textAlign: 'right' }} defaultValue={cell(r, i) || ''}
                           onBlur={e => { if (String(cell(r, i) || '') !== e.target.value) onManual(r, i, e.target.value) }} />
                       : (cell(r, i) ? fmt(cell(r, i)) : '–')}
                   </td>
                 ))}
+                <td style={{ textAlign: 'right' }}>{otherAmt(r) ? fmt(otherAmt(r)) : '–'}</td>
                 <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(r.net_pay)}</td>
                 <td><button className="btn btn-ghost btn-sm" onClick={() => setSlip(r)} aria-label="สลิป">📄</button></td>
               </tr>
             ))}
             {!records.length && (
-              <tr><td colSpan={items.length + 3} style={{ textAlign: 'center', color: 'var(--text3)' }}>
+              <tr><td colSpan={items.length + 5} style={{ textAlign: 'center', color: 'var(--text3)' }}>
                 {canEdit ? 'ยังไม่ได้คำนวณเดือนนี้ กด “คำนวณ”' : 'ยังไม่มีสลิปของเดือนนี้'}
               </td></tr>
             )}
@@ -137,8 +226,9 @@ export default function PayrollMonth({ canEdit }) {
           {records.length > 0 && (
             <tfoot>
               <tr style={{ fontWeight: 700 }}>
-                <td>ยอดรวม</td>
+                <td>ยอดรวม</td><td></td>
                 {items.map(i => <td key={i.id} style={{ textAlign: 'right' }}>{fmt(total(i))}</td>)}
+                <td style={{ textAlign: 'right' }}>{fmt(totalOther)}</td>
                 <td style={{ textAlign: 'right' }}>{fmt(totalNet)}</td><td></td>
               </tr>
             </tfoot>

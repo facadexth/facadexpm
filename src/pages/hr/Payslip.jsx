@@ -11,7 +11,14 @@ import { thaiBahtText } from '../../lib/thaiBahtText.js'
 import { periodLabel, MONTHS_TH } from '../../lib/payroll/period.js'
 import { bankByCode } from '../../lib/bankExport/banks.js'
 
-const maskAcct = a => (a && a.length >= 4 ? `xxx-x-x${a.slice(-4, -1)}-x` : '—')
+// Show only the last 4 digits; 10-digit accounts keep the 3-1-5-1 bank grouping.
+export function maskAcct(a) {
+  const d = String(a ?? '').replace(/\D/g, '')
+  if (!d) return '—'
+  const m = 'x'.repeat(Math.max(0, d.length - 4)) + d.slice(-4)
+  if (d.length === 10) return `${m.slice(0, 3)}-${m[3]}-${m.slice(4, 9)}-${m[9]}`
+  return m.match(/.{1,4}/g).join('-')
+}
 const thDate = d => { if (!d) return '—'; const [y, m, day] = d.split('-'); return `${+day}/${m}/${+y + 543}` }
 
 function useYearToDate(workerId, year, month) {
@@ -60,6 +67,8 @@ export function PayslipSheet({ record, year, month, period }) {
   const ded = lines.filter(l => l.side === 'deduction')
   const sum = ls => ls.reduce((s, l) => s + Number(l.amount), 0)
   const f = record.facts || {}
+  const hasFacts = Object.keys(f).length > 0
+  const fv = (v, d = 0) => (hasFacts ? (v ?? d) : '—')
   const ytd = useYearToDate(record.worker_id, year, month)
   const isDraft = (period?.status || 'draft') === 'draft'
   const row = l => (
@@ -93,10 +102,10 @@ export function PayslipSheet({ record, year, month, period }) {
         </table>
       </div>
       <div className="facts">
-        <span>วันทำงาน <b>{f.daysWorked ?? '—'}</b> วัน</span>
-        <span>ลากิจ <b>{f.leavePersonalDays ?? 0}</b> วัน</span>
-        <span>ลาป่วย <b>{f.leaveSickDays ?? 0}</b> วัน</span>
-        <span>OT <b>{f.otHours ?? 0}</b> ชม.</span>
+        <span>วันทำงาน <b>{fv(f.daysWorked, '—')}</b> วัน</span>
+        <span>ลากิจ <b>{fv(f.leavePersonalDays)}</b> วัน</span>
+        <span>ลาป่วย <b>{fv(f.leaveSickDays)}</b> วัน</span>
+        <span>OT <b>{fv(f.otHours)}</b> ชม.</span>
         {f.holidayShifts ? <span>กะวันหยุด <b>{f.holidayShifts}</b></span> : null}
         {ytd && <span>สะสมทั้งปี: เงินได้ <b>{fmt(ytd.earnings)}</b> · ประกันสังคม <b>{fmt(ytd.sso)}</b></span>}
       </div>
