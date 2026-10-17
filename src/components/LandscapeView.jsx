@@ -6,10 +6,11 @@
 // behind switches to the desktop layout then, so this component also counts a touch screen under 500px tall as a
 // phone -- otherwise turning such a phone would unmount the overlay it is meant to open. No orientation lock: on
 // those phones the lock itself pushed the width past 900 and closed the overlay; the CSS rotation covers portrait.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useIsPhone } from '../hooks/useIsPhone.js'
 import { useBackToClose } from '../hooks/useBackToClose.js'
+import { rotatedChartClientPoint } from '../lib/rotatedPointer.js'
 
 const PORTRAIT = '(orientation: portrait)'
 const LANDSCAPE = '(orientation: landscape)'
@@ -35,6 +36,32 @@ const ST = {
 // button, then the user turns the phone to read it) must not pop another LandscapeView (the Gantt) on top of it.
 let openStages = 0
 
+// Charts (recharts) inside a rotated stage: their tooltips read the finger in screen axes, so on a rotated stage the
+// real touch/mouse event is stopped and re-sent as a mousemove at the point recharts expects (owner: S-curve
+// tooltips did not work sideways). Only events over a .recharts-wrapper are touched; scrolling is left alone.
+const resent = new WeakSet()
+function useRotatedChartPointer(ref, rotated) {
+  useEffect(() => {
+    const stage = ref.current
+    if (!stage || !rotated) return
+    const handle = e => {
+      if (resent.has(e)) return
+      const wrapper = e.target?.closest?.('.recharts-wrapper')
+      if (!wrapper) return
+      const p = e.touches?.[0] || e.changedTouches?.[0] || e
+      if (p.clientX == null) return
+      e.stopPropagation()
+      const { clientX, clientY } = rotatedChartClientPoint(wrapper.getBoundingClientRect(), wrapper.offsetWidth, p.clientX, p.clientY)
+      const ev = new MouseEvent('mousemove', { bubbles: true, cancelable: true, clientX, clientY, view: window })
+      resent.add(ev)
+      e.target.dispatchEvent(ev)
+    }
+    const types = ['touchstart', 'touchmove', 'mousemove']
+    types.forEach(t => stage.addEventListener(t, handle, { capture: true, passive: true }))
+    return () => types.forEach(t => stage.removeEventListener(t, handle, { capture: true }))
+  }, [ref, rotated])
+}
+
 function mq(q) {
   return typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(q) : null
 }
@@ -42,6 +69,7 @@ function mq(q) {
 function Stage({ title, onClose, children }) {
   useBackToClose(onClose)
   useEffect(() => { openStages += 1; return () => { openStages -= 1 } }, [])
+  const stageRef = useRef(null)
   const [portrait, setPortrait] = useState(() => !!mq(PORTRAIT)?.matches)
   useEffect(() => {
     const m = mq(PORTRAIT)
@@ -63,9 +91,10 @@ function Stage({ title, onClose, children }) {
       try { if (document.fullscreenElement) Promise.resolve(document.exitFullscreen?.()).catch(() => {}) } catch { /* ignore */ }
     }
   }, [])
+  useRotatedChartPointer(stageRef, portrait)
   return createPortal(
     <div className="phone-landscape-overlay" style={ST.overlay}>
-      <div className={'phone-landscape-stage' + (portrait ? ' is-rotated' : '')} style={portrait ? { ...ST.stage, ...ST.rotated } : ST.stage}>
+      <div ref={stageRef} className={'phone-landscape-stage' + (portrait ? ' is-rotated' : '')} style={portrait ? { ...ST.stage, ...ST.rotated } : ST.stage}>
         <div className="phone-landscape-head" style={ST.head}>
           <b style={ST.title}>{title}</b>
           <button type="button" className="btn btn-ghost btn-sm" aria-label="ปิดมุมมองแนวนอน" onClick={onClose}>✕</button>
