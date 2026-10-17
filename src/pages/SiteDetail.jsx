@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { useSiteOverview } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
+import { canManageSites, canSeeMoney } from '../lib/roles.js'
 import SiteOverviewContent from '../components/SiteOverviewContent.jsx'
 import GanttView from './sites/GanttView.jsx'
 import SCurveChart from './sites/SCurveChart.jsx'
@@ -25,8 +26,10 @@ export default function SiteDetail({ navState, navigateTo }) {
 
   const isPhone = useIsPhone()
   const phoneLike = usePhoneLike()
-  const { isAtLeast, role } = useUserRole()
-  const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'sites')
+  const { role } = useUserRole()
+  const canEdit = canManageSites(role) && canEditPage(role, 'sites')
+  // the S-curve plots incomes/expenses against contract value -- money, so PM never gets it
+  const showMoney = canSeeMoney(role)
 
   const { data: site, error: siteError } = useSiteOverview(siteId)
 
@@ -85,7 +88,7 @@ export default function SiteDetail({ navState, navigateTo }) {
               onPhasesChanged={() => setPhasesRefreshKey((k) => k + 1)}
               onOpenKanban={(_site, leafNode) => { setKanbanInitialLeafId(leafNode.id); setTab('kanban') }}
             />
-            {phoneLike ? (
+            {!showMoney ? null : phoneLike ? (
               <div style={{ marginTop: 16 }}>
                 <PhoneSection title="S-curve" summary="กราฟ">
                   <LandscapeView autoOpen={false} title={`S-curve · ${site.site_number || site.name || ''}`}>

@@ -20,6 +20,7 @@ import { PencilIcon, LinkIcon } from '../components/icons.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
+import { canManageSites, canSeeMoney, isPm } from '../lib/roles.js'
 import { useTenant } from '../hooks/useTenant.js'
 import AttachmentsSection from '../components/AttachmentsSection.jsx'
 import { fmt, fmtDate, countdown } from '../lib/supabase.js'
@@ -100,7 +101,22 @@ export function siteFormToPayload(form) {
   }
 }
 
-export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading, hasModuleAccess = () => false, draftKey = 'sites-form', seat, onClientCreated, inventoryCategories = [], siteCostEstimates = [] }) {
+// The only site fields a PM may change (mirrors pm_update_site's whitelist).
+const PM_SITE_KEYS = ['name', 'short_name', 'status', 'start_date', 'end_date', 'location', 'map_url', 'lat', 'lng', 'distance_km', 'travel_minutes', 'notes']
+
+/** PM save: the allowed fields whose value differs from the site as loaded. */
+export function pmSitePatch(site, form) {
+  const clean = v => (typeof v === 'number' && Number.isNaN(v) ? null : v)
+  const before = siteFormToPayload({ ...EMPTY_FORM, ...site })
+  const after = siteFormToPayload(form)
+  const patch = {}
+  for (const k of PM_SITE_KEYS) {
+    if (clean(after[k]) !== clean(before[k])) patch[k] = clean(after[k])
+  }
+  return patch
+}
+
+export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel, loading, hasModuleAccess = () => false, draftKey = 'sites-form', seat, onClientCreated, inventoryCategories = [], siteCostEstimates = [], pmMode = false }) {
   const isAdd = !initial?.id
   const [form, setForm, clearDraft] = useDraftForm(draftKey, { ...EMPTY_FORM, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -181,7 +197,7 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
             <label className="label">ชื่อไซท์งาน ★</label>
             <input className="input" required value={form.name} onChange={e => set('name', e.target.value)} placeholder="เช่น NCP Tower B" />
           </div>
-          <div>
+          {!pmMode && <div>
             <label className="label">ลูกค้า / เจ้าของงาน</label>
             <QuickAddSelect
               value={form.client_id}
@@ -196,7 +212,7 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
               namePlaceholder="ชื่อลูกค้าใหม่"
               onCreated={onClientCreated}
             />
-          </div>
+          </div>}
         </div>
         <div>
           <label className="label">ชื่อย่อ (ไม่บังคับ)</label>
@@ -276,6 +292,8 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
             <input type="date" className="input" value={form.end_date} onChange={e => set('end_date', e.target.value)} />
           </div>
         </div>
+        {/* PM (pmMode) never sees money: contract value, cost estimates and income defaults are left out */}
+        {!pmMode && <>
         <div>
           <label className="label">มูลค่าสัญญา</label>
           <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
@@ -376,6 +394,7 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
             )}
           </div>
         </div>
+        </>}
 
         <div>
           <label className="label">หมายเหตุ</label>
@@ -509,8 +528,10 @@ function SiteCompleteModal({ site, onClose, onDone }) {
 
 export default function Sites({ navigateTo, openSiteOverview, navState }) {
   const isPhone = useIsPhone()
-  const { isAtLeast, role } = useUserRole()
-  const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'sites')
+  const { role } = useUserRole()
+  const canEdit = canManageSites(role) && canEditPage(role, 'sites')
+  const pm = isPm(role) // PM edits existing sites only, without money fields
+  const showMoney = canSeeMoney(role)
   const { tenant, hasModuleAccess } = useTenant()
   const { data: sites, refetch } = useSites()
   const { data: allPhaseTasks } = usePhaseTasks() // only fetched for the 🗂 Kanban summary subtab below
@@ -570,6 +591,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
 
   // ── Handlers ──
   const handleSave = async (form) => {
+    if (pm) return handlePmSave(form)
     setSaving(true)
     try {
       const payload = siteFormToPayload(form)
@@ -590,6 +612,23 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
       alert(e.message?.includes('row-level security policy')
         ? 'บันทึกไม่สำเร็จ: อาจเกินจำนวนไซท์งานที่ package ปัจจุบันอนุญาต กรุณาติดต่อผู้ดูแลระบบเพื่ออัปเกรด package'
         : 'บันทึกไม่สำเร็จ: ' + e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handlePmSave = async (form) => {
+    if (!editSite) return
+    setSaving(true)
+    try {
+      const patch = pmSitePatch(editSite, form)
+      if (Object.keys(patch).length) {
+        const { error } = await supabase.rpc('pm_update_site', { p_site_id: editSite.id, p_patch: patch })
+        if (error) throw error
+      }
+      setShowForm(false); setEditSite(null); refetch(); refetchSeat()
+    } catch (e) {
+      alert('บันทึกไม่สำเร็จ: ' + e.message)
     } finally {
       setSaving(false)
     }
@@ -616,8 +655,9 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
     else alert('Error: ' + error.message)
   }
 
-  // Row ⋯ menu, shared by the table row and the phone card
-  const siteMenuItems = s => [
+  // Row ⋯ menu, shared by the table row and the phone card. PM gets none: completing and
+  // deleting write sites directly; a PM sets the status in the edit form instead.
+  const siteMenuItems = s => pm ? [] : [
     ...(s.status === 'Ongoing' ? [{ label: '✅ จบไซท์งาน', onClick: () => handleCompleteClick(s) }] : []),
     { label: '🗑️ ลบ', onClick: () => setDeleteId(s.id), danger: true },
   ]
@@ -627,9 +667,9 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
       {/* ── Toolbar ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        {canEdit && <button className="btn btn-primary" onClick={() => { setEditSite(null); setShowForm(true) }}>+ เพิ่มไซท์งาน</button>}
+        {canEdit && !pm && <button className="btn btn-primary" onClick={() => { setEditSite(null); setShowForm(true) }}>+ เพิ่มไซท์งาน</button>}
         <MoreActions>
-          {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
+          {canEdit && !pm && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
           <a className="btn btn-ghost" href="/templates/TEMPLATE_ไซท์งาน.xlsx" download>📄 Template</a>
         </MoreActions>
         <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อ / รหัส..." value={search} onChange={e => setSearch(e.target.value)} />
@@ -657,7 +697,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
       {/* ── Table ── */}
       {viewMode === 'table' && isPhone && (
         <SitePhoneCards
-          sites={filtered} toggleSort={toggleSort} sortIcon={si} canEdit={canEdit}
+          sites={filtered} toggleSort={toggleSort} sortIcon={si} canEdit={canEdit} showMoney={showMoney}
           onOpen={st => navigateTo('site_detail', { siteId: st.id, siteName: st.name })}
           onEdit={st => { setEditSite(st); setShowForm(true) }}
           menuItems={siteMenuItems} countdown={countdown} fmtDate={fmtDate} PencilIcon={PencilIcon}
@@ -672,12 +712,14 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
                 <th className="sortable" onClick={() => toggleSort('site_number')}>รหัส{si('site_number')}</th>
                 <th className="sortable" onClick={() => toggleSort('name')}>ชื่อไซท์งาน{si('name')}</th>
                 <th className="sortable" onClick={() => toggleSort('status')}>สถานะ{si('status')}</th>
+                {showMoney && <>
                 <th className="sortable" onClick={() => toggleSort('contract_value')}>มูลค่าสัญญา{si('contract_value')}</th>
                 <th className="sortable" onClick={() => toggleSort('total_income')}>รายรับ (เบิก){si('total_income')}</th>
                 <th className="sortable" onClick={() => toggleSort('total_expense')}>รายจ่าย{si('total_expense')}</th>
                 <th className="sortable" onClick={() => toggleSort('gross_profit')}>กำไร{si('gross_profit')}</th>
                 <th className="sortable" onClick={() => toggleSort('billing_pct')}>% เบิก{si('billing_pct')}</th>
                 <th className="hide-tablet">ค่าแรงช่าง</th>
+                </>}
                 <th className="sortable hide-tablet" onClick={() => toggleSort('last_activity_date')}>กิจกรรมล่าสุด{si('last_activity_date')}</th>
                 <th className="sortable hide-tablet" onClick={() => toggleSort('end_date')}>วันจบงาน{si('end_date')}</th>
                 <th></th>
@@ -714,6 +756,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
                     <td>
                       <span className={`badge badge-status-${s.status?.toLowerCase().replace(' ','-')}`}>{s.status}</span>
                     </td>
+                    {showMoney && <>
                     <td className="font-mono" style={{ color: 'var(--text2)' }}>
                       {s.contract_value > 0
                         ? <>
@@ -763,6 +806,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
                     >
                       {laborCost > 0 ? fmt(laborCost) : '—'}
                     </td>
+                    </>}
                     <td className="hide-tablet" style={{ fontSize: 11, color: 'var(--text2)', whiteSpace: 'nowrap' }}>
                       {s.last_activity_date ? fmtDate(s.last_activity_date) : <span style={{ color: 'var(--text3)' }}>—</span>}
                     </td>
@@ -790,7 +834,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
                 )
               })}
               {!filtered.length && (
-                <tr><td colSpan={12} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบข้อมูลไซท์งาน</td></tr>
+                <tr><td colSpan={showMoney ? 12 : 6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบข้อมูลไซท์งาน</td></tr>
               )}
             </tbody>
           </table>
@@ -890,6 +934,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
             seat={seat}
             inventoryCategories={inventoryCategories || []}
             siteCostEstimates={editSite ? (siteCostEstimates || []).filter(e => e.site_id === editSite.id) : []}
+            pmMode={pm}
           />
           {editSite && tenant?.id && (
             <div className="modal-body" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
