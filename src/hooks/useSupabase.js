@@ -291,6 +291,16 @@ export function useCreditNoteExpenseIds() {
   }, [])
 }
 
+/** PM only: on-hand rows (item code/name/unit, site, quantity) for every site; no cost. */
+export function usePmStockOnHand() {
+  return useQuery(async () => (isPm() ? pmRpc('pm_inventory_on_hand', { p_site_id: null }) : []), [])
+}
+
+/** PM only: one PO's lines without prices (pm_purchase_order_items). */
+export function fetchPmPurchaseOrderItems(poId) {
+  return pmRpc('pm_purchase_order_items', { p_po_id: poId })
+}
+
 /** Quantity on hand per inventory item at one site (for the return shortfall check). */
 export function useInventoryOnHand(siteId) {
   return useQuery(async () => {

@@ -14,6 +14,8 @@ const PM_SITE = {
 
 let phone = false
 let sitesData = [PM_SITE]
+let poData = []
+let stockData = []
 const rpcCalls = []
 const fromCalls = []
 // Per-test rows the mocked supabase returns, by table / RPC name (filters are ignored).
@@ -77,6 +79,8 @@ vi.mock('../hooks/useSupabase.js', async (orig) => {
     useSiteRetentionSummary: () => empty,
     useCheques: () => empty,
     useAppSetting: () => ({ ...empty, data: '3' }),
+    usePurchaseOrders: () => ({ ...empty, data: poData }),
+    usePmStockOnHand: () => ({ ...empty, data: stockData }),
   }
 })
 
@@ -87,6 +91,8 @@ import Assign from './Assign.jsx'
 import HR from './HR.jsx'
 import DailyReport from './sites/DailyReport.jsx'
 import PhaseKanbanBoard from './sites/PhaseKanbanBoard.jsx'
+import PurchaseOrders from './PurchaseOrders.jsx'
+import Inventory from './Inventory.jsx'
 
 const MONEY = /฿|บาท|มูลค่าสัญญา|รายรับ|รายจ่าย/
 
@@ -96,7 +102,7 @@ beforeEach(() => {
   fromCalls.length = 0
   window.matchMedia = q => ({ matches: phone && q.includes('max-width'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })
 })
-afterEach(() => { cleanup(); setCurrentRole(null); phone = false; sitesData = [PM_SITE]; tableRows = {}; rpcRows = {} })
+afterEach(() => { cleanup(); setCurrentRole(null); phone = false; sitesData = [PM_SITE]; poData = []; stockData = []; tableRows = {}; rpcRows = {} })
 
 describe.each([false, true])('PM pages (phone=%s)', isPhone => {
   beforeEach(() => { phone = isPhone })
@@ -249,5 +255,64 @@ describe('PM leave approval', () => {
     await flush(); await flush()
     expect(fromCalls).toContain('worker_assignments')
     expect(fromCalls.filter(t => t === 'leave_requests').length).toBeGreaterThan(1)
+  })
+})
+
+// PM-shaped PO row from pm_purchase_orders: no items, totals, VAT, deposit or expense.
+const PM_PO = {
+  id: 'po1', po_number: 'PO-2026-001', site_id: 's1', supplier_id: 'sup1', supplier_name: 'Glass Supply',
+  suppliers: { name: 'Glass Supply' }, date: TODAY, status: 'ordered', notes: 'ส่งหน้างาน', received_date: null,
+  ordered_by: 'Somchai', created_at: `${TODAY}T01:00:00Z`,
+}
+const PM_STOCK = [
+  { inventory_item_id: 'it1', code: 'GL-01', name: 'กระจกใส 6 มม.', base_unit: 'แผ่น', site_id: 's1', quantity_on_hand: 12, updated_at: `${TODAY}T01:00:00Z` },
+  { inventory_item_id: 'it2', code: 'AL-02', name: 'อลูมิเนียม 2 นิ้ว', base_unit: 'เส้น', site_id: 's1', quantity_on_hand: 40, updated_at: `${TODAY}T01:00:00Z` },
+]
+const PRICE = /฿|บาท|ราคา|มูลค่า|ต้นทุน/
+
+describe.each([false, true])('PM purchase orders / inventory (phone=%s)', isPhone => {
+  beforeEach(() => {
+    phone = isPhone
+    poData = [PM_PO]
+    stockData = PM_STOCK
+    rpcRows = { pm_purchase_order_items: [{ id: 'i1', po_id: 'po1', description: 'กระจกเทมเปอร์ 10 มม.', quantity: 8, unit: 'แผ่น', sort_order: 0, inventory_item_id: null }] }
+  })
+
+  it('PurchaseOrders lists the PO with its site name, read-only and without prices', () => {
+    const { container } = render(<PurchaseOrders navigateTo={() => {}} navState={{}} openSiteOverview={() => {}} />)
+    expect(container.textContent).toContain('PO-2026-001')
+    expect(container.textContent).toContain('Tower A')
+    expect(container.textContent).toContain('Glass Supply')
+    expect(container.textContent).not.toMatch(PRICE)
+    expect(container.textContent).not.toContain('ยอดรวม')
+    expect(container.textContent).not.toContain('เพิ่มใบสั่งซื้อ')
+    expect(container.textContent).not.toContain('⋮')
+  })
+
+  it('PO detail shows items from pm_purchase_order_items, no totals, VAT or preview', async () => {
+    const { container, getByLabelText, findByText } = render(<PurchaseOrders navigateTo={() => {}} navState={{}} openSiteOverview={() => {}} />)
+    fireEvent.click(getByLabelText('📄 ดูใบสั่งซื้อ / เอกสาร'))
+    await findByText('กระจกเทมเปอร์ 10 มม.')
+    expect(rpcCalls).toContainEqual(['pm_purchase_order_items', { p_po_id: 'po1' }])
+    const text = container.ownerDocument.body.textContent
+    expect(text).toContain('ส่งหน้างาน')
+    expect(text).not.toMatch(PRICE)
+    expect(text).not.toContain('VAT')
+    expect(text).not.toContain('มัดจำ')
+    expect(text).not.toContain('Preview')
+    expect(fromCalls).not.toContain('purchase_order_items')
+  })
+
+  it('Inventory lists on-hand stock per site from pm_inventory_on_hand, read-only and without cost', () => {
+    const { container } = render(<Inventory />)
+    expect(container.textContent).toContain('กระจกใส 6 มม.')
+    expect(container.textContent).toContain('GL-01')
+    expect(container.textContent).toContain('Tower A')
+    expect(container.textContent).toMatch(/12(\.00)?\s*แผ่น/)
+    expect(container.textContent).not.toMatch(PRICE)
+    expect(container.textContent).not.toContain('เพิ่มสินค้าคงคลัง')
+    expect(container.textContent).not.toContain('ตัดสต็อกจากใบแจ้งหนี้')
+    expect(container.textContent).not.toContain('รายงานภาษี')
+    expect(container.querySelector('.btn-edit')).toBeNull()
   })
 })
