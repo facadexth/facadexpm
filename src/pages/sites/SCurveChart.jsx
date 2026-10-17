@@ -16,7 +16,7 @@ import { getEffectiveTheme } from '../../lib/theme.js'
 
 const TODAY_ISO = new Date().toISOString().slice(0, 10)
 
-export default function SCurveChart({ site }) {
+export default function SCurveChart({ site, compact = false }) {
   const { data: allPhases } = useSitePhases()
   const { data: allSubtasks } = useSubtasks()
   const { data: incomes } = useIncomes({ siteId: site.id })
@@ -112,7 +112,8 @@ export default function SCurveChart({ site }) {
   const todayInRange = domainStart <= todayTs && todayTs <= domainEnd
 
   return (
-    <div className="card" style={{ padding: 16 }}>
+    // compact (phone): value axis flush left, no Gantt alignment offset (owner 2026-10-17)
+    <div className="card" style={{ padding: compact ? '12px 8px' : 16 }}>
       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>S-curve: {site.name}</div>
       {badDateCount > 0 && (
         <div className="alert alert-warning" style={{ fontSize: 12, marginBottom: 10 }}>
@@ -120,7 +121,7 @@ export default function SCurveChart({ site }) {
         </div>
       )}
       <ResponsiveContainer width="100%" height={280}>
-        <LineChart data={chartData} margin={{ left: 114, right: 4 }}>
+        <LineChart data={chartData} margin={compact ? { left: 0, right: 8 } : { left: 114, right: 4 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={chartColors.border} />
           <XAxis dataKey="ts" type="number" scale="time" domain={[domainStart, domainEnd]}
             ticks={axisTicks} tickFormatter={monthLabel} tick={{ fontSize: 11 }} />
@@ -129,7 +130,7 @@ export default function SCurveChart({ site }) {
               to land the plot area at the same 178px offset (170px phase
               label column + 8px gap) GanttView's track starts at, so the
               two charts' timelines line up when stacked. */}
-          <YAxis width={64} tick={{ fontSize: 11 }} tickFormatter={(v) => fmt(v)} />
+          <YAxis width={compact ? 56 : 64} tick={{ fontSize: 11 }} tickFormatter={(v) => fmt(v)} />
           <Tooltip formatter={(v) => fmt(v)} labelFormatter={(ts) => format(new Date(ts), 'd MMM yyyy', { locale: th })} />
           <Legend />
           {todayInRange && (

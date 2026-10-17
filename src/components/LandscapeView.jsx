@@ -121,10 +121,16 @@ function useMatches(query) {
 
 // autoOpen=false: only the button opens it. Use it for a second LandscapeView on the same screen (e.g. the S-curve
 // under the Gantt) so turning the phone opens just one overlay.
-export default function LandscapeView({ title, autoOpen = true, children }) {
+// Phone width, or a big phone held sideways (wider than 900px). A parent that switches between a phone branch holding
+// a LandscapeView and its desktop branch must use this, not useIsPhone, or turning a big phone unmounts the overlay.
+export function usePhoneLike() {
   const narrow = useIsPhone()
   const sideways = useMatches(SIDEWAYS_PHONE)
-  const isPhone = narrow || sideways
+  return narrow || sideways
+}
+
+export default function LandscapeView({ title, autoOpen = true, children }) {
+  const isPhone = usePhoneLike()
   const [open, setOpen] = useState(false)
   const close = useCallback(() => setOpen(false), [])
 
