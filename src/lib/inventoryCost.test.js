@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, estimateSheetCount, computeInvoiceDeductionPlan, computeFinishedGoodsProductionPlan, resolveMovementReference, computeStockLedgerReport, computePoItemBaseQty, invoiceStockMovementAt } from './inventoryCost.js'
+import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, estimateSheetCount, computeInvoiceDeductionPlan, computeFinishedGoodsProductionPlan, resolveMovementReference, computeStockLedgerReport, computePoItemBaseQty } from './inventoryCost.js'
 
 describe('computeWeightedAverageCost', () => {
   it('first receipt into an empty balance', () => {
@@ -568,13 +568,13 @@ describe('computeStockLedgerReport', () => {
     const rows = computeStockLedgerReport({
       movements: [
         m({ movement_type: 'sale_out', quantity: 3, unit_cost: 100, created_at: '2026-09-10T10:00:00Z', notes: 'IN2609-002', inventory_item_id: 'item-rm' }),
-        m({ movement_type: 'sale_out', quantity: 5, unit_cost: 100, created_at: '2026-09-05T10:00:00Z', notes: 'IN2609-001', reference_type: 'invoice', reference_id: 'inv-1', inventory_item_id: 'item-rm' }),
+        m({ movement_type: 'sale_out', quantity: 5, unit_cost: 100, created_at: '2026-09-05T10:00:00Z', notes: 'IN2609-001', reference_type: 'invoice', reference_id: 'inv-1', stock_document_id: 'doc-dm-1', inventory_item_id: 'item-rm' }),
       ],
       items, dateFrom: '2026-09-01', dateTo: '2026-09-30', itemKindFilter: 'all', categoryId: null,
     })
     expect(rows[0].movements).toEqual([
-      { date: '2026-09-05T10:00:00Z', type: 'sale_out', referenceType: 'invoice', referenceId: 'inv-1', notes: 'IN2609-001', qty: 5, unitCost: 100, value: 500, direction: 'out' },
-      { date: '2026-09-10T10:00:00Z', type: 'sale_out', referenceType: null, referenceId: null, notes: 'IN2609-002', qty: 3, unitCost: 100, value: 300, direction: 'out' },
+      { date: '2026-09-05T10:00:00Z', type: 'sale_out', referenceType: 'invoice', referenceId: 'inv-1', stockDocumentId: 'doc-dm-1', notes: 'IN2609-001', qty: 5, unitCost: 100, value: 500, direction: 'out' },
+      { date: '2026-09-10T10:00:00Z', type: 'sale_out', referenceType: null, referenceId: null, stockDocumentId: null, notes: 'IN2609-002', qty: 3, unitCost: 100, value: 300, direction: 'out' },
     ])
   })
 })
@@ -646,19 +646,5 @@ describe('receipt_reversal (supplier tax invoice)', () => {
     expect(resolveMovementReference({ reference_type: 'supplier_tax_invoice' })).toBe('ใบกำกับภาษีผู้ขาย')
     expect(resolveMovementReference({ reference_type: 'supplier_tax_invoice_void' })).toBe('ยกเลิกใบกำกับภาษีผู้ขาย')
     expect(resolveMovementReference({ reference_type: 'supplier_tax_invoice_void', notes: 'ยกเลิกใบกำกับ INV-1' })).toBe('ยกเลิกใบกำกับ INV-1')
-  })
-})
-
-describe('invoiceStockMovementAt', () => {
-  it('stamps the invoice date at 23:59 Bangkok time', () => {
-    expect(invoiceStockMovementAt('2026-01-06')).toBe('2026-01-06T23:59:00+07:00')
-  })
-  it('accepts a full timestamp and keeps only its date part', () => {
-    expect(invoiceStockMovementAt('2026-01-06T00:00:00')).toBe('2026-01-06T23:59:00+07:00')
-  })
-  it('returns null for a missing or malformed date', () => {
-    expect(invoiceStockMovementAt(null)).toBeNull()
-    expect(invoiceStockMovementAt('')).toBeNull()
-    expect(invoiceStockMovementAt('6/1/2026')).toBeNull()
   })
 })

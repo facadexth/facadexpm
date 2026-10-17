@@ -222,20 +222,6 @@ export function computeFinishedGoodsProductionPlan({ billedLines, materialPct })
 }
 
 /**
- * The timestamp an invoice's stock deduction is posted at: the invoice's
- * own date (not the day someone clicked confirm), at 23:59 Bangkok time so
- * it sorts after that day's receipts on the stock card.
- *
- * @param {string|null} invoiceDate - 'YYYY-MM-DD' (a longer ISO string is cut to its date)
- * @returns {string|null} ISO timestamp, or null when the date is missing/malformed
- */
-export function invoiceStockMovementAt(invoiceDate) {
-  const d = String(invoiceDate || '').slice(0, 10)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null
-  return `${d}T23:59:00+07:00`
-}
-
-/**
  * Builds one stock-card row per matching inventory item for the
  * statutory รายงานสินค้าและวัตถุดิบ (and its finished-goods-only /
  * raw-material-only variants) -- opening balance as of just before
@@ -308,7 +294,7 @@ export function computeStockLedgerReport({ movements, items, dateFrom, dateTo, i
     } else {
       if (d === 'in') { row.inQty += magnitude; row.inValue += magnitude * (mv.unit_cost || 0) }
       else { row.outQty += magnitude; row.outValue += magnitude * (mv.unit_cost || 0) }
-      row.movements.push({ date: mv.created_at, type: mv.movement_type, referenceType: mv.reference_type || null, referenceId: mv.reference_id || null, notes: mv.notes || null, qty: magnitude, unitCost: mv.unit_cost || 0, value: magnitude * (mv.unit_cost || 0), direction: d })
+      row.movements.push({ date: mv.created_at, type: mv.movement_type, referenceType: mv.reference_type || null, referenceId: mv.reference_id || null, stockDocumentId: mv.stock_document_id || null, notes: mv.notes || null, qty: magnitude, unitCost: mv.unit_cost || 0, value: magnitude * (mv.unit_cost || 0), direction: d })
     }
   }
 
