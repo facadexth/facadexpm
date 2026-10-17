@@ -33,6 +33,8 @@ import SignLinkModal from '../components/SignLinkModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX, ScaleToFit } from '../hooks/usePaginatedDocument.jsx'
 import { resolveDocumentStyle } from '../lib/documentStyle.js'
+import PhoneFilters from '../components/PhoneFilters.jsx'
+import CardTable from '../components/CardTable.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -2061,12 +2063,19 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
         {canEdit && <button className="btn btn-primary" onClick={() => setPickQuotation(true)}>+ สร้างใบแจ้งหนี้</button>}
         {canEdit && <button className="btn btn-ghost" onClick={() => setPickQuotationDeposit(true)}>+ สร้างใบมัดจำ</button>}
         <div style={{ flex: 1 }} />
+        <PhoneFilters title="ช่วงวันที่" count={dateFrom || dateTo ? 1 : 0}
+          summary={dateFrom || dateTo ? [{ label: `${dateFrom || '…'} – ${dateTo || '…'}`, onRemove: () => { setDateFrom(''); setDateTo('') } }] : []}
+          onClear={() => { setDateFrom(''); setDateTo('') }}>
         <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <span style={{ color: 'var(--text3)' }}>—</span>
         <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
+        </PhoneFilters>
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        <PhoneFilters count={(siteId ? 1 : 0) + (status ? 1 : 0)}
+          summary={[...(siteId ? [{ label: 'ไซท์งาน', onRemove: () => setSiteId('') }] : []), ...(status ? [{ label: INV_STATUS_LABELS[status] || 'สถานะ', onRemove: () => setStatus('') }] : [])]}
+          onClear={() => { setSiteId(''); setStatus('') }}>
         <div style={{ minWidth: 200 }}>
           <SearchableSelect value={siteId} onChange={setSiteId} placeholder="ทุกไซท์งาน" options={siteOpts(sites)} />
         </div>
@@ -2074,6 +2083,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
           <option value="">ทุกสถานะ</option>
           {INV_STATUSES.map(s => <option key={s} value={s}>{INV_STATUS_LABELS[s]}</option>)}
         </select>
+        </PhoneFilters>
         <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหาลูกค้า..." value={search} onChange={e => setSearch(e.target.value)} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={hideVoid} onChange={e => setHideVoid(e.target.checked)} />
@@ -2082,7 +2092,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
       </div>
 
       <div className="card">
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead>
               <tr>
@@ -2144,7 +2154,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {pickQuotation && (

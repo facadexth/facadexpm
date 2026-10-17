@@ -9,6 +9,7 @@ import { useSiteRetentionSummary } from '../hooks/useSupabase.js'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import { Modal } from '../components/Modal.jsx'
 import { retentionStatusFor } from '../lib/retentionStatus.js'
+import CardTable from '../components/CardTable.jsx'
 
 function ReleaseDialog({ row, onClose, onSaved }) {
   const [releaseDate, setReleaseDate] = useState(new Date().toISOString().slice(0, 10))
@@ -73,7 +74,7 @@ export default function Retention({ openSiteOverview }) {
       </div>
 
       <div className="card">
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead>
               <tr>
@@ -110,7 +111,7 @@ export default function Retention({ openSiteOverview }) {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {releaseRow && (

@@ -21,6 +21,9 @@ import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { format, startOfYear, endOfYear } from 'date-fns'
 import { TrashIcon, PencilIcon, LinkIcon } from '../components/icons.jsx'
+import MoreActions from '../components/MoreActions.jsx'
+import PhoneFilters from '../components/PhoneFilters.jsx'
+import CardTable from '../components/CardTable.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -328,14 +331,20 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
         {/* ── Toolbar ── */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
           {canEdit && <button className="btn btn-success" onClick={() => { setEditRow(null); setShowAdd(true) }}>+ เพิ่มรายรับ</button>}
-          {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
-          <a className="btn btn-ghost" href="/templates/TEMPLATE_รายรับ.xlsx" download>📄 Template</a>
-          <button className="btn btn-ghost" onClick={handleExport}>📤 Export Excel</button>
+          <MoreActions>
+            {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
+            <a className="btn btn-ghost" href="/templates/TEMPLATE_รายรับ.xlsx" download>📄 Template</a>
+            <button className="btn btn-ghost" onClick={handleExport}>📤 Export Excel</button>
+          </MoreActions>
           <div style={{ flex: 1 }} />
           <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหา..." value={search} onChange={e => setSearch(e.target.value)} />
+          <PhoneFilters title="ช่วงวันที่" count={dateFrom || dateTo ? 1 : 0}
+            summary={dateFrom || dateTo ? [{ label: `${dateFrom || '…'} – ${dateTo || '…'}`, onRemove: () => { setDateFrom(''); setDateTo('') } }] : []}
+            onClear={() => { setDateFrom(''); setDateTo('') }}>
           <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
           <span style={{ color: 'var(--text3)' }}>—</span>
           <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          </PhoneFilters>
         </div>
 
         {/* ── Import ── */}
@@ -375,7 +384,7 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
 
       {/* ── Table ── */}
       <div className="card">
-        <div className="table-wrap table-wrap-fill">
+        <CardTable className="table-wrap table-wrap-fill">
           <table>
             <thead>
               <tr>
@@ -439,7 +448,7 @@ export default function Income({ navigateTo, navState, openSiteOverview }) {
               </tfoot>
             )}
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {/* ── Add/Edit Modal ── */}

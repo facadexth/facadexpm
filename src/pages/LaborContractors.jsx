@@ -30,6 +30,8 @@ import { downloadPDF } from '../lib/pdf.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
 import { readDraft, saveDraft, clearDraft, useDraftForm } from '../hooks/useDraftForm.js'
+import CardTable from '../components/CardTable.jsx'
+const LABOR_CONTRACTORS_CARD_MAP = { title: 'ชื่อผู้รับเหมา' }
 
 // ── Sub-tab 1: ผู้รับเหมา ─────────────────────────────────────
 
@@ -113,7 +115,7 @@ function SubcontractorTab() {
         <span style={{ color:'var(--text3)', fontSize:13 }}>{filtered.length} รายการ</span>
       </div>
       <div className="card">
-        <div className="table-wrap">
+        <CardTable map={LABOR_CONTRACTORS_CARD_MAP}>
           <table>
             <thead><tr>
               <th className="sortable" onClick={() => toggleSort('subcontractor_number')}>รหัส{si('subcontractor_number')}</th>
@@ -143,7 +145,7 @@ function SubcontractorTab() {
               {!filtered.length && <tr><td colSpan={6} style={{ textAlign:'center', color:'var(--text3)', padding:24 }}>ยังไม่มีผู้รับเหมา</td></tr>}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {showForm && (
@@ -666,7 +668,7 @@ function PaymentsTab({ openSiteOverview }) {
         <span style={{ color:'var(--text3)', fontSize:12 }}>{(payments||[]).length} รายการ</span>
       </div>
       <div className="card">
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead>
               <tr>
@@ -719,7 +721,7 @@ function PaymentsTab({ openSiteOverview }) {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {whtCertPayment && (

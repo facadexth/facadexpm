@@ -25,6 +25,7 @@ import { toRpcPayload, formFromInvoice, emptyTaxInvoiceForm, poRowsFor } from '.
 import {
   CHECK_TEXT, mapTaxInvoiceRpcError, formSignature, previewIsCurrent, postSummaryLines, doubleCountAlerts, withinTolerance, fmtQty,
 } from '../lib/supplierTaxInvoice.js'
+import CardTable from '../components/CardTable.jsx'
 
 const STATUS_BADGE = {
   draft: { cls: 'badge-check_issued', label: '📝 ร่าง' },
@@ -284,7 +285,7 @@ export default function SupplierTaxInvoices({ navState, navigateTo } = {}) {
       {error && <div style={{ color: 'var(--danger, #e55)', marginBottom: 12 }}>โหลดข้อมูลไม่สำเร็จ: {error}</div>}
 
       <div className="card">
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead>
               <tr>
@@ -325,7 +326,7 @@ export default function SupplierTaxInvoices({ navState, navigateTo } = {}) {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {editing && (
@@ -421,7 +422,7 @@ function ViewModal({ row, siteNameById, onClose }) {
           </div>
         )}
         {error && <div style={{ color: 'var(--danger, #e55)' }}>โหลดรายการไม่สำเร็จ: {error}</div>}
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead><tr><th>รายการ</th><th style={{ textAlign: 'right' }}>จำนวน</th><th>หน่วย</th><th style={{ textAlign: 'right' }}>ยอด</th><th style={{ textAlign: 'right' }}>จำนวน (หน่วยหลัก)</th><th>ไซท์งาน</th></tr></thead>
             <tbody>
@@ -438,7 +439,7 @@ function ViewModal({ row, siteNameById, onClose }) {
               {!items.length && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)' }}>{loading ? 'กำลังโหลด...' : 'ไม่มีรายการ'}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </CardTable>
         {delivery ? (
           <div>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>การส่งของที่ผูก</div>

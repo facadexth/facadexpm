@@ -14,6 +14,8 @@ import { useDraftForm } from '../hooks/useDraftForm.js'
 import { mergeWorkerOT } from '../lib/otMerge.js'
 import { SITE_TYPES } from './assign/constants.js'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
+import CardTable from '../components/CardTable.jsx'
+const PAYROLL_CARD_MAP = { amount: 'จ่ายสุทธิ' }
 
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
@@ -389,7 +391,7 @@ export default function Payroll() {
 
       {/* ── Table ── */}
       <div className="card">
-        <div className="table-wrap table-wrap-fill">
+        <CardTable map={PAYROLL_CARD_MAP} className="table-wrap table-wrap-fill">
           <table>
             <thead>
               <tr>
@@ -455,7 +457,7 @@ export default function Payroll() {
               </tfoot>
             )}
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {/* ── Calc Preview Modal ── */}

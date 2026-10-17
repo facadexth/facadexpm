@@ -36,6 +36,10 @@ import {
   calcDueDate, resolvePaymentMethodOnSupplierChange,
 } from '../lib/supplierCredit.js'
 import { THAI_BANKS } from '../lib/thaiBanks.js'
+import MoreActions from '../components/MoreActions.jsx'
+import PhoneFilters from '../components/PhoneFilters.jsx'
+import CardTable from '../components/CardTable.jsx'
+const EXPENSES_CARD_MAP = { title: 'รายละเอียด', amount: 'มูลค่า' }
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -570,10 +574,12 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
       {/* ── Toolbar (actions only) ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => { setEditRow(null); setShowAdd(true) }}>+ เพิ่มรายจ่าย</button>}
-        {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
-        <a className="btn btn-ghost" href="/templates/TEMPLATE_รายจ่าย.xlsx" download>📄 Template</a>
-        <button className="btn btn-ghost" onClick={handleExport}>📤 Export Excel</button>
-        <button className="btn btn-ghost" onClick={() => setShowPeakExport(true)}>ส่งออก PEAK</button>
+        <MoreActions>
+          {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
+          <a className="btn btn-ghost" href="/templates/TEMPLATE_รายจ่าย.xlsx" download>📄 Template</a>
+          <button className="btn btn-ghost" onClick={handleExport}>📤 Export Excel</button>
+          <button className="btn btn-ghost" onClick={() => setShowPeakExport(true)}>ส่งออก PEAK</button>
+        </MoreActions>
       </div>
 
       {/* ── Import Zone ── */}
@@ -587,6 +593,9 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
       <div className="card" style={{ padding: 14, marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <input className="input input-sm" style={{ flex: '1 1 180px' }} placeholder="ค้นหารายละเอียด..." value={search} onChange={e => setSearch(e.target.value)} />
+          <PhoneFilters title="ช่วงวันที่" count={(allTime ? 1 : 0) + (dateField !== 'date' ? 1 : 0)}
+            summary={[...(allTime ? [{ label: 'ทั้งโปรเจกต์', onRemove: () => setAllTime(false) }] : []), ...(dateField !== 'date' ? [{ label: 'ตามวันที่อื่น', onRemove: () => setDateField('date') }] : [])]}
+            onClear={() => { setAllTime(false); setDateField('date') }}>
           <select className="select select-sm" style={{ width: 190 }} value={dateField} onChange={e => setDateField(e.target.value)}>
             <option value="date">วันที่สั่งซื้อ</option>
             <option value="billing_date">วันวางบิล</option>
@@ -599,8 +608,17 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
             <input type="checkbox" checked={allTime} onChange={e => setAllTime(e.target.checked)} />
             ทั้งโปรเจกต์ตั้งแต่เริ่มต้น
           </label>
+          </PhoneFilters>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
+          <PhoneFilters count={[siteId, catId, supplierId, status].filter(Boolean).length}
+            summary={[
+              ...(siteId ? [{ label: 'ไซท์งาน', onRemove: () => setSiteId('') }] : []),
+              ...(catId ? [{ label: 'หมวด', onRemove: () => setCatId('') }] : []),
+              ...(supplierId ? [{ label: 'Supplier', onRemove: () => setSupplierId('') }] : []),
+              ...(status ? [{ label: STATUS_LABELS[status] || 'สถานะ', onRemove: () => setStatus('') }] : []),
+            ]}
+            onClear={resetFilters}>
           <div style={{ minWidth: 200 }}>
             <SearchableSelect value={siteId} onChange={setSiteId} placeholder="ทุกไซท์งาน" options={siteOpts(sites)} />
           </div>
@@ -615,6 +633,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
             <option value="unpaid">🟡 ยังไม่จ่าย (ค้างจ่าย+ออกเช็ค)</option>
             {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
           </select>
+          </PhoneFilters>
           <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={resetFilters}>🔄 ล้างตัวกรอง</button>
           {navState?.siteName && (
             <span className="badge" style={{ background: 'rgba(var(--accent-rgb), 0.2)', color: 'var(--accent)' }}>
@@ -680,7 +699,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
 
       {/* ── Table ── */}
       <div className="card">
-        <div className="table-wrap table-wrap-fill">
+        <CardTable map={EXPENSES_CARD_MAP} className="table-wrap table-wrap-fill">
           <table>
             <thead>
               <tr>
@@ -791,7 +810,7 @@ export default function Expenses({ navigateTo, navState, openSiteOverview }) {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {/* ── Add/Edit Modal ── */}

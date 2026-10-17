@@ -54,6 +54,8 @@ import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import PendingMark from '../components/PendingMark.jsx'
 import { removeBlockOrClear } from '../lib/rowEditing.js'
 import { isPoDraft } from '../lib/pendingRules.js'
+import PhoneFilters from '../components/PhoneFilters.jsx'
+import CardTable from '../components/CardTable.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -474,7 +476,7 @@ function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument, receip
         )}
         <div>
           <label className="label">รายการสินค้า</label>
-          <div className="table-wrap">
+          <CardTable>
             <table style={{ fontSize: 12.5 }}>
               <thead><tr><th>รายการ</th><th>สั่ง</th><th>รับ</th><th style={{ textAlign: 'right' }}>มูลค่า</th></tr></thead>
               <tbody>
@@ -494,7 +496,7 @@ function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument, receip
                 ))}
               </tbody>
             </table>
-          </div>
+          </CardTable>
           <div style={{ marginTop: 8, textAlign: 'right', fontSize: 13 }}>
             <div>รวมก่อน VAT: <span className="font-mono">{fmt(subtotal)}</span></div>
             {po.has_vat && <div>VAT (7%): <span className="font-mono">{fmt(vat)}</span></div>}
@@ -1280,12 +1282,23 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => { saveDraft(ADD_FORM_OPEN_KEY, true); setEditRow(null); setShowAdd(true) }}>+ เพิ่มใบสั่งซื้อ</button>}
         <div style={{ flex: 1 }} />
+        <PhoneFilters title="ช่วงวันที่" count={dateFrom || dateTo ? 1 : 0}
+          summary={dateFrom || dateTo ? [{ label: `${dateFrom || '…'} – ${dateTo || '…'}`, onRemove: () => { setDateFrom(''); setDateTo('') } }] : []}
+          onClear={() => { setDateFrom(''); setDateTo('') }}>
         <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <span style={{ color: 'var(--text3)' }}>—</span>
         <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
+        </PhoneFilters>
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        <PhoneFilters count={[siteId, supplierId, status].filter(Boolean).length}
+          summary={[
+            ...(siteId ? [{ label: 'ไซท์งาน', onRemove: () => setSiteId('') }] : []),
+            ...(supplierId ? [{ label: 'Supplier', onRemove: () => setSupplierId('') }] : []),
+            ...(status ? [{ label: PO_STATUS_LABELS[status] || 'สถานะ', onRemove: () => { draftFocus.clear(); setStatus('') } }] : []),
+          ]}
+          onClear={() => { draftFocus.clear(); setSiteId(''); setSupplierId(''); setStatus('') }}>
         <div style={{ minWidth: 200 }}>
           <SearchableSelect value={siteId} onChange={setSiteId} placeholder="ทุกไซท์งาน" options={siteOpts(sites)} />
         </div>
@@ -1296,12 +1309,13 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
           <option value="">ทุกสถานะ</option>
           {PO_STATUSES.map(s => <option key={s} value={s}>{PO_STATUS_LABELS[s]}</option>)}
         </select>
+        </PhoneFilters>
         <PendingFocusChip focus={{ ...draftFocus, clear: endDraftFocus }} pendingKey="po_draft" />
         <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาเลขที่ / ไซท์งาน / Supplier..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       <div className="card">
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead>
               <tr>
@@ -1351,7 +1365,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {deleteId && (
