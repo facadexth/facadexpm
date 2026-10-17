@@ -19,7 +19,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../../components/Modal.jsx'
-import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks, useSites } from '../../hooks/useSupabase.js'
+import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks, useSites, attachPmWorkerNames } from '../../hooks/useSupabase.js'
 import { STATUS_COLOR } from './ganttTimeline.js'
 import { groupSubtasksByParent, isLeaf } from './subtaskCalc.js'
 import teamLeaderBadge from '../../assets/team-leader-badge.png'
@@ -103,11 +103,12 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const fetchPhotos = async () => {
     const [{ data: assignedRows }, { data: unassignedRows }] = await Promise.all([
       supabase.from('line_site_photos').select('task_id').eq('site_id', site.id).not('task_id', 'is', null),
-      supabase.from('line_site_photos').select('id, photo_path, workers(name, nickname), created_at').eq('site_id', site.id).is('task_id', null).order('created_at', { ascending: false }).limit(40),
+      supabase.from('line_site_photos').select('id, photo_path, worker_id, workers(name, nickname), created_at').eq('site_id', site.id).is('task_id', null).order('created_at', { ascending: false }).limit(40),
     ])
     const counts = {}
     ;(assignedRows || []).forEach((r) => { counts[r.task_id] = (counts[r.task_id] || 0) + 1 })
-    const rows = unassignedRows || []
+    // PM cannot embed workers(...): attach names from pm_workers (no-op for other roles).
+    const rows = await attachPmWorkerNames(unassignedRows)
     const paths = rows.map((p) => p.photo_path)
     let urlByPath = {}
     if (paths.length) {
@@ -142,9 +143,10 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   useEffect(() => {
     let cancelled = false
     const todayIso = new Date().toISOString().slice(0, 10)
-    supabase.from('worker_assignments').select('shift, workers(name, nickname)')
+    supabase.from('worker_assignments').select('shift, worker_id, workers(name, nickname)')
       .eq('site_id', site.id).eq('date', todayIso).eq('is_team_leader', true)
-      .then(({ data }) => {
+      .then(({ data }) => attachPmWorkerNames(data))
+      .then((data) => {
         if (cancelled) return
         const next = { morning: null, evening: null }
         ;(data || []).forEach((r) => { next[r.shift] = r.workers?.nickname || r.workers?.name || null })
@@ -160,9 +162,9 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     setSelectedPhotoIds(new Set())
     setShowSwitchSitePicker(false)
     setLoadingViewPhotos(true)
-    const { data } = await supabase.from('line_site_photos').select('id, photo_path, workers(name, nickname), created_at')
+    const { data } = await supabase.from('line_site_photos').select('id, photo_path, worker_id, workers(name, nickname), created_at')
       .eq('task_id', task.id).order('created_at')
-    const rows = data || []
+    const rows = await attachPmWorkerNames(data)
     const paths = rows.map((p) => p.photo_path)
     let urlByPath = {}
     if (paths.length) {

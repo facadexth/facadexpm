@@ -13,6 +13,31 @@ import { buildActiveLinkMap, saveDraftArgs, saveReceiptDraftArgs, idArgs, postAr
 import { isTaxInvoiceNotReady } from '../lib/supplierTaxInvoice.js'
 import { buildPoMoneyIndex, isMissingColumnError, isMissingRelationError, isMissingEmbedError } from '../lib/poReceiptErrors.js'
 import { buildActiveReceiptLinkMap } from '../lib/deliveryTaxInvoice.js'
+import { getCurrentRole } from '../lib/roles.js'
+
+// PM never reads money: the DB denies PM on sites/workers/PO/inventory base
+// tables, so PM goes through SECURITY DEFINER pm_* RPCs (migration 2026-10-17-05).
+const isPm = () => getCurrentRole() === 'PM'
+// Paged with .range() like fetchAllRows: PostgREST's max-rows cap applies to RPC results too.
+function pmRpc(name, args) {
+  return fetchAllRows(() => (args ? supabase.rpc(name, args) : supabase.rpc(name)))
+}
+// Attach the worker/site names a PM cannot embed (workers/sites are not readable by PM).
+async function attachPmNames(rows, { siteShape }) {
+  const [workers, sites] = await Promise.all([pmRpc('pm_workers'), pmRpc('pm_sites')])
+  const wById = new Map(workers.map(w => [w.id, { name: w.name, nickname: w.nickname, position: w.position }]))
+  const sById = new Map(sites.map(x => [x.id, siteShape(x)]))
+  return (rows || []).map(r => ({ ...r, workers: wById.get(r.worker_id) ?? null, sites: sById.get(r.site_id) ?? null }))
+}
+
+// Attach worker names to rows whose `workers(...)` embed is null for a PM.
+// Non-PM rows are returned untouched (their embed already works).
+export async function attachPmWorkerNames(rows) {
+  if (!isPm()) return rows || []
+  const workers = await pmRpc('pm_workers')
+  const byId = new Map(workers.map(w => [w.id, { name: w.name, nickname: w.nickname }]))
+  return (rows || []).map(r => ({ ...r, workers: byId.get(r.worker_id) ?? r.workers ?? null }))
+}
 
 /** Generic fetch hook */
 export function useQuery(queryFn, deps = []) {
@@ -42,6 +67,10 @@ export function useQuery(queryFn, deps = []) {
 
 export function useSites() {
   return useQuery(async () => {
+    if (isPm()) {
+      const rows = await pmRpc('pm_sites')
+      return [...rows].sort((a, b) => String(a.site_number ?? '').localeCompare(String(b.site_number ?? '')))
+    }
     const { data, error } = await supabase
       .from('site_financial_summary')  // ใช้ view ที่รวม income/expense แล้ว
       .select('*')
@@ -54,6 +83,11 @@ export function useSites() {
 export function useSite(id) {
   return useQuery(async () => {
     if (!id) return null
+    if (isPm()) {
+      const { data, error } = await supabase.rpc('pm_sites').eq('id', id).single()
+      if (error) throw error
+      return data
+    }
     const { data, error } = await supabase
       .from('sites').select('*').eq('id', id).single()
     if (error) throw error
@@ -122,6 +156,11 @@ export function useSiteDepositBalance(siteId) {
 export function useSiteOverview(siteId) {
   return useQuery(async () => {
     if (!siteId) return null
+    if (isPm()) {
+      const { data, error } = await supabase.rpc('pm_sites').eq('id', siteId).single()
+      if (error) throw error
+      return { ...data, deposit: null, retention: null }
+    }
     const [siteRes, depositRes, retentionRes] = await Promise.all([
       supabase.from('site_financial_summary').select('*').eq('id', siteId).single(),
       supabase.from('site_deposit_summary').select('*').eq('site_id', siteId).single(),
@@ -147,7 +186,7 @@ export function useSiteOverview(siteId) {
  */
 export function useSiteExpensesByCategory(siteId) {
   return useQuery(async () => {
-    if (!siteId) return []
+    if (!siteId || isPm()) return []
     const [expensesRes, summaryRes] = await Promise.all([
       supabase.from('expenses_view').select('category_name, amount').eq('site_id', siteId),
       supabase.from('site_financial_summary').select('worker_labor_cost').eq('id', siteId).single(),
@@ -197,6 +236,17 @@ const PO_LIST_SELECT = '*, sites(name, site_number), suppliers(name, supplier_nu
 
 export function usePurchaseOrders(filters = {}) {
   return useQuery(async () => {
+    if (isPm()) {
+      const rows = await pmRpc('pm_purchase_orders')
+      return rows
+        .filter(r => (!filters.siteId || r.site_id === filters.siteId)
+          && (!filters.supplierId || r.supplier_id === filters.supplierId)
+          && (!filters.status || r.status === filters.status)
+          && (!filters.from || r.date >= filters.from)
+          && (!filters.to || r.date <= filters.to))
+        .map(r => ({ ...r, suppliers: { name: r.supplier_name } }))
+        .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')) || String(b.id).localeCompare(String(a.id)))
+    }
     const buildQuery = () => {
       let q = supabase
         .from('purchase_orders')
@@ -241,10 +291,24 @@ export function useCreditNoteExpenseIds() {
   }, [])
 }
 
+/** PM only: on-hand rows (item code/name/unit, site, quantity) for every site; no cost. */
+export function usePmStockOnHand() {
+  return useQuery(async () => (isPm() ? pmRpc('pm_inventory_on_hand', { p_site_id: null }) : []), [])
+}
+
+/** PM only: one PO's lines without prices (pm_purchase_order_items). */
+export function fetchPmPurchaseOrderItems(poId) {
+  return pmRpc('pm_purchase_order_items', { p_po_id: poId })
+}
+
 /** Quantity on hand per inventory item at one site (for the return shortfall check). */
 export function useInventoryOnHand(siteId) {
   return useQuery(async () => {
     if (!siteId) return {}
+    if (isPm()) {
+      const rows = await pmRpc('pm_inventory_on_hand', { p_site_id: siteId ?? null })
+      return Object.fromEntries(rows.map(r => [r.inventory_item_id, Number(r.quantity_on_hand)]))
+    }
     // a big site has > 1000 balance rows: paginate or on-hand silently reads 0 for dropped items
     const data = await fetchAllRows(() => supabase
       .from('inventory_stock_balances')
@@ -507,10 +571,10 @@ export function useMyAssignedCheckinLocation() {
       .maybeSingle()
     if (error) throw error
     if (data?.checkin_locations) return data.checkin_locations
-    // No personal assignment -- an ADMIN/OWNER can still check in at the
+    // No personal assignment -- an ADMIN/OWNER/PM can still check in at the
     // tenant's one role='office' location with no per-user setup (mirrors
     // the perform_location_checkin RPC's own fallback, added 2026-10-02).
-    if (data?.role === 'ADMIN' || data?.role === 'OWNER') {
+    if (data?.role === 'ADMIN' || data?.role === 'OWNER' || data?.role === 'PM') {
       const { data: office, error: officeError } = await supabase
         .from('checkin_locations')
         .select('id, name')
@@ -732,6 +796,7 @@ export function useIncomes(filters = {}) {
 
 export function useWorkers() {
   return useQuery(async () => {
+    if (isPm()) return (await pmRpc('pm_workers')).filter(w => w.status === 'active' && w.show_in_assign === true)
     const { data, error } = await supabase
       .from('workers_with_rate')
       .select('*')
@@ -748,6 +813,7 @@ export function useWorkers() {
 // schedule even if an admin has hidden them from the Assign roster.
 export function useAllActiveWorkers() {
   return useQuery(async () => {
+    if (isPm()) return (await pmRpc('pm_workers')).filter(w => w.status === 'active')
     const { data, error } = await supabase
       .from('workers_with_rate')
       .select('*')
@@ -765,6 +831,16 @@ export function useAssignments(month, year) {
     if (!month || !year) return []
     const from = `${year}-${String(month).padStart(2,'0')}-01`
     const to   = new Date(year, month, 0).toISOString().slice(0,10)
+    if (isPm()) {
+      const { data, error } = await supabase
+        .from('worker_assignments')
+        .select('*')
+        .gte('date', from)
+        .lte('date', to)
+        .order('date')
+      if (error) throw error
+      return attachPmNames(data, { siteShape: x => ({ name: x.name, site_number: x.site_number }) })
+    }
     const { data, error } = await supabase
       .from('worker_assignments')
       .select('*, workers(name, nickname, position, monthly_salary, monthly_contribution, has_social_security), sites(name, site_number)')
@@ -780,6 +856,16 @@ export function useAssignments(month, year) {
 export function useAssignmentsRange(from, to) {
   return useQuery(async () => {
     if (!from || !to) return []
+    if (isPm()) {
+      const { data, error } = await supabase
+        .from('worker_assignments')
+        .select('id, worker_id, site_id, date, type, shift, ot_hours, notes, confirmed_at, confirmed_by, is_team_leader')
+        .gte('date', from)
+        .lte('date', to)
+        .order('date')
+      if (error) throw error
+      return attachPmNames(data, { siteShape: x => ({ name: x.name, site_number: x.site_number, is_default: x.is_default }) })
+    }
     const { data, error } = await supabase
       .from('worker_assignments')
       .select('id, worker_id, site_id, date, type, shift, ot_hours, notes, confirmed_at, confirmed_by, is_team_leader, workers(name, nickname, monthly_salary, pay_type, daily_wage), sites(name, site_number, is_default)')
@@ -844,6 +930,16 @@ export function usePhaseTasks() {
 export function useWorkerOTRange(from, to) {
   return useQuery(async () => {
     if (!from || !to) return []
+    if (isPm()) {
+      const { data, error } = await supabase
+        .from('worker_ot')
+        .select('id, worker_id, site_id, date, start_time, end_time, ot_hours, is_overnight, notes')
+        .gte('date', from)
+        .lte('date', to)
+        .order('date')
+      if (error) throw error
+      return attachPmNames(data, { siteShape: x => ({ name: x.name, site_number: x.site_number }) })
+    }
     const { data, error } = await supabase
       .from('worker_ot')
       .select('id, worker_id, site_id, date, start_time, end_time, ot_hours, is_overnight, notes, workers(name, nickname, monthly_salary, pay_type, daily_wage), sites(name, site_number)')
@@ -975,6 +1071,7 @@ export function useSickLeaveQuotaUsage(year) {
  *  useMySiteNames() ด้านล่างสำหรับ path ที่ WORKER ใช้ได้จริง */
 export function useSitesProgress() {
   return useQuery(async () => {
+    if (isPm()) return []
     const { data, error } = await supabase
       .from('sites_progress')
       .select('id, site_number, name, status, start_date, end_date, billing_pct')

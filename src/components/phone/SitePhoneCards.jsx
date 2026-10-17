@@ -5,15 +5,16 @@ import RowActionsMenu from '../RowActionsMenu.jsx'
 import { fmtCompact, spendRatio } from '../../lib/phoneFormat.js'
 
 const SORTS = [
-  { key: 'name', label: 'ชื่อ' }, { key: 'contract_value', label: 'มูลค่าสัญญา' }, { key: 'billing_pct', label: '% เบิก' },
-  { key: 'gross_profit', label: 'กำไร' }, { key: 'end_date', label: 'วันจบงาน' }, { key: 'site_number', label: 'รหัส' },
+  { key: 'name', label: 'ชื่อ' }, { key: 'contract_value', label: 'มูลค่าสัญญา', money: true }, { key: 'billing_pct', label: '% เบิก', money: true },
+  { key: 'gross_profit', label: 'กำไร', money: true }, { key: 'end_date', label: 'วันจบงาน' }, { key: 'site_number', label: 'รหัส' },
 ]
 
-export default function SitePhoneCards({ sites, toggleSort, sortIcon, onOpen, onEdit, menuItems, canEdit, countdown, fmtDate, PencilIcon }) {
+// showMoney=false (PM): no money sort chips, money stats, billing % or spend bar.
+export default function SitePhoneCards({ sites, toggleSort, sortIcon, onOpen, onEdit, menuItems, canEdit, countdown, fmtDate, PencilIcon, showMoney = true }) {
   return (
     <div className="pc-list">
       <div className="pc-sorts" data-phone="chips">
-        {SORTS.map(s => <button key={s.key} type="button" className="pc-chip" onClick={() => toggleSort(s.key)}>{s.label}{sortIcon(s.key)}</button>)}
+        {SORTS.filter(s => showMoney || !s.money).map(s => <button key={s.key} type="button" className="pc-chip" onClick={() => toggleSort(s.key)}>{s.label}{sortIcon(s.key)}</button>)}
       </div>
       {sites.map(s => {
         const pct = s.billing_pct
@@ -31,6 +32,7 @@ export default function SitePhoneCards({ sites, toggleSort, sortIcon, onOpen, on
               {s.site_number}{(s.client_display_name || s.client_name) ? ` · ${s.client_display_name || s.client_name}` : ''}
               {s.map_url && <a href={s.map_url} target="_blank" rel="noreferrer" className="pc-map" onClick={e => e.stopPropagation()} aria-label="แผนที่">📍</a>}
             </div>
+            {showMoney && <>
             <div className="pc-stats">
               <div className="pc-stat"><small>สัญญา</small><b>{s.contract_value > 0 ? fmtCompact(s.contract_value) : '—'}</b></div>
               <div className="pc-stat"><small>เบิกแล้ว</small><b className="pc-good">{hasIncome ? fmtCompact(s.total_income) : '—'}</b></div>
@@ -51,6 +53,7 @@ export default function SitePhoneCards({ sites, toggleSort, sortIcon, onOpen, on
                 <div className="pc-bar"><i className={ratio.over ? 'pc-bar-bad' : 'pc-bar-good'} style={{ width: `${Math.min(100, ratio.pct)}%` }} /></div>
               </>
             )}
+            </>}
             <div className="pc-foot">
               <span>
                 {s.end_date ? <>จบงาน {fmtDate(s.end_date)}{days !== null && <> · <b className={days < 0 ? 'pc-bad' : days < 14 ? 'pc-warn' : ''}>{days < 0 ? `เกิน ${Math.abs(days)} วัน` : `เหลือ ${days} วัน`}</b></>}</> : 'ยังไม่กำหนดวันจบงาน'}
