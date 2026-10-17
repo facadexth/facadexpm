@@ -4,9 +4,12 @@
 // ============================================================
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { setCurrentRole } from '../lib/roles.js'
 
-// Role hierarchy: higher number = more access
-const HIERARCHY = { OWNER: 3, ADMIN: 2, WORKER: 1 }
+// Role hierarchy: higher number = more access. PM sits between WORKER and
+// ADMIN: it passes WORKER gates and fails ADMIN/OWNER gates; the few
+// ADMIN-level tabs a PM may open are let in by roleMeetsTab (lib/roles.js).
+const HIERARCHY = { OWNER: 3, ADMIN: 2, PM: 1.5, WORKER: 1 }
 
 // User-scoped bootstrap cache for the last known-good role. A failed
 // user_roles fetch (network blip, proxy/CDN error page, expired JWT,
@@ -59,7 +62,7 @@ export function useUserRole() {
     let session = null
     const applyCachedFallback = () => {
       const cached = session?.user?.email ? readRoleCache(session.user.email) : null
-      if (cached) setRole(cached.role)
+      if (cached) { setRole(cached.role); setCurrentRole(cached.role) }
       setLoading(false)
     }
 
@@ -70,6 +73,7 @@ export function useUserRole() {
       if (!session?.user) {
         setUser(null)
         setRole(null)
+        setCurrentRole(null)
         setLoading(false)
         return
       }
@@ -94,6 +98,7 @@ export function useUserRole() {
       if (noRoleRowExists) {
         const resolvedRole = res.data?.role ?? 'WORKER'
         setRole(resolvedRole)
+        setCurrentRole(resolvedRole)
         writeRoleCache(session.user.email, resolvedRole)
         setLoading(false)
       } else {

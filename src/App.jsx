@@ -10,6 +10,7 @@ import { useTenant } from './hooks/useTenant.js'
 import { usePlatformAdmin } from './hooks/useSupabase.js'
 import { ProtectedPage } from './components/ProtectedPage.jsx'
 import { canViewPage } from './lib/permissions.js'
+import { roleMeetsTab, canSeeMoney } from './lib/roles.js'
 import { getEffectiveTheme, toggleTheme } from './lib/theme.js'
 import { manualUrlFor } from './lib/manualLinks.js'
 import ChangePassword from './components/ChangePassword.jsx'
@@ -312,7 +313,7 @@ export default function App() {
   // itself rendered). Same gap let a platformAdminOnly tab's minRole:
   // 'WORKER' float trivially past any logged-in user.
   const passesGates = (tab) =>
-    isAtLeast(tab.minRole) &&
+    roleMeetsTab(role, tab) &&
     hasModuleAccess(tab.module) &&
     (!role || canViewPage(role, tab.permKey ?? tab.id)) &&
     (!tab.platformAdminOnly || isPlatformAdmin)
@@ -393,7 +394,7 @@ export default function App() {
     if (roleLoading || tenantLoading || platformAdminLoading || !session) return
     const current = ALL_TAB_ENTRIES.find(t => t.id === activeTab)
     if (current && !passesGates(current)) {
-      setActiveTab(isAtLeast('ADMIN') ? 'dashboard' : 'assign')
+      setActiveTab(canSeeMoney(role) ? 'dashboard' : (role === 'PM' ? 'sites' : 'assign'))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roleLoading, tenantLoading, platformAdminLoading, session, activeTab, isAtLeast, hasModuleAccess, role, isPlatformAdmin])
@@ -427,7 +428,7 @@ export default function App() {
   const renderPage = () => {
     const props = { navigateTo, navState, openSiteOverview: setOverviewSiteId, onOpenChangePassword: () => setShowChangePassword(true), onOpenChangePlan: () => setShowUpgradeModal(true) }
     const entry = ALL_TAB_ENTRIES.find(t => t.id === activeTab) ?? ALL_TAB_ENTRIES[0]
-    const gate = { minRole: entry.minRole, module: entry.module, pageKey: entry.permKey ?? entry.id, platformAdminOnly: entry.platformAdminOnly, hasModuleAccess, isPlatformAdmin, tenantLoading, platformAdminLoading }
+    const gate = { tabId: entry.id, minRole: entry.minRole, module: entry.module, pageKey: entry.permKey ?? entry.id, platformAdminOnly: entry.platformAdminOnly, hasModuleAccess, isPlatformAdmin, tenantLoading, platformAdminLoading }
 
     const page = (() => {
       switch (activeTab) {
