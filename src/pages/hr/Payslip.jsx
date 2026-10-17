@@ -9,7 +9,6 @@ import { supabase, fmt } from '../../lib/supabase.js'
 import { downloadPDF } from '../../lib/pdf.js'
 import { thaiBahtText } from '../../lib/thaiBahtText.js'
 import { periodLabel, MONTHS_TH } from '../../lib/payroll/period.js'
-import { bankByCode } from '../../lib/bankExport/banks.js'
 
 // Show only the last 4 digits; 10-digit accounts keep the 3-1-5-1 bank grouping.
 export function maskAcct(a) {
@@ -47,7 +46,7 @@ const CSS = `
 .payslip-a5 .hd{display:flex;justify-content:space-between;gap:16px;border-bottom:2px solid #1b1f1d;padding-bottom:8px}
 .payslip-a5 .co{font-weight:700;font-size:15px}.payslip-a5 .co small{display:block;font-weight:400;font-size:11px;color:#555}
 .payslip-a5 .tt{text-align:right}.payslip-a5 .tt b{font-size:16px;display:block}.payslip-a5 .tt span{font-size:11.5px;color:#444}
-.payslip-a5 .who{display:grid;grid-template-columns:repeat(4,1fr);gap:2px 16px;font-size:11.5px}.payslip-a5 .who span{color:#666;margin-right:6px}
+.payslip-a5 .who{display:grid;grid-template-columns:repeat(3,1fr);gap:2px 16px;font-size:11.5px}.payslip-a5 .who span{color:#666;margin-right:6px}
 .payslip-a5 .money{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-content:start}
 .payslip-a5 table{width:100%;border-collapse:collapse}.payslip-a5 th{text-align:left;font-size:11.5px;border-bottom:1px solid #1b1f1d;padding:2px 0}
 .payslip-a5 td{padding:2px 0;border-bottom:1px dotted #c9cfcc}.payslip-a5 td small{color:#666;font-size:10.5px}
@@ -90,7 +89,6 @@ export function PayslipSheet({ record, year, month, period }) {
         <div><span>ชื่อ</span>{w.name}{w.nickname ? ` (${w.nickname})` : ''}</div>
         <div><span>รหัส</span>{w.employee_code || '—'}</div>
         <div><span>ตำแหน่ง</span>{w.position || '—'}</div>
-        <div><span>บัญชี</span>{w.bank_code ? `${bankByCode(w.bank_code)?.name || w.bank_code} ${maskAcct(w.bank_account_no)}` : '—'}</div>
       </div>
       <div className="money">
         <table>
