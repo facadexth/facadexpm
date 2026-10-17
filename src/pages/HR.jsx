@@ -41,7 +41,7 @@ const EMPTY_WORKER = {
 
 function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerUsers = [], seat }) {
   const isAdd = !initial?.id
-  const [form, setForm, clearFormDraft] = useDraftForm('worker-form', { ...EMPTY_WORKER, ...initial }, isAdd)
+  const [form, setForm, clearFormDraft] = useDraftForm('worker-form', { ...EMPTY_WORKER, ...initial, bank_branch_touched: !!initial?.bank_branch_code }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const dailyRate = form.pay_type === 'daily'
     ? (form.daily_wage || '—')
@@ -49,7 +49,7 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
   const { data: payItems } = usePayItems()
   const { data: savedAmounts } = useWorkerPayAmounts(initial?.id)
   const [amounts, setAmounts] = useState({})
-  useEffect(() => { if (savedAmounts) setAmounts(savedAmounts) }, [savedAmounts])
+  useEffect(() => { if (savedAmounts) setAmounts(a => ({ ...savedAmounts, ...a })) }, [savedAmounts])
   const workersFull = isAdd && seat?.workers?.max != null && seat.workers.used >= seat.workers.max
 
   // Raw File, deliberately NOT part of `form` (see handleSaveWorker's own
@@ -608,13 +608,14 @@ export default function HR({ navState }) {
       } else {
         const { data, error } = await supabase.from('workers').insert(payload).select().single()
         if (error) throw error
+        savedId = data.id
+        setEditWorker(data) // a retry after a partial failure must update, not insert again
         if (idCardFile) {
           const path = await uploadIdCardPhoto(data.id)
           const { error: photoErr } = await supabase.from('workers').update({ id_card_photo_path: path }).eq('id', data.id)
           if (photoErr) throw photoErr
         }
         await auditLog('workers', data.id, 'INSERT', null, payload)
-        savedId = data.id
       }
       const amountRows = Object.entries(amounts).map(([pay_item_id, v]) => ({ worker_id: savedId, pay_item_id, amount: parseFloat(v) || 0 }))
       if (amountRows.length) {
