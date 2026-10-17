@@ -4,8 +4,13 @@
 -- Rolled-back check: supabase/tests/2026-10-17-05-pm-role.test.sql
 -- Every ALTER POLICY / recreated function below is the live definition
 -- (pg_policies / pg_get_functiondef, read 2026-10-17) with only the role
--- check changed.
+-- check changed, except user_role_held_admin_seat() and the owner_updates
+-- policy: those are not live copies but are redefined from the 04 hotfix
+-- (which must be applied first) to count PM as an admin seat.
 BEGIN;
+
+-- Release guard: 04 must already be applied (05 widens its helper).
+DO $$ BEGIN IF to_regprocedure('public.site_was_ongoing(uuid)') IS NULL THEN RAISE EXCEPTION 'apply 2026-10-17-04 first'; END IF; END $$;
 
 ALTER TABLE user_roles DROP CONSTRAINT user_roles_role_check;
 ALTER TABLE user_roles ADD CONSTRAINT user_roles_role_check
@@ -249,6 +254,10 @@ CREATE POLICY pm_reads ON worker_checkins FOR SELECT
   USING (( SELECT is_pm() ) AND tenant_id = ( SELECT current_tenant_id() ));
 CREATE POLICY pm_reads ON units FOR SELECT
   USING (( SELECT is_pm() ) AND tenant_id = ( SELECT current_tenant_id() ));
+-- Shift confirmation (Assign / CellEditPopup) needs these three settings;
+-- every other app_settings key stays OWNER/ADMIN only.
+CREATE POLICY pm_reads ON app_settings FOR SELECT
+  USING ((SELECT is_pm()) AND tenant_id = (SELECT current_tenant_id()) AND key IN ('require_checkin_confirmation','regular_shift_end_time','checkin_radius_m'));
 
 -- RPC role checks: PM may use office check-in/out and web push.
 CREATE OR REPLACE FUNCTION public.perform_location_checkin(p_lat numeric, p_lng numeric)

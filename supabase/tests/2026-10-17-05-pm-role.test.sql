@@ -37,6 +37,9 @@ ALTER POLICY owner_updates ON public.user_roles
 
 -- ===== inlined 2026-10-17-05-pm-role.sql body =====
 
+-- Release guard: 04 must already be applied (05 widens its helper).
+DO $$ BEGIN IF to_regprocedure('public.site_was_ongoing(uuid)') IS NULL THEN RAISE EXCEPTION 'apply 2026-10-17-04 first'; END IF; END $$;
+
 ALTER TABLE user_roles DROP CONSTRAINT user_roles_role_check;
 ALTER TABLE user_roles ADD CONSTRAINT user_roles_role_check
   CHECK (role = ANY (ARRAY['OWNER','ADMIN','PM','WORKER']));
@@ -279,6 +282,10 @@ CREATE POLICY pm_reads ON worker_checkins FOR SELECT
   USING (( SELECT is_pm() ) AND tenant_id = ( SELECT current_tenant_id() ));
 CREATE POLICY pm_reads ON units FOR SELECT
   USING (( SELECT is_pm() ) AND tenant_id = ( SELECT current_tenant_id() ));
+-- Shift confirmation (Assign / CellEditPopup) needs these three settings;
+-- every other app_settings key stays OWNER/ADMIN only.
+CREATE POLICY pm_reads ON app_settings FOR SELECT
+  USING ((SELECT is_pm()) AND tenant_id = (SELECT current_tenant_id()) AND key IN ('require_checkin_confirmation','regular_shift_end_time','checkin_radius_m'));
 
 -- RPC role checks: PM may use office check-in/out and web push.
 CREATE OR REPLACE FUNCTION public.perform_location_checkin(p_lat numeric, p_lng numeric)
@@ -450,12 +457,14 @@ DO $$
 DECLARE
   v_tenant uuid; v_email text := 'pm-test@example.invalid'; r jsonb := '{}';
   v_owner text := 'pm-test-owner@example.invalid'; v_pm_role_id uuid; b boolean;
-  n int; v_site uuid; v_worker uuid; v_leave uuid; v_phase uuid; v_task uuid;
+  n int; v_site uuid; v_worker uuid; v_leave uuid; v_phase uuid; v_task uuid; v_settings_real int;
 BEGIN
   SELECT id INTO v_tenant FROM tenants WHERE company_name ILIKE '%สร้างดี%' LIMIT 1;  -- demo tenant
   SELECT id INTO v_site FROM sites WHERE tenant_id = v_tenant ORDER BY created_at LIMIT 1;
   SELECT id INTO v_worker FROM workers WHERE tenant_id = v_tenant ORDER BY created_at LIMIT 1;
   SELECT id INTO v_leave FROM leave_requests WHERE tenant_id = v_tenant ORDER BY requested_at LIMIT 1;
+  SELECT count(*) INTO v_settings_real FROM app_settings WHERE tenant_id = v_tenant
+    AND key IN ('require_checkin_confirmation','regular_shift_end_time','checkin_radius_m');
   r := r || jsonb_build_object('tenant', v_tenant, 'have_site', v_site IS NOT NULL,
          'have_worker', v_worker IS NOT NULL, 'have_leave', v_leave IS NOT NULL);
   INSERT INTO user_roles (user_email, role, tenant_id, status) VALUES (v_email, 'PM', v_tenant, 'approved')
@@ -493,7 +502,11 @@ BEGIN
   SELECT count(*) INTO n FROM inventory_stock_balances; r := r || jsonb_build_object('balances_MUST0', n);
   SELECT count(*) INTO n FROM site_financial_summary; r := r || jsonb_build_object('sfs_MUST0', n);
   SELECT count(*) INTO n FROM labor_payments; r := r || jsonb_build_object('labor_payments_MUST0', n);
-  SELECT count(*) INTO n FROM app_settings; r := r || jsonb_build_object('app_settings_MUST0', n);
+  -- app_settings: only the three shift-confirmation keys (pm_reads), nothing else
+  SELECT count(*) INTO n FROM app_settings WHERE key NOT IN ('require_checkin_confirmation','regular_shift_end_time','checkin_radius_m');
+  r := r || jsonb_build_object('app_settings_other_keys_MUST0', n);
+  SELECT count(*) INTO n FROM app_settings WHERE key IN ('require_checkin_confirmation','regular_shift_end_time','checkin_radius_m');
+  r := r || jsonb_build_object('app_settings_pm_keys', n, 'app_settings_pm_keys_eq_real', n = v_settings_real AND n > 0);
 
   -- money views the app still fetches for PM (all security_invoker): 0 rows or
   -- every money column null. *_money_MUSTfalse = some row carried a money value.
@@ -548,6 +561,12 @@ BEGIN
       VALUES (v_worker, v_site, DATE '2099-01-01', 'morning', 'site', v_tenant);
     r := r || jsonb_build_object('w_worker_assignments_insert', 'ok');
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_worker_assignments_insert', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN  -- shift confirmation (Assign.jsx handleConfirm) as PM
+    UPDATE worker_assignments SET confirmed_at = now(), confirmed_by = v_email
+      WHERE worker_id = v_worker AND date = DATE '2099-01-01' AND shift = 'morning' AND confirmed_at IS NULL;
+    GET DIAGNOSTICS n = ROW_COUNT; r := r || jsonb_build_object('w_worker_assignments_confirm_rows_MUST1', n);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_worker_assignments_confirm_rows_MUST1', SQLSTATE || ' ' || SQLERRM);
   END;
   IF v_leave IS NOT NULL THEN
     BEGIN

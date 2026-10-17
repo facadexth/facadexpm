@@ -21,7 +21,7 @@ AS $$
          s.distance_km, s.travel_minutes, s.is_default, s.notes, s.created_at
   FROM sites s LEFT JOIN clients c ON c.id = s.client_id
   WHERE s.tenant_id = current_tenant_id() AND is_site_staff()
-  ORDER BY s.created_at DESC
+  ORDER BY s.created_at DESC, s.id
 $$;
 
 CREATE OR REPLACE FUNCTION public.pm_update_site(p_site_id uuid, p_patch jsonb)
@@ -36,10 +36,15 @@ BEGIN
   FOR k IN SELECT jsonb_object_keys(p_patch) LOOP
     IF NOT k = ANY (allowed) THEN RAISE EXCEPTION 'field not allowed: %', k USING ERRCODE = '22023'; END IF;
   END LOOP;
+  -- Unknown or other-tenant site: P0002 before any status guard, so the error
+  -- code says nothing about another tenant's site status.
+  IF NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND tenant_id = current_tenant_id()) THEN
+    RAISE EXCEPTION 'site not found' USING ERRCODE = 'P0002';
+  END IF;
   -- Finishing a site moves leftover stock and stamps end_date (the OWNER/ADMIN
   -- finish flow), so a PM may not set Completed; an already-Completed site may stay so.
   IF p_patch->>'status' = 'Completed'
-     AND NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND status = 'Completed') THEN
+     AND NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND status = 'Completed' AND tenant_id = current_tenant_id()) THEN
     RAISE EXCEPTION 'PM cannot complete a site' USING ERRCODE = '22023';
   END IF;
   -- Ongoing seat rule from the sites admin_updates policy
@@ -75,7 +80,7 @@ AS $$
          w.line_user_id, w.annual_leave_days, w.annual_sick_leave_days
   FROM workers w
   WHERE w.tenant_id = current_tenant_id() AND is_site_staff()
-  ORDER BY w.name
+  ORDER BY w.name, w.id
 $$;
 
 CREATE OR REPLACE FUNCTION public.pm_purchase_orders()
@@ -87,7 +92,7 @@ AS $$
          po.notes, po.received_date, po.ordered_by, po.created_at
   FROM purchase_orders po LEFT JOIN suppliers sp ON sp.id = po.supplier_id
   WHERE po.tenant_id = current_tenant_id() AND is_site_staff() AND has_module_access('purchase_orders')
-  ORDER BY po.created_at DESC
+  ORDER BY po.created_at DESC, po.id
 $$;
 
 CREATE OR REPLACE FUNCTION public.pm_purchase_order_items(p_po_id uuid)
@@ -113,7 +118,7 @@ AS $$
   WHERE b.tenant_id = current_tenant_id() AND it.tenant_id = current_tenant_id()
     AND (p_site_id IS NULL OR b.site_id = p_site_id)
     AND is_site_staff() AND has_module_access('purchase_orders')
-  ORDER BY it.name, b.site_id
+  ORDER BY it.name, b.site_id, b.inventory_item_id
 $$;
 
 -- Used by the worker_team_members policy: a PM cannot SELECT workers.

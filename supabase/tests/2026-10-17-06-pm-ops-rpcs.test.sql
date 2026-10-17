@@ -36,6 +36,9 @@ ALTER POLICY owner_updates ON public.user_roles
 
 -- ===== inlined 2026-10-17-05-pm-role.sql body =====
 
+-- Release guard: 04 must already be applied (05 widens its helper).
+DO $$ BEGIN IF to_regprocedure('public.site_was_ongoing(uuid)') IS NULL THEN RAISE EXCEPTION 'apply 2026-10-17-04 first'; END IF; END $$;
+
 ALTER TABLE user_roles DROP CONSTRAINT user_roles_role_check;
 ALTER TABLE user_roles ADD CONSTRAINT user_roles_role_check
   CHECK (role = ANY (ARRAY['OWNER','ADMIN','PM','WORKER']));
@@ -278,6 +281,10 @@ CREATE POLICY pm_reads ON worker_checkins FOR SELECT
   USING (( SELECT is_pm() ) AND tenant_id = ( SELECT current_tenant_id() ));
 CREATE POLICY pm_reads ON units FOR SELECT
   USING (( SELECT is_pm() ) AND tenant_id = ( SELECT current_tenant_id() ));
+-- Shift confirmation (Assign / CellEditPopup) needs these three settings;
+-- every other app_settings key stays OWNER/ADMIN only.
+CREATE POLICY pm_reads ON app_settings FOR SELECT
+  USING ((SELECT is_pm()) AND tenant_id = (SELECT current_tenant_id()) AND key IN ('require_checkin_confirmation','regular_shift_end_time','checkin_radius_m'));
 
 -- RPC role checks: PM may use office check-in/out and web push.
 CREATE OR REPLACE FUNCTION public.perform_location_checkin(p_lat numeric, p_lng numeric)
@@ -458,7 +465,7 @@ AS $$
          s.distance_km, s.travel_minutes, s.is_default, s.notes, s.created_at
   FROM sites s LEFT JOIN clients c ON c.id = s.client_id
   WHERE s.tenant_id = current_tenant_id() AND is_site_staff()
-  ORDER BY s.created_at DESC
+  ORDER BY s.created_at DESC, s.id
 $$;
 
 CREATE OR REPLACE FUNCTION public.pm_update_site(p_site_id uuid, p_patch jsonb)
@@ -473,10 +480,15 @@ BEGIN
   FOR k IN SELECT jsonb_object_keys(p_patch) LOOP
     IF NOT k = ANY (allowed) THEN RAISE EXCEPTION 'field not allowed: %', k USING ERRCODE = '22023'; END IF;
   END LOOP;
+  -- Unknown or other-tenant site: P0002 before any status guard, so the error
+  -- code says nothing about another tenant's site status.
+  IF NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND tenant_id = current_tenant_id()) THEN
+    RAISE EXCEPTION 'site not found' USING ERRCODE = 'P0002';
+  END IF;
   -- Finishing a site moves leftover stock and stamps end_date (the OWNER/ADMIN
   -- finish flow), so a PM may not set Completed; an already-Completed site may stay so.
   IF p_patch->>'status' = 'Completed'
-     AND NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND status = 'Completed') THEN
+     AND NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND status = 'Completed' AND tenant_id = current_tenant_id()) THEN
     RAISE EXCEPTION 'PM cannot complete a site' USING ERRCODE = '22023';
   END IF;
   -- Ongoing seat rule from the sites admin_updates policy
@@ -512,7 +524,7 @@ AS $$
          w.line_user_id, w.annual_leave_days, w.annual_sick_leave_days
   FROM workers w
   WHERE w.tenant_id = current_tenant_id() AND is_site_staff()
-  ORDER BY w.name
+  ORDER BY w.name, w.id
 $$;
 
 CREATE OR REPLACE FUNCTION public.pm_purchase_orders()
@@ -524,7 +536,7 @@ AS $$
          po.notes, po.received_date, po.ordered_by, po.created_at
   FROM purchase_orders po LEFT JOIN suppliers sp ON sp.id = po.supplier_id
   WHERE po.tenant_id = current_tenant_id() AND is_site_staff() AND has_module_access('purchase_orders')
-  ORDER BY po.created_at DESC
+  ORDER BY po.created_at DESC, po.id
 $$;
 
 CREATE OR REPLACE FUNCTION public.pm_purchase_order_items(p_po_id uuid)
@@ -550,7 +562,7 @@ AS $$
   WHERE b.tenant_id = current_tenant_id() AND it.tenant_id = current_tenant_id()
     AND (p_site_id IS NULL OR b.site_id = p_site_id)
     AND is_site_staff() AND has_module_access('purchase_orders')
-  ORDER BY it.name, b.site_id
+  ORDER BY it.name, b.site_id, b.inventory_item_id
 $$;
 
 -- Used by the worker_team_members policy: a PM cannot SELECT workers.
@@ -586,7 +598,7 @@ DECLARE
   v_wk text := 'pm-test-worker@example.invalid';
   v_site uuid; v_worker uuid; v_po uuid; v_team uuid; v_open uuid; v_done uuid;
   real_sites int; real_workers int; real_pos int; real_po_items int; real_bal int; real_bal_site int;
-  v_other_po uuid; v_other_site uuid; real_other_po_items int; real_other_bal int;
+  v_other_po uuid; v_other_site uuid; real_other_po_items int; real_other_bal int; v_other_done uuid;
   money text[] := ARRAY['monthly_salary','contract_value','contract_value_no_vat','unit_price','line_total',
                         'weighted_average_cost','cost_labor','cost_other','discount_pct','has_vat'];
 BEGIN
@@ -608,10 +620,12 @@ BEGIN
   SELECT po_id INTO v_other_po FROM purchase_order_items WHERE tenant_id <> v_tenant GROUP BY po_id ORDER BY count(*) DESC LIMIT 1;
   SELECT b.site_id INTO v_other_site FROM inventory_stock_balances b JOIN sites s ON s.id = b.site_id
     WHERE b.tenant_id <> v_tenant AND s.tenant_id = b.tenant_id GROUP BY b.site_id ORDER BY count(*) DESC LIMIT 1;
+  SELECT id INTO v_other_done FROM sites WHERE tenant_id <> v_tenant AND status = 'Completed' ORDER BY created_at LIMIT 1;
   SELECT count(*) INTO real_other_po_items FROM purchase_order_items WHERE po_id = v_other_po;
   SELECT count(*) INTO real_other_bal FROM inventory_stock_balances WHERE site_id = v_other_site;
   r := r || jsonb_build_object('other_po_found', v_other_po IS NOT NULL, 'real_other_po_items', real_other_po_items,
-         'other_site_found', v_other_site IS NOT NULL, 'real_other_site_bal', real_other_bal);
+         'other_site_found', v_other_site IS NOT NULL, 'real_other_site_bal', real_other_bal,
+         'other_completed_site_found', v_other_done IS NOT NULL);
   r := r || jsonb_build_object('tenant', v_tenant, 'real_sites', real_sites, 'real_workers', real_workers,
          'real_pos', real_pos, 'real_po_items', real_po_items, 'real_bal', real_bal, 'real_bal_default_site', real_bal_site);
   -- worker_team_members PK is (worker_id) and every demo worker already has a
@@ -684,6 +698,15 @@ BEGIN
     r := r || jsonb_build_object('pm_update_site_other_tenant_P0002_MUSTtrue', false);
   EXCEPTION WHEN SQLSTATE 'P0002' THEN r := r || jsonb_build_object('pm_update_site_other_tenant_P0002_MUSTtrue', true);
   END;
+  -- another tenant's Completed site: the Completed guard must not see it
+  -- (P0002, not 22023), so the error code leaks nothing about its status.
+  BEGIN
+    PERFORM pm_update_site(v_other_done, '{"status":"Completed"}');
+    r := r || jsonb_build_object('pm_update_site_other_tenant_completed_P0002_MUSTtrue', false);
+  EXCEPTION WHEN OTHERS THEN
+    r := r || jsonb_build_object('pm_update_site_other_tenant_completed_P0002_MUSTtrue', SQLSTATE = 'P0002',
+           'pm_update_site_other_tenant_completed_sqlstate', SQLSTATE);
+  END;
 
   BEGIN
     INSERT INTO worker_teams (tenant_id, name) VALUES (v_tenant, 'PM test team') RETURNING id INTO v_team;
@@ -715,7 +738,8 @@ BEGIN
   SELECT count(*) INTO n FROM inventory_stock_balances; r := r || jsonb_build_object('balances_MUST0', n);
   SELECT count(*) INTO n FROM site_financial_summary; r := r || jsonb_build_object('sfs_MUST0', n);
   SELECT count(*) INTO n FROM labor_payments; r := r || jsonb_build_object('labor_payments_MUST0', n);
-  SELECT count(*) INTO n FROM app_settings; r := r || jsonb_build_object('app_settings_MUST0', n);
+  SELECT count(*) INTO n FROM app_settings WHERE key NOT IN ('require_checkin_confirmation','regular_shift_end_time','checkin_radius_m');
+  r := r || jsonb_build_object('app_settings_other_keys_MUST0', n);
 
   -- ===== ADMIN: site staff, so pm_* return rows; cannot manage teams =====
   PERFORM set_config('request.jwt.claims', json_build_object('email', v_admin, 'role', 'authenticated', 'sub', gen_random_uuid())::text, true);

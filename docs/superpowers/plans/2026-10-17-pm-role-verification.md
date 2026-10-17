@@ -19,6 +19,12 @@ counts `'PM'` as an admin seat. `owner_updates` WITH CHECK calls that function a
 reads `user_roles` itself. In 06, the Ongoing seat pre-check in `pm_update_site` also filters
 `tenant_id = current_tenant_id()`.
 
+Final-review fixes: 05 also adds `pm_reads` on `app_settings` (PM reads only
+`require_checkin_confirmation`, `regular_shift_end_time`, `checkin_radius_m`, so PM can
+confirm shifts). In 06, `pm_update_site` raises P0002 for an unknown or other-tenant site
+before any status guard, and its Completed guard filters by tenant; every paged `pm_*` RPC
+ends its ORDER BY with a unique key (`id` / `inventory_item_id`).
+
 The test scripts inline the migrations in apply order (04 → 05 for the pm-role test; 04 → 05 → 06
 for the rpcs test). Each inlined body is byte-identical to the text between `BEGIN;` and `COMMIT;`
 in its file. A script checked this when the tests were generated.
@@ -37,11 +43,13 @@ in its file. A script checked this when the tests were generated.
     - rejects `contract_value` and `Completed` with 22023;
     - keeps an already-Completed site;
     - returns P0002 for an unknown site.
+  - PM reads only the three shift-confirmation `app_settings` keys (3 rows = real; other keys 0).
   - PM can manage teams.
 - **Cross-tenant as the demo PM:**
   - `pm_purchase_order_items(<other tenant's PO with 44 items>)` returns 0 rows.
   - `pm_inventory_on_hand(<other tenant's site with 2501 balances>)` returns 0 rows.
   - `pm_update_site(<other tenant's site>, '{"notes":"x"}')` raises P0002.
+  - `pm_update_site(<other tenant's Completed site>, '{"status":"Completed"}')` raises P0002 (was 22023 vs P0002, a status oracle).
 - **SQL as OWNER:**
   - `UPDATE sites` affects 1 row.
   - `UPDATE user_roles` on the PM row affects 1 row.
@@ -50,7 +58,7 @@ in its file. A script checked this when the tests were generated.
 - **SQL as ADMIN:** the `pm_*` read RPCs return the real counts. ADMIN cannot create teams (42501).
 - **SQL as WORKER:** every `pm_*` RPC returns 0 rows. `pm_update_site` raises 42501.
 - **anon:** has no EXECUTE on any `pm_*` function.
-- **Unit and smoke tests:** `npx vitest run` → 117 files, 1340 tests passed. They cover the PM page gates and the jsdom smoke loads of the PM pages from Tasks 3–8.
+- **Unit and smoke tests:** `npx vitest run` → 117 files, 1344 tests passed. They cover the PM page gates and the jsdom smoke loads of the PM pages from Tasks 3–8.
 - **Build:** `npm run build` succeeded (build only, not deployed).
 
 ## Not verified yet
@@ -63,6 +71,8 @@ in its file. A script checked this when the tests were generated.
 ## Release order (only after the owner says "apply" / "deploy")
 
 1. Apply hotfix **04** (`fix/rls-self-recursion`), then **05**, then **06**: `npx supabase db query --linked -f <file>`.
+   - 05 starts with a guard that raises `apply 2026-10-17-04 first` if 04 is missing.
+   - Never apply or re-apply 04 after 05 (it would reset `user_role_held_admin_seat` and `owner_updates` to OWNER/ADMIN only).
 2. Deploy these edge functions: `route-distance`, `extract-map-coordinates`, `web-push-test`, `leave-notify`, `line-webhook`, `field-form`, `line-worker-offboarded`, `line-push-cheque-reminders`, `line-push-quotation-followups`.
    - They must come after the migrations: `extract-map-coordinates` and `leave-notify` call `rpc('is_site_staff')`, which exists only after 05.
 3. Deploy the web app: `npm run deploy` (1.21.0).
@@ -72,7 +82,9 @@ in its file. A script checked this when the tests were generated.
 
 ```json
 {
- "app_settings_MUST0": 0,
+ "app_settings_other_keys_MUST0": 0,
+ "app_settings_pm_keys": 3,
+ "app_settings_pm_keys_eq_real": true,
  "balances_MUST0": 0,
  "can_manage_teams": true,
  "cheques_MUST0": 0,
@@ -130,6 +142,7 @@ in its file. A script checked this when the tests were generated.
  "w_site_phases_update_rows": 1,
  "w_sites_update_rows_MUST0": 0,
  "w_user_roles_insert_MUSTfail": "42501 new row violates row-level security policy for table \"user_roles\"",
+ "w_worker_assignments_confirm_rows_MUST1": 1,
  "w_worker_assignments_insert": "ok",
  "worker_assignments": 1680,
  "worker_checkins": 120,
@@ -145,13 +158,14 @@ in its file. A script checked this when the tests were generated.
  "admin_pm_sites_eq_real": true,
  "admin_pm_workers_eq_real": true,
  "anon_execute_any_MUSTfalse": false,
- "app_settings_MUST0": 0,
+ "app_settings_other_keys_MUST0": 0,
  "balances_MUST0": 0,
  "cheques_MUST0": 0,
  "expenses_MUST0": 0,
  "incomes_MUST0": 0,
  "invoices_MUST0": 0,
  "labor_payments_MUST0": 0,
+ "other_completed_site_found": true,
  "other_po_found": true,
  "other_site_found": true,
  "pm_complete_rejected_status_kept_MUSTtrue": true,
@@ -176,6 +190,8 @@ in its file. A script checked this when the tests were generated.
  "pm_update_site_complete_22023_MUSTtrue": true,
  "pm_update_site_contract_value_22023_MUSTtrue": true,
  "pm_update_site_other_tenant_P0002_MUSTtrue": true,
+ "pm_update_site_other_tenant_completed_P0002_MUSTtrue": true,
+ "pm_update_site_other_tenant_completed_sqlstate": "P0002",
  "pm_update_site_unknown_P0002_MUSTtrue": true,
  "pm_workers": 12,
  "pm_workers_eq_real": true,
