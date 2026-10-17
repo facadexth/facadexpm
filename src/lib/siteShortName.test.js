@@ -62,4 +62,10 @@ describe('autoShortName', () => {
     expect(autoShortName('')).toBe('')
     expect(autoShortName(null)).toBe('')
   })
+
+  it('never ends on a dangling Thai leading vowel', () => {
+    const out = autoShortName('ศูนย์การค้าเซ็นทรัล', 11)
+    expect(out.endsWith('…')).toBe(true)
+    expect(/[เแโใไ]…$/.test(out)).toBe(false)
+  })
 })

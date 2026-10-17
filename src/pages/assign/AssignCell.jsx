@@ -5,7 +5,6 @@
 // month shows an abbreviation (full name on hover).
 // ============================================================
 import { TYPE_COLOR, TYPE_LABEL, SITE_TYPES, siteColor, siteAbbrev } from './constants.js'
-import { useIsPhone } from '../../hooks/useIsPhone.js'
 import { siteCellLabel } from './cellLabel.js'
 import teamLeaderBadge from '../../assets/team-leader-badge.png'
 
@@ -41,8 +40,8 @@ function Half({ info, onClick, h, fontSize }) {
   )
 }
 
-export default function AssignCell({ cell = {}, ot = null, onEdit, w = '100%', h = 32, variant = 'week' }) {
-  const isPhone = useIsPhone()
+// isPhone comes from the grid (one media listener per grid, not one per cell).
+export default function AssignCell({ cell = {}, ot = null, onEdit, w = '100%', h = 32, variant = 'week', isPhone = false }) {
   const { morning, evening } = cell
   const same = morning && evening
     && morning.site_id === evening.site_id && morning.type === evening.type

@@ -87,7 +87,7 @@ export default function SiteDetail({ navState, navigateTo }) {
             {isPhone ? (
               <div style={{ marginTop: 16 }}>
                 <PhoneSection title="S-curve" summary="กราฟ">
-                  <LandscapeView title={`S-curve · ${site.site_number || site.name || ''}`}>
+                  <LandscapeView autoOpen={false} title={`S-curve · ${site.site_number || site.name || ''}`}>
                     <SCurveChart key={phasesRefreshKey} site={site} />
                   </LandscapeView>
                 </PhoneSection>

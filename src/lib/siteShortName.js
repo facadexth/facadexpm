@@ -15,7 +15,10 @@ function graphemes(s) {
 function truncate(s, max) {
   const g = graphemes(s)
   if (g.length <= max) return s
-  return g.slice(0, max).join('') + '…'
+  const cut = g.slice(0, max)
+  // a Thai leading vowel (เ แ โ ใ ไ) belongs to the next letter; never end on one
+  while (cut.length && /^[เแโใไ]$/.test(cut[cut.length - 1])) cut.pop()
+  return cut.join('') + '…'
 }
 
 const LEADING = /^(?:โครงการ|บริษัท|งาน)\s*/

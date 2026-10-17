@@ -6,7 +6,7 @@ import { PHONE_QUERY } from '../hooks/useIsPhone.js'
 
 afterEach(cleanup)
 
-function mockMedia({ phone = true, portrait = true } = {}) {
+function mockMedia({ phone = true, portrait = true, sideways = false } = {}) {
   const make = matches => {
     const listeners = new Set()
     const mql = {
@@ -17,7 +17,7 @@ function mockMedia({ phone = true, portrait = true } = {}) {
     }
     return mql
   }
-  const q = { [PHONE_QUERY]: make(phone), '(orientation: portrait)': make(portrait), '(orientation: landscape)': make(!portrait) }
+  const q = { [PHONE_QUERY]: make(phone), '(orientation: portrait)': make(portrait), '(orientation: landscape)': make(!portrait), '(pointer: coarse) and (orientation: landscape) and (max-height: 499px)': make(sideways) }
   window.matchMedia = query => { if (!q[query]) throw new Error('unexpected query ' + query); return q[query] }
   // turning the phone: both queries flip
   q.turn = (toPortrait, height) => {
@@ -97,5 +97,18 @@ describe('LandscapeView', () => {
     expect(document.querySelector('.phone-landscape-overlay')).toBeNull()
     fireEvent.click(getByText('⤢ ดูแนวนอน'))
     expect(document.querySelector('.phone-landscape-overlay')).toBeTruthy()
+  })
+
+  it('autoOpen={false}: turning the phone does not open it', () => {
+    const q = mockMedia({ phone: true, portrait: true })
+    const { queryByText } = render(<LandscapeView title="S-curve" autoOpen={false}><Child /></LandscapeView>)
+    act(() => q.turn(false, 390))
+    expect(queryByText('S-curve')).toBeNull()
+  })
+
+  it('big phone held sideways (wider than 900px) still counts as a phone', () => {
+    mockMedia({ phone: false, portrait: false, sideways: true })
+    const { getByText } = render(<LandscapeView title="Gantt"><Child /></LandscapeView>)
+    expect(getByText('⤢ ดูแนวนอน')).toBeTruthy()
   })
 })

@@ -6,9 +6,11 @@
 import { fmt } from '../../lib/supabase.js'
 import LandscapeView from '../../components/LandscapeView.jsx'
 import AssignCell from './AssignCell.jsx'
+import { useIsPhone } from '../../hooks/useIsPhone.js'
 import { DOW_TH, SITE_TYPES } from './constants.js'
 
 export default function GridView({ days, workers, cellLookup, otLookup, holidayDates, onEditHalf, cellH = 32, variant = 'week' }) {
+  const isPhone = useIsPhone()
   const grid = (
     <div className="card" style={{ marginBottom: 20 }}>
       <div className="table-wrap" style={{ overflowX: 'auto' }}>
@@ -58,7 +60,7 @@ export default function GridView({ days, workers, cellLookup, otLookup, holidayD
                       <AssignCell
                         cell={row[d.iso] || {}}
                         ot={otLookup?.[w.id]?.[d.iso] || null}
-                        w="100%" h={cellH} variant={variant}
+                        w="100%" h={cellH} variant={variant} isPhone={isPhone}
                         onEdit={(shift) => onEditHalf(w, d.iso, shift)}
                       />
                     </td>
