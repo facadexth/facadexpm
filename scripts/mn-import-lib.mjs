@@ -199,6 +199,8 @@ export const FAMILY_MAP = [
 
 function roleIsGuess(p) { return /role \(family\) is a guess/i.test(p.note || '') }
 function kgIsSuspect(p) { return /misprint/i.test(p.note || '') }
+// Owner-corrected kg/m for catalogue misprints (artifact Sysev7hj5DpC86WSjBZ59d, MN3, 2026-10-16: "ใส่เป็น 0.54").
+export const OWNER_KG_OVERRIDES = { U2980: 0.54 }
 const clean1 = (s) => String(s).replace(/\s+/g, ' ').trim()
 
 // Guide role vs catalogue role for one die. 'same'; 'compatible' when one names the other more precisely
@@ -220,9 +222,10 @@ function assertUnique(list, keyOf, what) {
   for (const x of list) { const k = keyOf(x); if (seen.has(k)) throw new Error(`duplicate ${what}: ${k}`); seen.add(k) }
 }
 
-export function buildImport({ catalog, pricebook, sets }) {
+export function buildImport({ catalog, pricebook, sets, kgOverrides = OWNER_KG_OVERRIDES }) {
   const excludedProfiles = []   // { key, die, name, reason }
   const familyNulled = []       // { die, name, role }
+  const kgOverridden = []       // { die, name, printed, used }
   const profiles = new Map()    // key -> profile
   const catIndexByDie = new Map()
 
@@ -234,13 +237,15 @@ export function buildImport({ catalog, pricebook, sets }) {
       const key = die || `NODIE|${clean1(p.name)}|${thickness ?? ''}`
       const base = { key, die, name: clean1(p.name), page: p.page }
       if (p.confidence !== 'read') { excludedProfiles.push({ ...base, reason: `catalogue confidence "${p.confidence}"` }); continue }
-      if (kgIsSuspect(p)) { excludedProfiles.push({ ...base, reason: `kg/m ${p.kg_per_m} น่าจะพิมพ์ผิด (${p.note})` }); if (die) catIndexByDie.set(die, { excluded: true }); continue }
+      const ownerKg = die && Object.hasOwn(kgOverrides, die) ? kgOverrides[die] : undefined
+      if (ownerKg !== undefined) kgOverridden.push({ die, name: base.name, printed: p.kg_per_m, used: ownerKg })
+      else if (kgIsSuspect(p)) { excludedProfiles.push({ ...base, reason: `kg/m ${p.kg_per_m} น่าจะพิมพ์ผิด (${p.note})` }); if (die) catIndexByDie.set(die, { excluded: true }); continue }
       if (!(Number(p.kg_per_m) >= 0) || p.kg_per_m === null) { excludedProfiles.push({ ...base, reason: 'no kg/m' }); continue }
       if (profiles.has(key)) { excludedProfiles.push({ ...base, reason: `duplicate key ${key} (first kept, page ${profiles.get(key).page})` }); continue }
       let family = clean1(p.role_family || '') || null
       if (family && roleIsGuess(p)) { familyNulled.push({ die, name: base.name, role: family }); family = null }
       const prof = {
-        ...base, family, thickness_mm: thickness, kg: Number(p.kg_per_m),
+        ...base, family, thickness_mm: thickness, kg: Number(ownerKg ?? p.kg_per_m),
         width_mm: p.width_mm > 0 ? Number(p.width_mm) : null, depth_mm: p.depth_mm > 0 ? Number(p.depth_mm) : null,
         catSeries: si, lengths: [],
       }
@@ -365,7 +370,7 @@ export function buildImport({ catalog, pricebook, sets }) {
   assertUnique(prices, x => `${x.key}|${x.finish}|${x.length_m}`, 'price')
   const profileList = [...profiles.values()].sort((a, b) => byStr(a.key, b.key))
   return {
-    profiles: profileList, excludedProfiles, familyNulled, prices, priceExcl, priceConflicts, finishes, series, links, typeLinks,
+    profiles: profileList, excludedProfiles, kgOverridden, familyNulled, prices, priceExcl, priceConflicts, finishes, series, links, typeLinks,
     seriesNotCreated, systemCoverage, roleDiffs, setSkipped, ambiguous, assumedLength,
     totals: { priceCells: pricebook.series.reduce((n, s) => n + (s.prices || []).length, 0), catalogueRows: catalog.series.reduce((n, s) => n + s.profiles.length, 0) },
   }
@@ -644,6 +649,12 @@ export function renderReport(m) {
   p('| die | name | page | reason |')
   p('|---|---|---|---|')
   for (const x of m.excludedProfiles) p(`| ${md(x.die || '-')} | ${md(x.name)} | ${x.page} | ${md(x.reason)} |`)
+  p()
+  p('### Profiles imported with an owner-corrected kg/m (catalogue misprint)')
+  p()
+  p('| die | name | printed kg/m | used kg/m |')
+  p('|---|---|---|---|')
+  for (const x of m.kgOverridden) p(`| ${md(x.die)} | ${md(x.name)} | ${x.printed} | ${x.used} |`)
   p()
   p('### Profiles imported with family = NULL (the catalogue role is a guess from the shape)')
   p()

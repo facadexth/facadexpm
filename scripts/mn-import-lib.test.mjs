@@ -119,7 +119,7 @@ function fixture() {
 }
 
 describe('buildImport', () => {
-  const m = buildImport(fixture())
+  const m = buildImport({ ...fixture(), kgOverrides: {} })
   const reasons = m.priceExcl.map(x => x.reason)
   it('imports catalogue profiles except the misprint, nulls guessed roles, keys no-die rows by name + thickness', () => {
     expect(m.profiles.map(p => p.key)).toEqual(['M3064', 'M4001', 'M4002', 'M4011', 'NODIE|n null|1', 'U1598'].sort())
@@ -163,7 +163,7 @@ describe('buildImport', () => {
     expect(sql).toContain(`e_prices        CONSTANT INT := ${e.piece_prices};`)
     expect(sql.trimEnd().endsWith('COMMIT;')).toBe(true)
     expect(sql).not.toMatch(/butt_distance_mm\s*[,)]/) // never written
-    expect(renderSql(buildImport(fixture()))).toBe(sql)
+    expect(renderSql(buildImport({ ...fixture(), kgOverrides: {} }))).toBe(sql)
   })
 })
 
@@ -178,5 +178,14 @@ describe('real inputs', () => {
     expect(committed).toBe(renderSql(m))
     expect(m.prices.every(p => p.price >= 0 && p.length_m > 0)).toBe(true)
     expect(m.profiles.every(p => p.kg >= 0 && p.default_length_m > 0 && (p.thickness_mm === null || p.thickness_mm > 0))).toBe(true)
+  })
+})
+
+describe('owner kg/m overrides', () => {
+  it('imports a misprinted die with the owner value instead of excluding it (MN3: U2980 = 0.54)', () => {
+    const m = buildImport(fixture())
+    expect(m.excludedProfiles.map(x => x.die)).toEqual([])
+    expect(m.profiles.find(p => p.key === 'U2980').kg).toBe(0.54)
+    expect(m.kgOverridden).toEqual([{ die: 'U2980', name: 'n U2980', printed: 1.541, used: 0.54 }])
   })
 })

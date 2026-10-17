@@ -6,12 +6,12 @@
 --          MN installation guides 1-15 (docs/catalogs/mn-sets/*.json: which dies make up each system).
 -- Adds under the FacadeX tenant: provider 'บจก. แม่น้ำเมทอลซัพพลาย' (short_name MN, price_basis per_piece);
 --   67 series (42 catalogue groups that have profiles + installation-guide systems with at least one catalogue die);
---   1217 profiles (drawing_no = die no.; NULL for the GROUP 01 standard tubes/angles which print no die);
---   1380 series-profile links (family = the profile's role); 7 finishes (price-book columns as printed);
+--   1218 profiles (drawing_no = die no.; NULL for the GROUP 01 standard tubes/angles which print no die);
+--   1381 series-profile links (family = the profile's role); 7 finishes (price-book columns as printed);
 --   1927 profile variants (profile x finish x bar length) each with one alu_piece_prices row effective 2024-06-17;
 --   33 series-type links (only unambiguous ones; see the report for the rest).
 -- NOT set: butt_distance_mm (separate step), hardware / parts (the price book's hardware pages are not extracted), kg prices.
--- default_length_m = the bar length the price book prints for that die (most common), else 6.4 (assumed, 886 profiles).
+-- default_length_m = the bar length the price book prints for that die (most common), else 6.4 (assumed, 887 profiles).
 -- Excluded rows (estimated / conflicting / no die / die not in the 2021 catalogue ...) are listed in the report, not here.
 -- Guarded: aborts unless the tenant is the one holding provider 'ไฟล์ Aluminium calculation', the 2026-10-12-01 and 2026-10-15-01
 --   migrations are applied, every door/window type named below exists, and the final row counts equal the generator's numbers.
@@ -913,6 +913,7 @@ INSERT INTO _mn_profiles VALUES
   ('U2948', 'U2948', 'กรอบมุ้ง 26.74x15.05', 'กรอบมุ้ง', 1, 0.213, 26.74, 15.05, 6.4, 81),
   ('U2952', 'U2952', 'ลอนคางหมู 149 H6.2', 'ลูกฟูก', 1.2, 0.56, 149, 6.2, 6.4, 225),
   ('U2977', 'U2977', 'กรอบมุ้ง 34.65x13.85', 'กรอบมุ้ง', 1, 0.241, 34.65, 13.85, 6.4, 81),
+  ('U2980', 'U2980', 'ฝาหลังเรียบ 83.2 (ปิดด้านหลังกล่อง)', 'ฝาปิด', 1.2, 0.54, 83.2, 11.2, 6.4, 26),
   ('U3002', 'U3002', 'เฟรมล่าง 103x44 ลาดเอียง (ใช้ U3015 + U4120A)', 'เฟรมล่าง 2 ราง', 1.5, 0.994, 103, 44, 6.4, 113),
   ('U3015', 'U3015', 'ตบธรณี 53.6x29.5', 'ตบธรณี', 1.2, 0.298, 53.6, 29.5, 6.4, 113),
   ('U3016', 'U3016', 'เสามุ้ง 20x66.6', 'กรอบมุ้ง', 1.1, 0.582, 20, 66.6, 6.4, 136),
@@ -2198,6 +2199,7 @@ INSERT INTO _mn_links VALUES
   ('SHOPFRONT 4"x2" กล่อง 101.6x50.8', 'U1808', 'กล่องร่อง'),
   ('SHOPFRONT 4"x2" กล่อง 101.6x50.8', 'U1809', 'กล่องเรียบ'),
   ('SHOPFRONT 4"x2" กล่อง 101.6x50.8', 'U1866', 'กล่องเปิด'),
+  ('SHOPFRONT 4"x2" กล่อง 101.6x50.8', 'U2980', 'ฝาปิด'),
   ('SHOPFRONT 4"x2" กล่อง 101.6x50.8', 'U3064', 'กล่องร่อง'),
   ('SHOPFRONT 4"x2" กล่อง 101.6x50.8', 'U3065', 'กล่องเรียบ'),
   ('SHOPFRONT 4"x2" กล่อง 101.6x50.8', 'U3066', 'กล่องเปิด'),
@@ -4681,8 +4683,8 @@ DECLARE
   c_from          CONSTANT DATE := '2024-06-17';
   c_src           CONSTANT TEXT := 'MN price list 2024 เล่ม 14';
   e_series        CONSTANT INT := 67;
-  e_profiles      CONSTANT INT := 1217;
-  e_links         CONSTANT INT := 1380;
+  e_profiles      CONSTANT INT := 1218;
+  e_links         CONSTANT INT := 1381;
   e_finishes      CONSTANT INT := 7;
   e_variants      CONSTANT INT := 1927;
   e_prices        CONSTANT INT := 1927;

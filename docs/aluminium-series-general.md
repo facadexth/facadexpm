@@ -267,3 +267,33 @@ These are kept as G1-G10 in the rulebook (section 5b).
   that W-01's merge-top piece set uses now (unblocks D2).
 - **G8 (2026-10-16): the full cell.** CONFIRMED: the 2-track side frame laid on the long box is as long as the full sliding
   cell height (e.g. 1400), nothing deducted.
+- **G3 (2026-10-16): read it from the catalogue.** The awning inner frame / outer frame / gap split of the 66 mm band is
+  read from the section drawings of the awning series in use, then confirmed by the owner per series (with butt distances).
+- **G4 (2026-10-16): 3 mm.** A swing leaf stands 3 mm off the frame and off the neighbouring leaf on each side (serie
+  general default).
+- **G5 (2026-10-16): depends on the swing profile.** Top rail 52 / bottom rail 80 is not a fixed rule; take the rail
+  heights from the swing-door profiles of the series.
+- **C2 (2026-10-16): both (a) and (b).** A series may carry the shop's own cut formulas (a) or formulas computed from the
+  catalogue sections and confirmed per series (b); when (a) exists it wins.
+- **C3 (2026-10-16): the mid value**, after checking per catalogue whether the printed weight is kg per bar or kg per metre
+  (store kg/m).
+- **C4 (2026-10-16): separate items per thickness.** One die / thickness = one item (MN already prints one die per
+  thickness under a shared drawing).
+- **C5 (2026-10-16): bar price = price per kg x kg/m x bar length**, unless the supplier prices per bar (MN PriceList2024).
+- **MN1 (2026-10-16): new item.** "ชุด 4 นิ้ว ใหม่" in the app is not an MN die; keep it as its own item.
+- **MN2 (2026-10-16): no.** Names follow each supplier's own naming; do not rename app items to MN's catalogue names. Match
+  positions by family/role, not by name.
+- **MN3 (2026-10-16): U2980 = 0.54 kg/m** (owner, from size vs weight; the catalogue's 1.541 is a misprint). Applied in
+  scripts/mn-import-lib.mjs OWNER_KG_OVERRIDES.
+
+### 9.1 One line on the elevation is not one section (owner, 2026-10-17, A43 details 1 vs 22)
+
+A member that runs unbroken on the elevation can carry different parts along its length. A43 left jamb:
+- detail 1 (fixed light zone): the groove box 101.6 x 44.5 alone; the glass sits in the box's own centre groove with
+  gaskets, no bead, no other profile. Band = 44.5.
+- detail 22 (sliding zone): the same box runs on, with the 2-track side frame (19 deep) clipped over its groove face as the
+  track for the lock stile; the groove is not glazed there. Band = 44.5 + 19 = 63.5 (see detail 23).
+- detail 17 (light-zone mullion): groove box on one side, a groove cover (ฝาครอบร่อง) forming the second glazing groove.
+Consequences: the box is ONE cut piece over the full height; the 2-track side frame is a separate piece only over the
+sliding cell (G8); light-zone glass = clear opening + 6 per edge into the box groove (G6). Checkers must read the section per
+height zone from the callouts, never one section per drawn line.

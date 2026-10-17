@@ -10,14 +10,14 @@ Provider **บจก. แม่น้ำเมทอลซัพพลาย** (
 |---|---|
 | alu_providers | 1 |
 | alu_series | 67 |
-| alu_profiles | 1217 |
-| alu_series_profiles | 1380 |
+| alu_profiles | 1218 |
+| alu_series_profiles | 1381 |
 | alu_finishes | 7 |
 | alu_profile_variants | 1927 |
 | alu_piece_prices | 1927 |
 | alu_series_types | 33 |
 
-- Profiles: 973 with a die no., 244 GROUP 01 standard sections without one (drawing_no NULL; key = name + thickness). 331 profiles have at least one price; 886 have no price and take default_length_m 6.4 (assumed, not printed).
+- Profiles: 974 with a die no., 244 GROUP 01 standard sections without one (drawing_no NULL; key = name + thickness). 331 profiles have at least one price; 887 have no price and take default_length_m 6.4 (assumed, not printed).
 - Input: 1218 catalogue rows, 5314 price cells. Imported price cells: 2007 (deduplicated to 1927 prices: the same die is printed in several sets at the same price). Excluded price cells: 3307.
 - Bar lengths used: 6 / 6.1 / 6.4 m (as printed per page).
 
@@ -27,7 +27,12 @@ Provider **บจก. แม่น้ำเมทอลซัพพลาย** (
 
 | die | name | page | reason |
 |---|---|---|---|
-| U2980 | ฝาหลังเรียบ 83.2 (ปิดด้านหลังกล่อง) | 26 | kg/m 1.541 น่าจะพิมพ์ผิด (kg/m printed 1.541 but a flat 83.2 x 1.2 mm cover should weigh ~0.3 kg/m - likely a catalogue misprint, confirm with supplier) |
+
+### Profiles imported with an owner-corrected kg/m (catalogue misprint)
+
+| die | name | printed kg/m | used kg/m |
+|---|---|---|---|
+| U2980 | ฝาหลังเรียบ 83.2 (ปิดด้านหลังกล่อง) | 1.541 | 0.54 |
 
 ### Profiles imported with family = NULL (the catalogue role is a guess from the shape)
 
