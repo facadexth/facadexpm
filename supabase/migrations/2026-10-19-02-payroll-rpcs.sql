@@ -57,8 +57,12 @@ BEGIN
     v_n := v_n + 1;
   END LOOP;
 
-  -- workers no longer in the run (inactive) drop out of this draft month
-  DELETE FROM salary_records WHERE period_id = v_period AND NOT (worker_id = ANY (v_workers));
+  -- workers no longer in the run (inactive) drop out of this draft month,
+  -- unless the record was already paid or holds a hand-entered line
+  DELETE FROM salary_records r
+   WHERE r.period_id = v_period AND NOT (r.worker_id = ANY (v_workers))
+     AND r.paid_date IS NULL
+     AND NOT EXISTS (SELECT 1 FROM salary_record_lines l WHERE l.salary_record_id = r.id AND l.is_manual);
   RETURN v_n;
 END $$;
 REVOKE ALL ON FUNCTION save_payroll_draft(INT, INT, JSONB) FROM PUBLIC, anon;
@@ -67,6 +71,7 @@ GRANT EXECUTE ON FUNCTION save_payroll_draft(INT, INT, JSONB) TO authenticated;
 CREATE OR REPLACE FUNCTION set_payroll_manual_line(p_record_id UUID, p_pay_item_id UUID, p_advance_id UUID, p_amount NUMERIC)
 RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE v_tenant UUID := payroll_require_admin(); v_item pay_items; v_note TEXT; v_status TEXT;
+  v_adv salary_advances; v_left NUMERIC;
 BEGIN
   SELECT p.status INTO v_status FROM payroll_periods p JOIN salary_records r ON r.period_id = p.id
    WHERE r.id = p_record_id AND r.tenant_id = v_tenant FOR UPDATE OF p;
@@ -87,6 +92,23 @@ BEGIN
         WHERE a.id = p_advance_id AND a.tenant_id = v_tenant AND r.id = p_record_id
           AND a.status IN ('approved','settled')) THEN
     RAISE EXCEPTION 'ไม่พบรายการเบิกของพนักงานคนนี้';
+  END IF;
+  IF p_advance_id IS NOT NULL THEN
+    -- lock the advance so two edits cannot both pass the cap
+    SELECT * INTO v_adv FROM salary_advances WHERE id = p_advance_id AND tenant_id = v_tenant FOR UPDATE;
+    IF v_adv.status = 'settled' AND NOT EXISTS (
+         SELECT 1 FROM salary_record_lines WHERE salary_record_id = p_record_id AND advance_id = p_advance_id) THEN
+      RAISE EXCEPTION 'รายการเบิกนี้ผ่อนครบแล้ว';
+    END IF;
+    IF p_amount IS NOT NULL THEN
+      IF p_amount < 0 THEN RAISE EXCEPTION 'ยอดหักต้องไม่ติดลบ'; END IF;
+      v_left := v_adv.amount - COALESCE((
+        SELECT sum(amount) FROM salary_record_lines
+         WHERE advance_id = p_advance_id AND salary_record_id <> p_record_id), 0);
+      IF round(p_amount, 2) > v_left THEN
+        RAISE EXCEPTION 'ยอดหักเกินยอดเบิกคงเหลือ (เหลือ %)', v_left;
+      END IF;
+    END IF;
   END IF;
 
   SELECT note INTO v_note FROM salary_record_lines

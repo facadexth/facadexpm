@@ -272,6 +272,8 @@ END $$;
 UPDATE salary_records SET period_id = payroll_period_for(tenant_id, year, month) WHERE period_id IS NULL;
 
 -- ── RLS ──
+-- STABLE helpers wrapped in (SELECT ...) so they run once per query (InitPlan),
+-- same form as 2026-10-17-02-rls-initplan-wrap.sql.
 ALTER TABLE pay_items               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE worker_pay_item_amounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payroll_periods         ENABLE ROW LEVEL SECURITY;
@@ -281,35 +283,35 @@ ALTER TABLE payroll_bank_settings   ENABLE ROW LEVEL SECURITY;
 
 -- admin/owner manage the structure; everyone in the tenant with payroll may read item names
 CREATE POLICY tenant_read ON pay_items FOR SELECT TO authenticated
-  USING (tenant_id = current_tenant_id() AND has_module_access('payroll'));
+  USING (tenant_id = (SELECT current_tenant_id()) AND (SELECT has_module_access('payroll')));
 CREATE POLICY admin_write ON pay_items FOR ALL TO authenticated
-  USING (tenant_id = current_tenant_id() AND has_module_access('payroll') AND is_admin_or_owner())
-  WITH CHECK (tenant_id = current_tenant_id() AND has_module_access('payroll') AND is_admin_or_owner());
+  USING (tenant_id = (SELECT current_tenant_id()) AND (SELECT has_module_access('payroll')) AND (SELECT is_admin_or_owner()))
+  WITH CHECK (tenant_id = (SELECT current_tenant_id()) AND (SELECT has_module_access('payroll')) AND (SELECT is_admin_or_owner()));
 
 CREATE POLICY admin_all ON worker_pay_item_amounts FOR ALL TO authenticated
-  USING (tenant_id = current_tenant_id() AND has_module_access('payroll') AND is_admin_or_owner())
-  WITH CHECK (tenant_id = current_tenant_id() AND has_module_access('payroll') AND is_admin_or_owner());
+  USING (tenant_id = (SELECT current_tenant_id()) AND (SELECT has_module_access('payroll')) AND (SELECT is_admin_or_owner()))
+  WITH CHECK (tenant_id = (SELECT current_tenant_id()) AND (SELECT has_module_access('payroll')) AND (SELECT is_admin_or_owner()));
 
 -- periods: read-only to clients; transitions only through RPCs (migration -02)
 CREATE POLICY tenant_read ON payroll_periods FOR SELECT TO authenticated
-  USING (tenant_id = current_tenant_id() AND has_module_access('payroll'));
+  USING (tenant_id = (SELECT current_tenant_id()) AND (SELECT has_module_access('payroll')));
 
 -- lines: admins read all; a worker reads own lines in confirmed/closed periods; writes via RPC only
 CREATE POLICY read_lines ON salary_record_lines FOR SELECT TO authenticated
-  USING (tenant_id = current_tenant_id() AND has_module_access('payroll') AND (
-    is_admin_or_owner() OR EXISTS (
+  USING (tenant_id = (SELECT current_tenant_id()) AND (SELECT has_module_access('payroll')) AND (
+    (SELECT is_admin_or_owner()) OR EXISTS (
       SELECT 1 FROM salary_records r
       JOIN payroll_periods p ON p.id = r.period_id
       JOIN workers w ON w.id = r.worker_id
       WHERE r.id = salary_record_lines.salary_record_id
-        AND p.status IN ('confirmed','closed') AND w.email = auth.email())));
+        AND p.status IN ('confirmed','closed') AND w.email = (SELECT auth.email()))));
 
 -- salary_records: worker sees own rows only once confirmed; all writes via RPC
 DROP POLICY IF EXISTS worker_reads_own ON salary_records;
 CREATE POLICY worker_reads_own ON salary_records FOR SELECT TO authenticated
-  USING (tenant_id = current_tenant_id() AND has_module_access('payroll') AND (
-    is_admin_or_owner() OR (
-      worker_id IN (SELECT id FROM workers WHERE email = auth.email())
+  USING (tenant_id = (SELECT current_tenant_id()) AND (SELECT has_module_access('payroll')) AND (
+    (SELECT is_admin_or_owner()) OR (
+      worker_id IN (SELECT id FROM workers WHERE email = (SELECT auth.email()))
       AND period_id IN (SELECT id FROM payroll_periods WHERE status IN ('confirmed','closed')))));
 DROP POLICY IF EXISTS admin_writes  ON salary_records;
 DROP POLICY IF EXISTS admin_updates ON salary_records;
@@ -317,15 +319,15 @@ DROP POLICY IF EXISTS admin_deletes ON salary_records;
 
 -- advances
 CREATE POLICY read_advances ON salary_advances FOR SELECT TO authenticated
-  USING (tenant_id = current_tenant_id() AND has_module_access('payroll') AND (
-    is_admin_or_owner() OR worker_id IN (SELECT id FROM workers WHERE email = auth.email())));
+  USING (tenant_id = (SELECT current_tenant_id()) AND (SELECT has_module_access('payroll')) AND (
+    (SELECT is_admin_or_owner()) OR worker_id IN (SELECT id FROM workers WHERE email = (SELECT auth.email()))));
 CREATE POLICY request_advance ON salary_advances FOR INSERT TO authenticated
-  WITH CHECK (tenant_id = current_tenant_id() AND has_module_access('payroll')
-    AND status = 'pending' AND approved_by IS NULL AND requested_by = auth.email()
-    AND (is_admin_or_owner() OR worker_id IN (SELECT id FROM workers WHERE email = auth.email())));
+  WITH CHECK (tenant_id = (SELECT current_tenant_id()) AND (SELECT has_module_access('payroll'))
+    AND status = 'pending' AND approved_by IS NULL AND requested_by = (SELECT auth.email())
+    AND ((SELECT is_admin_or_owner()) OR worker_id IN (SELECT id FROM workers WHERE email = (SELECT auth.email()))));
 CREATE POLICY admin_delete_open ON salary_advances FOR DELETE TO authenticated
-  USING (tenant_id = current_tenant_id() AND has_module_access('payroll') AND is_admin_or_owner() AND status IN ('pending','rejected'));
+  USING (tenant_id = (SELECT current_tenant_id()) AND (SELECT has_module_access('payroll')) AND (SELECT is_admin_or_owner()) AND status IN ('pending','rejected'));
 
 CREATE POLICY admin_all ON payroll_bank_settings FOR ALL TO authenticated
-  USING (tenant_id = current_tenant_id() AND has_module_access('payroll') AND is_admin_or_owner())
-  WITH CHECK (tenant_id = current_tenant_id() AND has_module_access('payroll') AND is_admin_or_owner());
+  USING (tenant_id = (SELECT current_tenant_id()) AND (SELECT has_module_access('payroll')) AND (SELECT is_admin_or_owner()))
+  WITH CHECK (tenant_id = (SELECT current_tenant_id()) AND (SELECT has_module_access('payroll')) AND (SELECT is_admin_or_owner()));

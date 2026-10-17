@@ -137,3 +137,8 @@ BEGIN
 END $function$;
 REVOKE ALL ON FUNCTION public.seed_demo_tenant(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.seed_demo_tenant(uuid) TO authenticated;
+
+-- ── convert every tenant's old records now (idempotent: only records with no lines) ──
+DO $$ DECLARE t RECORD; BEGIN
+  FOR t IN SELECT id FROM tenants LOOP PERFORM payroll_backfill_lines(t.id, true); END LOOP;
+END $$;
