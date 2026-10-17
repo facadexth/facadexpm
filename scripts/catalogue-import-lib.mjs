@@ -54,6 +54,15 @@ export function expandRow(p) {
 
 const SAME_FIELDS = ['kg', 'width_mm', 'depth_mm', 'family']
 
+// The shop's per-kg rate by colour class lives on provider RATE_PROVIDER (owner chat 2026-10-15). cfg.kgRates maps a
+// finish of this supplier to one of those classes; the SQL copies the class's current provider-wide rate.
+export const RATE_PROVIDER = 'ไฟล์ Aluminium calculation'
+function kgRatesOf(cfg) {
+  const list = (cfg.kgRates || []).map(([finish, rateClass]) => ({ finish, rateClass }))
+  for (const r of list) if (!(cfg.finishes || []).includes(r.finish)) throw new Error(`${cfg.id}: kg rate for unknown finish ${r.finish}`)
+  return list
+}
+
 export function buildImport(cfg, inputs) {
   const excluded = [], reprints = [], kgDerived = []
   const occ = new Map() // key -> rows
@@ -148,14 +157,14 @@ export function buildImport(cfg, inputs) {
   const questions = []
   for (const f of [...cfg.sources.map(s => s.file), ...(cfg.cutFiles || [])]) for (const x of inputs[f].open_questions || []) questions.push(x)
   return {
-    cfg, profiles, links, series, seriesNotCreated, typeLinks, incomplete, finishes: cfg.finishes || [], excluded, reprints, kgDerived, ambiguous, assumedLength,
+    cfg, profiles, links, series, seriesNotCreated, typeLinks, incomplete, finishes: cfg.finishes || [], kgRates: kgRatesOf(cfg), excluded, reprints, kgDerived, ambiguous, assumedLength,
     cutSheets, cutMissingDies, questions,
     totals: { rows: cfg.sources.reduce((n, s) => n + inputs[s.file].series.reduce((m, x) => m + (x.profiles || []).length, 0), 0), formulas: cutSheets.reduce((n, c) => n + c.formulas.length, 0) },
   }
 }
 
 export function expectedCounts(m) {
-  return { providers: 1, series: m.series.length, profiles: m.profiles.length, series_profiles: m.links.length, finishes: m.finishes.length, series_types: m.typeLinks.length }
+  return { providers: 1, series: m.series.length, profiles: m.profiles.length, series_profiles: m.links.length, finishes: m.finishes.length, series_types: m.typeLinks.length, kg_prices: m.kgRates.length }
 }
 
 // ---------- SQL ----------
@@ -173,7 +182,8 @@ export function renderSql(m) {
 -- Adds under the FacadeX tenant: provider '${P.name}' (short_name ${P.short_name}, price_basis ${P.price_basis});
 --   ${e.series} series; ${e.profiles} profiles (drawing_no = die no.; one item per die x wall thickness, owner C4);
 --   ${e.series_profiles} series-profile links (family = role); ${e.finishes} finishes; ${e.series_types} series-type links.
--- NOT set: prices (none printed), profile variants, butt_distance_mm, hardware, cut formulas (listed in the report).
+-- Price per kg: ${e.kg_prices} finishes get the shop's rate of their colour class (copied from provider '${RATE_PROVIDER}').
+-- NOT set: per-piece prices (none printed), profile variants, butt_distance_mm, hardware, cut formulas (listed in the report).
 -- default_length_m = the bar length printed, else ${DEFAULT_LENGTH_M} (assumed, ${m.assumedLength} profiles).
 -- No profile is "general": every row belongs to this provider only.
 -- Guarded: aborts unless the tenant is the one holding provider 'ไฟล์ Aluminium calculation', the 2026-10-12-01 and 2026-10-15-01
@@ -194,6 +204,8 @@ CREATE TEMP TABLE ${T}links (series TEXT NOT NULL, pkey TEXT NOT NULL, family TE
 ${insert(T + 'links', m.links, l => [l.series, l.key, l.family])}
 CREATE TEMP TABLE ${T}finishes (name TEXT PRIMARY KEY, sort INT NOT NULL) ON COMMIT DROP;
 ${insert(T + 'finishes', m.finishes.map((f, i) => [f, i + 1]), x => x)}
+CREATE TEMP TABLE ${T}kgrates (finish TEXT PRIMARY KEY, rate_class TEXT NOT NULL) ON COMMIT DROP;
+${insert(T + 'kgrates', m.kgRates, r => [r.finish, r.rateClass])}
 CREATE TEMP TABLE ${T}types (series TEXT NOT NULL, type_name TEXT NOT NULL, PRIMARY KEY (series, type_name)) ON COMMIT DROP;
 ${insert(T + 'types', m.typeLinks, t => [t.series, t.type_name])}
 DO $$
@@ -206,6 +218,8 @@ DECLARE
   e_links         CONSTANT INT := ${e.series_profiles};
   e_finishes      CONSTANT INT := ${e.finishes};
   e_types         CONSTANT INT := ${e.series_types};
+  e_kgprices      CONSTANT INT := ${e.kg_prices};
+  v_rate_provider UUID;
   v_tenant_name TEXT; v_provider UUID; v_n INT; v_txt TEXT;
 BEGIN
   SELECT company_name INTO v_tenant_name FROM tenants WHERE id = c_tenant;
@@ -222,7 +236,7 @@ BEGIN
   -- the file itself is complete
   IF (SELECT count(*) FROM ${T}series) <> e_series OR (SELECT count(*) FROM ${T}profiles) <> e_profiles
      OR (SELECT count(*) FROM ${T}links) <> e_links OR (SELECT count(*) FROM ${T}finishes) <> e_finishes
-     OR (SELECT count(*) FROM ${T}types) <> e_types THEN
+     OR (SELECT count(*) FROM ${T}types) <> e_types OR (SELECT count(*) FROM ${T}kgrates) <> e_kgprices THEN
     RAISE EXCEPTION 'ABORT: temp table counts differ from the generator''s expected counts (file truncated or edited?)';
   END IF;
 
@@ -280,6 +294,25 @@ BEGIN
     ON CONFLICT (provider_id, name) DO NOTHING;
   GET DIAGNOSTICS v_n = ROW_COUNT; RAISE NOTICE 'finishes inserted: % of %', v_n, e_finishes;
 
+  -- 5b. price per kg: the shop's rate for the colour class (provider ${RATE_PROVIDER}, provider-wide row, latest date)
+  SELECT id INTO v_rate_provider FROM alu_providers WHERE tenant_id = c_tenant AND name = ${q(RATE_PROVIDER)};
+  CREATE TEMP TABLE ${T}rate ON COMMIT DROP AS
+    SELECT r.finish, r.rate_class, k.price_per_kg, k.effective_from
+      FROM ${T}kgrates r
+      LEFT JOIN alu_finishes rf ON rf.provider_id = v_rate_provider AND rf.name = r.rate_class
+      LEFT JOIN LATERAL (SELECT kp.price_per_kg, kp.effective_from FROM alu_kg_prices kp
+                          WHERE kp.provider_id = v_rate_provider AND kp.finish_id = rf.id AND kp.series_id IS NULL AND kp.profile_id IS NULL
+                          ORDER BY kp.effective_from DESC LIMIT 1) k ON true;
+  SELECT string_agg(rate_class, ', ') INTO v_txt FROM ${T}rate WHERE price_per_kg IS NULL;
+  IF v_txt IS NOT NULL THEN RAISE EXCEPTION 'ABORT: no per-kg rate on % for colour class %', ${q(RATE_PROVIDER)}, v_txt; END IF;
+  INSERT INTO alu_kg_prices (tenant_id, provider_id, finish_id, price_per_kg, effective_from, source)
+    SELECT c_tenant, v_provider, f.id, r.price_per_kg, r.effective_from, 'shop rate ' || r.rate_class || ' (owner 2026-10-17)'
+      FROM ${T}rate r JOIN alu_finishes f ON f.provider_id = v_provider AND f.name = r.finish
+     WHERE NOT EXISTS (SELECT 1 FROM alu_kg_prices k WHERE k.provider_id = v_provider AND k.finish_id = f.id
+                         AND k.series_id IS NULL AND k.profile_id IS NULL AND k.effective_from = r.effective_from)
+     ORDER BY r.finish;
+  GET DIAGNOSTICS v_n = ROW_COUNT; RAISE NOTICE 'kg prices inserted: % of %', v_n, e_kgprices;
+
   -- 6. series <-> door/window type links
   INSERT INTO alu_series_types (tenant_id, series_id, type_id)
     SELECT c_tenant, s.id, d.id FROM ${T}types t
@@ -301,6 +334,10 @@ BEGIN
     JOIN door_window_types d ON d.tenant_id = c_tenant AND d.name = t.type_name
     JOIN alu_series_types st ON st.series_id = s.id AND st.type_id = d.id;
   IF v_n <> e_types THEN RAISE EXCEPTION 'ABORT: series-type links present % <> expected %', v_n, e_types; END IF;
+  SELECT count(*) INTO v_n FROM ${T}rate r JOIN alu_finishes f ON f.provider_id = v_provider AND f.name = r.finish
+    JOIN alu_kg_prices k ON k.provider_id = v_provider AND k.finish_id = f.id AND k.series_id IS NULL AND k.profile_id IS NULL
+     AND k.effective_from = r.effective_from AND k.price_per_kg = r.price_per_kg;
+  IF v_n <> e_kgprices THEN RAISE EXCEPTION 'ABORT: kg prices present (same rate) % <> expected % — an existing row has another price', v_n, e_kgprices; END IF;
   RAISE NOTICE '${cfg.id.toUpperCase()} IMPORT OK: series %, profiles %, links %, finishes %, type links %', e_series, e_profiles, e_links, e_finishes, e_types;
 END $$;
 
@@ -320,7 +357,7 @@ export function renderReport(m) {
   p()
   p(`Generated by \`scripts/gen-catalogue-import.mjs\` (config \`${cfg.id}\`) — do not edit by hand. SQL: \`${cfg.sqlFile}\`. Dry run: \`${cfg.dryrun}\`.`)
   p()
-  p(`Provider **${P.name}** (short_name \`${P.short_name}\`, price_basis \`${P.price_basis}\`). ${cfg.decision} No prices, no butt distances. No profile is general.`)
+  p(`Provider **${P.name}** (short_name \`${P.short_name}\`, price_basis \`${P.price_basis}\`). ${cfg.decision} Price per kg = the shop's rate for the colour class; no per-piece prices, no butt distances. No profile is general.`)
   p()
   p(`Sources: ${cfg.sources.map(s => `${s.label} (\`${s.file}\`)`).join('; ')}.`)
   p()
@@ -335,6 +372,12 @@ export function renderReport(m) {
   p(`- Input: ${m.totals.rows} catalogue rows -> ${m.profiles.length} profiles (one per die x thickness; a die printed in several series is linked to each). ${m.assumedLength} profiles have no printed bar length and take ${DEFAULT_LENGTH_M} m (assumed).`)
   p(`- Rows or thicknesses not imported: ${m.excluded.length} (listed below).`)
   if (m.finishes.length) p(`- Finishes: ${m.finishes.join(', ')}.`)
+  p()
+  p(`## Price per kg (the shop's rate by colour, provider "${RATE_PROVIDER}")`)
+  p()
+  p('| finish | rate class |')
+  p('|---|---|')
+  for (const f of m.finishes) { const r = m.kgRates.find(x => x.finish === f); p(`| ${md(f)} | ${r ? md(r.rateClass) : '**ยังไม่กำหนด** (owner question)'} |`) }
   p()
   p('## Series and types')
   p()

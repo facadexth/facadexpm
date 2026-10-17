@@ -1,6 +1,7 @@
 // Per-supplier configs for scripts/gen-catalogue-import.mjs (see scripts/catalogue-import-lib.mjs).
 // series[i] maps the i-th series of that catalogue JSON: { idx, name, types } or { idx, skip: reason }.
 // types = door_window_types names (exact) the series heading names; the SQL aborts if one does not exist.
+// kgRates: [finish, colour class of the shop's per-kg rate] (owner 2026-10-17 "ใช้ rate ที่เคยกำหนดให้แยกสี"); unsure colours are left out.
 // price_basis is per_kg for all of them: owner 2026-10-17 "ราคาให้ใช้เป็นราคาต่อ กก. ทั้งหมด เพราะส่วนใหญ่ไม่มี pricelist".
 import fs from 'node:fs'
 import path from 'node:path'
@@ -32,6 +33,12 @@ export const CONFIGS = [
       ],
     }],
     cutFiles: ['docs/catalogs/smartplus/smart-plus-cut-formulas-2022.json'],
+    kgRates: [
+      ["Standard White", "POWDER COATING WHITE"],
+      ["Standard Black", "POWDER COATING BLACK"],
+      ["Black Sahara", "POWDER COATING SAHARA"],
+      ["Grey Sahara", "POWDER COATING SAHARA"],
+    ],
     finishes: ['Standard White', 'Standard Black', 'Black Sahara', 'Grey Sahara', 'Champagne'],
     notes: ['15148 on p.47 prints no kg/m; the p.34 value 0.148 is used (owner question SP9).'],
   },
@@ -68,6 +75,18 @@ export const CONFIGS = [
         { idx: 4, name: 'MINI CUR ผนังกระจก', types: ['STICK WALL'] },
         { idx: 5, name: 'MINI MC ท่อกลม / กล่องสี่เหลี่ยม', types: [] },
       ] },
+    ],
+    kgRates: [
+      ["E&A Moonlight Silver", "ANODIZED NA"],
+      ["8911 Milky White", "POWDER COATING WHITE"],
+      ["8815 Charcoal Black", "POWDER COATING BLACK"],
+      ["8816 Midnight Black", "POWDER COATING BLACK"],
+      ["15622 Fresh Pine", "POWDER COATING WOOD GRAIN"],
+      ["15624 Honey Birch", "POWDER COATING WOOD GRAIN"],
+      ["15636 Rich Teak", "POWDER COATING WOOD GRAIN"],
+      ["15656 Tropical Teak", "POWDER COATING WOOD GRAIN"],
+      ["15659 Classic Walnut", "POWDER COATING WOOD GRAIN"],
+      ["15664 Heritage Oak", "POWDER COATING WOOD GRAIN"],
     ],
     finishes: [
       'E&A Moonlight Silver', '502 Platinum', '504 Champagne', '506 Neo Copper', '510 Golden Sand', '512 Sukhothai Gold', '514 Burgundy Brown', '518 Onyx Black',
@@ -118,6 +137,12 @@ export const CONFIGS = [
         { idx: 12, skip: 'หน้าลายไม้สักทอง: รหัสซ้ำกับหน้าสีชุบ พิมพ์แค่ กก./เส้น' },
         { idx: 13, name: 'SMS001 หน้าตัดมาตรฐาน (ท่อ / ฉาก / แบน / ราง)', types: [] },
       ] },
+    ],
+    kgRates: [
+      ["สีชุบ (อโนไดซ์)", "ANODIZED NA"],
+      ["อบขาว", "POWDER COATING WHITE"],
+      ["อบดำ", "POWDER COATING BLACK"],
+      ["ลายไม้สักทอง", "POWDER COATING WOOD GRAIN"],
     ],
     finishes: ['สีชุบ (อโนไดซ์)', 'อบขาว', 'อบดำ', 'ลายไม้สักทอง'],
     notes: [

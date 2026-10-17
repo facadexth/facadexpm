@@ -62,9 +62,9 @@ describe('buildImport', () => {
 
 describe('real inputs', () => {
   const want = {
-    sp: { providers: 1, series: 5, profiles: 96, series_profiles: 109, finishes: 5, series_types: 17 },
-    alumet: { providers: 1, series: 15, profiles: 351, series_profiles: 366, finishes: 25, series_types: 19 },
-    sms: { providers: 1, series: 17, profiles: 1634, series_profiles: 1642, finishes: 4, series_types: 13 },
+    sp: { providers: 1, series: 5, profiles: 96, series_profiles: 109, finishes: 5, series_types: 17, kg_prices: 4 },
+    alumet: { providers: 1, series: 15, profiles: 351, series_profiles: 366, finishes: 25, series_types: 19, kg_prices: 10 },
+    sms: { providers: 1, series: 17, profiles: 1634, series_profiles: 1642, finishes: 4, series_types: 13, kg_prices: 4 },
   }
   for (const cfg of CONFIGS) {
     it(`${cfg.id}: the committed SQL and report are what the generator produces, with the expected counts`, () => {

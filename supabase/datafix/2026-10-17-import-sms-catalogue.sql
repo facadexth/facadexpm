@@ -6,7 +6,8 @@
 -- Adds under the FacadeX tenant: provider 'Schimmer Metal Standard (SMS)' (short_name SMS, price_basis per_kg);
 --   17 series; 1634 profiles (drawing_no = die no.; one item per die x wall thickness, owner C4);
 --   1642 series-profile links (family = role); 4 finishes; 13 series-type links.
--- NOT set: prices (none printed), profile variants, butt_distance_mm, hardware, cut formulas (listed in the report).
+-- Price per kg: 4 finishes get the shop's rate of their colour class (copied from provider 'ไฟล์ Aluminium calculation').
+-- NOT set: per-piece prices (none printed), profile variants, butt_distance_mm, hardware, cut formulas (listed in the report).
 -- default_length_m = the bar length printed, else 6.4 (assumed, 1634 profiles).
 -- No profile is "general": every row belongs to this provider only.
 -- Guarded: aborts unless the tenant is the one holding provider 'ไฟล์ Aluminium calculation', the 2026-10-12-01 and 2026-10-15-01
@@ -3328,6 +3329,13 @@ INSERT INTO _sms_finishes VALUES
   ('อบดำ', 3),
   ('ลายไม้สักทอง', 4);
 
+CREATE TEMP TABLE _sms_kgrates (finish TEXT PRIMARY KEY, rate_class TEXT NOT NULL) ON COMMIT DROP;
+INSERT INTO _sms_kgrates VALUES
+  ('สีชุบ (อโนไดซ์)', 'ANODIZED NA'),
+  ('อบขาว', 'POWDER COATING WHITE'),
+  ('อบดำ', 'POWDER COATING BLACK'),
+  ('ลายไม้สักทอง', 'POWDER COATING WOOD GRAIN');
+
 CREATE TEMP TABLE _sms_types (series TEXT NOT NULL, type_name TEXT NOT NULL, PRIMARY KEY (series, type_name)) ON COMMIT DROP;
 INSERT INTO _sms_types VALUES
   ('PROLINE 1000 (100) ช่องแสง', 'บานติดตาย'),
@@ -3354,6 +3362,8 @@ DECLARE
   e_links         CONSTANT INT := 1642;
   e_finishes      CONSTANT INT := 4;
   e_types         CONSTANT INT := 13;
+  e_kgprices      CONSTANT INT := 4;
+  v_rate_provider UUID;
   v_tenant_name TEXT; v_provider UUID; v_n INT; v_txt TEXT;
 BEGIN
   SELECT company_name INTO v_tenant_name FROM tenants WHERE id = c_tenant;
@@ -3370,7 +3380,7 @@ BEGIN
   -- the file itself is complete
   IF (SELECT count(*) FROM _sms_series) <> e_series OR (SELECT count(*) FROM _sms_profiles) <> e_profiles
      OR (SELECT count(*) FROM _sms_links) <> e_links OR (SELECT count(*) FROM _sms_finishes) <> e_finishes
-     OR (SELECT count(*) FROM _sms_types) <> e_types THEN
+     OR (SELECT count(*) FROM _sms_types) <> e_types OR (SELECT count(*) FROM _sms_kgrates) <> e_kgprices THEN
     RAISE EXCEPTION 'ABORT: temp table counts differ from the generator''s expected counts (file truncated or edited?)';
   END IF;
 
@@ -3428,6 +3438,25 @@ BEGIN
     ON CONFLICT (provider_id, name) DO NOTHING;
   GET DIAGNOSTICS v_n = ROW_COUNT; RAISE NOTICE 'finishes inserted: % of %', v_n, e_finishes;
 
+  -- 5b. price per kg: the shop's rate for the colour class (provider ไฟล์ Aluminium calculation, provider-wide row, latest date)
+  SELECT id INTO v_rate_provider FROM alu_providers WHERE tenant_id = c_tenant AND name = 'ไฟล์ Aluminium calculation';
+  CREATE TEMP TABLE _sms_rate ON COMMIT DROP AS
+    SELECT r.finish, r.rate_class, k.price_per_kg, k.effective_from
+      FROM _sms_kgrates r
+      LEFT JOIN alu_finishes rf ON rf.provider_id = v_rate_provider AND rf.name = r.rate_class
+      LEFT JOIN LATERAL (SELECT kp.price_per_kg, kp.effective_from FROM alu_kg_prices kp
+                          WHERE kp.provider_id = v_rate_provider AND kp.finish_id = rf.id AND kp.series_id IS NULL AND kp.profile_id IS NULL
+                          ORDER BY kp.effective_from DESC LIMIT 1) k ON true;
+  SELECT string_agg(rate_class, ', ') INTO v_txt FROM _sms_rate WHERE price_per_kg IS NULL;
+  IF v_txt IS NOT NULL THEN RAISE EXCEPTION 'ABORT: no per-kg rate on % for colour class %', 'ไฟล์ Aluminium calculation', v_txt; END IF;
+  INSERT INTO alu_kg_prices (tenant_id, provider_id, finish_id, price_per_kg, effective_from, source)
+    SELECT c_tenant, v_provider, f.id, r.price_per_kg, r.effective_from, 'shop rate ' || r.rate_class || ' (owner 2026-10-17)'
+      FROM _sms_rate r JOIN alu_finishes f ON f.provider_id = v_provider AND f.name = r.finish
+     WHERE NOT EXISTS (SELECT 1 FROM alu_kg_prices k WHERE k.provider_id = v_provider AND k.finish_id = f.id
+                         AND k.series_id IS NULL AND k.profile_id IS NULL AND k.effective_from = r.effective_from)
+     ORDER BY r.finish;
+  GET DIAGNOSTICS v_n = ROW_COUNT; RAISE NOTICE 'kg prices inserted: % of %', v_n, e_kgprices;
+
   -- 6. series <-> door/window type links
   INSERT INTO alu_series_types (tenant_id, series_id, type_id)
     SELECT c_tenant, s.id, d.id FROM _sms_types t
@@ -3449,6 +3478,10 @@ BEGIN
     JOIN door_window_types d ON d.tenant_id = c_tenant AND d.name = t.type_name
     JOIN alu_series_types st ON st.series_id = s.id AND st.type_id = d.id;
   IF v_n <> e_types THEN RAISE EXCEPTION 'ABORT: series-type links present % <> expected %', v_n, e_types; END IF;
+  SELECT count(*) INTO v_n FROM _sms_rate r JOIN alu_finishes f ON f.provider_id = v_provider AND f.name = r.finish
+    JOIN alu_kg_prices k ON k.provider_id = v_provider AND k.finish_id = f.id AND k.series_id IS NULL AND k.profile_id IS NULL
+     AND k.effective_from = r.effective_from AND k.price_per_kg = r.price_per_kg;
+  IF v_n <> e_kgprices THEN RAISE EXCEPTION 'ABORT: kg prices present (same rate) % <> expected % — an existing row has another price', v_n, e_kgprices; END IF;
   RAISE NOTICE 'SMS IMPORT OK: series %, profiles %, links %, finishes %, type links %', e_series, e_profiles, e_links, e_finishes, e_types;
 END $$;
 
