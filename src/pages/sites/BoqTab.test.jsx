@@ -34,9 +34,12 @@ vi.mock('../../hooks/useSupabase.js', () => ({
   usePhaseTasks: () => ({ data: cards, loading: false, error: null, refetch: vi.fn() }),
 }))
 
+let mockReady = true
+vi.mock('../../lib/progressSchema.js', () => ({ useProgressSchemaReady: () => mockReady }))
+
 import BoqTab from './BoqTab.jsx'
 
-afterEach(() => { cleanup(); rpc.mockReset(); update.mockReset(); del.mockReset(); insert.mockReset(); refetchBoq.mockReset() })
+afterEach(() => { cleanup(); rpc.mockReset(); update.mockReset(); del.mockReset(); insert.mockReset(); refetchBoq.mockReset(); mockReady = true })
 
 describe('BoqTab', () => {
   it('shows contract qty and card sums for this site only, no prices', () => {
@@ -132,6 +135,14 @@ describe('BoqTab', () => {
     expect(screen.getByTestId('boq-row-b1').querySelector('[data-col="share"]').textContent).toBe('70%')
     expect(screen.getByTestId('boq-row-b2').querySelector('[data-col="share"]').textContent).toBe('30%')
     expect(document.body.textContent).not.toMatch(/บาท|฿|(?<!เสนอ)ราคา|ต่อหน่วย|มูลค่า/)
+  })
+  it('does not call boq_value_shares before the schema probe is ready (no column)', async () => {
+    mockReady = false
+    rpc.mockResolvedValue({ data: [{ boq_item_id: 'b1', share_pct: 100 }], error: null })
+    render(<BoqTab siteId="s1" />)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(rpc.mock.calls.some((c) => c[0] === 'boq_value_shares')).toBe(false)
+    expect(screen.queryByText('สัดส่วนงาน')).toBeNull()
   })
   it('a line missing from the shares shows a dash', async () => {
     rpc.mockResolvedValue({ data: [{ boq_item_id: 'b1', share_pct: 100 }], error: null })

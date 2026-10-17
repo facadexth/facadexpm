@@ -92,6 +92,32 @@ describe('Kanban first card on an empty node (schema probe)', () => {
     expect(screen.getByText('แต้มคิดให้อัตโนมัติจากมูลค่า ไม่ต้องกรอก')).toBeTruthy()
     expect(screen.queryByLabelText('แต้ม')).toBeNull()
   })
+  it('defaults a new card to งาน BOQ when the site has a BOQ line', async () => {
+    mockBoq = [{ id: 'b1', code: 'W-01', description: 'หน้าต่าง', unit: 'ชุด', planned_qty: 10, sort_order: 1 }]
+    await openNewCard()
+    expect((await screen.findByLabelText('งาน BOQ (นับ %)')).checked).toBe(true)
+    expect(screen.getByLabelText('งานทั่วไป (ไม่นับ %)').checked).toBe(false)
+    expect(screen.getByText('รายการ BOQ')).toBeTruthy()
+  })
+  it('a new card in an issue phase offers no BOQ choice (general only), even with BOQ lines', async () => {
+    mockBoq = [{ id: 'b1', code: 'W-01', description: 'หน้าต่าง', unit: 'ชุด', planned_qty: 10, sort_order: 1 }]
+    mockPhases = [phase, { ...phase, id: 'pi', name: 'แจ้งปัญหา', sort_order: 9, is_issue_phase: true }]
+    render(<PhaseKanbanBoard site={site} canEdit />)
+    fireEvent.click(screen.getByText('แจ้งปัญหา'))
+    fireEvent.click(screen.getAllByText('+ เพิ่มงาน')[0])
+    expect((await screen.findByLabelText('งานทั่วไป (ไม่นับ %)')).checked).toBe(true)
+    expect(screen.queryByLabelText('งาน BOQ (นับ %)')).toBeNull()
+    expect(screen.queryByText('รายการ BOQ')).toBeNull()
+  })
+  it('pre-migration: a BOQ-line default does not hide the status buttons', async () => {
+    probeError = { message: 'no column' }
+    mockBoq = [{ id: 'b1', code: 'W-01', description: 'หน้าต่าง', unit: 'ชุด', planned_qty: 10, sort_order: 1 }]
+    await openNewCard()
+    await waitFor(() => expect(calls.some((c) => c[1] === 'limit')).toBe(true))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.getAllByText('กำลังทำ').some((el) => el.tagName === 'BUTTON')).toBe(true)
+    expect(screen.queryByText(/สถานะคิดจากยอด/)).toBeNull()
+  })
   it('hides the kind choice when the probe fails (migration not applied)', async () => {
     probeError = { message: 'column phase_tasks.progress_mode does not exist' }
     await openNewCard()
@@ -196,7 +222,7 @@ describe('Kanban final-review rules', () => {
     openPhase('แจ้งปัญหา')
     fireEvent.click(screen.getAllByText('+ เพิ่มงาน')[2])
     fireEvent.change(screen.getByPlaceholderText('ชื่องาน'), { target: { value: 'ซ่อมรั่ว' } })
-    await screen.findByLabelText('งาน BOQ (นับ %)')
+    await screen.findByLabelText('งานทั่วไป (ไม่นับ %)')
     fireEvent.click(screen.getByText('✅ บันทึก'))
     await waitFor(() => expect(insertOf()).toBeTruthy())
     expect(insertOf()).toMatchObject({ phase_id: 'pi', progress_mode: 'status', status: 'done' })
@@ -220,6 +246,32 @@ describe('Kanban final-review rules', () => {
     openBoard()
     expect(await screen.findByText('BOQ · 40 แต้ม')).toBeTruthy()
     expect(screen.queryByText(/ยังไม่แจก/)).toBeNull()
+  })
+  it('the board header says progress comes from n BOQ cards (top-level, non-issue) split by value', async () => {
+    mockTasks = [
+      card({ id: 'q1', progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: 10, weight_pts: 60 }),
+      card({ id: 'q2', name: 'การ์ด 2', progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: 5, weight_pts: 40 }),
+      card({ id: 'g1', name: 'การ์ด 3' }),
+      card({ id: 'i1', name: 'ปัญหา', progress_mode: 'quantity', issue_report_id: 'r1' }),
+    ]
+    openBoard()
+    expect(await screen.findByText('คิดจากการ์ด BOQ 2 ใบ · แต้มแบ่งตามมูลค่า')).toBeTruthy()
+    expect(screen.queryByText('คิดจากสถานะเฟส')).toBeNull()
+  })
+  it('the board header says คิดจากสถานะเฟส when the node has no BOQ card', async () => {
+    mockTasks = [card({})]
+    openBoard()
+    expect(await screen.findByText('คิดจากสถานะเฟส')).toBeTruthy()
+    expect(screen.queryByText(/คิดจากการ์ด BOQ/)).toBeNull()
+  })
+  it('the board header caption is hidden until the schema probe is ready', async () => {
+    probeError = { message: 'no column' }
+    mockTasks = [card({ progress_mode: undefined })]
+    openBoard()
+    await waitFor(() => expect(calls.some((c) => c[1] === 'limit')).toBe(true))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.queryByText('คิดจากสถานะเฟส')).toBeNull()
+    expect(screen.queryByText(/คิดจากการ์ด BOQ/)).toBeNull()
   })
   it.each([['ADMIN', true], ['PM', false], ['OWNER', false]])('%s: planned qty locked on a card with recorded quantity = %s', async (role, locked) => {
     mockRole = role

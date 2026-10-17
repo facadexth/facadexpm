@@ -43,9 +43,12 @@ const COLUMNS = [
 
 const PHOTO_DRAG_MIME = 'application/x-line-site-photo-id'
 
-const emptyDraft = (phaseId, status, sortOrder) => ({
+// A new card starts as a BOQ card when the site has a BOQ line to pick
+// (defaultBoq), else as a general card. Issue phases never count, so the caller
+// passes defaultBoq false there.
+export const emptyDraft = (phaseId, status, sortOrder, defaultBoq = false) => ({
   phase_id: phaseId, name: '', zone: '', status, due_date: '', sort_order: sortOrder, assigneeIds: [], leadWorkerId: null,
-  progress_mode: 'status', boq_item_id: '', planned_qty: '',
+  progress_mode: defaultBoq ? 'quantity' : 'status', boq_item_id: '', planned_qty: '',
 })
 
 // The card-kind/quantity fields a card form saves (and audits when they change).
@@ -509,7 +512,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     const tasks = microtasksByNodeId[nodeId] || []
     const sortOrder = tasks.length ? Math.max(...tasks.map((t) => t.sort_order || 0)) + 1 : 1
     setEditingId(`__new__:${nodeId}:${status}`)
-    setDraft(emptyDraft(nodeId, status, sortOrder))
+    setDraft(emptyDraft(nodeId, status, sortOrder, boqItems.length > 0 && !isIssueNode(nodeId)))
   }
   const cancelEdit = () => { setEditingId(null); setDraft(null) }
 
@@ -644,8 +647,13 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   // ความคืบหน้า -> ไม่แสดง (null)
   const nodeById = { ...byNodeId }
   phases.forEach((p) => { nodeById[p.id] = p })
+  // boqCards: the node's top-level non-issue BOQ cards (what its % counts by);
+  // the header caption is shown only once the schema probe is ready
   const progressOf = (nodeId) => (nodeById[nodeId]?.is_issue_phase ? null : {
     pct: Math.round(nodeProgress(nodeId, { tasksByNode: microtasksByNodeId, subtasksByParent, nodeById }) * 100),
+    boqCards: progressReady
+      ? (microtasksByNodeId[nodeId] || []).filter((t) => !t.parent_task_id && t.issue_report_id == null && t.progress_mode === 'quantity').length
+      : null,
   })
 
   const recordingTask = recordingTaskId ? taskById[recordingTaskId] : null
@@ -656,7 +664,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     onSplit: (task) => { cancelEdit(); setSplittingTaskId(task.id) },
   }
   const boardProps = {
-    canEdit, role, childrenByParent, taskById, boqById, formProps,
+    canEdit, role, childrenByParent, taskById, boqById, formProps, isIssueNode,
     onRecord: (task) => setRecordingTaskId(task.id),
     workers: workers || [], workerById, editingId, draft, setDraft,
     onToggleAssignee: toggleAssignee, onSetLead: setLead, onStartEdit: startEdit, onStartAdd: startAdd,
@@ -989,7 +997,11 @@ export function TaskCard({
       } : undefined}
       onClick={canEdit ? () => onEdit?.(task) : undefined}
       style={{
-        background: 'var(--bg2)', border: '1px solid var(--border)', borderStyle: kind === 'general' ? 'dashed' : 'solid', borderLeft: `3px solid ${STATUS_COLOR[task.status] || STATUS_COLOR.not_started}`,
+        // longhands only (a border shorthand mixed with borderStyle makes React warn on rerender);
+        // the left edge is the solid 3px status stripe, general cards are dashed elsewhere
+        background: 'var(--bg2)', borderWidth: '1px 1px 1px 3px',
+        borderStyle: kind === 'general' ? 'dashed dashed dashed solid' : 'solid',
+        borderColor: `var(--border) var(--border) var(--border) ${STATUS_COLOR[task.status] || STATUS_COLOR.not_started}`,
         borderRadius: 9, padding: '11px 13px', marginBottom: 10, boxShadow: 'var(--shadow)', cursor: canEdit ? 'pointer' : 'default',
       }}>
       {parentName && <div style={{ fontSize: 10.5, color: 'var(--text3)', marginBottom: 3 }}>↳ งานย่อยของ {parentName}</div>}
@@ -1066,8 +1078,9 @@ function PhaseBoard({
   phaseId, tasks, canEdit, workers, workerById, editingId, draft, setDraft, onToggleAssignee, onSetLead,
   onStartEdit, onStartAdd, onCancelEdit, onSaveDraft, onDeleteRequest, onQuickMove, saving,
   dragOverKey, setDragOverKey, disableAdd, taskPhotoCounts, onViewPhotos, onAssignPhoto, progress,
-  role, childrenByParent, taskById, boqById, onRecord, formProps,
+  role, childrenByParent, taskById, boqById, onRecord, formProps, isIssueNode,
 }) {
+  const issueNode = !!isIssueNode?.(phaseId)
   return (
     <>
     {progress && (
@@ -1075,6 +1088,11 @@ function PhaseBoard({
         <span style={{ background: 'var(--bg3)', borderRadius: 20, padding: '2px 10px', fontWeight: 700, color: 'var(--text2)' }}>
           ความคืบหน้า {progress.pct}%
         </span>
+        {progress.boqCards != null && (
+          <span style={{ color: 'var(--text3)' }}>
+            {progress.boqCards > 0 ? `คิดจากการ์ด BOQ ${progress.boqCards} ใบ · แต้มแบ่งตามมูลค่า` : 'คิดจากสถานะเฟส'}
+          </span>
+        )}
       </div>
     )}
     <div data-phone="kanban" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
@@ -1128,7 +1146,7 @@ function PhaseBoard({
             {isNewHere && (
               <TaskEditPanel draft={draft} setDraft={setDraft} workers={workers}
                 onToggleAssignee={onToggleAssignee} onSetLead={onSetLead} onCancel={onCancelEdit} onSave={onSaveDraft} saving={saving} isNew
-                {...formProps} />
+                issuePhase={issueNode} {...formProps} />
             )}
 
             {canEdit && !editingId && (
@@ -1147,9 +1165,10 @@ function PhaseBoard({
 
 function TaskEditPanel({
   draft, setDraft, workers, onToggleAssignee, onSetLead, onCancel, onSave, onDelete, saving, isNew,
-  task, isParent = false, progressReady, boqItems = [], boqRemaining, onSplit, canManageQty = false,
+  task, isParent = false, progressReady, boqItems = [], boqRemaining, onSplit, canManageQty = false, issuePhase = false,
 }) {
-  const isQuantity = draft.progress_mode === 'quantity'
+  // pre-migration the kind is ignored (a BOQ default must not hide the status buttons)
+  const isQuantity = !!progressReady && draft.progress_mode === 'quantity'
   const isIssueCard = task?.issue_report_id != null
   const showWeightFields = progressReady && !isIssueCard
   // the DB rejects a kind change on a parent or split child (only general cards
@@ -1194,7 +1213,8 @@ function TaskEditPanel({
             {[
               { mode: 'quantity', label: 'งาน BOQ (นับ %)', hint: 'งานตามสัญญา ขยับตามยอดติดตั้ง' },
               { mode: 'status', label: 'งานทั่วไป (ไม่นับ %)', hint: 'งานอื่นที่จะจ่ายให้ช่าง' },
-            ].map((k) => {
+            // a new card in an issue phase cannot be a BOQ card (issue nodes never count)
+            ].filter((k) => !(isNew && issuePhase && k.mode === 'quantity')).map((k) => {
               const on = draft.progress_mode === k.mode
               return (
                 <label key={k.mode} style={{

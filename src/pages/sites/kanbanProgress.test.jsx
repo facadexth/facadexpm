@@ -41,6 +41,18 @@ describe('TaskCard', () => {
     expect(screen.queryByText(/แต้ม/)).toBeNull()
     expect(container.firstChild.style.borderTopStyle).toBe('dashed')
   })
+  it('a general card keeps a solid 3px status stripe on the left and uses no border shorthand (no React style warning)', () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { container, rerender } = card()
+    const st = container.firstChild.style
+    expect(st.borderLeftStyle).toBe('solid')
+    expect(st.borderLeftWidth).toBe('3px')
+    expect(st.borderTopWidth).toBe('1px')
+    rerender(<TaskCard task={qtyCard} canEdit role="PM" onEdit={() => {}} onRecord={() => {}} />)
+    rerender(<TaskCard task={statusCard} canEdit role="PM" onEdit={() => {}} onRecord={() => {}} />)
+    expect(err.mock.calls.filter((c) => /style property|conflicting property/i.test(String(c[0])))).toEqual([])
+    err.mockRestore()
+  })
   it('a BOQ card shows "BOQ · N แต้ม" with a solid border', () => {
     const { container } = card({ task: qtyCard })
     expect(screen.getByText('BOQ · 40 แต้ม')).toBeTruthy()

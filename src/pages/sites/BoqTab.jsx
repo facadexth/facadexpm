@@ -3,8 +3,8 @@
 // status/quantity cards draw from. Columns: code, item, per contract,
 // in cards (Σ planned_qty of linked cards; 0 = amber), done (Σ done_qty),
 // สัดส่วนงาน (each line's share of the site's BOQ value, in %, from
-// rpc('boq_value_shares'); the column is hidden when the RPC fails, e.g.
-// before the migration). Never shows a price -- boq_items carries none and
+// rpc('boq_value_shares'), called only once the schema probe is ready; the
+// column is hidden before that and when the RPC fails). Never shows a price -- boq_items carries none and
 // the RPC returns percentages only. Edits go straight to boq_items
 // (site-staff RLS); DB messages (e.g. the "BOQ below what the cards hold"
 // guard, or deleting a line that cards still use) are shown verbatim.
@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { useBoqItems, usePhaseTasks } from '../../hooks/useSupabase.js'
 import { fmtNum } from './progressCalc.js'
+import { useProgressSchemaReady } from '../../lib/progressSchema.js'
 
 // onSave resolves to false when the save was rejected: the cell then goes back to the
 // stored value (a refetch alone returns the same value, so it would not reset the text).
@@ -48,7 +49,10 @@ export default function BoqTab({ siteId }) {
 
   // shares depend on every line's qty (and price, server side): reload when lines change
   const sharesKey = boq.map((b) => `${b.id}:${b.planned_qty}`).join(',')
+  // the RPC exists only after the migration: ask only once the schema probe says so
+  const progressReady = useProgressSchemaReady()
   useEffect(() => {
+    if (!progressReady) { setShares(null); return undefined }
     let cancelled = false
     ;(async () => {
       let next = null
@@ -59,7 +63,7 @@ export default function BoqTab({ siteId }) {
       if (!cancelled) setShares(next)
     })()
     return () => { cancelled = true }
-  }, [siteId, sharesKey])
+  }, [siteId, sharesKey, progressReady])
 
   const sums = useMemo(() => {
     const m = {}
