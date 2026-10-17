@@ -571,10 +571,10 @@ export function useMyAssignedCheckinLocation() {
       .maybeSingle()
     if (error) throw error
     if (data?.checkin_locations) return data.checkin_locations
-    // No personal assignment -- an ADMIN/OWNER can still check in at the
+    // No personal assignment -- an ADMIN/OWNER/PM can still check in at the
     // tenant's one role='office' location with no per-user setup (mirrors
     // the perform_location_checkin RPC's own fallback, added 2026-10-02).
-    if (data?.role === 'ADMIN' || data?.role === 'OWNER') {
+    if (data?.role === 'ADMIN' || data?.role === 'OWNER' || data?.role === 'PM') {
       const { data: office, error: officeError } = await supabase
         .from('checkin_locations')
         .select('id, name')
