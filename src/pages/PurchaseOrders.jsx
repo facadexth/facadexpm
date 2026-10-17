@@ -675,7 +675,10 @@ function PODocumentModal({ po, tenant, onClose, autoAction = null }) {
                 <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>{myWorkerName}</div>
               )}
             </div>
-            <div style={{ borderTop: '1px solid #999', paddingTop: 8, alignSelf: 'end' }}>ผู้อนุมัติ</div>
+            <div>
+              <div style={{ height: 40 }} />
+              <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้อนุมัติ</div>
+            </div>
           </div>
         </div>
       </div>
