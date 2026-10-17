@@ -5,16 +5,19 @@
 // month shows an abbreviation (full name on hover).
 // ============================================================
 import { TYPE_COLOR, TYPE_LABEL, SITE_TYPES, siteColor, siteAbbrev } from './constants.js'
+import { useIsPhone } from '../../hooks/useIsPhone.js'
+import { siteCellLabel } from './cellLabel.js'
 import teamLeaderBadge from '../../assets/team-leader-badge.png'
 
 // resolve one shift-segment into { bg, color, label, title }
-function segInfo(seg, variant) {
+function segInfo(seg, variant, isPhone) {
   if (!seg) return null
   if (SITE_TYPES.includes(seg.type)) {
     const c = siteColor(seg.site_id)
     const full = seg.site_name || seg.site_number || '—'
+    const weekLabel = siteCellLabel({ isPhone: isPhone && variant !== 'month', siteName: seg.site_name, siteNumber: seg.site_number, shortName: seg.site_short_name, isDefault: seg.site_is_default })
     const pre = seg.type === 'factory' ? '🏭 ' : ''
-    const label = variant === 'month' ? siteAbbrev(seg.site_name || seg.site_number) : full
+    const label = variant === 'month' ? siteAbbrev(seg.site_name || seg.site_number) : weekLabel
     return {
       bg: c.bg, color: c.color, label: pre + label,
       title: `${full}${seg.type === 'factory' ? ' (ผลิตที่โรงงาน)' : ''}${seg.ot > 0 ? ' · OT ' + seg.ot + 'h' : ''}`,
@@ -39,6 +42,7 @@ function Half({ info, onClick, h, fontSize }) {
 }
 
 export default function AssignCell({ cell = {}, ot = null, onEdit, w = '100%', h = 32, variant = 'week' }) {
+  const isPhone = useIsPhone()
   const { morning, evening } = cell
   const same = morning && evening
     && morning.site_id === evening.site_id && morning.type === evening.type
@@ -66,7 +70,7 @@ export default function AssignCell({ cell = {}, ot = null, onEdit, w = '100%', h
 
   // full-day block (both shifts identical)
   if (same) {
-    const info = segInfo(morning, variant)
+    const info = segInfo(morning, variant, isPhone)
     return (
       <div style={{ position: 'relative', width: w, height: h }}>
         <div onClick={() => onEdit('morning')} title={info.title}
@@ -88,8 +92,8 @@ export default function AssignCell({ cell = {}, ot = null, onEdit, w = '100%', h
   return (
     <div style={{ position: 'relative', width: w, height: h }}>
       <div style={{ width: '100%', height: '100%', borderRadius: 4, overflow: 'hidden', background: 'rgba(255,255,255,.03)' }}>
-        <Half info={segInfo(morning, variant)} h={h / 2} fontSize={Math.max(8, fontSize - 1)} onClick={() => onEdit('morning')} />
-        <Half info={segInfo(evening, variant)} h={h / 2} fontSize={Math.max(8, fontSize - 1)} onClick={() => onEdit('evening')} />
+        <Half info={segInfo(morning, variant, isPhone)} h={h / 2} fontSize={Math.max(8, fontSize - 1)} onClick={() => onEdit('morning')} />
+        <Half info={segInfo(evening, variant, isPhone)} h={h / 2} fontSize={Math.max(8, fontSize - 1)} onClick={() => onEdit('evening')} />
       </div>
       {otBadge}
       {leaderBadge}

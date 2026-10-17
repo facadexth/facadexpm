@@ -110,16 +110,23 @@ export default function Assign({ navState, openSiteOverview }) {
     return m
   }, [allTasks])
 
+  // hand-set short names come from the sites list (view); absent before migration 2026-10-17-03 -> automatic name
+  const shortBySite = useMemo(() => {
+    const m = {}
+    ;(sites || []).forEach(s => { m[s.id] = s.short_name })
+    return m
+  }, [sites])
+
   // cellLookup[worker_id][iso] = { morning?, evening? } each { id, type, site_id, site_number, ot, notes }
   const cellLookup = useMemo(() => {
     const m = {}
     ;(assignments || []).forEach(a => {
       const w = m[a.worker_id] || (m[a.worker_id] = {})
       const c = w[a.date] || (w[a.date] = {})
-      c[a.shift] = { id: a.id, type: a.type || 'site', site_id: a.site_id, site_number: a.sites?.site_number, site_name: a.sites?.name, ot: a.ot_hours || 0, notes: a.notes || '', is_team_leader: !!a.is_team_leader }
+      c[a.shift] = { id: a.id, type: a.type || 'site', site_id: a.site_id, site_number: a.sites?.site_number, site_name: a.sites?.name, site_short_name: shortBySite[a.site_id], site_is_default: !!a.sites?.is_default, ot: a.ot_hours || 0, notes: a.notes || '', is_team_leader: !!a.is_team_leader }
     })
     return m
-  }, [assignments])
+  }, [assignments, shortBySite])
 
   // otLookup[worker_id][iso] = { id, site_id, site_number, site_name, start_time, end_time, ot_hours, is_overnight, notes }
   const otLookup = useMemo(() => {

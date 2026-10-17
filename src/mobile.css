@@ -182,4 +182,9 @@
   /* Kanban: three columns side by side, snap to each */
   [data-phone="kanban"] { display: flex !important; gap: 10px !important; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding-bottom: 6px; }
   [data-phone="kanban"] > div { flex: 0 0 85%; min-width: 0; scroll-snap-align: start; }
+  /* Assign week/month grid: scroll sideways, worker column sticky, day cells keep a readable width */
+  [data-phone="assign-grid"] { table-layout: auto !important; width: max-content !important; min-width: 100%; }
+  [data-phone="assign-grid"] th[data-phone="assign-worker"], [data-phone="assign-grid"] td[data-phone="assign-worker"] { width: 96px !important; min-width: 96px; max-width: 96px; }
+  [data-phone="assign-grid"][data-variant="week"] td:not([data-phone="assign-worker"]) { min-width: 64px; }
+  [data-phone="assign-grid"][data-variant="month"] td:not([data-phone="assign-worker"]) { min-width: 34px; }
 }
