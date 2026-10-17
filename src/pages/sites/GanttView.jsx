@@ -21,9 +21,14 @@ import LandscapeView from '../../components/LandscapeView.jsx'
 import { useUserRole } from '../../hooks/useUserRole.js'
 import { canSeeMoney, canManagePlan } from '../../lib/roles.js'
 import PlanVersionsDialog, { PlanBar } from './PlanVersionsDialog.jsx'
+import { useProgressSchemaReady } from '../../lib/progressSchema.js'
+import { withVoColumns, savePhaseVoValues } from './phaseVo.js'
 
 const ROW_H = 34
 const EDIT_H = 320
+// extra height of the phase form's VO block: the checkbox line, plus a line of inputs once ticked
+const VO_EDIT_H = 30
+const VO_EDIT_H_TICKED = 84
 const LABEL_W = 170
 const GAP = 8
 const EDIT_BTN_W = 28
@@ -197,6 +202,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   // PM ไม่มีสิทธิ์ UPDATE sites (RLS ให้ผล 0 แถว) และ range ของ PM ไม่รวม
   // รายรับ/รายจ่าย จึงไม่ sync ให้ PM เลย -- เฉพาะ OWNER/ADMIN
   const { role } = useUserRole()
+  const progressSchemaReady = useProgressSchemaReady()
   const syncSiteDates = canSeeMoney(role)
   useEffect(() => {
     if (sites.length !== 1 || !canEdit || !syncSiteDates || !range) return
@@ -215,6 +221,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     ? (phasesBySite[sites[0].id] || []).filter((p) => p.is_vo).map((p) => p.id).join(',')
     : ''
   const [voValues, setVoValues] = useState(null)
+  const [voReloadTick, setVoReloadTick] = useState(0) // bumped after the phase form saves a VO value
   useEffect(() => {
     if (!voPhaseIdsKey) { setVoValues(null); return }
     let cancelled = false
@@ -225,7 +232,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
         setVoValues(Object.fromEntries((data || []).map((r) => [r.phase_id, Number(r.vo_value) || 0])))
       })
     return () => { cancelled = true }
-  }, [voPhaseIdsKey])
+  }, [voPhaseIdsKey, voReloadTick])
 
   // ทุกจุดเขียนในไฟล์นี้อาจแตะ site_phases, phase_subtasks และ (ตอนย้าย
   // "Kanban เก่า") phase_tasks พร้อมกัน -- useQuery แต่ละตัวเป็น state
@@ -242,6 +249,10 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     setDraft({
       ...node,
       depends_on_id: kind === 'phase' ? (node.depends_on_phase_id || '') : (node.depends_on_subtask_id || ''),
+      // VO value (money): from phase_vo_values, loaded above only for canSeeMoney roles
+      vo_value: kind === 'phase' && voValues && voValues[node.id] != null ? String(voValues[node.id]) : '',
+      // false when the values could not be loaded: an empty field then must not delete a stored value
+      voValueKnown: voValues != null || !node.is_vo,
     })
   }
   const startAdd = (parentKind, parentId, sortOrder) => {
@@ -278,17 +289,26 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     try {
       if (!isSubtask) {
         // ── Phase (site_phases) -- เหมือนเดิมทุกประการ ──
-        const payload = {
+        // VO: is_vo/vo_ref on site_phases, weight 0; the value goes to phase_vo_values (phaseVo.js)
+        const payload = withVoColumns({
           name: draft.name.trim(), start_date: draft.start_date || null, end_date: draft.end_date || null,
           status: draft.status, billing_weight_pct: parseFloat(draft.billing_weight_pct) || 0,
           depends_on_phase_id: draft.depends_on_id || null, sort_order: draft.sort_order,
-        }
+        }, draft, progressSchemaReady)
+        let phaseId = parsed.id
         if (parsed.isNew) {
-          const { error } = await supabase.from('site_phases').insert({ site_id: site.id, ...payload })
+          const { data, error } = await supabase.from('site_phases').insert({ site_id: site.id, ...payload }).select('id').single()
           if (error) throw error
+          phaseId = data.id
         } else {
           const { error } = await supabase.from('site_phases').update(payload).eq('id', parsed.id)
           if (error) throw error
+        }
+        const voValueBlank = String(draft.vo_value ?? '').trim() === ''
+        const skipVo = parsed.isNew ? !draft.is_vo : (draft.is_vo && voValueBlank && !draft.voValueKnown)
+        if (progressSchemaReady && canSeeMoney(role) && !skipVo) {
+          await savePhaseVoValues([{ phaseId, isVo: !!draft.is_vo, value: draft.vo_value }])
+          setVoReloadTick((n) => n + 1)
         }
       } else {
         // ── Subtask (phase_subtasks) ──
@@ -476,7 +496,8 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     const rowTops = visibleRows.map(({ node, isPhase }) => {
       const top = cursor
       const isEditingThis = node.isNew || (!!editingId && editingId === `${isPhase ? 'phase' : 'subtask'}:${node.id}`)
-      cursor += isEditingThis ? ROW_H + EDIT_H : ROW_H
+      const voExtra = isEditingThis && isPhase && progressSchemaReady ? (draft?.is_vo ? VO_EDIT_H_TICKED : VO_EDIT_H) : 0
+      cursor += isEditingThis ? ROW_H + EDIT_H + voExtra : ROW_H
       return top
     })
     const bodyHeight = Math.max(cursor, ROW_H)
@@ -639,10 +660,36 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                             </div>
                           ) : (
                             <input type="number" min="0" max="100" className="input input-sm" style={{ width: '100%', marginTop: 2 }}
-                              value={draft.billing_weight_pct} onChange={(e) => setDraft((d) => ({ ...d, billing_weight_pct: e.target.value }))} />
+                              value={parsed.kind === 'phase' && draft.is_vo ? 0 : draft.billing_weight_pct} disabled={parsed.kind === 'phase' && !!draft.is_vo}
+                              title={parsed.kind === 'phase' && draft.is_vo ? 'งาน VO ไม่นับ % เบิกเงินตามสัญญา' : undefined}
+                              onChange={(e) => setDraft((d) => ({ ...d, billing_weight_pct: e.target.value }))} />
                           )}
                         </label>
                       </div>
+                      {parsed.kind === 'phase' && progressSchemaReady && (
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text2)', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={!!draft.is_vo} onChange={(e) => setDraft((d) => ({ ...d, is_vo: e.target.checked }))} />
+                            งานเพิ่ม (VO) — ไม่นับ % เบิกเงินตามสัญญา
+                          </label>
+                          {draft.is_vo && (
+                            <div style={{ display: 'grid', gridTemplateColumns: canSeeMoney(role) ? '1fr 1fr' : '1fr', gap: 8 }}>
+                              <label style={{ fontSize: 11, color: 'var(--text3)' }}>
+                                เลขที่ VO
+                                <input className="input input-sm" style={{ width: '100%', marginTop: 2 }} placeholder="เช่น VO-01"
+                                  value={draft.vo_ref || ''} onChange={(e) => setDraft((d) => ({ ...d, vo_ref: e.target.value }))} />
+                              </label>
+                              {canSeeMoney(role) && (
+                                <label style={{ fontSize: 11, color: 'var(--text3)' }}>
+                                  มูลค่า VO (บาท)
+                                  <input type="number" min="0" className="input input-sm" style={{ width: '100%', marginTop: 2 }}
+                                    value={draft.vo_value ?? ''} onChange={(e) => setDraft((d) => ({ ...d, vo_value: e.target.value }))} />
+                                </label>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <label style={{ fontSize: 11, color: 'var(--text3)' }}>
                         ขึ้นอยู่กับขั้นตอน
                         <select className="select" style={{ width: '100%', marginTop: 2 }}

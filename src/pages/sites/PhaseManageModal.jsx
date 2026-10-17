@@ -14,6 +14,8 @@ import { supabase } from '../../lib/supabase.js'
 import { Modal } from '../../components/Modal.jsx'
 import { useUserRole } from '../../hooks/useUserRole.js'
 import { canSeeMoney } from '../../lib/roles.js'
+import { useProgressSchemaReady } from '../../lib/progressSchema.js'
+import { withVoColumns, loadPhaseVoValues, savePhaseVoValues } from './phaseVo.js'
 
 const STATUS_OPTS = [
   { value: 'not_started', label: 'ยังไม่เริ่ม' },
@@ -29,22 +31,16 @@ export default function PhaseManageModal({ site, phases, onClose, onSaved }) {
   const [rows, setRows] = useState(() => phases.map((p) => ({ ...p })))
   const [saving, setSaving] = useState(false)
   const originalIds = phases.map((p) => p.id)
-  const voReady = phases.some((p) => 'is_vo' in p)
+  const voReady = useProgressSchemaReady()
   const showVoValue = voReady && canSeeMoney(role)
-  // phase id -> VO value as typed ('' = none); loadedVo = what phase_vo_values held
+  // phase id -> VO value as typed ('' = none)
   const [voValues, setVoValues] = useState({})
-  const [loadedVo, setLoadedVo] = useState({})
 
   useEffect(() => {
     if (!showVoValue || !originalIds.length) return
     let cancelled = false
-    supabase.from('phase_vo_values').select('phase_id, vo_value').in('phase_id', originalIds)
-      .then(({ data, error }) => {
-        if (cancelled || error) return // fail soft: the value field just starts empty
-        const m = Object.fromEntries((data || []).map((r) => [r.phase_id, String(r.vo_value)]))
-        setLoadedVo(m)
-        setVoValues((v) => ({ ...m, ...v }))
-      })
+    // fail soft: on an error the value fields just start empty
+    loadPhaseVoValues(originalIds).then((m) => { if (!cancelled) setVoValues((v) => ({ ...m, ...v })) })
     return () => { cancelled = true }
   }, [showVoValue, originalIds.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -60,17 +56,16 @@ export default function PhaseManageModal({ site, phases, onClose, onSaved }) {
   const handleSave = async () => {
     setSaving(true)
     try {
-      const clean = (r) => ({
+      const clean = (r) => withVoColumns({
         site_id: site.id,
         name: r.name,
         sort_order: r.sort_order,
         start_date: r.start_date || null,
         end_date: r.end_date || null,
         status: r.status,
-        billing_weight_pct: r.is_vo ? 0 : parseFloat(r.billing_weight_pct) || 0,
+        billing_weight_pct: parseFloat(r.billing_weight_pct) || 0,
         depends_on_phase_id: r.depends_on_phase_id || null,
-        ...(voReady ? { is_vo: !!r.is_vo, vo_ref: (r.vo_ref || '').trim() || null } : {}),
-      })
+      }, r, voReady)
       const toUpdate = rows.filter((r) => !r.isNew).map((r) => ({ id: r.id, ...clean(r) }))
       const toInsert = rows.filter((r) => r.isNew).map((r) => clean(r))
       const keptIds = rows.filter((r) => !r.isNew).map((r) => r.id)
@@ -89,23 +84,9 @@ export default function PhaseManageModal({ site, phases, onClose, onSaved }) {
         ;(inserted || []).forEach((p, i) => { if (newRows[i]) idOf[newRows[i].id] = p.id })
       }
       if (showVoValue) {
-        const upserts = []
-        const removes = []
-        rows.forEach((r) => {
-          const phaseId = idOf[r.id]
-          if (!phaseId) return
-          const v = String(voValues[r.id] ?? '').trim()
-          if (r.is_vo && v !== '') upserts.push({ phase_id: phaseId, vo_value: Number(v) || 0 })
-          else if (loadedVo[r.id] !== undefined) removes.push(phaseId)
-        })
-        if (upserts.length) {
-          const { error } = await supabase.from('phase_vo_values').upsert(upserts, { onConflict: 'phase_id' })
-          if (error) throw error
-        }
-        if (removes.length) {
-          const { error } = await supabase.from('phase_vo_values').delete().in('phase_id', removes)
-          if (error) throw error
-        }
+        // existing phases always (a removed flag/value deletes the row); new ones only when VO
+        await savePhaseVoValues(rows.filter((r) => idOf[r.id] && (!r.isNew || r.is_vo))
+          .map((r) => ({ phaseId: idOf[r.id], isVo: !!r.is_vo, value: voValues[r.id] })))
       }
       if (deletedIds.length) {
         const { error } = await supabase.from('site_phases').delete().in('id', deletedIds)

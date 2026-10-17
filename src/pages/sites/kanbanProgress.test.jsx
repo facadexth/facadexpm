@@ -25,8 +25,9 @@ import { TaskCard, isStatusLeafTask, buildTaskSave } from './PhaseKanbanBoard.js
 import RecordProgressDialog from './RecordProgressDialog.jsx'
 import SplitTaskDialog, { defaultSplitRows } from './SplitTaskDialog.jsx'
 import PhaseManageModal from './PhaseManageModal.jsx'
+import { resetProgressSchemaProbe } from '../../lib/progressSchema.js'
 
-afterEach(() => { cleanup(); rpc.mockReset(); auditLog.mockReset(); queryResult = { data: [], error: null }; calls.length = 0; mockRole = 'OWNER' })
+afterEach(() => { cleanup(); rpc.mockReset(); auditLog.mockReset(); queryResult = { data: [], error: null }; calls.length = 0; mockRole = 'OWNER'; resetProgressSchemaProbe() })
 
 const statusCard = { id: 't1', name: 'ติดตั้งกระจก', status: 'not_started', progress_mode: 'status', weight_pts: 25, phase_task_workers: [] }
 const qtyCard = { id: 't2', name: 'ติดตั้งบาน', status: 'in_progress', progress_mode: 'quantity', weight_pts: 40, planned_qty: 120, done_qty: 45, boq_item_id: 'b1', phase_task_workers: [] }
@@ -213,17 +214,17 @@ describe('PhaseManageModal VO fields', () => {
   const phases = [{ id: 'ph1', site_id: 's1', name: 'ติดตั้ง', sort_order: 1, status: 'not_started', billing_weight_pct: 100, is_vo: false, vo_ref: null }]
   const mount = (over = {}) => render(<PhaseManageModal site={site} phases={phases} onClose={() => {}} onSaved={() => {}} {...over} />)
 
-  it('PM gets the VO toggle and VO number but never the VO value', () => {
+  it('PM gets the VO toggle and VO number but never the VO value', async () => {
     mockRole = 'PM'
     mount()
-    fireEvent.click(screen.getByLabelText('งานเพิ่ม (VO)'))
+    fireEvent.click(await screen.findByLabelText('งานเพิ่ม (VO)'))
     expect(screen.getByLabelText('เลขที่ VO')).toBeTruthy()
     expect(screen.queryByLabelText('มูลค่า VO (บาท)')).toBeNull()
   })
   it('OWNER saves is_vo/vo_ref on site_phases and the value to phase_vo_values only', async () => {
     const onSaved = vi.fn()
     mount({ onSaved })
-    fireEvent.click(screen.getByLabelText('งานเพิ่ม (VO)'))
+    fireEvent.click(await screen.findByLabelText('งานเพิ่ม (VO)'))
     fireEvent.change(screen.getByLabelText('เลขที่ VO'), { target: { value: ' VO-01 ' } })
     fireEvent.change(screen.getByLabelText('มูลค่า VO (บาท)'), { target: { value: '50000' } })
     fireEvent.click(screen.getByText('✅ บันทึก'))
@@ -234,8 +235,11 @@ describe('PhaseManageModal VO fields', () => {
     const voUpsert = calls.find((c) => c[0] === 'phase_vo_values' && c[1] === 'upsert')
     expect(voUpsert.slice(2)).toEqual([[{ phase_id: 'ph1', vo_value: 50000 }], { onConflict: 'phase_id' }])
   })
-  it('shows no VO fields before the migration (rows without is_vo)', () => {
+  it('shows no VO fields when the schema probe fails (migration not applied)', async () => {
+    queryResult = { data: null, error: { message: 'column phase_tasks.progress_mode does not exist' } }
     mount({ phases: [{ id: 'ph1', site_id: 's1', name: 'ติดตั้ง', sort_order: 1, status: 'not_started', billing_weight_pct: 100 }] })
+    await waitFor(() => expect(calls.some((c) => c[0] === 'phase_tasks' && c[1] === 'limit')).toBe(true))
+    await new Promise((r) => setTimeout(r, 0))
     expect(screen.queryByLabelText('งานเพิ่ม (VO)')).toBeNull()
   })
 })

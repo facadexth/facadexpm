@@ -27,6 +27,7 @@ import teamLeaderBadge from '../../assets/team-leader-badge.png'
 import { uploadSitePhotos, bangkokTodayIso } from '../../lib/photoUpload.js'
 import { useTenant } from '../../hooks/useTenant.js'
 import { useUserRole } from '../../hooks/useUserRole.js'
+import { useProgressSchemaReady } from '../../lib/progressSchema.js'
 import { canManagePlan } from '../../lib/roles.js'
 import { auditLog } from '../../lib/audit.js'
 import RecordProgressDialog from './RecordProgressDialog.jsx'
@@ -413,7 +414,8 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const boqById = useMemo(() => Object.fromEntries(boqItems.map((b) => [b.id, b])), [boqItems])
   // Before migration 07 is applied the cards have no weight/quantity columns:
   // the form then neither shows nor sends them, so the live Kanban keeps working.
-  const progressReady = (allTasks || []).some((t) => 'progress_mode' in t)
+  // A schema probe, not the card data: a user who sees no cards yet still gets the fields.
+  const progressReady = useProgressSchemaReady()
   // BOQ qty left for a card = BOQ planned_qty − Σ planned_qty of the line's other cards.
   const boqRemaining = (boqId, exceptTaskId) => {
     const b = boqById[boqId]
@@ -493,8 +495,9 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     const tasks = microtasksByNodeId[nodeId] || []
     const sortOrder = tasks.length ? Math.max(...tasks.map((t) => t.sort_order || 0)) + 1 : 1
     setEditingId(`__new__:${nodeId}:${status}`)
-    // a new card takes the node's unallocated points by default
-    setDraft(emptyDraft(nodeId, status, sortOrder, progressReady ? unallocatedPoints(tasks) : ''))
+    // a new card takes the node's unallocated points by default (only shown
+    // and sent once the schema probe says the columns exist)
+    setDraft(emptyDraft(nodeId, status, sortOrder, unallocatedPoints(tasks)))
   }
   const cancelEdit = () => { setEditingId(null); setDraft(null) }
 
