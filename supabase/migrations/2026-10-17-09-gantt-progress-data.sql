@@ -181,17 +181,19 @@ CREATE TRIGGER trg_check_boq_planned_qty BEFORE UPDATE OF planned_qty ON boq_ite
 
 -- ===== equal card points per node (data migration and demo seed) =====
 -- Top-level, non-issue cards outside issue phases get round(100/n, 2); the first card by
--- (sort_order, created_at) takes the remainder so the node sums to exactly 100. From n = 202
--- rounding up would push the remainder below 0 (201 × 0.50 > 100), so then the share is
+-- (sort_order, created_at) takes the remainder so the node sums to exactly 100. From n = 155
+-- rounding up would push the remainder below 0 (154 × 0.65 > 100), so then the share is
 -- rounded down instead (the remainder is then always > 0). One UPDATE,
 -- so check_node_weights (AFTER, per row, end of statement) sees whole nodes. Only nodes whose
 -- cards all still have 0 points are touched, so a re-run never overwrites weights set by a PM.
--- Issue cards keep their default 0. p_tenant_id NULL = every tenant.
+-- Issue cards keep their default 0. p_tenant_id NULL = every tenant. A system write, so it runs
+-- under the derived flag (guard_derived_status lets only site staff change weight_pts).
 CREATE OR REPLACE FUNCTION public.set_equal_card_weights(p_tenant_id uuid) RETURNS int
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
-DECLARE n int;
+DECLARE n int; v_prev text := current_setting('app.derived_status', true);
 BEGIN
+  PERFORM set_config('app.derived_status', '1', true);
   WITH c0 AS (
     SELECT t.id,
            count(*) OVER w AS n,
@@ -211,11 +213,15 @@ BEGIN
     FROM c
    WHERE t.id = c.id AND c.node_sum = 0;
   GET DIAGNOSTICS n = ROW_COUNT;
+  PERFORM set_config('app.derived_status', COALESCE(v_prev, ''), true);
   RETURN n;
 END $$;
 REVOKE ALL ON FUNCTION public.set_equal_card_weights(uuid) FROM PUBLIC, anon, authenticated;
 
--- ===== demo seed: live definition (2026-10-15-01) + one final step =====
+-- ===== demo seed: live definition (2026-10-15-01) + derived flag around the site loop + one final step =====
+-- The seed inserts phases/cards already in_progress/done before any PLAN exists, so the site
+-- loop runs under app.derived_status = '1' (require_site_plan lets it pass); the prior value
+-- is restored before the PLAN snapshot step.
 CREATE OR REPLACE FUNCTION public.demo_seed_core(p_tenant uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -273,6 +279,7 @@ DECLARE
     ARRAY['งานถนนและลานจอดรถ','ตร.ม.','950'], ARRAY['งานรื้อถอน','งาน','45000'],
     ARRAY['ค่าดำเนินการและกำไร','งาน','1']];
   v_start DATE; v_end DATE; v_status TEXT; v_prog NUMERIC; v_dur INT;
+  v_prev_derived TEXT := current_setting('app.derived_status', true);
 BEGIN
   -- default site: the T1 reset deletes it, later sections need it (signup trigger creates it with no status)
   IF NOT EXISTS (SELECT 1 FROM sites WHERE tenant_id = p_tenant AND is_default) THEN
@@ -321,6 +328,7 @@ BEGIN
   END LOOP;
 
   -- sites, phases, tasks
+  PERFORM set_config('app.derived_status', '1', true);
   FOR i IN 1..10 LOOP
     v_status := v_sites[i][2]; v_dur := v_sites[i][4]::int; v_prog := v_sites[i][11]::numeric;
     v_start := demo_m(v_sites[i][3]::int) + (i * 3);
@@ -351,6 +359,7 @@ BEGIN
       END LOOP;
     END LOOP;
   END LOOP;
+  PERFORM set_config('app.derived_status', COALESCE(v_prev_derived, ''), true);
 
   -- Gantt weighted progress (2026-10-17-09): equal card points per node, then an auto PLAN v1
   -- per seeded site, so a demo reset is never stuck behind the PLAN gate

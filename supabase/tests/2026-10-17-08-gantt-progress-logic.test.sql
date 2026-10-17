@@ -198,11 +198,14 @@ END $$;
 REVOKE ALL ON FUNCTION public.save_site_plan(uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.save_site_plan(uuid, text) TO authenticated;
 
--- 3. PLAN gate: no progress before PLAN v1 (issue phases/cards exempt)
+-- 3. PLAN gate: no progress before PLAN v1 (issue phases/cards exempt).
+-- Status changes and inserts already in_progress/done are both gated. Derived writes
+-- (app.derived_status = '1': quantity sync, parent sync, split, demo seed) pass.
 CREATE OR REPLACE FUNCTION public.require_site_plan() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
 BEGIN
+  IF current_setting('app.derived_status', true) = '1' THEN RETURN NEW; END IF;
   IF TG_TABLE_NAME = 'phase_tasks' THEN
     IF NEW.issue_report_id IS NOT NULL OR NEW.status NOT IN ('in_progress', 'done')
        OR EXISTS (SELECT 1 FROM site_phases WHERE id = NEW.phase_id AND is_issue_phase) THEN
@@ -226,6 +229,12 @@ CREATE TRIGGER trg_require_site_plan BEFORE UPDATE OF status ON site_phases
   FOR EACH ROW WHEN (OLD.status IS DISTINCT FROM NEW.status) EXECUTE FUNCTION require_site_plan();
 CREATE TRIGGER trg_require_site_plan BEFORE UPDATE OF status ON phase_subtasks
   FOR EACH ROW WHEN (OLD.status IS DISTINCT FROM NEW.status) EXECUTE FUNCTION require_site_plan();
+CREATE TRIGGER trg_require_site_plan_ins BEFORE INSERT ON phase_tasks
+  FOR EACH ROW WHEN (NEW.status IN ('in_progress', 'done')) EXECUTE FUNCTION require_site_plan();
+CREATE TRIGGER trg_require_site_plan_ins BEFORE INSERT ON site_phases
+  FOR EACH ROW WHEN (NEW.status IN ('in_progress', 'done')) EXECUTE FUNCTION require_site_plan();
+CREATE TRIGGER trg_require_site_plan_ins BEFORE INSERT ON phase_subtasks
+  FOR EACH ROW WHEN (NEW.status IN ('in_progress', 'done')) EXECUTE FUNCTION require_site_plan();
 CREATE TRIGGER trg_b_require_site_plan BEFORE INSERT ON progress_reports
   FOR EACH ROW EXECUTE FUNCTION require_site_plan();
 
@@ -286,7 +295,7 @@ CREATE OR REPLACE FUNCTION public.check_node_weights() RETURNS trigger
 AS $$
 DECLARE v_sum numeric; v_parent phase_tasks%ROWTYPE;
 BEGIN
-  PERFORM 1 FROM site_phases WHERE id = NEW.phase_id FOR UPDATE;
+  PERFORM 1 FROM site_phases WHERE id = NEW.phase_id FOR NO KEY UPDATE;
   IF NEW.parent_task_id IS NULL THEN
     IF NEW.issue_report_id IS NULL THEN
       SELECT COALESCE(sum(weight_pts), 0) INTO v_sum FROM phase_tasks
@@ -326,7 +335,7 @@ AS $$
 DECLARE v_limit numeric; v_sum numeric;
 BEGIN
   IF NEW.boq_item_id IS NULL THEN RETURN NULL; END IF;
-  SELECT planned_qty INTO v_limit FROM boq_items WHERE id = NEW.boq_item_id AND tenant_id = NEW.tenant_id FOR UPDATE;
+  SELECT planned_qty INTO v_limit FROM boq_items WHERE id = NEW.boq_item_id AND tenant_id = NEW.tenant_id FOR NO KEY UPDATE;
   SELECT COALESCE(sum(planned_qty), 0) INTO v_sum FROM phase_tasks
    WHERE tenant_id = NEW.tenant_id AND boq_item_id = NEW.boq_item_id;
   IF v_sum > v_limit THEN
@@ -344,7 +353,7 @@ CREATE OR REPLACE FUNCTION public.progress_report_refs() RETURNS trigger
 AS $$
 DECLARE t phase_tasks%ROWTYPE;
 BEGIN
-  SELECT * INTO t FROM phase_tasks WHERE id = NEW.task_id AND tenant_id = NEW.tenant_id FOR UPDATE;
+  SELECT * INTO t FROM phase_tasks WHERE id = NEW.task_id AND tenant_id = NEW.tenant_id FOR NO KEY UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'ไม่พบการ์ดนี้' USING ERRCODE = '42501';
   END IF;
@@ -372,6 +381,10 @@ BEGIN
   IF OLD.cancelled_at IS NOT NULL
      AND (NEW.cancelled_at IS DISTINCT FROM OLD.cancelled_at OR NEW.cancelled_by IS DISTINCT FROM OLD.cancelled_by) THEN
     RAISE EXCEPTION 'รายการนี้ถูกยกเลิกแล้ว' USING ERRCODE = '22023';
+  END IF;
+  -- who cancelled is the caller, never a value sent by the client
+  IF OLD.cancelled_at IS NULL THEN
+    NEW.cancelled_by := CASE WHEN NEW.cancelled_at IS NULL THEN NULL ELSE auth.email() END;
   END IF;
   RETURN NEW;
 END $$;
@@ -408,7 +421,7 @@ BEGIN
   IF NOT can_manage_plan() OR NOT tenant_can_write() THEN
     RAISE EXCEPTION 'ไม่มีสิทธิ์บันทึกยอด' USING ERRCODE = '42501';
   END IF;
-  SELECT * INTO t FROM phase_tasks WHERE id = p_task_id FOR UPDATE;
+  SELECT * INTO t FROM phase_tasks WHERE id = p_task_id FOR NO KEY UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'ไม่พบการ์ดนี้' USING ERRCODE = 'P0002'; END IF;
   IF t.progress_mode <> 'quantity' THEN
     RAISE EXCEPTION 'การ์ดนี้ไม่ได้นับจำนวน' USING ERRCODE = '22023';
@@ -442,7 +455,10 @@ GRANT EXECUTE ON FUNCTION public.cancel_progress(uuid) TO authenticated;
 -- Also guards done_qty (derived only), progress_mode (staff only, no live reports,
 -- no children) and planned_qty (staff only; on a quantity card >= done_qty, status re-derived here,
 -- in NEW, so no extra UPDATE). OLD or NEW quantity mode counts, so flipping the mode
--- in the same UPDATE as the status cannot bypass the guard.
+-- in the same UPDATE as the status cannot bypass the guard. Once a card has recorded
+-- quantity, only OWNER/PM may change planned_qty or progress_mode (ADMIN could otherwise
+-- finish it by lowering planned_qty). weight_pts, parent_task_id and boq_item_id are staff only
+-- (a WORKER may update an assigned card's status, never its points or structure).
 CREATE OR REPLACE FUNCTION public.guard_derived_status() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -455,6 +471,14 @@ BEGIN
     -- a WORKER could otherwise lower planned_qty to done_qty and so mark the card done
     IF NEW.planned_qty IS DISTINCT FROM OLD.planned_qty AND NOT is_site_staff() THEN
       RAISE EXCEPTION 'แก้จำนวนในการ์ดได้เฉพาะ OWNER/ADMIN/PM' USING ERRCODE = '22023';
+    END IF;
+    IF (NEW.planned_qty IS DISTINCT FROM OLD.planned_qty OR v_mode_changed) AND OLD.done_qty > 0
+       AND NOT can_manage_plan() THEN
+      RAISE EXCEPTION 'เฉพาะ OWNER/PM แก้จำนวนการ์ดที่มียอดแล้ว' USING ERRCODE = '22023';
+    END IF;
+    IF (NEW.weight_pts IS DISTINCT FROM OLD.weight_pts OR NEW.parent_task_id IS DISTINCT FROM OLD.parent_task_id
+        OR NEW.boq_item_id IS DISTINCT FROM OLD.boq_item_id) AND NOT is_site_staff() THEN
+      RAISE EXCEPTION 'แก้แต้ม/งานหลัก/รายการ BOQ ของการ์ดได้เฉพาะ OWNER/ADMIN/PM' USING ERRCODE = '22023';
     END IF;
     IF v_mode_changed THEN
       IF NOT is_site_staff() THEN
@@ -486,9 +510,12 @@ BEGIN
   RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION public.guard_derived_status() FROM PUBLIC, anon, authenticated;
-CREATE TRIGGER trg_guard_derived_status BEFORE UPDATE OF status, done_qty, progress_mode, planned_qty ON phase_tasks
+CREATE TRIGGER trg_guard_derived_status
+  BEFORE UPDATE OF status, done_qty, progress_mode, planned_qty, weight_pts, parent_task_id, boq_item_id ON phase_tasks
   FOR EACH ROW WHEN (OLD.status IS DISTINCT FROM NEW.status OR OLD.done_qty IS DISTINCT FROM NEW.done_qty
-                     OR OLD.progress_mode IS DISTINCT FROM NEW.progress_mode OR OLD.planned_qty IS DISTINCT FROM NEW.planned_qty)
+                     OR OLD.progress_mode IS DISTINCT FROM NEW.progress_mode OR OLD.planned_qty IS DISTINCT FROM NEW.planned_qty
+                     OR OLD.weight_pts IS DISTINCT FROM NEW.weight_pts OR OLD.parent_task_id IS DISTINCT FROM NEW.parent_task_id
+                     OR OLD.boq_item_id IS DISTINCT FROM NEW.boq_item_id)
   EXECUTE FUNCTION guard_derived_status();
 
 -- 9. parent status follows its children
@@ -527,13 +554,29 @@ CREATE TRIGGER trg_sync_parent_status AFTER INSERT OR UPDATE OF status, weight_p
 CREATE TRIGGER trg_sync_parent_status_del AFTER DELETE ON phase_tasks
   FOR EACH ROW WHEN (OLD.parent_task_id IS NOT NULL) EXECUTE FUNCTION sync_parent_status();
 
+-- 9b. a card with recorded quantity keeps its history: it cannot be deleted while its site
+-- exists (cancelled reports count too). Deleting the whole site still cascades.
+CREATE OR REPLACE FUNCTION public.keep_progress_history() RETURNS trigger
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM progress_reports WHERE task_id = OLD.id AND tenant_id = OLD.tenant_id)
+     AND EXISTS (SELECT 1 FROM sites WHERE id = OLD.site_id) THEN
+    RAISE EXCEPTION 'ยกเลิกยอดให้หมดก่อนลบการ์ด' USING ERRCODE = '22023';
+  END IF;
+  RETURN OLD;
+END $$;
+REVOKE ALL ON FUNCTION public.keep_progress_history() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_keep_progress_history BEFORE DELETE ON phase_tasks
+  FOR EACH ROW EXECUTE FUNCTION keep_progress_history();
+
 -- 10. split a card one level (SECURITY INVOKER)
 CREATE OR REPLACE FUNCTION public.split_task(p_task_id uuid, p_children jsonb)
   RETURNS void LANGUAGE plpgsql SET search_path = public
 AS $$
-DECLARE t phase_tasks%ROWTYPE; v_sum numeric; c record; v_prev text := current_setting('app.derived_status', true);
+DECLARE t phase_tasks%ROWTYPE; v_sum numeric; c record;
 BEGIN
-  SELECT * INTO t FROM phase_tasks WHERE id = p_task_id FOR UPDATE;
+  SELECT * INTO t FROM phase_tasks WHERE id = p_task_id FOR NO KEY UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'ไม่พบการ์ดนี้' USING ERRCODE = 'P0002'; END IF;
   IF t.parent_task_id IS NOT NULL THEN
     RAISE EXCEPTION 'แตกงานได้ชั้นเดียว' USING ERRCODE = '22023';
@@ -546,6 +589,10 @@ BEGIN
   END IF;
   IF t.issue_report_id IS NOT NULL THEN
     RAISE EXCEPTION 'การ์ดปัญหาแตกงานไม่ได้' USING ERRCODE = '22023';
+  END IF;
+  -- a started card would drop to 0 % once its children (all not_started) take over
+  IF t.status <> 'not_started' THEN
+    RAISE EXCEPTION 'แตกงานได้เฉพาะงานที่ยังไม่เริ่ม' USING ERRCODE = '22023';
   END IF;
   IF jsonb_typeof(p_children) IS DISTINCT FROM 'array' OR jsonb_array_length(p_children) < 2 THEN
     RAISE EXCEPTION 'ต้องแตกอย่างน้อย 2 งาน' USING ERRCODE = '22023';
@@ -564,10 +611,6 @@ BEGIN
       VALUES (t.phase_id, t.subtask_id, t.site_id, t.tenant_id, t.zone, btrim(c.name), 'not_started', c.w,
               t.sort_order + c.ord::int, t.id);
   END LOOP;
-  -- children start not_started; the parent follows them (same rule as sync_parent_status)
-  PERFORM set_config('app.derived_status', '1', true);
-  UPDATE phase_tasks SET status = 'not_started' WHERE id = t.id AND status <> 'not_started';
-  PERFORM set_config('app.derived_status', COALESCE(v_prev, ''), true);
 END $$;
 REVOKE ALL ON FUNCTION public.split_task(uuid, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.split_task(uuid, jsonb) TO authenticated;
@@ -607,7 +650,9 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.boq_from_quotation() FROM PUBLIC, anon, authenticated;
 CREATE TRIGGER trg_boq_from_quotation AFTER UPDATE OF status, site_id ON quotations
-  FOR EACH ROW WHEN (NEW.status = 'accepted' AND NEW.site_id IS NOT NULL) EXECUTE FUNCTION boq_from_quotation();
+  FOR EACH ROW WHEN (NEW.status = 'accepted' AND NEW.site_id IS NOT NULL
+                     AND (OLD.status IS DISTINCT FROM NEW.status OR OLD.site_id IS DISTINCT FROM NEW.site_id))
+  EXECUTE FUNCTION boq_from_quotation();
 
 -- 12. re-pull BOQ lines from the site's accepted quotations (BOQ tab button).
 -- Definer so a PM (who cannot read quotations) can use it; returns only a count, never a price.
@@ -645,6 +690,7 @@ DECLARE
   v_a uuid; v_b uuid; v_c1 uuid; v_c2 uuid; v_q uuid; v_boq uuid; v_boq_other_site uuid; v_boq_foreign uuid;
   v_ftenant uuid; v_fsite uuid; v_fcard uuid; v_r45 uuid; v_r75 uuid; v_rep uuid; v_worker uuid; v_wcard uuid;
   v_client uuid; v_quot uuid; v_qi1 uuid; v_qi2 uuid; v_ver int; v_f uuid; v_q3 uuid;
+  v_rep_issue2 uuid; v_tmp uuid; v_dsite uuid; v_dphase uuid; v_dcard uuid;
 BEGIN
   -- ===== as the table owner: fixtures =====
   SELECT id INTO v_tenant FROM tenants WHERE company_name ILIKE '%สร้างดี%' LIMIT 1;
@@ -665,6 +711,7 @@ BEGIN
   INSERT INTO line_issue_reports (tenant_id, site_id, message) VALUES (v_tenant, v_site, 'gantt test issue') RETURNING id INTO v_rep_issue;
   v_issue_card := create_issue_card(v_rep_issue);
   SELECT phase_id INTO v_pi FROM phase_tasks WHERE id = v_issue_card;
+  INSERT INTO line_issue_reports (tenant_id, site_id, message) VALUES (v_tenant, v_site, 'gantt test issue 2') RETURNING id INTO v_rep_issue2;
   -- BOQ rows for cross-tenant checks: same tenant other site, and a foreign tenant
   INSERT INTO boq_items (tenant_id, site_id, code, description, planned_qty) VALUES (v_tenant, v_site2, 'X1', 'other site', 10) RETURNING id INTO v_boq_other_site;
   INSERT INTO boq_items (tenant_id, site_id, code, description, planned_qty) VALUES (v_ftenant, v_fsite, 'F1', 'foreign', 10) RETURNING id INTO v_boq_foreign;
@@ -711,6 +758,48 @@ BEGIN
     UPDATE site_phases SET status = status, name = name WHERE id = v_p1;
     r := r || jsonb_build_object('a_phase_same_status_no_plan_MUSTok', 'ok');
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('a_phase_same_status_no_plan_MUSTok', SQLSTATE || ' ' || SQLERRM);
+  END;
+  -- final-review fix I1: the gate also covers inserts that start in_progress/done
+  BEGIN
+    INSERT INTO phase_tasks (phase_id, site_id, name, status) VALUES (v_p1, v_site, 'ins done', 'done');
+    r := r || jsonb_build_object('a_insert_done_card_no_plan_MUST22023_gate', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('a_insert_done_card_no_plan_MUST22023_gate', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    INSERT INTO phase_tasks (phase_id, site_id, name, status) VALUES (v_p1, v_site, 'ins wip', 'in_progress');
+    r := r || jsonb_build_object('a_insert_in_progress_card_no_plan_MUST22023_gate', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('a_insert_in_progress_card_no_plan_MUST22023_gate', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    INSERT INTO site_phases (site_id, name, sort_order, status) VALUES (v_site, 'ins done phase', 9, 'done');
+    r := r || jsonb_build_object('a_insert_done_phase_no_plan_MUST22023_gate', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('a_insert_done_phase_no_plan_MUST22023_gate', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    INSERT INTO phase_subtasks (site_id, phase_id, name, sort_order, status) VALUES (v_site, v_p1, 'ins wip sub', 9, 'in_progress');
+    r := r || jsonb_build_object('a_insert_in_progress_subtask_no_plan_MUST22023_gate', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('a_insert_in_progress_subtask_no_plan_MUST22023_gate', SQLSTATE || ' ' || SQLERRM);
+  END;
+  -- a not_started card goes in; deleting it (no progress reports) is allowed (I3)
+  BEGIN
+    INSERT INTO phase_tasks (phase_id, site_id, name, status) VALUES (v_p1, v_site, 'ins new', 'not_started') RETURNING id INTO v_tmp;
+    DELETE FROM phase_tasks WHERE id = v_tmp;
+    GET DIAGNOSTICS n = ROW_COUNT;
+    r := r || jsonb_build_object('a_insert_not_started_card_then_delete_MUST1', n);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('a_insert_not_started_card_then_delete_MUST1', SQLSTATE || ' ' || SQLERRM);
+  END;
+  -- issue phase / issue card stay exempt (removed again so the PLAN item counts below hold)
+  BEGIN
+    INSERT INTO phase_tasks (phase_id, site_id, name, status, issue_report_id) VALUES (v_pi, v_site, 'issue done', 'done', v_rep_issue2) RETURNING id INTO v_tmp;
+    DELETE FROM phase_tasks WHERE id = v_tmp;
+    r := r || jsonb_build_object('a_insert_done_issue_card_no_plan_MUSTok', 'ok');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('a_insert_done_issue_card_no_plan_MUSTok', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    INSERT INTO phase_tasks (phase_id, site_id, name, status) VALUES (v_pi, v_site, 'manual in issue phase', 'done') RETURNING id INTO v_tmp;
+    DELETE FROM phase_tasks WHERE id = v_tmp;
+    r := r || jsonb_build_object('a_insert_done_card_issue_phase_no_plan_MUSTok', 'ok');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('a_insert_done_card_issue_phase_no_plan_MUSTok', SQLSTATE || ' ' || SQLERRM);
   END;
 
   -- (d) point limits; node P2 then node S1
@@ -778,8 +867,14 @@ BEGIN
     FROM site_plan_items i JOIN site_plans p ON p.id = i.plan_id WHERE p.site_id = v_site AND p.version = 1 AND i.ref_id = v_p1;
   r := r || jsonb_build_object('b_phase_item_fields_MUSTtrue', b);
 
-  -- (e) split (now the site has a PLAN)
+  -- (e) split (now the site has a PLAN); only a not_started card can be split
   UPDATE phase_tasks SET status = 'in_progress' WHERE id = v_a;
+  BEGIN
+    PERFORM split_task(v_a, '[{"name":"A-1","weight_pts":10},{"name":"A-2","weight_pts":10}]');
+    r := r || jsonb_build_object('e_split_started_card_MUST22023_notstarted', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('e_split_started_card_MUST22023_notstarted', SQLSTATE || ' ' || SQLERRM);
+  END;
+  UPDATE phase_tasks SET status = 'not_started' WHERE id = v_a;
   BEGIN
     PERFORM split_task(v_a, '[{"name":"A-1","weight_pts":10},{"name":"A-2","weight_pts":10}]');
     SELECT count(*) INTO n FROM phase_tasks WHERE parent_task_id = v_a AND status = 'not_started' AND phase_id = v_p1 AND site_id = v_site;
@@ -943,6 +1038,25 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('r1_pm_mode_change_parent_MUST22023_parentmode', SQLSTATE || ' ' || SQLERRM);
   END;
 
+  -- final-review fixes (PM)
+  BEGIN
+    UPDATE phase_tasks SET planned_qty = 110 WHERE id = v_q;
+    SELECT trim_scale(planned_qty) || ' ' || status INTO v FROM phase_tasks WHERE id = v_q;
+    r := r || jsonb_build_object('i2_pm_lowers_planned_with_done_MUST110_in_progress', v);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('i2_pm_lowers_planned_with_done_MUST110_in_progress', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    DELETE FROM phase_tasks WHERE id = v_q;
+    r := r || jsonb_build_object('i3_delete_card_with_reports_MUST22023_history', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('i3_delete_card_with_reports_MUST22023_history', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    UPDATE progress_reports SET cancelled_at = now(), cancelled_by = 'forged@example.invalid' WHERE id = v_rep;
+    SELECT cancelled_by INTO v FROM progress_reports WHERE id = v_rep;
+    r := r || jsonb_build_object('d_cancelled_by_is_caller_MUSTtrue', v = v_pm);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('d_cancelled_by_is_caller_MUSTtrue', SQLSTATE || ' ' || SQLERRM);
+  END;
+
   -- cross-tenant references (controller ruling 1)
   BEGIN
     INSERT INTO boq_items (site_id, code, description, planned_qty) VALUES (v_fsite, 'Z', 'forged', 1);
@@ -1025,6 +1139,17 @@ BEGIN
     r := r || jsonb_build_object('r1_admin_flip_and_done_MUST22023', 'no error');
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('r1_admin_flip_and_done_MUST22023', SQLSTATE || ' ' || SQLERRM);
   END;
+  BEGIN
+    UPDATE phase_tasks SET planned_qty = 45 WHERE id = v_q;
+    r := r || jsonb_build_object('i2_admin_lowers_planned_with_done_MUST22023_ownerpm', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('i2_admin_lowers_planned_with_done_MUST22023_ownerpm', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    UPDATE phase_tasks SET planned_qty = 8 WHERE id = v_f;
+    SELECT trim_scale(planned_qty)::text INTO v FROM phase_tasks WHERE id = v_f;
+    r := r || jsonb_build_object('i2_admin_planned_no_done_MUST8', v);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('i2_admin_planned_no_done_MUST8', SQLSTATE || ' ' || SQLERRM);
+  END;
 
   -- ===== WORKER: (i) assigned status card on a site with a PLAN =====
   RESET ROLE;
@@ -1057,6 +1182,21 @@ BEGIN
     UPDATE phase_tasks SET planned_qty = 46 WHERE id = v_q;
     r := r || jsonb_build_object('r1_worker_planned_qty_MUST22023', 'no error');
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('r1_worker_planned_qty_MUST22023', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    UPDATE phase_tasks SET weight_pts = 6 WHERE id = v_wcard;
+    r := r || jsonb_build_object('a2_worker_weight_MUST22023_staff', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('a2_worker_weight_MUST22023_staff', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    UPDATE phase_tasks SET boq_item_id = NULL WHERE id = v_q;
+    r := r || jsonb_build_object('a2_worker_boq_item_MUST22023_staff', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('a2_worker_boq_item_MUST22023_staff', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    UPDATE phase_tasks SET parent_task_id = v_b WHERE id = v_wcard;
+    r := r || jsonb_build_object('a2_worker_parent_MUST22023_staff', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('a2_worker_parent_MUST22023_staff', SQLSTATE || ' ' || SQLERRM);
   END;
 
   -- ===== table owner: un-cancel lock, quotation -> BOQ, privileges =====
@@ -1130,6 +1270,38 @@ BEGIN
      AND NOT has_function_privilege('anon', 'public.boq_refresh_from_quotations(uuid)', 'EXECUTE') INTO b;
   r := r || jsonb_build_object('rf_grants_MUSTtrue', b);
 
+  -- (f) a quotation update that changes neither status nor site does not re-pull BOQ lines
+  DELETE FROM boq_items WHERE site_id = v_site AND quotation_item_id = v_qi2;
+  UPDATE quotations SET status = status, site_id = site_id, notes = 'touch' WHERE id = v_quot;
+  SELECT count(*) INTO n FROM boq_items WHERE site_id = v_site AND quotation_item_id = v_qi2;
+  r := r || jsonb_build_object('f2_quotation_touch_no_repull_MUST0', n);
+
+  -- I3: deleting a whole site still cascades through a card with progress reports
+  INSERT INTO sites (tenant_id, site_number, name) VALUES (v_tenant, 'GT-TEST-08D', 'gantt delete site') RETURNING id INTO v_dsite;
+  INSERT INTO site_phases (tenant_id, site_id, name, sort_order, start_date, end_date, billing_weight_pct) VALUES
+    (v_tenant, v_dsite, 'D', 1, '2026-11-01', '2026-11-30', 100) RETURNING id INTO v_dphase;
+  PERFORM snapshot_site_plan(v_dsite, 'test', true, 'system');
+  INSERT INTO phase_tasks (tenant_id, phase_id, site_id, name, weight_pts, progress_mode, planned_qty)
+    VALUES (v_tenant, v_dphase, v_dsite, 'DQ', 100, 'quantity', 10) RETURNING id INTO v_dcard;
+  INSERT INTO progress_reports (tenant_id, site_id, task_id, qty) VALUES (v_tenant, v_dsite, v_dcard, 3);
+  BEGIN
+    DELETE FROM phase_tasks WHERE id = v_dcard;
+    r := r || jsonb_build_object('i3_owner_delete_card_with_reports_MUST22023_history', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('i3_owner_delete_card_with_reports_MUST22023_history', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    DELETE FROM sites WHERE id = v_dsite;
+    SELECT count(*) INTO n FROM phase_tasks WHERE id = v_dcard;
+    r := r || jsonb_build_object('i3_site_delete_cascades_card_MUST0', n);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('i3_site_delete_cascades_card_MUST0', SQLSTATE || ' ' || SQLERRM);
+  END;
+
+  -- I4: no new trigger/RPC takes FOR UPDATE on a row a child FK key-share locks
+  SELECT NOT bool_or(p.prosrc ~* 'for\s+update') AND bool_and(p.prosrc ~* 'for no key update') INTO b FROM pg_proc p
+   WHERE p.pronamespace = 'public'::regnamespace
+     AND p.proname IN ('check_node_weights','check_boq_qty','progress_report_refs','record_progress','split_task');
+  r := r || jsonb_build_object('i4_no_key_update_locks_MUSTtrue', b);
+
   SELECT has_table_privilege('authenticated', 'public.site_plans', 'TRUNCATE')
       OR has_table_privilege('authenticated', 'public.site_plan_items', 'TRUNCATE')
       OR has_table_privilege('authenticated', 'public.progress_reports', 'TRUNCATE')
@@ -1139,7 +1311,7 @@ BEGIN
    WHERE p.pronamespace = 'public'::regnamespace AND p.proname IN ('site_has_plan','snapshot_site_plan','save_site_plan','require_site_plan',
      'check_boq_item_refs','check_task_refs','check_node_weights','check_boq_qty','progress_report_refs','progress_report_cancel_only',
      'sync_task_qty','record_progress','cancel_progress','guard_derived_status','set_parent_status_from_children','sync_parent_status',
-     'split_task','boq_insert_for_quotation','boq_from_quotation');
+     'split_task','boq_insert_for_quotation','boq_from_quotation','keep_progress_history');
   r := r || jsonb_build_object('priv_anon_execute_any_MUSTfalse', b);
   SELECT has_function_privilege('authenticated', 'public.snapshot_site_plan(uuid,text,boolean,text)', 'EXECUTE')
       OR has_function_privilege('authenticated', 'public.boq_insert_for_quotation(uuid)', 'EXECUTE')
