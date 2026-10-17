@@ -4,7 +4,9 @@ import { millionBahtTick } from './millionBahtTick.js'
 describe('millionBahtTick', () => {
   it('formats in ล้านบาท', () => {
     expect(millionBahtTick(0)).toBe('0')
-    expect(millionBahtTick(250000)).toBe('0.25 ลบ.')
+    expect(millionBahtTick(250000)).toBe('250,000')
+    expect(millionBahtTick(45000.5)).toBe('45,001')
+    expect(millionBahtTick(1000000)).toBe('1 ลบ.')
     expect(millionBahtTick(2500000)).toBe('2.5 ลบ.')
     expect(millionBahtTick(3000000)).toBe('3 ลบ.')
     expect(millionBahtTick(12480000)).toBe('12 ลบ.')
