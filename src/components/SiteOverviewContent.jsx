@@ -4,7 +4,8 @@
 // SiteOverviewModal so both the popup (10 other call sites, unchanged)
 // and the SiteDetail page can render identical content without
 // duplicating fetch/compute logic in two places that could drift.
-// ADMIN+ only -- kept as an internal check here too (defense-in-depth,
+// Money parts render only for roles that can see money (OWNER/ADMIN); a PM
+// gets the status and dates only. Other roles get nothing (defense-in-depth,
 // on top of whatever gate the caller itself has).
 // ============================================================
 import { useMemo } from 'react'
@@ -16,23 +17,25 @@ import { fmt, fmtDate } from '../lib/supabase.js'
 import { depositStatusFor } from '../lib/depositCalc.js'
 import { retentionStatusFor } from '../lib/retentionStatus.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { canSeeMoney, canManageSites } from '../lib/roles.js'
 import { CATEGORY_PALETTE, OTHER_LABEL, OTHER_COLOR, categoryBreakdown, groupSmallSlices } from '../lib/expenseChart.js'
 import CategoryPieTooltip from './CategoryPieTooltip.jsx'
 import PhoneSection from './PhoneSection.jsx'
 import { useIsPhone } from '../hooks/useIsPhone.js'
 
 export default function SiteOverviewContent({ siteId }) {
-  const { isAtLeast } = useUserRole()
-  const isAdmin = isAtLeast('ADMIN')
+  const { role } = useUserRole()
+  const showMoney = canSeeMoney(role)
+  const canView = canManageSites(role)
   const isPhone = useIsPhone()
-  const { data: site, error } = useSiteOverview(isAdmin ? siteId : null)
-  const { data: siteExpenses } = useSiteExpensesByCategory(isAdmin ? siteId : null)
+  const { data: site, error } = useSiteOverview(canView ? siteId : null)
+  const { data: siteExpenses } = useSiteExpensesByCategory(showMoney ? siteId : null)
   const categoryData = useMemo(() => groupSmallSlices(categoryBreakdown(siteExpenses)), [siteExpenses])
 
   const { data: siteQuotations } = useQuotations(
-    isAdmin && site?.id ? { siteId: site.id, status: 'accepted' } : { status: '__none__' }
+    showMoney && site?.id ? { siteId: site.id, status: 'accepted' } : { status: '__none__' }
   )
-  const { data: siteInvoices } = useInvoices(isAdmin && site?.id ? { siteId: site.id } : { status: '__none__' })
+  const { data: siteInvoices } = useInvoices(showMoney && site?.id ? { siteId: site.id } : { status: '__none__' })
   // one row per accepted quotation of this site (original job + any extra-work quotations) with how much is billed
   const quotationBilling = useMemo(() => summarizeQuotationBilling(
     (siteQuotations || []).map(q => {
@@ -45,7 +48,7 @@ export default function SiteOverviewContent({ siteId }) {
     siteInvoices,
   ), [siteQuotations, siteInvoices])
 
-  if (!isAdmin) return null
+  if (!canView) return null
 
   // shared bodies: desktop wraps them in its titled block, phone in a collapsible PhoneSection
   const quotationTable = (
@@ -170,6 +173,32 @@ export default function SiteOverviewContent({ siteId }) {
         <div style={{ color: 'var(--red)', fontSize: 13 }}>โหลดข้อมูลไม่สำเร็จ: {error}</div>
       ) : !site ? (
         <div style={{ color: 'var(--text3)', fontSize: 13 }}>กำลังโหลด...</div>
+      ) : !showMoney ? (
+        <>
+          <div>
+            <span className={`badge badge-status-${site.status?.toLowerCase().replace(' ', '-')}`}>{site.status}</span>
+          </div>
+          <div className="form-grid-3">
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text3)' }}>วันเริ่มต้น</div>
+              <div style={{ fontSize: 12 }}>{site.start_date ? fmtDate(site.start_date) : '—'}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text3)' }}>วันจบงาน</div>
+              <div style={{ fontSize: 12 }}>{site.end_date ? fmtDate(site.end_date) : '—'}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text3)' }}>ลูกค้า</div>
+              <div style={{ fontSize: 12 }}>{site.client_name || '—'}</div>
+            </div>
+          </div>
+          {site.location && (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text3)' }}>ที่ตั้งโครงการ</div>
+              <div style={{ fontSize: 12 }}>{site.location}</div>
+            </div>
+          )}
+        </>
       ) : (
         <>
           <div>

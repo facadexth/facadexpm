@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
   const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: authHeader } },
   })
-  const { data: isAdminOrOwner, error: authError } = await userClient.rpc('is_admin_or_owner')
+  const { data: isAdminOrOwner, error: authError } = await userClient.rpc('is_site_staff')
   if (authError || !isAdminOrOwner) return json({ error: 'Unauthorized' }, 403)
 
   // The bare URL itself might already carry coordinates (a full,

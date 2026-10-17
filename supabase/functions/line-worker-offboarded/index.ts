@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
   if (webOn) {
     try {
       const [{ sendWebPushToTenantAdmins }, { workerOffboardedPush }] = await Promise.all([import('../_shared/web-push.ts'), import('../_shared/web-push-messages.ts')])
-      await sendWebPushToTenantAdmins(admin, worker.tenant_id as string, workerOffboardedPush(worker.name as string))
+      await sendWebPushToTenantAdmins(admin, worker.tenant_id as string, workerOffboardedPush(worker.name as string), 'ops')
     } catch (e) { console.error('web push failed', (e as Error).message) }
   }
 

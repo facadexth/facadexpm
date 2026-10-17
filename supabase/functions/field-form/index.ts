@@ -37,6 +37,7 @@ import { withPushBudget } from '../_shared/push-budget.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 import { APP_URL } from '../_shared/app-url.ts'
+import { rolesFor } from '../_shared/roleAudience.ts'
 import { dailySubmitLimitReached, DAILY_LIMIT_MESSAGE } from '../_shared/form-throttle.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -105,13 +106,13 @@ async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Pr
   return (data ?? []).map((row: any) => ({ name: row.phase_tasks.name as string }))
 }
 
-// Pushes to every ADMIN/OWNER with a linked LINE account for this
+// Pushes to every OWNER/ADMIN/PM with a linked LINE account for this
 // tenant -- same user_roles.line_user_id the "เชื่อมต่อ LINE ส่วนตัว" card
 // in CommunicationCenter.jsx sets up. Best-effort: a push failure never
 // blocks the PO/leave request itself from having been created.
 async function notifyAdmins(tenantId: string, text: string, toggleKey: string) {
   if (!(await isPushEnabled(admin, tenantId, toggleKey))) return
-  const { data: admins } = await admin.from('user_roles').select('line_user_id').eq('tenant_id', tenantId).in('role', ['OWNER', 'ADMIN']).not('line_user_id', 'is', null)
+  const { data: admins } = await admin.from('user_roles').select('line_user_id').eq('tenant_id', tenantId).in('role', rolesFor('ops')).not('line_user_id', 'is', null)
   for (const a of admins ?? []) {
     await withPushBudget(admin, tenantId, () => sendLinePush(LINE_CHANNEL_ACCESS_TOKEN, a.line_user_id as string, text)).catch((e) => console.error('notifyAdmins push failed', e))
   }
@@ -123,7 +124,7 @@ async function webPushAdmins(tenantId: string, toggleKey: string, build: (m: typ
   try {
     if (!(await isPushEnabled(admin, tenantId, toggleKey))) return
     const [{ sendWebPushToTenantAdmins }, messages] = await Promise.all([import('../_shared/web-push.ts'), import('../_shared/web-push-messages.ts')])
-    await sendWebPushToTenantAdmins(admin, tenantId, build(messages))
+    await sendWebPushToTenantAdmins(admin, tenantId, build(messages), 'ops')
   } catch (e) { console.error('web push failed', (e as Error).message) }
 }
 

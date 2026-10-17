@@ -17,6 +17,8 @@ import { groupSubtasksByParent, computeNodeStats, computeNodeDateRange, isLeaf, 
 import { summarizeTasks } from './phaseTasksCalc.js'
 import { getEffectiveTheme } from '../../lib/theme.js'
 import LandscapeView from '../../components/LandscapeView.jsx'
+import { useUserRole } from '../../hooks/useUserRole.js'
+import { canSeeMoney } from '../../lib/roles.js'
 
 const ROW_H = 34
 const EDIT_H = 320
@@ -186,15 +188,19 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   // ใช้เป็นค่า "วันเริ่ม/วันจบงาน" ที่แสดงในหน้าภาพรวมไซท์ และวันครบกำหนด
   // เงินประกันผลงานคำนวณต่อจาก end_date นี้ ไม่ต้องแก้ไขเองแยกที่หน้าอื่น
   // อีกต่อไป -- เขียนเฉพาะตอนค่าจริงต่างจากที่คำนวณได้ เพื่อไม่ยิง UPDATE ซ้ำ
+  // PM ไม่มีสิทธิ์ UPDATE sites (RLS ให้ผล 0 แถว) และ range ของ PM ไม่รวม
+  // รายรับ/รายจ่าย จึงไม่ sync ให้ PM เลย -- เฉพาะ OWNER/ADMIN
+  const { role } = useUserRole()
+  const syncSiteDates = canSeeMoney(role)
   useEffect(() => {
-    if (sites.length !== 1 || !canEdit || !range) return
+    if (sites.length !== 1 || !canEdit || !syncSiteDates || !range) return
     const site = sites[0]
     const newStart = range.start.toISOString().slice(0, 10)
     const newEnd = range.end.toISOString().slice(0, 10)
     if (site.start_date === newStart && site.end_date === newEnd) return
     supabase.from('sites').update({ start_date: newStart, end_date: newEnd }).eq('id', site.id)
       .then(({ error }) => { if (error) console.error('sync site start/end date failed:', error.message) })
-  }, [sites, canEdit, range])
+  }, [sites, canEdit, syncSiteDates, range])
 
   // ทุกจุดเขียนในไฟล์นี้อาจแตะ site_phases, phase_subtasks และ (ตอนย้าย
   // "Kanban เก่า") phase_tasks พร้อมกัน -- useQuery แต่ละตัวเป็น state

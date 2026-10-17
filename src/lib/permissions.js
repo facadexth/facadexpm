@@ -97,6 +97,30 @@ export const DEFAULT_PERMISSIONS = {
     // the page.
     settings: 'edit',
   },
+  // PM (site manager): runs sites, never sees money. Every money page is
+  // 'none'; pages not listed here also fall back to 'none' in getPageLevel.
+  PM: {
+    dashboard: 'edit',
+    assign: 'edit',
+    hr: 'view',
+    sites: 'edit',
+    expenses: 'none',
+    purchase_orders: 'view',
+    inventory: 'view',
+    cheques: 'none',
+    quotations: 'none',
+    invoices: 'none',
+    sales_report: 'none',
+    income: 'none',
+    categories: 'none',
+    clients: 'none',
+    suppliers: 'none',
+    catalog_items: 'none',
+    labor_contractors: 'none',
+    user_management: 'none',
+    communication_center: 'none',
+    settings: 'edit',
+  },
   OWNER: {
     dashboard: 'edit',
     assign: 'edit',
@@ -164,7 +188,7 @@ export function savePermissions(permissions) {
 export function getPageLevel(role, pageKey) {
   if (!role) return 'edit'
   const perms = loadPermissions()
-  return perms[role]?.[pageKey] ?? 'edit'
+  return perms[role]?.[pageKey] ?? (role === 'PM' ? 'none' : 'edit')
 }
 
 export function canViewPage(role, pageKey) {

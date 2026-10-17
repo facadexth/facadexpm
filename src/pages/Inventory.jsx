@@ -8,10 +8,11 @@
 // ============================================================
 import { useState, useMemo, useEffect, Fragment } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices, useInvoiceNumbers, useSiteCostEstimates, useStockDocuments } from '../hooks/useSupabase.js'
+import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices, useInvoiceNumbers, useSiteCostEstimates, usePmStockOnHand, useStockDocuments } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
+import { isPm } from '../lib/roles.js'
 import { fmt } from '../lib/supabase.js'
 import { computeInvoiceDeductionPlan, resolveMovementReference, computeFinishedGoodsProductionPlan, computeStockLedgerReport } from '../lib/inventoryCost.js'
 import { exportToExcel } from '../lib/exportExcel.js'
@@ -29,6 +30,7 @@ const INV_LEDGER_MAP = { title: 0, amount: 8, sub: [1, 2] } // column indexes: h
 const INV_ITEMS_MAP = { title: 'ชื่อ', amount: 'มูลค่ารวม', status: 'สถานะ', sub: ['รหัส', 'หมวดหมู่'], actions: 'last' }
 const INV_MOVES_MAP = { title: 'สินค้า', amount: 'มูลค่ารวม', sub: ['วันที่', 'ประเภท'] }
 const INV_WH_MAP = { title: 'คลัง', amount: 'มูลค่า' }
+const PM_STOCK_MAP = { title: 'ชื่อ', amount: 'ปริมาณ', sub: ['รหัส', 'คลัง'] }
 
 const EMPTY_ITEM_FORM = { code: '', name: '', base_unit: '', unit_conversion_mode: 'plain', reference_area_sqm: '', category_id: '', active: true }
 const EMPTY_FACTOR_FORM = { unit_name: '', factor_to_base: '1' }
@@ -1135,7 +1137,57 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
   )
 }
 
+// PM: read-only stock on hand per site from pm_inventory_on_hand -- no cost, value,
+// movements, invoice deduction or tax reports (all money, and the base tables are
+// not readable by PM).
+function PmInventory() {
+  const { data: stock } = usePmStockOnHand()
+  const { data: sites } = useSites()
+  const [siteFilter, setSiteFilter] = useState('')
+  const [search, setSearch] = useState('')
+  const siteById = useMemo(() => new Map((sites || []).map(x => [x.id, x])), [sites])
+  const siteFilterOpts = (sites || []).map(x => ({ value: x.id, label: `${x.site_number} · ${x.name}`, keywords: `${x.site_number} ${x.name}` }))
+  const rows = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return (stock || []).filter(r => (!siteFilter || r.site_id === siteFilter)
+      && (!q || r.name?.toLowerCase().includes(q) || r.code?.toLowerCase().includes(q)))
+  }, [stock, siteFilter, search])
+  return (
+    <div>
+      <div style={{ marginBottom: 14, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ minWidth: 220, maxWidth: 260 }}>
+          <SearchableSelect value={siteFilter} onChange={setSiteFilter} placeholder="ทุกคลัง" options={siteFilterOpts} />
+        </div>
+        <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อ / รหัสสินค้า..." value={search} onChange={e => setSearch(e.target.value)} />
+      </div>
+      <div className="card">
+        <CardTable map={PM_STOCK_MAP}>
+          <table>
+            <thead><tr><th>รหัส</th><th>ชื่อ</th><th>คลัง</th><th>ปริมาณ</th></tr></thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={`${r.inventory_item_id}-${r.site_id}`}>
+                  <td style={{ fontSize: 12, color: 'var(--text3)' }}>{r.code || '—'}</td>
+                  <td style={{ fontWeight: 600 }}>{r.name}</td>
+                  <td style={{ fontSize: 12 }}>{siteById.get(r.site_id)?.name || '—'}</td>
+                  <td className="font-mono">{fmt(Number(r.quantity_on_hand))} {r.base_unit}</td>
+                </tr>
+              ))}
+              {!rows.length && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีสินค้าคงคลัง</td></tr>}
+            </tbody>
+          </table>
+        </CardTable>
+      </div>
+    </div>
+  )
+}
+
 export default function Inventory() {
+  const { role } = useUserRole()
+  return isPm(role) ? <PmInventory /> : <InventoryFull />
+}
+
+function InventoryFull() {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'inventory')
   const [view, setView] = useState('items')

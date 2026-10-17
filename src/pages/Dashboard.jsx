@@ -10,6 +10,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { useSites, useExpenses, useIncomes, usePaymentForecast, useSitesProgress, useSiteRetentionSummary, useCheques, useAppSetting, useQuery } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { canSeeMoney, isPm } from '../lib/roles.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { supabase, fmt, fmtShort, fmtDate } from '../lib/supabase.js'
 import { Modal } from '../components/Modal.jsx'
@@ -138,8 +139,11 @@ function KpiCustomizeModal({ availableDefs, prefs, onSave, onClose }) {
   )
 }
 
-function WorkerSiteProgress() {
-  const { data: sites } = useSitesProgress()
+// PM passes its own sites (pm_sites rows, no money): billing % is money, so a PM
+// card shows name, status and dates instead of the progress bar.
+function WorkerSiteProgress({ pmSites = null }) {
+  const { data: progressSites } = useSitesProgress()
+  const sites = pmSites ?? progressSites
   const ongoing = (sites || []).filter(s => s.status === 'Ongoing')
 
   return (
@@ -157,6 +161,11 @@ function WorkerSiteProgress() {
               </div>
               <span className="badge badge-paid">{s.status}</span>
             </div>
+            {pmSites ? (
+              <div style={{ marginTop: 12, fontSize: 11, color: 'var(--text2)' }}>
+                {s.start_date ? fmtDate(s.start_date) : '—'} → {s.end_date ? fmtDate(s.end_date) : '—'}
+              </div>
+            ) : (
             <div style={{ marginTop: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text2)', marginBottom: 5 }}>
                 <span>ความคืบหน้างาน</span>
@@ -166,6 +175,7 @@ function WorkerSiteProgress() {
                 <div style={{ height: '100%', borderRadius: 999, background: 'linear-gradient(90deg, var(--accent), var(--blue))', width: `${Math.min(100, s.billing_pct || 0)}%` }} />
               </div>
             </div>
+            )}
           </div>
         ))}
         {!ongoing.length && <div style={{ color: 'var(--text3)', fontSize: 13 }}>ไม่มีไซท์งาน Ongoing</div>}
@@ -175,8 +185,8 @@ function WorkerSiteProgress() {
 }
 
 export default function Dashboard({ navigateTo, openSiteOverview }) {
-  const { isAtLeast, user } = useUserRole()
-  const canSeeFinancials = isAtLeast('ADMIN')
+  const { role, user } = useUserRole()
+  const canSeeFinancials = canSeeMoney(role)
   const [period, setPeriod] = useState('ytd')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo,   setCustomTo]   = useState('')
@@ -340,7 +350,7 @@ export default function Dashboard({ navigateTo, openSiteOverview }) {
   const sortIcon = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
   if (!canSeeFinancials) {
-    return <WorkerSiteProgress />
+    return <WorkerSiteProgress pmSites={isPm(role) ? (sites || []) : null} />
   }
 
   // เตรียมการ์ดทั้งหมดที่ "มีสิทธิ์แสดง" ไว้ก่อน (cheque_reminder ต้องมี module

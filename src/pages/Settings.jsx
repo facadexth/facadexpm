@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase.js'
 import { useAppSetting, saveAppSetting, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature, useBankAccounts, setDefaultBankAccount, useCheckinLocations, usePlatformAdmin } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
+import { ROLE_OPTIONS, canManageSites, canSeeMoney } from '../lib/roles.js'
 import { PAGE_LABELS, DEFAULT_PERMISSIONS, loadPermissions, savePermissions } from '../lib/permissions.js'
 import { THAI_BANKS } from '../lib/thaiBanks.js'
 import { useDraftForm } from '../hooks/useDraftForm.js'
@@ -16,6 +17,8 @@ import SignaturePad from '../components/SignaturePad.jsx'
 import { DEFAULT_DOCUMENT_STYLE, resolveDocumentStyle } from '../lib/documentStyle.js'
 import DocStyleControls from '../components/DocStyleControls.jsx'
 import DocumentTemplatePicker from '../components/DocumentTemplatePicker.jsx'
+import PayItemsEditor from './hr/PayItemsEditor.jsx'
+import BankExportSettings from './hr/BankExportSettings.jsx'
 import { useDocumentTemplates } from '../hooks/useDocumentTemplates.js'
 import { DOC_STYLE_PREVIEW_SAMPLE } from '../lib/documentPreviewSample.js'
 import { QuotationPaper } from './Quotations.jsx'
@@ -106,6 +109,14 @@ function LocationForm({ initial, onSave, onCancel, loading }) {
   )
 }
 
+// Permission editor cards: every role in ROLE_OPTIONS, lowest access first.
+const PERMISSION_ROLES = ['WORKER', 'ADMIN', 'PM', 'OWNER'].filter(r => ROLE_OPTIONS.includes(r))
+const PERMISSION_ROLE_COLOR = { OWNER: 'var(--red)', ADMIN: 'var(--accent)', PM: 'var(--blue)', WORKER: 'var(--green)' }
+const PERMISSION_ROLE_BG = {
+  OWNER: 'rgba(var(--red-rgb), 0.1)', ADMIN: 'rgba(var(--accent-rgb), 0.1)',
+  PM: 'color-mix(in srgb, var(--blue) 10%, transparent)', WORKER: 'rgba(var(--green-rgb), 0.1)',
+}
+
 export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   // This tab is now reachable by every role (src/App.jsx's minRole:'WORKER'
   // gate on 'settings') -- everything below the password card is filtered
@@ -116,7 +127,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   // by each table's own RLS policy (e.g. owner_updates_own_tenant), so a
   // WORKER granted a wider view here still can't persist an OWNER-only
   // change.
-  const { isAtLeast } = useUserRole()
+  const { role, isAtLeast } = useUserRole()
   const [permissions, setPermissions] = useState(DEFAULT_PERMISSIONS)
   const [saving, setSaving] = useState(false)
   const [showChangelog, setShowChangelog] = useState(false)
@@ -503,7 +514,8 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   const hasTemplateChoice = (pubTemplates || []).some(t => t.key !== 'classic')
   // Document-style customizer is a platform-admin tool now (tenants will pick from templates later).
   const { data: isPlatformAdmin } = usePlatformAdmin()
-  const isAdminPlus = isAtLeast('ADMIN')
+  // ADMIN, OWNER and PM (site managers) get the signature + web push cards.
+  const isAdminPlus = canManageSites(role)
 
   // The OWNER's own name (user_roles.display_name). Only the OWNER can write
   // their own row (RLS owner_updates), so the field is shown to them alone;
@@ -547,6 +559,8 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     { id: 'doc_template', label: '🎨 แบบใบเสนอราคา', show: isOwner && hasTemplateChoice },
     { id: 'doc_style', label: '🎨 รูปแบบเอกสาร', show: isOwner && !!isPlatformAdmin },
     { id: 'bank_accounts', label: '🏦 บัญชีธนาคาร', show: isOwner },
+    { id: 'payroll_items', label: '💼 โครงสร้างเงินเดือน', show: isAdminPlus && canSeeMoney(role) && hasModuleAccess('payroll') },
+    { id: 'payroll_bank', label: '🏦 ไฟล์จ่ายเงินเดือน (SCB)', show: isOwner && hasModuleAccess('payroll') },
     { id: 'permissions', label: '⚙️ ตั้งค่าสิทธิ์เข้าใช้งาน', show: isOwner },
   ]
   const visibleSections = sections.filter(s => s.show)
@@ -973,6 +987,9 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       </div>
       )}
 
+      {activeSection === 'payroll_items' && isAdminPlus && canSeeMoney(role) && hasModuleAccess('payroll') && <PayItemsEditor />}
+      {activeSection === 'payroll_bank' && isOwner && hasModuleAccess('payroll') && <BankExportSettings />}
+
       {activeSection === 'permissions' && isOwner && <>
       <div style={{ marginBottom: 24 }}>
         <h2 style={{ marginBottom: 8, fontSize: 18, fontWeight: 700 }}>⚙️ ตั้งค่าสิทธิ์เข้าใช้งาน</h2>
@@ -982,20 +999,20 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       </div>
 
       <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))' }}>
-        {['WORKER', 'ADMIN', 'OWNER'].map(role => (
+        {PERMISSION_ROLES.map(role => (
           <div key={role} className="card" style={{
-            borderTop: role === 'OWNER' ? '3px solid var(--red)' : role === 'ADMIN' ? '3px solid var(--accent)' : '3px solid var(--green)',
+            borderTop: `3px solid ${PERMISSION_ROLE_COLOR[role]}`,
           }}>
             <div style={{
               padding: '12px 16px',
-              background: role === 'OWNER' ? 'rgba(var(--red-rgb), 0.1)' : role === 'ADMIN' ? 'rgba(var(--accent-rgb), 0.1)' : 'rgba(var(--green-rgb), 0.1)',
+              background: PERMISSION_ROLE_BG[role],
               borderBottom: '1px solid var(--border)',
             }}>
               <h3 style={{
                 margin: 0,
                 fontSize: 16,
                 fontWeight: 700,
-                color: role === 'OWNER' ? 'var(--red)' : role === 'ADMIN' ? 'var(--accent)' : 'var(--green)',
+                color: PERMISSION_ROLE_COLOR[role],
               }}>
                 {role}
               </h3>

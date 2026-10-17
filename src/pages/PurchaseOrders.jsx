@@ -8,7 +8,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { usePendingFocus } from '../hooks/usePendingFocus.js'
 import PendingFocusChip from '../components/PendingFocusChip.jsx'
 import { supabase } from '../lib/supabase.js'
-import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useDocumentSigner, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits, useActiveTaxInvoiceLinks, usePoMoneyIndex, usePoLedger, useDeliveryTaxInvoiceReady, useActiveReceiptTaxInvoiceLinks, usePoUnreceiveReversesStock } from '../hooks/useSupabase.js'
+import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useDocumentSigner, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits, useActiveTaxInvoiceLinks, usePoMoneyIndex, usePoLedger, useDeliveryTaxInvoiceReady, useActiveReceiptTaxInvoiceLinks, usePoUnreceiveReversesStock, fetchPmPurchaseOrderItems } from '../hooks/useSupabase.js'
 import { fileToExtractionPayload, buildExampleExtracted, applyScanVatBasis, clearScanVatBasis, scanLinesTotalExVat } from '../lib/poDocumentExtraction.js'
 import ScanDocPreview from '../components/ScanDocPreview.jsx'
 import ScanNotice from '../components/ScanNotice.jsx'
@@ -16,6 +16,7 @@ import { SCAN_REMINDER, SCAN_VAT_INCLUSIVE_NOTICE, showVatInclusiveNotice } from
 import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, computePoItemBaseQty } from '../lib/inventoryCost.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
+import { isPm, canSeeMoney, getCurrentRole } from '../lib/roles.js'
 import { useDraftForm, readDraft, saveDraft, clearDraft } from '../hooks/useDraftForm.js'
 
 // useDraftForm already survives an Android tab-discard reload for the form's
@@ -448,6 +449,56 @@ function PurchaseOrderForm({ showStockFlag = false, stockFlagLocked = false, sho
   )
 }
 
+// PM view of one PO: what was ordered and its status, never a price, total, VAT,
+// deposit or bill. Lines come from pm_purchase_order_items (PM cannot read the table).
+function PmPODetailModal({ po, onClose }) {
+  const [items, setItems] = useState(null)
+  useEffect(() => {
+    let alive = true
+    fetchPmPurchaseOrderItems(po.id).then(rows => { if (alive) setItems(rows) }, () => { if (alive) setItems([]) })
+    return () => { alive = false }
+  }, [po.id])
+  const cell = { padding: '4px 6px', borderBottom: '1px solid var(--border)' }
+  return (
+    <Modal title={`ใบสั่งซื้อ ${po.po_number}`} onClose={onClose} maxWidth={640}>
+      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span className={`badge badge-po-${po.status}`}>{PO_STATUS_LABELS[po.status] || po.status}</span>
+          <span style={{ fontSize: 12, color: 'var(--text3)' }}>{fmtDate(po.date)}</span>
+          {po.received_date && <span style={{ fontSize: 12, color: 'var(--green)' }}>รับของ {fmtDate(po.received_date)}</span>}
+        </div>
+        <div className="form-grid-2" style={{ fontSize: 13 }}>
+          <div><strong>ไซท์งาน:</strong> {po.sites?.name || '—'}</div>
+          <div><strong>Supplier:</strong> {po.suppliers?.name || '—'}</div>
+        </div>
+        {po.ordered_by && <div style={{ fontSize: 13 }}><strong>ชื่อผู้สั่ง:</strong> {po.ordered_by}</div>}
+        {po.notes && <div style={{ fontSize: 13 }}><strong>หมายเหตุ:</strong> {po.notes}</div>}
+        <div>
+          <label className="label">รายการสินค้า</label>
+          <CardTable>
+            <table style={{ fontSize: 12.5 }}>
+              <thead><tr><th>รายการ</th><th>จำนวน</th></tr></thead>
+              <tbody>
+                {(items || []).map(it => (
+                  <tr key={it.id}>
+                    <td style={cell}>{it.description}</td>
+                    <td style={cell}>{it.quantity} {it.unit || ''}</td>
+                  </tr>
+                ))}
+                {items && !items.length && <tr><td colSpan={2} style={{ ...cell, textAlign: 'center', color: 'var(--text3)' }}>ไม่มีรายการ</td></tr>}
+                {!items && <tr><td colSpan={2} style={{ ...cell, textAlign: 'center', color: 'var(--text3)' }}>⏳ กำลังโหลด...</td></tr>}
+              </tbody>
+            </table>
+          </CardTable>
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={onClose}>ปิด</button>
+      </div>
+    </Modal>
+  )
+}
+
 function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument, receiptLinks = null, onStartInvoice = null }) {
   const items = po.purchase_order_items || []
   const { subtotal, vat, total } = calcPoTotals(items, po.has_vat, po.price_includes_vat)
@@ -841,6 +892,13 @@ function SwapTaxInvoiceModal({ po, onClose, onSwapped }) {
 export default function PurchaseOrders({ navigateTo, navState, openSiteOverview }) {
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'purchase_orders')
+  // PM: read-only, PO rows from pm_purchase_orders (no items/sites embeds), no money anywhere
+  const pm = isPm(role)
+  // SiteOverviewModal is money-only (renders nothing for PM), so PM opens the site page instead
+  const openSite = po => pm
+    ? navigateTo('site_detail', { siteId: po.site_id, siteName: po.sites?.name })
+    : openSiteOverview(po.site_id)
+  const showMoney = canSeeMoney(role)
   const { tenant } = useTenant()
   const today = new Date()
   const ytdFrom = format(startOfYear(today), 'yyyy-MM-dd')
@@ -875,8 +933,14 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const [toast, setToast] = useState(null)
 
   const filters = { from: dateFrom, to: dateTo, siteId, supplierId, status }
-  const { data: pos, refetch } = usePurchaseOrders(filters)
+  const { data: rawPos, refetch } = usePurchaseOrders(filters)
   const { data: sites, refetch: refetchSites }      = useSites()
+  // PM rows carry no sites(...) embed: attach the name from the PM site list (pm_sites)
+  const pos = useMemo(() => {
+    if (!pm || !rawPos) return rawPos
+    const byId = new Map((sites || []).map(x => [x.id, { name: x.name, site_number: x.site_number }]))
+    return rawPos.map(po => ({ ...po, sites: byId.get(po.site_id) ?? null }))
+  }, [pm, rawPos, sites])
   const centralSiteId = centralStockSiteId(sites)
   const { data: categories } = useCategories()
   const { data: suppliers, refetch: refetchSuppliers }  = useSuppliers()
@@ -965,7 +1029,8 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   // done anything, so a mid-scan Android reload lands back in the form with
   // the draft restored instead of on the bare list.
   useEffect(() => {
-    if (readDraft(ADD_FORM_OPEN_KEY)) { setEditRow(null); setShowAdd(true) }
+    // global role too: this runs once, and a hook instance's role can still be null here
+    if (!pm && !isPm(getCurrentRole()) && readDraft(ADD_FORM_OPEN_KEY)) { setEditRow(null); setShowAdd(true) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -1242,7 +1307,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
     return items
   }
 
-  if (showAdd) {
+  if (showAdd && !pm) {
     return (
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
@@ -1323,16 +1388,16 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                 <th className="sortable" onClick={() => toggleSort('date')}>วันที่{si('date')}</th>
                 <th className="sortable" onClick={() => toggleSort('site')}>ไซท์งาน{si('site')}</th>
                 <th className="sortable" onClick={() => toggleSort('supplier')}>Supplier{si('supplier')}</th>
-                <th>รายการ</th>
-                <th className="sortable" onClick={() => toggleSort('total')}>ยอดรวม{si('total')}</th>
+                {showMoney && <th>รายการ</th>}
+                {showMoney && <th className="sortable" onClick={() => toggleSort('total')}>ยอดรวม{si('total')}</th>}
                 <th className="sortable" onClick={() => toggleSort('status')}>สถานะ{si('status')}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {sortedPos.map(po => {
-                const { total } = calcPoTotals(po.purchase_order_items, po.has_vat, po.price_includes_vat)
-                const taxBadge = poTaxInvoiceBadge(po, taxInvoiceLinks)
+                const { total } = showMoney ? calcPoTotals(po.purchase_order_items, po.has_vat, po.price_includes_vat) : {}
+                const taxBadge = showMoney ? poTaxInvoiceBadge(po, taxInvoiceLinks) : {}
                 return (
                   <tr key={po.id}>
                     <td className="font-mono" style={{ fontSize: 12 }}>
@@ -1342,26 +1407,26 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                     </td>
                     <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDate(po.date)}</td>
                     <td style={{ fontSize: 11, color: 'var(--accent)', cursor: po.site_id ? 'pointer' : 'default' }}
-                      onClick={() => po.site_id && openSiteOverview(po.site_id)}>{po.sites?.name || '—'}</td>
+                      onClick={() => po.site_id && openSite(po)}>{po.sites?.name || '—'}</td>
                     <td style={{ fontSize: 12 }}>{po.suppliers?.name || '—'}</td>
-                    <td style={{ fontSize: 11, color: 'var(--text3)' }}>{(po.purchase_order_items || []).length} รายการ</td>
-                    <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(total)}</td>
+                    {showMoney && <td style={{ fontSize: 11, color: 'var(--text3)' }}>{(po.purchase_order_items || []).length} รายการ</td>}
+                    {showMoney && <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(total)}</td>}
                     <td>
                       <span className={`badge badge-po-${po.status}`}>{PO_STATUS_LABELS[po.status] || po.status}</span>
                       {taxBadge.kind && <span className={`badge ${TAX_BADGE_CLASS[taxBadge.kind]}`} style={{ marginLeft: 4 }}>{taxBadge.text}</span>}
-                      {(() => { const d = deliveryPoBadge(po, moneyIndex, receiptLinks); return d.kind ? <span className={`badge ${TAX_BADGE_CLASS[d.kind]}`} style={{ marginLeft: 4 }}>{d.text}</span> : null })()}
+                      {showMoney && (() => { const d = deliveryPoBadge(po, moneyIndex, receiptLinks); return d.kind ? <span className={`badge ${TAX_BADGE_CLASS[d.kind]}`} style={{ marginLeft: 4 }}>{d.text}</span> : null })()}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <div className="actions-cell">
                         <button className="btn btn-sm btn-ghost" title="ดูใบสั่งซื้อ / เอกสาร" aria-label="📄 ดูใบสั่งซื้อ / เอกสาร" onClick={() => setDetailRow(po)}>📄</button>
-                        <RowActionsMenu items={poMenuItems(po)} />
+                        {!pm && <RowActionsMenu items={poMenuItems(po)} />}
                       </div>
                     </td>
                   </tr>
                 )
               })}
               {!sortedPos.length && (
-                <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบใบสั่งซื้อในช่วงเวลานี้</td></tr>
+                <tr><td colSpan={showMoney ? 8 : 6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>ไม่พบใบสั่งซื้อในช่วงเวลานี้</td></tr>
               )}
             </tbody>
           </table>
@@ -1378,7 +1443,8 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
 
       {docRow && <PODocumentModal po={docRow.po} autoAction={docRow.action} tenant={tenant} onClose={() => setDocRow(null)} />}
 
-      {detailRow && <PODetailModal key={`${detailRow.id}:${poDataVersion}`} po={detailRow} taxBadge={poTaxInvoiceBadge(detailRow, taxInvoiceLinks)} tenantId={tenant?.id}
+      {detailRow && pm && <PmPODetailModal key={detailRow.id} po={detailRow} onClose={() => setDetailRow(null)} />}
+      {detailRow && !pm && <PODetailModal key={`${detailRow.id}:${poDataVersion}`} po={detailRow} taxBadge={poTaxInvoiceBadge(detailRow, taxInvoiceLinks)} tenantId={tenant?.id}
         onClose={() => setDetailRow(null)}
         receiptLinks={receiptLinks} onStartInvoice={canEdit ? rid => { const p = detailRow; setDetailRow(null); startInvoiceForReceipt(p, rid) } : null}
         onViewDocument={po => { setDetailRow(null); setDocRow({ po, action: null }) }} />}
