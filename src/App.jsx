@@ -491,7 +491,7 @@ export default function App() {
   const pendingByTab = badgeByTab(pendingItems)
   // Phone only: where the user is (for the breadcrumb) and the one nav handler the drawer calls.
   const activeEntry = isPhone
-    ? visibleTabs.flatMap(t => t.children ? t.children.map(c => ({ group: t.label, tab: c })) : [{ group: null, tab: t }]).find(e => e.tab.id === activeTab)
+    ? visibleTabs.flatMap(t => t.children ? t.children.map(c => ({ group: t.label, first: t.children[0], tab: c })) : [{ group: null, tab: t }]).find(e => e.tab.id === activeTab)
     : null
   const phoneNavTo = tab => { sessionStorage.removeItem('chunk-reload-attempted'); setNavState({}); setActiveTab(tab.id) }
 
@@ -565,7 +565,12 @@ export default function App() {
       {isPhone ? (
         <div className="phone-crumb">
           {activeEntry?.group
-            ? <>{activeEntry.group} › <b>{activeEntry.tab.label}</b></>
+            ? <>
+                {/* tap the group = its first page (e.g. จ่ายงานช่าง → ไซท์งาน › ภาพรวม) */}
+                {activeEntry.first && activeEntry.first.id !== activeEntry.tab.id
+                  ? <button type="button" className="phone-crumb-group" onClick={() => phoneNavTo(activeEntry.first)}>{activeEntry.group}</button>
+                  : activeEntry.group} › <b>{activeEntry.tab.label}</b>
+              </>
             : <b>{activeEntry?.tab.label || HIDDEN_TAB_LABELS[activeTab] || ''}</b>}
         </div>
       ) : (
