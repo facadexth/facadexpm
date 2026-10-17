@@ -11,6 +11,9 @@ import SiteOverviewContent from '../components/SiteOverviewContent.jsx'
 import GanttView from './sites/GanttView.jsx'
 import SCurveChart from './sites/SCurveChart.jsx'
 import PhaseKanbanBoard from './sites/PhaseKanbanBoard.jsx'
+import LandscapeView from '../components/LandscapeView.jsx'
+import PhoneSection from '../components/PhoneSection.jsx'
+import { useIsPhone } from '../hooks/useIsPhone.js'
 import DailyReport from './sites/DailyReport.jsx'
 
 export default function SiteDetail({ navState, navigateTo }) {
@@ -20,6 +23,7 @@ export default function SiteDetail({ navState, navigateTo }) {
   const [phasesRefreshKey, setPhasesRefreshKey] = useState(0)
   const [kanbanInitialLeafId, setKanbanInitialLeafId] = useState(null) // ตั้งค่าเมื่อคลิก leaf บนแท็บ Gantt เพื่อ deep-link ไปยัง chip ที่ตรงกันในแท็บ Kanban
 
+  const isPhone = useIsPhone()
   const { isAtLeast, role } = useUserRole()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'sites')
 
@@ -42,7 +46,7 @@ export default function SiteDetail({ navState, navigateTo }) {
         {site?.site_number ? `${site.site_number} · ` : ''}{site?.name || siteName || 'ไซท์งาน'}
       </div>
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }} data-phone="chips">
         <button
           className={`btn btn-sm ${tab === 'overview' ? 'btn-primary' : 'btn-ghost'}`}
           onClick={() => setTab('overview')}
@@ -80,9 +84,19 @@ export default function SiteDetail({ navState, navigateTo }) {
               onPhasesChanged={() => setPhasesRefreshKey((k) => k + 1)}
               onOpenKanban={(_site, leafNode) => { setKanbanInitialLeafId(leafNode.id); setTab('kanban') }}
             />
-            <div style={{ marginTop: 16 }}>
-              <SCurveChart key={phasesRefreshKey} site={site} />
-            </div>
+            {isPhone ? (
+              <div style={{ marginTop: 16 }}>
+                <PhoneSection title="S-curve" summary="กราฟ">
+                  <LandscapeView title={`S-curve · ${site.site_number || site.name || ''}`}>
+                    <SCurveChart key={phasesRefreshKey} site={site} />
+                  </LandscapeView>
+                </PhoneSection>
+              </div>
+            ) : (
+              <div style={{ marginTop: 16 }}>
+                <SCurveChart key={phasesRefreshKey} site={site} />
+              </div>
+            )}
           </>
         )
       )}

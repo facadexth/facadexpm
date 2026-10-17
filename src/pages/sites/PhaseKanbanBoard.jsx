@@ -811,7 +811,7 @@ function PhaseBoard({
   dragOverKey, setDragOverKey, disableAdd, taskPhotoCounts, onViewPhotos, onAssignPhoto,
 }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+    <div data-phone="kanban" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
       {COLUMNS.map((col) => {
         const key = `${phaseId}:${col.status}`
         const colTasks = tasks.filter((t) => t.status === col.status)

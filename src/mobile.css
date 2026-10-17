@@ -159,4 +159,27 @@
   .phone-section .ps-title { font-weight: 600; min-width: 0; }
   .phone-section .ps-sum { color: var(--text2); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .phone-section .ps-body { padding: 0 14px 14px; }
+
+  /* ---- site detail page ---- */
+  [data-phone="kpis"] { grid-template-columns: 1fr 1fr !important; gap: 6px !important; }
+  [data-phone="kpis"] > div { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 6px 9px; min-width: 0; }
+  [data-phone="kpis"] > div .font-mono { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  [data-phone-order="1"] { order: 1; } [data-phone-order="2"] { order: 2; } [data-phone-order="3"] { order: 3; }
+  [data-phone-order="4"] { order: 4; } [data-phone-order="5"] { order: 5; } [data-phone-order="6"] { order: 6; }
+  [data-phone-order="7"] { order: 7; }
+  [data-phone="qt-card"] { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin: 0 0 6px; }
+  [data-phone="qt-card"].qt-total { border-style: dashed; color: var(--accent); }
+  [data-phone="qt-card"] .qt-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  [data-phone="qt-card"] .qt-sub { font-size: 10.5px; color: var(--text3); }
+  [data-phone="qt-card"] .qt-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
+  [data-phone="qt-card"] .qt-grid small { display: block; font-size: 10.5px; color: var(--text3); }
+  [data-phone="qt-card"] .qt-grid span { display: block; font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Gantt inline: the card scrolls sideways, the task-name column stays put */
+  [data-phone="gantt-card"] { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  [data-phone="gantt-card"] > [data-phone="gantt-wide"] { min-width: 640px; }
+  [data-phone="gantt-card"] > [data-phone="gantt-ticks"] { min-width: 462px; } /* 640 minus the 170+8 name column, so ticks line up with the bars */
+  [data-phone="gantt-name"] { position: sticky; left: 0; z-index: 6; background: var(--bg2); }
+  /* Kanban: three columns side by side, snap to each */
+  [data-phone="kanban"] { display: flex !important; gap: 10px !important; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding-bottom: 6px; }
+  [data-phone="kanban"] > div { flex: 0 0 85%; min-width: 0; scroll-snap-align: start; }
 }
