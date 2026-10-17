@@ -200,5 +200,5 @@ WHERE movement_type IN ('purchase_in', 'transfer_in', 'sale_reversal')
    OR (movement_type = 'adjustment' AND quantity > 0)
 GROUP BY inventory_item_id, site_id;
 
-REVOKE ALL ON public.inventory_first_receipts FROM PUBLIC, anon;
+REVOKE ALL ON public.inventory_first_receipts FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.inventory_first_receipts TO authenticated;
