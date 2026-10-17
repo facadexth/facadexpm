@@ -43,7 +43,11 @@ ALTER TABLE phase_tasks
   ADD COLUMN planned_qty numeric NULL CHECK (planned_qty IS NULL OR planned_qty > 0),
   ADD COLUMN done_qty numeric NOT NULL DEFAULT 0,
   ADD CONSTRAINT phase_tasks_boq_card_needs_line
-    CHECK (progress_mode = 'status' OR (boq_item_id IS NOT NULL AND planned_qty IS NOT NULL));
+    CHECK (progress_mode = 'status' OR (boq_item_id IS NOT NULL AND planned_qty IS NOT NULL)),
+  -- and a general card holds neither (migration 08 clears them; this is the backstop), so it
+  -- never uses up BOQ quantity or blocks deleting a BOQ line
+  ADD CONSTRAINT phase_tasks_general_card_no_line
+    CHECK (progress_mode = 'quantity' OR (boq_item_id IS NULL AND planned_qty IS NULL));
 CREATE INDEX phase_tasks_parent_idx ON phase_tasks(parent_task_id) WHERE parent_task_id IS NOT NULL;
 CREATE INDEX phase_tasks_boq_item_idx ON phase_tasks(boq_item_id) WHERE boq_item_id IS NOT NULL;
 
@@ -322,7 +326,11 @@ CREATE OR REPLACE FUNCTION public.check_node_weights() RETURNS trigger
 AS $$
 DECLARE v_sum numeric; v_parent phase_tasks%ROWTYPE;
 BEGIN
-  PERFORM 1 FROM site_phases WHERE id = NEW.phase_id FOR NO KEY UPDATE;
+  -- a card moving between phases locks both phase rows in id order (two opposite moves
+  -- would otherwise deadlock); the recompute below then finds them already locked
+  PERFORM 1 FROM site_phases
+   WHERE id IN (NEW.phase_id, CASE WHEN TG_OP = 'UPDATE' THEN OLD.phase_id END)
+   ORDER BY id FOR NO KEY UPDATE;
   IF NEW.parent_task_id IS NULL THEN
     IF NEW.issue_report_id IS NULL THEN
       SELECT COALESCE(sum(weight_pts), 0) INTO v_sum FROM phase_tasks
@@ -365,16 +373,19 @@ CREATE OR REPLACE FUNCTION public.node_of(t phase_tasks) RETURNS uuid
 AS $$ SELECT COALESCE(t.subtask_id, t.phase_id) $$;
 REVOKE ALL ON FUNCTION public.node_of(phase_tasks) FROM PUBLIC, anon, authenticated;
 
--- 100 points over ids in order, by value. A NULL or non-positive value takes the mean of
--- the positive ones; with none positive every id gets an equal share. Shares are rounded to
--- 2 dp and the first id takes the remainder, so the result sums to exactly 100. If rounding
--- would push that remainder below 0, shares are rounded down instead (remainder then >= 0).
+-- 100 points over ids in order, by value. A value of 0 is a real price (0 points); a NULL or
+-- negative value is unpriced and takes the mean of the priced ones. With nothing priced, or
+-- every value 0, each id gets an equal share. Shares are rounded to 2 dp and the first id
+-- takes the remainder, so the result sums to exactly 100. If rounding would push that
+-- remainder below 0, shares are rounded down instead (remainder then >= 0).
 CREATE OR REPLACE FUNCTION public.point_shares(p_ids uuid[], p_values numeric[])
   RETURNS TABLE(id uuid, pts numeric) LANGUAGE sql IMMUTABLE SET search_path = public
 AS $$
   WITH x AS (SELECT u.cid, u.cv, u.ord FROM unnest(p_ids, p_values) WITH ORDINALITY AS u(cid, cv, ord)),
-  e AS (SELECT x.cid, x.ord, CASE WHEN a.avg_v IS NULL THEN 1 WHEN x.cv > 0 THEN x.cv ELSE a.avg_v END AS ev
-          FROM x CROSS JOIN (SELECT avg(cv) FILTER (WHERE cv > 0) AS avg_v FROM x) a),
+  e0 AS (SELECT x.cid, x.ord, CASE WHEN x.cv >= 0 THEN x.cv ELSE a.avg_v END AS ev
+           FROM x CROSS JOIN (SELECT avg(cv) FILTER (WHERE cv >= 0) AS avg_v FROM x) a),
+  e AS (SELECT e0.cid, e0.ord, CASE WHEN COALESCE(t.total, 0) = 0 THEN 1 ELSE e0.ev END AS ev
+          FROM e0 CROSS JOIN (SELECT sum(ev) AS total FROM e0) t),
   r AS (SELECT e.cid, e.ord, 100 * e.ev / sum(e.ev) OVER () AS raw FROM e),
   k AS (SELECT sum(round(raw, 2)) - 100 <= min(round(raw, 2)) FILTER (WHERE ord = 1) AS use_round FROM r),
   p AS (SELECT r.cid, r.ord, CASE WHEN k.use_round THEN round(r.raw, 2) ELSE trunc(r.raw, 2) END AS sp
@@ -419,12 +430,18 @@ REVOKE ALL ON FUNCTION public.recompute_node_weights(uuid) FROM PUBLIC, anon, au
 
 -- Points are never taken from the client. General cards, split children and issue cards are
 -- forced to 0. A BOQ card starts at 0 and otherwise keeps its points; only the recompute
--- (under the derived flag) writes them. Named trg_a_* so it runs before the other BEFORE
--- triggers (guard_derived_status then never sees a client-sent point change).
+-- (under the derived flag) writes them. A general card also drops any BOQ line and planned
+-- quantity (a BOQ -> general flip frees the line; the guard already demands no live reports
+-- for a flip, so done_qty is 0). Named trg_a_* so it runs before the other BEFORE triggers
+-- (guard_derived_status then never sees a client-sent point change).
 CREATE OR REPLACE FUNCTION public.force_card_weight() RETURNS trigger
   LANGUAGE plpgsql SET search_path = public
 AS $$
 BEGIN
+  IF NEW.progress_mode = 'status' THEN
+    NEW.boq_item_id := NULL;
+    NEW.planned_qty := NULL;
+  END IF;
   IF NEW.progress_mode = 'status' OR NEW.parent_task_id IS NOT NULL OR NEW.issue_report_id IS NOT NULL THEN
     NEW.weight_pts := 0;
   ELSIF current_setting('app.derived_status', true) IS DISTINCT FROM '1' THEN
@@ -437,8 +454,9 @@ CREATE TRIGGER trg_a_card_weight BEFORE INSERT OR UPDATE ON phase_tasks
   FOR EACH ROW EXECUTE FUNCTION force_card_weight();
 
 -- After a card joins, leaves or changes inside a node, re-split that node's points (old and
--- new node when it moves). Only BOQ cards count, so general-card writes cost nothing. The
--- recompute itself writes weight_pts only, which is not in these column lists: no re-fire.
+-- new node when it moves; both phase rows are locked in id order first). Only BOQ cards
+-- count, so general-card writes cost nothing. The recompute itself writes weight_pts only,
+-- which is not in these column lists: no re-fire.
 CREATE OR REPLACE FUNCTION public.recompute_card_weights() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -449,6 +467,9 @@ BEGIN
   END IF;
   IF TG_OP <> 'DELETE' AND NEW.progress_mode = 'quantity' AND NEW.parent_task_id IS NULL AND NEW.issue_report_id IS NULL THEN
     v_new := node_of(NEW);
+  END IF;
+  IF v_old IS NOT NULL AND v_new IS NOT NULL AND v_old IS DISTINCT FROM v_new THEN
+    PERFORM 1 FROM site_phases WHERE id IN (OLD.phase_id, NEW.phase_id) ORDER BY id FOR NO KEY UPDATE;
   END IF;
   IF v_old IS NOT NULL AND v_old IS DISTINCT FROM v_new THEN
     PERFORM recompute_node_weights(v_old);
@@ -462,32 +483,35 @@ REVOKE ALL ON FUNCTION public.recompute_card_weights() FROM PUBLIC, anon, authen
 CREATE TRIGGER trg_recompute_card_weights AFTER INSERT OR DELETE ON phase_tasks
   FOR EACH ROW EXECUTE FUNCTION recompute_card_weights();
 CREATE TRIGGER trg_recompute_card_weights_upd
-  AFTER UPDATE OF progress_mode, planned_qty, boq_item_id, phase_id, subtask_id, parent_task_id ON phase_tasks
-  FOR EACH ROW WHEN ((OLD.progress_mode, OLD.planned_qty, OLD.boq_item_id, OLD.phase_id, OLD.subtask_id, OLD.parent_task_id)
-                     IS DISTINCT FROM (NEW.progress_mode, NEW.planned_qty, NEW.boq_item_id, NEW.phase_id, NEW.subtask_id, NEW.parent_task_id))
+  AFTER UPDATE OF progress_mode, planned_qty, boq_item_id, phase_id, subtask_id, parent_task_id, issue_report_id ON phase_tasks
+  FOR EACH ROW WHEN ((OLD.progress_mode, OLD.planned_qty, OLD.boq_item_id, OLD.phase_id, OLD.subtask_id, OLD.parent_task_id, OLD.issue_report_id)
+                     IS DISTINCT FROM (NEW.progress_mode, NEW.planned_qty, NEW.boq_item_id, NEW.phase_id, NEW.subtask_id, NEW.parent_task_id, NEW.issue_report_id))
   EXECUTE FUNCTION recompute_card_weights();
 
--- A BOQ line's quantity or quotation link changed, or the price of the quotation item behind
--- it: re-split the nodes of the BOQ cards on that line only.
+-- A BOQ line's quotation link changed, or the price of the quotation item behind it: re-split
+-- the nodes of the BOQ cards on that line only. (A BOQ line's own planned_qty does not change
+-- any card value -- a card's value uses the card's planned_qty -- so it triggers nothing.)
+-- Nodes are visited in phase id order, so the phase locks are always taken in one order.
 CREATE OR REPLACE FUNCTION public.recompute_line_weights() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
-DECLARE v_node uuid;
+DECLARE v record;
 BEGIN
-  FOR v_node IN
-    SELECT DISTINCT COALESCE(t.subtask_id, t.phase_id)
+  FOR v IN
+    SELECT DISTINCT t.phase_id, COALESCE(t.subtask_id, t.phase_id) AS node
       FROM boq_items b JOIN phase_tasks t ON t.boq_item_id = b.id AND t.tenant_id = b.tenant_id
      WHERE b.tenant_id = NEW.tenant_id
        AND CASE WHEN TG_TABLE_NAME = 'quotation_items' THEN b.quotation_item_id = NEW.id ELSE b.id = NEW.id END
        AND t.progress_mode = 'quantity' AND t.parent_task_id IS NULL AND t.issue_report_id IS NULL
+     ORDER BY t.phase_id, node
   LOOP
-    PERFORM recompute_node_weights(v_node);
+    PERFORM recompute_node_weights(v.node);
   END LOOP;
   RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION public.recompute_line_weights() FROM PUBLIC, anon, authenticated;
-CREATE TRIGGER trg_recompute_line_weights AFTER UPDATE OF planned_qty, quotation_item_id ON boq_items
-  FOR EACH ROW WHEN (OLD.planned_qty IS DISTINCT FROM NEW.planned_qty OR OLD.quotation_item_id IS DISTINCT FROM NEW.quotation_item_id)
+CREATE TRIGGER trg_recompute_line_weights AFTER UPDATE OF quotation_item_id ON boq_items
+  FOR EACH ROW WHEN (OLD.quotation_item_id IS DISTINCT FROM NEW.quotation_item_id)
   EXECUTE FUNCTION recompute_line_weights();
 CREATE TRIGGER trg_recompute_line_weights AFTER UPDATE OF line_total, quantity ON quotation_items
   FOR EACH ROW WHEN (OLD.line_total IS DISTINCT FROM NEW.line_total OR OLD.quantity IS DISTINCT FROM NEW.quantity)
@@ -1654,6 +1678,58 @@ BEGIN
   x := (SELECT total_pct FROM site_progress_pct(md5('gpf|16|site')::uuid));
   r := r || jsonb_build_object('fx16_vo_without_a_vo_value_counts_zero_total_MUST0', x);
   IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  -- fixture 17: zero price line gets zero points
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|17|site')::uuid, v_tenant, 'GT-PF-17', 'progress fixture: zero price line gets zero points', 0);
+  PERFORM snapshot_site_plan(md5('gpf|17|site')::uuid, 'progress fixture', true, 'system');
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|17|A')::uuid, v_tenant, md5('gpf|17|site')::uuid, 'A', 1, 100, 'in_progress', false, false);
+  INSERT INTO quotations (id, tenant_id, client_id, site_id, date, status, quotation_number) VALUES (md5('gpf|17|quotation')::uuid, v_tenant, (SELECT id FROM clients WHERE tenant_id = v_tenant ORDER BY created_at, id LIMIT 1), md5('gpf|17|site')::uuid, current_date, 'draft', 'GT-PF-Q17');
+  INSERT INTO quotation_items (id, tenant_id, quotation_id, description, quantity, unit_price, line_total, sort_order) VALUES (md5('gpf|17|qi|L1')::uuid, v_tenant, md5('gpf|17|quotation')::uuid, 'L1', 10, 0, 0, 1);
+  INSERT INTO boq_items (id, tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order) VALUES (md5('gpf|17|L1')::uuid, v_tenant, md5('gpf|17|site')::uuid, md5('gpf|17|qi|L1')::uuid, 'L1', 'L1', 10, 1);
+  INSERT INTO quotation_items (id, tenant_id, quotation_id, description, quantity, unit_price, line_total, sort_order) VALUES (md5('gpf|17|qi|L2')::uuid, v_tenant, md5('gpf|17|quotation')::uuid, 'L2', 10, 100, 1000, 2);
+  INSERT INTO boq_items (id, tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order) VALUES (md5('gpf|17|L2')::uuid, v_tenant, md5('gpf|17|site')::uuid, md5('gpf|17|qi|L2')::uuid, 'L2', 'L2', 10, 2);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|17|q1')::uuid, v_tenant, md5('gpf|17|site')::uuid, md5('gpf|17|A')::uuid, NULL, NULL, 'q1', 1, 'done', 'quantity', 10, 10, md5('gpf|17|L1')::uuid, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|17|q2')::uuid, v_tenant, md5('gpf|17|site')::uuid, md5('gpf|17|A')::uuid, NULL, NULL, 'q2', 2, 'in_progress', 'quantity', 10, 5, md5('gpf|17|L2')::uuid, NULL);
+  x := (SELECT weight_pts FROM phase_tasks WHERE id = md5('gpf|17|q1')::uuid);
+  r := r || jsonb_build_object('fx17_zero_price_line_gets_zero_points_pts_q1_MUST0', x);
+  IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT weight_pts FROM phase_tasks WHERE id = md5('gpf|17|q2')::uuid);
+  r := r || jsonb_build_object('fx17_zero_price_line_gets_zero_points_pts_q2_MUST100', x);
+  IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := round(node_progress(md5('gpf|17|A')::uuid) * 100, 2);
+  r := r || jsonb_build_object('fx17_zero_price_line_gets_zero_points_phase_A_MUST50', x);
+  IF x IS DISTINCT FROM 50::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|17|site')::uuid));
+  r := r || jsonb_build_object('fx17_zero_price_line_gets_zero_points_contract_MUST50', x);
+  IF x IS DISTINCT FROM 50::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT total_pct FROM site_progress_pct(md5('gpf|17|site')::uuid));
+  r := r || jsonb_build_object('fx17_zero_price_line_gets_zero_points_total_MUSTnull', x);
+  IF x IS DISTINCT FROM NULL THEN v_fx_bad := v_fx_bad + 1; END IF;
+  -- fixture 18: all zero prices equal shares
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|18|site')::uuid, v_tenant, 'GT-PF-18', 'progress fixture: all zero prices equal shares', 0);
+  PERFORM snapshot_site_plan(md5('gpf|18|site')::uuid, 'progress fixture', true, 'system');
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|18|A')::uuid, v_tenant, md5('gpf|18|site')::uuid, 'A', 1, 100, 'in_progress', false, false);
+  INSERT INTO quotations (id, tenant_id, client_id, site_id, date, status, quotation_number) VALUES (md5('gpf|18|quotation')::uuid, v_tenant, (SELECT id FROM clients WHERE tenant_id = v_tenant ORDER BY created_at, id LIMIT 1), md5('gpf|18|site')::uuid, current_date, 'draft', 'GT-PF-Q18');
+  INSERT INTO quotation_items (id, tenant_id, quotation_id, description, quantity, unit_price, line_total, sort_order) VALUES (md5('gpf|18|qi|L1')::uuid, v_tenant, md5('gpf|18|quotation')::uuid, 'L1', 10, 0, 0, 1);
+  INSERT INTO boq_items (id, tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order) VALUES (md5('gpf|18|L1')::uuid, v_tenant, md5('gpf|18|site')::uuid, md5('gpf|18|qi|L1')::uuid, 'L1', 'L1', 10, 1);
+  INSERT INTO quotation_items (id, tenant_id, quotation_id, description, quantity, unit_price, line_total, sort_order) VALUES (md5('gpf|18|qi|L2')::uuid, v_tenant, md5('gpf|18|quotation')::uuid, 'L2', 10, 0, 0, 2);
+  INSERT INTO boq_items (id, tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order) VALUES (md5('gpf|18|L2')::uuid, v_tenant, md5('gpf|18|site')::uuid, md5('gpf|18|qi|L2')::uuid, 'L2', 'L2', 10, 2);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|18|q1')::uuid, v_tenant, md5('gpf|18|site')::uuid, md5('gpf|18|A')::uuid, NULL, NULL, 'q1', 1, 'done', 'quantity', 10, 10, md5('gpf|18|L1')::uuid, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|18|q2')::uuid, v_tenant, md5('gpf|18|site')::uuid, md5('gpf|18|A')::uuid, NULL, NULL, 'q2', 2, 'not_started', 'quantity', 10, 0, md5('gpf|18|L2')::uuid, NULL);
+  x := (SELECT weight_pts FROM phase_tasks WHERE id = md5('gpf|18|q1')::uuid);
+  r := r || jsonb_build_object('fx18_all_zero_prices_equal_shares_pts_q1_MUST50', x);
+  IF x IS DISTINCT FROM 50::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT weight_pts FROM phase_tasks WHERE id = md5('gpf|18|q2')::uuid);
+  r := r || jsonb_build_object('fx18_all_zero_prices_equal_shares_pts_q2_MUST50', x);
+  IF x IS DISTINCT FROM 50::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := round(node_progress(md5('gpf|18|A')::uuid) * 100, 2);
+  r := r || jsonb_build_object('fx18_all_zero_prices_equal_shares_phase_A_MUST50', x);
+  IF x IS DISTINCT FROM 50::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|18|site')::uuid));
+  r := r || jsonb_build_object('fx18_all_zero_prices_equal_shares_contract_MUST50', x);
+  IF x IS DISTINCT FROM 50::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT total_pct FROM site_progress_pct(md5('gpf|18|site')::uuid));
+  r := r || jsonb_build_object('fx18_all_zero_prices_equal_shares_total_MUSTnull', x);
+  IF x IS DISTINCT FROM NULL THEN v_fx_bad := v_fx_bad + 1; END IF;
   r := r || jsonb_build_object('a_fixture_mismatches_MUST0', v_fx_bad);
 
   -- ===== card kinds on the fixture sites =====

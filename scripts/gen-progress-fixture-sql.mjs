@@ -10,7 +10,7 @@
 // Optional fixture fields default to: subtask_id/parent_task_id/issue_report_id
 // null, progress_mode 'status', planned_qty null, done_qty 0, is_vo false,
 // vo_value null (no phase_vo_values row, counts as 0), is_issue_phase false,
-// parent_subtask_id null, boq_items [] (unit_value null = a manual line).
+// parent_subtask_id null, boq_items [] (unit_value null = a manual line, 0 = priced at 0).
 // Card points are never inserted: the database computes them (general cards 0,
 // BOQ cards split by value), and each BOQ card's fixture weight_pts is asserted.
 // A priced BOQ line gets a quotation item of the same quantity with

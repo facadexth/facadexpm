@@ -39,7 +39,11 @@ ALTER TABLE phase_tasks
   ADD COLUMN planned_qty numeric NULL CHECK (planned_qty IS NULL OR planned_qty > 0),
   ADD COLUMN done_qty numeric NOT NULL DEFAULT 0,
   ADD CONSTRAINT phase_tasks_boq_card_needs_line
-    CHECK (progress_mode = 'status' OR (boq_item_id IS NOT NULL AND planned_qty IS NOT NULL));
+    CHECK (progress_mode = 'status' OR (boq_item_id IS NOT NULL AND planned_qty IS NOT NULL)),
+  -- and a general card holds neither (migration 08 clears them; this is the backstop), so it
+  -- never uses up BOQ quantity or blocks deleting a BOQ line
+  ADD CONSTRAINT phase_tasks_general_card_no_line
+    CHECK (progress_mode = 'quantity' OR (boq_item_id IS NULL AND planned_qty IS NULL));
 CREATE INDEX phase_tasks_parent_idx ON phase_tasks(parent_task_id) WHERE parent_task_id IS NOT NULL;
 CREATE INDEX phase_tasks_boq_item_idx ON phase_tasks(boq_item_id) WHERE boq_item_id IS NOT NULL;
 
@@ -318,7 +322,11 @@ CREATE OR REPLACE FUNCTION public.check_node_weights() RETURNS trigger
 AS $$
 DECLARE v_sum numeric; v_parent phase_tasks%ROWTYPE;
 BEGIN
-  PERFORM 1 FROM site_phases WHERE id = NEW.phase_id FOR NO KEY UPDATE;
+  -- a card moving between phases locks both phase rows in id order (two opposite moves
+  -- would otherwise deadlock); the recompute below then finds them already locked
+  PERFORM 1 FROM site_phases
+   WHERE id IN (NEW.phase_id, CASE WHEN TG_OP = 'UPDATE' THEN OLD.phase_id END)
+   ORDER BY id FOR NO KEY UPDATE;
   IF NEW.parent_task_id IS NULL THEN
     IF NEW.issue_report_id IS NULL THEN
       SELECT COALESCE(sum(weight_pts), 0) INTO v_sum FROM phase_tasks
@@ -361,16 +369,19 @@ CREATE OR REPLACE FUNCTION public.node_of(t phase_tasks) RETURNS uuid
 AS $$ SELECT COALESCE(t.subtask_id, t.phase_id) $$;
 REVOKE ALL ON FUNCTION public.node_of(phase_tasks) FROM PUBLIC, anon, authenticated;
 
--- 100 points over ids in order, by value. A NULL or non-positive value takes the mean of
--- the positive ones; with none positive every id gets an equal share. Shares are rounded to
--- 2 dp and the first id takes the remainder, so the result sums to exactly 100. If rounding
--- would push that remainder below 0, shares are rounded down instead (remainder then >= 0).
+-- 100 points over ids in order, by value. A value of 0 is a real price (0 points); a NULL or
+-- negative value is unpriced and takes the mean of the priced ones. With nothing priced, or
+-- every value 0, each id gets an equal share. Shares are rounded to 2 dp and the first id
+-- takes the remainder, so the result sums to exactly 100. If rounding would push that
+-- remainder below 0, shares are rounded down instead (remainder then >= 0).
 CREATE OR REPLACE FUNCTION public.point_shares(p_ids uuid[], p_values numeric[])
   RETURNS TABLE(id uuid, pts numeric) LANGUAGE sql IMMUTABLE SET search_path = public
 AS $$
   WITH x AS (SELECT u.cid, u.cv, u.ord FROM unnest(p_ids, p_values) WITH ORDINALITY AS u(cid, cv, ord)),
-  e AS (SELECT x.cid, x.ord, CASE WHEN a.avg_v IS NULL THEN 1 WHEN x.cv > 0 THEN x.cv ELSE a.avg_v END AS ev
-          FROM x CROSS JOIN (SELECT avg(cv) FILTER (WHERE cv > 0) AS avg_v FROM x) a),
+  e0 AS (SELECT x.cid, x.ord, CASE WHEN x.cv >= 0 THEN x.cv ELSE a.avg_v END AS ev
+           FROM x CROSS JOIN (SELECT avg(cv) FILTER (WHERE cv >= 0) AS avg_v FROM x) a),
+  e AS (SELECT e0.cid, e0.ord, CASE WHEN COALESCE(t.total, 0) = 0 THEN 1 ELSE e0.ev END AS ev
+          FROM e0 CROSS JOIN (SELECT sum(ev) AS total FROM e0) t),
   r AS (SELECT e.cid, e.ord, 100 * e.ev / sum(e.ev) OVER () AS raw FROM e),
   k AS (SELECT sum(round(raw, 2)) - 100 <= min(round(raw, 2)) FILTER (WHERE ord = 1) AS use_round FROM r),
   p AS (SELECT r.cid, r.ord, CASE WHEN k.use_round THEN round(r.raw, 2) ELSE trunc(r.raw, 2) END AS sp
@@ -415,12 +426,18 @@ REVOKE ALL ON FUNCTION public.recompute_node_weights(uuid) FROM PUBLIC, anon, au
 
 -- Points are never taken from the client. General cards, split children and issue cards are
 -- forced to 0. A BOQ card starts at 0 and otherwise keeps its points; only the recompute
--- (under the derived flag) writes them. Named trg_a_* so it runs before the other BEFORE
--- triggers (guard_derived_status then never sees a client-sent point change).
+-- (under the derived flag) writes them. A general card also drops any BOQ line and planned
+-- quantity (a BOQ -> general flip frees the line; the guard already demands no live reports
+-- for a flip, so done_qty is 0). Named trg_a_* so it runs before the other BEFORE triggers
+-- (guard_derived_status then never sees a client-sent point change).
 CREATE OR REPLACE FUNCTION public.force_card_weight() RETURNS trigger
   LANGUAGE plpgsql SET search_path = public
 AS $$
 BEGIN
+  IF NEW.progress_mode = 'status' THEN
+    NEW.boq_item_id := NULL;
+    NEW.planned_qty := NULL;
+  END IF;
   IF NEW.progress_mode = 'status' OR NEW.parent_task_id IS NOT NULL OR NEW.issue_report_id IS NOT NULL THEN
     NEW.weight_pts := 0;
   ELSIF current_setting('app.derived_status', true) IS DISTINCT FROM '1' THEN
@@ -433,8 +450,9 @@ CREATE TRIGGER trg_a_card_weight BEFORE INSERT OR UPDATE ON phase_tasks
   FOR EACH ROW EXECUTE FUNCTION force_card_weight();
 
 -- After a card joins, leaves or changes inside a node, re-split that node's points (old and
--- new node when it moves). Only BOQ cards count, so general-card writes cost nothing. The
--- recompute itself writes weight_pts only, which is not in these column lists: no re-fire.
+-- new node when it moves; both phase rows are locked in id order first). Only BOQ cards
+-- count, so general-card writes cost nothing. The recompute itself writes weight_pts only,
+-- which is not in these column lists: no re-fire.
 CREATE OR REPLACE FUNCTION public.recompute_card_weights() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -445,6 +463,9 @@ BEGIN
   END IF;
   IF TG_OP <> 'DELETE' AND NEW.progress_mode = 'quantity' AND NEW.parent_task_id IS NULL AND NEW.issue_report_id IS NULL THEN
     v_new := node_of(NEW);
+  END IF;
+  IF v_old IS NOT NULL AND v_new IS NOT NULL AND v_old IS DISTINCT FROM v_new THEN
+    PERFORM 1 FROM site_phases WHERE id IN (OLD.phase_id, NEW.phase_id) ORDER BY id FOR NO KEY UPDATE;
   END IF;
   IF v_old IS NOT NULL AND v_old IS DISTINCT FROM v_new THEN
     PERFORM recompute_node_weights(v_old);
@@ -458,32 +479,35 @@ REVOKE ALL ON FUNCTION public.recompute_card_weights() FROM PUBLIC, anon, authen
 CREATE TRIGGER trg_recompute_card_weights AFTER INSERT OR DELETE ON phase_tasks
   FOR EACH ROW EXECUTE FUNCTION recompute_card_weights();
 CREATE TRIGGER trg_recompute_card_weights_upd
-  AFTER UPDATE OF progress_mode, planned_qty, boq_item_id, phase_id, subtask_id, parent_task_id ON phase_tasks
-  FOR EACH ROW WHEN ((OLD.progress_mode, OLD.planned_qty, OLD.boq_item_id, OLD.phase_id, OLD.subtask_id, OLD.parent_task_id)
-                     IS DISTINCT FROM (NEW.progress_mode, NEW.planned_qty, NEW.boq_item_id, NEW.phase_id, NEW.subtask_id, NEW.parent_task_id))
+  AFTER UPDATE OF progress_mode, planned_qty, boq_item_id, phase_id, subtask_id, parent_task_id, issue_report_id ON phase_tasks
+  FOR EACH ROW WHEN ((OLD.progress_mode, OLD.planned_qty, OLD.boq_item_id, OLD.phase_id, OLD.subtask_id, OLD.parent_task_id, OLD.issue_report_id)
+                     IS DISTINCT FROM (NEW.progress_mode, NEW.planned_qty, NEW.boq_item_id, NEW.phase_id, NEW.subtask_id, NEW.parent_task_id, NEW.issue_report_id))
   EXECUTE FUNCTION recompute_card_weights();
 
--- A BOQ line's quantity or quotation link changed, or the price of the quotation item behind
--- it: re-split the nodes of the BOQ cards on that line only.
+-- A BOQ line's quotation link changed, or the price of the quotation item behind it: re-split
+-- the nodes of the BOQ cards on that line only. (A BOQ line's own planned_qty does not change
+-- any card value -- a card's value uses the card's planned_qty -- so it triggers nothing.)
+-- Nodes are visited in phase id order, so the phase locks are always taken in one order.
 CREATE OR REPLACE FUNCTION public.recompute_line_weights() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
-DECLARE v_node uuid;
+DECLARE v record;
 BEGIN
-  FOR v_node IN
-    SELECT DISTINCT COALESCE(t.subtask_id, t.phase_id)
+  FOR v IN
+    SELECT DISTINCT t.phase_id, COALESCE(t.subtask_id, t.phase_id) AS node
       FROM boq_items b JOIN phase_tasks t ON t.boq_item_id = b.id AND t.tenant_id = b.tenant_id
      WHERE b.tenant_id = NEW.tenant_id
        AND CASE WHEN TG_TABLE_NAME = 'quotation_items' THEN b.quotation_item_id = NEW.id ELSE b.id = NEW.id END
        AND t.progress_mode = 'quantity' AND t.parent_task_id IS NULL AND t.issue_report_id IS NULL
+     ORDER BY t.phase_id, node
   LOOP
-    PERFORM recompute_node_weights(v_node);
+    PERFORM recompute_node_weights(v.node);
   END LOOP;
   RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION public.recompute_line_weights() FROM PUBLIC, anon, authenticated;
-CREATE TRIGGER trg_recompute_line_weights AFTER UPDATE OF planned_qty, quotation_item_id ON boq_items
-  FOR EACH ROW WHEN (OLD.planned_qty IS DISTINCT FROM NEW.planned_qty OR OLD.quotation_item_id IS DISTINCT FROM NEW.quotation_item_id)
+CREATE TRIGGER trg_recompute_line_weights AFTER UPDATE OF quotation_item_id ON boq_items
+  FOR EACH ROW WHEN (OLD.quotation_item_id IS DISTINCT FROM NEW.quotation_item_id)
   EXECUTE FUNCTION recompute_line_weights();
 CREATE TRIGGER trg_recompute_line_weights AFTER UPDATE OF line_total, quantity ON quotation_items
   FOR EACH ROW WHEN (OLD.line_total IS DISTINCT FROM NEW.line_total OR OLD.quantity IS DISTINCT FROM NEW.quantity)
@@ -879,6 +903,7 @@ DECLARE
   v_rep_issue2 uuid; v_tmp uuid; v_dsite uuid; v_dphase uuid; v_dcard uuid; v_boq2 uuid; v_dboq uuid;
   v_vsite uuid; v_vp uuid; v_vp2 uuid; v_vquot uuid; v_vqa uuid; v_vqb uuid; v_vqc uuid;
   v_vba uuid; v_vbb uuid; v_vbc uuid; v_vbm uuid; v_ca uuid; v_cb uuid; v_cc uuid; v_cm uuid; v_cx uuid; v_cg uuid;
+  v_vbn uuid; v_cn uuid; v_vrep uuid;
 BEGIN
   -- ===== as the table owner: fixtures =====
   SELECT id INTO v_tenant FROM tenants WHERE company_name ILIKE '%สร้างดี%' LIMIT 1;
@@ -927,6 +952,7 @@ BEGIN
     VALUES (v_tenant, v_vsite, v_vqc, 'VC', 'line c', 20, 3) RETURNING id INTO v_vbc;
   INSERT INTO boq_items (tenant_id, site_id, code, description, planned_qty, sort_order)
     VALUES (v_tenant, v_vsite, 'VM', 'manual line', 10, 4) RETURNING id INTO v_vbm;
+  INSERT INTO line_issue_reports (tenant_id, site_id, message) VALUES (v_tenant, v_vsite, 'gantt value issue') RETURNING id INTO v_vrep;
 
   -- ===== PM =====
   PERFORM set_config('request.jwt.claims', json_build_object('email', v_pm, 'role', 'authenticated', 'sub', gen_random_uuid())::text, true);
@@ -1064,12 +1090,13 @@ BEGIN
     r := r || jsonb_build_object('v_card_qty_change_MUSTCA:56.76_CB:6.08_CC:12.16_CM:25', v);
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_card_qty_change_MUSTCA:56.76_CB:6.08_CC:12.16_CM:25', SQLSTATE || ' ' || SQLERRM);
   END;
-  -- a BOQ line planned_qty change runs the recompute (value is card qty x unit price: unchanged)
+  -- a BOQ line's own planned_qty is not part of any card value (card qty x unit price), so
+  -- raising it triggers no recompute and leaves every point as it was (VC 30 is used below)
   BEGIN
     UPDATE boq_items SET planned_qty = 30 WHERE id = v_vbc;
-    SELECT sum(weight_pts) INTO x FROM phase_tasks WHERE phase_id = v_vp;
-    r := r || jsonb_build_object('v_boq_qty_change_sum_MUST100', x);
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_boq_qty_change_sum_MUST100', SQLSTATE || ' ' || SQLERRM);
+    SELECT trim_scale(weight_pts) INTO x FROM phase_tasks WHERE id = v_ca;
+    r := r || jsonb_build_object('v_boq_qty_change_points_unchanged_MUST56.76', x);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_boq_qty_change_points_unchanged_MUST56.76', SQLSTATE || ' ' || SQLERRM);
   END;
   -- moving a BOQ card to another node re-splits both nodes
   BEGIN
@@ -1083,6 +1110,8 @@ BEGIN
     UPDATE phase_tasks SET progress_mode = 'status' WHERE id = v_cm;
     SELECT string_agg(name || ':' || trim_scale(weight_pts), ' ' ORDER BY sort_order) INTO v FROM phase_tasks WHERE phase_id = v_vp;
     r := r || jsonb_build_object('v_flip_to_general_MUSTCA:90.32_CB:9.68_CG_general:0_CM:0', v);
+    SELECT boq_item_id IS NULL AND planned_qty IS NULL INTO b FROM phase_tasks WHERE id = v_cm;
+    r := r || jsonb_build_object('v_flip_to_general_clears_line_and_qty_MUSTtrue', b);
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_flip_to_general_MUSTCA:90.32_CB:9.68_CG_general:0_CM:0', SQLSTATE || ' ' || SQLERRM);
   END;
   -- deleting a BOQ card re-splits its node
@@ -1094,6 +1123,33 @@ BEGIN
     r := r || jsonb_build_object('v_delete_card_MUSTCA:90.32_CB:9.68', v);
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_delete_card_MUSTCA:90.32_CB:9.68', SQLSTATE || ' ' || SQLERRM);
   END;
+  -- fix round 1: a BOQ -> general flip frees the line's quantity and lets the line be deleted
+  BEGIN
+    INSERT INTO boq_items (tenant_id, site_id, code, description, planned_qty, sort_order)
+      VALUES (v_tenant, v_vsite, 'VN', 'flip line', 5, 9) RETURNING id INTO v_vbn;
+    INSERT INTO phase_tasks (phase_id, site_id, name, progress_mode, planned_qty, boq_item_id, sort_order)
+      VALUES (v_vp, v_vsite, 'CN', 'quantity', 5, v_vbn, 7) RETURNING id INTO v_cn;
+    UPDATE phase_tasks SET progress_mode = 'status' WHERE id = v_cn;
+    INSERT INTO phase_tasks (phase_id, site_id, name, progress_mode, planned_qty, boq_item_id, sort_order)
+      VALUES (v_vp, v_vsite, 'CN2', 'quantity', 5, v_vbn, 8) RETURNING id INTO v_tmp;
+    r := r || jsonb_build_object('fr_flip_frees_boq_qty_MUSTok', 'ok');
+    DELETE FROM phase_tasks WHERE id = v_tmp;
+    DELETE FROM boq_items WHERE id = v_vbn;
+    GET DIAGNOSTICS n = ROW_COUNT;
+    r := r || jsonb_build_object('fr_flip_line_deletable_rows_MUST1', n);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('fr_flip_frees_boq_qty_MUSTok', SQLSTATE || ' ' || SQLERRM);
+  END;
+  -- a general card sent with a BOQ line and quantity is stored with neither
+  BEGIN
+    INSERT INTO phase_tasks (phase_id, site_id, name, progress_mode, planned_qty, boq_item_id, sort_order)
+      VALUES (v_vp, v_vsite, 'CL', 'status', 3, v_vba, 9) RETURNING id INTO v_tmp;
+    SELECT boq_item_id IS NULL AND planned_qty IS NULL AND weight_pts = 0 INTO b FROM phase_tasks WHERE id = v_tmp;
+    r := r || jsonb_build_object('fr_general_insert_with_line_cleared_MUSTtrue', b);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('fr_general_insert_with_line_cleared_MUSTtrue', SQLSTATE || ' ' || SQLERRM);
+  END;
+  SELECT string_agg(name || ':' || trim_scale(weight_pts), ' ' ORDER BY sort_order) INTO v FROM phase_tasks WHERE phase_id = v_vp AND progress_mode = 'quantity';
+  r := r || jsonb_build_object('fr_node_back_after_flip_tests_MUSTCA:90.32_CB:9.68', v);
+
   -- a BOQ card cannot be split, and cannot be a split child or a parent
   BEGIN
     PERFORM split_task(v_ca, '[{"name":"x"},{"name":"y"}]');
@@ -1398,12 +1454,12 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('x_report_foreign_card_MUST42501_trigger', SQLSTATE || ' ' || SQLERRM);
   END;
   BEGIN
-    UPDATE phase_tasks SET boq_item_id = v_boq_foreign WHERE id = v_b;
+    UPDATE phase_tasks SET boq_item_id = v_boq_foreign WHERE id = v_q;  -- a BOQ card (a general card drops its line)
     r := r || jsonb_build_object('x_card_foreign_boq_MUST42501_trigger', 'no error');
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('x_card_foreign_boq_MUST42501_trigger', SQLSTATE || ' ' || SQLERRM);
   END;
   BEGIN
-    UPDATE phase_tasks SET boq_item_id = v_boq_other_site WHERE id = v_b;
+    UPDATE phase_tasks SET boq_item_id = v_boq_other_site WHERE id = v_q;
     r := r || jsonb_build_object('x_card_other_site_boq_MUST42501_trigger', 'no error');
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('x_card_other_site_boq_MUST42501_trigger', SQLSTATE || ' ' || SQLERRM);
   END;
@@ -1564,6 +1620,10 @@ BEGIN
   UPDATE quotation_items SET description = 'renamed' WHERE id = v_vqa;
   SELECT weight_pts INTO x FROM phase_tasks WHERE id = v_ca;
   r := r || jsonb_build_object('q_non_price_update_keeps_MUST80', x);
+  -- (d) a BOQ card turned into an issue card leaves the node: the rest re-split to 100
+  UPDATE phase_tasks SET issue_report_id = v_vrep WHERE id = v_cb;
+  SELECT string_agg(name || ':' || trim_scale(weight_pts), ' ' ORDER BY sort_order) INTO v FROM phase_tasks WHERE phase_id = v_vp AND progress_mode = 'quantity';
+  r := r || jsonb_build_object('fr_boq_card_to_issue_card_MUSTCA:100_CB:0', v);
 
   INSERT INTO quotations (tenant_id, client_id, site_id, date, status, quotation_number)
     VALUES (v_tenant, v_client, v_site, current_date, 'sent', 'GT-Q-08') RETURNING id INTO v_quot;
@@ -1660,6 +1720,10 @@ BEGIN
    WHERE p.pronamespace = 'public'::regnamespace
      AND p.proname IN ('check_node_weights','check_boq_qty','progress_report_refs','record_progress','split_task','recompute_node_weights');
   r := r || jsonb_build_object('i4_no_key_update_locks_MUSTtrue', b);
+  -- (g) phase rows are locked in id order where a write touches two phases
+  SELECT bool_and(p.prosrc ~* 'order\s+by\s+(t\.)?(phase_)?id') INTO b FROM pg_proc p
+   WHERE p.pronamespace = 'public'::regnamespace AND p.proname IN ('check_node_weights','recompute_card_weights','recompute_line_weights');
+  r := r || jsonb_build_object('fr_phase_locks_in_id_order_MUSTtrue', b);
 
   SELECT has_table_privilege('authenticated', 'public.site_plans', 'TRUNCATE')
       OR has_table_privilege('authenticated', 'public.site_plan_items', 'TRUNCATE')

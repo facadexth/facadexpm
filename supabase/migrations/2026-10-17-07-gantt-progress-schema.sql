@@ -5,7 +5,8 @@
 -- a wrong entry is cancelled, never offset by a negative row.
 -- Two card kinds (owner decision 2026-10-18), told apart by progress_mode:
 --   'quantity' = BOQ card: needs a BOQ line and a planned_qty, counts toward progress;
---   'status'   = general card: 0 points, never counts (migration 08 forces the 0).
+--   'status'   = general card: 0 points, no BOQ line, no planned_qty, never counts
+--                (migration 08 forces the 0 and clears the line and quantity).
 -- A BOQ line with cards cannot be deleted (trigger message + FK), so a BOQ card never
 -- loses its line and the CHECK below always holds.
 -- Rolled-back check: supabase/tests/2026-10-17-07-gantt-progress-schema.test.sql
@@ -42,7 +43,11 @@ ALTER TABLE phase_tasks
   ADD COLUMN planned_qty numeric NULL CHECK (planned_qty IS NULL OR planned_qty > 0),
   ADD COLUMN done_qty numeric NOT NULL DEFAULT 0,
   ADD CONSTRAINT phase_tasks_boq_card_needs_line
-    CHECK (progress_mode = 'status' OR (boq_item_id IS NOT NULL AND planned_qty IS NOT NULL));
+    CHECK (progress_mode = 'status' OR (boq_item_id IS NOT NULL AND planned_qty IS NOT NULL)),
+  -- and a general card holds neither (migration 08 clears them; this is the backstop), so it
+  -- never uses up BOQ quantity or blocks deleting a BOQ line
+  ADD CONSTRAINT phase_tasks_general_card_no_line
+    CHECK (progress_mode = 'quantity' OR (boq_item_id IS NULL AND planned_qty IS NULL));
 CREATE INDEX phase_tasks_parent_idx ON phase_tasks(parent_task_id) WHERE parent_task_id IS NOT NULL;
 CREATE INDEX phase_tasks_boq_item_idx ON phase_tasks(boq_item_id) WHERE boq_item_id IS NOT NULL;
 

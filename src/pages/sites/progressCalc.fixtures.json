@@ -241,5 +241,39 @@
       { "id": "c1", "phase_id": "C", "status": "done" }
     ],
     "expect": { "phases": { "A": 0, "C": 100 }, "contract_pct": 0, "total_pct": 0 }
+  },
+  {
+    "name": "zero price line gets zero points",
+    "contract_value": 0,
+    "phases": [
+      { "id": "A", "billing_weight_pct": 100, "status": "in_progress" }
+    ],
+    "subtasks": [],
+    "boq_items": [
+      { "id": "L1", "planned_qty": 10, "unit_value": 0 },
+      { "id": "L2", "planned_qty": 10, "unit_value": 100 }
+    ],
+    "tasks": [
+      { "id": "q1", "phase_id": "A", "progress_mode": "quantity", "boq_item_id": "L1", "planned_qty": 10, "done_qty": 10, "status": "done", "weight_pts": 0 },
+      { "id": "q2", "phase_id": "A", "progress_mode": "quantity", "boq_item_id": "L2", "planned_qty": 10, "done_qty": 5, "status": "in_progress", "weight_pts": 100 }
+    ],
+    "expect": { "phases": { "A": 50 }, "contract_pct": 50, "total_pct": null }
+  },
+  {
+    "name": "all zero prices equal shares",
+    "contract_value": 0,
+    "phases": [
+      { "id": "A", "billing_weight_pct": 100, "status": "in_progress" }
+    ],
+    "subtasks": [],
+    "boq_items": [
+      { "id": "L1", "planned_qty": 10, "unit_value": 0 },
+      { "id": "L2", "planned_qty": 10, "unit_value": 0 }
+    ],
+    "tasks": [
+      { "id": "q1", "phase_id": "A", "progress_mode": "quantity", "boq_item_id": "L1", "planned_qty": 10, "done_qty": 10, "status": "done", "weight_pts": 50 },
+      { "id": "q2", "phase_id": "A", "progress_mode": "quantity", "boq_item_id": "L2", "planned_qty": 10, "done_qty": 0, "status": "not_started", "weight_pts": 50 }
+    ],
+    "expect": { "phases": { "A": 50 }, "contract_pct": 50, "total_pct": null }
   }
 ]

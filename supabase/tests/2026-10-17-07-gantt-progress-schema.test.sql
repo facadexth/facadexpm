@@ -40,7 +40,11 @@ ALTER TABLE phase_tasks
   ADD COLUMN planned_qty numeric NULL CHECK (planned_qty IS NULL OR planned_qty > 0),
   ADD COLUMN done_qty numeric NOT NULL DEFAULT 0,
   ADD CONSTRAINT phase_tasks_boq_card_needs_line
-    CHECK (progress_mode = 'status' OR (boq_item_id IS NOT NULL AND planned_qty IS NOT NULL));
+    CHECK (progress_mode = 'status' OR (boq_item_id IS NOT NULL AND planned_qty IS NOT NULL)),
+  -- and a general card holds neither (migration 08 clears them; this is the backstop), so it
+  -- never uses up BOQ quantity or blocks deleting a BOQ line
+  ADD CONSTRAINT phase_tasks_general_card_no_line
+    CHECK (progress_mode = 'quantity' OR (boq_item_id IS NULL AND planned_qty IS NULL));
 CREATE INDEX phase_tasks_parent_idx ON phase_tasks(parent_task_id) WHERE parent_task_id IS NOT NULL;
 CREATE INDEX phase_tasks_boq_item_idx ON phase_tasks(boq_item_id) WHERE boq_item_id IS NOT NULL;
 
@@ -219,6 +223,12 @@ BEGIN
     r := r || jsonb_build_object('quantity_without_boq_line_23514_MUSTtrue', false);
   EXCEPTION WHEN SQLSTATE '23514' THEN r := r || jsonb_build_object('quantity_without_boq_line_23514_MUSTtrue', true);
   END;
+  -- and a general card holds no BOQ line or planned_qty (backstop; 08 clears them)
+  BEGIN
+    UPDATE phase_tasks SET planned_qty = 5 WHERE id = v_task;
+    r := r || jsonb_build_object('general_card_with_planned_qty_23514_MUSTtrue', false);
+  EXCEPTION WHEN SQLSTATE '23514' THEN r := r || jsonb_build_object('general_card_with_planned_qty_23514_MUSTtrue', true);
+  END;
   SELECT confdeltype = 'r' INTO b FROM pg_constraint
    WHERE conrelid = 'public.phase_tasks'::regclass AND contype = 'f' AND conkey = ARRAY[(
      SELECT attnum FROM pg_attribute WHERE attrelid = 'public.phase_tasks'::regclass AND attname = 'boq_item_id')];
@@ -230,6 +240,12 @@ BEGIN
   INSERT INTO boq_items (tenant_id, site_id, code, description, planned_qty) VALUES (v_tenant, v_dsite, 'D2', 'no cards', 10) RETURNING id INTO v_dboq2;
   INSERT INTO phase_tasks (tenant_id, site_id, phase_id, name, progress_mode, planned_qty, boq_item_id)
     VALUES (v_tenant, v_dsite, v_dphase, 'BOQ card', 'quantity', 4, v_dboq);
+  BEGIN
+    INSERT INTO phase_tasks (tenant_id, site_id, phase_id, name, progress_mode, boq_item_id)
+      VALUES (v_tenant, v_dsite, v_dphase, 'general with line', 'status', v_dboq2);
+    r := r || jsonb_build_object('general_card_with_line_23514_MUSTtrue', false);
+  EXCEPTION WHEN SQLSTATE '23514' THEN r := r || jsonb_build_object('general_card_with_line_23514_MUSTtrue', true);
+  END;
   BEGIN
     DELETE FROM boq_items WHERE id = v_dboq;
     r := r || jsonb_build_object('boq_delete_with_cards_MUST22023_msg', 'no error');
