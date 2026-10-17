@@ -308,24 +308,58 @@ END $$;
 REVOKE ALL ON FUNCTION public.cancel_progress(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.cancel_progress(uuid) TO authenticated;
 
--- 8. quantity cards and parent cards only move through derived updates
+-- 8. quantity cards and parent cards only move through derived updates.
+-- Also guards done_qty (derived only), progress_mode (staff only, no live reports,
+-- no children) and planned_qty (staff only; on a quantity card >= done_qty, status re-derived here,
+-- in NEW, so no extra UPDATE). OLD or NEW quantity mode counts, so flipping the mode
+-- in the same UPDATE as the status cannot bypass the guard.
 CREATE OR REPLACE FUNCTION public.guard_derived_status() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
+DECLARE v_mode_changed boolean := NEW.progress_mode IS DISTINCT FROM OLD.progress_mode;
 BEGIN
   IF current_setting('app.derived_status', true) IS DISTINCT FROM '1' THEN
-    IF NEW.progress_mode = 'quantity' THEN
-      RAISE EXCEPTION 'งานนี้นับเป็นจำนวน ให้ PM บันทึกยอดในแอป' USING ERRCODE = '22023';
+    IF NEW.done_qty IS DISTINCT FROM OLD.done_qty THEN
+      RAISE EXCEPTION 'ยอดที่ติดแล้วคิดจากรายการบันทึกยอด ให้ PM บันทึกยอดในแอป' USING ERRCODE = '22023';
     END IF;
-    IF EXISTS (SELECT 1 FROM phase_tasks WHERE tenant_id = NEW.tenant_id AND parent_task_id = NEW.id) THEN
-      RAISE EXCEPTION 'สถานะงานหลักคิดจากงานย่อย' USING ERRCODE = '22023';
+    -- a WORKER could otherwise lower planned_qty to done_qty and so mark the card done
+    IF NEW.planned_qty IS DISTINCT FROM OLD.planned_qty AND NOT is_site_staff() THEN
+      RAISE EXCEPTION 'แก้จำนวนในการ์ดได้เฉพาะ OWNER/ADMIN/PM' USING ERRCODE = '22023';
     END IF;
+    IF v_mode_changed THEN
+      IF NOT is_site_staff() THEN
+        RAISE EXCEPTION 'เปลี่ยนวิธีนับงานได้เฉพาะ OWNER/ADMIN/PM' USING ERRCODE = '22023';
+      END IF;
+      IF EXISTS (SELECT 1 FROM progress_reports WHERE task_id = NEW.id AND tenant_id = NEW.tenant_id AND cancelled_at IS NULL) THEN
+        RAISE EXCEPTION 'การ์ดนี้มีรายการบันทึกยอดแล้ว เปลี่ยนวิธีนับไม่ได้' USING ERRCODE = '22023';
+      END IF;
+      IF EXISTS (SELECT 1 FROM phase_tasks WHERE tenant_id = NEW.tenant_id AND parent_task_id = NEW.id) THEN
+        RAISE EXCEPTION 'งานหลักเปลี่ยนวิธีนับไม่ได้' USING ERRCODE = '22023';
+      END IF;
+    END IF;
+    IF NEW.status IS DISTINCT FROM OLD.status THEN
+      IF OLD.progress_mode = 'quantity' OR NEW.progress_mode = 'quantity' THEN
+        RAISE EXCEPTION 'งานนี้นับเป็นจำนวน ให้ PM บันทึกยอดในแอป' USING ERRCODE = '22023';
+      END IF;
+      IF EXISTS (SELECT 1 FROM phase_tasks WHERE tenant_id = NEW.tenant_id AND parent_task_id = NEW.id) THEN
+        RAISE EXCEPTION 'สถานะงานหลักคิดจากงานย่อย' USING ERRCODE = '22023';
+      END IF;
+    END IF;
+  END IF;
+  IF NEW.progress_mode = 'quantity' AND (v_mode_changed OR NEW.planned_qty IS DISTINCT FROM OLD.planned_qty) THEN
+    IF NEW.planned_qty < NEW.done_qty THEN
+      RAISE EXCEPTION 'จำนวนในการ์ดน้อยกว่ายอดที่ติดแล้ว' USING ERRCODE = '22023';
+    END IF;
+    NEW.status := CASE WHEN NEW.done_qty = 0 THEN 'not_started'
+                       WHEN NEW.done_qty < NEW.planned_qty THEN 'in_progress' ELSE 'done' END;
   END IF;
   RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION public.guard_derived_status() FROM PUBLIC, anon, authenticated;
-CREATE TRIGGER trg_guard_derived_status BEFORE UPDATE OF status ON phase_tasks
-  FOR EACH ROW WHEN (OLD.status IS DISTINCT FROM NEW.status) EXECUTE FUNCTION guard_derived_status();
+CREATE TRIGGER trg_guard_derived_status BEFORE UPDATE OF status, done_qty, progress_mode, planned_qty ON phase_tasks
+  FOR EACH ROW WHEN (OLD.status IS DISTINCT FROM NEW.status OR OLD.done_qty IS DISTINCT FROM NEW.done_qty
+                     OR OLD.progress_mode IS DISTINCT FROM NEW.progress_mode OR OLD.planned_qty IS DISTINCT FROM NEW.planned_qty)
+  EXECUTE FUNCTION guard_derived_status();
 
 -- 9. parent status follows its children
 CREATE OR REPLACE FUNCTION public.set_parent_status_from_children(p_parent_id uuid, p_tenant_id uuid)
@@ -357,7 +391,8 @@ BEGIN
   RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION public.sync_parent_status() FROM PUBLIC, anon, authenticated;
-CREATE TRIGGER trg_sync_parent_status AFTER INSERT OR UPDATE OF status, weight_pts ON phase_tasks
+-- planned_qty/progress_mode: guard_derived_status may re-derive a quantity child's status in NEW
+CREATE TRIGGER trg_sync_parent_status AFTER INSERT OR UPDATE OF status, weight_pts, planned_qty, progress_mode ON phase_tasks
   FOR EACH ROW WHEN (NEW.parent_task_id IS NOT NULL) EXECUTE FUNCTION sync_parent_status();
 CREATE TRIGGER trg_sync_parent_status_del AFTER DELETE ON phase_tasks
   FOR EACH ROW WHEN (OLD.parent_task_id IS NOT NULL) EXECUTE FUNCTION sync_parent_status();
