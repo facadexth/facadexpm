@@ -40,11 +40,12 @@ let mockTasks = []
 let mockHasPlan = true
 let mockPlans = [{ id: 'pl1', version: 1 }]
 let mockBoq = []
+let mockSubtasks = []
 vi.mock('../../hooks/useSupabase.js', () => ({
   useSitePhases: () => q(mockPhases),
   usePhaseTasks: () => q(mockTasks),
   useSiteHasPlan: () => ({ hasPlan: mockHasPlan, reload: () => {} }),
-  useSubtasks: () => q([]),
+  useSubtasks: () => q(mockSubtasks),
   useWorkers: () => q([]),
   useSites: () => q([]),
   useBoqItems: () => q(mockBoq),
@@ -66,7 +67,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   cleanup(); calls.length = 0; auditCalls.length = 0; probeError = null; mockRole = 'OWNER'; resetProgressSchemaProbe()
-  mockPhases = [phase]; mockTasks = []; mockHasPlan = true; mockPlans = [{ id: 'pl1', version: 1 }]; mockBoq = []
+  mockPhases = [phase]; mockTasks = []; mockHasPlan = true; mockPlans = [{ id: 'pl1', version: 1 }]; mockBoq = []; mockSubtasks = []
 })
 
 describe('Kanban first card on an empty node (schema probe)', () => {
@@ -196,6 +197,11 @@ describe('Kanban final-review rules', () => {
   // with cards present the board opens on ทั้งหมด, which already lists the phase's cards
   const openBoard = () => render(<PhaseKanbanBoard site={site} canEdit />)
   const insertOf = () => calls.find((c) => c[0] === 'phase_tasks' && c[1] === 'insert')?.[2]
+  // with cards the phase name is also the ทั้งหมด section heading: click the chip (listed first)
+  const openPhaseChip = (name) => {
+    render(<PhaseKanbanBoard site={site} canEdit />)
+    fireEvent.click(screen.getAllByText(name)[0])
+  }
 
   it('no PLAN: a card added in the done column is saved not_started', async () => {
     mockHasPlan = false
@@ -263,6 +269,42 @@ describe('Kanban final-review rules', () => {
     openBoard()
     expect(await screen.findByText('คิดจากสถานะเฟส')).toBeTruthy()
     expect(screen.queryByText(/คิดจากการ์ด BOQ/)).toBeNull()
+  })
+  it('the board header says คิดจากขั้นตอนย่อย for a phase with sub-phases', async () => {
+    mockSubtasks = [{ id: 'sp1', phase_id: 'p1', site_id: 's1', parent_subtask_id: null, name: 'ชั้น 1', sort_order: 1, status: 'not_started' }]
+    mockTasks = [card({ progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: 10, weight_pts: 100 })]
+    openBoard()
+    expect(await screen.findByText('คิดจากขั้นตอนย่อย')).toBeTruthy()
+    expect(screen.queryByText(/คิดจากการ์ด BOQ/)).toBeNull()
+    expect(screen.queryByText('คิดจากสถานะเฟส')).toBeNull()
+  })
+  it('a sub-phase inside an issue phase shows no % and no caption', async () => {
+    mockPhases = [phase, { ...phase, id: 'pi', name: 'แจ้งปัญหา', sort_order: 9, is_issue_phase: true }]
+    mockSubtasks = [{ id: 'si1', phase_id: 'pi', site_id: 's1', parent_subtask_id: null, name: 'ปัญหาชั้น 2', sort_order: 1, status: 'not_started' }]
+    mockTasks = [card({ phase_id: 'pi', subtask_id: 'si1', name: 'ซ่อมรั่ว' })]
+    openPhaseChip('แจ้งปัญหา')
+    fireEvent.click(await screen.findByText('ปัญหาชั้น 2'))
+    expect(await screen.findByText('ซ่อมรั่ว')).toBeTruthy()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.queryByText(/ความคืบหน้า/)).toBeNull()
+    expect(screen.queryByText('คิดจากสถานะเฟส')).toBeNull()
+  })
+  it('an existing general card in an issue phase offers no BOQ choice', async () => {
+    mockBoq = [{ id: 'b1', code: 'W-01', description: 'หน้าต่าง', unit: 'ชุด', planned_qty: 10, sort_order: 1 }]
+    mockPhases = [phase, { ...phase, id: 'pi', name: 'แจ้งปัญหา', sort_order: 9, is_issue_phase: true }]
+    mockTasks = [card({ phase_id: 'pi', name: 'ซ่อมรั่ว' })]
+    openPhaseChip('แจ้งปัญหา')
+    fireEvent.click(await screen.findByText('ซ่อมรั่ว'))
+    expect((await screen.findByLabelText('งานทั่วไป (ไม่นับ %)')).checked).toBe(true)
+    expect(screen.queryByLabelText('งาน BOQ (นับ %)')).toBeNull()
+  })
+  it('an existing BOQ card in an issue phase still shows its BOQ kind', async () => {
+    mockBoq = [{ id: 'b1', code: 'W-01', description: 'หน้าต่าง', unit: 'ชุด', planned_qty: 10, sort_order: 1 }]
+    mockPhases = [phase, { ...phase, id: 'pi', name: 'แจ้งปัญหา', sort_order: 9, is_issue_phase: true }]
+    mockTasks = [card({ phase_id: 'pi', name: 'ซ่อมรั่ว', progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: 2 })]
+    openPhaseChip('แจ้งปัญหา')
+    fireEvent.click(await screen.findByText('ซ่อมรั่ว'))
+    expect((await screen.findByLabelText('งาน BOQ (นับ %)')).checked).toBe(true)
   })
   it('the board header caption is hidden until the schema probe is ready', async () => {
     probeError = { message: 'no column' }

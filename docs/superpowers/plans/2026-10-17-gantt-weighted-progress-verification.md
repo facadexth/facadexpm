@@ -81,6 +81,13 @@ Only 2 real-customer phases change (both partly done, no BOQ card yet). The othe
 | 07 rolled-back test on CHANG (2026-10-18, card kinds) | 62 keys, 55/55 MUST keys as expected |
 | 08 rolled-back test on CHANG (2026-10-18, card kinds) | 147 keys, 146/146 MUST keys as expected |
 | 09 rolled-back test on CHANG (2026-10-18, card kinds) | 149 keys, 140/140 MUST keys as expected |
+| `npx vitest run` after the card-kinds final-review fixes (2026-10-18) | 135 files, 1566 passed, 2 failed: the same known `pmPages.test.jsx` UTC-today bug |
+| `TZ=UTC npx vitest run src/pages/pmPages.test.jsx` (after the fixes) | 31/31 passed |
+| `npm run build` (after the fixes) | OK |
+| Inlined bodies byte-identical after the fixes | all six (07 in 07/08/09, 08 in 08/09, 09 in 09) identical |
+| 07 rolled-back test on CHANG (after the fixes) | 62 keys, 55/55 MUST keys as expected |
+| 08 rolled-back test on CHANG (after the fixes) | 149 keys, 148/148 MUST keys as expected |
+| 09 rolled-back test on CHANG (after the fixes) | 149 keys, 140/140 MUST keys as expected |
 | SQL as PM / ADMIN / OWNER / WORKER (RLS, grants, VO value privacy) | covered by the 07/08/09 assertions above |
 | 09 writes no card or phase row; every card stays general with 0 points | 09: `b_cards_changed_MUST0` 0, `b_phases_changed_MUST0` 0, `b_cards_not_general_zero_MUST0` 0 |
 | % changes are listed for the owner | 09: `phases_changed` 7, `b_report_rows_equal_phases_changed_MUSTtrue` true (table above) |
@@ -123,16 +130,22 @@ Each test ends with `RAISE EXCEPTION 'RESULT …'`, so all its work is rolled ba
   `a_insert_not_started_card_then_delete` 1; issue card and manual card in the issue phase inserted
   done → `ok`; `i2_admin_lowers_planned_with_done` → `22023 เฉพาะ OWNER/PM แก้จำนวนการ์ดที่มียอดแล้ว`,
   `i2_pm_lowers_planned_with_done` → `110 in_progress`; `i3_delete_card_with_reports` →
-  `22023 ยกเลิกยอดให้หมดก่อนลบการ์ด`, `i3_site_delete_cascades_card` 0; `i4_no_key_update_locks` true;
+  `23503 ยกเลิกยอดให้หมดก่อนลบการ์ด`, `i3_site_delete_cascades_card` 0; `i4_no_key_update_locks` true;
   `a2_worker_weight/boq_item/parent` → `22023 แก้แต้ม/งานหลัก/รายการ BOQ …`;
   `d_cancelled_by_is_caller` true; `f2_quotation_touch_no_repull` 0.
   Card-kinds keys (2026-10-18): `v_three_cards_by_value` → `CA:70 CB:15 CC:15 CG general:0`;
   `v_pm_value_shares` → `VA:40.39 VB:8.65 VC:25.96 VM:25`, sum 100, keys only (no price), worker 42501;
   `v_pm_sends_points_ignored` 52.5; `v_split_boq_card` / `v_boq_card_as_child` / `v_child_of_boq_card` →
   `22023 แตกงานได้เฉพาะงานทั่วไป`; `v_delete_boq_line_with_cards` →
-  `22023 รายการ BOQ นี้มีการ์ดผูกอยู่ ย้ายหรือลบการ์ดก่อน`; `v_flip_to_general_clears_line_and_qty` true;
+  `23503 รายการ BOQ นี้มีการ์ดผูกอยู่ ย้ายหรือลบการ์ดก่อน`; `v_flip_to_general_clears_line_and_qty` true;
   `e_split_done_children` 3 (a done general card can be split); `k_unpriced_equal_shares` →
   `Q:33.34 F:33.33 Q3:33.33`.
+  Card-kinds final-review keys: `fw_move_boq_card_into_boq_phase_sums` → `100|100` (a BOQ card with
+  points moved into a phase that already has BOQ cards arrives with 0, both phases re-split);
+  `fw_move_boq_card_back` → `CA:60.22 CB:6.45 CC:100 CM:33.33`. The BOQ-line and card-history delete
+  guards now raise 23503 (foreign_key_violation, same Thai messages) so the demo reset's delete loop
+  retries instead of aborting; 07 `boq_delete_with_cards` and 08 `i3_owner_delete_card_with_reports`
+  expect 23503 too.
 - **09** (live data dry run, 2026-10-18, card kinds): 18 sites with cards, 49 phases and 143 cards
   compared; 7 phases change % (table above), 0 card or phase rows written. PLAN v1 rows 147 (147 sites
   with a phase), BOQ rows 168, today's snapshot rows 147, `f_cron_job` = 1, `a_fixture_mismatches` 0

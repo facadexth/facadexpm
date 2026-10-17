@@ -144,7 +144,7 @@ AS $$
 BEGIN
   IF EXISTS (SELECT 1 FROM phase_tasks WHERE boq_item_id = OLD.id AND tenant_id = OLD.tenant_id)
      AND EXISTS (SELECT 1 FROM sites WHERE id = OLD.site_id) THEN
-    RAISE EXCEPTION 'รายการ BOQ นี้มีการ์ดผูกอยู่ ย้ายหรือลบการ์ดก่อน' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'รายการ BOQ นี้มีการ์ดผูกอยู่ ย้ายหรือลบการ์ดก่อน' USING ERRCODE = '23503';
   END IF;
   RETURN OLD;
 END $$;

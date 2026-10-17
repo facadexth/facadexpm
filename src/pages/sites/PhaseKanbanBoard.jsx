@@ -648,9 +648,12 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const nodeById = { ...byNodeId }
   phases.forEach((p) => { nodeById[p.id] = p })
   // boqCards: the node's top-level non-issue BOQ cards (what its % counts by);
-  // the header caption is shown only once the schema probe is ready
-  const progressOf = (nodeId) => (nodeById[nodeId]?.is_issue_phase ? null : {
+  // fromSubphases: a node with child sub-phases takes its % from them.
+  // The header caption is shown only once the schema probe is ready.
+  // Sub-phases inside an issue phase are issue nodes too (no %).
+  const progressOf = (nodeId) => (isIssueNode(nodeId) ? null : {
     pct: Math.round(nodeProgress(nodeId, { tasksByNode: microtasksByNodeId, subtasksByParent, nodeById }) * 100),
+    fromSubphases: (subtasksByParent[nodeId] || []).length > 0,
     boqCards: progressReady
       ? (microtasksByNodeId[nodeId] || []).filter((t) => !t.parent_task_id && t.issue_report_id == null && t.progress_mode === 'quantity').length
       : null,
@@ -1090,7 +1093,8 @@ function PhaseBoard({
         </span>
         {progress.boqCards != null && (
           <span style={{ color: 'var(--text3)' }}>
-            {progress.boqCards > 0 ? `คิดจากการ์ด BOQ ${progress.boqCards} ใบ · แต้มแบ่งตามมูลค่า` : 'คิดจากสถานะเฟส'}
+            {progress.fromSubphases ? 'คิดจากขั้นตอนย่อย'
+              : progress.boqCards > 0 ? `คิดจากการ์ด BOQ ${progress.boqCards} ใบ · แต้มแบ่งตามมูลค่า` : 'คิดจากสถานะเฟส'}
           </span>
         )}
       </div>
@@ -1126,7 +1130,7 @@ function PhaseBoard({
                   <TaskEditPanel key={task.id} draft={draft} setDraft={setDraft} workers={workers}
                     onToggleAssignee={onToggleAssignee} onSetLead={onSetLead} onCancel={onCancelEdit} onSave={onSaveDraft}
                     onDelete={() => onDeleteRequest(task.id)} saving={saving}
-                    task={task} isParent={(childrenByParent[task.id] || []).length > 0} {...formProps} />
+                    task={task} isParent={(childrenByParent[task.id] || []).length > 0} issuePhase={issueNode} {...formProps} />
                 )
               }
               const workerRows = task.phase_task_workers || []
@@ -1213,8 +1217,9 @@ function TaskEditPanel({
             {[
               { mode: 'quantity', label: 'งาน BOQ (นับ %)', hint: 'งานตามสัญญา ขยับตามยอดติดตั้ง' },
               { mode: 'status', label: 'งานทั่วไป (ไม่นับ %)', hint: 'งานอื่นที่จะจ่ายให้ช่าง' },
-            // a new card in an issue phase cannot be a BOQ card (issue nodes never count)
-            ].filter((k) => !(isNew && issuePhase && k.mode === 'quantity')).map((k) => {
+            // a card in an issue phase cannot become a BOQ card (issue nodes never count);
+            // an existing BOQ card there keeps the choice so its kind still shows
+            ].filter((k) => !(issuePhase && k.mode === 'quantity' && (isNew || task?.progress_mode !== 'quantity'))).map((k) => {
               const on = draft.progress_mode === k.mode
               return (
                 <label key={k.mode} style={{

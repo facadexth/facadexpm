@@ -307,6 +307,11 @@ BEGIN
   END IF;
   IF NEW.progress_mode = 'status' OR NEW.parent_task_id IS NOT NULL OR NEW.issue_report_id IS NOT NULL THEN
     NEW.weight_pts := 0;
+  ELSIF TG_OP = 'UPDATE' AND COALESCE(NEW.subtask_id, NEW.phase_id) IS DISTINCT FROM COALESCE(OLD.subtask_id, OLD.phase_id) THEN
+    -- a card moving to another node arrives with 0 (the target's check would count its old
+    -- points against the cards already there); the recompute after it re-splits both nodes.
+    -- node_of() inlined: this trigger runs as the caller, who cannot execute node_of
+    NEW.weight_pts := 0;
   ELSIF current_setting('app.derived_status', true) IS DISTINCT FROM '1' THEN
     NEW.weight_pts := CASE WHEN TG_OP = 'INSERT' THEN 0 ELSE OLD.weight_pts END;
   END IF;
@@ -615,7 +620,7 @@ AS $$
 BEGIN
   IF EXISTS (SELECT 1 FROM progress_reports WHERE task_id = OLD.id AND tenant_id = OLD.tenant_id)
      AND EXISTS (SELECT 1 FROM sites WHERE id = OLD.site_id) THEN
-    RAISE EXCEPTION 'ยกเลิกยอดให้หมดก่อนลบการ์ด' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'ยกเลิกยอดให้หมดก่อนลบการ์ด' USING ERRCODE = '23503';
   END IF;
   RETURN OLD;
 END $$;

@@ -4,7 +4,7 @@
 -- byte-identical to its file between BEGIN; and COMMIT;. Keep them in sync.
 -- The DO block ends in RAISE EXCEPTION 'RESULT ...', so nothing persists.
 -- Expected: *_MUST0 is 0, *_MUSTfalse is false, *_MUSTtrue is true,
--- *_MUST42501 is '42501', *_MUST22023_msg is 22023 with the Thai message, w_* writes 'ok'.
+-- *_MUST42501 is '42501', *_MUST23503_msg is 23503 with the Thai message, w_* writes 'ok'.
 BEGIN;
 
 -- ===== inlined 2026-10-17-07-gantt-progress-schema.sql body =====
@@ -141,7 +141,7 @@ AS $$
 BEGIN
   IF EXISTS (SELECT 1 FROM phase_tasks WHERE boq_item_id = OLD.id AND tenant_id = OLD.tenant_id)
      AND EXISTS (SELECT 1 FROM sites WHERE id = OLD.site_id) THEN
-    RAISE EXCEPTION 'รายการ BOQ นี้มีการ์ดผูกอยู่ ย้ายหรือลบการ์ดก่อน' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'รายการ BOQ นี้มีการ์ดผูกอยู่ ย้ายหรือลบการ์ดก่อน' USING ERRCODE = '23503';
   END IF;
   RETURN OLD;
 END $$;
@@ -248,8 +248,8 @@ BEGIN
   END;
   BEGIN
     DELETE FROM boq_items WHERE id = v_dboq;
-    r := r || jsonb_build_object('boq_delete_with_cards_MUST22023_msg', 'no error');
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('boq_delete_with_cards_MUST22023_msg', SQLSTATE || ' ' || SQLERRM);
+    r := r || jsonb_build_object('boq_delete_with_cards_MUST23503_msg', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('boq_delete_with_cards_MUST23503_msg', SQLSTATE || ' ' || SQLERRM);
   END;
   DELETE FROM boq_items WHERE id = v_dboq2;
   GET DIAGNOSTICS n = ROW_COUNT;

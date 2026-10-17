@@ -3,8 +3,8 @@
 -- 04/05/06 are already applied live. The 07 and 08 bodies are inlined below,
 -- byte-identical to their files between BEGIN; and COMMIT;. Keep them in sync.
 -- The DO block ends in RAISE EXCEPTION 'RESULT ...', so nothing persists.
--- Expected: *_MUST<value> holds that value; *_MUST22023_<tag> is 22023 with the
--- brief's Thai message; *_MUSTok is 'ok'. Fixtures: demo tenant, fresh site.
+-- Expected: *_MUST<value> holds that value; *_MUST22023_<tag> / *_MUST23503_<tag> is that
+-- SQLSTATE with the brief's Thai message; *_MUSTok is 'ok'. Fixtures: demo tenant, fresh site.
 BEGIN;
 -- ===== inlined 2026-10-17-07-gantt-progress-schema.sql body =====
 
@@ -140,7 +140,7 @@ AS $$
 BEGIN
   IF EXISTS (SELECT 1 FROM phase_tasks WHERE boq_item_id = OLD.id AND tenant_id = OLD.tenant_id)
      AND EXISTS (SELECT 1 FROM sites WHERE id = OLD.site_id) THEN
-    RAISE EXCEPTION 'รายการ BOQ นี้มีการ์ดผูกอยู่ ย้ายหรือลบการ์ดก่อน' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'รายการ BOQ นี้มีการ์ดผูกอยู่ ย้ายหรือลบการ์ดก่อน' USING ERRCODE = '23503';
   END IF;
   RETURN OLD;
 END $$;
@@ -439,6 +439,11 @@ BEGIN
     NEW.planned_qty := NULL;
   END IF;
   IF NEW.progress_mode = 'status' OR NEW.parent_task_id IS NOT NULL OR NEW.issue_report_id IS NOT NULL THEN
+    NEW.weight_pts := 0;
+  ELSIF TG_OP = 'UPDATE' AND COALESCE(NEW.subtask_id, NEW.phase_id) IS DISTINCT FROM COALESCE(OLD.subtask_id, OLD.phase_id) THEN
+    -- a card moving to another node arrives with 0 (the target's check would count its old
+    -- points against the cards already there); the recompute after it re-splits both nodes.
+    -- node_of() inlined: this trigger runs as the caller, who cannot execute node_of
     NEW.weight_pts := 0;
   ELSIF current_setting('app.derived_status', true) IS DISTINCT FROM '1' THEN
     NEW.weight_pts := CASE WHEN TG_OP = 'INSERT' THEN 0 ELSE OLD.weight_pts END;
@@ -748,7 +753,7 @@ AS $$
 BEGIN
   IF EXISTS (SELECT 1 FROM progress_reports WHERE task_id = OLD.id AND tenant_id = OLD.tenant_id)
      AND EXISTS (SELECT 1 FROM sites WHERE id = OLD.site_id) THEN
-    RAISE EXCEPTION 'ยกเลิกยอดให้หมดก่อนลบการ์ด' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'ยกเลิกยอดให้หมดก่อนลบการ์ด' USING ERRCODE = '23503';
   END IF;
   RETURN OLD;
 END $$;
@@ -1105,6 +1110,20 @@ BEGIN
     r := r || jsonb_build_object('v_move_card_MUSTCA:60.22_CB:6.45_CC:100_CM:33.33', v);
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_move_card_MUSTCA:60.22_CB:6.45_CC:100_CM:33.33', SQLSTATE || ' ' || SQLERRM);
   END;
+  -- final review I1: moving a BOQ card that has points into a phase that already has BOQ
+  -- cards arrives with 0 and both nodes re-split to 100 (moved there and back again)
+  BEGIN
+    UPDATE phase_tasks SET phase_id = v_vp2 WHERE id = v_cb;
+    SELECT string_agg(trim_scale(s)::text, '|' ORDER BY p) INTO v FROM (
+      SELECT CASE WHEN phase_id = v_vp THEN 1 ELSE 2 END AS p, sum(weight_pts) AS s FROM phase_tasks
+       WHERE phase_id IN (v_vp, v_vp2) AND subtask_id IS NULL AND parent_task_id IS NULL AND issue_report_id IS NULL
+       GROUP BY phase_id) q;
+    r := r || jsonb_build_object('fw_move_boq_card_into_boq_phase_sums_MUST100|100', v);
+    UPDATE phase_tasks SET phase_id = v_vp WHERE id = v_cb;
+    SELECT string_agg(name || ':' || trim_scale(weight_pts), ' ' ORDER BY sort_order) INTO v FROM phase_tasks WHERE site_id = v_vsite AND progress_mode = 'quantity';
+    r := r || jsonb_build_object('fw_move_boq_card_back_MUSTCA:60.22_CB:6.45_CC:100_CM:33.33', v);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('fw_move_boq_card_into_boq_phase_sums_MUST100|100', SQLSTATE || ' ' || SQLERRM);
+  END;
   -- flipping a BOQ card to a general card drops its points and re-splits the rest
   BEGIN
     UPDATE phase_tasks SET progress_mode = 'status' WHERE id = v_cm;
@@ -1169,8 +1188,8 @@ BEGIN
   -- a BOQ line with cards cannot be deleted (PM)
   BEGIN
     DELETE FROM boq_items WHERE id = v_vba;
-    r := r || jsonb_build_object('v_delete_boq_line_with_cards_MUST22023_msg', 'no error');
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_delete_boq_line_with_cards_MUST22023_msg', SQLSTATE || ' ' || SQLERRM);
+    r := r || jsonb_build_object('v_delete_boq_line_with_cards_MUST23503_msg', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_delete_boq_line_with_cards_MUST23503_msg', SQLSTATE || ' ' || SQLERRM);
   END;
   -- shares per site, percentages only: 7000 / 1500 / 4500 (30 x 150) / manual = mean 4333.33
   BEGIN
@@ -1432,8 +1451,8 @@ BEGIN
   END;
   BEGIN
     DELETE FROM phase_tasks WHERE id = v_q;
-    r := r || jsonb_build_object('i3_delete_card_with_reports_MUST22023_history', 'no error');
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('i3_delete_card_with_reports_MUST22023_history', SQLSTATE || ' ' || SQLERRM);
+    r := r || jsonb_build_object('i3_delete_card_with_reports_MUST23503_history', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('i3_delete_card_with_reports_MUST23503_history', SQLSTATE || ' ' || SQLERRM);
   END;
   BEGIN
     UPDATE progress_reports SET cancelled_at = now(), cancelled_by = 'forged@example.invalid' WHERE id = v_rep;
@@ -1705,8 +1724,8 @@ BEGIN
   INSERT INTO progress_reports (tenant_id, site_id, task_id, qty) VALUES (v_tenant, v_dsite, v_dcard, 3);
   BEGIN
     DELETE FROM phase_tasks WHERE id = v_dcard;
-    r := r || jsonb_build_object('i3_owner_delete_card_with_reports_MUST22023_history', 'no error');
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('i3_owner_delete_card_with_reports_MUST22023_history', SQLSTATE || ' ' || SQLERRM);
+    r := r || jsonb_build_object('i3_owner_delete_card_with_reports_MUST23503_history', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('i3_owner_delete_card_with_reports_MUST23503_history', SQLSTATE || ' ' || SQLERRM);
   END;
   BEGIN
     DELETE FROM sites WHERE id = v_dsite;
