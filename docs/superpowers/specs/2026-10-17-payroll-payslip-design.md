@@ -295,14 +295,23 @@ the implementer.
 - Input is validated in the worker form: account length per bank code and the
   SCB check digit.
 
-**Open items before this task starts.** The rest of job 1 does not depend on
-them.
-1. Which bank or banks the company pays payroll from.
-2. Which product it is registered for: SCB PAY or SPN/SPS; KBank PCT/PCL
-   standard or Single Payment Format.
-3. Which banks the employees' accounts are in.
-4. One real file accepted by each portal, with names and accounts masked, to
-   check the output against before going live.
+**Owner answers (2026-10-17) and resulting scope**
+- FacadeX pays from **SCB**. Until now it entered transfers by hand. The first
+  file upload is planned for the October 2026 payroll.
+- Employees are at **many different banks**, so the product is **SCB SPN/SPS**,
+  which pays to every bank. The tenant setting chooses next-day (SPN) or
+  same-day (SPS). PAY (SCB accounts only) is supported by the same generator
+  because it differs only in a few fields.
+- **Only the SCB generator is built in job 1.** The KBank layouts stay
+  documented in the reference so another tenant can add them later. The KBank
+  generator is out of scope.
+- SPN/SPS needs a 4-digit receiving branch for every employee.
+  `workers.bank_branch_code` is pre-filled from the account number using the
+  per-bank derivation table in the reference (§1.6), and the admin can edit it.
+- **First-live check.** The October file is uploaded to Business Anywhere with
+  the owner watching. The portal's validation result is the acceptance test. The
+  owner will then supply that accepted file, masked, and it becomes a golden
+  test fixture.
 
 ### Fixes to existing code
 
