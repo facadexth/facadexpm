@@ -26,6 +26,7 @@ import { bangkokTodayIso } from '../lib/photoUpload.js'
 import { VAT_RATE } from '../lib/invoiceCalc.js'
 import { pickCreditNoteExtra } from '../lib/creditNoteExtra.js'
 import { computeCreditNoteTotals, findStockShortfalls, inferVatFlags, round2, SETTLEMENT_LABELS } from '../lib/creditNoteCalc.js'
+import CardTable from '../components/CardTable.jsx'
 
 const CN_ERRORS = {
   insufficient_stock: 'สต็อกไม่พอสำหรับคืนสินค้า — ตรวจจำนวนในรายการอีกครั้ง',
@@ -327,7 +328,7 @@ function CreditNoteForm({ initial, suppliers, sites, onSave, onCancel, loading }
               <div style={{ fontSize: 13, color: 'var(--text3)' }}>ไม่พบใบสั่งซื้อที่รับของแล้วของซัพพลายเออร์นี้</div>
             )}
             {selectedPo && (
-              <div className="table-wrap">
+              <CardTable>
                 <table>
                   <thead>
                     <tr>
@@ -366,7 +367,7 @@ function CreditNoteForm({ initial, suppliers, sites, onSave, onCancel, loading }
                     })}
                   </tbody>
                 </table>
-              </div>
+              </CardTable>
             )}
           </div>
         )}
@@ -551,7 +552,7 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
       {error && <div style={{ color: 'var(--danger, #e55)', marginBottom: 12 }}>โหลดข้อมูลไม่สำเร็จ: {error}</div>}
 
       <div className="card">
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead>
               <tr>
@@ -599,7 +600,7 @@ export default function SupplierCreditNotes({ prefill: prefillProp } = {}) {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {showForm && formInitial && (

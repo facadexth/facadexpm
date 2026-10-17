@@ -8,7 +8,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { usePendingFocus } from '../hooks/usePendingFocus.js'
 import PendingFocusChip from '../components/PendingFocusChip.jsx'
 import { supabase } from '../lib/supabase.js'
-import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useMySignatureUrl, useMyWorkerName, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits, useActiveTaxInvoiceLinks, usePoMoneyIndex, usePoLedger, useDeliveryTaxInvoiceReady, useActiveReceiptTaxInvoiceLinks, usePoUnreceiveReversesStock } from '../hooks/useSupabase.js'
+import { usePurchaseOrders, useSites, useSuppliers, useCategories, useUnits, useInventoryItems, useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useAluminumProfiles, useAllAluminumProfiles, useDocumentSigner, useSupplierDocumentExamples, extractPoDocument, saveSupplierDocumentExample, receivePoWithDeposits, useActiveTaxInvoiceLinks, usePoMoneyIndex, usePoLedger, useDeliveryTaxInvoiceReady, useActiveReceiptTaxInvoiceLinks, usePoUnreceiveReversesStock } from '../hooks/useSupabase.js'
 import { fileToExtractionPayload, buildExampleExtracted, applyScanVatBasis, clearScanVatBasis, scanLinesTotalExVat } from '../lib/poDocumentExtraction.js'
 import ScanDocPreview from '../components/ScanDocPreview.jsx'
 import ScanNotice from '../components/ScanNotice.jsx'
@@ -54,6 +54,8 @@ import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import PendingMark from '../components/PendingMark.jsx'
 import { removeBlockOrClear } from '../lib/rowEditing.js'
 import { isPoDraft } from '../lib/pendingRules.js'
+import PhoneFilters from '../components/PhoneFilters.jsx'
+import CardTable from '../components/CardTable.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -474,7 +476,7 @@ function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument, receip
         )}
         <div>
           <label className="label">รายการสินค้า</label>
-          <div className="table-wrap">
+          <CardTable>
             <table style={{ fontSize: 12.5 }}>
               <thead><tr><th>รายการ</th><th>สั่ง</th><th>รับ</th><th style={{ textAlign: 'right' }}>มูลค่า</th></tr></thead>
               <tbody>
@@ -494,7 +496,7 @@ function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument, receip
                 ))}
               </tbody>
             </table>
-          </div>
+          </CardTable>
           <div style={{ marginTop: 8, textAlign: 'right', fontSize: 13 }}>
             <div>รวมก่อน VAT: <span className="font-mono">{fmt(subtotal)}</span></div>
             {po.has_vat && <div>VAT (7%): <span className="font-mono">{fmt(vat)}</span></div>}
@@ -559,8 +561,9 @@ function PODetailModal({ po, tenantId, onClose, taxBadge, onViewDocument, receip
 function PODocumentModal({ po, tenant, onClose, autoAction = null }) {
   const items = po.purchase_order_items || []
   const { subtotal, vat, total } = calcPoTotals(items, po.has_vat, po.price_includes_vat)
-  const mySignature = useMySignatureUrl()
-  const { data: myWorkerName } = useMyWorkerName()
+  const signer = useDocumentSigner(po.created_by ?? null)
+  const mySignature = signer?.url ? { url: signer.url } : null
+  const myWorkerName = signer?.name || null
 
   const fileBase = `${po.po_number}${po.sites?.name ? '-' + po.sites.name : ''}`
   useEffect(() => {
@@ -674,7 +677,10 @@ function PODocumentModal({ po, tenant, onClose, autoAction = null }) {
                 <div style={{ marginTop: 2, color: '#6a6f85', fontSize: 10 }}>{myWorkerName}</div>
               )}
             </div>
-            <div style={{ borderTop: '1px solid #999', paddingTop: 8, alignSelf: 'end' }}>ผู้อนุมัติ</div>
+            <div>
+              <div style={{ height: 40 }} />
+              <div style={{ borderTop: '1px solid #999', paddingTop: 8 }}>ผู้อนุมัติ</div>
+            </div>
           </div>
         </div>
       </div>
@@ -1276,12 +1282,23 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => { saveDraft(ADD_FORM_OPEN_KEY, true); setEditRow(null); setShowAdd(true) }}>+ เพิ่มใบสั่งซื้อ</button>}
         <div style={{ flex: 1 }} />
+        <PhoneFilters title="ช่วงวันที่" count={dateFrom || dateTo ? 1 : 0}
+          summary={dateFrom || dateTo ? [{ label: `${dateFrom || '…'} – ${dateTo || '…'}`, onRemove: () => { setDateFrom(''); setDateTo('') } }] : []}
+          onClear={() => { setDateFrom(''); setDateTo('') }}>
         <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <span style={{ color: 'var(--text3)' }}>—</span>
         <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
+        </PhoneFilters>
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        <PhoneFilters count={[siteId, supplierId, status].filter(Boolean).length}
+          summary={[
+            ...(siteId ? [{ label: 'ไซท์งาน', onRemove: () => setSiteId('') }] : []),
+            ...(supplierId ? [{ label: 'Supplier', onRemove: () => setSupplierId('') }] : []),
+            ...(status ? [{ label: PO_STATUS_LABELS[status] || 'สถานะ', onRemove: () => { draftFocus.clear(); setStatus('') } }] : []),
+          ]}
+          onClear={() => { draftFocus.clear(); setSiteId(''); setSupplierId(''); setStatus('') }}>
         <div style={{ minWidth: 200 }}>
           <SearchableSelect value={siteId} onChange={setSiteId} placeholder="ทุกไซท์งาน" options={siteOpts(sites)} />
         </div>
@@ -1292,12 +1309,13 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
           <option value="">ทุกสถานะ</option>
           {PO_STATUSES.map(s => <option key={s} value={s}>{PO_STATUS_LABELS[s]}</option>)}
         </select>
+        </PhoneFilters>
         <PendingFocusChip focus={{ ...draftFocus, clear: endDraftFocus }} pendingKey="po_draft" />
         <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาเลขที่ / ไซท์งาน / Supplier..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       <div className="card">
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead>
               <tr>
@@ -1347,7 +1365,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {deleteId && (

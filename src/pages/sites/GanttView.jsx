@@ -16,6 +16,7 @@ import { computeTimelineRange, positionPercent, barStyle, computeDependencyArrow
 import { groupSubtasksByParent, computeNodeStats, computeNodeDateRange, isLeaf, flattenVisibleRows, siblingWeightSum } from './subtaskCalc.js'
 import { summarizeTasks } from './phaseTasksCalc.js'
 import { getEffectiveTheme } from '../../lib/theme.js'
+import LandscapeView from '../../components/LandscapeView.jsx'
 
 const ROW_H = 34
 const EDIT_H = 320
@@ -451,7 +452,8 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
           <div className="kpi-card green"><div className="kpi-label">เสร็จแล้ว</div><div className="kpi-value" style={{ color: 'var(--green)' }}>{doneCount}</div></div>
         </div>
 
-        <div className="card" style={{ padding: 16 }}>
+        <LandscapeView title={`Gantt · ${sites[0]?.site_number || sites[0]?.name || ''}`}>
+        <div className="card" style={{ padding: 16 }} data-phone="gantt-card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <div className="card-title">ไทม์ไลน์เฟสงาน</div>
             {canEdit && !editingId && (
@@ -459,7 +461,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
             )}
           </div>
           {viewRange && (
-            <div style={{ position: 'relative', height: 40, marginLeft: trackLeft, marginRight: trackRight }}>
+            <div data-phone="gantt-ticks" style={{ position: 'relative', height: 40, marginLeft: trackLeft, marginRight: trackRight }}>
               {monthTicks.filter((t) => t.x <= 90).map((t, i) => (
                 <div key={`m${i}`} style={{ position: 'absolute', top: 0, left: `${t.x}%`, fontSize: 11, fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap', paddingLeft: 3, borderLeft: t.pinned ? 'none' : '1px solid var(--border)', lineHeight: '16px' }}>
                   {format(toLocalDay(t.date), 'MMM yy', { locale: th })}
@@ -478,6 +480,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
             </div>
           )}
           <div
+            data-phone="gantt-wide"
             style={{ position: 'relative', height: bodyHeight }}
             onMouseMove={(e) => {
               if (!viewRange) return
@@ -629,7 +632,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
 
               return (
                 <div key={node.id} style={{ position: 'absolute', top, left: 0, right: 0, height: ROW_H, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ width: LABEL_W, flexShrink: 0, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: depth * 16 }} title={node.name}>
+                  <div data-phone="gantt-name" style={{ width: LABEL_W, flexShrink: 0, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: depth * 16 }} title={node.name}>
                     {node.name}
                     {dateRangeStr && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 400, color: 'var(--text3)' }}>{dateRangeStr}</span>}
                   </div>
@@ -735,6 +738,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
             <span><span className="dot" style={{ width: 8, height: 8, borderRadius: '50%', display: 'inline-block', marginRight: 5, background: 'var(--text3)' }} />ยังไม่เริ่ม</span>
           </div>
         </div>
+        </LandscapeView>
 
         {confirmDeleteId && (
           <ConfirmDialog

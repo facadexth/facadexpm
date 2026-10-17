@@ -19,6 +19,9 @@ import { useDraftForm } from '../hooks/useDraftForm.js'
 import { fileToExtractionPayload } from '../lib/poDocumentExtraction.js'
 import { isTaxId13, isBranch5, pickPeakFields } from '../lib/peakFields.js'
 import { supplierModePayload } from '../lib/deliveryTaxInvoice.js'
+import CardTable from '../components/CardTable.jsx'
+import MoreActions from '../components/MoreActions.jsx'
+const SUPPLIER_MAP = { title: 'ชื่อ Supplier / บริษัท', sub: ['รหัส Supplier', 'ผู้ติดต่อ'], actions: 'last' }
 
 const SUPPLIER_TYPES = [
   'อลูมิเนียม', 'เหล็ก', 'อุปกรณ์', 'กระจก',
@@ -417,8 +420,10 @@ export default function Suppliers() {
       {toast && <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ {toast}</div>}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => { setEditItem(null); setShowForm(true) }}>+ เพิ่ม Supplier</button>}
+        <MoreActions>
         {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
         <a className="btn btn-ghost" href="/templates/TEMPLATE_Supplier.xlsx" download>📄 Template</a>
+        </MoreActions>
         <input className="input input-sm" style={{ width: 200 }}
           placeholder="ค้นหาชื่อ / รหัส..."
           value={search} onChange={e => setSearch(e.target.value)} />
@@ -439,7 +444,7 @@ export default function Suppliers() {
       )}
 
       <div className="card">
-        <div className="table-wrap">
+        <CardTable map={SUPPLIER_MAP}>
           <table>
             <thead>
               <tr>
@@ -492,7 +497,7 @@ export default function Suppliers() {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {showForm && (

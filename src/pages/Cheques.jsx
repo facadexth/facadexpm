@@ -21,6 +21,7 @@ import { usePendingFocus } from '../hooks/usePendingFocus.js'
 import PendingFocusChip from '../components/PendingFocusChip.jsx'
 import { isChequeAwaitingAction, parseChequeWindowDays } from '../lib/pendingRules.js'
 import { bangkokTodayIso } from '../lib/photoUpload.js'
+import CardTable from '../components/CardTable.jsx'
 
 const EMPTY_FORM = { cheque_no: '', bank: '', check_date: '', notes: '' }
 
@@ -236,7 +237,7 @@ export default function Cheques({ navState }) {
       </div>
 
       <div className="card">
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead>
               <tr>
@@ -304,7 +305,7 @@ export default function Cheques({ navState }) {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {showForm && (

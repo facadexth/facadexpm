@@ -12,7 +12,7 @@
 // ============================================================
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useMySignatureUrl, useMyWorkerName, useBankAccounts, useSiteDepositBalance, useQuotationDepositTaxOffset, getQuotationDepositTaxOffset, logDocumentPrint, useInvoiceDepositChoiceReady, useSiteReservedDeposit } from '../hooks/useSupabase.js'
+import { useInvoices, useQuotationItemUnits, useQuotations, useSites, useReceipts, useInvoicePhotos, useDocumentReceipt, useDocumentSigner, useBankAccounts, useSiteDepositBalance, useQuotationDepositTaxOffset, getQuotationDepositTaxOffset, logDocumentPrint, useInvoiceDepositChoiceReady, useSiteReservedDeposit } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { calcDepositDeduction, round2 } from '../lib/depositCalc.js'
@@ -33,6 +33,8 @@ import SignLinkModal from '../components/SignLinkModal.jsx'
 import RowActionsMenu from '../components/RowActionsMenu.jsx'
 import { usePaginatedDocument, PAGE_HEIGHT_PX, PAGE_WIDTH_PX, PAGE_PADDING_CSS, PAGE_PADDING_V_PX, TABLE_MARGIN_TOP_PX, ScaleToFit } from '../hooks/usePaginatedDocument.jsx'
 import { resolveDocumentStyle } from '../lib/documentStyle.js'
+import PhoneFilters from '../components/PhoneFilters.jsx'
+import CardTable from '../components/CardTable.jsx'
 
 const siteOpts = (sites) => (sites || []).map(s => ({
   value: s.id, label: `${s.site_number} · ${s.name}`, keywords: `${s.site_number} ${s.name}`,
@@ -734,9 +736,10 @@ function DocumentHeader({ tenant, tag, title, infoFields, clientName, clientAddr
 // paymentTerms/notes/bankAccount, and there are two independently-labeled
 // signatures (signatures[0]/[1] + mySignature/recipientSignature) instead
 // of a fixed "ผู้เสนอราคา"/"ผู้ยอมรับ (ลูกค้า)" pair.
-export function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct = 0, withholdingTaxAmount = 0, isWithholdingEstimate, depositDeductionPct = 0, depositDeductionAmount = 0, isDepositEstimate, depositBeforeVat = false, notesBlock, signatures, recipientSignature, onPageCountChange, extraRemeasureKey }) {
-  const mySignature = useMySignatureUrl()
-  const { data: myWorkerName } = useMyWorkerName()
+export function DocumentPaper({ elementId, tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, items, totalsLabel, totalsAmount, subtotal, vat, hasVat, withholdingTaxPct = 0, withholdingTaxAmount = 0, isWithholdingEstimate, depositDeductionPct = 0, depositDeductionAmount = 0, isDepositEstimate, depositBeforeVat = false, notesBlock, signatures, recipientSignature, onPageCountChange, extraRemeasureKey, signerEmail }) {
+  const signer = useDocumentSigner(signerEmail)
+  const mySignature = signer?.url ? { url: signer.url } : null
+  const myWorkerName = signer?.name || null
   const style = resolveDocumentStyle(tenant?.document_style)
   const headerProps = { tenant, tag, title, infoFields, clientName, clientAddress, clientTaxId, style }
   // Marker convention matches quotation_items: presence of a non-null
@@ -1232,7 +1235,7 @@ function InvoiceDocumentModal({ invoice, tenant, onClose }) {
         <div style={{ overflow: 'auto', margin: '0 -24px' }}>
           <ScaleToFit ref={scaleRef} width={PAGE_WIDTH_PX}>
             <DocumentPaper
-              elementId={elementId} tenant={tenant} title={docTitle} tag={printTag}
+              elementId={elementId} tenant={tenant} title={docTitle} tag={printTag} signerEmail={invoice.created_by ?? null}
               infoFields={[
                 { label: 'เลขที่เอกสาร', value: invoice.invoice_number },
                 { label: 'วันที่ออก', value: new Date(invoice.date).toLocaleDateString('th-TH') },
@@ -1353,7 +1356,7 @@ function ReceiptDocumentModal({ invoice, receipt, tenant, onClose }) {
         <div style={{ overflow: 'auto', margin: '0 -24px' }}>
           <ScaleToFit ref={scaleRef} width={PAGE_WIDTH_PX}>
             <DocumentPaper
-              elementId={elementId} tenant={tenant} title={variant.title} tag={printTag}
+              elementId={elementId} tenant={tenant} title={variant.title} tag={printTag} signerEmail={receipt.created_by ?? null}
               infoFields={[
                 { label: variant.numberLabel, value: receipt[variant.numberField] },
                 { label: 'วันที่', value: new Date(receipt.date).toLocaleDateString('th-TH') },
@@ -1547,7 +1550,8 @@ const PAGE_HEIGHT_MM = 270
 function WorkPhotosDocumentModal({ invoice, tenant, photos, urls, onClose }) {
   const elementId = `work-photos-doc-${invoice.id}`
   const client = invoice.quotations?.clients
-  const mySignature = useMySignatureUrl()
+  const signer = useDocumentSigner(invoice.created_by ?? null)
+  const mySignature = signer?.url ? { url: signer.url } : null
   const pages = []
   for (let i = 0; i < photos.length; i += PHOTOS_PER_PAGE) pages.push(photos.slice(i, i + PHOTOS_PER_PAGE))
   if (!pages.length) pages.push([])
@@ -2059,12 +2063,19 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
         {canEdit && <button className="btn btn-primary" onClick={() => setPickQuotation(true)}>+ สร้างใบแจ้งหนี้</button>}
         {canEdit && <button className="btn btn-ghost" onClick={() => setPickQuotationDeposit(true)}>+ สร้างใบมัดจำ</button>}
         <div style={{ flex: 1 }} />
+        <PhoneFilters title="ช่วงวันที่" count={dateFrom || dateTo ? 1 : 0}
+          summary={dateFrom || dateTo ? [{ label: `${dateFrom || '…'} – ${dateTo || '…'}`, onRemove: () => { setDateFrom(''); setDateTo('') } }] : []}
+          onClear={() => { setDateFrom(''); setDateTo('') }}>
         <input type="date" className="input input-sm" style={{ width: 140 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <span style={{ color: 'var(--text3)' }}>—</span>
         <input type="date" className="input input-sm" style={{ width: 140 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
+        </PhoneFilters>
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        <PhoneFilters count={(siteId ? 1 : 0) + (status ? 1 : 0)}
+          summary={[...(siteId ? [{ label: 'ไซท์งาน', onRemove: () => setSiteId('') }] : []), ...(status ? [{ label: INV_STATUS_LABELS[status] || 'สถานะ', onRemove: () => setStatus('') }] : [])]}
+          onClear={() => { setSiteId(''); setStatus('') }}>
         <div style={{ minWidth: 200 }}>
           <SearchableSelect value={siteId} onChange={setSiteId} placeholder="ทุกไซท์งาน" options={siteOpts(sites)} />
         </div>
@@ -2072,6 +2083,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
           <option value="">ทุกสถานะ</option>
           {INV_STATUSES.map(s => <option key={s} value={s}>{INV_STATUS_LABELS[s]}</option>)}
         </select>
+        </PhoneFilters>
         <input className="input input-sm" style={{ width: 180 }} placeholder="ค้นหาลูกค้า..." value={search} onChange={e => setSearch(e.target.value)} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={hideVoid} onChange={e => setHideVoid(e.target.checked)} />
@@ -2080,7 +2092,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
       </div>
 
       <div className="card">
-        <div className="table-wrap">
+        <CardTable>
           <table>
             <thead>
               <tr>
@@ -2142,7 +2154,7 @@ export default function Invoices({ navigateTo, navState, openSiteOverview }) {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {pickQuotation && (

@@ -20,6 +20,8 @@ import UpgradeModal from './components/UpgradeModal.jsx'
 import ManualModal from './components/ManualModal.jsx'
 import ChunkErrorBoundary from './components/ChunkErrorBoundary.jsx'
 import NotificationBell from './components/NotificationBell.jsx'
+import PhoneDrawer from './components/PhoneDrawer.jsx'
+import { useIsPhone } from './hooks/useIsPhone.js'
 import { usePendingCounts } from './hooks/usePendingCounts.js'
 import { visiblePendingItems, badgeByTab, badgeForTab, formatBadge, resolvePendingTab, parsePushHash } from './lib/pendingItems.js'
 import Login      from './pages/Login.jsx'
@@ -111,6 +113,8 @@ const TABS = [
 // flattens both shapes into one list of plain tabs, so lookups by id don't
 // need to know which shape produced them.
 // Hidden routes: reachable only via navigateTo(), never shown in the nav
+// Breadcrumb text for those routes on the phone shell (they are not in visibleTabs)
+const HIDDEN_TAB_LABELS = { site_detail: '🏗️ รายละเอียดไซท์งาน', starting_guide: '📖 คู่มือเริ่มต้น' }
 // bar (not in TABS), but still need a real gate here or renderPage's
 // ALL_TAB_ENTRIES.find(...) ?? ALL_TAB_ENTRIES[0] fallback would silently
 // grant them Dashboard's (WORKER-level) gate instead of their own.
@@ -317,6 +321,9 @@ export default function App() {
   // "ไม่ตอนนี้" button downgrades to Free. Re-shown from TrialBanner too.
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [showManual, setShowManual] = useState(false)
+  // Phone shell (mobile-view spec §3): drawer menu + breadcrumb replace the header strip and nav ONLY at <= 900px.
+  const isPhone = useIsPhone()
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const trialJustEnded = !!tenant && !isTrialActive && tenant.plan !== 'active'
   useEffect(() => { if (trialJustEnded) setShowUpgradeModal(true) }, [trialJustEnded])
 
@@ -482,6 +489,11 @@ export default function App() {
   // Things waiting for action, limited to pages this user can actually open.
   const pendingItems = visiblePendingItems(pendingCounts, canSeeTab)
   const pendingByTab = badgeByTab(pendingItems)
+  // Phone only: where the user is (for the breadcrumb) and the one nav handler the drawer calls.
+  const activeEntry = isPhone
+    ? visibleTabs.flatMap(t => t.children ? t.children.map(c => ({ group: t.label, first: t.children[0], tab: c })) : [{ group: null, tab: t }]).find(e => e.tab.id === activeTab)
+    : null
+  const phoneNavTo = tab => { sessionStorage.removeItem('chunk-reload-attempted'); setNavState({}); setActiveTab(tab.id) }
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -490,6 +502,14 @@ export default function App() {
         onChoosePackage={() => setShowUpgradeModal(true)} />
       {/* ── Header ── */}
       <StickyChrome>
+      {isPhone ? (
+        <header className="phone-header">
+          <button type="button" className="phone-iconbtn" aria-label="เมนู" onClick={() => setDrawerOpen(true)}>☰</button>
+          {tenant?.logo_url ? <img src={tenant.logo_url} alt="" className="phone-logo" /> : null}
+          <span className="phone-title">{tenant?.company_name || 'CHANG'}</span>
+          <NotificationBell items={pendingItems} onRefresh={refetchPending} onOpenItem={item => navigateTo(item.tab, { pending: item.key, pendingCount: item.count })} />
+        </header>
+      ) : (
       <header style={{
         background: 'var(--bg2)', borderBottom: '1px solid var(--border)',
         padding: '0 24px', minHeight: 56, display: 'flex',
@@ -539,8 +559,21 @@ export default function App() {
           </button>
         </div>
       </header>
+      )}
 
       {/* ── Tab Bar ── */}
+      {isPhone ? (
+        <div className="phone-crumb">
+          {activeEntry?.group
+            ? <>
+                {/* tap the group = its first page (e.g. จ่ายงานช่าง → ไซท์งาน › ภาพรวม) */}
+                {activeEntry.first && activeEntry.first.id !== activeEntry.tab.id
+                  ? <button type="button" className="phone-crumb-group" onClick={() => phoneNavTo(activeEntry.first)}>{activeEntry.group}</button>
+                  : activeEntry.group} › <b>{activeEntry.tab.label}</b>
+              </>
+            : <b>{activeEntry?.tab.label || HIDDEN_TAB_LABELS[activeTab] || ''}</b>}
+        </div>
+      ) : (
       <nav style={{
         background: 'var(--bg2)', borderBottom: '1px solid var(--border)',
         padding: '0 20px', display: 'flex', gap: 2, overflowX: 'auto'
@@ -569,7 +602,17 @@ export default function App() {
           </button>
         ))}
       </nav>
+      )}
       </StickyChrome>
+      {isPhone && (
+        <PhoneDrawer
+          open={drawerOpen} onClose={() => setDrawerOpen(false)}
+          tabs={visibleTabs} activeTab={activeTab} byTab={pendingByTab} badgeForGroup={tab => badgeForTab(tab, pendingByTab)}
+          onNavigate={phoneNavTo} onManual={() => setShowManual(true)}
+          onTheme={() => setTheme(toggleTheme())} theme={theme} onLogout={() => supabase.auth.signOut()}
+          email={session.user.email} role={role} companyName={tenant?.company_name || ''}
+        />
+      )}
 
       {/* ── Page Content ── */}
       <main className="app-main" style={{ flex: 1, padding: '20px 24px', maxWidth: 1440, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>

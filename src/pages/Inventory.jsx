@@ -20,6 +20,15 @@ import { useDraftForm } from '../hooks/useDraftForm.js'
 import SearchableSelect from '../components/SearchableSelect.jsx'
 import QuickAddSelect from '../components/QuickAddSelect.jsx'
 import ExcelUpload from '../components/ExcelUpload.jsx'
+import CardTable from '../components/CardTable.jsx'
+import MoreActions from '../components/MoreActions.jsx'
+import PhoneFilters from '../components/PhoneFilters.jsx'
+const INV_EVENT_MAP = { title: 'รายการ', amount: 'มูลค่า', sub: ['รหัส', 'เลขที่ใบแจ้งหนี้'], actions: 'last' }
+const INV_RMSUM_MAP = { title: 'รายการ', amount: 'มูลค่าที่ตัด', sub: ['รหัส'] }
+const INV_LEDGER_MAP = { title: 0, amount: 8, sub: [1, 2] } // column indexes: header labels are long and some repeat
+const INV_ITEMS_MAP = { title: 'ชื่อ', amount: 'มูลค่ารวม', status: 'สถานะ', sub: ['รหัส', 'หมวดหมู่'], actions: 'last' }
+const INV_MOVES_MAP = { title: 'สินค้า', amount: 'มูลค่ารวม', sub: ['วันที่', 'ประเภท'] }
+const INV_WH_MAP = { title: 'คลัง', amount: 'มูลค่า' }
 
 const EMPTY_ITEM_FORM = { code: '', name: '', base_unit: '', unit_conversion_mode: 'plain', reference_area_sqm: '', category_id: '', active: true }
 const EMPTY_FACTOR_FORM = { unit_name: '', factor_to_base: '1' }
@@ -845,7 +854,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+      <div data-phone="chips" style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         {TAX_REPORT_KINDS.map(k => (
           <button key={k.key} className={`btn btn-sm ${reportKind === k.key ? 'btn-primary' : 'btn-ghost'}`} onClick={() => switchReportKind(k.key)}>{k.label}</button>
         ))}
@@ -881,7 +890,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
             <input className="input input-sm" style={{ minWidth: 280 }} placeholder="ค้นหารหัส / รายการ / เลขที่ใบแจ้งหนี้..."
               value={fgSearch} onChange={e => setFgSearch(e.target.value)} />
           </div>
-          <div className="table-wrap">
+          <CardTable map={INV_EVENT_MAP}>
             <table>
               <thead>
                 <tr>
@@ -907,7 +916,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
                 {!sortedFgEvents.length && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีรายการตัดสต็อกสินค้าสำเร็จรูปในช่วงเวลาที่เลือก</td></tr>}
               </tbody>
             </table>
-          </div>
+          </CardTable>
         </>
       ) : showRmList ? (
         <>
@@ -915,7 +924,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
             <input className="input input-sm" style={{ minWidth: 280 }} placeholder="ค้นหารหัส / รายการ / เลขที่ใบแจ้งหนี้..."
               value={rmSearch} onChange={e => setRmSearch(e.target.value)} />
           </div>
-          <div className="table-wrap">
+          <CardTable map={INV_EVENT_MAP}>
             <table>
               <thead>
                 <tr>
@@ -941,7 +950,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
                 {!sortedRmEvents.length && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีรายการตัดสต็อกในช่วงเวลาที่เลือก</td></tr>}
               </tbody>
             </table>
-          </div>
+          </CardTable>
         </>
       ) : reportKind === 'raw_material' ? (
         <>
@@ -950,7 +959,7 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
             ซ่อนรายละเอียด (ยอดยกมา/รับเข้า/จำหน่ายออก/คงเหลือ)
           </label>
           {rmHideDetail ? (
-            <div className="table-wrap">
+            <CardTable map={INV_RMSUM_MAP}>
               <table>
                 <thead>
                   <tr><th>รหัส</th><th>รายการ</th><th>หน่วย</th><th>จำนวนที่ตัด</th><th>มูลค่าที่ตัด</th></tr>
@@ -968,23 +977,23 @@ function TaxReportsView({ categories, pos, invoiceNumbers, sites }) {
                   {!rmInvoiceSummary.length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ไม่มีรายการตัดวัตถุดิบสำหรับใบแจ้งหนี้นี้</td></tr>}
                 </tbody>
               </table>
-            </div>
+            </CardTable>
           ) : (
-            <div className="table-wrap">
+            <CardTable map={INV_LEDGER_MAP}>
               <table>
                 {ledgerThead}
                 <tbody>{renderLedgerRows(displayRows, { interactive: true, onItemClick: jumpToItemDetail })}</tbody>
               </table>
-            </div>
+            </CardTable>
           )}
         </>
       ) : (
-        <div className="table-wrap">
+        <CardTable map={INV_LEDGER_MAP}>
           <table>
             {ledgerThead}
             <tbody>{renderLedgerRows(displayRows, { interactive: true })}</tbody>
           </table>
-        </div>
+        </CardTable>
       )}
 
       {/* Always-present print document -- hidden on screen (.print-only),
@@ -1311,7 +1320,7 @@ export default function Inventory() {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <div data-phone="chips" style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button className={`btn btn-sm ${view === 'items' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('items')}>📦 รายการสินค้าคงคลัง</button>
         <button className={`btn btn-sm ${view === 'invoice_deduction' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('invoice_deduction')}>🧾 ตัดสต็อกจากใบแจ้งหนี้</button>
         <button className={`btn btn-sm ${view === 'movements' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('movements')}>📜 ประวัติการเคลื่อนไหว</button>
@@ -1321,9 +1330,11 @@ export default function Inventory() {
       {view === 'items' && (
         <>
           {canEdit && <button className="btn btn-primary" style={{ marginBottom: 14 }} onClick={() => { setEditItem(null); setShowForm(true) }}>+ เพิ่มสินค้าคงคลัง</button>}
+          <MoreActions>
           {canEdit && <button className="btn btn-ghost" style={{ marginBottom: 14, marginLeft: 8 }} onClick={() => setShowImportItems(v => !v)}>📥 Import Excel</button>}
           <a className="btn btn-ghost" style={{ marginBottom: 14, marginLeft: 8 }} href="/templates/TEMPLATE_รายการสินค้าคงคลัง.xlsx" download>📄 Template</a>
           <button className="btn btn-ghost" style={{ marginBottom: 14, marginLeft: 8 }} onClick={exportItems}>📤 Export Excel</button>
+          </MoreActions>
           {showImportItems && (
             <div style={{ marginBottom: 14 }}>
               <ExcelUpload type="inventory_item" onSuccess={() => { setShowImportItems(false); refetchItems() }} />
@@ -1344,7 +1355,7 @@ export default function Inventory() {
           </div>
           <div className="card">
             <div style={{ padding: '12px 16px', fontWeight: 700 }}>มูลค่าสต็อกรวม: <span className="font-mono" style={{ color: 'var(--accent)' }}>{fmt(totalValue)}</span> บาท</div>
-            <div className="table-wrap">
+            <CardTable map={INV_ITEMS_MAP}>
               <table>
                 <thead><tr>
                   <th className="sortable" onClick={() => itemToggleSort('code')}>รหัส{itemSi('code')}</th>
@@ -1369,7 +1380,7 @@ export default function Inventory() {
                   {!tableRows.length && <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีสินค้าคงคลัง</td></tr>}
                 </tbody>
               </table>
-            </div>
+            </CardTable>
           </div>
         </>
       )}
@@ -1408,6 +1419,14 @@ export default function Inventory() {
       {view === 'movements' && (
         <>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+            <PhoneFilters count={[movementItemFilter, movementSiteFilter, movementTypeFilter, movementDateFrom, movementDateTo].filter(Boolean).length}
+              summary={[
+                ...(movementItemFilter ? [{ label: 'สินค้า', onRemove: () => setMovementItemFilter('') }] : []),
+                ...(movementSiteFilter ? [{ label: 'คลัง', onRemove: () => setMovementSiteFilter('') }] : []),
+                ...(movementTypeFilter ? [{ label: MOVEMENT_TYPE_LABELS[movementTypeFilter] || 'ประเภท', onRemove: () => setMovementTypeFilter('') }] : []),
+                ...((movementDateFrom || movementDateTo) ? [{ label: 'ช่วงวันที่', onRemove: () => { setMovementDateFrom(''); setMovementDateTo('') } }] : []),
+              ]}
+              onClear={() => { setMovementItemFilter(''); setMovementSiteFilter(''); setMovementTypeFilter(''); setMovementDateFrom(''); setMovementDateTo('') }}>
             <div style={{ minWidth: 220 }}>
               <SearchableSelect value={movementItemFilter} onChange={setMovementItemFilter} placeholder="ทุกรายการสินค้า" options={itemOpts} />
             </div>
@@ -1423,6 +1442,7 @@ export default function Inventory() {
             <input type="date" className="input" style={{ width: 'auto' }} value={movementDateFrom} onChange={e => setMovementDateFrom(e.target.value)} />
             <span style={{ color: 'var(--text3)' }}>ถึง</span>
             <input type="date" className="input" style={{ width: 'auto' }} value={movementDateTo} onChange={e => setMovementDateTo(e.target.value)} />
+            </PhoneFilters>
             <button className="btn btn-sm" onClick={exportMovements} disabled={!(movements || []).length}>📊 Export Excel</button>
           </div>
           {movementRefFilter && (
@@ -1434,7 +1454,7 @@ export default function Inventory() {
             </div>
           )}
           <div className="card">
-            <div className="table-wrap">
+            <CardTable map={INV_MOVES_MAP}>
               <table>
                 <thead><tr>
                   <th className="sortable" onClick={() => movementToggleSort('created_at')}>วันที่{movementSi('created_at')}</th>
@@ -1477,7 +1497,7 @@ export default function Inventory() {
                   {!sortedMovements.length && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีประวัติ</td></tr>}
                 </tbody>
               </table>
-            </div>
+            </CardTable>
           </div>
         </>
       )}
@@ -1504,7 +1524,7 @@ export default function Inventory() {
         return (
           <Modal title={`คลังของ ${warehousePopup.item.name}`} onClose={() => setWarehousePopup(null)} maxWidth={480}>
             <div className="modal-body">
-              <div className="table-wrap">
+              <CardTable map={INV_WH_MAP}>
                 <table>
                   <thead><tr><th>คลัง</th><th>ปริมาณ</th><th>ราคา/หน่วย</th><th>มูลค่า</th></tr></thead>
                   <tbody>
@@ -1526,7 +1546,7 @@ export default function Inventory() {
                     </tr>
                   </tfoot>
                 </table>
-              </div>
+              </CardTable>
             </div>
             <div className="modal-footer">
               <button className="btn btn-primary" onClick={() => setWarehousePopup(null)}>ปิด</button>

@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
+import './mobile.css'   // phone-only rules (<= 900px); see src/mobile.css.test.js
 import { installInputGuards } from './lib/inputGuards.js'
 
 // Enter never submits a form (except data-enter-submit forms); wheel never
