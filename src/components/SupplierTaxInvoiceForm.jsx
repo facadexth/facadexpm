@@ -27,6 +27,8 @@ import SearchableSelect from './SearchableSelect.jsx'
 import QuickAddSelect from './QuickAddSelect.jsx'
 import ScanNotice from './ScanNotice.jsx'
 import ScanDocPreview from './ScanDocPreview.jsx'
+import CardTable from './CardTable.jsx'
+const LINES_MAP = { title: 'รายละเอียด', amount: 'จำนวนเงิน', sub: [], actions: 'last' }
 
 const amber = { background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.5)', borderRadius: 8, padding: 10, fontSize: 13 }
 const badge = (color, bg) => ({ fontSize: 11, padding: '1px 6px', borderRadius: 6, color, background: bg, marginLeft: 6, whiteSpace: 'nowrap' })
@@ -395,7 +397,7 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
           )}
 
           <div>
-            <div className="table-wrap">
+            <CardTable map={LINES_MAP}>
               <table>
                 <thead>
                   <tr>
@@ -459,7 +461,7 @@ export default function SupplierTaxInvoiceForm({ initial, invoiceId, busy, onSav
                   })}
                 </tbody>
               </table>
-            </div>
+            </CardTable>
             <button type="button" className="btn btn-sm btn-ghost" style={{ marginTop: 6 }}
               onClick={() => setForm(f => ({ ...f, lines: [...f.lines, emptyLine()] }))}>+ เพิ่มรายการ</button>
             <div style={{ marginTop: 6, fontSize: 13, color: match.invalid || match.linesOk ? 'inherit' : 'var(--danger, #e55)' }}>

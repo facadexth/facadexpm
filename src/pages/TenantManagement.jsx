@@ -12,6 +12,9 @@ import { usePlatformTenants, usePackages, useTenantStatusLog } from '../hooks/us
 import { Modal } from '../components/Modal.jsx'
 import { fmt, fmtDate } from '../lib/supabase.js'
 import changelog from '../changelog.json'
+import CardTable from '../components/CardTable.jsx'
+const PACKAGE_MAP = { title: 'Package', amount: 'ราคา', sub: [], actions: 'last' }
+const TENANT_MAP = { title: 'บริษัท', status: 'สถานะ', sub: ['หมดอายุ'], actions: 'last' }
 
 const packagePriceLabel = (p) =>
   p.price_monthly == null ? 'Custom' : p.price_monthly === 0 ? 'ฟรี' : `${fmt(p.price_monthly, 0)}/ด.`
@@ -252,7 +255,7 @@ export default function TenantManagement() {
         เปลี่ยน package จะปรับ module ที่เปิดใช้งานให้ตรงกับ package นั้นทันที (เพิ่ม module ที่ขาด ปิด module ที่ไม่อยู่ใน package ใหม่)
       </p>
       <div className="card">
-        <div className="table-wrap">
+        <CardTable map={TENANT_MAP}>
           <table>
             <thead>
               <tr>
@@ -290,7 +293,7 @@ export default function TenantManagement() {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {statusTenant && (
@@ -317,7 +320,7 @@ export default function TenantManagement() {
         บังคับจริงที่ระดับฐานข้อมูล เปลี่ยนที่นี่มีผลทันทีกับทุก tenant ใน package นั้น
       </p>
       <div className="card">
-        <div className="table-wrap">
+        <CardTable map={PACKAGE_MAP}>
           <table>
             <thead>
               <tr>
@@ -353,7 +356,7 @@ export default function TenantManagement() {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {quotaPkg && (

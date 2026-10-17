@@ -24,6 +24,14 @@ import { SITE_TYPES } from './assign/constants.js'
 import { downloadPDF } from '../lib/pdf.js'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import AttendanceGrid from './hr/AttendanceGrid.jsx'
+import CardTable from '../components/CardTable.jsx'
+import MoreActions from '../components/MoreActions.jsx'
+const HR_AUDIT_MAP = { title: 'ผู้ใช้', sub: ['เวลา'] }
+const HR_CHECKIN_MAP = { title: 'ช่าง', sub: ['ไซต์/ตำแหน่ง', 'วันที่'] }
+const HR_HOLIDAY_MAP = { title: 'ชื่อวันหยุด', sub: ['วันที่'], actions: 'last' }
+const HR_LEAVE_MAP = { title: 'ช่าง', status: 'สถานะ', sub: ['ประเภท', 'วันที่'], actions: 'last' }
+const HR_SALARY_MAP = { title: 'พนักงาน', amount: 'จ่ายสุทธิ', sub: ['วันจ่าย'], actions: 'last' }
+const HR_WORKERS_MAP = { title: 'ชื่อ', amount: 'เงินเดือน', status: 'สถานะ', sub: ['ชื่อเล่น', 'ตำแหน่ง'], actions: 'last' }
 
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
@@ -918,7 +926,7 @@ export default function HR({ navState }) {
   return (
     <div>
       {/* Inner tab bar */}
-      <div className="inner-tabs" style={{ marginBottom: 20 }}>
+      <div className="inner-tabs" data-phone="chips" style={{ marginBottom: 20 }}>
         {INNER_TABS.map(t => (
           <button key={t.id} className={`inner-tab ${innerTab === t.id ? 'active' : ''}`}
             onClick={() => setInnerTab(t.id)}>{t.label}</button>
@@ -935,7 +943,7 @@ export default function HR({ navState }) {
             <input className="input input-sm" style={{ width: 200 }} placeholder="ค้นหาชื่อช่าง..." value={workerSearch} onChange={e => setWorkerSearch(e.target.value)} />
           </div>
           <div className="card">
-            <div className="table-wrap">
+            <CardTable map={HR_WORKERS_MAP}>
               <table>
                 <thead>
                   <tr>
@@ -989,7 +997,7 @@ export default function HR({ navState }) {
                   )}
                 </tbody>
               </table>
-            </div>
+            </CardTable>
           </div>
 
           {canEdit && (
@@ -1027,7 +1035,7 @@ export default function HR({ navState }) {
               </div>
             )}
             <div className="card">
-              <div className="table-wrap">
+              <CardTable map={HR_HOLIDAY_MAP}>
                 <table>
                   <thead><tr>
                     <th className="sortable" onClick={() => toggleHolidaySort('date')}>วันที่{hsi('date')}</th>
@@ -1049,7 +1057,7 @@ export default function HR({ navState }) {
                     )}
                   </tbody>
                 </table>
-              </div>
+              </CardTable>
             </div>
           </div>
         </div>
@@ -1069,6 +1077,7 @@ export default function HR({ navState }) {
                   <button className="btn btn-ghost" onClick={handleCalcFromAssign} disabled={calcLoading}>
                     {calcLoading ? '⏳...' : '🔄 คำนวณจาก Assign'}
                   </button>
+                  <MoreActions>
                   <button className="btn btn-ghost" onClick={handleCopyPrevMonth} title="คัดลอกพนักงาน+ค่าแรงจากเดือนก่อน (OT และวันลาจะถูกรีเซ็ต)">
                     📋 ใช้ข้อมูลเดือนที่แล้ว
                   </button>
@@ -1077,6 +1086,7 @@ export default function HR({ navState }) {
                       🗑️ Clear
                     </button>
                   )}
+                  </MoreActions>
                 </>
               )}
               <div style={{ flex: 1 }} />
@@ -1096,7 +1106,7 @@ export default function HR({ navState }) {
             </div>
           </div>
           <div className="card">
-            <div className="table-wrap table-wrap-fill">
+            <CardTable map={HR_SALARY_MAP} className="table-wrap table-wrap-fill">
               <table>
                 <thead>
                   <tr>
@@ -1161,7 +1171,7 @@ export default function HR({ navState }) {
                   </tfoot>
                 )}
               </table>
-            </div>
+            </CardTable>
           </div>
         </div>
       )}
@@ -1178,7 +1188,7 @@ export default function HR({ navState }) {
                   <span>🏖️ คำขอลา</span>
                   <PendingFocusChip focus={leaveFocus} pendingKey="leave_pending" />
                 </div>
-                <div className="table-wrap">
+                <CardTable map={HR_LEAVE_MAP}>
                   <table>
                     <thead>
                       <tr>
@@ -1219,7 +1229,7 @@ export default function HR({ navState }) {
                       )}
                     </tbody>
                   </table>
-                </div>
+                </CardTable>
               </div>
             </>
           )}
@@ -1247,7 +1257,7 @@ export default function HR({ navState }) {
             <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
           ) : (
             <div className="card">
-              <div className="table-wrap">
+              <CardTable map={HR_CHECKIN_MAP}>
                 <table>
                   <thead>
                     <tr>
@@ -1277,7 +1287,7 @@ export default function HR({ navState }) {
                     )}
                   </tbody>
                 </table>
-              </div>
+              </CardTable>
             </div>
           )}
         </div>
@@ -1296,7 +1306,7 @@ export default function HR({ navState }) {
             <span style={{ color: 'var(--text3)', fontSize: 12 }}>{(logs||[]).length} รายการล่าสุด</span>
           </div>
           <div className="card">
-            <div className="table-wrap table-wrap-fill">
+            <CardTable map={HR_AUDIT_MAP} className="table-wrap table-wrap-fill">
               <table>
                 <thead>
                   <tr>
@@ -1331,7 +1341,7 @@ export default function HR({ navState }) {
                   )}
                 </tbody>
               </table>
-            </div>
+            </CardTable>
           </div>
         </div>
       )}

@@ -7,6 +7,8 @@ import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useSeatStatus, useCheckinLocations } from '../hooks/useSupabase.js'
 import { linkHint, linkHintMessage } from '../lib/userLinkHint.js'
 import { friendlyUserError } from '../lib/userErrors.js'
+import CardTable from '../components/CardTable.jsx'
+const USER_MAP = { title: 'ชื่อ', status: 'Role', sub: ['Email', 'เพิ่มเมื่อ'], actions: 'last' }
 
 const ROLES = ['OWNER', 'ADMIN', 'WORKER']
 // WORKER stays a valid role in the database (lowest access, and the default for
@@ -212,7 +214,7 @@ export default function UserManagement() {
         </div>
       ) : (
         <div className="card">
-          <div className="table-wrap">
+          <CardTable map={USER_MAP}>
             <table>
               <thead>
                 <tr>
@@ -278,7 +280,7 @@ export default function UserManagement() {
                 )}
               </tbody>
             </table>
-          </div>
+          </CardTable>
         </div>
       )}
 

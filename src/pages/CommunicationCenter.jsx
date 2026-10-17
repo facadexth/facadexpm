@@ -23,6 +23,11 @@ import {
 import { PLATFORM_BOT_BASIC_ID, platformBotLabel } from '../lib/platformLineBot.js'
 import PendingMark from '../components/PendingMark.jsx'
 import { isIssueOpen } from '../lib/pendingRules.js'
+import CardTable from '../components/CardTable.jsx'
+const CC_COMMAND_MAP = { title: 'พิมพ์', sub: ['ทำอะไร'], actions: 'last' }
+const CC_ISSUE_MAP = { title: 'พนักงาน', status: 'สถานะ', sub: ['ไซต์งาน', 'วันที่แจ้ง'], actions: 'last' }
+const CC_UNLINKED_MAP = { title: 'LINE User ID', sub: ['พบครั้งแรก'], actions: 'last' }
+const CC_WORKER_MAP = { title: 'ชื่อ', status: 'สถานะการเชื่อมต่อ', sub: ['ตำแหน่ง'], actions: 'last' }
 
 const SCHEDULE_COMMAND_DESCRIPTIONS = {
   today_job: 'แชทส่วนตัว: งานของตัวเอง + ปุ่มลัดตามสถานะ (เช็คอิน/เช็คเอาท์/งานเสร็จ) · กลุ่ม: งานของทั้งทีมวันนี้ แบ่งตามไซต์',
@@ -509,7 +514,7 @@ export default function CommunicationCenter({ navState }) {
         <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text3)', borderBottom: '1px solid var(--border)' }}>
           เปิด/ปิดได้ทุกคำสั่ง แยกอิสระระหว่างแชทส่วนตัว (DM) กับกลุ่มไลน์ — คำสั่งดูตารางงาน 4 อันแรกเปลี่ยนคำที่ใช้พิมพ์ได้ด้วย (ใส่ได้หลายคำ คั่นด้วยจุลภาค ",") ที่เหลือกำหนดคำไว้ในระบบตายตัว แต่ปิดเปิดได้เหมือนกัน
         </div>
-        <div className="table-wrap">
+        <CardTable map={CC_COMMAND_MAP}>
           <table>
             <thead>
               <tr>
@@ -581,7 +586,7 @@ export default function CommunicationCenter({ navState }) {
               </tr>
             </tbody>
           </table>
-        </div>
+        </CardTable>
         <div style={{ padding: '10px 16px', fontSize: 11.5, color: 'var(--text3)', borderTop: '1px solid var(--border)' }}>
           "แชทส่วนตัว" ต้องเชื่อมบัญชีก่อนด้วยรหัส 6 หลัก · "กลุ่มทีมงาน" ต้องเป็นกลุ่มที่ตั้งไว้ด้านล่าง (การ์ด "การเชื่อมต่อ LINE Official Account") ยกเว้นคำสั่งดูตารางงาน 4 อันแรกที่ใครในกลุ่มก็ถามได้เลยเพราะเป็นแค่การดูข้อมูล — คำสั่งไหน "ปิด" อยู่แล้วมีคนพิมพ์ บอทจะตอบกลับว่าฟีเจอร์นี้ปิดอยู่ ให้ติดต่อแอดมินโดยตรง (ไม่เงียบเฉยแบบเดิม)
         </div>
@@ -729,7 +734,7 @@ export default function CommunicationCenter({ navState }) {
         {loadingWorkers ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>กำลังโหลด...</div>
         ) : (
-          <div className="table-wrap">
+          <CardTable map={CC_WORKER_MAP}>
             <table>
               <thead>
                 <tr>
@@ -765,7 +770,7 @@ export default function CommunicationCenter({ navState }) {
                 )}
               </tbody>
             </table>
-          </div>
+          </CardTable>
         )}
       </div>
 
@@ -779,7 +784,7 @@ export default function CommunicationCenter({ navState }) {
         ) : !unlinkedSenders.length ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>ไม่มีรายการ — ทุกคนที่ทักในกลุ่มทีมงานถูกจดจำแล้ว</div>
         ) : (
-          <div className="table-wrap">
+          <CardTable map={CC_UNLINKED_MAP}>
             <table>
               <thead>
                 <tr>
@@ -810,7 +815,7 @@ export default function CommunicationCenter({ navState }) {
                 ))}
               </tbody>
             </table>
-          </div>
+          </CardTable>
         )}
       </div>
 
@@ -825,7 +830,7 @@ export default function CommunicationCenter({ navState }) {
         ) : !visibleIssueReports.length ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>ไม่มีรายการ — ยังไม่มีการแจ้งปัญหาเข้ามา</div>
         ) : (
-          <div className="table-wrap">
+          <CardTable map={CC_ISSUE_MAP}>
             <table>
               <thead>
                 <tr>
@@ -854,7 +859,7 @@ export default function CommunicationCenter({ navState }) {
                 ))}
               </tbody>
             </table>
-          </div>
+          </CardTable>
         )}
       </div>
 

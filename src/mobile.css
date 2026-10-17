@@ -45,6 +45,10 @@
   .card-table td[data-role="hide"] { display: none; }
   .card-table td[data-role="status"] { grid-column: 1; margin-top: 6px; }
   .card-table td[data-role="actions"] { grid-column: 2; justify-self: end; margin-top: 6px; white-space: nowrap; }
+  .card-table td[data-role="actions"]:has(.btn + .btn + .btn) { grid-column: 1 / -1; justify-self: stretch; white-space: normal; text-align: right; }
+  .card-table td[data-role] { min-width: 0 !important; }
+  .card-table td[data-role="row"] input.input, .card-table td[data-role="row"] select { width: 100% !important; min-width: 0 !important; }
+  .card-table td[data-role="title"] input.input { width: 100% !important; }
   .card-table td[data-empty="true"] { grid-column: 1 / -1; text-align: center; color: var(--text3); padding: 10px 0; }
 
   /* ---- toolbars: PhoneFilters sheet, MoreActions menu, chip rows ---- */

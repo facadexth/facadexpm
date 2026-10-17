@@ -14,6 +14,9 @@ import DbdLookup from '../components/DbdLookup.jsx'
 import { isValidThaiId13 } from '../lib/dbdCompanyParse.js'
 import ExcelUpload from '../components/ExcelUpload.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
+import CardTable from '../components/CardTable.jsx'
+import MoreActions from '../components/MoreActions.jsx'
+const CLIENT_MAP = { title: 'ชื่อลูกค้า / บริษัท', status: 'ประเภท', sub: ['รหัสลูกค้า', 'ชื่อผู้ติดต่อ / ตำแหน่ง'], actions: 'last' }
 
 const CLIENT_TYPES = ['DEVELOPER', 'ENDUSER', 'ผู้รับเหมา']
 
@@ -182,8 +185,10 @@ export default function Clients() {
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         {canEdit && <button className="btn btn-primary" onClick={() => { setEditItem(null); setShowForm(true) }}>+ เพิ่มลูกค้า</button>}
+        <MoreActions>
         {canEdit && <button className="btn btn-ghost" onClick={() => setShowImport(v => !v)}>📥 Import Excel</button>}
         <a className="btn btn-ghost" href="/templates/TEMPLATE_ลูกค้า.xlsx" download>📄 Template</a>
+        </MoreActions>
         <input className="input input-sm" style={{ width: 220 }}
           placeholder="ค้นหาชื่อ / รหัส / ผู้ติดต่อ..."
           value={search} onChange={e => setSearch(e.target.value)} />
@@ -204,7 +209,7 @@ export default function Clients() {
       )}
 
       <div className="card">
-        <div className="table-wrap">
+        <CardTable map={CLIENT_MAP}>
           <table>
             <thead>
               <tr>
@@ -254,7 +259,7 @@ export default function Clients() {
               )}
             </tbody>
           </table>
-        </div>
+        </CardTable>
       </div>
 
       {showForm && (

@@ -6,6 +6,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { fmt } from '../lib/supabase.js'
 import { CHECK_TEXT, checkLine, fmtQty, fmtWac } from '../lib/supplierTaxInvoice.js'
+import CardTable from './CardTable.jsx'
+const TAX_PREVIEW_MAP = { title: 'สินค้า', amount: 'คงเหลือหลัง', sub: ['ไซท์งาน'] }
 
 const num = v => (v == null || v === '' ? null : Number(v))
 const q = fmtQty
@@ -29,7 +31,7 @@ export default function TaxInvoicePreview({ preview, poNumberById }) {
           ))}
         </div>
       )}
-      <div className="table-wrap">
+      <CardTable map={TAX_PREVIEW_MAP}>
         <table>
           <thead>
             <tr>
@@ -61,7 +63,7 @@ export default function TaxInvoicePreview({ preview, poNumberById }) {
             {!rows.length && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)' }}>ไม่มีการเปลี่ยนแปลงสต็อก</td></tr>}
           </tbody>
         </table>
-      </div>
+      </CardTable>
       <div>
         มูลค่าสินค้าใบสั่งซื้อ {fmt(preview.po_sum)} · ต่าง {fmt(preview.diff)} (เกณฑ์ ±{fmt(preview.tolerance)})
       </div>

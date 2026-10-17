@@ -19,6 +19,8 @@ import DocumentTemplatePicker from '../components/DocumentTemplatePicker.jsx'
 import { useDocumentTemplates } from '../hooks/useDocumentTemplates.js'
 import { DOC_STYLE_PREVIEW_SAMPLE } from '../lib/documentPreviewSample.js'
 import { QuotationPaper } from './Quotations.jsx'
+import CardTable from '../components/CardTable.jsx'
+const LOCATION_MAP = { title: 'ชื่อตำแหน่ง', status: 'สถานะ', sub: ['พิกัด'], actions: 'last' }
 
 const VAT_CATEGORY_LABELS = { vat: 'บัญชี VAT', non_vat: 'บัญชีไม่มี VAT' }
 
@@ -720,7 +722,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 0, marginBottom: 8 }}>
             "โรงงาน" ใช้เทียบระยะสำหรับงานประเภท "โรงงาน" แทนไซท์ลูกค้า — "ออฟฟิศ" ให้แอดมิน/เจ้าของคนไหนก็เช็คอินได้โดยไม่ต้องตั้งผูกบัญชีทีละคน — เลือกได้อย่างละ 1 ตำแหน่งเท่านั้น (เลือกที่อื่นจะยกเลิกที่เดิมอัตโนมัติ)
           </p>
-          <div className="table-wrap">
+          <CardTable map={LOCATION_MAP}>
             <table>
               <thead><tr><th>ชื่อตำแหน่ง</th><th>พิกัด</th><th>ประเภท</th><th>สถานะ</th><th></th></tr></thead>
               <tbody>
@@ -746,7 +748,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
                 {!(checkinLocations || []).length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>ยังไม่มีตำแหน่งเช็คอิน</td></tr>}
               </tbody>
             </table>
-          </div>
+          </CardTable>
         </div>
 
         {showLocationForm && (
