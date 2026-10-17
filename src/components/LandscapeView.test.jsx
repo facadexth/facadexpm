@@ -111,4 +111,16 @@ describe('LandscapeView', () => {
     const { getByText } = render(<LandscapeView title="Gantt"><Child /></LandscapeView>)
     expect(getByText('⤢ ดูแนวนอน')).toBeTruthy()
   })
+
+  it('turning the phone while another stage is open does not open a second one', () => {
+    const q = mockMedia({ phone: true, portrait: true })
+    const { getAllByText, queryByText } = render(<>
+      <LandscapeView title="Gantt"><Child /></LandscapeView>
+      <LandscapeView title="S-curve" autoOpen={false}><Child /></LandscapeView>
+    </>)
+    fireEvent.click(getAllByText('⤢ ดูแนวนอน')[1])
+    expect(queryByText('S-curve')).toBeTruthy()
+    act(() => q.turn(false, 390))
+    expect(queryByText('Gantt')).toBeNull()
+  })
 })

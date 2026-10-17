@@ -31,12 +31,17 @@ const ST = {
   placeholder: { textAlign: 'center', color: 'var(--text3)', padding: '24px 0', fontSize: 13 },
 }
 
+// How many landscape stages are open right now. Turning the phone while one is open (e.g. the S-curve opened by its
+// button, then the user turns the phone to read it) must not pop another LandscapeView (the Gantt) on top of it.
+let openStages = 0
+
 function mq(q) {
   return typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(q) : null
 }
 
 function Stage({ title, onClose, children }) {
   useBackToClose(onClose)
+  useEffect(() => { openStages += 1; return () => { openStages -= 1 } }, [])
   const [portrait, setPortrait] = useState(() => !!mq(PORTRAIT)?.matches)
   useEffect(() => {
     const m = mq(PORTRAIT)
@@ -98,7 +103,7 @@ export default function LandscapeView({ title, autoOpen = true, children }) {
     if (!isPhone || !autoOpen) return
     const m = mq(LANDSCAPE)
     if (!m) return
-    const on = e => { if (e.matches && window.innerHeight < AUTO_OPEN_MAX_HEIGHT) setOpen(true) }
+    const on = e => { if (e.matches && window.innerHeight < AUTO_OPEN_MAX_HEIGHT && openStages === 0) setOpen(true) }
     m.addEventListener('change', on)
     return () => m.removeEventListener('change', on)
   }, [isPhone, autoOpen])
