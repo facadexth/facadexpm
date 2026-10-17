@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase.js'
 import { useAppSetting, saveAppSetting, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature, useBankAccounts, setDefaultBankAccount, useCheckinLocations, usePlatformAdmin } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
-import { ROLE_OPTIONS, canManageSites } from '../lib/roles.js'
+import { ROLE_OPTIONS, canManageSites, canSeeMoney } from '../lib/roles.js'
 import { PAGE_LABELS, DEFAULT_PERMISSIONS, loadPermissions, savePermissions } from '../lib/permissions.js'
 import { THAI_BANKS } from '../lib/thaiBanks.js'
 import { useDraftForm } from '../hooks/useDraftForm.js'
@@ -559,7 +559,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     { id: 'doc_template', label: '🎨 แบบใบเสนอราคา', show: isOwner && hasTemplateChoice },
     { id: 'doc_style', label: '🎨 รูปแบบเอกสาร', show: isOwner && !!isPlatformAdmin },
     { id: 'bank_accounts', label: '🏦 บัญชีธนาคาร', show: isOwner },
-    { id: 'payroll_items', label: '💼 โครงสร้างเงินเดือน', show: isAdminPlus && hasModuleAccess('payroll') },
+    { id: 'payroll_items', label: '💼 โครงสร้างเงินเดือน', show: isAdminPlus && canSeeMoney(role) && hasModuleAccess('payroll') },
     { id: 'payroll_bank', label: '🏦 ไฟล์จ่ายเงินเดือน (SCB)', show: isOwner && hasModuleAccess('payroll') },
     { id: 'permissions', label: '⚙️ ตั้งค่าสิทธิ์เข้าใช้งาน', show: isOwner },
   ]
@@ -987,7 +987,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       </div>
       )}
 
-      {activeSection === 'payroll_items' && isAdminPlus && hasModuleAccess('payroll') && <PayItemsEditor />}
+      {activeSection === 'payroll_items' && isAdminPlus && canSeeMoney(role) && hasModuleAccess('payroll') && <PayItemsEditor />}
       {activeSection === 'payroll_bank' && isOwner && hasModuleAccess('payroll') && <BankExportSettings />}
 
       {activeSection === 'permissions' && isOwner && <>

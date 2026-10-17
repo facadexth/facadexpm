@@ -50,8 +50,9 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
   const dailyRate = form.pay_type === 'daily'
     ? (form.daily_wage || '—')
     : (form.monthly_salary ? (parseFloat(form.monthly_salary) / 30).toFixed(2) : '—')
-  const { data: payItems } = usePayItems()
-  const { data: savedAmounts } = useWorkerPayAmounts(initial?.id)
+  // PM (showMoney=false) never loads or sees pay items, amounts or bank details.
+  const { data: payItems } = usePayItems(showMoney)
+  const { data: savedAmounts } = useWorkerPayAmounts(showMoney ? initial?.id : null)
   const [amounts, setAmounts] = useState({})
   useEffect(() => { if (savedAmounts) setAmounts(a => ({ ...savedAmounts, ...a })) }, [savedAmounts])
   const workersFull = isAdd && seat?.workers?.max != null && seat.workers.used >= seat.workers.max
@@ -76,10 +77,10 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
   return (
     <form onSubmit={e => {
       e.preventDefault()
-      const acctErr = form.bank_code && form.bank_account_no ? validateAccount(form.bank_code, form.bank_account_no) : null
+      const acctErr = showMoney && form.bank_code && form.bank_account_no ? validateAccount(form.bank_code, form.bank_account_no) : null
       if (acctErr) { alert(acctErr); return }
-      if (form.bank_branch_code && !/^\d{4}$/.test(form.bank_branch_code)) { alert('รหัสสาขาต้องมี 4 หลัก'); return }
-      clearFormDraft(); onSave(form, idCardFile, amounts)
+      if (showMoney && form.bank_branch_code && !/^\d{4}$/.test(form.bank_branch_code)) { alert('รหัสสาขาต้องมี 4 หลัก'); return }
+      clearFormDraft(); onSave(form, idCardFile, showMoney ? amounts : {})
     }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
         {workersFull && (
@@ -181,7 +182,7 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
           <label className="label">ที่อยู่</label>
           <textarea className="textarea" rows={2} value={form.address} onChange={e => set('address', e.target.value)} />
         </div>
-        <WorkerPayFields form={form} set={set} payItems={payItems || []} amounts={amounts} setAmount={(id, v) => setAmounts(a => ({ ...a, [id]: v }))} />
+        {showMoney && <WorkerPayFields form={form} set={set} payItems={payItems || []} amounts={amounts} setAmount={(id, v) => setAmounts(a => ({ ...a, [id]: v }))} />}
       </div>
       <div className="modal-footer">
         <button type="button" className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>
@@ -402,6 +403,13 @@ export default function HR({ navState }) {
           monthly_salary: parseFloat(form.monthly_salary) || 0,
           has_social_security: form.has_social_security,
           monthly_contribution: parseFloat(form.monthly_contribution) || null,
+          employee_code: form.employee_code || null,
+          pay_type: form.pay_type || 'monthly',
+          daily_wage: form.pay_type === 'daily' ? (parseFloat(form.daily_wage) || 0) : null,
+          bank_code: form.bank_code || null,
+          bank_account_no: form.bank_account_no || null,
+          bank_account_name: form.bank_account_name || null,
+          bank_branch_code: form.bank_branch_code || null,
         } : {}),
         status: form.status,
         annual_leave_days: parseInt(form.annual_leave_days) || 0,
@@ -410,13 +418,6 @@ export default function HR({ navState }) {
         show_in_assign: form.show_in_assign,
         id_card_number: form.id_card_number || null,
         address: form.address || null,
-        employee_code: form.employee_code || null,
-        pay_type: form.pay_type || 'monthly',
-        daily_wage: form.pay_type === 'daily' ? (parseFloat(form.daily_wage) || 0) : null,
-        bank_code: form.bank_code || null,
-        bank_account_no: form.bank_account_no || null,
-        bank_account_name: form.bank_account_name || null,
-        bank_branch_code: form.bank_branch_code || null,
       }
 
       const uploadIdCardPhoto = async (workerId) => {
@@ -447,7 +448,7 @@ export default function HR({ navState }) {
         }
         await auditLog('workers', data.id, 'INSERT', null, payload)
       }
-      const amountRows = Object.entries(amounts).map(([pay_item_id, v]) => ({ worker_id: savedId, pay_item_id, amount: parseFloat(v) || 0 }))
+      const amountRows = !showSalary ? [] : Object.entries(amounts).map(([pay_item_id, v]) => ({ worker_id: savedId, pay_item_id, amount: parseFloat(v) || 0 }))
       if (amountRows.length) {
         const { error: amtErr } = await supabase.from('worker_pay_item_amounts').upsert(amountRows, { onConflict: 'worker_id,pay_item_id' })
         if (amtErr) throw amtErr

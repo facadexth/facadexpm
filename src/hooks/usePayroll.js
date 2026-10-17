@@ -4,8 +4,9 @@ import { loadPayrollMonth, chunk } from '../lib/payroll/load.js'
 
 const must = ({ data, error }) => { if (error) throw error; return data }
 
-export function usePayItems() {
-  return useQuery(() => supabase.from('pay_items').select('*').order('sort_order').then(must), [])
+// enabled=false skips the read (a PM never loads pay structure).
+export function usePayItems(enabled = true) {
+  return useQuery(() => (enabled ? supabase.from('pay_items').select('*').order('sort_order').then(must) : Promise.resolve([])), [enabled])
 }
 
 export function usePayrollMonth(year, month) {

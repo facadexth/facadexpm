@@ -221,6 +221,7 @@ describe.each([false, true])('PM assign / HR / site crew (phone=%s)', isPhone =>
     expect(container.textContent).not.toMatch(MONEY)
     expect(container.textContent).not.toMatch(SALARY)
     expect(container.textContent).not.toContain('เพิ่มพนักงาน')
+    expect(container.textContent).not.toContain('เบิกล่วงหน้า')
     expect(container.querySelector('.btn-edit')).toBeNull()
     expect(container.textContent).not.toContain('เช็คอิน-เช็คเอาท์')
     expect(container.textContent).not.toContain('ประวัติการแก้ไข')
