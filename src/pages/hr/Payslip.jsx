@@ -50,7 +50,7 @@ const CSS = `
 .payslip-a5 .co{font-weight:700;font-size:15px}.payslip-a5 .co small{display:block;font-weight:400;font-size:11px;color:#555}
 .payslip-a5 .tt{text-align:right}.payslip-a5 .tt b{font-size:16px;display:block}.payslip-a5 .tt span{font-size:11.5px;color:#444}
 .payslip-a5 .who{display:grid;grid-template-columns:repeat(3,1fr);gap:2px 16px;font-size:11.5px}.payslip-a5 .who span{color:#666;margin-right:6px}
-.payslip-a5 .money{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-content:start}
+.payslip-a5 .money{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-content:start;align-items:start}
 .payslip-a5 table{width:100%;border-collapse:collapse}.payslip-a5 th{text-align:left;font-size:11.5px;border-bottom:1px solid #1b1f1d;padding:2px 0}
 .payslip-a5 td{padding:2px 0;border-bottom:1px dotted #c9cfcc}.payslip-a5 td small{color:#666;font-size:10.5px}
 .payslip-a5 .num{text-align:right;font-variant-numeric:tabular-nums}.payslip-a5 .sum td{font-weight:700;border-top:1px solid #1b1f1d;border-bottom:none;padding-top:4px}
