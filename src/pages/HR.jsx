@@ -23,6 +23,7 @@ import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import AttendanceGrid from './hr/AttendanceGrid.jsx'
 import WorkerPayFields from './hr/WorkerPayFields.jsx'
 import PayrollMonth from './hr/PayrollMonth.jsx'
+import AdvancesPanel from './hr/AdvancesPanel.jsx'
 import { usePayItems, useWorkerPayAmounts } from '../hooks/usePayroll.js'
 import { validateAccount } from '../lib/bankExport/banks.js'
 
@@ -537,6 +538,7 @@ export default function HR({ navState }) {
   const INNER_TABS = [
     { id: 'workers',  label: '👷 ข้อมูลช่าง' },
     { id: 'payroll',  label: '💼 เงินเดือน' },
+    { id: 'advances', label: '💸 เบิกล่วงหน้า' },
     // Approval queue (เบิกของ/ขอลา จาก LINE) — only for tenants with the LINE bot module enabled, so other tenants don't see a tab for a feature they haven't set up
     ...(canEdit && hasModuleAccess('line_bot') ? [{ id: 'requests', label: `🏖️ คำขอลา${pendingRequestCount ? ` (${pendingRequestCount})` : ''}` }] : []),
     ...(canEdit ? [{ id: 'checkins', label: '🕐 เช็คอิน-เช็คเอาท์' }] : []),
@@ -689,6 +691,7 @@ export default function HR({ navState }) {
       )}
 
       {innerTab === 'payroll' && <PayrollMonth canEdit={canEdit} settingsSlot={payrollSettings} />}
+      {innerTab === 'advances' && <AdvancesPanel canEdit={canEdit} />}
 
       {/* ── Requests Tab (ขอลา from LINE crew bot) ── */}
       {innerTab === 'requests' && (
