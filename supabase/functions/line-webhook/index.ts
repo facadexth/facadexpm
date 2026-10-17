@@ -112,6 +112,7 @@ import { siteMapLink } from '../_shared/site-map-link.ts'
 import { linkRequestsThrottled, THROTTLED_LINK_MESSAGE } from '../_shared/form-throttle.ts'
 import { formatWeekMessage, type WeekDay, type WeekSite } from '../_shared/week-message.ts'
 import { TIME_CLOCK_PHRASE, SCHEDULE_MENU_PHRASE, SCHEDULE_MENU_PROMPT, TIME_CLOCK_DONE_MESSAGE, timeClockStep, scheduleMenuChips } from '../_shared/schedule-menu.ts'
+import { isWorkerDoneable, doneErrorReply } from '../_shared/lineTaskRules.ts'
 import { jobDonePrompt, jobDoneConfirmation, JOB_DONE_CONFIRM_CHIP } from '../_shared/job-done-messages.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
@@ -501,20 +502,24 @@ async function resolveSitesForDates(workerId: string, tenantId: string, dates: s
   return bySite
 }
 
+type OpenTask = { id: string; name: string; progress_mode: string | null }
+
 // Resolves the worker's OWN currently-open Kanban tasks (not yet
 // 'done'), via phase_task_workers. Used by งานเสร็จ's actual closing
 // action -- a worker can only mark done what's assigned to THEM, for
 // accountability. Ordered by sort_order so the list matches the order
 // tasks appear on the real board.
-async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Promise<Array<{ id: string; name: string }>> {
+async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Promise<OpenTask[]> {
+  // phase_tasks(*) so progress_mode / parent_task_id ride along once the migration is applied
+  // (and nothing breaks before it).
   const { data } = await admin
     .from('phase_task_workers')
-    .select('task_id, phase_tasks!inner(id, name, status, tenant_id, sort_order)')
+    .select('task_id, phase_tasks!inner(*)')
     .eq('worker_id', workerId)
     .eq('phase_tasks.tenant_id', tenantId)
     .neq('phase_tasks.status', 'done')
     .order('sort_order', { referencedTable: 'phase_tasks' })
-  return (data ?? []).map((row: any) => ({ id: row.phase_tasks.id as string, name: row.phase_tasks.name as string }))
+  return (data ?? []).map((row: any) => ({ id: row.phase_tasks.id as string, name: row.phase_tasks.name as string, progress_mode: row.phase_tasks.progress_mode ?? null }))
 }
 
 // All open Kanban cards for the SITE, not just this worker's own --
@@ -523,15 +528,15 @@ async function resolveOpenTasksForWorker(workerId: string, tenantId: string): Pr
 // todays work across the board"). Shown in งานวันนี้'s summary;
 // deliberately distinct from resolveOpenTasksForWorker above, which
 // stays the source of truth for the actual งานเสร็จ closing action.
-async function resolveOpenTasksForSite(siteId: string, tenantId: string): Promise<Array<{ id: string; name: string }>> {
+async function resolveOpenTasksForSite(siteId: string, tenantId: string): Promise<OpenTask[]> {
   const { data } = await admin
     .from('phase_tasks')
-    .select('id, name')
+    .select('*')
     .eq('site_id', siteId)
     .eq('tenant_id', tenantId)
     .neq('status', 'done')
     .order('sort_order')
-  return data ?? []
+  return (data ?? []).map((r: any) => ({ id: r.id as string, name: r.name as string, progress_mode: r.progress_mode ?? null }))
 }
 
 // ⛑️ วันนี้ ไซท์นี้ใครเป็นหัวหน้าทีม (แยกเช้า/บ่าย) -- ตั้งค่าจาก Assign
@@ -932,10 +937,25 @@ async function handleSitePhotoFinish(
 // prompt and its re-resolved candidate list never disagree.
 async function resolveJobDoneCandidates(workerId: string, tenantId: string): Promise<Array<{ id: string; name: string }>> {
   const site = await resolveTodaysSite(workerId, tenantId)
-  if (site && await isTeamLeaderToday(workerId, site.id, tenantId)) {
-    return resolveOpenTasksForSite(site.id, tenantId)
-  }
-  return resolveOpenTasksForWorker(workerId, tenantId)
+  const tasks = site && await isTeamLeaderToday(workerId, site.id, tenantId)
+    ? await resolveOpenTasksForSite(site.id, tenantId)
+    : await resolveOpenTasksForWorker(workerId, tenantId)
+  // Quantity cards and parent cards are not closed by a worker (PM records the quantity;
+  // a parent's status comes from its children), so they are not offered here.
+  const parentIds = await findParentIds(tasks.map((t) => t.id))
+  return tasks
+    .filter((t) => isWorkerDoneable({ progress_mode: t.progress_mode, has_children: parentIds.has(t.id) }))
+    .map((t) => ({ id: t.id, name: t.name }))
+}
+
+// Which of these cards have children (another card whose parent_task_id is theirs).
+// One cheap query; if parent_task_id does not exist yet (migration not applied) the
+// error is swallowed and nothing counts as a parent.
+async function findParentIds(ids: string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set()
+  const { data, error } = await admin.from('phase_tasks').select('parent_task_id').in('parent_task_id', ids)
+  if (error) return new Set()
+  return new Set((data ?? []).map((r: any) => r.parent_task_id as string))
 }
 
 // Starts the งานเสร็จ flow -- resolves the worker's open tasks (team-
@@ -1069,6 +1089,12 @@ async function handleJobDonePhotoFinish(
   }
   const { error: statusError } = await admin.from('phase_tasks').update({ status: 'done' }).eq('id', task.id)
   if (statusError) {
+    // The DB enforces the progress rules (PLAN gate, quantity card, parent card); say why in plain words.
+    const reason = doneErrorReply(statusError.message)
+    if (reason) {
+      await sendLineReply(settings.channel_access_token, replyToken, `⚠️ ${reason}`)
+      return true // retrying cannot help -- close the pending action
+    }
     logSafeError('phase_tasks status update failed', statusError)
     await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
     return false // let them retry "เสร็จแล้ว" -- already-uploaded photos are safe either way
