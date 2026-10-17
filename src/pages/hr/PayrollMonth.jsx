@@ -10,6 +10,7 @@ import { periodLabel, MONTHS_TH, monthRange } from '../../lib/payroll/period.js'
 import { fmt } from '../../lib/supabase.js'
 import { Modal } from '../../components/Modal.jsx'
 import PayslipModal from './Payslip.jsx'
+import BankExportModal from './BankExportModal.jsx'
 
 const STATUS = {
   draft: { label: 'ร่าง', color: '#9a5b00' },
@@ -29,6 +30,7 @@ export default function PayrollMonth({ canEdit }) {
   const [busy, setBusy] = useState(false)
   const [closeOpen, setCloseOpen] = useState(false)
   const [slip, setSlip] = useState(null)
+  const [exportOpen, setExportOpen] = useState(false)
   const [paidDate, setPaidDate] = useState(monthRange(now.getFullYear(), now.getMonth() + 1).to)
 
   const status = data?.period?.status || 'draft'
@@ -98,7 +100,7 @@ export default function PayrollMonth({ canEdit }) {
         {canEdit && status === 'confirmed' && <button className="btn btn-ghost" disabled={busy} onClick={() => run(() => unconfirmMonth(year, month))}>↩️ กลับไปแก้ไข</button>}
         {canEdit && status === 'confirmed' && <button className="btn btn-primary" disabled={busy} onClick={() => setCloseOpen(true)}>🔒 ปิดงวด</button>}
         {isOwner && status === 'closed' && <button className="btn btn-ghost" disabled={busy} onClick={onReopen}>🔓 เปิดงวดใหม่</button>}
-        {/* bank export: Task 12 */}
+        {canEdit && ['confirmed', 'closed'].includes(status) && <button className="btn" onClick={() => setExportOpen(true)}>🏦 ไฟล์ธนาคาร</button>}
       </div>
 
       <div className="table-wrap" style={{ overflowX: 'auto' }}>
@@ -187,6 +189,7 @@ export default function PayrollMonth({ canEdit }) {
         </Modal>
       )}
 
+      {exportOpen && <BankExportModal records={records} year={year} month={month} onClose={() => setExportOpen(false)} />}
       {slip && <PayslipModal record={slip} year={year} month={month} period={data?.period} onClose={() => setSlip(null)} />}
     </div>
   )

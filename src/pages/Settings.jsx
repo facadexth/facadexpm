@@ -17,6 +17,7 @@ import { DEFAULT_DOCUMENT_STYLE, resolveDocumentStyle } from '../lib/documentSty
 import DocStyleControls from '../components/DocStyleControls.jsx'
 import DocumentTemplatePicker from '../components/DocumentTemplatePicker.jsx'
 import PayItemsEditor from './hr/PayItemsEditor.jsx'
+import BankExportSettings from './hr/BankExportSettings.jsx'
 import { useDocumentTemplates } from '../hooks/useDocumentTemplates.js'
 import { DOC_STYLE_PREVIEW_SAMPLE } from '../lib/documentPreviewSample.js'
 import { QuotationPaper } from './Quotations.jsx'
@@ -547,6 +548,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     { id: 'doc_style', label: '🎨 รูปแบบเอกสาร', show: isOwner && !!isPlatformAdmin },
     { id: 'bank_accounts', label: '🏦 บัญชีธนาคาร', show: isOwner },
     { id: 'payroll_items', label: '💼 โครงสร้างเงินเดือน', show: isAdminPlus && hasModuleAccess('payroll') },
+    { id: 'payroll_bank', label: '🏦 ไฟล์จ่ายเงินเดือน (SCB)', show: isOwner && hasModuleAccess('payroll') },
     { id: 'permissions', label: '⚙️ ตั้งค่าสิทธิ์เข้าใช้งาน', show: isOwner },
   ]
   const visibleSections = sections.filter(s => s.show)
@@ -974,6 +976,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       )}
 
       {activeSection === 'payroll_items' && isAdminPlus && hasModuleAccess('payroll') && <PayItemsEditor />}
+      {activeSection === 'payroll_bank' && isOwner && hasModuleAccess('payroll') && <BankExportSettings />}
 
       {activeSection === 'permissions' && isOwner && <>
       <div style={{ marginBottom: 24 }}>

@@ -15,7 +15,7 @@ export async function loadPayrollMonth(year, month) {
     supabase.from('worker_pay_item_amounts').select('worker_id, pay_item_id, amount').then(must),
     supabase.from('payroll_periods').select('*').eq('year', year).eq('month', month).maybeSingle().then(must),
     supabase.from('salary_records')
-      .select('id, worker_id, net_pay, paid_date, facts, workers(name, nickname, position, employee_code, bank_code, bank_account_no, bank_account_name), salary_record_lines(*)')
+      .select('id, worker_id, net_pay, paid_date, facts, workers(name, nickname, position, employee_code, bank_code, bank_account_no, bank_account_name, bank_branch_code), salary_record_lines(*)')
       .eq('year', year).eq('month', month).then(must),
     supabase.from('worker_assignments').select('worker_id, type, shift, ot_hours, date, confirmed_at').gte('date', from).lte('date', to).then(must),
     supabase.from('worker_ot').select('worker_id, ot_hours').gte('date', from).lte('date', to).then(must),
