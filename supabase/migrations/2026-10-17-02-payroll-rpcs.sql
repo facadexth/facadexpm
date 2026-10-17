@@ -19,6 +19,9 @@ DECLARE
   v_period UUID; v_status TEXT; v_rec JSONB; v_line JSONB; v_record_id UUID; v_n INT := 0;
   v_workers UUID[] := '{}';
 BEGIN
+  IF p_records IS NULL OR jsonb_typeof(p_records) <> 'array' OR jsonb_array_length(p_records) = 0 THEN
+    RAISE EXCEPTION 'ไม่มีรายชื่อพนักงานที่จะบันทึก';
+  END IF;
   v_period := payroll_period_for(v_tenant, p_year, p_month);
   SELECT status INTO v_status FROM payroll_periods WHERE id = v_period FOR UPDATE;
   IF v_status <> 'draft' THEN
@@ -28,6 +31,9 @@ BEGIN
   FOR v_rec IN SELECT * FROM jsonb_array_elements(p_records) LOOP
     IF NOT EXISTS (SELECT 1 FROM workers WHERE id = (v_rec->>'worker_id')::uuid AND tenant_id = v_tenant) THEN
       RAISE EXCEPTION 'ไม่พบพนักงาน %', v_rec->>'worker_id';
+    END IF;
+    IF (v_rec->>'worker_id')::uuid = ANY (v_workers) THEN
+      RAISE EXCEPTION 'พนักงานซ้ำในรายการ %', v_rec->>'worker_id';
     END IF;
     v_workers := v_workers || (v_rec->>'worker_id')::uuid;
 
@@ -41,7 +47,8 @@ BEGIN
       INSERT INTO salary_record_lines (tenant_id, salary_record_id, pay_item_id, advance_id, name, side, sort_order, amount, quantity, rate, note, is_manual)
       SELECT v_tenant, v_record_id,
              (SELECT id FROM pay_items WHERE id = NULLIF(v_line->>'pay_item_id','')::uuid AND tenant_id = v_tenant),
-             (SELECT id FROM salary_advances WHERE id = NULLIF(v_line->>'advance_id','')::uuid AND tenant_id = v_tenant),
+             (SELECT id FROM salary_advances WHERE id = NULLIF(v_line->>'advance_id','')::uuid AND tenant_id = v_tenant
+                 AND worker_id = (v_rec->>'worker_id')::uuid),
              v_line->>'name', v_line->>'side', COALESCE((v_line->>'sort_order')::int, 0),
              round((v_line->>'amount')::numeric, 2),
              NULLIF(v_line->>'quantity','')::numeric, NULLIF(v_line->>'rate','')::numeric,
@@ -59,16 +66,28 @@ GRANT EXECUTE ON FUNCTION save_payroll_draft(INT, INT, JSONB) TO authenticated;
 
 CREATE OR REPLACE FUNCTION set_payroll_manual_line(p_record_id UUID, p_pay_item_id UUID, p_advance_id UUID, p_amount NUMERIC)
 RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
-DECLARE v_tenant UUID := payroll_require_admin(); v_item pay_items; v_note TEXT;
+DECLARE v_tenant UUID := payroll_require_admin(); v_item pay_items; v_note TEXT; v_status TEXT;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM salary_records WHERE id = p_record_id AND tenant_id = v_tenant) THEN
-    RAISE EXCEPTION 'ไม่พบรายการเงินเดือน';
+  SELECT p.status INTO v_status FROM payroll_periods p JOIN salary_records r ON r.period_id = p.id
+   WHERE r.id = p_record_id AND r.tenant_id = v_tenant FOR UPDATE OF p;
+  IF NOT FOUND THEN RAISE EXCEPTION 'ไม่พบรายการเงินเดือน'; END IF;
+  IF v_status <> 'draft' THEN
+    RAISE EXCEPTION 'เงินเดือนเดือนนี้ยืนยันหรือปิดงวดแล้ว แก้ไขไม่ได้' USING ERRCODE = 'check_violation';
   END IF;
   SELECT * INTO v_item FROM pay_items WHERE id = p_pay_item_id AND tenant_id = v_tenant;
   IF v_item.id IS NULL OR v_item.method NOT IN ('manual_monthly','advances') THEN
     RAISE EXCEPTION 'รายการนี้กรอกเองไม่ได้';
   END IF;
   IF v_item.method = 'advances' AND p_advance_id IS NULL THEN RAISE EXCEPTION 'ต้องระบุรายการเบิก'; END IF;
+  IF p_advance_id IS NOT NULL AND v_item.method <> 'advances' THEN
+    RAISE EXCEPTION 'รายการนี้ไม่ใช่รายการเบิกล่วงหน้า';
+  END IF;
+  IF p_advance_id IS NOT NULL AND NOT EXISTS (
+       SELECT 1 FROM salary_advances a JOIN salary_records r ON r.worker_id = a.worker_id
+        WHERE a.id = p_advance_id AND a.tenant_id = v_tenant AND r.id = p_record_id
+          AND a.status IN ('approved','settled')) THEN
+    RAISE EXCEPTION 'ไม่พบรายการเบิกของพนักงานคนนี้';
+  END IF;
 
   SELECT note INTO v_note FROM salary_record_lines
    WHERE salary_record_id = p_record_id AND pay_item_id = p_pay_item_id
@@ -130,10 +149,11 @@ RETURNS NUMERIC LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, p
   SELECT COALESCE(sum(l.amount), 0) FROM salary_record_lines l
   JOIN salary_records r ON r.id = l.salary_record_id
   JOIN payroll_periods p ON p.id = r.period_id
-  WHERE l.advance_id = p_advance AND p.status = 'closed';
+  WHERE l.advance_id = p_advance AND p.status = 'closed'
+    AND l.tenant_id = current_tenant_id() AND p.tenant_id = current_tenant_id();
 $$;
-REVOKE ALL ON FUNCTION advance_deducted_closed(UUID) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION advance_deducted_closed(UUID) TO authenticated;
+-- internal: only called from close/reopen (SECURITY DEFINER)
+REVOKE ALL ON FUNCTION advance_deducted_closed(UUID) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION close_payroll_period(p_year INT, p_month INT, p_paid_date DATE)
 RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -162,7 +182,10 @@ BEGIN
   SELECT to_jsonb(p) INTO v_old FROM payroll_periods p WHERE tenant_id = v_tenant AND year = p_year AND month = p_month;
   v_id := payroll_transition(p_year, p_month, 'closed', 'draft');
   UPDATE payroll_periods SET reopen_reason = p_reason, confirmed_by = NULL, confirmed_at = NULL,
-                             closed_by = NULL, closed_at = NULL WHERE id = v_id;
+                             closed_by = NULL, closed_at = NULL, paid_date = NULL WHERE id = v_id;
+  PERFORM set_config('chang.payroll_bypass', 'on', true);
+  UPDATE salary_records SET paid_date = NULL WHERE period_id = v_id;
+  PERFORM set_config('chang.payroll_bypass', '', true);
   INSERT INTO audit_logs (tenant_id, table_name, record_id, action, user_email, old_values, new_values)
   VALUES (v_tenant, 'payroll_periods', v_id, 'UPDATE', auth.email(), v_old,
           jsonb_build_object('status', 'draft', 'reopen_reason', p_reason));
