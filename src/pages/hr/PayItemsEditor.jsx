@@ -15,9 +15,10 @@ const METHOD_LABEL = {
 const USER_METHODS = ['fixed_per_worker', 'manual_monthly', 'percent_of_item']
 
 export default function PayItemsEditor() {
-  const { data: items, refetch, loading } = usePayItems()
+  const { data: items, refetch } = usePayItems()
   const [busy, setBusy] = useState(false)
-  if (loading || !items) return <div className="card">⏳ กำลังโหลด...</div>
+  const ver = item => item.id + ':' + item.name + ':' + JSON.stringify(item.params)
+  if (!items) return <div className="card">⏳ กำลังโหลด...</div>
 
   const save = async (id, patch) => {
     const next = items.map(i => i.id === id ? { ...i, ...patch } : i)
@@ -41,13 +42,22 @@ export default function PayItemsEditor() {
     if (a.error || b.error) alert('สลับลำดับไม่สำเร็จ: ' + (a.error || b.error).message); else refetch()
   }
   const add = async side => {
+    if (busy) return
+    setBusy(true)
     const max = Math.max(0, ...items.filter(i => i.side === side).map(i => i.sort_order))
     const { error } = await supabase.from('pay_items').insert({
       name: side === 'earning' ? 'รายการเงินได้ใหม่' : 'รายการเงินหักใหม่', side, method: 'manual_monthly', sort_order: max + 1,
     })
+    setBusy(false)
     if (error) alert('เพิ่มไม่สำเร็จ: ' + error.message); else refetch()
   }
   const remove = async item => {
+    const dependent = items.find(i => i.id !== item.id && i.params?.of_item_id === item.id)
+    if (dependent) { alert(`ลบไม่ได้: รายการ "${dependent.name}" คิดจากรายการนี้`); return }
+    if (validatePayItems(items.filter(i => i.active && i.id !== item.id)).length) {
+      alert('ลบไม่ได้: โครงสร้างรายการจะผิดพลาด (รายการ % อ้างถึงรายการนี้)')
+      return
+    }
     const { error } = await supabase.from('pay_items').delete().eq('id', item.id)
     if (error) {
       // Custom item already used by a confirmed/closed month: the FK SET NULL hits the lock trigger.
@@ -56,7 +66,7 @@ export default function PayItemsEditor() {
         : 'ลบไม่สำเร็จ: ' + error.message)
     } else refetch()
   }
-  const refOptions = item => items.filter(i => i.id !== item.id && !['sso', 'advances'].includes(i.method))
+  const refOptions = item => items.filter(i => i.active && i.id !== item.id && !['sso', 'advances'].includes(i.method))
 
   const row = item => {
     const isSystem = SYSTEM_METHODS.includes(item.method)
@@ -67,7 +77,7 @@ export default function PayItemsEditor() {
           <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => move(item, 1)} aria-label="เลื่อนลง">▼</button>
         </td>
         <td>
-          <input className="input input-sm" defaultValue={item.name}
+          <input key={ver(item)} className="input input-sm" defaultValue={item.name}
             onBlur={e => { const v = e.target.value.trim(); if (v && v !== item.name) save(item.id, { name: v }) }} />
         </td>
         <td>
@@ -84,8 +94,8 @@ export default function PayItemsEditor() {
         <td>
           {item.method === 'percent_of_item' && (
             <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <input className="input input-sm" type="number" style={{ width: 70 }} defaultValue={item.params?.percent}
-                onBlur={e => save(item.id, { params: { ...item.params, percent: parseFloat(e.target.value) || 0 } })} />% ของ
+              <input key={ver(item)} className="input input-sm" type="number" min="0" style={{ width: 70 }} defaultValue={item.params?.percent}
+                onBlur={e => { const v = Math.max(0, parseFloat(e.target.value) || 0); if (v !== Number(item.params?.percent)) save(item.id, { params: { ...item.params, percent: v } }) }} />% ของ
               <select className="input input-sm" value={item.params?.of_item_id || ''} onChange={e => save(item.id, { params: { ...item.params, of_item_id: e.target.value } })}>
                 {refOptions(item).map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
               </select>
@@ -93,15 +103,15 @@ export default function PayItemsEditor() {
           )}
           {item.method === 'sso' && (
             <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <input className="input input-sm" type="number" style={{ width: 60 }} defaultValue={(item.params?.rate ?? 0.05) * 100}
-                onBlur={e => save(item.id, { params: { ...item.params, rate: (parseFloat(e.target.value) || 0) / 100 } })} />% สูงสุด
-              <input className="input input-sm" type="number" style={{ width: 80 }} defaultValue={item.params?.cap ?? 875}
-                onBlur={e => save(item.id, { params: { ...item.params, cap: parseFloat(e.target.value) || 0 } })} /> บาท
+              <input key={ver(item)} className="input input-sm" type="number" min="0" style={{ width: 60 }} defaultValue={(item.params?.rate ?? 0.05) * 100}
+                onBlur={e => { const v = Math.max(0, parseFloat(e.target.value) || 0) / 100; if (Math.abs(v - (item.params?.rate ?? 0.05)) > 1e-9) save(item.id, { params: { ...item.params, rate: v } }) }} />% สูงสุด
+              <input key={ver(item)} className="input input-sm" type="number" min="0" style={{ width: 80 }} defaultValue={item.params?.cap ?? 875}
+                onBlur={e => { const v = Math.max(0, parseFloat(e.target.value) || 0); if (v !== (item.params?.cap ?? 875)) save(item.id, { params: { ...item.params, cap: v } }) }} /> บาท
             </span>
           )}
           {item.method === 'ot' && (
-            <span>× <input className="input input-sm" type="number" step="0.5" style={{ width: 60 }} defaultValue={item.params?.multiplier ?? 1.5}
-              onBlur={e => save(item.id, { params: { ...item.params, multiplier: parseFloat(e.target.value) || 1.5 } })} /> เท่า · ปัดขึ้นเป็นบาท</span>
+            <span>× <input key={ver(item)} className="input input-sm" type="number" min="0" step="0.5" style={{ width: 60 }} defaultValue={item.params?.multiplier ?? 1.5}
+              onBlur={e => { const v = Math.max(0, parseFloat(e.target.value)) || 1.5; if (v !== (item.params?.multiplier ?? 1.5)) save(item.id, { params: { ...item.params, multiplier: v } }) }} /> เท่า · ปัดขึ้นเป็นบาท</span>
           )}
         </td>
         <td>
@@ -132,8 +142,8 @@ export default function PayItemsEditor() {
       <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div className="card-title">💼 โครงสร้างเงินเดือน</div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => add('earning')}>+ รายการเงินได้</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => add('deduction')}>+ รายการเงินหัก</button>
+          <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => add('earning')}>+ รายการเงินได้</button>
+          <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => add('deduction')}>+ รายการเงินหัก</button>
         </div>
       </div>
       <p style={{ color: 'var(--text3)', fontSize: 13 }}>มีผลกับการคำนวณครั้งถัดไป สลิปเดือนที่ผ่านมาไม่เปลี่ยน</p>
