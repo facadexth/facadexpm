@@ -56,6 +56,7 @@ const CSS = `
 .payslip-a5 .facts{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:11px;color:#444;border-top:1px solid #c9cfcc;padding-top:6px}
 .payslip-a5 .ft{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:16px;align-items:end}
 .payslip-a5 .neg{color:#b42318}
+.payslip-a5 .ytd{flex-basis:100%}
 .payslip-a5 .net{background:#fff;color:#1b1f1d;border:1.5px solid #1b1f1d;padding:6px 12px;border-radius:3px}.payslip-a5 .net .v{font-size:19px;font-weight:700}
 .payslip-a5 .sg{text-align:center;font-size:11px;color:#444}.payslip-a5 .sg b{display:block;font-size:12.5px;color:#1b1f1d;margin-bottom:2px}
 .payslip-a5 .wm{position:absolute;left:0;right:0;top:40%;text-align:center;font-size:90px;font-weight:700;color:rgba(154,91,0,.14);transform:rotate(-12deg);pointer-events:none}
@@ -108,7 +109,7 @@ export function PayslipSheet({ record, year, month, period }) {
         <span>ลาป่วย <b>{fv(f.leaveSickDays)}</b> วัน</span>
         <span>OT <b>{fv(f.otHours)}</b> ชม.</span>
         {f.holidayShifts ? <span>กะวันหยุด <b>{f.holidayShifts}</b></span> : null}
-        {ytd && <span>สะสมปี {year + 543}: เงินได้ <b>{fmt(ytd.earnings)}</b> · ประกันสังคม <b>{fmt(ytd.sso)}</b> · เงินสมทบ <b>{fmt(ytd.contrib)}</b></span>}
+        {ytd && <span className="ytd">สะสมปี {year + 543}: เงินได้ <b>{fmt(ytd.earnings)}</b> · ประกันสังคม <b>{fmt(ytd.sso)}</b> · เงินสมทบ <b>{fmt(ytd.contrib)}</b></span>}
       </div>
       <div className="ft">
         <div className="net">
