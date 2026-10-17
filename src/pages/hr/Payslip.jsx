@@ -9,6 +9,7 @@ import { supabase, fmt } from '../../lib/supabase.js'
 import { downloadPDF } from '../../lib/pdf.js'
 import { thaiBahtText } from '../../lib/thaiBahtText.js'
 import { periodLabel, MONTHS_TH } from '../../lib/payroll/period.js'
+import { usePayItems } from '../../hooks/usePayroll.js'
 
 // Show only the last 4 digits; 10-digit accounts keep the 3-1-5-1 bank grouping.
 export function maskAcct(a) {
@@ -65,7 +66,13 @@ const CSS = `
 export function PayslipSheet({ record, year, month, period }) {
   const { tenant } = useTenant()
   const w = record.workers || {}
-  const lines = [...(record.salary_record_lines || [])].sort((a, b) => a.sort_order - b.sort_order)
+  const { data: payItems } = usePayItems()
+  // the OT row always shows (owner's choice), as 0.00 in a month without OT
+  const otItem = (payItems || []).find(i => i.method === 'ot' && i.active)
+  const saved = record.salary_record_lines || []
+  const otRow = otItem && !saved.some(l => l.pay_item_id === otItem.id)
+    ? [{ id: 'ot-zero', pay_item_id: otItem.id, name: otItem.name, side: 'earning', sort_order: otItem.sort_order, amount: 0 }] : []
+  const lines = [...saved, ...otRow].sort((a, b) => a.sort_order - b.sort_order)
   const earn = lines.filter(l => l.side === 'earning')
   const ded = lines.filter(l => l.side === 'deduction')
   const sum = ls => ls.reduce((s, l) => s + Number(l.amount), 0)
