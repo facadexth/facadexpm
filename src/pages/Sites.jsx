@@ -274,7 +274,12 @@ export function SiteForm({ initial = EMPTY_FORM, clients = [], onSave, onCancel,
           <div>
             <label className="label">สถานะ</label>
             <select className="select" value={form.status} onChange={e => set('status', e.target.value)}>
-              {STATUS_OPTS.map(s => <option key={s}>{s}</option>)}
+              {pmMode ? <>
+                {/* PM cannot finish a site (that flow stamps end_date and moves leftover stock); an
+                    already-Completed site keeps its value as a disabled option so the select shows it */}
+                {initial.status === 'Completed' && <option disabled>Completed</option>}
+                {STATUS_OPTS.filter(s => s !== 'Completed').map(s => <option key={s}>{s}</option>)}
+              </> : STATUS_OPTS.map(s => <option key={s}>{s}</option>)}
             </select>
             {sitesFull && (
               <div className="alert alert-warning" style={{ fontSize: 12, marginTop: 6 }}>

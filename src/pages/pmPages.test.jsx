@@ -13,6 +13,7 @@ const PM_SITE = {
 }
 
 let phone = false
+let sitesData = [PM_SITE]
 const rpcCalls = []
 const fromCalls = []
 vi.mock('../hooks/useIsPhone.js', () => ({ useIsPhone: () => phone, PHONE_QUERY: '(max-width: 900px)' }))
@@ -54,7 +55,7 @@ vi.mock('../hooks/useSupabase.js', async (orig) => {
   return {
     ...actual,
     useQuery: () => empty,
-    useSites: () => ({ ...empty, data: [PM_SITE] }),
+    useSites: () => ({ ...empty, data: sitesData }),
     useSite: () => ({ ...empty, data: PM_SITE }),
     useSiteOverview: () => ({ ...empty, data: { ...PM_SITE, deposit: null, retention: null } }),
     useSitesProgress: () => empty,
@@ -88,7 +89,7 @@ beforeEach(() => {
   fromCalls.length = 0
   window.matchMedia = q => ({ matches: phone && q.includes('max-width'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })
 })
-afterEach(() => { cleanup(); setCurrentRole(null); phone = false })
+afterEach(() => { cleanup(); setCurrentRole(null); phone = false; sitesData = [PM_SITE] })
 
 describe.each([false, true])('PM pages (phone=%s)', isPhone => {
   beforeEach(() => { phone = isPhone })
@@ -135,6 +136,22 @@ describe('PM site form', () => {
     await new Promise(r => setTimeout(r, 0))
     expect(rpcCalls).toContainEqual(['pm_update_site', { p_site_id: 's1', p_patch: { location: 'Chiang Mai' } }])
     expect(fromCalls).not.toContain('sites')
+  })
+
+  it('PM status select offers no Completed option (kept disabled only for an already-Completed site)', () => {
+    const { container, unmount } = render(<Sites navigateTo={() => {}} openSiteOverview={() => {}} navState={{}} />)
+    fireEvent.click(container.querySelector('.btn-edit'))
+    const select = () => [...document.querySelectorAll('form select')].find(el => [...el.options].some(o => o.value === 'Ongoing'))
+    expect([...select().options].map(o => o.value)).toEqual(['Ongoing', 'On Hold', 'Cancelled'])
+    unmount()
+    sitesData = [{ ...PM_SITE, status: 'Completed' }]
+    const r2 = render(<Sites navigateTo={() => {}} openSiteOverview={() => {}} navState={{}} />)
+    fireEvent.change(r2.container.querySelector('select'), { target: { value: 'All' } })
+    fireEvent.click(r2.container.querySelector('.btn-edit'))
+    const opts = [...select().options]
+    expect(select().value).toBe('Completed')
+    expect(opts.find(o => o.value === 'Completed').disabled).toBe(true)
+    expect(opts.filter(o => !o.disabled).map(o => o.value)).toEqual(['Ongoing', 'On Hold', 'Cancelled'])
   })
 
   it('pmSitePatch sends nothing for an untouched site with empty fields', () => {

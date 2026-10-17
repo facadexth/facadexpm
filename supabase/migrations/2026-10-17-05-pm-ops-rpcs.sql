@@ -36,6 +36,12 @@ BEGIN
   FOR k IN SELECT jsonb_object_keys(p_patch) LOOP
     IF NOT k = ANY (allowed) THEN RAISE EXCEPTION 'field not allowed: %', k USING ERRCODE = '22023'; END IF;
   END LOOP;
+  -- Finishing a site moves leftover stock and stamps end_date (the OWNER/ADMIN
+  -- finish flow), so a PM may not set Completed; an already-Completed site may stay so.
+  IF p_patch->>'status' = 'Completed'
+     AND NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND status = 'Completed') THEN
+    RAISE EXCEPTION 'PM cannot complete a site' USING ERRCODE = '22023';
+  END IF;
   -- Ongoing seat rule from the sites admin_updates policy
   IF p_patch ? 'status' AND p_patch->>'status' = 'Ongoing'
      AND NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND status = 'Ongoing')

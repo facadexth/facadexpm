@@ -439,6 +439,12 @@ BEGIN
   FOR k IN SELECT jsonb_object_keys(p_patch) LOOP
     IF NOT k = ANY (allowed) THEN RAISE EXCEPTION 'field not allowed: %', k USING ERRCODE = '22023'; END IF;
   END LOOP;
+  -- Finishing a site moves leftover stock and stamps end_date (the OWNER/ADMIN
+  -- finish flow), so a PM may not set Completed; an already-Completed site may stay so.
+  IF p_patch->>'status' = 'Completed'
+     AND NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND status = 'Completed') THEN
+    RAISE EXCEPTION 'PM cannot complete a site' USING ERRCODE = '22023';
+  END IF;
   -- Ongoing seat rule from the sites admin_updates policy
   IF p_patch ? 'status' AND p_patch->>'status' = 'Ongoing'
      AND NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND status = 'Ongoing')
@@ -544,7 +550,7 @@ DECLARE
   v_tenant uuid; r jsonb := '{}'; n int; b boolean;
   v_pm text := 'pm-test@example.invalid'; v_admin text := 'pm-test-admin@example.invalid';
   v_wk text := 'pm-test-worker@example.invalid';
-  v_site uuid; v_worker uuid; v_po uuid; v_team uuid;
+  v_site uuid; v_worker uuid; v_po uuid; v_team uuid; v_open uuid; v_done uuid;
   real_sites int; real_workers int; real_pos int; real_po_items int; real_bal int; real_bal_site int;
   money text[] := ARRAY['monthly_salary','contract_value','contract_value_no_vat','unit_price','line_total',
                         'weighted_average_cost','cost_labor','cost_other','discount_pct','has_vat'];
@@ -552,6 +558,8 @@ BEGIN
   -- as the table owner: the demo tenant's real counts
   SELECT id INTO v_tenant FROM tenants WHERE company_name ILIKE '%สร้างดี%' LIMIT 1;
   SELECT id INTO v_site FROM sites WHERE tenant_id = v_tenant ORDER BY created_at LIMIT 1;
+  SELECT id INTO v_open FROM sites WHERE tenant_id = v_tenant AND status <> 'Completed' ORDER BY created_at LIMIT 1;
+  SELECT id INTO v_done FROM sites WHERE tenant_id = v_tenant AND status = 'Completed' ORDER BY created_at LIMIT 1;
   SELECT id INTO v_worker FROM workers WHERE tenant_id = v_tenant ORDER BY created_at LIMIT 1;
   SELECT po_id INTO v_po FROM purchase_order_items WHERE tenant_id = v_tenant GROUP BY po_id ORDER BY count(*) DESC LIMIT 1;
   SELECT count(*) INTO real_sites FROM sites WHERE tenant_id = v_tenant;
@@ -601,6 +609,22 @@ BEGIN
     r := r || jsonb_build_object('pm_update_site_contract_value_22023_MUSTtrue', false);
   EXCEPTION WHEN SQLSTATE '22023' THEN r := r || jsonb_build_object('pm_update_site_contract_value_22023_MUSTtrue', true);
   END;
+  BEGIN
+    PERFORM pm_update_site(v_open, '{"status":"Completed"}');
+    r := r || jsonb_build_object('pm_update_site_complete_22023_MUSTtrue', false);
+  EXCEPTION WHEN SQLSTATE '22023' THEN r := r || jsonb_build_object('pm_update_site_complete_22023_MUSTtrue', SQLERRM = 'PM cannot complete a site');
+  END;
+  SELECT status <> 'Completed' INTO b FROM pm_sites() WHERE id = v_open;
+  r := r || jsonb_build_object('pm_complete_rejected_status_kept_MUSTtrue', b);
+  IF v_done IS NOT NULL THEN
+    BEGIN
+      PERFORM pm_update_site(v_done, '{"status":"Completed","notes":"z"}');
+      r := r || jsonb_build_object('w_pm_update_site_keep_completed', 'ok');
+    EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_pm_update_site_keep_completed', SQLSTATE || ' ' || SQLERRM);
+    END;
+  ELSE
+    r := r || jsonb_build_object('w_pm_update_site_keep_completed', 'ok (no Completed site in demo tenant, skipped)');
+  END IF;
   BEGIN
     PERFORM pm_update_site(gen_random_uuid(), '{"notes":"x"}');
     r := r || jsonb_build_object('pm_update_site_unknown_P0002_MUSTtrue', false);
