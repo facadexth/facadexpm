@@ -16,6 +16,7 @@ import SignaturePad from '../components/SignaturePad.jsx'
 import { DEFAULT_DOCUMENT_STYLE, resolveDocumentStyle } from '../lib/documentStyle.js'
 import DocStyleControls from '../components/DocStyleControls.jsx'
 import DocumentTemplatePicker from '../components/DocumentTemplatePicker.jsx'
+import PayItemsEditor from './hr/PayItemsEditor.jsx'
 import { useDocumentTemplates } from '../hooks/useDocumentTemplates.js'
 import { DOC_STYLE_PREVIEW_SAMPLE } from '../lib/documentPreviewSample.js'
 import { QuotationPaper } from './Quotations.jsx'
@@ -545,6 +546,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     { id: 'doc_template', label: '🎨 แบบใบเสนอราคา', show: isOwner && hasTemplateChoice },
     { id: 'doc_style', label: '🎨 รูปแบบเอกสาร', show: isOwner && !!isPlatformAdmin },
     { id: 'bank_accounts', label: '🏦 บัญชีธนาคาร', show: isOwner },
+    { id: 'payroll_items', label: '💼 โครงสร้างเงินเดือน', show: isAdminPlus && hasModuleAccess('payroll') },
     { id: 'permissions', label: '⚙️ ตั้งค่าสิทธิ์เข้าใช้งาน', show: isOwner },
   ]
   const visibleSections = sections.filter(s => s.show)
@@ -970,6 +972,8 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
         )}
       </div>
       )}
+
+      {activeSection === 'payroll_items' && isAdminPlus && hasModuleAccess('payroll') && <PayItemsEditor />}
 
       {activeSection === 'permissions' && isOwner && <>
       <div style={{ marginBottom: 24 }}>
