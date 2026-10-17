@@ -30,6 +30,15 @@ async function attachPmNames(rows, { siteShape }) {
   return (rows || []).map(r => ({ ...r, workers: wById.get(r.worker_id) ?? null, sites: sById.get(r.site_id) ?? null }))
 }
 
+// Attach worker names to rows whose `workers(...)` embed is null for a PM.
+// Non-PM rows are returned untouched (their embed already works).
+export async function attachPmWorkerNames(rows) {
+  if (!isPm()) return rows || []
+  const workers = await pmRpc('pm_workers')
+  const byId = new Map(workers.map(w => [w.id, { name: w.name, nickname: w.nickname }]))
+  return (rows || []).map(r => ({ ...r, workers: byId.get(r.worker_id) ?? r.workers ?? null }))
+}
+
 /** Generic fetch hook */
 export function useQuery(queryFn, deps = []) {
   const [data, setData] = useState(null)

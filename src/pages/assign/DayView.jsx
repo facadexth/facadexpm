@@ -19,7 +19,7 @@ const MINI_COLUMNS = [
   { status: 'done', label: 'เสร็จแล้ว' },
 ]
 
-export default function DayView({ dayIso, assignments, otEntries, sites, travelRate, onEditHalf }) {
+export default function DayView({ dayIso, assignments, otEntries, sites, travelRate, onEditHalf, showMoney = true }) {
   const { data: allPhases } = useSitePhases()
   const { data: allTasks } = usePhaseTasks()
 
@@ -100,13 +100,13 @@ export default function DayView({ dayIso, assignments, otEntries, sites, travelR
                   <div style={{ fontSize: 11, color: 'var(--accent)' }}>{meta.site_number}</div>
                   <div style={{ fontWeight: 700, fontSize: 14, overflowWrap: 'anywhere' }}>{meta.name}</div>
                 </div>
-                <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                {showMoney && <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                   <div style={{ fontSize: 10, color: 'var(--text3)' }}>รวมวันนี้</div>
                   <div style={{ color: 'var(--yellow)', fontWeight: 800, fontSize: 16 }}>{fmt(total)}</div>
                   <div style={{ fontSize: 10, color: 'var(--text3)' }}>
                     แรง {fmt(g.labor)}{travel > 0 && <> · เดินทาง {fmt(travel)}</>}{otTotal > 0 && <> · OT {fmt(otTotal)}</>}
                   </div>
-                </div>
+                </div>}
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <div style={{ flex: 1 }}>

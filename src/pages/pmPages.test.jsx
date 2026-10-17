@@ -16,6 +16,9 @@ let phone = false
 let sitesData = [PM_SITE]
 const rpcCalls = []
 const fromCalls = []
+// Per-test rows the mocked supabase returns, by table / RPC name (filters are ignored).
+let tableRows = {}
+let rpcRows = {}
 vi.mock('../hooks/useIsPhone.js', () => ({ useIsPhone: () => phone, PHONE_QUERY: '(max-width: 900px)' }))
 vi.mock('../hooks/useUserRole.js', () => ({
   useUserRole: () => ({ role: 'PM', user: { email: 'pm@x.co' }, loading: false, isAtLeast: r => ({ OWNER: 3, ADMIN: 2, PM: 1.5, WORKER: 1 })[r] <= 1.5 }),
@@ -39,13 +42,13 @@ vi.mock('../lib/supabase.js', async (orig) => {
   return {
     ...actual,
     supabase: {
-      from: t => { fromCalls.push(t); return chain() },
-      rpc: (n, a) => { rpcCalls.push([n, a]); return chain() },
+      from: t => { fromCalls.push(t); return chain(tableRows[t]) },
+      rpc: (n, a) => { rpcCalls.push([n, a]); return chain(rpcRows[n]) },
       auth: { getSession: () => Promise.resolve({ data: { session: null } }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) },
       channel: () => ({ on() { return this }, subscribe() { return this } }),
       removeChannel: () => {},
       functions: { invoke: () => Promise.resolve({ data: null, error: null }) },
-      storage: { from: () => ({ list: () => Promise.resolve({ data: [], error: null }) }) },
+      storage: { from: () => ({ list: () => Promise.resolve({ data: [], error: null }), createSignedUrls: () => Promise.resolve({ data: [], error: null }) }) },
     },
   }
 })
@@ -80,6 +83,10 @@ vi.mock('../hooks/useSupabase.js', async (orig) => {
 import Sites, { pmSitePatch } from './Sites.jsx'
 import SiteDetail from './SiteDetail.jsx'
 import Dashboard from './Dashboard.jsx'
+import Assign from './Assign.jsx'
+import HR from './HR.jsx'
+import DailyReport from './sites/DailyReport.jsx'
+import PhaseKanbanBoard from './sites/PhaseKanbanBoard.jsx'
 
 const MONEY = /฿|บาท|มูลค่าสัญญา|รายรับ|รายจ่าย/
 
@@ -89,7 +96,7 @@ beforeEach(() => {
   fromCalls.length = 0
   window.matchMedia = q => ({ matches: phone && q.includes('max-width'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })
 })
-afterEach(() => { cleanup(); setCurrentRole(null); phone = false; sitesData = [PM_SITE] })
+afterEach(() => { cleanup(); setCurrentRole(null); phone = false; sitesData = [PM_SITE]; tableRows = {}; rpcRows = {} })
 
 describe.each([false, true])('PM pages (phone=%s)', isPhone => {
   beforeEach(() => { phone = isPhone })
@@ -158,5 +165,89 @@ describe('PM site form', () => {
     const site = { ...PM_SITE, lat: null, lng: null, distance_km: null, travel_minutes: null, map_url: null, notes: null, short_name: null, start_date: null }
     expect(pmSitePatch(site, { ...site })).toEqual({})
     expect(pmSitePatch(site, { ...site, lat: '14.1', status: 'On Hold' })).toEqual({ lat: 14.1, status: 'On Hold' })
+  })
+})
+
+// PM-shaped worker row from pm_workers: no salary / daily rate / SSO / contribution.
+const PM_WORKER = {
+  id: 'w1', name: 'Somchai Jaidee', nickname: 'Chai', position: 'ช่างอลูมิเนียม', status: 'active',
+  email: 'w1@x.co', show_in_assign: true, line_user_id: null, annual_leave_days: 6, annual_sick_leave_days: 30,
+}
+const TODAY = new Date().toISOString().slice(0, 10)
+const SALARY = /เงินเดือน|ค่าแรง|บ\/วัน|SSO|ประกันสังคม|เงินสมทบ/
+const flush = () => new Promise(r => setTimeout(r, 0))
+
+describe.each([false, true])('PM assign / HR / site crew (phone=%s)', isPhone => {
+  beforeEach(() => {
+    phone = isPhone
+    rpcRows = { pm_workers: [PM_WORKER], pm_sites: [PM_SITE] }
+    // Embeds of workers(...) come back null for PM: the base table is not readable.
+    tableRows = {
+      worker_assignments: [{ id: 'a1', worker_id: 'w1', site_id: 's1', date: TODAY, shift: 'morning', type: 'site', is_team_leader: true, workers: null }],
+      leave_requests: [{ id: 'l1', worker_id: 'w1', status: 'pending', leave_type: 'leave_personal', date_from: TODAY, date_to: TODAY, shift: 'full_day', reason: 'ธุระ', requested_at: TODAY, workers: null }],
+      line_issue_reports: [{ id: 'i1', worker_id: 'w1', message: 'กระจกร้าว', status: 'open', created_at: `${TODAY}T03:00:00Z`, workers: null }],
+      site_phases: [{ id: 'p1', site_id: 's1', name: 'ติดตั้งกระจก', sort_order: 1, is_issue_phase: false }],
+    }
+  })
+
+  it('Assign shows the crew and the team manager, with no cost text', async () => {
+    const { container, findAllByText, getByText } = render(<Assign navState={{}} navigateTo={() => {}} openSiteOverview={() => {}} />)
+    expect((await findAllByText('Chai')).length).toBeGreaterThan(0)
+    expect(container.textContent).toContain('จัดการทีม')
+    expect(container.textContent).not.toMatch(MONEY)
+    expect(container.textContent).not.toMatch(SALARY)
+    expect(container.textContent).not.toContain('ค่าเดินทาง')
+    fireEvent.click(getByText('วัน'))
+    expect((await findAllByText('Chai')).length).toBeGreaterThan(0)
+    expect(container.textContent).not.toMatch(MONEY)
+    expect(container.textContent).not.toContain('รวมวันนี้')
+    expect(container.textContent).not.toMatch(/แรง \d/)
+  })
+
+  it('HR lists all workers from pm_workers with no salary and no add/edit', async () => {
+    const { container, findByText } = render(<HR navState={{}} />)
+    await findByText('Somchai Jaidee')
+    expect(container.textContent).not.toMatch(MONEY)
+    expect(container.textContent).not.toMatch(SALARY)
+    expect(container.textContent).not.toContain('เพิ่มพนักงาน')
+    expect(container.querySelector('.btn-edit')).toBeNull()
+    expect(container.textContent).not.toContain('เช็คอิน-เช็คเอาท์')
+    expect(container.textContent).not.toContain('ประวัติการแก้ไข')
+  })
+
+  it('HR requests tab shows the leave with the worker name and an approve button', async () => {
+    const { container, findByText, getByText } = render(<HR navState={{}} />)
+    fireEvent.click(await findByText(/คำขอลา/))
+    await findByText('อนุมัติ')
+    expect(getByText('ปฏิเสธ')).toBeTruthy()
+    expect(container.textContent).toContain('Chai')
+  })
+
+  it('Daily report shows crew and issue reporter names from pm_workers', async () => {
+    const { container, findAllByText } = render(<DailyReport site={PM_SITE} />)
+    expect((await findAllByText(/Chai/)).length).toBeGreaterThan(0)
+    expect(container.textContent).toContain('Chai')
+    expect(container.textContent).not.toContain('ไม่ทราบชื่อ')
+  })
+
+  it('Kanban shows today\'s team leader name from pm_workers', async () => {
+    const { findByText } = render(<PhaseKanbanBoard site={PM_SITE} canEdit onTasksChanged={() => {}} />)
+    expect(await findByText('Chai')).toBeTruthy()
+  })
+})
+
+describe('PM leave approval', () => {
+  beforeEach(() => {
+    rpcRows = { pm_workers: [PM_WORKER], pm_sites: [PM_SITE] }
+    tableRows = { leave_requests: [{ id: 'l1', worker_id: 'w1', status: 'pending', leave_type: 'leave_personal', date_from: TODAY, date_to: TODAY, shift: 'morning', reason: null, requested_at: TODAY, workers: null }] }
+  })
+
+  it('approve writes the leave day and updates the request', async () => {
+    const { findByText } = render(<HR navState={{}} />)
+    fireEvent.click(await findByText(/คำขอลา/))
+    fireEvent.click(await findByText('อนุมัติ'))
+    await flush(); await flush()
+    expect(fromCalls).toContain('worker_assignments')
+    expect(fromCalls.filter(t => t === 'leave_requests').length).toBeGreaterThan(1)
   })
 })

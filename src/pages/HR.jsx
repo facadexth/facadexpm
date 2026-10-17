@@ -8,9 +8,10 @@ import { useState, useMemo, useEffect } from 'react'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
+import { canManageSites, canSeeMoney, canApproveLeave, isPm } from '../lib/roles.js'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import { supabase } from '../lib/supabase.js'
-import { useAllActiveWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs, fetchWorkerOTForRange, useCompanyHolidays, saveCompanyHoliday, deleteCompanyHoliday, useAppSetting, saveAppSetting, fetchCompanyHolidaysForRange, useLeaveQuotaUsage, useSickLeaveQuotaUsage, useSeatStatus } from '../hooks/useSupabase.js'
+import { attachPmWorkerNames, useAllActiveWorkers, useSalary, usePreviousMonthSalaries, useAuditLogs, fetchWorkerOTForRange, useCompanyHolidays, saveCompanyHoliday, deleteCompanyHoliday, useAppSetting, saveAppSetting, fetchCompanyHolidaysForRange, useLeaveQuotaUsage, useSickLeaveQuotaUsage, useSeatStatus } from '../hooks/useSupabase.js'
 import { fmt } from '../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import PendingMark from '../components/PendingMark.jsx'
@@ -43,7 +44,7 @@ const EMPTY_WORKER = {
   show_in_assign: true, id_card_number: '', address: '',
 }
 
-function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerUsers = [], seat }) {
+function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerUsers = [], seat, showMoney = true }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('worker-form', { ...EMPTY_WORKER, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -103,22 +104,22 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
           <input type="checkbox" checked={form.show_in_assign} onChange={e => set('show_in_assign', e.target.checked)} style={{ width: 16, height: 16 }} />
           แสดงในตาราง Assign (ปิดสำหรับพนักงานที่ไม่ต้อง assign วันทำงาน เช่น ออฟฟิศ)
         </label>
-        <div>
+        {showMoney && <div>
           <label className="label">เงินเดือน (บาท) ★</label>
           <input type="number" className="input" required min="0" step="0.01" value={form.monthly_salary}
             onChange={e => set('monthly_salary', e.target.value)} />
           <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text3)' }}>
             → ค่าแรงรายวัน: <strong style={{ color: 'var(--yellow)' }}>{dailyRate} บาท/วัน</strong>
           </div>
-        </div>
+        </div>}
         <div className="form-grid-3">
-          <div>
+          {showMoney && <div>
             <label className="label">ประกันสังคม</label>
             <select className="select" value={form.has_social_security ? 'yes' : 'no'} onChange={e => set('has_social_security', e.target.value === 'yes')}>
               <option value="yes">มี</option>
               <option value="no">ไม่มี</option>
             </select>
-          </div>
+          </div>}
           <div>
             <label className="label">ลากิจต่อปี</label>
             <input type="number" className="input" min="0" value={form.annual_leave_days}
@@ -130,11 +131,11 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
               onChange={e => set('annual_sick_leave_days', parseInt(e.target.value) || 0)} />
           </div>
         </div>
-        <div>
+        {showMoney && <div>
           <label className="label">เงินสมทบ/เดือน</label>
           <input type="number" className="input" min="0" step="0.01" value={form.monthly_contribution}
             onChange={e => set('monthly_contribution', e.target.value)} placeholder="บาท" />
-        </div>
+        </div>}
         <div>
           <label className="label">ผูกกับ User Account (Login)</label>
           <select className="select" value={form.email || ''} onChange={e => set('email', e.target.value)}>
@@ -375,6 +376,13 @@ export default function HR({ navState }) {
   const { role, user, isAtLeast } = useUserRole()
   const { tenant, hasModuleAccess } = useTenant()
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'hr')
+  // PM sees the whole crew (not just their own row) but never money. An ADMIN
+  // limited to hr 'view' keeps the old self-only list, so ADMIN is unchanged.
+  const canViewAllWorkers = canManageSites(role) && (canEdit || isPm(role))
+  // A WORKER still sees their own pay; only PM (and unknown roles) lose salary data.
+  const showSalary = canSeeMoney(role) || role === 'WORKER'
+  // ADMIN/OWNER keep the hr-edit gate; PM reviews leave with hr 'view'.
+  const canReviewLeave = canApproveLeave(role) && (canEdit || isPm(role))
   const [innerTab, setInnerTab] = useState(navState?.pending === 'leave_pending' ? 'requests' : 'workers')
   // Bell/push "leave requests waiting": open the requests tab showing only pending ones.
   const leaveFocus = usePendingFocus(navState, 'leave_pending')
@@ -431,10 +439,11 @@ export default function HR({ navState }) {
   const [reviewingId, setReviewingId] = useState(null)
 
   const fetchRequests = async () => {
-    if (!canEdit || !hasModuleAccess('line_bot')) return
+    if (!canReviewLeave || !hasModuleAccess('line_bot')) return
     setLoadingRequests(true)
     const { data } = await supabase.from('leave_requests').select('*, workers(name, nickname)').order('requested_at', { ascending: false })
-    setLeaveRequests(data || [])
+    // PM cannot embed workers(...): names come from pm_workers instead.
+    setLeaveRequests(await attachPmWorkerNames(data))
     setLoadingRequests(false)
   }
   // Depends on hasModuleAccess('line_bot') too, not just canEdit -- useTenant()
@@ -444,7 +453,7 @@ export default function HR({ navState }) {
   // and, without this second dependency, never re-fires once module access
   // later resolves true -- leaving loadingRequests stuck true forever (the
   // tab shows "กำลังโหลด..." with no error, indefinitely).
-  useEffect(() => { fetchRequests() }, [canEdit, hasModuleAccess('line_bot')])
+  useEffect(() => { fetchRequests() }, [canReviewLeave, hasModuleAccess('line_bot')])
 
   const pendingRequestCount = leaveRequests.filter(r => r.status === 'pending').length
   const visibleLeaveRequests = leaveRequests.filter(r => !leaveFocus.active || isLeavePending(r))
@@ -561,12 +570,14 @@ export default function HR({ navState }) {
       const payload = {
         name: form.name, nickname: form.nickname || null,
         position: form.position || null,
-        monthly_salary: parseFloat(form.monthly_salary) || 0,
+        ...(showSalary ? {
+          monthly_salary: parseFloat(form.monthly_salary) || 0,
+          has_social_security: form.has_social_security,
+          monthly_contribution: parseFloat(form.monthly_contribution) || null,
+        } : {}),
         status: form.status,
-        has_social_security: form.has_social_security,
         annual_leave_days: parseInt(form.annual_leave_days) || 0,
         annual_sick_leave_days: parseInt(form.annual_sick_leave_days) || 0,
-        monthly_contribution: parseFloat(form.monthly_contribution) || null,
         email: form.email || null,
         show_in_assign: form.show_in_assign,
         id_card_number: form.id_card_number || null,
@@ -831,11 +842,11 @@ export default function HR({ navState }) {
 
   // WORKER: filter roster to only show their own worker record
   const visibleWorkers = useMemo(() => {
-    if (canEdit) return workers || []
+    if (canViewAllWorkers) return workers || []
     const email = user?.email
     if (!email) return []
     return (workers || []).filter(w => w.email === email)
-  }, [workers, canEdit, user])
+  }, [workers, canViewAllWorkers, user])
 
   // ── Sorting (per-table, client-side only) ──
   const toggleWorkerSort = (col) => {
@@ -916,9 +927,9 @@ export default function HR({ navState }) {
 
   const INNER_TABS = [
     { id: 'workers',  label: '👷 ข้อมูลช่าง' },
-    { id: 'payroll',  label: '💼 เงินเดือน' },
+    ...(showSalary ? [{ id: 'payroll',  label: '💼 เงินเดือน' }] : []),
     // Approval queue (เบิกของ/ขอลา จาก LINE) — only for tenants with the LINE bot module enabled, so other tenants don't see a tab for a feature they haven't set up
-    ...(canEdit && hasModuleAccess('line_bot') ? [{ id: 'requests', label: `🏖️ คำขอลา${pendingRequestCount ? ` (${pendingRequestCount})` : ''}` }] : []),
+    ...(canReviewLeave && hasModuleAccess('line_bot') ? [{ id: 'requests', label: `🏖️ คำขอลา${pendingRequestCount ? ` (${pendingRequestCount})` : ''}` }] : []),
     ...(canEdit ? [{ id: 'checkins', label: '🕐 เช็คอิน-เช็คเอาท์' }] : []),
     ...(canEdit ? [{ id: 'audit', label: '📋 ประวัติการแก้ไข' }] : []),
   ]
@@ -950,9 +961,9 @@ export default function HR({ navState }) {
                     <th className="sortable" onClick={() => toggleWorkerSort('name')}>ชื่อ{wsi('name')}</th>
                     <th className="sortable" onClick={() => toggleWorkerSort('nickname')}>ชื่อเล่น{wsi('nickname')}</th>
                     <th className="sortable" onClick={() => toggleWorkerSort('position')}>ตำแหน่ง{wsi('position')}</th>
-                    <th className="sortable" onClick={() => toggleWorkerSort('monthly_salary')}>เงินเดือน{wsi('monthly_salary')}</th>
-                    <th className="sortable" onClick={() => toggleWorkerSort('daily_rate')}>ค่าแรง/วัน{wsi('daily_rate')}</th>
-                    <th>SSO</th>
+                    {showSalary && <th className="sortable" onClick={() => toggleWorkerSort('monthly_salary')}>เงินเดือน{wsi('monthly_salary')}</th>}
+                    {showSalary && <th className="sortable" onClick={() => toggleWorkerSort('daily_rate')}>ค่าแรง/วัน{wsi('daily_rate')}</th>}
+                    {showSalary && <th>SSO</th>}
                     <th className="sortable" onClick={() => toggleWorkerSort('annual_leave_days')}>ลากิจ/ปี{wsi('annual_leave_days')}</th>
                     <th>ใช้แล้ว</th><th>คงเหลือ</th>
                     <th className="sortable" onClick={() => toggleWorkerSort('annual_sick_leave_days')}>ลาป่วย/ปี{wsi('annual_sick_leave_days')}</th>
@@ -971,9 +982,9 @@ export default function HR({ navState }) {
                       <td style={{ fontWeight: 600 }}>{w.name}</td>
                       <td style={{ color: 'var(--text2)' }}>{w.nickname||'—'}</td>
                       <td style={{ fontSize: 12, color: 'var(--text3)' }}>{w.position||'—'}</td>
-                      <td className="font-mono">{fmt(w.monthly_salary)}</td>
-                      <td className="font-mono" style={{ color: 'var(--yellow)' }}>{fmt(w.daily_rate)}</td>
-                      <td>{w.has_social_security ? <span className="badge badge-paid">✓ มี</span> : <span style={{ color: 'var(--text3)', fontSize: 11 }}>—</span>}</td>
+                      {showSalary && <td className="font-mono">{fmt(w.monthly_salary)}</td>}
+                      {showSalary && <td className="font-mono" style={{ color: 'var(--yellow)' }}>{fmt(w.daily_rate)}</td>}
+                      {showSalary && <td>{w.has_social_security ? <span className="badge badge-paid">✓ มี</span> : <span style={{ color: 'var(--text3)', fontSize: 11 }}>—</span>}</td>}
                       <td style={{ textAlign: 'center' }}>{w.annual_leave_days}</td>
                       <td style={{ textAlign: 'center', color: used > 0 ? 'var(--red)' : 'var(--text3)' }}>{used || '—'}</td>
                       <td style={{ textAlign: 'center', fontWeight: 600, color: remaining < 0 ? 'var(--red)' : 'var(--text2)' }}>{remaining}</td>
@@ -1064,7 +1075,7 @@ export default function HR({ navState }) {
       )}
 
       {/* ── Payroll Tab ── */}
-      {innerTab === 'payroll' && (
+      {innerTab === 'payroll' && showSalary && (
         <div>
           {/* Toolbar + KPI, capped so this region alone can't push the
               table out of usable view on a short monitor -- see
@@ -1352,7 +1363,7 @@ export default function HR({ navState }) {
           onClose={() => { setShowWorkerForm(false); setEditWorker(null) }} maxWidth={560}>
           <WorkerForm initial={editWorker||EMPTY_WORKER} onSave={handleSaveWorker}
             onCancel={() => { setShowWorkerForm(false); setEditWorker(null) }} loading={savingWorker}
-            workerUsers={workerUsers} seat={seat} />
+            workerUsers={workerUsers} seat={seat} showMoney={showSalary} />
         </Modal>
       )}
 
