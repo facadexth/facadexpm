@@ -13,7 +13,7 @@ import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
 import { fmt } from '../lib/supabase.js'
-import { computeInvoiceDeductionPlan, resolveMovementReference, computeFinishedGoodsProductionPlan, computeStockLedgerReport } from '../lib/inventoryCost.js'
+import { computeInvoiceDeductionPlan, resolveMovementReference, computeFinishedGoodsProductionPlan, computeStockLedgerReport, invoiceStockMovementAt } from '../lib/inventoryCost.js'
 import { exportToExcel } from '../lib/exportExcel.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import { useDraftForm } from '../hooks/useDraftForm.js'
@@ -346,18 +346,23 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
 
       if (rmAlreadyDone && fgAlreadyDone) { alert('ใบแจ้งหนี้นี้ถูกตัดสต็อกไปแล้ว — กำลังรีเฟรชรายการ'); onConfirmed(); return }
 
-      let didSomething = false
+      // Posted at the invoice's own date, not today, so the stock card puts
+      // the deduction in the invoice's month.
+      const movementAt = invoiceStockMovementAt(invoice.date)
+      if (!movementAt) { alert('ใบแจ้งหนี้นี้ไม่มีวันที่ — กรุณาใส่วันที่ในใบแจ้งหนี้ก่อนตัดสต็อก'); return }
 
-      if (!rmAlreadyDone && plan && plan.steps.length) {
-        didSomething = true
-        for (const step of plan.steps) {
-          const { error } = await supabase.rpc('record_stock_movement', {
-            p_inventory_item_id: step.inventoryItemId, p_site_id: step.siteId, p_movement_type: step.type,
-            p_quantity: step.quantity, p_unit_cost: step.unitCost,
-            p_reference_type: 'invoice', p_reference_id: invoice.id, p_notes: null,
-          })
-          if (error) throw error
-        }
+      // Every movement is collected here and posted in ONE call
+      // (record_stock_movements_batch, one transaction: all or nothing).
+      // One call per movement took 30+ minutes for an invoice spread over
+      // ~2,400 central-stock items and left it half-posted if the tab closed.
+      const movements = []
+      const mv = (inventoryItemId, siteId, type, quantity, unitCost, notes) => movements.push({
+        inventory_item_id: inventoryItemId, site_id: siteId, movement_type: type, quantity, unit_cost: unitCost,
+        reference_type: 'invoice', reference_id: invoice.id, notes,
+      })
+
+      if (!rmAlreadyDone && plan) {
+        for (const step of plan.steps) mv(step.inventoryItemId, step.siteId, step.type, step.quantity, step.unitCost, null)
       }
 
       // Finished-goods "produce and sell" (additive to the raw-material
@@ -388,7 +393,6 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
           }))
 
         if (billedLines.length) {
-          didSomething = true
           const quotationItemIds = billedLines.map(l => l.quotationItemId)
           const { data: existingFg, error: fgErr } = await supabase
             .from('inventory_items').select('id, quotation_item_id')
@@ -410,29 +414,22 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
               itemId = created.id
               itemIdByQuotationItemId.set(step.quotationItemId, itemId)
             }
-            const { error: inErr } = await supabase.rpc('record_stock_movement', {
-              p_inventory_item_id: itemId, p_site_id: invoice.site_id, p_movement_type: 'purchase_in',
-              p_quantity: 1, p_unit_cost: step.value,
-              p_reference_type: 'invoice', p_reference_id: invoice.id, p_notes: `PI-${invoice.invoice_number}`,
-            })
-            if (inErr) throw inErr
-            const { error: outErr } = await supabase.rpc('record_stock_movement', {
-              p_inventory_item_id: itemId, p_site_id: invoice.site_id, p_movement_type: 'sale_out',
-              p_quantity: 1, p_unit_cost: step.value,
-              p_reference_type: 'invoice', p_reference_id: invoice.id, p_notes: `PO-${invoice.invoice_number}`,
-            })
-            if (outErr) throw outErr
+            mv(itemId, invoice.site_id, 'purchase_in', 1, step.value, `PI-${invoice.invoice_number}`)
+            mv(itemId, invoice.site_id, 'sale_out', 1, step.value, `PO-${invoice.invoice_number}`)
           }
         }
       }
 
-      if (!didSomething) { alert('ไม่มีรายการให้ตัดสต็อก'); return }
+      if (!movements.length) { alert('ไม่มีรายการให้ตัดสต็อก'); return }
+
+      const { error: batchErr } = await supabase.rpc('record_stock_movements_batch', { p_movements: movements, p_movement_at: movementAt })
+      if (batchErr) throw batchErr
 
       if (plan && plan.totalShortfall > 0.01) {
         alert(`ตัดสต็อกสำเร็จบางส่วน — ขาดอีก ${fmt(plan.totalShortfall)} บาท (สต็อกไม่พอทั้งที่ไซท์งานและส่วนกลาง)`)
       }
       onConfirmed()
-    } catch (e) { alert('เกิดข้อผิดพลาดระหว่างตัดสต็อก: ' + e.message + ' — บางรายการอาจถูกบันทึกไปแล้ว กรุณาตรวจสอบที่แท็บ "ประวัติการเคลื่อนไหว" ก่อนลองใหม่') }
+    } catch (e) { alert('เกิดข้อผิดพลาดระหว่างตัดสต็อก: ' + e.message + ' — ยังไม่มีการตัดสต็อกจากการกดครั้งนี้ ลองใหม่ได้') }
     finally { setConfirming(false) }
   }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, estimateSheetCount, computeInvoiceDeductionPlan, computeFinishedGoodsProductionPlan, resolveMovementReference, computeStockLedgerReport, computePoItemBaseQty } from './inventoryCost.js'
+import { computeWeightedAverageCost, convertToBaseUnit, computeAluminumWeightKg, computeGlassAreaSqm, estimateSheetCount, computeInvoiceDeductionPlan, computeFinishedGoodsProductionPlan, resolveMovementReference, computeStockLedgerReport, computePoItemBaseQty, invoiceStockMovementAt } from './inventoryCost.js'
 
 describe('computeWeightedAverageCost', () => {
   it('first receipt into an empty balance', () => {
@@ -607,5 +607,19 @@ describe('receipt_reversal (supplier tax invoice)', () => {
     expect(resolveMovementReference({ reference_type: 'supplier_tax_invoice' })).toBe('ใบกำกับภาษีผู้ขาย')
     expect(resolveMovementReference({ reference_type: 'supplier_tax_invoice_void' })).toBe('ยกเลิกใบกำกับภาษีผู้ขาย')
     expect(resolveMovementReference({ reference_type: 'supplier_tax_invoice_void', notes: 'ยกเลิกใบกำกับ INV-1' })).toBe('ยกเลิกใบกำกับ INV-1')
+  })
+})
+
+describe('invoiceStockMovementAt', () => {
+  it('stamps the invoice date at 23:59 Bangkok time', () => {
+    expect(invoiceStockMovementAt('2026-01-06')).toBe('2026-01-06T23:59:00+07:00')
+  })
+  it('accepts a full timestamp and keeps only its date part', () => {
+    expect(invoiceStockMovementAt('2026-01-06T00:00:00')).toBe('2026-01-06T23:59:00+07:00')
+  })
+  it('returns null for a missing or malformed date', () => {
+    expect(invoiceStockMovementAt(null)).toBeNull()
+    expect(invoiceStockMovementAt('')).toBeNull()
+    expect(invoiceStockMovementAt('6/1/2026')).toBeNull()
   })
 })
