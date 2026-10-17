@@ -1497,6 +1497,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes: Task 1 (`calculateWorkerPay`, `advanceInstallmentDue`, `comparePeriod`, `monthRange`, `weekdayOf`), and the Task 2/3 tables and RPCs.
 - Produces:
   - `summarizeAttendance({shifts, otRows, holidayDates, requireConfirm}) → {[worker_id]: {daysWorked, leavePersonalDays, leaveSickDays, otHours, holidayShifts, officeDays}}`
+  - `findAssignGaps({workers, shifts, holidayDates, year, month, today:'YYYY-MM-DD'}) → [{worker_id, name, dates:[{date, missing:('morning'|'evening')[]}]}]`. `loadPayrollMonth` returns it as `assignGaps`, and so `calculateMonth` returns it too.
   - `advancesDueFor({advances, priorLines, year, month}) → {[worker_id]: Due[]}`, where `Due = {advance_id, title, amount, installment_no, installments, remaining_after}`, `advances` are rows with status `approved`, and `priorLines = [{advance_id, amount, year, month}]`.
   - `manualFromLines(lines) → manual map` (the `calculateWorkerPay` format)
   - `buildPayrollRun({items, workers, amountsByWorker, attendanceByWorker, manualByWorker, advancesDueByWorker, settings}) → [{worker_id, worker, lines, totals, warnings, facts}]`
@@ -1610,6 +1611,40 @@ describe('diffRuns', () => {
 })
 ```
 
+Add the Assign-gap test to `attendance.test.js`. This is the owner's request of 2026-10-17: warn the admin when Assign is incomplete.
+
+```js
+import { findAssignGaps } from './attendance.js'
+
+describe('findAssignGaps', () => {
+  const workers = [
+    { id: 'a', name: 'กร', show_in_assign: true },
+    { id: 'h', name: 'โปรย', show_in_assign: false },
+  ]
+  // October 2026, "today" = Wed 7 Oct: days 1..7 are in scope; 4 Oct is Sunday; 5 Oct is a company holiday
+  const shifts = [
+    { worker_id: 'a', date: '2026-10-01', shift: 'morning' }, { worker_id: 'a', date: '2026-10-01', shift: 'evening' },
+    { worker_id: 'a', date: '2026-10-02', shift: 'morning' },                                                   // evening missing
+    { worker_id: 'a', date: '2026-10-03', shift: 'morning' }, { worker_id: 'a', date: '2026-10-03', shift: 'evening' },
+    { worker_id: 'a', date: '2026-10-06', shift: 'morning' }, { worker_id: 'a', date: '2026-10-06', shift: 'evening' },
+  ]
+  it('lists Mon–Sat non-holiday days up to today with a missing shift, skipping hidden workers', () => {
+    const r = findAssignGaps({ workers, shifts, holidayDates: ['2026-10-05'], year: 2026, month: 10, today: '2026-10-07' })
+    expect(r).toEqual([{ worker_id: 'a', name: 'กร', dates: [
+      { date: '2026-10-02', missing: ['evening'] },
+      { date: '2026-10-07', missing: ['morning', 'evening'] },
+    ] }])
+  })
+  it('checks the whole month when today is after it', () => {
+    const r = findAssignGaps({ workers: [workers[0]], shifts: [], holidayDates: [], year: 2026, month: 2, today: '2026-10-07' })
+    expect(r[0].dates).toHaveLength(24) // Feb 2026: 28 days − 4 Sundays
+  })
+  it('returns nothing for a month that has not started', () => {
+    expect(findAssignGaps({ workers, shifts: [], holidayDates: [], year: 2026, month: 11, today: '2026-10-07' })).toEqual([])
+  })
+})
+```
+
 - [ ] **Step 2: Run them and check that they fail**
 
 Run: `TZ=Asia/Bangkok npx vitest run src/lib/payroll/attendance.test.js src/lib/payroll/run.test.js`
@@ -1644,7 +1679,37 @@ export function summarizeAttendance({ shifts = [], otRows = [], holidayDates = [
   for (const o of otRows) get(o.worker_id).otHours += Number(o.ot_hours) || 0
   return out
 }
+
+// Owner request 2026-10-17: warn whoever runs payroll when Assign is not filled
+// in. A gap = Mon–Sat, not a company holiday, on or before `today`, missing the
+// morning or evening row (any type counts, incl. leave/holiday). Workers hidden
+// from Assign (show_in_assign=false) are skipped.
+export function findAssignGaps({ workers, shifts, holidayDates = [], year, month, today }) {
+  const { from, to, lastDay } = monthRange(year, month)
+  if (today < from) return []
+  const end = today < to ? Number(today.slice(8, 10)) : lastDay
+  const hol = new Set(holidayDates)
+  const have = new Set(shifts.map(s => `${s.worker_id}|${s.date}|${s.shift}`))
+  const days = []
+  for (let d = 1; d <= end; d++) {
+    const date = `${from.slice(0, 8)}${String(d).padStart(2, '0')}`
+    if (weekdayOf(date) !== 0 && !hol.has(date)) days.push(date)
+  }
+  const out = []
+  for (const w of workers) {
+    if (w.show_in_assign === false) continue
+    const dates = []
+    for (const date of days) {
+      const missing = ['morning', 'evening'].filter(s => !have.has(`${w.id}|${date}|${s}`))
+      if (missing.length) dates.push({ date, missing })
+    }
+    if (dates.length) out.push({ worker_id: w.id, name: w.name, dates })
+  }
+  return out
+}
 ```
+
+Change the import at the top of attendance.js to `import { weekdayOf, monthRange } from './period.js'`.
 
 ```js
 // src/lib/payroll/run.js
@@ -1729,7 +1794,7 @@ Expected: PASS (all payroll tests).
 // All money math stays in calc.js/run.js.
 import { supabase } from '../supabase.js'
 import { monthRange } from './period.js'
-import { summarizeAttendance } from './attendance.js'
+import { summarizeAttendance, findAssignGaps } from './attendance.js'
 import { advancesDueFor, manualFromLines, buildPayrollRun, diffRuns } from './run.js'
 
 const must = ({ data, error }) => { if (error) throw error; return data }
@@ -1744,7 +1809,7 @@ export async function loadPayrollMonth(year, month) {
     supabase.from('salary_records')
       .select('id, worker_id, net_pay, paid_date, facts, workers(name, nickname, position, employee_code, bank_code, bank_account_no, bank_account_name), salary_record_lines(*)')
       .eq('year', year).eq('month', month).then(must),
-    supabase.from('worker_assignments').select('worker_id, type, ot_hours, date, confirmed_at').gte('date', from).lte('date', to).then(must),
+    supabase.from('worker_assignments').select('worker_id, type, shift, ot_hours, date, confirmed_at').gte('date', from).lte('date', to).then(must),
     supabase.from('worker_ot').select('worker_id, ot_hours').gte('date', from).lte('date', to).then(must),
     supabase.from('company_holidays').select('date').gte('date', from).lte('date', to).then(must),
     supabase.from('salary_advances').select('*').in('status', ['approved', 'settled']).then(must),
@@ -1762,7 +1827,10 @@ export async function loadPayrollMonth(year, month) {
     advancesDueByWorker: advancesDueFor({ advances, priorLines, year, month }),
     settings: { holidayMultiplier: parseFloat(setting('holiday_pay_multiplier')) || 1.5 },
   }
-  return { period, items, workers, records, advances, inputs }
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const assignGaps = findAssignGaps({ workers, shifts, holidayDates: holidays.map(h => h.date), year, month, today })
+  return { period, items, workers, records, advances, inputs, assignGaps }
 }
 
 async function loadAdvanceLines(advanceIds) {
@@ -2388,6 +2456,11 @@ export default function PayrollMonth({ canEdit, settingsSlot }) {
   const onSavePreview = () => run(async () => { await saveDraft(year, month, preview.run); setPreview(null) })
   const onManual = (rec, item, value) => run(() => setManualLine(rec.id, item.id, null, value === '' ? null : (parseFloat(value) || 0)))
   const onReopen = () => { const r = prompt('เหตุผลที่เปิดงวดใหม่'); if (r) run(() => reopenMonth(year, month, r)) }
+  const gaps = data?.assignGaps || []
+  const onConfirm = () => {
+    if (gaps.length && !confirm(`Assign ยังไม่ครบ ${gaps.length} คน (${gaps.map(g => g.name).join(', ')}) ยืนยันเงินเดือนต่อไหม`)) return
+    run(() => confirmMonth(year, month))
+  }
   const warnings = (preview?.run || []).filter(r => r.warnings.length)
 
   if (loading) return <div>⏳ กำลังโหลด...</div>
@@ -2404,9 +2477,10 @@ export default function PayrollMonth({ canEdit, settingsSlot }) {
         <span>{periodLabel(year, month)}</span>
         <span style={{ fontWeight: 700, color: STATUS[status].color }}>● {STATUS[status].label}</span>
         {status === 'draft' && data?.period?.reopen_reason && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>เปิดงวดใหม่: {data.period.reopen_reason}</span>}
+        {canEdit && status === 'draft' && gaps.length > 0 && <span style={{ fontSize: 12, color: 'var(--danger)' }}>⚠️ Assign ยังไม่ครบ {gaps.length} คน</span>}
         <span style={{ flex: 1 }} />
         {canEdit && status === 'draft' && <button className="btn btn-primary" disabled={busy} onClick={onCalculate}>🧮 คำนวณ</button>}
-        {canEdit && status === 'draft' && records.length > 0 && <button className="btn" disabled={busy} onClick={() => run(() => confirmMonth(year, month))}>✅ ยืนยันเงินเดือน</button>}
+        {canEdit && status === 'draft' && records.length > 0 && <button className="btn" disabled={busy} onClick={onConfirm}>✅ ยืนยันเงินเดือน</button>}
         {canEdit && status === 'confirmed' && <button className="btn btn-ghost" disabled={busy} onClick={() => run(() => unconfirmMonth(year, month))}>↩️ กลับไปแก้ไข</button>}
         {canEdit && status === 'confirmed' && <button className="btn btn-primary" disabled={busy} onClick={() => setCloseOpen(true)}>🔒 ปิดงวด</button>}
         {isOwner && status === 'closed' && <button className="btn btn-ghost" disabled={busy} onClick={onReopen}>🔓 เปิดงวดใหม่</button>}
@@ -2459,6 +2533,16 @@ export default function PayrollMonth({ canEdit, settingsSlot }) {
       {preview && (
         <Modal title={`ตรวจก่อนบันทึก — ${periodLabel(year, month)}`} onClose={() => setPreview(null)} maxWidth={720}>
           <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+            {preview.assignGaps.length > 0 && (
+              <details open style={{ border: '1px solid var(--danger)', borderRadius: 6, padding: 8 }}>
+                <summary style={{ color: 'var(--danger)', fontWeight: 700 }}>⚠️ Assign ยังไม่ครบ {preview.assignGaps.length} คน (เงินเดือนอาจไม่ถูก) ไปเติมที่หน้า Assign ก่อนได้</summary>
+                {preview.assignGaps.map(g => (
+                  <div key={g.worker_id} style={{ fontSize: 13 }}>
+                    <b>{g.name}</b> {g.dates.length} วัน: {g.dates.slice(0, 8).map(d => `${+d.date.slice(8)}${d.missing.length === 1 ? (d.missing[0] === 'morning' ? '(เช้า)' : '(บ่าย)') : ''}`).join(', ')}{g.dates.length > 8 ? ' …' : ''}
+                  </div>
+                ))}
+              </details>
+            )}
             {warnings.map(r => <div key={r.worker_id} style={{ color: 'var(--danger)' }}>⚠️ {r.worker.name}: {r.warnings.map(w => WARN[w] || w).join(', ')}</div>)}
             {preview.diff.length === 0 ? <div>ไม่มีตัวเลขเปลี่ยน</div> : preview.diff.map(d => (
               <div key={d.worker_id}>
@@ -3258,7 +3342,7 @@ Follow the `chang-ship` skill: build, then `wrangler deploy`. Confirm the deploy
 4. ตุลาคม 2026:
    - คำนวณ. The preview lists every active worker, including anyone with no shifts.
    - Save. Type กยศ for one person, run คำนวณ again, and check that the กยศ value is kept.
-5. ยืนยันเงินเดือน. Log in as a worker account and check that the October slip is visible. Log back in as admin.
+5. Before confirming, check the Assign warning in the preview. Workers missing shifts are listed with their dates, and สมาชิกที่ซ่อนจาก Assign are not. Press ยืนยันเงินเดือน; it asks before continuing when gaps exist. Then log in as a worker account, check that the October slip is visible, and log back in as admin.
 6. Settings → ไฟล์จ่ายเงินเดือน (SCB): set the debit account and product SPN.
 7. Back on October → ไฟล์ธนาคาร. Read the list of excluded workers, then download the file.
 8. The owner uploads the file in SCB Business Anywhere. Record the portal's validation result. If it rejects the file, copy the exact error and stop: that is a Task 12 bug.

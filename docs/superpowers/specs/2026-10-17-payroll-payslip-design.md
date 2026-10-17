@@ -197,6 +197,13 @@ hours, is derived from the sheet itself, not from the live DB.
    - The month is shown as a grid like the owner's sheet: one row per worker,
      one column per active item, with totals.
    - `manual_monthly` cells can be edited in the grid. Recalculating keeps them.
+   - **Incomplete Assign warning** (owner request 2026-10-17). The calculate
+     preview lists every worker whose Assign is not filled in:
+     - A gap is a Mon–Sat day in the month, up to today, that is not a company
+       holiday and is missing the morning or the evening shift row (of any type).
+     - Workers hidden from Assign (`show_in_assign = false`) are skipped.
+     - It is a warning, not a block. Confirming a month that still has gaps asks
+       "Assign ยังไม่ครบ N คน ยืนยันต่อไหม".
 2. **Confirmed** (admin/owner presses "ยืนยันเงินเดือน").
    - Nothing can be edited. "กลับไปแก้ไข" returns the month to draft.
    - Slips become visible to employees.
