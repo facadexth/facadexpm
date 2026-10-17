@@ -5,6 +5,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 const fromCalls = []
 const rpcCalls = []
 const selects = []
+const rangeCalls = []
 const rpcData = {
   pm_sites: [{ id: 's1', site_number: 'B', name: 'Site B', is_default: false }, { id: 's2', site_number: 'A', name: 'Site A', is_default: true }],
   pm_workers: [
@@ -22,6 +23,7 @@ vi.mock('../lib/supabase.js', () => ({
       const rows = rpcData[name] ?? []
       const q = {
         eq: (c, v) => { q.rows = rows.filter(r => r[c] === v); return q },
+        range: (a, b) => { rangeCalls.push([name, a, b]); q.rows = rows.slice(a, b + 1); return q },
         single: () => Promise.resolve({ data: (q.rows ?? rows)[0] ?? null, error: null }),
         then: (res, rej) => Promise.resolve({ data: q.rows ?? rows, error: null }).then(res, rej),
       }
@@ -39,9 +41,9 @@ vi.mock('../lib/supabase.js', () => ({
 }))
 
 const { setCurrentRole } = await import('../lib/roles.js')
-const { useSites, useSite, useSiteOverview, useWorkers, useAllActiveWorkers, useAssignmentsRange, useSitesProgress } = await import('./useSupabase.js')
+const { useSites, useSite, useSiteOverview, useWorkers, useAllActiveWorkers, useAssignmentsRange, useSitesProgress, useInventoryOnHand } = await import('./useSupabase.js')
 
-beforeEach(() => { fromCalls.length = 0; rpcCalls.length = 0; selects.length = 0 })
+beforeEach(() => { fromCalls.length = 0; rpcCalls.length = 0; selects.length = 0; rangeCalls.length = 0; delete rpcData.pm_inventory_on_hand })
 
 describe('PM data hooks', () => {
   it('PM useSites uses pm_sites and never the financial view', async () => {
@@ -93,5 +95,13 @@ describe('PM data hooks', () => {
     expect(sel).not.toContain('sites(')
     expect(result.current.data[0].workers).toEqual({ name: 'Ann', nickname: 'A', position: 'tech' })
     expect(result.current.data[0].sites).toEqual({ name: 'Site B', site_number: 'B', is_default: false })
+  })
+  it('PM RPC reads fetch a second page after a full first page of 1000 rows', async () => {
+    setCurrentRole('PM')
+    rpcData.pm_inventory_on_hand = Array.from({ length: 1001 }, (_, i) => ({ inventory_item_id: 'i' + i, quantity_on_hand: '2' }))
+    const { result } = renderHook(() => useInventoryOnHand('s1'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(Object.keys(result.current.data)).toHaveLength(1001)
+    expect(rangeCalls.filter(c => c[0] === 'pm_inventory_on_hand').map(c => c[1])).toEqual([0, 1000])
   })
 })

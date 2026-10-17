@@ -18,10 +18,9 @@ import { getCurrentRole } from '../lib/roles.js'
 // PM never reads money: the DB denies PM on sites/workers/PO/inventory base
 // tables, so PM goes through SECURITY DEFINER pm_* RPCs (migration 2026-10-17-05).
 const isPm = () => getCurrentRole() === 'PM'
-async function pmRpc(name, args) {
-  const { data, error } = await (args ? supabase.rpc(name, args) : supabase.rpc(name))
-  if (error) throw error
-  return data || []
+// Paged with .range() like fetchAllRows: PostgREST's max-rows cap applies to RPC results too.
+function pmRpc(name, args) {
+  return fetchAllRows(() => (args ? supabase.rpc(name, args) : supabase.rpc(name)))
 }
 // Attach the worker/site names a PM cannot embed (workers/sites are not readable by PM).
 async function attachPmNames(rows, { siteShape }) {
