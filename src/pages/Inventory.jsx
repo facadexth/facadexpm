@@ -8,7 +8,7 @@
 // ============================================================
 import { useState, useMemo, useEffect, Fragment } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices, useInvoiceNumbers, useSiteCostEstimates, useFirstReceipts, useStockDocuments } from '../hooks/useSupabase.js'
+import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices, useInvoiceNumbers, useSiteCostEstimates, useStockDocuments } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -291,7 +291,7 @@ function CogsSettingsPanel({ settings, categories, onSaved }) {
   )
 }
 
-function InvoiceDeductionRow({ invoice, categories, items, balances, firstReceipts, centralSite, defaultSettings, siteCostEstimates, expanded, onToggle, onConfirmed }) {
+function InvoiceDeductionRow({ invoice, categories, items, centralSite, defaultSettings, siteCostEstimates, expanded, onToggle, onConfirmed }) {
   const [materialPct, setMaterialPct] = useState(String(defaultSettings?.material_pct ?? 70))
   // ถ้าไซท์งานของใบแจ้งหนี้นี้เคยกรอก "ต้นทุนประมาณการ" ไว้ (หน้าไซท์งาน,
   // คีย์ด้วยหมวดหมู่สินค้าคงคลังเดียวกัน) ใช้สัดส่วนของไซท์นั้นเป็นค่าเริ่มต้น
@@ -313,10 +313,31 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, firstReceip
   const usingSiteEstimate = (siteCostEstimates || []).some(e => e.site_id === invoice.site_id)
   const [confirming, setConfirming] = useState(false)
 
+  // Stock as of the invoice date (owner, 2026-10-17): the cut is dated to the
+  // invoice date, so it may only take what was in stock then AND stays in
+  // stock ever since -- otherwise a back-dated invoice takes goods that only
+  // arrived later and the stock card goes negative in between. Cost is the
+  // average cost on that date. Loaded when the row opens.
+  const [asOf, setAsOf] = useState(null) // { balances, firstReceivedAt } | { error }
+  useEffect(() => {
+    if (!expanded || !invoice.date) return
+    let cancelled = false
+    setAsOf(null)
+    const siteIds = [invoice.site_id, centralSite?.id].filter(Boolean)
+    supabase.rpc('inventory_balances_as_of', { p_date: invoice.date, p_site_ids: siteIds }).then(({ data, error }) => {
+      if (cancelled) return
+      if (error) { setAsOf({ error: error.message }); return }
+      const rows = (data || []).map(r => ({ ...r, quantity_on_hand: Number(r.quantity_on_hand), weighted_average_cost: Number(r.weighted_average_cost) }))
+      setAsOf({ balances: rows, firstReceivedAt: Object.fromEntries(rows.map(r => [`${r.inventory_item_id}|${r.site_id}`, r.first_received_at])) })
+    })
+    return () => { cancelled = true }
+  }, [expanded, invoice.id, invoice.date, invoice.site_id, centralSite?.id])
+  const asOfReady = !!asOf?.balances
+
   const numericSplits = Object.fromEntries(Object.entries(splits).map(([k, v]) => [k, parseFloat(v) || 0]))
-  const plan = expanded ? computeInvoiceDeductionPlan({
+  const plan = expanded && asOfReady ? computeInvoiceDeductionPlan({
     invoiceSubtotal: invoice.subtotal, materialPct: parseFloat(materialPct) || 0, categorySplits: numericSplits,
-    siteId: invoice.site_id, centralSiteId: centralSite?.id || null, items: items || [], balances: balances || [], firstReceivedAt: firstReceipts || {},
+    siteId: invoice.site_id, centralSiteId: centralSite?.id || null, items: items || [], balances: asOf.balances, firstReceivedAt: asOf.firstReceivedAt,
   }) : null
 
   const sum = Object.values(splits).reduce((s, v) => s + (parseFloat(v) || 0), 0)
@@ -429,7 +450,11 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, firstReceip
         alert(`ตัดสต็อกสำเร็จบางส่วน — ขาดอีก ${fmt(plan.totalShortfall)} บาท (สต็อกไม่พอทั้งที่ไซท์งานและส่วนกลาง)`)
       }
       onConfirmed()
-    } catch (e) { alert('เกิดข้อผิดพลาดระหว่างตัดสต็อก: ' + e.message + ' — ยังไม่มีการตัดสต็อกจากการกดครั้งนี้ ลองใหม่ได้') }
+    } catch (e) {
+      const short = /insufficient_stock_as_of: (.+?) \(/.exec(e.message || '')
+      if (short) alert(`สต็อก ${short[1]} ไม่พอ ณ วันที่ใบแจ้งหนี้ (สต็อกการ์ดจะติดลบ) — ยังไม่มีการตัดสต็อกจากการกดครั้งนี้ กดเปิดรายการใหม่เพื่อโหลดยอดล่าสุดแล้วลองอีกครั้ง`)
+      else alert('เกิดข้อผิดพลาดระหว่างตัดสต็อก: ' + e.message + ' — ยังไม่มีการตัดสต็อกจากการกดครั้งนี้ ลองใหม่ได้')
+    }
     finally { setConfirming(false) }
   }
 
@@ -464,9 +489,11 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, firstReceip
             ))}
           </div>
           <div style={{ fontSize: 12, color: validSum ? 'var(--green)' : 'var(--red)' }}>รวม {sum.toFixed(1)}% {validSum ? '✓' : '— ต้องเท่ากับ 100%'}</div>
+          {!invoice.date && <div style={{ fontSize: 12, color: 'var(--red)' }}>ใบแจ้งหนี้นี้ไม่มีวันที่ — ใส่วันที่ในใบแจ้งหนี้ก่อนตัดสต็อก</div>}
+          {asOf?.error && <div style={{ fontSize: 12, color: 'var(--red)' }}>โหลดยอดสต็อก ณ วันที่ใบแจ้งหนี้ไม่สำเร็จ: {asOf.error}</div>}
           {plan && (
             <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: 12, fontSize: 13 }}>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>ตัวอย่างการตัดสต็อก</div>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>ตัวอย่างการตัดสต็อก <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text3)' }}>(ใช้ยอดคงเหลือ ณ วันที่ใบแจ้งหนี้ {new Date(invoice.date).toLocaleDateString('th-TH')})</span></div>
               {plan.categoryResults.map(cr => {
                 const cat = (categories || []).find(c => c.id === cr.categoryId)
                 // One sale_out per item cut (site or central) -- the FIFO pick list.
@@ -497,8 +524,8 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, firstReceip
               </div>
             </div>
           )}
-          <button className="btn btn-sm btn-primary" style={{ justifySelf: 'start' }} disabled={confirming || !validSum || !firstReceipts} onClick={confirm}>
-            {confirming ? '⏳' : !firstReceipts ? '⏳ กำลังโหลดลำดับ FIFO...' : '✅ ยืนยันตัดสต็อก'}
+          <button className="btn btn-sm btn-primary" style={{ justifySelf: 'start' }} disabled={confirming || !validSum || !asOfReady} onClick={confirm}>
+            {confirming ? '⏳' : !asOfReady ? '⏳ กำลังโหลดยอด ณ วันที่ใบแจ้งหนี้...' : '✅ ยืนยันตัดสต็อก'}
           </button>
         </div>
       )}
@@ -1124,7 +1151,6 @@ export default function Inventory() {
   const deductionCategories = useMemo(() => (categories || []).filter(c => c.use_for_cost_deduction), [categories])
   const { data: factors, refetch: refetchFactors } = useInventoryItemUnitFactors()
   const { data: balances, refetch: refetchBalances } = useStockBalances()
-  const { data: firstReceipts, refetch: refetchFirstReceipts } = useFirstReceipts()
   const [movementItemFilter, setMovementItemFilter] = useState('')
   const [movementTypeFilter, setMovementTypeFilter] = useState('')
   const [movementSiteFilter, setMovementSiteFilter] = useState('')
@@ -1427,11 +1453,11 @@ export default function Inventory() {
           )}
           {(unprocessedInvoices || []).map(inv => (
             <InvoiceDeductionRow
-              key={`${inv.id}-${JSON.stringify(cogsSettings)}`} invoice={inv} categories={deductionCategories} items={items} balances={balances}
-              centralSite={centralSite} defaultSettings={cogsSettings} siteCostEstimates={siteCostEstimates} firstReceipts={firstReceipts}
+              key={`${inv.id}-${JSON.stringify(cogsSettings)}`} invoice={inv} categories={deductionCategories} items={items}
+              centralSite={centralSite} defaultSettings={cogsSettings} siteCostEstimates={siteCostEstimates}
               expanded={expandedInvoiceId === inv.id}
               onToggle={() => setExpandedInvoiceId(id => id === inv.id ? null : inv.id)}
-              onConfirmed={() => { setExpandedInvoiceId(null); refetchUnprocessedInvoices(); refetchBalances(); refetchFirstReceipts(); refetchItems() }}
+              onConfirmed={() => { setExpandedInvoiceId(null); refetchUnprocessedInvoices(); refetchBalances(); refetchItems() }}
             />
           ))}
           {!(unprocessedInvoices || []).length && (
