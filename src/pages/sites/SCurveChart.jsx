@@ -4,6 +4,7 @@
 // computeMonthTicks จาก ganttTimeline.js) เพื่อให้ 2 กราฟอ่านคู่กันได้ตรงกัน
 // ============================================================
 import { useMemo } from 'react'
+import { millionBahtTick } from '../../lib/millionBahtTick.js'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine, ResponsiveContainer } from 'recharts'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
@@ -130,7 +131,7 @@ export default function SCurveChart({ site, compact = false }) {
               to land the plot area at the same 178px offset (170px phase
               label column + 8px gap) GanttView's track starts at, so the
               two charts' timelines line up when stacked. */}
-          <YAxis width={compact ? 56 : 64} tick={{ fontSize: 11 }} tickFormatter={(v) => fmt(v)} />
+          <YAxis width={compact ? 58 : 64} tick={{ fontSize: 11 }} tickFormatter={compact ? millionBahtTick : (v) => fmt(v)} />
           <Tooltip formatter={(v) => fmt(v)} labelFormatter={(ts) => format(new Date(ts), 'd MMM yyyy', { locale: th })} />
           <Legend />
           {todayInRange && (
