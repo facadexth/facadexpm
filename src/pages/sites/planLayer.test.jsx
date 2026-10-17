@@ -22,12 +22,26 @@ vi.mock('../../lib/supabase.js', () => ({
 }))
 let mockRole = 'OWNER'
 vi.mock('../../hooks/useUserRole.js', () => ({ useUserRole: () => ({ role: mockRole }) }))
-vi.mock('recharts', () => {
+vi.mock('recharts', async () => {
+  const React = await import('react')
   const Box = ({ children }) => <div>{children}</div>
   const Nil = () => null
-  const NamedLine = ({ name }) => <span data-testid="line">{name}</span>
-  return { ResponsiveContainer: Box, LineChart: Box, Line: NamedLine, XAxis: Nil, YAxis: Nil, CartesianGrid: Nil, Tooltip: Nil, Legend: Nil, ReferenceLine: Nil }
+  // LineChart hands its rows to each Line (through fragments); a Line renders its name and calls a custom dot per row
+  const withData = (children, data) => React.Children.map(children, (c) => {
+    if (!React.isValidElement(c)) return c
+    if (c.type === React.Fragment) return withData(c.props.children, data)
+    return React.cloneElement(c, { chartData: data })
+  })
+  const Chart = ({ data, children }) => <div>{withData(children, data)}</div>
+  const NamedLine = ({ name, dot, chartData }) => (
+    <span data-testid="line">{name}{typeof dot === 'function' && (chartData || []).map((_, index) => dot({ index, cx: 10, cy: 10 }))}</span>
+  )
+  return { ResponsiveContainer: Box, LineChart: Chart, Line: NamedLine, XAxis: Nil, YAxis: Nil, CartesianGrid: Nil, Tooltip: Nil, Legend: Nil, ReferenceLine: Nil }
 })
+vi.mock('../../components/SiteOverviewContent.jsx', () => ({ default: () => null }))
+vi.mock('./PhaseKanbanBoard.jsx', () => ({ default: () => null }))
+vi.mock('./DailyReport.jsx', () => ({ default: () => null }))
+vi.mock('./BoqTab.jsx', () => ({ default: () => null }))
 
 const phases = [
   { id: 'p1', site_id: 's1', name: 'ผลิต', sort_order: 1, status: 'not_started', start_date: '2026-11-01', end_date: '2026-11-26', billing_weight_pct: 60, is_vo: false },
@@ -49,6 +63,7 @@ const items = {
 }
 const q = (data) => ({ data, loading: false, error: null, refetch: async () => {} })
 let mockPlans = plans
+let mockDaily = [{ day: '2026-11-05', contract_pct: 10 }]
 vi.mock('../../hooks/useSupabase.js', () => ({
   useSitePhases: () => q(phases),
   usePhaseTasks: () => q([]),
@@ -56,13 +71,15 @@ vi.mock('../../hooks/useSupabase.js', () => ({
   useIncomes: () => q([]),
   useExpenses: () => q([]),
   useSitePlans: () => ({ plans: mockPlans, items, loading: false, error: null, reload: () => {} }),
-  useSiteProgressDaily: () => q([{ day: '2026-11-05', contract_pct: 10 }]),
+  useSiteProgressDaily: () => q(mockDaily),
+  useSiteOverview: () => q({ id: 's1', name: 'ไซท์ A', site_number: 'S-1', contract_value: 1000000 }),
 }))
 
 import { resetProgressSchemaProbe, probeProgressSchema } from '../../lib/progressSchema.js'
 import { planDelayTag, planPctSeries, planPctAt, workSeries } from './planLayer.js'
 import GanttView from './GanttView.jsx'
 import SCurveChart from './SCurveChart.jsx'
+import SiteDetail from '../SiteDetail.jsx'
 
 const site = { id: 's1', name: 'ไซท์ A', site_number: 'S-1', contract_value: 1000000 }
 
@@ -70,7 +87,7 @@ beforeEach(async () => {
   window.matchMedia ||= () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })
   await probeProgressSchema() // schema ready
 })
-afterEach(() => { cleanup(); probeError = null; mockRole = 'OWNER'; mockPlans = plans; resetProgressSchemaProbe() })
+afterEach(() => { cleanup(); probeError = null; mockRole = 'OWNER'; mockPlans = plans; mockDaily = [{ day: '2026-11-05', contract_pct: 10 }]; resetProgressSchemaProbe() })
 
 describe('planLayer maths', () => {
   it('delay tag: plan end 2026-11-20, current end 2026-11-26 -> ช้า 6 วัน (red)', () => {
@@ -166,5 +183,44 @@ describe('S-curve modes', () => {
     render(<SCurveChart site={{ id: 's1', name: 'ไซท์ A', contract_value: 1000000 }} />)
     await screen.findByText(/S-curve/)
     expect(screen.queryByRole('button', { name: 'งานจริง %' })).toBeNull()
+  })
+})
+
+describe('one PLAN version for the Gantt and the S-curve (SiteDetail)', () => {
+  const mount = async () => {
+    render(<SiteDetail navState={{ siteId: 's1', siteName: 'ไซท์ A', tab: 'gantt' }} navigateTo={() => {}} />)
+    await screen.findByRole('button', { name: 'v2' })
+  }
+  const lines = () => screen.getAllByTestId('line').map((n) => n.textContent)
+  it('choosing v1 in the Gantt switches the S-curve plan line to PLAN v1', async () => {
+    await mount()
+    fireEvent.click(screen.getByRole('button', { name: 'งานจริง %' }))
+    expect(lines()).toContain('แผน (PLAN v2)')
+    fireEvent.click(screen.getByRole('button', { name: 'v1' }))
+    expect(lines()).toContain('แผน (PLAN v1)')
+    expect(lines()).not.toContain('แผน (PLAN v2)')
+  })
+  it('PLAN ปิด in the Gantt -> the S-curve งานจริง mode has no plan line', async () => {
+    await mount()
+    fireEvent.click(screen.getByRole('button', { name: 'งานจริง %' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ปิด' }))
+    expect(lines()).toEqual(['งานจริง'])
+    expect(screen.queryByText('ยังไม่มี PLAN จึงยังไม่มีเส้นแผน')).toBeNull()
+  })
+})
+
+describe('S-curve actual point on day one', () => {
+  it('a single actual point (today only) renders a visible dot', async () => {
+    mockRole = 'PM'
+    mockDaily = []
+    render(<SCurveChart site={{ id: 's1', name: 'ไซท์ A' }} />)
+    await screen.findAllByText(/งานจริง/)
+    expect(screen.getAllByTestId('actual-last-dot')).toHaveLength(1)
+  })
+  it('with history, only the last actual point gets the dot', async () => {
+    mockRole = 'PM'
+    render(<SCurveChart site={{ id: 's1', name: 'ไซท์ A' }} />)
+    await screen.findAllByText(/งานจริง/)
+    expect(screen.getAllByTestId('actual-last-dot')).toHaveLength(1)
   })
 })

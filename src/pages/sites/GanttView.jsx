@@ -23,7 +23,7 @@ import { canSeeMoney, canManagePlan } from '../../lib/roles.js'
 import PlanVersionsDialog, { PlanBar } from './PlanVersionsDialog.jsx'
 import { useProgressSchemaReady } from '../../lib/progressSchema.js'
 import { withVoColumns, savePhaseVoValues } from './phaseVo.js'
-import { latestPlanId, planRangesByRef, planDelayTag, planPctSeries, planPctAt } from './planLayer.js'
+import { resolvePlanChoice, planRangesByRef, planDelayTag, planPctSeries, planPctAt } from './planLayer.js'
 
 const ROW_H = 34
 const EDIT_H = 320
@@ -83,7 +83,7 @@ const formatShortDateRange = (startStr, endStr) => {
     : `${format(s, 'd MMM', { locale: th })}-${format(e, 'd MMM', { locale: th })}`
 }
 
-export default function GanttView({ sites, navigateTo, onManagePhases, selectedSiteId, onSelectSite, canEdit, onPhasesChanged, onOpenKanban }) {
+export default function GanttView({ sites, navigateTo, onManagePhases, selectedSiteId, onSelectSite, canEdit, onPhasesChanged, onOpenKanban, planChoice: planChoiceProp, onPlanChoiceChange }) {
   const { data: allPhases, refetch: refetchPhases } = useSitePhases()
   const { data: allTasks, refetch: refetchTasks } = usePhaseTasks()
   const { data: allSubtasks, refetch: refetchSubtasks } = useSubtasks()
@@ -102,8 +102,11 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   const [confirmDeleteId, setConfirmDeleteId] = useState(null) // { kind: 'phase'|'subtask', id }
   const [applyingTemplate, setApplyingTemplate] = useState(false)
   const [planDialogOpen, setPlanDialogOpen] = useState(false)
-  // PLAN layer on the single-site Gantt: 'latest' (default), 'off', or a site_plans id
-  const [planChoice, setPlanChoice] = useState('latest')
+  // PLAN layer on the single-site Gantt: 'latest' (default), 'off', or a site_plans id.
+  // SiteDetail owns it (shared with the S-curve); without the props it is local state.
+  const [planChoiceLocal, setPlanChoiceLocal] = useState('latest')
+  const planChoice = planChoiceProp ?? planChoiceLocal
+  const setPlanChoice = onPlanChoiceChange ?? setPlanChoiceLocal
 
   // id ของ phase/subtask ที่กางลูกอยู่ (Set รวม id ทั้งสองตารางในที่เดียว
   // เพราะไม่มีทางชนกัน -- ดู subtaskCalc.js's groupSubtasksByParent)
@@ -489,9 +492,8 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
     // PLAN layer (schema ready only): the chosen version's ghost bars, delay tags and
     // "ตาม PLAN vN วันนี้ควรได้ X%" -- X is that version's planned % series at today
     const planOptions = progressSchemaReady ? [...sitePlans.plans].sort((a, b) => a.version - b.version) : []
-    const selectedPlanId = planOptions.length === 0 || planChoice === 'off' ? null
-      : planOptions.some((p) => p.id === planChoice) ? planChoice : latestPlanId(sitePlans.plans)
-    const selectedPlan = planOptions.find((p) => p.id === selectedPlanId) || null
+    const selectedPlan = progressSchemaReady ? resolvePlanChoice(sitePlans.plans, planChoice) : null
+    const selectedPlanId = selectedPlan ? selectedPlan.id : null
     const planItems = selectedPlan ? sitePlans.items[selectedPlan.id] || [] : []
     const planRanges = selectedPlan ? planRangesByRef(planItems) : null
     const planTodayPct = selectedPlan ? Math.round(planPctAt(planPctSeries(planItems), TODAY_ISO)) : null

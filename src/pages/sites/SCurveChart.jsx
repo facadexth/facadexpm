@@ -13,7 +13,7 @@ import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { useSitePhases, useSubtasks, usePhaseTasks, useIncomes, useExpenses, useSitePlans, useSiteProgressDaily } from '../../hooks/useSupabase.js'
 import { buildPlanSeries, buildActualSeries, buildCostSeries, mergeCumulativeSeries } from './scurveCalc.js'
-import { planPctSeries, workSeries } from './planLayer.js'
+import { planPctSeries, workSeries, resolvePlanChoice, lastActualIndex } from './planLayer.js'
 import { siteProgress } from './progressCalc.js'
 import { useUserRole } from '../../hooks/useUserRole.js'
 import { canSeeMoney } from '../../lib/roles.js'
@@ -27,7 +27,7 @@ const TODAY_ISO = new Date().toISOString().slice(0, 10)
 // money hooks for a role that cannot see money: filter on a UUID no site has -> 0 rows
 const NIL_SITE_ID = '00000000-0000-0000-0000-000000000000'
 
-export default function SCurveChart({ site, compact = false }) {
+export default function SCurveChart({ site, compact = false, planChoice = 'latest' }) {
   const { role } = useUserRole()
   const progressReady = useProgressSchemaReady()
   const money = canSeeMoney(role)
@@ -91,9 +91,11 @@ export default function SCurveChart({ site, compact = false }) {
     [incomes, expenses],
   )
 
-  // งานจริง %: the latest PLAN as a % series vs daily % ตามสัญญา + today's live %
+  // งานจริง %: the PLAN version chosen on the Gantt (SiteDetail's planChoice; 'off' -> no
+  // plan line) as a % series vs daily % ตามสัญญา + today's live %
   // (progressCalc.js -- PM cannot call site_progress_pct, see global constraints)
-  const latestPlan = sitePlans.plans[0] || null
+  const chosenPlan = resolvePlanChoice(sitePlans.plans, planChoice)
+  const planOff = planChoice === 'off'
   const livePct = useMemo(() => siteProgress({
     phases: phasesForSite,
     subtasks: subtasksForSite,
@@ -101,12 +103,12 @@ export default function SCurveChart({ site, compact = false }) {
   }).contractPct, [phasesForSite, subtasksForSite, allTasks, site.id])
   const workData = useMemo(() => {
     if (mode !== 'work') return []
-    const plan = latestPlan ? planPctSeries(sitePlans.items[latestPlan.id] || []) : []
+    const plan = chosenPlan ? planPctSeries(sitePlans.items[chosenPlan.id] || []) : []
     const extraDates = range ? [range.start.toISOString().slice(0, 10), range.end.toISOString().slice(0, 10)] : []
     const rows = workSeries({ plan, daily, todayISO: TODAY_ISO, livePct, extraDates }).map((row) => ({ ...row, ts: new Date(row.date).getTime() }))
     if (!range) return rows
     return rows.filter((row) => row.ts >= range.start.getTime() && row.ts <= range.end.getTime())
-  }, [mode, latestPlan, sitePlans.items, daily, livePct, range])
+  }, [mode, chosenPlan, sitePlans.items, daily, livePct, range])
 
   const moneyData = useMemo(() => {
     if (mode !== 'money') return []
@@ -127,6 +129,7 @@ export default function SCurveChart({ site, compact = false }) {
   }, [mode, leaves, incomes, expenses, site.contract_value, range])
 
   const chartData = mode === 'work' ? workData : moneyData
+  const lastActual = mode === 'work' ? lastActualIndex(workData) : -1
   // a non-money role before migration 07 has no mode to show (SiteDetail does not mount it then)
   if (!money && !progressReady) return null
 
@@ -176,7 +179,7 @@ export default function SCurveChart({ site, compact = false }) {
         </div>
         {modeToggle}
       </div>
-      {mode === 'work' && !latestPlan && (
+      {mode === 'work' && !chosenPlan && !planOff && (
         <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>ยังไม่มี PLAN จึงยังไม่มีเส้นแผน</div>
       )}
       {mode === 'money' && badDateCount > 0 && (
@@ -207,8 +210,12 @@ export default function SCurveChart({ site, compact = false }) {
           )}
           {mode === 'work' ? (
             <>
-              {latestPlan && <Line type="monotone" dataKey="plan" name={`แผน (PLAN v${latestPlan.version})`} stroke={chartColors.accent} dot={false} />}
-              <Line type="monotone" dataKey="actual" name="งานจริง" stroke={chartColors.green} dot={false} connectNulls={false} />
+              {chosenPlan && <Line type="monotone" dataKey="plan" name={`แผน (PLAN v${chosenPlan.version})`} stroke={chartColors.accent} dot={false} />}
+              {/* dot on the latest actual point: on day one it is the only point, and a line of one point draws nothing */}
+              <Line type="monotone" dataKey="actual" name="งานจริง" stroke={chartColors.green} connectNulls={false}
+                dot={({ index, cx, cy }) => (index === lastActual && cx != null && cy != null
+                  ? <circle key={`last-${index}`} data-testid="actual-last-dot" cx={cx} cy={cy} r={3.5} fill={chartColors.green} stroke={chartColors.green} />
+                  : <g key={`nodot-${index}`} />)} />
             </>
           ) : (
             <>

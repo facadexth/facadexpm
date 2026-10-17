@@ -14,6 +14,22 @@ const DAY_MS = 86400000
 export const latestPlanId = (plans) => (plans && plans.length ? plans[0].id : null)
 
 /**
+ * The PLAN layer choice ('latest' | 'off' | a site_plans id) -> that plan row, or null
+ * when the layer is off or there is no plan. An id that no longer exists falls back
+ * to the latest version. Shared by the Gantt and the S-curve so both show one version.
+ */
+export function resolvePlanChoice(plans, choice) {
+  if (!plans || plans.length === 0 || choice === 'off') return null
+  return plans.find((p) => p.id === choice) || plans.find((p) => p.id === latestPlanId(plans))
+}
+
+/** Index of the last row with an actual value (-1 when none) -- the S-curve dots it. */
+export function lastActualIndex(rows) {
+  for (let i = (rows || []).length - 1; i >= 0; i--) if (rows[i].actual != null) return i
+  return -1
+}
+
+/**
  * Plan date range of every phase/subtask in one version, by ref_id. A node
  * with child subtask items gets the span of its descendants (the same rule
  * the Gantt applies to the current tree via computeNodeDateRange), so the

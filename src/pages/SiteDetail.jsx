@@ -24,6 +24,9 @@ export default function SiteDetail({ navState, navigateTo }) {
   const siteName = navState?.siteName
   const [tab, setTab] = useState(navState?.tab || 'overview') // 'overview' | 'gantt' | 'kanban' | 'boq' | 'daily_report'
   const [phasesRefreshKey, setPhasesRefreshKey] = useState(0)
+  // PLAN layer version shared by the Gantt (selector, ghost bars, KPI) and the S-curve
+  // งานจริง line: 'latest' (latest version, or none when there is no PLAN) | 'off' | plan id
+  const [planChoice, setPlanChoice] = useState('latest')
   const [kanbanInitialLeafId, setKanbanInitialLeafId] = useState(null) // ตั้งค่าเมื่อคลิก leaf บนแท็บ Gantt เพื่อ deep-link ไปยัง chip ที่ตรงกันในแท็บ Kanban
 
   const isPhone = useIsPhone()
@@ -95,6 +98,8 @@ export default function SiteDetail({ navState, navigateTo }) {
               navigateTo={navigateTo}
               selectedSiteId={site.id}
               onSelectSite={() => {}}
+              planChoice={planChoice}
+              onPlanChoiceChange={setPlanChoice}
               canEdit={canEdit}
               onPhasesChanged={() => setPhasesRefreshKey((k) => k + 1)}
               onOpenKanban={(_site, leafNode) => { setKanbanInitialLeafId(leafNode.id); setTab('kanban') }}
@@ -103,13 +108,13 @@ export default function SiteDetail({ navState, navigateTo }) {
               <div style={{ marginTop: 16 }}>
                 <PhoneSection title="S-curve" summary="กราฟ">
                   <LandscapeView autoOpen={false} title={`S-curve · ${site.site_number || site.name || ''}`}>
-                    <SCurveChart key={phasesRefreshKey} site={site} compact />
+                    <SCurveChart key={phasesRefreshKey} site={site} compact planChoice={planChoice} />
                   </LandscapeView>
                 </PhoneSection>
               </div>
             ) : (
               <div style={{ marginTop: 16 }}>
-                <SCurveChart key={phasesRefreshKey} site={site} />
+                <SCurveChart key={phasesRefreshKey} site={site} planChoice={planChoice} />
               </div>
             )}
           </>
