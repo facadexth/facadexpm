@@ -868,7 +868,7 @@ export function useAssignmentsRange(from, to) {
     }
     const { data, error } = await supabase
       .from('worker_assignments')
-      .select('id, worker_id, site_id, date, type, shift, ot_hours, notes, confirmed_at, confirmed_by, is_team_leader, workers(name, nickname, monthly_salary), sites(name, site_number, is_default)')
+      .select('id, worker_id, site_id, date, type, shift, ot_hours, notes, confirmed_at, confirmed_by, is_team_leader, workers(name, nickname, monthly_salary, pay_type, daily_wage), sites(name, site_number, is_default)')
       .gte('date', from)
       .lte('date', to)
       .order('date')
@@ -1013,7 +1013,7 @@ export function useWorkerOTRange(from, to) {
     }
     const { data, error } = await supabase
       .from('worker_ot')
-      .select('id, worker_id, site_id, date, start_time, end_time, ot_hours, is_overnight, notes, workers(name, nickname, monthly_salary), sites(name, site_number)')
+      .select('id, worker_id, site_id, date, start_time, end_time, ot_hours, is_overnight, notes, workers(name, nickname, monthly_salary, pay_type, daily_wage), sites(name, site_number)')
       .gte('date', from)
       .lte('date', to)
       .order('date')
@@ -1282,37 +1282,6 @@ export function useCheques() {
     if (error) throw error
     return data
   })
-}
-
-// ── Salary ───────────────────────────────────────────────────
-
-export function useSalary(month, year) {
-  return useQuery(async () => {
-    const { data, error } = await supabase
-      .from('salary_records')
-      .select('*, workers(name, nickname, position, email)')
-      .eq('month', month)
-      .eq('year', year)
-      .order('workers(name)')
-    if (error) throw error
-    return data
-  }, [month, year])
-}
-
-/** เดือนก่อนหน้า — ใช้สำหรับ copy previous month ใน payroll */
-export function usePreviousMonthSalaries(month, year) {
-  const prevMonth = month === 1 ? 12 : month - 1
-  const prevYear  = month === 1 ? year - 1 : year
-  return useQuery(async () => {
-    const { data, error } = await supabase
-      .from('salary_records')
-      .select('*, workers(id, name, nickname, position, monthly_salary, monthly_contribution, has_social_security)')
-      .eq('month', prevMonth)
-      .eq('year', prevYear)
-      .order('workers(name)')
-    if (error) throw error
-    return data
-  }, [month, year])
 }
 
 // ── Clients ──────────────────────────────────────────────────
@@ -1798,6 +1767,14 @@ export function useStockBalances() {
     .from('inventory_stock_balances')
     .select('*, inventory_items(name, base_unit, unit_conversion_mode, reference_area_sqm, category_id, expense_categories(name)), sites(name, site_number)')
     .order('inventory_item_id')))
+}
+
+/** DP (finished goods) / DM (raw material) documents issued by invoice stock deduction. */
+export function useStockDocuments() {
+  return useQuery(async () => fetchAllRows(() => supabase
+    .from('stock_documents')
+    .select('id, doc_type, doc_number, doc_date, invoice_id')
+    .order('doc_number')))
 }
 
 /** Append-only stock ledger, newest first -- the stock card. */

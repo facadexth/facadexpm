@@ -8,6 +8,7 @@ import LandscapeView from '../../components/LandscapeView.jsx'
 import AssignCell from './AssignCell.jsx'
 import { useIsPhone } from '../../hooks/useIsPhone.js'
 import { DOW_TH, SITE_TYPES } from './constants.js'
+import { workerDayRate } from './otMath.js'
 
 export default function GridView({ days, workers, cellLookup, otLookup, holidayDates, onEditHalf, cellH = 32, variant = 'week', showMoney = true }) {
   const isPhone = useIsPhone()
@@ -53,7 +54,7 @@ export default function GridView({ days, workers, cellLookup, otLookup, holidayD
                 <tr key={w.id}>
                   <td data-phone="assign-worker" style={{ position: 'sticky', left: 0, background: 'var(--bg3)', zIndex: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{w.nickname || w.name}</div>
-                    {showMoney && <div style={{ fontSize: 10, color: 'var(--text3)' }}>{fmt(Math.round((w.monthly_salary || 0) / 30))} บ/วัน</div>}
+                    {showMoney && <div style={{ fontSize: 10, color: 'var(--text3)' }}>{fmt(Math.round(workerDayRate(w)))} บ/วัน</div>}
                   </td>
                   {days.map(d => (
                     <td key={d.iso} style={{ padding: 2, textAlign: 'center' }}>

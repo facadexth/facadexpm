@@ -33,9 +33,20 @@ export function computeOTHours(start, end, isOvernight = false) {
   return Math.round(minutes / 60 * 2) / 2
 }
 
-/** OT pay for a given monthly salary and OT hours, rounded to 2 decimals. */
-export function otCost(monthlySalary, otHours) {
+/** Day rate: daily_wage for daily-paid workers, else monthly_salary / 30. */
+export function workerDayRate(w) {
+  if (w?.pay_type === 'daily') return Number(w.daily_wage) || 0
+  return (Number(w?.monthly_salary) || 0) / 30
+}
+
+/** OT pay for a given day rate (or a worker object) and OT hours, rounded to 2 decimals.
+ *  A plain number is treated as monthly salary (legacy callers); a worker object
+ *  uses workerDayRate so daily workers use daily_wage. */
+export function otCost(monthlySalaryOrWorker, otHours) {
   if (!otHours) return 0
-  const hourlyRate = (monthlySalary || 0) / 30 / 8
+  const dayRate = typeof monthlySalaryOrWorker === 'object' && monthlySalaryOrWorker !== null
+    ? workerDayRate(monthlySalaryOrWorker)
+    : (monthlySalaryOrWorker || 0) / 30
+  const hourlyRate = dayRate / 8
   return Math.round(hourlyRate * 1.5 * otHours * 100) / 100
 }
