@@ -19,7 +19,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { Modal, ConfirmDialog } from '../../components/Modal.jsx'
-import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks, useSites, useBoqItems, attachPmWorkerNames } from '../../hooks/useSupabase.js'
+import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks, useSites, useBoqItems, useSiteHasPlan, attachPmWorkerNames } from '../../hooks/useSupabase.js'
 import { STATUS_COLOR } from './ganttTimeline.js'
 import { groupSubtasksByParent, isLeaf } from './subtaskCalc.js'
 import { nodeProgress, unallocatedPoints, fmtNum } from './progressCalc.js'
@@ -58,18 +58,20 @@ const normWeightField = (k, v) => (v == null || v === '' ? null : k === 'weight_
  * for a new card). weightFields is null when the weight/quantity columns are
  * not there yet (progressReady false) or the card is an issue card.
  * Status: a new quantity card starts not_started (then follows its recorded
- * quantity); an existing card sends status only when it really changed, only
- * on a status leaf, and never in the same update as a change of วิธีนับ (the
- * DB rejects that).
+ * quantity); so does any new card on a site with no PLAN yet (noPlan, the DB
+ * gate) unless it sits in an issue phase; an existing card sends status only
+ * when it really changed, only on a status leaf, and never in the same update
+ * as a change of วิธีนับ (the DB rejects that).
+ * issuePhase: a new card in an issue phase gets 0 points (issue work is not progress).
  */
-export function buildTaskSave({ draft, orig, progressReady, childrenByParent = {}, boqRemaining = () => null }) {
+export function buildTaskSave({ draft, orig, progressReady, childrenByParent = {}, boqRemaining = () => null, noPlan = false, issuePhase = false }) {
   const payload = {
     name: draft.name.trim(), zone: draft.zone.trim() || null,
     due_date: draft.due_date || null, sort_order: draft.sort_order,
   }
   let weightFields = null
   if (progressReady && !(orig && orig.issue_report_id != null)) {
-    const pts = draft.weight_pts === '' ? 0 : Number(draft.weight_pts)
+    const pts = !orig && issuePhase ? 0 : draft.weight_pts === '' ? 0 : Number(draft.weight_pts)
     if (!Number.isFinite(pts) || pts < 0) return { error: 'แต้มต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป' }
     const isQty = draft.progress_mode === 'quantity'
     let planned = null
@@ -86,7 +88,8 @@ export function buildTaskSave({ draft, orig, progressReady, childrenByParent = {
     Object.assign(payload, weightFields)
   }
   if (!orig) {
-    payload.status = weightFields?.progress_mode === 'quantity' ? 'not_started' : draft.status
+    const forceNotStarted = weightFields?.progress_mode === 'quantity' || (noPlan && !issuePhase)
+    payload.status = forceNotStarted ? 'not_started' : draft.status
   } else {
     const modeChanged = !!weightFields && weightFields.progress_mode !== (orig.progress_mode || 'status')
     if (draft.status !== orig.status && !modeChanged && isStatusLeafTask(orig, childrenByParent)) payload.status = draft.status
@@ -103,6 +106,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const { tenant } = useTenant()
   const { role } = useUserRole()
   const { data: boqItems } = useBoqItems(site.id)
+  const { hasPlan } = useSiteHasPlan(site.id)
 
   // เชนของ id ที่เลือกไว้ต่อชั้น: selectedChain[0] = phase (หรือ ALL_PHASES),
   // selectedChain[1] = subtask ชั้น 1 ที่เลือกใต้ phase นั้น, [2] = ชั้น 2, ...
@@ -416,6 +420,8 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   // the form then neither shows nor sends them, so the live Kanban keeps working.
   // A schema probe, not the card data: a user who sees no cards yet still gets the fields.
   const progressReady = useProgressSchemaReady()
+  // no PLAN yet: new cards start not_started whatever column they were added in (DB gate)
+  const noPlan = progressReady && hasPlan === false
   // BOQ qty left for a card = BOQ planned_qty − Σ planned_qty of the line's other cards.
   const boqRemaining = (boqId, exceptTaskId) => {
     const b = boqById[boqId]
@@ -433,6 +439,11 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     ;(allSubtasks || []).forEach((s) => { m[s.id] = s })
     return m
   }, [allSubtasks])
+  // a phase or subtask under an issue phase (cards there are not progress)
+  const isIssueNode = (nodeId) => {
+    const phaseId = byNodeId[nodeId]?.phase_id || nodeId
+    return !!phases.find((p) => p.id === phaseId)?.is_issue_phase
+  }
 
   const workerById = useMemo(() => {
     const m = {}
@@ -505,7 +516,10 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     if (!draft.name.trim()) { alert('กรุณาตั้งชื่องาน'); return }
     const isNew = String(editingId).startsWith('__new__')
     const orig = isNew ? null : taskById[editingId]
-    const built = buildTaskSave({ draft, orig, progressReady, childrenByParent, boqRemaining })
+    const built = buildTaskSave({
+      draft, orig, progressReady, childrenByParent, boqRemaining, noPlan,
+      issuePhase: isIssueNode(orig ? (orig.subtask_id || orig.phase_id) : draft.phase_id),
+    })
     if (built.error) { alert(built.error); return }
     const { payload, weightFields } = built
     setSaving(true)
@@ -575,8 +589,14 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const doDelete = async (id) => {
     setSaving(true)
     try {
+      const before = taskById[id]
       const { error } = await supabase.from('phase_tasks').delete().eq('id', id)
       if (error) throw error
+      if (before) {
+        await auditLog('phase_tasks', id, 'delete', Object.fromEntries(
+          ['name', 'status', 'phase_id', 'subtask_id', 'parent_task_id', ...WEIGHT_FIELDS, 'done_qty']
+            .filter((k) => k in before).map((k) => [k, before[k] ?? null])), null)
+      }
       await afterWrite()
       if (editingId === id) cancelEdit()
     } catch (e) {
@@ -632,7 +652,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
   const splittingTask = splittingTaskId ? taskById[splittingTaskId] : null
 
   const formProps = {
-    progressReady, boqItems, boqRemaining,
+    progressReady, boqItems, boqRemaining, canManageQty: canManagePlan(role), isIssueNode,
     onSplit: (task) => { cancelEdit(); setSplittingTaskId(task.id) },
   }
   const boardProps = {
@@ -1118,15 +1138,20 @@ function PhaseBoard({
 
 function TaskEditPanel({
   draft, setDraft, workers, onToggleAssignee, onSetLead, onCancel, onSave, onDelete, saving, isNew,
-  task, isParent = false, progressReady, boqItems = [], boqRemaining, onSplit,
+  task, isParent = false, progressReady, boqItems = [], boqRemaining, onSplit, canManageQty = false, isIssueNode,
 }) {
   const isQuantity = draft.progress_mode === 'quantity'
   const isIssueCard = task?.issue_report_id != null
   const showWeightFields = progressReady && !isIssueCard
+  // cards in an issue phase carry no points (a new one is saved with 0)
+  const showPoints = !isIssueNode?.(task ? (task.subtask_id || task.phase_id) : draft.phase_id)
   // the DB rejects a mode change on a parent card or a card with recorded quantity
   const modeLocked = isParent || Number(task?.done_qty) > 0
+  // once quantity is recorded only OWNER/PM may change the card's quantity (DB guard)
+  const qtyLocked = !canManageQty && Number(task?.done_qty) > 0
+  // only a card that has not started can be split (DB rule: a started card would drop to 0 %)
   const canSplit = progressReady && !isNew && !!task && !isParent && !task.parent_task_id && !isIssueCard
-    && (task.progress_mode || 'status') === 'status' && !isQuantity
+    && (task.progress_mode || 'status') === 'status' && !isQuantity && task.status === 'not_started'
   const boqLeft = isQuantity && draft.boq_item_id ? boqRemaining?.(draft.boq_item_id, task?.id) : null
   const boqUnit = boqItems.find((b) => b.id === draft.boq_item_id)?.unit
   return (
@@ -1161,11 +1186,13 @@ function TaskEditPanel({
               <option value="quantity">ตามจำนวน</option>
             </select>
           </label>
+          {showPoints && (
           <label style={{ fontSize: 11, color: 'var(--text3)' }}>
             แต้ม
             <input type="number" min="0" step="0.01" className="input input-sm" style={{ width: '100%', marginTop: 2 }}
               value={draft.weight_pts} onChange={(e) => setDraft((d) => ({ ...d, weight_pts: e.target.value }))} />
           </label>
+          )}
           {isQuantity && (
             <>
               <label style={{ fontSize: 11, color: 'var(--text3)', gridColumn: '1 / -1' }}>
@@ -1183,7 +1210,9 @@ function TaskEditPanel({
               <label style={{ fontSize: 11, color: 'var(--text3)', gridColumn: '1 / -1' }}>
                 จำนวนในการ์ดนี้{boqUnit ? ` (${boqUnit})` : ''}{boqLeft != null ? ` · ใส่ได้ไม่เกิน ${fmtNum(boqLeft)}` : ''}
                 <input type="number" min="0" step="any" className="input input-sm" style={{ width: '100%', marginTop: 2 }}
-                  value={draft.planned_qty} onChange={(e) => setDraft((d) => ({ ...d, planned_qty: e.target.value }))} />
+                  value={draft.planned_qty} disabled={qtyLocked}
+                  title={qtyLocked ? 'เฉพาะ OWNER/PM แก้จำนวนการ์ดที่มียอดแล้ว' : undefined}
+                  onChange={(e) => setDraft((d) => ({ ...d, planned_qty: e.target.value }))} />
               </label>
             </>
           )}

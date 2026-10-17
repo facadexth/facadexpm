@@ -114,6 +114,16 @@ describe('buildTaskSave (card form)', () => {
     expect(weightFields).toBeNull()
     expect('weight_pts' in payload).toBe(false)
   })
+  it('no PLAN: a new card starts not_started, except in an issue phase', () => {
+    expect(buildTaskSave({ draft: draft({ status: 'done' }), orig: null, progressReady: true, noPlan: true }).payload.status).toBe('not_started')
+    expect(buildTaskSave({ draft: draft({ status: 'done' }), orig: null, progressReady: true, noPlan: true, issuePhase: true }).payload.status).toBe('done')
+    expect(buildTaskSave({ draft: draft({ status: 'done' }), orig: null, progressReady: true }).payload.status).toBe('done')
+  })
+  it('a new card in an issue phase gets 0 points; an existing one keeps what was typed', () => {
+    expect(buildTaskSave({ draft: draft(), orig: null, progressReady: true, issuePhase: true }).payload.weight_pts).toBe(0)
+    const orig = { id: 't1', status: 'not_started', progress_mode: 'status', weight_pts: 20 }
+    expect(buildTaskSave({ draft: draft(), orig, progressReady: true, issuePhase: true }).payload.weight_pts).toBe(20)
+  })
 })
 
 describe('RecordProgressDialog', () => {

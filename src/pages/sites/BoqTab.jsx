@@ -6,14 +6,21 @@
 // boq_items (site-staff RLS); DB messages (e.g. the "BOQ below what the
 // cards hold" guard) are shown verbatim. Delete confirms inside the page.
 // ============================================================
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { useBoqItems, usePhaseTasks } from '../../hooks/useSupabase.js'
 import { fmtNum } from './progressCalc.js'
 
+// onSave resolves to false when the save was rejected: the cell then goes back to the
+// stored value (a refetch alone returns the same value, so it would not reset the text).
 function EditCell({ value, onSave, type = 'text', width, align }) {
-  const [v, setV] = useState(String(value ?? ''))
-  const commit = () => { if (v !== String(value ?? '')) onSave(v) }
+  const stored = String(value ?? '')
+  const [v, setV] = useState(stored)
+  useEffect(() => { setV(stored) }, [stored])
+  const commit = async () => {
+    if (v === stored) return
+    if ((await onSave(v)) === false) setV(stored)
+  }
   return (
     <input
       className="input"
@@ -47,18 +54,20 @@ export default function BoqTab({ siteId }) {
 
   const run = async (fn) => {
     setBusy(true); setError(null); setNote(null)
-    try { await fn() } finally { setBusy(false) }
+    try { return await fn() } finally { setBusy(false) }
   }
 
+  // resolves to whether the row was saved (EditCell resets itself on false)
   const saveField = (row, patch) => run(async () => {
     const { error: err } = await supabase.from('boq_items').update(patch).eq('id', row.id)
     if (err) setError(err.message)
     await refetch()
+    return !err
   })
 
   const saveQty = (row, text) => {
     const q = Number(text)
-    if (!Number.isFinite(q) || q <= 0) { setError('จำนวนต้องมากกว่า 0'); refetch(); return }
+    if (!Number.isFinite(q) || q <= 0) { setError('จำนวนต้องมากกว่า 0'); return false }
     return saveField(row, { planned_qty: q })
   }
 

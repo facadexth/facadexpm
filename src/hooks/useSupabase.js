@@ -926,6 +926,20 @@ export function useSitePlans(siteId) {
   return { plans: data?.plans ?? [], items: data?.items ?? {}, loading, error, reload: refetch }
 }
 
+/** Whether the site has a saved PLAN (any site_plans row): true / false, or null while
+ *  loading, on error, or before migration 07 (no table). Light: one id, no items.
+ *  The Kanban uses it to start new cards as not_started before PLAN v1 (DB gate). */
+export function useSiteHasPlan(siteId) {
+  const { data, error, refetch } = useQuery(async () => {
+    if (!siteId) return null
+    const { data: rows, error: err } = await supabase
+      .from('site_plans').select('id').eq('site_id', siteId).limit(1)
+    if (err) throw err
+    return (rows || []).length > 0
+  }, [siteId])
+  return { hasPlan: error ? null : (data ?? null), reload: refetch }
+}
+
 /** Daily % ตามสัญญา snapshots of one site (site_progress_daily: day, contract_pct),
  *  oldest first -- the S-curve's งานจริง line. No money here (% รวม VO lives in the
  *  OWNER/ADMIN-only site_progress_daily_money). Fails soft like useBoqItems. */

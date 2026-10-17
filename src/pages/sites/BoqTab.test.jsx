@@ -85,6 +85,24 @@ describe('BoqTab', () => {
     fireEvent.blur(input)
     await waitFor(() => expect(screen.getByText('จำนวน BOQ น้อยกว่าที่แจกให้การ์ดแล้ว')).toBeTruthy())
   })
+  it('a rejected save puts the cell back to the stored value', async () => {
+    update.mockResolvedValue({ error: { message: 'จำนวน BOQ น้อยกว่าที่แจกให้การ์ดแล้ว' } })
+    render(<BoqTab siteId="s1" />)
+    const input = screen.getByDisplayValue('50')
+    fireEvent.change(input, { target: { value: '10' } })
+    fireEvent.blur(input)
+    await waitFor(() => expect(input.value).toBe('50'))
+    expect(update).toHaveBeenCalledWith({ planned_qty: 10 }, 'id', 'b1')
+  })
+  it('an invalid quantity is not sent and the cell goes back to the stored value', async () => {
+    render(<BoqTab siteId="s1" />)
+    const input = screen.getByDisplayValue('50')
+    fireEvent.change(input, { target: { value: '0' } })
+    fireEvent.blur(input)
+    await waitFor(() => expect(input.value).toBe('50'))
+    expect(screen.getByText('จำนวนต้องมากกว่า 0')).toBeTruthy()
+    expect(update).not.toHaveBeenCalled()
+  })
   it('deletes only after the built-in confirm (no window.confirm)', async () => {
     const confirmSpy = vi.fn(() => true)
     window.confirm = confirmSpy

@@ -291,6 +291,10 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
       }
     }
 
+    // no PLAN yet: a new phase/subtask starts not_started whatever status was picked (DB gate)
+    const noPlan = progressSchemaReady && !sitePlans.loading && !sitePlans.error && sitePlans.plans.length === 0
+    const newStatus = parsed.isNew && noPlan ? 'not_started' : draft.status
+
     setSaving(true)
     try {
       if (!isSubtask) {
@@ -298,7 +302,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
         // VO: is_vo/vo_ref on site_phases, weight 0; the value goes to phase_vo_values (phaseVo.js)
         const payload = withVoColumns({
           name: draft.name.trim(), start_date: draft.start_date || null, end_date: draft.end_date || null,
-          status: draft.status, billing_weight_pct: parseFloat(draft.billing_weight_pct) || 0,
+          status: newStatus, billing_weight_pct: parseFloat(draft.billing_weight_pct) || 0,
           depends_on_phase_id: draft.depends_on_id || null, sort_order: draft.sort_order,
         }, draft, progressSchemaReady)
         let phaseId = parsed.id
@@ -323,7 +327,7 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
         const parentPhaseId = parentKind === 'phase' ? parentId : byNodeId[parentId].phase_id
         const payload = {
           name: draft.name.trim(), start_date: draft.start_date || null, end_date: draft.end_date || null,
-          status: draft.status, billing_weight_pct: parseFloat(draft.billing_weight_pct) || 0,
+          status: newStatus, billing_weight_pct: parseFloat(draft.billing_weight_pct) || 0,
           depends_on_subtask_id: draft.depends_on_id || null, sort_order: draft.sort_order,
         }
         if (parsed.isNew) {
