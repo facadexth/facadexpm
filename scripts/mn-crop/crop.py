@@ -253,6 +253,25 @@ def process(pn):
     if os.environ.get('DBG'):
         for j,a in enumerate(anchors): print('A',j,a['kind'],a['dies'],[round(x) for x in a['rect']])
         for c in order[:15]: print('C',[round(x) for x in c['rect']],c['ink'],sorted(((round(cost(c,a)),j) for j,a in enumerate(anchors)))[:3])
+    # ---- dimension numbers (owner 2026-10-17: "ระยะกว้างของ profile ยังหายอยู่"): a number printed in the gap of a
+    # dimension line is not chained to the line's ink, so the chaining step above drops it. Put back every numeric text
+    # line of the PDF text layer that sits on or just outside an anchor's drawing and is nearer to it than to any other.
+    NUM = re.compile(r'^[RØø]?\s*\d+(?:[.,]\d+)?\s*(?:°|mm\.?)?$')
+    obox = {}
+    for j, a in enumerate(anchors):
+        oy, ox = np.nonzero(owner == j)
+        if len(oy):
+            obox[j] = [ox.min() / SC, oy.min() / SC, (ox.max() + 1) / SC, (oy.max() + 1) / SC]
+    dimtext = {}
+    for t, lr in lines:
+        if not NUM.match(t.strip()) or lr[3] - lr[1] > 30 or lr[2] - lr[0] > 60:
+            continue
+        near = sorted((max(gap(lr, b)), k) for k, b in obox.items())
+        if not near or near[0][0] > 9:
+            continue
+        if len(near) > 1 and near[1][0] - near[0][0] < 1.5:
+            continue  # equidistant to two drawings: leave it out
+        dimtext.setdefault(near[0][1], []).append(lr)
     results = []
     for j, a in enumerate(anchors):
         if not a['dies']:
@@ -267,6 +286,8 @@ def process(pn):
             box = [ox.min() / SC, oy.min() / SC, (ox.max() + 1) / SC, (oy.max() + 1) / SC]
             if a['kind'] == 'label':
                 box = union(box, a['rect'])
+            for lr in dimtext.get(j, []):
+                box = union(box, lr)
         if any(ambiguous.get(c['id'], (None, None))[0] == j or ambiguous.get(c['id'], (None, None))[1] == j for c in comps if c['id'] in ambiguous):
             conf = 'check'; note.append('a drawing piece was nearly equidistant to two labels')
         bw, bh = box[2]-box[0], box[3]-box[1]
@@ -280,6 +301,9 @@ def process(pn):
             r = a['rect']
             lx0, ly0, lx1, ly1 = [int(round(cc * SC)) for cc in (r[0]-2, r[1]-2, r[2]+2, r[3]+2)]
             keep[max(0,ly0-y0):max(0,ly1-y0), max(0,lx0-x0):max(0,lx1-x0)] = True
+        for lr in dimtext.get(j, []):
+            tx0, ty0, tx1, ty1 = [int(round(cc * SC)) for cc in (lr[0]-0.8, lr[1]-0.8, lr[2]+0.8, lr[3]+0.8)]
+            keep[max(0,ty0-y0):max(0,ty1-y0), max(0,tx0-x0):max(0,tx1-x0)] = True
         crop = clean[y0:y1, x0:x1].copy()
         crop[~keep] = 255
         # trim
