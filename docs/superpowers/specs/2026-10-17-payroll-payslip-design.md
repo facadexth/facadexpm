@@ -258,10 +258,51 @@ upload file for SCB Business Anywhere or KBank payroll: account, name and net
 amount per worker, with an option to split by the worker's bank. Workers with no
 account are listed and left out.
 
-**Blocked on input.** The exact file layouts (columns, fixed-width or xlsx,
-header and footer records, encoding) come only from the sample files the owner
-will supply. Nothing is guessed. This task is planned last and does not start
-until the samples arrive. The rest of job 1 does not depend on it.
+Formats come from the owner's bank templates (`DOC/KBank_Excel
+Template_V2.6.2.xlsm`, `DOC/CPX_Toolkit_Template.xlsm`). They were read
+statically and are documented record by record in
+`docs/reference/bank-payroll-file-formats.md`, which is the source of truth for
+the implementer.
+
+**KBank**
+- PCT ("KBank Payroll") pays KBank accounts only. It is a fixed-width `.txt`
+  with a 178-char header and a 742-char line per employee.
+- PCL ("SMART Payroll") pays other banks. It has an 82-char header and a
+  738-char line per employee, including the receiving bank code and branch.
+- Amounts are in satang. Lines end with CRLF and there is no trailer.
+- The "Single Payment Format" variant puts PCT and PCL in one file. Which layout
+  the company is registered for is an open item.
+
+**SCB Business Anywhere (CPX)**
+- The file is pipe-delimited UTF-8 with records `HEADER`, `BCHDET`, one `TXNDET`
+  per employee, and `TRAILR`.
+- PAY pays SCB accounts only and requires the SCB check digit. SPN (next day)
+  and SPS (same day) pay any bank and need a 4-digit branch.
+- A file holds one product.
+
+**Generator**
+- One pure module per bank: `src/lib/bankExport/kbank.js` and `scb.js`.
+- Golden tests compare the output byte for byte against layouts built from the
+  reference doc.
+- KBank output is encoded TIS-620/CP874, because the fixed widths only line up
+  in a single-byte Thai encoding.
+
+**New data**
+- A tenant bank-export setting stores the company name as registered with the
+  bank, the debit account, the fee payer and the registered product per bank.
+  For SCB it also stores the fee account and the optional System Reference ID.
+- `workers` also gets `bank_branch_code`, which cross-bank transfers need.
+- Input is validated in the worker form: account length per bank code and the
+  SCB check digit.
+
+**Open items before this task starts.** The rest of job 1 does not depend on
+them.
+1. Which bank or banks the company pays payroll from.
+2. Which product it is registered for: SCB PAY or SPN/SPS; KBank PCT/PCL
+   standard or Single Payment Format.
+3. Which banks the employees' accounts are in.
+4. One real file accepted by each portal, with names and accounts masked, to
+   check the output against before going live.
 
 ### Fixes to existing code
 
@@ -325,5 +366,4 @@ until the samples arrive. The rest of job 1 does not depend on it.
 
 - Bank sample files: SCB Business Anywhere and KBank payroll uploads, plus which
   banks the employees' accounts are in.
-- Whether OT should be ceiled to whole baht. The sheet implies it (กอล์ฟ 141).
-  Confirm this is intended.
+- ~~OT ceiled to whole baht~~ confirmed by the owner 2026-10-17.
