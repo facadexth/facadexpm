@@ -2,7 +2,7 @@
 // Smoke test: a PM loads Sites, SiteDetail and Dashboard with PM-shaped data (no money
 // fields) and sees no money anywhere, on desktop and phone.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, cleanup, fireEvent } from '@testing-library/react'
+import { render, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { setCurrentRole, navGroupLabel } from '../lib/roles.js'
 import { saveDraft, clearDraft } from '../hooks/useDraftForm.js'
 
@@ -120,15 +120,20 @@ describe.each([false, true])('PM pages (phone=%s)', isPhone => {
     expect(container.textContent).not.toContain('% เบิก')
   })
 
-  it('SiteDetail overview and Gantt tab show no money and no S-curve', () => {
-    const { container, getByText } = render(<SiteDetail navState={{ siteId: 's1', siteName: 'Tower A' }} navigateTo={() => {}} />)
+  it('SiteDetail overview and Gantt tab show no money; the S-curve comes back in งานจริง % mode only', async () => {
+    const { container, getByText, queryByRole } = render(<SiteDetail navState={{ siteId: 's1', siteName: 'Tower A' }} navigateTo={() => {}} />)
     expect(container.textContent).toContain('Tower A')
     expect(container.textContent).toContain('Ongoing')
     expect(container.textContent).not.toMatch(MONEY)
     expect(container.textContent).not.toContain('% เบิก')
     fireEvent.click(getByText('📅 Gantt'))
     expect(container.textContent).not.toMatch(MONEY)
-    expect(container.textContent).not.toContain('S-curve')
+    // the mocked schema probe succeeds -> PM gets the S-curve (Task 8), never its money mode
+    await waitFor(() => expect(container.textContent).toContain('S-curve'))
+    if (!isPhone) expect(container.textContent).toContain('งานจริง %')
+    expect(queryByRole('button', { name: 'เงิน' })).toBeNull()
+    expect(container.textContent).not.toContain('แผนเบิกเงิน')
+    expect(container.textContent).not.toMatch(MONEY)
   })
 
   it('Dashboard lists the ongoing site without billing %', () => {

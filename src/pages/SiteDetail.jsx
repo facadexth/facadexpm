@@ -7,7 +7,7 @@ import { useState } from 'react'
 import { useSiteOverview } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
-import { canManageSites, canSeeMoney } from '../lib/roles.js'
+import { canManageSites, canSeeMoney, isPm } from '../lib/roles.js'
 import SiteOverviewContent from '../components/SiteOverviewContent.jsx'
 import GanttView from './sites/GanttView.jsx'
 import SCurveChart from './sites/SCurveChart.jsx'
@@ -32,8 +32,9 @@ export default function SiteDetail({ navState, navigateTo }) {
   const progressReady = useProgressSchemaReady()
   const showBoq = progressReady && canManageSites(role) // OWNER/ADMIN/PM; hidden until migration 07 is live
   const canEdit = canManageSites(role) && canEditPage(role, 'sites')
-  // the S-curve plots incomes/expenses against contract value -- money, so PM never gets it
-  const showMoney = canSeeMoney(role)
+  // S-curve: money roles get it as before (เงิน mode, plus งานจริง % once migration 07 is
+  // live); PM gets it only in งานจริง % mode, and only once the schema is ready
+  const showSCurve = canSeeMoney(role) || (isPm(role) && progressReady)
 
   const { data: site, error: siteError } = useSiteOverview(siteId)
 
@@ -98,7 +99,7 @@ export default function SiteDetail({ navState, navigateTo }) {
               onPhasesChanged={() => setPhasesRefreshKey((k) => k + 1)}
               onOpenKanban={(_site, leafNode) => { setKanbanInitialLeafId(leafNode.id); setTab('kanban') }}
             />
-            {!showMoney ? null : phoneLike ? (
+            {!showSCurve ? null : phoneLike ? (
               <div style={{ marginTop: 16 }}>
                 <PhoneSection title="S-curve" summary="กราฟ">
                   <LandscapeView autoOpen={false} title={`S-curve · ${site.site_number || site.name || ''}`}>

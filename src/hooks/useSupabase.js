@@ -926,6 +926,21 @@ export function useSitePlans(siteId) {
   return { plans: data?.plans ?? [], items: data?.items ?? {}, loading, error, reload: refetch }
 }
 
+/** Daily % ตามสัญญา snapshots of one site (site_progress_daily: day, contract_pct),
+ *  oldest first -- the S-curve's งานจริง line. No money here (% รวม VO lives in the
+ *  OWNER/ADMIN-only site_progress_daily_money). Fails soft like useBoqItems. */
+export function useSiteProgressDaily(siteId) {
+  const { data, loading, error, refetch } = useQuery(async () => {
+    if (!siteId) return []
+    return fetchAllRows(() => supabase
+      .from('site_progress_daily')
+      .select('day, contract_pct')
+      .eq('site_id', siteId)
+      .order('day', { ascending: true }))
+  }, [siteId])
+  return { data: data ?? [], loading, error, refetch }
+}
+
 /** BOQ lines of one site (boq_items, sort_order). Fails soft: before the migration
  *  is applied (or on any error) `data` is [] so the Kanban keeps working. */
 export function useBoqItems(siteId) {

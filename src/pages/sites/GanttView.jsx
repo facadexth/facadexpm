@@ -23,6 +23,7 @@ import { canSeeMoney, canManagePlan } from '../../lib/roles.js'
 import PlanVersionsDialog, { PlanBar } from './PlanVersionsDialog.jsx'
 import { useProgressSchemaReady } from '../../lib/progressSchema.js'
 import { withVoColumns, savePhaseVoValues } from './phaseVo.js'
+import { latestPlanId, planRangesByRef, planDelayTag, planPctSeries, planPctAt } from './planLayer.js'
 
 const ROW_H = 34
 const EDIT_H = 320
@@ -101,6 +102,8 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
   const [confirmDeleteId, setConfirmDeleteId] = useState(null) // { kind: 'phase'|'subtask', id }
   const [applyingTemplate, setApplyingTemplate] = useState(false)
   const [planDialogOpen, setPlanDialogOpen] = useState(false)
+  // PLAN layer on the single-site Gantt: 'latest' (default), 'off', or a site_plans id
+  const [planChoice, setPlanChoice] = useState('latest')
 
   // id ของ phase/subtask ที่กางลูกอยู่ (Set รวม id ทั้งสองตารางในที่เดียว
   // เพราะไม่มีทางชนกัน -- ดู subtaskCalc.js's groupSubtasksByParent)
@@ -483,6 +486,17 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
       voValues,
     })
     const overallPct = Math.round(progress.contractPct)
+    // PLAN layer (schema ready only): the chosen version's ghost bars, delay tags and
+    // "ตาม PLAN vN วันนี้ควรได้ X%" -- X is that version's planned % series at today
+    const planOptions = progressSchemaReady ? [...sitePlans.plans].sort((a, b) => a.version - b.version) : []
+    const selectedPlanId = planOptions.length === 0 || planChoice === 'off' ? null
+      : planOptions.some((p) => p.id === planChoice) ? planChoice : latestPlanId(sitePlans.plans)
+    const selectedPlan = planOptions.find((p) => p.id === selectedPlanId) || null
+    const planItems = selectedPlan ? sitePlans.items[selectedPlan.id] || [] : []
+    const planRanges = selectedPlan ? planRangesByRef(planItems) : null
+    const planTodayPct = selectedPlan ? Math.round(planPctAt(planPctSeries(planItems), TODAY_ISO)) : null
+    const planGap = selectedPlan ? overallPct - planTodayPct : null
+    const TAG_COLOR = { late: 'var(--red)', early: 'var(--green)', on: 'var(--text2)', missing: 'var(--text3)' }
     const voPhaseCount = phases.filter((p) => p.is_vo).length
     // Same reasoning as SCurveChart's todayInRange guard: only draw "today"
     // when it actually falls inside this site's own timeline, otherwise a
@@ -520,6 +534,15 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
               </div>
             )}
             <div className="progress" style={{ marginTop: 8 }}><div className="progress-bar" style={{ width: `${overallPct}%` }} /></div>
+            {selectedPlan && (
+              <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 6 }}>
+                ตาม PLAN v{selectedPlan.version} วันนี้ควรได้ {planTodayPct}%
+                {' · '}
+                <span style={{ fontWeight: 600, color: planGap < 0 ? 'var(--red)' : planGap > 0 ? 'var(--green)' : 'var(--text2)' }}>
+                  {planGap < 0 ? `ช้ากว่าแผน ${-planGap}%` : planGap > 0 ? `เร็วกว่าแผน ${planGap}%` : 'ตรงแผน'}
+                </span>
+              </div>
+            )}
           </div>
           <div className="kpi-card"><div className="kpi-label">เฟสทั้งหมด</div><div className="kpi-value">{phases.length}</div></div>
           <div className="kpi-card yellow"><div className="kpi-label">กำลังทำอยู่</div><div className="kpi-value" style={{ color: 'var(--yellow)' }}>{inProgressCount}</div></div>
@@ -530,6 +553,17 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
         <div className="card" style={{ padding: 16 }} data-phone="gantt-card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <div className="card-title">ไทม์ไลน์เฟสงาน</div>
+            {planOptions.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto', marginRight: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11.5, color: 'var(--text3)' }}>PLAN:</span>
+                <button type="button" className={`btn btn-sm ${selectedPlan ? 'btn-ghost' : 'btn-primary'}`}
+                  aria-pressed={!selectedPlan} onClick={() => setPlanChoice('off')}>ปิด</button>
+                {planOptions.map((p) => (
+                  <button key={p.id} type="button" className={`btn btn-sm ${selectedPlanId === p.id ? 'btn-primary' : 'btn-ghost'}`}
+                    aria-pressed={selectedPlanId === p.id} onClick={() => setPlanChoice(p.id)}>v{p.version}</button>
+                ))}
+              </div>
+            )}
             {canEdit && !editingId && (
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => startAdd(null, null, phases.length + 1)}>+ เพิ่มขั้นตอน</button>
             )}
@@ -726,6 +760,23 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
               const dateRangeStr = hasChildren
                 ? (nodeRange && formatShortDateRange(nodeRange.start, nodeRange.end))
                 : formatShortDateRange(node.start_date, node.end_date)
+              // PLAN layer: grey ghost bar at the chosen version's dates + delay tag
+              // (current end minus planned end; parents use derived spans on both sides).
+              // Issue phases are never in a PLAN, so they get neither.
+              const issueRow = isPhase ? !!node.is_issue_phase : !!byNodeId[node.phase_id]?.is_issue_phase
+              const inPlan = !!planRanges && !issueRow && Object.prototype.hasOwnProperty.call(planRanges, node.id)
+              const planRange = inPlan ? planRanges[node.id] : null
+              const ghostStyle = planRange ? barStyle({ start_date: planRange.start, end_date: planRange.end }, viewRange) : null
+              const planTag = !planRanges || issueRow ? null
+                : !inPlan ? { text: 'ไม่มีใน PLAN', tone: 'missing' }
+                : planDelayTag(hasChildren ? nodeRange?.end : node.end_date, planRange?.end)
+              // the tag sits just after the bar, else just before it, else inside its right end
+              const barLeft = style ? parseFloat(style.left) : 0
+              const barRight = style ? barLeft + parseFloat(style.width) : 0
+              const tagPos = !style ? { left: 4 }
+                : barRight <= 80 ? { left: `calc(${barRight}% + 4px)` }
+                : barLeft >= 20 ? { right: `calc(${100 - barLeft}% + 4px)` }
+                : { right: `calc(${100 - barRight}% + 4px)` }
               const rangeForTitle = hasChildren
                 ? (nodeRange ? `${nodeRange.start} → ${nodeRange.end} (รวมขั้นตอนย่อย)` : 'ยังไม่มีวันที่ในขั้นตอนย่อย')
                 : `${node.start_date} → ${node.end_date}`
@@ -765,6 +816,16 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
                       >
                         {hasChildren ? (expandedIds.has(node.id) ? '▾ ' : '▸ ') : ''}{label}
                       </div>
+                    )}
+                    {ghostStyle && (
+                      <div data-testid="plan-ghost" title={`PLAN v${selectedPlan.version}: ${planRange.start} → ${planRange.end}`}
+                        style={{ position: 'absolute', bottom: -5, height: 3, left: ghostStyle.left, width: ghostStyle.width, background: 'var(--text3)', opacity: 0.55, borderRadius: 2, pointerEvents: 'none' }} />
+                    )}
+                    {planTag && (
+                      <span data-testid="plan-tag"
+                        style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', ...tagPos, fontSize: 10, fontWeight: 600, lineHeight: '14px', padding: '0 5px', borderRadius: 4, whiteSpace: 'nowrap', pointerEvents: 'none', background: 'var(--bg2)', border: '1px solid var(--border)', color: TAG_COLOR[planTag.tone] }}>
+                        {planTag.text}
+                      </span>
                     )}
                     {/* Floats over the track's right edge instead of taking
                         a flex slot next to it -- so the track's own width
@@ -836,6 +897,9 @@ export default function GanttView({ sites, navigateTo, onManagePhases, selectedS
             <span><span className="dot" style={{ width: 8, height: 8, borderRadius: '50%', display: 'inline-block', marginRight: 5, background: 'var(--green)' }} />เสร็จแล้ว</span>
             <span><span className="dot" style={{ width: 8, height: 8, borderRadius: '50%', display: 'inline-block', marginRight: 5, background: 'var(--yellow)' }} />กำลังทำ</span>
             <span><span className="dot" style={{ width: 8, height: 8, borderRadius: '50%', display: 'inline-block', marginRight: 5, background: 'var(--text3)' }} />ยังไม่เริ่ม</span>
+            {selectedPlan && (
+              <span><span style={{ width: 14, height: 3, borderRadius: 2, display: 'inline-block', marginRight: 5, verticalAlign: 'middle', background: 'var(--text3)', opacity: 0.55 }} />PLAN v{selectedPlan.version}</span>
+            )}
           </div>
         </div>
         </LandscapeView>
