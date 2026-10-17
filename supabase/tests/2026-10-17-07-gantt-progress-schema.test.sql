@@ -9,7 +9,6 @@ BEGIN;
 
 -- ===== inlined 2026-10-17-07-gantt-progress-schema.sql body =====
 
-
 CREATE OR REPLACE FUNCTION public.can_manage_plan() RETURNS boolean
   LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
 AS $$ SELECT COALESCE(current_user_role() IN ('OWNER','PM'), false) $$;
@@ -43,8 +42,14 @@ CREATE INDEX phase_tasks_parent_idx ON phase_tasks(parent_task_id) WHERE parent_
 
 ALTER TABLE site_phases
   ADD COLUMN is_vo boolean NOT NULL DEFAULT false,
-  ADD COLUMN vo_value numeric NULL CHECK (vo_value IS NULL OR vo_value >= 0),
   ADD COLUMN vo_ref text NULL;
+-- A VO's baht value is money: kept out of site_phases (which PM reads) and readable
+-- only by OWNER/ADMIN, so PM cannot work out contract_value from % รวม VO.
+CREATE TABLE public.phase_vo_values (
+  phase_id uuid PRIMARY KEY REFERENCES site_phases(id) ON DELETE CASCADE,
+  tenant_id uuid NOT NULL DEFAULT current_tenant_id(),
+  vo_value numeric NOT NULL CHECK (vo_value >= 0)
+);
 
 CREATE TABLE public.progress_reports (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -91,11 +96,16 @@ ALTER TABLE boq_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE progress_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE site_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE site_plan_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE phase_vo_values ENABLE ROW LEVEL SECURITY;
 
 -- boq_items: site staff read/write within tenant
 CREATE POLICY site_staff_all ON boq_items FOR ALL
   USING (( SELECT is_site_staff() ) AND tenant_id = ( SELECT current_tenant_id() ))
   WITH CHECK (( SELECT is_site_staff() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT tenant_can_write() ));
+-- phase_vo_values: money, OWNER/ADMIN only (PM never reads money)
+CREATE POLICY money_roles_all ON phase_vo_values FOR ALL
+  USING (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ))
+  WITH CHECK (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT tenant_can_write() ));
 -- progress_reports: site staff read; OWNER/PM insert and cancel (update), never delete
 CREATE POLICY site_staff_reads ON progress_reports FOR SELECT
   USING (( SELECT is_site_staff() ) AND tenant_id = ( SELECT current_tenant_id() ));
@@ -113,6 +123,7 @@ CREATE POLICY site_staff_reads ON site_plan_items FOR SELECT
                  AND p.tenant_id = ( SELECT current_tenant_id() )) AND ( SELECT is_site_staff() ));
 REVOKE INSERT, UPDATE, DELETE ON site_plans, site_plan_items FROM authenticated, anon;
 REVOKE DELETE ON progress_reports FROM authenticated, anon;
+REVOKE TRUNCATE ON phase_vo_values FROM authenticated, anon;
 -- ===== end of 07 body =====
 
 DO $$
@@ -120,13 +131,15 @@ DECLARE
   v_tenant uuid; r jsonb := '{}'; n int; b boolean;
   v_pm text := 'gantt-test-pm@example.invalid'; v_admin text := 'gantt-test-admin@example.invalid';
   v_wk text := 'gantt-test-worker@example.invalid'; v_owner text; cols jsonb;
-  v_site uuid; v_task uuid; v_task_site uuid; v_plan uuid; v_boq uuid; v_rep uuid;
+  v_site uuid; v_task uuid; v_task_site uuid; v_plan uuid; v_boq uuid; v_rep uuid; v_phase uuid;
 BEGIN
   -- ===== as the table owner: fixtures in the demo tenant =====
   SELECT id INTO v_tenant FROM tenants WHERE company_name ILIKE '%สร้างดี%' LIMIT 1;
   SELECT id INTO v_site FROM sites WHERE tenant_id = v_tenant ORDER BY created_at LIMIT 1;
   SELECT id, site_id INTO v_task, v_task_site FROM phase_tasks WHERE tenant_id = v_tenant ORDER BY created_at LIMIT 1;
   SELECT user_email INTO v_owner FROM user_roles WHERE tenant_id = v_tenant AND role = 'OWNER' AND status = 'approved' LIMIT 1;
+  SELECT id INTO v_phase FROM site_phases WHERE tenant_id = v_tenant ORDER BY created_at LIMIT 1;
+  r := r || jsonb_build_object('phase_found_MUSTtrue', v_phase IS NOT NULL);
   r := r || jsonb_build_object('tenant', v_tenant, 'site_found_MUSTtrue', v_site IS NOT NULL,
          'task_found_MUSTtrue', v_task IS NOT NULL, 'owner_found_MUSTtrue', v_owner IS NOT NULL);
   INSERT INTO user_roles (user_email, role, tenant_id, status) VALUES
@@ -142,9 +155,10 @@ BEGIN
     INTO cols FROM information_schema.columns
     WHERE table_schema = 'public' AND (table_name, column_name) IN
       (('phase_tasks','weight_pts'),('phase_tasks','progress_mode'),('phase_tasks','parent_task_id'),('phase_tasks','boq_item_id'),
-       ('phase_tasks','planned_qty'),('phase_tasks','done_qty'),('site_phases','is_vo'),('site_phases','vo_value'),('site_phases','vo_ref'));
+       ('phase_tasks','planned_qty'),('phase_tasks','done_qty'),('site_phases','is_vo'),('site_phases','vo_ref'),
+       ('phase_vo_values','phase_id'),('phase_vo_values','tenant_id'),('phase_vo_values','vo_value'));
   r := r || jsonb_build_object('columns', cols);
-  SELECT count(*) = 9 INTO b FROM information_schema.columns c
+  SELECT count(*) = 11 INTO b FROM information_schema.columns c
     WHERE c.table_schema = 'public' AND (
       (c.table_name = 'phase_tasks' AND c.column_name = 'weight_pts' AND c.column_default = '0' AND c.is_nullable = 'NO' AND c.numeric_precision = 6 AND c.numeric_scale = 2)
    OR (c.table_name = 'phase_tasks' AND c.column_name = 'progress_mode' AND c.column_default = '''status''::text' AND c.is_nullable = 'NO')
@@ -153,19 +167,25 @@ BEGIN
    OR (c.table_name = 'phase_tasks' AND c.column_name = 'planned_qty' AND c.column_default IS NULL AND c.is_nullable = 'YES')
    OR (c.table_name = 'phase_tasks' AND c.column_name = 'done_qty' AND c.column_default = '0' AND c.is_nullable = 'NO')
    OR (c.table_name = 'site_phases' AND c.column_name = 'is_vo' AND c.column_default = 'false' AND c.is_nullable = 'NO')
-   OR (c.table_name = 'site_phases' AND c.column_name = 'vo_value' AND c.column_default IS NULL AND c.is_nullable = 'YES')
+   OR (c.table_name = 'phase_vo_values' AND c.column_name = 'phase_id' AND c.column_default IS NULL AND c.is_nullable = 'NO')
+   OR (c.table_name = 'phase_vo_values' AND c.column_name = 'tenant_id' AND c.column_default = 'current_tenant_id()' AND c.is_nullable = 'NO')
+   OR (c.table_name = 'phase_vo_values' AND c.column_name = 'vo_value' AND c.column_default IS NULL AND c.is_nullable = 'NO')
    OR (c.table_name = 'site_phases' AND c.column_name = 'vo_ref' AND c.column_default IS NULL AND c.is_nullable = 'YES'));
   r := r || jsonb_build_object('new_columns_with_defaults_MUSTtrue', b);
+  -- vo_value is money: never a site_phases column (PM reads site_phases)
+  SELECT count(*) INTO n FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'site_phases' AND column_name = 'vo_value';
+  r := r || jsonb_build_object('site_phases_has_no_vo_value_MUST0', n);
   -- existing cards pick up the defaults
   SELECT count(*) INTO n FROM phase_tasks WHERE weight_pts <> 0 OR progress_mode <> 'status' OR done_qty <> 0
     OR parent_task_id IS NOT NULL OR boq_item_id IS NOT NULL OR planned_qty IS NOT NULL;
   r := r || jsonb_build_object('existing_cards_not_default_MUST0', n);
-  SELECT count(*) INTO n FROM site_phases WHERE is_vo OR vo_value IS NOT NULL OR vo_ref IS NOT NULL;
+  SELECT count(*) INTO n FROM site_phases WHERE is_vo OR vo_ref IS NOT NULL;
   r := r || jsonb_build_object('existing_phases_not_default_MUST0', n);
   SELECT relrowsecurity INTO b FROM pg_class WHERE oid = 'public.boq_items'::regclass;
   SELECT b AND bool_and(relrowsecurity) INTO b FROM pg_class
-    WHERE oid IN ('public.progress_reports'::regclass, 'public.site_plans'::regclass, 'public.site_plan_items'::regclass);
-  r := r || jsonb_build_object('rls_enabled_all_four_MUSTtrue', b);
+    WHERE oid IN ('public.progress_reports'::regclass, 'public.site_plans'::regclass, 'public.site_plan_items'::regclass,
+                  'public.phase_vo_values'::regclass);
+  r := r || jsonb_build_object('rls_enabled_all_five_MUSTtrue', b);
   -- check constraints
   BEGIN
     UPDATE phase_tasks SET progress_mode = 'quantity' WHERE id = v_task;
@@ -175,13 +195,15 @@ BEGIN
 
   -- no new policy reads its own table (42P17 recursion)
   SELECT count(*) INTO n FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid
-    WHERE c.relname IN ('boq_items','progress_reports','site_plans','site_plan_items')
+    WHERE c.relname IN ('boq_items','progress_reports','site_plans','site_plan_items','phase_vo_values')
       AND (COALESCE(pg_get_expr(p.polqual, p.polrelid), '') || ' ' || COALESCE(pg_get_expr(p.polwithcheck, p.polrelid), ''))
           ~* ('from\s+(public\.)?' || c.relname || '\M');
   r := r || jsonb_build_object('policies_self_reference_MUST0', n);
   SELECT count(*) INTO n FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid
-    WHERE c.relname IN ('boq_items','progress_reports','site_plans','site_plan_items');
+    WHERE c.relname IN ('boq_items','progress_reports','site_plans','site_plan_items','phase_vo_values');
   r := r || jsonb_build_object('policy_count', n);
+  SELECT has_table_privilege('authenticated', 'public.phase_vo_values', 'TRUNCATE') INTO b;
+  r := r || jsonb_build_object('authenticated_truncate_vo_values_MUSTfalse', b);
   SELECT has_function_privilege('anon', 'public.can_manage_plan()', 'EXECUTE') INTO b;
   r := r || jsonb_build_object('anon_execute_can_manage_plan_MUSTfalse', b);
   SELECT has_table_privilege('authenticated', 'public.site_plans', 'UPDATE')
@@ -240,6 +262,12 @@ BEGIN
   r := r || jsonb_build_object('pm_reads_site_plan_MUSTtrue', n = 1);
   SELECT count(*) INTO n FROM site_plan_items WHERE plan_id = v_plan;
   r := r || jsonb_build_object('pm_reads_site_plan_items_MUSTtrue', n = 1);
+  -- vo_value is money: PM neither writes nor reads it
+  BEGIN
+    INSERT INTO phase_vo_values (phase_id, vo_value) VALUES (v_phase, 100000);
+    r := r || jsonb_build_object('pm_vo_value_insert_MUST42501', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('pm_vo_value_insert_MUST42501', SQLSTATE);
+  END;
 
   -- ===== ADMIN: reads progress_reports, cannot insert =====
   PERFORM set_config('request.jwt.claims', json_build_object('email', v_admin, 'role', 'authenticated', 'sub', gen_random_uuid())::text, true);
@@ -253,6 +281,21 @@ BEGIN
   END;
   SELECT count(*) INTO n FROM boq_items WHERE id = v_boq;
   r := r || jsonb_build_object('admin_reads_boq_MUSTtrue', n = 1);
+  BEGIN
+    INSERT INTO phase_vo_values (phase_id, vo_value) VALUES (v_phase, 100000);
+    SELECT tenant_id = v_tenant INTO b FROM phase_vo_values WHERE phase_id = v_phase;
+    r := r || jsonb_build_object('w_admin_vo_value_insert', 'ok', 'admin_vo_value_tenant_default_MUSTtrue', b);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('w_admin_vo_value_insert', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    UPDATE phase_vo_values SET vo_value = -1 WHERE phase_id = v_phase;
+    r := r || jsonb_build_object('admin_vo_value_negative_23514_MUSTtrue', false);
+  EXCEPTION WHEN SQLSTATE '23514' THEN r := r || jsonb_build_object('admin_vo_value_negative_23514_MUSTtrue', true);
+  END;
+  -- back to PM: the row exists now, and PM still sees none
+  PERFORM set_config('request.jwt.claims', json_build_object('email', v_pm, 'role', 'authenticated', 'sub', gen_random_uuid())::text, true);
+  SELECT count(*) INTO n FROM phase_vo_values;
+  r := r || jsonb_build_object('pm_vo_values_rows_MUST0', n);
 
   -- ===== WORKER: 0 rows of every new table =====
   PERFORM set_config('request.jwt.claims', json_build_object('email', v_wk, 'role', 'authenticated', 'sub', gen_random_uuid())::text, true);
@@ -261,6 +304,7 @@ BEGIN
   SELECT count(*) INTO n FROM progress_reports; r := r || jsonb_build_object('worker_progress_reports_MUST0', n);
   SELECT count(*) INTO n FROM site_plans;       r := r || jsonb_build_object('worker_site_plans_MUST0', n);
   SELECT count(*) INTO n FROM site_plan_items;  r := r || jsonb_build_object('worker_site_plan_items_MUST0', n);
+  SELECT count(*) INTO n FROM phase_vo_values;  r := r || jsonb_build_object('worker_phase_vo_values_MUST0', n);
   BEGIN
     INSERT INTO boq_items (site_id, code, description, planned_qty) VALUES (v_site, 'W-01', 'worker boq', 1);
     r := r || jsonb_build_object('worker_boq_insert_MUST42501', 'no error');
@@ -272,6 +316,8 @@ BEGIN
   r := r || jsonb_build_object('owner_current_tenant_ok_MUSTtrue', current_tenant_id() = v_tenant, 'owner_can_manage_plan_MUSTtrue', can_manage_plan());
   SELECT count(*) INTO n FROM site_plans WHERE id = v_plan;
   r := r || jsonb_build_object('owner_reads_site_plan_MUSTtrue', n = 1);
+  SELECT count(*) INTO n FROM phase_vo_values WHERE phase_id = v_phase;
+  r := r || jsonb_build_object('owner_reads_vo_value_MUSTtrue', n = 1);
   BEGIN
     INSERT INTO site_plans (site_id, version, note) VALUES (v_site, 99, 'owner direct');
     r := r || jsonb_build_object('owner_site_plans_insert_MUST42501', 'no error');

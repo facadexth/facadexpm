@@ -121,5 +121,42 @@
       { "id": "s2a", "phase_id": "A", "subtask_id": "S2", "weight_pts": 100, "status": "not_started" }
     ],
     "expect": { "phases": { "A": 25 }, "contract_pct": 25, "total_pct": null }
+  },
+  {
+    "name": "all contract weights zero uses mean",
+    "contract_value": 0,
+    "phases": [
+      { "id": "A", "billing_weight_pct": 0, "status": "done" },
+      { "id": "B", "billing_weight_pct": 0, "status": "not_started" }
+    ],
+    "subtasks": [],
+    "tasks": [],
+    "expect": { "phases": { "A": 100, "B": 0 }, "contract_pct": 50, "total_pct": null }
+  },
+  {
+    "name": "only an issue phase",
+    "contract_value": 900000,
+    "phases": [
+      { "id": "I", "billing_weight_pct": 0, "status": "not_started", "is_issue_phase": true }
+    ],
+    "subtasks": [],
+    "tasks": [
+      { "id": "i1", "phase_id": "I", "weight_pts": 0, "status": "not_started", "issue_report_id": "R1" }
+    ],
+    "expect": { "phases": {}, "contract_pct": 0, "total_pct": null }
+  },
+  {
+    "name": "vo without a vo value counts zero",
+    "contract_value": 900000,
+    "phases": [
+      { "id": "A", "billing_weight_pct": 100, "status": "in_progress" },
+      { "id": "C", "billing_weight_pct": 0, "status": "done", "is_vo": true }
+    ],
+    "subtasks": [],
+    "tasks": [
+      { "id": "a1", "phase_id": "A", "weight_pts": 100, "status": "not_started" },
+      { "id": "c1", "phase_id": "C", "weight_pts": 100, "status": "done" }
+    ],
+    "expect": { "phases": { "A": 0, "C": 100 }, "contract_pct": 0, "total_pct": 0 }
   }
 ]

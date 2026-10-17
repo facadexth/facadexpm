@@ -150,6 +150,20 @@ REVOKE ALL ON FUNCTION public.check_task_refs() FROM PUBLIC, anon, authenticated
 CREATE TRIGGER trg_check_task_refs BEFORE INSERT OR UPDATE OF boq_item_id, parent_task_id, site_id, tenant_id ON phase_tasks
   FOR EACH ROW EXECUTE FUNCTION check_task_refs();
 
+-- cross-tenant references: phase_vo_values.phase_id must be a phase of the row's tenant
+CREATE OR REPLACE FUNCTION public.check_phase_vo_refs() RETURNS trigger
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM site_phases WHERE id = NEW.phase_id AND tenant_id = NEW.tenant_id) THEN
+    RAISE EXCEPTION 'เฟสนี้ไม่อยู่ในบริษัทนี้' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.check_phase_vo_refs() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_check_phase_vo_refs BEFORE INSERT OR UPDATE ON phase_vo_values
+  FOR EACH ROW EXECUTE FUNCTION check_phase_vo_refs();
+
 -- 4. point limits (re-summed under a lock on the node's phase row)
 CREATE OR REPLACE FUNCTION public.check_node_weights() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public

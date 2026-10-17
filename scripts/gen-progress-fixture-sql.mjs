@@ -8,7 +8,8 @@
 // Ids are md5('gpf|<case>|<fixture id>')::uuid, so the output is stable.
 // Optional fixture fields default to: subtask_id/parent_task_id/issue_report_id
 // null, progress_mode 'status', planned_qty null, done_qty 0, is_vo false,
-// vo_value null, is_issue_phase false, parent_subtask_id null.
+// vo_value null (no phase_vo_values row, counts as 0), is_issue_phase false,
+// parent_subtask_id null.
 // Usage: node scripts/gen-progress-fixture-sql.mjs
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -35,7 +36,11 @@ cases.forEach((c, idx) => {
   // an empty PLAN first: deriving a split parent's status is gated until the site has a PLAN
   out.push(`  PERFORM snapshot_site_plan(${site}, 'progress fixture', true, 'system');`)
   c.phases.forEach((p, i) => {
-    out.push(`  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, vo_value, is_issue_phase) VALUES (${uid(p.id)}, v_tenant, ${site}, ${lit(p.id)}, ${i + 1}, ${lit(p.billing_weight_pct ?? 0)}, ${lit(p.status ?? 'not_started')}, ${lit(p.is_vo ?? false)}, ${lit(p.vo_value ?? null)}, ${lit(p.is_issue_phase ?? false)});`)
+    out.push(`  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (${uid(p.id)}, v_tenant, ${site}, ${lit(p.id)}, ${i + 1}, ${lit(p.billing_weight_pct ?? 0)}, ${lit(p.status ?? 'not_started')}, ${lit(p.is_vo ?? false)}, ${lit(p.is_issue_phase ?? false)});`)
+    // vo_value is money: it lives in phase_vo_values (OWNER/ADMIN only), not on site_phases
+    if (p.vo_value !== undefined && p.vo_value !== null) {
+      out.push(`  INSERT INTO phase_vo_values (phase_id, tenant_id, vo_value) VALUES (${uid(p.id)}, v_tenant, ${lit(p.vo_value)});`)
+    }
   })
   ;(c.subtasks || []).forEach((s, i) => {
     out.push(`  INSERT INTO phase_subtasks (id, tenant_id, site_id, phase_id, parent_subtask_id, name, sort_order, billing_weight_pct, status) VALUES (${uid(s.id)}, v_tenant, ${site}, ${uid(s.phase_id)}, ${uid(s.parent_subtask_id)}, ${lit(s.id)}, ${i + 1}, ${lit(s.billing_weight_pct ?? 0)}, ${lit(s.status ?? 'not_started')});`)

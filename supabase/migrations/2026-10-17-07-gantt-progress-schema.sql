@@ -1,6 +1,6 @@
 -- Gantt weighted progress: schema. Spec docs/superpowers/specs/2026-10-17-gantt-weighted-progress-design.md §3-§6
--- Tables boq_items, progress_reports, site_plans, site_plan_items; weight and
--- quantity columns on phase_tasks; VO columns on site_phases; helper
+-- Tables boq_items, progress_reports, site_plans, site_plan_items, phase_vo_values;
+-- weight and quantity columns on phase_tasks; is_vo/vo_ref on site_phases; helper
 -- can_manage_plan() (OWNER/PM). progress_reports.qty is > 0 (spec said <> 0):
 -- a wrong entry is cancelled, never offset by a negative row.
 -- Rolled-back check: supabase/tests/2026-10-17-07-gantt-progress-schema.test.sql
@@ -39,8 +39,14 @@ CREATE INDEX phase_tasks_parent_idx ON phase_tasks(parent_task_id) WHERE parent_
 
 ALTER TABLE site_phases
   ADD COLUMN is_vo boolean NOT NULL DEFAULT false,
-  ADD COLUMN vo_value numeric NULL CHECK (vo_value IS NULL OR vo_value >= 0),
   ADD COLUMN vo_ref text NULL;
+-- A VO's baht value is money: kept out of site_phases (which PM reads) and readable
+-- only by OWNER/ADMIN, so PM cannot work out contract_value from % รวม VO.
+CREATE TABLE public.phase_vo_values (
+  phase_id uuid PRIMARY KEY REFERENCES site_phases(id) ON DELETE CASCADE,
+  tenant_id uuid NOT NULL DEFAULT current_tenant_id(),
+  vo_value numeric NOT NULL CHECK (vo_value >= 0)
+);
 
 CREATE TABLE public.progress_reports (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -87,11 +93,16 @@ ALTER TABLE boq_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE progress_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE site_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE site_plan_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE phase_vo_values ENABLE ROW LEVEL SECURITY;
 
 -- boq_items: site staff read/write within tenant
 CREATE POLICY site_staff_all ON boq_items FOR ALL
   USING (( SELECT is_site_staff() ) AND tenant_id = ( SELECT current_tenant_id() ))
   WITH CHECK (( SELECT is_site_staff() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT tenant_can_write() ));
+-- phase_vo_values: money, OWNER/ADMIN only (PM never reads money)
+CREATE POLICY money_roles_all ON phase_vo_values FOR ALL
+  USING (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ))
+  WITH CHECK (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ) AND ( SELECT tenant_can_write() ));
 -- progress_reports: site staff read; OWNER/PM insert and cancel (update), never delete
 CREATE POLICY site_staff_reads ON progress_reports FOR SELECT
   USING (( SELECT is_site_staff() ) AND tenant_id = ( SELECT current_tenant_id() ));
@@ -109,4 +120,5 @@ CREATE POLICY site_staff_reads ON site_plan_items FOR SELECT
                  AND p.tenant_id = ( SELECT current_tenant_id() )) AND ( SELECT is_site_staff() ));
 REVOKE INSERT, UPDATE, DELETE ON site_plans, site_plan_items FROM authenticated, anon;
 REVOKE DELETE ON progress_reports FROM authenticated, anon;
+REVOKE TRUNCATE ON phase_vo_values FROM authenticated, anon;
 COMMIT;

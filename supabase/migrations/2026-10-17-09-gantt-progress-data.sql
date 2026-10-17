@@ -8,8 +8,15 @@
 --   node (phase or subtask): child subtasks -> Σ(billing_weight_pct × child) / Σ billing_weight_pct
 --          (plain mean when Σ is 0); else top-level non-issue cards -> Σ(pts × card) / 100;
 --          else node status done 1, else 0.
---   site:  % ตามสัญญา = Σ(w × phase) / Σ w over phases neither VO nor issue (plain mean when
---          Σ w is 0, 0 with no such phase); % รวม VO only when contract_value > 0 and a VO phase exists.
+--   site:  % ตามสัญญา = Σ(w × phase) / Σ w over phases neither VO nor issue, w = billing_weight_pct.
+--            * Σ w = 0 (every contract weight is 0)  -> plain mean of those phases;
+--            * no contract phase at all (e.g. only an issue phase) -> 0.
+--          % รวม VO = (contract_value × contract + Σ vo_value × VO phase) / (contract_value + Σ vo_value),
+--          only when contract_value > 0 and a VO phase exists, else NULL.
+--            * a VO phase with no phase_vo_values row counts as vo_value 0.
+-- Money stays with money roles: vo_value lives in phase_vo_values (OWNER/ADMIN, migration 07) and
+-- % รวม VO in site_progress_daily_money (OWNER/ADMIN); PM reads site_progress_daily (% ตามสัญญา) only.
+-- site_progress_pct is INVOKER, so for a role that cannot read the site or VO values it cannot leak them.
 -- The data steps at the end set card weights only: no status, quantity or mode changes.
 -- Also: demo_seed_core gains a final step (equal weights + auto PLAN v1), and boq_items
 -- planned_qty can no longer drop below what its cards already hold.
@@ -86,8 +93,10 @@ BEGIN
            WHERE site_id = p_site_id AND tenant_id = v_tenant AND NOT is_vo AND NOT is_issue_phase) c;
   v_contract := CASE WHEN v_w > 0 THEN v_wp / v_w WHEN v_n > 0 THEN v_avg ELSE 0 END;
   SELECT count(*), COALESCE(sum(c.v), 0), COALESCE(sum(c.v * c.p), 0) INTO v_vo_n, v_vo_sum, v_vo_wp
-    FROM (SELECT COALESCE(vo_value, 0) AS v, node_progress(id) AS p FROM site_phases
-           WHERE site_id = p_site_id AND tenant_id = v_tenant AND is_vo AND NOT is_issue_phase) c;
+    FROM (SELECT COALESCE(vv.vo_value, 0) AS v, node_progress(ph.id) AS p
+            FROM site_phases ph
+            LEFT JOIN phase_vo_values vv ON vv.phase_id = ph.id AND vv.tenant_id = ph.tenant_id
+           WHERE ph.site_id = p_site_id AND ph.tenant_id = v_tenant AND ph.is_vo AND NOT ph.is_issue_phase) c;
   contract_pct := round(v_contract * 100, 2);
   total_pct := CASE WHEN COALESCE(v_cv, 0) > 0 AND v_vo_n > 0
                     THEN round((v_cv * v_contract + v_vo_wp) / (v_cv + v_vo_sum) * 100, 2) END;
@@ -97,32 +106,55 @@ REVOKE ALL ON FUNCTION public.site_progress_pct(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.site_progress_pct(uuid) TO authenticated;
 
 -- ===== daily snapshots (S-curve actual line) =====
+-- % ตามสัญญา: site staff (incl. PM)
 CREATE TABLE public.site_progress_daily (
   site_id uuid NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
   tenant_id uuid NOT NULL,
   day date NOT NULL,
   contract_pct numeric,
-  total_pct numeric,
   PRIMARY KEY (site_id, day)
 );
 ALTER TABLE site_progress_daily ENABLE ROW LEVEL SECURITY;
 CREATE POLICY site_staff_reads ON site_progress_daily FOR SELECT
   USING (( SELECT is_site_staff() ) AND tenant_id = ( SELECT current_tenant_id() ));
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON site_progress_daily FROM authenticated, anon;
+-- % รวม VO: with contract_pct and the VO values it gives away contract_value, so OWNER/ADMIN only
+CREATE TABLE public.site_progress_daily_money (
+  site_id uuid NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  tenant_id uuid NOT NULL,
+  day date NOT NULL,
+  total_pct numeric,
+  PRIMARY KEY (site_id, day)
+);
+ALTER TABLE site_progress_daily_money ENABLE ROW LEVEL SECURITY;
+CREATE POLICY money_roles_read ON site_progress_daily_money FOR SELECT
+  USING (( SELECT is_admin_or_owner() ) AND tenant_id = ( SELECT current_tenant_id() ));
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON site_progress_daily_money FROM authenticated, anon;
 
--- today's row (Asia/Bangkok date) for every site with a phase that is not an issue phase
+-- today's rows (Asia/Bangkok date) in both tables for every site with a phase that is not an
+-- issue phase; returns the number of sites
 CREATE OR REPLACE FUNCTION public.snapshot_site_progress() RETURNS int
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
-DECLARE n int;
+DECLARE n int; v_day date := (now() AT TIME ZONE 'Asia/Bangkok')::date;
 BEGIN
-  INSERT INTO site_progress_daily (site_id, tenant_id, day, contract_pct, total_pct)
-  SELECT s.id, s.tenant_id, (now() AT TIME ZONE 'Asia/Bangkok')::date, p.contract_pct, p.total_pct
-    FROM sites s CROSS JOIN LATERAL site_progress_pct(s.id) p
-   WHERE EXISTS (SELECT 1 FROM site_phases ph WHERE ph.site_id = s.id AND ph.tenant_id = s.tenant_id AND NOT ph.is_issue_phase)
-  ON CONFLICT (site_id, day) DO UPDATE
-    SET tenant_id = EXCLUDED.tenant_id, contract_pct = EXCLUDED.contract_pct, total_pct = EXCLUDED.total_pct;
-  GET DIAGNOSTICS n = ROW_COUNT;
+  -- one pass over the sites; both INSERTs in the WITH run exactly once
+  WITH p AS MATERIALIZED (
+    SELECT s.id AS site_id, s.tenant_id, x.contract_pct, x.total_pct
+      FROM sites s CROSS JOIN LATERAL site_progress_pct(s.id) x
+     WHERE EXISTS (SELECT 1 FROM site_phases ph WHERE ph.site_id = s.id AND ph.tenant_id = s.tenant_id AND NOT ph.is_issue_phase)
+  ), d AS (
+    INSERT INTO site_progress_daily (site_id, tenant_id, day, contract_pct)
+    SELECT site_id, tenant_id, v_day, contract_pct FROM p
+    ON CONFLICT (site_id, day) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, contract_pct = EXCLUDED.contract_pct
+    RETURNING 1
+  ), m AS (
+    INSERT INTO site_progress_daily_money (site_id, tenant_id, day, total_pct)
+    SELECT site_id, tenant_id, v_day, total_pct FROM p
+    ON CONFLICT (site_id, day) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, total_pct = EXCLUDED.total_pct
+    RETURNING 1
+  )
+  SELECT count(*) INTO n FROM d;
   RETURN n;
 END $$;
 REVOKE ALL ON FUNCTION public.snapshot_site_progress() FROM PUBLIC, anon, authenticated;
@@ -149,7 +181,9 @@ CREATE TRIGGER trg_check_boq_planned_qty BEFORE UPDATE OF planned_qty ON boq_ite
 
 -- ===== equal card points per node (data migration and demo seed) =====
 -- Top-level, non-issue cards outside issue phases get round(100/n, 2); the first card by
--- (sort_order, created_at) takes the remainder so the node sums to exactly 100. One UPDATE,
+-- (sort_order, created_at) takes the remainder so the node sums to exactly 100. From n = 202
+-- rounding up would push the remainder below 0 (201 × 0.50 > 100), so then the share is
+-- rounded down instead (the remainder is then always > 0). One UPDATE,
 -- so check_node_weights (AFTER, per row, end of statement) sees whole nodes. Only nodes whose
 -- cards all still have 0 points are touched, so a re-run never overwrites weights set by a PM.
 -- Issue cards keep their default 0. p_tenant_id NULL = every tenant.
@@ -158,7 +192,7 @@ CREATE OR REPLACE FUNCTION public.set_equal_card_weights(p_tenant_id uuid) RETUR
 AS $$
 DECLARE n int;
 BEGIN
-  WITH c AS (
+  WITH c0 AS (
     SELECT t.id,
            count(*) OVER w AS n,
            row_number() OVER (w ORDER BY t.sort_order, t.created_at, t.id) AS rn,
@@ -167,10 +201,13 @@ BEGIN
      WHERE (p_tenant_id IS NULL OR t.tenant_id = p_tenant_id)
        AND t.parent_task_id IS NULL AND t.issue_report_id IS NULL AND NOT ph.is_issue_phase
     WINDOW w AS (PARTITION BY t.tenant_id, COALESCE(t.subtask_id, t.phase_id))
+  ), c AS (
+    SELECT c0.*, CASE WHEN (c0.n - 1) * round(100.0 / c0.n, 2) > 100 THEN trunc(100.0 / c0.n, 2)
+                      ELSE round(100.0 / c0.n, 2) END AS share
+      FROM c0
   )
   UPDATE phase_tasks t
-     SET weight_pts = CASE WHEN c.rn = 1 THEN 100 - (c.n - 1) * round(100.0 / c.n, 2)
-                           ELSE round(100.0 / c.n, 2) END
+     SET weight_pts = CASE WHEN c.rn = 1 THEN 100 - (c.n - 1) * c.share ELSE c.share END
     FROM c
    WHERE t.id = c.id AND c.node_sum = 0;
   GET DIAGNOSTICS n = ROW_COUNT;
