@@ -9,6 +9,7 @@ import { calculateMonth, saveDraft, setManualLine, confirmMonth, unconfirmMonth,
 import { periodLabel, MONTHS_TH, monthRange } from '../../lib/payroll/period.js'
 import { fmt } from '../../lib/supabase.js'
 import { Modal } from '../../components/Modal.jsx'
+import PayslipModal from './Payslip.jsx'
 
 const STATUS = {
   draft: { label: 'ร่าง', color: '#9a5b00' },
@@ -27,6 +28,7 @@ export default function PayrollMonth({ canEdit }) {
   const [preview, setPreview] = useState(null)
   const [busy, setBusy] = useState(false)
   const [closeOpen, setCloseOpen] = useState(false)
+  const [slip, setSlip] = useState(null)
   const [paidDate, setPaidDate] = useState(monthRange(now.getFullYear(), now.getMonth() + 1).to)
 
   const status = data?.period?.status || 'draft'
@@ -121,7 +123,7 @@ export default function PayrollMonth({ canEdit }) {
                   </td>
                 ))}
                 <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(r.net_pay)}</td>
-                <td>{/* slip button: Task 11 */}</td>
+                <td><button className="btn btn-ghost btn-sm" onClick={() => setSlip(r)} aria-label="สลิป">📄</button></td>
               </tr>
             ))}
             {!records.length && (
@@ -184,6 +186,8 @@ export default function PayrollMonth({ canEdit }) {
           </div>
         </Modal>
       )}
+
+      {slip && <PayslipModal record={slip} year={year} month={month} period={data?.period} onClose={() => setSlip(null)} />}
     </div>
   )
 }

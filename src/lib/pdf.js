@@ -10,13 +10,13 @@ export function printTagFor(count) {
  * สร้าง PDF จาก HTML element
  * ใช้ html2pdf.js ซึ่งรองรับ Thai font ผ่าน canvas rendering
  */
-export function pdfOptions({ margin = 10, scale = 2, filename } = {}) {
+export function pdfOptions({ margin = 10, scale = 2, filename, format = 'a4', orientation = 'portrait' } = {}) {
   return {
     margin:      [margin, margin, margin, margin],
     filename:    filename || 'document.pdf',
     image:       { type: 'jpeg', quality: 0.98 },
     html2canvas: { scale, useCORS: true, letterRendering: true, backgroundColor: '#ffffff' },
-    jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    jsPDF:       { unit: 'mm', format, orientation },
   }
 }
 
@@ -61,12 +61,12 @@ export async function buildPDF(html2pdf, element, options) {
   return { worker }
 }
 
-export async function downloadPDF(elementId, filename, { margin = 10, scale = 2 } = {}) {
+export async function downloadPDF(elementId, filename, { margin = 10, scale = 2, format = 'a4', orientation = 'portrait' } = {}) {
   const html2pdf = (await import('html2pdf.js')).default
   const element = document.getElementById(elementId)
   if (!element) { console.error('element not found:', elementId); return }
 
-  const { worker } = await buildPDF(html2pdf, element, pdfOptions({ margin, scale, filename }))
+  const { worker } = await buildPDF(html2pdf, element, pdfOptions({ margin, scale, filename, format, orientation }))
   await worker.save()
 }
 
