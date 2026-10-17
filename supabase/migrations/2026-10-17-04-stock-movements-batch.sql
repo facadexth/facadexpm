@@ -189,3 +189,16 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.record_stock_movements_batch(jsonb, timestamptz) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.record_stock_movements_batch(jsonb, timestamptz) TO authenticated;
+
+-- FIFO order for invoice stock deduction (owner decision 2026-10-17): the
+-- deduction plan takes items oldest-first by the date each was first
+-- received at a site. security_invoker keeps stock_movements' tenant RLS.
+CREATE OR REPLACE VIEW public.inventory_first_receipts WITH (security_invoker = true) AS
+SELECT inventory_item_id, site_id, min(created_at) AS first_received_at
+FROM stock_movements
+WHERE movement_type IN ('purchase_in', 'transfer_in', 'sale_reversal')
+   OR (movement_type = 'adjustment' AND quantity > 0)
+GROUP BY inventory_item_id, site_id;
+
+REVOKE ALL ON public.inventory_first_receipts FROM PUBLIC, anon;
+GRANT SELECT ON public.inventory_first_receipts TO authenticated;

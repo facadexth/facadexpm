@@ -78,12 +78,15 @@ export function estimateSheetCount(areaSqm, referenceAreaSqm) {
  * the caller loads items/balances once and re-uses this for every invoice
  * in the queue, and for live-previewing edits before confirming.
  *
- * Sourcing per category: the invoice's own site first: if its balance in
- * that category covers the target, deduct proportionally by each item's
- * value share and stop. If not, drain the site's balance in that category
- * entirely, then attempt to cover the remainder from ส่วนกลาง via a
+ * Sourcing per category is FIFO by item (owner decision 2026-10-17): items
+ * are taken oldest-first by the date each was first received at that site,
+ * each drained to 0 before moving to the next, the last one only partly.
+ * Cost stays weighted-average; FIFO only picks WHICH items get cut. (The
+ * earlier "proportional across every item" rule cut ~2,400 items for one
+ * invoice and made its deduction report unprintable.) The invoice's own
+ * site goes first; whatever it can't cover comes from ส่วนกลาง via a
  * transfer_out (central) + transfer_in (site) + sale_out (site) triplet
- * per item, again proportional by value share. If even that's short,
+ * per item, same FIFO order. If even that's short,
  * deduct everything available and report the unmet amount as a shortfall
  * -- this function never fabricates stock and never throws for a
  * shortfall; it only reports it in categoryResults for the caller to warn
@@ -104,13 +107,14 @@ export function estimateSheetCount(areaSqm, referenceAreaSqm) {
  * @param {string|null} params.centralSiteId - ส่วนกลาง's site id, or null if no such site exists yet
  * @param {Array<{id: string, category_id: string|null}>} params.items
  * @param {Array<{inventory_item_id: string, site_id: string, quantity_on_hand: number, weighted_average_cost: number}>} params.balances
+ * @param {Record<string, string>} [params.firstReceivedAt] - { 'itemId|siteId': ISO timestamp of the first receipt there }; items without one go last
  * @returns {{
  *   steps: Array<{type: 'sale_out'|'transfer_out'|'transfer_in', inventoryItemId: string, siteId: string, quantity: number, unitCost: number, categoryId: string}>,
  *   categoryResults: Array<{categoryId: string, targetValue: number, deductedValue: number, shortfall: number}>,
  *   totalTargetValue: number, totalDeductedValue: number, totalShortfall: number,
  * }}
  */
-export function computeInvoiceDeductionPlan({ invoiceSubtotal, materialPct, categorySplits, siteId, centralSiteId, items, balances }) {
+export function computeInvoiceDeductionPlan({ invoiceSubtotal, materialPct, categorySplits, siteId, centralSiteId, items, balances, firstReceivedAt = {} }) {
   const materialValue = invoiceSubtotal * (materialPct / 100)
   const steps = []
   const categoryResults = []
@@ -124,45 +128,49 @@ export function computeInvoiceDeductionPlan({ invoiceSubtotal, materialPct, cate
 
     const categoryItemIds = new Set(items.filter(it => it.category_id === categoryId).map(it => it.id))
     const valueOf = (b) => b.quantity_on_hand * b.weighted_average_cost
+    const receivedAt = (b) => firstReceivedAt[`${b.inventory_item_id}|${b.site_id}`] || null
+    const fifo = (a, b) => {
+      const ra = receivedAt(a), rb = receivedAt(b)
+      if (ra !== rb) {
+        if (!ra) return 1
+        if (!rb) return -1
+        return ra < rb ? -1 : 1
+      }
+      return a.inventory_item_id < b.inventory_item_id ? -1 : a.inventory_item_id > b.inventory_item_id ? 1 : 0
+    }
     const inCategory = (siteFilter) => (balances || []).filter(b =>
       b.site_id === siteFilter && categoryItemIds.has(b.inventory_item_id) && b.quantity_on_hand > 0 && b.weighted_average_cost > 0)
+      .sort(fifo)
 
-    const siteBalances = inCategory(siteId)
-    const siteTotalValue = siteBalances.reduce((s, b) => s + valueOf(b), 0)
-
-    let deductedValue = 0
-
-    if (siteTotalValue >= targetValue) {
-      for (const b of siteBalances) {
-        const share = valueOf(b) / siteTotalValue
-        const valueToTake = targetValue * share
-        steps.push({ type: 'sale_out', inventoryItemId: b.inventory_item_id, siteId, quantity: valueToTake / b.weighted_average_cost, unitCost: b.weighted_average_cost, categoryId })
-      }
-      deductedValue = targetValue
-    } else {
-      for (const b of siteBalances) {
-        steps.push({ type: 'sale_out', inventoryItemId: b.inventory_item_id, siteId, quantity: b.quantity_on_hand, unitCost: b.weighted_average_cost, categoryId })
-      }
-      deductedValue = siteTotalValue
-      const remaining = targetValue - siteTotalValue
-
-      if (remaining > 0 && centralSiteId && centralSiteId !== siteId) {
-        const centralBalances = inCategory(centralSiteId)
-        const centralTotalValue = centralBalances.reduce((s, b) => s + valueOf(b), 0)
-
-        if (centralTotalValue > 0) {
-          const transferValue = Math.min(remaining, centralTotalValue)
-          for (const b of centralBalances) {
-            const share = valueOf(b) / centralTotalValue
-            const valueToTransfer = transferValue * share
-            const qty = valueToTransfer / b.weighted_average_cost
-            steps.push({ type: 'transfer_out', inventoryItemId: b.inventory_item_id, siteId: centralSiteId, quantity: qty, unitCost: b.weighted_average_cost, categoryId })
-            steps.push({ type: 'transfer_in', inventoryItemId: b.inventory_item_id, siteId, quantity: qty, unitCost: b.weighted_average_cost, categoryId })
-            steps.push({ type: 'sale_out', inventoryItemId: b.inventory_item_id, siteId, quantity: qty, unitCost: b.weighted_average_cost, categoryId })
-          }
-          deductedValue += transferValue
+    // Takes from `list` oldest-first until `want` baht is covered; a fully
+    // drained item uses its exact quantity_on_hand so it lands on 0.
+    const take = (list, want, push) => {
+      let got = 0
+      for (const b of list) {
+        const remaining = want - got
+        if (remaining <= 1e-9) break
+        const value = valueOf(b)
+        if (value <= remaining + 1e-9) {
+          push(b, b.quantity_on_hand)
+          got += value
+        } else {
+          push(b, remaining / b.weighted_average_cost)
+          got = want
         }
       }
+      return got
+    }
+
+    let deductedValue = take(inCategory(siteId), targetValue, (b, qty) =>
+      steps.push({ type: 'sale_out', inventoryItemId: b.inventory_item_id, siteId, quantity: qty, unitCost: b.weighted_average_cost, categoryId }))
+
+    const remaining = targetValue - deductedValue
+    if (remaining > 1e-9 && centralSiteId && centralSiteId !== siteId) {
+      deductedValue += take(inCategory(centralSiteId), remaining, (b, qty) => {
+        steps.push({ type: 'transfer_out', inventoryItemId: b.inventory_item_id, siteId: centralSiteId, quantity: qty, unitCost: b.weighted_average_cost, categoryId })
+        steps.push({ type: 'transfer_in', inventoryItemId: b.inventory_item_id, siteId, quantity: qty, unitCost: b.weighted_average_cost, categoryId })
+        steps.push({ type: 'sale_out', inventoryItemId: b.inventory_item_id, siteId, quantity: qty, unitCost: b.weighted_average_cost, categoryId })
+      })
     }
 
     const shortfall = Math.max(0, targetValue - deductedValue)

@@ -8,7 +8,7 @@
 // ============================================================
 import { useState, useMemo, useEffect, Fragment } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices, useInvoiceNumbers, useSiteCostEstimates } from '../hooks/useSupabase.js'
+import { useAllInventoryItems, useInventoryItemUnitFactors, useStockBalances, useStockMovements, useCategories, useSites, usePurchaseOrders, useInventoryCogsSettings, saveInventoryCogsSettings, useUnprocessedInvoices, useInvoiceNumbers, useSiteCostEstimates, useFirstReceipts } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { canEditPage } from '../lib/permissions.js'
@@ -291,7 +291,7 @@ function CogsSettingsPanel({ settings, categories, onSaved }) {
   )
 }
 
-function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite, defaultSettings, siteCostEstimates, expanded, onToggle, onConfirmed }) {
+function InvoiceDeductionRow({ invoice, categories, items, balances, firstReceipts, centralSite, defaultSettings, siteCostEstimates, expanded, onToggle, onConfirmed }) {
   const [materialPct, setMaterialPct] = useState(String(defaultSettings?.material_pct ?? 70))
   // ถ้าไซท์งานของใบแจ้งหนี้นี้เคยกรอก "ต้นทุนประมาณการ" ไว้ (หน้าไซท์งาน,
   // คีย์ด้วยหมวดหมู่สินค้าคงคลังเดียวกัน) ใช้สัดส่วนของไซท์นั้นเป็นค่าเริ่มต้น
@@ -316,7 +316,7 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
   const numericSplits = Object.fromEntries(Object.entries(splits).map(([k, v]) => [k, parseFloat(v) || 0]))
   const plan = expanded ? computeInvoiceDeductionPlan({
     invoiceSubtotal: invoice.subtotal, materialPct: parseFloat(materialPct) || 0, categorySplits: numericSplits,
-    siteId: invoice.site_id, centralSiteId: centralSite?.id || null, items: items || [], balances: balances || [],
+    siteId: invoice.site_id, centralSiteId: centralSite?.id || null, items: items || [], balances: balances || [], firstReceivedAt: firstReceipts || {},
   }) : null
 
   const sum = Object.values(splits).reduce((s, v) => s + (parseFloat(v) || 0), 0)
@@ -469,13 +469,26 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
               <div style={{ fontWeight: 700, marginBottom: 6 }}>ตัวอย่างการตัดสต็อก</div>
               {plan.categoryResults.map(cr => {
                 const cat = (categories || []).find(c => c.id === cr.categoryId)
+                // One sale_out per item cut (site or central) -- the FIFO pick list.
+                const cuts = plan.steps.filter(st => st.categoryId === cr.categoryId && st.type === 'sale_out')
                 return (
-                  <div key={cr.categoryId} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>{cat?.name || cr.categoryId}</span>
-                    <span className="font-mono">
-                      {fmt(cr.deductedValue)} / {fmt(cr.targetValue)} บาท
-                      {cr.shortfall > 0.01 && <span style={{ color: 'var(--red)' }}> (ขาด {fmt(cr.shortfall)})</span>}
-                    </span>
+                  <div key={cr.categoryId} style={{ marginBottom: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{cat?.name || cr.categoryId}</span>
+                      <span className="font-mono">
+                        {fmt(cr.deductedValue)} / {fmt(cr.targetValue)} บาท
+                        {cr.shortfall > 0.01 && <span style={{ color: 'var(--red)' }}> (ขาด {fmt(cr.shortfall)})</span>}
+                      </span>
+                    </div>
+                    {cuts.map((st, i) => {
+                      const it = (items || []).find(x => x.id === st.inventoryItemId)
+                      return (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text3)', paddingLeft: 14 }}>
+                          <span>{it?.code ? `${it.code} ` : ''}{it?.name || st.inventoryItemId}</span>
+                          <span className="font-mono">{fmtQty(st.quantity)} {it?.base_unit || ''} · {fmt(st.quantity * st.unitCost)} บาท</span>
+                        </div>
+                      )
+                    })}
                   </div>
                 )
               })}
@@ -484,8 +497,8 @@ function InvoiceDeductionRow({ invoice, categories, items, balances, centralSite
               </div>
             </div>
           )}
-          <button className="btn btn-sm btn-primary" style={{ justifySelf: 'start' }} disabled={confirming || !validSum} onClick={confirm}>
-            {confirming ? '⏳' : '✅ ยืนยันตัดสต็อก'}
+          <button className="btn btn-sm btn-primary" style={{ justifySelf: 'start' }} disabled={confirming || !validSum || !firstReceipts} onClick={confirm}>
+            {confirming ? '⏳' : !firstReceipts ? '⏳ กำลังโหลดลำดับ FIFO...' : '✅ ยืนยันตัดสต็อก'}
           </button>
         </div>
       )}
@@ -1098,6 +1111,7 @@ export default function Inventory() {
   const deductionCategories = useMemo(() => (categories || []).filter(c => c.use_for_cost_deduction), [categories])
   const { data: factors, refetch: refetchFactors } = useInventoryItemUnitFactors()
   const { data: balances, refetch: refetchBalances } = useStockBalances()
+  const { data: firstReceipts, refetch: refetchFirstReceipts } = useFirstReceipts()
   const [movementItemFilter, setMovementItemFilter] = useState('')
   const [movementTypeFilter, setMovementTypeFilter] = useState('')
   const [movementSiteFilter, setMovementSiteFilter] = useState('')
@@ -1401,10 +1415,10 @@ export default function Inventory() {
           {(unprocessedInvoices || []).map(inv => (
             <InvoiceDeductionRow
               key={`${inv.id}-${JSON.stringify(cogsSettings)}`} invoice={inv} categories={deductionCategories} items={items} balances={balances}
-              centralSite={centralSite} defaultSettings={cogsSettings} siteCostEstimates={siteCostEstimates}
+              centralSite={centralSite} defaultSettings={cogsSettings} siteCostEstimates={siteCostEstimates} firstReceipts={firstReceipts}
               expanded={expandedInvoiceId === inv.id}
               onToggle={() => setExpandedInvoiceId(id => id === inv.id ? null : inv.id)}
-              onConfirmed={() => { setExpandedInvoiceId(null); refetchUnprocessedInvoices(); refetchBalances(); refetchItems() }}
+              onConfirmed={() => { setExpandedInvoiceId(null); refetchUnprocessedInvoices(); refetchBalances(); refetchFirstReceipts(); refetchItems() }}
             />
           ))}
           {!(unprocessedInvoices || []).length && (
