@@ -47,7 +47,7 @@ describe('computeNodeStats', () => {
   it('derives from microtasks (source: microtasks) when a leaf has them, billingWeightPct stays null', () => {
     const microtasksByNodeId = { p1: [{ status: 'done' }, { status: 'in_progress' }] }
     expect(computeNodeStats('p1', {}, microtasksByNodeId)).toEqual({
-      total: 2, done: 1, pct: 50, derivedStatus: 'in_progress', billingWeightPct: null, source: 'microtasks',
+      total: 2, done: 1, pct: 0, derivedStatus: 'in_progress', billingWeightPct: null, source: 'microtasks',
     })
   })
 

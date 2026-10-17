@@ -3,7 +3,8 @@
 -- 04/05/06 are already applied live. The 07, 08 and 09 bodies are inlined below,
 -- byte-identical to their files between BEGIN; and COMMIT;. Keep them in sync.
 -- Before the 09 body, today's count-based % per phase and a card/phase fingerprint are
--- kept in temp tables, so the DO block can compare them with the weighted % after 09.
+-- kept in temp tables, so the DO block can report every phase whose % changes under the
+-- card-kinds rules (RESULT keys phases_changed and pct_change_report) for the owner.
 -- The fixture block in the DO is the output of: node scripts/gen-progress-fixture-sql.mjs
 -- The DO block ends in RAISE EXCEPTION 'RESULT ...', so nothing persists.
 -- Expected: *_MUST<value> holds that value; *_MUST22023 / 42501 is that SQLSTATE
@@ -31,16 +32,20 @@ CREATE TABLE public.boq_items (
   UNIQUE (site_id, quotation_item_id)
 );
 CREATE INDEX boq_items_site_idx ON boq_items(site_id);
+-- quotation price changes look up the BOQ lines of one quotation item (migration 08)
+CREATE INDEX boq_items_quotation_item_idx ON boq_items(quotation_item_id) WHERE quotation_item_id IS NOT NULL;
 
 ALTER TABLE phase_tasks
   ADD COLUMN weight_pts numeric(6,2) NOT NULL DEFAULT 0 CHECK (weight_pts >= 0),
   ADD COLUMN progress_mode text NOT NULL DEFAULT 'status' CHECK (progress_mode IN ('status','quantity')),
   ADD COLUMN parent_task_id uuid NULL REFERENCES phase_tasks(id) ON DELETE CASCADE,
-  ADD COLUMN boq_item_id uuid NULL REFERENCES boq_items(id) ON DELETE SET NULL,
+  ADD COLUMN boq_item_id uuid NULL REFERENCES boq_items(id) ON DELETE RESTRICT,
   ADD COLUMN planned_qty numeric NULL CHECK (planned_qty IS NULL OR planned_qty > 0),
   ADD COLUMN done_qty numeric NOT NULL DEFAULT 0,
-  ADD CONSTRAINT phase_tasks_quantity_needs_plan CHECK (progress_mode = 'status' OR planned_qty IS NOT NULL);
+  ADD CONSTRAINT phase_tasks_boq_card_needs_line
+    CHECK (progress_mode = 'status' OR (boq_item_id IS NOT NULL AND planned_qty IS NOT NULL));
 CREATE INDEX phase_tasks_parent_idx ON phase_tasks(parent_task_id) WHERE parent_task_id IS NOT NULL;
+CREATE INDEX phase_tasks_boq_item_idx ON phase_tasks(boq_item_id) WHERE boq_item_id IS NOT NULL;
 
 ALTER TABLE site_phases
   ADD COLUMN is_vo boolean NOT NULL DEFAULT false,
@@ -126,6 +131,22 @@ CREATE POLICY site_staff_reads ON site_plan_items FOR SELECT
 REVOKE INSERT, UPDATE, DELETE ON site_plans, site_plan_items FROM authenticated, anon;
 REVOKE DELETE ON progress_reports FROM authenticated, anon;
 REVOKE TRUNCATE ON phase_vo_values FROM authenticated, anon;
+
+-- a BOQ line with cards cannot be deleted: say why before the FK does (deleting the whole
+-- site still cascades, the site row is already gone by then)
+CREATE OR REPLACE FUNCTION public.block_boq_delete_with_cards() RETURNS trigger
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM phase_tasks WHERE boq_item_id = OLD.id AND tenant_id = OLD.tenant_id)
+     AND EXISTS (SELECT 1 FROM sites WHERE id = OLD.site_id) THEN
+    RAISE EXCEPTION 'รายการ BOQ นี้มีการ์ดผูกอยู่ ย้ายหรือลบการ์ดก่อน' USING ERRCODE = '22023';
+  END IF;
+  RETURN OLD;
+END $$;
+REVOKE ALL ON FUNCTION public.block_boq_delete_with_cards() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_block_boq_delete_with_cards BEFORE DELETE ON boq_items
+  FOR EACH ROW EXECUTE FUNCTION block_boq_delete_with_cards();
 -- ===== inlined 2026-10-17-08-gantt-progress-logic.sql body =====
 
 -- ===== helpers =====
@@ -292,7 +313,10 @@ REVOKE ALL ON FUNCTION public.check_phase_vo_refs() FROM PUBLIC, anon, authentic
 CREATE TRIGGER trg_check_phase_vo_refs BEFORE INSERT OR UPDATE ON phase_vo_values
   FOR EACH ROW EXECUTE FUNCTION check_phase_vo_refs();
 
--- 4. point limits (re-summed under a lock on the node's phase row)
+-- 4. card structure and point invariants (under a lock on the node's phase row).
+-- Split is one level deep and only between general cards. Points: general cards, split
+-- children and issue cards are 0 (trg_a_card_weight forces it); a node's BOQ cards sum to
+-- 100 by construction (recompute_node_weights), so the over-100 check is only a backstop.
 CREATE OR REPLACE FUNCTION public.check_node_weights() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -308,10 +332,10 @@ BEGIN
         RAISE EXCEPTION 'แต้มในเฟสนี้รวมเกิน 100' USING ERRCODE = '22023';
       END IF;
     END IF;
-    -- NEW may itself be a parent whose points were lowered
-    SELECT sum(weight_pts) INTO v_sum FROM phase_tasks WHERE tenant_id = NEW.tenant_id AND parent_task_id = NEW.id;
-    IF v_sum IS NOT NULL AND v_sum > NEW.weight_pts + 0.005 THEN
-      RAISE EXCEPTION 'แต้มงานย่อยรวมเกินแต้มงานหลัก' USING ERRCODE = '22023';
+    -- NEW may itself be a parent: a BOQ card never is
+    IF NEW.progress_mode = 'quantity'
+       AND EXISTS (SELECT 1 FROM phase_tasks WHERE tenant_id = NEW.tenant_id AND parent_task_id = NEW.id) THEN
+      RAISE EXCEPTION 'แตกงานได้เฉพาะงานทั่วไป' USING ERRCODE = '22023';
     END IF;
   ELSE
     SELECT * INTO v_parent FROM phase_tasks WHERE id = NEW.parent_task_id AND tenant_id = NEW.tenant_id;
@@ -319,17 +343,155 @@ BEGIN
        OR EXISTS (SELECT 1 FROM phase_tasks WHERE tenant_id = NEW.tenant_id AND parent_task_id = NEW.id) THEN
       RAISE EXCEPTION 'แตกงานได้ชั้นเดียว' USING ERRCODE = '22023';
     END IF;
-    SELECT COALESCE(sum(weight_pts), 0) INTO v_sum FROM phase_tasks
-     WHERE tenant_id = NEW.tenant_id AND parent_task_id = NEW.parent_task_id;
-    IF v_sum > v_parent.weight_pts + 0.005 THEN
-      RAISE EXCEPTION 'แต้มงานย่อยรวมเกินแต้มงานหลัก' USING ERRCODE = '22023';
+    IF NEW.progress_mode = 'quantity' OR v_parent.progress_mode = 'quantity' THEN
+      RAISE EXCEPTION 'แตกงานได้เฉพาะงานทั่วไป' USING ERRCODE = '22023';
     END IF;
+  END IF;
+  IF NEW.weight_pts <> 0
+     AND (NEW.progress_mode = 'status' OR NEW.parent_task_id IS NOT NULL OR NEW.issue_report_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'งานทั่วไปไม่มีแต้ม' USING ERRCODE = '22023';
   END IF;
   RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION public.check_node_weights() FROM PUBLIC, anon, authenticated;
-CREATE TRIGGER trg_check_node_weights AFTER INSERT OR UPDATE OF weight_pts, parent_task_id, phase_id, subtask_id ON phase_tasks
+CREATE TRIGGER trg_check_node_weights
+  AFTER INSERT OR UPDATE OF weight_pts, parent_task_id, phase_id, subtask_id, progress_mode ON phase_tasks
   FOR EACH ROW EXECUTE FUNCTION check_node_weights();
+
+-- 4b. BOQ card points
+-- A card's node: its subtask, else its phase.
+CREATE OR REPLACE FUNCTION public.node_of(t phase_tasks) RETURNS uuid
+  LANGUAGE sql IMMUTABLE SET search_path = public
+AS $$ SELECT COALESCE(t.subtask_id, t.phase_id) $$;
+REVOKE ALL ON FUNCTION public.node_of(phase_tasks) FROM PUBLIC, anon, authenticated;
+
+-- 100 points over ids in order, by value. A NULL or non-positive value takes the mean of
+-- the positive ones; with none positive every id gets an equal share. Shares are rounded to
+-- 2 dp and the first id takes the remainder, so the result sums to exactly 100. If rounding
+-- would push that remainder below 0, shares are rounded down instead (remainder then >= 0).
+CREATE OR REPLACE FUNCTION public.point_shares(p_ids uuid[], p_values numeric[])
+  RETURNS TABLE(id uuid, pts numeric) LANGUAGE sql IMMUTABLE SET search_path = public
+AS $$
+  WITH x AS (SELECT u.cid, u.cv, u.ord FROM unnest(p_ids, p_values) WITH ORDINALITY AS u(cid, cv, ord)),
+  e AS (SELECT x.cid, x.ord, CASE WHEN a.avg_v IS NULL THEN 1 WHEN x.cv > 0 THEN x.cv ELSE a.avg_v END AS ev
+          FROM x CROSS JOIN (SELECT avg(cv) FILTER (WHERE cv > 0) AS avg_v FROM x) a),
+  r AS (SELECT e.cid, e.ord, 100 * e.ev / sum(e.ev) OVER () AS raw FROM e),
+  k AS (SELECT sum(round(raw, 2)) - 100 <= min(round(raw, 2)) FILTER (WHERE ord = 1) AS use_round FROM r),
+  p AS (SELECT r.cid, r.ord, CASE WHEN k.use_round THEN round(r.raw, 2) ELSE trunc(r.raw, 2) END AS sp
+          FROM r CROSS JOIN k)
+  SELECT p.cid, CASE WHEN p.ord = 1 THEN p.sp + 100 - sum(p.sp) OVER () ELSE p.sp END FROM p
+$$;
+REVOKE ALL ON FUNCTION public.point_shares(uuid[], numeric[]) FROM PUBLIC, anon, authenticated;
+
+-- Re-split the node's BOQ cards (top-level, not issue cards). Card value = planned_qty x
+-- line_total / quantity of the quotation item behind its BOQ line; a manual line (or a
+-- quantity of 0) has no value. Internal: runs as owner, granted to no one. Locks the node's
+-- phase row first, so two transactions adding cards to one phase recompute one after the other.
+CREATE OR REPLACE FUNCTION public.recompute_node_weights(p_node uuid) RETURNS void
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE v_tenant uuid; v_phase uuid; v_is_phase boolean := true;
+        v_prev text := current_setting('app.derived_status', true);
+BEGIN
+  SELECT tenant_id, id INTO v_tenant, v_phase FROM site_phases WHERE id = p_node;
+  IF NOT FOUND THEN
+    v_is_phase := false;
+    SELECT tenant_id, phase_id INTO v_tenant, v_phase FROM phase_subtasks WHERE id = p_node;
+    IF NOT FOUND THEN RETURN; END IF;  -- node gone (cascading delete)
+  END IF;
+  PERFORM 1 FROM site_phases WHERE id = v_phase FOR NO KEY UPDATE;
+  PERFORM set_config('app.derived_status', '1', true);
+  WITH c AS (
+    SELECT t.id, t.sort_order, t.created_at, t.planned_qty * qi.line_total / qi.quantity AS v
+      FROM phase_tasks t
+      LEFT JOIN boq_items b ON b.id = t.boq_item_id AND b.tenant_id = t.tenant_id
+      LEFT JOIN quotation_items qi ON qi.id = b.quotation_item_id AND qi.tenant_id = t.tenant_id AND qi.quantity > 0
+     WHERE t.tenant_id = v_tenant AND t.progress_mode = 'quantity' AND t.parent_task_id IS NULL AND t.issue_report_id IS NULL
+       AND CASE WHEN v_is_phase THEN t.phase_id = p_node AND t.subtask_id IS NULL ELSE t.subtask_id = p_node END
+  )
+  UPDATE phase_tasks t SET weight_pts = s.pts
+    FROM point_shares((SELECT array_agg(c.id ORDER BY c.sort_order, c.created_at, c.id) FROM c),
+                      (SELECT array_agg(c.v ORDER BY c.sort_order, c.created_at, c.id) FROM c)) s
+   WHERE t.id = s.id AND t.tenant_id = v_tenant AND t.weight_pts IS DISTINCT FROM s.pts;
+  PERFORM set_config('app.derived_status', COALESCE(v_prev, ''), true);
+END $$;
+REVOKE ALL ON FUNCTION public.recompute_node_weights(uuid) FROM PUBLIC, anon, authenticated;
+
+-- Points are never taken from the client. General cards, split children and issue cards are
+-- forced to 0. A BOQ card starts at 0 and otherwise keeps its points; only the recompute
+-- (under the derived flag) writes them. Named trg_a_* so it runs before the other BEFORE
+-- triggers (guard_derived_status then never sees a client-sent point change).
+CREATE OR REPLACE FUNCTION public.force_card_weight() RETURNS trigger
+  LANGUAGE plpgsql SET search_path = public
+AS $$
+BEGIN
+  IF NEW.progress_mode = 'status' OR NEW.parent_task_id IS NOT NULL OR NEW.issue_report_id IS NOT NULL THEN
+    NEW.weight_pts := 0;
+  ELSIF current_setting('app.derived_status', true) IS DISTINCT FROM '1' THEN
+    NEW.weight_pts := CASE WHEN TG_OP = 'INSERT' THEN 0 ELSE OLD.weight_pts END;
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.force_card_weight() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_a_card_weight BEFORE INSERT OR UPDATE ON phase_tasks
+  FOR EACH ROW EXECUTE FUNCTION force_card_weight();
+
+-- After a card joins, leaves or changes inside a node, re-split that node's points (old and
+-- new node when it moves). Only BOQ cards count, so general-card writes cost nothing. The
+-- recompute itself writes weight_pts only, which is not in these column lists: no re-fire.
+CREATE OR REPLACE FUNCTION public.recompute_card_weights() RETURNS trigger
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE v_old uuid; v_new uuid;
+BEGIN
+  IF TG_OP <> 'INSERT' AND OLD.progress_mode = 'quantity' AND OLD.parent_task_id IS NULL AND OLD.issue_report_id IS NULL THEN
+    v_old := node_of(OLD);
+  END IF;
+  IF TG_OP <> 'DELETE' AND NEW.progress_mode = 'quantity' AND NEW.parent_task_id IS NULL AND NEW.issue_report_id IS NULL THEN
+    v_new := node_of(NEW);
+  END IF;
+  IF v_old IS NOT NULL AND v_old IS DISTINCT FROM v_new THEN
+    PERFORM recompute_node_weights(v_old);
+  END IF;
+  IF v_new IS NOT NULL THEN
+    PERFORM recompute_node_weights(v_new);
+  END IF;
+  RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION public.recompute_card_weights() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_recompute_card_weights AFTER INSERT OR DELETE ON phase_tasks
+  FOR EACH ROW EXECUTE FUNCTION recompute_card_weights();
+CREATE TRIGGER trg_recompute_card_weights_upd
+  AFTER UPDATE OF progress_mode, planned_qty, boq_item_id, phase_id, subtask_id, parent_task_id ON phase_tasks
+  FOR EACH ROW WHEN ((OLD.progress_mode, OLD.planned_qty, OLD.boq_item_id, OLD.phase_id, OLD.subtask_id, OLD.parent_task_id)
+                     IS DISTINCT FROM (NEW.progress_mode, NEW.planned_qty, NEW.boq_item_id, NEW.phase_id, NEW.subtask_id, NEW.parent_task_id))
+  EXECUTE FUNCTION recompute_card_weights();
+
+-- A BOQ line's quantity or quotation link changed, or the price of the quotation item behind
+-- it: re-split the nodes of the BOQ cards on that line only.
+CREATE OR REPLACE FUNCTION public.recompute_line_weights() RETURNS trigger
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE v_node uuid;
+BEGIN
+  FOR v_node IN
+    SELECT DISTINCT COALESCE(t.subtask_id, t.phase_id)
+      FROM boq_items b JOIN phase_tasks t ON t.boq_item_id = b.id AND t.tenant_id = b.tenant_id
+     WHERE b.tenant_id = NEW.tenant_id
+       AND CASE WHEN TG_TABLE_NAME = 'quotation_items' THEN b.quotation_item_id = NEW.id ELSE b.id = NEW.id END
+       AND t.progress_mode = 'quantity' AND t.parent_task_id IS NULL AND t.issue_report_id IS NULL
+  LOOP
+    PERFORM recompute_node_weights(v_node);
+  END LOOP;
+  RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION public.recompute_line_weights() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_recompute_line_weights AFTER UPDATE OF planned_qty, quotation_item_id ON boq_items
+  FOR EACH ROW WHEN (OLD.planned_qty IS DISTINCT FROM NEW.planned_qty OR OLD.quotation_item_id IS DISTINCT FROM NEW.quotation_item_id)
+  EXECUTE FUNCTION recompute_line_weights();
+CREATE TRIGGER trg_recompute_line_weights AFTER UPDATE OF line_total, quantity ON quotation_items
+  FOR EACH ROW WHEN (OLD.line_total IS DISTINCT FROM NEW.line_total OR OLD.quantity IS DISTINCT FROM NEW.quantity)
+  EXECUTE FUNCTION recompute_line_weights();
 
 -- 5. BOQ quantity limit
 CREATE OR REPLACE FUNCTION public.check_boq_qty() RETURNS trigger
@@ -461,7 +623,8 @@ GRANT EXECUTE ON FUNCTION public.cancel_progress(uuid) TO authenticated;
 -- in the same UPDATE as the status cannot bypass the guard. Once a card has recorded
 -- quantity, only OWNER/PM may change planned_qty or progress_mode (ADMIN could otherwise
 -- finish it by lowering planned_qty). weight_pts, parent_task_id and boq_item_id are staff only
--- (a WORKER may update an assigned card's status, never its points or structure).
+-- (a WORKER may update an assigned card's status, never its points or structure). A client
+-- never changes weight_pts at all (trg_a_card_weight runs first); that check is a backstop.
 CREATE OR REPLACE FUNCTION public.guard_derived_status() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -573,47 +736,43 @@ REVOKE ALL ON FUNCTION public.keep_progress_history() FROM PUBLIC, anon, authent
 CREATE TRIGGER trg_keep_progress_history BEFORE DELETE ON phase_tasks
   FOR EACH ROW EXECUTE FUNCTION keep_progress_history();
 
--- 10. split a card one level (SECURITY INVOKER)
+-- 10. split a general card one level (SECURITY INVOKER), at any status. The children are
+-- general cards too (0 points) and start with the parent's status, so the parent's derived
+-- status and the node's % do not move. p_children: [{"name": ...}, ...], at least 2.
+-- The inserts run under the derived flag (children of a started card may start in_progress/done).
 CREATE OR REPLACE FUNCTION public.split_task(p_task_id uuid, p_children jsonb)
   RETURNS void LANGUAGE plpgsql SET search_path = public
 AS $$
-DECLARE t phase_tasks%ROWTYPE; v_sum numeric; c record;
+DECLARE t phase_tasks%ROWTYPE; c record; v_prev text := current_setting('app.derived_status', true);
 BEGIN
   SELECT * INTO t FROM phase_tasks WHERE id = p_task_id FOR NO KEY UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'ไม่พบการ์ดนี้' USING ERRCODE = 'P0002'; END IF;
+  IF t.progress_mode = 'quantity' THEN
+    RAISE EXCEPTION 'แตกงานได้เฉพาะงานทั่วไป' USING ERRCODE = '22023';
+  END IF;
   IF t.parent_task_id IS NOT NULL THEN
     RAISE EXCEPTION 'แตกงานได้ชั้นเดียว' USING ERRCODE = '22023';
   END IF;
   IF EXISTS (SELECT 1 FROM phase_tasks WHERE parent_task_id = t.id) THEN
     RAISE EXCEPTION 'การ์ดนี้แตกงานแล้ว' USING ERRCODE = '22023';
   END IF;
-  IF t.progress_mode = 'quantity' THEN
-    RAISE EXCEPTION 'การ์ดที่นับจำนวนแตกงานไม่ได้' USING ERRCODE = '22023';
-  END IF;
   IF t.issue_report_id IS NOT NULL THEN
     RAISE EXCEPTION 'การ์ดปัญหาแตกงานไม่ได้' USING ERRCODE = '22023';
-  END IF;
-  -- a started card would drop to 0 % once its children (all not_started) take over
-  IF t.status <> 'not_started' THEN
-    RAISE EXCEPTION 'แตกงานได้เฉพาะงานที่ยังไม่เริ่ม' USING ERRCODE = '22023';
   END IF;
   IF jsonb_typeof(p_children) IS DISTINCT FROM 'array' OR jsonb_array_length(p_children) < 2 THEN
     RAISE EXCEPTION 'ต้องแตกอย่างน้อย 2 งาน' USING ERRCODE = '22023';
   END IF;
-  SELECT sum((e->>'weight_pts')::numeric) INTO v_sum FROM jsonb_array_elements(p_children) e;
-  IF v_sum IS NULL OR abs(v_sum - t.weight_pts) > 0.01 THEN
-    RAISE EXCEPTION 'แต้มงานย่อยรวม % ต้องเท่ากับแต้มงานหลัก %', trim_scale(COALESCE(v_sum, 0)), trim_scale(t.weight_pts)
-      USING ERRCODE = '22023';
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_children) e WHERE btrim(COALESCE(e->>'name', '')) = '') THEN
+    RAISE EXCEPTION 'ต้องใส่ชื่องานย่อย' USING ERRCODE = '22023';
   END IF;
-  FOR c IN SELECT e->>'name' AS name, (e->>'weight_pts')::numeric AS w, ord
+  PERFORM set_config('app.derived_status', '1', true);
+  FOR c IN SELECT e->>'name' AS name, ord
              FROM jsonb_array_elements(p_children) WITH ORDINALITY AS x(e, ord) LOOP
-    IF btrim(COALESCE(c.name, '')) = '' THEN
-      RAISE EXCEPTION 'ต้องใส่ชื่องานย่อย' USING ERRCODE = '22023';
-    END IF;
     INSERT INTO phase_tasks (phase_id, subtask_id, site_id, tenant_id, zone, name, status, weight_pts, sort_order, parent_task_id)
-      VALUES (t.phase_id, t.subtask_id, t.site_id, t.tenant_id, t.zone, btrim(c.name), 'not_started', c.w,
+      VALUES (t.phase_id, t.subtask_id, t.site_id, t.tenant_id, t.zone, btrim(c.name), t.status, 0,
               t.sort_order + c.ord::int, t.id);
   END LOOP;
+  PERFORM set_config('app.derived_status', COALESCE(v_prev, ''), true);
 END $$;
 REVOKE ALL ON FUNCTION public.split_task(uuid, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.split_task(uuid, jsonb) TO authenticated;
@@ -680,6 +839,34 @@ END $$;
 REVOKE ALL ON FUNCTION public.boq_refresh_from_quotations(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.boq_refresh_from_quotations(uuid) TO authenticated;
 
+-- 13. each BOQ line's share of the site's BOQ value, in % (BOQ tab). Definer so PM can see
+-- relative size without reading a price: returns percentages only (2 dp, summing to 100 per
+-- site), split like card points (point_shares: unpriced lines take the mean, no prices -> equal).
+CREATE OR REPLACE FUNCTION public.boq_value_shares(p_site_id uuid)
+  RETURNS TABLE(boq_item_id uuid, share_pct numeric)
+  LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF NOT is_site_staff() THEN
+    RAISE EXCEPTION 'ไม่มีสิทธิ์ดูสัดส่วนงาน BOQ' USING ERRCODE = '42501';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND tenant_id = current_tenant_id()) THEN
+    RAISE EXCEPTION 'ไม่พบไซต์งาน' USING ERRCODE = 'P0002';
+  END IF;
+  RETURN QUERY
+  WITH c AS (
+    SELECT b.id, b.sort_order, b.created_at, b.planned_qty * qi.line_total / qi.quantity AS v
+      FROM boq_items b
+      LEFT JOIN quotation_items qi ON qi.id = b.quotation_item_id AND qi.tenant_id = b.tenant_id AND qi.quantity > 0
+     WHERE b.site_id = p_site_id AND b.tenant_id = current_tenant_id()
+  )
+  SELECT s.id, s.pts
+    FROM point_shares((SELECT array_agg(c.id ORDER BY c.sort_order, c.created_at, c.id) FROM c),
+                      (SELECT array_agg(c.v ORDER BY c.sort_order, c.created_at, c.id) FROM c)) s;
+END $$;
+REVOKE ALL ON FUNCTION public.boq_value_shares(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.boq_value_shares(uuid) TO authenticated;
+
 -- deferred minor from Task 1 review
 REVOKE TRUNCATE ON site_plans, site_plan_items, progress_reports FROM authenticated, anon;
 -- ===== before the 09 data steps =====
@@ -691,7 +878,7 @@ SELECT t.site_id, t.phase_id, count(*) AS cards,
  WHERE t.parent_task_id IS NULL AND t.issue_report_id IS NULL AND NOT ph.is_issue_phase
  GROUP BY t.site_id, t.phase_id;
 CREATE TEMP TABLE gt_cards_before ON COMMIT DROP AS
-SELECT id, status, done_qty, progress_mode, planned_qty, parent_task_id, phase_id, subtask_id, updated_at FROM phase_tasks;
+SELECT id, status, done_qty, progress_mode, planned_qty, parent_task_id, phase_id, subtask_id, weight_pts, updated_at FROM phase_tasks;
 CREATE TEMP TABLE gt_phases_before ON COMMIT DROP AS
 SELECT id, status, billing_weight_pct, updated_at FROM site_phases;
 -- ===== inlined 2026-10-17-09-gantt-progress-data.sql body =====
@@ -722,6 +909,7 @@ CREATE OR REPLACE FUNCTION public.node_progress(p_node_id uuid) RETURNS numeric
   LANGUAGE plpgsql STABLE SET search_path = public
 AS $$
 DECLARE v_tenant uuid; v_status text; v_is_phase boolean := true; v_n int; v_w numeric; v_wp numeric; v_avg numeric;
+        v_gen_n int; v_gen_done boolean;
 BEGIN
   SELECT tenant_id, status INTO v_tenant, v_status FROM site_phases WHERE id = p_node_id;
   IF NOT FOUND THEN
@@ -738,14 +926,22 @@ BEGIN
   IF v_n > 0 THEN
     RETURN CASE WHEN v_w > 0 THEN v_wp / v_w ELSE v_avg END;
   END IF;
-  -- top-level cards that are not issue cards (unallocated points count as 0)
-  SELECT count(*), sum(c.w * c.p) INTO v_n, v_wp
-    FROM (SELECT weight_pts AS w, task_progress(id) AS p FROM phase_tasks
+  -- top-level cards that are not issue cards: BOQ cards count by points (they sum to 100);
+  -- with no BOQ card, the general cards count as one: all done 1, else 0
+  SELECT count(*) FILTER (WHERE c.mode = 'quantity'), sum(c.w * c.p) FILTER (WHERE c.mode = 'quantity'),
+         count(*) FILTER (WHERE c.mode = 'status'), bool_and(c.done) FILTER (WHERE c.mode = 'status')
+    INTO v_n, v_wp, v_gen_n, v_gen_done
+    FROM (SELECT progress_mode AS mode, weight_pts AS w, COALESCE(status = 'done', false) AS done,
+                 CASE WHEN progress_mode = 'quantity' THEN task_progress(id) END AS p
+            FROM phase_tasks
            WHERE tenant_id = v_tenant AND parent_task_id IS NULL AND issue_report_id IS NULL
              AND CASE WHEN v_is_phase THEN phase_id = p_node_id AND subtask_id IS NULL
                       ELSE subtask_id = p_node_id END) c;
   IF v_n > 0 THEN
     RETURN v_wp / 100;
+  END IF;
+  IF v_gen_n > 0 THEN
+    RETURN CASE WHEN v_gen_done THEN 1 ELSE 0 END;
   END IF;
   RETURN CASE WHEN v_status = 'done' THEN 1 ELSE 0 END;
 END $$;
@@ -851,45 +1047,6 @@ END $$;
 REVOKE ALL ON FUNCTION public.check_boq_planned_qty() FROM PUBLIC, anon, authenticated;
 CREATE TRIGGER trg_check_boq_planned_qty BEFORE UPDATE OF planned_qty ON boq_items
   FOR EACH ROW WHEN (NEW.planned_qty IS DISTINCT FROM OLD.planned_qty) EXECUTE FUNCTION check_boq_planned_qty();
-
--- ===== equal card points per node (data migration and demo seed) =====
--- Top-level, non-issue cards outside issue phases get round(100/n, 2); the first card by
--- (sort_order, created_at) takes the remainder so the node sums to exactly 100. From n = 155
--- rounding up would push the remainder below 0 (154 × 0.65 > 100), so then the share is
--- rounded down instead (the remainder is then always > 0). One UPDATE,
--- so check_node_weights (AFTER, per row, end of statement) sees whole nodes. Only nodes whose
--- cards all still have 0 points are touched, so a re-run never overwrites weights set by a PM.
--- Issue cards keep their default 0. p_tenant_id NULL = every tenant. A system write, so it runs
--- under the derived flag (guard_derived_status lets only site staff change weight_pts).
-CREATE OR REPLACE FUNCTION public.set_equal_card_weights(p_tenant_id uuid) RETURNS int
-  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
-AS $$
-DECLARE n int; v_prev text := current_setting('app.derived_status', true);
-BEGIN
-  PERFORM set_config('app.derived_status', '1', true);
-  WITH c0 AS (
-    SELECT t.id,
-           count(*) OVER w AS n,
-           row_number() OVER (w ORDER BY t.sort_order, t.created_at, t.id) AS rn,
-           sum(t.weight_pts) OVER w AS node_sum
-      FROM phase_tasks t JOIN site_phases ph ON ph.id = t.phase_id AND ph.tenant_id = t.tenant_id
-     WHERE (p_tenant_id IS NULL OR t.tenant_id = p_tenant_id)
-       AND t.parent_task_id IS NULL AND t.issue_report_id IS NULL AND NOT ph.is_issue_phase
-    WINDOW w AS (PARTITION BY t.tenant_id, COALESCE(t.subtask_id, t.phase_id))
-  ), c AS (
-    SELECT c0.*, CASE WHEN (c0.n - 1) * round(100.0 / c0.n, 2) > 100 THEN trunc(100.0 / c0.n, 2)
-                      ELSE round(100.0 / c0.n, 2) END AS share
-      FROM c0
-  )
-  UPDATE phase_tasks t
-     SET weight_pts = CASE WHEN c.rn = 1 THEN 100 - (c.n - 1) * c.share ELSE c.share END
-    FROM c
-   WHERE t.id = c.id AND c.node_sum = 0;
-  GET DIAGNOSTICS n = ROW_COUNT;
-  PERFORM set_config('app.derived_status', COALESCE(v_prev, ''), true);
-  RETURN n;
-END $$;
-REVOKE ALL ON FUNCTION public.set_equal_card_weights(uuid) FROM PUBLIC, anon, authenticated;
 
 -- ===== demo seed: live definition (2026-10-15-01) + derived flag around the site loop + one final step =====
 -- The seed inserts phases/cards already in_progress/done before any PLAN exists, so the site
@@ -1034,9 +1191,8 @@ BEGIN
   END LOOP;
   PERFORM set_config('app.derived_status', COALESCE(v_prev_derived, ''), true);
 
-  -- Gantt weighted progress (2026-10-17-09): equal card points per node, then an auto PLAN v1
-  -- per seeded site, so a demo reset is never stuck behind the PLAN gate
-  PERFORM set_equal_card_weights(p_tenant);
+  -- Gantt weighted progress (2026-10-17-09): an auto PLAN v1 per seeded site, so a demo reset
+  -- is never stuck behind the PLAN gate (seeded cards are general cards, 0 points)
   PERFORM snapshot_site_plan(s.id, 'สร้างอัตโนมัติตอนสร้างข้อมูลตัวอย่าง', true, 'system')
      FROM sites s
     WHERE s.tenant_id = p_tenant
@@ -1054,11 +1210,9 @@ BEGIN
 END $function$;
 REVOKE ALL ON FUNCTION public.demo_seed_core(uuid) FROM PUBLIC, anon, authenticated;
 
--- ===== data migration (runs as the table owner; weights only, no status changes) =====
--- 1. equal points per node
-SELECT set_equal_card_weights(NULL);
-
--- 2. BOQ backfill from accepted quotations, 3. PLAN v1 for every site with a non-issue phase
+-- ===== data migration (runs as the table owner; no card is changed) =====
+-- Existing cards stay general cards with 0 points (no equal-points step any more).
+-- 1. BOQ backfill from accepted quotations, 2. PLAN v1 for every site with a non-issue phase
 DO $$
 DECLARE q record;
 BEGIN
@@ -1073,7 +1227,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- 4. first snapshot
+-- 3. first snapshot
 SELECT snapshot_site_progress();
 -- ===== end of inlined bodies =====
 
@@ -1082,47 +1236,40 @@ DECLARE
   v_tenant uuid; r jsonb := '{}'; n int; m int; b boolean; v text; x numeric; v_fx_bad int := 0;
   v_pm text := 'gantt-test-pm@example.invalid'; v_wk text := 'gantt-test-worker@example.invalid';
   v_admin text := 'gantt-test-admin@example.invalid'; v_phase uuid; v_fphase uuid;
-  v_owner text; b2 bigint; v_boq uuid; v_card uuid; v_summary jsonb;
+  v_owner text; b2 bigint; v_boq uuid; v_card uuid; v_summary jsonb; v_report jsonb;
   v_today date := (now() AT TIME ZONE 'Asia/Bangkok')::date;
 BEGIN
   SELECT id INTO v_tenant FROM tenants WHERE company_name ILIKE '%สร้างดี%' LIMIT 1;
   r := r || jsonb_build_object('fixtures_found_MUSTtrue', v_tenant IS NOT NULL);
 
-  -- ===== (b) today's % unchanged, weights only =====
+  -- ===== (b) report for the owner: phases whose % changes (today's count-based % -> card kinds) =====
+  -- Every existing card stays a general card with 0 points, so a phase with cards now shows 100
+  -- only when all its cards are done (subtask phases: weighted subtasks), else 0.
   SELECT count(DISTINCT site_id), sum(cards) INTO n, x FROM gt_old_pct;
   r := r || jsonb_build_object('b_sites_with_cards', n, 'b_cards_compared', x);
   SELECT count(*), count(*) FILTER (WHERE old_pct IS DISTINCT FROM round(node_progress(phase_id) * 100)) INTO n, m FROM gt_old_pct;
-  r := r || jsonb_build_object('b_phases_compared', n, 'b_phase_pct_mismatches_MUST0', m);
-  SELECT jsonb_object_agg(sid, s ORDER BY sid) INTO v_summary FROM (
-    SELECT left(site_id::text, 8) AS sid,
-           count(*) || ' phases, ' || sum(cards) || ' cards, ' ||
-           count(*) FILTER (WHERE old_pct IS DISTINCT FROM round(node_progress(phase_id) * 100)) || ' mismatches; old->new ' ||
-           string_agg(old_pct || '->' || trim_scale(round(node_progress(phase_id) * 100, 2)), ' ' ORDER BY phase_id) AS s
-      FROM gt_old_pct GROUP BY site_id) q;
-  r := r || jsonb_build_object('b_per_site', v_summary);
-  SELECT count(*) INTO n FROM (
-    SELECT 1 FROM phase_tasks t JOIN site_phases ph ON ph.id = t.phase_id
-     WHERE t.parent_task_id IS NULL AND t.issue_report_id IS NULL AND NOT ph.is_issue_phase
-     GROUP BY t.tenant_id, COALESCE(t.subtask_id, t.phase_id) HAVING sum(t.weight_pts) <> 100) z;
-  r := r || jsonb_build_object('b_nodes_not_exactly_100_MUST0', n);
-  SELECT string_agg(DISTINCT w, ' ') INTO v FROM (
-    SELECT count(*) || ':' || string_agg(trim_scale(t.weight_pts)::text, '+' ORDER BY t.sort_order, t.created_at, t.id) AS w
-      FROM phase_tasks t JOIN site_phases ph ON ph.id = t.phase_id
-     WHERE t.parent_task_id IS NULL AND t.issue_report_id IS NULL AND NOT ph.is_issue_phase
-     GROUP BY t.tenant_id, COALESCE(t.subtask_id, t.phase_id)) z;
-  r := r || jsonb_build_object('b_weight_patterns', v);
-  SELECT count(*) INTO n FROM phase_tasks WHERE issue_report_id IS NOT NULL AND weight_pts <> 0;
-  r := r || jsonb_build_object('b_issue_cards_with_points_MUST0', n);
+  r := r || jsonb_build_object('b_phases_compared', n, 'phases_changed', m);
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('site_number', q.site_number, 'phase', q.phase, 'old_pct', q.old_pct, 'new_pct', q.new_pct)
+                            ORDER BY q.site_number, q.sort_order, q.phase), '[]'::jsonb)
+    INTO v_report FROM (
+    SELECT s.site_number, ph.name AS phase, ph.sort_order, o.old_pct,
+           trim_scale(round(node_progress(o.phase_id) * 100, 2)) AS new_pct
+      FROM gt_old_pct o JOIN sites s ON s.id = o.site_id JOIN site_phases ph ON ph.id = o.phase_id
+     WHERE o.old_pct IS DISTINCT FROM round(node_progress(o.phase_id) * 100)) q;
+  r := r || jsonb_build_object('pct_change_report', v_report,
+                               'b_report_rows_equal_phases_changed_MUSTtrue', jsonb_array_length(v_report) = m);
+  SELECT count(*) INTO n FROM phase_tasks WHERE weight_pts <> 0 OR progress_mode <> 'status';
+  r := r || jsonb_build_object('b_cards_not_general_zero_MUST0', n);
   SELECT count(*) INTO n FROM gt_cards_before o JOIN phase_tasks t USING (id)
-   WHERE (o.status, o.done_qty, o.progress_mode, o.planned_qty, o.parent_task_id, o.phase_id, o.subtask_id, o.updated_at)
-         IS DISTINCT FROM (t.status, t.done_qty, t.progress_mode, t.planned_qty, t.parent_task_id, t.phase_id, t.subtask_id, t.updated_at);
+   WHERE (o.status, o.done_qty, o.progress_mode, o.planned_qty, o.parent_task_id, o.phase_id, o.subtask_id, o.weight_pts, o.updated_at)
+         IS DISTINCT FROM (t.status, t.done_qty, t.progress_mode, t.planned_qty, t.parent_task_id, t.phase_id, t.subtask_id, t.weight_pts, t.updated_at);
   SELECT n + (SELECT count(*) FROM phase_tasks) - (SELECT count(*) FROM gt_cards_before) INTO n;
-  r := r || jsonb_build_object('b_cards_changed_besides_weight_MUST0', n);
+  r := r || jsonb_build_object('b_cards_changed_MUST0', n);
   SELECT count(*) INTO n FROM gt_phases_before o JOIN site_phases p USING (id)
    WHERE (o.status, o.billing_weight_pct, o.updated_at) IS DISTINCT FROM (p.status, p.billing_weight_pct, p.updated_at);
   r := r || jsonb_build_object('b_phases_changed_MUST0', n);
-  SELECT set_equal_card_weights(NULL) INTO n;
-  r := r || jsonb_build_object('b_weights_rerun_rows_MUST0', n);
+  SELECT count(*) INTO n FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'set_equal_card_weights';
+  r := r || jsonb_build_object('b_no_equal_weights_function_MUST0', n);
 
   -- ===== (c) PLAN v1 for every site with a non-issue phase =====
   SELECT count(*) INTO n FROM site_plans
@@ -1175,208 +1322,368 @@ BEGIN
   r := r || jsonb_build_object('f_cron_job_MUST1', n);
 
   -- ===== (a) fixtures: generated by scripts/gen-progress-fixture-sql.mjs =====
-  -- fixture 1: equal cards like today
-  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|1|site')::uuid, v_tenant, 'GT-PF-01', 'progress fixture: equal cards like today', 0);
+  -- fixture 1: general cards partly done count zero
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|1|site')::uuid, v_tenant, 'GT-PF-01', 'progress fixture: general cards partly done count zero', 0);
   PERFORM snapshot_site_plan(md5('gpf|1|site')::uuid, 'progress fixture', true, 'system');
   INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|1|A')::uuid, v_tenant, md5('gpf|1|site')::uuid, 'A', 1, 100, 'in_progress', false, false);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|1|a1')::uuid, v_tenant, md5('gpf|1|site')::uuid, md5('gpf|1|A')::uuid, NULL, NULL, 'a1', 1, 33.34, 'done', 'status', NULL, 0, NULL);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|1|a2')::uuid, v_tenant, md5('gpf|1|site')::uuid, md5('gpf|1|A')::uuid, NULL, NULL, 'a2', 2, 33.33, 'in_progress', 'status', NULL, 0, NULL);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|1|a3')::uuid, v_tenant, md5('gpf|1|site')::uuid, md5('gpf|1|A')::uuid, NULL, NULL, 'a3', 3, 33.33, 'not_started', 'status', NULL, 0, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|1|a1')::uuid, v_tenant, md5('gpf|1|site')::uuid, md5('gpf|1|A')::uuid, NULL, NULL, 'a1', 1, 'done', 'status', NULL, 0, NULL, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|1|a2')::uuid, v_tenant, md5('gpf|1|site')::uuid, md5('gpf|1|A')::uuid, NULL, NULL, 'a2', 2, 'in_progress', 'status', NULL, 0, NULL, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|1|a3')::uuid, v_tenant, md5('gpf|1|site')::uuid, md5('gpf|1|A')::uuid, NULL, NULL, 'a3', 3, 'not_started', 'status', NULL, 0, NULL, NULL);
   x := round(node_progress(md5('gpf|1|A')::uuid) * 100, 2);
-  r := r || jsonb_build_object('fx1_equal_cards_like_today_phase_A_MUST33.34', x);
-  IF x IS DISTINCT FROM 33.34::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx1_general_cards_partly_done_count_zero_phase_A_MUST0', x);
+  IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|1|site')::uuid));
-  r := r || jsonb_build_object('fx1_equal_cards_like_today_contract_MUST33.34', x);
-  IF x IS DISTINCT FROM 33.34::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx1_general_cards_partly_done_count_zero_contract_MUST0', x);
+  IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT total_pct FROM site_progress_pct(md5('gpf|1|site')::uuid));
-  r := r || jsonb_build_object('fx1_equal_cards_like_today_total_MUSTnull', x);
+  r := r || jsonb_build_object('fx1_general_cards_partly_done_count_zero_total_MUSTnull', x);
   IF x IS DISTINCT FROM NULL THEN v_fx_bad := v_fx_bad + 1; END IF;
-  -- fixture 2: new card from unallocated
-  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|2|site')::uuid, v_tenant, 'GT-PF-02', 'progress fixture: new card from unallocated', 0);
+  -- fixture 2: general cards all done count full
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|2|site')::uuid, v_tenant, 'GT-PF-02', 'progress fixture: general cards all done count full', 0);
   PERFORM snapshot_site_plan(md5('gpf|2|site')::uuid, 'progress fixture', true, 'system');
   INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|2|A')::uuid, v_tenant, md5('gpf|2|site')::uuid, 'A', 1, 100, 'in_progress', false, false);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|2|a1')::uuid, v_tenant, md5('gpf|2|site')::uuid, md5('gpf|2|A')::uuid, NULL, NULL, 'a1', 1, 50, 'done', 'status', NULL, 0, NULL);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|2|a2')::uuid, v_tenant, md5('gpf|2|site')::uuid, md5('gpf|2|A')::uuid, NULL, NULL, 'a2', 2, 30, 'not_started', 'status', NULL, 0, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|2|a1')::uuid, v_tenant, md5('gpf|2|site')::uuid, md5('gpf|2|A')::uuid, NULL, NULL, 'a1', 1, 'done', 'status', NULL, 0, NULL, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|2|a2')::uuid, v_tenant, md5('gpf|2|site')::uuid, md5('gpf|2|A')::uuid, NULL, NULL, 'a2', 2, 'done', 'status', NULL, 0, NULL, NULL);
   x := round(node_progress(md5('gpf|2|A')::uuid) * 100, 2);
-  r := r || jsonb_build_object('fx2_new_card_from_unallocated_phase_A_MUST50', x);
-  IF x IS DISTINCT FROM 50::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx2_general_cards_all_done_count_full_phase_A_MUST100', x);
+  IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|2|site')::uuid));
-  r := r || jsonb_build_object('fx2_new_card_from_unallocated_contract_MUST50', x);
-  IF x IS DISTINCT FROM 50::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx2_general_cards_all_done_count_full_contract_MUST100', x);
+  IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT total_pct FROM site_progress_pct(md5('gpf|2|site')::uuid));
-  r := r || jsonb_build_object('fx2_new_card_from_unallocated_total_MUSTnull', x);
+  r := r || jsonb_build_object('fx2_general_cards_all_done_count_full_total_MUSTnull', x);
   IF x IS DISTINCT FROM NULL THEN v_fx_bad := v_fx_bad + 1; END IF;
-  -- fixture 3: quantity card
-  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|3|site')::uuid, v_tenant, 'GT-PF-03', 'progress fixture: quantity card', 0);
+  -- fixture 3: boq cards by value share
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|3|site')::uuid, v_tenant, 'GT-PF-03', 'progress fixture: boq cards by value share', 0);
   PERFORM snapshot_site_plan(md5('gpf|3|site')::uuid, 'progress fixture', true, 'system');
   INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|3|A')::uuid, v_tenant, md5('gpf|3|site')::uuid, 'A', 1, 100, 'in_progress', false, false);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|3|a1')::uuid, v_tenant, md5('gpf|3|site')::uuid, md5('gpf|3|A')::uuid, NULL, NULL, 'a1', 1, 40, 'in_progress', 'quantity', 120, 45, NULL);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|3|a2')::uuid, v_tenant, md5('gpf|3|site')::uuid, md5('gpf|3|A')::uuid, NULL, NULL, 'a2', 2, 60, 'done', 'status', NULL, 0, NULL);
+  INSERT INTO quotations (id, tenant_id, client_id, site_id, date, status, quotation_number) VALUES (md5('gpf|3|quotation')::uuid, v_tenant, (SELECT id FROM clients WHERE tenant_id = v_tenant ORDER BY created_at, id LIMIT 1), md5('gpf|3|site')::uuid, current_date, 'draft', 'GT-PF-Q03');
+  INSERT INTO quotation_items (id, tenant_id, quotation_id, description, quantity, unit_price, line_total, sort_order) VALUES (md5('gpf|3|qi|L1')::uuid, v_tenant, md5('gpf|3|quotation')::uuid, 'L1', 10, 700, 7000, 1);
+  INSERT INTO boq_items (id, tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order) VALUES (md5('gpf|3|L1')::uuid, v_tenant, md5('gpf|3|site')::uuid, md5('gpf|3|qi|L1')::uuid, 'L1', 'L1', 10, 1);
+  INSERT INTO quotation_items (id, tenant_id, quotation_id, description, quantity, unit_price, line_total, sort_order) VALUES (md5('gpf|3|qi|L2')::uuid, v_tenant, md5('gpf|3|quotation')::uuid, 'L2', 10, 150, 1500, 2);
+  INSERT INTO boq_items (id, tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order) VALUES (md5('gpf|3|L2')::uuid, v_tenant, md5('gpf|3|site')::uuid, md5('gpf|3|qi|L2')::uuid, 'L2', 'L2', 10, 2);
+  INSERT INTO quotation_items (id, tenant_id, quotation_id, description, quantity, unit_price, line_total, sort_order) VALUES (md5('gpf|3|qi|L3')::uuid, v_tenant, md5('gpf|3|quotation')::uuid, 'L3', 10, 150, 1500, 3);
+  INSERT INTO boq_items (id, tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order) VALUES (md5('gpf|3|L3')::uuid, v_tenant, md5('gpf|3|site')::uuid, md5('gpf|3|qi|L3')::uuid, 'L3', 'L3', 10, 3);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|3|q1')::uuid, v_tenant, md5('gpf|3|site')::uuid, md5('gpf|3|A')::uuid, NULL, NULL, 'q1', 1, 'done', 'quantity', 10, 10, md5('gpf|3|L1')::uuid, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|3|q2')::uuid, v_tenant, md5('gpf|3|site')::uuid, md5('gpf|3|A')::uuid, NULL, NULL, 'q2', 2, 'in_progress', 'quantity', 10, 5, md5('gpf|3|L2')::uuid, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|3|q3')::uuid, v_tenant, md5('gpf|3|site')::uuid, md5('gpf|3|A')::uuid, NULL, NULL, 'q3', 3, 'not_started', 'quantity', 10, 0, md5('gpf|3|L3')::uuid, NULL);
+  x := (SELECT weight_pts FROM phase_tasks WHERE id = md5('gpf|3|q1')::uuid);
+  r := r || jsonb_build_object('fx3_boq_cards_by_value_share_pts_q1_MUST70', x);
+  IF x IS DISTINCT FROM 70::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT weight_pts FROM phase_tasks WHERE id = md5('gpf|3|q2')::uuid);
+  r := r || jsonb_build_object('fx3_boq_cards_by_value_share_pts_q2_MUST15', x);
+  IF x IS DISTINCT FROM 15::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT weight_pts FROM phase_tasks WHERE id = md5('gpf|3|q3')::uuid);
+  r := r || jsonb_build_object('fx3_boq_cards_by_value_share_pts_q3_MUST15', x);
+  IF x IS DISTINCT FROM 15::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := round(node_progress(md5('gpf|3|A')::uuid) * 100, 2);
-  r := r || jsonb_build_object('fx3_quantity_card_phase_A_MUST75', x);
-  IF x IS DISTINCT FROM 75::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx3_boq_cards_by_value_share_phase_A_MUST77.5', x);
+  IF x IS DISTINCT FROM 77.5::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|3|site')::uuid));
-  r := r || jsonb_build_object('fx3_quantity_card_contract_MUST75', x);
-  IF x IS DISTINCT FROM 75::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx3_boq_cards_by_value_share_contract_MUST77.5', x);
+  IF x IS DISTINCT FROM 77.5::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT total_pct FROM site_progress_pct(md5('gpf|3|site')::uuid));
-  r := r || jsonb_build_object('fx3_quantity_card_total_MUSTnull', x);
+  r := r || jsonb_build_object('fx3_boq_cards_by_value_share_total_MUSTnull', x);
   IF x IS DISTINCT FROM NULL THEN v_fx_bad := v_fx_bad + 1; END IF;
-  -- fixture 4: split parent
-  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|4|site')::uuid, v_tenant, 'GT-PF-04', 'progress fixture: split parent', 0);
+  -- fixture 4: unpriced card takes the mean value
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|4|site')::uuid, v_tenant, 'GT-PF-04', 'progress fixture: unpriced card takes the mean value', 0);
   PERFORM snapshot_site_plan(md5('gpf|4|site')::uuid, 'progress fixture', true, 'system');
   INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|4|A')::uuid, v_tenant, md5('gpf|4|site')::uuid, 'A', 1, 100, 'in_progress', false, false);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|4|p')::uuid, v_tenant, md5('gpf|4|site')::uuid, md5('gpf|4|A')::uuid, NULL, NULL, 'p', 1, 20, 'in_progress', 'status', NULL, 0, NULL);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|4|p1')::uuid, v_tenant, md5('gpf|4|site')::uuid, md5('gpf|4|A')::uuid, NULL, md5('gpf|4|p')::uuid, 'p1', 2, 10, 'done', 'status', NULL, 0, NULL);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|4|p2')::uuid, v_tenant, md5('gpf|4|site')::uuid, md5('gpf|4|A')::uuid, NULL, md5('gpf|4|p')::uuid, 'p2', 3, 10, 'not_started', 'status', NULL, 0, NULL);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|4|a2')::uuid, v_tenant, md5('gpf|4|site')::uuid, md5('gpf|4|A')::uuid, NULL, NULL, 'a2', 4, 80, 'not_started', 'status', NULL, 0, NULL);
+  INSERT INTO quotations (id, tenant_id, client_id, site_id, date, status, quotation_number) VALUES (md5('gpf|4|quotation')::uuid, v_tenant, (SELECT id FROM clients WHERE tenant_id = v_tenant ORDER BY created_at, id LIMIT 1), md5('gpf|4|site')::uuid, current_date, 'draft', 'GT-PF-Q04');
+  INSERT INTO quotation_items (id, tenant_id, quotation_id, description, quantity, unit_price, line_total, sort_order) VALUES (md5('gpf|4|qi|L1')::uuid, v_tenant, md5('gpf|4|quotation')::uuid, 'L1', 10, 300, 3000, 1);
+  INSERT INTO boq_items (id, tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order) VALUES (md5('gpf|4|L1')::uuid, v_tenant, md5('gpf|4|site')::uuid, md5('gpf|4|qi|L1')::uuid, 'L1', 'L1', 10, 1);
+  INSERT INTO quotation_items (id, tenant_id, quotation_id, description, quantity, unit_price, line_total, sort_order) VALUES (md5('gpf|4|qi|L2')::uuid, v_tenant, md5('gpf|4|quotation')::uuid, 'L2', 10, 100, 1000, 2);
+  INSERT INTO boq_items (id, tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order) VALUES (md5('gpf|4|L2')::uuid, v_tenant, md5('gpf|4|site')::uuid, md5('gpf|4|qi|L2')::uuid, 'L2', 'L2', 10, 2);
+  INSERT INTO boq_items (id, tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order) VALUES (md5('gpf|4|L3')::uuid, v_tenant, md5('gpf|4|site')::uuid, NULL, 'L3', 'L3', 10, 3);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|4|q1')::uuid, v_tenant, md5('gpf|4|site')::uuid, md5('gpf|4|A')::uuid, NULL, NULL, 'q1', 1, 'not_started', 'quantity', 10, 0, md5('gpf|4|L1')::uuid, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|4|q2')::uuid, v_tenant, md5('gpf|4|site')::uuid, md5('gpf|4|A')::uuid, NULL, NULL, 'q2', 2, 'done', 'quantity', 10, 10, md5('gpf|4|L2')::uuid, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|4|q3')::uuid, v_tenant, md5('gpf|4|site')::uuid, md5('gpf|4|A')::uuid, NULL, NULL, 'q3', 3, 'in_progress', 'quantity', 10, 3, md5('gpf|4|L3')::uuid, NULL);
+  x := (SELECT weight_pts FROM phase_tasks WHERE id = md5('gpf|4|q1')::uuid);
+  r := r || jsonb_build_object('fx4_unpriced_card_takes_the_mean_value_pts_q1_MUST50', x);
+  IF x IS DISTINCT FROM 50::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT weight_pts FROM phase_tasks WHERE id = md5('gpf|4|q2')::uuid);
+  r := r || jsonb_build_object('fx4_unpriced_card_takes_the_mean_value_pts_q2_MUST16.67', x);
+  IF x IS DISTINCT FROM 16.67::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT weight_pts FROM phase_tasks WHERE id = md5('gpf|4|q3')::uuid);
+  r := r || jsonb_build_object('fx4_unpriced_card_takes_the_mean_value_pts_q3_MUST33.33', x);
+  IF x IS DISTINCT FROM 33.33::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := round(node_progress(md5('gpf|4|A')::uuid) * 100, 2);
-  r := r || jsonb_build_object('fx4_split_parent_phase_A_MUST10', x);
-  IF x IS DISTINCT FROM 10::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx4_unpriced_card_takes_the_mean_value_phase_A_MUST26.67', x);
+  IF x IS DISTINCT FROM 26.67::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|4|site')::uuid));
-  r := r || jsonb_build_object('fx4_split_parent_contract_MUST10', x);
-  IF x IS DISTINCT FROM 10::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx4_unpriced_card_takes_the_mean_value_contract_MUST26.67', x);
+  IF x IS DISTINCT FROM 26.67::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT total_pct FROM site_progress_pct(md5('gpf|4|site')::uuid));
-  r := r || jsonb_build_object('fx4_split_parent_total_MUSTnull', x);
+  r := r || jsonb_build_object('fx4_unpriced_card_takes_the_mean_value_total_MUSTnull', x);
   IF x IS DISTINCT FROM NULL THEN v_fx_bad := v_fx_bad + 1; END IF;
-  -- fixture 5: no cards uses status
-  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|5|site')::uuid, v_tenant, 'GT-PF-05', 'progress fixture: no cards uses status', 0);
+  -- fixture 5: no priced card equal shares
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|5|site')::uuid, v_tenant, 'GT-PF-05', 'progress fixture: no priced card equal shares', 0);
   PERFORM snapshot_site_plan(md5('gpf|5|site')::uuid, 'progress fixture', true, 'system');
-  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|5|A')::uuid, v_tenant, md5('gpf|5|site')::uuid, 'A', 1, 30, 'done', false, false);
-  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|5|B')::uuid, v_tenant, md5('gpf|5|site')::uuid, 'B', 2, 70, 'in_progress', false, false);
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|5|A')::uuid, v_tenant, md5('gpf|5|site')::uuid, 'A', 1, 100, 'in_progress', false, false);
+  INSERT INTO boq_items (id, tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order) VALUES (md5('gpf|5|L1')::uuid, v_tenant, md5('gpf|5|site')::uuid, NULL, 'L1', 'L1', 10, 1);
+  INSERT INTO boq_items (id, tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order) VALUES (md5('gpf|5|L2')::uuid, v_tenant, md5('gpf|5|site')::uuid, NULL, 'L2', 'L2', 10, 2);
+  INSERT INTO boq_items (id, tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order) VALUES (md5('gpf|5|L3')::uuid, v_tenant, md5('gpf|5|site')::uuid, NULL, 'L3', 'L3', 10, 3);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|5|q1')::uuid, v_tenant, md5('gpf|5|site')::uuid, md5('gpf|5|A')::uuid, NULL, NULL, 'q1', 1, 'done', 'quantity', 10, 10, md5('gpf|5|L1')::uuid, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|5|q2')::uuid, v_tenant, md5('gpf|5|site')::uuid, md5('gpf|5|A')::uuid, NULL, NULL, 'q2', 2, 'not_started', 'quantity', 10, 0, md5('gpf|5|L2')::uuid, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|5|q3')::uuid, v_tenant, md5('gpf|5|site')::uuid, md5('gpf|5|A')::uuid, NULL, NULL, 'q3', 3, 'not_started', 'quantity', 10, 0, md5('gpf|5|L3')::uuid, NULL);
+  x := (SELECT weight_pts FROM phase_tasks WHERE id = md5('gpf|5|q1')::uuid);
+  r := r || jsonb_build_object('fx5_no_priced_card_equal_shares_pts_q1_MUST33.34', x);
+  IF x IS DISTINCT FROM 33.34::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT weight_pts FROM phase_tasks WHERE id = md5('gpf|5|q2')::uuid);
+  r := r || jsonb_build_object('fx5_no_priced_card_equal_shares_pts_q2_MUST33.33', x);
+  IF x IS DISTINCT FROM 33.33::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT weight_pts FROM phase_tasks WHERE id = md5('gpf|5|q3')::uuid);
+  r := r || jsonb_build_object('fx5_no_priced_card_equal_shares_pts_q3_MUST33.33', x);
+  IF x IS DISTINCT FROM 33.33::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := round(node_progress(md5('gpf|5|A')::uuid) * 100, 2);
-  r := r || jsonb_build_object('fx5_no_cards_uses_status_phase_A_MUST100', x);
-  IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
-  x := round(node_progress(md5('gpf|5|B')::uuid) * 100, 2);
-  r := r || jsonb_build_object('fx5_no_cards_uses_status_phase_B_MUST0', x);
-  IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx5_no_priced_card_equal_shares_phase_A_MUST33.34', x);
+  IF x IS DISTINCT FROM 33.34::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|5|site')::uuid));
-  r := r || jsonb_build_object('fx5_no_cards_uses_status_contract_MUST30', x);
-  IF x IS DISTINCT FROM 30::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx5_no_priced_card_equal_shares_contract_MUST33.34', x);
+  IF x IS DISTINCT FROM 33.34::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT total_pct FROM site_progress_pct(md5('gpf|5|site')::uuid));
-  r := r || jsonb_build_object('fx5_no_cards_uses_status_total_MUSTnull', x);
+  r := r || jsonb_build_object('fx5_no_priced_card_equal_shares_total_MUSTnull', x);
   IF x IS DISTINCT FROM NULL THEN v_fx_bad := v_fx_bad + 1; END IF;
-  -- fixture 6: vo two numbers
-  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|6|site')::uuid, v_tenant, 'GT-PF-06', 'progress fixture: vo two numbers', 900000);
+  -- fixture 6: boq and general cards general ignored
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|6|site')::uuid, v_tenant, 'GT-PF-06', 'progress fixture: boq and general cards general ignored', 0);
   PERFORM snapshot_site_plan(md5('gpf|6|site')::uuid, 'progress fixture', true, 'system');
-  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|6|A')::uuid, v_tenant, md5('gpf|6|site')::uuid, 'A', 1, 100, 'done', false, false);
-  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|6|B')::uuid, v_tenant, md5('gpf|6|site')::uuid, 'B', 2, 0, 'not_started', true, false);
-  INSERT INTO phase_vo_values (phase_id, tenant_id, vo_value) VALUES (md5('gpf|6|B')::uuid, v_tenant, 100000);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|6|a1')::uuid, v_tenant, md5('gpf|6|site')::uuid, md5('gpf|6|A')::uuid, NULL, NULL, 'a1', 1, 100, 'done', 'status', NULL, 0, NULL);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|6|b1')::uuid, v_tenant, md5('gpf|6|site')::uuid, md5('gpf|6|B')::uuid, NULL, NULL, 'b1', 2, 100, 'not_started', 'status', NULL, 0, NULL);
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|6|A')::uuid, v_tenant, md5('gpf|6|site')::uuid, 'A', 1, 100, 'in_progress', false, false);
+  INSERT INTO quotations (id, tenant_id, client_id, site_id, date, status, quotation_number) VALUES (md5('gpf|6|quotation')::uuid, v_tenant, (SELECT id FROM clients WHERE tenant_id = v_tenant ORDER BY created_at, id LIMIT 1), md5('gpf|6|site')::uuid, current_date, 'draft', 'GT-PF-Q06');
+  INSERT INTO quotation_items (id, tenant_id, quotation_id, description, quantity, unit_price, line_total, sort_order) VALUES (md5('gpf|6|qi|L1')::uuid, v_tenant, md5('gpf|6|quotation')::uuid, 'L1', 10, 200, 2000, 1);
+  INSERT INTO boq_items (id, tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order) VALUES (md5('gpf|6|L1')::uuid, v_tenant, md5('gpf|6|site')::uuid, md5('gpf|6|qi|L1')::uuid, 'L1', 'L1', 10, 1);
+  INSERT INTO quotation_items (id, tenant_id, quotation_id, description, quantity, unit_price, line_total, sort_order) VALUES (md5('gpf|6|qi|L2')::uuid, v_tenant, md5('gpf|6|quotation')::uuid, 'L2', 10, 200, 2000, 2);
+  INSERT INTO boq_items (id, tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order) VALUES (md5('gpf|6|L2')::uuid, v_tenant, md5('gpf|6|site')::uuid, md5('gpf|6|qi|L2')::uuid, 'L2', 'L2', 10, 2);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|6|q1')::uuid, v_tenant, md5('gpf|6|site')::uuid, md5('gpf|6|A')::uuid, NULL, NULL, 'q1', 1, 'done', 'quantity', 10, 10, md5('gpf|6|L1')::uuid, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|6|q2')::uuid, v_tenant, md5('gpf|6|site')::uuid, md5('gpf|6|A')::uuid, NULL, NULL, 'q2', 2, 'not_started', 'quantity', 10, 0, md5('gpf|6|L2')::uuid, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|6|g1')::uuid, v_tenant, md5('gpf|6|site')::uuid, md5('gpf|6|A')::uuid, NULL, NULL, 'g1', 3, 'not_started', 'status', NULL, 0, NULL, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|6|g2')::uuid, v_tenant, md5('gpf|6|site')::uuid, md5('gpf|6|A')::uuid, NULL, NULL, 'g2', 4, 'done', 'status', NULL, 0, NULL, NULL);
+  x := (SELECT weight_pts FROM phase_tasks WHERE id = md5('gpf|6|q1')::uuid);
+  r := r || jsonb_build_object('fx6_boq_and_general_cards_general_ignored_pts_q1_MUST50', x);
+  IF x IS DISTINCT FROM 50::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT weight_pts FROM phase_tasks WHERE id = md5('gpf|6|q2')::uuid);
+  r := r || jsonb_build_object('fx6_boq_and_general_cards_general_ignored_pts_q2_MUST50', x);
+  IF x IS DISTINCT FROM 50::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := round(node_progress(md5('gpf|6|A')::uuid) * 100, 2);
-  r := r || jsonb_build_object('fx6_vo_two_numbers_phase_A_MUST100', x);
-  IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
-  x := round(node_progress(md5('gpf|6|B')::uuid) * 100, 2);
-  r := r || jsonb_build_object('fx6_vo_two_numbers_phase_B_MUST0', x);
-  IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx6_boq_and_general_cards_general_ignored_phase_A_MUST50', x);
+  IF x IS DISTINCT FROM 50::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|6|site')::uuid));
-  r := r || jsonb_build_object('fx6_vo_two_numbers_contract_MUST100', x);
-  IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx6_boq_and_general_cards_general_ignored_contract_MUST50', x);
+  IF x IS DISTINCT FROM 50::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT total_pct FROM site_progress_pct(md5('gpf|6|site')::uuid));
-  r := r || jsonb_build_object('fx6_vo_two_numbers_total_MUST90', x);
-  IF x IS DISTINCT FROM 90::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
-  -- fixture 7: vo without contract value
-  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|7|site')::uuid, v_tenant, 'GT-PF-07', 'progress fixture: vo without contract value', 0);
+  r := r || jsonb_build_object('fx6_boq_and_general_cards_general_ignored_total_MUSTnull', x);
+  IF x IS DISTINCT FROM NULL THEN v_fx_bad := v_fx_bad + 1; END IF;
+  -- fixture 7: split general parent counts by its status
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|7|site')::uuid, v_tenant, 'GT-PF-07', 'progress fixture: split general parent counts by its status', 0);
   PERFORM snapshot_site_plan(md5('gpf|7|site')::uuid, 'progress fixture', true, 'system');
-  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|7|A')::uuid, v_tenant, md5('gpf|7|site')::uuid, 'A', 1, 100, 'done', false, false);
-  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|7|B')::uuid, v_tenant, md5('gpf|7|site')::uuid, 'B', 2, 0, 'not_started', true, false);
-  INSERT INTO phase_vo_values (phase_id, tenant_id, vo_value) VALUES (md5('gpf|7|B')::uuid, v_tenant, 100000);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|7|a1')::uuid, v_tenant, md5('gpf|7|site')::uuid, md5('gpf|7|A')::uuid, NULL, NULL, 'a1', 1, 100, 'done', 'status', NULL, 0, NULL);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|7|b1')::uuid, v_tenant, md5('gpf|7|site')::uuid, md5('gpf|7|B')::uuid, NULL, NULL, 'b1', 2, 100, 'not_started', 'status', NULL, 0, NULL);
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|7|A')::uuid, v_tenant, md5('gpf|7|site')::uuid, 'A', 1, 100, 'in_progress', false, false);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|7|p')::uuid, v_tenant, md5('gpf|7|site')::uuid, md5('gpf|7|A')::uuid, NULL, NULL, 'p', 1, 'in_progress', 'status', NULL, 0, NULL, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|7|p1')::uuid, v_tenant, md5('gpf|7|site')::uuid, md5('gpf|7|A')::uuid, NULL, md5('gpf|7|p')::uuid, 'p1', 2, 'done', 'status', NULL, 0, NULL, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|7|p2')::uuid, v_tenant, md5('gpf|7|site')::uuid, md5('gpf|7|A')::uuid, NULL, md5('gpf|7|p')::uuid, 'p2', 3, 'not_started', 'status', NULL, 0, NULL, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|7|a2')::uuid, v_tenant, md5('gpf|7|site')::uuid, md5('gpf|7|A')::uuid, NULL, NULL, 'a2', 4, 'done', 'status', NULL, 0, NULL, NULL);
   x := round(node_progress(md5('gpf|7|A')::uuid) * 100, 2);
-  r := r || jsonb_build_object('fx7_vo_without_contract_value_phase_A_MUST100', x);
-  IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
-  x := round(node_progress(md5('gpf|7|B')::uuid) * 100, 2);
-  r := r || jsonb_build_object('fx7_vo_without_contract_value_phase_B_MUST0', x);
+  r := r || jsonb_build_object('fx7_split_general_parent_counts_by_its_status_phase_A_MUST0', x);
   IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|7|site')::uuid));
-  r := r || jsonb_build_object('fx7_vo_without_contract_value_contract_MUST100', x);
-  IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx7_split_general_parent_counts_by_its_status_contract_MUST0', x);
+  IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT total_pct FROM site_progress_pct(md5('gpf|7|site')::uuid));
-  r := r || jsonb_build_object('fx7_vo_without_contract_value_total_MUSTnull', x);
+  r := r || jsonb_build_object('fx7_split_general_parent_counts_by_its_status_total_MUSTnull', x);
   IF x IS DISTINCT FROM NULL THEN v_fx_bad := v_fx_bad + 1; END IF;
-  -- fixture 8: issue excluded
-  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|8|site')::uuid, v_tenant, 'GT-PF-08', 'progress fixture: issue excluded', 0);
+  -- fixture 8: no cards uses status
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|8|site')::uuid, v_tenant, 'GT-PF-08', 'progress fixture: no cards uses status', 0);
   PERFORM snapshot_site_plan(md5('gpf|8|site')::uuid, 'progress fixture', true, 'system');
-  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|8|A')::uuid, v_tenant, md5('gpf|8|site')::uuid, 'A', 1, 100, 'done', false, false);
-  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|8|I')::uuid, v_tenant, md5('gpf|8|site')::uuid, 'I', 2, 0, 'not_started', false, true);
-  INSERT INTO line_issue_reports (id, tenant_id, site_id, message) VALUES (md5('gpf|8|R1')::uuid, v_tenant, md5('gpf|8|site')::uuid, 'progress fixture issue R1');
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|8|a1')::uuid, v_tenant, md5('gpf|8|site')::uuid, md5('gpf|8|A')::uuid, NULL, NULL, 'a1', 1, 100, 'done', 'status', NULL, 0, NULL);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|8|i1')::uuid, v_tenant, md5('gpf|8|site')::uuid, md5('gpf|8|I')::uuid, NULL, NULL, 'i1', 2, 0, 'not_started', 'status', NULL, 0, md5('gpf|8|R1')::uuid);
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|8|A')::uuid, v_tenant, md5('gpf|8|site')::uuid, 'A', 1, 30, 'done', false, false);
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|8|B')::uuid, v_tenant, md5('gpf|8|site')::uuid, 'B', 2, 70, 'in_progress', false, false);
   x := round(node_progress(md5('gpf|8|A')::uuid) * 100, 2);
-  r := r || jsonb_build_object('fx8_issue_excluded_phase_A_MUST100', x);
+  r := r || jsonb_build_object('fx8_no_cards_uses_status_phase_A_MUST100', x);
   IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := round(node_progress(md5('gpf|8|B')::uuid) * 100, 2);
+  r := r || jsonb_build_object('fx8_no_cards_uses_status_phase_B_MUST0', x);
+  IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|8|site')::uuid));
-  r := r || jsonb_build_object('fx8_issue_excluded_contract_MUST100', x);
-  IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx8_no_cards_uses_status_contract_MUST30', x);
+  IF x IS DISTINCT FROM 30::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT total_pct FROM site_progress_pct(md5('gpf|8|site')::uuid));
-  r := r || jsonb_build_object('fx8_issue_excluded_total_MUSTnull', x);
+  r := r || jsonb_build_object('fx8_no_cards_uses_status_total_MUSTnull', x);
   IF x IS DISTINCT FROM NULL THEN v_fx_bad := v_fx_bad + 1; END IF;
-  -- fixture 9: subtasks weighted
-  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|9|site')::uuid, v_tenant, 'GT-PF-09', 'progress fixture: subtasks weighted', 0);
+  -- fixture 9: vo two numbers
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|9|site')::uuid, v_tenant, 'GT-PF-09', 'progress fixture: vo two numbers', 900000);
   PERFORM snapshot_site_plan(md5('gpf|9|site')::uuid, 'progress fixture', true, 'system');
-  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|9|A')::uuid, v_tenant, md5('gpf|9|site')::uuid, 'A', 1, 100, 'in_progress', false, false);
-  INSERT INTO phase_subtasks (id, tenant_id, site_id, phase_id, parent_subtask_id, name, sort_order, billing_weight_pct, status) VALUES (md5('gpf|9|S1')::uuid, v_tenant, md5('gpf|9|site')::uuid, md5('gpf|9|A')::uuid, NULL, 'S1', 1, 25, 'done');
-  INSERT INTO phase_subtasks (id, tenant_id, site_id, phase_id, parent_subtask_id, name, sort_order, billing_weight_pct, status) VALUES (md5('gpf|9|S2')::uuid, v_tenant, md5('gpf|9|site')::uuid, md5('gpf|9|A')::uuid, NULL, 'S2', 2, 75, 'in_progress');
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|9|s2a')::uuid, v_tenant, md5('gpf|9|site')::uuid, md5('gpf|9|A')::uuid, md5('gpf|9|S2')::uuid, NULL, 's2a', 1, 100, 'not_started', 'status', NULL, 0, NULL);
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|9|A')::uuid, v_tenant, md5('gpf|9|site')::uuid, 'A', 1, 100, 'done', false, false);
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|9|B')::uuid, v_tenant, md5('gpf|9|site')::uuid, 'B', 2, 0, 'not_started', true, false);
+  INSERT INTO phase_vo_values (phase_id, tenant_id, vo_value) VALUES (md5('gpf|9|B')::uuid, v_tenant, 100000);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|9|a1')::uuid, v_tenant, md5('gpf|9|site')::uuid, md5('gpf|9|A')::uuid, NULL, NULL, 'a1', 1, 'done', 'status', NULL, 0, NULL, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|9|b1')::uuid, v_tenant, md5('gpf|9|site')::uuid, md5('gpf|9|B')::uuid, NULL, NULL, 'b1', 2, 'not_started', 'status', NULL, 0, NULL, NULL);
   x := round(node_progress(md5('gpf|9|A')::uuid) * 100, 2);
-  r := r || jsonb_build_object('fx9_subtasks_weighted_phase_A_MUST25', x);
-  IF x IS DISTINCT FROM 25::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx9_vo_two_numbers_phase_A_MUST100', x);
+  IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := round(node_progress(md5('gpf|9|B')::uuid) * 100, 2);
+  r := r || jsonb_build_object('fx9_vo_two_numbers_phase_B_MUST0', x);
+  IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|9|site')::uuid));
-  r := r || jsonb_build_object('fx9_subtasks_weighted_contract_MUST25', x);
-  IF x IS DISTINCT FROM 25::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx9_vo_two_numbers_contract_MUST100', x);
+  IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT total_pct FROM site_progress_pct(md5('gpf|9|site')::uuid));
-  r := r || jsonb_build_object('fx9_subtasks_weighted_total_MUSTnull', x);
-  IF x IS DISTINCT FROM NULL THEN v_fx_bad := v_fx_bad + 1; END IF;
-  -- fixture 10: all contract weights zero uses mean
-  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|10|site')::uuid, v_tenant, 'GT-PF-10', 'progress fixture: all contract weights zero uses mean', 0);
+  r := r || jsonb_build_object('fx9_vo_two_numbers_total_MUST90', x);
+  IF x IS DISTINCT FROM 90::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  -- fixture 10: vo without contract value
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|10|site')::uuid, v_tenant, 'GT-PF-10', 'progress fixture: vo without contract value', 0);
   PERFORM snapshot_site_plan(md5('gpf|10|site')::uuid, 'progress fixture', true, 'system');
-  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|10|A')::uuid, v_tenant, md5('gpf|10|site')::uuid, 'A', 1, 0, 'done', false, false);
-  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|10|B')::uuid, v_tenant, md5('gpf|10|site')::uuid, 'B', 2, 0, 'not_started', false, false);
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|10|A')::uuid, v_tenant, md5('gpf|10|site')::uuid, 'A', 1, 100, 'done', false, false);
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|10|B')::uuid, v_tenant, md5('gpf|10|site')::uuid, 'B', 2, 0, 'not_started', true, false);
+  INSERT INTO phase_vo_values (phase_id, tenant_id, vo_value) VALUES (md5('gpf|10|B')::uuid, v_tenant, 100000);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|10|a1')::uuid, v_tenant, md5('gpf|10|site')::uuid, md5('gpf|10|A')::uuid, NULL, NULL, 'a1', 1, 'done', 'status', NULL, 0, NULL, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|10|b1')::uuid, v_tenant, md5('gpf|10|site')::uuid, md5('gpf|10|B')::uuid, NULL, NULL, 'b1', 2, 'not_started', 'status', NULL, 0, NULL, NULL);
   x := round(node_progress(md5('gpf|10|A')::uuid) * 100, 2);
-  r := r || jsonb_build_object('fx10_all_contract_weights_zero_uses_mean_phase_A_MUST100', x);
+  r := r || jsonb_build_object('fx10_vo_without_contract_value_phase_A_MUST100', x);
   IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := round(node_progress(md5('gpf|10|B')::uuid) * 100, 2);
-  r := r || jsonb_build_object('fx10_all_contract_weights_zero_uses_mean_phase_B_MUST0', x);
+  r := r || jsonb_build_object('fx10_vo_without_contract_value_phase_B_MUST0', x);
   IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|10|site')::uuid));
-  r := r || jsonb_build_object('fx10_all_contract_weights_zero_uses_mean_contract_MUST50', x);
-  IF x IS DISTINCT FROM 50::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx10_vo_without_contract_value_contract_MUST100', x);
+  IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT total_pct FROM site_progress_pct(md5('gpf|10|site')::uuid));
-  r := r || jsonb_build_object('fx10_all_contract_weights_zero_uses_mean_total_MUSTnull', x);
+  r := r || jsonb_build_object('fx10_vo_without_contract_value_total_MUSTnull', x);
   IF x IS DISTINCT FROM NULL THEN v_fx_bad := v_fx_bad + 1; END IF;
-  -- fixture 11: only an issue phase
-  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|11|site')::uuid, v_tenant, 'GT-PF-11', 'progress fixture: only an issue phase', 900000);
+  -- fixture 11: issue excluded
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|11|site')::uuid, v_tenant, 'GT-PF-11', 'progress fixture: issue excluded', 0);
   PERFORM snapshot_site_plan(md5('gpf|11|site')::uuid, 'progress fixture', true, 'system');
-  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|11|I')::uuid, v_tenant, md5('gpf|11|site')::uuid, 'I', 1, 0, 'not_started', false, true);
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|11|A')::uuid, v_tenant, md5('gpf|11|site')::uuid, 'A', 1, 100, 'done', false, false);
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|11|I')::uuid, v_tenant, md5('gpf|11|site')::uuid, 'I', 2, 0, 'not_started', false, true);
   INSERT INTO line_issue_reports (id, tenant_id, site_id, message) VALUES (md5('gpf|11|R1')::uuid, v_tenant, md5('gpf|11|site')::uuid, 'progress fixture issue R1');
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|11|i1')::uuid, v_tenant, md5('gpf|11|site')::uuid, md5('gpf|11|I')::uuid, NULL, NULL, 'i1', 1, 0, 'not_started', 'status', NULL, 0, md5('gpf|11|R1')::uuid);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|11|a1')::uuid, v_tenant, md5('gpf|11|site')::uuid, md5('gpf|11|A')::uuid, NULL, NULL, 'a1', 1, 'done', 'status', NULL, 0, NULL, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|11|i1')::uuid, v_tenant, md5('gpf|11|site')::uuid, md5('gpf|11|I')::uuid, NULL, NULL, 'i1', 2, 'not_started', 'status', NULL, 0, NULL, md5('gpf|11|R1')::uuid);
+  x := round(node_progress(md5('gpf|11|A')::uuid) * 100, 2);
+  r := r || jsonb_build_object('fx11_issue_excluded_phase_A_MUST100', x);
+  IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|11|site')::uuid));
-  r := r || jsonb_build_object('fx11_only_an_issue_phase_contract_MUST0', x);
-  IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx11_issue_excluded_contract_MUST100', x);
+  IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT total_pct FROM site_progress_pct(md5('gpf|11|site')::uuid));
-  r := r || jsonb_build_object('fx11_only_an_issue_phase_total_MUSTnull', x);
+  r := r || jsonb_build_object('fx11_issue_excluded_total_MUSTnull', x);
   IF x IS DISTINCT FROM NULL THEN v_fx_bad := v_fx_bad + 1; END IF;
-  -- fixture 12: vo without a vo value counts zero
-  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|12|site')::uuid, v_tenant, 'GT-PF-12', 'progress fixture: vo without a vo value counts zero', 900000);
+  -- fixture 12: issue card in a boq node ignored
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|12|site')::uuid, v_tenant, 'GT-PF-12', 'progress fixture: issue card in a boq node ignored', 0);
   PERFORM snapshot_site_plan(md5('gpf|12|site')::uuid, 'progress fixture', true, 'system');
   INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|12|A')::uuid, v_tenant, md5('gpf|12|site')::uuid, 'A', 1, 100, 'in_progress', false, false);
-  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|12|C')::uuid, v_tenant, md5('gpf|12|site')::uuid, 'C', 2, 0, 'done', true, false);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|12|a1')::uuid, v_tenant, md5('gpf|12|site')::uuid, md5('gpf|12|A')::uuid, NULL, NULL, 'a1', 1, 100, 'not_started', 'status', NULL, 0, NULL);
-  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, weight_pts, status, progress_mode, planned_qty, done_qty, issue_report_id) VALUES (md5('gpf|12|c1')::uuid, v_tenant, md5('gpf|12|site')::uuid, md5('gpf|12|C')::uuid, NULL, NULL, 'c1', 2, 100, 'done', 'status', NULL, 0, NULL);
-  x := round(node_progress(md5('gpf|12|A')::uuid) * 100, 2);
-  r := r || jsonb_build_object('fx12_vo_without_a_vo_value_counts_zero_phase_A_MUST0', x);
-  IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
-  x := round(node_progress(md5('gpf|12|C')::uuid) * 100, 2);
-  r := r || jsonb_build_object('fx12_vo_without_a_vo_value_counts_zero_phase_C_MUST100', x);
+  INSERT INTO boq_items (id, tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order) VALUES (md5('gpf|12|L1')::uuid, v_tenant, md5('gpf|12|site')::uuid, NULL, 'L1', 'L1', 10, 1);
+  INSERT INTO line_issue_reports (id, tenant_id, site_id, message) VALUES (md5('gpf|12|R1')::uuid, v_tenant, md5('gpf|12|site')::uuid, 'progress fixture issue R1');
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|12|q1')::uuid, v_tenant, md5('gpf|12|site')::uuid, md5('gpf|12|A')::uuid, NULL, NULL, 'q1', 1, 'in_progress', 'quantity', 10, 5, md5('gpf|12|L1')::uuid, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|12|i1')::uuid, v_tenant, md5('gpf|12|site')::uuid, md5('gpf|12|A')::uuid, NULL, NULL, 'i1', 2, 'done', 'status', NULL, 0, NULL, md5('gpf|12|R1')::uuid);
+  x := (SELECT weight_pts FROM phase_tasks WHERE id = md5('gpf|12|q1')::uuid);
+  r := r || jsonb_build_object('fx12_issue_card_in_a_boq_node_ignored_pts_q1_MUST100', x);
   IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := round(node_progress(md5('gpf|12|A')::uuid) * 100, 2);
+  r := r || jsonb_build_object('fx12_issue_card_in_a_boq_node_ignored_phase_A_MUST50', x);
+  IF x IS DISTINCT FROM 50::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|12|site')::uuid));
-  r := r || jsonb_build_object('fx12_vo_without_a_vo_value_counts_zero_contract_MUST0', x);
-  IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  r := r || jsonb_build_object('fx12_issue_card_in_a_boq_node_ignored_contract_MUST50', x);
+  IF x IS DISTINCT FROM 50::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   x := (SELECT total_pct FROM site_progress_pct(md5('gpf|12|site')::uuid));
-  r := r || jsonb_build_object('fx12_vo_without_a_vo_value_counts_zero_total_MUST0', x);
+  r := r || jsonb_build_object('fx12_issue_card_in_a_boq_node_ignored_total_MUSTnull', x);
+  IF x IS DISTINCT FROM NULL THEN v_fx_bad := v_fx_bad + 1; END IF;
+  -- fixture 13: subtasks weighted
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|13|site')::uuid, v_tenant, 'GT-PF-13', 'progress fixture: subtasks weighted', 0);
+  PERFORM snapshot_site_plan(md5('gpf|13|site')::uuid, 'progress fixture', true, 'system');
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|13|A')::uuid, v_tenant, md5('gpf|13|site')::uuid, 'A', 1, 100, 'in_progress', false, false);
+  INSERT INTO phase_subtasks (id, tenant_id, site_id, phase_id, parent_subtask_id, name, sort_order, billing_weight_pct, status) VALUES (md5('gpf|13|S1')::uuid, v_tenant, md5('gpf|13|site')::uuid, md5('gpf|13|A')::uuid, NULL, 'S1', 1, 25, 'done');
+  INSERT INTO phase_subtasks (id, tenant_id, site_id, phase_id, parent_subtask_id, name, sort_order, billing_weight_pct, status) VALUES (md5('gpf|13|S2')::uuid, v_tenant, md5('gpf|13|site')::uuid, md5('gpf|13|A')::uuid, NULL, 'S2', 2, 75, 'in_progress');
+  INSERT INTO quotations (id, tenant_id, client_id, site_id, date, status, quotation_number) VALUES (md5('gpf|13|quotation')::uuid, v_tenant, (SELECT id FROM clients WHERE tenant_id = v_tenant ORDER BY created_at, id LIMIT 1), md5('gpf|13|site')::uuid, current_date, 'draft', 'GT-PF-Q13');
+  INSERT INTO quotation_items (id, tenant_id, quotation_id, description, quantity, unit_price, line_total, sort_order) VALUES (md5('gpf|13|qi|L1')::uuid, v_tenant, md5('gpf|13|quotation')::uuid, 'L1', 10, 50, 500, 1);
+  INSERT INTO boq_items (id, tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order) VALUES (md5('gpf|13|L1')::uuid, v_tenant, md5('gpf|13|site')::uuid, md5('gpf|13|qi|L1')::uuid, 'L1', 'L1', 10, 1);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|13|s2a')::uuid, v_tenant, md5('gpf|13|site')::uuid, md5('gpf|13|A')::uuid, md5('gpf|13|S2')::uuid, NULL, 's2a', 1, 'in_progress', 'quantity', 10, 4, md5('gpf|13|L1')::uuid, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|13|s2g')::uuid, v_tenant, md5('gpf|13|site')::uuid, md5('gpf|13|A')::uuid, md5('gpf|13|S2')::uuid, NULL, 's2g', 2, 'done', 'status', NULL, 0, NULL, NULL);
+  x := (SELECT weight_pts FROM phase_tasks WHERE id = md5('gpf|13|s2a')::uuid);
+  r := r || jsonb_build_object('fx13_subtasks_weighted_pts_s2a_MUST100', x);
+  IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := round(node_progress(md5('gpf|13|A')::uuid) * 100, 2);
+  r := r || jsonb_build_object('fx13_subtasks_weighted_phase_A_MUST55', x);
+  IF x IS DISTINCT FROM 55::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|13|site')::uuid));
+  r := r || jsonb_build_object('fx13_subtasks_weighted_contract_MUST55', x);
+  IF x IS DISTINCT FROM 55::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT total_pct FROM site_progress_pct(md5('gpf|13|site')::uuid));
+  r := r || jsonb_build_object('fx13_subtasks_weighted_total_MUSTnull', x);
+  IF x IS DISTINCT FROM NULL THEN v_fx_bad := v_fx_bad + 1; END IF;
+  -- fixture 14: all contract weights zero uses mean
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|14|site')::uuid, v_tenant, 'GT-PF-14', 'progress fixture: all contract weights zero uses mean', 0);
+  PERFORM snapshot_site_plan(md5('gpf|14|site')::uuid, 'progress fixture', true, 'system');
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|14|A')::uuid, v_tenant, md5('gpf|14|site')::uuid, 'A', 1, 0, 'done', false, false);
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|14|B')::uuid, v_tenant, md5('gpf|14|site')::uuid, 'B', 2, 0, 'not_started', false, false);
+  x := round(node_progress(md5('gpf|14|A')::uuid) * 100, 2);
+  r := r || jsonb_build_object('fx14_all_contract_weights_zero_uses_mean_phase_A_MUST100', x);
+  IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := round(node_progress(md5('gpf|14|B')::uuid) * 100, 2);
+  r := r || jsonb_build_object('fx14_all_contract_weights_zero_uses_mean_phase_B_MUST0', x);
+  IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|14|site')::uuid));
+  r := r || jsonb_build_object('fx14_all_contract_weights_zero_uses_mean_contract_MUST50', x);
+  IF x IS DISTINCT FROM 50::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT total_pct FROM site_progress_pct(md5('gpf|14|site')::uuid));
+  r := r || jsonb_build_object('fx14_all_contract_weights_zero_uses_mean_total_MUSTnull', x);
+  IF x IS DISTINCT FROM NULL THEN v_fx_bad := v_fx_bad + 1; END IF;
+  -- fixture 15: only an issue phase
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|15|site')::uuid, v_tenant, 'GT-PF-15', 'progress fixture: only an issue phase', 900000);
+  PERFORM snapshot_site_plan(md5('gpf|15|site')::uuid, 'progress fixture', true, 'system');
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|15|I')::uuid, v_tenant, md5('gpf|15|site')::uuid, 'I', 1, 0, 'not_started', false, true);
+  INSERT INTO line_issue_reports (id, tenant_id, site_id, message) VALUES (md5('gpf|15|R1')::uuid, v_tenant, md5('gpf|15|site')::uuid, 'progress fixture issue R1');
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|15|i1')::uuid, v_tenant, md5('gpf|15|site')::uuid, md5('gpf|15|I')::uuid, NULL, NULL, 'i1', 1, 'not_started', 'status', NULL, 0, NULL, md5('gpf|15|R1')::uuid);
+  x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|15|site')::uuid));
+  r := r || jsonb_build_object('fx15_only_an_issue_phase_contract_MUST0', x);
+  IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT total_pct FROM site_progress_pct(md5('gpf|15|site')::uuid));
+  r := r || jsonb_build_object('fx15_only_an_issue_phase_total_MUSTnull', x);
+  IF x IS DISTINCT FROM NULL THEN v_fx_bad := v_fx_bad + 1; END IF;
+  -- fixture 16: vo without a vo value counts zero
+  INSERT INTO sites (id, tenant_id, site_number, name, contract_value) VALUES (md5('gpf|16|site')::uuid, v_tenant, 'GT-PF-16', 'progress fixture: vo without a vo value counts zero', 900000);
+  PERFORM snapshot_site_plan(md5('gpf|16|site')::uuid, 'progress fixture', true, 'system');
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|16|A')::uuid, v_tenant, md5('gpf|16|site')::uuid, 'A', 1, 100, 'in_progress', false, false);
+  INSERT INTO site_phases (id, tenant_id, site_id, name, sort_order, billing_weight_pct, status, is_vo, is_issue_phase) VALUES (md5('gpf|16|C')::uuid, v_tenant, md5('gpf|16|site')::uuid, 'C', 2, 0, 'done', true, false);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|16|a1')::uuid, v_tenant, md5('gpf|16|site')::uuid, md5('gpf|16|A')::uuid, NULL, NULL, 'a1', 1, 'not_started', 'status', NULL, 0, NULL, NULL);
+  INSERT INTO phase_tasks (id, tenant_id, site_id, phase_id, subtask_id, parent_task_id, name, sort_order, status, progress_mode, planned_qty, done_qty, boq_item_id, issue_report_id) VALUES (md5('gpf|16|c1')::uuid, v_tenant, md5('gpf|16|site')::uuid, md5('gpf|16|C')::uuid, NULL, NULL, 'c1', 2, 'done', 'status', NULL, 0, NULL, NULL);
+  x := round(node_progress(md5('gpf|16|A')::uuid) * 100, 2);
+  r := r || jsonb_build_object('fx16_vo_without_a_vo_value_counts_zero_phase_A_MUST0', x);
+  IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := round(node_progress(md5('gpf|16|C')::uuid) * 100, 2);
+  r := r || jsonb_build_object('fx16_vo_without_a_vo_value_counts_zero_phase_C_MUST100', x);
+  IF x IS DISTINCT FROM 100::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT contract_pct FROM site_progress_pct(md5('gpf|16|site')::uuid));
+  r := r || jsonb_build_object('fx16_vo_without_a_vo_value_counts_zero_contract_MUST0', x);
+  IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
+  x := (SELECT total_pct FROM site_progress_pct(md5('gpf|16|site')::uuid));
+  r := r || jsonb_build_object('fx16_vo_without_a_vo_value_counts_zero_total_MUST0', x);
   IF x IS DISTINCT FROM 0::numeric THEN v_fx_bad := v_fx_bad + 1; END IF;
   r := r || jsonb_build_object('a_fixture_mismatches_MUST0', v_fx_bad);
+
+  -- ===== card kinds on the fixture sites =====
+  -- a general card added to a BOQ node (even sending 50 points, even done) changes nothing
+  INSERT INTO phase_tasks (tenant_id, site_id, phase_id, name, sort_order, weight_pts, status)
+    VALUES (v_tenant, md5('gpf|3|site')::uuid, md5('gpf|3|A')::uuid, 'general in boq node', 9, 50, 'done') RETURNING id INTO v_card;
+  SELECT weight_pts INTO x FROM phase_tasks WHERE id = v_card;
+  r := r || jsonb_build_object('k_general_card_in_boq_node_pts_MUST0', x);
+  x := round(node_progress(md5('gpf|3|A')::uuid) * 100, 2);
+  r := r || jsonb_build_object('k_general_card_in_boq_node_pct_MUST77.5', x);
+  SELECT sum(weight_pts) INTO x FROM phase_tasks WHERE phase_id = md5('gpf|3|A')::uuid;
+  r := r || jsonb_build_object('k_boq_node_points_sum_MUST100', x);
+  -- splitting a done general card keeps the node at 100; an in-progress one keeps it at 0
+  BEGIN
+    PERFORM split_task(md5('gpf|2|a1')::uuid, '[{"name":"a1-1"},{"name":"a1-2"}]');
+    x := round(node_progress(md5('gpf|2|A')::uuid) * 100, 2);
+    r := r || jsonb_build_object('k_split_done_general_card_node_pct_MUST100', x);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('k_split_done_general_card_node_pct_MUST100', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    PERFORM split_task(md5('gpf|1|a2')::uuid, '[{"name":"a2-1"},{"name":"a2-2"}]');
+    x := round(node_progress(md5('gpf|1|A')::uuid) * 100, 2);
+    r := r || jsonb_build_object('k_split_in_progress_general_card_node_pct_MUST0', x);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('k_split_in_progress_general_card_node_pct_MUST0', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    PERFORM split_task(md5('gpf|3|q1')::uuid, '[{"name":"x"},{"name":"y"}]');
+    r := r || jsonb_build_object('k_split_boq_card_MUST22023', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('k_split_boq_card_MUST22023', SQLSTATE || ' ' || SQLERRM);
+  END;
 
   -- ===== ruling 2: a BOQ line cannot drop below its cards =====
   INSERT INTO boq_items (tenant_id, site_id, code, description, planned_qty)
@@ -1401,18 +1708,6 @@ BEGIN
   SELECT trim_scale(planned_qty)::text INTO v FROM boq_items WHERE id = v_boq;
   r := r || jsonb_build_object('r2_boq_final_MUST80', v);
 
-  -- ===== review fix 4: equal shares never push the remainder below 0 (n = 202) =====
-  INSERT INTO site_phases (tenant_id, site_id, name, sort_order, billing_weight_pct)
-    VALUES (v_tenant, md5('gpf|2|site')::uuid, 'G202', 9, 0) RETURNING id INTO v_phase;
-  INSERT INTO phase_tasks (tenant_id, site_id, phase_id, name, sort_order)
-    SELECT v_tenant, md5('gpf|2|site')::uuid, v_phase, 'g' || i, i FROM generate_series(1, 202) i;
-  SELECT set_equal_card_weights(v_tenant) INTO n;
-  r := r || jsonb_build_object('g202_rows_MUST202', n);
-  SELECT min(weight_pts) >= 0 AND sum(weight_pts) = 100 INTO b FROM phase_tasks WHERE phase_id = v_phase;
-  r := r || jsonb_build_object('g202_sum_100_none_negative_MUSTtrue', b);
-  SELECT string_agg(DISTINCT trim_scale(weight_pts)::text, ',') INTO v FROM phase_tasks WHERE phase_id = v_phase;
-  r := r || jsonb_build_object('g202_weights_MUST0.49,1.51', v);
-
   -- ===== review fix 1: phase_vo_values must point at a phase of its own tenant =====
   SELECT ph.id INTO v_fphase FROM site_phases ph WHERE ph.tenant_id <> v_tenant ORDER BY ph.created_at LIMIT 1;
   BEGIN
@@ -1428,8 +1723,8 @@ BEGIN
   PERFORM set_config('request.jwt.claims', json_build_object('email', v_owner, 'role', 'authenticated', 'sub', gen_random_uuid())::text, true);
   SET LOCAL ROLE authenticated;
   SELECT contract_pct INTO x FROM site_progress_pct(md5('gpf|3|site')::uuid);
-  r := r || jsonb_build_object('rls_owner_site_progress_pct_MUST75', x);
-  SELECT total_pct INTO x FROM site_progress_pct(md5('gpf|6|site')::uuid);
+  r := r || jsonb_build_object('rls_owner_site_progress_pct_MUST77.5', x);
+  SELECT total_pct INTO x FROM site_progress_pct(md5('gpf|9|site')::uuid);
   r := r || jsonb_build_object('rls_owner_vo_total_pct_MUST90', x);
   SELECT count(*) INTO n FROM phase_vo_values;
   r := r || jsonb_build_object('rls_owner_vo_values_MUST2', n);
@@ -1447,7 +1742,7 @@ BEGIN
   SELECT count(*) INTO n FROM site_progress_daily;
   r := r || jsonb_build_object('rls_admin_reads_daily_rows_MUSTtrue', n > 0);
   BEGIN
-    UPDATE phase_vo_values SET vo_value = 200000 WHERE phase_id = md5('gpf|7|B')::uuid;
+    UPDATE phase_vo_values SET vo_value = 200000 WHERE phase_id = md5('gpf|10|B')::uuid;
     GET DIAGNOSTICS n = ROW_COUNT;
     r := r || jsonb_build_object('rls_admin_vo_value_update_rows_MUST1', n);
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('rls_admin_vo_value_update_rows_MUST1', SQLSTATE || ' ' || SQLERRM);
@@ -1462,11 +1757,11 @@ BEGIN
   SELECT count(*) INTO n FROM phase_vo_values;
   r := r || jsonb_build_object('rls_pm_vo_values_MUST0', n);
   BEGIN
-    INSERT INTO phase_vo_values (phase_id, vo_value) VALUES (md5('gpf|12|C')::uuid, 5);
+    INSERT INTO phase_vo_values (phase_id, vo_value) VALUES (md5('gpf|16|C')::uuid, 5);
     r := r || jsonb_build_object('rls_pm_vo_value_insert_MUST42501', 'no error');
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('rls_pm_vo_value_insert_MUST42501', SQLSTATE);
   END;
-  SELECT count(*) INTO n FROM site_progress_pct(md5('gpf|6|site')::uuid);
+  SELECT count(*) INTO n FROM site_progress_pct(md5('gpf|9|site')::uuid);
   r := r || jsonb_build_object('rls_pm_site_progress_pct_rows_MUST0', n);
   BEGIN
     INSERT INTO site_progress_daily (site_id, tenant_id, day, contract_pct) VALUES (md5('gpf|1|site')::uuid, v_tenant, '2000-01-01', 1);
@@ -1491,10 +1786,9 @@ BEGIN
   PERFORM set_config('request.jwt.claims', '', true);
   SELECT bool_or(has_function_privilege('anon', p.oid, 'EXECUTE')) INTO b FROM pg_proc p
    WHERE p.pronamespace = 'public'::regnamespace
-     AND p.proname IN ('task_progress','node_progress','site_progress_pct','snapshot_site_progress','check_boq_planned_qty','set_equal_card_weights','demo_seed_core','check_phase_vo_refs');
+     AND p.proname IN ('task_progress','node_progress','site_progress_pct','snapshot_site_progress','check_boq_planned_qty','demo_seed_core','check_phase_vo_refs');
   r := r || jsonb_build_object('priv_anon_execute_any_MUSTfalse', b);
   SELECT has_function_privilege('authenticated', 'public.snapshot_site_progress()', 'EXECUTE')
-      OR has_function_privilege('authenticated', 'public.set_equal_card_weights(uuid)', 'EXECUTE')
       OR has_function_privilege('authenticated', 'public.check_boq_planned_qty()', 'EXECUTE')
       OR has_function_privilege('authenticated', 'public.demo_seed_core(uuid)', 'EXECUTE') INTO b;
   r := r || jsonb_build_object('priv_authenticated_internal_MUSTfalse', b);
@@ -1516,7 +1810,7 @@ BEGIN
   SELECT prosecdef INTO b FROM pg_proc WHERE oid = 'public.node_progress(uuid)'::regprocedure;
   r := r || jsonb_build_object('priv_node_progress_definer_MUSTfalse', b);
 
-  -- ===== ruling 1: the demo seed gives every seeded site a PLAN v1 and equal points =====
+  -- ===== ruling 1: the demo seed gives every seeded site a PLAN v1; its cards are general (0 points) =====
   -- reset_demo_tenant() is stuck live on system pay_items rows (unrelated to 07-09), so the
   -- redefined demo_seed_core runs on a fresh tenant, the way seed_demo_tenant() calls it.
   INSERT INTO tenants (company_name, trial_ends_at) VALUES ('gantt demo seed test', now() + interval '30 days') RETURNING id INTO v_tenant;
@@ -1534,15 +1828,13 @@ BEGIN
   SELECT count(*) INTO m FROM sites s WHERE s.tenant_id = v_tenant
      AND EXISTS (SELECT 1 FROM site_plans p WHERE p.site_id = s.id AND p.version = 1 AND p.is_auto AND p.created_by = 'system');
   r := r || jsonb_build_object('demo_sites_with_phase_MUST10', n, 'demo_sites_with_plan_v1_MUSTtrue', n = m AND n > 0);
-  SELECT count(*) INTO n FROM (
-    SELECT 1 FROM phase_tasks t WHERE t.tenant_id = v_tenant AND t.parent_task_id IS NULL AND t.issue_report_id IS NULL
-     GROUP BY COALESCE(t.subtask_id, t.phase_id) HAVING sum(t.weight_pts) <> 100) z;
-  r := r || jsonb_build_object('demo_nodes_not_exactly_100_MUST0', n);
-  SELECT count(*), count(*) FILTER (WHERE q.old_pct IS DISTINCT FROM round(node_progress(q.phase_id) * 100)) INTO n, m FROM (
-    SELECT t.phase_id, round(100.0 * count(*) FILTER (WHERE t.status = 'done') / count(*)) AS old_pct
+  SELECT count(*) INTO n FROM phase_tasks WHERE tenant_id = v_tenant AND (weight_pts <> 0 OR progress_mode <> 'status');
+  r := r || jsonb_build_object('demo_cards_not_general_zero_MUST0', n);
+  SELECT count(*), count(*) FILTER (WHERE q.all_done_pct IS DISTINCT FROM node_progress(q.phase_id) * 100) INTO n, m FROM (
+    SELECT t.phase_id, CASE WHEN bool_and(t.status = 'done') THEN 100 ELSE 0 END AS all_done_pct
       FROM phase_tasks t WHERE t.tenant_id = v_tenant AND t.parent_task_id IS NULL AND t.issue_report_id IS NULL
      GROUP BY t.phase_id) q;
-  r := r || jsonb_build_object('demo_phases_compared_MUST40', n, 'demo_phase_pct_mismatches_MUST0', m);
+  r := r || jsonb_build_object('demo_phases_compared_MUST40', n, 'demo_phase_pct_all_done_rule_mismatches_MUST0', m);
   SELECT (SELECT count(*) FROM site_plan_items i JOIN site_plans p ON p.id = i.plan_id WHERE p.tenant_id = v_tenant AND i.level = 'task')
        = (SELECT count(*) FROM phase_tasks WHERE tenant_id = v_tenant AND issue_report_id IS NULL) INTO b;
   r := r || jsonb_build_object('demo_plan_task_items_match_MUSTtrue', b);
@@ -1558,15 +1850,6 @@ BEGIN
   r := r || jsonb_build_object('demo_flag_restored_MUSTtrue', COALESCE(current_setting('app.derived_status', true), '') = '');
   SELECT count(*) INTO n FROM phase_tasks WHERE tenant_id = v_tenant AND status IN ('in_progress', 'done');
   r := r || jsonb_build_object('demo_seeded_started_cards_MUSTtrue', n > 0);
-
-  -- equal shares: n = 155 is the first node where round(100/n, 2) would overshoot (154 x 0.65 > 100)
-  SELECT id INTO v_card FROM sites WHERE tenant_id = v_tenant AND NOT is_default ORDER BY created_at LIMIT 1;
-  INSERT INTO site_phases (tenant_id, site_id, name, sort_order) VALUES (v_tenant, v_card, 'n155', 99) RETURNING id INTO v_phase;
-  INSERT INTO phase_tasks (tenant_id, site_id, phase_id, name, sort_order)
-    SELECT v_tenant, v_card, v_phase, 'c' || g, g FROM generate_series(1, 155) g;
-  PERFORM set_equal_card_weights(v_tenant);
-  SELECT sum(weight_pts) = 100 AND min(weight_pts) > 0 AND count(*) = 155 INTO b FROM phase_tasks WHERE phase_id = v_phase;
-  r := r || jsonb_build_object('eq_n155_sums_100_all_positive_MUSTtrue', b);
 
   -- check: this RAISE is load-bearing. It aborts the DO block so none of the
   -- rows written above survive, and it is how the RESULT reaches the output.

@@ -1,6 +1,11 @@
 -- Gantt weighted progress: integrity triggers and RPCs. Spec docs/superpowers/specs/2026-10-17-gantt-weighted-progress-design.md
--- Needs migration 07. Rules layer: PLAN snapshot/save/gate, point limits, BOQ quantity
+-- Needs migration 07. Rules layer: PLAN snapshot/save/gate, card points, BOQ quantity
 -- limits, quantity-driven status, split, quotation -> BOQ, cross-tenant reference checks.
+-- Card points (owner decision 2026-10-18): a general card (progress_mode 'status') always
+-- has 0 points. A BOQ card's points are never typed in: recompute_node_weights() splits
+-- 100 over the node's BOQ cards by value (card planned_qty x the quotation unit price of
+-- its BOQ line) and writes them under app.derived_status = '1'. Prices never leave the
+-- database: PM sees points per node and boq_value_shares() percentages per site only.
 -- Thai messages are matched by the app (Task 9): change them only together.
 -- Trigger functions that must see rows the caller's RLS hides (WORKER moving an
 -- assigned card, parent/child sums) are SECURITY DEFINER and always filter by
@@ -175,7 +180,10 @@ REVOKE ALL ON FUNCTION public.check_phase_vo_refs() FROM PUBLIC, anon, authentic
 CREATE TRIGGER trg_check_phase_vo_refs BEFORE INSERT OR UPDATE ON phase_vo_values
   FOR EACH ROW EXECUTE FUNCTION check_phase_vo_refs();
 
--- 4. point limits (re-summed under a lock on the node's phase row)
+-- 4. card structure and point invariants (under a lock on the node's phase row).
+-- Split is one level deep and only between general cards. Points: general cards, split
+-- children and issue cards are 0 (trg_a_card_weight forces it); a node's BOQ cards sum to
+-- 100 by construction (recompute_node_weights), so the over-100 check is only a backstop.
 CREATE OR REPLACE FUNCTION public.check_node_weights() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -191,10 +199,10 @@ BEGIN
         RAISE EXCEPTION 'แต้มในเฟสนี้รวมเกิน 100' USING ERRCODE = '22023';
       END IF;
     END IF;
-    -- NEW may itself be a parent whose points were lowered
-    SELECT sum(weight_pts) INTO v_sum FROM phase_tasks WHERE tenant_id = NEW.tenant_id AND parent_task_id = NEW.id;
-    IF v_sum IS NOT NULL AND v_sum > NEW.weight_pts + 0.005 THEN
-      RAISE EXCEPTION 'แต้มงานย่อยรวมเกินแต้มงานหลัก' USING ERRCODE = '22023';
+    -- NEW may itself be a parent: a BOQ card never is
+    IF NEW.progress_mode = 'quantity'
+       AND EXISTS (SELECT 1 FROM phase_tasks WHERE tenant_id = NEW.tenant_id AND parent_task_id = NEW.id) THEN
+      RAISE EXCEPTION 'แตกงานได้เฉพาะงานทั่วไป' USING ERRCODE = '22023';
     END IF;
   ELSE
     SELECT * INTO v_parent FROM phase_tasks WHERE id = NEW.parent_task_id AND tenant_id = NEW.tenant_id;
@@ -202,17 +210,155 @@ BEGIN
        OR EXISTS (SELECT 1 FROM phase_tasks WHERE tenant_id = NEW.tenant_id AND parent_task_id = NEW.id) THEN
       RAISE EXCEPTION 'แตกงานได้ชั้นเดียว' USING ERRCODE = '22023';
     END IF;
-    SELECT COALESCE(sum(weight_pts), 0) INTO v_sum FROM phase_tasks
-     WHERE tenant_id = NEW.tenant_id AND parent_task_id = NEW.parent_task_id;
-    IF v_sum > v_parent.weight_pts + 0.005 THEN
-      RAISE EXCEPTION 'แต้มงานย่อยรวมเกินแต้มงานหลัก' USING ERRCODE = '22023';
+    IF NEW.progress_mode = 'quantity' OR v_parent.progress_mode = 'quantity' THEN
+      RAISE EXCEPTION 'แตกงานได้เฉพาะงานทั่วไป' USING ERRCODE = '22023';
     END IF;
+  END IF;
+  IF NEW.weight_pts <> 0
+     AND (NEW.progress_mode = 'status' OR NEW.parent_task_id IS NOT NULL OR NEW.issue_report_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'งานทั่วไปไม่มีแต้ม' USING ERRCODE = '22023';
   END IF;
   RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION public.check_node_weights() FROM PUBLIC, anon, authenticated;
-CREATE TRIGGER trg_check_node_weights AFTER INSERT OR UPDATE OF weight_pts, parent_task_id, phase_id, subtask_id ON phase_tasks
+CREATE TRIGGER trg_check_node_weights
+  AFTER INSERT OR UPDATE OF weight_pts, parent_task_id, phase_id, subtask_id, progress_mode ON phase_tasks
   FOR EACH ROW EXECUTE FUNCTION check_node_weights();
+
+-- 4b. BOQ card points
+-- A card's node: its subtask, else its phase.
+CREATE OR REPLACE FUNCTION public.node_of(t phase_tasks) RETURNS uuid
+  LANGUAGE sql IMMUTABLE SET search_path = public
+AS $$ SELECT COALESCE(t.subtask_id, t.phase_id) $$;
+REVOKE ALL ON FUNCTION public.node_of(phase_tasks) FROM PUBLIC, anon, authenticated;
+
+-- 100 points over ids in order, by value. A NULL or non-positive value takes the mean of
+-- the positive ones; with none positive every id gets an equal share. Shares are rounded to
+-- 2 dp and the first id takes the remainder, so the result sums to exactly 100. If rounding
+-- would push that remainder below 0, shares are rounded down instead (remainder then >= 0).
+CREATE OR REPLACE FUNCTION public.point_shares(p_ids uuid[], p_values numeric[])
+  RETURNS TABLE(id uuid, pts numeric) LANGUAGE sql IMMUTABLE SET search_path = public
+AS $$
+  WITH x AS (SELECT u.cid, u.cv, u.ord FROM unnest(p_ids, p_values) WITH ORDINALITY AS u(cid, cv, ord)),
+  e AS (SELECT x.cid, x.ord, CASE WHEN a.avg_v IS NULL THEN 1 WHEN x.cv > 0 THEN x.cv ELSE a.avg_v END AS ev
+          FROM x CROSS JOIN (SELECT avg(cv) FILTER (WHERE cv > 0) AS avg_v FROM x) a),
+  r AS (SELECT e.cid, e.ord, 100 * e.ev / sum(e.ev) OVER () AS raw FROM e),
+  k AS (SELECT sum(round(raw, 2)) - 100 <= min(round(raw, 2)) FILTER (WHERE ord = 1) AS use_round FROM r),
+  p AS (SELECT r.cid, r.ord, CASE WHEN k.use_round THEN round(r.raw, 2) ELSE trunc(r.raw, 2) END AS sp
+          FROM r CROSS JOIN k)
+  SELECT p.cid, CASE WHEN p.ord = 1 THEN p.sp + 100 - sum(p.sp) OVER () ELSE p.sp END FROM p
+$$;
+REVOKE ALL ON FUNCTION public.point_shares(uuid[], numeric[]) FROM PUBLIC, anon, authenticated;
+
+-- Re-split the node's BOQ cards (top-level, not issue cards). Card value = planned_qty x
+-- line_total / quantity of the quotation item behind its BOQ line; a manual line (or a
+-- quantity of 0) has no value. Internal: runs as owner, granted to no one. Locks the node's
+-- phase row first, so two transactions adding cards to one phase recompute one after the other.
+CREATE OR REPLACE FUNCTION public.recompute_node_weights(p_node uuid) RETURNS void
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE v_tenant uuid; v_phase uuid; v_is_phase boolean := true;
+        v_prev text := current_setting('app.derived_status', true);
+BEGIN
+  SELECT tenant_id, id INTO v_tenant, v_phase FROM site_phases WHERE id = p_node;
+  IF NOT FOUND THEN
+    v_is_phase := false;
+    SELECT tenant_id, phase_id INTO v_tenant, v_phase FROM phase_subtasks WHERE id = p_node;
+    IF NOT FOUND THEN RETURN; END IF;  -- node gone (cascading delete)
+  END IF;
+  PERFORM 1 FROM site_phases WHERE id = v_phase FOR NO KEY UPDATE;
+  PERFORM set_config('app.derived_status', '1', true);
+  WITH c AS (
+    SELECT t.id, t.sort_order, t.created_at, t.planned_qty * qi.line_total / qi.quantity AS v
+      FROM phase_tasks t
+      LEFT JOIN boq_items b ON b.id = t.boq_item_id AND b.tenant_id = t.tenant_id
+      LEFT JOIN quotation_items qi ON qi.id = b.quotation_item_id AND qi.tenant_id = t.tenant_id AND qi.quantity > 0
+     WHERE t.tenant_id = v_tenant AND t.progress_mode = 'quantity' AND t.parent_task_id IS NULL AND t.issue_report_id IS NULL
+       AND CASE WHEN v_is_phase THEN t.phase_id = p_node AND t.subtask_id IS NULL ELSE t.subtask_id = p_node END
+  )
+  UPDATE phase_tasks t SET weight_pts = s.pts
+    FROM point_shares((SELECT array_agg(c.id ORDER BY c.sort_order, c.created_at, c.id) FROM c),
+                      (SELECT array_agg(c.v ORDER BY c.sort_order, c.created_at, c.id) FROM c)) s
+   WHERE t.id = s.id AND t.tenant_id = v_tenant AND t.weight_pts IS DISTINCT FROM s.pts;
+  PERFORM set_config('app.derived_status', COALESCE(v_prev, ''), true);
+END $$;
+REVOKE ALL ON FUNCTION public.recompute_node_weights(uuid) FROM PUBLIC, anon, authenticated;
+
+-- Points are never taken from the client. General cards, split children and issue cards are
+-- forced to 0. A BOQ card starts at 0 and otherwise keeps its points; only the recompute
+-- (under the derived flag) writes them. Named trg_a_* so it runs before the other BEFORE
+-- triggers (guard_derived_status then never sees a client-sent point change).
+CREATE OR REPLACE FUNCTION public.force_card_weight() RETURNS trigger
+  LANGUAGE plpgsql SET search_path = public
+AS $$
+BEGIN
+  IF NEW.progress_mode = 'status' OR NEW.parent_task_id IS NOT NULL OR NEW.issue_report_id IS NOT NULL THEN
+    NEW.weight_pts := 0;
+  ELSIF current_setting('app.derived_status', true) IS DISTINCT FROM '1' THEN
+    NEW.weight_pts := CASE WHEN TG_OP = 'INSERT' THEN 0 ELSE OLD.weight_pts END;
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.force_card_weight() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_a_card_weight BEFORE INSERT OR UPDATE ON phase_tasks
+  FOR EACH ROW EXECUTE FUNCTION force_card_weight();
+
+-- After a card joins, leaves or changes inside a node, re-split that node's points (old and
+-- new node when it moves). Only BOQ cards count, so general-card writes cost nothing. The
+-- recompute itself writes weight_pts only, which is not in these column lists: no re-fire.
+CREATE OR REPLACE FUNCTION public.recompute_card_weights() RETURNS trigger
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE v_old uuid; v_new uuid;
+BEGIN
+  IF TG_OP <> 'INSERT' AND OLD.progress_mode = 'quantity' AND OLD.parent_task_id IS NULL AND OLD.issue_report_id IS NULL THEN
+    v_old := node_of(OLD);
+  END IF;
+  IF TG_OP <> 'DELETE' AND NEW.progress_mode = 'quantity' AND NEW.parent_task_id IS NULL AND NEW.issue_report_id IS NULL THEN
+    v_new := node_of(NEW);
+  END IF;
+  IF v_old IS NOT NULL AND v_old IS DISTINCT FROM v_new THEN
+    PERFORM recompute_node_weights(v_old);
+  END IF;
+  IF v_new IS NOT NULL THEN
+    PERFORM recompute_node_weights(v_new);
+  END IF;
+  RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION public.recompute_card_weights() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_recompute_card_weights AFTER INSERT OR DELETE ON phase_tasks
+  FOR EACH ROW EXECUTE FUNCTION recompute_card_weights();
+CREATE TRIGGER trg_recompute_card_weights_upd
+  AFTER UPDATE OF progress_mode, planned_qty, boq_item_id, phase_id, subtask_id, parent_task_id ON phase_tasks
+  FOR EACH ROW WHEN ((OLD.progress_mode, OLD.planned_qty, OLD.boq_item_id, OLD.phase_id, OLD.subtask_id, OLD.parent_task_id)
+                     IS DISTINCT FROM (NEW.progress_mode, NEW.planned_qty, NEW.boq_item_id, NEW.phase_id, NEW.subtask_id, NEW.parent_task_id))
+  EXECUTE FUNCTION recompute_card_weights();
+
+-- A BOQ line's quantity or quotation link changed, or the price of the quotation item behind
+-- it: re-split the nodes of the BOQ cards on that line only.
+CREATE OR REPLACE FUNCTION public.recompute_line_weights() RETURNS trigger
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE v_node uuid;
+BEGIN
+  FOR v_node IN
+    SELECT DISTINCT COALESCE(t.subtask_id, t.phase_id)
+      FROM boq_items b JOIN phase_tasks t ON t.boq_item_id = b.id AND t.tenant_id = b.tenant_id
+     WHERE b.tenant_id = NEW.tenant_id
+       AND CASE WHEN TG_TABLE_NAME = 'quotation_items' THEN b.quotation_item_id = NEW.id ELSE b.id = NEW.id END
+       AND t.progress_mode = 'quantity' AND t.parent_task_id IS NULL AND t.issue_report_id IS NULL
+  LOOP
+    PERFORM recompute_node_weights(v_node);
+  END LOOP;
+  RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION public.recompute_line_weights() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_recompute_line_weights AFTER UPDATE OF planned_qty, quotation_item_id ON boq_items
+  FOR EACH ROW WHEN (OLD.planned_qty IS DISTINCT FROM NEW.planned_qty OR OLD.quotation_item_id IS DISTINCT FROM NEW.quotation_item_id)
+  EXECUTE FUNCTION recompute_line_weights();
+CREATE TRIGGER trg_recompute_line_weights AFTER UPDATE OF line_total, quantity ON quotation_items
+  FOR EACH ROW WHEN (OLD.line_total IS DISTINCT FROM NEW.line_total OR OLD.quantity IS DISTINCT FROM NEW.quantity)
+  EXECUTE FUNCTION recompute_line_weights();
 
 -- 5. BOQ quantity limit
 CREATE OR REPLACE FUNCTION public.check_boq_qty() RETURNS trigger
@@ -344,7 +490,8 @@ GRANT EXECUTE ON FUNCTION public.cancel_progress(uuid) TO authenticated;
 -- in the same UPDATE as the status cannot bypass the guard. Once a card has recorded
 -- quantity, only OWNER/PM may change planned_qty or progress_mode (ADMIN could otherwise
 -- finish it by lowering planned_qty). weight_pts, parent_task_id and boq_item_id are staff only
--- (a WORKER may update an assigned card's status, never its points or structure).
+-- (a WORKER may update an assigned card's status, never its points or structure). A client
+-- never changes weight_pts at all (trg_a_card_weight runs first); that check is a backstop.
 CREATE OR REPLACE FUNCTION public.guard_derived_status() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -456,47 +603,43 @@ REVOKE ALL ON FUNCTION public.keep_progress_history() FROM PUBLIC, anon, authent
 CREATE TRIGGER trg_keep_progress_history BEFORE DELETE ON phase_tasks
   FOR EACH ROW EXECUTE FUNCTION keep_progress_history();
 
--- 10. split a card one level (SECURITY INVOKER)
+-- 10. split a general card one level (SECURITY INVOKER), at any status. The children are
+-- general cards too (0 points) and start with the parent's status, so the parent's derived
+-- status and the node's % do not move. p_children: [{"name": ...}, ...], at least 2.
+-- The inserts run under the derived flag (children of a started card may start in_progress/done).
 CREATE OR REPLACE FUNCTION public.split_task(p_task_id uuid, p_children jsonb)
   RETURNS void LANGUAGE plpgsql SET search_path = public
 AS $$
-DECLARE t phase_tasks%ROWTYPE; v_sum numeric; c record;
+DECLARE t phase_tasks%ROWTYPE; c record; v_prev text := current_setting('app.derived_status', true);
 BEGIN
   SELECT * INTO t FROM phase_tasks WHERE id = p_task_id FOR NO KEY UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'ไม่พบการ์ดนี้' USING ERRCODE = 'P0002'; END IF;
+  IF t.progress_mode = 'quantity' THEN
+    RAISE EXCEPTION 'แตกงานได้เฉพาะงานทั่วไป' USING ERRCODE = '22023';
+  END IF;
   IF t.parent_task_id IS NOT NULL THEN
     RAISE EXCEPTION 'แตกงานได้ชั้นเดียว' USING ERRCODE = '22023';
   END IF;
   IF EXISTS (SELECT 1 FROM phase_tasks WHERE parent_task_id = t.id) THEN
     RAISE EXCEPTION 'การ์ดนี้แตกงานแล้ว' USING ERRCODE = '22023';
   END IF;
-  IF t.progress_mode = 'quantity' THEN
-    RAISE EXCEPTION 'การ์ดที่นับจำนวนแตกงานไม่ได้' USING ERRCODE = '22023';
-  END IF;
   IF t.issue_report_id IS NOT NULL THEN
     RAISE EXCEPTION 'การ์ดปัญหาแตกงานไม่ได้' USING ERRCODE = '22023';
-  END IF;
-  -- a started card would drop to 0 % once its children (all not_started) take over
-  IF t.status <> 'not_started' THEN
-    RAISE EXCEPTION 'แตกงานได้เฉพาะงานที่ยังไม่เริ่ม' USING ERRCODE = '22023';
   END IF;
   IF jsonb_typeof(p_children) IS DISTINCT FROM 'array' OR jsonb_array_length(p_children) < 2 THEN
     RAISE EXCEPTION 'ต้องแตกอย่างน้อย 2 งาน' USING ERRCODE = '22023';
   END IF;
-  SELECT sum((e->>'weight_pts')::numeric) INTO v_sum FROM jsonb_array_elements(p_children) e;
-  IF v_sum IS NULL OR abs(v_sum - t.weight_pts) > 0.01 THEN
-    RAISE EXCEPTION 'แต้มงานย่อยรวม % ต้องเท่ากับแต้มงานหลัก %', trim_scale(COALESCE(v_sum, 0)), trim_scale(t.weight_pts)
-      USING ERRCODE = '22023';
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_children) e WHERE btrim(COALESCE(e->>'name', '')) = '') THEN
+    RAISE EXCEPTION 'ต้องใส่ชื่องานย่อย' USING ERRCODE = '22023';
   END IF;
-  FOR c IN SELECT e->>'name' AS name, (e->>'weight_pts')::numeric AS w, ord
+  PERFORM set_config('app.derived_status', '1', true);
+  FOR c IN SELECT e->>'name' AS name, ord
              FROM jsonb_array_elements(p_children) WITH ORDINALITY AS x(e, ord) LOOP
-    IF btrim(COALESCE(c.name, '')) = '' THEN
-      RAISE EXCEPTION 'ต้องใส่ชื่องานย่อย' USING ERRCODE = '22023';
-    END IF;
     INSERT INTO phase_tasks (phase_id, subtask_id, site_id, tenant_id, zone, name, status, weight_pts, sort_order, parent_task_id)
-      VALUES (t.phase_id, t.subtask_id, t.site_id, t.tenant_id, t.zone, btrim(c.name), 'not_started', c.w,
+      VALUES (t.phase_id, t.subtask_id, t.site_id, t.tenant_id, t.zone, btrim(c.name), t.status, 0,
               t.sort_order + c.ord::int, t.id);
   END LOOP;
+  PERFORM set_config('app.derived_status', COALESCE(v_prev, ''), true);
 END $$;
 REVOKE ALL ON FUNCTION public.split_task(uuid, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.split_task(uuid, jsonb) TO authenticated;
@@ -562,6 +705,34 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.boq_refresh_from_quotations(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.boq_refresh_from_quotations(uuid) TO authenticated;
+
+-- 13. each BOQ line's share of the site's BOQ value, in % (BOQ tab). Definer so PM can see
+-- relative size without reading a price: returns percentages only (2 dp, summing to 100 per
+-- site), split like card points (point_shares: unpriced lines take the mean, no prices -> equal).
+CREATE OR REPLACE FUNCTION public.boq_value_shares(p_site_id uuid)
+  RETURNS TABLE(boq_item_id uuid, share_pct numeric)
+  LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF NOT is_site_staff() THEN
+    RAISE EXCEPTION 'ไม่มีสิทธิ์ดูสัดส่วนงาน BOQ' USING ERRCODE = '42501';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND tenant_id = current_tenant_id()) THEN
+    RAISE EXCEPTION 'ไม่พบไซต์งาน' USING ERRCODE = 'P0002';
+  END IF;
+  RETURN QUERY
+  WITH c AS (
+    SELECT b.id, b.sort_order, b.created_at, b.planned_qty * qi.line_total / qi.quantity AS v
+      FROM boq_items b
+      LEFT JOIN quotation_items qi ON qi.id = b.quotation_item_id AND qi.tenant_id = b.tenant_id AND qi.quantity > 0
+     WHERE b.site_id = p_site_id AND b.tenant_id = current_tenant_id()
+  )
+  SELECT s.id, s.pts
+    FROM point_shares((SELECT array_agg(c.id ORDER BY c.sort_order, c.created_at, c.id) FROM c),
+                      (SELECT array_agg(c.v ORDER BY c.sort_order, c.created_at, c.id) FROM c)) s;
+END $$;
+REVOKE ALL ON FUNCTION public.boq_value_shares(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.boq_value_shares(uuid) TO authenticated;
 
 -- deferred minor from Task 1 review
 REVOKE TRUNCATE ON site_plans, site_plan_items, progress_reports FROM authenticated, anon;

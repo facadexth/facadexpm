@@ -77,11 +77,11 @@ describe('taskProgress', () => {
   })
 })
 
-describe('cards without weight_pts (old data) share 100 equally', () => {
-  it('3 cards, 1 done -> 33.33%', () => {
+describe('general cards count as one: all done or nothing', () => {
+  it('3 cards, 1 done -> 0%; all done -> 100%', () => {
     const tasks = [{ id: 'a', status: 'done' }, { id: 'b', status: 'in_progress' }, { id: 'c', status: 'not_started' }]
-    const p = nodeProgress('A', { tasksByNode: { A: tasks }, subtasksByParent: {}, nodeById: {} })
-    expect(p * 100).toBeCloseTo(33.33, 2)
-    expect(unallocatedPoints(tasks)).toBe(0)
+    const ctx = (ts) => ({ tasksByNode: { A: ts }, subtasksByParent: {}, nodeById: {} })
+    expect(nodeProgress('A', ctx(tasks))).toBe(0)
+    expect(nodeProgress('A', ctx(tasks.map((t) => ({ ...t, status: 'done' }))))).toBe(1)
   })
 })

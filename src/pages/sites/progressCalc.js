@@ -14,9 +14,12 @@
 //   node (a phase or a phase_subtasks row):
 //          child subtasks -> Σ(billing_weight_pct × child) / Σ billing_weight_pct
 //            (plain mean when Σ is 0);
-//          else top-level non-issue cards -> Σ(pts × card) / 100
-//            (unallocated points count as 0);
+//          else top-level non-issue BOQ cards (progress_mode 'quantity')
+//            -> Σ(pts × card) / 100 (general cards in the node are ignored);
+//          else top-level non-issue general cards -> 1 when all are done, else 0;
 //          else the node's own status: done 1, otherwise 0.
+//   BOQ card points come from the database (split by value, sum 100 per node);
+//   general cards always have 0 points.
 //   site:  % ตามสัญญา over phases that are neither VO nor issue, weighted by
 //          billing_weight_pct (plain mean when every weight is 0, 0 when there
 //          is no such phase); % รวม VO only with contract value > 0, a VO phase
@@ -73,15 +76,17 @@ export function taskProgress(task, childrenOf) {
 
 /** Progress 0-1 from the cards attached directly to one node (all of them:
  *  top-level, split children and issue cards), or null when the node has no
- *  top-level non-issue card -- the caller then falls back to a status. */
+ *  top-level non-issue card -- the caller then falls back to a status.
+ *  BOQ cards count by points; with none, the general cards count as one
+ *  (all done 1, else 0). */
 export function nodeCardsProgress(tasksInNode) {
   const top = tasksInNode.filter((t) => !t.parent_task_id && !isIssueCard(t))
   if (top.length === 0) return null
-  const byParent = {}
-  tasksInNode.forEach((t) => { if (t.parent_task_id) (byParent[t.parent_task_id] ||= []).push(t) })
-  const childrenOf = (id) => byParent[id] || []
-  const ws = effectiveWeights(top, 100)
-  return top.reduce((s, t, i) => s + ws[i] * taskProgress(t, childrenOf), 0) / 100
+  const boq = top.filter((t) => t.progress_mode === 'quantity')
+  if (boq.length > 0) {
+    return boq.reduce((s, t) => s + (Number(t.weight_pts) || 0) * taskProgress(t, () => []), 0) / 100
+  }
+  return top.every((t) => t.status === 'done') ? 1 : 0
 }
 
 /** Node (phase or subtask) progress 0-1.

@@ -28,16 +28,20 @@ CREATE TABLE public.boq_items (
   UNIQUE (site_id, quotation_item_id)
 );
 CREATE INDEX boq_items_site_idx ON boq_items(site_id);
+-- quotation price changes look up the BOQ lines of one quotation item (migration 08)
+CREATE INDEX boq_items_quotation_item_idx ON boq_items(quotation_item_id) WHERE quotation_item_id IS NOT NULL;
 
 ALTER TABLE phase_tasks
   ADD COLUMN weight_pts numeric(6,2) NOT NULL DEFAULT 0 CHECK (weight_pts >= 0),
   ADD COLUMN progress_mode text NOT NULL DEFAULT 'status' CHECK (progress_mode IN ('status','quantity')),
   ADD COLUMN parent_task_id uuid NULL REFERENCES phase_tasks(id) ON DELETE CASCADE,
-  ADD COLUMN boq_item_id uuid NULL REFERENCES boq_items(id) ON DELETE SET NULL,
+  ADD COLUMN boq_item_id uuid NULL REFERENCES boq_items(id) ON DELETE RESTRICT,
   ADD COLUMN planned_qty numeric NULL CHECK (planned_qty IS NULL OR planned_qty > 0),
   ADD COLUMN done_qty numeric NOT NULL DEFAULT 0,
-  ADD CONSTRAINT phase_tasks_quantity_needs_plan CHECK (progress_mode = 'status' OR planned_qty IS NOT NULL);
+  ADD CONSTRAINT phase_tasks_boq_card_needs_line
+    CHECK (progress_mode = 'status' OR (boq_item_id IS NOT NULL AND planned_qty IS NOT NULL));
 CREATE INDEX phase_tasks_parent_idx ON phase_tasks(parent_task_id) WHERE parent_task_id IS NOT NULL;
+CREATE INDEX phase_tasks_boq_item_idx ON phase_tasks(boq_item_id) WHERE boq_item_id IS NOT NULL;
 
 ALTER TABLE site_phases
   ADD COLUMN is_vo boolean NOT NULL DEFAULT false,
@@ -123,6 +127,22 @@ CREATE POLICY site_staff_reads ON site_plan_items FOR SELECT
 REVOKE INSERT, UPDATE, DELETE ON site_plans, site_plan_items FROM authenticated, anon;
 REVOKE DELETE ON progress_reports FROM authenticated, anon;
 REVOKE TRUNCATE ON phase_vo_values FROM authenticated, anon;
+
+-- a BOQ line with cards cannot be deleted: say why before the FK does (deleting the whole
+-- site still cascades, the site row is already gone by then)
+CREATE OR REPLACE FUNCTION public.block_boq_delete_with_cards() RETURNS trigger
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM phase_tasks WHERE boq_item_id = OLD.id AND tenant_id = OLD.tenant_id)
+     AND EXISTS (SELECT 1 FROM sites WHERE id = OLD.site_id) THEN
+    RAISE EXCEPTION 'รายการ BOQ นี้มีการ์ดผูกอยู่ ย้ายหรือลบการ์ดก่อน' USING ERRCODE = '22023';
+  END IF;
+  RETURN OLD;
+END $$;
+REVOKE ALL ON FUNCTION public.block_boq_delete_with_cards() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_block_boq_delete_with_cards BEFORE DELETE ON boq_items
+  FOR EACH ROW EXECUTE FUNCTION block_boq_delete_with_cards();
 -- ===== inlined 2026-10-17-08-gantt-progress-logic.sql body =====
 
 -- ===== helpers =====
@@ -289,7 +309,10 @@ REVOKE ALL ON FUNCTION public.check_phase_vo_refs() FROM PUBLIC, anon, authentic
 CREATE TRIGGER trg_check_phase_vo_refs BEFORE INSERT OR UPDATE ON phase_vo_values
   FOR EACH ROW EXECUTE FUNCTION check_phase_vo_refs();
 
--- 4. point limits (re-summed under a lock on the node's phase row)
+-- 4. card structure and point invariants (under a lock on the node's phase row).
+-- Split is one level deep and only between general cards. Points: general cards, split
+-- children and issue cards are 0 (trg_a_card_weight forces it); a node's BOQ cards sum to
+-- 100 by construction (recompute_node_weights), so the over-100 check is only a backstop.
 CREATE OR REPLACE FUNCTION public.check_node_weights() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -305,10 +328,10 @@ BEGIN
         RAISE EXCEPTION 'แต้มในเฟสนี้รวมเกิน 100' USING ERRCODE = '22023';
       END IF;
     END IF;
-    -- NEW may itself be a parent whose points were lowered
-    SELECT sum(weight_pts) INTO v_sum FROM phase_tasks WHERE tenant_id = NEW.tenant_id AND parent_task_id = NEW.id;
-    IF v_sum IS NOT NULL AND v_sum > NEW.weight_pts + 0.005 THEN
-      RAISE EXCEPTION 'แต้มงานย่อยรวมเกินแต้มงานหลัก' USING ERRCODE = '22023';
+    -- NEW may itself be a parent: a BOQ card never is
+    IF NEW.progress_mode = 'quantity'
+       AND EXISTS (SELECT 1 FROM phase_tasks WHERE tenant_id = NEW.tenant_id AND parent_task_id = NEW.id) THEN
+      RAISE EXCEPTION 'แตกงานได้เฉพาะงานทั่วไป' USING ERRCODE = '22023';
     END IF;
   ELSE
     SELECT * INTO v_parent FROM phase_tasks WHERE id = NEW.parent_task_id AND tenant_id = NEW.tenant_id;
@@ -316,17 +339,155 @@ BEGIN
        OR EXISTS (SELECT 1 FROM phase_tasks WHERE tenant_id = NEW.tenant_id AND parent_task_id = NEW.id) THEN
       RAISE EXCEPTION 'แตกงานได้ชั้นเดียว' USING ERRCODE = '22023';
     END IF;
-    SELECT COALESCE(sum(weight_pts), 0) INTO v_sum FROM phase_tasks
-     WHERE tenant_id = NEW.tenant_id AND parent_task_id = NEW.parent_task_id;
-    IF v_sum > v_parent.weight_pts + 0.005 THEN
-      RAISE EXCEPTION 'แต้มงานย่อยรวมเกินแต้มงานหลัก' USING ERRCODE = '22023';
+    IF NEW.progress_mode = 'quantity' OR v_parent.progress_mode = 'quantity' THEN
+      RAISE EXCEPTION 'แตกงานได้เฉพาะงานทั่วไป' USING ERRCODE = '22023';
     END IF;
+  END IF;
+  IF NEW.weight_pts <> 0
+     AND (NEW.progress_mode = 'status' OR NEW.parent_task_id IS NOT NULL OR NEW.issue_report_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'งานทั่วไปไม่มีแต้ม' USING ERRCODE = '22023';
   END IF;
   RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION public.check_node_weights() FROM PUBLIC, anon, authenticated;
-CREATE TRIGGER trg_check_node_weights AFTER INSERT OR UPDATE OF weight_pts, parent_task_id, phase_id, subtask_id ON phase_tasks
+CREATE TRIGGER trg_check_node_weights
+  AFTER INSERT OR UPDATE OF weight_pts, parent_task_id, phase_id, subtask_id, progress_mode ON phase_tasks
   FOR EACH ROW EXECUTE FUNCTION check_node_weights();
+
+-- 4b. BOQ card points
+-- A card's node: its subtask, else its phase.
+CREATE OR REPLACE FUNCTION public.node_of(t phase_tasks) RETURNS uuid
+  LANGUAGE sql IMMUTABLE SET search_path = public
+AS $$ SELECT COALESCE(t.subtask_id, t.phase_id) $$;
+REVOKE ALL ON FUNCTION public.node_of(phase_tasks) FROM PUBLIC, anon, authenticated;
+
+-- 100 points over ids in order, by value. A NULL or non-positive value takes the mean of
+-- the positive ones; with none positive every id gets an equal share. Shares are rounded to
+-- 2 dp and the first id takes the remainder, so the result sums to exactly 100. If rounding
+-- would push that remainder below 0, shares are rounded down instead (remainder then >= 0).
+CREATE OR REPLACE FUNCTION public.point_shares(p_ids uuid[], p_values numeric[])
+  RETURNS TABLE(id uuid, pts numeric) LANGUAGE sql IMMUTABLE SET search_path = public
+AS $$
+  WITH x AS (SELECT u.cid, u.cv, u.ord FROM unnest(p_ids, p_values) WITH ORDINALITY AS u(cid, cv, ord)),
+  e AS (SELECT x.cid, x.ord, CASE WHEN a.avg_v IS NULL THEN 1 WHEN x.cv > 0 THEN x.cv ELSE a.avg_v END AS ev
+          FROM x CROSS JOIN (SELECT avg(cv) FILTER (WHERE cv > 0) AS avg_v FROM x) a),
+  r AS (SELECT e.cid, e.ord, 100 * e.ev / sum(e.ev) OVER () AS raw FROM e),
+  k AS (SELECT sum(round(raw, 2)) - 100 <= min(round(raw, 2)) FILTER (WHERE ord = 1) AS use_round FROM r),
+  p AS (SELECT r.cid, r.ord, CASE WHEN k.use_round THEN round(r.raw, 2) ELSE trunc(r.raw, 2) END AS sp
+          FROM r CROSS JOIN k)
+  SELECT p.cid, CASE WHEN p.ord = 1 THEN p.sp + 100 - sum(p.sp) OVER () ELSE p.sp END FROM p
+$$;
+REVOKE ALL ON FUNCTION public.point_shares(uuid[], numeric[]) FROM PUBLIC, anon, authenticated;
+
+-- Re-split the node's BOQ cards (top-level, not issue cards). Card value = planned_qty x
+-- line_total / quantity of the quotation item behind its BOQ line; a manual line (or a
+-- quantity of 0) has no value. Internal: runs as owner, granted to no one. Locks the node's
+-- phase row first, so two transactions adding cards to one phase recompute one after the other.
+CREATE OR REPLACE FUNCTION public.recompute_node_weights(p_node uuid) RETURNS void
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE v_tenant uuid; v_phase uuid; v_is_phase boolean := true;
+        v_prev text := current_setting('app.derived_status', true);
+BEGIN
+  SELECT tenant_id, id INTO v_tenant, v_phase FROM site_phases WHERE id = p_node;
+  IF NOT FOUND THEN
+    v_is_phase := false;
+    SELECT tenant_id, phase_id INTO v_tenant, v_phase FROM phase_subtasks WHERE id = p_node;
+    IF NOT FOUND THEN RETURN; END IF;  -- node gone (cascading delete)
+  END IF;
+  PERFORM 1 FROM site_phases WHERE id = v_phase FOR NO KEY UPDATE;
+  PERFORM set_config('app.derived_status', '1', true);
+  WITH c AS (
+    SELECT t.id, t.sort_order, t.created_at, t.planned_qty * qi.line_total / qi.quantity AS v
+      FROM phase_tasks t
+      LEFT JOIN boq_items b ON b.id = t.boq_item_id AND b.tenant_id = t.tenant_id
+      LEFT JOIN quotation_items qi ON qi.id = b.quotation_item_id AND qi.tenant_id = t.tenant_id AND qi.quantity > 0
+     WHERE t.tenant_id = v_tenant AND t.progress_mode = 'quantity' AND t.parent_task_id IS NULL AND t.issue_report_id IS NULL
+       AND CASE WHEN v_is_phase THEN t.phase_id = p_node AND t.subtask_id IS NULL ELSE t.subtask_id = p_node END
+  )
+  UPDATE phase_tasks t SET weight_pts = s.pts
+    FROM point_shares((SELECT array_agg(c.id ORDER BY c.sort_order, c.created_at, c.id) FROM c),
+                      (SELECT array_agg(c.v ORDER BY c.sort_order, c.created_at, c.id) FROM c)) s
+   WHERE t.id = s.id AND t.tenant_id = v_tenant AND t.weight_pts IS DISTINCT FROM s.pts;
+  PERFORM set_config('app.derived_status', COALESCE(v_prev, ''), true);
+END $$;
+REVOKE ALL ON FUNCTION public.recompute_node_weights(uuid) FROM PUBLIC, anon, authenticated;
+
+-- Points are never taken from the client. General cards, split children and issue cards are
+-- forced to 0. A BOQ card starts at 0 and otherwise keeps its points; only the recompute
+-- (under the derived flag) writes them. Named trg_a_* so it runs before the other BEFORE
+-- triggers (guard_derived_status then never sees a client-sent point change).
+CREATE OR REPLACE FUNCTION public.force_card_weight() RETURNS trigger
+  LANGUAGE plpgsql SET search_path = public
+AS $$
+BEGIN
+  IF NEW.progress_mode = 'status' OR NEW.parent_task_id IS NOT NULL OR NEW.issue_report_id IS NOT NULL THEN
+    NEW.weight_pts := 0;
+  ELSIF current_setting('app.derived_status', true) IS DISTINCT FROM '1' THEN
+    NEW.weight_pts := CASE WHEN TG_OP = 'INSERT' THEN 0 ELSE OLD.weight_pts END;
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.force_card_weight() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_a_card_weight BEFORE INSERT OR UPDATE ON phase_tasks
+  FOR EACH ROW EXECUTE FUNCTION force_card_weight();
+
+-- After a card joins, leaves or changes inside a node, re-split that node's points (old and
+-- new node when it moves). Only BOQ cards count, so general-card writes cost nothing. The
+-- recompute itself writes weight_pts only, which is not in these column lists: no re-fire.
+CREATE OR REPLACE FUNCTION public.recompute_card_weights() RETURNS trigger
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE v_old uuid; v_new uuid;
+BEGIN
+  IF TG_OP <> 'INSERT' AND OLD.progress_mode = 'quantity' AND OLD.parent_task_id IS NULL AND OLD.issue_report_id IS NULL THEN
+    v_old := node_of(OLD);
+  END IF;
+  IF TG_OP <> 'DELETE' AND NEW.progress_mode = 'quantity' AND NEW.parent_task_id IS NULL AND NEW.issue_report_id IS NULL THEN
+    v_new := node_of(NEW);
+  END IF;
+  IF v_old IS NOT NULL AND v_old IS DISTINCT FROM v_new THEN
+    PERFORM recompute_node_weights(v_old);
+  END IF;
+  IF v_new IS NOT NULL THEN
+    PERFORM recompute_node_weights(v_new);
+  END IF;
+  RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION public.recompute_card_weights() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_recompute_card_weights AFTER INSERT OR DELETE ON phase_tasks
+  FOR EACH ROW EXECUTE FUNCTION recompute_card_weights();
+CREATE TRIGGER trg_recompute_card_weights_upd
+  AFTER UPDATE OF progress_mode, planned_qty, boq_item_id, phase_id, subtask_id, parent_task_id ON phase_tasks
+  FOR EACH ROW WHEN ((OLD.progress_mode, OLD.planned_qty, OLD.boq_item_id, OLD.phase_id, OLD.subtask_id, OLD.parent_task_id)
+                     IS DISTINCT FROM (NEW.progress_mode, NEW.planned_qty, NEW.boq_item_id, NEW.phase_id, NEW.subtask_id, NEW.parent_task_id))
+  EXECUTE FUNCTION recompute_card_weights();
+
+-- A BOQ line's quantity or quotation link changed, or the price of the quotation item behind
+-- it: re-split the nodes of the BOQ cards on that line only.
+CREATE OR REPLACE FUNCTION public.recompute_line_weights() RETURNS trigger
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE v_node uuid;
+BEGIN
+  FOR v_node IN
+    SELECT DISTINCT COALESCE(t.subtask_id, t.phase_id)
+      FROM boq_items b JOIN phase_tasks t ON t.boq_item_id = b.id AND t.tenant_id = b.tenant_id
+     WHERE b.tenant_id = NEW.tenant_id
+       AND CASE WHEN TG_TABLE_NAME = 'quotation_items' THEN b.quotation_item_id = NEW.id ELSE b.id = NEW.id END
+       AND t.progress_mode = 'quantity' AND t.parent_task_id IS NULL AND t.issue_report_id IS NULL
+  LOOP
+    PERFORM recompute_node_weights(v_node);
+  END LOOP;
+  RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION public.recompute_line_weights() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_recompute_line_weights AFTER UPDATE OF planned_qty, quotation_item_id ON boq_items
+  FOR EACH ROW WHEN (OLD.planned_qty IS DISTINCT FROM NEW.planned_qty OR OLD.quotation_item_id IS DISTINCT FROM NEW.quotation_item_id)
+  EXECUTE FUNCTION recompute_line_weights();
+CREATE TRIGGER trg_recompute_line_weights AFTER UPDATE OF line_total, quantity ON quotation_items
+  FOR EACH ROW WHEN (OLD.line_total IS DISTINCT FROM NEW.line_total OR OLD.quantity IS DISTINCT FROM NEW.quantity)
+  EXECUTE FUNCTION recompute_line_weights();
 
 -- 5. BOQ quantity limit
 CREATE OR REPLACE FUNCTION public.check_boq_qty() RETURNS trigger
@@ -458,7 +619,8 @@ GRANT EXECUTE ON FUNCTION public.cancel_progress(uuid) TO authenticated;
 -- in the same UPDATE as the status cannot bypass the guard. Once a card has recorded
 -- quantity, only OWNER/PM may change planned_qty or progress_mode (ADMIN could otherwise
 -- finish it by lowering planned_qty). weight_pts, parent_task_id and boq_item_id are staff only
--- (a WORKER may update an assigned card's status, never its points or structure).
+-- (a WORKER may update an assigned card's status, never its points or structure). A client
+-- never changes weight_pts at all (trg_a_card_weight runs first); that check is a backstop.
 CREATE OR REPLACE FUNCTION public.guard_derived_status() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -570,47 +732,43 @@ REVOKE ALL ON FUNCTION public.keep_progress_history() FROM PUBLIC, anon, authent
 CREATE TRIGGER trg_keep_progress_history BEFORE DELETE ON phase_tasks
   FOR EACH ROW EXECUTE FUNCTION keep_progress_history();
 
--- 10. split a card one level (SECURITY INVOKER)
+-- 10. split a general card one level (SECURITY INVOKER), at any status. The children are
+-- general cards too (0 points) and start with the parent's status, so the parent's derived
+-- status and the node's % do not move. p_children: [{"name": ...}, ...], at least 2.
+-- The inserts run under the derived flag (children of a started card may start in_progress/done).
 CREATE OR REPLACE FUNCTION public.split_task(p_task_id uuid, p_children jsonb)
   RETURNS void LANGUAGE plpgsql SET search_path = public
 AS $$
-DECLARE t phase_tasks%ROWTYPE; v_sum numeric; c record;
+DECLARE t phase_tasks%ROWTYPE; c record; v_prev text := current_setting('app.derived_status', true);
 BEGIN
   SELECT * INTO t FROM phase_tasks WHERE id = p_task_id FOR NO KEY UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'ไม่พบการ์ดนี้' USING ERRCODE = 'P0002'; END IF;
+  IF t.progress_mode = 'quantity' THEN
+    RAISE EXCEPTION 'แตกงานได้เฉพาะงานทั่วไป' USING ERRCODE = '22023';
+  END IF;
   IF t.parent_task_id IS NOT NULL THEN
     RAISE EXCEPTION 'แตกงานได้ชั้นเดียว' USING ERRCODE = '22023';
   END IF;
   IF EXISTS (SELECT 1 FROM phase_tasks WHERE parent_task_id = t.id) THEN
     RAISE EXCEPTION 'การ์ดนี้แตกงานแล้ว' USING ERRCODE = '22023';
   END IF;
-  IF t.progress_mode = 'quantity' THEN
-    RAISE EXCEPTION 'การ์ดที่นับจำนวนแตกงานไม่ได้' USING ERRCODE = '22023';
-  END IF;
   IF t.issue_report_id IS NOT NULL THEN
     RAISE EXCEPTION 'การ์ดปัญหาแตกงานไม่ได้' USING ERRCODE = '22023';
-  END IF;
-  -- a started card would drop to 0 % once its children (all not_started) take over
-  IF t.status <> 'not_started' THEN
-    RAISE EXCEPTION 'แตกงานได้เฉพาะงานที่ยังไม่เริ่ม' USING ERRCODE = '22023';
   END IF;
   IF jsonb_typeof(p_children) IS DISTINCT FROM 'array' OR jsonb_array_length(p_children) < 2 THEN
     RAISE EXCEPTION 'ต้องแตกอย่างน้อย 2 งาน' USING ERRCODE = '22023';
   END IF;
-  SELECT sum((e->>'weight_pts')::numeric) INTO v_sum FROM jsonb_array_elements(p_children) e;
-  IF v_sum IS NULL OR abs(v_sum - t.weight_pts) > 0.01 THEN
-    RAISE EXCEPTION 'แต้มงานย่อยรวม % ต้องเท่ากับแต้มงานหลัก %', trim_scale(COALESCE(v_sum, 0)), trim_scale(t.weight_pts)
-      USING ERRCODE = '22023';
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_children) e WHERE btrim(COALESCE(e->>'name', '')) = '') THEN
+    RAISE EXCEPTION 'ต้องใส่ชื่องานย่อย' USING ERRCODE = '22023';
   END IF;
-  FOR c IN SELECT e->>'name' AS name, (e->>'weight_pts')::numeric AS w, ord
+  PERFORM set_config('app.derived_status', '1', true);
+  FOR c IN SELECT e->>'name' AS name, ord
              FROM jsonb_array_elements(p_children) WITH ORDINALITY AS x(e, ord) LOOP
-    IF btrim(COALESCE(c.name, '')) = '' THEN
-      RAISE EXCEPTION 'ต้องใส่ชื่องานย่อย' USING ERRCODE = '22023';
-    END IF;
     INSERT INTO phase_tasks (phase_id, subtask_id, site_id, tenant_id, zone, name, status, weight_pts, sort_order, parent_task_id)
-      VALUES (t.phase_id, t.subtask_id, t.site_id, t.tenant_id, t.zone, btrim(c.name), 'not_started', c.w,
+      VALUES (t.phase_id, t.subtask_id, t.site_id, t.tenant_id, t.zone, btrim(c.name), t.status, 0,
               t.sort_order + c.ord::int, t.id);
   END LOOP;
+  PERFORM set_config('app.derived_status', COALESCE(v_prev, ''), true);
 END $$;
 REVOKE ALL ON FUNCTION public.split_task(uuid, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.split_task(uuid, jsonb) TO authenticated;
@@ -677,20 +835,50 @@ END $$;
 REVOKE ALL ON FUNCTION public.boq_refresh_from_quotations(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.boq_refresh_from_quotations(uuid) TO authenticated;
 
+-- 13. each BOQ line's share of the site's BOQ value, in % (BOQ tab). Definer so PM can see
+-- relative size without reading a price: returns percentages only (2 dp, summing to 100 per
+-- site), split like card points (point_shares: unpriced lines take the mean, no prices -> equal).
+CREATE OR REPLACE FUNCTION public.boq_value_shares(p_site_id uuid)
+  RETURNS TABLE(boq_item_id uuid, share_pct numeric)
+  LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF NOT is_site_staff() THEN
+    RAISE EXCEPTION 'ไม่มีสิทธิ์ดูสัดส่วนงาน BOQ' USING ERRCODE = '42501';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM sites WHERE id = p_site_id AND tenant_id = current_tenant_id()) THEN
+    RAISE EXCEPTION 'ไม่พบไซต์งาน' USING ERRCODE = 'P0002';
+  END IF;
+  RETURN QUERY
+  WITH c AS (
+    SELECT b.id, b.sort_order, b.created_at, b.planned_qty * qi.line_total / qi.quantity AS v
+      FROM boq_items b
+      LEFT JOIN quotation_items qi ON qi.id = b.quotation_item_id AND qi.tenant_id = b.tenant_id AND qi.quantity > 0
+     WHERE b.site_id = p_site_id AND b.tenant_id = current_tenant_id()
+  )
+  SELECT s.id, s.pts
+    FROM point_shares((SELECT array_agg(c.id ORDER BY c.sort_order, c.created_at, c.id) FROM c),
+                      (SELECT array_agg(c.v ORDER BY c.sort_order, c.created_at, c.id) FROM c)) s;
+END $$;
+REVOKE ALL ON FUNCTION public.boq_value_shares(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.boq_value_shares(uuid) TO authenticated;
+
 -- deferred minor from Task 1 review
 REVOKE TRUNCATE ON site_plans, site_plan_items, progress_reports FROM authenticated, anon;
 -- ===== end of inlined bodies =====
 
 DO $$
 DECLARE
-  v_tenant uuid; r jsonb := '{}'; n int; b boolean; v text; x numeric;
+  v_tenant uuid; r jsonb := '{}'; n int; b boolean; b2 boolean; v text; x numeric;
   v_pm text := 'gantt-test-pm@example.invalid'; v_admin text := 'gantt-test-admin@example.invalid';
   v_wk text := 'gantt-test-worker@example.invalid'; v_owner text;
   v_site uuid; v_site2 uuid; v_p1 uuid; v_p2 uuid; v_pi uuid; v_s1 uuid; v_rep_issue uuid; v_issue_card uuid;
   v_a uuid; v_b uuid; v_c1 uuid; v_c2 uuid; v_q uuid; v_boq uuid; v_boq_other_site uuid; v_boq_foreign uuid;
   v_ftenant uuid; v_fsite uuid; v_fcard uuid; v_r45 uuid; v_r75 uuid; v_rep uuid; v_worker uuid; v_wcard uuid;
   v_client uuid; v_quot uuid; v_qi1 uuid; v_qi2 uuid; v_ver int; v_f uuid; v_q3 uuid;
-  v_rep_issue2 uuid; v_tmp uuid; v_dsite uuid; v_dphase uuid; v_dcard uuid;
+  v_rep_issue2 uuid; v_tmp uuid; v_dsite uuid; v_dphase uuid; v_dcard uuid; v_boq2 uuid; v_dboq uuid;
+  v_vsite uuid; v_vp uuid; v_vp2 uuid; v_vquot uuid; v_vqa uuid; v_vqb uuid; v_vqc uuid;
+  v_vba uuid; v_vbb uuid; v_vbc uuid; v_vbm uuid; v_ca uuid; v_cb uuid; v_cc uuid; v_cm uuid; v_cx uuid; v_cg uuid;
 BEGIN
   -- ===== as the table owner: fixtures =====
   SELECT id INTO v_tenant FROM tenants WHERE company_name ILIKE '%สร้างดี%' LIMIT 1;
@@ -718,6 +906,27 @@ BEGIN
   -- a worker assigned to a status card (item i)
   INSERT INTO workers (tenant_id, name, email) VALUES (v_tenant, 'gantt test worker', v_wk) RETURNING id INTO v_worker;
   r := r || jsonb_build_object('issue_card_created_MUSTtrue', v_issue_card IS NOT NULL);
+  -- value-share site: a quotation (unit prices 700 / 150 / 150) behind three BOQ lines, plus a
+  -- manual line with no price; phases VP and VP2 are two nodes
+  INSERT INTO sites (tenant_id, site_number, name) VALUES (v_tenant, 'GT-TEST-08V', 'gantt value site') RETURNING id INTO v_vsite;
+  INSERT INTO site_phases (tenant_id, site_id, name, sort_order) VALUES (v_tenant, v_vsite, 'VP', 1) RETURNING id INTO v_vp;
+  INSERT INTO site_phases (tenant_id, site_id, name, sort_order) VALUES (v_tenant, v_vsite, 'VP2', 2) RETURNING id INTO v_vp2;
+  INSERT INTO quotations (tenant_id, client_id, site_id, date, status, quotation_number)
+    VALUES (v_tenant, v_client, v_vsite, current_date, 'sent', 'GT-Q-08V') RETURNING id INTO v_vquot;
+  INSERT INTO quotation_items (tenant_id, quotation_id, description, quantity, unit_price, line_total, sort_order)
+    VALUES (v_tenant, v_vquot, 'line a', 10, 700, 7000, 1) RETURNING id INTO v_vqa;
+  INSERT INTO quotation_items (tenant_id, quotation_id, description, quantity, unit_price, line_total, sort_order)
+    VALUES (v_tenant, v_vquot, 'line b', 10, 150, 1500, 2) RETURNING id INTO v_vqb;
+  INSERT INTO quotation_items (tenant_id, quotation_id, description, quantity, unit_price, line_total, sort_order)
+    VALUES (v_tenant, v_vquot, 'line c', 10, 150, 1500, 3) RETURNING id INTO v_vqc;
+  INSERT INTO boq_items (tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order)
+    VALUES (v_tenant, v_vsite, v_vqa, 'VA', 'line a', 10, 1) RETURNING id INTO v_vba;
+  INSERT INTO boq_items (tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order)
+    VALUES (v_tenant, v_vsite, v_vqb, 'VB', 'line b', 10, 2) RETURNING id INTO v_vbb;
+  INSERT INTO boq_items (tenant_id, site_id, quotation_item_id, code, description, planned_qty, sort_order)
+    VALUES (v_tenant, v_vsite, v_vqc, 'VC', 'line c', 20, 3) RETURNING id INTO v_vbc;
+  INSERT INTO boq_items (tenant_id, site_id, code, description, planned_qty, sort_order)
+    VALUES (v_tenant, v_vsite, 'VM', 'manual line', 10, 4) RETURNING id INTO v_vbm;
 
   -- ===== PM =====
   PERFORM set_config('request.jwt.claims', json_build_object('email', v_pm, 'role', 'authenticated', 'sub', gen_random_uuid())::text, true);
@@ -802,26 +1011,126 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('a_insert_done_card_issue_phase_no_plan_MUSTok', SQLSTATE || ' ' || SQLERRM);
   END;
 
-  -- (d) point limits; node P2 then node S1
+  -- (d) general cards: points are always 0, whatever the client sends (A/B/W above sent 20/20/5)
   BEGIN
     INSERT INTO phase_tasks (phase_id, site_id, name, weight_pts) VALUES
-      (v_p2, v_site, 'D1', 33.33), (v_p2, v_site, 'D2', 33.33), (v_p2, v_site, 'D3', 33.34);
-    r := r || jsonb_build_object('d_three_cards_100_MUSTok', 'ok');
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('d_three_cards_100_MUSTok', SQLSTATE || ' ' || SQLERRM);
+      (v_p2, v_site, 'D1', 50), (v_p2, v_site, 'D2', 33.33), (v_p2, v_site, 'D3', 100);
+    SELECT sum(weight_pts) INTO x FROM phase_tasks WHERE site_id = v_site AND issue_report_id IS NULL;
+    r := r || jsonb_build_object('d_general_insert_weights_forced_sum_MUST0', x);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('d_general_insert_weights_forced_sum_MUST0', SQLSTATE || ' ' || SQLERRM);
   END;
   BEGIN
-    INSERT INTO phase_tasks (phase_id, site_id, name, weight_pts) VALUES (v_p2, v_site, 'D4', 0.01);
-    r := r || jsonb_build_object('d_fourth_card_MUST22023_over100', 'no error');
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('d_fourth_card_MUST22023_over100', SQLSTATE || ' ' || SQLERRM);
+    UPDATE phase_tasks SET weight_pts = 50 WHERE id = v_b;
+    SELECT weight_pts INTO x FROM phase_tasks WHERE id = v_b;
+    r := r || jsonb_build_object('d_general_update_weight_50_ignored_MUST0', x);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('d_general_update_weight_50_ignored_MUST0', SQLSTATE || ' ' || SQLERRM);
+  END;
+  SELECT weight_pts INTO x FROM phase_tasks WHERE id = v_issue_card;
+  r := r || jsonb_build_object('d_issue_card_weight_MUST0', x);
+
+  -- (v) BOQ card points from value shares (site GT-TEST-08V, PM)
+  BEGIN
+    INSERT INTO phase_tasks (phase_id, site_id, name, weight_pts, progress_mode, planned_qty, boq_item_id, sort_order)
+      VALUES (v_vp, v_vsite, 'CA', 1, 'quantity', 10, v_vba, 1) RETURNING id INTO v_ca;
+    SELECT weight_pts INTO x FROM phase_tasks WHERE id = v_ca;
+    r := r || jsonb_build_object('v_first_boq_card_MUST100', x);
+    INSERT INTO phase_tasks (phase_id, site_id, name, weight_pts, progress_mode, planned_qty, boq_item_id, sort_order)
+      VALUES (v_vp, v_vsite, 'CB', 90, 'quantity', 10, v_vbb, 2) RETURNING id INTO v_cb;
+    INSERT INTO phase_tasks (phase_id, site_id, name, progress_mode, planned_qty, boq_item_id, sort_order)
+      VALUES (v_vp, v_vsite, 'CC', 'quantity', 10, v_vbc, 3) RETURNING id INTO v_cc;
+    INSERT INTO phase_tasks (phase_id, site_id, name, weight_pts, sort_order) VALUES (v_vp, v_vsite, 'CG general', 50, 4) RETURNING id INTO v_cg;
+    SELECT string_agg(name || ':' || trim_scale(weight_pts), ' ' ORDER BY sort_order) INTO v FROM phase_tasks WHERE phase_id = v_vp;
+    r := r || jsonb_build_object('v_three_cards_by_value_MUSTCA:70_CB:15_CC:15_CG_general:0', v);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_three_cards_by_value_MUSTCA:70_CB:15_CC:15_CG_general:0', SQLSTATE || ' ' || SQLERRM);
+  END;
+  -- an unpriced (manual) line takes the mean value of the priced cards: 7000/1500/1500 + 3333.33
+  BEGIN
+    INSERT INTO phase_tasks (phase_id, site_id, name, progress_mode, planned_qty, boq_item_id, sort_order)
+      VALUES (v_vp, v_vsite, 'CM', 'quantity', 10, v_vbm, 5) RETURNING id INTO v_cm;
+    SELECT string_agg(name || ':' || trim_scale(weight_pts), ' ' ORDER BY sort_order) INTO v FROM phase_tasks WHERE phase_id = v_vp AND progress_mode = 'quantity';
+    r := r || jsonb_build_object('v_unpriced_takes_mean_MUSTCA:52.5_CB:11.25_CC:11.25_CM:25', v);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_unpriced_takes_mean_MUSTCA:52.5_CB:11.25_CC:11.25_CM:25', SQLSTATE || ' ' || SQLERRM);
   END;
   BEGIN
-    INSERT INTO phase_tasks (phase_id, subtask_id, site_id, name, weight_pts) VALUES
-      (v_p1, v_s1, v_site, 'E1', 60), (v_p1, v_s1, v_site, 'E2', 41);
-    r := r || jsonb_build_object('d_two_in_one_statement_101_MUST22023_over100', 'no error');
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('d_two_in_one_statement_101_MUST22023_over100', SQLSTATE || ' ' || SQLERRM);
+    UPDATE phase_tasks SET weight_pts = 99, name = 'CA' WHERE id = v_ca;
+    SELECT weight_pts INTO x FROM phase_tasks WHERE id = v_ca;
+    r := r || jsonb_build_object('v_pm_sends_points_ignored_MUST52.5', x);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_pm_sends_points_ignored_MUST52.5', SQLSTATE || ' ' || SQLERRM);
   END;
-  SELECT count(*) INTO n FROM phase_tasks WHERE subtask_id = v_s1;
-  r := r || jsonb_build_object('d_two_in_one_statement_rows_MUST0', n);
+  -- a card planned_qty change re-splits: CB 5 x 150 = 750; mean of 7000/750/1500 = 3083.33
+  BEGIN
+    UPDATE phase_tasks SET planned_qty = 5 WHERE id = v_cb;
+    SELECT string_agg(name || ':' || trim_scale(weight_pts), ' ' ORDER BY sort_order) INTO v FROM phase_tasks WHERE phase_id = v_vp AND progress_mode = 'quantity';
+    r := r || jsonb_build_object('v_card_qty_change_MUSTCA:56.76_CB:6.08_CC:12.16_CM:25', v);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_card_qty_change_MUSTCA:56.76_CB:6.08_CC:12.16_CM:25', SQLSTATE || ' ' || SQLERRM);
+  END;
+  -- a BOQ line planned_qty change runs the recompute (value is card qty x unit price: unchanged)
+  BEGIN
+    UPDATE boq_items SET planned_qty = 30 WHERE id = v_vbc;
+    SELECT sum(weight_pts) INTO x FROM phase_tasks WHERE phase_id = v_vp;
+    r := r || jsonb_build_object('v_boq_qty_change_sum_MUST100', x);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_boq_qty_change_sum_MUST100', SQLSTATE || ' ' || SQLERRM);
+  END;
+  -- moving a BOQ card to another node re-splits both nodes
+  BEGIN
+    UPDATE phase_tasks SET phase_id = v_vp2 WHERE id = v_cc;
+    SELECT string_agg(name || ':' || trim_scale(weight_pts), ' ' ORDER BY sort_order) INTO v FROM phase_tasks WHERE site_id = v_vsite AND progress_mode = 'quantity';
+    r := r || jsonb_build_object('v_move_card_MUSTCA:60.22_CB:6.45_CC:100_CM:33.33', v);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_move_card_MUSTCA:60.22_CB:6.45_CC:100_CM:33.33', SQLSTATE || ' ' || SQLERRM);
+  END;
+  -- flipping a BOQ card to a general card drops its points and re-splits the rest
+  BEGIN
+    UPDATE phase_tasks SET progress_mode = 'status' WHERE id = v_cm;
+    SELECT string_agg(name || ':' || trim_scale(weight_pts), ' ' ORDER BY sort_order) INTO v FROM phase_tasks WHERE phase_id = v_vp;
+    r := r || jsonb_build_object('v_flip_to_general_MUSTCA:90.32_CB:9.68_CG_general:0_CM:0', v);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_flip_to_general_MUSTCA:90.32_CB:9.68_CG_general:0_CM:0', SQLSTATE || ' ' || SQLERRM);
+  END;
+  -- deleting a BOQ card re-splits its node
+  BEGIN
+    INSERT INTO phase_tasks (phase_id, site_id, name, progress_mode, planned_qty, boq_item_id, sort_order)
+      VALUES (v_vp, v_vsite, 'CX', 'quantity', 1, v_vbc, 6) RETURNING id INTO v_cx;
+    DELETE FROM phase_tasks WHERE id = v_cx;
+    SELECT string_agg(name || ':' || trim_scale(weight_pts), ' ' ORDER BY sort_order) INTO v FROM phase_tasks WHERE phase_id = v_vp AND progress_mode = 'quantity';
+    r := r || jsonb_build_object('v_delete_card_MUSTCA:90.32_CB:9.68', v);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_delete_card_MUSTCA:90.32_CB:9.68', SQLSTATE || ' ' || SQLERRM);
+  END;
+  -- a BOQ card cannot be split, and cannot be a split child or a parent
+  BEGIN
+    PERFORM split_task(v_ca, '[{"name":"x"},{"name":"y"}]');
+    r := r || jsonb_build_object('v_split_boq_card_MUST22023_generalonly', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_split_boq_card_MUST22023_generalonly', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    UPDATE phase_tasks SET parent_task_id = v_cg WHERE id = v_cb;
+    r := r || jsonb_build_object('v_boq_card_as_child_MUST22023_generalonly', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_boq_card_as_child_MUST22023_generalonly', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    UPDATE phase_tasks SET parent_task_id = v_ca WHERE id = v_cg;
+    r := r || jsonb_build_object('v_child_of_boq_card_MUST22023_generalonly', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_child_of_boq_card_MUST22023_generalonly', SQLSTATE || ' ' || SQLERRM);
+  END;
+  -- a BOQ line with cards cannot be deleted (PM)
+  BEGIN
+    DELETE FROM boq_items WHERE id = v_vba;
+    r := r || jsonb_build_object('v_delete_boq_line_with_cards_MUST22023_msg', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_delete_boq_line_with_cards_MUST22023_msg', SQLSTATE || ' ' || SQLERRM);
+  END;
+  -- shares per site, percentages only: 7000 / 1500 / 4500 (30 x 150) / manual = mean 4333.33
+  BEGIN
+    SELECT string_agg(b.code || ':' || trim_scale(s.share_pct), ' ' ORDER BY b.sort_order), sum(s.share_pct)
+      INTO v, x FROM boq_value_shares(v_vsite) s JOIN boq_items b ON b.id = s.boq_item_id;
+    r := r || jsonb_build_object('v_pm_value_shares_MUSTVA:40.39_VB:8.65_VC:25.96_VM:25', v, 'v_pm_value_shares_sum_MUST100', x);
+    SELECT bool_and(ARRAY(SELECT jsonb_object_keys(to_jsonb(s)) ORDER BY 1) = ARRAY['boq_item_id', 'share_pct']) INTO b
+      FROM boq_value_shares(v_vsite) s;
+    r := r || jsonb_build_object('v_pm_value_shares_keys_only_MUSTtrue', b);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_pm_value_shares_MUSTVA:40.39_VB:8.65_VC:25.96_VM:25', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    PERFORM boq_value_shares(v_fsite);
+    r := r || jsonb_build_object('v_pm_value_shares_foreign_site_MUSTP0002', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_pm_value_shares_foreign_site_MUSTP0002', SQLSTATE);
+  END;
 
   -- (b) save_site_plan validation
   BEGIN
@@ -860,26 +1169,21 @@ BEGIN
      AND NOT bool_or(i.ref_id IN (v_pi, v_issue_card))
     INTO b FROM site_plan_items i JOIN site_plans p ON p.id = i.plan_id WHERE p.site_id = v_site AND p.version = 2;
   r := r || jsonb_build_object('b_items_match_phases_and_cards_MUSTtrue', b);
-  SELECT weight = 20 AND parent_ref_id = v_p1 AND start_date IS NULL INTO b
+  SELECT weight = 0 AND parent_ref_id = v_p1 AND start_date IS NULL INTO b
     FROM site_plan_items i JOIN site_plans p ON p.id = i.plan_id WHERE p.site_id = v_site AND p.version = 1 AND i.ref_id = v_a;
   r := r || jsonb_build_object('b_task_item_fields_MUSTtrue', b);
   SELECT weight = 60 AND start_date = '2026-11-01' AND end_date = '2026-11-30' INTO b
     FROM site_plan_items i JOIN site_plans p ON p.id = i.plan_id WHERE p.site_id = v_site AND p.version = 1 AND i.ref_id = v_p1;
   r := r || jsonb_build_object('b_phase_item_fields_MUSTtrue', b);
 
-  -- (e) split (now the site has a PLAN); only a not_started card can be split
+  -- (e) split a general card (now the site has a PLAN), at any status; children inherit it
   UPDATE phase_tasks SET status = 'in_progress' WHERE id = v_a;
   BEGIN
-    PERFORM split_task(v_a, '[{"name":"A-1","weight_pts":10},{"name":"A-2","weight_pts":10}]');
-    r := r || jsonb_build_object('e_split_started_card_MUST22023_notstarted', 'no error');
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('e_split_started_card_MUST22023_notstarted', SQLSTATE || ' ' || SQLERRM);
-  END;
-  UPDATE phase_tasks SET status = 'not_started' WHERE id = v_a;
-  BEGIN
-    PERFORM split_task(v_a, '[{"name":"A-1","weight_pts":10},{"name":"A-2","weight_pts":10}]');
-    SELECT count(*) INTO n FROM phase_tasks WHERE parent_task_id = v_a AND status = 'not_started' AND phase_id = v_p1 AND site_id = v_site;
+    PERFORM split_task(v_a, '[{"name":"A-1","weight_pts":10},{"name":"A-2"}]');
+    SELECT count(*) INTO n FROM phase_tasks
+     WHERE parent_task_id = v_a AND status = 'in_progress' AND weight_pts = 0 AND phase_id = v_p1 AND site_id = v_site;
     SELECT status INTO v FROM phase_tasks WHERE id = v_a;
-    r := r || jsonb_build_object('e_split_children_MUST2', n, 'e_parent_status_after_split_MUSTnot_started', v);
+    r := r || jsonb_build_object('e_split_children_MUST2', n, 'e_parent_status_after_split_MUSTin_progress', v);
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('e_split_children_MUST2', SQLSTATE || ' ' || SQLERRM);
   END;
   SELECT id INTO v_c1 FROM phase_tasks WHERE parent_task_id = v_a ORDER BY sort_order LIMIT 1;
@@ -896,35 +1200,48 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('e_parent_direct_status_MUST22023_parent', SQLSTATE || ' ' || SQLERRM);
   END;
   BEGIN
-    PERFORM split_task(v_c1, '[{"name":"x","weight_pts":5},{"name":"y","weight_pts":5}]');
+    PERFORM split_task(v_c1, '[{"name":"x"},{"name":"y"}]');
     r := r || jsonb_build_object('e_split_child_MUST22023', 'no error');
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('e_split_child_MUST22023', SQLSTATE || ' ' || SQLERRM);
   END;
   BEGIN
-    PERFORM split_task(v_b, '[{"name":"x","weight_pts":10},{"name":"y","weight_pts":9}]');
-    r := r || jsonb_build_object('e_split_sum19_MUST22023', 'no error');
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('e_split_sum19_MUST22023', SQLSTATE || ' ' || SQLERRM);
+    PERFORM split_task(v_b, '[{"name":"x"},{"name":"  "}]');
+    r := r || jsonb_build_object('e_split_blank_name_MUST22023', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('e_split_blank_name_MUST22023', SQLSTATE || ' ' || SQLERRM);
   END;
   BEGIN
-    PERFORM split_task(v_b, '[{"name":"x","weight_pts":20}]');
+    PERFORM split_task(v_b, '[{"name":"x"}]');
     r := r || jsonb_build_object('e_split_one_child_MUST22023', 'no error');
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('e_split_one_child_MUST22023', SQLSTATE || ' ' || SQLERRM);
   END;
   BEGIN
-    PERFORM split_task(v_a, '[{"name":"x","weight_pts":10},{"name":"y","weight_pts":10}]');
+    PERFORM split_task(v_a, '[{"name":"x"},{"name":"y"}]');
     r := r || jsonb_build_object('e_split_parent_again_MUST22023', 'no error');
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('e_split_parent_again_MUST22023', SQLSTATE || ' ' || SQLERRM);
   END;
+  -- a split child never has points
   BEGIN
-    INSERT INTO phase_tasks (phase_id, site_id, name, weight_pts, parent_task_id) VALUES (v_p1, v_site, 'A-3', 0.01, v_a);
-    r := r || jsonb_build_object('e_child_over_parent_MUST22023_childsum', 'no error');
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('e_child_over_parent_MUST22023_childsum', SQLSTATE || ' ' || SQLERRM);
+    INSERT INTO phase_tasks (phase_id, site_id, name, weight_pts, parent_task_id) VALUES (v_p1, v_site, 'A-3', 5, v_a) RETURNING id INTO v_tmp;
+    SELECT weight_pts INTO x FROM phase_tasks WHERE id = v_tmp;
+    DELETE FROM phase_tasks WHERE id = v_tmp;
+    r := r || jsonb_build_object('e_child_weight_forced_MUST0', x);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('e_child_weight_forced_MUST0', SQLSTATE || ' ' || SQLERRM);
   END;
   BEGIN
     INSERT INTO phase_tasks (phase_id, site_id, name, weight_pts, parent_task_id) VALUES (v_p1, v_site, 'A-1-1', 0, v_c1);
     r := r || jsonb_build_object('e_grandchild_MUST22023_onelevel', 'no error');
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('e_grandchild_MUST22023_onelevel', SQLSTATE || ' ' || SQLERRM);
   END;
+  -- a done general card splits too: its children start done, so it stays done
+  UPDATE phase_tasks SET status = 'done' WHERE id = v_b;
+  BEGIN
+    PERFORM split_task(v_b, '[{"name":"B-1"},{"name":"B-2"},{"name":"B-3"}]');
+    SELECT count(*) INTO n FROM phase_tasks WHERE parent_task_id = v_b AND status = 'done' AND weight_pts = 0;
+    SELECT status INTO v FROM phase_tasks WHERE id = v_b;
+    r := r || jsonb_build_object('e_split_done_children_MUST3', n, 'e_split_done_parent_MUSTdone', v);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('e_split_done_children_MUST3', SQLSTATE || ' ' || SQLERRM);
+  END;
+  r := r || jsonb_build_object('e_flag_restored_after_split_MUSTtrue', COALESCE(current_setting('app.derived_status', true), '') = '');
 
   -- (f) quantity card + BOQ
   INSERT INTO boq_items (site_id, code, description, unit, planned_qty) VALUES (v_site, '1', 'กระจก', 'ตร.ม.', 120) RETURNING id INTO v_boq;
@@ -997,10 +1314,19 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('f_cancel_plus_note_MUST22023', SQLSTATE || ' ' || SQLERRM);
   END;
 
+  SELECT weight_pts INTO x FROM phase_tasks WHERE id = v_q;
+  r := r || jsonb_build_object('f_only_boq_card_in_node_MUST100', x);
+
   -- fix round 1: progress_mode / done_qty / planned_qty guards (PM)
+  INSERT INTO boq_items (site_id, code, description, unit, planned_qty) VALUES (v_site, 'M9', 'manual line', 'ชุด', 50) RETURNING id INTO v_boq2;
   INSERT INTO phase_tasks (phase_id, site_id, name, weight_pts, sort_order) VALUES (v_p1, v_site, 'F', 1, 40) RETURNING id INTO v_f;
   BEGIN
     UPDATE phase_tasks SET progress_mode = 'quantity', planned_qty = 10 WHERE id = v_f;
+    r := r || jsonb_build_object('k_mode_change_without_boq_line_MUST23514', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('k_mode_change_without_boq_line_MUST23514', SQLSTATE);
+  END;
+  BEGIN
+    UPDATE phase_tasks SET progress_mode = 'quantity', planned_qty = 10, boq_item_id = v_boq2 WHERE id = v_f;
     SELECT progress_mode || ' ' || status INTO v FROM phase_tasks WHERE id = v_f;
     r := r || jsonb_build_object('r1_pm_mode_change_fresh_card_MUSTquantity_not_started', v);
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('r1_pm_mode_change_fresh_card_MUSTquantity_not_started', SQLSTATE || ' ' || SQLERRM);
@@ -1015,8 +1341,11 @@ BEGIN
     r := r || jsonb_build_object('r1_planned_below_done_MUST22023_belowdone', 'no error');
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('r1_planned_below_done_MUST22023_belowdone', SQLSTATE || ' ' || SQLERRM);
   END;
-  INSERT INTO phase_tasks (phase_id, site_id, name, weight_pts, progress_mode, planned_qty, sort_order)
-    VALUES (v_p1, v_site, 'Q3', 1, 'quantity', 10, 50) RETURNING id INTO v_q3;
+  INSERT INTO phase_tasks (phase_id, site_id, name, weight_pts, progress_mode, planned_qty, sort_order, boq_item_id)
+    VALUES (v_p1, v_site, 'Q3', 1, 'quantity', 10, 50, v_boq2) RETURNING id INTO v_q3;
+  -- three BOQ cards on unpriced lines in P1: equal shares, the first card takes the remainder
+  SELECT string_agg(name || ':' || trim_scale(weight_pts), ' ' ORDER BY sort_order, created_at) INTO v FROM phase_tasks WHERE phase_id = v_p1 AND progress_mode = 'quantity';
+  r := r || jsonb_build_object('k_unpriced_equal_shares_MUSTQ:33.34_F:33.33_Q3:33.33', v);
   PERFORM record_progress(v_q3, 10, NULL, NULL);
   SELECT status INTO v FROM phase_tasks WHERE id = v_q3;
   r := r || jsonb_build_object('r1_q3_full_MUSTdone', v);
@@ -1033,7 +1362,7 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('r1_planned_back_to_done_MUSTdone', SQLSTATE || ' ' || SQLERRM);
   END;
   BEGIN
-    UPDATE phase_tasks SET progress_mode = 'quantity', planned_qty = 5 WHERE id = v_a;
+    UPDATE phase_tasks SET progress_mode = 'quantity', planned_qty = 5, boq_item_id = v_boq2 WHERE id = v_a;
     r := r || jsonb_build_object('r1_pm_mode_change_parent_MUST22023_parentmode', 'no error');
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('r1_pm_mode_change_parent_MUST22023_parentmode', SQLSTATE || ' ' || SQLERRM);
   END;
@@ -1183,10 +1512,23 @@ BEGIN
     r := r || jsonb_build_object('r1_worker_planned_qty_MUST22023', 'no error');
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('r1_worker_planned_qty_MUST22023', SQLSTATE || ' ' || SQLERRM);
   END;
+  -- points are never taken from a client: ignored on a general card and on a BOQ card alike
   BEGIN
     UPDATE phase_tasks SET weight_pts = 6 WHERE id = v_wcard;
-    r := r || jsonb_build_object('a2_worker_weight_MUST22023_staff', 'no error');
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('a2_worker_weight_MUST22023_staff', SQLSTATE || ' ' || SQLERRM);
+    SELECT weight_pts INTO x FROM phase_tasks WHERE id = v_wcard;
+    r := r || jsonb_build_object('a2_worker_weight_general_ignored_MUST0', x);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('a2_worker_weight_general_ignored_MUST0', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    UPDATE phase_tasks SET weight_pts = 1 WHERE id = v_q;
+    SELECT weight_pts INTO x FROM phase_tasks WHERE id = v_q;
+    r := r || jsonb_build_object('a2_worker_weight_boq_ignored_MUST33.34', x);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('a2_worker_weight_boq_ignored_MUST33.34', SQLSTATE || ' ' || SQLERRM);
+  END;
+  BEGIN
+    PERFORM boq_value_shares(v_vsite);
+    r := r || jsonb_build_object('v_worker_value_shares_MUST42501', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('v_worker_value_shares_MUST42501', SQLSTATE);
   END;
   BEGIN
     UPDATE phase_tasks SET boq_item_id = NULL WHERE id = v_q;
@@ -1207,6 +1549,22 @@ BEGIN
     r := r || jsonb_build_object('f_uncancel_as_table_owner_MUST22023', 'no error');
   EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('f_uncancel_as_table_owner_MUST22023', SQLSTATE || ' ' || SQLERRM);
   END;
+  -- ruling 2: a quotation price change re-splits only the nodes of cards on a linked BOQ line.
+  -- CC (node VP2, line VC) is given a stale value first; a price change on line b (CA/CB, node VP)
+  -- must leave it stale, a change on line c must fix it.
+  PERFORM set_config('app.derived_status', '1', true);
+  UPDATE phase_tasks SET weight_pts = 7 WHERE id = v_cc;
+  PERFORM set_config('app.derived_status', '', true);
+  UPDATE quotation_items SET line_total = 3500 WHERE id = v_vqb;   -- CB: 5 x 350 = 1750 vs CA 7000
+  SELECT string_agg(name || ':' || trim_scale(weight_pts), ' ' ORDER BY sort_order) INTO v FROM phase_tasks WHERE site_id = v_vsite AND progress_mode = 'quantity';
+  r := r || jsonb_build_object('q_price_change_linked_node_only_MUSTCA:80_CB:20_CC:7', v);
+  UPDATE quotation_items SET quantity = 20, line_total = 3000 WHERE id = v_vqc;
+  SELECT weight_pts INTO x FROM phase_tasks WHERE id = v_cc;
+  r := r || jsonb_build_object('q_price_change_other_line_fixes_node_MUST100', x);
+  UPDATE quotation_items SET description = 'renamed' WHERE id = v_vqa;
+  SELECT weight_pts INTO x FROM phase_tasks WHERE id = v_ca;
+  r := r || jsonb_build_object('q_non_price_update_keeps_MUST80', x);
+
   INSERT INTO quotations (tenant_id, client_id, site_id, date, status, quotation_number)
     VALUES (v_tenant, v_client, v_site, current_date, 'sent', 'GT-Q-08') RETURNING id INTO v_quot;
   INSERT INTO quotation_items (tenant_id, quotation_id, description, unit, quantity, sort_order, item_type) VALUES
@@ -1281,8 +1639,9 @@ BEGIN
   INSERT INTO site_phases (tenant_id, site_id, name, sort_order, start_date, end_date, billing_weight_pct) VALUES
     (v_tenant, v_dsite, 'D', 1, '2026-11-01', '2026-11-30', 100) RETURNING id INTO v_dphase;
   PERFORM snapshot_site_plan(v_dsite, 'test', true, 'system');
-  INSERT INTO phase_tasks (tenant_id, phase_id, site_id, name, weight_pts, progress_mode, planned_qty)
-    VALUES (v_tenant, v_dphase, v_dsite, 'DQ', 100, 'quantity', 10) RETURNING id INTO v_dcard;
+  INSERT INTO boq_items (tenant_id, site_id, code, description, planned_qty) VALUES (v_tenant, v_dsite, 'D', 'delete line', 10) RETURNING id INTO v_dboq;
+  INSERT INTO phase_tasks (tenant_id, phase_id, site_id, name, weight_pts, progress_mode, planned_qty, boq_item_id)
+    VALUES (v_tenant, v_dphase, v_dsite, 'DQ', 100, 'quantity', 10, v_dboq) RETURNING id INTO v_dcard;
   INSERT INTO progress_reports (tenant_id, site_id, task_id, qty) VALUES (v_tenant, v_dsite, v_dcard, 3);
   BEGIN
     DELETE FROM phase_tasks WHERE id = v_dcard;
@@ -1291,15 +1650,15 @@ BEGIN
   END;
   BEGIN
     DELETE FROM sites WHERE id = v_dsite;
-    SELECT count(*) INTO n FROM phase_tasks WHERE id = v_dcard;
-    r := r || jsonb_build_object('i3_site_delete_cascades_card_MUST0', n);
-  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('i3_site_delete_cascades_card_MUST0', SQLSTATE || ' ' || SQLERRM);
+    SELECT count(*) + (SELECT count(*) FROM boq_items WHERE id = v_dboq) INTO n FROM phase_tasks WHERE id = v_dcard;
+    r := r || jsonb_build_object('i3_site_delete_cascades_card_and_boq_MUST0', n);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('i3_site_delete_cascades_card_and_boq_MUST0', SQLSTATE || ' ' || SQLERRM);
   END;
 
   -- I4: no new trigger/RPC takes FOR UPDATE on a row a child FK key-share locks
   SELECT NOT bool_or(p.prosrc ~* 'for\s+update') AND bool_and(p.prosrc ~* 'for no key update') INTO b FROM pg_proc p
    WHERE p.pronamespace = 'public'::regnamespace
-     AND p.proname IN ('check_node_weights','check_boq_qty','progress_report_refs','record_progress','split_task');
+     AND p.proname IN ('check_node_weights','check_boq_qty','progress_report_refs','record_progress','split_task','recompute_node_weights');
   r := r || jsonb_build_object('i4_no_key_update_locks_MUSTtrue', b);
 
   SELECT has_table_privilege('authenticated', 'public.site_plans', 'TRUNCATE')
@@ -1311,16 +1670,25 @@ BEGIN
    WHERE p.pronamespace = 'public'::regnamespace AND p.proname IN ('site_has_plan','snapshot_site_plan','save_site_plan','require_site_plan',
      'check_boq_item_refs','check_task_refs','check_node_weights','check_boq_qty','progress_report_refs','progress_report_cancel_only',
      'sync_task_qty','record_progress','cancel_progress','guard_derived_status','set_parent_status_from_children','sync_parent_status',
-     'split_task','boq_insert_for_quotation','boq_from_quotation','keep_progress_history');
+     'split_task','boq_insert_for_quotation','boq_from_quotation','keep_progress_history',
+     'node_of','point_shares','recompute_node_weights','force_card_weight','recompute_card_weights','recompute_line_weights',
+     'boq_value_shares','block_boq_delete_with_cards');
   r := r || jsonb_build_object('priv_anon_execute_any_MUSTfalse', b);
   SELECT has_function_privilege('authenticated', 'public.snapshot_site_plan(uuid,text,boolean,text)', 'EXECUTE')
       OR has_function_privilege('authenticated', 'public.boq_insert_for_quotation(uuid)', 'EXECUTE')
-      OR has_function_privilege('authenticated', 'public.site_has_plan(uuid)', 'EXECUTE') INTO b;
+      OR has_function_privilege('authenticated', 'public.site_has_plan(uuid)', 'EXECUTE')
+      OR has_function_privilege('authenticated', 'public.recompute_node_weights(uuid)', 'EXECUTE')
+      OR has_function_privilege('authenticated', 'public.point_shares(uuid[],numeric[])', 'EXECUTE')
+      OR has_function_privilege('authenticated', 'public.node_of(phase_tasks)', 'EXECUTE') INTO b;
   r := r || jsonb_build_object('priv_authenticated_internal_MUSTfalse', b);
   SELECT has_function_privilege('authenticated', 'public.save_site_plan(uuid,text)', 'EXECUTE')
      AND has_function_privilege('authenticated', 'public.record_progress(uuid,numeric,date,text)', 'EXECUTE')
      AND has_function_privilege('authenticated', 'public.cancel_progress(uuid)', 'EXECUTE')
-     AND has_function_privilege('authenticated', 'public.split_task(uuid,jsonb)', 'EXECUTE') INTO b;
+     AND has_function_privilege('authenticated', 'public.split_task(uuid,jsonb)', 'EXECUTE')
+     AND has_function_privilege('authenticated', 'public.boq_value_shares(uuid)', 'EXECUTE') INTO b;
+  SELECT bool_and(prosecdef AND proconfig @> ARRAY['search_path=public']) INTO b2 FROM pg_proc
+   WHERE pronamespace = 'public'::regnamespace AND proname IN ('recompute_node_weights','recompute_card_weights','recompute_line_weights','boq_value_shares');
+  r := r || jsonb_build_object('priv_new_definers_search_path_MUSTtrue', b2);
   r := r || jsonb_build_object('priv_authenticated_rpcs_MUSTtrue', b);
 
   -- check: this RAISE is load-bearing. It aborts the DO block so none of the

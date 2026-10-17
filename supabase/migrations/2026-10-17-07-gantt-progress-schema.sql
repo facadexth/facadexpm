@@ -3,6 +3,11 @@
 -- weight and quantity columns on phase_tasks; is_vo/vo_ref on site_phases; helper
 -- can_manage_plan() (OWNER/PM). progress_reports.qty is > 0 (spec said <> 0):
 -- a wrong entry is cancelled, never offset by a negative row.
+-- Two card kinds (owner decision 2026-10-18), told apart by progress_mode:
+--   'quantity' = BOQ card: needs a BOQ line and a planned_qty, counts toward progress;
+--   'status'   = general card: 0 points, never counts (migration 08 forces the 0).
+-- A BOQ line with cards cannot be deleted (trigger message + FK), so a BOQ card never
+-- loses its line and the CHECK below always holds.
 -- Rolled-back check: supabase/tests/2026-10-17-07-gantt-progress-schema.test.sql
 BEGIN;
 
@@ -26,16 +31,20 @@ CREATE TABLE public.boq_items (
   UNIQUE (site_id, quotation_item_id)
 );
 CREATE INDEX boq_items_site_idx ON boq_items(site_id);
+-- quotation price changes look up the BOQ lines of one quotation item (migration 08)
+CREATE INDEX boq_items_quotation_item_idx ON boq_items(quotation_item_id) WHERE quotation_item_id IS NOT NULL;
 
 ALTER TABLE phase_tasks
   ADD COLUMN weight_pts numeric(6,2) NOT NULL DEFAULT 0 CHECK (weight_pts >= 0),
   ADD COLUMN progress_mode text NOT NULL DEFAULT 'status' CHECK (progress_mode IN ('status','quantity')),
   ADD COLUMN parent_task_id uuid NULL REFERENCES phase_tasks(id) ON DELETE CASCADE,
-  ADD COLUMN boq_item_id uuid NULL REFERENCES boq_items(id) ON DELETE SET NULL,
+  ADD COLUMN boq_item_id uuid NULL REFERENCES boq_items(id) ON DELETE RESTRICT,
   ADD COLUMN planned_qty numeric NULL CHECK (planned_qty IS NULL OR planned_qty > 0),
   ADD COLUMN done_qty numeric NOT NULL DEFAULT 0,
-  ADD CONSTRAINT phase_tasks_quantity_needs_plan CHECK (progress_mode = 'status' OR planned_qty IS NOT NULL);
+  ADD CONSTRAINT phase_tasks_boq_card_needs_line
+    CHECK (progress_mode = 'status' OR (boq_item_id IS NOT NULL AND planned_qty IS NOT NULL));
 CREATE INDEX phase_tasks_parent_idx ON phase_tasks(parent_task_id) WHERE parent_task_id IS NOT NULL;
+CREATE INDEX phase_tasks_boq_item_idx ON phase_tasks(boq_item_id) WHERE boq_item_id IS NOT NULL;
 
 ALTER TABLE site_phases
   ADD COLUMN is_vo boolean NOT NULL DEFAULT false,
@@ -121,4 +130,20 @@ CREATE POLICY site_staff_reads ON site_plan_items FOR SELECT
 REVOKE INSERT, UPDATE, DELETE ON site_plans, site_plan_items FROM authenticated, anon;
 REVOKE DELETE ON progress_reports FROM authenticated, anon;
 REVOKE TRUNCATE ON phase_vo_values FROM authenticated, anon;
+
+-- a BOQ line with cards cannot be deleted: say why before the FK does (deleting the whole
+-- site still cascades, the site row is already gone by then)
+CREATE OR REPLACE FUNCTION public.block_boq_delete_with_cards() RETURNS trigger
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM phase_tasks WHERE boq_item_id = OLD.id AND tenant_id = OLD.tenant_id)
+     AND EXISTS (SELECT 1 FROM sites WHERE id = OLD.site_id) THEN
+    RAISE EXCEPTION 'รายการ BOQ นี้มีการ์ดผูกอยู่ ย้ายหรือลบการ์ดก่อน' USING ERRCODE = '22023';
+  END IF;
+  RETURN OLD;
+END $$;
+REVOKE ALL ON FUNCTION public.block_boq_delete_with_cards() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_block_boq_delete_with_cards BEFORE DELETE ON boq_items
+  FOR EACH ROW EXECUTE FUNCTION block_boq_delete_with_cards();
 COMMIT;

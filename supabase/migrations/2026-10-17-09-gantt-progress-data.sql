@@ -6,8 +6,9 @@
 --   card:  quantity -> least(done_qty / planned_qty, 1); parent -> Σ(child pts × child) / parent pts
 --          (mean of the children when the parent has 0 pts); status -> done 1, else 0.
 --   node (phase or subtask): child subtasks -> Σ(billing_weight_pct × child) / Σ billing_weight_pct
---          (plain mean when Σ is 0); else top-level non-issue cards -> Σ(pts × card) / 100;
---          else node status done 1, else 0.
+--          (plain mean when Σ is 0); else top-level non-issue BOQ cards (progress_mode quantity)
+--          -> Σ(pts × card) / 100 (general cards in the same node are ignored); else top-level
+--          non-issue general cards -> 1 when all are done, else 0; else node status done 1, else 0.
 --   site:  % ตามสัญญา = Σ(w × phase) / Σ w over phases neither VO nor issue, w = billing_weight_pct.
 --            * Σ w = 0 (every contract weight is 0)  -> plain mean of those phases;
 --            * no contract phase at all (e.g. only an issue phase) -> 0.
@@ -17,9 +18,10 @@
 -- Money stays with money roles: vo_value lives in phase_vo_values (OWNER/ADMIN, migration 07) and
 -- % รวม VO in site_progress_daily_money (OWNER/ADMIN); PM reads site_progress_daily (% ตามสัญญา) only.
 -- site_progress_pct is INVOKER, so for a role that cannot read the site or VO values it cannot leak them.
--- The data steps at the end set card weights only: no status, quantity or mode changes.
--- Also: demo_seed_core gains a final step (equal weights + auto PLAN v1), and boq_items
--- planned_qty can no longer drop below what its cards already hold.
+-- The data steps at the end change no card: every existing card stays a general card with
+-- 0 points (owner decision 2026-10-18; some phase % drop to 0 until all their cards are done).
+-- Also: demo_seed_core gains a final step (auto PLAN v1), and boq_items planned_qty can no
+-- longer drop below what its cards already hold.
 -- Rolled-back check: supabase/tests/2026-10-17-09-gantt-progress-data.test.sql
 BEGIN;
 
@@ -49,6 +51,7 @@ CREATE OR REPLACE FUNCTION public.node_progress(p_node_id uuid) RETURNS numeric
   LANGUAGE plpgsql STABLE SET search_path = public
 AS $$
 DECLARE v_tenant uuid; v_status text; v_is_phase boolean := true; v_n int; v_w numeric; v_wp numeric; v_avg numeric;
+        v_gen_n int; v_gen_done boolean;
 BEGIN
   SELECT tenant_id, status INTO v_tenant, v_status FROM site_phases WHERE id = p_node_id;
   IF NOT FOUND THEN
@@ -65,14 +68,22 @@ BEGIN
   IF v_n > 0 THEN
     RETURN CASE WHEN v_w > 0 THEN v_wp / v_w ELSE v_avg END;
   END IF;
-  -- top-level cards that are not issue cards (unallocated points count as 0)
-  SELECT count(*), sum(c.w * c.p) INTO v_n, v_wp
-    FROM (SELECT weight_pts AS w, task_progress(id) AS p FROM phase_tasks
+  -- top-level cards that are not issue cards: BOQ cards count by points (they sum to 100);
+  -- with no BOQ card, the general cards count as one: all done 1, else 0
+  SELECT count(*) FILTER (WHERE c.mode = 'quantity'), sum(c.w * c.p) FILTER (WHERE c.mode = 'quantity'),
+         count(*) FILTER (WHERE c.mode = 'status'), bool_and(c.done) FILTER (WHERE c.mode = 'status')
+    INTO v_n, v_wp, v_gen_n, v_gen_done
+    FROM (SELECT progress_mode AS mode, weight_pts AS w, COALESCE(status = 'done', false) AS done,
+                 CASE WHEN progress_mode = 'quantity' THEN task_progress(id) END AS p
+            FROM phase_tasks
            WHERE tenant_id = v_tenant AND parent_task_id IS NULL AND issue_report_id IS NULL
              AND CASE WHEN v_is_phase THEN phase_id = p_node_id AND subtask_id IS NULL
                       ELSE subtask_id = p_node_id END) c;
   IF v_n > 0 THEN
     RETURN v_wp / 100;
+  END IF;
+  IF v_gen_n > 0 THEN
+    RETURN CASE WHEN v_gen_done THEN 1 ELSE 0 END;
   END IF;
   RETURN CASE WHEN v_status = 'done' THEN 1 ELSE 0 END;
 END $$;
@@ -178,45 +189,6 @@ END $$;
 REVOKE ALL ON FUNCTION public.check_boq_planned_qty() FROM PUBLIC, anon, authenticated;
 CREATE TRIGGER trg_check_boq_planned_qty BEFORE UPDATE OF planned_qty ON boq_items
   FOR EACH ROW WHEN (NEW.planned_qty IS DISTINCT FROM OLD.planned_qty) EXECUTE FUNCTION check_boq_planned_qty();
-
--- ===== equal card points per node (data migration and demo seed) =====
--- Top-level, non-issue cards outside issue phases get round(100/n, 2); the first card by
--- (sort_order, created_at) takes the remainder so the node sums to exactly 100. From n = 155
--- rounding up would push the remainder below 0 (154 × 0.65 > 100), so then the share is
--- rounded down instead (the remainder is then always > 0). One UPDATE,
--- so check_node_weights (AFTER, per row, end of statement) sees whole nodes. Only nodes whose
--- cards all still have 0 points are touched, so a re-run never overwrites weights set by a PM.
--- Issue cards keep their default 0. p_tenant_id NULL = every tenant. A system write, so it runs
--- under the derived flag (guard_derived_status lets only site staff change weight_pts).
-CREATE OR REPLACE FUNCTION public.set_equal_card_weights(p_tenant_id uuid) RETURNS int
-  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
-AS $$
-DECLARE n int; v_prev text := current_setting('app.derived_status', true);
-BEGIN
-  PERFORM set_config('app.derived_status', '1', true);
-  WITH c0 AS (
-    SELECT t.id,
-           count(*) OVER w AS n,
-           row_number() OVER (w ORDER BY t.sort_order, t.created_at, t.id) AS rn,
-           sum(t.weight_pts) OVER w AS node_sum
-      FROM phase_tasks t JOIN site_phases ph ON ph.id = t.phase_id AND ph.tenant_id = t.tenant_id
-     WHERE (p_tenant_id IS NULL OR t.tenant_id = p_tenant_id)
-       AND t.parent_task_id IS NULL AND t.issue_report_id IS NULL AND NOT ph.is_issue_phase
-    WINDOW w AS (PARTITION BY t.tenant_id, COALESCE(t.subtask_id, t.phase_id))
-  ), c AS (
-    SELECT c0.*, CASE WHEN (c0.n - 1) * round(100.0 / c0.n, 2) > 100 THEN trunc(100.0 / c0.n, 2)
-                      ELSE round(100.0 / c0.n, 2) END AS share
-      FROM c0
-  )
-  UPDATE phase_tasks t
-     SET weight_pts = CASE WHEN c.rn = 1 THEN 100 - (c.n - 1) * c.share ELSE c.share END
-    FROM c
-   WHERE t.id = c.id AND c.node_sum = 0;
-  GET DIAGNOSTICS n = ROW_COUNT;
-  PERFORM set_config('app.derived_status', COALESCE(v_prev, ''), true);
-  RETURN n;
-END $$;
-REVOKE ALL ON FUNCTION public.set_equal_card_weights(uuid) FROM PUBLIC, anon, authenticated;
 
 -- ===== demo seed: live definition (2026-10-15-01) + derived flag around the site loop + one final step =====
 -- The seed inserts phases/cards already in_progress/done before any PLAN exists, so the site
@@ -361,9 +333,8 @@ BEGIN
   END LOOP;
   PERFORM set_config('app.derived_status', COALESCE(v_prev_derived, ''), true);
 
-  -- Gantt weighted progress (2026-10-17-09): equal card points per node, then an auto PLAN v1
-  -- per seeded site, so a demo reset is never stuck behind the PLAN gate
-  PERFORM set_equal_card_weights(p_tenant);
+  -- Gantt weighted progress (2026-10-17-09): an auto PLAN v1 per seeded site, so a demo reset
+  -- is never stuck behind the PLAN gate (seeded cards are general cards, 0 points)
   PERFORM snapshot_site_plan(s.id, 'สร้างอัตโนมัติตอนสร้างข้อมูลตัวอย่าง', true, 'system')
      FROM sites s
     WHERE s.tenant_id = p_tenant
@@ -381,11 +352,9 @@ BEGIN
 END $function$;
 REVOKE ALL ON FUNCTION public.demo_seed_core(uuid) FROM PUBLIC, anon, authenticated;
 
--- ===== data migration (runs as the table owner; weights only, no status changes) =====
--- 1. equal points per node
-SELECT set_equal_card_weights(NULL);
-
--- 2. BOQ backfill from accepted quotations, 3. PLAN v1 for every site with a non-issue phase
+-- ===== data migration (runs as the table owner; no card is changed) =====
+-- Existing cards stay general cards with 0 points (no equal-points step any more).
+-- 1. BOQ backfill from accepted quotations, 2. PLAN v1 for every site with a non-issue phase
 DO $$
 DECLARE q record;
 BEGIN
@@ -400,6 +369,6 @@ BEGIN
   END LOOP;
 END $$;
 
--- 4. first snapshot
+-- 3. first snapshot
 SELECT snapshot_site_progress();
 COMMIT;

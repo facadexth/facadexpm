@@ -4,7 +4,7 @@
 -- byte-identical to its file between BEGIN; and COMMIT;. Keep them in sync.
 -- The DO block ends in RAISE EXCEPTION 'RESULT ...', so nothing persists.
 -- Expected: *_MUST0 is 0, *_MUSTfalse is false, *_MUSTtrue is true,
--- *_MUST42501 is '42501', w_* writes 'ok'.
+-- *_MUST42501 is '42501', *_MUST22023_msg is 22023 with the Thai message, w_* writes 'ok'.
 BEGIN;
 
 -- ===== inlined 2026-10-17-07-gantt-progress-schema.sql body =====
@@ -29,16 +29,20 @@ CREATE TABLE public.boq_items (
   UNIQUE (site_id, quotation_item_id)
 );
 CREATE INDEX boq_items_site_idx ON boq_items(site_id);
+-- quotation price changes look up the BOQ lines of one quotation item (migration 08)
+CREATE INDEX boq_items_quotation_item_idx ON boq_items(quotation_item_id) WHERE quotation_item_id IS NOT NULL;
 
 ALTER TABLE phase_tasks
   ADD COLUMN weight_pts numeric(6,2) NOT NULL DEFAULT 0 CHECK (weight_pts >= 0),
   ADD COLUMN progress_mode text NOT NULL DEFAULT 'status' CHECK (progress_mode IN ('status','quantity')),
   ADD COLUMN parent_task_id uuid NULL REFERENCES phase_tasks(id) ON DELETE CASCADE,
-  ADD COLUMN boq_item_id uuid NULL REFERENCES boq_items(id) ON DELETE SET NULL,
+  ADD COLUMN boq_item_id uuid NULL REFERENCES boq_items(id) ON DELETE RESTRICT,
   ADD COLUMN planned_qty numeric NULL CHECK (planned_qty IS NULL OR planned_qty > 0),
   ADD COLUMN done_qty numeric NOT NULL DEFAULT 0,
-  ADD CONSTRAINT phase_tasks_quantity_needs_plan CHECK (progress_mode = 'status' OR planned_qty IS NOT NULL);
+  ADD CONSTRAINT phase_tasks_boq_card_needs_line
+    CHECK (progress_mode = 'status' OR (boq_item_id IS NOT NULL AND planned_qty IS NOT NULL));
 CREATE INDEX phase_tasks_parent_idx ON phase_tasks(parent_task_id) WHERE parent_task_id IS NOT NULL;
+CREATE INDEX phase_tasks_boq_item_idx ON phase_tasks(boq_item_id) WHERE boq_item_id IS NOT NULL;
 
 ALTER TABLE site_phases
   ADD COLUMN is_vo boolean NOT NULL DEFAULT false,
@@ -124,6 +128,22 @@ CREATE POLICY site_staff_reads ON site_plan_items FOR SELECT
 REVOKE INSERT, UPDATE, DELETE ON site_plans, site_plan_items FROM authenticated, anon;
 REVOKE DELETE ON progress_reports FROM authenticated, anon;
 REVOKE TRUNCATE ON phase_vo_values FROM authenticated, anon;
+
+-- a BOQ line with cards cannot be deleted: say why before the FK does (deleting the whole
+-- site still cascades, the site row is already gone by then)
+CREATE OR REPLACE FUNCTION public.block_boq_delete_with_cards() RETURNS trigger
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM phase_tasks WHERE boq_item_id = OLD.id AND tenant_id = OLD.tenant_id)
+     AND EXISTS (SELECT 1 FROM sites WHERE id = OLD.site_id) THEN
+    RAISE EXCEPTION 'รายการ BOQ นี้มีการ์ดผูกอยู่ ย้ายหรือลบการ์ดก่อน' USING ERRCODE = '22023';
+  END IF;
+  RETURN OLD;
+END $$;
+REVOKE ALL ON FUNCTION public.block_boq_delete_with_cards() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_block_boq_delete_with_cards BEFORE DELETE ON boq_items
+  FOR EACH ROW EXECUTE FUNCTION block_boq_delete_with_cards();
 -- ===== end of 07 body =====
 
 DO $$
@@ -132,6 +152,7 @@ DECLARE
   v_pm text := 'gantt-test-pm@example.invalid'; v_admin text := 'gantt-test-admin@example.invalid';
   v_wk text := 'gantt-test-worker@example.invalid'; v_owner text; cols jsonb;
   v_site uuid; v_task uuid; v_task_site uuid; v_plan uuid; v_boq uuid; v_rep uuid; v_phase uuid;
+  v_dsite uuid; v_dphase uuid; v_dboq uuid; v_dboq2 uuid;
 BEGIN
   -- ===== as the table owner: fixtures in the demo tenant =====
   SELECT id INTO v_tenant FROM tenants WHERE company_name ILIKE '%สร้างดี%' LIMIT 1;
@@ -191,6 +212,37 @@ BEGIN
     UPDATE phase_tasks SET progress_mode = 'quantity' WHERE id = v_task;
     r := r || jsonb_build_object('quantity_without_plan_23514_MUSTtrue', false);
   EXCEPTION WHEN SQLSTATE '23514' THEN r := r || jsonb_build_object('quantity_without_plan_23514_MUSTtrue', true);
+  END;
+  -- a BOQ card needs a BOQ line as well as a planned_qty
+  BEGIN
+    UPDATE phase_tasks SET progress_mode = 'quantity', planned_qty = 5 WHERE id = v_task;
+    r := r || jsonb_build_object('quantity_without_boq_line_23514_MUSTtrue', false);
+  EXCEPTION WHEN SQLSTATE '23514' THEN r := r || jsonb_build_object('quantity_without_boq_line_23514_MUSTtrue', true);
+  END;
+  SELECT confdeltype = 'r' INTO b FROM pg_constraint
+   WHERE conrelid = 'public.phase_tasks'::regclass AND contype = 'f' AND conkey = ARRAY[(
+     SELECT attnum FROM pg_attribute WHERE attrelid = 'public.phase_tasks'::regclass AND attname = 'boq_item_id')];
+  r := r || jsonb_build_object('boq_item_fk_on_delete_restrict_MUSTtrue', b);
+  -- a BOQ line with cards cannot be deleted; deleting the whole site still cascades
+  INSERT INTO sites (tenant_id, site_number, name) VALUES (v_tenant, 'GT-TEST-07D', 'gantt boq delete site') RETURNING id INTO v_dsite;
+  INSERT INTO site_phases (tenant_id, site_id, name, sort_order) VALUES (v_tenant, v_dsite, 'D', 1) RETURNING id INTO v_dphase;
+  INSERT INTO boq_items (tenant_id, site_id, code, description, planned_qty) VALUES (v_tenant, v_dsite, 'D1', 'delete test', 10) RETURNING id INTO v_dboq;
+  INSERT INTO boq_items (tenant_id, site_id, code, description, planned_qty) VALUES (v_tenant, v_dsite, 'D2', 'no cards', 10) RETURNING id INTO v_dboq2;
+  INSERT INTO phase_tasks (tenant_id, site_id, phase_id, name, progress_mode, planned_qty, boq_item_id)
+    VALUES (v_tenant, v_dsite, v_dphase, 'BOQ card', 'quantity', 4, v_dboq);
+  BEGIN
+    DELETE FROM boq_items WHERE id = v_dboq;
+    r := r || jsonb_build_object('boq_delete_with_cards_MUST22023_msg', 'no error');
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('boq_delete_with_cards_MUST22023_msg', SQLSTATE || ' ' || SQLERRM);
+  END;
+  DELETE FROM boq_items WHERE id = v_dboq2;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  r := r || jsonb_build_object('boq_delete_without_cards_rows_MUST1', n);
+  BEGIN
+    DELETE FROM sites WHERE id = v_dsite;
+    SELECT count(*) INTO n FROM boq_items WHERE id = v_dboq;
+    r := r || jsonb_build_object('site_delete_cascades_boq_with_cards_MUST0', n);
+  EXCEPTION WHEN OTHERS THEN r := r || jsonb_build_object('site_delete_cascades_boq_with_cards_MUST0', SQLSTATE || ' ' || SQLERRM);
   END;
 
   -- no new policy reads its own table (42P17 recursion)
