@@ -22,7 +22,7 @@ import { Modal, ConfirmDialog } from '../../components/Modal.jsx'
 import { useSitePhases, usePhaseTasks, useWorkers, useSubtasks, useSites, useBoqItems, useSiteHasPlan, attachPmWorkerNames } from '../../hooks/useSupabase.js'
 import { STATUS_COLOR } from './ganttTimeline.js'
 import { groupSubtasksByParent, isLeaf } from './subtaskCalc.js'
-import { nodeProgress, unallocatedPoints, fmtNum } from './progressCalc.js'
+import { nodeProgress, fmtNum } from './progressCalc.js'
 import teamLeaderBadge from '../../assets/team-leader-badge.png'
 import { uploadSitePhotos, bangkokTodayIso } from '../../lib/photoUpload.js'
 import { useTenant } from '../../hooks/useTenant.js'
@@ -43,26 +43,30 @@ const COLUMNS = [
 
 const PHOTO_DRAG_MIME = 'application/x-line-site-photo-id'
 
-const emptyDraft = (phaseId, status, sortOrder, weightPts = '') => ({
+const emptyDraft = (phaseId, status, sortOrder) => ({
   phase_id: phaseId, name: '', zone: '', status, due_date: '', sort_order: sortOrder, assigneeIds: [], leadWorkerId: null,
-  weight_pts: weightPts, progress_mode: 'status', boq_item_id: '', planned_qty: '',
+  progress_mode: 'status', boq_item_id: '', planned_qty: '',
 })
 
-// The weight/quantity fields a card form saves (and audits when they change).
-const WEIGHT_FIELDS = ['weight_pts', 'progress_mode', 'planned_qty', 'boq_item_id']
-const normWeightField = (k, v) => (v == null || v === '' ? null : k === 'weight_pts' || k === 'planned_qty' ? Number(v) : v)
+// The card-kind/quantity fields a card form saves (and audits when they change).
+// weight_pts is never sent: general cards are 0 and BOQ card points are
+// recomputed by the database from the BOQ value shares.
+const WEIGHT_FIELDS = ['progress_mode', 'planned_qty', 'boq_item_id']
+const normWeightField = (k, v) => (v == null || v === '' ? null : k === 'planned_qty' ? Number(v) : v)
 
 /**
  * The phase_tasks row a card form saves. Returns { payload, weightFields } or
  * { error } (a message for the user). orig = the card before editing (null
- * for a new card). weightFields is null when the weight/quantity columns are
- * not there yet (progressReady false) or the card is an issue card.
+ * for a new card). weightFields (card kind + BOQ line + qty, never points) is
+ * null when the columns are not there yet (progressReady false) or the card is
+ * an issue card. A BOQ card ('quantity') needs a BOQ line and a qty > 0; a
+ * general card ('status') sends neither.
  * Status: a new quantity card starts not_started (then follows its recorded
  * quantity); so does any new card on a site with no PLAN yet (noPlan, the DB
  * gate) unless it sits in an issue phase; an existing card sends status only
  * when it really changed, only on a status leaf, and never in the same update
- * as a change of วิธีนับ (the DB rejects that).
- * issuePhase: a new card in an issue phase gets 0 points (issue work is not progress).
+ * as a change of card kind (the DB rejects that).
+ * issuePhase: the card sits in an issue phase (its new cards keep the picked column).
  */
 export function buildTaskSave({ draft, orig, progressReady, childrenByParent = {}, boqRemaining = () => null, noPlan = false, issuePhase = false }) {
   const payload = {
@@ -71,19 +75,18 @@ export function buildTaskSave({ draft, orig, progressReady, childrenByParent = {
   }
   let weightFields = null
   if (progressReady && !(orig && orig.issue_report_id != null)) {
-    const pts = !orig && issuePhase ? 0 : draft.weight_pts === '' ? 0 : Number(draft.weight_pts)
-    if (!Number.isFinite(pts) || pts < 0) return { error: 'แต้มต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป' }
     const isQty = draft.progress_mode === 'quantity'
     let planned = null
     if (isQty) {
+      if (!draft.boq_item_id) return { error: 'กรุณาเลือกรายการ BOQ' }
       planned = Number(draft.planned_qty)
       if (!(planned > 0)) return { error: 'กรุณาใส่จำนวนในการ์ดนี้ (มากกว่า 0)' }
-      const left = draft.boq_item_id ? boqRemaining(draft.boq_item_id, orig?.id) : null
+      const left = boqRemaining(draft.boq_item_id, orig?.id)
       if (left != null && planned > left) return { error: `จำนวนในการ์ดนี้เกินที่เหลือใน BOQ (${fmtNum(left)})` }
     }
     weightFields = {
-      weight_pts: pts, progress_mode: draft.progress_mode,
-      boq_item_id: isQty ? (draft.boq_item_id || null) : null, planned_qty: planned,
+      progress_mode: draft.progress_mode,
+      boq_item_id: isQty ? draft.boq_item_id : null, planned_qty: planned,
     }
     Object.assign(payload, weightFields)
   }
@@ -498,7 +501,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
       due_date: task.due_date || '', sort_order: task.sort_order,
       assigneeIds: workerRows.map((r) => r.worker_id),
       leadWorkerId: workerRows.find((r) => r.is_lead)?.worker_id || null,
-      weight_pts: task.weight_pts ?? '', progress_mode: task.progress_mode || 'status',
+      progress_mode: task.progress_mode || 'status',
       boq_item_id: task.boq_item_id || '', planned_qty: task.planned_qty ?? '',
     })
   }
@@ -506,9 +509,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     const tasks = microtasksByNodeId[nodeId] || []
     const sortOrder = tasks.length ? Math.max(...tasks.map((t) => t.sort_order || 0)) + 1 : 1
     setEditingId(`__new__:${nodeId}:${status}`)
-    // a new card takes the node's unallocated points by default (only shown
-    // and sent once the schema probe says the columns exist)
-    setDraft(emptyDraft(nodeId, status, sortOrder, unallocatedPoints(tasks)))
+    setDraft(emptyDraft(nodeId, status, sortOrder))
   }
   const cancelEdit = () => { setEditingId(null); setDraft(null) }
 
@@ -594,7 +595,7 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
       if (error) throw error
       if (before) {
         await auditLog('phase_tasks', id, 'delete', Object.fromEntries(
-          ['name', 'status', 'phase_id', 'subtask_id', 'parent_task_id', ...WEIGHT_FIELDS, 'done_qty']
+          ['name', 'status', 'phase_id', 'subtask_id', 'parent_task_id', 'weight_pts', ...WEIGHT_FIELDS, 'done_qty']
             .filter((k) => k in before).map((k) => [k, before[k] ?? null])), null)
       }
       await afterWrite()
@@ -638,21 +639,20 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
     return <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text3)' }}>ไซท์นี้ยังไม่มีขั้นตอนงาน — เพิ่มขั้นตอนก่อนในแท็บ Gantt</div>
   }
 
-  // % ของโหนด (ถ่วงแต้ม, progressCalc.js) + แต้มที่ยังไม่แจก -- คิดจากการ์ด
+  // % ของโหนด (ถ่วงแต้ม, progressCalc.js) -- คิดจากการ์ด
   // ทั้งโหนดเสมอ ไม่ใช่เฉพาะชั้น (zone) ที่กรองอยู่. ขั้นตอนแจ้งปัญหาไม่นับ
   // ความคืบหน้า -> ไม่แสดง (null)
   const nodeById = { ...byNodeId }
   phases.forEach((p) => { nodeById[p.id] = p })
   const progressOf = (nodeId) => (nodeById[nodeId]?.is_issue_phase ? null : {
     pct: Math.round(nodeProgress(nodeId, { tasksByNode: microtasksByNodeId, subtasksByParent, nodeById }) * 100),
-    unallocated: unallocatedPoints(microtasksByNodeId[nodeId] || []),
   })
 
   const recordingTask = recordingTaskId ? taskById[recordingTaskId] : null
   const splittingTask = splittingTaskId ? taskById[splittingTaskId] : null
 
   const formProps = {
-    progressReady, boqItems, boqRemaining, canManageQty: canManagePlan(role), isIssueNode,
+    progressReady, boqItems, boqRemaining, canManageQty: canManagePlan(role),
     onSplit: (task) => { cancelEdit(); setSplittingTaskId(task.id) },
   }
   const boardProps = {
@@ -947,7 +947,13 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
 }
 
 const STATUS_LABEL = Object.fromEntries(COLUMNS.map((c) => [c.status, c.label]))
-const hasWeight = (t) => t.weight_pts !== undefined && t.weight_pts !== null
+// The card's kind once the schema has it (undefined before migration 07):
+// 'boq' (progress_mode 'quantity', counts by points), 'general' (counts 0 %),
+// null for an issue card or a pre-migration row (no tag, solid border).
+const cardKind = (t) => {
+  if (t.progress_mode == null || t.issue_report_id != null) return null
+  return t.progress_mode === 'quantity' ? 'boq' : 'general'
+}
 
 /** A card whose status is set by hand (drag / edit form): a status card with
  *  no split children. Quantity cards follow their recorded quantity and parent
@@ -956,15 +962,16 @@ export function isStatusLeafTask(task, childrenByParent) {
   return task.progress_mode !== 'quantity' && !(childrenByParent[task.id] || []).length
 }
 
-/** One Kanban card: points pill, quantity meter + "+ บันทึกยอด" (OWNER/PM),
- *  a parent card's children, assignees and the photo badge. */
+/** One Kanban card: kind tag ("BOQ · N แต้ม" / dashed "งานทั่วไป · ไม่นับ %"),
+ *  quantity meter + "+ บันทึกยอด" (OWNER/PM), a parent card's children,
+ *  assignees and the photo badge. */
 export function TaskCard({
   task, canEdit, role, childTasks = [], parentName, unit, photoCount = 0,
   leadWorker = null, otherAssignees = [], onEdit, onViewPhotos, onAssignPhoto, onRecord,
 }) {
   const isQuantity = task.progress_mode === 'quantity'
   const isStatusLeaf = isStatusLeafTask(task, { [task.id]: childTasks })
-  const showPoints = hasWeight(task) && task.issue_report_id == null
+  const kind = cardKind(task)
   const planned = Number(task.planned_qty) || 0
   const done = Number(task.done_qty) || 0
   const qtyPct = planned > 0 ? Math.round(Math.min(done / planned, 1) * 1000) / 10 : 0
@@ -982,15 +989,20 @@ export function TaskCard({
       } : undefined}
       onClick={canEdit ? () => onEdit?.(task) : undefined}
       style={{
-        background: 'var(--bg2)', border: '1px solid var(--border)', borderLeft: `3px solid ${STATUS_COLOR[task.status] || STATUS_COLOR.not_started}`,
+        background: 'var(--bg2)', border: '1px solid var(--border)', borderStyle: kind === 'general' ? 'dashed' : 'solid', borderLeft: `3px solid ${STATUS_COLOR[task.status] || STATUS_COLOR.not_started}`,
         borderRadius: 9, padding: '11px 13px', marginBottom: 10, boxShadow: 'var(--shadow)', cursor: canEdit ? 'pointer' : 'default',
       }}>
       {parentName && <div style={{ fontSize: 10.5, color: 'var(--text3)', marginBottom: 3 }}>↳ งานย่อยของ {parentName}</div>}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6, marginBottom: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600 }}>{task.name}</div>
-        {showPoints && (
-          <span style={{ flex: 'none', fontSize: 10, fontWeight: 700, color: 'var(--text2)', background: 'var(--bg3)', borderRadius: 20, padding: '2px 8px' }}>
-            {fmtNum(task.weight_pts)} แต้ม
+        {kind === 'boq' && (
+          <span data-kind="boq" style={{ flex: 'none', fontSize: 10, fontWeight: 700, color: '#1E1E1E', background: 'var(--accent)', borderRadius: 20, padding: '2px 8px', whiteSpace: 'nowrap' }}>
+            {`BOQ · ${fmtNum(task.weight_pts)} แต้ม`}
+          </span>
+        )}
+        {kind === 'general' && (
+          <span data-kind="general" style={{ flex: 'none', fontSize: 10, fontWeight: 700, color: 'var(--text2)', border: '1px dashed var(--border)', borderRadius: 20, padding: '1px 8px', whiteSpace: 'nowrap' }}>
+            งานทั่วไป · ไม่นับ %
           </span>
         )}
       </div>
@@ -1014,7 +1026,7 @@ export function TaskCard({
           {childTasks.map((c) => (
             <div key={c.id} style={{ fontSize: 11, display: 'flex', gap: 6, alignItems: 'center' }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', flex: 'none', background: STATUS_COLOR[c.status] || STATUS_COLOR.not_started }} />
-              <span style={{ flex: 1, minWidth: 0 }}>{c.name} · {fmtNum(c.weight_pts)} แต้ม · {STATUS_LABEL[c.status] || c.status}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>{c.name} · {STATUS_LABEL[c.status] || c.status}</span>
             </div>
           ))}
         </div>
@@ -1063,9 +1075,6 @@ function PhaseBoard({
         <span style={{ background: 'var(--bg3)', borderRadius: 20, padding: '2px 10px', fontWeight: 700, color: 'var(--text2)' }}>
           ความคืบหน้า {progress.pct}%
         </span>
-        {progress.unallocated > 0 && (
-          <span style={{ color: 'var(--text3)' }}>ยังไม่แจก {progress.unallocated} แต้ม</span>
-        )}
       </div>
     )}
     <div data-phone="kanban" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
@@ -1138,20 +1147,23 @@ function PhaseBoard({
 
 function TaskEditPanel({
   draft, setDraft, workers, onToggleAssignee, onSetLead, onCancel, onSave, onDelete, saving, isNew,
-  task, isParent = false, progressReady, boqItems = [], boqRemaining, onSplit, canManageQty = false, isIssueNode,
+  task, isParent = false, progressReady, boqItems = [], boqRemaining, onSplit, canManageQty = false,
 }) {
   const isQuantity = draft.progress_mode === 'quantity'
   const isIssueCard = task?.issue_report_id != null
   const showWeightFields = progressReady && !isIssueCard
-  // cards in an issue phase carry no points (a new one is saved with 0)
-  const showPoints = !isIssueNode?.(task ? (task.subtask_id || task.phase_id) : draft.phase_id)
-  // the DB rejects a mode change on a parent card or a card with recorded quantity
-  const modeLocked = isParent || Number(task?.done_qty) > 0
+  // the DB rejects a kind change on a parent or split child (only general cards
+  // split) and on a card with recorded quantity
+  const modeLocked = isParent || !!task?.parent_task_id || Number(task?.done_qty) > 0
+  const modeLockedWhy = isParent || task?.parent_task_id
+    ? 'งานที่แตกแล้วเป็นงานทั่วไปเท่านั้น'
+    : 'การ์ดนี้มีรายการบันทึกยอดแล้ว เปลี่ยนชนิดงานไม่ได้'
   // once quantity is recorded only OWNER/PM may change the card's quantity (DB guard)
   const qtyLocked = !canManageQty && Number(task?.done_qty) > 0
-  // only a card that has not started can be split (DB rule: a started card would drop to 0 %)
+  // only a saved general card can be split, at any status (its children have 0 points)
   const canSplit = progressReady && !isNew && !!task && !isParent && !task.parent_task_id && !isIssueCard
-    && (task.progress_mode || 'status') === 'status' && !isQuantity && task.status === 'not_started'
+    && (task.progress_mode || 'status') === 'status' && !isQuantity
+  const setKind = (mode) => setDraft((d) => ({ ...d, progress_mode: mode }))
   const boqLeft = isQuantity && draft.boq_item_id ? boqRemaining?.(draft.boq_item_id, task?.id) : null
   const boqUnit = boqItems.find((b) => b.id === draft.boq_item_id)?.unit
   return (
@@ -1177,29 +1189,36 @@ function TaskEditPanel({
       )}
       {showWeightFields && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-          <label style={{ fontSize: 11, color: 'var(--text3)' }}>
-            วิธีนับ
-            <select className="select" style={{ width: '100%', marginTop: 2 }} value={draft.progress_mode} disabled={modeLocked}
-              title={modeLocked ? (isParent ? 'งานหลักเปลี่ยนวิธีนับไม่ได้' : 'การ์ดนี้มีรายการบันทึกยอดแล้ว เปลี่ยนวิธีนับไม่ได้') : undefined}
-              onChange={(e) => setDraft((d) => ({ ...d, progress_mode: e.target.value }))}>
-              <option value="status">ตามสถานะ</option>
-              <option value="quantity">ตามจำนวน</option>
-            </select>
-          </label>
-          {showPoints && (
-          <label style={{ fontSize: 11, color: 'var(--text3)' }}>
-            แต้ม
-            <input type="number" min="0" step="0.01" className="input input-sm" style={{ width: '100%', marginTop: 2 }}
-              value={draft.weight_pts} onChange={(e) => setDraft((d) => ({ ...d, weight_pts: e.target.value }))} />
-          </label>
-          )}
+          <div role="radiogroup" aria-label="ชนิดงาน" title={modeLocked ? modeLockedWhy : undefined}
+            style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 6 }}>
+            {[
+              { mode: 'quantity', label: 'งาน BOQ (นับ %)', hint: 'งานตามสัญญา ขยับตามยอดติดตั้ง' },
+              { mode: 'status', label: 'งานทั่วไป (ไม่นับ %)', hint: 'งานอื่นที่จะจ่ายให้ช่าง' },
+            ].map((k) => {
+              const on = draft.progress_mode === k.mode
+              return (
+                <label key={k.mode} style={{
+                  display: 'grid', gap: 2, fontSize: 11, color: 'var(--text3)', padding: '6px 8px', borderRadius: 8,
+                  border: `1px ${k.mode === 'status' ? 'dashed' : 'solid'} ${on ? 'var(--accent)' : 'var(--border)'}`,
+                  background: on ? 'var(--bg3)' : 'transparent', cursor: modeLocked ? 'default' : 'pointer', opacity: modeLocked && !on ? 0.5 : 1,
+                }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>
+                    <input type="radio" name={`card-kind-${task?.id || 'new'}`} aria-label={k.label} checked={on}
+                      disabled={modeLocked} onChange={() => setKind(k.mode)} />
+                    {k.label}
+                  </span>
+                  {k.hint}
+                </label>
+              )
+            })}
+          </div>
           {isQuantity && (
             <>
               <label style={{ fontSize: 11, color: 'var(--text3)', gridColumn: '1 / -1' }}>
                 รายการ BOQ
                 <select className="select" style={{ width: '100%', marginTop: 2 }} value={draft.boq_item_id}
                   onChange={(e) => setDraft((d) => ({ ...d, boq_item_id: e.target.value }))}>
-                  <option value="">— ไม่ผูกรายการ BOQ —</option>
+                  <option value="">— เลือกรายการ BOQ —</option>
                   {boqItems.map((b) => (
                     <option key={b.id} value={b.id}>
                       {`${b.code} ${b.description} — เหลือ ${fmtNum(boqRemaining?.(b.id, task?.id))}${b.unit ? ` ${b.unit}` : ''}`}
@@ -1214,6 +1233,7 @@ function TaskEditPanel({
                   title={qtyLocked ? 'เฉพาะ OWNER/PM แก้จำนวนการ์ดที่มียอดแล้ว' : undefined}
                   onChange={(e) => setDraft((d) => ({ ...d, planned_qty: e.target.value }))} />
               </label>
+              <div style={{ gridColumn: '1 / -1', fontSize: 11, color: 'var(--text3)' }}>แต้มคิดให้อัตโนมัติจากมูลค่า ไม่ต้องกรอก</div>
             </>
           )}
         </div>

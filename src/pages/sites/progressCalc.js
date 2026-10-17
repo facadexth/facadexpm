@@ -8,8 +8,8 @@
 //
 // Rules (0-1):
 //   card:  quantity -> min(done_qty / planned_qty, 1);
-//          parent (has split children) -> Σ(child pts × child) / parent pts,
-//            plain mean of the children when the parent has 0 points;
+//          parent (has split children; only general cards are split, and
+//            general cards have 0 points) -> plain mean of the children;
 //          status -> done 1, otherwise 0 ("กำลังทำ" counts 0).
 //   node (a phase or a phase_subtasks row):
 //          child subtasks -> Σ(billing_weight_pct × child) / Σ billing_weight_pct
@@ -24,28 +24,13 @@
 //          billing_weight_pct (plain mean when every weight is 0, 0 when there
 //          is no such phase); % รวม VO only with contract value > 0, a VO phase
 //          and VO values available (a VO phase with no value counts as 0).
-//
-// Old data without weight_pts: cards whose weight_pts is undefined/null
-// (test data built before the column existed) share the points left in
-// their group equally -- an equal share of 100 within the node when every
-// card lacks it. That is the same rule the data migration applies
-// (round(100 / n, 2) per card), so old count-based % stay the same.
 // ============================================================
 
 const isIssueCard = (t) => t.issue_report_id != null
-const hasWeight = (t) => t.weight_pts !== undefined && t.weight_pts !== null
 
 export const round2 = (n) => Math.round(n * 100) / 100
 /** Points / quantities for display: 2 dp, no trailing zeros ("12.5", "120"). */
 export const fmtNum = (n) => String(round2(Number(n) || 0))
-
-/** Points per card; cards without weight_pts split what is left of `pool` equally. */
-function effectiveWeights(cards, pool) {
-  const definedSum = cards.reduce((s, c) => s + (hasWeight(c) ? Number(c.weight_pts) || 0 : 0), 0)
-  const missing = cards.filter((c) => !hasWeight(c)).length
-  const share = missing > 0 ? Math.max(pool - definedSum, 0) / missing : 0
-  return cards.map((c) => (hasWeight(c) ? Number(c.weight_pts) || 0 : share))
-}
 
 /** Σ(w × p) / Σ w over [w, p] pairs; plain mean when Σ w is 0; null for no pairs. */
 export function weightedMean(pairs) {
@@ -55,22 +40,16 @@ export function weightedMean(pairs) {
   return pairs.reduce((s, [, p]) => s + p, 0) / pairs.length
 }
 
-/** Card progress 0-1. childrenOf(taskId) returns the card's split children. */
+/** Card progress 0-1. childrenOf(taskId) returns the card's split children.
+ *  A split parent is a general card (0 points), so it is the plain mean of its
+ *  children -- the SQL task_progress takes the same branch for weight 0. */
 export function taskProgress(task, childrenOf) {
   if (task.progress_mode === 'quantity') {
     const planned = Number(task.planned_qty) || 0
     return planned > 0 ? Math.min((Number(task.done_qty) || 0) / planned, 1) : 0
   }
   const kids = childrenOf(task.id) || []
-  if (kids.length > 0) {
-    const parentPts = hasWeight(task) ? Number(task.weight_pts) || 0 : 0
-    const ps = kids.map((k) => taskProgress(k, childrenOf))
-    if (parentPts > 0) {
-      const ws = effectiveWeights(kids, parentPts)
-      return ws.reduce((s, w, i) => s + w * ps[i], 0) / parentPts
-    }
-    return ps.reduce((s, p) => s + p, 0) / ps.length
-  }
+  if (kids.length > 0) return kids.reduce((s, k) => s + taskProgress(k, childrenOf), 0) / kids.length
   return task.status === 'done' ? 1 : 0
 }
 
@@ -104,15 +83,6 @@ export function nodeProgress(nodeId, { tasksByNode, subtasksByParent, nodeById }
   if (fromCards !== null) return fromCards
   const node = nodeById[nodeId]
   return node && node.status === 'done' ? 1 : 0
-}
-
-/** Points of a node not given to any top-level non-issue card (0 when a card
- *  without weight_pts takes the equal share of what is left). */
-export function unallocatedPoints(tasksInNode) {
-  const top = tasksInNode.filter((t) => !t.parent_task_id && !isIssueCard(t))
-  if (top.some((t) => !hasWeight(t))) return 0
-  const used = top.reduce((s, t) => s + (Number(t.weight_pts) || 0), 0)
-  return Math.max(0, round2(100 - used))
 }
 
 /**

@@ -5,10 +5,9 @@
 // Worked example used to hand-verify this file (also covered by
 // phaseTasksCalc.test.js):
 //   phase "ผลิต" has 5 tasks: 3 done, 1 in_progress, 1 not_started
-//   computePhaseTaskStats -> { total: 5, done: 3, pct: 60, derivedStatus: 'in_progress' }
-//     (pct is the weighted node % from progressCalc.js: 5 cards without
-//     weight_pts share 100 equally, so 3 done = 60; with real points it is
-//     Σ(weight_pts × card progress) / 100)
+//   computePhaseTaskStats -> { total: 5, done: 3, pct: 0, derivedStatus: 'in_progress' }
+//     (pct is the node % from progressCalc.js: general cards count as one,
+//     all done 100 else 0; with BOQ cards it is Σ(weight_pts × card progress) / 100)
 //   phase "ติดตั้ง" has 0 tasks -> { total: 0, done: 0, pct: 0, derivedStatus: null }
 //     (caller falls back to phase.status, unaffected by this module)
 // ============================================================

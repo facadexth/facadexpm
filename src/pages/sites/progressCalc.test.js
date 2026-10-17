@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import fixtures from './progressCalc.fixtures.json'
-import { taskProgress, nodeProgress, unallocatedPoints, siteProgress } from './progressCalc.js'
+import * as progressCalc from './progressCalc.js'
+import { taskProgress, nodeProgress, siteProgress } from './progressCalc.js'
 
 describe('siteProgress matches the shared SQL fixtures', () => {
   fixtures.forEach((fx) => {
@@ -36,22 +37,9 @@ describe('VO values from the admin-only table', () => {
   })
 })
 
-describe('unallocatedPoints', () => {
-  it('is 100 minus the top-level points: 50 + 30 leaves 20', () => {
-    expect(unallocatedPoints([{ id: 'a', weight_pts: 50 }, { id: 'b', weight_pts: 30 }])).toBeCloseTo(20, 2)
-  })
-
-  it('ignores issue cards and split children', () => {
-    const tasks = [
-      { id: 'a', weight_pts: 50 },
-      { id: 'a1', parent_task_id: 'a', weight_pts: 50 },
-      { id: 'i', weight_pts: 40, issue_report_id: 'R1' },
-    ]
-    expect(unallocatedPoints(tasks)).toBeCloseTo(50, 2)
-  })
-
-  it('does not go below 0 and handles 33.33 + 33.33 + 33.34', () => {
-    expect(unallocatedPoints([{ weight_pts: 33.33 }, { weight_pts: 33.33 }, { weight_pts: 33.34 }])).toBe(0)
+describe('no unallocated points any more', () => {
+  it('progressCalc no longer exports unallocatedPoints (BOQ points always sum to 100)', () => {
+    expect('unallocatedPoints' in progressCalc).toBe(false)
   })
 })
 
@@ -71,9 +59,14 @@ describe('taskProgress', () => {
     expect(taskProgress({ id: 'q', progress_mode: 'quantity', planned_qty: 10, done_qty: 15 }, () => [])).toBe(1)
   })
 
-  it('uses the mean of the children when the parent has 0 points', () => {
+  it('a split (general) parent is the plain mean of its children', () => {
     const kids = [{ id: 'c1', weight_pts: 0, status: 'done' }, { id: 'c2', weight_pts: 0, status: 'not_started' }]
     expect(taskProgress({ id: 'p', weight_pts: 0 }, (id) => (id === 'p' ? kids : []))).toBeCloseTo(0.5, 5)
+  })
+
+  it('ignores points on split children and parent (general cards count 0 points)', () => {
+    const kids = [{ id: 'c1', weight_pts: 30, status: 'done' }, { id: 'c2', weight_pts: 10, status: 'not_started' }, { id: 'c3', status: 'done' }]
+    expect(taskProgress({ id: 'p', weight_pts: 40 }, (id) => (id === 'p' ? kids : []))).toBeCloseTo(2 / 3, 5)
   })
 })
 

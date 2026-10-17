@@ -29,15 +29,28 @@ import { resetProgressSchemaProbe } from '../../lib/progressSchema.js'
 
 afterEach(() => { cleanup(); rpc.mockReset(); auditLog.mockReset(); queryResult = { data: [], error: null }; calls.length = 0; mockRole = 'OWNER'; resetProgressSchemaProbe() })
 
-const statusCard = { id: 't1', name: 'ติดตั้งกระจก', status: 'not_started', progress_mode: 'status', weight_pts: 25, phase_task_workers: [] }
+const statusCard = { id: 't1', name: 'ติดตั้งกระจก', status: 'not_started', progress_mode: 'status', weight_pts: 0, phase_task_workers: [] }
 const qtyCard = { id: 't2', name: 'ติดตั้งบาน', status: 'in_progress', progress_mode: 'quantity', weight_pts: 40, planned_qty: 120, done_qty: 45, boq_item_id: 'b1', phase_task_workers: [] }
 
 const card = (over = {}) => render(<TaskCard task={statusCard} canEdit role="PM" onEdit={() => {}} onRecord={() => {}} {...over} />)
 
 describe('TaskCard', () => {
-  it('shows the points pill', () => {
-    card()
-    expect(screen.getByText('25 แต้ม')).toBeTruthy()
+  it('a general card is dashed with the tag "งานทั่วไป · ไม่นับ %" and no points', () => {
+    const { container } = card()
+    expect(screen.getByText('งานทั่วไป · ไม่นับ %')).toBeTruthy()
+    expect(screen.queryByText(/แต้ม/)).toBeNull()
+    expect(container.firstChild.style.borderTopStyle).toBe('dashed')
+  })
+  it('a BOQ card shows "BOQ · N แต้ม" with a solid border', () => {
+    const { container } = card({ task: qtyCard })
+    expect(screen.getByText('BOQ · 40 แต้ม')).toBeTruthy()
+    expect(screen.queryByText('งานทั่วไป · ไม่นับ %')).toBeNull()
+    expect(container.firstChild.style.borderTopStyle).toBe('solid')
+  })
+  it('an issue card shows no kind tag', () => {
+    card({ task: { ...statusCard, issue_report_id: 'R1' } })
+    expect(screen.queryByText('งานทั่วไป · ไม่นับ %')).toBeNull()
+    expect(screen.queryByText(/แต้ม/)).toBeNull()
   })
   it('a status leaf card is draggable when canEdit', () => {
     const { container } = card()
@@ -49,15 +62,14 @@ describe('TaskCard', () => {
     expect(screen.getByText('45/120 ชุด · 37.5%')).toBeTruthy()
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('37.5')
   })
-  it('a parent card is not draggable and lists its children with points and status', () => {
+  it('a parent card is not draggable and lists its children with their status, no points', () => {
     const kids = [
-      { id: 'c1', name: 'ชั้น 1', status: 'done', weight_pts: 15, parent_task_id: 't1' },
-      { id: 'c2', name: 'ชั้น 2', status: 'not_started', weight_pts: 10, parent_task_id: 't1' },
+      { id: 'c1', name: 'ชั้น 1', status: 'done', weight_pts: 0, parent_task_id: 't1' },
+      { id: 'c2', name: 'ชั้น 2', status: 'not_started', weight_pts: 0, parent_task_id: 't1' },
     ]
     const { container } = card({ childTasks: kids })
     expect(container.firstChild.getAttribute('draggable')).toBe('false')
-    expect(screen.getByText(/ชั้น 1/).textContent).toContain('15 แต้ม')
-    expect(screen.getByText(/ชั้น 1/).textContent).toContain('เสร็จแล้ว')
+    expect(screen.getByText(/ชั้น 1/).textContent).toBe('ชั้น 1 · เสร็จแล้ว')
     expect(screen.getByText(/ชั้น 2/).textContent).toContain('ยังไม่เริ่ม')
   })
   it('an ADMIN sees no "+ บันทึกยอด"', () => {
@@ -71,9 +83,11 @@ describe('TaskCard', () => {
     expect(onRecord).toHaveBeenCalledWith(qtyCard)
     expect(onEdit).not.toHaveBeenCalled()
   })
-  it('a card without weight_pts (migration not applied) shows no pill and stays draggable', () => {
+  it('a card without the new columns (migration not applied) shows no tag, a solid border and stays draggable', () => {
     const { container } = card({ task: { id: 'x', name: 'เก่า', status: 'done', phase_task_workers: [] } })
     expect(screen.queryByText(/แต้ม/)).toBeNull()
+    expect(screen.queryByText(/งานทั่วไป/)).toBeNull()
+    expect(container.firstChild.style.borderTopStyle).toBe('solid')
     expect(container.firstChild.getAttribute('draggable')).toBe('true')
   })
 })
@@ -88,19 +102,33 @@ describe('isStatusLeafTask (drop guard)', () => {
 
 describe('buildTaskSave (card form)', () => {
   const draft = (over = {}) => ({ name: ' งาน ', zone: '', status: 'not_started', due_date: '', sort_order: 1,
-    weight_pts: '20', progress_mode: 'status', boq_item_id: '', planned_qty: '', ...over })
-  it('writes weight_pts, progress_mode, boq_item_id and planned_qty', () => {
+    progress_mode: 'status', boq_item_id: '', planned_qty: '', ...over })
+  it('a BOQ card writes progress_mode, boq_item_id and planned_qty but never weight_pts', () => {
     const { payload } = buildTaskSave({ draft: draft({ progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: '30', status: 'done' }), orig: null, progressReady: true, boqRemaining: () => 50 })
-    expect(payload).toMatchObject({ name: 'งาน', weight_pts: 20, progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: 30, status: 'not_started' })
+    expect(payload).toMatchObject({ name: 'งาน', progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: 30, status: 'not_started' })
+    expect('weight_pts' in payload).toBe(false)
   })
-  it('sends a change of วิธีนับ without a status change', () => {
-    const orig = { id: 't1', status: 'done', progress_mode: 'status', weight_pts: 20 }
-    const { payload } = buildTaskSave({ draft: draft({ status: 'in_progress', progress_mode: 'quantity', planned_qty: '10' }), orig, progressReady: true })
+  it('a general card sends no BOQ line, no qty and no weight_pts', () => {
+    const { payload, weightFields } = buildTaskSave({ draft: draft({ boq_item_id: 'b1', planned_qty: '5' }), orig: null, progressReady: true })
+    expect(weightFields).toEqual({ progress_mode: 'status', boq_item_id: null, planned_qty: null })
+    expect('weight_pts' in payload).toBe(false)
+  })
+  it('a BOQ card needs a BOQ line', () => {
+    expect(buildTaskSave({ draft: draft({ progress_mode: 'quantity', planned_qty: '10' }), orig: null, progressReady: true }).error)
+      .toBe('กรุณาเลือกรายการ BOQ')
+  })
+  it('a BOQ card needs a qty > 0', () => {
+    expect(buildTaskSave({ draft: draft({ progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: '0' }), orig: null, progressReady: true }).error)
+      .toBe('กรุณาใส่จำนวนในการ์ดนี้ (มากกว่า 0)')
+  })
+  it('sends a change of kind without a status change', () => {
+    const orig = { id: 't1', status: 'done', progress_mode: 'status', weight_pts: 0 }
+    const { payload } = buildTaskSave({ draft: draft({ status: 'in_progress', progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: '10' }), orig, progressReady: true })
     expect(payload.progress_mode).toBe('quantity')
     expect('status' in payload).toBe(false)
   })
   it('sends status only when it changed on a status leaf', () => {
-    const orig = { id: 't1', status: 'not_started', progress_mode: 'status', weight_pts: 20 }
+    const orig = { id: 't1', status: 'not_started', progress_mode: 'status', weight_pts: 0 }
     expect('status' in buildTaskSave({ draft: draft(), orig, progressReady: true }).payload).toBe(false)
     expect(buildTaskSave({ draft: draft({ status: 'done' }), orig, progressReady: true }).payload.status).toBe('done')
     expect('status' in buildTaskSave({ draft: draft({ status: 'done' }), orig, progressReady: true, childrenByParent: { t1: [{ id: 'c' }] } }).payload).toBe(false)
@@ -109,20 +137,20 @@ describe('buildTaskSave (card form)', () => {
     expect(buildTaskSave({ draft: draft({ progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: '60' }), orig: null, progressReady: true, boqRemaining: () => 50 }).error)
       .toBe('จำนวนในการ์ดนี้เกินที่เหลือใน BOQ (50)')
   })
-  it('sends no weight fields before the migration', () => {
+  it('sends no kind fields before the migration', () => {
     const { payload, weightFields } = buildTaskSave({ draft: draft(), orig: null, progressReady: false })
     expect(weightFields).toBeNull()
+    expect('progress_mode' in payload).toBe(false)
     expect('weight_pts' in payload).toBe(false)
+  })
+  it('an issue card sends no kind fields', () => {
+    const orig = { id: 'ti', status: 'not_started', progress_mode: 'status', issue_report_id: 'R1' }
+    expect(buildTaskSave({ draft: draft(), orig, progressReady: true }).weightFields).toBeNull()
   })
   it('no PLAN: a new card starts not_started, except in an issue phase', () => {
     expect(buildTaskSave({ draft: draft({ status: 'done' }), orig: null, progressReady: true, noPlan: true }).payload.status).toBe('not_started')
     expect(buildTaskSave({ draft: draft({ status: 'done' }), orig: null, progressReady: true, noPlan: true, issuePhase: true }).payload.status).toBe('done')
     expect(buildTaskSave({ draft: draft({ status: 'done' }), orig: null, progressReady: true }).payload.status).toBe('done')
-  })
-  it('a new card in an issue phase gets 0 points; an existing one keeps what was typed', () => {
-    expect(buildTaskSave({ draft: draft(), orig: null, progressReady: true, issuePhase: true }).payload.weight_pts).toBe(0)
-    const orig = { id: 't1', status: 'not_started', progress_mode: 'status', weight_pts: 20 }
-    expect(buildTaskSave({ draft: draft(), orig, progressReady: true, issuePhase: true }).payload.weight_pts).toBe(20)
   })
 })
 
@@ -184,23 +212,25 @@ describe('RecordProgressDialog', () => {
 })
 
 describe('SplitTaskDialog', () => {
-  const parent = { id: 'p1', name: 'ติดตั้งกระจก', weight_pts: 25 }
+  const parent = { id: 'p1', name: 'ติดตั้งกระจก', status: 'in_progress', progress_mode: 'status', weight_pts: 0 }
   const mount = (over = {}) => render(<SplitTaskDialog task={parent} onClose={() => {}} onSaved={() => {}} {...over} />)
-  it('defaults to two equal rows with the remainder on the first row', () => {
-    expect(defaultSplitRows({ name: 'A', weight_pts: 10.01 }).map((r) => r.pts)).toEqual(['5.01', '5'])
-    expect(defaultSplitRows({ name: 'A', weight_pts: 25 }).map((r) => r.pts)).toEqual(['12.5', '12.5'])
+  it('defaults to two rows named after the card', () => {
+    expect(defaultSplitRows({ name: 'A' })).toEqual([{ name: 'A 1' }, { name: 'A 2' }])
   })
-  it('shows the live total and blocks save when it differs from the parent points', () => {
+  it('has no points fields', () => {
     mount()
-    expect(screen.getByText('รวม 25 / 25 แต้ม ✓')).toBeTruthy()
+    expect(screen.queryByLabelText('แต้ม')).toBeNull()
+    expect(screen.queryByText(/แต้ม/)).toBeNull()
+    expect(screen.getAllByLabelText('ชื่องานย่อย')).toHaveLength(2)
+  })
+  it('blocks save while a name is empty', () => {
+    mount()
     fireEvent.click(screen.getByText('+ เพิ่มแถว'))
-    fireEvent.change(screen.getAllByLabelText('แต้ม')[2], { target: { value: '5' } })
-    expect(screen.getByText('รวม 30 / 25 แต้ม')).toBeTruthy()
     expect(screen.getByText('แตกงาน', { selector: 'button' }).disabled).toBe(true)
     fireEvent.click(screen.getByText('แตกงาน', { selector: 'button' }))
     expect(rpc).not.toHaveBeenCalled()
   })
-  it('calls split_task with the rows', async () => {
+  it('calls split_task with names only and audits the split', async () => {
     rpc.mockResolvedValue({ data: null, error: null })
     const onSaved = vi.fn()
     mount({ onSaved })
@@ -208,14 +238,16 @@ describe('SplitTaskDialog', () => {
     fireEvent.click(screen.getByText('แตกงาน', { selector: 'button' }))
     await waitFor(() => expect(onSaved).toHaveBeenCalled())
     expect(rpc).toHaveBeenCalledWith('split_task', { p_task_id: 'p1', p_children: [
-      { name: 'ติดตั้งกระจก 1', weight_pts: 12.5 }, { name: 'ชั้น 2', weight_pts: 12.5 },
+      { name: 'ติดตั้งกระจก 1' }, { name: 'ชั้น 2' },
     ] })
+    expect(auditLog).toHaveBeenCalledWith('phase_tasks', 'p1', 'split', { status: 'in_progress' },
+      { children: [{ name: 'ติดตั้งกระจก 1' }, { name: 'ชั้น 2' }] })
   })
   it('shows the DB error verbatim', async () => {
-    rpc.mockResolvedValue({ data: null, error: { message: 'การ์ดนี้แตกงานแล้ว' } })
+    rpc.mockResolvedValue({ data: null, error: { message: 'แตกงานได้เฉพาะงานทั่วไป' } })
     mount()
     fireEvent.click(screen.getByText('แตกงาน', { selector: 'button' }))
-    expect((await screen.findByRole('alert')).textContent).toBe('การ์ดนี้แตกงานแล้ว')
+    expect((await screen.findByRole('alert')).textContent).toBe('แตกงานได้เฉพาะงานทั่วไป')
   })
 })
 

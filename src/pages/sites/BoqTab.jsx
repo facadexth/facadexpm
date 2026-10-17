@@ -1,10 +1,14 @@
 // ============================================================
 // BoqTab -- the site's BOQ (bill of quantities): contract quantities that
 // status/quantity cards draw from. Columns: code, item, per contract,
-// in cards (Σ planned_qty of linked cards; 0 = amber), done (Σ done_qty).
-// Never shows a price -- boq_items carries none. Edits go straight to
-// boq_items (site-staff RLS); DB messages (e.g. the "BOQ below what the
-// cards hold" guard) are shown verbatim. Delete confirms inside the page.
+// in cards (Σ planned_qty of linked cards; 0 = amber), done (Σ done_qty),
+// สัดส่วนงาน (each line's share of the site's BOQ value, in %, from
+// rpc('boq_value_shares'); the column is hidden when the RPC fails, e.g.
+// before the migration). Never shows a price -- boq_items carries none and
+// the RPC returns percentages only. Edits go straight to boq_items
+// (site-staff RLS); DB messages (e.g. the "BOQ below what the cards hold"
+// guard, or deleting a line that cards still use) are shown verbatim.
+// Delete confirms inside the page.
 // ============================================================
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase.js'
@@ -40,6 +44,22 @@ export default function BoqTab({ siteId }) {
   const [note, setNote] = useState(null)
   const [busy, setBusy] = useState(false)
   const [confirmId, setConfirmId] = useState(null)
+  const [shares, setShares] = useState(null) // { boqItemId: share_pct } | null = not available
+
+  // shares depend on every line's qty (and price, server side): reload when lines change
+  const sharesKey = boq.map((b) => `${b.id}:${b.planned_qty}`).join(',')
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      let next = null
+      try {
+        const { data, error: err } = await supabase.rpc('boq_value_shares', { p_site_id: siteId })
+        if (!err && Array.isArray(data)) next = Object.fromEntries(data.map((r) => [r.boq_item_id, Number(r.share_pct)]))
+      } catch { /* fail soft: no column */ }
+      if (!cancelled) setShares(next)
+    })()
+    return () => { cancelled = true }
+  }, [siteId, sharesKey])
 
   const sums = useMemo(() => {
     const m = {}
@@ -125,7 +145,9 @@ export default function BoqTab({ siteId }) {
             <thead>
               <tr>
                 <th style={th}>รหัส</th><th style={th}>รายการ</th><th style={th}>ตามสัญญา</th>
-                <th style={th}>อยู่ในการ์ด</th><th style={th}>ติดแล้ว</th><th style={th} />
+                <th style={th}>อยู่ในการ์ด</th><th style={th}>ติดแล้ว</th>
+                {shares && <th style={th}>สัดส่วนงาน</th>}
+                <th style={th} />
               </tr>
             </thead>
             <tbody>
@@ -145,6 +167,9 @@ export default function BoqTab({ siteId }) {
                       data-col="in_cards" data-amber={String(amber)}
                     >{fmtNum(s.inCards)}</td>
                     <td style={td} data-col="done">{fmtNum(s.done)}</td>
+                    {shares && (
+                      <td style={td} data-col="share">{shares[b.id] != null ? `${fmtNum(shares[b.id])}%` : '—'}</td>
+                    )}
                     <td style={{ ...td, whiteSpace: 'nowrap' }}>
                       {confirmId === b.id ? (
                         <>

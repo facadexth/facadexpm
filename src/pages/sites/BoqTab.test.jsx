@@ -121,4 +121,37 @@ describe('BoqTab', () => {
     await waitFor(() => expect(insert).toHaveBeenCalled())
     expect(insert.mock.calls[0][0]).toMatchObject({ site_id: 's1', code: '3', planned_qty: 1, sort_order: 3 })
   })
+  it('shows สัดส่วนงาน from boq_value_shares as % only', async () => {
+    rpc.mockImplementation(async (name) => (name === 'boq_value_shares'
+      ? { data: [{ boq_item_id: 'b1', share_pct: 70 }, { boq_item_id: 'b2', share_pct: 30 }], error: null }
+      : { data: null, error: null }))
+    render(<BoqTab siteId="s1" />)
+    await waitFor(() => expect(screen.getByTestId('boq-row-b1').querySelector('[data-col="share"]')).toBeTruthy())
+    expect(rpc).toHaveBeenCalledWith('boq_value_shares', { p_site_id: 's1' })
+    expect(screen.getByText('สัดส่วนงาน')).toBeTruthy()
+    expect(screen.getByTestId('boq-row-b1').querySelector('[data-col="share"]').textContent).toBe('70%')
+    expect(screen.getByTestId('boq-row-b2').querySelector('[data-col="share"]').textContent).toBe('30%')
+    expect(document.body.textContent).not.toMatch(/บาท|฿|(?<!เสนอ)ราคา|ต่อหน่วย|มูลค่า/)
+  })
+  it('a line missing from the shares shows a dash', async () => {
+    rpc.mockResolvedValue({ data: [{ boq_item_id: 'b1', share_pct: 100 }], error: null })
+    render(<BoqTab siteId="s1" />)
+    await waitFor(() => expect(screen.getByTestId('boq-row-b2').querySelector('[data-col="share"]')?.textContent).toBe('—'))
+  })
+  it('fails soft: no สัดส่วนงาน column and no error when the RPC fails (migration not applied)', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'function boq_value_shares does not exist' } })
+    render(<BoqTab siteId="s1" />)
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('boq_value_shares', { p_site_id: 's1' }))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.queryByText('สัดส่วนงาน')).toBeNull()
+    expect(screen.queryByText(/does not exist/)).toBeNull()
+  })
+  it('deleting a line that cards still use shows the DB message verbatim', async () => {
+    del.mockResolvedValue({ error: { message: 'รายการ BOQ นี้มีการ์ดผูกอยู่ ย้ายหรือลบการ์ดก่อน' } })
+    render(<BoqTab siteId="s1" />)
+    fireEvent.click(screen.getAllByText('ลบ')[0])
+    fireEvent.click(screen.getByText('ยืนยันลบ'))
+    await waitFor(() => expect(screen.getByText('รายการ BOQ นี้มีการ์ดผูกอยู่ ย้ายหรือลบการ์ดก่อน')).toBeTruthy())
+    expect(del).toHaveBeenCalledWith('id', 'b1')
+  })
 })

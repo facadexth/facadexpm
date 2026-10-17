@@ -39,6 +39,7 @@ let mockPhases = [phase]
 let mockTasks = []
 let mockHasPlan = true
 let mockPlans = [{ id: 'pl1', version: 1 }]
+let mockBoq = []
 vi.mock('../../hooks/useSupabase.js', () => ({
   useSitePhases: () => q(mockPhases),
   usePhaseTasks: () => q(mockTasks),
@@ -46,7 +47,7 @@ vi.mock('../../hooks/useSupabase.js', () => ({
   useSubtasks: () => q([]),
   useWorkers: () => q([]),
   useSites: () => q([]),
-  useBoqItems: () => q([]),
+  useBoqItems: () => q(mockBoq),
   useIncomes: () => q([]),
   useExpenses: () => q([]),
   useSitePlans: () => ({ plans: mockPlans, items: {}, loading: false, error: null, reload: () => {} }),
@@ -65,7 +66,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   cleanup(); calls.length = 0; auditCalls.length = 0; probeError = null; mockRole = 'OWNER'; resetProgressSchemaProbe()
-  mockPhases = [phase]; mockTasks = []; mockHasPlan = true; mockPlans = [{ id: 'pl1', version: 1 }]
+  mockPhases = [phase]; mockTasks = []; mockHasPlan = true; mockPlans = [{ id: 'pl1', version: 1 }]; mockBoq = []
 })
 
 describe('Kanban first card on an empty node (schema probe)', () => {
@@ -74,18 +75,30 @@ describe('Kanban first card on an empty node (schema probe)', () => {
     fireEvent.click(screen.getByText('ติดตั้งกระจก'))
     fireEvent.click(screen.getAllByText('+ เพิ่มงาน')[0])
   }
-  it('shows วิธีนับ and แต้ม (100 unallocated) when the probe succeeds, though no card is visible', async () => {
+  it('asks BOQ or general (general picked) and has no points field when the probe succeeds, though no card is visible', async () => {
     await openNewCard()
-    expect(await screen.findByText('วิธีนับ')).toBeTruthy()
-    expect(screen.getByLabelText('แต้ม').value).toBe('100')
+    expect((await screen.findByLabelText('งานทั่วไป (ไม่นับ %)')).checked).toBe(true)
+    expect(screen.getByLabelText('งาน BOQ (นับ %)').checked).toBe(false)
+    expect(screen.queryByLabelText('แต้ม')).toBeNull()
+    expect(screen.queryByText(/^แต้ม$/)).toBeNull()
+    expect(screen.queryByText('รายการ BOQ')).toBeNull()
     expect(calls.some((c) => c[0] === 'phase_tasks' && c[1] === 'select' && c[2] === 'progress_mode')).toBe(true)
   })
-  it('hides them when the probe fails (migration not applied)', async () => {
+  it('picking งาน BOQ shows the line, the qty and the auto-points note', async () => {
+    await openNewCard()
+    fireEvent.click(await screen.findByLabelText('งาน BOQ (นับ %)'))
+    expect(screen.getByText('รายการ BOQ')).toBeTruthy()
+    expect(screen.getByText(/จำนวนในการ์ดนี้/)).toBeTruthy()
+    expect(screen.getByText('แต้มคิดให้อัตโนมัติจากมูลค่า ไม่ต้องกรอก')).toBeTruthy()
+    expect(screen.queryByLabelText('แต้ม')).toBeNull()
+  })
+  it('hides the kind choice when the probe fails (migration not applied)', async () => {
     probeError = { message: 'column phase_tasks.progress_mode does not exist' }
     await openNewCard()
     await waitFor(() => expect(calls.some((c) => c[1] === 'limit')).toBe(true))
     await new Promise((r) => setTimeout(r, 0))
-    expect(screen.queryByText('วิธีนับ')).toBeNull()
+    expect(screen.queryByLabelText('งาน BOQ (นับ %)')).toBeNull()
+    expect(screen.queryByLabelText('งานทั่วไป (ไม่นับ %)')).toBeNull()
     expect(screen.queryByLabelText('แต้ม')).toBeNull()
   })
 })
@@ -145,7 +158,7 @@ describe('GanttView phase form VO fields', () => {
 
 const card = (over) => ({
   id: 't1', phase_id: 'p1', subtask_id: null, site_id: 's1', name: 'การ์ด 1', status: 'not_started', sort_order: 1,
-  weight_pts: 50, progress_mode: 'status', planned_qty: null, done_qty: 0, boq_item_id: null,
+  weight_pts: 0, progress_mode: 'status', planned_qty: null, done_qty: 0, boq_item_id: null,
   parent_task_id: null, issue_report_id: null, phase_task_workers: [], ...over,
 })
 
@@ -163,7 +176,7 @@ describe('Kanban final-review rules', () => {
     openPhase()
     fireEvent.click(screen.getAllByText('+ เพิ่มงาน')[2])
     fireEvent.change(screen.getByPlaceholderText('ชื่องาน'), { target: { value: 'งานใหม่' } })
-    await screen.findByText('วิธีนับ')
+    await screen.findByLabelText('งาน BOQ (นับ %)')
     fireEvent.click(screen.getByText('✅ บันทึก'))
     await waitFor(() => expect(insertOf()).toBeTruthy())
     expect(insertOf()).toMatchObject({ name: 'งานใหม่', status: 'not_started' })
@@ -172,22 +185,41 @@ describe('Kanban final-review rules', () => {
     openPhase()
     fireEvent.click(screen.getAllByText('+ เพิ่มงาน')[2])
     fireEvent.change(screen.getByPlaceholderText('ชื่องาน'), { target: { value: 'งานใหม่' } })
-    await screen.findByText('วิธีนับ')
+    await screen.findByLabelText('งาน BOQ (นับ %)')
     fireEvent.click(screen.getByText('✅ บันทึก'))
     await waitFor(() => expect(insertOf()).toBeTruthy())
     expect(insertOf().status).toBe('done')
   })
-  it('a new card in an issue phase hides แต้ม and saves 0 points', async () => {
+  it('a new card in an issue phase keeps its column with no PLAN and sends no points', async () => {
     mockPhases = [phase, { ...phase, id: 'pi', name: 'แจ้งปัญหา', sort_order: 9, is_issue_phase: true }]
     mockHasPlan = false
     openPhase('แจ้งปัญหา')
     fireEvent.click(screen.getAllByText('+ เพิ่มงาน')[2])
     fireEvent.change(screen.getByPlaceholderText('ชื่องาน'), { target: { value: 'ซ่อมรั่ว' } })
-    await screen.findByText('วิธีนับ')
-    expect(screen.queryByLabelText('แต้ม')).toBeNull()
+    await screen.findByLabelText('งาน BOQ (นับ %)')
     fireEvent.click(screen.getByText('✅ บันทึก'))
     await waitFor(() => expect(insertOf()).toBeTruthy())
-    expect(insertOf()).toMatchObject({ phase_id: 'pi', weight_pts: 0, status: 'done' })
+    expect(insertOf()).toMatchObject({ phase_id: 'pi', progress_mode: 'status', status: 'done' })
+    expect('weight_pts' in insertOf()).toBe(false)
+  })
+  it('a new BOQ card saves line + qty, starts not_started and sends no points', async () => {
+    mockBoq = [{ id: 'b1', code: 'W-01', description: 'หน้าต่างบานเลื่อน', unit: 'ชุด', planned_qty: 120, sort_order: 1 }]
+    openPhase()
+    fireEvent.click(screen.getAllByText('+ เพิ่มงาน')[1])
+    fireEvent.change(screen.getByPlaceholderText('ชื่องาน'), { target: { value: 'W-01 ชั้น 3' } })
+    fireEvent.click(await screen.findByLabelText('งาน BOQ (นับ %)'))
+    fireEvent.change(screen.getByText('รายการ BOQ').querySelector('select'), { target: { value: 'b1' } })
+    fireEvent.change(screen.getByText(/จำนวนในการ์ดนี้/).querySelector('input'), { target: { value: '40' } })
+    fireEvent.click(screen.getByText('✅ บันทึก'))
+    await waitFor(() => expect(insertOf()).toBeTruthy())
+    expect(insertOf()).toMatchObject({ name: 'W-01 ชั้น 3', progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: 40, status: 'not_started' })
+    expect('weight_pts' in insertOf()).toBe(false)
+  })
+  it('a BOQ card shows "BOQ · N แต้ม" and the board shows no "ยังไม่แจก" pill', async () => {
+    mockTasks = [card({ progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: 10, weight_pts: 40 })]
+    openBoard()
+    expect(await screen.findByText('BOQ · 40 แต้ม')).toBeTruthy()
+    expect(screen.queryByText(/ยังไม่แจก/)).toBeNull()
   })
   it.each([['ADMIN', true], ['PM', false], ['OWNER', false]])('%s: planned qty locked on a card with recorded quantity = %s', async (role, locked) => {
     mockRole = role
@@ -204,12 +236,30 @@ describe('Kanban final-review rules', () => {
     fireEvent.click(screen.getByText('การ์ด 1'))
     expect((await screen.findByText(/จำนวนในการ์ดนี้/)).querySelector('input').disabled).toBe(false)
   })
-  it.each([['not_started', true], ['in_progress', false], ['done', false]])('แตกงาน on a %s card shown = %s', async (status, shown) => {
+  it.each(['not_started', 'in_progress', 'done'])('แตกงาน is offered on a %s general card', async (status) => {
     mockTasks = [card({ status })]
     openBoard()
     fireEvent.click(screen.getByText('การ์ด 1'))
-    await screen.findByText('วิธีนับ')
-    expect(!!screen.queryByText('✂️ แตกงาน')).toBe(shown)
+    await screen.findByLabelText('งาน BOQ (นับ %)')
+    expect(screen.getByText('✂️ แตกงาน')).toBeTruthy()
+  })
+  it('แตกงาน is not offered on a BOQ card', async () => {
+    mockTasks = [card({ progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: 10, weight_pts: 100 })]
+    openBoard()
+    fireEvent.click(screen.getByText('การ์ด 1'))
+    await screen.findByLabelText('งาน BOQ (นับ %)')
+    expect(screen.queryByText('✂️ แตกงาน')).toBeNull()
+  })
+  it('the kind is locked on a split child and on a card with recorded quantity', async () => {
+    mockTasks = [card({ id: 'tp', name: 'หลัก' }), card({ id: 'tc', name: 'การ์ดลูก', parent_task_id: 'tp', sort_order: 2 })]
+    openBoard()
+    fireEvent.click(screen.getByText('การ์ดลูก'))
+    expect((await screen.findByLabelText('งาน BOQ (นับ %)')).disabled).toBe(true)
+    cleanup()
+    mockTasks = [card({ progress_mode: 'quantity', boq_item_id: 'b1', planned_qty: 10, done_qty: 2, status: 'in_progress' })]
+    openBoard()
+    fireEvent.click(screen.getByText('การ์ด 1'))
+    expect((await screen.findByLabelText('งานทั่วไป (ไม่นับ %)')).disabled).toBe(true)
   })
   it('deleting a card writes an audit row with the card before', async () => {
     mockTasks = [card({ status: 'done' })]
@@ -220,7 +270,7 @@ describe('Kanban final-review rules', () => {
     fireEvent.click(confirmBtn)
     await waitFor(() => expect(auditCalls.length).toBe(1))
     expect(auditCalls[0].slice(0, 3)).toEqual(['phase_tasks', 't1', 'delete'])
-    expect(auditCalls[0][3]).toMatchObject({ name: 'การ์ด 1', status: 'done', weight_pts: 50 })
+    expect(auditCalls[0][3]).toMatchObject({ name: 'การ์ด 1', status: 'done', weight_pts: 0, progress_mode: 'status' })
   })
 })
 
