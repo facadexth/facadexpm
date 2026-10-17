@@ -21,10 +21,10 @@ when the PM moves Gantt dates the plan moves with them.
 3. Baseline = **PLAN version** (PLAN v1, v2 …). Once saved it can never be
    edited or deleted by anyone. Comparison = switch on a **PLAN layer** on the
    Gantt (and the S-curve plan line follows the chosen version).
-4. Who can save a PLAN version and record installed quantities: **owner and
-   PM**. The app has no PM role (user_roles is OWNER/ADMIN/WORKER) →
-   **PM = ADMIN**, i.e. `is_admin_or_owner()`. (Stated to owner; flip if they
-   object.)
+4. Who can save a PLAN version and record installed quantities: **OWNER and
+   PM only** (not ADMIN). The app has no PM role today, so this arc adds one
+   (§13). Owner decisions 2026-10-17: PM = field/site manager, sees **all
+   sites**, **no money pages**.
 5. A **PLAN v1 is required** before any progress can be recorded on a site.
 6. VO is shown as **two numbers**: % ตามสัญญา and % รวม VO.
 7. **Installed quantities reported in LINE are NOT counted** (for now). The PM
@@ -95,7 +95,7 @@ cancelling a quantity entry, or changing weights. Each of those is written to
 - Table `progress_reports(id, tenant_id, site_id, task_id, qty numeric <> 0,
   work_date date default today, note, source text default 'web' CHECK in
   ('web'), cancelled_at, cancelled_by, created_by default auth.email(),
-  created_at)`. Insert/cancel: admin/owner only. Rows are never deleted; a
+  created_at)`. Insert/cancel: OWNER or PM only (`can_manage_plan()`). Rows are never deleted; a
   wrong entry is cancelled.
 - Trigger `sync_task_qty`: recomputes `done_qty` = Σ qty of non-cancelled
   reports and sets the card status (`0` → not_started, `< planned` →
@@ -113,7 +113,7 @@ cancelling a quantity entry, or changing weights. Each of those is written to
   parent_ref_id, name, start_date, end_date, weight, planned_qty, is_vo,
   PRIMARY KEY(plan_id, level, ref_id))` — a copy of the plan at save time.
 - Created only via RPC `save_site_plan(p_site_id uuid, p_note text)`
-  (SECURITY DEFINER, checks `is_admin_or_owner()` and tenant, REVOKE from
+  (SECURITY DEFINER, checks `can_manage_plan()` (OWNER or PM) and tenant, REVOKE from
   PUBLIC/anon, GRANT to authenticated). No UPDATE/DELETE RLS policy and UPDATE/
   DELETE revoked → immutable. Site deletion still cascades (FK).
 - Saving needs: at least one phase, every non-VO phase has both dates, contract
@@ -136,10 +136,10 @@ cancelling a quantity entry, or changing weights. Each of those is written to
   phase/subtask for the chosen version and a "ช้า n วัน / เร็ว n วัน" tag from
   end-date difference. Phases added after that version show "ไม่มีใน PLAN".
   Banner when the site has no PLAN with a "บันทึก PLAN v1" button
-  (admin/owner). "บันทึกเป็น PLAN ใหม่" opens a dialog that requires a reason
+  (OWNER/PM). "บันทึกเป็น PLAN ใหม่" opens a dialog that requires a reason
   and lists the versions (version, date, who, reason).
 - **Kanban** (PhaseKanbanBoard.jsx): card shows points and, for quantity cards,
-  `45/120 ชุด` with a progress bar and "+ บันทึกยอด" (admin/owner); quantity
+  `45/120 ชุด` with a progress bar and "+ บันทึกยอด" (OWNER/PM); quantity
   cards are not draggable. Column header shows node % and unallocated points.
   Card form: points, mode, BOQ line + planned qty. "แตกงาน" action.
 - **BOQ tab** in site detail: lines with planned / assigned to cards /
@@ -189,6 +189,7 @@ list/Dashboard; actual start/end dates per phase; editing a saved PLAN.
 
 ## 12. Build order (each step mergeable)
 
+0. PM role (§13).
 1. DB: columns, tables, triggers, RPC, views, cron, data migration (+ fixtures).
 2. Weighted calc in UI (progressCalc + Gantt/Kanban labels + KPI). PLAN save
    dialog + gate banner.
@@ -197,3 +198,65 @@ list/Dashboard; actual start/end dates per phase; editing a saved PLAN.
 5. LINE webhook messages (quantity card, no-PLAN) — edge function deploy.
 
 UI mockup artifact must be approved by the owner before step 2.
+
+## 13. New role: PM
+
+Owner decisions 2026-10-17 (binding):
+- PM = field/site manager, a **sibling** of ADMIN (ADMIN = office/accounting).
+  Sees **all sites**. **No money anywhere.**
+- PM saves PLAN versions and records quantities; ADMIN does not.
+- PM sees purchase orders and inventory **without prices/costs** (items,
+  quantities, receiving status, stock on hand).
+- PM **counts as an admin seat** in the package limit.
+- PM gets **site notifications** (issue reports, material requests, leave
+  requests, worker offboarded) and **can approve leave**. PM never gets money
+  notifications (cheque reminders, quotation follow-ups).
+- PM **can manage worker teams**.
+
+Access, enforced in the database (RLS / views), not only in the UI:
+
+| Area | PM |
+|---|---|
+| sites (ops columns), site_phases, phase_subtasks, phase_tasks, phase_task_workers, boq_items, progress_reports, site_plans (via RPC), site_attachments, line_site_photos, line_issue_reports, worker_assignments, worker_ot, worker_teams, worker_team_members, leave_requests, storage buckets site-attachments + line-site-photos | read + write |
+| workers (no salary columns), worker_checkins, line_checkins, company_holidays, clients (name/contact), units, suppliers (name) | read |
+| purchase orders, PO items, PO attachments, inventory items/balances/movements | read through price-free views only |
+| incomes, expenses, invoices, receipts, quotations (+items), cheques, deposits, retention, salary_records, labor_*, supplier tax invoices / credit notes / deposits, po_receipts, bank_accounts, app_settings, estimation/alu/bom, LINE settings, user_roles writes, audit_logs | none |
+
+Mechanics:
+- CHECK on `user_roles.role` gains `'PM'` (constraint name verified in
+  pg_constraint first).
+- New helpers (SECURITY DEFINER, STABLE, wrapped as `(SELECT fn())` in
+  policies): `is_pm()`, `is_site_staff()` = OWNER/ADMIN/PM,
+  `can_manage_plan()` = OWNER/PM. `is_admin_or_owner()` is **unchanged**, so
+  all ~140 money policies keep denying PM.
+- Site-ops policies switch from `is_admin_or_owner()` to `is_site_staff()`.
+  FOR ALL policies on PM-read tables get a separate `pm_reads` SELECT policy.
+- RLS cannot hide columns, so PM reads money-bearing tables through
+  **price-free views** that filter tenant and role themselves
+  (security_invoker = false, `WHERE tenant_id = current_tenant_id() AND
+  is_pm()`): `sites_ops`, `workers_ops`, `purchase_orders_ops`,
+  `purchase_order_items_ops`, `inventory_ops`. PM has **no** direct SELECT on
+  `sites`, `workers`, `purchase_order*`, `inventory_*` money columns: PM's
+  base-table policies on `sites` and `workers` allow UPDATE/INSERT of ops
+  columns only through column-level GRANTs or narrow RPCs (decided in the
+  plan after a dry-run).
+- Seat limit: `tenant_under_seat_limit('admins')`, `tenant_seat_status`, and
+  the user_roles policies count `OWNER, ADMIN, PM`.
+- RPCs that must also allow PM: `perform_location_checkin/checkout`,
+  `register_push_subscription`. Edge functions: `route-distance`,
+  `extract-map-coordinates`, `web-push-test`, `leave-notify` (approve).
+- Notifications: `sendWebPushToTenantAdmins` and `field-form notifyAdmins` get
+  an audience parameter: `ops` (OWNER, ADMIN, PM) for issue/material/leave/
+  offboarding, `money` (OWNER, ADMIN) for cheques/quotations.
+- Frontend: `useUserRole` exposes capability flags (`canManageSites`,
+  `canSeeMoney`, `canManagePlan`, `canManageTeams`, `canApproveLeave`) and
+  pages stop using the linear `isAtLeast('ADMIN')` where PM matters;
+  `DEFAULT_PERMISSIONS.PM`; `getPageLevel` defaults unknown role/page to
+  `'none'` for PM; nav regroups so PO/inventory are not under the money group
+  for PM; UserManagement + Settings permission editor list PM; money sections
+  (Assign labor cost, GridView daily rate, DayView costs, HR payroll tab and
+  salary fields, Sites cost/contract fields, SiteOverview financials, money
+  S-curve, Dashboard financial KPIs and billing %) are hidden for PM.
+- Role inventory with file:line for every check:
+  `docs/superpowers/specs/2026-10-17-pm-role-inventory.md`.
+- Laptop/iPad layouts unchanged for existing roles.
