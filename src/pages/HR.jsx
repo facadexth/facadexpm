@@ -24,6 +24,9 @@ import { SITE_TYPES } from './assign/constants.js'
 import { downloadPDF } from '../lib/pdf.js'
 import { TrashIcon, PencilIcon } from '../components/icons.jsx'
 import AttendanceGrid from './hr/AttendanceGrid.jsx'
+import WorkerPayFields from './hr/WorkerPayFields.jsx'
+import { usePayItems, useWorkerPayAmounts } from '../hooks/usePayroll.js'
+import { validateAccount } from '../lib/bankExport/banks.js'
 
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
@@ -33,13 +36,20 @@ const EMPTY_WORKER = {
   monthly_salary: '', status: 'active',
   has_social_security: true, annual_leave_days: 6, annual_sick_leave_days: 30, monthly_contribution: '', email: '',
   show_in_assign: true, id_card_number: '', address: '',
+  employee_code: '', pay_type: 'monthly', daily_wage: '', bank_code: '', bank_account_no: '', bank_account_name: '', bank_branch_code: '',
 }
 
 function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerUsers = [], seat }) {
   const isAdd = !initial?.id
   const [form, setForm, clearFormDraft] = useDraftForm('worker-form', { ...EMPTY_WORKER, ...initial }, isAdd)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const dailyRate = form.monthly_salary ? (parseFloat(form.monthly_salary) / 30).toFixed(2) : '—'
+  const dailyRate = form.pay_type === 'daily'
+    ? (form.daily_wage || '—')
+    : (form.monthly_salary ? (parseFloat(form.monthly_salary) / 30).toFixed(2) : '—')
+  const { data: payItems } = usePayItems()
+  const { data: savedAmounts } = useWorkerPayAmounts(initial?.id)
+  const [amounts, setAmounts] = useState({})
+  useEffect(() => { if (savedAmounts) setAmounts(savedAmounts) }, [savedAmounts])
   const workersFull = isAdd && seat?.workers?.max != null && seat.workers.used >= seat.workers.max
 
   // Raw File, deliberately NOT part of `form` (see handleSaveWorker's own
@@ -60,7 +70,13 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
   }, [initial?.id_card_photo_path])
 
   return (
-    <form onSubmit={e => { e.preventDefault(); clearFormDraft(); onSave(form, idCardFile) }}>
+    <form onSubmit={e => {
+      e.preventDefault()
+      const acctErr = form.bank_code && form.bank_account_no ? validateAccount(form.bank_code, form.bank_account_no) : null
+      if (acctErr) { alert(acctErr); return }
+      if (form.bank_branch_code && !/^\d{4}$/.test(form.bank_branch_code)) { alert('รหัสสาขาต้องมี 4 หลัก'); return }
+      clearFormDraft(); onSave(form, idCardFile, amounts)
+    }}>
       <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
         {workersFull && (
           <div className="alert alert-warning" style={{ fontSize: 12 }}>
@@ -161,6 +177,7 @@ function WorkerForm({ initial = EMPTY_WORKER, onSave, onCancel, loading, workerU
           <label className="label">ที่อยู่</label>
           <textarea className="textarea" rows={2} value={form.address} onChange={e => set('address', e.target.value)} />
         </div>
+        <WorkerPayFields form={form} set={set} payItems={payItems || []} amounts={amounts} setAmount={(id, v) => setAmounts(a => ({ ...a, [id]: v }))} />
       </div>
       <div className="modal-footer">
         <button type="button" className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>
@@ -547,7 +564,7 @@ export default function HR({ navState }) {
   // photo can be uploaded under it (path is {tenant}/{worker_id}/...), so
   // for a brand-new worker this uploads AFTER the insert, in a follow-up
   // update -- editing an existing worker already has that id up front.
-  const handleSaveWorker = async (form, idCardFile) => {
+  const handleSaveWorker = async (form, idCardFile, amounts = {}) => {
     setSavingWorker(true)
     try {
       const payload = {
@@ -563,6 +580,13 @@ export default function HR({ navState }) {
         show_in_assign: form.show_in_assign,
         id_card_number: form.id_card_number || null,
         address: form.address || null,
+        employee_code: form.employee_code || null,
+        pay_type: form.pay_type || 'monthly',
+        daily_wage: form.pay_type === 'daily' ? (parseFloat(form.daily_wage) || 0) : null,
+        bank_code: form.bank_code || null,
+        bank_account_no: form.bank_account_no || null,
+        bank_account_name: form.bank_account_name || null,
+        bank_branch_code: form.bank_branch_code || null,
       }
 
       const uploadIdCardPhoto = async (workerId) => {
@@ -573,7 +597,9 @@ export default function HR({ navState }) {
         return path
       }
 
+      let savedId
       if (editWorker) {
+        savedId = editWorker.id
         const { data: old } = await supabase.from('workers').select('*').eq('id', editWorker.id).single()
         if (idCardFile) payload.id_card_photo_path = await uploadIdCardPhoto(editWorker.id)
         const { error } = await supabase.from('workers').update(payload).eq('id', editWorker.id)
@@ -588,9 +614,16 @@ export default function HR({ navState }) {
           if (photoErr) throw photoErr
         }
         await auditLog('workers', data.id, 'INSERT', null, payload)
+        savedId = data.id
+      }
+      const amountRows = Object.entries(amounts).map(([pay_item_id, v]) => ({ worker_id: savedId, pay_item_id, amount: parseFloat(v) || 0 }))
+      if (amountRows.length) {
+        const { error: amtErr } = await supabase.from('worker_pay_item_amounts').upsert(amountRows, { onConflict: 'worker_id,pay_item_id' })
+        if (amtErr) throw amtErr
       }
       setShowWorkerForm(false); setEditWorker(null); refetchWorkers(); refetchSeat()
     } catch (e) {
+      if (e.message?.includes('workers_employee_code')) { alert('รหัสพนักงานนี้มีคนใช้แล้ว'); return }
       alert(e.message?.includes('row-level security policy')
         ? 'บันทึกไม่สำเร็จ: อาจเกินจำนวนพนักงานที่ package ปัจจุบันอนุญาต กรุณาติดต่อผู้ดูแลระบบเพื่ออัปเกรด package'
         : 'Error: ' + e.message)
