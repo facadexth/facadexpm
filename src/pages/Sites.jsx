@@ -565,6 +565,9 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
   const [sortCol,     setSortCol]     = useState('last_activity_date')
   const [sortDir,     setSortDir]     = useState('desc')
   const [viewMode,      setViewMode]      = useState('table') // 'table' | 'gantt' | 'kanban'
+  // PM rows (pm_sites) carry no last_activity_date (it is derived from money
+  // activity), so PM has no กิจกรรมล่าสุด column and defaults to site code instead.
+  const sortKey = pm && sortCol === 'last_activity_date' ? 'site_number' : sortCol
 
   // Labor cost lookup
   const laborBysite = useMemo(() => {
@@ -581,18 +584,18 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
       .filter(s => !statusFilter || statusFilter === 'All' || s.status === statusFilter)
       .filter(s => !search || s.name?.toLowerCase().includes(search.toLowerCase()) || s.site_number?.toLowerCase().includes(search.toLowerCase()))
     return [...rows].sort((a, b) => {
-      const va = a[sortCol] ?? ''
-      const vb = b[sortCol] ?? ''
+      const va = a[sortKey] ?? ''
+      const vb = b[sortKey] ?? ''
       if (typeof va === 'number') return sortDir === 'asc' ? va - vb : vb - va
       return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va))
     })
-  }, [sites, statusFilter, search, sortCol, sortDir])
+  }, [sites, statusFilter, search, sortKey, sortDir])
 
   const toggleSort = (col) => {
-    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    if (sortKey === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortCol(col); setSortDir('asc') }
   }
-  const si = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+  const si = (col) => sortKey === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
   // ── Handlers ──
   const handleSave = async (form) => {
@@ -725,7 +728,7 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
                 <th className="sortable" onClick={() => toggleSort('billing_pct')}>% เบิก{si('billing_pct')}</th>
                 <th className="hide-tablet">ค่าแรงช่าง</th>
                 </>}
-                <th className="sortable hide-tablet" onClick={() => toggleSort('last_activity_date')}>กิจกรรมล่าสุด{si('last_activity_date')}</th>
+                {!pm && <th className="sortable hide-tablet" onClick={() => toggleSort('last_activity_date')}>กิจกรรมล่าสุด{si('last_activity_date')}</th>}
                 <th className="sortable hide-tablet" onClick={() => toggleSort('end_date')}>วันจบงาน{si('end_date')}</th>
                 <th></th>
               </tr>
@@ -812,9 +815,9 @@ export default function Sites({ navigateTo, openSiteOverview, navState }) {
                       {laborCost > 0 ? fmt(laborCost) : '—'}
                     </td>
                     </>}
-                    <td className="hide-tablet" style={{ fontSize: 11, color: 'var(--text2)', whiteSpace: 'nowrap' }}>
+                    {!pm && <td className="hide-tablet" style={{ fontSize: 11, color: 'var(--text2)', whiteSpace: 'nowrap' }}>
                       {s.last_activity_date ? fmtDate(s.last_activity_date) : <span style={{ color: 'var(--text3)' }}>—</span>}
-                    </td>
+                    </td>}
                     <td className="hide-tablet">
                       {s.end_date ? (
                         <div>

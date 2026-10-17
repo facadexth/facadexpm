@@ -10,7 +10,7 @@ import { useTenant } from './hooks/useTenant.js'
 import { usePlatformAdmin } from './hooks/useSupabase.js'
 import { ProtectedPage } from './components/ProtectedPage.jsx'
 import { canViewPage } from './lib/permissions.js'
-import { roleMeetsTab, canSeeMoney } from './lib/roles.js'
+import { roleMeetsTab, canSeeMoney, navGroupLabel } from './lib/roles.js'
 import { getEffectiveTheme, toggleTheme } from './lib/theme.js'
 import { manualUrlFor } from './lib/manualLinks.js'
 import ChangePassword from './components/ChangePassword.jsx'
@@ -76,7 +76,7 @@ const TABS = [
     { id: 'deposits',      label: '💰 มัดจำ',            minRole: 'ADMIN', module: 'client_deposits' },
     { id: 'retention',     label: '🔒 เงินประกันผลงาน',  minRole: 'ADMIN', module: null },
   ] },
-  { label: '💸 รายจ่าย', children: [
+  { label: '💸 รายจ่าย', pmLabel: '🧾 จัดซื้อ', children: [
     { id: 'expenses',        label: '📊 ภาพรวม',       minRole: 'ADMIN', module: null },
     { id: 'purchase_orders', label: '🧾 ใบสั่งซื้อ',   minRole: 'ADMIN', module: 'purchase_orders' },
     { id: 'supplier_credit_notes', label: '↩️ ใบลดหนี้ซัพพลายเออร์', minRole: 'ADMIN', module: 'purchase_orders', permKey: 'purchase_orders' },
@@ -484,7 +484,7 @@ export default function App() {
   if (!session) return <><UpdatePrompt /><Login /></>
 
   const visibleTabs = TABS
-    .map(tab => tab.children ? { ...tab, children: tab.children.filter(passesGates) } : tab)
+    .map(tab => tab.children ? { ...tab, label: navGroupLabel(role, tab), children: tab.children.filter(passesGates) } : tab)
     .filter(tab => tab.children ? tab.children.length > 0 : passesGates(tab))
 
   // Things waiting for action, limited to pages this user can actually open.

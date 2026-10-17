@@ -3,7 +3,7 @@
 // fields) and sees no money anywhere, on desktop and phone.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, cleanup, fireEvent } from '@testing-library/react'
-import { setCurrentRole } from '../lib/roles.js'
+import { setCurrentRole, navGroupLabel } from '../lib/roles.js'
 import { saveDraft, clearDraft } from '../hooks/useDraftForm.js'
 
 const PM_SITE = {
@@ -19,6 +19,7 @@ let poData = []
 // The page's own useUserRole instance; null = not resolved yet (the global role may already be PM).
 let hookRole = 'PM'
 let stockData = []
+let incomesData = []
 const rpcCalls = []
 const fromCalls = []
 // Per-test rows the mocked supabase returns, by table / RPC name (filters are ignored).
@@ -77,7 +78,7 @@ vi.mock('../hooks/useSupabase.js', async (orig) => {
     useSiteCostEstimates: () => empty,
     usePhaseTasks: () => empty,
     useExpenses: () => empty,
-    useIncomes: () => empty,
+    useIncomes: () => ({ ...empty, data: incomesData }),
     usePaymentForecast: () => empty,
     useSiteRetentionSummary: () => empty,
     useCheques: () => empty,
@@ -96,6 +97,7 @@ import DailyReport from './sites/DailyReport.jsx'
 import PhaseKanbanBoard from './sites/PhaseKanbanBoard.jsx'
 import PurchaseOrders from './PurchaseOrders.jsx'
 import Inventory from './Inventory.jsx'
+import GanttView from './sites/GanttView.jsx'
 
 const MONEY = /฿|บาท|มูลค่าสัญญา|รายรับ|รายจ่าย/
 
@@ -105,7 +107,7 @@ beforeEach(() => {
   fromCalls.length = 0
   window.matchMedia = q => ({ matches: phone && q.includes('max-width'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })
 })
-afterEach(() => { cleanup(); setCurrentRole(null); phone = false; sitesData = [PM_SITE]; poData = []; stockData = []; hookRole = 'PM'; clearDraft('purchase-order-form-open'); tableRows = {}; rpcRows = {} })
+afterEach(() => { cleanup(); setCurrentRole(null); phone = false; sitesData = [PM_SITE]; poData = []; stockData = []; incomesData = []; hookRole = 'PM'; clearDraft('purchase-order-form-open'); tableRows = {}; rpcRows = {} })
 
 describe.each([false, true])('PM pages (phone=%s)', isPhone => {
   beforeEach(() => { phone = isPhone })
@@ -333,5 +335,49 @@ describe('PM never reopens the PO add form', () => {
     const r2 = render(<PurchaseOrders navigateTo={() => {}} navState={{}} openSiteOverview={() => {}} />)
     expect(r2.container.textContent).toContain('PO-2026-001')
     expect(r2.container.textContent).not.toContain('รายการสินค้า ★')
+  })
+})
+
+describe('PM final-review fixes', () => {
+  it('Gantt never syncs sites.start_date/end_date for PM; OWNER/ADMIN still do', async () => {
+    // an income dated before the site start widens the timeline, so the sync would fire
+    const site = { ...PM_SITE }
+    incomesData = [{ id: 'inc1', site_id: 's1', date: '2026-06-01', amount: 1 }]
+    const r1 = render(<GanttView sites={[site]} canEdit navigateTo={() => {}} onManagePhases={() => {}} onSelectSite={() => {}} selectedSiteId="s1" onPhasesChanged={() => {}} onOpenKanban={() => {}} />)
+    await flush()
+    expect(fromCalls).not.toContain('sites')
+    r1.unmount()
+    hookRole = 'ADMIN'
+    render(<GanttView sites={[site]} canEdit navigateTo={() => {}} onManagePhases={() => {}} onSelectSite={() => {}} selectedSiteId="s1" onPhasesChanged={() => {}} onOpenKanban={() => {}} />)
+    await flush()
+    expect(fromCalls).toContain('sites')
+  })
+
+  it('nav: PM sees the purchase-orders group as จัดซื้อ, every other role keeps รายจ่าย', () => {
+    const group = { label: '💸 รายจ่าย', pmLabel: '🧾 จัดซื้อ', children: [] }
+    expect(navGroupLabel('PM', group)).toBe('🧾 จัดซื้อ')
+    for (const r of ['OWNER', 'ADMIN', 'WORKER', null]) expect(navGroupLabel(r, group)).toBe('💸 รายจ่าย')
+    expect(navGroupLabel('PM', { label: '🏗️ ไซท์งาน', children: [] })).toBe('🏗️ ไซท์งาน')
+  })
+
+  it('PO list: PM clicking a site name opens site_detail, not the money-only overview modal', () => {
+    poData = [PM_PO]
+    const navigateTo = vi.fn(); const openSiteOverview = vi.fn()
+    const { getByText } = render(<PurchaseOrders navigateTo={navigateTo} navState={{}} openSiteOverview={openSiteOverview} />)
+    fireEvent.click(getByText('Tower A'))
+    expect(openSiteOverview).not.toHaveBeenCalled()
+    expect(navigateTo).toHaveBeenCalledWith('site_detail', { siteId: 's1', siteName: 'Tower A' })
+  })
+
+  it('Sites table: PM has no กิจกรรมล่าสุด column and sorts by site code by default', () => {
+    sitesData = [{ ...PM_SITE, id: 's1', site_number: 'S-001', name: 'Tower A' }, { ...PM_SITE, id: 's2', site_number: 'S-002', name: 'Tower B' }]
+    const { container, unmount } = render(<Sites navigateTo={() => {}} openSiteOverview={() => {}} navState={{}} />)
+    expect(container.querySelector('thead').textContent).not.toContain('กิจกรรมล่าสุด')
+    expect(container.querySelector('thead').textContent).toContain('รหัส ↓')
+    expect([...container.querySelectorAll('tbody tr')].map(tr => tr.cells[0].textContent)).toEqual(['S-002', 'S-001'])
+    unmount()
+    hookRole = 'ADMIN'
+    const r2 = render(<Sites navigateTo={() => {}} openSiteOverview={() => {}} navState={{}} />)
+    expect(r2.container.querySelector('thead').textContent).toContain('กิจกรรมล่าสุด ↓')
   })
 })

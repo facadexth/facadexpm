@@ -894,6 +894,10 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
   const canEdit = isAtLeast('ADMIN') && canEditPage(role, 'purchase_orders')
   // PM: read-only, PO rows from pm_purchase_orders (no items/sites embeds), no money anywhere
   const pm = isPm(role)
+  // SiteOverviewModal is money-only (renders nothing for PM), so PM opens the site page instead
+  const openSite = po => pm
+    ? navigateTo('site_detail', { siteId: po.site_id, siteName: po.sites?.name })
+    : openSiteOverview(po.site_id)
   const showMoney = canSeeMoney(role)
   const { tenant } = useTenant()
   const today = new Date()
@@ -1403,7 +1407,7 @@ export default function PurchaseOrders({ navigateTo, navState, openSiteOverview 
                     </td>
                     <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDate(po.date)}</td>
                     <td style={{ fontSize: 11, color: 'var(--accent)', cursor: po.site_id ? 'pointer' : 'default' }}
-                      onClick={() => po.site_id && openSiteOverview(po.site_id)}>{po.sites?.name || '—'}</td>
+                      onClick={() => po.site_id && openSite(po)}>{po.sites?.name || '—'}</td>
                     <td style={{ fontSize: 12 }}>{po.suppliers?.name || '—'}</td>
                     {showMoney && <td style={{ fontSize: 11, color: 'var(--text3)' }}>{(po.purchase_order_items || []).length} รายการ</td>}
                     {showMoney && <td className="font-mono" style={{ fontWeight: 700 }}>{fmt(total)}</td>}

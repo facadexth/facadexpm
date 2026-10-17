@@ -15,6 +15,10 @@ export const canSeeMoney = role => role === 'OWNER' || role === 'ADMIN'
 export const canManageTeams = role => role === 'OWNER' || role === 'PM'
 export const canApproveLeave = role => role === 'OWNER' || role === 'ADMIN' || role === 'PM'
 
+// A nav group's label for this role: PM sees only purchase orders in the money
+// group "💸 รายจ่าย", so that group carries pmLabel ("🧾 จัดซื้อ") for PM.
+export const navGroupLabel = (role, group) => (role === 'PM' && group.pmLabel) || group.label
+
 export function roleMeetsTab(role, tab) {
   if (role === 'PM') return tab.minRole === 'WORKER' || PM_TAB_IDS.has(tab.id)
   return (HIERARCHY[role] ?? 0) >= (HIERARCHY[tab.minRole] ?? 0)
