@@ -114,6 +114,8 @@ BEGIN
   SELECT note INTO v_note FROM salary_record_lines
    WHERE salary_record_id = p_record_id AND pay_item_id = p_pay_item_id
      AND advance_id IS NOT DISTINCT FROM p_advance_id LIMIT 1;
+  -- the automatic note's "คงเหลือ" balance no longer holds once the amount is typed in
+  v_note := regexp_replace(v_note, ' · คงเหลือ.*$', '');
   DELETE FROM salary_record_lines
    WHERE salary_record_id = p_record_id AND pay_item_id = p_pay_item_id
      AND advance_id IS NOT DISTINCT FROM p_advance_id;

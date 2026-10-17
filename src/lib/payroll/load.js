@@ -66,7 +66,7 @@ export async function loadPayrollMonth(year, month) {
   }
   const now = new Date()
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  const assignGaps = findAssignGaps({ workers, shifts, holidayDates: holidays.map(h => h.date), year, month, today })
+  const assignGaps = findAssignGaps({ workers: workers.filter(w => !w.inactive), shifts, holidayDates: holidays.map(h => h.date), year, month, today })
   return { period, items, workers, records, advances, advanceLines: priorLines, inputs, assignGaps }
 }
 

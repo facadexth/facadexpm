@@ -8,6 +8,7 @@ import LandscapeView from '../../components/LandscapeView.jsx'
 import AssignCell from './AssignCell.jsx'
 import { useIsPhone } from '../../hooks/useIsPhone.js'
 import { DOW_TH, SITE_TYPES } from './constants.js'
+import { workerDayRate } from './otMath.js'
 
 export default function GridView({ days, workers, cellLookup, otLookup, holidayDates, onEditHalf, cellH = 32, variant = 'week' }) {
   const isPhone = useIsPhone()

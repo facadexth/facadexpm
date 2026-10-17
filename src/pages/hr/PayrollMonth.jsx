@@ -58,7 +58,7 @@ export default function PayrollMonth({ canEdit }) {
   const cell = (rec, item) => rec.salary_record_lines.filter(l => l.pay_item_id === item.id).reduce((s, l) => s + Number(l.amount), 0)
   const total = item => records.reduce((s, r) => s + cell(r, item), 0)
   const itemIds = useMemo(() => new Set(items.map(i => i.id)), [items])
-  const otherAmt = rec => rec.salary_record_lines.filter(l => !l.pay_item_id || !itemIds.has(l.pay_item_id)).reduce((s, l) => s + Number(l.amount), 0)
+  const otherAmt = rec => rec.salary_record_lines.filter(l => !l.pay_item_id || !itemIds.has(l.pay_item_id)).reduce((s, l) => s + (l.side === 'deduction' ? -1 : 1) * Number(l.amount), 0)
   const workerById = useMemo(() => Object.fromEntries((data?.workers || []).map(w => [w.id, w])), [data])
   const officeDays = rec => Number(rec.facts?.officeDays) || 0
   const officeCost = rec => {
