@@ -229,10 +229,13 @@ export default function HR({ navState }) {
   const showSalary = canSeeMoney(role) || role === 'WORKER'
   // ADMIN/OWNER keep the hr-edit gate; PM reviews leave with hr 'view'.
   const canReviewLeave = canApproveLeave(role) && (canEdit || isPm(role))
-  const [innerTab, setInnerTab] = useState(navState?.pending === 'leave_pending' ? 'requests' : 'workers')
+  const [innerTab, setInnerTab] = useState(navState?.pending === 'leave_pending' ? 'requests' : navState?.pending === 'advances_pending' ? 'advances' : 'workers')
   // Bell/push "leave requests waiting": open the requests tab showing only pending ones.
   const leaveFocus = usePendingFocus(navState, 'leave_pending')
-  useEffect(() => { if (navState?.pending === 'leave_pending') setInnerTab('requests') }, [navState])
+  useEffect(() => {
+    if (navState?.pending === 'leave_pending') setInnerTab('requests')
+    else if (navState?.pending === 'advances_pending') setInnerTab('advances')
+  }, [navState])
 
   // Workers state
   const { data: workers, refetch: refetchWorkers } = useAllActiveWorkers()

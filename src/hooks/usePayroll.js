@@ -15,7 +15,7 @@ export function usePayrollMonth(year, month) {
 
 export function useAdvances(workerId = null) {
   return useQuery(async () => {
-    let q = supabase.from('salary_advances').select('*, workers(name, nickname)').order('requested_at', { ascending: false })
+    let q = supabase.from('salary_advances').select('*, workers(name, nickname, pay_type, monthly_salary, daily_wage)').order('requested_at', { ascending: false })
     if (workerId) q = q.eq('worker_id', workerId)
     const rows = must(await q)
     const ids = rows.filter(r => ['approved', 'settled'].includes(r.status)).map(r => r.id)
@@ -45,4 +45,12 @@ export function useWorkerPayAmounts(workerId) {
     const rows = must(await supabase.from('worker_pay_item_amounts').select('pay_item_id, amount').eq('worker_id', workerId))
     return Object.fromEntries(rows.map(r => [r.pay_item_id, Number(r.amount)]))
   }, [workerId])
+}
+
+// year-month -> status of every payroll period (to pick the first month still open for deduction).
+export function usePayrollPeriodStatuses() {
+  return useQuery(async () => {
+    const rows = must(await supabase.from('payroll_periods').select('year, month, status'))
+    return Object.fromEntries(rows.map(r => [`${r.year}-${r.month}`, r.status]))
+  }, [])
 }

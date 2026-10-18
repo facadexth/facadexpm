@@ -4,6 +4,7 @@
 
 export const PENDING_ITEMS = [
   { key: 'leave_pending',       icon: '🏖️', label: 'คำขอลารออนุมัติ',                    tab: 'hr' },
+  { key: 'advances_pending',    icon: '💸', label: 'คำขอเบิกเงินรออนุมัติ',                tab: 'hr' },
   { key: 'po_draft',            icon: '📦', label: 'ใบสั่งซื้อฉบับร่าง รอเลือกซัพพลายเออร์', tab: 'purchase_orders' },
   // The list of ALL open problem reports is on the Communication Center page (owner only);
   // an ADMIN, who cannot open it, is sent to the Sites page, where each day's reports are.

@@ -47,7 +47,7 @@ describe('Web Push wording', () => {
     expect(workerOffboardedPush('a').pending).toBe('offboarded_in_group')
     expect(quotationExpiryPush('QT-1', '2026-10-11', 7).pending).toBe('quotations_followup')
     expect(testPush().pending).toBeUndefined()
-    for (const p of [leaveRequestPush('a', 'b', '', 'c'), materialRequestPush('a', 'b'), issueReportPush('a', 'b'), workerOffboardedPush('a'), quotationExpiryPush('QT-1', '2026-10-11', 7)]) expect(keys).toContain(p.pending)
+    for (const p of [leaveRequestPush('a', 'b', '', 'c'), materialRequestPush('a', 'b'), issueReportPush('a', 'b'), workerOffboardedPush('a'), quotationExpiryPush('QT-1', '2026-10-11', 7), advanceRequestPush('a', 1)]) expect(keys).toContain(p.pending)
   })
   it('advance request names the worker and the amount, opens HR on the advances bell item', () => {
     const p = advanceRequestPush('สมชาย', 3000)

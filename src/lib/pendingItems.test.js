@@ -23,6 +23,10 @@ describe('visiblePendingItems', () => {
     expect(admin[0].tab).toBe('sites')
     expect(visiblePendingItems({ issues_open: 2 }, () => false)).toEqual([])
   })
+  it('hides the advance requests bell item from anyone who cannot open HR', () => {
+    expect(visiblePendingItems({ advances_pending: 2 }, tab => tab !== 'hr')).toEqual([])
+    expect(visiblePendingItems({ advances_pending: 2 }, all).map(i => i.key)).toEqual(['advances_pending'])
+  })
   it('ignores missing, null and non-numeric counts', () => {
     expect(visiblePendingItems({ leave_pending: null, po_draft: 'x', cheques_due: undefined }, all)).toEqual([])
   })

@@ -100,6 +100,18 @@ export const unconfirmMonth = (y, m) => rpc('unconfirm_payroll_period', { p_year
 export const closeMonth     = (y, m, paidDate) => rpc('close_payroll_period', { p_year: y, p_month: m, p_paid_date: paidDate })
 export const reopenMonth    = (y, m, reason) => rpc('reopen_payroll_period', { p_year: y, p_month: m, p_reason: reason })
 export const approveAdvance = id => rpc('approve_salary_advance', { p_id: id })
+// Every approval goes through the edit RPC (owner only; it refuses a confirmed/closed start month).
+export const approveAdvanceEdit = (id, { amount, installments, startYear, startMonth }) =>
+  rpc('approve_salary_advance_edit', { p_id: id, p_amount: amount, p_installments: installments, p_start_year: startYear, p_start_month: startMonth })
+// How many saved salary records a month has, and whether its period is still a draft (for the recalc warning).
+export async function loadMonthRecalcState(year, month) {
+  const [period, cnt] = await Promise.all([
+    supabase.from('payroll_periods').select('status').eq('year', year).eq('month', month).maybeSingle().then(must),
+    supabase.from('salary_records').select('id', { count: 'exact', head: true }).eq('year', year).eq('month', month),
+  ])
+  if (cnt.error) throw cnt.error
+  return { status: period?.status ?? null, saved: cnt.count || 0 }
+}
 export const rejectAdvance  = (id, reason) => rpc('reject_salary_advance', { p_id: id, p_reason: reason })
 export async function requestAdvance(row) {
   return must(await supabase.from('salary_advances').insert(row).select().single())
