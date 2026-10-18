@@ -604,7 +604,9 @@ export default function PhaseKanbanBoard({ site, canEdit, onTasksChanged, initia
       await afterWrite()
       if (editingId === id) cancelEdit()
     } catch (e) {
-      alert('ลบไม่สำเร็จ: ' + e.message)
+      alert(e.code === '23503' && /ยกเลิกยอด/.test(e.message || '')
+        ? 'ลบไม่ได้: การ์ดนี้มียอดที่บันทึกไว้แล้ว\nกด "+ บันทึกยอด" บนการ์ด แล้วกด "ยกเลิกรายการ" ทุกรายการก่อน จึงจะลบได้'
+        : 'ลบไม่สำเร็จ: ' + e.message)
     } finally {
       setSaving(false)
       setConfirmDeleteId(null)

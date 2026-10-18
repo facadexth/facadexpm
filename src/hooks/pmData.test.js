@@ -46,6 +46,20 @@ const { useSites, useSite, useSiteOverview, useWorkers, useAllActiveWorkers, use
 beforeEach(() => { fromCalls.length = 0; rpcCalls.length = 0; selects.length = 0; rangeCalls.length = 0; delete rpcData.pm_inventory_on_hand })
 
 describe('PM data hooks', () => {
+  it('PM hooks mounted together share one pm_workers request; a later mount fetches fresh', async () => {
+    setCurrentRole('PM')
+    const a = renderHook(() => useWorkers())
+    const b = renderHook(() => useAllActiveWorkers())
+    await waitFor(() => expect(a.result.current.loading || b.result.current.loading).toBe(false))
+    await waitFor(() => expect(b.result.current.loading).toBe(false))
+    const firstPages = rangeCalls.filter(c => c[0] === 'pm_workers' && c[1] === 0).length
+    expect(firstPages).toBe(1)
+    expect(a.result.current.data.map(w => w.id)).toEqual(['w1'])
+    expect(b.result.current.data.map(w => w.id)).toEqual(['w1', 'w2'])
+    const c = renderHook(() => useWorkers())
+    await waitFor(() => expect(c.result.current.loading).toBe(false))
+    expect(rangeCalls.filter(x => x[0] === 'pm_workers' && x[1] === 0).length).toBe(2)
+  })
   it('PM useSites uses pm_sites and never the financial view', async () => {
     setCurrentRole('PM')
     const { result } = renderHook(() => useSites())

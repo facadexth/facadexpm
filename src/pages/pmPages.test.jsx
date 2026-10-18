@@ -98,6 +98,7 @@ import PhaseKanbanBoard from './sites/PhaseKanbanBoard.jsx'
 import PurchaseOrders from './PurchaseOrders.jsx'
 import Inventory from './Inventory.jsx'
 import GanttView from './sites/GanttView.jsx'
+import { bangkokTodayIso } from '../lib/photoUpload.js'
 
 const MONEY = /฿|บาท|มูลค่าสัญญา|รายรับ|รายจ่าย/
 
@@ -189,7 +190,7 @@ const PM_WORKER = {
   id: 'w1', name: 'Somchai Jaidee', nickname: 'Chai', position: 'ช่างอลูมิเนียม', status: 'active',
   email: 'w1@x.co', show_in_assign: true, line_user_id: null, annual_leave_days: 6, annual_sick_leave_days: 30,
 }
-const TODAY = new Date().toISOString().slice(0, 10)
+const TODAY = bangkokTodayIso() // the app's "today" is Bangkok, not UTC
 const SALARY = /เงินเดือน|ค่าแรง|บ\/วัน|SSO|ประกันสังคม|เงินสมทบ/
 const flush = () => new Promise(r => setTimeout(r, 0))
 
