@@ -137,6 +137,16 @@ anyone remembering anything.
 6. **"Requested via LINE"** is shown when `requested_by` starts with
    `line:`.
 
+## Rich menu (owner decision 2026-10-18)
+
+- The owner designed the new 2×3 menu: `docs/line-rich-menu/rich-menu-v2-1200x810.jpg`. They upload it in LINE OA Manager by hand.
+- Row 2, col 2 becomes **ยื่นคำขอ** (text `ยื่นคำขอ`). The bot replies with quick-reply chips: 🏖️ ขอลา · 📦 เบิกของ · 💸 เบิกเงิน · ยกเลิก. Each chip sends the matching phrase, so it runs the same flow as typing it.
+- Row 2, col 3 becomes **สถานะคำขอ** (text `สถานะคำขอ`). The bot replies once (a reply, so it is free), with two sections:
+  - Leave: the latest leave requests (last 60 days) with their status, then the days left for personal and sick leave.
+  - Advances: as in "ยอดเบิก".
+- "ขอเบิกของ" and "ขอลา" are no longer menu buttons. Typing them still works exactly as before, and "เบิกเงิน" and "ยอดเบิก" stay typeable.
+- New DM command keys: `request_menu` (ยื่นคำขอ) and `request_status` (สถานะคำขอ). Like the other commands, the owner can rename or disable them.
+
 ## Constraints
 
 - Multi-tenant shared LINE OA: tenant/worker resolved from the linked

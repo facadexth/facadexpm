@@ -59,6 +59,28 @@
 
 ---
 
+### Addendum (2026-10-18): rich menu "ยื่นคำขอ" / "สถานะคำขอ"
+
+This addendum changes the tasks below. Spec section: "Rich menu".
+
+- **Task 1:** the `command_key` CHECK also accepts `'request_menu'` and `'request_status'`.
+- **Task 2:**
+  - `ADVANCE_PHRASES` gains `request_menu: ['ยื่นคำขอ']` and `request_status: ['สถานะคำขอ']`.
+  - `matchAdvanceAction` returns these two keys as well. Check order: `request_status`, `advance_status`, `request_menu`, `advance_request`.
+  - Add `formatRequestStatusReply({leave: {recent: [{type, from, to, status}], personalLeft, sickLeft}, advances: summary}, fmt) → string`. Its text has a 🏖️ การลา section and a 💸 เบิกเงิน section.
+  - Tests:
+    - "สถานะคำขอ" → `request_status`;
+    - "ยื่นคำขอ" → `request_menu`;
+    - the leave section shows `ลากิจคงเหลือ 4 วัน · ลาป่วยคงเหลือ 28 วัน`;
+    - with no leave and no advances the reply is `ยังไม่มีคำขอครับ`.
+- **Task 3:**
+  - `request_menu` replies `เลือกคำขอที่ต้องการครับ` with quick-reply chips (the `sendLineReply` quickReplyItems): `🏖️ ขอลา`→text `ขอลา`, `📦 เบิกของ`→`ขอเบิกของ`, `💸 เบิกเงิน`→`เบิกเงิน`, `ยกเลิก`→`ยกเลิก`.
+  - `request_status` loads the worker's `leave_requests` from the last 60 days, the leave days left, and the advances, then replies with `formatRequestStatusReply`.
+    - Get the days left the same way field-form `info` computes `remainingPersonal` / `remainingSick`. Move that helper to `_shared` if it is local.
+  - Eligibility for `request_status` and `request_menu`: a linked active worker. The advances section and the เบิกเงิน chip only appear when the tenant has `payroll`.
+  - Settings UI: add both keys.
+  - `docs/line-rich-menu/README.md` is already updated (2026-10-18).
+
 ### Task 1: Migration — token type, command keys, original-request columns, approve-with-changes RPC, bell count
 
 **Files:**
