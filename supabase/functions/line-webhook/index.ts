@@ -1558,7 +1558,7 @@ Deno.serve(async (req) => {
           const schedulePhrases = [
             ...[...SCHEDULE_COMMAND_ORDER, ...ADVANCE_COMMAND_KEYS].flatMap((key) => resolveEffectivePhrases(key, commandSettingsByKey)),
             // The built-in money phrases still interrupt after the owner renames those commands.
-            ...ADVANCE_PHRASES.advance_request, ...ADVANCE_PHRASES.advance_status, ...ADVANCE_PHRASES.payslip_request,
+            ...ADVANCE_PHRASES.advance_request, ...ADVANCE_PHRASES.advance_status, ...ADVANCE_PHRASES.payslip_request, 'ขอสลิปเงินเดือน',
           ]
           if (isMenuButtonText(text, schedulePhrases)) {
             // A menu button, not the report: stop waiting and run the button below.
