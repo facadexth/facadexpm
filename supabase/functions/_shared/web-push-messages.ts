@@ -31,6 +31,12 @@ export function workerOffboardedPush(workerName: string): PushPayload {
   return { title: '⚠️ ช่างพ้นสภาพ ยังอยู่ในกลุ่ม LINE', body: `${clip(workerName, 60)} พ้นสภาพแล้ว กรุณาลบออกจากกลุ่ม LINE`, tab: 'communication_center', pending: 'offboarded_in_group' }
 }
 
+// Salary advance asked for over LINE. Money: sent to the 'money' audience (OWNER/ADMIN) only.
+export function advanceRequestPush(workerName: string, amount: number): PushPayload {
+  const n = Number(amount || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })
+  return { title: 'ขอเบิกเงิน', body: `${clip(workerName, 60)} ขอเบิก ${n} บาท`, tab: 'hr', pending: 'advances_pending' }
+}
+
 export function testPush(): PushPayload {
   return { title: '✅ ทดสอบแจ้งเตือน', body: 'แจ้งเตือนบนเครื่องนี้ใช้งานได้ปกติ', tab: 'settings' }
 }

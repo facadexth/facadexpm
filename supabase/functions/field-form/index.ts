@@ -40,6 +40,8 @@ import { APP_URL } from '../_shared/app-url.ts'
 import { rolesFor } from '../_shared/roleAudience.ts'
 import { dailySubmitLimitReached, DAILY_LIMIT_MESSAGE } from '../_shared/form-throttle.ts'
 import { leaveQuotaRemaining } from '../_shared/leave-quota.ts'
+import { parseAdvanceAmount, defaultStartMonth } from '../_shared/advance-logic.ts'
+import { loadAdvanceSummary } from '../_shared/advance-summary.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -71,7 +73,7 @@ async function loadToken(token: string) {
   if (tok.used_at) return { reason: 'used' as const }
   if (new Date(tok.expires_at as string).getTime() < Date.now()) return { reason: 'expired' as const }
 
-  const { data: worker } = await admin.from('workers').select('id, name, nickname, tenant_id, line_user_id, annual_leave_days, annual_sick_leave_days').eq('id', tok.worker_id).maybeSingle()
+  const { data: worker } = await admin.from('workers').select('id, name, nickname, tenant_id, line_user_id, status, annual_leave_days, annual_sick_leave_days').eq('id', tok.worker_id).maybeSingle()
   if (!worker) return { reason: 'not_found' as const }
   return { tok, worker }
 }
@@ -192,6 +194,13 @@ Deno.serve(async (req) => {
           .order('requested_at', { ascending: false }).limit(10)
         return json({ actionType: tok.action_type, workerName, remainingPersonal, remainingSick, recentRequests: recent ?? [] })
       }
+      if (tok.action_type === 'advance') {
+        // Same eligibility as the LINE command: active worker, tenant has payroll.
+        if (worker.status !== 'active' || !(await tenantHasModuleAccess(admin, worker.tenant_id, 'payroll'))) return json({ reason: 'payroll_disabled' }, 200)
+        const loaded = await loadAdvanceSummary(admin, worker.tenant_id, worker.id)
+        if (!loaded) return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500)
+        return json({ actionType: 'advance', workerName, outstanding: loaded.summary.outstanding, pendingOther: loaded.summary.pendingOther, installmentOptions: [1, 2, 3, 4, 5, 6] })
+      }
       return json({ actionType: tok.action_type, workerName })
     }
 
@@ -203,7 +212,7 @@ Deno.serve(async (req) => {
       const workerName = worker.nickname || worker.name
 
       // Shown on the form as the error text (the page prints data.error).
-      if ((tok.action_type === 'material_request' || tok.action_type === 'leave') && (await dailySubmitLimitReached(admin, tok.worker_id, tok.action_type))) {
+      if ((tok.action_type === 'material_request' || tok.action_type === 'leave' || tok.action_type === 'advance') && (await dailySubmitLimitReached(admin, tok.worker_id, tok.action_type))) {
         return json({ error: DAILY_LIMIT_MESSAGE })
       }
 
@@ -286,6 +295,42 @@ Deno.serve(async (req) => {
         await notifyAdmins(worker.tenant_id, `🏖️ ${workerName} ขอ${leaveLabel}${shiftLabel} วันที่ ${dateLabel}\nรออนุมัติที่หน้าบุคคล → คำขอลา`, 'line_push_leave_request_admin')
         await webPushAdmins(worker.tenant_id, 'web_push_leave_request', (m) => m.leaveRequestPush(workerName, leaveLabel, shiftLabel, dateLabel))
         await notifyWorker(worker.tenant_id, worker.line_user_id, `✅ ส่งคำขอ${leaveLabel}${shiftLabel} วันที่ ${dateLabel} เรียบร้อยแล้ว\nรอแอดมิน/เจ้าของตรวจสอบและอนุมัติ`, 'line_push_leave_ack_worker')
+        return json({ ok: true, workerName })
+      }
+
+      if (tok.action_type === 'advance') {
+        // Tenant and worker come from the token only; the body carries just the request itself.
+        if (worker.status !== 'active' || !(await tenantHasModuleAccess(admin, worker.tenant_id, 'payroll'))) return json({ reason: 'payroll_disabled' }, 200)
+        const parsed = parseAdvanceAmount(body?.amount)
+        if (!parsed.ok) return json({ error: parsed.error }, 400)
+        const installments = Number(body?.installments)
+        if (!Number.isInteger(installments) || installments < 1 || installments > 6) return json({ error: 'จำนวนงวดต้องเป็น 1 ถึง 6 งวด' }, 400)
+        const title = (typeof body?.title === 'string' ? body.title.trim() : '') || 'เบิกเงินล่วงหน้า'
+        if (title.length > 100) return json({ error: 'หัวข้อยาวเกินไป (ไม่เกิน 100 ตัวอักษร)' }, 400)
+
+        // First month, from the current Bangkok month, whose period is missing or still draft.
+        const { data: periods, error: periodsError } = await admin.from('payroll_periods').select('year, month, status').eq('tenant_id', worker.tenant_id)
+        if (periodsError) return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500)
+        const periodsByKey: Record<string, string> = {}
+        for (const p of periods ?? []) periodsByKey[`${p.year}-${p.month}`] = p.status as string
+        const [ty, tm] = bangkokToday().split('-').map(Number)
+        const start = defaultStartMonth(periodsByKey, { year: ty, month: tm })
+
+        const { error } = await admin.from('salary_advances').insert({
+          tenant_id: worker.tenant_id, worker_id: worker.id, title, amount: parsed.amount, installments,
+          start_year: start.year, start_month: start.month, status: 'pending',
+          requested_by: 'line:' + worker.id, requested_amount: parsed.amount, requested_installments: installments,
+        })
+        if (error) return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500)
+
+        await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
+        // Web Push only, to OWNER/ADMIN ('money' audience, never PM). No LINE push.
+        try {
+          if (await isPushEnabled(admin, worker.tenant_id, 'web_push_advance_request')) {
+            const [{ sendWebPushToTenantAdmins }, messages] = await Promise.all([import('../_shared/web-push.ts'), import('../_shared/web-push-messages.ts')])
+            await sendWebPushToTenantAdmins(admin, worker.tenant_id, messages.advanceRequestPush(workerName, parsed.amount), 'money')
+          }
+        } catch (e) { console.error('web push failed', (e as Error).message) }
         return json({ ok: true, workerName })
       }
 

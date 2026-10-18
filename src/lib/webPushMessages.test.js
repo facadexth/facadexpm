@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { leaveRequestPush, materialRequestPush, issueReportPush, testPush, quotationExpiryPush, workerOffboardedPush } from '../../supabase/functions/_shared/web-push-messages.ts'
+import { leaveRequestPush, materialRequestPush, issueReportPush, testPush, quotationExpiryPush, workerOffboardedPush, advanceRequestPush } from '../../supabase/functions/_shared/web-push-messages.ts'
 import { TABS_FOR_TEST } from './webPush.js'
 import { PENDING_ITEMS } from './pendingItems.js'
 
@@ -48,5 +48,11 @@ describe('Web Push wording', () => {
     expect(quotationExpiryPush('QT-1', '2026-10-11', 7).pending).toBe('quotations_followup')
     expect(testPush().pending).toBeUndefined()
     for (const p of [leaveRequestPush('a', 'b', '', 'c'), materialRequestPush('a', 'b'), issueReportPush('a', 'b'), workerOffboardedPush('a'), quotationExpiryPush('QT-1', '2026-10-11', 7)]) expect(keys).toContain(p.pending)
+  })
+  it('advance request names the worker and the amount, opens HR on the advances bell item', () => {
+    const p = advanceRequestPush('สมชาย', 3000)
+    expect(p).toEqual({ title: 'ขอเบิกเงิน', body: 'สมชาย ขอเบิก 3,000 บาท', tab: 'hr', pending: 'advances_pending' })
+    expect(advanceRequestPush('ก', 1250.5).body).toBe('ก ขอเบิก 1,250.5 บาท')
+    expect(TABS_FOR_TEST).toContain(p.tab)
   })
 })

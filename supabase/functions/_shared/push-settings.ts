@@ -28,6 +28,7 @@ export const PUSH_TOGGLE_DEFAULTS: Record<string, boolean> = {
   web_push_quotation_expiry: true,
   web_push_cheque_due: true,
   web_push_worker_offboarded: true,
+  web_push_advance_request: true,
 }
 
 export function parseToggle(value: unknown, defaultOn: boolean): boolean {

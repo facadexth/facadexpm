@@ -115,6 +115,7 @@ import { TIME_CLOCK_PHRASE, SCHEDULE_MENU_PHRASE, SCHEDULE_MENU_PROMPT, TIME_CLO
 import { jobDonePrompt, jobDoneConfirmation, JOB_DONE_CONFIRM_CHIP } from '../_shared/job-done-messages.ts'
 import { isPushEnabled } from '../_shared/push-settings.ts'
 import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
+import { loadAdvanceSummary } from '../_shared/advance-summary.ts'
 import { decideGroupClaim } from '../_shared/line-groups.ts'
 import {
   routeDmEvent, isStartPhrase, logSafeError, ADMIN_CHAT_START_NOTICE, ADMIN_CHAT_END_NOTICE, ADMIN_CHAT_ACK_NOTICE,
@@ -128,7 +129,7 @@ import {
   matchGroupAction, matchDMAction, matchGroupInfoAction, groupAdvanceHint, requestMenuChips, formatBaht, advanceItemsForReply,
   ADVANCE_NOT_ALLOWED_MESSAGE, ADVANCE_DM_ONLY_MESSAGE, REQUEST_MENU_PROMPT, advanceLinkMessage,
 } from '../_shared/line-command-match.ts'
-import { summarizeAdvances, formatAdvanceStatusReply, formatRequestStatusReply } from '../_shared/advance-logic.ts'
+import { formatAdvanceStatusReply, formatRequestStatusReply } from '../_shared/advance-logic.ts'
 import { leaveQuotaRemaining } from '../_shared/leave-quota.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -632,34 +633,12 @@ async function handleScheduleMenu(
 // resolveWorker returned; the tenant is the one that worker belongs to. Every read
 // below filters on both explicitly, since this client is the service role.
 
-// The worker's advances, with deductions from CLOSED payroll periods only -- the same
-// join and the same rule as useAdvances in src/hooks/usePayroll.js (sum every closed
-// line; count an installment only where amount > 0).
-// null on a lookup error.
+// The worker's advances, with deductions from CLOSED payroll periods only: the query and
+// the rule live in _shared/advance-summary.ts (shared with field-form). null on a lookup error.
 async function loadAdvanceSummaryForReply(tenantId: string, workerId: string) {
-  const { data: advances, error } = await admin.from('salary_advances')
-    .select('id, title, amount, installments, status, reject_reason, requested_at')
-    .eq('tenant_id', tenantId).eq('worker_id', workerId)
-    .order('requested_at', { ascending: false })
-  if (error) { logSafeError('salary_advances lookup failed', error); return null }
-  const rows = (advances ?? []) as Array<Record<string, any>>
-  const ids = rows.filter((r) => r.status === 'approved' || r.status === 'settled').map((r) => r.id as string)
-  const closedLines: Array<{ advance_id: string; amount: number }> = []
-  if (ids.length) {
-    const { data: lines, error: linesError } = await admin.from('salary_record_lines')
-      .select('advance_id, amount, salary_records!inner(period_id, payroll_periods!inner(status))')
-      .eq('tenant_id', tenantId).in('advance_id', ids)
-    if (linesError) { logSafeError('salary_record_lines lookup failed', linesError); return null }
-    for (const l of (lines ?? []) as Array<Record<string, any>>) {
-      const rec = Array.isArray(l.salary_records) ? l.salary_records[0] : l.salary_records
-      const period = Array.isArray(rec?.payroll_periods) ? rec.payroll_periods[0] : rec?.payroll_periods
-      // Every closed line; summarizeAdvances counts an installment only when amount > 0 (as useAdvances).
-      if (period?.status === 'closed') closedLines.push({ advance_id: l.advance_id as string, amount: Number(l.amount) })
-    }
-  }
-  const summary = summarizeAdvances(rows, closedLines)
-  const requestedAtById = Object.fromEntries(rows.map((r) => [r.id as string, r.requested_at as string | null]))
-  return advanceItemsForReply(summary, requestedAtById)
+  const loaded = await loadAdvanceSummary(admin, tenantId, workerId, logSafeError)
+  if (!loaded) return null
+  return advanceItemsForReply(loaded.summary, loaded.requestedAtById)
 }
 
 async function handleAdvanceRequest(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
