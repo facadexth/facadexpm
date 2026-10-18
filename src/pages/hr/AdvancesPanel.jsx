@@ -9,7 +9,7 @@ import { requestAdvance, approveAdvanceEdit, rejectAdvance, loadMonthRecalcState
 import { MONTHS_TH } from '../../lib/payroll/period.js'
 import { fmt } from '../../lib/supabase.js'
 import { Modal } from '../../components/Modal.jsx'
-import { summarizeAdvances, advanceLimit, workerMonthlyPay, defaultStartMonth } from '../../lib/payroll/advanceRules.js'
+import { summarizeAdvances, advanceLimit, workerMonthlyPay, defaultStartMonth, parseAdvanceAmount } from '../../lib/payroll/advanceRules.js'
 
 const STATUS = {
   pending: ['รออนุมัติ', '#9a5b00'], approved: ['กำลังผ่อน', '#1f5fa8'],
@@ -26,6 +26,9 @@ function ApproveModal({ adv, startDefault, onClose, onDone }) {
   const [amount, setAmount] = useState(String(adv.amount))
   const [inst, setInst] = useState(String(adv.installments))
   const [ym, setYm] = useState(`${startDefault.year}-${startDefault.month}`)
+  const [touched, setTouched] = useState(false)
+  // Period statuses may load after the modal opens: follow the default until the owner picks a month.
+  useEffect(() => { if (!touched) setYm(`${startDefault.year}-${startDefault.month}`) }, [startDefault.year, startDefault.month, touched])
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [recalc, setRecalc] = useState(false)
@@ -46,13 +49,15 @@ function ApproveModal({ adv, startDefault, onClose, onDone }) {
   const amt = Number(amount)
   const n = Number(inst)
   const edited = amt !== Number(adv.requested_amount ?? adv.amount) || n !== Number(adv.requested_installments ?? adv.installments)
+  const over = amt > 0 ? Math.max(0, amt - adv.left) : 0
   const hasReq = adv.requested_amount != null && adv.requested_installments != null
   const confirm = async () => {
-    if (!(amt > 0)) { setErr('ใส่จำนวนเงินมากกว่า 0'); return }
+    const pa = parseAdvanceAmount(amount)
+    if (!pa.ok) { setErr(pa.error); return }
     if (!Number.isInteger(n) || n < 1 || n > 60) { setErr('จำนวนงวดต้องอยู่ระหว่าง 1-60'); return }
     setBusy(true); setErr('')
     try {
-      await approveAdvanceEdit(adv.id, { amount: amt, installments: n, startYear, startMonth })
+      await approveAdvanceEdit(adv.id, { amount: pa.amount, installments: n, startYear, startMonth })
       onDone()
     } catch (e) { setErr(e.message || String(e)) } finally { setBusy(false) }
   }
@@ -65,11 +70,11 @@ function ApproveModal({ adv, startDefault, onClose, onDone }) {
         <label className="label">จำนวนงวด (1-60)</label>
         <input className="input" type="number" min="1" max="60" value={inst} onChange={e => setInst(e.target.value)} />
         <label className="label">เริ่มหักเดือน</label>
-        <select className="input" value={ym} onChange={e => setYm(e.target.value)}>
+        <select className="input" value={ym} onChange={e => { setTouched(true); setYm(e.target.value) }}>
           {months.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
         </select>
         {amt > 0 && n >= 1 && <div style={{ fontSize: 13 }}>หักเดือนละ <b>{fmt(Math.round(amt / n * 100) / 100)}</b> บาท × {n} เดือน</div>}
-        {adv.overBy > 0 && <div style={{ color: 'var(--red)', fontSize: 13 }}>เกินวงเงินที่เบิกได้ {fmt(adv.overBy)} บาท (อนุมัติได้ถ้าเจ้าของตกลง)</div>}
+        {over > 0 && <div style={{ color: 'var(--red)', fontSize: 13 }}>เกินวงเงินที่เบิกได้ {fmt(over)} บาท (อนุมัติได้ถ้าเจ้าของตกลง)</div>}
         {recalc && <div style={{ color: '#9a5b00', fontSize: 13 }}>เดือนเริ่มหักคำนวณไว้แล้ว กดคำนวณใหม่ก่อนยืนยัน</div>}
         {err && <div style={{ color: 'var(--red)' }}>{err}</div>}
       </div>
@@ -177,7 +182,7 @@ export default function AdvancesPanel({ canEdit }) {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 6, fontSize: 13 }}>
                 <div>ยอดคืนคงเหลือ (ของเก่า)<br /><b>{fmt(a.outstanding)}</b></div>
                 <div>รออนุมัติอื่นอยู่<br /><b>{fmt(a.pendingOther)}</b></div>
-                <div>เงินเดือน<br /><b>{fmt(a.pay)}</b></div>
+                <div>เงินเดือน<br /><b>{a.pay > 0 ? fmt(a.pay) : '—'}</b></div>
                 <div>ยังเบิกได้อีก<br /><b>{fmt(a.left)}</b></div>
               </div>
               {a.overBy > 0 && <div style={{ color: 'var(--red)', fontSize: 13 }}>เกินวงเงินที่เบิกได้ {fmt(a.overBy)} บาท</div>}

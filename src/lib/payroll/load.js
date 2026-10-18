@@ -99,7 +99,6 @@ export const confirmMonth   = (y, m) => rpc('confirm_payroll_period', { p_year: 
 export const unconfirmMonth = (y, m) => rpc('unconfirm_payroll_period', { p_year: y, p_month: m })
 export const closeMonth     = (y, m, paidDate) => rpc('close_payroll_period', { p_year: y, p_month: m, p_paid_date: paidDate })
 export const reopenMonth    = (y, m, reason) => rpc('reopen_payroll_period', { p_year: y, p_month: m, p_reason: reason })
-export const approveAdvance = id => rpc('approve_salary_advance', { p_id: id })
 // Every approval goes through the edit RPC (owner only; it refuses a confirmed/closed start month).
 export const approveAdvanceEdit = (id, { amount, installments, startYear, startMonth }) =>
   rpc('approve_salary_advance_edit', { p_id: id, p_amount: amount, p_installments: installments, p_start_year: startYear, p_start_month: startMonth })
