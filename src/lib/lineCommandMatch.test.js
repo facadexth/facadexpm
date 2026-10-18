@@ -141,6 +141,22 @@ describe('group path', () => {
   })
 })
 
+describe('payslip_request', () => {
+  it('routes in DM, ignored in a group, never material or leave', () => {
+    expect(matchDMAction('ขอสลิปเงินเดือน', {})).toBe('payslip_request')
+    expect(groupAdvanceHint('ขอสลิปเงินเดือน', {})).toBe('ignore')
+    expect(ADVANCE_COMMAND_KEYS).toContain('payslip_request')
+    expect(appSettings.ADVANCE_COMMAND_KEYS).toEqual(ADVANCE_COMMAND_KEYS)
+  })
+  it('chip order and off state', () => {
+    const o = { leaveOn: true, materialOn: true, advanceOn: true, advancePhrase: 'เบิกเงิน', payslipPhrase: 'ขอสลิป' }
+    expect(requestMenuChips({ ...o, payslipOn: true }).map(c => c.text)).toEqual(['ขอลา', 'ขอเบิกของ', 'เบิกเงิน', 'ขอสลิปเงินเดือน', 'ยกเลิก'])
+    expect(requestMenuChips({ ...o, payslipOn: true })[3].label).toBe('🧾 ขอสลิปเงินเดือน')
+    expect(requestMenuChips({ ...o, payslipOn: false }).map(c => c.text)).toEqual(['ขอลา', 'ขอเบิกของ', 'เบิกเงิน', 'ยกเลิก'])
+    expect(requestMenuChips({ ...o, payslipOn: true, payslipPhrase: 'สลิปเดือนนี้' })[3].text).toBe('สลิปเดือนนี้')
+  })
+})
+
 describe('requestMenuChips', () => {
   it('all on: the four chips from the addendum', () => {
     expect(requestMenuChips({ leaveOn: true, materialOn: true, advanceOn: true, advancePhrase: 'เบิกเงิน' })).toEqual([

@@ -62,7 +62,7 @@ export const FIXED_COMMAND_LABELS = {
 // "ขอเบิกเงินทางแชตส่วนตัวกับบอทนะครับ"), so the settings show a DM on/off and a
 // rename, no group toggle. Default phrases come from advanceRules.js (the same table
 // the webhook's _shared/advance-logic.ts mirrors).
-export const ADVANCE_COMMAND_KEYS = ['advance_request', 'advance_status', 'request_menu', 'request_status']
+export const ADVANCE_COMMAND_KEYS = ['advance_request', 'advance_status', 'request_menu', 'request_status', 'payslip_request']
 
 export const ADVANCE_COMMAND_DEFAULTS = Object.fromEntries(ADVANCE_COMMAND_KEYS.map(k => [k, ADVANCE_PHRASES[k][0]]))
 
@@ -71,6 +71,7 @@ export const ADVANCE_COMMAND_LABELS = {
   advance_status: 'ยอดเบิก',
   request_menu: 'ยื่นคำขอ',
   request_status: 'สถานะคำขอ',
+  payslip_request: 'ขอสลิปเงินเดือน',
 }
 
 // Shortest custom phrase allowed for the 4 keys above.

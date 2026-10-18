@@ -15,7 +15,7 @@ import { ADVANCE_PHRASES, matchAdvanceAction } from './advance-logic.ts'
 import { CANCEL_CHIP } from './cancel.ts'
 
 export type GroupActionType = 'issue_report' | 'material_request' | 'leave'
-export type AdvanceActionType = 'advance_request' | 'advance_status' | 'request_menu' | 'request_status'
+export type AdvanceActionType = 'advance_request' | 'advance_status' | 'request_menu' | 'request_status' | 'payslip_request'
 export type DMOnlyActionType =
   | 'check_in' | 'check_out' | 'site_photo' | 'job_done_start' | 'today_job' | 'tomorrow_job'
   | 'this_week_job' | 'next_week_job' | 'time_clock' | 'schedule_menu' | AdvanceActionType
@@ -31,7 +31,7 @@ export const SCHEDULE_COMMAND_DEFAULTS: Record<string, string> = {
 export const SCHEDULE_COMMAND_ORDER = ['tomorrow_job', 'this_week_job', 'next_week_job', 'today_job'] as const
 
 // DM-only, renamable, on/off per DM. Never run in a group (see groupAdvanceHint).
-export const ADVANCE_COMMAND_KEYS: AdvanceActionType[] = ['advance_request', 'advance_status', 'request_menu', 'request_status']
+export const ADVANCE_COMMAND_KEYS: AdvanceActionType[] = ['advance_request', 'advance_status', 'request_menu', 'request_status', 'payslip_request']
 
 export type CommandSettingsRow = { command_key: string; enabled_dm: boolean; enabled_group: boolean; custom_phrase: string | null }
 export type CommandSettingsByKey = Record<string, CommandSettingsRow>
@@ -130,7 +130,7 @@ export function groupAdvanceHint(text: string, commandSettings: CommandSettingsB
   if (isIssueReportText(text)) return null // matchGroupAction files it as a problem report
   const a = matchAdvanceAction(text, advancePhrasesFromSettings(commandSettings))
   if (a === 'advance_request' || a === 'advance_status') return text.trim().length <= GROUP_HINT_MAX_CHARS ? 'hint' : 'ignore'
-  if (a === 'request_menu' || a === 'request_status') return 'ignore'
+  if (a === 'request_menu' || a === 'request_status' || a === 'payslip_request') return 'ignore'
   return null
 }
 
@@ -143,11 +143,14 @@ export function requestMenuChips(o: {
   materialOn: boolean
   advanceOn: boolean
   advancePhrase?: string | null
+  payslipOn?: boolean
+  payslipPhrase?: string | null
 }): Array<{ label: string; text: string }> {
   const chips: Array<{ label: string; text: string }> = []
   if (o.leaveOn) chips.push({ label: '🏖️ ขอลา', text: 'ขอลา' })
   if (o.materialOn) chips.push({ label: '📦 เบิกของ', text: 'ขอเบิกของ' })
   if (o.advanceOn && o.advancePhrase) chips.push({ label: '💸 เบิกเงิน', text: o.advancePhrase })
+  if (o.payslipOn && o.payslipPhrase) chips.push({ label: '🧾 ขอสลิปเงินเดือน', text: o.payslipPhrase === 'ขอสลิป' ? 'ขอสลิปเงินเดือน' : o.payslipPhrase })
   if (!chips.length) return []
   return [...chips, CANCEL_CHIP]
 }

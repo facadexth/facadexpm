@@ -148,7 +148,7 @@ const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 // before sending, confirmed exploitable live). 30 minutes is enough to
 // switch from LINE to the browser and back without leaving a stale
 // link usable for days.
-async function issueFieldFormLink(tenantId: string, workerId: string, actionType: 'material_request' | 'leave' | 'check_in' | 'check_out' | 'advance'): Promise<string | null> {
+async function issueFieldFormLink(tenantId: string, workerId: string, actionType: 'material_request' | 'leave' | 'check_in' | 'check_out' | 'advance' | 'payslip'): Promise<string | null> {
   const token = crypto.randomUUID().replace(/-/g, '')
   const { error } = await admin.from('line_deep_link_tokens').insert({
     tenant_id: tenantId, worker_id: workerId, action_type: actionType, token,
@@ -655,6 +655,15 @@ async function handleAdvanceRequest(worker: { id: string }, settings: { tenant_i
   await sendLineReply(settings.channel_access_token, replyToken, link ? advanceLinkMessage(link) : '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
 }
 
+async function handlePayslipRequest(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
+  if (await linkRequestsThrottled(admin, worker.id, 'payslip', settings.tenant_id)) {
+    await sendLineReply(settings.channel_access_token, replyToken, THROTTLED_LINK_MESSAGE)
+    return
+  }
+  const link = await issueFieldFormLink(settings.tenant_id, worker.id, 'payslip')
+  await sendLineReply(settings.channel_access_token, replyToken, link ? `🧾 กดลิงก์นี้เพื่อดูสลิปเงินเดือนครับ (ใช้ได้ 30 นาที)\n${link}` : '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+}
+
 async function handleAdvanceStatus(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
   const summary = await loadAdvanceSummaryForReply(settings.tenant_id, worker.id)
   await sendLineReply(settings.channel_access_token, replyToken, summary ? formatAdvanceStatusReply(summary, formatBaht) : '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
@@ -673,6 +682,8 @@ async function handleRequestMenu(
     materialOn: resolveEnabled('material_request', commandSettings, 'dm'),
     advanceOn: hasPayroll && resolveEnabled('advance_request', commandSettings, 'dm'),
     advancePhrase: resolveEffectivePhrases('advance_request', commandSettings)[0] ?? null,
+    payslipOn: hasPayroll && resolveEnabled('payslip_request', commandSettings, 'dm'),
+    payslipPhrase: resolveEffectivePhrases('payslip_request', commandSettings)[0] ?? null,
   })
   if (!chips.length) {
     await sendLineReply(settings.channel_access_token, replyToken, DISABLED_MESSAGE)
@@ -1547,7 +1558,7 @@ Deno.serve(async (req) => {
           const schedulePhrases = [
             ...[...SCHEDULE_COMMAND_ORDER, ...ADVANCE_COMMAND_KEYS].flatMap((key) => resolveEffectivePhrases(key, commandSettingsByKey)),
             // The built-in money phrases still interrupt after the owner renames those commands.
-            ...ADVANCE_PHRASES.advance_request, ...ADVANCE_PHRASES.advance_status,
+            ...ADVANCE_PHRASES.advance_request, ...ADVANCE_PHRASES.advance_status, ...ADVANCE_PHRASES.payslip_request,
           ]
           if (isMenuButtonText(text, schedulePhrases)) {
             // A menu button, not the report: stop waiting and run the button below.
@@ -1574,6 +1585,13 @@ Deno.serve(async (req) => {
             await handleAdvanceRequest(worker, settings, event.replyToken)
           } else {
             await handleAdvanceStatus(worker, settings, event.replyToken)
+          }
+        } else if (action === 'payslip_request') {
+          const payslipOn = (await tenantHasModuleAccess(admin, settings.tenant_id, 'payroll')) && resolveEnabled('payslip_request', commandSettingsByKey, 'dm')
+          if (!payslipOn) {
+            await sendLineReply(settings.channel_access_token, event.replyToken, 'ยังขอสลิปผ่าน LINE ไม่ได้ ติดต่อแอดมินครับ')
+          } else {
+            await handlePayslipRequest(worker, settings, event.replyToken)
           }
         } else if (action === 'request_menu' || action === 'request_status') {
           // Any linked active worker; the เบิกเงิน chip / advances section need payroll.

@@ -4,9 +4,10 @@ export const ADVANCE_PHRASES = {
   advance_request: ["เบิกเงิน"],
   advance_status: ["ยอดเบิก"],
   request_menu: ["ยื่นคำขอ"],
-  request_status: ["สถานะคำขอ"]
+  request_status: ["สถานะคำขอ"],
+  payslip_request: ["ขอสลิป"]
 };
-const CHECK_ORDER = ["request_status", "advance_status", "request_menu", "advance_request"];
+const CHECK_ORDER = ["payslip_request", "request_status", "advance_status", "request_menu", "advance_request"];
 // The built-in money phrases always count, on top of any custom ones: a rename must
 // never send "ขอเบิกเงิน" to the material-request flow ("ขอเบิก" is a material keyword).
 const MONEY_GUARD_KEYS = ["advance_request", "advance_status"];

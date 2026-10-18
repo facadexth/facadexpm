@@ -116,8 +116,8 @@ describe('resolveEffectivePhrases', () => {
 })
 
 describe('command key coverage', () => {
-  it('ALL_COMMAND_KEYS is exactly the 4 schedule + 7 fixed + 4 advance keys, 15 total', () => {
-    expect(ALL_COMMAND_KEYS).toHaveLength(15)
+  it('ALL_COMMAND_KEYS is exactly the 4 schedule + 7 fixed + 5 advance keys, 16 total', () => {
+    expect(ALL_COMMAND_KEYS).toHaveLength(16)
     expect(ALL_COMMAND_KEYS).toEqual([...SCHEDULE_COMMAND_KEYS, ...FIXED_COMMAND_KEYS, ...ADVANCE_COMMAND_KEYS])
   })
   it('resolveEnabled generalizes to fixed (non-schedule) command keys, per context', () => {
@@ -132,8 +132,8 @@ describe('command key coverage', () => {
 
 describe('salary advance + request menu commands (DM only, renamable)', () => {
   it('has the 4 keys the DB CHECK allows, with their default phrases', () => {
-    expect(ADVANCE_COMMAND_KEYS).toEqual(['advance_request', 'advance_status', 'request_menu', 'request_status'])
-    expect(ADVANCE_COMMAND_DEFAULTS).toEqual({ advance_request: 'เบิกเงิน', advance_status: 'ยอดเบิก', request_menu: 'ยื่นคำขอ', request_status: 'สถานะคำขอ' })
+    expect(ADVANCE_COMMAND_KEYS).toEqual(['advance_request', 'advance_status', 'request_menu', 'request_status', 'payslip_request'])
+    expect(ADVANCE_COMMAND_DEFAULTS).toEqual({ advance_request: 'เบิกเงิน', advance_status: 'ยอดเบิก', request_menu: 'ยื่นคำขอ', request_status: 'สถานะคำขอ', payslip_request: 'ขอสลิป' })
     expect(RENAMABLE_COMMAND_KEYS).toEqual([...SCHEDULE_COMMAND_KEYS, ...ADVANCE_COMMAND_KEYS])
   })
   it('falls back to the default phrase, or uses the custom list', () => {
