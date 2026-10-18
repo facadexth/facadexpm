@@ -66,7 +66,7 @@ function bangkokToday(): string {
 async function loadToken(token: string) {
   const { data: tok } = await admin
     .from('line_deep_link_tokens')
-    .select('id, worker_id, action_type, expires_at, used_at')
+    .select('id, tenant_id, worker_id, action_type, expires_at, used_at')
     .eq('token', token)
     .maybeSingle()
   if (!tok) return { reason: 'not_found' as const }
@@ -75,7 +75,26 @@ async function loadToken(token: string) {
 
   const { data: worker } = await admin.from('workers').select('id, name, nickname, tenant_id, line_user_id, status, annual_leave_days, annual_sick_leave_days').eq('id', tok.worker_id).maybeSingle()
   if (!worker) return { reason: 'not_found' as const }
+  // The token's own tenant must match the worker's: anything else is treated as an unknown link.
+  if (tok.tenant_id !== worker.tenant_id) return { reason: 'not_found' as const }
   return { tok, worker }
+}
+
+// Atomically claims a single-use token: only the one request that flips used_at from null wins,
+// so a double-tap cannot write twice. Returns a Response to send back when the claim fails
+// (DB error -> 500, already used/expired -> {reason:'used'}), or null when we own the token.
+async function claimToken(tokId: string): Promise<Response | null> {
+  const nowIso = new Date().toISOString()
+  const { data, error } = await admin.from('line_deep_link_tokens')
+    .update({ used_at: nowIso }).eq('id', tokId).is('used_at', null).gt('expires_at', nowIso).select('id')
+  if (error) return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500)
+  if (!data || data.length === 0) return json({ reason: 'used' }, 200)
+  return null
+}
+// Gives the token back after the write it guarded failed, so the worker can retry with the same link.
+async function releaseToken(tokId: string) {
+  const { error } = await admin.from('line_deep_link_tokens').update({ used_at: null }).eq('id', tokId)
+  if (error) console.error('releaseToken failed', error.message)
 }
 
 // Same "which site is this worker actually on today" resolution
@@ -196,7 +215,7 @@ Deno.serve(async (req) => {
       }
       if (tok.action_type === 'advance') {
         // Same eligibility as the LINE command: active worker, tenant has payroll.
-        if (worker.status !== 'active' || !(await tenantHasModuleAccess(admin, worker.tenant_id, 'payroll'))) return json({ reason: 'payroll_disabled' }, 200)
+        if (worker.status !== 'active' || !worker.line_user_id || !(await tenantHasModuleAccess(admin, worker.tenant_id, 'payroll'))) return json({ reason: 'payroll_disabled' }, 200)
         const loaded = await loadAdvanceSummary(admin, worker.tenant_id, worker.id)
         if (!loaded) return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500)
         return json({ actionType: 'advance', workerName, outstanding: loaded.summary.outstanding, pendingOther: loaded.summary.pendingOther, installmentOptions: [1, 2, 3, 4, 5, 6] })
@@ -249,12 +268,14 @@ Deno.serve(async (req) => {
           }
         }
 
+        const claimedPo = await claimToken(tok.id)
+        if (claimedPo) return claimedPo
         const { data: po, error: poError } = await admin.from('purchase_orders').insert({
           tenant_id: worker.tenant_id, site_id: siteId, category_id: resolved[0].categoryId, supplier_id: null,
           date: bangkokToday(), status: 'draft', has_vat: true, price_includes_vat: false,
           ordered_by: workerName, notes: `ขอเบิกผ่านไลน์โดย ${workerName}`,
         }).select('id').single()
-        if (poError || !po) return json({ error: poError?.message ?? 'po_insert_failed' }, 500)
+        if (poError || !po) { await releaseToken(tok.id); return json({ error: poError?.message ?? 'po_insert_failed' }, 500) }
 
         const { error: itemsError } = await admin.from('purchase_order_items').insert(
           resolved.map((r, i) => ({
@@ -262,9 +283,13 @@ Deno.serve(async (req) => {
             unit_price: 0, line_total: 0, sort_order: i, inventory_item_id: r.inventoryItemId,
           }))
         )
-        if (itemsError) return json({ error: itemsError.message }, 500)
+        if (itemsError) {
+          // Do not leave an empty draft PO behind: the worker can retry with the same link.
+          await admin.from('purchase_orders').delete().eq('id', po.id).eq('tenant_id', worker.tenant_id)
+          await releaseToken(tok.id)
+          return json({ error: itemsError.message }, 500)
+        }
 
-        await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
         const itemLines = resolved.map(r => `- ${r.description} (${r.quantity} ${r.unit})`).join('\n')
         await notifyAdmins(worker.tenant_id, `📦 ${workerName} ขอเบิกที่ไซต์ ${site.name}:\n${itemLines}\nสร้างใบสั่งซื้อร่างไว้ให้แล้ว รอเลือกซัพพลายเออร์และราคาที่ ${APP_URL}`, 'line_push_material_request_admin')
         await webPushAdmins(worker.tenant_id, 'web_push_material_request', (m) => m.materialRequestPush(workerName, site.name))
@@ -283,12 +308,13 @@ Deno.serve(async (req) => {
         // never trust the client for a multi-day range, force full_day
         // server-side regardless of what shift value was sent.
         const shift = dateFrom === dateTo && (requestedShift === 'morning' || requestedShift === 'evening') ? requestedShift : 'full_day'
+        const claimedLeave = await claimToken(tok.id)
+        if (claimedLeave) return claimedLeave
         const { error } = await admin.from('leave_requests').insert({
           tenant_id: worker.tenant_id, worker_id: tok.worker_id, leave_type: leaveType, date_from: dateFrom, date_to: dateTo, reason, shift,
         })
-        if (error) return json({ error: error.message }, 500)
+        if (error) { await releaseToken(tok.id); return json({ error: error.message }, 500) }
 
-        await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
         const leaveLabel = leaveType === 'leave_sick' ? 'ลาป่วย' : 'ลากิจ'
         const shiftLabel = shift === 'morning' ? ' (ช่วงเช้า)' : shift === 'evening' ? ' (ช่วงบ่าย)' : ''
         const dateLabel = dateFrom === dateTo ? dateFrom : `${dateFrom} — ${dateTo}`
@@ -300,10 +326,11 @@ Deno.serve(async (req) => {
 
       if (tok.action_type === 'advance') {
         // Tenant and worker come from the token only; the body carries just the request itself.
-        if (worker.status !== 'active' || !(await tenantHasModuleAccess(admin, worker.tenant_id, 'payroll'))) return json({ reason: 'payroll_disabled' }, 200)
+        if (worker.status !== 'active' || !worker.line_user_id || !(await tenantHasModuleAccess(admin, worker.tenant_id, 'payroll'))) return json({ reason: 'payroll_disabled' }, 200)
         const parsed = parseAdvanceAmount(body?.amount)
         if (!parsed.ok) return json({ error: parsed.error }, 400)
-        const installments = Number(body?.installments)
+        const rawInst = body?.installments
+        const installments = typeof rawInst === 'number' || (typeof rawInst === 'string' && /^\d+$/.test(rawInst)) ? Number(rawInst) : NaN
         if (!Number.isInteger(installments) || installments < 1 || installments > 6) return json({ error: 'จำนวนงวดต้องเป็น 1 ถึง 6 งวด' }, 400)
         const title = (typeof body?.title === 'string' ? body.title.trim() : '') || 'เบิกเงินล่วงหน้า'
         if (title.length > 100) return json({ error: 'หัวข้อยาวเกินไป (ไม่เกิน 100 ตัวอักษร)' }, 400)
@@ -316,14 +343,15 @@ Deno.serve(async (req) => {
         const [ty, tm] = bangkokToday().split('-').map(Number)
         const start = defaultStartMonth(periodsByKey, { year: ty, month: tm })
 
+        const claimed = await claimToken(tok.id)
+        if (claimed) return claimed
         const { error } = await admin.from('salary_advances').insert({
           tenant_id: worker.tenant_id, worker_id: worker.id, title, amount: parsed.amount, installments,
           start_year: start.year, start_month: start.month, status: 'pending',
           requested_by: 'line:' + worker.id, requested_amount: parsed.amount, requested_installments: installments,
         })
-        if (error) return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500)
+        if (error) { await releaseToken(tok.id); return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500) }
 
-        await admin.from('line_deep_link_tokens').update({ used_at: new Date().toISOString() }).eq('id', tok.id)
         // Web Push only, to OWNER/ADMIN ('money' audience, never PM). No LINE push.
         try {
           if (await isPushEnabled(admin, worker.tenant_id, 'web_push_advance_request')) {
