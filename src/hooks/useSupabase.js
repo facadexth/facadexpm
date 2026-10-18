@@ -19,8 +19,16 @@ import { getCurrentRole } from '../lib/roles.js'
 // tables, so PM goes through SECURITY DEFINER pm_* RPCs (migration 2026-10-17-05).
 const isPm = () => getCurrentRole() === 'PM'
 // Paged with .range() like fetchAllRows: PostgREST's max-rows cap applies to RPC results too.
+// No-arg calls share one in-flight request: a PM page mounts several hooks that
+// each ask for pm_workers/pm_sites in the same tick. Settled calls are not cached.
+const pmRpcInFlight = new Map()
 function pmRpc(name, args) {
-  return fetchAllRows(() => (args ? supabase.rpc(name, args) : supabase.rpc(name)))
+  if (args) return fetchAllRows(() => supabase.rpc(name, args))
+  const pending = pmRpcInFlight.get(name)
+  if (pending) return pending
+  const p = fetchAllRows(() => supabase.rpc(name)).finally(() => pmRpcInFlight.delete(name))
+  pmRpcInFlight.set(name, p)
+  return p
 }
 // Attach the worker/site names a PM cannot embed (workers/sites are not readable by PM).
 async function attachPmNames(rows, { siteShape }) {
