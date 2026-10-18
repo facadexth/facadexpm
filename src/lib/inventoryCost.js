@@ -106,7 +106,7 @@ export function estimateSheetCount(areaSqm, referenceAreaSqm) {
  * @param {string} params.siteId - the invoice's site id
  * @param {string|null} params.centralSiteId - ส่วนกลาง's site id, or null if no such site exists yet
  * @param {Array<{id: string, category_id: string|null}>} params.items
- * @param {Array<{inventory_item_id: string, site_id: string, quantity_on_hand: number, weighted_average_cost: number}>} params.balances
+ * @param {Array<{inventory_item_id: string, site_id: string, quantity_on_hand: number, weighted_average_cost: number}>} params.balances - stock AS OF THE INVOICE DATE (inventory_balances_as_of), not today's balances: the cut is back-dated to that day
  * @param {Record<string, string>} [params.firstReceivedAt] - { 'itemId|siteId': ISO timestamp of the first receipt there }; items without one go last
  * @returns {{
  *   steps: Array<{type: 'sale_out'|'transfer_out'|'transfer_in', inventoryItemId: string, siteId: string, quantity: number, unitCost: number, categoryId: string}>,
