@@ -73,7 +73,7 @@ cancelling a quantity entry, or changing weights. Each of those is written to
   must sum to the parent's points). One level only (a child cannot be split).
   The parent's own status becomes derived from its children and is not
   draggable.
-- **VO**: a new phase with `site_phases.is_vo = true`, `vo_value numeric`
+- **VO**: a new phase with `site_phases.is_vo = true`, VO value in admin-only `phase_vo_values.vo_value numeric`
   (money, optional), `vo_ref text` (VO number). VO phases have
   `billing_weight_pct = 0`, so the money S-curve and the 100% contract-weight
   check are unchanged.
@@ -155,7 +155,7 @@ cancelling a quantity entry, or changing weights. Each of those is written to
 
 ## 8. Daily snapshots
 
-`site_progress_daily(site_id, day, contract_pct, total_pct, PRIMARY KEY
+`site_progress_daily(site_id, day, contract_pct, PRIMARY KEY` (+ admin-only `site_progress_daily_money(site_id, day, total_pct)`), PRIMARY KEY
 (site_id, day))`, filled by SQL function `snapshot_site_progress()` from the
 `site_progress` view, scheduled with pg_cron at 23:55 Asia/Bangkok (pg_cron is
 installed; 4 jobs exist). History starts on the migration day.

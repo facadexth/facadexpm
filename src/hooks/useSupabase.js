@@ -902,6 +902,91 @@ export function useSitePhases({ includeIssues = false } = {}) {
   return { data: visible, loading, error, refetch }
 }
 
+/** PLAN versions of one site (immutable snapshots, newest first) + their items by plan id.
+ *  Fails soft: before the migration is applied (or on any error) `plans` is [] and
+ *  `error` is set, so callers can tell "no PLAN yet" (error null) from "could not load". */
+export function useSitePlans(siteId) {
+  const { data, loading, error, refetch } = useQuery(async () => {
+    if (!siteId) return { plans: [], items: {} }
+    const { data: plans, error: pErr } = await supabase
+      .from('site_plans')
+      .select('id, version, note, is_auto, created_by, created_at')
+      .eq('site_id', siteId)
+      .order('version', { ascending: false })
+    if (pErr) throw pErr
+    const items = {}
+    if (plans.length) {
+      const { data: rows, error: iErr } = await supabase
+        .from('site_plan_items').select('*').in('plan_id', plans.map(p => p.id))
+      if (iErr) throw iErr
+      ;(rows || []).forEach(r => { (items[r.plan_id] ||= []).push(r) })
+    }
+    return { plans, items }
+  }, [siteId])
+  return { plans: data?.plans ?? [], items: data?.items ?? {}, loading, error, reload: refetch }
+}
+
+/** Whether the site has a saved PLAN (any site_plans row): true / false, or null while
+ *  loading, on error, or before migration 07 (no table). Light: one id, no items.
+ *  The Kanban uses it to start new cards as not_started before PLAN v1 (DB gate). */
+export function useSiteHasPlan(siteId) {
+  const { data, error, refetch } = useQuery(async () => {
+    if (!siteId) return null
+    const { data: rows, error: err } = await supabase
+      .from('site_plans').select('id').eq('site_id', siteId).limit(1)
+    if (err) throw err
+    return (rows || []).length > 0
+  }, [siteId])
+  return { hasPlan: error ? null : (data ?? null), reload: refetch }
+}
+
+/** Daily % ตามสัญญา snapshots of one site (site_progress_daily: day, contract_pct),
+ *  oldest first -- the S-curve's งานจริง line. No money here (% รวม VO lives in the
+ *  OWNER/ADMIN-only site_progress_daily_money). Fails soft like useBoqItems. */
+export function useSiteProgressDaily(siteId) {
+  const { data, loading, error, refetch } = useQuery(async () => {
+    if (!siteId) return []
+    return fetchAllRows(() => supabase
+      .from('site_progress_daily')
+      .select('day, contract_pct')
+      .eq('site_id', siteId)
+      .order('day', { ascending: true }))
+  }, [siteId])
+  return { data: data ?? [], loading, error, refetch }
+}
+
+/** BOQ lines of one site (boq_items, sort_order). Fails soft: before the migration
+ *  is applied (or on any error) `data` is [] so the Kanban keeps working. */
+export function useBoqItems(siteId) {
+  const { data, loading, error, refetch } = useQuery(async () => {
+    if (!siteId) return []
+    const { data: rows, error: err } = await supabase
+      .from('boq_items')
+      .select('id, code, description, unit, planned_qty, sort_order')
+      .eq('site_id', siteId)
+      .order('sort_order', { ascending: true })
+    if (err) throw err
+    return rows || []
+  }, [siteId])
+  return { data: data ?? [], loading, error, refetch }
+}
+
+/** Quantity entries of one card (progress_reports), newest first, cancelled rows
+ *  included (shown struck through). Fails soft like useBoqItems. */
+export function useProgressReports(taskId) {
+  const { data, loading, error, refetch } = useQuery(async () => {
+    if (!taskId) return []
+    const { data: rows, error: err } = await supabase
+      .from('progress_reports')
+      .select('id, qty, work_date, note, created_by, created_at, cancelled_at, cancelled_by')
+      .eq('task_id', taskId)
+      .order('created_at', { ascending: false })
+    if (err) throw err
+    return rows || []
+  }, [taskId])
+  return { data: data ?? [], loading, error, refetch }
+}
+
 /** ขั้นตอนย่อย (Subtask) ทุกไซท์ ทุกชั้น -- ซ้อนกันได้ไม่จำกัดชั้นผ่าน
  *  parent_subtask_id (null = ลูกตรงของ phase_id) -- group/จัดชั้นฝั่ง
  *  client ด้วย src/pages/sites/subtaskCalc.js's groupSubtasksByParent. */

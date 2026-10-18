@@ -1,0 +1,80 @@
+import { describe, it, expect } from 'vitest'
+import fixtures from './progressCalc.fixtures.json'
+import * as progressCalc from './progressCalc.js'
+import { taskProgress, nodeProgress, siteProgress } from './progressCalc.js'
+
+describe('siteProgress matches the shared SQL fixtures', () => {
+  fixtures.forEach((fx) => {
+    it(fx.name, () => {
+      const r = siteProgress({ phases: fx.phases, subtasks: fx.subtasks, tasks: fx.tasks, contractValue: fx.contract_value })
+      expect(Object.keys(r.phasePct).sort()).toEqual(Object.keys(fx.expect.phases).sort())
+      Object.entries(fx.expect.phases).forEach(([id, pct]) => expect(r.phasePct[id]).toBeCloseTo(pct, 2))
+      expect(r.contractPct).toBeCloseTo(fx.expect.contract_pct, 2)
+      if (fx.expect.total_pct == null) expect(r.totalPct).toBeNull()
+      else expect(r.totalPct).toBeCloseTo(fx.expect.total_pct, 2)
+    })
+  })
+})
+
+describe('VO values from the admin-only table', () => {
+  const fx = fixtures.find((f) => f.name === 'vo two numbers')
+  const phasesNoField = fx.phases.map((p) => { const q = { ...p }; delete q.vo_value; return q })
+
+  it('uses a voValues map instead of the phase field', () => {
+    const r = siteProgress({ phases: phasesNoField, subtasks: [], tasks: fx.tasks, contractValue: 900000, voValues: { B: 100000 } })
+    expect(r.totalPct).toBeCloseTo(90, 2)
+  })
+
+  it('returns totalPct null when VO values are not available (null)', () => {
+    const r = siteProgress({ phases: phasesNoField, subtasks: [], tasks: fx.tasks, contractValue: 900000, voValues: null })
+    expect(r.totalPct).toBeNull()
+    expect(r.contractPct).toBeCloseTo(100, 2)
+  })
+
+  it('returns totalPct null without a contract value (PM rows)', () => {
+    const r = siteProgress({ phases: fx.phases, subtasks: [], tasks: fx.tasks, contractValue: undefined })
+    expect(r.totalPct).toBeNull()
+  })
+})
+
+describe('no unallocated points any more', () => {
+  it('progressCalc no longer exports unallocatedPoints (BOQ points always sum to 100)', () => {
+    expect('unallocatedPoints' in progressCalc).toBe(false)
+  })
+})
+
+describe('issue cards are ignored in node progress', () => {
+  it('a done issue card adds nothing', () => {
+    const tasks = [
+      { id: 'a', phase_id: 'A', weight_pts: 50, status: 'not_started' },
+      { id: 'i', phase_id: 'A', weight_pts: 50, status: 'done', issue_report_id: 'R1' },
+    ]
+    const p = nodeProgress('A', { tasksByNode: { A: tasks }, subtasksByParent: {}, nodeById: { A: { id: 'A', status: 'in_progress' } } })
+    expect(p).toBe(0)
+  })
+})
+
+describe('taskProgress', () => {
+  it('caps a quantity card at 1', () => {
+    expect(taskProgress({ id: 'q', progress_mode: 'quantity', planned_qty: 10, done_qty: 15 }, () => [])).toBe(1)
+  })
+
+  it('a split (general) parent is the plain mean of its children', () => {
+    const kids = [{ id: 'c1', weight_pts: 0, status: 'done' }, { id: 'c2', weight_pts: 0, status: 'not_started' }]
+    expect(taskProgress({ id: 'p', weight_pts: 0 }, (id) => (id === 'p' ? kids : []))).toBeCloseTo(0.5, 5)
+  })
+
+  it('ignores points on split children and parent (general cards count 0 points)', () => {
+    const kids = [{ id: 'c1', weight_pts: 30, status: 'done' }, { id: 'c2', weight_pts: 10, status: 'not_started' }, { id: 'c3', status: 'done' }]
+    expect(taskProgress({ id: 'p', weight_pts: 40 }, (id) => (id === 'p' ? kids : []))).toBeCloseTo(2 / 3, 5)
+  })
+})
+
+describe('general cards count as one: all done or nothing', () => {
+  it('3 cards, 1 done -> 0%; all done -> 100%', () => {
+    const tasks = [{ id: 'a', status: 'done' }, { id: 'b', status: 'in_progress' }, { id: 'c', status: 'not_started' }]
+    const ctx = (ts) => ({ tasksByNode: { A: ts }, subtasksByParent: {}, nodeById: {} })
+    expect(nodeProgress('A', ctx(tasks))).toBe(0)
+    expect(nodeProgress('A', ctx(tasks.map((t) => ({ ...t, status: 'done' }))))).toBe(1)
+  })
+})

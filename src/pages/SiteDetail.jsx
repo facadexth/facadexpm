@@ -7,7 +7,7 @@ import { useState } from 'react'
 import { useSiteOverview } from '../hooks/useSupabase.js'
 import { useUserRole } from '../hooks/useUserRole.js'
 import { canEditPage } from '../lib/permissions.js'
-import { canManageSites, canSeeMoney } from '../lib/roles.js'
+import { canManageSites, canSeeMoney, isPm } from '../lib/roles.js'
 import SiteOverviewContent from '../components/SiteOverviewContent.jsx'
 import GanttView from './sites/GanttView.jsx'
 import SCurveChart from './sites/SCurveChart.jsx'
@@ -16,20 +16,28 @@ import LandscapeView, { usePhoneLike } from '../components/LandscapeView.jsx'
 import PhoneSection from '../components/PhoneSection.jsx'
 import { useIsPhone } from '../hooks/useIsPhone.js'
 import DailyReport from './sites/DailyReport.jsx'
+import BoqTab from './sites/BoqTab.jsx'
+import { useProgressSchemaReady } from '../lib/progressSchema.js'
 
 export default function SiteDetail({ navState, navigateTo }) {
   const siteId = navState?.siteId
   const siteName = navState?.siteName
-  const [tab, setTab] = useState(navState?.tab || 'overview') // 'overview' | 'gantt' | 'kanban' | 'daily_report'
+  const [tab, setTab] = useState(navState?.tab || 'overview') // 'overview' | 'gantt' | 'kanban' | 'boq' | 'daily_report'
   const [phasesRefreshKey, setPhasesRefreshKey] = useState(0)
+  // PLAN layer version shared by the Gantt (selector, ghost bars, KPI) and the S-curve
+  // งานจริง line: 'latest' (latest version, or none when there is no PLAN) | 'off' | plan id
+  const [planChoice, setPlanChoice] = useState('latest')
   const [kanbanInitialLeafId, setKanbanInitialLeafId] = useState(null) // ตั้งค่าเมื่อคลิก leaf บนแท็บ Gantt เพื่อ deep-link ไปยัง chip ที่ตรงกันในแท็บ Kanban
 
   const isPhone = useIsPhone()
   const phoneLike = usePhoneLike()
   const { role } = useUserRole()
+  const progressReady = useProgressSchemaReady()
+  const showBoq = progressReady && canManageSites(role) // OWNER/ADMIN/PM; hidden until migration 07 is live
   const canEdit = canManageSites(role) && canEditPage(role, 'sites')
-  // the S-curve plots incomes/expenses against contract value -- money, so PM never gets it
-  const showMoney = canSeeMoney(role)
+  // S-curve: money roles get it as before (เงิน mode, plus งานจริง % once migration 07 is
+  // live); PM gets it only in งานจริง % mode, and only once the schema is ready
+  const showSCurve = canSeeMoney(role) || (isPm(role) && progressReady)
 
   const { data: site, error: siteError } = useSiteOverview(siteId)
 
@@ -63,6 +71,12 @@ export default function SiteDetail({ navState, navigateTo }) {
           className={`btn btn-sm ${tab === 'kanban' ? 'btn-primary' : 'btn-ghost'}`}
           onClick={() => setTab('kanban')}
         >🗂 Kanban</button>
+        {showBoq && (
+          <button
+            className={`btn btn-sm ${tab === 'boq' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setTab('boq')}
+          >📦 BOQ</button>
+        )}
         <button
           className={`btn btn-sm ${tab === 'daily_report' ? 'btn-primary' : 'btn-ghost'}`}
           onClick={() => setTab('daily_report')}
@@ -84,21 +98,23 @@ export default function SiteDetail({ navState, navigateTo }) {
               navigateTo={navigateTo}
               selectedSiteId={site.id}
               onSelectSite={() => {}}
+              planChoice={planChoice}
+              onPlanChoiceChange={setPlanChoice}
               canEdit={canEdit}
               onPhasesChanged={() => setPhasesRefreshKey((k) => k + 1)}
               onOpenKanban={(_site, leafNode) => { setKanbanInitialLeafId(leafNode.id); setTab('kanban') }}
             />
-            {!showMoney ? null : phoneLike ? (
+            {!showSCurve ? null : phoneLike ? (
               <div style={{ marginTop: 16 }}>
                 <PhoneSection title="S-curve" summary="กราฟ">
                   <LandscapeView autoOpen={false} title={`S-curve · ${site.site_number || site.name || ''}`}>
-                    <SCurveChart key={phasesRefreshKey} site={site} compact />
+                    <SCurveChart key={phasesRefreshKey} site={site} compact planChoice={planChoice} />
                   </LandscapeView>
                 </PhoneSection>
               </div>
             ) : (
               <div style={{ marginTop: 16 }}>
-                <SCurveChart key={phasesRefreshKey} site={site} />
+                <SCurveChart key={phasesRefreshKey} site={site} planChoice={planChoice} />
               </div>
             )}
           </>
@@ -118,6 +134,8 @@ export default function SiteDetail({ navState, navigateTo }) {
           />
         )
       )}
+
+      {tab === 'boq' && showBoq && <BoqTab siteId={siteId} />}
 
       {tab === 'daily_report' && (
         siteError ? (
