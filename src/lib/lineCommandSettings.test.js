@@ -11,6 +11,10 @@ import {
   FIXED_COMMAND_KEYS,
   ALL_COMMAND_KEYS,
   RESERVED_PHRASES,
+  ADVANCE_COMMAND_KEYS,
+  ADVANCE_COMMAND_DEFAULTS,
+  RENAMABLE_COMMAND_KEYS,
+  FIXED_COMMAND_PHRASES,
 } from './lineCommandSettings.js'
 
 describe('phrasesCollide', () => {
@@ -112,9 +116,9 @@ describe('resolveEffectivePhrases', () => {
 })
 
 describe('command key coverage', () => {
-  it('ALL_COMMAND_KEYS is exactly the 4 schedule + 7 fixed keys, 11 total', () => {
-    expect(ALL_COMMAND_KEYS).toHaveLength(11)
-    expect(ALL_COMMAND_KEYS).toEqual([...SCHEDULE_COMMAND_KEYS, ...FIXED_COMMAND_KEYS])
+  it('ALL_COMMAND_KEYS is exactly the 4 schedule + 7 fixed + 4 advance keys, 15 total', () => {
+    expect(ALL_COMMAND_KEYS).toHaveLength(15)
+    expect(ALL_COMMAND_KEYS).toEqual([...SCHEDULE_COMMAND_KEYS, ...FIXED_COMMAND_KEYS, ...ADVANCE_COMMAND_KEYS])
   })
   it('resolveEnabled generalizes to fixed (non-schedule) command keys, per context', () => {
     expect(resolveEnabled('material_request', {}, 'dm')).toBe(true)
@@ -123,5 +127,47 @@ describe('command key coverage', () => {
   })
   it('RESERVED_PHRASES is derived from the fixed commands, not hand-duplicated', () => {
     expect(RESERVED_PHRASES).toEqual(expect.arrayContaining(['เบิกของ', 'ขอลา', 'เช็คอิน', 'เช็คเอาท์', 'รูปภาพ', 'งานเสร็จ']))
+  })
+})
+
+describe('salary advance + request menu commands (DM only, renamable)', () => {
+  it('has the 4 keys the DB CHECK allows, with their default phrases', () => {
+    expect(ADVANCE_COMMAND_KEYS).toEqual(['advance_request', 'advance_status', 'request_menu', 'request_status'])
+    expect(ADVANCE_COMMAND_DEFAULTS).toEqual({ advance_request: 'เบิกเงิน', advance_status: 'ยอดเบิก', request_menu: 'ยื่นคำขอ', request_status: 'สถานะคำขอ' })
+    expect(RENAMABLE_COMMAND_KEYS).toEqual([...SCHEDULE_COMMAND_KEYS, ...ADVANCE_COMMAND_KEYS])
+  })
+  it('falls back to the default phrase, or uses the custom list', () => {
+    expect(resolveEffectivePhrases('advance_request', {})).toEqual(['เบิกเงิน'])
+    expect(resolveEffectivePhrases('request_status', { request_status: { custom_phrase: 'เช็คคำขอ, ดูคำขอ' } })).toEqual(['เช็คคำขอ', 'ดูคำขอ'])
+  })
+  it('missing row = enabled in DM', () => {
+    for (const k of ADVANCE_COMMAND_KEYS) expect(resolveEnabled(k, {}, 'dm')).toBe(true)
+  })
+  it('the default phrases are valid and do not collide with any reserved phrase', () => {
+    for (const k of ADVANCE_COMMAND_KEYS) {
+      expect(validateCustomPhrase(ADVANCE_COMMAND_DEFAULTS[k], k, {})).toEqual({ valid: true })
+      for (const r of RESERVED_PHRASES) expect(phrasesCollide(ADVANCE_COMMAND_DEFAULTS[k], r)).toBe(false)
+    }
+  })
+  it('phrasesCollide flags a custom advance phrase that collides with material-request phrases', () => {
+    for (const bad of ['ขอเบิก', 'เบิก', 'เบิกของเงิน', 'อยากเบิกเงิน', 'ขอเบิกเงิน']) {
+      expect(FIXED_COMMAND_PHRASES.material_request.some(m => phrasesCollide(bad, m))).toBe(true)
+      const r = validateCustomPhrase(bad, 'advance_request', {})
+      expect(r.valid).toBe(false)
+    }
+  })
+  it('rejects an advance phrase that collides with another advance or schedule command', () => {
+    expect(validateCustomPhrase('ยอดเบิกเงิน', 'advance_request', {}).valid).toBe(false) // contains ยอดเบิก
+    expect(validateCustomPhrase('ดูสถานะคำขอ', 'request_menu', {}).valid).toBe(false) // contains สถานะคำขอ
+    expect(validateCustomPhrase('งานวันนี้เงิน', 'advance_status', {}).valid).toBe(false)
+  })
+  it('rejects a schedule phrase that collides with an advance phrase', () => {
+    const r = validateCustomPhrase('ยอดเบิกวันนี้', 'today_job', {})
+    expect(r.valid).toBe(false)
+    expect(r.reason).toMatch(/ยอดเบิก/)
+  })
+  it('accepts a clean renamed advance phrase and re-saving its own phrase', () => {
+    expect(validateCustomPhrase('ขอเงินล่วงหน้า', 'advance_request', {})).toEqual({ valid: true })
+    expect(validateCustomPhrase('เบิกเงิน', 'advance_request', { advance_request: { custom_phrase: 'เบิกเงิน' } })).toEqual({ valid: true })
   })
 })

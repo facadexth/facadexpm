@@ -18,7 +18,7 @@ import { useAppSetting, saveAppSetting } from '../hooks/useSupabase.js'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import {
   SCHEDULE_COMMAND_KEYS, SCHEDULE_COMMAND_DEFAULTS, FIXED_COMMAND_KEYS, FIXED_COMMAND_LABELS, FIXED_COMMAND_PHRASES,
-  resolveEnabled, resolveEffectivePhrases, validateCustomPhrase,
+  ADVANCE_COMMAND_KEYS, ADVANCE_COMMAND_DEFAULTS, resolveEnabled, resolveEffectivePhrases, validateCustomPhrase,
 } from '../lib/lineCommandSettings.js'
 import { PLATFORM_BOT_BASIC_ID, platformBotLabel } from '../lib/platformLineBot.js'
 import PendingMark from '../components/PendingMark.jsx'
@@ -34,6 +34,14 @@ const SCHEDULE_COMMAND_DESCRIPTIONS = {
   tomorrow_job: 'เหมือนงานวันนี้ แต่เป็นของพรุ่งนี้',
   this_week_job: 'สรุป 7 วัน (จ-อา) ของอาทิตย์นี้ ทีละบรรทัด',
   next_week_job: 'สรุป 7 วัน (จ-อา) ของอาทิตย์หน้า ทีละบรรทัด',
+}
+
+// Salary advance + request menus: DM only, renamable (lineCommandSettings.js ADVANCE_COMMAND_KEYS).
+const ADVANCE_COMMAND_DESCRIPTIONS = {
+  advance_request: 'ส่งลิงก์ฟอร์มขอเบิกเงินล่วงหน้า (ใช้ได้ 30 นาที) · ต้องมีโมดูลเงินเดือน',
+  advance_status: 'ตอบรายการเบิกเงินของตัวเอง + ยอดคืนคงเหลือ · ต้องมีโมดูลเงินเดือน',
+  request_menu: 'ปุ่มเมนู "ยื่นคำขอ": ให้กดเลือก ขอลา / เบิกของ / เบิกเงิน',
+  request_status: 'ปุ่มเมนู "สถานะคำขอ": การลา 60 วันล่าสุด + วันลาคงเหลือ + รายการเบิกเงิน',
 }
 
 const FIXED_COMMAND_DESCRIPTIONS = {
@@ -512,7 +520,7 @@ export default function CommunicationCenter({ navState }) {
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ padding: 16, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>📖 คำสั่งที่พิมพ์ได้ในไลน์</div>
         <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text3)', borderBottom: '1px solid var(--border)' }}>
-          เปิด/ปิดได้ทุกคำสั่ง แยกอิสระระหว่างแชทส่วนตัว (DM) กับกลุ่มไลน์ — คำสั่งดูตารางงาน 4 อันแรกเปลี่ยนคำที่ใช้พิมพ์ได้ด้วย (ใส่ได้หลายคำ คั่นด้วยจุลภาค ",") ที่เหลือกำหนดคำไว้ในระบบตายตัว แต่ปิดเปิดได้เหมือนกัน
+          เปิด/ปิดได้ทุกคำสั่ง แยกอิสระระหว่างแชทส่วนตัว (DM) กับกลุ่มไลน์ — คำสั่งดูตารางงาน 4 อันแรก และคำสั่งเบิกเงิน/คำขอ 4 อันถัดมา เปลี่ยนคำที่ใช้พิมพ์ได้ด้วย (ใส่ได้หลายคำ คั่นด้วยจุลภาค ",") ที่เหลือกำหนดคำไว้ในระบบตายตัว แต่ปิดเปิดได้เหมือนกัน
         </div>
         <CardTable map={CC_COMMAND_MAP}>
           <table>
@@ -547,6 +555,37 @@ export default function CommunicationCenter({ navState }) {
                       <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => handleToggleCommandEnabled(key, 'group')}>{enabledGroup ? '✅ เปิด' : '⛔ ปิด'}</button>
                     </td>
                     <td style={{ fontSize: 12.5 }}>{SCHEDULE_COMMAND_DESCRIPTIONS[key]}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {isEditing ? (
+                        <>
+                          <button className="btn btn-sm btn-primary" disabled={isSaving} onClick={handleSaveCommandPhrase}>บันทึก</button>
+                          <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => setEditingCommandKey(null)}>ยกเลิก</button>
+                        </>
+                      ) : (
+                        <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => startEditCommandPhrase(key)}>แก้ไข</button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+              {ADVANCE_COMMAND_KEYS.map(key => {
+                const enabledDm = resolveEnabled(key, commandSettingsByKey, 'dm')
+                const phrases = resolveEffectivePhrases(key, commandSettingsByKey)
+                const isEditing = editingCommandKey === key
+                const isSaving = savingCommandKey === key
+                return (
+                  <tr key={key} style={{ opacity: enabledDm ? 1 : 0.5 }}>
+                    <td style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap' }}>
+                      {isEditing ? (
+                        <input className="input" style={{ fontSize: 12, padding: '3px 6px', width: 220 }} value={editPhraseValue}
+                          onChange={e => setEditPhraseValue(e.target.value)} placeholder={`${ADVANCE_COMMAND_DEFAULTS[key]}, ...`} autoFocus />
+                      ) : phrases.join(' / ')}
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="btn btn-sm btn-ghost" disabled={isSaving} onClick={() => handleToggleCommandEnabled(key, 'dm')}>{enabledDm ? '✅ เปิด' : '⛔ ปิด'}</button>
+                    </td>
+                    <td style={{ fontSize: 12, whiteSpace: 'nowrap', color: 'var(--text3)' }}>แชทส่วนตัวเท่านั้น</td>
+                    <td style={{ fontSize: 12.5 }}>{ADVANCE_COMMAND_DESCRIPTIONS[key]}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {isEditing ? (
                         <>

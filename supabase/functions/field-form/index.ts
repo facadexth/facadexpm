@@ -39,6 +39,7 @@ import { tenantHasModuleAccess } from '../_shared/tenant-access.ts'
 import { APP_URL } from '../_shared/app-url.ts'
 import { rolesFor } from '../_shared/roleAudience.ts'
 import { dailySubmitLimitReached, DAILY_LIMIT_MESSAGE } from '../_shared/form-throttle.ts'
+import { leaveQuotaRemaining } from '../_shared/leave-quota.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -128,23 +129,7 @@ async function webPushAdmins(tenantId: string, toggleKey: string, build: (m: typ
   } catch (e) { console.error('web push failed', (e as Error).message) }
 }
 
-// Remaining ลากิจ/ลาป่วย for the current (Bangkok) calendar year -- mirrors
-// useLeaveQuotaUsage/useSickLeaveQuotaUsage in src/hooks/useSupabase.js
-// EXACTLY (same worker_assignments row-count * 0.5 convention, same legacy
-// 'leave' => leave_personal rule) so the LINE-side numbers never drift from
-// what HR.jsx/MySchedule.jsx show in the app itself.
-async function leaveQuotaRemaining(workerId: string, annualLeaveDays: number, annualSickDays: number) {
-  const year = Number(bangkokToday().slice(0, 4))
-  const from = `${year}-01-01`
-  const to = `${year}-12-31`
-  const [personalRes, sickRes] = await Promise.all([
-    admin.from('worker_assignments').select('id').eq('worker_id', workerId).in('type', ['leave_personal', 'leave']).gte('date', from).lte('date', to),
-    admin.from('worker_assignments').select('id').eq('worker_id', workerId).eq('type', 'leave_sick').gte('date', from).lte('date', to),
-  ])
-  const personalUsed = (personalRes.data?.length ?? 0) * 0.5
-  const sickUsed = (sickRes.data?.length ?? 0) * 0.5
-  return { remainingPersonal: annualLeaveDays - personalUsed, remainingSick: annualSickDays - sickUsed }
-}
+// Remaining ลากิจ/ลาป่วย: _shared/leave-quota.ts (shared with line-webhook's "สถานะคำขอ").
 
 // Confirms back to the WORKER who submitted the request -- previously only
 // notifyAdmins fired, so a worker's only feedback was the one-time in-browser
@@ -198,7 +183,7 @@ Deno.serve(async (req) => {
         return json({ actionType: tok.action_type, workerName, siteName: site.name })
       }
       if (tok.action_type === 'leave') {
-        const { remainingPersonal, remainingSick } = await leaveQuotaRemaining(worker.id, worker.annual_leave_days ?? 0, worker.annual_sick_leave_days ?? 0)
+        const { remainingPersonal, remainingSick } = await leaveQuotaRemaining(admin, worker.id, worker.annual_leave_days ?? 0, worker.annual_sick_leave_days ?? 0)
         // The worker's own latest requests with their outcome: LINE no longer pushes the result,
         // so opening the leave link is how a worker finds out.
         const { data: recent } = await admin.from('leave_requests')

@@ -122,6 +122,14 @@ import {
 } from '../_shared/line-admin-chat-logic.ts'
 import { getChatMode, canStartAdminChat, claimAckForSession, startChatSession, endChatSession, recordUserText, recordUserImage } from '../_shared/line-admin-chat.ts'
 import { APP_URL } from '../_shared/app-url.ts'
+import {
+  type GroupActionType, type ActionType, type CommandSettingsByKey,
+  SCHEDULE_COMMAND_ORDER, ADVANCE_COMMAND_KEYS, resolveEffectivePhrases, resolveEnabled,
+  matchGroupAction, matchDMAction, matchGroupInfoAction, groupAdvanceHint, requestMenuChips, formatBaht, advanceItemsForReply,
+  ADVANCE_NOT_ALLOWED_MESSAGE, ADVANCE_DM_ONLY_MESSAGE, REQUEST_MENU_PROMPT, advanceLinkMessage,
+} from '../_shared/line-command-match.ts'
+import { summarizeAdvances, formatAdvanceStatusReply, formatRequestStatusReply } from '../_shared/advance-logic.ts'
+import { leaveQuotaRemaining } from '../_shared/leave-quota.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -138,7 +146,7 @@ const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 // before sending, confirmed exploitable live). 30 minutes is enough to
 // switch from LINE to the browser and back without leaving a stale
 // link usable for days.
-async function issueFieldFormLink(tenantId: string, workerId: string, actionType: 'material_request' | 'leave' | 'check_in' | 'check_out'): Promise<string | null> {
+async function issueFieldFormLink(tenantId: string, workerId: string, actionType: 'material_request' | 'leave' | 'check_in' | 'check_out' | 'advance'): Promise<string | null> {
   const token = crypto.randomUUID().replace(/-/g, '')
   const { error } = await admin.from('line_deep_link_tokens').insert({
     tenant_id: tenantId, worker_id: workerId, action_type: actionType, token,
@@ -167,9 +175,8 @@ function truncateLabel(s: string, max = 20): string {
   return s.length <= max ? s : s.slice(0, max - 1) + '…'
 }
 
-type GroupActionType = 'issue_report' | 'material_request' | 'leave'
-type DMOnlyActionType = 'check_in' | 'check_out' | 'site_photo' | 'job_done_start' | 'today_job' | 'tomorrow_job' | 'this_week_job' | 'next_week_job' | 'time_clock' | 'schedule_menu'
-type ActionType = GroupActionType | DMOnlyActionType
+// GroupActionType / DMOnlyActionType (incl. the 4 salary-advance keys) / ActionType
+// live in _shared/line-command-match.ts with the matchers.
 type PendingActionType = GroupActionType | 'site_photo' | 'job_done_pick' | 'job_done'
 
 // LINE bots have no way to remove someone from a group chat -- there's
@@ -247,21 +254,8 @@ function promptForAction(action: GroupActionType | 'site_photo'): string {
   return '🏖️ รับทราบครับ ช่วยบอกรายละเอียดวันที่ลาด้วยครับ'
 }
 
-// Simple substring match, not NLP, tuned against real collisions found
-// in review: a bare "ปัญหา" also matches "ไม่มีปัญหา"/"ไม่ปัญหา" ("no
-// problem"), and a bare "ลา" matches ordinary words like ตลาด/ปลา/ฉลาด
-// with zero relation to leave. Each set is chosen so no phrase is a
-// substring of another branch's phrase. Used by the crew GROUP path --
-// scoped to the original three actions only.
-function matchGroupAction(text: string): GroupActionType | null {
-  const isIssueReport = text.includes('ปัญหา') && !text.includes('ไม่มีปัญหา') && !text.includes('ไม่ปัญหา')
-  if (isIssueReport) return 'issue_report'
-  const isMaterialRequest = ['อยากเบิก', 'ขอเบิก', 'เบิกของ'].some((kw) => text.includes(kw))
-  if (isMaterialRequest) return 'material_request'
-  const isLeaveRequest = ['ลากิจ', 'ลาป่วย', 'ขอลา', 'อยากลา'].some((kw) => text.includes(kw))
-  if (isLeaveRequest) return 'leave'
-  return null
-}
+// matchGroupAction (crew GROUP path, the original three write actions) lives in
+// _shared/line-command-match.ts, tested by src/lib/lineCommandMatch.test.js.
 
 // Used by the 1:1 DM path -- all eleven actions. เช็คอิน/เช็คเอาท์/
 // รูปภาพ/งานเสร็จ/งานวันนี้/งานวันพรุ่งนี้/งานอาทิตย์นี้/งานอาทิตย์หน้า don't
@@ -287,49 +281,13 @@ function matchGroupAction(text: string): GroupActionType | null {
 // does the enabled-check + "feature disabled" reply uniformly instead
 // (see DISABLED_MESSAGE below), so a disabled command gets an explicit
 // reply rather than silently doing nothing.
-const SCHEDULE_COMMAND_DEFAULTS: Record<string, string> = {
-  today_job: 'งานวันนี้',
-  tomorrow_job: 'งานวันพรุ่งนี้',
-  this_week_job: 'งานอาทิตย์นี้',
-  next_week_job: 'งานอาทิตย์หน้า',
-}
-type CommandSettingsRow = { command_key: string; enabled_dm: boolean; enabled_group: boolean; custom_phrase: string | null }
-type CommandSettingsByKey = Record<string, CommandSettingsRow>
-function splitPhrases(raw: string | null | undefined): string[] {
-  return (raw || '').split(',').map((s) => s.trim()).filter(Boolean)
-}
-function resolveEffectivePhrases(commandKey: string, settingsByKey: CommandSettingsByKey): string[] {
-  const row = settingsByKey[commandKey]
-  const custom = splitPhrases(row?.custom_phrase)
-  return custom.length ? custom : [SCHEDULE_COMMAND_DEFAULTS[commandKey]]
-}
-// context: 'dm' | 'group' -- each command is independently toggleable per
-// chat context (2026-09-29). A missing row still means "enabled" in both.
-function resolveEnabled(commandKey: string, settingsByKey: CommandSettingsByKey, context: 'dm' | 'group'): boolean {
-  const row = settingsByKey[commandKey]
-  const field = context === 'group' ? 'enabled_group' : 'enabled_dm'
-  return row ? row[field] !== false : true
-}
-const SCHEDULE_COMMAND_ORDER = ['tomorrow_job', 'this_week_job', 'next_week_job', 'today_job'] as const
+// SCHEDULE_COMMAND_DEFAULTS / splitPhrases / resolveEffectivePhrases / resolveEnabled /
+// SCHEDULE_COMMAND_ORDER: _shared/line-command-match.ts.
 const DISABLED_MESSAGE = '⚠️ ฟีเจอร์นี้ปิดอยู่ขณะนี้ กรุณาติดต่อแอดมินโดยตรงครับ'
 
-function matchDMAction(text: string, commandSettings: CommandSettingsByKey): ActionType | null {
-  // The two Rich Menu buttons that need a decision first. Checked before everything
-  // else: the combined phrase contains both เช็คอิน and เช็คเอาท์ and would otherwise
-  // be read as a plain check-in.
-  if (text.includes(TIME_CLOCK_PHRASE)) return 'time_clock'
-  if (text.includes(SCHEDULE_MENU_PHRASE)) return 'schedule_menu'
-  const base = matchGroupAction(text)
-  if (base) return base
-  if (text.includes('เช็คอิน')) return 'check_in'
-  if (text.includes('เช็คเอาท์')) return 'check_out'
-  if (text.includes('รูปภาพ')) return 'site_photo'
-  if (text.includes('งานเสร็จ') || text.includes('เสร็จงาน')) return 'job_done_start'
-  for (const key of SCHEDULE_COMMAND_ORDER) {
-    if (resolveEffectivePhrases(key, commandSettings).some((p) => text.includes(p))) return key
-  }
-  return null
-}
+// matchDMAction: _shared/line-command-match.ts. It checks the salary-advance phrases
+// (เบิกเงิน / ยอดเบิก / ยื่นคำขอ / สถานะคำขอ) BEFORE matchGroupAction, because the
+// material keyword "ขอเบิก" is a substring of "ขอเบิกเงิน".
 
 // Resolves "which site" for เช็คอิน/เช็คเอาท์/รูปภาพหน้างาน from the
 // worker's own real site work assigned for today -- explicit user
@@ -669,6 +627,113 @@ async function handleScheduleMenu(
   await sendLineReply(settings.channel_access_token, replyToken, SCHEDULE_MENU_PROMPT, [...chips, CANCEL_PHRASE].map((p) => ({ label: truncateLabel(p), text: p })))
 }
 
+// ---- Salary advance (เบิกเงิน / ยอดเบิก) and the request menus (ยื่นคำขอ / สถานะคำขอ) ----
+// DM only, replies only (free; no LINE push). The worker is the linked, active one
+// resolveWorker returned; the tenant is the one that worker belongs to. Every read
+// below filters on both explicitly, since this client is the service role.
+
+// The worker's advances, with deductions from CLOSED payroll periods only -- the same
+// join and the same "closed, amount > 0" rule as useAdvances in src/hooks/usePayroll.js.
+// null on a lookup error.
+async function loadAdvanceSummaryForReply(tenantId: string, workerId: string) {
+  const { data: advances, error } = await admin.from('salary_advances')
+    .select('id, title, amount, installments, status, reject_reason, requested_at')
+    .eq('tenant_id', tenantId).eq('worker_id', workerId)
+    .order('requested_at', { ascending: false })
+  if (error) { logSafeError('salary_advances lookup failed', error); return null }
+  const rows = (advances ?? []) as Array<Record<string, any>>
+  const ids = rows.filter((r) => r.status === 'approved' || r.status === 'settled').map((r) => r.id as string)
+  const closedLines: Array<{ advance_id: string; amount: number }> = []
+  if (ids.length) {
+    const { data: lines, error: linesError } = await admin.from('salary_record_lines')
+      .select('advance_id, amount, salary_records!inner(period_id, payroll_periods!inner(status))')
+      .eq('tenant_id', tenantId).in('advance_id', ids)
+    if (linesError) { logSafeError('salary_record_lines lookup failed', linesError); return null }
+    for (const l of (lines ?? []) as Array<Record<string, any>>) {
+      const rec = Array.isArray(l.salary_records) ? l.salary_records[0] : l.salary_records
+      const period = Array.isArray(rec?.payroll_periods) ? rec.payroll_periods[0] : rec?.payroll_periods
+      if (period?.status === 'closed' && Number(l.amount) > 0) closedLines.push({ advance_id: l.advance_id as string, amount: Number(l.amount) })
+    }
+  }
+  const summary = summarizeAdvances(rows, closedLines)
+  const requestedAtById = Object.fromEntries(rows.map((r) => [r.id as string, r.requested_at as string | null]))
+  return advanceItemsForReply(summary, requestedAtById)
+}
+
+async function handleAdvanceRequest(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
+  if (await linkRequestsThrottled(admin, worker.id, 'advance')) {
+    await sendLineReply(settings.channel_access_token, replyToken, THROTTLED_LINK_MESSAGE)
+    return
+  }
+  const link = await issueFieldFormLink(settings.tenant_id, worker.id, 'advance')
+  await sendLineReply(settings.channel_access_token, replyToken, link ? advanceLinkMessage(link) : '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+}
+
+async function handleAdvanceStatus(worker: { id: string }, settings: { tenant_id: string; channel_access_token: string }, replyToken: string) {
+  const summary = await loadAdvanceSummaryForReply(settings.tenant_id, worker.id)
+  await sendLineReply(settings.channel_access_token, replyToken, summary ? formatAdvanceStatusReply(summary, formatBaht) : '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+}
+
+// "ยื่นคำขอ" (Rich Menu): chips for ขอลา / เบิกของ / เบิกเงิน. Each chip sends the phrase
+// the bot already understands, so a tap runs the same flow as typing it.
+async function handleRequestMenu(
+  settings: { channel_access_token: string },
+  replyToken: string,
+  commandSettings: CommandSettingsByKey,
+  hasPayroll: boolean,
+) {
+  const chips = requestMenuChips({
+    leaveOn: resolveEnabled('leave', commandSettings, 'dm'),
+    materialOn: resolveEnabled('material_request', commandSettings, 'dm'),
+    advanceOn: hasPayroll && resolveEnabled('advance_request', commandSettings, 'dm'),
+    advancePhrase: resolveEffectivePhrases('advance_request', commandSettings)[0] ?? null,
+  })
+  if (!chips.length) {
+    await sendLineReply(settings.channel_access_token, replyToken, DISABLED_MESSAGE)
+    return
+  }
+  await sendLineReply(settings.channel_access_token, replyToken, REQUEST_MENU_PROMPT, chips.map((c) => ({ label: truncateLabel(c.label), text: c.text })))
+}
+
+// "สถานะคำขอ" (Rich Menu): leave requests of the last 60 days + days left, and (with
+// the payroll module) the advances, in one reply.
+const REQUEST_STATUS_LEAVE_DAYS = 60
+async function handleRequestStatus(
+  worker: { id: string },
+  settings: { tenant_id: string; channel_access_token: string },
+  replyToken: string,
+  hasPayroll: boolean,
+) {
+  const since = new Date(Date.now() - REQUEST_STATUS_LEAVE_DAYS * 24 * 3600 * 1000).toISOString()
+  const [workerRes, leaveRes] = await Promise.all([
+    admin.from('workers').select('annual_leave_days, annual_sick_leave_days').eq('id', worker.id).eq('tenant_id', settings.tenant_id).maybeSingle(),
+    admin.from('leave_requests').select('leave_type, date_from, date_to, status, requested_at')
+      .eq('worker_id', worker.id).eq('tenant_id', settings.tenant_id).gte('requested_at', since)
+      .order('requested_at', { ascending: false }).limit(10),
+  ])
+  if (workerRes.error || leaveRes.error) {
+    logSafeError('request status lookup failed', workerRes.error ?? leaveRes.error)
+    await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+    return
+  }
+  const { remainingPersonal, remainingSick } = await leaveQuotaRemaining(
+    admin, worker.id, Number(workerRes.data?.annual_leave_days ?? 0), Number(workerRes.data?.annual_sick_leave_days ?? 0),
+  )
+  let advances: Awaited<ReturnType<typeof loadAdvanceSummaryForReply>> = null
+  if (hasPayroll) {
+    advances = await loadAdvanceSummaryForReply(settings.tenant_id, worker.id)
+    if (!advances) {
+      await sendLineReply(settings.channel_access_token, replyToken, '⚠️ ระบบขัดข้อง กรุณาแจ้งแอดมินโดยตรง')
+      return
+    }
+  }
+  const recent = ((leaveRes.data ?? []) as Array<Record<string, any>>).map((r) => ({
+    type: r.leave_type as string, from: r.date_from as string, to: r.date_to as string, status: r.status as string,
+  }))
+  const text = formatRequestStatusReply({ leave: { recent, personalLeft: remainingPersonal, sickLeft: remainingSick }, advances }, formatBaht)
+  await sendLineReply(settings.channel_access_token, replyToken, text)
+}
+
 // The new single entry point -- resolves today's status and shows only
 // the tap-options relevant right now, instead of the earlier flat
 // 6-button menu that assumed a worker already knew which action to
@@ -839,12 +904,7 @@ async function resolveTeamWeek(tenantId: string, dates: string[]): Promise<WeekD
 }
 
 type GroupInfoAction = 'today_job' | 'tomorrow_job' | 'this_week_job' | 'next_week_job'
-function matchGroupInfoAction(text: string, commandSettings: CommandSettingsByKey): GroupInfoAction | null {
-  for (const key of SCHEDULE_COMMAND_ORDER) {
-    if (resolveEffectivePhrases(key, commandSettings).some((p) => text.includes(p))) return key as GroupInfoAction
-  }
-  return null
-}
+// matchGroupInfoAction: _shared/line-command-match.ts.
 async function handleGroupInfoQuery(
   settings: { tenant_id: string; channel_access_token: string },
   replyToken: string,
@@ -1481,7 +1541,9 @@ Deno.serve(async (req) => {
         } else if (msgType === 'text' && text) {
           const { error: deleteError } = await admin.from('line_pending_actions').delete().eq('id', pending.id)
           if (deleteError) logSafeError('line_pending_actions delete failed', deleteError)
-          const schedulePhrases = SCHEDULE_COMMAND_ORDER.flatMap((key) => resolveEffectivePhrases(key, commandSettingsByKey))
+          // The company's schedule phrases plus the salary-advance / request-menu phrases
+          // (Rich Menu "ยื่นคำขอ" / "สถานะคำขอ" buttons): an exact tap on one interrupts the wait.
+          const schedulePhrases = [...SCHEDULE_COMMAND_ORDER, ...ADVANCE_COMMAND_KEYS].flatMap((key) => resolveEffectivePhrases(key, commandSettingsByKey))
           if (isMenuButtonText(text, schedulePhrases)) {
             // A menu button, not the report: stop waiting and run the button below.
             interrupted = true
@@ -1499,6 +1561,23 @@ Deno.serve(async (req) => {
         const action = matchDMAction(text, commandSettingsByKey)
         if (action && !resolveEnabled(action, commandSettingsByKey, 'dm')) {
           await sendLineReply(settings.channel_access_token, event.replyToken, DISABLED_MESSAGE)
+        } else if (action === 'advance_request' || action === 'advance_status') {
+          // Money: linked + active worker (resolveWorker above) AND the payroll module.
+          if (!(await tenantHasModuleAccess(admin, settings.tenant_id, 'payroll'))) {
+            await sendLineReply(settings.channel_access_token, event.replyToken, ADVANCE_NOT_ALLOWED_MESSAGE)
+          } else if (action === 'advance_request') {
+            await handleAdvanceRequest(worker, settings, event.replyToken)
+          } else {
+            await handleAdvanceStatus(worker, settings, event.replyToken)
+          }
+        } else if (action === 'request_menu' || action === 'request_status') {
+          // Any linked active worker; the เบิกเงิน chip / advances section need payroll.
+          const hasPayroll = await tenantHasModuleAccess(admin, settings.tenant_id, 'payroll')
+          if (action === 'request_menu') {
+            await handleRequestMenu(settings, event.replyToken, commandSettingsByKey, hasPayroll)
+          } else {
+            await handleRequestStatus(worker, settings, event.replyToken, hasPayroll)
+          }
         } else if (action === 'time_clock') {
           await handleTimeClock(worker, settings, event.replyToken, commandSettingsByKey)
         } else if (action === 'schedule_menu') {
@@ -1616,6 +1695,15 @@ Deno.serve(async (req) => {
       }
       continue
     }
+
+    // Money is private: the salary-advance phrases never run in a group. Checked BEFORE
+    // matchGroupAction so "ขอเบิกเงิน" can never open a material form here.
+    const advanceInGroup = groupAdvanceHint(text, commandSettingsByKey)
+    if (advanceInGroup === 'hint') {
+      await sendLineReply(settings.channel_access_token, event.replyToken, ADVANCE_DM_ONLY_MESSAGE)
+      continue
+    }
+    if (advanceInGroup === 'ignore') continue
 
     const action = matchGroupAction(text)
     if (action) {
