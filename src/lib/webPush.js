@@ -4,6 +4,9 @@
 export const VAPID_PUBLIC_KEY = 'BDX5ThKaDY5mz--6gS-1lqFmtLb93SjqGdz5vZ8-rx-kqkGtObNpVNUTq7VfZD3YP4LSmxDwOMzCPbjM9kHSyXQ'
 
 // Page ids a notification may open (see TABS in src/App.jsx). Used only by tests.
+// 'communication_center' is no longer a page of its own (2026-10-18): the edge function
+// payload still names it, and App.jsx redirects it to settings › communication
+// (src/lib/settingsSections.js redirectTab), so it stays a valid push target here.
 export const TABS_FOR_TEST = ['hr', 'purchase_orders', 'sites', 'settings', 'quotations', 'communication_center']
 
 export function urlBase64ToUint8Array(base64) {

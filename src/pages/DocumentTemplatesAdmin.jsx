@@ -10,6 +10,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { ConfirmDialog } from '../components/Modal.jsx'
+import DocStyleEditor from '../components/DocStyleEditor.jsx'
+import { useUserRole } from '../hooks/useUserRole.js'
 import DocStyleControls from '../components/DocStyleControls.jsx'
 import { QuotationPaper } from './Quotations.jsx'
 import { resolveDocumentStyle } from '../lib/documentStyle.js'
@@ -21,7 +23,11 @@ import { resizeToJpeg } from '../lib/resizeImage.js'
 const STATUS_LABEL = { draft: '📝 ร่าง (tenant ยังไม่เห็น)', published: '✅ เผยแพร่แล้ว' }
 
 export default function DocumentTemplatesAdmin() {
-  const { tenant } = useTenant()
+  const { tenant, refetch: refetchTenant } = useTenant()
+  // The current tenant's own document_style sliders (moved here from Settings, 2026-10-18).
+  // Same gate as in Settings: OWNER (the tenants UPDATE is owner-only under RLS) + platform admin (this tab).
+  const { isAtLeast } = useUserRole()
+  const isOwner = isAtLeast('OWNER')
   const [templates, setTemplates] = useState(null)
   const [packs, setPacks] = useState([])
   const [usage, setUsage] = useState({})
@@ -151,6 +157,7 @@ export default function DocumentTemplatesAdmin() {
       )}
 
       <PackManager packs={packs} onEdit={setEditPack} onNew={() => setEditPack({ id: crypto.randomUUID(), name_th: '', hero_path: '', gallery: [], features_th: [], tagline_th: '', status: 'draft', isNew: true })} />
+      {isOwner && tenant && <DocStyleEditor tenant={tenant} refetchTenant={refetchTenant} title="🎨 ระยะ/รูปแบบเอกสารของบริษัทนี้" />}
       {editPack && <PackEditor pack={editPack} onClose={() => setEditPack(null)} onSaved={() => { setEditPack(null); load() }} />}
       {confirm && <ConfirmDialog title={confirm.title} message={confirm.message} danger={confirm.danger} confirmDisabled={busy} onConfirm={confirm.run} onCancel={() => setConfirm(null)} />}
     </div>

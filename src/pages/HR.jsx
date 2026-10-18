@@ -25,6 +25,8 @@ import AttendanceGrid from './hr/AttendanceGrid.jsx'
 import WorkerPayFields from './hr/WorkerPayFields.jsx'
 import PayrollMonth from './hr/PayrollMonth.jsx'
 import AdvancesPanel from './hr/AdvancesPanel.jsx'
+import PayItemsEditor from './hr/PayItemsEditor.jsx'
+import BankExportSettings from './hr/BankExportSettings.jsx'
 import { usePayItems, useWorkerPayAmounts } from '../hooks/usePayroll.js'
 import { validateAccount } from '../lib/bankExport/banks.js'
 import CardTable from '../components/CardTable.jsx'
@@ -556,6 +558,8 @@ export default function HR({ navState }) {
   }, [logs, auditSortCol, auditSortDir])
 
 
+  const showPayItems = canManageSites(role) && canSeeMoney(role) && hasModuleAccess('payroll')
+  const showPayrollBank = isAtLeast('OWNER') && hasModuleAccess('payroll')
   const INNER_TABS = [
     { id: 'workers',  label: '👷 ข้อมูลช่าง' },
     ...(showSalary ? [{ id: 'payroll',  label: '💼 เงินเดือน' }] : []),
@@ -564,6 +568,9 @@ export default function HR({ navState }) {
     ...(canReviewLeave && hasModuleAccess('line_bot') ? [{ id: 'requests', label: `🏖️ คำขอลา${pendingRequestCount ? ` (${pendingRequestCount})` : ''}` }] : []),
     ...(canEdit ? [{ id: 'checkins', label: '🕐 เช็คอิน-เช็คเอาท์' }] : []),
     ...(canEdit ? [{ id: 'audit', label: '📋 ประวัติการแก้ไข' }] : []),
+    // Payroll setup, moved here from Settings (2026-10-18) with the exact gates it had there.
+    ...(showPayItems ? [{ id: 'pay_items', label: '💼 โครงสร้างเงินเดือน' }] : []),
+    ...(showPayrollBank ? [{ id: 'payroll_bank', label: '🏦 ไฟล์จ่ายเงินเดือน' }] : []),
   ]
 
   return (
@@ -709,6 +716,8 @@ export default function HR({ navState }) {
 
       {innerTab === 'payroll' && showSalary && <PayrollMonth canEdit={canEdit} />}
       {innerTab === 'advances' && showSalary && <AdvancesPanel canEdit={canEdit} />}
+      {innerTab === 'pay_items' && showPayItems && <PayItemsEditor />}
+      {innerTab === 'payroll_bank' && showPayrollBank && <BankExportSettings />}
 
       {/* ── Requests Tab (ขอลา from LINE crew bot) ── */}
       {innerTab === 'requests' && (

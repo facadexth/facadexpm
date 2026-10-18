@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { useAppSetting, saveAppSetting, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature, useBankAccounts, setDefaultBankAccount, useCheckinLocations, usePlatformAdmin } from '../hooks/useSupabase.js'
+import { useAppSetting, saveAppSetting, useMySignature, useMySignatureUrl, saveMySignature, deleteMySignature, useBankAccounts, setDefaultBankAccount, useCheckinLocations } from '../hooks/useSupabase.js'
 import { useTenant } from '../hooks/useTenant.js'
 import { useUserRole } from '../hooks/useUserRole.js'
-import { ROLE_OPTIONS, canManageSites, canSeeMoney } from '../lib/roles.js'
-import { PAGE_LABELS, DEFAULT_PERMISSIONS, loadPermissions, savePermissions } from '../lib/permissions.js'
+import { ROLE_OPTIONS, canManageSites } from '../lib/roles.js'
+import { PAGE_LABELS, DEFAULT_PERMISSIONS, loadPermissions, savePermissions, canViewPage } from '../lib/permissions.js'
+import { resolveSettingsSection } from '../lib/settingsSections.js'
 import { THAI_BANKS } from '../lib/thaiBanks.js'
 import { useDraftForm } from '../hooks/useDraftForm.js'
 import PackageComparison from '../components/PackageComparison.jsx'
@@ -14,26 +15,17 @@ import WebPushSettings from '../components/WebPushSettings.jsx'
 import TravelOriginSettings from '../components/TravelOriginSettings.jsx'
 import { Modal, ConfirmDialog } from '../components/Modal.jsx'
 import SignaturePad from '../components/SignaturePad.jsx'
-import { DEFAULT_DOCUMENT_STYLE, resolveDocumentStyle } from '../lib/documentStyle.js'
-import DocStyleControls from '../components/DocStyleControls.jsx'
 import DocumentTemplatePicker from '../components/DocumentTemplatePicker.jsx'
-import PayItemsEditor from './hr/PayItemsEditor.jsx'
-import BankExportSettings from './hr/BankExportSettings.jsx'
 import { useDocumentTemplates } from '../hooks/useDocumentTemplates.js'
-import { DOC_STYLE_PREVIEW_SAMPLE } from '../lib/documentPreviewSample.js'
-import { QuotationPaper } from './Quotations.jsx'
 import CardTable from '../components/CardTable.jsx'
+// The Communication Center page lives inside the 💬 การสื่อสารและแจ้งเตือน
+// section now (it was its own ⚙️ ตั้งค่า tab until 2026-10-18). Lazy, as App.jsx loaded it.
+const CommunicationCenter = lazy(() => import('./CommunicationCenter.jsx'))
 const LOCATION_MAP = { title: 'ชื่อตำแหน่ง', status: 'สถานะ', sub: ['พิกัด'], actions: 'last' }
 
 const VAT_CATEGORY_LABELS = { vat: 'บัญชี VAT', non_vat: 'บัญชีไม่มี VAT' }
 
 const LEVEL_LABELS = { none: '🚫 ซ่อน', view: '👁️ ดูอย่างเดียว', edit: '✏️ แก้ไขได้' }
-
-// Placeholder document content for the document-style live preview -- NOT
-// real tenant data. The tenant's real company_name/logo_url/etc. ARE used
-// (via the real `tenant` object passed to QuotationPaper below), but the
-// client/items/document-number are fake so the preview doesn't depend on
-// the tenant having any real quotations.
 
 function LocationForm({ initial, onSave, onCancel, loading }) {
   const [form, setForm, clearDraft] = useDraftForm('checkin-location-form', { name: '', lat: '', lng: '', active: true, map_url: '', ...initial }, !initial?.id)
@@ -117,7 +109,7 @@ const PERMISSION_ROLE_BG = {
   PM: 'color-mix(in srgb, var(--blue) 10%, transparent)', WORKER: 'rgba(var(--green-rgb), 0.1)',
 }
 
-export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
+export default function Settings({ onOpenChangePassword, onOpenChangePlan, navState, navigateTo }) {
   // This tab is now reachable by every role (src/App.jsx's minRole:'WORKER'
   // gate on 'settings') -- everything below the password card is filtered
   // by role right here instead: WORKER sees only the password card, ADMIN
@@ -332,54 +324,8 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
 
   const { tenant, hasModuleAccess, refetch: refetchTenant } = useTenant()
 
-  // Document style customizer -- resolveDocumentStyle always returns a
-  // fully-populated object, so local state always starts fully populated.
-  // The useEffect below re-syncs local state when the PERSISTED value
-  // actually changes (e.g. after this card's own Save/Reset calls
-  // refetchTenant()) -- keyed on a stringified comparison, not
-  // `tenant?.document_style` object identity, because useTenant()
-  // re-parses JSON on every fetch (a new object even when the underlying
-  // value is unchanged), and OTHER saves on this same page (company
-  // profile, logo upload) also call refetchTenant(). Keying on identity
-  // would silently wipe any in-progress (unsaved) slider edits every time
-  // an OWNER saved something unrelated elsewhere on this page.
-  const [docStyle, setDocStyle] = useState(() => resolveDocumentStyle(tenant?.document_style))
-  const [savingDocStyle, setSavingDocStyle] = useState(false)
-  const tenantStyleKey = JSON.stringify(tenant?.document_style)
-  useEffect(() => {
-    setDocStyle(resolveDocumentStyle(tenant?.document_style))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantStyleKey])
-  const setDocStyleField = (k, v) => setDocStyle(s => ({ ...s, [k]: v }))
-
-  const handleSaveDocStyle = async () => {
-    setSavingDocStyle(true)
-    try {
-      const { error } = await supabase.from('tenants').update({ document_style: docStyle }).eq('id', tenant.id)
-      if (error) throw error
-      refetchTenant()
-      alert('✅ บันทึกรูปแบบเอกสารแล้ว')
-    } catch (e) {
-      alert('Error: ' + e.message)
-    } finally {
-      setSavingDocStyle(false)
-    }
-  }
-
-  const handleResetDocStyle = async () => {
-    setSavingDocStyle(true)
-    try {
-      const { error } = await supabase.from('tenants').update({ document_style: null }).eq('id', tenant.id)
-      if (error) throw error
-      refetchTenant()
-      setDocStyle(DEFAULT_DOCUMENT_STYLE)
-      alert('✅ คืนค่าเริ่มต้นแล้ว')
-    } catch (e) {
-      alert('Error: ' + e.message)
-    } finally {
-      setSavingDocStyle(false)
-    }
-  }
+  // (The document style customizer that used to live here is now
+  // src/components/DocStyleEditor.jsx, on the platform-admin แบบเอกสาร tab.)
 
   // ลายเซ็นส่วนตัว -- วาดครั้งเดียว เอาไปแปะอัตโนมัติในช่องลายเซ็นฝั่งพนักงาน
   // ของเอกสารที่บัญชีนี้เป็นคนทำ (created_by, ดู useDocumentSigner ใน
@@ -512,8 +458,6 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
   // published quotation templates (none until a platform admin publishes one); only owners need them here
   const { templates: pubTemplates, packs: pubPacks } = useDocumentTemplates(isOwner)
   const hasTemplateChoice = (pubTemplates || []).some(t => t.key !== 'classic')
-  // Document-style customizer is a platform-admin tool now (tenants will pick from templates later).
-  const { data: isPlatformAdmin } = usePlatformAdmin()
   // ADMIN, OWNER and PM (site managers) get the signature + web push cards.
   const isAdminPlus = canManageSites(role)
 
@@ -545,32 +489,49 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
     else alert('✅ บันทึกชื่อแล้ว')
   }
   const hasCheque = hasModuleAccess('cheque_tracking')
+  // Per-card gates, unchanged from when each card was its own section (2026-10-18
+  // reorg: 16 sections -> 7). A section shows when ANY of its cards does; inside
+  // it every card still renders under its own gate below.
+  // Communication Center: the exact gate its old ⚙️ ตั้งค่า tab had in App.jsx
+  // (minRole OWNER + line_bot module + the per-role page permission).
+  const showCommCenter = isOwner && hasModuleAccess('line_bot') && (!role || canViewPage(role, 'communication_center'))
+  const showLinePush = isOwner && hasModuleAccess('line_bot')
+  const showChequeReminder = isOwner && hasCheque
+  const showWebPush = isAdminPlus
+  const showSignMethod = isOwner && hasCheque
   const sections = [
-    { id: 'account', label: '👤 บัญชีผู้ใช้', show: true },
+    { id: 'account', label: '👤 บัญชีผู้ใช้', show: true }, // + 🖊️ ลายเซ็นของฉัน (isAdminPlus)
     { id: 'plan', label: '💎 แพ็กเกจของคุณ', show: isOwner },
-    { id: 'travel', label: '🚗 ค่าเดินทางต่อไซท์', show: isOwner },
-    { id: 'cheque_reminder', label: '🏦 แจ้งเตือนเช็คใกล้ครบกำหนด', show: isOwner && hasCheque },
-    { id: 'line_push', label: '🔔 การแจ้งเตือนทาง LINE', show: isOwner && hasModuleAccess('line_bot') },
-    { id: 'web_push', label: '📲 แจ้งเตือนบนเครื่องนี้', show: isAdminPlus },
-    { id: 'sign_method', label: '✍️ วิธีเซ็นรับเอกสาร', show: isOwner && hasCheque },
-    { id: 'checkin_location', label: '📍 เช็คอิน/เช็คเอาท์ตำแหน่งที่ตั้ง', show: isOwner },
-    { id: 'signature', label: '🖊️ ลายเซ็นของฉัน', show: isAdminPlus },
-    { id: 'company_profile', label: '🏢 ข้อมูลบริษัท', show: isOwner },
-    { id: 'doc_template', label: '🎨 แบบใบเสนอราคา', show: isOwner && hasTemplateChoice },
-    { id: 'doc_style', label: '🎨 รูปแบบเอกสาร', show: isOwner && !!isPlatformAdmin },
-    { id: 'bank_accounts', label: '🏦 บัญชีธนาคาร', show: isOwner },
-    { id: 'payroll_items', label: '💼 โครงสร้างเงินเดือน', show: isAdminPlus && canSeeMoney(role) && hasModuleAccess('payroll') },
-    { id: 'payroll_bank', label: '🏦 ไฟล์จ่ายเงินเดือน (SCB)', show: isOwner && hasModuleAccess('payroll') },
+    { id: 'company_profile', label: '🏢 ข้อมูลบริษัท', show: isOwner }, // + 🏦 บัญชีธนาคาร (isOwner)
+    { id: 'doc_template', label: '🎨 แบบเอกสาร', show: isOwner && hasTemplateChoice },
+    { id: 'location', label: '📍 ตำแหน่งและค่าเดินทาง', show: isOwner }, // 🚗 ค่าเดินทาง + 📍 เช็คอิน (both isOwner)
+    { id: 'communication', label: '💬 การสื่อสารและแจ้งเตือน', show: showCommCenter || showLinePush || showChequeReminder || showWebPush || showSignMethod },
     { id: 'permissions', label: '⚙️ ตั้งค่าสิทธิ์เข้าใช้งาน', show: isOwner },
   ]
   const visibleSections = sections.filter(s => s.show)
   const visibleIds = visibleSections.map(s => s.id).join(',')
+  // A link can ask for a section (navState.section, old ids included -- see
+  // src/lib/settingsSections.js). Held until that section is visible: role/
+  // tenant/module data may still be loading on the first render, and the
+  // "not visible -> first section" fallback below must not swallow it.
+  const [requestedSection, setRequestedSection] = useState(() => resolveSettingsSection(navState?.section))
   useEffect(() => {
+    const wanted = resolveSettingsSection(navState?.section)
+    if (wanted === null) setActiveSection(null) // the part left Settings: open the first section
+    setRequestedSection(wanted ?? undefined)
+  }, [navState])
+  useEffect(() => {
+    if (requestedSection && visibleSections.some(s => s.id === requestedSection)) {
+      setActiveSection(requestedSection)
+      setRequestedSection(undefined)
+      return
+    }
     if (!visibleSections.some(s => s.id === activeSection)) {
       setActiveSection(visibleSections[0]?.id || null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleIds, activeSection])
+  }, [visibleIds, activeSection, requestedSection])
+  const pickSection = (id) => { setRequestedSection(undefined); setActiveSection(id) }
 
   return (
     <div>
@@ -580,14 +541,14 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
           {visibleSections.map(s => (
             <button key={s.id} type="button"
               className={`settings-nav-btn${activeSection === s.id ? ' active' : ''}`}
-              onClick={() => setActiveSection(s.id)}>
+              onClick={() => pickSection(s.id)}>
               {s.label}
             </button>
           ))}
         </nav>
       )}
       {visibleSections.length > 1 && (
-        <select className="input settings-select" value={activeSection || ''} onChange={e => setActiveSection(e.target.value)} aria-label="เลือกหมวดการตั้งค่า">
+        <select className="input settings-select" value={activeSection || ''} onChange={e => pickSection(e.target.value)} aria-label="เลือกหมวดการตั้งค่า">
           {visibleSections.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
         </select>
       )}
@@ -637,7 +598,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       </>}
 
       {/* ── ค่าเดินทาง ── */}
-      {activeSection === 'travel' && isOwner && (
+      {activeSection === 'location' && isOwner && (
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🚗 ค่าเดินทางต่อไซท์</h2>
         <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
@@ -657,8 +618,22 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       </div>
       )}
 
+      {/* ── การสื่อสาร (Communication Center, was its own tab) ── */}
+      {activeSection === 'communication' && showCommCenter && (
+        <div style={{ marginBottom: 24 }}>
+          <Suspense fallback={<div style={{ padding: 20, color: 'var(--text3)', fontSize: 14 }}>กำลังโหลด...</div>}>
+            <CommunicationCenter navState={navState} navigateTo={navigateTo} />
+          </Suspense>
+        </div>
+      )}
+
+      {/* ── การแจ้งเตือนทาง LINE (push) ── */}
+      {activeSection === 'communication' && showLinePush && (
+        <LinePushSettings hasModuleAccess={hasModuleAccess} />
+      )}
+
       {/* ── แจ้งเตือนเช็คใกล้ครบกำหนด ── */}
-      {activeSection === 'cheque_reminder' && isOwner && hasModuleAccess('cheque_tracking') && (
+      {activeSection === 'communication' && showChequeReminder && (
         <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
           <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🏦 แจ้งเตือนเช็คใกล้ครบกำหนด</h2>
           <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
@@ -677,15 +652,10 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
         </div>
       )}
 
-      {/* ── การแจ้งเตือนทาง LINE (push) ── */}
-      {activeSection === 'line_push' && isOwner && hasModuleAccess('line_bot') && (
-        <LinePushSettings hasModuleAccess={hasModuleAccess} />
-      )}
-
-      {activeSection === 'web_push' && isAdminPlus && <WebPushSettings />}
+      {activeSection === 'communication' && showWebPush && <WebPushSettings />}
 
       {/* ── วิธีเซ็นรับเอกสาร ── */}
-      {activeSection === 'sign_method' && isOwner && hasModuleAccess('cheque_tracking') && (
+      {activeSection === 'communication' && showSignMethod && (
         <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
           <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>✍️ วิธีเซ็นรับเอกสาร</h2>
           <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
@@ -707,7 +677,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       )}
 
       {/* ── เช็คอินตำแหน่งที่ตั้ง ── */}
-      {activeSection === 'checkin_location' && isOwner && <>
+      {activeSection === 'location' && isOwner && <>
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>📍 เช็คอิน/เช็คเอาท์ตำแหน่งที่ตั้ง</h2>
         <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
@@ -775,7 +745,7 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       </>}
 
       {/* ── ลายเซ็นของฉัน -- ADMIN ขึ้นไป (WORKER เห็นแค่การ์ดรหัสผ่านด้านบน) ── */}
-      {activeSection === 'signature' && isAdminPlus && <>
+      {activeSection === 'account' && isAdminPlus && <>
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🖊️ ลายเซ็นของฉัน</h2>
         <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
@@ -859,64 +829,12 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
       </div>
       )}
 
-      {activeSection === 'doc_style' && isOwner && !!isPlatformAdmin && (
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-header"><div className="card-title">🎨 รูปแบบเอกสาร (ใบเสนอราคา/ใบแจ้งหนี้/ใบเสร็จ)</div></div>
-        <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20, alignItems: 'start' }}>
-          {/* Capped to the same maxHeight as the preview column below, with
-              its own overflow -- previously this column had no height cap
-              at all, so scrolling down through the (long) slider list
-              scrolled the WHOLE page, taking the preview (which starts at
-              the top of this grid row) out of view along with it. Now
-              each column scrolls independently and the preview stays put
-              the whole time you're tuning any slider, footer ones
-              included. */}
-          <div style={{ display: 'grid', gap: 10, maxHeight: '80vh', overflowY: 'auto', paddingRight: 8 }}>
-            <DocStyleControls docStyle={docStyle} setDocStyleField={setDocStyleField} />
-
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button className="btn btn-primary" onClick={handleSaveDocStyle} disabled={savingDocStyle} style={{ flex: 1 }}>
-                {savingDocStyle ? '⏳...' : '💾 บันทึก'}
-              </button>
-              <button className="btn btn-ghost" onClick={handleResetDocStyle} disabled={savingDocStyle}>
-                ↺ คืนค่าเริ่มต้น
-              </button>
-            </div>
-          </div>
-
-          <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'auto', maxHeight: '80vh' }}>
-            <QuotationPaper
-              elementId="doc-style-preview"
-              tenant={{ ...tenant, document_style: docStyle }}
-              extraRemeasureKey={JSON.stringify(docStyle)}
-              quotationNumber={DOC_STYLE_PREVIEW_SAMPLE.quotationNumber}
-              tag="ตัวอย่าง"
-              date={DOC_STYLE_PREVIEW_SAMPLE.date}
-              validUntil={DOC_STYLE_PREVIEW_SAMPLE.validUntil}
-              revision={DOC_STYLE_PREVIEW_SAMPLE.revision}
-              siteName={DOC_STYLE_PREVIEW_SAMPLE.siteName}
-              clientName={DOC_STYLE_PREVIEW_SAMPLE.clientName}
-              clientAddress={DOC_STYLE_PREVIEW_SAMPLE.clientAddress}
-              clientTaxId={DOC_STYLE_PREVIEW_SAMPLE.clientTaxId}
-              items={DOC_STYLE_PREVIEW_SAMPLE.items}
-              hasVat={DOC_STYLE_PREVIEW_SAMPLE.hasVat}
-              priceIncludesVat={DOC_STYLE_PREVIEW_SAMPLE.priceIncludesVat}
-              paymentTerms={DOC_STYLE_PREVIEW_SAMPLE.paymentTerms}
-              notes={DOC_STYLE_PREVIEW_SAMPLE.notes}
-              bankAccount={DOC_STYLE_PREVIEW_SAMPLE.bankAccount}
-              clientSignature={DOC_STYLE_PREVIEW_SAMPLE.clientSignature}
-            />
-          </div>
-        </div>
-      </div>
-      )}
-
       {/* ── บัญชีธนาคาร ── */}
       {activeSection === 'doc_template' && isOwner && hasTemplateChoice && (
         <DocumentTemplatePicker tenant={tenant} templates={pubTemplates} packs={pubPacks} refetchTenant={refetchTenant} />
       )}
 
-      {activeSection === 'bank_accounts' && isOwner && (
+      {activeSection === 'company_profile' && isOwner && (
       <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
         <h2 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>🏦 บัญชีธนาคาร</h2>
         <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
@@ -986,9 +904,6 @@ export default function Settings({ onOpenChangePassword, onOpenChangePlan }) {
         )}
       </div>
       )}
-
-      {activeSection === 'payroll_items' && isAdminPlus && canSeeMoney(role) && hasModuleAccess('payroll') && <PayItemsEditor />}
-      {activeSection === 'payroll_bank' && isOwner && hasModuleAccess('payroll') && <BankExportSettings />}
 
       {activeSection === 'permissions' && isOwner && <>
       <div style={{ marginBottom: 24 }}>

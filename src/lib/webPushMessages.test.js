@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { leaveRequestPush, materialRequestPush, issueReportPush, testPush, quotationExpiryPush, workerOffboardedPush, advanceRequestPush } from '../../supabase/functions/_shared/web-push-messages.ts'
 import { TABS_FOR_TEST } from './webPush.js'
 import { PENDING_ITEMS } from './pendingItems.js'
+import { redirectTab } from './settingsSections.js'
 
 describe('Web Push wording', () => {
   it('leave request names the worker, the kind of leave and the dates, and opens the HR page', () => {
@@ -31,6 +32,8 @@ describe('Web Push wording', () => {
     const p = workerOffboardedPush('สมศักดิ์')
     expect(p.body).toContain('สมศักดิ์')
     expect(p.tab).toBe('communication_center')
+    // No longer its own page: the app opens it as Settings › การสื่อสารและแจ้งเตือน.
+    expect(redirectTab(p.tab)).toEqual({ tab: 'settings', state: { section: 'communication' } })
   })
   it('test notification is plain', () => {
     expect(testPush().title).toContain('ทดสอบ')

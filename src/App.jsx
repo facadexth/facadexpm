@@ -25,6 +25,7 @@ import PhoneDrawer from './components/PhoneDrawer.jsx'
 import { useIsPhone } from './hooks/useIsPhone.js'
 import { usePendingCounts } from './hooks/usePendingCounts.js'
 import { visiblePendingItems, badgeByTab, badgeForTab, formatBadge, resolvePendingTab, parsePushHash } from './lib/pendingItems.js'
+import { redirectTab } from './lib/settingsSections.js'
 import Login      from './pages/Login.jsx'
 import ResetPassword from './components/ResetPassword.jsx'
 import { isRecoveryUrl } from './lib/passwordReset.js'
@@ -58,7 +59,6 @@ const Estimation   = lazy(() => import('./pages/Estimation.jsx'))
 const TenantManagement = lazy(() => import('./pages/TenantManagement.jsx'))
 const DocumentTemplatesAdmin = lazy(() => import('./pages/DocumentTemplatesAdmin.jsx'))
 const LineAdminChat = lazy(() => import('./pages/LineAdminChat.jsx'))
-const CommunicationCenter = lazy(() => import('./pages/CommunicationCenter.jsx'))
 const StartingGuide = lazy(() => import('./pages/StartingGuide.jsx'))
 
 const TABS = [
@@ -102,7 +102,6 @@ const TABS = [
     { id: 'suppliers',       label: '🏭 ผู้จำหน่าย',     minRole: 'ADMIN', module: null },
     { id: 'catalog_items',   label: '📦 รายการสินค้า', minRole: 'ADMIN', module: 'quotations' },
     { id: 'user_management', label: '👤 ผู้ใช้งาน',    minRole: 'OWNER', module: null },
-    { id: 'communication_center', label: '💬 การสื่อสาร', minRole: 'OWNER', module: 'line_bot' },
   ] },
   { id: 'tenant_management', label: '🏢 ผู้ดูแลระบบ', minRole: 'WORKER', module: null, platformAdminOnly: true },
   { id: 'line_admin_chat', label: '💬 แชทแอดมิน', minRole: 'WORKER', module: null, platformAdminOnly: true },
@@ -127,6 +126,11 @@ const HIDDEN_TAB_ENTRIES = [
   // that registry, since it's not meant to be separately configurable in
   // Settings, only to inherit its parent page's setting.
   { id: 'site_detail', minRole: 'ADMIN', module: null, permKey: 'sites' },
+  // Communication Center (2026-10-18): no longer in the ⚙️ ตั้งค่า dropdown -- the page
+  // lives in Settings › 💬 การสื่อสารและแจ้งเตือน. The id stays a gated route with the
+  // tab's old gate so canSeeTab('communication_center') still decides owner-vs-admin
+  // for the bell/push (pendingItems.js); navigating to it is redirected (redirectTab).
+  { id: 'communication_center', minRole: 'OWNER', module: 'line_bot' },
 ]
 const ALL_TAB_ENTRIES = TABS.flatMap(t => t.children ?? [t]).concat(HIDDEN_TAB_ENTRIES)
 
@@ -370,7 +374,9 @@ export default function App() {
     const pending = sessionStorage.getItem('pendingTab')
     if (pending) {
       sessionStorage.removeItem('pendingTab')
-      setActiveTab(pending)
+      const to = redirectTab(pending)
+      setNavState(to.state)
+      setActiveTab(to.tab)
     }
   }, [])
 
@@ -415,8 +421,10 @@ export default function App() {
     // chunk-load failure trigger its own automatic reload again, unlike
     // the pendingTab restore effect above (which must NOT clear this).
     sessionStorage.removeItem('chunk-reload-attempted')
-    setNavState(state)
-    setActiveTab(tab)
+    // Retired tabs (communication_center) open their new home instead.
+    const to = redirectTab(tab, state)
+    setNavState(to.state)
+    setActiveTab(to.tab)
   }
 
   // gate is looked up from the SAME ALL_TAB_ENTRIES the nav filters
@@ -455,7 +463,8 @@ export default function App() {
         case 'invoices':      return <Invoices     {...props} />
         case 'catalog_items': return <CatalogItems {...props} />
         case 'user_management': return <UserManagement {...props} />
-        case 'communication_center': return <CommunicationCenter {...props} />
+        // Never reached through navigateTo (redirected there); kept so a stray setActiveTab still lands on the page.
+        case 'communication_center': return <Settings {...props} navState={redirectTab('communication_center', navState).state} />
         case 'settings':   return <Settings   {...props} />
         case 'starting_guide': return <StartingGuide {...props} />
         case 'tenant_management': return <TenantManagement {...props} />
@@ -489,7 +498,8 @@ export default function App() {
 
   // Things waiting for action, limited to pages this user can actually open.
   const pendingItems = visiblePendingItems(pendingCounts, canSeeTab)
-  const pendingByTab = badgeByTab(pendingItems)
+  // Badges follow the redirect (communication_center counts show on ⚙️ ตั้งค่า › ทั่วไป).
+  const pendingByTab = badgeByTab(pendingItems.map(i => ({ ...i, tab: redirectTab(i.tab).tab })))
   // Phone only: where the user is (for the breadcrumb) and the one nav handler the drawer calls.
   const activeEntry = isPhone
     ? visibleTabs.flatMap(t => t.children ? t.children.map(c => ({ group: t.label, first: t.children[0], tab: c })) : [{ group: null, tab: t }]).find(e => e.tab.id === activeTab)
