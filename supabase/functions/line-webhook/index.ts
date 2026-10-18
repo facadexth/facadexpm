@@ -129,7 +129,7 @@ import {
   matchGroupAction, matchDMAction, matchGroupInfoAction, groupAdvanceHint, requestMenuChips, formatBaht, advanceItemsForReply,
   ADVANCE_NOT_ALLOWED_MESSAGE, ADVANCE_DM_ONLY_MESSAGE, REQUEST_MENU_PROMPT, advanceLinkMessage,
 } from '../_shared/line-command-match.ts'
-import { formatAdvanceStatusReply, formatRequestStatusReply } from '../_shared/advance-logic.ts'
+import { ADVANCE_PHRASES, formatAdvanceStatusReply, formatRequestStatusReply } from '../_shared/advance-logic.ts'
 import { leaveQuotaRemaining } from '../_shared/leave-quota.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -1518,7 +1518,11 @@ Deno.serve(async (req) => {
           if (deleteError) logSafeError('line_pending_actions delete failed', deleteError)
           // The company's schedule phrases plus the salary-advance / request-menu phrases
           // (Rich Menu "ยื่นคำขอ" / "สถานะคำขอ" buttons): an exact tap on one interrupts the wait.
-          const schedulePhrases = [...SCHEDULE_COMMAND_ORDER, ...ADVANCE_COMMAND_KEYS].flatMap((key) => resolveEffectivePhrases(key, commandSettingsByKey))
+          const schedulePhrases = [
+            ...[...SCHEDULE_COMMAND_ORDER, ...ADVANCE_COMMAND_KEYS].flatMap((key) => resolveEffectivePhrases(key, commandSettingsByKey)),
+            // The built-in money phrases still interrupt after the owner renames those commands.
+            ...ADVANCE_PHRASES.advance_request, ...ADVANCE_PHRASES.advance_status,
+          ]
           if (isMenuButtonText(text, schedulePhrases)) {
             // A menu button, not the report: stop waiting and run the button below.
             interrupted = true
@@ -1551,7 +1555,7 @@ Deno.serve(async (req) => {
           if (action === 'request_menu') {
             await handleRequestMenu(settings, event.replyToken, commandSettingsByKey, hasPayroll)
           } else {
-            await handleRequestStatus(worker, settings, event.replyToken, hasPayroll)
+            await handleRequestStatus(worker, settings, event.replyToken, hasPayroll && resolveEnabled('advance_status', commandSettingsByKey, 'dm'))
           }
         } else if (action === 'time_clock') {
           await handleTimeClock(worker, settings, event.replyToken, commandSettingsByKey)
@@ -1673,7 +1677,9 @@ Deno.serve(async (req) => {
 
     // Money is private: the salary-advance phrases never run in a group. Checked BEFORE
     // matchGroupAction so "ขอเบิกเงิน" can never open a material form here.
-    const advanceInGroup = groupAdvanceHint(text, commandSettingsByKey)
+    // Only for tenants with the payroll module: others fall through exactly as before.
+    let advanceInGroup = groupAdvanceHint(text, commandSettingsByKey)
+    if (advanceInGroup && !(await tenantHasModuleAccess(admin, settings.tenant_id, 'payroll'))) advanceInGroup = null
     if (advanceInGroup === 'hint') {
       await sendLineReply(settings.channel_access_token, event.replyToken, ADVANCE_DM_ONLY_MESSAGE)
       continue

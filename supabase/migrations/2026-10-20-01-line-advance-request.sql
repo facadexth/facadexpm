@@ -15,8 +15,8 @@ ALTER TABLE line_command_settings ADD CONSTRAINT line_command_settings_command_k
 
 -- 3. keep the worker's original numbers when the owner edits on approval
 ALTER TABLE salary_advances
-  ADD COLUMN requested_amount       NUMERIC,
-  ADD COLUMN requested_installments INT;
+  ADD COLUMN IF NOT EXISTS requested_amount       NUMERIC,
+  ADD COLUMN IF NOT EXISTS requested_installments INT;
 
 -- 4. owner approves with changes
 CREATE OR REPLACE FUNCTION approve_salary_advance_edit(

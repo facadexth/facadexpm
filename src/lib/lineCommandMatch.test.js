@@ -60,6 +60,9 @@ describe('matchDMAction: salary advance + request menus', () => {
   it.each(cases)('%s -> %s', (text, expected) => {
     expect(matchDMAction(text, {})).toBe(expected)
   })
+  it('leave beats advance in DM', () => {
+    expect(matchDMAction('ขอลาครึ่งวัน ไปเบิกเงินที่ธนาคาร', {})).toBe('leave')
+  })
   it('"ขอเบิกเงิน" is money, "ขอเบิกปูน" stays material (both directions)', () => {
     expect(matchDMAction('ขอเบิกเงิน', {})).toBe('advance_request')
     expect(matchDMAction('ขอเบิกปูน', {})).toBe('material_request')

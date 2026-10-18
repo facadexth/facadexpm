@@ -220,6 +220,7 @@ export default function FieldFormPage({ token }) {
 
   const submit = async (e) => {
     e.preventDefault()
+    if (submitting) return
     setSubmitting(true)
     setSubmitError(null)
     try {
@@ -248,7 +249,7 @@ export default function FieldFormPage({ token }) {
       if (data?.error) throw new Error(data.error)
       setSubmitted(true)
     } catch (e) {
-      setSubmitError(e.message)
+      setSubmitError(e.message || 'ส่งไม่สำเร็จ กรุณาลองใหม่')
     } finally {
       setSubmitting(false)
     }

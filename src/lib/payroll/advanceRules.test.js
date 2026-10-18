@@ -116,6 +116,12 @@ describe.each([['app', app], ['edge', edge]])('advance rules (%s)', (_name, m) =
     // request menus are not money: their rename replaces the default
     expect(m.matchAdvanceAction('ยื่นคำขอ', { request_menu: ['เมนูคำขอ'] })).toBeNull()
   })
+  it('leave beats advance', () => {
+    expect(m.matchAdvanceAction('ขอลาครึ่งวัน ไปเบิกเงินที่ธนาคาร')).toBeNull()
+    expect(m.matchAdvanceAction('ลากิจ เบิกเงิน')).toBeNull()
+    expect(m.matchAdvanceAction('เบิกเงิน')).toBe('advance_request')
+    expect(m.matchAdvanceAction('ยอดเบิก')).toBe('advance_status')
+  })
   it('"ยอดเบิกของ" is not the advance status (stays material)', () => {
     expect(m.matchAdvanceAction('ยอดเบิกของ')).toBeNull()
     expect(m.matchAdvanceAction('ยอดเบิกของเดือนนี้')).toBeNull()

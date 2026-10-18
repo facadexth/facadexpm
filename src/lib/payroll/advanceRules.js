@@ -10,9 +10,13 @@ const CHECK_ORDER = ["request_status", "advance_status", "request_menu", "advanc
 // The built-in money phrases always count, on top of any custom ones: a rename must
 // never send "ขอเบิกเงิน" to the material-request flow ("ขอเบิก" is a material keyword).
 const MONEY_GUARD_KEYS = ["advance_request", "advance_status"];
+// Leave beats advance: an explicit leave word means the message is a leave request,
+// even if it also mentions เบิกเงิน ("ขอลาครึ่งวัน ไปเบิกเงินที่ธนาคาร").
+const LEAVE_KEYWORDS = ["ลากิจ", "ลาป่วย", "ขอลา", "อยากลา"];
 export function matchAdvanceAction(text, phrasesByKey = {}) {
   const t = String(text ?? "");
   if (!t) return null;
+  if (LEAVE_KEYWORDS.some((k) => t.includes(k))) return null;
   for (const key of CHECK_ORDER) {
     const custom = phrasesByKey?.[key]?.length ? phrasesByKey[key] : null;
     const phrases = !custom ? ADVANCE_PHRASES[key] : MONEY_GUARD_KEYS.includes(key) ? [...custom, ...ADVANCE_PHRASES[key]] : custom;

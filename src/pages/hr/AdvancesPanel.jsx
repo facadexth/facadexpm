@@ -25,10 +25,16 @@ const bangkokToday = () => {
 function ApproveModal({ adv, startDefault, onClose, onDone }) {
   const [amount, setAmount] = useState(String(adv.amount))
   const [inst, setInst] = useState(String(adv.installments))
-  const [ym, setYm] = useState(`${startDefault.year}-${startDefault.month}`)
+  // Default start = the LATER of the row's own start month and the first open payroll month.
+  const defaultYm = (() => {
+    const ry = Number(adv.start_year), rm = Number(adv.start_month)
+    const rowLater = ry > 0 && rm > 0 && (ry * 12 + rm) > (startDefault.year * 12 + startDefault.month)
+    return rowLater ? `${ry}-${rm}` : `${startDefault.year}-${startDefault.month}`
+  })()
+  const [ym, setYm] = useState(defaultYm)
   const [touched, setTouched] = useState(false)
   // Period statuses may load after the modal opens: follow the default until the owner picks a month.
-  useEffect(() => { if (!touched) setYm(`${startDefault.year}-${startDefault.month}`) }, [startDefault.year, startDefault.month, touched])
+  useEffect(() => { if (!touched) setYm(defaultYm) }, [defaultYm, touched])
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [recalc, setRecalc] = useState(false)

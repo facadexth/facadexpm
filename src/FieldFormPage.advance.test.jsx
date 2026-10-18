@@ -45,6 +45,33 @@ describe('FieldFormPage advance', () => {
     expect(submitCall[1].body).toEqual({ action: 'submit', token: 't', amount: '1,000', installments: 3, title: '' })
   })
 
+  const fillAndSubmit = async () => {
+    render(<FieldFormPage token="t" />)
+    const input = (await screen.findByText('จำนวนเงิน (บาท) *')).parentElement.querySelector('input')
+    fireEvent.change(input, { target: { value: '1000' } })
+    fireEvent.click(screen.getByRole('button', { name: /ส่งคำขอ/ }))
+  }
+  const submitErr = (context) => invoke.mockImplementation(async (_n, { body }) => (body.action === 'info' ? { data: info, error: null } : { data: null, error: { message: 'FunctionsHttpError', context } }))
+
+  it('shows the server message of a 400', async () => {
+    submitErr({ json: async () => ({ error: 'x' }) })
+    await fillAndSubmit()
+    expect(await screen.findByText('x')).toBeTruthy()
+  })
+
+  it('falls back to a non-empty message when the 400 body is not JSON', async () => {
+    submitErr({ json: async () => { throw new Error('bad json') } })
+    await fillAndSubmit()
+    const box = await waitFor(() => { const el = document.querySelector('.alert-error'); expect(el).toBeTruthy(); return el })
+    expect(box.textContent.trim().length).toBeGreaterThan(0)
+  })
+
+  it('shows the used message for reason used', async () => {
+    invoke.mockImplementation(async (_n, { body }) => (body.action === 'info' ? { data: info, error: null } : { data: { reason: 'used' }, error: null }))
+    await fillAndSubmit()
+    expect(await screen.findByText(/ลิงก์นี้ถูกใช้ไปแล้ว/)).toBeTruthy()
+  })
+
   it('shows payroll_disabled message', async () => {
     invoke.mockImplementation(async () => ({ data: { reason: 'payroll_disabled' }, error: null }))
     render(<FieldFormPage token="t" />)
