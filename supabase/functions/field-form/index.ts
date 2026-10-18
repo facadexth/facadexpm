@@ -268,7 +268,7 @@ Deno.serve(async (req) => {
       const loaded = await loadPayslipMonths(tenantId, worker.id)
       if ('error' in loaded) return json({ error: PAYSLIP_ERR }, 500)
       const rec = loaded.records.find((r: any) => r.year === year && r.month === month)
-      const per = loaded.periods.find((p: any) => p.year === year && p.month === month)
+      const per = rec && loaded.periods.find((p: any) => p.id === rec.period_id)
       if (!rec || !per) return json({ reason: 'no_slip' }, 200)
 
       // YTD: closed months of that year up to the requested month, this worker only.
@@ -287,7 +287,7 @@ Deno.serve(async (req) => {
         admin.from('workers').select('name, nickname, employee_code, position, bank_account_name').eq('id', worker.id).eq('tenant_id', tenantId).maybeSingle(),
         admin.from('salary_record_lines').select('id, pay_item_id, name, side, sort_order, amount, quantity, rate, note')
           .eq('tenant_id', tenantId).eq('salary_record_id', rec.id).order('sort_order'),
-        admin.from('pay_items').select('id, name, sort_order').eq('tenant_id', tenantId).eq('method', 'ot').eq('active', true).limit(1),
+        admin.from('pay_items').select('id, name, sort_order').eq('tenant_id', tenantId).eq('method', 'ot').eq('active', true).order('sort_order').limit(1),
         admin.from('pay_items').select('id, method, system_key').eq('tenant_id', tenantId),
         ytdRecIds.length
           ? admin.from('salary_record_lines').select('side, amount, pay_item_id').eq('tenant_id', tenantId).in('salary_record_id', ytdRecIds)
@@ -484,6 +484,7 @@ Deno.serve(async (req) => {
 
     return json({ error: 'unknown_action' }, 400)
   } catch (e) {
-    return json({ error: (e as Error).message }, 500)
+    console.error('field-form failed', (e as Error).message)
+    return json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }, 500)
   }
 })
