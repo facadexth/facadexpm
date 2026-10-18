@@ -21,6 +21,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './lib/supabase.js'
 import { removeBlockOrClear } from './lib/rowEditing.js'
+import { parseAdvanceAmount } from './lib/payroll/advanceRules.js'
 
 const REASON_MESSAGES = {
   not_found: 'ไม่พบลิงก์นี้ — อาจพิมพ์ผิดหรือลิงก์ถูกลบไปแล้ว',
@@ -28,6 +29,7 @@ const REASON_MESSAGES = {
   used: 'ลิงก์นี้ถูกใช้ไปแล้ว — กดปุ่มในไลน์อีกครั้งถ้าต้องการส่งคำขอใหม่',
   no_site: 'ไม่พบงานที่มอบหมายวันนี้ — กรุณาติดต่อแอดมิน',
   network_error: 'เชื่อมต่อไม่สำเร็จ — เช็คสัญญาณอินเทอร์เน็ตแล้วลองใหม่ หรือกดปุ่มในไลน์อีกครั้ง',
+  payroll_disabled: 'ยังขอเบิกเงินผ่านไลน์ไม่ได้ กรุณาติดต่อเจ้าของบริษัท',
   line_bot_disabled: 'ฟีเจอร์นี้ไม่ได้เปิดใช้งานสำหรับบริษัทของคุณ — กรุณาติดต่อแอดมิน',
 }
 
@@ -178,6 +180,11 @@ export default function FieldFormPage({ token }) {
   const [dateTo, setDateTo] = useState('')
   const [reason, setReason] = useState('')
   const [shift, setShift] = useState('full_day')
+
+  const [advAmount, setAdvAmount] = useState('')
+  const [advTitle, setAdvTitle] = useState('')
+  const [advInstallments, setAdvInstallments] = useState(1)
+  const advParsed = parseAdvanceAmount(advAmount)
   const isSingleDay = !dateTo || dateTo === dateFrom
   // เช้า/บ่าย only makes sense for one day -- switching to a multi-day range
   // resets back to เต็มวัน and hides the picker, same rule field-form itself
@@ -227,9 +234,16 @@ export default function FieldFormPage({ token }) {
               quantity: Number(l.quantity),
             })),
           }
+        : state.actionType === 'advance'
+        ? { action: 'submit', token, amount: advAmount, installments: Number(advInstallments), title: advTitle.trim() }
         : { action: 'submit', token, leaveType, dateFrom, dateTo: dateTo || dateFrom, reason: reason.trim() || null, shift: isSingleDay ? shift : 'full_day' }
       const { data, error } = await supabase.functions.invoke('field-form', { body })
-      if (error) throw error
+      if (error) {
+        // A 400 from the function carries a Thai message in its JSON body.
+        let msg = null
+        try { msg = (await error.context?.json?.())?.error } catch { /* not JSON */ }
+        throw msg ? new Error(msg) : error
+      }
       if (data?.reason) { setState(s => ({ ...s, reason: data.reason })); return }
       if (data?.error) throw new Error(data.error)
       setSubmitted(true)
@@ -268,7 +282,9 @@ export default function FieldFormPage({ token }) {
           <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
           <div style={{ fontWeight: 700, marginBottom: 4 }}>ส่งคำขอแล้ว</div>
           <div style={{ fontSize: 13, color: 'var(--text3)' }}>
-            {state.actionType === 'material_request' ? 'สร้างใบสั่งซื้อร่างไว้ให้แล้ว แอดมินจะเลือกซัพพลายเออร์และราคาต่อ' : 'รอแอดมิน/เจ้าของตรวจสอบและอนุมัติ'}
+            {state.actionType === 'material_request' ? 'สร้างใบสั่งซื้อร่างไว้ให้แล้ว แอดมินจะเลือกซัพพลายเออร์และราคาต่อ'
+              : state.actionType === 'advance' ? 'ส่งคำขอแล้ว รอเจ้าของอนุมัติ พิมพ์ "ยอดเบิก" ในแชตเพื่อดูสถานะ'
+              : 'รอแอดมิน/เจ้าของตรวจสอบและอนุมัติ'}
           </div>
         </div>
       </Shell>
@@ -284,7 +300,7 @@ export default function FieldFormPage({ token }) {
   return (
     <Shell>
       <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>
-        {state.actionType === 'material_request' ? '📦 ขอเบิกของ' : '🏖️ ขอลา'}
+        {state.actionType === 'material_request' ? '📦 ขอเบิกของ' : state.actionType === 'advance' ? '💸 ขอเบิกเงิน' : '🏖️ ขอลา'}
       </div>
       <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 18 }}>สวัสดีครับคุณ{state.workerName}</div>
 
@@ -377,6 +393,38 @@ export default function FieldFormPage({ token }) {
               </select>
             </div>
           </>
+        ) : state.actionType === 'advance' ? (
+          <>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', fontSize: 13 }}>
+              <div>ยอดคืนคงเหลือของคุณ {Number(state.outstanding || 0).toLocaleString('th-TH')} บาท</div>
+              {Number(state.pendingOther) > 0 && (
+                <div style={{ color: 'var(--text3)', marginTop: 2 }}>รออนุมัติ {Number(state.pendingOther).toLocaleString('th-TH')} บาท</div>
+              )}
+            </div>
+            <div>
+              <label className="label">จำนวนเงิน (บาท) *</label>
+              <input className="input" inputMode="decimal" value={advAmount} onChange={e => setAdvAmount(e.target.value)} />
+              {advAmount.trim() !== '' && !advParsed.ok && (
+                <div style={{ color: 'var(--red)', fontSize: 12.5, marginTop: 4 }}>{advParsed.error}</div>
+              )}
+            </div>
+            <div>
+              <label className="label">เหตุผล (ถ้ามี)</label>
+              <input className="input" value={advTitle} maxLength={100} onChange={e => setAdvTitle(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">ผ่อนกี่เดือน</label>
+              <select className="select" value={advInstallments} onChange={e => setAdvInstallments(Number(e.target.value))}>
+                {(state.installmentOptions || [1, 2, 3, 4, 5, 6]).map(n => (
+                  <option key={n} value={n}>
+                    {advParsed.ok
+                      ? `ผ่อน ${n} เดือน (เดือนละ ~${Math.ceil(advParsed.amount / n).toLocaleString('th-TH')} บาท)`
+                      : `ผ่อน ${n} เดือน`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
         ) : (
           <>
             {(state.remainingPersonal != null || state.remainingSick != null) && (
@@ -447,7 +495,7 @@ export default function FieldFormPage({ token }) {
 
         {submitError && <div className="alert alert-error" style={{ fontSize: 12.5 }}>{submitError}</div>}
 
-        <button type="submit" className="btn btn-primary" disabled={submitting || (state.actionType === 'material_request' && !canSubmitMaterial)}>
+        <button type="submit" className="btn btn-primary" disabled={submitting || (state.actionType === 'material_request' && !canSubmitMaterial) || (state.actionType === 'advance' && !advParsed.ok)}>
           {submitting ? '⏳ กำลังส่ง...' : '✅ ส่งคำขอ'}
         </button>
       </form>
